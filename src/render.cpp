@@ -1,5 +1,4 @@
-// render.cpp -- the 3D pass: its state half (refreshWorld / refreshVab) and
-// its paint half (paintWorld / paintVab). See render.h.
+// render.cpp -- the 3D pass: state half, then paint half. See render.h.
 #include "render.h"
 
 #include <algorithm>
@@ -31,9 +30,8 @@ static glm::dmat3 shakeRot(const glm::dvec3 &a) {
                       a.y, -a.x, 1.0);
 }
 
-/* Camera shake at high acceleration: the felt g's set the amplitude, which
-   is low-passed toward random targets and decays to zero when quiet. Orbit
-   camera on the ship only; --cam-shake scales (0 = off). */
+/* Camera shake: the felt g's set an amplitude, low-passed toward random
+   targets. Orbit camera on the ship only; --cam-shake scales it. */
 static void camShakeStep(Game &g, Vehicle *ship) {
     double a = 0.0;
     if(g.time_accel > 0 && !ship->onRails) {
@@ -48,12 +46,10 @@ static void camShakeStep(Game &g, Vehicle *ship) {
         ? (double)g.args.cam_shake * std::min(0.15, (a - 1.0) * 0.008)
         : 0.0;
     const Uint32 now_ms = SDL_GetTicks();
-    // Low-pass each axis toward a fresh random target. The time constant is
-    // wall-clock seconds so the rumble rate does not scale with the render
-    // fps.
+    // Wall-clock time constant: the rumble rate must not scale with render fps.
     const double frame_dt = (now_ms - g.shake_last_ms) * 0.001;
     g.shake_last_ms = now_ms;
-    const double tau = 0.05;    // s: ~3-frame correlation at 60 fps
+    const double tau = 0.05;    // s
     const double alpha = frame_dt > 0.0 ? 1.0 - std::exp(-frame_dt / tau) : 1.0;
     const double wobble = 0.02;  // rad of basis jitter per metre of offset
     for(int i = 0; i < 3; i++) {
@@ -75,13 +71,8 @@ static void camShakeStep(Game &g, Vehicle *ship) {
     }
 }
 
-// The active ship's per-frame state snapshot (Game::view). Reads only ship
-// + frame state -- no camera -- so refreshWorld can fill it in every scene,
-// including the ones that paint no world (the live Tracking Station).
-// Exported because the imgui pass can change the active ship itself (the
-// VAB's LAUNCH, the fleet list's name row / "x") and the windows drawn later
-// in that same frame must not read a snapshot of some other ship: they
-// re-take it when ShipView::ship disagrees with Game::ship (#235).
+// No camera state -- every scene can fill it, even the ones that paint no
+// world (#235).
 void updateShipView(Game &g) {
     Vehicle *ship = g.ship;
     if(ship == nullptr) { g.view.ship = nullptr; return; }
@@ -115,14 +106,12 @@ void updateShipView(Game &g) {
 
     const glm::dvec3 com = ship->get_center_of_mass();
 
-    // surf pos??
     mu = ship->m_parent->mu;
     pos = com;
-    /* orbital velocity */
     vel = ship->GetVel();
 
-    // The orbit is a Kepler conic in the body's INERTIAL (non-rotating)
-    // frame -- the frame the spawn/switching code targets.
+    // The orbit conic lives in the body's INERTIAL (non-rotating) frame -- what
+    // the spawn/switching code targets.
     orbit_pos = pos;
     orbit_vel = vel;
     if(ship->frame->isRotFrame() == true) {
@@ -145,18 +134,15 @@ void updateShipView(Game &g) {
     }
 
     o = computeOrbitElements(orbit_pos, orbit_vel, mu);
-    /* Plane angles for the things that read them (the ORBITAL window,
-       --info-log), measured in the plane the orbit map is drawing so the
-       numbers describe the picture on screen (#171). Reuses the h_hat /
-       ecc_dir the elements already carry rather than crossing pos and vel
-       again: the trig is not free, it is just no longer done twice. */
+    /* Plane angles measured in the plane the orbit map is drawing, so the
+       numbers match the picture (#171). */
     plane = orbitPlaneAngles(o, uiRefPlane(ship->m_parent->frame, o.h_hat,
                                            g.map_plane));
     distance = o.distance;
     speed = o.speed;
 
-    // Telemetry: e and |h| are conserved 2-body constants (drift =
-    // integrator error; steps = burns/staging).
+    // Telemetry: conserved 2-body constants (drift = integrator error,
+    // steps = burns/staging).
     energy_series.push(g.time, o.energy);
     angmom_series.push(g.time, o.ang_momentum);
 
@@ -167,8 +153,8 @@ void updateShipView(Game &g) {
     facing_dir = glm::normalize(facing);
     vel_dir = glm::normalize(vel);
 
-    /* A3: heading/pitch/roll are SURFACE-relative (KSP convention),
-       measured against the ground's north/east in the rotating frame. */
+    // heading/pitch/roll are SURFACE-relative: measured against the ground's
+    // north/east in the rotating frame.
     glm::dvec3 surf_facing = facing;
     glm::dvec3 surf_up_axis = up;
     if(ship->frame->isRotFrame() == false and ship->frame->hasRotFrame() == true) {
@@ -201,18 +187,10 @@ void updateShipView(Game &g) {
     equirectLonLat(dir, longitude, latitude);
 }
 
-/* Prototype: fake exposure for the star field. The sky is authored in the same
-   8-bit space as the sun's disk and the pipeline has no HDR headroom, so the
-   brightest stars land at the same value as the star itself. Fade the sky
-   toward g.sky_dim while BOTH hold:
-     - the sun is inside a cone of half-angle g.sky_dim_cone around the view
-       axis. Keyed on a fixed angle rather than the frustum, so it does not pop
-       as the sun crosses a frame edge; the sun's angular radius joins the
-       angle, so a sun that fills the screen counts however it moves;
-     - the ship is in sunlight, by the same ray the hull's shading uses.
-   g.sky_dim >= 1 disables it. Deliberately crude: an HDR target plus a tone map
-   would get this right (and for the terrain too), but this is cheap enough to
-   judge the LOOK before committing to that. */
+/* Fake star-field exposure: no HDR headroom, so the brightest stars land at the
+   sun's own value. Fade the sky toward g.sky_dim while the sun is inside a cone
+   of half-angle g.sky_dim_cone around the view axis (a fixed angle, not the
+   frustum) AND the ship is lit. g.sky_dim >= 1 disables it. */
 static float skyGain(Game &g, Frame *rf, TerrainBody *sun, Camera *camera,
                      TerrainBody *localBody, const glm::dvec3 &lit_at) {
     if(g.sky_dim >= 1.0f) { return 1.0f; }
@@ -227,8 +205,8 @@ static float skyGain(Game &g, Frame *rf, TerrainBody *sun, Camera *camera,
         const double t = std::clamp((hi - x) / (hi - lo), 0.0, 1.0);
         return t * t * (3.0 - 2.0 * t);
     };
-    // Angle from the view axis to the sun's NEAR limb, so a wide sun is "in
-    // view" well before its centre reaches the cone.
+    // Angle to the sun's NEAR limb: a wide sun is "in view" before its centre
+    // reaches the cone.
     const double axl = std::acos(std::clamp(glm::dot(sun_dir,
                                                     glm::normalize(camera->GetForward())),
                                             -1.0, 1.0));
@@ -237,26 +215,16 @@ static float skyGain(Game &g, Frame *rf, TerrainBody *sun, Camera *camera,
     const double cone = glm::radians((double)g.sky_dim_cone);
     const double in_view = fade(cone, cone * 2.5, limb);
 
-    // "The ship is lit": the SAME ray the hull's own shading uses
-    // (ComputeTerrainShadow, terrain.cpp: sphere reject, then a march of the
-    // sun ray against the analytic height field), so the sky fades exactly when
-    // the parts flip to night. A hemisphere test through the body's centre is
-    // NOT the visible horizon: from 100 km over Kerbin the limb sits 31 deg
-    // below the terminator plane, so the sun is plainly in view while that test
-    // still calls the ship unlit -- the "sun coming up, no dim" case.
-    // Sampled at the ship's COM (NOT the frame origin: off-rails the ship's
-    // frame sits at its parent's centre and the position lives in `com`),
-    // falling back to the camera with no ship (SpaceCenter / title).
+    // "Lit" is the hull's own shadow ray, so the sky fades when the parts flip
+    // to night. A centre-hemisphere test is NOT the visible horizon. Sample at
+    // the ship's COM, not the frame origin (off-rails it sits at the parent's
+    // centre).
     double lit = 1.0;
     if(localBody && localBody->frame) {
         lit = ComputeTerrainShadow(localBody, rf, lit_at, sun) > 0.5f ? 1.0 : 0.0;
     }
-    // Both inputs are hard tests -- the raycast returns lit or shadowed, the
-    // cone test snaps as you turn -- so low-pass the whole fade. Wall-clock
-    // seconds, like the camera shake above: a sim-time constant would race at
-    // high time accel and still step at 1x. tau is a compromise between a
-    // terminator crossing (want it gradual) and turning to face the sun (want
-    // it to keep up).
+    // Both inputs are hard tests, so low-pass the fade. Wall-clock seconds: a
+    // sim-time tau would race at high time accel.
     const double target = in_view * lit;
     const Uint32 now_ms = SDL_GetTicks();
     const double frame_dt = (now_ms - g.sky_fade_last_ms) * 0.001;
@@ -266,10 +234,7 @@ static float skyGain(Game &g, Frame *rf, TerrainBody *sun, Camera *camera,
     g.sky_fade += alpha * (target - g.sky_fade);
     const double t = g.sky_fade;
     const float gain = (float)(1.0 + (g.sky_dim - 1.0) * t);
-    // --sky-dim-log: the fade's inputs, so the look can be tuned from the
-    // command line instead of by eye alone. Wall-clock cadence: a sim-second
-    // cadence would print a thousand lines a second at high time accel, and
-    // the ramp below is measured in wall-clock seconds.
+    // --sky-dim-log: the fade's inputs, tunable from the command line.
     if(g.args.sky_dim_log && now_ms - g.sky_dim_log_last_ms >= 200) {
         g.sky_dim_log_last_ms = now_ms;
         std::printf("[skydim] t=%.1fs sun_off=%.1f limb=%.1f in_view=%.2f "
@@ -281,71 +246,48 @@ static float skyGain(Game &g, Frame *rf, TerrainBody *sun, Camera *camera,
     return gain;
 }
 
-/* The ship-side half of the state pass: the g.view snapshot, the transfer
-   planner's target list + solution, and the P/M one-shot computes. refreshWorld
-   runs it after the camera and the LOD; refreshVab runs it on its own -- the
-   editor parks its camera at the build tree and draws no world, but the sim
-   keeps coasting underneath, so the readouts and the planner still want this
-   frame's ship state (#212). `com` is the frame's ship COM (zero with no ship),
-   passed in rather than recomputed: get_center_of_mass walks the part tree. */
+/* The ship-side half of the state pass: g.view, the transfer planner, the P/M
+   one-shots. `com` is passed in: get_center_of_mass walks the part tree. */
 static void refreshShipState(Game &g, const glm::dvec3 &com) {
-    // The active ship's per-frame state (g.view): the one snapshot the UI
-    // readouts read, so it is state rather than a side effect of drawing.
     updateShipView(g);
 
-    /* Transfer planner: rebuild targets, recompute the solution (com / vel are
-       this frame's ship COM / velocity). */
     g.xferPlanner.update(com, g.view.vel);
 
-    // P key: the one-shot flag is set in poll_events; it runs here, where the
-    // planner + this frame's ship snapshot both exist.
+    // P one-shot: set in poll_events, run here where the planner and this
+    // frame's snapshot both exist.
     if(g.porkchop_compute_requested) {
         g.xferPlanner.porkchopCompute();
         g.porkchop_compute_requested = false;
     }
 
-    // M key: one-shot, same pattern as P. The sweep runs on the background
-    // worker; the last map stays on screen until the job lands.
+    // M one-shot, same pattern as P; the sweep runs on the background worker.
     if(g.surfmap_compute_requested) {
         surfmapCompute(g);
         g.surfmap_compute_requested = false;
     }
 }
 
-/* The STATE half of the 3D pass (#212): the per-frame world state the sim and
-   the UI read, and no draw calls in it. Runs every frame in every scene that
-   has a world, painted or not:
-     - the camera re-pose (first person rides the controller; orbit follows
-       the focus, takes its basis from the ship's attitude or the body's
-       rotating frame, and adds the shake offset), then renderOrigin and
-       ComputeView;
-     - each body's draw transform, the cache GeoPatch::Draw reads;
-     - the terrain LOD, which owns the ground's Bullet collision bodies --
-       "the ground exists only where the camera is" (#24) -- so skipping it
-       changes collision outcomes, not merely pixels;
-     - the ship snapshot and the transfer planner (refreshShipState).
-   The pixels live in paintWorld(). Keeping the two apart is what lets a frame
-   skip the paint without skipping the simulation's inputs. */
+/* State half of the 3D pass (#212). The terrain LOD owns the ground's Bullet
+   collision bodies, so skipping it changes collision outcomes, not just
+   pixels (#24). */
 void refreshWorld(Game &g) {
     Vehicle *ship = g.ship;
-    // Render frame: the active ship's frame, or the home body's frame when
-    // there is no ship. Every Draw site transforms world geometry into it.
+    // Render frame: the ship's frame, or the home body's when there is no ship.
     Frame *rf = ship ? ship->frame : g.home->frame;
     // The body "we're on": the LOD and the --terrain-log key on it.
     TerrainBody *localBody = ship ? ship->m_parent : g.home;
     const std::vector<TerrainBody *> &planets = g.sys.bodies;
     Camera *camera = g.camera;
 
-    /* The orbit basis below takes the ship's attitude whenever the focus is the
-       "ship" entry, and that entry exists only while a ship is active
-       (Game::syncShipFocus). Both are invariants, not inputs to handle:
-       #208 is the same hazard read from the other side. */
+    /* The orbit basis takes the ship's attitude whenever the focus is the
+       "ship" entry, which exists only while a ship is active
+       (Game::syncShipFocus). Invariants, not inputs to handle (#208). */
     assert(g.focusBody >= 0 && g.focusBody < (int)g.focusTargets.size());
     assert(g.focusTargets[g.focusBody].body != nullptr || ship != nullptr);
 
     const glm::dvec3 com = ship ? ship->get_center_of_mass() : glm::dvec3(0.0);
-    // First person: eye at the controller's top (stack +Z face), looking
-    // along the ship nose. Re-posed every frame so it rides the rigid body.
+    // First person: eye at the controller's top (stack +Z face), along the
+    // nose.
     if(camera->mode == CAM_FIRST) {
         if(ship && !ship->isEva() && ship->controller != nullptr
            && ship->controller->def != nullptr) {
@@ -362,20 +304,16 @@ void refreshWorld(Game &g) {
 
     if(camera->mode == CAM_ORBIT) {
         camera->Follow(g.focusWorldPos(g.focusBody));
-        // The orientation the orbit offset lives in: the ship's attitude
-        // when focused on the ship, the body's rotating frame when focused
-        // on a body -- same convention as the body transforms below.
+        // The orbit offset lives in this orientation: the ship's attitude when
+        // focused on the ship, the body's rotating frame when on a body.
         if(g.focusTargets[g.focusBody].body == nullptr) {
             if(ship->isEva()) {
-                // North-up on the body's local vertical: screen-up = the
-                // kerbal's radial (what eva.cpp drives its nose to), and the
-                // tangent plane from the WORLD axes -- not the frame's orient
-                // (spins with the planet) and not the kerbal's own axes
-                // (locks the camera to its yaw and feeds back into the
-                // attitude law). Tangent seam at |radial.y| = 0.9.
+                // North-up on the kerbal's radial, tangent plane from the WORLD
+                // axes: the frame's orient spins with the planet, and the
+                // kerbal's own axes would feed back into its attitude law.
                 const glm::dvec3 radial = glm::normalize(com);
-                // Tangent "north": prefer +Y; fall back to +X near +/-Y so
-                // the projection never vanishes.
+                // Tangent "north": +Y, or +X near +/-Y so the projection never
+                // vanishes.
                 const glm::dvec3 ref_dir = (std::fabs(radial.y) > 0.9)
                     ? glm::dvec3(1.0, 0.0, 0.0) : glm::dvec3(0.0, 1.0, 0.0);
                 const glm::dvec3 right = glm::normalize(
@@ -384,9 +322,8 @@ void refreshWorld(Game &g) {
                 camera->ref = glm::dmat3(back, right, radial);
             } else {
             // The orbit camera expects ref as [back, right, up]; the ship's
-            // attitude is [right, up, nose] (axis 0/1/2). Feed the columns
-            // in the camera's order so its up is the ship's UP, not its nose
-            // (the nose-as-up swaps the visual pitch/yaw responses).
+            // axes 0/1/2 are [right, up, nose]. Feed the columns in the
+            // camera's order: nose-as-up swaps the pitch/yaw responses.
             camera->ref = glm::dmat3(ship->partAxis(ship->controller, 2),   // back = nose
                                      ship->partAxis(ship->controller, 0),   // right
                                      ship->partAxis(ship->controller, 1));  // up
@@ -397,8 +334,7 @@ void refreshWorld(Game &g) {
         }
     }
 
-    // Camera shake (camShakeStep above): shift the focus point and wobble
-    // the orbit basis. Orbit camera on the ship only.
+    // Camera shake: shift the focus point and wobble the orbit basis.
     if(ship) { camShakeStep(g, ship); }
     if(camera->mode == CAM_ORBIT && ship &&
        g.focusTargets[g.focusBody].body == nullptr) {
@@ -406,8 +342,8 @@ void refreshWorld(Game &g) {
         camera->ref = shakeRot(g.shake_ang) * camera->ref;
     }
 
-    // Render frame origin = the active ship's COM, so the float32 cast
-    // works on ship-relative numbers. Draw sites shift by -renderOrigin.
+    // Render frame origin = the ship's COM, so the float32 cast works on
+    // ship-relative numbers. Draw sites shift by -renderOrigin.
     camera->renderOrigin = com;
     camera->ComputeView();
 
@@ -422,11 +358,8 @@ void refreshWorld(Game &g) {
         planet->Update(camera, g.args.terrain_px, g.jobs);
 
         /* --terrain-log: the local body's tree as the LOD just left it.
-           deep_off is the camera-to-nearest-deepest-leaf distance (a patch
-           width or two is healthy); collision counts leaves with a Bullet
-           body (the ground exists only where the camera is -- issue #24).
-           Lives with the LOD, not the paint: a scene that draws no world still
-           moves the ground under the camera. */
+           deep_off is the camera-to-nearest-deepest-leaf distance; collision
+           counts leaves with a Bullet body (#24). */
         if(g.args.terrain_log && planet == localBody && planet->ready) {
             const Uint32 now_ms = SDL_GetTicks();
             if(now_ms - g.terrain_log_last_ms >= g.orbit_log_interval_ms) {
@@ -443,20 +376,12 @@ void refreshWorld(Game &g) {
         }
     }
 
-    // The ship snapshot + the transfer planner: state, not a side effect of
-    // drawing.
     refreshShipState(g, com);
 
-    /* --cam-log: the camera as this frame left it. --sim-mouse is documented
-       as the way to move the view ("yaw = -dx/200 rad, pitch = +dy/200 rad"),
-       but nothing in stdout said where the view WAS, so a mouse case whose
-       drag never reached the camera passed anyway (the axis-06 review burned a
-       false camera finding on exactly that). rmb= and cap= are the two gates
-       in events.cpp's mouse handlers: a right-button drag only looks when rmb
-       is armed AND imgui is not capturing the mouse -- so a part window opened
-       under the cursor silently eats the next drag. cap= is the value the game
-       itself tests this frame (the same one poll_events reads), and the
-       turntable numbers are what a drag is supposed to change. */
+    /* --cam-log: the camera as this frame left it, so a --sim-mouse drag that
+       never reached the camera cannot pass silently. rmb= and cap= are the
+       gates in events.cpp's mouse handlers: a right-button drag only looks when
+       rmb is armed AND imgui is not capturing the mouse. */
     if(g.args.cam_log) {
         const Uint32 now_ms = SDL_GetTicks();
         if(now_ms - g.cam_log_last_ms >= g.orbit_log_interval_ms) {
@@ -476,11 +401,8 @@ void refreshWorld(Game &g) {
     }
 }
 
-/* The PAINT half of the 3D pass (#212): the pixels and nothing else. Reads the
-   state refreshWorld left this frame -- the camera pose, planet->transform,
-   g.view -- and must not be called without it. The postfx Begin/End pair lives
-   in main.cpp around the clear and this call, so no path can leave an FBO
-   bound with no blit. */
+/* Paint half of the 3D pass (#212). The postfx Begin/End pair lives in main.cpp
+   around the clear and this call: no path leaves an FBO bound with no blit. */
 void paintWorld(Game &g) {
     TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
@@ -490,8 +412,6 @@ void paintWorld(Game &g) {
     TerrainBody *sun = g.sun;
     Camera *camera = g.camera;
 
-    // The snapshot refreshWorld filled this frame: the flight markers point
-    // along these vectors.
     ShipView &view = g.view;
     glm::dvec3 &pos = view.pos;
     glm::dvec3 &vel = view.vel;
@@ -499,10 +419,9 @@ void paintWorld(Game &g) {
 
     const glm::dvec3 com = ship ? ship->get_center_of_mass() : glm::dvec3(0.0);
 
-    // Starfield first, as a pure background -- depth test and depth write
-    // both off. Every body draws over it, including far ones whose
-    // reverse-Z depth has collapsed to the 0.0 background value.
-    // skyRot maps the inertial starfield into the ship's frame.
+    // Starfield first as pure background: depth test and write off, so every
+    // body draws over it -- even far ones, whose reverse-Z depth collapsed to
+    // the 0.0 background.
     if(g.draw_starfield) {
         glDepthMask(GL_FALSE);
         glDisable(GL_DEPTH_TEST);
@@ -520,9 +439,8 @@ void paintWorld(Game &g) {
                 p->Draw(camera, localBody, rf);
             }
         }
-        // render frame = the active ship's frame; idle ships in a different
-        // frame are transformed into it in Vehicle::Draw. Body lists hold
-        // the free ships + EVA characters (aboard crew live on their ship).
+        // Ships in another frame are transformed into the render frame by
+        // Vehicle::Draw. Body lists hold the free ships + EVA characters.
         for(auto *b : planets) {
             for(auto *s : b->ships) {
                 s->Draw(camera, rf);
@@ -531,27 +449,15 @@ void paintWorld(Game &g) {
     }
 
     /* --pose-jitter: is the DRAWN relative pose quantized to the logic tick?
-       The ship is pinned at renderOrigin, so what the image moves with is the
-       ship's offset from the SOI body it is drawn against. In-SOI the ship's
-       Frame IS that body's frame (so the body draws at a constant offset and
-       the ship's motion lives entirely in its Bullet pose), and Bullet holds
-       that pose in the Frame's OWN axes -- so the COM alone is the drawn
-       offset. Do NOT subtract frame->root_pos: that is universe-root axes and
-       would measure the planet's own orbital motion instead. At a steady
-       speed the per-frame offset (gap) should track fdt; a render-rate/tick
-       beat shows up as gap collapsing to 0 on frames that ran no tick. Steady
-       gap with a ragged fdt is frame PACING, which interpolation cannot fix.
-       Wall time is steady_clock, NOT SDL_GetTicks: a 60 Hz frame is 16.7 ms
-       and the 1 ms tick granularity is +-6% -- the very signal this flag
-       exists to separate from quantization. dang is -1 where attitude is not
-       measurable. Render-only diagnostic. */
+       The ship is pinned at renderOrigin, so the drawn offset is the COM alone
+       -- do NOT subtract frame->root_pos: that is universe-root axes, and would
+       measure the planet's own orbital motion. Steady gap with a ragged fdt is
+       frame PACING, which interpolation cannot fix. Wall time is steady_clock,
+       not SDL_GetTicks (1 ms ticks is too coarse for a 60 Hz frame). */
     if(g.args.pose_jitter && ship && localBody && localBody->frame) {
         const auto now = std::chrono::steady_clock::now();
-        /* Re-arm across any discontinuity, or its jump reads exactly like a
-           jitter spike: a different ship (switch / EVA / recover), a Frame
-           handoff (the COM is re-expressed in the new frame's axes), or a gap
-           longer than a few frames (VAB and Tracking Station never reach the
-           paint pass, so the diagnostic is blind for the whole stay). */
+        /* Re-arm on any discontinuity, or its jump reads as a jitter spike: a
+           different ship, a Frame handoff, or a gap over a few frames. */
         const bool stale =
             !g.pose_jitter_armed
             || g.pose_jitter_prev_ship != ship
@@ -562,9 +468,8 @@ void paintWorld(Game &g) {
             const double fdt = std::chrono::duration<double>(
                 now - g.pose_jitter_prev_t).count();
             const double gap = glm::length(com - g.pose_jitter_prev);
-            // Attitude steps the same way, and the orbit camera's basis comes
-            // straight from the ship's axes (above), so a stepped attitude
-            // rotates the whole image.
+            // Attitude steps the same way, and the orbit basis comes from the
+            // ship's axes, so a stepped attitude rotates the whole image.
             double dang = -1.0;
             if(ship->controller) {
                 const glm::dvec3 nose = ship->partAxis(ship->controller, 2);
@@ -592,8 +497,8 @@ void paintWorld(Game &g) {
         }
     }
 
-    // Atmosphere rims: transparent Fresnel shells over the opaque bodies.
-    // Depth-write off. Cloud decks draw first (under the rim).
+    // Transparent shells over the opaque bodies, depth-write off; cloud decks
+    // draw first (under the rim).
     if(g.world_drawing == true) {
         for(auto&& planet : planets) {
             if(!g.args.no_ocean) {
@@ -618,22 +523,19 @@ void paintWorld(Game &g) {
     if(ship && ship->m_thrust > 0) {
         for(Part *p : ship->parts) {
             if(!p->isThruster()) { continue; }
-            /* an air-breathing engine has no rocket plume -- suppress the
-               flame mesh. */
+            // Air-breathing engines have no rocket plume.
             if(p->isJet()) { continue; }
-            /* only engines actually thrusting THIS tick (armed in
-               ApplyThrust). m_thrust above is a coarse "something fired"
-               flag -- without this a lit stage would paint fake plumes on
-               un-ignited higher stages. */
+            /* Only engines armed THIS tick (ApplyThrust): m_thrust is a coarse
+               "something fired" flag, so a lit stage would otherwise paint
+               plumes on un-ignited higher stages. */
             if(p->armedThrust <= 0.0f) { continue; }
-            /* the plume mesh is authored for the base part (radius 1 m,
-               height 2 m): scale it to this thruster's size */
+            // The plume mesh is authored for the base part (radius 1 m,
+            // height 2 m): scale it to this thruster's size.
             const double radius = p->def->radius;
             const double height = p->def->height;
-            /* Built from the part's COM-relative pose: the plume is only on
-               the ACTIVE ship, whose COM IS the renderOrigin -- no huge
-               absolute coord is materialized (precision). Also independent
-               of Body::model_matrix (a Body::Draw side-effect cache). */
+            /* The part pose is COM-relative: the ACTIVE ship's COM IS the
+               renderOrigin, so no huge absolute coord is materialized
+               (precision). */
             glm::dvec3 plumePos; glm::dmat3 plumeRot;
             ship->partPoseRelCom(p, plumePos, plumeRot);
             glm::dmat4 Model = glm::translate(plumePos) * glm::dmat4(plumeRot)
@@ -646,8 +548,8 @@ void paintWorld(Game &g) {
             g.partsshader->setUniform_mat4(0, Projection * ModelViewFloat);
             g.partsshader->setUniform_mat4(1, glm::mat4(1.0)); // identity (GLM 1.0.0+: default ctor is zero)
             g.partsshader->setUniform_vec3(2, glm::vec3(1, 1, 1));
-            // pin the shadow/alpha/tint/flat uniforms rather than
-            // inheriting the last part draw's values
+            // Pin the shadow/alpha/tint/flat uniforms rather than inherit the
+            // last part draw's values.
             g.partsshader->setUniform_vec1(3, 1.0f);
             g.partsshader->setUniform_vec1(4, 1.0f);
             g.partsshader->setUniform_vec3(5, glm::vec3(1, 1, 1));
@@ -657,12 +559,8 @@ void paintWorld(Game &g) {
             glBindTexture(GL_TEXTURE_2D, g.engine_plume_texture->id);
             glEnable(GL_BLEND);
             glBlendFunc(GL_ONE, GL_ONE);
-            // Additive and translucent, so it must not write depth -- that is
-            // what every other translucent pass here does (ocean/atmosphere/
-            // clouds/rings in terrain.h). Nothing after the plume reads depth
-            // today: the depth test is off from the billboard pass (above the
-            // skylines) to the end of paintWorld. So this is hygiene and
-            // future-proofing, not a live fix.
+            // Additive and translucent: no depth writes, like every other
+            // translucent pass here.
             glDepthMask(GL_FALSE);
             glDisable(GL_CULL_FACE);
             g.engine_plume_mesh->Draw();
@@ -674,10 +572,9 @@ void paintWorld(Game &g) {
     }
     /* end draw engine plume */
 
-    /* draw the RCS plume: the puff is drawn from the COM along the armed
-       ship-relative direction. The quad's plane is spanned by the exhaust
-       direction and the camera axis LEAST aligned with it, so the flat
-       strip stays near screen-facing. */
+    /* RCS plume: from the COM along the armed ship-relative direction. The quad
+       spans the exhaust direction and the camera axis LEAST aligned with it,
+       keeping the flat strip screen-facing. */
     if(ship && ship->rcsFiring && glm::length2(ship->rcsDir) > 1e-12) {
         const glm::dvec3 z = ship->rcsWorldDir();  // thrust dir; the mesh extends toward -z
         const glm::dvec3 camR = glm::normalize(glm::cross(g.camera->forward, g.camera->up));
@@ -685,8 +582,7 @@ void paintWorld(Game &g) {
             ? camR : g.camera->up;
         const glm::dvec3 x = glm::normalize(seed - glm::dot(seed, z) * z);
         const glm::dvec3 y = glm::cross(z, x);
-        /* 2 m wide, 3 m long off the COM. COM == renderOrigin here, so the
-           small offset is the whole render-frame translation. */
+        /* 2 m wide, 3 m long off the COM; COM == renderOrigin here. */
         const double sx = 0.5, sz = 0.75;
         glm::dmat4 Model = glm::translate(z * sz)
             * glm::dmat4(glm::dmat3(x, y, z))
@@ -721,12 +617,12 @@ void paintWorld(Game &g) {
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    // The flight reference markers and transfer/docking markers are all
-    // ship-relative: drawn only with a ship.
+    // Flight, transfer and docking markers are all ship-relative: drawn only
+    // with a ship.
     if(ship) {
     g.front_indicator->pos = facing;
-    // Fixed-orientation nose marker: the orbit camera already tracks the
-    // ship's roll, so the billboard is roll-invariant.
+    // The orbit camera already tracks the ship's roll, so the nose billboard
+    // needs no roll of its own.
     g.front_indicator->Draw(camera, std::numbers::pi);
     g.prograde_indicator->pos = vel;
     g.prograde_indicator->Draw(camera, std::numbers::pi);
@@ -740,15 +636,13 @@ void paintWorld(Game &g) {
     g.normal_plus_indicator->Draw(camera, std::numbers::pi);
     g.normal_minus_indicator->pos = -glm::cross(pos, vel);
     g.normal_minus_indicator->Draw(camera, std::numbers::pi);
-    // Transfer burn direction (TRANSFER window target selected):
-    // KSP-blue prograde icon pointing where the departure burn goes.
+    // Transfer burn direction (TRANSFER window target selected).
     if(planner.xfer.valid && glm::length(planner.xfer.burn_dir) > 0.0) {
         g.burn_indicator->pos = planner.xfer.burn_dir;
         g.burn_indicator->Draw(camera, std::numbers::pi);
     }
-    // Target ship's relative velocity: two pink markers (you-target /
-    // target-you), shown when a ship is targeted or a docking port is
-    // selected.
+    // Target ship's relative velocity: two markers (you-target / target-you),
+    // when a ship is targeted or a docking port is selected.
     Vehicle *relvel_target = nullptr;
     if(planner.xfer_target >= 0 &&
        planner.xfer_target < (int)planner.xferTargets.size()) {
@@ -759,9 +653,8 @@ void paintWorld(Game &g) {
         relvel_target = ship->dockTargetShip;
     }
     if(relvel_target != nullptr) {
-        // Both velocities in the shared inertial frame (stasis + frame
-        // velocity carry a rotating/moving frame's contribution), then the
-        // difference in this render frame.
+        // Both velocities into the shared inertial frame (stasis + frame
+        // velocity), then the difference back into this render frame.
         Frame *inertial = ship->frame->getNonRotFrame();
         Frame *sf = ship->frame;
         Frame *tsf = relvel_target->frame;
@@ -797,8 +690,8 @@ void paintWorld(Game &g) {
         // XY plane (vertical / meridian reference): magenta
         g.lineshader->setUniform_vec4(1, glm::vec4(1, 0, 1, 0.5));
         g.skyline_xy->Draw(GL_LINE_LOOP);
-        // Restore: the width is global state and the Bullet debug drawer
-        // draws its GL_LINES with whatever the last setter left.
+        // Restore: the width is global state, and the Bullet debug drawer draws
+        // GL_LINES with whatever the last setter left.
         glLineWidth(1.0f);
     }
 
@@ -812,8 +705,8 @@ void paintWorld(Game &g) {
     }
 }
 
-/* The shroud condition for the VAB build tree: same shared test as
-   Vehicle::hasChildBelow (childBelow in shipdef.h). */
+/* The VAB build tree's shroud test: same shared childBelow as
+   Vehicle::hasChildBelow (shipdef.h). */
 static bool vabChildBelow(const BuildShip &bs, size_t i) {
     const BuildPart &bp = bs.parts[i];
     for(size_t j = 0; j < bs.parts.size(); j++) {
@@ -824,16 +717,11 @@ static bool vabChildBelow(const BuildShip &bs, size_t i) {
     return false;
 }
 
-/* The editor's state half (#212): the camera looks at the build tree, not the
-   world, so no LOD and no world camera -- running the LOD here would build
-   ground collision around the build centre. But the sim keeps coasting while
-   you build, so the ship snapshot and the transfer planner still want this
-   frame: without them the VAB's ORBITAL/SURFACE readouts sit at whatever the
-   last world scene left (or at zero on a --vab boot), and --map-dump reports
-   the rail normal with a perfectly plausible sweep sign. */
+/* The editor's state half (#212): no LOD -- running it here would build ground
+   collision around the build centre. The sim still coasts while you build. */
 void refreshVab(Game &g) {
-    /* Center the render frame on the build tree; ref = identity so
-       screen-up is world +Z (the ship stands nose-up, as on the pad). */
+    /* Render frame centred on the build tree; ref = identity so screen-up is
+       world +Z. */
     Camera *cam = g.camera;
     cam->renderOrigin = g.vab.center;
     cam->ref = glm::dmat3(1.0);
@@ -845,8 +733,6 @@ void refreshVab(Game &g) {
     refreshShipState(g, com);
 }
 
-/* The editor's paint half: the build tree at its solved poses plus the armed
-   part's ghost. */
 void paintVab(Game &g) {
     Camera *cam = g.camera;
     glm::vec3 sunlight = glm::normalize(glm::vec3(0.4f, 0.8f, 0.35f));
@@ -865,9 +751,8 @@ void paintVab(Game &g) {
         DrawModelAt(cam, m, g.partsshader, t, model, sunlight, 1.0f,
                     glm::dmat4(1.0), opts);
 
-        /* Engine shroud (see PartDef.shroud): while a part is attached on
-           the exhaust face, the plain cylinder hides the engine. Shares the
-           part's editor opts (studio light + hover/selection tint). */
+        /* Engine shroud (PartDef.shroud): a part attached on the exhaust face
+           hides the engine. */
         if(!bp.def->shroud.empty() && vabChildBelow(g.vab.build, i)) {
             Mesh *sm = get_mesh(std::string("res/") + bp.def->shroud);
             Texture *st = get_texture(std::string("res/") + bp.def->shroud_texture);
@@ -878,16 +763,15 @@ void paintVab(Game &g) {
         }
     }
 
-    // the armed part's (or subassembly's) translucent ghost at the hovered
-    // attach target
+    // The armed part's (or subassembly's) ghost at the hovered attach target.
     if(g.vab.ghostValid) {
         DrawOpts go;
         go.alpha = 0.4f;
         go.flat = 0.8f;   // the ghosts share the editor's lighting
         if(g.vab.ghostAssembly >= 0
            && (size_t)g.vab.ghostAssembly < g.vab.subassemblies.size()) {
-            /* an assembly ghost: the whole tree rides the solved root pose,
-               once per root pose (the primary plus each symmetry clone). */
+            /* The whole tree rides each solved root pose: the primary plus each
+               symmetry clone. */
             const BuildShip &sub = g.vab.subassemblies[(size_t)g.vab.ghostAssembly].ship;
             for(size_t pass = 0; pass < 1 + g.vab.ghostClones.size(); pass++) {
                 const glm::dvec3 rp = (pass == 0)

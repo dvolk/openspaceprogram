@@ -2,17 +2,13 @@
 
 // part.h -- Part: one part INSTANCE of a ship, and its per-part state.
 //
-// A Part pairs a physics/render Body with the catalog spec (PartDef) it was
-// built from, and carries per-part state (tank contents, stage, armed
-// thrust, tree edge, authored ship-local pose).
-//
 // Behavior (thruster / reaction wheel / RCS / capsule) is DERIVED from the
 // PartDef, not stored.
 //
-// Ownership: Part OWNS its Body. The PartDef is non-owning (the catalog
-// outlives the ship). Vehicle owns the Part. The containment edge
-// (container/contents) is NON-OWNING in both directions: ~Part must never
-// delete contents -- a contained kerbal is owned by its Kerbal vehicle.
+// Ownership: Part OWNS its Body; Vehicle owns the Part; the PartDef is
+// non-owning (the catalog outlives the ship). The containment edge
+// (container/contents) is NON-OWNING both ways -- ~Part must never delete
+// contents: a contained kerbal is owned by its Kerbal vehicle.
 
 #include <atomic>
 #include <cstdint>
@@ -24,16 +20,15 @@
 class Vehicle;   // Part::owner (the parts list it is attached to)
 
 /* Process-wide monotonic counter for Part::uid. Atomic so a part-level job
-   becoming a thing later is a one-line non-bug rather than a data race. */
+   later is not a data race. */
 inline uint64_t nextPartUid() {
     static std::atomic<uint64_t> n{0};
     return ++n;
 }
 
-/* Parachute deployment state (Part::chute). Stowed: inert structure, no
-   aero. Deployed: the canopy's def.chute_area joins the aero pass as an
-   additive drag term at the part (Vehicle::applyAeroForce). One-shot for
-   now; a Semi state (KSP drogue/main, per-state area) slots in here. */
+/* Parachute deployment state (Part::chute). Stowed: inert structure, no aero.
+   Deployed: def.chute_area joins the aero pass as an additive drag term at the
+   part (Vehicle::applyAeroForce). One-shot; a Semi state slots in here. */
 enum ChuteState {
     ChuteStowed = 0,
     ChuteDeployed = 1
@@ -42,13 +37,11 @@ enum ChuteState {
 struct Part {
     Body *body;                 // OWNED (render assets are registry-shared)
     const PartDef *def;         // non-owning; points into the PartsCatalog
-    /* The engine shroud (see PartDef.shroud): NON-OWNING (the registries own
-       them) and null for parts without a shroud. */
+    /* The engine shroud: NON-OWNING (the registries own them); null without one. */
     Mesh *shroud = nullptr;
     Texture *shroud_texture = nullptr;
-    /* The parachute canopy overlay (see PartDef.chute_mesh): NON-OWNING,
-       null for non-chute parts. Resolved at build/load, drawn while
-       chute == ChuteDeployed. */
+    /* The parachute canopy overlay: NON-OWNING, null for non-chute parts.
+       Resolved at build/load, drawn while chute == ChuteDeployed. */
     Mesh *chute_mesh = nullptr;
     Texture *chute_texture = nullptr;
     /* GLOBALLY unique instance identity. Distinct across every part of every
@@ -64,8 +57,8 @@ struct Part {
     int stage = 1;              // from the ship def (1 = single stage)
     int fuelGroup = -1;         // fuel-group id (Vehicle::buildFuelGroups); -1 = a fuel barrier
     float armedThrust = 0.0f;   // N armed this tick (disarmed by clearThrust)
-    /* Parachute state (see ChuteState above); inert for non-chute parts.
-       Set by Vehicle::deployChutes on the stage press; save-persisted. */
+    /* Parachute state (ChuteState); inert for non-chute parts. Set by
+       Vehicle::deployChutes on the stage press; save-persisted. */
     ChuteState chute = ChuteStowed;
 
     /* The part-tree edge: the part this one is welded to (nullptr for the
@@ -73,10 +66,9 @@ struct Part {
     Part *parent = nullptr;
 
     /* --- the containment edge ------------------------------------------
-       Every Part is attached to exactly one Vehicle (`owner`) and is
-       contained in at most one Part. `container`/`contents` are
-       NON-OWNING. Inventory items (phase 4) are OWNED by the container
-       via `ownedContents` -- they have no other owner.
+       Every Part is attached to exactly one Vehicle (`owner`) and contained in
+       at most one Part. `container`/`contents` are NON-OWNING; inventory items
+       are OWNED by the container via `ownedContents` -- they have no other owner.
        Vehicle::checkPartInvariants enforces this on every build/stage/refresh. */
     Vehicle *owner = nullptr;      // attached: the Vehicle whose parts list holds this
     Part *container = nullptr;     // contained: the part this one is parked in
@@ -86,11 +78,10 @@ struct Part {
     std::vector<Part *> ownedContents;
 
     /* Pose in the VEHICLE's frame S -- one S per Vehicle, anchored at its root
-       part (Vehicle::rootPart), NOT at this part. Written at attach time; the
-       only later writes are the rigid re-bases in absorbShip /
-       extractSubtreeAsShip, which move a docked ship's parts into the
-       survivor's S and back out again on split. The world pose is DERIVED from
-       these (Vehicle::partWorldPose); the parent edge is topology, never a
+       part (Vehicle::rootPart), NOT at this part. Written at attach time; only
+       absorbShip / extractSubtreeAsShip re-base it later, moving a docked ship's
+       parts into the survivor's S and back on split. The world pose is DERIVED
+       from these (Vehicle::partWorldPose); the parent edge is topology, never a
        pose frame. */
     glm::dvec3 localPos = glm::dvec3(0.0);
     glm::dmat3 localRot = glm::dmat3(1.0);
@@ -117,9 +108,8 @@ struct Part {
     bool isFuelBarrier() const { return def != nullptr && def->fuel_barrier; }
     bool isCapsule() const { return def != nullptr && def->crew_capacity > 0; }
     bool isContainer() const { return def != nullptr && def->inventory_capacity > 0; }
-    /* Is this part an inventory item of `container` (listed in its
-       ownedContents)? `contents` holds BOTH crew and items; this tells them
-       apart: a crew member's part is owned by its character vehicle. */
+    /* Is this part an inventory item of `container` (in its ownedContents)?
+       `contents` holds BOTH crew and items; this tells them apart. */
     bool ownedBy(Part *container) const {
         if(container == nullptr) { return false; }
         for(Part *c : container->ownedContents) { if(c == this) { return true; } }
@@ -138,10 +128,9 @@ struct Part {
         return def != nullptr && def->capacity[(int)ResourceType::EC] > 0.0f;
     }
 
-    /* Can this part hold finding `e` under its PartDef.experiment_storage
-       role (shipdef.h ExpStorage)? Never the exact same finding twice; role
-       ceiling (Instrument = own family/1, Courier = 1 per family, Container
-       = unlimited per family, None = no). */
+    /* Can this part hold finding `e` under its PartDef.experiment_storage role
+       (shipdef.h ExpStorage)? Never the exact same finding twice; the role sets
+       the ceiling. */
     bool canHold(const Experiment &e) const {
         if(def == nullptr) { return false; }
         return canHoldFinding(def->experiment_storage, def->experiment_family,
@@ -173,10 +162,9 @@ struct Part {
     double powerDrawConstant() const { return def->power_draw_constant; }  // W, all the time
     double powerGen() const { return def->power_gen; }            // W, constant source
 
-    /* The part's mass INCLUDING its propellant contents and whatever is
-       parked inside it (the containment edge). Body mass is DRY structure
-       only; current fuel is added back here -- EC excluded (energy, no mass).
-       Then the effectiveMass of every contained part, recursively. */
+    /* Mass INCLUDING propellant contents and whatever is parked inside (the
+       containment edge, recursively). Body mass is DRY structure only; EC is
+       excluded (energy, no mass). */
     double effectiveMass() const {
         double m = body->mass;
         for(int r = 0; r < (int)ResourceType::Num; r++) {

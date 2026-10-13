@@ -7,7 +7,7 @@
 #include <vector>
 #include "shader.h"
 
-// A settable per-effect parameter: name (== uniform), slider range, neutral value.
+// A per-effect parameter: name (== uniform), slider range, neutral value.
 struct FXParam {
     const char *name;
     float min;
@@ -25,20 +25,19 @@ struct FXDef {
     int n_params;
 };
 
-// Post-processing chain. No effects = zero cost (scene goes straight to
-// the screen). N effects = scene into target 0, ping-pong fullscreen passes,
-// last composites to the screen. Call Begin before the 3D scene and End
-// after it (before the UI). Effects are toggleable at runtime (Settings).
+// Post-processing chain: no effects = zero cost; otherwise ping-pong fullscreen
+// passes, the last compositing to the screen. Begin before the 3D scene, End
+// after it.
 class PostFX
 {
 public:
     PostFX();
     ~PostFX();
 
-    // Built-in effect names, canonical, in the order the passes run.
+    // Built-in effect names, canonical, in pass order.
     static const std::vector<std::string>& Available();
-    // Create an effect by name (aliases: "sharpen"->"cas", "gamma"->"color").
-    // Idempotent. New effects start disabled.
+    // Create an effect by name (aliases resolve to canonical). Idempotent;
+    // starts disabled.
     bool AddEffect(const std::string& name);
 
     // Enable/disable (alias-resolved); creates on first enable.
@@ -48,7 +47,7 @@ public:
     // The effect's settable parameters (slider order == return order).
     static std::vector<FXParam> Params(const std::string& name);
 
-    // Set/get a parameter value. false / 0.0 for unknown effect or parameter.
+    // Set/get a parameter; false / 0.0 if unknown.
     bool SetParam(const std::string& name, const std::string& param,
                   float value);
     float GetParam(const std::string& name, const std::string& param) const;
@@ -56,7 +55,7 @@ public:
     // True if any effect is enabled (drives Begin/End).
     bool Active() const;
 
-    // (Re)create the offscreen targets. Call at startup and on resize.
+    // (Re)create the offscreen targets (startup + resize).
     void Resize(int width, int height);
 
     void Begin();
@@ -65,14 +64,14 @@ public:
 private:
     void RebuildTargets(int width, int height);
 
-    // The Shader is owned by pointer: Shader's destructor deletes the GL
-    // program, so a by-value copy/move would free objects still referenced.
+    // Shader held by pointer: its destructor deletes the GL program, so a
+    // by-value copy would double-free.
     struct Effect {
-        const FXDef *def;         // its FX_DEFS entry (uniforms + parameters)
-        std::string name;         // canonical name (alias-resolved)
+        const FXDef *def;         // FX_DEFS entry
+        std::string name;         // canonical (alias-resolved)
         std::unique_ptr<Shader> shader;
-        bool enabled = false;     // toggled from Settings / --postfx
-        std::vector<float> param_values;  // parallel to def->params (neutral defaults)
+        bool enabled = false;     // Settings / --postfx
+        std::vector<float> param_values;  // parallel to def->params
     };
     std::vector<Effect> m_effects;
 

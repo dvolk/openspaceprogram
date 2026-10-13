@@ -17,20 +17,19 @@ namespace ui {
 inline bool& ResetFlag() { static bool f = false; return f; }
 inline void  ResetGui() { ResetFlag() = true; }
 
-// 9 screen slots.
 enum class Slot {
     TopLeft, TopCenter, TopRight,
     MiddleLeft, Center, MiddleRight,
     BottomLeft, BottomCenter, BottomRight,
 };
 
-// Per-window options. Leave a field at its default for plain behavior.
+// Per-window options; defaults give plain behavior.
 struct Options {
     Slot slot = Slot::Center;            // where to place the window
     ImVec2 offset = ImVec2(0.0f, 0.0f);  // pixel nudge from the slot anchor
 
-    // Place left of / right of / below the named window. The source must
-    // be drawn earlier in the frame; if closed, the slot placement stands.
+    // The source must be drawn earlier in the frame; if closed, the slot
+    // placement stands.
     const char* left_of = nullptr;
     const char* right_of = nullptr;
     const char* below = nullptr;
@@ -52,7 +51,7 @@ struct Options {
     ImGuiWindowFlags flags = 0; // extra raw imgui flags (e.g. NoTitleBar)
 };
 
-// Per-window state plus the layout generation the state belongs to.
+// Per-window state plus the layout generation it belongs to.
 class Manager {
 public:
     struct WinState {
@@ -123,8 +122,8 @@ public:
             reset_now();
     }
 
-    // Record the on-screen rect after a window's End(), for use as a
-    // left_of / right_of / below source by later windows.
+    // Record the on-screen rect after a window's End(), for later windows'
+    // left_of / right_of / below.
     void cache_rect(const char* name) {
         WinState* st = find(name);
         if (st == nullptr)
@@ -140,7 +139,7 @@ public:
     }
 
     // Slot anchor point + the window pivot that pins the window there:
-    // e.g. TopLeft = (work_min, pivot 0,0), Center = (work_center, 0.5,0.5).
+    // TopLeft = (work_min, pivot 0,0), Center = (work_center, 0.5,0.5).
     static void slot_anchor(Slot slot, const ImVec2& m,
                             ImVec2& pos, ImVec2& pivot) {
         const ImGuiViewport* vp = ImGui::GetMainViewport();
@@ -192,9 +191,9 @@ private:
                 return false; // source declared later this frame: wait
             return true;      // it never showed up: slot placement stands
         }
-        // imgui applies a window's content-fit size only on the NEXT
-        // frame's Begin, so a first-appearance rect is not yet real. Wait
-        // one frame (also after a re-layout of a non-fixed source).
+        // imgui applies a window's content-fit size only on the NEXT frame's
+        // Begin, so a first-appearance rect is not yet real. Wait one frame (also
+        // after a re-layout of a non-fixed source).
         if (s->first_rect_frame >= (int)ImGui::GetFrameCount()) {
             if (++self.wait_frames < max_wait)
                 return false;
@@ -223,7 +222,7 @@ static void FixedWidthCallback(ImGuiSizeCallbackData* d) {
         static_cast<float>(reinterpret_cast<std::size_t>(d->UserData));
 }
 
-// Draw a window with the wrapper's open state and layout. Returns true if drawn.
+// Draw a window with the wrapper's open state and layout. True if drawn.
 template <typename Body>
 bool Window(const char* name, const Options& o, Body&& body) {
     Manager& m = Manager::Get();
@@ -246,8 +245,8 @@ bool Window(const char* name, const Options& o, Body&& body) {
     const bool relayout = o.fixed || st.applied_generation != m.generation;
 
     if (relayout) {
-        // Windows closed by default open centered (least surprising).
-        // Explicit left_of/right_of/below wins; fixed keeps its slot.
+        // Closed-by-default windows open centered. Explicit
+        // left_of/right_of/below wins; fixed keeps its slot.
         Options o2 = o;
         if (!o2.default_open && !o2.fixed &&
             o2.left_of == nullptr && o2.right_of == nullptr &&
@@ -288,7 +287,6 @@ bool Window(const char* name, const Options& o, Body&& body) {
             o.size_cb, o.size_cb_data);
     }
 
-    // Closable windows pass open state to imgui so the X button closes them.
     bool* p_open = o.closable ? &st.open : nullptr;
     const bool visible = ImGui::Begin(name, p_open, flags);
     if (visible)
@@ -299,7 +297,7 @@ bool Window(const char* name, const Options& o, Body&& body) {
     return visible;
 }
 
-// Open-state access (for checkboxes and the like).
+// Open-state access (checkboxes and the like).
 inline bool IsOpen(const char* name) {
     const Manager::WinState* st = Manager::Get().find(name);
     return st != nullptr && st->open;

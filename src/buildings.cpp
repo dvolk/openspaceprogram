@@ -86,10 +86,9 @@ glm::dvec3 WorldBuilding::dir() const {
     return equirectDir(lon, lat);
 }
 
-// One "world_buildings" array -> entries. `src` names where the array came
-// from (a system JSON or a fragment file) so every message says which.
-// Duplicate ids within the array throw here; across arrays, in
-// parse_world_buildings_all.
+// One "world_buildings" array -> entries; `src` names the file for messages.
+// Duplicate ids: here within an array, in parse_world_buildings_all across
+// arrays.
 static std::vector<WorldBuilding> parse_building_array(const nlohmann::json &arr,
                                                        const std::string &src) {
     std::vector<WorldBuilding> out;
@@ -192,8 +191,7 @@ std::vector<WorldBuilding> parse_world_buildings_all(
                                          " world_buildings_files entry '" + name
                                          + "': " + e.what());
             }
-            // One level only: a fragment that names fragments turns a data
-            // file into a graph, and a typo into an unbounded merge.
+            // One level only: nesting turns a typo into an unbounded merge.
             if(frag.contains("world_buildings_files")) {
                 throw std::runtime_error("system: '" + path + "': world buildings"
                                          " file '" + name + "' nests"
@@ -209,9 +207,7 @@ std::vector<WorldBuilding> parse_world_buildings_all(
                 throw std::runtime_error("system: \"world_buildings\" in '" + name
                                          + "' must be an array");
             }
-            // A file named for its pads that carries none is a typo, same as
-            // the missing key above: an empty table would silently drop the
-            // whole site list and leave the system on its inline pads.
+            // An empty list is a typo: it would silently drop the site list.
             if(farr.empty()) {
                 throw std::runtime_error("system: '" + path + "': world buildings"
                                          " file '" + name + "' names no pads");
@@ -222,12 +218,12 @@ std::vector<WorldBuilding> parse_world_buildings_all(
         }
     }
     // Fragments first: find_launch_site's default is the first VAB_LAUNCH_PAD
-    // in this list, so the site file picks the default, not an inline pad.
+    // in this list, so the site file picks it.
     for(const WorldBuilding &w : parse_world_buildings(doc, path)) {
         out.push_back(w);
     }
-    // The id is the handle --vab-site and the VAB picker use, so an id used
-    // twice would silently shadow one of the two.
+    // Ids are handles (--vab-site, VAB picker); a duplicate would silently
+    // shadow one of the two.
     for(size_t i = 0; i < out.size(); i++) {
         for(size_t k = i + 1; k < out.size(); k++) {
             if(out[i].id == out[k].id) {
@@ -294,9 +290,8 @@ void place_world_buildings(System &sys, const BuildingsCatalog &cat,
 StaticBuilding *find_launch_site(TerrainBody *body, const std::string &siteId,
                                  bool preferPolar) {
     if(body == nullptr) { return nullptr; }
-    /* Explicit pick: must be a launch pad. pad-polar only accepts it when the
-       site is itself polar, so a sticky equatorial pick cannot pre-empt the
-       polar bed (preferPolar falls through to the default). */
+    /* Explicit pick must be a launch pad; under preferPolar it counts only if
+       itself polar, so a stale equatorial pick cannot pre-empt the polar bed. */
     if(!siteId.empty()) {
         for(auto *p : body->pads) {
             if(p->id != siteId) { continue; }

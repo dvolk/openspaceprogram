@@ -6,7 +6,7 @@
 #include <map>
 #include <stdexcept>
 
-#include <glm/gtc/quaternion.hpp>   // angleAxis / mat3_cast (attachNodes)
+#include <glm/gtc/quaternion.hpp>   // angleAxis / mat3_cast
 #include <nlohmann/json.hpp>
 
 PartDef::PartDef()
@@ -44,7 +44,6 @@ static int resource_index_from_string(const std::string &s, const std::string &c
                              + "' (expected: hydrogen, lox, ec, oxygen, water, food, hydrazine, jetfuel)");
 }
 
-/* Read a 3-element numeric array (a node's pos/dir) or throw with context. */
 static glm::dvec3 parse_vec3(const nlohmann::json &obj, const char *key,
                              const std::string &ctx) {
     if(!obj.contains(key) || !obj[key].is_array() || obj[key].size() != 3) {
@@ -94,12 +93,10 @@ PartsCatalog load_parts_catalog(const char *path) {
             throw std::runtime_error(ctx + "duplicate part name");
         }
 
-        d.type = pv.value("type", std::string(""));   // free-form label (display only)
+        d.type = pv.value("type", std::string(""));
         d.display_name = pv.value("display_name", std::string(""));
 
-        /* fuel link: a virtual (no-mesh) one-way fuel connection. Marker
-           entry -- no geometry, no mass, so the mesh/texture/mass/size
-           validation below is skipped. */
+        // a marker entry: no geometry, so the mesh/mass/size validation is skipped
         d.fuel_link = pv.value("fuel_link", false);
 
         if(!d.fuel_link) {
@@ -108,7 +105,7 @@ PartsCatalog load_parts_catalog(const char *path) {
             if(d.mesh.empty() || d.texture.empty()) {
                 throw std::runtime_error(ctx + "missing \"mesh\"/\"texture\"");
             }
-            // shroud/shroud_texture: all-or-nothing (a half-set is a catalog bug)
+            // all-or-nothing (a half-set is a catalog bug)
             d.shroud = pv.value("shroud", std::string(""));
             d.shroud_texture = pv.value("shroud_texture", std::string(""));
             if((d.shroud.empty()) != (d.shroud_texture.empty())) {
@@ -120,8 +117,7 @@ PartsCatalog load_parts_catalog(const char *path) {
                 throw std::runtime_error(ctx + "\"mass\" must be > 0 (kg)");
             }
 
-            /* size (metres): the .obj is authored to match; defaults are
-               the legacy 2 m cube so pre-size parts are unchanged */
+            /* Defaults are the legacy 2 m cube, so pre-size parts are unchanged. */
             d.radius = pv.value("radius", 1.0);
             d.height = pv.value("height", 2.0);
             if(d.radius <= 0.0) {
@@ -132,8 +128,6 @@ PartsCatalog load_parts_catalog(const char *path) {
             }
         }
 
-        /* Behavior is field-driven (see shipdef.h): each optional field is
-           validated on its own, and they combine freely. */
         d.torque = pv.value("torque", 0.0);
         if(d.torque < 0.0) {
             throw std::runtime_error(ctx + "\"torque\" must be >= 0 (N m)");
@@ -187,8 +181,6 @@ PartsCatalog load_parts_catalog(const char *path) {
                                      + "\"propellant\" (total) and \"exhaust_velocity\" must be > 0");
         }
 
-        /* jet engine (air-breathing): a jet without a thrust source
-           (propellant + exhaust_velocity) is a load error. */
         if(pv.contains("jet")) {
             d.jet = pv["jet"].get<bool>();
         }
@@ -204,9 +196,8 @@ PartsCatalog load_parts_catalog(const char *path) {
             throw std::runtime_error(ctx + "\"jet\" requires \"propellant\" "
                                           "and \"exhaust_velocity\" (the real exhaust velocity)");
         }
-        // A jet burns JET FUEL only (air is the free oxidizer). The flight
-        // jet branch draws JetFuel specifically, so any other propellant
-        // would produce fan/ram thrust while burning nothing.
+        // The flight jet branch draws JetFuel specifically: any other
+        // propellant would make fan/ram thrust while burning nothing.
         if(d.jet) {
             if(d.propellant_rate[(int)ResourceType::JetFuel] <= 0.0) {
                 throw std::runtime_error(ctx + "\"jet\" propellant must include \"jetfuel\"");
@@ -273,23 +264,20 @@ PartsCatalog load_parts_catalog(const char *path) {
             d.decoupler = pv["decoupler"].get<bool>();
         }
 
-        /* fuel barrier: fuel does not flow across a barrier, so it splits
-           fuel groups. A decoupler is a fuel barrier by definition -- force
-           it so the flag can't be silently lost by a stale catalog regen. */
+        /* A decoupler is a fuel barrier by definition: force it, so a stale
+           catalog regen cannot silently drop the flag. */
         if(pv.contains("fuel_barrier")) {
             d.fuel_barrier = pv["fuel_barrier"].get<bool>();
         }
         if(d.decoupler) { d.fuel_barrier = true; }
 
-        // A docking port is a fuel barrier by definition (a boundary between
-        // two ships' fuel systems) -- force it, like the decoupler.
+        // A docking port is a fuel barrier too (the ships' fuel systems meet there).
         if(pv.contains("docking_port")) {
             d.docking_port = pv["docking_port"].get<bool>();
         }
         if(d.docking_port) { d.fuel_barrier = true; }
 
-        /* hull margin (m); omitted -> -1, the physics engine then falls
-           back to OSP_HULL_MARGIN / 0.1 */
+        // omitted -> -1 = the physics default
         if(pv.contains("hull_margin")) {
             d.hull_margin = pv["hull_margin"].get<double>();
             if(d.hull_margin < 0.0) {
@@ -298,7 +286,6 @@ PartsCatalog load_parts_catalog(const char *path) {
             }
         }
 
-        /* aerodynamics (src/drag.h). Each optional and >= 0; omitted -> 0. */
         d.drag = pv.value("drag", 0.0);
         if(d.drag < 0.0) {
             throw std::runtime_error(ctx +
@@ -335,8 +322,7 @@ PartsCatalog load_parts_catalog(const char *path) {
         if(d.control_area < 0.0) {
             throw std::runtime_error(ctx + "\"control_area\" must be >= 0 (m^2)");
         }
-        // control_axis: the one steering axis. A string (pitch|yaw|roll);
-        // an unknown value is a load error, not a silent default.
+        // An unknown axis is a load error, not a silent default.
         const std::string axis = pv.value("control_axis", std::string("pitch"));
         if(axis == "pitch")      { d.control_axis = ControlAxis::Pitch; }
         else if(axis == "yaw")   { d.control_axis = ControlAxis::Yaw; }
@@ -353,10 +339,8 @@ PartsCatalog load_parts_catalog(const char *path) {
         if(d.max_deflection < 0.0) {
             throw std::runtime_error(ctx + "\"max_deflection\" must be >= 0 (rad)");
         }
-        /* parachute (see PartDef.chute_area): deployed canopy Cd·A (m^2).
-           Omitted -> 0 (not a chute). A chute must ship its canopy: the
-           overlay pair is all-or-nothing (like shroud) and REQUIRED when
-           chute_area > 0. */
+        /* A chute must ship its canopy: the overlay pair is all-or-nothing
+           (like shroud) and REQUIRED when chute_area > 0. */
         d.chute_area = pv.value("chute_area", 0.0);
         if(d.chute_area < 0.0) {
             throw std::runtime_error(ctx + "\"chute_area\" must be >= 0 (m^2)");
@@ -372,9 +356,7 @@ PartsCatalog load_parts_catalog(const char *path) {
                                           "\"chute_mesh\"/\"chute_texture\"");
         }
 
-        /* Attachment nodes. An explicit "nodes" array wins; otherwise
-           synthesize the two axial stack faces from the size. Fuel links
-           get none. */
+        /* An explicit "nodes" array wins; fuel links get none. */
         if(!d.fuel_link) {
             if(pv.contains("nodes")) {
                 if(!pv["nodes"].is_array()) {
@@ -454,8 +436,7 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                                      + "' in " + path + " (catalog has: " + avail + ")");
         }
 
-        /* instance id: explicit, or auto "<catalog name>_<n>". Must be
-           unique within the ship. */
+        // Must be unique within the ship.
         sp.id = pv.value("id", std::string(""));
         if(sp.id.empty()) {
             int &n = autoCount[sp.part];
@@ -467,9 +448,8 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                                      + "' in " + path);
         }
 
-        /* weld parent, by id: it must already be defined (construction
-           order -- the one rule that catches dangling refs AND cycles).
-           Default: the previous part, so a linear stack is a bare list. */
+        /* The parent must already be defined: construction order is the one rule
+           that catches dangling refs AND cycles. Default: the previous part. */
         sp.parent = (i > 0) ? (int)(i - 1) : -1;
         if(pv.contains("parent")) {
             if(!pv["parent"].is_string()) {
@@ -514,10 +494,8 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                                      + ": \"offset\" must be >= 0 (m)");
         }
 
-        /* Resolve the edge. A STACK edge (down/up) mates two named nodes; a
-           SURFACE edge places the child's surface node at a contact point on
-           the parent. Node ids / contacts are validated here so a typo is a
-           load error, not a null deref in build_ship. */
+        /* Node ids and contacts are validated here so a typo is a load error,
+           not a null deref in build_ship. */
         sp.parentNode = pv.value("parentNode", std::string(""));
         sp.childNode  = pv.value("childNode", std::string(""));
         sp.roll          = pv.value("roll", 0.0);
@@ -528,9 +506,6 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                                      + path + ": ";
             const ShipPart &pp = def.parts[(size_t)sp.parent];
             if(sp.isStackEdge()) {
-                /* An explicit "parentNode"/"childNode" wins; otherwise default
-                   to the synthesized axial faces (down: parent bottom / child
-                   top; up: parent top / child bottom). */
                 const bool down = (sp.attach == AttachMode::Down);
                 if(sp.parentNode.empty()) { sp.parentNode = down ? "bottom" : "top"; }
                 if(sp.childNode.empty())  { sp.childNode  = down ? "top" : "bottom"; }
@@ -544,9 +519,6 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                 }
             }
             else if(sp.isSurfaceEdge()) {
-                /* Contact in the PARENT's local frame: an explicit point+normal
-                   (what the editor's raycast writes), or the cylinder shorthand
-                   -- clock `angle` [+ height `z`] on the parent's radius. */
                 if(pv.contains("point") || pv.contains("normal")) {
                     sp.contactPoint  = parse_vec3(pv, "point",  ectx);
                     sp.contactNormal = parse_vec3(pv, "normal", ectx);
@@ -562,7 +534,6 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                     throw std::runtime_error(ectx + "surface \"normal\" must be non-zero");
                 }
                 sp.contactNormal /= nl;
-                /* The child attaches by its surface node (default) or a named one. */
                 if(sp.childNode.empty()) {
                     const Node *srf = sp.def->findSurfaceNode();
                     if(srf == nullptr) {
@@ -577,16 +548,14 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
             }
         }
 
-        /* stage: the staging number. Gates ignition and decoupling. */
         sp.stage = pv.value("stage", 1);
         if(sp.stage < 1) {
             throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
                                      + ": \"stage\" must be >= 1");
         }
 
-        /* fuel link: from/to (the two parts it connects, by instance id).
-           Required, distinct, not the link's own id. Resolved to Part* at
-           build time. parent/attach/angle/offset/stage are ignored. */
+        /* A fuel link's from/to are required, distinct, and not its own id.
+           parent/attach/angle/offset/stage are ignored. */
         if(sp.isFuelLink()) {
             sp.from = pv.value("from", std::string(""));
             sp.to = pv.value("to", std::string(""));
@@ -608,7 +577,7 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
         def.parts.push_back(sp);
     }
 
-    /* controller: a part id (resolved now that all ids are known) */
+    // Resolved now that all ids are known.
     if(doc.contains("controller")) {
         if(!doc["controller"].is_string()) {
             throw std::runtime_error(std::string("ship: \"controller\" in ") + path
@@ -640,10 +609,9 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog) {
     return shipDefFromJson(doc, catalog, path);
 }
 
-/* The rotation taking unit direction `a` onto unit direction `b` by the
-   shortest arc. The roll about that arc is the caller's to resolve (see
-   attachNodes / surfaceMatingRot). The anti-parallel case picks a
-   deterministic perpendicular. */
+/* Shortest-arc rotation taking unit `a` onto unit `b`; the roll about that arc
+   is the caller's to resolve. The anti-parallel case picks a deterministic
+   perpendicular. */
 static glm::dmat3 rotationFromTo(const glm::dvec3 &a, const glm::dvec3 &b) {
     const double d = glm::clamp(glm::dot(a, b), -1.0, 1.0);
     if(d > 1.0 - 1e-12) { return glm::dmat3(1.0); }   // already aligned
@@ -657,10 +625,9 @@ static glm::dmat3 rotationFromTo(const glm::dvec3 &a, const glm::dvec3 &b) {
     return glm::mat3_cast(glm::angleAxis(std::acos(d), axis));
 }
 
-/* Finish a node mating: the child's pose in the shared frame. `rrel` is the
-   child frame relative to the parent frame; the authored roll goes about the
-   mating axis (-dP). The node positions coincide, pushed apart by `offset`
-   along the parent node dir. */
+/* The child's pose in the shared frame. `rrel` is the child frame relative to
+   the parent frame; the authored roll goes about the mating axis (-dP). The
+   node positions coincide, pushed apart by `offset` along the parent node dir. */
 static AttachPose matePose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
                            const glm::dvec3 &parentLocalPos, const glm::dvec3 &dP,
                            const Node &childNode, const glm::dmat3 &rrel,
@@ -689,9 +656,6 @@ AttachPose attachNodes(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
                     rotationFromTo(dC, -dP), rollDeg, offset);
 }
 
-/* A unit vector perpendicular to the unit `d`, as close to `pref` as the
-   plane allows; when `pref` is parallel to `d`, a deterministic
-   perpendicular (the same choice rotationFromTo makes). */
 static glm::dvec3 perpToward(const glm::dvec3 &d, const glm::dvec3 &pref)
 {
     glm::dvec3 u = pref - glm::dot(pref, d) * d;
@@ -702,33 +666,24 @@ static glm::dvec3 perpToward(const glm::dvec3 &d, const glm::dvec3 &pref)
     return glm::normalize(u);
 }
 
-/* The mating rotation for a SURFACE edge, in the parent's local frame: the
-   child's node dir onto the opposed normal, with the ROLL referenced to the
-   stack axes instead of left to the shortest arc.
-   The shortest arc fixes only the node direction; the roll it happens to
-   pick depends on where the target sits on the sphere, so sliding the
-   contact around a cone twists the part about the axis pointing at the
-   parent and flips it 180 deg on the far side (a closed lap picks up the
-   enclosed solid angle). Parts are authored +Z = stack axis, so pin the
-   roll: the child's +Z stays parallel to the parent's +Z projected into the
-   contact plane. Deterministic, and independent of how the contact got
-   where it is.
-   Both up-references must be COVARIANT with a rotation about the parent's
-   long axis: radialSymmetryClones rotates the contact about that axis and
-   re-solves, and the ring is congruent only if the reference rotates with
-   it. That is why the axial-contact case below takes the LIMIT of the
-   projection rather than an arbitrary perpendicular. */
+/* SURFACE-edge mating rotation, in the parent's local frame, with the ROLL
+   pinned to the stack axes instead of left to the shortest arc: the shortest
+   arc's incidental roll depends on where the target sits on the sphere, so
+   sliding the contact around a cone twists the part and flips it 180 deg on the
+   far side. Parts are authored +Z = stack axis, so the child's +Z stays parallel
+   to the parent's +Z projected into the contact plane -- deterministic, and
+   independent of how the contact got where it is.
+   Both up-references must be COVARIANT with a rotation about the parent's long
+   axis, or radialSymmetryClones' ring is not congruent with the primary. */
 static glm::dmat3 surfaceMatingRot(const glm::dvec3 &dC, const glm::dvec3 &target,
                                    const glm::dvec3 &point)
 {
     const glm::dvec3 Z(0.0, 0.0, 1.0);
-    /* Parent side: the parent's stack axis projected into the contact plane.
-       At an axial contact (a nose tip, or a flat cap hit dead-on) that
-       projection vanishes; its limit as the normal reaches the axis is minus
-       the contact's own radial direction, so take that -- continuous through
-       the shoulder, and covariant about the axis. At the exact centre of a
-       cap even the radial direction vanishes; there any deterministic
-       perpendicular will do. */
+    /* Parent side: the parent's stack axis projected into the contact plane. At
+       an axial contact that projection vanishes; its limit is minus the
+       contact's own radial direction -- continuous through the shoulder and
+       covariant about the axis. At a cap centre even that vanishes, and any
+       deterministic perpendicular will do. */
     glm::dvec3 upP = Z - glm::dot(Z, target) * target;
     if(glm::dot(upP, upP) < 1e-12) {
         const glm::dvec3 radial = point - glm::dot(point, target) * target;
@@ -737,12 +692,9 @@ static glm::dmat3 surfaceMatingRot(const glm::dvec3 &dC, const glm::dvec3 &targe
             : -radial;
     }
     upP = glm::normalize(upP);
-    /* Child side: the child's stack axis projected perpendicular to its node
-       dir. A surface node pointing along the child's own axis makes that
-       vanish; the choice is then arbitrary, but it depends only on dC, so
-       every clone of a symmetry ring makes the same one and the ring stays
-       congruent. (No catalog part does this today: surface nodes are
-       synthesized perpendicular to the stack axis.) */
+    /* Child side: the choice is arbitrary when the node dir is along the
+       child's own axis, but it depends only on dC -- so every clone of a
+       symmetry ring makes the same one and the ring stays congruent. */
     const glm::dvec3 upC = perpToward(dC, Z);
     /* Orthonormal frames (node dir, up, dir x up) as columns. Both are
        right-handed, so F * E^T is a rotation rather than a reflection. */
@@ -756,8 +708,7 @@ AttachPose attachSurface(const glm::dvec3 &parentPos, const glm::dmat3 &parentRo
                          const Node &childNode, double rollDeg, double offset)
 {
     /* Surface attach IS node mating: a synthetic parent node at the contact
-       (position = the contact point, direction = the outward normal), so
-       there is no separate surface geometry to drift. Only the roll rule
+       (pos = the contact point, dir = the outward normal). Only the roll rule
        differs from a stack port: surfaceMatingRot, not the shortest arc. */
     assert(glm::length(normal) > 1e-9 && glm::length(childNode.dir) > 1e-9);
     const glm::dvec3 dP = glm::normalize(normal);
@@ -801,12 +752,11 @@ void snapSurfaceContact(glm::dvec3 &point, glm::dvec3 &normal,
         pa2 = glm::radians(snapAngleDeg(glm::degrees(pa)));
         point = glm::mat3_cast(glm::angleAxis(pa2 - pa, Z)) * point;
     }
-    /* The normal's azimuth: the pick hull is faceted, so a flat facet's
-       normal stays constant while the hit POSITION sweeps several degrees
-       across it. Parts are surfaces of revolution, where the true normal
-       azimuth equals the contact azimuth: when the two raw azimuths agree,
-       the normal takes the point's SNAPPED azimuth (keeping its polar tilt).
-       Only a genuinely non-revolution contact snaps the normal's own azimuth. */
+    /* The pick hull is faceted, so a facet's normal stays constant while the hit
+       POSITION sweeps degrees across it. Parts are surfaces of revolution, where
+       the true normal azimuth equals the contact azimuth: when the two raw
+       azimuths agree, the normal takes the point's SNAPPED azimuth (keeping its
+       polar tilt). Only a genuinely non-revolution contact snaps its own azimuth. */
     const double rn = std::hypot(normal.x, normal.y);
     if(rn > 1e-6) {
         const double an = std::atan2(normal.y, normal.x);
@@ -840,14 +790,10 @@ std::vector<SymClone> radialSymmetryClones(const glm::dvec3 &parentPos,
         c.edge.point  = RzL * point;
         c.edge.normal = RzL * normal;
         c.edge.rollDeg = rollDeg;
-        /* Congruent by construction -- no residual roll to measure and fold
-           in. RzL fixes the parent's axis, so it carries the whole solution
-           along with the contact: target -> RzL*target, upP -> RzL*upP (it
-           is built from Z, which RzL fixes, and the contact), target x upP
-           -> RzL*(target x upP) (RzL is a proper rotation), while E depends
-           only on the child's node dir and is untouched. Hence
-           rrel_k = RzL * rrel, and the roll -- a rotation about -dP --
-           commutes the same way. */
+        /* Congruent by construction, no residual roll to fold in: RzL fixes the
+           parent's axis, so it carries the whole solution -- target, upP and
+           target x upP all rotate with it, E depends only on the child's node
+           dir, and the roll about -dP commutes the same way. */
         c.pose = attachSurface(parentPos, parentRot, c.edge.point,
                                c.edge.normal, childNode, c.edge.rollDeg, offset);
         out.push_back(c);
@@ -859,8 +805,7 @@ AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
                       const PartDef &parentDef, const PartDef &childDef,
                       AttachMode mode, double angleDeg, double offset)
 {
-    /* Stack modes mate the axial nodes -- attachNodes is the single source of
-       stack-attach geometry. Surface edges go through attachSurface. */
+    // attachNodes is the single source of stack-attach geometry.
     if(mode != AttachMode::Down && mode != AttachMode::Up) {
         throw std::runtime_error("attachPose: only stack modes (down/up); a "
                                  "surface edge uses attachSurface(point + normal)");
@@ -913,12 +858,9 @@ void BuildShip::recomputePoses() {
             bp.localRot = glm::dmat3(1.0);
             continue;
         }
-        /* Construction order (shipdef.h): a parent must precede its child.
-           removePart / detachSubtree / graftTree / fromShipDef all remap
-           parent indices by hand and every one of them -- plus subtreeMask,
-           which indexes a vector<bool> by the parent -- assumes it. Solving
-           against a later index would silently use that part's STALE pose
-           (or run off the end), so this is a tripwire, not a fix. */
+        /* Construction order: a parent must precede its child. Solving against a
+           later index would silently use that part's STALE pose (or run off the
+           end), so this is a tripwire, not a fix. */
         assert(bp.parent < (int)i &&
                "BuildShip part must come after its parent");
         const BuildPart &pp = parts[(size_t)bp.parent];
@@ -949,8 +891,7 @@ BuildShip BuildShip::fromShipDef(const ShipDef &def) {
     if(def.controller >= 0 && (size_t)def.controller < def.parts.size()) {
         bs.controllerId = def.parts[(size_t)def.controller].id;
     }
-    /* physical parts only; remap parent indices as fuel links are dropped
-       from the TREE (they are kept as FuelLink records for the round trip). */
+    /* Fuel links leave the tree but stay as records for the round trip. */
     std::map<size_t, size_t> physIndex;   // def.parts index -> build index
     for(size_t i = 0; i < def.parts.size(); i++) {
         const ShipPart &sp = def.parts[i];
@@ -981,8 +922,8 @@ BuildShip BuildShip::fromShipDef(const ShipDef &def) {
     return bs;
 }
 
-/* Mark part `idx` and all its descendants. Construction order puts every
-   parent before its children, so one forward pass suffices. */
+/* Construction order puts every parent before its children, so one
+   forward pass suffices. */
 static std::vector<bool> subtreeMask(const std::vector<BuildPart> &parts,
                                      int idx) {
     std::vector<bool> sub(parts.size(), false);
@@ -1029,8 +970,7 @@ BuildShip BuildShip::detachSubtree(int idx) {
     if(idx <= 0 || idx >= (int)parts.size()) { return out; }   // root stays
     const std::vector<bool> sub = subtreeMask(parts, idx);
 
-    /* the detached tree, in construction order (idx is the subtree's
-       ancestor, so it comes first and becomes the new root) */
+    // idx comes first in construction order, so it becomes the new root.
     out.name = name;
     out.hull_margin = hull_margin;
     std::map<size_t, size_t> toNew;   // old index -> out index
@@ -1054,8 +994,8 @@ BuildShip BuildShip::detachSubtree(int idx) {
         out.parts.push_back(bp);
     }
 
-    /* fuel links: both endpoints inside -> move with the assembly;
-       boundary-crossing -> dropped (a detached pipe feeds nothing) */
+    /* Both endpoints inside -> moves with the assembly; boundary-crossing ->
+       dropped (a detached pipe feeds nothing). */
     std::vector<FuelLink> stay;
     for(size_t i = 0; i < fuelLinks.size(); i++) {
         const FuelLink &fl = fuelLinks[i];
@@ -1080,7 +1020,7 @@ BuildShip BuildShip::detachSubtree(int idx) {
         }
     }
 
-    /* the survivors: remove the subtree + remap (same pass removePart does) */
+    // Survivors: the same remove + remap pass as removePart.
     std::vector<int> remap(parts.size(), -1);
     std::vector<BuildPart> keep;
     keep.reserve(parts.size());
@@ -1099,7 +1039,6 @@ BuildShip BuildShip::detachSubtree(int idx) {
 }
 
 namespace {
-/* An id free among the parts: the base when unused, else "<base>_<n>". */
 std::string uniquePartId(const std::vector<BuildPart> &parts,
                          const std::string &base) {
     std::string id = base;
@@ -1195,8 +1134,7 @@ ShipDef BuildShip::toShipDef() const {
         if(!controllerId.empty() && bp.id == controllerId) { def.controller = (int)i; }
         def.parts.push_back(sp);
     }
-    /* fuel links re-appended after the physical parts. A link whose endpoint
-       part was deleted is dropped. */
+    /* A link whose endpoint part was deleted is dropped. */
     for(size_t k = 0; k < fuelLinks.size(); k++) {
         const FuelLink &fl = fuelLinks[k];
         bool haveFrom = false, haveTo = false;
@@ -1219,7 +1157,7 @@ ShipDef BuildShip::toShipDef() const {
     return def;
 }
 
-/* degrees -> [0, 360), for tidy saved files (the solvers are wrap-agnostic) */
+/* [0, 360) for tidy saved files; the solvers are wrap-agnostic. */
 static double wrap360(double deg) {
     double a = std::fmod(deg, 360.0);
     if(a < 0.0) { a += 360.0; }
@@ -1248,17 +1186,15 @@ bool save_ship_def(const BuildShip &bs, const char *path) {
             arr.push_back(pv);
             continue;
         }
-        // the root is part 0 (no "parent" key); every other part names its
-        // parent explicitly (the load default -- previous part -- is a trap
-        // for edited trees)
+        // Name the parent explicitly: the load default (previous part) is a
+        // trap for edited trees.
         if(sp.parent >= 0 && (size_t)sp.parent < def.parts.size()) {
             pv["parent"] = def.parts[(size_t)sp.parent].id;
         }
         pv["attach"] = (sp.attach == AttachMode::Surface) ? "surface"
                      : (sp.attach == AttachMode::Up) ? "up" : "down";
         if(sp.isStackEdge()) {
-            // omit empty keys so the load defaults apply exactly as for a
-            // hand-written file
+            // omit empty keys so the load defaults apply
             if(!sp.parentNode.empty()) { pv["parentNode"] = sp.parentNode; }
             if(!sp.childNode.empty())  { pv["childNode"] = sp.childNode; }
             pv["angle"] = wrap360(sp.angle);

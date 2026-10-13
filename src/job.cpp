@@ -1,5 +1,4 @@
-// job.cpp -- the single-worker job runner (see job.h for the contract).
-// Worker produces, main thread applies: the two never touch the same data.
+// job.cpp -- the job runner implementation (contract in job.h).
 
 #include "job.h"
 
@@ -13,8 +12,7 @@ void JobRunner::run() {
             std::unique_lock<std::mutex> lk(mu_);
             cv_.wait(lk, [&] { return stop_ || !tasks_.empty(); });
             if(stop_ && tasks_.empty()) { break; }
-            // Highest priority first (UrgentFirst, ties in posting order).
-            // pop_heap swaps the front task to the back, so the exit is a
+            // pop_heap moves the front task to the back, hence the
             // move-and-pop-back rather than a pop_front.
             std::pop_heap(tasks_.begin(), tasks_.end(), UrgentFirst());
             t = std::move(tasks_.back());
@@ -24,8 +22,7 @@ void JobRunner::run() {
             std::lock_guard<std::mutex> lk(mu_);
             current_ = t.label;
         }
-        // Body runs off-thread (must be pure). A throw is caught so the
-        // worker keeps serving; the job reports no result.
+        // Catch so the worker keeps serving; the job reports no result.
         std::function<void()> apply;
         try {
             apply = t.body();
@@ -89,21 +86,19 @@ void JobRunner::abort() {
         std::lock_guard<std::mutex> lk(mu_);
         if(stop_) { return; }   // already stopped (idempotent; the dtor joins)
         stop_ = true;
-        tasks_.clear();         // drop the queued jobs (their lambdas are freed)
+        tasks_.clear();         // drop the queued jobs
     }
     cv_.notify_one();
-    // join() returns after the worker exits (the in-flight task has finished
-    // reading its snapshot), so the caller may safely free its state.
     worker_.join();
 }
 
 void JobRunner::restart() {
     {
         std::lock_guard<std::mutex> lk(mu_);
-        if(!stop_) { return; }   // worker already live; nothing to do
+        if(!stop_) { return; }   // worker already live
         stop_ = false;
         tasks_.clear();          // abort/join left it empty; be safe
-        done_.clear();           // drop the aborted stream's pending continuation
+        done_.clear();           // drop the aborted stream's continuations
         current_.clear();
         in_flight_ = 0;
     }

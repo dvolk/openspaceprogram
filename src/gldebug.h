@@ -1,16 +1,11 @@
 #pragma once
 
-/* glGetError() drains are not free: on several drivers the call flushes the
-   command buffer, which serialises the CPU against the GPU. There are ~100
-   call sites and most of them sit in the draw path (a 51-part ship at the pad
-   hit 95 per frame), so they are gated on a runtime flag rather than always
-   live. They stay compiled in -- unlike a build-time define, the flag can turn
-   them on without a rebuild; a normal frame pays one predictable branch per
-   site instead of a driver round-trip. The boot sets it from --gl-debug /
-   --gl-error-checks (main.cpp). The e2e runner turns the drains on for every
-   case that carries FORBID GL_: _check_gl_error's "GL_<ENUM> - file:line" line
-   is the only GL_ token the game prints on purpose, so without that flag the
-   assertion in 179 cases would check nothing. */
+/* glGetError() drains flush the command buffer on several drivers, serialising
+   the CPU against the GPU, and most call sites sit in the draw path -- so they
+   are gated on a runtime flag rather than always live. Compiled in always
+   (unlike a build-time define) so they can be enabled without a rebuild. Boot
+   sets it from --gl-debug / --gl-error-checks; the e2e runner turns it on for
+   cases that carry FORBID GL_. */
 void set_gl_error_checks(bool on);
 bool gl_error_checks_on();
 

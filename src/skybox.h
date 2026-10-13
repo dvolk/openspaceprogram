@@ -8,9 +8,8 @@
 struct Camera;
 struct Shader;
 
-// The star field. The geometry (a unit cube) is system-independent; the
-// cubemap belongs to the running system (System::skybox_faces), so a system
-// switch reloads it.
+// The star field. The unit-cube geometry is system-independent; the cubemap
+// belongs to the running system, so a system switch reloads it.
 struct Skybox {
     Skybox() = default;
     // Owns GL handles: a copy would double-delete them.
@@ -21,14 +20,13 @@ struct Skybox {
 
     void init(void);   // the unit-cube VAO (needs a GL context)
 
-    // `faces` is six image names in GL cubemap order (+X,-X,+Y,-Y,+Z,-Z).
-    // A face that will not load (missing, undecodable, wrong shape) is
-    // reported and leaves the current cubemap in place: the names come from
-    // a hand-editable system JSON, so a bad sky is data, not an invariant.
+    // `faces` is six image names in GL cubemap order (+X,-X,+Y,-Y,+Z,-Z). A
+    // face that fails to load is reported and leaves the current cubemap in
+    // place: the names come from hand-editable JSON.
     void load(const std::vector<std::string> &faces);
 
-    // `gain` fades the whole star field (1.0 = as authored); render.cpp
-    // drives it from the sun's position in view. See skyboxShader.fs.
+    // `gain` fades the star field (1.0 = as authored); render.cpp drives it
+    // from the sun's position in view.
     void Draw(const Camera * camera, Shader * shader, const glm::dmat3 &skyRot,
               float gain);
 

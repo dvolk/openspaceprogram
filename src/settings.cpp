@@ -104,8 +104,8 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
        j["reference_circles"].is_boolean()) {
         s.draw_skylines = j["reference_circles"].get<bool>();
     }
-    // Clamp to the --sky-dim / --sky-dim-cone ranges: a hand-edited file
-    // must not put the fade outside the range the sliders can show.
+    // Clamp to the --sky-dim / --sky-dim-cone ranges: a hand-edited file must
+    // not put the fade outside the range the sliders can show.
     if(j.contains("sky_dim") && j["sky_dim"].is_number()) {
         s.sky_dim = j["sky_dim"].get<float>();
         if(s.sky_dim < 0.0f) { s.sky_dim = 0.0f; }
@@ -123,7 +123,6 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
             if(e.is_string()) { s.postfx_enabled.push_back(e.get<std::string>()); }
         }
     }
-    // postfx_params: mistyped entries are skipped.
     if(j.contains("postfx_params") && j["postfx_params"].is_object()) {
         s.postfx_params.clear();
         for(auto it = j["postfx_params"].begin();
@@ -156,23 +155,20 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
         s.music_volume = j["music_volume"].get<float>();
     }
     if(j.contains("fov") && j["fov"].is_number()) {
-        // Clamp: a hand-edited file bypasses the CLI's 10-120 range and the
-        // slider's. Out-of-range fov is not cosmetic here -- the projection and
-        // the terrain-cull half-angles both go through tan(fov/2), so a value
-        // outside (0,180)deg empties the world silently. Clamping HERE rather
-        // than only in Camera keeps args.camFovDeg honest: the slider label and
-        // the Debug window's copy-pasteable --fov line both print that field,
-        // and the CLI rejects what an unclamped one would print.
+        // Clamp: a hand-edited file bypasses the CLI's 10-120 range. Out of
+        // range is not cosmetic -- the projection and the terrain-cull
+        // half-angles both go through tan(fov/2), so a value outside
+        // (0,180)deg empties the world silently. Clamping HERE rather than
+        // only in Camera keeps args.camFovDeg honest: the slider label and the
+        // Debug window's copy-pasteable --fov line both print that field.
         s.camFovDeg = j["fov"].get<float>();
         if(!(s.camFovDeg >= 10.0f)) { s.camFovDeg = 10.0f; }   // !< also catches NaN
         if(s.camFovDeg > 120.0f) { s.camFovDeg = 120.0f; }
     }
     if(j.contains("terrain_px") && j["terrain_px"].is_number_integer()) {
-        // Clamp: a hand-edited file (and a settings.json saved by the old
-        // 32/64 Settings ladder) bypasses both the CLI range and the ladder.
-        // The fine end is not cosmetic: collision meshes only exist at
-        // max_depth, and an unreachable LOD budget never drills the async
-        // tree there, so the ground under the ship disappears (settings.h).
+        // Clamp: a hand-edited file (and one saved by the old 32/64 Settings
+        // ladder) bypasses the CLI range. The fine end is not cosmetic: the
+        // ground under the ship disappears (why in settings.h).
         s.terrain_px = j["terrain_px"].get<int>();
         if(s.terrain_px < kTerrainPxMin) { s.terrain_px = kTerrainPxMin; }
         if(s.terrain_px > kTerrainPxMax) { s.terrain_px = kTerrainPxMax; }
@@ -219,8 +215,8 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
                 binds.push_back(KeyBind{(SDL_Scancode)sc,
                                         (Uint16)(mods & KMOD_RELEVANT)});
             }
-            // Non-empty list but no valid entry: a hand-edited mistake, not
-            // an unbind -- keep the slot's current bindings.
+            // Non-empty list with no valid entry: a hand-edited mistake, not
+            // an unbind -- keep the current bindings.
             if(binds.empty()) { continue; }
             s.keybinds.perSlot[(size_t)slot] = binds;
         }

@@ -1,11 +1,10 @@
 #pragma once
 // Two-body orbital elements from a (pos, vel) state in the body's INERTIAL
 // frame. Header-only pure math. Angles in radians.
-// Everything in OrbitElements is plane-free: radius, speed, a, e, apsis
-// radii, period, anomalies -- all built from |pos|, |vel|, |h|, e.e and
-// pos.vel, so no choice of reference plane can change them. Plane angles
-// (Inc/LAN/LPe) are a SEPARATE call, orbitPlaneAngles, because they mean
-// nothing without the plane they are measured in (issue #171).
+// OrbitElements is plane-free (built from |pos|, |vel|, |h|, e.e, pos.vel),
+// so no reference plane can change it. Plane angles (Inc/LAN/LPe) are the
+// separate call orbitPlaneAngles, which needs the plane they are measured
+// in (#171).
 // time_to_peri / time_to_apo: seconds to the NEXT passage, -1 = never.
 
 #include <cassert>
@@ -31,11 +30,8 @@ struct OrbitElements {
                                 //      e sinh H - H (hyperbolic)
     double time_to_peri = 0.0;  // s until next periapsis (-1 = none)
     double time_to_apo = 0.0;   // s until next apoapsis (-1 = none)
-    // Directions, in the frame the state came from. Plane-free (they do not
-    // depend on any reference plane), so they are here rather than in
-    // PlaneAngles: h_hat is the orbit normal and ecc_dir points at periapsis
-    // (zero when circular). orbitPlaneAngles and the map's periapsis marker
-    // both consume them instead of recomputing cross(pos,vel).
+    // Directions, in the frame the state came from, and plane-free: h_hat is
+    // the orbit normal, ecc_dir points at periapsis (zero when circular).
     glm::dvec3 h_hat = glm::dvec3(0.0);   // zero for a degenerate (radial) state
     glm::dvec3 ecc_dir = glm::dvec3(0.0);
 };
@@ -112,17 +108,15 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
     return o;
 }
 
-/* A reference plane to measure angles in. A normal is not enough: an in-plane
-   angle needs a zero direction too. y_hat = n_hat x x_hat0 then points along
-   INCREASING longitude -- for the body-rail frame (n_hat = +Y, x_hat0 = +X)
-   that is -Z, which is why railAz measures azimuth as atan2(-z, x) (#146). */
+/* A normal is not enough: an in-plane angle needs a zero direction too.
+   y_hat = n_hat x x_hat0 points along INCREASING longitude -- for the
+   body-rail frame (n_hat = +Y, x_hat0 = +X) that is -Z, which is why railAz
+   measures azimuth as atan2(-z, x) (#146). */
 struct RefPlane {
     glm::dvec3 n_hat = glm::dvec3(0.0, 1.0, 0.0);
     glm::dvec3 x_hat0 = glm::dvec3(1.0, 0.0, 0.0);
-    // False when the plane carries no natural zero direction: the map's
-    // Orbital view measures against the orbit's OWN plane, where every
-    // in-plane direction is equally arbitrary, so no longitude is defined
-    // there at all (only the inclination is).
+    // False when the plane carries no natural zero direction (the map's
+    // Orbital view uses the orbit's OWN plane): no longitude, only inc.
     bool has_zero = true;
 };
 
@@ -136,29 +130,23 @@ struct PlaneAngles {
     bool lpe_ok = false;   // false: no periapsis direction worth pointing at -> lpe undefined
 };
 
-/* Inc / LAN / argp / LPe of an orbit measured IN a reference plane. Takes the
-   elements rather than the raw state: h_hat and ecc_dir are already in there,
-   and recomputing cross(pos,vel) a third time per frame is what this fixed.
-   Textbook right-handed: node = n_hat x h_hat is the ASCENDING node and the
-   periapsis angle opens from that node about h_hat. tests/test_railangles.cpp
-   round-trips every authored orb_incl / lon_asc_node / arg_peri in the shipped
-   system files through this -- the test #171 would have failed.
+/* Inc / LAN / argp / LPe of an orbit measured IN a reference plane. Textbook
+   right-handed: node = n_hat x h_hat is the ASCENDING node, and the periapsis
+   angle opens from that node about h_hat. tests/test_railangles.cpp
+   round-trips the shipped system angles through this (#171).
 
-   Three separate "undefined" flags, because there are three distinct ways to
-   be undefined and the UI dashes each one:
-   - lon_ok: the reference must supply a zero direction that lies IN the plane
-     (projected, so a slightly off x_hat0 still works; 0.44 is the same
-     ~26 deg tolerance OrbitMap::setPlane uses for the same reason).
-   - node_ok: |n_hat x h_hat| == sin(inc) must clear 1e-6. The guard is
-     RELATIVE because an in-game h carries ~1e-8 of noise, so a genuinely
-     equatorial orbit would otherwise print a random LAN with full confidence.
-   - lpe_ok: what is printed is the periapsis DIRECTION, and that is
-     noise-dominated once e drops to ~1e-4 (the ~1e-8 relative jitter in h and
-     v^2 is then a percent of e). Below it the window dashes LPe, in the same
-     spirit as the ApT/PeT dashes for a near-circular orbit.
-   LPe survives a degenerate node: an orbit lying in the plane still has a
-   periapsis POINTING somewhere, and its longitude is exactly what the rails
-   author as lon_asc_node + arg_peri for a coplanar body. */
+   Three "undefined" flags, one per failure mode, since the UI dashes each:
+   - lon_ok: the reference's zero direction must lie IN the plane (projected,
+     so a slightly off x_hat0 works; 0.44 is a ~26 deg cone).
+   - node_ok: |n_hat x h_hat| == sin(inc) must clear 1e-6. An in-game h
+     carries ~1e-8 of noise, so a genuinely equatorial orbit would otherwise
+     print a random LAN with full confidence.
+   - lpe_ok: the printed value is the periapsis DIRECTION, noise-dominated
+     once e drops to ~1e-4; below it the window dashes LPe, as it dashes
+     ApT/PeT for a near-circular orbit.
+   LPe survives a degenerate node: an orbit in the plane still has a periapsis
+   POINTING somewhere, and its longitude is what the rails author as
+   lon_asc_node + arg_peri for a coplanar body. */
 inline PlaneAngles orbitPlaneAngles(const OrbitElements &o, const RefPlane &ref) {
     PlaneAngles p;
     if(glm::dot(o.h_hat, o.h_hat) < 0.5) { return p; }   // radial / degenerate state
@@ -210,9 +198,9 @@ inline double stumpffS(const double z) {
     return 1.0 / 6.0 - z / 120.0 + z * z / 5040.0;
 }
 
-/* Propagate a two-body state by dt (may be negative) via universal variables.
-   Exact for any dt -- what lets idle ships coast "on rails" at any time accel.
-   pos0/vel0 taken BY VALUE so in-place calls (p, v out = p, v in) are safe. */
+/* Exact for any dt -- what lets idle ships coast "on rails" at any time
+   accel. pos0/vel0 are taken BY VALUE so in-place calls (p, v out = p, v in)
+   are safe. */
 inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
                             const double mu, double dt,
                             glm::dvec3 &pos, glm::dvec3 &vel) {
@@ -223,11 +211,11 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
     const double vr0 = glm::dot(pos0, vel0) / r0;   // radial speed, + = receding
     const double alpha = 2.0 / r0 - v0_2 / mu;      // 1/a; negative on hyperbolic
 
-    /* Hyperbolic (a < 0): solve in the anomaly H, not the universal chi.
+    /* Hyperbolic (a < 0): solve in the anomaly H, not the universal chi --
        Stumpff C/S take the cosh/sinh branch and overflow past |z|~5e5 on the
-       Newton SEED (chi ~ sqrt(mu) dt / r0); planTransfer t_dep hits that.
-       H grows only as log r. Work in dH directly: forming M = M0 + n dt
-       cancels catastrophically on a long reverse coast near e ~ 1. */
+       Newton seed, while H grows only as log r. Working in dH avoids the
+       catastrophic cancellation of M = M0 + n dt on a long reverse coast
+       near e ~ 1. */
     if(alpha < 0.0) {
         const double a_abs = -1.0 / alpha;
         const glm::dvec3 hvec = glm::cross(pos0, vel0);
@@ -372,10 +360,10 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
 
 /* Epoch state from elements, in the BODY-RAIL convention: orbital plane = XZ
    (normal +Y), prograde = +Y x r_hat = INCREASING rail longitude atan2(-z, x).
-   arg_peri and true_anomaly are physical angles, un-negated (system.cpp
-   railAz, #146): the body sits at longitude arg_peri + true_anomaly, hence the
-   -sin(phi) below, and the radial term keeps its textbook sign.
-   Plane tilt is NOT applied here -- the frame's orient carries it.
+   arg_peri and true_anomaly are physical angles, un-negated (#146): the body
+   sits at longitude arg_peri + true_anomaly, hence the -sin(phi) below, and
+   the radial term keeps its textbook sign. Plane tilt is NOT applied here --
+   the frame's orient carries it.
    a > 0, 0 <= e < 1 (bodies don't escape). Returns false on bad input. */
 inline bool railStateFromElements(double a, double e,
                                   double arg_peri, double true_anomaly,

@@ -2,8 +2,8 @@
 
 // eva.h -- the EVA kerbal: a one-part Vehicle subclass + its control laws.
 // Pure geometry lives in evamath.h. Grounded = Bullet contact OR analytic
-// terrain height (meshes only at max-LOD leaves, so the analytic side is
-// also the fall-through guard -- see applyEva).
+// terrain height (meshes only exist at max-LOD leaves, so the analytic side
+// is also the fall-through guard).
 
 #include <functional>
 
@@ -16,11 +16,10 @@ struct Game;
 enum EvaMode { EVA_GROUND, EVA_SPACE };
 
 struct Kerbal : Vehicle {
-    /* Frictionless feet: foot friction would pair with the COM walk force
-       (eva.cpp applyEva) into a tipping couple the attitude authority
-       cannot out-torque, so a gripped kerbal rolls itself over as soon as
-       it walks. Vehicle::hullFriction carries this through every build
-       path, including a save/load rebuild. */
+    /* Frictionless feet: foot friction pairs with the COM walk force (see
+       applyEva) into a tipping couple the attitude authority cannot
+       out-torque. Vehicle::hullFriction carries this through every build
+       path, save/load rebuild included. */
     Kerbal() { hullFriction = 0.0; }
 
     // --- per-ticked armed state (evaArmCommands writes, applyEva consumes) ---
@@ -30,23 +29,23 @@ struct Kerbal : Vehicle {
     bool jumpPressed = false;    // space KEYDOWN edge (events.cpp)
     bool jumpRequested = false;  // armed this tick; the first substep fires it
     glm::dvec3 walkDir = glm::dvec3(0.0);  // tangent walk heading, unit or 0
-    /* The RCS translation dir comes from the inherited Vehicle::rcsDir, armed
-       here in the RENDER frame (camera basis) rather than in ship axes: EVA
-       thrust follows the view, not the suit's own rotation, which lags it
-       during a slew. rcsWorldDir() below is the identity for that reason. */
+    /* The RCS translation dir (inherited Vehicle::rcsDir) is armed in the
+       RENDER frame, not ship axes: EVA thrust follows the view, which the
+       suit's own rotation lags during a slew. Hence rcsWorldDir() below is
+       the identity. */
     double viewYaw = 0.0;        // QE yaw about the view axis, rad (accumulated)
     glm::dmat3 camBasis = glm::dmat3(1.0); // [right, up, fwd] snapshot at arm
 
-    // Already world axes -- see the rcsDir note above.
+    // Already world axes.
     glm::dvec3 rcsWorldDir() const override { return rcsDir; }
 
     bool isEva() const override { return true; }
     bool isCrewAboard() const override { return isAboard(); }
     Part *capsulePart() const override { return aboardPart; }
 
-    // Aboard a ship = parked in a capsule Part (body out of the physics world);
-    // free = on EVA. `aboardPart` is the single source of truth: a Part* is
-    // stable across a merge/split, so no reindex machinery is needed.
+    // Aboard = parked in a capsule Part (body out of the physics world);
+    // free = on EVA. `aboardPart` is the single source of truth: a Part*
+    // survives a merge/split, so no reindexing is needed.
     Part *aboardPart = nullptr;  // the capsule Part it sits in; nullptr = free (on EVA)
     bool isAboard() const { return aboardPart != nullptr; }
     Vehicle *aboard() const {
@@ -54,14 +53,13 @@ struct Kerbal : Vehicle {
     }
 
     // Capsule-center altitude above the analytic surface when standing at
-    // rest: half the suit plus the two collision skins that meet there (see
-    // the margin block in physics.cpp).
+    // rest: half the suit plus the two collision margins that meet there.
     double restAlt() const {
         return parts[0]->def->height / 2.0 + hullMargin() + terrainMargin();
     }
 
-    // Per-substep EVA law: walking + jump + upright on the ground, RCS +
-    // camera-facing attitude in free fall, analytic fall-through guard in both.
+    // Per-substep EVA law: ground walking + jump, or RCS + camera-facing
+    // attitude; analytic fall-through guard in both modes.
     void applyEva(double h);
 
     void applyControlForces(double h) override {
@@ -70,7 +68,7 @@ struct Kerbal : Vehicle {
 
 private:
     // Authority-bounded PD slew toward `target` (braking-curve rate, torque
-    // capped). Ground gets more authority: it must win against foot friction.
+    // capped).
     void slewTo(const glm::dmat3 &target, double h, double authority);
 };
 

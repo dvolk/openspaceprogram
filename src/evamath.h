@@ -18,14 +18,13 @@ static inline glm::dmat3 rotAbout(const glm::dvec3 &a, double ang) {
         glm::dvec3(t*a.x*a.z + s*a.y, t*a.y*a.z - s*a.x,  c + t*a.z*a.z));
 }
 
-/* v with the component along unit n removed. */
+/* n unit. */
 static inline glm::dvec3 evaOntoPlane(const glm::dvec3 &v, const glm::dvec3 &n) {
     return v - n * glm::dot(v, n);
 }
 
-/* Orthonormal camera basis as a ship-convention attitude matrix (columns
-   [right, up, nose], det +1). The kerbal's right axis mirrors the screen
-   right (it faces away down the view). */
+/* Camera basis as a ship-convention attitude matrix: columns [right, up,
+   nose], det +1. The kerbal's right mirrors screen right (it faces away). */
 static inline glm::dmat3 evaCamBasis(const glm::dvec3 &fwdIn, const glm::dvec3 &upIn) {
     const glm::dvec3 fwd = glm::normalize(fwdIn);
     glm::dvec3 up = evaOntoPlane(glm::normalize(upIn), fwd);
@@ -52,7 +51,7 @@ static inline glm::dvec3 evaScreenRight(const glm::dvec3 &fwd, const glm::dvec3 
 }
 
 /* Standing kerbal target: long axis = local vertical, face = faceHint in the
-   tangent plane (what the kerbal FACES, not what it stands along). */
+   tangent plane (what it FACES, not stands along). */
 static inline glm::dmat3 evaStandTarget(glm::dvec3 nose, glm::dvec3 faceHint) {
     nose = glm::normalize(nose);
     glm::dvec3 face = evaOntoPlane(faceHint, nose);
@@ -66,15 +65,15 @@ static inline glm::dmat3 evaStandTarget(glm::dvec3 nose, glm::dvec3 faceHint) {
     return glm::dmat3(right, face, nose);
 }
 
-/* Space target: upright on screen, face toward the viewer.
-   Columns [right, -fwd, up] from the camera basis. */
+/* Space target: upright on screen, face to the viewer; columns
+   [right, -fwd, up]. */
 static inline glm::dmat3 evaSpaceTarget(const glm::dmat3 &camBasis) {
     return glm::dmat3(camBasis[0], -camBasis[2], camBasis[1]);
 }
 
-/* Axis-angle decomposition of a rotation matrix (angle 0..pi).
-   At ~180 deg the antisymmetric part vanishes; axis falls back to the
-   symmetric part. */
+/* Axis-angle decomposition of a rotation matrix (angle 0..pi). Near 180 deg
+   the antisymmetric part vanishes, so the axis falls back to the symmetric
+   part. */
 static inline double evaRotAxisAngle(const glm::dmat3 &R, glm::dvec3 &axis) {
     const double tr = R[0][0] + R[1][1] + R[2][2];
     const double ang = glm::acos(glm::clamp((tr - 1.0) * 0.5, -1.0, 1.0));

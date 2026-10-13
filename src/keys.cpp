@@ -1,13 +1,10 @@
 // keys.cpp -- the rebindable key map (declared in keys.h).
-// Pure logic over SDL scancode/modifier constants: no SDL calls, headless-testable.
 #include "keys.h"
 
 #include <cstring>   // strcmp (slotFromName)
 
-// ---------------------------------------------------------------------------
 // Default map (scancodes = physical keys). Cam/Eva up-down on R/F so
 // Shift/Ctrl stay free as pure modifiers.
-// ---------------------------------------------------------------------------
 void KeyBindings::resetDefaults() {
     for (auto &v : perSlot) { v.clear(); }
     auto add = [&](Slot s, SDL_Scancode sc) {
@@ -40,7 +37,6 @@ void KeyBindings::resetDefaults() {
     add(Slot::Wireframe,     SDL_SCANCODE_F11);
     add(Slot::ResetWindows,  SDL_SCANCODE_F10);
     add(Slot::Menu,          SDL_SCANCODE_ESCAPE);
-    // Scene-switch shortcuts (events.cpp).
     add(Slot::GoSpaceCenter, SDL_SCANCODE_1);
     add(Slot::GoFlight,      SDL_SCANCODE_2);
     add(Slot::GoTracking,    SDL_SCANCODE_3);
@@ -54,18 +50,17 @@ void KeyBindings::resetDefaults() {
     add(Slot::RollLeft,      SDL_SCANCODE_Q);
     add(Slot::RollRight,     SDL_SCANCODE_E);
     add(Slot::Thrust,        SDL_SCANCODE_T);
-    // Latch is a modifier combo (toggles; plain 't' releases it).
-    // SDL_KMOD_SHIFT would never match a single press, so name one concrete side.
+    // Latch is a modifier combo; SDL_KMOD_SHIFT would never match a single
+    // press, so name one concrete side.
     perSlot[(size_t)Slot::ThrustLatch].push_back(KeyBind{SDL_SCANCODE_T, SDL_KMOD_LSHIFT});
     add(Slot::KillRot,       SDL_SCANCODE_X);
     add(Slot::ThrottleUp,    SDL_SCANCODE_R);
     add(Slot::ThrottleDown,  SDL_SCANCODE_F);
-    // Attitude-to-velocity on free letters (Z/B): a burn should not require
-    // opening a window and clicking a button mid-flight.
+    // A burn should not require opening a window and clicking a button mid-flight.
     add(Slot::SlewPrograde,  SDL_SCANCODE_Z);
     add(Slot::SlewRetrograde,SDL_SCANCODE_B);
-    // RCS translation (shares physical keys with other groups; those are
-    // one-shot edges, so the held RCS commands never collide in orbit mode).
+    // Shares physical keys with other groups; those are one-shot edges, so
+    // the held RCS commands never collide in orbit mode.
     add(Slot::RcsForward,    SDL_SCANCODE_N);
     add(Slot::RcsBack,       SDL_SCANCODE_H);
     add(Slot::RcsUp,         SDL_SCANCODE_I);
@@ -96,10 +91,8 @@ void KeyBindings::resetDefaults() {
 
 KeyBindings::KeyBindings() { resetDefaults(); }
 
-// ---------------------------------------------------------------------------
-// Lookup. Exact-modifier rule: (pressed modifiers & relevant) == binding.
-// A plain binding (mods 0) therefore fires only with no Shift/Ctrl/Alt held.
-// ---------------------------------------------------------------------------
+// Exact-modifier rule: (pressed modifiers & relevant) == binding. A plain
+// binding (mods 0) therefore fires only with no Shift/Ctrl/Alt held.
 bool bindingMatches(const KeyBind &b, SDL_Scancode sc, Uint16 mods) {
     return b.sc == sc && (mods & KMOD_RELEVANT) == b.mods;
 }
@@ -125,9 +118,7 @@ bool slotSimKey(Slot s, SDL_Scancode sc, const KeyBindings &kb) {
     return false;
 }
 
-// ---------------------------------------------------------------------------
-// Naming. Switches (not a parallel table) so a new Slot can't silently misalign.
-// ---------------------------------------------------------------------------
+// Switches (not a parallel table) so a new Slot can't silently misalign.
 const char *slotName(Slot s) {
     switch (s) {
         case Slot::WarpUp:         return "warp_up";
@@ -310,9 +301,7 @@ SlotGroup slotGroup(Slot s) {
     return SlotGroup::GROUP_COUNT;
 }
 
-// ---------------------------------------------------------------------------
 // Display: "Ctrl+Shift+W" (modifiers in fixed order, then the key).
-// ---------------------------------------------------------------------------
 namespace {
 std::string keyName(SDL_Scancode sc) {
     switch (sc) {
@@ -397,7 +386,6 @@ std::string keyName(SDL_Scancode sc) {
 
 std::string bindLabel(const KeyBind &b) {
     std::string s;
-    // LShift/RShift (and L/R Ctrl, Alt) shown separately -- a binding names the exact side.
     if (b.mods & SDL_KMOD_LSHIFT) { s += "LShift+"; }
     if (b.mods & SDL_KMOD_RSHIFT) { s += "RShift+"; }
     if (b.mods & SDL_KMOD_LCTRL)  { s += "LCtrl+"; }

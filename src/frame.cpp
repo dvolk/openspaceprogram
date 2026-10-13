@@ -15,7 +15,6 @@ glm::dvec3 Frame::GetVelocityRelTo(Frame *relTo)
 
 glm::dvec3 Frame::GetPositionRelTo(Frame *relTo)
 {
-    /* Universe-axis difference expressed in relTo's own axes. */
     return (root_pos - relTo->root_pos) * relTo->root_orient;
 }
 
@@ -35,22 +34,19 @@ RefPlane uiRefPlane(Frame *focus, const glm::dvec3 &h_hat, int mode)
 {
     RefPlane r;
     if(mode == kRefEcliptic) {
-        // The system plane, in the focus's axes -- the same normal the
-        // Ecliptic map view projects onto.
+        // The system plane in the focus's axes (the Ecliptic map's normal).
         r.n_hat = glm::transpose(focus->root_orient) * glm::dvec3(0.0, 1.0, 0.0);
         r.x_hat0 = glm::transpose(focus->root_orient) * glm::dvec3(1.0, 0.0, 0.0);
     } else if(mode == kRefOrbit) {
-        // The ship's own plane. Inc is 0 by construction and the node is
-        // undefined; and there is no zero longitude either -- every in-plane
-        // direction is equally arbitrary, so keeping the default x_hat0 here
-        // would print a LPe measured from an axis nobody chose.
+        // The ship's own plane: Inc is 0 by construction, the node undefined.
+        // No zero longitude either -- a default x_hat0 would print a LPe
+        // measured from an axis nobody chose.
         r.n_hat = h_hat;
         r.has_zero = false;
     } else {
-        // The focus's EQUATOR: its spin axis, with longitude from the
-        // equator frame's +X -- the direction an "incl_ref": "equator" rail
-        // measures its lon_asc_node from (#147), so the readout and the
-        // authored data agree.
+        // The focus's EQUATOR, longitude from the equator frame's +X -- what an
+        // "incl_ref": "equator" rail measures lon_asc_node from (#147), so
+        // readout and authored data agree.
         r.n_hat = focus->spinAxisRelTo(focus);
         r.x_hat0 = focus->getRotFrame()->equator_orient * glm::dvec3(1.0, 0.0, 0.0);
     }
@@ -85,7 +81,7 @@ void Frame::UpdateOrbitRails(double time) {
     rail_time = time;   // everything below, and every child, is f(time)
     if(parent != NULL and not rotating) {
         // Propagate the epoch state on the true Kepler conic. Absolute sim
-        // time -- must NOT scale with the timestep or the frame snaps when
+        // time -- must NOT scale with the timestep, or the frame snaps when
         // time accel changes.
         if(orb_ang_speed != 0) {
             propagateKepler(orbit_pos0, orbit_vel0, parent_mu,
@@ -94,7 +90,6 @@ void Frame::UpdateOrbitRails(double time) {
     }
 
     if(rotating) {
-        // Spin angle from accumulated sim time (not the current timestep).
         // Unconditional rebuild: orient is a pure function of time; skipping
         // at ang == 0 would leave a stale epoch.
         const double ang = fmod(rot_ang_speed * time, 2 * std::numbers::pi);

@@ -1,5 +1,4 @@
-// game.h -- the running game: subsystems (borrowed from main), runtime
-// state, and the control transitions.
+// game.h -- the running game: subsystems, runtime state, control transitions.
 #pragma once
 
 #include <SDL3/SDL.h>   // Uint32
@@ -38,21 +37,13 @@ struct Shader;
 struct Skybox;
 struct Texture;
 
-// Rails warp threshold: above this accel every ship coasts on rails and
-// the Bullet world is not stepped. 11 == first accel above 10.
+// Above this accel every ship coasts on rails and the Bullet world is not stepped.
+// 11 == first accel above 10.
 static const int kRailsWarp = 11;
 
-/* Top of the decimal warp ladder (1, 10, then rails at 100 ... kMaxWarp),
-   i.e. the last WarpUp that is allowed. 1e7x is 167 ks per 60 Hz tick --
-   1.9 days of sim per frame, so a ~200 day interplanetary coast is about
-   two minutes of wall clock instead of half an hour. What that costs is
-   SoI resolution, not accuracy: railsTick tests the SoI only at the END of
-   a tick, so a tick that travels further than a body's sphere flies clean
-   past it and the encounter is missed outright (one 1e7x tick at 24 km/s
-   covers ~4e9 m; Mars' Hill radius in solar_system.json is 1.08e9 m). The
-   player brings the warp down for an encounter. The warp at which the
-   endpoint test stays honest scales with the smallest SoI in the frame:
-   ~1e6x for the solar system's planets, ~1e4x for ksp_system's Moho. */
+/* Top of the decimal warp ladder (1, 10, then rails at 100 ... kMaxWarp): the last
+   WarpUp allowed. The cost is SoI resolution, not accuracy: railsTick tests the SoI
+   only at the END of a tick, so a tick longer than a body's sphere flies past it. */
 static const int kMaxWarp = 10000000;
 
 // Toast lifetimes are wall-clock (sim time is paused or warped).
@@ -63,8 +54,8 @@ static const int kToastVisible = 3;
 static const int kPickClickPx = 6;
 static const int kPickClickMs = 400;
 
-// Docking capture thresholds (Game::updateDocking). Hulls are 0.1 m
-// inflated, so a slow aligned approach locks before the hulls touch.
+// Docking capture thresholds. Hulls are 0.1 m inflated, so a slow aligned
+// approach locks before the hulls touch.
 static const double kDockCapture = 1.5;   // m, port face-centre distance
 static const double kDockAlign   = 0.966; // cos(15 deg) axis misalignment
 static const double kDockMaxV    = 2.0;   // m/s relative speed at capture
@@ -74,8 +65,8 @@ struct ToastMsg {
     double born;   // wall-clock seconds (SDL_GetTicks() * 0.001)
 };
 
-// One open part window (right-clicked part). Closing drops the entry;
-// dropPartWindowsFor when the ship is removed.
+// One open part window (right-clicked part); dropPartWindowsFor drops them
+// with the ship.
 struct PartSel {
     Vehicle *ship = nullptr;
     size_t part = 0;    // index into ship->parts
@@ -85,19 +76,14 @@ struct PartSel {
     bool placed = false;  // first window placement done
 };
 
-// The active ship's per-frame state (render frame), written by render.cpp
-// and read by the UI readouts and the transfer planner.
+/* The active ship's per-frame state (render frame): render.cpp writes it, the UI
+   readouts and the transfer planner read it. */
 struct ShipView {
-    /* Which ship this snapshot describes (nullptr = none). The state pass
-       takes it once per frame, but the imgui pass changes the active ship
-       itself -- the VAB's LAUNCH builds one, the fleet list's name row
-       switches and its "x" deletes -- and the windows drawn after that in
-       the same frame then read a snapshot taken before it happened. On a
-       shipless boot it was never taken at all, which is how the HUD ended
-       up sampling terrain along a zero-length direction (#235). */
+    /* Which ship this describes (nullptr = none). The state pass takes it once per
+       frame, but the imgui pass changes the active ship itself, so later windows
+       read a stale snapshot; on a shipless boot it is never taken at all (#235). */
     Vehicle *ship = nullptr;
-    // render-frame (ship->frame) state. Initialized: a snapshot that was
-    // never filled reads as zeros, not as stack garbage.
+    // render-frame (ship->frame) state; an unfilled snapshot reads zeros
     glm::dvec3 pos = glm::dvec3(0.0);
     glm::dvec3 vel = glm::dvec3(0.0);
     // the surface frame (the body's rotating frame, when the ship is on one)
@@ -107,8 +93,8 @@ struct ShipView {
     glm::dvec3 orbit_pos = glm::dvec3(0.0);
     glm::dvec3 orbit_vel = glm::dvec3(0.0);
     OrbitElements o;
-    // Inc/LAN/LPe of the same conic, measured in the plane the orbit map is
-    // showing (Game::map_plane) -- see orbitPlaneAngles / uiRefPlane (#171).
+    // Inc/LAN/LPe measured in the plane the orbit map shows (Game::map_plane), so
+    // the numbers describe the picture (#171).
     PlaneAngles plane;
     double distance = 0;  // |orbit_pos|
     double speed = 0;     // |orbit_vel|
@@ -127,33 +113,33 @@ struct ShipView {
     double heading = 0;
     double pitch = 0;
     double roll = 0;
-    // telemetry (sampled once per drawn frame)
+    // telemetry, sampled once per drawn frame
     TimeSeries energy_series;
     TimeSeries angmom_series;
 };
 
-/* The VAB editor's session state (Game::vab). EDITOR SESSION state, not
-   save state: the build tree round-trips through the ship-def files. */
+/* VAB editor SESSION state (Game::vab), not save state: the build tree round-trips
+   through the ship-def files. */
 struct VabState {
-    // The physics-free build tree (shipdef.h BuildShip).
-    BuildShip build;
+    BuildShip build;                       // physics-free (shipdef.h)
     glm::dvec3 center = glm::dvec3(0.0);   // bbox center of the parts (S frame)
 
-    // LAUNCH config. Names, not pointers, so they survive and are easy to
-    // inspect; "" falls back to g.home / "pad" / the default launch site.
-    std::string bodyName;      // body to launch from ("" -> g.home)
-    std::string scenarioName;  // scenario to launch ("" -> "pad")
+    // Names, not pointers, so they survive; "" falls back to g.home / "pad" / the
+    // default launch site.
+    std::string bodyName;
+    std::string scenarioName;
     std::string siteName;      // launch building id ("" -> first VAB_LAUNCH_PAD)
 
-    int hover = -1;        // build-part index under the mouse; -1 = none
-    int selected = -1;     // build-part index selected (click); -1 = none
+    // Build-part indices; -1 = none.
+    int hover = -1;
+    int selected = -1;
     std::string armed;     // catalog part name armed from the palette ("" = none)
-    int hoverNode = -1;    // stack-node index on the hover parent under the mouse
-    int hoverParent = -1;  // build-part index the ghost would attach to
+    int hoverNode = -1;    // stack-node index on the hover parent
+    int hoverParent = -1;  // the build-part the ghost would attach to
 
     // --- the placement ghost (the armed part / subassembly's preview) ------
     bool ghostValid = false;
-    bool ghostSurface = false;              // ghost = surface attach (vs stack node)
+    bool ghostSurface = false;              // surface attach (vs stack node)
     glm::dvec3 ghostPos;                    // ghost pose (S frame) when valid
     glm::dmat3 ghostRot;
     glm::dvec3 ghostPoint, ghostNormal;     // parent-local surface contact
@@ -163,13 +149,11 @@ struct VabState {
     double ghostRollUsed = 0.0;  // the effective (snap-rounded) roll the
                                  // current ghost solves + placement stores
     bool ghostRoot = false;      // the ghost is the ROOT of an empty build
-    int ghostAssembly = -1;      // the subassembly the current ghost previews
-                                 // (-1 = the armed catalog part)
+    int ghostAssembly = -1;      // subassembly previewed (-1 = the armed part)
     std::vector<SymClone> ghostClones;   // the extra symmetric ghosts
 
     // --- placement modifiers ---------------------------------------------
-    int symmetry = 1;   // radial copies for SURFACE placing (1 = single,
-                        // up to 8): clones ring the hovered parent's axis
+    int symmetry = 1;   // radial copies for SURFACE placing (1..8)
     bool snapLen = true;   // distance snap (10 cm grid)
     bool snapAng = true;   // angle snap (10 deg grid)
     // holding Alt bypasses BOTH snaps while pressed
@@ -179,8 +163,8 @@ struct VabState {
     std::string linkFromId;   // the clicked source ("" = not picked yet)
     int linkSel = -1;         // selected fuel-link index (-1 = none)
 
-    // Detached subtrees (Subassemblies): session state, NOT part of the
-    // ship file; they outlive the build they came from. Placing grafts a COPY.
+    // NOT part of the ship file; they outlive the build they came from. Placing
+    // grafts a COPY.
     struct Subassembly {
         std::string name;   // display: "<ship> > <root part id>"
         BuildShip ship;     // its own tree, root at its own frame's identity
@@ -191,9 +175,7 @@ struct VabState {
     bool lmbPrev = false;    // LMB edge detect for click-to-place
 };
 
-// Science identity of a pose (biome + situation). Biome::None when the
-// body has no classifiable surface or terrain is not ready; the situation
-// is still valid then.
+// Biome::None when the body has no classifiable surface or terrain is not ready.
 struct PoseSituation {
     Biome biome = Biome::None;
     SciSituation situation = SciSituation::Landed;
@@ -211,11 +193,9 @@ inline PoseSituation poseSituation(const TerrainBody *body, const glm::vec3 &dir
     return { biomeAt(dir, body->params()), situation };
 }
 
-/* The question card (drawQuestion, gameui.cpp): one prompt, a row of choices,
-   answered on a LATER frame. Immediate mode has no blocking ask(), so a
-   caller asks and the answer arrives through onAnswer -- which therefore must
-   capture IDENTITY (a name, a building id), never a pointer to the subject:
-   the subject can be gone by the time the player answers. */
+/* The question card (drawQuestion, gameui.cpp): answered on a LATER frame, so
+   onAnswer must capture IDENTITY (a name, an id), never a pointer -- the subject
+   can be gone by then. */
 struct Question {
     std::string text;
     std::vector<std::string> labels;   // one button each, in order
@@ -231,18 +211,15 @@ struct Game {
     System &sys;
     TerrainBody *sun;
     TerrainBody *home;
-    // Title-screen backdrop body: chosen ONCE per system so the boot can
-    // build it synchronously (it is what the first frame shows).
-    TerrainBody *titleBody = nullptr;
+    TerrainBody *titleBody = nullptr;   // chosen ONCE per system, built sync at boot
     GameArgs &args;
     Uint32 sim_win_id;
     Uint32 loop_start_ms = 0;   // set once the main loop is about to start
 
-    // --- the transfer planner (TRANSFER window + porkchop cache) -----------
-    // A Game member so the clock hook can reach and invalidate its state.
+    // A member so the clock hook can invalidate its state.
     TransferPlanner xferPlanner;
 
-    // --- sound (audio.h; a silent no-op without a device) -------------------
+    // A silent no-op without a device (audio.h).
     Audio audio;
 
     // --- cameras -----------------------------------------------------------
@@ -253,14 +230,13 @@ struct Game {
     glm::dvec3 shake_ang = glm::dvec3(0.0);
     Uint32 shake_last_ms = 0;
 
-    // --- scene + VAB editor state ------------------------------------------
-    /* The scene stack: back() is the live scene, never empty (see scene.h).
-       Each frame carries the camera pose to hand back when it is popped. */
+    /* The scene stack: back() is the live scene, never empty (see scene.h). Each
+       frame carries the camera pose to hand back when it is popped. */
     std::vector<SceneFrame> sceneStack;
     VabState vab;
 
-    /* One-shot headless test hooks (cli.h --vab-* etc). Negative time means
-       "never"; each `fired` latches so a hook fires at most once per run. */
+    /* Headless test hooks (cli.h --vab-* etc). Negative time = "never"; each
+       `fired` latches so a hook fires at most once per run. */
     struct VabHooks {
         int placeMs = -1, loadMs = -1, launchMs = -1, closeMs = -1;
         int detachIdx = -1, detachMs = -1;   // --vab-detach part index + time
@@ -271,108 +247,100 @@ struct Game {
     };
     VabHooks vabHooks;
 
-    // --new-game: headless hook for the title screen's New Game button.
+    // The rest follow the same pattern: "<name>Ms" (-1 = never) + "<name>Fired".
+    // --new-game
     int newGameMs = -1;
     bool newGameFired = false;
 
-    // --reload DIR / --reload-at MS: headless runtime-load hook.
+    // --reload DIR / --reload-at MS
     std::string reloadDir;
     int reloadMs = -1;
     bool reloadFired = false;
 
-    // --quit-title MS: headless "Quit to title" hook.
+    // --quit-title MS
     int quitTitleMs = -1;
     bool quitTitleFired = false;
 
-    // --space-center MS: headless "Space Center" hook.
+    // --space-center MS
     int spaceCenterMs = -1;
     bool spaceCenterFired = false;
 
-    // --recover MS: headless "Recover Vessel" hook.
+    // --recover MS
     int recoverMs = -1;
     bool recoverFired = false;
 
-    // --experiment MS: headless suit-observation hook.
+    // --experiment MS (suit observation)
     int experimentMs = -1;
     bool experimentFired = false;
 
-    // --pod-experiment MS: headless science-pod experiment hook.
+    // --pod-experiment MS
     int podExperimentMs = -1;
     bool podExperimentFired = false;
 
-    // --eva MS: headless EVA hook.
+    // --eva MS
     int evaMs = -1;
     bool evaFired = false;
 
-    // --take MS: headless take/store dance (move finding to a courier).
+    // --take MS / --store MS: move a finding to a courier / to a container
     int takeMs = -1;
     bool takeFired = false;
 
-    // --store MS: headless take/store dance (move finding to a container).
     int storeMs = -1;
     bool storeFired = false;
 
-    // --tracking MS: headless Tracking Station hook.
+    // --tracking MS / --tracking-close MS
     int trackingMs = -1;
     bool trackingFired = false;
 
-    // --tracking-close MS: headless Tracking Station exit hook.
     int trackingCloseMs = -1;
     bool trackingCloseFired = false;
 
-    // --research MS: headless Research Lab hook.
+    // --research MS / --research-close MS
     int researchMs = -1;
     bool researchFired = false;
 
-    // --research-close MS: headless Research Lab exit hook.
     int researchCloseMs = -1;
     bool researchCloseFired = false;
 
-    // --atlas-dump MS: headless System Atlas dump (rows + dossiers) to stdout.
+    // --atlas-dump MS: System Atlas rows + dossiers to stdout
     int atlasDumpMs = -1;
     bool atlasDumpFired = false;
 
-    // --map-dump MS: the orbit map's plane basis per combo slot, to stdout.
+    // --map-dump MS: the map's plane basis per combo slot, to stdout
     int mapDumpMs = -1;
     bool mapDumpFired = false;
 
-    // --switch-system FILE / --switch-at MS: headless in-process system swap.
+    // --switch-system FILE / --switch-at MS
     std::string switchSystemPath;
     int switchSystemMs = -1;
     bool switchSystemFired = false;
 
-    // The system file this game is running (updated by switchSystem). This --
-    // not args.system_file -- is what save_game records.
+    // What save_game records -- not args.system_file. Updated by switchSystem.
     std::string systemPath;
 
-    // The game (one playthrough) this state belongs to. gameId is the dir
-    // under saves/ (<YYYYMMDD_HHMMSS>-<name>, see save.h).
     std::string gameName = "game1";
-    std::string gameId;   // "" until New Game Start / a bare boot's first save / a load
+    std::string gameId;   // the saves/ dir, <YYYYMMDD_HHMMSS>-<name> (see save.h)
 
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
     double time = 0;   // the analytic sim clock (s), advanced by the tick
 
-    /* Bodies' orbits/spin are a pure function of `time`. Anything that moves
-       the clock OUTSIDE a tick must call these, or a paused game renders the
-       epoch the previous state left behind. */
+    /* Bodies' orbits/spin are a pure function of `time`. Anything moving the clock
+       OUTSIDE a tick must call these, or a paused game renders a stale epoch. */
     void syncRails() { sun->frame->UpdateOrbitRails(time); }
-    /* Drop every cache stamped against the current sim state. A job captures
-       cache_epoch at post time and skips its publish if it has changed. */
+    /* A job captures cache_epoch at post time and skips its publish if it changed. */
     void invalidateClockStampedCaches() {
         xferPlanner.invalidateClockState();
         surfmap_valid = false;
         surfmap_computed_at = -1.0;
         cache_epoch++;
-        // In-flight counters are only decremented by their continuations;
-        // on the switch path those are discarded (jobs.restart).
+        // In-flight counters are only decremented by their continuations; on the
+        // switch path those are discarded (jobs.restart).
         xferPlanner.pc_in_flight = 0;
         surfmap_in_flight = 0;
     }
-    /* The clock moves OUTSIDE a tick (a load, the boot --start-time): re-derive
-       the bodies and invalidate clock-stamped caches. A system swap calls
-       invalidateClockStampedCaches() directly instead. */
+    /* A clock move OUTSIDE a tick (a load, --start-time); a system swap invalidates
+       directly. */
     void setTime(double t) {
         time = t;
         syncRails();
@@ -386,13 +354,10 @@ struct Game {
     double currentTime = 0.001 * (double)(SDL_GetTicks());
     double accumulator = 0.0;
     const double dt = 1.0 / args.physics_hz;   // --physics-hz (60 default)
-    // Logic ticks executed by tick(); --perf reads/resets once per frame.
     // Counts TICKS, not the Bullet substeps inside each one.
     long long logic_ticks = 0;
 
-    // --- background jobs (job.h) --------------------------------------------
-    // Porkchop, surface map, terrain subdivision. jobs.poll() runs the
-    // finished jobs' main-thread continuations.
+    // jobs.poll() runs the finished jobs' main-thread continuations (job.h).
     JobRunner jobs;
 
     // --- the wall-clock log gates (--orbit-interval; tick.cpp + xfer-log) ---
@@ -409,13 +374,10 @@ struct Game {
     Uint32 terrain_log_last_ms = 0;
 
     // --- --pose-jitter (render.cpp) -----------------------------------------
-    // The previous DRAWN sample plus what it was taken against. Re-armed
-    // whenever the ship, its Frame, or the wall-clock gap changes, so a
-    // handoff / ship switch / scene stay never reads as a jitter spike.
-    // Render-only: nothing in tick()/physics reads these.
-    // prev_ship / prev_frame are compared as identities only, never
-    // dereferenced, so a stale one cannot crash -- at worst a same-address
-    // reuse within the 0.25 s staleness window misses a re-arm.
+    /* The previous DRAWN sample plus what it was taken against. Re-armed whenever
+       the ship, its Frame or the wall-clock gap changes, so a handoff / ship switch
+       never reads as a jitter spike. prev_* compare as identities, never
+       dereferenced. */
     bool pose_jitter_armed = false;
     Vehicle *pose_jitter_prev_ship = nullptr;
     Frame *pose_jitter_prev_frame = nullptr;
@@ -436,8 +398,8 @@ struct Game {
     bool surfmap_compute_requested = false;   // M: one-shot compute the map
     // The player-controlled ship (ships live in the bodies' lists).
     Vehicle *ship = nullptr;
-    // Crew: `kerbal` is the kerbal the player most recently EVA'd (for the
-    // V toggle-back); `lastShip` is the ship they came from.
+    // `kerbal` is the one most recently EVA'd (the V toggle-back); `lastShip` the
+    // ship they came from.
     Kerbal *kerbal = nullptr;
     Vehicle *lastShip = nullptr;
 
@@ -445,8 +407,7 @@ struct Game {
     std::vector<PartSel> part_sels;
 
     // --- render resources (render.cpp draws with them) ---------------------
-    // FILE assets are registry-owned (get_*, shared); the billboards' quads
-    // are freed with the billboards (the teardown at the end of main).
+    // FILE assets are registry-owned (get_*, shared); billboard quads free with them.
     Skybox *skybox = nullptr;
     Shader *skyboxshader = nullptr;
     Shader *lineshader = nullptr;
@@ -473,27 +434,24 @@ struct Game {
     bool draw_starfield = true;
     bool draw_skylines = false;
 
-    // Star-field exposure prototype (render.cpp skyGain): the gain the sky
-    // fades to while the sun is in view and the camera is in sunlight, and the
-    // half-angle of that "in view" cone. sky_dim = 1 disables the fade.
+    // render.cpp skyGain: the gain the sky fades to when the sun is in view and the
+    // camera is in sunlight. sky_dim = 1 disables the fade.
     float sky_dim = 0.25f;
     float sky_dim_cone = 25.0f;   // deg: half-angle of the "sun in view" cone
-    // Live fade amount (0..1), low-passed in wall-clock seconds. Both inputs
-    // are binary tests, so without this the sky steps instead of ramping.
+    // Low-passed in wall-clock seconds: the inputs are binary, so without this the
+    // sky steps instead of ramping.
     double sky_fade = 0.0;
     Uint32 sky_fade_last_ms = 0;
     Uint32 sky_dim_log_last_ms = 0;   // --sky-dim-log cadence stamp
 
     // --- control-axis flips (the Settings window writes, tick.cpp reads) --
-    // Each inverts one manual attitude axis away from the default (see tick.cpp).
     bool flip_pitch = false;
     bool flip_yaw = false;
     bool flip_roll = false;
 
     // --- the key map (keys.h) --------------------------------------------
     KeyBindings binds;
-    // While the Controls window is capturing a new binding: the Slot index
-    // being rebound (>=0), or -1 when not capturing.
+    // Slot the Controls window is rebinding; -1 = not capturing.
     int rebind_capture_slot = -1;
     // Thrust latch (events.cpp toggles; tick.cpp keeps thrust on while set).
     bool thrust_latched = false;
@@ -512,15 +470,11 @@ struct Game {
     // --- science (career score + the unique experiments recovered) --------
     Career science;
 
-    // Pre-built Research Lab rows (see researchLabEnter). labRowsVersion is
-    // the science.version they were built from; the render rebuilds if it
-    // differs, so the cache self-heals if the log changes while live.
+    // Built from science.version; a version mismatch rebuilds, so it self-heals.
     std::vector<LabEntry> labRows;
     std::size_t labRowsVersion = std::size_t(-1);   // no cache built yet
 
-    // Pre-built System Atlas rows (one per body, tree-ordered). Same
-    // self-heal: built from science.version, rebuilt on the first render if
-    // it has moved (a recovery while the lab was open).
+    // Pre-built System Atlas rows (one per body, tree-ordered); same self-heal.
     std::vector<AtlasRow> atlasRows;
     std::size_t atlasRowsVersion = std::size_t(-1);
 
@@ -534,8 +488,7 @@ struct Game {
     TimeSeries perf_refresh;   // the 3D state pass (render.cpp refreshWorld)
     TimeSeries perf_render;    // the paint pass + imgui (GL command issue)
     TimeSeries perf_present;
-    // Which series each of the 4 Telemetry cells is showing (0..7, see the
-    // kSeries table in gameui.cpp). Defaults to the first four.
+    // Which series each Telemetry cell shows (0..7, see kSeries in gameui.cpp).
     int telemetry_sel[4] = {0, 1, 2, 3};
 
     // --- orbit camera focus targets (the ship + every body; G cycles) ------
@@ -561,28 +514,24 @@ struct Game {
 
     // --- Orbital map state (gameui.cpp draws with them) ---------------------
     float map_scale = kMapDefaultScale;   // meters per pixel
-    // RefPlaneMode (frame.h): equatorial / ecliptic / orbital. Not just a view
-    // control -- the flight readout's Inc/LAN/LPe are measured in this plane
-    // too, so the numbers describe the picture (#171). ImGui::Combo needs an
-    // int*, hence the type.
+    // RefPlaneMode (frame.h). Not just a view control: ShipView::plane is measured
+    // in this plane too. ImGui::Combo needs an int*.
     int map_plane = kRefEquator;
     // Pan offset from the window center, in pixels (P4 navigation).
     ImVec2 map_pan = ImVec2(0.0f, 0.0f);
-    // Right-clicking the map cycles chrome: 0 = full window, 1 = bare map,
-    // 2 = no window chrome (map floats over the 3D view). 1 and 2 keep pan/zoom.
+    // Right-click cycles chrome: 0 = full window, 1 = bare map, 2 = no chrome.
     int map_mode = 0;
 
     // --- world-stamped caches ------------------------------------------------
-    // Bumped by invalidateClockStampedCaches(); a background job drops its
-    // result on landing if it has moved since.
+    // Bumped by invalidateClockStampedCaches(); a job drops its result on landing
+    // if it has moved since.
     int cache_epoch = 0;
 
     // --- Surface Map state (gameui.cpp draws it; surfmap.cpp fills it) ---
-    // The mapped body; null = the active ship's parent, else the system home.
+    // null = the active ship's parent, else the system home.
     TerrainBody *surfmap_body = nullptr;
     bool surfmap_shade = true;    // bake the terminator (the "Sun shading" box)
     bool surfmap_sea = false;     // paint the sea (the "Ocean" box)
-    // Name every launch-site marker on the map (the "Site labels" box).
     // Overlay-only, so unlike the two above it needs no re-bake.
     bool surfmap_site_labels = true;
     // The last computed map (surfmapCompute publishes it atomically).
@@ -593,145 +542,108 @@ struct Game {
     double surfmap_computed_at = -1.0;  // sim seconds of the last compute
     bool surfmap_valid = false;
     int surfmap_rev = 0;
-    // Sweep jobs posted but not yet landed (the window shows "mapping ...").
+    // Jobs posted but not landed (the window shows "mapping ...").
     int surfmap_in_flight = 0;
 
     // --- control transitions (events + the SHIPS window + selftest) --------
-    // V: toggle EVA -- EVA one of the ship's aboard kerbals, or hand control
-    // back to the last ship.
+    // V: EVA an aboard kerbal, or hand control back to the last ship.
     void toggle_eva();
-    // Crew transitions. kerbalEVA hands the player control of the kerbal;
-    // kerbalBoard parks a free kerbal into a capsule (refuses a full one).
+    // kerbalBoard refuses a full capsule.
     void kerbalEVA(Kerbal *k);
     void kerbalBoard(Kerbal *k, Vehicle *ship, size_t part);
-    // Inventory drop/pickup: dropItem makes a free 1-part ship; pickUpItem
-    // re-parents it into `dest`.
+    // dropItem makes a free 1-part ship; pickUpItem re-parents it into `dest`.
     Vehicle *dropItem(Part *item);
     bool pickUpItem(Vehicle *itemShip, Part *dest);
-    // World (ship-frame) position of a focus target (for the orbit camera).
+    // World (ship-frame) position of a focus target.
     glm::dvec3 focusWorldPos(int i) const;
-    // Choose the title backdrop body (stored in titleBody).
-    TerrainBody *pickTitleBody();
-    // Park the orbit camera on titleBody (no-op until focusTargets is seeded).
-    void parkTitleCamera();
+    TerrainBody *pickTitleBody();   // stores it in titleBody
+    void parkTitleCamera();         // no-op until focusTargets is seeded
     // TAB: hide / restore the live scene's Persistent windows.
     void toggle_windows();
-    // Set the live scene's Persistent windows to match ui_visible.
     void apply_ui_visible();
     // A scene entry always shows the UI (a TAB-hide must not carry over).
     void ensure_ui_visible();
-    // Rebuild the imgui style from the Settings state.
     void apply_ui_style();
     // Settings persistence (settings.json). CLI beats the file field-by-field
     // (args.cli_given). Two load phases: args before the Renderer, Game+PostFX after.
     bool save_settings();
     void load_settings();
-    // Take control of `v` (release + park the current one, recenter the camera).
+    // Takes control of `v` (releases + parks the current one).
     void select_ship(Vehicle *v);
-    /* Start a fresh game from the title screen: Space Center, no ship, paused.
-       False (plus a toast) if a game is already running. */
+    /* Space Center, no ship, paused. False (plus a toast) if a game is running. */
     bool newGame();
-    /* The New Game sheet's Start: switch system if needed, apply difficulty,
-       mint the game identity, then newGame(). False if a game is running or
-       the switch failed (running world untouched). */
+    /* False if a game is running or the system switch failed (world untouched). */
     bool startNewGame(const std::string &name, const std::string &sysPath,
                       float exhaustScale);
-    /* Ensure this game has a dir under saves/ (minting one if needed). "" on
-       a mint failure (a toast already fired). */
-    std::string ensureGameDir();
-    /* Settle a freshly built fleet: apply scenarios, park on rails every ship
-       except `active`. Does NOT make `active` the player's ship -- the caller
-       does (main assigns Game::ship directly; newGame uses select_ship).
-       --load skips all of this (a save records live-or-railed state). */
+    std::string ensureGameDir();    // "" on a mint failure (a toast already fired)
+    /* Does NOT make `active` the player's ship -- the caller does. --load skips
+       this (a save records live-or-railed state). */
     void settleFleet(Vehicle *active);
-    /* Load a save over the running game, then enter Flight (a ship) or the
-       Space Center hub (shipless). False if refused: a same-system refusal
-       leaves the running game and its scene untouched; a cross-system one
-       already switched systems, so it lands on the title. Shared by the
-       Save/Load window and the --reload hook. */
+    /* A same-system refusal leaves the running game untouched; a cross-system one
+       already switched, so it lands on the title. */
     bool loadFrom(const std::string &dir);
-    // Quicksave (F5): save into the game dir's next quicksave-NN pool slot.
+    // Quicksave (F5): the game dir's next quicksave-NN pool slot.
     void quicksave();
-    // Quickload (F9): load the newest quicksave of this game by mtime.
+    // Quickload (F9): the newest quicksave of this game by mtime.
     void quickload();
-    /* Ensure the running system matches the save at `dir` (switching if
-       different). `switched` is set true iff the switch actually ran (so the
-       caller must not run the heavy phase). Shared by loadFrom and boot --load. */
+    /* True iff the switch ran, so the caller must not run the heavy phase. */
     bool ensureSystemForSave(const std::string &dir, bool *switched = nullptr);
-    /* Tear the running game down to the shipless-boot state. No job drain: no
-       background continuation dereferences the fleet. */
+    /* No job drain: no background continuation dereferences the fleet. */
     void unloadGame();
     // unloadGame + enterTitle: the flight pause menu's "Quit to title".
     void quitToTitle();
-    /* In-process system switch: tear down the running system and load a
-       different one, landing on the title screen. Transactional (see
-       game.cpp). `syncNames` are body NAMES to build synchronously; empty =
-       the title backdrop. */
+    /* Transactional (see game.cpp). `syncNames` are body NAMES to build
+       synchronously; empty = the title backdrop. */
     void switchSystem(const std::string &path,
                       const std::vector<std::string> &syncNames = {});
-    // Keep the "ship" focus entry in sync with the active ship (or a random
-    // non-star title backdrop when there is none).
+    // Keeps the "ship" focus entry on the active ship (else a random non-star
+    // backdrop).
     void syncShipFocus();
-    // Enter rails warp (park every ship); false + keeps the accel if any ship
-    // is not rail-eligible.
+    // False + keeps the accel if any ship is not rail-eligible.
     bool enter_rails_warp();
-    // Keep ships near the active ship live (in physics), park the rest.
     void updateProximity();
-    // Docking: once per tick at the boundary, the active ship's port against
-    // every other live ship's port -- close, aligned and slow enough, merge.
+    /* The active ship's port against every other live ship's port -- close, aligned
+       and slow enough, merge. */
     void updateDocking();
-    // Undock: split the most recent seam off the active ship into a new ship.
+    // Splits the most recent seam off the active ship.
     void undock();
-    // Stage: fire the active stage's decouplers; each child-side subtree comes
-    // off as a separate ship. Refuses a stage that still carries a crewed
-    // capsule (EVA them out first).
+    // Refuses a stage that still carries a crewed capsule.
     void stage();
-    // Remove a ship + its bookkeeping (refuses the last one; hands control off
-    // if the active one is removed).
+    // Refuses the last ship; hands control off if the active one is removed.
     void remove_ship(Vehicle *v);
-    // Recover the active vessel (the successful end of a flight). Refuses
-    // unless the ship is grounded on the home body (--recover-anywhere lifts
-    // that). Unlike remove_ship this allows the last vessel.
+    /* Refuses unless grounded on the home body (--recover-anywhere lifts that).
+       Unlike remove_ship this allows the last vessel. */
     void recoverActive();
-    /* Run an observation experiment with kerbal `k` at its current pose.
-       Stores on the kerbal's suit; refuses a duplicate already held. */
+    /* Stores on the kerbal's suit; refuses a duplicate already held. */
     void runExperiment(Kerbal *k);
     /* The situation experiment (identity + provenance) for a part riding
-       `poseVehicle`, recorded by `runner`. Shared by runExperiment and
-       runPodExperiment. */
+       `poseVehicle`, recorded by `runner`. */
     bool situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
                              Part *localPart, const std::string &type,
                              Kerbal *runner, Experiment &out);
-    /* Run a science-instrument experiment on part `pod` with aboard kerbal `k`.
-       Refuses a duplicate the pod already holds. */
+    /* Refuses a duplicate the pod already holds. */
     void runPodExperiment(Part *pod, Kerbal *k);
-    /* The take/store dance: move the `which`-th finding held on part `from`
-       over to part `to` (must be a transfer destination with a free slot). */
+    /* `to` must be a transfer destination with a free slot. */
     void moveExperiment(Part *from, Part *to, size_t which);
-    /* Is free kerbal `k` close enough to part `part` to interact with it
-       (kBoardingRange). `k` must be free (on EVA, not aboard). */
+    /* `k` must be free (on EVA, not aboard). */
     bool kerbalInRange(Kerbal *k, Part *part);
     // Push a one-shot on-screen message (printf-style).
     void toast(const char *fmt, ...);
-    // toast() minus the on-screen part: just the "[toast] ..." console line.
-    // Scene transitions use this (the move is visible; the line stays an anchor).
+    /* Console line only. Scene transitions use this -- the move is visible, the
+       "[toast] ..." line stays an e2e anchor. */
     void toastLog(const char *fmt, ...);
-    /* Put up the question card, replacing any question already up. onAnswer
-       runs on a later frame with the chosen index (see Question). */
+    /* onAnswer runs on a later frame with the chosen index (see Question). */
     void ask(std::string text, std::vector<std::string> labels,
              std::function<void(int choice)> onAnswer);
-    /* Close the card, then run its onAnswer. Closing first so a callback may
-       ask() again. No-op with no card up. */
+    /* Closes the card first, so a callback may ask() again. No-op with none up. */
     void answerQuestion(int choice);
     std::unique_ptr<Question> question;   // null = no card up
-    // Open (or focus) the part window for (ship, part). (mx,my) is the mouse
-    // at pick; the window opens near it.
+    // Opens (or focuses) the part window for (ship, part), near (mx,my).
     void openPartWindow(Vehicle *ship, size_t part, const glm::dvec3 &point,
                         int mx, int my);
-    // Drop every part window of a ship (its entries would dangle after delete).
+    // Its entries would dangle after delete.
     void dropPartWindowsFor(Vehicle *ship);
-    // Close the Flight Summary and drop its payload. Every game teardown
-    // calls this (scene transitions close nothing).
+    // Every game teardown calls this (scene transitions close nothing).
     void clearFlightSummary();
 
     Game(Renderer &display, PostFX *postfx, Ships &ships, System &sys,
@@ -741,8 +653,8 @@ struct Game {
           sun(sun), home(home), args(args), sim_win_id(sim_win_id),
           xferPlanner(*this)   // borrows the Game it is a member of
     {
-        // The stack is never empty: Flight is the floor scene. Seeded here so
-        // no code path can observe it empty (curSceneId reads back() unguarded).
+        // Never empty: Flight is the floor scene, and curSceneId reads back()
+        // unguarded.
         sceneStack.reserve(4);
         sceneStack.push_back(SceneFrame{});   // Flight, no parked camera
         // --surfmap-noshade (CLI) mirrors the Surface Map "Sun shading" box.
@@ -750,21 +662,19 @@ struct Game {
     }
 };
 
-// RMB-click entry point (events.cpp): pick the part under (px,py), open its
-// window, and log the outcome (the [pick] line is what the e2e cases assert).
+// RMB-click entry point (events.cpp). The [pick] log line is what the e2e cases
+// assert.
 void pickAt(Game &g, int px, int py);
 
-// settings.json launch phase (main.cpp, BEFORE the Renderer is built): apply
-// the file's args fields over the CLI defaults. No-op when settings.json is
-// absent. See also Game::load_settings (the second phase).
+// settings.json phase 1 (phase 2 is Game::load_settings). No-op if absent.
 void load_settings_args(GameArgs &args);
 
-// Crew queries (defined in game.cpp). The aboard crew live on their ship
-// (Vehicle::crew); the free kerbals are the isEva ships in the bodies' lists.
+// Aboard crew live on their ship (Vehicle::crew); free kerbals are the isEva
+// ships in the bodies' lists.
 std::vector<Kerbal *> shipCrew(Vehicle *ship);
 std::vector<Kerbal *> partCrew(Part *capPart);
 std::vector<Kerbal *> freeKerbals(System &sys);
 
-// Capsule-boarding / take-store reach [m]. One constant so the reach the UI
-// shows and the gate it enforces can't drift.
+// One constant so the boarding / take-store reach the UI shows and the gate it
+// enforces can't drift.
 constexpr double kBoardingRange = 10.0;

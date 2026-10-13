@@ -1,29 +1,18 @@
 #pragma once
-// A home-planet calendar from a body's day and year lengths (#201), or a
+// Home-planet calendar from a body's day and year lengths (#201), or a
 // proleptic-Gregorian civil calendar (#202, "epoch_utc" in the system JSON).
 //
-// DERIVED (default): D = the SOLAR day (mean sun at the same surface
-// longitude), Y = the orbital period (0 if no orbit). The caller measures D
-// -- system.cpp uses measureSolarDay (#201), NOT 2*pi/spin_rate (sidereal:
-// that slides off the sun at 3m56s per Earth day and is wrong for Venus /
-// Triton / the tidally locked Moon). Pure math: a function of (D, Y, epoch,
-// t) only. The calendar year is SNAPPED to a whole number of days round(Y/D)
-// so boundaries fall on local midnight. 12 months (first 11 get
-// round(Y/D/12) days, the 12th the remainder). A body whose year is shorter
-// than 12 days gets no year/months -- just a day count.
+// Derived day unit D is the SOLAR day, measured by the caller (system.cpp's
+// measureSolarDay) -- never 2*pi/spin_rate: sidereal slides off the sun and is
+// wrong for Venus / Triton / the tidally locked Moon. The year is snapped to
+// round(Y/D) whole days so boundaries fall on local midnight; a body with a
+// year shorter than 12 days gets just a day count.
 //
-// CIVIL (epoch_utc): the clock runs on a fixed 86400 s civil day and real
-// Gregorian dates (/4 /100 /400). The system's t=0 is the authored civil
-// epoch (the solar-system data is already 2000-01-01 00:00 UT).
+// Civil mode runs fixed 86400 s days -- never the measured solar day (Earth's
+// is 86400.101 s).
 //
-// Seasonal-drift note (write this down when it starts to look like a bug):
-// the game's year is SIDEREAL (365.256 SI d -- no precession, J2000 skybox)
-// while Gregorian is tuned to the tropical 365.2425, so seasons drift
-// ~19 min/y against calendar dates (6 h over 20 y, 1.3 d over a century).
-// `year_seconds` is the true orbital period and is the seasonal handle.
-//
-// Landmine (#201 review): Earth's mean solar day is 86400.101 s, not 86400.
-// Civil mode must NOT reuse the measured solar day as the civil day.
+// Not a bug: the game year is sidereal, Gregorian is tropical, so seasons
+// drift against calendar dates. `year_seconds` is the seasonal handle.
 
 #include <cmath>
 #include <cstdio>
@@ -38,8 +27,7 @@ struct CalTime {
     bool civil = false;  // Gregorian/UTC fields (#202)
 };
 
-// Proleptic Gregorian <-> day count (days since 1970-01-01). Howard
-// Hinnant's civil calendar algorithms; y may be negative.
+// Proleptic Gregorian <-> day count (days since 1970-01-01); y may be negative.
 inline long days_from_civil(int y, unsigned m, unsigned d) {
     y -= (m <= 2);
     const long era = (y >= 0 ? y : y - 399) / 400;
@@ -80,8 +68,7 @@ struct Calendar {
     // Clock's day unit (sim seconds). Derived: the measured solar day.
     // Civil: exactly 86400 -- NEVER the solar day (Earth's is 86400.101).
     double day_seconds = 0.0;
-    // The measured solar day (#201), for "day length" in the body panel.
-    // Equals day_seconds in derived mode.
+    // Measured solar day (#201), body panel only; == day_seconds when derived.
     double solar_day_seconds = 0.0;
     double year_seconds = 0.0;  // Y (TRUE orbital period); seasons handle
     int days_per_year = 0;      // round(Y / D); 0 = no year. Civil: 365
@@ -119,9 +106,9 @@ struct Calendar {
         return c;
     }
 
-    // Proleptic-Gregorian civil calendar (#202). `solar_day` is the measured
-    // solar day (body panel only); the clock always runs 86400 s days.
-    // `epoch_sod`: seconds of day at t=0 (from epoch_utc's THH:MM:SS).
+    // Proleptic-Gregorian civil calendar (#202). `solar_day` is body-panel
+    // only; the clock always runs 86400 s days. `epoch_sod`: seconds of day
+    // at t=0 (from epoch_utc's THH:MM:SS).
     static Calendar makeCivil(long epoch_days, double epoch_sod,
                               double Y, double solar_day) {
         Calendar c;
@@ -131,8 +118,7 @@ struct Calendar {
         c.day_seconds = 86400.0;
         c.solar_day_seconds = solar_day;
         c.year_seconds = Y;
-        // Only used to split fmt_cal_duration's "1y .."; a civil year is
-        // 365 or 366 d, 365 is the duration approximation.
+        // Only splits fmt_cal_duration's "1y .."; 365 approximates a civil year.
         c.days_per_year = 365;
         int y = 0;
         unsigned m = 1, d = 1;
@@ -147,8 +133,8 @@ struct Calendar {
         if(day_seconds <= 0.0 || t < 0.0) { return h; }
 
         if(civil) {
-            // t is measured from the civil epoch instant (epoch_sod into
-            // that date), so a non-midnight epoch_utc works.
+            // t runs from the civil epoch instant (epoch_sod into that date),
+            // so a non-midnight epoch_utc works.
             double el = epoch_sod + t;
             long day_count = (long)std::floor(el / 86400.0);
             long total = (long)std::lround((el - (double)day_count * 86400.0)
@@ -208,9 +194,7 @@ inline int cal_day_of_year(const Calendar &cal, const CalTime &ct) {
     return doy;
 }
 
-// "Year 2000   Day 12/427   08:14" -- the HUD / Transfer stamp.
-// Civil: "2000-06-21 01:38 UTC". Zero-alloc buffer-fill. Returns false when
-// there is no calendar line.
+// Zero-alloc buffer-fill; false when there is no calendar line.
 inline bool fmt_cal_time(const Calendar &cal, double t, char *buf, size_t n) {
     if(!cal.valid() || t < 0.0) { buf[0] = '\0'; return false; }
     const CalTime ct = cal.at(t);
@@ -227,8 +211,7 @@ inline bool fmt_cal_time(const Calendar &cal, double t, char *buf, size_t n) {
     return true;
 }
 
-// "Yr 2000 Day 12  08:14" -- compact stamp for event lists. Civil:
-// "2000-06-21 01:38". Same false/empty contract as fmt_cal_time.
+// Compact stamp for event lists. Same false/empty contract as fmt_cal_time.
 inline bool fmt_cal_compact(const Calendar &cal, double t, char *buf, size_t n) {
     if(!cal.valid() || t < 0.0) { buf[0] = '\0'; return false; }
     const CalTime ct = cal.at(t);
@@ -244,16 +227,15 @@ inline bool fmt_cal_compact(const Calendar &cal, double t, char *buf, size_t n) 
     return true;
 }
 
-/* Elapsed sim seconds as a home-calendar duration: "1y 2d 3h 04m", etc.
-   Returns buf. */
+/* Elapsed sim seconds as a home-calendar duration ("1y 2d 3h 04m"). Returns buf. */
 inline char *fmt_cal_duration(const Calendar &cal, double dt, char *buf, size_t n) {
     if(dt < 0.0) { dt = 0.0; }
     if(!cal.valid() || cal.day_seconds <= 0.0) {
         snprintf(buf, n, "%.0fs", dt);
         return buf;
     }
-    // Whole days, then the dial time-of-day within the day (same mapping
-    // as Calendar::at). lround can hit 86400 at the boundary -- clamp.
+    // Time-of-day maps as in Calendar::at; lround can hit 86400 at the
+    // boundary -- clamp.
     const long day_count = (long)(dt / cal.day_seconds);
     long total = (long)std::lround(std::fmod(dt, cal.day_seconds)
                                    * 86400.0 / cal.day_seconds);
@@ -268,7 +250,6 @@ inline char *fmt_cal_duration(const Calendar &cal, double dt, char *buf, size_t 
         days = (int)(day_count % cal.days_per_year);
     }
 
-    // Drop leading zero components; always show at least seconds.
     if(years > 0) {
         if(days > 0 || hh > 0) {
             snprintf(buf, n, "%dy %dd %dh %02dm", years, days, hh, mm);

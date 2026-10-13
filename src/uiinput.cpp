@@ -1,11 +1,10 @@
 // uiinput.cpp -- see uiinput.h.
 //
-// Dear ImGui's core carries the hooks its Test Engine plugs into: with
-// IMGUI_ENABLE_TEST_ENGINE defined (the Makefile defines it) every drawn item
-// reports its id, bounding box and label through IMGUI_TEST_ENGINE_ITEM_ADD
-// / _ITEM_INFO (imgui_internal.h:4092). We implement those four hook
-// functions here instead of linking the Test Engine -- that registry is what
-// makes a widget addressable by name rather than by window pixel.
+// With IMGUI_ENABLE_TEST_ENGINE defined (the Makefile defines it) imgui
+// reports every drawn item's id, bounding box and label through the
+// IMGUI_TEST_ENGINE_ITEM_* hooks. Implementing those hooks here, instead of
+// linking the Test Engine, is what makes a widget addressable by name rather
+// than by window pixel.
 
 #include "uiinput.h"
 
@@ -33,14 +32,14 @@ struct UiItem {
     std::string label;
 };
 
-// The items of the imgui pass that just finished, and of the one in flight.
-// The frame hook rotates the pair just before imgui starts the next pass.
+// The items of the imgui pass that just finished, and of the one in flight;
+// the frame hook rotates the pair before imgui starts the next pass.
 std::vector<UiItem> g_done;
 std::vector<UiItem> g_filling;
 
 // The click currently between press and release, and the item it was aimed
-// at (0 = none). imgui needs the press and the release on different frames,
-// so at most one click is ever in flight.
+// at (0 = none). imgui needs the press and release on different frames, so
+// only one is ever in flight.
 UiClick *g_press = nullptr;
 ImGuiID g_press_id = 0;
 float g_press_x = 0.0f;
@@ -49,9 +48,8 @@ float g_press_y = 0.0f;
 // Park the cursor on the frame after a release (see uiInputFrame).
 bool g_park_next = false;
 
-// A click needs a frame to press and the next to release, and the item has to
-// have been drawn before we can aim at it. Allow this much wall clock for a
-// window to open and its layout to settle before giving up.
+// Wall clock allowed for a window to open and settle before a --ui-click
+// gives up.
 const Uint32 kUiClickRetryMs = 2000;
 
 // Wrap-safe form of `now >= at + kUiClickRetryMs` for a wrapping Uint32 clock.
@@ -61,21 +59,17 @@ bool pastDeadline(Uint32 now, Uint32 at) {
 
 /* Compare a --ui-click path segment against a registered label EXACTLY.
    imgui's "##id" / "###id" disambiguators are part of the registered label
-   and --ui-list prints them, so the dump is the one source of truth for what
-   a path must name. Stripping them (as this used to) would let a path typed
-   from the visible text match, but it also makes every suffixed widget
-   unaddressable: rows registered "x##rm_a" and "x##rm_b" both collapse to
-   "x", so the click cannot pick one. The only reader of these paths is a
-   test author reading --ui-list, so exactness is what helps them -- and a
-   wrong guess fails loudly ("not found"), never on a lookalike. */
+   and --ui-list prints them, so the dump is the source of truth. Stripping
+   them would collapse every suffixed row to one unaddressable name; a wrong
+   guess then fails loudly instead of hitting a lookalike. */
 bool exactEq(std::string_view a, std::string_view b) {
     return a == b;
 }
 
 /* The items matching `path`. A qualified "Window/Label" is tried at every '/'
-   in the path, rightmost first -- both window names ("Save/Load") and labels
-   ("Flip pitch (W/S)") contain slashes, so no single split rule works. If no
-   split qualifies, the whole path is the label, in any window. */
+   in the path, rightmost first -- window names and labels both contain
+   slashes, so no single split rule works. Otherwise the whole path is the
+   label, in any window. */
 void findMatches(const std::string &path, std::vector<const UiItem *> &out) {
     out.clear();
     for(size_t slash = path.size(); slash-- > 0; ) {
@@ -101,8 +95,8 @@ const char *labelOf(ImGuiID id) {
     return nullptr;
 }
 
-// The live registry, for --ui-list: the answer to "what can I click here,
-// and what is it called?" -- which is what --sim-mouse makes guesswork of.
+// The live registry, for --ui-list: what can I click here, and what is it
+// called?
 void dumpUiItems(Uint32 now_ms) {
     printf("[uilist] loop=%.2fs items=%zu\n", now_ms / 1000.0, g_done.size());
     for(const UiItem &it : g_done) {
@@ -131,13 +125,10 @@ ImGuiID g_hook = 0;
 /* One imgui frame's worth of work: rotate the registry, serve --ui-list, and
    advance the click state machine.
 
-   This runs as a NewFramePre hook rather than from the game loop because the
-   SDL3 backend queues mouse-position events of its own in its NewFrame -- the
-   focused-but-not-hovered fallback from SDL_GetGlobalMouseState
-   (imgui_impl_sdl3.cpp:694, which is every frame when the window is
-   offscreen) and the pending-leave -FLT_MAX. Events are consumed in queue
-   order, so anything queued before that gets overwritten. NewFramePre runs
-   inside ImGui::NewFrame, ahead of UpdateInputEvents, so ours are last. */
+   A NewFramePre hook rather than the game loop because the SDL3 backend
+   queues mouse-position events of its own inside NewFrame, and events are
+   consumed in queue order -- NewFramePre runs ahead of them, so ours land
+   last. */
 void uiInputFrame(ImGuiContext *ctx, ImGuiContextHook *hook) {
     Game &g = *static_cast<Game *>(hook->UserData);
     ImGuiIO &io = ctx->IO;
@@ -155,8 +146,7 @@ void uiInputFrame(ImGuiContext *ctx, ImGuiContextHook *hook) {
 
     /* Park the cursor a frame AFTER a release, never on the release frame
        itself: ButtonBehavior only reports pressed if the item is still
-       hovered when the button comes up, so the release frame must keep the
-       cursor on the item. */
+       hovered when the button comes up. */
     if(g_park_next) {
         io.AddMousePosEvent(-FLT_MAX, -FLT_MAX);
         g_park_next = false;
@@ -164,14 +154,11 @@ void uiInputFrame(ImGuiContext *ctx, ImGuiContextHook *hook) {
 
     if(g_press != nullptr) {
         UiClick &c = *g_press;
-        /* HoveredId is the item imgui hovered during the frame we pressed
-           in: NewFrame rotates HoveredId -> HoveredIdPreviousFrame at
-           imgui.cpp:5661, which is past the NewFramePre hook (5600), so from
-           here the hook sees last frame's HoveredId and two-frames-back's
-           HoveredIdPreviousFrame. If the press frame hovered something other
-           than what we aimed at, the window moved or another widget covers
-           the point -- and imgui will activate whatever IS there, so say so
-           rather than log a clean click. */
+        /* HoveredId here is last frame's (NewFrame rotates it after this
+           hook), so it is what we aimed at on the press frame. If it is not,
+           the window moved or another widget covers the point -- and imgui
+           will activate whatever IS there, so say so rather than log a clean
+           click. */
         if(ctx->HoveredId != g_press_id) {
             const char *lab = labelOf(ctx->HoveredId);
             failClick(c, now, lab != nullptr
@@ -204,7 +191,7 @@ void uiInputFrame(ImGuiContext *ctx, ImGuiContextHook *hook) {
         }
         if(hits.size() > 1) {
             /* Distinct candidates, in draw order: repeats of the same
-               window/label pair are one problem, not forty-one. */
+               window/label pair are one problem, not many. */
             std::vector<std::string> cands;
             for(const UiItem *it : hits) {
                 const std::string pair = it->window + "/" + it->label;
@@ -226,8 +213,8 @@ void uiInputFrame(ImGuiContext *ctx, ImGuiContextHook *hook) {
             continue;
         }
         /* A --sim-mouse gesture may be holding the button; imgui filters a
-           duplicate press (imgui.cpp:1989), so pressing now would log a click
-           that never reaches imgui. Wait it out. */
+           duplicate press, so pressing now would log a click that never
+           reaches imgui. */
         if(io.MouseDown[0]) {
             if(pastDeadline(now, c.at_ms)) {
                 failClick(c, now, "blocked (the left button is already down --"
@@ -274,8 +261,8 @@ void emit_ui_input(Game &g) {
     ImGuiContext *ctx = ImGui::GetCurrentContext();
     if(ctx == nullptr) { return; }
 
-    // Armed only while work remains: the registry costs allocations per item
-    // per frame, and a finished test should not pay it to the last frame.
+    // Armed only while work remains: the registry allocates per item per
+    // frame, and a finished test should not pay it.
     bool pending = g.args.ui_list_ms >= 0;
     for(const UiClick &c : g.args.ui_clicks) {
         if(!c.done) { pending = true; break; }
@@ -291,17 +278,17 @@ void emit_ui_input(Game &g) {
     g_hook = ImGui::AddContextHook(ctx, &hook);
 }
 
-// The four symbols imgui's test-engine macros reference. All four are needed
-// to link when imgui is built with IMGUI_ENABLE_TEST_ENGINE -- including Log,
-// which the debug-log path calls (imgui.cpp:18088) even though we never log.
+// The four symbols imgui's test-engine macros reference; all four must link
+// when imgui is built with IMGUI_ENABLE_TEST_ENGINE, including Log, which we
+// never call.
 void ImGuiTestEngineHook_ItemAdd(ImGuiContext *ctx, ImGuiID id, const ImRect &bb,
                                  const ImGuiLastItemData *item_data) {
     if(ctx == nullptr || ctx->CurrentWindow == nullptr) { return; }
     ImGuiWindow *w = ctx->CurrentWindow;
-    /* Begin() registers the window itself (id == window->ID, labelled with
-       the window's own name) and its title bar. Neither is a widget, and the
-       window-root entry would shadow -- and so ambiguise -- a button that
-       shares its window's name ("Readme" in "Readme"). */
+    /* Begin() registers the window itself (id == w->ID, labelled with the
+       window's own name) and its title bar. Neither is a widget, and the
+       window-root entry would shadow -- and so ambiguise -- a button sharing
+       its window's name. */
     if(id == 0 || id == w->ID || id == w->MoveId) { return; }
     UiItem it;
     it.id = id;

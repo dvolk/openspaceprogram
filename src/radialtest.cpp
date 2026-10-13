@@ -1,7 +1,6 @@
-// radialtest.cpp -- the --radial-test spin-test ship builder.
-// Passive-tank test ships from the parts catalog (no JSON ship def).
-// Every edge goes through Vehicle::attachMode -> attachPose (the same
-// solver build_ship uses), so these layouts exercise the real attach geometry.
+// radialtest.cpp -- the --radial-test spin-test ship builder: passive-tank
+// ships from the parts catalog. Every edge goes through Vehicle::attachMode ->
+// attachPose, so the real attach geometry is tested.
 #include "radialtest.h"
 
 #include <stdexcept>
@@ -16,7 +15,6 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
                                       TerrainBody *sun,
                                       Shader *partsshader)
 {
-    /* --radial-test: minimal test ships from the parts catalog. */
     const PartDef *defBig = part_catalog.find("tank_r2.25h5");
     const PartDef *defSml = part_catalog.find("tank_r1.5h2");
     if(defBig == nullptr || defSml == nullptr) {
@@ -24,7 +22,6 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
                                  "tank_r1.5h2 missing from the parts catalog");
     }
 
-    /* orbit (no pad contact, no terrain noise) */
     const ScenarioDef *sc = scenario_by_name("rot-orbit");
 
     Vehicle *v = new Vehicle;
@@ -34,11 +31,10 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
 
     const glm::dvec3 pad_dir = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
     const glm::dmat3 pad_orient = faceAlong(pad_dir);
-    /* Start 50 m above the surface so a pad-scenario ship drops cleanly. */
+    /* 50 m up so a pad-scenario ship drops cleanly. */
     const glm::dvec3 base = pad_dir
         * ((double)home->GetTerrainHeight(pad_dir) + 50.0);
 
-    /* One Part (shared render assets + hull + mass). */
     auto makePart = [&](const PartDef *def) -> Part * {
         Mesh *mesh = get_mesh(std::string("res/") + def->mesh);
         Texture *tex = get_texture(std::string("res/") + def->texture);
@@ -52,7 +48,7 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
     };
 
     if(mode == "stacks") {
-        /* Two 2-part stacks, side by side. Pad normal = local +Z. */
+        /* Pad normal = local +Z. */
         v->name = "stacks4";
         Part *a1 = makePart(defBig);
         Part *a2 = makePart(defSml);
@@ -60,8 +56,7 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         Part *b2 = makePart(defSml);
 
         v->setRoot(a1);
-        v->attachMode(a2, 0, AttachMode::Down);    // A2 below A1
-        // B1 beside A1: surface-attach at clock 0 on A1's side (parallel axes)
+        v->attachMode(a2, 0, AttachMode::Down);
         v->attachSurface(b1, 0, glm::dvec3(defBig->radius, 0.0, 0.0),
                          glm::dvec3(1.0, 0.0, 0.0));
         v->attachMode(b2, 2, AttachMode::Up);      // B2 outward beyond B1
@@ -75,8 +70,8 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         Part *b2 = makePart(defSml);
 
         v->setRoot(a1);
-        v->attachMode(a2, 0, AttachMode::Down);   // A2 below A1
-        // B1 beside A1: surface-attach at clock 0 on A1's side (parallel axes)
+        v->attachMode(a2, 0, AttachMode::Down);
+        // B1 beside A1 at clock 0, axes parallel
         v->attachSurface(b1, 0, glm::dvec3(defBig->radius, 0.0, 0.0),
                          glm::dvec3(1.0, 0.0, 0.0));
         v->attachMode(b2, 2, AttachMode::Down);   // B2 below B1
@@ -87,17 +82,17 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         Part *b = makePart(defSml);
         v->setRoot(a);
         if(mode == "parallel") {
-            /* B's side touches A's side at +rA; both axes stay on the pad. */
+            /* Side to side at +rA; both axes stay on the pad. */
             v->attachSurface(b, 0, glm::dvec3(defBig->radius, 0.0, 0.0),
                              glm::dvec3(1.0, 0.0, 0.0));
         }
         else {
-            /* attachDown stacks B on A's -Z side, face to face. */
+            /* B on A's -Z side, face to face. */
             v->attachDown(b);
         }
     }
-    /* These hand-built ships bypass build_ship(), which normally resolves
-       the attach poses from the catalog's node data. */
+    /* Hand-built: bypasses build_ship(), which resolves the attach poses from
+       the catalog's node data. */
     v->controller = v->parts[0];
     v->init();
     v->placeShip(base, pad_orient);

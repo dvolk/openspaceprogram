@@ -1,11 +1,11 @@
 // buildings.h -- building types (catalog) + world instances (system JSON).
 //
-// Catalog (res/data/buildings.json) is global, like parts.json. Instances
-// live in the system JSON under "world_buildings" (or in the fragments its
-// "world_buildings_files" array names) and are placed onto TerrainBody::pads
-// at system load. lat/lon are DEGREES in the JSON and convert through
-// equirectDir (radians). height_m is the building ORIGIN above the terrain
-// surface along local up; heading_deg spins about that up.
+// Catalog (res/data/buildings.json) is global; instances live in the system
+// JSON under "world_buildings" (or the fragments its "world_buildings_files"
+// array names) and are placed onto TerrainBody::pads at system load. lat/lon
+// are DEGREES in the JSON and convert through equirectDir (radians). height_m
+// is the building ORIGIN above the terrain surface along local up; heading_deg
+// spins about that up.
 #pragma once
 
 #include <string>
@@ -19,8 +19,8 @@ class Shader;
 class TerrainBody;
 class StaticBuilding;
 
-// One building TYPE (catalog entry; world instances reference it by name).
-// Mesh paths are res-relative ("meshes/space_port.obj"), like PartDef.
+// One building TYPE (catalog entry; instances reference it by name).
+// Mesh paths are res-relative ("meshes/space_port.obj").
 struct BuildingDef {
     std::string name;
     std::string display_name; // empty -> fall back to name
@@ -65,18 +65,16 @@ std::vector<WorldBuilding> parse_world_buildings(const nlohmann::json &doc,
                                                  const std::string &path);
 
 /* The inline array PLUS the fragments named by the root
-   "world_buildings_files" array (optional; empty if absent). A fragment is a
-   JSON file with its own "world_buildings" array -- the same spelling, so it
-   is a drop-in piece of a system (res/data/earth_launch_sites.json) -- and a
-   "res/..." name resolves through resdir like any other asset. Fragments may
-   not name more fragments.
+   "world_buildings_files" array. A fragment is a JSON file with its own
+   "world_buildings" array -- the same spelling, so it is a drop-in piece of
+   a system -- and "res/..." names resolve through resdir. Fragments may not
+   nest.
 
    Fragment entries come FIRST, then the inline array: find_launch_site's
    default site is the first VAB_LAUNCH_PAD in the merged list, so a system's
    inline pads can never pre-empt a site file's chosen default.
 
-   Throws on a bad entry, an unreadable fragment, or an id used twice (in one
-   array or across two). `path` is the system JSON, for error messages. */
+   Throws on a bad entry, an unreadable fragment, or a duplicate id. */
 std::vector<WorldBuilding> parse_world_buildings_all(
     const nlohmann::json &doc, const std::string &path);
 
@@ -86,13 +84,12 @@ std::vector<WorldBuilding> parse_world_buildings_all(
 glm::dmat3 buildingOrient(const glm::dvec3 &up, double heading_rad);
 
 /* Instantiate every world building on its body (TerrainBody::pads).
-   `sys.world_buildings` must already be parsed. Needs live physics
-   (create_physics) and a part shader for the Body. */
+   `sys.world_buildings` must already be parsed; needs live physics
+   (create_physics) and a part shader. */
 void place_world_buildings(System &sys, const BuildingsCatalog &cat,
                            Shader *shader, TerrainBody *sun);
 
 // Find a launch site on `body`: `siteId` if non-empty, else the first pad
 // with flag "VAB_LAUNCH_PAD". `preferPolar` prefers a "POLAR_PAD" site.
-// Returns nullptr when nothing matches.
 StaticBuilding *find_launch_site(TerrainBody *body, const std::string &siteId,
                                  bool preferPolar);

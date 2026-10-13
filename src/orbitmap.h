@@ -23,58 +23,35 @@ struct OrbitMap {
     // tilts the picture instead of rotating it (#173, #185), and a normal
     // approaching the rail normal keeps a stable basis instead of handing over
     // to the near-polar branch below. Zero length means derive it from the node
-    // line; no mapPlaneBasis slot does that any more, so the derived and
-    // canonical paths below only serve the no-ship default and the tests.
-    // A reference direction that lies ALONG the normal cannot define an east at
-    // all: its in-plane part is zero and normalizing it would divide by zero.
-    // That is the only case the fallback below exists for, so the floor is a
-    // NaN guard, not a conditioning choice.
-    // It used to be 0.44 (~26 deg), on the theory that a short in-plane part
-    // "swings on rounding noise" -- Uranus's 97.8 deg tilt puts its pole 8 deg
-    // from the system +X, leaving |t| = 0.15. That theory does not survive
-    // doubles: the pole is reproducible to ~1e-16, so 1e-16/0.15 is 7e-16 rad of
-    // swing, invisible at any zoom. What the floor really did was swap to the
-    // node line 26 deg EARLY, and the two bases sit anywhere from 0 to 180 deg
-    // apart across that swap depending on where the cone is crossed -- so an
-    // orbit whose h merely passed through the cone flipped for no reason
-    // (measured: tmp/t185polar.cpp, 169.8 deg for a sweep 5 deg off polar; 1.1
-    // deg now).
-    // What no choice of screen-x escapes is the singularity itself: e1 has to
-    // flip sign as h crosses the reference axis, so every rule has one singular
-    // great circle. Pinning to +X puts it at h ~ +-X; the node line put it at
-    // h ~ +-Y, which is where every near-equatorial orbit lives (#185).
+    // line (only the no-ship default and the tests do that).
+    // A reference direction ALONG the normal cannot define an east at all: its
+    // in-plane part is zero, so the floor below is a NaN guard, not a
+    // conditioning choice.
+    // No choice of screen-x escapes the singularity itself -- e1 has to flip
+    // sign as the normal crosses the reference axis -- but pinning to +X keeps
+    // it off the near-equatorial orbits the node line's circle crosses (#185).
     // Handedness, the same on all three paths below: e2 = e1 x n, so e1 x e2
     // = -n and a prograde body (which moves along n x r_hat) sits at +e1
     // moving along -e2 -- counter-clockwise on screen, whichever plane is
-    // showing. Pinned by test_orbitmap; #181 was the derived path breaking it,
-    // and the canonical branch breaks it for any normal below the rail plane
-    // (a retrograde spin, or a retrograde orbit) unless e2 follows n's sign.
+    // showing. Pinned by test_orbitmap; #181 broke it.
     void setPlane(const glm::dvec3 &normal,
                   const glm::dvec3 &x_axis = glm::dvec3(0.0)) {
         n = glm::normalize(normal);
         const glm::dvec3 t = x_axis - glm::dot(x_axis, n) * n;  // in-plane part
-        // 1e-9 holds the direction error under ~1e-7 rad even with ~1e-16 of
-        // per-frame jitter in the normal, and leaves the exactly-antiparallel
-        // case (t == 0, where normalize would return NaN) to the fallback.
+        // t == 0 when x_axis is collinear with n (including the zero default),
+        // where normalize would return NaN; those go to the branches below.
         if(glm::length(t) > 1e-9) {
             e1 = glm::normalize(t);
             e2 = glm::cross(e1, n);
             return;
         }
         if(glm::abs(glm::dot(n, glm::dvec3(0.0, 1.0, 0.0))) > 0.99) {
-            // Only reachable with no usable x_axis. Pinning all three slots
-            // (#185 follow-up) left that to the no-ship default, whose normal
-            // is exactly +-Y, so the 8.13 deg band around it has no game caller
-            // any more -- the branch and the derived one below stay because
-            // setPlane's contract still has to answer a zero x_axis, and the
-            // tests hold that answer. The derived basis degenerates here --
-            // |Y x n| tends to 0 -- so this branch keeps a fixed screen basis,
-            // with e2 following the sign of n so e1 x e2 = -n still holds:
-            // e1 x n = X x (0,+-1,0) = +-Z. The sign matters for any normal
-            // below the rail plane (a retrograde rail, a retrograde orbit);
-            // #181 found the Orbital slot hitting this case on Venus, and #185
-            // moved that slot onto the pinned path above, which agrees with this
-            // one to 0.1 deg rather than 90.
+            // Only reachable with no usable x_axis. The derived basis below
+            // degenerates here (|Y x n| tends to 0), so keep a fixed screen
+            // basis, with e2 following the sign of n so that e1 x e2 = -n
+            // still holds: e1 x n = X x (0,+-1,0) = +-Z. That sign matters for
+            // any normal below the rail plane (a retrograde rail, or a
+            // retrograde orbit) -- #181.
             // Safe to branch on the sign: a normal cannot get from +Y to -Y
             // without passing |n.y| < 0.99, which takes the derived branch, so
             // this never mirrors a picture mid-slew.
@@ -83,9 +60,7 @@ struct OrbitMap {
                            : glm::dvec3(0.0, 0.0, 1.0);
         } else {
             // Derived basis: the node line between the plane and the rail
-            // plane as screen-x. Same e2 = e1 x n as the two paths above, so
-            // every view draws prograde the same way (#181 -- this used
-            // e2 = n x e1, which mirrored the sweep against Equatorial).
+            // plane as screen-x. Same e2 = e1 x n as the paths above (#181).
             e1 = glm::normalize(glm::cross(glm::dvec3(0.0, 1.0, 0.0), n));
             e2 = glm::cross(e1, n);
         }
@@ -102,19 +77,18 @@ struct OrbitMap {
     }
 
     // `start` rotates the point order so a caller can begin/end at a marker
-    // between two samples (the body-on-orbit chord fix).
+    // between two samples.
     void drawOrbit(ImDrawList *dl, const std::vector<glm::dvec3> &pts,
                    ImU32 col, float thickness = 1.0f, bool closed = true,
                    size_t start = 0) const {
         const size_t n = pts.size();
         if(n < 2) { return; }
-        // Reused: with hundreds of orbits per frame the per-call vector was
+        // Reused: hundreds of orbits per frame made the per-call vector
         // measurable allocator traffic.
         thread_local std::vector<ImVec2> sp;
         sp.clear();
         sp.reserve(n);
         for(size_t j = 0; j < n; j++) { sp.push_back(px(pts[(start + j) % n])); }
-        // imgui 1.92.8+: closed is ImDrawFlags_Closed, not a bool param.
         const ImDrawFlags flags =
             closed ? ImDrawFlags_Closed : ImDrawFlags_None;
         dl->AddPolyline(sp.data(), (int)sp.size(), col, thickness, flags);
@@ -164,7 +138,7 @@ struct OrbitMap {
 };
 
 // Near-black or near-white that contrasts with the window background
-// (Rec. 709 luminance, 0.5 threshold). Colored accents are left fixed.
+// (Rec. 709 luminance, 0.5 threshold).
 inline ImU32 contrastingColor(const ImVec4 &bg,
                               const ImVec4 &dark  = ImVec4(0.08f, 0.08f, 0.08f, 1.0f),
                               const ImVec4 &light = ImVec4(0.95f, 0.95f, 0.95f, 1.0f)) {

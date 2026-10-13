@@ -20,8 +20,7 @@ Skybox::~Skybox() {
 
 // One face as an RGB24 surface (the caller destroys it), or null with the
 // reason printed. The cubemap upload assumes tightly packed RGB24 rows and
-// same-size square faces, so normalize and check rather than silently skew
-// or sample garbage.
+// same-size square faces, so normalize and check rather than sample garbage.
 static SDL_Surface *loadFaceRgb24(const std::string &face, int expect_w) {
     SDL_Surface *loaded = IMG_Load(resdir::path(face).c_str());
     if(!loaded) {
@@ -73,8 +72,8 @@ static GLuint loadCubemap(const std::vector<std::string> &faces)
     }
     if(!ok) {
         // The face names live in a hand-editable system JSON, so every
-        // failure here is data: report and let the caller keep the sky it
-        // has rather than aborting the run over a picture.
+        // failure here is data: report and keep the current sky rather than
+        // aborting the run over a picture.
         printf("skybox: keeping the current sky\n");
         fflush(stdout);
         glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
@@ -101,7 +100,6 @@ static GLuint loadCubemap(const std::vector<std::string> &faces)
 }
 
 GLfloat skyboxVertices[] = {
-    // Positions
     -1.0f,  1.0f, -1.0f,
     -1.0f, -1.0f, -1.0f,
     1.0f, -1.0f, -1.0f,
@@ -146,7 +144,6 @@ GLfloat skyboxVertices[] = {
 };
 
 void Skybox::init(void) {
-    // Setup skybox VAO
     glGenVertexArrays(1, &vao);
     glGenBuffers(1, &vbo);
     glBindVertexArray(vao);
@@ -158,8 +155,8 @@ void Skybox::init(void) {
 }
 
 void Skybox::load(const std::vector<std::string> &faces) {
-    // The system loader validates the count (system.cpp); the assert is the
-    // invariant twin for a caller that builds `faces` by hand.
+    // system.cpp validates the count; this is the twin for a caller that
+    // builds `faces` by hand.
     assert(faces.size() == 6 && "a cubemap needs six faces");
     GLuint tex = loadCubemap(faces);
     if(tex == 0) { return; }   // a face failed: keep the sky we already have
@@ -189,7 +186,7 @@ void Skybox::Draw(const Camera * camera,
     glDrawArrays(GL_TRIANGLES, 0, 36);
     glBindVertexArray(0);
     // Hygiene, not a fix: each texture TARGET has its own binding slot per
-    // unit, so a leftover cube map on unit 0 cannot disturb the 2D samplers
-    // that use it. It stops being harmless when a second samplerCube appears.
+    // unit, so a leftover cube map cannot disturb the 2D samplers. Not
+    // harmless once a second samplerCube appears.
     glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 }

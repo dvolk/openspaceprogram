@@ -12,18 +12,15 @@ class Shader;
 std::string LoadShader(const std::string& fileName);
 
 /* Shared file-asset registry: lookup-or-load, ONE program per file. The
-   registry owns the Shader. attrib/uniform registration is part of the load;
-   every caller of one file must pass the same lists. */
+   registry owns the Shader. Registration happens at load, so every caller of
+   one file must pass the same lists. */
 Shader *get_shader(const std::string &path,
                    const std::vector<const char *> &attribs,
                    const std::vector<const char *> &uniforms);
 
-/* The six world shaders, registered ONCE. The boot (main.cpp) and
-   Game::switchSystem (game.cpp) both need this exact set, and get_shader's
-   first registration wins -- a second caller with a different attrib or
-   uniform list only prints an ERROR and keeps the first program, so the
-   positional indices silently disagree. The lists used to be hand-copied
-   into both call sites; this is their one home. */
+/* The six world shaders, registered ONCE. get_shader's first registration
+   wins: a second caller with different lists only prints an ERROR and keeps
+   the first program, so the positional indices silently disagree. */
 struct WorldShaders {
     Shader *terrain;
     Shader *sun;

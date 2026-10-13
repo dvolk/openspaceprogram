@@ -10,7 +10,7 @@
 struct Game;
 
 /* Bulk-op role. Transitions close nothing; a TAB-hide does not survive a
-   scene entry. Nav code closes its own menu before transitioning.
+   scene entry -- nav code closes its own menu before transitioning.
 
    Root        the scene's identity; forced open every frame, excluded from
                TAB and the panel. closable alone does NOT give this.
@@ -51,21 +51,19 @@ struct WinDef {
 
 extern const WinDef kWins[W_Count];
 
-// The windows one scene owns. One WinDef per window game-wide.
+// The windows one scene owns.
 struct WinSet { const Win *ids; size_t n; };
 
 extern const WinSet kFlightWins, kTitleWins, kVabWins, kSpaceCenterWins,
     kTrackingWins, kResearchWins;
 
-// Does `w` belong to the live scene's window set?
 bool winInScene(const Game &g, Win w);
 
 /* Is `w` suppressed by TAB? Everything except a scene's Root window -- a
    title screen whose only UI can be hidden is a dead end. Open state of a
-   hidden window is untouched. Defined in uiwins.cpp (Game is incomplete here). */
+   hidden window is untouched. */
 bool hiddenByTab(const Game &g, Win w);
 
-// Draw `w` under its own name/options, iff the live scene owns it and it is open.
 template<class F>
 inline bool drawWin(const Game &g, Win w, F &&body) {
     if(!winInScene(g, w) || hiddenByTab(g, w)) { return false; }

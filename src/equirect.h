@@ -6,15 +6,14 @@
 // lon +pi/2 = -Z (east). Inverse is lon = atan2(-z, x), unwrapped to
 // [0, 2pi). Forward is (cos lat * cos lon, sin lat, -cos lat * sin lon).
 // Surface lon 0 is the body's prime meridian (rot-frame +X = WGCCRE /
-// spin_phase0), so the map, the HUD readout, and rail longitudes all
-// share one azimuth.
+// spin_phase0), so map, HUD readout and rail longitudes share one azimuth.
 //
 // Map layout (surfmap pixels, heightmaps, cloud coverage): lon 0 at the
 // LEFT edge (column 0), north up (row 0). Heightmap / surfmap grids put
 // the poles ON the first/last row (v scaled by h-1); a tileable bake
 // (cloud coverage) instead samples pixel CENTRES and may use v in [0,1]
-// scaled by H. Both use the same direction formulas -- only the grid
-// parametrisation differs.
+// scaled by H. Same direction formulas -- only the grid parametrisation
+// differs.
 //
 // Everything that maps a surface direction to a map column (or back)
 // MUST go through these. No local atan2 / sin/cos lon formulas.

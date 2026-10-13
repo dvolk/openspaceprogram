@@ -20,21 +20,15 @@
 
 PhysicsEngine *physics;
 
-/* Collision margins (m). A convex hull and whatever it rests on each carry a
-   margin, and the two SUM to the visible gap: a ship on raw terrain floats
-   hull + terrain above the mesh, a ship on a space pad floats hull + hull
-   (a pad is a static convex hull, buildings.cpp). Anything that places a
-   vessel on a floor must read these rather than bake in a constant -- see
-   build_ship's lift and Kerbal::restAlt.
-
-   The margin also reaches the mass properties: a convex hull inherits a BOX
-   inertia over the AABB inflated by the margin, and Bullet's
-   btPolyhedralConvexShape::calculateLocalInertia adds the margin a SECOND
-   time on top of the already-inflated AABB. Not a free parameter. */
+/* Collision margins (m). A hull and what it rests on each carry one, and the two
+   SUM to the visible gap -- anything placing a vessel on a floor must read these,
+   not bake a constant (build_ship's lift, Kerbal::restAlt). The margin also
+   reaches mass properties: a convex hull inherits a BOX inertia over the
+   margin-inflated AABB, and calculateLocalInertia adds the margin a SECOND time. */
 static double envMargin(const char *name, double fallback) {
     const char *e = getenv(name);
-    // A negative margin would invert the shape's AABB; the JSON paths reject
-    // it, so the env knobs reject it too.
+    // A negative margin inverts the shape's AABB; the JSON paths reject it, so
+    // the env knobs reject it too.
     if(e && e[0]) { return std::max(0.0, strtod(e, NULL)); }
     return fallback;
 }
@@ -57,9 +51,9 @@ public:
     std::vector<float> lineBuffer;
 
     /* Line vertices are stored RELATIVE to this, subtracted in double in
-       drawLine(). Bullet hands drawLine absolute frame coordinates, and the
-       buffer is float32, so the subtraction must happen BEFORE the
-       narrowing (float32 at 1 AU is ~18 km quantum). */
+       drawLine(): Bullet hands drawLine absolute coordinates and the buffer is
+       float32, so the subtraction must happen BEFORE the narrowing (float32 at
+       1 AU is an ~18 km quantum). */
     glm::dvec3 renderOrigin = glm::dvec3(0.0);
 
     void init();
@@ -88,9 +82,8 @@ void GLDebugDrawer::Draw(const Camera * camera)
 
     lineshader->Bind();
     check_gl_error();
-    // the vertices are already render-frame relative (drawLine subtracts
-    // renderOrigin in double) and the view is built in the render frame, so
-    // no origin shift belongs in this matrix
+    // Vertices are already render-frame relative and the view is built in the
+    // render frame: no origin shift belongs in this matrix.
     lineshader->setUniform_mat4(0, projection * view);
     check_gl_error();
     glBindVertexArray(m_vao);
@@ -125,7 +118,6 @@ void GLDebugDrawer::init() {
 }
 
 void GLDebugDrawer::drawLine(const btVector3& from, const btVector3& to, const btVector3& color) {
-    // Subtract in double, THEN narrow to float32 (see renderOrigin).
     const glm::dvec3 a(from.getX(), from.getY(), from.getZ());
     const glm::dvec3 b(to.getX(), to.getY(), to.getZ());
     const glm::vec3 ra(a - renderOrigin);
@@ -155,8 +147,7 @@ void PhysicsEngine::Draw(const Camera * camera) {
 }
 
 PhysicsEngine::PhysicsEngine() {
-    // %zu: size_t is unsigned long on linux but unsigned long long on
-    // windows, so %lu only ever matched one platform.
+    // %zu: size_t is unsigned long on linux, unsigned long long on windows.
     printf("sizeof(btScalar): %zu\n", sizeof(btScalar));
     assert(sizeof(btScalar) == 8);
 
@@ -184,9 +175,8 @@ PhysicsEngine::~PhysicsEngine() {
 }
 
 void PhysicsEngine::tick(float timeStep) {
-    // Integrate a single substep. The caller is responsible for re-applying
-    // the forces before EVERY call, because stepSimulation clears
-    // accumulated forces on exit.
+    // One substep. The caller must re-apply the forces before EVERY call:
+    // stepSimulation clears accumulated forces on exit.
     dynamicsWorld->stepSimulation(timeStep, 1, timeStep);
 }
 
@@ -204,10 +194,10 @@ void removeTerrainCollision(btRigidBody *b) {
 
 void PhysicsEngine::RemoveTerrainCollision(btRigidBody *b) {
     dynamicsWorld->removeRigidBody(b);
-    // Bullet frees NONE of these: ~btRigidBody is a no-op, and neither
-    // ~btBvhTriangleMeshShape nor its base releases the striding interface.
-    // Free interface -> shape -> motion state; ~GeoPatch deletes the patch's
-    // mesh only after this, so the pointers stay valid until they die.
+    // Bullet frees NONE of these (~btRigidBody is a no-op, and neither
+    // btBvhTriangleMeshShape nor its base releases the striding interface).
+    // Free interface -> shape -> motion state; ~GeoPatch frees the mesh after
+    // this, so the pointers stay valid.
     btTriangleMeshShape *t =
         static_cast<btTriangleMeshShape *>(b->getCollisionShape());
     delete t->getMeshInterface();
@@ -219,13 +209,13 @@ btRigidBody *PhysicsEngine::AddTerrainCollision(Mesh *m,
                                                 const glm::dvec3 &anchor) {
     btTransform startTransform;
     startTransform.setIdentity();
-    // The patch mesh is baked relative to its anchor (terragen.h GridGeom);
+    // The patch mesh is baked relative to its anchor (terragen.h GridGeom):
     // placing the body there puts the triangles back in body-frame coords.
     startTransform.setOrigin(btVector3(anchor.x, anchor.y, anchor.z));
 
-    // Terrain-only triangles: the skirt tail (numInnerIndices) is a
-    // render-only crack filler UNDER the surface -- in the BVH it would be a
-    // hidden two-sided collision slab. numInnerIndices() == 0 means no skirt.
+    // Terrain-only triangles: the skirt tail (numInnerIndices) is render-only
+    // crack filler UNDER the surface -- in the BVH it would be a hidden
+    // two-sided collision slab. 0 means no skirt.
     const unsigned int inner = m->numInnerIndices();
     const unsigned int num_tris = (inner != 0) ? inner / 3
                                                : m->num_indices / 3;
@@ -289,8 +279,7 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
     dynamicsWorld->addRigidBody(b);
 }
 
-/* The convex hull of the body's mesh, stored on the Body (which owns it).
-   Shared by RegisterObject and create_part_body. */
+/* The convex hull of the body's mesh, stored on the Body (which owns it). */
 void PhysicsEngine::BuildHull(Body *body) {
     Mesh *m = body->mesh;
 
@@ -301,12 +290,12 @@ void PhysicsEngine::BuildHull(Body *body) {
        anything that moves must stay convex. */
     btConvexHullShape *hull = new btConvexHullShape(m->vs, (int)m->num_vertices,
                                                     3 * sizeof(double));
-    // Reduce to the extreme vertices only: the hull is geometrically
-    // identical, but projectedArea sorts these every substep.
+    // Reduce to extreme vertices: geometrically identical, and projectedArea
+    // sorts these every substep.
     hull->optimizeConvexHull();
 
-    /* the body carries the part's resolved margin (ship def > catalog,
-       see resolveHullMargin); -1 when neither sets one */
+    /* The body carries the part's resolved margin (ship def > catalog, see
+       resolveHullMargin); -1 when neither sets one. */
     const double margin = effectiveHullMargin(body);
     hull->setMargin(margin);
     body->shape = hull;
@@ -316,8 +305,7 @@ void BuildPartHull(Body *body) {
     physics->BuildHull(body);
 }
 
-/* Body's Bullet-side lifecycle, out of body.h so that header can stay
-   Bullet-include-free. */
+/* Body's Bullet-side lifecycle, out of body.h so that header stays Bullet-free. */
 Body::~Body() {
     if(btBody != nullptr) {
         // Bullet never frees the body's motion state (~btRigidBody is
@@ -337,9 +325,8 @@ void Body::UpdateModelMatrix() {
 
 void captureHullVerts(Body *body) {
     /* The collision hull's vertices (part-local frame) for the projected-area
-       drag (drag.h projectedArea). Read from body->shape -- the SAME
-       btConvexHullShape the collision uses -- so the drag silhouette matches
-       the collision shape by construction, even for a non-convex mesh. */
+       drag (drag.h projectedArea). Read from body->shape -- the SAME shape the
+       collision uses -- so the drag silhouette matches it by construction. */
     if(const btConvexHullShape *hull =
            static_cast<const btConvexHullShape *>(body->shape)) {
         const int n = hull->getNumVertices();
@@ -407,9 +394,9 @@ void ApplyTorque(Body *body, glm::dvec3 torque) {
     getRigidBody(body)->applyTorque(btVector3(torque.x, torque.y, torque.z));
 }
 
-/* The shape's inertia diagonal at the Body's current mass. Read from the
-   SHAPE, not from a rigid body's stored props: a ship part has no rigid body.
-   The per-kilogram figure is cached on the Body (see Body::inertiaPerKg). */
+/* The shape's inertia diagonal at the Body's current mass. Read from the SHAPE,
+   not a rigid body's stored props: a ship part has no rigid body. The
+   per-kilogram figure is cached on the Body (Body::inertiaPerKg). */
 glm::dvec3 getInertiaDiag(Body *body) {
     if(body->mass == 0.0 || body->shape == nullptr) {
         return glm::dvec3(1.0, 1.0, 1.0);   // RegisterObject's placeholder
@@ -439,9 +426,9 @@ glm::dvec3 GetAngVelocity(Body *b) {
 }
 
 glm::dmat3 GetOrient(Body *b) {
-    // Read the orientation through a quaternion. Bullet's basis matrix is
-    // stored row-major (m_el[i] = row i) while a glm::dmat3 is column-major,
-    // so a direct element copy silently transposed the orientation.
+    // Through a quaternion: Bullet's basis matrix is row-major (m_el[i] = row i)
+    // and glm::dmat3 is column-major, so a direct element copy silently
+    // transposed the orientation.
     btQuaternion q;
     getRigidBody(b)->getCenterOfMassTransform().getBasis().getRotation(q);
     // GLM's 4-scalar quaternion constructor is (w, x, y, z) -- w FIRST.
@@ -466,14 +453,13 @@ void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot)
 
     t.setOrigin(btVector3(pos.x, pos.y, pos.z));
 
-    // Write the orientation through a quaternion.
     glm::dquat gq = glm::quat_cast(rot);
     // Bullet's quaternion constructor is (x, y, z, w); GLM components are by name.
     t.setRotation(btQuaternion(gq.x, gq.y, gq.z, gq.w));
 
-    // proceedToTransform is ONLY setCenterOfMassTransform (btRigidBody.cpp
-    // 221-224): it teleports the pose and leaves BOTH velocities alone.
-    // Callers that want them cleared must do it themselves.
+    // proceedToTransform is ONLY setCenterOfMassTransform: it teleports the pose
+    // and leaves BOTH velocities alone. Callers wanting them cleared must do it
+    // themselves.
     getRigidBody(b)->proceedToTransform(t);
 }
 

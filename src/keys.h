@@ -16,7 +16,7 @@
 // side. SDL_KMOD_SHIFT is L|R -- a value no single press produces.
 static const Uint16 KMOD_RELEVANT = SDL_KMOD_SHIFT | SDL_KMOD_CTRL | SDL_KMOD_ALT;
 
-// One rebindable control. Grouped for the UI. SLOT_COUNT is the array bound.
+// One rebindable control. SLOT_COUNT is the array bound.
 enum class Slot {
     // --- Game: one-shot actions (events.cpp, SDL_KEYDOWN edges) ----------
     WarpUp,        // '.'  warp one step up (10x)
@@ -26,69 +26,68 @@ enum class Slot {
     ToggleCamMode, // 'c'  ship: orbit <-> first-person; kerbal: orbit <-> free
     ToggleFreeCam, // 'LShift+c' free-cam on/off
     CycleTarget,   // 'g'  orbit mode: cycle the target body/ship
-    ToggleWindows, // TAB  toggle the info windows
-    DebugInfo,     // F1   toggle the Game Debug Info window
-    Telemetry,     // F2   toggle the TELEMETRY plots
-    NextShip,      // F6   advance to the next selectable ship
+    ToggleWindows, // TAB  the info windows
+    DebugInfo,     // F1   the Game Debug Info window
+    Telemetry,     // F2   the TELEMETRY plots
+    NextShip,      // F6   next selectable ship
     ToggleEva,     // 'v'  EVA out of the ship / back in
     Space,         // SPACE stage (ship) / jump (EVA)
     Undock,        // 'u'  split the most recent docked seam (active ship)
     Screenshot,    // F12
-    Quicksave,     // F5   save the fleet to the next quicksave-NN pool slot
-    Quickload,     // F9   load the newest quicksave of the running game
-    Porkchop,      // 'p'  compute the porkchop plot
-    SurfaceMap,    // 'm'  compute the surface map
-    Wireframe,     // F11  toggle wireframe
+    Quicksave,     // F5   fleet -> next quicksave-NN pool slot
+    Quickload,     // F9   newest quicksave of the running game
+    Porkchop,      // 'p'  the porkchop plot
+    SurfaceMap,    // 'm'  the surface map
+    Wireframe,     // F11  wireframe
     ResetWindows,  // F10  reset the window layout
-    Menu,          // ESC  toggle the main menu
-    GoSpaceCenter, // '1'  jump to the Space Center hub (the in-game menu)
-    GoFlight,      // '2'  jump to the flight (the cockpit)
-    GoTracking,    // '3'  jump to the Tracking Station
-    GoVab,         // '4'  jump to the VAB (the editor)
+    Menu,          // ESC  the main menu
+    GoSpaceCenter, // '1'  Space Center hub
+    GoFlight,      // '2'  flight (the cockpit)
+    GoTracking,    // '3'  Tracking Station
+    GoVab,         // '4'  VAB (the editor)
     // --- Flight: held commands while piloting (tick.cpp) -------------------
-    PitchUp,       // 'w'
-    PitchDown,     // 's'
-    YawLeft,       // 'a'
-    YawRight,      // 'd'
-    RollLeft,      // 'q'
-    RollRight,     // 'e'
-    Thrust,        // 't'
-    ThrustLatch,   // 'LShift+t' latch thrust to fire (toggle; a plain 't' release)
-    KillRot,       // 'x'
-    ThrottleUp,    // 'r'
-    ThrottleDown,  // 'f'
+    PitchUp,
+    PitchDown,
+    YawLeft,
+    YawRight,
+    RollLeft,
+    RollRight,
+    Thrust,
+    ThrustLatch,   // latch thrust to fire (toggle; a plain thrust release)
+    KillRot,
+    ThrottleUp,
+    ThrottleDown,
     // One-key attitude-to-velocity (the Autopilot window's toggles, bound).
-    SlewPrograde,  // 'z'  hold the nose along the velocity vector
-    SlewRetrograde,// 'b'  hold the nose against the velocity vector
+    SlewPrograde,  // hold the nose along the velocity vector
+    SlewRetrograde,// hold the nose against the velocity vector
     // RCS translation (ship-relative):
-    RcsForward,    // 'n'  along the ship's nose
-    RcsBack,       // 'h'  astern
-    RcsUp,         // 'i'  ship up
-    RcsDown,       // 'k'  ship down
-    RcsLeft,       // 'j'  ship left
-    RcsRight,      // 'l'  ship right
+    RcsForward,    // along the ship's nose
+    RcsBack,       // astern
+    RcsUp,         // ship up
+    RcsDown,       // ship down
+    RcsLeft,       // ship left
+    RcsRight,      // ship right
     // --- Camera: held commands in free mode (tick.cpp) -------------------
-    CamForward,    // 'w'
-    CamBack,       // 's'
-    CamStrafeLeft, // 'a'
-    CamStrafeRight,// 'd'
-    CamRollLeft,   // 'q'
-    CamRollRight,  // 'e'
-    CamUp,         // 'r'
-    CamDown,       // 'f'
+    CamForward,
+    CamBack,
+    CamStrafeLeft,
+    CamStrafeRight,
+    CamRollLeft,
+    CamRollRight,
+    CamUp,
+    CamDown,
     // --- Eva: held commands on the kerbal (eva.cpp) ----------------------
-    EvaForward,    // 'w'
-    EvaBack,       // 's'
-    EvaLeft,       // 'a'
-    EvaRight,      // 'd'
-    EvaUp,         // 'r'
-    EvaDown,       // 'f'
-    EvaYawLeft,    // 'q'
-    EvaYawRight,   // 'e'
+    EvaForward,
+    EvaBack,
+    EvaLeft,
+    EvaRight,
+    EvaUp,
+    EvaDown,
+    EvaYawLeft,
+    EvaYawRight,
     SLOT_COUNT
 };
 
-// One key binding: scancode + the modifiers that must be exactly present.
 struct KeyBind {
     SDL_Scancode sc;
     Uint16 mods;   // masked to KMOD_RELEVANT; 0 = plain
@@ -101,7 +100,6 @@ struct KeyBindings {
     void resetDefaults();
 };
 
-// --- lookup: exact-modifier match ------------------------------------------
 bool bindingMatches(const KeyBind &b, SDL_Scancode sc, Uint16 mods);
 
 // Edge path (events.cpp): did THIS press fire slot s?
@@ -110,10 +108,10 @@ bool slotFired(Slot s, SDL_Scancode sc, Uint16 mods, const KeyBindings &kb);
 // Held path (tick.cpp / eva.cpp): is slot s currently armed?
 bool slotHeld(Slot s, const bool *keyState, Uint16 mods, const KeyBindings &kb);
 
-// --sim-press: a synthetic key has no modifier state, so only plain bindings match.
+// A synthetic key (--sim-press) has no modifier state: only plain bindings match.
 bool slotSimKey(Slot s, SDL_Scancode sc, const KeyBindings &kb);
 
-// --- naming (stable identifiers for the UI + settings.json) ----------------
+// Stable identifiers for the UI + settings.json.
 const char *slotName(Slot s);
 Slot        slotFromName(const char *name);   // SLOT_COUNT if unknown
 const char *slotLabel(Slot s);

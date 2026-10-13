@@ -52,15 +52,13 @@ void surfmapCompute(Game &g) {
     const bool baked = g.surfmap_shade && sunDirRot(body, sun, sun_dir);
 
     // Snapshot terrain params and hand the sweep to the worker. The worker
-    // colours from THIS snapshot (never the live body: surface.max_height
-    // is applied LATER by AttachRoot on the main thread -- a live per-pixel
-    // read would race that write).
+    // colours from THIS snapshot: surface.max_height is applied LATER by
+    // AttachRoot on the main thread, so a live per-pixel read would race it.
     const TerrainParams tp = body->params();
     const bool ocean = g.surfmap_sea;     // the "Ocean" box (per-pixel below)
-    /* What the window's overlay marks: launch sites on THIS body. Counted
-       here because the worker never touches game state, and logged so e2e
-       can pin the marker filter -- a mistyped flag name draws no sites at
-       all and still compiles clean. */
+    /* Launch sites the window's overlay marks. Counted here because the worker
+       never touches game state, and logged so e2e can pin the marker filter -- a
+       mistyped flag name draws no sites and still compiles clean. */
     int n_sites = 0;
     for(const StaticBuilding *p : body->pads) {
         if(p->hasFlag("VAB_LAUNCH_PAD")) { n_sites++; }
@@ -86,11 +84,9 @@ void surfmapCompute(Game &g) {
         for(int j = 0; j < h; j++) {
             for(int i = 0; i < w; i++) {
                 const glm::dvec3 d = equirectDirAt(i, j, w, h);
-                // Ocean box on and at/below sea level: flat sea covers the
-                // floor (same coverage as the 3D ocean shell). Redundant on a
-                // Flat-sea body: its terrain is already painted sea_color and
-                // the clamp makes this the same predicate, so both branches
-                // yield the same pixel (issue #193).
+                // Ocean box on and at/below sea level: flat sea covers the floor
+                // (same coverage as the 3D ocean shell, and the same predicate as
+                // a Flat-sea body's painted sea_color floor -- issue #193).
                 const bool under_sea = ocean && tp.surface.has_sea
                     && terrainHeight((glm::vec3)d, tp)
                        <= (double)tp.radius + (double)tp.surface.sea_level;
@@ -109,8 +105,6 @@ void surfmapCompute(Game &g) {
         }
         if(log) {
             // albedo = before the terminator; shaded = as stored.
-            // shade=on: a terminator was baked. ocean=on: the sea was painted.
-            // sites: launch pads the window overlays as markers.
             printf("[surfmap] t=%.1fs body=\"%s\" %dx%d "
                    "albedo=[%.4f %.4f %.4f] shaded=[%.4f %.4f %.4f] "
                    "shade=%s ocean=%s sites=%d\n",
@@ -120,11 +114,9 @@ void surfmapCompute(Game &g) {
                    baked ? "on" : "off", ocean ? "on" : "off", n_sites);
             fflush(stdout);
         }
-        // Main-thread continuation (JobRunner::poll): publish the cache
-        // (the window uploads it to a texture on a rev change;
-        // surfmap_body_name is the staleness check when the ship's SOI /
-        // the combo pick changes) + clear the "mapping" state. `g` is
-        // captured BY REFERENCE only for the continuation (Game is non-copyable).
+        // Main-thread continuation (JobRunner::poll): publish the cache (the
+        // window uploads it to a texture on a rev change; surfmap_body_name is the
+        // staleness check) + clear the "mapping" state.
         std::shared_ptr<std::vector<unsigned char> > ppx =
             std::make_shared<std::vector<unsigned char> >(std::move(px));
         return [&g, ppx, w, h, body_name, t_now, epoch]() {

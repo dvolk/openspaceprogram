@@ -1,7 +1,4 @@
 // ships.cpp -- ship construction + placement (see ships.h).
-//
-// The ships themselves are owned by the bodies they sit in
-// (TerrainBody::ships) or, when aboard, by their ship (Vehicle::crew).
 #include "ships.h"
 
 #include <cassert>
@@ -19,16 +16,15 @@
 #include "physics.h"  // setPosRot
 #include "resdir.h"   // resdir::path
 #include "shipdef.h"  // load_ship_def, ShipDef, PartsCatalog
-#include "system.h"   // System (buildDebugStartShips / spawn_vehicle resolve bodies)
+#include "system.h"   // System
 #include "texture.h"  // get_texture
-#include "vehicle.h"  // build_ship, faceAlong, spawn_vehicle, scenario_by_name, Vehicle
+#include "vehicle.h"  // build_ship, spawn_vehicle, Vehicle
 
-// Ships sharing a (body, scenario) orbit get this much separation along the
+// Ships sharing a (body, scenario) orbit are pushed this far apart along the
 // orbit binormal so they don't spawn on top of each other.
 static const double ORBIT_SLOT_SPACING = 20.0;
 
-// Every start-ship entry must name all four of these; a missing or empty one
-// is a config error (the game does not guess).
+// Every start-ship entry must name all four; a missing/empty one is a config error.
 static const char *const kStartShipFields[] = {"ship", "name", "body", "scenario"};
 
 DebugStartShips loadDebugStartShips(const char *path) {
@@ -113,11 +109,8 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
                                TerrainBody *hb, const ScenarioDef *sc, System &sys,
                                double t, const StaticBuilding *site)
 {
-    /* slot = how many live vessels already share this (body, scenario), which
-       only ever feeds spawn_vehicle's orbit spread. Pads do not slot: a pad
-       ship stands on its site. A character parked inside a capsule is not a
-       vessel; one that has walked out is (Kerbal::home/scenario come from its
-       ship, so a free EVA kerbal does take a slot). */
+    /* slot feeds spawn_vehicle's orbit spread; pads do not slot. A kerbal parked
+       in a capsule is not a vessel, a free EVA one is. */
     int slot = 0;
     if(!sc->on_pad) {
         for(auto *s : collectVehicles(sys)) {
@@ -126,18 +119,16 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
         }
     }
 
-    // name: the caller's, else the def's; de-duplicated across the system
     std::string nm = wantName.empty() ? def.name : wantName;
     if(nm.empty()) { nm = "Ship"; }
     nm = dedupName(sys, nm);
 
     /* A named site only means anything for a pad scenario: supportMargin below
-       reads the site's hull as what the ship rests on, which is a lie if the
-       base comes from terrain instead. */
+       reads the site's hull as what the ship rests on, a lie if the base comes
+       from terrain instead. */
     assert(site == nullptr || sc->on_pad);
 
-    /* Pad scenarios stand on a world building (system JSON world_buildings).
-       No site -> the first VAB_LAUNCH_PAD (or the polar one for pad-polar). */
+    /* Pad scenarios stand on a world building (system JSON world_buildings). */
     glm::dvec3 pad_dir = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
     glm::dmat3 pad_orient = faceAlong(pad_dir);
     if(sc->on_pad) {
@@ -153,8 +144,8 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
         pad_orient = buildingOrient(pad_dir, site->heading_deg * std::numbers::pi / 180.0);
     }
 
-    /* the kerbal def (root part type "kerbal") builds the EVA subclass
-       (src/eva.h); every other def builds a plain ship */
+    /* Root part type "kerbal" builds the EVA subclass (eva.h); anything else
+       builds a plain ship. */
     const bool is_kerbal = !def.parts.empty()
         && def.parts[0].def->type == "kerbal";
     Vehicle *v = is_kerbal ? static_cast<Vehicle *>(new Kerbal) : new Vehicle;
@@ -166,28 +157,19 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
     v->m_parent = hb;
     v->sun = sun;
     v->frame = hb->rot_frame;
-    /* A pad ship stands ON its site deck. Two ships on one pad share that
-       pose: whether an occupied pad is a problem, and what to do about it
-       (survey the deck, offer to move or delete the intruder), is a gameplay
-       decision, not placement arithmetic. The lateral per-slot offset here was
-       the debug era's doing, when spawning a ship also invented a pad under
-       it; with the pads as world content it walked every ship but the first
-       off the deck and left it hanging at deck height over bare terrain.
-       Non-pad scenarios only need a staging pose -- spawn_vehicle repositions
-       them -- so the 5 m lift is throwaway there. */
+    /* Pad ships take the site pose verbatim: no per-slot offset (deliberate --
+       whether an occupied pad is a problem is a gameplay decision, not
+       placement arithmetic). Non-pad scenarios only need a staging pose. */
     const glm::dvec3 base = (sc->on_pad && site != nullptr)
         ? site->origin()
         : pad_dir * ((double)hb->GetTerrainHeight(glm::vec3(pad_dir)) + 5.0);
-    // What the vessel will actually rest on: a pad is a static convex hull,
-    // so its own margin is what the ship's hull margin meets. Non-pad
-    // scenarios get repositioned by spawn_vehicle, so the lift is throwaway
-    // there -- name raw terrain anyway rather than a made-up number.
+    // A pad is a static convex hull, so its own margin is what the ship's hull
+    // margin meets; non-pad is repositioned by spawn_vehicle, so raw terrain.
     const double supportMargin = site != nullptr
         ? effectiveHullMargin(site->body) : terrainMargin();
     build_ship(v, def, partsshader, base, pad_orient, supportMargin);
     v->setVelocity(glm::dvec3(0, 0, 0));
-    // The bookkeeping re-home: enters the body's ships list and starts the
-    // flight journal at `t`.
+    // Re-home: enters the body's ships list and starts the flight journal at `t`.
     v->setSoi(hb->rot_frame, t);
     return v;
 }
@@ -207,9 +189,8 @@ std::string Ships::dedupName(System &sys, const std::string &nm)
     }
 }
 
-// One crew kerbal aboard (ship, part): build a kerbal, park it inside the
-// capsule (out of the physics world), register it in the capsule's
-// containment edge so the ship's mass carries it.
+// One crew kerbal aboard (ship, part): parked inside the capsule, registered in
+// the capsule's containment edge so the ship's mass carries it.
 Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys, double t) {
     if(part >= ship->parts.size()) { return nullptr; }
     const PartDef *capDef = ship->parts[part]->def;
@@ -227,15 +208,12 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys, double
     k->sun = sun;
     k->frame = ship->frame;
 
-    // build it AT the capsule COM (it will be parked there, inside the ship)
+    // Build AT the capsule COM (it is parked there, inside the ship).
     const glm::dvec3 capCom = ship->partPos(capPart);
     const glm::dmat3 capOrient = ship->partRot(capPart);
-    // build_ship's pad lift is throwaway here: the kerbal is parked at the
-    // capsule COM right below.
     build_ship(k, def, partsshader, capCom, capOrient, 0.0);
 
-    // park inside the capsule (out of the physics world). The ship is
-    // heavier with crew aboard through the containment edge (effectiveMass).
+    // Park inside the capsule (out of the physics world).
     Body *kb = k->hull;
     k->placeShipAtCom(capCom, capOrient);
     RemoveBody(kb);
@@ -246,11 +224,11 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys, double
     k->setSoi(ship->frame, t);
 
     ship->crew.push_back(k);
-    // register the containment edge (both directions). Vehicle::crew stays
-    // the sole owner; contents is a non-owning back-reference (part.h).
+    // Containment edge (both directions): Vehicle::crew is the sole owner,
+    // contents is a non-owning back-reference (part.h).
     capPart->contents.push_back(k->parts[0]);
     k->parts[0]->container = capPart;
-    // rebuild so the compound carries the crew mass
+    // Rebuild so the compound carries the crew mass.
     ship->rebuildCompound();
     int aboard = 0;
     for(auto *c : ship->crew) {
@@ -273,7 +251,7 @@ void Ships::spawn_crew(Vehicle *ship, System &sys, double t) {
 void Ships::apply_scenarios(System &sys, double t) {
     for(auto *b : sys.bodies) {
         /* Snapshot, not a reference: spawn_vehicle can re-home a ship into
-           ANOTHER body's list (setSoi moves it). */
+           another body's list (setSoi moves it). */
         const std::vector<Vehicle *> ships = b->ships;
         for(auto *s : ships) {
             if(s->scenario == nullptr) { continue; }
@@ -309,7 +287,6 @@ Vehicle *Ships::buildDebugStartShips(const std::vector<DebugStartShip> &entries,
         }
         const ScenarioDef *sc = scenario_by_name(fe.scenario);
         Vehicle *v = place_ship(fe.ship, fe.name, hb, sc, sys, t);
-        // startup crew: one kerbal aboard each capsule
         spawn_crew(v, sys, t);
         if(first == nullptr) { first = v; }
     }

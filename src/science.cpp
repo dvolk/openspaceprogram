@@ -1,6 +1,5 @@
-// science.cpp -- the experiment family table (res/data/experiments.json).
-// science.h keeps the value model + the unknown-family fallback; this is
-// where the DATA lives, so a new instrument is a res/ edit, not a recompile.
+// science.cpp -- the experiment family table (res/data/experiments.json);
+// science.h keeps the value model.
 
 #include "science.h"
 
@@ -11,9 +10,9 @@
 #include <string>
 #include <vector>
 
-/* Strict situation-id parse. situationFromId is permissive (an old save's
-   unknown id degrades to LowOrbit); a JSON typo must not silently become
-   one band, so the loader checks the known ids itself. */
+/* Strict situation-id parse: situationFromId is permissive (an old save's
+   unknown id degrades to LowOrbit), so a JSON typo would silently become a
+   band. */
 static bool parse_situation(const std::string &s, SciSituation &out) {
     for(int i = 0; i <= (int)SciSituation::HighOrbit; i++) {
         if(s == situationId((SciSituation)i)) {
@@ -75,8 +74,7 @@ void loadExperimentDefs(const char *path) {
         if(!ev.contains("base_value") || !ev["base_value"].is_number_integer()) {
             throw std::runtime_error(ctx + "\"base_value\" must be an integer > 0");
         }
-        // get<int> truncates, so a >2^31 value would wrap; range-check as
-        // long long first.
+        // get<int> truncates: range-check as long long first.
         const long long bv = ev["base_value"].get<long long>();
         if(bv <= 0 || bv > INT32_MAX) {
             throw std::runtime_error(ctx + "\"base_value\" must be a positive int "
@@ -113,14 +111,11 @@ void loadExperimentDefs(const char *path) {
                 out.push_back(s);
             }
         };
-        // valid_in is required: an instrument that runs nowhere is a data bug,
-        // not a valid def. biome_specific_in may be absent or [] (never
-        // biome-bound).
+        // valid_in is required: an instrument that runs nowhere is a data bug.
+        // biome_specific_in may be absent or [] (never biome-bound).
         parse_list("valid_in", d.valid_in, true);
         parse_list("biome_specific_in", d.biome_specific_in, false);
-        // The biome joins the identity only in situations where the family can
-        // run -- a situation in biome_specific_in but not in valid_in is a
-        // data bug.
+        // A situation in biome_specific_in but not in valid_in is a data bug.
         for(const SciSituation s : d.biome_specific_in) {
             if(!d.validIn(s)) {
                 throw std::runtime_error(ctx + "\"biome_specific_in\" lists \""

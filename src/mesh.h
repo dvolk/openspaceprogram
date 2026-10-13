@@ -73,7 +73,7 @@ public:
     bool AssImpFromFile(const std::string& fileName, bool copyData);
     bool FromFile(const std::string& fileName, bool copyData);
     // numInnerIndices: when nonzero, the first N indices are terrain and the
-    // tail is a skirt; DrawSkirt() renders the tail.
+    // tail is a skirt (DrawSkirt).
     void FromData(const PosNorColVertex* vertices, unsigned int numVertices, const unsigned int* indices, unsigned int numIndices, bool copyData, unsigned int numInnerIndices = 0);
 
     void InitMesh(const PosInterface& model);
@@ -83,8 +83,8 @@ public:
 
     void Draw();
     void Draw(GLenum mode);   // lines initialized by PosInterface
-    // Draw the skirt index tail (see FromData); drawn after Draw() so it
-    // depth-tests against the terrain in front of it.
+    // Draws the skirt index tail; after Draw() so it depth-tests against the
+    // terrain in front of it.
     void DrawSkirt();
 
     unsigned int numInnerIndices() const { return m_numInnerIndices; }
@@ -105,9 +105,9 @@ private:
     unsigned int m_numInnerIndices = 0;
 };
 
-/* Shared file-asset registry: lookup-or-load, ONE Mesh per file. The registry
-   owns the mesh (lives until process exit). vs/is copies are ALWAYS kept
-   (BuildPartHull needs them); a failed import yields a unit-cube placeholder. */
+/* Shared file-asset registry: lookup-or-load, ONE Mesh per file, owned until
+   process exit. vs/is copies are ALWAYS kept (BuildPartHull needs them); a
+   failed import yields a unit-cube placeholder. */
 Mesh *get_mesh(const std::string &path);
 
 #endif

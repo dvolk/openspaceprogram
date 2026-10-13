@@ -12,13 +12,13 @@ static const float QUAD_VERTS[16] = {
      1.0f,  1.0f, 1.0f, 1.0f,
 };
 
-// The composite must draw inside a *real* VAO: Mesa 26 core profile answers
+// The composite must draw inside a *real* VAO: Mesa core profile answers
 // GL_INVALID_OPERATION to any draw in the default VAO 0. Explicit
 // position/uv vertices (not gl_VertexID) because the latter mis-mapped on AMD.
 //
-// Built-in effects. All share the fullscreen-quad vertex shader and the
-// `scene` input (texture unit 0). `name` is a requestable name (aliases
-// resolve to the same `canonical`); `params` are settable parameters.
+// Built-in effects: all share the quad vertex shader and the `scene` input
+// (texture unit 0). `name` is requestable (aliases resolve to `canonical`);
+// `params` are settable.
 static const FXParam COLOR_PARAMS[] = {
     { "gamma",       0.25f, 3.0f, 1.0f },
     { "brightness",  0.0f,  2.0f, 1.0f },
@@ -259,9 +259,8 @@ void PostFX::RebuildTargets(int width, int height)
                                GL_TEXTURE_2D, m_colorTex[i], 0);
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
                                   GL_RENDERBUFFER, m_depthRB[i]);
-        // Validate EACH target. This used to run once after the loop, when
-        // only target 1 was still bound -- so target 0, the one the scene
-        // actually renders into, was never checked.
+        // Validate EACH target, inside the loop: checking after it would only
+        // ever see the last bound one, and target 0 is where the scene renders.
         GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         if(status != GL_FRAMEBUFFER_COMPLETE) {
             std::cerr << "PostFX: framebuffer " << i << " incomplete ("
@@ -299,12 +298,10 @@ void PostFX::Begin()
 
 void PostFX::End()
 {
-    // No effects: the scene already rendered straight to the window (Begin
-    // was a no-op). The UI draws on top after this.
+    // The UI draws on top after this.
     if(!Active()) return;
     // Mirror Begin()'s guard: if it bailed there is no target to ping-pong
-    // against, and sampling texture id 0 would black the screen while the
-    // scene sits already presented underneath.
+    // against, and sampling texture id 0 would black the screen.
     if(m_fbo[0] == 0) return;
 
     glDisable(GL_DEPTH_TEST);
@@ -338,7 +335,6 @@ void PostFX::End()
                                  glm::vec2((float)m_width, (float)m_height));
         e.shader->setUniform_vec1("time",
                                  (float)(SDL_GetTicks() / 1000.0));
-        // Settable parameters (effects without any skip this loop).
         for(int i = 0; i < e.def->n_params; i++) {
             e.shader->setUniform_vec1(e.def->params[i].name,
                                       e.param_values[i]);

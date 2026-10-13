@@ -1,17 +1,11 @@
 #pragma once
 
-// drag.h -- the atmospheric-drag law as pure math (glm + <cmath> only: no
-// Bullet, no GL, no game state), so tests/ can pin it without the render chain.
+// drag.h -- the atmospheric-drag law as pure math (glm + <cmath> only), so tests/
+// can pin it without the render chain.
 //
-//   airDensity(...)  the exponential density model: rho(alt) = rho0 * e^(-alt/H)
-//   dragForce(...)   the force a body feels: -v̂ · ½ · rho · Cd · A · |v|²
-//
-// The air co-rotates with the planet: it is at rest in the body's ROTATING
-// frame, so there the ship's frame velocity IS the air-relative velocity.
-// In any other frame Vehicle::airRelativeVel subtracts the co-rotation term
-// (issues #60/#97). The loader sizes near-body shells to contain their air
-// (bodylimits.h), so live ships hit that branch only transiently or via
-// saves written under an older shell model.
+// The air co-rotates with the planet: it is at rest in the body's ROTATING frame,
+// so there the ship's frame velocity IS the air-relative velocity. In any other
+// frame Vehicle::airRelativeVel subtracts the co-rotation term (#60/#97).
 
 #include <algorithm>
 #include <cmath>
@@ -22,8 +16,8 @@
 
 #include "constants.h"  // kRhoFloor
 
-/* The physical half of a body's atmosphere (the render half lives in
-   AtmosphereParams, terragen.h). Both zero means "no drag". */
+/* The physical half of a body's atmosphere (render half: AtmosphereParams,
+   terragen.h). Both zero means "no drag". */
 struct DragAtmosphere {
     double sea_level_density = 0.0;  // kg/m^3 at alt 0; 0 = no drag
     double scale_height = 0.0;       // [m]; density /e-fold altitude
@@ -35,9 +29,9 @@ struct DragAtmosphere {
         : sea_level_density(rho0), scale_height(H), height(top) {}
 };
 
-/* Density [kg/m^3] at `alt` metres above the surface:
-     rho(alt) = sea_level_density · exp(−alt / scale_height)
-   At or above `height` the air stops dead (a hard top). */
+/* rho(alt) = sea_level_density · exp(−alt / scale_height), [kg/m^3], alt in m above
+   the sea-level datum. At or above `height` the air stops dead; at or below 0 it is
+   vacuum. */
 inline double airDensity(const DragAtmosphere &a, double alt) {
     if(a.sea_level_density <= 0.0 || a.scale_height <= 0.0) { return 0.0; }
     if(alt <= 0.0) { return 0.0; }
@@ -45,9 +39,7 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
     return a.sea_level_density * std::exp(-alt / a.scale_height);
 }
 
-/* The drag force on a body of cross-sectional `area` [m^2] and coefficient
-   `cd`, moving at `v_rel` through air of density rho(alt):
-     F = −v̂ · ½ · rho(alt) · cd · area · |v_rel|²
+/* F = −v̂ · ½ · rho(alt) · cd · area · |v_rel|²   (area [m^2], v_rel [m/s]).
    Zero for any degenerate input so callers need no guards. */
 inline glm::dvec3 dragForce(const DragAtmosphere &a, double cd, double area,
                             double alt, const glm::dvec3 &v_rel) {
@@ -81,8 +73,8 @@ inline AeroFrame aeroFrame(const glm::dvec3 &v_rel,
     return f;
 }
 
-/* The dynamic pressure q = 0.5 · rho(alt) · |v_rel|² -- the factor common to
-   the lift and drag laws. Zero for any degenerate input. */
+/* q = 0.5 · rho(alt) · |v_rel|² -- the factor common to the lift and drag laws.
+   Zero for any degenerate input. */
 inline double dynamicPressure(const DragAtmosphere &a, double alt,
                               const glm::dvec3 &v_rel) {
     const double rho = airDensity(a, alt);
@@ -90,8 +82,8 @@ inline double dynamicPressure(const DragAtmosphere &a, double alt,
     return 0.5 * rho * glm::dot(v_rel, v_rel);
 }
 
-/* The lift direction: the ship's up axis with its component along the flow
-   removed -- perpendicular to v_rel, on the ship's "up" side. */
+/* Lift direction: the ship's up axis with its flow component removed
+   (perpendicular to v_rel, on the ship's "up" side). */
 inline glm::dvec3 liftDirection(const glm::dvec3 &v_rel,
                                 const glm::dvec3 &right,
                                 const glm::dvec3 &nose) {
@@ -107,9 +99,9 @@ inline glm::dvec3 liftDirection(const glm::dvec3 &v_rel,
     return l / len;
 }
 
-/* The lift coefficient CL(α) of a symmetric section, with a soft stall.
-   Linear up to the stall angle, then a cosine droop to zero by 2·stallAngle.
-   A = 0 disables the stall (pure linear). CL is continuous (no force jump). */
+/* CL(α) of a symmetric section, soft stall: linear to the stall angle, then a
+   cosine droop to zero by 2·stallAngle. A = 0 disables the stall. CL stays
+   continuous (no force jump). */
 inline double liftCurve(double cl, double alpha, double stallAngle) {
     if(cl <= 0.0) { return 0.0; }
     const double a = std::fabs(alpha);
@@ -137,11 +129,9 @@ inline double cross2(const glm::dvec2 &a, const glm::dvec2 &b,
     return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 }
 
-/* The projected (silhouette) area of a body seen along `dir`, from the
-   vertices of its CONVEX HULL. The silhouette of a convex body is exactly
-   the convex hull of its projected vertices. Using the HULL's vertices (not
-   the raw mesh's triangles) makes it exact for a NON-convex mesh too. The
-   result is symmetric in dir. Pure math so tests/ can pin it without GL/Bullet. */
+/* The projected (silhouette) area of a body seen along `dir`, from its CONVEX HULL
+   vertices -- the hull of the projected vertices is exactly the silhouette, so
+   this stays exact for a NON-convex mesh. Symmetric in dir. */
 inline double projectedArea(const std::vector<glm::dvec3> &hullVerts,
                             const glm::dvec3 &dir) {
     const double len = glm::length(dir);
@@ -152,15 +142,14 @@ inline double projectedArea(const std::vector<glm::dvec3> &hullVerts,
                                                   : glm::dvec3(0, 1, 0);
     const glm::dvec3 u = glm::normalize(glm::cross(d, ref));
     const glm::dvec3 w = glm::cross(d, u);
-    // Scratch buffers reused across calls (this runs every physics substep
-    // per part -- fresh vectors here are pure churn).
+    // Scratch buffers reused: this runs every physics substep, per part.
     static thread_local std::vector<glm::dvec2> p;
     p.resize(hullVerts.size());
     for(size_t i = 0; i < hullVerts.size(); i++) {
         p[i] = glm::dvec2(glm::dot(hullVerts[i], u), glm::dot(hullVerts[i], w));
     }
-    // Andrew's monotone chain: the convex hull of p (CCW, collinear dropped).
-    // (glm::dvec2 has no operator<, so an explicit x-then-y comparator.)
+    // Andrew's monotone chain: convex hull of p (CCW, collinear dropped).
+    // glm::dvec2 has no operator<, hence the explicit x-then-y comparator.
     std::sort(p.begin(), p.end(), [](const glm::dvec2 &a, const glm::dvec2 &b) {
         return (a.x < b.x) || (a.x == b.x && a.y < b.y);
     });
@@ -192,12 +181,10 @@ inline double projectedArea(const std::vector<glm::dvec3> &hullVerts,
     return 0.5 * std::fabs(a);
 }
 
-/* The per-part DRAG COEFFICIENT as the part faces the flow. A part declares
-   one cd for each of three anchors (nose / side / base); this blends them by
-   the angle between the part's nose axis and the flow:
+/* The per-part DRAG COEFFICIENT as the part faces the flow: a blend of the three
+   declared anchors (nose / side / base) by c = cos(nose axis, flow):
      cd(c) = drag_side·(1−c²) + drag_forward·(max(c,0)²) + drag_backward·(max(−c,0)²)
-   A convex blend: hits each anchor exactly at its angle, always within the
-   part's own min..max cd. */
+   Convex blend: hits each anchor exactly, stays within the part's min..max cd. */
 inline double partCd(double cdForward, double cdSide, double cdBackward,
                      double cosAxisFlow) {
     double c = cosAxisFlow;
@@ -209,27 +196,26 @@ inline double partCd(double cdForward, double cdSide, double cdBackward,
     return cdSide * (1.0 - c2) + cdForward * cw + cdBackward * bw;
 }
 
-/* The force on one DEFLECTED control surface: the lift law with the
-   DEFLECTION in place of the angle of attack (LINEAR -- no stall; a control
-   surface is steered by how far it is deflected, bounded by its travel).
-   The steering moment about the COM is NOT here: it comes from applying this
-   force AT the surface's position (Vehicle::applyAeroForce). */
+/* The force on one DEFLECTED control surface: the lift law with the DEFLECTION
+   in place of the angle of attack (LINEAR -- no stall; travel bounds it). The
+   steering moment is NOT here: it comes from applying this force AT the surface
+   (Vehicle::applyAeroForce). */
 inline glm::dvec3 controlForce(double q, double S, double cl, double delta,
                                const glm::dvec3 &dir) {
     if(q <= 0.0 || S <= 0.0 || cl <= 0.0 || delta == 0.0) { return glm::dvec3(0.0); }
     return dir * (q * S * cl * delta);
 }
 
-/* The control-surface DEFLECTION EFFECTIVENESS: the part's dedicated
-   cl_control if set (>0), else its lift-curve slope cl (old behaviour). */
+/* The control-surface DEFLECTION EFFECTIVENESS: the part's dedicated cl_control
+   if set (>0), else its lift-curve slope cl. */
 inline double controlCl(double cl, double clControl) {
     return (clControl > 0.0) ? clControl : cl;
 }
 
-/* The JET ENGINE (air-breathing) thrust in newtons:
+/* JET ENGINE (air-breathing) thrust, newtons:
      T(v, rho) = T_fan·d  +  ṁ_f·v_e·d  +  rho·A·v·(v_e − v)   d = min(rho/rho_sea, 1)
-   d gates the fan + fuel terms on available air: in vacuum (rho = 0)
-   EVERY term is 0. The net is clamped at 0 (a jet never reverses). */
+   d gates the fan + fuel terms on available air; rho = 0 kills every term. The net
+   is clamped at 0 (a jet never reverses). */
 inline double jetThrust(double v, double rho, double rho_sea,
                         double T_fan, double m_f, double v_e, double A) {
     if(rho <= 0.0 || rho_sea <= 0.0) { return 0.0; }   /* no air -> no thrust */
@@ -239,12 +225,11 @@ inline double jetThrust(double v, double rho, double rho_sea,
     return (T < 0.0) ? 0.0 : T;
 }
 
-/* The control-surface DEFLECTION SIGN for a surface at position `ri` (rel.
-   to the COM). The steering torque is ri x F, so a tail (behind the CG) and
-   a canard (ahead) need OPPOSITE deflections for the same torque. This
-   returns the sign that matches the reaction wheel's convention for EITHER
-   position. `targetSign` is the SIGN of the wheel's torque about that axis
-   for a positive stick (pitch/yaw = -1, roll = +1). */
+/* The control-surface DEFLECTION SIGN for a surface at `ri` (rel. to the COM). The
+   torque is ri x F, so a tail (behind the CG) and a canard (ahead) need OPPOSITE
+   deflections for the same torque; this matches the reaction wheel's convention
+   either way. `targetSign` is the SIGN of the wheel's torque about that axis for a
+   positive stick (pitch/yaw = -1, roll = +1). */
 inline double controlDeflectionSign(const glm::dvec3 &ri,
                                     const glm::dvec3 &forceDir,
                                     const glm::dvec3 &aboutAxis,

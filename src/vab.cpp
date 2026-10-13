@@ -1,7 +1,7 @@
 // vab.cpp -- the VAB editor's interaction layer (see vab.h): physics-free
 // picking of the build tree, the ghost preview pose, and placing a part.
 // Picking reuses Bullet's convex cast (pick.cpp castRay) against per-part
-// hulls (no rigid bodies). The ray lives directly in the build frame S.
+// hulls; the ray lives directly in the build frame S.
 
 #include "vab.h"
 
@@ -39,13 +39,10 @@ VabAsset &vabAsset(const PartDef *def) {
         a.hull = new btConvexHullShape(m->vs, (int)m->num_vertices,
                                        3 * sizeof(double));
         /* Zero, and explicitly so: Bullet's default convex margin is 0.04
-           (btCollisionMargin.h) and its convex raycast reports the hit on
-           the shape INFLATED by that margin. A margined pick point floats a
-           surface-attached part off the parent's skin by exactly the margin,
-           and these hulls only ever get raycast -- nothing collides against
-           them, so the skin buys nothing here. Small parts (the 0.1 m
-           barometer) stay pickable by zooming in rather than by padding the
-           pick target. */
+           and its convex raycast reports the hit on the shape INFLATED by
+           that margin, which would float a surface-attached part off the
+           parent's skin by exactly the margin. These hulls are only ever
+           raycast, so the skin buys nothing. */
         a.hull->setMargin(0.0);
         a.obj = new btCollisionObject();
         a.obj->setCollisionShape(a.hull);
@@ -59,7 +56,6 @@ btTransform toBt(const glm::dmat4 &m) {
     return t;
 }
 
-// The child stack node most anti-parallel to the parent node's direction.
 const Node *bestMatingChildNode(const PartDef &child, const glm::dvec3 &parentDir) {
     const Node *best = nullptr;
     double bestDot = -2.0;
@@ -170,8 +166,7 @@ void vabClearHover(Game &g) {
     g.vab.ghostClones.clear();
 }
 
-/* The definition the ghost places: the armed subassembly's ROOT part, or
-   the armed catalog part. */
+/* The armed subassembly's ROOT part, or the armed catalog part. */
 static const PartDef *armedChildDef(const Game &g, const BuildShip **asmOut) {
     if(asmOut != nullptr) { *asmOut = nullptr; }
     if(g.vab.armedAsm >= 0
@@ -238,7 +233,6 @@ void vabUpdateHover(Game &g, int px, int py) {
         return;
     }
 
-    // no port nearby: surface-attach at the ray hit on the hovered parent
     const Node *cs = childDef->findSurfaceNode();
     if(cs == nullptr) { return; }
     const glm::dvec3 pS = hit.point;   // already S frame (pickVabPart)
@@ -507,8 +501,7 @@ std::string shipDefFile(const std::string &spec) {
 } // namespace
 
 void vabSave(Game &g, const char *name) {
-    // The VAB's ship identity is a NAME ("racer"). Always saved to the data
-    // dir's ships/ (user content); a path or ".json" suffix is ignored.
+    // Always saved to the data dir's ships/ (user content).
     const std::string stem = shipDefStem(name != nullptr ? name : "");
     if(stem.empty()) {
         g.toast("Save FAILED: empty name");
@@ -586,23 +579,19 @@ void vabLaunch(Game &g) {
             g.toast("No launch site on %s", hb->name.c_str());
             return;
         }
-        /* One deck, one ship (#231). Standing a second ship inside the first
-           is not a cosmetic stack: they are inside each other's 10 m grounded
-           proximity radius, so the railed one wakes on the first tick and the
-           pair torque each other. Ask rather than tell -- the out is right
-           there. Nothing silently relocates. */
+        /* One deck, one ship (#231): two ships on a pad sit inside each
+           other's grounded proximity radius, so the railed one wakes on the
+           first tick and the pair torque each other. Ask rather than tell --
+           the out is right there, and nothing silently relocates. */
         if(Vehicle *blocker = findPadOccupant(site)) {
             printf("[vab] launch refused: '%s' occupies '%s'\n",
                    blocker->name.c_str(), site->id.c_str());
             fflush(stdout);
             /* Deferred by construction: the card answers on a later frame, so
-               the callback re-finds the occupant instead of holding this
-               pointer, and re-resolves the site by ID rather than trusting
-               the player hasn't changed the dropdown. remove_ship's own
-               guards (crew aboard, last ship) do the refusing -- a pad ship
-               always carries crew, so clearing one today means EVA-ing its
-               crew out first. A crew policy for pad clearing is the open
-               half of #231. */
+               the callback re-finds the occupant and re-resolves the site by
+               ID instead of holding this pointer. remove_ship's own guards
+               (crew aboard, last ship) do the refusing. A crew policy for pad
+               clearing is the open half of #231. */
             TerrainBody *padBody = hb;
             std::string siteId = site->id;
             g.ask(blocker->name + " is standing on " + site->display_name
@@ -622,7 +611,6 @@ void vabLaunch(Game &g) {
     }
     /* defPath "": the ship was built in memory -- no file to respawn from. */
     Vehicle *v = g.ships.place_ship_def(def, "", def.name, hb, sc, g.sys, g.time, site);
-    // Non-pad scenarios place the ship in orbit (like the fleet spawn).
     // Left live (NOT on rails) so it is player-controlled.
     if(!sc->on_pad) { spawn_vehicle(v, *sc, hb, g.sys, 0.0, g.time); }
     // Crew aboard after the reposition so each kerbal parks at the final pose.
@@ -646,8 +634,7 @@ void vabLaunch(Game &g) {
     }
 }
 
-/* Aim the editor's orbit camera at the build tree (also what a replaced
-   tree needs from vabLoad). */
+/* Aim the editor's orbit camera at the build tree. */
 void vabAimCamera(Game &g) {
     g.vab.center = glm::dvec3(0.0);
     double dist = 30.0;
@@ -673,12 +660,11 @@ void vabAimCamera(Game &g) {
 /* Enter the editor: push the Vab scene (captures the flight camera pose). */
 void vabOpen(Game &g) { pushScene(g, SceneId::Vab); }
 
-/* Scene table's enter hook -- scene.cpp calls it from pushScene. */
+/* Scene table's enter hook. */
 void vabEnter(Game &g) {
     // Seed the launch config once (home body + pad); left alone afterwards.
     // siteName stays "" = the default site, so pad-polar still picks the
-    // polar pad (find_launch_site's preferPolar). An explicit combo pick
-    // overrides that.
+    // polar pad; an explicit combo pick overrides that.
     if(g.vab.bodyName.empty() && g.home != nullptr) { g.vab.bodyName = g.home->name; }
     if(g.vab.scenarioName.empty()) { g.vab.scenarioName = "pad"; }
     vabClearHover(g);

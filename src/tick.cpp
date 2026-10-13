@@ -16,9 +16,8 @@ void tick(Game &g) {
     g.accumulator += frameTime;
 
     /* Spiral-of-death clamp: at most 10 ticks of catch-up, i.e. 10/physics_hz
-       seconds of wall-clock hitch tolerance -- 167 ms at the 60 Hz default,
-       but only 10 ms at --physics-hz 1000. A frame slower than that silently
-       drops sim time. */
+       seconds of wall-clock hitch tolerance. A frame slower than that
+       silently drops sim time. */
     if(g.accumulator > 10 * g.dt) {
         g.accumulator = 10 * g.dt;
     }
@@ -27,7 +26,7 @@ void tick(Game &g) {
     static thread_local std::vector<Vehicle *> all;
     collectVehiclesInto(g.sys, all);
 
-    // clear stats; sync the difficulty scale onto every ship.
+    // Sync the difficulty scale onto every ship.
     for(auto *s : all) {
         s->m_thrust = 0.0;
         s->exhaust_scale = g.args.exhaust_scale;
@@ -35,7 +34,7 @@ void tick(Game &g) {
     }
 
     while (g.accumulator >= g.dt) {
-        // Clear per-tick commands so a tick without the keys doesn't keep
+        // Clear per-tick commands so a tick without the keys does not keep
         // pushing from the last one. No ship -> nothing to clear.
         if(g.ship) {
             g.ship->clearThrust();
@@ -45,9 +44,8 @@ void tick(Game &g) {
 
         const bool *key = SDL_GetKeyboardState(nullptr);
         const Uint16 modState = SDL_GetModState();
-        /* --sim-press: a synthetic key is "down" from its down time to
-           its up time. SDL_PushEvent does not update the key array, so a
-           held command ORs in each entry's window. */
+        /* SDL_PushEvent does not update the key array, so a --sim-press
+           entry's held window is ORed into the command. */
         auto slotActive = [&](Slot s) -> bool {
             if(slotHeld(s, key, modState, g.binds)) { return true; }
             for(size_t i = 0; i < g.args.sim_presses.size(); i++) {
@@ -60,11 +58,9 @@ void tick(Game &g) {
         };
 
         if (g.camera->mode == CAM_FREE) {
-            /* cam_speed (the [/] ladder, shown as "Cam speed" in the HUD) and
-               the roll step are per-TICK amounts. They were tuned at 50 Hz, so
-               scaling by dt*60 re-bases them onto the 60 Hz default -- 20%
-               faster than the old per-tick constants -- and keeps the free
-               cam's felt speed independent of --physics-hz. */
+            /* cam_speed (the [/] ladder) and the roll step are per-TICK
+               amounts: scaling by dt*60 keeps the free cam's felt speed
+               independent of --physics-hz. */
             const double cam_rate = g.dt * 60.0;
             if (slotActive(Slot::CamForward)) { g.camera->MoveForward(g.cam_speed * cam_rate); }
             else if (slotActive(Slot::CamBack)) { g.camera->MoveForward(-g.cam_speed * cam_rate); }
@@ -82,13 +78,10 @@ void tick(Game &g) {
         // Piloting (orbit / first person). Free cam is a flier: no sticks.
         if (g.camera->mode != CAM_FREE) {
             bool game_running = (g.time_accel > 0);
-            // Active-ship controls: only with a ship and in a pilot scene.
-            // A running sim in a non-pilot scene coasts.
             if(g.ship && curScene(g).pilot) {
             // Touching the controls wakes a railed active ship (you cannot
             // maneuver on rails). A rails warp drops to 1x on the way out.
             if(g.ship->onRails && g.time_accel > 0) {
-                // any flight control wakes; in EVA Space is the extra
                 bool wake = slotActive(Slot::PitchUp) || slotActive(Slot::PitchDown) ||
                             slotActive(Slot::YawLeft) || slotActive(Slot::YawRight) ||
                             slotActive(Slot::RollLeft) || slotActive(Slot::RollRight) ||
@@ -149,8 +142,8 @@ void tick(Game &g) {
             if (slotActive(Slot::ThrottleUp)) { g.ship->Command(ShipCmd(ThrottleUp), game_running, g.dt); }
             if (slotActive(Slot::ThrottleDown)) { g.ship->Command(ShipCmd(ThrottleDown), game_running, g.dt); }
 
-            // RCS translation (ship-relative): each held slot arms one of
-            // the ship's own axes; applyRcsForce resolves the direction.
+            // RCS translation (ship-relative); applyRcsForce resolves the
+            // direction.
             if (slotActive(Slot::RcsForward)) { g.ship->Command(ShipCmd(RcsNose,  +1.0f), game_running); }
             if (slotActive(Slot::RcsBack))    { g.ship->Command(ShipCmd(RcsNose,  -1.0f), game_running); }
             if (slotActive(Slot::RcsUp))      { g.ship->Command(ShipCmd(RcsUp,    +1.0f), game_running); }
@@ -178,7 +171,7 @@ void tick(Game &g) {
 
             // Proximity wakes ships near the active ship. Runs BEFORE
             // UpdateOrbitRails so a woken ship is re-expressed against last
-            // tick's frame transforms (the same every live Bullet pose used).
+            // tick's frame transforms.
             g.updateProximity();
 
             g.sun->frame->UpdateOrbitRails(g.time);
@@ -191,8 +184,6 @@ void tick(Game &g) {
                 }
             } else {
 
-            // Railed ships advance their analytic conic; live ones track
-            // their SOI in the shared frame tree.
             for(auto *s : all) {
                 if(s->onRails) { s->railsTick(g.time, g.dt * g.time_accel); }
                 else { s->switchFrames(g.time); }
@@ -204,8 +195,8 @@ void tick(Game &g) {
             // Integrate the step in substeps, re-applying gravity + thrust +
             // rotation before EACH: Bullet clears forces at each step, and
             // velocity-dependent terms must not freeze at the step start.
-            // >=3 substeps matches the old low-accel behavior; grow so the
-            // substep stays <= kMaxSubStep at high time-accel.
+            // Grow the count so the substep stays <= kMaxSubStep at high
+            // time-accel.
             const double step = g.dt * g.time_accel;
             const int n = substepCount(step);
             const double h = step / n;

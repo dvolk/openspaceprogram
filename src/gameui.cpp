@@ -43,8 +43,7 @@
 #include <glm/gtx/vector_angle.hpp>
 
 namespace {
-/* Viridis (matplotlib's default scientific colormap), 11 anchor stops
-   linearly interpolated: perceptually uniform, colorblind-safe. t in [0,1]
+/* Viridis colormap: 11 anchor stops, linearly interpolated. t in [0,1]
    -> 0xAARRGGBB. */
 const unsigned char kViridis[11][3] = {
     { 68,   1,  84}, { 72,  40, 120}, { 62,  74, 137}, { 49, 104, 142},
@@ -66,10 +65,8 @@ unsigned int ramp_color(float t) {
 }
 } // namespace
 
-// Cached orbit samplings, one entry per orbiting object (keyed on its
-// pointer). Reuse is only trusted while the orbiting object is on a fixed
-// Keplerian conic. File scope so the Orbital Map and the Surface Map
-// share one cache. See OrbitSampleCache.
+// Cached orbit samplings keyed on the object's pointer; valid only
+// while it is on a fixed Keplerian conic. See OrbitSampleCache.
 static std::map<const void *, OrbitSampleCache> orbit_caches;
 
 // Map content rect (screen px) for view culling.
@@ -87,13 +84,8 @@ struct MapViewRect {
     }
 };
 
-// Stroke one body's orbit so the polyline starts and ends at the body
-// marker: the equal-anomaly samples do not include the body, and the chord
-// near it otherwise visibly misses the marker when zoomed in. Find the
-// nearest sample (k) and its CLOSER neighbour, then walk from that bracket
-// all the way around to k and prepend the body (walking forward from k
-// unconditionally ends at the wrong neighbour when the body sits just past
-// k).
+// The equal-anomaly samples exclude the body, so start the polyline at the
+// nearest sample and walk around: else the chord near the marker misses it.
 static void drawOrbitThroughBody(ImDrawList *dl, const OrbitMap &map,
                                  const std::vector<glm::dvec3> &cpts_p,
                                  const glm::dmat3 &O, const glm::dvec3 &P,
@@ -119,8 +111,7 @@ static void drawOrbitThroughBody(ImDrawList *dl, const OrbitMap &map,
     cpts.reserve(n + 1);
     cpts.push_back(cpos_p);
     for(size_t j = 0; j < n; j++) { cpts.push_back(cpts_p[(start + j) % n]); }
-    // Transform parent -> focus in one pass. Keep the prepend-body order:
-    // index 0 is the body, then the rotated walk.
+    // Transform parent -> focus in one pass; index 0 is the body, then the walk.
     static thread_local std::vector<glm::dvec3> cpts_f;
     cpts_f.clear();
     cpts_f.reserve(n + 1);
@@ -128,13 +119,9 @@ static void drawOrbitThroughBody(ImDrawList *dl, const OrbitMap &map,
     map.drawOrbit(dl, cpts_f, col, thickness, /*closed=*/true, /*start=*/0);
 }
 
-// Every body's orbit (around its own parent) projected into the focus's
-// frame. Each body's ellipse is sampled from its rail's IMMUTABLE epoch
-// state in the parent frame (the cache key is bit-stable) and then
-// rotated/translated into the focus's frame at draw time. Orbits whose
-// parent SoI is under 10 px are skipped (LOD); so is any orbit whose
-// apoapsis disc misses the view rect. The star has no parent and so no
-// orbit, but it is drawn as the system's anchor -- see below.
+// Sampled from each rail's IMMUTABLE epoch state (not the live rail -- that is
+// what makes the cache hit), then rotated/translated into the focus's frame.
+// LOD skips parents under 10 px SoI and orbits whose apoapsis disc misses the view.
 static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
                                  const OrbitMap &map, ImDrawList *dl,
                                  const MapViewRect &view, double map_scale,
@@ -142,12 +129,7 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
                                  ImU32 col_child, ImU32 col_sel, ImU32 ink,
                                  ImU32 soi_col) {
     std::vector<TerrainBody *> &planets = g.sys.bodies;
-    // The star: skipped by the loop below (no parent, no conic), so draw its
-    // disk + label first -- everything else orbits it, and a map without it
-    // has no obvious centre. When the star IS the focus the caller already
-    // draws it at the centre.
-    // Warm rather than the bodies' ink: it is the light source, and at
-    // system scale it is the one marker you want to pick out instantly.
+    // The star has no parent, so the loop below skips it: draw its disk + label here.
     if(TerrainBody *sun = g.sys.root; sun && sun != focus && sun->frame) {
         const glm::dvec3 sun_f = sun->frame->GetPositionRelTo(focus->frame);
         const ImVec2 sun_px = map.px(sun_f);
@@ -167,9 +149,8 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
         const double mu_c = b->frame ? b->frame->parent_mu : 0.0;
         if(!parent || mu_c <= 0.0) continue;                // star / non-orbiting
         if(parent->soi / map_scale < 10.0) continue;        // LOD: orbit < 10 px
-        // The rail epoch is the fixed conic in the LOCAL orbital plane;
-        // `orient` carries the plane tilt into the parent frame. Sampling
-        // this -- not the live rail state -- is what makes the cache hit.
+        // The rail epoch is the fixed conic in the LOCAL plane; `orient` carries the
+        // tilt into the parent.
         const glm::dmat3 &Rloc = b->frame->orient;
         const glm::dvec3 epos_p = Rloc * b->frame->orbit_pos0;
         const glm::dvec3 evel_p = Rloc * b->frame->orbit_vel0;
@@ -178,8 +159,8 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
         orbitConicSize(epos_p, evel_p, mu_c, sma, apo);
         const glm::dmat3 O = parent->GetOrientRelTo(focus->frame); // parent -> focus
         const glm::dvec3 P = parent->GetPositionRelTo(focus->frame);
-        // Body + parent on the map (focus's frame). The ellipse sits within
-        // apoapsis of the parent, so a miss on that disc skips the whole body.
+        // The ellipse sits within apoapsis of the parent, so a miss on that disc skips
+        // the body.
         const glm::dvec3 cpos_p = b->frame->GetPositionRelTo(parent); // parent frame
         const glm::dvec3 cpos_f = O * cpos_p + P;
         const ImVec2 parent_px = map.px(P);
@@ -196,17 +177,13 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
         const ImU32 ccol = selected ? col_sel : col_child;
         drawOrbitThroughBody(dl, map, cpts_p, O, P, cpos_p, ccol,
                              selected ? 2.0f : 1.0f);
-        // A disk at the body's TRUE radius (floored so it stays visible when
-        // zoomed out). Label only when the body is a real disk or selected --
-        // 200 moon names on a wide system are unreadable.
+        // Disk at the body's TRUE radius, floored so it stays visible zoomed out.
         const float min_r = selected ? 5.0f : 3.0f;
         const float body_r_px = map.bodyRadiusPx(b->radius, min_r);
         map.drawBody(dl, cpos_f, b->radius, ccol, min_r);
         if(selected) {
             dl->AddCircle(body_px, body_r_px + 4.0f, ccol, 0, 1.0f);
         }
-        // Label whenever the orbit is drawn and the marker is near the view
-        // -- the name is how you tell one moon's ellipse from another.
         if(view.contains(body_px.x, body_px.y, body_r_px + 16.0f)) {
             const float label_dx = 6.0f, label_gap = 12.0f;
             dl->AddText(ImVec2(body_px.x + label_dx,
@@ -222,26 +199,19 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
     }
 }
 
-// Format a sim-clock time (s) on the home body's calendar lives in
-// calendar.h (fmt_cal_time / fmt_cal_compact / fmt_cal_duration).
+// Sim-clock calendar formatting (fmt_cal_time / fmt_cal_compact /
+// fmt_cal_duration) lives in calendar.h.
 
-// The debris belts (JSON root "belts", parsed in src/system.cpp) as flat
-// annuli, drawn on the Tracking map only. Geometry is data; the colours are
-// still code-side, cycling by array position -- rock warm, ice cool, both
-// low-alpha so a band reads as a populated region rather than another orbit.
+// Debris belts (JSON root "belts") as flat annuli, Tracking map only.
 static const ImVec4 kBeltCols[] = {
     ImVec4(0.62f, 0.55f, 0.45f, 0.16f),
     ImVec4(0.55f, 0.63f, 0.75f, 0.12f),
 };
 constexpr size_t kBeltColsN = sizeof(kBeltCols) / sizeof(kBeltCols[0]);
 
-// A belt is a FLAT ring in the star's equatorial plane, so it has to be
-// sampled in world space and projected: OrbitMap::drawRing draws a
-// screen-space circle, which is only correct for spheres (the SOI rings).
-// Sampling is what makes the band foreshorten when the map shows a plane
-// other than the star's equator (Ecliptic / Orbital) instead of always
-// reading top-down. The plane is assumed, not authored: a belt that needed
-// its own inclination would need a field for it here.
+// A FLAT ring in the star's equatorial plane, so it must be sampled in world
+// space and projected -- OrbitMap::drawRing draws a screen-space circle, correct
+// only for spheres.
 static void drawDebrisBelts(Game &g, TerrainBody *focus, const OrbitMap &map,
                             ImDrawList *dl, const MapViewRect &view,
                             double map_scale) {
@@ -249,11 +219,7 @@ static void drawDebrisBelts(Game &g, TerrainBody *focus, const OrbitMap &map,
     TerrainBody *sun = g.sys.root;
     if(!sun || !sun->frame) { return; }
     const glm::dvec3 sun_f = sun->frame->GetPositionRelTo(focus->frame);
-    // The belt plane's normal, in the focus's inertial frame (the same space
-    // map.setPlane() and the positions use): the star's pole. Spin is about the
-    // pole, so the rotating frame's orientation gives it at any spin angle. No
-    // shipped system tilts its star, so this lands on the system plane -- a
-    // convention, documented on Frame::spinAxisRelTo (#173).
+    // The belt plane's normal in the focus's inertial frame: the star's pole (#173).
     const glm::dvec3 n = sun->frame->spinAxisRelTo(focus->frame);
     // Any orthonormal pair spanning the belt plane.
     const glm::dvec3 ref = (std::abs(n.y) < 0.9) ? glm::dvec3(0.0, 1.0, 0.0)
@@ -261,7 +227,7 @@ static void drawDebrisBelts(Game &g, TerrainBody *focus, const OrbitMap &map,
     const glm::dvec3 u = glm::normalize(glm::cross(n, ref));
     const glm::dvec3 v = glm::cross(n, u);
     constexpr int N = 96;
-    // Reused across bands and frames, like OrbitMap::drawOrbit's buffer.
+    // Reused across bands and frames.
     thread_local std::vector<ImVec2> pi, po;
     pi.reserve(N); po.reserve(N);
     for(size_t bi = 0; bi < g.sys.belts.size(); bi++) {
@@ -282,9 +248,8 @@ static void drawDebrisBelts(Game &g, TerrainBody *focus, const OrbitMap &map,
             t = std::min(t, (float)qo.y); b = std::max(b, (float)qo.y);
         }
         if(r < view.l || l > view.r || b < view.t || t > view.b) { continue; }
-        // Fill: a quad list between the two projected loops. ImGui has no
-        // annulus primitive, and stroking the mid-loop at a constant
-        // thickness would ignore the foreshortening we are drawing for.
+        // Quad list between the two projected loops: imgui has no annulus primitive,
+        // and a mid-loop stroke would not foreshorten.
         const ImU32 fill = ImGui::GetColorU32(col);
         const ImVec2 uv(0.0f, 0.0f);
         dl->PrimReserve(6 * N, 6 * N);
@@ -305,8 +270,7 @@ static void drawDebrisBelts(Game &g, TerrainBody *focus, const OrbitMap &map,
     }
 }
 
-// --- Telemetry window: a 2x2 grid of plots, each with a dropdown to pick
-// which time series to show.
+// --- Telemetry window ---
 struct TeleSeriesDef { const char *name; const char *yaxis; };
 static const TeleSeriesDef kSeries[8] = {
     {"specific orbital energy", "J/kg"},
@@ -320,9 +284,8 @@ static const TeleSeriesDef kSeries[8] = {
 };
 static const int kNumSeries = 8;
 
-// Resolve a series index (0..7) to its ring buffer. 0-1 live on the active
-// ship's view; 2-7 are the per-frame timings on Game. "refresh" is the 3D
-// state pass (camera, LOD, g.view) and "render" the paint pass + imgui (#212).
+// Series 0-1 live on the active ship's view; 2-7 are Game's per-frame timings
+// (#212).
 static TimeSeries *telemetry_series(Game &g, int idx) {
     switch(idx) {
         case 0: return &g.view.energy_series;
@@ -362,30 +325,17 @@ static void draw_telemetry_cell(Game &g, int idx) {
     }
 }
 
-/* g.view is the state pass's snapshot of the ship that pass saw. The imgui
-   pass changes the active ship itself -- the VAB's LAUNCH builds one, the
-   fleet list's name row switches and its "x" deletes -- and can change the
-   LIVE SCENE mid-pass too (LAUNCH calls enterFlight, and drawWin re-tests
-   scene membership on every call, which is how the HUD came to be drawing
-   inside the VAB at all: W_Hud is not in kVabWinIds). Windows drawn after
-   that read a snapshot of some other ship, or none at all -- zeros on a
-   shipless boot, which made the HUD sample terrain along
-   glm::normalize(pos) = NaN (#235). Re-take it when the stamp disagrees.
-   These are the two entry points that can run after a switch: the other
-   g.view consumers (paintWorld, the map-basis dump, refreshShipState's
-   planner) all run inside the state pass, ahead of any click. */
+/* g.view is the state pass's snapshot of the ship that pass saw. The imgui pass
+   can switch the active ship mid-pass, so later windows read another ship's
+   snapshot -- or none at all, whose zeros sent the HUD along
+   glm::normalize(pos) = NaN (#235). Re-take on a stamp mismatch. */
 static void syncShipView(Game &g) {
     if(g.ship != nullptr && g.view.ship != g.ship) { updateShipView(g); }
 }
 
-/* The flight windows below assume there IS an active vessel, and they are
-   right to: Flight is only the live scene when there is one. A shipless boot
-   lands on the title and a shipless load on the Space Center hub; remove_ship
-   refuses the last vessel; LAUNCH / New Game create one before enterFlight.
-   The per-window "No active ship." guards went with the state they covered. */
+// The flight windows below assume an active vessel: remove_ship refuses the last.
 void drawUIReadouts(Game &g) {
-    // The window bodies' locals are Game members (aliased so the bodies
-    // read the same).
+    // The window bodies' locals alias Game members.
     TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
     System &sys = g.sys;
@@ -441,12 +391,9 @@ void drawUIReadouts(Game &g) {
     auto &xfer = planner.xfer;
     auto &pc = planner.pc;   // the porkchop grid (Porkchop window)
 
-    /* Top bar: one fixed window (no move, no resize, re-placed every
-       frame so it tracks the viewport). Row 1: speed + altitude
-       (big font) -- orbital (ASL + orbital speed) when in the
-       inertial frame or above 30km ASL, else surface (terrain
-       altitude + ground speed) in the rotating frame.
-       Row 2: Kerbin clock (regular font, centered). */
+    /* Top bar: one fixed window, re-placed every frame so it tracks the viewport.
+       Row 1 (big font) is orbital above 30 km ASL or in the inertial frame, else
+       surface; row 2 the clock. */
     drawWin(g, W_Hud, [&] {
         if(ship) {
             const double asl = distance
@@ -454,17 +401,15 @@ void drawUIReadouts(Game &g) {
                    + (double)ship->m_parent->surface.sea_level);
             const bool surface_mode = ship->frame->isRotFrame()
                                    && asl < kSurfaceModeAlt;
-            /* AGL is a full-detail terrain sample, so ask for it only in the
-               mode that displays it: the orbital readout discarded it (a
-               ternary evaluates only its taken branch, like `spd` below). */
+            // AGL is a full-detail terrain sample: ask only in the mode that shows it.
             const double alt = surface_mode
                 ? distance
                   - (double)ship->m_parent->GetTerrainHeight(glm::normalize(pos))
                 : asl;
             const double spd = surface_mode ? glm::length(surf_vel) : speed;
             ImGui::PushFont(g.bigger);
-            /* fmt_dist, not a fixed unit: at oort distances a meter count
-               is 16 digits wide and the old (int) cast was UB (INT_MIN). */
+            // fmt_dist, not a fixed unit: at Oort distances a meter count is 16 digits wide
+            // and the old (int) cast was UB.
             char spd_s[32], alt_s[32];
             ImGui::Text("%s/s   %s", fmt_dist(spd, spd_s, sizeof spd_s),
                         fmt_dist(alt, alt_s, sizeof alt_s));
@@ -480,11 +425,9 @@ void drawUIReadouts(Game &g) {
         }
     });
 
-    /* Window list: the LIVE scene's own windows, straight from the table in
-       uiwins.cpp -- so the panel can never offer a toggle for a window that
-       is not drawn here. Entries with inList=false are toggled from their
-       parent window instead, and Root/Chrome are not rows at all (a panel
-       that could close itself is a dead end). */
+    /* Window list: straight from the uiwins.cpp table, so it can never offer a
+       toggle for a window not drawn here. inList=false entries are toggled from
+       their parent; Root/Chrome are not rows. */
     drawWin(g, W_Windows, [&] {
         ImGui::Spacing();
         const WinSet &set = curScene(g).wins;
@@ -501,23 +444,11 @@ void drawUIReadouts(Game &g) {
 
     // Settings: the render/physics debug toggles.
     drawWin(g, W_Settings, [&] {
-        // Display: the window mode + the resolution it runs at. Both apply
-        // immediately (the SIZE_CHANGED event in events.cpp finishes the
-        // resize). "fullscreen" runs at the display's native mode, so the
-        // resolution is off there.
         {
             static const char *const mode_names[] =
                 {"windowed", "borderless", "fullscreen", "exclusive"};
-            /* The mode list and the refresh rate are SDL queries: displayModes()
-               mallocs and copies the whole mode array, dedups it in O(n^2) and
-               sorts it, currentRefresh() adds two more SDL calls, and the combo
-               labels are then snprintf'd into a fresh string (~50 entries here).
-               Refresh at ~1 Hz while the window is open instead of per frame --
-               same gate as navTitle's latestSave probe. The lag costs at most a
-               second, and only on the Hz a row is labelled with: the mode list
-               belongs to the display, not to our window, so neither a
-               window-mode nor a resolution change can alter it (the resize
-               itself lands through SIZE_CHANGED in events.cpp). */
+            /* displayModes() mallocs, dedups (O(n^2)) and sorts the whole array: refresh at
+               ~1 Hz while the window is open, not per frame. */
             static const double kModeRefreshSec = 1.0;
             static double nextModeRefresh = 0.0;
             static std::vector<Resolution> modes;
@@ -530,8 +461,7 @@ void drawUIReadouts(Game &g) {
                 items.clear();
                 char buf[48];
                 for(size_t i = 0; i < modes.size(); i++) {
-                    // Same WxH at several refresh rates: the Hz is what
-                    // tells the entries apart (0 = unknown, omit it).
+                    // The Hz tells same-WxH entries apart (0 = unknown, omit it).
                     snprintf(buf, sizeof(buf),
                              modes[i].refresh > 0 ? "%dx%d @ %dHz" : "%dx%d",
                              modes[i].width, modes[i].height,
@@ -552,10 +482,8 @@ void drawUIReadouts(Game &g) {
             if(ImGui::GetTime() >= nextModeRefresh) {
                 refreshModes();
             }
-            // Resolution: the display's supported modes (+ the current one).
-            // The selection is an exact WxH match (among those, the refresh
-            // closest to the display's current one), falling back to the
-            // nearest WxH (the WM may have clamped it out of the list).
+            // Exact WxH match, preferring the refresh closest to the display's current,
+            // else nearest WxH.
             if(!modes.empty()) {
                 int sel_exact = -1, best_exact = INT_MAX;
                 int sel_any = 0, best_any = INT_MAX;
@@ -591,12 +519,8 @@ void drawUIReadouts(Game &g) {
                 ImGui::TextDisabled("(fullscreen: the display's native "
                                     "resolution)");
             }
-            // Antialiasing: the window's MSAA sample count is fixed at
-            // creation (the GLX visual is chosen then), so picking a new
-            // value here sets the launch value -- it takes effect on
-            // restart. The selection tracks args.msaa_samples so the
-            // dropdown always reflects your pick (mirroring the count the
-            // current window runs at left it stuck on the old value).
+            // MSAA is fixed at window creation (the GLX visual is chosen then): this sets
+            // the LAUNCH value, effective on restart.
             {
                 static const int aa_values[] = {0, 2, 4, 8};
                 static const char *const aa_names[] = {"none", "2x", "4x",
@@ -607,9 +531,8 @@ void drawUIReadouts(Game &g) {
                     const int d = std::abs(aa_values[i] - args.msaa_samples);
                     if(d < best) { best = d; sel = i; }
                 }
-                // Split literals: in C, "\02" is the OCTAL escape for
-                // 0x02 (STX), not a null + '2' -- a single literal here
-                // would list the 2x/4x entries as missing-glyph boxes.
+                // Split literals: in C, "\02" is the OCTAL escape for 0x02, not a
+                // null + '2' -- one literal would list 2x/4x as missing-glyph boxes.
                 if(ImGui::Combo("Antialiasing", &sel,
                                 "none\0" "2x\0" "4x\0" "8x\0")) {
                     args.msaa_samples = aa_values[sel];
@@ -623,15 +546,13 @@ void drawUIReadouts(Game &g) {
         ImGui::Checkbox("World draw", &world_drawing);
         ImGui::Checkbox("Starfield", &draw_starfield);
         ImGui::Checkbox("Reference circles", &draw_skylines);
-        // Prototype (render.cpp skyGain): how far the stars fade while the sun
-        // is in view and the camera is in sunlight. 1 = no fade. Live, so the
-        // look can be judged without a restart.
+        // Prototype (render.cpp skyGain): how far stars fade while the sun is in view
+        // and the camera is in sunlight.
         ImGui::SliderFloat("Sky dim", &sky_dim, 0.0f, 1.0f, "%.2f");
         // Half-angle of the "sun in view" cone (same units as --sky-dim-cone).
         ImGui::SliderFloat("Sky dim cone", &sky_dim_cone, 1.0f, 179.0f, "%.0f");
-        // Post-processing: one checkbox per effect (the passes run in this
-        // order); an effect that exposes parameters also gets a slider per
-        // parameter (range + neutral value from the effect's definition).
+        // Post-processing: one checkbox per effect (the passes run in this order),
+        // plus a slider per parameter.
         ImGui::Separator();
         ImGui::Text("Post-processing");
         for(const std::string &fx : PostFX::Available()) {
@@ -650,8 +571,7 @@ void drawUIReadouts(Game &g) {
             const std::vector<FXParam> params = PostFX::Params(fx);
             if(params.empty()) { continue; }
             for(const FXParam &p : params) {
-                // Underscored uniform name -> natural-language label
-                // (black_level -> "black level").
+                // Underscored uniform name -> natural-language label.
                 char label[64];
                 snprintf(label, sizeof(label), "%s", p.name);
                 for(char *c = label; *c; c++) { if(*c == '_') *c = ' '; }
@@ -661,10 +581,8 @@ void drawUIReadouts(Game &g) {
                 }
             }
         }
-        // Audio: the master levels apply live and persist with "Save".
-        // No-op while audio is disabled (headless) -- the values still save.
-        // (0..1 like "Window opacity" -- a %.0f%% label would only
-        // ever print "0%" or "1%".)
+        // Audio: master levels apply live and persist with "Save"; a no-op while
+        // audio is disabled.
         ImGui::Separator();
         ImGui::Text("Audio");
         if(ImGui::SliderFloat("SFX volume", &sfx_volume, 0.0f, 1.0f, "%.2f")) {
@@ -685,41 +603,28 @@ void drawUIReadouts(Game &g) {
                              0.2f, 1.0f, "%.2f")) {
             g.apply_ui_style();
         }
-        // The slider only edits the pending value; the Apply button
-        // commits it (applying live while dragging would move this window
-        // out from under the cursor).
+        // Applying live while dragging would move this window out from under the cursor.
         ImGui::SliderFloat("DPI scale", &dpi_pending, 0.5f, 3.0f, "%.2fx");
         ImGui::BeginDisabled(dpi_pending == ui_scale);
         if(ImGui::Button("Apply DPI")) {
             ui_scale = dpi_pending;
             g.apply_ui_style();
-            // TODO(dpi): the windows don't re-fit / re-place at the new
-            // scale (fonts + padding scale, sizes stay put). A relayout
-            // attempt DID re-fit them, but with STALE text metrics: the
-            // first re-layout after a FontScaleDpi change sizes windows
-            // with the PREVIOUS size's font advances (2x overflows, 1x
-            // leaves slack); a second re-layout (F10 / "Reset windows")
-            // fits correctly. Suspect the imgui 1.92 per-size font bakes
-            // (ImFont::GetFontBaked / ImFontBaked::IndexAdvanceX).
+            // TODO(dpi): windows don't re-fit / re-place at the new scale. A relayout attempt
+            // refit them, but the first pass used the PREVIOUS size's font advances; suspect the
+            // imgui 1.92 per-size font bakes (ImFont::GetFontBaked).
         }
         ImGui::EndDisabled();
         if(ImGui::SliderFloat("FOV", &args.camFovDeg, 10.0f, 120.0f, "%.0f°")) {
             const float f = (float)glm::radians(args.camFovDeg);
             camera->setFov(f);
         }
-        // Terrain LOD: a patch subdivides while it projects wider than
-        // args.terrain_px [real screen px] (read live by GeoPatch::Update).
-        // The slider is a 4-step detail level, right = finer: 512px is the
-        // default. The 64/32 steps are gone -- the budget is per patch, so
-        // they ask for tens of thousands of them and the single async builder
-        // never drills the tree to max_depth, which is where the collision
-        // meshes live (terrain.cpp): the ship is left standing on nothing.
+        // Terrain LOD: a patch subdivides while it projects wider than args.terrain_px
+        // [real screen px]. 64/32 are gone: the budget is per patch, so they explode the
+        // patch count and the async builder never reaches max_depth -- where the collision
+        // meshes live (terrain.cpp).
         {
             constexpr int terrain_px_table[] = { 1024, 512, 256, 128 };
             constexpr int nlevels = 4;
-            // The ladder is the third consumer of the range (CLI check,
-            // settings.json clamp); a step outside it would be unreachable
-            // from the CLI and clamped away on the next load.
             static_assert(terrain_px_table[0] <= kTerrainPxMax
                           && terrain_px_table[nlevels - 1] >= kTerrainPxMin,
                           "Settings terrain ladder outside the --terrain-px range");
@@ -732,14 +637,11 @@ void drawUIReadouts(Game &g) {
                 args.terrain_px = terrain_px_table[terrain_level];
             }
         }
-        // Difficulty lives on the New Game sheet + save.json (and
-        // --exhaust-scale for tests). No Settings slider: it is per-game.
-        // Camera shake: the chase cam rumbles with the crew's felt
-        // acceleration (thrust + aero over mass, gravity excluded).
+        // Camera shake: the chase cam rumbles with the crew's felt acceleration
+        // (thrust + aero over mass, gravity excluded).
         ImGui::SliderFloat("Camera shake", &args.cam_shake,
                            0.0f, 3.0f, "%.1fx");
-        // Controls: invert a manual attitude axis away from the default
-        // (see tick.cpp). All three are off by default.
+        // Controls: invert a manual attitude axis away from the default (see tick.cpp).
         ImGui::Separator();
         ImGui::Text("Controls (W/S pitch, A/D yaw, Q/E roll)");
         ImGui::Checkbox("Flip pitch (W/S)", &flip_pitch);
@@ -758,9 +660,9 @@ void drawUIReadouts(Game &g) {
         }
     });
 
-    // Transfer planner: parent->child body transfers (with capture) and
-    // same-body ship intercepts. The solution is computed in the 3D pass
-    // (xfer), so this window is pure readout + inputs.
+    // Transfer planner: parent->child transfers (with capture) and same-body ship
+    // intercepts. The solution is computed in the 3D pass, so this window is readout
+    // + inputs.
     drawWin(g, W_Transfer, [&] {
         if(xferTargets.empty()) {
             ImGui::Text("No transfer targets: no child bodies or ships here.");
@@ -769,8 +671,7 @@ void drawUIReadouts(Game &g) {
         const char *cur = (xfer_target >= 0)
                          ? xferTargets[xfer_target].name : "none";
         if(ImGui::BeginCombo("Target", cur)) {
-            // "none" is a real dropdown entry (not just the closed label)
-            // so the target can be cleared back to -1 from here.
+            // "none" is a real entry so the target can be cleared back to -1 from here.
             if(ImGui::Selectable("none", xfer_target == -1)) {
                 xfer_target = -1;
             }
@@ -782,8 +683,7 @@ void drawUIReadouts(Game &g) {
             }
             ImGui::EndCombo();
         }
-        // The Porkchop window hangs off this window rather than the Windows
-        // list: pick a target, then open the plot for it.
+        // The Porkchop window hangs off this window, not the Windows list.
         bool pc_open = winOpen(W_Porkchop);
         if(ImGui::Checkbox("Porkchop", &pc_open)) {
             setWinOpen(W_Porkchop, pc_open);
@@ -797,9 +697,6 @@ void drawUIReadouts(Game &g) {
             ImGui::TextDisabled("ship target: intercept only, no capture burn");
         }
         // A porkchop "Send best" plan: count down to the departure instant.
-        // At zero the live "depart now" solution below IS the best cell.
-        // "Clear plan" drops the plan and restores the ToF mode the user
-        // had before sending.
         if(planner.xfer_from_porkchop && planner.xfer_t_dep > 0.0) {
             ImGui::Separator();
             const double tleft = planner.xfer_t_dep - time;
@@ -859,9 +756,8 @@ void drawUIReadouts(Game &g) {
         }
     });
 
-    /* Porkchop plot: the 2-D launch-window map (total dv over departure
-       delay x time of flight). Computed on demand and cached until the
-       next compute, so the window is cheap to leave open. */
+    /* Porkchop plot: the 2-D launch-window map (total dv over departure delay x time
+       of flight), computed on demand and cached. */
     drawWin(g, W_Porkchop, [&] {
         if(xferTargets.empty()) {
             ImGui::Text("No transfer targets: no child bodies or ships here.");
@@ -873,10 +769,8 @@ void drawUIReadouts(Game &g) {
         }
         const char *tn = xferTargets[xfer_target].name;
 
-        // On-demand compute (same trigger as the P key). The grid sweep runs
-        // on the background worker (g.jobs), so this is a one-shot button,
-        // not a per-frame re-sweep. While a sweep is in flight the button is
-        // disabled and the last grid stays on screen.
+        // The grid sweep runs on the background worker (g.jobs), so this is a one-shot
+        // button, not a per-frame re-sweep.
         const bool pc_busy = planner.pc_in_flight > 0;
         if(pc_busy) { ImGui::BeginDisabled(); }
         if(ImGui::Button("Compute  (P)")) {
@@ -890,8 +784,8 @@ void drawUIReadouts(Game &g) {
             ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
                                "   sweeping ...");
         }
-        // The grid ON SCREEN, not the configured size: --porkchop-bench leaves
-        // the largest swept grid as the live plot, so the two can disagree.
+        // The grid ON SCREEN, not the configured size: --porkchop-bench leaves the largest
+        // swept grid live, so the two can disagree.
         ImGui::TextDisabled("grid %d x %d   (size: --porkchop-n / --porkchop-bench)",
                             pc.valid ? pc.n_dep : g.args.porkchop_n,
                             pc.valid ? pc.n_tof : g.args.porkchop_n);
@@ -900,14 +794,12 @@ void drawUIReadouts(Game &g) {
                                 "lands)");
         }
 
-        // Axis ranges. Off = the auto range (departure: 0 .. one target
-        // period; ToF: 60 s .. three target periods). On = the two sliders,
-        // in seconds; press Compute (or P) to re-sweep over them.
+        // Axis ranges. Off = auto (departure 0..one target period; ToF 60 s..three);
+        // On = the two sliders, in seconds.
         const float kRangeSliderMax = 604800.0f; // 7 days
         if(ImGui::Checkbox("Departure range", &planner.pcCustomDep)
            && planner.pcCustomDep) {
-            // Just enabled: seed from the last sweep's range (or 0 .. 1 day
-            // if there isn't one yet).
+            // Just enabled: seed from the last sweep's range, or 0 .. 1 day.
             planner.pcDepLo = pc.valid ? (float)pc.t_dep_lo : 0.0f;
             planner.pcDepHi = pc.valid
                 ? (pc.t_dep_hi < kRangeSliderMax ? (float)pc.t_dep_hi
@@ -922,8 +814,7 @@ void drawUIReadouts(Game &g) {
         }
         if(ImGui::Checkbox("ToF range", &planner.pcCustomTof)
            && planner.pcCustomTof) {
-            // Just enabled: seed from the last sweep's range (or 60 s ..
-            // 1 day if there isn't one yet).
+            // Just enabled: seed from the last sweep's range, or 60 s .. 1 day.
             planner.pcTofLo = pc.valid ? (float)pc.tof_lo : 60.0f;
             planner.pcTofHi = pc.valid
                 ? (pc.tof_hi < kRangeSliderMax ? (float)pc.tof_hi
@@ -942,8 +833,7 @@ void drawUIReadouts(Game &g) {
 
         if(!pc.valid) {
             if(pc_busy) {
-                // A sweep is in flight (the grid isn't on screen yet): show
-                // the working state instead of the "no window" message.
+                // A sweep is in flight: show the working state, not "no window".
                 ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
                                    "Sweeping the grid ...");
                 ImGui::TextDisabled("The result appears here when it lands.");
@@ -959,13 +849,8 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("min dv:      %08.1f m/s", pc.dv_min);
         ImGui::Text("depart in:   %s", fmt_time(pc.t_dep_min, pc_t, sizeof pc_t));
         ImGui::Text("time of flt: %s", fmt_time(pc.tof_min, pc_t, sizeof pc_t));
-        // Apply the best cell to the Transfer planner: pin the ToF (manual
-        // mode) and record the ABSOLUTE departure time (compute moment + the
-        // best cell's delay). The Transfer window then counts down to it, and
-        // at that instant the live "depart now" solution IS the best cell
-        // (Kepler propagation composes), so you burn then. Disabled while a
-        // new sweep is in flight: pc would still be the PREVIOUS grid, and a
-        // plan from it is stale (wait for the sweep to land).
+        // Send the best cell to the Transfer planner: pin the ToF and record the ABSOLUTE
+        // departure time. Disabled during a sweep: pc is then the PREVIOUS grid.
         if(pc_busy) { ImGui::BeginDisabled(); }
         if(ImGui::Button("Send best to Transfer")) {
             // Remember the user's ToF mode so "Clear plan" restores it.
@@ -980,27 +865,18 @@ void drawUIReadouts(Game &g) {
         }
         if(pc_busy) { ImGui::EndDisabled(); }
 
-        // The heatmap: total dv over (departure delay x, time of flight y).
-        // Storage is ToF-major (rows = ToF, cols = departure). Drawn as a
-        // texture (not ImPlot::PlotHeatmap): that one indexes its color LUT
-        // with the raw cell value, so the no-solution (NaN) cells read out
-        // of bounds and assert. NaN cells are a distinct gray here.
-        // Color scale: [dv_min, dv_hi]. dv_hi is the robust max (95th
-        // percentile) -- the absolute max is deliberately excluded, because
-        // the dv surface has a narrow unphysical spike at the shortest ToFs
-        // that would stretch the scale and compress the whole launch window
-        // to purple.
+        // Heatmap: total dv over (departure delay x, time of flight y), stored ToF-major
+        // (rows = ToF, cols = departure). Drawn as a texture, not ImPlot::PlotHeatmap:
+        // that indexes its color LUT with the raw cell value, so the no-solution (NaN)
+        // cells read out of bounds and assert.
+        // Color scale [dv_min, dv_hi]: dv_hi is the 95th percentile, not the absolute max
+        // -- the dv surface has a narrow unphysical spike at the shortest ToFs.
         double lo = pc.dv_min;
         double hi = (pc.dv_hi > lo) ? pc.dv_hi : lo;
         const int w = pc.n_dep, h = pc.n_tof;
-        // The heatmap is a CACHE of pc: px and the texture only change when a
-        // sweep lands, so gate both on pc_rev (bumped where pc is published).
-        // Rebuilding per frame -- the old behaviour, whatever the window's
-        // "cheap to leave open" comment claimed -- is a full RGBA fill plus a
-        // GL upload every frame for a plot that only moves when you press P:
-        // 256 KB at the default 256x256, tens of MB at the --porkchop-n /
-        // --porkchop-bench caps. px keeps its peak capacity, so the largest
-        // grid ever swept also stays resident.
+        // A CACHE of pc: px and the texture only change when a sweep lands, so gate both
+        // on pc_rev. px keeps its peak capacity, so the largest grid ever swept stays
+        // resident.
         static Texture *pc_tex = nullptr;
         static std::vector<unsigned char> px;   // persists across frames
         static int tex_w = 0, tex_h = 0, tex_rev = -1;
@@ -1034,8 +910,8 @@ void drawUIReadouts(Game &g) {
             }
             tex_rev = rev;
         }
-        // The fill above indexes total_dv as w x h and the Image below derefs
-        // the texture: both must match the grid that is on screen.
+        // The fill indexes total_dv as w x h and the Image derefs the texture: both must
+        // match the grid on screen.
         assert(pc.total_dv.size() == (size_t)w * h && pc_tex
                && tex_w == w && tex_h == h);
         // The color bar: a 1 x 64 viridis strip, lo at the bottom.
@@ -1051,14 +927,12 @@ void drawUIReadouts(Game &g) {
             }
             bar_tex = make_texture_r8(1, 64, bar);
         }
-        // Fixed display size (the window auto-fits around it). The grid
-        // resolution (pc_n) only changes how many cells map onto this size.
+        // Fixed display size (the window auto-fits around it).
         const float img_sz = 420.0f;
         ImGui::Image((ImTextureID)(std::intptr_t)pc_tex->id,
                      ImVec2(img_sz, img_sz), ImVec2(0, 1), ImVec2(1, 0));
         ImGui::SameLine();
-        // Colorbar: hi (max dv) at the top, lo (min dv) at the bottom, with
-        // the value labels at each end (aligned to the bar, not the heatmap).
+        // Colorbar: hi at the top, lo at the bottom, labels aligned to the bar.
         ImGui::BeginGroup();
             ImGui::Text("%.0f", hi);
             ImGui::Image((ImTextureID)(std::intptr_t)bar_tex->id,
@@ -1077,14 +951,12 @@ void drawUIReadouts(Game &g) {
         ImGui::TextDisabled("bar: dv in m/s (top = max)   gray: no solution");
     });
 
-    /* Surface Map: the chosen body's surface as an equirectangular 2-D map,
-       the ship's position + orbit overlaid, and optionally the terminator.
-       The pixel buffer is computed on demand on the background worker and
-       cached until the next compute (same pattern as the Porkchop). */
+    /* Surface Map: the chosen body's surface as an equirectangular 2-D map with the
+       ship's position + orbit overlaid. The pixel buffer is computed on demand on the
+       background worker and cached. */
     drawWin(g, W_SurfaceMap, [&] {
-        // Body to map: item 0 = "active ship's body" (surfmap_body =
-        // nullptr, so the map follows the ship's SOI); the rest are
-        // sys.bodies in order.
+        // Body to map: item 0 = "active ship's body" (surfmap_body == nullptr, so the
+        // map follows the ship).
         std::vector<std::string> sm_names;
         sm_names.push_back(ship && ship->m_parent
                               ? "active ship's body (" + ship->m_parent->name + ")"
@@ -1109,17 +981,14 @@ void drawUIReadouts(Game &g) {
             return;
         }
 
-        // Auto-compute when there is no map yet, or it was computed for a
-        // different body. Not while a sweep is in flight (the last one lands
-        // for the body it was posted for).
+        // Auto-compute when there is no map yet or it was computed for a different body.
+        // Not mid-sweep: the last one lands for the body it was posted for.
         if(g.surfmap_in_flight == 0 &&
            (!g.surfmap_valid || g.surfmap_body_name != sm_body->name)) {
             surfmapCompute(g);
         }
 
-        // The sweep runs on the background worker (g.jobs), like the
-        // Porkchop grid. Read AFTER the auto-compute above so a just-posted
-        // job already shows the "mapping ..." state.
+        // Read AFTER the auto-compute above so a just-posted job shows the state.
         const bool sm_busy = g.surfmap_in_flight > 0;
 
         if(sm_busy) { ImGui::BeginDisabled(); }
@@ -1169,9 +1038,7 @@ void drawUIReadouts(Game &g) {
             return;
         }
 
-        // One texture, re-uploaded when the map is recomputed (or the
-        // size changes). LINEAR filtering: a smooth map upscaled over the
-        // window (unlike the Porkchop's discrete heatmap cells).
+        // LINEAR filtering: a smooth map, unlike the Porkchop's discrete cells.
         static Texture *sm_tex = nullptr;
         static int sm_tex_w = 0, sm_tex_h = 0, sm_tex_rev = -1;
         if(g.surfmap_rev != sm_tex_rev) {
@@ -1188,29 +1055,21 @@ void drawUIReadouts(Game &g) {
             sm_tex_rev = g.surfmap_rev;
         }
 
-        // The map fills the window's content width (2:1 equirectangular).
-        // The buffer's row 0 is the north pole, and GL row 0 is uv (0,0)
-        // = the drawn rect's top-left, so the default (0,0)-(1,1) uv
-        // draws it unflipped (the Porkchop heatmap flips, its row 0
-        // being the axis minimum).
+        // The map fills the window's content width (2:1 equirectangular). Buffer row 0 is
+        // the north pole and GL row 0 the drawn rect's top, so the default uv draws it
+        // unflipped (the Porkchop heatmap flips).
         // ImMax: this imgui's GetContentRegionAvail is not clamped to 0.
         const float sm_img_w = ImMax(0.0f, ImGui::GetContentRegionAvail().x);
         const float sm_img_h = sm_img_w * 0.5f;
         const ImVec2 sm_p0 = ImGui::GetCursorScreenPos();
         ImGui::Image((ImTextureID)(std::intptr_t)sm_tex->id,
                      ImVec2(sm_img_w, sm_img_h));
-        // Hover state of the Image (must be read while it is the last
-        // item): the caption below shows the terrain height under the
-        // cursor while the mouse is over the map.
+        // Hover state of the Image (must be read while it is the last item).
         const bool sm_hover = ImGui::IsItemHovered();
 
-        // The overlay (graticule, orbit, apsides, ship dot) on the map
-        // rect. Screen (u, v) from (lon, lat): lon 0..2pi left -> right,
-        // lat +pi/2 top -> -pi/2 bottom. Scales by the IMAGE size (image-
-        // edge poles) rather than equirectPixel's (h-1) texture rows --
-        // deliberate: continuous screen coords for drawing, so the ship
-        // dot and the hover inverse stay consistent with each other (they
-        // disagree with the colour sample by at most half a map row near
+        // map_px scales by the IMAGE size rather than equirectPixel's (h-1) texture rows
+        // -- deliberate: continuous screen coords keep the ship dot and the hover inverse
+        // consistent (they disagree with the colour sample by at most half a map row near
         // the poles).
         ImDrawList *dl = ImGui::GetWindowDrawList();
         const ImVec4 sm_bg = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
@@ -1223,8 +1082,7 @@ void drawUIReadouts(Game &g) {
             return ImVec2(sm_p0.x + (float)u, sm_p0.y + (float)v);
         };
 
-        // Graticule: lat -60..60 every 30 (equator brighter), lon every
-        // 45 -- faint, under the orbit line.
+        // Graticule: faint, under the orbit line.
         const ImU32 grat_faint =
             ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 1.0f, 0.12f));
         const ImU32 grat_eq =
@@ -1241,26 +1099,24 @@ void drawUIReadouts(Game &g) {
             dl->AddLine(a, b, grat_faint, 1.0f);
         }
 
-        // The ship's orbit around the mapped body -- only when the ship is
-        // orbiting it (a conic about a different body has no meaning here).
+        // The ship's orbit, only when the ship orbits this body (a conic about another
+        // body is meaningless here).
         if(ship && sm_body == ship->m_parent && g.view.mu > 0.0) {
             const double &mu = g.view.mu;
             const glm::dvec3 &orbit_pos = g.view.orbit_pos;
             const glm::dvec3 &orbit_vel = g.view.orbit_vel;
-            // N matches the Orbital Map's ship-orbit count: the cache is
-            // keyed on N, and both maps draw the same ship in one frame.
+            // N matches the Orbital Map: the cache is keyed on N and both maps draw the same
+            // ship in one frame.
             const int N = 64;
             const bool closed = (o.ecc < 1.0);
             std::vector<glm::dvec3> pts_local;
             const std::vector<glm::dvec3> *pts = nullptr;
             if(closed) {
-                // Per-ship cache (shared with the Orbital Map), trusted
-                // only while the ship coasts on its Keplerian conic.
+                // Per-ship cache (shared with the Orbital Map), trusted only while on rails.
                 pts = &orbit_caches[(const void *)ship].sample(
                     orbit_pos, orbit_vel, mu, N, ship->onRails);
             } else {
-                // Open arc: the map spans the whole body, so cap the arc
-                // a couple of ship radii beyond the current radius.
+                // Open arc: the map spans the whole body, so cap it a couple of ship radii out.
                 const double r_cap =
                     std::max(4.0 * o.periapsis, o.distance) * 2.0;
                 pts_local = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N,
@@ -1268,16 +1124,13 @@ void drawUIReadouts(Game &g) {
                 pts = &pts_local;
             }
             if(pts && !pts->empty()) {
-                // The points live in the ship's non-rotating frame; the
-                // map's pixel directions live in the body's ROTATING frame.
-                // Rigid-transform each point into that frame -- the orbit's
-                // GROUND TRACK over the surface.
+                // The points live in the ship's non-rotating frame, the map's pixels in the body's
+                // ROTATING frame: transforming each point gives the orbit's GROUND TRACK.
                 Frame *inertial = ship->frame->getNonRotFrame();
                 Frame *rot = sm_body->frame->getRotFrame();
                 const glm::dmat3 O = inertial->GetOrientRelTo(rot);
                 const glm::dvec3 P = inertial->GetPositionRelTo(rot);
-                // Point (inertial frame) -> (lon, lat, pixel). out = false
-                // if degenerate.
+                // Point (inertial frame) -> (lon, lat, pixel); false if degenerate.
                 auto to_px = [&](const glm::dvec3 &p, ImVec2 &px) -> bool {
                     const glm::dvec3 pr = O * p + P;
                     const double l = glm::length(pr);
@@ -1287,9 +1140,8 @@ void drawUIReadouts(Game &g) {
                     px = map_px(lon, lat);
                     return true;
                 };
-                // The polyline, broken at the antimeridian (the map's
-                // left and right edges are the SAME meridian; surfmapWraps
-                // detects the >half-turn jump between consecutive lons).
+                // Broken at the antimeridian: the map's edges are the SAME meridian; surfmapWraps
+                // detects the >half-turn jump.
                 double prev_lon = -1.0e300;
                 std::vector<ImVec2> seg;
                 for(size_t i = 0; i < pts->size(); i++) {
@@ -1312,8 +1164,7 @@ void drawUIReadouts(Game &g) {
                     dl->AddPolyline(seg.data(), (int)seg.size(),
                                     sm_ship, 1.0f);
                 }
-                // Apsides (closed orbit, non-circular): propagate to each
-                // (exact, same as the Orbital Map) and drop a dot.
+                // Apsides (closed, non-circular): propagate to each exactly, as in the Orbital Map.
                 if(closed && o.ecc > 1e-3) {
                     glm::dvec3 ap_p, tmp;
                     ImVec2 apx;
@@ -1335,15 +1186,9 @@ void drawUIReadouts(Game &g) {
             }
         }
 
-        /* Launch sites on the mapped body. StaticBuilding::dir is a unit up
-           in the body's ROTATING frame -- the very frame the map's pixels are
-           baked in (equirect.h) -- so a site's pixel is equirectLonLat
-           straight, no transform. Amber triangles outlined in dark: the
-           graticule is white and the orbit + ship dot are green, and the map
-           under them runs from dark ocean to pale cloud.
-           Names are the "Site labels" box. Earth carries 15 sites and they
-           are ~100 px apart on a small window, so the box is for a window you
-           have made big; either way the cursor line names the nearest one. */
+        /* StaticBuilding::dir is a unit up in the body's ROTATING frame -- the very frame
+           the map's pixels are baked in (equirect.h) -- so a site's pixel is equirectLonLat
+           straight, no transform. */
         struct SiteMark { ImVec2 px; const std::string *name; };
         std::vector<SiteMark> site_marks;
         for(const StaticBuilding *p : sm_body->pads) {
@@ -1363,15 +1208,13 @@ void drawUIReadouts(Game &g) {
             dl->PushClipRect(sm_p0, ImVec2(sm_p0.x + sm_img_w,
                                            sm_p0.y + sm_img_h), true);
             for(const SiteMark &m : site_marks) {
-                // An up-pointing triangle reads as "you launch from here".
                 const ImVec2 a(m.px.x, m.px.y - sr);
                 const ImVec2 b(m.px.x - sr, m.px.y + sr * 0.8f);
                 const ImVec2 c(m.px.x + sr, m.px.y + sr * 0.8f);
                 dl->AddTriangleFilled(a, b, c, site_fill);
                 dl->AddTriangle(a, b, c, site_edge, 1.0f);
-                /* A site within a glyph of an edge is half clipped, and the
-                   map's two edges are the SAME meridian, so the other half
-                   belongs on the far side (as for the ship dot). */
+                /* A site within a glyph of an edge is half clipped, and the map's edges are the
+                   SAME meridian, so the other half belongs on the far side. */
                 if(m.px.x - sm_p0.x < sr || sm_p0.x + sm_img_w - m.px.x < sr) {
                     const ImVec2 q(m.px.x < sm_p0.x + sm_img_w * 0.5f
                                        ? m.px.x + sm_img_w : m.px.x - sm_img_w,
@@ -1394,22 +1237,16 @@ void drawUIReadouts(Game &g) {
                     tx = m.px.x - sr - 3.0f - ts.x;
                 }
                 const float ty = m.px.y - ts.y * 0.5f;
-                // AddText has no outline: a dark copy a pixel down-right is
-                // what keeps a label readable over pale cloud.
+                // AddText has no outline: a dark copy a pixel down-right keeps the label readable.
                 dl->AddText(ImVec2(tx + 1.0f, ty + 1.0f), site_edge, nm);
                 dl->AddText(ImVec2(tx, ty), site_text, nm);
             }
             dl->PopClipRect();
         }
 
-        // The ship's position: a bright dot (you are here) with a green
-        // ring, the same mark as the Orbital Map. Only on the ship's own
-        // body. The dot is the SUB-SATELLITE point: the ship's COM rigidly
-        // transformed into the body's ROTATING frame (the surface's frame)
-        // -- the same (lon, lat) the HUD reports, so it stays glued to
-        // "what surface I'm over". NOT ship->frame's origin: two frames of
-        // the same body share an origin, so the origin offset is 0 and the
-        // dot would vanish exactly on the ship's own body.
+        // The dot is the SUB-SATELLITE point -- the ship's COM in the body's ROTATING frame.
+        // NOT ship->frame's origin: two frames of the same body share an origin, so the offset
+        // is 0 and the dot would vanish on its own body.
         if(ship && sm_body == ship->m_parent) {
             Frame *rot = sm_body->frame->getRotFrame();
             const glm::dvec3 com = ship->get_center_of_mass();
@@ -1420,9 +1257,7 @@ void drawUIReadouts(Game &g) {
                 double lon, lat;
                 equirectLonLat(sp / sl, lon, lat);
                 const ImVec2 p = map_px(lon, lat);
-                // A dot crossing the antimeridian (within the ring
-                // radius of an edge) gets a twin on the other. Clip to the
-                // map image so neither spills into the window margin.
+                // Crossing the antimeridian gets a twin on the other side; clip so neither spills.
                 const bool near_left  = (p.x - sm_p0.x) < 8.0f;
                 const bool near_right = (sm_p0.x + sm_img_w - p.x) < 8.0f;
                 dl->PushClipRect(sm_p0,
@@ -1443,9 +1278,8 @@ void drawUIReadouts(Game &g) {
 
         if(sm_hover) {
             // The hovered pixel inverts map_px. The unit direction feeds
-            // GetTerrainHeight straight -- the map is baked in the same
-            // rotating frame (equirect.h), so no transform. "elev" is
-            // above SEA LEVEL, like the Surface window's ASL.
+            // GetTerrainHeight straight -- the map is baked in the same rotating frame
+            // (equirect.h). "elev" is above SEA LEVEL, like the Surface window's ASL.
             const ImVec2 sm_mouse = ImGui::GetMousePos();
             const double u = (sm_mouse.x - sm_p0.x) / sm_img_w;
             const double v = (sm_mouse.y - sm_p0.y) / sm_img_h;
@@ -1453,11 +1287,9 @@ void drawUIReadouts(Game &g) {
             const double lat = std::numbers::pi * 0.5 - v * std::numbers::pi;
             const glm::vec3 dir = equirectDir(lon, lat);
             char elev_s[32];
-            // The nearest site under the cursor, so a marker is still
-            // identifiable with the labels box off -- or where a label fell
-            // off the map edge. One suffix on the same line, never a second
-            // line: this window auto-resizes, so a line appearing would
-            // jitter its height as the mouse moves.
+            // The nearest site under the cursor, so a marker is still identifiable with the
+            // labels box off. One suffix on the same line, never a second line: this window
+            // auto-resizes, so a new line would jitter its height.
             char site_s[64] = "";
             const SiteMark *near = nullptr;
             float best = 14.0f * 14.0f;
@@ -1507,10 +1339,8 @@ void drawUIReadouts(Game &g) {
                             ct.day, ct.hh, ct.mm, ct.ss,
                             sys.home->name.c_str());
             }
-            // Solar time at surface lon 0 (#202): the subsolar point is
-            // local noon, so lon 0 reads 12h - lon/15 (east-positive lon,
-            // #200). Geometric (includes e != 0), not a mean-time table.
-            // Makes --start-time's "pad in daylight" checkable.
+            // Solar time at surface lon 0 (#202): the subsolar point is local noon, so lon 0
+            // reads 12h - lon/15 (east-positive lon, #200). Geometric, not a mean-time table.
             if(g.sun && g.sun != sys.home && sys.home->frame) {
                 const glm::dvec3 to_sun = g.sun->frame->root_pos
                                         - sys.home->frame->root_pos;
@@ -1521,8 +1351,6 @@ void drawUIReadouts(Game &g) {
                     const glm::dvec3 dir = to_rot * (to_sun / sl);
                     double lon = 0.0, lat = 0.0;
                     equirectLonLat(dir, lon, lat);
-                    // Subsolar lon is where it is noon; lon 0's solar time
-                    // is behind by lon hours (east is earlier / negative HA).
                     double sod = 12.0 - glm::degrees(lon) / 15.0;
                     while(sod < 0.0) { sod += 24.0; }
                     while(sod >= 24.0) { sod -= 24.0; }
@@ -1533,8 +1361,7 @@ void drawUIReadouts(Game &g) {
                 }
             }
         }
-        // Local date + time on the body the ship is currently in,
-        // when it's not the home planet (e.g. the Moon's own day).
+        // Local date + time on the body the ship is in, when not the home planet.
         TerrainBody *local_body = (ship && ship->frame)
                                 ? ship->frame->body : nullptr;
         if(local_body && local_body != sys.home &&
@@ -1568,7 +1395,6 @@ void drawUIReadouts(Game &g) {
                     camera->forward.x, camera->forward.y, camera->forward.z);
         if(ImGui::Button("Print camera pose (CLI args)")) {
             // Copy-paste the printed line after ./osp to relaunch at this view.
-            // pos/forward/up are world / ship-frame coordinates.
             printf("Camera pose:\n");
             printf("--free-cam-pos %.9g %.9g %.9g "
                    "--free-cam-fwd %.9g %.9g %.9g "
@@ -1590,13 +1416,11 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("xyz(%0.f, %0.f, %0.f)", vel.x, vel.y, vel.z);
 
         // --- power balance (the electrical system) -------------------------
-        // The same resolution powerTick runs each substep, shown live.
-        // Only shown for a ship that actually has an EC system.
         double gen = 0.0, constDraw = 0.0, charge = 0.0, capacity = 0.0;
         ship->getPower(&gen, &constDraw, &charge, &capacity);
         if(gen > 0.0 || constDraw > 0.0 || capacity > 0.0) {
-            // active draw: the wheels, only while commanding (the same
-            // condition powerTick uses).
+            // Active draw: the wheels, only while commanding (same condition powerTick
+            // uses).
             bool wheelsActive = (ship->stick[0] != 0.0f ||
                                  ship->stick[1] != 0.0f ||
                                  ship->stick[2] != 0.0f)
@@ -1628,22 +1452,18 @@ void drawUIReadouts(Game &g) {
         }
     });
 
-    // Labels are abbreviated to <= 3 chars and right-padded to the
-    // same width so the values start at a tidy column.
+    // Labels abbreviated to <= 3 chars and right-padded so values line up.
     drawWin(g, W_Orbital, [&] {
         char dist_s[32];   // one buffer, reused line by line
         ImGui::Text("Bod: %s (%c)", ship->m_parent->name.c_str(),
                     ship->frame->isRotFrame() ? 'R' : 'I');
         ImGui::Text("Vel: %.1fm/s", speed);
-        /* R is a RADIUS from the focus, not an altitude: an 85 km orbit
-           around Kerbin reads 685 km here. ApA/PeA are apsis RADII for the
-           same reason. The SURFACE window has the real altitude (and
-           --info-log derives alt_asl); calling these "Alt" was #171's
-           sibling complaint. */
+        /* R is a RADIUS from the focus, not an altitude; ApA/PeA are apsis RADII for the
+           same reason. The SURFACE window has the real altitude (calling these "Alt" was
+           #171's sibling complaint). */
         ImGui::Text("  R: %s", fmt_dist(distance, dist_s, sizeof dist_s));
-        /* Every line below is always present; "-" = the quantity
-           does not exist for this orbit class (escape trajectories have no
-           apoapsis/period; a near-circular orbit has no apsis line). */
+        /* Every line below is always present; "-" = the quantity does not exist for
+           this orbit class. */
         const bool circular = o.ecc < 1.0
                             && (o.apoapsis - o.periapsis) < 10e3;
         if(o.ecc < 1.0) { ImGui::Text("ApA: %s", fmt_dist(o.apoapsis, dist_s, sizeof dist_s)); }
@@ -1655,11 +1475,10 @@ void drawUIReadouts(Game &g) {
         else { ImGui::Text("PeT: -"); }
         if(o.period > 0.0) { ImGui::Text("  T: %.1fs", o.period); }
         else { ImGui::Text("  T: -"); }
-        /* Plane angles, measured in the plane the orbit map is showing -- the
-           label names it, because the number is meaningless without it (#171).
-           In the map's Orbital view the plane IS the orbit: Inc reads 0 by
-           construction, and there is no node and no chosen zero longitude, so
-           LAN and LPe both dash rather than print a confident random number. */
+        /* Plane angles, measured in the plane the orbit map is showing -- the label names it,
+           because the number is meaningless without it (#171). In the Orbital view the plane
+           IS the orbit: Inc reads 0 by construction, and LAN/LPe dash (no node, no chosen
+           zero longitude). */
         ImGui::Text("Inc: %.2f (%s)", glm::degrees(view.plane.inc),
                     refPlaneName(g.map_plane));
         ImGui::Text("Ecc: %f", o.ecc);
@@ -1675,12 +1494,9 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("Eng: %.2f J", o.energy);
     });
 
-    // Initial size comes from o_telemetry.initial_size (a 2x2 grid of plots
-    // needs real estate; content-fit would clip them).
+    // Initial size comes from o_telemetry.initial_size: content-fit would clip a 2x2 grid.
     drawWin(g, W_Telemetry, [&] {
-        // A 2x2 grid of plots. Each cell is a child region with a dropdown to
-        // pick which series to show, then the plot. Positioned explicitly
-        // (SetCursorPos) so the grid stays a clean 2x2.
+        // Cells positioned explicitly (SetCursorPos) so the grid stays a clean 2x2.
         const ImVec2 avail = ImGui::GetContentRegionAvail();
         const float gap = ImGui::GetStyle().ItemSpacing.x;
         const float cw = (avail.x - gap) * 0.5f;
@@ -1706,9 +1522,8 @@ void drawUIReadouts(Game &g) {
         const TerrainBody *b = ship->m_parent;
         const double altAsl = distance - ((double)b->radius
                                           + (double)b->surface.sea_level);
-        // Bme/Sit: the science identity of this pose (game.h poseSituation).
-        // Biome is "-" when there is none to name (star, banded giant, or
-        // terrain still building).
+        // Bme/Sit: the science identity of this pose (game.h poseSituation). "-" when there
+        // is no biome to name.
         const PoseSituation ps = poseSituation(
             b, glm::normalize(glm::vec3(view.surf_pos)), altAsl, ship->isGrounded());
         ImGui::Text("Bme: %s", ps.biome != Biome::None
@@ -1727,10 +1542,9 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("Acc: %.1fm/s2", ship->feltAccel());
     });
 
-    /* --info-log: the same quantities ORBITAL and SURFACE display, raw SI
-       (the instrument-log convention in fmt.h: e2e CHECK parses them).
-       Independent of whether the windows are open -- the values come from
-       the same ShipView snapshot the draw bodies read. */
+    /* --info-log: the same quantities ORBITAL and SURFACE display, raw SI (the
+       instrument-log convention in fmt.h that e2e CHECK parses). Independent of whether
+       the windows are open. */
     if(args.info_log && ship) {
         const Uint32 now_ms = SDL_GetTicks();
         if(now_ms - g.info_log_last_ms >= g.orbit_log_interval_ms) {
@@ -1751,8 +1565,7 @@ void drawUIReadouts(Game &g) {
             else { snprintf(lan_s, sizeof lan_s, "-"); }
             if(view.plane.lpe_ok) { snprintf(lpe_s, sizeof lpe_s, "%.6g deg", glm::degrees(view.plane.lpe)); }
             else { snprintf(lpe_s, sizeof lpe_s, "-"); }
-            // r/apo_r/peri_r are RADII from the focus, not altitudes; the
-            // [surfinfo] line below carries the real alt_asl / alt_agl.
+            // r/apo_r/peri_r are RADII from the focus, not altitudes.
             printf("[orbinfo] t=%.1fs body=\"%s\" vel=%.6g m/s r=%.6g m "
                    "apo_r=%.6g m apo_t=%.6g s peri_r=%.6g m peri_t=%.6g s "
                    "period=%.6g s inc=%.6g deg ecc=%.6g sma=%.6g m "
@@ -1783,8 +1596,8 @@ void drawUIReadouts(Game &g) {
     }
 
     drawWin(g, W_ShipList, [&] {
-    // Buttons (natural width) + SameLine: a full-width Selectable in this
-    // auto-resize window would swallow the line and push the "x" off it.
+    // Buttons (natural width) + SameLine: a full-width Selectable in this auto-resize
+    // window would push the "x" off the line.
     std::vector<Vehicle *> all = collectVehicles(sys);
     bool removed = false;
     for(size_t i = 0; i < all.size() && !removed; i++) {
@@ -1792,8 +1605,7 @@ void drawUIReadouts(Game &g) {
         const bool active = (v == ship);
         ImGui::PushID((void*)v);
         if(v->isCrewAboard()) {
-            // a crew character aboard a capsule: in the fleet but not a
-            // controllable ship (EVA it from the capsule window to make it free)
+            // A crew character aboard a capsule: in the fleet but not controllable.
             ImGui::Text("%s (aboard)", v->name.c_str());
         } else {
             if(active) {
@@ -1810,13 +1622,10 @@ void drawUIReadouts(Game &g) {
             if(active) {
                 ImGui::PopStyleColor(3);
             }
-            // A crew member is selectable but not deletable -- remove_ship
-            // refuses it -- so it gets no "x" to click.
+            // A crew member is selectable but not deletable (remove_ship refuses it): no "x".
             if(!v->isEva()) {
                 ImGui::SameLine();
-                // The "##rm_<name>" suffix is invisible on screen but makes
-                // the row addressable by --ui-click ("x" alone is ambiguous
-                // the moment two ships are listed), so e2e can drive removal.
+                // The "##rm_<name>" suffix is invisible but makes the row addressable by --ui-click.
                 if(ImGui::SmallButton(("x##rm_" + v->name).c_str())) {
                     g.remove_ship(v);
                     removed = true;   // the ship was deleted; stop iterating
@@ -1835,9 +1644,8 @@ void drawUIReadouts(Game &g) {
                     ship->activeStage(), ship->numStages());
         ImGui::Text("Mass: %.3fkg", ship->getMass());
         ImGui::Text("Delta-v: %.1fm/s", ship->getDeltaV());
-        /* "Throttle", not "Thrust Util": this is the engine command value the
-           R/F keys ramp (0..1), not a utilisation ratio. The line below it is
-           the actual newtons, which is what "thrust utilization" would mean. */
+        /* "Throttle", not "Thrust Util": the engine command value R/F ramp (0..1), not a
+           utilisation ratio. */
         ImGui::Text("Throttle: %.0f%%", ship->thruster_util * 100);
         ImGui::Text("Thrust: %.2fN", ship->getThrust());
         ImGui::Text("Current TWR: %.2f/%.2f", ship->getTWR(), ship->getFullThrustTWR());
@@ -1847,9 +1655,6 @@ void drawUIReadouts(Game &g) {
                     glm::degrees(glm::length(ship->partAngVel(ship->controller))));
     });
     drawWin(g, W_Controls, [&] {
-        // Interactive rebind: click "rebind", then press a key (or a
-        // Shift/Ctrl/Alt combo) to bind it. "clear" unbinds, "Reset all"
-        // restores the default map, "Save" writes settings.json.
         ImGui::Text("Click rebind, then press a key (or Shift/Ctrl/Alt + key) to bind it.");
         ImGui::Spacing();
         char buf[80];
@@ -1865,9 +1670,7 @@ void drawUIReadouts(Game &g) {
             ImGui::Separator();
             for(size_t i = 0; i < (size_t)Slot::SLOT_COUNT; i++) {
                 if(slotGroup((Slot)i) != grp) { continue; }
-                // Unique per-row ID: the button labels ("rebind"/"clear")
-                // repeat on every row, so without this all rows' buttons
-                // share one window ID.
+                // Unique per-row ID: the "rebind"/"clear" labels repeat on every row.
                 ImGui::PushID((int)i);
                 const std::vector<KeyBind> &v = g.binds.perSlot[i];
                 ImGui::AlignTextToFramePadding();
@@ -1917,8 +1720,7 @@ void drawUIReadouts(Game &g) {
     });
 
     drawWin(g, W_Autopilot, [&] {
-        // Toggle the autopilot: click a mode to engage it and click it again
-        // to release. The modes are mutually exclusive, like a navball.
+        // Click a mode to engage, click again to release; the modes are mutually exclusive.
         auto toggle = [&](SlewMode m, const char *label) {
             const bool engaged = (ship->slewRequest == m);
             if(engaged) {
@@ -1931,9 +1733,8 @@ void drawUIReadouts(Game &g) {
             }
             if(ImGui::Button(label)) {
                 ship->setSlewRequest(engaged ? SlewNone : m);
-                /* Toast it: an engaged autopilot keeps turning the ship with
-                   no key held, so it must be visible outside this window (the
-                   window ships closed, and Z/B engage the same state). */
+                /* Toast it: an engaged autopilot keeps turning the ship with no key held, so it must
+                   be visible outside this window (Z/B engage the same state). */
                 g.toast("Autopilot: %s %s", label, engaged ? "off" : "engaged");
             }
             if(engaged) {
@@ -1951,14 +1752,12 @@ void drawUIReadouts(Game &g) {
     });
 
     drawWin(g, W_Resources, [&] {
-        // aggregate across the active ship's parts (any ship layout); only
-        // the resource types the ship has capacity for are shown
+        // Aggregate across the active ship's parts; only types with capacity show.
         static const char *resNames[(int)ResourceType::Num] = {
             "Hydrogen", "LOX", "Electric charge", "Oxygen", "Water", "Food",
             "Hydrazine", "Jet fuel"
         };
-        // display order: fuels first, then life support (independent of the
-        // enum order)
+        // Display order: fuels first, then life support (independent of enum order).
         static const ResourceType resOrder[] = {
             ResourceType::Hydrogen, ResourceType::LOX, ResourceType::JetFuel,
             ResourceType::Hydrazine, ResourceType::EC, ResourceType::Oxygen,
@@ -1976,11 +1775,9 @@ void drawUIReadouts(Game &g) {
     });
 }
 
-/* The open part windows: one plain imgui window per part the player
-   right-clicked in the 3D view (g.part_sels, opened by pickAt). Plain
-   Begin/End -- these are user-placed popups, NOT slot-layout windows.
-   Closing the window (X) drops the entry; staging that drops the part
-   makes it stale (the entry is dropped, not re-pointed). */
+/* One plain imgui window per part right-clicked in the 3D view (g.part_sels, opened
+   by pickAt). Plain Begin/End -- user-placed popups, NOT slot-layout windows. Staging
+   that drops the part leaves the entry stale (dropped, not re-pointed). */
 void drawPartWindows(Game &g) {
     for(int i = (int)g.part_sels.size() - 1; i >= 0; i--) {
         const size_t idx = (size_t)i;
@@ -1993,19 +1790,15 @@ void drawPartWindows(Game &g) {
         const size_t part = sel.part;
         const PartDef *def = ship->parts[part]->def;
 
-        // the human-readable part name (catalog display_name); fall back to
-        // the machine id for catalogs that predate the field
+        // Catalog display_name; falls back to the machine id for older catalogs.
         const char *disp = def->label().c_str();
 
-        // window title "<ship> > <part>". The ##suffix is a hidden ImGui
-        // window id, unique per (ship, part).
+        // The "##suffix" is a hidden ImGui window id, unique per (ship, part).
         char name[256];
         snprintf(name, sizeof(name), "%s > %s##%p#%zu",
                  ship->name.c_str(), disp, (const void *)ship, part);
         if(!sel.placed) {
-            // Open near the mouse: the part was picked there, so the
-            // window appears just down-right of the pointer, flipping to
-            // up-left when there is no room on the default side.
+            // Open near the mouse (the part was picked there), flipping sides when there is no room.
             const ImGuiViewport *vp = ImGui::GetMainViewport();
             const float maxw = 320.0f, maxh = 340.0f, gap = 12.0f;
             float x = (float)sel.mx + gap;
@@ -2022,9 +1815,8 @@ void drawPartWindows(Game &g) {
             sel.placed = true;
         }
         bool open = true;
-            /* a successful pickup may have dropped an EARLIER part_sels entry
-               (the item ship's own window, via dropPartWindowsFor), shifting
-               the entries this loop is indexing -- see the break at the end */
+            /* A successful pickup may have dropped an EARLIER part_sels entry, shifting what
+               this loop indexes. */
             bool worldChanged = false;
         if(ImGui::Begin(name, &open, ImGuiWindowFlags_NoSavedSettings)) {
             ImGui::Text("Ship: %s", ship->name.c_str());
@@ -2037,8 +1829,7 @@ void drawPartWindows(Game &g) {
             if(!def->type.empty()) {
                 ImGui::Text("Type: %s", def->type.c_str());
             }
-            /* phase 3: effectiveMass -- a capsule with crew shows the total
-               (body + crew), matching the ship HUD (getMass). */
+            /* effectiveMass: a capsule with crew shows body + crew, matching the ship HUD. */
             ImGui::Text("Mass: %.3fkg", ship->parts[part]->effectiveMass());
             ImGui::Text("Size: %.1fm dia x %.1fm",
                         def->radius * 2.0, def->height);
@@ -2057,8 +1848,8 @@ void drawPartWindows(Game &g) {
             static const char *resNames[(int)ResourceType::Num] = {
                 "Hydrogen", "LOX", "EC", "Oxygen", "Water", "Food", "Hydrazine", "Jet fuel"
             };
-            // EC is stored energy (watt-hours), not a substance (kg) -- a
-            // battery's charge drains under load without losing mass.
+            // EC is stored energy (watt-hours), not a substance: a battery drains under load
+            // without losing mass.
             static const char *resUnits[(int)ResourceType::Num] = {
                 "kg", "kg", "Wh", "kg", "kg", "kg", "kg", "kg"
             };
@@ -2071,17 +1862,15 @@ void drawPartWindows(Game &g) {
                             resUnits[r]);
             }
             // --- docking port ------------------------------------------------
-            // Docking is intent-driven (Game::updateDocking): the active ship
-            // docks only when it has BOTH an armed port of its own AND a
-            // targeted port on another ship. The dock consumes both -- so
-            // undocking cannot immediately re-dock.
+            // Docking is intent-driven (Game::updateDocking): the active ship docks only with
+            // BOTH an armed port of its own AND a targeted port on another ship. The dock
+            // consumes both, so undocking cannot immediately re-dock.
             if(def->docking_port) {
                 ImGui::Separator();
                 Vehicle *act = g.ship;
                 if(act != nullptr && !act->isEva()) {
                     if(act != ship) {
-                        // This port is on another ship: make it the dock
-                        // target (the other ship's half of the intent).
+                        // On another ship: make it the dock target (the other ship's half of the intent).
                         if(act->dockTargetPort == ship->parts[part]) {
                             ImGui::Text("Docking target of %s", act->name.c_str());
                             if(ImGui::SmallButton("Clear docking target")) {
@@ -2094,8 +1883,7 @@ void drawPartWindows(Game &g) {
                             g.toast("Docking target: %s", ship->name.c_str());
                         }
                     } else {
-                        // This port is on the ACTIVE ship: arm it as the port
-                        // that does the mating (this ship's half of the intent).
+                        // On the ACTIVE ship: arm it as the port that does the mating.
                         if(act->dockArmPort == ship->parts[part]) {
                             ImGui::Text("Armed port of %s", act->name.c_str());
                             if(ImGui::SmallButton("Disarm port")) {
@@ -2110,10 +1898,8 @@ void drawPartWindows(Game &g) {
                     ImGui::Text("(switch to a controllable ship to use this port)");
                 }
             }
-            // --- crew (this part is a capsule: holds EVA characters) --------
-            // Aboard crew get an EVA button; a free kerbal within boarding
-            // range gets a Board button. The transitions move the kerbal's
-            // mass onto/off the capsule and park/restore its body.
+            // --- crew (this part is a capsule) ---------------------------------
+            // Aboard crew get an EVA button; a free kerbal in boarding range gets Board.
             if(def->crew_capacity > 0) {
                 ImGui::Separator();
                 std::vector<Kerbal *> aboard = partCrew(ship->parts[part]);
@@ -2126,14 +1912,11 @@ void drawPartWindows(Game &g) {
                         g.kerbalEVA(k);
                     }
                     ImGui::SameLine();
-                    // Per-crew experiment: the "pick a kerbal" path (no roles
-                    // yet, so any of them can run the same observation).
+                    // Per-crew experiment: the "pick a kerbal" path (no roles yet).
                     if(ImGui::SmallButton("Exp")) {
                         g.runExperiment(k);
                     }
-                    // What this kerbal is carrying (unrecovered): the count,
-                    // and the names. A repeat (already in the career) is
-                    // flagged -- it still banks, just less.
+                    // What this kerbal is carrying (unrecovered); a repeat still banks, just less.
                     if(!k->parts.empty()) {
                         const std::vector<Experiment> &held =
                             k->parts[0]->experiments;
@@ -2151,24 +1934,21 @@ void drawPartWindows(Game &g) {
                     }
                     ImGui::PopID();
                 }
-                // Capsule-level "Run Experiment": first aboard crew (stable
-                // for --sim-press).
+                // Capsule-level "Run Experiment": first aboard crew (stable for
+                // --sim-press).
                 if(!aboard.empty()) {
                     if(ImGui::SmallButton("Run Experiment")) {
                         g.runExperiment(aboard.front());
                     }
                 }
-                // free kerbals in boarding reach: a Board button each, and --
-                // the take/store dance -- a Store button when one holds a
-                // finding and this capsule can receive.
+                // Free kerbals in boarding reach: a Board button each, plus Store when one holds a
+                // finding.
                 bool anyInRange = false;
                 for(Kerbal *k : freeKerbals(g.sys)) {
-                    // Board/Store gate: the same kerbalInRange the Take button
-                    // and the headless hooks use -- one reach rule, one function.
+                    // Board/Store gate: the same kerbalInRange the Take button and the headless hooks use.
                     if(!g.kerbalInRange(k, ship->parts[part])) { continue; }
                     anyInRange = true;
-                    // dist is for the on-screen readout only (the gate above
-                    // already did the same COM math).
+                    // dist is for the on-screen readout only (the gate above did the math).
                     const glm::dvec3 capCom =
                         ship->GetPositionRelTo(ship->parts[part], k->frame);
                     const double dist =
@@ -2180,10 +1960,8 @@ void drawPartWindows(Game &g) {
                     if(ImGui::SmallButton("Board")) {
                         g.kerbalBoard(k, ship, part);
                     }
-                    // Store (the dance deposit): this FREE kerbal is in
-                    // reach; if they carry a finding and the capsule can
-                    // receive, offer to deposit it. moveExperiment re-checks
-                    // canHold (a Container is unlimited per family).
+                    // Store (the dance deposit): moveExperiment re-checks canHold (a Container is
+                    // unlimited per family).
                     if(!k->parts.empty()) {
                         const std::vector<Experiment> &held =
                             k->parts[0]->experiments;
@@ -2211,10 +1989,9 @@ void drawPartWindows(Game &g) {
                     ImGui::Text("  (no one in reach to board or store)");
                 }
             }
-            // --- science (this part is a kerbal suit: holds experiments) ---
-            // v1 only kerbals run/hold experiments (on their suit Part). The
-            // capsule's Exp / Run Experiment buttons cover an ABOARD kerbal;
-            // this is the free-EVA (or picked suit) path.
+            // --- science (this part is a kerbal suit) --------------------------
+            // v1 only kerbals run/hold experiments. The capsule's buttons cover an ABOARD
+            // kerbal; this is the free-EVA path.
             if(ship->isEva() && part == 0) {
                 Part *suit = ship->parts[part];
                 ImGui::Separator();
@@ -2226,10 +2003,7 @@ void drawPartWindows(Game &g) {
                     ImGui::Text("  %s", experimentName(e).c_str());
                 }
             }
-            // --- science instrument (this part runs + holds an experiment) ---
-            // A science pod: an aboard kerbal runs the pod's experiment, which
-            // lands on the pod and is recovered with the ship. No crew aboard
-            // -> there is no one to run it with.
+            // --- science instrument (this part runs + holds an experiment) ------
             if(!def->experiment_family.empty()) {
                 Part *pod = ship->parts[part];
                 ImGui::Separator();
@@ -2239,9 +2013,7 @@ void drawPartWindows(Game &g) {
                     if(!k->parts.empty()) { runner = k; break; }
                 }
                 if(runner != nullptr) {
-                    // ##id: a capsule def could one day carry both crew and
-                    // a science family -- keep this button's ID distinct from
-                    // the capsule section's "Run Experiment".
+                    // ##id: keep this distinct from the capsule's "Run Experiment".
                     if(ImGui::SmallButton("Run Experiment##pod_run")) {
                         g.runPodExperiment(pod, runner);
                     }
@@ -2254,17 +2026,13 @@ void drawPartWindows(Game &g) {
                     ImGui::Text("  %s%s", experimentName(e).c_str(),
                                 repeat ? "  (repeat)" : "");
                 }
-                // Take: a FREE (EVA) kerbal in reach of the pod moves its
-                // finding onto their suit (the courier), to then store into a
-                // capsule. Being free + in reach is the gate -- an aboard
-                // kerbal can't reach out. moveExperiment re-checks the suit's
-                // canHold (a Courier holds 1 per family).
+                // Take: a FREE (EVA) kerbal in reach moves the pod's finding onto their suit (the
+                // courier), to then store into a capsule. An aboard kerbal can't reach out.
                 if(!pod->experiments.empty()) {
                     bool anyTake = false;
                     for(Kerbal *k : freeKerbals(g.sys)) {
-                        // A successful take above empties the pod; the next
-                        // iteration's canHold(pod->experiments[0]) would read
-                        // an empty vector. Stop once it's spent.
+                        // A successful take empties the pod; the next iteration's
+                        // canHold(pod->experiments[0]) would read an empty vector.
                         if(pod->experiments.empty()) { break; }
                         if(!g.kerbalInRange(k, pod)) { continue; }
                         if(k->parts.empty() ||
@@ -2285,10 +2053,9 @@ void drawPartWindows(Game &g) {
                     }
                 }
             }
-            // --- inventory (this part is a container: holds items) --------
-            // Contained items get a Drop button (it leaves into a free 1-part
-            // ship, Game::dropItem). Free item ships within pickup range
-            // (<= 10 m of the container, like boarding) get a Pick up button.
+            // --- inventory (this part is a container) --------------------------
+            // Contained items get Drop (they leave into a free 1-part ship, Game::dropItem);
+            // free item ships in pickup range get Pick up.
             if(def->inventory_capacity > 0) {
                 Part *cont = ship->parts[part];
                 ImGui::Separator();
@@ -2311,9 +2078,7 @@ void drawPartWindows(Game &g) {
                     }
                     ImGui::PopID();
                 }
-                // free item ships in range: a Pick up button each (a 1-part
-                // ship with a free part; kerbals board, not cargo; a crewed
-                // ship is not stowable)
+                // Free item ships in range: a Pick up button each (a crewed ship is not stowable).
                 bool anyInRange = false;
                 for(Vehicle *v : collectVehicles(g.sys)) {
                     if(v->isEva()) { continue; }
@@ -2321,9 +2086,8 @@ void drawPartWindows(Game &g) {
                     if(v->parts[0]->container != nullptr) { continue; }
                     if(!v->crew.empty()) { continue; }
                     if(v == ship) { continue; }
-                    /* distanceTo: COM-to-COM in the common root frame
-                       (updateProximity's idiom) -- a raw coordinate
-                       difference would mix the two ships' frames */
+                    /* distanceTo: COM-to-COM in the common root frame -- a raw coordinate difference
+                       would mix the two frames. */
                     const double dist = ship->distanceTo(v);
                     if(dist > 10.0) { continue; }
                     anyInRange = true;
@@ -2331,9 +2095,8 @@ void drawPartWindows(Game &g) {
                     ImGui::Text("  %s (%.1f m, %.1f kg)", v->name.c_str(),
                                 dist, v->getMass());
                     if(ImGui::SmallButton("Pick up")) {
-                        // picking up the ship you are flying leaves
-                        // orbit-view (pickUpItem drops control) -- hand the
-                        // player back to the carrier
+                        // Picking up the ship you are flying leaves orbit-view -- hand the player back to
+                        // the carrier.
                         const bool wasFlying = (g.ship == v);
                         if(g.pickUpItem(v, cont)) {
                             if(wasFlying) { g.select_ship(cont->owner); }
@@ -2352,9 +2115,8 @@ void drawPartWindows(Game &g) {
         }
         ImGui::End();
         if(!open) {
-            /* erase by identity, not by idx: a successful pickup may have
-               removed an earlier entry (the item ship's window) and shifted
-               this one off idx */
+            /* Erase by identity, not by idx: a successful pickup may have removed an earlier
+               entry and shifted this one off idx. */
             for(auto it = g.part_sels.begin(); it != g.part_sels.end(); ++it) {
                 if(it->ship == ship && it->part == part) {
                     g.part_sels.erase(it);
@@ -2366,80 +2128,51 @@ void drawPartWindows(Game &g) {
     }
 }
 
-/* The focus frame's +X, passed to OrbitMap::setPlane as the screen-x reference.
-   All three combo slots pin to it, so switching the plane combo tilts the
-   picture rather than rotating it (#173, #185) -- on a focus whose rail is
-   tilted off the system plane, leaving the Ecliptic slot to derive its basis
-   from the node line put its screen-east 119 deg from the other two on Iapetus
-   and 180 deg on Triton. */
+/* The focus frame's +X, passed to OrbitMap::setPlane as the screen-x reference: all
+   three combo slots pin to it so switching the plane TILTS rather than rotates
+   (#173, #185). */
 static const glm::dvec3 kFocusEast(1.0, 0.0, 0.0);
 
-/* The orbit map's plane for one combo slot: a normal in the focus's inertial
-   frame, plus the screen-x reference (zero length = let OrbitMap derive the
-   basis). Both maps and --map-dump go through here, so the three slots have one
-   spelling rather than three that can drift -- #173 was exactly such a drift
-   (the Equatorial slot was drawing the rail plane, not the equator). */
+/* The orbit map's plane for one combo slot: a normal in the focus's inertial frame
+   plus the screen-x reference (zero length = let OrbitMap derive the basis). Both maps
+   and --map-dump go through here, so the slots cannot drift apart (#173). */
 static void mapPlaneBasis(Frame *focusFrame, const glm::dvec3 &orbit_pos,
                           const glm::dvec3 &orbit_vel, bool have_ship, int mode,
                           glm::dvec3 &plane_n, glm::dvec3 &plane_x) {
     plane_n = glm::dvec3(0.0, 1.0, 0.0);
     plane_x = glm::dvec3(0.0, 0.0, 0.0);   // zero: OrbitMap derives the basis
     if(mode == kRefEquator) {
-        // The focus's EQUATOR, not its rail plane (#173): (0,1,0) is the rail
-        // normal and sits off the pole by exactly the axial tilt.
+        // The focus's EQUATOR, not its rail plane (#173): (0,1,0) is the rail normal, off
+        // the pole by the axial tilt.
         plane_n = focusFrame->spinAxisRelTo(focusFrame);
-        // Screen-x = the focus frame's +X, the same "east" the Ecliptic view's
-        // canonical basis uses, so flipping the plane combo tilts the picture
-        // instead of rotating it (~150 deg on Kerbin). This is a SCREEN choice,
-        // not the readout's zero longitude: LAN measures from equator_orient *
-        // +X, where the pole leans (uiRefPlane). Nothing draws a node marker,
-        // so the two never visibly disagree -- do not "align" them without
-        // adding one.
+        // Screen-x = the focus frame's +X. This is a SCREEN choice, not the readout's zero
+        // longitude: LAN measures from equator_orient * +X, where the pole leans (uiRefPlane).
+        // Nothing draws a node marker, so do not "align" them without one.
         plane_x = kFocusEast;
     } else if(mode == kRefEcliptic) {
         plane_n = glm::transpose(focusFrame->root_orient) * glm::dvec3(0.0, 1.0, 0.0);
-        /* Pinned like the other two slots. Unpinned, a focus whose rail sits
-           more than 8.13 deg off the system plane pushed setPlane off its
-           canonical branch onto the node line, so this slot's screen-east
-           disagreed with the other two's by 119 deg on Iapetus, 125 on Pluto,
-           180 on Triton -- switching the combo rotated the picture instead of
-           tilting it. It also drops the canonical branch's fixed e2, which is
-           only in plane when the normal is exactly +-Y (on Venus it sits 3.4
-           deg out of the drawn plane). */
+        /* Pinned like the other two slots: unpinned, a focus far off the system plane pushed
+           setPlane off its canonical branch onto the node line, so this slot's screen-east
+           disagreed. */
         plane_x = kFocusEast;
     } else if(mode == kRefOrbit && have_ship) {
         const glm::dvec3 h = glm::cross(orbit_pos, orbit_vel);
         const double hl = glm::length(h);
         if(hl > 1e-9) { plane_n = h / hl; }
-        /* Pin screen-x to the same focus +X the Equatorial slot uses (#185).
-           Without it this slot derives its basis from the node line, which
-           degenerates as h approaches the rail normal: the derived basis
-           approaches (-Z, +X) while the near-polar canonical branch hands over
-           (+X, +Z), so a ship pitching through a near-equatorial inclination
-           watched its whole map turn a quarter turn at 8.13 deg (measured:
-           tmp/t185jump.cpp). With +X pinned the two agree to 0.1 deg across
-           that boundary, and the basis stays continuous for every h the game
-           can produce -- the one exception is h exactly along the focus +-X, a
-           single point, which setPlane guards against dividing by zero.
-           An equatorial bed's h IS the focus pole, so its Equatorial and
-           Orbital slots share a normal and now draw pixel-identical pictures:
-           the map does not move when you switch between them. The ORBITAL
-           readout's LAN/LPe do go blank there, though -- that plane has no zero
-           longitude to measure from (uiRefPlane's has_zero), and that is a
-           measurement fact, not this screen choice. */
+        /* Pin screen-x to the same focus +X the Equatorial slot uses (#185). Unpinned, this
+           slot derives its basis from the node line, which degenerates as h approaches the
+           rail normal -- the map turned a quarter turn there. With +X pinned the basis stays
+           continuous except for h exactly along the focus +-X (one point, which setPlane
+           guards against dividing by 0). */
         plane_x = kFocusEast;
     }
 }
 
-// The orbital map: right-clicking the window cycles its chrome (full
-// window -> bare map -> no window), the map square draws the focus
-// body's neighborhood (child-body orbits, SOI rings, the ship's
-// trajectory + apside markers, the other ships, the transfer conic),
-// and the controls above it edit the map state on the game.
+// The orbital map: right-clicking cycles its chrome (full window -> bare map -> no
+// window).
 void drawUIMap(Game &g) {
-    // flightDrawUi draws the map AFTER the windows, and the Ship List is one
-    // of them: a switch there leaves the conic below describing the previous
-    // vessel while `ship` below is the new one (see syncShipView).
+    // flightDrawUi draws the map AFTER the windows, and the Ship List is one: a switch
+    // there leaves the conic describing the previous vessel.
     syncShipView(g);
     TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
@@ -2454,70 +2187,49 @@ void drawUIMap(Game &g) {
     std::vector<TransferPlanner::XferTarget> &xferTargets = planner.xferTargets;
     int &xfer_target = planner.xfer_target;
     auto &xfer = planner.xfer;
-    // (orbit_caches, the per-orbit sampling cache, is file-scope --
-    // shared with the Surface Map's orbit overlay.)
 
-    // Mode 2 strips the window chrome entirely (see map_mode): the
-    // window is invisible but still hit-tested, so the map below
-    // keeps pan/zoom and the right-click cycle. The table's options
-    // are const, so this one window draws from a per-frame copy.
+    // Mode 2 strips the chrome: the window is invisible but still hit-tested, so the map
+    // keeps pan/zoom and the right-click cycle. The table's options are const, hence a
+    // per-frame copy.
     ui::Options mapOpts = kWins[W_OrbitalMap].opts;
     if(map_mode == 2) {
         mapOpts.flags |= ImGuiWindowFlags_NoDecoration |
                          ImGuiWindowFlags_NoBackground;
     }
     drawWin(g, W_OrbitalMap, mapOpts, [&] {
-        // Right-click anywhere in the window cycles the chrome:
-        // full window -> bare map -> no window -> full window.
-        // Over the map this is safe: imgui owns the mouse here, so
-        // the RMB camera orbit (gated on !WantCaptureMouse) never
-        // fires.
+        // Right-click cycles the chrome. Over the map this is safe: imgui owns the mouse,
+        // so the RMB camera orbit (gated on !WantCaptureMouse) never fires.
         if(ImGui::IsWindowHovered() &&
            ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
             map_mode = (map_mode + 1) % 3;
         }
-        // The map fills the window: the whole content width, and the
-        // remaining height after the controls below (mode 0 only).
         const float avail_w = ImGui::GetContentRegionAvail().x;
         const float avail_h = ImGui::GetContentRegionAvail().y;
-        // The controls block's height (mode 0 only), from the same style
-        // the rows below use.
         const float isp = ImGui::GetStyle().ItemSpacing.y;
         const float legend_h = std::max(16.0f, ImGui::GetTextLineHeight());
-        // Controls sit ABOVE the map (legend row + plane row), so they
-        // stay visible even when the window is short; the map fills rest.
+        // Controls sit ABOVE the map so they stay visible when the window is short.
         const float controls_h = (map_mode == 0)
             ? (legend_h + isp)
               + (ImGui::GetFrameHeight() + isp)
             : 0.0f;
         const float map_w = std::max(0.0f, avail_w);
         const float map_h = std::max(0.0f, avail_h - controls_h);
-        // The ship's trajectory around the focus: a closed ellipse (a
-        // coasting Kepler orbit) or, when the ship is escaping or flying
-        // by (ecc >= 1), an open hyperbolic/parabolic arc. Both draw the
-        // same way (a projected polyline); only the sampling differs.
+        // The ship's trajectory: a closed Kepler ellipse, or an open arc when escaping
+        // (ecc >= 1).
         const bool closed = (o.ecc < 1.0);
-        // A reference into the cache (closed) or a local (open) -- never a
-        // copy of the cache's point list every frame.
+        // A reference into the cache (closed) or a local (open) -- never a copy every frame.
         std::vector<glm::dvec3> traj_local;
         const std::vector<glm::dvec3> *traj_pts = nullptr;
         if(closed) {
-            // Sampled through a per-ship cache, trusted only while the
-            // ship is on rails (coasting on its Keplerian conic). Off
-            // rails -- Bullet-integrated, or right after a burn /
-            // staging / SOI switch / crash -- the orbit is moving, so
-            // re-sample every frame. See OrbitSampleCache. Fixed N (not
-            // the body-orbit LOD count): the Surface Map shares this
-            // cache entry and both may draw the ship in one frame.
+            // Per-ship cache, trusted only while the ship is ON RAILS; off rails the orbit is
+            // moving, so re-sample every frame. Fixed N (not the body-orbit LOD count): the
+            // Surface Map shares this entry.
             const int N = 64;
             traj_pts = &orbit_caches[(const void *)ship].sample(
                 orbit_pos, orbit_vel, mu, N, ship->onRails);
         } else {
-            // Open trajectory: an arc around periapsis, truncated where
-            // it would run off to infinity. r_cap is the current view
-            // extent (the map's larger dimension in world units) so the
-            // curve reaches the edge of the view, but never smaller
-            // than a few periapsis radii or the ship's current radius.
+            // Open trajectory: an arc around periapsis, truncated where it would run to infinity.
+            // r_cap is the view extent, never below a few periapsis radii or the current radius.
             const double r_cap = std::max<double>(
                 std::max(map_w, map_h) * (double)map_scale,
                 std::max(4.0 * o.periapsis, o.distance));
@@ -2525,11 +2237,9 @@ void drawUIMap(Game &g) {
             traj_local = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N, r_cap);
             traj_pts = &traj_local;
         }
-    
-        // Periapsis (both cases) and apoapsis (closed only). A closed
-        // orbit propagates to each apsis (exact); an open arc has no
-        // apoapsis, and its periapsis point is radius o.periapsis
-        // along the eccentricity vector (which points to periapsis).
+
+        // Periapsis (both cases) and apoapsis (closed only): a closed orbit propagates to
+        // each exactly.
         glm::dvec3 peri_p, apo_p, tmp;
         bool have_peri = false, have_apo = false;
         if(closed) {
@@ -2555,19 +2265,15 @@ void drawUIMap(Game &g) {
             }
         }
     
-        // The focus body (the ship's parent) and the map plane.
-        // The plane is a normal in the focus's inertial frame;
+        // The focus body and the map plane -- a normal in the focus's inertial frame;
         // OrbitMap derives an in-plane basis from it.
         TerrainBody *focus = ship->m_parent;
         glm::dvec3 plane_n, plane_x;
         mapPlaneBasis(focus->frame, orbit_pos, orbit_vel, true, map_plane,
                       plane_n, plane_x);
 
-        // KSP-inspired palette (P4): your orbit is green, the transfer
-        // is blue, other bodies are gray. The focus body, ship dot and
-        // labels use a near-black/white ink that contrasts with the
-        // current style's window background. The selected transfer target
-        // is highlighted brighter than the other children.
+        // KSP-inspired palette: your orbit green, the transfer blue, other bodies gray; the
+        // focus, ship dot and labels use ink contrasting the window background.
         const ImVec4 bg = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
         const ImU32 ink       = contrastingColor(bg);
         const ImU32 col_ship  = ImGui::GetColorU32(ImVec4(0.20f, 0.80f, 0.40f, 1.0f));
@@ -2578,20 +2284,15 @@ void drawUIMap(Game &g) {
         const ImU32 col_body  = ink;
         const ImU32 col_sel   = ImGui::GetColorU32(ImVec4(0.90f, 0.90f, 0.90f, 1.0f));
         const ImU32 soi_col   = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.30f));
-        // The near-body shell ring (science + surface-frame boundary),
-        // gray like the SOI ring.
+        // The near-body shell ring (science + surface-frame boundary), gray like the SOI.
         const ImU32 shell_col = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.35f));
-        // Atmosphere top: a desaturated-blue disk behind the body, so the
-        // rim marks where the air ends (top() = 0 for airless bodies).
+        // Atmosphere top: a desaturated-blue disk behind the body, so the rim marks where
+        // the air ends.
         const ImU32 col_atmo = ImGui::GetColorU32(ImVec4(0.35f, 0.50f, 0.66f, 0.20f));
         ImDrawList *dl = ImGui::GetWindowDrawList();
 
-        // Controls (mode 0 only), pinned ABOVE the map so they stay
-        // visible on a short window. Row 1: the color legend. Row 2:
-        // the map plane (half-width) + a reset-view button.
+        // Controls (mode 0 only), pinned ABOVE the map so they stay on a short window.
         if(map_mode == 0) {
-            // Legend: a compact color key (one line), abbreviated so it
-            // fits a narrow window.
             auto legend = [&](const char *label, ImU32 col, bool dot) {
                 const ImVec2 p = ImGui::GetCursorScreenPos();
                 const float s = 10.0f;
@@ -2626,24 +2327,18 @@ void drawUIMap(Game &g) {
             }
         }
 
-        // The map fills the window below the controls (map_w x map_h,
-        // defined at the top of the block); the focus (parent body)
-        // sits at its center plus the pan offset.
+        // The focus (parent body) sits at the map's centre plus the pan offset.
         const ImVec2 p0 = ImGui::GetCursorScreenPos();
         const float center_x = p0.x + map_w * 0.5f;
         const float center_y = p0.y + map_h * 0.5f;
 
-        // Reserve the map area with an invisible button, sized to the
-        // window (map_w x map_h). It captures the mouse, so a left-drag
-        // over the map pans the map instead of moving the window. Wheel-zoom
-        // and drag-pan both apply only while the mouse is over the map.
+        // An invisible button sized to the map: it captures the mouse, so a left-drag pans
+        // the map instead of moving the window.
         ImGui::InvisibleButton("##mapnav", ImVec2(map_w, map_h));
         const bool over_map = ImGui::IsItemHovered();
         const ImGuiIO &g_io = ImGui::GetIO();
         if(over_map && g_io.MouseWheel != 0.0f) {
-            // Wheel zooms to the cursor (the world point under the
-            // mouse stays put). Reversed per preference: wheel UP zooms
-            // IN (scale = meters/pixel goes down), wheel OUT zooms out.
+            // Wheel zooms to the cursor (the world point under the mouse stays put).
             const float factor = (g_io.MouseWheel > 0.0f) ? 0.8f : 1.25f;
             const float old_scale = map_scale;
             float new_scale = old_scale * factor;
@@ -2668,18 +2363,16 @@ void drawUIMap(Game &g) {
         map.setPlane(plane_n, plane_x);
         const ImVec2 focus_px = map.px(glm::dvec3(0.0, 0.0, 0.0));
 
-        // The body selected in the TRANSFER window (a child of the
-        // focus), highlighted on the map; nullptr for a ship target or
-        // no selection.
+        // The body selected in the TRANSFER window, highlighted on the map; nullptr for a
+        // ship target.
         TerrainBody *sel_body = nullptr;
         if(xfer_target >= 0 && xfer_target < (int)xferTargets.size() &&
            xferTargets[xfer_target].body) {
             sel_body = xferTargets[xfer_target].body;
         }
 
-        // A body's sphere-of-influence ring, faint. Skipped when
-        // sub-pixel or far off-view (a huge circle is both useless and
-        // expensive to tessellate).
+        // SOI ring, faint. Skipped when sub-pixel or far off-view (a huge circle is useless
+        // and expensive).
         auto draw_soi = [&](const glm::dvec3 &center, double soi_m, ImU32 col) {
             if(soi_m <= 0.0) { return; }
             const float r_px = (float)(soi_m / map_scale);
@@ -2687,61 +2380,44 @@ void drawUIMap(Game &g) {
             map.drawRing(dl, center, soi_m, col, 1.0f);
         };
 
-        // Every body's orbit (around its own parent), projected into the
-        // focus's frame -- see drawSystemBodyOrbits. Drawn before the
-        // ship's orbit, so the ship sits on top.
+        // Drawn before the ship's orbit so the ship sits on top.
         {
             const MapViewRect view{p0.x, p0.y, p0.x + map_w, p0.y + map_h};
             drawSystemBodyOrbits(g, focus, map, dl, view, map_scale,
                                  sel_body, col_child, col_sel, ink,
                                  soi_col);
         }
-        // The focus body's own SOI -- the boundary of the current
-        // gravitational regime the ship is inside.
+        // The focus body's own SOI -- the gravitational regime the ship is inside.
         draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->frame->soi, soi_col);
-        // The near-body (rotating-frame) shell -- the boundary that drives
-        // the science orbit cut and the surface-frame flip. The lambda's
-        // LOD hides it until zoomed in enough for it to matter.
+        // The near-body (rotating-frame) shell -- drives the science orbit cut and the
+        // surface-frame flip.
         draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->rot_frame->soi, shell_col);
     
-        // The atmosphere top (radius + top(), top() in meters above
-        // sea level) as a desaturated-blue disk, under the orbit line.
-        // Same min-pixel floor as the body disk, so the body never
-        // pokes through when the atmosphere is sub-pixel.
+        // The atmosphere top (top() in meters above sea level) as a blue disk under the
+        // orbit line, with the same min-pixel floor as the body disk.
         const double atmo_top = focus->surface.atmosphere.top();
         if(atmo_top > 0.0) {
             map.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0),
                          focus->radius + atmo_top, col_atmo, 3.0f);
         }
-        // closed=true for the ellipse (it is a closed loop); false for
-        // the open arc (a chord would otherwise close it).
+        // closed=true for the ellipse; false for the open arc (a chord would close it).
         map.drawOrbit(dl, *traj_pts, col_ship, 1.0f, closed);
-        // The focus body's disk at the centre, with the same visibility
-        // floor as the looped bodies.
         map.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0), focus->radius,
                      col_body, 3.0f);
-        // The ship: a bright dot (you are here) with a green ring, on
-        // the line from the focus.
         const ImVec2 ship_px = map.px(orbit_pos);
         dl->AddLine(focus_px, ship_px, ink, 1.0f);
         dl->AddCircleFilled(ship_px, 5.0f, ink);
         dl->AddCircle(ship_px, 8.0f, col_ship, 0, 1.5f);
-        // Prograde (velocity) arrow, along the ship's velocity.
+        // Prograde (velocity) arrow.
         map.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
-        // Apside markers are only meaningful for a non-circular orbit;
-        // an open arc has periapsis but no apoapsis.
+        // Apside markers only mean anything for a non-circular orbit.
         if(o.ecc > 1e-3) {
             if(have_peri) { map.drawDot(dl, peri_p, 4.0f, col_apsis); }
             if(have_apo)  { map.drawDot(dl, apo_p,  4.0f, col_apsis); }
         }
     
-        // Every other ship in this body: its orbit (when closed) plus
-        // a dot + label at its current position, so the whole traffic
-        // pattern shows, not just you and the target. The player's own
-        // ship is already drawn above in green (skipped here). Ships
-        // on an escape trajectory (ecc >= 1) have no closed orbit to
-        // draw -- sample() returns empty -- so only their position
-        // marker shows.
+        // Every other ship in this body: its orbit (when closed) plus a dot + label. An escaping
+        // ship has no closed orbit -- sample() returns empty -- so only its marker shows.
         {
             Frame *inertial = ship->frame->getNonRotFrame();
             for(auto *s : focus->ships) {
@@ -2765,27 +2441,20 @@ void drawUIMap(Game &g) {
                 const ImVec2 tpx = map.px(r2);
                 dl->AddCircleFilled(tpx, 3.0f, col_vessel);
                 // Label offset from the marker (px): +x right, -y up.
-                // Raise label_dx / label_dy to push names further out.
                 const float label_dx = 6.0f, label_dy = 14.0f;
                 dl->AddText(ImVec2(tpx.x + label_dx, tpx.y - label_dy),
                             col_vessel, s->name.c_str());
             }
         }
 
-        // P3: the transfer conic to the selected target (planner has a
-        // valid solution). It is a Kepler orbit under the focus's mu,
-        // starting at the ship with velocity sol.v_departure and
-        // propagated over sol.tof. The arc's end is the arrival point.
-        // The solution belongs to the target the solve USED: xfer.valid
-        // lags the TRANSFER window (drawn earlier in this same UI pass)
-        // by a frame -- clearing/moving the combo there is not re-validated
-        // until the next planner.update(), so pairing xfer.sol with the
-        // live xfer_target read xferTargets[-1] when "none" was clicked.
+        // The solution belongs to the target the solve USED: xfer.valid lags the TRANSFER
+        // window by a frame -- clearing the combo there is not re-validated until the next
+        // planner.update(), so pairing xfer.sol with the live xfer_target read xferTargets[-1]
+        // when "none" was clicked.
         if(xfer.valid && xfer_target == xfer.target &&
            xfer.target >= 0 && xfer.target < (int)xferTargets.size()) {
             const TransferSolution &sol = xfer.sol;
-            // Even-in-anomaly (not uniform-in-time) so the leg draws with an
-            // even outline, like the closed orbits (see sampleTransferArc).
+            // Even-in-anomaly (not uniform-in-time) so the leg draws with an even outline.
             std::vector<glm::dvec3> xfer_pts =
                 sampleTransferArc(orbit_pos, sol.v_departure, mu, sol.tof, 64);
             map.drawOrbit(dl, xfer_pts, col_xfer, 1.5f, /*closed=*/false);
@@ -2801,15 +2470,11 @@ void drawUIMap(Game &g) {
     });
 }
 
-/* The modal scrim: a full-viewport window drawn UNDER the card so a pending
-   question cannot be clicked through (#234). It carries no widgets and no
-   background of its own (the dimming is a plain filled rect), but imgui
-   hit-tests it, so every window behind it stops taking clicks.
+/* The modal scrim: a full-viewport window drawn UNDER the card so a pending question
+   cannot be clicked through (#234). It carries no widgets, but imgui hit-tests it.
 
-   NOT flagged NoBringToFrontOnFocus: that flag makes CreateNewWindow
-   push_front() the window (imgui.cpp:6791), which is the BACK of the display
-   order -- it is meant for fixed background layers. The scrim has to be the
-   front-most window apart from the card, which drawQuestion enforces. */
+   NOT flagged NoBringToFrontOnFocus: that flag makes CreateNewWindow push_front() the
+   window (imgui.cpp:6791) -- the BACK of the display order. */
 static void drawQuestionScrim() {
     const ImGuiViewport *vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->Pos, ImGuiCond_Always);
@@ -2825,15 +2490,10 @@ static void drawQuestionScrim() {
     ImGui::End();
 }
 
-/* The question card (Game::ask). Deliberately NOT in the window table
-   (uiwins.h), following drawToasts rather than drawWin: a card must show in
-   every scene and must not vanish on TAB, and the table's three gates --
-   scene membership, TAB hiding, default_open -- are each a way for a dialog
-   to compile, run, and silently never draw. ui::Window still gives it the
-   shared slot layout.
-
-   Called after the scene's whole UI pass and before drawToasts, so it sits
-   above every window while toasts still float above it. */
+/* The question card (Game::ask). Deliberately NOT in the window table (uiwins.h): a
+   card must show in every scene and must not vanish on TAB, and the table's three gates
+   -- scene membership, TAB hiding, default_open -- are each a way for a dialog to
+   silently never draw. Called after the scene's UI pass and before drawToasts. */
 void drawQuestion(Game &g) {
     if(!g.question) { return; }
     drawQuestionScrim();
@@ -2851,9 +2511,8 @@ void drawQuestion(Game &g) {
         ImGui::Spacing();
         const int n = (int)g.question->labels.size();
         if(n == 0) { return; }
-        // Equal-width buttons across the card. Fixed width is what keeps a
-        // long label from overflowing the button, which is what killed the
-        // inline arm/confirm this replaces.
+        // Equal-width buttons across the card; fixed width keeps a long label from
+        // overflowing its button.
         const float gap = ImGui::GetStyle().ItemSpacing.x;
         const float bw = (ImGui::GetContentRegionAvail().x - gap * (n - 1)) / n;
         for(int i = 0; i < n; i++) {
@@ -2863,29 +2522,21 @@ void drawQuestion(Game &g) {
             }
         }
     });
-    // The invariant whose absence let the last attempt come back "done" while
-    // drawing nothing: a pending question must produce pixels.
     assert(drew && "question pending but the card did not draw");
-    /* Keep the card in front of the scrim. Both are appended at creation, so
-       the card starts ahead; but clicking the scrim focuses it and FocusWindow
-       moves the focused window to the display front, which would leave the
-       scrim over the card for the next frame's hit-test pass. Re-fronting the
-       card every frame makes the end-of-frame order deterministic:
-       ... scrim, card. */
+    /* Keep the card in front of the scrim: clicking the scrim focuses it, and FocusWindow
+       moves the focused window to the display front. */
     if(ImGuiWindow *card = ImGui::FindWindowByName("Question")) {
         ImGui::BringWindowToDisplayFront(card);
     }
-    // Answered after End(): answerQuestion destroys g.question, and the body
-    // above is still reading it.
+    // Answered after End(): answerQuestion destroys g.question, which the body above is
+    // still reading.
     if(choice >= 0) { g.answerQuestion(choice); }
 }
 
 void drawToasts(Game &g) {
-    /* A frame that is about to be screenshotted draws no toasts. They live
-       kToastLife (3 s) and land dead centre, so a burst of F12 presses
-       photographs the previous shot's message. The queue is untouched, so
-       lifetimes are unaffected: an in-flight toast blinks out for this one
-       frame and returns. */
+    /* A frame about to be screenshotted draws no toasts: they land dead centre, so a burst
+       of F12 presses photographs the previous shot's message. The queue is untouched, so an
+       in-flight toast returns next frame. */
     if(g.screenshot_requested) { return; }
     const double now = SDL_GetTicks() * 0.001;
     std::vector<const ToastMsg *> live;
@@ -2914,8 +2565,7 @@ void drawToasts(Game &g) {
         const double a = std::min(1.0, std::min(age / 0.25,
                                                 (kToastLife - age) / 0.6));
         const ImVec2 ts = ImGui::CalcTextSize(t.text.c_str());
-        // The DISPLAYED block is centered (one line = exactly center);
-        // oldest on top, newest at the bottom.
+        // Oldest on top, newest at the bottom.
         const float x = cx - ts.x * 0.5f;
         const float y = cy + (i - (n - 1) / 2.0f) * step - ts.y * 0.5f;
         // A soft shadow pass so the text reads over bright terrain too.
@@ -2927,51 +2577,25 @@ void drawToasts(Game &g) {
     ImGui::PopFont();
 }
 
-/* The main menu, one shared shell for every scene: the heading, the
-   scene's navigation block (nav), and the standard items every menu shares
-   (Save/Load, Settings, Controls, Quit game) + the version footer. Only the
-   heading and nav differ per scene.
-
-   Every item is a fixed-width button: the window is AlwaysAutoResize, and
-   imgui measures its size from the PREVIOUS frame's content, so a Text item
-   placed by hand (centered against the window width) feeds back into the
-   measurement and the fit converges over several frames on first open. A
-   button's width is explicit and imgui centers its label, so the layout is
-   settled from the first visible frame.
-
-   `isRoot` marks the scenes whose menu IS the scene (the title screen, the
-   Space Center hub): forced open every frame, so TAB, "Reset windows" and any
-   stray SetOpen cannot leave the scene with no UI at all. ui::Options::closable
-   = false is NOT enough on its own -- it only hides the X button. The other
-   menus are Transient overlays: closable, and each nav item closes its menu
-   before the transition it starts (push / pop / enterTitle do not close
-   windows).
-
-   Quit to title is a NAV item, not a shared one: every scene has it except
-   the title screen itself. `navBottom` is the same hook drawn LOWER -- between
-   the shared toggles and "Quit game" -- for a scene's exits.
-
-   Deliberately NOT in the menu -- each of these has a key: "Toggle windows" is
-   TAB, "Reset windows" is F10, Game Debug Info is F1 and Telemetry is F2.
-   They are not Windows-panel rows either (the panel lists the flight readouts
-   you arrange; these are overlays you flip on). */
+/* The main menu: one shared shell for every scene. Items are fixed-width buttons: the
+   window is AlwaysAutoResize and imgui measures from the PREVIOUS frame's content, so
+   a hand-centered Text item feeds back into the measurement.
+   `isRoot` scenes force the menu open every frame -- TAB, "Reset windows" or a stray
+   SetOpen must not leave a scene with no UI. */
 static void drawMenuWindow(Game &g, Win win, bool isRoot, const char *heading,
                            void (*nav)(Game &, float),
                            void (*navBottom)(Game &, float) = nullptr) {
     if(isRoot) { setWinOpen(win, true); }
     drawWin(g, win, [&] {
         bool &running = g.running;
-        // One width for the whole column: the widest label (the title,
-        // in the bigger font, plus its frame padding so the clipped
-        // label fits). Every button fills the content width, so the
-        // centered labels read as a centered menu.
+        // One width for the whole column: the widest label (the title, in the bigger font)
+        // plus frame padding.
         ImGui::PushFont(g.bigger);
         const float bw = ImMax(240.0f,
                                ImGui::CalcTextSize("Open Space Program").x
                                + ImGui::GetStyle().FramePadding.x * 2.0f);
         ImGui::PopFont();
-        // A button with alpha-0 colors: reads as plain text (no hover
-        // highlight either) but keeps the button's stable layout.
+        // Alpha-0 button colors: reads as plain text but keeps the button's stable layout.
         const ImVec4 invisible = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
         auto text_button = [&](const char *label) {
             ImGui::PushStyleColor(ImGuiCol_Button, invisible);
@@ -2986,8 +2610,6 @@ static void drawMenuWindow(Game &g, Win win, bool isRoot, const char *heading,
         if(ImGui::Button("Save/Load", ImVec2(bw, 0.0f))) {
             setWinOpen(W_SaveLoad, !winOpen(W_SaveLoad));
         }
-        // Toggles (not just open): a quick way to open or close these
-        // (besides their X / Back).
         if(ImGui::Button("Settings", ImVec2(bw, 0.0f))) {
             setWinOpen(W_Settings, !winOpen(W_Settings));
         }
@@ -2996,11 +2618,8 @@ static void drawMenuWindow(Game &g, Win win, bool isRoot, const char *heading,
         }
         // The scene's exits (hub: "Return to title"), just above the app's own.
         if(navBottom) { navBottom(g, bw); }
-        /* Quitting discards everything since the last manual save: there is
-           no autosave and no save-on-quit. So a live game is asked first, and
-           the title screen -- where nothing is at stake -- keeps the one
-           click. gameRunning() is the scene stack's own "a game is in charge"
-           (stack floor is not Title), not a predicate invented here. */
+        /* Quitting discards everything since the last manual save (no autosave, no
+           save-on-quit), so a live game is asked first; the title screen keeps one click. */
         if(ImGui::Button("Quit game", ImVec2(bw, 0.0f))) {
             if(!gameRunning(g)) {
                 running = false;
@@ -3013,24 +2632,19 @@ static void drawMenuWindow(Game &g, Win win, bool isRoot, const char *heading,
             }
         }
         ImGui::PopFont();
-        // The build's git version (src/version.h, `make version`), grayed
-        // out so it reads as a footer, not a menu item.
+        // The build's git version (src/version.h, `make version`), grayed as a footer.
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.55f, 0.55f, 1.0f));
         text_button(VERSION);
         ImGui::PopStyleColor();
     });
 }
 
-/* The per-scene navigation blocks, drawn between the heading and the shared
-   items. Each closes its own menu before the transition it starts. */
+/* The per-scene nav blocks. Each closes its own menu before the transition it starts. */
 static void navTitle(Game &g, float bw) {
-    /* "Load last save" only exists when there is something to resume, and
-       "last" means the newest save by WRITE time, not the newest game dir
-       (save.h:latestSave). The scan walks saves/, and this menu is Root --
-       open every frame at the title -- so the answer refreshes at ~1 Hz
-       rather than per frame. It is cached as a path, never a pointer: the
-       slot can be deleted from the Save/Load window between frames, and
-       loadFrom fails (and toasts) if the dir is gone by the click. */
+    /* "last" means the newest save by WRITE time, not the newest game dir
+       (save.h:latestSave). This menu is Root -- open every frame -- so the saves/ scan
+       refreshes at ~1 Hz. Cached as a path, never a pointer: the slot can be deleted
+       between frames. */
     static const double kRescanSec = 1.0;
     static double nextRescan = 0.0;
     static std::string last;
@@ -3047,72 +2661,48 @@ static void navTitle(Game &g, float bw) {
             g.toast("Loaded %s / %s", game.c_str(), slot.c_str());
         }
     }
-    // Opens the New Game setup sheet (system + difficulty) rather than
-    // starting immediately; there is no game to go back to yet.
+    // Opens the New Game setup sheet (system + difficulty), not an immediate start.
     if(ImGui::Button("New Game", ImVec2(bw, 0.0f))) {
         setWinOpen(W_NewGame, true);
     }
-    // Toggle the README panel (left of this menu). Open by default; this
-    // brings it back after an X / close.
     if(ImGui::Button("Readme", ImVec2(bw, 0.0f))) {
         setWinOpen(W_Readme, !winOpen(W_Readme));
     }
 }
 static void navSpaceCenter(Game &g, float bw) {
-    // Push the editor on top of the hub; the VAB's "Back to game" pops back
-    // here. (The hub's menu is Root -- re-opened every frame -- so the closes
-    // below are a formality.)
     if(ImGui::Button("VAB", ImVec2(bw, 0.0f))) {
         setWinOpen(W_SpaceCenterMenu, false);
         vabOpen(g);
     }
-    // The Tracking Station is another excursion on top of the hub; its "Back"
-    // pops back here. Open even with no ship yet (a new game before the first
-    // launch).
+    // Open even with no ship yet (a new game before the first launch).
     if(ImGui::Button("Tracking Station", ImVec2(bw, 0.0f))) {
         setWinOpen(W_SpaceCenterMenu, false);
         pushScene(g, SceneId::TrackingStation);
     }
-    // The Research Lab: the archive of recovered experiments, another
-    // excursion on top of the hub. Open even before the first recovery.
+    // The Research Lab: archive of recovered experiments, another excursion.
     if(ImGui::Button("Research Lab", ImVec2(bw, 0.0f))) {
         setWinOpen(W_SpaceCenterMenu, false);
         pushScene(g, SceneId::ResearchLab);
     }
-    // "Resume Flight" pops back to the flight below -- offered only when the
-    // hub sits ON TOP of a live flight. When the hub IS the floor there is
-    // nothing to pop back to, so the button is hidden.
+    // Offered only when the hub sits ON TOP of a live flight; when the hub IS the floor
+    // there is nothing to pop to.
     if(g.ship != nullptr && ImGui::Button("Resume Flight", ImVec2(bw, 0.0f))) {
         setWinOpen(W_SpaceCenterMenu, false);
         popScene(g);
     }
-    // Recover Vessel ends the flight successfully: the active ship is deleted,
-    // the player is left at the hub with no active vessel, and the Flight
-    // Summary window opens. Offered only when a ship is active, and not for a
-    // free EVA kerbal. No arm/confirm: this discards a flight you already
-    // left, not the game. recoverActive also refuses unless the ship is
-    // grounded on the home body -- the toast explains (or --recover-anywhere
-    // lifts it).
+    // Recover Vessel ends the flight successfully. Not offered for a free EVA kerbal;
+    // recoverActive also refuses unless the ship is grounded on the home body.
     if(g.ship != nullptr && !g.ship->isEva()
        && ImGui::Button("Recover Vessel", ImVec2(bw, 0.0f))) {
         g.recoverActive();
     }
-    // Return to title lives in navSpaceCenterExit, drawn by the shell just
-    // above "Quit game". Esc in the hub never exits to the title -- it only
-    // pops to the flight below (hubKeyActions).
-    // A visual break between the scene's nav (above) and the shared items
-    // (Save/Load .. Quit) the shell draws below.
+    // "Return to title" lives in navSpaceCenterExit. Esc in the hub never exits to the
+    // title -- it only pops to the flight (hubKeyActions).
     ImGui::Spacing();
 }
 
-/* The hub's bottom nav row: the exits, drawn by the shell between the shared
-   toggles and "Quit game".
-
-   The confirm lives on the card, not on the button. An earlier attempt armed
-   on the first click and confirmed on the second, which overflowed the button
-   and read as a glitch (dropped in 0eb0597). Esc at a hub-as-floor stays
-   instant: one Esc from a live flight was always the argument for not gating
-   it, and the card is for the button a player aims at. */
+/* The hub's bottom nav row: the exits. The confirm lives on the card, not on the
+   button -- an armed first click overflowed the button. */
 static void navSpaceCenterExit(Game &g, float bw) {
     if(ImGui::Button("Return to title", ImVec2(bw, 0.0f))) {
         g.ask("Return to the title screen?\n\nThe current flight is left behind.",
@@ -3125,10 +2715,7 @@ static void navSpaceCenterExit(Game &g, float bw) {
     }
 }
 
-// The two menus: one shell, one heading + navigation block each, both Root --
-// the title screen and the Space Center hub ARE their menus (forced open every
-// frame). The other scenes have no menu of their own: Esc walks up the tree
-// and the hub is the only in-game menu.
+// The two menus: one shell, one heading + nav block each, both Root.
 void drawTitleMenu(Game &g) {
     drawMenuWindow(g, W_TitleMenu, true, "Open Space Program", navTitle);
 }
@@ -3138,9 +2725,8 @@ void drawSpaceCenterMenu(Game &g) {
                    navSpaceCenterExit);
 }
 
-/* The hub's top bar: the career state the hub is the right place to show --
-   the home calendar clock, the science recovered so far, and how many vessels
-   are out there (free kerbals included). Read-only. */
+/* The hub's top bar: home calendar clock, science recovered, vessels out (free
+   kerbals included). Read-only. */
 void drawSpaceCenterTopBar(Game &g) {
     drawWin(g, W_SpaceCenterTopBar, [&] {
         const Calendar &cal = g.sys.home ? g.sys.home->cal : Calendar{};
@@ -3161,10 +2747,8 @@ void drawSpaceCenterTopBar(Game &g) {
     });
 }
 
-// A save-slot name is a single directory under a game dir. Whitelist to
-// letters, digits, - _ . so a name can never carry a path separator or be a
-// dot-name. (Defense-in-depth: delete_save also guards its base; this is the
-// user-facing slot picker, so it stays inside saves/.)
+// A save-slot name is a single directory under a game dir: whitelist to letters,
+// digits, - _ . so it can never carry a path separator or be a dot-name.
 static bool safeSlotName(const std::string &n) {
     if(n.empty() || n == "." || n == "..") { return false; }
     for(unsigned char c : n) {
@@ -3175,9 +2759,8 @@ static bool safeSlotName(const std::string &n) {
     return true;
 }
 
-// A game name is the tail of a game dir name under saves/ (<stamp>-<name>).
-// Blocklist instead of the slot whitelist: forbid only what breaks a dir name
-// -- path separators, the Windows-reserved set, control chars.
+// A game name is the tail of a game dir name under saves/ (<stamp>-<name>). Blocklist
+// instead of the slot whitelist: forbid only what breaks a dir name.
 static bool safeGameName(const std::string &n) {
     if(n.empty() || n == "." || n == "..") { return false; }
     for(unsigned char c : n) {
@@ -3191,34 +2774,28 @@ static bool safeGameName(const std::string &n) {
     return true;
 }
 
-/* The New Game setup sheet: the game's name, which star system to load, and
-   the exhaust-velocity scale (difficulty). Start switches system if needed,
-   applies the scale and begins the game.
-
-   The system list is a directory scan of res/systems, cached and re-read
-   only when the directory's mtime changes (same gate as the VAB Load
-   picker's res/ships list). */
+/* The New Game setup sheet: the game's name, which star system to load, and the
+   exhaust-velocity scale (difficulty). The system list is a directory scan of
+   res/systems, cached and re-read only when its mtime changes. */
 void drawNewGame(Game &g) {
-    // Selection + the scanned list persist across frames (and across a
-    // close/reopen, so the last pick sticks).
+    // Selection + the scanned list persist across frames (and a close/reopen, so the last
+    // pick sticks).
     static std::vector<std::string> systems;
     static bool scanned = false;
     static std::filesystem::file_time_type dirMtime;
     static int sysSel = 0;
-    // The game's display name (persistent across frames / close-reopen):
-    // the dir under saves/ it mints is <stamp>-<name>.
+    // The game's display name: the dir under saves/ it mints is <stamp>-<name>.
     static char nameBuf[256] = "game1";
-    // The slider's draft value, committed to args.exhaust_scale only by
-    // Start. Bound live to args instead, it would survive Cancel / X and
-    // leak into settings.json via "Save settings".
+    // The slider's draft value, committed to args.exhaust_scale only by Start: bound live,
+    // it would survive Cancel / X and leak into settings.json via "Save settings".
     static float exhaustSel = 1.0f;
     {
         std::error_code ec;
         const auto mtime = std::filesystem::last_write_time(
             resdir::path("res/systems"), ec);
         if(!ec && (!scanned || mtime != dirMtime)) {
-            // Keep an in-progress pick across a rescan; only the FIRST scan
-            // seeds from the running system (so Start is a no-op swap).
+            // Keep an in-progress pick across a rescan; only the FIRST scan seeds from the
+            // running system (so Start is a no-op swap).
             const bool first = !scanned;
             std::string keep;
             if(!first && sysSel >= 0 && sysSel < (int)systems.size()) {
@@ -3249,8 +2826,8 @@ void drawNewGame(Game &g) {
     if(sysSel < 0) { sysSel = 0; }
 
     drawWin(g, W_NewGame, [&] {
-        // Re-seed the draft difficulty on every open, so Cancel / X (and a
-        // close via the window chrome) discard the slider edits.
+        // Re-seed the draft difficulty on every open, so Cancel / X discard the slider
+        // edits.
         if(ImGui::IsWindowAppearing()) {
             exhaustSel = g.args.exhaust_scale;
         }
@@ -3283,8 +2860,7 @@ void drawNewGame(Game &g) {
 
         ImGui::Spacing();
         ImGui::Text("Exhaust velocity scale (difficulty)");
-        // Draft until Start (see exhaustSel above). Lower is harder (less
-        // thrust + delta-v for the same fuel).
+        // Draft until Start (see exhaustSel above). Lower is harder (less thrust/delta-v).
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::SliderFloat("##newgame_exhaust", &exhaustSel,
                            0.5f, 5.0f, "%.2fx");
@@ -3312,10 +2888,9 @@ void drawNewGame(Game &g) {
     });
 }
 
-/* The Flight Summary window (W_FlightSummary), opened by the hub's
-   "Recover Vessel" (recoverActive). Shows the recovered vessel, the
-   flight duration on the home calendar, and the SoI enter/leave journal.
-   Transient like New Game. Space-Center-only. */
+/* The Flight Summary (W_FlightSummary), opened by the hub's "Recover Vessel": the
+   recovered vessel, the flight duration, and the SoI enter/leave journal. Transient;
+   Space-Center-only. */
 void drawFlightSummary(Game &g) {
     drawWin(g, W_FlightSummary, [&] {
         const Game::FlightSummary &fs = g.flightSummary;
@@ -3384,16 +2959,8 @@ void drawFlightSummary(Game &g) {
     });
 }
 
-/* The title screen's README panel (left of the menu). Loads the
-   player-facing readme once and shows it as plain text -- no markdown
-   renderer, just the lines with HTML image tags dropped and the
-   heading / bold markers stripped so it reads as text in a scroll box.
-
-   Which file: release/README.md in the source tree (root README.md is
-   the build-from-source doc), else README.md beside the assets (the
-   name the tarball / AppImage package it as), else the AppImage's
-   usr/share/doc/. First hit wins; a miss shows a placeholder rather
-   than an empty window. */
+/* The title screen's README panel: the readme as plain text (no markdown renderer, so
+   HTML image tags drop and heading / bold markers strip). First readable candidate wins. */
 static const std::vector<std::string> &readmeLines() {
     static const std::vector<std::string> lines = [] {
         namespace fs = std::filesystem;
@@ -3423,14 +2990,11 @@ static const std::vector<std::string> &readmeLines() {
             if(!line.empty() && line.back() == '\r') { line.pop_back(); }
             // HTML image tags are not renderable here; drop the line.
             if(line.compare(0, 4, "<img") == 0) { continue; }
-            // Strip ATX heading markers ("# ", "## ", ...).
             size_t i = 0;
             while(i < line.size() && line[i] == '#') { i++; }
             if(i > 0 && i < line.size() && line[i] == ' ') {
                 line.erase(0, i + 1);
             }
-            // Strip **bold** markers (the release readme uses them for
-            // the key names and list labels).
             for(size_t b; (b = line.find("**")) != std::string::npos; ) {
                 line.erase(b, 2);
             }
@@ -3443,8 +3007,7 @@ static const std::vector<std::string> &readmeLines() {
 
 void drawReadme(Game &g) {
     drawWin(g, W_Readme, [&] {
-        // Scroll box: the readme is longer than a fitted panel, and the
-        // window size is then free to stay user-resizable.
+        // Scroll box: the readme is longer than a fitted panel.
         ImGui::BeginChild("readme_body", ImVec2(0.0f, 0.0f));
         for(const std::string &line : readmeLines()) {
             if(line.empty()) {
@@ -3458,28 +3021,22 @@ void drawReadme(Game &g) {
 }
 
 void drawSaveLoad(Game &g) {
-    // The slot name to save into, and the selected game + slot, are all
-    // persistent (static): the name so the player does not retype it, and the
-    // selections so the Load/Delete button acts on the row the player chose.
+    // The slot name and the selections persist (static): so the player does not retype,
+    // and Load/Delete act on the chosen row.
     static char nameBuf[256] = "save1";
     static int gameSel = 0;    // index into the games list
     static int slotSel = 0;    // index into the selected game's slots
     static int prevGameSel = -2;   // a game switch re-picks the first slot
-    /* Both lists are directory scans -- list_games walks saves/ and then
-       reopens every game dir, ~8 opendir cycles and ~55 allocations per call
-       on this box -- so they refresh at ~1 Hz while the window is open, not
-       per frame (navTitle's latestSave probe is the same gate). A save or a
-       delete resets the timer, so your own action shows up on the next frame. */
+    /* Both lists are directory scans: refresh at ~1 Hz while the window is open. A save
+       or delete resets the timer, so your own action shows on the next frame. */
     static const double kRescanSec = 1.0;
     static double nextRescan = 0.0;
     static std::vector<GameEntry> games;
     static std::vector<std::string> slots;
 
     drawWin(g, W_SaveLoad, [&] {
-        // The lists are directory scans, so read them only while the window
-        // is open, and clamp the selections if the lists grew or shrank (a
-        // save / delete). Clamp BOTH bounds: a frame with an empty list parks
-        // the index at -1, and a later `list[-1]` is an out-of-bounds read.
+        // Clamp BOTH bounds: a frame with an empty list parks the index at -1, and a later
+        // `list[-1]` is an out-of-bounds read.
         const bool due = ImGui::GetTime() >= nextRescan;
         if(due) {
             nextRescan = ImGui::GetTime() + kRescanSec;
@@ -3506,8 +3063,8 @@ void drawSaveLoad(Game &g) {
         ImGui::SetNextItemWidth(220);
         ImGui::InputText("##newslot", nameBuf, sizeof(nameBuf));
         ImGui::SameLine();
-        // quicksave-NN is the F5 pool: a hand-saved slot under that name
-        // would join the rotation and a wrap could silently clobber it.
+        // quicksave-NN is the F5 pool: a hand-saved slot under that name would join the
+        // rotation and a wrap could clobber it.
         const bool nameOk = safeSlotName(nameBuf) && quicksaveNN(nameBuf) < 0;
         if(ImGui::Button("Save##saveload") && nameOk) {
             const std::string gamedir = g.ensureGameDir();
@@ -3540,8 +3097,7 @@ void drawSaveLoad(Game &g) {
         if(games.empty()) {
             ImGui::TextDisabled("(none yet)");
         } else {
-            // Two half-width columns (games | slots of the selected game);
-            // split the content region, leaving room for the item spacing.
+            // Two half-width columns (games | slots of the selected game).
             const float full = ImGui::GetContentRegionAvail().x;
             const float w = (full - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
             ImGui::BeginChild("##games", ImVec2(w, 180.0f));
@@ -3566,9 +3122,8 @@ void drawSaveLoad(Game &g) {
             if(ImGui::Button("Load##saveload") && gameSel >= 0 && slotSel >= 0) {
                 const std::string dir = datadir::saves() + "/" +
                                        games[gameSel].dirName + "/" + slots[slotSel];
-                // loadFrom does the load, the scene decision and the failure
-                // toast. It also adopts the game's identity (load_game), so
-                // the next save lands in THIS game's dir.
+                // loadFrom does the load, the scene decision and the failure toast, and adopts the
+                // game's identity so the next save lands here.
                 if(g.loadFrom(dir)) {
                     g.toast("Loaded %s/%s", games[gameSel].name.c_str(),
                             slots[slotSel].c_str());
@@ -3594,19 +3149,16 @@ void drawSaveLoad(Game &g) {
 }
 
 void drawVabUI(Game &g) {
-    /* TAB. The top bar is a registered window and drawWin already suppresses
-       it, but the two panels below are raw ImGui::Begin calls -- they predate
-       the window table and are not in it -- so this is the only gate they
-       have. Bringing them into the table would let this go too. */
+    /* TAB. The top bar is a registered window and drawWin already suppresses it, but the
+       two panels below are raw ImGui::Begin calls -- not in the window table -- so this is
+       their only gate. */
     if(!g.ui_visible) { return; }
 
-    int hoveredLink = -1;   // the fuel-link list row under the mouse (the
-                            // overlay lines below read it for the highlight)
+    int hoveredLink = -1;   // the fuel-link list row under the mouse (overlay reads it)
 
-    /* Free-port gizmos: a green dot at every unconsumed stack node,
-       projected to window pixels (vabProject). Screen-space like KSP's
-       port markers, and drawn on the foreground layer (no depth test) so
-       the far-side ports stay discoverable. */
+    /* Free-port gizmos: a green dot at every unconsumed stack node, projected to window
+       pixels (vabProject). Drawn on the foreground layer so the far-side ports stay
+       discoverable. */
     if(g.camera != nullptr) {
         ImDrawList *dl = ImGui::GetForegroundDrawList();
         for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
@@ -3625,17 +3177,15 @@ void drawVabUI(Game &g) {
         }
     }
 
-    // the save NAME (not a path -- .json / where the file lives are vabSave's
-    // business). Seeded once from the build's name, editable.
+    // The save NAME (not a path -- .json and where the file lives are vabSave's business).
     static char saveName[128] = {0};
     if(saveName[0] == 0) {
         snprintf(saveName, sizeof(saveName), "%s",
                  g.vab.build.name.empty() ? "untitled" : g.vab.build.name.c_str());
     }
 
-    // the load picker: ship NAMES (stock res/ships + the player's data-dir
-    // ships/; the data dir wins on a collision). Testships are filtered out.
-    // Cached and re-read when either directory's mtime changes.
+    // The load picker: ship NAMES (stock + the player's data-dir ships/, data dir wins).
+    // Testships filtered out. Cached, re-read on mtime change.
     static std::vector<std::string> shipNames;
     static bool shipsScanned = false;   // a real mtime could be the epoch; don't rely on that
     static std::filesystem::file_time_type stockMtime, userMtime;
@@ -3666,21 +3216,18 @@ void drawVabUI(Game &g) {
     if(loadSel >= (int)shipNames.size()) { loadSel = (int)shipNames.size() - 1; }
     if(loadSel < 0) { loadSel = 0; }   // an empty list clamps to -1 above; keep valid
 
-    /* Top bar: a fixed top-center window (no titlebar, not movable, not
-       resizable) mirroring the HUD, in two lines:
-         line 1 -- Back to game, the save-name input, Save, the ship picker
-                   + Load (load a ship into the build, replacing it)
-         line 2 -- the launch body + scenario dropdowns, then LAUNCH */
+    /* Top bar: a fixed top-center window mirroring the HUD, in two lines: Back to game /
+       save name / Save / ship picker + Load, then the launch body + scenario dropdowns and
+       LAUNCH. */
     drawWin(g, W_VabTopBar, [&] {
-        // line 1: back to the game / save the build / load a ship
         if(ImGui::Button("Back to game##vab")) { vabClose(g); }
         ImGui::SameLine();
         ImGui::SetNextItemWidth(140);
         ImGui::InputText("##savename", saveName, sizeof(saveName));
         ImGui::SameLine();
         if(ImGui::Button("Save")) { vabSave(g, saveName); }
-        // Load: pick a ship by name, replace the build with it, and point the
-        // save name at the same one so a following Save round-trips it.
+        // Load: replace the build with a named ship and point the save name at it, so a
+        // following Save round-trips it.
         if(!shipNames.empty()) {
             ImGui::SameLine();
             ImGui::SetNextItemWidth(160);
@@ -3705,8 +3252,8 @@ void drawVabUI(Game &g) {
             ImGui::TextDisabled("(no ships)");
         }
 
-        // line 2: where + how to launch (vabLaunch resolves both), then LAUNCH.
-        // Pad scenarios also pick a launch SITE (world building).
+        // Line 2: where + how to launch (vabLaunch resolves both). Pad scenarios also pick a
+        // launch SITE.
         ImGui::SetNextItemWidth(160);
         if(ImGui::BeginCombo("##vabbody", g.vab.bodyName.c_str())) {
             for(size_t i = 0; i < g.sys.bodies.size(); i++) {
@@ -3774,8 +3321,8 @@ void drawVabUI(Game &g) {
     ImGui::Begin("VAB", nullptr);
     ImGui::Text("VAB -- %s (%d parts)", g.vab.build.name.c_str(),
                 (int)g.vab.build.parts.size());
-    // Parts are selected by clicking them in the 3D view (vab.cpp LMB pick);
-    // the panel below acts on that selection.
+    // Parts are selected by clicking them in the 3D view; the panel below acts on that
+    // selection.
     if(g.vab.selected >= 0 && (size_t)g.vab.selected < g.vab.build.parts.size()) {
         ImGui::Separator();
         const int sel = g.vab.selected;
@@ -3798,17 +3345,15 @@ void drawVabUI(Game &g) {
                 if(st < 1) { st = 1; }
                 bp.stage = st;
             }
-            // last: the vab ops swap the parts vector (the bp reference
-            // dies with it)
+            // The vab ops swap the parts vector (the bp reference dies with it).
             if(ImGui::Button("Detach subtree")) { vabDetachSelected(g); }
             ImGui::SameLine();
             if(ImGui::Button("Delete##sel")) { vabDeleteSelected(g); }
         }
     }
     ImGui::Separator();
-    /* Fuel links: virtual from->to edges (no pose, no stage). Added with a
-       two-click 3D pick, drawn as overlay lines (end of this function),
-       managed from this list. */
+    /* Fuel links: virtual from->to edges (no pose, no stage), added with a two-click 3D
+       pick. */
     if(ImGui::Button(g.vab.linkMode ? "Cancel fuel link" : "Add fuel link")) {
         g.vab.linkMode = !g.vab.linkMode;
         g.vab.linkFromId.clear();
@@ -3839,9 +3384,8 @@ void drawVabUI(Game &g) {
         if(ImGui::Button("Delete link")) { vabDeleteSelected(g); }
     }
     ImGui::Separator();
-    /* Subassemblies: multi-part subtrees detached instead of deleted (Del);
-       a lone part just deletes. Arming one places COPIES of the whole tree;
-       the entry survives placing -- copy & paste. */
+    /* Subassemblies: multi-part subtrees detached instead of deleted (Del); a lone part
+       just deletes. Arming one places COPIES of the whole tree. */
     ImGui::Text("Subassemblies");
     int dropAsm = -1;
     for(size_t i = 0; i < g.vab.subassemblies.size(); i++) {
@@ -3877,17 +3421,14 @@ void drawVabUI(Game &g) {
     }
     ImGui::End();
 
-    // Palette: arm a catalog part, then hover the ship and LMB to place it
-    // (snaps to the hovered stack port, or surface-attaches at the hover
-    // point). Hover/ghost targeting comes from the 3D pick (vab.cpp), not
-    // from this list, so list hover must not overwrite g.vab.hover.
+    // Palette: arm a catalog part, then hover the ship and LMB to place it (snaps to the
+    // hovered stack port, or surface-attaches). Hover/ghost targeting comes from the 3D
+    // pick, so list hover must not overwrite g.vab.hover.
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 290, 8),
                             ImGuiCond_Once);
-    // Resizable: default size at creation, then the user owns the size.
-    // The part list takes the top and resizes with the window: a negative
-    // child height is an offset from the bottom edge, leaving room for the
-    // symmetry/snap/status block below. Reserved at its max (armed + ghost +
-    // symmetry>1), so the window's own content never needs a scrollbar.
+    // Resizable: default size at creation, then the user owns it. A negative child height
+    // is an offset from the bottom edge. The list is reserved at its max so the window
+    // needs no scrollbar.
     ImGui::SetNextWindowSize(ImVec2(280, 660), ImGuiCond_FirstUseEver);
     ImGui::Begin("Palette", nullptr);
     const float below = ImGui::GetStyle().ItemSpacing.y * 9.0f + 1.0f
@@ -3899,8 +3440,7 @@ void drawVabUI(Game &g) {
         const PartDef &pd = g.ships.catalog().parts[i];
         if(pd.fuel_link) { continue; }
         const bool armed = (g.vab.armed == pd.name);
-        // The row shows the human-readable display name (falling back to the
-        // machine id). The ##id keeps the ImGui id unique per part.
+        // Display name (falling back to the machine id); the ##id keeps the ImGui id unique.
         char lbl[256];
         snprintf(lbl, sizeof(lbl), "%s##%s",
                  pd.label().c_str(),
@@ -3913,9 +3453,8 @@ void drawVabUI(Game &g) {
     }
     ImGui::EndChild();
     ImGui::Separator();
-    // Radial symmetry for SURFACE placing: N evenly-spaced copies ringing
-    // the hovered parent's own long axis (1 = single part). Stack ports are
-    // singletons, so symmetry does not apply there.
+    // Radial symmetry for SURFACE placing: N copies ringing the hovered parent's long
+    // axis. Stack ports are singletons, so it does not apply there.
     ImGui::Text("Symmetry");
     for(int n = 1; n <= 8; n++) {
         if(n > 1) { ImGui::SameLine(0, 3); }
@@ -3934,8 +3473,7 @@ void drawVabUI(Game &g) {
             ImGui::Text("armed: %s",
                         g.vab.subassemblies[(size_t)g.vab.armedAsm].name.c_str());
         } else {
-            // g.vab.armed holds the catalog id; show its display name like
-            // the palette rows do.
+            // g.vab.armed holds the catalog id; show its display name.
             const PartDef *ad = g.ships.catalog().find(g.vab.armed);
             ImGui::Text("armed: %s",
                         ad != nullptr ? ad->label().c_str()
@@ -3962,16 +3500,10 @@ void drawVabUI(Game &g) {
     }
     ImGui::End();
 
-    /* Staging table: one row per stage period (flight order -- the first
-       burn at the top), with vacuum delta-v and TWR against the SURFACE
-       GRAVITY OF THE BODY THIS BUILD IS SET UP TO LAUNCH FROM. Fuel links
-       are honoured. Recomputed every frame -- the build is small and this
-       is pure math.
-
-       The gravity follows the top bar's launch-body dropdown, not home: the
-       min-TWR cell is red-flagged as "cannot lift off", and that verdict is
-       a property of the body you are actually launching from (the same stack
-       that is stuck on Kerbin's pad at g 9.81 lifts off Moho's at g 2.70). */
+    /* Staging table: one row per stage period (flight order), with vacuum delta-v and TWR
+       against the SURFACE GRAVITY OF THE BODY THIS BUILD LAUNCHES FROM (fuel links
+       honoured). The gravity follows the top bar's launch-body dropdown, not home: the
+       min-TWR "cannot lift off" verdict belongs to the launch body. */
     drawWin(g, W_Staging, [&] {
         TerrainBody *lbody = g.sys.home;
         if(!g.vab.bodyName.empty()) {
@@ -4036,10 +3568,8 @@ void drawVabUI(Game &g) {
         }
     });
 
-    /* Fuel-link overlay lines (drawn last, foreground layer: always on top,
-       no depth test). Source centre -> destination centre, with the flow
-       direction shown three ways: the source half dimmed, the destination
-       half bright, and an arrowhead at the midpoint. */
+    /* Fuel-link overlay lines (drawn last, foreground layer: always on top, no depth
+       test). Flow reads from a dimmed source half, a bright destination half, an arrowhead. */
     if(g.camera != nullptr && !g.vab.build.fuelLinks.empty()) {
         ImDrawList *dl = ImGui::GetForegroundDrawList();
         for(size_t i = 0; i < g.vab.build.fuelLinks.size(); i++) {
@@ -4081,9 +3611,8 @@ void drawVabUI(Game &g) {
 }
 
 // ---- Tracking Station windows --------------------------------------------
-// Copies of the flight Ship List and Orbital Map windows, each renamed to its
-// own window id so the Tracking Station versions can diverge from the flight
-// ones without touching them.
+// Copies of the flight Ship List and Orbital Map, each renamed to its own window id so
+// the Tracking versions can diverge.
 
 void drawTrackingShipList(Game &g) {
     Vehicle *ship = g.ship;
@@ -4094,8 +3623,6 @@ void drawTrackingShipList(Game &g) {
         popScene(g);
     }
     ImGui::Separator();
-    // Buttons (natural width) + SameLine: a full-width Selectable in this
-    // auto-resize window would swallow the line and push the "x" off it.
     std::vector<Vehicle *> all = collectVehicles(sys);
     bool removed = false;
     for(size_t i = 0; i < all.size() && !removed; i++) {
@@ -4103,8 +3630,7 @@ void drawTrackingShipList(Game &g) {
         const bool active = (v == ship);
         ImGui::PushID((void*)v);
         if(v->isCrewAboard()) {
-            // a crew character aboard a capsule: in the fleet but not a
-            // controllable ship (EVA it from the capsule window to make it free)
+            // A crew character aboard a capsule: in the fleet but not controllable.
             ImGui::Text("%s (aboard)", v->name.c_str());
         } else {
             if(active) {
@@ -4121,25 +3647,16 @@ void drawTrackingShipList(Game &g) {
             if(active) {
                 ImGui::PopStyleColor(3);
             }
-            // A crew member is selectable but not deletable -- remove_ship
-            // refuses it -- so it gets no "x" to click.
             if(!v->isEva()) {
                 ImGui::SameLine();
-                // The "##rm_<name>" suffix is invisible on screen but makes
-                // the row addressable by --ui-click ("x" alone is ambiguous
-                // the moment two ships are listed), so e2e can drive removal.
                 if(ImGui::SmallButton(("x##rm_" + v->name).c_str())) {
                     g.remove_ship(v);
                     removed = true;   // the ship was deleted; stop iterating
                 }
             }
             if(active && !removed) {
-                // Fly: back to the cockpit of this (already-active) ship --
-                // the map is a view, this is the way back into it. Fly is
-                // only drawn for the active ship, so enterFlight just
-                // collapses the stack to the live flight. It skips its enter
-                // when the base is already Flight, so syncShipFocus does the
-                // re-centering.
+                // Fly: only drawn for the active ship, so enterFlight just collapses the stack to the
+                // live flight (syncShipFocus does the re-centering).
                 ImGui::SameLine();
                 if(ImGui::SmallButton("Fly")) {
                     enterFlight(g);
@@ -4168,15 +3685,11 @@ void drawTrackingMap(Game &g) {
     std::vector<TransferPlanner::XferTarget> &xferTargets = planner.xferTargets;
     int &xfer_target = planner.xfer_target;
 
-    /* Full-screen and chrome-less: the map IS the Tracking Station view.
-       No controls below (they would overflow the auto-fit window off-screen);
-       pan/zoom is the mouse wheel/drag, as in the flight map. Diverged from
-       drawUIMap on purpose: the flight map keeps its resizable window and
-       the right-click chrome cycle, this one is always full-screen and never
-       touches the shared g.map_mode. */
+    /* Full-screen and chrome-less: the map IS the Tracking Station view (no controls --
+       they would overflow the auto-fit window off-screen). Diverged from drawUIMap on
+       purpose: this one never touches the shared g.map_mode. */
     const ImGuiViewport *tvp = ImGui::GetMainViewport();
-    // Edge-to-edge: cancel the slot's margin and zero the window padding so
-    // the map content starts at the viewport origin.
+    // Edge-to-edge: cancel the slot's margin and zero the window padding.
     const ImVec2 vmarg = ui::Manager::Get().margin;
     ui::Options mapOpts;
     mapOpts.slot = ui::Slot::TopLeft;
@@ -4185,28 +3698,22 @@ void drawTrackingMap(Game &g) {
     mapOpts.default_open = true;
     mapOpts.flags = ImGuiWindowFlags_NoDecoration |
                     ImGuiWindowFlags_NoBringToFrontOnFocus;
-    // The map fills the whole work area, width and height INDEPENDENTLY (not a
-    // square), so a wide screen is covered edge to edge rather than letterboxed.
+    // Width and height INDEPENDENTLY (not a square), so a wide screen is covered edge to
+    // edge.
     const float mapW = tvp->WorkSize.x;
     const float mapH = tvp->WorkSize.y;
-    // Zero padding + zero border (edge-to-edge, no 1px line) and an opaque BLACK
-    // canvas -- the Tracking map is its own black backdrop, not the theme's
-    // window colour. The black also meets the loop's black Sky clear, so the
-    // auto-fit window's few-px shortfall at the bottom/right shows no seam.
-    // Pushed before drawWin so the body's contrastingColor(WindowBg) picks a
-    // light ink for the labels on black.
+    // Zero padding + border and an opaque BLACK canvas: the Tracking map is its own
+    // backdrop and meets the loop's black Sky clear, so the auto-fit window's shortfall
+    // shows no seam. Pushed before drawWin so contrastingColor(WindowBg) picks light ink.
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
     drawWin(g, W_TrackingMap, mapOpts, [&] {
-        // The focus body: the ship's parent when there is one, else the home
-        // body (a new game before its first launch has no ship). Everything
-        // ship-specific is guarded on `ship` and simply absent then.
+        // The focus body: the ship's parent when there is one, else home (a new game before
+        // its first launch). Ship-specific bits are absent then.
         TerrainBody *focus = ship ? ship->m_parent : g.home;
 
-        // The ship's trajectory around the focus: a closed ellipse (a coasting
-        // Kepler orbit) or, when the ship is escaping or flying by (ecc >= 1),
-        // an open hyperbolic/parabolic arc. Empty with no ship.
+        // Empty with no ship.
         bool closed = false;
         std::vector<glm::dvec3> traj_local;
         const std::vector<glm::dvec3> *traj_pts = nullptr;
@@ -4215,19 +3722,12 @@ void drawTrackingMap(Game &g) {
         if(ship) {
             closed = (o.ecc < 1.0);
             if(closed) {
-                // Sampled through a per-ship cache, trusted only while the
-                // ship is on rails. Off rails the orbit is moving, so
-                // re-sample every frame. See OrbitSampleCache. Fixed N:
-                // shared with the Surface Map cache entry.
+                // Per-ship cache, trusted only while on rails; off rails re-sample every frame.
+                // Fixed N: shared with the Surface Map.
                 const int N = 64;
                 traj_pts = &orbit_caches[(const void *)ship].sample(
                     orbit_pos, orbit_vel, mu, N, ship->onRails);
             } else {
-                // Open trajectory: an arc around periapsis, truncated where
-                // it would run off to infinity. r_cap is the current view
-                // extent so the curve reaches the edge of the view, but never
-                // smaller than a few periapsis radii or the ship's current
-                // radius.
                 const double r_cap = std::max<double>(
                     (double)std::max(mapW, mapH) * map_scale,
                     std::max(4.0 * o.periapsis, o.distance));
@@ -4235,10 +3735,6 @@ void drawTrackingMap(Game &g) {
                 traj_local = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N, r_cap);
                 traj_pts = &traj_local;
             }
-            // Periapsis (both cases) and apoapsis (closed only). A closed orbit
-            // propagates to each apsis (exact); an open arc has no apoapsis,
-            // and its periapsis point is radius o.periapsis along the
-            // eccentricity vector.
             if(closed) {
                 if(o.time_to_peri > 0.0) {
                     propagateKepler(orbit_pos, orbit_vel, mu, o.time_to_peri, peri_p, tmp);
@@ -4263,31 +3759,23 @@ void drawTrackingMap(Game &g) {
             }
         }
 
-        // The map plane: a normal in the focus's inertial frame; OrbitMap
-        // derives an in-plane basis from it. "Orbital" needs a ship, so
+        // The map plane: a normal in the focus's inertial frame. "Orbital" needs a ship, so
         // without one it stays on the default (rail) plane.
         glm::dvec3 plane_n, plane_x;
         mapPlaneBasis(focus->frame, orbit_pos, orbit_vel, ship != nullptr,
                       map_plane, plane_n, plane_x);
-    
-        // The map fills the window (the whole viewport here); the focus sits
-        // at its center plus the pan offset. (mapW/mapH are defined at the
-        // top of the function.)
+
+        // The map fills the window (the whole viewport); the focus sits at its centre plus
+        // the pan offset.
         const ImVec2 p0 = ImGui::GetCursorScreenPos();
         const float center_x = p0.x + mapW * 0.5f;
         const float center_y = p0.y + mapH * 0.5f;
 
-        // Reserve the map area with an invisible button. It captures the mouse,
-        // so a left-drag over the map pans it instead of moving the window
-        // (imgui otherwise treats a drag on the window background as a move).
-        // Wheel-zoom and drag-pan both apply only while the mouse is over it.
         ImGui::InvisibleButton("##mapnav", ImVec2(mapW, mapH));
         const bool over_map = ImGui::IsItemHovered();
         const ImGuiIO &g_io = ImGui::GetIO();
         if(over_map && g_io.MouseWheel != 0.0f) {
-            // Wheel zooms to the cursor (the world point under the
-            // mouse stays put). Reversed per preference: wheel UP zooms
-            // IN (scale = meters/pixel goes down), wheel OUT zooms out.
+            // Wheel zooms to the cursor; wheel UP zooms IN (scale = m/px goes down).
             const float factor = (g_io.MouseWheel > 0.0f) ? 0.8f : 1.25f;
             const float old_scale = map_scale;
             float new_scale = old_scale * factor;
@@ -4311,11 +3799,6 @@ void drawTrackingMap(Game &g) {
         map.scale = map_scale;
         map.setPlane(plane_n, plane_x);
 
-        // KSP-inspired palette (P4): your orbit is green, the transfer
-        // is blue, other bodies are gray. The focus body, ship dot and
-        // labels use a near-black/white ink that contrasts with the
-        // current style's window background. The selected transfer target
-        // is highlighted brighter than the other children.
         const ImVec4 bg = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
         const ImU32 ink       = contrastingColor(bg);
         const ImU32 col_ship  = ImGui::GetColorU32(ImVec4(0.20f, 0.80f, 0.40f, 1.0f));
@@ -4325,27 +3808,19 @@ void drawTrackingMap(Game &g) {
         const ImU32 col_body  = ink;
         const ImU32 col_sel   = ImGui::GetColorU32(ImVec4(0.90f, 0.90f, 0.90f, 1.0f));
         const ImU32 soi_col   = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.30f));
-        // The near-body shell ring (science + surface-frame boundary),
-        // gray like the SOI ring.
+        // The near-body shell ring (science + surface-frame boundary), gray like the SOI.
         const ImU32 shell_col = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.35f));
-        // Atmosphere top: a desaturated-blue disk behind the body, so the
-        // rim marks where the air ends (top() = 0 for airless bodies).
         const ImU32 col_atmo = ImGui::GetColorU32(ImVec4(0.35f, 0.50f, 0.66f, 0.20f));
         ImDrawList *dl = ImGui::GetWindowDrawList();
         const ImVec2 focus_px = map.px(glm::dvec3(0.0, 0.0, 0.0));
 
-        // The body selected in the TRANSFER window (a child of the
-        // focus), highlighted on the map; nullptr for a ship target or
-        // no selection.
         TerrainBody *sel_body = nullptr;
         if(xfer_target >= 0 && xfer_target < (int)xferTargets.size() &&
            xferTargets[xfer_target].body) {
             sel_body = xferTargets[xfer_target].body;
         }
 
-        // A body's sphere-of-influence ring, faint. Skipped when
-        // sub-pixel or far off-view (a huge circle is both useless and
-        // expensive to tessellate).
+        // SOI ring, faint. Skipped when sub-pixel or far off-view.
         auto draw_soi = [&](const glm::dvec3 &center, double soi_m, ImU32 col) {
             if(soi_m <= 0.0) { return; }
             const float r_px = (float)(soi_m / map_scale);
@@ -4353,68 +3828,45 @@ void drawTrackingMap(Game &g) {
             map.drawRing(dl, center, soi_m, col, 1.0f);
         };
 
-        // Every body's orbit (around its own parent), projected into the
-        // focus's frame -- see drawSystemBodyOrbits. Drawn before the
-        // ship's orbit, so the ship sits on top.
+        // Drawn before the ship's orbit so the ship sits on top.
         {
             const MapViewRect view{p0.x, p0.y, p0.x + mapW, p0.y + mapH};
-            // The belts go down first: they are regions, so orbits, bodies
-            // and labels should all read through them.
+            // Belts go down first: orbits, bodies and labels should read through them.
             drawDebrisBelts(g, focus, map, dl, view, map_scale);
             drawSystemBodyOrbits(g, focus, map, dl, view, map_scale,
                                  sel_body, col_child, col_sel, ink,
                                  soi_col);
         }
-        // The focus body's own SOI -- the boundary of the current
-        // gravitational regime (with a ship: the one it is inside; without:
-        // home's).
+        // The focus body's own SOI -- the gravitational regime in play.
         draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->frame->soi, soi_col);
-        // The near-body (rotating-frame) shell -- the boundary that drives
-        // the science orbit cut and the surface-frame flip. The lambda's
-        // LOD hides it until zoomed in enough for it to matter.
         draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->rot_frame->soi, shell_col);
 
-        // The atmosphere top (radius + top(), top() in meters above
-        // sea level) as a desaturated-blue disk, then the body on top so
-        // the visible rim is the air. Same min-pixel floor, so the body
-        // never pokes through when the atmosphere is sub-pixel.
         const double atmo_top = focus->surface.atmosphere.top();
         if(atmo_top > 0.0) {
             map.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0),
                          focus->radius + atmo_top, col_atmo, 3.0f);
         }
-        // The focus body's disk at the centre (home when there is no ship),
-        // with the same visibility floor as the looped bodies.
         map.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0), focus->radius, col_body, 3.0f);
 
-        // The ship itself, absent with no ship: its orbit (closed loop, or an
-        // open arc -- closed=false so a chord does not close it), a bright dot
-        // (you are here) with a green ring on the line from the focus, the
-        // prograde arrow and the apside markers.
+        // The ship itself: its orbit (open arc uses closed=false so a chord does not close
+        // it), a dot with a green ring, the prograde arrow and the apside markers.
         if(ship) {
             map.drawOrbit(dl, *traj_pts, col_ship, 1.0f, closed);
             const ImVec2 ship_px = map.px(orbit_pos);
             dl->AddLine(focus_px, ship_px, ink, 1.0f);
             dl->AddCircleFilled(ship_px, 5.0f, ink);
             dl->AddCircle(ship_px, 8.0f, col_ship, 0, 1.5f);
-            // Prograde (velocity) arrow, along the ship's velocity.
+            // Prograde (velocity) arrow.
             map.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
-            // Apside markers are only meaningful for a non-circular orbit; an
-            // open arc has periapsis but no apoapsis.
+            // Apside markers only mean anything for a non-circular orbit.
             if(o.ecc > 1e-3) {
                 if(have_peri) { map.drawDot(dl, peri_p, 4.0f, col_apsis); }
                 if(have_apo)  { map.drawDot(dl, apo_p,  4.0f, col_apsis); }
             }
 
-            // Every ship in the system -- any SOI, not just the focus's: its
-            // orbit (a Kepler conic around its OWN central body) projected
-            // into the focus's frame, plus a dot + label at its position.
-            // The player's own ship is already drawn above in green (skipped
-            // here). Each ship's conic is sampled in its central body's
-            // inertial frame, then the whole ellipse is rotated/translated
-            // into the focus's frame. A ship on an escape trajectory has no
-            // closed orbit to draw -- sample() returns empty -- so only its
-            // marker shows.
+            // Every ship in the system -- any SOI: a Kepler conic around its OWN central body,
+            // projected into the focus's frame. An escaping ship has no closed orbit -- sample()
+            // returns empty -- so only its marker shows.
             for(auto *b : planets) {
                 for(auto *s : b->ships) {
                     if(s == ship || !s->frame) { continue; }
@@ -4448,7 +3900,6 @@ void drawTrackingMap(Game &g) {
                     const ImVec2 tpx = map.px(O * r2 + P);
                     dl->AddCircleFilled(tpx, 3.0f, col_vessel);
                     // Label offset from the marker (px): +x right, -y up.
-                    // Raise label_dx / label_dy to push names further out.
                     const float label_dx = 6.0f, label_dy = 14.0f;
                     dl->AddText(ImVec2(tpx.x + label_dx, tpx.y - label_dy),
                                 col_vessel, s->name.c_str());
@@ -4456,8 +3907,6 @@ void drawTrackingMap(Game &g) {
             }
         }
 
-        // No ship yet: the map shows the system around home, but there is no
-        // orbit to track -- say so (the ship list beside it is already empty).
         if(!ship) {
             ImGui::Text("No ships yet -- launch one from the VAB.");
         }
@@ -4468,24 +3917,17 @@ void drawTrackingMap(Game &g) {
 }
 
 // ---- Research Lab windows -------------------------------------------------
-// The scene's single window: the science score + the FULL collection log, one
-// row per bank in bank order. Read-only -- recoverActive grows the log.
-//
-// The rows are PRE-BUILT, not rebuilt per frame (issue #87): researchLabEnter
-// fills g.labRows via labEntries, and the render walks them. The render also
-// self-heals -- if g.science.version differs from g.labRowsVersion, it rebuilds
-// first (a Load that commits while this scene is open changes the log; a
-// refused one leaves the rows, and the career, untouched).
+// The scene's single window: the science score + the FULL collection log, one row per
+// bank. Read-only -- recoverActive grows the log.
+// Rows are PRE-BUILT, not rebuilt per frame (#87): researchLabEnter fills g.labRows,
+// and the render self-heals if g.science.version differs from g.labRowsVersion.
 
-// Defined with the Atlas (below); declared here so scene entry can build the
-// Atlas rows alongside the Lab's.
 static void buildAtlasRows(Game &g);
 
 void researchLabEnter(Game &g) {
     const Calendar &cal = g.sys.home ? g.sys.home->cal : Calendar{};
     g.labRows = labEntries(g.science.recovered, cal);
     g.labRowsVersion = g.science.version;
-    // The System Atlas rows too (it's open by default in the lab scene).
     buildAtlasRows(g);
 }
 
@@ -4495,9 +3937,7 @@ void drawResearchLab(Game &g) {
         if(ImGui::Button("Back to Space Center")) {
             popScene(g);
         }
-        // Toggle the System Atlas (its own window, docked right of the lab).
-        // A checkbox rather than relying on the window's X alone: closing it
-        // leaves no other way back in the lab, so this is the reopen path.
+        // A checkbox rather than the window's X alone: closing it leaves no other way back in.
         bool atlas_on = winOpen(W_ResearchAtlas);
         if(ImGui::Checkbox("System Atlas", &atlas_on)) {
             setWinOpen(W_ResearchAtlas, atlas_on);
@@ -4511,17 +3951,15 @@ void drawResearchLab(Game &g) {
                 "Run experiments aboard a crewed ship and recover it to "
                 "archive them here.");
         } else {
-            // Self-heal: rebuild the rows if the career log changed since they
-            // were built (a Load from this scene is the one way it can).
+            // Self-heal: rebuild if the career log changed since the rows were built.
             if(g.labRowsVersion != g.science.version) {
                 const Calendar &cal =
                     g.sys.home ? g.sys.home->cal : Calendar{};
                 g.labRows = labEntries(g.science.recovered, cal);
                 g.labRowsVersion = g.science.version;
             }
-            // g.labRows is ready (built on entry, or just healed above), so
-            // this is a plain walk. The archive outgrows the window as the
-            // career grows, so the child fills the remaining height and scrolls.
+            // g.labRows is ready (built on entry, or just healed above). The archive outgrows the
+            // window, so the child scrolls.
             ImGui::BeginChild("##recovered", ImVec2(0.0f, 0.0f));
             for(const LabEntry &r : g.labRows) {
                 ImGui::TextUnformatted(r.line1.c_str());
@@ -4535,22 +3973,11 @@ void drawResearchLab(Game &g) {
 }
 
 // ---- System Atlas (Research Lab) -----------------------------------------
-// The system as a tree: the star at the root, planets under it, moons under
-// their planet (recursively -- a moon of a moon nests one level deeper).
-// One row per body: name (indented by depth), its research VALUE (a plain-
-// english tier for "findings worth ×N of home" -- the exact × is a tooltip),
-// the APPROACH Δv (the cost to get there, rounded to 50; "—" = home/star),
-// and how much of the body's science has been DISCOVERED. Selecting a body
-// adds its DOSSIER: the physical and orbital numbers (radius, mass, gravity,
-// escape velocity, day length, tilt, air, and the orbit's a/e/apsides/period/
-// tilt) -- the system JSON read back in friendly units, so sanity-checking
-// what the flight windows show does not need the data file open. --atlas-dump
-// prints the same rows to stdout.
-//
-// The rows are PRE-BUILT, not computed per frame (the Lab's issue #87 pattern):
-// buildAtlasRows fills g.atlasRows on scene entry, drawResearchAtlas walks
-// them, and both self-heal if g.science.version has moved since (a recovery
-// while the lab is open, or a Load from it, grows the log).
+// The system as a tree, one row per body: name (indented by depth), research VALUE
+// tier, APPROACH dv, % DISCOVERED. Selecting a body adds its DOSSIER. --atlas-dump
+// prints the same rows.
+// Rows are PRE-BUILT, not computed per frame (the Lab's #87 pattern): buildAtlasRows
+// fills g.atlasRows on scene entry, both self-heal on g.science.version.
 namespace {
 // A (family, situation) study-slot -- the identity key for the coverage count.
 // (Named AtlasSlot: ui::Slot is a different thing in scope.)
@@ -4563,8 +3990,8 @@ struct AtlasSlot {
     }
 };
 
-// Total study-slots across the family table: each family contributes one slot
-// per situation it can run in. Uniform denominator for every body.
+// Total study-slots across the family table: one slot per situation each family can
+// run in.
 size_t atlasTotalSlots() {
     size_t total = 0;
     for(const ExperimentDef &d : experimentDefs()) {
@@ -4573,20 +4000,10 @@ size_t atlasTotalSlots() {
     return (total > 0) ? total : 1;   // a missing table must not divide by 0
 }
 
-/* The dossier: what the Atlas knows about a body without opening the system
-   JSON, so the lab can sanity-check the flight readouts. Every line is either
-   authored there (radius / mass / g / the atmosphere block) or derived from it
-   (mu, escape velocity, the orbit from the mean angular rate), so a line that
-   disagrees with what the game flies means the derivation is wrong, not the
-   data. Two derivations worth naming:
-   - The orbit is inverted from orb_ang_speed (Kepler III) exactly as the
-     loader places the body, and e comes from the epoch rail state's angular
-     momentum -- these are the rails' own numbers, not the JSON's.
-   - "plane tilt" is stated against three named references -- the system
-     plane (ecl), the parent's orbital plane (parent) and the parent's
-     equator (eq.) -- because for a moon of an inclined planet those are
-     three different numbers, and "incl_ref" in the system JSON picks which
-     one the authored orb_incl means. See the block that computes them. */
+/* The dossier: the system JSON read back in friendly units, so the lab can
+   sanity-check the flight readouts -- a line disagreeing with what the game flies means
+   the DERIVATION is wrong. The orbit is inverted from orb_ang_speed (Kepler III)
+   exactly as the loader places the body, with e from the epoch rail's angular momentum. */
 void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
     char v[64], w[64];
     auto line = [&](const char *label, const char *value) {
@@ -4603,29 +4020,28 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
     line("mass", fmt_mass((double)b.mass, v, sizeof v));
     snprintf(v, sizeof v, "%.2f m/s2", b.g);
     line("surface gravity", v);
-    // Both at the mean radius under the body's own mu: what a launch must
-    // reach, and what an arrival burn must shed.
+    // Both at the mean radius under the body's own mu: what a launch must reach, an
+    // arrival burn must shed.
     line("escape velocity",
          fmt_speed(std::sqrt(2.0 * b.mu / (double)b.radius), v, sizeof v));
     line("surface orbit",
          fmt_speed(std::sqrt(b.mu / (double)b.radius), v, sizeof v));
-    // solar_day_seconds: the measured solar day (#201). Civil clocks run
-    // 86400 s days (#202) -- show the physical day here, not the civil one.
+    // solar_day_seconds: the measured solar day (#201), not the civil 86400 s day (#202).
     line("day length", b.cal.solar_day_seconds > 0.0
                          ? fmt_time(b.cal.solar_day_seconds, v, sizeof v)
                          : "none (no spin)");
     if(b.rot_frame != nullptr) {
-        // The pole IS the spin frame's +Y, and initial_orient carries the
-        // authored tilt (tilt_azimuth turns the lean's direction, leaving its
-        // angle, so col1.y alone gives the tilt).
+        // The pole IS the spin frame's +Y, and initial_orient carries the authored tilt
+        // (tilt_azimuth turns the lean's direction, leaving its angle, so col1.y alone
+        // gives the tilt).
         const double pole = glm::clamp(b.rot_frame->initial_orient[1].y,
                                        -1.0, 1.0);
         line("axial tilt", fmt_deg(std::acos(pole), v, sizeof v));
         line("surface shell", fmt_dist(b.rot_frame->soi, v, sizeof v));
     }
     if(b.frame != nullptr) {
-        // The star's inertial frame carries the authored universe bound, not
-        // an SoI (it has no parent whose tide could dominate).
+        // The star's inertial frame carries the authored universe bound, not an SoI (no
+        // parent whose tide could dominate).
         line(b.frame->parent == nullptr ? "universe bound" : "SoI",
              fmt_dist(b.frame->soi, v, sizeof v));
     }
@@ -4640,17 +4056,16 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                      (double)b.surface.sea_level,
                      oceanModeName(b.surface.ocean_mode));
             line("seas", v);
-            // The shell the loader actually BUILT, not the authored mode: a
-            // flat-sea body never has one, and a mesh body has none until its
-            // heavy phase lands. This is the fact the renderer uses, so the
-            // e2e cases can pin the mode's effect rather than its spelling.
+            // The shell the loader actually BUILT, not the authored mode: a flat-sea body never
+            // has one, and a mesh body has none until its heavy phase lands. This is the fact the
+            // renderer uses, so e2e can pin it.
             if(b.ocean != nullptr) {
                 line("ocean shell", fmt_dist((double)b.ocean_radius,
                                              v, sizeof v));
             }
         } else { line("seas", "none"); }
-        // The authored relief; the MEASURED highest ground only once the
-        // heavy phase has sampled the heightfield (max_height starts at 1 m).
+        // The authored relief; the MEASURED highest ground only once the heavy phase has
+        // sampled the heightfield.
         line("relief", fmt_dist((double)b.surface.amplitude, v, sizeof v));
         if(b.ready) {
             line("highest ground",
@@ -4663,8 +4078,8 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
         if(at.scale_height > 0.0) {
             line("scale height", fmt_dist(at.scale_height, v, sizeof v));
         }
-        // The block can exist for the drawn rim alone, with no drag air
-        // behind it (AtmosphereParams: the two halves are independent).
+        // The block can exist for the drawn rim alone, with no drag air behind it (the two
+        // halves are independent).
         if(at.sea_level_density > 0.0) {
             snprintf(v, sizeof v, "%.3f kg/m3", at.sea_level_density);
             line("air density", v);
@@ -4699,8 +4114,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
     const double e = std::sqrt(std::max(0.0, 1.0 - (h * h / fr->parent_mu) / a));
     snprintf(v, sizeof v, "%.4f", e);
     line("eccentricity", v);
-    // From the parent's centre (what ORBITAL's PeA/ApA show) and above its
-    // mean sea level (what a periapsis-raising burn is measured in).
+    // From the parent's centre (what ORBITAL's PeA/ApA show) and above its mean sea level.
     const double surf = (double)par->radius + (double)par->surface.sea_level;
     line("periapsis", fmt_dist(a * (1.0 - e), v, sizeof v));
     line("periapsis alt", fmt_dist(a * (1.0 - e) - surf, v, sizeof v));
@@ -4709,21 +4123,16 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
         line("apoapsis alt", fmt_dist(a * (1.0 + e) - surf, v, sizeof v));
     }
     line("period", fmt_time(2.0 * std::numbers::pi / n, v, sizeof v));
-    /* Plane tilt in three references, because for a moon of an inclined
-       planet they are three different numbers: Bop authors orb_incl 15 deg
-       against JOOL's plane, which itself sits 1.30 deg off the system plane.
-       (ecl) is the SYSTEM plane -- the same one the flight readout's "ecl"
-       and the map's Ecliptic view measure in, and the only one that means the
-       same thing at every depth of the tree. (parent) is the plane the body's
-       own rail is authored against when "incl_ref": "orbit"; (eq.) is the
-       parent's EQUATOR, which is what "incl_ref": "equator" states. A line is
-       dropped only when it repeats the (ecl) one. */
+    /* Plane tilt in three references, because for a moon of an inclined planet they differ:
+       Bop authors orb_incl 15 deg against JOOL's plane, itself 1.30 deg off the system
+       plane. (ecl) is the SYSTEM plane -- what the flight readout and the map's Ecliptic
+       view measure in. (parent) is what "incl_ref": "orbit" authors against; (eq.) is the
+       parent's EQUATOR. */
     const glm::dvec3 nrm = fr->orient * glm::dvec3(0.0, 1.0, 0.0);   // parent axes
     const double tilt_parent =
         std::acos(glm::clamp(fr->orient[1].y, -1.0, 1.0));
-    // root_orient carries the whole parent chain, so this is the same normal
-    // in the system frame -- and rails never spin their own frame, so it is
-    // constant in time.
+    // root_orient carries the whole parent chain, so this is the same normal in the system
+    // frame -- and rails never spin their own frame, so it is constant in time.
     const glm::dvec3 nrm_root =
         glm::normalize(fr->root_orient * glm::dvec3(0.0, 1.0, 0.0));
     const double tilt_ecl = std::acos(glm::clamp(nrm_root.y, -1.0, 1.0));
@@ -4740,15 +4149,11 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             line("plane tilt (eq.)", fmt_deg(tilt_eq, v, sizeof v));
         }
     }
-    /* Node and periapsis longitude in the system plane -- the reference the
-       flight readout uses when the map is on Ecliptic, so the dossier and the
-       HUD can be compared (RefPlane{} is the system plane: +Y normal, +X zero
-       longitude). Dashed when undefined: an orbit lying IN the system plane
-       has no node, and a near-circular one has no periapsis direction to
-       point at. The authored node, though, lives in the PARENT's plane, and
-       for a moon of an inclined planet that is a different number again: Bop
-       authors lon_asc_node 10.0 and reads 61.22 in the system plane. So the
-       parent-plane node joins the list whenever it differs. */
+    /* Node and periapsis longitude in the SYSTEM plane (RefPlane{}: +Y normal, +X zero
+       longitude) -- the reference the flight readout uses on Ecliptic. Dashed when
+       undefined: an orbit IN the plane has no node, a near-circular one no periapsis
+       direction. The authored node lives in the PARENT's plane, so it joins the list
+       whenever it differs. */
     const PlaneAngles pa = orbitPlaneAngles(
         computeOrbitElements(fr->root_orient * fr->orbit_pos0,
                              fr->root_orient * fr->orbit_vel0,
@@ -4768,12 +4173,10 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
     line("periapsis lon (ecl)", pa.lpe_ok ? fmt_deg(pa.lpe, v, sizeof v) : "-");
 }
 
-// Walk the frame tree from `b`, appending one row per body (in tree order).
-// A body's inertial frame has TWO kinds of children: its OWN spin frame
-// (rotating -- skipping it is what keeps this from recursing forever) and
-// the inertial frames of the bodies that ORBIT it. `seen` also guards a
-// cyclic orbit pair in the data (issue #129): a bad system then stops
-// re-expanding an already-shown body instead of crashing the lab.
+// Walk the frame tree from `b`, one row per body (tree order). A body's inertial frame
+// has TWO kinds of children: its OWN spin frame (rotating -- skipping it is what keeps
+// this from recursing forever) and the inertial frames of the bodies that ORBIT it.
+// `seen` guards a cyclic orbit pair in the data (#129).
 void atlasWalk(const System &sys, const TerrainBody *b, int depth,
                const std::map<std::string, std::set<AtlasSlot>> &covered,
                size_t total, std::vector<AtlasRow> &out,
@@ -4781,8 +4184,6 @@ void atlasWalk(const System &sys, const TerrainBody *b, int depth,
     if(!seen.insert(b).second) { return; }   // already shown: stop the cycle
     AtlasRow r;
     r.rawName = b->name;   // the plain name, for the detail-pane selection key
-    // Indent: a fixed 3 spaces per level (plain ASCII, reads as a tree
-    // without relying on box-drawing glyphs, fine in any font).
     std::string name;
     name.append((size_t)depth * 3, ' ');
     name += b->name;
@@ -4808,19 +4209,15 @@ void atlasWalk(const System &sys, const TerrainBody *b, int depth,
 }
 }   // namespace
 
-// Build g.atlasRows from the current system + career log, and stamp the
-// science version they were built from (for the self-heal check).
 static void buildAtlasRows(Game &g) {
     const System &sys = g.sys;
     g.atlasRows.clear();
     g.atlasRowsVersion = g.science.version;
     if(sys.root == nullptr) { return; }
 
-    // Which study-slots have been covered on each body. Recovered findings
-    // only (the bank), counted per family+situation. NOTE (the limitation the
-    // caption under the table states): a body's BIOMES are NOT separate slots
-    // here -- that needs the heavy phase's max height, so a biome-rich body
-    // reads LOWER than its true surveyed fraction. The % is a floor.
+    // Covered study-slots per body: recovered findings only, counted per family+situation.
+    // BIOMES are NOT separate slots here (that needs the heavy phase's max height), so a
+    // biome-rich body reads LOWER than its true surveyed fraction -- the % is a floor.
     std::map<std::string, std::set<AtlasSlot>> covered;
     for(const Experiment &e : g.science.recovered) {
         if(defFor(e.type) == nullptr) { continue; }   // unknown family: skip
@@ -4828,7 +4225,7 @@ static void buildAtlasRows(Game &g) {
     }
     const size_t total = atlasTotalSlots();
 
-    std::set<const TerrainBody *> seen;   // cycle guard (issue #129)
+    std::set<const TerrainBody *> seen;   // cycle guard (#129)
     atlasWalk(sys, sys.root, 0, covered, total, g.atlasRows, seen);
 }
 
@@ -4839,8 +4236,7 @@ void drawResearchAtlas(Game &g) {
             ImGui::TextDisabled("No system loaded.");
             return;
         }
-        // Self-heal: rebuild the rows if the career log changed since they
-        // were built (a recovery while the lab was open, or a Load from it).
+        // Self-heal: rebuild if the career log changed since the rows were built.
         if(g.atlasRowsVersion != g.science.version) {
             buildAtlasRows(g);
         }
@@ -4849,9 +4245,8 @@ void drawResearchAtlas(Game &g) {
             return;
         }
 
-        // Selection = the raw body name (a string, not an index, so it
-        // survives the row set being rebuilt or the system changing). Default
-        // to home, else the first body; keep it while it stays valid.
+        // Selection = the raw body name (a string, not an index, so it survives the rows being
+        // rebuilt). Default to home, else the first body.
         static std::string selected;
         auto findRow = [&](const std::string &n) -> const AtlasRow * {
             for(const AtlasRow &r : g.atlasRows) {
@@ -4870,10 +4265,8 @@ void drawResearchAtlas(Game &g) {
         ImGui::TextDisabled("select a body:");
         ImGui::Separator();
 
-        // Split the window: the tree list on the left, the selected body's
-        // dossier on the right. Two side-by-side children (not a table -- a
-        // table cell can't fill the height independently); each scrolls.
-        // The list is the narrow 1/3; the dossier gets the rest.
+        // Tree list on the left (narrow 1/3), dossier on the right. Two side-by-side children
+        // rather than a table -- a table cell cannot fill the height.
         const float availW = ImGui::GetContentRegionAvail().x;
         const float listW =
             std::min(ImGui::GetFontSize() * 16.0f, availW * 0.30f);
@@ -4921,9 +4314,7 @@ void drawResearchAtlas(Game &g) {
                 ImGui::TextUnformatted("science found");
                 ImGui::TableNextColumn();
                 ImGui::Text("%d%%", row->discovered);
-                // The dossier: the body's physical + orbital numbers, in
-                // sections. Pre-built strings, so this window and --atlas-dump
-                // print the same text (one derivation, two renderings).
+                // Pre-built strings, so this window and --atlas-dump print the same text.
                 for(const AtlasFact &fa : row->facts) {
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
@@ -4942,10 +4333,9 @@ void drawResearchAtlas(Game &g) {
     });
 }
 
-/* --atlas-dump MS: every Atlas row (tree order + dossier) to stdout, for
-   reading the system in a terminal and for e2e to pin. Prints the SAME
-   pre-built strings the window draws -- one derivation, two renderings, so
-   the terminal readout cannot drift from the lab. */
+/* --atlas-dump MS: every Atlas row (tree order + dossier) to stdout, for reading the
+   system in a terminal and for e2e to pin. Prints the SAME pre-built strings the window
+   draws. */
 void dumpAtlas(Game &g) {
     buildAtlasRows(g);
     for(const AtlasRow &r : g.atlasRows) {
@@ -4960,11 +4350,8 @@ void dumpAtlas(Game &g) {
     fflush(stdout);
 }
 
-/* --map-dump MS: print the basis each map plane slot produces for the active
-   ship. The map is pure drawing, so nothing else in the test stack can see a
-   flipped e2 -- #181 was exactly that, invisible to every check but an
-   eyeball. Reads the same mapPlaneBasis the two maps call, so the dump cannot
-   disagree with the picture. */
+/* --map-dump MS: the basis each map plane slot produces for the active ship. The map is
+   pure drawing, so a flipped e2 is invisible to every check but an eyeball (#181). */
 void dumpMapBasis(Game &g) {
     Vehicle *ship = g.ship;
     if(!ship || !ship->m_parent || !ship->m_parent->frame) {
@@ -4985,8 +4372,8 @@ void dumpMapBasis(Game &g) {
            screen in every slot (#181). +1 here means that slot draws the sweep
            the other way from the others. */
         const double sweep = glm::dot(glm::cross(m.n, m.e1), m.e2);
-        // Sim time, like [orbitlog] / [orbinfo]: a CHECK that filters on t=
-        // must mean the same instant across the logs.
+        // Sim time, like [orbitlog] / [orbinfo], so a CHECK filtering on t= means the same
+        // instant.
         printf("[mapdump] t=%.1fs slot=%s n=(%.6f,%.6f,%.6f) e1=(%.6f,%.6f,%.6f) "
                "e2=(%.6f,%.6f,%.6f) sweep=%+d\n",
                g.time, refPlaneName(slot),

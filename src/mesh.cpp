@@ -5,9 +5,9 @@
 #include <iostream>
 #include <stdlib.h>
 
-#include <assimp/Importer.hpp>      // C++ importer interface
-#include <assimp/scene.h>           // Output data structure
-#include <assimp/postprocess.h>     // Post processing flags
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
 
 #include "gldebug.h"
 #include "resdir.h"
@@ -37,7 +37,7 @@ bool Mesh::AssImpFromFile(const std::string& pFile, bool copyData)
     aiMesh *aim = scene->mMeshes[0];
 
     if(!aim->HasNormals()) {
-        // a normal-less mesh used to segfault below; render flat instead
+        // Normal-less meshes used to segfault here; render flat instead.
         printf("warning: %s has no vertex normals\n", pFile.c_str());
     }
 
@@ -79,8 +79,8 @@ bool Mesh::FromFile(const std::string& fileName, bool copyData)
 /* Shared file-asset registry: one Mesh per file, main-thread only (no lock). */
 static std::map<std::string, Mesh *> s_meshes;
 
-/* Failed import: stand in with a unit cube (same layout + vs/is so
-   BuildPartHull's convex hull still works). Cached per failed key. */
+/* Failed import: stand in with a unit cube (same layout + vs/is, so
+   BuildPartHull's convex hull still works). */
 static Mesh *placeholder_box() {
     PosTexNorIndInterface m;
     struct Face { glm::vec3 u; glm::vec3 v; };
@@ -332,7 +332,7 @@ void Mesh::FromData(const PosNorColVertex* vertices, unsigned int numVertices, c
     m_numInnerIndices = numInnerIndices;
 
     PosNorIndColInterface model;
-    // Reserve once: unreserved push_back was our top allocator by a wide margin.
+    // Reserve once: unreserved push_back dominated allocation.
     model.positions.reserve(numVertices);
     model.normals.reserve(numVertices);
     model.colors.reserve(numVertices);
@@ -368,7 +368,6 @@ void Mesh::Draw()
 {
     glBindVertexArray(m_vertexArrayObject);
 
-    // With a skirt split, Draw() renders only the terrain; DrawSkirt() the tail.
     unsigned int count = (m_numInnerIndices != 0) ? m_numInnerIndices : m_numIndices;
     glDrawElementsBaseVertex(GL_TRIANGLES, count, GL_UNSIGNED_INT, 0, 0);
 

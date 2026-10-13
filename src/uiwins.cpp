@@ -8,14 +8,11 @@
 #include "scene.h"   // curScene
 
 /* Designated array initializers ([W_Orbital] = ...) so an entry cannot drift
-   away from its enum value. C++20 standardises designated initializers for
-   aggregates but not array indices, so GCC flags these under -Wpedantic
-   (a long-standing extension; the safety is worth the suppression). */
+   from its enum value. C++20 standardises them for aggregates but not array
+   indices, hence the -Wpedantic suppression. */
 
-// The Surface Map is 2:1 and fills the content width, so the min height is
-// a function of the proposed width (keeps the bottom caption from clipping).
-// The chrome count mirrors the window body's rows -- keep in sync if a row
-// is added there.
+// 2:1 map filling the content width: min height follows width so the bottom
+// caption cannot clip. The chrome count below mirrors the body's rows -- keep in sync.
 static void surfaceMapMinSize(ImGuiSizeCallbackData *d) {
     const ImGuiStyle &s = ImGui::GetStyle();
     const float frame = ImGui::GetFrameHeight();   // a framed row (the title bar too)
@@ -24,7 +21,7 @@ static void surfaceMapMinSize(ImGuiSizeCallbackData *d) {
     const float map_h =
         std::max(0.0f, d->DesiredSize.x - 2.0f * s.WindowPadding.x) * 0.5f;
     const float min_h = s.WindowPadding.y * 2.0f
-        + frame                 // title bar (FontSize + 2*FramePadding.y)
+        + frame                 // title bar
         + 3.0f * (frame + isp)  // body, button, checkbox rows
         + (text + isp)          // the map-size row
         + (map_h + isp)         // the map itself
@@ -52,23 +49,21 @@ const WinDef kWins[W_Count] = {
         .name = "Game Debug Info", .label = "Game Debug Info",
         .opts = { .slot = ui::Slot::TopCenter, .closable = true,
                   .default_open = false },
-        // F1 (Slot::DebugInfo): flight-only diagnostics overlay.
+        // F1: flight-only diagnostics overlay.
         .role = WinRole::Persistent, .inList = false,
     },
     [W_Telemetry] = {
         .name = "Telemetry", .label = "Telemetry",
-        // 2x2 grid of plots: wider than the old two-stacked-plots layout so
-        // the two columns have room (each cell is ~half this width).
+        // 2x2 grid of plots: each cell is ~half this width.
         .opts = { .slot = ui::Slot::MiddleLeft, .initial_size = ImVec2(880.0f, 620.0f),
                   .closable = true, .default_open = false },
-        // F2 (Slot::Telemetry): flight overlay.
+        // F2: flight overlay.
         .role = WinRole::Persistent, .inList = false,
     },
     [W_SaveLoad] = {
         .name = "Save/Load", .label = "Save / Load",
         .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(380.0f, 360.0f),
                   .closable = true, .default_open = false },
-        // Transient (not Root): open state is the nav code's job (WinRole).
         .role = WinRole::Transient, .inList = false,
     },
 
@@ -76,9 +71,7 @@ const WinDef kWins[W_Count] = {
     [W_Hud] = {
         .name = "HUD", .label = "Top HUD",
         // Docked panel: fixed chrome; still re-fits on a relayout (F10).
-        // Open by default: it is the only place the calendar clock is drawn
-        // in flight, and its big-font speed/altitude line is the one readout
-        // readable at a glance while flying.
+        // Open by default: the only place the calendar clock is drawn in flight.
         .opts = { .slot = ui::Slot::TopCenter, .fixed = true,
                   .default_open = true, .flags = ImGuiWindowFlags_NoTitleBar },
         .role = WinRole::Persistent, .inList = true,
@@ -87,12 +80,9 @@ const WinDef kWins[W_Count] = {
         .name = "Windows", .label = "Windows",
         .opts = { .slot = ui::Slot::MiddleRight, .fixed = true, .closable = true,
                   .flags = ImGuiWindowFlags_NoTitleBar },
-        // Chrome: this IS the panel, so it is not a row in itself (a panel
-        // that can close itself is a dead end). TAB still hides it.
+        // Chrome: this IS the panel, so no row for itself. TAB still hides it.
         .role = WinRole::Chrome, .inList = false,
     },
-    // Layout: top left ORBITAL + SURFACE, top right RESOURCES, middle right
-    // the window list, bottom right VESSEL, bottom left the orbit map.
     [W_Orbital] = {
         .name = "Orbital", .label = "Orbit Info",
         .opts = { .slot = ui::Slot::TopLeft, .closable = true },
@@ -105,9 +95,8 @@ const WinDef kWins[W_Count] = {
     },
     [W_Resources] = {
         .name = "Resources", .label = "Resources",
-        // bars have no width of their own; pin it to a 7-resource column so
-        // the width doesn't shrink with the number of resources shown (in
-        // font-size units, so it tracks the font size and the DPI scale)
+        // Bars have no width of their own: pin to a 7-resource column
+        // (fixed_width is in font-size units, so it tracks DPI).
         .opts = { .slot = ui::Slot::TopRight, .fixed_width = 2.0f * 7.0f,
                   .closable = true },
         .role = WinRole::Persistent, .inList = true,
@@ -120,9 +109,7 @@ const WinDef kWins[W_Count] = {
     },
     [W_SurfaceMap] = {
         .name = "Surface Map", .label = "Surface Map",
-        // 2:1 equirectangular map filling the content width; surfaceMapMinSize
-        // keeps the height tall enough as the window is widened. Sits under
-        // Surface Info, mirroring Orbit Info -> Map.
+        // 2:1 map; surfaceMapMinSize keeps the height tall enough as it widens.
         .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(520.0f, 450.0f),
                   .size_cb = &surfaceMapMinSize,
                   .closable = true, .default_open = false },
@@ -142,21 +129,19 @@ const WinDef kWins[W_Count] = {
     [W_Autopilot] = {
         .name = "Autopilot", .label = "Autopilot",
         .opts = { .slot = ui::Slot::Center, .left_of = "Windows", .closable = true,
-                  .default_open = false },   // docked left of the window list
+                  .default_open = false },
         .role = WinRole::Persistent, .inList = true,
     },
     [W_Transfer] = {
         .name = "Transfer", .label = "Transfer",
-        // Fixed starting size (user-resizable); not auto-fit, so it stays
-        // where the user puts it and doesn't jump as the solution appears.
+        // Not auto-fit: stays where the user puts it as the solution appears.
         .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(420.0f, 350.0f),
                   .closable = true, .default_open = false },
         .role = WinRole::Persistent, .inList = true,
     },
     [W_Porkchop] = {
         .name = "Porkchop", .label = "Porkchop",
-        // The 2-D launch-window heatmap. initial_size fits the full content
-        // so the image is not clipped. Toggled from the Transfer window.
+        // initial_size fits the full heatmap so the image is not clipped.
         .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(480.0f, 700.0f),
                   .closable = true, .default_open = false },
         .role = WinRole::Persistent, .inList = false,
@@ -164,15 +149,12 @@ const WinDef kWins[W_Count] = {
     // --- title -----------------------------------------------------------
     [W_TitleMenu] = {
         .name = "Title Menu", .label = "Title Menu",
-        // Root: the title screen IS this window (forced open; no bulk op may
-        // close it). closable alone is not enough -- see WinRole::Root.
         .opts = { .slot = ui::Slot::Center, .fixed = true, .default_open = true },
         .role = WinRole::Root, .inList = false,
     },
     [W_NewGame] = {
         .name = "New Game", .label = "New Game",
-        // The New Game setup sheet (system + difficulty). Transient like
-        // Save/Load. Docked right of the title menu so the two do not stack.
+        // Docked right so the two do not stack.
         .opts = { .slot = ui::Slot::Center, .right_of = "Title Menu",
                   .initial_size = ImVec2(400.0f, 280.0f),
                   .closable = true, .default_open = false },
@@ -180,8 +162,6 @@ const WinDef kWins[W_Count] = {
     },
     [W_Readme] = {
         .name = "Readme", .label = "Readme",
-        // The title screen's README panel, docked LEFT of the title menu
-        // (the mirror of New Game on the right). Open by default.
         .opts = { .slot = ui::Slot::Center, .left_of = "Title Menu",
                   .initial_size = ImVec2(470.0f, 520.0f),
                   .closable = true, .default_open = true },
@@ -191,14 +171,12 @@ const WinDef kWins[W_Count] = {
     // --- space center hub ------------------------------------------------
     [W_SpaceCenterMenu] = {
         .name = "Game Menu", .label = "Game Menu",
-        // Root: the hub IS this window (forced open; no bulk op may close it).
         .opts = { .slot = ui::Slot::Center, .fixed = true, .default_open = true },
         .role = WinRole::Root, .inList = false,
     },
     [W_FlightSummary] = {
         .name = "Flight Summary", .label = "Flight Summary",
-        // The "successful flight" dialog opened by Recover Vessel. Transient
-        // like New Game. Docked right of the hub menu so they do not stack.
+        // Recover Vessel's dialog; docked right so it does not stack.
         .opts = { .slot = ui::Slot::Center, .right_of = "Game Menu",
                   .initial_size = ImVec2(475.0f, 355.0f),
                   .closable = true, .default_open = false },
@@ -207,8 +185,7 @@ const WinDef kWins[W_Count] = {
 
     [W_SpaceCenterTopBar] = {
         .name = "Space Center TopBar", .label = "Space Center TopBar",
-        // Fixed / top-center / no-titlebar chrome (like the HUD). TAB hides
-        // it; the Windows panel does not offer a row for it.
+        // TAB hides it; no row in the Windows panel.
         .opts = { .slot = ui::Slot::TopCenter, .fixed = true, .default_open = true,
                   .flags = ImGuiWindowFlags_NoTitleBar },
         .role = WinRole::Chrome, .inList = false,
@@ -217,15 +194,14 @@ const WinDef kWins[W_Count] = {
     // --- tracking station ------------------------------------------------
     [W_TrackingMap] = {
         .name = "Tracking Map", .label = "Tracking Map",
-        // Root: the map IS the Tracking Station view. drawTrackingMap
-        // overrides these options per frame (full-screen, chrome-less).
+        // Root: the map IS the Tracking Station view. drawTrackingMap overrides
+        // these options per frame.
         .opts = { .slot = ui::Slot::TopLeft, .fixed = true, .default_open = true,
                   .flags = ImGuiWindowFlags_NoDecoration },
         .role = WinRole::Root, .inList = false,
     },
     [W_TrackingShipList] = {
         .name = "Tracking Ship List", .label = "Tracking Ship List",
-        // A copy of the flight Ship List, overlaid on the map's right side.
         .opts = { .slot = ui::Slot::TopRight, .closable = true,
                   .default_open = true },
         .role = WinRole::Persistent, .inList = false,
@@ -233,19 +209,13 @@ const WinDef kWins[W_Count] = {
     // --- research lab ----------------------------------------------------
     [W_ResearchLab] = {
         .name = "Research Lab", .label = "Research Lab",
-        // Root: the lab IS this window (forced open; no bulk op may close
-        // it). Middle-left; initial_size gives the archive list room to
-        // scroll. The System Atlas (below) matches this width.
         .opts = { .slot = ui::Slot::MiddleLeft, .initial_size = ImVec2(545.0f, 520.0f),
                   .default_open = true },
         .role = WinRole::Root, .inList = false,
     },
     [W_ResearchAtlas] = {
         .name = "System Atlas", .label = "System Atlas",
-        // The system as a tree (star -> planets -> moons); click a body for
-        // its research weight + approach Δv + science found. Docked right of
-        // the lab at the SAME width (slot anchor gives its vertical center);
-        // closable and draggable, so a small screen can move it aside.
+        // Same width as the lab; the slot anchor gives its vertical center.
         .opts = { .slot = ui::Slot::MiddleLeft, .right_of = "Research Lab",
                   .initial_size = ImVec2(545.0f, 520.0f),
                   .closable = true, .default_open = true },
@@ -254,16 +224,14 @@ const WinDef kWins[W_Count] = {
     // --- editor ----------------------------------------------------------
     [W_VabTopBar] = {
         .name = "VAB TopBar", .label = "VAB TopBar",
-        // Fixed / top-center / no-titlebar chrome (like the HUD), but it is
-        // core editor chrome, so it opens by default.
+        // Core editor chrome, so open by default.
         .opts = { .slot = ui::Slot::TopCenter, .fixed = true, .default_open = true,
                   .flags = ImGuiWindowFlags_NoTitleBar },
         .role = WinRole::Chrome, .inList = false,
     },
     [W_Staging] = {
         .name = "Staging", .label = "Staging",
-        // The VAB staging table (per-stage delta-v / TWR). Sits bottom-left
-        // under the build list; the table is 5 columns and fits ~400px.
+        // Per-stage delta-v / TWR table.
         .opts = { .slot = ui::Slot::BottomLeft, .initial_size = ImVec2(520.0f, 280.0f),
                   .closable = true, .default_open = true },
         .role = WinRole::Persistent, .inList = false,
@@ -272,38 +240,33 @@ const WinDef kWins[W_Count] = {
 #pragma GCC diagnostic pop
 
 // --- the per-scene sets ----------------------------------------------------
-// A window may appear in more than one set; there is still exactly one WinDef
-// for it, so the sets cannot disagree about its layout.
+// A window may be in several sets but has exactly one WinDef, so the sets
+// cannot disagree about its layout.
 
 static const Win kFlightWinIds[] = {
     W_Hud, W_Windows, W_Orbital, W_Surface, W_Resources, W_OrbitalMap,
     W_SurfaceMap, W_VesselInfo, W_ShipList, W_Autopilot, W_Transfer, W_Porkchop,
     W_Settings, W_Controls, W_Debug, W_Telemetry, W_SaveLoad,
 };
-// The title screen: shared windows and nothing else -- no flight readouts
-// (the set is what says so, not a guard in each window's body).
+// The set, not a guard in each window's body, is what hides the flight
+// readouts here.
 static const Win kTitleWinIds[] = {
     W_TitleMenu, W_Readme, W_NewGame, W_Settings, W_Controls, W_SaveLoad,
 };
-// The editor: its top-bar chrome plus the shared windows. The VAB has no
-// menu of its own.
+// The VAB has no menu of its own.
 static const Win kVabWinIds[] = {
     W_VabTopBar, W_Staging, W_Settings, W_Controls, W_SaveLoad,
 };
-// The Space Center hub: its root menu + top bar, plus the shared windows.
 // No flight readouts -- the top bar is career state, not a vessel's.
 static const Win kSpaceCenterWinIds[] = {
     W_SpaceCenterMenu, W_SpaceCenterTopBar, W_FlightSummary, W_Settings,
     W_Controls, W_SaveLoad,
 };
-// The Tracking Station: its own map + ship list (copies of the flight
-// windows, free to diverge) and the shared windows. No menu of its own.
+// The map + ship list are copies of the flight windows, free to diverge.
 static const Win kTrackingWinIds[] = {
     W_TrackingMap, W_TrackingShipList, W_Settings, W_Controls,
     W_SaveLoad,
 };
-// The Research Lab: its root window + the System Atlas, plus the shared
-// windows. No menu of its own.
 static const Win kResearchWinIds[] = {
     W_ResearchLab, W_ResearchAtlas, W_Settings, W_Controls, W_SaveLoad,
 };

@@ -7,14 +7,14 @@ struct SDL_Window;
 
 enum class WindowMode
 {
-    Windowed,    // decorated window at width x height
-    Borderless,  // no decorations, stays on the desktop
-    Fullscreen,  // borderless fullscreen at the display's native mode
-    Exclusive    // exclusive fullscreen: display mode change to width x height
+    Windowed,    // decorated
+    Borderless,  // no decorations, desktop mode
+    Fullscreen,  // desktop-mode fullscreen at the native size
+    Exclusive    // display-mode change to width x height
 };
 
-// One supported display resolution (the Settings dropdown's list item).
-// The refresh is informational -- exclusive matches on width/height only.
+// One supported display mode. Refresh is informational -- exclusive matching
+// uses width/height only.
 struct Resolution {
     int width;
     int height;
@@ -32,23 +32,17 @@ public:
     void SwapBuffers();
     void onResize(int width, int height);
     bool SaveScreenshot(const char *filename);
-    // Reconfigure the live window (Settings dropdowns / --sim-mode).
-    // Fullscreen runs at the display's native mode, so width/height are ignored.
-    // The SIZE_CHANGED event finishes the resize (viewport, postfx, camera aspect).
+    // Reconfigure the live window; the fullscreen modes ignore width/height.
     void setWindowMode(WindowMode mode, int width, int height);
-    // Supported resolutions sorted by width, height, refresh; the current
-    // mode is guaranteed to be in the list (some stacks keep it out).
+    // Modes sorted by width, height, refresh; the current one is always in.
     std::vector<Resolution> displayModes();
     // Current refresh rate (Hz); 0 if unknown.
     int currentRefresh();
-    // Sample count the window was actually created with (the driver may
-    // grant fewer than requested, or zero with no multisample visual).
+    // Sample count actually granted (may be fewer than requested).
     int msaaSamples() const;
-    // True while the compositor reports the surface fully covered (occluded)
-    // or the window minimized: nobody can see the image. Polled from the
-    // window flags rather than latched from SDL_EVENT_WINDOW_OCCLUDED /
-    // _MINIMIZED, so a window that starts hidden reads correctly and a missed
-    // event cannot wedge the caller in either state.
+    // True when occluded or minimized: nobody can see the image. Polled from
+    // the window flags, not latched from events, so a missed event cannot
+    // wedge it.
     bool isHidden() const;
 
     SDL_Window *get_display() { return m_window; }
@@ -59,9 +53,7 @@ public:
 protected:
 private:
 
-    // Apply m_vsync and report what the driver actually granted. Called by the
-    // constructor AND by setWindowMode: a display-mode change is exactly what
-    // resets the swap interval, and the panel rate may change with it.
+    // Apply m_vsync and report what the driver granted (ctor + setWindowMode).
     void applySwapInterval();
 
     bool m_gl_debug;

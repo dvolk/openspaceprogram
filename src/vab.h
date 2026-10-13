@@ -9,17 +9,16 @@
 class btCollisionObject;
 class btCollisionShape;
 
-// Cached convex hull for a catalog part (physics-free pick geometry).
+// Cached convex hull for a catalog part.
 btCollisionShape *vabPartHull(const PartDef *def);
 btCollisionObject *vabPartObject(const PartDef *def);
 
 // Nearest build part under a pixel. hit is in the build frame S.
 bool pickVabPart(Game &g, int px, int py, int &partIdx, PickBodyHit &hit);
 
-// Build-frame (S) position of node `nodeIdx` on build part `partIdx`.
 glm::dvec3 vabNodePos(const Game &g, int partIdx, int nodeIdx);
 
-// Build-frame (S) point -> window pixel (pickRay unprojection's inverse).
+// Build-frame (S) point -> window pixel.
 bool vabProject(const Game &g, const glm::dvec3 &pS, double &px, double &py);
 
 // Nearest STACK node to the mouse within `thresholdPx`; -1 if none.
@@ -29,7 +28,7 @@ int pickVabNode(Game &g, int px, int py, int partIdx, double thresholdPx);
 // Reset the hover + ghost state.
 void vabClearHover(Game &g);
 
-// Per-frame: hover part + node, ghost pose for the armed part at the target.
+// Per-frame: hover part + node, and the ghost pose at the target.
 void vabUpdateHover(Game &g, int px, int py);
 
 // Place the armed palette part at the current hover target. -1 on failure.
@@ -49,19 +48,16 @@ void vabDeleteSelected(Game &g);
 // deleted instead (the palette already has it). Root refuses.
 void vabDetachSelected(Game &g);
 
-// Write the build tree as the named ship def in the data dir's ships/.
 // `name` is the ship's identity ("racer"), not a path.
 void vabSave(Game &g, const char *name);
 
-// Load a ship def into the VAB, REPLACING the current build. Lookup by name
-// (data dir's ships/ wins over stock). True on success; current build is
-// left untouched on failure.
+// REPLACES the current build; leaves it untouched on failure. Lookup by name
+// (data dir's ships/ wins over stock).
 bool vabLoad(Game &g, const char *name);
 
 // LAUNCH: place the tree on the home body's pad, take control, switch to Flight.
 void vabLaunch(Game &g);
 
-// Aim the editor's orbit camera at the build tree.
 void vabAimCamera(Game &g);
 
 // Per-frame step while the Vab scene is live (the sim does not tick).
@@ -69,9 +65,9 @@ void vabAimCamera(Game &g);
 void vabFireHooks(Game &g);
 void vabUpdate(Game &g);
 
-// Scene transitions. The Vab is a LIVE scene (sim keeps coasting).
-// vabOpen / vabClose are the player-facing pair (push/pop the scene stack).
-// vabEnter / vabExit are the scene table's lifecycle hooks.
+// Scene transitions. The Vab is a LIVE scene (sim keeps coasting). Open/Close
+// are the player-facing pair (push/pop the scene stack); Enter/Exit are the
+// scene table's lifecycle hooks.
 void vabOpen(Game &g);
 void vabClose(Game &g);
 void vabEnter(Game &g);

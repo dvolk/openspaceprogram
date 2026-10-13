@@ -1,14 +1,6 @@
-// terrain.h -- terrain data + geometry types.
-//
-//   GeoPatch           one subdividable spherical patch (terrain LOD node).
-//   TerrainBody        a celestial body's terrain: 6 root patches,
-//                      atmosphere shell, height/shadow queries.
-//   BodyType           planet / star / moon, from the system JSON's "type".
-//
-// Pure terrain math (height/color, grid builder, biomes) lives in
-// terragen.h (glm only, testable without GL/Bullet). The GeoPatch ctor
-// consumes its GridGeom on the main thread; async subdivision snapshots a
-// TerrainParams for the worker (see job.h).
+// terrain.h -- terrain data + geometry types: GeoPatch (a subdividable
+// spherical patch, the terrain LOD node) and TerrainBody (a body's terrain).
+// Pure terrain math (height/color, grid builder, biomes) lives in terragen.h.
 
 #pragma once
 
@@ -32,13 +24,11 @@
 class btRigidBody;
 
 struct TerrainBody;
-class Vehicle;          // a ship (vehicle.h); a body owns its ship list
-struct Body;            // a rigid body (body.h); StaticBuilding's physics body
+class Vehicle;          // a ship (vehicle.h)
+struct Body;            // a rigid body (body.h)
 class StaticBuilding;   // a space pad (defined at the end of this file)
 
-// What one body's patch tree looks like right now (TerrainBody::lodStats,
-// printed by --terrain-log). `deep_off` should be a patch width or two.
-// Read it only when `deepest > 0` (0 leaves would read as "at the camera").
+// Patch-tree snapshot (--terrain-log). Read deep_off only when `deepest > 0`.
 struct TerrainLodStats {
     int patches = 0;        // alive patches (every level, not just leaves)
     int deepest = 0;        // the deepest leaf's depth
@@ -49,8 +39,8 @@ struct TerrainLodStats {
 
 struct GeoPatch {
     TerrainBody *body;
-    Mesh *mesh;      // OWNED (procedural grid, unique per patch)
-    Shader *shader;  // shared (the body's terrain shader)
+    Mesh *mesh;      // OWNED
+    Shader *shader;  // shared
     btRigidBody *collision;
 
     GeoPatch *kids[4];
@@ -58,20 +48,18 @@ struct GeoPatch {
     glm::vec3 centroid;
     glm::vec3 v0, v1, v2, v3;
 
-    // Body-frame anchor [m] the mesh vertices are baked relative to
-    // (the float32 precision fix; see buildGridGeom). Draw folds it into
-    // the modelview in double; the collision rigid body is translated by it.
+    // Body-frame anchor [m] the mesh vertices are baked relative to; Draw
+    // folds it into the modelview in double.
     glm::dvec3 anchor;
 
     int depth;
 
-    // Cached in the ctor (constant per patch): Update() runs every frame
-    // over every alive patch.
+    // Cached in the ctor (per-patch constant), read every frame by Update().
     double centroid_height;   // [m] terrain radius at `centroid`
     double width_m;           // [m] characteristic size (mean edge chord)
 
-    // A requestSubdivide job is in flight: the worker is building the four
-    // children's grids and the continuation will attach (or discard) them.
+    // A subdivision job is in flight (its continuation attaches or discards
+    // the children).
     bool subdivide_in_flight = false;
 
     GeoPatch(TerrainBody *body, Shader *shader, int depth,
@@ -79,26 +67,18 @@ struct GeoPatch {
              const GridGeom &geom);
     ~GeoPatch();
 
-    // skirt_pass=false draws the terrain, true draws only the skirt ring
-    // (which depth-tests against the terrain drawn first). Shader bind +
-    // body-constant uniforms happen once per pass in TerrainBody::Draw.
+    // skirt_pass=false draws the terrain, true only the skirt ring (which
+    // depth-tests against the terrain drawn first).
     void Draw(const Camera* camera, bool skirt_pass);
-    // cam_bf: the camera in BODY-FIXED axes (cameraInBodyFrame -- the body's
-    // spin must be undone, not just its position subtracted). px_per_rad:
-    // the camera's screen scale (lodPxPerRad).
-    // max_patch_px: subdivide while the patch projects wider than this
-    // [screen px]; collapse below half (the hysteresis band). Subdivision
-    // is async: the parent keeps drawing until its children land.
+    // cam_bf: camera in BODY-FIXED axes (spin undone, not just position).
+    // max_patch_px [screen px]: subdivide above, collapse below half
+    // (hysteresis). Subdivision is async.
     void Update(const glm::dvec3 &cam_bf, double px_per_rad,
                 int max_patch_px, JobRunner &jobs);
 
-    // Post the async subdivision job (main thread). The worker builds the
-    // four children's GridGeoms (pure math, terragen.h); the main-thread
-    // continuation does the GL upload + Bullet collision and attaches them.
-    // px_width: the patch's projected size [screen px] that made it want
-    // children -- also the queue priority, so the single worker drills the
-    // patches that are most wrong on screen first instead of walking the tree
-    // in posting order (see GeoPatch::Update).
+    // Main thread: the worker builds the children's GridGeoms, the continuation
+    // does the GL upload + Bullet collision. px_width [screen px] doubles as the
+    // queue priority.
     void requestSubdivide(JobRunner &jobs, double px_width);
 
     int CountChildren() {
@@ -112,33 +92,24 @@ struct GeoPatch {
     }
 };
 
-/* What kind of body this is, from the system JSON's "type" (system.h). */
+/* Body kind, from the system JSON's "type". */
 enum class BodyType : unsigned char {
-    Planet,   // default: a body that is neither star nor moon
-    Star,     // the system's light source / frame-tree root (System::root)
+    Planet,   // default
+    Star,     // light source; frame-tree root (System::root)
     Moon,     // orbits a planet
 };
 
 struct TerrainBody {
-    /* EVERY member is initialized, deliberately. A half-built body is always
-       destructed: load_system registers each body before the first throw it
-       can hit (system.cpp, so a data bug leaks nothing), a body whose
-       AttachRoot never ran is still destroyed at shutdown, and tests build one
-       on the stack. An uninitialized scalar there reads whatever the heap or
-       stack happened to hold -- which was a live bug, not a theoretical one:
-       ~TerrainBody freed a stack address and test_buildings aborted with
-       `free(): invalid size` (#227). The numeric sentinels below are not
-       "valid physics"; they mean "the loader has not set this yet", and
-       load_system fills all four -- mu derived from mass, not read from the
-       JSON -- before anything can read them. */
+    /* Every member is initialized deliberately: a half-built body is always
+       destructed (load_system registers it before the first throw it can hit),
+       so an uninitialized scalar is a live UB path (#227). The sentinels below
+       mean "not set yet", not "valid physics"; load_system fills all four first
+       (mu derived from mass, not read from the JSON). */
     GeoPatch *patches[6] = { nullptr };
     Shader *shader = nullptr;   // shared, not owned; set by the type switch
-    /* A demand-built shell: a PROCEDURAL mesh (unique to the body) drawn
-       with a shared shader, and for the clouds a baked coverage texture.
-       The body OWNS the mesh and the texture; the shader is shared. Nulled
-       because free_shell (terrain.cpp) deletes mesh and texture
-       unconditionally -- a shell kind that forgot one of them would delete
-       garbage, which is how #227 started (#230). */
+    /* Demand-built shell: the body OWNS the procedural mesh and, for clouds,
+       the coverage texture; the shader is shared. All nulled because free_shell
+       deletes mesh and texture unconditionally (#230). */
     struct Shell {
         Mesh *mesh = nullptr;       // owner
         Shader *shader = nullptr;   // shared
@@ -150,56 +121,47 @@ struct TerrainBody {
     float cloud_radius = 0.0f;   // deck radius [m]; 0 = no clouds
     Shell *ocean = nullptr;      // ocean surface shell (built on demand)
     float ocean_radius = 0.0f;   // shell radius [m]; 0 = no ocean
-    /* Planetary rings (built on demand): one flat annulus per band in
-       surface.rings, in the body's equatorial plane. The shared ring shader
-       + the per-band albedo / opacity live in surface.rings; the body owns
-       only the meshes. */
+    /* Rings: one flat annulus per band in surface.rings, in the equatorial
+       plane; the body owns only the meshes. */
     std::vector<Mesh *> ring_meshes;
     Shader *ring_shader = nullptr;
     float radius = 0.0f;   // [m]
     double mu = 0.0;       // gravitational parameter [m^3/s^2]
     double g = 0.0;        // [m/s^2]
     float mass = 0.0f;     // [kg]
-    /* Science distance fields (system JSON, written by utils/sci_dist.py).
-       science_mult is the score body weight (hand-editable); transfer_dv is
-       the approach leg [m/s] for display: home->planet for planets,
-       parent->moon for moons. */
+    /* Science fields (system JSON, utils/sci_dist.py). transfer_dv is the
+       approach leg [m/s]: home->planet, parent->moon. */
     double science_mult = 1.0;
     double transfer_dv = 0.0;
     std::string name;
-    BodyType type = BodyType::Planet;   // from the system JSON's "type"
-    /* A star has no classifiable surface. Every shipped system also makes
-       the star the frame-tree root, but the two are parsed independently,
-       so nothing enforces it. */
+    BodyType type = BodyType::Planet;
+    /* A star has no classifiable surface; being the frame-tree root is parsed
+       separately, not enforced. */
     bool isStar() const { return type == BodyType::Star; }
-    /* A surface you can stand on and classify into biomes. A star and a
-       banded gas giant have none (can still be orbited; findings there are
-       global "of the body", biome left empty). */
+    /* Standable and biome-classifiable. Stars and banded gas giants have none
+       (findings there leave the biome empty). */
     bool hasClassifiableSurface() const { return !isStar() && !surface.bands; }
     double seed = 0.0;   // noise-domain offset; 0 = legacy pattern
-    // Subdivision stop (set by AttachRoot from the radius). One extra level
-    // per radius doubling keeps mesh density per surface area comparable.
+    // Subdivision stop (set by AttachRoot from the radius).
     int max_depth = 14;
-    // Root terrain attached (drawable). False until the heavy phase lands:
-    // the body still simulates but Draw/Update skip it.
+    // Root terrain attached. False until the heavy phase lands: Draw/Update skip
+    // the body.
     bool ready = false;
     Surface surface;
-    // Owned, and deleted unconditionally by ~TerrainBody (block comment above).
+    // Owned; deleted unconditionally by ~TerrainBody.
     Frame *frame = nullptr;
     Frame *rot_frame = nullptr;
     Calendar cal; // this body's day/year (from its spin + orbit rates)
     glm::dmat4 transform = glm::dmat4(1.0);
     glm::vec3 sunlightVec = glm::vec3(0.0f);   // written by Draw, once ready
 
-    // Main-thread-only liveness registry (GeoPatch ctor inserts, dtor
-    // erases): an in-flight terrain job's continuation checks its target
-    // patch still exists before touching it.
+    // Main-thread-only liveness registry (GeoPatch ctor inserts, dtor erases):
+    // an in-flight job's continuation checks its patch still exists.
     std::set<GeoPatch*> alive;
     bool patchAlive(GeoPatch *p) const { return alive.count(p) > 0; }
 
-    // The body's terrain math as a value snapshot for the worker thread.
-    // CACHED, by reference: both writers refresh the cache, so the hot
-    // per-frame queries don't deep-copy the palette vector every call.
+    // Terrain math snapshot for the worker thread. Returned by reference:
+    // writers must refresh the cache.
     const TerrainParams &params() const { return paramsCache_; }
     void refreshParamsCache() {
         paramsCache_.surface = surface;
@@ -208,73 +170,57 @@ struct TerrainBody {
     }
     TerrainParams paramsCache_;
 
-    // Defined in terrain.cpp (it also deletes the ships + space pads below,
-    // which needs the complete Vehicle / StaticBuilding types).
+    // Defined in terrain.cpp (needs the complete Vehicle/StaticBuilding types).
     ~TerrainBody();
 
-    // The ships currently in this body's SOI. A SoI crossing moves them
-    // between bodies' lists (Vehicle::setSoi). Aboard characters are NOT
-    // here -- they live on their ship (Vehicle::crew); a free EVA character
-    // IS a ship in this list.
+    // Ships in this body's SOI (a SOI crossing moves them, Vehicle::setSoi).
+    // Aboard crew are NOT here; a free EVA character IS.
     std::vector<Vehicle *> ships;
-    // The space pads on this body. Drawn by render.cpp; StaticBuilding::Draw
-    // culls itself when the active ship is off-body.
+    // Space pads on this body (StaticBuilding::Draw culls itself off-body).
     std::vector<StaticBuilding *> pads;
 
     COLOUR (*colour_func)(float v, float vmin, float vmax) = nullptr;
 
-    // Thin delegate to the pure height function (terragen.h).
     float GetTerrainHeight(const glm::vec3& p) const {
         return terrainHeight(p, params());
     }
-    // The surface color at a unit direction in the body's rotating frame:
-    // the exact per-vertex color the grid bakes, so surfmap matches the
-    // rendered surface.
+    // p: unit direction in the body's rotating frame; the exact per-vertex color
+    // the grid bakes.
     glm::vec3 SurfaceColor(const glm::vec3& p) const {
         return terrainSurfaceColor(p, params());
     }
 
-    // The rim / deck shell sphere (defined in terrain.cpp); res = latitude
-    // = longitude rings.
+    // The rim / deck shell sphere; res = latitude = longitude rings.
     Mesh *create_atmosphere_mesh(float radius, int res);
     // A flat annulus in the local XZ plane (normal +Y) between inner and
-    // outer radius [m]; res = angular segments (defined in terrain.cpp).
+    // outer radius [m]; res = angular segments.
     Mesh *create_ring_mesh(double inner, double outer, int res);
 
-    // The heavy per-load work, split so the CPU-bound part can run on the
-    // JobRunner worker and the GL/Bullet part on the main thread.
-    // radius/mass are already set by the light phase (load_system).
+    // Heavy per-load work, split: CPU-bound on the worker, GL/Bullet on the main
+    // thread.
     struct RootGeoms {
-        // Initialized: this crosses to the main thread as a value, and a
-        // field BuildRootGeoms forgets to set would otherwise be garbage
-        // rather than obviously zero (#230).
+        // Initialized: crosses to the main thread as a value, so a field
+        // BuildRootGeoms forgets reads as zero, not garbage (#230).
         int max_depth = 0;
         float max_height = 0.0f;
         std::array<GridGeom, 6> geoms;
     };
 
-    // Worker-safe (const, pure math): the subdivision stop, the highest
-    // relief, and the six root grids. No GL, no Bullet, no body-state write.
+    // Worker-safe (const, pure math): no GL, no Bullet, no body-state write.
     RootGeoms BuildRootGeoms() const {
-        // Mesh density per surface area: one extra subdivision level per
-        // radius doubling, anchored at 14 for a Kerbin-sized (600 km) body.
-        // Floor of 8 so tiny moons don't build useless depth; 12 is the
-        // ceiling (the skirt has a precision issue at depth >= 13).
+        // One extra subdivision level per radius doubling. Ceiling 12: the
+        // skirt has a precision issue at depth >= 13.
         int md = 14 + (int)llround(std::log2((double)radius / 600.0e3));
         if (md < 8) { md = 8; }
         if (md > 12) { md = 12; }
 
-        // Highest relief above sea level: sizes the palette ramp + the
-        // atmosphere/cloud shells. terrainHeight does not read max_height,
-        // so this is self-contained.
+        // Highest relief above sea level: sizes the palette ramp + the shells.
         float maxh;
         if (surface.bands) {
             maxh = 0.0f;   // gas giant: smooth sphere
         } else if (surface.heightmap) {
-            // Authored map: the true peak, not a point-sample (2048 Fibonacci
-            // directions missed Earth's by ~1 km and saturated the palette).
-            // The fine residual is bounded by terrainFbmOctaves ~ [-1,1] *
-            // detail_amplitude.
+            // Authored map: take the true peak, not a point sample (sampling
+            // saturates the palette).
             const float map_hi = surface.heightmap->maxMetres();
             const float detail = std::max(0.0f, surface.detail_amplitude);
             maxh = std::max(1.0f, (map_hi + detail - surface.sea_level) * 1.05f);
@@ -293,9 +239,8 @@ struct TerrainBody {
             maxh = std::max(1.0f, (hi - surface.sea_level) * 1.05f);
         }
 
-        // Bake the six root grids with the COMPUTED max_height (the palette
-        // ramp reads it). surface.max_height keeps its default until
-        // AttachRoot applies this result.
+        // Bake with the COMPUTED max_height (the palette ramp reads it);
+        // surface.max_height keeps its default until AttachRoot applies it.
         TerrainParams tp = params();
         tp.surface.max_height = maxh;
         const glm::vec3 p1 = glm::normalize(glm::vec3( 1, 1, 1));
@@ -341,9 +286,8 @@ struct TerrainBody {
         ready = true;
     }
 
-    // Build the atmosphere rim shell on demand. It sits just above the
-    // highest terrain so no peak pokes through. See
-    // reports/atmosphere2026_08_25 for the model.
+    // Atmosphere rim shell on demand, just above the highest terrain so no
+    // peak pokes through.
     void BuildAtmosphere(Shader *atmosphereshader) {
         if(atmosphere != nullptr || !surface.atmosphere.enabled) return;
         float shell_radius = radius + surface.max_height
@@ -357,31 +301,26 @@ struct TerrainBody {
         atm_radius = shell_radius;
     }
 
-    // Build the cloud deck shell on demand (above the highest terrain).
-    //
-    // The coverage is BAKED once (equirectangular R8, the cloudCover FBM in
-    // terragen.h) on the JobRunner worker: this call posts it and the deck
-    // immediately draws a solid 1x1 placeholder, then the continuation
-    // uploads the real grid.
+    // Cloud deck shell on demand. Coverage is baked on the worker; the deck draws
+    // a solid placeholder until the continuation uploads the real grid.
     void BuildClouds(Shader *cloudshader, int res, JobRunner &jobs) {
         if(clouds != nullptr || !surface.clouds.enabled) return;
         float shell_radius = radius + surface.max_height
                              + surface.clouds.height;
         if(shell_radius <= radius) shell_radius = radius * 1.02f;
         Mesh *m = create_atmosphere_mesh(shell_radius, res);
-        // Solid placeholder (coverage 1) until the bake lands.
+        // Solid placeholder (coverage 1).
         const unsigned char solid = 255;
         clouds = new Shell;
-        // The Shell owns the texture; the bake re-uploads into it (no swap).
+        // The Shell owns the texture; the bake re-uploads into it.
         clouds->mesh = m;
         clouds->shader = cloudshader;
         clouds->texture = make_coverage_texture(1, 1, &solid, true);
         cloud_radius = shell_radius;
 
         // The bake layout MUST match the deck shader's UV (cloudShader.vs)
-        // and equirect.h: u = lon/2pi (lon 0 at the LEFT edge), v from
-        // north to south as pixel centres. dir comes from equirectDir so
-        // the axis is the shared one.
+        // and equirect.h: u = lon/2pi (lon 0 at the LEFT edge), v north to
+        // south, pixel centres.
         const int W = 2048, H = 1024;
         // Snapshots for the worker (job.h: no game state, GL or imgui).
         const glm::mat3 rot = surface.seed_rot;
@@ -389,7 +328,6 @@ struct TerrainBody {
         Texture *tex = clouds->texture;
         const std::string label = std::string("Clouds (") + name + ")";
         jobs.post(label, [tex, rot, cp, W, H]() -> std::function<void()> {
-            // Worker thread: pure math over the snapshots above.
             std::vector<unsigned char> px((size_t)W * H);
             for(int py = 0; py < H; py++) {
                 const float lat = (0.5f - (py + 0.5f) / (float)H)
@@ -403,9 +341,8 @@ struct TerrainBody {
                                         + 0.5f);
                 }
             }
-            // Main-thread continuation: upload to the texture the deck
-            // already draws. The shared_ptr lets the buffer outlive this
-            // body (std::function needs copyable captures).
+            // Main-thread continuation: upload into the texture the deck
+            // already draws (shared_ptr: std::function needs copyable captures).
             std::shared_ptr<std::vector<unsigned char> > ppx =
                 std::make_shared<std::vector<unsigned char> >(std::move(px));
             return [tex, W, H, ppx]() {
@@ -414,15 +351,12 @@ struct TerrainBody {
         });
     }
 
-    // Build the ocean surface shell on demand: a UV sphere at sea level
-    // (land pokes through via the depth test). Only the Mesh mode has a
-    // shell: Flat paints the sea on the terrain itself, and a future mode
-    // gets one only if it asks.
+    // Ocean surface shell on demand: a UV sphere at sea level, land poking
+    // through via the depth test. Only OceanMode::Mesh gets one.
     void BuildOcean(Shader *oceanshader) {
         if(ocean != nullptr || !surface.has_sea
            || surface.ocean_mode != OceanMode::Mesh) return;
-        // Slight offset above sea level: without it the terrain and ocean
-        // surfaces are coplanar at the coastline and z-fight.
+        // Offset above sea level: coplanar surfaces z-fight at the coastline.
         float shell_radius = radius + surface.sea_level + 0.1f;
         Mesh *m = create_atmosphere_mesh(shell_radius, 128);
         ocean = new Shell;
@@ -432,9 +366,7 @@ struct TerrainBody {
         ocean_radius = shell_radius;
     }
 
-    // Build the ring annuli on demand: one flat mesh per band in
-    // surface.rings. The per-band albedo / opacity stay in surface.rings
-    // (DrawRings reads them); the body owns only the meshes + the shader.
+    // Ring annuli on demand, one mesh per band in surface.rings.
     void BuildRings(Shader *ringshader) {
         if(ring_shader != nullptr || surface.rings.empty()) return;
         ring_shader = ringshader;
@@ -443,9 +375,7 @@ struct TerrainBody {
         }
     }
 
-    // Main thread: the full heavy phase -- attach the worker-built root
-    // terrain and the demand-built shells. Used for the boot's sync set and
-    // from the deferred bodies' JobRunner continuations.
+    // Main thread: the full heavy phase.
     void Finish(const RootGeoms &r, Shader *atmos, Shader *cloud, int cloudres,
                 Shader *ocean, Shader *rings, JobRunner &jobs) {
         AttachRoot(r);
@@ -479,9 +409,7 @@ struct TerrainBody {
         ocean->shader->setUniform_vec1(5, (float)time);
         ocean->shader->setUniform_vec3(6, glm::vec3(center));
 
-        // Transparent over the terrain: depth test so land occludes the
-        // ocean, but no depth write so the sea floor shows through and
-        // later shells aren't clipped.
+        // Depth test so land occludes; no depth write.
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(false);
@@ -495,16 +423,12 @@ struct TerrainBody {
     void DrawAtmosphere(const Camera *camera, TerrainBody *sun, Frame *renderFrame) {
         if(atmosphere == nullptr) return;
 
-        // Inside the shell: draw the inner surface as the sky dome. Cull
-        // FRONT (the visible faces are all back faces from inside) and let
-        // the shader use the inside blend (horizon haze, not the Fresnel
-        // rim).
+        // Inside the shell: cull FRONT so the inner surface reads as the sky dome.
         const glm::dvec3 center = glm::dvec3(transform[3]);
         const bool inside = glm::length(camera->GetPos() - center) < (double)atm_radius;
 
         const glm::dmat4 &View = camera->GetView();
-        // double, then truncate (the Normal/cameraPos uniforms stay in world
-        // coordinates, a consistent pair for the shader's V math)
+        // double, then truncate; Normal/cameraPos stay in world coordinates.
         glm::dmat4 ModelView = View * glm::translate(-camera->GetRenderOrigin()) * transform;
         glm::mat4 ModelViewFloat = ModelView;
         const glm::mat4 &Projection = camera->GetProjection();
@@ -517,16 +441,13 @@ struct TerrainBody {
         atmosphere->shader->setUniform_vec3(3, surface.atmosphere.color);
         atmosphere->shader->setUniform_vec1(4, surface.atmosphere.intensity);
         atmosphere->shader->setUniform_vec1(5, surface.atmosphere.power);
-        // Direction light travels (sun -> planet); the same value the terrain
-        // lights with, so the rim brightens on the day side (not "neon
-        // night-side").
+        // Light direction (sun -> planet), the same value the terrain uses.
         atmosphere->shader->setUniform_vec3(6,
             glm::vec3(SunlightDir(this, sun, renderFrame)));
         atmosphere->shader->setUniform_vec1(7, inside ? 1.0f : 0.0f);
         atmosphere->shader->setUniform_vec3(8, glm::vec3(center));
 
-        // Transparent: blend over whatever is behind, keep depth test so
-        // closer opaque things still occlude us, but don't write depth.
+        // Blend over what is behind; depth test on, depth write off.
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(false);
@@ -541,14 +462,12 @@ struct TerrainBody {
                     Frame *renderFrame, double time) {
         if(clouds == nullptr) return;
 
-        // Same inside/outside flip as the atmosphere: cull FRONT under the
-        // deck so the near wall reads as the solid ceiling.
+        // Same inside/outside flip as the atmosphere: cull FRONT under the deck.
         const glm::dvec3 center = glm::dvec3(transform[3]);
         const bool inside = glm::length(camera->GetPos() - center) < (double)cloud_radius;
 
         const glm::dmat4 &View = camera->GetView();
-        // double, then truncate (the view is built in the render frame;
-        // Normal/cameraPos stay in world coordinates).
+        // double, then truncate.
         glm::dmat4 ModelView = View * glm::translate(-camera->GetRenderOrigin()) * transform;
         glm::mat4 ModelViewFloat = ModelView;
         const glm::mat4 &Projection = camera->GetProjection();
@@ -558,8 +477,7 @@ struct TerrainBody {
         clouds->shader->setUniform_mat4(1, glm::mat4(transform));
         clouds->shader->setUniform_vec3(2, glm::vec3(camera->GetPos()));
         clouds->shader->setUniform_vec3(3, surface.clouds.color);
-        // Direction light travels (sun -> planet); the same value the
-        // terrain lights with, so the deck's terminator matches the ground.
+        // Light direction (sun -> planet), same value the terrain uses.
         clouds->shader->setUniform_vec3(4,
             glm::vec3(SunlightDir(this, sun, renderFrame)));
         // Drift as a horizontal UV offset (data drift is pattern units/s).
@@ -571,8 +489,7 @@ struct TerrainBody {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, clouds->texture->id);
 
-        // Transparent over the terrain (under the atmosphere rim): keep
-        // the depth test so the limb stays correct, but don't write depth.
+        // Depth test on, depth write off (the cloud deck sits under the rim).
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(false);
@@ -584,23 +501,21 @@ struct TerrainBody {
         glBindTexture(GL_TEXTURE_2D, 0);
     }
 
-    // Draw the ring annuli: transparent, over the opaque terrain (the depth
-    // buffer hides the far arc). Cull the far face -- with culling off BOTH
-    // coincident faces blend and the band renders at 2a-a^2 instead of its
-    // stated opacity. The shader uses two-sided (abs) Lambert and a
-    // body-local cylinder test for the planet's sun shadow.
+    // Ring annuli over the opaque terrain (the depth buffer hides the far arc).
+    // Cull the far face: with culling off both coincident faces blend, rendering
+    // the band too dark.
     void DrawRings(const Camera *camera, TerrainBody *sun, Frame *renderFrame) {
         if(ring_meshes.empty()) return;
 
-        // The ring plane passes through the body centre with normal = the
-        // body's pole (local +Y in world).
+        // Ring plane: through the body centre, normal = the body's pole
+        // (local +Y in world).
         const glm::dvec3 center = glm::dvec3(transform[3]);
         const glm::dvec3 pole = glm::dvec3(transform[1]);
         const bool below =
             glm::dot(camera->GetPos() - center, pole) < 0.0;
 
         const glm::dmat4 &View = camera->GetView();
-        // double, then truncate (same precision convention as the shells).
+        // double, then truncate.
         glm::dmat4 ModelView = View * glm::translate(-camera->GetRenderOrigin())
                                * transform;
         glm::mat4 ModelViewFloat = ModelView;
@@ -628,11 +543,9 @@ struct TerrainBody {
         glDisable(GL_BLEND);
     }
 
-    // Direction light travels (sun -> object) in renderFrame's axes, where
-    // `object_root` is the lit object's position in universe (root) coords.
-    // Computed from the object's actual position -- not the SOI body's
-    // center -- so it stays defined when the SOI body IS the star
-    // (normalize(0) = NaN rendered the ship black).
+    // Light direction (sun -> object) in renderFrame's axes; object_root is in
+    // universe (root) coords. Uses the object's actual position so it stays
+    // defined when the SOI body IS the star (normalize(0) = NaN).
     static glm::dvec3 LightDirFrom(const glm::dvec3 &object_root,
                                    TerrainBody *sun, Frame *renderFrame) {
         const glm::dvec3 d = object_root - sun->frame->root_pos; // sun -> object
@@ -650,8 +563,7 @@ struct TerrainBody {
         if(!ready) return;   // root terrain not attached yet (deferred)
         sunlightVec = glm::vec3(SunlightDir(this, sun, renderFrame));
 
-        // Body-constant uniforms upload once per pass; the MVP is per patch
-        // (see GeoPatch::Draw).
+        // Body-constant uniforms upload once per pass; the MVP is per patch.
         shader->Bind();
         shader->setUniform_mat4(1, glm::mat4(transform));
         shader->setUniform_vec3(2, sunlightVec);
@@ -662,9 +574,8 @@ struct TerrainBody {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, detail_tex->id);
 
-        // Skirt pass fills the LOD cracks between patches at different
-        // subdivision depths (and the limb). The skirt tail is drawn after
-        // the terrain and depth-tests against it (mesh.h:DrawSkirt).
+        // Skirt pass fills the LOD cracks between patches of different depth
+        // (and the limb).
         for(auto&& patch : patches) {
             patch->Draw(camera, false);
         }
@@ -673,8 +584,7 @@ struct TerrainBody {
         }
     }
 
-    // The camera in this body's FIXED axes (cameraInBodyFrame): the LOD
-    // measure and --terrain-log both need it.
+    // The camera in this body's FIXED axes (spin undone).
     glm::dvec3 CameraInBodyFrame(const Camera *camera) const {
         return cameraInBodyFrame(transform, camera->GetPos());
     }
@@ -682,8 +592,7 @@ struct TerrainBody {
     void Update(const Camera* camera, int max_patch_px, JobRunner &jobs) {
         if(!ready) return;
         const glm::dvec3 cam_bf = CameraInBodyFrame(camera);
-        // The screen scale depends only on the camera: do the projection
-        // maths once here, not once per patch.
+        // The screen scale depends only on the camera: once, not per patch.
         const double px_per_rad = lodPxPerRad(camera->viewport_h, camera->fov);
         for(auto&& patch : patches) {
             patch->Update(cam_bf, px_per_rad, max_patch_px, jobs);
@@ -691,7 +600,6 @@ struct TerrainBody {
     }
 
     // LOD telemetry (--terrain-log): the live tree relative to the camera.
-    // Walks `alive` (every patch of this body), one pass per logged line.
     TerrainLodStats lodStats(const glm::dvec3 &cam_bf) const {
         TerrainLodStats s;
         s.cam_r = glm::length(cam_bf);
@@ -722,13 +630,9 @@ struct TerrainBody {
 float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
                            const glm::dvec3 &posInFrame, TerrainBody *sun);
 
-// A world building (space pad) -- static, shared by every ship standing on
-// the same site. Drawn like terrain (culls itself off-body).
-//
-// Owned by its body (TerrainBody::pads). Render assets are shared (the
-// get_mesh/get_texture registries own them), so ~TerrainBody only frees the
-// rigid Body. Draw is defined in terrain.cpp. Placed from the system JSON
-// "world_buildings" (buildings.h).
+// A world building (space pad): static, shared by every ship standing on the same
+// site, drawn like terrain. Owned by its body (TerrainBody::pads); render assets
+// are registry-owned, so ~TerrainBody only frees the rigid Body.
 class StaticBuilding {
 public:
     TerrainBody *parent = nullptr;

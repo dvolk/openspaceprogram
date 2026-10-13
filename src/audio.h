@@ -35,8 +35,7 @@ public:
     bool init();
     void shutdown();
 
-    // Trace every audio event as [aud] lines (--audio-log). Set it before
-    // init(); AUDIO_DEBUG=1 still turns the same trace on for a whole session.
+    // Trace every audio event as [aud] lines (--audio-log). Set it before init().
     void setDebug(bool on) { dbg_ = on; }
 
     bool enabled() const { return mixer_ != nullptr; }
@@ -74,15 +73,15 @@ private:
 
     struct Shot {
         MIX_Track *t;
-        Uint32 born_ms = 0;   // for the debug log: how long the pop actually lived
+        Uint32 born_ms = 0;   // for the debug log only
     };
 
-    bool dbg_ = false;   // AUDIO_DEBUG=1: trace every audio event (headless debugging)
+    bool dbg_ = false;
 
     MIX_Mixer *mixer_ = nullptr;
 
     float sfxVol_ = 1.0f;     // master for the one-shots + the loop
-    float musicVol_ = 0.5f;   // ambient music (background, not the star)
+    float musicVol_ = 0.5f;   // ambient music
 
     std::map<std::string, MIX_Audio *> audios_;      // loaded once per path
 
@@ -92,7 +91,7 @@ private:
     std::string loopPath_;
     bool loopActive_ = false;
     float loopGain_ = 0.0f;   // the throttle; the gain applied is gain*sfxVol_
-    bool loopStopping_ = false;   // arms the stop-fade exactly once (a re-armed fade never completes)
+    bool loopStopping_ = false;   // arms the stop-fade exactly once
 
     MIX_Track *music_ = nullptr;
     std::string musicPath_;

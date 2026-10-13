@@ -1,8 +1,7 @@
 // flightlog.h -- the per-vessel flight journal (header-only pure C++).
-// `observe` is the only writer, called from Vehicle::setSoi (the one SoI
-// re-home site). Save-persisted: on load it is restored BEFORE the
-// placement's setSoi, so the mission history continues across save/load.
-// Timestamps are sim-clock seconds (Game::time).
+// `observe` is the only writer (Vehicle::setSoi, the one SoI re-home site). On
+// load it is restored BEFORE the placement's setSoi, so the mission history
+// continues across save/load. Timestamps are sim-clock seconds (Game::time).
 
 #pragma once
 
@@ -24,7 +23,7 @@ struct FlightLog {
     std::vector<FlightEvent> events;
 
     // First call starts the journal; a body change logs left/entered.
-    // Repeated observes of the same body are free.
+    // Same-body observes are free.
     void observe(double t, std::string_view body) {
         if(!started) {
             started = true;

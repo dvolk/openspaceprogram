@@ -1,9 +1,7 @@
 #pragma once
 // surfmap.h -- the "Surface Map" window's 2-D projection + shading.
-// EQUIRECTANGULAR over the body's ROTATING frame: the direction <-> (lon,
-// lat) <-> pixel math lives in equirect.h (lon 0 at the left edge, north
-// up). This header adds the map-only helpers: terminator shade, the
-// antimeridian wrap test, and the compute request.
+// EQUIRECTANGULAR over the body's ROTATING frame; the direction <-> (lon, lat)
+// <-> pixel math lives in equirect.h.
 
 #include <cmath>
 #include <numbers>

@@ -1,7 +1,8 @@
 #pragma once
 // Two-point boundary-value transfers (Lambert) + a min-dv parent->child planner.
-// Header-only pure math. Transfer conic is under the PARENT's mu only; both
-// endpoint states are in the SAME inertial frame. dt > 0. SI units, radians.
+// Header-only pure math. The transfer conic is under the PARENT's mu only;
+// both endpoint states are in the SAME inertial frame. dt > 0. SI units,
+// radians.
 
 #include "orbit.h"
 
@@ -27,8 +28,8 @@ struct TransferSolution {
     bool valid = false;
 };
 
-// Stub: semi-major axis needs a time of flight, not just geometry. Kept to
-// avoid linker errors; use specific orbital energy instead.
+// Stub: semi-major axis needs a time of flight, not just geometry. Use
+// specific orbital energy instead.
 inline double transfer_semi_major_of(const glm::dvec3 &, const glm::dvec3 &, double, double) {
     return 0.0;
 }
@@ -47,8 +48,9 @@ inline bool solveLambert(const glm::dvec3 &r1, const glm::dvec3 &r2_in,
         return false;
     }
 
-    // 180 deg transfer: the orbit plane is undefined (A -> 0); handle analytically.
-    // The conic is unique, so only half its period is solvable.
+    // 180 deg transfer: the orbit plane is undefined (A -> 0), so it is
+    // handled analytically. The conic is unique, so only half its period is
+    // solvable.
     if(cos_dnu < -0.9999999) {
         const double a = 0.5 * (r1l + r2l);
         const double T = 2.0 * std::numbers::pi * std::sqrt(a * a * a / mu);
@@ -77,8 +79,7 @@ inline bool solveLambert(const glm::dvec3 &r1, const glm::dvec3 &r2_in,
     };
     
     // Scan for a bracket between two REAL values (y >= 0). The y < 0 region
-    // has no physical conic; F is a guard sentinel there and must never be
-    // used for bracketing.
+    // has no physical conic, so F's sentinel there must never bracket.
     const double z_min = -4.0 * std::numbers::pi * std::numbers::pi;
     const double z_max = 4.0 * std::numbers::pi * std::numbers::pi;
 
@@ -131,8 +132,7 @@ inline bool solveLambert(const glm::dvec3 &r1, const glm::dvec3 &r2_in,
 /* Minimum-total-dv transfer from (r1, v1) to (r2_0, v2_0) under mu_parent,
    with a capture burn at periapsis r_cap around the target (mu_target).
    Sweeps `n` linear ToF samples in [tof_min, tof_max] and keeps the best.
-   Set mu_target <= 0 / capture = false for an intercept-only solution
-   (e.g. targeting another ship): dv_capture is then 0. */
+   mu_target <= 0 / capture = false means intercept-only: dv_capture is 0. */
 inline TransferSolution planTransfer(const glm::dvec3 &r1, const glm::dvec3 &v1,
                                      const glm::dvec3 &r2_0, const glm::dvec3 &v2_0,
                                      double mu_parent,
@@ -168,7 +168,6 @@ inline TransferSolution planTransfer(const glm::dvec3 &r1, const glm::dvec3 &v1,
             s.transfer_semi_major = -mu_parent / (2.0 * energy);
         }
         
-        // Eccentricity from angular momentum and semi-major axis.
         const double h2 = glm::dot(glm::cross(r1, vt1), glm::cross(r1, vt1));
         const double p = h2 / mu_parent;
         if(s.transfer_semi_major < 0.0) {
@@ -272,8 +271,8 @@ inline PorkchopResult porkchopGrid(const glm::dvec3 &r1, const glm::dvec3 &v1,
         res.t_dep_min = t_dep_lo + ((res.n_dep > 1) ? step_dep * bi : 0.0);
         res.tof_min = tof_lo + ((res.n_tof > 1) ? step_tof * bj : 0.0);
 
-        // 95th percentile excludes the unphysical fast-transfer spike that
-        // would otherwise stretch the color scale into a sliver.
+        // 95th percentile: the unphysical fast-transfer spike would otherwise
+        // stretch the color scale into a sliver.
         std::vector<double> valid;
         valid.reserve(res.total_dv.size());
         for(const double v : res.total_dv) {

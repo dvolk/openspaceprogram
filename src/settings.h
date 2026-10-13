@@ -1,6 +1,5 @@
 // settings.h -- the Settings window state as plain data + its JSON
-// serialization. One field per Settings-window control. The CLI beats the
-// file field by field (GameArgs::cli_given).
+// serialization. The CLI beats the file field by field (GameArgs::cli_given).
 #pragma once
 
 #include <map>
@@ -11,15 +10,11 @@
 
 #include "keys.h"   // KeyBindings (the rebindable key map)
 
-/* terrain_px range: the per-patch screen-px LOD budget. One pair of bounds
-   for the CLI check (cli.cpp), the settings.json clamp (settings.cpp) and the
-   Settings ladder (gameui.cpp). The fine end is cut off deliberately:
-   collision meshes only exist at max_depth (terrain.cpp), subdivision is
-   async on a single FIFO worker (job.h), and the budget is per patch -- so a
-   setting that asks for tens of thousands of patches never drills to
-   max_depth under the camera, which means there is no ground under the ship.
-   Measured at the pad (1920x1080, racer, 20 s): 128px reaches depth 8 with
-   collision=0; 256px has the ground from ~11s. */
+/* terrain_px range: the per-patch screen-px LOD budget. The fine end is cut
+   off deliberately: collision meshes only exist at max_depth (terrain.cpp),
+   subdivision is async on a single FIFO worker (job.h), and the budget is per
+   patch -- so a setting that asks for tens of thousands of patches never
+   drills to max_depth under the camera, which means no ground under the ship. */
 constexpr int kTerrainPxMin = 128;
 constexpr int kTerrainPxMax = 1024;
 

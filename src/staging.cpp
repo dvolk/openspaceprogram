@@ -61,8 +61,8 @@ void buildFuelGroups(std::vector<SimPart> &parts) {
     }
 }
 
-// Group buckets by reverse-hop distance, furthest first -- the same
-// order as Vehicle::fuelDrainLayers (asparagus empties outer groups first).
+// Group buckets by reverse-hop distance, furthest first: outer groups drain
+// first, as in Vehicle::fuelDrainLayers.
 Bucket drainLayersFor(const std::map<int, std::vector<int> > &rev, int group) {
     std::map<int, int> dist;
     dist[group] = 0;
@@ -143,9 +143,9 @@ struct Sim {
         }
     }
 
-    // Per-tank drain rates (kg/s) from every lit engine that still has
-    // fuel in its layers. Each engine fills its mdot from the furthest
-    // non-empty bucket, pro-rata by remaining fuel.
+    // Per-tank drain rates (kg/s) from every lit engine with fuel in its layers.
+    // Each engine fills its mdot from the furthest non-empty bucket, pro-rata by
+    // remaining fuel.
     void computeRates(std::vector<double> &rate) {
         rate.assign(parts.size(), 0.0);
         for(size_t ei = 0; ei < engines.size(); ei++) {
@@ -338,8 +338,7 @@ void runBurn(Sim &sim, double g, bool drainAll,
 } // namespace
 
 double partPropellantMass(const PartDef &def, const bool *burn) {
-    // The resources the ship's rocket engines draw (per `burn`). JetFuel /
-    // hydrazine / life support ride along as inert mass; EC is Wh, not kg.
+    // EC is Wh, not kg; JetFuel / hydrazine / life support ride along as inert.
     double m = 0.0;
     for(size_t r = 0; r < def.capacity.size(); r++) {
         if(burn[r]) { m += (double)def.capacity[r]; }
@@ -360,14 +359,12 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
     int minStage = ship.parts[0].stage;
     int maxStage = minStage;
 
-    // The resources the ship's ROCKET engines draw (jets excluded: they need
-    // air, so no vacuum delta-v). A tank resource no engine burns is inert mass.
-    // LIMITATION: this is a ship-wide UNION and the sim lumps a part's
-    // propellant into one pool, so a ship MIXING a chemical engine (burns
-    // H2+LOX) with a nuclear-thermal one (H2 only) credits every tank's LOX as
-    // burnable even where only the H2 engine can draw it. Exact for a
-    // homogeneous engine set; a per-fuel-group mask would be needed for mixed
-    // ships (see issue #41).
+    // The resources the ship's ROCKET engines draw (jets excluded: they need air,
+    // so no vacuum delta-v). A tank resource no engine burns is inert mass.
+    // LIMITATION: a ship-wide UNION, and a part's propellant is one pool -- a ship
+    // MIXING chemical (H2+LOX) and nuclear-thermal (H2 only) engines credits every
+    // tank's LOX as burnable even where only the H2 engine can draw it. Exact for
+    // a homogeneous engine set; mixed ships need a per-fuel-group mask (#41).
     bool burn[(int)ResourceType::Num];
     for(int r = 0; r < (int)ResourceType::Num; r++) { burn[r] = false; }
     for(size_t i = 0; i < n; i++) {
@@ -390,7 +387,6 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
         if(bp.def != nullptr) {
             sp.dry = std::max(0.0, partDryMass(*bp.def, burn));
             sp.fuel = partPropellantMass(*bp.def, burn);
-            // Rocket only (propellant + ve, not a jet). Jets need air.
             if(bp.def->totalPropellantRate() > 0.0 && bp.def->exhaust_velocity > 0.0
                && !bp.def->jet) {
                 // Scale thrust only (not mdot): ve_eff = F/mdot scales, so
@@ -476,11 +472,10 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
         row.drops = !drop.empty();
         row.massStart = totalMass(sim.parts);
 
-        // Burn until the to-be-dropped parts are empty of anything the
-        // lit engines can draw (asparagus: outer tanks first). An inert
-        // drop (payload sep -- nothing drainable in the set) would end a
-        // zero-length period and swallow the survivor's burn, so fall
-        // back to draining everything the engines can reach.
+        // Burn until the to-be-dropped parts hold nothing the lit engines can draw
+        // (asparagus: outer tanks first). An inert drop (payload separation --
+        // nothing drainable in the set) would end a zero-length period and swallow
+        // the survivor's burn, so fall back to draining everything reachable.
         const bool drainAll = !row.drops || sim.drainableIn(drop) <= 1e-12;
         BurnAcc burn;
         runBurn(sim, g, drainAll, drop, burn);

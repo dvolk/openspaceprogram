@@ -1,7 +1,7 @@
 // transferplanner.cpp -- game-side transfer planner (declared in
 // transferplanner.h). The pure-math solver is in transfer.h.
 #include "transferplanner.h"
-#include "game.h"   // the complete Game (transferplanner.h only forward-declares it)
+#include "game.h"   // complete Game (the header only forward-declares it)
 #include "bodylimits.h"  // shellEdge (the capture-orbit radius)
 
 #include <algorithm>
@@ -53,9 +53,8 @@ InertialTarget targetInertial(const TransferPlanner::XferTarget &t,
         d.v = tf->GetVelocityRelTo(inertial);
         d.mu = t.body->mu;
         // Capture "orbit" at the near-body shell edge (bodylimits.h): the
-        // LowOrbit/HighOrbit boundary -- above the air on every body (the
-        // old flat radius+100 km sat inside the atmosphere of Jool and the
-        // RSS giants) and on the sea-level datum.
+        // LowOrbit/HighOrbit boundary -- above the air on every body, and on
+        // the sea-level datum.
         d.r_cap = t.body->radius + t.body->surface.sea_level
                 + shellEdge(t.body->surface.atmosphere.top());
         if(tf->orb_ang_speed > 0.0) {
@@ -64,7 +63,6 @@ InertialTarget targetInertial(const TransferPlanner::XferTarget &t,
         }
         d.capture = true;
     } else {
-        // Ship in the same body: transform its state to our inertial frame.
         Frame *tsf = t.ship->frame;
         const glm::dvec3 tcom = t.ship->get_center_of_mass();
         const glm::dmat3 O = tsf->GetOrientRelTo(inertial);
@@ -90,11 +88,10 @@ void logPorkchop(double t_now, const std::string &target,
     fflush(stdout);
 }
 
-/* The grid as CSV for offline analysis: a comment header carrying the grid
-   shape, the axis ranges and the argmin, then one row per ToF sample (the
-   ImPlot ToF-major layout), NaN where no conic solved. The sim time is in the
-   filename because re-sweeping is the whole point of --porkchop-bench, and a
-   fixed name would destroy the previous dump. */
+/* The grid as CSV for offline analysis: header of grid shape, axis ranges and
+   argmin, then one row per ToF sample (ImPlot's ToF-major layout), NaN where no
+   conic solved. Sim time is in the filename so a re-sweep cannot clobber the
+   previous dump. */
 void dumpPorkchop(const std::string &dir, const std::string &target,
                   double t_now, const PorkchopResult &res) {
     std::string safe;
@@ -130,7 +127,7 @@ void dumpPorkchop(const std::string &dir, const std::string &target,
     }
     f.close();
     if(!f) {
-        // Truncated (disk full, EIO): say so rather than leave a quiet partial.
+        // Truncated (disk full, EIO): say so, don't leave a quiet partial.
         printf("[porkchop-dump] TRUNCATED: %s\n", path.c_str());
         fflush(stdout);
     }
@@ -182,9 +179,9 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
     if(xfer_target < 0) {
         xfer.valid = false;
         xfer.burn_dir = glm::dvec3(0.0);
-        // Forget the solved target too: xfer.frame only advances while a
-        // target is set, so without this, re-picking the SAME index clears
-        // no dirty term and leaves the solution blank for up to 30 frames.
+        // Forget the solved target too: xfer.frame only advances while a target
+        // is set, so re-picking the SAME index would clear no dirty term and
+        // leave the solution blank for up to 30 frames.
         xfer.target = -2;
     } else {
         xfer.frame++;
@@ -266,28 +263,26 @@ void TransferPlanner::invalidateClockState() {
     xfer.valid = false;
     xferTargets.clear();
     xfer_target = -1;
-    // A sweep interrupted by the swap never runs its continuation (abort()
-    // drops the queued ones, restart() drops the landed one), and that
-    // continuation is the only other place pc_in_flight is cleared -- without
-    // this the window shows "sweeping" and disables Compute forever.
+    // A sweep interrupted by the swap never runs its continuation (abort() drops
+    // the queued ones, restart() the landed one) -- and that continuation is the
+    // only other place pc_in_flight clears. Without this the window shows
+    // "sweeping" and disables Compute forever.
     pc_in_flight = 0;
 }
 
 void TransferPlanner::porkchopCompute() {
     if(xfer_target < 0 || xfer_target >= (int)xferTargets.size()) { return; }
-    // One sweep at a time. The window's button is disabled while a sweep is in
-    // flight but the P key is not, and a --porkchop-bench list can queue
-    // minutes of worker time that abort() would then have to wait out.
+    // One sweep at a time: the window's button is disabled mid-sweep but the P
+    // key is not, and a --porkchop-bench list can queue minutes of worker time
+    // that abort() would then have to wait out.
     if(pc_in_flight > 0) { return; }
     const XferTarget &t = xferTargets[xfer_target];
 
-    // Snapshot ship/target state at t = 0 in the parent's INERTIAL frame.
-    // This is the ONLY part that reads game state; the grid sweep is pure
-    // and runs on the background worker.
+    // Snapshot ship/target state in the parent's INERTIAL frame -- the ONLY game
+    // state read; the grid sweep is pure and runs on the background worker.
     const InertialShip s1 = shipInertial(g, g.view.pos, g.view.vel);
     const InertialTarget d = targetInertial(t, s1.inertial);
 
-    // Windows: auto range unless the axis checkbox is on (then slider values).
     double t_dep_lo, t_dep_hi;
     if(pcCustomDep) {
         t_dep_lo = pcDepLo; t_dep_hi = pcDepHi;
@@ -304,10 +299,8 @@ void TransferPlanner::porkchopCompute() {
     // Snapshot pure values only (no game refs) so the worker is safe to run.
     const glm::dvec3 r1 = s1.r, v1 = s1.v, r2 = d.r, v2 = d.v;
     const double mu_p = s1.mu_parent, mu_t = d.mu, r_cap = d.r_cap;
-    /* --porkchop-bench sweeps several sizes off THIS one snapshot, so the
-       grids differ only in resolution (separate runs would also move the
-       snapshot with the wall clock, since P fires on a frame boundary).
-       Swept ascending; the live plot keeps the largest. */
+    /* --porkchop-bench sweeps several sizes off THIS one snapshot, so the grids
+       differ only in resolution. Swept ascending; the live plot keeps the largest. */
     std::vector<int> sizes = g.args.porkchop_bench;
     if(sizes.empty()) { sizes.push_back(g.args.porkchop_n); }
     // A repeated size would redo identical work and rewrite the same CSV.
@@ -333,10 +326,9 @@ void TransferPlanner::porkchopCompute() {
         // std::function continuation capture must be copyable, not moved.
         std::shared_ptr<PorkchopResult> res;
         for(const int n : sizes) {
-            // abort()/join() (load, system swap, exit) drops QUEUED jobs but
-            // still joins the IN-FLIGHT body, so a multi-grid sweep must notice
-            // the stop between grids or it holds the main thread for its whole
-            // remaining runtime.
+            // abort()/join() drops QUEUED jobs but still joins the IN-FLIGHT
+            // body, so a multi-grid sweep must notice the stop between grids or
+            // it holds the main thread for its whole remaining runtime.
             if(jobs->stopping()) { break; }
             res.reset();   // the previous grid is done with; don't peak at 2
             const auto t0 = std::chrono::steady_clock::now();
@@ -346,9 +338,9 @@ void TransferPlanner::porkchopCompute() {
                     t_dep_lo,t_dep_hi,tof_lo,tof_hi,
                     n,n,capture));
             } catch(const std::exception &e) {
-                // Swallowed by JobRunner, which then skips the continuation --
-                // and the continuation is what clears pc_in_flight. Catching
-                // here keeps the "sweeping" indicator from wedging the window.
+                // JobRunner swallows it and skips the continuation -- which is
+                // what clears pc_in_flight. Catching here keeps the "sweeping"
+                // indicator from wedging the window.
                 printf("[porkchop] sweep FAILED (%dx%d): %s\n", n, n, e.what());
                 fflush(stdout);
                 break;
@@ -360,26 +352,24 @@ void TransferPlanner::porkchopCompute() {
         }
         // Main-thread continuation: publish the result, clear "sweeping".
         return [this, res, t_now, tname, epoch]() {
-            // Epoch bumped after we posted: the grid is for the old world
-            // (load does NOT abort jobs). Drop it before touching the target
-            // list -- a SHIP target list was freed by the load (UAF risk).
+            // Epoch bumped since posting: the grid is for the old world (load
+            // does NOT abort jobs). Drop before touching the target list -- a
+            // SHIP target list was freed by the load (UAF risk).
             if(epoch != this->g.cache_epoch) {
                 if(pc_in_flight > 0) { pc_in_flight--; }
                 return;
             }
-            // Publish only if the target is still the one this grid was for.
             const bool still_target = (xfer_target >= 0
                 && xfer_target < (int)xferTargets.size()
                 && xferTargets[xfer_target].name == tname);
             if(still_target && res) {
                 pc = std::move(*res);
                 pc_computed_at = t_now;
-                pc_rev++;   // the heatmap texture is a cache of pc; this is its
-                           // invalidation (see pc_rev)
-                // The index just validated, not the one captured at post: the
-                // target list is rebuilt every frame, so a sibling ship joining
-                // or leaving shifts it, and a pc_target that disagrees with
-                // xfer_target makes update() drop this grid on the next frame.
+                pc_rev++;   // the heatmap texture is a cache of pc; this invalidates it
+                // The index just validated, not the one captured at post: the list
+                // is rebuilt every frame, so a sibling ship joining or leaving
+                // shifts it, and a pc_target disagreeing with xfer_target makes
+                // update() drop this grid next frame.
                 pc_target = xfer_target;
             }
             if(pc_in_flight > 0) { pc_in_flight--; }

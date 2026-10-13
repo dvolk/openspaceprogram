@@ -20,7 +20,6 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
     int gl_minor = 5;
     bool gl_core = true;
     m_gl_debug = gl_debug;
-    // SDL_WindowFlags is Uint64 in SDL3 (Uint32 in SDL2).
     SDL_WindowFlags window_flags = SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE;
     if (mode == WindowMode::Borderless) {
         window_flags |= SDL_WINDOW_BORDERLESS;
@@ -28,20 +27,20 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
         // SDL3's creation-time SDL_WINDOW_FULLSCREEN IS the desktop (borderless) mode.
         window_flags |= SDL_WINDOW_FULLSCREEN;
     } else if (mode == WindowMode::Exclusive) {
-        // Creation flag alone only gets the desktop mode in SDL3; the
-        // exclusive mode is requested after context creation (below).
+        // The creation flag alone only gets desktop mode; exclusive is requested
+        // after context creation (below).
         window_flags |= SDL_WINDOW_FULLSCREEN;
     }
     char window_title[] = "Open Space Program";
     m_screen_width = width;
     m_screen_height = height;
-  
-    // No check_gl_error() before a context exists: wine's WGL answers
-    // glGetError with a spurious INVALID_OPERATION on every call.
+
+    // No check_gl_error() before a context exists: wine's WGL answers glGetError
+    // with a spurious INVALID_OPERATION.
     SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    // MSAA (falls back below if no multisample visual). --postfx renders into
-    // a non-multisampled FBO, so only the default path's 3D gets this.
+    // MSAA (falls back below if no multisample visual). --postfx renders to a
+    // non-multisampled FBO, so only the default path gets this.
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, msaa_samples > 0 ? 1 : 0);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, msaa_samples);
     // 24-bit window depth is enough for the current reverse-Z setup.
@@ -64,8 +63,8 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
     // No check_gl_error() before MakeCurrent: no context is CURRENT yet.
     m_window = create_window();
     if(m_window == NULL) {
-        // e.g. Xvfb/llvmpipe: no multisample GLX visual. Retry without MSAA
-        // so headless stacks still work.
+        // e.g. Xvfb/llvmpipe: no multisample GLX visual. Retry without MSAA so
+        // headless stacks still work.
         printf("MSAA window creation failed (%s); retrying without MSAA\n", SDL_GetError());
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
@@ -79,8 +78,8 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
     check_gl_error();
 
     if (mode == WindowMode::Exclusive) {
-        // Request the display mode now that the context exists (X11 CRTC
-        // change; the GL context survives it). Falls back to the closest mode.
+        // Request the display mode now the context exists (X11 CRTC change; the
+        // GL context survives it). Falls back to the closest mode.
         SDL_DisplayMode closest;
         if (SDL_GetClosestFullscreenDisplayMode(SDL_GetPrimaryDisplay(),
                                                 m_screen_width,
@@ -95,11 +94,11 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
         check_gl_error();
     }
 
-    /* Own the swap interval instead of inheriting the driver default. With
-       vsync on, SwapBuffers blocking IS the render clock, so the fixed
-       physics tick can only phase-lock to a rate we know; with it off, the
-       --frame-cap sleep is the pacer and its accuracy is SDL_Delay's.
-       After the exclusive-mode block: a CRTC mode change can reset it. */
+    /* Own the swap interval rather than inherit the driver default. With vsync on,
+       SwapBuffers blocking IS the render clock, so the fixed physics tick can only
+       phase-lock to a rate we know; off, the --frame-cap sleep paces at
+       SDL_Delay's accuracy. After the exclusive-mode block: a CRTC change can
+       reset it. */
     m_vsync = vsync;
     applySwapInterval();
 
@@ -131,10 +130,10 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
         printf("MSAA: %d sample(s)\n", granted);
     }
 
-    // Trust the drawable size the compositor actually gave us (the WM may
-    // have clamped a windowed size). Everything downstream reads these.
+    // Trust the drawable size the compositor gave us (the WM may have clamped a
+    // windowed size). Everything downstream reads these.
     int w = 0, h = 0;
-    SDL_GetWindowSizeInPixels(m_window, &w, &h); // SDL3 rename of SDL_GL_GetDrawableSize
+    SDL_GetWindowSizeInPixels(m_window, &w, &h);
     if (w > 0 && h > 0) {
         m_screen_width = w;
         m_screen_height = h;
@@ -170,12 +169,10 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
             check_gl_error();
 
             GLuint unusedIds = 0;
-            /* count=0 + all-GL_DONT_CARE covers EVERY message, and the last
-               argument says whether to enable or DISABLE that set: false here
-               silenced the whole debug stream, so --gl-debug registered a
-               callback that could never fire (verified by planting a
-               GL_INVALID_OPERATION after this point -- silent before the
-               flip, reported after). */
+            /* count=0 + all-GL_DONT_CARE covers EVERY message, and the last argument
+               says whether to enable or DISABLE that set: false here silenced the
+               whole debug stream, so --gl-debug registered a callback that could
+               never fire. */
             glDebugMessageControl(GL_DONT_CARE,
                                   GL_DONT_CARE,
                                   GL_DONT_CARE,
@@ -213,7 +210,6 @@ void Renderer::setWindowMode(WindowMode mode, int width, int height) {
         // Borderless fullscreen at the display's native mode (SDL3 `true` = desktop).
         SDL_SetWindowFullscreen(m_window, true);
     } else { // WindowMode::Exclusive
-        // Request the display mode (X11 CRTC change; falls back to closest).
         SDL_DisplayMode closest;
         if (SDL_GetClosestFullscreenDisplayMode(SDL_GetPrimaryDisplay(),
                                                 width, height, 0.0f,
@@ -226,8 +222,8 @@ void Renderer::setWindowMode(WindowMode mode, int width, int height) {
         }
     }
     check_gl_error();
-    // Trust the drawable the compositor actually gave (WM may clamp; exclusive
-    // may have fallen back). The SIZE_CHANGED event finishes the resize.
+    // Trust the drawable the compositor gave (WM may clamp; exclusive may have
+    // fallen back). The SIZE_CHANGED event finishes the resize.
     int w = 0, h = 0;
     SDL_GetWindowSizeInPixels(m_window, &w, &h);
     if(w > 0 && h > 0) {
@@ -240,16 +236,15 @@ void Renderer::setWindowMode(WindowMode mode, int width, int height) {
                                        "fullscreen", "exclusive"};
     printf("display mode: %dx%d (%s)\n", m_screen_width, m_screen_height,
            mode_names[static_cast<size_t>(mode)]);
-    // A mode change is what resets the swap interval, and the panel rate can
-    // change with it (the Settings dropdown lists "%dx%d @ %dHz"), so re-apply
-    // and re-print rather than leave the startup line stale.
+    // A mode change resets the swap interval, and the panel rate can change with
+    // it (the Settings dropdown lists "%dx%d @ %dHz"), so re-apply rather than
+    // leave the startup line stale.
     applySwapInterval();
     check_gl_error();
 }
 
 std::vector<Resolution> Renderer::displayModes() {
     std::vector<Resolution> out;
-    // SDL3: SDL_GetFullscreenDisplayModes returns the whole list at once.
     const SDL_DisplayID did = SDL_GetPrimaryDisplay();
     int n = 0;
     SDL_DisplayMode **modes = SDL_GetFullscreenDisplayModes(did, &n);
@@ -305,10 +300,9 @@ std::vector<Resolution> Renderer::displayModes() {
 }
 
 void Renderer::applySwapInterval() {
-    // The driver may not grant the request, so read back what it actually
-    // gave us rather than assume. A failed read-back gets its own sentinel:
-    // -1 is a legitimate value (adaptive vsync), so it must not double as
-    // "unknown".
+    // The driver may not grant the request: read back what it gave. A failed
+    // read-back gets its own sentinel -- -1 is a legitimate value (adaptive
+    // vsync), so it cannot double as "unknown".
     if(!SDL_GL_SetSwapInterval(m_vsync)) {
         printf("vsync: SDL_GL_SetSwapInterval(%d) failed (%s)\n",
                m_vsync, SDL_GetError());
@@ -318,8 +312,7 @@ void Renderer::applySwapInterval() {
     if(!SDL_GL_GetSwapInterval(&granted)) { granted = kSwapUnknown; }
     // A granted interval > 0 only means SwapBuffers BLOCKS where there is a
     // retrace to wait for: the headless/offscreen EGL path reports 1 and then
-    // never waits (measured present ~0.02 ms). Claim the wait only when a
-    // panel rate is actually known.
+    // never waits. Claim the wait only when a panel rate is actually known.
     const int hz = currentRefresh();
     printf("vsync: requested %d, granted %s (%s); display %s\n",
            m_vsync,
@@ -373,17 +366,16 @@ bool Renderer::SaveScreenshot(const char *filename)
     const int h = m_screen_height;
 
     unsigned char *pixels = new unsigned char[w * h * 4];
-    // read the current draw buffer (what we just rendered)
     glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
     check_gl_error();
 
     bool ok = false;
-    // glReadPixels yields [R,G,B,A]; SDL3's 8888 names are the reverse of
-    // memory order, so ABGR8888 is the correct match (RGBA8888 would scramble).
+    // glReadPixels yields [R,G,B,A]; SDL3's 8888 names are the reverse of memory
+    // order, so ABGR8888 is the match (RGBA8888 would scramble).
     SDL_Surface *surface = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_ABGR8888);
     if (surface) {
-        // glReadPixels is bottom-up; SDL surface is top-down. Flip vertically.
-        // Force alpha opaque so a viewer doesn't re-blend translucent layers.
+        // glReadPixels is bottom-up, the SDL surface top-down: flip vertically.
+        // Alpha forced opaque so a viewer doesn't re-blend translucent layers.
         for (int y = 0; y < h; y++) {
             const unsigned char *src = pixels + (h - 1 - y) * w * 4;
             unsigned char *dst = (unsigned char *)surface->pixels + y * surface->pitch;

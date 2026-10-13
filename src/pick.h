@@ -1,12 +1,6 @@
 // pick.h -- screen-space picking: which part did the player point at?
-// Three layers: pickRay (pixel -> ray in the render frame), pickBody
-// (ray vs one body's collision shape via Bullet), pickShipPart (nearest
-// ship part under a pixel). castRay is the physics-free seam (no rigid
-// body) the VAB build tree picks against.
-//
-// findPadOccupant is here too because it is the same machinery -- a ray
-// into the fleet, hopping between the body's frame and each ship's own --
-// rather than a second copy of it somewhere else.
+// castRay is the physics-free seam (no rigid body) the VAB build tree picks
+// against.
 
 #pragma once
 
@@ -52,8 +46,7 @@ bool pickShipPart(Game &g, int px, int py,
                   Vehicle *&ship, size_t &part, PickBodyHit &hit);
 
 /* The first vessel standing on a launch pad's deck, null if the deck is
-   clear. Rays go up the pad's own axis from below the deck across its
-   footprint, so a ship that LANDED there counts the same as one placed
-   there. Deliberately narrow: it answers "is something standing on this
-   deck", which is all a launch needs -- not whether the pad is safe. */
+   clear. Rays go up the pad's own axis from below the deck, so a ship that
+   LANDED there counts like one placed there. Deliberately narrow: "is
+   something standing on this deck", not "is the pad safe". */
 Vehicle *findPadOccupant(const StaticBuilding *site);

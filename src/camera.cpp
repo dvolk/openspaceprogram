@@ -4,21 +4,17 @@
 #include <cmath>
 #include <numbers>
 
-/* One fov range everywhere: --fov validates [10,120] (cli.cpp), the Settings
-   slider is [10,120], and settings.json is clamped to the same range on load
-   (settings.cpp). This is the last line of defence, not the boundary -- for a
-   caller that hands over garbage. It matters because outside (0,180)deg
-   tan(fov/2) goes negative, and that sign lands on BOTH the projection scale
-   and computeFrustumAngles' half angles, so every patchCulled() test in the
-   draw pass rejects: the world renders empty and nothing anywhere reports an
-   error. A rectilinear camera past ~120deg is visually broken anyway (89.5deg
-   vertical puts the horizontal half-angle at 89.7deg on 16:9), so this range
-   is a clamp, not a warning. */
+/* One fov range everywhere: --fov (cli.cpp), the Settings slider and the
+   settings.json load all use [10,120]; this is the last line of defence against
+   a caller handing over garbage. Outside (0,180)deg tan(fov/2) goes negative,
+   and that sign lands on BOTH the projection scale and computeFrustumAngles'
+   half angles, so every patchCulled() test in the draw pass rejects: the world
+   renders empty and nothing anywhere reports an error. */
 static float clampFovRad(float fov) {
     const float deg = (float)std::numbers::pi / 180.0f;
     if(!std::isfinite(fov)) {
-        // std::clamp passes NaN straight through (both comparisons false), and
-        // NaN here is the same silent empty world the clamp exists to stop.
+        // std::clamp passes NaN straight through (both comparisons false) -- the
+        // same silent empty world the clamp exists to stop.
         return 60.0f * deg;
     }
     return std::clamp(fov, 10.0f * deg, 120.0f * deg);
@@ -37,7 +33,6 @@ static glm::mat4 reverseZInfinitePerspective(float fov, float aspect, float zNea
         0.0f, 0.0f, zNear, 0.0f);  // col 3: clip.w = -view.z
 }
 
-// Half-angle sines/cosines for the draw-pass culling test (see camera.h).
 // fov is VERTICAL; the horizontal half-angle comes from fov*aspect.
 void Camera::computeFrustumAngles() {
     const double hy = (double)fov * 0.5;
@@ -48,11 +43,8 @@ void Camera::computeFrustumAngles() {
 }
 
 void Camera::setAspect(float _aspect) {
-    // This used to not store aspect at all: it passed _aspect straight into
-    // the projection, which was fine until something read the member back.
-    // setFov() did (and still does), so after any window resize, moving the
-    // FOV slider in Settings rebuilt the projection with the BOOT aspect and
-    // the horizontal fov snapped back to its launch value.
+    // Store it: setFov() rebuilds the projection from the member, so a stale
+    // aspect would snap the horizontal fov back to its launch value.
     this->aspect = _aspect;
     this->projection = reverseZInfinitePerspective(fov, _aspect, zNear);
     computeFrustumAngles();
@@ -90,8 +82,8 @@ Camera::Camera(const glm::dvec3& focusPos, float fov, float aspect, float zNear,
     // Uses the clamped member, not the parameter (which shadows it).
     this->projection = reverseZInfinitePerspective(this->fov, aspect, zNear);
     computeFrustumAngles();
-    // Derive pos/forward/up once so a caller that reads them before the
-    // first ComputeView() gets sensible values.
+    // Seed pos/forward/up so a reader before the first ComputeView() gets
+    // sensible values.
     this->mode = CAM_ORBIT;
     this->focusPoint = focusPos;
     this->distance = 10;
@@ -164,8 +156,8 @@ void Camera::toOrbit(const glm::dvec3& focus) {
     if (mode == CAM_ORBIT) { Follow(focus); return; }
     focusPoint = focus;
     // Free -> orbit: the flier can be anywhere, so the orbit radius is its
-    // current standoff. First -> orbit: keep the parked radius/angles -- C
-    // must return the framing the cockpit view interrupted.
+    // current standoff. First -> orbit: keep the parked radius/angles -- C must
+    // return the framing the cockpit view interrupted.
     if (mode == CAM_FREE) {
         double dist = glm::length(pos - focus);
         if (dist < 10.0) { dist = 10.0; }
@@ -214,7 +206,6 @@ void Camera::Pitch(double angle) {
         if (orbitPitch > lim) { orbitPitch = lim; }
         if (orbitPitch < -lim) { orbitPitch = -lim; }
     } else if (mode == CAM_FREE) {
-        // Rotate the view direction and up around the right axis.
         const glm::dmat3 rot = glm::dmat3(glm::rotate(angle, right));
         forward = rot * forward;
         up = rot * up;
@@ -226,7 +217,6 @@ void Camera::RotateY(double angle) {
         // Yaw the turntable around the ref up.
         orbitYaw += angle;
     } else if (mode == CAM_FREE) {
-        // Yaw: rotate the view direction and right around the up axis.
         const glm::dmat3 rot = glm::dmat3(glm::rotate(angle, up));
         forward = rot * forward;
         right = rot * right;
@@ -235,7 +225,6 @@ void Camera::RotateY(double angle) {
 
 void Camera::Roll(double angle) {
     if (mode != CAM_FREE) { return; }
-    // Roll: rotate up and right around the view direction.
     const glm::dmat3 rot = glm::dmat3(glm::rotate(angle, forward));
     up = rot * up;
     right = rot * right;
@@ -244,7 +233,6 @@ void Camera::Roll(double angle) {
 void Camera::setFreePose(const glm::dvec3& p, const glm::dvec3& fwd, const glm::dvec3& upv) {
     this->pos = p;
     this->forward = glm::normalize(fwd);
-    // Orthogonalise up against forward so the basis is well-defined.
     this->up = glm::normalize(upv - this->forward * glm::dot(this->forward, upv));
     this->right = glm::normalize(glm::cross(this->forward, this->up));
     this->mode = CAM_FREE;

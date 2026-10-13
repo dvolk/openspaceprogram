@@ -2,7 +2,7 @@
 // folding. Fills GameArgs (cli.h).
 #include "cli.h"
 #include "settings.h"   // kTerrainPxMin/Max (the --terrain-px range)
-#include "version.h"   // VERSION (the embedded build string, `make version`)
+#include "version.h"   // VERSION
 
 #include <cctype>
 #include <cmath>
@@ -15,8 +15,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 {
     CLI::App app{"Open Space Program"};
 
-    // --version: CLI11 throws CallForVersion on parse; the catch below routes
-    // it through app.exit(). Same VERSION as the main menu footer.
+    // CLI11 throws CallForVersion on parse; the catch below routes it through
+    // app.exit().
     app.set_version_flag("--version",
                          std::string("Open Space Program ") + VERSION,
                          "Prints the version and exits");
@@ -77,9 +77,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "the per-OS user data directory (on Linux: "
                    "~/.local/share/openspaceprogram/)");
 
-    // Spin-instrumentation mode: build a test ship (no JSON ship def) and
-    // log its spin + internal contact torque each tick. All parts are
-    // passive tanks, so any spin is self-inflicted.
+    // Spin-test ship (no JSON def); all parts are passive tanks, so any spin is
+    // self-inflicted.
     app.add_option("--radial-test", args.radial_test,
                    "Build the spin-test ship(s) instead of a fleet: "
                    "parallel | stacked | stacks | parstacks")
@@ -311,10 +310,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "use. Repeat the flag to append more quadruples.")
         ->delimiter(',');
 
-    /* --ui-click: a click on an imgui widget, addressed by its "Window/Label"
-       path rather than by window pixels (src/uiinput.cpp). No ->delimiter:
-       the path may contain commas, so each value stays one string and the
-       split at the first comma happens below. */
+    /* No ->delimiter: the path may contain commas, so each value stays one
+       string and the split at the first comma happens below (src/uiinput.cpp). */
     std::vector<std::string> ui_click;
     app.add_option("--ui-click", ui_click,
                    "Synthetic imgui click for e2e testing: AT_MS,WINDOW/LABEL "
@@ -406,16 +403,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "back off ONE ship/target snapshot and log each, so the "
                    "grids differ only in resolution. Swept ascending; the live "
                    "plot keeps the largest, e.g. --porkchop-bench 40,128,256")
-        // CLI11 has no delimiter by default, so without this its number lexer
-        // reads "40,128" as the single integer 40128 -- a 40128^2 grid is 13 GB.
+        // CLI11's number lexer otherwise reads "40,128" as one integer, 40128.
         ->delimiter(',')
-        // Range bounds each size; expected() bounds how many. A sweep is ONE
-        // job, so an unbounded list is unbounded worker time the process must
-        // wait out before it can exit or switch system.
+        // A sweep is ONE job, so an unbounded list is unbounded worker time the
+        // process must wait out before it can exit or switch system.
         ->expected(1, 8)
-        // A grid is n^2 doubles: 4096^2 is 134 MB and ~5 min of worker time.
-        // Looser than --porkchop-n's cap because this is an offline sweep,
-        // not the live plot.
+        // Looser than --porkchop-n's cap: an offline sweep, not the live plot.
         ->check(CLI::Range(1, 4096));
     app.add_option("--porkchop-dump", args.porkchop_dump,
                    "Directory to write each computed porkchop grid into as "
@@ -745,7 +738,6 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "Print the star-field fade's inputs once a second "
                  "(sun angle off the view axis, in-view and lit factors, gain)");
 
-    // it's like a google maps link
     app.add_option("--free-cam-pos", args.free_cam_pos,
                    "Start in the free camera at this world position: X Y Z "
                    "(ship-frame coordinates)")
@@ -760,11 +752,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Initial free camera up direction: X Y Z (default: 0 1 0)")
         ->expected(3);
 
-    // Call app.parse() directly, NOT the CLI11_PARSE macro: that macro does
-    // its own `return (app).exit(e)`, which returns the *int* exit code and
-    // would be implicitly converted to bool here (0=false, non-zero=true),
-    // inverting help vs. error. Our own catch sets *exit_code and returns
-    // false so main() can exit with the right code.
+    // app.parse(), NOT the CLI11_PARSE macro: the macro does `return (app).exit(e)`,
+    // an int implicitly converted to bool here (0=false), inverting help vs.
+    // error. Our catch sets *exit_code and returns false for main() to act on.
     try {
         app.parse(argc, argv);
     } catch(const CLI::ParseError &e) {
@@ -772,21 +762,16 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         return false;
     }
 
-    /* --msaa: map the label to a sample count (unspecified keeps the
-       4x default in GameArgs). */
+    /* Unspecified keeps the 4x default in GameArgs. */
     if(msaa == "none") { args.msaa_samples = 0; }
     else if(msaa == "2x") { args.msaa_samples = 2; }
     else if(msaa == "4x") { args.msaa_samples = 4; }
     else if(msaa == "8x") { args.msaa_samples = 8; }
 
-    /* CLI11's numeric validators are range checks -- `val < min || val > max`
-       -- and both comparisons are false for NaN, while the float lexer happily
-       parses "nan". A non-finite value that reaches the sim fails silently and
-       nastily: a NaN dt never satisfies the tick loop's `accumulator >= dt`, so
-       the sim freezes with no warning, and a NaN --timeout never expires, so the
-       run hangs (which is how the whole e2e harness would die). The declared
-       ranges still catch out-of-bounds values at parse time; this catches
-       non-finite ones for every numeric knob in one place. */
+    /* CLI11's range validators are `val < min || val > max` -- both false for
+       NaN, and its float lexer parses "nan". A NaN dt never satisfies the tick
+       loop's `accumulator >= dt` (silent freeze) and a NaN --timeout never
+       expires (hang), so every numeric knob gets a finiteness check here. */
     {
         const std::pair<const char *, double> numeric[] = {
             {"--physics-hz", args.physics_hz},
@@ -829,8 +814,6 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         }
     }
 
-    /* --sim-press: fold the flat START_MS,DURATION_MS,KEY list into press
-       entries. */
     if(!sim_press.empty()) {
         if(sim_press.size() % 3 != 0) {
             printf("error: --sim-press expects START_MS,DURATION_MS,KEY "
@@ -873,9 +856,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         }
     }
 
-    /* --sim-mouse: fold the flat TIME_MS,DURATION_MS,X,Y,BTN list into
-       actions. X,Y are signed (the cursor can move up/left from where it
-       was), so they parse as strtol, unlike the unsigned times above. */
+    /* X,Y are signed (the cursor can move up/left from where it was), so they
+       parse as strtol, unlike the unsigned times above. */
     if(!sim_mouse.empty()) {
         if(sim_mouse.size() % 5 != 0) {
             printf("error: --sim-mouse expects TIME_MS,DURATION_MS,X,Y,BTN "
@@ -938,8 +920,6 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         }
     }
 
-    /* --sim-mode: fold the flat TIME_MS,MODE,WIDTH,HEIGHT list into
-       changes. WIDTH / HEIGHT of 0 keep the launch --width/--height. */
     if(!sim_mode.empty()) {
         if(sim_mode.size() % 4 != 0) {
             printf("error: --sim-mode expects TIME_MS,MODE,WIDTH,HEIGHT "
@@ -1000,8 +980,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         }
     }
 
-    /* --ui-click: split each AT_MS,WINDOW/LABEL value at the FIRST comma --
-       the path itself may contain commas. */
+    /* Split each AT_MS,WINDOW/LABEL value at the FIRST comma -- the path itself
+       may contain commas. */
     for(const std::string &spec : ui_click) {
         const size_t comma = spec.find(',');
         if(comma == std::string::npos) {
@@ -1047,9 +1027,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         : borderless ? WindowMode::Borderless
                      : WindowMode::Windowed;
 
-    /* Which settings the CLI set explicitly (CLI11 ->count()): the
-       settings.json load honors this mask -- the command line beats the
-       saved file, field by field. */
+    /* Which settings the CLI set explicitly (CLI11 ->count()): the settings.json
+       load honors this mask -- the command line beats the saved file, field by
+       field. */
     args.cli_given.window_mode =
         (fs_opt->count() + bl_opt->count() + ex_opt->count()) > 0;
     args.cli_given.width = app.get_option("--width")->count() > 0;

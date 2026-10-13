@@ -1,5 +1,5 @@
-// docktest.h -- the --dock-test pair builder (see docktest.cpp). Builds a
-// nose-to-nose docking pair from the parts catalog. The probe is the ACTIVE ship.
+// docktest.h -- the --dock-test pair builder (see docktest.cpp): a nose-to-nose
+// pair from the parts catalog; the probe is the ACTIVE ship.
 #pragma once
 
 #include <string>
@@ -9,8 +9,8 @@
 
 struct System;
 
-/* The result of building the --dock-test pair: both ships (the caller owns
-   them and pushes them into the fleet) + the starting port-face gap. */
+/* The built --dock-test pair (the caller owns both ships) plus the starting
+   port-face gap. */
 struct DockTestShips {
     Vehicle *probe;    // the active ship (root = its docking port)
     Vehicle *station;  // the target (root = its engine, port at the tail)

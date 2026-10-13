@@ -31,12 +31,11 @@ enum class SceneId : int {
 // "flight" / "vab" -- for the transition log lines.
 const char *sceneName(SceneId id);
 
-// The 3D pass's backdrop: skybox over black, or the editor's studio gray.
 enum class Backdrop : unsigned char { Sky, Studio };
 
-// A camera pose captured so one scene can take the camera and the previous
-// one gets it back. focusBody is a BODY pointer (focusTargets shifts), not an
-// index; null = the "ship" entry.
+// A camera pose captured so one scene can take the camera and the previous one
+// gets it back. focusBody is a BODY pointer (focusTargets shifts), not an index;
+// null = the "ship" entry.
 struct CameraSnapshot {
     CameraMode mode = CAM_ORBIT;
     glm::dvec3 pos, fwd, up;          // the free-mode pose
@@ -45,16 +44,16 @@ struct CameraSnapshot {
     TerrainBody *focusBody = nullptr;
 };
 
-// One scene-stack entry. cam is the pose to hand back on pop (captured at
-// push); camValid is false when there was no camera to capture.
+// One scene-stack entry. cam is the pose to hand back on pop (captured at push);
+// camValid false when there was no camera to capture.
 struct SceneFrame {
     SceneId id = SceneId::Flight;
     CameraSnapshot cam;
     bool camValid = false;
 };
 
-// What a scene IS: data, lifecycle, and the per-frame half. Adding a mode
-// means adding a row here, not finding enum branches.
+// What a scene IS: data, lifecycle, per-frame half. A new mode is a row here,
+// not enum branches.
 struct SceneDef {
     const char *name;
     bool sim;             // does the clock advance while this scene is on top
@@ -66,11 +65,10 @@ struct SceneDef {
     void (*exit)(Game &);    // popped, or unwound by enterFlight
     // Per-frame half; only the TOP scene's run.
     void (*update)(Game &);
-    // Per-frame 3D STATE: camera re-pose, terrain LOD, Game::view, the
-    // transfer planner. Every scene runs it, painted or not -- the LOD owns
-    // the ground's collision bodies and g.view is the snapshot the UI reads,
-    // so a scene that shows no world still needs it. The VAB takes the ship
-    // state without the LOD: its camera is parked at the build tree (#212).
+    // Per-frame 3D STATE: camera re-pose, terrain LOD, Game::view, the transfer
+    // planner. Every scene runs it, painted or not -- the LOD owns the ground's
+    // collision bodies and g.view is the snapshot the UI reads. The VAB skips the
+    // LOD: its camera is parked at the build tree (#212).
     void (*refresh)(Game &);
     // The pixels. A scene may opt out (noPaint), but the frame loop itself is
     // unconditional -- nothing decides a frame was stale (#209).
@@ -81,8 +79,6 @@ struct SceneDef {
 
 extern const SceneDef kScenes[(size_t)SceneId::COUNT];
 
-// The live scene (top of the stack). Always valid: the stack is seeded and
-// popScene refuses at depth 1.
 const SceneDef &curScene(const Game &g);
 SceneId curSceneId(const Game &g);
 bool sceneIs(const Game &g, SceneId id);
@@ -91,22 +87,21 @@ bool sceneIs(const Game &g, SceneId id);
 // pushScene refuses an already-live scene; popScene refuses at depth 1.
 void pushScene(Game &g, SceneId id);
 void popScene(Game &g);
-// Collapse the stack to [Flight], discarding parked cameras -- a launch or a
-// load established a live flight; nothing meaningful to pop back to.
+// Collapse to [Flight], discarding parked cameras: a launch or a load
+// established a live flight, nothing meaningful to pop back to.
 void enterFlight(Game &g);
-// Collapse to [Title] -- the no-game front door (bare boot, an explicit quit,
-// a refused load that already switched systems). A shipless GAME sits on
+// Collapse to [Title] -- the no-game front door. A shipless GAME sits on
 // SpaceCenter, not here.
 void enterTitle(Game &g);
-// Collapse to [SpaceCenter] -- the floor of a game with no active vessel:
-// a new game (no ship yet) or a recovered / shipless fleet.
+// Collapse to [SpaceCenter] -- the floor of a game with no active vessel (new
+// game, or a recovered / shipless fleet).
 void enterSpaceCenter(Game &g);
-// "Go to" a scene: pop down if already on the stack, else push (the 1/2/3/4
-// shortcuts). Unlike enterFlight, does not collapse.
+// "Go to" a scene: pop down if on the stack, else push (the 1/2/3/4 shortcuts).
+// Unlike enterFlight, no collapse.
 void goScene(Game &g, SceneId id);
 // True when a game is in charge (stack floor is not Title).
 bool gameRunning(const Game &g);
 
-// Capture / apply a camera pose (transition mechanics for the stack).
+// Capture / apply a camera pose.
 CameraSnapshot captureCamera(const Game &g);
 void restoreCamera(Game &g, const CameraSnapshot &s);

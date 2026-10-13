@@ -6,19 +6,17 @@
 #include "shader.h"   // Shader
 #include "vehicle.h"  // Vehicle, ScenarioDef, PartDef, PartsCatalog, TerrainBody
 
-/* The result of building one --radial-test ship: the ship itself (the
-   caller owns it and pushes it into its fleet) plus the starting scenario
-   main() registers it with. The builder places it, so there is no slot. */
+/* A built --radial-test ship (the caller owns it) plus the starting scenario
+   to register it with. The builder places it, so there is no slot. */
 struct RadialTestShip {
     Vehicle *v;
     const ScenarioDef *sc;
 };
 
-/* Build one passive-tank spin-test ship for the given --radial-test mode
-   ("parallel", "stacked", "stacks", "parstacks"). The ship starts in a
-   "rot-orbit" scenario (no pad contact, no terrain noise in the spin
-   measurement). Throws std::runtime_error if the two tank parts it needs
-   are missing from the catalog. */
+/* Build a passive-tank spin-test ship for a --radial-test mode ("parallel",
+   "stacked", "stacks", "parstacks"). It starts in "rot-orbit": no pad contact
+   or terrain noise in the spin measurement. Throws if the two tank parts are
+   missing from the catalog. */
 RadialTestShip build_radial_test_ship(const std::string &mode,
                                       const PartsCatalog &part_catalog,
                                       TerrainBody *home,

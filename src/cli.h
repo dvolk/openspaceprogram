@@ -7,26 +7,27 @@
 #include "siminput.h"  // SimKeyPress, SimMouseAction
 
 /* Everything the CLI flags configure, filled by parse_cli (cli.cpp).
-   The sim_* state doubles as the live state for synthetic input. */
+   The sim_* state doubles as the live state for synthetic input; the *_ms
+   fields are e2e test hooks. */
 struct GameArgs {
-    std::string title_body;   // --title-body: pin the title-screen backdrop (test hook)
-    std::string surfmap_body;  // --surfmap-body: pin the Surface Map's body at boot
+    std::string title_body;   // pin the title-screen backdrop
+    std::string surfmap_body;  // pin the Surface Map's body at boot
 
-    // Settings the command line set explicitly; the CLI beats settings.json
+    // Settings the command line set explicitly: the CLI beats settings.json
     // field by field. A flag not listed here means the file may apply.
     struct {
         bool window_mode = false;    // --fullscreen / --borderless / --exclusive
-        bool width = false;          // --width
-        bool height = false;         // --height
-        bool msaa = false;           // --msaa
-        bool postfx = false;         // --postfx (the whole effect set)
-        bool fov = false;            // --fov
-        bool terrain_px = false;     // --terrain-px
-        bool exhaust_scale = false;  // --exhaust-scale
-        bool cam_shake = false;      // --cam-shake
-        bool time_accel = false;     // --time-accel (overrides a paused load)
-        bool sky_dim = false;        // --sky-dim
-        bool sky_dim_cone = false;   // --sky-dim-cone
+        bool width = false;
+        bool height = false;
+        bool msaa = false;
+        bool postfx = false;         // the whole effect set
+        bool fov = false;
+        bool terrain_px = false;
+        bool exhaust_scale = false;
+        bool cam_shake = false;
+        bool time_accel = false;     // overrides a paused load
+        bool sky_dim = false;
+        bool sky_dim_cone = false;
     } cli_given;
 
     std::string system_file = "res/systems/ksp_system.json";
@@ -41,141 +42,140 @@ struct GameArgs {
     // --load replaces the fleet at startup. Bare names resolve under saves/.
     std::string save_name;
     std::string load_name;
-    // --resave: the same capture as --save, but legal with --load -- that is
-    // the point (the load -> fly -> save round trip in one process, #51).
+    // Same capture as --save but legal with --load: the load -> fly -> save
+    // round trip in one process (#51).
     std::string resave_name;
-    std::string data_dir;   // --data-dir: user data directory; empty = per-OS default
+    std::string data_dir;   // user data directory; empty = per-OS default
 
     std::string radial_test;
-    std::string autopilot;  // --autopilot: engage a slew mode at startup (test hook)
-    std::string vab;   // ship def to open in the VAB editor scene (empty = flight)
-    bool vab_empty = false;  // --vab-empty: open the VAB with an EMPTY build
-    std::string vab_arm;   // catalog part to arm in the VAB palette at startup (test hook)
-    int vab_place_ms = -1; // --vab-place: fire vabPlace once at this loop time (test hook)
-    std::string vab_load;   // --vab-load: ship def to load into the VAB (test hook)
-    int vab_load_ms = -1;   // --vab-load-at: loop time for --vab-load (test hook)
-    int vab_launch_ms = -1;  // --vab-launch: fire the VAB's LAUNCH (test hook)
-    int vab_close_ms = -1;   // --vab-close: fire vabClose (camera park/restore round trip)
-    int vab_detach_idx = -1; // --vab-detach: select this build part and fire vabDetachSelected
-    int vab_detach_ms = -1;  // --vab-detach-at: loop time for --vab-detach
-    std::string vab_save;   // --vab-save: save the build under this name (test hook)
-    int vab_save_ms = -1;   // --vab-save-at: loop time for --vab-save (test hook)
-    std::string reload_dir; // --reload: save dir to load over the running game
-    int reload_ms = -1;     // --reload-at: loop time for --reload
-    int new_game_ms = -1;   // --new-game: fire Game::newGame (test hook)
-    int quit_title_ms = -1; // --quit-title: fire Game::quitToTitle (test hook)
-    int space_center_ms = -1; // --space-center: push the Space Center hub (test hook)
-    int recover_ms = -1;    // --recover: fire Game::recoverActive (test hook)
-    bool recover_anywhere = false;  // --recover-anywhere: recover anywhere (default: home body only)
-    int experiment_ms = -1; // --experiment: fire Game::runExperiment (test hook)
-    int pod_experiment_ms = -1; // --pod-experiment: fire Game::runPodExperiment (test hook)
-    int eva_ms = -1;          // --eva: fire Game::kerbalEVA (test hook)
-    int take_ms = -1;         // --take: fire the take/store dance's "Take" (test hook)
-    int store_ms = -1;        // --store: fire the take/store dance's "Store" (test hook)
-    int tracking_ms = -1;   // --tracking: push the Tracking Station (test hook)
-    int tracking_close_ms = -1; // --tracking-close: pop the Tracking Station (test hook)
-    int research_ms = -1;   // --research: push the Research Lab (test hook)
-    int research_close_ms = -1; // --research-close: pop the Research Lab (test hook)
-    std::string switch_system_path; // --switch-system: system JSON to swap to (Game::switchSystem)
-    int switch_system_ms = -1;      // --switch-at: loop time for --switch-system
-    std::string vab_scenario;  // --vab-scenario: seed the VAB launch scenario (empty = "pad")
-    std::string vab_body;      // --vab-body: seed the VAB launch body (empty = home body)
-    std::string vab_site;      // --vab-site: seed the VAB launch site (building id)
+    std::string autopilot;  // engage a slew mode at startup
+    std::string vab;   // ship def to open in the VAB scene (empty = flight)
+    bool vab_empty = false;
+    std::string vab_arm;
+    int vab_place_ms = -1;
+    std::string vab_load;
+    int vab_load_ms = -1;   // --vab-load-at
+    int vab_launch_ms = -1;
+    int vab_close_ms = -1;   // camera park/restore round trip
+    int vab_detach_idx = -1;
+    int vab_detach_ms = -1;  // --vab-detach-at
+    std::string vab_save;
+    int vab_save_ms = -1;   // --vab-save-at
+    std::string reload_dir; // save dir to load over the running game
+    int reload_ms = -1;     // --reload-at
+    int new_game_ms = -1;
+    int quit_title_ms = -1;
+    int space_center_ms = -1;
+    int recover_ms = -1;
+    bool recover_anywhere = false;  // default: home body only
+    int experiment_ms = -1;
+    int pod_experiment_ms = -1;
+    int eva_ms = -1;
+    int take_ms = -1;         // the take/store dance's "Take"
+    int store_ms = -1;        // the take/store dance's "Store"
+    int tracking_ms = -1;
+    int tracking_close_ms = -1;
+    int research_ms = -1;
+    int research_close_ms = -1;
+    std::string switch_system_path;
+    int switch_system_ms = -1;      // --switch-at
+    std::string vab_scenario;  // VAB launch scenario (empty = "pad")
+    std::string vab_body;      // VAB launch body (empty = home body)
+    std::string vab_site;      // VAB launch site (building id)
     std::string dock_test;
     int initial_time_accel = 1;
-    double start_time = 0.0;   // --start-time: the sim clock's t0 (s)
+    double start_time = 0.0;   // the sim clock's t0 (s)
     double timeout_seconds = 0.0;
     float exhaust_scale = 1.0f;  // difficulty: scales ve (thrust + delta-v)
     float cam_shake = 1.0f;   // camera shake at high accel (0 = off)
-    double drag_cd = 1.2;       // --drag-cd: the drag coefficient (0 = off)
-    bool drag_log = false;      // --drag-log: the active ship's drag per tick
+    double drag_cd = 1.2;       // the drag coefficient (0 = off)
+    bool drag_log = false;      // the active ship's drag per tick
 
     std::vector<SimKeyPress> sim_presses;
     std::vector<SimMouseAction> sim_mouse_actions;
     int sim_mouse_x = 0;   // simulated cursor; each motion carries the delta from here
     int sim_mouse_y = 0;
-    std::vector<SimModeChange> sim_mode_changes;   // --sim-mode
+    std::vector<SimModeChange> sim_mode_changes;
 
-    std::vector<UiClick> ui_clicks;  // --ui-click: imgui clicks by "Window/Label"
-    int ui_list_ms = -1;             // --ui-list: dump the clickable items at this loop time
-    int atlas_dump_ms = -1;          // --atlas-dump: print the System Atlas rows + dossiers at this loop time
-    int map_plane = -1;              // --map-plane: the orbit map's plane combo (0 equ, 1 ecl, 2 orb)
-    int map_dump_ms = -1;            // --map-dump: print the map's plane basis per slot at this loop time
+    std::vector<UiClick> ui_clicks;  // imgui clicks by "Window/Label"
+    int ui_list_ms = -1;             // dump the clickable items
+    int atlas_dump_ms = -1;          // print the System Atlas rows + dossiers
+    int map_plane = -1;              // the orbit map's plane combo (0 equ, 1 ecl, 2 orb)
+    int map_dump_ms = -1;            // print the map's plane basis per slot
 
     bool orbit_log = false;
     double orbit_interval = 1.0;
     bool dbg_log = false;
-    bool info_log = false;       // --info-log: dump Orbit/Surface Info to stdout
-    bool debug_accel = false;   // --debug-accel: per-substep thrust/velocity dump
+    bool info_log = false;       // dump Orbit/Surface Info to stdout
+    bool debug_accel = false;   // per-substep thrust/velocity dump
     bool xfer_log = false;
-    bool porkchop_log = false;   // --porkchop-log: the launch-window grid min
-    int porkchop_n = 256;       // --porkchop-n: the plot grid size
-    std::vector<int> porkchop_bench; // --porkchop-bench: sweep these sizes off one snapshot
-    std::string porkchop_dump;       // --porkchop-dump DIR: write each grid as CSV
+    bool porkchop_log = false;   // the launch-window grid min
+    int porkchop_n = 256;
+    std::vector<int> porkchop_bench; // sweep these sizes off one snapshot
+    std::string porkchop_dump;       // write each grid as CSV
 
-    bool eva_log = false;        // --eva-log: the kerbal's mode + pos/vel
-    bool surfmap_log = false;    // --surfmap-log: the map's albedo/shaded means
-    int surfmap_n = 256;        // --surfmap-n: the map width (h = n/2)
-    bool surfmap_noshade = false; // --surfmap-noshade: skip the terminator
+    bool eva_log = false;        // the kerbal's mode + pos/vel
+    bool surfmap_log = false;    // the map's albedo/shaded means
+    int surfmap_n = 256;        // the map width (h = n/2)
+    bool surfmap_noshade = false; // skip the terminator
     std::string transfer_target;
     bool spin_log_enabled = false;
-    bool slew_log_enabled = false;  // log the prograde/retrograde autopilot state
-    bool att_log = false;          // log the ship's nose + angular velocity
-    bool shake_log = false;       // --shake-log: the cam-shake state per interval
-    bool cam_log = false;         // --cam-log: the live camera pose + who ate the input
-    bool audio_log = false;       // --audio-log: the [aud] audio-event trace (was AUDIO_DEBUG=1 only)
-    bool terrain_log = false;     // --terrain-log: the local body's patch-tree LOD
-    bool tq_log = false;           // --tq-log: COM-lag x net-force spurious-torque probe
-    bool fuel_log = false;        // --fuel-log: per-fuel-group fuel mass + links
-    bool drain_log = false;      // --drain-log: per-fuel-group drain rate (kg/s)
-    bool power_log = false;      // --power-log: power balance (gen/draw/pool/gate)
-    bool prox_log = false;       // --prox-log: proximity engage/release + distances
-    double prox_fly_on = 2000.0;    // --prox-fly-on: engage radius while the active ship flies (m)
-    double prox_fly_off = 10000.0;  // --prox-fly-off: release radius while flying (m)
-    double prox_ground_on = 10.0;   // --prox-ground-on: engage radius while grounded (m; 0 = never auto-wake)
-    double prox_ground_off = 20.0;  // --prox-ground-off: release radius while grounded (m)
-    double prox_warp = 1.0;         // --prox-warp: max time accel while a ship is engaged
-    bool compound_check = false;   // --compound-check: the ship-as-one-rigid-body gate
+    bool slew_log_enabled = false;  // the prograde/retrograde autopilot state
+    bool att_log = false;          // the ship's nose + angular velocity
+    bool shake_log = false;       // the cam-shake state per interval
+    bool cam_log = false;         // the live camera pose + who ate the input
+    bool audio_log = false;       // the [aud] audio-event trace
+    bool terrain_log = false;     // the local body's patch-tree LOD
+    bool tq_log = false;           // COM-lag x net-force spurious-torque probe
+    bool fuel_log = false;        // per-fuel-group fuel mass + links
+    bool drain_log = false;      // per-fuel-group drain rate (kg/s)
+    bool power_log = false;      // power balance (gen/draw/pool/gate)
+    bool prox_log = false;       // proximity engage/release + distances
+    double prox_fly_on = 2000.0;    // engage radius while the active ship flies (m)
+    double prox_fly_off = 10000.0;  // release radius while flying (m)
+    double prox_ground_on = 10.0;   // engage radius while grounded (m; 0 = never auto-wake)
+    double prox_ground_off = 20.0;  // release radius while grounded (m)
+    double prox_warp = 1.0;         // max time accel while a ship is engaged
+    bool compound_check = false;   // the ship-as-one-rigid-body gate
 
     std::vector<std::string> postfx_spec;
     bool gl_debug = false;
-    // --gl-error-checks: the glGetError drains without the debug callback
-    // (gldebug.h). The e2e runner sets it for cases that FORBID GL_.
+    // The glGetError drains without the debug callback (gldebug.h). The e2e
+    // runner sets it for cases that FORBID GL_.
     bool gl_error_checks = false;
-    int msaa_samples = 4;   // --msaa: the window's sample count (0 = none)
+    int msaa_samples = 4;   // the window's sample count (0 = none)
 
     int screen_width = 1920;
     int screen_height = 1080;
     WindowMode window_mode = WindowMode::Windowed;
 
-    // Cloud deck sphere resolution (lat = lon = res rings). The detail lives
-    // in the baked coverage map; this only changes the silhouette at the rim.
+    // Cloud deck sphere resolution (lat = lon = res rings); the detail lives
+    // in the baked coverage map.
     int cloud_mesh = 128;
 
     // Render toggles (debug knobs for isolating terrain gaps / depth issues).
-    bool no_clouds = false;       // --no-clouds
-    bool no_atmosphere = false;   // --no-atmosphere
-    bool no_ocean = false;        // --no-ocean
-    bool no_rings = false;        // --no-rings
+    bool no_clouds = false;
+    bool no_atmosphere = false;
+    bool no_ocean = false;
+    bool no_rings = false;
 
-    // Star-field exposure prototype (render.cpp skyGain). --sky-dim is the
-    // gain the sky fades to with the sun in view (1 = off); --sky-dim-cone is
-    // the half-angle of that cone in degrees.
+    // Star-field exposure (render.cpp skyGain): the gain the sky fades to with
+    // the sun in view (1 = off), and the half-angle of that cone in degrees.
     float sky_dim = 0.25f;
     float sky_dim_cone = 25.0f;
-    bool sky_dim_log = false;     // --sky-dim-log: the fade's inputs, 1/s
+    bool sky_dim_log = false;     // the fade's inputs, 1/s
 
     std::string font_path = "res/fonts/DejaVuSansMono.ttf";
     float font_size = 14.0f;
     int frame_cap = 60;
-    // --idle-fps: render rate while the window is occluded/minimized (0 = never idle).
+    // Render rate while the window is occluded/minimized (0 = never idle).
     int idle_fps = 10;
-    // --force-occluded MS: pretend the window is hidden from MS on (-1 = off).
+    // Pretend the window is hidden from MS on (-1 = off).
     int force_occluded_ms = -1;
-    int vsync = 1;           // --vsync: 0 = off, 1 = one refresh per swap
-    double physics_hz = 60.0;  // --physics-hz: the fixed logic tick rate
-    bool perf = false;   // --perf: print a per-frame phase timing breakdown
-    bool pose_jitter = false;  // --pose-jitter: the drawn pose per render frame
+    int vsync = 1;           // 0 = off, 1 = one refresh per swap
+    double physics_hz = 60.0;  // the fixed logic tick rate
+    bool perf = false;   // print a per-frame phase timing breakdown
+    bool pose_jitter = false;  // the drawn pose per render frame
     float camFovDeg = 60.0f;
     // terrain LOD: a patch subdivides while it projects wider than this [px].
     int terrain_px = 512;

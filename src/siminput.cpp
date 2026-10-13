@@ -7,17 +7,14 @@
 #include <map>
 
 SDL_Keycode sim_parse_key(const std::string &s) {
-    /* Names first, decimal second. The decimal escape (32 = SPACE) used to be
-       tried FIRST, so "3" parsed as keycode 3 and the digit keys were
-       unreachable from --sim-press (#108) -- which is why the scene-switch
-       e2e case has to send the raw keycodes 49..52 instead of 1234. A bare
-       number is still accepted as long as it is not a name.
+    /* Names first, decimal second: a digit name must win over the decimal
+       escape, or "3" parses as keycode 3 and the digit keys are unreachable
+       from --sim-press (#108). A bare number is still accepted when it is not
+       a name.
 
-       The set below is the one the Controls window can bind (keys.cpp's
-       scancode -> display-name table): every key the game can be played with
-       has to be nameable here, or the only way to drive it from e2e is a raw
-       keycode nobody can read. "[" and "]" are the default camera-speed keys,
-       so they were the gap. Keep the two lists in step. */
+       The set below is what the Controls window can bind (keys.cpp's
+       scancode -> display-name table): every playable key must be nameable
+       here. Keep the two lists in step. */
     static const std::map<std::string, SDL_Keycode> names = {
         {"0", SDLK_0}, {"1", SDLK_1}, {"2", SDLK_2}, {"3", SDLK_3},
         {"4", SDLK_4}, {"5", SDLK_5}, {"6", SDLK_6}, {"7", SDLK_7},
@@ -38,8 +35,7 @@ SDL_Keycode sim_parse_key(const std::string &s) {
         {"COMMA", SDLK_COMMA},
         {"MINUS", SDLK_MINUS}, {"-", SDLK_MINUS},
         {"EQUALS", SDLK_EQUALS}, {"=", SDLK_EQUALS},
-        /* SDL's spelling ("LEFTBRACKET") and the character the Controls
-           window shows ("["), which is what a player reads on screen. */
+        /* SDL's spelling and the character the Controls window shows. */
         {"LEFTBRACKET", SDLK_LEFTBRACKET},
         {"[", SDLK_LEFTBRACKET},
         {"RIGHTBRACKET", SDLK_RIGHTBRACKET},

@@ -1,9 +1,7 @@
 // docktest.cpp -- the --dock-test pair builder (see docktest.h).
 // Two single-stage r1.0 ships, nose-to-nose along the station's prograde,
-// co-moving on the same circular orbit. Each carries the same seven parts
-// (port to engine): docking_port_r1, capsule, rcs_r1, mono_tank_r1,
-// reaction_wheel, tank_r1h3, engine. The probe is the active ship; its
-// engine thrusts along +Z toward the station.
+// co-moving on the same circular orbit, each carrying the same seven parts.
+// The probe is the active ship; its engine thrusts along +Z toward the station.
 #include "docktest.h"
 
 #include <cmath>
@@ -45,7 +43,7 @@ DockTestShips build_dock_test_ships(const std::string &mode,
 
     const ScenarioDef *sc = scenario_by_name("rot-orbit");
 
-    /* One Part (shared render assets + hull + mass). */
+    // One Part: shared render assets + hull + mass.
     auto makePart = [&](const PartDef *def) -> Part * {
         Mesh *mesh = get_mesh(std::string("res/") + def->mesh);
         Texture *tex = get_texture(std::string("res/") + def->texture);
@@ -72,7 +70,7 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     Part *stCap  = makePart(defCap);
     Part *stPort = makePart(defPort);
     station->setRoot(stEng);
-    station->attachDown(stTank);   // nose -> tail: engine, tank, ...
+    station->attachDown(stTank);
     station->attachDown(stRw);
     station->attachDown(stMono);
     station->attachDown(stRcs);
@@ -99,7 +97,7 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     Part *prTank = makePart(defTank);
     Part *prEng  = makePart(defEng);
     probe->setRoot(prPort);
-    probe->attachDown(prCap);      // port, capsule, ... engine at the rear
+    probe->attachDown(prCap);
     probe->attachDown(prRcs);
     probe->attachDown(prMono);
     probe->attachDown(prRw);
@@ -129,9 +127,9 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     };
     const glm::dvec3 rP_i = rotAxis(rS_i);
     const glm::dvec3 vP_i = rotAxis(vS_i);
-    /* Inertial node -> the ship's rotating frame (the inverse of
-       comStateIn): rotate back, drop the frame offset, subtract the
-       frame's own velocity and the point's stasis velocity. */
+    /* Inertial -> the ship's rotating frame (the inverse of comStateIn):
+       rotate back, drop the frame offset, subtract the frame's own velocity
+       and the point's stasis velocity. */
     const glm::dmat3 Rinv = glm::transpose(station->frame->GetOrientRelTo(inert));
     const glm::dvec3 pOff = station->frame->GetPositionRelTo(inert);
     const glm::dvec3 vFrm = station->frame->GetVelocityRelTo(inert);
@@ -148,9 +146,8 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     probe->setVelocity(vP);
 
     /* Docking is intent-driven (Game::updateDocking needs BOTH halves): the
-       probe's own port is armed (its half) and the station's port is targeted
-       (the other half) -- what the player does in-game by right-clicking each
-       port -> "Arm for docking" / "Target for docking". */
+       probe's port is armed, the station's port targeted -- what the player
+       does with "Arm for docking" / "Target for docking". */
     probe->dockArmPort = prPort;
     probe->dockTargetShip = station;
     probe->dockTargetPort = stPort;

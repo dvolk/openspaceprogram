@@ -1,7 +1,6 @@
 // science.h -- experiments, the career score, and the value model.
 // Header-only (types + pure value model) so tests pin the curve without the
-// game; the family TABLE is data: res/data/experiments.json, loaded by
-// science.cpp's loadExperimentDefs.
+// game; the family TABLE is data: res/data/experiments.json.
 //
 // Experiment identity = type + body + situation (+ biome where the family is
 // biome-specific); provenance is extra data that == ignores. Recovering
@@ -44,18 +43,17 @@ struct ExperimentDef {
     }
 };
 
-// The loaded family table (res/data/experiments.json). Set once at startup
-// by loadExperimentDefs (science.cpp) -- adding an instrument is a res/
-// edit, not a recompile. Unknown families (or a pre-load lookup) fall back
-// through the helpers below: base 10, biome-specific + valid everywhere.
+// The loaded family table, set once at startup by loadExperimentDefs
+// (science.cpp) -- adding an instrument is a res/ edit, not a recompile.
+// Unknown families fall back through the helpers below: base 10,
+// biome-specific + valid everywhere.
 inline std::vector<ExperimentDef> &experimentDefs() {
     static std::vector<ExperimentDef> defs;
     return defs;
 }
-// Parse + validate like load_parts_catalog: throws std::runtime_error with
-// the file + offending field on any bad/missing data.
+// Throws std::runtime_error naming the file + offending field on any
+// bad/missing data.
 void loadExperimentDefs(const char *path);
-// Unknown family -> null (fallback: base 10, biome-specific everywhere).
 inline const ExperimentDef *defFor(const std::string &type) {
     for(const ExperimentDef &d : experimentDefs()) {
         if(d.type == type) { return &d; }
@@ -67,12 +65,11 @@ inline int baseValue(const std::string &type) {
     const ExperimentDef *d = defFor(type);
     return (d != nullptr) ? d->base_value : 10;
 }
-// Unknown family -> yes in every situation (never silently merge findings).
+// Unknown family -> yes everywhere (never silently merge findings).
 inline bool biomeSpecificIn(const std::string &type, SciSituation s) {
     const ExperimentDef *d = defFor(type);
     return (d != nullptr) ? d->biomeSpecificIn(s) : true;
 }
-// Can this experiment be RUN in `situation`? Unknown family -> yes.
 inline bool experimentValidIn(const std::string &type, SciSituation s) {
     const ExperimentDef *d = defFor(type);
     return (d == nullptr) || d->validIn(s);
@@ -132,7 +129,6 @@ inline SciSituation situationFromId(const std::string &id) {
     return SciSituation::LowOrbit;   // "low_orbit" + unknown (old saves)
 }
 
-// ASCII first-letter cap for the display name ("midlands" -> "Midlands").
 inline std::string capitalizeFirst(std::string s) {
     if(!s.empty() && s[0] >= 'a' && s[0] <= 'z') {
         s[0] = (char)(s[0] - 'a' + 'A');
@@ -152,8 +148,8 @@ inline std::string experimentName(const Experiment &e) {
 }
 
 // How a part stores findings (PartDef.experiment_storage). Capacity is per
-// experiment FAMILY. Instrument = producer (own family, 1); Courier = 1 per
-// family; Container = unlimited per family; None = holds nothing.
+// experiment FAMILY: Instrument = producer (own family, 1), Courier = 1 per
+// family, Container = unlimited, None = nothing.
 enum class ExpStorage : unsigned char { None, Instrument, Courier, Container };
 
 inline bool holdsExperiment(const std::vector<Experiment> &v,
@@ -213,7 +209,6 @@ inline bool canHoldFinding(ExpStorage role, const std::string &ownFamily,
 
 // ---- the value model ------------------------------------------------------
 
-// Landed is the baseline; flying a little more; orbit the most.
 inline double situationWeight(SciSituation s) {
     switch(s) {
         case SciSituation::Landed:     return 1.0;
@@ -281,8 +276,8 @@ struct RecoverSummary {
     std::vector<Experiment> fresh;
 };
 
-/* Bank a bag of experiments. Deduped by key first so ONE observation held by
-   N kerbals banks ONCE (without this, N crew = a farming exploit).
+/* Deduped by key first, so ONE observation held by N kerbals banks ONCE
+   (without this, N crew = a farming exploit).
    bodyMult: body name -> science_mult (see bodyWeightOf). */
 inline RecoverSummary recoverMany(Career &c, const std::vector<Experiment> &loot,
                                   const std::map<std::string, double> &bodyMult,
@@ -315,9 +310,8 @@ struct LabEntry {
     std::string line2;
 };
 
-// The body's research weight (science_mult) as a plain-english tier. The
-// exact value stays available (AtlasRow::valueExact) for a tooltip. Home is
-// the 1.0 baseline; the most exotic body in a shipped system is ~3.0.
+// The body's research weight (science_mult) as a plain-english tier; the
+// exact value stays available (AtlasRow::valueExact) for a tooltip.
 inline const char *valueWord(double v) {
     if(v < 1.1) { return "routine"; }
     if(v < 1.3) { return "modest"; }
@@ -329,22 +323,17 @@ inline const char *valueWord(double v) {
     return "extraordinary";
 }
 
-// One System Atlas dossier line (see buildAtlasRows): a label/value pair,
-// or a section title when header is set (value is then unused). Pre-built as
-// display strings -- the atlas draws them verbatim, and --atlas-dump prints
-// the same strings, so the terminal and the window cannot disagree.
+// One System Atlas dossier line (see buildAtlasRows): a label/value pair, or
+// a section title when header is set. Pre-built as display strings, so
+// --atlas-dump and the window cannot disagree.
 struct AtlasFact {
     std::string label;
     std::string value;
     bool header = false;
 };
 
-// One pre-built System Atlas row (the lab renders these; see buildAtlasRows).
-// valueWord/valueExact = the body's research weight; dv = approach Δv rounded
-// to 50 (0 = home/the star: no approach); discovered = % of the study-situations
-// covered on this body (see buildAtlasRows for the definition + limits).
-// rawName is the body's plain name (the selection key); name is the indented
-// display string. facts = the body/orbit dossier below the research rows.
+// One pre-built System Atlas row (the lab renders these; see buildAtlasRows
+// for the discovered% definition and its limits).
 struct AtlasRow {
     std::string rawName;      // the body's plain name (selection key)
     std::string name;         // indented + "(home)" marker (display)
@@ -390,15 +379,11 @@ inline std::vector<LabEntry> labEntries(const std::vector<Experiment> &recovered
 }
 
 // ---- the situation classifier --------------------------------------------
-// Flying-low is the bottom slice of the atmosphere (kFlyingLowFrac,
-// constants.h).
 
 // Low/high ORBIT cut [m ASL]: the near-body shell edge plus a margin. `soi`
 // is the NEAR-BODY (rotating-frame) SoI, not the inertial orbital sphere
-// (that one would make high-orbit nearly unreachable). The shell always
-// contains the atmosphere (bodylimits.h shellEdge), so no atmoTop term is
-// needed -- and HighOrbit begins exactly where a ship leaves the rotating
-// frame (both are one kSoiMargin-style step past the shell edge).
+// (that would make high-orbit nearly unreachable). The shell always contains
+// the atmosphere (bodylimits.h shellEdge), so no atmoTop term is needed.
 inline double orbitCutAlt(double soi, double radius, double sea_level) {
     return (soi - radius - sea_level) + kOrbitCutMargin;
 }

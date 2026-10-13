@@ -8,14 +8,14 @@ void DrawModelAt(const Camera *camera, Mesh *mesh, Shader *shader, Texture *text
                  const glm::dmat4 &xform, const DrawOpts &opts)
 {
     glm::dmat4 View = camera->GetView();
-    // The view is built in the render frame (origin = renderOrigin),
-    // so shift the geometry into that frame before the float32 cast.
+    // The view is built in the render frame (origin = renderOrigin): shift the
+    // geometry into it before the float32 cast.
     const glm::dmat4 xf = glm::translate(-camera->GetRenderOrigin()) * xform;
-    // make sure View * Model happens with double precision
+    // View * Model must happen in double precision.
     glm::dmat4 ModelView = View * xf * modelMat;
     glm::mat4 ModelViewFloat = ModelView;
-    // Precision instrument (PRECDBG=1): per-draw ModelView translation,
-    // double vs the float32 the GPU gets. Capped at 4000 lines.
+    // Precision instrument (PRECDBG=1): per-draw ModelView translation, double
+    // vs the float32 the GPU gets.
     {
         static const bool on = getenv("PRECDBG") != nullptr;
         static int s_n = 0;
@@ -41,8 +41,8 @@ void DrawModelAt(const Camera *camera, Mesh *mesh, Shader *shader, Texture *text
     shader->setUniform_vec3(5, opts.tint);
     shader->setUniform_vec1(6, opts.flat);
 
-    /* Translucent (ghost) pass: blend over what is behind and don't write
-       depth, so a ghost previews without occluding the ship under it. */
+    /* Translucent (ghost) pass: blend, no depth write, so a ghost previews
+       without occluding the ship under it. */
     const bool blend = opts.alpha < 1.0f;
     if(blend) {
         glEnable(GL_BLEND);

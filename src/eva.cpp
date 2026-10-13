@@ -18,8 +18,8 @@ static const double kWalkAccel   = 10.0;    // m/s^2 toward walkSpeed (damping)
 static const double kJumpSpeed   = 2.5;     // m/s radial kick
 // RCS: fixed thrust (N), not fixed accel -- no speed cap; propellant is the limiter.
 static const double kRcsIsp      = 220.0;   // s, monopropellant efficiency
-static const double kRcsForce    = 194.1;   // N; ~2.0 m/s^2 at the 97.05 kg wet suit
-static const double kRcsFlow     = 0.090;   // kg/s = kRcsForce / (kRcsIsp * 9.81); ~111 s burn for 10 kg
+static const double kRcsForce    = 194.1;   // N; ~2 m/s^2 on the wet suit
+static const double kRcsFlow     = 0.090;   // kg/s = kRcsForce / (kRcsIsp * 9.81)
 static const double kEvaTorque   = 100.0;   // N m attitude authority (space)
 static const double kGroundTorque = 300.0;  // N m attitude authority (ground)
 static const double kMaxRate     = 6.0;     // rad/s attitude slew cap
@@ -37,8 +37,6 @@ void evaArmCommands(Game &g, const std::function<bool(Slot)> &active) {
     const glm::dvec3 sright = evaScreenRight(fwd, up);
     k->camBasis = evaCamBasis(fwd, up);
 
-    // Grounded: Bullet contact OR analytic terrain (meshes only exist at max
-    // LOD under the camera, so the analytic side is load-bearing).
     const glm::dvec3 pos = k->get_center_of_mass();
     const glm::dvec3 radial = glm::normalize(pos);
     const double alt = glm::length(pos)
@@ -46,14 +44,12 @@ void evaArmCommands(Game &g, const std::function<bool(Slot)> &active) {
     const double rest = k->restAlt();
     k->grounded = BodyInContact(k->hull) || alt < rest + kGroundBand;
     if(k->jumping) {
-        /* Release once the jump's outward kick is spent. Releasing when
-           contact clears never fires for a hop that never leaves contact --
-           a jump into the pad wall eats the kick, the kerbal slides back
-           onto the floor and stays in contact indefinitely -- and releasing
-           on altitude never fires when the apex is under the band (high
-           gravity). Either way the latch sticks and the kerbal is stuck in
-           space mode, where W burns suit RCS instead of walking. Gravity
-           spends the kick on any body. */
+        /* Release once the jump's outward kick is spent. Releasing on
+           contact-clear never fires for a hop that never leaves contact;
+           releasing on altitude never fires when the apex is under the band.
+           Either way the latch sticks and the kerbal is stuck in space mode,
+           where W burns suit RCS instead of walking. Gravity spends the kick
+           on any body. */
         if(glm::dot(k->GetVel(), radial) > 0.0) { k->grounded = false; }
         else { k->jumping = false; }
     }
@@ -102,7 +98,7 @@ void Kerbal::applyEva(double h) {
     const double rest = restAlt();
 
     // Analytic floor guard: snap back to standing height where terrain meshes
-    // are not loaded (fires only without Bullet contact).
+    // are not loaded (only without Bullet contact).
     const double alt = glm::length(pos) - surfR;
     if(alt < rest - kFloorDrop) {
         placeShipAtCom(radial * (surfR + rest), partRot(controller));
@@ -117,7 +113,6 @@ void Kerbal::applyEva(double h) {
             jumpRequested = false;
             SetVelocity(b, partVel(controller) + radial * kJumpSpeed);
         }
-        // Walk steering: drive tangent velocity toward walkDir * walkSpeed.
         const glm::dvec3 v = partVel(controller);
         const glm::dvec3 vh = evaOntoPlane(v, radial);
         glm::dvec3 a = (walkDir * kWalkSpeed - vh) / h;
@@ -126,8 +121,8 @@ void Kerbal::applyEva(double h) {
         if(alen > amax) { a *= amax / alen; }
         ApplyCentralForce(b, b->mass * a);
 
-        // Feet are frictionless (the Kerbal ctor, eva.h) so the COM steering
-        // force cannot tip the capsule; overwriting the pose stalls translation instead.
+        // Feet are frictionless (Kerbal ctor) so the COM steering force cannot
+        // tip the capsule; overwriting the pose would stall translation instead.
         const glm::dvec3 faceHint = (glm::length2(walkDir) > 0.0)
             ? walkDir : partAxis(controller, 1);
         slewTo(evaStandTarget(radial, faceHint), h, kGroundTorque);
@@ -142,8 +137,7 @@ void Kerbal::applyEva(double h) {
             }
             if(haveFuel) {
                 ApplyCentralForce(b, kRcsForce * rcsWorldDir());
-                // The render pass draws the COM puff off this (render.cpp),
-                // exactly as it does for a ship's applyRcsForce.
+                // The render pass draws the COM puff off this (render.cpp).
                 rcsFiring = true;
             }
         }

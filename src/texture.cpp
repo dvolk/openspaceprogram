@@ -28,9 +28,9 @@ static Texture *load_texture_file(const char *filename, bool mipmap) {
     }
     Texture * ret = new Texture;
 
-    // SDL3: 32-bit names are inverted from SDL2 on little-endian. The
-    // [R,G,B,A] byte order GL_RGBA reads is SDL_PIXELFORMAT_ABGR8888;
-    // RGBA8888 would reverse the channels.
+    // SDL3 32-bit format names are inverted on little-endian: the [R,G,B,A]
+    // bytes GL_RGBA reads come from SDL_PIXELFORMAT_ABGR8888 (RGBA8888 would
+    // swap the channels).
     SDL_Surface* glSurface = SDL_ConvertSurface(res_texture, SDL_PIXELFORMAT_ABGR8888);
     SDL_DestroySurface(res_texture);
 
@@ -46,14 +46,14 @@ static Texture *load_texture_file(const char *filename, bool mipmap) {
             aniso_printed = true;
         }
     }
-    glTexImage2D(GL_TEXTURE_2D, // target
+    glTexImage2D(GL_TEXTURE_2D,
                  0,  // level, 0 = base; the mip chain is generated below
-                 GL_RGBA, // internalformat
-                 glSurface->w,  // width
-                 glSurface->h,  // height
-                 0,  // border, always 0 in OpenGL ES
-                 GL_RGBA,  // format
-                 GL_UNSIGNED_BYTE, // type
+                 GL_RGBA,
+                 glSurface->w,
+                 glSurface->h,
+                 0,  // border, always 0
+                 GL_RGBA,
+                 GL_UNSIGNED_BYTE,
                  glSurface->pixels);
     SDL_DestroySurface(glSurface);
 
@@ -68,7 +68,6 @@ static Texture *load_texture_file(const char *filename, bool mipmap) {
     return ret;
 }
 
-/* --- the shared file-asset registry: one GL texture per (file, mipmap) pair. --- */
 static std::map<std::string, Texture *> s_textures;
 
 Texture *get_texture(const std::string &path, bool mipmap) {
@@ -98,7 +97,6 @@ Texture *make_texture_r8(int w, int h, const unsigned char *rgba,
     Texture *ret = new Texture;
     glGenTextures(1, &ret->id);
     glBindTexture(GL_TEXTURE_2D, ret->id);
-    // NEAREST for discrete heatmap cells; linear=true for smooth content.
     const GLint filt = linear ? GL_LINEAR : GL_NEAREST;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filt);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filt);
@@ -124,7 +122,7 @@ Texture *make_coverage_texture(int w, int h, const unsigned char *r,
                     wrap_s ? GL_REPEAT : GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, r);
-    // Mip chain + trilinear minify (the deck minifies at distance / grazing angles).
+    // Mip chain + trilinear minify: the deck minifies at grazing angles.
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     float aniso = max_anisotropy();

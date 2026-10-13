@@ -17,8 +17,8 @@ namespace {
 void floorEnter(Game &) {}
 void floorExit(Game &) {}
 
-// Flight has no enter of its own: re-centering happens at the caller
-// (setBaseScene skips enter when the base is already Flight).
+// Flight has no enter of its own: re-centering is the caller's (setBaseScene
+// skips enter when the base is already Flight).
 
 // The flight widget set, in draw order.
 void flightDrawUi(Game &g) {
@@ -28,21 +28,19 @@ void flightDrawUi(Game &g) {
     drawSaveLoad(g);
 }
 
-// The VAB's per-frame step: editor mouse half, then the world tick (time
-// passes while you build). Launch is the caller's: vabFireHooks runs first.
+// Editor mouse half, then the world tick (time passes while you build). Launch
+// is the caller's: vabFireHooks runs first.
 void vabUpdateLive(Game &g) {
     vabUpdate(g);
     tick(g);
 }
-// The editor's widgets: build tree + top bar, then the shared windows.
 void vabDrawUi(Game &g) {
     drawVabUI(g);
     drawUIReadouts(g);
     drawSaveLoad(g);
 }
 
-// Title widgets. drawUIReadouts goes through drawWin, so only the shared
-// windows appear -- the flight readouts are not this scene's at all.
+// drawUIReadouts goes through drawWin, so only this scene's windows appear.
 void titleDrawUi(Game &g) {
     drawUIReadouts(g);
     drawTitleMenu(g);
@@ -51,8 +49,8 @@ void titleDrawUi(Game &g) {
     drawSaveLoad(g);
 }
 
-// Hub enter: aim the orbit camera at the home planet. pushScene parked the
-// flight camera, so "Resume Flight" hands it back exactly.
+// Aim the orbit camera at the home planet. pushScene parked the flight camera,
+// so "Resume Flight" hands it back exactly.
 void spaceCenterEnter(Game &g) {
     if(g.camera != nullptr && g.home != nullptr) {
         g.camera->mode = CAM_ORBIT;
@@ -68,7 +66,6 @@ void spaceCenterEnter(Game &g) {
     g.toastLog("Space Center");
 }
 
-// Hub widgets: top bar, root menu, then the shared windows on top.
 void spaceCenterDrawUi(Game &g) {
     drawSpaceCenterTopBar(g);
     drawSpaceCenterMenu(g);
@@ -77,15 +74,13 @@ void spaceCenterDrawUi(Game &g) {
     drawSaveLoad(g);
 }
 
-/* A scene that shows no 3D world still runs refreshWorld: the live sim coasts
-   the ships, the map and the shared readouts read the g.view snapshot, and the
-   terrain LOD is what gives the ground its collision bodies -- so the state
-   pass is not optional and only the pixels stop (#212). The Tracking Station's
-   old "renders no 3D world, but MUST refresh g.view" row collapses into this. */
+/* A scene that shows no 3D world still runs refreshWorld: the map and the shared
+   readouts read the g.view snapshot, and the terrain LOD gives the ground its
+   collision bodies -- the state pass is not optional, only the pixels stop (#212). */
 void noPaint(Game &) {}
 
-// The full-screen map is the scene's identity (force it open), then the
-// ship list (whose "Back"/"Fly" are the navigation), then shared windows.
+// The map is the scene's identity (force it open); the ship list's "Back"/"Fly"
+// are the navigation.
 void trackingDrawUi(Game &g) {
     setWinOpen(W_TrackingMap, true);
     drawTrackingMap(g);
@@ -94,8 +89,7 @@ void trackingDrawUi(Game &g) {
     drawSaveLoad(g);
 }
 
-// Research Lab widgets: the archive (Root) + the System Atlas, then shared
-// windows. The lab is drawn first -- the Atlas docks right of it.
+// The lab is drawn first -- the Atlas docks right of it.
 void researchLabDrawUi(Game &g) {
     setWinOpen(W_ResearchLab, true);
     drawResearchLab(g);
@@ -106,11 +100,9 @@ void researchLabDrawUi(Game &g) {
 
 }   // namespace
 
-/* Rows: name / sim / pilot / backdrop / wins, then enter / exit, then the
-   per-frame update / refresh / paint / drawUi / keys. Every scene refreshes
-   every frame; only the scenes that show a world paint it. Designated
-   initializers because update / refresh / paint share one signature, so a
-   swapped pair would compile silently and paint with no state. */
+/* Every scene refreshes every frame; only the scenes that show a world paint it.
+   Designated initializers because update / refresh / paint share one signature,
+   so a swapped pair would compile silently and paint with no state. */
 const SceneDef kScenes[(size_t)SceneId::COUNT] = {
     // Title runs the sim + world so the backdrop body turns behind the menu;
     // its key map is the flight one (vessel keys no-op with no vessel).
@@ -122,8 +114,7 @@ const SceneDef kScenes[(size_t)SceneId::COUNT] = {
       .wins = kFlightWins, .enter = floorEnter, .exit = floorExit,
       .update = tick, .refresh = refreshWorld, .paint = paintWorld,
       .drawUi = flightDrawUi, .keys = flightKeyActions },
-    // The editor: flat studio clear; live sim (time passes while you build);
-    // the build tree itself is physics-free.
+    // The build tree itself is physics-free.
     { .name = "vab", .sim = true, .pilot = false, .backdrop = Backdrop::Studio,
       .wins = kVabWins, .enter = vabEnter, .exit = vabExit,
       .update = vabUpdateLive, .refresh = refreshVab, .paint = paintVab,
@@ -134,16 +125,12 @@ const SceneDef kScenes[(size_t)SceneId::COUNT] = {
       .enter = spaceCenterEnter, .exit = floorExit,
       .update = tick, .refresh = refreshWorld, .paint = paintWorld,
       .drawUi = spaceCenterDrawUi, .keys = hubKeyActions },
-    // Tracking Station: live sim, no world paint (the map covers it) -- but
-    // the world still refreshes, which is what the map's snapshot and the
-    // ground's collision bodies come from.
+    // Live sim, no world paint (the map covers it).
     { .name = "tracking", .sim = true, .pilot = false,
       .backdrop = Backdrop::Sky, .wins = kTrackingWins,
       .enter = floorEnter, .exit = floorExit,
       .update = tick, .refresh = refreshWorld, .paint = noPaint,
       .drawUi = trackingDrawUi, .keys = trackingKeyActions },
-    // Research Lab: studio backdrop, live sim behind it. Same deal: the
-    // readouts the lab shares read g.view, so the world refreshes unseen.
     { .name = "research", .sim = true, .pilot = false,
       .backdrop = Backdrop::Studio, .wins = kResearchWins,
       .enter = researchLabEnter, .exit = floorExit,
@@ -187,9 +174,9 @@ void restoreCamera(Game &g, const CameraSnapshot &s) {
     if(s.mode == CAM_FREE) {
         g.camera->setFreePose(s.pos, s.fwd, s.up);
     } else if(s.mode == CAM_FIRST) {
-        // Pose is re-derived from the ship each frame; seed the stored one so
-        // an immediate ComputeView is not garbage. The turntable state comes
-        // back too: leaving first must return the pre-push orbit framing.
+        // Pose is re-derived from the ship each frame: seed the stored one so an
+        // immediate ComputeView is not garbage. Turntable state comes back too --
+        // leaving first must return the pre-push orbit framing.
         g.camera->pos = s.pos;
         g.camera->forward = s.fwd;
         g.camera->up = s.up;

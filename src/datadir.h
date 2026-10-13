@@ -1,8 +1,7 @@
 #pragma once
 
-// datadir.h -- where the game keeps its per-user data (saves/ + screenshots/
-// + settings.json). Uses the per-OS user data directory (SDL_GetPrefPath);
-// --data-dir overrides. Header-only, no game state.
+// datadir.h -- per-user data (saves/, screenshots/, ships/, settings.json).
+// Default is the per-OS user data dir (SDL_GetPrefPath); --data-dir overrides.
 
 #include <SDL3/SDL.h>
 
@@ -12,19 +11,19 @@
 
 namespace datadir {
 
-// The app name for the default directory (SDL_GetPrefPath's `app` argument).
+// SDL_GetPrefPath's `app` argument.
 static const char *kAppName = "openspaceprogram";
 
-// Create dir (and parents) if missing. Non-throwing (a failure surfaces later
-// at the first write, not as an uncaught exception at startup).
+// Create dir (and parents). Non-throwing: a failure surfaces at the first
+// write, not as an uncaught exception at startup.
 inline void make_dir(const std::string &dir) {
     if(dir.empty()) { return; }
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
 }
 
-// The data directory (trailing '/'). Empty until init(); accessors fall back
-// to cwd-relative names (for headless unit tests that never init).
+// The data directory (trailing '/'). Empty until init(); accessors then fall
+// back to cwd-relative names.
 inline std::string &dir() {
     static std::string d;
     return d;
@@ -41,8 +40,7 @@ inline void set(const std::string &d) {
     make_dir(dir());
 }
 
-// Resolve + store the data directory. `override` (--data-dir) wins when
-// non-empty; otherwise the per-OS default.
+// Resolve + store: `override` (--data-dir) wins, else the per-OS default.
 inline const std::string &init(const std::string &override) {
     std::string base = override;
     if(base.empty()) {
@@ -59,8 +57,7 @@ inline const std::string &init(const std::string &override) {
     return dir();
 }
 
-// saves/, screenshots/, ships/, and settings.json -- all under the data
-// directory (user content never lands in the install tree).
+// User content never lands in the install tree.
 inline const std::string saves() { return dir() + "saves"; }
 inline const std::string screenshots() { return dir() + "screenshots"; }
 inline const std::string ships() { return dir() + "ships"; }

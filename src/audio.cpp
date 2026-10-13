@@ -7,9 +7,8 @@
 
 bool Audio::init() {
     if(mixer_ != nullptr) { return true; }
-    // AUDIO_DEBUG=1 stays a session-wide trace with no flag and no rebuild;
-    // --audio-log sets dbg_ before this runs, so OR the env in rather than
-    // overwrite the flag.
+    // AUDIO_DEBUG=1 is a session-wide trace needing no rebuild; --audio-log
+    // sets dbg_ before this runs, so OR the env in rather than overwrite it.
     if(getenv("AUDIO_DEBUG") != nullptr) { dbg_ = true; }
     if(!MIX_Init()) {
         printf("audio: unavailable (%s) -- running silent\n", SDL_GetError());
@@ -17,7 +16,6 @@ bool Audio::init() {
     }
     // Generous device buffer: the ALSA backend is not forgiving of a briefly
     // delayed callback (the "crack" when the engine track starts mixing).
-    // Extra latency is fine for ambient game SFX/music.
     SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "8192");
 
     // spec = NULL: take the device's native format; the mixer converts.
@@ -72,7 +70,6 @@ MIX_Audio *Audio::loadAudio(const std::string &path, bool predecode) {
     const std::string key = resdir::path(path);
     auto it = audios_.find(key);
     if(it != audios_.end()) { return it->second; }
-    // predecode: SFX are tiny WAVs (free); music streams (a full decode stalls boot).
     MIX_Audio *a = MIX_LoadAudio(mixer_, key.c_str(), predecode);
     if(a == nullptr) {
         printf("audio: cannot load %s: %s\n", path.c_str(), SDL_GetError());
@@ -107,7 +104,7 @@ void Audio::playOnce(const std::string &path, float balance) {
     MIX_Track *t = MIX_CreateTrack(mixer_);
     if(t == nullptr) { return; }
     if(!MIX_SetTrackAudio(t, a)) { MIX_DestroyTrack(t); return; }
-    const float gain = sfxVol_ * balance;   // balance trims a hot one-shot down
+    const float gain = sfxVol_ * balance;
     MIX_SetTrackGain(t, gain);
     const bool ok = MIX_PlayTrack(t, 0);
     if(dbg_) {
@@ -153,7 +150,7 @@ void Audio::setLoop(const char *path, bool active, float gain) {
     if(loop_ == nullptr || loopPath_ != path) {
         // A different loop: retire the old track (its audio stays cached).
         if(loop_ != nullptr) { MIX_DestroyTrack(loop_); }
-        MIX_Audio *a = loadAudio(path, true);   // engine hum: tiny WAV, predecode is free
+        MIX_Audio *a = loadAudio(path, true);
         if(a == nullptr) { return; }
         loop_ = MIX_CreateTrack(mixer_);
         if(loop_ == nullptr) { return; }
@@ -189,7 +186,7 @@ void Audio::setLoop(const char *path, bool active, float gain) {
 void Audio::setMusic(const std::string &path) {
     if(mixer_ == nullptr) { return; }
     if(music_ != nullptr && musicPath_ == path && MIX_TrackPlaying(music_)) { return; }
-    MIX_Audio *a = loadAudio(path, false);   // music: stream it (a full decode stalls boot)
+    MIX_Audio *a = loadAudio(path, false);
     if(a == nullptr) { return; }
     if(music_ == nullptr) {
         music_ = MIX_CreateTrack(mixer_);

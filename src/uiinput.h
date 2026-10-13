@@ -5,10 +5,8 @@
 
 struct Game;
 
-/* Arm the synthetic imgui input: install the imgui frame hook and turn on the
-   item registry, while any --ui-click / --ui-list work remains. Called from
-   emit_sim_events each loop iteration; the clicks themselves are resolved by
-   the hook, on the items the PRECEDING imgui pass drew, and queued through
-   imgui's own input queue so the widget activates through normal
-   hit-testing. */
+/* Arm the synthetic imgui input: install the frame hook and the item registry
+   while --ui-click / --ui-list work remains. Clicks resolve on the items the
+   PRECEDING imgui pass drew and queue through imgui's own input path, so the
+   widget activates through normal hit-testing. */
 void emit_ui_input(Game &g);

@@ -1,5 +1,3 @@
-// inventory.cpp -- transfer inventory items between containers.
-
 #include "inventory.h"
 #include "part.h"
 
@@ -27,13 +25,13 @@ static bool removeFromContainer(Part *item) {
         c.erase(it2);
     }
     item->container = nullptr;
-    // the item (and its nested inventory) no longer rides the container's vehicle
+    // the item no longer rides the container's vehicle
     inventorySetOwner(item, nullptr);
     return true;
 }
 
-// Walk `contents` (what effectiveMass walks), not just ownedContents -- contents
-// also holds crew, and a cycle can run through a kerbal's suit.
+// Walks `contents`, not just ownedContents: contents also holds crew, and a
+// cycle can run through a kerbal's suit.
 static bool inSubtree(Part *root, Part *target) {
     for(Part *c : root->contents) {
         if(c == target) { return true; }
@@ -62,8 +60,8 @@ static float drainSubtree(Part *root, int res, float amt) {
         if(have > 0.0f) {
             const float take = (have < amt - drained) ? have : (amt - drained);
             c->resources.current[res] = have - take;
-            /* body->mass is DRY structure (fuel rides effectiveMass via
-               resources.current), so a drain only decrements the contents. */
+            /* body->mass is DRY structure (fuel rides effectiveMass through
+               resources.current), so a drain only touches the contents. */
             drained += take;
         }
         if(drained < amt) { drained += drainSubtree(c, res, amt - drained); }
@@ -100,8 +98,8 @@ bool inventoryTransfer(Part *item, Part *dest) {
     if(item == nullptr || dest == nullptr) { return false; }
     if(item == dest) { return false; }
     if(item->container == nullptr) { return false; }
-    // check dest capacity AND the cycle BEFORE removing from source (a failed
-    // transfer must not orphan the item)
+    // Check capacity AND the cycle before removing from source: a failed
+    // transfer must not orphan the item.
     if(dest->def == nullptr || dest->def->inventory_capacity <= 0) { return false; }
     if((int)dest->ownedContents.size() >= dest->def->inventory_capacity) { return false; }
     if(inSubtree(item, dest)) { return false; }

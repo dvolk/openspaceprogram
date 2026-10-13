@@ -12,7 +12,7 @@
 #include "orbit.h"
 
 // Relative-tolerant equality: coasting re-propagates leave last-bit noise on
-// the same conic; exact == used to miss every frame and thrash the cache.
+// the same conic, so exact == would thrash the cache.
 inline bool orbitKeyEq(double x, double y) {
     const double d = std::fabs(x - y);
     const double s = std::max(std::fabs(x), std::fabs(y));
@@ -35,10 +35,10 @@ struct OrbitSampleCache {
     double apoapsis = -1.0;  // cheap LOD / view-cull input
     std::vector<glm::dvec3> pts;  // in the focus's inertial frame
 
-    // use_cache: caller decides (a ship passes its onRails flag; off rails the
-    // orbit is moving, so re-sample every frame). On a near-circle (e <= 1e-2)
-    // the periapsis direction is noise and is NOT part of the key (keying on it
-    // would thrash). Returns empty for a non-closed orbit.
+    // use_cache: caller decides (a ship passes its onRails flag; off rails
+    // the orbit is moving, so re-sample every frame). On a near-circle
+    // (e <= 1e-2) the periapsis direction is noise and is NOT part of the key.
+    // Returns empty for a non-closed orbit.
     const std::vector<glm::dvec3> &sample(const glm::dvec3 &pos,
                                           const glm::dvec3 &vel, double mu,
                                           int N, bool use_cache = true) {
@@ -118,9 +118,9 @@ inline int orbitSamplesForRadius(double r_px) {
 }
 
 // Sample an OPEN trajectory as a finite arc in TRUE ANOMALY, truncated at
-// r_cap, symmetric about periapsis. Nothing to cache (no period); cheap to
-// re-sample per frame. r_cap should be >= the ship's current radius so the
-// ship lies on the arc. Empty for a closed orbit or degenerate state.
+// r_cap, symmetric about periapsis. Nothing to cache (no period). r_cap must
+// be >= the ship's current radius so the ship lies on the arc. Empty for a
+// closed orbit or degenerate state.
 inline std::vector<glm::dvec3> sampleOpenTrajectory(const glm::dvec3 &pos,
                                                      const glm::dvec3 &vel,
                                                      double mu, int N,
