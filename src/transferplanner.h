@@ -70,13 +70,18 @@ public:
     // POST time, so sweeps posted in the same sim instant share a stamp and the
     // second grid never reaches the screen.
     int pc_rev = 0;
-    // Custom dep/ToF ranges; off = auto range (see Porkchop window).
+    // Custom dep/ToF ranges; off = auto range (see Porkchop window). Seconds.
     bool   pcCustomDep = false;
     float  pcDepLo = 0.0f;
     float  pcDepHi = 0.0f;
     bool   pcCustomTof = false;
     float  pcTofLo = 60.0f;
     float  pcTofHi = 0.0f;
+    // The current target's own period about the shared parent (s), 0 if it is
+    // not on a closed orbit. The porkchop range sliders scale by this: the
+    // interesting window for a planet is months, for a co-orbital phasing leg
+    // longer still, and no fixed ceiling fits both.
+    double pc_period = 0.0;
     double pc_computed_at = 0.0;
     // "Send best": absolute departure time to count down to. Dropped on target change.
     bool   xfer_from_porkchop = false;

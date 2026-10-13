@@ -798,41 +798,65 @@ void drawUIReadouts(Game &g) {
                                 "lands)");
         }
 
-        // Axis ranges. Off = auto (departure 0..one target period; ToF 60 s..three);
-        // On = the two sliders, in seconds.
-        const float kRangeSliderMax = 604800.0f; // 7 days
+        // Axis ranges. Off = auto (departure 0..one target period; ToF 60 s..
+        // three). On = the sliders, whose ends scale with the target: a fixed
+        // ceiling cannot express a Mars window, let alone a 1-revolution
+        // phasing leg, and it silently clamped the seeded range to a week.
+        const double period = planner.pc_period > 0.0 ? planner.pc_period : 86400.0;
+        // 3x/9x the auto end, but never below the week the sliders used to
+        // stop at: a moon's three periods are hours, and a player exploring
+        // past them should not find the handle shorter than before.
+        const float dep_max = (float)std::max(3.0 * period, 604800.0);
+        const float tof_max = (float)std::max(9.0 * period, 604800.0);
+        {
+            char a1[40], a2[40];
+            ImGui::TextDisabled("auto: depart 0 .. %s   ToF 60 s .. %s",
+                                fmt_time(period, a1, sizeof a1),
+                                fmt_time(3.0 * period, a2, sizeof a2));
+        }
         if(ImGui::Checkbox("Departure range", &planner.pcCustomDep)
            && planner.pcCustomDep) {
-            // Just enabled: seed from the last sweep's range, or 0 .. 1 day.
+            // Just enabled: start from what the last sweep actually used.
             planner.pcDepLo = pc.valid ? (float)pc.t_dep_lo : 0.0f;
-            planner.pcDepHi = pc.valid
-                ? (pc.t_dep_hi < kRangeSliderMax ? (float)pc.t_dep_hi
-                                                 : kRangeSliderMax)
-                : 86400.0f;
+            planner.pcDepHi = pc.valid ? (float)pc.t_dep_hi : (float)period;
         }
         if(planner.pcCustomDep) {
+            // The slider prints the raw seconds (drag with it, ctrl+click to
+            // type); the human time goes beside it, since 1.8e+08 s means
+            // nothing to anyone planning a launch.
+            ImGui::PushItemWidth(150.0f);
             ImGui::SliderFloat("start (dep)", &planner.pcDepLo, 0.0f,
-                               kRangeSliderMax, "%.0f s");
+                               dep_max, "%.3g s");
+            ImGui::SameLine();
+            { char b[40]; ImGui::TextDisabled("%s", fmt_time(planner.pcDepLo, b, sizeof b)); }
             ImGui::SliderFloat("end (dep)", &planner.pcDepHi, 0.0f,
-                               kRangeSliderMax, "%.0f s");
+                               dep_max, "%.3g s");
+            ImGui::SameLine();
+            { char b[40]; ImGui::TextDisabled("%s", fmt_time(planner.pcDepHi, b, sizeof b)); }
+            ImGui::PopItemWidth();
         }
         if(ImGui::Checkbox("ToF range", &planner.pcCustomTof)
            && planner.pcCustomTof) {
-            // Just enabled: seed from the last sweep's range, or 60 s .. 1 day.
+            // Just enabled: start from what the last sweep actually used.
             planner.pcTofLo = pc.valid ? (float)pc.tof_lo : 60.0f;
-            planner.pcTofHi = pc.valid
-                ? (pc.tof_hi < kRangeSliderMax ? (float)pc.tof_hi
-                                               : kRangeSliderMax)
-                : 86400.0f;
+            planner.pcTofHi = pc.valid ? (float)pc.tof_hi : (float)(3.0 * period);
         }
         if(planner.pcCustomTof) {
+            ImGui::PushItemWidth(150.0f);
             ImGui::SliderFloat("start (ToF)", &planner.pcTofLo, 60.0f,
-                               kRangeSliderMax, "%.0f s");
+                               tof_max, "%.3g s");
+            ImGui::SameLine();
+            { char b[40]; ImGui::TextDisabled("%s", fmt_time(planner.pcTofLo, b, sizeof b)); }
             ImGui::SliderFloat("end (ToF)", &planner.pcTofHi, 60.0f,
-                               kRangeSliderMax, "%.0f s");
+                               tof_max, "%.3g s");
+            ImGui::SameLine();
+            { char b[40]; ImGui::TextDisabled("%s", fmt_time(planner.pcTofHi, b, sizeof b)); }
+            ImGui::PopItemWidth();
         }
         if(planner.pcCustomDep || planner.pcCustomTof) {
-            ImGui::TextDisabled("(press Compute / P to re-sweep)");
+            ImGui::TextDisabled("(press Compute / P to re-sweep. Bounding the "
+                                "ToF is how you ask for the cheapest window "
+                                "that arrives by then.)");
         }
 
         if(!pc.valid) {

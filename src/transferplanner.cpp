@@ -44,6 +44,17 @@ struct InertialTarget {
     double tof_max = 3.0 * 86400.0;
     bool capture = false;
 };
+
+// Period of the conic through (r, v) under mu (s); 0 if it is not closed.
+// Works for a body or a ship, since both are Keplerian about the same parent.
+double orbitalPeriod(const glm::dvec3 &r, const glm::dvec3 &v, double mu) {
+    const double rl = glm::length(r);
+    if(mu <= 0.0 || rl <= 0.0) { return 0.0; }
+    const double energy = 0.5 * glm::dot(v, v) - mu / rl;
+    if(energy >= 0.0) { return 0.0; }
+    const double a = -mu / (2.0 * energy);
+    return 2.0 * std::numbers::pi * std::sqrt(a * a * a / mu);
+}
 InertialTarget targetInertial(const TransferPlanner::XferTarget &t,
                               Frame *inertial) {
     InertialTarget d;
@@ -69,21 +80,34 @@ InertialTarget targetInertial(const TransferPlanner::XferTarget &t,
         d.r = O * tcom + tsf->GetPositionRelTo(inertial);
         d.v = O * (t.ship->GetVel() + tsf->GetStasisVelocity(tcom))
             + tsf->GetVelocityRelTo(inertial);
+        // A ship has no orb_ang_speed to read, so scale the search by its own
+        // conic. The 3-day default is nonsense for a 1-hour orbit (150 ToF
+        // samples spread over days) and too tight for a co-orbital phasing
+        // window, which is measured in target periods (#136).
+        const double T = orbitalPeriod(d.r, d.v, inertial->body->mu);
+        if(T > 0.0) { d.tof_max = 3.0 * T; }
     }
     return d;
 }
 
-// One [porkchop] line per swept grid (the shape e2e/run.py parses).
+// One [porkchop] line per swept grid (the shape e2e/run.py parses). The swept
+// range travels with the result: dv_min means nothing without the window it
+// was the best inside.
 void logPorkchop(double t_now, const std::string &target,
                  const PorkchopResult &res, double sweep_ms) {
     if(res.valid) {
-        printf("[porkchop] t=%.1fs target=\"%s\" %dx%d dv_min=%.6g m/s "
-               "dv_hi=%.6g m/s t_dep_min=%.6g s tof_min=%.6g s sweep=%.1f ms\n",
+        printf("[porkchop] t=%.1fs target=\"%s\" %dx%d "
+               "dep=[%.0f,%.0f]s tof=[%.0f,%.0f]s "
+               "dv_min=%.6g m/s dv_hi=%.6g m/s t_dep_min=%.6g s tof_min=%.6g s "
+               "sweep=%.1f ms\n",
                t_now, target.c_str(), res.n_dep, res.n_tof,
+               res.t_dep_lo, res.t_dep_hi, res.tof_lo, res.tof_hi,
                res.dv_min, res.dv_hi, res.t_dep_min, res.tof_min, sweep_ms);
     } else {
-        printf("[porkchop] t=%.1fs target=\"%s\" no-solution sweep=%.1f ms\n",
-               t_now, target.c_str(), sweep_ms);
+        printf("[porkchop] t=%.1fs target=\"%s\" no-solution "
+               "dep=[%.0f,%.0f]s tof=[%.0f,%.0f]s sweep=%.1f ms\n",
+               t_now, target.c_str(), res.t_dep_lo, res.t_dep_hi,
+               res.tof_lo, res.tof_hi, sweep_ms);
     }
     fflush(stdout);
 }
@@ -141,6 +165,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         xfer_target = -1;
         xfer.valid = false;
         xfer.burn_dir = glm::dvec3(0.0);
+        pc_period = 0.0;
         return;
     }
     {
@@ -193,6 +218,10 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
             const InertialShip s1 = shipInertial(g, com, vel);
             const XferTarget &t = xferTargets[xfer_target];
             const InertialTarget d = targetInertial(t, s1.inertial);
+            // Scale for the porkchop range sliders: one target period, the
+            // same quantity the auto range is built from (tof_max = 3 of
+            // them), so the sliders' ends and the auto window cannot disagree.
+            pc_period = d.tof_max / 3.0;
 
             TransferSolution sol;
             if(xfer_auto) {

@@ -73,7 +73,8 @@ XFER_RE = re.compile(
 )
 PORKCHOP_RE = re.compile(
     r"\[porkchop\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+"
-    r"(\d+)x(\d+)\s+dv_min=([-\d.e+]+) m/s\s+dv_hi=([-\d.e+]+) m/s\s+"
+    r"(\d+)x(\d+)\s+dep=\[([-\d.e+]+),([-\d.e+]+)\]s\s+tof=\[([-\d.e+]+),([-\d.e+]+)\]s\s+"
+    r"dv_min=([-\d.e+]+) m/s\s+dv_hi=([-\d.e+]+) m/s\s+"
     r"t_dep_min=([-\d.e+]+) s\s+tof_min=([-\d.e+]+) s"
 )
 SURFMAP_RE = re.compile(
@@ -283,10 +284,14 @@ def parse_xfer(out):
 def parse_porkchop(out):
     rows = []
     for m in PORKCHOP_RE.finditer(out):
-        (t, target, n_dep, n_tof, dv_min, dv_hi, t_dep_min, tof_min) = m.groups()
+        (t, target, n_dep, n_tof, dep_lo, dep_hi, tof_lo, tof_hi,
+         dv_min, dv_hi, t_dep_min, tof_min) = m.groups()
         rows.append({
             "t": float(t), "target": target,
             "n_dep": int(n_dep), "n_tof": int(n_tof),
+            # The window the sweep searched, not just what it found in it.
+            "dep_lo": float(dep_lo), "dep_hi": float(dep_hi),
+            "tof_lo": float(tof_lo), "tof_hi": float(tof_hi),
             "dv_min": float(dv_min), "dv_hi": float(dv_hi),
             "t_dep_min": float(t_dep_min), "tof_min": float(tof_min),
         })
