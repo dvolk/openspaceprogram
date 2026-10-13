@@ -26,6 +26,7 @@ struct TransferSolution {
     glm::dvec3 v_arrival;        // transfer-conic velocity at r2 (parent frame)
     glm::dvec3 v_target_at_arrival; // target's own velocity at t + tof
     bool retrograde = false;       // the leg's angular momentum fights the ship's
+    int revolutions = 0;           // full revolutions swept by the chosen leg
     bool valid = false;
 };
 
@@ -36,93 +37,105 @@ inline double transfer_semi_major_of(const glm::dvec3 &, const glm::dvec3 &, dou
 }
 
 // One Lambert conic through r1 -> r2 in `tof`: the velocity pair at the two
-// endpoints. The boundary value problem is under-determined: the same
-// (r1, r2, tof) is reached by an arc that turns less than 180 deg and one that
-// turns more. They wind opposite ways round the focus -- one prograde, one
-// retrograde relative to the ship's own orbit -- with similar but not equal
-// energies. Only the prograde one is cheap for a ship that did not arrive
-// retrograde, and pricing only the other costs an order of magnitude more
-// (issue #197). Anything that prices a transfer therefore has to look at
-// both: see solveLambertLegs.
+// endpoints. The boundary value problem is under-determined twice over:
+//  * the same (r1, r2, tof) is reached by an arc that turns less than 180 deg
+//    and one that turns more. They wind opposite ways round the focus -- one
+//    prograde, one retrograde relative to the ship's own orbit -- with similar
+//    but not equal energies. Only the prograde one is cheap for a ship that
+//    did not arrive retrograde, and pricing only the other costs an order of
+//    magnitude more (issue #197).
+//  * it is also reached with `rev` full revolutions swept (issue #136), and for
+//    a co-orbital or long-ToF target that is the ONLY cheap answer.
+// Anything that prices a transfer has to look at all of them: solveLambertLegs.
 struct LambertLeg {
     glm::dvec3 v1, v2;
     bool a_neg = false;    // which sign of A produced this leg
+    int rev = 0;           // full revolutions swept; 0 = the direct family
 };
 
-/* One branch of the universal-variable solution (Bate, Mueller & White).
-   A = sin(dnu) * sqrt(r1 r2 / (1 - cos dnu)), and the geometry only fixes
-   cos dnu, so the sign of A is a free choice: A > 0 is the arc that turns
-   less than 180 deg from r1 to r2, A < 0 the reflex arc that turns more.
-   They wind opposite ways round the focus and reach r2 in the same `tof`.
-   Returns false if this branch has no such conic. */
-inline bool lambertBranch(const glm::dvec3 &r1, const glm::dvec3 &r2,
-                          double mu, double tof, double A,
-                          glm::dvec3 &v1, glm::dvec3 &v2) {
+// stumpffC(z) vanishes at z = 4 pi^2 k^2, and those zeros are the walls
+// between revolution families: band N is (4 pi^2 N^2, 4 pi^2 (N+1)^2). Band 0
+// is the direct family and is always scanned; kLambertMaxRev says how many
+// OUTER bands to scan too. N=1 is where a co-orbital's cheap phasing leg sits
+// and costs about +30% on a grid sweep; each further band buys rapidly less
+// (#136, #252).
+inline constexpr int kLambertMaxRev = 1;
+
+// Band 0 yields at most one leg per sign of A (F is monotone there); an outer
+// band can hold two, the pair that merges at the band's minimum-energy edge.
+inline constexpr int kLambertLegMax = 4 * (kLambertMaxRev + 1);
+
+/* Every leg of one revolution band for one sign of A, appended to legs[*n]
+   up to cap. A = sin(dnu) * sqrt(r1 r2 / (1 - cos dnu)), and the geometry only
+   fixes cos dnu, so the sign of A is a free choice: A > 0 is the arc that
+   turns less than 180 deg from r1 to r2, A < 0 the reflex arc that turns more.
+   Universal variable formulation (Bate, Mueller & White). */
+inline void lambertBand(const glm::dvec3 &r1, const glm::dvec3 &r2,
+                        double mu, double tof, double A,
+                        double z_lo, double z_hi, int samples,
+                        int rev, LambertLeg *legs, int *n, int cap) {
     const double r1l = glm::length(r1);
     const double r2l = glm::length(r2);
 
     auto F = [&](double z) -> double {
         const double C = stumpffC(z);
         const double S = stumpffS(z);
+        // C has zeros exactly at the band walls, so guard the division too:
+        // an unguarded NaN there compares false against everything and would
+        // happily "bracket" against the previous sample.
+        if(!(std::fabs(C) > 1e-30)) return 1e20;
         const double y = r1l + r2l + A * (z * S - 1.0) / std::sqrt(C);
         if(y < 0.0) return 1e20; // invalid z
         return std::pow(y / C, 1.5) * S + A * std::sqrt(y) - std::sqrt(mu) * tof;
     };
+    // A sample is usable only if F is finite and inside the physical domain
+    // (y >= 0). Anything else BREAKS the bracket: straddling a wall or a
+    // sentinel with a sign change finds a root of the sentinel, not a conic.
+    auto usable = [](double fz) { return std::fabs(fz) < 1e19; };
 
-    // Scan for a bracket between two REAL values (y >= 0). The y < 0 region
-    // has no physical conic, so F's sentinel there must never bracket.
-    const double z_min = -4.0 * std::numbers::pi * std::numbers::pi;
-    const double z_max = 4.0 * std::numbers::pi * std::numbers::pi;
-
-    double z_lo = 0.0, z_hi = 0.0, f_lo = 0.0;
+    const double target = std::sqrt(mu) * std::fabs(tof);
     double z_prev = 0.0, f_prev = 0.0;
-    bool have_prev = false, bracketed = false;
-    for(int i = 0; i <= 400; i++) {
-        const double z = z_min + (z_max - z_min) * i / 400.0;
+    bool have_prev = false;
+    for(int i = 0; i <= samples && *n < cap; i++) {
+        const double z = z_lo + (z_hi - z_lo) * i / (double)samples;
         const double fz = F(z);
-        if(fz >= 1e19) { continue; }   // outside the physical domain
+        if(!usable(fz)) { have_prev = false; continue; }
         if(have_prev && f_prev * fz < 0.0) {
-            z_lo = z_prev; z_hi = z;
-            f_lo = f_prev;
-            bracketed = true;
-            break;
+            // Bisect this bracket.
+            double lo = z_prev, hi = z, f_lo = f_prev;
+            double zz = 0.5 * (lo + hi);
+            for(int iter = 0; iter < 100; iter++) {
+                zz = 0.5 * (lo + hi);
+                const double fzz = F(zz);
+                if(!usable(fzz)) { lo = zz; continue; }   // back out of the guard
+                if(std::fabs(fzz) < 1e-10 * (target + 1.0)) { break; }
+                if(fzz * f_lo < 0.0) { hi = zz; } else { lo = zz; f_lo = fzz; }
+                if((hi - lo) < 1e-12 * (1.0 + std::fabs(zz))) { break; }
+            }
+            const double C = stumpffC(zz);
+            const double S = stumpffS(zz);
+            const double y = r1l + r2l + A * (zz * S - 1.0) / std::sqrt(C);
+            const double f = 1.0 - y / r1l;
+            const double g_dot = 1.0 - y / r2l;
+            const double g = A * std::sqrt(y / mu);
+            if(std::fabs(g) > 1e-20) {
+                legs[*n].v1 = (r2 - f * r1) / g;
+                legs[*n].v2 = (g_dot * r2 - r1) / g;
+                legs[*n].rev = rev;
+                (*n)++;
+            }
         }
         z_prev = z; f_prev = fz;
         have_prev = true;
     }
-    if(!bracketed) { return false; }   // no conic reaches r2 in this tof
-
-    // Bisect (F monotone in z on this branch).
-    double z = 0.5 * (z_lo + z_hi);
-    const double target = std::sqrt(mu) * std::fabs(tof);
-    for(int iter = 0; iter < 100; iter++) {
-        z = 0.5 * (z_lo + z_hi);
-        const double fz = F(z);
-        if(fz >= 1e19) { z_lo = z; continue; }   // back out of the guard region
-        if(std::fabs(fz) < 1e-10 * (target + 1.0)) { break; }
-        if(fz * f_lo < 0.0) { z_hi = z; } else { z_lo = z; f_lo = fz; }
-        if((z_hi - z_lo) < 1e-12 * (1.0 + std::fabs(z))) { break; }
-    }
-
-    const double C = stumpffC(z);
-    const double S = stumpffS(z);
-    const double y = r1l + r2l + A * (z * S - 1.0) / std::sqrt(C);
-
-    const double f = 1.0 - y / r1l;
-    const double g_dot = 1.0 - y / r2l;
-    const double g = A * std::sqrt(y / mu);
-
-    if(std::fabs(g) < 1e-20) return false;
-
-    v1 = (r2 - f * r1) / g;
-    v2 = (g_dot * r2 - r1) / g;
-
-    return true;
 }
 
 /* Every conic under mu that carries r1 to r2 in `tof` seconds, written into
-   legs[0..1]: the minor arc first, then the reflex arc. Returns how many legs
-   converged (0..2). */
+   legs[0..kLambertLegMax): the 0-revolution family first (minor arc, then
+   reflex arc), then the outer revolution bands in the same order. Returns how
+   many legs converged. Callers that price a transfer loop them all and keep
+   the cheapest by their own cost; callers that just want the classic arc take
+   legs[0]. */
 inline int solveLambertLegs(const glm::dvec3 &r1, const glm::dvec3 &r2_in,
                             double mu, double tof, LambertLeg *legs) {
     const double r1l = glm::length(r1);
@@ -152,15 +165,35 @@ inline int solveLambertLegs(const glm::dvec3 &r1, const glm::dvec3 &r2_in,
     }
 
     const double A = std::sqrt(r1l * r2l * (1.0 + cos_dnu));
-    int n = 0;
-    for(int k = 0; k < 2; k++) {
-        if(lambertBranch(r1, r2_in, mu, tof, k ? -A : A,
-                         legs[n].v1, legs[n].v2)) {
-            legs[n].a_neg = (k == 1);
-            n++;
+    /* Scan band-major so legs[0..1] stay the 0-revolution minor/reflex pair
+       whenever that family has a root: everything that reads only the first
+       two legs keeps working. */
+    // A band-N conic cannot fly in less than N periods of the minimum-energy
+    // ellipse (a = s/2, s the fundamental triangle's semiperimeter), so a
+    // short ToF never needs the outer bands. Measured: the gate loses nothing.
+    const double a_min = 0.25 * (r1l + r2l + glm::length(r2_in - r1));
+    const double T_min = 2.0 * std::numbers::pi * std::sqrt(a_min * a_min * a_min / mu);
+    const double P = 4.0 * std::numbers::pi * std::numbers::pi;
+
+    int nleg = 0;
+    for(int rev = 0; rev <= kLambertMaxRev && nleg < kLambertLegMax; rev++) {
+        if(rev > 0 && tof < rev * T_min) { continue; }
+        // The walls are the zeros of stumpffC; step just inside them.
+        const double z_lo = (rev == 0) ? -P : P * rev * rev + 1e-6;
+        const double z_hi = P * (rev + 1) * (rev + 1) - 1e-6;
+        for(int k = 0; k < 2; k++) {
+            const int before = nleg;
+            // Band 0 holds at most one root per sign of A (F is monotone
+            // there), an outer band at most two, so stop scanning once they
+            // are in hand instead of walking the rest of the band.
+            const int want = nleg + ((rev == 0) ? 1 : 2);
+            lambertBand(r1, r2_in, mu, tof, k ? -A : A, z_lo, z_hi,
+                        (rev == 0) ? 400 : 48, rev, legs, &nleg,
+                        std::min(want, kLambertLegMax));
+            for(int m = before; m < nleg; m++) { legs[m].a_neg = (k == 1); }
         }
     }
-    return n;
+    return nleg;
 }
 
 /* Lambert: ONE conic under mu from r1 to r2 in `tof` -- the arc that turns
@@ -172,18 +205,18 @@ inline int solveLambertLegs(const glm::dvec3 &r1, const glm::dvec3 &r2_in,
 inline bool solveLambert(const glm::dvec3 &r1, const glm::dvec3 &r2_in,
                          double mu, double tof,
                          glm::dvec3 &v1, glm::dvec3 &v2) {
-    LambertLeg legs[2];
+    LambertLeg legs[kLambertLegMax];
     const int n = solveLambertLegs(r1, r2_in, mu, tof, legs);
-    if(n == 0) { return false; }
-    v1 = legs[0].v1;
-    v2 = legs[0].v2;
-    return true;
+    for(int k = 0; k < n; k++) {
+        if(legs[k].rev == 0) { v1 = legs[k].v1; v2 = legs[k].v2; return true; }
+    }
+    return false;
 }
 
 /* Minimum-total-dv transfer from (r1, v1) to (r2_0, v2_0) under mu_parent,
    with a capture burn at periapsis r_cap around the target (mu_target).
-   Sweeps `n` linear ToF samples in [tof_min, tof_max] and keeps the best of
-   both directions at each sample.
+   Sweeps `n` linear ToF samples in [tof_min, tof_max] and keeps the cheapest
+   leg at each sample (both windings, every revolution band).
    mu_target <= 0 / capture = false means intercept-only: dv_capture is 0. */
 inline TransferSolution planTransfer(const glm::dvec3 &r1, const glm::dvec3 &v1,
                                      const glm::dvec3 &r2_0, const glm::dvec3 &v2_0,
@@ -200,7 +233,7 @@ inline TransferSolution planTransfer(const glm::dvec3 &r1, const glm::dvec3 &v1,
         const double tof = tof_min + ((n > 1) ? dt * i : 0.0);
         glm::dvec3 r2, v2;
         propagateKepler(r2_0, v2_0, mu_parent, tof, r2, v2);
-        LambertLeg legs[2];
+        LambertLeg legs[kLambertLegMax];
         const int nleg = solveLambertLegs(r1, r2, mu_parent, tof, legs);
 
         for(int k = 0; k < nleg; k++) {
@@ -209,6 +242,7 @@ inline TransferSolution planTransfer(const glm::dvec3 &r1, const glm::dvec3 &v1,
 
             TransferSolution s;
             s.tof = tof;
+            s.revolutions = legs[k].rev;
             s.dv_departure = glm::length(vt1 - v1);
             s.v_departure = vt1;
             s.v_arrival = vt2;
@@ -216,8 +250,8 @@ inline TransferSolution planTransfer(const glm::dvec3 &r1, const glm::dvec3 &v1,
             s.v_inf = glm::length(vt2 - v2);
 
             const glm::dvec3 h_leg = glm::cross(r1, vt1);
-            // The two legs wind opposite ways round the parent, so this says
-            // which one leaves the ship going its own way and which fights it.
+            // Every leg is checked against the ship's own angular momentum, so
+            // this says which ones leave going its own way and which fight it.
             s.retrograde = glm::dot(glm::cross(r1, v1), h_leg) < 0.0;
 
             const double v_dep_sq = glm::dot(vt1, vt1);
@@ -260,7 +294,8 @@ inline TransferSolution planTransfer(const glm::dvec3 &r1, const glm::dvec3 &v1,
 }
 
 // Porkchop plot: total dv swept over a 2-D grid of (departure delay, ToF).
-// Each cell is the cheaper of the two directions at that (t_dep, tof).
+// Each cell is the cheapest leg at that (t_dep, tof) over both windings and
+// every revolution band.
 // Storage is ToF-major for a direct ImPlot PlotHeatmap call; NaN = no solution.
 struct PorkchopResult {
     int n_dep = 0;     // cols: departure-delay samples (x axis)
@@ -311,7 +346,7 @@ inline PorkchopResult porkchopGrid(const glm::dvec3 &r1, const glm::dvec3 &v1,
             const double tof = tof_lo + ((res.n_tof > 1) ? step_tof * j : 0.0);
             glm::dvec3 r2a, v2a;
             propagateKepler(r2_0, v2_0, mu_parent, t_dep + tof, r2a, v2a);
-            LambertLeg legs[2];
+            LambertLeg legs[kLambertLegMax];
             const int nleg = solveLambertLegs(r1d, r2a, mu_parent, tof, legs);
             if(nleg == 0) { continue; }
 

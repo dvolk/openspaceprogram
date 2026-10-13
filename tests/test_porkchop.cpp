@@ -176,7 +176,7 @@ int main() {
                                          tof_lo, tof_hi, n_dep, n_tof);
         CHECK(pc.valid);
 
-        int reflex_wins = 0;
+        int reflex_wins = 0, multi_rev_wins = 0;
         for(int i = 0; i < n_dep; i++) {
             const double t_dep = t_dep_lo + (t_dep_hi - t_dep_lo) * i / (n_dep - 1);
             glm::dvec3 r1d, v1d;
@@ -185,21 +185,26 @@ int main() {
                 const double tof = tof_lo + (tof_hi - tof_lo) * j / (n_tof - 1);
                 glm::dvec3 r2a, v2a;
                 propagateKepler(tgt_pos, tgt_vel, MU, t_dep + tof, r2a, v2a);
-                LambertLeg legs[2];
+                LambertLeg legs[kLambertLegMax];
                 const int nleg = solveLambertLegs(r1d, r2a, MU, tof, legs);
                 const double cell = pc.total_dv[(size_t)j * n_dep + i];
                 if(nleg == 0) { CHECK(std::isnan(cell)); continue; }
                 double best = 1e300, minor = 1e300;
+                int best_rev = 0;
                 for(int k = 0; k < nleg; k++) {
                     const double dv = glm::length(legs[k].v1 - v1d);
-                    best = std::min(best, dv);
-                    if(!legs[k].a_neg) { minor = dv; }
+                    if(dv < best) { best = dv; best_rev = legs[k].rev; }
+                    if(!legs[k].a_neg && legs[k].rev == 0) { minor = dv; }
                 }
+                if(best_rev > 0) { multi_rev_wins++; }
                 CHECK_NEAR(cell, best, 1e-9 * best);
                 if(nleg > 1 && minor > 5.0 * best) { reflex_wins++; }
             }
         }
         CHECK(reflex_wins > 0);
+        // This window reaches ToFs past one period of the minimum-energy
+        // ellipse, so the outer band must actually be priced here (#136).
+        CHECK(multi_rev_wins > 0);
     }
 
     if(failures == 0) {

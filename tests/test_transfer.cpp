@@ -273,12 +273,14 @@ int main() {
         glm::dvec3 tg_pos(r2 * std::cos(theta0), r2 * std::sin(theta0), 0.0);
         glm::dvec3 tg_vel(-v2_circ * std::sin(theta0), v2_circ * std::cos(theta0), 0.0);
 
-        LambertLeg legs[2];
+        LambertLeg legs[kLambertLegMax];
         const int nleg = solveLambertLegs(r1v, r2v, MU, tof, legs);
+        // tof is under one period of the minimum-energy ellipse here, so the
+        // gate keeps this to the 0-revolution family.
         CHECK(nleg == 2);
-        if(nleg == 2) {
-            double dv[2];
-            for(int k = 0; k < 2; k++) {
+        if(nleg >= 2) {
+            double dv[kLambertLegMax];
+            for(int k = 0; k < nleg; k++) {
                 // Each leg must be a real solution: fly it and land on r2.
                 glm::dvec3 p, v;
                 propagateKepler(r1v, legs[k].v1, MU, tof, p, v);
@@ -298,6 +300,7 @@ int main() {
             CHECK(sol.valid);
             CHECK_NEAR(sol.dv_departure, lo, 1e-6 * lo);
             CHECK(!sol.retrograde);
+            CHECK(sol.revolutions == 0);
         }
     }
 
@@ -311,8 +314,55 @@ int main() {
         const double a_t = (r1 + r2) / 2.0;
         const double T_t = 2.0 * M_PI * std::sqrt(a_t * a_t * a_t / MU);
         glm::dvec3 r1v(r1, 0, 0), r2v(-r2, 0, 0);
-        LambertLeg legs[2];
+        LambertLeg legs[kLambertLegMax];
         CHECK(solveLambertLegs(r1v, r2v, MU, T_t / 2.0, legs) == 1);
+    }
+
+    // =========================================================================
+    // 11. Multi-revolution legs (#136). Co-orbital phasing: the target sits
+    //     60 deg AHEAD on the SAME circle and the ToF is one period, so the
+    //     0-revolution family has to throw the ship onto a huge slow ellipse
+    //     while the cheap answer is the phasing orbit that laps it once plus
+    //     60 deg. Pins: a band-1 leg exists, is far cheaper than any 0-rev
+    //     leg, is a real solution, and the planner picks it and says so.
+    // =========================================================================
+    {
+        const double r = 1.0e6;
+        const double v_circ = std::sqrt(MU / r);
+        const double T = 2.0 * M_PI * std::sqrt(r * r * r / MU);
+        const double dnu = 60.0 * M_PI / 180.0;
+        const double tof = T;
+        glm::dvec3 r1v(r, 0, 0), v1v(0, v_circ, 0);
+        glm::dvec3 r2v(r * std::cos(dnu), r * std::sin(dnu), 0.0);
+        // Target on the same circle, phased to be at r2v exactly at arrival.
+        const double w = std::sqrt(MU / (r * r * r));
+        const double theta0 = dnu - w * tof;
+        glm::dvec3 tg_pos(r * std::cos(theta0), r * std::sin(theta0), 0.0);
+        glm::dvec3 tg_vel(-v_circ * std::sin(theta0), v_circ * std::cos(theta0), 0.0);
+
+        LambertLeg legs[kLambertLegMax];
+        const int nleg = solveLambertLegs(r1v, r2v, MU, tof, legs);
+        double lo0 = 1e300, lo1 = 1e300;
+        int nrev = 0;
+        for(int k = 0; k < nleg; k++) {
+            glm::dvec3 p, v;
+            propagateKepler(r1v, legs[k].v1, MU, tof, p, v);
+            CHECK_NEAR(glm::length(p - r2v), 0.0, 1e-3 * r);
+            const double dv = glm::length(legs[k].v1 - v1v);
+            if(legs[k].rev == 0) { lo0 = std::min(lo0, dv); }
+            else { lo1 = std::min(lo1, dv); nrev++; }
+        }
+        CHECK(nrev > 0);
+        CHECK(lo1 < 1e299 && lo0 < 1e299);
+        CHECK(lo1 < 0.5 * lo0);
+
+        TransferSolution sol = planTransfer(r1v, v1v, tg_pos, tg_vel,
+                                            MU, 0.0, 0.0, tof, tof, 1);
+        CHECK(sol.valid);
+        CHECK(sol.revolutions > 0);
+        CHECK_NEAR(sol.dv_departure, lo1, 1e-6 * lo1);
+        // A phasing orbit still leaves the ship going its own way.
+        CHECK(!sol.retrograde);
     }
 
     if(failures == 0) {

@@ -11,5 +11,8 @@ CHECK last(xfer)["dv_dep"] > 0 and last(xfer)["dv_dep"] < 20000
 CHECK last(xfer)["dv_cap"] == 0
 CHECK last(xfer)["total"] == last(xfer)["dv_dep"]
 CHECK last(xfer)["tof"] > 0
+# The transporter is nearly co-orbital with the ship, so the revolution bands
+# (#136) must reach the live planner, not just the porkchop grid.
+CHECK any(x["rev"] >= 1 for x in xfer)
 FORBID GL_
 FORBID error:

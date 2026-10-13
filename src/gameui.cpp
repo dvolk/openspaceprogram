@@ -743,6 +743,11 @@ void drawUIReadouts(Game &g) {
         }
         ImGui::Text("total dv:   %08.1f m/s", sol.total_dv);
         ImGui::Text("ToF:        %s", fmt_time(sol.tof, time_s, sizeof time_s));
+        if(sol.revolutions > 0) {
+            // The ToF looks absurd next to the target's own orbit: the cheap
+            // leg laps the parent before arriving (#136).
+            ImGui::Text("revolutions:%d", sol.revolutions);
+        }
         ImGui::Text("v_inf:      %08.1f m/s", sol.v_inf);
         if(sol.transfer_semi_major > 0.0) {
             ImGui::Text("transfer:   ellipse  a=%.6g m  e=%.3f",

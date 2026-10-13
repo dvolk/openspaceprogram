@@ -69,7 +69,7 @@ XFER_RE = re.compile(
     r"\[xferlog\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+"
     r"dv_dep=([-\d.e+]+) m/s\s+dv_cap=([-\d.e+]+) m/s\s+total=([-\d.e+]+) m/s\s+"
     r"tof=([-\d.e+]+) s\s+v_inf=([-\d.e+]+) m/s\s+r_cap=([-\d.e+]+) m\s+"
-    r"burn=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s*(?:retrograde=(\d))?"
+    r"burn=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s*(?:retrograde=(\d))?\s*(?:rev=(\d))?"
 )
 PORKCHOP_RE = re.compile(
     r"\[porkchop\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+"
@@ -266,7 +266,7 @@ def parse_xfer(out):
     rows = []
     for m in XFER_RE.finditer(out):
         (t, target, dv_dep, dv_cap, total, tof, v_inf, r_cap,
-         bx, by, bz, retro) = m.groups()
+         bx, by, bz, retro, rev) = m.groups()
         rows.append({
             "t": float(t), "target": target,
             "dv_dep": float(dv_dep), "dv_cap": float(dv_cap),
@@ -275,6 +275,7 @@ def parse_xfer(out):
             "burn": (float(bx), float(by), float(bz)),
             # -1 = a log line from before the field existed, not "prograde".
             "retrograde": int(retro) if retro is not None else -1,
+            "rev": int(rev) if rev is not None else -1,
         })
     return rows
 
