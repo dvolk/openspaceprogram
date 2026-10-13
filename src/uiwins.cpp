@@ -11,22 +11,23 @@
    from its enum value. C++20 standardises them for aggregates but not array
    indices, hence the -Wpedantic suppression. */
 
-// 2:1 map filling the content width: min height follows width so the bottom
-// caption cannot clip. The chrome count below mirrors the body's rows -- keep in sync.
-static void surfaceMapMinSize(ImGuiSizeCallbackData *d) {
+// The map is 2:1 equirectangular and fills the content width (gameui.cpp), so the
+// window's height is fully determined by its width: chrome + the map. Locking the
+// height here (not just a floor) keeps the window on the map's ratio -- dragging the
+// width stretches the height, and there is never dead space below the captions. The
+// chrome count below mirrors the body's rows -- keep in sync.
+static void surfaceMapSize(ImGuiSizeCallbackData *d) {
     const ImGuiStyle &s = ImGui::GetStyle();
     const float frame = ImGui::GetFrameHeight();   // a framed row (the title bar too)
     const float text = ImGui::GetTextLineHeight();
     const float isp = s.ItemSpacing.y;
     const float map_h =
         std::max(0.0f, d->DesiredSize.x - 2.0f * s.WindowPadding.x) * 0.5f;
-    const float min_h = s.WindowPadding.y * 2.0f
-        + frame                 // title bar
-        + 3.0f * (frame + isp)  // body, button, checkbox rows
-        + (text + isp)          // the map-size row
-        + (map_h + isp)         // the map itself
-        + 4.0f * (text + isp);  // caption rows: busy / hover / SOI / equirect
-    if(d->DesiredSize.y < min_h) { d->DesiredSize.y = min_h; }
+    d->DesiredSize.y = s.WindowPadding.y * 2.0f
+        + frame                // title bar
+        + 3.0f * (frame + isp) // body combo + button row + checkbox row
+        + (map_h + isp)        // the map itself
+        + (text + isp);        // caption row: cursor readout
 }
 
 #pragma GCC diagnostic push
@@ -109,9 +110,10 @@ const WinDef kWins[W_Count] = {
     },
     [W_SurfaceMap] = {
         .name = "Surface Map", .label = "Surface Map",
-        // 2:1 map; surfaceMapMinSize keeps the height tall enough as it widens.
-        .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(520.0f, 450.0f),
-                  .size_cb = &surfaceMapMinSize,
+        // Height is locked to the width by surfaceMapSize (2:1 map + chrome), so the
+        // initial y below is only a seed -- it gets overridden. Keep the width here.
+        .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(520.0f, 382.0f),
+                  .size_cb = &surfaceMapSize,
                   .closable = true, .default_open = false },
         .role = WinRole::Persistent, .inList = true,
     },

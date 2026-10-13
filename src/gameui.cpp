@@ -1002,11 +1002,6 @@ void drawUIReadouts(Game &g) {
             surfmapCompute(g);
         }
         if(sm_busy) { ImGui::EndDisabled(); }
-        if(sm_busy) {
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
-                               "   mapping ...");
-        }
         ImGui::SameLine();
         if(ImGui::Button("Reset view")) {
             sm_pan = ImVec2(0.0f, 0.0f);
@@ -1028,11 +1023,10 @@ void drawUIReadouts(Game &g) {
         // Overlay-only: no re-bake, so no need to disable it mid-sweep.
         bool sml = g.surfmap_site_labels;
         if(ImGui::Checkbox("Site labels", &sml)) { g.surfmap_site_labels = sml; }
-        ImGui::TextDisabled("map %dx%d   (size: --surfmap-n)",
-                            g.surfmap_w, g.surfmap_h);
         if(sm_busy) {
-            ImGui::TextDisabled("(the last map stays shown until the new one "
-                                "lands)");
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
+                               "   mapping ...");
         }
 
         if(!g.surfmap_valid || g.surfmap_px.empty()) {
@@ -1343,55 +1337,47 @@ void drawUIReadouts(Game &g) {
             }
         }
 
-        if(sm_hover) {
+        // The lat/lon/elev readout is always on screen: this window auto-resizes, so a
+        // line that appears and disappears would jitter its height. Off the map (no
+        // hover, or panned past the edge) it reads dashes.
+        const ImVec2 sm_mouse = ImGui::GetMousePos();
+        const double sm_u = (sm_mouse.x - sm_img_min.x) / (sm_img_w * sm_scale);
+        const double sm_v = (sm_mouse.y - sm_img_min.y) / (sm_img_h * sm_scale);
+        const bool sm_on_map = sm_hover && sm_u >= 0.0 && sm_u <= 1.0
+                            && sm_v >= 0.0 && sm_v <= 1.0;
+        if(sm_on_map) {
             // The hovered pixel inverts map_px. The unit direction feeds
             // GetTerrainHeight straight -- the map is baked in the same rotating frame
             // (equirect.h). "elev" is above SEA LEVEL, like the Surface window's ASL.
-            const ImVec2 sm_mouse = ImGui::GetMousePos();
-            const double u = (sm_mouse.x - sm_img_min.x) / (sm_img_w * sm_scale);
-            const double v = (sm_mouse.y - sm_img_min.y) / (sm_img_h * sm_scale);
-            // Panned over exposed background (scale 1 + non-zero pan): outside the
-            // map, so no meaningful lat/lon/elev to show.
-            if(u >= 0.0 && u <= 1.0 && v >= 0.0 && v <= 1.0) {
-                const double lon = u * 2.0 * std::numbers::pi;
-                const double lat = std::numbers::pi * 0.5 - v * std::numbers::pi;
-                const glm::vec3 dir = equirectDir(lon, lat);
-                char elev_s[32];
-                // The nearest site under the cursor, so a marker is still identifiable with the
-                // labels box off. One suffix on the same line, never a second line: this window
-                // auto-resizes, so a new line would jitter its height.
-                char site_s[64] = "";
-                const SiteMark *near = nullptr;
-                float best = 14.0f * 14.0f;
-                for(const SiteMark &m : site_marks) {
-                    const float dx = m.px.x - sm_mouse.x;
-                    const float dy = m.px.y - sm_mouse.y;
-                    const float d2 = dx * dx + dy * dy;
-                    if(d2 < best) { best = d2; near = &m; }
-                }
-                if(near != nullptr) {
-                    snprintf(site_s, sizeof(site_s), "  site: %s",
-                             near->name->c_str());
-                }
-                ImGui::TextDisabled("cursor: lat %+.1f  lon %.1f  elev %s%s",
-                                    glm::degrees(lat), glm::degrees(lon),
-                                    fmt_dist((double)sm_body->GetTerrainHeight(dir)
-                                             - (double)sm_body->radius
-                                             - (double)sm_body->surface.sea_level,
-                                             elev_s, sizeof elev_s),
-                                    site_s);
+            const double lon = sm_u * 2.0 * std::numbers::pi;
+            const double lat = std::numbers::pi * 0.5 - sm_v * std::numbers::pi;
+            const glm::vec3 dir = equirectDir(lon, lat);
+            char elev_s[32];
+            // The nearest site under the cursor, so a marker is still identifiable with the
+            // labels box off. One suffix on the same line, never a second line.
+            char site_s[64] = "";
+            const SiteMark *near = nullptr;
+            float best = 14.0f * 14.0f;
+            for(const SiteMark &m : site_marks) {
+                const float dx = m.px.x - sm_mouse.x;
+                const float dy = m.px.y - sm_mouse.y;
+                const float d2 = dx * dx + dy * dy;
+                if(d2 < best) { best = d2; near = &m; }
             }
+            if(near != nullptr) {
+                snprintf(site_s, sizeof(site_s), "  site: %s",
+                         near->name->c_str());
+            }
+            ImGui::TextDisabled("cursor: lat %+.1f  lon %.1f  elev %s%s",
+                                glm::degrees(lat), glm::degrees(lon),
+                                fmt_dist((double)sm_body->GetTerrainHeight(dir)
+                                         - (double)sm_body->radius
+                                         - (double)sm_body->surface.sea_level,
+                                         elev_s, sizeof elev_s),
+                                site_s);
+        } else {
+            ImGui::TextDisabled("cursor: lat --  lon --  elev --");
         }
-        if(ship && ship->m_parent && sm_body != ship->m_parent) {
-            ImGui::TextDisabled("ship is in %s's SOI -- its orbit (about "
-                                "%s) is not shown on %s's map",
-                                ship->m_parent->name.c_str(),
-                                ship->m_parent->name.c_str(),
-                                sm_body->name.c_str());
-        }
-        ImGui::TextDisabled("equirectangular: lon 0 at the left edge "
-                            "(+X), north up   computed at t=%.1fs",
-                            g.surfmap_computed_at);
     });
 
     drawWin(g, W_Debug, [&] {
