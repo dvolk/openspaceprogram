@@ -535,7 +535,11 @@ struct Game {
     // Overlay-only, so unlike the two above it needs no re-bake.
     bool surfmap_site_labels = true;
     // The last computed map (surfmapCompute publishes it atomically).
-    std::vector<unsigned char> surfmap_px;  // RGBA8, w*h
+    // surfmap_px is the unshaded albedo; surfmap_shade_px is the terminator
+    // overlay (black, alpha = 1-shade) drawn over it -- toggling "Sun shading"
+    // is a free show/hide, no re-bake.
+    std::vector<unsigned char> surfmap_px;       // RGBA8, w*h
+    std::vector<unsigned char> surfmap_shade_px; // RGBA8 overlay, w*h
     int surfmap_w = 0;
     int surfmap_h = 0;
     std::string surfmap_body_name;

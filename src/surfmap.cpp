@@ -47,9 +47,12 @@ void surfmapCompute(Game &g) {
     const int h = std::max(8, w / 2);   // 2:1 equirectangular
 
     // The terminator at the REQUEST instant (frames move with the sim).
-    // False = no shading baked.
+    // has_sun = there IS a terminator to bake; baked = it is actually applied
+    // (the "Sun shading" box is on). The overlay is always the true terminator;
+    // `baked` only drives the log's shade on/off + shaded means.
     glm::dvec3 sun_dir;
-    const bool baked = g.surfmap_shade && sunDirRot(body, sun, sun_dir);
+    const bool has_sun = sunDirRot(body, sun, sun_dir);
+    const bool baked = g.surfmap_shade && has_sun;
 
     // Snapshot terrain params and hand the sweep to the worker. The worker
     // colours from THIS snapshot: surface.max_height is applied LATER by
@@ -72,15 +75,21 @@ void surfmapCompute(Game &g) {
     // `g` is captured by REFERENCE only for the returned continuation; the
     // worker body never touches game state (a by-value capture would copy
     // the non-copyable Game).
-    g.jobs.post("Surface map", [&g, tp, sun_dir, w, h, baked, ocean, log,
-                                n_sites, body_name, t_now, epoch]()
+    g.jobs.post("Surface map", [&g, tp, sun_dir, w, h, baked, has_sun, ocean,
+                                log, n_sites, body_name, t_now, epoch]()
                 -> std::function<void()> {
-        // Worker: build the pixel buffer (pure). shared_ptr because the
+        // Worker: build the pixel buffers (pure). shared_ptr because the
         // std::function continuation capture must be copyable.
+        // px  = unshaded albedo (the expensive part, computed once).
+        // shpx = the terminator as a black overlay, alpha = (1 - shade); drawn
+        //         over px with normal alpha blend it multiplies px by shade.
+        //         Always the true terminator (has_sun), independent of the
+        //         "Sun shading" box, so toggling the box is a free show/hide.
         const size_t npx = (size_t)w * (size_t)h;
         std::vector<unsigned char> px(npx * 4);
+        std::vector<unsigned char> shpx(npx * 4);
         double ar = 0.0, ag = 0.0, ab = 0.0;   // albedo (unshaded) means
-        double sr = 0.0, sg = 0.0, sb = 0.0;   // stored (shaded) means
+        double sr = 0.0, sg = 0.0, sb = 0.0;   // displayed (shaded) means
         for(int j = 0; j < h; j++) {
             for(int i = 0; i < w; i++) {
                 const glm::dvec3 d = equirectDirAt(i, j, w, h);
@@ -93,18 +102,25 @@ void surfmapCompute(Game &g) {
                 const glm::vec3 c = under_sea
                     ? tp.surface.sea_color
                     : terrainSurfaceColor((glm::vec3)d, tp);
-                const float f = baked ? surfmapShade(d, sun_dir) : 1.0f;
                 unsigned char *q = &px[((size_t)j * w + i) * 4];
-                q[0] = (unsigned char)(std::min(1.0f, f * c.r) * 255.0f + 0.5f);
-                q[1] = (unsigned char)(std::min(1.0f, f * c.g) * 255.0f + 0.5f);
-                q[2] = (unsigned char)(std::min(1.0f, f * c.b) * 255.0f + 0.5f);
+                q[0] = (unsigned char)(std::min(1.0f, c.r) * 255.0f + 0.5f);
+                q[1] = (unsigned char)(std::min(1.0f, c.g) * 255.0f + 0.5f);
+                q[2] = (unsigned char)(std::min(1.0f, c.b) * 255.0f + 0.5f);
                 q[3] = 255;
+                // Overlay: black, alpha = (1 - shade). Transparent when there is
+                // no terminator (has_sun false -> shade 1 -> alpha 0).
+                const float f_ov = has_sun ? surfmapShade(d, sun_dir) : 1.0f;
+                unsigned char *sq = &shpx[((size_t)j * w + i) * 4];
+                sq[0] = sq[1] = sq[2] = 0;
+                sq[3] = (unsigned char)((1.0f - f_ov) * 255.0f + 0.5f);
                 ar += c.r; ag += c.g; ab += c.b;
-                sr += f * c.r; sg += f * c.g; sb += f * c.b;
+                // Log's shaded means reflect what is DISPLAYED (box on + sun).
+                const float f_log = baked ? surfmapShade(d, sun_dir) : 1.0f;
+                sr += f_log * c.r; sg += f_log * c.g; sb += f_log * c.b;
             }
         }
         if(log) {
-            // albedo = before the terminator; shaded = as stored.
+            // albedo = before the terminator; shaded = as displayed.
             printf("[surfmap] t=%.1fs body=\"%s\" %dx%d "
                    "albedo=[%.4f %.4f %.4f] shaded=[%.4f %.4f %.4f] "
                    "shade=%s ocean=%s sites=%d\n",
@@ -119,7 +135,9 @@ void surfmapCompute(Game &g) {
         // staleness check) + clear the "mapping" state.
         std::shared_ptr<std::vector<unsigned char> > ppx =
             std::make_shared<std::vector<unsigned char> >(std::move(px));
-        return [&g, ppx, w, h, body_name, t_now, epoch]() {
+        std::shared_ptr<std::vector<unsigned char> > pshpx =
+            std::make_shared<std::vector<unsigned char> >(std::move(shpx));
+        return [&g, ppx, pshpx, w, h, body_name, t_now, epoch]() {
             // Epoch bumped after we posted: this map is for the old world.
             // Drop it (the load path does NOT abort jobs).
             if(epoch != g.cache_epoch) {
@@ -127,6 +145,7 @@ void surfmapCompute(Game &g) {
                 return;
             }
             g.surfmap_px = std::move(*ppx);
+            g.surfmap_shade_px = std::move(*pshpx);
             g.surfmap_w = w;
             g.surfmap_h = h;
             g.surfmap_body_name = body_name;

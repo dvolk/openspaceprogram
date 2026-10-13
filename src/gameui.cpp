@@ -1012,13 +1012,10 @@ void drawUIReadouts(Game &g) {
             sm_pan = ImVec2(0.0f, 0.0f);
             sm_scale = 1.0f;
         }
+        // Overlay-only: the terminator is pre-baked as a separate texture, so
+        // toggling it is a free show/hide (no re-bake, no need to disable mid-sweep).
         bool shade = g.surfmap_shade;
-        if(sm_busy) { ImGui::BeginDisabled(); }
-        if(ImGui::Checkbox("Sun shading", &shade)) {
-            g.surfmap_shade = shade;
-            surfmapCompute(g);   // re-bake with the new terminator
-        }
-        if(sm_busy) { ImGui::EndDisabled(); }
+        if(ImGui::Checkbox("Sun shading", &shade)) { g.surfmap_shade = shade; }
         ImGui::SameLine();
         bool sea = g.surfmap_sea;
         if(sm_busy) { ImGui::BeginDisabled(); }
@@ -1050,6 +1047,7 @@ void drawUIReadouts(Game &g) {
         }
 
         // LINEAR filtering: a smooth map, unlike the Porkchop's discrete cells.
+        // Base albedo + terminator overlay are published together (one rev).
         static Texture *sm_tex = nullptr;
         static int sm_tex_w = 0, sm_tex_h = 0, sm_tex_rev = -1;
         if(g.surfmap_rev != sm_tex_rev) {
@@ -1064,6 +1062,23 @@ void drawUIReadouts(Game &g) {
                                   g.surfmap_px.data());
             }
             sm_tex_rev = g.surfmap_rev;
+        }
+        static Texture *sm_shade_tex = nullptr;
+        static int sm_shade_tex_w = 0, sm_shade_tex_h = 0, sm_shade_tex_rev = -1;
+        if(g.surfmap_rev != sm_shade_tex_rev) {
+            if(!sm_shade_tex || sm_shade_tex_w != g.surfmap_w
+               || sm_shade_tex_h != g.surfmap_h) {
+                if(sm_shade_tex) { delete sm_shade_tex; }
+                sm_shade_tex = make_texture_r8(g.surfmap_w, g.surfmap_h,
+                                              g.surfmap_shade_px.data(),
+                                              /*linear=*/true);
+                sm_shade_tex_w = g.surfmap_w;
+                sm_shade_tex_h = g.surfmap_h;
+            } else {
+                upload_texture_r8(sm_shade_tex, g.surfmap_w, g.surfmap_h,
+                                  g.surfmap_shade_px.data());
+            }
+            sm_shade_tex_rev = g.surfmap_rev;
         }
 
         // The map fills the window's content width (2:1 equirectangular). Buffer row 0 is
@@ -1083,6 +1098,12 @@ void drawUIReadouts(Game &g) {
         dl->PushClipRect(sm_p0, sm_vp_max, true);
         dl->AddImage((ImTextureID)(std::intptr_t)sm_tex->id,
                      sm_img_min, sm_img_max);
+        // Terminator overlay: black with alpha = (1 - shade); the default
+        // src-alpha-over blend multiplies the albedo by shade. Same zoom transform.
+        if(g.surfmap_shade && sm_shade_tex) {
+            dl->AddImage((ImTextureID)(std::intptr_t)sm_shade_tex->id,
+                         sm_img_min, sm_img_max);
+        }
         dl->PopClipRect();
 
         // An invisible button sized to the VIEWPORT (not the zoomed image) captures the
