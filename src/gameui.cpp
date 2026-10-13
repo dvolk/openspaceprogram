@@ -981,6 +981,12 @@ void drawUIReadouts(Game &g) {
             return;
         }
 
+        // Pan/zoom view of the map (the orbital map's idiom): sm_scale = 1 fits the
+        // viewport, >1 zooms in; sm_pan offsets the image's top-left from the
+        // viewport's. Persists across body switches; Reset view clears it.
+        static ImVec2 sm_pan = ImVec2(0.0f, 0.0f);
+        static float sm_scale = 1.0f;
+
         // Auto-compute when there is no map yet or it was computed for a different body.
         // Not mid-sweep: the last one lands for the body it was posted for.
         if(g.surfmap_in_flight == 0 &&
@@ -1000,6 +1006,11 @@ void drawUIReadouts(Game &g) {
             ImGui::SameLine();
             ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
                                "   mapping ...");
+        }
+        ImGui::SameLine();
+        if(ImGui::Button("Reset view")) {
+            sm_pan = ImVec2(0.0f, 0.0f);
+            sm_scale = 1.0f;
         }
         bool shade = g.surfmap_shade;
         if(sm_busy) { ImGui::BeginDisabled(); }
@@ -1062,25 +1073,58 @@ void drawUIReadouts(Game &g) {
         const float sm_img_w = ImMax(0.0f, ImGui::GetContentRegionAvail().x);
         const float sm_img_h = sm_img_w * 0.5f;
         const ImVec2 sm_p0 = ImGui::GetCursorScreenPos();
-        ImGui::Image((ImTextureID)(std::intptr_t)sm_tex->id,
-                     ImVec2(sm_img_w, sm_img_h));
-        // Hover state of the Image (must be read while it is the last item).
+        // The viewport is the scale-1 image rect; the zoomed image is clipped to it.
+        const ImVec2 sm_vp_max = ImVec2(sm_p0.x + sm_img_w, sm_p0.y + sm_img_h);
+        const ImVec2 sm_img_min = ImVec2(sm_p0.x + sm_pan.x, sm_p0.y + sm_pan.y);
+        const ImVec2 sm_img_max = ImVec2(sm_img_min.x + sm_img_w * sm_scale,
+                                        sm_img_min.y + sm_img_h * sm_scale);
+
+        ImDrawList *dl = ImGui::GetWindowDrawList();
+        dl->PushClipRect(sm_p0, sm_vp_max, true);
+        dl->AddImage((ImTextureID)(std::intptr_t)sm_tex->id,
+                     sm_img_min, sm_img_max);
+        dl->PopClipRect();
+
+        // An invisible button sized to the VIEWPORT (not the zoomed image) captures the
+        // mouse, so a left-drag pans the map instead of moving the window.
+        ImGui::InvisibleButton("##smnav", ImVec2(sm_img_w, sm_img_h));
+        // Hover state of the button (must be read while it is the last item).
         const bool sm_hover = ImGui::IsItemHovered();
+        const ImGuiIO &sm_io = ImGui::GetIO();
+        if(sm_hover && sm_io.MouseWheel != 0.0f) {
+            // Wheel zooms to the cursor (the map point under the mouse stays put).
+            const float factor = (sm_io.MouseWheel > 0.0f) ? 0.8f : 1.25f;
+            float new_scale = sm_scale * factor;
+            if(new_scale < 1.0f) { new_scale = 1.0f; }
+            if(new_scale > 8.0f) { new_scale = 8.0f; }
+            const ImVec2 mouse = ImGui::GetMousePos();
+            const float u = (mouse.x - sm_img_min.x) / sm_scale;
+            const float v = (mouse.y - sm_img_min.y) / sm_scale;
+            sm_pan.x = (mouse.x - u * new_scale) - sm_p0.x;
+            sm_pan.y = (mouse.y - v * new_scale) - sm_p0.y;
+            sm_scale = new_scale;
+        }
+        if(ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+            sm_pan.x += sm_io.MouseDelta.x;
+            sm_pan.y += sm_io.MouseDelta.y;
+        }
 
         // map_px scales by the IMAGE size rather than equirectPixel's (h-1) texture rows
         // -- deliberate: continuous screen coords keep the ship dot and the hover inverse
         // consistent (they disagree with the colour sample by at most half a map row near
-        // the poles).
-        ImDrawList *dl = ImGui::GetWindowDrawList();
+        // the poles). Zoom/pan fold in here so every overlay tracks the view.
         const ImVec4 sm_bg = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
         const ImU32 sm_ink = contrastingColor(sm_bg);
         const ImU32 sm_ship =
             ImGui::GetColorU32(ImVec4(0.20f, 0.80f, 0.40f, 1.0f));
         auto map_px = [&](double lon, double lat) {
-            const double u = lon / (2.0 * std::numbers::pi) * (double)sm_img_w;
-            const double v = (std::numbers::pi * 0.5 - lat) / std::numbers::pi * (double)sm_img_h;
-            return ImVec2(sm_p0.x + (float)u, sm_p0.y + (float)v);
+            const double u = lon / (2.0 * std::numbers::pi) * (double)sm_img_w * sm_scale;
+            const double v = (std::numbers::pi * 0.5 - lat) / std::numbers::pi * (double)sm_img_h * sm_scale;
+            return ImVec2(sm_img_min.x + (float)u, sm_img_min.y + (float)v);
         };
+
+        // Graticule + orbit extend beyond the viewport when zoomed: clip them.
+        dl->PushClipRect(sm_p0, sm_vp_max, true);
 
         // Graticule: faint, under the orbit line.
         const ImU32 grat_faint =
@@ -1186,6 +1230,8 @@ void drawUIReadouts(Game &g) {
             }
         }
 
+        dl->PopClipRect();
+
         /* StaticBuilding::dir is a unit up in the body's ROTATING frame -- the very frame
            the map's pixels are baked in (equirect.h) -- so a site's pixel is equirectLonLat
            straight, no transform. */
@@ -1205,8 +1251,8 @@ void drawUIReadouts(Game &g) {
             const ImU32 site_text =
                 ImGui::GetColorU32(ImVec4(1.0f, 0.92f, 0.65f, 1.0f));
             const float sr = 5.0f;
-            dl->PushClipRect(sm_p0, ImVec2(sm_p0.x + sm_img_w,
-                                           sm_p0.y + sm_img_h), true);
+            const float sm_img_w_s = sm_img_w * sm_scale;
+            dl->PushClipRect(sm_p0, sm_vp_max, true);
             for(const SiteMark &m : site_marks) {
                 const ImVec2 a(m.px.x, m.px.y - sr);
                 const ImVec2 b(m.px.x - sr, m.px.y + sr * 0.8f);
@@ -1214,10 +1260,11 @@ void drawUIReadouts(Game &g) {
                 dl->AddTriangleFilled(a, b, c, site_fill);
                 dl->AddTriangle(a, b, c, site_edge, 1.0f);
                 /* A site within a glyph of an edge is half clipped, and the map's edges are the
-                   SAME meridian, so the other half belongs on the far side. */
-                if(m.px.x - sm_p0.x < sr || sm_p0.x + sm_img_w - m.px.x < sr) {
-                    const ImVec2 q(m.px.x < sm_p0.x + sm_img_w * 0.5f
-                                       ? m.px.x + sm_img_w : m.px.x - sm_img_w,
+                   SAME meridian, so the other half belongs on the far side. The seam is at the
+                   zoomed image's left/right edges (sm_img_min/max). */
+                if(m.px.x - sm_img_min.x < sr || sm_img_max.x - m.px.x < sr) {
+                    const ImVec2 q(m.px.x < sm_img_min.x + sm_img_w_s * 0.5f
+                                       ? m.px.x + sm_img_w_s : m.px.x - sm_img_w_s,
                                    m.px.y);
                     dl->AddTriangleFilled(ImVec2(q.x, q.y - sr),
                                           ImVec2(q.x - sr, q.y + sr * 0.8f),
@@ -1233,7 +1280,7 @@ void drawUIReadouts(Game &g) {
                 const ImVec2 ts = ImGui::CalcTextSize(nm);
                 // Right of the glyph; left of it rather than off the map.
                 float tx = m.px.x + sr + 3.0f;
-                if(tx + ts.x > sm_p0.x + sm_img_w) {
+                if(tx + ts.x > sm_img_max.x) {
                     tx = m.px.x - sr - 3.0f - ts.x;
                 }
                 const float ty = m.px.y - ts.y * 0.5f;
@@ -1258,16 +1305,15 @@ void drawUIReadouts(Game &g) {
                 equirectLonLat(sp / sl, lon, lat);
                 const ImVec2 p = map_px(lon, lat);
                 // Crossing the antimeridian gets a twin on the other side; clip so neither spills.
-                const bool near_left  = (p.x - sm_p0.x) < 8.0f;
-                const bool near_right = (sm_p0.x + sm_img_w - p.x) < 8.0f;
-                dl->PushClipRect(sm_p0,
-                                 ImVec2(sm_p0.x + sm_img_w,
-                                        sm_p0.y + sm_img_h),
-                                 true);
+                // The seam is at the zoomed image's left/right edges (sm_img_min/max).
+                const bool near_left  = (p.x - sm_img_min.x) < 8.0f;
+                const bool near_right = (sm_img_max.x - p.x) < 8.0f;
+                dl->PushClipRect(sm_p0, sm_vp_max, true);
                 dl->AddCircleFilled(p, 5.0f, sm_ink);
                 dl->AddCircle(p, 8.0f, sm_ship, 0, 1.5f);
                 if(near_left || near_right) {
-                    const ImVec2 p2(near_left ? p.x + sm_img_w : p.x - sm_img_w,
+                    const ImVec2 p2(near_left ? p.x + sm_img_w * sm_scale
+                                             : p.x - sm_img_w * sm_scale,
                                     p.y);
                     dl->AddCircleFilled(p2, 5.0f, sm_ink);
                     dl->AddCircle(p2, 8.0f, sm_ship, 0, 1.5f);
@@ -1281,35 +1327,39 @@ void drawUIReadouts(Game &g) {
             // GetTerrainHeight straight -- the map is baked in the same rotating frame
             // (equirect.h). "elev" is above SEA LEVEL, like the Surface window's ASL.
             const ImVec2 sm_mouse = ImGui::GetMousePos();
-            const double u = (sm_mouse.x - sm_p0.x) / sm_img_w;
-            const double v = (sm_mouse.y - sm_p0.y) / sm_img_h;
-            const double lon = u * 2.0 * std::numbers::pi;
-            const double lat = std::numbers::pi * 0.5 - v * std::numbers::pi;
-            const glm::vec3 dir = equirectDir(lon, lat);
-            char elev_s[32];
-            // The nearest site under the cursor, so a marker is still identifiable with the
-            // labels box off. One suffix on the same line, never a second line: this window
-            // auto-resizes, so a new line would jitter its height.
-            char site_s[64] = "";
-            const SiteMark *near = nullptr;
-            float best = 14.0f * 14.0f;
-            for(const SiteMark &m : site_marks) {
-                const float dx = m.px.x - sm_mouse.x;
-                const float dy = m.px.y - sm_mouse.y;
-                const float d2 = dx * dx + dy * dy;
-                if(d2 < best) { best = d2; near = &m; }
+            const double u = (sm_mouse.x - sm_img_min.x) / (sm_img_w * sm_scale);
+            const double v = (sm_mouse.y - sm_img_min.y) / (sm_img_h * sm_scale);
+            // Panned over exposed background (scale 1 + non-zero pan): outside the
+            // map, so no meaningful lat/lon/elev to show.
+            if(u >= 0.0 && u <= 1.0 && v >= 0.0 && v <= 1.0) {
+                const double lon = u * 2.0 * std::numbers::pi;
+                const double lat = std::numbers::pi * 0.5 - v * std::numbers::pi;
+                const glm::vec3 dir = equirectDir(lon, lat);
+                char elev_s[32];
+                // The nearest site under the cursor, so a marker is still identifiable with the
+                // labels box off. One suffix on the same line, never a second line: this window
+                // auto-resizes, so a new line would jitter its height.
+                char site_s[64] = "";
+                const SiteMark *near = nullptr;
+                float best = 14.0f * 14.0f;
+                for(const SiteMark &m : site_marks) {
+                    const float dx = m.px.x - sm_mouse.x;
+                    const float dy = m.px.y - sm_mouse.y;
+                    const float d2 = dx * dx + dy * dy;
+                    if(d2 < best) { best = d2; near = &m; }
+                }
+                if(near != nullptr) {
+                    snprintf(site_s, sizeof(site_s), "  site: %s",
+                             near->name->c_str());
+                }
+                ImGui::TextDisabled("cursor: lat %+.1f  lon %.1f  elev %s%s",
+                                    glm::degrees(lat), glm::degrees(lon),
+                                    fmt_dist((double)sm_body->GetTerrainHeight(dir)
+                                             - (double)sm_body->radius
+                                             - (double)sm_body->surface.sea_level,
+                                             elev_s, sizeof elev_s),
+                                    site_s);
             }
-            if(near != nullptr) {
-                snprintf(site_s, sizeof(site_s), "  site: %s",
-                         near->name->c_str());
-            }
-            ImGui::TextDisabled("cursor: lat %+.1f  lon %.1f  elev %s%s",
-                                glm::degrees(lat), glm::degrees(lon),
-                                fmt_dist((double)sm_body->GetTerrainHeight(dir)
-                                         - (double)sm_body->radius
-                                         - (double)sm_body->surface.sea_level,
-                                         elev_s, sizeof elev_s),
-                                site_s);
         }
         if(ship && ship->m_parent && sm_body != ship->m_parent) {
             ImGui::TextDisabled("ship is in %s's SOI -- its orbit (about "
