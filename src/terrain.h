@@ -625,8 +625,9 @@ struct TerrainBody {
     }
 };
 
-// Per-part terrain shadow factor: 1.0 = lit, <1.0 = the planet's terrain
-// occludes the line to the sun.
+/* Does this body occlude the line from the test point to the star? Hard
+   lit/shadow: 1.0 = sunlit, 0.0 = in the body's shadow. Only `planet` is
+   tested, so a third body crossing the sun never shadows the ship. */
 float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
                            const glm::dvec3 &posInFrame, TerrainBody *sun);
 

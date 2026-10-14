@@ -21,7 +21,9 @@ struct DrawOpts {
    required. xform: extra world transform applied before the camera view; a
    body's rigid-body coordinates live in whatever frame it was integrated in,
    so when that is not the view's frame the caller passes the body-frame ->
-   render-frame transform here. */
+   render-frame transform here. shadow: 1 = sunlit, 0 = the star is occluded
+   (ComputeTerrainShadow); how dark a shadowed surface reads is the shader's
+   call, not the caller's. */
 void DrawModelAt(const Camera *camera, Mesh *mesh, Shader *shader, Texture *texture,
                  const glm::dmat4 &modelMat, glm::vec3 &sunlightVec, float shadow,
                  const glm::dmat4 &xform = glm::dmat4(1.0),

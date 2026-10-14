@@ -277,6 +277,7 @@ float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
                            const glm::dvec3 &posInFrame, TerrainBody *sun) {
     // One test point per object, hard lit/shadow. The height function is
     // analytic, so this works where no collision leaves exist.
+    assert(planet != nullptr && planet->frame != nullptr);
     if(sun == nullptr) { return 1.0f; }
 
     // The star is the light source, so its own terrain can't shadow the ship.
@@ -315,8 +316,9 @@ float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
         const double r = glm::length(ql);
         if (r < 1.0) { continue; } // degenerate sample at the center
         if (r < planet->GetTerrainHeight(glm::vec3(ql / r))) {
-            // 0.15 matches partsShader's min_light so a shadowed part reads as night.
-            return 0.15f;
+            // No sun reaches this point. partsShader.fs owns how dark a
+            // shadowed hull reads; this only says whether the sun is there.
+            return 0.0f;
         }
     }
     return 1.0f;
