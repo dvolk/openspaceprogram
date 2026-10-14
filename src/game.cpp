@@ -949,13 +949,22 @@ std::vector<Kerbal *> partCrew(Part *capPart) {
     return out;
 }
 
-std::vector<Kerbal *> freeKerbals(System &sys) {
-    std::vector<Kerbal *> out;
-    for(auto *s : collectVehicles(sys)) {
+void freeKerbalsInto(System &sys, std::vector<Kerbal *> &out) {
+    out.clear();
+    /* The fleet walk is buffered too: freeKerbals used to build a whole
+       vehicle vector just to filter it, twice per part-window frame. */
+    static thread_local std::vector<Vehicle *> all;
+    collectVehiclesInto(sys, all);
+    for(auto *s : all) {
         if(!s->isEva()) { continue; }
         Kerbal *k = static_cast<Kerbal *>(s);
         if(k->aboard() == nullptr) { out.push_back(k); }
     }
+}
+
+std::vector<Kerbal *> freeKerbals(System &sys) {
+    std::vector<Kerbal *> out;
+    freeKerbalsInto(sys, out);
     return out;
 }
 
@@ -1493,12 +1502,12 @@ void Game::stage() {
 
 /* Remove a ship + its bookkeeping. Refuses to remove the last ship. If it was
    active, control hands off to the next ship in canonical order. */
-void Game::remove_ship(Vehicle *v) {
-    if(v == nullptr) { return; }
+bool Game::remove_ship(Vehicle *v) {
+    if(v == nullptr) { return false; }
     std::vector<Vehicle *> all = collectVehicles(sys);
     if(all.size() <= 1) {
         printf("Refusing to remove the last ship\n");
-        return;
+        return false;
     }
     // A ship carrying crew, or a crew member itself, can't be removed here: an
     // aboard kerbal is owned by its ship and parked out of the world.
@@ -1506,11 +1515,11 @@ void Game::remove_ship(Vehicle *v) {
         // A FREE kerbal is in its body's ship list and passes both tests below.
         toast("Cannot remove %s -- a crew member can't be deleted",
               v->name.c_str());
-        return;
+        return false;
     }
     if(v->isCrewAboard() || !shipCrew(v).empty()) {
         toast("Cannot remove %s -- EVA its crew out first", v->name.c_str());
-        return;
+        return false;
     }
     const bool wasActive = (v == ship);
     const std::string removedName = v->name;
@@ -1594,6 +1603,7 @@ void Game::remove_ship(Vehicle *v) {
         printf("Removed '%s' (active unchanged: %s)\n",
                removedName.c_str(), ship->name.c_str());
     }
+    return true;
 }
 
 /* Recover the active vessel -- the end of a flight. Unlike remove_ship this

@@ -635,8 +635,10 @@ struct Game {
     void undock();
     // Refuses a stage that still carries a crewed capsule.
     void stage();
-    // Refuses the last ship; hands control off if the active one is removed.
-    void remove_ship(Vehicle *v);
+    /* Refuses the last ship; hands control off if the active one is removed.
+       False = refused (also the null case), so a caller drawing a delete
+       button knows whether the row actually went away. */
+    bool remove_ship(Vehicle *v);
     /* Refuses unless grounded on the home body (--recover-anywhere lifts that).
        Unlike remove_ship this allows the last vessel. */
     void recoverActive();
@@ -700,6 +702,8 @@ void load_settings_args(GameArgs &args);
 std::vector<Kerbal *> shipCrew(Vehicle *ship);
 std::vector<Kerbal *> partCrew(Part *capPart);
 std::vector<Kerbal *> freeKerbals(System &sys);
+/* Same walk into a reused buffer (cleared here), for per-frame callers. */
+void freeKerbalsInto(System &sys, std::vector<Kerbal *> &out);
 
 // One constant so the boarding / take-store reach the UI shows and the gate it
 // enforces can't drift.

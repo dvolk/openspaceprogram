@@ -150,6 +150,8 @@ ifeq ($(CONFIG),asan)
 TARGET=osp_asan
 else ifeq ($(CONFIG),tsan)
 TARGET=osp_tsan
+else ifeq ($(CONFIG),prof)
+TARGET=osp_prof
 else
 TARGET=osp
 endif
@@ -157,10 +159,17 @@ endif
 ifeq ($(OS),windows)
 TARGET:=$(TARGET).exe
 endif
-# Per-config flags: release O2+LTO; debug O0 -g3 no LTO; asan/tsan O2+LTO
-# + sanitizer (also on the link line -- LTO finalizes at the link).
+# Per-config flags: release O2+LTO; debug O0 -g3 no LTO; prof O2 -g3 no LTO;
+# asan/tsan O2+LTO + sanitizer (also on the link line -- LTO finalizes at the
+# link).
 ifeq ($(CONFIG),debug)
 CFGFLAGS=-O0 -g3
+CFGLTO=
+else ifeq ($(CONFIG),prof)
+# Heap/CPU profilers (heaptrack, perf). Real -O2 codegen, full DWARF, and no
+# LTO: LTO inlines the intermediate frames, so an allocation gets blamed on
+# whatever survived at the top of the TU instead of the code that asked for it.
+CFGFLAGS=-O2 -g3
 CFGLTO=
 else ifeq ($(CONFIG),asan)
 ifeq ($(OS),windows)
@@ -187,10 +196,15 @@ rm = rm -f
 
 # Build this config's binary, then (linux) point ./osp at it. Phony so the
 # symlink always tracks the last `make`. Windows leaves ./osp alone.
+# prof is the exception: a profiler build must be named and pathed explicitly,
+# else a `make prof` leaves ./osp -- and every e2e run that uses it -- pointing
+# at a non-LTO binary.
 .PHONY: all
 all: $(BINDIR)/$(TARGET)
 ifeq ($(OS),windows)
 	@echo "run: wine $(BINDIR)/$(TARGET)"
+else ifeq ($(CONFIG),prof)
+	@echo "run: $(BINDIR)/$(TARGET)  (left ./osp alone)"
 else
 	ln -sfn $(BINDIR)/$(TARGET) osp
 endif
@@ -639,6 +653,35 @@ else
 	@$(MAKE) --no-print-directory CONFIG=asan all
 endif
 
+# Heap/CPU profiling build: real -O2, full DWARF, no LTO. Separate tree, and
+# the binary is named osp_prof so ./osp never points at an instrumented build.
+.PHONY: prof
+prof:
+	@$(MAKE) --no-print-directory CONFIG=prof all
+
+# Run the profiling build under heaptrack; the trace lands in tmp/heaptrack/.
+# GAME_ARGS passes game args (run from the repo root -- the game needs res/)
+# and MUST carry --timeout: the offscreen window can't be closed, so without it
+# the trace runs until you Ctrl-C.
+# SDL_VIDEODRIVER=offscreen, not xvfb-run: an Xvfb swap blocks on vsync, so a
+# 10 s trace only captures ~70 frames. Offscreen paces at ~60 fps, i.e. ~8x the
+# frames -- and per-frame allocation counts are exactly what we are looking for.
+# %p in the output name (heaptrack expands it to the pid) so a new run never
+# eats the last trace.
+# Analyze with: heaptrack_print -f tmp/heaptrack/heap-<pid>.zst -T 1
+# For steady-state work, run twice with different --timeout and diff them:
+#   heaptrack_print -f a.zst -d b.zst
+# That cancels every startup/asset-loading allocation, which otherwise dwarfs
+# the per-frame signal.
+.PHONY: heap-run
+heap-run: prof
+ifeq ($(OS),windows)
+	@echo "error: heap-run is linux-only (heaptrack has no mingw runtime)" >&2; exit 1
+else
+	@mkdir -p tmp/heaptrack
+	SDL_VIDEODRIVER=offscreen heaptrack -o tmp/heaptrack/heap-%p $(ARCHDIR)/prof/osp_prof $(GAME_ARGS)
+endif
+
 # tsan is linux-only (mingw has no ThreadSanitizer runtime).
 .PHONY: tsan
 tsan:
@@ -658,7 +701,7 @@ tsan-run: tsan
 
 .PHONY: san-clean
 san-clean:
-	rm -rf $(ARCHDIR)/asan $(ARCHDIR)/tsan
+	rm -rf $(ARCHDIR)/asan $(ARCHDIR)/tsan $(ARCHDIR)/prof
 
 .PHONY: clean
 # Also drops imgui/implot/test objects -- stale ones silently survive an

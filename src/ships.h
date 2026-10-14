@@ -45,6 +45,10 @@ std::vector<Vehicle *> collectVehicles(System &sys);
 /* Same walk, appended into a reused buffer (cleared here). */
 void collectVehiclesInto(System &sys, std::vector<Vehicle *> &out);
 
+/* How many vehicles the canonical walk yields, without handing back a list.
+   For callers that only need the count (a per-frame readout). */
+size_t countVehicles(System &sys);
+
 class Ships {
 public:
     /* parts_file:  parts catalog to build from (owned, loaded here).

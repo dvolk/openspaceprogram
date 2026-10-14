@@ -1091,17 +1091,27 @@ void drawUIReadouts(Game &g) {
     drawWin(g, W_SurfaceMap, [&] {
         // Body to map: item 0 = "active ship's body" (surfmap_body == nullptr, so the
         // map follows the ship).
-        std::vector<std::string> sm_names;
-        sm_names.push_back(ship && ship->m_parent
-                              ? "active ship's body (" + ship->m_parent->name + ")"
-                              : "active ship's body");
-        int sm_sel = 0;
-        for(auto *b : sys.bodies) {
-            sm_names.push_back(b->name);
-            if(g.surfmap_body == b) { sm_sel = (int)sm_names.size() - 1; }
+        // This list is rebuilt every frame the window is open, so the vector is
+        // static (reserved once) and the item-0 label is a static buffer: the only
+        // long string here was that label, and the other 18 push_backs each grew
+        // two vectors from scratch. sm_active is static too so sm_items never
+        // outlives the bytes it points at, even though Combo consumes it in place.
+        static std::vector<const char *> sm_items;
+        static char sm_active[160];
+        if(ship && ship->m_parent) {
+            snprintf(sm_active, sizeof(sm_active), "active ship's body (%s)",
+                     ship->m_parent->name.c_str());
+        } else {
+            snprintf(sm_active, sizeof(sm_active), "active ship's body");
         }
-        std::vector<const char *> sm_items;
-        for(auto &n : sm_names) { sm_items.push_back(n.c_str()); }
+        int sm_sel = 0;
+        sm_items.clear();
+        sm_items.reserve(sys.bodies.size() + 1);
+        sm_items.push_back(sm_active);
+        for(auto *b : sys.bodies) {
+            sm_items.push_back(b->name.c_str());
+            if(g.surfmap_body == b) { sm_sel = (int)sm_items.size() - 1; }
+        }
         ImGui::Combo("Body", &sm_sel, sm_items.data(), (int)sm_items.size());
         g.surfmap_body = (sm_sel > 0 && sm_sel <= (int)sys.bodies.size())
             ? sys.bodies[sm_sel - 1]
@@ -1336,7 +1346,11 @@ void drawUIReadouts(Game &g) {
                 // Broken at the antimeridian: the map's edges are the SAME meridian; surfmapWraps
                 // detects the >half-turn jump.
                 double prev_lon = -1.0e300;
-                std::vector<ImVec2> seg;
+                // Reused buffer (as drawDebrisBelts' pi/po): this redraws
+                // every frame, and a 64-point orbit grows a fresh vector each time.
+                static std::vector<ImVec2> seg;
+                seg.clear();
+                seg.reserve(pts->size());
                 for(size_t i = 0; i < pts->size(); i++) {
                     const glm::dvec3 pr = O * (*pts)[i] + P;
                     const double l = glm::length(pr);
@@ -1385,7 +1399,12 @@ void drawUIReadouts(Game &g) {
            the map's pixels are baked in (equirect.h) -- so a site's pixel is equirectLonLat
            straight, no transform. */
         struct SiteMark { ImVec2 px; const std::string *name; };
-        std::vector<SiteMark> site_marks;
+        // Reused: one entry per VAB pad on the mapped body, rebuilt every frame
+        // the window is open. The name pointers are into the body's pads, which
+        // outlive the frame.
+        static std::vector<SiteMark> site_marks;
+        site_marks.clear();
+        site_marks.reserve(sm_body->pads.size());
         for(const StaticBuilding *p : sm_body->pads) {
             if(!p->hasFlag("VAB_LAUNCH_PAD")) { continue; }
             double lon, lat;
@@ -1797,7 +1816,12 @@ void drawUIReadouts(Game &g) {
     drawWin(g, W_ShipList, [&] {
     // Buttons (natural width) + SameLine: a full-width Selectable in this auto-resize
     // window would push the "x" off the line.
-    std::vector<Vehicle *> all = collectVehicles(sys);
+    // Static fleet buffer: this window redraws every frame, and the per-row
+    // "x##rm_<name>" label is built on the stack for the same reason. Not
+    // reentrant -- nothing the buttons below call may redraw this window, or
+    // collectVehiclesInto would refill the vector being iterated.
+    static std::vector<Vehicle *> all;
+    collectVehiclesInto(sys, all);
     bool removed = false;
     for(size_t i = 0; i < all.size() && !removed; i++) {
         Vehicle *v = all[i];
@@ -1825,9 +1849,17 @@ void drawUIReadouts(Game &g) {
             if(!v->isEva()) {
                 ImGui::SameLine();
                 // The "##rm_<name>" suffix is invisible but makes the row addressable by --ui-click.
-                if(ImGui::SmallButton(("x##rm_" + v->name).c_str())) {
-                    g.remove_ship(v);
-                    removed = true;   // the ship was deleted; stop iterating
+                // Names only ever grow by decoupler labels and a " #N" dedup suffix,
+                // so this never truncates; if it somehow did, two rows would share an
+                // imgui id and --ui-click would report the label as ambiguous.
+                char rm_id[256];
+                snprintf(rm_id, sizeof(rm_id), "x##rm_%s", v->name.c_str());
+                if(ImGui::SmallButton(rm_id)) {
+                    /* Stop iterating only when a row really went away. A refusal
+                       (a capsule with its own crew aboard still gets an "x")
+                       toasts and leaves the fleet intact, so breaking there
+                       would drop the rest of the list for one frame. */
+                    removed = g.remove_ship(v);
                 }
             }
         }
@@ -2143,7 +2175,12 @@ void drawPartWindows(Game &g) {
                 // Free kerbals in boarding reach: a Board button each, plus Store when one holds a
                 // finding.
                 bool anyInRange = false;
-                for(Kerbal *k : freeKerbals(g.sys)) {
+                // Reused buffer: this popup redraws every frame. Not reentrant --
+                // the buttons below must not redraw this window, or the walk
+                // refills the vector being iterated.
+                static std::vector<Kerbal *> free_ks;
+                freeKerbalsInto(g.sys, free_ks);
+                for(Kerbal *k : free_ks) {
                     // Board/Store gate: the same kerbalInRange the Take button and the headless hooks use.
                     if(!g.kerbalInRange(k, ship->parts[part])) { continue; }
                     anyInRange = true;
@@ -2229,7 +2266,10 @@ void drawPartWindows(Game &g) {
                 // courier), to then store into a capsule. An aboard kerbal can't reach out.
                 if(!pod->experiments.empty()) {
                     bool anyTake = false;
-                    for(Kerbal *k : freeKerbals(g.sys)) {
+                    // Reused buffer + stack label (see the Board loop above).
+                    static std::vector<Kerbal *> take_ks;
+                    freeKerbalsInto(g.sys, take_ks);
+                    for(Kerbal *k : take_ks) {
                         // A successful take empties the pod; the next iteration's
                         // canHold(pod->experiments[0]) would read an empty vector.
                         if(pod->experiments.empty()) { break; }
@@ -2240,9 +2280,10 @@ void drawPartWindows(Game &g) {
                         }
                         anyTake = true;
                         ImGui::PushID(k);
-                        const std::string takeLabel =
-                            "Take  (to " + k->name + ")##pod_take";
-                        if(ImGui::SmallButton(takeLabel.c_str())) {
+                        char takeLabel[192];
+                        snprintf(takeLabel, sizeof(takeLabel),
+                                 "Take  (to %s)##pod_take", k->name.c_str());
+                        if(ImGui::SmallButton(takeLabel)) {
                             g.moveExperiment(pod, k->parts[0], 0);
                         }
                         ImGui::PopID();
@@ -2265,8 +2306,10 @@ void drawPartWindows(Game &g) {
                     ImGui::Text("  (empty)");
                 }
                 /* Snapshot: dropItem erases from ownedContents mid-loop, and
-                   a vector erase invalidates the range-for's iterator. */
-                std::vector<Part *> items = cont->ownedContents;
+                   a vector erase invalidates the range-for's iterator. The
+                   buffer is reused -- this popup redraws every frame. */
+                static std::vector<Part *> items;
+                items = cont->ownedContents;
                 for(Part *item : items) {
                     const char *in = item->def->label().c_str();
                     ImGui::PushID(item);
@@ -2279,7 +2322,14 @@ void drawPartWindows(Game &g) {
                 }
                 // Free item ships in range: a Pick up button each (a crewed ship is not stowable).
                 bool anyInRange = false;
-                for(Vehicle *v : collectVehicles(g.sys)) {
+                // Reused buffer: this popup redraws every frame. Same snapshot
+                // semantics as collectVehicles' by-value return -- the buffer
+                // outlives the loop, so a mid-loop pickUpItem is no more
+                // surprising here than it was. Not reentrant: nothing below
+                // may redraw this window, or the walk refills what we iterate.
+                static std::vector<Vehicle *> nearby;
+                collectVehiclesInto(g.sys, nearby);
+                for(Vehicle *v : nearby) {
                     if(v->isEva()) { continue; }
                     if(v->parts.size() != 1) { continue; }
                     if(v->parts[0]->container != nullptr) { continue; }
@@ -3000,7 +3050,7 @@ void drawSpaceCenterTopBar(Game &g) {
         ImGui::SameLine();
         ImGui::TextDisabled("|");
         ImGui::SameLine();
-        ImGui::Text("Vessels: %d", (int)collectVehicles(g.sys).size());
+        ImGui::Text("Vessels: %d", (int)countVehicles(g.sys));
     });
 }
 
@@ -3891,7 +3941,11 @@ void drawTrackingShipList(Game &g) {
         popScene(g);
     }
     ImGui::Separator();
-    std::vector<Vehicle *> all = collectVehicles(sys);
+    // Static fleet buffer + stack label: redrawn every frame in this scene.
+    // Not reentrant -- nothing the buttons below call may redraw this window,
+    // or collectVehiclesInto would refill the vector being iterated.
+    static std::vector<Vehicle *> all;
+    collectVehiclesInto(sys, all);
     bool removed = false;
     for(size_t i = 0; i < all.size() && !removed; i++) {
         Vehicle *v = all[i];
@@ -3917,9 +3971,12 @@ void drawTrackingShipList(Game &g) {
             }
             if(!v->isEva()) {
                 ImGui::SameLine();
-                if(ImGui::SmallButton(("x##rm_" + v->name).c_str())) {
-                    g.remove_ship(v);
-                    removed = true;   // the ship was deleted; stop iterating
+                char rm_id[256];
+                snprintf(rm_id, sizeof(rm_id), "x##rm_%s", v->name.c_str());
+                if(ImGui::SmallButton(rm_id)) {
+                    /* Only a real removal stops the list (and hides "Fly"):
+                       a refusal toasts and leaves the row in place. */
+                    removed = g.remove_ship(v);
                 }
             }
             if(active && !removed) {

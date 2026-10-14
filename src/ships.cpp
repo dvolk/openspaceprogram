@@ -97,6 +97,15 @@ std::vector<Vehicle *> collectVehicles(System &sys) {
     return out;
 }
 
+size_t countVehicles(System &sys) {
+    // Walked through collectVehiclesInto so the membership rule (a ship's crew
+    // counts as vehicles) cannot drift from the canonical list. The buffer is
+    // reused, so this costs no allocation per call.
+    static thread_local std::vector<Vehicle *> buf;
+    collectVehiclesInto(sys, buf);
+    return buf.size();
+}
+
 Ships::Ships(const std::string &parts_file, Shader *partsshader, TerrainBody *sun)
     : part_catalog(load_parts_catalog(resdir::path(parts_file).c_str())),
       partsshader(partsshader),
