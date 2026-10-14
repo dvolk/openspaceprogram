@@ -624,7 +624,10 @@ void paintWorld(Game &g) {
             if(!g.args.no_atmosphere) {
                 planet->DrawAtmosphere(camera, sun, rf);
             }
-            // Rings last: the depth buffer already hides the far arc.
+            /* Rings last: the depth test is what hides the far arc -- but only
+               while the planet's own depth survives quantization, and on the
+               24-bit unorm window buffer it does not past ~1.7e7 m (#263). There
+               the whole ring draws over its own planet. */
             if(!g.args.no_rings) {
                 planet->DrawRings(camera, sun, rf);
             }

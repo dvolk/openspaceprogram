@@ -651,8 +651,14 @@ int main(int argc, char **argv)
     const float camFov = (float)glm::radians(args.camFovDeg);
     // The drawable size the Renderer actually got (the WM may have clamped it).
     const float camAspect = (float)display.get_width() / (float)display.get_height();
+    /* zNear = 1 m clips anything nearer than that, which CAM_FIRST hits in anger:
+       the eye sits on the controller's top face (render.cpp), so a part stacked
+       above the pod vanishes. Lowering it is not free on the 24-bit unorm window
+       buffer -- window depth is zNear/d, so it multiplies the far-field collapse
+       by the same factor. Pairs with #263. */
     const float camZNear = 1.0f;
-    // zFar must match the hard far limit the log-depth shaders define.
+    // Stored only: the projection is infinite-far, and no shader reads a far
+    // limit (camera.cpp reverseZInfinitePerspective ignores zFar).
     const float camZFar = 1e13;
 
     // One camera, two modes (orbit + free); the terrain LOD reads the live one.

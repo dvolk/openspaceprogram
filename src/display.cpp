@@ -43,7 +43,13 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
     // non-multisampled FBO, so only the default path gets this.
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, msaa_samples > 0 ? 1 : 0);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, msaa_samples);
-    // 24-bit window depth is enough for the current reverse-Z setup.
+    /* UNORM depth is the problem here, not reverse-Z: the projection maps window
+       depth to zNear/d (camera.cpp reverseZInfinitePerspective), so a uniform
+       2^-24 LSB swallows everything past 2^24 m -- those bodies tie with the 0.0
+       clear and occlusion falls back to g.sys.bodies order. Float depth has no
+       such cliff (1/d keeps relative precision), which is why the postfx target
+       (postfx.cpp, GL_DEPTH_COMPONENT32F) occludes correctly and the window does
+       not. The fix is to always render into a float-depth FBO: #263. */
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, gl_major);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, gl_minor);
