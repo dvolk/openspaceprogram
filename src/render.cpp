@@ -10,6 +10,7 @@
 #include <GL/glew.h>   // glBlendFunc / glLineWidth / the GL enums
 
 #include "billboard.h"
+#include "constants.h"  // kNodeAnRgb/kNodeDnRgb (the plane overlay's node ticks)
 #include "mesh.h"
 #include "orbit.h"
 #include "physics.h"   // debug_draw
@@ -460,8 +461,15 @@ static void drawOrbitPlane(Game &g, const glm::dmat4 &VP) {
         g.lineshader->setUniform_mat4(0, VP * glm::dmat4(glm::dmat3(u, v, n_ref)));
         g.lineshader->setUniform_vec4(1, glm::vec4(1.0f, 1.0f, 0.0f, 0.5f));  // reference: yellow
         g.ref_circle_xy->Draw(GL_LINE_LOOP);
-        g.lineshader->setUniform_vec4(1, glm::vec4(1.0f, 1.0f, 1.0f, 0.7f));  // nodes: white
-        g.ref_node_ticks->Draw(GL_LINES);
+        // The basis is pinned to the node line, so the +X tick is the ascending
+        // side: the same green/red pair the orbit map's markers use, from the
+        // same constants (constants.h), with this overlay's translucent alpha.
+        g.lineshader->setUniform_vec4(1, glm::vec4(kNodeAnRgb[0], kNodeAnRgb[1],
+                                                   kNodeAnRgb[2], 0.8f));
+        g.ref_node_an->Draw(GL_LINES);
+        g.lineshader->setUniform_vec4(1, glm::vec4(kNodeDnRgb[0], kNodeDnRgb[1],
+                                                   kNodeDnRgb[2], 0.8f));
+        g.ref_node_dn->Draw(GL_LINES);
     }
     /* --plane-log: the two normals as this frame drew them, in the RENDER frame.
        inc is rotation-invariant, so it must equal the [orbitlog] inc measured in
@@ -721,7 +729,8 @@ void paintWorld(Game &g) {
     g.normal_plus_indicator->Draw(camera, std::numbers::pi);
     g.normal_minus_indicator->pos = -glm::cross(pos, vel);
     g.normal_minus_indicator->Draw(camera, std::numbers::pi);
-    // Transfer burn direction (TRANSFER window target selected).
+    // Transfer burn direction (TARGET window, with "Compute transfer" on --
+    // xfer.valid is what the planner clears when planning goes off).
     if(planner.xfer.valid && glm::length(planner.xfer.burn_dir) > 0.0) {
         g.burn_indicator->pos = planner.xfer.burn_dir;
         g.burn_indicator->Draw(camera, std::numbers::pi);

@@ -132,3 +132,15 @@ inline constexpr float kMapMaxScale = 3.16227766e10f;  // 10^10.5
    Changes: what the map looks like before the player touches the wheel.
    Where: Game::map_scale (game.h). */
 inline constexpr float kMapDefaultScale = 6000.0f;
+
+/* Ascending / descending node marker colors, linear-ish sRGB [0,1] per
+   channel. Kept as bare channels because the two places that draw them want
+   different alphas and different color types: the orbit map fills opaque
+   ImVec4 rings, the 3D orbital-plane overlay strokes translucent glm::vec4
+   ticks. Same hue in both is the point -- one green/red pair means "ascending
+   / descending" everywhere, and a reader of either can check the other.
+   Changes: only what those markers look like.
+   Where: kColNodeAn/kColNodeDn + drawMapNodes (gameui.cpp), drawOrbitPlane
+   (render.cpp). */
+inline constexpr float kNodeAnRgb[3] = {0.35f, 0.95f, 0.45f};
+inline constexpr float kNodeDnRgb[3] = {0.95f, 0.30f, 0.25f};

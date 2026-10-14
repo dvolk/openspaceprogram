@@ -1,4 +1,4 @@
-# The orbit map's fourth plane slot: "Target orbit" -- the TRANSFER window's
+# The orbit map's fourth plane slot: "Target orbit" -- the TARGET window's
 # target seen as a PLANE about the body you orbit. The target list is bodies
 # orbiting that body plus vessels in its SOI, and the planner relativizes the
 # target to whatever focus frame it is handed, so the normal is always the

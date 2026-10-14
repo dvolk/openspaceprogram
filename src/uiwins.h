@@ -25,7 +25,7 @@ enum Win : int {
     W_Settings, W_Controls, W_Debug, W_Telemetry, W_SaveLoad,
     // flight
     W_Hud, W_Windows, W_Orbital, W_Surface, W_Resources, W_OrbitalMap,
-    W_SurfaceMap, W_VesselInfo, W_ShipList, W_Autopilot, W_Transfer,
+    W_SurfaceMap, W_VesselInfo, W_ShipList, W_Autopilot, W_Target,
     W_Porkchop,
     // title
     W_TitleMenu, W_NewGame, W_Readme,

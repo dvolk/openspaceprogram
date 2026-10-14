@@ -196,6 +196,56 @@ inline PlaneAngles orbitPlaneAngles(const OrbitElements &o, const RefPlane &ref)
     return p;
 }
 
+/* Which of the two crossings orbitNodePoints filled. An ellipse reaches both --
+   |e_vec . d_hat| <= e < 1 -- but an escape can cross a plane on the way out and
+   never come back: the other node direction gives a NEGATIVE radius, i.e. the
+   branch the conic does not trace. Drawing the crossing that does exist beats
+   drawing neither. */
+inline constexpr int kNodeAn = 1;
+inline constexpr int kNodeDn = 2;
+
+/* Where an orbit crosses a reference plane: AN is the crossing northbound
+   across n_hat (the same ascending-node direction as orbitPlaneAngles), DN the
+   other end of that line. Vector form, so it needs no argument of periapsis and
+   stays valid for a circular or hyperbolic conic: the radius along an in-plane
+   direction d_hat is h^2 / (mu * (1 + e_vec . d_hat)), where e_vec is the
+   eccentricity VECTOR -- e times ecc_dir, not ecc_dir alone. The scale is the
+   whole point: a near-circular orbit's ecc_dir is pure noise of unit length, so
+   dropping e would put its crossings at wildly different radii (the e2e map dump
+   caught exactly that).
+   0 when the orbit lies IN the plane -- the same sin(inc) > 1e-6 gate as
+   PlaneAngles::node_ok, so a drawn marker and a dashed LAN can never disagree --
+   or for a radial state. Both points are in the frame the state came from. */
+inline int orbitNodePoints(const OrbitElements &o, const glm::dvec3 &plane_n,
+                           double mu, glm::dvec3 &an, glm::dvec3 &dn) {
+    // A non-unit normal scales node_len by |plane_n|, which silently detaches
+    // the 1e-6 floor from the HUD's sin(inc) gate -- the invariant this
+    // function exists to keep.
+    assert(std::fabs(glm::length(plane_n) - 1.0) < 1e-9);
+    if(mu <= 0.0 || glm::dot(o.h_hat, o.h_hat) < 0.5) { return 0; }
+    const glm::dvec3 node = glm::cross(plane_n, o.h_hat);
+    const double node_len = glm::length(node);
+    if(node_len <= 1e-6) { return 0; }
+    const glm::dvec3 node_hat = node / node_len;
+    const double h2 = o.ang_momentum * o.ang_momentum;
+    const double e_dot_n = o.ecc * glm::dot(o.ecc_dir, node_hat);
+    /* At or below zero the radius along that direction is non-positive: the
+       direction misses the branch the conic traces. The floor also drops the
+       exactly-parabolic case, whose crossing sits at infinite range. */
+    const double den_an = 1.0 + e_dot_n;
+    const double den_dn = 1.0 - e_dot_n;
+    int got = 0;
+    if(den_an > 1e-9) {
+        an = (h2 / (mu * den_an)) * node_hat;
+        got |= kNodeAn;
+    }
+    if(den_dn > 1e-9) {
+        dn = -(h2 / (mu * den_dn)) * node_hat;
+        got |= kNodeDn;
+    }
+    return got;
+}
+
 /* Orthonormal tangent basis (u, v) of the plane with unit normal n_hat, for
    DRAWING a plane: u x v == n_hat. `pin` (a direction; zero = no preference)
    is projected into the plane and becomes u, so pinning two planes' bases to

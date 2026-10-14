@@ -1,5 +1,6 @@
 // test_orbit: two-body orbital elements + time-to-apsis (src/orbit.h), plus the
-// planeTangentBasis the orbital-plane overlay draws with.
+// planeTangentBasis the orbital-plane overlay draws with and the orbitNodePoints
+// crossings the orbit map marks as AN/DN.
 // Runs from the repo root:
 //   make test   (or: g++ -O2 -std=c++20 -I./src -I./middleware/glm/ tests/test_orbit.cpp -o test_orbit && ./test_orbit)
 //
@@ -881,6 +882,212 @@ int main() {
         planeTangentBasis(n, node, u1, v1);
         planeTangentBasis(n_y, node, u2, v2);
         CHECK_NEAR(glm::length(u1 - u2), 0.0, 1e-12);
+    }
+
+    /* orbitNodePoints: where a conic crosses a reference plane -- what the
+       orbit map's AN/DN markers draw, and the same node line the 3D overlay
+       ticks. States come from conic_state (perifocal) rotated by argp about +Z
+       then inc about +X, so the reference plane stays the XY plane (n = +Z),
+       its ascending node lands exactly on +X, and the two node radii are
+       closed-form: p / (1 +/- e cos argp). */
+    {
+        auto inclined_state = [&](double a, double e, double nu, double inc,
+                                  double argp, glm::dvec3 &pos, glm::dvec3 &vel) {
+            conic_state(a, e, nu, pos, vel);
+            const double cp = cos(argp), sp = sin(argp);
+            pos = glm::dvec3(cp * pos.x - sp * pos.y, sp * pos.x + cp * pos.y, pos.z);
+            vel = glm::dvec3(cp * vel.x - sp * vel.y, sp * vel.x + cp * vel.y, vel.z);
+            const double ci = cos(inc), si = sin(inc);
+            pos = glm::dvec3(pos.x, ci * pos.y - si * pos.z, si * pos.y + ci * pos.z);
+            vel = glm::dvec3(vel.x, ci * vel.y - si * vel.z, si * vel.y + ci * vel.z);
+        };
+        const glm::dvec3 n_z(0.0, 0.0, 1.0);
+        const glm::dvec3 x_p(1.0, 0.0, 0.0);
+
+        // Velocity at a point of the conic, from (h_hat, e_vec, h, mu) alone:
+        // v = (mu/h) h_hat x e_vec + (mu/(h r)) h_hat x r. Used to check that
+        // the point labelled AN really is the NORTHBOUND crossing, which is the
+        // whole point of the map's green/red split.
+        auto vel_at = [](const OrbitElements &o, double mu, const glm::dvec3 &r) {
+            const double h = o.ang_momentum;
+            const glm::dvec3 e_vec = o.ecc * o.ecc_dir;
+            return (mu / h) * glm::cross(o.h_hat, e_vec)
+                 + (mu / (h * glm::length(r))) * glm::cross(o.h_hat, r);
+        };
+
+        auto check_nodes = [&](double a, double e, double nu, double inc,
+                               double argp, const char *label) {
+            glm::dvec3 pos, vel;
+            inclined_state(a, e, nu, inc, argp, pos, vel);
+            const OrbitElements o = computeOrbitElements(pos, vel, MU);
+            glm::dvec3 an(0.0), dn(0.0);
+            const int got = orbitNodePoints(o, n_z, MU, an, dn);
+            const double p = o.semi_major * (1.0 - o.ecc * o.ecc);
+            // e_vec projected on the node line (+X here). Which crossings the
+            // conic reaches is a statement about the branch it traces: past
+            // |e cos argp| = 1 the node line leaves the conic on one side only,
+            // and the side it leaves is the one whose e_vec projection is
+            // positive -- the periapsis side.
+            const double edn = o.ecc * cos(argp);
+            const int want = (edn > 1.0) ? kNodeAn
+                           : (edn < -1.0) ? kNodeDn
+                                          : (kNodeAn | kNodeDn);
+            if(got != want) {
+                printf("FAIL orbitNodePoints: %s gives %d, want %d\n",
+                       label, got, want);
+                failures++;
+            }
+            if(got & kNodeAn) {
+                const double r = p / (1.0 + edn);
+                // On the node line, in the plane, at the conic's own radius.
+                CHECK_NEAR(glm::length(glm::cross(an, x_p)), 0.0, 1e-6 * r);
+                CHECK_NEAR(an.z, 0.0, 1e-6 * r);
+                CHECK_NEAR(glm::length(an), r, 1e-9 * r);
+                CHECK(an.x > 0.0);
+                // And it is the NORTHBOUND crossing.
+                CHECK(glm::dot(vel_at(o, MU, an), n_z) > 0.0);
+            }
+            if(got & kNodeDn) {
+                const double r = p / (1.0 - edn);
+                CHECK_NEAR(glm::length(glm::cross(dn, x_p)), 0.0, 1e-6 * r);
+                CHECK_NEAR(dn.z, 0.0, 1e-6 * r);
+                CHECK_NEAR(glm::length(dn), r, 1e-9 * r);
+                CHECK(dn.x < 0.0);
+                CHECK(glm::dot(vel_at(o, MU, dn), n_z) < 0.0);
+            }
+            // The same gate as the HUD's node flag, so a marker here and a
+            // dashed LAN there cannot disagree.
+            CHECK(orbitPlaneAngles(o, RefPlane{n_z, x_p}).node_ok);
+        };
+
+        // Circular: no periapsis, so the crossings are simply +/-a along the
+        // node line -- and they still exist, which is why the map draws nodes
+        // whatever the eccentricity.
+        {
+            glm::dvec3 pos, vel;
+            inclined_state(1.0e7, 0.0, 0.9, M_PI / 6.0, 0.0, pos, vel);
+            const OrbitElements o = computeOrbitElements(pos, vel, MU);
+            glm::dvec3 an(0.0), dn(0.0);
+            CHECK(orbitNodePoints(o, n_z, MU, an, dn) == (kNodeAn | kNodeDn));
+            CHECK_NEAR(glm::length(an), 1.0e7, 1.0);
+            CHECK_NEAR(glm::length(dn), 1.0e7, 1.0);
+            // Equal radii, so for a circle the two really are opposite points.
+            CHECK_NEAR(glm::length(an + dn), 0.0, 1.0);
+        }
+        check_nodes(1.0e7, 0.4, 0.7, M_PI / 6.0, M_PI / 3.0,
+                    "elliptic, node off periapsis");
+        // Node line aimed at periapsis: the ascending crossing IS periapsis.
+        {
+            glm::dvec3 pos, vel;
+            inclined_state(1.0e7, 0.4, 0.7, M_PI / 6.0, 0.0, pos, vel);
+            const OrbitElements o = computeOrbitElements(pos, vel, MU);
+            glm::dvec3 an(0.0), dn(0.0);
+            CHECK(orbitNodePoints(o, n_z, MU, an, dn) == (kNodeAn | kNodeDn));
+            CHECK_NEAR(glm::length(an), o.periapsis, 1e-9 * o.periapsis);
+            CHECK_NEAR(glm::length(dn), o.apoapsis, 1e-9 * o.apoapsis);
+        }
+        // Retrograde (inc past 90 deg): the labels must follow the crossing,
+        // not the tilt -- AN is still the northbound one.
+        check_nodes(1.0e7, 0.3, 1.9, 2.5, 1.1, "retrograde");
+        // Hyperbolic, node line across the flanks: both crossings exist, and
+        // there is no apoapsis to name them by.
+        check_nodes(-2.0e6, 1.5, 0.4, M_PI / 9.0, 1.2, "hyperbolic, both");
+        // Hyperbolic with the node line near periapsis: the far side of that
+        // line gives a NEGATIVE radius -- the branch the escape never traces --
+        // so the map gets one marker, not none. An escaping ship crosses the
+        // ecliptic once and does not come back to cross it again. The surviving
+        // crossing is the periapsis side, which flips with the sign of
+        // e_vec . node_hat, so both signs get pinned.
+        {
+            glm::dvec3 pos, vel;
+            inclined_state(-2.0e6, 1.5, 0.4, M_PI / 9.0, 0.7, pos, vel);
+            const OrbitElements o = computeOrbitElements(pos, vel, MU);
+            CHECK(o.ecc * std::cos(0.7) > 1.0);   // the setup, not the code
+            glm::dvec3 an(0.0), dn(0.0);
+            const int got = orbitNodePoints(o, n_z, MU, an, dn);
+            CHECK(got == kNodeAn);
+            CHECK(glm::length(an) > 0.0);
+            CHECK_NEAR(glm::length(dn), 0.0, 1e-12);   // left untouched
+        }
+        {
+            // argp on the far side: now it is the ascending direction that
+            // misses the branch, and DN is the only marker.
+            glm::dvec3 pos, vel;
+            inclined_state(-2.0e6, 1.5, 0.4, M_PI / 9.0, M_PI - 0.7, pos, vel);
+            const OrbitElements o = computeOrbitElements(pos, vel, MU);
+            CHECK(o.ecc * std::cos(M_PI - 0.7) < -1.0);
+            glm::dvec3 an(0.0), dn(0.0);
+            const int got = orbitNodePoints(o, n_z, MU, an, dn);
+            CHECK(got == kNodeDn);
+            CHECK(glm::length(dn) > 0.0);
+            CHECK_NEAR(glm::length(an), 0.0, 1e-12);   // left untouched
+        }
+        // No mu, no gravity, no conic: the map's focus has one, but a caller
+        // without one must get nothing rather than a division by zero.
+        {
+            glm::dvec3 pos, vel;
+            inclined_state(1.0e7, 0.1, 0.2, 0.4, 0.3, pos, vel);
+            const OrbitElements o = computeOrbitElements(pos, vel, MU);
+            glm::dvec3 an(0.0), dn(0.0);
+            CHECK(orbitNodePoints(o, n_z, 0.0, an, dn) == 0);
+            CHECK(orbitNodePoints(o, n_z, -MU, an, dn) == 0);
+        }
+        // A tilted reference plane (the map's Target-orbit slot): the crossings
+        // move with it, stay on one line through the focus, and lie in both
+        // planes.
+        {
+            glm::dvec3 pos, vel;
+            inclined_state(1.0e7, 0.2, 0.3, 0.5, 0.4, pos, vel);
+            const OrbitElements o = computeOrbitElements(pos, vel, MU);
+            const glm::dvec3 n_t = glm::normalize(glm::dvec3(0.3, 0.9, 0.32));
+            glm::dvec3 an(0.0), dn(0.0);
+            CHECK(orbitNodePoints(o, n_t, MU, an, dn) == (kNodeAn | kNodeDn));
+            CHECK_NEAR(glm::dot(an, n_t), 0.0, 1e-9 * glm::length(an));
+            CHECK_NEAR(glm::dot(dn, n_t), 0.0, 1e-9 * glm::length(dn));
+            CHECK_NEAR(glm::dot(an, o.h_hat), 0.0, 1e-9 * glm::length(an));
+            // Antipodal in DIRECTION, not in position: an elliptic orbit is
+            // closer to the focus on one side of the plane than the other, so
+            // the two radii differ (that difference is the whole point of the
+            // e_vec projection above).
+            CHECK_NEAR(glm::dot(glm::normalize(an), glm::normalize(dn)),
+                       -1.0, 1e-9);
+        }
+        // Coplanar: the orbit lies IN the plane, so there is no crossing to
+        // mark -- and the HUD dashes LAN for the same state.
+        {
+            glm::dvec3 pos, vel;
+            inclined_state(1.0e7, 0.2, 0.3, 0.0, 0.4, pos, vel);
+            const OrbitElements o = computeOrbitElements(pos, vel, MU);
+            glm::dvec3 an(0.0), dn(0.0);
+            CHECK(orbitNodePoints(o, n_z, MU, an, dn) == 0);
+            CHECK(!orbitPlaneAngles(o, RefPlane{n_z, x_p}).node_ok);
+        }
+        // Radial state: no plane to cross, and no node line to draw.
+        {
+            const OrbitElements o = computeOrbitElements(glm::dvec3(1.0e6, 0, 0),
+                                                         glm::dvec3(3.0e3, 0, 0),
+                                                         MU);
+            glm::dvec3 an(0.0), dn(0.0);
+            CHECK(orbitNodePoints(o, n_z, MU, an, dn) == 0);
+            CHECK(!orbitPlaneAngles(o, RefPlane{n_z, x_p}).node_ok);
+        }
+        // The gate sweeps with the inclination and agrees with node_ok at both
+        // ends of the noise floor: an in-game equatorial orbit carries ~1e-8 of
+        // h wobble and must not grow a marker out of it.
+        for(const double inc : {1e-8, 1e-7, 1e-4, 1e-3, 0.5}) {
+            glm::dvec3 pos, vel;
+            inclined_state(1.0e7, 0.1, 0.2, inc, 0.3, pos, vel);
+            const OrbitElements o = computeOrbitElements(pos, vel, MU);
+            glm::dvec3 an(0.0), dn(0.0);
+            const bool drew = orbitNodePoints(o, n_z, MU, an, dn) != 0;
+            // The invariant that matters, whatever the floor is set to: a
+            // marker here and a dashed LAN there cannot disagree.
+            CHECK(drew == orbitPlaneAngles(o, RefPlane{n_z, x_p}).node_ok);
+            // And the floor is a floor, not a coin flip: wobble far below it
+            // never grows a marker, a real tilt always gets one.
+            if(inc <= 1e-7) { CHECK(!drew); }
+            if(inc >= 1e-3) { CHECK(drew); }
+        }
     }
 
     if(failures == 0) {

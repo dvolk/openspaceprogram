@@ -426,7 +426,11 @@ struct Game {
     Texture *engine_plume_texture = nullptr;
     Mesh *ref_circle_xz = nullptr;
     Mesh *ref_circle_xy = nullptr;
-    Mesh *ref_node_ticks = nullptr;  // ring's +/-X ticks: the plane overlay's nodes
+    // Ring's +/-X ticks: the plane overlay's node markers. +X is the ascending
+    // side (the overlay pins its basis to the node line), so the two meshes can
+    // carry the orbit map's green/red node colors.
+    Mesh *ref_node_an = nullptr;
+    Mesh *ref_node_dn = nullptr;
     Billboard *front_indicator = nullptr;
     Billboard *prograde_indicator = nullptr;
     Billboard *retrograde_indicator = nullptr;

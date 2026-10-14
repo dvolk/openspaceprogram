@@ -60,6 +60,9 @@ MAP_RE = re.compile(
     r"n=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+"
     r"e1=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+"
     r"e2=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+sweep=([-+]\d+)"
+    # The AN/DN crossings that slot draws (meters, focus at the origin), or "-".
+    # Optional so a dump without them still parses.
+    r"(?:\s+an=(\S+)\s+dn=(\S+))?"
 )
 DBG_RE = re.compile(
     r"\[dbg\]\s+t=([\d.]+)s\s+pos=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+"
@@ -248,13 +251,20 @@ def parse_orbit(out):
 def parse_mapb(out):
     rows = []
     for m in MAP_RE.finditer(out):
-        (t, slot, nx, ny, nz, e1x, e1y, e1z, e2x, e2y, e2z, sweep) = m.groups()
+        (t, slot, nx, ny, nz, e1x, e1y, e1z, e2x, e2y, e2z, sweep,
+         an, dn) = m.groups()
+        def node(s):
+            # "-" (or absent) = this slot has no crossing to mark.
+            if not s or s == "-":
+                return None
+            return tuple(float(v) for v in s.strip("()").split(","))
         rows.append({
             "t": float(t), "slot": slot,
             "n": (float(nx), float(ny), float(nz)),
             "e1": (float(e1x), float(e1y), float(e1z)),
             "e2": (float(e2x), float(e2y), float(e2z)),
             "sweep": int(sweep),
+            "an": node(an), "dn": node(dn),
         })
     return rows
 

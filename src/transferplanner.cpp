@@ -208,6 +208,27 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         // is set, so re-picking the SAME index would clear no dirty term and
         // leave the solution blank for up to 30 frames.
         xfer.target = -2;
+    } else if(!xfer_compute) {
+        /* A target is also just something to look at: its orbit is on the map
+           and its plane is one of the map's planes. With planning off nothing
+           solves, so the HUD burn marker, the map arc and the window's solution
+           block all go quiet together -- and xfer.target = -2 means a stale
+           solution cannot be drawn for a frame on the way back, nor a solve be
+           skipped on the way forward (that term is what makes it dirty). */
+        xfer.valid = false;
+        xfer.burn_dir = glm::dvec3(0.0);
+        xfer.target = -2;
+        // The target's own period still feeds the porkchop range sliders, which
+        // describe the target rather than a plan. Same 30-frame cadence as a
+        // live solve: a scalar the sliders read is not worth a state lift on
+        // every frame.
+        xfer.frame++;
+        if(xfer.frame - xfer.period_frame >= 30) {
+            xfer.period_frame = xfer.frame;
+            const InertialShip s1 = shipInertial(g, com, vel);
+            pc_period = targetInertial(xferTargets[xfer_target], s1.inertial)
+                            .tof_max / 3.0;
+        }
     } else {
         xfer.frame++;
         const bool dirty = xfer.target != xfer_target
@@ -222,6 +243,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
             // same quantity the auto range is built from (tof_max = 3 of
             // them), so the sliders' ends and the auto window cannot disagree.
             pc_period = d.tof_max / 3.0;
+            xfer.period_frame = xfer.frame;   // the same lift, done
 
             TransferSolution sol;
             if(xfer_auto) {
@@ -251,7 +273,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
     }
 
     // --xfer-log: the planner's current solution.
-    if(g.args.xfer_log && xfer_target >= 0) {
+    if(g.args.xfer_log && xfer_target >= 0 && xfer_compute) {
         const Uint32 now_ms = SDL_GetTicks();
         if(now_ms - xfer_log_last_ms >= g.orbit_log_interval_ms) {
             xfer_log_last_ms = now_ms;

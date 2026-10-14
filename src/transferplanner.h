@@ -1,4 +1,4 @@
-// transferplanner.h -- the game-side transfer planner: the TRANSFER window's
+// transferplanner.h -- the game-side transfer planner: the TARGET window's
 // target selection + the min-dv solver cache. Pure math is in transfer.h.
 #pragma once
 
@@ -33,6 +33,14 @@ public:
     // Post the grid sweep to the background worker; never blocks the frame.
     void porkchopCompute();
 
+    /* The TARGET window's "Compute transfer". Off, NOTHING solves: the target
+       stays selected (its orbit is on the map, and its plane is one of the
+       map's planes) but the burn marker, the map arc, the solution block and
+       --xfer-log all go quiet, and no Lambert run happens. A porkchop grid is
+       still an explicit request in its own window, so it sweeps regardless;
+       "Send best" turns planning back on because the plan needs it. */
+    bool xfer_compute = true;
+
     /* Unit normal of the selected target's orbit about the body the ship
        orbits, in that body's INERTIAL frame -- the frame the orbit map and the
        ship's own conic live in, so it feeds uiRefPlane directly. False (n_hat
@@ -60,6 +68,11 @@ public:
         double tof_log = -1.0;
         int frame = 0;          // per-frame counter while a target is set
         int solved_frame = -1000000; // xfer.frame at last recompute
+        /* xfer.frame at the last pc_period lift. pc_period describes the TARGET
+           (the porkchop range sliders scale by it), not a plan, so it keeps
+           refreshing while planning is off -- on the same 30-frame cadence a
+           solve uses, rather than a state lift every frame. */
+        int period_frame = -1000000;
         bool valid = false;
         TransferSolution sol;
         glm::dvec3 burn_dir = glm::dvec3(0.0); // render-frame burn direction

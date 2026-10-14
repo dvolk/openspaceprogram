@@ -364,7 +364,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_option("--map-dump", args.map_dump_ms,
                    "Test hook: print the orbit map's in-plane basis (n, e1, "
-                   "e2 and the prograde sweep sign) for every plane slot it "
+                   "e2 and the prograde sweep sign) plus the AN/DN crossings "
+                   "it marks [m, focus at the origin, in the focus's inertial "
+                   "frame; \"-\" where the orbit does not cross that plane], "
+                   "for every plane slot it "
                    "can resolve -- the target-orbit slot needs a transfer "
                    "target -- "
                    "at this loop time in ms: one [mapdump] line per slot, "
@@ -401,7 +404,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_flag("--xfer-log", args.xfer_log,
                  "Periodically print the transfer planner's solution to "
-                 "stdout (needs a target; --transfer-target selects one)");
+                 "stdout (needs a target -- --transfer-target selects one -- "
+                 "and the TARGET window's \"Compute transfer\" on, which it "
+                 "starts as)");
 
     app.add_option("--transfer-target", args.transfer_target,
                    "Transfer planner target: a child body of the ship's "

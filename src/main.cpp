@@ -820,17 +820,23 @@ int main(int argc, char **argv)
        the orbit normal -- so the XY ring's normal (+Z) is the axis the basis maps
        onto the plane normal. The markers are ticks, not a diameter: a line
        through the ring's centre points AT the camera (the rings are camera-
-       centred), so it projects to a point. */
+       centred), so it projects to a point.
+       Two tick meshes, not one, because the overlay pins its basis to the node
+       line: +X is the ASCENDING side, -X the descending one, and the orbit map
+       colors those two green and red -- so the overlay says the same thing in
+       the same colors. */
     Mesh *ref_circle_xz = new Mesh;
     Mesh *ref_circle_xy = new Mesh;
-    Mesh *ref_node_ticks = new Mesh;
+    Mesh *ref_node_an = new Mesh;
+    Mesh *ref_node_dn = new Mesh;
     {
         const float r = 1000;
         const float tick = 40;
         const int n = 128;
         PosInterface xzinterface;
         PosInterface xyinterface;
-        PosInterface tickinterface;
+        PosInterface aninterface;
+        PosInterface dninterface;
         for(int i = 0; i < n; i++) {
             const double a = (2 * std::numbers::pi) * float(i)/float(n);
             xzinterface.positions.push_back(glm::vec3(r * cos(a), 0, r * sin(a)));
@@ -838,13 +844,14 @@ int main(int argc, char **argv)
         }
         // Span the ring's +Z, which the basis maps onto the plane normal: the
         // tick then sticks out of the ring line instead of hiding along it.
-        tickinterface.positions.push_back(glm::vec3(r, 0, -tick));
-        tickinterface.positions.push_back(glm::vec3(r, 0, tick));
-        tickinterface.positions.push_back(glm::vec3(-r, 0, -tick));
-        tickinterface.positions.push_back(glm::vec3(-r, 0, tick));
+        aninterface.positions.push_back(glm::vec3(r, 0, -tick));
+        aninterface.positions.push_back(glm::vec3(r, 0, tick));
+        dninterface.positions.push_back(glm::vec3(-r, 0, -tick));
+        dninterface.positions.push_back(glm::vec3(-r, 0, tick));
         ref_circle_xz->InitMesh(xzinterface);
         ref_circle_xy->InitMesh(xyinterface);
-        ref_node_ticks->InitMesh(tickinterface);
+        ref_node_an->InitMesh(aninterface);
+        ref_node_dn->InitMesh(dninterface);
     }
 
     game.skyboxshader = skyboxshader;
@@ -854,7 +861,8 @@ int main(int argc, char **argv)
     game.engine_plume_texture = engine_plume_texture;
     game.ref_circle_xz = ref_circle_xz;
     game.ref_circle_xy = ref_circle_xy;
-    game.ref_node_ticks = ref_node_ticks;
+    game.ref_node_an = ref_node_an;
+    game.ref_node_dn = ref_node_dn;
     game.front_indicator = front_indicator;
     game.prograde_indicator = prograde_indicator;
     game.retrograde_indicator = retrograde_indicator;

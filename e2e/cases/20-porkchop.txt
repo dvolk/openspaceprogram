@@ -7,8 +7,8 @@ ARGS --transfer-target Mun
 # Two sweeps so both branches run: create, then re-upload into a same-size
 # texture. A mismatched glTexSubImage2D raises GL_INVALID_VALUE, printed as
 # GL_... and caught by FORBID below.
-ARGS --ui-click 2000,"Windows/Transfer"
-ARGS --ui-click 2600,"Transfer/Porkchop"
+ARGS --ui-click 2000,"Windows/Target"
+ARGS --ui-click 2600,"Target/Porkchop"
 ARGS --sim-press 3000,0,P,8000,0,P
 EXPECT [porkchop]
 CHECK len(porkchop) >= 2

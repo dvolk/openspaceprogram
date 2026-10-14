@@ -134,8 +134,11 @@ const WinDef kWins[W_Count] = {
                   .default_open = false },
         .role = WinRole::Persistent, .inList = true,
     },
-    [W_Transfer] = {
-        .name = "Transfer", .label = "Transfer",
+    [W_Target] = {
+        // Named for what it selects, not for what it computes: a target is
+        // also just something to look at (its orbit on the map, its plane as
+        // one of the map's planes), and the plan itself is opt-in.
+        .name = "Target", .label = "Target",
         // Not auto-fit: stays where the user puts it as the solution appears.
         // 350 -> 328: manual ToF used to echo its own line under the slider,
         // and that row is ~22 px at the 14 px default font.
@@ -249,7 +252,7 @@ const WinDef kWins[W_Count] = {
 
 static const Win kFlightWinIds[] = {
     W_Hud, W_Windows, W_Orbital, W_Surface, W_Resources, W_OrbitalMap,
-    W_SurfaceMap, W_VesselInfo, W_ShipList, W_Autopilot, W_Transfer, W_Porkchop,
+    W_SurfaceMap, W_VesselInfo, W_ShipList, W_Autopilot, W_Target, W_Porkchop,
     W_Settings, W_Controls, W_Debug, W_Telemetry, W_SaveLoad,
 };
 // The set, not a guard in each window's body, is what hides the flight

@@ -6,8 +6,8 @@ ARGS --porkchop-log --porkchop-n 24 --orbit-interval 0.5
 # the range they seeded, so switching them on turned a Mars sweep into a
 # one-week sweep without saying so. They now scale with the target's own
 # period, which is also what puts a 1-revolution phasing window in reach (#136).
-ARGS --ui-click 2000,"Windows/Transfer"
-ARGS --ui-click 2600,"Transfer/Porkchop"
+ARGS --ui-click 2000,"Windows/Target"
+ARGS --ui-click 2600,"Target/Porkchop"
 ARGS --sim-press 3000,0,P
 ARGS --ui-click 4000,"Porkchop/Departure range"
 ARGS --ui-click 4300,"Porkchop/ToF range"

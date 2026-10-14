@@ -384,9 +384,10 @@ void drawUIReadouts(Game &g) {
     double &roll = view.roll;
     double &yaw = view.heading;
 
-    // The transfer planner's state (the TRANSFER window's readouts + inputs).
+    // The transfer planner's state (the TARGET window's readouts + inputs).
     std::vector<TransferPlanner::XferTarget> &xferTargets = planner.xferTargets;
     int &xfer_target = planner.xfer_target;
+    bool &xfer_compute = planner.xfer_compute;
     bool &xfer_auto = planner.xfer_auto;
     float &xfer_tof_log = planner.xfer_tof_log;
     auto &xfer = planner.xfer;
@@ -665,10 +666,11 @@ void drawUIReadouts(Game &g) {
         }
     });
 
-    // Transfer planner: parent->child transfers (with capture) and same-body ship
-    // intercepts. The solution is computed in the 3D pass, so this window is readout
-    // + inputs.
-    drawWin(g, W_Transfer, [&] {
+    // Target selection + transfer planner: parent->child transfers (with
+    // capture) and same-body ship intercepts. The solution is computed in the
+    // 3D pass, so this window is readout + inputs -- and only when the user
+    // asked for a plan at all.
+    drawWin(g, W_Target, [&] {
         if(xferTargets.empty()) {
             ImGui::Text("No transfer targets: no child bodies or ships here.");
             return;
@@ -697,6 +699,16 @@ void drawUIReadouts(Game &g) {
             ImGui::Text("Select a target body or ship.");
             return;
         }
+        /* A target is worth selecting even with no plan: its orbit is on the
+           map, and its plane is one of the map's planes. Off, nothing solves,
+           so the HUD burn marker, the map arc and everything below go quiet
+           together. Turning it off drops an armed porkchop plan -- the countdown
+           and the burn direction both need a live solution -- and "Send best"
+           turns planning back on. */
+        if(ImGui::Checkbox("Compute transfer", &xfer_compute) && !xfer_compute) {
+            planner.clearPorkchopPlan();
+        }
+        if(!xfer_compute) { return; }
         const bool isShip = xferTargets[xfer_target].ship != nullptr;
         if(isShip) {
             ImGui::TextDisabled("ship target: intercept only, no capture burn");
@@ -786,7 +798,7 @@ void drawUIReadouts(Game &g) {
             return;
         }
         if(xfer_target < 0) {
-            ImGui::Text("Select a target body or ship (Transfer window).");
+            ImGui::Text("Select a target body or ship (Target window).");
             return;
         }
         const char *tn = xferTargets[xfer_target].name;
@@ -889,10 +901,10 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("min dv:      %08.1f m/s", pc.dv_min);
         ImGui::Text("depart in:   %s", fmt_time(pc.t_dep_min, pc_t, sizeof pc_t));
         ImGui::Text("time of flt: %s", fmt_time(pc.tof_min, pc_t, sizeof pc_t));
-        // Send the best cell to the Transfer planner: pin the ToF and record the ABSOLUTE
+        // Send the best cell to the Target planner: pin the ToF and record the ABSOLUTE
         // departure time. Disabled during a sweep: pc is then the PREVIOUS grid.
         if(pc_busy) { ImGui::BeginDisabled(); }
-        if(ImGui::Button("Send best to Transfer")) {
+        if(ImGui::Button("Send best to Target")) {
             // Remember the user's ToF mode so "Clear plan" restores it.
             planner.xfer_prev_auto = planner.xfer_auto;
             planner.xfer_prev_tof_log = planner.xfer_tof_log;
@@ -901,7 +913,10 @@ void drawUIReadouts(Game &g) {
             planner.xfer_t_dep = planner.pc_computed_at + pc.t_dep_min;
             planner.xfer_plan_target = xfer_target;
             planner.xfer_from_porkchop = true;
-            setWinOpen(W_Transfer, true);
+            // A plan IS a live solution: the countdown and the burn direction
+            // need one, so arming it turns planning back on.
+            planner.xfer_compute = true;
+            setWinOpen(W_Target, true);
         }
         if(pc_busy) { ImGui::EndDisabled(); }
 
@@ -2264,11 +2279,39 @@ static void mapPlaneBasis(Frame *focusFrame, const glm::dvec3 &orbit_pos,
     /* Screen-x pinned to the focus frame's +X in every slot (#185). Unpinned, a
        focus far off the system plane pushed setPlane off its canonical branch
        onto the node line and this slot's screen-east disagreed; the Orbital slot
-       has the same problem as its normal approaches the rail normal. Nothing
-       draws a node marker, so do not "align" them without one. This is a SCREEN
+       has the same problem as its normal approaches the rail normal. The AN/DN
+       markers are world-space points projected through px(), so they do not
+       need the screen-x axis to point at the node. This is a SCREEN
        choice, not the readout's zero longitude: LAN measures from
        equator_orient * +X, where the pole leans (uiRefPlane). */
     plane_x = kFocusEast;
+}
+
+/* The map's AN/DN markers: where the drawn orbit crosses the plane the map is
+   showing, so they move with the Map plane combo. Green ring = ascending (the
+   orbit leaves the far side of the plane there), red = descending. Rings, not
+   filled dots: the apside markers are dots on the same curve and the two must
+   not read as one glyph. The hues live in constants.h because the 3D plane
+   overlay marks the same two points and must not disagree. orbit.h's
+   orbitNodePoints shares the HUD's node gate, so a marker here and a dashed
+   LAN there cannot disagree. */
+static const ImVec4 kColNodeAn(kNodeAnRgb[0], kNodeAnRgb[1], kNodeAnRgb[2], 1.0f);
+static const ImVec4 kColNodeDn(kNodeDnRgb[0], kNodeDnRgb[1], kNodeDnRgb[2], 1.0f);
+
+static void drawMapNodes(OrbitMap &map, ImDrawList *dl, const OrbitElements &o,
+                         double mu) {
+    /* map.n rather than the caller's plane_n: setPlane normalized it, and the
+       helper's sin(inc) floor only means what the HUD's gate means for a unit
+       normal. Uninitialized points stay zero, so a missed bit cannot draw a
+       marker at the focus. */
+    glm::dvec3 an(0.0), dn(0.0);
+    const int got = orbitNodePoints(o, map.n, mu, an, dn);
+    if(got & kNodeAn) {
+        dl->AddCircle(map.px(an), 4.5f, ImGui::GetColorU32(kColNodeAn), 0, 1.5f);
+    }
+    if(got & kNodeDn) {
+        dl->AddCircle(map.px(dn), 4.5f, ImGui::GetColorU32(kColNodeDn), 0, 1.5f);
+    }
 }
 
 // The orbital map: right-clicking cycles its chrome (full window -> bare map -> no
@@ -2396,11 +2439,16 @@ void drawUIMap(Game &g) {
 
         // Controls (mode 0 only), pinned ABOVE the map so they stay on a short window.
         if(map_mode == 0) {
-            auto legend = [&](const char *label, ImU32 col, bool dot) {
+            enum Swatch : unsigned char { kRect, kDot, kRing };
+            auto legend = [&](const char *label, ImU32 col, Swatch kind) {
                 const ImVec2 p = ImGui::GetCursorScreenPos();
                 const float s = 10.0f;
-                if(dot) {
+                if(kind == kDot) {
                     dl->AddCircleFilled(ImVec2(p.x + 5.0f, p.y + 8.0f), 4.0f, col);
+                } else if(kind == kRing) {
+                    // Same glyph as the map's AN/DN markers, so the legend is not
+                    // describing a shape the map never draws.
+                    dl->AddCircle(ImVec2(p.x + 5.0f, p.y + 8.0f), 4.0f, col, 0, 1.5f);
                 } else {
                     dl->AddRectFilled(ImVec2(p.x, p.y + 3.0f),
                                      ImVec2(p.x + s, p.y + 13.0f), col);
@@ -2409,22 +2457,26 @@ void drawUIMap(Game &g) {
                 ImGui::SameLine();
                 ImGui::TextUnformatted(label);
             };
-            legend("you", col_ship, false);
+            legend("you", col_ship, kRect);
             ImGui::SameLine();
-            legend("ships", col_vessel, false);
+            legend("ships", col_vessel, kRect);
             ImGui::SameLine();
-            legend("xfer", col_xfer, false);
+            legend("xfer", col_xfer, kRect);
             ImGui::SameLine();
-            legend("bodies", col_child, false);
+            legend("bodies", col_child, kRect);
             ImGui::SameLine();
-            legend("apsides", col_apsis, true);
+            legend("apsides", col_apsis, kDot);
+            ImGui::SameLine();
+            legend("AN", ImGui::GetColorU32(kColNodeAn), kRing);
+            ImGui::SameLine();
+            legend("DN", ImGui::GetColorU32(kColNodeDn), kRing);
             // Map plane (half-width) + reset view.
-            /* The fourth slot orients the map into the TRANSFER target's orbit, so
-               the map's dihedral is the plane change to it. It needs a target, so
-               picking one without a target is refused rather than silently
-               re-orienting the map. And the widget shows the plane the map is
-               ACTUALLY in (RefPlane::mode): when a target disappears under the
-               slot -- "none" in the TRANSFER window, or a vessel target that
+            /* The fourth slot orients the map into the TARGET window's target
+               orbit, so the map's dihedral is the plane change to it. It needs a
+               target, so picking one without a target is refused rather than
+               silently re-orienting the map. And the widget shows the plane the
+               map is ACTUALLY in (RefPlane::mode): when a target disappears under
+               the slot -- "none" in the TARGET window, or a vessel target that
                lands, escapes or leaves the SOI -- the readout falls back to the
                ecliptic and says "ecl", so the combo must not keep claiming
                "Target orbit". The choice itself survives, and comes back with the
@@ -2435,7 +2487,7 @@ void drawUIMap(Game &g) {
             int plane_sel = g.view.ref_plane.mode;
             if(ImGui::Combo("Map plane", &plane_sel, kPlanes, 4)) {
                 if(plane_sel == kRefTarget && !g.view.target_plane_ok) {
-                    g.toast("No transfer target: pick one in the TRANSFER window");
+                    g.toast("No transfer target: pick one in the TARGET window");
                 } else {
                     map_plane = plane_sel;
                 }
@@ -2484,7 +2536,7 @@ void drawUIMap(Game &g) {
         map.setPlane(plane_n, plane_x);
         const ImVec2 focus_px = map.px(glm::dvec3(0.0, 0.0, 0.0));
 
-        // The body selected in the TRANSFER window, highlighted on the map; nullptr for a
+        // The body selected in the TARGET window, highlighted on the map; nullptr for a
         // ship target.
         TerrainBody *sel_body = nullptr;
         if(xfer_target >= 0 && xfer_target < (int)xferTargets.size() &&
@@ -2536,7 +2588,11 @@ void drawUIMap(Game &g) {
             if(have_peri) { map.drawDot(dl, peri_p, 4.0f, col_apsis); }
             if(have_apo)  { map.drawDot(dl, apo_p,  4.0f, col_apsis); }
         }
-    
+        // AN/DN against the plane this map is showing: always drawn when the
+        // orbit is inclined to it, so picking "Target orbit" and reading where
+        // the two curves cross is a glance, not a calculation.
+        drawMapNodes(map, dl, o, mu);
+
         // Every other ship in this body: its orbit (when closed) plus a dot + label. An escaping
         // ship has no closed orbit -- sample() returns empty -- so only its marker shows.
         {
@@ -2568,7 +2624,7 @@ void drawUIMap(Game &g) {
             }
         }
 
-        // The solution belongs to the target the solve USED: xfer.valid lags the TRANSFER
+        // The solution belongs to the target the solve USED: xfer.valid lags the TARGET
         // window by a frame -- clearing the combo there is not re-validated until the next
         // planner.update(), so pairing xfer.sol with the live xfer_target read xferTargets[-1]
         // when "none" was clicked.
@@ -3997,6 +4053,7 @@ void drawTrackingMap(Game &g) {
                 if(have_peri) { map.drawDot(dl, peri_p, 4.0f, col_apsis); }
                 if(have_apo)  { map.drawDot(dl, apo_p,  4.0f, col_apsis); }
             }
+            drawMapNodes(map, dl, o, mu);
 
             // Every ship in the system -- any SOI: a Kepler conic around its OWN central body,
             // projected into the focus's frame. An escaping ship has no closed orbit -- sample()
@@ -4514,13 +4571,28 @@ void dumpMapBasis(Game &g) {
            screen in every slot (#181). +1 here means that slot draws the sweep
            the other way from the others. */
         const double sweep = glm::dot(glm::cross(m.n, m.e1), m.e2);
+        /* The AN/DN markers the map draws for this slot (orbit.h
+           orbitNodePoints), or "-" when the slot has no crossing to mark --
+           which for the Orbital slot is always: an orbit does not cross its own
+           plane. Pinning which slots get markers is the only way to catch the
+           map being handed the wrong plane, since every slot's picture still
+           looks plausible. */
+        glm::dvec3 an(0.0), dn(0.0);
+        const int nodes = orbitNodePoints(g.view.o, m.n, g.view.mu, an, dn);
+        char an_s[64] = "-", dn_s[64] = "-";
+        if(nodes & kNodeAn) {
+            snprintf(an_s, sizeof an_s, "(%.0f,%.0f,%.0f)", an.x, an.y, an.z);
+        }
+        if(nodes & kNodeDn) {
+            snprintf(dn_s, sizeof dn_s, "(%.0f,%.0f,%.0f)", dn.x, dn.y, dn.z);
+        }
         // Sim time, like [orbitlog] / [orbinfo], so a CHECK filtering on t= means the same
         // instant.
         printf("[mapdump] t=%.1fs slot=%s n=(%.6f,%.6f,%.6f) e1=(%.6f,%.6f,%.6f) "
-               "e2=(%.6f,%.6f,%.6f) sweep=%+d\n",
+               "e2=(%.6f,%.6f,%.6f) sweep=%+d an=%s dn=%s\n",
                g.time, refPlaneName(slot),
                m.n.x, m.n.y, m.n.z, m.e1.x, m.e1.y, m.e1.z,
-               m.e2.x, m.e2.y, m.e2.z, sweep > 0.0 ? 1 : -1);
+               m.e2.x, m.e2.y, m.e2.z, sweep > 0.0 ? 1 : -1, an_s, dn_s);
     }
     fflush(stdout);
 }

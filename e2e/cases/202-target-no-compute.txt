@@ -1,0 +1,39 @@
+# A target is worth selecting even with no plan: the TARGET window's "Compute
+# transfer" checkbox off must silence the SOLVE (the [xferlog] line, and with it
+# the HUD burn marker and the map's transfer arc) while leaving everything that
+# describes the target itself alone -- its orbit on the map and its plane as the
+# map's fourth slot. Before this, picking a target meant a Lambert solve every
+# 30 frames whether you wanted a burn or not, so the plane slot came bundled
+# with a burn arrow on the HUD.
+#
+# The click is the point: --map-plane 3 alone would pass with the checkbox never
+# touched. Unchecking at 1.8 s and still seeing a tgt [mapdump] row at 7 s is
+# what says the plane survives the loss of a plan.
+NAME target-no-compute
+ARGS --time-accel 1 --timeout 9 --startship racer,res/ships/racer.json,Kerbin,inertial-orbit
+ARGS --transfer-target Minmus --map-plane 3
+ARGS --xfer-log --orbit-log --map-dump 7000 --orbit-interval 1
+ARGS --ui-click 1200,"Windows/Target"
+ARGS --ui-click 1800,"Target/Compute transfer"
+EXPECT [xferlog]
+EXPECT [mapdump]
+FORBID FAILED
+FORBID GL_
+FORBID error:
+# Planning was on first, so there IS something to switch off -- otherwise the
+# quiet tail below would prove nothing.
+CHECK len(xfer) >= 2
+CHECK min(x["t"] for x in xfer) < 1.5
+CHECK all(x["target"] == "Minmus" for x in xfer)
+# Nothing solved after the checkbox went off. The log prints once a second and
+# the run lasts 9 s, so a still-live solve would have added ~7 more lines by now;
+# the bound leaves a couple of those intervals of slack for a slow click.
+CHECK max(x["t"] for x in xfer) < 4.0
+# The target still resolves as a plane with no plan behind it: the tgt row is
+# still there at 7 s, and the HUD still measures its inclination against it.
+CHECK len(mapb) == 4
+CHECK mapb[3]["slot"] == "tgt"
+CHECK all(o["plane"] == "tgt" for o in orbit if o["t"] > 5.0)
+# Minmus is authored 6 deg off Kerbin's rail plane, so a still-selected target
+# reads ~6 deg -- the combo kept the choice even though the solve went away.
+CHECK all(abs(o["inc"] - 6.0) < 0.01 for o in orbit if o["t"] > 5.0)
