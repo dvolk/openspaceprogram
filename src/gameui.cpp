@@ -1583,10 +1583,12 @@ void drawUIReadouts(Game &g) {
            IS the orbit: Inc reads 0 by construction, and LAN/LPe dash (no node, no chosen
            zero longitude). */
         ImGui::Text("Inc: %.2f (%s)", glm::degrees(view.plane.inc),
-                    refPlaneName(g.map_plane));
+                    refPlaneName(view.ref_plane.mode));
         ImGui::Text("Ecc: %f", o.ecc);
         ImGui::Text("SMa: %s", fmt_dist(o.semi_major, dist_s, sizeof dist_s));
-        if(view.plane.node_ok) { ImGui::Text("LAN: %.2f", glm::degrees(view.plane.lan)); }
+        // LAN needs both a node line and a chosen zero longitude: the Target-orbit
+        // slot has the former and not the latter.
+        if(view.plane.node_ok && view.plane.lon_ok) { ImGui::Text("LAN: %.2f", glm::degrees(view.plane.lan)); }
         else { ImGui::Text("LAN: -"); }
         if(view.plane.lpe_ok) { ImGui::Text("LPe: %.2f", glm::degrees(view.plane.lpe)); }
         else { ImGui::Text("LPe: -"); }
@@ -1663,7 +1665,7 @@ void drawUIReadouts(Game &g) {
             const double retrograde_angle = glm::angle(facing_dir, -vel_dir);
             // lan/lpe in the map's plane, labelled with it (#171).
             char lan_s[32], lpe_s[32];
-            if(view.plane.node_ok) { snprintf(lan_s, sizeof lan_s, "%.6g deg", glm::degrees(view.plane.lan)); }
+            if(view.plane.node_ok && view.plane.lon_ok) { snprintf(lan_s, sizeof lan_s, "%.6g deg", glm::degrees(view.plane.lan)); }
             else { snprintf(lan_s, sizeof lan_s, "-"); }
             if(view.plane.lpe_ok) { snprintf(lpe_s, sizeof lpe_s, "%.6g deg", glm::degrees(view.plane.lpe)); }
             else { snprintf(lpe_s, sizeof lpe_s, "-"); }
@@ -1676,7 +1678,7 @@ void drawUIReadouts(Game &g) {
                    time, b->name.c_str(), speed, distance,
                    o.apoapsis, o.time_to_apo, o.periapsis, o.time_to_peri,
                    o.period, glm::degrees(view.plane.inc), o.ecc, o.semi_major,
-                   refPlaneName(g.map_plane), lan_s, lpe_s,
+                   refPlaneName(view.ref_plane.mode), lan_s, lpe_s,
                    glm::degrees(prograde_angle),
                    glm::degrees(retrograde_angle),
                    o.energy);
@@ -2237,37 +2239,36 @@ static const glm::dvec3 kFocusEast(1.0, 0.0, 0.0);
 
 /* The orbit map's plane for one combo slot: a normal in the focus's inertial frame
    plus the screen-x reference (zero length = let OrbitMap derive the basis). Both maps
-   and --map-dump go through here, so the slots cannot drift apart (#173). */
+   and --map-dump go through here, so the slots cannot drift apart (#173). The normals
+   come from uiRefPlane -- the same call the Inc/LAN/LPe readout and the 3D plane
+   overlay build -- so the picture and the numbers cannot drift either; only the
+   screen-x pin is the map's own. */
 static void mapPlaneBasis(Frame *focusFrame, const glm::dvec3 &orbit_pos,
                           const glm::dvec3 &orbit_vel, bool have_ship, int mode,
+                          const glm::dvec3 &target_hat,
                           glm::dvec3 &plane_n, glm::dvec3 &plane_x) {
-    plane_n = glm::dvec3(0.0, 1.0, 0.0);
-    plane_x = glm::dvec3(0.0, 0.0, 0.0);   // zero: OrbitMap derives the basis
-    if(mode == kRefEquator) {
-        // The focus's EQUATOR, not its rail plane (#173): (0,1,0) is the rail normal, off
-        // the pole by the axial tilt.
-        plane_n = focusFrame->spinAxisRelTo(focusFrame);
-        // Screen-x = the focus frame's +X. This is a SCREEN choice, not the readout's zero
-        // longitude: LAN measures from equator_orient * +X, where the pole leans (uiRefPlane).
-        // Nothing draws a node marker, so do not "align" them without one.
-        plane_x = kFocusEast;
-    } else if(mode == kRefEcliptic) {
-        plane_n = glm::transpose(focusFrame->root_orient) * glm::dvec3(0.0, 1.0, 0.0);
-        /* Pinned like the other two slots: unpinned, a focus far off the system plane pushed
-           setPlane off its canonical branch onto the node line, so this slot's screen-east
-           disagreed. */
-        plane_x = kFocusEast;
-    } else if(mode == kRefOrbit && have_ship) {
-        const glm::dvec3 h = glm::cross(orbit_pos, orbit_vel);
-        const double hl = glm::length(h);
-        if(hl > 1e-9) { plane_n = h / hl; }
-        /* Pin screen-x to the same focus +X the Equatorial slot uses (#185). Unpinned, this
-           slot derives its basis from the node line, which degenerates as h approaches the
-           rail normal -- the map turned a quarter turn there. With +X pinned the basis stays
-           continuous except for h exactly along the focus +-X (one point, which setPlane
-           guards against dividing by 0). */
-        plane_x = kFocusEast;
+    const glm::dvec3 h = glm::cross(orbit_pos, orbit_vel);
+    const double hl = glm::length(h);
+    if(mode == kRefOrbit && !have_ship) {
+        // No conic to take a plane from: the rail plane, basis left to OrbitMap.
+        plane_n = glm::dvec3(0.0, 1.0, 0.0);
+        plane_x = glm::dvec3(0.0, 0.0, 0.0);
+        return;
     }
+    /* A radial state's h is arithmetic noise, and a zero normal would send
+       OrbitMap::setPlane off its canonical branch: read the rail plane there,
+       as this function always has. */
+    plane_n = uiRefPlane(focusFrame,
+                         hl > 1e-9 ? h / hl : glm::dvec3(0.0, 1.0, 0.0),
+                         target_hat, mode).n_hat;
+    /* Screen-x pinned to the focus frame's +X in every slot (#185). Unpinned, a
+       focus far off the system plane pushed setPlane off its canonical branch
+       onto the node line and this slot's screen-east disagreed; the Orbital slot
+       has the same problem as its normal approaches the rail normal. Nothing
+       draws a node marker, so do not "align" them without one. This is a SCREEN
+       choice, not the readout's zero longitude: LAN measures from
+       equator_orient * +X, where the pole leans (uiRefPlane). */
+    plane_x = kFocusEast;
 }
 
 // The orbital map: right-clicking cycles its chrome (full window -> bare map -> no
@@ -2372,7 +2373,7 @@ void drawUIMap(Game &g) {
         TerrainBody *focus = ship->m_parent;
         glm::dvec3 plane_n, plane_x;
         mapPlaneBasis(focus->frame, orbit_pos, orbit_vel, true, map_plane,
-                      plane_n, plane_x);
+                      g.view.target_h_hat, plane_n, plane_x);
 
         // KSP-inspired palette: your orbit green, the transfer blue, other bodies gray; the
         // focus, ship dot and labels use ink contrasting the window background.
@@ -2418,9 +2419,27 @@ void drawUIMap(Game &g) {
             ImGui::SameLine();
             legend("apsides", col_apsis, true);
             // Map plane (half-width) + reset view.
-            static const char *kPlanes[] = { "Equatorial", "Ecliptic", "Orbital" };
+            /* The fourth slot orients the map into the TRANSFER target's orbit, so
+               the map's dihedral is the plane change to it. It needs a target, so
+               picking one without a target is refused rather than silently
+               re-orienting the map. And the widget shows the plane the map is
+               ACTUALLY in (RefPlane::mode): when a target disappears under the
+               slot -- "none" in the TRANSFER window, or a vessel target that
+               lands, escapes or leaves the SOI -- the readout falls back to the
+               ecliptic and says "ecl", so the combo must not keep claiming
+               "Target orbit". The choice itself survives, and comes back with the
+               target. */
+            static const char *kPlanes[] = { "Equatorial", "Ecliptic", "Orbital",
+                                             "Target orbit" };
             ImGui::PushItemWidth(avail_w * 0.5f);
-            ImGui::Combo("Map plane", &map_plane, kPlanes, 3);
+            int plane_sel = g.view.ref_plane.mode;
+            if(ImGui::Combo("Map plane", &plane_sel, kPlanes, 4)) {
+                if(plane_sel == kRefTarget && !g.view.target_plane_ok) {
+                    g.toast("No transfer target: pick one in the TRANSFER window");
+                } else {
+                    map_plane = plane_sel;
+                }
+            }
             ImGui::PopItemWidth();
             ImGui::SameLine();
             if(ImGui::Button("Reset view")) {
@@ -3873,10 +3892,12 @@ void drawTrackingMap(Game &g) {
         }
 
         // The map plane: a normal in the focus's inertial frame. "Orbital" needs a ship, so
-        // without one it stays on the default (rail) plane.
+        // without one it stays on the default (rail) plane; "Target orbit" needs one too, and
+        // without a ship the view's stale target normal must not leak into the basis.
         glm::dvec3 plane_n, plane_x;
         mapPlaneBasis(focus->frame, orbit_pos, orbit_vel, ship != nullptr,
-                      map_plane, plane_n, plane_x);
+                      map_plane, ship ? g.view.target_h_hat : glm::dvec3(0.0),
+                      plane_n, plane_x);
 
         // The map fills the window (the whole viewport); the focus sits at its centre plus
         // the pan offset.
@@ -4474,11 +4495,19 @@ void dumpMapBasis(Game &g) {
         return;
     }
     Frame *focus_frame = ship->m_parent->frame;
-    static const int kSlots[] = { kRefEquator, kRefEcliptic, kRefOrbit };
+    /* Four slots, but the target slot only exists while a transfer target is
+       picked: printing the ecliptic fallback under a "tgt" label is the exact lie
+       uiRefPlane refuses to print, so drop the row. */
+    static const int kSlots[] = { kRefEquator, kRefEcliptic, kRefOrbit,
+                                  kRefTarget };
+    glm::dvec3 target_hat(0.0);
+    const bool target_ok = g.xferPlanner.targetPlaneNormal(focus_frame,
+                                                           target_hat);
     for(const int slot : kSlots) {
+        if(slot == kRefTarget && !target_ok) { continue; }
         glm::dvec3 plane_n, plane_x;
         mapPlaneBasis(focus_frame, g.view.orbit_pos, g.view.orbit_vel, true,
-                      slot, plane_n, plane_x);
+                      slot, target_hat, plane_n, plane_x);
         OrbitMap m;
         m.setPlane(plane_n, plane_x);
         /* A prograde body at +e1 moves along n x e1, which must read -e2 on

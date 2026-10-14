@@ -98,6 +98,12 @@ struct ShipView {
     // the 3D orbital-plane overlay draws THIS one, not a second opinion.
     PlaneAngles plane;
     RefPlane ref_plane;
+    // The transfer target's orbit normal about the same focus body, in the same
+    // inertial frame -- what the map's "Target orbit" plane slot measures
+    // against. Zero + target_plane_ok false when no target is picked (or it is
+    // not in orbit), which is also what uiRefPlane expects.
+    glm::dvec3 target_h_hat = glm::dvec3(0.0);
+    bool target_plane_ok = false;
     double distance = 0;  // |orbit_pos|
     double speed = 0;     // |orbit_vel|
     double mu = 0;        // the parent body's mu (the conic's)

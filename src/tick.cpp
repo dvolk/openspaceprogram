@@ -305,13 +305,23 @@ void tick(Game &g) {
                           + g.ship->frame->GetPositionRelTo(inertial);
                 }
                 OrbitElements o = computeOrbitElements(o_pos, o_vel, mu);
-                // Measured in the plane the orbit map shows, like the flight
-                // readout (#171). lan/lpe trail the line so ORBIT_RE (e2e)
-                // keeps matching.
-                const PlaneAngles pa = orbitPlaneAngles(
-                    o, uiRefPlane(g.ship->m_parent->frame, o.h_hat, g.map_plane));
+                /* Measured in the plane the orbit map shows, like the flight
+                   readout (#171). lan/lpe trail the line so ORBIT_RE (e2e)
+                   keeps matching. The target normal comes from ShipView, NOT
+                   from the planner: this tick runs before the render pass
+                   rebuilds xferTargets, so asking the planner here would pair
+                   the PREVIOUS frame's target list with the focus the ship may
+                   have just switched to (an SOI crossing prints a meaningless
+                   inc for one tick), and would dereference vessel pointers a
+                   recover or load may already have freed. */
+                const RefPlane ref = uiRefPlane(g.ship->m_parent->frame,
+                                                o.h_hat, g.view.target_h_hat,
+                                                g.map_plane);
+                const PlaneAngles pa = orbitPlaneAngles(o, ref);
                 char lan_s[32], lpe_s[32];
-                if(pa.node_ok) { snprintf(lan_s, sizeof lan_s, "%.4f deg", glm::degrees(pa.lan)); }
+                // LAN needs a node AND a zero longitude to measure it from: the
+                // Target-orbit slot has the node line but no chosen longitude.
+                if(pa.node_ok && pa.lon_ok) { snprintf(lan_s, sizeof lan_s, "%.4f deg", glm::degrees(pa.lan)); }
                 else { snprintf(lan_s, sizeof lan_s, "-"); }
                 if(pa.lpe_ok) { snprintf(lpe_s, sizeof lpe_s, "%.4f deg", glm::degrees(pa.lpe)); }
                 else { snprintf(lpe_s, sizeof lpe_s, "-"); }
@@ -324,7 +334,7 @@ void tick(Game &g) {
                        glm::degrees(pa.inc), o.period,
                        o.time_to_apo, o.time_to_peri,
                        o.ang_momentum, o.energy,
-                       refPlaneName(g.map_plane), lan_s, lpe_s);
+                       refPlaneName(ref.mode), lan_s, lpe_s);
                 fflush(stdout);
             }
         }

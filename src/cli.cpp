@@ -354,16 +354,20 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_option("--map-plane", args.map_plane,
                    "Test hook: start the orbit map in this plane slot "
-                   "(0 equatorial, 1 ecliptic, 2 orbital). The flight "
+                   "(0 equatorial, 1 ecliptic, 2 orbital, 3 target orbit -- "
+                   "needs --transfer-target, else it measures against the "
+                   "ecliptic and says so). The flight "
                    "readout measures Inc/LAN/LPe in the plane the map shows, "
                    "so this pins those branches without driving the combo "
                    "widget (default -1 = leave it alone)")
-        ->check(CLI::Range(-1, 2));
+        ->check(CLI::Range(-1, 3));
 
     app.add_option("--map-dump", args.map_dump_ms,
                    "Test hook: print the orbit map's in-plane basis (n, e1, "
-                   "e2 and the prograde sweep sign) for all three plane slots "
-                   "at this loop time in ms -- one [mapdump] line per slot, "
+                   "e2 and the prograde sweep sign) for every plane slot it "
+                   "can resolve -- the target-orbit slot needs a transfer "
+                   "target -- "
+                   "at this loop time in ms: one [mapdump] line per slot, "
                    "from the same code the map windows use (test hook; "
                    "-1 = never)");
 

@@ -1,0 +1,25 @@
+# A VESSEL target: its plane comes from lifting the ship's own state through its
+# frame (the same targetInertial() the transfer solve uses), not from a rail, so
+# this is the path where a wrong COM, a missing stasis term or the wrong parent
+# would show up. The fixture's "laythe explorer" sits in an ecliptic Kerbin
+# orbit, so slot=tgt must read exactly (0,1,0) -- the normal the Ecliptic slot
+# derives by a completely different path.
+#
+# The active ship is on the pad (the fixture's first entry), so no conic here is
+# worth reading: what is pinned is which plane the slot resolved to, and that the
+# same target drives the transfer.
+NAME orbit-plane-target-ship
+ARGS --time-accel 1 --timeout 6 --startships e2e/fixtures/startships.json
+ARGS --transfer-target "laythe explorer" --map-plane 3
+ARGS --orbit-log --orbit-interval 1 --map-dump 4000 --xfer-log
+EXPECT [mapdump]
+EXPECT [xferlog]
+FORBID FAILED
+FORBID GL_
+FORBID error:
+CHECK len(mapb) == 4
+CHECK mapb[3]["slot"] == "tgt"
+CHECK all(x["target"] == "laythe explorer" for x in xfer)
+CHECK all(abs(m["n"][0]) < 1e-6 and abs(m["n"][1] - 1.0) < 1e-6 and abs(m["n"][2]) < 1e-6 for m in mapb if m["slot"] == "tgt")
+# The HUD agrees that this is the plane it is measuring in.
+CHECK all(o["plane"] == "tgt" for o in orbit if o["t"] > 1.0)

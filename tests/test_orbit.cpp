@@ -288,7 +288,11 @@ int main() {
         const PlaneAngles p = orbitPlaneAngles(o, RefPlane{n, n});
         CHECK_NEAR(p.inc, M_PI / 4.0, 1e-12);
         CHECK(!p.lon_ok);
-        CHECK(!p.node_ok);
+        /* The node line still EXISTS -- the two normals are 45 deg apart, and the
+           3D overlay marks it. What is missing is a longitude to read along it,
+           which is lon_ok's job, so a caller needs both flags before printing a
+           LAN (the windows check exactly that). */
+        CHECK(p.node_ok);
         CHECK(!p.lpe_ok);
         // A zero direction merely SLOPPY about the plane still works: it gets
         // projected, which is what lets a slightly-off reference keep reading
@@ -316,6 +320,24 @@ int main() {
         CHECK_NEAR(p.inc, 0.0, 1e-12);
         CHECK(!p.lon_ok);
         CHECK(!p.node_ok);
+        CHECK(!p.lpe_ok);
+    }
+    {
+        /* No zero longitude, but a normal that is NOT the orbit's -- the map's
+           Target-orbit slot. The node line belongs to the PAIR of planes, not to
+           the longitude measured along it, so node_ok must hold (the 3D overlay
+           draws its node ticks off this flag alone) while every longitude stays
+           undefined. With node_ok left false by the has_zero early return, that
+           slot drew one ring and no marker: a plane change with no place to burn. */
+        const double rp = 1.0e6, vc = sqrt(MU / rp);
+        const OrbitElements o = computeOrbitElements(glm::dvec3(rp, 0, 0),
+                                                     glm::dvec3(0, 0, -vc), MU);
+        RefPlane tilted{glm::normalize(glm::dvec3(0.0, 1.0, 0.1)),
+                        glm::dvec3(1.0, 0.0, 0.0), false};
+        const PlaneAngles p = orbitPlaneAngles(o, tilted);
+        CHECK_NEAR(p.inc, atan(0.1), 1e-12);
+        CHECK(p.node_ok);
+        CHECK(!p.lon_ok);
         CHECK(!p.lpe_ok);
     }
     {

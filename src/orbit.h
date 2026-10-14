@@ -115,9 +115,14 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
 struct RefPlane {
     glm::dvec3 n_hat = glm::dvec3(0.0, 1.0, 0.0);
     glm::dvec3 x_hat0 = glm::dvec3(1.0, 0.0, 0.0);
-    // False when the plane carries no natural zero direction (the map's
-    // Orbital view uses the orbit's OWN plane): no longitude, only inc.
+    // False when the plane carries no natural zero direction (the map's Orbital
+    // and Target-orbit views use a plane nobody chose a longitude axis for): no
+    // longitude, only inc.
     bool has_zero = true;
+    // Which RefPlaneMode (frame.h) this ACTUALLY is. A requested slot can fall
+    // back -- "Target orbit" with no target measures against the ecliptic -- and
+    // an inclination that names the wrong plane is worse than no number (#171).
+    int mode = 0;
 };
 
 struct PlaneAngles {
@@ -140,7 +145,10 @@ struct PlaneAngles {
      so a slightly off x_hat0 works; 0.44 is a ~26 deg cone).
    - node_ok: |n_hat x h_hat| == sin(inc) must clear 1e-6. An in-game h
      carries ~1e-8 of noise, so a genuinely equatorial orbit would otherwise
-     print a random LAN with full confidence.
+     print a random LAN with full confidence. It says nothing about lon_ok: a
+     plane with no chosen zero longitude (the map's Target-orbit slot) still
+     HAS a node line -- the overlay marks it -- there is just no longitude to
+     read off it, so a caller printing LAN needs BOTH flags.
    - lpe_ok: the printed value is the periapsis DIRECTION, noise-dominated
      once e drops to ~1e-4; below it the window dashes LPe, as it dashes
      ApT/PeT for a near-circular orbit.
@@ -151,6 +159,12 @@ inline PlaneAngles orbitPlaneAngles(const OrbitElements &o, const RefPlane &ref)
     PlaneAngles p;
     if(glm::dot(o.h_hat, o.h_hat) < 0.5) { return p; }   // radial / degenerate state
     p.inc = acos(glm::clamp(glm::dot(o.h_hat, ref.n_hat), -1.0, 1.0));
+    /* Same convention as the angles below: n_hat x h_hat is the ASCENDING node.
+       Computed before the has_zero gate because the node line belongs to the
+       pair of planes, not to the longitude measured along it. */
+    const glm::dvec3 node = glm::cross(ref.n_hat, o.h_hat);
+    const double node_len = glm::length(node);
+    p.node_ok = node_len > 1e-6;
     if(!ref.has_zero) { return p; }
 
     const glm::dvec3 x_in = ref.x_hat0 - glm::dot(ref.x_hat0, ref.n_hat) * ref.n_hat;
@@ -163,9 +177,6 @@ inline PlaneAngles orbitPlaneAngles(const OrbitElements &o, const RefPlane &ref)
         return wrapAngleToPositive(atan2(glm::dot(v, y_hat), glm::dot(v, x_hat)));
     };
 
-    const glm::dvec3 node = glm::cross(ref.n_hat, o.h_hat);
-    const double node_len = glm::length(node);
-    p.node_ok = node_len > 1e-6;
     p.lpe_ok = o.ecc > 1e-4;
     if(p.node_ok) {
         p.lan = lon(node);

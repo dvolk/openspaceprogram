@@ -128,13 +128,22 @@ struct Frame {
 /* Which plane the UI measures Inc/LAN/LPe against (#171). The SAME choice the
    orbit map draws (Game::map_plane), so the numbers describe the picture;
    kRefOrbit is view-only, where Inc is 0 by construction and the node is
-   undefined. */
-enum RefPlaneMode { kRefEquator = 0, kRefEcliptic = 1, kRefOrbit = 2 };
+   undefined; kRefTarget is the transfer target's orbit, where Inc is the plane
+   change to the target and the node line is where to burn for it. */
+enum RefPlaneMode { kRefEquator = 0, kRefEcliptic = 1, kRefOrbit = 2,
+                    kRefTarget = 3 };
 
 /* The reference plane of `focus` for a ship orbiting it, in the focus's
    INERTIAL frame -- the frame a ship's orbit_pos/orbit_vel live in.
-   `h_hat` = normalize(orbit_pos x orbit_vel), used only by kRefOrbit. */
-RefPlane uiRefPlane(Frame *focus, const glm::dvec3 &h_hat, int mode);
+   `h_hat` = normalize(orbit_pos x orbit_vel), used only by kRefOrbit.
+   `target_hat` = the transfer target's orbit normal about the SAME focus body
+   (the target list is bodies orbiting the body you orbit, plus other vessels in
+   its SOI), used only by kRefTarget.
+   With no target -- a degenerate vector -- kRefTarget measures against the
+   ecliptic instead and records that in RefPlane::mode, so nothing prints "tgt"
+   next to an ecliptic angle. */
+RefPlane uiRefPlane(Frame *focus, const glm::dvec3 &h_hat,
+                    const glm::dvec3 &target_hat, int mode);
 
 // Display name of a RefPlaneMode: an inclination without its plane is a guess,
 // not a number. Three letters to fit the ORBITAL window's column.

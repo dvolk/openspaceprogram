@@ -101,7 +101,7 @@ struct GameArgs {
     std::vector<UiClick> ui_clicks;  // imgui clicks by "Window/Label"
     int ui_list_ms = -1;             // dump the clickable items
     int atlas_dump_ms = -1;          // print the System Atlas rows + dossiers
-    int map_plane = -1;              // the orbit map's plane combo (0 equ, 1 ecl, 2 orb)
+    int map_plane = -1;              // the orbit map's plane combo (0 equ, 1 ecl, 2 orb, 3 tgt)
     int map_dump_ms = -1;            // print the map's plane basis per slot
 
     bool orbit_log = false;

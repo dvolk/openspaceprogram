@@ -96,11 +96,39 @@ static void checkSystem(const char *path) {
            against. If the two drift apart, the window and the system file
            disagree and nothing here notices. */
         if(equator_ref) {
-            const RefPlane ui = uiRefPlane(par, glm::dvec3(0.0, 1.0, 0.0), kRefEquator);
+            const RefPlane ui = uiRefPlane(par, glm::dvec3(0.0, 1.0, 0.0),
+                                           glm::dvec3(0.0), kRefEquator);
             snprintf(what, sizeof what, "%s/%s uiRefPlane matches the loader's equatorial reference",
                      path, bj["name"].get<std::string>().c_str());
             CHECK_TRUE(glm::dot(ui.n_hat, n_hat) > 1.0 - 1e-12
                     && glm::dot(ui.x_hat0, x_hat0) > 1.0 - 1e-12, what);
+        }
+
+        /* The "Target orbit" slot, checked against the same focus the rails
+           above use: it must hand back the target's normal untouched (the map
+           and the 3D overlay both draw exactly this), carry no zero longitude
+           (a plane change needs the node, not a longitude), and -- with no
+           target -- fall back to the ecliptic WHILE LABELLING ITSELF ecl. An
+           ecliptic Inc printed next to "tgt" is the lie RefPlane::mode exists
+           to prevent, and no other test can see it. */
+        {
+            const glm::dvec3 tgt = glm::normalize(glm::dvec3(0.3, 0.9, -0.2));
+            const RefPlane with = uiRefPlane(par, glm::dvec3(0.0, 1.0, 0.0),
+                                             tgt, kRefTarget);
+            const RefPlane none = uiRefPlane(par, glm::dvec3(0.0, 1.0, 0.0),
+                                             glm::dvec3(0.0), kRefTarget);
+            const glm::dvec3 ecl
+                = glm::transpose(par->root_orient) * glm::dvec3(0.0, 1.0, 0.0);
+            snprintf(what, sizeof what,
+                     "%s uiRefPlane target slot: normal, no zero longitude",
+                     path);
+            CHECK_TRUE(glm::dot(with.n_hat, tgt) > 1.0 - 1e-12
+                    && !with.has_zero && with.mode == kRefTarget, what);
+            snprintf(what, sizeof what,
+                     "%s uiRefPlane target slot: no target falls back, and says ecl",
+                     path);
+            CHECK_TRUE(glm::dot(none.n_hat, ecl) > 1.0 - 1e-12
+                    && none.mode == kRefEcliptic, what);
         }
 
         const OrbitElements o = computeOrbitElements(pos, vel, fr->parent_mu);

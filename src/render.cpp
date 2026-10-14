@@ -137,8 +137,14 @@ void updateShipView(Game &g) {
     /* Plane angles measured in the plane the orbit map is drawing, so the
        numbers match the picture (#171). The plane itself is stored too: the 3D
        orbital-plane overlay draws this one, so the rings and the readout cannot
-       describe different planes. */
-    view.ref_plane = uiRefPlane(ship->m_parent->frame, o.h_hat, g.map_plane);
+       describe different planes. The target's normal comes from the planner, so
+       the map's "Target orbit" slot is the same target the transfer is aimed
+       at -- one target, one plane, everywhere. */
+    view.target_h_hat = glm::dvec3(0.0);
+    view.target_plane_ok = g.xferPlanner.targetPlaneNormal(ship->m_parent->frame,
+                                                           view.target_h_hat);
+    view.ref_plane = uiRefPlane(ship->m_parent->frame, o.h_hat,
+                                view.target_h_hat, g.map_plane);
     plane = orbitPlaneAngles(o, view.ref_plane);
     distance = o.distance;
     speed = o.speed;
@@ -472,7 +478,7 @@ static void drawOrbitPlane(Game &g, const glm::dmat4 &VP) {
                    "n_orb=(%.6f,%.6f,%.6f) n_ref=(%.6f,%.6f,%.6f) "
                    "node=(%.6f,%.6f,%.6f) ticks=%s\n",
                    g.time, ship->frame->isRotFrame() ? "rot" : "inertial",
-                   refPlaneName(g.map_plane), inc * 180.0 / std::numbers::pi,
+                   refPlaneName(g.view.ref_plane.mode), inc * 180.0 / std::numbers::pi,
                    n_orb.x, n_orb.y, n_orb.z, n_ref.x, n_ref.y, n_ref.z,
                    node.x, node.y, node.z, coplanar ? "-" : "drawn");
             fflush(stdout);

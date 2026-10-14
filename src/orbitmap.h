@@ -18,8 +18,8 @@ struct OrbitMap {
     glm::dvec3 e1 = glm::dvec3(1.0, 0.0, 0.0);
     glm::dvec3 e2 = glm::dvec3(0.0, 0.0, 1.0);
 
-    // `x_axis` (optional) pins the screen-x direction INSIDE the plane: all
-    // three combo slots pass the focus frame's +X, so flipping the plane combo
+    // `x_axis` (optional) pins the screen-x direction INSIDE the plane: every
+    // combo slot passes the focus frame's +X, so flipping the plane combo
     // tilts the picture instead of rotating it (#173, #185), and a normal
     // approaching the rail normal keeps a stable basis instead of handing over
     // to the near-polar branch below. Zero length means derive it from the node

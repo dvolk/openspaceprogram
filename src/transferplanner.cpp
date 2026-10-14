@@ -300,6 +300,32 @@ void TransferPlanner::invalidateClockState() {
     pc_in_flight = 0;
 }
 
+bool TransferPlanner::targetPlaneNormal(Frame *focus_inertial,
+                                        glm::dvec3 &n_hat) const {
+    if(focus_inertial == nullptr
+       || xfer_target < 0 || xfer_target >= (int)xferTargets.size()) {
+        return false;
+    }
+    const XferTarget &t = xferTargets[xfer_target];
+    // A grounded vessel's "conic" about the focus is the circle the ground draws
+    // under it -- the body's own equator plane, which the Equatorial slot
+    // already offers under an honest name.
+    if(t.ship && t.ship->isGrounded()) { return false; }
+    // The same state lift the solver uses, so the plane the map shows cannot
+    // disagree with the transfer planned to this target.
+    const InertialTarget d = targetInertial(t, focus_inertial);
+    const glm::dvec3 h = glm::cross(d.r, d.v);
+    const double hl = glm::length(h);
+    if(hl <= 1e-9) { return false; }
+    // An escaping ship target has no orbit to share a plane with. A body target
+    // is on rails, so its conic is closed by construction.
+    if(t.ship && orbitalPeriod(d.r, d.v, focus_inertial->body->mu) <= 0.0) {
+        return false;
+    }
+    n_hat = h / hl;
+    return true;
+}
+
 void TransferPlanner::porkchopCompute() {
     if(xfer_target < 0 || xfer_target >= (int)xferTargets.size()) { return; }
     // One sweep at a time: the window's button is disabled mid-sweep but the P

@@ -13,6 +13,7 @@
 // Planner is a MEMBER of Game; forward-declare to avoid a cycle.
 struct Game;
 struct TerrainBody;
+struct Frame;
 class Vehicle;
 
 class TransferPlanner {
@@ -31,6 +32,14 @@ public:
 
     // Post the grid sweep to the background worker; never blocks the frame.
     void porkchopCompute();
+
+    /* Unit normal of the selected target's orbit about the body the ship
+       orbits, in that body's INERTIAL frame -- the frame the orbit map and the
+       ship's own conic live in, so it feeds uiRefPlane directly. False (n_hat
+       untouched) with no target, or one that is not in orbit: a grounded vessel
+       traces a surface circle, not an orbit, and passing its plane off as the
+       target's would be a lie. */
+    bool targetPlaneNormal(Frame *focus_inertial, glm::dvec3 &n_hat) const;
 
     // Drop a "Send best" plan and restore the prior ToF mode. No-op if none.
     void clearPorkchopPlan();
