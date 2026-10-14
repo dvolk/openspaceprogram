@@ -1000,36 +1000,69 @@ void drawUIReadouts(Game &g) {
         const ImVec2 img_tl = ImGui::GetCursorScreenPos();
         ImGui::Image((ImTextureID)(std::intptr_t)pc_tex->id,
                      ImVec2(img_sz, img_sz), ImVec2(0, 1), ImVec2(1, 0));
-        /* The armed plan, crosshaired on the grid. The Target window counts down
-           to this departure and the plot's x axis is delay from the instant the
-           sweep was POSTED, so the plan's x is its absolute departure minus that
-           stamp. Its ToF is the pin "Send best" set -- or whatever auto
-           recommends, if Auto came back on -- and a plan is only ever armed with
-           planning on, so the fallback is a solve that found nothing.
-           Off the swept range, nothing draws: the plot shows what was swept, and
-           the Target window still carries the plan. Both spans are guarded
-           because the range sliders can be dragged flat (lo == hi), which would
-           divide by zero. */
+        /* Overlays on the heatmap. Data -> pixel: x is departure delay from the
+           instant the grid was POSTED (pc_computed_at), y is ToF, and the uv
+           pair above flips the texture, so tof_lo is at the BOTTOM of the quad.
+           Both spans are guarded because the range sliders can be dragged flat
+           (lo == hi), which would divide by zero. */
         const double dep_span = pc.t_dep_hi - pc.t_dep_lo;
         const double tof_span = pc.tof_hi - pc.tof_lo;
-        if(planner.xfer_from_porkchop && planner.xfer_t_dep > 0.0
-           && dep_span > 0.0 && tof_span > 0.0) {
-            const double dep = planner.xfer_t_dep - planner.pc_computed_at;
-            const double tof = xfer.valid ? xfer.sol.tof
-                                         : std::pow(10.0, xfer_tof_log);
-            if(dep >= pc.t_dep_lo && dep <= pc.t_dep_hi
-               && tof >= pc.tof_lo && tof <= pc.tof_hi) {
-                // Data -> pixel. The uv pair above flips the texture, so tof_lo
-                // is at the BOTTOM of the quad: hence img_sz minus the ToF
-                // fraction, not plus.
-                const ImVec2 c(img_tl.x + (float)((dep - pc.t_dep_lo) / dep_span) * img_sz,
-                               img_tl.y + img_sz
-                                      - (float)((tof - pc.tof_lo) / tof_span) * img_sz);
-                ImDrawList *dl = ImGui::GetWindowDrawList();
-                const ImU32 plan_col = IM_COL32(255, 255, 255, 255);
-                dl->AddLine(ImVec2(c.x - 9.0f, c.y), ImVec2(c.x + 9.0f, c.y), plan_col, 1.5f);
-                dl->AddLine(ImVec2(c.x, c.y - 9.0f), ImVec2(c.x, c.y + 9.0f), plan_col, 1.5f);
-                dl->AddCircle(c, 5.0f, plan_col, 0, 1.5f);
+        if(dep_span > 0.0 && tof_span > 0.0) {
+            auto plot_px = [&](double dep, double tof) {
+                return ImVec2(img_tl.x + (float)((dep - pc.t_dep_lo) / dep_span) * img_sz,
+                              img_tl.y + img_sz
+                                     - (float)((tof - pc.tof_lo) / tof_span) * img_sz);
+            };
+            ImDrawList *dl = ImGui::GetWindowDrawList();
+            /* The range sliders set the next sweep's window, and a sweep is
+               n x n Lambert solves on the worker: draw the crop box before it is
+               paid for. Only lines inside the swept range -- outside it there is
+               nothing on this image to crop. They run 2 px past the plot at both
+               ends: a line that stops exactly at the border is hard to tell from
+               the border once the heatmap's colours reach it, and the stubs say
+               "this belongs to the axes, not the picture" without reaching into
+               the widgets above and below. */
+            const ImU32 pending_col = IM_COL32(255, 255, 255, 230);
+            const float over = 2.0f;
+            auto vline = [&](double dep) {
+                if(dep < pc.t_dep_lo || dep > pc.t_dep_hi) { return; }
+                const float x = plot_px(dep, pc.tof_lo).x;
+                dl->AddLine(ImVec2(x, img_tl.y - over),
+                            ImVec2(x, img_tl.y + img_sz + over), pending_col, 1.0f);
+            };
+            auto hline = [&](double tof) {
+                if(tof < pc.tof_lo || tof > pc.tof_hi) { return; }
+                const float y = plot_px(pc.t_dep_lo, tof).y;
+                dl->AddLine(ImVec2(img_tl.x - over, y),
+                            ImVec2(img_tl.x + img_sz + over, y), pending_col, 1.0f);
+            };
+            if(planner.pcCustomDep) {
+                vline(planner.pcDepLo);
+                vline(planner.pcDepHi);
+            }
+            if(planner.pcCustomTof) {
+                hline(planner.pcTofLo);
+                hline(planner.pcTofHi);
+            }
+            /* The armed plan: the Target window counts down to this departure
+               and the axis is delay from the sweep, so subtract the stamp the
+               grid was posted at. Its ToF is the pin "Send best" set -- or
+               whatever auto recommends, if Auto came back on -- and a plan is
+               only ever armed with planning on, so the fallback is a solve that
+               found nothing. Off the swept range, nothing draws: the plot shows
+               what was swept, and the Target window still carries the plan. */
+            if(planner.xfer_from_porkchop && planner.xfer_t_dep > 0.0) {
+                const double dep = planner.xfer_t_dep - planner.pc_computed_at;
+                const double tof = xfer.valid ? xfer.sol.tof
+                                             : std::pow(10.0, xfer_tof_log);
+                if(dep >= pc.t_dep_lo && dep <= pc.t_dep_hi
+                   && tof >= pc.tof_lo && tof <= pc.tof_hi) {
+                    const ImVec2 c = plot_px(dep, tof);
+                    const ImU32 plan_col = IM_COL32(255, 255, 255, 255);
+                    dl->AddLine(ImVec2(c.x - 9.0f, c.y), ImVec2(c.x + 9.0f, c.y), plan_col, 1.5f);
+                    dl->AddLine(ImVec2(c.x, c.y - 9.0f), ImVec2(c.x, c.y + 9.0f), plan_col, 1.5f);
+                    dl->AddCircle(c, 5.0f, plan_col, 0, 1.5f);
+                }
             }
         }
         ImGui::SameLine();
