@@ -694,23 +694,31 @@ void drawUIReadouts(Game &g) {
             }
             ImGui::EndCombo();
         }
-        // The Porkchop window hangs off this window, not the Windows list.
+        /* Two checkboxes, one row: both are switches about the plan rather than
+           readouts of it. The window is pinned at 420 x 328 (uiwins.cpp), so the
+           row this frees is scroll headroom, not height -- with a porkchop plan
+           armed the content ends within a few px of the bottom edge either way,
+           and the next line added here puts the scrollbar back. The Porkchop
+           window hangs off this window, not the Windows list. */
         bool pc_open = winOpen(W_Porkchop);
         if(ImGui::Checkbox("Porkchop", &pc_open)) {
             setWinOpen(W_Porkchop, pc_open);
-        }
-        if(xfer_target < 0) {
-            ImGui::Text("Select a target body or ship.");
-            return;
         }
         /* A target is worth selecting even with no plan: its orbit is on the
            map, and its plane is one of the map's planes. Off, nothing solves,
            so the HUD burn marker, the map arc and everything below go quiet
            together. Turning it off drops an armed porkchop plan -- the countdown
            and the burn direction both need a live solution -- and "Send best"
-           turns planning back on. */
+           turns planning back on. It rides above the "no target yet" return
+           because it is a mode: the setting you want is the one you leave in
+           place before you pick what to plan a burn to. */
+        ImGui::SameLine();
         if(ImGui::Checkbox("Compute transfer", &xfer_compute) && !xfer_compute) {
             planner.clearPorkchopPlan();
+        }
+        if(xfer_target < 0) {
+            ImGui::Text("Select a target body or ship.");
+            return;
         }
         if(!xfer_compute) { return; }
         const bool isShip = xferTargets[xfer_target].ship != nullptr;
