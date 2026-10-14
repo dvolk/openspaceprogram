@@ -380,7 +380,11 @@ void TransferPlanner::porkchopCompute() {
     /* --porkchop-bench sweeps several sizes off THIS one snapshot, so the grids
        differ only in resolution. Swept ascending; the live plot keeps the largest. */
     std::vector<int> sizes = g.args.porkchop_bench;
-    if(sizes.empty()) { sizes.push_back(g.args.porkchop_n); }
+    // assign, not push_back: GCC 15 loses the buffer origin through the
+    // unique/erase below and warns -Wfree-nonheap-object on push_back's growth
+    // path -- which cannot run here, since sizes is empty so capacity is 0.
+    // False positive (ASan-clean), but it was the tree's only warning.
+    if(sizes.empty()) { sizes.assign(1, g.args.porkchop_n); }
     // A repeated size would redo identical work and rewrite the same CSV.
     std::sort(sizes.begin(), sizes.end());
     sizes.erase(std::unique(sizes.begin(), sizes.end()), sizes.end());
