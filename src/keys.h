@@ -39,6 +39,7 @@ enum class Slot {
     Porkchop,      // 'p'  the porkchop plot
     SurfaceMap,    // 'm'  the surface map
     Wireframe,     // F11  wireframe
+    ToggleOrbitPlane, // F3  the orbital plane overlay (Settings checkbox mirror)
     ResetWindows,  // F10  reset the window layout
     Menu,          // ESC  the main menu
     GoSpaceCenter, // '1'  Space Center hub

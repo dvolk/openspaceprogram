@@ -470,6 +470,19 @@ void poll_events(Game &g) {
                     g.poly_mode = false;
                 }
             }
+            /* The orbital-plane overlay is a render toggle like wireframe, but
+               the moment it is wanted is mid-burn -- so it flips the SAME flag
+               the Settings checkbox writes (Game::draw_orbit_plane), never a
+               second one that could disagree with the window. Scene-neutral:
+               arming it before a plane change is the point, and a flag with no
+               ship under it just sits there. */
+            if(slotFired(Slot::ToggleOrbitPlane, ksc, kmod, g.binds)) {
+                if(!ev.key.repeat) {
+                    g.draw_orbit_plane = !g.draw_orbit_plane;
+                    g.toast("Orbital plane %s",
+                            g.draw_orbit_plane ? "on" : "off");
+                }
+            }
             if(slotFired(Slot::ToggleWindows, ksc, kmod, g.binds)) {
                 if(!ev.key.repeat) {
                     g.toggle_windows();

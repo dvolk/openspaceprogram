@@ -7,7 +7,7 @@ or a case you want to drive by hand); --show-cmd prints the exact command +
 env so a failure re-runs under a debugger. Case keys: NAME ARGS EXPECT FORBID
 CHECK LIMIT WRITE SEED EXIT. CHECK sees out and
 the parsed logs (orbit/dbg/att/eva/fuel/drainlog/drag/shake/cam/terrain/surf/
-xfer/porkchop/surfmap/mapb/plane/slew) plus first/last/re. ARGS tokenizes like a
+xfer/porkchop/surfmap/mapb/plane/slew/toast) plus first/last/re. ARGS tokenizes like a
 shell, so a value may be quoted to carry spaces. SEED <fixture> <path-under-
 data-dir> [AGE_DAYS] stages an existing save into the case's scratch --data-dir. EXIT
 <code> is the exit code the case demands (default 0) -- without it a game that
@@ -107,6 +107,11 @@ SLEW_RE = re.compile(
     r"nose=\[([-\d.+]+) ([-\d.+]+) ([-\d.+]+)\]\s+"
     r"target=\[([-\d.+]+) ([-\d.+]+) ([-\d.+]+)\]"
 )
+# Game::toast mirrors every on-screen message to stdout ("the on-screen toast is
+# transient, the log is not"), so a hotkey that only changes a flag still leaves
+# an observable line. Parsed as plain strings: what a case wants is which
+# messages appeared and in what order.
+TOAST_RE = re.compile(r"\[toast\] (.*)")
 ATT_RE = re.compile(
     r"\[attlog\]\s+t=([\d.]+)s\s+"
     r"nose=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+"
@@ -326,6 +331,10 @@ def parse_slew(out):
             "target": (float(tx), float(ty), float(tz)),
         })
     return rows
+
+
+def parse_toast(out):
+    return [m.group(1).strip() for m in TOAST_RE.finditer(out)]
 
 
 def parse_xfer(out):
@@ -729,6 +738,7 @@ def run_case(case):
     mapb = parse_mapb(out)
     plane = parse_plane(out)
     slew = parse_slew(out)
+    toast = parse_toast(out)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "att": att, "eva": eva,
@@ -736,6 +746,7 @@ def run_case(case):
         "cam": cam,
         "terrain": terrain,
         "surf": surf, "mapb": mapb, "plane": plane, "slew": slew,
+        "toast": toast,
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,
         "max": max, "min": min, "float": float, "int": int, "zip": zip,

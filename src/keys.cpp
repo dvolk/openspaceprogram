@@ -35,6 +35,9 @@ void KeyBindings::resetDefaults() {
     add(Slot::Porkchop,      SDL_SCANCODE_P);
     add(Slot::SurfaceMap,    SDL_SCANCODE_M);
     add(Slot::Wireframe,     SDL_SCANCODE_F11);
+    // F3 is the free function key next to the F1/F2 diagnostics: the overlay is
+    // wanted mid-burn, and Settings is three clicks away.
+    add(Slot::ToggleOrbitPlane,SDL_SCANCODE_F3);
     add(Slot::ResetWindows,  SDL_SCANCODE_F10);
     add(Slot::Menu,          SDL_SCANCODE_ESCAPE);
     add(Slot::GoSpaceCenter, SDL_SCANCODE_1);
@@ -141,6 +144,9 @@ const char *slotName(Slot s) {
         case Slot::Porkchop:       return "porkchop";
         case Slot::SurfaceMap:     return "surface_map";
         case Slot::Wireframe:      return "wireframe";
+        // Same word as the Settings checkbox and its settings.json key, so the
+        // overlay has one name across the UI, the key map and the save file.
+        case Slot::ToggleOrbitPlane: return "orbital_plane";
         case Slot::ResetWindows:   return "reset_windows";
         case Slot::Menu:           return "menu";
         case Slot::GoSpaceCenter:  return "go_space_center";
@@ -218,6 +224,7 @@ const char *slotLabel(Slot s) {
         case Slot::Porkchop:       return "Compute porkchop";
         case Slot::SurfaceMap:     return "Compute surface map";
         case Slot::Wireframe:      return "Toggle wireframe";
+        case Slot::ToggleOrbitPlane: return "Toggle orbital plane";
         case Slot::ResetWindows:   return "Reset windows";
         case Slot::Menu:           return "Main menu";
         case Slot::GoSpaceCenter:  return "Go to Space Center";
@@ -274,6 +281,7 @@ SlotGroup slotGroup(Slot s) {
         case Slot::Screenshot: case Slot::Quicksave: case Slot::Quickload:
         case Slot::Porkchop: case Slot::SurfaceMap:
         case Slot::Wireframe: case Slot::ResetWindows: case Slot::Menu:
+        case Slot::ToggleOrbitPlane:
         case Slot::GoSpaceCenter: case Slot::GoFlight:
         case Slot::GoTracking: case Slot::GoVab:
             return SlotGroup::Game;

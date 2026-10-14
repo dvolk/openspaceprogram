@@ -33,6 +33,12 @@ int main() {
     assert(hasPlain(Slot::CamDown, SDL_SCANCODE_F));  // was LCtrl/RCtrl
     assert(hasPlain(Slot::EvaUp, SDL_SCANCODE_R));    // was LShift
     assert(hasPlain(Slot::EvaDown, SDL_SCANCODE_F));  // was LCtrl
+    /* F3 is the one free function key beside the F1/F2 diagnostics, and the
+       orbital-plane overlay is the toggle that wants it: the flag is a Settings
+       checkbox, three clicks away from the cockpit it is needed in. */
+    assert(hasPlain(Slot::ToggleOrbitPlane, SDL_SCANCODE_F3));
+    assert(slotGroup(Slot::ToggleOrbitPlane) == SlotGroup::Game);
+    assert(slotSimKey(Slot::ToggleOrbitPlane, SDL_SCANCODE_F3, kb));
     for (size_t i = 0; i < (size_t)Slot::SLOT_COUNT; i++) {
         assert(!kb.perSlot[i].empty());
     }

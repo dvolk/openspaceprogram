@@ -555,6 +555,7 @@ void drawUIReadouts(Game &g) {
         // render.cpp drawOrbitPlane: the orbit plane (cyan), the orbit map's
         // reference plane (yellow) and a tick where they cross (white), so Inc
         // reads as an angle and the plane-change burn direction is on screen.
+        // F3 (Slot::ToggleOrbitPlane) mirrors this from anywhere, mid-burn.
         ImGui::Checkbox("Orbital plane", &draw_orbit_plane);
         // Prototype (render.cpp skyGain): how far stars fade while the sun is in view
         // and the camera is in sunlight.

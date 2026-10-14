@@ -1,0 +1,23 @@
+# The orbital-plane overlay lives behind a Settings checkbox -- menu, Settings,
+# click -- while the moment it is wanted is mid-burn beside a plane change. F3
+# (Slot::ToggleOrbitPlane) flips the SAME flag the checkbox writes
+# (Game::draw_orbit_plane, read by render.cpp drawOrbitPlane), never a second
+# flag that could disagree with the window. So this case pins the keybind: the
+# scancode reaches the slot, the slot is dispatched scene-neutrally, and the
+# flag toggles both ways. That the flag is what draws the rings is cases 194-197
+# and 204/205, which flip it with the mouse and assert the overlay; --plane-log
+# cannot separate the two here because that flag draws the overlay itself.
+#
+# The flag starts false, so three presses can only read on, off, on -- which is
+# also what says the key is a toggle and not a one-way switch.
+NAME orbit-plane-keybind
+ARGS --time-accel 1 --timeout 7 --startship racer,res/ships/racer.json,Kerbin,inertial-orbit
+ARGS --sim-press 1500,0,F3,3000,0,F3,4500,0,F3
+EXPECT [toast] Orbital plane on
+EXPECT [toast] Orbital plane off
+FORBID FAILED
+FORBID GL_
+FORBID error:
+CHECK toast.count("Orbital plane on") == 2
+CHECK toast.count("Orbital plane off") == 1
+CHECK toast.index("Orbital plane on") < toast.index("Orbital plane off")
