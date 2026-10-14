@@ -1754,10 +1754,13 @@ void Vehicle::slew_log(double time) {
     const double Ieff = glm::dot(axis, I * axis);
     const double alpha = (Ieff > 0.0) ? maxTorque() / Ieff : 0.0;
     const double w_des = (alpha > 0.0) ? std::sqrt(2.0 * alpha * E) : 0.0;
+    /* The two directions at 6 dp, not 3: e2e pairs target= with --plane-log's
+       n_orb, and a 3 dp component leaves ~3e-3 of dot-product slack -- the same
+       size as the error it is there to catch. */
     printf("[slew] t=%.3f mode=%s E=%.4f rad (%.2f deg) "
            "w_slew=%+.4f w_roll=%+.4f w_third=%+.4f |w|=%.4f "
            "alpha=%.3f Ieff=%.0f w_des=%+.4f "
-           "nose=[%+.3f %+.3f %+.3f] target=[%+.3f %+.3f %+.3f]\n",
+           "nose=[%+.6f %+.6f %+.6f] target=[%+.6f %+.6f %+.6f]\n",
            time, mode, E, glm::degrees(E),
            w_slew, w_roll, w_third, glm::length(w),
            alpha, Ieff, w_des,
@@ -2406,16 +2409,26 @@ glm::dmat3 Vehicle::getInertia() {
 
 glm::dvec3 Vehicle::slewTargetDir() {
     const glm::dvec3 pos = get_center_of_mass();
-    const glm::dvec3 vel = GetVel();
-    switch(slew) {
-        case SlewPrograde:   return  vel;
-        case SlewRetrograde: return -vel;
-        case SlewRadialOut:  return  pos;
-        case SlewRadialIn:   return -pos;
-        case SlewNormal:     return  glm::cross(pos, vel);
-        case SlewAntiNormal: return -glm::cross(pos, vel);
-        default:             return glm::dvec3(0.0);
-    }
+    // Radial is the same line in either frame: both are measured from the body's
+    // centre, which the surface frame and the inertial one share.
+    if(slew == SlewRadialOut) { return  pos; }
+    if(slew == SlewRadialIn) { return -pos; }
+    const bool prg = (slew == SlewPrograde || slew == SlewRetrograde);
+    const bool nrm = (slew == SlewNormal || slew == SlewAntiNormal);
+    if(!prg && !nrm) { return glm::dvec3(0.0); }
+    /* Prograde and the normal belong to the CONIC, so take the state from the
+       non-rotating node: inside the rotating surface frame GetVel() is the
+       ground-relative velocity, which for a ship flying slowly points nowhere
+       near its orbit's prograde, and the cross product of that pair is not the
+       orbit's normal. Then back into this frame -- slewToward steers in it.
+       Matches the drawn markers (render.cpp), so what SAS aims at is what the
+       prograde icon shows. */
+    Frame *inertial = frame->getNonRotFrame();
+    glm::dvec3 p, v;
+    comStateIn(inertial, p, v);
+    const glm::dmat3 to_frame = glm::transpose(frame->GetOrientRelTo(inertial));
+    glm::dvec3 dir = to_frame * (nrm ? glm::cross(p, v) : v);
+    return (slew == SlewRetrograde || slew == SlewAntiNormal) ? -dir : dir;
 }
 
 void Vehicle::slewToward(glm::dvec3 dir, double h) {

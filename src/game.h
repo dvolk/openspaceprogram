@@ -92,6 +92,13 @@ struct ShipView {
     // the orbit conic, in the ship's non-rotating (inertial) frame
     glm::dvec3 orbit_pos = glm::dvec3(0.0);
     glm::dvec3 orbit_vel = glm::dvec3(0.0);
+    /* orbit_vel brought back into the ship's OWN frame. The flight markers
+       (prograde / retrograde / normal) and the prograde angle are properties of
+       the conic, so they read this rather than vel: inside the rotating surface
+       frame vel is the ground-relative velocity, missing the ground's own
+       motion, which tilts the markers off the plane the orbital-plane overlay
+       draws. Radial needs no such lift -- pos is already this frame's. */
+    glm::dvec3 marker_vel = glm::dvec3(0.0);
     OrbitElements o;
     // Inc/LAN/LPe measured in the plane the orbit map shows (Game::map_plane), so
     // the numbers describe the picture (#171). The plane itself is kept as well:

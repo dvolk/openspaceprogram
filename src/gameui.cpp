@@ -369,7 +369,11 @@ void drawUIReadouts(Game &g) {
     syncShipView(g);
     ShipView &view = g.view;
     glm::dvec3 &pos = view.pos;
-    glm::dvec3 &vel = view.vel;
+    /* The conic's velocity in this frame: the DEBUG window prints it beside the
+       orbital speed and energy, all three of which come from the same state. In
+       the rotating surface frame view.vel is the ground-relative one and matches
+       none of them. */
+    glm::dvec3 &marker_vel = view.marker_vel;
     OrbitElements &o = view.o;
     double &distance = view.distance;
     double &speed = view.speed;
@@ -1525,7 +1529,8 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("Pos: %s", fmt_dist(distance, pos_d, sizeof pos_d));
         ImGui::Text("xyz(%0.f, %0.f, %0.f)", pos.x, pos.y, pos.z);
         ImGui::Text("Vel: %.3fm/s", speed);
-        ImGui::Text("xyz(%0.f, %0.f, %0.f)", vel.x, vel.y, vel.z);
+        ImGui::Text("xyz(%0.f, %0.f, %0.f)",
+                    marker_vel.x, marker_vel.y, marker_vel.z);
         /* Specific orbital energy, J/kg -- the parent's mu is part of the number, so name
            the body (it jumps at an SOI handoff). Redundant with Orbit Info's SMa
            (energy = -mu/2a), hence debug-only: as raw state it is a live integrator check,

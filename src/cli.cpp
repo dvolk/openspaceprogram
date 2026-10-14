@@ -379,9 +379,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "(for measuring orbital stability)");
 
     app.add_flag("--plane-log", args.plane_log,
-                 "Test hook: with the Orbital plane overlay on (Settings), "
-                 "periodically print the plane normals it drew -- render-frame "
-                 "components, the ascending node and the dihedral, so a wrong "
+                 "Test hook: draw the Orbital plane overlay (the Settings "
+                 "checkbox otherwise leaves it off, and the flag would log "
+                 "nothing) and periodically print what it drew -- the plane "
+                 "normals, the ascending node, the dihedral and the "
+                 "prograde/normal flight markers, all render-frame, so a wrong "
                  "frame transform shows up as a number");
 
     app.add_option("--orbit-interval", args.orbit_interval,

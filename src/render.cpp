@@ -84,6 +84,7 @@ void updateShipView(Game &g) {
     glm::dvec3 &vel = view.vel;
     glm::dvec3 &orbit_pos = view.orbit_pos;
     glm::dvec3 &orbit_vel = view.orbit_vel;
+    glm::dvec3 &marker_vel = view.marker_vel;
     glm::dvec3 &surf_pos = view.surf_pos;
     glm::dvec3 &surf_vel = view.surf_vel;
     OrbitElements &o = view.o;
@@ -115,11 +116,16 @@ void updateShipView(Game &g) {
     // the spawn/switching code targets.
     orbit_pos = pos;
     orbit_vel = vel;
+    marker_vel = vel;
     if(ship->frame->isRotFrame() == true) {
         Frame *inertial = ship->frame->getNonRotFrame();
+        const glm::dmat3 to_inertial = ship->frame->GetOrientRelTo(inertial);
         orbit_vel += ship->frame->GetStasisVelocity(orbit_pos);
-        orbit_vel = ship->frame->GetOrientRelTo(inertial) * orbit_vel + ship->frame->GetVelocityRelTo(inertial);
-        orbit_pos = ship->frame->GetOrientRelTo(inertial) * orbit_pos + ship->frame->GetPositionRelTo(inertial);
+        orbit_vel = to_inertial * orbit_vel + ship->frame->GetVelocityRelTo(inertial);
+        orbit_pos = to_inertial * orbit_pos + ship->frame->GetPositionRelTo(inertial);
+        // And back into this frame, so the flight markers can point along the
+        // conic while being drawn in the frame they live in.
+        marker_vel = glm::transpose(to_inertial) * orbit_vel;
     }
 
     // Surface-relative state: position/velocity in the ROTATING frame.
@@ -160,7 +166,10 @@ void updateShipView(Game &g) {
     other = ship->partAxis(ship->controller, 0);
 
     facing_dir = glm::normalize(facing);
-    vel_dir = glm::normalize(vel);
+    /* The ORBITAL window's Prg/Rtg is the angle to the CONIC's prograde, like
+       the marker it sits beside -- and a grounded ship has one (the ground's own
+       motion), where normalize(vel) would divide by a near-zero length. */
+    vel_dir = glm::normalize(marker_vel);
 
     // heading/pitch/roll are SURFACE-relative: measured against the ground's
     // north/east in the rotating frame.
@@ -432,9 +441,12 @@ static void drawOrbitPlane(Game &g, const glm::dmat4 &VP) {
     const OrbitElements &o = g.view.o;
     const glm::dvec3 &h_hat = o.h_hat;
     if(glm::dot(h_hat, h_hat) < 0.5) { return; }   // radial / degenerate state
-    // No orbit, no plane: a landed or suborbital ship's h_hat is pos x vel of an
-    // object on the ground, and its node line is arithmetic noise.
-    if(o.periapsis <= ship->m_parent->radius) { return; }
+    /* A ship resting on the ground has no conic to take a plane from: its h_hat
+       is the circle the ground draws under it, so the ring would be the equator
+       wearing an orbit's name. FLYING is not the same case -- a suborbital arc
+       has a real plane, and refusing it here left the Map plane combo looking
+       dead exactly when a plane change is on the table. */
+    if(ship->isGrounded()) { return; }
     const glm::dmat3 to_inertial = ship->frame->GetOrientRelTo(inertial);
     const glm::dvec3 n_orb = glm::transpose(to_inertial) * h_hat;
     const glm::dvec3 n_ref = glm::transpose(to_inertial) * g.view.ref_plane.n_hat;
@@ -482,13 +494,22 @@ static void drawOrbitPlane(Game &g, const glm::dmat4 &VP) {
             g.plane_log_last_ms = now_ms;
             const double inc = std::acos(glm::clamp(glm::dot(n_orb, n_ref),
                                                     -1.0, 1.0));
+            /* The flight markers as paintWorld places them, so a marker that
+               drifts off the plane it belongs on is visible here rather than
+               only on screen: prg must be IN the plane and nrm must BE the
+               plane normal. Both in the render frame, like n_orb. */
+            const glm::dvec3 prg = glm::normalize(g.view.marker_vel);
+            const glm::dvec3 nrm = glm::normalize(
+                glm::cross(g.view.pos, g.view.marker_vel));
             printf("[planelog] t=%.1fs frame=%s plane=%s inc=%.4f deg "
                    "n_orb=(%.6f,%.6f,%.6f) n_ref=(%.6f,%.6f,%.6f) "
-                   "node=(%.6f,%.6f,%.6f) ticks=%s\n",
+                   "node=(%.6f,%.6f,%.6f) ticks=%s "
+                   "prg=(%.6f,%.6f,%.6f) nrm=(%.6f,%.6f,%.6f)\n",
                    g.time, ship->frame->isRotFrame() ? "rot" : "inertial",
                    refPlaneName(g.view.ref_plane.mode), inc * 180.0 / std::numbers::pi,
                    n_orb.x, n_orb.y, n_orb.z, n_ref.x, n_ref.y, n_ref.z,
-                   node.x, node.y, node.z, coplanar ? "-" : "drawn");
+                   node.x, node.y, node.z, coplanar ? "-" : "drawn",
+                   prg.x, prg.y, prg.z, nrm.x, nrm.y, nrm.z);
             fflush(stdout);
         }
     }
@@ -717,17 +738,23 @@ void paintWorld(Game &g) {
     // The orbit camera already tracks the ship's roll, so the nose billboard
     // needs no roll of its own.
     g.front_indicator->Draw(camera, std::numbers::pi);
-    g.prograde_indicator->pos = vel;
+    /* Prograde and the normal pair are the CONIC's, so they read marker_vel --
+       the orbital velocity in this frame. vel is the frame-relative one, which
+       inside the rotating surface frame misses the ground's own motion: the
+       markers then sit off the plane the orbital-plane overlay draws, and a
+       slowly flying ship points nowhere near its orbit's prograde. Radial is
+       the same line in both frames, so pos serves it. */
+    g.prograde_indicator->pos = view.marker_vel;
     g.prograde_indicator->Draw(camera, std::numbers::pi);
-    g.retrograde_indicator->pos = - vel;
+    g.retrograde_indicator->pos = - view.marker_vel;
     g.retrograde_indicator->Draw(camera, std::numbers::pi);
     g.radial_in_indicator->pos = - pos;
     g.radial_in_indicator->Draw(camera, std::numbers::pi);
     g.radial_out_indicator->pos = pos;
     g.radial_out_indicator->Draw(camera, std::numbers::pi);
-    g.normal_plus_indicator->pos = glm::cross(pos, vel);
+    g.normal_plus_indicator->pos = glm::cross(pos, view.marker_vel);
     g.normal_plus_indicator->Draw(camera, std::numbers::pi);
-    g.normal_minus_indicator->pos = -glm::cross(pos, vel);
+    g.normal_minus_indicator->pos = -glm::cross(pos, view.marker_vel);
     g.normal_minus_indicator->Draw(camera, std::numbers::pi);
     // Transfer burn direction (TARGET window, with "Compute transfer" on --
     // xfer.valid is what the planner clears when planning goes off).
@@ -776,8 +803,10 @@ void paintWorld(Game &g) {
 
     /* Both overlays drop the view's TRANSLATION, so every ring is centred on the
        camera: they read as orientation rings around the viewpoint rather than
-       lines painted at a fixed place in the world. */
-    if(g.draw_ref_circles || g.draw_orbit_plane) {
+       lines painted at a fixed place in the world. --plane-log reports what the
+       orbital-plane overlay draws, so asking for the log draws it: the overlay
+       is otherwise a settings checkbox and the flag would print nothing. */
+    if(g.draw_ref_circles || g.draw_orbit_plane || g.args.plane_log) {
         glLineWidth(4);
         g.lineshader->Bind();
         const glm::dmat4 VP = glm::dmat4(camera->GetProjection())
@@ -791,7 +820,9 @@ void paintWorld(Game &g) {
             g.lineshader->setUniform_vec4(1, glm::vec4(1, 0, 1, 0.5));
             g.ref_circle_xy->Draw(GL_LINE_LOOP);
         }
-        if(ship && g.draw_orbit_plane) { drawOrbitPlane(g, VP); }
+        if(ship && (g.draw_orbit_plane || g.args.plane_log)) {
+            drawOrbitPlane(g, VP);
+        }
         // Restore: the width is global state, and the Bullet debug drawer draws
         // GL_LINES with whatever the last setter left.
         glLineWidth(1.0f);

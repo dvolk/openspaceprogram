@@ -58,8 +58,8 @@ enum class Slot {
     ThrottleUp,
     ThrottleDown,
     // One-key attitude-to-velocity (the Autopilot window's toggles, bound).
-    SlewPrograde,  // hold the nose along the velocity vector
-    SlewRetrograde,// hold the nose against the velocity vector
+    SlewPrograde,  // hold the nose along the ORBIT's velocity vector
+    SlewRetrograde,// hold the nose against the ORBIT's velocity vector
     // RCS translation (ship-relative):
     RcsForward,    // along the ship's nose
     RcsBack,       // astern

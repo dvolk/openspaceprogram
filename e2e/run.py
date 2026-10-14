@@ -7,7 +7,7 @@ or a case you want to drive by hand); --show-cmd prints the exact command +
 env so a failure re-runs under a debugger. Case keys: NAME ARGS EXPECT FORBID
 CHECK LIMIT WRITE SEED EXIT. CHECK sees out and
 the parsed logs (orbit/dbg/att/eva/fuel/drainlog/drag/shake/cam/terrain/surf/
-xfer/porkchop/surfmap/mapb/plane) plus first/last/re. ARGS tokenizes like a
+xfer/porkchop/surfmap/mapb/plane/slew) plus first/last/re. ARGS tokenizes like a
 shell, so a value may be quoted to carry spaces. SEED <fixture> <path-under-
 data-dir> [AGE_DAYS] stages an existing save into the case's scratch --data-dir. EXIT
 <code> is the exit code the case demands (default 0) -- without it a game that
@@ -69,12 +69,16 @@ DBG_RE = re.compile(
     r"alt=([-\d.]+) m\s+vel=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+\|v\|=([-\d.]+) m/s"
 )
 # --plane-log (render.cpp drawOrbitPlane): the two plane normals the orbital-plane
-# overlay drew, in the RENDER frame, plus the dihedral between them.
+# overlay drew, in the RENDER frame, plus the dihedral between them and the
+# prograde / normal flight markers as placed, so a marker that leaves the plane
+# it belongs on fails a CHECK instead of only looking wrong.
 PLANE_RE = re.compile(
     r"\[planelog\]\s+t=([\d.]+)s\s+frame=(\w+)\s+plane=(\w+)\s+inc=([-\d.]+)\s+deg\s+"
     r"n_orb=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+"
     r"n_ref=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+"
-    r"node=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+ticks=(\S+)"
+    r"node=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+ticks=(\S+)\s+"
+    r"prg=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+"
+    r"nrm=\(([-\d.]+),([-\d.]+),([-\d.]+)\)"
 )
 XFER_RE = re.compile(
     r"\[xferlog\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+"
@@ -93,6 +97,15 @@ SURFMAP_RE = re.compile(
     r"(\d+)x(\d+)\s+albedo=\[([\d.]+) ([\d.]+) ([\d.]+)\]\s+"
     r"shaded=\[([\d.]+) ([\d.]+) ([\d.]+)\]\s+shade=(on|off)\s+"
     r"ocean=(on|off)\s+sites=(\d+)"
+)
+# --slew-log (vehicle.cpp slew_log): the attitude target the autopilot steers
+# toward, in the ship's own frame. Pairs with --plane-log's n_orb: a prograde
+# hold that aims at the ground's motion instead of the orbit's shows up as a
+# target sitting off the plane.
+SLEW_RE = re.compile(
+    r"\[slew\]\s+t=([\d.]+)\s+mode=(\S+)\s+E=([-\d.]+)\s+rad\s+.*?"
+    r"nose=\[([-\d.+]+) ([-\d.+]+) ([-\d.+]+)\]\s+"
+    r"target=\[([-\d.+]+) ([-\d.+]+) ([-\d.+]+)\]"
 )
 ATT_RE = re.compile(
     r"\[attlog\]\s+t=([\d.]+)s\s+"
@@ -273,7 +286,7 @@ def parse_plane(out):
     rows = []
     for m in PLANE_RE.finditer(out):
         (t, frame, plane_name, inc, ox, oy, oz, rx, ry, rz,
-         nx, ny, nz, ticks) = m.groups()
+         nx, ny, nz, ticks, px, py, pz, sx, sy, sz) = m.groups()
         rows.append({
             "t": float(t), "frame": frame, "plane": plane_name,
             "inc": float(inc),
@@ -283,6 +296,10 @@ def parse_plane(out):
             "node": (float(nx), float(ny), float(nz)),
             # "-" when the planes are coplanar: no node to point at.
             "ticks": ticks,
+            # The prograde marker and the normal axis (the + side, like n_orb),
+            # unit, as paintWorld places them.
+            "prg": (float(px), float(py), float(pz)),
+            "nrm": (float(sx), float(sy), float(sz)),
         })
     return rows
 
@@ -295,6 +312,18 @@ def parse_dbg(out):
             "t": float(t), "pos": (float(px), float(py), float(pz)),
             "alt": float(alt), "vel": (float(vx), float(vy), float(vz)),
             "v": float(v),
+        })
+    return rows
+
+
+def parse_slew(out):
+    rows = []
+    for m in SLEW_RE.finditer(out):
+        (t, mode, e, nx, ny, nz, tx, ty, tz) = m.groups()
+        rows.append({
+            "t": float(t), "mode": mode, "E": float(e),
+            "nose": (float(nx), float(ny), float(nz)),
+            "target": (float(tx), float(ty), float(tz)),
         })
     return rows
 
@@ -699,13 +728,14 @@ def run_case(case):
     surf = parse_surf(out)
     mapb = parse_mapb(out)
     plane = parse_plane(out)
+    slew = parse_slew(out)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "att": att, "eva": eva,
         "fuel": fuel, "drainlog": drainlog, "drag": drag, "shake": shake,
         "cam": cam,
         "terrain": terrain,
-        "surf": surf, "mapb": mapb, "plane": plane,
+        "surf": surf, "mapb": mapb, "plane": plane, "slew": slew,
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,
         "max": max, "min": min, "float": float, "int": int, "zip": zip,
