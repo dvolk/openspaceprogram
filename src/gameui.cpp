@@ -997,8 +997,41 @@ void drawUIReadouts(Game &g) {
         }
         // Fixed display size (the window auto-fits around it).
         const float img_sz = 420.0f;
+        const ImVec2 img_tl = ImGui::GetCursorScreenPos();
         ImGui::Image((ImTextureID)(std::intptr_t)pc_tex->id,
                      ImVec2(img_sz, img_sz), ImVec2(0, 1), ImVec2(1, 0));
+        /* The armed plan, crosshaired on the grid. The Target window counts down
+           to this departure and the plot's x axis is delay from the instant the
+           sweep was POSTED, so the plan's x is its absolute departure minus that
+           stamp. Its ToF is the pin "Send best" set -- or whatever auto
+           recommends, if Auto came back on -- and a plan is only ever armed with
+           planning on, so the fallback is a solve that found nothing.
+           Off the swept range, nothing draws: the plot shows what was swept, and
+           the Target window still carries the plan. Both spans are guarded
+           because the range sliders can be dragged flat (lo == hi), which would
+           divide by zero. */
+        const double dep_span = pc.t_dep_hi - pc.t_dep_lo;
+        const double tof_span = pc.tof_hi - pc.tof_lo;
+        if(planner.xfer_from_porkchop && planner.xfer_t_dep > 0.0
+           && dep_span > 0.0 && tof_span > 0.0) {
+            const double dep = planner.xfer_t_dep - planner.pc_computed_at;
+            const double tof = xfer.valid ? xfer.sol.tof
+                                         : std::pow(10.0, xfer_tof_log);
+            if(dep >= pc.t_dep_lo && dep <= pc.t_dep_hi
+               && tof >= pc.tof_lo && tof <= pc.tof_hi) {
+                // Data -> pixel. The uv pair above flips the texture, so tof_lo
+                // is at the BOTTOM of the quad: hence img_sz minus the ToF
+                // fraction, not plus.
+                const ImVec2 c(img_tl.x + (float)((dep - pc.t_dep_lo) / dep_span) * img_sz,
+                               img_tl.y + img_sz
+                                      - (float)((tof - pc.tof_lo) / tof_span) * img_sz);
+                ImDrawList *dl = ImGui::GetWindowDrawList();
+                const ImU32 plan_col = IM_COL32(255, 255, 255, 255);
+                dl->AddLine(ImVec2(c.x - 9.0f, c.y), ImVec2(c.x + 9.0f, c.y), plan_col, 1.5f);
+                dl->AddLine(ImVec2(c.x, c.y - 9.0f), ImVec2(c.x, c.y + 9.0f), plan_col, 1.5f);
+                dl->AddCircle(c, 5.0f, plan_col, 0, 1.5f);
+            }
+        }
         ImGui::SameLine();
         // Colorbar: hi at the top, lo at the bottom, labels aligned to the bar.
         ImGui::BeginGroup();
