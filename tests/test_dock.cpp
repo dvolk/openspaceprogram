@@ -605,8 +605,9 @@ static void test_seam_kept_across_stage() {
 /* --- experiments ride the Part across dock/undock ------------------------- */
 /* Part::experiments is payload on the Part instance. absorbShip /
    extractSubtreeAsShip only re-point owner/parent/pose -- they must never
-   rebuild or copy Parts -- so science data follows the part (and a kerbal's
-   suit, which is that Kerbal vehicle's Part 0, follows the crew move). */
+   rebuild or copy Parts -- so science data follows the part. A seated kerbal's
+   suit rides along for the same reason: it hangs off the capsule Part (part.h),
+   so there is no crew move to get wrong. */
 static void test_experiments_ride_parts() {
     printf("== experiments ride Parts across absorb + extract ==\n");
 

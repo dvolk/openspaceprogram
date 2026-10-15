@@ -5,8 +5,8 @@
 // A capsule is a part that can hold EVA characters aboard (KSP-style crew
 // seats): crew_capacity > 0 means it is one, 0 means it is not. The value
 // caps how many characters it can carry. This is the data-model half of the
-// crew integration; the aboard-state bookkeeping (Kerbal::aboard) is exercised
-// by the e2e EVA/Board cases.
+// crew integration; the seat itself (a suit Part parked in the capsule,
+// part.h) is pinned by test_contain and the e2e EVA/Board cases.
 
 #include "shipdef.h"
 

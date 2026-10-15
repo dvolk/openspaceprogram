@@ -14,8 +14,14 @@
 # (every pad ship carries crew, so a crew policy is the open half of #231).
 # The clear-pad path with no occupant is case 52; that a ship on ANOTHER pad
 # does not block this one is case 165.
+#
+# The second start ship is load-bearing: a seated kerbal is no longer a fleet
+# entry (part.h), so with only 'racer' in orbit-and-pad the fleet is ONE vessel
+# and remove_ship's last-ship guard answers first -- the case would pass without
+# ever reaching the crew guard it exists to pin.
 NAME vab-pad-occupied
 ARGS --vab res/ships/tanker.json --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --startship probe,res/ships/tanker.json,Kerbin,high-orbit
 ARGS --vab-launch 2000 --timeout 12
 ARGS --ui-click 3000,"Question/Clear the pad"
 EXPECT [vab] launch refused: 'racer' occupies 'main_space_port'
@@ -23,5 +29,6 @@ EXPECT [ask] racer is standing on Main space port. Clear the pad?  [Clear the pa
 EXPECT [ask] answered 0
 EXPECT Cannot remove racer -- EVA its crew out first
 FORBID [vab] launched
+FORBID Refusing to remove the last ship
 FORBID GL_
 FORBID error:

@@ -72,6 +72,7 @@ struct GameArgs {
     int experiment_ms = -1;
     int pod_experiment_ms = -1;
     int eva_ms = -1;
+    int board_ms = -1;        // the reverse of --eva (Game::kerbalBoard)
     int take_ms = -1;         // the take/store dance's "Take"
     int store_ms = -1;        // the take/store dance's "Store"
     int tracking_ms = -1;

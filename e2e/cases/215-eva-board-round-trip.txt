@@ -1,0 +1,13 @@
+NAME eva-board-round-trip
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,pad --eva 2000 --board 4000
+# Boarding deletes the walking VEHICLE and parks its suit Part in the capsule as
+# a seat (part.h), so the fleet must come back to exactly one vessel. It was
+# briefly two: the handoff read a stale active pointer at the freed walker.
+EXPECT Crew: 'Ash' aboard 'racer' part 0 (1/1)
+EXPECT EVA: 'Ash' out of 'racer' part 0
+EXPECT Board: 'Ash' into 'racer' part 0
+EXPECT Active ship 1 of 1: racer
+FORBID GL_
+FORBID error:
+CHECK out.count("EVA: 'Ash' out of 'racer'") == 1
+CHECK out.count("Board: 'Ash' into 'racer'") == 1

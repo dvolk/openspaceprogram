@@ -176,6 +176,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "ms (Game::kerbalEVA on the active ship's first crew "
                    "kerbal, headless; -1 = never). The take/store dance needs "
                    "a FREE kerbal in reach, so the e2e EVAs before --take/--store.");
+    app.add_option("--board", args.board_ms,
+                   "Fire the part window's \"Board\" once at this loop time in "
+                   "ms (Game::kerbalBoard: the first walking kerbal in reach of "
+                   "the first capsule with a free seat, headless; -1 = never). "
+                   "The reverse of --eva, so --eva then --board round-trips a "
+                   "person through their seat.");
     app.add_option("--take", args.take_ms,
                    "Fire the take/store dance's \"Take\" once at this loop "
                    "time in ms (Game::moveExperiment from the active ship's "

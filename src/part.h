@@ -73,9 +73,24 @@ struct Part {
     Vehicle *owner = nullptr;      // attached: the Vehicle whose parts list holds this
     Part *container = nullptr;     // contained: the part this one is parked in
     std::vector<Part *> contents;  // contained: the parts parked in this one (non-owning)
-    /* OWNED inventory items (~Part deletes them). Crew kerbals are NOT here
-       (they are owned by Vehicle::crew). An item here is ALSO in `contents`. */
+    /* OWNED inventory items (~Part deletes them). A capsule's seat occupants are
+       here too -- a seat is containment that knows who sits in it, below. An
+       item here is ALSO in `contents`. */
     std::vector<Part *> ownedContents;
+
+    /* --- a seat: the containment edge, plus an identity -------------------
+       A seated kerbal is NOT a Vehicle. Its suit Part is parked in the capsule
+       (in `contents`, owned through `ownedContents`, exactly like an inventory
+       item) and carries who sits in the seat. Minting a Kerbal vehicle IS going
+       EVA (Game::kerbalEVA); deleting one IS boarding. Occupancy is derived,
+       never stored -- see isSeat() -- so there is no third pointer to keep in
+       step with the containment edge. These fields are meaningful only for an
+       occupant. */
+    uint64_t seatProfile = 0;  // the CrewRoster entry this person IS; 0 = anonymous
+    /* Display name for an ANONYMOUS occupant only (a save that predates the
+       roster), which the roster has no entry to name. When seatProfile is set
+       the roster owns the name and this stays empty. */
+    std::string seatName;
 
     /* Pose in the VEHICLE's frame S -- one S per Vehicle, anchored at its root
        part (Vehicle::rootPart), NOT at this part. Written at attach time; only
@@ -108,8 +123,27 @@ struct Part {
     bool isFuelBarrier() const { return def != nullptr && def->fuel_barrier; }
     bool isCapsule() const { return def != nullptr && def->crew_capacity > 0; }
     bool isContainer() const { return def != nullptr && def->inventory_capacity > 0; }
+    /* A seat OCCUPANT: a suit Part parked in a capsule. Derived from the def
+       type and the containment edge, so it cannot drift from either and needs
+       no flag of its own. */
+    bool isSeat() const {
+        return container != nullptr && def != nullptr && def->type == "kerbal";
+    }
+    /* The seat occupants parked in this part (empty unless it is a capsule). */
+    std::vector<Part *> seats() const {
+        std::vector<Part *> out;
+        for(Part *c : contents) { if(c->isSeat()) { out.push_back(c); } }
+        return out;
+    }
+    /* Seats taken, for the capacity check (`def->crew_capacity` is the ceiling). */
+    int seatCount() const {
+        int n = 0;
+        for(Part *c : contents) { if(c->isSeat()) { n++; } }
+        return n;
+    }
     /* Is this part an inventory item of `container` (in its ownedContents)?
-       `contents` holds BOTH crew and items; this tells them apart. */
+       Seat occupants are owned too, so this does NOT separate them from items
+       -- isSeat() does. */
     bool ownedBy(Part *container) const {
         if(container == nullptr) { return false; }
         for(Part *c : container->ownedContents) { if(c == this) { return true; } }

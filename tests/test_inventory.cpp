@@ -30,7 +30,7 @@
 //     pocket can't cover drains nothing).
 //   - a containment cycle is refused WITHOUT orphaning the item (the cycle
 //     is pre-checked, so a refused transfer moves nothing), and the cycle
-//     guard sees the crew edge (contents holds crew too).
+//     guard sees the seat edge (a capsule's contents holds its crew too).
 //
 // Headless (no Game / physics world), like test_contain: ships are built
 // with init() (runs rebuildCompound -- which asserts the containment
@@ -441,22 +441,23 @@ int main() {
         destroyVehicle(S7.v);   // frees C -> A -> B
     }
 
-    /* --- the cycle guard sees the crew edge ------------------------------
-       contents holds crew too (non-owning), and a kerbal's suit is itself a
+    /* --- the cycle guard sees the seat edge ------------------------------
+       A capsule's contents holds its crew too, and a kerbal's suit is itself a
        container. inSubtree must walk contents (not just ownedContents), or
        a capsule added into its own crew kerbal closes a cycle the guard
-       misses. Wired by hand (a headless test has no real Kerbal): KP is in
-       C's contents but not its ownedContents -- exactly the crew edge. */
+       misses. Wired by hand (a headless test has no real Kerbal and mkPart has
+       no def type, so this is not a real seat -- isSeat() would be false): only
+       the contents edge matters here, which is the one inSubtree walks. */
     {
-        printf("== inSubtree sees the crew edge (cycle guard) ==\n");
+        printf("== inSubtree sees the seat edge (cycle guard) ==\n");
         Part *CAP = mkPart(I, "capsule", 100.0, 1.0, 1.0, 1.0, 3, false);
         Part *KP  = mkPart(I, "kerbal",  90.0, 1.0, 1.0, 1.0, 3, false);
-        CAP->contents.push_back(KP);   // the crew edge (non-owning)
+        CAP->contents.push_back(KP);   // the seat edge (contents only)
         KP->container = CAP;
         CHECK_TRUE(!inventoryAdd(CAP, KP),
                    "adding the capsule into its crew kerbal: refused (cycle)");
         CHECK_TRUE(CAP->container == nullptr, "the capsule is still free (not orphaned)");
-        delete CAP;   // CAP owns nothing (KP is crew, non-owning)
+        delete CAP;   // CAP owns nothing here (KP is not in ownedContents)
         delete KP;
     }
 

@@ -1,34 +1,29 @@
 // test_contain: the containment edge (Part::owner / container / contents,
 // src/part.h) and its invariant check (Vehicle::checkPartInvariants,
-// src/vehicle.cpp) -- step 2.1 of the inventory design report
-// (reports/inventory-design2026_09_20/).
+// src/vehicle.cpp).
 //
 // What is pinned:
 //   - OWNER: setRoot/attach wire every part's owner to its vehicle, and
-//     absorbShip / extractSubtreeAsShip re-point it to the survivor / the
-//     split-off ship. A Part* is stable through both, so only the pointer
-//     moves -- which is what lets a contained part's container stay valid
-//     across a merge or a split without any reindex machinery.
-//   - THE EDGE: container/contents back-reference each other, and only a
-//     character's part (isEva) may be contained, in a real capsule
-//     (crew_capacity > 0). The check passes on a correctly wired chain and
-//     FAILS on each of: a one-way edge (container set but not listed, and
-//     the mirror), a contained non-character, a character in a non-capsule.
+//     absorbShip / extractSubtreeAsShip re-point it -- for the attached parts
+//     AND for everything contained in them. A Part* is stable through both, so
+//     only the pointer moves, which is what lets a seat stay parked in its
+//     capsule across a merge or a split with no reindex machinery.
+//   - THE EDGE: container/contents back-reference each other, the container
+//     OWNS what it contains (ownedContents), and only a kerbal-type part may be
+//     a seat -- only in a real capsule (crew_capacity > 0).
+//   - A SEAT IS NOT A PART OF A VEHICLE: nothing in a parts list may be
+//     contained. A suit in both lists would be freed twice (~Vehicle's parts and
+//     ~Part's ownedContents), which is the failure this check exists to catch.
 //
-// The game populates no containment yet (step 2.4 wires the board/EVA
-// transitions), so this test sets the edges by hand -- exactly the way
-// those transitions will -- and deletes both vehicles at the end. The
-// double-free the report warns about (an owning ~Part, with ~Vehicle
-// deleting crew before parts) is a step-2.4 ASan case.
+// A seat is the containment edge plus an identity (part.h): the occupant is a
+// suit Part parked in the capsule, in `contents` for traversal and in
+// `ownedContents` so the capsule frees it. There is no Kerbal vehicle to model
+// here -- minting one IS going EVA (Game::kerbalEVA) -- so unlike the pre-seat
+// version of this test there is no TestCrew stand-in and no crew list.
 //
-// A local TestCrew : Vehicle stands in for Kerbal: eva.cpp includes
-// game.h, which drags the whole game into a headless test link. The
-// invariant is keyed on the isEva() virtual, so the stand-in exercises the
-// same code path the real Kerbal will take.
-//
-// No physics world and no GL context, exactly like test_dock: ships are
-// built with init() (runs rebuildCompound -- which now asserts the
-// containment invariant -- but not enterWorld).
+// No physics world and no GL context, exactly like test_dock: ships are built
+// with init() (runs rebuildCompound -- which now asserts the containment
+// invariant -- but not enterWorld).
 //
 // Runs from the repo root:
 //   make test   (or: ./test_contain)
@@ -65,16 +60,6 @@ static int g_checks = 0;
         }                                                                      \
     } while (0)
 
-/* The stand-in for Kerbal (see the header). One part, isEva true -- the
-   shape of every character vehicle. `cap` is what Kerbal::aboardPart is:
-   the capsule it sits in (set by the test the way board/EVA would). */
-struct TestCrew : Vehicle {
-    Part *cap = nullptr;   // the capsule it is parked in; nullptr = free
-    bool isEva() const override { return true; }
-    bool isCrewAboard() const override { return (cap != nullptr); }
-    Part *capsulePart() const override { return cap; }
-};
-
 /* A hand-built part. `defs` is a deque, not a vector: push_back on a vector
    reallocates and would dangle every Part::def handed out so far. */
 struct Ship {
@@ -82,8 +67,9 @@ struct Ship {
     std::deque<PartDef> defs;
 };
 
-static Part *mkPart(Ship &s, const char *name, double mass, double hx,
-                    double hy, double hz, int crewCapacity, bool dockingPort) {
+static Part *mkPart(Ship &s, const char *name, const char *type, double mass,
+                    double hx, double hy, double hz, int crewCapacity,
+                    int inventoryCapacity, bool dockingPort) {
     Body *b = new Body;
     b->btBody = nullptr;                 // a part is not simulated on its own
     b->shape  = new btBoxShape(btVector3(hx, hy, hz));
@@ -92,10 +78,12 @@ static Part *mkPart(Ship &s, const char *name, double mass, double hx,
     s.defs.push_back(PartDef());
     PartDef &d = s.defs.back();
     d.name         = name;
+    d.type         = type;
     d.mass         = (float)mass;
     d.radius       = (float)hx;
     d.height       = (float)(2.0 * hz);
     d.crew_capacity = crewCapacity;
+    d.inventory_capacity = inventoryCapacity;
     d.docking_port  = dockingPort;
     d.synthesizeNodes();   // axial stack nodes (attachDown mates them)
 
@@ -104,6 +92,16 @@ static Part *mkPart(Ship &s, const char *name, double mass, double hx,
     p->def   = &d;
     p->stage = 1;
     return p;
+}
+
+// Park a suit in a capsule exactly as Ships::fill_seat / Game::kerbalBoard do:
+// traversal, ownership, both back-pointers, and the identity.
+static void fillSeat(Part *cap, Part *suit, Vehicle *ship, uint64_t profile) {
+    cap->contents.push_back(suit);
+    cap->ownedContents.push_back(suit);
+    suit->container = cap;
+    suit->owner = ship;
+    suit->seatProfile = profile;
 }
 
 static void destroyVehicle(Vehicle *v) {
@@ -116,11 +114,12 @@ static void destroyVehicle(Vehicle *v) {
 int main() {
     /* Ship A: tank (root) + capsule + docking port stacked (attachDown
        stacks each part below the last, so the port is A's rear face).
-       Crew C: one part. */
+       The suit is a loose part: a seat occupant belongs to no vehicle's parts
+       list, so it is built but never attached. */
     Ship A; A.v = new Vehicle; A.v->name = "A";
-    Part *tank  = mkPart(A, "tank", 1000.0, 1.0, 1.0, 1.5, 0, false);
-    Part *cap   = mkPart(A, "capsule", 100.0, 1.0, 1.0, 0.5, 1, false);
-    Part *portA = mkPart(A, "portA", 50.0, 1.0, 1.0, 0.125, 0, true);
+    Part *tank  = mkPart(A, "tank", "fuel", 1000.0, 1.0, 1.0, 1.5, 0, 0, false);
+    Part *cap   = mkPart(A, "capsule", "capsule", 100.0, 1.0, 1.0, 0.5, 1, 0, false);
+    Part *portA = mkPart(A, "portA", "dock", 50.0, 1.0, 1.0, 0.125, 0, 0, true);
     A.v->setRoot(tank);
     A.v->attachDown(cap);
     A.v->attachDown(portA);
@@ -128,12 +127,8 @@ int main() {
     A.v->init();
     A.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
 
-    Ship C; C.v = new TestCrew; C.v->name = "C";
-    Part *cPart = mkPart(C, "suit", 97.05, 0.2, 0.2, 0.375, 0, false);
-    C.v->setRoot(cPart);
-    C.v->controller = cPart;
-    C.v->init();
-    C.v->placeShip(glm::dvec3(10.0), glm::dmat3(1.0));
+    Ship S; S.v = nullptr;   // a suit is never a vehicle
+    Part *suit = mkPart(S, "suit", "kerbal", 97.05, 0.2, 0.2, 0.375, 0, 3, false);
 
     /* --- owner wiring (the attach primitives) ---------------------------- */
     {
@@ -141,28 +136,32 @@ int main() {
         bool allA = true;
         for(Part *p : A.v->parts) { if(p->owner != A.v) { allA = false; } }
         CHECK_TRUE(allA, "every part of A has owner == A");
-        CHECK_TRUE(cPart->owner == C.v, "the crew part has owner == C");
+        CHECK_TRUE(suit->owner == nullptr, "a loose suit belongs to no vehicle yet");
         CHECK_TRUE(tank->container == nullptr && cap->container == nullptr
                    && portA->container == nullptr,
                    "freshly built parts are contained nowhere");
+        CHECK_TRUE(!suit->isSeat(), "a suit with no container is not a seat");
         CHECK_TRUE(A.v->checkPartInvariants(), "A passes the invariant unwired");
-        CHECK_TRUE(C.v->checkPartInvariants(), "C passes the invariant unwired");
     }
 
-    /* --- a wired chain: contained in the capsule, both directions -------- */
-    cPart->container = cap;
-    cap->contents.push_back(cPart);
+    /* --- a seat: edge + ownership + derived occupancy ------------------- */
+    fillSeat(cap, suit, A.v, 7);
     {
-        printf("== containment chain: edge + traversal + invariant ==\n");
-        CHECK_TRUE(A.v->checkPartInvariants(), "A passes with the chain wired");
-        CHECK_TRUE(C.v->checkPartInvariants(), "C passes with the chain wired");
-        /* traversal: capsule -> contained part -> its vehicle -> back */
+        printf("== a seat: edge, ownership, occupancy ==\n");
+        CHECK_TRUE(A.v->checkPartInvariants(), "A passes with the seat wired");
+        /* traversal: capsule -> occupant -> back */
         CHECK_TRUE(cap->contents.size() == 1, "the capsule holds exactly one");
-        CHECK_TRUE(cap->contents[0] == cPart, "contents[0] is the crew part");
+        CHECK_TRUE(cap->contents[0] == suit, "contents[0] is the suit");
         CHECK_TRUE(cap->contents[0]->container == cap, "back-reference holds");
-        CHECK_TRUE(cap->contents[0]->owner == C.v, "owner names the crew vehicle");
-        CHECK_TRUE(C.v->parts.size() == 1 && C.v->parts[0] == cPart,
-                   "the crew vehicle still owns its own part");
+        CHECK_TRUE(cap->ownedContents.size() == 1 && cap->ownedContents[0] == suit,
+                   "the capsule OWNS its occupant (~Part frees it)");
+        CHECK_TRUE(suit->owner == A.v, "owner names the vehicle the capsule rides");
+        CHECK_TRUE(suit->isSeat(), "the occupant reads as a seat");
+        CHECK_TRUE(suit->seatProfile == 7, "the seat carries who sits in it");
+        CHECK_TRUE(cap->seatCount() == 1, "seatCount: one seat taken");
+        CHECK_TRUE(cap->seats().size() == 1 && cap->seats()[0] == suit,
+                   "seats() lists the occupant");
+        CHECK_TRUE(A.v->parts.size() == 3, "the seat is NOT in the parts list");
     }
 
     /* --- the check must FAIL where the edge breaks ----------------------- */
@@ -170,104 +169,78 @@ int main() {
         printf("== invariant violations are caught ==\n");
         /* one-way, container side: claims a container that does not list it */
         cap->contents.erase(cap->contents.begin());
-        CHECK_TRUE(!C.v->checkPartInvariants(),
-                   "container set but not listed: C fails");
+        CHECK_TRUE(!A.v->checkPartInvariants(),
+                   "container set but not listed: A fails");
+        cap->contents.push_back(suit);
+
         /* one-way, contents side: listed, but points back at nothing */
-        cap->contents.push_back(cPart);
-        cPart->container = nullptr;
+        suit->container = nullptr;
         CHECK_TRUE(!A.v->checkPartInvariants(),
                    "listed but container null: A fails");
-        cPart->container = cap;
-        cap->contents.erase(cap->contents.begin());
+        suit->container = cap;
 
-        /* a non-character contained (the ship's own tank in the capsule) */
-        tank->container = cap;
-        cap->contents.push_back(tank);
-        CHECK_TRUE(!A.v->checkPartInvariants(),
-                   "a non-kerbal part contained: A fails");
-        tank->container = nullptr;
-        cap->contents.erase(cap->contents.end() - 1);
-
-        /* a character in a non-capsule (the tank, crew_capacity 0) */
-        cPart->container = tank;
-        CHECK_TRUE(!C.v->checkPartInvariants(),
-                   "contained in a non-capsule: C fails");
-
-        /* owner desync: the crew part claims a vehicle that is not its own */
-        cPart->container = cap;
-        cPart->owner = A.v;
-        CHECK_TRUE(!C.v->checkPartInvariants(),
-                   "crew part with the wrong owner: C fails");
-        cPart->owner = C.v;
-        cap->contents.push_back(cPart);   // back to a correctly wired chain
-
-        CHECK_TRUE(A.v->checkPartInvariants() && C.v->checkPartInvariants(),
-                   "restored chain passes again");
-    }
-
-    /* --- owner re-pointing across merge and split ------------------------ */
-    {
-        printf("== owner survives absorbShip and extractSubtreeAsShip ==\n");
-        /* B: its own capsule + tank, docked into A below the capsule. The
-           crew moves in with the ship's crew list is Kerbal's job; here the
-           edge that must survive is the containment one, which needs no
-           reindex at all (a Part* is stable). */
-        Ship B; B.v = new Vehicle; B.v->name = "B";
-        Part *bTank = mkPart(B, "bTank", 500.0, 1.0, 1.0, 1.0, 0, false);
-        Part *bCap  = mkPart(B, "bCapsule", 100.0, 1.0, 1.0, 0.5, 1, false);
-        B.v->setRoot(bCap);
-        B.v->attachDown(bTank);
-        B.v->controller = bCap;
-        B.v->init();
-        B.v->placeShip(glm::dvec3(0.0, 0.0, -5.0), glm::dmat3(1.0));
-
-        /* the crew part rides in B's capsule BEFORE the dock (already wired) */
-        cPart->container = bCap;
+        /* owned but not listed: ~Part frees it, effectiveMass loses its mass */
         cap->contents.clear();
-        bCap->contents.push_back(cPart);
+        CHECK_TRUE(!A.v->checkPartInvariants(),
+                   "ownedContents without contents: A fails");
+        cap->contents.push_back(suit);
 
-        A.v->absorbShip(B.v, portA);
-        delete B.v;
+        /* listed but not owned: nothing frees it, and ~Part would not */
+        cap->ownedContents.clear();
+        CHECK_TRUE(!A.v->checkPartInvariants(),
+                   "contents without ownedContents: A fails");
+        cap->ownedContents.push_back(suit);
 
-        bool allA = true;
-        for(Part *p : A.v->parts) { if(p->owner != A.v) { allA = false; } }
-        CHECK_TRUE(allA, "after absorb, every part (B's included) owns to A");
-        CHECK_TRUE(bCap->owner == A.v, "the crew's capsule re-pointed to A");
-        CHECK_TRUE(cPart->container == bCap, "the crew's container is unchanged");
-        CHECK_TRUE(A.v->checkPartInvariants(), "A passes after absorb");
-        CHECK_TRUE(C.v->checkPartInvariants(), "C passes after absorb");
+        /* a non-kerbal part parked in the capsule (its own tank) */
+        Part *loose = mkPart(A, "looseTank", "fuel", 10.0, 0.5, 0.5, 0.5, 0, 0, false);
+        fillSeat(cap, loose, A.v, 0);
+        CHECK_TRUE(!A.v->checkPartInvariants(),
+                   "a non-kerbal part contained by a non-container: A fails");
+        cap->contents.pop_back();
+        cap->ownedContents.pop_back();
+        loose->container = nullptr;
+        loose->owner = nullptr;
 
-        /* split the docked side back off: the crew's capsule goes with it */
-        Vehicle *nv = A.v->extractSubtreeAsShip(bCap, "B");
-        CHECK_TRUE(nv != nullptr, "the split succeeds");
-        if(nv != nullptr) {
-            CHECK_TRUE(bCap->owner == nv, "the capsule re-pointed to the new ship");
-            CHECK_TRUE(cPart->container == bCap,
-                       "the crew's container still names the capsule");
-            CHECK_TRUE(nv->checkPartInvariants(), "the split-off passes");
-            CHECK_TRUE(C.v->checkPartInvariants(), "C passes after the split");
-            CHECK_TRUE(A.v->checkPartInvariants(), "A passes after the split");
-            nv->onRails = true;
-            delete nv;
-        }
+        /* a kerbal part parked in a non-capsule (the tank, crew_capacity 0) */
+        tank->contents.push_back(suit);
+        tank->ownedContents.push_back(suit);
+        cap->contents.clear();
+        cap->ownedContents.clear();
+        suit->container = tank;
+        CHECK_TRUE(!A.v->checkPartInvariants(),
+                   "a seat occupant in a non-capsule: A fails");
+        tank->contents.clear();
+        tank->ownedContents.clear();
+        suit->container = cap;
+        cap->contents.push_back(suit);
+        cap->ownedContents.push_back(suit);
+
+        /* the double-free shape: a suit that is BOTH attached to a vehicle and
+           contained. ~Vehicle's parts and ~Part's ownedContents would each free
+           it, so the check refuses the state outright. */
+        A.v->parts.push_back(suit);
+        suit->owner = A.v;
+        CHECK_TRUE(!A.v->checkPartInvariants(),
+                   "a part both attached and contained: A fails");
+        A.v->parts.pop_back();
+
+        CHECK_TRUE(A.v->checkPartInvariants(), "restored seat passes again");
     }
 
-    /* --- the crew list follows its capsule across merge and split -------- */
-    /* The board->dock->EVA seam step 2.2 calls out: a kerbal aboard a ship
-       that then docks (absorbShip) moves with the ship's crew list, and when
-       the docked side splits back off (extractSubtreeAsShip) the kerbal
-       follows its capsule to the split-off ship. The capsule is a Part*
-       (stable through both), so the crew block reads the side straight off
-       capsulePart()->owner -- no reindex. A TestCrew stand-in (capsulePart()
-       overridden) plays the Kerbal; the real one is unreachable from a
-       headless link (eva.cpp drags in game.h). */
+    /* --- the seat follows its capsule across merge and split ------------- */
+    /* The board->dock->EVA seam: a kerbal parked in a ship that then docks
+       (absorbShip) rides with its capsule, and when the docked side splits back
+       off (extractSubtreeAsShip) it follows the capsule to the split-off ship.
+       The capsule is a Part* (stable through both), so there is nothing to
+       reindex -- only the occupant's `owner` has to move, and the
+       ownedContents walk in absorbShip / extractSubtreeAsShip does that. */
     {
-        printf("== crew follows its capsule across absorb + split ==\n");
+        printf("== the seat follows its capsule across absorb + split ==\n");
         /* P: capsule + docking port (the survivor). Q: capsule + tank (the
-           docked side carrying the crew). */
+           docked side carrying the seat). */
         Ship P; P.v = new Vehicle; P.v->name = "P";
-        Part *pCap  = mkPart(P, "pCapsule", 100.0, 1.0, 1.0, 0.5, 2, false);
-        Part *portP = mkPart(P, "portP", 50.0, 1.0, 1.0, 0.125, 0, true);
+        Part *pCap  = mkPart(P, "pCapsule", "capsule", 100.0, 1.0, 1.0, 0.5, 2, 0, false);
+        Part *portP = mkPart(P, "portP", "dock", 50.0, 1.0, 1.0, 0.125, 0, 0, true);
         P.v->setRoot(pCap);
         P.v->attachDown(portP);
         P.v->controller = pCap;
@@ -275,104 +248,82 @@ int main() {
         P.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
 
         Ship Q; Q.v = new Vehicle; Q.v->name = "Q";
-        Part *qCap  = mkPart(Q, "qCapsule", 100.0, 1.0, 1.0, 0.5, 2, false);
-        Part *qTank = mkPart(Q, "qTank", 500.0, 1.0, 1.0, 1.0, 0, false);
+        Part *qCap  = mkPart(Q, "qCapsule", "capsule", 100.0, 1.0, 1.0, 0.5, 2, 0, false);
+        Part *qTank = mkPart(Q, "qTank", "fuel", 500.0, 1.0, 1.0, 1.0, 0, 0, false);
         Q.v->setRoot(qCap);
         Q.v->attachDown(qTank);
         Q.v->controller = qCap;
         Q.v->init();
         Q.v->placeShip(glm::dvec3(0.0, 0.0, -5.0), glm::dmat3(1.0));
 
-        /* the kerbal: parked in Q's capsule, on Q's crew list (as board does) */
-        Ship T; T.v = new TestCrew; T.v->name = "T";
-        Part *tSuit = mkPart(T, "suit", 97.05, 0.2, 0.2, 0.375, 0, false);
-        T.v->setRoot(tSuit);
-        T.v->controller = tSuit;
-        T.v->init();
-        T.v->placeShip(glm::dvec3(20.0), glm::dmat3(1.0));
-        static_cast<TestCrew *>(T.v)->cap = qCap;
-        Q.v->crew.push_back(T.v);
+        Ship T; T.v = nullptr;
+        Part *tSuit = mkPart(T, "tSuit", "kerbal", 97.05, 0.2, 0.2, 0.375, 0, 3, false);
+        fillSeat(qCap, tSuit, Q.v, 11);
+        CHECK_TRUE(qCap->seatCount() == 1, "Q starts with one seat taken");
 
-        CHECK_TRUE(Q.v->crew.size() == 1, "Q starts with the kerbal aboard");
-
-        /* dock Q into P: the kerbal moves with Q's crew list */
+        /* dock Q into P: the seat rides with Q's capsule */
         P.v->absorbShip(Q.v, portP);
         delete Q.v;
-        CHECK_TRUE(P.v->crew.size() == 1, "after absorb, the kerbal is on P's crew");
-        CHECK_TRUE(P.v->crew[0] == T.v, "it is the same kerbal");
-        CHECK_TRUE(static_cast<TestCrew *>(T.v)->capsulePart() == qCap,
-                   "its capsule still names Q's capsule");
         CHECK_TRUE(qCap->owner == P.v, "the capsule re-pointed to P");
+        CHECK_TRUE(tSuit->owner == P.v, "the seat's owner re-pointed to P");
+        CHECK_TRUE(tSuit->container == qCap, "its capsule still names Q's capsule");
+        CHECK_TRUE(qCap->seatCount() == 1, "P's copy of Q still holds the seat");
+        CHECK_TRUE(P.v->checkPartInvariants(), "P passes after absorb");
 
-        /* split the docked side (Q's capsule + tank) back off: the kerbal
-           must follow its capsule to the split-off ship */
+        /* split the docked side (Q's capsule + tank) back off: the seat must
+           follow its capsule to the split-off ship */
         Vehicle *nv = P.v->extractSubtreeAsShip(qCap, "Q");
         CHECK_TRUE(nv != nullptr, "the split succeeds");
         if(nv != nullptr) {
-            CHECK_TRUE(nv->crew.size() == 1,
-                       "the kerbal followed its capsule to the split-off");
-            CHECK_TRUE(nv->crew[0] == T.v, "it is the same kerbal");
-            CHECK_TRUE(P.v->crew.empty(), "P no longer holds the kerbal");
             CHECK_TRUE(qCap->owner == nv, "the capsule re-pointed to the split-off");
-            CHECK_TRUE(nv->checkPartInvariants(), "the split-off passes the invariant");
-            CHECK_TRUE(P.v->checkPartInvariants(), "P passes the invariant");
+            CHECK_TRUE(tSuit->owner == nv, "the seat's owner followed its capsule");
+            CHECK_TRUE(tSuit->container == qCap,
+                       "the seat's container still names the capsule");
+            CHECK_TRUE(nv->checkPartInvariants(), "the split-off passes");
+            CHECK_TRUE(P.v->checkPartInvariants(), "P passes after the split");
             nv->onRails = true;
-            delete nv;   // frees the kerbal (it is in nv->crew now)
+            delete nv;   // frees qCap, which frees the seat
         }
-        destroyVehicle(P.v);   // frees P's parts; the kerbal is already freed
+        destroyVehicle(P.v);
     }
 
-    /* --- delete a ship with crew aboard, edge wired (the 2.1 double-free) -- */
-    /* The exact scenario 2.1 warns about, now that 2.4 wires the edge: the
-       kerbal is in S->crew (sole owner) AND its root part is in cap->contents
-       (non-owning back-reference). ~Vehicle deletes crew first (vehicle.cpp:
-       1337-1338) then parts (:1342); if contents were owning, ~Part(cap) would
-       free the already-freed kerbal root part a second time -- deterministic,
-       because the crew-first ordering always precedes it. The non-owning
-       contents only frees its pointer array on teardown, so a clean exit under
-       ASan (tmp/test_contain_asan) is the proof. */
+    /* --- delete a ship with a seat aboard (the ownership proof) ---------- */
+    /* The seat is in sCap->contents (traversal) AND sCap->ownedContents
+       (ownership). ~Vehicle deletes parts, and ~Part deletes ownedContents, so
+       the suit is freed exactly once -- a clean exit under ASan
+       (tmp/test_contain_asan) is the proof. A seat that were ALSO in the parts
+       list would be freed twice, which the check above refuses. */
     {
-        printf("== delete ship with crew aboard (edge wired, non-owning) ==\n");
-        Ship S; S.v = new Vehicle; S.v->name = "S";
-        Part *sTank = mkPart(S, "sTank", 500.0, 1.0, 1.0, 1.0, 0, false);
-        Part *sCap  = mkPart(S, "sCapsule", 100.0, 1.0, 1.0, 0.5, 1, false);
-        S.v->setRoot(sCap);
-        S.v->attachDown(sTank);
-        S.v->controller = sCap;
-        S.v->init();
-        S.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+        printf("== delete ship with a seat aboard (owned contents) ==\n");
+        Ship SH; SH.v = new Vehicle; SH.v->name = "S";
+        Part *sTank = mkPart(SH, "sTank", "fuel", 500.0, 1.0, 1.0, 1.0, 0, 0, false);
+        Part *sCap  = mkPart(SH, "sCapsule", "capsule", 100.0, 1.0, 1.0, 0.5, 1, 0, false);
+        SH.v->setRoot(sCap);
+        SH.v->attachDown(sTank);
+        SH.v->controller = sCap;
+        SH.v->init();
+        SH.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
 
-        Ship K; K.v = new TestCrew; K.v->name = "K";
-        Part *kSuit = mkPart(K, "kSuit", 97.05, 0.2, 0.2, 0.375, 0, false);
-        K.v->setRoot(kSuit);
-        K.v->controller = kSuit;
-        K.v->init();
-        K.v->placeShip(glm::dvec3(30.0), glm::dmat3(1.0));
-        static_cast<TestCrew *>(K.v)->cap = sCap;
-
-        /* board, exactly as kerbalBoard does: ownership + edge, both ways */
-        S.v->crew.push_back(K.v);
-        sCap->contents.push_back(kSuit);
-        kSuit->container = sCap;
-
-        CHECK_TRUE(S.v->checkPartInvariants(), "S passes with the crew wired");
-        CHECK_TRUE(K.v->checkPartInvariants(), "K passes with the crew wired");
-
-        /* the double-free check: crew freed before parts; the non-owning
-           contents must not free the (now dangling) suit a second time. */
-        destroyVehicle(S.v);   // deletes K (in S.v->crew) then S's parts
+        Ship K; K.v = nullptr;
+        Part *kSuit = mkPart(K, "kSuit", "kerbal", 97.05, 0.2, 0.2, 0.375, 0, 3, false);
+        fillSeat(sCap, kSuit, SH.v, 0);
+        kSuit->seatName = "Anonymous";
+        CHECK_TRUE(sCap->seatCount() == 1, "S has one seat taken");
+        CHECK_TRUE(SH.v->checkPartInvariants(), "S passes with the seat wired");
+        destroyVehicle(SH.v);   // ~Part(sCap) frees the suit
     }
 
-    /* --- effectiveMass: a part carries what is parked inside it (3.1) --- */
-    /* The derived value phase 3 wires into the compound (3.2): a part's mass
-       plus the effectiveMass of every contained part, recursively. A capsule
-       with one kerbal is body + suit; a part with nothing in it is just its
-       body mass. */
+    /* --- effectiveMass: a part carries what is parked inside it ---------- */
+    /* The derived value the compound reads (rebuildCompound): a part's mass plus
+       the effectiveMass of every contained part, recursively. A capsule with one
+       kerbal is body + suit; a part with nothing in it is just its body mass.
+       This is the ONLY thing putting a seated kerbal into a ship's mass, COM,
+       inertia and delta-v -- its Body is never in the world. */
     {
         printf("== effectiveMass: a part carries what is parked inside it ==\n");
         Ship M; M.v = new Vehicle; M.v->name = "M";
-        Part *mTank = mkPart(M, "mTank", 500.0, 1.0, 1.0, 1.0, 0, false);
-        Part *mCap  = mkPart(M, "mCapsule", 100.0, 1.0, 1.0, 0.5, 1, false);
+        Part *mTank = mkPart(M, "mTank", "fuel", 500.0, 1.0, 1.0, 1.0, 0, 0, false);
+        Part *mCap  = mkPart(M, "mCapsule", "capsule", 100.0, 1.0, 1.0, 0.5, 1, 0, false);
         M.v->setRoot(mCap);
         M.v->attachDown(mTank);
         M.v->controller = mCap;
@@ -384,35 +335,30 @@ int main() {
                    "effectiveMass: an empty part is its body mass");
         CHECK_NEAR(mCap->effectiveMass(), 100.0, 1e-12,
                    "effectiveMass: an empty capsule is its body mass");
+        CHECK_NEAR(M.v->hull->mass, 600.0, 1e-9,
+                   "the compound mass is the parts, no seat yet");
 
-        Ship N; N.v = new TestCrew; N.v->name = "N";
-        Part *nSuit = mkPart(N, "nSuit", 97.05, 0.2, 0.2, 0.375, 0, false);
-        N.v->setRoot(nSuit);
-        N.v->controller = nSuit;
-        N.v->init();
-        N.v->placeShip(glm::dvec3(40.0), glm::dmat3(1.0));
-
-        /* park the kerbal in the capsule (the containment edge, both ways) */
-        static_cast<TestCrew *>(N.v)->cap = mCap;
-        M.v->crew.push_back(N.v);
-        mCap->contents.push_back(nSuit);
-        nSuit->container = mCap;
+        Ship N; N.v = nullptr;
+        Part *nSuit = mkPart(N, "nSuit", "kerbal", 97.05, 0.2, 0.2, 0.375, 0, 3, false);
+        fillSeat(mCap, nSuit, M.v, 0);
 
         CHECK_NEAR(mCap->effectiveMass(), 197.05, 1e-12,
                    "effectiveMass: a capsule carries its kerbal (100 + 97.05)");
         CHECK_NEAR(nSuit->effectiveMass(), 97.05, 1e-12,
                    "effectiveMass: the contained kerbal is its own body mass");
-        CHECK_NEAR(M.v->parts[0]->effectiveMass() + mTank->effectiveMass(),
-                   697.05, 1e-12,
+        CHECK_NEAR(mCap->effectiveMass() + mTank->effectiveMass(), 697.05, 1e-12,
                    "effectiveMass: the ship's parts sum to ship + kerbal");
-        /* M.v owns N.v (it is in M.v->crew): deleting the ship deletes the
-           crew via ~Vehicle -- do NOT delete N.v separately (double free). */
-        destroyVehicle(M.v);
+        /* The compound only re-reads effectiveMass on a rebuild, which is why
+           every seat change calls rebuildCompound (fill_seat, kerbalBoard,
+           kerbalEVA, buildSeatFromSave). */
+        M.v->rebuildCompound();
+        CHECK_NEAR(M.v->hull->mass, 697.05, 1e-9,
+                   "rebuildCompound: the seat rides the capsule's mass");
+        destroyVehicle(M.v);   // ~Part(mCap) frees the suit
     }
 
-    /* teardown: delete the crew first, as ~Vehicle does for its own crew --
-       the ordering the non-owning contents edge must tolerate. */
-    destroyVehicle(C.v);
+    /* teardown: the loose suit is owned by A's capsule, so deleting A frees it;
+       delete A first and the suit must not be touched again. */
     destroyVehicle(A.v);
 
     if(g_failures == 0) {

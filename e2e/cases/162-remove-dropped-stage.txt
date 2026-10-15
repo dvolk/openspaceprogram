@@ -5,10 +5,11 @@
 # debris and remove it.
 #
 # Removing the ACTIVE vessel is the branch worth pinning -- control must hand
-# back to the parent, and the print is the only witness that it did. "1 of 2"
-# counts the aboard kerbal as a vessel (06-ship-switch and 161 pin the same
-# quirk). The second click on the same row is the assertion that the fleet
-# actually lost the ship: the row is gone, so --ui-click reports "not found".
+# back to the parent, and the print is the only witness that it did. "1 of 1"
+# counts only vessels: stager + its dropped stage, with the kerbal a seat on
+# stager's capsule rather than a fleet row (part.h). The second click on the
+# same row is the assertion that the fleet actually lost the ship: the row is
+# gone, so --ui-click reports "not found".
 #
 # The rows are addressable because each "x" carries a "##rm_<name>" id. The
 # list draws one "x" per vessel, so a bare "x" is ambiguous by construction,
@@ -21,7 +22,7 @@ ARGS --ui-click 3500,"Tracking Ship List/stager Decoupler (2m)"
 ARGS --ui-click 4500,"Tracking Ship List/x##rm_stager Decoupler (2m)"
 ARGS --ui-click 6500,"Tracking Ship List/x##rm_stager Decoupler (2m)"
 EXPECT Stage: dropped 1 ship(s)
-EXPECT Removed 'stager Decoupler (2m)'; active ship 1 of 2: stager
+EXPECT Removed 'stager Decoupler (2m)'; active ship 1 of 1: stager
 EXPECT path="Tracking Ship List/x##rm_stager Decoupler (2m)" FAILED not found
 FORBID FAILED ambiguous
 FORBID FAILED MISMATCH

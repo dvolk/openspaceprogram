@@ -16,7 +16,9 @@ ARGS --info-log --orbit-interval 1
 ARGS --ui-click 2000,"Windows/Orbit Map"
 ARGS --ui-click 2500,"Windows/Ship List"
 ARGS --ui-click 3500,"Ship List/tanker"
-EXPECT Active ship 3 of 16: tanker
+# Eight start ships, one seat each: a seated kerbal is a seat on its capsule,
+# not a vessel (part.h), so the fleet counts 8 (see 06-ship-switch).
+EXPECT Active ship 2 of 8: tanker
 FORBID FAILED ambiguous
 FORBID FAILED MISMATCH
 FORBID GL_

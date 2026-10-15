@@ -225,7 +225,9 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         }
     }
     if(slotFired(Slot::NextShip, ksc, kmod, g.binds)) {
-        // Next selectable ship, wrapping. Aboard crew are skipped. One-shot.
+        /* Next selectable ship, wrapping. One-shot. Every vessel the walk
+           returns is flyable (a seated kerbal is a seat on its capsule Part,
+           not a vehicle -- part.h); a walking kerbal still cycles. */
         if(!repeat) {
             std::vector<Vehicle *> all = collectVehicles(g.sys);
             if(all.size() > 1) {
@@ -237,7 +239,6 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
                     const int n = (int)all.size();
                     for(int step = 1; step < n; step++) {
                         Vehicle *v = all[(cur + step) % n];
-                        if(v->isCrewAboard()) { continue; }
                         g.select_ship(v);
                         break;
                     }

@@ -613,8 +613,9 @@ void vabLaunch(Game &g) {
     Vehicle *v = g.ships.place_ship_def(def, "", def.name, hb, sc, g.sys, g.time, site);
     // Left live (NOT on rails) so it is player-controlled.
     if(!sc->on_pad) { spawn_vehicle(v, *sc, hb, g.sys, 0.0, g.time); }
-    // Crew aboard after the reposition so each kerbal parks at the final pose.
-    g.ships.spawn_crew(v, g.sys, g.time);
+    // Crew from the roster, after the reposition so the ship is where the
+    // player launched it before the roster is consulted.
+    g.ships.spawn_crew(v, g.sys);
     g.select_ship(v);
     vabClearHover(g);
     g.vab.armed.clear();

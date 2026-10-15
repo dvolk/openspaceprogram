@@ -1827,40 +1827,37 @@ void drawUIReadouts(Game &g) {
         Vehicle *v = all[i];
         const bool active = (v == ship);
         ImGui::PushID((void*)v);
-        if(v->isCrewAboard()) {
-            // A crew character aboard a capsule: in the fleet but not controllable.
-            ImGui::Text("%s (aboard)", v->name.c_str());
-        } else {
-            if(active) {
-                ImGui::PushStyleColor(ImGuiCol_Button,
-                                     ImVec4(0.30f, 0.45f, 0.70f, 1.0f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                                     ImVec4(0.35f, 0.50f, 0.75f, 1.0f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive,
-                                     ImVec4(0.40f, 0.55f, 0.80f, 1.0f));
-            }
-            if(ImGui::Button(v->name.c_str())) {
-                g.select_ship(v);
-            }
-            if(active) {
-                ImGui::PopStyleColor(3);
-            }
-            // A crew member is selectable but not deletable (remove_ship refuses it): no "x".
-            if(!v->isEva()) {
-                ImGui::SameLine();
-                // The "##rm_<name>" suffix is invisible but makes the row addressable by --ui-click.
-                // Names only ever grow by decoupler labels and a " #N" dedup suffix,
-                // so this never truncates; if it somehow did, two rows would share an
-                // imgui id and --ui-click would report the label as ambiguous.
-                char rm_id[256];
-                snprintf(rm_id, sizeof(rm_id), "x##rm_%s", v->name.c_str());
-                if(ImGui::SmallButton(rm_id)) {
-                    /* Stop iterating only when a row really went away. A refusal
-                       (a capsule with its own crew aboard still gets an "x")
-                       toasts and leaves the fleet intact, so breaking there
-                       would drop the rest of the list for one frame. */
-                    removed = g.remove_ship(v);
-                }
+        /* Every row is a controllable vessel: a seated kerbal is a seat on its
+           capsule's Part (part.h), not a fleet entry. */
+        if(active) {
+            ImGui::PushStyleColor(ImGuiCol_Button,
+                                 ImVec4(0.30f, 0.45f, 0.70f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                                 ImVec4(0.35f, 0.50f, 0.75f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                                 ImVec4(0.40f, 0.55f, 0.80f, 1.0f));
+        }
+        if(ImGui::Button(v->name.c_str())) {
+            g.select_ship(v);
+        }
+        if(active) {
+            ImGui::PopStyleColor(3);
+        }
+        // A walking kerbal is selectable but not deletable (remove_ship refuses it): no "x".
+        if(!v->isEva()) {
+            ImGui::SameLine();
+            // The "##rm_<name>" suffix is invisible but makes the row addressable by --ui-click.
+            // Names only ever grow by decoupler labels and a " #N" dedup suffix,
+            // so this never truncates; if it somehow did, two rows would share an
+            // imgui id and --ui-click would report the label as ambiguous.
+            char rm_id[256];
+            snprintf(rm_id, sizeof(rm_id), "x##rm_%s", v->name.c_str());
+            if(ImGui::SmallButton(rm_id)) {
+                /* Stop iterating only when a row really went away. A refusal
+                   (a capsule with its own crew aboard still gets an "x")
+                   toasts and leaves the fleet intact, so breaking there
+                   would drop the rest of the list for one frame. */
+                removed = g.remove_ship(v);
             }
         }
         ImGui::PopID();
@@ -2130,46 +2127,46 @@ void drawPartWindows(Game &g) {
                 }
             }
             // --- crew (this part is a capsule) ---------------------------------
-            // Aboard crew get an EVA button; a free kerbal in boarding range gets Board.
+            // A seat gets an EVA button; a walking kerbal in boarding range gets Board.
             if(def->crew_capacity > 0) {
                 ImGui::Separator();
-                std::vector<Kerbal *> aboard = partCrew(ship->parts[part]);
-                ImGui::Text("Crew: %d / %d", (int)aboard.size(), def->crew_capacity);
-                for(size_t ci = 0; ci < aboard.size(); ci++) {
-                    Kerbal *k = aboard[ci];
-                    ImGui::PushID(k);
-                    ImGui::Text("  %s", k->name.c_str());
+                /* A seat is this capsule's occupant (part.h): a suit Part parked
+                   in it, not a Kerbal vehicle. The snapshot is safe to keep
+                   iterating after a button fires -- an EVA hands the suit to the
+                   kerbal it just minted, so it stays alive. */
+                std::vector<Part *> seats = ship->parts[part]->seats();
+                ImGui::Text("Crew: %d / %d", (int)seats.size(), def->crew_capacity);
+                for(size_t ci = 0; ci < seats.size(); ci++) {
+                    Part *suit = seats[ci];
+                    ImGui::PushID(suit);
+                    ImGui::Text("  %s", seatName(g.roster, suit).c_str());
                     if(ImGui::SmallButton("EVA")) {
-                        g.kerbalEVA(k);
+                        g.kerbalEVA(suit);
                     }
                     ImGui::SameLine();
                     // Per-crew experiment: the "pick a kerbal" path (no roles yet).
                     if(ImGui::SmallButton("Exp")) {
-                        g.runExperiment(k);
+                        g.runSeatExperiment(suit);
                     }
                     // What this kerbal is carrying (unrecovered); a repeat still banks, just less.
-                    if(!k->parts.empty()) {
-                        const std::vector<Experiment> &held =
-                            k->parts[0]->experiments;
-                        if(!held.empty()) {
-                            ImGui::Indent();
-                            for(const Experiment &he : held) {
-                                const bool repeat =
-                                    holdsExperiment(g.science.recovered, he);
-                                ImGui::TextDisabled("  %s%s",
-                                                    experimentName(he).c_str(),
-                                                    repeat ? "  (repeat)" : "");
-                            }
-                            ImGui::Unindent();
+                    if(!suit->experiments.empty()) {
+                        ImGui::Indent();
+                        for(const Experiment &he : suit->experiments) {
+                            const bool repeat =
+                                holdsExperiment(g.science.recovered, he);
+                            ImGui::TextDisabled("  %s%s",
+                                                experimentName(he).c_str(),
+                                                repeat ? "  (repeat)" : "");
                         }
+                        ImGui::Unindent();
                     }
                     ImGui::PopID();
                 }
-                // Capsule-level "Run Experiment": first aboard crew (stable for
+                // Capsule-level "Run Experiment": first seat (stable for
                 // --sim-press).
-                if(!aboard.empty()) {
+                if(!seats.empty()) {
                     if(ImGui::SmallButton("Run Experiment")) {
-                        g.runExperiment(aboard.front());
+                        g.runSeatExperiment(seats.front());
                     }
                 }
                 // Free kerbals in boarding reach: a Board button each, plus Store when one holds a
@@ -2189,7 +2186,7 @@ void drawPartWindows(Game &g) {
                         ship->GetPositionRelTo(ship->parts[part], k->frame);
                     const double dist =
                         glm::length(k->get_center_of_mass() - capCom);
-                    const bool full = ((int)aboard.size() >= def->crew_capacity);
+                    const bool full = ((int)seats.size() >= def->crew_capacity);
                     ImGui::PushID(k);
                     ImGui::Text("  %s (%.1f m)%s", k->name.c_str(), dist,
                                 full ? "  (capsule full)" : "");
@@ -2243,12 +2240,12 @@ void drawPartWindows(Game &g) {
             if(!def->experiment_family.empty()) {
                 Part *pod = ship->parts[part];
                 ImGui::Separator();
-                Kerbal *runner = nullptr;
-                for(Vehicle *kv : ship->crew) {
-                    Kerbal *k = static_cast<Kerbal *>(kv);
-                    if(!k->parts.empty()) { runner = k; break; }
-                }
-                if(runner != nullptr) {
+                /* The first seat on this ship (part.h): a seated kerbal is a suit
+                   Part parked in a capsule, and the provenance a pod records is a
+                   NAME, not a pointer. */
+                std::vector<Part *> seats = shipSeats(ship);
+                std::string runner = seats.empty() ? "" : seatName(g.roster, seats.front());
+                if(!runner.empty()) {
                     // ##id: keep this distinct from the capsule's "Run Experiment".
                     if(ImGui::SmallButton("Run Experiment##pod_run")) {
                         g.runPodExperiment(pod, runner);
@@ -2333,7 +2330,12 @@ void drawPartWindows(Game &g) {
                     if(v->isEva()) { continue; }
                     if(v->parts.size() != 1) { continue; }
                     if(v->parts[0]->container != nullptr) { continue; }
-                    if(!v->crew.empty()) { continue; }
+                    // A crewed ship is not stowable: its capsule holds a seat.
+                    bool crewed = false;
+                    for(Part *p : v->parts) {
+                        if(p->seatCount() > 0) { crewed = true; break; }
+                    }
+                    if(crewed) { continue; }
                     if(v == ship) { continue; }
                     /* distanceTo: COM-to-COM in the common root frame -- a raw coordinate difference
                        would mix the two frames. */
@@ -3951,42 +3953,39 @@ void drawTrackingShipList(Game &g) {
         Vehicle *v = all[i];
         const bool active = (v == ship);
         ImGui::PushID((void*)v);
-        if(v->isCrewAboard()) {
-            // A crew character aboard a capsule: in the fleet but not controllable.
-            ImGui::Text("%s (aboard)", v->name.c_str());
-        } else {
-            if(active) {
-                ImGui::PushStyleColor(ImGuiCol_Button,
-                                     ImVec4(0.30f, 0.45f, 0.70f, 1.0f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                                     ImVec4(0.35f, 0.50f, 0.75f, 1.0f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive,
-                                     ImVec4(0.40f, 0.55f, 0.80f, 1.0f));
+        /* Every row is a controllable vessel: a seated kerbal is a seat on its
+           capsule's Part (part.h), not a fleet entry. */
+        if(active) {
+            ImGui::PushStyleColor(ImGuiCol_Button,
+                                 ImVec4(0.30f, 0.45f, 0.70f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                                 ImVec4(0.35f, 0.50f, 0.75f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                                 ImVec4(0.40f, 0.55f, 0.80f, 1.0f));
+        }
+        if(ImGui::Button(v->name.c_str())) {
+            g.select_ship(v);
+        }
+        if(active) {
+            ImGui::PopStyleColor(3);
+        }
+        if(!v->isEva()) {
+            ImGui::SameLine();
+            char rm_id[256];
+            snprintf(rm_id, sizeof(rm_id), "x##rm_%s", v->name.c_str());
+            if(ImGui::SmallButton(rm_id)) {
+                /* Only a real removal stops the list (and hides "Fly"):
+                   a refusal toasts and leaves the row in place. */
+                removed = g.remove_ship(v);
             }
-            if(ImGui::Button(v->name.c_str())) {
-                g.select_ship(v);
-            }
-            if(active) {
-                ImGui::PopStyleColor(3);
-            }
-            if(!v->isEva()) {
-                ImGui::SameLine();
-                char rm_id[256];
-                snprintf(rm_id, sizeof(rm_id), "x##rm_%s", v->name.c_str());
-                if(ImGui::SmallButton(rm_id)) {
-                    /* Only a real removal stops the list (and hides "Fly"):
-                       a refusal toasts and leaves the row in place. */
-                    removed = g.remove_ship(v);
-                }
-            }
-            if(active && !removed) {
-                // Fly: only drawn for the active ship, so enterFlight just collapses the stack to the
-                // live flight (syncShipFocus does the re-centering).
-                ImGui::SameLine();
-                if(ImGui::SmallButton("Fly")) {
-                    enterFlight(g);
-                    g.syncShipFocus();
-                }
+        }
+        if(active && !removed) {
+            // Fly: only drawn for the active ship, so enterFlight just collapses the stack to the
+            // live flight (syncShipFocus does the re-centering).
+            ImGui::SameLine();
+            if(ImGui::SmallButton("Fly")) {
+                enterFlight(g);
+                g.syncShipFocus();
             }
         }
         ImGui::PopID();

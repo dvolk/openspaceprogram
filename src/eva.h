@@ -46,17 +46,12 @@ struct Kerbal : Vehicle {
     glm::dvec3 rcsWorldDir() const override { return rcsDir; }
 
     bool isEva() const override { return true; }
-    bool isCrewAboard() const override { return isAboard(); }
-    Part *capsulePart() const override { return aboardPart; }
 
-    // Aboard = parked in a capsule Part (body out of the physics world);
-    // free = on EVA. `aboardPart` is the single source of truth: a Part*
-    // survives a merge/split, so no reindexing is needed.
-    Part *aboardPart = nullptr;  // the capsule Part it sits in; nullptr = free (on EVA)
-    bool isAboard() const { return aboardPart != nullptr; }
-    Vehicle *aboard() const {
-        return (aboardPart != nullptr) ? aboardPart->owner : nullptr;
-    }
+    /* A Kerbal vehicle exists ONLY while the person is walking. Seated, there is
+       no object here at all: the suit Part sits in the capsule as a seat
+       (part.h), and minting this class IS going EVA (Game::kerbalEVA), while
+       deleting one IS boarding (Game::kerbalBoard). So a Kerbal is never
+       contained and never railed for being aboard. */
 
     // Capsule-center altitude above the analytic surface when standing at
     // rest: half the suit plus the two collision margins that meet there.

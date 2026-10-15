@@ -104,13 +104,6 @@ struct TestVehicle : Vehicle {
     using Vehicle::getInertia;
 };
 
-/* A stand-in for the Kerbal (the character whose part may be contained):
-   one part, isEva true -- checkPartInvariants keys the containment rule on
-   that virtual, so the stand-in exercises it the way a real crew does. */
-struct TestCrew : Vehicle {
-    bool isEva() const override { return true; }
-};
-
 struct Ship {
     TestVehicle *v;
     std::deque<PartDef> defs;   // deque: push_back never invalidates Part::def
@@ -667,16 +660,17 @@ static void test_refresh() {
     destroyShip(s);
 }
 
-/* --- a contained kerbal (phase 3's effectiveMass) ------------------------
+/* --- a seated kerbal (the containment edge's mass) -----------------------
 
-   The compound's mass is the sum of each part's effectiveMass -- its own
-   body mass plus whatever is parked inside it (the containment edge). The
-   crew's mass is smeared onto the capsule hull (the capsule's shape carries
-   the effective mass), not added as a separate point mass, so a kerbal parked
-   at the capsule center makes the compound heavier and more inertial but
-   does not move the COM. This pins that the compound actually carries the
-   crew -- the regression the old addPartMass bake (now gone) used to paper
-   over by writing the crew mass into the capsule body directly. */
+   The compound's mass is the sum of each part's effectiveMass -- its own body
+   mass plus whatever is parked inside it (the containment edge). A seat
+   occupant (part.h) is a suit Part parked in the capsule, NOT a part of the
+   ship, so its mass is smeared onto the capsule hull (the capsule's shape
+   carries the effective mass) rather than added as a separate point mass. A
+   kerbal parked at the capsule center therefore makes the compound heavier and
+   more inertial but does not move the COM. This pins that the compound actually
+   carries the crew -- the regression the old addPartMass bake (now gone) used to
+   paper over by writing the crew mass into the capsule body directly. */
 static void test_contained_kerbal() {
     const double mCap = 100.0, mKer = 97.05;
     Ship s; s.v = new TestVehicle;
@@ -685,20 +679,26 @@ static void test_contained_kerbal() {
                        glm::dmat3(1.0));
     s.defs.back().crew_capacity = 1;   // a real capsule (checkPartInvariants)
 
-    // the kerbal: a one-part character parked inside the capsule (at its
-    // center). Its mass rides the capsule through the containment edge, so
-    // the capsule's effective mass -- and hence the compound -- carry it.
-    TestCrew *crew = new TestCrew;
+    /* The occupant: in contents for traversal, in ownedContents so the capsule
+       frees it, and typed "kerbal" -- which is what makes it a seat rather than
+       cargo. Its shape never enters the compound; only its mass does. */
+    PartDef kd;
+    kd.name = "suit";
+    kd.type  = "kerbal";
+    kd.mass  = (float)mKer;
+    s.defs.push_back(kd);
     Part *k = new Part;
     k->body = new Body;
     k->body->btBody = nullptr;
     k->body->shape = new btBoxShape(btVector3(0.4, 0.5, 0.4));
     k->body->mass = mKer;
-    k->localPos = capPos - s.sPos;   // the capsule center, in frame S (== 0)
-    crew->parts.push_back(k);
-    k->owner = crew;                 // a character owns the contained part
+    k->def = &s.defs.back();
     cap->contents.push_back(k);
+    cap->ownedContents.push_back(k);
     k->container = cap;
+    k->owner = s.v;                 // the vehicle the capsule rides
+    CHECK_TRUE(k->isSeat(), "a kerbal part parked in a capsule is a seat");
+    CHECK_TRUE(cap->seatCount() == 1, "the capsule shows one seat taken");
 
     finishShip(s);
     const double m = cap->effectiveMass();   // mCap + mKer
@@ -722,11 +722,8 @@ static void test_contained_kerbal() {
         const double want = (c == r) ? wantDiag[c] : 0.0;
         CHECK_NEAR(got[c][r], want, tol, buf);
     }
-    // the kerbal (and its part) are owned by the crew vehicle, not the ship:
-    // ~Vehicle(TestCrew) deletes its parts, and ~Part frees each body. The
-    // ship's ~Vehicle (destroyShip) frees the capsule, which is the container
-    // (non-owning) -- it does NOT touch the kerbal.
-    delete crew;
+    // The capsule owns its occupant: destroyShip deletes the ship, ~Vehicle
+    // deletes the capsule part, and ~Part frees the suit and its Body.
     destroyShip(s);
 }
 

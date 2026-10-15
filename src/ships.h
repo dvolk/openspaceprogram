@@ -1,6 +1,6 @@
 // ships.h -- ship construction and placement (the Ships builder).
-// Ships and pads are owned by the body of their SoI (terrain.h); crew live on
-// their ship (vehicle.h).
+// Ships and pads are owned by the body of their SoI (terrain.h); a seated
+// kerbal is a seat on its capsule's Part (part.h).
 #pragma once
 
 #include <string>
@@ -38,9 +38,10 @@ DebugStartShips loadDebugStartShips(const char *path);
 struct System;
 struct Kerbal;  // crew characters (eva.h)
 struct CrewRoster;  // the named crew pool (crew.h)
+struct Part;    // a seat occupant is a suit Part (part.h)
 
-/* Canonical ship order: bodies in file order, each body's ships in order, each
-   ship's crew right after it. */
+/* Canonical ship order: bodies in file order, each body's ships in order. Every
+   Vehicle here is FLYABLE -- a seated kerbal is not in it (part.h). */
 std::vector<Vehicle *> collectVehicles(System &sys);
 
 /* Same walk, appended into a reused buffer (cleared here). */
@@ -67,6 +68,18 @@ std::string dedupVehicleName(System &sys, const std::string &base,
 
 class Ships {
 public:
+    /* The ship def a seat's suit is built from. A save writes it as a seated
+       crew entry's defPath, so the part it rebuilds cannot drift from the part
+       it wrote. */
+    static constexpr const char *const kKerbalShipDef = "res/ships/kerbal.json";
+
+    /* Mint a suit Part from a kerbal ship def: the occupant of a seat (part.h).
+       Its Body is created but never enters the physics world -- a seat's mass
+       rides the containment edge through Part::effectiveMass. Tanks are seeded
+       full like Vehicle::init does; a load overwrites the contents from the
+       save. Throws if the def is unusable. */
+    Part *make_suit(const std::string &defPath) const;
+
     /* parts_file:  parts catalog to build from (owned, loaded here).
        partsshader: the part shader (caller-owned; must outlive us).
        sun:         the star (caller-owned; lights ships + pads).
@@ -102,8 +115,8 @@ public:
                             TerrainBody *hb, const ScenarioDef *sc, System &sys,
                             double t, const StaticBuilding *site = nullptr);
 
-    // One kerbal ABOARD each of `ship`'s capsule parts.
-    void spawn_crew(Vehicle *ship, System &sys, double t);
+    // Fill every seat of `ship`'s capsule parts from the roster.
+    void spawn_crew(Vehicle *ship, System &sys);
 
     // Apply each ship's scenario (the startup spawn_vehicle pass).
     void apply_scenarios(System &sys, double t);
@@ -117,10 +130,11 @@ public:
                                   System &sys, double t);
 
 private:
-    /* One crew kerbal aboard (ship, part). nullptr if the part is no capsule,
-       or if the roster has no kerbal left -- an empty seat is a legal state,
-       not a failure. */
-    Kerbal *spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys, double t);
+    /* Fill one seat of `ship` (part). False if the part is no capsule or the
+       roster has no kerbal left -- an empty seat is a legal state, not a
+       failure. The occupant is a suit Part parked in the capsule (part.h); no
+       Kerbal vehicle exists until someone goes EVA. */
+    bool fill_seat(Vehicle *ship, size_t part, System &sys);
 
     PartsCatalog part_catalog;
     Shader *partsshader;   // caller-owned

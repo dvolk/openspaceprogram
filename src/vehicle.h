@@ -78,15 +78,17 @@ public:
     TerrainBody *m_parent = nullptr;
     Frame *frame = nullptr;
     // A ship lives in its SOI body's ships list (terrain.h). `home` is fixed at
-    // build; `slot` pads ships sharing a body+scenario; `crew` are aboard.
+    // build; `slot` pads ships sharing a body+scenario. Every Vehicle in that
+    // list is FLYABLE: a seated kerbal is not here (and not a Vehicle at all) --
+    // it is a seat on its capsule's Part (part.h).
     TerrainBody *home = nullptr;
     const ScenarioDef *scenario = nullptr;
     int slot = 0;
-    std::vector<Vehicle *> crew;
     TerrainBody *sun = nullptr; // the star (light source)
     float m_thrust;
 
-    /* Mission journal (started by setSoi). Not save-persisted. */
+    /* Mission journal (started by setSoi). Save-persisted: the load restores it
+       before setSoi runs, so re-entering the same body is a no-op. */
     FlightLog flog;
 
     glm::dvec3 m_com;
@@ -297,15 +299,10 @@ public:
        build without one. */
     void enterWorld();
 
-    /* True of the EVA kerbal (src/eva.h). */
+    /* True of the EVA kerbal (src/eva.h). A kerbal that is SEATED is not a
+       Vehicle at all, so every Vehicle here is free: there is no aboard state to
+       ask about (part.h: the seat lives on the capsule). */
     virtual bool isEva() const;
-
-    /* True while an EVA character is ABOARD a ship (in a capsule). */
-    virtual bool isCrewAboard() const;
-
-    /* The capsule Part this vehicle is parked in -- where an aboard character
-       sits. */
-    virtual Part *capsulePart() const;
 
     /* Assign Part::fuelGroup: a connected component of the part tree across the
        fuel-CONDUCTING parts; PartDef::fuel_barrier parts are WALLS and keep -1.
@@ -506,7 +503,8 @@ public:
     Part *dockArmPort = nullptr;   // this ship's port to mate with (mandatory)
 
     /* Fold B into this ship at the mated port. B's shell is deleted by the
-       caller, B's CREW ride along, B's journal is dropped (#49). */
+       caller, B's journal is dropped (#49). B's crew ride along because a seat
+       belongs to its capsule Part, which moves with the part tree. */
     void absorbShip(Vehicle *B, Part *portA);
 
     /* Extract the subtree rooted at `root` into a new Vehicle, rebased into a new

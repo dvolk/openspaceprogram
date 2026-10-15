@@ -294,6 +294,36 @@ void Game::dropPartWindowsFor(Vehicle *ship) {
                    part_sels.end());
 }
 
+/* Every reference the Game and the transfer planner hold to a vehicle that is
+   about to be deleted. Call it immediately BEFORE the delete: a missed one is a
+   use-after-free in a later frame (the ship list, a part window, the Target
+   window's combo, the active/last pointers). Leaving the SoI body's ship list is
+   the caller's -- only remove_ship needs the list intact while it scans for the
+   next ship to hand control to. */
+void Game::dropVehicleRefs(Vehicle *v) {
+    dropPartWindowsFor(v);
+    // Ships that had v targeted for docking now dangle -- drop their intent.
+    for(auto *s : collectVehicles(sys)) {
+        if(s->dockTargetShip == v) { s->dockTargetShip = nullptr; s->dockTargetPort = nullptr; }
+    }
+    /* The planner holds v's name pointer + handle until its next rebuild: if v
+       was the target, drop the selection so nothing reads it in between. */
+    if(xferPlanner.xfer_target >= 0
+       && xferPlanner.xfer_target < (int)xferPlanner.xferTargets.size()
+       && xferPlanner.xferTargets[xferPlanner.xfer_target].ship == v) {
+        xferPlanner.xfer_target = -1;
+        xferPlanner.xfer.valid = false;
+        xferPlanner.xfer.burn_dir = glm::dvec3(0.0);
+    }
+    if(kerbal == v) { kerbal = nullptr; }
+    if(lastShip == v) { lastShip = nullptr; }
+    /* The active pointer needs the same treatment: a caller that is about to
+       hand control to another vessel reads its own saved `wasActive` flag, not
+       this, so nulling it here is what keeps select_ship from releasing control
+       back to a corpse. */
+    if(ship == v) { ship = nullptr; }
+}
+
 void Game::clearFlightSummary() {
     flightSummary = FlightSummary{};
     setWinOpen(W_FlightSummary, false);
@@ -301,16 +331,18 @@ void Game::clearFlightSummary() {
 
 /* Situation experiment (identity + provenance) for a science run: localPart's
    COM on poseVehicle (null = the vehicle's own COM) in the body's rotating
-   frame. Stars and banded gas giants have no biome. */
+   frame. Stars and banded gas giants have no biome. `runnerName` is who ran it
+   and `shipName` what they were in ("" = free EVA): a seat occupant has no
+   Kerbal object, so provenance travels as names, not pointers. */
 bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
                                Part *localPart, const std::string &type,
-                               Kerbal *runner, Experiment &out) {
+                               const std::string &runnerName,
+                               const std::string &shipName, Experiment &out) {
     if(body == nullptr) {
         toast("No experiment: nothing to observe here");
         return false;
     }
-    // An aboard kerbal's body pose is frozen at board time, so its own COM is
-    // stale -- read the live capsule.
+    /* A seat occupant has no body of its own: read the live capsule it sits in. */
     const glm::dvec3 localCom = (localPart != nullptr)
         ? poseVehicle->partPos(localPart)
         : poseVehicle->get_center_of_mass();
@@ -352,9 +384,9 @@ bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
         return false;
     }
     // Provenance (the identity key above is what dedups).
-    out.ran_at = time;                                    // when `runner` ran it
-    out.kerbal = (runner != nullptr) ? runner->name : "";
-    out.ship = (poseVehicle == runner) ? "" : poseVehicle->name;   // "" = free EVA
+    out.ran_at = time;                                    // when the runner ran it
+    out.kerbal = runnerName;
+    out.ship = shipName;                                  // "" = free EVA
     return true;
 }
 
@@ -364,18 +396,9 @@ void Game::runExperiment(Kerbal *k) {
         return;
     }
     Part *suit = k->parts[0];
-    // Pose + grounded come from the vessel the kerbal is physically on.
-    Vehicle *poseVehicle = nullptr;
-    Part *localPart = nullptr;
-    if(k->isAboard() && k->aboardPart != nullptr) {
-        poseVehicle = k->aboard();
-        localPart = k->aboardPart;
-    } else {
-        poseVehicle = k;
-    }
     Experiment e;
-    if(!situationExperiment(k->m_parent, poseVehicle, localPart,
-                            "observation", k, e)) {
+    if(!situationExperiment(k->m_parent, k, nullptr, "observation",
+                            k->name, "", e)) {
         return;
     }
     if(!suit->addExperiment(e)) {
@@ -397,19 +420,52 @@ void Game::runExperiment(Kerbal *k) {
     fflush(stdout);
 }
 
-void Game::runPodExperiment(Part *pod, Kerbal *k) {
+/* A SEATED kerbal runs one: the suit Part is the storage, and the live pose is
+   the capsule it sits in -- there is no body of its own (part.h). */
+void Game::runSeatExperiment(Part *suit) {
+    if(suit == nullptr || !suit->isSeat() || suit->container == nullptr) {
+        toast("No experiment: no seat occupant");
+        return;
+    }
+    Vehicle *ship = suit->container->owner;
+    const std::string who = seatName(roster, suit);
+    Experiment e;
+    if(!situationExperiment(ship->m_parent, ship, suit->container, "observation",
+                            who, ship->name, e)) {
+        return;
+    }
+    if(!suit->addExperiment(e)) {
+        toast("Already holding one %s (the suit holds one of each) -- store it first",
+              e.type.c_str());
+        printf("[science] t=%.1f '%s' already held '%s'\n", time,
+               who.c_str(), experimentName(e).c_str());
+        fflush(stdout);
+        return;
+    }
+    const bool repeat = holdsExperiment(science.recovered, e);
+    toast(repeat ? "Experiment (repeat): %s -- scores less"
+                 : "Experiment: %s",
+          experimentName(e).c_str());
+    printf("[science] t=%.1f '%s' recorded%s '%s'\n", time, who.c_str(),
+           repeat ? " REPEAT" : "", experimentName(e).c_str());
+    fflush(stdout);
+}
+
+/* The pod's runner is whoever sits in the pod's ship: a seat occupant or a
+   walking kerbal, so the runner arrives as a name. */
+void Game::runPodExperiment(Part *pod, const std::string &runner) {
     if(pod == nullptr || pod->def == nullptr || pod->owner == nullptr) {
         toast("No experiment: no pod on a ship");
         return;
     }
-    if(k == nullptr) {
+    if(runner.empty()) {
         toast("No experiment: no kerbal to run it");
         return;
     }
     Vehicle *ship = pod->owner;
     Experiment e;
     if(!situationExperiment(ship->m_parent, ship, pod,
-                            pod->def->experiment_family, k, e)) {
+                            pod->def->experiment_family, runner, ship->name, e)) {
         return;
     }
     if(!pod->addExperiment(e)) {
@@ -417,7 +473,7 @@ void Game::runPodExperiment(Part *pod, Kerbal *k) {
         toast("Already holding one %s (the pod holds one) -- take it out first",
               e.type.c_str());
         printf("[science] t=%.1f '%s' already held '%s' (pod)\n", time,
-               k->name.c_str(), experimentName(e).c_str());
+               runner.c_str(), experimentName(e).c_str());
         fflush(stdout);
         return;
     }
@@ -426,7 +482,7 @@ void Game::runPodExperiment(Part *pod, Kerbal *k) {
                  : "Experiment: %s",
           experimentName(e).c_str());
     printf("[science] t=%.1f '%s' recorded%s '%s' (pod)\n", time,
-           k->name.c_str(), repeat ? " REPEAT" : "", experimentName(e).c_str());
+           runner.c_str(), repeat ? " REPEAT" : "", experimentName(e).c_str());
     fflush(stdout);
 }
 
@@ -897,12 +953,7 @@ void Game::settleFleet(Vehicle *active) {
 
 void Game::select_ship(Vehicle *v) {
     if(v == nullptr || v == ship) { return; }
-    // An EVA character aboard a ship is owned by its capsule: not controllable.
-    if(v->isCrewAboard()) {
-        toast("%s is aboard -- EVA it from its capsule first",
-              v->name.c_str());
-        return;
-    }
+    // Every Vehicle is controllable: a seated kerbal is not one (part.h).
     // The old active ship (null when launching from the orbit-view state).
     if(ship != nullptr) {
         ship->releaseControl();
@@ -930,35 +981,42 @@ void Game::select_ship(Vehicle *v) {
     printf("Active ship %d of %d: %s\n", i, n, ship->name.c_str());
 }
 
-/* --- crew. Aboard crew live on their ship (Vehicle::crew); free kerbals are
-   the isEva ships in the bodies' lists. */
+/* --- crew. A seated kerbal is a seat on its capsule Part (part.h); a walking
+   one is a Kerbal vehicle in the bodies' ship lists. There is no third state. */
 
-std::vector<Kerbal *> shipCrew(Vehicle *ship) {
-    std::vector<Kerbal *> out;
-    for(auto *k : ship->crew) { out.push_back(static_cast<Kerbal *>(k)); }
+std::vector<Part *> shipSeats(Vehicle *ship) {
+    std::vector<Part *> out;
+    for(Part *p : ship->parts) {
+        for(Part *s : p->seats()) { out.push_back(s); }
+    }
     return out;
 }
 
-std::vector<Kerbal *> partCrew(Part *capPart) {
-    // contents also holds inventory items (owner = carrier, not a Kerbal).
-    std::vector<Kerbal *> out;
-    for(Part *p : capPart->contents) {
-        if(p->ownedBy(capPart)) { continue; }
-        out.push_back(static_cast<Kerbal *>(p->owner));
-    }
-    return out;
+/* A seat's roster entry, or null for an anonymous occupant (a save predating
+   the roster), which the roster cannot name. 0 is the absent sentinel: a
+   hand-edited save could seed the roster with an id-0 entry, and a seat must
+   not silently claim it (the roster file itself refuses id 0). */
+const KerbalProfile *seatEntry(const CrewRoster &roster, const Part *suit) {
+    if(suit == nullptr || suit->seatProfile == 0) { return nullptr; }
+    return roster.find(suit->seatProfile);
+}
+
+std::string seatName(const CrewRoster &roster, const Part *suit) {
+    if(suit == nullptr) { return ""; }
+    const KerbalProfile *p = seatEntry(roster, suit);
+    return p != nullptr ? p->name : suit->seatName;
 }
 
 void freeKerbalsInto(System &sys, std::vector<Kerbal *> &out) {
     out.clear();
     /* The fleet walk is buffered too: freeKerbals used to build a whole
-       vehicle vector just to filter it, twice per part-window frame. */
+       vehicle vector just to filter it, twice per part-window frame. Every
+       kerbal in the walk is FREE -- a seated one is not a vehicle at all. */
     static thread_local std::vector<Vehicle *> all;
     collectVehiclesInto(sys, all);
     for(auto *s : all) {
         if(!s->isEva()) { continue; }
-        Kerbal *k = static_cast<Kerbal *>(s);
-        if(k->aboard() == nullptr) { out.push_back(k); }
+        out.push_back(static_cast<Kerbal *>(s));
     }
 }
 
@@ -968,34 +1026,35 @@ std::vector<Kerbal *> freeKerbals(System &sys) {
     return out;
 }
 
-/* Reach check: `k` must be FREE (on EVA, not aboard) and within kBoardingRange
-   of `part`. A raw position subtraction is only a distance within one frame. */
+/* Reach check: `k` must be within kBoardingRange of `part`. A raw position
+   subtraction is only a distance within one frame. */
 bool Game::kerbalInRange(Kerbal *k, Part *part) {
     if(k == nullptr || part == nullptr || part->owner == nullptr) {
         return false;
     }
-    if(k->isAboard()) { return false; }   // the dance needs a free (EVA) kerbal
     const glm::dvec3 partCom =
         part->owner->GetPositionRelTo(part, k->frame);
     const double dist = glm::length(k->get_center_of_mass() - partCom);
     return dist <= kBoardingRange;
 }
 
-/* Take `k` out of its capsule: place it beside it (standing if grounded,
-   co-moving if not), re-enter physics, take control. */
-void Game::kerbalEVA(Kerbal *k) {
-    if(!k->isAboard()) {
-        toast("EVA: %s is not aboard a ship", k->name.c_str());
+/* Put the person in `suit`'s seat onto the surface beside its capsule. This
+   MINTS the Kerbal vehicle: the suit Part leaves the capsule's seat and becomes
+   the vehicle's one part, keeping its uid, fuel and pockets. */
+void Game::kerbalEVA(Part *suit) {
+    if(suit == nullptr || !suit->isSeat()) {
+        toast("EVA: no seat occupant");
         return;
     }
-    Part *capPart = k->aboardPart;
+    Part *capPart = suit->container;
     Vehicle *ship = capPart->owner;
     const PartDef *capDef = capPart->def;
-    Body *kb = k->hull;
+    const std::string who = seatName(roster, suit);
 
     /* Standing / hover pose beside the capsule. The branch is the ship's
        GROUNDED state, not its frame's rotation: zero velocity in a rotating
-       frame is co-rotating free fall. */
+       frame is co-rotating free fall. Computed BEFORE the seat is emptied,
+       because it reads the capsule's live pose. */
     const glm::dvec3 capCom = ship->partPos(capPart);
     const glm::dvec3 upDir = glm::normalize(capCom);
     const glm::dvec3 refs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
@@ -1008,56 +1067,64 @@ void Game::kerbalEVA(Kerbal *k) {
     const glm::dvec3 right = glm::cross(tangent, upDir);
     const glm::dmat3 orient = glm::dmat3(right, tangent, upDir);
     const double offset = capDef->radius + 2.0;
+    const glm::dvec3 capVel = ship->partVel(capPart);
+
+    /* Empty the seat: the suit stops being contained, and the capsule loses the
+       mass (checkPartInvariants holds on both sides of this). */
+    for(auto it = capPart->contents.begin(); it != capPart->contents.end(); it++) {
+        if(*it == suit) { capPart->contents.erase(it); break; }
+    }
+    for(auto it = capPart->ownedContents.begin(); it != capPart->ownedContents.end(); it++) {
+        if(*it == suit) { capPart->ownedContents.erase(it); break; }
+    }
+    suit->container = nullptr;
+    ship->rebuildCompound();
+
+    // Mint the walker around the suit it just left.
+    Kerbal *k = new Kerbal;
+    k->name = who;
+    k->profileId = suit->seatProfile;
+    k->defPath = "res/ships/kerbal.json";
+    k->home = ship->home;
+    k->scenario = ship->scenario;
+    k->m_parent = ship->m_parent;
+    k->sun = sun;
+    k->frame = ship->frame;
+    k->setRoot(suit);      // parts list is the ownership list (part.h)
+    /* finalize, NOT init: init re-seeds tanks, and this suit may be partly
+       burned. finalize builds the hull (rebuildCompound) and the fuel groups. */
+    k->finalize();
+
     if(ship->isGrounded()) {
         const double floorR = std::max(glm::length(capCom) - capDef->height / 2.0,
             (double)ship->m_parent->GetTerrainHeight(glm::vec3(upDir)));
         k->placeShipAtCom(upDir * (floorR + k->restAlt()) + tangent * offset, orient);
-        SetVelocity(kb, glm::dvec3(0.0));
+        k->setVelocity(glm::dvec3(0.0));
     } else {
         k->placeShipAtCom(capCom + tangent * offset, orient);
-        SetVelocity(kb, ship->partVel(capPart));   // co-moving beside the ship
+        k->setVelocity(capVel);   // co-moving beside the ship
     }
-
-    /* Order matters: the crew erase + aboardPart clear run FIRST, because
-       setSoi keys its ships-list membership on isCrewAboard(). */
-    for(auto it = ship->crew.begin(); it != ship->crew.end(); it++) {
-        if(*it == k) { ship->crew.erase(it); break; }
-    }
-    k->aboardPart = nullptr;
+    // Re-home: enters the body's ships list and starts the flight journal.
     k->setSoi(ship->frame, time);
-    // Clear the containment edge both directions so checkPartInvariants holds.
-    for(auto it = capPart->contents.begin(); it != capPart->contents.end(); it++) {
-        if(*it == k->parts[0]) { capPart->contents.erase(it); break; }
-    }
-    k->parts[0]->container = nullptr;
-    // Rebuild so the next physics step sees the lighter ship (edge cleared first).
-    ship->rebuildCompound();
-
-    // Back into the physics world (it was parked while aboard).
-    AddPhysicsBody(kb);
-    k->onRails = false;
-    k->railFrozen = false;
+    k->enterWorld();
 
     kerbal = k;
     lastShip = ship;
     select_ship(k);
-    toast("EVA: %s", k->name.c_str());
+    toast("EVA: %s", who.c_str());
     /* Log the capsule's slot in the ship's part list (e2e pins "part 0"). */
     int capIdx = 0;
     for(size_t i = 0; i < ship->parts.size(); i++) {
         if(ship->parts[i] == capPart) { capIdx = (int)i; break; }
     }
     printf("[crew] t=%.1f EVA: '%s' out of '%s' part %d\n",
-           time, k->name.c_str(), ship->name.c_str(), capIdx);
+           time, who.c_str(), ship->name.c_str(), capIdx);
 }
 
-/* Put a free kerbal `k` into the capsule (ship, part): park its body inside at
-   the capsule's COM and set its aboard state. */
+/* Put a free kerbal `k` into the capsule (ship, part): the Kerbal vehicle is
+   DELETED and its suit Part becomes a seat occupant (part.h). The suit keeps
+   its uid, fuel and pockets, so a part selection pointing at it stays valid. */
 void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
-    if(k->isAboard()) {
-        toast("Board: %s is already aboard", k->name.c_str());
-        return;
-    }
     if(part >= ship->parts.size()) { return; }
     Part *capPart = ship->parts[part];
     const PartDef *capDef = capPart->def;
@@ -1065,36 +1132,42 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
         toast("Board: part %zu is not a capsule", part);
         return;
     }
-    if((int)partCrew(capPart).size() >= capDef->crew_capacity) {
+    if(capPart->seatCount() >= capDef->crew_capacity) {
         toast("Board: capsule full (%d)", capDef->crew_capacity);
         return;
     }
-    Body *kb = k->hull;
+    Part *suit = k->parts.empty() ? nullptr : k->parts[0];
+    if(suit == nullptr) { return; }
+    const uint64_t pid = k->profileId;
+    const std::string who = k->name;
+    const bool wasActive = (this->ship == k);
+    /* Boarding deletes a VEHICLE, so every reference to it goes first: its part
+       window, the Target window's selection, the active/last pointers. */
+    dropVehicleRefs(k);
 
-    // Park the kerbal inside the capsule (at its COM, out of the world).
-    glm::dvec3 capPos; glm::dmat3 capRot;
-    ship->partWorldPose(capPart, capPos, capRot);
-    k->placeShipAtCom(capPos, capRot);
-    RemoveBody(kb);
-    k->onRails = true;
-    k->railFrozen = true;
-    // aboardPart is set FIRST -- setSoi keys its ships-list membership on it.
-    k->aboardPart = capPart;
-    k->setSoi(ship->frame, time);
-    ship->crew.push_back(k);
-    /* Containment edge, both directions. Vehicle::crew is the sole owner;
-       contents is a non-owning back-reference. */
-    capPart->contents.push_back(k->parts[0]);
-    k->parts[0]->container = capPart;
+    /* The suit outlives the vehicle: take it off the parts list FIRST so
+       ~Vehicle does not free it. The walker is also in its body's ship list
+       (setSoi put it there), and ~Vehicle does not know which list that was --
+       detach it or the next fleet walk reads freed memory. */
+    k->detachSoiList();
+    k->parts.clear();
+    delete k;
+
+    capPart->contents.push_back(suit);
+    capPart->ownedContents.push_back(suit);
+    suit->container = capPart;
+    suit->owner = ship;          // the vehicle the container sits on
+    suit->seatProfile = pid;
+    /* An anonymous walker keeps its name on the seat; the roster names the rest. */
+    suit->seatName = (pid == 0) ? who : "";
     // Rebuild so the next physics step sees the heavier ship.
     ship->rebuildCompound();
-    if(kerbal == k) { kerbal = nullptr; }
-    toast("Board: %s -> %s", k->name.c_str(), ship->name.c_str());
+    toast("Board: %s -> %s", who.c_str(), ship->name.c_str());
     printf("[crew] t=%.1f Board: '%s' into '%s' part %zu\n",
-           time, k->name.c_str(), ship->name.c_str(), part);
+           time, who.c_str(), ship->name.c_str(), part);
 
     // The kerbal is no longer controllable: hand control to the ship it entered.
-    if(this->ship == k) {
+    if(wasActive) {
         lastShip = ship;
         select_ship(ship);
     }
@@ -1148,9 +1221,9 @@ Vehicle *Game::dropItem(Part *item) {
 bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
     if(itemShip == nullptr || dest == nullptr) { return false; }
     if(itemShip->parts.size() != 1) { return false; }
-    /* A crewed ship is not cargo: ~Vehicle deletes its crew, and the capsule's
-       contents (the suit part) would dangle in the destination container. */
-    if(!shipCrew(itemShip).empty()) {
+    /* A crewed ship is not cargo: the capsule owns its seat occupants, and the
+       suit part would dangle in the destination container. */
+    if(!shipSeats(itemShip).empty()) {
         toast("Pick up: %s has crew aboard -- EVA them out first",
               itemShip->name.c_str());
         return false;
@@ -1185,7 +1258,7 @@ bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
     return true;
 }
 
-/* V: toggle EVA. From a ship: EVA its first aboard kerbal and take control;
+/* V: toggle EVA. From a ship: put its first seat occupant out and take control;
    from the kerbal: hand control back to the ship the player came from. */
 void Game::toggle_eva() {
     if(ship == nullptr) {
@@ -1201,12 +1274,12 @@ void Game::toggle_eva() {
         }
         return;
     }
-    std::vector<Kerbal *> crew = shipCrew(ship);
-    if(crew.empty()) {
+    std::vector<Part *> seats = shipSeats(ship);
+    if(seats.empty()) {
         toast("EVA: no crew aboard %s", ship->name.c_str());
         return;
     }
-    kerbalEVA(crew.front());
+    kerbalEVA(seats.front());
 }
 
 /* Enter rails warp: park every ship. Refuses -- keeping the current accel --
@@ -1246,7 +1319,6 @@ void Game::updateProximity() {
     bool any_engaged = false;
     for(auto *s : all) {
         if(s == a) { continue; }
-        if(s->isCrewAboard()) { continue; }   // crew riding in a ship is not a target
         const double d = a->distanceTo(s);
         if(s->onRails && r_on > 0.0 && d < r_on) {
             s->releaseControl();   // no armed commands once it's live
@@ -1308,7 +1380,7 @@ void Game::updateDocking() {
     /* The target must be another live ship still carrying that port. Ships are
        only deleted through updateDocking / remove_ship, which drop targets
        pointing at them. */
-    bool targetOk = (b != a && !b->isEva() && !b->isCrewAboard());
+    bool targetOk = (b != a && !b->isEva());
     if(targetOk) {
         targetOk = false;
         for(Part *p : b->parts) {
@@ -1432,7 +1504,7 @@ void Game::stage() {
     bool crewOnStage = false;
     for(Part *p : dropped) {
         if(p->def == nullptr || p->def->crew_capacity <= 0) { continue; }
-        if(!partCrew(p).empty()) { crewOnStage = true; }
+        if(p->seatCount() > 0) { crewOnStage = true; }
     }
     if(crewOnStage) {
         printf("Stage: refused -- crew aboard the capsule (EVA them first)\n");
@@ -1514,7 +1586,7 @@ bool Game::remove_ship(Vehicle *v) {
               v->name.c_str());
         return false;
     }
-    if(v->isCrewAboard() || !shipCrew(v).empty()) {
+    if(!shipSeats(v).empty()) {
         toast("Cannot remove %s -- EVA its crew out first", v->name.c_str());
         return false;
     }
@@ -1522,28 +1594,10 @@ bool Game::remove_ship(Vehicle *v) {
     const std::string removedName = v->name;
     if(wasActive) { v->releaseControl(); }
 
-    dropPartWindowsFor(v);   // its part windows would dangle
-
     // Not aboard (guarded above), so it is in its SoI body's ship list.
     v->detachSoiList();
-    // Ships that had v targeted for docking now dangle -- drop their intent.
-    for(auto *s : collectVehicles(sys)) {
-        if(s->dockTargetShip == v) { s->dockTargetShip = nullptr; s->dockTargetPort = nullptr; }
-    }
-    // The transfer planner holds v's name pointer + handle until its next
-    // rebuild: if v was the target, drop the selection so nothing reads it.
-    if(xferPlanner.xfer_target >= 0
-       && xferPlanner.xfer_target < (int)xferPlanner.xferTargets.size()
-       && xferPlanner.xferTargets[xferPlanner.xfer_target].ship == v) {
-        xferPlanner.xfer_target = -1;
-        xferPlanner.xfer.valid = false;
-        xferPlanner.xfer.burn_dir = glm::dvec3(0.0);
-    }
+    dropVehicleRefs(v);
     delete v;
-
-    // Drop any selection references that dangled off the removed ship.
-    if(kerbal == v) { kerbal = nullptr; }
-    if(lastShip == v) { lastShip = nullptr; }
 
     if(wasActive) {
         // Hand off to the next ship in canonical order (or the last one).
@@ -1551,16 +1605,13 @@ bool Game::remove_ship(Vehicle *v) {
         bool seen = false;
         for(size_t i = 0; i < all.size(); i++) {
             Vehicle *x = all[i];
-            // The pointer compare MUST come first: `all` still holds the
-            // deleted v, and isCrewAboard() is virtual -- a vptr read out of
-            // freed memory.
+            // `all` still holds the deleted v, so skip it by pointer.
             if(x == v) { seen = true; continue; }
-            if(x->isCrewAboard()) { continue; }
             if(seen) { next = x; break; }
         }
         if(next == nullptr) {
             for(size_t i = all.size(); i-- > 0; ) {
-                if(all[i] == v || all[i]->isCrewAboard()) { continue; }
+                if(all[i] == v) { continue; }
                 next = all[i];
                 break;
             }
@@ -1633,17 +1684,15 @@ void Game::recoverActive() {
     flightSummary.shipName = name;
     flightSummary.log = v->flog;
     flightSummary.end_t = time;
-    /* Harvest every experiment aboard -- the ship's parts and each aboard
-       crew's suit -- BEFORE the delete below frees them. recoverMany de-dups by
-       key, so a finding held by N kerbals banks once. */
+    /* Harvest every experiment aboard -- the ship's parts and each seat's suit
+       -- BEFORE the delete below frees them. recoverMany de-dups by key, so a
+       finding held by N kerbals banks once. */
     std::vector<Experiment> loot;
     for(Part *p : v->parts) {
         loot.insert(loot.end(), p->experiments.begin(), p->experiments.end());
     }
-    for(Vehicle *kv : v->crew) {
-        if(kv->parts.empty()) { continue; }
-        loot.insert(loot.end(), kv->parts[0]->experiments.begin(),
-                    kv->parts[0]->experiments.end());
+    for(Part *suit : shipSeats(v)) {
+        loot.insert(loot.end(), suit->experiments.begin(), suit->experiments.end());
     }
     std::map<std::string, double> bodyMult;
     for(TerrainBody *b : sys.bodies) {
@@ -1654,9 +1703,9 @@ void Game::recoverActive() {
     flightSummary.repeatScience = rec.repeat;
     flightSummary.newExperiments = rec.fresh;
 
-    // Part windows on the ship and its aboard crew would dangle with them.
+    // Part windows on the ship would dangle with it. A seat occupant is never
+    // right-clickable (it is not rendered), so none can point at one.
     dropPartWindowsFor(v);
-    for(Vehicle *k : v->crew) { dropPartWindowsFor(k); }
 
     // Ships that had v targeted for docking now dangle -- drop their intent.
     for(auto *s : collectVehicles(sys)) {
@@ -1666,15 +1715,9 @@ void Game::recoverActive() {
         }
     }
 
-    // Every Vehicle this delete frees: v and its owned crew. Drop the refs first.
-    auto diesWith = [&](Vehicle *x) {
-        if(x == v) { return true; }
-        for(Vehicle *k : v->crew) { if(k == x) { return true; } }
-        return false;
-    };
     ship = nullptr;
-    if(diesWith(lastShip)) { lastShip = nullptr; }
-    if(diesWith(kerbal)) { kerbal = nullptr; }
+    if(lastShip == v) { lastShip = nullptr; }
+    if(kerbal == v) { kerbal = nullptr; }
 
     // Out of its SoI body's list, then delete.
     v->detachSoiList();

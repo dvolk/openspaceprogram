@@ -1,6 +1,8 @@
 NAME ship-switch
 ARGS --startships e2e/fixtures/startships.json --time-accel 1 --timeout 8
 ARGS --sim-press 1500,50,F6
-EXPECT Active ship 3 of 16: tanker
+# Eight start ships, one seat each: a seated kerbal is a seat on its capsule,
+# not a vessel (part.h), so the fleet counts 8 and F6 steps racer -> tanker.
+EXPECT Active ship 2 of 8: tanker
 FORBID GL_
 FORBID error:

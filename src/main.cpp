@@ -913,6 +913,7 @@ int main(int argc, char **argv)
     game.experimentMs = args.experiment_ms;
     game.podExperimentMs = args.pod_experiment_ms;
     game.evaMs = args.eva_ms;
+    game.boardMs = args.board_ms;
     game.takeMs = args.take_ms;
     game.storeMs = args.store_ms;
     game.trackingMs = args.tracking_ms;
@@ -1183,53 +1184,77 @@ int main(int argc, char **argv)
             }
             game.recoverActive();
         }
-        // --experiment: mirrors the UI -- a free EVA kerbal runs it itself, else
-        // the active ship's first aboard crew.
+        // --experiment: mirrors the UI -- a walking kerbal runs it itself, else
+        // the active ship's first seat.
         if(game.experimentMs >= 0 && !game.experimentFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.experimentMs) {
             game.experimentFired = true;
-            Kerbal *k = nullptr;
-            if(game.ship != nullptr) {
-                if(game.ship->isEva()) {
-                    k = static_cast<Kerbal *>(game.ship);
-                } else if(!game.ship->crew.empty()) {
-                    k = static_cast<Kerbal *>(game.ship->crew.front());
-                }
+            if(game.ship == nullptr) {
+                printf("[hook] --experiment: no kerbal, ignored\n");
+            } else if(game.ship->isEva()) {
+                game.runExperiment(static_cast<Kerbal *>(game.ship));
+            } else {
+                std::vector<Part *> seats = shipSeats(game.ship);
+                if(seats.empty()) { printf("[hook] --experiment: no kerbal, ignored\n"); }
+                else { game.runSeatExperiment(seats.front()); }
             }
-            if(k != nullptr) { game.runExperiment(k); }
-            else { printf("[hook] --experiment: no kerbal, ignored\n"); }
         }
         // --pod-experiment: the active ship's first experiment-family part + its
-        // first aboard crew.
+        // first seat.
         if(game.podExperimentMs >= 0 && !game.podExperimentFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.podExperimentMs) {
             game.podExperimentFired = true;
             Part *pod = nullptr;
-            Kerbal *k = nullptr;
+            std::string runner;
             if(game.ship != nullptr) {
                 for(Part *p : game.ship->parts) {
                     if(p->def != nullptr && !p->def->experiment_family.empty()) {
                         pod = p; break;
                     }
                 }
-                if(!game.ship->crew.empty()) {
-                    k = static_cast<Kerbal *>(game.ship->crew.front());
-                }
+                std::vector<Part *> seats = shipSeats(game.ship);
+                if(!seats.empty()) { runner = seatName(game.roster, seats.front()); }
             }
-            if(pod != nullptr && k != nullptr) { game.runPodExperiment(pod, k); }
+            if(pod != nullptr && !runner.empty()) { game.runPodExperiment(pod, runner); }
             else { printf("[hook] --pod-experiment: no pod+kerbal, ignored\n"); }
         }
-        // --eva: Game::kerbalEVA on the active ship's first crew kerbal. Fired
-        // before --take / --store in the e2e.
+        // --eva: Game::kerbalEVA on the active ship's first seat. Fired before
+        // --take / --store in the e2e.
         if(game.evaMs >= 0 && !game.evaFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.evaMs) {
             game.evaFired = true;
-            if(game.ship != nullptr && !game.ship->crew.empty()) {
-                Kerbal *k = static_cast<Kerbal *>(game.ship->crew.front());
-                game.kerbalEVA(k);
-            } else {
-                printf("[hook] --eva: no crew aboard, ignored\n");
+            std::vector<Part *> seats = game.ship != nullptr ? shipSeats(game.ship)
+                                                             : std::vector<Part *>{};
+            if(!seats.empty()) { game.kerbalEVA(seats.front()); }
+            else { printf("[hook] --eva: no crew aboard, ignored\n"); }
+        }
+        // --board: the reverse of --eva, so one process round-trips a person
+        // through their seat.
+        if(game.boardMs >= 0 && !game.boardFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.boardMs) {
+            game.boardFired = true;
+            Vehicle *ship = nullptr;
+            size_t part = 0;
+            Kerbal *k = nullptr;
+            /* Any vessel with a free seat, not just the active one: after an
+               EVA the walker stands beside the ship it left, and the e2e may
+               have switched control since. */
+            for(auto *s : collectVehicles(game.sys)) {
+                for(size_t i = 0; i < s->parts.size(); i++) {
+                    Part *cap = s->parts[i];
+                    if(cap->def == nullptr || cap->def->crew_capacity <= 0) { continue; }
+                    if(cap->seatCount() >= cap->def->crew_capacity) { continue; }
+                    for(Kerbal *f : freeKerbals(game.sys)) {
+                        if(game.kerbalInRange(f, cap)) {
+                            ship = s; part = i; k = f; break;
+                        }
+                    }
+                    if(k != nullptr) { break; }
+                }
+                if(k != nullptr) { break; }
             }
+            if(k != nullptr) { game.kerbalBoard(k, ship, part); }
+            else { printf("[hook] --board: no kerbal in reach of a free seat, ignored\n"); }
         }
         // --take: move the first held finding off its instrument onto its courier
         // (the kerbal's suit).

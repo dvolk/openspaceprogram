@@ -2,9 +2,10 @@
 
 // save.h -- saving + loading a running game (the live fleet + crew + clock).
 // A save is a DIRECTORY: dir/save.json (global state + the ordered ship list)
-// plus dir/ships/<slug>.json, one file per vehicle (a ship or a kerbal). The
-// world re-derives from the analytic clock, so only the fleet is authoritative:
-// part structure, tank contents, mass, pose, staging, docking, crew.
+// plus dir/ships/<slug>.json, one file per entry (a ship, a walking kerbal, or
+// a seat occupant). The world re-derives from the analytic clock, so only the
+// fleet is authoritative: part structure, tank contents, mass, pose, staging,
+// docking, crew.
 // Pure JSON (de)serialization and the save-directory helpers are header-only
 // (unit-testable headless); the Game-coupled capture/restore lives in save.cpp.
 
@@ -96,9 +97,11 @@ struct SaveKerbal {
     int skill[NumSkills] = {3, 3, 3};
 };
 
-// One vehicle: a ship (is_crew false) or a kerbal (is_crew true); the other
-// group's fields stay empty. A free (EVA) kerbal's `pose` is its world pose; an
-// aboard one's is unused.
+/* One fleet entry: a ship (is_crew false), a walking kerbal (is_crew true,
+   aboard_ship empty) or a seat occupant (is_crew true, aboard_ship set -- the
+   suit Part parked in a capsule, part.h). The other group's fields stay empty.
+   A walking kerbal's `pose` is its world pose; a seat writes none (it has no
+   pose of its own -- the loader parks it from its capsule). */
 struct SaveShip {
     std::string name;
     std::string defPath;
@@ -425,7 +428,6 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
         if(!s.aboard_ship.empty()) { j["aboard_ship"] = s.aboard_ship; }
         if(s.profile_id != 0) { j["profile_id"] = s.profile_id; }
         j["aboard_part"] = s.aboard_part;
-        j["pose"] = savePoseToJson(s.pose);
         j["onRails"] = s.onRails;
         if(!s.suit_fuel.empty()) { j["suit_fuel"] = s.suit_fuel; }
         if(!s.suit_inventory.empty()) {
@@ -436,7 +438,12 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
         if(!s.suit_experiments.empty()) {
             j["suit_experiments"] = experimentListToJson(s.suit_experiments);
         }
-        j["view_yaw"] = s.view_yaw;
+        /* pose + view_yaw are a WALKING kerbal's: a seat has no world pose of
+           its own (the loader parks it from its capsule) and no camera. */
+        if(s.aboard_ship.empty()) {
+            j["pose"] = savePoseToJson(s.pose);
+            j["view_yaw"] = s.view_yaw;
+        }
         return j;
     }
     j["home"]         = s.home;

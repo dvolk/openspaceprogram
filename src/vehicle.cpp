@@ -609,29 +609,15 @@ bool Vehicle::checkPartInvariants() const {
             return false;
         }
         if(p->container != nullptr) {
-            /* A part in a parts list may only be contained as a CREW member
-               (owner = the character vehicle); inventory is never in a parts list. */
-            if(!isEva()) {
-                printf("[part] '%s': part '%s' (uid %llu) is contained, but "
-                       "this vehicle is not a character\n",
-                       name.c_str(), p->id.c_str(), (unsigned long long)p->uid);
-                return false;
-            }
-            const Part *cap = p->container;
-            if(cap->def == nullptr || cap->def->crew_capacity <= 0) {
-                printf("[part] '%s': a character is contained in a "
-                       "non-capsule part (uid %llu)\n", name.c_str(),
-                       (unsigned long long)cap->uid);
-                return false;
-            }
-            bool listed = false;
-            for(Part *c : cap->contents) { if(c == p) { listed = true; break; } }
-            if(!listed) {
-                printf("[part] '%s': part '%s' claims container uid %llu, "
-                       "but that part does not list it\n", name.c_str(),
-                       p->id.c_str(), (unsigned long long)cap->uid);
-                return false;
-            }
+            /* Nothing in a parts list is contained. A seat occupant lives in the
+               CAPSULE's contents and is not part of any vehicle; an inventory
+               item is never in a parts list either. A suit Part that is both in
+               a parts list and contained would be deleted twice. */
+            printf("[part] '%s': part '%s' (uid %llu) is attached to this "
+                   "vehicle AND contained by part uid %llu\n", name.c_str(),
+                   p->id.c_str(), (unsigned long long)p->uid,
+                   (unsigned long long)p->container->uid);
+            return false;
         }
         /* Owned inventory must be listed for traversal too: ownership without
            traversal frees it in ~Part but drops its mass from effectiveMass. */
@@ -658,20 +644,27 @@ bool Vehicle::checkPartInvariants() const {
                        (unsigned long long)c->uid);
                 return false;
             }
-            /* contents holds BOTH crew and inventory; an item is owned by the
-               container (in ownedContents), the rest are character parts. */
-            if(c->ownedBy(p)) {
-                if(p->def == nullptr || p->def->inventory_capacity <= 0) {
-                    printf("[part] '%s': part uid %llu is an inventory "
-                           "item, but this part is not a container\n",
-                           name.c_str(), (unsigned long long)c->uid);
+            /* A part owns everything it contains: an inventory item or a seat
+               occupant. Ownership without traversal is caught above. */
+            if(!c->ownedBy(p)) {
+                printf("[part] '%s': contents lists part uid %llu, but this "
+                       "part does not own it\n", name.c_str(),
+                       (unsigned long long)c->uid);
+                return false;
+            }
+            if(c->isSeat()) {
+                if(!p->isCapsule()) {
+                    printf("[part] '%s': part uid %llu is a seat occupant, but "
+                           "this part is not a capsule\n", name.c_str(),
+                           (unsigned long long)c->uid);
                     return false;
                 }
                 continue;
             }
-            if(c->owner == nullptr || !c->owner->isEva()) {
-                printf("[part] '%s': part uid %llu in contents is not a "
-                       "character's\n", name.c_str(), (unsigned long long)c->uid);
+            if(p->def == nullptr || p->def->inventory_capacity <= 0) {
+                printf("[part] '%s': part uid %llu is an inventory "
+                       "item, but this part is not a container\n",
+                       name.c_str(), (unsigned long long)c->uid);
                 return false;
             }
         }
@@ -958,10 +951,6 @@ void Vehicle::enterWorld() {
 }
 
 bool Vehicle::isEva() const { return false; }
-
-bool Vehicle::isCrewAboard() const { return false; }
-
-Part *Vehicle::capsulePart() const { return nullptr; }
 
 void Vehicle::buildFuelGroups() {
     // The groups change, so the cached drain layers are stale -- drop them.
@@ -1357,12 +1346,11 @@ glm::dvec3 Vehicle::applyGravity() {
 Vehicle::Vehicle() { }
 
 Vehicle::~Vehicle() {
-    // Vehicle::crew owns the kerbals (eva.h): delete them before the parts.
-    for(auto&& k : crew) { delete k; }
-    crew.clear();
     if(hullInWorld()) { RemoveBody(hull); }
     delete hull; hull = nullptr;
     compoundParts.clear();
+    /* ~Part owns what it contains, so a capsule frees its seat occupants
+       (part.h). No crew list to walk: a seated kerbal is not a Vehicle. */
     for(Part *p : parts) { delete p; }   // ~Part deletes the Body
 }
 
@@ -2017,11 +2005,8 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     fuelLinks.insert(fuelLinks.end(), B->fuelLinks.begin(), B->fuelLinks.end());
     B->fuelLinks.clear();
 
-    // crew: their capsules moved in; each kerbal's `aboardPart` already names it.
-    for(size_t i = 0; i < B->crew.size(); i++) {
-        crew.push_back(B->crew[i]);
-    }
-    B->crew.clear();
+    /* Nothing to do for crew: a seat belongs to its capsule Part, and the parts
+       moved above. */
 
     /* Stage counters: the union -- the more-advanced ship (lower counter and floor)
        governs. */
@@ -2161,18 +2146,8 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
     nv->seams = nvSeams;
     seams = keepSeams;
 
-    // crew: a kerbal follows its capsule. capsulePart() is virtual so no cast.
-    {
-        std::vector<Vehicle *> movedCrew, keepCrew;
-        for(size_t i = 0; i < crew.size(); i++) {
-            Vehicle *k = crew[i];
-            Part *cap = k->capsulePart();
-            if(cap != nullptr && cap->owner == nv) { movedCrew.push_back(k); }
-            else { keepCrew.push_back(k); }
-        }
-        for(size_t i = 0; i < movedCrew.size(); i++) { nv->crew.push_back(movedCrew[i]); }
-        crew = keepCrew;
-    }
+    /* A kerbal follows its capsule automatically: the seat is containment on
+       the capsule Part, which the split above already routed. */
 
     {
         std::vector<Part *> keep;
@@ -2627,24 +2602,23 @@ void Vehicle::setSoi(Frame *newFrame, double t) {
         return;
     }
     TerrainBody *newBody = newFrame->body;
-    // A free vessel lives in its body's ships list; an aboard crew
-    // character rides Vehicle::crew instead (terrain.h).
-    const bool wantList = !isCrewAboard();
+    /* Every Vehicle is a vessel and lives in its body's ships list: a seated
+       kerbal is not a Vehicle at all (part.h), so membership has no exception
+       and nothing else rides along. */
     bool listed = false;
     if(m_parent != nullptr) {
         std::vector<Vehicle *> &old = m_parent->ships;
         auto it = std::find(old.begin(), old.end(), this);
         listed = (it != old.end());
-        if(listed && (newBody != m_parent || !wantList)) {
+        if(listed && newBody != m_parent) {
             old.erase(it);
             listed = false;
         }
     }
-    if(wantList && !listed) { newBody->ships.push_back(this); }
+    if(!listed) { newBody->ships.push_back(this); }
     frame = newFrame;
     m_parent = newBody;
     flog.observe(t, newBody->name);
-    for(Vehicle *c : crew) { c->setSoi(newFrame, t); }   // aboard crew ride along
 }
 
 void Vehicle::detachSoiList() {

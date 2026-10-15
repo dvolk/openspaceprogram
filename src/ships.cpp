@@ -84,11 +84,10 @@ DebugStartShips loadDebugStartShips(const char *path) {
 
 void collectVehiclesInto(System &sys, std::vector<Vehicle *> &out) {
     out.clear();
+    /* Every vessel in the world. A seated kerbal is NOT here -- it is a seat on
+       its capsule's Part (part.h), so the walk has no crew leg. */
     for(auto *b : sys.bodies) {
-        for(auto *s : b->ships) {
-            out.push_back(s);
-            for(auto *c : s->crew) { out.push_back(c); }
-        }
+        for(auto *s : b->ships) { out.push_back(s); }
     }
 }
 
@@ -99,9 +98,9 @@ std::vector<Vehicle *> collectVehicles(System &sys) {
 }
 
 size_t countVehicles(System &sys) {
-    // Walked through collectVehiclesInto so the membership rule (a ship's crew
-    // counts as vehicles) cannot drift from the canonical list. The buffer is
-    // reused, so this costs no allocation per call.
+    // Walked through collectVehiclesInto so the membership rule cannot drift
+    // from the canonical list. The buffer is reused, so this costs no
+    // allocation per call.
     static thread_local std::vector<Vehicle *> buf;
     collectVehiclesInto(sys, buf);
     return buf.size();
@@ -116,10 +115,12 @@ Ships::Ships(const std::string &parts_file, Shader *partsshader, TerrainBody *su
 {
 }
 
-/* The next kerbal for a seat: the roster entry no kerbal vehicle in `sys` is
-   wearing. Derived from the fleet rather than tracked on the roster, so a
-   delete that forgets to "release" a person cannot shrink the pool forever.
-   nullptr = the pool is spent; the seat stays empty. */
+/* The next kerbal for a seat: the roster entry nobody in `sys` is wearing.
+   Derived from the world rather than tracked on the roster, so a delete that
+   forgets to "release" a person cannot shrink the pool forever. Two sources: a
+   walking kerbal wears its id on the vehicle, a SEATED one only on the suit Part
+   parked in its capsule (part.h). nullptr = the pool is spent; the seat stays
+   empty. */
 static const KerbalProfile *claimProfile(CrewRoster &roster, System &sys) {
     static thread_local std::vector<uint64_t> worn;
     static thread_local std::vector<Vehicle *> fleet;
@@ -131,12 +132,21 @@ static const KerbalProfile *claimProfile(CrewRoster &roster, System &sys) {
         if(!v->isEva()) { continue; }
         const uint64_t id = static_cast<Kerbal *>(v)->profileId;
         if(id == 0) { continue; }
-        /* The invariant the whole pool rests on: one person, one vehicle. A
-           repeat means two vehicles claim the same kerbal -- which is what a
-           name-keyed load mis-resolving would do -- and the pool would then
-           lose people with nothing left to show for it. */
-        for(uint64_t w : worn) { assert(w != id); }
         worn.push_back(id);
+    }
+    for(Vehicle *v : fleet) {
+        for(Part *p : v->parts) {
+            for(Part *s : p->seats()) {
+                if(s->seatProfile != 0) { worn.push_back(s->seatProfile); }
+            }
+        }
+    }
+    /* The invariant the whole pool rests on: one person, one wearer. A repeat
+       means two things claim the same kerbal -- which is what a name-keyed load
+       mis-resolving used to do -- and the pool would then lose people with
+       nothing left to show for it. */
+    for(size_t i = 0; i < worn.size(); i++) {
+        for(size_t j = 0; j < i; j++) { assert(worn[i] != worn[j]); }
     }
     return roster.claim(worn);
 }
@@ -154,12 +164,11 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
                                TerrainBody *hb, const ScenarioDef *sc, System &sys,
                                double t, const StaticBuilding *site)
 {
-    /* slot feeds spawn_vehicle's orbit spread; pads do not slot. A kerbal parked
-       in a capsule is not a vessel, a free EVA one is. */
+    /* slot feeds spawn_vehicle's orbit spread; pads do not slot. Every vessel in
+       the walk is flyable -- a seated kerbal is not in it (part.h). */
     int slot = 0;
     if(!sc->on_pad) {
         for(auto *s : collectVehicles(sys)) {
-            if(s->isCrewAboard()) { continue; }
             if(s->home == hb && s->scenario == sc) { slot++; }
         }
     }
@@ -195,8 +204,7 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
        caller: --startship kerbal,... places a NAMED person, and the roster is
        what a save makes durable. Ship names take the roster's names as already
        taken (dedupVehicleName), so a ship and a kerbal can never share one --
-       the save keys vehicles by display name, so sharing would resolve the
-       wrong one on load. */
+       the two are different rows everywhere the player reads a name. */
     const bool is_kerbal = !def.parts.empty()
         && def.parts[0].def->type == "kerbal";
     Vehicle *v = is_kerbal ? static_cast<Vehicle *>(new Kerbal) : new Vehicle;
@@ -263,13 +271,44 @@ std::string dedupVehicleName(System &sys, const std::string &base,
     }
 }
 
-// One crew kerbal aboard (ship, part): parked inside the capsule, registered in
-// the capsule's containment edge so the ship's mass carries it.
-Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys, double t) {
-    if(part >= ship->parts.size()) { return nullptr; }
-    const PartDef *capDef = ship->parts[part]->def;
-    if(capDef->crew_capacity <= 0) { return nullptr; }
+/* Mint a suit Part from a kerbal ship def (the occupant of a seat, part.h). The
+   Body exists to carry mass + render assets; it never enters the physics world,
+   because a seat's mass rides the containment edge (Part::effectiveMass), not
+   the capsule's compound. */
+Part *Ships::make_suit(const std::string &defPath) const {
+    ShipDef def = load_ship_def(resdir::path(defPath).c_str(), part_catalog);
+    if(def.parts.empty()) {
+        throw std::runtime_error(std::string("suit: '") + defPath
+                                 + "' has no root part");
+    }
+    const PartDef *pd = def.parts[0].def;
+    Mesh *mesh = get_mesh(std::string("res/") + pd->mesh);
+    Texture *tex = get_texture(std::string("res/") + pd->texture);
+    Body *b = create_part_body(mesh, partsshader, tex, (float)pd->mass,
+                               resolveHullMargin(def.hull_margin, pd->hull_margin));
+    Part *suit = new Part;
+    suit->body = b;
+    suit->def = pd;
+    suit->id = def.parts[0].id;
+    /* Seeded like Vehicle::init does for a tank: a partly-burned suit re-seeds
+       full here, which is right for a fresh crew member. */
+    if(suit->isTank()) {
+        for(int r = 0; r < (int)ResourceType::Num; r++) {
+            suit->resources.capacity[r] = pd->capacity[r];
+            suit->resources.current[r]  = pd->capacity[r];
+        }
+    }
+    return suit;
+}
+
+/* Fill one seat: park a suit Part in the capsule (ship, part) as a seat occupant
+   (part.h). There is no Kerbal vehicle here -- minting one is what going EVA
+   means (Game::kerbalEVA). */
+bool Ships::fill_seat(Vehicle *ship, size_t part, System &sys) {
+    if(part >= ship->parts.size()) { return false; }
     Part *capPart = ship->parts[part];
+    const PartDef *capDef = capPart->def;
+    if(capDef->crew_capacity <= 0) { return false; }
 
     /* Draw the person from the roster. A spent pool leaves the seat EMPTY and
        the ship flies uncrewed: a legal state, not a failure. */
@@ -277,63 +316,36 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys, double
     if(p == nullptr) {
         printf("Crew: no kerbal left for '%s' part %zu (%d seats)\n",
                ship->name.c_str(), part, capDef->crew_capacity);
-        return nullptr;
+        return false;
     }
 
-    ShipDef def = load_ship_def(resdir::path("res/ships/kerbal.json").c_str(),
-                                part_catalog);
-    Kerbal *k = new Kerbal;
-    k->name = p->name;
-    k->profileId = p->id;
-    k->defPath = "res/ships/kerbal.json";
-    k->home = ship->home;
-    k->scenario = ship->scenario;
-    k->m_parent = ship->m_parent;
-    k->sun = sun;
-    k->frame = ship->frame;
-
-    // Build AT the capsule COM (it is parked there, inside the ship).
-    const glm::dvec3 capCom = ship->partPos(capPart);
-    const glm::dmat3 capOrient = ship->partRot(capPart);
-    // k is in no list yet, so a build throw would leak it (as in buildKerbalFromSave).
+    Part *suit = nullptr;
     try {
-        build_ship(k, def, partsshader, capCom, capOrient, 0.0);
-    } catch(...) {
-        delete k;
-        throw;
+        suit = make_suit(kKerbalShipDef);
+    } catch(const std::exception &e) {
+        printf("Crew: %s\n", e.what());
+        return false;
     }
 
-    // Park inside the capsule (out of the physics world).
-    Body *kb = k->hull;
-    k->placeShipAtCom(capCom, capOrient);
-    RemoveBody(kb);
-    k->onRails = true;
-    k->railFrozen = true;
-    k->aboardPart = capPart;
-    // aboardPart is set first -- setSoi keys its ships-list membership on it.
-    k->setSoi(ship->frame, t);
-
-    ship->crew.push_back(k);
-    // Containment edge (both directions): Vehicle::crew is the sole owner,
-    // contents is a non-owning back-reference (part.h).
-    capPart->contents.push_back(k->parts[0]);
-    k->parts[0]->container = capPart;
+    /* The seat edge: containment, and the capsule OWNS the suit (so ~Part frees
+       it). `owner` is the vehicle the container sits on, as for an item. */
+    capPart->contents.push_back(suit);
+    capPart->ownedContents.push_back(suit);
+    suit->container = capPart;
+    suit->owner = ship;
+    suit->seatProfile = p->id;
     // Rebuild so the compound carries the crew mass.
     ship->rebuildCompound();
-    int aboard = 0;
-    for(auto *c : ship->crew) {
-        if(static_cast<Kerbal *>(c)->aboardPart == capPart) { aboard++; }
-    }
     printf("Crew: '%s' aboard '%s' part %zu (%d/%d)\n",
-           k->name.c_str(), ship->name.c_str(), part,
-           aboard, capDef->crew_capacity);
-    return k;
+           p->name.c_str(), ship->name.c_str(), part,
+           capPart->seatCount(), capDef->crew_capacity);
+    return true;
 }
 
-void Ships::spawn_crew(Vehicle *ship, System &sys, double t) {
+void Ships::spawn_crew(Vehicle *ship, System &sys) {
     for(size_t i = 0; i < ship->parts.size(); i++) {
         if(ship->parts[i]->def->crew_capacity > 0) {
-            spawn_crew_kerbal(ship, i, sys, t);
+            fill_seat(ship, i, sys);
         }
     }
 }
@@ -400,7 +412,7 @@ Vehicle *Ships::buildDebugStartShips(const std::vector<DebugStartShip> &entries,
             }
         }
         Vehicle *v = place_ship(fe.ship, fe.name, hb, sc, sys, t, site);
-        spawn_crew(v, sys, t);
+        spawn_crew(v, sys);
         if(first == nullptr) { first = v; }
     }
     return first;

@@ -15,9 +15,9 @@
 NAME pad-ships-share-the-deck
 ARGS --time-accel 1 --timeout 5 --info-log --orbit-interval 0.25 --startship racer,res/ships/racer.json,Kerbin,pad --startship tanker,res/ships/tanker.json,Kerbin,pad
 ARGS --sim-press 2000,50,F6
-# "3 of 4" counts the two aboard kerbals as vessels even though F6 steps over
-# them; 06-ship-switch pins the same quirk.
-EXPECT Active ship 3 of 4: tanker
+# Two ships, one seat each: the seated kerbals are seats on their capsules, not
+# vessels (part.h), so the fleet counts 2 and F6 steps racer -> tanker.
+EXPECT Active ship 2 of 2: tanker
 FORBID GL_
 FORBID error:
 CHECK len(surf) > 10

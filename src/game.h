@@ -301,6 +301,10 @@ struct Game {
     int evaMs = -1;
     bool evaFired = false;
 
+    // --board MS: the reverse of --eva (Game::kerbalBoard)
+    int boardMs = -1;
+    bool boardFired = false;
+
     // --take MS / --store MS: move a finding to a courier / to a container
     int takeMs = -1;
     bool takeFired = false;
@@ -577,10 +581,11 @@ struct Game {
     int surfmap_in_flight = 0;
 
     // --- control transitions (events + the SHIPS window + selftest) --------
-    // V: EVA an aboard kerbal, or hand control back to the last ship.
+    // V: put a seat occupant out, or hand control back to the last ship.
     void toggle_eva();
-    // kerbalBoard refuses a full capsule.
-    void kerbalEVA(Kerbal *k);
+    /* kerbalEVA MINTS the Kerbal vehicle from a seat's suit Part; kerbalBoard
+       deletes it and turns the suit back into a seat. Both refuse as noted. */
+    void kerbalEVA(Part *suit);
     void kerbalBoard(Kerbal *k, Vehicle *ship, size_t part);
     // dropItem makes a free 1-part ship; pickUpItem re-parents it into `dest`.
     Vehicle *dropItem(Part *item);
@@ -647,18 +652,22 @@ struct Game {
     /* Refuses unless grounded on the home body (--recover-anywhere lifts that).
        Unlike remove_ship this allows the last vessel. */
     void recoverActive();
-    /* Stores on the kerbal's suit; refuses a duplicate already held. */
+    /* Stores on the walking kerbal's suit; refuses a duplicate already held. */
     void runExperiment(Kerbal *k);
+    /* Same, for a SEATED occupant: the suit Part is the storage and the capsule
+       is the live pose (there is no Kerbal object for a seated one). */
+    void runSeatExperiment(Part *suit);
     /* The situation experiment (identity + provenance) for a part riding
-       `poseVehicle`, recorded by `runner`. */
+       `poseVehicle`, recorded by `runnerName` aboard `shipName` ("" = free
+       EVA). Provenance is names, not pointers: a seat has no Kerbal object. */
     bool situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
                              Part *localPart, const std::string &type,
-                             Kerbal *runner, Experiment &out);
+                             const std::string &runnerName,
+                             const std::string &shipName, Experiment &out);
     /* Refuses a duplicate the pod already holds. */
-    void runPodExperiment(Part *pod, Kerbal *k);
+    void runPodExperiment(Part *pod, const std::string &runner);
     /* `to` must be a transfer destination with a free slot. */
     void moveExperiment(Part *from, Part *to, size_t which);
-    /* `k` must be free (on EVA, not aboard). */
     bool kerbalInRange(Kerbal *k, Part *part);
     // Push a one-shot on-screen message (printf-style).
     void toast(const char *fmt, ...);
@@ -676,6 +685,9 @@ struct Game {
                         int mx, int my);
     // Its entries would dangle after delete.
     void dropPartWindowsFor(Vehicle *ship);
+    // Clears every reference the Game and the transfer planner hold to a
+    // vehicle that is about to be deleted. Call immediately BEFORE the delete.
+    void dropVehicleRefs(Vehicle *v);
     // Every game teardown calls this (scene transitions close nothing).
     void clearFlightSummary();
 
@@ -704,10 +716,15 @@ void pickAt(Game &g, int px, int py);
 // settings.json phase 1 (phase 2 is Game::load_settings). No-op if absent.
 void load_settings_args(GameArgs &args);
 
-// Aboard crew live on their ship (Vehicle::crew); free kerbals are the isEva
-// ships in the bodies' lists.
-std::vector<Kerbal *> shipCrew(Vehicle *ship);
-std::vector<Kerbal *> partCrew(Part *capPart);
+/* Every seat in the ship, in part order (part.h: a seat is a suit Part parked
+   in a capsule). Empty = the ship has no crew. */
+std::vector<Part *> shipSeats(Vehicle *ship);
+/* The roster entry a seat occupant IS, or nullptr if it is anonymous. */
+const KerbalProfile *seatEntry(const CrewRoster &roster, const Part *suit);
+/* Display name for a seat occupant: the roster's, else the name the seat carries. */
+std::string seatName(const CrewRoster &roster, const Part *suit);
+/* Free kerbals are the isEva ships in the bodies' lists; a seated crew member
+   is not a vehicle at all (part.h). */
 std::vector<Kerbal *> freeKerbals(System &sys);
 /* Same walk into a reused buffer (cleared here), for per-frame callers. */
 void freeKerbalsInto(System &sys, std::vector<Kerbal *> &out);
