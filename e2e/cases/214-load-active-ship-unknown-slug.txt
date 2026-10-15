@@ -1,16 +1,19 @@
 # #266's active-ship guard: save.json is save_roster_named with "active_ship"
-# pointed at v1, a slug its ships list no longer has. The writer cannot produce
-# this (it records g.ship, and every slug it writes is in the list), so this is a
-# hand-edited save -- or one whose fleet shrank under it. A seat cannot be named
-# here at all any more: a slug keys a vehicle, and a seated person is a `seats`
-# element of a part (part.h). The load must neither refuse nor park the camera on
-# nothing: it falls back to the first vehicle in the save's own order.
+# pointed at v9 -- a slug its ships list (v0, v1) does not have. The writer
+# cannot produce this (it records g.ship, and every slug it writes is in the
+# list), so this is a hand-edited save, or one whose fleet shrank under it. A
+# seat cannot be named here at all any more: a slug keys a vehicle, and a seated
+# person is a `seats` element of a part (part.h). The load must neither refuse
+# nor park the camera on nothing: it falls back to the first vehicle in the save's
+# own order -- 'racer', not the alphabetically first 'Ash' (v1, an uncrewed copy
+# 300 m off) that the old name-based fallback would have picked.
 NAME load-active-ship-unknown-slug
 ARGS --load e2e/fixtures/save_active_unknown_slug --time-accel 1 --timeout 3 --eva 2500
 EXPECT [crew] loaded 'Ash' aboard 'racer'
 EXPECT Loaded game from e2e/fixtures/save_active_unknown_slug (active: racer)
 EXPECT EVA: 'Ash' out of 'racer' part 0
 FORBID Load failed
+FORBID (active: Ash)
 FORBID --eva: no crew aboard
 FORBID GL_
 FORBID error:
