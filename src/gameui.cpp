@@ -2192,6 +2192,16 @@ void drawPartWindows(Game &g) {
                                 full ? "  (capsule full)" : "");
                     if(ImGui::SmallButton("Board")) {
                         g.kerbalBoard(k, ship, part);
+                        /* Boarding DELETES the walking vehicle: what survives is
+                           its suit Part, now parked in the capsule as a seat
+                           (part.h). So `k` is dangling from here on and nothing
+                           below may read it -- the Store block right after this
+                           reads k->parts, which is exactly the use-after-free
+                           the ASan report named. free_ks still holds the pointer,
+                           but freeKerbalsInto refills it before anything reads
+                           it again. */
+                        ImGui::PopID();
+                        continue;
                     }
                     // Store (the dance deposit): moveExperiment re-checks canHold (a Container is
                     // unlimited per family).

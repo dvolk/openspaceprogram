@@ -1,0 +1,22 @@
+NAME ui-board-button
+ARGS --time-accel 0 --timeout 6 --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --sim-mouse 1000,0,960,540,RMB
+ARGS --eva 2000
+ARGS --ui-click 3000,"Board"
+# RMB picks the capsule, which opens its part window; --eva puts Ash out beside
+# it; --ui-click presses the window's Board button. The bare label is deliberate:
+# a part window's title carries the ship's ADDRESS ("racer > Capsule (2m)##0x.."),
+# so a qualified "window/label" path cannot be written down in advance.
+# Boarding deletes the walking Kerbal and parks its suit in the capsule as a seat
+# (part.h) -- and the loop that drew the button kept the pointer and read
+# k->parts immediately after: heap-use-after-free at gameui.cpp:2198 under ASan.
+# A release run cannot see that read itself; the proof is these same args under
+# osp_asan. What this case owns is keeping the Board button exercised at all --
+# until now the only board coverage was the --board hook, which never touches UI.
+EXPECT [pick] t=
+EXPECT EVA: 'Ash' out of 'racer' part 0
+EXPECT Board: 'Ash' into 'racer' part 0
+EXPECT Active ship 1 of 1: racer
+FORBID Segmentation
+FORBID GL_
+FORBID error:
