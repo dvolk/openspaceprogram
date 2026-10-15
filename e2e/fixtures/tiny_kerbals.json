@@ -1,0 +1,5 @@
+{
+  "kerbals": [
+    { "id": 1, "name": "Solo", "piloting": 5, "science": 1, "engineering": 1 }
+  ]
+}

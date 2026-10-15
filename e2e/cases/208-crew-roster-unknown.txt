@@ -1,0 +1,12 @@
+# A kerbal that names a roster id the roster has no entry for is a REFUSED
+# load, not a kerbal rebuilt anonymous: silently dropping a person's identity
+# would be invisible until someone opened the crew window. Same shape as the
+# bad-crew cases 81/82, which refuse a capsule that cannot hold the kerbal.
+NAME crew-roster-unknown
+ARGS --load e2e/fixtures/save_roster_unknown --timeout 4
+EXPECT Load failed: load: kerbal 'Ash' names roster id 99, which the roster has no entry for
+EXIT 1
+FORBID terminate called
+FORBID Segmentation
+FORBID GL_
+LIMIT 60

@@ -36,6 +36,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--experiments", args.experiments_file,
                    "Experiment family JSON (default: res/data/experiments.json)");
 
+    app.add_option("--kerbals", args.kerbals_file,
+                   "Kerbal roster JSON: the named crew the fleet draws from, "
+                   "each with id, name and piloting/science/engineering 1..5 "
+                   "(default: res/data/kerbals.json)");
+
     app.add_option("--startship", args.startship,
                    "One start ship: name,def,body,scenario[,site] -- the "
                    "first four required, the fifth an optional pad id (e.g. "

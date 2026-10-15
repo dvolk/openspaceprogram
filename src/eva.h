@@ -24,6 +24,12 @@ struct Kerbal : Vehicle {
 
     // --- per-ticked armed state (evaArmCommands writes, applyEva consumes) ---
     EvaMode mode = EVA_GROUND;
+    /* The CrewRoster entry this kerbal IS (crew.h): name + skills, and what a
+       save makes durable. The roster outlives this vehicle, so the link points
+       at the roster by id, never by pointer. 0 = anonymous, which happens two
+       ways: a save that predates the roster, or a kerbal minted while the pool
+       was spent. */
+    uint64_t profileId = 0;
     bool grounded = true;
     bool jumping = false;        // post-jump: ignore grounded until the outward kick is spent
     bool jumpPressed = false;    // space KEYDOWN edge (events.cpp)

@@ -35,6 +35,7 @@
 #include "gldebug.h"
 #include "frame.h"
 #include "shipdef.h"
+#include "crew.h"
 #include <nlohmann/json.hpp>
 #include "billboard.h"
 #include "texture.h"
@@ -378,10 +379,24 @@ int main(int argc, char **argv)
        ships so the cross-check below has it. */
     loadExperimentDefs(resdir::path(args.experiments_file).c_str());
 
+    /* The kerbal roster (res/data/kerbals.json): the named people a capsule
+       seat draws from. A data bug is reported like the system loader's rather
+       than allowed to reach std::terminate. */
+    CrewRoster roster;
+    try {
+        roster = load_crew_roster(resdir::path(args.kerbals_file).c_str());
+    } catch(const std::exception &e) {
+        printf("error: %s\n", e.what());
+        fflush(stdout);
+        return 1;
+    }
+    printf("Roster: %zu kerbal(s) from %s\n", roster.profiles.size(),
+           args.kerbals_file.c_str());
+
     /* parts.json gives mass + behavior, the defs give stack order + offsets.
        Ships sharing a (body, scenario) get spaced apart; each pad ship stands
        on its named site, else the body's default. */
-    Ships ships(args.parts_file, partsshader, sun);
+    Ships ships(args.parts_file, partsshader, sun, roster);
 
     /* World buildings: placed once physics + the part shader are live, before
        any ship stands on a pad. */
@@ -405,7 +420,7 @@ int main(int argc, char **argv)
     }
 
     // The running game: borrows the subsystems above, owns the runtime state.
-    Game game(display, postfx, ships, sys, sun, home, args, sim_win_id);
+    Game game(display, postfx, ships, roster, sys, sun, home, args, sim_win_id);
     game.bigger = bigger;   // the UI pass draws with it
     game.skybox = &skybox;  // set before any boot --load can switch systems
     game.buildings = std::move(buildings);   // switchSystem re-places pads

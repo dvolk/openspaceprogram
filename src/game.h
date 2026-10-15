@@ -13,6 +13,7 @@
 #include "camera.h"   // Camera, CameraMode
 #include "cli.h"      // GameArgs
 #include "constants.h" // kMapDefaultScale
+#include "crew.h"     // CrewRoster (the named crew pool)
 #include "display.h"  // Renderer
 #include "flightlog.h"
 #include "job.h"      // JobRunner
@@ -223,6 +224,10 @@ struct Game {
     PostFX *postfx;
     Ships &ships;   // the ship builder; the ships themselves live in the
                     // bodies' lists (TerrainBody::ships)
+    /* The named crew pool (crew.h). Borrowed like the rest: main loads it from
+       --kerbals, a save replaces its contents. Ships borrows it too, to name a
+       kerbal it mints for a capsule seat. */
+    CrewRoster &roster;
     System &sys;
     TerrainBody *sun;
     TerrainBody *home;
@@ -674,10 +679,12 @@ struct Game {
     // Every game teardown calls this (scene transitions close nothing).
     void clearFlightSummary();
 
-    Game(Renderer &display, PostFX *postfx, Ships &ships, System &sys,
+    Game(Renderer &display, PostFX *postfx, Ships &ships, CrewRoster &roster,
+         System &sys,
          TerrainBody *sun, TerrainBody *home, GameArgs &args,
          Uint32 sim_win_id)
-        : display(display), postfx(postfx), ships(ships), sys(sys),
+        : display(display), postfx(postfx), ships(ships), roster(roster),
+          sys(sys),
           sun(sun), home(home), args(args), sim_win_id(sim_win_id),
           xferPlanner(*this)   // borrows the Game it is a member of
     {

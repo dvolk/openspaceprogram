@@ -37,6 +37,7 @@ DebugStartShips loadDebugStartShips(const char *path);
 
 struct System;
 struct Kerbal;  // crew characters (eva.h)
+struct CrewRoster;  // the named crew pool (crew.h)
 
 /* Canonical ship order: bodies in file order, each body's ships in order, each
    ship's crew right after it. */
@@ -49,12 +50,28 @@ void collectVehiclesInto(System &sys, std::vector<Vehicle *> &out);
    For callers that only need the count (a per-frame readout). */
 size_t countVehicles(System &sys);
 
+/* A name made unique against the live fleet: first use keeps the bare name,
+   later ones get " #2", " #3" .. Every ship-naming site must go through this,
+   because the save keys a vehicle by DISPLAY NAME (SaveShip::aboard,
+   SaveMeta::active_ship) -- two vehicles sharing a name make a load resolve the
+   wrong one.
+
+   `roster` (nullable) additionally reserves the kerbals' names. A kerbal's
+   display name IS its roster name and is never deduped, so without this a ship
+   could be named 'Ash' while a kerbal named 'Ash' flies. */
+std::string dedupVehicleName(System &sys, const std::string &base,
+                             const CrewRoster *roster = nullptr);
+
 class Ships {
 public:
     /* parts_file:  parts catalog to build from (owned, loaded here).
        partsshader: the part shader (caller-owned; must outlive us).
-       sun:         the star (caller-owned; lights ships + pads). */
-    Ships(const std::string &parts_file, Shader *partsshader, TerrainBody *sun);
+       sun:         the star (caller-owned; lights ships + pads).
+       roster:      the crew pool a capsule seat draws from (caller-owned; must
+                    outlive us). We only borrow it to NAME a minted kerbal --
+                    the roster is game state, not part of the builder. */
+    Ships(const std::string &parts_file, Shader *partsshader, TerrainBody *sun,
+          CrewRoster &roster);
     /* Ships + pads die with the bodies (terrain.h); shader + star are borrowed. */
     ~Ships() = default;
 
@@ -97,13 +114,13 @@ public:
                                   System &sys, double t);
 
 private:
-    // One crew kerbal aboard (ship, part); nullptr if the part is no capsule.
+    /* One crew kerbal aboard (ship, part). nullptr if the part is no capsule,
+       or if the roster has no kerbal left -- an empty seat is a legal state,
+       not a failure. */
     Kerbal *spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys, double t);
-
-    // First use of a name keeps it bare, later ones get #2, #3 ..
-    std::string dedupName(System &sys, const std::string &nm);
 
     PartsCatalog part_catalog;
     Shader *partsshader;   // caller-owned
     TerrainBody *sun;      // caller-owned
+    CrewRoster &roster;    // caller-owned: the pool a seat draws from
 };

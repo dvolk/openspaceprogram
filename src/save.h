@@ -22,6 +22,7 @@
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
 
+#include "crew.h"      // NumSkills (SaveKerbal mirrors a roster entry, see below)
 #include "flightlog.h"   // FlightLog / FlightEvent (pure containers, no game types)
 #include "science.h"     // Experiment (science data on parts + the recover score)
 
@@ -82,6 +83,16 @@ struct SaveDock {
     std::string name;       // the absorbed ship's display name (restored on undock)
 };
 
+/* One roster entry as saved (save.json's "roster"). Identity only: WHO is where
+   derives from the fleet, so there is no assignment field to keep in step. The
+   save carries the roster rather than re-reading --kerbals, so a save stays
+   itself after the data file is edited. */
+struct SaveKerbal {
+    uint64_t id = 0;
+    std::string name;
+    int skill[NumSkills] = {3, 3, 3};
+};
+
 // One vehicle: a ship (is_crew false) or a kerbal (is_crew true); the other
 // group's fields stay empty. A free (EVA) kerbal's `pose` is its world pose; an
 // aboard one's is unused.
@@ -114,6 +125,10 @@ struct SaveShip {
 
     // crew (is_crew true)
     std::string aboard;       // the ship's name ("" = free / on EVA)
+    /* The roster entry this kerbal IS (CrewRoster::id). 0 = anonymous, which is
+       what a save predating the roster reads as; a nonzero id the roster has no
+       entry for is refused on load. */
+    uint64_t profile_id = 0;
     // The capsule part the kerbal sits in, keyed by uid (NOT by index); 0 is
     // the "absent" sentinel, so a save predating uid-keyed crew is refused.
     // Load checks the target is a capsule.
@@ -143,6 +158,7 @@ struct SaveMeta {
     std::string system;      // the system file (res/systems/ksp_system.json)
     std::string parts;       // the parts catalog file (res/data/parts.json)
     std::string experiments; // the family table file (res/data/experiments.json)
+    std::string kerbals;     // the roster file (res/data/kerbals.json)
     double time = 0.0;       // the analytic sim clock (s)
     int time_accel = 1;      // recorded for the round-trip; load starts paused
     std::string active_ship; // display name ("" = none)
@@ -153,6 +169,9 @@ struct SaveMeta {
        that predates science). */
     int science_score = 0;
     std::vector<Experiment> recovered;
+    /* The crew roster as the save knew it (empty = a save predating the
+       roster, which loads the --kerbals file instead). */
+    std::vector<SaveKerbal> roster;
     std::vector<std::string> ships;
 };
 
@@ -375,6 +394,7 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
     if(s.flog.started) { j["flog"] = saveFlogToJson(s.flog); }
     if(s.is_crew) {
         if(!s.aboard.empty()) { j["aboard"] = s.aboard; }
+        if(s.profile_id != 0) { j["profile_id"] = s.profile_id; }
         j["aboard_part"] = s.aboard_part;
         j["pose"] = savePoseToJson(s.pose);
         j["onRails"] = s.onRails;
@@ -433,6 +453,8 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     if(j.contains("flog") && j["flog"].is_object()) { s.flog = saveFlogFromJson(j["flog"]); }
     if(s.is_crew) {
         if(j.contains("aboard") && j["aboard"].is_string()) { s.aboard = j["aboard"].get<std::string>(); }
+        // Absent (a save predating the roster) leaves 0 = anonymous.
+        s.profile_id = readUid(j, "profile_id");
         // uid-keyed: a string/float/negative reads as the refused 0 sentinel.
         s.aboard_part = readUid(j, "aboard_part");
         if(j.contains("pose") && j["pose"].is_object()) { s.pose = savePoseFromJson(j["pose"]); }
@@ -487,6 +509,45 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     return s;
 }
 
+inline nlohmann::json saveKerbalToJson(const SaveKerbal &k) {
+    nlohmann::json j;
+    j["id"]   = k.id;
+    j["name"] = k.name;
+    /* Written as named keys, not an array: a skill added later appends a name
+       instead of shifting what index 1 means. */
+    j["piloting"]    = k.skill[SkillPiloting];
+    j["science"]     = k.skill[SkillScience];
+    j["engineering"] = k.skill[SkillEngineering];
+    return j;
+}
+
+/* Permissive like every other read: an absent skill keeps the default. A
+   missing id or name is NOT permissive -- an entry the fleet cannot point at
+   would silently strip a kerbal's identity, so it throws and the load refuses.
+   Out-of-range skills clamp rather than throw: a hand-edited 9 changes how a
+   kerbal is suited, not whether the save is readable. */
+inline SaveKerbal saveKerbalFromJson(const nlohmann::json &j, const char *ctx) {
+    SaveKerbal k;
+    k.id = readUid(j, "id");
+    if(j.contains("name") && j["name"].is_string()) { k.name = j["name"].get<std::string>(); }
+    if(k.id == 0 || k.name.empty()) {
+        throw std::runtime_error(std::string("save: ") + ctx
+                                 + "roster entry needs a positive \"id\" and a \"name\"");
+    }
+    static const char *kSkillKeys[NumSkills] = { "piloting", "science",
+                                                 "engineering" };
+    for(int s = 0; s < NumSkills; s++) {
+        int v = 3;
+        if(j.contains(kSkillKeys[s]) && j[kSkillKeys[s]].is_number_integer()) {
+            v = j[kSkillKeys[s]].get<int>();
+        }
+        if(v < 1) { v = 1; }
+        if(v > 5) { v = 5; }
+        k.skill[s] = v;
+    }
+    return k;
+}
+
 inline nlohmann::json saveMetaToJson(const SaveMeta &m) {
     nlohmann::json j;
     j["format"]      = m.format;
@@ -494,12 +555,18 @@ inline nlohmann::json saveMetaToJson(const SaveMeta &m) {
     j["system"]      = m.system;
     j["parts"]       = m.parts;
     if(!m.experiments.empty()) { j["experiments"] = m.experiments; }
+    if(!m.kerbals.empty()) { j["kerbals"] = m.kerbals; }
     j["time"]        = m.time;
     j["time_accel"]  = m.time_accel;
     if(!m.active_ship.empty()) { j["active_ship"] = m.active_ship; }
     j["exhaust_scale"] = m.exhaust_scale;
     if(m.science_score != 0) { j["science_score"] = m.science_score; }
     if(!m.recovered.empty()) { j["recovered"] = recoveredListToJson(m.recovered); }
+    if(!m.roster.empty()) {
+        nlohmann::json r = nlohmann::json::array();
+        for(auto &&k : m.roster) { r.push_back(saveKerbalToJson(k)); }
+        j["roster"] = r;
+    }
     j["ships"]       = m.ships;
     return j;
 }
@@ -532,6 +599,9 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     if(j.contains("experiments") && j["experiments"].is_string()) {
         m.experiments = j["experiments"].get<std::string>();
     }
+    if(j.contains("kerbals") && j["kerbals"].is_string()) {
+        m.kerbals = j["kerbals"].get<std::string>();
+    }
     if(j.contains("time") && j["time"].is_number()) { m.time = j["time"].get<double>(); }
     if(j.contains("time_accel") && j["time_accel"].is_number()) { m.time_accel = j["time_accel"].get<int>(); }
     if(j.contains("active_ship") && j["active_ship"].is_string()) { m.active_ship = j["active_ship"].get<std::string>(); }
@@ -548,6 +618,27 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     }
     if(j.contains("recovered")) {
         m.recovered = recoveredListFromJson(j["recovered"]);
+    }
+    if(j.contains("roster") && j["roster"].is_array()) {
+        for(auto &&k : j["roster"]) {
+            if(!k.is_object()) { continue; }
+            SaveKerbal sk = saveKerbalFromJson(k, "save.json: ");
+            /* A duplicate id would make find() pick one arbitrarily, and a
+               duplicate name would make two kerbals indistinguishable in the
+               fleet list -- both are worse than a refused load. */
+            for(const SaveKerbal &e : m.roster) {
+                if(e.id == sk.id) {
+                    throw std::runtime_error("save: save.json: roster has two "
+                                             "entries with id "
+                                             + std::to_string(sk.id));
+                }
+                if(e.name == sk.name) {
+                    throw std::runtime_error("save: save.json: roster has two "
+                                             "entries named " + sk.name);
+                }
+            }
+            m.roster.push_back(sk);
+        }
     }
     if(j.contains("ships") && j["ships"].is_array()) {
         for(auto &&s : j["ships"]) { if(s.is_string()) { m.ships.push_back(s.get<std::string>()); } }

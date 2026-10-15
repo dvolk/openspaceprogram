@@ -1,0 +1,22 @@
+# A fixed pool that REFILLS. "Who is claimed" is derived from the fleet (a
+# profile is taken iff a kerbal vehicle wears its id), not stored on the roster,
+# so recovering 'racer' -- which deletes the ship and with it the crew vehicle it
+# owns -- hands 'Solo' back to the pool with no release call anywhere. Recover,
+# re-enter the VAB, launch again: the same person takes the new seat. A roster
+# that tracked assignment itself would need every delete path to remember to
+# release, and the first one it forgot would shrink the pool forever.
+NAME crew-roster-refill
+ARGS --kerbals e2e/fixtures/tiny_kerbals.json --time-accel 1 --timeout 14 --frame-cap 30
+ARGS --vab res/ships/tanker.json --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --recover 2000 --recover-anywhere
+ARGS --ui-click 5000,"Game Menu/VAB"
+ARGS --vab-launch 7500
+EXPECT Roster: 1 kerbal(s) from e2e/fixtures/tiny_kerbals.json
+EXPECT Crew: 'Solo' aboard 'racer' part 0 (1/1)
+EXPECT [recover] t=
+EXPECT [vab] launched 'tanker' (7 parts)
+EXPECT Crew: 'Solo' aboard 'tanker' part 0 (1/1)
+FORBID no kerbal left
+FORBID GL_
+FORBID error:
+LIMIT 90

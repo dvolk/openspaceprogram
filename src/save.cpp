@@ -162,6 +162,7 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
         Kerbal *k = static_cast<Kerbal *>(v);
         Vehicle *ship = k->aboard();
         s.aboard = (ship != nullptr) ? ship->name : "";
+        s.profile_id = k->profileId;
         s.aboard_part = (k->aboardPart != nullptr) ? k->aboardPart->uid : 0;
         s.pose.body = (v->m_parent != nullptr) ? v->m_parent->name : "";
         s.pose.rotating = v->frame->isRotFrame();
@@ -398,10 +399,25 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
 Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
                             std::map<std::string, Vehicle *> &byName,
                             const std::map<uint64_t, Part *> &savedUidToPart) {
+    /* The roster is where identity lives, so a kerbal naming one must find it
+       there: rebuilding past a missing entry would silently strip that person's
+       skills and name. 0 = a save predating the roster, which stays anonymous.
+       Checked before the build so a throw frees nothing but `k` itself. */
+    const KerbalProfile *profile = (s.profile_id != 0)
+        ? g.roster.find(s.profile_id) : nullptr;
+    if(s.profile_id != 0 && profile == nullptr) {
+        throw std::runtime_error("load: kerbal '" + s.name + "' names roster id "
+                                 + std::to_string(s.profile_id)
+                                 + ", which the roster has no entry for");
+    }
     const PartsCatalog &cat = g.ships.catalog();
     ShipDef def = load_ship_def(resdir::path(s.defPath).c_str(), cat);
     Kerbal *k = new Kerbal;
     k->name = s.name;
+    k->profileId = s.profile_id;
+    /* The roster owns the name, so it wins over the saved one: a rename in the
+       save's own roster reaches the fleet instead of leaving two spellings. */
+    if(profile != nullptr) { k->name = profile->name; }
     k->defPath = s.defPath;
     k->home = g.home;
     k->scenario = nullptr;
@@ -514,6 +530,12 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
         k->parts[0]->container = cap;
         ship->rebuildCompound();
     }
+    /* The identity binding is the one fact about a loaded kerbal the fleet list
+       cannot show, so make it observable: a save that silently rebuilds
+       anonymous people is exactly the bug this line exists to catch. */
+    printf("[crew] loaded '%s'%s\n", k->name.c_str(),
+           s.aboard.empty() ? " on EVA"
+                            : (" aboard '" + s.aboard + "'").c_str());
     return k;
 }
 
@@ -529,6 +551,17 @@ void save_game(Game &g, const std::string &dir) {
     meta.system = g.systemPath.empty() ? g.args.system_file : g.systemPath;
     meta.parts = g.args.parts_file;
     meta.experiments = g.args.experiments_file;
+    meta.kerbals = g.args.kerbals_file;
+    /* The roster travels in the save, so the people a save names are the people
+       it saw -- editing kerbals.json afterwards cannot re-point an old save at
+       different strangers. */
+    for(const KerbalProfile &p : g.roster.profiles) {
+        SaveKerbal sk;
+        sk.id = p.id;
+        sk.name = p.name;
+        for(int r = 0; r < NumSkills; r++) { sk.skill[r] = p.skill[r]; }
+        meta.roster.push_back(sk);
+    }
     meta.time = g.time;
     meta.time_accel = g.time_accel;
     meta.active_ship = (g.ship != nullptr) ? g.ship->name : "";
@@ -550,6 +583,24 @@ void save_game(Game &g, const std::string &dir) {
 
 void load_game(Game &g, const std::string &dir) {
     SaveMeta meta = saveMetaFromJson(readJsonFile(dir + "/save.json"));
+    /* The save's roster REPLACES the --kerbals file's, so a save stays itself
+       after the data file is edited; an absent roster (a save predating the
+       roster) keeps the file's. Done before the fleet build, which resolves
+       every kerbal's profile id against this.
+       The swap is one-way and permanent for the session: newGame and
+       switchSystem do not re-read --kerbals, so a roster a save brought in stays
+       in charge afterwards. Harmless while one roster file serves every save; if
+       saves ever carry different crews, the reload belongs in newGame. */
+    if(!meta.roster.empty()) {
+        g.roster.profiles.clear();
+        for(const SaveKerbal &sk : meta.roster) {
+            KerbalProfile p;
+            p.id = sk.id;
+            p.name = sk.name;
+            for(int r = 0; r < NumSkills; r++) { p.skill[r] = sk.skill[r]; }
+            g.roster.profiles.push_back(p);
+        }
+    }
     /* setTime, not a bare assignment: the clock jumps here and the load starts
        paused, so no tick re-derives the bodies' orbits/spin from the new epoch.
        Done BEFORE the fleet: a ship restored into the ROTATING frame and then
