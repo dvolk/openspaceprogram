@@ -13,7 +13,7 @@ ARGS --resave tmp/e2e_save_out
 ARGS --orbit-log --orbit-interval 1
 EXPECT Load: using saves slot
 EXPECT saves/in (active: racer)
-EXPECT Saved 2 ship(s) to tmp/e2e_save_out
+EXPECT Saved 1 ship(s) to tmp/e2e_save_out
 EXPECT [orbitlog]
 FORBID Save failed
 FORBID Load failed

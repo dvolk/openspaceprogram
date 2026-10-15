@@ -1,6 +1,6 @@
-# The roster travels in the save: save.json carries "roster" and each kerbal
-# ship names its entry with "profile_id", so the people a save saw are the
-# people it loads -- not whoever kerbals.json happens to list first. The
+# The roster travels in the save: save.json carries "roster" and each seat
+# names its entry with "seat_profile" (SavePart), so the people a save saw are
+# the people it loads -- not whoever kerbals.json happens to list first. The
 # binding gets its own log line because the fleet list cannot show it.
 NAME crew-roster-named
 ARGS --load e2e/fixtures/save_roster_named --time-accel 1 --timeout 5

@@ -21,6 +21,33 @@
       "id": "capsule_1",
       "mass": 1246.8699493408203,
       "part": "capsule",
+      "seats": [
+        {
+          "fuel": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            10.0,
+            0.0
+          ],
+          "id": "kerbal_1",
+          "inventory": [
+            {
+              "mass": 97.05,
+              "part": "kerbal",
+              "uid": 999
+            }
+          ],
+          "mass": 87.05,
+          "part": "kerbal",
+          "seat_name": "kerbal",
+          "stage": 1,
+          "uid": 5
+        }
+      ],
       "stage": 1,
       "uid": 1
     },

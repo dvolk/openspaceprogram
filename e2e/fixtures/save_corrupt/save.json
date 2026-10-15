@@ -1,11 +1,10 @@
 {
   "active_ship": "v0",
-  "format": 2,
+  "format": 3,
   "parts": "res/data/parts.json",
   "saved_at": "2026-09-20T01:25:18",
   "ships": [
     "v0",
-    "v1",
     "v2"
   ],
   "system": "res/systems/ksp_system.json",

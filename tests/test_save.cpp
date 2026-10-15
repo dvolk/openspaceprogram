@@ -207,8 +207,6 @@ int main() {
     SaveShip fcrew;
     fcrew.name = "kerbal";
     fcrew.is_crew = true;
-    fcrew.aboard_ship = "v0";
-    fcrew.aboard_part = 101;
     fcrew.flog.started = true;
     fcrew.flog.start_body = "Kerbin";
     fcrew.flog.last_body = "Kerbin";
@@ -256,21 +254,19 @@ int main() {
         CHECK(flogBad3.flog.events[1].body == "Kerbin");
     }
 
-    // --- a crew member (the ship fields are empty) -------------------------
-    // aboard_part is the CAPSULE'S uid (not an index into the ship's part
-    // list): 101 is the capsule's uid in the ship above, so this is a valid
-    // "aboard the capsule" reference. 0 would be the "absent / free" sentinel.
+    /* --- a walking kerbal (the ship fields are empty) ---------------------
+       A crew entry is a kerbal on its own two feet: a SEATED person is not a
+       fleet entry at all, but a `seats` element of their capsule's part entry
+       (SavePart). A crew entry always has a pose -- it is a vehicle. */
     SaveShip crew;
     crew.name = "kerbal";
     crew.defPath = "./res/ships/kerbal.json";
     crew.is_crew = true;
-    crew.aboard_ship = "v0";
-    crew.aboard_part = 101;
-    SaveShip crewOut = saveShipFromJson(saveShipToJson(crew));
+    nlohmann::json crewJ = saveShipToJson(crew);
+    CHECK(crewJ.contains("pose"));   // no seat to inherit a pose from
+    SaveShip crewOut = saveShipFromJson(crewJ);
     CHECK(crewOut.is_crew == true);
     CHECK(crewOut.name == "kerbal");
-    CHECK(crewOut.aboard_ship == "v0");
-    CHECK(crewOut.aboard_part == 101);
     CHECK(crewOut.parts.empty());   // the ship fields are not written for a crew
 
     // phase 4.1: the suit tank contents round-trip (a kerbal that burned some
@@ -279,8 +275,6 @@ int main() {
     crewFuel.name = "kerbal";
     crewFuel.defPath = "./res/ships/kerbal.json";
     crewFuel.is_crew = true;
-    crewFuel.aboard_ship = "v0";
-    crewFuel.aboard_part = 101;
     // 8.5 kg of hydrazine (was 10.0 full) -- the rest are 0
     crewFuel.suit_fuel.push_back(0.0);   // Hydrogen
     crewFuel.suit_fuel.push_back(0.0);   // LOX
@@ -299,8 +293,6 @@ int main() {
     crewOld.name = "kerbal";
     crewOld.defPath = "./res/ships/kerbal.json";
     crewOld.is_crew = true;
-    crewOld.aboard_ship = "v0";
-    crewOld.aboard_part = 101;
     SaveShip crewOldOut = saveShipFromJson(saveShipToJson(crewOld));
     CHECK(crewOldOut.suit_fuel.empty());
 
@@ -352,8 +344,6 @@ int main() {
         SaveShip crewSci;
         crewSci.name = "kerbal";
         crewSci.is_crew = true;
-        crewSci.aboard_ship = "v0";
-        crewSci.aboard_part = 101;
         crewSci.suit_experiments.push_back(e1);
         crewSci.suit_experiments.push_back(e2);
         crewSci.suit_experiments.push_back(e3);
@@ -442,6 +432,67 @@ int main() {
         CHECK(noInvOut.inventory.empty());
     }
 
+    /* Seat occupants ride INSIDE the capsule's part entry, in their own array
+       rather than `inventory`: a person is not cargo, so the loader never has to
+       route one by part type. Identity is the roster id, or a name for an
+       occupant the roster has no entry for. */
+    {
+        SavePart cap;
+        cap.part = "capsule";
+        cap.uid = 401;
+        cap.id = "capsule_1";
+        cap.mass = 1149.82;
+        cap.fuel = std::vector<double>(8, 0.0);
+
+        SavePart ash;
+        ash.part = "kerbal";
+        ash.uid = 402;
+        ash.id = "kerbal_1";
+        ash.mass = 87.05;
+        ash.fuel = std::vector<double>(8, 0.0);
+        ash.fuel[(int)ResourceType::Hydrazine] = 6.25;
+        ash.seat_profile = 1;
+        // what the person carries stays in the suit's own inventory
+        SavePart pocket;
+        pocket.part = "mono_tank_r1";
+        pocket.uid = 404;
+        pocket.mass = 88.99;
+        pocket.fuel = std::vector<double>(8, 0.0);
+        ash.inventory.push_back(pocket);
+        cap.seats.push_back(ash);
+
+        SavePart anonymous;
+        anonymous.part = "kerbal";
+        anonymous.uid = 403;
+        anonymous.mass = 87.05;
+        anonymous.seat_name = "Nobody";
+        cap.seats.push_back(anonymous);
+
+        nlohmann::json capJ = savePartToJson(cap);
+        CHECK(capJ.contains("seats"));
+        // The capsule is not itself a seat: no identity keys on it.
+        CHECK(!capJ.contains("seat_profile"));
+        CHECK(!capJ.contains("seat_name"));
+        SavePart capOut = savePartFromJson(capJ);
+        CHECK(capOut.seats.size() == 2);
+        if(capOut.seats.size() == 2) {
+            CHECK(capOut.seats[0].part == "kerbal");
+            CHECK(capOut.seats[0].uid == 402);
+            CHECK(capOut.seats[0].seat_profile == 1);
+            CHECK(capOut.seats[0].seat_name.empty());
+            CHECK(near(capOut.seats[0].fuel[(int)ResourceType::Hydrazine], 6.25));
+            CHECK(capOut.seats[0].inventory.size() == 1);
+            if(!capOut.seats[0].inventory.empty()) {
+                CHECK(capOut.seats[0].inventory[0].uid == 404);
+            }
+            CHECK(capOut.seats[1].seat_profile == 0);
+            CHECK(capOut.seats[1].seat_name == "Nobody");
+        }
+        // A part with no seats writes no `seats` key at all.
+        CHECK(!savePartToJson(SavePart{}).contains("seats"));
+        CHECK(savePartFromJson(savePartToJson(SavePart{})).seats.empty());
+    }
+
     // phase 4.6: the SUIT inventory round-trips on the crew ship (the pocket
     // items a kerbal carries free), alongside the suit's own fuel
     {
@@ -449,8 +500,6 @@ int main() {
         crewInv.name = "kerbal";
         crewInv.defPath = "./res/ships/kerbal.json";
         crewInv.is_crew = true;
-        crewInv.aboard_ship = "v0";
-        crewInv.aboard_part = 101;
         for(int r = 0; r < 8; r++) {
             crewInv.suit_fuel.push_back(r == (int)ResourceType::Hydrazine ? 8.5 : 0.0);
         }
@@ -491,18 +540,15 @@ int main() {
         crewNoInv.name = "kerbal";
         crewNoInv.defPath = "./res/ships/kerbal.json";
         crewNoInv.is_crew = true;
-        crewNoInv.aboard_ship = "v0";
-        crewNoInv.aboard_part = 101;
         SaveShip crewNoInvOut = saveShipFromJson(saveShipToJson(crewNoInv));
         CHECK(crewNoInvOut.suit_inventory.empty());
     }
 
-    // a free (EVA) kerbal carries its pose (the load restores it)
+    // a walking (EVA) kerbal carries its pose (the load restores it)
     SaveShip eva;
     eva.name = "kerbal";
     eva.defPath = "./res/ships/kerbal.json";
     eva.is_crew = true;
-    eva.aboard_ship = "";
     eva.pose.body = "Duna";
     eva.pose.rotating = true;
     eva.pose.pos = glm::dvec3(2500.0, -32000.0, 1500.0);
@@ -515,7 +561,7 @@ int main() {
     eva.onRails = true;   // coasting on the rails (the load re-parks it)
     SaveShip evaOut = saveShipFromJson(saveShipToJson(eva));
     CHECK(evaOut.is_crew == true);
-    CHECK(evaOut.aboard_ship.empty());
+    CHECK(evaOut.defPath == "./res/ships/kerbal.json");
     CHECK(evaOut.pose.body == "Duna");
     CHECK(evaOut.pose.rotating == true);
     CHECK(vnear(evaOut.pose.pos, eva.pose.pos));
@@ -753,21 +799,15 @@ int main() {
     CHECK(oldOut.uid == 0);
     CHECK(oldOut.parent == 0);
 
-    /* The crew's container is uid-keyed too: a non-uid value (a string -- the
-       shape an index-era / hand-edited file could have) reads back as the
-       "absent" 0, which load refuses instead of silently parking the kerbal
-       in part 0. A float would truncate to a valid uid and mis-resolve, so it
-       is refused the same way. */
-    nlohmann::json badCrew = nlohmann::json::object();
-    badCrew["is_crew"] = true;
-    badCrew["aboard_ship"] = "v0";          // a slug, the per-save vehicle key
-    badCrew["aboard_part"] = "capsule_1";   // a string, not a uid
-    CHECK(saveShipFromJson(badCrew).aboard_part == 0);
-    nlohmann::json floatCrew = nlohmann::json::object();
-    floatCrew["is_crew"] = true;
-    floatCrew["aboard_ship"] = "v0";
-    floatCrew["aboard_part"] = 5.9;         // a float (would truncate to uid 5)
-    CHECK(saveShipFromJson(floatCrew).aboard_part == 0);
+    /* A seat's roster id is uid-keyed like every other reference in a save: a
+       non-uid value (a string -- the shape a hand-edited file could have) reads
+       back as the "absent" 0 = anonymous, which is what a save predating the
+       roster means. A float would truncate to a valid id and bind the wrong
+       person, so it is refused the same way. */
+    CHECK(savePartFromJson(nlohmann::json::parse(
+              R"({"part":"kerbal","uid":5,"seat_profile":"1"})")).seat_profile == 0);
+    CHECK(savePartFromJson(nlohmann::json::parse(
+              R"({"part":"kerbal","uid":5,"seat_profile":1.9})")).seat_profile == 0);
 
     /* Two parts with the SAME id must still round-trip as two distinguishable
        parts. This is the shape a docked pair of same-def ships saves as, and

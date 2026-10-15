@@ -3,7 +3,7 @@ ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,ro
 ARGS --reload e2e/fixtures/save_racer_badcrew --reload-at 2000
 ARGS --orbit-log --orbit-interval 0.5
 EXPECT [load] refused e2e/fixtures/save_racer_badcrew
-EXPECT is parked in 'fuel_tank'
+EXPECT part 'fuel_tank' holds 1 seat(s)
 EXPECT not a capsule
 # bare "Timeout reached": the elapsed figure drifts with frame timing
 EXPECT Timeout reached

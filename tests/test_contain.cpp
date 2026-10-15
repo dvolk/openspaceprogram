@@ -377,8 +377,9 @@ int main() {
         CHECK_NEAR(mCap->effectiveMass() + mTank->effectiveMass(), 697.05, 1e-12,
                    "effectiveMass: the ship's parts sum to ship + kerbal");
         /* The compound only re-reads effectiveMass on a rebuild, which is why
-           every seat change calls rebuildCompound (fill_seat, kerbalBoard,
-           kerbalEVA, buildSeatFromSave). */
+           every live seat change calls rebuildCompound (fill_seat, kerbalBoard,
+           kerbalEVA). A load does not: buildSeatParts parks the seats before
+           Vehicle::finalize builds the compound the first time. */
         M.v->rebuildCompound();
         CHECK_NEAR(M.v->hull->mass, 697.05, 1e-9,
                    "rebuildCompound: the seat rides the capsule's mass");

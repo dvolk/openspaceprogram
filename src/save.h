@@ -59,6 +59,17 @@ struct SavePart {
     std::vector<Experiment> experiments;
     /* Parts parked in this part's inventory; serialized depth-first. */
     std::vector<SavePart> inventory;
+    /* Seat occupants (part.h): people parked in this part, NOT cargo. They live
+       in their own array rather than `inventory` so the loader never has to
+       decide by part type whether an entry is a person -- the shape says it.
+       Only a capsule (crew_capacity > 0) may have any. */
+    std::vector<SavePart> seats;
+    /* Seat occupant only: the roster entry this person IS (CrewRoster::id);
+       0 = anonymous, which is what a save predating the roster reads as. */
+    uint64_t seat_profile = 0;
+    /* Seat occupant only: the name of an anonymous occupant. Ignored when
+       seat_profile names a roster entry -- the roster owns the name. */
+    std::string seat_name;
 };
 
 // A one-way fuel link between two parts' fuel groups, by uid.
@@ -98,11 +109,10 @@ struct SaveKerbal {
     int skill[NumSkills] = {3, 3, 3};
 };
 
-/* One fleet entry: a ship (is_crew false), a walking kerbal (is_crew true,
-   aboard_ship empty) or a seat occupant (is_crew true, aboard_ship set -- the
-   suit Part parked in a capsule, part.h). The other group's fields stay empty.
-   A walking kerbal's `pose` is its world pose; a seat writes none (it has no
-   pose of its own -- the loader parks it from its capsule). */
+/* One fleet entry: a vessel (is_crew false) or a WALKING kerbal (is_crew true).
+   A seated person is not a fleet entry at all -- they are a `seats` element of
+   their capsule's part entry (SavePart), because a seat is data on a Part, not a
+   vehicle (part.h). */
 struct SaveShip {
     std::string name;
     std::string defPath;
@@ -130,19 +140,13 @@ struct SaveShip {
     uint64_t dock_target_port = 0;   // part uid on the target ship (0 = none)
     uint64_t dock_arm_port = 0;      // this ship's own port part uid (0 = none)
 
-    // crew (is_crew true)
-    /* The ship this kerbal is parked in, by SAVE SLUG (its entry in
-       SaveMeta::ships), NOT by display name: a name is another vehicle's as far
-       as the file is concerned. "" = free / on EVA. */
-    std::string aboard_ship;
+    // crew (is_crew true): a kerbal walking on its own two feet (eva.h). Its
+    // suit is the one Part of its own vehicle, so the suit's state lives here;
+    // a SEATED person's suit state lives in the capsule's `seats` entry.
     /* The roster entry this kerbal IS (CrewRoster::id). 0 = anonymous, which is
        what a save predating the roster reads as; a nonzero id the roster has no
        entry for is refused on load. */
     uint64_t profile_id = 0;
-    // The capsule part the kerbal sits in, keyed by uid (NOT by index); 0 is
-    // the "absent" sentinel, so a save predating uid-keyed crew is refused.
-    // Load checks the target is a capsule.
-    uint64_t aboard_part = 0; // the aboard ship's container part uid (0 = free / on EVA)
     /* Suit tank contents (kg per ResourceType); empty = the save predates the
        field. */
     std::vector<double> suit_fuel;
@@ -159,14 +163,18 @@ struct SaveShip {
 /* The global save state (dir/save.json). `ships` is the ordered slug list in
    canonical fleet order, and a SLUG is this save's key for a vehicle: it names
    the file that holds it (ships/<slug>.json), and every cross-vehicle reference
-   -- active_ship, SaveShip::aboard_ship, SaveShip::dock_target_ship -- is a
-   slug. Display names are display only: two vehicles could share one and a load
-   would still resolve each reference to the right one (#266). */
+   -- active_ship, SaveShip::dock_target_ship -- is a slug. Display names are
+   display only: two vehicles could share one and a load would still resolve each
+   reference to the right one (#266). */
 /* The format this build writes and reads. Bump on any change an older reader
    could MISREAD (a renamed or repurposed key); additive changes need nothing.
-   2: those three references hold a slug, not a display name -- a format-1 file
-   names a ship there, which this build would read as a missing vehicle. */
-static const int kSaveFormat = 2;
+   2: those references hold a slug, not a display name -- a format-1 file
+   names a ship there, which this build would read as a missing vehicle.
+   3: a seated kerbal is a `seats` element of its capsule's part entry, not a
+   fleet entry of its own. A format-2 file lists one as ships/vN.json with
+   aboard_ship + aboard_part, which this build would read as a walking kerbal
+   with no pose -- i.e. drop the person onto the ground at the origin. */
+static const int kSaveFormat = 3;
 
 /* Is this a usable slug? A slug is interpolated into a path (ships/<slug>.json)
    AND keys every cross-vehicle reference, so a hand-edited save.json gets both
@@ -332,6 +340,13 @@ inline nlohmann::json savePartToJson(const SavePart &p) {
         for(auto &&sp : p.inventory) { inv.push_back(savePartToJson(sp)); }
         j["inventory"] = inv;
     }
+    if(p.seat_profile != 0) { j["seat_profile"] = p.seat_profile; }
+    if(!p.seat_name.empty()) { j["seat_name"] = p.seat_name; }
+    if(!p.seats.empty()) {
+        nlohmann::json ss = nlohmann::json::array();
+        for(auto &&sp : p.seats) { ss.push_back(savePartToJson(sp)); }
+        j["seats"] = ss;
+    }
     return j;
 }
 
@@ -355,6 +370,11 @@ inline SavePart savePartFromJson(const nlohmann::json &j) {
     }
     if(j.contains("inventory") && j["inventory"].is_array()) {
         for(auto &&sp : j["inventory"]) { if(sp.is_object()) { p.inventory.push_back(savePartFromJson(sp)); } }
+    }
+    p.seat_profile = readUid(j, "seat_profile");
+    if(j.contains("seat_name") && j["seat_name"].is_string()) { p.seat_name = j["seat_name"].get<std::string>(); }
+    if(j.contains("seats") && j["seats"].is_array()) {
+        for(auto &&sp : j["seats"]) { if(sp.is_object()) { p.seats.push_back(savePartFromJson(sp)); } }
     }
     return p;
 }
@@ -426,9 +446,7 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
     // Skipped when the journal never started.
     if(s.flog.started) { j["flog"] = saveFlogToJson(s.flog); }
     if(s.is_crew) {
-        if(!s.aboard_ship.empty()) { j["aboard_ship"] = s.aboard_ship; }
         if(s.profile_id != 0) { j["profile_id"] = s.profile_id; }
-        j["aboard_part"] = s.aboard_part;
         j["onRails"] = s.onRails;
         if(!s.suit_fuel.empty()) { j["suit_fuel"] = s.suit_fuel; }
         if(!s.suit_inventory.empty()) {
@@ -439,12 +457,10 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
         if(!s.suit_experiments.empty()) {
             j["suit_experiments"] = experimentListToJson(s.suit_experiments);
         }
-        /* pose + view_yaw are a WALKING kerbal's: a seat has no world pose of
-           its own (the loader parks it from its capsule) and no camera. */
-        if(s.aboard_ship.empty()) {
-            j["pose"] = savePoseToJson(s.pose);
-            j["view_yaw"] = s.view_yaw;
-        }
+        /* A walking kerbal is a vehicle of its own, so it has a pose and a
+           camera. A seated person is not here at all (SavePart::seats). */
+        j["pose"] = savePoseToJson(s.pose);
+        j["view_yaw"] = s.view_yaw;
         return j;
     }
     j["home"]         = s.home;
@@ -489,11 +505,8 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     // Absent (an old save) leaves flog default.
     if(j.contains("flog") && j["flog"].is_object()) { s.flog = saveFlogFromJson(j["flog"]); }
     if(s.is_crew) {
-        if(j.contains("aboard_ship") && j["aboard_ship"].is_string()) { s.aboard_ship = j["aboard_ship"].get<std::string>(); }
         // Absent (a save predating the roster) leaves 0 = anonymous.
         s.profile_id = readUid(j, "profile_id");
-        // uid-keyed: a string/float/negative reads as the refused 0 sentinel.
-        s.aboard_part = readUid(j, "aboard_part");
         if(j.contains("pose") && j["pose"].is_object()) { s.pose = savePoseFromJson(j["pose"]); }
         if(j.contains("onRails") && j["onRails"].is_boolean()) { s.onRails = j["onRails"].get<bool>(); }
         if(j.contains("suit_fuel") && j["suit_fuel"].is_array()) {

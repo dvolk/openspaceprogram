@@ -2,7 +2,7 @@
   "active_ship": "v1",
   "exhaust_scale": 1.0,
   "experiments": "res/data/experiments.json",
-  "format": 2,
+  "format": 3,
   "kerbals": "res/data/kerbals.json",
   "parts": "res/data/parts.json",
   "roster": [
@@ -65,8 +65,7 @@
   ],
   "saved_at": "2026-10-15T13:52:29Z",
   "ships": [
-    "v0",
-    "v1"
+    "v0"
   ],
   "system": "res/systems/ksp_system.json",
   "time": 3.0833333333333273,

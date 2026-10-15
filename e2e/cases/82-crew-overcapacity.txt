@@ -3,8 +3,8 @@ ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,ro
 ARGS --reload e2e/fixtures/save_racer_overcrew --reload-at 2000
 ARGS --orbit-log --orbit-interval 0.5
 EXPECT [load] refused e2e/fixtures/save_racer_overcrew
-EXPECT is full
-EXPECT would exceed it
+EXPECT has 2 seat(s), more than its
+EXPECT 1-seat capacity
 # bare "Timeout reached": the elapsed figure drifts with frame timing
 EXPECT Timeout reached
 EXPECT [orbitlog]

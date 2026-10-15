@@ -2,7 +2,7 @@
   "active_ship": "v0",
   "exhaust_scale": 1.0,
   "experiments": "res/data/experiments.json",
-  "format": 2,
+  "format": 3,
   "kerbals": "res/data/kerbals.json",
   "parts": "res/data/parts.json",
   "roster": [

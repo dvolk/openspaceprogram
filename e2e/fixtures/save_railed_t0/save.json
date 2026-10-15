@@ -1,12 +1,11 @@
 {
   "active_ship": "v0",
   "exhaust_scale": 1.0,
-  "format": 2,
+  "format": 3,
   "parts": "res/data/parts.json",
   "saved_at": "2026-09-25T02:22:09Z",
   "ships": [
-    "v0",
-    "v1"
+    "v0"
   ],
   "system": "res/systems/ksp_system.json",
   "time": 0.0,
