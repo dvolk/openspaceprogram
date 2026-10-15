@@ -55,7 +55,9 @@ size_t countVehicles(System &sys);
    vehicle by its slug (#266), so a clash no longer mis-resolves a load. Worth
    preventing anyway: the ship list, the tracking window, toasts and the
    [undock] line all show names, and two ships called 'racer' are unreadable
-   there.
+   there. Name-keyed resolution also still lives in the transfer planner, which
+   looks a --transfer-target up by display name (transferplanner.cpp) -- a clash
+   there does pick the wrong vessel, so this dedup is not only cosmetic.
 
    `roster` (nullable) additionally reserves the kerbals' names. A kerbal's
    display name IS its roster name and is never deduped, so without this a ship

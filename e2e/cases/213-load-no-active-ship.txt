@@ -1,0 +1,16 @@
+# #266's fallback branch: save.json here is save_roster_named with the
+# "active_ship" key REMOVED, so the loader has to pick an active vehicle itself.
+# The fleet is v0 'racer' and v1 'Ash' -- the kerbal sitting in that ship -- so
+# the fallback must be the first vehicle in the save's own order, which is the
+# ship. The old fallback was the alphabetically first NAME, which picked 'Ash'
+# and left the game trying to fly a kerbal parked inside a capsule.
+NAME load-no-active-ship
+ARGS --load e2e/fixtures/save_no_active --time-accel 1 --timeout 3 --eva 2500
+EXPECT [crew] loaded 'Ash' aboard 'racer'
+EXPECT Loaded game from e2e/fixtures/save_no_active (active: racer)
+EXPECT EVA: 'Ash' out of 'racer' part 0
+FORBID (active: Ash)
+FORBID --eva: no crew aboard
+FORBID GL_
+FORBID error:
+LIMIT 60

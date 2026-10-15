@@ -2,9 +2,11 @@
 
 #include "save.h"
 
+#include <algorithm>   // std::find (save_game's orphan ship-file sweep)
 #include <cassert>
 #include <cstdio>
 #include <ctime>
+#include <filesystem>  // directory_iterator in save_game
 #include <fstream>
 #include <map>
 #include <stdexcept>
@@ -257,6 +259,11 @@ SaveShip saveShipFromVehicle(Vehicle *v,
         dk.name = v->seams[k].name;
         s.docks.push_back(dk);
     }
+    /* Every ship delete clears the other ships' dock intents first (game.cpp),
+       so a non-null target is in the fleet. Assert it: the slug map is keyed by
+       pointer, so a recycled address would resolve to a VALID slug for the wrong
+       ship, and the lenient fallback below would hide that. */
+    assert(v->dockTargetShip == nullptr || slugs.count(v->dockTargetShip) != 0);
     /* A dock INTENT, not a seam: if the target somehow has no slug, dropping
        the intent loses nothing the player cannot re-target. */
     s.dock_target_ship = slugOf(slugs, v->dockTargetShip);
@@ -601,6 +608,10 @@ void save_game(Game &g, const std::string &dir) {
        the referent can sit later in the walk than the referrer. */
     std::map<const Vehicle *, std::string> slugs;
     for(size_t i = 0; i < fleet.size(); i++) { slugs[fleet[i]] = slug(i); }
+    /* The active ship is a vehicle the player is flying, so it is in the fleet
+       the walk just took. A miss means the two disagree, and "" would silently
+       promote built.front() on the next load. */
+    assert(g.ship == nullptr || slugs.count(g.ship) != 0);
     meta.active_ship = slugOf(slugs, g.ship);
     for(size_t i = 0; i < fleet.size(); i++) {
         SaveShip s = saveShipFromVehicle(fleet[i], slugs);
@@ -608,6 +619,25 @@ void save_game(Game &g, const std::string &dir) {
         writeJson(dir + "/ships/" + slug(i) + ".json", saveShipToJson(s));
     }
     writeJson(dir + "/save.json", saveMetaToJson(meta));
+    /* Drop ship files this fleet no longer has. A save directory is REUSED
+       (quicksave rotation, --resave), so a shrunk fleet leaves orphan
+       ships/vN.json that nothing reads but that make the tree lie about its
+       fleet -- e2e 181's whole point is diffing a resave against its input.
+       Done AFTER the writes, so a throw partway leaves the previous files
+       alone rather than deleting first and writing half. */
+    {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        fs::directory_iterator it(dir + "/ships", ec), end;
+        for(; !ec && it != end; it.increment(ec)) {
+            if(it->path().extension() != ".json") { continue; }
+            const std::string stem = it->path().stem().string();
+            if(std::find(meta.ships.begin(), meta.ships.end(), stem)
+               == meta.ships.end()) {
+                fs::remove(it->path(), ec);
+            }
+        }
+    }
     printf("Saved %zu ship(s) to %s (game '%s')\n", fleet.size(), dir.c_str(),
            g.gameName.c_str());
 }
@@ -645,8 +675,10 @@ void load_game(Game &g, const std::string &dir) {
     }
 
     /* Transactional: a load that throws leaves the running FLEET exactly as it
-       was (only detached from the bodies' ship lists, not deleted). The clock,
-       frames, time_accel and exhaust_scale above are NOT rolled back. */
+       was (only detached from the bodies' ship lists, not deleted). NOT rolled
+       back: the clock, frames, time_accel and exhaust_scale above, nor the
+       roster swap -- once save.json has been read there is nothing to restore
+       the --kerbals file's roster from. */
 
     std::vector<SaveShip> saves;
     saves.reserve(meta.ships.size());
@@ -752,10 +784,14 @@ void load_game(Game &g, const std::string &dir) {
     }
 
     // the active ship
+    /* A referent parked inside a capsule is refused: an aboard kerbal is in the
+       fleet but not controllable (Game refuses to fly one), so honouring it
+       would load the player into a state they cannot leave without an EVA. A
+       FREE kerbal is fine -- that is how an EVA-only save resumes. */
     Vehicle *active = nullptr;
     if(!meta.active_ship.empty()) {
         std::map<std::string, Vehicle *>::const_iterator it = bySlug.find(meta.active_ship);
-        if(it != bySlug.end()) { active = it->second; }
+        if(it != bySlug.end() && !it->second->isCrewAboard()) { active = it->second; }
     }
     /* Nothing recorded (or a slug the save no longer has): take the first in
        canonical fleet order, which is what a fresh boot makes active. This used

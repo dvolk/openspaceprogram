@@ -107,8 +107,8 @@ int main() {
     ship.active_stage = 2;
     ship.total_stages = 3;
     ship.slew_request = 1;   // SlewMode SlewPrograde (vehicle.h); the int is what saves
-    ship.docks.push_back(SaveDock{ 101, 101, "station" });
-    ship.dock_target_ship = "station";
+    ship.docks.push_back(SaveDock{ 101, 101, "station" });   // a seam LABEL, not a key
+    ship.dock_target_ship = "v1";   // a SAVE SLUG, not a display name (#266)
     ship.dock_target_port = 103;   // a part uid on the TARGET ship
     ship.dock_arm_port = 101;
 
@@ -674,7 +674,24 @@ int main() {
     CHECK(ships_refused({"a/b"}));
     CHECK(ships_refused({""}));                // would read ships/.json
     CHECK(ships_refused({".."}));
+    /* Control characters: readJsonFile hands path.c_str() to ifstream, so a NUL
+       truncates the path and the ".json" suffix with it -- the failure lands as
+       a misleading "cannot open", and the two keys alias one file. */
+    CHECK(ships_refused({"v0", std::string("v0\0x", 4)}));
+    CHECK(ships_refused({"v0\n"}));
     CHECK(!ships_refused({"v0", "v1", "capsule-7"}));   // ordinary keys pass
+
+    /* A non-string entry is not a vehicle to skip: skipping drops a ship file
+       and the load reports success with a smaller fleet. */
+    {
+        nlohmann::json j = nlohmann::json::object();
+        j["ships"] = nlohmann::json::array();
+        j["ships"].push_back("v0");
+        j["ships"].push_back(5);
+        bool threw = false;
+        try { saveMetaFromJson(j); } catch(const std::runtime_error &) { threw = true; }
+        CHECK(threw);
+    }
 
     // a hand-edited scale is clamped to the CLI range (0.5-5)
     nlohmann::json wild = nlohmann::json::object();

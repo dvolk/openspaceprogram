@@ -1,6 +1,5 @@
 {
   "aboard_part": 0,
-  "aboard_ship": "",
   "defPath": "./res/ships/kerbal.json",
   "is_crew": true,
   "name": "kerbal",

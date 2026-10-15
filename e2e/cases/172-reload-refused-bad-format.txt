@@ -5,12 +5,16 @@ NAME reload-refused-bad-format
 # pose.pos parks the ship at the body's centre, alt = -radius -- and the load
 # would report success. src/save.h kSaveFormat is the gate; the refusal lands in
 # ensureSystemForSave BEFORE any system switch, so the running game survives.
+# The EXPECT stops before the number: kSaveFormat climbs, and pinning the
+# literal value means editing this case on every bump for no extra information.
+# The fixture's own format is deliberately absurd (see its save.json) so it
+# cannot one day BE this build's format.
 ARGS --system res/systems/ksp_system.json --time-accel 1
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --reload e2e/fixtures/save_bad_format --reload-at 2000
 ARGS --orbit-log --orbit-interval 0.5
 ARGS --timeout 8
-EXPECT [load] refused e2e/fixtures/save_bad_format: its "format" is not this build's format 2
+EXPECT [load] refused e2e/fixtures/save_bad_format: its "format" is not this build's format
 EXPECT Timeout reached (8.
 EXPECT [orbitlog]
 CHECK len(orbit) >= 4

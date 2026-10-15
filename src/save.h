@@ -164,6 +164,23 @@ struct SaveShip {
    names a ship there, which this build would read as a missing vehicle. */
 static const int kSaveFormat = 2;
 
+/* Is this a usable slug? A slug is interpolated into a path (ships/<slug>.json)
+   AND keys every cross-vehicle reference, so a hand-edited save.json gets both
+   checks before either use: no path separators, no control characters (a NUL
+   truncates the path at the C boundary in readJsonFile, which loses the ".json"
+   suffix and reports a confusing "cannot open"), and not "." / "..".
+   Shared because save.json is read in three places (saveMetaFromJson,
+   saveShipBodies, saveSystemFile) and a guard in only one of them is a hole in
+   the other two. */
+inline bool slugUsable(const std::string &s) {
+    if(s.empty() || s == "." || s == "..") { return false; }
+    for(char c : s) {
+        const unsigned char u = (unsigned char)c;
+        if(u < 0x20u || u == 0x7fu || c == '/' || c == '\\') { return false; }
+    }
+    return true;
+}
+
 struct SaveMeta {
     int format = kSaveFormat;
     std::string saved_at;    // wall-clock (human-readable; not parsed back)
@@ -654,16 +671,18 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     }
     if(j.contains("ships") && j["ships"].is_array()) {
         for(auto &&s : j["ships"]) {
-            if(!s.is_string()) { continue; }
+            /* A non-string entry is not a vehicle to skip: skipping drops a
+               ship file and the load reports success with a smaller fleet.
+               Refuse, as the format gate above does. */
+            if(!s.is_string()) {
+                throw std::runtime_error(std::string("save: save.json: ships "
+                                         "entry must be a string, got ")
+                                         + s.type_name());
+            }
             const std::string sh = s.get<std::string>();
-            /* A slug is both a filename (ships/<slug>.json) and the key every
-               cross-vehicle reference uses, so a hand-edited save gets the same
-               two guards a duplicate part uid gets: it must not escape the save
-               directory, and two entries must not claim one key -- which would
-               put the ambiguous-reference bug (#266) back through the side door. */
-            if(sh.empty() || sh == "." || sh == ".."
-               || sh.find('/') != std::string::npos
-               || sh.find('\\') != std::string::npos) {
+            /* One key claimed twice puts the ambiguous-reference bug (#266)
+               back in through the side door, so it gets the same treatment. */
+            if(!slugUsable(sh)) {
                 throw std::runtime_error("save: save.json: ships entry \"" + sh
                                          + "\" is not a usable file name");
             }
@@ -693,7 +712,11 @@ inline std::vector<std::string> saveShipBodies(const std::string &dir) {
     }
     if(!meta.contains("ships") || !meta["ships"].is_array()) { return bodies; }
     for(auto &&slug : meta["ships"]) {
-        if(!slug.is_string()) { continue; }
+        /* This runs BEFORE saveMetaFromJson on both load paths (boot --load and
+           a cross-system reload), so it cannot count on the ships list having
+           been validated. Skip an unusable slug rather than throw: the whole
+           function is a best-effort peek that must never fail a load. */
+        if(!slug.is_string() || !slugUsable(slug.get<std::string>())) { continue; }
         nlohmann::json s;
         {
             std::ifstream f(dir + "/ships/" + slug.get<std::string>() + ".json");

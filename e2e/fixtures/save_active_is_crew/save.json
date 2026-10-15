@@ -1,0 +1,74 @@
+{
+  "active_ship": "v1",
+  "exhaust_scale": 1.0,
+  "experiments": "res/data/experiments.json",
+  "format": 2,
+  "kerbals": "res/data/kerbals.json",
+  "parts": "res/data/parts.json",
+  "roster": [
+    {
+      "engineering": 3,
+      "id": 1,
+      "name": "Ash",
+      "piloting": 4,
+      "science": 2
+    },
+    {
+      "engineering": 2,
+      "id": 2,
+      "name": "Vela",
+      "piloting": 3,
+      "science": 5
+    },
+    {
+      "engineering": 5,
+      "id": 3,
+      "name": "Corvin",
+      "piloting": 2,
+      "science": 2
+    },
+    {
+      "engineering": 2,
+      "id": 4,
+      "name": "Marla",
+      "piloting": 5,
+      "science": 1
+    },
+    {
+      "engineering": 3,
+      "id": 5,
+      "name": "Ilo",
+      "piloting": 3,
+      "science": 3
+    },
+    {
+      "engineering": 4,
+      "id": 6,
+      "name": "Brann",
+      "piloting": 4,
+      "science": 3
+    },
+    {
+      "engineering": 3,
+      "id": 7,
+      "name": "Yusra",
+      "piloting": 2,
+      "science": 4
+    },
+    {
+      "engineering": 5,
+      "id": 8,
+      "name": "Ottilie",
+      "piloting": 3,
+      "science": 4
+    }
+  ],
+  "saved_at": "2026-10-15T13:52:29Z",
+  "ships": [
+    "v0",
+    "v1"
+  ],
+  "system": "res/systems/ksp_system.json",
+  "time": 3.0833333333333273,
+  "time_accel": 1
+}

@@ -1,6 +1,6 @@
 {
   "active_ship": "racer",
-  "format": 99,
+  "format": 2147483647,
   "parts": "res/data/parts.json",
   "saved_at": "2026-10-12T00:00:00Z",
   "ships": [
