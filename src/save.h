@@ -2,10 +2,11 @@
 
 // save.h -- saving + loading a running game (the live fleet + crew + clock).
 // A save is a DIRECTORY: dir/save.json (global state + the ordered ship list)
-// plus dir/ships/<slug>.json, one file per entry (a ship, a walking kerbal, or
-// a seat occupant). The world re-derives from the analytic clock, so only the
-// fleet is authoritative: part structure, tank contents, mass, pose, staging,
-// docking, crew.
+// plus dir/ships/<slug>.json, one file per FLEET ENTRY -- a vessel or a walking
+// kerbal. A seated person is not an entry: they are a `seats` element of their
+// capsule's part entry (SavePart). The world re-derives from the analytic clock,
+// so only the fleet is authoritative: part structure, tank contents, mass, pose,
+// staging, docking, crew.
 // Pure JSON (de)serialization and the save-directory helpers are header-only
 // (unit-testable headless); the Game-coupled capture/restore lives in save.cpp.
 
@@ -502,6 +503,14 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     if(j.contains("name") && j["name"].is_string()) { s.name = j["name"].get<std::string>(); }
     if(j.contains("defPath") && j["defPath"].is_string()) { s.defPath = j["defPath"].get<std::string>(); }
     if(j.contains("is_crew") && j["is_crew"].is_boolean()) { s.is_crew = j["is_crew"].get<bool>(); }
+    /* Unknown keys are normally ignored, but not this one: seats live inside a
+       capsule's PART entry, and a crew entry has no parts at all, so a top-level
+       array is a person with nowhere to go. Parsing is the only layer that still
+       sees it -- the builders get a SaveShip, where the array is already gone. */
+    if(j.contains("seats")) {
+        throw std::runtime_error("load: '" + s.name + "' has a top-level seats array; "
+                                 "seats belong to a capsule's part entry");
+    }
     // Absent (an old save) leaves flog default.
     if(j.contains("flog") && j["flog"].is_object()) { s.flog = saveFlogFromJson(j["flog"]); }
     if(s.is_crew) {

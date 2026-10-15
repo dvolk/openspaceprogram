@@ -491,6 +491,22 @@ int main() {
         // A part with no seats writes no `seats` key at all.
         CHECK(!savePartToJson(SavePart{}).contains("seats"));
         CHECK(savePartFromJson(savePartToJson(SavePart{})).seats.empty());
+        /* A `seats` array at the TOP level of a ship file belongs to nothing:
+           seats live inside a capsule's PART entry, and a crew entry has no
+           parts at all. Parsing is the only layer that still sees the key -- the
+           builders get a SaveShip, where a discarded array is a vanished person
+           -- so this one unknown key refuses instead of being ignored. */
+        bool topSeats = false;
+        try {
+            saveShipFromJson(nlohmann::json::parse(
+                R"({"name":"racer","seats":[{"part":"kerbal","uid":9}]})"));
+        } catch(const std::runtime_error &) { topSeats = true; }
+        CHECK(topSeats);
+        /* The same array in the right place is not a refusal: this is what the
+           writer produces, so the guard must not bite it. */
+        CHECK(saveShipFromJson(nlohmann::json::parse(R"({
+                 "name":"racer","parts":[{"part":"capsule","uid":1,
+                   "seats":[{"part":"kerbal","uid":2}]}]})")).parts.size() == 1);
     }
 
     // phase 4.6: the SUIT inventory round-trips on the crew ship (the pocket

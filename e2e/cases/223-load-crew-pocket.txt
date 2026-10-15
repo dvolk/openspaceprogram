@@ -1,0 +1,19 @@
+NAME load-crew-pocket
+ARGS --load e2e/fixtures/save_racer_pocket --time-accel 1 --timeout 4 --compound-check
+ARGS --orbit-log --orbit-interval 1
+# A seated kerbal whose suit pockets hold a mono tank -- the shape every seat in
+# a flown ship has, and the one the seat fold had never loaded. The item is not a
+# seat, so it rides the capsule's mass through Part::effectiveMass like any other
+# pocket. The same save with the pocket emptied weighs 2863.7 kg (same fixture,
+# same pose, seat intact), so the 50.4 kg difference is the tank and its fuel.
+EXPECT [crew] loaded 'kerbal' aboard 'racer'
+EXPECT Loaded 1 inventory item(s) with the fleet
+EXPECT Loaded game from e2e/fixtures/save_racer_pocket (active: racer)
+EXPECT [orbitlog]
+CHECK abs(max(float(m) for m in re.findall(r"\[compound\].*mass=([\d.]+) kg", out)) - 2914.1) < 0.05
+CHECK len(orbit) >= 4
+FORBID Load failed
+FORBID [load] refused
+FORBID Assertion
+FORBID GL_
+FORBID error:

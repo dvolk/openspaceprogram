@@ -1,0 +1,17 @@
+NAME save-load-item-seats
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --reload e2e/fixtures/save_racer_item_seats --reload-at 2000
+ARGS --orbit-log --orbit-interval 0.5
+# A `seats` array hanging off an inventory item (a cargo crate holding a person).
+# buildSeatParts only ever runs for an ATTACHED part, so the array had nowhere to
+# be parked: the item loaded, the person inside it was dropped, and the save
+# looked fine afterwards. A seat belongs to a capsule, so say so and refuse.
+EXPECT [load] refused e2e/fixtures/save_racer_item_seats
+EXPECT inventory item 'cargo' holds 1 seat(s)
+EXPECT Timeout reached
+EXPECT [orbitlog]
+CHECK len(orbit) >= 4
+FORBID Assertion
+FORBID Segmentation
+FORBID GL_
+FORBID error:

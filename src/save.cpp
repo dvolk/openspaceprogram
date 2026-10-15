@@ -9,6 +9,7 @@
 #include <filesystem>  // directory_iterator in save_game
 #include <fstream>
 #include <map>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <utility>   // std::pair
@@ -146,6 +147,16 @@ void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
     }
     for(size_t i = 0; i < saved.size(); i++) {
         const SavePart &si = saved[i];
+        /* Seats belong to capsules, and buildSeatParts only ever runs for an
+           ATTACHED part -- so a `seats` array on an inventory item (or on a
+           nested container) has nowhere to be parked. Dropping it would lose a
+           person without a word. */
+        if(!si.seats.empty()) {
+            throw std::runtime_error("load: '" + shipName + "' inventory item '"
+                                     + si.part + "' holds "
+                                     + std::to_string(si.seats.size())
+                                     + " seat(s); only a capsule has seats");
+        }
         const PartDef *pd = cat.find(si.part);
         if(pd == nullptr) {
             throw std::runtime_error("load: '" + shipName + "' inventory item '"
@@ -499,6 +510,17 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
         }
         v->fuelLinks.push_back(Vehicle::FuelLink{ f->second, t->second });
     }
+    /* The containment tree is complete here, so this is the last point where a
+       bad one can still be REFUSED: finalize() -> rebuildCompound() asserts the
+       same invariants, and an assert is not a refusal. A hand-edited save can
+       nest parts deeper than checkContainmentTree's cap, or park a seat where no
+       capsule is, and neither is reachable from the live game. The [part] lines
+       already named the offender. */
+    if(!v->checkPartInvariants()) {
+        delete v;
+        throw std::runtime_error("load: saved ship '" + s.name
+                                 + "' has a broken containment tree (see [part] above)");
+    }
     v->finalize();
     v->activeStage_ = s.active_stage;
     v->totalStages_ = s.total_stages;
@@ -554,6 +576,22 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
     }
     const PartsCatalog &cat = g.ships.catalog();
     ShipDef def = load_ship_def(resdir::path(s.defPath).c_str(), cat);
+    /* The same rule Ships::make_suit states for a suit, and it matters twice as
+       much here: build_ship would happily build a four-part ship from a racer
+       def and call the result a person. Its extra parts never reach the writer's
+       suit_inventory, so they vanish on the next save, and Game::kerbalBoard
+       asserts a kerbal has exactly one part the moment anyone boards. A ShipDef
+       owns nothing, so throwing here frees nothing. */
+    if(def.parts.size() != 1) {
+        throw std::runtime_error("load: kerbal '" + s.name + "' has def '"
+                                 + s.defPath + "', which is not exactly one part (got "
+                                 + std::to_string(def.parts.size()) + ")");
+    }
+    if(def.parts[0].def->type != "kerbal") {
+        throw std::runtime_error("load: kerbal '" + s.name + "' has def '"
+                                 + s.defPath + "', which is a '"
+                                 + def.parts[0].def->type + "' part, not a kerbal");
+    }
     Kerbal *k = new Kerbal;
     k->name = s.name;
     k->profileId = s.profile_id;
@@ -616,6 +654,34 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
        anonymous people is exactly the bug this line exists to catch. */
     printf("[crew] loaded '%s' on EVA\n", k->name.c_str());
     return k;
+}
+
+/* One roster entry, one wearer: the rule Ships::claimProfile asserts (ships.cpp).
+   A save that names one id twice LOADS -- both people print, both ride the
+   compound -- and only aborts when a launch asks the roster for a free profile,
+   which is a minute of play away from the bad byte. So refuse it here, where the
+   ids are read. Anonymous people (id 0) may repeat: they claim nothing. */
+void refuseDoubleClaim(const std::vector<Vehicle *> &built) {
+    std::set<uint64_t> worn;
+    for(const Vehicle *v : built) {
+        if(v->isEva()) {
+            const uint64_t id = static_cast<const Kerbal *>(v)->profileId;
+            if(id != 0 && !worn.insert(id).second) {
+                throw std::runtime_error("load: two people claim roster id "
+                                         + std::to_string(id));
+            }
+            continue;
+        }
+        for(const Part *p : v->parts) {
+            for(const Part *suit : p->seats()) {
+                if(suit->seatProfile != 0
+                   && !worn.insert(suit->seatProfile).second) {
+                    throw std::runtime_error("load: two people claim roster id "
+                                             + std::to_string(suit->seatProfile));
+                }
+            }
+        }
+    }
 }
 
 } // namespace
@@ -763,6 +829,9 @@ void load_game(Game &g, const std::string &dir) {
             bySlug[meta.ships[i]] = built[i];
             if(firstBuilt == nullptr) { firstBuilt = built[i]; }
         }
+        /* Needs the WHOLE fleet, so it runs after the loop: two files can each
+           load fine and still claim one roster entry between them. */
+        refuseDoubleClaim(built);
     } catch(...) {
         /* Put the body lists back BEFORE deleting anything, so no list ever
            holds a freed pointer. Then delete what was built: a seat occupant is

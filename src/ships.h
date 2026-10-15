@@ -68,9 +68,11 @@ std::string dedupVehicleName(System &sys, const std::string &base,
 
 class Ships {
 public:
-    /* The ship def a seat's suit is built from. A save writes it as a seated
-       crew entry's defPath, so the part it rebuilds cannot drift from the part
-       it wrote. */
+    /* The ship def a NEW suit is minted from (make_suit, via fill_seat). A save
+       does NOT write it: a seat's part entry names the catalog PART by name
+       (SavePart::part), and buildSeatParts resolves that against the parts file.
+       Only a WALKING kerbal has a defPath, and buildKerbalFromSave now refuses
+       one unless the def is a single kerbal part. */
     static constexpr const char *const kKerbalShipDef = "res/ships/kerbal.json";
 
     /* Mint a suit Part from a kerbal ship def: the occupant of a seat (part.h).

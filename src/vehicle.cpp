@@ -676,11 +676,15 @@ bool Vehicle::checkContainmentTree(Part *p, int depth) const {
 }
 
 bool Vehicle::checkPartInvariants() const {
+    /* Every failure path flushes. The callers assert on the result and stdout is
+       BLOCK-buffered when redirected, so the [part] line that explains the abort
+       otherwise dies in the buffer along with the process. */
     for(Part *p : parts) {
         if(p->owner != this) {
             printf("[part] '%s': part '%s' (uid %llu) is attached to the wrong "
                    "vehicle\n", name.c_str(), p->id.c_str(),
                    (unsigned long long)p->uid);
+            fflush(stdout);
             return false;
         }
         if(p->container != nullptr) {
@@ -692,9 +696,10 @@ bool Vehicle::checkPartInvariants() const {
                    "vehicle AND contained by part uid %llu\n", name.c_str(),
                    p->id.c_str(), (unsigned long long)p->uid,
                    (unsigned long long)p->container->uid);
+            fflush(stdout);
             return false;
         }
-        if(!checkContainmentTree(p, 0)) { return false; }
+        if(!checkContainmentTree(p, 0)) { fflush(stdout); return false; }
     }
     return true;
 }

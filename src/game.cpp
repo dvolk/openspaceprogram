@@ -1079,7 +1079,11 @@ void Game::kerbalEVA(Part *suit) {
     Kerbal *k = new Kerbal;
     k->name = who;
     k->profileId = suit->seatProfile;
-    k->defPath = Ships::kKerbalShipDef;   // the same key the seat writer uses
+    /* The walker's own def, not the seat's: a crew entry writes defPath (a SHIP
+       def) while a seat writes a catalog part name (SavePart::part). Both resolve
+       to the same one-part kerbal def, which is what buildKerbalFromSave now
+       requires of this path. */
+    k->defPath = Ships::kKerbalShipDef;
     k->home = ship->home;
     k->scenario = ship->scenario;
     k->m_parent = ship->m_parent;
