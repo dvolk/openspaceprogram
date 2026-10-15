@@ -10,7 +10,7 @@ ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --reload e2e/fixtures/save_bad_format --reload-at 2000
 ARGS --orbit-log --orbit-interval 0.5
 ARGS --timeout 8
-EXPECT [load] refused e2e/fixtures/save_bad_format: its "format" is not this build's format 1
+EXPECT [load] refused e2e/fixtures/save_bad_format: its "format" is not this build's format 2
 EXPECT Timeout reached (8.
 EXPECT [orbitlog]
 CHECK len(orbit) >= 4

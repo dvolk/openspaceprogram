@@ -1,8 +1,8 @@
 {
-  "active_ship": "kerbal",
+  "active_ship": "v0",
   "exhaust_scale": 1.0,
   "experiments": "res/data/experiments.json",
-  "format": 1,
+  "format": 2,
   "parts": "res/data/parts.json",
   "saved_at": "2026-10-12T13:22:42Z",
   "ships": [

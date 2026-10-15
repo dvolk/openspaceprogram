@@ -1124,7 +1124,7 @@ Vehicle *Game::dropItem(Part *item) {
 
     Vehicle *nv = new Vehicle();
     // The part label is the same for every crate of a kind, so two drops of one
-    // part type would share a name -- and the save keys a vehicle by name.
+    // part type would land in the ship list under one indistinguishable name.
     nv->name = dedupVehicleName(sys, item->def->label(), &roster);
     nv->defPath = "";
     nv->setSoi(carrier->frame, time);   // list + journal start at the drop
@@ -1391,8 +1391,9 @@ void Game::undock() {
     Vehicle::DockSeam seam = a->seams.back();
     /* The seam carries the partner's name, which the fleet may already hold --
        two ships docked to the same class, or the partner still flying as its own
-       vessel. Undocking would then mint a second vehicle with the same name, and
-       the save keys a vehicle by display name, so a load resolves the wrong one. */
+       vessel. Undocking would then mint a second vehicle under one name, and
+       every name-only readout (ship list, toasts, this line) can't tell them
+       apart. */
     const std::string nm = dedupVehicleName(sys, seam.name, &roster);
     Vehicle *out = a->extractSubtreeAsShip(seam.root, nm, time);
     if(out == nullptr) {
@@ -1463,9 +1464,8 @@ void Game::stage() {
                   [&](Part *x, Part *y) { return depth(x) < depth(y); });
 
         /* De-dup a name against the live fleet: first keeps the bare name,
-           later get #2, #3. One rule for every ship-naming site (it was
-           duplicated here as a lambda), because the save keys a vehicle by
-           display name. */
+           later get #2, #3. One rule for every ship-naming site (this one was
+           a verbatim copy of it as a lambda, which is how the others drifted). */
 
         for(Part *d : decs) {
             // Name: the parent ship's name, qualified by the decoupler part.

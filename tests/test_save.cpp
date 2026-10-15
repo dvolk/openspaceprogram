@@ -207,7 +207,7 @@ int main() {
     SaveShip fcrew;
     fcrew.name = "kerbal";
     fcrew.is_crew = true;
-    fcrew.aboard = "racer";
+    fcrew.aboard_ship = "v0";
     fcrew.aboard_part = 101;
     fcrew.flog.started = true;
     fcrew.flog.start_body = "Kerbin";
@@ -264,12 +264,12 @@ int main() {
     crew.name = "kerbal";
     crew.defPath = "./res/ships/kerbal.json";
     crew.is_crew = true;
-    crew.aboard = "racer";
+    crew.aboard_ship = "v0";
     crew.aboard_part = 101;
     SaveShip crewOut = saveShipFromJson(saveShipToJson(crew));
     CHECK(crewOut.is_crew == true);
     CHECK(crewOut.name == "kerbal");
-    CHECK(crewOut.aboard == "racer");
+    CHECK(crewOut.aboard_ship == "v0");
     CHECK(crewOut.aboard_part == 101);
     CHECK(crewOut.parts.empty());   // the ship fields are not written for a crew
 
@@ -279,7 +279,7 @@ int main() {
     crewFuel.name = "kerbal";
     crewFuel.defPath = "./res/ships/kerbal.json";
     crewFuel.is_crew = true;
-    crewFuel.aboard = "racer";
+    crewFuel.aboard_ship = "v0";
     crewFuel.aboard_part = 101;
     // 8.5 kg of hydrazine (was 10.0 full) -- the rest are 0
     crewFuel.suit_fuel.push_back(0.0);   // Hydrogen
@@ -299,7 +299,7 @@ int main() {
     crewOld.name = "kerbal";
     crewOld.defPath = "./res/ships/kerbal.json";
     crewOld.is_crew = true;
-    crewOld.aboard = "racer";
+    crewOld.aboard_ship = "v0";
     crewOld.aboard_part = 101;
     SaveShip crewOldOut = saveShipFromJson(saveShipToJson(crewOld));
     CHECK(crewOldOut.suit_fuel.empty());
@@ -352,7 +352,7 @@ int main() {
         SaveShip crewSci;
         crewSci.name = "kerbal";
         crewSci.is_crew = true;
-        crewSci.aboard = "racer";
+        crewSci.aboard_ship = "v0";
         crewSci.aboard_part = 101;
         crewSci.suit_experiments.push_back(e1);
         crewSci.suit_experiments.push_back(e2);
@@ -449,7 +449,7 @@ int main() {
         crewInv.name = "kerbal";
         crewInv.defPath = "./res/ships/kerbal.json";
         crewInv.is_crew = true;
-        crewInv.aboard = "racer";
+        crewInv.aboard_ship = "v0";
         crewInv.aboard_part = 101;
         for(int r = 0; r < 8; r++) {
             crewInv.suit_fuel.push_back(r == (int)ResourceType::Hydrazine ? 8.5 : 0.0);
@@ -491,7 +491,7 @@ int main() {
         crewNoInv.name = "kerbal";
         crewNoInv.defPath = "./res/ships/kerbal.json";
         crewNoInv.is_crew = true;
-        crewNoInv.aboard = "racer";
+        crewNoInv.aboard_ship = "v0";
         crewNoInv.aboard_part = 101;
         SaveShip crewNoInvOut = saveShipFromJson(saveShipToJson(crewNoInv));
         CHECK(crewNoInvOut.suit_inventory.empty());
@@ -502,7 +502,7 @@ int main() {
     eva.name = "kerbal";
     eva.defPath = "./res/ships/kerbal.json";
     eva.is_crew = true;
-    eva.aboard = "";
+    eva.aboard_ship = "";
     eva.pose.body = "Duna";
     eva.pose.rotating = true;
     eva.pose.pos = glm::dvec3(2500.0, -32000.0, 1500.0);
@@ -515,7 +515,7 @@ int main() {
     eva.onRails = true;   // coasting on the rails (the load re-parks it)
     SaveShip evaOut = saveShipFromJson(saveShipToJson(eva));
     CHECK(evaOut.is_crew == true);
-    CHECK(evaOut.aboard.empty());
+    CHECK(evaOut.aboard_ship.empty());
     CHECK(evaOut.pose.body == "Duna");
     CHECK(evaOut.pose.rotating == true);
     CHECK(vnear(evaOut.pose.pos, eva.pose.pos));
@@ -526,13 +526,14 @@ int main() {
 
     // --- the meta ----------------------------------------------------------
     SaveMeta meta;
-    meta.format = 1;
+    // format left at its default: saveMetaFromJson REFUSES another format, and
+    // the format checks below cover that with kSaveFormat +/- 1.
     meta.saved_at = "2026-09-16T06:21:44";
     meta.system = "res/systems/ksp_system.json";
     meta.parts = "res/data/parts.json";
     meta.time = 4.459999999999993;
     meta.time_accel = 1;
-    meta.active_ship = "racer";
+    meta.active_ship = "v0";   // a SAVE SLUG, not a display name (#266)
     meta.exhaust_scale = 2.5f;
     meta.science_score = 7;
     // Three banks of the same key (the append-only log), each with provenance.
@@ -656,6 +657,25 @@ int main() {
     // the format this build writes is the one it reads
     CHECK(saveMetaToJson(SaveMeta()).at("format").get<int>() == kSaveFormat);
 
+    /* A slug is both a filename (ships/<slug>.json) and the key every
+       cross-vehicle reference uses, so a hand-edited ships list gets two
+       guards: it must not escape the save directory, and one key must not be
+       claimed twice -- the second is the ambiguous-reference bug (#266)
+       arriving from the other direction. */
+    auto ships_refused = [](const std::vector<std::string> &list) {
+        nlohmann::json j = nlohmann::json::object();
+        j["ships"] = list;
+        try { saveMetaFromJson(j); }
+        catch(const std::runtime_error &) { return true; }
+        return false;
+    };
+    CHECK(ships_refused({"v0", "v0"}));        // two vehicles, one key
+    CHECK(ships_refused({"../escape"}));       // out of the save directory
+    CHECK(ships_refused({"a/b"}));
+    CHECK(ships_refused({""}));                // would read ships/.json
+    CHECK(ships_refused({".."}));
+    CHECK(!ships_refused({"v0", "v1", "capsule-7"}));   // ordinary keys pass
+
     // a hand-edited scale is clamped to the CLI range (0.5-5)
     nlohmann::json wild = nlohmann::json::object();
     wild["exhaust_scale"] = 100.0;
@@ -723,12 +743,12 @@ int main() {
        is refused the same way. */
     nlohmann::json badCrew = nlohmann::json::object();
     badCrew["is_crew"] = true;
-    badCrew["aboard"] = "racer";
+    badCrew["aboard_ship"] = "v0";          // a slug, the per-save vehicle key
     badCrew["aboard_part"] = "capsule_1";   // a string, not a uid
     CHECK(saveShipFromJson(badCrew).aboard_part == 0);
     nlohmann::json floatCrew = nlohmann::json::object();
     floatCrew["is_crew"] = true;
-    floatCrew["aboard"] = "racer";
+    floatCrew["aboard_ship"] = "v0";
     floatCrew["aboard_part"] = 5.9;         // a float (would truncate to uid 5)
     CHECK(saveShipFromJson(floatCrew).aboard_part == 0);
 

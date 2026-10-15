@@ -80,7 +80,10 @@ struct SavePose {
 struct SaveDock {
     uint64_t port = 0;      // this ship's port part uid
     uint64_t root = 0;      // the absorbed ship's root part uid
-    std::string name;       // the absorbed ship's display name (restored on undock)
+    /* The absorbed ship's display name, restored into Vehicle::DockSeam and
+       used to name the ship undock splits off. Display text, NOT a reference:
+       it names nothing in the save, so it needs no slug (#266). */
+    std::string name;
 };
 
 /* One roster entry as saved (save.json's "roster"). Identity only: WHO is where
@@ -117,14 +120,17 @@ struct SaveShip {
     int total_stages = 1;
     int slew_request = 0;     // SlewMode (vehicle.h)
     std::vector<SaveDock> docks;
-    /* The dock target is named by SHIP NAME (a separate save file), its port by
-       uid -- the load's uid->Part map spans every file. */
+    /* The dock target is a SLUG (its own save file), its port a uid -- the
+       load's uid->Part map spans every file. */
     std::string dock_target_ship;    // "" = no target
     uint64_t dock_target_port = 0;   // part uid on the target ship (0 = none)
     uint64_t dock_arm_port = 0;      // this ship's own port part uid (0 = none)
 
     // crew (is_crew true)
-    std::string aboard;       // the ship's name ("" = free / on EVA)
+    /* The ship this kerbal is parked in, by SAVE SLUG (its entry in
+       SaveMeta::ships), NOT by display name: a name is another vehicle's as far
+       as the file is concerned. "" = free / on EVA. */
+    std::string aboard_ship;
     /* The roster entry this kerbal IS (CrewRoster::id). 0 = anonymous, which is
        what a save predating the roster reads as; a nonzero id the roster has no
        entry for is refused on load. */
@@ -146,11 +152,17 @@ struct SaveShip {
     double view_yaw = 0.0;
 };
 
-// The global save state (dir/save.json). `ships` is the ordered slug list in
-// canonical fleet order.
+/* The global save state (dir/save.json). `ships` is the ordered slug list in
+   canonical fleet order, and a SLUG is this save's key for a vehicle: it names
+   the file that holds it (ships/<slug>.json), and every cross-vehicle reference
+   -- active_ship, SaveShip::aboard_ship, SaveShip::dock_target_ship -- is a
+   slug. Display names are display only: two vehicles could share one and a load
+   would still resolve each reference to the right one (#266). */
 /* The format this build writes and reads. Bump on any change an older reader
-   could MISREAD (a renamed or repurposed key); additive changes need nothing. */
-static const int kSaveFormat = 1;
+   could MISREAD (a renamed or repurposed key); additive changes need nothing.
+   2: those three references hold a slug, not a display name -- a format-1 file
+   names a ship there, which this build would read as a missing vehicle. */
+static const int kSaveFormat = 2;
 
 struct SaveMeta {
     int format = kSaveFormat;
@@ -161,7 +173,7 @@ struct SaveMeta {
     std::string kerbals;     // the roster file (res/data/kerbals.json)
     double time = 0.0;       // the analytic sim clock (s)
     int time_accel = 1;      // recorded for the round-trip; load starts paused
-    std::string active_ship; // display name ("" = none)
+    std::string active_ship; // SAVE SLUG of what you fly ("" = none)
     /* Engine-performance difficulty: multiplies every engine's exhaust
        velocity. A save is not portable across scales. */
     float exhaust_scale = 1.0f;
@@ -393,7 +405,7 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
     // Skipped when the journal never started.
     if(s.flog.started) { j["flog"] = saveFlogToJson(s.flog); }
     if(s.is_crew) {
-        if(!s.aboard.empty()) { j["aboard"] = s.aboard; }
+        if(!s.aboard_ship.empty()) { j["aboard_ship"] = s.aboard_ship; }
         if(s.profile_id != 0) { j["profile_id"] = s.profile_id; }
         j["aboard_part"] = s.aboard_part;
         j["pose"] = savePoseToJson(s.pose);
@@ -452,7 +464,7 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     // Absent (an old save) leaves flog default.
     if(j.contains("flog") && j["flog"].is_object()) { s.flog = saveFlogFromJson(j["flog"]); }
     if(s.is_crew) {
-        if(j.contains("aboard") && j["aboard"].is_string()) { s.aboard = j["aboard"].get<std::string>(); }
+        if(j.contains("aboard_ship") && j["aboard_ship"].is_string()) { s.aboard_ship = j["aboard_ship"].get<std::string>(); }
         // Absent (a save predating the roster) leaves 0 = anonymous.
         s.profile_id = readUid(j, "profile_id");
         // uid-keyed: a string/float/negative reads as the refused 0 sentinel.
@@ -641,7 +653,28 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
         }
     }
     if(j.contains("ships") && j["ships"].is_array()) {
-        for(auto &&s : j["ships"]) { if(s.is_string()) { m.ships.push_back(s.get<std::string>()); } }
+        for(auto &&s : j["ships"]) {
+            if(!s.is_string()) { continue; }
+            const std::string sh = s.get<std::string>();
+            /* A slug is both a filename (ships/<slug>.json) and the key every
+               cross-vehicle reference uses, so a hand-edited save gets the same
+               two guards a duplicate part uid gets: it must not escape the save
+               directory, and two entries must not claim one key -- which would
+               put the ambiguous-reference bug (#266) back through the side door. */
+            if(sh.empty() || sh == "." || sh == ".."
+               || sh.find('/') != std::string::npos
+               || sh.find('\\') != std::string::npos) {
+                throw std::runtime_error("save: save.json: ships entry \"" + sh
+                                         + "\" is not a usable file name");
+            }
+            for(const std::string &e : m.ships) {
+                if(e == sh) {
+                    throw std::runtime_error("save: save.json: ships lists \""
+                                             + sh + "\" twice");
+                }
+            }
+            m.ships.push_back(sh);
+        }
     }
     return m;
 }

@@ -51,10 +51,11 @@ void collectVehiclesInto(System &sys, std::vector<Vehicle *> &out);
 size_t countVehicles(System &sys);
 
 /* A name made unique against the live fleet: first use keeps the bare name,
-   later ones get " #2", " #3" .. Every ship-naming site must go through this,
-   because the save keys a vehicle by DISPLAY NAME (SaveShip::aboard,
-   SaveMeta::active_ship) -- two vehicles sharing a name make a load resolve the
-   wrong one.
+   later ones get " #2", " #3" .. Names are display text -- the save keys a
+   vehicle by its slug (#266), so a clash no longer mis-resolves a load. Worth
+   preventing anyway: the ship list, the tracking window, toasts and the
+   [undock] line all show names, and two ships called 'racer' are unreadable
+   there.
 
    `roster` (nullable) additionally reserves the kerbals' names. A kerbal's
    display name IS its roster name and is never deduped, so without this a ship

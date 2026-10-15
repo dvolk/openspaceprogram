@@ -1,13 +1,13 @@
 {
-  "active_ship": "racer",
-  "format": 1,
+  "active_ship": "v0",
+  "format": 2,
   "parts": "res/data/parts.json",
   "recovered": [
     {
-      "type": "observation",
+      "biome": "lowlands",
       "body": "Kerbin",
       "situation": "low_orbit",
-      "biome": "lowlands"
+      "type": "observation"
     }
   ],
   "saved_at": "2026-09-30T00:00:00",

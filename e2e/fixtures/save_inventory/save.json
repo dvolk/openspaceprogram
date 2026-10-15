@@ -1,6 +1,6 @@
 {
-  "active_ship": "kerbal",
-  "format": 1,
+  "active_ship": "v1",
+  "format": 2,
   "parts": "res/data/parts.json",
   "saved_at": "2026-09-20T01:25:18",
   "ships": [

@@ -1,6 +1,6 @@
 {
-  "active_ship": "dockprobe",
-  "format": 1,
+  "active_ship": "v0",
+  "format": 2,
   "parts": "res/data/parts.json",
   "saved_at": "2026-09-20T01:29:13",
   "ships": [

@@ -1,8 +1,8 @@
 {
-  "active_ship": "racer",
+  "active_ship": "v0",
   "exhaust_scale": 1.0,
   "experiments": "res/data/experiments.json",
-  "format": 1,
+  "format": 2,
   "kerbals": "res/data/kerbals.json",
   "parts": "res/data/parts.json",
   "roster": [

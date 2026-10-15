@@ -1,6 +1,6 @@
 {
-  "aboard": "",
   "aboard_part": 0,
+  "aboard_ship": "",
   "defPath": "./res/ships/kerbal.json",
   "is_crew": true,
   "name": "kerbal",
@@ -35,14 +35,32 @@
       -27.103914698113083
     ]
   },
-  "suit_fuel": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+  "suit_fuel": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
   "suit_inventory": [
     {
-      "part": "mono_tank_r1",
-      "uid": 201,
+      "fuel": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        78.54,
+        0.0
+      ],
       "id": "mono_201",
       "mass": 10.45,
-      "fuel": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 78.54, 0.0]
+      "part": "mono_tank_r1",
+      "uid": 201
     }
   ]
 }

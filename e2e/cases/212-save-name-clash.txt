@@ -1,0 +1,27 @@
+# #266, proven from the other side: a save with TWO vehicles named 'Ash' -- the
+# ship in v0 renamed to match the kerbal in v1. The live game cannot produce
+# this (dedupVehicleName refuses the name), so the fixture is hand-authored from
+# save_roster_named: change v0's "name" to "Ash" and nothing else.
+#
+# Every reference here is a SLUG, so the load parks Ash in the ship's capsule and
+# makes the SHIP the active vehicle no matter what it is called. Measured against
+# the old name-keyed load on the same shape: byName['Ash'] held whichever of the
+# two was built last -- the kerbal -- so the active vehicle came back as a kerbal
+# parked inside a capsule, which the game refuses to fly:
+#
+#   old:  [hook] --eva: no crew aboard, ignored
+#   new:  [crew] t=3.1 EVA: 'Ash' out of 'Ash' part 0
+#
+# --eva is the probe: it acts on the ACTIVE vehicle's crew, so it only fires if
+# the load picked the ship.
+NAME save-name-clash
+ARGS --load e2e/fixtures/save_name_clash --time-accel 1 --timeout 5 --eva 2500
+EXPECT [crew] loaded 'Ash' aboard 'Ash'
+EXPECT Loaded game from e2e/fixtures/save_name_clash (active: Ash)
+EXPECT EVA: 'Ash' out of 'Ash' part 0
+FORBID --eva: no crew aboard
+FORBID is aboard ship file
+FORBID [load] refused
+FORBID GL_
+FORBID error:
+LIMIT 60

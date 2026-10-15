@@ -2,6 +2,7 @@
 
 #include "save.h"
 
+#include <cassert>
 #include <cstdio>
 #include <ctime>
 #include <fstream>
@@ -29,6 +30,16 @@ namespace {
 // ---- small helpers ----------------------------------------------------------
 
 std::string slug(size_t i) { return "v" + std::to_string(i); }
+
+/* The slug a vehicle got in THIS save, for a reference written into another
+   ship's file (a kerbal's ship, a dock target). save_game assigns every slug
+   before writing any file, so a miss means the referent is not in the fleet. */
+std::string slugOf(const std::map<const Vehicle *, std::string> &slugs,
+                   const Vehicle *v) {
+    if(v == nullptr) { return ""; }
+    std::map<const Vehicle *, std::string>::const_iterator it = slugs.find(v);
+    return it == slugs.end() ? std::string() : it->second;
+}
 
 // UTC stamp, unambiguous across timezones. gmtime's static buffer: main thread only.
 std::string nowString() {
@@ -152,7 +163,8 @@ size_t countPartInventory(Part *p) {
 
 // ---- capture (Game -> SaveShip) --------------------------------------------
 
-SaveShip saveShipFromVehicle(Vehicle *v) {
+SaveShip saveShipFromVehicle(Vehicle *v,
+                             const std::map<const Vehicle *, std::string> &slugs) {
     SaveShip s;
     s.name = v->name;
     s.defPath = v->defPath;
@@ -161,7 +173,14 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
     if(s.is_crew) {
         Kerbal *k = static_cast<Kerbal *>(v);
         Vehicle *ship = k->aboard();
-        s.aboard = (ship != nullptr) ? ship->name : "";
+        if(ship != nullptr) {
+            s.aboard_ship = slugOf(slugs, ship);
+            /* A parked kerbal sits in a capsule of the ship that owns it, and
+               collectVehicles walks every ship's crew, so that ship is in the
+               fleet and has a slug. No slug means the fleet walk and the crew
+               lists disagree -- and "" would silently land the person on EVA. */
+            assert(!s.aboard_ship.empty());
+        }
         s.profile_id = k->profileId;
         s.aboard_part = (k->aboardPart != nullptr) ? k->aboardPart->uid : 0;
         s.pose.body = (v->m_parent != nullptr) ? v->m_parent->name : "";
@@ -238,7 +257,9 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
         dk.name = v->seams[k].name;
         s.docks.push_back(dk);
     }
-    s.dock_target_ship = (v->dockTargetShip != nullptr) ? v->dockTargetShip->name : "";
+    /* A dock INTENT, not a seam: if the target somehow has no slug, dropping
+       the intent loses nothing the player cannot re-target. */
+    s.dock_target_ship = slugOf(slugs, v->dockTargetShip);
     s.dock_target_port = (v->dockTargetPort != nullptr) ? v->dockTargetPort->uid : 0;
     s.dock_arm_port = (v->dockArmPort != nullptr) ? v->dockArmPort->uid : 0;
     return s;
@@ -397,7 +418,7 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
 // of the world; its mass rides the containment edge, so the capsule's compound
 // is rebuilt AFTER the edge is set.
 Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
-                            std::map<std::string, Vehicle *> &byName,
+                            const std::map<std::string, Vehicle *> &bySlug,
                             const std::map<uint64_t, Part *> &savedUidToPart) {
     /* The roster is where identity lives, so a kerbal naming one must find it
        there: rebuilding past a missing entry would silently strip that person's
@@ -457,7 +478,10 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
     // BEFORE either setSoi below, whose observe is then a no-op.
     k->flog = s.flog;
     k->viewYaw = s.view_yaw;
-    if(s.aboard.empty()) {
+    /* The ship's NAME for the player-facing messages below: the slug picks the
+       file, but a person reading an error wants the ship they named. */
+    std::string aboardName;
+    if(s.aboard_ship.empty()) {
         TerrainBody *body = g.sys.find(s.pose.body);
         if(body == nullptr) { body = g.home; }
         k->home = body;
@@ -468,17 +492,19 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
         // a railed kerbal stays parked (phase 2 skips crew)
         if(s.onRails) { k->goOnRails(); }
     } else {
-        std::map<std::string, Vehicle *>::const_iterator it = byName.find(s.aboard);
-        if(it == byName.end()) {
+        std::map<std::string, Vehicle *>::const_iterator it = bySlug.find(s.aboard_ship);
+        if(it == bySlug.end()) {
             delete k;
-            throw std::runtime_error("load: crew '" + s.name + "' is aboard an unknown "
-                                     "ship '" + s.aboard + "'");
+            throw std::runtime_error("load: crew '" + s.name + "' is aboard ship file \""
+                                     + s.aboard_ship + "\", which save.json's ships list "
+                                     "has no entry for (or lists after this crew)");
         }
         Vehicle *ship = it->second;
+        aboardName = ship->name;
         if(s.aboard_part == 0) {
             delete k;
             throw std::runtime_error("load: crew '" + s.name + "' is aboard ship '"
-                                     + s.aboard + "' without a capsule uid (save "
+                                     + aboardName + "' without a capsule uid (save "
                                      "predates uid-keyed crew)");
         }
         Part *cap = findSavedPart(savedUidToPart, s.aboard_part, ship);
@@ -492,12 +518,12 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
                 : ", which no ship in this save has (unknown uid)";
             throw std::runtime_error("load: crew '" + s.name + "' is parked in part "
                                      "uid " + std::to_string(s.aboard_part) +
-                                     " of ship '" + s.aboard + "'" + where);
+                                     " of ship '" + aboardName + "'" + where);
         }
         if(cap->def->crew_capacity <= 0) {
             delete k;
             throw std::runtime_error("load: crew '" + s.name + "' is parked in '"
-                                     + cap->def->name + "' of ship '" + s.aboard
+                                     + cap->def->name + "' of ship '" + aboardName
                                      + "', which is not a capsule (crew_capacity 0)");
         }
         /* A live board refuses a full capsule; a load must too. */
@@ -508,7 +534,7 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
         if(crewInCap >= cap->def->crew_capacity) {
             delete k;
             throw std::runtime_error("load: capsule '" + cap->def->name
-                                     + "' of ship '" + s.aboard + "' is full ("
+                                     + "' of ship '" + aboardName + "' is full ("
                                      + std::to_string(cap->def->crew_capacity)
                                      + " seat(s)); crew '" + s.name + "' would exceed it");
         }
@@ -534,8 +560,8 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
        cannot show, so make it observable: a save that silently rebuilds
        anonymous people is exactly the bug this line exists to catch. */
     printf("[crew] loaded '%s'%s\n", k->name.c_str(),
-           s.aboard.empty() ? " on EVA"
-                            : (" aboard '" + s.aboard + "'").c_str());
+           aboardName.empty() ? " on EVA"
+                              : (" aboard '" + aboardName + "'").c_str());
     return k;
 }
 
@@ -564,15 +590,20 @@ void save_game(Game &g, const std::string &dir) {
     }
     meta.time = g.time;
     meta.time_accel = g.time_accel;
-    meta.active_ship = (g.ship != nullptr) ? g.ship->name : "";
     meta.exhaust_scale = g.args.exhaust_scale;
     meta.science_score = g.science.score;
     meta.recovered = g.science.recovered;
     meta.saved_at = nowString();
 
     std::vector<Vehicle *> fleet = collectVehicles(g.sys);
+    /* Slugs for the WHOLE fleet first, before a single file is written: a
+       ship's file references its crew's ship and its dock target by slug, and
+       the referent can sit later in the walk than the referrer. */
+    std::map<const Vehicle *, std::string> slugs;
+    for(size_t i = 0; i < fleet.size(); i++) { slugs[fleet[i]] = slug(i); }
+    meta.active_ship = slugOf(slugs, g.ship);
     for(size_t i = 0; i < fleet.size(); i++) {
-        SaveShip s = saveShipFromVehicle(fleet[i]);
+        SaveShip s = saveShipFromVehicle(fleet[i], slugs);
         meta.ships.push_back(slug(i));
         writeJson(dir + "/ships/" + slug(i) + ".json", saveShipToJson(s));
     }
@@ -633,8 +664,10 @@ void load_game(Game &g, const std::string &dir) {
         b->ships.clear();
     }
 
-    // collectVehicles orders a ship before its crew, so byName is filled in order.
-    std::map<std::string, Vehicle *> byName;
+    /* Keyed by SLUG, filled as the build walks the list: save_game writes a ship
+       before its crew, so a crew file's referent is already built. Names cannot
+       key anything -- two vehicles may share one (#266). */
+    std::map<std::string, Vehicle *> bySlug;
     // Keyed by the SAVED uid; the rebuilt Part carries a fresh uid of its own.
     std::map<uint64_t, Part *> savedUidToPart;
     std::vector<Vehicle *> built;
@@ -642,10 +675,10 @@ void load_game(Game &g, const std::string &dir) {
     try {
         for(size_t i = 0; i < saves.size(); i++) {
             const SaveShip &s = saves[i];
-            Vehicle *v = s.is_crew ? buildKerbalFromSave(g, s, byName, savedUidToPart)
+            Vehicle *v = s.is_crew ? buildKerbalFromSave(g, s, bySlug, savedUidToPart)
                                    : buildShipFromSaveParts(g, s, &savedUidToPart);
             built.push_back(v);
-            byName[v->name] = v;
+            bySlug[meta.ships[i]] = v;
         }
     } catch(...) {
         /* Put the body lists back BEFORE deleting anything, so no list ever
@@ -696,10 +729,13 @@ void load_game(Game &g, const std::string &dir) {
     for(size_t i = 0; i < saves.size(); i++) {
         const SaveShip &s = saves[i];
         if(s.is_crew) { continue; }
-        Vehicle *v = byName[s.name];
+        // built[i] IS saves[i]. A name lookup here used to resolve a duplicate
+        // name to whichever vehicle was built last, wiring the wrong ship's
+        // dock intent and rail state.
+        Vehicle *v = built[i];
         if(!s.dock_target_ship.empty()) {
-            std::map<std::string, Vehicle *>::const_iterator t = byName.find(s.dock_target_ship);
-            if(t != byName.end()) {
+            std::map<std::string, Vehicle *>::const_iterator t = bySlug.find(s.dock_target_ship);
+            if(t != bySlug.end()) {
                 v->dockTargetShip = t->second;
                 v->dockTargetPort = findSavedPart(savedUidToPart, s.dock_target_port,
                                                   t->second);
@@ -718,12 +754,14 @@ void load_game(Game &g, const std::string &dir) {
     // the active ship
     Vehicle *active = nullptr;
     if(!meta.active_ship.empty()) {
-        std::map<std::string, Vehicle *>::const_iterator it = byName.find(meta.active_ship);
-        if(it != byName.end()) { active = it->second; }
+        std::map<std::string, Vehicle *>::const_iterator it = bySlug.find(meta.active_ship);
+        if(it != bySlug.end()) { active = it->second; }
     }
-    if(active == nullptr && !byName.empty()) {
-        active = byName.begin()->second;
-    }
+    /* Nothing recorded (or a slug the save no longer has): take the first in
+       canonical fleet order, which is what a fresh boot makes active. This used
+       to be byName.begin(), i.e. the alphabetically first NAME -- a kerbal
+       called 'Ash' beat a ship called 'racer'. */
+    if(active == nullptr && !built.empty()) { active = built.front(); }
     g.ship = active;
     g.kerbal = (active != nullptr && active->isEva()) ? static_cast<Kerbal *>(active) : nullptr;
     g.lastShip = nullptr;
