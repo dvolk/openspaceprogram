@@ -82,7 +82,10 @@ static bool addToContainer(Part *item, Part *dest) {
     // a double add would list it twice and ~Part would free it twice
     if(item->container != nullptr) { return false; }
     if(dest->def == nullptr || dest->def->inventory_capacity <= 0) { return false; }
-    // capacity check: count owned items (not crew -- they are in contents only)
+    /* Capacity counts everything the container OWNS -- and a seat occupant is
+       owned too (part.h), so a part with BOTH crew_capacity and
+       inventory_capacity would have its people eat item slots. Safe only
+       because no shipped part has both (#274). */
     if((int)dest->ownedContents.size() >= dest->def->inventory_capacity) {
         return false;
     }

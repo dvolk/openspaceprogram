@@ -295,11 +295,14 @@ void Game::dropPartWindowsFor(Vehicle *ship) {
 }
 
 /* Every reference the Game and the transfer planner hold to a vehicle that is
-   about to be deleted. Call it immediately BEFORE the delete: a missed one is a
-   use-after-free in a later frame (the ship list, a part window, the Target
-   window's combo, the active/last pointers). Leaving the SoI body's ship list is
-   the caller's -- only remove_ship needs the list intact while it scans for the
-   next ship to hand control to. */
+   about to be deleted. EVERY delete site calls it immediately BEFORE the delete:
+   updateDocking, remove_ship, recoverActive, pickUpItem and kerbalBoard. A
+   missed one is a use-after-free in a later frame -- the planner holds its
+   target list across frames (render.cpp rebuilds it, updateShipView reads the
+   previous frame's), so a dangling Vehicle* there is read by the map plane and
+   the burn marker long before anything notices. Leaving the SoI body's ship list
+   is the caller's -- only remove_ship needs the list intact while it scans for
+   the next ship to hand control to. */
 void Game::dropVehicleRefs(Vehicle *v) {
     dropPartWindowsFor(v);
     // Ships that had v targeted for docking now dangle -- drop their intent.
@@ -390,15 +393,16 @@ bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
     return true;
 }
 
-void Game::runExperiment(Kerbal *k) {
-    if(k == nullptr || k->parts.empty()) {
-        toast("No experiment: no kerbal");
-        return;
-    }
-    Part *suit = k->parts[0];
+/* One person runs an observation and stores it in their suit. The walking and
+   seated entries below differ only in where the suit, the pose and the name
+   come from -- a seated kerbal has no vehicle, so its capsule is the pose
+   (part.h). The toast/printf pair lives here so the two cannot drift. */
+void Game::runSuitExperiment(Part *suit, Vehicle *poseVehicle, Part *localPart,
+                             const std::string &runner,
+                             const std::string &shipName) {
     Experiment e;
-    if(!situationExperiment(k->m_parent, k, nullptr, "observation",
-                            k->name, "", e)) {
+    if(!situationExperiment(poseVehicle->m_parent, poseVehicle, localPart,
+                            "observation", runner, shipName, e)) {
         return;
     }
     if(!suit->addExperiment(e)) {
@@ -406,7 +410,7 @@ void Game::runExperiment(Kerbal *k) {
         toast("Already holding one %s (the suit holds one of each) -- store it first",
               e.type.c_str());
         printf("[science] t=%.1f '%s' already held '%s'\n", time,
-               k->name.c_str(), experimentName(e).c_str());
+               runner.c_str(), experimentName(e).c_str());
         fflush(stdout);
         return;
     }
@@ -415,9 +419,17 @@ void Game::runExperiment(Kerbal *k) {
     toast(repeat ? "Experiment (repeat): %s -- scores less"
                  : "Experiment: %s",
           experimentName(e).c_str());
-    printf("[science] t=%.1f '%s' recorded%s '%s'\n", time, k->name.c_str(),
+    printf("[science] t=%.1f '%s' recorded%s '%s'\n", time, runner.c_str(),
            repeat ? " REPEAT" : "", experimentName(e).c_str());
     fflush(stdout);
+}
+
+void Game::runExperiment(Kerbal *k) {
+    if(k == nullptr || k->parts.empty()) {
+        toast("No experiment: no kerbal");
+        return;
+    }
+    runSuitExperiment(k->parts[0], k, nullptr, k->name, "");
 }
 
 /* A SEATED kerbal runs one: the suit Part is the storage, and the live pose is
@@ -428,27 +440,8 @@ void Game::runSeatExperiment(Part *suit) {
         return;
     }
     Vehicle *ship = suit->container->owner;
-    const std::string who = seatName(roster, suit);
-    Experiment e;
-    if(!situationExperiment(ship->m_parent, ship, suit->container, "observation",
-                            who, ship->name, e)) {
-        return;
-    }
-    if(!suit->addExperiment(e)) {
-        toast("Already holding one %s (the suit holds one of each) -- store it first",
-              e.type.c_str());
-        printf("[science] t=%.1f '%s' already held '%s'\n", time,
-               who.c_str(), experimentName(e).c_str());
-        fflush(stdout);
-        return;
-    }
-    const bool repeat = holdsExperiment(science.recovered, e);
-    toast(repeat ? "Experiment (repeat): %s -- scores less"
-                 : "Experiment: %s",
-          experimentName(e).c_str());
-    printf("[science] t=%.1f '%s' recorded%s '%s'\n", time, who.c_str(),
-           repeat ? " REPEAT" : "", experimentName(e).c_str());
-    fflush(stdout);
+    runSuitExperiment(suit, ship, suit->container, seatName(roster, suit),
+                      ship->name);
 }
 
 /* The pod's runner is whoever sits in the pod's ship: a seat occupant or a
@@ -840,10 +833,12 @@ void Game::quickload() {
 
 void Game::unloadGame() {
     /* Tear the fleet down to the shipless-boot state. ~Vehicle detaches the
-       welds, unregisters physics and deletes the crew aboard (they are not in
-       these lists; a free EVA kerbal is), so deleting each body's ship list is
-       the whole teardown. part_sels holds Part* into the fleet: it goes first.
-       No job drain needed -- no continuation touches the fleet. */
+       welds, unregisters physics and deletes its parts -- and a seat occupant
+       is OWNED by its capsule Part, so ~Part frees it with the ship (part.h).
+       A walking kerbal, by contrast, IS in these lists. Deleting each body's
+       ship list is therefore the whole teardown. part_sels holds Part* into the
+       fleet: it goes first. No job drain needed -- no continuation touches the
+       fleet. */
     part_sels.clear();
     clearFlightSummary();   // a summary from THIS game must not leak into the next
     science.reset();        // ...and neither must the career score / archive
@@ -1084,13 +1079,18 @@ void Game::kerbalEVA(Part *suit) {
     Kerbal *k = new Kerbal;
     k->name = who;
     k->profileId = suit->seatProfile;
-    k->defPath = "res/ships/kerbal.json";
+    k->defPath = Ships::kKerbalShipDef;   // the same key the seat writer uses
     k->home = ship->home;
     k->scenario = ship->scenario;
     k->m_parent = ship->m_parent;
     k->sun = sun;
     k->frame = ship->frame;
     k->setRoot(suit);      // parts list is the ownership list (part.h)
+    /* setRoot re-points the suit only. Its pockets were wired with the SEAT's
+       vehicle as their Part::owner, and dropItem / addToContainer both resolve a
+       carrier through that pointer -- leave them at the ship and dropping a
+       picked-up crate spawns it at the capsule the person just left. */
+    inventorySetOwner(suit, k);
     /* finalize, NOT init: init re-seeds tanks, and this suit may be partly
        burned. finalize builds the hull (rebuildCompound) and the fuel groups. */
     k->finalize();
@@ -1126,6 +1126,11 @@ void Game::kerbalEVA(Part *suit) {
    its uid, fuel and pockets, so a part selection pointing at it stays valid. */
 void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
     if(part >= ship->parts.size()) { return; }
+    /* A kerbal cannot board itself. The capsule guard below already refuses it
+       (a suit is not a capsule), but the delete further down would otherwise
+       leave a capsule containing its own pointer -- effectiveMass recursing
+       forever is not a failure mode worth depending on a def never changing. */
+    if(ship == k) { return; }
     Part *capPart = ship->parts[part];
     const PartDef *capDef = capPart->def;
     if(capDef->crew_capacity <= 0) {
@@ -1138,6 +1143,10 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
     }
     Part *suit = k->parts.empty() ? nullptr : k->parts[0];
     if(suit == nullptr) { return; }
+    /* A walker IS its suit: one Part. The delete below clears the parts list
+       first so ~Vehicle does not free the suit, so anything else in there would
+       leak silently. */
+    assert(k->parts.size() == 1);
     const uint64_t pid = k->profileId;
     const std::string who = k->name;
     const bool wasActive = (this->ship == k);
@@ -1156,7 +1165,11 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
     capPart->contents.push_back(suit);
     capPart->ownedContents.push_back(suit);
     suit->container = capPart;
-    suit->owner = ship;          // the vehicle the container sits on
+    /* The suit AND whatever its pockets hold now ride the ship: a walker picks
+       items up with itself as their Part::owner, so leaving that pointer at the
+       deleted Kerbal is a dangling Vehicle* in the containment tree -- the same
+       edge absorbShip / extractSubtreeAsShip walk recursively. */
+    inventorySetOwner(suit, ship);
     suit->seatProfile = pid;
     /* An anonymous walker keeps its name on the seat; the roster names the rest. */
     suit->seatName = (pid == 0) ? who : "";
@@ -1239,14 +1252,8 @@ bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
     /* Clear itemShip->parts BEFORE the delete: ~Vehicle deletes its parts, and
        the item is already owned by dest -- leaving it in double-frees. */
     itemShip->detachSoiList();
-    // Drop every bookkeeping reference to the doomed ship before the delete.
-    if(ship == itemShip) { ship->releaseControl(); ship = nullptr; }
-    if(lastShip == itemShip) { lastShip = nullptr; }
-    if(kerbal == itemShip) { kerbal = nullptr; }
-    dropPartWindowsFor(itemShip);
-    for(auto *s : collectVehicles(sys)) {
-        if(s->dockTargetShip == itemShip) { s->dockTargetShip = nullptr; s->dockTargetPort = nullptr; }
-    }
+    if(ship == itemShip) { ship->releaseControl(); }
+    dropVehicleRefs(itemShip);
     itemShip->parts.clear();
     // A railed ship is already out of the world; RemoveBody on an
     // unregistered body is UB.
@@ -1377,9 +1384,10 @@ void Game::updateDocking() {
     if(a->dockTargetPort == nullptr || a->dockTargetShip == nullptr
        || a->dockArmPort == nullptr) { return; }
     Vehicle *b = a->dockTargetShip;
-    /* The target must be another live ship still carrying that port. Ships are
-       only deleted through updateDocking / remove_ship, which drop targets
-       pointing at them. */
+    /* The target must be another live ship still carrying that port. Every
+       delete site (updateDocking, remove_ship, recoverActive, pickUpItem,
+       kerbalBoard) calls dropVehicleRefs first, so a pointer that survives here
+       is one that was never dropped -- the belt, not the braces. */
     bool targetOk = (b != a && !b->isEva());
     if(targetOk) {
         targetOk = false;
@@ -1430,14 +1438,8 @@ void Game::updateDocking() {
     a->dockTargetShip = nullptr;   // the intent is consumed by the dock
     a->dockTargetPort = nullptr;   // (both halves: re-arm and re-target on
     a->dockArmPort = nullptr;      //  a redock)
-    dropPartWindowsFor(b);
     b->detachSoiList();
-    if(kerbal == b) { kerbal = nullptr; }
-    if(lastShip == b) { lastShip = nullptr; }
-    /* Any other ship that had targeted b now dangles -- drop its intent. */
-    for(auto *s : collectVehicles(sys)) {
-        if(s->dockTargetShip == b) { s->dockTargetShip = nullptr; s->dockTargetPort = nullptr; }
-    }
+    dropVehicleRefs(b);
     toast("Docked with %s", bName.c_str());
     printf("[dock] t=%.3f a=\"%s\" b=\"%s\" d=%.3f m v=%.3f m/s\n",
            time, a->name.c_str(), bName.c_str(), bestD, bestV);
@@ -1578,10 +1580,11 @@ bool Game::remove_ship(Vehicle *v) {
         printf("Refusing to remove the last ship\n");
         return false;
     }
-    // A ship carrying crew, or a crew member itself, can't be removed here: an
-    // aboard kerbal is owned by its ship and parked out of the world.
+    /* Neither a crewed ship nor a person can be removed here: a seat occupant
+       is owned by its capsule and would be deleted along with it (part.h), and
+       a walking kerbal is not a vessel to discard. */
     if(v->isEva()) {
-        // A FREE kerbal is in its body's ship list and passes both tests below.
+        // A walking kerbal is in its body's ship list and passes both tests below.
         toast("Cannot remove %s -- a crew member can't be deleted",
               v->name.c_str());
         return false;
@@ -1705,19 +1708,7 @@ void Game::recoverActive() {
 
     // Part windows on the ship would dangle with it. A seat occupant is never
     // right-clickable (it is not rendered), so none can point at one.
-    dropPartWindowsFor(v);
-
-    // Ships that had v targeted for docking now dangle -- drop their intent.
-    for(auto *s : collectVehicles(sys)) {
-        if(s->dockTargetShip == v) {
-            s->dockTargetShip = nullptr;
-            s->dockTargetPort = nullptr;
-        }
-    }
-
-    ship = nullptr;
-    if(lastShip == v) { lastShip = nullptr; }
-    if(kerbal == v) { kerbal = nullptr; }
+    dropVehicleRefs(v);
 
     // Out of its SoI body's list, then delete.
     v->detachSoiList();

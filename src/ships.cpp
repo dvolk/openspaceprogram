@@ -277,11 +277,21 @@ std::string dedupVehicleName(System &sys, const std::string &base,
    the capsule's compound. */
 Part *Ships::make_suit(const std::string &defPath) const {
     ShipDef def = load_ship_def(resdir::path(defPath).c_str(), part_catalog);
-    if(def.parts.empty()) {
+    /* A seat is exactly ONE Part, and it must be a kerbal-type part: that is
+       what makes it a seat rather than an inventory item (Part::isSeat). A
+       multi-part def would silently drop the rest, and parking a non-kerbal
+       part in a capsule breaks checkPartInvariants -- a hand-edited save's
+       defPath must be refused here, not asserted on two calls later. */
+    if(def.parts.size() != 1) {
         throw std::runtime_error(std::string("suit: '") + defPath
-                                 + "' has no root part");
+                                 + "' is not exactly one part (got "
+                                 + std::to_string(def.parts.size()) + ")");
     }
     const PartDef *pd = def.parts[0].def;
+    if(pd->type != "kerbal") {
+        throw std::runtime_error(std::string("suit: '") + defPath + "' is a '"
+                                 + pd->type + "' part, not a kerbal suit");
+    }
     Mesh *mesh = get_mesh(std::string("res/") + pd->mesh);
     Texture *tex = get_texture(std::string("res/") + pd->texture);
     Body *b = create_part_body(mesh, partsshader, tex, (float)pd->mass,

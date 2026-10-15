@@ -1,0 +1,17 @@
+NAME save-load-crew-kerbal-cargo
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --reload e2e/fixtures/save_racer_kerbalcargo --reload-at 2000
+ARGS --orbit-log --orbit-interval 0.5
+# A kerbal-type part stowed in a suit's pocket is a person filed as cargo: two
+# levels below the capsule, where the old depth-1 invariant walk saw nothing
+# wrong. It used to load, then vanish from the next save (the writer skips
+# seats); now that the walk recurses, it has to be refused at the door.
+EXPECT [load] refused e2e/fixtures/save_racer_kerbalcargo
+EXPECT is a crew part, not cargo
+EXPECT Timeout reached
+EXPECT [orbitlog]
+CHECK len(orbit) >= 4
+FORBID Assertion
+FORBID Segmentation
+FORBID GL_
+FORBID error:

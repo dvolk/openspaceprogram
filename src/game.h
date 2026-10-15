@@ -657,6 +657,12 @@ struct Game {
     /* Same, for a SEATED occupant: the suit Part is the storage and the capsule
        is the live pose (there is no Kerbal object for a seated one). */
     void runSeatExperiment(Part *suit);
+    /* The half both of those share: `suit` stores the finding, the live pose is
+       `poseVehicle`'s (`localPart` = the part the runner sits in, null = the
+       vehicle's own COM), and the provenance is `runner` aboard `shipName`. */
+    void runSuitExperiment(Part *suit, Vehicle *poseVehicle, Part *localPart,
+                           const std::string &runner,
+                           const std::string &shipName);
     /* The situation experiment (identity + provenance) for a part riding
        `poseVehicle`, recorded by `runnerName` aboard `shipName` ("" = free
        EVA). Provenance is names, not pointers: a seat has no Kerbal object. */

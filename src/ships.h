@@ -115,7 +115,8 @@ public:
                             TerrainBody *hb, const ScenarioDef *sc, System &sys,
                             double t, const StaticBuilding *site = nullptr);
 
-    // Fill every seat of `ship`'s capsule parts from the roster.
+    // One seat per capsule part of `ship`, drawn from the roster. NOT every
+    // seat: a 3-berth capsule launches with one person (issue #275).
     void spawn_crew(Vehicle *ship, System &sys);
 
     // Apply each ship's scenario (the startup spawn_vehicle pass).

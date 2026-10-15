@@ -600,6 +600,81 @@ void Vehicle::rebuildAeroHull() {
     }
 }
 
+/* The containment tree under one attached part, depth-first. effectiveMass and
+   ~Part recurse without limit, so the checks must too: a violation two levels
+   down -- a kerbal-typed part parked in a suit's pocket, which is what a
+   hand-edited save produces -- is as fatal as one at the top. `depth` exists
+   only to turn a wired cycle into a refusal instead of a stack overflow; real
+   trees nest a crate inside a pod, not sixteen deep. */
+bool Vehicle::checkContainmentTree(Part *p, int depth) const {
+    if(depth > 16) {
+        printf("[part] '%s': part uid %llu is contained %d deep -- a "
+               "containment cycle\n", name.c_str(),
+               (unsigned long long)p->uid, depth);
+        return false;
+    }
+    /* A capsule cannot hold more occupants than it has seats. Both the live
+       board and the loader refuse it, so a count over the ceiling means
+       something wired a seat behind their backs -- and effectiveMass would
+       happily carry the extra person. */
+    if(p->isCapsule() && p->seatCount() > p->def->crew_capacity) {
+        printf("[part] '%s': part uid %llu holds %d seat occupant(s) but has "
+               "only %d seat(s)\n", name.c_str(), (unsigned long long)p->uid,
+               p->seatCount(), p->def->crew_capacity);
+        return false;
+    }
+    /* Owned inventory must be listed for traversal too: ownership without
+       traversal frees it in ~Part but drops its mass from effectiveMass. */
+    for(Part *c : p->ownedContents) {
+        if(c->container != p) {
+            printf("[part] '%s': ownedContents holds part uid %llu, but "
+                   "its container points elsewhere\n", name.c_str(),
+                   (unsigned long long)c->uid);
+            return false;
+        }
+        bool listed = false;
+        for(Part *d : p->contents) { if(d == c) { listed = true; break; } }
+        if(!listed) {
+            printf("[part] '%s': ownedContents holds part uid %llu, but "
+                   "contents does not list it\n", name.c_str(),
+                   (unsigned long long)c->uid);
+            return false;
+        }
+    }
+    for(Part *c : p->contents) {
+        if(c->container != p) {
+            printf("[part] '%s': contents lists part uid %llu, but its "
+                   "container points elsewhere\n", name.c_str(),
+                   (unsigned long long)c->uid);
+            return false;
+        }
+        /* A part owns everything it contains: an inventory item or a seat
+           occupant. Ownership without traversal is caught above. */
+        if(!c->ownedBy(p)) {
+            printf("[part] '%s': contents lists part uid %llu, but this "
+                   "part does not own it\n", name.c_str(),
+                   (unsigned long long)c->uid);
+            return false;
+        }
+        if(c->isSeat()) {
+            if(!p->isCapsule()) {
+                printf("[part] '%s': part uid %llu is a seat occupant, but "
+                       "this part is not a capsule\n", name.c_str(),
+                       (unsigned long long)c->uid);
+                return false;
+            }
+        } else if(p->def == nullptr || p->def->inventory_capacity <= 0) {
+            printf("[part] '%s': part uid %llu is an inventory "
+                   "item, but this part is not a container\n",
+                   name.c_str(), (unsigned long long)c->uid);
+            return false;
+        }
+        // A suit's pockets are part of the tree like any other container's.
+        if(!checkContainmentTree(c, depth + 1)) { return false; }
+    }
+    return true;
+}
+
 bool Vehicle::checkPartInvariants() const {
     for(Part *p : parts) {
         if(p->owner != this) {
@@ -619,55 +694,7 @@ bool Vehicle::checkPartInvariants() const {
                    (unsigned long long)p->container->uid);
             return false;
         }
-        /* Owned inventory must be listed for traversal too: ownership without
-           traversal frees it in ~Part but drops its mass from effectiveMass. */
-        for(Part *c : p->ownedContents) {
-            if(c->container != p) {
-                printf("[part] '%s': ownedContents holds part uid %llu, but "
-                       "its container points elsewhere\n", name.c_str(),
-                       (unsigned long long)c->uid);
-                return false;
-            }
-            bool listed = false;
-            for(Part *d : p->contents) { if(d == c) { listed = true; break; } }
-            if(!listed) {
-                printf("[part] '%s': ownedContents holds part uid %llu, but "
-                       "contents does not list it\n", name.c_str(),
-                       (unsigned long long)c->uid);
-                return false;
-            }
-        }
-        for(Part *c : p->contents) {
-            if(c->container != p) {
-                printf("[part] '%s': contents lists part uid %llu, but its "
-                       "container points elsewhere\n", name.c_str(),
-                       (unsigned long long)c->uid);
-                return false;
-            }
-            /* A part owns everything it contains: an inventory item or a seat
-               occupant. Ownership without traversal is caught above. */
-            if(!c->ownedBy(p)) {
-                printf("[part] '%s': contents lists part uid %llu, but this "
-                       "part does not own it\n", name.c_str(),
-                       (unsigned long long)c->uid);
-                return false;
-            }
-            if(c->isSeat()) {
-                if(!p->isCapsule()) {
-                    printf("[part] '%s': part uid %llu is a seat occupant, but "
-                           "this part is not a capsule\n", name.c_str(),
-                           (unsigned long long)c->uid);
-                    return false;
-                }
-                continue;
-            }
-            if(p->def == nullptr || p->def->inventory_capacity <= 0) {
-                printf("[part] '%s': part uid %llu is an inventory "
-                       "item, but this part is not a container\n",
-                       name.c_str(), (unsigned long long)c->uid);
-                return false;
-            }
-        }
+        if(!checkContainmentTree(p, 0)) { return false; }
     }
     return true;
 }

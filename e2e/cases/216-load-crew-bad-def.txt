@@ -1,0 +1,17 @@
+NAME save-load-crew-baddef
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --reload e2e/fixtures/save_racer_baddef --reload-at 2000
+ARGS --orbit-log --orbit-interval 0.5
+# A seat's defPath is data, not a promise: this one names a 4-part ship. Before
+# the guard the suit was built anyway, parked in the capsule, and the next
+# rebuildCompound asserted on the containment invariant -- a crash, not a
+# refusal.
+EXPECT [load] refused e2e/fixtures/save_racer_baddef
+EXPECT is not exactly one part
+EXPECT Timeout reached
+EXPECT [orbitlog]
+CHECK len(orbit) >= 4
+FORBID Assertion
+FORBID Segmentation
+FORBID GL_
+FORBID error:

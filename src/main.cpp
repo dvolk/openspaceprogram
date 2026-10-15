@@ -1238,13 +1238,16 @@ int main(int argc, char **argv)
             Kerbal *k = nullptr;
             /* Any vessel with a free seat, not just the active one: after an
                EVA the walker stands beside the ship it left, and the e2e may
-               have switched control since. */
+               have switched control since. The walking crew are collected once:
+               freeKerbals walks the whole fleet, so calling it per candidate
+               part is quadratic in a fleet that is only getting bigger. */
+            const std::vector<Kerbal *> freeK = freeKerbals(game.sys);
             for(auto *s : collectVehicles(game.sys)) {
                 for(size_t i = 0; i < s->parts.size(); i++) {
                     Part *cap = s->parts[i];
                     if(cap->def == nullptr || cap->def->crew_capacity <= 0) { continue; }
                     if(cap->seatCount() >= cap->def->crew_capacity) { continue; }
-                    for(Kerbal *f : freeKerbals(game.sys)) {
+                    for(Kerbal *f : freeK) {
                         if(game.kerbalInRange(f, cap)) {
                             ship = s; part = i; k = f; break;
                         }

@@ -174,7 +174,8 @@ struct TerrainBody {
     ~TerrainBody();
 
     // Ships in this body's SOI (a SOI crossing moves them, Vehicle::setSoi).
-    // Aboard crew are NOT here; a free EVA character IS.
+    // Every entry is a flyable vessel: a seated kerbal is a seat on its
+    // capsule's Part (part.h), not a ship here; a walking kerbal IS one.
     std::vector<Vehicle *> ships;
     // Space pads on this body (StaticBuilding::Draw culls itself off-body).
     std::vector<StaticBuilding *> pads;

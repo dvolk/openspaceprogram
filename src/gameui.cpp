@@ -2259,8 +2259,8 @@ void drawPartWindows(Game &g) {
                     ImGui::Text("  %s%s", experimentName(e).c_str(),
                                 repeat ? "  (repeat)" : "");
                 }
-                // Take: a FREE (EVA) kerbal in reach moves the pod's finding onto their suit (the
-                // courier), to then store into a capsule. An aboard kerbal can't reach out.
+                // Take: a WALKING kerbal in reach moves the pod's finding onto their suit (the
+                // courier), to then store into a capsule. A seated one can't reach out.
                 if(!pod->experiments.empty()) {
                     bool anyTake = false;
                     // Reused buffer + stack label (see the Board loop above).

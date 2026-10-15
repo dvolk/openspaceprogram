@@ -175,6 +175,11 @@ public:
        vehicle and the container/contents/ownedContents edges agree. */
     bool checkPartInvariants() const;
 
+    /* One attached part's containment subtree, depth-first -- the walk
+       checkPartInvariants runs per part, because effectiveMass and ~Part recurse
+       without limit and a violation below depth 1 is just as fatal. */
+    bool checkContainmentTree(Part *p, int depth) const;
+
     /* The part frame S is anchored to: the one with no parent edge. */
     Part *rootPart() const;
 

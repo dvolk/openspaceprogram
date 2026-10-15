@@ -175,7 +175,8 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
                 xferTargets.push_back({b->name.c_str(), b, nullptr});
             }
         }
-        // Sibling ships (free ships + EVA; not aboard crew).
+        // Sibling vessels. Every entry in pb->ships is flyable: a seated kerbal
+        // is a seat on its capsule's Part (part.h), never a target here.
         for(auto *s : pb->ships) {
             if(s != g.ship) {
                 xferTargets.push_back({s->name.c_str(), nullptr, s});

@@ -155,8 +155,9 @@ Vehicle *findPadOccupant(const StaticBuilding *site) {
     for(Vehicle *s : hb->ships) {
         btCompoundShape *cs = s->compoundShape();
         if(cs == nullptr) { continue; }
-        /* Aboard crew (Vehicle::crew) are never in this list; a free EVA kerbal
-           can be, and is a genuine obstruction. */
+        /* A seated kerbal is never in this list -- it is a seat on its capsule's
+           Part (part.h), with no Body in the world. A walking kerbal can be, and
+           is a genuine obstruction. */
         // Cheap reject before the frame hop: only one ship is near a given pad.
         const glm::dvec3 comRot = s->frame->GetOrientRelTo(rot)
                                 * s->get_center_of_mass()

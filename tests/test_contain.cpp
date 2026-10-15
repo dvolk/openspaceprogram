@@ -200,6 +200,7 @@ int main() {
         cap->ownedContents.pop_back();
         loose->container = nullptr;
         loose->owner = nullptr;
+        delete loose;
 
         /* a kerbal part parked in a non-capsule (the tank, crew_capacity 0) */
         tank->contents.push_back(suit);
@@ -223,6 +224,33 @@ int main() {
         CHECK_TRUE(!A.v->checkPartInvariants(),
                    "a part both attached and contained: A fails");
         A.v->parts.pop_back();
+
+        /* over-occupancy: two people in a one-seat capsule. The live board and
+           the loader both refuse it, so the check must too -- effectiveMass and
+           the save walk would carry the extra person without complaint. */
+        Part *second = mkPart(S, "suit2", "kerbal", 97.05, 0.2, 0.2, 0.375, 0, 3, false);
+        fillSeat(cap, second, A.v, 8);
+        CHECK_TRUE(!A.v->checkPartInvariants(),
+                   "two occupants in a one-seat capsule: A fails");
+        cap->contents.pop_back();
+        cap->ownedContents.pop_back();
+        second->container = nullptr;
+        second->owner = nullptr;
+
+        /* depth: a kerbal-typed part parked in the SUIT's pockets. A walk that
+           stopped at depth 1 saw nothing wrong (a suit IS a container), but
+           isSeat() makes it an occupant of a non-capsule -- and the save writer
+           then drops it as a seat, so the person vanishes on the next save. */
+        Part *pocket = mkPart(S, "suit3", "kerbal", 97.05, 0.2, 0.2, 0.375, 0, 3, false);
+        fillSeat(suit, pocket, A.v, 0);
+        CHECK_TRUE(!A.v->checkPartInvariants(),
+                   "a kerbal part inside a suit's pocket: A fails");
+        suit->contents.pop_back();
+        suit->ownedContents.pop_back();
+        pocket->container = nullptr;
+        pocket->owner = nullptr;
+        delete second;
+        delete pocket;
 
         CHECK_TRUE(A.v->checkPartInvariants(), "restored seat passes again");
     }

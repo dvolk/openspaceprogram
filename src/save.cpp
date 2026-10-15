@@ -137,6 +137,15 @@ void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
             throw std::runtime_error("load: '" + shipName + "' inventory item '"
                                      + si.part + "' is not in the parts file");
         }
+        /* A kerbal-type part is a person, not cargo. Parked anywhere other than
+           a capsule it is a seat occupant in a non-capsule, which
+           checkPartInvariants refuses -- and rebuildCompound asserts on that, so
+           the save would abort the process. A hand-edited save is still just
+           data: refuse it here, where refusing is an option. */
+        if(pd->type == "kerbal") {
+            throw std::runtime_error("load: '" + shipName + "' inventory item '"
+                                     + si.part + "' is a crew part, not cargo");
+        }
         Mesh *m = get_mesh("res/" + pd->mesh);
         Texture *t = get_texture("res/" + pd->texture);
         Body *b = create_part_body(m, g.partsshader, t,
@@ -452,9 +461,8 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
 }
 
 // build_ship's init() re-seeds the suit tank full, so the saved contents must
-// be restored after it. An aboard kerbal is parked inside its capsule and out
-// of the world; its mass rides the containment edge, so the capsule's compound
-// is rebuilt AFTER the edge is set.
+// be restored after it. A WALKING kerbal only -- a seated one never reaches
+// here (buildSeatFromSave parks a suit Part in the capsule instead, part.h).
 Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
                             const std::map<std::string, Vehicle *> &bySlug,
                             const std::map<uint64_t, Part *> &savedUidToPart) {
@@ -658,9 +666,7 @@ void save_game(Game &g, const std::string &dir) {
         for(Vehicle *v : collectVehicles(g.sys)) {
             fleet.push_back({v, nullptr, nullptr});
             for(Part *p : v->parts) {
-                for(Part *c : p->contents) {
-                    if(c->isSeat()) { fleet.push_back({v, c, p}); }
-                }
+                for(Part *suit : p->seats()) { fleet.push_back({v, suit, p}); }
             }
         }
     }

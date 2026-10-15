@@ -38,8 +38,9 @@ struct Game;   // save_game / load_game take one; keeps game.h out of this heade
 // A part instance in a saved ship. Two meanings of 0: a part's own `uid` must be
 // nonzero (0 = a save predating part identity, refused on load), while 0 in a
 // *reference* is the legitimate "absent" default. `pos`/`rot` are ship-local
-// (frame-S); `mass` is the part's OWN mass (aboard crew are separate SaveShips);
-// `hull_margin` is the resolved collision margin (-1 = absent).
+// (frame-S); `mass` is the part's OWN mass (a seat occupant's mass rides the
+// containment edge, part.h); `hull_margin` is the resolved collision margin
+// (-1 = absent).
 struct SavePart {
     std::string part;
     uint64_t uid = 0;        // the key every cross-part reference uses; 0 = absent
