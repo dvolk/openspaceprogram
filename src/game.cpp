@@ -1123,7 +1123,9 @@ Vehicle *Game::dropItem(Part *item) {
     inventoryRemove(item);
 
     Vehicle *nv = new Vehicle();
-    nv->name = item->def->label();
+    // The part label is the same for every crate of a kind, so two drops of one
+    // part type would share a name -- and the save keys a vehicle by name.
+    nv->name = dedupVehicleName(sys, item->def->label(), &roster);
     nv->defPath = "";
     nv->setSoi(carrier->frame, time);   // list + journal start at the drop
     nv->home = carrier->home;
@@ -1387,7 +1389,12 @@ void Game::undock() {
         }
     }
     Vehicle::DockSeam seam = a->seams.back();
-    Vehicle *out = a->extractSubtreeAsShip(seam.root, seam.name, time);
+    /* The seam carries the partner's name, which the fleet may already hold --
+       two ships docked to the same class, or the partner still flying as its own
+       vessel. Undocking would then mint a second vehicle with the same name, and
+       the save keys a vehicle by display name, so a load resolves the wrong one. */
+    const std::string nm = dedupVehicleName(sys, seam.name, &roster);
+    Vehicle *out = a->extractSubtreeAsShip(seam.root, nm, time);
     if(out == nullptr) {
         toast("Cannot undock");
         return;
@@ -1397,8 +1404,8 @@ void Game::undock() {
        the cut, so popping would drop the WRONG one. */
     // Part windows address parts by index, which just shifted: drop them.
     dropPartWindowsFor(a);
-    toast("Undocked %s", seam.name.c_str());
-    printf("[undock] t=%.3f a=\"%s\" b=\"%s\"\n", time, a->name.c_str(), seam.name.c_str());
+    toast("Undocked %s", out->name.c_str());
+    printf("[undock] t=%.3f a=\"%s\" b=\"%s\"\n", time, a->name.c_str(), out->name.c_str());
 }
 
 /* Stage: fire the active stage's decouplers. Each decoupler's child-side
@@ -1456,20 +1463,9 @@ void Game::stage() {
                   [&](Part *x, Part *y) { return depth(x) < depth(y); });
 
         /* De-dup a name against the live fleet: first keeps the bare name,
-           later get #2, #3. Same rule as Ships::dedupName. */
-        auto dedup = [&](const std::string &base) -> std::string {
-            std::string nm = base;
-            int n = 2;
-            for(;;) {
-                bool taken = false;
-                for(Vehicle *s : collectVehicles(sys)) {
-                    if(s->name == nm) { taken = true; break; }
-                }
-                if(!taken) { return nm; }
-                nm = base + " #" + std::to_string(n);
-                n++;
-            }
-        };
+           later get #2, #3. One rule for every ship-naming site (it was
+           duplicated here as a lambda), because the save keys a vehicle by
+           display name. */
 
         for(Part *d : decs) {
             // Name: the parent ship's name, qualified by the decoupler part.
@@ -1478,7 +1474,8 @@ void Game::stage() {
             if(!qual.empty()) { base += " " + qual; }
             // A one-shot "slam" as the part separates; 0.4 sits it with the
             // engine hum (a transient reads louder than a steady loop).
-            Vehicle *out = a->extractSubtreeAsShip(d, dedup(base), time);
+            const std::string nm = dedupVehicleName(sys, base, &roster);
+            Vehicle *out = a->extractSubtreeAsShip(d, nm, time);
             if(out == nullptr) { continue; }   // already absorbed into an outer ship
             audio.playOnce("res/audio/qubodup-crash.wav", 0.4f);
             out->enterWorld();

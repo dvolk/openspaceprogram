@@ -1,0 +1,15 @@
+# A kerbal's display name IS its roster name and is never deduped, so a SHIP
+# must not be allowed to take one: the save keys a vehicle by display name
+# (SaveShip::aboard, SaveMeta::active_ship), so a ship and a person sharing a
+# name would resolve the wrong one on load. Ask for a ship named after the only
+# kerbal: the ship yields to "Solo #2" and the person keeps the bare name.
+NAME crew-name-clash
+ARGS --kerbals e2e/fixtures/tiny_kerbals.json --time-accel 1 --timeout 6
+ARGS --startship Solo,res/ships/racer.json,Kerbin,pad
+EXPECT Roster: 1 kerbal(s) from e2e/fixtures/tiny_kerbals.json
+EXPECT Crew: 'Solo' aboard 'Solo #2' part 0 (1/1)
+EXPECT Timeout reached
+FORBID Crew: 'Solo' aboard 'Solo' part
+FORBID GL_
+FORBID error:
+LIMIT 60
