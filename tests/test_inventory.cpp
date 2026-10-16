@@ -30,6 +30,9 @@
 //   - a containment cycle is refused WITHOUT orphaning the item (the cycle
 //     is pre-checked, so a refused transfer moves nothing), and the cycle
 //     guard sees the seat edge (a capsule's seats hold its crew).
+//   - a seat OCCUPANT cannot leave through the inventory path at all:
+//     inventoryRemove / inventoryTransfer refuse it and leave the seat edge
+//     intact (seats move through addSeat/removeSeat, i.e. Game::kerbalEVA).
 //
 // Headless (no Game / physics world), like test_contain: ships are built
 // with init() (runs rebuildCompound -- which asserts the containment
@@ -446,6 +449,43 @@ int main() {
                    "adding the capsule into its crew kerbal: refused (cycle)");
         CHECK_TRUE(CAP->container == nullptr, "the capsule is still free (not orphaned)");
         delete CAP;   // frees KP (~Part deletes seats)
+    }
+
+    /* --- a seat occupant cannot leave through the inventory path ---------
+       A suit parked in a capsule lives in `seats`, not `contents`. Detaching
+       it here would clear the hold edge while the capsule still lists it (and
+       owns it): checkPartInvariants breaks and ~Part frees the person twice.
+       The way out is Part::removeSeat -- what Game::kerbalEVA uses. */
+    {
+        printf("== a seat occupant is not cargo (remove/transfer refuse it) ==\n");
+        Ship S8; S8.v = new Vehicle; S8.v->name = "S8";
+        Part *CAP8 = mkPart(S8, "capsule8", 100.0, 1.0, 1.0, 1.0, 3, false);
+        S8.defs.back().crew_capacity = 1;   // a real capsule, so the invariant holds
+        S8.v->setRoot(CAP8);
+        S8.v->controller = CAP8;
+        Part *SUIT = mkPart(S8, "suit8", 90.0, 1.0, 1.0, 1.0, 3, false);
+        S8.defs.back().type = "kerbal";     // what makes it a seat (Part::isSeat)
+        CHECK_TRUE(CAP8->addSeat(SUIT), "the suit is parked in the capsule");
+        SUIT->owner = S8.v;
+        CHECK_TRUE(SUIT->isSeat(), "a kerbal part held by a capsule is a seat");
+        CHECK_TRUE(S8.v->checkPartInvariants(), "the seated ship is consistent");
+
+        CHECK_TRUE(!inventoryRemove(SUIT), "inventoryRemove refuses a seat");
+        CHECK_TRUE(SUIT->container == CAP8, "the hold edge survives");
+        CHECK_TRUE(CAP8->seats[0] == SUIT, "the capsule still lists it");
+
+        Part *CRATE = mkPart(I, "crate8", 20.0, 1.0, 1.0, 1.0, 3, false);
+        CHECK_TRUE(!inventoryTransfer(SUIT, CRATE), "transfer refuses a seat");
+        CHECK_TRUE(SUIT->container == CAP8, "still seated after the refusal");
+        CHECK_TRUE(CRATE->contents.empty(), "the crate stayed empty");
+        CHECK_TRUE(S8.v->checkPartInvariants(), "and the ship is still consistent");
+
+        // The way out, for contrast: removeSeat hands it over unheld.
+        CHECK_TRUE(CAP8->removeSeat(SUIT) == SUIT, "removeSeat unparks it");
+        CHECK_TRUE(!SUIT->isSeat(), "unheld, it is no longer a seat");
+        delete SUIT;   // unparked, so nobody owns it now
+        delete CRATE;
+        destroyVehicle(S8.v);   // frees CAP8, whose seat is empty again
     }
 
     if(g_failures == 0) {

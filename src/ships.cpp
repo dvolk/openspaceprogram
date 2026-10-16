@@ -332,7 +332,11 @@ Part *Ships::takeCrew(System &sys) {
     Part *suit = home->crew.front();
     home->crew.erase(home->crew.begin());
     suit->container = nullptr;
-    suit->owner = nullptr;
+    /* Unown the suit AND whatever its pockets hold: a caller that forgets leaves
+       a dangling Vehicle* in the containment tree, and checkPartInvariants does
+       not look at a seat occupant's owner. Each caller then wires the vehicle
+       the suit lands on (fill_seat, place_ship_def). */
+    inventorySetOwner(suit, nullptr);
     return suit;
 }
 
@@ -340,11 +344,18 @@ void Ships::returnCrew(System &sys, Part *suit) {
     if(suit == nullptr) { return; }
     StaticBuilding *home = homeCrewPad(sys);
     if(home == nullptr) {
-        delete suit;   // nowhere to stand: the person is gone
+        /* Nowhere to stand, so the person is gone -- and LOUDLY so: a system
+           with no VAB_LAUNCH_PAD eats its crew at every recover, and a silent
+           delete reads exactly like a successful flight home. */
+        printf("[crew] '%s' is gone: this system has no VAB_LAUNCH_PAD to "
+               "stand them on\n",
+               (suit->kerbal ? suit->kerbal->name : "?").c_str());
+        fflush(stdout);
+        delete suit;
         return;
     }
     suit->container = nullptr;
-    suit->owner = nullptr;
+    inventorySetOwner(suit, nullptr);
     home->crew.push_back(suit);
 }
 

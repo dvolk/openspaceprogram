@@ -1235,6 +1235,14 @@ Vehicle *Game::dropItem(Part *item) {
 bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
     if(itemShip == nullptr || dest == nullptr) { return false; }
     if(itemShip->parts.size() != 1) { return false; }
+    /* A walking kerbal is a person, not a crate. Its suit is a kerbal-type
+       Part, and addToContainer takes anything with a null container -- so the
+       stow would succeed and checkContainmentTree would then refuse the ship
+       ("a person is not cargo"), which rebuildCompound asserts on. */
+    if(itemShip->isEva()) {
+        toast("Pick up: %s is a crew member, not cargo", itemShip->name.c_str());
+        return false;
+    }
     /* A crewed ship is not cargo: the capsule owns its seat occupants, and the
        suit part would dangle in the destination container. */
     if(!shipSeats(itemShip).empty()) {
@@ -1718,7 +1726,7 @@ void Game::recoverActive() {
         for(Part *suit : home) {
             Part *cap = suit->container;
             if(cap != nullptr) { cap->removeSeat(suit); }
-            inventorySetOwner(suit, nullptr);
+            // returnCrew unowns the suit and whatever its pockets hold.
             Ships::returnCrew(sys, suit);
         }
     }

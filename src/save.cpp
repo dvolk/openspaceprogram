@@ -730,6 +730,30 @@ void refuseDoubleClaim(const std::vector<Vehicle *> &built,
     }
 }
 
+/* The roster swap in load_game belongs to its transaction. A load that refuses
+   must leave the cast list the RUNNING world wears: the suits standing on the
+   pad and the people in seats keep the profile ids they were minted with, so a
+   roster that no longer names them makes the NEXT save one this very loader
+   refuses ("crew pool entry names roster id N") -- a career the game wrote and
+   cannot read. Restores the prior list on scope exit unless committed. */
+struct RosterRollback {
+    CrewRoster &roster;
+    std::vector<KerbalProfile> prior;
+    bool swapped = false;     // did this load actually replace the cast list?
+    bool committed = false;
+
+    explicit RosterRollback(CrewRoster &r) : roster(r), prior(r.profiles) { }
+    void commit() { committed = true; }
+    ~RosterRollback() {
+        if(committed || !swapped) { return; }
+        // Same voice as the other refusal diagnostics (Game::loadFrom): a
+        // refused load says what it left alone.
+        printf("[load] roster restored: %zu kerbal(s)\n", prior.size());
+        fflush(stdout);
+        roster.profiles = std::move(prior);
+    }
+};
+
 } // namespace
 
 // ---- the public entry points (declared in save.h) ---------------------------
@@ -815,11 +839,13 @@ void load_game(Game &g, const std::string &dir) {
        after the data file is edited; an absent roster (a save predating the
        roster) keeps the file's. Done before the fleet build, which resolves
        every kerbal's profile id against this.
-       The swap is one-way and permanent for the session: newGame and
+       On SUCCESS the swap is permanent for the session: newGame and
        switchSystem do not re-read --kerbals, so a roster a save brought in stays
-       in charge afterwards. Harmless while one roster file serves every save; if
-       saves ever carry different crews, the reload belongs in newGame. */
+       in charge afterwards. On a REFUSAL it rolls back with everything else --
+       the standing cast still wears the old ids (RosterRollback). */
+    RosterRollback rosterRollback(g.roster);
     if(!meta.roster.empty()) {
+        rosterRollback.swapped = true;
         g.roster.profiles.clear();
         for(const SaveKerbal &sk : meta.roster) {
             KerbalProfile p;
@@ -947,7 +973,9 @@ void load_game(Game &g, const std::string &dir) {
     }
 
     /* Commit the pool now that the load cannot refuse: the save's cast replaces
-       the standing one (the old suits are freed). */
+       the standing one (the old suits are freed). The roster the fleet and the
+       pool were resolved against commits with it. */
+    rosterRollback.commit();
     if(homePad != nullptr) {
         for(Part *p : homePad->crew) { delete p; }
         homePad->crew = std::move(newPool);

@@ -1,0 +1,24 @@
+# A refused load must not leave the save's ROSTER behind either. load_game swaps
+# the cast list in before it builds anything, so a refusal that kept the intruder
+# left the still-standing suits wearing ids the roster no longer names -- and the
+# NEXT save writes those ids, which this same loader refuses ("crew pool entry
+# names roster id 1"). The career becomes a file the game wrote and cannot read,
+# three saves after the bad byte. This fixture shrinks the roster to Bram + Cyd
+# and then fails on a part def that is gone, so the refusal lands after the swap.
+# The end of the chain was checked by hand: with the rollback the save this run
+# writes loads clean; without it, --load of that dir refuses.
+NAME crew-pool-roster-rollback
+ARGS --kerbals e2e/fixtures/three_kerbals.json --time-accel 1 --timeout 12 --frame-cap 30
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --recover 2000 --recover-anywhere
+ARGS --reload e2e/fixtures/save_crew_pool_roster_shrink --reload-at 3000
+ARGS --resave tmp/e2e_save_out
+EXPECT [load] refused e2e/fixtures/save_crew_pool_roster_shrink
+EXPECT [load] roster restored: 3 kerbal(s)
+EXPECT Saved 0 ship(s) to tmp/e2e_save_out
+# the refusal itself toasts "Load failed: ..." -- that is the point of the case
+FORBID Assertion
+FORBID Segmentation
+FORBID GL_
+FORBID error:
+LIMIT 90

@@ -104,7 +104,8 @@ bool inventoryTransfer(Part *item, Part *dest) {
     if(dest->def == nullptr || dest->def->inventory_capacity <= 0) { return false; }
     if((int)dest->contents.size() >= dest->def->inventory_capacity) { return false; }
     if(inSubtree(item, dest)) { return false; }
-    removeFromContainer(item);
+    // A seat occupant never leaves through here (see removeFromContainer).
+    if(!removeFromContainer(item)) { return false; }
     return addToContainer(item, dest);
 }
 
