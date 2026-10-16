@@ -5,8 +5,8 @@
 struct Part;
 class Vehicle;
 
-// Re-points `item`'s owner AND its inventory subtree (crate-in-crate): the item
-// rides the vehicle of its OUTERMOST container.
+// Re-points `item`'s owner AND its inventory/seat subtree (crate-in-crate):
+// the item rides the vehicle of its OUTERMOST container.
 void inventorySetOwner(Part *item, Vehicle *owner);
 
 // Transfer `item` into `dest`; false if dest is full or item has no container.
@@ -19,7 +19,8 @@ bool inventoryAdd(Part *item, Part *dest);
 // caller owns it (drop/pickup).
 void inventoryRemove(Part *item);
 
-// Sum resource `res` over `root`'s inventory subtree. Pocket tanks sit outside
+// Sum resource `res` over `root`'s inventory subtree (cargo only -- seat suit
+// tanks belong to the person, not the container). Pocket tanks sit outside
 // the ship's fuel groups, so the EVA pocket draw reads them here.
 float inventorySubtreeResource(Part *root, int res);
 

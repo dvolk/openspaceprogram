@@ -679,9 +679,8 @@ static void test_contained_kerbal() {
                        glm::dmat3(1.0));
     s.defs.back().crew_capacity = 1;   // a real capsule (checkPartInvariants)
 
-    /* The occupant: in contents for traversal, in ownedContents so the capsule
-       frees it, and typed "kerbal" -- which is what makes it a seat rather than
-       cargo. Its shape never enters the compound; only its mass does. */
+    /* The occupant: a Seat on the capsule (owned, not cargo), typed "kerbal".
+       Its shape never enters the compound; only its mass does. */
     PartDef kd;
     kd.name = "suit";
     kd.type  = "kerbal";
@@ -693,9 +692,7 @@ static void test_contained_kerbal() {
     k->body->shape = new btBoxShape(btVector3(0.4, 0.5, 0.4));
     k->body->mass = mKer;
     k->def = &s.defs.back();
-    cap->contents.push_back(k);
-    cap->ownedContents.push_back(k);
-    k->container = cap;
+    cap->addSeat(k);
     k->owner = s.v;                 // the vehicle the capsule rides
     CHECK_TRUE(k->isSeat(), "a kerbal part parked in a capsule is a seat");
     CHECK_TRUE(cap->seatCount() == 1, "the capsule shows one seat taken");

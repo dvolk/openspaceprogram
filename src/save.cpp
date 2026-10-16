@@ -93,7 +93,7 @@ Part *findSavedPart(const std::map<uint64_t, Part *> &byUid, uint64_t uid,
 
 
 // ---- inventory items ----------------------------------------------------
-// An item is a standalone Part owned by its container (Part::ownedContents);
+// An item is a standalone Part owned by its container (Part::contents);
 // a container may itself be an item, so capture and restore recurse in one
 // shared depth-first order.
 
@@ -108,25 +108,29 @@ SavePart saveItemPart(const Part *c) {
         si.fuel.push_back((double)c->resources.current[r]);
     }
     si.experiments = c->experiments;
-    /* A seat occupant shares ownedContents with the items (part.h) but is a
-       person, not cargo, and is captured by its capsule's `seats` instead. A
-       suit cannot itself hold seats -- checkPartInvariants refuses a seat in a
-       non-capsule -- so this filter only matters for a hand-built tree. */
-    for(Part *n : c->ownedContents) {
-        if(!n->isSeat()) { si.inventory.push_back(saveItemPart(n)); }
+    for(Part *n : c->contents) {
+        si.inventory.push_back(saveItemPart(n));
     }
     return si;
 }
 
 /* A seat occupant (part.h) as a SavePart of its capsule's `seats`. Same capture
    as an inventory item -- a suit is a Part like any other -- plus the identity
-   the roster cannot read off the fleet. */
+   the suit owns (Part::kerbal). */
 SavePart saveSeatPart(const Part *suit) {
     SavePart sp = saveItemPart(suit);
-    sp.seat_profile = suit->seatProfile;
-    /* Only an anonymous occupant needs a name written: when seat_profile names
-       a roster entry, the roster owns the spelling (load_game). */
-    if(suit->seatProfile == 0) { sp.seat_name = suit->seatName; }
+    if(suit->kerbal != nullptr) {
+        sp.seat_profile = suit->kerbal->id;
+        sp.seat_name = suit->kerbal->name;
+    }
+    if(suit->container != nullptr) {
+        for(size_t i = 0; i < suit->container->seats.size(); i++) {
+            if(suit->container->seats[i] == suit) {
+                sp.seat_slot = (int)i;
+                break;
+            }
+        }
+    }
     return sp;
 }
 
@@ -185,7 +189,6 @@ void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
                 ? (float)si.fuel[r] : 0.0f;
         }
         item->experiments = si.experiments;
-        container->ownedContents.push_back(item);
         container->contents.push_back(item);
         item->container = container;
         item->owner = container->owner;   // the vehicle the container is on
@@ -194,14 +197,14 @@ void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
 }
 
 /* Rebuild `saved` as the seat occupants (part.h) of the capsule `cap`: suit
-   Parts parked in it and owned through ownedContents, so the capsule frees them.
+   Parts parked in `cap->seats` and owned by the capsule, so it frees them.
    No Kerbal vehicle exists until someone goes EVA (Game::kerbalEVA). Throws to
    refuse the load on a non-capsule, an over-full capsule, a non-kerbal part or a
    roster id the roster has no entry for: a hand-edited save is still just data,
    and refusing is an option HERE -- parking anything else in a capsule breaks
    checkPartInvariants, which rebuildCompound asserts on two calls later.
    Called before Vehicle::finalize, so the compound already carries the crew
-   mass (Part::effectiveMass reads the containment edge). */
+   mass (Part::effectiveMass reads the seats edge). */
 void buildSeatParts(Game &g, const std::vector<SavePart> &saved, Part *cap,
                     const std::string &shipName) {
     if(saved.empty()) { return; }   // the overwhelmingly common case
@@ -266,19 +269,30 @@ void buildSeatParts(Game &g, const std::vector<SavePart> &saved, Part *cap,
                 ? (float)sp.fuel[r] : 0.0f;
         }
         suit->experiments = sp.experiments;
-        suit->seatProfile = sp.seat_profile;
-        // The roster owns a profiled occupant's name; only an anonymous one takes the file's.
-        if(sp.seat_profile == 0) { suit->seatName = sp.seat_name; }
+        /* Identity is owned by the suit (part.h). The roster supplies the
+           template when the save names one; otherwise the name on the file. */
+        {
+            KerbalProfile prof;
+            prof.id = sp.seat_profile;
+            prof.name = sp.seat_name;
+            if(sp.seat_profile != 0 && profile != nullptr) {
+                prof = *profile;   // roster owns the spelling + skills
+            }
+            suit->kerbal = std::make_unique<KerbalProfile>(std::move(prof));
+        }
         /* The seat edge before the pockets: buildInventoryItems copies the
            container's owner onto each item. A throw leaves everything wired into
            the capsule, which the caller's rollback frees with the ship. */
-        cap->contents.push_back(suit);
-        cap->ownedContents.push_back(suit);
-        suit->container = cap;
+        if(!cap->addSeat(suit, (sp.seat_slot >= 0) ? (size_t)sp.seat_slot : (size_t)-1)) {
+            delete suit;
+            throw std::runtime_error("load: '" + shipName + "' capsule '"
+                                     + cap->def->name + "' has no free seat for '"
+                                     + sp.part + "'");
+        }
         suit->owner = cap->owner;   // the vehicle the capsule rides
         buildInventoryItems(g, sp.inventory, suit, shipName);
         printf("[crew] loaded '%s' aboard '%s'\n",
-               seatName(g.roster, suit).c_str(), shipName.c_str());
+               seatName(suit).c_str(), shipName.c_str());
     }
 }
 
@@ -287,9 +301,12 @@ void buildSeatParts(Game &g, const std::vector<SavePart> &saved, Part *cap,
 // not cargo, so it is not counted -- but what its suit carries is.
 size_t countPartInventory(Part *p) {
     size_t n = 0;
-    for(Part *c : p->ownedContents) {
-        if(!c->isSeat()) { n++; }
+    for(Part *c : p->contents) {
         n += countPartInventory(c);
+        n++;
+    }
+    for(Part *suit : p->seats) {
+        if(suit != nullptr) { n += countPartInventory(suit); }
     }
     return n;
 }
@@ -307,7 +324,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
         /* A Kerbal vehicle exists ONLY while walking (eva.h): a seated person is
            a seat on a capsule Part and is captured in that part's `seats`. */
         Kerbal *k = static_cast<Kerbal *>(v);
-        s.profile_id = k->profileId;
+        s.profile_id = k->profileId();
         s.pose.body = (v->m_parent != nullptr) ? v->m_parent->name : "";
         s.pose.rotating = v->frame->isRotFrame();
         v->frameS(s.pose.pos, s.pose.rot);
@@ -323,7 +340,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
             for(int r = 0; r < (int)ResourceType::Num; r++) {
                 s.suit_fuel.push_back((double)v->parts[0]->resources.current[r]);
             }
-            for(Part *c : v->parts[0]->ownedContents) {
+            for(Part *c : v->parts[0]->contents) {
                 s.suit_inventory.push_back(saveItemPart(c));
             }
             s.suit_experiments = v->parts[0]->experiments;
@@ -349,12 +366,16 @@ SaveShip saveShipFromVehicle(Vehicle *v,
             sp.fuel.push_back((double)p->resources.current[r]);
         }
         sp.experiments = p->experiments;
-        for(Part *c : p->ownedContents) {
-            if(!c->isSeat()) { sp.inventory.push_back(saveItemPart(c)); }
+        for(Part *c : p->contents) {
+            sp.inventory.push_back(saveItemPart(c));
         }
-        /* Seat occupants (part.h) ride in the part that contains them: a person
+        /* Seat occupants (part.h) ride in the part that holds them: a person
            is a seat on a capsule, not a fleet entry of their own. */
-        for(Part *suit : p->seats()) { sp.seats.push_back(saveSeatPart(suit)); }
+        for(Part *suit : p->seats) {
+            if(suit != nullptr) {
+                sp.seats.push_back(saveSeatPart(suit));
+            }
+        }
         s.parts.push_back(sp);
     }
     for(size_t k = 0; k < v->fuelLinks.size(); k++) {
@@ -594,7 +615,6 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
     }
     Kerbal *k = new Kerbal;
     k->name = s.name;
-    k->profileId = s.profile_id;
     /* The roster owns the name, so it wins over the saved one: a rename in the
        save's own roster reaches the fleet instead of leaving two spellings. */
     if(profile != nullptr) { k->name = profile->name; }
@@ -612,6 +632,14 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
     } catch(...) {
         delete k;
         throw;
+    }
+    /* Identity is owned by the suit Part (part.h). */
+    if(!k->parts.empty()) {
+        KerbalProfile prof;
+        prof.id = s.profile_id;
+        prof.name = k->name;
+        if(profile != nullptr) { prof = *profile; }
+        k->parts[0]->kerbal = std::make_unique<KerbalProfile>(std::move(prof));
     }
     // Only the contents -- effectiveMass() reads them from resources.current.
     if(!s.suit_fuel.empty() && !k->parts.empty()) {
@@ -665,7 +693,7 @@ void refuseDoubleClaim(const std::vector<Vehicle *> &built) {
     std::set<uint64_t> worn;
     for(const Vehicle *v : built) {
         if(v->isEva()) {
-            const uint64_t id = static_cast<const Kerbal *>(v)->profileId;
+            const uint64_t id = static_cast<const Kerbal *>(v)->profileId();
             if(id != 0 && !worn.insert(id).second) {
                 throw std::runtime_error("load: two people claim roster id "
                                          + std::to_string(id));
@@ -673,11 +701,12 @@ void refuseDoubleClaim(const std::vector<Vehicle *> &built) {
             continue;
         }
         for(const Part *p : v->parts) {
-            for(const Part *suit : p->seats()) {
-                if(suit->seatProfile != 0
-                   && !worn.insert(suit->seatProfile).second) {
+            for(const Part *suit : p->seats) {
+                if(suit == nullptr || suit->kerbal == nullptr) { continue; }
+                const uint64_t id = suit->kerbal->id;
+                if(id != 0 && !worn.insert(id).second) {
                     throw std::runtime_error("load: two people claim roster id "
-                                             + std::to_string(suit->seatProfile));
+                                             + std::to_string(id));
                 }
             }
         }
@@ -706,6 +735,12 @@ void save_game(Game &g, const std::string &dir) {
         sk.name = p.name;
         for(int r = 0; r < NumSkills; r++) { sk.skill[r] = p.skill[r]; }
         meta.roster.push_back(sk);
+    }
+    /* Unassigned kerbals standing on the home pad (the building pool). */
+    if(StaticBuilding *home = Ships::homeCrewPad(g.sys)) {
+        for(Part *suit : home->crew) {
+            if(suit != nullptr) { meta.crew_pool.push_back(saveSeatPart(suit)); }
+        }
     }
     meta.time = g.time;
     meta.time_accel = g.time_accel;
@@ -775,6 +810,46 @@ void load_game(Game &g, const std::string &dir) {
             p.name = sk.name;
             for(int r = 0; r < NumSkills; r++) { p.skill[r] = sk.skill[r]; }
             g.roster.profiles.push_back(p);
+        }
+    }
+    /* The building pool is the save's (format 4: crew_pool). No fallback mint --
+       an empty pool is a spent cast, which is a legal state. */
+    if(StaticBuilding *home = Ships::homeCrewPad(g.sys)) {
+        for(Part *p : home->crew) { delete p; }
+        home->crew.clear();
+        for(const SavePart &sp : meta.crew_pool) {
+            const PartDef *pd = g.ships.catalog().find(sp.part);
+            if(pd == nullptr) {
+                throw std::runtime_error("load: crew pool entry '" + sp.part
+                                         + "' is not in the parts file");
+            }
+            Mesh *m = get_mesh("res/" + pd->mesh);
+            Texture *t = get_texture("res/" + pd->texture);
+            Body *b = create_part_body(m, g.partsshader, t,
+                                       (float)sp.mass, sp.hull_margin);
+            Part *suit = new Part;
+            suit->body = b;
+            suit->def = pd;
+            suit->id = sp.id;
+            for(int r = 0; r < (int)ResourceType::Num; r++) {
+                suit->resources.capacity[r] = pd->capacity[r];
+                suit->resources.current[r] = (r < (int)sp.fuel.size())
+                    ? (float)sp.fuel[r] : 0.0f;
+            }
+            suit->experiments = sp.experiments;
+            KerbalProfile prof;
+            prof.id = sp.seat_profile;
+            prof.name = sp.seat_name;
+            if(sp.seat_profile != 0) {
+                const KerbalProfile *src = g.roster.find(sp.seat_profile);
+                if(src != nullptr) { prof = *src; }
+            }
+            suit->kerbal = std::make_unique<KerbalProfile>(std::move(prof));
+            home->crew.push_back(suit);
+        }
+        if(!meta.crew_pool.empty()) {
+            printf("[crew] %zu kerbal(s) standing at '%s' (from save)\n",
+                   home->crew.size(), home->id.c_str());
         }
     }
     /* setTime, not a bare assignment: the clock jumps here and the load starts

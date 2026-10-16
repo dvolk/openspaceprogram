@@ -2,9 +2,9 @@
 // containers, via the public transfer API (src/inventory.h).
 //
 // What is pinned:
-//   - ADD: inventoryAdd wires the ownership edge (ownedContents), the
-//     traversal edge (contents) and the back-reference (container), and
-//     the item rides the container's vehicle (item->owner).
+//   - ADD: inventoryAdd wires the ownership/traversal edge (contents) and the
+//     back-reference (container), and the item rides the container's vehicle
+//     (item->owner).
 //   - GUARDS: an already-contained item cannot be added again (double add),
 //     a non-container cannot hold an item, capacity is enforced, and a
 //     containment cycle (X holds Y, then X into Y) is refused -- every
@@ -18,10 +18,9 @@
 //     items in a container -- the quality pass found the invariant rejected
 //     them, which would have aborted load of any save holding inventory.
 //   - checkPartInvariants FAILS where the edge is broken: an item listed in
-//     a non-container's contents, and an item owned by a part with
-//     inventory_capacity 0.
+//     a non-container's contents.
 //   - OWNERSHIP: deleting the ship frees its container's items (and their
-//     nested items) exactly once (~Part deletes ownedContents).
+//     nested items) exactly once (~Part deletes contents).
 //   - absorbShip / extractSubtreeAsShip re-point every item in the moved
 //     containers to the destination ship (the owner is the container's
 //     vehicle; a stale one would dangle when the shell is deleted).
@@ -30,7 +29,7 @@
 //     pocket can't cover drains nothing).
 //   - a containment cycle is refused WITHOUT orphaning the item (the cycle
 //     is pre-checked, so a refused transfer moves nothing), and the cycle
-//     guard sees the seat edge (a capsule's contents holds its crew too).
+//     guard sees the seat edge (a capsule's seats hold its crew).
 //
 // Headless (no Game / physics world), like test_contain: ships are built
 // with init() (runs rebuildCompound -- which asserts the containment
@@ -132,10 +131,8 @@ int main() {
     {
         printf("== inventoryAdd: edges, owner, guards ==\n");
         CHECK_TRUE(inventoryAdd(T, C), "the crate accepts the tank");
-        CHECK_TRUE(C->ownedContents.size() == 1 && C->ownedContents[0] == T,
-                   "ownership edge: T in C's ownedContents");
         CHECK_TRUE(C->contents.size() == 1 && C->contents[0] == T,
-                   "traversal edge: T in C's contents");
+                   "ownership/traversal edge: T in C's contents");
         CHECK_TRUE(T->container == C, "back-reference: T->container is C");
         CHECK_TRUE(T->owner == S1.v, "the item rides the container's vehicle");
         CHECK_NEAR(C->effectiveMass(), 338.99, 1e-12,
@@ -143,7 +140,7 @@ int main() {
 
         /* the guards, each of which must leave the item exactly where it was */
         CHECK_TRUE(!inventoryAdd(T, C), "double-add refused");
-        CHECK_TRUE(T->container == C && C->ownedContents.size() == 1,
+        CHECK_TRUE(T->container == C && C->contents.size() == 1,
                    "refused double-add changes nothing");
         CHECK_TRUE(!inventoryAdd(N, T), "a non-container cannot hold an item");
         CHECK_TRUE(N->container == nullptr, "N is still free");
@@ -162,7 +159,7 @@ int main() {
         CHECK_TRUE(!inventoryAdd(X, Y), "X into Y refused (cycle)");
         CHECK_TRUE(X->container == nullptr, "X is still free after the refusal");
         CHECK_TRUE(!inventoryAdd(X, X), "self-add refused");
-        delete X;   // frees Y (ownedContents) -- the ownership path in action
+        delete X;   // frees Y (contents) -- the ownership path in action
         (void)Y;
     }
 
@@ -177,7 +174,7 @@ int main() {
         CHECK_TRUE(inventoryTransfer(T, B), "T moves C -> B");
         CHECK_TRUE(T->container == B, "back-reference re-pointed");
         CHECK_TRUE(T->owner == S2.v, "owner re-pointed to B's vehicle");
-        CHECK_TRUE(C->ownedContents.size() == 1 && C->ownedContents[0] == N,
+        CHECK_TRUE(C->contents.size() == 1 && C->contents[0] == N,
                    "C keeps only N");
 
         /* B is full (1/1): the failed transfer must not orphan N */
@@ -192,7 +189,7 @@ int main() {
 
         CHECK_TRUE(inventoryTransfer(T, C), "T moves back B -> C");
         CHECK_TRUE(T->owner == S1.v, "owner back to S1");
-        CHECK_TRUE(B->ownedContents.empty() && B->contents.empty(), "B emptied");
+        CHECK_TRUE(B->contents.empty(), "B emptied");
         destroyVehicle(S2.v);   // B empty -- frees nothing but B
     }
 
@@ -202,15 +199,12 @@ int main() {
         inventoryRemove(N);
         CHECK_TRUE(N->container == nullptr, "back-reference cleared");
         CHECK_TRUE(N->owner == nullptr, "owner cleared");
-        CHECK_TRUE(std::find(C->ownedContents.begin(), C->ownedContents.end(),
-                             N) == C->ownedContents.end(),
-                   "not in ownedContents");
         CHECK_TRUE(std::find(C->contents.begin(), C->contents.end(),
                              N) == C->contents.end(),
                    "not in contents");
         inventoryRemove(N);        // removing a free item: no-op, no crash
         delete N;
-        CHECK_TRUE(C->ownedContents.size() == 1 && C->ownedContents[0] == T,
+        CHECK_TRUE(C->contents.size() == 1 && C->contents[0] == T,
                    "C keeps only T");
 
         Part *R = mkPart(I, "removeMe", 7.0, 1.0, 1.0, 1.0, 0, false);
@@ -219,7 +213,7 @@ int main() {
         CHECK_TRUE(R->container == nullptr && R->owner == nullptr,
                    "R fully detached");
         CHECK_TRUE(inventoryAdd(R, C), "R back into C");
-        CHECK_TRUE(C->ownedContents.size() == 2, "C holds T and R at the end");
+        CHECK_TRUE(C->contents.size() == 2, "C holds T and R at the end");
     }
 
     /* --- effectiveMass recurses through nested items --------------------- */
@@ -272,32 +266,28 @@ int main() {
         CHECK_TRUE(S3.v->checkPartInvariants(), "S3 passes unwired");
 
         Part *IT = mkPart(I, "stray", 5.0, 1.0, 1.0, 1.0, 0, false);
-        /* (a) listed in a non-container's contents: not an owned item (not
-           in ownedContents), not a character's part (no owner) -> fail */
+        /* (a) listed in a non-container's contents: a part with
+           inventory_capacity 0 cannot hold cargo -> fail */
         P->contents.push_back(IT);
         IT->container = P;
         CHECK_TRUE(!S3.v->checkPartInvariants(),
                    "item in a non-container's contents: fails");
         P->contents.pop_back();
         IT->container = nullptr;
-        /* (b) owned by a part with inventory_capacity 0 -> fail */
-        P->ownedContents.push_back(IT);
-        P->contents.push_back(IT);
-        IT->container = P;
+        /* (b) a kerbal parked as cargo: a person is not inventory */
+        Part *KP = mkPart(I, "stowaway", 90.0, 1.0, 1.0, 1.0, 0, false);
+        // hand-wire a kerbal-typed def so isSeat() fires
+        S3.defs.push_back(PartDef());
+        S3.defs.back().name = "stowaway-def";
+        S3.defs.back().type = "kerbal";
+        KP->def = &S3.defs.back();
+        K->contents.push_back(KP);
+        KP->container = K;
         CHECK_TRUE(!S3.v->checkPartInvariants(),
-                   "item owned by a non-container: fails");
-        P->ownedContents.pop_back();
-        P->contents.pop_back();
-        IT->container = nullptr;
-        /* (c) owned by a container but not listed for traversal: the mass
-           would be freed in ~Part but silently absent from effectiveMass ->
-           fail */
-        K->ownedContents.push_back(IT);
-        IT->container = K;
-        CHECK_TRUE(!S3.v->checkPartInvariants(),
-                   "owned but not listed: fails");
-        K->ownedContents.pop_back();
-        IT->container = nullptr;
+                   "kerbal in inventory: fails");
+        K->contents.pop_back();
+        KP->container = nullptr;
+        delete KP;
         CHECK_TRUE(S3.v->checkPartInvariants(), "restored S3 passes");
         destroyVehicle(S3.v);
         delete IT;   // nobody owns it any more
@@ -442,23 +432,20 @@ int main() {
     }
 
     /* --- the cycle guard sees the seat edge ------------------------------
-       A capsule's contents holds its crew too, and a kerbal's suit is itself a
-       container. inSubtree must walk contents (not just ownedContents), or
-       a capsule added into its own crew kerbal closes a cycle the guard
-       misses. Wired by hand (a headless test has no real Kerbal and mkPart has
-       no def type, so this is not a real seat -- isSeat() would be false): only
-       the contents edge matters here, which is the one inSubtree walks. */
+       A capsule's seats hold its crew, and a kerbal's suit is itself a
+       container. inSubtree must walk seats (not just contents), or a capsule
+       added into its own crew kerbal closes a cycle the guard misses. */
     {
         printf("== inSubtree sees the seat edge (cycle guard) ==\n");
         Part *CAP = mkPart(I, "capsule", 100.0, 1.0, 1.0, 1.0, 3, false);
         Part *KP  = mkPart(I, "kerbal",  90.0, 1.0, 1.0, 1.0, 3, false);
-        CAP->contents.push_back(KP);   // the seat edge (contents only)
+        // Hand-wire the seat edge (mkPart does not set crew_capacity).
+        CAP->seats.push_back(KP);
         KP->container = CAP;
         CHECK_TRUE(!inventoryAdd(CAP, KP),
                    "adding the capsule into its crew kerbal: refused (cycle)");
         CHECK_TRUE(CAP->container == nullptr, "the capsule is still free (not orphaned)");
-        delete CAP;   // CAP owns nothing here (KP is not in ownedContents)
-        delete KP;
+        delete CAP;   // frees KP (~Part deletes seats)
     }
 
     if(g_failures == 0) {

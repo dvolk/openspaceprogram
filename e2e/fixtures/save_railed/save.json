@@ -1,7 +1,7 @@
 {
   "active_ship": "v0",
   "exhaust_scale": 1.0,
-  "format": 3,
+  "format": 4,
   "parts": "res/data/parts.json",
   "saved_at": "2026-09-25T02:22:09Z",
   "ships": [

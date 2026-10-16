@@ -1,6 +1,6 @@
 {
   "active_ship": "",
-  "format": 3,
+  "format": 4,
   "parts": "res/data/parts.json",
   "recovered": [
     {

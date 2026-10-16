@@ -115,42 +115,6 @@ Ships::Ships(const std::string &parts_file, Shader *partsshader, TerrainBody *su
 {
 }
 
-/* The next kerbal for a seat: the roster entry nobody in `sys` is wearing.
-   Derived from the world rather than tracked on the roster, so a delete that
-   forgets to "release" a person cannot shrink the pool forever. Two sources: a
-   walking kerbal wears its id on the vehicle, a SEATED one only on the suit Part
-   parked in its capsule (part.h). nullptr = the pool is spent; the seat stays
-   empty. */
-static const KerbalProfile *claimProfile(CrewRoster &roster, System &sys) {
-    static thread_local std::vector<uint64_t> worn;
-    static thread_local std::vector<Vehicle *> fleet;
-    worn.clear();
-    // collectVehiclesInto, not collectVehicles: this runs once per seat, and
-    // the fleet walk is the allocation to avoid (see countVehicles).
-    collectVehiclesInto(sys, fleet);
-    for(Vehicle *v : fleet) {
-        if(!v->isEva()) { continue; }
-        const uint64_t id = static_cast<Kerbal *>(v)->profileId;
-        if(id == 0) { continue; }
-        worn.push_back(id);
-    }
-    for(Vehicle *v : fleet) {
-        for(Part *p : v->parts) {
-            for(Part *s : p->seats()) {
-                if(s->seatProfile != 0) { worn.push_back(s->seatProfile); }
-            }
-        }
-    }
-    /* The invariant the whole pool rests on: one person, one wearer. A repeat
-       means two things claim the same kerbal -- which is what a name-keyed load
-       mis-resolving used to do -- and the pool would then lose people with
-       nothing left to show for it. */
-    for(size_t i = 0; i < worn.size(); i++) {
-        for(size_t j = 0; j < i; j++) { assert(worn[i] != worn[j]); }
-    }
-    return roster.claim(worn);
-}
-
 Vehicle *Ships::place_ship(const std::string &shipDefPath, const std::string &wantName,
                            TerrainBody *hb, const ScenarioDef *sc, System &sys,
                            double t, const StaticBuilding *site)
@@ -227,16 +191,6 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
     }
     Vehicle *v = is_kerbal ? static_cast<Vehicle *>(new Kerbal) : new Vehicle;
     v->name = nm;
-    if(is_kerbal) {
-        Kerbal *k = static_cast<Kerbal *>(v);
-        const KerbalProfile *p = claimProfile(roster, sys);
-        if(p != nullptr) {
-            k->profileId = p->id;
-            v->name = p->name;
-        } else {
-            printf("[crew] roster spent: '%s' has no identity\n", nm.c_str());
-        }
-    }
     v->defPath = defPath;
     v->home = hb;
     v->scenario = sc;
@@ -261,6 +215,22 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
     } catch(...) {
         delete v;
         throw;
+    }
+    /* A walker takes its suit from the home pad pool (part.h: a kerbal is a
+       Part at one place). The minted def suit is replaced by the pooled one. */
+    if(is_kerbal && !v->parts.empty()) {
+        Part *suit = takeCrew(sys);
+        if(suit != nullptr) {
+            Part *minted = v->parts[0];
+            suit->localPos = minted->localPos;
+            suit->localRot = minted->localRot;
+            suit->owner = v;
+            v->parts[0] = suit;
+            delete minted;
+            if(suit->kerbal != nullptr) { v->name = suit->kerbal->name; }
+        } else {
+            printf("[crew] pool spent: '%s' has no identity\n", nm.c_str());
+        }
     }
     v->setVelocity(glm::dvec3(0, 0, 0));
     // Re-home: enters the body's ships list and starts the flight journal at `t`.
@@ -329,6 +299,59 @@ Part *Ships::make_suit(const std::string &defPath) const {
     return suit;
 }
 
+StaticBuilding *Ships::homeCrewPad(System &sys) {
+    for(TerrainBody *b : sys.bodies) {
+        StaticBuilding *site = find_launch_site(b, "");
+        if(site != nullptr) { return site; }
+    }
+    return nullptr;
+}
+
+Part *Ships::takeCrew(System &sys) {
+    StaticBuilding *home = homeCrewPad(sys);
+    if(home == nullptr || home->crew.empty()) { return nullptr; }
+    // First in, first out: the roster is minted in id order, so the lowest-id
+    // free kerbal is the one standing at the front of the line.
+    Part *suit = home->crew.front();
+    home->crew.erase(home->crew.begin());
+    suit->container = nullptr;
+    suit->owner = nullptr;
+    return suit;
+}
+
+void Ships::returnCrew(System &sys, Part *suit) {
+    if(suit == nullptr) { return; }
+    StaticBuilding *home = homeCrewPad(sys);
+    if(home == nullptr) {
+        delete suit;   // nowhere to stand: the person is gone
+        return;
+    }
+    suit->container = nullptr;
+    suit->owner = nullptr;
+    home->crew.push_back(suit);
+}
+
+void Ships::mintCrewPool(const CrewRoster &roster, System &sys) {
+    StaticBuilding *home = homeCrewPad(sys);
+    if(home == nullptr) {
+        printf("[crew] no VAB_LAUNCH_PAD: nowhere to stand the crew pool\n");
+        return;
+    }
+    for(const KerbalProfile &p : roster.profiles) {
+        Part *suit = nullptr;
+        try {
+            suit = make_suit(kKerbalShipDef);
+        } catch(const std::exception &e) {
+            printf("Crew: %s\n", e.what());
+            continue;
+        }
+        suit->kerbal = std::make_unique<KerbalProfile>(p);
+        home->crew.push_back(suit);
+    }
+    printf("[crew] %zu kerbal(s) standing at '%s'\n",
+           home->crew.size(), home->id.c_str());
+}
+
 /* Fill one seat: park a suit Part in the capsule (ship, part) as a seat occupant
    (part.h). There is no Kerbal vehicle here -- minting one is what going EVA
    means (Game::kerbalEVA). */
@@ -337,35 +360,27 @@ bool Ships::fill_seat(Vehicle *ship, size_t part, System &sys) {
     Part *capPart = ship->parts[part];
     const PartDef *capDef = capPart->def;
     if(capDef->crew_capacity <= 0) { return false; }
+    if(capPart->seatCount() >= capDef->crew_capacity) { return false; }
 
-    /* Draw the person from the roster. A spent pool leaves the seat EMPTY and
-       the ship flies uncrewed: a legal state, not a failure. */
-    const KerbalProfile *p = claimProfile(roster, sys);
-    if(p == nullptr) {
+    /* Draw the person from the home pad's pool. An empty pool leaves the seat
+       EMPTY and the ship flies uncrewed: a legal state, not a failure. */
+    Part *suit = takeCrew(sys);
+    if(suit == nullptr) {
         printf("Crew: no kerbal left for '%s' part %zu (%d seats)\n",
                ship->name.c_str(), part, capDef->crew_capacity);
         return false;
     }
 
-    Part *suit = nullptr;
-    try {
-        suit = make_suit(kKerbalShipDef);
-    } catch(const std::exception &e) {
-        printf("Crew: %s\n", e.what());
-        return false;
-    }
-
-    /* The seat edge: containment, and the capsule OWNS the suit (so ~Part frees
-       it). `owner` is the vehicle the container sits on, as for an item. */
-    capPart->contents.push_back(suit);
-    capPart->ownedContents.push_back(suit);
-    suit->container = capPart;
+    /* The seat edge: the capsule OWNS the suit (so ~Part frees it). `owner` is
+       the vehicle the container sits on, as for an item. Identity rides the
+       suit (Part::kerbal) -- the person owns it. */
+    assert(capPart->addSeat(suit));
     suit->owner = ship;
-    suit->seatProfile = p->id;
     // Rebuild so the compound carries the crew mass.
     ship->rebuildCompound();
     printf("Crew: '%s' aboard '%s' part %zu (%d/%d)\n",
-           p->name.c_str(), ship->name.c_str(), part,
+           (suit->kerbal ? suit->kerbal->name : "?").c_str(),
+           ship->name.c_str(), part,
            capPart->seatCount(), capDef->crew_capacity);
     return true;
 }

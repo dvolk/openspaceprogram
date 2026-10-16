@@ -6,18 +6,25 @@
 // PartDef, not stored.
 //
 // Ownership: Part OWNS its Body; Vehicle owns the Part; the PartDef is
-// non-owning (the catalog outlives the ship). The containment edge
-// (container/contents) is NON-OWNING both ways -- ~Part must never delete
-// contents: a contained kerbal is owned by its Kerbal vehicle.
+// non-owning (the catalog outlives the ship). Containment is ownership:
+// ~Part deletes what it holds -- inventory items in `contents` and seat
+// suits in `seats`. There is no non-owning containment edge.
 
 #include <atomic>
+#include <cassert>
 #include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "body.h"      // Body (complete type -- ~Part deletes it)
+#include "crew.h"      // KerbalProfile (identity owned by a kerbal suit)
 #include "science.h"   // Experiment (science data held on kerbal suits)
 #include "shipdef.h"   // PartDef, ResourceContent
 
 class Vehicle;   // Part::owner (the parts list it is attached to)
+struct Part;
 
 /* Process-wide monotonic counter for Part::uid. Atomic so a part-level job
    later is not a data race. */
@@ -33,6 +40,10 @@ enum ChuteState {
     ChuteStowed = 0,
     ChuteDeployed = 1
 };
+
+/* A kerbal is a Part (its suit) at exactly one place: a capsule seat, a
+   walking Kerbal vehicle, or -- soon -- an unassigned pile on a building.
+   Identity is OWNED by the suit: one person, one profile, no roster lookup. */
 
 struct Part {
     Body *body;                 // OWNED (render assets are registry-shared)
@@ -65,32 +76,21 @@ struct Part {
        root). Topology only -- no physics handle. */
     Part *parent = nullptr;
 
-    /* --- the containment edge ------------------------------------------
-       Every Part is attached to exactly one Vehicle (`owner`) and contained in
-       at most one Part. `container`/`contents` are NON-OWNING; inventory items
-       are OWNED by the container via `ownedContents` -- they have no other owner.
+    /* --- containment (OWNED both ways) ---------------------------------
+       Every Part is attached to exactly one Vehicle (`owner`) and held by
+       at most one Part. Inventory items live in `contents` and back-point
+       through `container`; seat occupants live in `seats`. ~Part frees both.
        Vehicle::checkPartInvariants enforces this on every build/stage/refresh. */
     Vehicle *owner = nullptr;      // attached: the Vehicle whose parts list holds this
-    Part *container = nullptr;     // contained: the part this one is parked in
-    std::vector<Part *> contents;  // contained: the parts parked in this one (non-owning)
-    /* OWNED inventory items (~Part deletes them). A capsule's seat occupants are
-       here too -- a seat is containment that knows who sits in it, below. An
-       item here is ALSO in `contents`. */
-    std::vector<Part *> ownedContents;
-
-    /* --- a seat: the containment edge, plus an identity -------------------
-       A seated kerbal is NOT a Vehicle. Its suit Part is parked in the capsule
-       (in `contents`, owned through `ownedContents`, exactly like an inventory
-       item) and carries who sits in the seat. Minting a Kerbal vehicle IS going
-       EVA (Game::kerbalEVA); deleting one IS boarding. Occupancy is derived,
-       never stored -- see isSeat() -- so there is no third pointer to keep in
-       step with the containment edge. These fields are meaningful only for an
-       occupant. */
-    uint64_t seatProfile = 0;  // the CrewRoster entry this person IS; 0 = anonymous
-    /* Display name for an ANONYMOUS occupant only (a save that predates the
-       roster), which the roster has no entry to name. When seatProfile is set
-       the roster owns the name and this stays empty. */
-    std::string seatName;
+    Part *container = nullptr;     // held by: inventory parent or the capsule
+    /* Inventory items parked in this one. OWNED -- ~Part deletes them. */
+    std::vector<Part *> contents;
+    /* Seat occupants (capsules only). OWNED -- ~Part deletes the suits. A suit
+       is NOT in `contents`: a person is not cargo (issue #274). */
+    std::vector<Part *> seats;
+    /* Who this suit IS (kerbal-type parts only). Owned: the person dies with
+       the suit. Null for every non-person part. */
+    std::unique_ptr<KerbalProfile> kerbal;
 
     /* Pose in the VEHICLE's frame S -- one S per Vehicle, anchored at its root
        part (Vehicle::rootPart), NOT at this part. Written at attach time; only
@@ -103,7 +103,8 @@ struct Part {
 
     Part() : body(nullptr), def(nullptr), uid(nextPartUid()) { }
     ~Part() {
-        for(Part *c : ownedContents) { delete c; }  // owned inventory items
+        for(Part *c : contents) { delete c; }
+        for(Part *s : seats) { delete s; }
         delete body;
     }
 
@@ -123,31 +124,51 @@ struct Part {
     bool isFuelBarrier() const { return def != nullptr && def->fuel_barrier; }
     bool isCapsule() const { return def != nullptr && def->crew_capacity > 0; }
     bool isContainer() const { return def != nullptr && def->inventory_capacity > 0; }
-    /* A seat OCCUPANT: a suit Part parked in a capsule. Derived from the def
-       type and the containment edge, so it cannot drift from either and needs
-       no flag of its own. */
+    /* A seat OCCUPANT: a kerbal-type suit held by a capsule. Derived from the
+       def type and the hold edge, so it cannot drift from either. */
     bool isSeat() const {
         return container != nullptr && def != nullptr && def->type == "kerbal";
     }
-    /* The seat occupants parked in this part (empty unless it is a capsule). */
-    std::vector<Part *> seats() const {
-        std::vector<Part *> out;
-        for(Part *c : contents) { if(c->isSeat()) { out.push_back(c); } }
-        return out;
-    }
-    /* Seats taken, for the capacity check (`def->crew_capacity` is the ceiling). */
+    /* Seats taken (non-null slots). `def->crew_capacity` is the ceiling. */
     int seatCount() const {
         int n = 0;
-        for(Part *c : contents) { if(c->isSeat()) { n++; } }
+        for(const Part *s : seats) { if(s != nullptr) { n++; } }
         return n;
     }
-    /* Is this part an inventory item of `container` (in its ownedContents)?
-       Seat occupants are owned too, so this does NOT separate them from items
-       -- isSeat() does. */
-    bool ownedBy(Part *container) const {
-        if(container == nullptr) { return false; }
-        for(Part *c : container->ownedContents) { if(c == this) { return true; } }
-        return false;
+    /* Size `seats` to crew_capacity once the def is known (Part is default-
+       constructed, then def is assigned). Null slots are empty seats; the
+       index is stable for IVA (seat 0 stays seat 0). */
+    void ensureSeats() {
+        if(def == nullptr) { return; }
+        const size_t cap = (def->crew_capacity > 0) ? (size_t)def->crew_capacity : 0;
+        if(seats.size() < cap) { seats.resize(cap, nullptr); }
+        assert(seats.size() == cap);
+    }
+    /* Park `suit` in `slot` (default: first free). Takes ownership; sets the
+       hold edge. False if the capsule is full or the slot is taken. */
+    bool addSeat(Part *suit, size_t slot = (size_t)-1) {
+        assert(suit != nullptr && suit->container == nullptr);
+        ensureSeats();
+        if(slot == (size_t)-1) {
+            for(slot = 0; slot < seats.size() && seats[slot] != nullptr; slot++) {}
+        }
+        if(slot >= seats.size() || seats[slot] != nullptr) { return false; }
+        seats[slot] = suit;
+        suit->container = this;
+        return true;
+    }
+    /* Unpark `suit`; nulls its slot and returns it with the hold edge cleared.
+       The caller owns it (EVA mints a Kerbal vehicle around it). Null if it
+       was not seated here. */
+    Part *removeSeat(Part *suit) {
+        for(size_t i = 0; i < seats.size(); i++) {
+            if(seats[i] == suit) {
+                seats[i] = nullptr;
+                suit->container = nullptr;
+                return suit;
+            }
+        }
+        return nullptr;
     }
     bool isTank() const {
         if(def == nullptr) { return false; }
@@ -196,9 +217,9 @@ struct Part {
     double powerDrawConstant() const { return def->power_draw_constant; }  // W, all the time
     double powerGen() const { return def->power_gen; }            // W, constant source
 
-    /* Mass INCLUDING propellant contents and whatever is parked inside (the
-       containment edge, recursively). Body mass is DRY structure only; EC is
-       excluded (energy, no mass). */
+    /* Mass INCLUDING propellant contents and whatever is parked inside (items
+       and seats, recursively). Body mass is DRY structure only; EC is excluded
+       (energy, no mass). */
     double effectiveMass() const {
         double m = body->mass;
         for(int r = 0; r < (int)ResourceType::Num; r++) {
@@ -206,6 +227,9 @@ struct Part {
             m += (double)resources.current[r];
         }
         for(Part *c : contents) { m += c->effectiveMass(); }
+        for(Part *s : seats) {
+            if(s != nullptr) { m += s->effectiveMass(); }
+        }
         return m;
     }
 };

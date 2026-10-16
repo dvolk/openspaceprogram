@@ -71,6 +71,9 @@ struct SavePart {
     /* Seat occupant only: the name of an anonymous occupant. Ignored when
        seat_profile names a roster entry -- the roster owns the name. */
     std::string seat_name;
+    /* Seat occupant only: the slot index in the capsule's `seats` (stable for
+       IVA). -1 = fill free slots in write order. */
+    int seat_slot = -1;
 };
 
 // A one-way fuel link between two parts' fuel groups, by uid.
@@ -174,8 +177,12 @@ struct SaveShip {
    3: a seated kerbal is a `seats` element of its capsule's part entry, not a
    fleet entry of its own. A format-2 file lists one as ships/vN.json with
    aboard_ship + aboard_part, which this build would read as a walking kerbal
-   with no pose -- i.e. drop the person onto the ground at the origin. */
-static const int kSaveFormat = 3;
+   with no pose -- i.e. drop the person onto the ground at the origin.
+   4: unassigned kerbals are a `crew_pool` (suit Parts standing on the home
+   pad), and a seat writes its name + profile id inline (the suit owns its
+   identity). A format-3 file has no crew_pool and names people only by
+   roster id. */
+static const int kSaveFormat = 4;
 
 /* Is this a usable slug? A slug is interpolated into a path (ships/<slug>.json)
    AND keys every cross-vehicle reference, so a hand-edited save.json gets both
@@ -214,6 +221,10 @@ struct SaveMeta {
     /* The crew roster as the save knew it (empty = a save predating the
        roster, which loads the --kerbals file instead). */
     std::vector<SaveKerbal> roster;
+    /* Unassigned kerbals standing on the home pad (part.h: suit Parts waiting
+       at the launch site). Empty = a save predating the building pool, which
+       mints from `roster` / --kerbals instead. */
+    std::vector<SavePart> crew_pool;
     std::vector<std::string> ships;
 };
 
@@ -345,6 +356,7 @@ inline nlohmann::json savePartToJson(const SavePart &p) {
     }
     if(p.seat_profile != 0) { j["seat_profile"] = p.seat_profile; }
     if(!p.seat_name.empty()) { j["seat_name"] = p.seat_name; }
+    if(p.seat_slot >= 0) { j["seat_slot"] = p.seat_slot; }
     if(!p.seats.empty()) {
         nlohmann::json ss = nlohmann::json::array();
         for(auto &&sp : p.seats) { ss.push_back(savePartToJson(sp)); }
@@ -376,6 +388,7 @@ inline SavePart savePartFromJson(const nlohmann::json &j) {
     }
     p.seat_profile = readUid(j, "seat_profile");
     if(j.contains("seat_name") && j["seat_name"].is_string()) { p.seat_name = j["seat_name"].get<std::string>(); }
+    if(j.contains("seat_slot") && j["seat_slot"].is_number_integer()) { p.seat_slot = j["seat_slot"].get<int>(); }
     if(j.contains("seats") && j["seats"].is_array()) {
         for(auto &&sp : j["seats"]) { if(sp.is_object()) { p.seats.push_back(savePartFromJson(sp)); } }
     }
@@ -628,6 +641,11 @@ inline nlohmann::json saveMetaToJson(const SaveMeta &m) {
         for(auto &&k : m.roster) { r.push_back(saveKerbalToJson(k)); }
         j["roster"] = r;
     }
+    if(!m.crew_pool.empty()) {
+        nlohmann::json pool = nlohmann::json::array();
+        for(auto &&sp : m.crew_pool) { pool.push_back(savePartToJson(sp)); }
+        j["crew_pool"] = pool;
+    }
     j["ships"]       = m.ships;
     return j;
 }
@@ -700,6 +718,11 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
                 }
             }
             m.roster.push_back(sk);
+        }
+    }
+    if(j.contains("crew_pool") && j["crew_pool"].is_array()) {
+        for(auto &&sp : j["crew_pool"]) {
+            if(sp.is_object()) { m.crew_pool.push_back(savePartFromJson(sp)); }
         }
     }
     if(j.contains("ships") && j["ships"].is_array()) {

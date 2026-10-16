@@ -440,7 +440,7 @@ void Game::runSeatExperiment(Part *suit) {
         return;
     }
     Vehicle *ship = suit->container->owner;
-    runSuitExperiment(suit, ship, suit->container, seatName(roster, suit),
+    runSuitExperiment(suit, ship, suit->container, seatName(suit),
                       ship->name);
 }
 
@@ -982,24 +982,16 @@ void Game::select_ship(Vehicle *v) {
 std::vector<Part *> shipSeats(Vehicle *ship) {
     std::vector<Part *> out;
     for(Part *p : ship->parts) {
-        for(Part *s : p->seats()) { out.push_back(s); }
+        for(Part *suit : p->seats) {
+            if(suit != nullptr) { out.push_back(suit); }
+        }
     }
     return out;
 }
 
-/* A seat's roster entry, or null for an anonymous occupant (a save predating
-   the roster), which the roster cannot name. 0 is the absent sentinel: a
-   hand-edited save could seed the roster with an id-0 entry, and a seat must
-   not silently claim it (the roster file itself refuses id 0). */
-const KerbalProfile *seatEntry(const CrewRoster &roster, const Part *suit) {
-    if(suit == nullptr || suit->seatProfile == 0) { return nullptr; }
-    return roster.find(suit->seatProfile);
-}
-
-std::string seatName(const CrewRoster &roster, const Part *suit) {
-    if(suit == nullptr) { return ""; }
-    const KerbalProfile *p = seatEntry(roster, suit);
-    return p != nullptr ? p->name : suit->seatName;
+std::string seatName(const Part *suit) {
+    if(suit == nullptr || suit->kerbal == nullptr) { return ""; }
+    return suit->kerbal->name;
 }
 
 void freeKerbalsInto(System &sys, std::vector<Kerbal *> &out) {
@@ -1044,7 +1036,7 @@ void Game::kerbalEVA(Part *suit) {
     Part *capPart = suit->container;
     Vehicle *ship = capPart->owner;
     const PartDef *capDef = capPart->def;
-    const std::string who = seatName(roster, suit);
+    const std::string who = seatName(suit);
 
     /* Standing / hover pose beside the capsule. The branch is the ship's
        GROUNDED state, not its frame's rotation: zero velocity in a rotating
@@ -1064,21 +1056,18 @@ void Game::kerbalEVA(Part *suit) {
     const double offset = capDef->radius + 2.0;
     const glm::dvec3 capVel = ship->partVel(capPart);
 
-    /* Empty the seat: the suit stops being contained, and the capsule loses the
-       mass (checkPartInvariants holds on both sides of this). */
-    for(auto it = capPart->contents.begin(); it != capPart->contents.end(); it++) {
-        if(*it == suit) { capPart->contents.erase(it); break; }
+    /* Empty the seat: the suit stops being held, and the capsule loses the
+       mass (checkPartInvariants holds on both sides of this). The suit keeps
+       its owned KerbalProfile -- identity travels with the person. */
+    if(capPart->removeSeat(suit) == nullptr) {
+        toast("EVA: seat not on this capsule");
+        return;
     }
-    for(auto it = capPart->ownedContents.begin(); it != capPart->ownedContents.end(); it++) {
-        if(*it == suit) { capPart->ownedContents.erase(it); break; }
-    }
-    suit->container = nullptr;
     ship->rebuildCompound();
 
     // Mint the walker around the suit it just left.
     Kerbal *k = new Kerbal;
     k->name = who;
-    k->profileId = suit->seatProfile;
     /* The walker's own def, not the seat's: a crew entry writes defPath (a SHIP
        def) while a seat writes a catalog part name (SavePart::part). Both resolve
        to the same one-part kerbal def, which is what buildKerbalFromSave now
@@ -1151,7 +1140,6 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
        first so ~Vehicle does not free the suit, so anything else in there would
        leak silently. */
     assert(k->parts.size() == 1);
-    const uint64_t pid = k->profileId;
     const std::string who = k->name;
     const bool wasActive = (this->ship == k);
     /* Boarding deletes a VEHICLE, so every reference to it goes first: its part
@@ -1166,17 +1154,15 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
     k->parts.clear();
     delete k;
 
-    capPart->contents.push_back(suit);
-    capPart->ownedContents.push_back(suit);
-    suit->container = capPart;
+    /* Park the suit as a seat occupant (part.h). `owner` is the vehicle the
+       capsule sits on. Identity (Part::kerbal) stays on the suit. */
+    // Capacity was checked above; a failure here is a bug, not a recoverable state.
+    assert(capPart->addSeat(suit));
     /* The suit AND whatever its pockets hold now ride the ship: a walker picks
        items up with itself as their Part::owner, so leaving that pointer at the
        deleted Kerbal is a dangling Vehicle* in the containment tree -- the same
        edge absorbShip / extractSubtreeAsShip walk recursively. */
     inventorySetOwner(suit, ship);
-    suit->seatProfile = pid;
-    /* An anonymous walker keeps its name on the seat; the roster names the rest. */
-    suit->seatName = (pid == 0) ? who : "";
     // Rebuild so the next physics step sees the heavier ship.
     ship->rebuildCompound();
     toast("Board: %s -> %s", who.c_str(), ship->name.c_str());
@@ -1713,6 +1699,18 @@ void Game::recoverActive() {
     // Part windows on the ship would dangle with it. A seat occupant is never
     // right-clickable (it is not rendered), so none can point at one.
     dropVehicleRefs(v);
+
+    /* The crew come home: suits peel off to the launch pad before the ship
+       dies (part.h: a kerbal is a Part at one place). */
+    {
+        std::vector<Part *> home = shipSeats(v);
+        for(Part *suit : home) {
+            Part *cap = suit->container;
+            if(cap != nullptr) { cap->removeSeat(suit); }
+            inventorySetOwner(suit, nullptr);
+            Ships::returnCrew(sys, suit);
+        }
+    }
 
     // Out of its SoI body's list, then delete.
     v->detachSoiList();

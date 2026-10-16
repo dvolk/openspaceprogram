@@ -2138,15 +2138,18 @@ void drawPartWindows(Game &g) {
             if(def->crew_capacity > 0) {
                 ImGui::Separator();
                 /* A seat is this capsule's occupant (part.h): a suit Part parked
-                   in it, not a Kerbal vehicle. The snapshot is safe to keep
-                   iterating after a button fires -- an EVA hands the suit to the
-                   kerbal it just minted, so it stays alive. */
-                std::vector<Part *> seats = ship->parts[part]->seats();
+                   in it, not a Kerbal vehicle. The snapshot of suits is safe
+                   to keep iterating after a button fires -- an EVA hands the
+                   suit to the kerbal it just minted, so it stays alive. */
+                std::vector<Part *> seats;
+                for(Part *suit : ship->parts[part]->seats) {
+                    if(suit != nullptr) { seats.push_back(suit); }
+                }
                 ImGui::Text("Crew: %d / %d", (int)seats.size(), def->crew_capacity);
                 for(size_t ci = 0; ci < seats.size(); ci++) {
                     Part *suit = seats[ci];
                     ImGui::PushID(suit);
-                    ImGui::Text("  %s", seatName(g.roster, suit).c_str());
+                    ImGui::Text("  %s", seatName(suit).c_str());
                     if(ImGui::SmallButton("EVA")) {
                         g.kerbalEVA(suit);
                     }
@@ -2265,7 +2268,7 @@ void drawPartWindows(Game &g) {
                    Part parked in a capsule, and the provenance a pod records is a
                    NAME, not a pointer. */
                 std::vector<Part *> seats = shipSeats(ship);
-                std::string runner = seats.empty() ? "" : seatName(g.roster, seats.front());
+                std::string runner = seats.empty() ? "" : seatName(seats.front());
                 if(!runner.empty()) {
                     // ##id: keep this distinct from the capsule's "Run Experiment".
                     if(ImGui::SmallButton("Run Experiment##pod_run")) {
@@ -2318,16 +2321,16 @@ void drawPartWindows(Game &g) {
                 Part *cont = ship->parts[part];
                 ImGui::Separator();
                 ImGui::Text("Inventory: %d / %d",
-                            (int)cont->ownedContents.size(),
+                            (int)cont->contents.size(),
                             def->inventory_capacity);
-                if(cont->ownedContents.empty()) {
+                if(cont->contents.empty()) {
                     ImGui::Text("  (empty)");
                 }
-                /* Snapshot: dropItem erases from ownedContents mid-loop, and
+                /* Snapshot: dropItem erases from contents mid-loop, and
                    a vector erase invalidates the range-for's iterator. The
                    buffer is reused -- this popup redraws every frame. */
                 static std::vector<Part *> items;
-                items = cont->ownedContents;
+                items = cont->contents;
                 for(Part *item : items) {
                     const char *in = item->def->label().c_str();
                     ImGui::PushID(item);

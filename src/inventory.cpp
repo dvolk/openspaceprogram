@@ -6,23 +6,17 @@
 void inventorySetOwner(Part *item, Vehicle *owner) {
     if(item == nullptr) { return; }
     item->owner = owner;
-    for(Part *c : item->ownedContents) { inventorySetOwner(c, owner); }
+    for(Part *c : item->contents) { inventorySetOwner(c, owner); }
+    for(Part *suit : item->seats) { inventorySetOwner(suit, owner); }
 }
 
 static bool removeFromContainer(Part *item) {
     Part *src = item->container;
     if(src == nullptr) { return false; }
-    // pop from ownedContents (ownership)
-    auto &oc = src->ownedContents;
-    auto it = std::find(oc.begin(), oc.end(), item);
-    if(it != oc.end()) {
-        oc.erase(it);
-    }
-    // pop from contents (traversal)
     auto &c = src->contents;
-    auto it2 = std::find(c.begin(), c.end(), item);
-    if(it2 != c.end()) {
-        c.erase(it2);
+    auto it = std::find(c.begin(), c.end(), item);
+    if(it != c.end()) {
+        c.erase(it);
     }
     item->container = nullptr;
     // the item no longer rides the container's vehicle
@@ -30,12 +24,15 @@ static bool removeFromContainer(Part *item) {
     return true;
 }
 
-// Walks `contents`, not just ownedContents: contents also holds crew, and a
-// cycle can run through a kerbal's suit.
+// Walks contents AND seats: a cycle can run through a seated kerbal's suit.
 static bool inSubtree(Part *root, Part *target) {
     for(Part *c : root->contents) {
         if(c == target) { return true; }
         if(inSubtree(c, target)) { return true; }
+    }
+    for(Part *suit : root->seats) {
+        if(suit == target) { return true; }
+        if(suit != nullptr && inSubtree(suit, target)) { return true; }
     }
     return false;
 }
@@ -43,7 +40,7 @@ static bool inSubtree(Part *root, Part *target) {
 float inventorySubtreeResource(Part *root, int res) {
     if(root == nullptr) { return 0.0f; }
     float total = 0.0f;
-    for(Part *c : root->ownedContents) {
+    for(Part *c : root->contents) {
         total += c->resources.current[res];
         total += inventorySubtreeResource(c, res);
     }
@@ -54,7 +51,7 @@ float inventorySubtreeResource(Part *root, int res) {
 static float drainSubtree(Part *root, int res, float amt) {
     if(root == nullptr || amt <= 0.0f) { return 0.0f; }
     float drained = 0.0f;
-    for(Part *c : root->ownedContents) {
+    for(Part *c : root->contents) {
         if(drained >= amt) { break; }
         float have = c->resources.current[res];
         if(have > 0.0f) {
@@ -82,15 +79,11 @@ static bool addToContainer(Part *item, Part *dest) {
     // a double add would list it twice and ~Part would free it twice
     if(item->container != nullptr) { return false; }
     if(dest->def == nullptr || dest->def->inventory_capacity <= 0) { return false; }
-    /* Capacity counts everything the container OWNS -- and a seat occupant is
-       owned too (part.h), so a part with BOTH crew_capacity and
-       inventory_capacity would have its people eat item slots. Safe only
-       because no shipped part has both (#274). */
-    if((int)dest->ownedContents.size() >= dest->def->inventory_capacity) {
+    // capacity is cargo only; seats never eat item slots (#274)
+    if((int)dest->contents.size() >= dest->def->inventory_capacity) {
         return false;
     }
     if(dest == item || inSubtree(item, dest)) { return false; }
-    dest->ownedContents.push_back(item);
     dest->contents.push_back(item);
     item->container = dest;
     inventorySetOwner(item, dest->owner);
@@ -104,7 +97,7 @@ bool inventoryTransfer(Part *item, Part *dest) {
     // Check capacity AND the cycle before removing from source: a failed
     // transfer must not orphan the item.
     if(dest->def == nullptr || dest->def->inventory_capacity <= 0) { return false; }
-    if((int)dest->ownedContents.size() >= dest->def->inventory_capacity) { return false; }
+    if((int)dest->contents.size() >= dest->def->inventory_capacity) { return false; }
     if(inSubtree(item, dest)) { return false; }
     removeFromContainer(item);
     return addToContainer(item, dest);

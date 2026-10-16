@@ -27,6 +27,7 @@ struct TerrainBody;
 class Vehicle;          // a ship (vehicle.h)
 struct Body;            // a rigid body (body.h)
 class StaticBuilding;   // a space pad (defined at the end of this file)
+struct Part;            // kerbal suits parked on a pad (part.h)
 
 // Patch-tree snapshot (--terrain-log). Read deep_off only when `deepest > 0`.
 struct TerrainLodStats {
@@ -647,6 +648,14 @@ public:
     glm::dvec3 dir = glm::dvec3(0.0, 1.0, 0.0); // unit up (body rotating frame)
     double height_m = 5.0;    // origin above terrain
     double heading_deg = 0.0; // spin about local up
+    /* Unassigned kerbals standing here (part.h: suit Parts, owned). Launch
+       takes one into a seat; recover puts them back. Empty for non-home pads. */
+    std::vector<Part *> crew;
+
+    ~StaticBuilding() {
+        for(Part *p : crew) { delete p; }
+        crew.clear();
+    }
 
     bool hasFlag(const std::string &f) const {
         for(size_t i = 0; i < flags.size(); i++) {

@@ -404,6 +404,12 @@ int main(int argc, char **argv)
         load_buildings_catalog(resdir::path("res/data/buildings.json").c_str());
     place_world_buildings(sys, buildings, partsshader, sun);
 
+    /* Unassigned kerbals stand on the home pad (the building pool). A --load
+       replaces this with the save's crew_pool. */
+    if(args.load_name.empty()) {
+        ships.mintCrewPool(roster, sys);
+    }
+
     /* A family with no def silently falls back to generic behavior -- a
        parts.json typo should not hide. The suit's family is hard-coded in
        game.cpp, so check it too. */
@@ -1213,7 +1219,7 @@ int main(int argc, char **argv)
                     }
                 }
                 std::vector<Part *> seats = shipSeats(game.ship);
-                if(!seats.empty()) { runner = seatName(game.roster, seats.front()); }
+                if(!seats.empty()) { runner = seatName(seats.front()); }
             }
             if(pod != nullptr && !runner.empty()) { game.runPodExperiment(pod, runner); }
             else { printf("[hook] --pod-experiment: no pod+kerbal, ignored\n"); }

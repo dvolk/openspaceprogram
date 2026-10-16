@@ -172,7 +172,7 @@ public:
     void checkCompoundInvariants() const;
 
     /* The containment invariant (part.h): each part is attached to exactly this
-       vehicle and the container/contents/ownedContents edges agree. */
+       vehicle and the container/contents/seats edges agree. */
     bool checkPartInvariants() const;
 
     /* One attached part's containment subtree, depth-first -- the walk

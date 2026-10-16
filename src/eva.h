@@ -24,12 +24,15 @@ struct Kerbal : Vehicle {
 
     // --- per-ticked armed state (evaArmCommands writes, applyEva consumes) ---
     EvaMode mode = EVA_GROUND;
-    /* The CrewRoster entry this kerbal IS (crew.h): name + skills, and what a
-       save makes durable. The roster outlives this vehicle, so the link points
-       at the roster by id, never by pointer. 0 = anonymous, which happens two
-       ways: a save that predates the roster, or a kerbal minted while the pool
-       was spent. */
-    uint64_t profileId = 0;
+    /* Identity is OWNED by the suit Part (part.h: Part::kerbal), not by this
+       vehicle -- the walker is just the person's current location. */
+    const KerbalProfile *profile() const {
+        return parts.empty() ? nullptr : parts[0]->kerbal.get();
+    }
+    uint64_t profileId() const {
+        const KerbalProfile *p = profile();
+        return p != nullptr ? p->id : 0;
+    }
     bool grounded = true;
     bool jumping = false;        // post-jump: ignore grounded until the outward kick is spent
     bool jumpPressed = false;    // space KEYDOWN edge (events.cpp)

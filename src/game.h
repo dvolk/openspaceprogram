@@ -722,13 +722,11 @@ void pickAt(Game &g, int px, int py);
 // settings.json phase 1 (phase 2 is Game::load_settings). No-op if absent.
 void load_settings_args(GameArgs &args);
 
-/* Every seat in the ship, in part order (part.h: a seat is a suit Part parked
-   in a capsule). Empty = the ship has no crew. */
+/* Every seat occupant on the ship, in part order (part.h: a seat is a Part on
+   a capsule). Empty = the ship has no crew. */
 std::vector<Part *> shipSeats(Vehicle *ship);
-/* The roster entry a seat occupant IS, or nullptr if it is anonymous. */
-const KerbalProfile *seatEntry(const CrewRoster &roster, const Part *suit);
-/* Display name for a seat occupant: the roster's, else the name the seat carries. */
-std::string seatName(const CrewRoster &roster, const Part *suit);
+/* Display name for a person: their owned profile, else empty. */
+std::string seatName(const Part *suit);
 /* Free kerbals are the isEva ships in the bodies' lists; a seated crew member
    is not a vehicle at all (part.h). */
 std::vector<Kerbal *> freeKerbals(System &sys);

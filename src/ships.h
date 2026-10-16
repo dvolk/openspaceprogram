@@ -126,9 +126,23 @@ public:
                             TerrainBody *hb, const ScenarioDef *sc, System &sys,
                             double t, const StaticBuilding *site = nullptr);
 
-    // One seat per capsule part of `ship`, drawn from the roster. NOT every
-    // seat: a 3-berth capsule launches with one person (issue #275).
+    // One seat per capsule part of `ship`, drawn from the home pad's crew
+    // pool. NOT every seat: a 3-berth capsule launches with one person
+    // (issue #275).
     void spawn_crew(Vehicle *ship, System &sys);
+
+    // Mint one suit Part per roster entry onto the home pad (new game).
+    // The pool is the cast: launch takes, recover returns, death does not.
+    void mintCrewPool(const CrewRoster &roster, System &sys);
+
+    // The pad unassigned kerbals stand on (the body's default VAB_LAUNCH_PAD).
+    static StaticBuilding *homeCrewPad(System &sys);
+
+    // Take a suit from the home pad (nullptr if the pool is empty). Caller owns it.
+    static Part *takeCrew(System &sys);
+
+    // Park a suit back on the home pad (recover). Takes ownership.
+    static void returnCrew(System &sys, Part *suit);
 
     // Apply each ship's scenario (the startup spawn_vehicle pass).
     void apply_scenarios(System &sys, double t);
