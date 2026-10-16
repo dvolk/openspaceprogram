@@ -145,7 +145,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--vab-assign", vab_assign,
                    "Put a named kerbal in a VAB seat at this loop time: a flat "
                    "list of MS,PART_IDX,SLOT,KERBAL groups (e.g. 4000,0,0,Ace "
-                   "= at 4s put Ace in seat 1 of build part 0). Repeat the flag "
+                   "= at 4s put Ace in seat 1 of build part 0). KERBAL '-' "
+                   "empties that seat, which is a choice: the launch then leaves "
+                   "it empty instead of drawing the pad's line. Repeat the flag "
                    "for more seats. The headless stand-in for the seat window "
                    "(right-click a capsule in the VAB), which it opens as it "
                    "assigns (test hook)")
@@ -883,8 +885,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                     return false;
                 }
             }
+            /* "-" is the seat window's "Empty": it records the choice that
+               nobody sits in this seat (issue #287). Naming nothing is the only
+               way a test can reach that state -- the window's dropdowns are
+               invisible to --ui-click (issue #251) and --vab-assign is its
+               stand-in. CLI11 drops a trailing empty field, so the sentinel has
+               to be a token rather than an empty KERBAL. */
             if(vab_assign[i + 3].empty()) {
-                printf("error: --vab-assign needs a kerbal name\n");
+                printf("error: --vab-assign needs a kerbal name, or '-' for an "
+                       "empty seat\n");
                 *exit_code = 1;
                 return false;
             }

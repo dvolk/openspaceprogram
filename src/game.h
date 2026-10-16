@@ -192,17 +192,23 @@ struct VabState {
 
     /* --- seat assignments (the seat window: right-click a capsule) ---------
        Who sits where, chosen in the editor instead of drawn FIFO off the pad at
-       launch. Keyed by BuildPart::id, NOT the part index: detaching a subtree
-       renumbers the tree, and a person following the capsule they were put in is
-       the whole point. Session-only like the rest of VabState -- a ship file on
-       disk holds no people (crew stands on the pad, crew.h).
+       launch. Keyed by BuildPart::id, NOT the part index: the tree renumbers
+       under the player's feet. Session-only like the rest of VabState -- a ship
+       file on disk holds no people (crew stands on the pad, crew.h).
 
        Launch rule: ANY entry here means the player chose the crew, so nothing
-       auto-fills; an unassigned seat flies empty. */
+       auto-fills; an unassigned seat flies empty.
+
+       profileId 0 is a CHOICE, not an absence: "nobody in this seat". Emptying
+       a seat keeps the entry at 0 instead of erasing it, so a player who empties
+       every seat launches unmanned rather than hearing "I never said anything"
+       and getting the pad's line (issue #287). An entry whose part leaves the
+       build is dropped -- and the player is told, because the fallback to the
+       line is otherwise invisible (issue #288). */
     struct SeatAssign {
         std::string partId;
         int slot = 0;            // 0-based seat within the capsule
-        uint64_t profileId = 0;  // the roster id worn by the standing suit
+        uint64_t profileId = 0;  // roster id worn by the standing suit; 0 = empty
     };
     std::vector<SeatAssign> seatAssigns;
 

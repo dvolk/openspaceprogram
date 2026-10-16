@@ -1,0 +1,24 @@
+# The player names a seat, then picks "Empty" for it on purpose. "Nobody in
+# this seat" is a CHOICE, not an absence: the launch must not hear "I never
+# said anything" and put the pad's FIFO line aboard (issue #287). The pad still
+# has all three kerbals standing on it, so auto-fill COULD have crewed the
+# capsule -- it must not.
+# KERBAL '-' in --vab-assign is the window's "Empty" entry: the dropdowns are
+# invisible to --ui-click (issue #251), so this hook is the only way in.
+NAME vab-seat-emptied
+ARGS --vab-empty --vab-arm capsule_r1.5h3 --kerbals e2e/fixtures/three_kerbals.json
+ARGS --time-accel 1 --timeout 12 --frame-cap 30
+ARGS --vab-place 2000
+ARGS --vab-assign 3000,0,0,Ace --vab-assign 3500,0,0,- --vab-launch 6000
+EXPECT [crew] 3 kerbal(s) standing at
+EXPECT [vab] assign hook: 'capsule_r1.5h3_1' seat 0 = 'Ace'
+EXPECT [vab] assign hook: 'capsule_r1.5h3_1' seat 0 = (empty)
+EXPECT [vab] launched 'Ship' (1 parts)
+FORBID Crew:
+FORBID no kerbal left
+FORBID dropped the seat plan
+FORBID Assertion
+FORBID Segmentation
+FORBID GL_
+FORBID error:
+LIMIT 90

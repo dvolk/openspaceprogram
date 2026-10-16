@@ -652,8 +652,10 @@ void vabLaunch(Game &g) {
            An unassigned seat flies empty: the player chose the crew, so the
            FIFO line stays on the pad. A build part keeps its id through
            toShipDef -> build_ship (vehicle.cpp), which is what makes the
-           partId key survive here. */
+           partId key survive here. A slot named EMPTY (profileId 0) is skipped
+           rather than dropped from the list, so it stays a choice (issue #287). */
         for(const VabState::SeatAssign &a : g.vab.seatAssigns) {
+            if(a.profileId == 0) { continue; }
             size_t pi = (size_t)-1;
             for(size_t i = 0; i < v->parts.size(); i++) {
                 if(v->parts[i]->id == a.partId) { pi = i; break; }
@@ -684,8 +686,8 @@ void vabLaunch(Game &g) {
     fflush(stdout);
     g.toast("Launched %s", v->name.c_str());
     if(!g.vab.subassemblies.empty()) {
-        g.toast("%d subassemblies stayed in the VAB",
-                (int)g.vab.subassemblies.size());
+        const int n = (int)g.vab.subassemblies.size();
+        g.toast("%d subassemb%s stayed in the VAB", n, n == 1 ? "ly" : "ies");
     }
 }
 
@@ -712,31 +714,47 @@ bool seatExists(const Game &g, const std::string &partId, int slot) {
 
 }  // namespace
 
+/* Name a seat, or empty it. profileId 0 is a CHOICE and is stored, not erased:
+   the list being non-empty is what tells vabLaunch the player chose the crew
+   (game.h), so erasing the last entry would turn "nobody in this seat" back
+   into "never asked" and put the pad's FIFO line aboard. */
 bool vabAssignSeat(Game &g, const std::string &partId, int slot,
                    uint64_t profileId) {
     if(!seatExists(g, partId, slot)) { return false; }
     for(size_t i = 0; i < g.vab.seatAssigns.size(); i++) {
         const VabState::SeatAssign &a = g.vab.seatAssigns[i];
         if(a.partId != partId || a.slot != slot) { continue; }
-        if(profileId == 0) {
-            g.vab.seatAssigns.erase(g.vab.seatAssigns.begin()
-                                    + (std::ptrdiff_t)i);
-        } else {
-            g.vab.seatAssigns[i].profileId = profileId;
-        }
+        g.vab.seatAssigns[i].profileId = profileId;
         return true;
     }
-    if(profileId == 0) { return true; }   // emptying an already-empty seat
     g.vab.seatAssigns.push_back({partId, slot, profileId});
     return true;
 }
 
+/* Drop assignments whose seat is no longer in the build: Delete and Detach
+   renumber the tree under them. A plan for a part that left is gone -- say so,
+   because otherwise the next launch silently draws the pad's line again
+   (issue #288). */
 void vabPruneSeats(Game &g) {
+    int dropped = 0;
+    std::string lastPart;
     for(size_t i = g.vab.seatAssigns.size(); i-- > 0; ) {
         const VabState::SeatAssign &a = g.vab.seatAssigns[i];
-        if(!seatExists(g, a.partId, a.slot)) {
-            g.vab.seatAssigns.erase(g.vab.seatAssigns.begin()
-                                    + (std::ptrdiff_t)i);
+        if(seatExists(g, a.partId, a.slot)) { continue; }
+        const KerbalProfile *p = g.roster.find(a.profileId);
+        const std::string who = p != nullptr ? " '" + p->name + "'" : "";
+        printf("[vab] dropped the seat plan for '%s'%s (it left the build)\n",
+               a.partId.c_str(), who.c_str());
+        fflush(stdout);
+        g.vab.seatAssigns.erase(g.vab.seatAssigns.begin() + (std::ptrdiff_t)i);
+        dropped++;
+        lastPart = a.partId;
+    }
+    if(dropped > 0) {
+        g.toast("%d seat assignment%s dropped -- %s left the build",
+                dropped, dropped == 1 ? "" : "s", lastPart.c_str());
+        if(g.vab.seatAssigns.empty()) {
+            g.toast("No seats named: the next launch draws the pad's line");
         }
     }
     // The window follows its part: no part (or no seats) means no window.
@@ -749,6 +767,7 @@ void vabPruneSeats(Game &g) {
 std::string vabSeatProblem(const Game &g) {
     StaticBuilding *pad = Ships::homeCrewPad(g.sys);
     for(const VabState::SeatAssign &a : g.vab.seatAssigns) {
+        if(a.profileId == 0) { continue; }   // a chosen empty seat names nobody
         const KerbalProfile *p = g.roster.find(a.profileId);
         const std::string who = p != nullptr
             ? p->name : ("roster id " + std::to_string(a.profileId));
@@ -902,8 +921,11 @@ void vabFireHooks(Game &g) {
             continue;
         }
         const std::string partId = g.vab.build.parts[(size_t)a.partIdx].id;
-        const KerbalProfile *p = g.roster.byName(a.kerbal);
-        if(p == nullptr) {
+        /* "-" is the window's "Empty" entry: it records the choice that nobody
+           sits in this seat (issue #287). */
+        const bool emptySeat = a.kerbal == "-";
+        const KerbalProfile *p = emptySeat ? nullptr : g.roster.byName(a.kerbal);
+        if(!emptySeat && p == nullptr) {
             printf("[vab] assign hook: no kerbal '%s'\n", a.kerbal.c_str());
             fflush(stdout);
             continue;
@@ -911,9 +933,10 @@ void vabFireHooks(Game &g) {
         const ImGuiIO &io = ImGui::GetIO();
         vabOpenSeatWindow(g, a.partIdx, (int)io.DisplaySize.x / 2,
                           (int)io.DisplaySize.y / 2);
-        const bool ok = vabAssignSeat(g, partId, a.slot, p->id);
-        printf("[vab] assign hook: '%s' seat %d = '%s'%s\n", partId.c_str(),
-               a.slot, a.kerbal.c_str(), ok ? "" : " (no such seat)");
+        const bool ok = vabAssignSeat(g, partId, a.slot, emptySeat ? 0 : p->id);
+        const std::string who = emptySeat ? "(empty)" : ("'" + a.kerbal + "'");
+        printf("[vab] assign hook: '%s' seat %d = %s%s\n", partId.c_str(),
+               a.slot, who.c_str(), ok ? "" : " (no such seat)");
         fflush(stdout);
     }
     if(sceneIs(g, SceneId::Vab) && g.vabHooks.launchMs >= 0
