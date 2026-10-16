@@ -1,0 +1,26 @@
+# The Target window's combo stores an IDENTITY, not a slot. xferTargets is
+# rebuilt from scratch on every refresh, so removing a DIFFERENT ship shifts
+# every index after it: "pad three" sits at index 3, and deleting "pad two"
+# moves it to index 2. An index-based selection would have slid onto "pad four"
+# -- the map's transfer plane, the burn marker and the TARGET block all follow
+# it -- with no player action and no message (issue #276).
+# --select-target is the combo's headless stand-in (its dropdown is invisible to
+# --ui-click, #251). The removal is a real click: the tracking list's "x" is a
+# button, so it is addressable. Only "pad one" has a kerbal, so the other three
+# are removable at all.
+NAME target-selection-survives-reshuffle
+ARGS --time-accel 1 --timeout 12 --frame-cap 30
+ARGS --startships e2e/fixtures/pad_four.json --kerbals e2e/fixtures/tiny_kerbals.json
+ARGS --tracking 2000 --select-target 3000,"pad three"
+ARGS --ui-click 4000,"Tracking Ship List/x##rm_pad two"
+ARGS --xfer-log --orbit-interval 1
+EXPECT [target] hook: selected "pad three" (index 3)
+EXPECT Removed 'pad two' (active unchanged: pad one)
+CHECK re.search(r"Removed 'pad two'.*target=\"pad three\"", out, re.S)
+FORBID target="pad four"
+FORBID Cannot remove
+FORBID Assertion
+FORBID Segmentation
+FORBID GL_
+FORBID error:
+LIMIT 90

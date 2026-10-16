@@ -69,6 +69,13 @@ struct GameArgs {
         std::string kerbal;
     };
     std::vector<VabAssignArg> vab_assigns;
+    /* --select-target MS,NAME (repeatable): the Target window's combo, headless.
+       NAME "none" clears the selection. */
+    struct SelectTargetArg {
+        int ms;
+        std::string name;
+    };
+    std::vector<SelectTargetArg> select_targets;
     std::string reload_dir; // save dir to load over the running game
     int reload_ms = -1;     // --reload-at
     int new_game_ms = -1;

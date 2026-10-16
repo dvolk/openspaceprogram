@@ -916,6 +916,9 @@ int main(int argc, char **argv)
     game.quitTitleMs = args.quit_title_ms;
     game.spaceCenterMs = args.space_center_ms;
     game.recoverMs = args.recover_ms;
+    for(const GameArgs::SelectTargetArg &a : args.select_targets) {
+        game.selectTargetHooks.push_back({a.ms, a.name, false});
+    }
     game.experimentMs = args.experiment_ms;
     game.podExperimentMs = args.pod_experiment_ms;
     game.evaMs = args.eva_ms;
@@ -1167,6 +1170,20 @@ int main(int argc, char **argv)
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.quitTitleMs) {
             game.quitTitleFired = true;
             game.quitToTitle();
+        }
+        /* --select-target: the Target window's combo, headless. Fired before
+           --space-center/--recover so a case can pick a target and then change
+           the fleet that holds it. */
+        for(Game::SelectTargetHook &h : game.selectTargetHooks) {
+            if(h.fired || (int)(SDL_GetTicks() - game.loop_start_ms) < h.ms) {
+                continue;
+            }
+            h.fired = true;
+            game.xferPlanner.selectTarget(h.name == "none" ? std::string()
+                                                           : h.name);
+            printf("[target] hook: selected \"%s\" (index %d)\n",
+                   h.name.c_str(), game.xferPlanner.xfer_target);
+            fflush(stdout);
         }
         // --space-center: only from Flight (the hub is an excursion above a
         // running game).

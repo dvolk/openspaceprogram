@@ -1,0 +1,8 @@
+{
+  "ships": [
+    { "ship": "res/ships/racer.json", "name": "pad one", "body": "Kerbin", "scenario": "pad" },
+    { "ship": "res/ships/racer.json", "name": "pad two", "body": "Kerbin", "scenario": "pad" },
+    { "ship": "res/ships/racer.json", "name": "pad three", "body": "Kerbin", "scenario": "pad" },
+    { "ship": "res/ships/racer.json", "name": "pad four", "body": "Kerbin", "scenario": "pad" }
+  ]
+}

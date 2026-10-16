@@ -174,6 +174,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_flag("--recover-anywhere", args.recover_anywhere,
                  "Let 'Recover Vessel' recover the active ship anywhere "
                  "(the default requires it grounded on the home body)");
+    std::vector<std::string> select_target;
+    app.add_option("--select-target", select_target,
+                   "Choose a transfer target at this loop time: MS,NAME groups "
+                   "(e.g. 4000,Mun = at 4s pick Mun in the Target window). "
+                   "Repeat the flag for more picks; NAME 'none' clears the "
+                   "selection. The headless stand-in for the Target window's "
+                   "combo, which --ui-click cannot reach (test hook)")
+        ->delimiter(',');
     app.add_option("--experiment", args.experiment_ms,
                    "Fire the part window's \"Run Experiment\" once at this "
                    "loop time in ms (Game::runExperiment, headless; "
@@ -899,6 +907,33 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             }
             args.vab_assigns.push_back({(int)v[0], (int)v[1], (int)v[2],
                                         vab_assign[i + 3]});
+        }
+    }
+
+    /* --select-target: group the flat list into MS,NAME pairs. */
+    if(!select_target.empty()) {
+        if(select_target.size() % 2 != 0) {
+            printf("error: --select-target expects MS,NAME groups; "
+                   "got %zu value(s)\n", select_target.size());
+            *exit_code = 1;
+            return false;
+        }
+        for(size_t i = 0; i < select_target.size(); i += 2) {
+            const std::string &s = select_target[i];
+            char *end = nullptr;
+            long ms = strtol(s.c_str(), &end, 10);
+            if(end == s.c_str() || *end != '\0') {
+                printf("error: --select-target time '%s' is not an integer\n",
+                       s.c_str());
+                *exit_code = 1;
+                return false;
+            }
+            if(select_target[i + 1].empty()) {
+                printf("error: --select-target needs a target name, or 'none'\n");
+                *exit_code = 1;
+                return false;
+            }
+            args.select_targets.push_back({(int)ms, select_target[i + 1]});
         }
     }
 

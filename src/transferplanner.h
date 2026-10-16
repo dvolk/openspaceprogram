@@ -3,6 +3,7 @@
 #pragma once
 
 #include <cmath>
+#include <string>
 #include <vector>
 
 #include <SDL3/SDL.h>
@@ -55,7 +56,20 @@ public:
     // Clock jump or system swap: drop every stamp against the old world.
     void invalidateClockState();
 
+    /* Select by IDENTITY ("" clears), resolving against the current list so the
+       caller sees this frame's index. The combo and --transfer-target both go
+       through here. */
+    void selectTarget(const std::string &name);
+
     std::vector<XferTarget> xferTargets;
+    /* The selection is the NAME, and xfer_target is derived from it on every
+       rebuild (update). xferTargets is rebuilt from scratch each refresh, so an
+       index alone silently re-points at another vessel when a sibling docks,
+       undocks, is removed or boards -- the map's transfer plane, the burn
+       marker and the TARGET block all follow it with no player action. A name
+       is only stable while names are, but dedupVehicleName's " #N" suffix is a
+       rename the player caused, not a reshuffle they did not. */
+    std::string xfer_target_name;
     int xfer_target = -1;
     bool xfer_auto = true;                     // auto min-dv ToF vs pinned
     float xfer_tof_log = (float)std::log10(3600.0); // log10(s), the pinned ToF
@@ -115,4 +129,9 @@ public:
 
 private:
     Game &g;
+
+    /* Point xfer_target at xfer_target_name in the CURRENT xferTargets, or clear
+       both when it is not there: a target that left the fleet takes the
+       selection with it. Called on every rebuild. */
+    void resolveTarget();
 };

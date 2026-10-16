@@ -310,10 +310,13 @@ void Game::dropVehicleRefs(Vehicle *v) {
         if(s->dockTargetShip == v) { s->dockTargetShip = nullptr; s->dockTargetPort = nullptr; }
     }
     /* The planner holds v's name pointer + handle until its next rebuild: if v
-       was the target, drop the selection so nothing reads it in between. */
+       was the target, drop the selection so nothing reads it in between. The
+       name goes with the index -- xfer_target is derived from it, so leaving it
+       would have the next rebuild re-select a vessel that no longer exists. */
     if(xferPlanner.xfer_target >= 0
        && xferPlanner.xfer_target < (int)xferPlanner.xferTargets.size()
        && xferPlanner.xferTargets[xferPlanner.xfer_target].ship == v) {
+        xferPlanner.xfer_target_name.clear();
         xferPlanner.xfer_target = -1;
         xferPlanner.xfer.valid = false;
         xferPlanner.xfer.burn_dir = glm::dvec3(0.0);

@@ -326,6 +326,18 @@ struct Game {
     int recoverMs = -1;
     bool recoverFired = false;
 
+    /* --select-target MS,NAME, repeatable: the headless stand-in for the Target
+       window's combo, whose dropdown is invisible to --ui-click (#251). It goes
+       through TransferPlanner::selectTarget, the same call the combo makes, so
+       it exercises the selection's identity handling rather than a parallel
+       name-lookup path. */
+    struct SelectTargetHook {
+        int ms;
+        std::string name;
+        bool fired = false;
+    };
+    std::vector<SelectTargetHook> selectTargetHooks;
+
     // --experiment MS (suit observation)
     int experimentMs = -1;
     bool experimentFired = false;

@@ -685,12 +685,14 @@ void drawUIReadouts(Game &g) {
         if(ImGui::BeginCombo("Target", cur)) {
             // "none" is a real entry so the target can be cleared back to -1 from here.
             if(ImGui::Selectable("none", xfer_target == -1)) {
-                xfer_target = -1;
+                planner.selectTarget("");
             }
             for(int i = 0; i < (int)xferTargets.size(); i++) {
                 if(ImGui::Selectable(xferTargets[i].name,
                                      i == xfer_target)) {
-                    xfer_target = i;
+                    // By name, not index: the list is rebuilt every frame, so
+                    // the index is only this frame's address for it.
+                    planner.selectTarget(xferTargets[i].name);
                 }
             }
             ImGui::EndCombo();

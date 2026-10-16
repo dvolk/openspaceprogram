@@ -158,10 +158,29 @@ void dumpPorkchop(const std::string &dir, const std::string &target,
 }
 } // namespace
 
+/* Point xfer_target at xfer_target_name in the CURRENT list. A name that is no
+   longer there means the target left the fleet, and the selection goes with it
+   -- keeping the index instead would have it name whichever vessel happened to
+   land in that slot (issue #276). */
+void TransferPlanner::resolveTarget() {
+    xfer_target = -1;
+    if(xfer_target_name.empty()) { return; }
+    for(int i = 0; i < (int)xferTargets.size(); i++) {
+        if(xferTargets[i].name == xfer_target_name) { xfer_target = i; return; }
+    }
+    xfer_target_name.clear();
+}
+
+void TransferPlanner::selectTarget(const std::string &name) {
+    xfer_target_name = name;
+    resolveTarget();
+}
+
 void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
     xferTargets.clear();
     if(g.ship == nullptr) {
         // No active ship: drop any stale target / plan (orbit-view boot).
+        xfer_target_name.clear();
         xfer_target = -1;
         xfer.valid = false;
         xfer.burn_dir = glm::dvec3(0.0);
@@ -184,14 +203,10 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         }
         // --transfer-target wins over the window's combo on every rebuild.
         if(!g.args.transfer_target.empty()) {
-            for(int i = 0; i < (int)xferTargets.size(); i++) {
-                if(xferTargets[i].name == g.args.transfer_target) {
-                    xfer_target = i;
-                }
-            }
+            xfer_target_name = g.args.transfer_target;
         }
     }
-    if(xfer_target >= (int)xferTargets.size()) { xfer_target = -1; }
+    resolveTarget();
 
     // Drop a grid / plan swept for a different target (stale label).
     if(pc.valid && pc_target != xfer_target) {
@@ -315,6 +330,7 @@ void TransferPlanner::invalidateClockState() {
     pc.valid = false;
     xfer.valid = false;
     xferTargets.clear();
+    xfer_target_name.clear();
     xfer_target = -1;
     // A sweep interrupted by the swap never runs its continuation (abort() drops
     // the queued ones, restart() the landed one) -- and that continuation is the
