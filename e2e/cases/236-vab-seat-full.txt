@@ -1,0 +1,19 @@
+# Every seat named, and out of pad order (Cyd first): each person is taken by
+# roster id, so the cast lands where the player put them rather than in the
+# order the line happens to stand. Two --vab-assign flags append, as they must
+# for a multi-seat ship.
+NAME vab-seat-full
+ARGS --vab-empty --vab-arm capsule_r1.5h3 --kerbals e2e/fixtures/three_kerbals.json
+ARGS --time-accel 1 --timeout 12 --frame-cap 30
+ARGS --vab-place 2000
+ARGS --vab-assign 3000,0,0,Cyd --vab-assign 3500,0,1,Ace --vab-launch 6000
+CHECK re.search(r"Crew: 'Cyd' aboard '.*' part 0 \(1/3\)", out)
+CHECK re.search(r"Crew: 'Ace' aboard '.*' part 0 \(2/3\)", out)
+EXPECT [vab] launched 'Ship' (1 parts)
+FORBID Crew: 'Bram'
+FORBID no kerbal left
+FORBID Assertion
+FORBID Segmentation
+FORBID GL_
+FORBID error:
+LIMIT 90

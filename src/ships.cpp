@@ -340,6 +340,20 @@ Part *Ships::takeCrew(System &sys) {
     return suit;
 }
 
+Part *Ships::takeCrewById(System &sys, uint64_t profileId) {
+    StaticBuilding *home = homeCrewPad(sys);
+    if(home == nullptr) { return nullptr; }
+    for(size_t i = 0; i < home->crew.size(); i++) {
+        Part *suit = home->crew[i];
+        if(suit->kerbal == nullptr || suit->kerbal->id != profileId) { continue; }
+        home->crew.erase(home->crew.begin() + (std::ptrdiff_t)i);
+        suit->container = nullptr;
+        inventorySetOwner(suit, nullptr);   // as takeCrew: no dangling owner
+        return suit;
+    }
+    return nullptr;
+}
+
 void Ships::returnCrew(System &sys, Part *suit) {
     if(suit == nullptr) { return; }
     StaticBuilding *home = homeCrewPad(sys);
@@ -383,26 +397,30 @@ void Ships::mintCrewPool(const CrewRoster &roster, System &sys) {
 /* Fill one seat: park a suit Part in the capsule (ship, part) as a seat occupant
    (part.h). There is no Kerbal vehicle here -- minting one is what going EVA
    means (Game::kerbalEVA). */
-bool Ships::fill_seat(Vehicle *ship, size_t part, System &sys) {
+bool Ships::fill_seat(Vehicle *ship, size_t part, System &sys, Part *suit,
+                      int slot) {
     if(part >= ship->parts.size()) { return false; }
     Part *capPart = ship->parts[part];
     const PartDef *capDef = capPart->def;
     if(capDef->crew_capacity <= 0) { return false; }
-    if(capPart->seatCount() >= capDef->crew_capacity) { return false; }
 
-    /* Draw the person from the home pad's pool. An empty pool leaves the seat
-       EMPTY and the ship flies uncrewed: a legal state, not a failure. */
-    Part *suit = takeCrew(sys);
     if(suit == nullptr) {
-        printf("Crew: no kerbal left for '%s' part %zu (%d seats)\n",
-               ship->name.c_str(), part, capDef->crew_capacity);
-        return false;
+        if(capPart->seatCount() >= capDef->crew_capacity) { return false; }
+        /* Draw the person from the home pad's pool. An empty pool leaves the
+           seat EMPTY and the ship flies uncrewed: a legal state, not a failure. */
+        suit = takeCrew(sys);
+        if(suit == nullptr) {
+            printf("Crew: no kerbal left for '%s' part %zu (%d seats)\n",
+                   ship->name.c_str(), part, capDef->crew_capacity);
+            return false;
+        }
     }
 
     /* The seat edge: the capsule OWNS the suit (so ~Part frees it). `owner` is
        the vehicle the container sits on, as for an item. Identity rides the
-       suit (Part::kerbal) -- the person owns it. */
-    assert(capPart->addSeat(suit));
+       suit (Part::kerbal) -- the person owns it. A named assignment has already
+       been checked against the build, so a refused slot here is a bug. */
+    assert(capPart->addSeat(suit, slot < 0 ? (size_t)-1 : (size_t)slot));
     suit->owner = ship;
     /* Whatever the suit carries in its pockets rides the ship too (a recovered
        kerbal comes home with its loot). */
@@ -418,8 +436,12 @@ bool Ships::fill_seat(Vehicle *ship, size_t part, System &sys) {
 
 void Ships::spawn_crew(Vehicle *ship, System &sys) {
     for(size_t i = 0; i < ship->parts.size(); i++) {
-        if(ship->parts[i]->def->crew_capacity > 0) {
-            fill_seat(ship, i, sys);
+        /* EVERY seat, not one per capsule: a 3-berth capsule launches with a
+           full crew while the pad can supply one. fill_seat says false when the
+           pad is spent -- then the remaining seats fly empty, so stop asking. */
+        const int cap = ship->parts[i]->def->crew_capacity;
+        for(int s = 0; s < cap; s++) {
+            if(!fill_seat(ship, i, sys)) { break; }
         }
     }
 }

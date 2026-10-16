@@ -16,8 +16,10 @@
 #include "../middleware/imgui/imgui.h"   // ImGui::GetIO().WantCaptureMouse
 
 #include "buildings.h" // find_launch_site
+#include "crew.h"     // KerbalProfile (the seat window lists the cast by name)
 #include "datadir.h" // datadir::ships (VAB Save target -- never the install tree)
 #include "mesh.h"     // get_mesh (the part mesh's vertex array)
+#include "part.h"     // Part (a standing suit's kerbal id, on the pad's crew line)
 #include "resdir.h"   // resdir::path
 #include "ships.h"    // Ships::catalog (resolve the armed palette name)
 #include "btcommon.h" // complete Bullet types (the ghost hulls + collision objects)
@@ -554,6 +556,10 @@ bool vabLoad(Game &g, const char *name) {
     // linkSel indexes the tree that was just replaced; reset it (a stale one
     // would flip Del from "detach" to destructive "delete").
     g.vab.linkSel = -1;
+    /* A design on disk holds no people (crew stands on the pad), so the people
+       chosen for the build that was just replaced have no seats to sit in. */
+    g.vab.seatAssigns.clear();
+    g.vab.seatPartId.clear();
     printf("[vab] loaded %s (%d parts)\n", stem.c_str(), (int)g.vab.build.parts.size());
     fflush(stdout);
     g.toast("Loaded %s (%d parts)", stem.c_str(), (int)g.vab.build.parts.size());
@@ -621,18 +627,54 @@ void vabLaunch(Game &g) {
         g.toast("Launch refused: a kerbal must be a single part");
         return;
     }
+    /* Crew chosen in the seat window: validate it BEFORE the ship exists. A
+       person who is not standing on the pad (taken by an earlier launch, left
+       behind by a system switch) cannot be put in a seat, and a ship that
+       launched with the seat half-filled reads like a success. */
+    const bool pickedCrew = !g.vab.seatAssigns.empty();
+    if(pickedCrew) {
+        const std::string why = vabSeatProblem(g);
+        if(!why.empty()) {
+            printf("[vab] launch refused: %s\n", why.c_str());
+            fflush(stdout);
+            g.toast("Launch refused: %s", why.c_str());
+            return;
+        }
+    }
     /* defPath "": the ship was built in memory -- no file to respawn from. */
     Vehicle *v = g.ships.place_ship_def(def, "", def.name, hb, sc, g.sys, g.time, site);
     // Left live (NOT on rails) so it is player-controlled.
     if(!sc->on_pad) { spawn_vehicle(v, *sc, hb, g.sys, 0.0, g.time); }
-    // Crew from the roster, after the reposition so the ship is where the
-    // player launched it before the roster is consulted.
-    g.ships.spawn_crew(v, g.sys);
+    // Crew, after the reposition so the ship is where the player launched it
+    // before the roster is consulted.
+    if(pickedCrew) {
+        /* Every named person, in their named seat -- and NOTHING else fills.
+           An unassigned seat flies empty: the player chose the crew, so the
+           FIFO line stays on the pad. A build part keeps its id through
+           toShipDef -> build_ship (vehicle.cpp), which is what makes the
+           partId key survive here. */
+        for(const VabState::SeatAssign &a : g.vab.seatAssigns) {
+            size_t pi = (size_t)-1;
+            for(size_t i = 0; i < v->parts.size(); i++) {
+                if(v->parts[i]->id == a.partId) { pi = i; break; }
+            }
+            Part *suit = Ships::takeCrewById(g.sys, a.profileId);
+            assert(pi < v->parts.size() && suit != nullptr);   // checked above
+            g.ships.fill_seat(v, pi, g.sys, suit, a.slot);
+        }
+    } else {
+        g.ships.spawn_crew(v, g.sys);
+    }
     g.select_ship(v);
     vabClearHover(g);
     g.vab.armed.clear();
     g.vab.ghostRoll = 0.0;
     g.vab.selected = -1;
+    /* The plan was consumed: those people are aboard, no longer standing on the
+       pad. Keep the names and the NEXT launch of this build refuses over people
+       who are already in orbit. */
+    g.vab.seatAssigns.clear();
+    g.vab.seatPartId.clear();
     /* Collapse the stack to [Flight]: the launched ship is the active one now;
        leaving the editor's camera pose would make the next vabOpen skip
        capturing one. */
@@ -645,6 +687,118 @@ void vabLaunch(Game &g) {
         g.toast("%d subassemblies stayed in the VAB",
                 (int)g.vab.subassemblies.size());
     }
+}
+
+/* --- seat assignments (see vab.h) ------------------------------------------
+   The window is a convenience over VabState::seatAssigns; everything that
+   matters to the sim happens at launch (vabLaunch). */
+
+namespace {
+
+// The build part with this id, or nullptr.
+const BuildPart *buildPartById(const Game &g, const std::string &id) {
+    for(const BuildPart &bp : g.vab.build.parts) {
+        if(bp.id == id) { return &bp; }
+    }
+    return nullptr;
+}
+
+// A seat of the current build, addressable by (partId, slot).
+bool seatExists(const Game &g, const std::string &partId, int slot) {
+    const BuildPart *bp = buildPartById(g, partId);
+    return bp != nullptr && bp->def != nullptr
+        && slot >= 0 && slot < bp->def->crew_capacity;
+}
+
+}  // namespace
+
+bool vabAssignSeat(Game &g, const std::string &partId, int slot,
+                   uint64_t profileId) {
+    if(!seatExists(g, partId, slot)) { return false; }
+    for(size_t i = 0; i < g.vab.seatAssigns.size(); i++) {
+        const VabState::SeatAssign &a = g.vab.seatAssigns[i];
+        if(a.partId != partId || a.slot != slot) { continue; }
+        if(profileId == 0) {
+            g.vab.seatAssigns.erase(g.vab.seatAssigns.begin()
+                                    + (std::ptrdiff_t)i);
+        } else {
+            g.vab.seatAssigns[i].profileId = profileId;
+        }
+        return true;
+    }
+    if(profileId == 0) { return true; }   // emptying an already-empty seat
+    g.vab.seatAssigns.push_back({partId, slot, profileId});
+    return true;
+}
+
+void vabPruneSeats(Game &g) {
+    for(size_t i = g.vab.seatAssigns.size(); i-- > 0; ) {
+        const VabState::SeatAssign &a = g.vab.seatAssigns[i];
+        if(!seatExists(g, a.partId, a.slot)) {
+            g.vab.seatAssigns.erase(g.vab.seatAssigns.begin()
+                                    + (std::ptrdiff_t)i);
+        }
+    }
+    // The window follows its part: no part (or no seats) means no window.
+    if(!g.vab.seatPartId.empty()
+       && !buildPartById(g, g.vab.seatPartId)) {
+        g.vab.seatPartId.clear();
+    }
+}
+
+std::string vabSeatProblem(const Game &g) {
+    StaticBuilding *pad = Ships::homeCrewPad(g.sys);
+    for(const VabState::SeatAssign &a : g.vab.seatAssigns) {
+        const KerbalProfile *p = g.roster.find(a.profileId);
+        const std::string who = p != nullptr
+            ? p->name : ("roster id " + std::to_string(a.profileId));
+        bool standing = false;
+        if(pad != nullptr) {
+            for(const Part *suit : pad->crew) {
+                if(suit->kerbal != nullptr
+                   && suit->kerbal->id == a.profileId) {
+                    standing = true;
+                    break;
+                }
+            }
+        }
+        if(!standing) { return "'" + who + "' is not at the launch pad"; }
+        for(const VabState::SeatAssign &b : g.vab.seatAssigns) {
+            if(&b == &a) { continue; }
+            if(b.profileId == a.profileId) {
+                return "'" + who + "' cannot sit in two seats";
+            }
+        }
+    }
+    return "";
+}
+
+void vabOpenSeatWindow(Game &g, int partIdx, int px, int py) {
+    if(partIdx < 0 || (size_t)partIdx >= g.vab.build.parts.size()) { return; }
+    const BuildPart &bp = g.vab.build.parts[(size_t)partIdx];
+    if(bp.def == nullptr || bp.def->crew_capacity <= 0) {
+        printf("[vab] no seats on '%s'\n", bp.id.c_str());
+        fflush(stdout);
+        return;
+    }
+    g.vab.seatPartId = bp.id;
+    g.vab.seatMx = px;
+    g.vab.seatMy = py;
+    g.vab.seatPlaced = false;   // place it next to the click on the first draw
+    printf("[vab] seat window: '%s' (%d seats)\n", bp.id.c_str(),
+           bp.def->crew_capacity);
+    fflush(stdout);
+}
+
+void vabPickSeat(Game &g, int px, int py) {
+    int idx = -1;
+    PickBodyHit hit;
+    if(!pickVabPart(g, px, py, idx, hit)) {
+        printf("[vab] seat window: nothing under the cursor\n");
+        fflush(stdout);
+        return;
+    }
+    vabOpenSeatWindow(g, idx, px, py);
 }
 
 /* Aim the editor's orbit camera at the build tree. */
@@ -737,6 +891,31 @@ void vabFireHooks(Game &g) {
                (int)g.vab.build.parts.size(), (int)g.vab.subassemblies.size());
         fflush(stdout);
     }
+    /* --vab-assign: the headless seat window. It opens the window as it assigns,
+       so --ui-list dumps what the player would have seen. */
+    for(Game::VabHooks::Assign &a : g.vabHooks.assigns) {
+        if(a.fired || ms < a.ms) { continue; }
+        a.fired = true;
+        if(a.partIdx < 0 || (size_t)a.partIdx >= g.vab.build.parts.size()) {
+            printf("[vab] assign hook: no build part %d\n", a.partIdx);
+            fflush(stdout);
+            continue;
+        }
+        const std::string partId = g.vab.build.parts[(size_t)a.partIdx].id;
+        const KerbalProfile *p = g.roster.byName(a.kerbal);
+        if(p == nullptr) {
+            printf("[vab] assign hook: no kerbal '%s'\n", a.kerbal.c_str());
+            fflush(stdout);
+            continue;
+        }
+        const ImGuiIO &io = ImGui::GetIO();
+        vabOpenSeatWindow(g, a.partIdx, (int)io.DisplaySize.x / 2,
+                          (int)io.DisplaySize.y / 2);
+        const bool ok = vabAssignSeat(g, partId, a.slot, p->id);
+        printf("[vab] assign hook: '%s' seat %d = '%s'%s\n", partId.c_str(),
+               a.slot, a.kerbal.c_str(), ok ? "" : " (no such seat)");
+        fflush(stdout);
+    }
     if(sceneIs(g, SceneId::Vab) && g.vabHooks.launchMs >= 0
        && !g.vabHooks.launchFired && ms >= g.vabHooks.launchMs) {
         g.vabHooks.launchFired = true;
@@ -753,6 +932,9 @@ void vabFireHooks(Game &g) {
    While the cursor is over an imgui window the UI owns the mouse (no pick/place).
    WantCaptureMouse holds LAST frame's value -- at most one frame stale. */
 void vabUpdate(Game &g) {
+    /* Delete/Detach renumber the tree under an assignment's feet; drop the ones
+       that no longer name a seat before the window reads them. */
+    vabPruneSeats(g);
     float fmx = 0, fmy = 0;   // SDL3 reports mouse position in float
     const Uint32 mb = SDL_GetMouseState(&fmx, &fmy);
     const int mx = (int)fmx, my = (int)fmy;

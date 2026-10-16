@@ -141,6 +141,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--vab-save-at", args.vab_save_ms,
                    "Fire the --vab-save hook once at this loop time in ms "
                    "(test hook; -1 = never)");
+    std::vector<std::string> vab_assign;
+    app.add_option("--vab-assign", vab_assign,
+                   "Put a named kerbal in a VAB seat at this loop time: a flat "
+                   "list of MS,PART_IDX,SLOT,KERBAL groups (e.g. 4000,0,0,Ace "
+                   "= at 4s put Ace in seat 1 of build part 0). Repeat the flag "
+                   "for more seats. The headless stand-in for the seat window "
+                   "(right-click a capsule in the VAB), which it opens as it "
+                   "assigns (test hook)")
+        ->delimiter(',');
     app.add_option("--reload", args.reload_dir,
                    "Load this save dir over the running game at --reload-at "
                    "(the Save/Load window's Load button, headless)");
@@ -849,6 +858,38 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                     return false;
                 }
             }
+        }
+    }
+
+    /* --vab-assign: group the flat list into MS,PART_IDX,SLOT,KERBAL quads. */
+    if(!vab_assign.empty()) {
+        if(vab_assign.size() % 4 != 0) {
+            printf("error: --vab-assign expects MS,PART_IDX,SLOT,KERBAL "
+                   "groups; got %zu value(s)\n", vab_assign.size());
+            *exit_code = 1;
+            return false;
+        }
+        for(size_t i = 0; i < vab_assign.size(); i += 4) {
+            long v[3] = {0, 0, 0};
+            static const char *kFields[3] = { "time", "part index", "slot" };
+            for(int f = 0; f < 3; f++) {
+                const std::string &s = vab_assign[i + (size_t)f];
+                char *end = nullptr;
+                v[f] = strtol(s.c_str(), &end, 10);
+                if(end == s.c_str() || *end != '\0') {
+                    printf("error: --vab-assign %s '%s' is not an integer\n",
+                           kFields[f], s.c_str());
+                    *exit_code = 1;
+                    return false;
+                }
+            }
+            if(vab_assign[i + 3].empty()) {
+                printf("error: --vab-assign needs a kerbal name\n");
+                *exit_code = 1;
+                return false;
+            }
+            args.vab_assigns.push_back({(int)v[0], (int)v[1], (int)v[2],
+                                        vab_assign[i + 3]});
         }
     }
 

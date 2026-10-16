@@ -3488,6 +3488,103 @@ void drawSaveLoad(Game &g) {
     });
 }
 
+/* The VAB seat window: right-click a capsule in the 3D view (vabPickSeat,
+   events.cpp) and one dropdown per seat appears, listing the kerbals standing
+   on the pad. Choosing here is what makes a launch fill NAMED seats instead of
+   drawing people off the pad FIFO (VabState::seatAssigns, game.h). Plain
+   Begin/End like the flight part windows -- a user-placed popup, not a slot
+   window.
+
+   imgui's BeginCombo never reports a label to the test-engine hooks, so these
+   dropdowns are invisible to --ui-list and --ui-click (issue #251). The e2e
+   cases drive the same state through --vab-assign instead. */
+void drawVabSeatWindow(Game &g) {
+    if(g.vab.seatPartId.empty()) { return; }
+    const BuildPart *bp = nullptr;
+    for(const BuildPart &p : g.vab.build.parts) {
+        if(p.id == g.vab.seatPartId) { bp = &p; break; }
+    }
+    if(bp == nullptr || bp->def == nullptr || bp->def->crew_capacity <= 0) {
+        g.vab.seatPartId.clear();   // the part was deleted or detached
+        return;
+    }
+
+    char name[256];
+    snprintf(name, sizeof(name), "Crew##%s", bp->id.c_str());
+    if(!g.vab.seatPlaced) {
+        // Near the click, flipping sides when there is no room (as drawPartWindows).
+        const ImGuiViewport *vp = ImGui::GetMainViewport();
+        const float maxw = 300.0f, maxh = 260.0f, gap = 12.0f;
+        float x = (float)g.vab.seatMx + gap;
+        float y = (float)g.vab.seatMy + gap;
+        if(x + maxw > vp->WorkPos.x + vp->WorkSize.x) {
+            x = (float)g.vab.seatMx - gap - maxw;
+        }
+        if(y + maxh > vp->WorkPos.y + vp->WorkSize.y) {
+            y = (float)g.vab.seatMy - gap - maxh;
+        }
+        x = std::max(x, (float)vp->WorkPos.x);
+        y = std::max(y, (float)vp->WorkPos.y);
+        ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Appearing);
+        g.vab.seatPlaced = true;
+    }
+
+    StaticBuilding *pad = Ships::homeCrewPad(g.sys);
+    bool open = true;
+    if(ImGui::Begin(name, &open, ImGuiWindowFlags_NoSavedSettings)) {
+        ImGui::Text("%s  (%s)", bp->def->label().c_str(), bp->id.c_str());
+        ImGui::Text("%d kerbal(s) at the launch pad",
+                    pad != nullptr ? (int)pad->crew.size() : 0);
+        ImGui::Separator();
+        for(int slot = 0; slot < bp->def->crew_capacity; slot++) {
+            uint64_t cur = 0;
+            for(const VabState::SeatAssign &a : g.vab.seatAssigns) {
+                if(a.partId == bp->id && a.slot == slot) { cur = a.profileId; }
+            }
+            const KerbalProfile *cp = cur != 0 ? g.roster.find(cur) : nullptr;
+            char preview[128];
+            snprintf(preview, sizeof(preview), "%s",
+                     cp != nullptr ? cp->name.c_str() : "Empty");
+            char lbl[64];
+            snprintf(lbl, sizeof(lbl), "Seat %d##s%d", slot + 1, slot);
+            ImGui::SetNextItemWidth(-1.0f);
+            if(ImGui::BeginCombo(lbl, preview)) {
+                if(ImGui::Selectable("Empty", cur == 0)) {
+                    vabAssignSeat(g, bp->id, slot, 0);
+                }
+                if(pad != nullptr) {
+                    for(const Part *suit : pad->crew) {
+                        if(suit->kerbal == nullptr) { continue; }
+                        const KerbalProfile &kp = *suit->kerbal;
+                        /* Already in another seat of THIS build: naming one
+                           person twice makes the launch refuse, so grey it out
+                           instead of offering the refusal. */
+                        bool seated = false;
+                        for(const VabState::SeatAssign &a : g.vab.seatAssigns) {
+                            if(a.profileId == kp.id
+                               && !(a.partId == bp->id && a.slot == slot)) {
+                                seated = true;
+                                break;
+                            }
+                        }
+                        char item[160];
+                        snprintf(item, sizeof(item), "%s%s", kp.name.c_str(),
+                                 seated ? "  (seated)" : "");
+                        if(seated) { ImGui::BeginDisabled(); }
+                        if(ImGui::Selectable(item, kp.id == cur)) {
+                            vabAssignSeat(g, bp->id, slot, kp.id);
+                        }
+                        if(seated) { ImGui::EndDisabled(); }
+                    }
+                }
+                ImGui::EndCombo();
+            }
+        }
+    }
+    ImGui::End();
+    if(!open) { g.vab.seatPartId.clear(); }
+}
+
 void drawVabUI(Game &g) {
     /* TAB. The top bar is a registered window and drawWin already suppresses it, but the
        two panels below are raw ImGui::Begin calls -- not in the window table -- so this is
@@ -3847,6 +3944,9 @@ void drawVabUI(Game &g) {
         ImGui::TextDisabled("pick a part to arm");
     }
     ImGui::End();
+
+    // The seat window, if a capsule was right-clicked (vabPickSeat).
+    drawVabSeatWindow(g);
 
     /* Staging table: one row per stage period (flight order), with vacuum delta-v and TWR
        against the SURFACE GRAVITY OF THE BODY THIS BUILD LAUNCHES FROM (fuel links

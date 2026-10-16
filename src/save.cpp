@@ -881,10 +881,9 @@ void load_game(Game &g, const std::string &dir) {
     }
 
     /* Transactional: a load that throws leaves the running FLEET exactly as it
-       was (only detached from the bodies' ship lists, not deleted). NOT rolled
-       back: the clock, frames, time_accel and exhaust_scale above, nor the
-       roster swap -- once save.json has been read there is nothing to restore
-       the --kerbals file's roster from. */
+       was (only detached from the bodies' ship lists, not deleted), and the
+       roster as it was too (RosterRollback, above). NOT rolled back: the clock,
+       frames, time_accel and exhaust_scale set above. */
 
     std::vector<SaveShip> saves;
     saves.reserve(meta.ships.size());

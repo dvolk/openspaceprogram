@@ -58,6 +58,33 @@ bool vabLoad(Game &g, const char *name);
 // LAUNCH: place the tree on the home body's pad, take control, switch to Flight.
 void vabLaunch(Game &g);
 
+/* --- seat assignments (the seat window) ------------------------------------
+   Right-click a capsule in the VAB to open a window with one dropdown per seat,
+   listing the kerbals standing on the pad (VabState::seatAssigns, game.h). */
+
+// RMB click in the VAB: open the seat window for the capsule under the cursor.
+void vabPickSeat(Game &g, int px, int py);
+
+// Open the seat window for build part `partIdx`. Refuses a part with no seats.
+void vabOpenSeatWindow(Game &g, int partIdx, int px, int py);
+
+// Put `profileId` in that seat, or empty it (profileId 0). False if the part or
+// slot is not a seat of the current build.
+bool vabAssignSeat(Game &g, const std::string &partId, int slot,
+                   uint64_t profileId);
+
+// Drop assignments the build no longer has a seat for (part deleted, subtree
+// detached, slot out of range). Every frame from vabUpdate.
+void vabPruneSeats(Game &g);
+
+// "" if every assignment can be honoured at launch; else why to refuse. Checked
+// BEFORE the ship exists: a half-launched ship with an unfillable seat is worse
+// than a refusal the player can fix in the window.
+std::string vabSeatProblem(const Game &g);
+
+// The window itself (gameui.cpp), drawn while the Vab scene is live.
+void drawVabSeatWindow(Game &g);
+
 void vabAimCamera(Game &g);
 
 // Per-frame step while the Vab scene is live (the sim does not tick).

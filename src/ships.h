@@ -3,6 +3,7 @@
 // kerbal is a seat on its capsule's Part (part.h).
 #pragma once
 
+#include <cstdint>    // uint64_t (a roster id)
 #include <string>
 #include <vector>
 
@@ -126,9 +127,9 @@ public:
                             TerrainBody *hb, const ScenarioDef *sc, System &sys,
                             double t, const StaticBuilding *site = nullptr);
 
-    // One seat per capsule part of `ship`, drawn from the home pad's crew
-    // pool. NOT every seat: a 3-berth capsule launches with one person
-    // (issue #275).
+    /* Every seat of every capsule part of `ship`, drawn FIFO from the home pad's
+       crew pool: a 3-berth capsule launches with three people while the pad can
+       supply them, and the rest fly empty once it cannot. */
     void spawn_crew(Vehicle *ship, System &sys);
 
     // Mint one suit Part per roster entry onto the home pad (new game).
@@ -141,8 +142,22 @@ public:
     // Take a suit from the home pad (nullptr if the pool is empty). Caller owns it.
     static Part *takeCrew(System &sys);
 
+    /* Take ONE named kerbal off the home pad by roster id (nullptr if nobody
+       standing there wears that id). The VAB's seat assignments name people, so
+       the pad is searched rather than served FIFO. Caller owns the result. */
+    static Part *takeCrewById(System &sys, uint64_t profileId);
+
     // Park a suit back on the home pad (recover). Takes ownership.
     static void returnCrew(System &sys, Part *suit);
+
+    /* Fill one seat of `ship` (part). False if the part is no capsule or the pad
+       has no kerbal left -- an empty seat is a legal state, not a failure. The
+       occupant is a suit Part parked in the capsule (part.h); no Kerbal vehicle
+       exists until someone goes EVA.
+       `suit` = the person to park (nullptr: draw FIFO from the pad);
+       `slot` = which seat (0-based; -1 = the first free one). */
+    bool fill_seat(Vehicle *ship, size_t part, System &sys,
+                   Part *suit = nullptr, int slot = -1);
 
     // Apply each ship's scenario (the startup spawn_vehicle pass).
     void apply_scenarios(System &sys, double t);
@@ -156,12 +171,6 @@ public:
                                   System &sys, double t);
 
 private:
-    /* Fill one seat of `ship` (part). False if the part is no capsule or the
-       roster has no kerbal left -- an empty seat is a legal state, not a
-       failure. The occupant is a suit Part parked in the capsule (part.h); no
-       Kerbal vehicle exists until someone goes EVA. */
-    bool fill_seat(Vehicle *ship, size_t part, System &sys);
-
     PartsCatalog part_catalog;
     Shader *partsshader;   // caller-owned
     TerrainBody *sun;      // caller-owned

@@ -571,13 +571,17 @@ void poll_events(Game &g) {
         if(ev.type == SDL_EVENT_MOUSE_BUTTON_UP) {
             if(ev.button.button == SDL_BUTTON_RIGHT) {
                 g.rmbCam = false;
-                // A short, still RMB press is a CLICK (pick the part); a moved
-                // one was the camera drag. Flight only: the VAB's RMB orbits.
-                if(sceneIs(g, SceneId::Flight)
-                   && !ImGui::GetIO().WantCaptureMouse
+                /* A short, still RMB press is a CLICK; a moved one was the
+                   camera drag (RMB orbits in both scenes). Flight picks a part
+                   and opens its window; the VAB opens the seat window. */
+                if(!ImGui::GetIO().WantCaptureMouse
                    && g.rmbMoved < kPickClickPx
                    && SDL_GetTicks() - g.rmbDownMs < kPickClickMs) {
-                    pickAt(g, ev.button.x, ev.button.y);
+                    if(sceneIs(g, SceneId::Flight)) {
+                        pickAt(g, ev.button.x, ev.button.y);
+                    } else if(sceneIs(g, SceneId::Vab)) {
+                        vabPickSeat(g, ev.button.x, ev.button.y);
+                    }
                 }
             }
         }

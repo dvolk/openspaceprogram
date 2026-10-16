@@ -62,6 +62,13 @@ struct GameArgs {
     int vab_detach_ms = -1;  // --vab-detach-at
     std::string vab_save;
     int vab_save_ms = -1;   // --vab-save-at
+    /* --vab-assign MS,PART_IDX,SLOT,KERBAL (repeatable): the headless seat
+       window. cli.cpp groups the flat list, so a group here is always whole. */
+    struct VabAssignArg {
+        int ms, partIdx, slot;
+        std::string kerbal;
+    };
+    std::vector<VabAssignArg> vab_assigns;
     std::string reload_dir; // save dir to load over the running game
     int reload_ms = -1;     // --reload-at
     int new_game_ms = -1;

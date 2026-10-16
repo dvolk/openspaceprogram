@@ -1,0 +1,24 @@
+# A real right-click on the capsule in the 3D view opens the window (the
+# "nothing under the cursor" refusal is FORBIDden so the click has to land), and
+# only the THIRD seat is named. The other two fly EMPTY: auto-fill is
+# all-or-nothing, so a half-chosen crew must not quietly become a full one. The
+# person is taken by roster id, not off the front of the line, which is why the
+# one who flies is Cyd and not Ace.
+NAME vab-seat-partial
+ARGS --vab-empty --vab-arm capsule_r1.5h3 --kerbals e2e/fixtures/three_kerbals.json
+ARGS --time-accel 1 --timeout 12 --frame-cap 30
+ARGS --vab-place 2000 --sim-mouse 2500,0,960,540,RMB
+ARGS --vab-assign 3000,0,2,Cyd --vab-launch 6000
+EXPECT [vab] seat window: 'capsule_r1.5h3_1' (3 seats)
+EXPECT [vab] assign hook: 'capsule_r1.5h3_1' seat 2 = 'Cyd'
+CHECK re.search(r"Crew: 'Cyd' aboard '.*' part 0 \(1/3\)", out)
+EXPECT [vab] launched 'Ship' (1 parts)
+FORBID seat window: nothing under the cursor
+FORBID Crew: 'Ace'
+FORBID Crew: 'Bram'
+FORBID no kerbal left
+FORBID Assertion
+FORBID Segmentation
+FORBID GL_
+FORBID error:
+LIMIT 90

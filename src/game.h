@@ -189,6 +189,28 @@ struct VabState {
     int armedAsm = -1;       // armed subassembly (exclusive with `armed`)
 
     bool lmbPrev = false;    // LMB edge detect for click-to-place
+
+    /* --- seat assignments (the seat window: right-click a capsule) ---------
+       Who sits where, chosen in the editor instead of drawn FIFO off the pad at
+       launch. Keyed by BuildPart::id, NOT the part index: detaching a subtree
+       renumbers the tree, and a person following the capsule they were put in is
+       the whole point. Session-only like the rest of VabState -- a ship file on
+       disk holds no people (crew stands on the pad, crew.h).
+
+       Launch rule: ANY entry here means the player chose the crew, so nothing
+       auto-fills; an unassigned seat flies empty. */
+    struct SeatAssign {
+        std::string partId;
+        int slot = 0;            // 0-based seat within the capsule
+        uint64_t profileId = 0;  // the roster id worn by the standing suit
+    };
+    std::vector<SeatAssign> seatAssigns;
+
+    // The seat window: the build part it shows ("" = closed). An ID, not an
+    // index -- the tree renumbers under the player's feet.
+    std::string seatPartId;
+    int seatMx = 0, seatMy = 0;   // where it was opened (first-draw placement)
+    bool seatPlaced = false;
 };
 
 // Biome::None when the body has no classifiable surface or terrain is not ready.
@@ -264,6 +286,15 @@ struct Game {
         std::string loadPath, savePath;
         bool placeFired = false, loadFired = false, launchFired = false,
              closeFired = false, detachFired = false, saveFired = false;
+        /* --vab-assign MS,PART_IDX,SLOT,KERBAL, repeatable: the headless
+           stand-in for the seat window. It opens that window as it assigns, so
+           --ui-list can see what the player would see. */
+        struct Assign {
+            int ms, partIdx, slot;
+            std::string kerbal;
+            bool fired = false;
+        };
+        std::vector<Assign> assigns;
     };
     VabHooks vabHooks;
 
