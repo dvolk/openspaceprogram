@@ -1,0 +1,18 @@
+# The pad's cast is part of the save (save.json's crew_pool, format 4): a load
+# stands THOSE people back up rather than minting from the roster, so a career
+# that spent or recovered people keeps its own crew count. This save flew with
+# Ace seated in racer and Bram + Cyd waiting at the pad; the load prints both
+# halves. There is no fallback mint: an empty pool is a spent cast, and a load
+# that quietly re-stocked it would hide a lost crew.
+NAME crew-pool-load
+ARGS --load e2e/fixtures/save_crew_pool --time-accel 1 --timeout 4
+EXPECT [crew] loaded 'Ace' aboard 'racer'
+EXPECT [crew] 2 kerbal(s) standing at 'main_space_port' (from save)
+EXPECT Loaded game from e2e/fixtures/save_crew_pool (active: racer)
+FORBID [load] refused
+FORBID Load failed
+FORBID Assertion
+FORBID Segmentation
+FORBID GL_
+FORBID error:
+LIMIT 60

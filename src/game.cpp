@@ -652,6 +652,14 @@ bool Game::newGame() {
     time_accel = 0;
     clearFlightSummary();   // a prior recover's summary is not this game's
     science.reset();        // a fresh career: no score, nothing recovered
+    /* A fresh career gets the full cast standing again: deaths shrink the pool
+       (death does not return a suit) and a system switch empties it (new
+       buildings, new pad), and only the boot mint ever restored it. */
+    if(StaticBuilding *home = Ships::homeCrewPad(sys)) {
+        for(Part *p : home->crew) { delete p; }
+        home->crew.clear();
+    }
+    ships.mintCrewPool(roster, sys);
     enterSpaceCenter(*this);
     printf("[game] new game: Space Center, no ship, paused\n");
     fflush(stdout);
@@ -1196,7 +1204,10 @@ Vehicle *Game::dropItem(Part *item) {
                        + glm::cross(GetAngVelocity(carrier->hull),
                                    itemPos - com);
 
-    inventoryRemove(item);
+    /* The seat guard (inventory.cpp): a person held by a capsule cannot be
+       shed as cargo, and spawning it as a 1-part ship while the capsule still
+       owns it would free the suit twice. */
+    if(!inventoryRemove(item)) { return nullptr; }
 
     Vehicle *nv = new Vehicle();
     // The part label is the same for every crate of a kind, so two drops of one

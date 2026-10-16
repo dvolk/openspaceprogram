@@ -42,8 +42,9 @@ enum ChuteState {
 };
 
 /* A kerbal is a Part (its suit) at exactly one place: a capsule seat, a
-   walking Kerbal vehicle, or -- soon -- an unassigned pile on a building.
-   Identity is OWNED by the suit: one person, one profile, no roster lookup. */
+   walking Kerbal vehicle, or an unassigned suit standing on the home pad
+   (StaticBuilding::crew). Identity is OWNED by the suit: one person, one
+   profile, no roster lookup. */
 
 struct Part {
     Body *body;                 // OWNED (render assets are registry-shared)

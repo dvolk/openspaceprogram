@@ -14,6 +14,7 @@
 #include "physics.h"
 
 #include "vehicle.h"   // Vehicle (complete type: ~TerrainBody deletes ships)
+#include "part.h"      // Part (complete type: ~StaticBuilding deletes parked suits)
 
 // mesh + cloud texture are the body's; the shader is shared.
 static void free_shell(TerrainBody::Shell *s) {
@@ -44,6 +45,13 @@ TerrainBody::~TerrainBody() {
     ring_meshes.clear();
     delete frame;
     delete rot_frame;
+}
+
+StaticBuilding::~StaticBuilding() {
+    // The cast standing here (crew.h, part.h): the suit owns its identity and
+    // whatever its pockets hold, so ~Part frees the whole person.
+    for(Part *p : crew) { delete p; }
+    crew.clear();
 }
 
 glm::dvec3 StaticBuilding::origin() const {

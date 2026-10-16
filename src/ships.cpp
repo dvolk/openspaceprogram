@@ -13,6 +13,7 @@
 #include "buildings.h" // find_launch_site
 #include "crew.h"     // CrewRoster (the pool a seat draws from)
 #include "eva.h"      // Kerbal (the crew characters)
+#include "inventory.h" // inventorySetOwner (the suit's pockets ride its vehicle)
 #include "mesh.h"     // get_mesh
 #include "physics.h"  // setPosRot
 #include "resdir.h"   // resdir::path
@@ -224,9 +225,18 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
             Part *minted = v->parts[0];
             suit->localPos = minted->localPos;
             suit->localRot = minted->localRot;
+            suit->stage = minted->stage;
             suit->owner = v;
             v->parts[0] = suit;
+            /* build_ship left `controller` and the compound's part list on the
+               minted suit. Re-point before the delete, then finalize: the
+               pooled suit may weigh differently (partly-burned tank, pocket
+               items), and the hull/compoundParts must follow parts[0] or both
+               dangle at freed memory (Kerbal::applyEva reads controller). */
+            if(v->controller == minted) { v->controller = suit; }
             delete minted;
+            inventorySetOwner(suit, v);
+            v->finalize();
             if(suit->kerbal != nullptr) { v->name = suit->kerbal->name; }
         } else {
             printf("[crew] pool spent: '%s' has no identity\n", nm.c_str());
@@ -300,6 +310,11 @@ Part *Ships::make_suit(const std::string &defPath) const {
 }
 
 StaticBuilding *Ships::homeCrewPad(System &sys) {
+    /* The home body's pad is THE pad; a body-order scan alone would stand the
+       cast on whichever launch site happens to come first in sys.bodies. */
+    if(sys.home != nullptr) {
+        if(StaticBuilding *site = find_launch_site(sys.home, "")) { return site; }
+    }
     for(TerrainBody *b : sys.bodies) {
         StaticBuilding *site = find_launch_site(b, "");
         if(site != nullptr) { return site; }
@@ -310,8 +325,10 @@ StaticBuilding *Ships::homeCrewPad(System &sys) {
 Part *Ships::takeCrew(System &sys) {
     StaticBuilding *home = homeCrewPad(sys);
     if(home == nullptr || home->crew.empty()) { return nullptr; }
-    // First in, first out: the roster is minted in id order, so the lowest-id
-    // free kerbal is the one standing at the front of the line.
+    // First in, first out: the pool is minted in roster order (the shipped file
+    // is id order, so a fresh cast hands out the lowest id first). A returned
+    // suit goes to the BACK (returnCrew), so the line round-robins after a
+    // recover rather than always serving the lowest free id.
     Part *suit = home->crew.front();
     home->crew.erase(home->crew.begin());
     suit->container = nullptr;
@@ -376,6 +393,9 @@ bool Ships::fill_seat(Vehicle *ship, size_t part, System &sys) {
        suit (Part::kerbal) -- the person owns it. */
     assert(capPart->addSeat(suit));
     suit->owner = ship;
+    /* Whatever the suit carries in its pockets rides the ship too (a recovered
+       kerbal comes home with its loot). */
+    inventorySetOwner(suit, ship);
     // Rebuild so the compound carries the crew mass.
     ship->rebuildCompound();
     printf("Crew: '%s' aboard '%s' part %zu (%d/%d)\n",

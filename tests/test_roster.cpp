@@ -1,12 +1,12 @@
-// test_roster: the kerbal roster -- parsing, the claim rule, and the save
+// test_roster: the kerbal roster -- parsing, lookup, and the save
 // round trip (src/crew.h, src/crew.cpp, save.h's roster keys).
 // Runs from the repo root (needs res/):
 //   make test   (or: ./test_roster)
 //
-// The roster is the identity half of crew: the named people a capsule seat
-// draws from. WHO is where is derived from the fleet, not stored here, so this
-// test covers the data model + the pick rule, not the aboard bookkeeping (that
-// is tests/test_crew.cpp and the e2e EVA/board cases).
+// The roster is the CAST half of crew: the named people a capsule seat or the
+// home pad's pool draws from. WHO is where is the world's business (part.h:
+// pad, seat or walk), so this test covers the data model, not the aboard
+// bookkeeping (that is tests/test_crew.cpp and the e2e EVA/board cases).
 
 #include "crew.h"
 #include "save.h"
@@ -59,57 +59,6 @@ int main() {
         }
         CHECK(r.find(0) == nullptr);
         CHECK(r.byName("nobody in particular") == nullptr);
-    }
-
-    // ---- the claim rule ---------------------------------------------------
-    {
-        CrewRoster r = load_crew_roster("res/data/kerbals.json");
-        std::vector<uint64_t> worn;
-        // Nothing worn: the lowest id, so a fixture always gets the same person.
-        const KerbalProfile *first = r.claim(worn);
-        CHECK(first != nullptr);
-        uint64_t lowest = r.profiles[0].id;
-        for(const KerbalProfile &p : r.profiles) {
-            if(p.id < lowest) { lowest = p.id; }
-        }
-        CHECK(first != nullptr && first->id == lowest);
-
-        // Wear the first N, and the pick walks up the ids.
-        worn.push_back(lowest);
-        const KerbalProfile *second = r.claim(worn);
-        CHECK(second != nullptr && second->id != lowest);
-        worn.push_back(second->id);
-        const KerbalProfile *third = r.claim(worn);
-        CHECK(third != nullptr && third->id != lowest && third->id != second->id);
-
-        // A spent pool is a legal state, not a failure: nullptr, and the seat
-        // stays empty.
-        for(const KerbalProfile &p : r.profiles) { worn.push_back(p.id); }
-        CHECK(r.claim(worn) == nullptr);
-
-        // An anonymous kerbal (profile id 0, a save predating the roster) does
-        // not consume anyone.
-        std::vector<uint64_t> anon;
-        anon.push_back(0);
-        const KerbalProfile *p = r.claim(anon);
-        CHECK(p != nullptr && p->id == lowest);
-    }
-
-    // ---- the pick ignores file order --------------------------------------
-    {
-        const char *f = "/tmp/test_roster_order.json";
-        writeFile(f, "{ \"kerbals\": [ "
-                     "{ \"id\": 9, \"name\": \"Nine\" }, "
-                     "{ \"id\": 4, \"name\": \"Four\" }, "
-                     "{ \"id\": 7, \"name\": \"Seven\" } ] }");
-        CrewRoster r = load_crew_roster(f);
-        CHECK(r.profiles.size() == 3);
-        const KerbalProfile *p = r.claim(std::vector<uint64_t>());
-        CHECK(p != nullptr && p->id == 4);
-        std::vector<uint64_t> worn = { 4 };
-        p = r.claim(worn);
-        CHECK(p != nullptr && p->id == 7);
-        std::remove(f);
     }
 
     // ---- absent skills default; the file need not mention them -------------

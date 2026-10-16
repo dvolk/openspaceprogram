@@ -3,18 +3,12 @@
 // crew.h -- the roster: the kerbals that EXIST, whether or not one is in the
 // world right now.
 //
-// A Kerbal vehicle (eva.h) is a kerbal that is IN the world. The roster entry
-// is the identity that outlives the vehicle: name + skills, durable through a
-// save. Today a vehicle exists for every kerbal, seated or not; once the seat
-// becomes a record on the capsule Part (stage 2), the vehicle exists only while
-// the kerbal is actually walking around, and this stays the single home of
-// identity either way.
-//
-// There is deliberately NO status / assignment field here. The fleet is the
-// truth about who is in the world, so a roster-side copy would drift: one
-// delete that forgets to release a profile shrinks the pool forever, silently.
-// "Unclaimed" is derived instead -- the lowest-id profile no kerbal vehicle is
-// wearing -- so a kerbal always comes back when its vehicle goes away.
+// The roster is the CAST, not the world. mintCrewPool turns every entry into a
+// suit Part standing on the home pad (part.h), and from then on the suit OWNS
+// its identity (Part::kerbal): a seat, a walk and a save all read the person,
+// never this file. Assignment IS the world -- on the pad, in a seat, or walking
+// (part.h) -- so this roster deliberately carries no status: launch takes from
+// the pad FIFO, recover returns, death does not (Ships::takeCrew / returnCrew).
 
 #include <cstdint>
 #include <string>
@@ -34,20 +28,14 @@ struct KerbalProfile {
     int skill[NumSkills] = {3, 3, 3};
 };
 
-/* Every kerbal in the game. `id` is what a kerbal vehicle points at
-   (Kerbal::profileId), so it is stable for the life of a save; `name` is
-   unique, because a kerbal's display name IS its roster name. */
+/* The cast list. `id` is what a suit's KerbalProfile copies (Part::kerbal), so
+   it is stable for the life of a save; `name` is unique, because a kerbal's
+   display name IS its roster name. */
 struct CrewRoster {
     std::vector<KerbalProfile> profiles;
 
     const KerbalProfile *find(uint64_t id) const;
     const KerbalProfile *byName(const std::string &name) const;
-
-    /* The next kerbal for a seat: lowest id absent from `worn` (the profile ids
-       vehicles already carry). Deterministic, so a fixture that launches one
-       ship always gets the same person. nullptr = the pool is empty, which is
-       a legal state: the seat stays empty and the ship flies uncrewed. */
-    const KerbalProfile *claim(const std::vector<uint64_t> &worn) const;
 };
 
 /* Parse + validate the roster file (res/data/kerbals.json). Throws

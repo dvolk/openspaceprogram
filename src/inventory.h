@@ -16,8 +16,9 @@ bool inventoryTransfer(Part *item, Part *dest);
 bool inventoryAdd(Part *item, Part *dest);
 
 // Remove `item` from its container (ownership + traversal). NOT freed -- the
-// caller owns it (drop/pickup).
-void inventoryRemove(Part *item);
+// caller owns it (drop/pickup). False if it has no container or is a seat
+// occupant: a person leaves its capsule through removeSeat (EVA), never here.
+bool inventoryRemove(Part *item);
 
 // Sum resource `res` over `root`'s inventory subtree (cargo only -- seat suit
 // tanks belong to the person, not the container). Pocket tanks sit outside

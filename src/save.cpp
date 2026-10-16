@@ -196,6 +196,36 @@ void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
     }
 }
 
+/* One SavePart -> a suit Part: body + def + fuel + findings + the identity it
+   OWNS (Part::kerbal). A capsule's seat occupant and a kerbal standing on the
+   home pad are the same Part; only the hold edge differs, so each caller
+   validates and wires its own. `rosterSrc` is the roster entry the save names
+   (null = anonymous): the roster owns the spelling and the skills, so a found
+   entry wins over the name the file carries. */
+Part *makeSuitPart(Game &g, const SavePart &sp, const PartDef *pd,
+                   const KerbalProfile *rosterSrc) {
+    Mesh *m = get_mesh("res/" + pd->mesh);
+    Texture *t = get_texture("res/" + pd->texture);
+    Body *b = create_part_body(m, g.partsshader, t, (float)sp.mass,
+                               sp.hull_margin);
+    Part *suit = new Part;
+    suit->body = b;
+    suit->def = pd;
+    suit->id = sp.id;
+    for(int r = 0; r < (int)ResourceType::Num; r++) {
+        suit->resources.capacity[r] = pd->capacity[r];
+        suit->resources.current[r] = (r < (int)sp.fuel.size())
+            ? (float)sp.fuel[r] : 0.0f;
+    }
+    suit->experiments = sp.experiments;
+    KerbalProfile prof;
+    prof.id = sp.seat_profile;
+    prof.name = sp.seat_name;
+    if(rosterSrc != nullptr) { prof = *rosterSrc; }
+    suit->kerbal = std::make_unique<KerbalProfile>(std::move(prof));
+    return suit;
+}
+
 /* Rebuild `saved` as the seat occupants (part.h) of the capsule `cap`: suit
    Parts parked in `cap->seats` and owned by the capsule, so it frees them.
    No Kerbal vehicle exists until someone goes EVA (Game::kerbalEVA). Throws to
@@ -255,31 +285,7 @@ void buildSeatParts(Game &g, const std::vector<SavePart> &saved, Part *cap,
                                      + std::to_string(sp.seat_profile)
                                      + ", which the roster has no entry for");
         }
-        Mesh *m = get_mesh("res/" + pd->mesh);
-        Texture *t = get_texture("res/" + pd->texture);
-        Body *b = create_part_body(m, g.partsshader, t,
-                                   (float)sp.mass, sp.hull_margin);
-        Part *suit = new Part;
-        suit->body = b;
-        suit->def = pd;
-        suit->id = sp.id;
-        for(int r = 0; r < (int)ResourceType::Num; r++) {
-            suit->resources.capacity[r] = pd->capacity[r];
-            suit->resources.current[r] = (r < (int)sp.fuel.size())
-                ? (float)sp.fuel[r] : 0.0f;
-        }
-        suit->experiments = sp.experiments;
-        /* Identity is owned by the suit (part.h). The roster supplies the
-           template when the save names one; otherwise the name on the file. */
-        {
-            KerbalProfile prof;
-            prof.id = sp.seat_profile;
-            prof.name = sp.seat_name;
-            if(sp.seat_profile != 0 && profile != nullptr) {
-                prof = *profile;   // roster owns the spelling + skills
-            }
-            suit->kerbal = std::make_unique<KerbalProfile>(std::move(prof));
-        }
+        Part *suit = makeSuitPart(g, sp, pd, profile);
         /* The seat edge before the pockets: buildInventoryItems copies the
            container's owner onto each item. A throw leaves everything wired into
            the capsule, which the caller's rollback frees with the ship. */
@@ -684,13 +690,24 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
     return k;
 }
 
-/* One roster entry, one wearer: the rule Ships::claimProfile asserts (ships.cpp).
-   A save that names one id twice LOADS -- both people print, both ride the
-   compound -- and only aborts when a launch asks the roster for a free profile,
-   which is a minute of play away from the bad byte. So refuse it here, where the
-   ids are read. Anonymous people (id 0) may repeat: they claim nothing. */
-void refuseDoubleClaim(const std::vector<Vehicle *> &built) {
+/* One roster entry, one wearer. A save that names one id twice LOADS -- both
+   people print, both ride the compound -- and the duplicate only surfaces as a
+   wrong pick or a shrink later. So refuse it here, where the ids are read.
+   `pool` is the home pad's standing crew (save.json's crew_pool): they wear
+   their ids too, and a pool entry clashing with another pool entry or with
+   someone in the fleet is the same corruption. Anonymous people (id 0) may
+   repeat: they claim nothing. */
+void refuseDoubleClaim(const std::vector<Vehicle *> &built,
+                       const std::vector<Part *> &pool) {
     std::set<uint64_t> worn;
+    for(const Part *suit : pool) {
+        if(suit == nullptr || suit->kerbal == nullptr) { continue; }
+        const uint64_t id = suit->kerbal->id;
+        if(id != 0 && !worn.insert(id).second) {
+            throw std::runtime_error("load: two people claim roster id "
+                                     + std::to_string(id));
+        }
+    }
     for(const Vehicle *v : built) {
         if(v->isEva()) {
             const uint64_t id = static_cast<const Kerbal *>(v)->profileId();
@@ -812,46 +829,19 @@ void load_game(Game &g, const std::string &dir) {
             g.roster.profiles.push_back(p);
         }
     }
-    /* The building pool is the save's (format 4: crew_pool). No fallback mint --
-       an empty pool is a spent cast, which is a legal state. */
-    if(StaticBuilding *home = Ships::homeCrewPad(g.sys)) {
-        for(Part *p : home->crew) { delete p; }
-        home->crew.clear();
-        for(const SavePart &sp : meta.crew_pool) {
-            const PartDef *pd = g.ships.catalog().find(sp.part);
-            if(pd == nullptr) {
-                throw std::runtime_error("load: crew pool entry '" + sp.part
-                                         + "' is not in the parts file");
-            }
-            Mesh *m = get_mesh("res/" + pd->mesh);
-            Texture *t = get_texture("res/" + pd->texture);
-            Body *b = create_part_body(m, g.partsshader, t,
-                                       (float)sp.mass, sp.hull_margin);
-            Part *suit = new Part;
-            suit->body = b;
-            suit->def = pd;
-            suit->id = sp.id;
-            for(int r = 0; r < (int)ResourceType::Num; r++) {
-                suit->resources.capacity[r] = pd->capacity[r];
-                suit->resources.current[r] = (r < (int)sp.fuel.size())
-                    ? (float)sp.fuel[r] : 0.0f;
-            }
-            suit->experiments = sp.experiments;
-            KerbalProfile prof;
-            prof.id = sp.seat_profile;
-            prof.name = sp.seat_name;
-            if(sp.seat_profile != 0) {
-                const KerbalProfile *src = g.roster.find(sp.seat_profile);
-                if(src != nullptr) { prof = *src; }
-            }
-            suit->kerbal = std::make_unique<KerbalProfile>(std::move(prof));
-            home->crew.push_back(suit);
-        }
-        if(!meta.crew_pool.empty()) {
-            printf("[crew] %zu kerbal(s) standing at '%s' (from save)\n",
-                   home->crew.size(), home->id.c_str());
-        }
+    /* The building pool is the save's (format 4: crew_pool). Built OFF the pad
+       and committed only once the whole load succeeds: a refused load must
+       leave the running cast standing, exactly as it leaves the running fleet.
+       The build itself runs in the fleet's try below, so one rollback frees it
+       whatever throws. No fallback mint -- an empty pool is a spent cast, a
+       legal state. */
+    StaticBuilding *homePad = Ships::homeCrewPad(g.sys);
+    if(homePad == nullptr && !meta.crew_pool.empty()) {
+        throw std::runtime_error("load: the save has " + std::to_string(meta.crew_pool.size())
+                                 + " kerbal(s) standing at the launch site, but this "
+                                 + "system has no VAB_LAUNCH_PAD to stand them on");
     }
+    std::vector<Part *> newPool;
     /* setTime, not a bare assignment: the clock jumps here and the load starts
        paused, so no tick re-derives the bodies' orbits/spin from the new epoch.
        Done BEFORE the fleet: a ship restored into the ROTATING frame and then
@@ -904,17 +894,67 @@ void load_game(Game &g, const std::string &dir) {
             bySlug[meta.ships[i]] = built[i];
             if(firstBuilt == nullptr) { firstBuilt = built[i]; }
         }
+        /* The pad's cast is built in the same transaction as the fleet: the
+           ship-file parse above can throw too, and a pool built before it would
+           leak. Building it here also lets refuseDoubleClaim see the ids these
+           suits wear. */
+        for(const SavePart &sp : meta.crew_pool) {
+            const PartDef *pd = g.ships.catalog().find(sp.part);
+            if(pd == nullptr) {
+                throw std::runtime_error("load: crew pool entry '" + sp.part
+                                         + "' is not in the parts file");
+            }
+            /* A pool entry is a person standing on the pad: the same validation
+               buildSeatParts gives a seat, for the same reasons (a non-kerbal
+               here breaks checkPartInvariants; a nested seat array would
+               silently lose a person). */
+            if(pd->type != "kerbal") {
+                throw std::runtime_error("load: crew pool entry '" + sp.part
+                                         + "' is a '" + pd->type
+                                         + "' part, not a kerbal");
+            }
+            if(!sp.seats.empty()) {
+                throw std::runtime_error("load: crew pool entry '" + sp.part
+                                         + "' has " + std::to_string(sp.seats.size())
+                                         + " seat(s) of its own");
+            }
+            const KerbalProfile *src = (sp.seat_profile != 0)
+                ? g.roster.find(sp.seat_profile) : nullptr;
+            if(sp.seat_profile != 0 && src == nullptr) {
+                throw std::runtime_error("load: crew pool entry names roster id "
+                                         + std::to_string(sp.seat_profile)
+                                         + ", which the roster has no entry for");
+            }
+            Part *suit = makeSuitPart(g, sp, pd, src);
+            newPool.push_back(suit);
+            // What the suit carries rides home with it (saveSeatPart writes it).
+            buildInventoryItems(g, sp.inventory, suit, "crew pool");
+        }
         /* Needs the WHOLE fleet, so it runs after the loop: two files can each
-           load fine and still claim one roster entry between them. */
-        refuseDoubleClaim(built);
+           load fine and still claim one roster entry between them. The pad's
+           new pool wears ids too -- it is checked here and still uncommitted. */
+        refuseDoubleClaim(built, newPool);
     } catch(...) {
         /* Put the body lists back BEFORE deleting anything, so no list ever
            holds a freed pointer. Then delete what was built: a seat occupant is
            owned by the capsule it was parked in, so its ship frees it, and a
-           seat in a file that was not reached yet allocated nothing. */
+           seat in a file that was not reached yet allocated nothing. The new
+           pool was never on the pad: free it and the running cast stands. */
         for(auto &d : detached) { d.first->ships = d.second; }
         for(Vehicle *v : built) { delete v; }
+        for(Part *p : newPool) { delete p; }
         throw;
+    }
+
+    /* Commit the pool now that the load cannot refuse: the save's cast replaces
+       the standing one (the old suits are freed). */
+    if(homePad != nullptr) {
+        for(Part *p : homePad->crew) { delete p; }
+        homePad->crew = std::move(newPool);
+        if(!homePad->crew.empty()) {
+            printf("[crew] %zu kerbal(s) standing at '%s' (from save)\n",
+                   homePad->crew.size(), homePad->id.c_str());
+        }
     }
 
     // Success path only: a refused load must not clobber the running career

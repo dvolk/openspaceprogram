@@ -13,6 +13,11 @@ void inventorySetOwner(Part *item, Vehicle *owner) {
 static bool removeFromContainer(Part *item) {
     Part *src = item->container;
     if(src == nullptr) { return false; }
+    /* A seat occupant is held through `seats`, not `contents`: this function
+       would clear its hold edge while the capsule still lists it (and owns it),
+       breaking checkPartInvariants and the free-once rule. Seats move through
+       addSeat/removeSeat only. */
+    if(item->isSeat()) { return false; }
     auto &c = src->contents;
     auto it = std::find(c.begin(), c.end(), item);
     if(it != c.end()) {
@@ -107,7 +112,7 @@ bool inventoryAdd(Part *item, Part *dest) {
     return addToContainer(item, dest);
 }
 
-void inventoryRemove(Part *item) {
-    if(item == nullptr) { return; }
-    removeFromContainer(item);
+bool inventoryRemove(Part *item) {
+    if(item == nullptr) { return false; }
+    return removeFromContainer(item);
 }

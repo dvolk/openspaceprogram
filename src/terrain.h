@@ -652,10 +652,18 @@ public:
        takes one into a seat; recover puts them back. Empty for non-home pads. */
     std::vector<Part *> crew;
 
-    ~StaticBuilding() {
-        for(Part *p : crew) { delete p; }
-        crew.clear();
-    }
+    /* Owns `crew` raw: copying would duplicate the pointers and free each suit
+       twice. The destructor also suppresses implicit moves, so a copy is what a
+       container reallocation would otherwise pick -- refuse both. */
+    StaticBuilding() = default;
+    StaticBuilding(const StaticBuilding &) = delete;
+    StaticBuilding &operator=(const StaticBuilding &) = delete;
+    StaticBuilding(StaticBuilding &&) = delete;
+    StaticBuilding &operator=(StaticBuilding &&) = delete;
+    /* Out-of-line (terrain.cpp): this header only forward declares Part, and
+       `delete` on an incomplete type frees the memory WITHOUT ~Part -- every
+       parked suit would leak its Body, its pockets and its identity. */
+    ~StaticBuilding();
 
     bool hasFlag(const std::string &f) const {
         for(size_t i = 0; i < flags.size(); i++) {

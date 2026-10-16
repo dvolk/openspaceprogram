@@ -3,10 +3,11 @@ ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,ro
 ARGS --reload e2e/fixtures/save_racer_dup_profile --reload-at 2000
 ARGS --orbit-log --orbit-interval 0.5
 # Two seats in one capsule, both naming roster id 1. A roster entry has exactly
-# one wearer -- Ships::claimProfile asserts it -- but nothing read that rule at
-# load time: both people printed, both rode the compound, and the process only
-# aborted a minute later when the VAB asked the roster for a free profile. The
-# assert is now a refusal, in the same pass that resolves the ids.
+# one wearer -- refuseDoubleClaim (save.cpp) checks that across the fleet AND
+# the pad's pool -- but nothing read the rule at load time: both people printed,
+# both rode the compound, and the process only aborted a minute later when the
+# VAB asked the roster for a free profile. The assert is now a refusal, in the
+# same pass that resolves the ids.
 EXPECT [load] refused e2e/fixtures/save_racer_dup_profile
 EXPECT two people claim roster id 1
 EXPECT Timeout reached

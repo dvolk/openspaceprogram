@@ -1,0 +1,78 @@
+{
+  "active_ship": "v0",
+  "crew_pool": [
+    {
+      "fuel": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        10.0,
+        0.0
+      ],
+      "id": "kerbal_1",
+      "mass": 87.05000305175781,
+      "part": "kerbal",
+      "seat_name": "Bram",
+      "seat_profile": 1,
+      "stage": 1,
+      "uid": 2
+    },
+    {
+      "fuel": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        10.0,
+        0.0
+      ],
+      "id": "kerbal_1",
+      "mass": 87.05000305175781,
+      "part": "kerbal",
+      "seat_name": "Cyd",
+      "seat_profile": 3,
+      "stage": 1,
+      "uid": 3
+    }
+  ],
+  "exhaust_scale": 1.0,
+  "experiments": "res/data/experiments.json",
+  "format": 4,
+  "kerbals": "e2e/fixtures/three_kerbals.json",
+  "parts": "res/data/parts.json",
+  "roster": [
+    {
+      "engineering": 1,
+      "id": 1,
+      "name": "Ace",
+      "piloting": 5,
+      "science": 1
+    },
+    {
+      "engineering": 1,
+      "id": 2,
+      "name": "Bram",
+      "piloting": 1,
+      "science": 5
+    },
+    {
+      "engineering": 5,
+      "id": 3,
+      "name": "Cyd",
+      "piloting": 1,
+      "science": 1
+    }
+  ],
+  "saved_at": "2026-10-16T04:48:07Z",
+  "ships": [
+    "v0"
+  ],
+  "system": "res/systems/ksp_system.json",
+  "time": 6.083333333333317,
+  "time_accel": 1
+}

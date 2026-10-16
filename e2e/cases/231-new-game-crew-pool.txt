@@ -1,0 +1,18 @@
+# The cast stands on the system's pad, so a system switch empties it (new
+# buildings, new pad) and a death shrinks it for good. New Game re-mints from
+# the roster; before that only the boot mint ever stocked the line, so a game
+# started after a switch launched every capsule EMPTY -- and an empty pool is a
+# legal state, so nothing complained.
+NAME new-game-crew-pool
+ARGS --system res/systems/ksp_system.json --switch-system res/systems/solar_system.json
+ARGS --switch-at 2000 --new-game 3000 --time-accel 1 --timeout 14 --frame-cap 30
+ARGS --vab res/ships/tanker.json --ui-click 5000,"Game Menu/VAB" --vab-launch 7500
+EXPECT [game] new game: Space Center, no ship, paused
+EXPECT [vab] launched 'tanker' (7 parts)
+EXPECT Crew: 'Ash' aboard 'tanker' part 0 (1/1)
+FORBID no kerbal left
+FORBID Assertion
+FORBID Segmentation
+FORBID GL_
+FORBID error:
+LIMIT 90

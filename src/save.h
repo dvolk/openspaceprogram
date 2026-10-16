@@ -222,8 +222,9 @@ struct SaveMeta {
        roster, which loads the --kerbals file instead). */
     std::vector<SaveKerbal> roster;
     /* Unassigned kerbals standing on the home pad (part.h: suit Parts waiting
-       at the launch site). Empty = a save predating the building pool, which
-       mints from `roster` / --kerbals instead. */
+       at the launch site). Empty = a spent cast (or a save predating the
+       building pool, which lands on the same state): there is no fallback mint
+       on load -- see the crew_pool note in load_game. */
     std::vector<SavePart> crew_pool;
     std::vector<std::string> ships;
 };

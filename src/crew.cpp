@@ -1,4 +1,4 @@
-// crew.cpp -- the roster: parsing + the claim rule (declarations in crew.h).
+// crew.cpp -- the roster: parsing + lookup (declarations in crew.h).
 
 #include "crew.h"
 
@@ -30,21 +30,6 @@ const KerbalProfile *CrewRoster::byName(const std::string &name) const {
         if(p.name == name) { return &p; }
     }
     return nullptr;
-}
-
-const KerbalProfile *CrewRoster::claim(const std::vector<uint64_t> &worn) const {
-    // Lowest id, not first in the file: the pick must not move when someone
-    // reorders kerbals.json.
-    const KerbalProfile *best = nullptr;
-    for(const KerbalProfile &p : profiles) {
-        bool taken = false;
-        for(uint64_t w : worn) {
-            if(w == p.id) { taken = true; break; }
-        }
-        if(taken) { continue; }
-        if(best == nullptr || p.id < best->id) { best = &p; }
-    }
-    return best;
 }
 
 CrewRoster load_crew_roster(const char *path) {
