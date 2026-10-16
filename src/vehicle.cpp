@@ -608,8 +608,8 @@ void Vehicle::rebuildAeroHull() {
    trees nest a crate inside a pod, not sixteen deep. */
 bool Vehicle::checkContainmentTree(Part *p, int depth) const {
     if(depth > 16) {
-        printf("[part] '%s': part uid %llu is contained %d deep -- a "
-               "containment cycle\n", name.c_str(),
+        printf("[part] '%s': part uid %llu is contained %d deep -- deeper than "
+               "the walk allows (a cycle, or a hand-edited tree)\n", name.c_str(),
                (unsigned long long)p->uid, depth);
         return false;
     }

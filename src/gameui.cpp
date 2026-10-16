@@ -2009,13 +2009,13 @@ void drawUIReadouts(Game &g) {
 void drawPartWindows(Game &g) {
     for(int i = (int)g.part_sels.size() - 1; i >= 0; i--) {
         const size_t idx = (size_t)i;
-        PartSel &sel = g.part_sels[idx];
-        Vehicle *ship = sel.ship;
-        if(sel.part >= ship->parts.size()) {
+        PartSel &live = g.part_sels[idx];
+        Vehicle *ship = live.ship;
+        if(live.part >= ship->parts.size()) {
             g.part_sels.erase(g.part_sels.begin() + idx);
             continue;
         }
-        const size_t part = sel.part;
+        const size_t part = live.part;
         const PartDef *def = ship->parts[part]->def;
 
         // Catalog display_name; falls back to the machine id for older catalogs.
@@ -2025,23 +2025,30 @@ void drawPartWindows(Game &g) {
         char name[256];
         snprintf(name, sizeof(name), "%s > %s##%p#%zu",
                  ship->name.c_str(), disp, (const void *)ship, part);
-        if(!sel.placed) {
+        if(!live.placed) {
             // Open near the mouse (the part was picked there), flipping sides when there is no room.
             const ImGuiViewport *vp = ImGui::GetMainViewport();
             const float maxw = 320.0f, maxh = 340.0f, gap = 12.0f;
-            float x = (float)sel.mx + gap;
-            float y = (float)sel.my + gap;
+            float x = (float)live.mx + gap;
+            float y = (float)live.my + gap;
             if(x + maxw > vp->WorkPos.x + vp->WorkSize.x) {
-                x = (float)sel.mx - gap - maxw;
+                x = (float)live.mx - gap - maxw;
             }
             if(y + maxh > vp->WorkPos.y + vp->WorkSize.y) {
-                y = (float)sel.my - gap - maxh;
+                y = (float)live.my - gap - maxh;
             }
             x = std::max(x, (float)vp->WorkPos.x);
             y = std::max(y, (float)vp->WorkPos.y);
             ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Appearing);
-            sel.placed = true;
+            live.placed = true;
         }
+        /* From here the body can fire a button that deletes a vehicle, and
+           dropVehicleRefs -> dropPartWindowsFor erase_from part_sels: a reference
+           into the vector would then alias whatever shifted into this slot, and
+           the rest of the body (sel.point, and the next iteration's index) would
+           read the wrong window. `placed` is the only field the body writes, and
+           it is written above, so work from a copy. */
+        const PartSel sel = live;
         bool open = true;
             /* A successful pickup may have dropped an EARLIER part_sels entry, shifting what
                this loop indexes. */
@@ -2186,7 +2193,8 @@ void drawPartWindows(Game &g) {
                         ship->GetPositionRelTo(ship->parts[part], k->frame);
                     const double dist =
                         glm::length(k->get_center_of_mass() - capCom);
-                    const bool full = ((int)seats.size() >= def->crew_capacity);
+                    const bool full = ((int)ship->parts[part]->seatCount()
+                                       >= def->crew_capacity);
                     ImGui::PushID(k);
                     ImGui::Text("  %s (%.1f m)%s", k->name.c_str(), dist,
                                 full ? "  (capsule full)" : "");
@@ -2199,9 +2207,12 @@ void drawPartWindows(Game &g) {
                            reads k->parts, which is exactly the use-after-free
                            the ASan report named. free_ks still holds the pointer,
                            but freeKerbalsInto refills it before anything reads
-                           it again. */
+                           it again. The delete also drops part-window entries for
+                           the walker, which shifts this loop's vector, so stop
+                           the frame here and let the windows redraw. */
+                        worldChanged = true;
                         ImGui::PopID();
-                        continue;
+                        break;
                     }
                     // Store (the dance deposit): moveExperiment re-checks canHold (a Container is
                     // unlimited per family).
@@ -3769,6 +3780,10 @@ void drawVabUI(Game &g) {
     for(size_t i = 0; i < g.ships.catalog().parts.size(); i++) {
         const PartDef &pd = g.ships.catalog().parts[i];
         if(pd.fuel_link) { continue; }
+        /* A kerbal is a person, not a component: it belongs to a seat or to the
+           roster, never to a build. Offering it lets a player root a ship on one
+           and reach a state the spawner refuses (a Kerbal vehicle is one part). */
+        if(pd.type == "kerbal") { continue; }
         const bool armed = (g.vab.armed == pd.name);
         // Display name (falling back to the machine id); the ##id keeps the ImGui id unique.
         char lbl[256];

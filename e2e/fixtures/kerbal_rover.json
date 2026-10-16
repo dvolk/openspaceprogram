@@ -1,0 +1,7 @@
+{
+  "name": "kerbalrover",
+  "parts": [
+    { "part": "kerbal", "id": "k1" },
+    { "part": "cargo", "id": "cg1", "parent": "k1" }
+  ]
+}

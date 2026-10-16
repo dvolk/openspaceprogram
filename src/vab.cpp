@@ -609,6 +609,18 @@ void vabLaunch(Game &g) {
             return;
         }
     }
+    /* A kerbal-rooted build is a PERSON, and a person is one part (part.h). The
+       palette hides kerbal parts, so this only bites a def loaded from a file
+       (--vab, the VAB's load). Guard rather than throw: place_ship_def's throw
+       would land inside a UI handler, and a launch is something the player can
+       undo by editing the build. */
+    if(!Ships::kerbalDefConsistent(def)) {
+        printf("[vab] launch refused: '%s' is kerbal-rooted but has %d parts\n",
+               def.name.c_str(), (int)def.parts.size());
+        fflush(stdout);
+        g.toast("Launch refused: a kerbal must be a single part");
+        return;
+    }
     /* defPath "": the ship was built in memory -- no file to respawn from. */
     Vehicle *v = g.ships.place_ship_def(def, "", def.name, hb, sc, g.sys, g.time, site);
     // Left live (NOT on rails) so it is player-controlled.

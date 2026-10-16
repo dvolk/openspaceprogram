@@ -1,0 +1,16 @@
+# The same rule case 225 pins at boot, on the path a player actually reaches it:
+# the VAB lets you bolt parts onto a kerbal part, so LAUNCH has to refuse rather
+# than place a two-part "person" (which the save writer would silently shrink to
+# one part, and boarding would abort on). A toast, not a crash, and the editor
+# stays open with the build intact.
+NAME vab-launch-kerbal-multidef
+ARGS --vab e2e/fixtures/kerbal_rover.json --vab-launch 3000 --timeout 6
+EXPECT [vab] entered the editor (sim keeps coasting)
+EXPECT [vab] launch refused: 'kerbalrover' is kerbal-rooted but has 2 parts
+EXPECT [toast] Launch refused: a kerbal must be a single part
+FORBID [vab] launched
+FORBID Assertion
+FORBID terminate called
+FORBID GL_
+FORBID error:
+LIMIT 60

@@ -4,8 +4,11 @@ ARGS --orbit-log --orbit-interval 1
 # A seated kerbal whose suit pockets hold a mono tank -- the shape every seat in
 # a flown ship has, and the one the seat fold had never loaded. The item is not a
 # seat, so it rides the capsule's mass through Part::effectiveMass like any other
-# pocket. The same save with the pocket emptied weighs 2863.7 kg (same fixture,
-# same pose, seat intact), so the 50.4 kg difference is the tank and its fuel.
+# pocket: this save's hull weighs 2914.1 kg, and the same save with the seat's
+# inventory stripped reads 2863.7 kg -- the 50.4 kg gap is the tank plus its
+# 40 kg of fuel. That stripped control was measured by hand while writing the
+# case; there is no fixture for it in the tree, so the CHECK pins only the
+# loaded figure.
 EXPECT [crew] loaded 'kerbal' aboard 'racer'
 EXPECT Loaded 1 inventory item(s) with the fleet
 EXPECT Loaded game from e2e/fixtures/save_racer_pocket (active: racer)

@@ -218,9 +218,11 @@ struct SaveMeta {
 };
 
 // ---- pure JSON (de)serialization (inline: header-only, unit-testable) ----
-// Reads are permissive: an absent or unknown key keeps the struct's default, so
-// a hand-edited file never crashes the load. The ONE exception is SaveMeta's
-// "format" (see saveMetaFromJson).
+/* Reads are permissive: an absent or unknown key keeps the struct's default, so
+   a hand-edited file never crashes the load. Two reads refuse rather than
+   default, because what they describe cannot be defaulted into anything sane:
+   SaveMeta's "format" (saveMetaFromJson) and a crew entry's top-level "seats"
+   array (saveShipFromJson). */
 
 inline std::vector<double> mat3ToVec(const glm::dmat3 &m) {
     std::vector<double> v(9);
@@ -632,13 +634,14 @@ inline nlohmann::json saveMetaToJson(const SaveMeta &m) {
 
 inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     SaveMeta m;
-    /* The one read that is NOT permissive. Every other read keeps the struct's
-       default for an absent key, which is right for an ADDITIVE schema change
-       and wrong for a RENAMED one: a foreign-format save would load as a fleet
-       of half-defaulted ships (a missing "pos" parks a ship at the body's
-       centre, silently). Refuse instead -- no save backward compatibility is
-       promised. An absent key means the current format; a present non-integer
-       is refused too (1.5 would truncate into range). */
+    /* One of the two reads that refuse rather than default (the other is a
+       crew entry's top-level "seats" array in saveShipFromJson). Every other
+       read keeps the struct's default for an absent key, which is right for an
+       ADDITIVE schema change and wrong for a RENAMED one: a foreign-format save
+       would load as a fleet of half-defaulted ships (a missing "pos" parks a
+       ship at the body's centre, silently). Refuse instead -- no save backward
+       compatibility is promised. An absent key means the current format; a
+       present non-integer is refused too (1.5 would truncate into range). */
     if(j.contains("format")) {
         if(!j["format"].is_number_integer()) {
             throw std::runtime_error(std::string("save: \"format\" must be an "

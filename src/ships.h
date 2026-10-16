@@ -75,6 +75,15 @@ public:
        one unless the def is a single kerbal part. */
     static constexpr const char *const kKerbalShipDef = "res/ships/kerbal.json";
 
+    /* A def whose ROOT part is kerbal-typed describes a PERSON, and a person is
+       exactly one part (part.h). True when `def` is consistent with that: no
+       kerbal root, or exactly one part. The spawn path enforces it so the game
+       can never write a save its loader then refuses -- a Kerbal minted from a
+       multi-part def loses its extra parts on the way out (the writer reads a
+       walker's part 0 only), and Game::kerbalBoard asserts one part the moment
+       anyone boards. Each site keeps its own message: the e2e cases pin them. */
+    static bool kerbalDefConsistent(const ShipDef &def);
+
     /* Mint a suit Part from a kerbal ship def: the occupant of a seat (part.h).
        Its Body is created but never enters the physics world -- a seat's mass
        rides the containment edge through Part::effectiveMass. Tanks are seeded

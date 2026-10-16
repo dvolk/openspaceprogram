@@ -1,0 +1,4 @@
+{
+  "name": "onecap",
+  "parts": [ { "part": "capsule", "id": "c1" } ]
+}

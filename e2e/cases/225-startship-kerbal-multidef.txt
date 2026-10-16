@@ -1,0 +1,14 @@
+# A def whose ROOT part is kerbal-typed describes a PERSON, and a person is
+# exactly one part (part.h): the save writer reads a walker's part 0 only, so a
+# second part would be written by no one and lost -- and Game::kerbalBoard
+# asserts one part the moment anyone boards. Refuse the def at boot instead of
+# half-building a person that the loader then refuses too.
+NAME startship-kerbal-multidef
+ARGS --timeout 4 --startship rover,e2e/fixtures/kerbal_rover.json,Kerbin,pad
+EXPECT error: ship def 'e2e/fixtures/kerbal_rover.json': a kerbal-rooted def must be exactly one part (got 2)
+EXIT 1
+FORBID terminate called
+FORBID Assertion
+FORBID Segmentation
+FORBID GL_
+LIMIT 60

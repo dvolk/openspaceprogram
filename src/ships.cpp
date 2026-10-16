@@ -159,6 +159,13 @@ Vehicle *Ships::place_ship(const std::string &shipDefPath, const std::string &wa
                           shipDefPath, wantName, hb, sc, sys, t, site);
 }
 
+bool Ships::kerbalDefConsistent(const ShipDef &def) {
+    const bool kerbalRoot = !def.parts.empty()
+        && def.parts[0].def != nullptr
+        && def.parts[0].def->type == "kerbal";
+    return !kerbalRoot || def.parts.size() == 1;
+}
+
 Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
                                const std::string &wantName,
                                TerrainBody *hb, const ScenarioDef *sc, System &sys,
@@ -207,6 +214,17 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
        the two are different rows everywhere the player reads a name. */
     const bool is_kerbal = !def.parts.empty()
         && def.parts[0].def->type == "kerbal";
+    /* Refuse the def, do not half-build it. A Kerbal minted from a multi-part
+       def is a vehicle whose extra parts the save writer never sees (it reads a
+       walker's part 0), so the game would write a save its own loader refuses
+       -- and Game::kerbalBoard asserts one part the moment anyone boards. The
+       --startship path catches this and reports it; vabLaunch guards first. */
+    if(is_kerbal && !kerbalDefConsistent(def)) {
+        throw std::runtime_error("ship def '"
+                                 + (defPath.empty() ? def.name : defPath)
+                                 + "': a kerbal-rooted def must be exactly one part (got "
+                                 + std::to_string(def.parts.size()) + ")");
+    }
     Vehicle *v = is_kerbal ? static_cast<Vehicle *>(new Kerbal) : new Vehicle;
     v->name = nm;
     if(is_kerbal) {
