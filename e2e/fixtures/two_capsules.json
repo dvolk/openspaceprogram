@@ -1,0 +1,9 @@
+{
+  "name": "two capsules",
+  "testship": true,
+  "controller": "capsule_r1.5h3_1",
+  "parts": [
+    { "part": "capsule_r1.5h3", "id": "capsule_r1.5h3_1" },
+    { "part": "capsule_r1.5h3", "id": "capsule_r1.5h3_2", "parent": "capsule_r1.5h3_1" }
+  ]
+}

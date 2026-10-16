@@ -557,7 +557,17 @@ bool vabLoad(Game &g, const char *name) {
     // would flip Del from "detach" to destructive "delete").
     g.vab.linkSel = -1;
     /* A design on disk holds no people (crew stands on the pad), so the people
-       chosen for the build that was just replaced have no seats to sit in. */
+       chosen for the build that was just replaced have no seats to sit in.
+       Say so: the next launch falls back to the pad's line, and a player who
+       named a crew cannot otherwise see the choice go (issue #288). */
+    if(!g.vab.seatAssigns.empty()) {
+        const int n = (int)g.vab.seatAssigns.size();
+        printf("[vab] dropped %d seat assignment(s): the loaded design has no "
+               "seats for them\n", n);
+        fflush(stdout);
+        g.toast("%d seat assignment%s dropped: the loaded design names no seats",
+                n, n == 1 ? "" : "s");
+    }
     g.vab.seatAssigns.clear();
     g.vab.seatPartId.clear();
     printf("[vab] loaded %s (%d parts)\n", stem.c_str(), (int)g.vab.build.parts.size());
@@ -737,22 +747,22 @@ bool vabAssignSeat(Game &g, const std::string &partId, int slot,
    (issue #288). */
 void vabPruneSeats(Game &g) {
     int dropped = 0;
-    std::string lastPart;
     for(size_t i = g.vab.seatAssigns.size(); i-- > 0; ) {
         const VabState::SeatAssign &a = g.vab.seatAssigns[i];
         if(seatExists(g, a.partId, a.slot)) { continue; }
         const KerbalProfile *p = g.roster.find(a.profileId);
         const std::string who = p != nullptr ? " '" + p->name + "'" : "";
+        // Named HERE, per entry: a summary cannot say which of several parts
+        // went, and naming one of them reads as blaming the wrong one.
         printf("[vab] dropped the seat plan for '%s'%s (it left the build)\n",
                a.partId.c_str(), who.c_str());
         fflush(stdout);
         g.vab.seatAssigns.erase(g.vab.seatAssigns.begin() + (std::ptrdiff_t)i);
         dropped++;
-        lastPart = a.partId;
     }
     if(dropped > 0) {
-        g.toast("%d seat assignment%s dropped -- %s left the build",
-                dropped, dropped == 1 ? "" : "s", lastPart.c_str());
+        g.toast("%d seat assignment%s dropped: no such seat in this build",
+                dropped, dropped == 1 ? "" : "s");
         if(g.vab.seatAssigns.empty()) {
             g.toast("No seats named: the next launch draws the pad's line");
         }

@@ -12,7 +12,7 @@ ARGS --vab-detach 1 --vab-detach-at 5000 --vab-launch 7000
 EXPECT [vab] assign hook: 'capsule_1' seat 0 = 'Ace'
 EXPECT [vab] detached capsule_1 (6 parts)
 EXPECT [vab] dropped the seat plan for 'capsule_1' 'Ace' (it left the build)
-EXPECT [toast] 1 seat assignment dropped -- capsule_1 left the build
+EXPECT [toast] 1 seat assignment dropped: no such seat in this build
 EXPECT [toast] No seats named: the next launch draws the pad's line
 EXPECT [vab] launched 'small docker' (1 parts)
 EXPECT [vab] detach hook: build 1 parts, 1 subassemblies

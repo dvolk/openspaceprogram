@@ -3554,7 +3554,14 @@ void drawVabSeatWindow(Game &g) {
                 }
                 if(pad != nullptr) {
                     for(const Part *suit : pad->crew) {
-                        if(suit->kerbal == nullptr) { continue; }
+                        /* A save predating the roster leaves a suit anonymous
+                           (seat_profile 0, save.cpp). The plan is keyed by
+                           roster id, so there is nothing to name here -- and
+                           offering id 0 would collide with the empty-seat
+                           marker, which is also 0. */
+                        if(suit->kerbal == nullptr || suit->kerbal->id == 0) {
+                            continue;
+                        }
                         const KerbalProfile &kp = *suit->kerbal;
                         /* Already in another seat of THIS build: naming one
                            person twice makes the launch refuse, so grey it out
