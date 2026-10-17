@@ -37,8 +37,8 @@ bool sunDirRot(const TerrainBody *body, const TerrainBody *sun,
 
 void surfmapCompute(Game &g) {
     // Default body = the active ship's parent; a combo pick pins the map.
-    TerrainBody *body = g.surfmap_body
-        ? g.surfmap_body
+    TerrainBody *body = g.surfmap.body
+        ? g.surfmap.body
         : (g.ship ? g.ship->m_parent : g.sys.home);
     if(body == nullptr) { return; }
     const TerrainBody *sun = g.sun;
@@ -52,13 +52,13 @@ void surfmapCompute(Game &g) {
     // `baked` only drives the log's shade on/off + shaded means.
     glm::dvec3 sun_dir;
     const bool has_sun = sunDirRot(body, sun, sun_dir);
-    const bool baked = g.surfmap_shade && has_sun;
+    const bool baked = g.surfmap.shade && has_sun;
 
     // Snapshot terrain params and hand the sweep to the worker. The worker
     // colours from THIS snapshot: surface.max_height is applied LATER by
     // AttachRoot on the main thread, so a live per-pixel read would race it.
     const TerrainParams tp = body->params();
-    const bool ocean = g.surfmap_sea;     // the "Ocean" box (per-pixel below)
+    const bool ocean = g.surfmap.sea;     // the "Ocean" box (per-pixel below)
     /* Launch sites the window's overlay marks. Counted here because the worker
        never touches game state, and logged so e2e can pin the marker filter -- a
        mistyped flag name draws no sites and still compiles clean. */
@@ -71,7 +71,7 @@ void surfmapCompute(Game &g) {
     const double t_now = g.time;
     const int epoch = g.cache_epoch;      // drop the map if the world changes
 
-    g.surfmap_in_flight++;   // the window's "mapping ..." state
+    g.surfmap.in_flight++;   // the window's "mapping ..." state
     // `g` is captured by REFERENCE only for the returned continuation; the
     // worker body never touches game state (a by-value capture would copy
     // the non-copyable Game).
@@ -131,7 +131,7 @@ void surfmapCompute(Game &g) {
             fflush(stdout);
         }
         // Main-thread continuation (JobRunner::poll): publish the cache (the
-        // window uploads it to a texture on a rev change; surfmap_body_name is the
+        // window uploads it to a texture on a rev change; surfmap.body_name is the
         // staleness check) + clear the "mapping" state.
         std::shared_ptr<std::vector<unsigned char> > ppx =
             std::make_shared<std::vector<unsigned char> >(std::move(px));
@@ -141,18 +141,18 @@ void surfmapCompute(Game &g) {
             // Epoch bumped after we posted: this map is for the old world.
             // Drop it (the load path does NOT abort jobs).
             if(epoch != g.cache_epoch) {
-                if(g.surfmap_in_flight > 0) { g.surfmap_in_flight--; }
+                if(g.surfmap.in_flight > 0) { g.surfmap.in_flight--; }
                 return;
             }
-            g.surfmap_px = std::move(*ppx);
-            g.surfmap_shade_px = std::move(*pshpx);
-            g.surfmap_w = w;
-            g.surfmap_h = h;
-            g.surfmap_body_name = body_name;
-            g.surfmap_computed_at = t_now;
-            g.surfmap_valid = true;
-            g.surfmap_rev++;
-            if(g.surfmap_in_flight > 0) { g.surfmap_in_flight--; }
+            g.surfmap.px = std::move(*ppx);
+            g.surfmap.shade_px = std::move(*pshpx);
+            g.surfmap.w = w;
+            g.surfmap.h = h;
+            g.surfmap.body_name = body_name;
+            g.surfmap.computed_at = t_now;
+            g.surfmap.valid = true;
+            g.surfmap.rev++;
+            if(g.surfmap.in_flight > 0) { g.surfmap.in_flight--; }
         };
     });
 }

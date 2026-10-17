@@ -277,9 +277,9 @@ static void refreshShipState(Game &g, const glm::dvec3 &com) {
     }
 
     // M one-shot, same pattern as P; the sweep runs on the background worker.
-    if(g.surfmap_compute_requested) {
+    if(g.surfmap.compute_requested) {
         surfmapCompute(g);
-        g.surfmap_compute_requested = false;
+        g.surfmap.compute_requested = false;
     }
 }
 

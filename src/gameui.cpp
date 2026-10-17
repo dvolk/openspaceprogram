@@ -1107,7 +1107,7 @@ void drawUIReadouts(Game &g) {
        ship's position + orbit overlaid. The pixel buffer is computed on demand on the
        background worker and cached. */
     drawWin(g, W_SurfaceMap, [&] {
-        // Body to map: item 0 = "active ship's body" (surfmap_body == nullptr, so the
+        // Body to map: item 0 = "active ship's body" (surfmap.body == nullptr, so the
         // map follows the ship).
         // This list is rebuilt every frame the window is open, so the vector is
         // static (reserved once) and the item-0 label is a static buffer: the only
@@ -1128,15 +1128,15 @@ void drawUIReadouts(Game &g) {
         sm_items.push_back(sm_active);
         for(auto *b : sys.bodies) {
             sm_items.push_back(b->name.c_str());
-            if(g.surfmap_body == b) { sm_sel = (int)sm_items.size() - 1; }
+            if(g.surfmap.body == b) { sm_sel = (int)sm_items.size() - 1; }
         }
         ImGui::Combo("Body", &sm_sel, sm_items.data(), (int)sm_items.size());
-        g.surfmap_body = (sm_sel > 0 && sm_sel <= (int)sys.bodies.size())
+        g.surfmap.body = (sm_sel > 0 && sm_sel <= (int)sys.bodies.size())
             ? sys.bodies[sm_sel - 1]
             : nullptr;
 
-        TerrainBody *sm_body = g.surfmap_body
-            ? g.surfmap_body
+        TerrainBody *sm_body = g.surfmap.body
+            ? g.surfmap.body
             : (ship && ship->m_parent ? ship->m_parent : sys.home);
         if(sm_body == nullptr) {
             ImGui::Text("No body to map (no ship, no system bodies).");
@@ -1151,13 +1151,13 @@ void drawUIReadouts(Game &g) {
 
         // Auto-compute when there is no map yet or it was computed for a different body.
         // Not mid-sweep: the last one lands for the body it was posted for.
-        if(g.surfmap_in_flight == 0 &&
-           (!g.surfmap_valid || g.surfmap_body_name != sm_body->name)) {
+        if(g.surfmap.in_flight == 0 &&
+           (!g.surfmap.valid || g.surfmap.body_name != sm_body->name)) {
             surfmapCompute(g);
         }
 
         // Read AFTER the auto-compute above so a just-posted job shows the state.
-        const bool sm_busy = g.surfmap_in_flight > 0;
+        const bool sm_busy = g.surfmap.in_flight > 0;
 
         if(sm_busy) { ImGui::BeginDisabled(); }
         if(ImGui::Button("Refresh  (M)")) {
@@ -1171,27 +1171,27 @@ void drawUIReadouts(Game &g) {
         }
         // Overlay-only: the terminator is pre-baked as a separate texture, so
         // toggling it is a free show/hide (no re-bake, no need to disable mid-sweep).
-        bool shade = g.surfmap_shade;
-        if(ImGui::Checkbox("Sun shading", &shade)) { g.surfmap_shade = shade; }
+        bool shade = g.surfmap.shade;
+        if(ImGui::Checkbox("Sun shading", &shade)) { g.surfmap.shade = shade; }
         ImGui::SameLine();
-        bool sea = g.surfmap_sea;
+        bool sea = g.surfmap.sea;
         if(sm_busy) { ImGui::BeginDisabled(); }
         if(ImGui::Checkbox("Ocean", &sea)) {
-            g.surfmap_sea = sea;
+            g.surfmap.sea = sea;
             surfmapCompute(g);   // re-bake with / without the sea
         }
         if(sm_busy) { ImGui::EndDisabled(); }
         ImGui::SameLine();
         // Overlay-only: no re-bake, so no need to disable it mid-sweep.
-        bool sml = g.surfmap_site_labels;
-        if(ImGui::Checkbox("Site labels", &sml)) { g.surfmap_site_labels = sml; }
+        bool sml = g.surfmap.site_labels;
+        if(ImGui::Checkbox("Site labels", &sml)) { g.surfmap.site_labels = sml; }
         if(sm_busy) {
             ImGui::SameLine();
             ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
                                "   mapping ...");
         }
 
-        if(!g.surfmap_valid || g.surfmap_px.empty()) {
+        if(!g.surfmap.valid || g.surfmap.px.empty()) {
             if(sm_busy) {
                 ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
                                    "Mapping the surface ...");
@@ -1206,35 +1206,35 @@ void drawUIReadouts(Game &g) {
         // Base albedo + terminator overlay are published together (one rev).
         static Texture *sm_tex = nullptr;
         static int sm_tex_w = 0, sm_tex_h = 0, sm_tex_rev = -1;
-        if(g.surfmap_rev != sm_tex_rev) {
-            if(!sm_tex || sm_tex_w != g.surfmap_w || sm_tex_h != g.surfmap_h) {
+        if(g.surfmap.rev != sm_tex_rev) {
+            if(!sm_tex || sm_tex_w != g.surfmap.w || sm_tex_h != g.surfmap.h) {
                 if(sm_tex) { delete sm_tex; }
-                sm_tex = make_texture_r8(g.surfmap_w, g.surfmap_h,
-                                        g.surfmap_px.data(), /*linear=*/true);
-                sm_tex_w = g.surfmap_w;
-                sm_tex_h = g.surfmap_h;
+                sm_tex = make_texture_r8(g.surfmap.w, g.surfmap.h,
+                                        g.surfmap.px.data(), /*linear=*/true);
+                sm_tex_w = g.surfmap.w;
+                sm_tex_h = g.surfmap.h;
             } else {
-                upload_texture_r8(sm_tex, g.surfmap_w, g.surfmap_h,
-                                  g.surfmap_px.data());
+                upload_texture_r8(sm_tex, g.surfmap.w, g.surfmap.h,
+                                  g.surfmap.px.data());
             }
-            sm_tex_rev = g.surfmap_rev;
+            sm_tex_rev = g.surfmap.rev;
         }
         static Texture *sm_shade_tex = nullptr;
         static int sm_shade_tex_w = 0, sm_shade_tex_h = 0, sm_shade_tex_rev = -1;
-        if(g.surfmap_rev != sm_shade_tex_rev) {
-            if(!sm_shade_tex || sm_shade_tex_w != g.surfmap_w
-               || sm_shade_tex_h != g.surfmap_h) {
+        if(g.surfmap.rev != sm_shade_tex_rev) {
+            if(!sm_shade_tex || sm_shade_tex_w != g.surfmap.w
+               || sm_shade_tex_h != g.surfmap.h) {
                 if(sm_shade_tex) { delete sm_shade_tex; }
-                sm_shade_tex = make_texture_r8(g.surfmap_w, g.surfmap_h,
-                                              g.surfmap_shade_px.data(),
+                sm_shade_tex = make_texture_r8(g.surfmap.w, g.surfmap.h,
+                                              g.surfmap.shade_px.data(),
                                               /*linear=*/true);
-                sm_shade_tex_w = g.surfmap_w;
-                sm_shade_tex_h = g.surfmap_h;
+                sm_shade_tex_w = g.surfmap.w;
+                sm_shade_tex_h = g.surfmap.h;
             } else {
-                upload_texture_r8(sm_shade_tex, g.surfmap_w, g.surfmap_h,
-                                  g.surfmap_shade_px.data());
+                upload_texture_r8(sm_shade_tex, g.surfmap.w, g.surfmap.h,
+                                  g.surfmap.shade_px.data());
             }
-            sm_shade_tex_rev = g.surfmap_rev;
+            sm_shade_tex_rev = g.surfmap.rev;
         }
 
         // The map fills the window's content width (2:1 equirectangular). Buffer row 0 is
@@ -1256,7 +1256,7 @@ void drawUIReadouts(Game &g) {
                      sm_img_min, sm_img_max);
         // Terminator overlay: black with alpha = (1 - shade); the default
         // src-alpha-over blend multiplies the albedo by shade. Same zoom transform.
-        if(g.surfmap_shade && sm_shade_tex) {
+        if(g.surfmap.shade && sm_shade_tex) {
             dl->AddImage((ImTextureID)(std::intptr_t)sm_shade_tex->id,
                          sm_img_min, sm_img_max);
         }
@@ -1461,7 +1461,7 @@ void drawUIReadouts(Game &g) {
                                     ImVec2(q.x + sr, q.y + sr * 0.8f),
                                     site_edge, 1.0f);
                 }
-                if(!g.surfmap_site_labels) { continue; }
+                if(!g.surfmap.site_labels) { continue; }
                 const char *nm = m.name->c_str();
                 const ImVec2 ts = ImGui::CalcTextSize(nm);
                 // Right of the glyph; left of it rather than off the map.

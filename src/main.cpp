@@ -771,7 +771,7 @@ int main(int argc, char **argv)
     // miss, not a silent fallback (#72).
     if(!args.surfmap_body.empty()) {
         if(TerrainBody *b = sys.find(args.surfmap_body)) {
-            game.surfmap_body = b;
+            game.surfmap.body = b;
         } else {
             printf("error: --surfmap-body '%s' is not a body in %s\n",
                    args.surfmap_body.c_str(), game.systemPath.c_str());

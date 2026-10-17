@@ -244,6 +244,35 @@ struct MapState {
     int mode = 0;
 };
 
+/* Surface Map SESSION state (Game::surfmap), not save state: the pixels are
+   re-baked from the body on demand. valid / computed_at / in_flight are also
+   the clock-stamped cache's: invalidateClockStampedCaches() resets them, so
+   the window reads state the clock owns. */
+struct SurfmapState {
+    // null = the active ship's parent, else the system home.
+    TerrainBody *body = nullptr;
+    bool shade = true;    // bake the terminator (the "Sun shading" box)
+    bool sea = false;     // paint the sea (the "Ocean" box)
+    // Overlay-only, so unlike the two above it needs no re-bake.
+    bool site_labels = true;
+    // The last computed map (surfmapCompute publishes it atomically).
+    // px is the unshaded albedo; shade_px is the terminator overlay (black,
+    // alpha = 1-shade) drawn over it -- toggling "Sun shading" is a free
+    // show/hide, no re-bake.
+    std::vector<unsigned char> px;       // RGBA8, w*h
+    std::vector<unsigned char> shade_px; // RGBA8 overlay, w*h
+    int w = 0;
+    int h = 0;
+    std::string body_name;
+    double computed_at = -1.0;  // sim seconds of the last compute
+    bool valid = false;
+    int rev = 0;
+    // Jobs posted but not landed (the window shows "mapping ...").
+    int in_flight = 0;
+    // M: one-shot compute request (events.cpp sets, the state pass consumes).
+    bool compute_requested = false;
+};
+
 // Biome::None when the body has no classifiable surface or terrain is not ready.
 struct PoseSituation {
     Biome biome = Biome::None;
@@ -447,13 +476,13 @@ struct Game {
     /* A job captures cache_epoch at post time and skips its publish if it changed. */
     void invalidateClockStampedCaches() {
         xferPlanner.invalidateClockState();
-        surfmap_valid = false;
-        surfmap_computed_at = -1.0;
+        surfmap.valid = false;
+        surfmap.computed_at = -1.0;
         cache_epoch++;
         // In-flight counters are only decremented by their continuations; on the
         // switch path those are discarded (jobs.restart).
         xferPlanner.pc_in_flight = 0;
-        surfmap_in_flight = 0;
+        surfmap.in_flight = 0;
     }
     /* A clock move OUTSIDE a tick (a load, --start-time); a system swap invalidates
        directly. */
@@ -510,7 +539,6 @@ struct Game {
     bool poly_mode = false;         // F11 wireframe
     bool screenshot_requested = false;
     bool porkchop_compute_requested = false;  // P: one-shot compute the plot
-    bool surfmap_compute_requested = false;   // M: one-shot compute the map
     // The player-controlled ship (ships live in the bodies' lists).
     Vehicle *ship = nullptr;
     // `kerbal` is the one most recently EVA'd (the V toggle-back); `lastShip` the
@@ -641,26 +669,7 @@ struct Game {
     int cache_epoch = 0;
 
     // --- Surface Map state (gameui.cpp draws it; surfmap.cpp fills it) ---
-    // null = the active ship's parent, else the system home.
-    TerrainBody *surfmap_body = nullptr;
-    bool surfmap_shade = true;    // bake the terminator (the "Sun shading" box)
-    bool surfmap_sea = false;     // paint the sea (the "Ocean" box)
-    // Overlay-only, so unlike the two above it needs no re-bake.
-    bool surfmap_site_labels = true;
-    // The last computed map (surfmapCompute publishes it atomically).
-    // surfmap_px is the unshaded albedo; surfmap_shade_px is the terminator
-    // overlay (black, alpha = 1-shade) drawn over it -- toggling "Sun shading"
-    // is a free show/hide, no re-bake.
-    std::vector<unsigned char> surfmap_px;       // RGBA8, w*h
-    std::vector<unsigned char> surfmap_shade_px; // RGBA8 overlay, w*h
-    int surfmap_w = 0;
-    int surfmap_h = 0;
-    std::string surfmap_body_name;
-    double surfmap_computed_at = -1.0;  // sim seconds of the last compute
-    bool surfmap_valid = false;
-    int surfmap_rev = 0;
-    // Jobs posted but not landed (the window shows "mapping ...").
-    int surfmap_in_flight = 0;
+    SurfmapState surfmap;
 
     // --- control transitions (events + the SHIPS window + selftest) --------
     // V: put a seat occupant out, or hand control back to the last ship.
@@ -793,7 +802,7 @@ struct Game {
         sceneStack.reserve(4);
         sceneStack.push_back(SceneFrame{});   // Flight, no parked camera
         // --surfmap-noshade (CLI) mirrors the Surface Map "Sun shading" box.
-        surfmap_shade = !args.surfmap_noshade;
+        surfmap.shade = !args.surfmap_noshade;
     }
 };
 

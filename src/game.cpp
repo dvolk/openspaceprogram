@@ -904,7 +904,7 @@ void Game::switchSystem(const std::string &path,
     sun = sys.root;
     titleBody = nullptr;   // the old system's pick dangles with oldBodies;
                            // the sync-set block re-picks it
-    surfmap_body = nullptr;   // a combo pick names an old-system body deleted
+    surfmap.body = nullptr;   // a combo pick names an old-system body deleted
                               // below; invalidateClockStampedCaches resets the
                               // map's cache, not this pointer.
     /* load_system propagated the new tree at t=0 but the clock did not move:

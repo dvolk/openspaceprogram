@@ -276,7 +276,7 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     }
     if(slotFired(Slot::SurfaceMap, ksc, kmod, g.binds)) {
         if(!repeat) {
-            g.surfmap_compute_requested = true;
+            g.surfmap.compute_requested = true;
         }
     }
     /* F1 / F2: diagnostic overlays. Gated on the scene owning the window. */
