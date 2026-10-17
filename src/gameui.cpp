@@ -763,9 +763,24 @@ void drawUIReadouts(Game &g) {
             // The human ToF rides on the slider row: the solution block below
             // already prints a ToF line, and echoing it here as a second row
             // read as the window showing two different answers.
+            /* The band has to cover what the planner can pin here. A porkchop
+               sweep searches ToF 60 s .. three target periods (pc_period is one
+               of them), and the cheapest Jupiter cell is ~11 years -- past the
+               hardcoded 7.5 (366 days). imgui clamps a slider only on
+               INTERACTION, so an out-of-band plan draws with its grab jammed at
+               the end and survives until the player touches the slider, which
+               silently drops an 11-year plan to 366 days (#255). The ends follow
+               the current value too, so the widget cannot misrepresent or clip a
+               plan it is showing. */
+            float tof_lo = std::min(1.8f, xfer_tof_log);
+            float tof_hi = std::max(7.5f, xfer_tof_log);
+            if(planner.pc_period > 0.0) {
+                tof_hi = std::max(tof_hi,
+                                  (float)std::log10(3.0 * planner.pc_period));
+            }
             ImGui::PushItemWidth(150.0f);
             ImGui::SliderFloat("log10(ToF s)", &xfer_tof_log,
-                               1.8, 7.5, "%.2f");
+                               tof_lo, tof_hi, "%.2f");
             ImGui::SameLine();
             char tof_s[40];
             ImGui::TextDisabled("%s", fmt_time(std::pow(10.0, xfer_tof_log),
