@@ -39,6 +39,22 @@ static bool expect_throw(const std::function<void()> &fn) {
     return false;
 }
 
+/* expect_throw only proves SOMETHING was refused. A def can be rejected by a
+   neighbouring rule for a completely unrelated reason and the case still
+   passes -- one parser case here did exactly that -- so a case written to pin
+   one check has to match that check's message. */
+static bool expect_throw_saying(const std::function<void()> &fn, const std::string &needle) {
+    try { fn(); }
+    catch(const std::runtime_error &e) {
+        if(std::string(e.what()).find(needle) == std::string::npos) {
+            printf("   refused, but not for the expected reason: %s\n", e.what());
+            return false;
+        }
+        return true;
+    }
+    return false;
+}
+
 static bool near(double a, double b) { return std::fabs(a - b) < 1e-6; }
 static bool vnear(const glm::dvec3 &a, const glm::dvec3 &b) {
     return glm::length(a - b) < 1e-6;
@@ -1568,7 +1584,10 @@ int main() {
     /* A fuel link is virtual, so nothing may hang off it. build_ship always
        refused this while BuildShip::fromShipDef re-rooted the part to -1, so
        the editor showed a second root for a design that would not launch (#294).
-       Refused at the load boundary now, so both consumers see one answer. */
+       Refused at the load boundary now, so both consumers see one answer.
+       These match the MESSAGE: a stack-edge child here is also rejected by the
+       node rule (a fuel_link def has no nodes), which would let the case pass
+       with this check deleted. */
     {
         const char *bad = "/tmp/test_shipload_bad.json";
         std::ofstream f(bad);
@@ -1576,12 +1595,14 @@ int main() {
              " { \"part\": \"fuel_link\", \"id\": \"fl\", \"from\": \"c\", \"to\": \"t\" }, "
              " { \"part\": \"fuel_tank\", \"id\": \"t\", \"parent\": \"fl\" } ] }";
         f.close();
-        CHECK(expect_throw([&](){ load_ship_def(bad, cat); }));
+        CHECK(expect_throw_saying([&](){ load_ship_def(bad, cat); },
+                                  "parent 'fl' is a fuel link"));
         std::remove(bad);
     }
     // The DEFAULT parent is the previous entry, and real defs interleave link
     // rows among parts (res/ships/heavy_asp.json), so an omitted "parent" after
-    // a link row lands on the link. That has to be refused too, not repaired.
+    // a link row lands on the link. That has to be refused too, not repaired --
+    // and said in terms of the key the author forgot to write.
     {
         const char *bad = "/tmp/test_shipload_bad.json";
         std::ofstream f(bad);
@@ -1589,7 +1610,8 @@ int main() {
              " { \"part\": \"fuel_link\", \"id\": \"fl\", \"from\": \"c\", \"to\": \"t\" }, "
              " { \"part\": \"fuel_tank\", \"id\": \"t\" } ] }";
         f.close();
-        CHECK(expect_throw([&](){ load_ship_def(bad, cat); }));
+        CHECK(expect_throw_saying([&](){ load_ship_def(bad, cat); },
+                                  "no \"parent\", so it defaults to the previous entry 'fl'"));
         std::remove(bad);
     }
     // The mirror case: build_ship throws on a link endpoint that names no
@@ -1601,7 +1623,8 @@ int main() {
         f << "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\" }, "
              " { \"part\": \"fuel_link\", \"id\": \"fl\", \"from\": \"c\", \"to\": \"ghost\" } ] }";
         f.close();
-        CHECK(expect_throw([&](){ load_ship_def(bad, cat); }));
+        CHECK(expect_throw_saying([&](){ load_ship_def(bad, cat); },
+                                  "\"to\" 'ghost' is not a part of the ship"));
         std::remove(bad);
     }
     {
@@ -1612,7 +1635,22 @@ int main() {
              " { \"part\": \"fuel_link\", \"id\": \"fl1\", \"from\": \"c\", \"to\": \"c2\" }, "
              " { \"part\": \"fuel_link\", \"id\": \"fl2\", \"from\": \"fl1\", \"to\": \"c2\" } ] }";
         f.close();
-        CHECK(expect_throw([&](){ load_ship_def(bad, cat); }));
+        CHECK(expect_throw_saying([&](){ load_ship_def(bad, cat); },
+                                  "\"from\" 'fl1' is itself a fuel link"));
+        std::remove(bad);
+    }
+    // And the controller: build_ship refuses a fuel link as the flown part,
+    // while fromShipDef recorded its id and toShipDef dropped it, so the ship
+    // silently flew on the DEFAULT controller.
+    {
+        const char *bad = "/tmp/test_shipload_bad.json";
+        std::ofstream f(bad);
+        f << "{ \"controller\": \"fl\", \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\" }, "
+             " { \"part\": \"capsule\", \"id\": \"c2\", \"parent\": \"c\" }, "
+             " { \"part\": \"fuel_link\", \"id\": \"fl\", \"from\": \"c\", \"to\": \"c2\" } ] }";
+        f.close();
+        CHECK(expect_throw_saying([&](){ load_ship_def(bad, cat); },
+                                  "is a fuel link (a fuel link cannot fly the ship)"));
         std::remove(bad);
     }
     // Positive control: a link row BETWEEN two parts is normal, as long as the
@@ -2026,6 +2064,32 @@ int main() {
             catch(const std::exception &) { ok = false; }
             CHECK(ok);
         }
+    }
+
+    /* Same sweep over the e2e fixtures. A case asserts on stdout, so a fixture
+       that stops loading only fails if some EXPECT happens to name what the
+       load used to print -- a parser tightening can break one silently. The
+       allowed failures are the fleet/list files (not ship defs at all) and the
+       one fixture that exists to be refused (case 256). */
+    {
+        const std::vector<std::string> slugs = list_ship_defs("e2e/fixtures");
+        CHECK(!slugs.empty());
+        int refused = 0;
+        for(size_t i = 0; i < slugs.size(); i++) {
+            const std::string path = "e2e/fixtures/" + slugs[i] + ".json";
+            try {
+                CHECK(!load_ship_def(path.c_str(), cat).parts.empty());
+            } catch(const std::exception &e) {
+                const std::string w = e.what();
+                const bool notAShip = w.find("no parts in ") != std::string::npos;
+                const bool meantToFail
+                    = w.find("is a fuel link (a fuel link cannot have parts attached)")
+                      != std::string::npos;
+                CHECK(notAShip || meantToFail);
+                if(meantToFail) { refused++; }
+            }
+        }
+        CHECK(refused == 1);   // link_parent.json, and nothing else
     }
 
     // list_vab_ship_defs: list_ship_defs minus the testships. A temp dir with

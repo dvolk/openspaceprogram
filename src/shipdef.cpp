@@ -471,11 +471,19 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
            both consumers see the same answer. This also catches the OMITTED
            "parent": the default is the previous entry, and real defs interleave
            link rows among parts (res/ships/heavy_asp.json). */
-        if(!sp.isFuelLink() && sp.parent >= 0
-           && def.parts[(size_t)sp.parent].isFuelLink()) {
-            throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                     + ": parent '" + def.parts[(size_t)sp.parent].id
-                                     + "' is a fuel link (a fuel link cannot have parts attached)");
+        if(!sp.isFuelLink() && sp.parent >= 0) {
+            const ShipPart &pp = def.parts[(size_t)sp.parent];
+            if(pp.isFuelLink()) {
+                /* Name the rule the author has to act on: with no "parent" key
+                   at all, quoting a parent they never wrote is confusing. */
+                const std::string why = pv.contains("parent")
+                    ? ("parent '" + pp.id + "' is a fuel link")
+                    : ("no \"parent\", so it defaults to the previous entry '" + pp.id
+                       + "', which is a fuel link");
+                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
+                                         + ": " + why
+                                         + " (a fuel link cannot have parts attached)");
+            }
         }
 
         sp.attach = AttachMode::Down;
@@ -626,6 +634,14 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
         if(it == idToIndex.end()) {
             throw std::runtime_error(std::string("ship: controller id '") + cid + "' in " + path
                                      + " is not a part of the ship");
+        }
+        /* Same class as the parent check: build_ship refuses a fuel link here
+           (vehicle.cpp, "controller is a fuel link") while fromShipDef just
+           records the id, which toShipDef later drops -- so the def loaded, the
+           editor looked fine, and the ship flew on the DEFAULT controller. */
+        if(def.parts[it->second].isFuelLink()) {
+            throw std::runtime_error(std::string("ship: controller id '") + cid + "' in " + path
+                                     + " is a fuel link (a fuel link cannot fly the ship)");
         }
         def.controller = (int)it->second;
     }
