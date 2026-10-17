@@ -150,7 +150,7 @@ void updateShipView(Game &g) {
     view.target_plane_ok = g.xferPlanner.targetPlaneNormal(ship->m_parent->frame,
                                                            view.target_h_hat);
     view.ref_plane = uiRefPlane(ship->m_parent->frame, o.h_hat,
-                                view.target_h_hat, g.map_plane);
+                                view.target_h_hat, g.map.plane);
     plane = orbitPlaneAngles(o, view.ref_plane);
     distance = o.distance;
     speed = o.speed;
@@ -416,7 +416,7 @@ void refreshWorld(Game &g) {
 }
 
 /* The orbital-plane overlay (Settings "Orbital plane"): a ring in the ship's
-   orbital plane, a ring in the orbit map's reference plane (Game::map_plane, so
+   orbital plane, a ring in the orbit map's reference plane (Game::map.plane, so
    the dihedral here is the Inc the map and HUD print), and a tick at each point
    where the two cross -- the node line, where a plane change is cheapest (both
    nodes get the same white: for a symmetric plane change either is fine). Like
@@ -448,7 +448,7 @@ static void drawOrbitPlane(Game &g, const glm::dmat4 &VP) {
     const glm::dvec3 n_ref = glm::transpose(to_inertial) * g.view.ref_plane.n_hat;
     // Same convention as orbitPlaneAngles: n_ref x h_hat is the ASCENDING node.
     const glm::dvec3 node = glm::cross(n_ref, n_orb);
-    /* Coplanar -- map_plane == kRefOrbit (the reference IS the orbit plane), a
+    /* Coplanar -- map.plane == kRefOrbit (the reference IS the orbit plane), a
        genuinely equatorial orbit, or an escape the other way round -- means one
        ring and no node to point at. Reuse the HUD's own gate rather than a
        second threshold: rotation preserves |node|, so the ticks and the LAN dash

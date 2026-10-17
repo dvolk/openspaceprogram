@@ -130,7 +130,7 @@ inline constexpr float kMapMaxScale = 3.16227766e10f;  // 10^10.5
 /* The map's scale [m/pixel] at startup and after "Reset view": enough to
    see the focus body plus its immediate moons without any scrolling.
    Changes: what the map looks like before the player touches the wheel.
-   Where: Game::map_scale (game.h). */
+   Where: Game::map.scale (game.h). */
 inline constexpr float kMapDefaultScale = 6000.0f;
 
 /* Ascending / descending node marker colors, linear-ish sRGB [0,1] per

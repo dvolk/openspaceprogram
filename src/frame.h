@@ -126,7 +126,7 @@ struct Frame {
 };
 
 /* Which plane the UI measures Inc/LAN/LPe against (#171). The SAME choice the
-   orbit map draws (Game::map_plane), so the numbers describe the picture;
+   orbit map draws (Game::map.plane), so the numbers describe the picture;
    kRefOrbit is view-only, where Inc is 0 by construction and the node is
    undefined; kRefTarget is the transfer target's orbit, where Inc is the plane
    change to the target and the node line is where to burn for it. */

@@ -2499,10 +2499,10 @@ void drawUIMap(Game &g) {
     double &mu = g.view.mu;
     glm::dvec3 &orbit_pos = g.view.orbit_pos;
     glm::dvec3 &orbit_vel = g.view.orbit_vel;
-    float &map_scale = g.map_scale;
-    int &map_plane = g.map_plane;
-    ImVec2 &map_pan = g.map_pan;
-    int &map_mode = g.map_mode;
+    float &map_scale = g.map.scale;
+    int &map_plane = g.map.plane;
+    ImVec2 &map_pan = g.map.pan;
+    int &map_mode = g.map.mode;
     std::vector<TransferPlanner::XferTarget> &xferTargets = planner.xferTargets;
     int &xfer_target = planner.xfer_target;
     auto &xfer = planner.xfer;
@@ -4167,15 +4167,15 @@ void drawTrackingMap(Game &g) {
     glm::dvec3 &orbit_pos = g.view.orbit_pos;
     glm::dvec3 &orbit_vel = g.view.orbit_vel;
     std::vector<TerrainBody *> &planets = g.sys.bodies;
-    float &map_scale = g.map_scale;
-    int &map_plane = g.map_plane;
-    ImVec2 &map_pan = g.map_pan;
+    float &map_scale = g.map.scale;
+    int &map_plane = g.map.plane;
+    ImVec2 &map_pan = g.map.pan;
     std::vector<TransferPlanner::XferTarget> &xferTargets = planner.xferTargets;
     int &xfer_target = planner.xfer_target;
 
     /* Full-screen and chrome-less: the map IS the Tracking Station view (no controls --
        they would overflow the auto-fit window off-screen). Diverged from drawUIMap on
-       purpose: this one never touches the shared g.map_mode. */
+       purpose: this one never touches the shared g.map.mode. */
     const ImGuiViewport *tvp = ImGui::GetMainViewport();
     // Edge-to-edge: cancel the slot's margin and zero the window padding.
     const ImVec2 vmarg = ui::Manager::Get().margin;

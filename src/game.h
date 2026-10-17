@@ -103,7 +103,7 @@ struct ShipView {
        draws. Radial needs no such lift -- pos is already this frame's. */
     glm::dvec3 marker_vel = glm::dvec3(0.0);
     OrbitElements o;
-    // Inc/LAN/LPe measured in the plane the orbit map shows (Game::map_plane), so
+    // Inc/LAN/LPe measured in the plane the orbit map shows (Game::map.plane), so
     // the numbers describe the picture (#171). The plane itself is kept as well:
     // the 3D orbital-plane overlay draws THIS one, not a second opinion.
     PlaneAngles plane;
@@ -229,6 +229,19 @@ struct VabState {
        one edit behind -- never a wrong launch. */
     uint64_t stagingSig = 0;
     std::vector<StageRow> stagingRows;
+};
+
+/* Orbital map SESSION state (Game::map), not save state: a fresh boot starts
+   on the defaults. map.plane is NOT just chrome: ShipView's Inc/LAN/LPe are
+   measured in it (see ShipView), so the readouts follow the picture. */
+struct MapState {
+    float scale = kMapDefaultScale;   // meters per pixel
+    // RefPlaneMode (frame.h). ImGui::Combo needs an int*.
+    int plane = kRefEquator;
+    // Pan offset from the window center, in pixels (P4 navigation).
+    ImVec2 pan = ImVec2(0.0f, 0.0f);
+    // Right-click cycles chrome: 0 = full window, 1 = bare map, 2 = no chrome.
+    int mode = 0;
 };
 
 // Biome::None when the body has no classifiable surface or terrain is not ready.
@@ -620,14 +633,7 @@ struct Game {
     float music_volume = 0.5f;     // ambient music (background, not the star)
 
     // --- Orbital map state (gameui.cpp draws with them) ---------------------
-    float map_scale = kMapDefaultScale;   // meters per pixel
-    // RefPlaneMode (frame.h). Not just a view control: ShipView::plane is measured
-    // in this plane too. ImGui::Combo needs an int*.
-    int map_plane = kRefEquator;
-    // Pan offset from the window center, in pixels (P4 navigation).
-    ImVec2 map_pan = ImVec2(0.0f, 0.0f);
-    // Right-click cycles chrome: 0 = full window, 1 = bare map, 2 = no chrome.
-    int map_mode = 0;
+    MapState map;
 
     // --- world-stamped caches ------------------------------------------------
     // Bumped by invalidateClockStampedCaches(); a job drops its result on landing
