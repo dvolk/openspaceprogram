@@ -1,0 +1,27 @@
+# The same loop caught where the player can still undo it: the click, not the
+# launch. heavy_two already feeds rtank12 -> central_engine2, so asking for the
+# reverse direction is refused where it is made. The check runs over fuel GROUPS
+# (the tree never crosses a fuel barrier), exactly as build_ship groups them, so
+# a link that closes a loop two hops away is caught too. --vab-link is the
+# headless stand-in for "Add fuel link" + two part clicks.
+# The legal link in the same run is what tells a refusal apart from link mode
+# being broken, and LAUNCHING it is what proves the guard did not reject
+# something build_ship would have accepted. Which hop the refusal names FIRST
+# follows the file's part order, so pin membership, not the chain's order.
+NAME vab-link-loop-refused
+ARGS --vab res/ships/heavy_two.json --timeout 8
+ARGS --vab-link 1500,central_engine2,rtank12
+ARGS --vab-link 2500,rtank21,central_engine1
+ARGS --vab-launch 4000
+EXPECT [vab] fuel link refused (a loop cannot drain):
+EXPECT [toast] Fuel links cannot form a loop:
+CHECK "central_engine2->rtank12" in out and "rtank12->central_engine2" in out
+CHECK re.search(r"\[vab\] fuel link fuel_link_\d+: rtank21 -> central_engine1", out)
+CHECK re.search(r"\[vab\] launched 'heavy_two' \(23 parts\)", out)
+CHECK len(re.findall(r"\[vab\] fuel link refused", out)) == 1
+CHECK len(re.findall(r"\[vab\] link hook:", out)) == 2
+FORBID terminate called
+FORBID Assertion
+FORBID GL_
+FORBID error:
+LIMIT 60

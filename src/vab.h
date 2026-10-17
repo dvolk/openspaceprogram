@@ -37,8 +37,9 @@ int vabPlace(Game &g);
 // Q/E: spin the ghost or selected part about its attach axis. No-op if neither.
 void vabRotate(Game &g, double deltaDeg);
 
-// Link-mode click: first hovered part = SOURCE, second = DESTINATION.
-// Refuses self-link or duplicate; empty space is ignored.
+// Link-mode click: first hovered part = SOURCE, second = DESTINATION. Empty
+// space is ignored; a self-link, a duplicate direction, a source a delete
+// already removed, and a link that would close a fuel loop all refuse.
 void vabLinkClick(Game &g);
 
 // Delete/X: remove the selected part and its subtree. Root refuses.

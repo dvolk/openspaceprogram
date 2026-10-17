@@ -374,6 +374,16 @@ struct BuildShip {
        subtree poses. The root has no edge: no-op. */
     void rotatePart(int idx, double deltaDeg);
 
+    /* The drain model needs a DAG, so build_ship throws on a fuel-link loop
+       (vehicle.cpp). This is the same test over the build tree -- the loop as a
+       chain of part ids, or "" when the links are acyclic. `extra` is a link
+       that is NOT yet in fuelLinks, so the editor can ask before adding one:
+       a throw at launch is a toast the player cannot undo, while a refusal in
+       the editor is just a click (#291). Endpoints are grouped the way
+       buildFuelGroups groups them, so the ids name the loop's ends, not every
+       hop (parts inside one group share their fuel anyway). */
+    std::string fuelLinkLoop(const FuelLink *extra = nullptr) const;
+
     /* The inverse of fromShipDef: a ShipDef build_ship can consume. */
     ShipDef toShipDef() const;
 

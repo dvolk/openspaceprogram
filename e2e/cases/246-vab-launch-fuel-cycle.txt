@@ -1,0 +1,25 @@
+# A fuel-link loop cannot drain, so build_ship throws -- and vabLaunch called it
+# straight out of the LAUNCH button, so the throw landed in an imgui handler:
+# "terminate called after throwing an instance of 'std::runtime_error'" and
+# SIGABRT (EXIT 134), with the editor and the build gone (#291). A def off disk
+# can hold a loop even though vabLinkClick now refuses to author one, so the
+# launch still has to catch it: printf + toast + stay in the editor, exactly how
+# the kerbal-rooted guard (case 226) refuses.
+# The link click on the same design pins the OTHER half of the message: the
+# clicked pair is legal, so the refusal must say the design already loops and
+# name the links to delete, not blame the pair the player just clicked.
+NAME vab-launch-fuel-cycle
+ARGS --vab e2e/fixtures/cycle_ship.json --vab-link 1500,capsule_1,engine_1
+ARGS --vab-launch 3000 --timeout 6
+EXPECT [vab] entered the editor (sim keeps coasting)
+EXPECT [vab] fuel link refused: the design already loops:
+EXPECT [toast] This design already has a fuel-link loop:
+EXPECT [vab] launch refused: build_ship: fuel links form a cycle
+EXPECT [toast] Launch refused: build_ship: fuel links form a cycle
+CHECK "capsule_1->fuel_tank_1" in out and "fuel_tank_1->capsule_1" in out
+FORBID [vab] launched
+FORBID terminate called
+FORBID Assertion
+FORBID GL_
+FORBID error:
+LIMIT 60

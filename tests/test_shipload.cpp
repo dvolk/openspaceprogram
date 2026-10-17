@@ -1087,6 +1087,76 @@ int main() {
             CHECK(haveTo);
         }
     }
+    // --- fuelLinkLoop: the authoring-time twin of build_ship's cycle check
+    //     (#291). The drain model needs a DAG; build_ship throws on a loop, but
+    //     that is at launch, where the player cannot undo it. The VAB asks here
+    //     -- over fuel GROUPS, so it must agree with what build_ship would
+    //     throw on: same verdict, one click earlier.
+    {
+        ShipDef h2 = load_ship_def("res/ships/heavy_two.json", cat);
+        BuildShip bs = BuildShip::fromShipDef(h2);
+        const PartDef *fl = cat.find("fuel_link");
+        CHECK(fl != nullptr);
+        // the shipped asparagus links are a DAG: both boosters feed the core
+        CHECK(bs.fuelLinkLoop().empty());
+        // the reverse of an existing link closes a loop
+        const BuildShip::FuelLink back{fl, "x1", "central_engine2", "rtank12"};
+        CHECK(!bs.fuelLinkLoop(&back).empty());
+        // ... and it is named by the links that close it, so the toast can point
+        // at the pair. Which hop comes FIRST follows the group numbering, i.e.
+        // the part order in the file, so pin membership here and the exact chain
+        // on the hand-built ring below.
+        const std::string named = bs.fuelLinkLoop(&back);
+        CHECK(named.find("central_engine2->rtank12") != std::string::npos);
+        CHECK(named.find("rtank12->central_engine2") != std::string::npos);
+        // a fresh group-to-group link that nothing feeds back: still a DAG
+        const BuildShip::FuelLink fwd{fl, "x2", "rtank21", "central_engine1"};
+        CHECK(bs.fuelLinkLoop(&fwd).empty());
+        // inside ONE group adds no edge: that group already shares its fuel, so
+        // a loop through it is not a loop (build_ship skips these too)
+        const BuildShip::FuelLink same{fl, "x3", "central_tank2", "central_tank3"};
+        CHECK(bs.fuelLinkLoop(&same).empty());
+        // an endpoint on a fuel barrier joins no group, so it drains nothing
+        // across: no edge, no loop
+        const BuildShip::FuelLink wall{fl, "x4", "decupler_r1", "rtank12"};
+        CHECK(bs.fuelLinkLoop(&wall).empty());
+        // an unknown id is build_ship's "references unknown part" error, which
+        // it reports itself -- not something to call a loop here
+        const BuildShip::FuelLink ghost{fl, "x5", "nope_9", "rtank12"};
+        CHECK(bs.fuelLinkLoop(&ghost).empty());
+        // A design that ALREADY loops is reported with no probe at all: that is
+        // how vabLinkClick tells "you just closed this" from "it came in with
+        // it", instead of blaming the player for a link they did not make.
+        bs.fuelLinks.push_back(BuildShip::FuelLink{fl, "x6", "central_engine2", "rtank12"});
+        CHECK(!bs.fuelLinkLoop().empty());
+        // an empty build (the --vab-empty state): no groups, no loop
+        BuildShip nothing;
+        CHECK(nothing.fuelLinkLoop().empty());
+        CHECK(nothing.fuelLinkLoop(&back).empty());
+    }
+    // A three-group ring (tank | decoupler | tank | decoupler | tank): two links
+    // are a chain, the third closes a loop that no PAIR of links is guilty of.
+    // Only the group graph sees it, which is why the check is not "is the
+    // reverse link already there".
+    {
+        const PartDef *tank = cat.find("fuel_tank");
+        const PartDef *dec = cat.find("decoupler_r1");
+        const PartDef *fl = cat.find("fuel_link");
+        CHECK(tank != nullptr && fl != nullptr);
+        CHECK(dec != nullptr && dec->fuel_barrier);
+        BuildPart a;  a.def = tank; a.id = "a"; a.parent = -1;
+        BuildPart d1; d1.def = dec; d1.id = "d1"; d1.parent = 0;
+        BuildPart b;  b.def = tank; b.id = "b"; b.parent = 1;
+        BuildPart d2; d2.def = dec; d2.id = "d2"; d2.parent = 2;
+        BuildPart c;  c.def = tank; c.id = "c"; c.parent = 3;
+        BuildShip ring;
+        ring.parts = {a, d1, b, d2, c};
+        ring.fuelLinks.push_back(BuildShip::FuelLink{fl, "l1", "a", "b"});
+        ring.fuelLinks.push_back(BuildShip::FuelLink{fl, "l2", "b", "c"});
+        CHECK(ring.fuelLinkLoop().empty());   // a chain drains fine
+        const BuildShip::FuelLink close{fl, "l3", "c", "a"};
+        CHECK(ring.fuelLinkLoop(&close) == "a->b, b->c, c->a");
+    }
     // --- grafting a subassembly as the ROOT of an empty build: the VAB's
     //     "build a ship from nothing" with an armed subassembly. The grafted
     //     root (parent -1) anchors at the S origin and the assembly's relative

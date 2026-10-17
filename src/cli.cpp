@@ -152,6 +152,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "(right-click a capsule in the VAB), which it opens as it "
                    "assigns (test hook)")
         ->delimiter(',');
+    std::vector<std::string> vab_link;
+    app.add_option("--vab-link", vab_link,
+                   "Click a fuel link at this loop time: a flat list of "
+                   "MS,FROM_ID,TO_ID groups (e.g. 4000,capsule_1,fuel_tank_1 "
+                   "= at 4s link capsule_1 into fuel_tank_1). Repeat the flag "
+                   "for more links. The headless stand-in for the VAB's "
+                   "\"Add fuel link\" + two part clicks (test hook)")
+        ->delimiter(',');
     app.add_option("--reload", args.reload_dir,
                    "Load this save dir over the running game at --reload-at "
                    "(the Save/Load window's Load button, headless)");
@@ -909,6 +917,30 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             }
             args.vab_assigns.push_back({(int)v[0], (int)v[1], (int)v[2],
                                         vab_assign[i + 3]});
+        }
+    }
+
+    /* --vab-link: group the flat list into MS,FROM_ID,TO_ID triples. CLI11
+       drops an empty delimited field, so a missing id lands here as a short
+       group and the count check names it. */
+    if(!vab_link.empty()) {
+        if(vab_link.size() % 3 != 0) {
+            printf("error: --vab-link expects MS,FROM_ID,TO_ID groups; "
+                   "got %zu value(s)\n", vab_link.size());
+            *exit_code = 1;
+            return false;
+        }
+        for(size_t i = 0; i < vab_link.size(); i += 3) {
+            const std::string &s = vab_link[i];
+            char *end = nullptr;
+            const long ms = strtol(s.c_str(), &end, 10);
+            if(end == s.c_str() || *end != '\0') {
+                printf("error: --vab-link time '%s' is not an integer\n",
+                       s.c_str());
+                *exit_code = 1;
+                return false;
+            }
+            args.vab_links.push_back({(int)ms, vab_link[i + 1], vab_link[i + 2]});
         }
     }
 

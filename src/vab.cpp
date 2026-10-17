@@ -368,6 +368,18 @@ void vabRotate(Game &g, double deltaDeg) {
     g.vab.build.recomputePoses();
 }
 
+namespace {
+
+// The build part with this id, or nullptr.
+const BuildPart *buildPartById(const Game &g, const std::string &id) {
+    for(const BuildPart &bp : g.vab.build.parts) {
+        if(bp.id == id) { return &bp; }
+    }
+    return nullptr;
+}
+
+}  // namespace
+
 void vabLinkClick(Game &g) {
     if(g.vab.hover < 0 || (size_t)g.vab.hover >= g.vab.build.parts.size()) {
         return;   // empty space: stay in link mode, keep waiting
@@ -376,6 +388,16 @@ void vabLinkClick(Game &g) {
     if(g.vab.linkFromId.empty()) {
         g.vab.linkFromId = bp.id;
         g.toast("Link source: %s -- now click the destination", bp.id.c_str());
+        return;
+    }
+    /* The source was picked on an EARLIER click, and Del/X can have removed it
+       since (link mode outlives a delete). A link from a part that is no longer
+       in the build feeds nothing -- toShipDef drops it quietly -- and no loop
+       check can ever see it, so drop the pick rather than author a ghost. The
+       destination click still stands, so stay in link mode. */
+    if(buildPartById(g, g.vab.linkFromId) == nullptr) {
+        g.toast("The link source is gone -- click it again");
+        g.vab.linkFromId.clear();
         return;
     }
     if(bp.id == g.vab.linkFromId) {
@@ -394,6 +416,36 @@ void vabLinkClick(Game &g) {
     const PartDef *ld = g.ships.catalog().find("fuel_link");
     if(ld == nullptr) {
         g.toast("The catalog has no \"fuel_link\" part");
+        g.vab.linkMode = false;
+        g.vab.linkFromId.clear();
+        return;
+    }
+    /* A loop cannot drain, so build_ship throws on one -- at launch, inside a
+       UI handler, where the player has no undo. Refuse it HERE instead, where
+       the build is still on the table and the pair they clicked is the thing to
+       change. Checked over fuel GROUPS, exactly as build_ship groups them, so a
+       link this accepts cannot turn into a launch-time throw (#291).
+       Two refusals, two sentences: a def loaded off disk can arrive already
+       looping, and naming THAT loop blames the player for a link they did not
+       just make -- and would refuse every later click with the wrong reason. */
+    const std::string existing = g.vab.build.fuelLinkLoop();
+    if(!existing.empty()) {
+        printf("[vab] fuel link refused: the design already loops: %s\n",
+               existing.c_str());
+        fflush(stdout);
+        g.toast("This design already has a fuel-link loop: %s -- delete a link",
+                existing.c_str());
+        g.vab.linkMode = false;
+        g.vab.linkFromId.clear();
+        return;
+    }
+    const BuildShip::FuelLink probe{ld, "", g.vab.linkFromId, bp.id};
+    const std::string loop = g.vab.build.fuelLinkLoop(&probe);
+    if(!loop.empty()) {
+        printf("[vab] fuel link refused (a loop cannot drain): %s\n",
+               loop.c_str());
+        fflush(stdout);
+        g.toast("Fuel links cannot form a loop: %s", loop.c_str());
         g.vab.linkMode = false;
         g.vab.linkFromId.clear();
         return;
@@ -660,8 +712,22 @@ void vabLaunch(Game &g) {
             return;
         }
     }
-    /* defPath "": the ship was built in memory -- no file to respawn from. */
-    Vehicle *v = g.ships.place_ship_def(def, "", def.name, hb, sc, g.sys, g.time, site);
+    /* defPath "": the ship was built in memory -- no file to respawn from.
+       build_ship throws on a data bug the build can still be holding (a
+       fuel-link loop: vabLinkClick refuses to author one, a def loaded off disk
+       may already contain one). place_ship_def frees the half-built vehicle and
+       rethrows, so the build and the crew plan are untouched -- report it the
+       way vabLoad does rather than letting a throw land in an imgui handler,
+       which is a SIGABRT and a lost game (#291). */
+    Vehicle *v = nullptr;
+    try {
+        v = g.ships.place_ship_def(def, "", def.name, hb, sc, g.sys, g.time, site);
+    } catch(const std::exception &e) {
+        printf("[vab] launch refused: %s\n", e.what());
+        fflush(stdout);
+        g.toast("Launch refused: %s", e.what());
+        return;
+    }
     // Left live (NOT on rails) so it is player-controlled.
     if(!sc->on_pad) { spawn_vehicle(v, *sc, hb, g.sys, 0.0, g.time); }
     // Crew, after the reposition so the ship is where the player launched it
@@ -715,14 +781,6 @@ void vabLaunch(Game &g) {
    matters to the sim happens at launch (vabLaunch). */
 
 namespace {
-
-// The build part with this id, or nullptr.
-const BuildPart *buildPartById(const Game &g, const std::string &id) {
-    for(const BuildPart &bp : g.vab.build.parts) {
-        if(bp.id == id) { return &bp; }
-    }
-    return nullptr;
-}
 
 // A seat of the current build, addressable by (partId, slot).
 bool seatExists(const Game &g, const std::string &partId, int slot) {
@@ -956,6 +1014,36 @@ void vabFireHooks(Game &g) {
         const std::string who = emptySeat ? "(empty)" : ("'" + a.kerbal + "'");
         printf("[vab] assign hook: '%s' seat %d = %s%s\n", partId.c_str(),
                a.slot, who.c_str(), ok ? "" : " (no such seat)");
+        fflush(stdout);
+    }
+    /* --vab-link: the headless fuel-link click. It sets the state a hovered
+       part would leave behind (link mode + a picked source + a hovered
+       destination) and calls the same handler, so the authoring guards -- a
+       duplicate direction, a loop -- run exactly as they do under the mouse. */
+    for(Game::VabHooks::Link &l : g.vabHooks.links) {
+        if(l.fired || ms < l.ms) { continue; }
+        l.fired = true;
+        int hover = -1;
+        bool fromFound = false;
+        for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
+            const std::string &id = g.vab.build.parts[i].id;
+            if(id == l.from) { fromFound = true; }
+            if(id == l.to) { hover = (int)i; }
+        }
+        if(!fromFound || hover < 0) {
+            const std::string missing = (!fromFound && hover < 0)
+                ? ("'" + l.from + "' and '" + l.to + "'")
+                : (!fromFound ? "'" + l.from + "'" : "'" + l.to + "'");
+            printf("[vab] link hook: no build part %s\n", missing.c_str());
+            fflush(stdout);
+            continue;
+        }
+        g.vab.linkMode = true;
+        g.vab.linkFromId = l.from;
+        g.vab.hover = hover;
+        vabLinkClick(g);
+        printf("[vab] link hook: '%s' -> '%s' (build has %d fuel link(s))\n",
+               l.from.c_str(), l.to.c_str(), (int)g.vab.build.fuelLinks.size());
         fflush(stdout);
     }
     if(sceneIs(g, SceneId::Vab) && g.vabHooks.launchMs >= 0

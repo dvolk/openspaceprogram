@@ -946,6 +946,9 @@ int main(int argc, char **argv)
     for(const GameArgs::VabAssignArg &a : args.vab_assigns) {
         game.vabHooks.assigns.push_back({a.ms, a.partIdx, a.slot, a.kerbal});
     }
+    for(const GameArgs::VabLinkArg &l : args.vab_links) {
+        game.vabHooks.links.push_back({l.ms, l.from, l.to});
+    }
     const double startup_s =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - prog_start).count();
     printf("Main loop starting: startup took %.3f s", startup_s);

@@ -1157,6 +1157,117 @@ ShipDef BuildShip::toShipDef() const {
     return def;
 }
 
+namespace {
+
+/* Fuel groups over the build tree: parts the structure connects WITHOUT
+   crossing a fuel barrier -- the same partition Vehicle::buildFuelGroups makes
+   once the ship is built, so a loop found here is the loop build_ship throws
+   on. A barrier keeps -1: it joins no group. */
+int buildGroupsFor(const std::vector<BuildPart> &parts, std::vector<int> &group) {
+    group.assign(parts.size(), -1);
+    std::vector<std::vector<size_t> > adj(parts.size());
+    for(size_t i = 0; i < parts.size(); i++) {
+        const int p = parts[i].parent;
+        if(p < 0) { continue; }
+        assert(p < (int)parts.size());   // construction order (recomputePoses)
+        adj[i].push_back((size_t)p);
+        adj[(size_t)p].push_back(i);
+    }
+    const auto wall = [](const BuildPart &bp) {
+        return bp.def != nullptr && bp.def->fuel_barrier;
+    };
+    int next = 0;
+    for(size_t i = 0; i < parts.size(); i++) {
+        if(wall(parts[i]) || group[i] != -1) { continue; }
+        group[i] = next;
+        std::vector<size_t> stack;
+        stack.push_back(i);
+        while(!stack.empty()) {
+            const size_t q = stack.back();
+            stack.pop_back();
+            for(size_t k = 0; k < adj[q].size(); k++) {
+                const size_t r = adj[q][k];
+                if(wall(parts[r]) || group[r] != -1) { continue; }
+                group[r] = next;
+                stack.push_back(r);
+            }
+        }
+        next++;
+    }
+    return next;
+}
+
+struct FuelEdge { int to; size_t link; };
+
+/* White/grey/black DFS over the group graph. `trail` holds the link indices on
+   the current grey path and `entry[g]` is where group g joined it, so a back
+   edge can name the whole loop it closes (not just itself). */
+bool fuelLoopDfs(int u, const std::vector<std::vector<FuelEdge> > &out,
+                 std::vector<int> &color, std::vector<int> &entry,
+                 std::vector<size_t> &trail, std::vector<size_t> &loop) {
+    color[(size_t)u] = 1;
+    entry[(size_t)u] = (int)trail.size();
+    for(size_t k = 0; k < out[(size_t)u].size(); k++) {
+        const FuelEdge &e = out[(size_t)u][k];
+        if(color[(size_t)e.to] == 1) {
+            loop.assign(trail.begin() + (size_t)entry[e.to], trail.end());
+            loop.push_back(e.link);
+            return true;
+        }
+        if(color[(size_t)e.to] == 0) {
+            trail.push_back(e.link);
+            if(fuelLoopDfs(e.to, out, color, entry, trail, loop)) { return true; }
+            trail.pop_back();
+        }
+    }
+    color[(size_t)u] = 2;
+    return false;
+}
+
+}  // namespace
+
+std::string BuildShip::fuelLinkLoop(const FuelLink *extra) const {
+    std::vector<const FuelLink *> links;
+    links.reserve(fuelLinks.size() + (extra != nullptr ? 1 : 0));
+    for(size_t k = 0; k < fuelLinks.size(); k++) { links.push_back(&fuelLinks[k]); }
+    if(extra != nullptr) { links.push_back(extra); }
+
+    std::vector<int> group;
+    const int nGroups = buildGroupsFor(parts, group);
+    std::map<std::string, size_t> index;
+    for(size_t i = 0; i < parts.size(); i++) { index[parts[i].id] = i; }
+
+    /* Only group-to-group links are edges: a link inside one group moves
+       nothing (that group already shares its fuel), and one ending on a barrier
+       crosses a wall that never drains. An id that is not in the tree is not an
+       edge either -- vabLinkClick re-checks its source and toShipDef drops a
+       link whose endpoint died, so a dangling id is not a state to report. */
+    std::vector<std::vector<FuelEdge> > out((size_t)nGroups);
+    for(size_t k = 0; k < links.size(); k++) {
+        std::map<std::string, size_t>::const_iterator f = index.find(links[k]->from);
+        std::map<std::string, size_t>::const_iterator t = index.find(links[k]->to);
+        if(f == index.end() || t == index.end()) { continue; }
+        const int a = group[f->second];
+        const int b = group[t->second];
+        if(a < 0 || b < 0 || a == b) { continue; }
+        out[(size_t)a].push_back(FuelEdge{ b, k });
+    }
+
+    std::vector<int> color((size_t)nGroups, 0), entry((size_t)nGroups, -1);
+    std::vector<size_t> trail, loop;
+    for(int g = 0; g < nGroups; g++) {
+        if(color[(size_t)g] != 0) { continue; }
+        if(!fuelLoopDfs(g, out, color, entry, trail, loop)) { continue; }
+        std::string s;
+        for(size_t k = 0; k < loop.size(); k++) {
+            if(k > 0) { s += ", "; }
+            s += links[loop[k]]->from + "->" + links[loop[k]]->to;
+        }
+        return s;
+    }
+    return std::string();
+}
+
 /* [0, 360) for tidy saved files; the solvers are wrap-agnostic. */
 static double wrap360(double deg) {
     double a = std::fmod(deg, 360.0);

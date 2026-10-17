@@ -69,6 +69,13 @@ struct GameArgs {
         std::string kerbal;
     };
     std::vector<VabAssignArg> vab_assigns;
+    /* --vab-link MS,FROM_ID,TO_ID (repeatable): the headless fuel-link click
+       (part ids, in the order they would be clicked). */
+    struct VabLinkArg {
+        int ms;
+        std::string from, to;
+    };
+    std::vector<VabLinkArg> vab_links;
     /* --select-target MS,NAME (repeatable): the Target window's combo, headless.
        NAME "none" clears the selection. */
     struct SelectTargetArg {

@@ -301,6 +301,16 @@ struct Game {
             bool fired = false;
         };
         std::vector<Assign> assigns;
+        /* --vab-link MS,FROM_ID,TO_ID (repeatable): the headless fuel-link
+           click. It sets the same state a hovered part would (linkFromId +
+           hover) and fires vabLinkClick, so the authoring guards -- a duplicate
+           direction, a loop -- run exactly as they do under the mouse. */
+        struct Link {
+            int ms;
+            std::string from, to;
+            bool fired = false;
+        };
+        std::vector<Link> links;
     };
     VabHooks vabHooks;
 
