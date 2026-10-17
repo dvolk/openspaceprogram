@@ -1179,10 +1179,16 @@ int main(int argc, char **argv)
                 continue;
             }
             h.fired = true;
-            game.xferPlanner.selectTarget(h.name == "none" ? std::string()
-                                                           : h.name);
-            printf("[target] hook: selected \"%s\" (index %d)\n",
-                   h.name.c_str(), game.xferPlanner.xfer_target);
+            game.xferPlanner.selectTargetByName(h.name == "none" ? std::string()
+                                                                : h.name);
+            // The list is built in the draw pass, so a hook fired before the
+            // first one has nothing to resolve against: say so rather than
+            // reporting a selection the planner did not take.
+            const int idx = game.xferPlanner.xfer_target;
+            const std::string where = idx >= 0 ? " (index " + std::to_string(idx) + ")"
+                                               : " (not in the target list yet)";
+            printf("[target] hook: selected \"%s\"%s\n",
+                   h.name.c_str(), where.c_str());
             fflush(stdout);
         }
         // --space-center: only from Flight (the hub is an excursion above a

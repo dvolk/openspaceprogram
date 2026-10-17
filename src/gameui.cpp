@@ -685,14 +685,15 @@ void drawUIReadouts(Game &g) {
         if(ImGui::BeginCombo("Target", cur)) {
             // "none" is a real entry so the target can be cleared back to -1 from here.
             if(ImGui::Selectable("none", xfer_target == -1)) {
-                planner.selectTarget("");
+                planner.selectTarget(std::string(), false);
             }
             for(int i = 0; i < (int)xferTargets.size(); i++) {
                 if(ImGui::Selectable(xferTargets[i].name,
                                      i == xfer_target)) {
-                    // By name, not index: the list is rebuilt every frame, so
-                    // the index is only this frame's address for it.
-                    planner.selectTarget(xferTargets[i].name);
+                    // By identity, and the row's KIND with it: a body and a
+                    // vessel can share a name, and the list shows both rows.
+                    planner.selectTarget(xferTargets[i].name,
+                                         xferTargets[i].ship != nullptr);
                 }
             }
             ImGui::EndCombo();
@@ -926,7 +927,9 @@ void drawUIReadouts(Game &g) {
             planner.xfer_auto = false;
             planner.xfer_tof_log = (float)std::log10(pc.tof_min);
             planner.xfer_t_dep = planner.pc_computed_at + pc.t_dep_min;
-            planner.xfer_plan_target = xfer_target;
+            // By identity: the index is only this frame's address for the
+            // target, and the plan outlives reshuffles of the list.
+            planner.xfer_plan_target_name = xferTargets[xfer_target].name;
             planner.xfer_from_porkchop = true;
             // A plan IS a live solution: the countdown and the burn direction
             // need one, so arming it turns planning back on.

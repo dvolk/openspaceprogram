@@ -180,7 +180,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "(e.g. 4000,Mun = at 4s pick Mun in the Target window). "
                    "Repeat the flag for more picks; NAME 'none' clears the "
                    "selection. The headless stand-in for the Target window's "
-                   "combo, which --ui-click cannot reach (test hook)")
+                   "combo, which --ui-click cannot reach. --transfer-target, if "
+                   "given, re-asserts itself on every rebuild and wins (test "
+                   "hook)")
         ->delimiter(',');
     app.add_option("--experiment", args.experiment_ms,
                    "Fire the part window's \"Run Experiment\" once at this "

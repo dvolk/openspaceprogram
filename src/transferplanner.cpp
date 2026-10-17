@@ -158,21 +158,42 @@ void dumpPorkchop(const std::string &dir, const std::string &target,
 }
 } // namespace
 
-/* Point xfer_target at xfer_target_name in the CURRENT list. A name that is no
-   longer there means the target left the fleet, and the selection goes with it
-   -- keeping the index instead would have it name whichever vessel happened to
-   land in that slot (issue #276). */
+/* Point xfer_target at the (name, is_ship) selection in the CURRENT list. A
+   selection that is no longer there means the target left the fleet, and the
+   selection goes with it -- keeping the index instead would have it name
+   whichever vessel happened to land in that slot (issue #276). */
 void TransferPlanner::resolveTarget() {
     xfer_target = -1;
     if(xfer_target_name.empty()) { return; }
     for(int i = 0; i < (int)xferTargets.size(); i++) {
-        if(xferTargets[i].name == xfer_target_name) { xfer_target = i; return; }
+        const XferTarget &t = xferTargets[i];
+        if(t.name != xfer_target_name) { continue; }
+        // A body and a vessel can share a name; the combo lists both, so the
+        // row clicked is part of what the player chose.
+        if((t.ship != nullptr) != xfer_target_is_ship) { continue; }
+        xfer_target = i;
+        return;
     }
     xfer_target_name.clear();
 }
 
-void TransferPlanner::selectTarget(const std::string &name) {
+void TransferPlanner::selectTarget(const std::string &name, bool isShip) {
     xfer_target_name = name;
+    xfer_target_is_ship = isShip;
+    resolveTarget();
+}
+
+void TransferPlanner::selectTargetByName(const std::string &name) {
+    // Last name match wins, as --transfer-target always resolved it: the list
+    // is bodies then vessels, so a vessel named after a body is the one a test
+    // naming that string means to aim at.
+    for(int i = 0; i < (int)xferTargets.size(); i++) {
+        if(xferTargets[i].name == name) {
+            xfer_target_name = name;
+            xfer_target_is_ship = xferTargets[i].ship != nullptr;
+        }
+    }
+    if(xfer_target_name != name) { xfer_target_name.clear(); }
     resolveTarget();
 }
 
@@ -203,17 +224,20 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         }
         // --transfer-target wins over the window's combo on every rebuild.
         if(!g.args.transfer_target.empty()) {
-            xfer_target_name = g.args.transfer_target;
+            selectTargetByName(g.args.transfer_target);
+        } else {
+            resolveTarget();
         }
     }
-    resolveTarget();
 
-    // Drop a grid / plan swept for a different target (stale label).
-    if(pc.valid && pc_target != xfer_target) {
+    // Drop a grid / plan swept for a DIFFERENT vessel. By identity: the index
+    // moves whenever the list reshuffles, and treating that as a target change
+    // would discard a grid the player swept for the very same ship.
+    if(pc.valid && pc_target_name != xfer_target_name) {
         pc.valid = false;
     }
 
-    if(xfer_from_porkchop && xfer_plan_target != xfer_target) {
+    if(xfer_from_porkchop && xfer_plan_target_name != xfer_target_name) {
         clearPorkchopPlan();
     }
 
@@ -318,7 +342,7 @@ void TransferPlanner::clearPorkchopPlan() {
     if(!xfer_from_porkchop) { return; }
     xfer_from_porkchop = false;
     xfer_t_dep = 0.0;
-    xfer_plan_target = -1;
+    xfer_plan_target_name.clear();
     xfer_auto = xfer_prev_auto;
     xfer_tof_log = xfer_prev_tof_log;
 }
@@ -465,11 +489,11 @@ void TransferPlanner::porkchopCompute() {
                 pc = std::move(*res);
                 pc_computed_at = t_now;
                 pc_rev++;   // the heatmap texture is a cache of pc; this invalidates it
-                // The index just validated, not the one captured at post: the list
-                // is rebuilt every frame, so a sibling ship joining or leaving
-                // shifts it, and a pc_target disagreeing with xfer_target makes
-                // update() drop this grid next frame.
-                pc_target = xfer_target;
+                // Stamp the IDENTITY the sweep was for, not the index it landed
+                // on: the list is rebuilt every frame, so a sibling ship joining
+                // or leaving shifts the index while the vessel is the same, and
+                // update() would drop a grid that is still exactly right.
+                pc_target_name = tname;
             }
             if(pc_in_flight > 0) { pc_in_flight--; }
         };

@@ -57,9 +57,14 @@ public:
     void invalidateClockState();
 
     /* Select by IDENTITY ("" clears), resolving against the current list so the
-       caller sees this frame's index. The combo and --transfer-target both go
-       through here. */
-    void selectTarget(const std::string &name);
+       caller sees this frame's index. `isShip` is part of the identity: the list
+       can hold a body and a vessel under one name, and the combo shows a row for
+       each. */
+    void selectTarget(const std::string &name, bool isShip);
+
+    /* Select by name alone, taking the LAST match -- a vessel wins over a body
+       of the same name. This is the CLI's shape, where there is no row to click. */
+    void selectTargetByName(const std::string &name);
 
     std::vector<XferTarget> xferTargets;
     /* The selection is the NAME, and xfer_target is derived from it on every
@@ -70,6 +75,7 @@ public:
        is only stable while names are, but dedupVehicleName's " #N" suffix is a
        rename the player caused, not a reshuffle they did not. */
     std::string xfer_target_name;
+    bool xfer_target_is_ship = false;
     int xfer_target = -1;
     bool xfer_auto = true;                     // auto min-dv ToF vs pinned
     float xfer_tof_log = (float)std::log10(3600.0); // log10(s), the pinned ToF
@@ -95,8 +101,10 @@ public:
 
     // Last porkchopCompute() result.
     PorkchopResult pc;   // valid when pc.valid
-    int pc_target = -1;  // target index the current pc grid was swept for;
-                         // a target change invalidates pc
+    /* The identity the current grid was swept for -- a NAME, not the index it
+       happened to hold: the index moves when the list reshuffles, and treating
+       that as a target change would throw away a grid for the same vessel. */
+    std::string pc_target_name;
     int pc_in_flight = 0; // jobs posted but not landed (window shows "sweeping")
     // Bumped whenever pc is replaced (only writer: the sweep's continuation).
     // The window redraws its heatmap off this, so a grid merely still on screen
@@ -122,7 +130,8 @@ public:
     // "Send best": absolute departure time to count down to. Dropped on target change.
     bool   xfer_from_porkchop = false;
     double xfer_t_dep = 0.0;   // s (sim clock)
-    int    xfer_plan_target = -1;
+    // Which vessel the armed plan is for, by identity -- see pc_target_name.
+    std::string xfer_plan_target_name;
     // Saved before "Send best" pinned the ToF; clearPorkchopPlan restores it.
     bool   xfer_prev_auto = true;
     float  xfer_prev_tof_log = (float)std::log10(3600.0);
