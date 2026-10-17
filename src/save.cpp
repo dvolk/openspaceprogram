@@ -175,20 +175,8 @@ void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
             throw std::runtime_error("load: '" + shipName + "' inventory item '"
                                      + si.part + "' is a crew part, not cargo");
         }
-        Mesh *m = get_mesh("res/" + pd->mesh);
-        Texture *t = get_texture("res/" + pd->texture);
-        Body *b = create_part_body(m, g.partsshader, t,
-                                   (float)si.mass, si.hull_margin);
-        Part *item = new Part;
-        item->body = b;
-        item->def = pd;
-        item->id = si.id;
-        for(int r = 0; r < (int)ResourceType::Num; r++) {
-            item->resources.capacity[r] = pd->capacity[r];
-            item->resources.current[r] = (r < (int)si.fuel.size())
-                ? (float)si.fuel[r] : 0.0f;
-        }
-        item->experiments = si.experiments;
+        Part *item = g.ships.new_part_from_def(*pd, si.mass, si.hull_margin,
+                                               &si.fuel, &si.experiments, si.id);
         container->contents.push_back(item);
         item->container = container;
         item->owner = container->owner;   // the vehicle the container is on
@@ -204,20 +192,8 @@ void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
    entry wins over the name the file carries. */
 Part *makeSuitPart(Game &g, const SavePart &sp, const PartDef *pd,
                    const KerbalProfile *rosterSrc) {
-    Mesh *m = get_mesh("res/" + pd->mesh);
-    Texture *t = get_texture("res/" + pd->texture);
-    Body *b = create_part_body(m, g.partsshader, t, (float)sp.mass,
-                               sp.hull_margin);
-    Part *suit = new Part;
-    suit->body = b;
-    suit->def = pd;
-    suit->id = sp.id;
-    for(int r = 0; r < (int)ResourceType::Num; r++) {
-        suit->resources.capacity[r] = pd->capacity[r];
-        suit->resources.current[r] = (r < (int)sp.fuel.size())
-            ? (float)sp.fuel[r] : 0.0f;
-    }
-    suit->experiments = sp.experiments;
+    Part *suit = g.ships.new_part_from_def(*pd, sp.mass, sp.hull_margin,
+                                           &sp.fuel, &sp.experiments, sp.id);
     KerbalProfile prof;
     prof.id = sp.seat_profile;
     prof.name = sp.seat_name;
@@ -462,26 +438,12 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
             throw std::runtime_error("load: saved ship '" + s.name + "' has a part "
                                      "'" + sp.part + "' that is no longer in the parts file");
         }
-        Mesh *mesh = get_mesh("res/" + pd->mesh);
-        Texture *tex = get_texture("res/" + pd->texture);
-        Body *b = create_part_body(mesh, g.partsshader, tex,
-                                   (float)sp.mass, sp.hull_margin);
-        Part *p = new Part;
-        p->body = b;
-        p->def = pd;
-        // the chute canopy overlay is resolved at build time, so the load must too
-        if(!pd->chute_mesh.empty()) {
-            p->chute_mesh = get_mesh(std::string("res/") + pd->chute_mesh);
-            p->chute_texture = get_texture(std::string("res/") + pd->chute_texture);
-        }
-        p->id = sp.id;
+        Part *p = g.ships.new_part_from_def(*pd, sp.mass, sp.hull_margin,
+                                            &sp.fuel, &sp.experiments, sp.id);
+        // What only a save knows: where the part sits in the staging order and
+        // whether its chute was deployed when the ship was saved.
         p->stage = sp.stage;
         p->chute = (sp.chute > 0) ? ChuteDeployed : ChuteStowed;
-        for(int r = 0; r < (int)ResourceType::Num; r++) {
-            p->resources.capacity[r] = pd->capacity[r];
-            p->resources.current[r] = (r < (int)sp.fuel.size()) ? (float)sp.fuel[r] : 0.0f;
-        }
-        p->experiments = sp.experiments;
         if(i == 0) {
             v->setRoot(p);
         } else {
@@ -514,6 +476,16 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
             delete v;
             throw;
         }
+    }
+    /* The tree is complete, so a shroud's live state can be reported the same way
+       the def-spawn path reports it (vehicle.cpp). A load that resolves no shroud
+       loses a cylinder the player can see, and until #278's fold it resolved none
+       at all -- silently. */
+    for(Part *p : v->parts) {
+        if(p->shroud == nullptr) { continue; }
+        printf("[shroud] %s: %s (%s over %s)\n", p->id.c_str(),
+               v->hasChildBelow(p) ? "shrouded" : "bare",
+               p->def->shroud.c_str(), p->def->mesh.c_str());
     }
     /* A named controller missing from the ship is corruption: a silent
        fallback would fly the ship from the wrong part's axes. */

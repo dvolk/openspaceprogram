@@ -269,6 +269,42 @@ std::string dedupVehicleName(System &sys, const std::string &base,
     }
 }
 
+/* The one way a Part is minted from a catalog def (ships.h, #278). Four call
+   sites used to carry this block themselves and had already drifted: a loaded
+   seat got no findings on one path, no chute canopy on another, and only a fresh
+   suit resolved a ship-level hull_margin. */
+Part *Ships::new_part_from_def(const PartDef &pd, double mass, double hull_margin,
+                               const std::vector<double> *fuel,
+                               const std::vector<Experiment> *experiments,
+                               const std::string &id) const {
+    Mesh *mesh = get_mesh(std::string("res/") + pd.mesh);
+    Texture *tex = get_texture(std::string("res/") + pd.texture);
+    Part *p = new Part;
+    p->body = create_part_body(mesh, partsshader, tex, (float)mass, hull_margin);
+    p->def = &pd;
+    p->id = id;
+    /* The chute canopy and the engine shroud are resolved at build time, so every
+       path resolves them. Only a chute def has the first and only an engine the
+       second today; a def that grows one cannot be forgotten here. The shroud
+       especially: it was resolved ONLY on the def-spawn path, so every loaded
+       engine lost the cylinder that hides what it shrouds (#278). */
+    if(!pd.chute_mesh.empty()) {
+        p->chute_mesh = get_mesh(std::string("res/") + pd.chute_mesh);
+        p->chute_texture = get_texture(std::string("res/") + pd.chute_texture);
+    }
+    if(!pd.shroud.empty()) {
+        p->shroud = get_mesh(std::string("res/") + pd.shroud);
+        p->shroud_texture = get_texture(std::string("res/") + pd.shroud_texture);
+    }
+    for(int r = 0; r < (int)ResourceType::Num; r++) {
+        p->resources.capacity[r] = pd.capacity[r];
+        p->resources.current[r] = (fuel != nullptr && r < (int)fuel->size())
+            ? (float)(*fuel)[r] : 0.0f;
+    }
+    if(experiments != nullptr) { p->experiments = *experiments; }
+    return p;
+}
+
 /* Mint a suit Part from a kerbal ship def (the occupant of a seat, part.h). The
    Body exists to carry mass + render assets; it never enters the physics world,
    because a seat's mass rides the containment edge (Part::effectiveMass), not
@@ -290,20 +326,16 @@ Part *Ships::make_suit(const std::string &defPath) const {
         throw std::runtime_error(std::string("suit: '") + defPath + "' is a '"
                                  + pd->type + "' part, not a kerbal suit");
     }
-    Mesh *mesh = get_mesh(std::string("res/") + pd->mesh);
-    Texture *tex = get_texture(std::string("res/") + pd->texture);
-    Body *b = create_part_body(mesh, partsshader, tex, (float)pd->mass,
-                               resolveHullMargin(def.hull_margin, pd->hull_margin));
-    Part *suit = new Part;
-    suit->body = b;
-    suit->def = pd;
-    suit->id = def.parts[0].id;
+    // A fresh part takes the def's own mass and the def's ship-level margin.
+    Part *suit = new_part_from_def(*pd, pd->mass,
+                                   resolveHullMargin(def.hull_margin,
+                                                     pd->hull_margin),
+                                   nullptr, nullptr, def.parts[0].id);
     /* Seeded like Vehicle::init does for a tank: a partly-burned suit re-seeds
        full here, which is right for a fresh crew member. */
     if(suit->isTank()) {
         for(int r = 0; r < (int)ResourceType::Num; r++) {
-            suit->resources.capacity[r] = pd->capacity[r];
-            suit->resources.current[r]  = pd->capacity[r];
+            suit->resources.current[r] = suit->resources.capacity[r];
         }
     }
     return suit;

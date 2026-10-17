@@ -11,6 +11,7 @@
 #include "camera.h"   // Camera
 #include "frame.h"    // Frame
 #include "mesh.h"     // Mesh
+#include "science.h"  // Experiment (findings ride on the part)
 #include "shader.h"   // Shader
 #include "shipdef.h"  // PartsCatalog
 #include "texture.h"  // Texture
@@ -91,6 +92,19 @@ public:
        full like Vehicle::init does; a load overwrites the contents from the
        save. Throws if the def is unusable. */
     Part *make_suit(const std::string &defPath) const;
+
+    /* The ONE way a Part is minted from a catalog def (#278): render assets,
+       collision hull, id, resources, findings, the chute canopy and the engine
+       shroud. Everything the call sites used to differ in -- a save's own mass /
+       hull_margin / fuel / findings vs the catalog's for a fresh part -- is an
+       argument, so a field added to Part lands in every path or none. `fuel` and
+       `experiments` may be null: a fresh part then takes capacity from the def,
+       nothing in it, and no findings. Callers keep their own refusals (the e2e
+       cases pin those messages), stage + chute deploy state, and identity. */
+    Part *new_part_from_def(const PartDef &pd, double mass, double hull_margin,
+                            const std::vector<double> *fuel,
+                            const std::vector<Experiment> *experiments,
+                            const std::string &id) const;
 
     /* parts_file:  parts catalog to build from (owned, loaded here).
        partsshader: the part shader (caller-owned; must outlive us).
