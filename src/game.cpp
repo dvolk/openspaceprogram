@@ -316,11 +316,19 @@ void Game::dropVehicleRefs(Vehicle *v) {
     if(xferPlanner.xfer_target >= 0
        && xferPlanner.xfer_target < (int)xferPlanner.xferTargets.size()
        && xferPlanner.xferTargets[xferPlanner.xfer_target].ship == v) {
-        xferPlanner.xfer_target_name.clear();
+        xferPlanner.xfer_sel = TargetRef();
         xferPlanner.xfer_target = -1;
         xferPlanner.xfer.valid = false;
         xferPlanner.xfer.burn_dir = glm::dvec3(0.0);
     }
+    /* The list holds v's name pointer in its own row, so the row cannot outlive
+       it either: anything that scans the list before the next rebuild (the
+       --select-target hook does) would read freed memory. Erasing shifts every
+       later row, and the index is only this frame's address, so drop it too and
+       let the next rebuild re-derive it from the name. */
+    const size_t rowsBefore = xferPlanner.xferTargets.size();
+    std::erase_if(xferPlanner.xferTargets, [v](const TransferPlanner::XferTarget &t) { return t.ship == v; });
+    if(xferPlanner.xferTargets.size() != rowsBefore) { xferPlanner.xfer_target = -1; }
     if(kerbal == v) { kerbal = nullptr; }
     if(lastShip == v) { lastShip = nullptr; }
     /* The active pointer needs the same treatment: a caller that is about to

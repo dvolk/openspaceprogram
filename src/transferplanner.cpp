@@ -164,22 +164,21 @@ void dumpPorkchop(const std::string &dir, const std::string &target,
    whichever vessel happened to land in that slot (issue #276). */
 void TransferPlanner::resolveTarget() {
     xfer_target = -1;
-    if(xfer_target_name.empty()) { return; }
+    if(xfer_sel.empty()) { return; }
     for(int i = 0; i < (int)xferTargets.size(); i++) {
         const XferTarget &t = xferTargets[i];
-        if(t.name != xfer_target_name) { continue; }
+        if(t.name != xfer_sel.name) { continue; }
         // A body and a vessel can share a name; the combo lists both, so the
         // row clicked is part of what the player chose.
-        if((t.ship != nullptr) != xfer_target_is_ship) { continue; }
+        if((t.ship != nullptr) != xfer_sel.isShip) { continue; }
         xfer_target = i;
         return;
     }
-    xfer_target_name.clear();
+    xfer_sel = TargetRef();
 }
 
 void TransferPlanner::selectTarget(const std::string &name, bool isShip) {
-    xfer_target_name = name;
-    xfer_target_is_ship = isShip;
+    xfer_sel = TargetRef{name, isShip};
     resolveTarget();
 }
 
@@ -189,11 +188,12 @@ void TransferPlanner::selectTargetByName(const std::string &name) {
     // naming that string means to aim at.
     for(int i = 0; i < (int)xferTargets.size(); i++) {
         if(xferTargets[i].name == name) {
-            xfer_target_name = name;
-            xfer_target_is_ship = xferTargets[i].ship != nullptr;
+            xfer_sel = TargetRef{name, xferTargets[i].ship != nullptr};
         }
     }
-    if(xfer_target_name != name) { xfer_target_name.clear(); }
+    // A name-only request cannot know the kind, so an unresolved one is dropped
+    // rather than left pending on a guess.
+    if(xfer_sel.name != name) { xfer_sel = TargetRef(); }
     resolveTarget();
 }
 
@@ -201,7 +201,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
     xferTargets.clear();
     if(g.ship == nullptr) {
         // No active ship: drop any stale target / plan (orbit-view boot).
-        xfer_target_name.clear();
+        xfer_sel = TargetRef();
         xfer_target = -1;
         xfer.valid = false;
         xfer.burn_dir = glm::dvec3(0.0);
@@ -230,14 +230,16 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         }
     }
 
-    // Drop a grid / plan swept for a DIFFERENT vessel. By identity: the index
+    // Drop a grid / plan swept for a DIFFERENT target. By identity: the index
     // moves whenever the list reshuffles, and treating that as a target change
-    // would discard a grid the player swept for the very same ship.
-    if(pc.valid && pc_target_name != xfer_target_name) {
+    // would discard a grid the player swept for the very same ship. The identity
+    // has to carry the kind too, or deleting the vessel "Mun" hands its grid and
+    // its armed plan to the moon Mun.
+    if(pc.valid && pc_target != xfer_sel) {
         pc.valid = false;
     }
 
-    if(xfer_from_porkchop && xfer_plan_target_name != xfer_target_name) {
+    if(xfer_from_porkchop && xfer_plan_target != xfer_sel) {
         clearPorkchopPlan();
     }
 
@@ -342,7 +344,7 @@ void TransferPlanner::clearPorkchopPlan() {
     if(!xfer_from_porkchop) { return; }
     xfer_from_porkchop = false;
     xfer_t_dep = 0.0;
-    xfer_plan_target_name.clear();
+    xfer_plan_target = TargetRef();
     xfer_auto = xfer_prev_auto;
     xfer_tof_log = xfer_prev_tof_log;
 }
@@ -354,7 +356,7 @@ void TransferPlanner::invalidateClockState() {
     pc.valid = false;
     xfer.valid = false;
     xferTargets.clear();
-    xfer_target_name.clear();
+    xfer_sel = TargetRef();
     xfer_target = -1;
     // A sweep interrupted by the swap never runs its continuation (abort() drops
     // the queued ones, restart() the landed one) -- and that continuation is the
@@ -435,6 +437,9 @@ void TransferPlanner::porkchopCompute() {
     const std::string dump_dir = g.args.porkchop_dump;
     const bool capture = d.capture;
     const std::string tname = t.name;
+    // The kind travels with the name: a grid swept for the VESSEL "Mun" must not
+    // be handed to the moon Mun if the vessel is deleted mid-sweep.
+    const bool t_is_ship = t.ship != nullptr;
     const double t_now = g.time;
     const int epoch = g.cache_epoch;      // drop the result if the world changes
     JobRunner *jobs = &g.jobs;           // stopping() is thread-safe (job.h)
@@ -442,7 +447,7 @@ void TransferPlanner::porkchopCompute() {
     pc_in_flight++;
     g.jobs.post("Porkchop grid", [r1,v1,r2,v2,mu_p,mu_t,r_cap,
                                   t_dep_lo,t_dep_hi,tof_lo,tof_hi,
-                                  sizes,capture,log,tname,t_now,
+                                  sizes,capture,log,tname,t_is_ship,t_now,
                                   epoch,dump,dump_dir,jobs,this]()
                 -> std::function<void()> {
         // Worker: PURE (no game state, GL, or imgui). shared_ptr because the
@@ -474,7 +479,7 @@ void TransferPlanner::porkchopCompute() {
             if(dump) { dumpPorkchop(dump_dir, tname, t_now, *res); }
         }
         // Main-thread continuation: publish the result, clear "sweeping".
-        return [this, res, t_now, tname, epoch]() {
+        return [this, res, t_now, tname, t_is_ship, epoch]() {
             // Epoch bumped since posting: the grid is for the old world (load
             // does NOT abort jobs). Drop before touching the target list -- a
             // SHIP target list was freed by the load (UAF risk).
@@ -484,7 +489,8 @@ void TransferPlanner::porkchopCompute() {
             }
             const bool still_target = (xfer_target >= 0
                 && xfer_target < (int)xferTargets.size()
-                && xferTargets[xfer_target].name == tname);
+                && xferTargets[xfer_target].name == tname
+                && (xferTargets[xfer_target].ship != nullptr) == t_is_ship);
             if(still_target && res) {
                 pc = std::move(*res);
                 pc_computed_at = t_now;
@@ -493,7 +499,7 @@ void TransferPlanner::porkchopCompute() {
                 // on: the list is rebuilt every frame, so a sibling ship joining
                 // or leaving shifts the index while the vessel is the same, and
                 // update() would drop a grid that is still exactly right.
-                pc_target_name = tname;
+                pc_target = TargetRef{tname, t_is_ship};
             }
             if(pc_in_flight > 0) { pc_in_flight--; }
         };

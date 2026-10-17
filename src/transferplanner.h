@@ -17,6 +17,19 @@ struct TerrainBody;
 struct Frame;
 class Vehicle;
 
+/* A target the player holds on to, by identity rather than by row: xferTargets
+   is rebuilt from scratch every frame, so a row number is only this frame's
+   address -- a fleet change silently retargets the window, the swept grid and an
+   armed plan (issue #276). The kind is part of the identity because a vessel may
+   be named after a body, and the list shows both. */
+struct TargetRef {
+    std::string name;
+    bool isShip = false;
+    bool empty() const { return name.empty(); }
+    bool operator==(const TargetRef &o) const { return name == o.name && isShip == o.isShip; }
+    bool operator!=(const TargetRef &o) const { return !(*this == o); }
+};
+
 class TransferPlanner {
 public:
     struct XferTarget {
@@ -67,15 +80,14 @@ public:
     void selectTargetByName(const std::string &name);
 
     std::vector<XferTarget> xferTargets;
-    /* The selection is the NAME, and xfer_target is derived from it on every
+    /* The selection is an IDENTITY, and xfer_target is derived from it on every
        rebuild (update). xferTargets is rebuilt from scratch each refresh, so an
        index alone silently re-points at another vessel when a sibling docks,
        undocks, is removed or boards -- the map's transfer plane, the burn
        marker and the TARGET block all follow it with no player action. A name
        is only stable while names are, but dedupVehicleName's " #N" suffix is a
        rename the player caused, not a reshuffle they did not. */
-    std::string xfer_target_name;
-    bool xfer_target_is_ship = false;
+    TargetRef xfer_sel;
     int xfer_target = -1;
     bool xfer_auto = true;                     // auto min-dv ToF vs pinned
     float xfer_tof_log = (float)std::log10(3600.0); // log10(s), the pinned ToF
@@ -101,10 +113,12 @@ public:
 
     // Last porkchopCompute() result.
     PorkchopResult pc;   // valid when pc.valid
-    /* The identity the current grid was swept for -- a NAME, not the index it
-       happened to hold: the index moves when the list reshuffles, and treating
-       that as a target change would throw away a grid for the same vessel. */
-    std::string pc_target_name;
+    /* The identity the current grid was swept for -- an IDENTITY, not the index
+       it happened to hold: the index moves when the list reshuffles, and treating
+       that as a target change would throw away a grid for the same vessel. It has
+       to be as exact as the selection itself, or a deleted vessel hands its grid
+       to a body of the same name. */
+    TargetRef pc_target;
     int pc_in_flight = 0; // jobs posted but not landed (window shows "sweeping")
     // Bumped whenever pc is replaced (only writer: the sweep's continuation).
     // The window redraws its heatmap off this, so a grid merely still on screen
@@ -130,8 +144,8 @@ public:
     // "Send best": absolute departure time to count down to. Dropped on target change.
     bool   xfer_from_porkchop = false;
     double xfer_t_dep = 0.0;   // s (sim clock)
-    // Which vessel the armed plan is for, by identity -- see pc_target_name.
-    std::string xfer_plan_target_name;
+    // Which target the armed plan is for -- see pc_target.
+    TargetRef xfer_plan_target;
     // Saved before "Send best" pinned the ToF; clearPorkchopPlan restores it.
     bool   xfer_prev_auto = true;
     float  xfer_prev_tof_log = (float)std::log10(3600.0);
@@ -139,8 +153,9 @@ public:
 private:
     Game &g;
 
-    /* Point xfer_target at xfer_target_name in the CURRENT xferTargets, or clear
-       both when it is not there: a target that left the fleet takes the
-       selection with it. Called on every rebuild. */
+    /* Point xfer_target at xfer_sel in the CURRENT xferTargets, or clear the
+       selection when it is not there: a target that left the fleet takes it with
+       it, and keeping the index would name whichever vessel landed in that slot.
+       Called on every rebuild. */
     void resolveTarget();
 };

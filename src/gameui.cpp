@@ -929,7 +929,7 @@ void drawUIReadouts(Game &g) {
             planner.xfer_t_dep = planner.pc_computed_at + pc.t_dep_min;
             // By identity: the index is only this frame's address for the
             // target, and the plan outlives reshuffles of the list.
-            planner.xfer_plan_target_name = xferTargets[xfer_target].name;
+            planner.xfer_plan_target = planner.xfer_sel;
             planner.xfer_from_porkchop = true;
             // A plan IS a live solution: the countdown and the burn direction
             // need one, so arming it turns planning back on.

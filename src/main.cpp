@@ -1171,26 +1171,6 @@ int main(int argc, char **argv)
             game.quitTitleFired = true;
             game.quitToTitle();
         }
-        /* --select-target: the Target window's combo, headless. Fired before
-           --space-center/--recover so a case can pick a target and then change
-           the fleet that holds it. */
-        for(Game::SelectTargetHook &h : game.selectTargetHooks) {
-            if(h.fired || (int)(SDL_GetTicks() - game.loop_start_ms) < h.ms) {
-                continue;
-            }
-            h.fired = true;
-            game.xferPlanner.selectTargetByName(h.name == "none" ? std::string()
-                                                                : h.name);
-            // The list is built in the draw pass, so a hook fired before the
-            // first one has nothing to resolve against: say so rather than
-            // reporting a selection the planner did not take.
-            const int idx = game.xferPlanner.xfer_target;
-            const std::string where = idx >= 0 ? " (index " + std::to_string(idx) + ")"
-                                               : " (not in the target list yet)";
-            printf("[target] hook: selected \"%s\"%s\n",
-                   h.name.c_str(), where.c_str());
-            fflush(stdout);
-        }
         // --space-center: only from Flight (the hub is an excursion above a
         // running game).
         if(game.spaceCenterMs >= 0 && !game.spaceCenterFired
@@ -1408,6 +1388,27 @@ int main(int argc, char **argv)
         {
             const SceneDef &sc = curScene(game);
             sc.update(game);
+        }
+        /* --select-target: the Target window's combo, headless. AFTER the state
+           pass on purpose: that pass is what rebuilds the planner's target list,
+           so the hook resolves against THIS frame's list -- a fresh one, and not
+           one still holding a vessel deleted since (its name pointer is borrowed
+           from the Vehicle). */
+        for(Game::SelectTargetHook &h : game.selectTargetHooks) {
+            if(h.fired || (int)(SDL_GetTicks() - game.loop_start_ms) < h.ms) {
+                continue;
+            }
+            h.fired = true;
+            game.xferPlanner.selectTargetByName(h.name == "none" ? std::string()
+                                                                : h.name);
+            // Say what the planner actually took: a name that is not a target
+            // now is dropped, not queued, so the case author sees a typo.
+            const int idx = game.xferPlanner.xfer_target;
+            const std::string where = idx >= 0 ? " (index " + std::to_string(idx) + ")"
+                                               : " (not in the target list)";
+            printf("[target] hook: selected \"%s\"%s\n",
+                   h.name.c_str(), where.c_str());
+            fflush(stdout);
         }
         pf_b = std::chrono::steady_clock::now();
 
