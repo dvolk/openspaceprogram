@@ -1009,7 +1009,7 @@ int main(int argc, char **argv)
            w_render = 0.0, w_present = 0.0;                                    // rolling-window ms
     long long w_frames = 0, w_steps = 0;                                       // rolling-window counts
     // This frame's marks: "refresh" = the 3D state pass (camera re-pose, terrain
-    // LOD, g.view), "render" = issuing GL draw commands, "present" = SwapBuffers
+    // LOD, g.hud.view), "render" = issuing GL draw commands, "present" = SwapBuffers
     // (blocks on vsync). Value-init: an indeterminate time_point makes
     // perf_ms() UB.
     std::chrono::steady_clock::time_point pf_iter{}, pf_a{}, pf_b{}, pf_c{},
@@ -1064,7 +1064,7 @@ int main(int argc, char **argv)
                    "occluded/minimized)\n", p_idled);
         }
         printf("  (refresh = the 3D state pass: camera re-pose, terrain LOD,\n"
-               "   g.view; render = issuing GL draw commands; present =\n"
+               "   g.hud.view; render = issuing GL draw commands; present =\n"
                "   SwapBuffers, which blocks on vsync -- display pacing,\n"
                "   not render cost)\n");
         if(p_steps > 0) {
@@ -1463,7 +1463,7 @@ int main(int argc, char **argv)
           (sc.paint). The state pass is unconditional and issues no draw calls
           (though the LOD does delete GL buffers): it re-poses the camera, runs
           the terrain LOD that owns the ground's Bullet collision bodies, and
-          fills the g.view snapshot the UI reads. Every scene runs it (the VAB
+          fills the g.hud.view snapshot the UI reads. Every scene runs it (the VAB
           without the LOD).
           No scene opts out of the paint yet. Whoever adds a paint gate must force
           a paint when screenshot_requested is set: display.SaveScreenshot
@@ -1476,7 +1476,7 @@ int main(int argc, char **argv)
             pf_refresh = std::chrono::steady_clock::now();
 
             /* --map-dump: the orbit map's plane basis per combo slot, AFTER the
-               state pass -- sc.refresh is what fills Game::view, so dumping
+               state pass -- sc.refresh is what fills Game::hud.view, so dumping
                before it silently reports a plausible-but-wrong basis. Needs an
                active ship. */
             if(game.mapDumpMs >= 0 && !game.mapDumpFired
@@ -1576,12 +1576,12 @@ int main(int argc, char **argv)
         const double f_present = perf_ms(pf_swap, pf_d);  // SwapBuffers (vsync)
         const double perf_t =
             std::chrono::duration<double>(pf_d - perf_loop_start).count();
-        game.perf_events.push(perf_t, f_events);
-        game.perf_logic.push(perf_t, f_logic);
-        game.perf_jobs.push(perf_t, f_jobs);
-        game.perf_refresh.push(perf_t, f_refresh);
-        game.perf_render.push(perf_t, f_render);
-        game.perf_present.push(perf_t, f_present);
+        game.hud.perf_events.push(perf_t, f_events);
+        game.hud.perf_logic.push(perf_t, f_logic);
+        game.hud.perf_jobs.push(perf_t, f_jobs);
+        game.hud.perf_refresh.push(perf_t, f_refresh);
+        game.hud.perf_render.push(perf_t, f_render);
+        game.hud.perf_present.push(perf_t, f_present);
         if(perf_on) {
             p_events += f_events; p_logic += f_logic; p_jobs += f_jobs;
             p_refresh += f_refresh; p_render += f_render; p_present += f_present;

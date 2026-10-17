@@ -26,7 +26,7 @@
 #include "surfmap.h"     // surfmapShade / surfmapWraps + surfmapCompute
 #include "texture.h"     // make_texture_r8
 #include "vab.h"         // the editor ops (drawVabUI)
-#include "render.h"      // updateShipView (re-take a stale g.view snapshot)
+#include "render.h"      // updateShipView (re-take a stale g.hud.view snapshot)
 #include "staging.h"     // computeStaging
 #include "shipdef.h"     // list_vab_ship_defs
 #include "resdir.h"      // resdir::path
@@ -288,14 +288,14 @@ static const int kNumSeries = 8;
 // (#212).
 static TimeSeries *telemetry_series(Game &g, int idx) {
     switch(idx) {
-        case 0: return &g.view.energy_series;
-        case 1: return &g.view.angmom_series;
-        case 2: return &g.perf_events;
-        case 3: return &g.perf_logic;
-        case 4: return &g.perf_jobs;
-        case 5: return &g.perf_refresh;
-        case 6: return &g.perf_render;
-        case 7: return &g.perf_present;
+        case 0: return &g.hud.view.energy_series;
+        case 1: return &g.hud.view.angmom_series;
+        case 2: return &g.hud.perf_events;
+        case 3: return &g.hud.perf_logic;
+        case 4: return &g.hud.perf_jobs;
+        case 5: return &g.hud.perf_refresh;
+        case 6: return &g.hud.perf_render;
+        case 7: return &g.hud.perf_present;
         default: return nullptr;
     }
 }
@@ -305,10 +305,10 @@ static void draw_telemetry_cell(Game &g, int idx) {
     const char *items[kNumSeries];
     for(int i = 0; i < kNumSeries; i++) { items[i] = kSeries[i].name; }
     ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
-    ImGui::Combo("##series", &g.telemetry_sel[idx], items, kNumSeries);
+    ImGui::Combo("##series", &g.hud.telemetry_sel[idx], items, kNumSeries);
     ImGui::PopItemWidth();
 
-    const int sel = g.telemetry_sel[idx];
+    const int sel = g.hud.telemetry_sel[idx];
     if(sel < 0 || sel >= kNumSeries) { return; }
     TimeSeries *s = telemetry_series(g, sel);
     if(s == nullptr || s->count < 2) {
@@ -325,12 +325,12 @@ static void draw_telemetry_cell(Game &g, int idx) {
     }
 }
 
-/* g.view is the state pass's snapshot of the ship that pass saw. The imgui pass
+/* g.hud.view is the state pass's snapshot of the ship that pass saw. The imgui pass
    can switch the active ship mid-pass, so later windows read another ship's
    snapshot -- or none at all, whose zeros sent the HUD along
    glm::normalize(pos) = NaN (#235). Re-take on a stamp mismatch. */
 static void syncShipView(Game &g) {
-    if(g.ship != nullptr && g.view.ship != g.ship) { updateShipView(g); }
+    if(g.ship != nullptr && g.hud.view.ship != g.ship) { updateShipView(g); }
 }
 
 // The flight windows below assume an active vessel: remove_ship refuses the last.
@@ -367,7 +367,7 @@ void drawUIReadouts(Game &g) {
 
     // The per-frame state the 3D pass computed (render.cpp).
     syncShipView(g);
-    ShipView &view = g.view;
+    ShipView &view = g.hud.view;
     glm::dvec3 &pos = view.pos;
     /* The conic's velocity in this frame: the DEBUG window prints it beside the
        orbital speed and energy, all three of which come from the same state. In
@@ -1322,10 +1322,10 @@ void drawUIReadouts(Game &g) {
 
         // The ship's orbit, only when the ship orbits this body (a conic about another
         // body is meaningless here).
-        if(ship && sm_body == ship->m_parent && g.view.mu > 0.0) {
-            const double &mu = g.view.mu;
-            const glm::dvec3 &orbit_pos = g.view.orbit_pos;
-            const glm::dvec3 &orbit_vel = g.view.orbit_vel;
+        if(ship && sm_body == ship->m_parent && g.hud.view.mu > 0.0) {
+            const double &mu = g.hud.view.mu;
+            const glm::dvec3 &orbit_pos = g.hud.view.orbit_pos;
+            const glm::dvec3 &orbit_vel = g.hud.view.orbit_vel;
             // N matches the Orbital Map: the cache is keyed on N and both maps draw the same
             // ship in one frame.
             const int N = 64;
@@ -2495,10 +2495,10 @@ void drawUIMap(Game &g) {
     syncShipView(g);
     TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
-    OrbitElements &o = g.view.o;
-    double &mu = g.view.mu;
-    glm::dvec3 &orbit_pos = g.view.orbit_pos;
-    glm::dvec3 &orbit_vel = g.view.orbit_vel;
+    OrbitElements &o = g.hud.view.o;
+    double &mu = g.hud.view.mu;
+    glm::dvec3 &orbit_pos = g.hud.view.orbit_pos;
+    glm::dvec3 &orbit_vel = g.hud.view.orbit_vel;
     float &map_scale = g.map.scale;
     int &map_plane = g.map.plane;
     ImVec2 &map_pan = g.map.pan;
@@ -2589,7 +2589,7 @@ void drawUIMap(Game &g) {
         TerrainBody *focus = ship->m_parent;
         glm::dvec3 plane_n, plane_x;
         mapPlaneBasis(focus->frame, orbit_pos, orbit_vel, true, map_plane,
-                      g.view.target_h_hat, plane_n, plane_x);
+                      g.hud.view.target_h_hat, plane_n, plane_x);
 
         // KSP-inspired palette: your orbit green, the transfer blue, other bodies gray; the
         // focus, ship dot and labels use ink contrasting the window background.
@@ -2657,9 +2657,9 @@ void drawUIMap(Game &g) {
             static const char *kPlanes[] = { "Equatorial", "Ecliptic", "Orbital",
                                              "Target orbit" };
             ImGui::PushItemWidth(avail_w * 0.5f);
-            int plane_sel = g.view.ref_plane.mode;
+            int plane_sel = g.hud.view.ref_plane.mode;
             if(ImGui::Combo("Map plane", &plane_sel, kPlanes, 4)) {
-                if(plane_sel == kRefTarget && !g.view.target_plane_ok) {
+                if(plane_sel == kRefTarget && !g.hud.view.target_plane_ok) {
                     g.toast("No transfer target: pick one in the TARGET window");
                 } else {
                     map_plane = plane_sel;
@@ -4162,10 +4162,10 @@ void drawTrackingShipList(Game &g) {
 void drawTrackingMap(Game &g) {
     TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
-    OrbitElements &o = g.view.o;
-    double &mu = g.view.mu;
-    glm::dvec3 &orbit_pos = g.view.orbit_pos;
-    glm::dvec3 &orbit_vel = g.view.orbit_vel;
+    OrbitElements &o = g.hud.view.o;
+    double &mu = g.hud.view.mu;
+    glm::dvec3 &orbit_pos = g.hud.view.orbit_pos;
+    glm::dvec3 &orbit_vel = g.hud.view.orbit_vel;
     std::vector<TerrainBody *> &planets = g.sys.bodies;
     float &map_scale = g.map.scale;
     int &map_plane = g.map.plane;
@@ -4252,7 +4252,7 @@ void drawTrackingMap(Game &g) {
         // without a ship the view's stale target normal must not leak into the basis.
         glm::dvec3 plane_n, plane_x;
         mapPlaneBasis(focus->frame, orbit_pos, orbit_vel, ship != nullptr,
-                      map_plane, ship ? g.view.target_h_hat : glm::dvec3(0.0),
+                      map_plane, ship ? g.hud.view.target_h_hat : glm::dvec3(0.0),
                       plane_n, plane_x);
 
         // The map fills the window (the whole viewport); the focus sits at its centre plus
@@ -4863,7 +4863,7 @@ void dumpMapBasis(Game &g) {
     for(const int slot : kSlots) {
         if(slot == kRefTarget && !target_ok) { continue; }
         glm::dvec3 plane_n, plane_x;
-        mapPlaneBasis(focus_frame, g.view.orbit_pos, g.view.orbit_vel, true,
+        mapPlaneBasis(focus_frame, g.hud.view.orbit_pos, g.hud.view.orbit_vel, true,
                       slot, target_hat, plane_n, plane_x);
         OrbitMap m;
         m.setPlane(plane_n, plane_x);
@@ -4878,7 +4878,7 @@ void dumpMapBasis(Game &g) {
            map being handed the wrong plane, since every slot's picture still
            looks plausible. */
         glm::dvec3 an(0.0), dn(0.0);
-        const int nodes = orbitNodePoints(g.view.o, m.n, g.view.mu, an, dn);
+        const int nodes = orbitNodePoints(g.hud.view.o, m.n, g.hud.view.mu, an, dn);
         char an_s[64] = "-", dn_s[64] = "-";
         if(nodes & kNodeAn) {
             snprintf(an_s, sizeof an_s, "(%.0f,%.0f,%.0f)", an.x, an.y, an.z);

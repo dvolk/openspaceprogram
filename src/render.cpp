@@ -75,8 +75,8 @@ static void camShakeStep(Game &g, Vehicle *ship) {
 // world (#235).
 void updateShipView(Game &g) {
     Vehicle *ship = g.ship;
-    if(ship == nullptr) { g.view.ship = nullptr; return; }
-    ShipView &view = g.view;
+    if(ship == nullptr) { g.hud.view.ship = nullptr; return; }
+    ShipView &view = g.hud.view;
     view.ship = ship;
     double &mu = view.mu;
     glm::dvec3 &pos = view.pos;
@@ -262,12 +262,12 @@ static float skyGain(Game &g, Frame *rf, TerrainBody *sun, Camera *camera,
     return gain;
 }
 
-/* The ship-side half of the state pass: g.view, the transfer planner, the P/M
+/* The ship-side half of the state pass: g.hud.view, the transfer planner, the P/M
    one-shots. `com` is passed in: get_center_of_mass walks the part tree. */
 static void refreshShipState(Game &g, const glm::dvec3 &com) {
     updateShipView(g);
 
-    g.xferPlanner.update(com, g.view.vel);
+    g.xferPlanner.update(com, g.hud.view.vel);
 
     // P one-shot: set in poll_events, run here where the planner and this
     // frame's snapshot both exist.
@@ -434,7 +434,7 @@ static void drawOrbitPlane(Game &g, const glm::dmat4 &VP) {
     assert(ship->m_parent != nullptr && ship->m_parent->frame != nullptr
            && ship->m_parent->frame == ship->frame->getNonRotFrame());
     Frame *inertial = ship->m_parent->frame;
-    const OrbitElements &o = g.view.o;
+    const OrbitElements &o = g.hud.view.o;
     const glm::dvec3 &h_hat = o.h_hat;
     if(glm::dot(h_hat, h_hat) < 0.5) { return; }   // radial / degenerate state
     /* A ship resting on the ground has no conic to take a plane from: its h_hat
@@ -445,7 +445,7 @@ static void drawOrbitPlane(Game &g, const glm::dmat4 &VP) {
     if(ship->isGrounded()) { return; }
     const glm::dmat3 to_inertial = ship->frame->GetOrientRelTo(inertial);
     const glm::dvec3 n_orb = glm::transpose(to_inertial) * h_hat;
-    const glm::dvec3 n_ref = glm::transpose(to_inertial) * g.view.ref_plane.n_hat;
+    const glm::dvec3 n_ref = glm::transpose(to_inertial) * g.hud.view.ref_plane.n_hat;
     // Same convention as orbitPlaneAngles: n_ref x h_hat is the ASCENDING node.
     const glm::dvec3 node = glm::cross(n_ref, n_orb);
     /* Coplanar -- map.plane == kRefOrbit (the reference IS the orbit plane), a
@@ -453,7 +453,7 @@ static void drawOrbitPlane(Game &g, const glm::dmat4 &VP) {
        ring and no node to point at. Reuse the HUD's own gate rather than a
        second threshold: rotation preserves |node|, so the ticks and the LAN dash
        can never disagree. */
-    const bool coplanar = !g.view.plane.node_ok;
+    const bool coplanar = !g.hud.view.plane.node_ok;
     glm::dvec3 u, v;
     planeTangentBasis(n_orb, coplanar ? glm::dvec3(0.0) : node, u, v);
     // The ring mesh is the XY circle, so the basis columns map +X -> u, +Y -> v,
@@ -493,15 +493,15 @@ static void drawOrbitPlane(Game &g, const glm::dmat4 &VP) {
                drifts off the plane it belongs on is visible here rather than
                only on screen: prg must be IN the plane and nrm must BE the
                plane normal. Both in the render frame, like n_orb. */
-            const glm::dvec3 prg = glm::normalize(g.view.marker_vel);
+            const glm::dvec3 prg = glm::normalize(g.hud.view.marker_vel);
             const glm::dvec3 nrm = glm::normalize(
-                glm::cross(g.view.pos, g.view.marker_vel));
+                glm::cross(g.hud.view.pos, g.hud.view.marker_vel));
             printf("[planelog] t=%.1fs frame=%s plane=%s inc=%.4f deg "
                    "n_orb=(%.6f,%.6f,%.6f) n_ref=(%.6f,%.6f,%.6f) "
                    "node=(%.6f,%.6f,%.6f) ticks=%s "
                    "prg=(%.6f,%.6f,%.6f) nrm=(%.6f,%.6f,%.6f)\n",
                    g.time, ship->frame->isRotFrame() ? "rot" : "inertial",
-                   refPlaneName(g.view.ref_plane.mode), inc * 180.0 / std::numbers::pi,
+                   refPlaneName(g.hud.view.ref_plane.mode), inc * 180.0 / std::numbers::pi,
                    n_orb.x, n_orb.y, n_orb.z, n_ref.x, n_ref.y, n_ref.z,
                    node.x, node.y, node.z, coplanar ? "-" : "drawn",
                    prg.x, prg.y, prg.z, nrm.x, nrm.y, nrm.z);
@@ -521,7 +521,7 @@ void paintWorld(Game &g) {
     TerrainBody *sun = g.sun;
     Camera *camera = g.camera;
 
-    ShipView &view = g.view;
+    ShipView &view = g.hud.view;
     glm::dvec3 &pos = view.pos;
     glm::dvec3 &vel = view.vel;
     glm::dvec3 &facing = view.facing;

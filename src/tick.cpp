@@ -313,7 +313,7 @@ void tick(Game &g) {
                    inc for one tick), and would dereference vessel pointers a
                    recover or load may already have freed. */
                 const RefPlane ref = uiRefPlane(g.ship->m_parent->frame,
-                                                o.h_hat, g.view.target_h_hat,
+                                                o.h_hat, g.hud.view.target_h_hat,
                                                 g.map.plane);
                 const PlaneAngles pa = orbitPlaneAngles(o, ref);
                 char lan_s[32], lpe_s[32];

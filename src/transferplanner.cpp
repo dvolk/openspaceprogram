@@ -401,7 +401,7 @@ void TransferPlanner::porkchopCompute() {
 
     // Snapshot ship/target state in the parent's INERTIAL frame -- the ONLY game
     // state read; the grid sweep is pure and runs on the background worker.
-    const InertialShip s1 = shipInertial(g, g.view.pos, g.view.vel);
+    const InertialShip s1 = shipInertial(g, g.hud.view.pos, g.hud.view.vel);
     const InertialTarget d = targetInertial(t, s1.inertial);
 
     double t_dep_lo, t_dep_hi;

@@ -75,7 +75,7 @@ void spaceCenterDrawUi(Game &g) {
 }
 
 /* A scene that shows no 3D world still runs refreshWorld: the map and the shared
-   readouts read the g.view snapshot, and the terrain LOD gives the ground its
+   readouts read the g.hud.view snapshot, and the terrain LOD gives the ground its
    collision bodies -- the state pass is not optional, only the pixels stop (#212). */
 void noPaint(Game &) {}
 

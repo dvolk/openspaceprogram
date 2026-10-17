@@ -688,7 +688,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "2-3ms in flight, plus a swap that goes nowhere. It is "
                    "throttled, NOT skipped: the 3D state pass also re-poses "
                    "the camera, runs the terrain LOD that owns the ground's "
-                   "collision bodies, and refreshes the g.view snapshot the UI "
+                   "collision bodies, and refreshes the g.hud.view snapshot the UI "
                    "reads, so skipping a draw would change the simulation and "
                    "not just the image. The logic tick keeps running at "
                    "--physics-hz off the wall clock, so a minimized window "

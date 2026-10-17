@@ -1,6 +1,6 @@
 // render.h -- the 3D pass, split into its state half and its paint half (#212).
 // The state half is not optional: it owns the terrain LOD (hence the ground's
-// collision bodies) and the Game::view snapshot the UI reads.
+// collision bodies) and the Game::hud.view snapshot the UI reads.
 #pragma once
 
 #include "game.h"   // Game
@@ -18,7 +18,7 @@ void paintWorld(Game &g);
 void refreshVab(Game &g);
 void paintVab(Game &g);
 
-// The Game::view snapshot on its own (no camera, no LOD). The UI takes it when
+// The Game::hud.view snapshot on its own (no camera, no LOD). The UI takes it when
 // the active ship changed during the imgui pass and this frame's snapshot
 // describes the previous one (#235).
 void updateShipView(Game &g);

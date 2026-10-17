@@ -65,9 +65,9 @@ struct SceneDef {
     void (*exit)(Game &);    // popped, or unwound by enterFlight
     // Per-frame half; only the TOP scene's run.
     void (*update)(Game &);
-    // Per-frame 3D STATE: camera re-pose, terrain LOD, Game::view, the transfer
+    // Per-frame 3D STATE: camera re-pose, terrain LOD, Game::hud.view, the transfer
     // planner. Every scene runs it, painted or not -- the LOD owns the ground's
-    // collision bodies and g.view is the snapshot the UI reads. The VAB skips the
+    // collision bodies and g.hud.view is the snapshot the UI reads. The VAB skips the
     // LOD: its camera is parked at the build tree (#212).
     void (*refresh)(Game &);
     // The pixels. A scene may opt out (noPaint), but the frame loop itself is

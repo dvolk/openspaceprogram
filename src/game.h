@@ -136,6 +136,24 @@ struct ShipView {
     TimeSeries angmom_series;
 };
 
+/* Flight HUD SESSION state (Game::hud), not save state: the active ship's
+   per-frame snapshot (ShipView) that render.cpp writes and the readouts +
+   transfer planner read, plus the Telemetry window's series and per-cell
+   selections. */
+struct HudState {
+    ShipView view;
+
+    // Per-frame timing samples for the Telemetry window (wall-clock x-axis).
+    TimeSeries perf_events;
+    TimeSeries perf_logic;
+    TimeSeries perf_jobs;
+    TimeSeries perf_refresh;   // the 3D state pass (render.cpp refreshWorld)
+    TimeSeries perf_render;    // the paint pass + imgui (GL command issue)
+    TimeSeries perf_present;
+    // Which series each Telemetry cell shows (0..7, see kSeries in gameui.cpp).
+    int telemetry_sel[4] = {0, 1, 2, 3};
+};
+
 /* VAB editor SESSION state (Game::vab), not save state: the build tree round-trips
    through the ship-def files. */
 struct VabState {
@@ -626,18 +644,8 @@ struct Game {
     std::vector<AtlasRow> atlasRows;
     std::size_t atlasRowsVersion = std::size_t(-1);
 
-    // --- the active ship's per-frame state (render.cpp writes it) ----------
-    ShipView view;
-
-    // Per-frame timing samples for the Telemetry window (wall-clock x-axis).
-    TimeSeries perf_events;
-    TimeSeries perf_logic;
-    TimeSeries perf_jobs;
-    TimeSeries perf_refresh;   // the 3D state pass (render.cpp refreshWorld)
-    TimeSeries perf_render;    // the paint pass + imgui (GL command issue)
-    TimeSeries perf_present;
-    // Which series each Telemetry cell shows (0..7, see kSeries in gameui.cpp).
-    int telemetry_sel[4] = {0, 1, 2, 3};
+    // --- the active ship's per-frame state + the Telemetry window ---------
+    HudState hud;
 
     // --- orbit camera focus targets (the ship + every body; G cycles) ------
     struct FocusTarget { const char *name; TerrainBody *body; };
