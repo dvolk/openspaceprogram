@@ -1783,8 +1783,7 @@ void drawUIReadouts(Game &g) {
        CHECK parses). Independent of whether the windows are open. */
     if(args.info_log && ship) {
         const Uint32 now_ms = SDL_GetTicks();
-        if(now_ms - g.info_log_last_ms >= g.orbit_log_interval_ms) {
-            g.info_log_last_ms = now_ms;
+        if(g.logDue(kGateInfo, now_ms, g.orbit_log_interval_ms)) {
             const TerrainBody *b = ship->m_parent;
             const double altAsl = distance - ((double)b->radius
                                           + (double)b->surface.sea_level);

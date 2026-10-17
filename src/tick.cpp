@@ -290,9 +290,7 @@ void tick(Game &g) {
         // --orbit-log: orbital elements in the body's inertial frame.
         if(g.ship && g.args.orbit_log) {
             const Uint32 now_ms = SDL_GetTicks();
-            if(now_ms - g.orbit_log_last_ms >= g.orbit_log_interval_ms) {
-                g.orbit_log_last_ms = now_ms;
-
+            if(g.logDue(kGateOrbit, now_ms, g.orbit_log_interval_ms)) {
                 const double mu = g.ship->m_parent->mu;
                 glm::dvec3 o_pos = g.ship->get_center_of_mass();
                 glm::dvec3 o_vel = g.ship->GetVel();
@@ -342,8 +340,7 @@ void tick(Game &g) {
         // --dbg-log: ship pos/alt/vel in its own frame
         if(g.ship && g.args.dbg_log) {
             const Uint32 now_ms = SDL_GetTicks();
-            if(now_ms - g.dbg_log_last_ms >= g.orbit_log_interval_ms) {
-                g.dbg_log_last_ms = now_ms;
+            if(g.logDue(kGateDbg, now_ms, g.orbit_log_interval_ms)) {
                 glm::dvec3 p = g.ship->get_center_of_mass();
                 glm::dvec3 v = g.ship->GetVel();
                 double r = glm::length(p);
@@ -361,8 +358,7 @@ void tick(Game &g) {
            geometry. */
         if(g.ship && g.args.drag_log) {
             const Uint32 now_ms = SDL_GetTicks();
-            if(now_ms - g.drag_log_last_ms >= g.orbit_log_interval_ms) {
-                g.drag_log_last_ms = now_ms;
+            if(g.logDue(kGateDrag, now_ms, g.orbit_log_interval_ms)) {
                 const glm::dvec3 v = g.ship->GetVel();
                 printf("[drag] t=%.1fs alt=%.1f m rho=%.5g kg/m3 "
                        "|v|=%.2f m/s |F|=%.2f N |L|=%.2f N |tau|=%.2f Nm "
@@ -393,8 +389,7 @@ void tick(Game &g) {
         // --att-log: the ship's nose + angular velocity (attitude-physics e2e)
         if(g.ship && g.args.att_log) {
             const Uint32 now_ms = SDL_GetTicks();
-            if(now_ms - g.att_log_last_ms >= g.orbit_log_interval_ms) {
-                g.att_log_last_ms = now_ms;
+            if(g.logDue(kGateAtt, now_ms, g.orbit_log_interval_ms)) {
                 g.ship->att_log(g.time);
             }
         }
@@ -420,8 +415,7 @@ void tick(Game &g) {
         // --eva-log: the kerbal's mode + state (the EVA e2e assertions)
         if(g.ship && g.args.eva_log && g.ship->isEva()) {
             const Uint32 now_ms = SDL_GetTicks();
-            if(now_ms - g.eva_log_last_ms >= g.orbit_log_interval_ms) {
-                g.eva_log_last_ms = now_ms;
+            if(g.logDue(kGateEva, now_ms, g.orbit_log_interval_ms)) {
                 Kerbal *k = static_cast<Kerbal *>(g.ship);
                 const glm::dvec3 p = k->get_center_of_mass();
                 const glm::dvec3 v = k->GetVel();

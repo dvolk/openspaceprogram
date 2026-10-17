@@ -61,8 +61,7 @@ static void camShakeStep(Game &g, Vehicle *ship) {
     }
     // --shake-log: felt accel + live amplitude at the --orbit-interval cadence.
     if(g.args.shake_log) {
-        if(now_ms - g.shake_log_last_ms >= g.orbit_log_interval_ms) {
-            g.shake_log_last_ms = now_ms;
+        if(g.logDue(kGateShake, now_ms, g.orbit_log_interval_ms)) {
             printf("[shakelog] t=%.3fs a=%.3f m/s2 amp=%.4f m "
                    "off=[%+.4f %+.4f %+.4f]\n",
                    g.time, a, target,
@@ -253,8 +252,7 @@ static float skyGain(Game &g, Frame *rf, TerrainBody *sun, Camera *camera,
     const double t = g.sky_fade;
     const float gain = (float)(1.0 + (g.sky_dim - 1.0) * t);
     // --sky-dim-log: the fade's inputs, tunable from the command line.
-    if(g.args.sky_dim_log && now_ms - g.sky_dim_log_last_ms >= 200) {
-        g.sky_dim_log_last_ms = now_ms;
+    if(g.args.sky_dim_log && g.logDue(kGateSkyDim, now_ms, 200)) {
         std::printf("[skydim] t=%.1fs sun_off=%.1f limb=%.1f in_view=%.2f "
                     "lit=%.2f fade=%.2f gain=%.3f\n", g.time,
                     axl * 180.0 / std::numbers::pi,
@@ -380,8 +378,7 @@ void refreshWorld(Game &g) {
            counts leaves with a Bullet body (#24). */
         if(g.args.terrain_log && planet == localBody && planet->ready) {
             const Uint32 now_ms = SDL_GetTicks();
-            if(now_ms - g.terrain_log_last_ms >= g.orbit_log_interval_ms) {
-                g.terrain_log_last_ms = now_ms;
+            if(g.logDue(kGateTerrain, now_ms, g.orbit_log_interval_ms)) {
                 const TerrainLodStats s =
                     planet->lodStats(planet->CameraInBodyFrame(camera));
                 printf("[terrain] t=%.1fs body=\"%s\" patches=%d deepest=%d "
@@ -402,8 +399,7 @@ void refreshWorld(Game &g) {
        rmb is armed AND imgui is not capturing the mouse. */
     if(g.args.cam_log) {
         const Uint32 now_ms = SDL_GetTicks();
-        if(now_ms - g.cam_log_last_ms >= g.orbit_log_interval_ms) {
-            g.cam_log_last_ms = now_ms;
+        if(g.logDue(kGateCam, now_ms, g.orbit_log_interval_ms)) {
             const char *mode = camera->mode == CAM_ORBIT ? "orbit"
                              : camera->mode == CAM_FREE  ? "free" : "first";
             printf("[camlog] t=%.3fs mode=%s focus=\"%s\" "
@@ -490,8 +486,7 @@ static void drawOrbitPlane(Game &g, const glm::dmat4 &VP) {
        the body's own axes: the equator's normal is exactly +Y there. */
     if(g.args.plane_log) {
         const Uint32 now_ms = SDL_GetTicks();
-        if(now_ms - g.plane_log_last_ms >= g.orbit_log_interval_ms) {
-            g.plane_log_last_ms = now_ms;
+        if(g.logDue(kGatePlane, now_ms, g.orbit_log_interval_ms)) {
             const double inc = std::acos(glm::clamp(glm::dot(n_orb, n_ref),
                                                     -1.0, 1.0));
             /* The flight markers as paintWorld places them, so a marker that

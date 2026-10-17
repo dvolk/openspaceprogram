@@ -3,6 +3,7 @@
 
 #include <SDL3/SDL.h>   // Uint32
 
+#include <array>
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -257,6 +258,14 @@ struct Question {
     std::function<void(int choice)> onAnswer;
 };
 
+/* Wall-clock log gates: each throttled log needs its own "last fired" clock,
+   or only the first one fires. All share --orbit-interval (Game::
+   orbit_log_interval_ms) except kGateSkyDim, whose interval is fixed where it
+   is polled. */
+enum LogGate { kGateOrbit, kGateDbg, kGateInfo, kGateAtt, kGateShake,
+               kGateCam, kGateEva, kGateDrag, kGateTerrain, kGatePlane,
+               kGateSkyDim, kGateCount };
+
 struct Game {
     // --- borrowed subsystems (main creates + deletes) ---------------------
     Renderer &display;
@@ -454,19 +463,17 @@ struct Game {
     // jobs.poll() runs the finished jobs' main-thread continuations (job.h).
     JobRunner jobs;
 
-    // --- the wall-clock log gates (--orbit-interval; tick.cpp + xfer-log) ---
+    // --- the wall-clock log gates (--orbit-interval; tick.cpp + xfer-log) --
     // Each log needs its own "last fired" clock, or only the first one fires.
     const Uint32 orbit_log_interval_ms = (Uint32)(args.orbit_interval * 1000.0);
-    Uint32 orbit_log_last_ms = 0;
-    Uint32 dbg_log_last_ms = 0;
-    Uint32 info_log_last_ms = 0;
-    Uint32 att_log_last_ms = 0;
-    Uint32 shake_log_last_ms = 0;
-    Uint32 cam_log_last_ms = 0;
-    Uint32 eva_log_last_ms = 0;
-    Uint32 drag_log_last_ms = 0;
-    Uint32 terrain_log_last_ms = 0;
-    Uint32 plane_log_last_ms = 0;
+    // True once per interval_ms, stamping the gate as it fires.
+    bool logDue(LogGate gate, Uint32 now_ms, Uint32 interval_ms) {
+        Uint32 &last = log_last_ms[(size_t)gate];
+        if(now_ms - last < interval_ms) { return false; }
+        last = now_ms;
+        return true;
+    }
+    std::array<Uint32, kGateCount> log_last_ms = {};
 
     // --- --pose-jitter (render.cpp) -----------------------------------------
     /* The previous DRAWN sample plus what it was taken against. Re-armed whenever
@@ -543,7 +550,6 @@ struct Game {
     // sky steps instead of ramping.
     double sky_fade = 0.0;
     Uint32 sky_fade_last_ms = 0;
-    Uint32 sky_dim_log_last_ms = 0;   // --sky-dim-log cadence stamp
 
     // --- control-axis flips (the Settings window writes, tick.cpp reads) --
     bool flip_pitch = false;
