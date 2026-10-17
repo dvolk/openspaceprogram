@@ -1565,6 +1565,76 @@ int main() {
         std::remove(bad);
     }
 
+    /* A fuel link is virtual, so nothing may hang off it. build_ship always
+       refused this while BuildShip::fromShipDef re-rooted the part to -1, so
+       the editor showed a second root for a design that would not launch (#294).
+       Refused at the load boundary now, so both consumers see one answer. */
+    {
+        const char *bad = "/tmp/test_shipload_bad.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\" }, "
+             " { \"part\": \"fuel_link\", \"id\": \"fl\", \"from\": \"c\", \"to\": \"t\" }, "
+             " { \"part\": \"fuel_tank\", \"id\": \"t\", \"parent\": \"fl\" } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_ship_def(bad, cat); }));
+        std::remove(bad);
+    }
+    // The DEFAULT parent is the previous entry, and real defs interleave link
+    // rows among parts (res/ships/heavy_asp.json), so an omitted "parent" after
+    // a link row lands on the link. That has to be refused too, not repaired.
+    {
+        const char *bad = "/tmp/test_shipload_bad.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\" }, "
+             " { \"part\": \"fuel_link\", \"id\": \"fl\", \"from\": \"c\", \"to\": \"t\" }, "
+             " { \"part\": \"fuel_tank\", \"id\": \"t\" } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_ship_def(bad, cat); }));
+        std::remove(bad);
+    }
+    // The mirror case: build_ship throws on a link endpoint that names no
+    // physical part, while the staging snapshot and the loop check skip one
+    // silently. Same divergence, same boundary.
+    {
+        const char *bad = "/tmp/test_shipload_bad.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\" }, "
+             " { \"part\": \"fuel_link\", \"id\": \"fl\", \"from\": \"c\", \"to\": \"ghost\" } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_ship_def(bad, cat); }));
+        std::remove(bad);
+    }
+    {
+        const char *bad = "/tmp/test_shipload_bad.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\" }, "
+             " { \"part\": \"capsule\", \"id\": \"c2\", \"parent\": \"c\" }, "
+             " { \"part\": \"fuel_link\", \"id\": \"fl1\", \"from\": \"c\", \"to\": \"c2\" }, "
+             " { \"part\": \"fuel_link\", \"id\": \"fl2\", \"from\": \"fl1\", \"to\": \"c2\" } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_ship_def(bad, cat); }));
+        std::remove(bad);
+    }
+    // Positive control: a link row BETWEEN two parts is normal, as long as the
+    // part after it names its parent. The tree must still come out one-rooted.
+    {
+        const char *ok = "/tmp/test_shipload_linkmix.json";
+        std::ofstream f(ok);
+        f << "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\" }, "
+             " { \"part\": \"fuel_link\", \"id\": \"fl\", \"from\": \"c\", \"to\": \"t\" }, "
+             " { \"part\": \"fuel_tank\", \"id\": \"t\", \"parent\": \"c\" } ] }";
+        f.close();
+        bool threw = false;
+        try {
+            ShipDef d = load_ship_def(ok, cat);
+            CHECK(d.parts.size() == 3);
+            CHECK(d.parts[1].isFuelLink());
+            CHECK(d.parts[2].parent == 0);   // 'c', not the link row at index 1
+        } catch(const std::exception &) { threw = true; }
+        CHECK(!threw);
+        std::remove(ok);
+    }
+
     // a bad attach value
     {
         const char *bad = "/tmp/test_shipload_bad.json";

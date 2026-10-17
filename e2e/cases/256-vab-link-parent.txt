@@ -1,0 +1,19 @@
+# A part whose parent is a fuel_link row. build_ship has always refused it
+# ("build_ship: parent of 'x' is a fuel link"), while BuildShip::fromShipDef
+# mapped the same def's parent to -1 -- so one file gave the editor a SECOND
+# ROOT and the launcher an error (#294). The parser refuses it now, so both
+# consumers see the same answer at the same boundary the parentNode case
+# already uses.
+#
+# The dangerous shape is an OMITTED "parent", not a wrong one: the default
+# parent is the previous entry, and real defs interleave link rows among parts
+# (res/ships/heavy_asp.json), so the part after a link row lands on the link.
+# EXIT 1 is the pass condition -- a clean refusal, not a throw.
+NAME vab-link-parent
+ARGS --timeout 4 --vab e2e/fixtures/link_parent.json
+EXPECT error: --vab: ship: part 'engine_1' in e2e/fixtures/link_parent.json: parent 'fl_a' is a fuel link
+EXIT 1
+FORBID terminate called
+FORBID [vab] entered the editor
+FORBID GL_
+LIMIT 60

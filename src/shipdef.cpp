@@ -464,6 +464,19 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
             }
             sp.parent = (int)it->second;
         }
+        /* A fuel link is virtual -- nothing hangs off it. build_ship has always
+           refused this (vehicle.cpp:37-40) while BuildShip::fromShipDef
+           re-rooted it to -1, so the editor showed a second root for a design
+           that would not launch. Refuse it where the def is read instead, so
+           both consumers see the same answer. This also catches the OMITTED
+           "parent": the default is the previous entry, and real defs interleave
+           link rows among parts (res/ships/heavy_asp.json). */
+        if(!sp.isFuelLink() && sp.parent >= 0
+           && def.parts[(size_t)sp.parent].isFuelLink()) {
+            throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
+                                     + ": parent '" + def.parts[(size_t)sp.parent].id
+                                     + "' is a fuel link (a fuel link cannot have parts attached)");
+        }
 
         sp.attach = AttachMode::Down;
         if(pv.contains("attach")) {
@@ -578,6 +591,31 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
     }
 
     // Resolved now that all ids are known.
+    /* A fuel link's endpoints have to name PHYSICAL parts. build_ship already
+       refuses an endpoint that names nothing (vehicle.cpp, "references unknown
+       part"), while the staging snapshot and the editor's loop check skip one
+       silently -- so a typo was a design that showed a sane tree in the editor
+       and refused to launch. Same boundary as the parent check above; links may
+       point FORWARD, so this waits for every id. */
+    for(size_t i = 0; i < def.parts.size(); i++) {
+        const ShipPart &lk = def.parts[i];
+        if(!lk.isFuelLink()) { continue; }
+        const std::string endp[2] = { lk.from, lk.to };
+        for(int side = 0; side < 2; side++) {
+            const char *key = side ? "to" : "from";
+            std::map<std::string, size_t>::iterator it = idToIndex.find(endp[side]);
+            if(it == idToIndex.end()) {
+                throw std::runtime_error(std::string("ship: fuel link '") + lk.id + "' in " + path
+                                         + ": \"" + key + "\" '" + endp[side]
+                                         + "' is not a part of the ship");
+            }
+            if(def.parts[it->second].isFuelLink()) {
+                throw std::runtime_error(std::string("ship: fuel link '") + lk.id + "' in " + path
+                                         + ": \"" + key + "\" '" + endp[side]
+                                         + "' is itself a fuel link");
+            }
+        }
+    }
     if(doc.contains("controller")) {
         if(!doc["controller"].is_string()) {
             throw std::runtime_error(std::string("ship: \"controller\" in ") + path
@@ -914,7 +952,13 @@ BuildShip BuildShip::fromShipDef(const ShipDef &def) {
         bp.stage = sp.stage;
         if(sp.parent >= 0) {
             auto it = physIndex.find((size_t)sp.parent);
-            bp.parent = (it != physIndex.end()) ? (int)it->second : -1;
+            /* load_ship_def refuses a part parented to a fuel link (see the
+               check in the parser), so a link index reaching here is a def that
+               never went through it. Used to re-root to -1, which quietly made
+               the part a second root -- a different ship from the one
+               build_ship would have built. */
+            assert(it != physIndex.end());
+            bp.parent = (int)it->second;
         }
         bs.parts.push_back(bp);
     }

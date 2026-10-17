@@ -1,0 +1,9 @@
+{
+  "name": "link_parent",
+  "parts": [
+    { "part": "capsule", "id": "capsule_1", "stage": 1 },
+    { "part": "fuel_tank", "id": "fuel_tank_1", "stage": 1 },
+    { "part": "fuel_link", "id": "fl_a", "from": "capsule_1", "to": "fuel_tank_1" },
+    { "part": "engine", "id": "engine_1", "stage": 1, "attach": "surface" }
+  ]
+}
