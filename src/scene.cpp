@@ -29,7 +29,7 @@ void flightDrawUi(Game &g) {
 }
 
 // Editor mouse half, then the world tick (time passes while you build). Launch
-// is the caller's: vabFireHooks runs first.
+// is the caller's: the pre-scene hook phase (Game::fireHooks) runs first.
 void vabUpdateLive(Game &g) {
     vabUpdate(g);
     tick(g);

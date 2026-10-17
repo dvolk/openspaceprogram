@@ -958,103 +958,122 @@ void vabClose(Game &g) {
     g.toastLog("Back from the VAB -- the sim keeps running");
 }
 
-/* Headless transition hooks (--vab-load, --vab-launch, --vab-close), each
-   fired at most once. vabFireHooks must run FIRST (a launch flips the scene). */
-void vabFireHooks(Game &g) {
-    if(!sceneIs(g, SceneId::Vab)) { return; }
-    const int ms = (int)(SDL_GetTicks() - g.loop_start_ms);
-    if(!g.vabHooks.loadPath.empty() && g.vabHooks.loadMs >= 0
-       && !g.vabHooks.loadFired && ms >= g.vabHooks.loadMs) {
-        g.vabHooks.loadFired = true;
-        vabLoad(g, g.vabHooks.loadPath.c_str());
+/* Register the headless transition hooks (--vab-load, --vab-launch,
+   --vab-close, ...), each fired at most once. They join the pre-scene phase
+   AFTER the main-loop hooks -- the order the old per-frame poll used -- and
+   a launch collapses the stack to Flight, so the live scene is read after
+   them. The inVab gate reproduces the old early return. --vab-place is its
+   own phase: it runs inside vabUpdate, after the hover pass that arms the
+   ghost it places. */
+void vabInstallHooks(Game &g) {
+    GameArgs &args = g.args;
+    auto inVab = [](Game &g) { return sceneIs(g, SceneId::Vab); };
+    if(!args.vab_load.empty() && args.vab_load_ms >= 0) {
+        const std::string path = args.vab_load;
+        g.addHook(kHookPreScene, args.vab_load_ms, inVab,
+                  [path](Game &g) { vabLoad(g, path.c_str()); });
     }
     /* --vab-save: headless stand-in for the top bar's Save button. */
-    if(sceneIs(g, SceneId::Vab) && !g.vabHooks.savePath.empty()
-       && g.vabHooks.saveMs >= 0 && !g.vabHooks.saveFired
-       && ms >= g.vabHooks.saveMs) {
-        g.vabHooks.saveFired = true;
-        vabSave(g, g.vabHooks.savePath.c_str());
+    if(!args.vab_save.empty() && args.vab_save_ms >= 0) {
+        const std::string path = args.vab_save;
+        g.addHook(kHookPreScene, args.vab_save_ms, inVab,
+                  [path](Game &g) { vabSave(g, path.c_str()); });
     }
     /* --vab-detach: headless stand-in for Del/X on a selected part. */
-    if(sceneIs(g, SceneId::Vab) && g.vabHooks.detachMs >= 0
-       && g.vabHooks.detachIdx >= 0 && !g.vabHooks.detachFired
-       && ms >= g.vabHooks.detachMs) {
-        g.vabHooks.detachFired = true;
-        g.vab.selected = g.vabHooks.detachIdx;
-        g.vab.linkSel = -1;   // a part detach, not a fuel-link delete
-        vabDetachSelected(g);
-        printf("[vab] detach hook: build %d parts, %d subassemblies\n",
-               (int)g.vab.build.parts.size(), (int)g.vab.subassemblies.size());
-        fflush(stdout);
+    if(args.vab_detach_ms >= 0 && args.vab_detach_idx >= 0) {
+        const int idx = args.vab_detach_idx;
+        g.addHook(kHookPreScene, args.vab_detach_ms, inVab, [idx](Game &g) {
+            g.vab.selected = idx;
+            g.vab.linkSel = -1;   // a part detach, not a fuel-link delete
+            vabDetachSelected(g);
+            printf("[vab] detach hook: build %d parts, %d subassemblies\n",
+                   (int)g.vab.build.parts.size(), (int)g.vab.subassemblies.size());
+            fflush(stdout);
+        });
     }
     /* --vab-assign: the headless seat window. It opens the window as it assigns,
        so --ui-list dumps what the player would have seen. */
-    for(Game::VabHooks::Assign &a : g.vabHooks.assigns) {
-        if(a.fired || ms < a.ms) { continue; }
-        a.fired = true;
-        if(a.partIdx < 0 || (size_t)a.partIdx >= g.vab.build.parts.size()) {
-            printf("[vab] assign hook: no build part %d\n", a.partIdx);
+    for(const GameArgs::VabAssignArg &a : args.vab_assigns) {
+        const int partIdx = a.partIdx, slot = a.slot;
+        const std::string kerbal = a.kerbal;
+        g.addHook(kHookPreScene, a.ms, inVab, [partIdx, slot, kerbal](Game &g) {
+            if(partIdx < 0 || (size_t)partIdx >= g.vab.build.parts.size()) {
+                printf("[vab] assign hook: no build part %d\n", partIdx);
+                fflush(stdout);
+                return;
+            }
+            const std::string partId = g.vab.build.parts[(size_t)partIdx].id;
+            /* "-" is the window's "Empty" entry: it records the choice that nobody
+               sits in this seat (issue #287). */
+            const bool emptySeat = kerbal == "-";
+            const KerbalProfile *p = emptySeat ? nullptr : g.roster.byName(kerbal);
+            if(!emptySeat && p == nullptr) {
+                printf("[vab] assign hook: no kerbal '%s'\n", kerbal.c_str());
+                fflush(stdout);
+                return;
+            }
+            const ImGuiIO &io = ImGui::GetIO();
+            vabOpenSeatWindow(g, partIdx, (int)io.DisplaySize.x / 2,
+                              (int)io.DisplaySize.y / 2);
+            const bool ok = vabAssignSeat(g, partId, slot, emptySeat ? 0 : p->id);
+            const std::string who = emptySeat ? "(empty)" : ("'" + kerbal + "'");
+            printf("[vab] assign hook: '%s' seat %d = %s%s\n", partId.c_str(),
+                   slot, who.c_str(), ok ? "" : " (no such seat)");
             fflush(stdout);
-            continue;
-        }
-        const std::string partId = g.vab.build.parts[(size_t)a.partIdx].id;
-        /* "-" is the window's "Empty" entry: it records the choice that nobody
-           sits in this seat (issue #287). */
-        const bool emptySeat = a.kerbal == "-";
-        const KerbalProfile *p = emptySeat ? nullptr : g.roster.byName(a.kerbal);
-        if(!emptySeat && p == nullptr) {
-            printf("[vab] assign hook: no kerbal '%s'\n", a.kerbal.c_str());
-            fflush(stdout);
-            continue;
-        }
-        const ImGuiIO &io = ImGui::GetIO();
-        vabOpenSeatWindow(g, a.partIdx, (int)io.DisplaySize.x / 2,
-                          (int)io.DisplaySize.y / 2);
-        const bool ok = vabAssignSeat(g, partId, a.slot, emptySeat ? 0 : p->id);
-        const std::string who = emptySeat ? "(empty)" : ("'" + a.kerbal + "'");
-        printf("[vab] assign hook: '%s' seat %d = %s%s\n", partId.c_str(),
-               a.slot, who.c_str(), ok ? "" : " (no such seat)");
-        fflush(stdout);
+        });
     }
     /* --vab-link: the headless fuel-link click. It sets the state a hovered
        part would leave behind (link mode + a picked source + a hovered
        destination) and calls the same handler, so the authoring guards -- a
        duplicate direction, a loop -- run exactly as they do under the mouse. */
-    for(Game::VabHooks::Link &l : g.vabHooks.links) {
-        if(l.fired || ms < l.ms) { continue; }
-        l.fired = true;
-        int hover = -1;
-        bool fromFound = false;
-        for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
-            const std::string &id = g.vab.build.parts[i].id;
-            if(id == l.from) { fromFound = true; }
-            if(id == l.to) { hover = (int)i; }
-        }
-        if(!fromFound || hover < 0) {
-            const std::string missing = (!fromFound && hover < 0)
-                ? ("'" + l.from + "' and '" + l.to + "'")
-                : (!fromFound ? "'" + l.from + "'" : "'" + l.to + "'");
-            printf("[vab] link hook: no build part %s\n", missing.c_str());
+    for(const GameArgs::VabLinkArg &l : args.vab_links) {
+        const std::string from = l.from, to = l.to;
+        g.addHook(kHookPreScene, l.ms, inVab, [from, to](Game &g) {
+            int hover = -1;
+            bool fromFound = false;
+            for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
+                const std::string &id = g.vab.build.parts[i].id;
+                if(id == from) { fromFound = true; }
+                if(id == to) { hover = (int)i; }
+            }
+            if(!fromFound || hover < 0) {
+                const std::string missing = (!fromFound && hover < 0)
+                    ? ("'" + from + "' and '" + to + "'")
+                    : (!fromFound ? "'" + from + "'" : "'" + to + "'");
+                printf("[vab] link hook: no build part %s\n", missing.c_str());
+                fflush(stdout);
+                return;
+            }
+            g.vab.linkMode = true;
+            g.vab.linkFromId = from;
+            g.vab.hover = hover;
+            vabLinkClick(g);
+            printf("[vab] link hook: '%s' -> '%s' (build has %d fuel link(s))\n",
+                   from.c_str(), to.c_str(), (int)g.vab.build.fuelLinks.size());
             fflush(stdout);
-            continue;
-        }
-        g.vab.linkMode = true;
-        g.vab.linkFromId = l.from;
-        g.vab.hover = hover;
-        vabLinkClick(g);
-        printf("[vab] link hook: '%s' -> '%s' (build has %d fuel link(s))\n",
-               l.from.c_str(), l.to.c_str(), (int)g.vab.build.fuelLinks.size());
-        fflush(stdout);
+        });
     }
-    if(sceneIs(g, SceneId::Vab) && g.vabHooks.launchMs >= 0
-       && !g.vabHooks.launchFired && ms >= g.vabHooks.launchMs) {
-        g.vabHooks.launchFired = true;
-        vabLaunch(g);
+    if(args.vab_launch_ms >= 0) {
+        g.addHook(kHookPreScene, args.vab_launch_ms, inVab,
+                  [](Game &g) { vabLaunch(g); });
     }
-    if(sceneIs(g, SceneId::Vab) && g.vabHooks.closeMs >= 0
-       && !g.vabHooks.closeFired && ms >= g.vabHooks.closeMs) {
-        g.vabHooks.closeFired = true;
-        vabClose(g);
+    if(args.vab_close_ms >= 0) {
+        g.addHook(kHookPreScene, args.vab_close_ms, inVab,
+                  [](Game &g) { vabClose(g); });
+    }
+    /* --vab-place: headless placement hook (sim-mouse button events do not
+       update SDL_GetMouseState, so the LMB edge can't be driven headless).
+       The gate mirrors vabUpdate's overUI skip: no place while imgui owns
+       the mouse. */
+    if(args.vab_place_ms >= 0) {
+        g.addHook(kHookVabPlace, args.vab_place_ms,
+            [](Game &g) { return !ImGui::GetIO().WantCaptureMouse; },
+            [](Game &g) {
+                const int placed = vabPlace(g);   // -1 = no ghost/armed part
+                printf("[vab] place hook: %d\n",
+                       placed >= 0 ? (int)g.vab.build.parts.size() : -1);
+                fflush(stdout);
+            });
     }
 }
 
@@ -1074,16 +1093,9 @@ void vabUpdate(Game &g) {
     } else {
         vabUpdateHover(g, mx, my);
     }
-    /* --vab-place: headless placement hook (sim-mouse button events do not
-       update SDL_GetMouseState, so the LMB edge can't be driven headless). */
-    if(!overUI && g.vabHooks.placeMs >= 0 && !g.vabHooks.placeFired
-       && (int)(SDL_GetTicks() - g.loop_start_ms) >= g.vabHooks.placeMs) {
-        g.vabHooks.placeFired = true;
-        const int placed = vabPlace(g);   // -1 = no ghost/armed part
-        printf("[vab] place hook: %d\n",
-               placed >= 0 ? (int)g.vab.build.parts.size() : -1);
-        fflush(stdout);
-    }
+    /* --vab-place: polled here, after the hover pass, because the ghost it
+       places is what that pass armed (see vabInstallHooks). */
+    g.fireHooks(kHookVabPlace);
     const bool lmb = (mb & SDL_BUTTON_LMASK) != 0;
     if(lmb && !g.vab.lmbPrev && !overUI) {
         if(g.vab.linkMode) {

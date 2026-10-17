@@ -184,6 +184,274 @@ static bool splitStartship(const std::string &spec, DebugStartShip &out) {
     return true;
 }
 
+/* Register the CLI headless hooks (cli.h). Only armed ones are registered;
+   within a phase the registration order IS the firing order, and the e2e
+   cases lean on it (e.g. --eva before --take). Each act() runs at fire time,
+   against that frame's state. The VAB hooks join the same pre-scene phase
+   (vabInstallHooks, called right after this). */
+static void installHeadlessHooks(Game &game) {
+    GameArgs &args = game.args;
+
+    // --reload: before the scene is read -- a load decides the scene.
+    if(!args.reload_dir.empty() && args.reload_ms >= 0) {
+        const std::string dir = args.reload_dir;
+        game.addHook(kHookPreScene, args.reload_ms, nullptr,
+                     [dir](Game &g) { g.loadFrom(dir); });
+    }
+    // --new-game: Game::newGame from the title screen, before the scene read.
+    if(args.new_game_ms >= 0) {
+        game.addHook(kHookPreScene, args.new_game_ms, nullptr,
+                     [](Game &g) { g.newGame(); });
+    }
+    // --quit-title: before the scene is read (it tears the fleet down and
+    // lands on Title).
+    if(args.quit_title_ms >= 0) {
+        game.addHook(kHookPreScene, args.quit_title_ms, nullptr,
+                     [](Game &g) { g.quitToTitle(); });
+    }
+    // --space-center: only from Flight (the hub is an excursion above a
+    // running game).
+    if(args.space_center_ms >= 0) {
+        game.addHook(kHookPreScene, args.space_center_ms, nullptr, [](Game &g) {
+            if(sceneIs(g, SceneId::Flight)) { pushScene(g, SceneId::SpaceCenter); }
+        });
+    }
+    // --recover: fired after --space-center.
+    if(args.recover_ms >= 0) {
+        game.addHook(kHookPreScene, args.recover_ms, nullptr, [](Game &game) {
+            // The active ship may be a free EVA kerbal, which recoverActive
+            // refuses -- recover the ship holding the findings.
+            if(game.ship != nullptr && game.ship->isEva()) {
+                for(auto *s : collectVehicles(game.sys)) {
+                    if(s->isEva()) { continue; }
+                    bool holdsFinding = false;
+                    for(Part *p : s->parts) {
+                        if(!p->experiments.empty()) { holdsFinding = true; break; }
+                    }
+                    if(holdsFinding) { game.select_ship(s); break; }
+                }
+            }
+            game.recoverActive();
+        });
+    }
+    // --experiment: mirrors the UI -- a walking kerbal runs it itself, else
+    // the active ship's first seat.
+    if(args.experiment_ms >= 0) {
+        game.addHook(kHookPreScene, args.experiment_ms, nullptr, [](Game &game) {
+            if(game.ship == nullptr) {
+                printf("[hook] --experiment: no kerbal, ignored\n");
+            } else if(game.ship->isEva()) {
+                game.runExperiment(static_cast<Kerbal *>(game.ship));
+            } else {
+                std::vector<Part *> seats = shipSeats(game.ship);
+                if(seats.empty()) { printf("[hook] --experiment: no kerbal, ignored\n"); }
+                else { game.runSeatExperiment(seats.front()); }
+            }
+        });
+    }
+    // --pod-experiment: the active ship's first experiment-family part + its
+    // first seat.
+    if(args.pod_experiment_ms >= 0) {
+        game.addHook(kHookPreScene, args.pod_experiment_ms, nullptr, [](Game &game) {
+            Part *pod = nullptr;
+            std::string runner;
+            if(game.ship != nullptr) {
+                for(Part *p : game.ship->parts) {
+                    if(p->def != nullptr && !p->def->experiment_family.empty()) {
+                        pod = p; break;
+                    }
+                }
+                std::vector<Part *> seats = shipSeats(game.ship);
+                if(!seats.empty()) { runner = seatName(seats.front()); }
+            }
+            if(pod != nullptr && !runner.empty()) { game.runPodExperiment(pod, runner); }
+            else { printf("[hook] --pod-experiment: no pod+kerbal, ignored\n"); }
+        });
+    }
+    // --eva: Game::kerbalEVA on the active ship's first seat. Fired before
+    // --take / --store in the e2e.
+    if(args.eva_ms >= 0) {
+        game.addHook(kHookPreScene, args.eva_ms, nullptr, [](Game &game) {
+            std::vector<Part *> seats = game.ship != nullptr ? shipSeats(game.ship)
+                                                             : std::vector<Part *>{};
+            if(!seats.empty()) { game.kerbalEVA(seats.front()); }
+            else { printf("[hook] --eva: no crew aboard, ignored\n"); }
+        });
+    }
+    // --board: the reverse of --eva, so one process round-trips a person
+    // through their seat.
+    if(args.board_ms >= 0) {
+        game.addHook(kHookPreScene, args.board_ms, nullptr, [](Game &game) {
+            Vehicle *ship = nullptr;
+            size_t part = 0;
+            Kerbal *k = nullptr;
+            /* Any vessel with a free seat, not just the active one: after an
+               EVA the walker stands beside the ship it left, and the e2e may
+               have switched control since. The walking crew are collected once:
+               freeKerbals walks the whole fleet, so calling it per candidate
+               part is quadratic in a fleet that is only getting bigger. */
+            const std::vector<Kerbal *> freeK = freeKerbals(game.sys);
+            for(auto *s : collectVehicles(game.sys)) {
+                for(size_t i = 0; i < s->parts.size(); i++) {
+                    Part *cap = s->parts[i];
+                    if(cap->def == nullptr || cap->def->crew_capacity <= 0) { continue; }
+                    if(cap->seatCount() >= cap->def->crew_capacity) { continue; }
+                    for(Kerbal *f : freeK) {
+                        if(game.kerbalInRange(f, cap)) {
+                            ship = s; part = i; k = f; break;
+                        }
+                    }
+                    if(k != nullptr) { break; }
+                }
+                if(k != nullptr) { break; }
+            }
+            if(k != nullptr) { game.kerbalBoard(k, ship, part); }
+            else { printf("[hook] --board: no kerbal in reach of a free seat, ignored\n"); }
+        });
+    }
+    // --take: move the first held finding off its instrument onto its courier
+    // (the kerbal's suit).
+    if(args.take_ms >= 0) {
+        game.addHook(kHookPreScene, args.take_ms, nullptr, [](Game &game) {
+            Part *from = nullptr;   // the instrument holding a finding to take
+            Part *to = nullptr;     // the courier (the kerbal's suit)
+            // After an EVA the instrument sits on a DIFFERENT ship than the
+            // active one: search the whole fleet.
+            for(auto *s : collectVehicles(game.sys)) {
+                for(Part *p : s->parts) {
+                    if(p->def != nullptr && !p->experiments.empty()
+                       && p->def->experiment_storage == ExpStorage::Instrument) {
+                        from = p; break;
+                    }
+                }
+                if(from != nullptr) { break; }
+            }
+            // Needs a FREE (EVA) kerbal in reach of the part -- the Take
+            // button's gate (kerbalInRange).
+            if(from != nullptr) {
+                for(Kerbal *k : freeKerbals(game.sys)) {
+                    if(game.kerbalInRange(k, from) && !k->parts.empty()
+                       && k->parts[0]->canHold(from->experiments[0])) {
+                        to = k->parts[0]; break;
+                    }
+                }
+            }
+            if(from != nullptr && to != nullptr) { game.moveExperiment(from, to, 0); }
+            else { printf("[hook] --take: no instrument/free-kerbal-in-reach, ignored\n"); }
+        });
+    }
+    // --store: move the courier's first held finding onto its container
+    // (the capsule).
+    if(args.store_ms >= 0) {
+        game.addHook(kHookPreScene, args.store_ms, nullptr, [](Game &game) {
+            Part *from = nullptr;   // the courier (the kerbal's suit)
+            Part *to = nullptr;     // the container (the capsule)
+            // After an EVA the container sits on a DIFFERENT ship: search the
+            // whole fleet.
+            for(auto *s : collectVehicles(game.sys)) {
+                for(Part *p : s->parts) {
+                    if(p->def != nullptr
+                       && p->def->experiment_storage == ExpStorage::Container) {
+                        to = p; break;
+                    }
+                }
+                if(to != nullptr) { break; }
+            }
+            // A FREE (EVA) kerbal in reach of the capsule, carrying a finding --
+            // the Store button's gate.
+            if(to != nullptr) {
+                for(Kerbal *k : freeKerbals(game.sys)) {
+                    if(game.kerbalInRange(k, to) && !k->parts.empty()
+                       && !k->parts[0]->experiments.empty()) {
+                        from = k->parts[0]; break;
+                    }
+                }
+            }
+            if(from != nullptr && to != nullptr) { game.moveExperiment(from, to, 0); }
+            else { printf("[hook] --store: no free-kerbal-in-reach/container, ignored\n"); }
+        });
+    }
+    // --tracking: fired after --space-center.
+    if(args.tracking_ms >= 0) {
+        game.addHook(kHookPreScene, args.tracking_ms, nullptr,
+                     [](Game &g) { pushScene(g, SceneId::TrackingStation); });
+    }
+    // --tracking-close: popScene, fired after --tracking.
+    if(args.tracking_close_ms >= 0) {
+        game.addHook(kHookPreScene, args.tracking_close_ms, nullptr, [](Game &g) {
+            if(sceneIs(g, SceneId::TrackingStation)) { popScene(g); }
+            else { printf("[hook] --tracking-close: not in the tracking station, ignored\n"); }
+        });
+    }
+    // --research: fired after --space-center.
+    if(args.research_ms >= 0) {
+        game.addHook(kHookPreScene, args.research_ms, nullptr,
+                     [](Game &g) { pushScene(g, SceneId::ResearchLab); });
+    }
+    // --research-close: popScene, fired after --research.
+    if(args.research_close_ms >= 0) {
+        game.addHook(kHookPreScene, args.research_close_ms, nullptr, [](Game &g) {
+            if(sceneIs(g, SceneId::ResearchLab)) { popScene(g); }
+            else { printf("[hook] --research-close: not in the research lab, ignored\n"); }
+        });
+    }
+    /* --atlas-dump: the System Atlas as text; reads the system, not the
+       window, so it works from any scene. The e2e cover for the dossier
+       (imgui Text rows are not clickable, so --ui-list cannot see them). */
+    if(args.atlas_dump_ms >= 0) {
+        game.addHook(kHookPreScene, args.atlas_dump_ms, nullptr,
+                     [](Game &g) { dumpAtlas(g); });
+    }
+    /* --switch-system: Game::switchSystem. Before the scene is read -- it
+       tears the current system down and lands on Title. */
+    if(!args.switch_system_path.empty() && args.switch_system_ms >= 0) {
+        const std::string path = args.switch_system_path;
+        game.addHook(kHookPreScene, args.switch_system_ms, nullptr, [path](Game &g) {
+            // A bad path throws from load_system: catch it, keep running on the
+            // current system.
+            try {
+                g.switchSystem(path);
+            } catch(const std::exception &e) {
+                printf("[switch] cannot switch to '%s': %s\n",
+                       path.c_str(), e.what());
+                fflush(stdout);
+                g.toast("Switch failed: %s", e.what());
+            }
+        });
+    }
+    /* --select-target: the Target window's combo, headless. The phase keeps
+       the old poll site (after sc.update): a vessel deleted earlier in the
+       frame has already lost its xferTargets rows (Game::dropVehicleRefs),
+       which is what keeps the name lookup off a borrowed name pointer (it
+       points into the Vehicle). */
+    for(const GameArgs::SelectTargetArg &a : args.select_targets) {
+        const std::string name = a.name;
+        game.addHook(kHookPostUpdate, a.ms, nullptr,
+                     [name](Game &game) {
+                game.xferPlanner.selectTargetByName(name == "none" ? std::string()
+                                                                   : name);
+                // Say what the planner actually took: a name that is not a
+                // target now is dropped, not queued, so the case author sees
+                // a typo.
+                const int idx = game.xferPlanner.xfer_target;
+                const std::string where = idx >= 0
+                    ? " (index " + std::to_string(idx) + ")"
+                    : " (not in the target list)";
+                printf("[target] hook: selected \"%s\"%s\n",
+                       name.c_str(), where.c_str());
+                fflush(stdout);
+            });
+    }
+    /* --map-dump: the orbit map's plane basis per combo slot. Its phase is
+       AFTER the state pass -- sc.refresh is what fills Game::hud.view, so
+       dumping before it silently reports a plausible-but-wrong basis. Needs
+       an active ship. */
+    if(args.map_dump_ms >= 0) {
+        game.addHook(kHookPostRefresh, args.map_dump_ms, nullptr,
+                     [](Game &g) { dumpMapBasis(g); });
+    }
+}
+
 int main(int argc, char **argv)
 {
     const auto prog_start = std::chrono::steady_clock::now();
@@ -908,47 +1176,11 @@ int main(int argc, char **argv)
     game.sky_dim = args.sky_dim;
     game.sky_dim_cone = args.sky_dim_cone;
 
-    // Headless hooks: on the game so the code firing them lives with the
-    // editor (vabFireHooks), not in this loop.
-    game.newGameMs = args.new_game_ms;
-    game.reloadDir = args.reload_dir;
-    game.reloadMs = args.reload_ms;
-    game.quitTitleMs = args.quit_title_ms;
-    game.spaceCenterMs = args.space_center_ms;
-    game.recoverMs = args.recover_ms;
-    for(const GameArgs::SelectTargetArg &a : args.select_targets) {
-        game.selectTargetHooks.push_back({a.ms, a.name, false});
-    }
-    game.experimentMs = args.experiment_ms;
-    game.podExperimentMs = args.pod_experiment_ms;
-    game.evaMs = args.eva_ms;
-    game.boardMs = args.board_ms;
-    game.takeMs = args.take_ms;
-    game.storeMs = args.store_ms;
-    game.trackingMs = args.tracking_ms;
-    game.trackingCloseMs = args.tracking_close_ms;
-    game.researchMs = args.research_ms;
-    game.researchCloseMs = args.research_close_ms;
-    game.atlasDumpMs = args.atlas_dump_ms;
-    game.mapDumpMs = args.map_dump_ms;
+    // Headless hooks: registered once from the CLI args; the loop polls the
+    // phases (Game::fireHooks) and the bodies live next to the registration.
+    installHeadlessHooks(game);
+    vabInstallHooks(game);
     if(args.map_plane >= 0) { game.map.plane = args.map_plane; }
-    game.switchSystemPath = args.switch_system_path;
-    game.switchSystemMs = args.switch_system_ms;
-    game.vabHooks.placeMs = args.vab_place_ms;
-    game.vabHooks.loadMs = args.vab_load_ms;
-    game.vabHooks.loadPath = args.vab_load;
-    game.vabHooks.launchMs = args.vab_launch_ms;
-    game.vabHooks.closeMs = args.vab_close_ms;
-    game.vabHooks.detachIdx = args.vab_detach_idx;
-    game.vabHooks.detachMs = args.vab_detach_ms;
-    game.vabHooks.savePath = args.vab_save;
-    game.vabHooks.saveMs = args.vab_save_ms;
-    for(const GameArgs::VabAssignArg &a : args.vab_assigns) {
-        game.vabHooks.assigns.push_back({a.ms, a.partIdx, a.slot, a.kerbal});
-    }
-    for(const GameArgs::VabLinkArg &l : args.vab_links) {
-        game.vabHooks.links.push_back({l.ms, l.from, l.to});
-    }
     const double startup_s =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - prog_start).count();
     printf("Main loop starting: startup took %.3f s", startup_s);
@@ -1152,267 +1384,22 @@ int main(int argc, char **argv)
           LOGIC
         */
         // The fixed-timestep loop lives in tick.cpp.
-        /* The VAB's headless transition hooks, then the LIVE scene's per-frame
-           step. The hooks run first and a launch collapses the stack to Flight,
-           so the scene is read after them. */
-        // --reload: before the scene is read -- a load decides the scene.
-        if(!game.reloadDir.empty() && game.reloadMs >= 0 && !game.reloadFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.reloadMs) {
-            game.reloadFired = true;
-            game.loadFrom(game.reloadDir);
-        }
-        // --new-game: Game::newGame from the title screen, before the scene read.
-        if(game.newGameMs >= 0 && !game.newGameFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.newGameMs) {
-            game.newGameFired = true;
-            game.newGame();
-        }
-        // --quit-title: before the scene is read (it tears the fleet down and
-        // lands on Title).
-        if(game.quitTitleMs >= 0 && !game.quitTitleFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.quitTitleMs) {
-            game.quitTitleFired = true;
-            game.quitToTitle();
-        }
-        // --space-center: only from Flight (the hub is an excursion above a
-        // running game).
-        if(game.spaceCenterMs >= 0 && !game.spaceCenterFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.spaceCenterMs) {
-            game.spaceCenterFired = true;
-            if(sceneIs(game, SceneId::Flight)) { pushScene(game, SceneId::SpaceCenter); }
-        }
-        // --recover: fired after --space-center.
-        if(game.recoverMs >= 0 && !game.recoverFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.recoverMs) {
-            game.recoverFired = true;
-            // The active ship may be a free EVA kerbal, which recoverActive
-            // refuses -- recover the ship holding the findings.
-            if(game.ship != nullptr && game.ship->isEva()) {
-                for(auto *s : collectVehicles(game.sys)) {
-                    if(s->isEva()) { continue; }
-                    bool holdsFinding = false;
-                    for(Part *p : s->parts) {
-                        if(!p->experiments.empty()) { holdsFinding = true; break; }
-                    }
-                    if(holdsFinding) { game.select_ship(s); break; }
-                }
-            }
-            game.recoverActive();
-        }
-        // --experiment: mirrors the UI -- a walking kerbal runs it itself, else
-        // the active ship's first seat.
-        if(game.experimentMs >= 0 && !game.experimentFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.experimentMs) {
-            game.experimentFired = true;
-            if(game.ship == nullptr) {
-                printf("[hook] --experiment: no kerbal, ignored\n");
-            } else if(game.ship->isEva()) {
-                game.runExperiment(static_cast<Kerbal *>(game.ship));
-            } else {
-                std::vector<Part *> seats = shipSeats(game.ship);
-                if(seats.empty()) { printf("[hook] --experiment: no kerbal, ignored\n"); }
-                else { game.runSeatExperiment(seats.front()); }
-            }
-        }
-        // --pod-experiment: the active ship's first experiment-family part + its
-        // first seat.
-        if(game.podExperimentMs >= 0 && !game.podExperimentFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.podExperimentMs) {
-            game.podExperimentFired = true;
-            Part *pod = nullptr;
-            std::string runner;
-            if(game.ship != nullptr) {
-                for(Part *p : game.ship->parts) {
-                    if(p->def != nullptr && !p->def->experiment_family.empty()) {
-                        pod = p; break;
-                    }
-                }
-                std::vector<Part *> seats = shipSeats(game.ship);
-                if(!seats.empty()) { runner = seatName(seats.front()); }
-            }
-            if(pod != nullptr && !runner.empty()) { game.runPodExperiment(pod, runner); }
-            else { printf("[hook] --pod-experiment: no pod+kerbal, ignored\n"); }
-        }
-        // --eva: Game::kerbalEVA on the active ship's first seat. Fired before
-        // --take / --store in the e2e.
-        if(game.evaMs >= 0 && !game.evaFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.evaMs) {
-            game.evaFired = true;
-            std::vector<Part *> seats = game.ship != nullptr ? shipSeats(game.ship)
-                                                             : std::vector<Part *>{};
-            if(!seats.empty()) { game.kerbalEVA(seats.front()); }
-            else { printf("[hook] --eva: no crew aboard, ignored\n"); }
-        }
-        // --board: the reverse of --eva, so one process round-trips a person
-        // through their seat.
-        if(game.boardMs >= 0 && !game.boardFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.boardMs) {
-            game.boardFired = true;
-            Vehicle *ship = nullptr;
-            size_t part = 0;
-            Kerbal *k = nullptr;
-            /* Any vessel with a free seat, not just the active one: after an
-               EVA the walker stands beside the ship it left, and the e2e may
-               have switched control since. The walking crew are collected once:
-               freeKerbals walks the whole fleet, so calling it per candidate
-               part is quadratic in a fleet that is only getting bigger. */
-            const std::vector<Kerbal *> freeK = freeKerbals(game.sys);
-            for(auto *s : collectVehicles(game.sys)) {
-                for(size_t i = 0; i < s->parts.size(); i++) {
-                    Part *cap = s->parts[i];
-                    if(cap->def == nullptr || cap->def->crew_capacity <= 0) { continue; }
-                    if(cap->seatCount() >= cap->def->crew_capacity) { continue; }
-                    for(Kerbal *f : freeK) {
-                        if(game.kerbalInRange(f, cap)) {
-                            ship = s; part = i; k = f; break;
-                        }
-                    }
-                    if(k != nullptr) { break; }
-                }
-                if(k != nullptr) { break; }
-            }
-            if(k != nullptr) { game.kerbalBoard(k, ship, part); }
-            else { printf("[hook] --board: no kerbal in reach of a free seat, ignored\n"); }
-        }
-        // --take: move the first held finding off its instrument onto its courier
-        // (the kerbal's suit).
-        if(game.takeMs >= 0 && !game.takeFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.takeMs) {
-            game.takeFired = true;
-            Part *from = nullptr;   // the instrument holding a finding to take
-            Part *to = nullptr;     // the courier (the kerbal's suit)
-            // After an EVA the instrument sits on a DIFFERENT ship than the
-            // active one: search the whole fleet.
-            for(auto *s : collectVehicles(game.sys)) {
-                for(Part *p : s->parts) {
-                    if(p->def != nullptr && !p->experiments.empty()
-                       && p->def->experiment_storage == ExpStorage::Instrument) {
-                        from = p; break;
-                    }
-                }
-                if(from != nullptr) { break; }
-            }
-            // Needs a FREE (EVA) kerbal in reach of the part -- the Take
-            // button's gate (kerbalInRange).
-            if(from != nullptr) {
-                for(Kerbal *k : freeKerbals(game.sys)) {
-                    if(game.kerbalInRange(k, from) && !k->parts.empty()
-                       && k->parts[0]->canHold(from->experiments[0])) {
-                        to = k->parts[0]; break;
-                    }
-                }
-            }
-            if(from != nullptr && to != nullptr) { game.moveExperiment(from, to, 0); }
-            else { printf("[hook] --take: no instrument/free-kerbal-in-reach, ignored\n"); }
-        }
-        // --store: move the courier's first held finding onto its container
-        // (the capsule).
-        if(game.storeMs >= 0 && !game.storeFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.storeMs) {
-            game.storeFired = true;
-            Part *from = nullptr;   // the courier (the kerbal's suit)
-            Part *to = nullptr;     // the container (the capsule)
-            // After an EVA the container sits on a DIFFERENT ship: search the
-            // whole fleet.
-            for(auto *s : collectVehicles(game.sys)) {
-                for(Part *p : s->parts) {
-                    if(p->def != nullptr
-                       && p->def->experiment_storage == ExpStorage::Container) {
-                        to = p; break;
-                    }
-                }
-                if(to != nullptr) { break; }
-            }
-            // A FREE (EVA) kerbal in reach of the capsule, carrying a finding --
-            // the Store button's gate.
-            if(to != nullptr) {
-                for(Kerbal *k : freeKerbals(game.sys)) {
-                    if(game.kerbalInRange(k, to) && !k->parts.empty()
-                       && !k->parts[0]->experiments.empty()) {
-                        from = k->parts[0]; break;
-                    }
-                }
-            }
-            if(from != nullptr && to != nullptr) { game.moveExperiment(from, to, 0); }
-            else { printf("[hook] --store: no free-kerbal-in-reach/container, ignored\n"); }
-        }
-        // --tracking: fired after --space-center.
-        if(game.trackingMs >= 0 && !game.trackingFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.trackingMs) {
-            game.trackingFired = true;
-            pushScene(game, SceneId::TrackingStation);
-        }
-        // --tracking-close: popScene, fired after --tracking.
-        if(game.trackingCloseMs >= 0 && !game.trackingCloseFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.trackingCloseMs) {
-            game.trackingCloseFired = true;
-            if(sceneIs(game, SceneId::TrackingStation)) { popScene(game); }
-            else { printf("[hook] --tracking-close: not in the tracking station, ignored\n"); }
-        }
-        // --research: fired after --space-center.
-        if(game.researchMs >= 0 && !game.researchFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.researchMs) {
-            game.researchFired = true;
-            pushScene(game, SceneId::ResearchLab);
-        }
-        // --research-close: popScene, fired after --research.
-        if(game.researchCloseMs >= 0 && !game.researchCloseFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.researchCloseMs) {
-            game.researchCloseFired = true;
-            if(sceneIs(game, SceneId::ResearchLab)) { popScene(game); }
-            else { printf("[hook] --research-close: not in the research lab, ignored\n"); }
-        }
-        /* --atlas-dump: the System Atlas as text; reads the system, not the
-           window, so it works from any scene. The e2e cover for the dossier
-           (imgui Text rows are not clickable, so --ui-list cannot see them). */
-        if(game.atlasDumpMs >= 0 && !game.atlasDumpFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.atlasDumpMs) {
-            game.atlasDumpFired = true;
-            dumpAtlas(game);
-        }
-        /* --switch-system: Game::switchSystem. Before the scene is read -- it
-           tears the current system down and lands on Title. */
-        if(!game.switchSystemPath.empty() && game.switchSystemMs >= 0
-           && !game.switchSystemFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.switchSystemMs) {
-            game.switchSystemFired = true;
-            // A bad path throws from load_system: catch it, keep running on the
-            // current system.
-            try {
-                game.switchSystem(game.switchSystemPath);
-            } catch(const std::exception &e) {
-                printf("[switch] cannot switch to '%s': %s\n",
-                       game.switchSystemPath.c_str(), e.what());
-                fflush(stdout);
-                game.toast("Switch failed: %s", e.what());
-            }
-        }
-        vabFireHooks(game);
+        /* Headless hooks first, then the LIVE scene's per-frame step. A
+           launch collapses the stack to Flight, so the scene is read after
+           them. The bodies + registration order (the e2e relies on it) are
+           in installHeadlessHooks / vabInstallHooks. */
+        game.fireHooks(kHookPreScene);
         {
             const SceneDef &sc = curScene(game);
             sc.update(game);
         }
-        /* --select-target: the Target window's combo, headless. AFTER the state
-           pass on purpose: that pass is what rebuilds the planner's target list,
-           so the hook resolves against THIS frame's list -- a fresh one, and not
-           one still holding a vessel deleted since (its name pointer is borrowed
-           from the Vehicle). */
-        for(Game::SelectTargetHook &h : game.selectTargetHooks) {
-            if(h.fired || (int)(SDL_GetTicks() - game.loop_start_ms) < h.ms) {
-                continue;
-            }
-            h.fired = true;
-            game.xferPlanner.selectTargetByName(h.name == "none" ? std::string()
-                                                                : h.name);
-            // Say what the planner actually took: a name that is not a target
-            // now is dropped, not queued, so the case author sees a typo.
-            const int idx = game.xferPlanner.xfer_target;
-            const std::string where = idx >= 0 ? " (index " + std::to_string(idx) + ")"
-                                               : " (not in the target list)";
-            printf("[target] hook: selected \"%s\"%s\n",
-                   h.name.c_str(), where.c_str());
-            fflush(stdout);
-        }
+        /* --select-target hooks keep the old poll site: a vessel removed
+           earlier this frame has already had its xferTargets rows erased
+           (Game::dropVehicleRefs), so the name lookup cannot hit a borrowed
+           name pointer to a dead Vehicle. The list itself is rebuilt by the
+           state pass below, so its orbits are one frame old -- fine for a
+           name match (see installHeadlessHooks). */
+        game.fireHooks(kHookPostUpdate);
         pf_b = std::chrono::steady_clock::now();
 
         // Run the finished jobs' continuations BEFORE the UI reads the state
@@ -1475,15 +1462,9 @@ int main(int argc, char **argv)
             sc.refresh(game);
             pf_refresh = std::chrono::steady_clock::now();
 
-            /* --map-dump: the orbit map's plane basis per combo slot, AFTER the
-               state pass -- sc.refresh is what fills Game::hud.view, so dumping
-               before it silently reports a plausible-but-wrong basis. Needs an
-               active ship. */
-            if(game.mapDumpMs >= 0 && !game.mapDumpFired
-               && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.mapDumpMs) {
-                game.mapDumpFired = true;
-                dumpMapBasis(game);
-            }
+            /* --map-dump: AFTER the state pass -- sc.refresh is what fills
+               Game::hud.view (see installHeadlessHooks). */
+            game.fireHooks(kHookPostRefresh);
 
             check_gl_error();
             ImGui_ImplOpenGL3_NewFrame();

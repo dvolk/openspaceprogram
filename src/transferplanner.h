@@ -109,7 +109,6 @@ public:
         TransferSolution sol;
         glm::dvec3 burn_dir = glm::dvec3(0.0); // render-frame burn direction
     } xfer;
-    Uint32 xfer_log_last_ms = 0;
 
     // Last porkchopCompute() result.
     PorkchopResult pc;   // valid when pc.valid

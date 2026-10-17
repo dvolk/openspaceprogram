@@ -2702,12 +2702,12 @@ void drawUIMap(Game &g) {
             map_pan.y += g_io.MouseDelta.y;
         }
 
-        OrbitMap map;
-        map.cx = center_x + map_pan.x;
-        map.cy = center_y + map_pan.y;
-        map.scale = map_scale;
-        map.setPlane(plane_n, plane_x);
-        const ImVec2 focus_px = map.px(glm::dvec3(0.0, 0.0, 0.0));
+        OrbitMap proj;
+        proj.cx = center_x + map_pan.x;
+        proj.cy = center_y + map_pan.y;
+        proj.scale = map_scale;
+        proj.setPlane(plane_n, plane_x);
+        const ImVec2 focus_px = proj.px(glm::dvec3(0.0, 0.0, 0.0));
 
         // The body selected in the TARGET window, highlighted on the map; nullptr for a
         // ship target.
@@ -2723,13 +2723,13 @@ void drawUIMap(Game &g) {
             if(soi_m <= 0.0) { return; }
             const float r_px = (float)(soi_m / map_scale);
             if(r_px < 1.0f || r_px > 4000.0f) { return; }
-            map.drawRing(dl, center, soi_m, col, 1.0f);
+            proj.drawRing(dl, center, soi_m, col, 1.0f);
         };
 
         // Drawn before the ship's orbit so the ship sits on top.
         {
             const MapViewRect view{p0.x, p0.y, p0.x + map_w, p0.y + map_h};
-            drawSystemBodyOrbits(g, focus, map, dl, view, map_scale,
+            drawSystemBodyOrbits(g, focus, proj, dl, view, map_scale,
                                  sel_body, col_child, col_sel, ink,
                                  soi_col);
         }
@@ -2743,28 +2743,28 @@ void drawUIMap(Game &g) {
         // orbit line, with the same min-pixel floor as the body disk.
         const double atmo_top = focus->surface.atmosphere.top();
         if(atmo_top > 0.0) {
-            map.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0),
+            proj.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0),
                          focus->radius + atmo_top, col_atmo, 3.0f);
         }
         // closed=true for the ellipse; false for the open arc (a chord would close it).
-        map.drawOrbit(dl, *traj_pts, col_ship, 1.0f, closed);
-        map.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0), focus->radius,
+        proj.drawOrbit(dl, *traj_pts, col_ship, 1.0f, closed);
+        proj.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0), focus->radius,
                      col_body, 3.0f);
-        const ImVec2 ship_px = map.px(orbit_pos);
+        const ImVec2 ship_px = proj.px(orbit_pos);
         dl->AddLine(focus_px, ship_px, ink, 1.0f);
         dl->AddCircleFilled(ship_px, 5.0f, ink);
         dl->AddCircle(ship_px, 8.0f, col_ship, 0, 1.5f);
         // Prograde (velocity) arrow.
-        map.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
+        proj.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
         // Apside markers only mean anything for a non-circular orbit.
         if(o.ecc > 1e-3) {
-            if(have_peri) { map.drawDot(dl, peri_p, 4.0f, col_apsis); }
-            if(have_apo)  { map.drawDot(dl, apo_p,  4.0f, col_apsis); }
+            if(have_peri) { proj.drawDot(dl, peri_p, 4.0f, col_apsis); }
+            if(have_apo)  { proj.drawDot(dl, apo_p,  4.0f, col_apsis); }
         }
         // AN/DN against the plane this map is showing: always drawn when the
         // orbit is inclined to it, so picking "Target orbit" and reading where
         // the two curves cross is a glance, not a calculation.
-        drawMapNodes(map, dl, o, mu);
+        drawMapNodes(proj, dl, o, mu);
 
         // Every other ship in this body: its orbit (when closed) plus a dot + label. An escaping
         // ship has no closed orbit -- sample() returns empty -- so only its marker shows.
@@ -2786,9 +2786,9 @@ void drawUIMap(Game &g) {
                     orbit_caches[(const void *)s].sample(
                         r2, v2, mu, N, s->onRails);
                 if(!tpts.empty()) {
-                    map.drawOrbit(dl, tpts, col_vessel, 1.0f);
+                    proj.drawOrbit(dl, tpts, col_vessel, 1.0f);
                 }
-                const ImVec2 tpx = map.px(r2);
+                const ImVec2 tpx = proj.px(r2);
                 dl->AddCircleFilled(tpx, 3.0f, col_vessel);
                 // Label offset from the marker (px): +x right, -y up.
                 const float label_dx = 6.0f, label_dy = 14.0f;
@@ -2807,13 +2807,13 @@ void drawUIMap(Game &g) {
             // Even-in-anomaly (not uniform-in-time) so the leg draws with an even outline.
             std::vector<glm::dvec3> xfer_pts =
                 sampleTransferArc(orbit_pos, sol.v_departure, mu, sol.tof, 64);
-            map.drawOrbit(dl, xfer_pts, col_xfer, 1.5f, /*closed=*/false);
+            proj.drawOrbit(dl, xfer_pts, col_xfer, 1.5f, /*closed=*/false);
             const glm::dvec3 &arrival = xfer_pts.back();
-            map.drawDot(dl, arrival, 4.0f, col_xfer);
+            proj.drawDot(dl, arrival, 4.0f, col_xfer);
             char xfer_label[96];
             snprintf(xfer_label, sizeof(xfer_label), "%s  %.0f m/s",
                      xferTargets[xfer.target].name, sol.total_dv);
-            const ImVec2 apx = map.px(arrival);
+            const ImVec2 apx = proj.px(arrival);
             dl->AddText(ImVec2(apx.x + 5.0f, apx.y + 4.0f), col_xfer,
                         xfer_label);
         }
@@ -4283,11 +4283,11 @@ void drawTrackingMap(Game &g) {
             map_pan.y += g_io.MouseDelta.y;
         }
 
-        OrbitMap map;
-        map.cx = center_x + map_pan.x;
-        map.cy = center_y + map_pan.y;
-        map.scale = map_scale;
-        map.setPlane(plane_n, plane_x);
+        OrbitMap proj;
+        proj.cx = center_x + map_pan.x;
+        proj.cy = center_y + map_pan.y;
+        proj.scale = map_scale;
+        proj.setPlane(plane_n, plane_x);
 
         const ImVec4 bg = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
         const ImU32 ink       = contrastingColor(bg);
@@ -4302,7 +4302,7 @@ void drawTrackingMap(Game &g) {
         const ImU32 shell_col = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.35f));
         const ImU32 col_atmo = ImGui::GetColorU32(ImVec4(0.35f, 0.50f, 0.66f, 0.20f));
         ImDrawList *dl = ImGui::GetWindowDrawList();
-        const ImVec2 focus_px = map.px(glm::dvec3(0.0, 0.0, 0.0));
+        const ImVec2 focus_px = proj.px(glm::dvec3(0.0, 0.0, 0.0));
 
         TerrainBody *sel_body = nullptr;
         if(xfer_target >= 0 && xfer_target < (int)xferTargets.size() &&
@@ -4315,15 +4315,15 @@ void drawTrackingMap(Game &g) {
             if(soi_m <= 0.0) { return; }
             const float r_px = (float)(soi_m / map_scale);
             if(r_px < 1.0f || r_px > 4000.0f) { return; }
-            map.drawRing(dl, center, soi_m, col, 1.0f);
+            proj.drawRing(dl, center, soi_m, col, 1.0f);
         };
 
         // Drawn before the ship's orbit so the ship sits on top.
         {
             const MapViewRect view{p0.x, p0.y, p0.x + mapW, p0.y + mapH};
             // Belts go down first: orbits, bodies and labels should read through them.
-            drawDebrisBelts(g, focus, map, dl, view, map_scale);
-            drawSystemBodyOrbits(g, focus, map, dl, view, map_scale,
+            drawDebrisBelts(g, focus, proj, dl, view, map_scale);
+            drawSystemBodyOrbits(g, focus, proj, dl, view, map_scale,
                                  sel_body, col_child, col_sel, ink,
                                  soi_col);
         }
@@ -4333,27 +4333,27 @@ void drawTrackingMap(Game &g) {
 
         const double atmo_top = focus->surface.atmosphere.top();
         if(atmo_top > 0.0) {
-            map.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0),
+            proj.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0),
                          focus->radius + atmo_top, col_atmo, 3.0f);
         }
-        map.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0), focus->radius, col_body, 3.0f);
+        proj.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0), focus->radius, col_body, 3.0f);
 
         // The ship itself: its orbit (open arc uses closed=false so a chord does not close
         // it), a dot with a green ring, the prograde arrow and the apside markers.
         if(ship) {
-            map.drawOrbit(dl, *traj_pts, col_ship, 1.0f, closed);
-            const ImVec2 ship_px = map.px(orbit_pos);
+            proj.drawOrbit(dl, *traj_pts, col_ship, 1.0f, closed);
+            const ImVec2 ship_px = proj.px(orbit_pos);
             dl->AddLine(focus_px, ship_px, ink, 1.0f);
             dl->AddCircleFilled(ship_px, 5.0f, ink);
             dl->AddCircle(ship_px, 8.0f, col_ship, 0, 1.5f);
             // Prograde (velocity) arrow.
-            map.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
+            proj.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
             // Apside markers only mean anything for a non-circular orbit.
             if(o.ecc > 1e-3) {
-                if(have_peri) { map.drawDot(dl, peri_p, 4.0f, col_apsis); }
-                if(have_apo)  { map.drawDot(dl, apo_p,  4.0f, col_apsis); }
+                if(have_peri) { proj.drawDot(dl, peri_p, 4.0f, col_apsis); }
+                if(have_apo)  { proj.drawDot(dl, apo_p,  4.0f, col_apsis); }
             }
-            drawMapNodes(map, dl, o, mu);
+            drawMapNodes (proj, dl, o, mu);
 
             // Every ship in the system -- any SOI: a Kepler conic around its OWN central body,
             // projected into the focus's frame. An escaping ship has no closed orbit -- sample()
@@ -4386,9 +4386,9 @@ void drawTrackingMap(Game &g) {
                         for(const glm::dvec3 &pt : tpts_c) {
                             tpts_f.push_back(O * pt + P);
                         }
-                        map.drawOrbit(dl, tpts_f, col_vessel, 1.0f);
+                        proj.drawOrbit(dl, tpts_f, col_vessel, 1.0f);
                     }
-                    const ImVec2 tpx = map.px(O * r2 + P);
+                    const ImVec2 tpx = proj.px(O * r2 + P);
                     dl->AddCircleFilled(tpx, 3.0f, col_vessel);
                     // Label offset from the marker (px): +x right, -y up.
                     const float label_dx = 6.0f, label_dy = 14.0f;

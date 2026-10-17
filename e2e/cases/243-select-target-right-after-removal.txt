@@ -2,7 +2,8 @@
 # the list at once: the planner only rebuilds it in the state pass, and anything
 # that scans the list in between used to read freed memory (asan: UAF in
 # selectTargetByName, strlen on Vehicle::name). The --select-target hook is that
-# scanner, and it now runs AFTER the state pass so it sees this frame's list.
+# scanner; the fix is Game::dropVehicleRefs erasing the rows AT REMOVAL, so the
+# hook is safe wherever its phase polls (after sc.update, before the rebuild).
 # Pin the behaviour the fix guarantees: a selection made a frame after a
 # sibling's removal names the vessel it names, at the shifted index -- not the
 # row its name pointer used to occupy.

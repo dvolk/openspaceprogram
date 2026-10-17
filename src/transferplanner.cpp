@@ -316,9 +316,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
 
     // --xfer-log: the planner's current solution.
     if(g.args.xfer_log && xfer_target >= 0 && xfer_compute) {
-        const Uint32 now_ms = SDL_GetTicks();
-        if(now_ms - xfer_log_last_ms >= g.orbit_log_interval_ms) {
-            xfer_log_last_ms = now_ms;
+        if(g.logDue(kGateXfer, SDL_GetTicks(), g.orbit_log_interval_ms)) {
             const char *tn = xferTargets[xfer_target].name;
             if(xfer.valid) {
                 printf("[xferlog] t=%.1fs target=\"%s\" dv_dep=%.6g m/s "

@@ -26,6 +26,31 @@
 #include "uiwins.h"   // setWinOpen (W_FlightSummary)
 #include "calendar.h" // fmt_cal_duration
 
+/* Register a headless test hook (see HookPhase). Boot-time only: fireHooks
+   holds references into the vector, so a hook's act() must not add hooks. */
+void Game::addHook(HookPhase phase, int ms,
+                   std::function<bool(Game &)> gate,
+                   std::function<void(Game &)> act) {
+    assert((int)phase >= 0 && (int)phase < kHookPhaseCount);
+    hooks[(size_t)phase].push_back({ms, false, std::move(gate), std::move(act)});
+    hooks_pending[(size_t)phase]++;
+}
+
+/* Headless test hooks: each fires at most once, at/after its ms from loop
+   start, gate permitting. Registration order within a phase IS the firing
+   order (see GameHook). */
+void Game::fireHooks(HookPhase phase) {
+    if(hooks_pending[(size_t)phase] == 0) { return; }
+    const int ms = (int)(SDL_GetTicks() - loop_start_ms);
+    for(GameHook &h : hooks[(size_t)phase]) {
+        if(h.fired || ms < h.ms) { continue; }
+        if(h.gate && !h.gate(*this)) { continue; }
+        h.fired = true;
+        hooks_pending[(size_t)phase]--;
+        h.act(*this);
+    }
+}
+
 glm::dvec3 Game::focusWorldPos(int i) const {
     // Render frame: ship's frame, or home's when there is no ship (orbit view).
     Frame *rf = ship ? ship->frame : home->frame;

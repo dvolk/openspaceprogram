@@ -88,9 +88,12 @@ void drawVabSeatWindow(Game &g);
 
 void vabAimCamera(Game &g);
 
-// Per-frame step while the Vab scene is live (the sim does not tick).
-// vabFireHooks runs FIRST (a launch flips the scene to Flight).
-void vabFireHooks(Game &g);
+// Register the headless VAB hooks at boot, before the main loop. Most join
+// the pre-scene phase (a launch flips the scene to Flight); --vab-place joins
+// the phase fired inside vabUpdate, after the hover pass that arms the ghost.
+void vabInstallHooks(Game &g);
+// Per-frame step while the Vab scene is live. The sim keeps ticking around it
+// (scene.cpp vabUpdateLive: vabUpdate then tick).
 void vabUpdate(Game &g);
 
 // Scene transitions. The Vab is a LIVE scene (sim keeps coasting). Open/Close

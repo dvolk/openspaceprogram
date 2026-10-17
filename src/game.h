@@ -324,7 +324,34 @@ struct Question {
    is polled. */
 enum LogGate { kGateOrbit, kGateDbg, kGateInfo, kGateAtt, kGateShake,
                kGateCam, kGateEva, kGateDrag, kGateTerrain, kGatePlane,
-               kGateSkyDim, kGateCount };
+               kGateSkyDim, kGateXfer, kGateCount };
+
+/* A headless test hook (cli.h --vab-* etc): fires act() once, at/after ms
+   from loop start (Game::loop_start_ms). Registered at boot from the CLI
+   args -- installHeadlessHooks (main.cpp) and vabInstallHooks (vab.cpp) --
+   and polled by Game::fireHooks at the phase points below. Registration
+   order within a phase IS the firing order, and the e2e cases depend on it
+   (e.g. --eva before --take). gate is an extra per-frame condition: the VAB
+   hooks only fire while the VAB is the live scene, and --vab-place also
+   waits for the mouse to be off the UI. */
+struct GameHook {
+    int ms;
+    bool fired = false;
+    std::function<bool(Game &)> gate;   // empty = always eligible
+    std::function<void(Game &)> act;
+};
+
+/* Where in the frame a phase's hooks are polled. The split is semantic: a
+   --reload decides the scene, so it runs before the scene is read; the
+   --select-target hook keeps the old poll site (after sc.update, so this
+   frame's removals have already erased their xferTargets rows -- see
+   Game::dropVehicleRefs); --map-dump needs the g.hud.view that sc.refresh
+   fills. */
+enum HookPhase { kHookPreScene,    // before the live scene's update
+                 kHookVabPlace,    // inside vabUpdate, after the hover pass
+                 kHookPostUpdate,  // after sc.update
+                 kHookPostRefresh, // after sc.refresh
+                 kHookPhaseCount };
 
 struct Game {
     // --- borrowed subsystems (main creates + deletes) ---------------------
@@ -363,120 +390,17 @@ struct Game {
     std::vector<SceneFrame> sceneStack;
     VabState vab;
 
-    /* Headless test hooks (cli.h --vab-* etc). Negative time = "never"; each
-       `fired` latches so a hook fires at most once per run. */
-    struct VabHooks {
-        int placeMs = -1, loadMs = -1, launchMs = -1, closeMs = -1;
-        int detachIdx = -1, detachMs = -1;   // --vab-detach part index + time
-        int saveMs = -1;
-        std::string loadPath, savePath;
-        bool placeFired = false, loadFired = false, launchFired = false,
-             closeFired = false, detachFired = false, saveFired = false;
-        /* --vab-assign MS,PART_IDX,SLOT,KERBAL, repeatable: the headless
-           stand-in for the seat window. It opens that window as it assigns, so
-           --ui-list can see what the player would see. */
-        struct Assign {
-            int ms, partIdx, slot;
-            std::string kerbal;
-            bool fired = false;
-        };
-        std::vector<Assign> assigns;
-        /* --vab-link MS,FROM_ID,TO_ID (repeatable): the headless fuel-link
-           click. It sets the same state a hovered part would (linkFromId +
-           hover) and fires vabLinkClick, so the authoring guards -- a duplicate
-           direction, a loop -- run exactly as they do under the mouse. */
-        struct Link {
-            int ms;
-            std::string from, to;
-            bool fired = false;
-        };
-        std::vector<Link> links;
-    };
-    VabHooks vabHooks;
-
-    // The rest follow the same pattern: "<name>Ms" (-1 = never) + "<name>Fired".
-    // --new-game
-    int newGameMs = -1;
-    bool newGameFired = false;
-
-    // --reload DIR / --reload-at MS
-    std::string reloadDir;
-    int reloadMs = -1;
-    bool reloadFired = false;
-
-    // --quit-title MS
-    int quitTitleMs = -1;
-    bool quitTitleFired = false;
-
-    // --space-center MS
-    int spaceCenterMs = -1;
-    bool spaceCenterFired = false;
-
-    // --recover MS
-    int recoverMs = -1;
-    bool recoverFired = false;
-
-    /* --select-target MS,NAME, repeatable: the headless stand-in for the Target
-       window's combo, whose dropdown is invisible to --ui-click (#251). It goes
-       through TransferPlanner::selectTarget, the same call the combo makes, so
-       it exercises the selection's identity handling rather than a parallel
-       name-lookup path. */
-    struct SelectTargetHook {
-        int ms;
-        std::string name;
-        bool fired = false;
-    };
-    std::vector<SelectTargetHook> selectTargetHooks;
-
-    // --experiment MS (suit observation)
-    int experimentMs = -1;
-    bool experimentFired = false;
-
-    // --pod-experiment MS
-    int podExperimentMs = -1;
-    bool podExperimentFired = false;
-
-    // --eva MS
-    int evaMs = -1;
-    bool evaFired = false;
-
-    // --board MS: the reverse of --eva (Game::kerbalBoard)
-    int boardMs = -1;
-    bool boardFired = false;
-
-    // --take MS / --store MS: move a finding to a courier / to a container
-    int takeMs = -1;
-    bool takeFired = false;
-
-    int storeMs = -1;
-    bool storeFired = false;
-
-    // --tracking MS / --tracking-close MS
-    int trackingMs = -1;
-    bool trackingFired = false;
-
-    int trackingCloseMs = -1;
-    bool trackingCloseFired = false;
-
-    // --research MS / --research-close MS
-    int researchMs = -1;
-    bool researchFired = false;
-
-    int researchCloseMs = -1;
-    bool researchCloseFired = false;
-
-    // --atlas-dump MS: System Atlas rows + dossiers to stdout
-    int atlasDumpMs = -1;
-    bool atlasDumpFired = false;
-
-    // --map-dump MS: the map's plane basis per combo slot, to stdout
-    int mapDumpMs = -1;
-    bool mapDumpFired = false;
-
-    // --switch-system FILE / --switch-at MS
-    std::string switchSystemPath;
-    int switchSystemMs = -1;
-    bool switchSystemFired = false;
+    /* Headless test hooks (cli.h --vab-* etc): registered at boot by
+       installHeadlessHooks (main.cpp) + vabInstallHooks (vab.cpp), fired
+       once each by fireHooks at the phase points. Negative time = "never";
+       each hook's `fired` latches so it fires at most once per run. */
+    std::array<std::vector<GameHook>, kHookPhaseCount> hooks;
+    // Unlatched hooks per phase; lets fireHooks skip a phase with none.
+    std::array<int, kHookPhaseCount> hooks_pending = {};
+    void addHook(HookPhase phase, int ms,
+                 std::function<bool(Game &)> gate,
+                 std::function<void(Game &)> act);
+    void fireHooks(HookPhase phase);
 
     // What save_game records -- not args.system_file. Updated by switchSystem.
     std::string systemPath;
@@ -528,6 +452,7 @@ struct Game {
     const Uint32 orbit_log_interval_ms = (Uint32)(args.orbit_interval * 1000.0);
     // True once per interval_ms, stamping the gate as it fires.
     bool logDue(LogGate gate, Uint32 now_ms, Uint32 interval_ms) {
+        assert(gate >= 0 && gate < kGateCount);
         Uint32 &last = log_last_ms[(size_t)gate];
         if(now_ms - last < interval_ms) { return false; }
         last = now_ms;
