@@ -140,6 +140,17 @@ public:
     // interesting window for a planet is months, for a co-orbital phasing leg
     // longer still, and no fixed ceiling fits both.
     double pc_period = 0.0;
+    /* The ToF ceiling the UI offers for the current target: nine target periods,
+       never below the week the range sliders used to stop at. The auto sweep and
+       a default grid search three of them (tof_max), and the porkchop range
+       sliders let a grid go to nine, so nine covers every cell a plan can be
+       armed from. One definition because the Target window's manual ToF slider and
+       the porkchop range sliders must not disagree (issue #255). */
+    double xfer_tof_ceiling() const {
+        const double period = pc_period > 0.0 ? pc_period : 86400.0;
+        const double nine = 9.0 * period;
+        return nine > 604800.0 ? nine : 604800.0;
+    }
     double pc_computed_at = 0.0;
     // "Send best": absolute departure time to count down to. Dropped on target change.
     bool   xfer_from_porkchop = false;

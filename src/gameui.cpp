@@ -763,24 +763,20 @@ void drawUIReadouts(Game &g) {
             // The human ToF rides on the slider row: the solution block below
             // already prints a ToF line, and echoing it here as a second row
             // read as the window showing two different answers.
-            /* The band has to cover what the planner can pin here. A porkchop
-               sweep searches ToF 60 s .. three target periods (pc_period is one
-               of them), and the cheapest Jupiter cell is ~11 years -- past the
-               hardcoded 7.5 (366 days). imgui clamps a slider only on
-               INTERACTION, so an out-of-band plan draws with its grab jammed at
-               the end and survives until the player touches the slider, which
-               silently drops an 11-year plan to 366 days (#255). The ends follow
-               the current value too, so the widget cannot misrepresent or clip a
-               plan it is showing. */
-            float tof_lo = std::min(1.8f, xfer_tof_log);
-            float tof_hi = std::max(7.5f, xfer_tof_log);
-            if(planner.pc_period > 0.0) {
-                tof_hi = std::max(tof_hi,
-                                  (float)std::log10(3.0 * planner.pc_period));
-            }
+            /* The band is the target's own ToF range and must NOT follow the
+               current value: imgui maps the pointer to an absolute fraction of the
+               band on every held frame, so a band whose end IS the value decays it
+               toward the floor while the button is held, and can never raise it.
+               The ceiling is the porkchop range sliders' own end (one definition,
+               transferplanner.h), so no grid cell can arm a plan the slider cannot
+               show; the floor is the 60 s every sweep starts at. A value outside
+               the band can only come from switching to a shorter-period target, and
+               the grab sitting at the end says so before a touch corrects it. */
             ImGui::PushItemWidth(150.0f);
             ImGui::SliderFloat("log10(ToF s)", &xfer_tof_log,
-                               tof_lo, tof_hi, "%.2f");
+                               1.7782f,   // log10(60 s)
+                               (float)std::log10(planner.xfer_tof_ceiling()),
+                               "%.2f");
             ImGui::SameLine();
             char tof_s[40];
             ImGui::TextDisabled("%s", fmt_time(std::pow(10.0, xfer_tof_log),
@@ -870,7 +866,9 @@ void drawUIReadouts(Game &g) {
         // stop at: a moon's three periods are hours, and a player exploring
         // past them should not find the handle shorter than before.
         const float dep_max = (float)std::max(3.0 * period, 604800.0);
-        const float tof_max = (float)std::max(9.0 * period, 604800.0);
+        // The same ceiling the Target window's manual ToF slider offers, so a cell
+        // inside these sliders is always a cell that slider can display.
+        const float tof_max = (float)planner.xfer_tof_ceiling();
         if(ImGui::Checkbox("Departure range", &planner.pcCustomDep)
            && planner.pcCustomDep) {
             // Just enabled: start from what the last sweep actually used.

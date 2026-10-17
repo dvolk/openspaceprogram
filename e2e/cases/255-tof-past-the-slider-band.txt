@@ -6,9 +6,11 @@
 # imgui clamps a slider only on INTERACTION, so an out-of-band value survives a
 # passive draw -- what it cannot do is be adjusted. The grab drew jammed at the end
 # of the track, and the first touch of the slider dropped a 14-year plan inside the
-# band with no indication. The band now follows the target's own range.
-# The last CHECK is the red one: pre-fix, this exact click landed at log10 ToF 6.56
-# (3.6e6 s, a 409 km/s burn) because 7.5 was the ceiling the widget could express.
+# band with no indication. The band now follows the TARGET, never the value.
+# The second CHECK is the regression tripwire, and it is deliberately loose: the
+# click lands at the centre of the item's rect, ~83% along the track, so 1e7 needs
+# only 67% and survives a layout change. Pre-fix this exact click gave tof=3.6e6 s
+# (a 409 km/s burn) because log10 7.5 was the top of what the widget could express.
 NAME tof-past-the-slider-band
 ARGS --system res/systems/solar_system.json --time-accel 1 --timeout 16
 ARGS --startship racer,res/ships/racer.json,Sun,heli-earth --transfer-target Jupiter
@@ -20,8 +22,12 @@ ARGS --ui-click 6000,"Target/Auto ToF (min dv)"
 ARGS --ui-click 9000,"Target/log10(ToF s)"
 EXPECT path="Target/log10(ToF s)" window=
 CHECK xfer[0]["tof"] > 3.1623e7
-CHECK last(xfer)["tof"] > 3.1623e7
-CHECK last(xfer)["tof"] != xfer[0]["tof"]
+CHECK last(xfer)["tof"] > 1e7
+# A held slider must settle at ONE value. imgui recomputes the value from the
+# pointer's absolute fraction of the band every frame, so a band whose end is the
+# value itself decays it geometrically while the button is down -- the ToF free-falls
+# under a handle that barely moves.
+CHECK len(set(x["tof"] for x in xfer if x["t"] > 10.0)) == 1
 FORBID Assertion
 FORBID Segmentation
 FORBID GL_
