@@ -339,6 +339,7 @@ void drawUIReadouts(Game &g) {
     TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
     System &sys = g.sys;
+    Fleet &fleet = g.vehicles;
     GameArgs &args = g.args;
     Camera *camera = g.camera;
     int &time_accel = g.time_accel;
@@ -1833,15 +1834,12 @@ void drawUIReadouts(Game &g) {
     drawWin(g, W_ShipList, [&] {
     // Buttons (natural width) + SameLine: a full-width Selectable in this auto-resize
     // window would push the "x" off the line.
-    // Static fleet buffer: this window redraws every frame, and the per-row
-    // "x##rm_<name>" label is built on the stack for the same reason. Not
-    // reentrant -- nothing the buttons below call may redraw this window, or
-    // collectVehiclesInto would refill the vector being iterated.
-    static std::vector<Vehicle *> all;
-    collectVehiclesInto(sys, all);
+    /* Walked by index because a row's "x" erases from the live fleet. The loop
+       stops the moment a row really goes away (see `removed` below), so no index
+       is reused after the erase. */
     bool removed = false;
-    for(size_t i = 0; i < all.size() && !removed; i++) {
-        Vehicle *v = all[i];
+    for(size_t i = 0; i < fleet.size() && !removed; i++) {
+        Vehicle *v = fleet[i];
         const bool active = (v == ship);
         ImGui::PushID((void*)v);
         /* Every row is a controllable vessel: a seated kerbal is a seat on its
@@ -2024,6 +2022,7 @@ void drawUIReadouts(Game &g) {
    by pickAt). Plain Begin/End -- user-placed popups, NOT slot-layout windows. Staging
    that drops the part leaves the entry stale (dropped, not re-pointed). */
 void drawPartWindows(Game &g) {
+    Fleet &fleet = g.vehicles;
     for(int i = (int)g.part_sels.size() - 1; i >= 0; i--) {
         const size_t idx = (size_t)i;
         PartSel &live = g.part_sels[idx];
@@ -2203,7 +2202,7 @@ void drawPartWindows(Game &g) {
                 // the buttons below must not redraw this window, or the walk
                 // refills the vector being iterated.
                 static std::vector<Kerbal *> free_ks;
-                freeKerbalsInto(g.sys, free_ks);
+                freeKerbalsInto(fleet, free_ks);
                 for(Kerbal *k : free_ks) {
                     // Board/Store gate: the same kerbalInRange the Take button and the headless hooks use.
                     if(!g.kerbalInRange(k, ship->parts[part])) { continue; }
@@ -2306,7 +2305,7 @@ void drawPartWindows(Game &g) {
                     bool anyTake = false;
                     // Reused buffer + stack label (see the Board loop above).
                     static std::vector<Kerbal *> take_ks;
-                    freeKerbalsInto(g.sys, take_ks);
+                    freeKerbalsInto(fleet, take_ks);
                     for(Kerbal *k : take_ks) {
                         // A successful take empties the pod; the next iteration's
                         // canHold(pod->experiments[0]) would read an empty vector.
@@ -2360,14 +2359,14 @@ void drawPartWindows(Game &g) {
                 }
                 // Free item ships in range: a Pick up button each (a crewed ship is not stowable).
                 bool anyInRange = false;
-                // Reused buffer: this popup redraws every frame. Same snapshot
-                // semantics as collectVehicles' by-value return -- the buffer
-                // outlives the loop, so a mid-loop pickUpItem is no more
-                // surprising here than it was. Not reentrant: nothing below
-                // may redraw this window, or the walk refills what we iterate.
-                static std::vector<Vehicle *> nearby;
-                collectVehiclesInto(g.sys, nearby);
-                for(Vehicle *v : nearby) {
+                /* Walked by index because a successful "Pick up" deletes a
+                   vehicle, and a delete erases it from the live fleet. The loop
+                   stops there rather than continuing over a shifted index: the
+                   window redraws next frame anyway, which is what `worldChanged`
+                   is for. */
+                bool stowed = false;
+                for(size_t ni = 0; ni < fleet.size() && !stowed; ni++) {
+                    Vehicle *v = fleet[ni];
                     if(v->isEva()) { continue; }
                     if(v->parts.size() != 1) { continue; }
                     if(v->parts[0]->container != nullptr) { continue; }
@@ -2393,6 +2392,7 @@ void drawPartWindows(Game &g) {
                         if(g.pickUpItem(v, cont)) {
                             if(wasFlying) { g.select_ship(cont->owner); }
                             worldChanged = true;
+                            stowed = true;
                         }
                     }
                     ImGui::PopID();
@@ -2495,6 +2495,7 @@ void drawUIMap(Game &g) {
     syncShipView(g);
     TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
+    Fleet &fleet = g.vehicles;
     OrbitElements &o = g.hud.view.o;
     double &mu = g.hud.view.mu;
     glm::dvec3 &orbit_pos = g.hud.view.orbit_pos;
@@ -2770,7 +2771,7 @@ void drawUIMap(Game &g) {
         // ship has no closed orbit -- sample() returns empty -- so only its marker shows.
         {
             Frame *inertial = ship->frame->getNonRotFrame();
-            for(auto *s : focus->ships) {
+            for(auto *s : fleet) {
                 if(s == ship || !s->frame || s->frame->body != focus) {
                     continue;
                 }
@@ -3093,7 +3094,7 @@ void drawSpaceCenterTopBar(Game &g) {
         ImGui::SameLine();
         ImGui::TextDisabled("|");
         ImGui::SameLine();
-        ImGui::Text("Vessels: %d", (int)countVehicles(g.sys));
+        ImGui::Text("Vessels: %d", (int)g.vehicles.size());
     });
 }
 
@@ -4100,21 +4101,19 @@ void drawVabUI(Game &g) {
 
 void drawTrackingShipList(Game &g) {
     Vehicle *ship = g.ship;
-    System &sys = g.sys;
+    Fleet &fleet = g.vehicles;
     drawWin(g, W_TrackingShipList, [&] {
     // Back to the hub (the frame below); Esc does the same (trackingKeyActions).
     if(ImGui::Button("Back to Space Center")) {
         popScene(g);
     }
     ImGui::Separator();
-    // Static fleet buffer + stack label: redrawn every frame in this scene.
-    // Not reentrant -- nothing the buttons below call may redraw this window,
-    // or collectVehiclesInto would refill the vector being iterated.
-    static std::vector<Vehicle *> all;
-    collectVehiclesInto(sys, all);
+    /* Walked by index because a row's "x" erases from the live fleet. The loop
+       stops the moment a row really goes away (see `removed` below), so no index
+       is reused after the erase. */
     bool removed = false;
-    for(size_t i = 0; i < all.size() && !removed; i++) {
-        Vehicle *v = all[i];
+    for(size_t i = 0; i < fleet.size() && !removed; i++) {
+        Vehicle *v = fleet[i];
         const bool active = (v == ship);
         ImGui::PushID((void*)v);
         /* Every row is a controllable vessel: a seated kerbal is a seat on its
@@ -4166,7 +4165,6 @@ void drawTrackingMap(Game &g) {
     double &mu = g.hud.view.mu;
     glm::dvec3 &orbit_pos = g.hud.view.orbit_pos;
     glm::dvec3 &orbit_vel = g.hud.view.orbit_vel;
-    std::vector<TerrainBody *> &planets = g.sys.bodies;
     float &map_scale = g.map.scale;
     int &map_plane = g.map.plane;
     ImVec2 &map_pan = g.map.pan;
@@ -4358,43 +4356,41 @@ void drawTrackingMap(Game &g) {
             // Every ship in the system -- any SOI: a Kepler conic around its OWN central body,
             // projected into the focus's frame. An escaping ship has no closed orbit -- sample()
             // returns empty -- so only its marker shows.
-            for(auto *b : planets) {
-                for(auto *s : b->ships) {
-                    if(s == ship || !s->frame) { continue; }
-                    Frame *inertial = s->frame->getNonRotFrame();
-                    const double mu_c = inertial ? inertial->body->mu : 0.0;
-                    if(!inertial || mu_c <= 0.0) { continue; }
-                    // The ship's state in its central body's inertial frame.
-                    const glm::dvec3 tcom = s->get_center_of_mass();
-                    const glm::dmat3 Oc = s->frame->GetOrientRelTo(inertial);
-                    const glm::dvec3 r2 = Oc * tcom
-                                         + s->frame->GetPositionRelTo(inertial);
-                    const glm::dvec3 v2 = Oc * (s->GetVel()
-                                               + s->frame->GetStasisVelocity(tcom))
-                                         + s->frame->GetVelocityRelTo(inertial);
-                    const int N = 64;
-                    const std::vector<glm::dvec3> &tpts_c =
-                        orbit_caches[(const void *)s].sample(
-                            r2, v2, mu_c, N, s->onRails);
-                    // Into the focus's frame (central body -> focus).
-                    const glm::dmat3 O = inertial->GetOrientRelTo(focus->frame);
-                    const glm::dvec3 P = inertial->GetPositionRelTo(focus->frame);
-                    if(!tpts_c.empty()) {
-                        static thread_local std::vector<glm::dvec3> tpts_f;
-                        tpts_f.clear();
-                        tpts_f.reserve(tpts_c.size());
-                        for(const glm::dvec3 &pt : tpts_c) {
-                            tpts_f.push_back(O * pt + P);
-                        }
-                        proj.drawOrbit(dl, tpts_f, col_vessel, 1.0f);
+            for(auto *s : g.vehicles) {
+                if(s == ship || !s->frame) { continue; }
+                Frame *inertial = s->frame->getNonRotFrame();
+                const double mu_c = inertial ? inertial->body->mu : 0.0;
+                if(!inertial || mu_c <= 0.0) { continue; }
+                // The ship's state in its central body's inertial frame.
+                const glm::dvec3 tcom = s->get_center_of_mass();
+                const glm::dmat3 Oc = s->frame->GetOrientRelTo(inertial);
+                const glm::dvec3 r2 = Oc * tcom
+                                     + s->frame->GetPositionRelTo(inertial);
+                const glm::dvec3 v2 = Oc * (s->GetVel()
+                                           + s->frame->GetStasisVelocity(tcom))
+                                     + s->frame->GetVelocityRelTo(inertial);
+                const int N = 64;
+                const std::vector<glm::dvec3> &tpts_c =
+                    orbit_caches[(const void *)s].sample(
+                        r2, v2, mu_c, N, s->onRails);
+                // Into the focus's frame (central body -> focus).
+                const glm::dmat3 O = inertial->GetOrientRelTo(focus->frame);
+                const glm::dvec3 P = inertial->GetPositionRelTo(focus->frame);
+                if(!tpts_c.empty()) {
+                    static thread_local std::vector<glm::dvec3> tpts_f;
+                    tpts_f.clear();
+                    tpts_f.reserve(tpts_c.size());
+                    for(const glm::dvec3 &pt : tpts_c) {
+                        tpts_f.push_back(O * pt + P);
                     }
-                    const ImVec2 tpx = proj.px(O * r2 + P);
-                    dl->AddCircleFilled(tpx, 3.0f, col_vessel);
-                    // Label offset from the marker (px): +x right, -y up.
-                    const float label_dx = 6.0f, label_dy = 14.0f;
-                    dl->AddText(ImVec2(tpx.x + label_dx, tpx.y - label_dy),
-                                col_vessel, s->name.c_str());
+                    proj.drawOrbit(dl, tpts_f, col_vessel, 1.0f);
                 }
+                const ImVec2 tpx = proj.px(O * r2 + P);
+                dl->AddCircleFilled(tpx, 3.0f, col_vessel);
+                // Label offset from the marker (px): +x right, -y up.
+                const float label_dx = 6.0f, label_dy = 14.0f;
+                dl->AddText(ImVec2(tpx.x + label_dx, tpx.y - label_dy),
+                            col_vessel, s->name.c_str());
             }
         }
 

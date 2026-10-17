@@ -549,11 +549,9 @@ void paintWorld(Game &g) {
             }
         }
         // Ships in another frame are transformed into the render frame by
-        // Vehicle::Draw. Body lists hold the free ships + EVA characters.
-        for(auto *b : planets) {
-            for(auto *s : b->ships) {
-                s->Draw(camera, rf);
-            }
+        // Vehicle::Draw. The fleet is one list; a ship's frame is its own.
+        for(auto *s : g.vehicles) {
+            s->Draw(camera, rf);
         }
     }
 

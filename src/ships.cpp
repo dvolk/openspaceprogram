@@ -83,30 +83,6 @@ DebugStartShips loadDebugStartShips(const char *path) {
     return list;
 }
 
-void collectVehiclesInto(System &sys, std::vector<Vehicle *> &out) {
-    out.clear();
-    /* Every vessel in the world. A seated kerbal is NOT here -- it is a seat on
-       its capsule's Part (part.h), so the walk has no crew leg. */
-    for(auto *b : sys.bodies) {
-        for(auto *s : b->ships) { out.push_back(s); }
-    }
-}
-
-std::vector<Vehicle *> collectVehicles(System &sys) {
-    std::vector<Vehicle *> out;
-    collectVehiclesInto(sys, out);
-    return out;
-}
-
-size_t countVehicles(System &sys) {
-    // Walked through collectVehiclesInto so the membership rule cannot drift
-    // from the canonical list. The buffer is reused, so this costs no
-    // allocation per call.
-    static thread_local std::vector<Vehicle *> buf;
-    collectVehiclesInto(sys, buf);
-    return buf.size();
-}
-
 Ships::Ships(const std::string &parts_file, Shader *partsshader, TerrainBody *sun,
              CrewRoster &roster)
     : part_catalog(load_parts_catalog(resdir::path(parts_file).c_str())),
@@ -118,10 +94,10 @@ Ships::Ships(const std::string &parts_file, Shader *partsshader, TerrainBody *su
 
 Vehicle *Ships::place_ship(const std::string &shipDefPath, const std::string &wantName,
                            TerrainBody *hb, const ScenarioDef *sc, System &sys,
-                           double t, const StaticBuilding *site)
+                           Fleet &fleet, double t, const StaticBuilding *site)
 {
     return place_ship_def(load_ship_def(resdir::path(shipDefPath).c_str(), part_catalog),
-                          shipDefPath, wantName, hb, sc, sys, t, site);
+                          shipDefPath, wantName, hb, sc, sys, fleet, t, site);
 }
 
 bool Ships::kerbalDefConsistent(const ShipDef &def) {
@@ -134,13 +110,13 @@ bool Ships::kerbalDefConsistent(const ShipDef &def) {
 Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
                                const std::string &wantName,
                                TerrainBody *hb, const ScenarioDef *sc, System &sys,
-                               double t, const StaticBuilding *site)
+                               Fleet &fleet, double t, const StaticBuilding *site)
 {
     /* slot feeds spawn_vehicle's orbit spread; pads do not slot. Every vessel in
-       the walk is flyable -- a seated kerbal is not in it (part.h). */
+       the fleet is flyable -- a seated kerbal is not in it (part.h). */
     int slot = 0;
     if(!sc->on_pad) {
-        for(auto *s : collectVehicles(sys)) {
+        for(auto *s : fleet) {
             if(s->home == hb && s->scenario == sc) { slot++; }
         }
     }
@@ -148,7 +124,7 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
     std::string nm = wantName.empty() ? def.name : wantName;
     if(nm.empty()) { nm = "Ship"; }
     // The roster's names are reserved too: a kerbal's name is never deduped.
-    nm = dedupVehicleName(sys, nm, &roster);
+    nm = dedupVehicleName(fleet, nm, &roster);
 
     /* A named site only means anything for a pad scenario: supportMargin below
        reads the site's hull as what the ship rests on, a lie if the base comes
@@ -243,19 +219,17 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
         }
     }
     v->setVelocity(glm::dvec3(0, 0, 0));
-    // Re-home: enters the body's ships list and starts the flight journal at `t`.
+    // Re-home: starts the flight journal at `t`. Then the fleet adopts it.
     v->setSoi(hb->rot_frame, t);
+    fleet.push_back(v);
     return v;
 }
 
-std::string dedupVehicleName(System &sys, const std::string &base,
+std::string dedupVehicleName(const Fleet &fleet, const std::string &base,
                              const CrewRoster *roster)
 {
-    /* Walked once, into a reused buffer: the retry loop below must not pay an
-       allocation per attempt (the countVehicles pattern). The fleet cannot
-       change during this call, so one snapshot covers every attempt. */
-    static thread_local std::vector<Vehicle *> fleet;
-    collectVehiclesInto(sys, fleet);
+    /* No snapshot: the fleet is the live container, and this call cannot change
+       its membership. The retry loop below only reads names. */
     std::string nm = base;
     int n = 2;
     while(true) {
@@ -478,28 +452,28 @@ void Ships::spawn_crew(Vehicle *ship, System &sys) {
     }
 }
 
-void Ships::apply_scenarios(System &sys, double t) {
-    for(auto *b : sys.bodies) {
-        /* Snapshot, not a reference: spawn_vehicle can re-home a ship into
-           another body's list (setSoi moves it). */
-        const std::vector<Vehicle *> ships = b->ships;
-        for(auto *s : ships) {
-            if(s->scenario == nullptr) { continue; }
-            spawn_vehicle(s, *s->scenario, s->home, sys, ORBIT_SLOT_SPACING * (double)s->slot, t);
-        }
+void Ships::apply_scenarios(Fleet &fleet, System &sys, double t) {
+    /* No snapshot: spawn_vehicle re-homes a ship (setSoi), and re-homing no
+       longer moves it between containers, so the fleet cannot change under the
+       loop. */
+    for(auto *s : fleet) {
+        if(s->scenario == nullptr) { continue; }
+        spawn_vehicle(s, *s->scenario, s->home, sys, ORBIT_SLOT_SPACING * (double)s->slot, t);
     }
 }
 
-void Ships::add_ship(Vehicle *v, TerrainBody *home, const ScenarioDef *sc, double t)
+void Ships::add_ship(Fleet &fleet, Vehicle *v, TerrainBody *home,
+                     const ScenarioDef *sc, double t)
 {
     v->home = home;
     v->scenario = sc;
     v->slot = 0;   // the builder placed it; there is no slot to space out
-    v->setSoi(v->frame, t);   // register + journal (the builder set frame)
+    v->setSoi(v->frame, t);   // journal start (the builder set frame)
+    fleet.push_back(v);
 }
 
 Vehicle *Ships::buildDebugStartShips(const std::vector<DebugStartShip> &entries,
-                                     System &sys, double t)
+                                     System &sys, Fleet &fleet, double t)
 {
     Vehicle *first = nullptr;
     for(size_t i = 0; i < entries.size(); i++) {
@@ -539,7 +513,7 @@ Vehicle *Ships::buildDebugStartShips(const std::vector<DebugStartShip> &entries,
                                          + hb->name + " (available: " + avail + ")");
             }
         }
-        Vehicle *v = place_ship(fe.ship, fe.name, hb, sc, sys, t, site);
+        Vehicle *v = place_ship(fe.ship, fe.name, hb, sc, sys, fleet, t, site);
         spawn_crew(v, sys);
         if(first == nullptr) { first = v; }
     }

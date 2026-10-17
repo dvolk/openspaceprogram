@@ -2640,31 +2640,9 @@ void Vehicle::setSoi(Frame *newFrame, double t) {
         frame = newFrame;
         return;
     }
-    TerrainBody *newBody = newFrame->body;
-    /* Every Vehicle is a vessel and lives in its body's ships list: a seated
-       kerbal is not a Vehicle at all (part.h), so membership has no exception
-       and nothing else rides along. */
-    bool listed = false;
-    if(m_parent != nullptr) {
-        std::vector<Vehicle *> &old = m_parent->ships;
-        auto it = std::find(old.begin(), old.end(), this);
-        listed = (it != old.end());
-        if(listed && newBody != m_parent) {
-            old.erase(it);
-            listed = false;
-        }
-    }
-    if(!listed) { newBody->ships.push_back(this); }
     frame = newFrame;
-    m_parent = newBody;
-    flog.observe(t, newBody->name);
-}
-
-void Vehicle::detachSoiList() {
-    if(m_parent == nullptr) { return; }
-    std::vector<Vehicle *> &list = m_parent->ships;
-    auto it = std::find(list.begin(), list.end(), this);
-    if(it != list.end()) { list.erase(it); }
+    m_parent = newFrame->body;
+    flog.observe(t, m_parent->name);
 }
 
 void Vehicle::switchFrames(double t) {

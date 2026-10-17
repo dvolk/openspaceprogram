@@ -171,14 +171,12 @@ struct TerrainBody {
     }
     TerrainParams paramsCache_;
 
-    // Defined in terrain.cpp (needs the complete Vehicle/StaticBuilding types).
+    // Defined in terrain.cpp (needs the complete StaticBuilding type).
     ~TerrainBody();
 
-    // Ships in this body's SOI (a SOI crossing moves them, Vehicle::setSoi).
-    // Every entry is a flyable vessel: a seated kerbal is a seat on its
-    // capsule's Part (part.h), not a ship here; a walking kerbal IS one.
-    std::vector<Vehicle *> ships;
     // Space pads on this body (StaticBuilding::Draw culls itself off-body).
+    // The fleet is NOT here: every Vehicle is in one flat list (Game::vehicles)
+    // and names its SoI body through Vehicle::m_parent.
     std::vector<StaticBuilding *> pads;
 
     COLOUR (*colour_func)(float v, float vmin, float vmax) = nullptr;

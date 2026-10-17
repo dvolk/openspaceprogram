@@ -13,7 +13,7 @@
 #include "btcommon.h"
 #include "physics.h"
 
-#include "vehicle.h"   // Vehicle (complete type: ~TerrainBody deletes ships)
+#include "vehicle.h"   // Vehicle (Part::owner is a Vehicle*)
 #include "part.h"      // Part (complete type: ~StaticBuilding deletes parked suits)
 
 // mesh + cloud texture are the body's; the shader is shared.
@@ -25,11 +25,11 @@ static void free_shell(TerrainBody::Shell *s) {
 }
 
 TerrainBody::~TerrainBody() {
-    // Ships first: they reference my frame, and ~Vehicle unregisters from the
-    // still-live Bullet world.
-    for(auto *s : ships) { delete s; }
-    ships.clear();
-    // Pads next: registries own the render assets, so only the rigid Body goes.
+    /* No fleet here: a body never owns a Vehicle, so the fleet must already be
+       gone before the first body dies (Game::unloadGame). A Vehicle references
+       its body's frame, so getting that order wrong is a use-after-free in
+       ~Vehicle rather than a leak. */
+    // Pads: registries own the render assets, so only the rigid Body goes.
     for(auto *p : pads) {
         RemoveBody(p->body);
         delete p->body;

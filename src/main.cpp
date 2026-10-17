@@ -222,7 +222,7 @@ static void installHeadlessHooks(Game &game) {
             // The active ship may be a free EVA kerbal, which recoverActive
             // refuses -- recover the ship holding the findings.
             if(game.ship != nullptr && game.ship->isEva()) {
-                for(auto *s : collectVehicles(game.sys)) {
+                for(auto *s : game.vehicles) {
                     if(s->isEva()) { continue; }
                     bool holdsFinding = false;
                     for(Part *p : s->parts) {
@@ -290,8 +290,8 @@ static void installHeadlessHooks(Game &game) {
                have switched control since. The walking crew are collected once:
                freeKerbals walks the whole fleet, so calling it per candidate
                part is quadratic in a fleet that is only getting bigger. */
-            const std::vector<Kerbal *> freeK = freeKerbals(game.sys);
-            for(auto *s : collectVehicles(game.sys)) {
+            const std::vector<Kerbal *> freeK = freeKerbals(game.vehicles);
+            for(auto *s : game.vehicles) {
                 for(size_t i = 0; i < s->parts.size(); i++) {
                     Part *cap = s->parts[i];
                     if(cap->def == nullptr || cap->def->crew_capacity <= 0) { continue; }
@@ -317,7 +317,7 @@ static void installHeadlessHooks(Game &game) {
             Part *to = nullptr;     // the courier (the kerbal's suit)
             // After an EVA the instrument sits on a DIFFERENT ship than the
             // active one: search the whole fleet.
-            for(auto *s : collectVehicles(game.sys)) {
+            for(auto *s : game.vehicles) {
                 for(Part *p : s->parts) {
                     if(p->def != nullptr && !p->experiments.empty()
                        && p->def->experiment_storage == ExpStorage::Instrument) {
@@ -329,7 +329,7 @@ static void installHeadlessHooks(Game &game) {
             // Needs a FREE (EVA) kerbal in reach of the part -- the Take
             // button's gate (kerbalInRange).
             if(from != nullptr) {
-                for(Kerbal *k : freeKerbals(game.sys)) {
+                for(Kerbal *k : freeKerbals(game.vehicles)) {
                     if(game.kerbalInRange(k, from) && !k->parts.empty()
                        && k->parts[0]->canHold(from->experiments[0])) {
                         to = k->parts[0]; break;
@@ -348,7 +348,7 @@ static void installHeadlessHooks(Game &game) {
             Part *to = nullptr;     // the container (the capsule)
             // After an EVA the container sits on a DIFFERENT ship: search the
             // whole fleet.
-            for(auto *s : collectVehicles(game.sys)) {
+            for(auto *s : game.vehicles) {
                 for(Part *p : s->parts) {
                     if(p->def != nullptr
                        && p->def->experiment_storage == ExpStorage::Container) {
@@ -360,7 +360,7 @@ static void installHeadlessHooks(Game &game) {
             // A FREE (EVA) kerbal in reach of the capsule, carrying a finding --
             // the Store button's gate.
             if(to != nullptr) {
-                for(Kerbal *k : freeKerbals(game.sys)) {
+                for(Kerbal *k : freeKerbals(game.vehicles)) {
                     if(game.kerbalInRange(k, to) && !k->parts.empty()
                        && !k->parts[0]->experiments.empty()) {
                         from = k->parts[0]; break;
@@ -832,7 +832,7 @@ int main(int argc, char **argv)
         if(!args.radial_test.empty()) {
             RadialTestShip rts = build_radial_test_ship(
                 args.radial_test, ships.catalog(), home, sun, partsshader);
-            ships.add_ship(rts.v, home, rts.sc, game.time);
+            ships.add_ship(game.vehicles, rts.v, home, rts.sc, game.time);
             first = rts.v;
         } else if(!args.dock_test.empty()) {
             DockTestShips dts = build_dock_test_ships(
@@ -840,14 +840,15 @@ int main(int argc, char **argv)
             /* Both are already placed (the builder ran spawn_vehicle), so the null
                scenario means apply_scenarios skips them. The probe is active; the
                station rides on rails. */
-            ships.add_ship(dts.probe, home, nullptr, game.time);
-            ships.add_ship(dts.station, home, nullptr, game.time);
+            ships.add_ship(game.vehicles, dts.probe, home, nullptr, game.time);
+            ships.add_ship(game.vehicles, dts.station, home, nullptr, game.time);
             first = dts.probe;
         } else {
             // A typo in any field throws deep in here: report it, don't core
             // dump.
             try {
-                first = ships.buildDebugStartShips(start_ships, sys, game.time);
+                first = ships.buildDebugStartShips(start_ships, sys,
+                                                   game.vehicles, game.time);
             } catch(const std::exception &e) {
                 printf("error: %s\n", e.what());
                 return 1;
@@ -1087,7 +1088,7 @@ int main(int argc, char **argv)
        the top physics warp. */
     if(time_accel >= kRailsWarp) {
         bool all_eligible = true;
-        for(auto *s : collectVehicles(sys)) {
+        for(auto *s : game.vehicles) {
             if(!s->canRail()) {
                 printf("Rails warp refused at start: '%s' is neither in free "
                        "fall nor grounded; clamping time accel to 10\n",
@@ -1097,7 +1098,7 @@ int main(int argc, char **argv)
             }
         }
         if(all_eligible) {
-            for(auto *s : collectVehicles(sys)) { s->goOnRails(); }
+            for(auto *s : game.vehicles) { s->goOnRails(); }
         } else {
             time_accel = 10;
         }

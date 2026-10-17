@@ -20,7 +20,7 @@
 #include "physics.h"   // RemoveBody, AddPhysicsBody, SetAngVelocity, GetAngVelocity
 #include "part.h"      // Part
 #include "resdir.h"    // resdir::path
-#include "ships.h"     // Ships, collectVehicles, Ships::new_part_from_def
+#include "ships.h"     // Ships, Fleet, Ships::new_part_from_def
 #include "shipdef.h"   // PartsCatalog, PartDef, ResourceType, ShipDef, scenario_by_name
 #include "system.h"    // System
 #include "terrain.h"   // TerrainBody
@@ -550,7 +550,8 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
         std::map<uint64_t, Part *>::const_iterator portIt = uidToPart.find(s.docks[k].port);
         std::map<uint64_t, Part *>::const_iterator rootIt = uidToPart.find(s.docks[k].root);
         if(portIt == uidToPart.end() || rootIt == uidToPart.end()) {
-            v->detachSoiList();   // never leave a freed pointer in a body list
+            /* `v` has not been adopted into the fleet yet (load_game commits the
+               whole built list on success), so freeing it here strands nothing. */
             delete v;
             throw std::runtime_error("load: saved ship '" + s.name + "' has a dock seam ("
                                      + s.docks[k].name + ") naming a part it does not have");
@@ -766,8 +767,9 @@ void save_game(Game &g, const std::string &dir) {
 
     /* The save's fleet in slug order: every VEHICLE. A seated person is not in
        this list -- they are a `seats` element of their capsule's part entry
-       (part.h), so a slug never names a person. */
-    std::vector<Vehicle *> fleet = collectVehicles(g.sys);
+       (part.h), so a slug never names a person. Slugs follow fleet (spawn)
+       order, so a load that adopts in save order round-trips v0/v1/.. exactly. */
+    const Fleet &fleet = g.vehicles;
     /* Slugs for the WHOLE fleet first, before a single file is written: a
        ship's file references its dock target by slug, and the referent can sit
        later in the walk than the referrer. */
@@ -866,14 +868,12 @@ void load_game(Game &g, const std::string &dir) {
             readJsonFile(dir + "/ships/" + meta.ships[i] + ".json")));
     }
 
-    /* Detach the running fleet from the bodies but keep it ALIVE until the load
-       commits: out of the lists the builders append to, and g.ship etc. stay
-       valid throughout the build. */
-    std::vector<std::pair<TerrainBody *, std::vector<Vehicle *>>> detached;
-    for(TerrainBody *b : g.sys.bodies) {
-        detached.emplace_back(b, b->ships);
-        b->ships.clear();
-    }
+    /* Detach the running fleet but keep it ALIVE until the load commits: out of
+       the one container the builders adopt into, and g.ship etc. stay valid
+       throughout the build. Swapped rather than moved so g.vehicles is left
+       genuinely empty for anything that asks "is a game running?" mid-load. */
+    std::vector<Vehicle *> detached;
+    detached.swap(g.vehicles);
 
     /* Keyed by SLUG, filled as the build walks the list and read in phase 2, by
        which point every file is built. Names cannot key anything -- two vehicles
@@ -934,12 +934,14 @@ void load_game(Game &g, const std::string &dir) {
            new pool wears ids too -- it is checked here and still uncommitted. */
         refuseDoubleClaim(built, newPool);
     } catch(...) {
-        /* Put the body lists back BEFORE deleting anything, so no list ever
-           holds a freed pointer. Then delete what was built: a seat occupant is
-           owned by the capsule it was parked in, so its ship frees it, and a
-           seat in a file that was not reached yet allocated nothing. The new
-           pool was never on the pad: free it and the running cast stands. */
-        for(auto &d : detached) { d.first->ships = d.second; }
+        /* Put the running fleet back into the container BEFORE deleting anything,
+           so the container never holds a freed pointer. Then delete what was
+           built: a seat occupant is owned by the capsule it was parked in, so
+           its ship frees it, and a seat in a file that was not reached yet
+           allocated nothing. The built vehicles were never adopted, so no fleet
+           walk ever saw them. The new pool was never on the pad: free it and the
+           running cast stands. */
+        detached.swap(g.vehicles);
         for(Vehicle *v : built) { delete v; }
         for(Part *p : newPool) { delete p; }
         throw;
@@ -975,12 +977,15 @@ void load_game(Game &g, const std::string &dir) {
             }
         }
     }
-    // The deletion the detach above deferred. part_sels holds Part* into it.
+    /* The save's fleet takes over the container in SAVE order, which is what
+       makes a load -> resave round trip keep its v0/v1/.. put. `built` stays
+       intact: phase 2 below indexes it by slug. Then the deletion the detach
+       above deferred. part_sels holds Part* into the old fleet. */
     g.part_sels.clear();
     g.clearFlightSummary();  // a prior recover's summary is not this save's
-    for(auto &d : detached) {
-        for(Vehicle *v : d.second) { delete v; }
-    }
+    g.vehicles = built;
+    for(Vehicle *v : detached) { delete v; }
+    detached.clear();
     g.ship = nullptr;
     g.kerbal = nullptr;
     g.lastShip = nullptr;

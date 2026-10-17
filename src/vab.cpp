@@ -660,7 +660,7 @@ void vabLaunch(Game &g) {
            other's grounded proximity radius, so the railed one wakes on the
            first tick and the pair torque each other. Ask rather than tell --
            the out is right there, and nothing silently relocates. */
-        if(Vehicle *blocker = findPadOccupant(site)) {
+        if(Vehicle *blocker = findPadOccupant(site, g.vehicles)) {
             printf("[vab] launch refused: '%s' occupies '%s'\n",
                    blocker->name.c_str(), site->id.c_str());
             fflush(stdout);
@@ -676,7 +676,8 @@ void vabLaunch(Game &g) {
                   {"Clear the pad", "Cancel"},
                   [&g, padBody, siteId](int choice) {
                 if(choice != 0) { return; }
-                Vehicle *occ = findPadOccupant(find_launch_site(padBody, siteId));
+                Vehicle *occ = findPadOccupant(find_launch_site(padBody, siteId),
+                                               g.vehicles);
                 if(occ == nullptr) {
                     g.toast("The pad is clear now");
                     return;
@@ -721,7 +722,8 @@ void vabLaunch(Game &g) {
        which is a SIGABRT and a lost game (#291). */
     Vehicle *v = nullptr;
     try {
-        v = g.ships.place_ship_def(def, "", def.name, hb, sc, g.sys, g.time, site);
+        v = g.ships.place_ship_def(def, "", def.name, hb, sc, g.sys, g.vehicles,
+                                   g.time, site);
     } catch(const std::exception &e) {
         printf("[vab] launch refused: %s\n", e.what());
         fflush(stdout);

@@ -229,7 +229,7 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
            returns is flyable (a seated kerbal is a seat on its capsule Part,
            not a vehicle -- part.h); a walking kerbal still cycles. */
         if(!repeat) {
-            std::vector<Vehicle *> all = collectVehicles(g.sys);
+            const Fleet &all = g.vehicles;
             if(all.size() > 1) {
                 int cur = -1;
                 for(size_t i = 0; i < all.size(); i++) {

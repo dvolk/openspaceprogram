@@ -325,19 +325,28 @@ void Game::dropPartWindowsFor(Vehicle *ship) {
                    part_sels.end());
 }
 
+void Game::removeFromFleet(Vehicle *v) {
+    if(std::erase(vehicles, v) == 0) {
+        /* Every delete site reaches this through a fleet walk or a pointer the
+           fleet holds, so a miss means the fleet and the world already disagree
+           -- which is the bug, not the erase. */
+        assert(!"removeFromFleet: the vehicle is not in the fleet");
+    }
+}
+
 /* Every reference the Game and the transfer planner hold to a vehicle that is
    about to be deleted. EVERY delete site calls it immediately BEFORE the delete:
    updateDocking, remove_ship, recoverActive, pickUpItem and kerbalBoard. A
    missed one is a use-after-free in a later frame -- the planner holds its
    target list across frames (render.cpp rebuilds it, updateShipView reads the
    previous frame's), so a dangling Vehicle* there is read by the map plane and
-   the burn marker long before anything notices. Leaving the SoI body's ship list
-   is the caller's -- only remove_ship needs the list intact while it scans for
-   the next ship to hand control to. */
+   the burn marker long before anything notices. Fleet membership is
+   removeFromFleet's -- only remove_ship needs the fleet intact while it scans
+   for the next ship to hand control to. */
 void Game::dropVehicleRefs(Vehicle *v) {
     dropPartWindowsFor(v);
     // Ships that had v targeted for docking now dangle -- drop their intent.
-    for(auto *s : collectVehicles(sys)) {
+    for(auto *s : vehicles) {
         if(s->dockTargetShip == v) { s->dockTargetShip = nullptr; s->dockTargetPort = nullptr; }
     }
     /* The planner holds v's name pointer + handle until its next rebuild: if v
@@ -686,7 +695,7 @@ static std::string saveSystemFile(const std::string &dir, bool *format_ok = null
 
 bool Game::newGame() {
     // Any vehicle in the world, not just the active one, means a game runs.
-    if(!collectVehicles(sys).empty()) {
+    if(!vehicles.empty()) {
         toast("A game is already running");
         return false;
     }
@@ -725,7 +734,7 @@ static std::string systemHomeName(const std::string &path) {
 
 bool Game::startNewGame(const std::string &name, const std::string &sysPath,
                         float exhaustScale) {
-    if(!collectVehicles(sys).empty()) {
+    if(!vehicles.empty()) {
         toast("A game is already running");
         return false;
     }
@@ -885,17 +894,16 @@ void Game::unloadGame() {
     /* Tear the fleet down to the shipless-boot state. ~Vehicle detaches the
        welds, unregisters physics and deletes its parts -- and a seat occupant
        is OWNED by its capsule Part, so ~Part frees it with the ship (part.h).
-       A walking kerbal, by contrast, IS in these lists. Deleting each body's
-       ship list is therefore the whole teardown. part_sels holds Part* into the
-       fleet: it goes first. No job drain needed -- no continuation touches the
-       fleet. */
+       A walking kerbal, by contrast, IS a fleet entry. Deleting the fleet is
+       therefore the whole teardown, and it must happen BEFORE any body dies:
+       a Vehicle dereferences its frame in ~Vehicle. switchSystem honours that
+       (unloadGame, then the old bodies). part_sels holds Part* into the fleet:
+       it goes first. No job drain needed -- no continuation touches the fleet. */
     part_sels.clear();
     clearFlightSummary();   // a summary from THIS game must not leak into the next
     science.reset();        // ...and neither must the career score / archive
-    for(TerrainBody *b : sys.bodies) {
-        for(Vehicle *v : b->ships) { delete v; }
-        b->ships.clear();
-    }
+    for(Vehicle *v : vehicles) { delete v; }
+    vehicles.clear();
     ship = nullptr;
     kerbal = nullptr;
     lastShip = nullptr;
@@ -986,13 +994,11 @@ void Game::switchSystem(const std::string &path,
 
 void Game::settleFleet(Vehicle *active) {
     // Ships sharing an orbit scenario are spaced by slot.
-    ships.apply_scenarios(sys, time);
+    ships.apply_scenarios(vehicles, sys, time);
     /* Idle ships park on rails: flying ones coast on their conic, pad ships
        freeze. Neither free fall nor grounded refuses and stays in physics. */
-    for(auto *b : sys.bodies) {
-        for(auto *s : b->ships) {
-            if(s != active) { s->goOnRails(); }
-        }
+    for(auto *s : vehicles) {
+        if(s != active) { s->goOnRails(); }
     }
 }
 
@@ -1017,9 +1023,9 @@ void Game::select_ship(Vehicle *v) {
         camera->mode = CAM_ORBIT;
     }
     syncShipFocus();
-    // "N of M" in the canonical collectVehicles order.
+    // "N of M" in fleet (spawn) order.
     int n = 0, i = 0;
-    for(auto *x : collectVehicles(sys)) {
+    for(auto *x : vehicles) {
         n++;
         if(x == v) { i = n; }
     }
@@ -1027,7 +1033,7 @@ void Game::select_ship(Vehicle *v) {
 }
 
 /* --- crew. A seated kerbal is a seat on its capsule Part (part.h); a walking
-   one is a Kerbal vehicle in the bodies' ship lists. There is no third state. */
+   one is a Kerbal vehicle in the fleet. There is no third state. */
 
 std::vector<Part *> shipSeats(Vehicle *ship) {
     std::vector<Part *> out;
@@ -1044,22 +1050,19 @@ std::string seatName(const Part *suit) {
     return suit->kerbal->name;
 }
 
-void freeKerbalsInto(System &sys, std::vector<Kerbal *> &out) {
+void freeKerbalsInto(const Fleet &fleet, std::vector<Kerbal *> &out) {
     out.clear();
-    /* The fleet walk is buffered too: freeKerbals used to build a whole
-       vehicle vector just to filter it, twice per part-window frame. Every
-       kerbal in the walk is FREE -- a seated one is not a vehicle at all. */
-    static thread_local std::vector<Vehicle *> all;
-    collectVehiclesInto(sys, all);
-    for(auto *s : all) {
+    /* Buffered because this runs twice per part-window frame. Every kerbal the
+       fleet yields is FREE -- a seated one is not a vehicle at all. */
+    for(auto *s : fleet) {
         if(!s->isEva()) { continue; }
         out.push_back(static_cast<Kerbal *>(s));
     }
 }
 
-std::vector<Kerbal *> freeKerbals(System &sys) {
+std::vector<Kerbal *> freeKerbals(const Fleet &fleet) {
     std::vector<Kerbal *> out;
-    freeKerbalsInto(sys, out);
+    freeKerbalsInto(fleet, out);
     return out;
 }
 
@@ -1147,8 +1150,9 @@ void Game::kerbalEVA(Part *suit) {
         k->placeShipAtCom(capCom + tangent * offset, orient);
         k->setVelocity(capVel);   // co-moving beside the ship
     }
-    // Re-home: enters the body's ships list and starts the flight journal.
+    // Re-home and join the fleet: starts the flight journal.
     k->setSoi(ship->frame, time);
+    vehicles.push_back(k);
     k->enterWorld();
 
     kerbal = k;
@@ -1197,10 +1201,10 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
     dropVehicleRefs(k);
 
     /* The suit outlives the vehicle: take it off the parts list FIRST so
-       ~Vehicle does not free it. The walker is also in its body's ship list
-       (setSoi put it there), and ~Vehicle does not know which list that was --
-       detach it or the next fleet walk reads freed memory. */
-    k->detachSoiList();
+       ~Vehicle does not free it. The walker is a fleet entry (kerbalEVA added
+       it), so it leaves the fleet too or the next fleet walk reads freed
+       memory. */
+    removeFromFleet(k);
     k->parts.clear();
     delete k;
 
@@ -1254,9 +1258,10 @@ Vehicle *Game::dropItem(Part *item) {
     Vehicle *nv = new Vehicle();
     // The part label is the same for every crate of a kind, so two drops of one
     // part type would land in the ship list under one indistinguishable name.
-    nv->name = dedupVehicleName(sys, item->def->label(), &roster);
+    nv->name = dedupVehicleName(vehicles, item->def->label(), &roster);
     nv->defPath = "";
-    nv->setSoi(carrier->frame, time);   // list + journal start at the drop
+    nv->setSoi(carrier->frame, time);   // journal starts at the drop
+    vehicles.push_back(nv);
     nv->home = carrier->home;
     nv->sun = carrier->sun;
     nv->parts.push_back(item);
@@ -1302,7 +1307,7 @@ bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
 
     /* Clear itemShip->parts BEFORE the delete: ~Vehicle deletes its parts, and
        the item is already owned by dest -- leaving it in double-frees. */
-    itemShip->detachSoiList();
+    removeFromFleet(itemShip);
     if(ship == itemShip) { ship->releaseControl(); }
     dropVehicleRefs(itemShip);
     itemShip->parts.clear();
@@ -1343,8 +1348,7 @@ void Game::toggle_eva() {
 /* Enter rails warp: park every ship. Refuses -- keeping the current accel --
    if any ship is not rail-eligible (e.g. a suborbital descent). */
 bool Game::enter_rails_warp() {
-    std::vector<Vehicle *> all = collectVehicles(sys);
-    for(auto *s : all) {
+    for(auto *s : vehicles) {
         if(!s->canRail()) {
             printf("Rails warp refused: '%s' is neither in free fall nor "
                    "grounded (warp stays %d)\n", s->name.c_str(), time_accel);
@@ -1353,7 +1357,7 @@ bool Game::enter_rails_warp() {
             return false;
         }
     }
-    for(auto *s : all) { s->goOnRails(); }
+    for(auto *s : vehicles) { s->goOnRails(); }
     // On rails the engines are off: clear the latch so it can't re-engage
     // on the way out.
     thrust_latched = false;
@@ -1371,11 +1375,10 @@ void Game::updateProximity() {
     const double r_on  = grounded ? args.prox_ground_on  : args.prox_fly_on;
     const double r_off = grounded ? args.prox_ground_off : args.prox_fly_off;
 
-    // Reused scratch (collectVehiclesInto): this runs every tick.
-    static thread_local std::vector<Vehicle *> all;
-    collectVehiclesInto(sys, all);
+    // Waking a ship re-homes it but never moves it between containers, so the
+    // live fleet is safe to walk here.
     bool any_engaged = false;
-    for(auto *s : all) {
+    for(auto *s : vehicles) {
         if(s == a) { continue; }
         const double d = a->distanceTo(s);
         if(s->onRails && r_on > 0.0 && d < r_on) {
@@ -1416,7 +1419,7 @@ void Game::updateProximity() {
             last_snap = time;
             printf("[prox] t=%.3f regime=%s r_on=%.0f r_off=%.0f\n",
                    time, grounded ? "ground" : "fly", r_on, r_off);
-            for(auto *s : all) {
+            for(auto *s : vehicles) {
                 if(s == a) { continue; }
                 printf("[prox]   %s dist=%.1f m %s\n", s->name.c_str(),
                        a->distanceTo(s), s->onRails ? "on-rails" : "LIVE");
@@ -1489,7 +1492,7 @@ void Game::updateDocking() {
     a->dockTargetShip = nullptr;   // the intent is consumed by the dock
     a->dockTargetPort = nullptr;   // (both halves: re-arm and re-target on
     a->dockArmPort = nullptr;      //  a redock)
-    b->detachSoiList();
+    removeFromFleet(b);
     dropVehicleRefs(b);
     toast("Docked with %s", bName.c_str());
     printf("[dock] t=%.3f a=\"%s\" b=\"%s\" d=%.3f m v=%.3f m/s\n",
@@ -1519,12 +1522,13 @@ void Game::undock() {
        vessel. Undocking would then mint a second vehicle under one name, and
        every name-only readout (ship list, toasts, this line) can't tell them
        apart. */
-    const std::string nm = dedupVehicleName(sys, seam.name, &roster);
+    const std::string nm = dedupVehicleName(vehicles, seam.name, &roster);
     Vehicle *out = a->extractSubtreeAsShip(seam.root, nm, time);
     if(out == nullptr) {
         toast("Cannot undock");
         return;
     }
+    vehicles.push_back(out);   // the split ship joins the fleet at the cut
     out->enterWorld();   // the split leaves world registration to the caller
     /* No seam pop here: extractSubtreeAsShip already drops a seam split across
        the cut, so popping would drop the WRONG one. */
@@ -1599,9 +1603,10 @@ void Game::stage() {
             if(!qual.empty()) { base += " " + qual; }
             // A one-shot "slam" as the part separates; 0.4 sits it with the
             // engine hum (a transient reads louder than a steady loop).
-            const std::string nm = dedupVehicleName(sys, base, &roster);
+            const std::string nm = dedupVehicleName(vehicles, base, &roster);
             Vehicle *out = a->extractSubtreeAsShip(d, nm, time);
             if(out == nullptr) { continue; }   // already absorbed into an outer ship
+            vehicles.push_back(out);           // the split subtree is its own vessel
             audio.playOnce("res/audio/qubodup-crash.wav", 0.4f);
             out->enterWorld();
             ships++;
@@ -1623,11 +1628,10 @@ void Game::stage() {
 }
 
 /* Remove a ship + its bookkeeping. Refuses to remove the last ship. If it was
-   active, control hands off to the next ship in canonical order. */
+   active, control hands off to the next ship in fleet (spawn) order. */
 bool Game::remove_ship(Vehicle *v) {
     if(v == nullptr) { return false; }
-    std::vector<Vehicle *> all = collectVehicles(sys);
-    if(all.size() <= 1) {
+    if(vehicles.size() <= 1) {
         printf("Refusing to remove the last ship\n");
         return false;
     }
@@ -1635,7 +1639,7 @@ bool Game::remove_ship(Vehicle *v) {
        is owned by its capsule and would be deleted along with it (part.h), and
        a walking kerbal is not a vessel to discard. */
     if(v->isEva()) {
-        // A walking kerbal is in its body's ship list and passes both tests below.
+        // A walking kerbal is a fleet entry and passes both tests below.
         toast("Cannot remove %s -- a crew member can't be deleted",
               v->name.c_str());
         return false;
@@ -1648,28 +1652,21 @@ bool Game::remove_ship(Vehicle *v) {
     const std::string removedName = v->name;
     if(wasActive) { v->releaseControl(); }
 
-    // Not aboard (guarded above), so it is in its SoI body's ship list.
-    v->detachSoiList();
+    /* Pick the successor BEFORE the erase, while the order is still intact: the
+       next fleet entry, wrapping past the end back to the previous one. */
+    Vehicle *next = nullptr;
+    if(wasActive) {
+        const auto at = std::find(vehicles.begin(), vehicles.end(), v);
+        if(at != vehicles.end()) {
+            next = (at + 1 != vehicles.end()) ? *(at + 1) : *(at - 1);
+        }
+    }
+
+    removeFromFleet(v);
     dropVehicleRefs(v);
     delete v;
 
     if(wasActive) {
-        // Hand off to the next ship in canonical order (or the last one).
-        Vehicle *next = nullptr;
-        bool seen = false;
-        for(size_t i = 0; i < all.size(); i++) {
-            Vehicle *x = all[i];
-            // `all` still holds the deleted v, so skip it by pointer.
-            if(x == v) { seen = true; continue; }
-            if(seen) { next = x; break; }
-        }
-        if(next == nullptr) {
-            for(size_t i = all.size(); i-- > 0; ) {
-                if(all[i] == v) { continue; }
-                next = all[i];
-                break;
-            }
-        }
         if(next != nullptr) {
             next->leaveRails();
             ship = next;
@@ -1682,12 +1679,11 @@ bool Game::remove_ship(Vehicle *v) {
                 camera->Follow(ship->get_center_of_mass());
                 camera->distance = 50.0;
             }
-            // N/M in the remaining fleet (canonical order minus v).
+            // N/M in the remaining fleet.
             int n = 0, i = 0;
-            for(size_t j = 0; j < all.size(); j++) {
-                if(all[j] == v) { continue; }
+            for(auto *x : vehicles) {
                 n++;
-                if(all[j] == next) { i = n; }
+                if(x == next) { i = n; }
             }
             printf("Removed '%s'; active ship %d of %d: %s\n",
                    removedName.c_str(), i, n, ship->name.c_str());
@@ -1773,8 +1769,8 @@ void Game::recoverActive() {
         }
     }
 
-    // Out of its SoI body's list, then delete.
-    v->detachSoiList();
+    // Out of the fleet, then delete.
+    removeFromFleet(v);
     delete v;
 
     // No handoff to a neighbour: the flight is over.

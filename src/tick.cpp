@@ -22,9 +22,11 @@ void tick(Game &g) {
         g.accumulator = 10 * g.dt;
     }
 
-    // Snapshot the ship list once so a mid-tick SoI move is walked once.
-    static thread_local std::vector<Vehicle *> all;
-    collectVehiclesInto(g.sys, all);
+    /* The live fleet, not a snapshot: an SoI crossing re-homes a Vehicle without
+       moving it between containers, so a mid-tick crossing cannot reshuffle or
+       dangle the walk. Only a delete changes it, and every delete site erases
+       from the fleet before freeing. */
+    Fleet &all = g.vehicles;
 
     // Sync the difficulty scale onto every ship.
     for(auto *s : all) {
@@ -160,10 +162,10 @@ void tick(Game &g) {
         g.logic_ticks++;   // one logic tick ran (its substeps are not counted)
 
         if(g.time_accel != 0) {
-            /* Re-snapshot the ship list for THIS step: updateDocking() can
-               delete the absorbed ship at the end of a step, and a stale
-               snapshot would dangle on the next one. */
-            collectVehiclesInto(g.sys, all);
+            /* No re-snapshot here. updateDocking() deletes the absorbed ship at
+               the end of a step, but it erases it from the live fleet first, so
+               the next step's walk simply stops seeing it -- which is exactly
+               what the old per-step collectVehiclesInto was reconstructing. */
 
             // SOI owner before this tick's frame bookkeeping (handoff drops
             // warp to 1x).

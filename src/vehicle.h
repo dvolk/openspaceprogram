@@ -75,12 +75,14 @@ public:
     std::vector<Part *> parts;   // each Part owns its Body (see part.h)
 
     // SoI placement: setSoi is the one writer. Null until placed (off-map).
+    // m_parent is the AUTHORITATIVE "which body": the fleet is one flat list
+    // (Game::vehicles), so a same-body query filters this rather than reading a
+    // body-side index that would be a second copy of the same fact.
     TerrainBody *m_parent = nullptr;
     Frame *frame = nullptr;
-    // A ship lives in its SOI body's ships list (terrain.h). `home` is fixed at
-    // build; `slot` pads ships sharing a body+scenario. Every Vehicle in that
-    // list is FLYABLE: a seated kerbal is not here (and not a Vehicle at all) --
-    // it is a seat on its capsule's Part (part.h).
+    // `home` is fixed at build; `slot` pads ships sharing a body+scenario.
+    // Every Vehicle in the fleet is FLYABLE: a seated kerbal is not in it (and
+    // not a Vehicle at all) -- it is a seat on its capsule's Part (part.h).
     TerrainBody *home = nullptr;
     const ScenarioDef *scenario = nullptr;
     int slot = 0;
@@ -578,12 +580,10 @@ public:
     /* Re-express the ship's state in newFrame and re-home it (setSoi). */
     void moveToFrame(Frame *newFrame, double t);
 
-    /* The ONE SoI writer: every live (frame, m_parent, ships-list, journal)
-       change goes through here. */
+    /* The ONE SoI writer: every live (frame, m_parent, journal) change goes
+       through here. Fleet membership is the owner's (Game::vehicles), not
+       touched here -- so an SoI crossing cannot invalidate a fleet walk. */
     void setSoi(Frame *newFrame, double t);
-
-    /* Out of the SoI body's ships list, if in it. */
-    void detachSoiList();
 
     /* Per-tick SOI bookkeeping for THIS ship. */
     void switchFrames(double t);

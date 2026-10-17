@@ -103,8 +103,7 @@ bool pickShipPart(Game &g, int px, int py,
     size_t bestPart = 0;
     PickBodyHit bestHit;
 
-    for(auto *b : g.sys.bodies) {
-    for(auto *s : b->ships) {
+    for(auto *s : g.vehicles) {
         if(s->compoundShape() == nullptr) { continue; }
         // Ray must live in the ship's frame, where its bodies' transforms live.
         const glm::dmat4 invXf = glm::inverse(s->renderXform(renderFrame));
@@ -123,7 +122,6 @@ bool pickShipPart(Game &g, int px, int py,
             }
         }
     }
-    }
     if(bestShip == nullptr) { return false; }
 
     ship = bestShip;
@@ -138,7 +136,7 @@ bool pickShipPart(Game &g, int px, int py,
    VAB parks a ship dead centre). Not exhaustive by design -- parts between sample
    lines and ships clear of or hovering over the deck are missed. Only ship parts
    are cast, so the rays' trip through pad and ground is free. */
-Vehicle *findPadOccupant(const StaticBuilding *site) {
+Vehicle *findPadOccupant(const StaticBuilding *site, const Fleet &fleet) {
     if(site == nullptr || site->parent == nullptr) { return nullptr; }
     TerrainBody *hb = site->parent;
     const glm::dmat3 deck = buildingOrient(
@@ -152,10 +150,12 @@ Vehicle *findPadOccupant(const StaticBuilding *site) {
                                  // anything we build, far below orbit
 
     Frame *rot = hb->frame->getRotFrame();
-    for(Vehicle *s : hb->ships) {
+    for(Vehicle *s : fleet) {
         btCompoundShape *cs = s->compoundShape();
         if(cs == nullptr) { continue; }
-        /* A seated kerbal is never in this list -- it is a seat on its capsule's
+        // The same-SoI filter a body-side list used to give for free.
+        if(s->m_parent != hb) { continue; }
+        /* A seated kerbal is never in the fleet -- it is a seat on its capsule's
            Part (part.h), with no Body in the world. A walking kerbal can be, and
            is a genuine obstruction. */
         // Cheap reject before the frame hop: only one ship is near a given pad.
