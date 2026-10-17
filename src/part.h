@@ -122,7 +122,7 @@ struct Part {
     bool isDecoupler() const { return def != nullptr && def->decoupler; }
     bool isDockingPort() const { return def != nullptr && def->docking_port; }
     bool isChute() const { return def != nullptr && def->chute_area > 0.0; }
-    bool isFuelBarrier() const { return def != nullptr && def->fuel_barrier; }
+    bool isFuelBarrier() const { return def != nullptr && def->isFuelBarrier(); }
     bool isCapsule() const { return def != nullptr && def->crew_capacity > 0; }
     bool isContainer() const { return def != nullptr && def->inventory_capacity > 0; }
     /* A seat OCCUPANT: a kerbal-type suit held by a capsule. Derived from the

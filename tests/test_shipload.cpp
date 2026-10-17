@@ -5,8 +5,9 @@
 // Covers: catalog + ship-def parsing (the parent-relative tree schema:
 // ids, parent/attach/angle/offset/stage, construction-order validation),
 // the aggregates the Vehicle would compute, the default-controller rule,
-// the attachPose geometry (child pose across mode/angle/offset), and the
-// error paths.
+// the attachPose geometry (child pose across mode/angle/offset), the fuel
+// group partition (partitionFuelGroups) and the authoring-time fuel-link
+// loop check (BuildShip::fuelLinkLoop), and the error paths.
 
 #include "shipdef.h"
 
@@ -1086,6 +1087,32 @@ int main() {
             CHECK(haveFrom);
             CHECK(haveTo);
         }
+    }
+    // --- partitionFuelGroups: the ONE flood the live ship, the staging snapshot
+    //     and the editor's loop check all call (#292). Pinned at the flood itself
+    //     -- group numbering (the fuel log keys its rows by it), walls joining no
+    //     group, and a wall that is also a tree junction: it must split its
+    //     children rather than merge them. Each adapter's own wall flag is pinned
+    //     where it is used (fuelLinkLoop below, the e2e fuel/staging cases).
+    {
+        // capsule | decoupler | tank | (two tanks under that tank)
+        const std::vector<int> parent = { -1, 0, 1, 2, 2 };
+        std::vector<bool> wall = { false, true, false, false, false };
+        std::vector<int> group;
+        CHECK(partitionFuelGroups(parent, wall, group) == 2);
+        CHECK(group[0] == 0);                        // the capsule's group first
+        CHECK(group[1] == -1);                       // the wall joins nothing
+        CHECK(group[2] == 1 && group[3] == 1 && group[4] == 1);
+        // the tank itself walled (a dropped stage in the staging snapshot): the
+        // two tanks below it are NO LONGER one group
+        wall[2] = true;
+        CHECK(partitionFuelGroups(parent, wall, group) == 3);
+        CHECK(group[2] == -1);
+        CHECK(group[3] == 1 && group[4] == 2);
+        // an empty tree writes nothing
+        std::vector<int> none;
+        CHECK(partitionFuelGroups(std::vector<int>(), std::vector<bool>(), none) == 0);
+        CHECK(none.empty());
     }
     // --- fuelLinkLoop: the authoring-time twin of build_ship's cycle check
     //     (#291). The drain model needs a DAG; build_ship throws on a loop, but

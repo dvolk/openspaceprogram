@@ -33,32 +33,18 @@ struct SimEngine {
 typedef std::vector<std::vector<int> > Bucket;
 
 void buildFuelGroups(std::vector<SimPart> &parts) {
-    std::vector<std::vector<int> > adj(parts.size());
+    /* The one partition (shipdef.h, #292). A DEAD part counts as a wall here:
+       it joins no group and the flood stops at it, which is what makes a
+       dropped stage stop feeding its neighbours. */
+    std::vector<int> parent(parts.size());
+    std::vector<bool> wall(parts.size());
     for(size_t i = 0; i < parts.size(); i++) {
-        const int p = parts[i].parent;
-        if(p < 0 || p >= (int)parts.size()) { continue; }
-        adj[i].push_back(p);
-        adj[p].push_back((int)i);
+        parent[i] = parts[i].parent;
+        wall[i] = parts[i].isBarrier || !parts[i].alive;
     }
-    for(size_t i = 0; i < parts.size(); i++) { parts[i].group = -1; }
-    int next = 0;
-    for(size_t i = 0; i < parts.size(); i++) {
-        if(parts[i].isBarrier || parts[i].group != -1 || !parts[i].alive) { continue; }
-        const int g = next++;
-        std::vector<int> stack;
-        stack.push_back((int)i);
-        parts[i].group = g;
-        while(!stack.empty()) {
-            const int q = stack.back();
-            stack.pop_back();
-            for(size_t k = 0; k < adj[q].size(); k++) {
-                const int r = adj[q][k];
-                if(parts[r].isBarrier || parts[r].group != -1 || !parts[r].alive) { continue; }
-                parts[r].group = g;
-                stack.push_back(r);
-            }
-        }
-    }
+    std::vector<int> group;
+    partitionFuelGroups(parent, wall, group);
+    for(size_t i = 0; i < parts.size(); i++) { parts[i].group = group[i]; }
 }
 
 // Group buckets by reverse-hop distance, furthest first: outer groups drain
@@ -380,9 +366,14 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
         const BuildPart &bp = ship.parts[i];
         SimPart &sp = sim.parts[i];
         idIndex[bp.id] = (int)i;
-        sp.parent = (bp.parent >= 0 && bp.parent < (int)n) ? bp.parent : -1;
+        /* BuildShip::recomputePoses asserts every parent is an earlier part, so
+           the snapshot cannot be torn here (partitionFuelGroups asserts it too). */
+        sp.parent = bp.parent;
         sp.stage = bp.stage;
-        sp.isBarrier = (bp.def != nullptr) && (bp.def->decoupler || bp.def->fuel_barrier);
+        /* The same wall rule flight uses (PartDef::isFuelBarrier). The parser
+           forces fuel_barrier on every decoupler and docking port (shipdef.cpp),
+           so spelling out `decoupler` here is a second rule free to drift (#292). */
+        sp.isBarrier = (bp.def != nullptr) && bp.def->isFuelBarrier();
         sp.isDec = (bp.def != nullptr) && bp.def->decoupler;
         if(bp.def != nullptr) {
             sp.dry = std::max(0.0, partDryMass(*bp.def, burn));

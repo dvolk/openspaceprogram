@@ -243,6 +243,11 @@ struct PartDef {
     /* Full thrust of one engine: T = (total propellant flow) x ve. Jets do
        NOT use this (their thrust is drag.h jetThrust). */
     double fullThrust() const { return totalPropellantRate() * exhaust_velocity; }
+    /* The ONE wall rule: what splits a fuel group (see partitionFuelGroups).
+       Part::isFuelBarrier, the staging snapshot and the VAB's loop check all go
+       through here, so flight and the editor cannot disagree about what a wall
+       is (#292). */
+    bool isFuelBarrier() const { return fuel_barrier; }
     /* Convenience setter (keeps propellant_rate sized). */
     void setPropellantRate(ResourceType r, double rate) {
         propellant_rate[(int)r] = rate;
@@ -319,6 +324,21 @@ struct ShipDef {
         return 0;
     }
 };
+
+/* Fuel groups: the partition of a part tree into the sets that share their
+   fuel. `wall[i]` is a wall -- it joins no group and the flood never crosses
+   it -- so it keeps -1. `parent` is the tree (-1 = root; any index order, the
+   adjacency is built in a full pass first), and `group` comes back sized to
+   parent.size(), numbered from 0 in the order the seeds are reached. The group
+   count is returned.
+
+   One flood, one wall rule (PartDef::isFuelBarrier), and the consumers MUST
+   agree: the live ship (Vehicle::buildFuelGroups, which build_ship's cycle
+   check also runs through), the staging snapshot, and the editor's loop check
+   (BuildShip::fuelLinkLoop) -- that last is only worth having because it
+   predicts what build_ship will do (#292). */
+int partitionFuelGroups(const std::vector<int> &parent,
+                        const std::vector<bool> &wall, std::vector<int> &group);
 
 /* ---- VAB build tree (physics-free authoring representation) -------------
    The editor edits THIS, not the flight Vehicle; launch converts it via

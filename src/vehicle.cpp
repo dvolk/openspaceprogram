@@ -984,35 +984,30 @@ bool Vehicle::isEva() const { return false; }
 void Vehicle::buildFuelGroups() {
     // The groups change, so the cached drain layers are stale -- drop them.
     drainLayers_.clear();
-    for(Part *p : parts) { p->fuelGroup = -1; }
-    // undirected adjacency over the part tree (Part::parent)
-    std::map<Part *, std::vector<Part *>> adj;
-    for(Part *p : parts) {
-        if(p->parent == nullptr) { continue; }
-        adj[p->parent].push_back(p);
-        adj[p].push_back(p->parent);
-    }
-    int next = 0;
-    for(Part *p : parts) {
-        if(p->isFuelBarrier()) { continue; }   /* a wall: stays -1 */
-        if(p->fuelGroup != -1) { continue; }   /* already grouped */
-        int g = next++;
-        std::vector<Part *> stack;
-        stack.push_back(p);
-        p->fuelGroup = g;
-        while(!stack.empty()) {
-            Part *q = stack.back(); stack.pop_back();
-            auto it = adj.find(q);
-            if(it == adj.end()) { continue; }
-            for(size_t i = 0; i < it->second.size(); i++) {
-                Part *r = it->second[i];
-                if(r->isFuelBarrier()) { continue; }   /* don't cross a wall */
-                if(r->fuelGroup != -1) { continue; }   /* already grouped */
-                r->fuelGroup = g;
-                stack.push_back(r);
-            }
+    /* The one partition (shipdef.h, #292): index the parts so the tree can be
+       handed over as parent indices, exactly like the staging snapshot and the
+       VAB's loop check do. A parent outside this ship would be a torn tree --
+       setRoot / attach / absorbShip all keep the tree inside `parts`, and the
+       group numbering follows `parts` order in every caller. */
+    std::map<Part *, size_t> index;
+    for(size_t i = 0; i < parts.size(); i++) { index[parts[i]] = i; }
+    std::vector<int> parent(parts.size(), -1);
+    std::vector<bool> wall(parts.size(), false);
+    for(size_t i = 0; i < parts.size(); i++) {
+        const Part *p = parts[i];
+        if(p->parent != nullptr) {
+            std::map<Part *, size_t>::const_iterator it = index.find(p->parent);
+            /* A parent outside this ship is a bug, not a state: assert it, and in
+               a release build leave the edge out (parent stays -1, so the part
+               lands in its own group) instead of reading past end(). */
+            assert(it != index.end());
+            if(it != index.end()) { parent[i] = (int)it->second; }
         }
+        wall[i] = p->isFuelBarrier();   /* a wall: stays -1 */
     }
+    std::vector<int> group;
+    partitionFuelGroups(parent, wall, group);
+    for(size_t i = 0; i < parts.size(); i++) { parts[i]->fuelGroup = group[i]; }
 }
 
 std::vector<Part *> Vehicle::fuelPool(Part *engine) const {

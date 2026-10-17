@@ -1157,28 +1157,28 @@ ShipDef BuildShip::toShipDef() const {
     return def;
 }
 
-namespace {
-
-/* Fuel groups over the build tree: parts the structure connects WITHOUT
-   crossing a fuel barrier -- the same partition Vehicle::buildFuelGroups makes
-   once the ship is built, so a loop found here is the loop build_ship throws
-   on. A barrier keeps -1: it joins no group. */
-int buildGroupsFor(const std::vector<BuildPart> &parts, std::vector<int> &group) {
-    group.assign(parts.size(), -1);
-    std::vector<std::vector<size_t> > adj(parts.size());
-    for(size_t i = 0; i < parts.size(); i++) {
-        const int p = parts[i].parent;
+/* See shipdef.h. Adjacency over the tree, then a flood per seed: the shape all
+   the consumers share. */
+int partitionFuelGroups(const std::vector<int> &parent,
+                        const std::vector<bool> &wall, std::vector<int> &group) {
+    const size_t n = parent.size();
+    assert(wall.size() == n);   // one tree, one wall flag per part
+    group.assign(n, -1);
+    std::vector<std::vector<size_t> > adj(n);
+    for(size_t i = 0; i < n; i++) {
+        const int p = parent[i];
         if(p < 0) { continue; }
-        assert(p < (int)parts.size());   // construction order (recomputePoses)
+        /* A parent outside the tree is a bug, not a state: assert it, and in a
+           release build leave the edge out so the part degrades to a singleton
+           group instead of writing past `adj`. */
+        assert(p < (int)n);
+        if(!(p < (int)n)) { continue; }
         adj[i].push_back((size_t)p);
         adj[(size_t)p].push_back(i);
     }
-    const auto wall = [](const BuildPart &bp) {
-        return bp.def != nullptr && bp.def->fuel_barrier;
-    };
     int next = 0;
-    for(size_t i = 0; i < parts.size(); i++) {
-        if(wall(parts[i]) || group[i] != -1) { continue; }
+    for(size_t i = 0; i < n; i++) {
+        if(wall[i] || group[i] != -1) { continue; }
         group[i] = next;
         std::vector<size_t> stack;
         stack.push_back(i);
@@ -1187,7 +1187,7 @@ int buildGroupsFor(const std::vector<BuildPart> &parts, std::vector<int> &group)
             stack.pop_back();
             for(size_t k = 0; k < adj[q].size(); k++) {
                 const size_t r = adj[q][k];
-                if(wall(parts[r]) || group[r] != -1) { continue; }
+                if(wall[r] || group[r] != -1) { continue; }
                 group[r] = next;
                 stack.push_back(r);
             }
@@ -1196,6 +1196,8 @@ int buildGroupsFor(const std::vector<BuildPart> &parts, std::vector<int> &group)
     }
     return next;
 }
+
+namespace {
 
 struct FuelEdge { int to; size_t link; };
 
@@ -1232,8 +1234,16 @@ std::string BuildShip::fuelLinkLoop(const FuelLink *extra) const {
     for(size_t k = 0; k < fuelLinks.size(); k++) { links.push_back(&fuelLinks[k]); }
     if(extra != nullptr) { links.push_back(extra); }
 
+    /* The same partition and the same wall rule flight uses, so a loop found
+       here is the loop build_ship throws on. */
+    std::vector<int> parent(parts.size());
+    std::vector<bool> wall(parts.size());
+    for(size_t i = 0; i < parts.size(); i++) {
+        parent[i] = parts[i].parent;
+        wall[i] = parts[i].def != nullptr && parts[i].def->isFuelBarrier();
+    }
     std::vector<int> group;
-    const int nGroups = buildGroupsFor(parts, group);
+    const int nGroups = partitionFuelGroups(parent, wall, group);
     std::map<std::string, size_t> index;
     for(size_t i = 0; i < parts.size(); i++) { index[parts[i].id] = i; }
 
