@@ -556,17 +556,19 @@ bool vabLoad(Game &g, const char *name) {
     // linkSel indexes the tree that was just replaced; reset it (a stale one
     // would flip Del from "detach" to destructive "delete").
     g.vab.linkSel = -1;
-    /* A design on disk holds no people (crew stands on the pad), so the people
-       chosen for the build that was just replaced have no seats to sit in.
-       Say so: the next launch falls back to the pad's line, and a player who
-       named a crew cannot otherwise see the choice go (issue #288). */
+    /* A design on disk holds no people (crew stands on the pad), and loading it
+       replaces every part in the build, so the seats the player named belong to
+       parts that are no longer here. Say so: the next launch falls back to the
+       pad's line, and a player who named a crew cannot otherwise see the choice
+       go (issue #288). Do NOT claim the loaded design has no seats -- it may have
+       plenty, just not these ones. */
     if(!g.vab.seatAssigns.empty()) {
         const int n = (int)g.vab.seatAssigns.size();
-        printf("[vab] dropped %d seat assignment(s): the loaded design has no "
-               "seats for them\n", n);
+        printf("[vab] dropped %d seat assignment(s): the loaded design replaced "
+               "the parts they name\n", n);
         fflush(stdout);
-        g.toast("%d seat assignment%s dropped: the loaded design names no seats",
-                n, n == 1 ? "" : "s");
+        g.toast("%d seat assignment%s dropped: the loaded design replaced the "
+                "seats they name", n, n == 1 ? "" : "s");
     }
     g.vab.seatAssigns.clear();
     g.vab.seatPartId.clear();
@@ -578,6 +580,13 @@ bool vabLoad(Game &g, const char *name) {
 
 void vabLaunch(Game &g) {
     if(g.vab.build.parts.empty()) { g.toast("Nothing to launch"); return; }
+    /* The editor prunes the seat plan once per frame (vabUpdate), so a plan can
+       still name a part that left the build when the launch arrives from the test
+       hooks, which fire detach/assign/launch inside one frame. The fill loop
+       below treats the plan as the player's last word on the crew, so prune
+       first: an entry naming a part that is not in this build has no seat to
+       fill. */
+    vabPruneSeats(g);
     ShipDef def = g.vab.build.toShipDef();
     // Launch config from the top bar dropdowns, with the startup defaults
     // (the home body + the pad) as fallback.
