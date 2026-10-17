@@ -7,17 +7,25 @@
 # Pinned by the ToF: "Send best" pins it, so every xferlog line after the click
 # must carry the SAME tof. Clearing the plan hands the ToF back to auto, and the
 # value changes.
+# The sweep must have LANDED before the click: "Send best" is disabled mid-sweep,
+# and a disabled imgui item is not hittable, so --ui-click reports "not found".
+# 12x12 and a 9s click keep that true even under an asan build on a loaded box.
+# P must also come AFTER --select-target's own ms: the hook fires after the state
+# pass, and P is handled inside it, so asking for both in the same millisecond
+# races a sweep against a target that does not exist yet (asan loses that race).
+# The EXPECT pins window= so it matches a click that actually pressed the button,
+# not the FAILED line that names the same path.
 NAME porkchop-plan-survives-reshuffle
-ARGS --time-accel 1 --timeout 16 --frame-cap 30
+ARGS --time-accel 1 --timeout 22 --frame-cap 30
 ARGS --startships e2e/fixtures/pad_four.json --kerbals e2e/fixtures/tiny_kerbals.json
-ARGS --select-target 3000,"pad three" --tracking 5000
-ARGS --porkchop-log --porkchop-n 24 --xfer-log --orbit-interval 1
+ARGS --select-target 3000,"pad three" --tracking 12000
+ARGS --porkchop-log --porkchop-n 12 --xfer-log --orbit-interval 1
 ARGS --ui-click 2000,"Windows/Target" --ui-click 2600,"Target/Porkchop"
-ARGS --sim-press 3000,0,P
-ARGS --ui-click 4200,"Porkchop/Send best to Target"
-ARGS --ui-click 9000,"Tracking Ship List/x##rm_pad two"
-EXPECT target="pad three" 24x24
-EXPECT path="Porkchop/Send best to Target"
+ARGS --sim-press 3500,0,P
+ARGS --ui-click 9000,"Porkchop/Send best to Target"
+ARGS --ui-click 15000,"Tracking Ship List/x##rm_pad two"
+EXPECT target="pad three" 12x12
+EXPECT path="Porkchop/Send best to Target" window=
 EXPECT Removed 'pad two' (active unchanged: pad one)
 CHECK len(set(re.findall(r'tof=([\d.e+]+) s', out[out.index('Send best to Target'):]))) == 1
 FORBID Cannot remove
@@ -25,4 +33,4 @@ FORBID Assertion
 FORBID Segmentation
 FORBID GL_
 FORBID error:
-LIMIT 90
+LIMIT 120

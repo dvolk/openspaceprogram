@@ -270,9 +270,9 @@ std::string dedupVehicleName(System &sys, const std::string &base,
 }
 
 /* The one way a Part is minted from a catalog def (ships.h, #278). Four call
-   sites used to carry this block themselves and had already drifted: a loaded
-   seat got no findings on one path, no chute canopy on another, and only a fresh
-   suit resolved a ship-level hull_margin. */
+   sites used to carry this block themselves and had already drifted: only the
+   def-spawn path resolved a shroud, only the attached-part loader resolved a
+   chute canopy, and only a fresh suit resolved a ship-level hull_margin. */
 Part *Ships::new_part_from_def(const PartDef &pd, double mass, double hull_margin,
                                const std::vector<double> *fuel,
                                const std::vector<Experiment> *experiments,

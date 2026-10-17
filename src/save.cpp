@@ -14,18 +14,16 @@
 #include <string>
 #include <utility>   // std::pair
 
-#include "body.h"      // Body, create_part_body
+#include "body.h"      // Body
 #include "eva.h"       // Kerbal
 #include "game.h"      // Game, Scene
-#include "mesh.h"      // get_mesh
 #include "physics.h"   // RemoveBody, AddPhysicsBody, SetAngVelocity, GetAngVelocity
 #include "part.h"      // Part
 #include "resdir.h"    // resdir::path
-#include "ships.h"     // Ships, collectVehicles
+#include "ships.h"     // Ships, collectVehicles, Ships::new_part_from_def
 #include "shipdef.h"   // PartsCatalog, PartDef, ResourceType, ShipDef, scenario_by_name
 #include "system.h"    // System
 #include "terrain.h"   // TerrainBody
-#include "texture.h"   // get_texture
 #include "vehicle.h"   // Vehicle, build_ship, SlewMode, ScenarioDef
 
 namespace {
@@ -477,15 +475,19 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
             throw;
         }
     }
-    /* The tree is complete, so a shroud's live state can be reported the same way
-       the def-spawn path reports it (vehicle.cpp). A load that resolves no shroud
-       loses a cylinder the player can see, and until #278's fold it resolved none
-       at all -- silently. */
+    /* The tree is complete, so each attached part's shroud can be reported the
+       way the def-spawn path reports its own (vehicle.cpp). A load that resolves
+       no shroud loses a cylinder the player can see, and until #278's fold it
+       resolved none at all -- silently. Hand-authored fixtures carry empty part
+       ids, so the ship name goes on the line too, and it is flushed: a load that
+       refuses further down (the controller check below) would otherwise take the
+       line with it in a redirected run. */
     for(Part *p : v->parts) {
         if(p->shroud == nullptr) { continue; }
-        printf("[shroud] %s: %s (%s over %s)\n", p->id.c_str(),
+        printf("[shroud] %s: %s (%s over %s) ship='%s'\n", p->id.c_str(),
                v->hasChildBelow(p) ? "shrouded" : "bare",
-               p->def->shroud.c_str(), p->def->mesh.c_str());
+               p->def->shroud.c_str(), p->def->mesh.c_str(), s.name.c_str());
+        fflush(stdout);
     }
     /* A named controller missing from the ship is corruption: a silent
        fallback would fly the ship from the wrong part's axes. */
