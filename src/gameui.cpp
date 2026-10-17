@@ -3992,9 +3992,12 @@ void drawVabUI(Game &g) {
         }
         /* Recompute only when the build changed (#293): this redraws every
            frame, and the burn simulation is the most expensive thing in the
-           editor. The signature covers everything computeStaging reads, so an
-           edit -- place, delete, rotate, detach, a link, a stage number, the
-           launch body -- misses the cache and the rows refresh on the spot. */
+           editor. The signature hashes exactly what computeStaging reads --
+           part ids, defs, parents, stages, fuel-link endpoints, launch g,
+           exhaust scale -- so a place, delete, detach, re-parent, a stage
+           number or a link misses the cache and refreshes the rows on the
+           spot, while an edit that cannot move a number (a rotate, which only
+           touches angle and roll) correctly does not. */
         const uint64_t sig = stagingSignature(g.vab.build, gLaunch, g.args.exhaust_scale);
         if(g.vab.stagingSig != sig) {
             g.vab.stagingSig = sig;

@@ -415,6 +415,19 @@ static void test_exhaust_scale() {
    (#293), so EVERY field computeStaging reads has to move it. A field the hash
    misses is a frame where the player edits the ship and the table keeps
    showing the old numbers. */
+static bool rowsDiffer(const std::vector<StageRow> &a, const std::vector<StageRow> &b) {
+    if(a.size() != b.size()) { return true; }
+    for(size_t i = 0; i < a.size(); i++) {
+        if(a[i].stage != b[i].stage || a[i].drops != b[i].drops
+           || a[i].deltaV != b[i].deltaV || a[i].minTWR != b[i].minTWR
+           || a[i].maxTWR != b[i].maxTWR || a[i].massStart != b[i].massStart
+           || a[i].massEnd != b[i].massEnd || a[i].engines != b[i].engines) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void test_signature() {
     Catalog cat;
     BuildShip bs;
@@ -474,6 +487,42 @@ static void test_signature() {
     BuildShip renamed = bs;
     renamed.fuelLinks[0].id = "renamed_link";
     CHECK_TRUE(stagingSignature(renamed, 9.81, 1.0) == base, "a link rename changes no row");
+
+    // A repointed link: same part count, same link count, so this can only be
+    // caught by hashing the endpoints themselves.
+    BuildShip repointed = bs;
+    repointed.fuelLinks[0].to = "cap";
+    CHECK_TRUE(stagingSignature(repointed, 9.81, 1.0) != base, "a link repointed, counts equal");
+
+    /* The contract the cache actually rests on is not "different build,
+       different hash" but "different ROWS, different hash". This pair is the
+       shape that broke it once: identical part order, defs, parents and stages,
+       identical link strings -- only the ids of two same-def tanks are swapped,
+       and because computeStaging resolves a link through an id -> index map,
+       that moves the link across the decoupler. Loading one over the other has
+       to refresh the table.
+
+       The decoupler has to sit on the SAME stage as the engine: put it on a
+       later stage and its branch is gone before anything burns, the link stops
+       mattering, and the pair silently stops testing anything (it did once). */
+    {
+        BuildShip a;
+        addPart(a, cat.tank(500.0, 100.0, 600.0), "cap", -1, 1);
+        addPart(a, cat.engine(1000.0, 5.0, 3200.0), "eng", 0, 1);
+        addPart(a, cat.decoupler(100.0), "dec", 0, 1);
+        addPart(a, cat.tank(1000.0, 200.0, 1200.0), "t1", 2, 1);   // behind the wall
+        addPart(a, cat.tank(1000.0, 200.0, 1200.0), "t2", 1, 1);   // with the engine
+        addLink(a, "t1", "eng");
+        BuildShip b = a;
+        b.parts[3].id = "t2";
+        b.parts[4].id = "t1";
+
+        const std::vector<StageRow> ra = computeStaging(a, 9.81, 1.0);
+        const std::vector<StageRow> rb = computeStaging(b, 9.81, 1.0);
+        CHECK_TRUE(rowsDiffer(ra, rb), "the id swap does move the numbers");
+        CHECK_TRUE(stagingSignature(a, 9.81, 1.0) != stagingSignature(b, 9.81, 1.0),
+                   "different rows, so the hash must differ");
+    }
 }
 
 int main() {

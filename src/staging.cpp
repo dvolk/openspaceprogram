@@ -158,12 +158,14 @@ struct Sim {
     /* Drain layers for one group, computed on first use (#293). Only a group
        that holds a lit engine is ever asked for, and computing them for every
        group -- a BFS each, over a graph as big as the group set -- was the bulk
-       of a deep asparagus build's cost once the drain loop stopped rescanning. */
+       of a deep asparagus build's cost once the drain loop stopped rescanning.
+       layersOf must stay a node-stable container: the drain loop holds the
+       returned pointer across a whole layer walk while later engines insert. */
     const Bucket *layersFor(int g) {
         std::map<int, Bucket>::const_iterator it = layersOf.find(g);
         if(it != layersOf.end()) { return &it->second; }
-        const Bucket b = drainLayersFor(revLinks, g);
-        return &layersOf.insert(it, std::make_pair(g, b))->second;
+        Bucket b = drainLayersFor(revLinks, g);
+        return &layersOf.insert(it, std::make_pair(g, std::move(b)))->second;
     }
 
     // Per-tank drain rates (kg/s) from every lit engine with fuel in its layers.
@@ -185,7 +187,8 @@ struct Sim {
                 double layerFuel = 0.0;
                 for(size_t gi = 0; gi < bucket.size(); gi++) {
                     const int b = bucket[gi];
-                    if(b < 0 || b >= nGroups) { continue; }
+                    // Every bucket entry is a revLinks key or value: a real group id.
+                    assert(b >= 0 && b < nGroups);
                     for(size_t k = (size_t)memberStart[(size_t)b];
                         k < (size_t)memberStart[(size_t)b + 1]; k++) {
                         layerFuel += parts[(size_t)memberOf[k]].fuel;
@@ -194,7 +197,7 @@ struct Sim {
                 if(layerFuel <= 0.0) { continue; }
                 for(size_t gi = 0; gi < bucket.size(); gi++) {
                     const int b = bucket[gi];
-                    if(b < 0 || b >= nGroups) { continue; }
+                    assert(b >= 0 && b < nGroups);
                     for(size_t k = (size_t)memberStart[(size_t)b];
                         k < (size_t)memberStart[(size_t)b + 1]; k++) {
                         const size_t pi = (size_t)memberOf[k];
@@ -382,6 +385,14 @@ inline void sigMix(uint64_t &h, uint64_t v) {
     }
 }
 
+// The length goes in first so "ab","c" and "a","bc" are not one byte stream.
+inline void sigMixText(uint64_t &h, const std::string &s) {
+    sigMix(h, (uint64_t)s.size());
+    for(size_t i = 0; i < s.size(); i++) {
+        h = (h ^ (uint64_t)(unsigned char)s[i]) * 1099511628211ull;
+    }
+}
+
 } // namespace
 
 uint64_t stagingSignature(const BuildShip &ship, double g, double exhaust_scale) {
@@ -394,21 +405,27 @@ uint64_t stagingSignature(const BuildShip &ship, double g, double exhaust_scale)
     sigMix(h, (uint64_t)ship.fuelLinks.size());
     for(size_t i = 0; i < ship.parts.size(); i++) {
         const BuildPart &bp = ship.parts[i];
-        /* The def POINTER, not its contents: a PartDef comes from the catalog
-           and is immutable for the session, so identity is the whole state
-           computeStaging reads from it (mass, capacity, rates, barriers). */
+        /* The def POINTER, not its contents: the catalog is loaded once
+           (ships.cpp:112) and no PartDef is written after load, so identity is
+           the whole state computeStaging reads from it (mass, capacity, rates,
+           barriers). If a parts hot-reload ever lands, this assumption breaks
+           -- a freed catalog's addresses get reused by the next one and the
+           cache goes silently stale. Mix a catalog epoch in then. */
         sigMix(h, (uint64_t)(uintptr_t)bp.def);
         sigMix(h, (uint64_t)(bp.parent + 1));
         sigMix(h, (uint64_t)bp.stage);
+        /* The ID, not just the shape: computeStaging resolves every fuel link
+           through an id -> index map (staging.cpp:452), so swapping the ids of
+           two same-def parts can move a link across a fuel barrier and change
+           the rows. Loading design B over design A must not show A's numbers. */
+        sigMixText(h, bp.id);
     }
     for(size_t k = 0; k < ship.fuelLinks.size(); k++) {
         const BuildShip::FuelLink &fl = ship.fuelLinks[k];
-        for(size_t j = 0; j < fl.from.size(); j++) {
-            h = (h ^ (uint64_t)(unsigned char)fl.from[j]) * 1099511628211ull;
-        }
-        for(size_t j = 0; j < fl.to.size(); j++) {
-            h = (h ^ (uint64_t)(unsigned char)fl.to[j]) * 1099511628211ull;
-        }
+        /* Only the ENDPOINTS: a link's own id is never read, and an id that
+           appears in no link cannot change a row. */
+        sigMixText(h, fl.from);
+        sigMixText(h, fl.to);
     }
     uint64_t bits = 0;
     memcpy(&bits, &g, sizeof(bits));             sigMix(h, bits);
