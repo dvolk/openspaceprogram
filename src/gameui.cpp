@@ -3990,8 +3990,17 @@ void drawVabUI(Game &g) {
             ImGui::TextDisabled("empty build -- place a part");
             return;
         }
-        const std::vector<StageRow> rows =
-            computeStaging(g.vab.build, gLaunch, g.args.exhaust_scale);
+        /* Recompute only when the build changed (#293): this redraws every
+           frame, and the burn simulation is the most expensive thing in the
+           editor. The signature covers everything computeStaging reads, so an
+           edit -- place, delete, rotate, detach, a link, a stage number, the
+           launch body -- misses the cache and the rows refresh on the spot. */
+        const uint64_t sig = stagingSignature(g.vab.build, gLaunch, g.args.exhaust_scale);
+        if(g.vab.stagingSig != sig) {
+            g.vab.stagingSig = sig;
+            g.vab.stagingRows = computeStaging(g.vab.build, gLaunch, g.args.exhaust_scale);
+        }
+        const std::vector<StageRow> &rows = g.vab.stagingRows;
         if(rows.empty()) {
             ImGui::TextDisabled("nothing to stage");
             return;

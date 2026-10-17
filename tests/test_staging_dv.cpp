@@ -411,6 +411,71 @@ static void test_exhaust_scale() {
     CHECK_NEAR(b[0].maxTWR, 2.0 * a[0].maxTWR, 1e-6, "scale maxTWR doubles");
 }
 
+/* stagingSignature: the Staging window caches its rows against this hash
+   (#293), so EVERY field computeStaging reads has to move it. A field the hash
+   misses is a frame where the player edits the ship and the table keeps
+   showing the old numbers. */
+static void test_signature() {
+    Catalog cat;
+    BuildShip bs;
+    addPart(bs, cat.tank(500.0, 100.0, 600.0), "cap", -1, 1);
+    addPart(bs, cat.engine(1000.0, 5.0, 3200.0), "eng", 0, 1);
+    addPart(bs, cat.decoupler(100.0), "dec", 0, 2);
+    addPart(bs, cat.tank(1000.0, 200.0, 1200.0), "tank", 2, 2);
+    addLink(bs, "tank", "eng");
+
+    const uint64_t base = stagingSignature(bs, 9.81, 1.0);
+    CHECK_TRUE(stagingSignature(bs, 9.81, 1.0) == base, "stable build: the cache hits");
+
+    // The two scalars.
+    CHECK_TRUE(stagingSignature(bs, 1.62, 1.0) != base, "a different launch body");
+    CHECK_TRUE(stagingSignature(bs, 9.81, 2.0) != base, "a different exhaust scale");
+    // computeStaging clamps a non-positive scale to 1.0, so the cache must too.
+    CHECK_TRUE(stagingSignature(bs, 9.81, 0.0) == base, "scale 0 clamps like computeStaging");
+    CHECK_TRUE(stagingSignature(bs, 9.81, -3.0) == base, "negative scale clamps too");
+
+    // The stage number: what the table is keyed by.
+    bs.parts[3].stage = 1;
+    CHECK_TRUE(stagingSignature(bs, 9.81, 1.0) != base, "a stage number moved");
+    bs.parts[3].stage = 2;
+    CHECK_TRUE(stagingSignature(bs, 9.81, 1.0) == base, "and back: the cache hits again");
+
+    // The tree: a re-parent is a different ship even with the same parts.
+    const int p = bs.parts[3].parent;
+    bs.parts[3].parent = 1;
+    CHECK_TRUE(stagingSignature(bs, 9.81, 1.0) != base, "a re-parented part");
+    bs.parts[3].parent = p;
+
+    // The part identity: swapping a tank for an engine keeps the part count.
+    const PartDef *tank = bs.parts[3].def;
+    bs.parts[3].def = cat.engine(1000.0, 5.0, 3200.0);
+    CHECK_TRUE(stagingSignature(bs, 9.81, 1.0) != base, "a part swapped for another def");
+    bs.parts[3].def = tank;
+
+    // A fuel link added, and one removed: asparagus is the whole point.
+    BuildShip withExtra = bs;
+    addLink(withExtra, "cap", "eng");
+    CHECK_TRUE(stagingSignature(withExtra, 9.81, 1.0) != base, "a fuel link added");
+    BuildShip noLink = bs;
+    noLink.fuelLinks.clear();
+    CHECK_TRUE(stagingSignature(noLink, 9.81, 1.0) != base, "a fuel link deleted");
+
+    // A part placed or deleted.
+    BuildShip bigger = bs;
+    addPart(bigger, cat.tank(1000.0, 200.0, 1200.0), "extra", 0, 1);
+    CHECK_TRUE(stagingSignature(bigger, 9.81, 1.0) != base, "a part placed");
+    BuildShip smaller = bs;
+    smaller.parts.pop_back();
+    CHECK_TRUE(stagingSignature(smaller, 9.81, 1.0) != base, "a part deleted");
+
+    /* A link's OWN id is not hashed, on purpose: computeStaging resolves a link
+       through its endpoints and never reads fl.id, so renaming one cannot
+       change a row. Pinned so the hash is not "fixed" into over-invalidating. */
+    BuildShip renamed = bs;
+    renamed.fuelLinks[0].id = "renamed_link";
+    CHECK_TRUE(stagingSignature(renamed, 9.81, 1.0) == base, "a link rename changes no row");
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -421,6 +486,7 @@ int main() {
     test_h2_only_engine();
     test_inert_drop();
     test_zero_g();
+    test_signature();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

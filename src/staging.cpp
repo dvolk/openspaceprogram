@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <map>
 #include <set>
 
@@ -32,7 +33,8 @@ struct SimEngine {
 
 typedef std::vector<std::vector<int> > Bucket;
 
-void buildFuelGroups(std::vector<SimPart> &parts) {
+// Groups the parts, returning the group count (ids are dense from 0).
+int buildFuelGroups(std::vector<SimPart> &parts) {
     /* The one partition (shipdef.h, #292). A DEAD part is a wall too, keeping
        the file's standing invariant that a dead part carries group -1. For a
        def the parser produces that is belt-and-braces: Sim::kill only ever
@@ -48,8 +50,9 @@ void buildFuelGroups(std::vector<SimPart> &parts) {
         wall[i] = parts[i].isBarrier || !parts[i].alive;
     }
     std::vector<int> group;
-    partitionFuelGroups(parent, wall, group);
+    const int n = partitionFuelGroups(parent, wall, group);
     for(size_t i = 0; i < parts.size(); i++) { parts[i].group = group[i]; }
+    return n;
 }
 
 // Group buckets by reverse-hop distance, furthest first: outer groups drain
@@ -124,14 +127,43 @@ struct Sim {
     std::vector<SimEngine> engines;
     std::map<int, std::vector<int> > revLinks;
     std::map<int, Bucket> layersOf;
+    /* group -> its parts, flat: group g owns memberOf[memberStart[g] ..
+       memberStart[g+1]). Built once per refreshFuel (#293): the drain loop used
+       to rescan the whole ship for every group in every layer, which made a
+       240-group ship 5.6x the cost of a one-group ship of the same part count.
+       Alive parts only (a dead part has group -1), so the drain loop needs no
+       liveness test. */
+    int nGroups = 0;
+    std::vector<int> memberStart;
+    std::vector<int> memberOf;
 
-    void rebuildLayers() {
-        layersOf.clear();
+    void rebuildMembers() {
+        memberStart.assign((size_t)nGroups + 1, 0);
         for(size_t i = 0; i < parts.size(); i++) {
             const int g = parts[i].group;
-            if(g < 0 || layersOf.count(g)) { continue; }
-            layersOf[g] = drainLayersFor(revLinks, g);
+            if(g >= 0) { memberStart[(size_t)g + 1]++; }
         }
+        for(size_t g = 0; g + 1 < memberStart.size(); g++) {
+            memberStart[g + 1] += memberStart[g];
+        }
+        memberOf.assign(parts.size(), 0);
+        std::vector<int> cursor = memberStart;
+        for(size_t i = 0; i < parts.size(); i++) {
+            const int g = parts[i].group;
+            if(g < 0) { continue; }
+            memberOf[(size_t)cursor[(size_t)g]++] = (int)i;
+        }
+    }
+
+    /* Drain layers for one group, computed on first use (#293). Only a group
+       that holds a lit engine is ever asked for, and computing them for every
+       group -- a BFS each, over a graph as big as the group set -- was the bulk
+       of a deep asparagus build's cost once the drain loop stopped rescanning. */
+    const Bucket *layersFor(int g) {
+        std::map<int, Bucket>::const_iterator it = layersOf.find(g);
+        if(it != layersOf.end()) { return &it->second; }
+        const Bucket b = drainLayersFor(revLinks, g);
+        return &layersOf.insert(it, std::make_pair(g, b))->second;
     }
 
     // Per-tank drain rates (kg/s) from every lit engine with fuel in its layers.
@@ -146,23 +178,26 @@ struct Sim {
             if(e.part < 0 || e.part >= (int)parts.size() || !parts[e.part].alive) { continue; }
             const int g = parts[e.part].group;
             if(g < 0) { continue; }
-            std::map<int, Bucket>::const_iterator lit = layersOf.find(g);
-            if(lit == layersOf.end()) { continue; }
+            const Bucket *lit = layersFor(g);
             double need = e.mdot;
-            for(size_t li = 0; li < lit->second.size() && need > 0.0; li++) {
-                const std::vector<int> &bucket = lit->second[li];
+            for(size_t li = 0; li < lit->size() && need > 0.0; li++) {
+                const std::vector<int> &bucket = (*lit)[li];
                 double layerFuel = 0.0;
                 for(size_t gi = 0; gi < bucket.size(); gi++) {
-                    for(size_t pi = 0; pi < parts.size(); pi++) {
-                        if(parts[pi].alive && parts[pi].group == bucket[gi]) {
-                            layerFuel += parts[pi].fuel;
-                        }
+                    const int b = bucket[gi];
+                    if(b < 0 || b >= nGroups) { continue; }
+                    for(size_t k = (size_t)memberStart[(size_t)b];
+                        k < (size_t)memberStart[(size_t)b + 1]; k++) {
+                        layerFuel += parts[(size_t)memberOf[k]].fuel;
                     }
                 }
                 if(layerFuel <= 0.0) { continue; }
                 for(size_t gi = 0; gi < bucket.size(); gi++) {
-                    for(size_t pi = 0; pi < parts.size(); pi++) {
-                        if(!parts[pi].alive || parts[pi].group != bucket[gi]) { continue; }
+                    const int b = bucket[gi];
+                    if(b < 0 || b >= nGroups) { continue; }
+                    for(size_t k = (size_t)memberStart[(size_t)b];
+                        k < (size_t)memberStart[(size_t)b + 1]; k++) {
+                        const size_t pi = (size_t)memberOf[k];
                         const double have = parts[pi].fuel;
                         if(have <= 0.0) { continue; }
                         rate[pi] += need * (have / layerFuel);
@@ -203,8 +238,8 @@ struct Sim {
     }
 
     // Propellant in `set` that a lit engine can still reach via its drain
-    // layers. The "ready to drop" test.
-    double drainableIn(const std::set<int> &set) const {
+    // layers. The "ready to drop" test. Not const: layersFor fills its cache.
+    double drainableIn(const std::set<int> &set) {
         if(set.empty()) { return 0.0; }
         std::set<int> reachable;
         for(size_t ei = 0; ei < engines.size(); ei++) {
@@ -212,11 +247,12 @@ struct Sim {
             if(!e.lit || e.part < 0 || e.part >= (int)parts.size() || !parts[e.part].alive) {
                 continue;
             }
-            std::map<int, Bucket>::const_iterator lit = layersOf.find(parts[e.part].group);
-            if(lit == layersOf.end()) { continue; }
-            for(size_t li = 0; li < lit->second.size(); li++) {
-                for(size_t gi = 0; gi < lit->second[li].size(); gi++) {
-                    reachable.insert(lit->second[li][gi]);
+            const int g = parts[e.part].group;
+            if(g < 0) { continue; }
+            const Bucket *lit = layersFor(g);
+            for(size_t li = 0; li < lit->size(); li++) {
+                for(size_t gi = 0; gi < (*lit)[li].size(); gi++) {
+                    reachable.insert((*lit)[li][gi]);
                 }
             }
         }
@@ -337,6 +373,49 @@ double partPropellantMass(const PartDef &def, const bool *burn) {
     return m;
 }
 
+namespace {
+
+// FNV-1a, byte at a time so the caller need not care about endianness.
+inline void sigMix(uint64_t &h, uint64_t v) {
+    for(int i = 0; i < 8; i++) {
+        h = (h ^ ((v >> (i * 8)) & 0xffull)) * 1099511628211ull;
+    }
+}
+
+} // namespace
+
+uint64_t stagingSignature(const BuildShip &ship, double g, double exhaust_scale) {
+    /* Same normalization computeStaging applies, so two builds that would
+       produce identical rows share one cache entry. */
+    if(!(exhaust_scale > 0.0)) { exhaust_scale = 1.0; }
+
+    uint64_t h = 1469598103934665603ull;
+    sigMix(h, (uint64_t)ship.parts.size());
+    sigMix(h, (uint64_t)ship.fuelLinks.size());
+    for(size_t i = 0; i < ship.parts.size(); i++) {
+        const BuildPart &bp = ship.parts[i];
+        /* The def POINTER, not its contents: a PartDef comes from the catalog
+           and is immutable for the session, so identity is the whole state
+           computeStaging reads from it (mass, capacity, rates, barriers). */
+        sigMix(h, (uint64_t)(uintptr_t)bp.def);
+        sigMix(h, (uint64_t)(bp.parent + 1));
+        sigMix(h, (uint64_t)bp.stage);
+    }
+    for(size_t k = 0; k < ship.fuelLinks.size(); k++) {
+        const BuildShip::FuelLink &fl = ship.fuelLinks[k];
+        for(size_t j = 0; j < fl.from.size(); j++) {
+            h = (h ^ (uint64_t)(unsigned char)fl.from[j]) * 1099511628211ull;
+        }
+        for(size_t j = 0; j < fl.to.size(); j++) {
+            h = (h ^ (uint64_t)(unsigned char)fl.to[j]) * 1099511628211ull;
+        }
+    }
+    uint64_t bits = 0;
+    memcpy(&bits, &g, sizeof(bits));             sigMix(h, bits);
+    memcpy(&bits, &exhaust_scale, sizeof(bits)); sigMix(h, bits);
+    return h;
+}
+
 std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
                                      double exhaust_scale) {
     std::vector<StageRow> rows;
@@ -409,7 +488,8 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
     }
 
     auto refreshFuel = [&]() {
-        buildFuelGroups(sim.parts);
+        sim.nGroups = buildFuelGroups(sim.parts);
+        sim.rebuildMembers();
         sim.revLinks.clear();
         for(size_t k = 0; k < links.size(); k++) {
             if(!sim.parts[links[k].from].alive || !sim.parts[links[k].to].alive) { continue; }
@@ -418,7 +498,7 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
             if(a < 0 || b < 0 || a == b) { continue; }
             sim.revLinks[b].push_back(a);
         }
-        sim.rebuildLayers();
+        sim.layersOf.clear();   // the layers follow the groups, so they are stale
     };
 
     for(size_t i = 0; i < n; i++) {

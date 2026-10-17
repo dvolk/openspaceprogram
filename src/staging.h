@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <vector>
 
 #include "shipdef.h"   // BuildShip, PartDef, ResourceType
@@ -26,6 +27,16 @@ struct StageRow {
 // highest.
 std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
                                      double exhaust_scale = 1.0);
+
+/* A content hash of everything computeStaging reads about `ship`, plus the two
+   scalars. The Staging window redraws every frame on a build that only changes
+   when the player edits it, so its rows are cached against this (#293):
+   revalidating is one pass over the parts with no allocation, recomputing is a
+   burn simulation (84 us for a one-group ship, 473 us for a 240-group one).
+   Only the link ENDPOINTS are hashed: computeStaging resolves a link through
+   the part ids and ignores its own id, and an id that appears in no link
+   cannot change a row. */
+uint64_t stagingSignature(const BuildShip &ship, double g, double exhaust_scale);
 
 // Burnable propellant of the part (kg): capacity of the resources flagged in
 // `burn`.

@@ -23,6 +23,7 @@
 #include "science.h"  // Experiment
 #include "ships.h"    // Ships
 #include "siminput.h" // TimeSeries
+#include "staging.h"  // StageRow (the Staging window's cached table)
 #include "system.h"   // System
 #include "terrain.h"  // TerrainBody
 #include "transferplanner.h"
@@ -217,6 +218,16 @@ struct VabState {
     std::string seatPartId;
     int seatMx = 0, seatMy = 0;   // where it was opened (first-draw placement)
     bool seatPlaced = false;
+
+    /* The Staging window's table, cached against a content hash of the build
+       (#293). The window redraws every frame; the build only changes when the
+       player edits it, and a burn simulation costs 84-473 us on a real ship
+       where revalidating the hash costs about a microsecond. 0 is "no cache":
+       a real signature is FNV-1a over the whole build, so colliding with 0 is
+       not a practical concern, and a stale entry could only ever show a table
+       one edit behind -- never a wrong launch. */
+    uint64_t stagingSig = 0;
+    std::vector<StageRow> stagingRows;
 };
 
 // Biome::None when the body has no classifiable surface or terrain is not ready.
