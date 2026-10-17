@@ -271,9 +271,9 @@ static void refreshShipState(Game &g, const glm::dvec3 &com) {
 
     // P one-shot: set in poll_events, run here where the planner and this
     // frame's snapshot both exist.
-    if(g.porkchop_compute_requested) {
+    if(g.xferPlanner.pc_compute_requested) {
         g.xferPlanner.porkchopCompute();
-        g.porkchop_compute_requested = false;
+        g.xferPlanner.pc_compute_requested = false;
     }
 
     // M one-shot, same pattern as P; the sweep runs on the background worker.

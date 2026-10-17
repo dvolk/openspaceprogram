@@ -271,7 +271,7 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(slotFired(Slot::Porkchop, ksc, kmod, g.binds)) {
         // The render pass runs the expensive grid.
         if(!repeat) {
-            g.porkchop_compute_requested = true;
+            g.xferPlanner.pc_compute_requested = true;
         }
     }
     if(slotFired(Slot::SurfaceMap, ksc, kmod, g.binds)) {

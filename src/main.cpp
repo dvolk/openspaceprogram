@@ -1230,7 +1230,7 @@ int main(int argc, char **argv)
         printf("idle: off (--idle-fps 0)\n");
     }
 
-    // Per-frame phase timing. Pushed into Game::perf_* EVERY frame; --perf
+    // Per-frame phase timing. Pushed into Game::hud.perf_* EVERY frame; --perf
     // only gates the console output.
     const bool perf_on = args.perf;
     double p_events = 0.0, p_logic = 0.0, p_jobs = 0.0, p_refresh = 0.0,

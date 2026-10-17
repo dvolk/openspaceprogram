@@ -1,7 +1,7 @@
 # The "Target orbit" slot with NO transfer target. uiRefPlane falls back to the
 # ecliptic, and RefPlane::mode is what keeps that honest: every label prints ecl,
 # the overlay draws the ecliptic ring, and --map-dump drops the tgt row rather
-# than printing the fallback under a "tgt" name. Print refPlaneName(g.map_plane)
+# than printing the fallback under a "tgt" name. Print refPlaneName(g.map.plane)
 # at any call site instead of the resolved mode, or emit the row anyway, and this
 # case fails.
 #

@@ -392,11 +392,14 @@ struct Game {
 
     /* Headless test hooks (cli.h --vab-* etc): registered at boot by
        installHeadlessHooks (main.cpp) + vabInstallHooks (vab.cpp), fired
-       once each by fireHooks at the phase points. Negative time = "never";
-       each hook's `fired` latches so it fires at most once per run. */
+       once each by fireHooks at the phase points. A SINGLE hook's ms is
+       -1 = never (the registration guards skip it); repeatables must pass
+       ms >= 0. Each hook's `fired` latches so it fires at most once per run. */
     std::array<std::vector<GameHook>, kHookPhaseCount> hooks;
     // Unlatched hooks per phase; lets fireHooks skip a phase with none.
     std::array<int, kHookPhaseCount> hooks_pending = {};
+    // Set by the first fireHooks; addHook asserts boot-time registration only.
+    bool hooks_polled = false;
     void addHook(HookPhase phase, int ms,
                  std::function<bool(Game &)> gate,
                  std::function<void(Game &)> act);
@@ -481,7 +484,6 @@ struct Game {
     int rmbMoved = 0;               // |xrel| + |yrel| while held
     bool poly_mode = false;         // F11 wireframe
     bool screenshot_requested = false;
-    bool porkchop_compute_requested = false;  // P: one-shot compute the plot
     // The player-controlled ship (ships live in the bodies' lists).
     Vehicle *ship = nullptr;
     // `kerbal` is the one most recently EVA'd (the V toggle-back); `lastShip` the

@@ -118,6 +118,8 @@ public:
        to be as exact as the selection itself, or a deleted vessel hands its grid
        to a body of the same name. */
     TargetRef pc_target;
+    // P: one-shot compute request (events.cpp sets, the state pass consumes).
+    bool pc_compute_requested = false;
     int pc_in_flight = 0; // jobs posted but not landed (window shows "sweeping")
     // Bumped whenever pc is replaced (only writer: the sweep's continuation).
     // The window redraws its heatmap off this, so a grid merely still on screen

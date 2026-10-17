@@ -4,7 +4,7 @@ ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --vab res/ships/tanker.json --info-log --orbit-interval 1
 # The editor draws no world and parks its camera at the build tree, so its
 # state pass takes the ship snapshot WITHOUT the terrain LOD: the sim keeps
-# coasting while you build, and the shared ORBITAL/SURFACE readouts read g.view
+# coasting while you build, and the shared ORBITAL/SURFACE readouts read g.hud.view
 # (#212). Before this, refreshVab was only a camera re-pose, so the snapshot sat
 # at whatever the last world scene left -- on a --vab boot that means zeros, and
 # [surfinfo] prints alt_agl=-nan / lon=0 for the whole stay.

@@ -1,5 +1,5 @@
 # #235: launch from a VAB that has no active ship. The LAUNCH button runs
-# INSIDE the imgui pass, so the ship it builds has no g.view snapshot for this
+# INSIDE the imgui pass, so the ship it builds has no g.hud.view snapshot for this
 # frame: the state pass (refreshVab -> updateShipView) already ran, and on a
 # shipless VAB it returned early every frame, leaving the snapshot at zeros.
 # vabDrawUi keeps drawing after drawVabUI returns, so the HUD's AGL line then
