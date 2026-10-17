@@ -10,7 +10,7 @@ ARGS --orbit-log --orbit-interval 1
 # case; there is no fixture for it in the tree, so the CHECK pins only the
 # loaded figure.
 EXPECT [crew] loaded 'kerbal' aboard 'racer'
-EXPECT Loaded 1 inventory item(s) with the fleet
+EXPECT Loaded 1 inventory item(s) with the ships
 EXPECT Loaded game from e2e/fixtures/save_racer_pocket (active: racer)
 EXPECT [orbitlog]
 CHECK abs(max(float(m) for m in re.findall(r"\[compound\].*mass=([\d.]+) kg", out)) - 2914.1) < 0.05

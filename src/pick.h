@@ -5,10 +5,9 @@
 #pragma once
 
 #include <cstddef>
+#include <vector>
 
 #include <glm/glm.hpp>
-
-#include "ships.h"   // Fleet
 
 struct Camera;
 struct Body;
@@ -50,6 +49,7 @@ bool pickShipPart(Game &g, int px, int py,
 /* The first vessel standing on a launch pad's deck, null if the deck is
    clear. Rays go up the pad's own axis from below the deck, so a ship that
    LANDED there counts like one placed there. Deliberately narrow: "is
-   something standing on this deck", not "is the pad safe". The fleet is
+   something standing on this deck", not "is the pad safe". The vehicle list is
    filtered to the pad's own SoI body before the rays are cast. */
-Vehicle *findPadOccupant(const StaticBuilding *site, const Fleet &fleet);
+Vehicle *findPadOccupant(const StaticBuilding *site,
+                         const std::vector<Vehicle *> &vehicles);

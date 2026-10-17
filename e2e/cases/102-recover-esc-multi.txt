@@ -8,7 +8,7 @@ EXPECT [recover] t=
 EXPECT 'racer' recovered
 EXPECT [scene] spacecenter -> tracking (push)
 EXPECT Timeout reached (10.
-FORBID [game] unloaded: fleet torn down
+FORBID [game] unloaded: ships torn down
 FORBID [scene] spacecenter -> title
 FORBID GL_
 FORBID error:

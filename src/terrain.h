@@ -175,7 +175,7 @@ struct TerrainBody {
     ~TerrainBody();
 
     // Space pads on this body (StaticBuilding::Draw culls itself off-body).
-    // The fleet is NOT here: every Vehicle is in one flat list (Game::vehicles)
+    // No vehicles here: every Vehicle is in one flat list (Game::vehicles)
     // and names its SoI body through Vehicle::m_parent.
     std::vector<StaticBuilding *> pads;
 

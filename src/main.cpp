@@ -203,7 +203,7 @@ static void installHeadlessHooks(Game &game) {
         game.addHook(kHookPreScene, args.new_game_ms, nullptr,
                      [](Game &g) { g.newGame(); });
     }
-    // --quit-title: before the scene is read (it tears the fleet down and
+    // --quit-title: before the scene is read (it tears the ships down and
     // lands on Title).
     if(args.quit_title_ms >= 0) {
         game.addHook(kHookPreScene, args.quit_title_ms, nullptr,
@@ -288,8 +288,8 @@ static void installHeadlessHooks(Game &game) {
             /* Any vessel with a free seat, not just the active one: after an
                EVA the walker stands beside the ship it left, and the e2e may
                have switched control since. The walking crew are collected once:
-               freeKerbals walks the whole fleet, so calling it per candidate
-               part is quadratic in a fleet that is only getting bigger. */
+               freeKerbals walks every vehicle, so calling it per candidate part
+               is quadratic in a list that is only getting bigger. */
             const std::vector<Kerbal *> freeK = freeKerbals(game.vehicles);
             for(auto *s : game.vehicles) {
                 for(size_t i = 0; i < s->parts.size(); i++) {
@@ -316,7 +316,7 @@ static void installHeadlessHooks(Game &game) {
             Part *from = nullptr;   // the instrument holding a finding to take
             Part *to = nullptr;     // the courier (the kerbal's suit)
             // After an EVA the instrument sits on a DIFFERENT ship than the
-            // active one: search the whole fleet.
+            // active one: search every vehicle.
             for(auto *s : game.vehicles) {
                 for(Part *p : s->parts) {
                     if(p->def != nullptr && !p->experiments.empty()
@@ -346,8 +346,8 @@ static void installHeadlessHooks(Game &game) {
         game.addHook(kHookPreScene, args.store_ms, nullptr, [](Game &game) {
             Part *from = nullptr;   // the courier (the kerbal's suit)
             Part *to = nullptr;     // the container (the capsule)
-            // After an EVA the container sits on a DIFFERENT ship: search the
-            // whole fleet.
+            // After an EVA the container sits on a DIFFERENT ship: search every
+            // vehicle.
             for(auto *s : game.vehicles) {
                 for(Part *p : s->parts) {
                     if(p->def != nullptr
@@ -712,7 +712,7 @@ int main(int argc, char **argv)
     game.load_settings();
     game.apply_ui_style();
 
-    // --start-time: must happen before the fleet spawns -- the orbit scenarios
+    // --start-time: must happen before the ships spawn -- the orbit scenarios
     // read the home body's frame state. (--load overwrites it.)
     game.setTime(args.start_time);
     if(args.start_time > 0.0) {
@@ -759,7 +759,7 @@ int main(int argc, char **argv)
        the player's bodies, NOT the system home -- see the branches below. */
     Vehicle *first = nullptr;
     if(!args.load_name.empty()) {
-        // --load: the saved fleet replaces the built one, each ship in the world
+        // --load: the saved ships replace the built ones, each in the world
         // state it was saved in (live or railed).
         //
         // A bare slot name resolves under the data dir's saves/ when the given
@@ -806,7 +806,7 @@ int main(int argc, char **argv)
         // locals dangle -- re-point at the live system.
         sun = game.sun;
         home = game.home;
-        // switchSystem landed on the Title: a loaded fleet resumes in flight,
+        // switchSystem landed on the Title: a loaded save resumes in flight,
         // a shipless save at the hub.
         if(ship != nullptr) { enterFlight(game); }
         else { enterSpaceCenter(game); }
@@ -860,7 +860,7 @@ int main(int argc, char **argv)
         check_gl_error();
         // Scenarios first (they position the ships), then park the idle ones --
         // both before the camera exists, so it focuses on the spawn.
-        game.settleFleet(first);
+        game.settleVehicles(first);
         /* The active ship: the first built. Assigned directly, not via
            select_ship: the camera does not exist yet. */
         ship = first;

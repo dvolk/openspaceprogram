@@ -25,10 +25,10 @@ static void free_shell(TerrainBody::Shell *s) {
 }
 
 TerrainBody::~TerrainBody() {
-    /* No fleet here: a body never owns a Vehicle, so the fleet must already be
-       gone before the first body dies (Game::unloadGame). A Vehicle references
-       its body's frame, so getting that order wrong is a use-after-free in
-       ~Vehicle rather than a leak. */
+    /* No vehicles here: a body never owns a Vehicle, so Game::vehicles must
+       already be empty before the first body dies (Game::unloadGame). A Vehicle
+       references its body's frame, so getting that order wrong is a
+       use-after-free in ~Vehicle rather than a leak. */
     // Pads: registries own the render assets, so only the rigid Body goes.
     for(auto *p : pads) {
         RemoveBody(p->body);

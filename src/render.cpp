@@ -549,7 +549,7 @@ void paintWorld(Game &g) {
             }
         }
         // Ships in another frame are transformed into the render frame by
-        // Vehicle::Draw. The fleet is one list; a ship's frame is its own.
+        // Vehicle::Draw. The vehicles are one list; a ship's frame is its own.
         for(auto *s : g.vehicles) {
             s->Draw(camera, rf);
         }

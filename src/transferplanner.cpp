@@ -159,7 +159,7 @@ void dumpPorkchop(const std::string &dir, const std::string &target,
 } // namespace
 
 /* Point xfer_target at the (name, is_ship) selection in the CURRENT list. A
-   selection that is no longer there means the target left the fleet, and the
+   selection that is no longer there means the target was deleted, and the
    selection goes with it -- keeping the index instead would have it name
    whichever vessel happened to land in that slot (issue #276). */
 void TransferPlanner::resolveTarget() {
@@ -215,8 +215,8 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
                 xferTargets.push_back({b->name.c_str(), b, nullptr});
             }
         }
-        /* Sibling vessels: the fleet filtered to the subject's SoI body. Every
-           fleet entry is flyable -- a seated kerbal is a seat on its capsule's
+        /* Sibling vessels: Game::vehicles filtered to the subject's SoI body.
+           Every entry is flyable -- a seated kerbal is a seat on its capsule's
            Part (part.h), never a target here. */
         for(auto *s : g.vehicles) {
             if(s != g.ship && s->m_parent == pb) {

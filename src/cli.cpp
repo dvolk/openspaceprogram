@@ -37,7 +37,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Experiment family JSON (default: res/data/experiments.json)");
 
     app.add_option("--kerbals", args.kerbals_file,
-                   "Kerbal roster JSON: the named crew the fleet draws from, "
+                   "Kerbal roster JSON: the named crew the ships draw from, "
                    "each with id, name and piloting/science/engineering 1..5 "
                    "(default: res/data/kerbals.json)");
 
@@ -59,7 +59,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Try e2e/fixtures/startships.json");
 
     app.add_option("--save", args.save_name,
-                   "Save the game (the live fleet + crew + clock) when the "
+                   "Save the game (its ships + crew + clock) when the "
                    "--timeout budget is spent, then exit (the headless/e2e "
                    "path). A bare name is a slot of the current game under "
                    "the data dir's saves/ (<stamp>-<gameName>/<slot>, the "
@@ -87,7 +87,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     // Spin-test ship (no JSON def); all parts are passive tanks, so any spin is
     // self-inflicted.
     app.add_option("--radial-test", args.radial_test,
-                   "Build the spin-test ship(s) instead of a fleet: "
+                   "Build the spin-test ship(s) instead of the start ships: "
                    "parallel | stacked | stacks | parstacks")
         ->check(CLI::IsMember({"parallel", "stacked", "stacks",
                                "parstacks"}));
@@ -262,8 +262,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     // Docking pair: probe (active) + station, nose-to-nose (see src/docktest.cpp).
     app.add_option("--dock-test", args.dock_test,
-                   "Build the docking pair (probe + station) instead of a "
-                   "fleet: near | approach")
+                   "Build the docking pair (probe + station) instead of the "
+                   "start ships: near | approach")
         ->check(CLI::IsMember({"near", "approach"}));
 
     app.add_option("-t,--time-accel", args.initial_time_accel,

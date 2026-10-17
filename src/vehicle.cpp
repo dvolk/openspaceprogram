@@ -260,7 +260,7 @@ const ScenarioDef *scenario_by_name(const std::string &name) {
         if(i) { avail += ", "; }
         avail += kScenarios[i].name;
     }
-    throw std::runtime_error("fleet: unknown scenario '" + name
+    throw std::runtime_error("unknown scenario '" + name
                              + "' (available: " + avail + ")");
 }
 

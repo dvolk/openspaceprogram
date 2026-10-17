@@ -42,15 +42,15 @@ struct Kerbal;  // crew characters (eva.h)
 struct CrewRoster;  // the named crew pool (crew.h)
 struct Part;    // a seat occupant is a suit Part (part.h)
 
-/* The live fleet: every Vehicle in the world, in spawn order (Game::vehicles).
-   A seated kerbal is NOT in it -- it is a seat on its capsule's Part (part.h).
-   Spawn order is stable across an SoI crossing, which is what makes the Ship
-   List rows, "ship N of M", F6 cycling and the save's v0/v1/.. slugs mean the
-   same thing from one frame to the next. A same-body query filters
+/* The functions below take the world's vehicles as a plain
+   `std::vector<Vehicle *> &`: the one list Game owns (Game::vehicles), in spawn
+   order. A seated kerbal is NOT in it -- it is a seat on its capsule's Part
+   (part.h). Spawn order is stable across an SoI crossing, which is what makes
+   the Ship List rows, "ship N of M", F6 cycling and the save's v0/v1/.. slugs
+   mean the same thing from one frame to the next. A same-body query filters
    Vehicle::m_parent; there is no body-side index to keep in step. */
-using Fleet = std::vector<Vehicle *>;
 
-/* A name made unique against the live fleet: first use keeps the bare name,
+/* A name made unique against every live vehicle: first use keeps the bare name,
    later ones get " #2", " #3" .. Names are display text -- the save keys a
    vehicle by its slug (#266), so a clash no longer mis-resolves a load. Worth
    preventing anyway: the ship list, the tracking window, toasts and the
@@ -62,7 +62,8 @@ using Fleet = std::vector<Vehicle *>;
    `roster` (nullable) additionally reserves the kerbals' names. A kerbal's
    display name IS its roster name and is never deduped, so without this a ship
    could be named 'Ash' while a kerbal named 'Ash' flies. */
-std::string dedupVehicleName(const Fleet &fleet, const std::string &base,
+std::string dedupVehicleName(const std::vector<Vehicle *> &vehicles,
+                             const std::string &base,
                              const CrewRoster *roster = nullptr);
 
 class Ships {
@@ -124,21 +125,21 @@ public:
     void setSun(TerrainBody *sun) { this->sun = sun; }
 
     /* --- placement -------------------------------------------------------
-       The builder builds and the caller's `fleet` adopts: place_* pushes the
+       The builder builds and the caller's list adopts: place_* pushes the
        finished Vehicle. `t` (sim time) is the flight-journal stamp.
        `site`: the pad to stand on (on_pad scenarios); nullptr -> the body's
        default site, its first VAB_LAUNCH_PAD.
        Scenario is NOT applied -- spawn_vehicle is the caller's job. */
     Vehicle *place_ship(const std::string &shipDefPath, const std::string &wantName,
                         TerrainBody *hb, const ScenarioDef *sc, System &sys,
-                        Fleet &fleet, double t,
+                        std::vector<Vehicle *> &vehicles, double t,
                         const StaticBuilding *site = nullptr);
 
     // Same, from an already-loaded def.
     Vehicle *place_ship_def(const ShipDef &def, const std::string &defPath,
                             const std::string &wantName,
                             TerrainBody *hb, const ScenarioDef *sc, System &sys,
-                            Fleet &fleet, double t,
+                            std::vector<Vehicle *> &vehicles, double t,
                             const StaticBuilding *site = nullptr);
 
     /* Every seat of every capsule part of `ship`, drawn FIFO from the home pad's
@@ -174,16 +175,16 @@ public:
                    Part *suit = nullptr, int slot = -1);
 
     // Apply each ship's scenario (the startup spawn_vehicle pass).
-    void apply_scenarios(Fleet &fleet, System &sys, double t);
+    void apply_scenarios(std::vector<Vehicle *> &vehicles, System &sys, double t);
 
     // Register an out-of-band ship; its builder already placed it, so it takes
     // no orbit slot.
-    void add_ship(Fleet &fleet, Vehicle *v, TerrainBody *home,
+    void add_ship(std::vector<Vehicle *> &vehicles, Vehicle *v, TerrainBody *home,
                   const ScenarioDef *sc, double t);
 
     // Returns the first ship built (the natural active one), nullptr if empty.
     Vehicle *buildDebugStartShips(const std::vector<DebugStartShip> &entries,
-                                  System &sys, Fleet &fleet, double t);
+                                  System &sys, std::vector<Vehicle *> &vehicles, double t);
 
 private:
     PartsCatalog part_catalog;

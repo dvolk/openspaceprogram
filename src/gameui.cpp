@@ -339,7 +339,7 @@ void drawUIReadouts(Game &g) {
     TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
     System &sys = g.sys;
-    Fleet &fleet = g.vehicles;
+    std::vector<Vehicle *> &vehicles = g.vehicles;
     GameArgs &args = g.args;
     Camera *camera = g.camera;
     int &time_accel = g.time_accel;
@@ -1834,16 +1834,16 @@ void drawUIReadouts(Game &g) {
     drawWin(g, W_ShipList, [&] {
     // Buttons (natural width) + SameLine: a full-width Selectable in this auto-resize
     // window would push the "x" off the line.
-    /* Walked by index because a row's "x" erases from the live fleet. The loop
+    /* Walked by index because a row's "x" erases from the live list. The loop
        stops the moment a row really goes away (see `removed` below), so no index
        is reused after the erase. */
     bool removed = false;
-    for(size_t i = 0; i < fleet.size() && !removed; i++) {
-        Vehicle *v = fleet[i];
+    for(size_t i = 0; i < vehicles.size() && !removed; i++) {
+        Vehicle *v = vehicles[i];
         const bool active = (v == ship);
         ImGui::PushID((void*)v);
         /* Every row is a controllable vessel: a seated kerbal is a seat on its
-           capsule's Part (part.h), not a fleet entry. */
+           capsule's Part (part.h), not a vehicle. */
         if(active) {
             ImGui::PushStyleColor(ImGuiCol_Button,
                                  ImVec4(0.30f, 0.45f, 0.70f, 1.0f));
@@ -1870,7 +1870,7 @@ void drawUIReadouts(Game &g) {
             if(ImGui::SmallButton(rm_id)) {
                 /* Stop iterating only when a row really went away. A refusal
                    (a capsule with its own crew aboard still gets an "x")
-                   toasts and leaves the fleet intact, so breaking there
+                   toasts and leaves the list intact, so breaking there
                    would drop the rest of the list for one frame. */
                 removed = g.remove_ship(v);
             }
@@ -2022,7 +2022,7 @@ void drawUIReadouts(Game &g) {
    by pickAt). Plain Begin/End -- user-placed popups, NOT slot-layout windows. Staging
    that drops the part leaves the entry stale (dropped, not re-pointed). */
 void drawPartWindows(Game &g) {
-    Fleet &fleet = g.vehicles;
+    std::vector<Vehicle *> &vehicles = g.vehicles;
     for(int i = (int)g.part_sels.size() - 1; i >= 0; i--) {
         const size_t idx = (size_t)i;
         PartSel &live = g.part_sels[idx];
@@ -2202,7 +2202,7 @@ void drawPartWindows(Game &g) {
                 // the buttons below must not redraw this window, or the walk
                 // refills the vector being iterated.
                 static std::vector<Kerbal *> free_ks;
-                freeKerbalsInto(fleet, free_ks);
+                freeKerbalsInto(vehicles, free_ks);
                 for(Kerbal *k : free_ks) {
                     // Board/Store gate: the same kerbalInRange the Take button and the headless hooks use.
                     if(!g.kerbalInRange(k, ship->parts[part])) { continue; }
@@ -2305,7 +2305,7 @@ void drawPartWindows(Game &g) {
                     bool anyTake = false;
                     // Reused buffer + stack label (see the Board loop above).
                     static std::vector<Kerbal *> take_ks;
-                    freeKerbalsInto(fleet, take_ks);
+                    freeKerbalsInto(vehicles, take_ks);
                     for(Kerbal *k : take_ks) {
                         // A successful take empties the pod; the next iteration's
                         // canHold(pod->experiments[0]) would read an empty vector.
@@ -2360,13 +2360,13 @@ void drawPartWindows(Game &g) {
                 // Free item ships in range: a Pick up button each (a crewed ship is not stowable).
                 bool anyInRange = false;
                 /* Walked by index because a successful "Pick up" deletes a
-                   vehicle, and a delete erases it from the live fleet. The loop
+                   vehicle, and a delete erases it from the live list. The loop
                    stops there rather than continuing over a shifted index: the
                    window redraws next frame anyway, which is what `worldChanged`
                    is for. */
                 bool stowed = false;
-                for(size_t ni = 0; ni < fleet.size() && !stowed; ni++) {
-                    Vehicle *v = fleet[ni];
+                for(size_t ni = 0; ni < vehicles.size() && !stowed; ni++) {
+                    Vehicle *v = vehicles[ni];
                     if(v->isEva()) { continue; }
                     if(v->parts.size() != 1) { continue; }
                     if(v->parts[0]->container != nullptr) { continue; }
@@ -2495,7 +2495,7 @@ void drawUIMap(Game &g) {
     syncShipView(g);
     TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
-    Fleet &fleet = g.vehicles;
+    std::vector<Vehicle *> &vehicles = g.vehicles;
     OrbitElements &o = g.hud.view.o;
     double &mu = g.hud.view.mu;
     glm::dvec3 &orbit_pos = g.hud.view.orbit_pos;
@@ -2771,7 +2771,7 @@ void drawUIMap(Game &g) {
         // ship has no closed orbit -- sample() returns empty -- so only its marker shows.
         {
             Frame *inertial = ship->frame->getNonRotFrame();
-            for(auto *s : fleet) {
+            for(auto *s : vehicles) {
                 if(s == ship || !s->frame || s->frame->body != focus) {
                     continue;
                 }
@@ -3414,9 +3414,9 @@ void drawSaveLoad(Game &g) {
             slotSel = (int)slots.size() - 1;
         }
 
-        // --- save-as: capture the live fleet + crew + clock ----------------
+        // --- save-as: capture the live ships + crew + clock ----------------
         ImGui::TextWrapped(
-            "Save the current game (%s) -- the live fleet, crew and clock -- "
+            "Save the current game (%s) -- its ships, crew and clock -- "
             "into a slot of it.", g.gameName.c_str());
         ImGui::SetNextItemWidth(220);
         ImGui::InputText("##newslot", nameBuf, sizeof(nameBuf));
@@ -4101,23 +4101,23 @@ void drawVabUI(Game &g) {
 
 void drawTrackingShipList(Game &g) {
     Vehicle *ship = g.ship;
-    Fleet &fleet = g.vehicles;
+    std::vector<Vehicle *> &vehicles = g.vehicles;
     drawWin(g, W_TrackingShipList, [&] {
     // Back to the hub (the frame below); Esc does the same (trackingKeyActions).
     if(ImGui::Button("Back to Space Center")) {
         popScene(g);
     }
     ImGui::Separator();
-    /* Walked by index because a row's "x" erases from the live fleet. The loop
+    /* Walked by index because a row's "x" erases from the live list. The loop
        stops the moment a row really goes away (see `removed` below), so no index
        is reused after the erase. */
     bool removed = false;
-    for(size_t i = 0; i < fleet.size() && !removed; i++) {
-        Vehicle *v = fleet[i];
+    for(size_t i = 0; i < vehicles.size() && !removed; i++) {
+        Vehicle *v = vehicles[i];
         const bool active = (v == ship);
         ImGui::PushID((void*)v);
         /* Every row is a controllable vessel: a seated kerbal is a seat on its
-           capsule's Part (part.h), not a fleet entry. */
+           capsule's Part (part.h), not a vehicle. */
         if(active) {
             ImGui::PushStyleColor(ImGuiCol_Button,
                                  ImVec4(0.30f, 0.45f, 0.70f, 1.0f));

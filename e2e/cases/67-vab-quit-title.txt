@@ -4,7 +4,7 @@ ARGS --quit-title 2000
 EXPECT [boot] no vessel: title screen
 EXPECT [title] backdrop:
 EXPECT [scene] title -> vab (push)
-EXPECT [game] unloaded: fleet torn down
+EXPECT [game] unloaded: ships torn down
 EXPECT [scene] vab -> title (enterTitle)
 FORBID GL_
 FORBID error:

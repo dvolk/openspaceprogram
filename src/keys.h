@@ -34,7 +34,7 @@ enum class Slot {
     Space,         // SPACE stage (ship) / jump (EVA)
     Undock,        // 'u'  split the most recent docked seam (active ship)
     Screenshot,    // F12
-    Quicksave,     // F5   fleet -> next quicksave-NN pool slot
+    Quicksave,     // F5   game -> next quicksave-NN pool slot
     Quickload,     // F9   newest quicksave of the running game
     Porkchop,      // 'p'  the porkchop plot
     SurfaceMap,    // 'm'  the surface map

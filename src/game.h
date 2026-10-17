@@ -357,7 +357,7 @@ struct Game {
     // --- borrowed subsystems (main creates + deletes) ---------------------
     Renderer &display;
     PostFX *postfx;
-    Ships &ships;   // the vehicle builder; the fleet it builds lives in
+    Ships &ships;   // the vehicle builder; the vehicles it builds live in
                     // Game::vehicles below
     /* The named crew pool (crew.h). Borrowed like the rest: main loads it from
        --kerbals, a save replaces its contents. Ships borrows it too, to name a
@@ -484,16 +484,16 @@ struct Game {
     int rmbMoved = 0;               // |xrel| + |yrel| while held
     bool poly_mode = false;         // F11 wireframe
     bool screenshot_requested = false;
-    /* The fleet: every Vehicle in the world, in spawn order, OWNED here (a
-       TerrainBody owns only its pads + terrain). This is the one authoritative
-       fleet walk -- the Ship List, F6, "ship N of M", the tick pass, the save's
-       v0/v1/.. slugs and the transfer planner's target list all read it, so
-       there is exactly one order for all of them. Spawn order is stable across
-       an SoI crossing; a same-body query filters Vehicle::m_parent.
+    /* Every Vehicle in the world, in spawn order, OWNED here (a TerrainBody
+       owns only its pads + terrain). This is the one authoritative list -- the
+       Ship List, F6, "ship N of M", the tick pass, the save's v0/v1/.. slugs
+       and the transfer planner's target list all read it, so there is exactly
+       one order for all of them. Spawn order is stable across an SoI crossing;
+       a same-body query filters Vehicle::m_parent.
 
-       Ordering invariant: the fleet dies BEFORE the bodies it references
+       Ordering invariant: these die BEFORE the bodies they reference
        (unloadGame / switchSystem), because ~Vehicle dereferences its frame. */
-    Fleet vehicles;
+    std::vector<Vehicle *> vehicles;
 
     // The player-controlled ship (every vessel is in `vehicles` above).
     Vehicle *ship = nullptr;
@@ -651,7 +651,7 @@ struct Game {
     std::string ensureGameDir();    // "" on a mint failure (a toast already fired)
     /* Does NOT make `active` the player's ship -- the caller does. --load skips
        this (a save records live-or-railed state). */
-    void settleFleet(Vehicle *active);
+    void settleVehicles(Vehicle *active);
     /* A same-system refusal leaves the running game untouched; a cross-system one
        already switched, so it lands on the title. */
     bool loadFrom(const std::string &dir);
@@ -661,7 +661,7 @@ struct Game {
     void quickload();
     /* True iff the switch ran, so the caller must not run the heavy phase. */
     bool ensureSystemForSave(const std::string &dir, bool *switched = nullptr);
-    /* No job drain: no background continuation dereferences the fleet. */
+    /* No job drain: no background continuation dereferences a Vehicle. */
     void unloadGame();
     // unloadGame + enterTitle: the flight pause menu's "Quit to title".
     void quitToTitle();
@@ -728,10 +728,10 @@ struct Game {
                         int mx, int my);
     // Its entries would dangle after delete.
     void dropPartWindowsFor(Vehicle *ship);
-    /* Out of the owning fleet. Every delete site calls this BEFORE deleting, so
-       no fleet walk can reach a freed Vehicle. #297 grows this into retire() +
-       one deferred sweep; for now it is the erase and nothing more. */
-    void removeFromFleet(Vehicle *v);
+    /* Out of Game::vehicles. Every delete site calls this BEFORE deleting, so
+       no walk of the list can reach a freed Vehicle. #297 grows this into
+       retire() + one deferred sweep; for now it is the erase and nothing more. */
+    void removeVehicle(Vehicle *v);
     // Clears every reference the Game and the transfer planner hold to a
     // vehicle that is about to be deleted. Call immediately BEFORE the delete.
     void dropVehicleRefs(Vehicle *v);
@@ -768,11 +768,12 @@ void load_settings_args(GameArgs &args);
 std::vector<Part *> shipSeats(Vehicle *ship);
 /* Display name for a person: their owned profile, else empty. */
 std::string seatName(const Part *suit);
-/* Free kerbals are the isEva entries of the fleet; a seated crew member is not
-   a vehicle at all (part.h). */
-std::vector<Kerbal *> freeKerbals(const Fleet &fleet);
+/* Free kerbals are the isEva entries of Game::vehicles; a seated crew member is
+   not a vehicle at all (part.h). */
+std::vector<Kerbal *> freeKerbals(const std::vector<Vehicle *> &vehicles);
 /* Same walk into a reused buffer (cleared here), for per-frame callers. */
-void freeKerbalsInto(const Fleet &fleet, std::vector<Kerbal *> &out);
+void freeKerbalsInto(const std::vector<Vehicle *> &vehicles,
+                     std::vector<Kerbal *> &out);
 
 // One constant so the boarding / take-store reach the UI shows and the gate it
 // enforces can't drift.

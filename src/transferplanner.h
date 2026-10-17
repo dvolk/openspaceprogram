@@ -19,9 +19,9 @@ class Vehicle;
 
 /* A target the player holds on to, by identity rather than by row: xferTargets
    is rebuilt from scratch every frame, so a row number is only this frame's
-   address -- a fleet change silently retargets the window, the swept grid and an
-   armed plan (issue #276). The kind is part of the identity because a vessel may
-   be named after a body, and the list shows both. */
+   address -- a vessel being added or deleted silently retargets the window, the
+   swept grid and an armed plan (issue #276). The kind is part of the identity
+   because a vessel may be named after a body, and the list shows both. */
 struct TargetRef {
     std::string name;
     bool isShip = false;
@@ -166,8 +166,8 @@ private:
     Game &g;
 
     /* Point xfer_target at xfer_sel in the CURRENT xferTargets, or clear the
-       selection when it is not there: a target that left the fleet takes it with
-       it, and keeping the index would name whichever vessel landed in that slot.
+       selection when it is not there: a deleted target takes it with it, and
+       keeping the index would name whichever vessel landed in that slot.
        Called on every rebuild. */
     void resolveTarget();
 };

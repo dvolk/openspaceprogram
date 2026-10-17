@@ -94,7 +94,7 @@ void enterFlight(Game &g);
 // SpaceCenter, not here.
 void enterTitle(Game &g);
 // Collapse to [SpaceCenter] -- the floor of a game with no active vessel (new
-// game, or a recovered / shipless fleet).
+// game, or a recovered / shipless game).
 void enterSpaceCenter(Game &g);
 // "Go to" a scene: pop down if on the stack, else push (the 1/2/3/4 shortcuts).
 // Unlike enterFlight, no collapse.

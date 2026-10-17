@@ -9,9 +9,8 @@
 #include "buildings.h" // buildingOrient (a pad's local axes)
 #include "camera.h"    // Camera
 #include "frame.h"     // Frame (the per-ship frame transform)
-#include "game.h"      // Game (the fleet, the camera)
-#include "ships.h"     // Ships
-#include "terrain.h"   // TerrainBody (its ships) + StaticBuilding
+#include "game.h"      // Game (the vehicles, the camera)
+#include "terrain.h"   // TerrainBody + StaticBuilding
 #include "vehicle.h"   // Vehicle (parts)
 
 #include "btcommon.h"  // complete Bullet types (double precision)
@@ -136,7 +135,8 @@ bool pickShipPart(Game &g, int px, int py,
    VAB parks a ship dead centre). Not exhaustive by design -- parts between sample
    lines and ships clear of or hovering over the deck are missed. Only ship parts
    are cast, so the rays' trip through pad and ground is free. */
-Vehicle *findPadOccupant(const StaticBuilding *site, const Fleet &fleet) {
+Vehicle *findPadOccupant(const StaticBuilding *site,
+                         const std::vector<Vehicle *> &vehicles) {
     if(site == nullptr || site->parent == nullptr) { return nullptr; }
     TerrainBody *hb = site->parent;
     const glm::dmat3 deck = buildingOrient(
@@ -150,12 +150,12 @@ Vehicle *findPadOccupant(const StaticBuilding *site, const Fleet &fleet) {
                                  // anything we build, far below orbit
 
     Frame *rot = hb->frame->getRotFrame();
-    for(Vehicle *s : fleet) {
+    for(Vehicle *s : vehicles) {
         btCompoundShape *cs = s->compoundShape();
         if(cs == nullptr) { continue; }
         // The same-SoI filter a body-side list used to give for free.
         if(s->m_parent != hb) { continue; }
-        /* A seated kerbal is never in the fleet -- it is a seat on its capsule's
+        /* A seated kerbal is never in this list -- it is a seat on its capsule's
            Part (part.h), with no Body in the world. A walking kerbal can be, and
            is a genuine obstruction. */
         // Cheap reject before the frame hop: only one ship is near a given pad.

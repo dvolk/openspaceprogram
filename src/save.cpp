@@ -20,7 +20,7 @@
 #include "physics.h"   // RemoveBody, AddPhysicsBody, SetAngVelocity, GetAngVelocity
 #include "part.h"      // Part
 #include "resdir.h"    // resdir::path
-#include "ships.h"     // Ships, Fleet, Ships::new_part_from_def
+#include "ships.h"     // Ships, Ships::new_part_from_def
 #include "shipdef.h"   // PartsCatalog, PartDef, ResourceType, ShipDef, scenario_by_name
 #include "system.h"    // System
 #include "terrain.h"   // TerrainBody
@@ -34,7 +34,7 @@ std::string slug(size_t i) { return "v" + std::to_string(i); }
 
 /* The slug a vehicle got in THIS save, for a reference written into another
    ship's file (a kerbal's ship, a dock target). save_game assigns every slug
-   before writing any file, so a miss means the referent is not in the fleet. */
+   before writing any file, so a miss means the referent is not in the list. */
 std::string slugOf(const std::map<const Vehicle *, std::string> &slugs,
                    const Vehicle *v) {
     if(v == nullptr) { return ""; }
@@ -350,7 +350,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
             sp.inventory.push_back(saveItemPart(c));
         }
         /* Seat occupants (part.h) ride in the part that holds them: a person
-           is a seat on a capsule, not a fleet entry of their own. */
+           is a seat on a capsule, not a vehicle of their own. */
         for(Part *suit : p->seats) {
             if(suit != nullptr) {
                 sp.seats.push_back(saveSeatPart(suit));
@@ -387,9 +387,9 @@ SaveShip saveShipFromVehicle(Vehicle *v,
         s.docks.push_back(dk);
     }
     /* Every ship delete clears the other ships' dock intents first (game.cpp),
-       so a non-null target is in the fleet. Assert it: the slug map is keyed by
-       pointer, so a recycled address would resolve to a VALID slug for the wrong
-       ship, and the lenient fallback below would hide that. */
+       so a non-null target is in Game::vehicles. Assert it: the slug map is
+       keyed by pointer, so a recycled address would resolve to a VALID slug for
+       the wrong ship, and the lenient fallback below would hide that. */
     assert(v->dockTargetShip == nullptr || slugs.count(v->dockTargetShip) != 0);
     /* A dock INTENT, not a seam: if the target somehow has no slug, dropping
        the intent loses nothing the player cannot re-target. */
@@ -550,8 +550,9 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
         std::map<uint64_t, Part *>::const_iterator portIt = uidToPart.find(s.docks[k].port);
         std::map<uint64_t, Part *>::const_iterator rootIt = uidToPart.find(s.docks[k].root);
         if(portIt == uidToPart.end() || rootIt == uidToPart.end()) {
-            /* `v` has not been adopted into the fleet yet (load_game commits the
-               whole built list on success), so freeing it here strands nothing. */
+            /* `v` has not been adopted into Game::vehicles yet (load_game
+               commits the whole built list on success), so freeing it here
+               strands nothing. */
             delete v;
             throw std::runtime_error("load: saved ship '" + s.name + "' has a dock seam ("
                                      + s.docks[k].name + ") naming a part it does not have");
@@ -563,7 +564,7 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
 
 // build_ship's init() re-seeds the suit tank full, so the saved contents must
 // be restored after it. A WALKING kerbal only -- a seated one is a `seats`
-// element of its capsule's part entry, not a fleet entry (part.h).
+// element of its capsule's part entry, not a vehicle (part.h).
 Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
     /* The roster is where identity lives, so a kerbal naming one must find it
        there: rebuilding past a missing entry would silently strip that person's
@@ -597,7 +598,7 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
     Kerbal *k = new Kerbal;
     k->name = s.name;
     /* The roster owns the name, so it wins over the saved one: a rename in the
-       save's own roster reaches the fleet instead of leaving two spellings. */
+       save's own roster reaches the kerbal instead of leaving two spellings. */
     if(profile != nullptr) { k->name = profile->name; }
     k->defPath = s.defPath;
     k->home = g.home;
@@ -647,7 +648,7 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
     k->flog = s.flog;
     k->viewYaw = s.view_yaw;
     /* Walking: the saved pose is the kerbal's own. A seated person is not a
-       fleet entry at all -- they are a `seats` element of their capsule (part.h),
+       vehicle at all -- they are a `seats` element of their capsule (part.h),
        built by buildSeatParts. */
     TerrainBody *body = g.sys.find(s.pose.body);
     if(body == nullptr) { body = g.home; }
@@ -658,8 +659,8 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
     SetAngVelocity(k->hull, s.pose.angvel);
     // a railed kerbal stays parked (phase 2 skips crew)
     if(s.onRails) { k->goOnRails(); }
-    /* The identity binding is the one fact about a loaded kerbal the fleet list
-       cannot show, so make it observable: a save that silently rebuilds
+    /* The identity binding is the one fact about a loaded kerbal the vehicle
+       list cannot show, so make it observable: a save that silently rebuilds
        anonymous people is exactly the bug this line exists to catch. */
     printf("[crew] loaded '%s' on EVA\n", k->name.c_str());
     return k;
@@ -670,8 +671,8 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
    wrong pick or a shrink later. So refuse it here, where the ids are read.
    `pool` is the home pad's standing crew (save.json's crew_pool): they wear
    their ids too, and a pool entry clashing with another pool entry or with
-   someone in the fleet is the same corruption. Anonymous people (id 0) may
-   repeat: they claim nothing. */
+   someone already in Game::vehicles is the same corruption. Anonymous people
+   (id 0) may repeat: they claim nothing. */
 void refuseDoubleClaim(const std::vector<Vehicle *> &built,
                        const std::vector<Part *> &pool) {
     std::set<uint64_t> worn;
@@ -765,31 +766,31 @@ void save_game(Game &g, const std::string &dir) {
     meta.recovered = g.science.recovered;
     meta.saved_at = nowString();
 
-    /* The save's fleet in slug order: every VEHICLE. A seated person is not in
+    /* The save's ships in slug order: every VEHICLE. A seated person is not in
        this list -- they are a `seats` element of their capsule's part entry
-       (part.h), so a slug never names a person. Slugs follow fleet (spawn)
-       order, so a load that adopts in save order round-trips v0/v1/.. exactly. */
-    const Fleet &fleet = g.vehicles;
-    /* Slugs for the WHOLE fleet first, before a single file is written: a
+       (part.h), so a slug never names a person. Slugs follow spawn order, so a
+       load that adopts in save order round-trips v0/v1/.. exactly. */
+    const std::vector<Vehicle *> &vehicles = g.vehicles;
+    /* Slugs for the WHOLE list first, before a single file is written: a
        ship's file references its dock target by slug, and the referent can sit
        later in the walk than the referrer. */
     std::map<const Vehicle *, std::string> slugs;
-    for(size_t i = 0; i < fleet.size(); i++) { slugs[fleet[i]] = slug(i); }
-    /* The active ship is a vehicle the player is flying, so it is in the fleet
+    for(size_t i = 0; i < vehicles.size(); i++) { slugs[vehicles[i]] = slug(i); }
+    /* The active ship is a vehicle the player is flying, so it is in the list
        the walk just took. A miss means the two disagree, and "" would silently
        promote built.front() on the next load. */
     assert(g.ship == nullptr || slugs.count(g.ship) != 0);
     meta.active_ship = slugOf(slugs, g.ship);
-    for(size_t i = 0; i < fleet.size(); i++) {
-        SaveShip s = saveShipFromVehicle(fleet[i], slugs);
+    for(size_t i = 0; i < vehicles.size(); i++) {
+        SaveShip s = saveShipFromVehicle(vehicles[i], slugs);
         meta.ships.push_back(slug(i));
         writeJson(dir + "/ships/" + slug(i) + ".json", saveShipToJson(s));
     }
     writeJson(dir + "/save.json", saveMetaToJson(meta));
-    /* Drop ship files this fleet no longer has. A save directory is REUSED
-       (quicksave rotation, --resave), so a shrunk fleet leaves orphan
+    /* Drop ship files this game no longer has. A save directory is REUSED
+       (quicksave rotation, --resave), so a shrunk ship list leaves orphan
        ships/vN.json that nothing reads but that make the tree lie about its
-       fleet -- e2e 181's whole point is diffing a resave against its input.
+       ships -- e2e 181's whole point is diffing a resave against its input.
        Done AFTER the writes, so a throw partway leaves the previous files
        alone rather than deleting first and writing half. */
     {
@@ -805,7 +806,7 @@ void save_game(Game &g, const std::string &dir) {
             }
         }
     }
-    printf("Saved %zu ship(s) to %s (game '%s')\n", fleet.size(), dir.c_str(),
+    printf("Saved %zu ship(s) to %s (game '%s')\n", vehicles.size(), dir.c_str(),
            g.gameName.c_str());
 }
 
@@ -813,7 +814,7 @@ void load_game(Game &g, const std::string &dir) {
     SaveMeta meta = saveMetaFromJson(readJsonFile(dir + "/save.json"));
     /* The save's roster REPLACES the --kerbals file's, so a save stays itself
        after the data file is edited; an absent roster (a save predating the
-       roster) keeps the file's. Done before the fleet build, which resolves
+       roster) keeps the file's. Done before the ships are built, which resolves
        every kerbal's profile id against this.
        On SUCCESS the swap is permanent for the session: newGame and
        switchSystem do not re-read --kerbals, so a roster a save brought in stays
@@ -833,8 +834,8 @@ void load_game(Game &g, const std::string &dir) {
     }
     /* The building pool is the save's (format 4: crew_pool). Built OFF the pad
        and committed only once the whole load succeeds: a refused load must
-       leave the running cast standing, exactly as it leaves the running fleet.
-       The build itself runs in the fleet's try below, so one rollback frees it
+       leave the running cast standing, exactly as it leaves the running ships.
+       The build itself runs in the ships' try below, so one rollback frees it
        whatever throws. No fallback mint -- an empty pool is a spent cast, a
        legal state. */
     StaticBuilding *homePad = Ships::homeCrewPad(g.sys);
@@ -846,7 +847,7 @@ void load_game(Game &g, const std::string &dir) {
     std::vector<Part *> newPool;
     /* setTime, not a bare assignment: the clock jumps here and the load starts
        paused, so no tick re-derives the bodies' orbits/spin from the new epoch.
-       Done BEFORE the fleet: a ship restored into the ROTATING frame and then
+       Done BEFORE the ships: a ship restored into the ROTATING frame and then
        parked as coasting captures its inertial rail state from these transforms. */
     g.setTime(meta.time);
     g.time_accel = 0;
@@ -868,8 +869,8 @@ void load_game(Game &g, const std::string &dir) {
             readJsonFile(dir + "/ships/" + meta.ships[i] + ".json")));
     }
 
-    /* Detach the running fleet but keep it ALIVE until the load commits: out of
-       the one container the builders adopt into, and g.ship etc. stay valid
+    /* Detach the running ships but keep them ALIVE until the load commits: out
+       of the one container the builders adopt into, and g.ship etc. stay valid
        throughout the build. Swapped rather than moved so g.vehicles is left
        genuinely empty for anything that asks "is a game running?" mid-load. */
     std::vector<Vehicle *> detached;
@@ -893,7 +894,7 @@ void load_game(Game &g, const std::string &dir) {
             bySlug[meta.ships[i]] = built[i];
             if(firstBuilt == nullptr) { firstBuilt = built[i]; }
         }
-        /* The pad's cast is built in the same transaction as the fleet: the
+        /* The pad's cast is built in the same transaction as the ships: the
            ship-file parse above can throw too, and a pool built before it would
            leak. Building it here also lets refuseDoubleClaim see the ids these
            suits wear. */
@@ -929,18 +930,19 @@ void load_game(Game &g, const std::string &dir) {
             // What the suit carries rides home with it (saveSeatPart writes it).
             buildInventoryItems(g, sp.inventory, suit, "crew pool");
         }
-        /* Needs the WHOLE fleet, so it runs after the loop: two files can each
-           load fine and still claim one roster entry between them. The pad's
-           new pool wears ids too -- it is checked here and still uncommitted. */
+        /* Needs the WHOLE built list, so it runs after the loop: two files can
+           each load fine and still claim one roster entry between them. The
+           pad's new pool wears ids too -- it is checked here and still
+           uncommitted. */
         refuseDoubleClaim(built, newPool);
     } catch(...) {
-        /* Put the running fleet back into the container BEFORE deleting anything,
-           so the container never holds a freed pointer. Then delete what was
-           built: a seat occupant is owned by the capsule it was parked in, so
-           its ship frees it, and a seat in a file that was not reached yet
-           allocated nothing. The built vehicles were never adopted, so no fleet
-           walk ever saw them. The new pool was never on the pad: free it and the
-           running cast stands. */
+        /* Put the running ships back into the container BEFORE deleting
+           anything, so the container never holds a freed pointer. Then delete
+           what was built: a seat occupant is owned by the capsule it was parked
+           in, so its ship frees it, and a seat in a file that was not reached
+           yet allocated nothing. The built vehicles were never adopted, so no
+           walk ever saw them. The new pool was never on the pad: free it and
+           the running cast stands. */
         detached.swap(g.vehicles);
         for(Vehicle *v : built) { delete v; }
         for(Part *p : newPool) { delete p; }
@@ -948,7 +950,7 @@ void load_game(Game &g, const std::string &dir) {
     }
 
     /* Commit the pool now that the load cannot refuse: the save's cast replaces
-       the standing one (the old suits are freed). The roster the fleet and the
+       the standing one (the old suits are freed). The roster the ships and the
        pool were resolved against commits with it. */
     rosterRollback.commit();
     if(homePad != nullptr) {
@@ -977,10 +979,10 @@ void load_game(Game &g, const std::string &dir) {
             }
         }
     }
-    /* The save's fleet takes over the container in SAVE order, which is what
+    /* The save's ships take over the container in SAVE order, which is what
        makes a load -> resave round trip keep its v0/v1/.. put. `built` stays
        intact: phase 2 below indexes it by slug. Then the deletion the detach
-       above deferred. part_sels holds Part* into the old fleet. */
+       above deferred. part_sels holds Part* into the old ships. */
     g.part_sels.clear();
     g.clearFlightSummary();  // a prior recover's summary is not this save's
     g.vehicles = built;
@@ -1028,7 +1030,7 @@ void load_game(Game &g, const std::string &dir) {
         if(it != bySlug.end()) { active = it->second; }
     }
     /* Nothing recorded (or a slug the save no longer has): take the first vessel
-       in canonical fleet order, which is what a fresh boot makes active. This
+       in save order, which is what a fresh boot makes active. This
        used to be byName.begin(), i.e. the alphabetically first NAME -- a kerbal
        called 'Ash' beat a ship called 'racer'. */
     if(active == nullptr) { active = firstBuilt; }
@@ -1042,7 +1044,7 @@ void load_game(Game &g, const std::string &dir) {
         for(Part *p : built[i]->parts) { invItems += countPartInventory(p); }
     }
     if(invItems > 0) {
-        printf("Loaded %zu inventory item(s) with the fleet\n", invItems);
+        printf("Loaded %zu inventory item(s) with the ships\n", invItems);
     }
     printf("Loaded game from %s (active: %s)\n", dir.c_str(),
            (active != nullptr) ? active->name.c_str() : "(none)");

@@ -22,14 +22,14 @@ void tick(Game &g) {
         g.accumulator = 10 * g.dt;
     }
 
-    /* The live fleet, not a snapshot: an SoI crossing re-homes a Vehicle without
+    /* The live list, not a snapshot: an SoI crossing re-homes a Vehicle without
        moving it between containers, so a mid-tick crossing cannot reshuffle or
        dangle the walk. Only a delete changes it, and every delete site erases
-       from the fleet before freeing. */
-    Fleet &all = g.vehicles;
+       from Game::vehicles before freeing. */
+    std::vector<Vehicle *> &vehicles = g.vehicles;
 
     // Sync the difficulty scale onto every ship.
-    for(auto *s : all) {
+    for(auto *s : vehicles) {
         s->m_thrust = 0.0;
         s->exhaust_scale = g.args.exhaust_scale;
         s->drag_cd = g.args.drag_cd;
@@ -163,7 +163,7 @@ void tick(Game &g) {
 
         if(g.time_accel != 0) {
             /* No re-snapshot here. updateDocking() deletes the absorbed ship at
-               the end of a step, but it erases it from the live fleet first, so
+               the end of a step, but it erases it from the live list first, so
                the next step's walk simply stops seeing it -- which is exactly
                what the old per-step collectVehiclesInto was reconstructing. */
 
@@ -181,12 +181,12 @@ void tick(Game &g) {
             if(g.time_accel >= kRailsWarp) {
                 /* Rails warp: analytic coast (or frozen on the ground);
                    Bullet is not stepped. */
-                for(auto *s : all) {
+                for(auto *s : vehicles) {
                     s->railsTick(g.time, g.dt * g.time_accel);
                 }
             } else {
 
-            for(auto *s : all) {
+            for(auto *s : vehicles) {
                 if(s->onRails) { s->railsTick(g.time, g.dt * g.time_accel); }
                 else { s->switchFrames(g.time); }
                 // Keep the compound COM tracking the mass distribution.
@@ -206,7 +206,7 @@ void tick(Game &g) {
                 // every NON-RAILED ship feels gravity + drag + control each
                 // substep; railed ships' conics already advanced in railsTick
                 // (and so feel no drag -- the known rails gap).
-                for(auto *s : all) {
+                for(auto *s : vehicles) {
                     if(s->onRails) { continue; }
                     s->processGravity();
                     s->applyAeroForce(h);
@@ -216,7 +216,7 @@ void tick(Game &g) {
                 }
                 physics_tick(h);
                 if(g.args.debug_accel) {
-                    for(auto *s : all) {
+                    for(auto *s : vehicles) {
                         if(s->onRails) { continue; }
                         const glm::dvec3 v = GetVelocity(s->hull);
                         printf("[accel] %-28s |F|=%9.0fN  v=(%8.2f,%8.2f,%8.2f) |v|=%7.2f\n",
@@ -410,7 +410,7 @@ void tick(Game &g) {
             const Uint32 now_ms = SDL_GetTicks();
             if(now_ms - last_compound_ms >= g.orbit_log_interval_ms) {
                 last_compound_ms = now_ms;
-                for(auto *s : all) { s->compoundCheck(g.time); }
+                for(auto *s : vehicles) { s->compoundCheck(g.time); }
             }
         }
 

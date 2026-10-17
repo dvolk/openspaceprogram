@@ -1,7 +1,7 @@
 NAME quit-title
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --quit-title 2000
-EXPECT [game] unloaded: fleet torn down
+EXPECT [game] unloaded: ships torn down
 EXPECT [scene] flight -> title (enterTitle)
 EXPECT Timeout reached (8.
 FORBID Segmentation

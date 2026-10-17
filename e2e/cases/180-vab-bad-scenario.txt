@@ -5,7 +5,7 @@
 # lists the valid names.
 NAME vab-bad-scenario
 ARGS --timeout 4 --vab res/ships/racer.json --vab-scenario bogus --vab-launch 2000
-EXPECT error: --vab-scenario: fleet: unknown scenario 'bogus'
+EXPECT error: --vab-scenario: unknown scenario 'bogus'
 EXIT 1
 FORBID terminate called
 FORBID [vab] launched

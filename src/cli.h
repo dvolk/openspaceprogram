@@ -40,7 +40,7 @@ struct GameArgs {
     std::string startships_file;
 
     // --save captures the game into a directory when --timeout is spent;
-    // --load replaces the fleet at startup. Bare names resolve under saves/.
+    // --load replaces the ships at startup. Bare names resolve under saves/.
     std::string save_name;
     std::string load_name;
     // Same capture as --save but legal with --load: the load -> fly -> save

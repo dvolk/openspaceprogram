@@ -96,8 +96,8 @@ inline constexpr double kOrbitCutMargin = 10e3;
    Landed), what can be Recovered from the surface, and rails
    eligibility. The speed term must stay above a walking kerbal's speed
    (kWalkSpeed, eva.cpp): a free kerbal is its own vehicle, and one that
-   reads as neither grounded nor orbiting refuses rails warp for the whole
-   fleet.
+   reads as neither grounded nor orbiting refuses rails warp for every
+   ship.
    Where: Vehicle::isGrounded (vehicle.cpp). */
 inline constexpr double kShipGroundBand = 100.0;   // m
 inline constexpr double kShipGroundSpeed = 3.0;    // m/s

@@ -1,12 +1,12 @@
 #pragma once
 
-// save.h -- saving + loading a running game (the live fleet + crew + clock).
+// save.h -- saving + loading a running game (its ships + crew + clock).
 // A save is a DIRECTORY: dir/save.json (global state + the ordered ship list)
-// plus dir/ships/<slug>.json, one file per FLEET ENTRY -- a vessel or a walking
-// kerbal. A seated person is not an entry: they are a `seats` element of their
+// plus dir/ships/<slug>.json, one file per VEHICLE -- a vessel or a walking
+// kerbal. A seated person is not one: they are a `seats` element of their
 // capsule's part entry (SavePart). The world re-derives from the analytic clock,
-// so only the fleet is authoritative: part structure, tank contents, mass, pose,
-// staging, docking, crew.
+// so only the ships are authoritative: part structure, tank contents, mass,
+// pose, staging, docking, crew.
 // Pure JSON (de)serialization and the save-directory helpers are header-only
 // (unit-testable headless); the Game-coupled capture/restore lives in save.cpp.
 
@@ -104,7 +104,7 @@ struct SaveDock {
 };
 
 /* One roster entry as saved (save.json's "roster"). Identity only: WHO is where
-   derives from the fleet, so there is no assignment field to keep in step. The
+   derives from the ships, so there is no assignment field to keep in step. The
    save carries the roster rather than re-reading --kerbals, so a save stays
    itself after the data file is edited. */
 struct SaveKerbal {
@@ -113,8 +113,8 @@ struct SaveKerbal {
     int skill[NumSkills] = {3, 3, 3};
 };
 
-/* One fleet entry: a vessel (is_crew false) or a WALKING kerbal (is_crew true).
-   A seated person is not a fleet entry at all -- they are a `seats` element of
+/* One ship file: a vessel (is_crew false) or a WALKING kerbal (is_crew true).
+   A seated person is not one at all -- they are a `seats` element of
    their capsule's part entry (SavePart), because a seat is data on a Part, not a
    vehicle (part.h). */
 struct SaveShip {
@@ -165,7 +165,7 @@ struct SaveShip {
 };
 
 /* The global save state (dir/save.json). `ships` is the ordered slug list in
-   canonical fleet order, and a SLUG is this save's key for a vehicle: it names
+   spawn order, and a SLUG is this save's key for a vehicle: it names
    the file that holds it (ships/<slug>.json), and every cross-vehicle reference
    -- active_ship, SaveShip::dock_target_ship -- is a slug. Display names are
    display only: two vehicles could share one and a load would still resolve each
@@ -175,7 +175,7 @@ struct SaveShip {
    2: those references hold a slug, not a display name -- a format-1 file
    names a ship there, which this build would read as a missing vehicle.
    3: a seated kerbal is a `seats` element of its capsule's part entry, not a
-   fleet entry of its own. A format-2 file lists one as ships/vN.json with
+   ship file of its own. A format-2 file lists one as ships/vN.json with
    aboard_ship + aboard_part, which this build would read as a walking kerbal
    with no pose -- i.e. drop the person onto the ground at the origin.
    4: unassigned kerbals are a `crew_pool` (suit Parts standing on the home
@@ -597,7 +597,7 @@ inline nlohmann::json saveKerbalToJson(const SaveKerbal &k) {
 }
 
 /* Permissive like every other read: an absent skill keeps the default. A
-   missing id or name is NOT permissive -- an entry the fleet cannot point at
+   missing id or name is NOT permissive -- an entry the ships cannot point at
    would silently strip a kerbal's identity, so it throws and the load refuses.
    Out-of-range skills clamp rather than throw: a hand-edited 9 changes how a
    kerbal is suited, not whether the save is readable. */
@@ -657,7 +657,7 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
        crew entry's top-level "seats" array in saveShipFromJson). Every other
        read keeps the struct's default for an absent key, which is right for an
        ADDITIVE schema change and wrong for a RENAMED one: a foreign-format save
-       would load as a fleet of half-defaulted ships (a missing "pos" parks a
+       would load as a list of half-defaulted ships (a missing "pos" parks a
        ship at the body's centre, silently). Refuse instead -- no save backward
        compatibility is promised. An absent key means the current format; a
        present non-integer is refused too (1.5 would truncate into range). */
@@ -706,7 +706,7 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
             SaveKerbal sk = saveKerbalFromJson(k, "save.json: ");
             /* A duplicate id would make find() pick one arbitrarily, and a
                duplicate name would make two kerbals indistinguishable in the
-               fleet list -- both are worse than a refused load. */
+               ship list -- both are worse than a refused load. */
             for(const SaveKerbal &e : m.roster) {
                 if(e.id == sk.id) {
                     throw std::runtime_error("save: save.json: roster has two "
@@ -729,7 +729,7 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     if(j.contains("ships") && j["ships"].is_array()) {
         for(auto &&s : j["ships"]) {
             /* A non-string entry is not a vehicle to skip: skipping drops a
-               ship file and the load reports success with a smaller fleet.
+               ship file and the load reports success with fewer ships.
                Refuse, as the format gate above does. */
             if(!s.is_string()) {
                 throw std::runtime_error(std::string("save: save.json: ships "
@@ -755,7 +755,7 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     return m;
 }
 
-/* The bodies the saved fleet sits on, in fleet order: each ship file's
+/* The bodies the saved ships sit on, in save order: each ship file's
    pose.body, falling back to its home body. Unique, first-wins; empty if the
    save is missing or unreadable. */
 inline std::vector<std::string> saveShipBodies(const std::string &dir) {
