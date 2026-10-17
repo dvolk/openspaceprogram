@@ -1083,7 +1083,10 @@ size_t BuildShip::graftTree(const BuildShip &sub, const BuildPart &root) {
         idMap[bp.id] = newId;
         bp.id = newId;
         // sub is in construction order, so every parent index maps by the
-        // same offset (the assembly root lands on rootIdx)
+        // same offset (the assembly root lands on rootIdx). That offset only
+        // works if sub has ONE root, at index 0: a second -1 would offset into
+        // the host's last part instead of the grafted root.
+        assert(bp.parent >= 0 && "a subassembly has exactly one root, at index 0");
         bp.parent = (int)(rootIdx + (size_t)bp.parent);
         parts.push_back(bp);
     }
@@ -1168,11 +1171,9 @@ int partitionFuelGroups(const std::vector<int> &parent,
     for(size_t i = 0; i < n; i++) {
         const int p = parent[i];
         if(p < 0) { continue; }
-        /* A parent outside the tree is a bug, not a state: assert it, and in a
-           release build leave the edge out so the part degrades to a singleton
-           group instead of writing past `adj`. */
+        /* A parent outside the tree is a bug, not a state. No build config here
+           defines NDEBUG, so this trips in debug AND in the release binary. */
         assert(p < (int)n);
-        if(!(p < (int)n)) { continue; }
         adj[i].push_back((size_t)p);
         adj[(size_t)p].push_back(i);
     }

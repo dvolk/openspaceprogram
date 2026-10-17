@@ -987,8 +987,10 @@ void Vehicle::buildFuelGroups() {
     /* The one partition (shipdef.h, #292): index the parts so the tree can be
        handed over as parent indices, exactly like the staging snapshot and the
        VAB's loop check do. A parent outside this ship would be a torn tree --
-       setRoot / attach / absorbShip all keep the tree inside `parts`, and the
-       group numbering follows `parts` order in every caller. */
+       setRoot / attach / absorbShip keep the tree inside `parts`, and
+       extractSubtreeAsShip re-roots the part it moves out (vehicle.cpp:2135), so
+       neither side is left pointing across. Group numbering follows `parts`
+       order in every caller. */
     std::map<Part *, size_t> index;
     for(size_t i = 0; i < parts.size(); i++) { index[parts[i]] = i; }
     std::vector<int> parent(parts.size(), -1);
@@ -997,11 +999,12 @@ void Vehicle::buildFuelGroups() {
         const Part *p = parts[i];
         if(p->parent != nullptr) {
             std::map<Part *, size_t>::const_iterator it = index.find(p->parent);
-            /* A parent outside this ship is a bug, not a state: assert it, and in
-               a release build leave the edge out (parent stays -1, so the part
-               lands in its own group) instead of reading past end(). */
+            /* A parent outside this ship is a bug, not a state -- and since no
+               build config defines NDEBUG, this trips in the release binary too.
+               The old walk keyed by Part* and coped silently, writing fuelGroup
+               onto the foreign part. */
             assert(it != index.end());
-            if(it != index.end()) { parent[i] = (int)it->second; }
+            parent[i] = (int)it->second;
         }
         wall[i] = p->isFuelBarrier();   /* a wall: stays -1 */
     }

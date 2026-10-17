@@ -33,9 +33,14 @@ struct SimEngine {
 typedef std::vector<std::vector<int> > Bucket;
 
 void buildFuelGroups(std::vector<SimPart> &parts) {
-    /* The one partition (shipdef.h, #292). A DEAD part counts as a wall here:
-       it joins no group and the flood stops at it, which is what makes a
-       dropped stage stop feeding its neighbours. */
+    /* The one partition (shipdef.h, #292). A DEAD part is a wall too, keeping
+       the file's standing invariant that a dead part carries group -1. For a
+       def the parser produces that is belt-and-braces: Sim::kill only ever
+       kills a decoupler's subtree, and the parser forces fuel_barrier on every
+       decoupler (shipdef.cpp:272), so the subtree's own root already separates
+       it. No reachable state needs this term -- it is here so a hand-built def
+       (or a future non-decoupler way to kill a part) cannot leave a dead part
+       sharing a live group. */
     std::vector<int> parent(parts.size());
     std::vector<bool> wall(parts.size());
     for(size_t i = 0; i < parts.size(); i++) {

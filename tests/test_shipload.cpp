@@ -1092,8 +1092,10 @@ int main() {
     //     and the editor's loop check all call (#292). Pinned at the flood itself
     //     -- group numbering (the fuel log keys its rows by it), walls joining no
     //     group, and a wall that is also a tree junction: it must split its
-    //     children rather than merge them. Each adapter's own wall flag is pinned
-    //     where it is used (fuelLinkLoop below, the e2e fuel/staging cases).
+    //     children rather than merge them. Each adapter's own wall flag is
+    //     pinned where it is used: fuelLinkLoop below, the live ship's by the e2e
+    //     fuel cases, the staging snapshot's by test_staging_dv (no e2e case
+    //     opens the Staging window, so computeStaging has no e2e coverage).
     {
         // capsule | decoupler | tank | (two tanks under that tank)
         const std::vector<int> parent = { -1, 0, 1, 2, 2 };
