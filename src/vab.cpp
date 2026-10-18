@@ -666,7 +666,7 @@ void vabLaunch(Game &g) {
             fflush(stdout);
             /* Deferred by construction: the card answers on a later frame, so
                the callback re-finds the occupant and re-resolves the site by
-               ID instead of holding this pointer. remove_ship's own guards
+               ID instead of holding this pointer. ui_remove_vehicle's own guards
                (crew aboard, last ship) do the refusing. A crew policy for pad
                clearing is the open half of #231. */
             TerrainBody *padBody = hb;
@@ -682,7 +682,7 @@ void vabLaunch(Game &g) {
                     g.toast("The pad is clear now");
                     return;
                 }
-                g.remove_ship(occ);
+                g.ui_remove_vehicle(occ);
             });
             return;
         }
@@ -753,7 +753,7 @@ void vabLaunch(Game &g) {
     } else {
         spawn_crew(v, g.sys);
     }
-    g.select_ship(v);
+    g.select_vehicle(v);
     vabClearHover(g);
     g.vab.armed.clear();
     g.vab.ghostRoll = 0.0;

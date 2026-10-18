@@ -333,7 +333,8 @@ static void syncShipView(Game &g) {
     if(g.ship != nullptr && g.hud.view.ship != g.ship) { updateShipView(g); }
 }
 
-// The flight windows below assume an active vessel: remove_ship refuses the last.
+// The flight windows below assume an active vessel: ui_remove_vehicle refuses
+// the last.
 void drawUIReadouts(Game &g) {
     // The window bodies' locals alias Game members.
     TransferPlanner &planner = g.xferPlanner;
@@ -1853,12 +1854,13 @@ void drawUIReadouts(Game &g) {
                                  ImVec4(0.40f, 0.55f, 0.80f, 1.0f));
         }
         if(ImGui::Button(v->name.c_str())) {
-            g.select_ship(v);
+            g.select_vehicle(v);
         }
         if(active) {
             ImGui::PopStyleColor(3);
         }
-        // A walking kerbal is selectable but not deletable (remove_ship refuses it): no "x".
+        // A walking kerbal is selectable but not deletable
+        // (ui_remove_vehicle refuses it): no "x".
         if(!v->isEva()) {
             ImGui::SameLine();
             // The "##rm_<name>" suffix is invisible but makes the row addressable by --ui-click.
@@ -1872,7 +1874,7 @@ void drawUIReadouts(Game &g) {
                    (a capsule with its own crew aboard still gets an "x")
                    toasts and leaves the list intact, so breaking there
                    would drop the rest of the list for one frame. */
-                removed = g.remove_ship(v);
+                removed = g.ui_remove_vehicle(v);
             }
         }
         ImGui::PopID();
@@ -2283,7 +2285,7 @@ void drawPartWindows(Game &g) {
                 /* The first seat on this ship (part.h): a seated kerbal is a suit
                    Part parked in a capsule, and the provenance a pod records is a
                    NAME, not a pointer. */
-                std::vector<Part *> seats = shipSeats(ship);
+                std::vector<Part *> seats = vehicleSeats(ship);
                 std::string runner = seats.empty() ? "" : seatName(seats.front());
                 if(!runner.empty()) {
                     // ##id: keep this distinct from the capsule's "Run Experiment".
@@ -2390,7 +2392,7 @@ void drawPartWindows(Game &g) {
                         // the carrier.
                         const bool wasFlying = (g.ship == v);
                         if(g.pickUpItem(v, cont)) {
-                            if(wasFlying) { g.select_ship(cont->owner); }
+                            if(wasFlying) { g.select_vehicle(cont->owner); }
                             worldChanged = true;
                             stowed = true;
                         }
@@ -4127,7 +4129,7 @@ void drawTrackingShipList(Game &g) {
                                  ImVec4(0.40f, 0.55f, 0.80f, 1.0f));
         }
         if(ImGui::Button(v->name.c_str())) {
-            g.select_ship(v);
+            g.select_vehicle(v);
         }
         if(active) {
             ImGui::PopStyleColor(3);
@@ -4139,7 +4141,7 @@ void drawTrackingShipList(Game &g) {
             if(ImGui::SmallButton(rm_id)) {
                 /* Only a real removal stops the list (and hides "Fly"):
                    a refusal toasts and leaves the row in place. */
-                removed = g.remove_ship(v);
+                removed = g.ui_remove_vehicle(v);
             }
         }
         if(active && !removed) {

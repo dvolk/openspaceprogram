@@ -341,7 +341,7 @@ void Game::removeVehicle(Vehicle *v) {
    later frame -- the planner holds its target list across frames (render.cpp
    rebuilds it, updateShipView reads the previous frame's), so a dangling
    Vehicle* there is read by the map plane and the burn marker long before
-   anything notices. List membership is removeVehicle's -- only remove_ship
+   anything notices. List membership is removeVehicle's -- only ui_remove_vehicle
    needs the list intact while it scans for the next ship to hand control to. */
 void Game::dropVehicleRefs(Vehicle *v) {
     dropPartWindowsFor(v);
@@ -373,7 +373,7 @@ void Game::dropVehicleRefs(Vehicle *v) {
     if(lastShip == v) { lastShip = nullptr; }
     /* The active pointer needs the same treatment: a caller that is about to
        hand control to another vessel reads its own saved `wasActive` flag, not
-       this, so nulling it here is what keeps select_ship from releasing control
+       this, so nulling it here is what keeps select_vehicle from releasing control
        back to a corpse. */
     if(ship == v) { ship = nullptr; }
 }
@@ -1067,7 +1067,7 @@ void Game::settleVehicles(Vehicle *active) {
     }
 }
 
-void Game::select_ship(Vehicle *v) {
+void Game::select_vehicle(Vehicle *v) {
     if(v == nullptr || v == ship) { return; }
     // Every Vehicle is controllable: a seated kerbal is not one (part.h).
     // The old active ship (null when launching from the orbit-view state).
@@ -1100,9 +1100,9 @@ void Game::select_ship(Vehicle *v) {
 /* --- crew. A seated kerbal is a seat on its capsule Part (part.h); a walking
    one is a Kerbal vehicle in Game::vehicles. There is no third state. */
 
-std::vector<Part *> shipSeats(Vehicle *ship) {
+std::vector<Part *> vehicleSeats(Vehicle *v) {
     std::vector<Part *> out;
-    for(Part *p : ship->parts) {
+    for(Part *p : v->parts) {
         for(Part *suit : p->seats) {
             if(suit != nullptr) { out.push_back(suit); }
         }
@@ -1223,7 +1223,7 @@ void Game::kerbalEVA(Part *suit) {
 
     kerbal = k;
     lastShip = ship;
-    select_ship(k);
+    select_vehicle(k);
     toast("EVA: %s", who.c_str());
     /* Log the capsule's slot in the ship's part list (e2e pins "part 0"). */
     int capIdx = 0;
@@ -1287,7 +1287,7 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
     // The kerbal is no longer controllable: hand control to the ship it entered.
     if(wasActive) {
         lastShip = ship;
-        select_ship(ship);
+        select_vehicle(ship);
     }
 }
 
@@ -1353,7 +1353,7 @@ bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
     }
     /* A crewed ship is not cargo: the capsule owns its seat occupants, and the
        suit part would dangle in the destination container. */
-    if(!shipSeats(itemShip).empty()) {
+    if(!vehicleSeats(itemShip).empty()) {
         toast("Pick up: %s has crew aboard -- EVA them out first",
               itemShip->name.c_str());
         return false;
@@ -1387,13 +1387,13 @@ void Game::toggle_eva() {
     }
     if(ship->isEva()) {
         if(lastShip != nullptr && !lastShip->isEva()) {
-            select_ship(lastShip);
+            select_vehicle(lastShip);
         } else {
             toast("EVA: no ship to return to");
         }
         return;
     }
-    std::vector<Part *> seats = shipSeats(ship);
+    std::vector<Part *> seats = vehicleSeats(ship);
     if(seats.empty()) {
         toast("EVA: no crew aboard %s", ship->name.c_str());
         return;
@@ -1686,7 +1686,7 @@ void Game::stage() {
 
 /* Remove a ship + its bookkeeping. Refuses to remove the last ship. If it was
    active, control hands off to the next ship in spawn order. */
-bool Game::remove_ship(Vehicle *v) {
+bool Game::ui_remove_vehicle(Vehicle *v) {
     if(v == nullptr) { return false; }
     if(vehicles.size() <= 1) {
         printf("Refusing to remove the last ship\n");
@@ -1701,7 +1701,7 @@ bool Game::remove_ship(Vehicle *v) {
               v->name.c_str());
         return false;
     }
-    if(!shipSeats(v).empty()) {
+    if(!vehicleSeats(v).empty()) {
         toast("Cannot remove %s -- EVA its crew out first", v->name.c_str());
         return false;
     }
@@ -1759,7 +1759,7 @@ bool Game::remove_ship(Vehicle *v) {
     return true;
 }
 
-/* Recover the active vessel -- the end of a flight. Unlike remove_ship this
+/* Recover the active vessel -- the end of a flight. Unlike ui_remove_vehicle this
    allows the last vessel (the hub is a legal shipless floor) and absorbs the
    crew. Lands on the hub with the Flight Summary. */
 void Game::recoverActive() {
@@ -1796,7 +1796,7 @@ void Game::recoverActive() {
     for(Part *p : v->parts) {
         loot.insert(loot.end(), p->experiments.begin(), p->experiments.end());
     }
-    for(Part *suit : shipSeats(v)) {
+    for(Part *suit : vehicleSeats(v)) {
         loot.insert(loot.end(), suit->experiments.begin(), suit->experiments.end());
     }
     std::map<std::string, double> bodyMult;
@@ -1811,7 +1811,7 @@ void Game::recoverActive() {
     /* The crew come home: suits peel off to the launch pad before the ship
        dies (part.h: a kerbal is a Part at one place). */
     {
-        std::vector<Part *> home = shipSeats(v);
+        std::vector<Part *> home = vehicleSeats(v);
         for(Part *suit : home) {
             Part *cap = suit->container;
             if(cap != nullptr) { cap->removeSeat(suit); }

@@ -644,7 +644,7 @@ struct Game {
     bool save_settings();
     void load_settings();
     // Takes control of `v` (releases + parks the current one).
-    void select_ship(Vehicle *v);
+    void select_vehicle(Vehicle *v);
     /* Space Center, no ship, paused. False (plus a toast) if a game is running. */
     bool newGame();
     /* False if a game is running or the system switch failed (world untouched). */
@@ -684,12 +684,14 @@ struct Game {
     void undock();
     // Refuses a stage that still carries a crewed capsule.
     void stage();
-    /* Refuses the last ship; hands control off if the active one is removed.
+    /* The tracking list's "x" and the VAB's occupied-pad refusal (the ui_
+       prefix: a player action, not a teardown). Refuses the last ship; hands
+       control off if the active one is removed.
        False = refused (also the null case), so a caller drawing a delete
        button knows whether the row actually went away. */
-    bool remove_ship(Vehicle *v);
+    bool ui_remove_vehicle(Vehicle *v);
     /* Refuses unless grounded on the home body (--recover-anywhere lifts that).
-       Unlike remove_ship this allows the last vessel. */
+       Unlike ui_remove_vehicle this allows the last vessel. */
     void recoverActive();
     /* Stores on the walking kerbal's suit; refuses a duplicate already held. */
     void runExperiment(Kerbal *k);
@@ -783,9 +785,9 @@ void pickAt(Game &g, int px, int py);
 // settings.json phase 1 (phase 2 is Game::load_settings). No-op if absent.
 void load_settings_args(GameArgs &args);
 
-/* Every seat occupant on the ship, in part order (part.h: a seat is a Part on
-   a capsule). Empty = the ship has no crew. */
-std::vector<Part *> shipSeats(Vehicle *ship);
+/* Every seat occupant on the vehicle, in part order (part.h: a seat is a Part
+   on a capsule). Empty = the vehicle has no crew. */
+std::vector<Part *> vehicleSeats(Vehicle *v);
 /* Display name for a person: their owned profile, else empty. */
 std::string seatName(const Part *suit);
 /* Free kerbals are the isEva entries of Game::vehicles; a seated crew member is

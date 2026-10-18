@@ -239,7 +239,7 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
                     const int n = (int)all.size();
                     for(int step = 1; step < n; step++) {
                         Vehicle *v = all[(cur + step) % n];
-                        g.select_ship(v);
+                        g.select_vehicle(v);
                         break;
                     }
                 }

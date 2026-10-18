@@ -227,7 +227,7 @@ static void installHeadlessHooks(Game &game) {
                     for(Part *p : s->parts) {
                         if(!p->experiments.empty()) { holdsFinding = true; break; }
                     }
-                    if(holdsFinding) { game.select_ship(s); break; }
+                    if(holdsFinding) { game.select_vehicle(s); break; }
                 }
             }
             game.recoverActive();
@@ -242,7 +242,7 @@ static void installHeadlessHooks(Game &game) {
             } else if(game.ship->isEva()) {
                 game.runExperiment(static_cast<Kerbal *>(game.ship));
             } else {
-                std::vector<Part *> seats = shipSeats(game.ship);
+                std::vector<Part *> seats = vehicleSeats(game.ship);
                 if(seats.empty()) { printf("[hook] --experiment: no kerbal, ignored\n"); }
                 else { game.runSeatExperiment(seats.front()); }
             }
@@ -260,7 +260,7 @@ static void installHeadlessHooks(Game &game) {
                         pod = p; break;
                     }
                 }
-                std::vector<Part *> seats = shipSeats(game.ship);
+                std::vector<Part *> seats = vehicleSeats(game.ship);
                 if(!seats.empty()) { runner = seatName(seats.front()); }
             }
             if(pod != nullptr && !runner.empty()) { game.runPodExperiment(pod, runner); }
@@ -271,7 +271,7 @@ static void installHeadlessHooks(Game &game) {
     // --take / --store in the e2e.
     if(args.eva_ms >= 0) {
         game.addHook(kHookPreScene, args.eva_ms, nullptr, [](Game &game) {
-            std::vector<Part *> seats = game.ship != nullptr ? shipSeats(game.ship)
+            std::vector<Part *> seats = game.ship != nullptr ? vehicleSeats(game.ship)
                                                              : std::vector<Part *>{};
             if(!seats.empty()) { game.kerbalEVA(seats.front()); }
             else { printf("[hook] --eva: no crew aboard, ignored\n"); }
@@ -865,7 +865,7 @@ int main(int argc, char **argv)
         // both before the camera exists, so it focuses on the spawn.
         game.settleVehicles(first);
         /* The active ship: the first built. Assigned directly, not via
-           select_ship: the camera does not exist yet. */
+           select_vehicle: the camera does not exist yet. */
         ship = first;
         if(first != nullptr) {
             printf("[dbg-dv] getMass=%.2f kg  getDeltaV=%.1f m/s\n",
@@ -1320,7 +1320,7 @@ int main(int argc, char **argv)
         /* Free the vehicles retired since the last frame (#297). One point per
            frame, before anything reads the world: a Vehicle* captured anywhere
            in the previous frame -- an imgui row, a planner target, the
-           successor remove_ship picked before erasing -- stays valid until that
+           successor ui_remove_vehicle picked before erasing -- stays valid until that
            frame ends, and nothing here can reach one that is already gone. */
         game.sweepRetired();
 
