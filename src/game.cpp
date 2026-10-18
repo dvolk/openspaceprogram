@@ -914,10 +914,29 @@ bool Game::ensureSystemForSave(const std::string &dir, bool *switched) {
 bool Game::loadFrom(const std::string &dir) {
     bool switched = false;
     if(!ensureSystemForSave(dir, &switched)) { return false; }
+    /* load_game moves the clock BEFORE anything can fail: setTime re-derives
+       every body's frame tree to the save's epoch (a ship restored into a
+       ROTATING frame captures its rail state from those transforms), and
+       time_accel and exhaust_scale come from the file too. A refusal that left
+       them there handed the surviving game a paused clock at the SAVE's time
+       with its bodies parked at the SAVE's epoch (#301). Rails are a pure
+       function of `time`, so setting it back puts the frames back exactly. */
+    const double prev_time = time;
+    const int prev_accel = time_accel;
+    const float prev_exhaust = args.exhaust_scale;
     try {
         load_game(*this, dir);
     } catch(const std::exception &e) {
         printf("[load] refused %s: %s\n", dir.c_str(), e.what());
+        /* Only when the system did NOT change: a switch replaced the world and
+           the old clock belongs to bodies that no longer exist. */
+        if(!switched) {
+            time_accel = prev_accel;
+            args.exhaust_scale = prev_exhaust;
+            setTime(prev_time);
+            printf("[load] clock restored: t=%.1f, warp %d, exhaust %.2fx\n",
+                   time, time_accel, args.exhaust_scale);
+        }
         // A same-system refusal leaves science intact (load_game adopts it only
         // on success); a cross-system one already reset it.
         if(switched) {

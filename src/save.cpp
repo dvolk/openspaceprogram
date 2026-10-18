@@ -863,8 +863,9 @@ void load_game(Game &g, const std::string &dir) {
     /* Transactional: a load that throws leaves the running world exactly as it
        was -- the old vehicles were only moved out of Game::vehicles into
        `detached` (below), never deleted -- and the roster as it was too
-       (RosterRollback, above). NOT rolled back: the clock, frames, time_accel
-       and exhaust_scale set above. */
+       (RosterRollback, above). The clock above is NOT rolled back here: it has
+       to move before the ships can be built, so Game::loadFrom snapshots it and
+       puts it back if this throws (#301). */
 
     std::vector<SaveShip> saves;
     saves.reserve(meta.ships.size());
