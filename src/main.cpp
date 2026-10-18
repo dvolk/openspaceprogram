@@ -1473,9 +1473,11 @@ int main(int argc, char **argv)
           the terrain LOD that owns the ground's Bullet collision bodies, and
           fills the g.hud.view snapshot the UI reads. Every scene runs it (the VAB
           without the LOD).
-          No scene opts out of the paint yet. Whoever adds a paint gate must force
-          a paint when screenshot_requested is set: display.SaveScreenshot
-          glReadPixels'es the back buffer, so a shot on a skipped paint is garbage.
+          Two scenes opt out of the paint (tracking, research: noPaint) because
+          the map covers the world. That makes F12 wrong in them already:
+          display.SaveScreenshot glReadPixels'es the back buffer, and the only
+          thing in it is the clear colour plus imgui. A paint gate must force a
+          paint when screenshot_requested is set.
         */
         {
             // The scene cannot change inside the render block, so read it once.

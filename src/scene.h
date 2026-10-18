@@ -56,14 +56,16 @@ struct SceneFrame {
 // not enum branches.
 struct SceneDef {
     const char *name;
-    bool sim;             // does the clock advance while this scene is on top
     bool pilot;           // does the live ship take WASD/T/RCS this scene
                           // (non-pilot scenes coast instead of steering)
     Backdrop backdrop;
     WinSet wins;             // the windows this scene owns (uiwins.h)
     void (*enter)(Game &);   // pushed on top: the camera is already captured
     void (*exit)(Game &);    // popped, or unwound by enterFlight
-    // Per-frame half; only the TOP scene's run.
+    // Per-frame half; only the TOP scene's run. Every scene advances the clock
+    // (tick, or vabUpdateLive for the VAB): the hub, tracking station and lab all
+    // show a LIVE world, they just do not steer it. Nothing pauses the sim per
+    // scene -- Game::time_accel is the only gate.
     void (*update)(Game &);
     // Per-frame 3D STATE: camera re-pose, terrain LOD, Game::hud.view, the transfer
     // planner. Every scene runs it, painted or not -- the LOD owns the ground's

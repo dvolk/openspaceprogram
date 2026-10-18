@@ -106,32 +106,32 @@ void researchLabDrawUi(Game &g) {
 const SceneDef kScenes[(size_t)SceneId::COUNT] = {
     // Title runs the sim + world so the backdrop body turns behind the menu;
     // its key map is the flight one (vessel keys no-op with no vessel).
-    { .name = "title", .sim = true, .pilot = false, .backdrop = Backdrop::Sky,
+    { .name = "title", .pilot = false, .backdrop = Backdrop::Sky,
       .wins = kTitleWins, .enter = floorEnter, .exit = floorExit,
       .update = tick, .refresh = refreshWorld, .paint = paintWorld,
       .drawUi = titleDrawUi, .keys = flightKeyActions },
-    { .name = "flight", .sim = true, .pilot = true, .backdrop = Backdrop::Sky,
+    { .name = "flight", .pilot = true, .backdrop = Backdrop::Sky,
       .wins = kFlightWins, .enter = floorEnter, .exit = floorExit,
       .update = tick, .refresh = refreshWorld, .paint = paintWorld,
       .drawUi = flightDrawUi, .keys = flightKeyActions },
     // The build tree itself is physics-free.
-    { .name = "vab", .sim = true, .pilot = false, .backdrop = Backdrop::Studio,
+    { .name = "vab", .pilot = false, .backdrop = Backdrop::Studio,
       .wins = kVabWins, .enter = vabEnter, .exit = vabExit,
       .update = vabUpdateLive, .refresh = refreshVab, .paint = paintVab,
       .drawUi = vabDrawUi, .keys = vabKeyActions },
     // The hub: live view of the running sim, not steered (pilot is false).
-    { .name = "spacecenter", .sim = true, .pilot = false,
+    { .name = "spacecenter", .pilot = false,
       .backdrop = Backdrop::Sky, .wins = kSpaceCenterWins,
       .enter = spaceCenterEnter, .exit = floorExit,
       .update = tick, .refresh = refreshWorld, .paint = paintWorld,
       .drawUi = spaceCenterDrawUi, .keys = hubKeyActions },
     // Live sim, no world paint (the map covers it).
-    { .name = "tracking", .sim = true, .pilot = false,
+    { .name = "tracking", .pilot = false,
       .backdrop = Backdrop::Sky, .wins = kTrackingWins,
       .enter = floorEnter, .exit = floorExit,
       .update = tick, .refresh = refreshWorld, .paint = noPaint,
       .drawUi = trackingDrawUi, .keys = trackingKeyActions },
-    { .name = "research", .sim = true, .pilot = false,
+    { .name = "research", .pilot = false,
       .backdrop = Backdrop::Studio, .wins = kResearchWins,
       .enter = researchLabEnter, .exit = floorExit,
       .update = tick, .refresh = refreshWorld, .paint = noPaint,
