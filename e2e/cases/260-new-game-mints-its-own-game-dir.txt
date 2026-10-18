@@ -1,0 +1,30 @@
+# A New Game must own its saves/ directory (#299).
+# gameId is adopted from the save that was loaded (save.cpp:976-984), but
+# unloadGame left it set and Game::newGame never minted one -- only
+# startNewGame does. So quit-to-title then a bare newGame() (which is exactly
+# what --new-game calls) left the fresh career pointing at the PREVIOUS game's
+# directory, and the next save wrote a slot into it.
+# SEED stages gameA under a real saves/ tree because the identity is adopted only
+# when the save's grandparent directory is literally named "saves"; a fixture
+# path like e2e/fixtures/save_racer never sets gameId at all, which is why this
+# hid for so long.
+NAME new-game-mints-its-own-game-dir
+SEED e2e/fixtures/save_racer saves/20260101_000000-gameA/slotA
+ARGS --timeout 6 --time-accel 1
+ARGS --load slotA
+ARGS --quit-title 2000 --new-game 3000
+ARGS --resave slotB
+EXPECT saves/20260101_000000-gameA/slotA (active: racer)
+EXPECT [game] unloaded: ships torn down, no active vessel
+# A fresh career also starts at t=0: nothing else writes Game::time, so a new
+# game on a system that had been running used to open at the old game's epoch.
+EXPECT [game] new game: Space Center, no ship, paused (t=0.0)
+EXPECT Saved 0 ship(s) to
+CHECK "20260101_000000-gameA/slotB" not in out
+CHECK re.search(r"Saved 0 ship\(s\) to \S*/saves/20\d{6}_\d{6}-gameA/slotB", out)
+FORBID A game is already running
+FORBID Segmentation
+FORBID Assertion
+FORBID GL_
+FORBID error:
+LIMIT 90

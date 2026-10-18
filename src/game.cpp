@@ -764,6 +764,21 @@ bool Game::newGame() {
         toast("A game is already running");
         return false;
     }
+    /* A game with no identity cannot be saved: quicksave() writes into whatever
+       gameId names, and after a quit-to-title that is the PREVIOUS game's
+       directory (#299). startNewGame mints before calling this; every other way
+       in (--new-game, a bare newGame) mints here. Mint after the guard above so
+       a refused new game leaves no orphan directory. */
+    if(gameId.empty() && ensureGameDir().empty()) {
+        toast("Too many same-named games this second; try again");
+        return false;
+    }
+    /* A new career starts at t=0. Nothing else writes `time` -- only boot
+       --start-time and a load -- so a New Game on a system that had been
+       running opened at the old game's epoch, and the science stamps and Flight
+       Summary inherited it (#299). setTime also re-derives the rails and drops
+       the world-stamped caches, which a fresh world wants anyway. */
+    setTime(0.0);
     // A new game starts in the Space Center with NO ship, paused.
     time_accel = 0;
     clearFlightSummary();   // a prior recover's summary is not this game's
@@ -777,7 +792,7 @@ bool Game::newGame() {
     }
     mintCrewPool();
     enterSpaceCenter(*this);
-    printf("[game] new game: Space Center, no ship, paused\n");
+    printf("[game] new game: Space Center, no ship, paused (t=%.1f)\n", time);
     fflush(stdout);
     toastLog("New game -- Space Center");
     return true;
@@ -983,6 +998,12 @@ void Game::unloadGame() {
     ship = nullptr;
     kerbal = nullptr;
     lastShip = nullptr;
+    /* The game's identity belongs to the game that just ended. Leaving gameId
+       set meant a later quicksave wrote into the PREVIOUS game's saves/<id>/
+       directory (#299); newGame() mints a fresh one when this is empty. A load
+       sets it from its own directory afterwards, so the switch path is
+       unaffected. */
+    gameId.clear();
     // The title screen is an orbit view: a quitting free-cam pilot keeps no pose.
     if(camera != nullptr) { camera->mode = CAM_ORBIT; }
     syncShipFocus();
