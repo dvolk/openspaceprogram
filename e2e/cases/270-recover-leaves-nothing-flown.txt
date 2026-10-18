@@ -1,0 +1,20 @@
+# #270's writer half: recovering the flown vessel leaves a fleet with NOTHING
+# flown (recoverActive does no handoff to a neighbour, game.cpp), and the save
+# must record that as "active_ship": "" rather than omitting the key and letting
+# the next load invent a ship. Two vessels start; only 'racer' is recovered, so
+# 'tanker' is still in the world with nobody at the controls.
+NAME recover-leaves-nothing-flown
+ARGS --time-accel 1 --timeout 8
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --startship tanker,res/ships/tanker.json,Kerbin,rot-orbit
+ARGS --space-center 1000 --recover 2000 --recover-anywhere
+ARGS --save slotA
+EXPECT [recover] t=
+EXPECT Saved 1 ship(s) to
+FILE saves/*/slotA/save.json '"active_ship": ""'
+FILE saves/*/slotA/ships/v0.json "tanker"
+NOFILE saves/*/slotA/*.tmp
+FORBID Save failed
+FORBID GL_
+FORBID error:
+LIMIT 60

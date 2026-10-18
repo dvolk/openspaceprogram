@@ -214,7 +214,15 @@ struct SaveMeta {
     std::string kerbals;     // the roster file (res/data/kerbals.json)
     double time = 0.0;       // the analytic sim clock (s)
     int time_accel = 1;      // recorded for the round-trip; load starts paused
-    std::string active_ship; // SAVE SLUG of what you fly ("" = none)
+    /* SAVE SLUG of what you fly. "" is a MEANING, not an absence: this build
+       writes it when the fleet has vessels and none of them is flown, which is
+       the state recoverActive() leaves (it does no handoff) and is NOT the same
+       save as one that records nothing at all (#270). `active_recorded` keeps
+       those apart: false only for a hand-edited or foreign file with no key,
+       where the loader picks the first vessel rather than opening an
+       empty-handed game the file never described. */
+    std::string active_ship;
+    bool active_recorded = true;
     /* Engine-performance difficulty: multiplies every engine's exhaust
        velocity. A save is not portable across scales. */
     float exhaust_scale = 1.0f;
@@ -235,10 +243,11 @@ struct SaveMeta {
 
 // ---- pure JSON (de)serialization (inline: header-only, unit-testable) ----
 /* Reads are permissive: an absent or unknown key keeps the struct's default, so
-   a hand-edited file never crashes the load. Two reads refuse rather than
+   a hand-edited file never crashes the load. Three reads refuse rather than
    default, because what they describe cannot be defaulted into anything sane:
-   SaveMeta's "format" (saveMetaFromJson) and a crew entry's top-level "seats"
-   array (saveShipFromJson). */
+   SaveMeta's "format" and its "active_ship" against its own "ships" list (both
+   in saveMetaFromJson), and a crew entry's top-level "seats" array
+   (saveShipFromJson). */
 
 inline std::vector<double> mat3ToVec(const glm::dmat3 &m) {
     std::vector<double> v(9);
@@ -637,7 +646,9 @@ inline nlohmann::json saveMetaToJson(const SaveMeta &m) {
     if(!m.kerbals.empty()) { j["kerbals"] = m.kerbals; }
     j["time"]        = m.time;
     j["time_accel"]  = m.time_accel;
-    if(!m.active_ship.empty()) { j["active_ship"] = m.active_ship; }
+    /* Always written: "" means "a fleet, none flown" (#270), so omitting it
+       would lose the distinction this build can produce. */
+    j["active_ship"] = m.active_ship;
     j["exhaust_scale"] = m.exhaust_scale;
     if(m.science_score != 0) { j["science_score"] = m.science_score; }
     if(!m.recovered.empty()) { j["recovered"] = recoveredListToJson(m.recovered); }
@@ -689,7 +700,12 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     }
     if(j.contains("time") && j["time"].is_number()) { m.time = j["time"].get<double>(); }
     if(j.contains("time_accel") && j["time_accel"].is_number()) { m.time_accel = j["time_accel"].get<int>(); }
-    if(j.contains("active_ship") && j["active_ship"].is_string()) { m.active_ship = j["active_ship"].get<std::string>(); }
+    /* Presence is the fact, not the value: an absent key means the file records
+       nothing, "" means it records that nothing is flown (#270). */
+    m.active_recorded = j.contains("active_ship");
+    if(m.active_recorded && j["active_ship"].is_string()) {
+        m.active_ship = j["active_ship"].get<std::string>();
+    }
     if(j.contains("exhaust_scale") && j["exhaust_scale"].is_number()) {
         // Clamp like the CLI range (0.5-5): a hand-edited 0 would zero every
         // engine's thrust.
@@ -755,6 +771,22 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
             }
             m.ships.push_back(sh);
         }
+    }
+    /* The third refusing read (after "format" and a crew entry's "seats"), and
+       it belongs HERE rather than in preflightSave: it is a fact about this one
+       document, so every path that parses a save gets the same sentence -- boot
+       --load of a same-system slot runs no preflight at all (main.cpp), and a
+       rule living in preflightSave would be invisible to it. A recorded slug the
+       "ships" list lacks means a hand-edited file or a fleet that shrank under
+       the save; the alternative was to fly a DIFFERENT vessel than the save
+       named, silently (#270). "" is not this rule: it records that nothing is
+       flown, which commitSaveWorld honours. */
+    if(!m.active_ship.empty()
+       && std::find(m.ships.begin(), m.ships.end(), m.active_ship)
+          == m.ships.end()) {
+        throw std::runtime_error("save: save.json: flies \"" + m.active_ship
+                                 + "\", which its \"ships\" list has no entry "
+                                 "for");
     }
     return m;
 }

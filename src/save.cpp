@@ -1482,20 +1482,25 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
     }
 
     // the active ship
-    /* A slug the save does not have resolves to nothing: fall through to the
-       first vessel. A seated kerbal cannot be named here at all -- a slug keys a
-       vehicle, and a seat is data on a Part (part.h). */
+    /* Three states, and the save says which one it is (#270):
+       - a slug: fly that vessel. preflightSave refuses a slug the "ships" list
+         has no entry for, so a recorded name always resolves.
+       - "" (recorded): a fleet with nothing flown -- exactly what recoverActive
+         leaves, since it does no handoff. Honour it; picking a vessel here would
+         open a game the file never described.
+       - no key at all: a hand-edited or foreign file. Fall back to the first
+         vessel in save order, which is what a fresh boot makes active. This used
+         to be byName.begin(), i.e. the alphabetically first NAME -- a kerbal
+         called 'Ash' beat a ship called 'racer'. */
     Vehicle *active = nullptr;
     if(!meta.active_ship.empty()) {
         std::map<std::string, Vehicle *>::const_iterator it =
             b->bySlug.find(meta.active_ship);
-        if(it != b->bySlug.end()) { active = it->second; }
+        assert(it != b->bySlug.end());   // preflightSave refused it otherwise
+        active = it->second;
+    } else if(!meta.active_recorded && !g.vehicles.empty()) {
+        active = g.vehicles[0];
     }
-    /* Nothing recorded (or a slug the save no longer has): take the first vessel
-       in save order, which is what a fresh boot makes active. This
-       used to be byName.begin(), i.e. the alphabetically first NAME -- a kerbal
-       called 'Ash' beat a ship called 'racer'. */
-    if(active == nullptr && !g.vehicles.empty()) { active = g.vehicles[0]; }
     g.ship = active;
     g.kerbal = (active != nullptr && active->isEva()) ? static_cast<Kerbal *>(active) : nullptr;
     g.lastShip = nullptr;
