@@ -630,7 +630,7 @@ Vehicle *build_start_vehicles(Game &g, const std::vector<DebugStartShip> &entrie
     return first;
 }
 
-StaticBuilding *homeCrewPad(System &sys) {
+StaticBuilding *homeCrewPad(const System &sys) {
     /* The home body's pad is THE pad; a body-order scan alone would stand the
        cast on whichever launch site happens to come first in sys.bodies. */
     if(sys.home != nullptr) {

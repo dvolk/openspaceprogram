@@ -100,6 +100,17 @@ static std::string refuseUnknownRosterId(const CrewRoster &roster, uint64_t id,
            + ", which the roster has no entry for";
 }
 
+/* One roster entry, one wearer -- over a set of ids rather than a built world.
+   refuseDoubleClaim applies it to the parts the load built; preflightSave
+   applies it to the ids the SAVE names, which is the same set: a suit's id is
+   its seat's seat_profile and a kerbal's is its profile_id, whatever the roster
+   swap does to the name beside it (#302). Anonymous people (id 0) claim
+   nothing. */
+static std::string refuseDoubleClaimId(std::set<uint64_t> &claimed, uint64_t id) {
+    if(id == 0 || claimed.insert(id).second) { return ""; }
+    return "load: two people claim roster id " + std::to_string(id);
+}
+
 nlohmann::json readJsonFile(const std::string &path) {
     std::ifstream f(path.c_str());
     if(!f.is_open()) { throw std::runtime_error("load: cannot open " + path); }
@@ -174,47 +185,125 @@ SavePart saveSeatPart(const Part *suit) {
     return sp;
 }
 
-// Rebuild `saved` (and its nested items) as items of `container`. Throws on an
-// unknown def or over-capacity; items wired before the throw hang off
-// `container`, so the caller frees them with the owning vehicle.
-void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
-                         Part *container, const std::string &shipName) {
-    const PartsCatalog &cat = g.parts;
-    // a live add refuses a full container; a load must too
-    if((int)saved.size() > container->def->inventory_capacity) {
-        throw std::runtime_error("load: '" + shipName + "' part '"
-                                 + container->def->name + "' holds "
-                                 + std::to_string(saved.size())
-                                 + " inventory item(s), more than its "
-                                 + std::to_string(container->def->inventory_capacity)
-                                 + "-slot capacity");
+/* A suit's pockets are validated by the inventory rules below, which a seat
+   array therefore needs before it is defined. */
+static std::string validateInventoryArray(const PartsCatalog &cat,
+                                          const std::string &shipName,
+                                          const PartDef &pd,
+                                          const std::vector<SavePart> &saved);
+
+/* The seat-array rules, world-free. `pd` is the CONTAINER's def: buildSeatParts
+   passes the built capsule's, preflightSave looks it up in the catalog, and it
+   is the same def either way -- which is the point. One implementation for both
+   paths, so a cross-system load cannot switch systems and only then refuse
+   (#302). The roster-id rule sits with the builder because only it holds the
+   cast list; preflightSave has the same rule via refuseUnknownRosterId. */
+static std::string validateSeatArray(const PartsCatalog &cat,
+                                     const std::string &shipName,
+                                     const PartDef &pd,
+                                     const std::vector<SavePart> &saved) {
+    if(saved.empty()) { return ""; }   // the overwhelmingly common case
+    if(pd.crew_capacity <= 0) {
+        return "load: '" + shipName + "' part '" + pd.name + "' holds "
+               + std::to_string(saved.size())
+               + " seat(s) but is not a capsule (crew_capacity 0)";
     }
-    for(size_t i = 0; i < saved.size(); i++) {
-        const SavePart &si = saved[i];
+    // a live board refuses a full capsule; a load must too
+    if((int)saved.size() > pd.crew_capacity) {
+        return "load: '" + shipName + "' capsule '" + pd.name + "' has "
+               + std::to_string(saved.size()) + " seat(s), more than its "
+               + std::to_string(pd.crew_capacity) + "-seat capacity";
+    }
+    for(const SavePart &sp : saved) {
+        const PartDef *sd = cat.find(sp.part);
+        if(sd == nullptr) {
+            return "load: '" + shipName + "' seat part '" + sp.part
+                   + "' is not in the parts file";
+        }
+        /* A seat is a PERSON, and only a kerbal-type Part is one (Part::isSeat).
+           Anything else here is a hand-edited file, not a game state. */
+        if(sd->type != "kerbal") {
+            return "load: '" + shipName + "' seat part '" + sp.part + "' is a '"
+                   + sd->type + "' part, not a kerbal seat";
+        }
+        /* A seat cannot hold seats, so a nested array is corruption rather than
+           a state the game can be in -- and dropping it silently would lose a
+           person. */
+        if(!sp.seats.empty()) {
+            return "load: '" + shipName + "' seat part '" + sp.part + "' has "
+                   + std::to_string(sp.seats.size()) + " seat(s) of its own";
+        }
+        // A suit carries pockets, and buildSeatParts fills them (saveSeatPart
+        // writes them back), so the same inventory rules apply one level down.
+        if(std::string why = validateInventoryArray(cat, shipName, *sd, sp.inventory);
+           !why.empty()) {
+            return why;
+        }
+    }
+    return "";
+}
+
+/* The inventory-array rules, world-free, recursing through nested containers
+   exactly as buildInventoryItems does. Deliberately NOT the uid rules: an item's
+   uid never enters savedUidToPart, so refusing a repeated item uid here would
+   reject saves that load today. */
+static std::string validateInventoryArray(const PartsCatalog &cat,
+                                          const std::string &shipName,
+                                          const PartDef &pd,
+                                          const std::vector<SavePart> &saved) {
+    // a live add refuses a full container; a load must too
+    if((int)saved.size() > pd.inventory_capacity) {
+        return "load: '" + shipName + "' part '" + pd.name + "' holds "
+               + std::to_string(saved.size()) + " inventory item(s), more than its "
+               + std::to_string(pd.inventory_capacity) + "-slot capacity";
+    }
+    for(const SavePart &si : saved) {
         /* Seats belong to capsules, and buildSeatParts only ever runs for an
            ATTACHED part -- so a `seats` array on an inventory item (or on a
            nested container) has nowhere to be parked. Dropping it would lose a
            person without a word. */
         if(!si.seats.empty()) {
-            throw std::runtime_error("load: '" + shipName + "' inventory item '"
-                                     + si.part + "' holds "
-                                     + std::to_string(si.seats.size())
-                                     + " seat(s); only a capsule has seats");
+            return "load: '" + shipName + "' inventory item '" + si.part + "' holds "
+                   + std::to_string(si.seats.size())
+                   + " seat(s); only a capsule has seats";
         }
-        const PartDef *pd = cat.find(si.part);
-        if(pd == nullptr) {
-            throw std::runtime_error("load: '" + shipName + "' inventory item '"
-                                     + si.part + "' is not in the parts file");
+        const PartDef *ipd = cat.find(si.part);
+        if(ipd == nullptr) {
+            return "load: '" + shipName + "' inventory item '" + si.part
+                   + "' is not in the parts file";
         }
         /* A kerbal-type part is a person, not cargo. Parked anywhere other than
            a capsule it is a seat occupant in a non-capsule, which
            checkPartInvariants refuses -- and rebuildCompound asserts on that, so
            the save would abort the process. A hand-edited save is still just
            data: refuse it here, where refusing is an option. */
-        if(pd->type == "kerbal") {
-            throw std::runtime_error("load: '" + shipName + "' inventory item '"
-                                     + si.part + "' is a crew part, not cargo");
+        if(ipd->type == "kerbal") {
+            return "load: '" + shipName + "' inventory item '" + si.part
+                   + "' is a crew part, not cargo";
         }
+        if(std::string why = validateInventoryArray(cat, shipName, *ipd, si.inventory);
+           !why.empty()) {
+            return why;
+        }
+    }
+    return "";
+}
+
+// Rebuild `saved` (and its nested items) as items of `container`. Throws on an
+// unknown def or over-capacity; items wired before the throw hang off
+// `container`, so the caller frees them with the owning vehicle.
+void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
+                         Part *container, const std::string &shipName) {
+    /* Every rule but the wiring lives in validateInventoryArray, which
+       preflightSave also runs before a cross-system switch (#302). */
+    if(std::string why = validateInventoryArray(g.parts, shipName, *container->def,
+                                                saved); !why.empty()) {
+        throw std::runtime_error(why);
+    }
+    const PartsCatalog &cat = g.parts;
+    for(size_t i = 0; i < saved.size(); i++) {
+        const SavePart &si = saved[i];
+        const PartDef *pd = cat.find(si.part);   // validated above
         Part *item = make_part(*pd, si.mass, si.hull_margin,
                                &si.fuel, &si.experiments, si.id, g.partsshader);
         container->contents.push_back(item);
@@ -254,42 +343,15 @@ Part *makeSuitPart(Game &g, const SavePart &sp, const PartDef *pd,
 void buildSeatParts(Game &g, const std::vector<SavePart> &saved, Part *cap,
                     const std::string &shipName) {
     if(saved.empty()) { return; }   // the overwhelmingly common case
-    const PartsCatalog &cat = g.parts;
-    if(cap->def->crew_capacity <= 0) {
-        throw std::runtime_error("load: '" + shipName + "' part '" + cap->def->name
-                                 + "' holds " + std::to_string(saved.size())
-                                 + " seat(s) but is not a capsule (crew_capacity 0)");
-    }
-    // a live board refuses a full capsule; a load must too
-    if((int)saved.size() > cap->def->crew_capacity) {
-        throw std::runtime_error("load: '" + shipName + "' capsule '" + cap->def->name
-                                 + "' has " + std::to_string(saved.size())
-                                 + " seat(s), more than its "
-                                 + std::to_string(cap->def->crew_capacity)
-                                 + "-seat capacity");
+    /* The shape rules live in validateSeatArray, which preflightSave also runs
+       before a cross-system switch (#302). What stays here needs the roster or
+       the built capsule. */
+    if(std::string why = validateSeatArray(g.parts, shipName, *cap->def, saved);
+       !why.empty()) {
+        throw std::runtime_error(why);
     }
     for(size_t i = 0; i < saved.size(); i++) {
         const SavePart &sp = saved[i];
-        const PartDef *pd = cat.find(sp.part);
-        if(pd == nullptr) {
-            throw std::runtime_error("load: '" + shipName + "' seat part '"
-                                     + sp.part + "' is not in the parts file");
-        }
-        /* A seat is a PERSON, and only a kerbal-type Part is one (Part::isSeat).
-           Anything else here is a hand-edited file, not a game state. */
-        if(pd->type != "kerbal") {
-            throw std::runtime_error("load: '" + shipName + "' seat part '" + sp.part
-                                     + "' is a '" + pd->type
-                                     + "' part, not a kerbal seat");
-        }
-        /* A seat cannot hold seats, so a nested array is corruption rather than
-           a state the game can be in -- and dropping it silently would lose a
-           person. */
-        if(!sp.seats.empty()) {
-            throw std::runtime_error("load: '" + shipName + "' seat part '" + sp.part
-                                     + "' has " + std::to_string(sp.seats.size())
-                                     + " seat(s) of its own");
-        }
         /* Identity lives in the roster, so naming one means finding it there:
            rebuilding past a missing entry would silently strip that person's
            skills and name. Same rule and same words as preflightSave (#302). */
@@ -300,7 +362,7 @@ void buildSeatParts(Game &g, const std::vector<SavePart> &saved, Part *cap,
         }
         const KerbalProfile *profile = (sp.seat_profile != 0)
             ? g.roster.find(sp.seat_profile) : nullptr;
-        Part *suit = makeSuitPart(g, sp, pd, profile);
+        Part *suit = makeSuitPart(g, sp, g.parts.find(sp.part), profile);
         /* The seat edge before the pockets: buildInventoryItems copies the
            container's owner onto each item. A throw leaves everything wired into
            the capsule, which the caller's rollback frees with the ship. */
@@ -583,6 +645,13 @@ static std::string validateCrewPool(const std::vector<SavePart> &pool,
                                                   + "'"); !why.empty()) {
             return why;
         }
+        // What the suit carries: load_game fills its pockets with
+        // buildInventoryItems under the name "crew pool", so same rules, same
+        // words, one level down.
+        if(std::string why = validateInventoryArray(cat, "crew pool", *pd,
+                                                    sp.inventory); !why.empty()) {
+            return why;
+        }
     }
     return "";
 }
@@ -855,28 +924,26 @@ static void refuseDoubleClaim(const std::vector<Vehicle *> &built,
     std::set<uint64_t> worn;
     for(const Part *suit : pool) {
         if(suit == nullptr || suit->kerbal == nullptr) { continue; }
-        const uint64_t id = suit->kerbal->id;
-        if(id != 0 && !worn.insert(id).second) {
-            throw std::runtime_error("load: two people claim roster id "
-                                     + std::to_string(id));
+        if(std::string why = refuseDoubleClaimId(worn, suit->kerbal->id);
+           !why.empty()) {
+            throw std::runtime_error(why);
         }
     }
     for(const Vehicle *v : built) {
         if(v->isEva()) {
-            const uint64_t id = static_cast<const Kerbal *>(v)->profileId();
-            if(id != 0 && !worn.insert(id).second) {
-                throw std::runtime_error("load: two people claim roster id "
-                                         + std::to_string(id));
+            if(std::string why = refuseDoubleClaimId(
+                   worn, static_cast<const Kerbal *>(v)->profileId());
+               !why.empty()) {
+                throw std::runtime_error(why);
             }
             continue;
         }
         for(const Part *p : v->parts) {
             for(const Part *suit : p->seats) {
                 if(suit == nullptr || suit->kerbal == nullptr) { continue; }
-                const uint64_t id = suit->kerbal->id;
-                if(id != 0 && !worn.insert(id).second) {
-                    throw std::runtime_error("load: two people claim roster id "
-                                             + std::to_string(id));
+                if(std::string why = refuseDoubleClaimId(worn, suit->kerbal->id);
+                   !why.empty()) {
+                    throw std::runtime_error(why);
                 }
             }
         }
@@ -1032,12 +1099,12 @@ void save_game(Game &g, const std::string &dir) {
    edited --kerbals file cannot break it, and refusing that would be a new bug
    dressed up as a fix.
 
-   What still throws only AFTER the switch is everything the builders enforce
-   against a BUILT part: the seat and inventory shape rules (buildSeatParts,
-   buildInventoryItems -- validateShipParts walks s.parts and never descends
-   into sp.seats or sp.inventory), the crew-pool-with-no-pad-in-the-new-system
-   check, refuseDoubleClaim and checkPartInvariants. Each costs a career on the
-   cross-system path exactly as a dangling body name did (#302). */
+   What still throws only AFTER the switch is what genuinely needs a BUILT world:
+   checkPartInvariants (the containment tree of a solved compound), Vehicle::
+   addSeat refusing a slot the built capsule already used, and a part that parses
+   but fails to build. Each costs a career on the cross-system path exactly as a
+   dangling body name did, and each is a state the game cannot reach -- the rules
+   above are the ones a hand-edited or older file hits. */
 std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
                           const System &sys, const CrewRoster &roster) {
     SaveMeta meta;
@@ -1046,12 +1113,30 @@ std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
     } catch(const std::exception &e) {
         return e.what();
     }
+    /* A standing cast needs somewhere to stand. load_game throws this once the
+       ships are built, which on the cross-system path is after the switch
+       already tore the running game down (#302). */
+    if(!meta.crew_pool.empty() && homeCrewPad(sys) == nullptr) {
+        return "load: the save has " + std::to_string(meta.crew_pool.size())
+               + " kerbal(s) standing at the launch site, but this system has no "
+               "VAB_LAUNCH_PAD to stand them on";
+    }
     const CrewRoster bind = rosterFromSave(meta, roster);
     if(std::string why = validateCrewPool(meta.crew_pool, cat, bind);
        !why.empty()) {
         return why;
     }
     std::set<uint64_t> saveUids;   // spans every ship, as the load's map does
+    /* Roster ids span every ship AND the pad's pool, so the set does too --
+       refuseDoubleClaim checks the same rule over the built list, which is what
+       a same-system load gets (#302). */
+    std::set<uint64_t> claimed;
+    for(const SavePart &sp : meta.crew_pool) {
+        if(std::string why = refuseDoubleClaimId(claimed, sp.seat_profile);
+           !why.empty()) {
+            return why;
+        }
+    }
     for(size_t i = 0; i < meta.ships.size(); i++) {
         SaveShip s;
         try {
@@ -1064,8 +1149,8 @@ std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
             return why;
         }
         if(s.is_crew) {
-            if(std::string why = validateKerbalDef(s, cat, nullptr);
-               !why.empty()) {
+            ShipDef def;
+            if(std::string why = validateKerbalDef(s, cat, &def); !why.empty()) {
                 return why;
             }
             if(std::string why = refuseUnknownRosterId(bind, s.profile_id,
@@ -1073,21 +1158,46 @@ std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
                !why.empty()) {
                 return why;
             }
-        }
-        /* A seated person's identity is a roster id on its seat entry. The
-           builder refuses these too, but only once the world has been replaced
-           -- which is exactly what costs a career on a cross-system load (#302).
-           Skipped for a crew ship: buildKerbalFromSave rebuilds a person from
-           the ShipDef and suit_inventory and never reads `parts`, so a
-           hand-edited crew file carrying a parts array would be refused here
-           and load fine anyway. */
-        if(!s.is_crew) {
+            if(std::string why = refuseDoubleClaimId(claimed, s.profile_id);
+               !why.empty()) {
+                return why;
+            }
+            /* A person's pockets hang off the one-part def validateKerbalDef
+               just parsed -- buildKerbalFromSave fills them, and never reads the
+               ship's `parts` array, which is why the walk below skips it. */
+            if(!def.parts.empty()) {
+                if(std::string why = validateInventoryArray(cat, s.name,
+                                                           *def.parts[0].def,
+                                                           s.suit_inventory);
+                   !why.empty()) {
+                    return why;
+                }
+            }
+        } else {
+            /* The seat and inventory rules the builders otherwise enforce only
+               once a Part exists, from the same defs, plus the roster ids those
+               builders look up (#302). */
             for(const SavePart &sp : s.parts) {
+                const PartDef *pd = cat.find(sp.part);   // validateShipParts checked it
+                if(std::string why = validateSeatArray(cat, s.name, *pd, sp.seats);
+                   !why.empty()) {
+                    return why;
+                }
+                if(std::string why = validateInventoryArray(cat, s.name, *pd,
+                                                            sp.inventory);
+                   !why.empty()) {
+                    return why;
+                }
                 for(const SavePart &seat : sp.seats) {
                     if(std::string why = refuseUnknownRosterId(bind,
                                                               seat.seat_profile,
                                                               "'" + s.name
                                                               + "' seat");
+                       !why.empty()) {
+                        return why;
+                    }
+                    if(std::string why = refuseDoubleClaimId(claimed,
+                                                            seat.seat_profile);
                        !why.empty()) {
                         return why;
                     }

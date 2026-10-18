@@ -740,7 +740,7 @@ Vehicle *build_start_vehicles(Game &g, const std::vector<DebugStartShip> &entrie
    standing on the pad is a Part with no container and no vehicle (part.h). */
 
 // The pad unassigned kerbals stand on (the body's default VAB_LAUNCH_PAD).
-StaticBuilding *homeCrewPad(System &sys);
+StaticBuilding *homeCrewPad(const System &sys);
 
 // Take a suit from the home pad (nullptr if the pool is empty). Caller owns it.
 Part *takeCrew(System &sys);
