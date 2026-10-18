@@ -684,8 +684,13 @@ void vabLaunch(Game &g) {
                     g.toast("Clear the pad: %s is not in this system", padName.c_str());
                     return;
                 }
-                Vehicle *occ = findPadOccupant(find_launch_site(padBody, siteId),
-                                               g.vehicles);
+                StaticBuilding *padSite = find_launch_site(padBody, siteId);
+                if(padSite == nullptr) {
+                    g.toast("Clear the pad: %s has no launch site '%s' here",
+                            padName.c_str(), siteId.c_str());
+                    return;
+                }
+                Vehicle *occ = findPadOccupant(padSite, g.vehicles);
                 if(occ == nullptr) {
                     g.toast("The pad is clear now");
                     return;

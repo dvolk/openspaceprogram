@@ -400,11 +400,12 @@ SaveShip saveShipFromVehicle(Vehicle *v,
 
 // ---- restore (SaveShip -> Game) --------------------------------------------
 
-/* The part-tree checks that need no world: a uid present, unique within the ship
-   and across the whole save, every part name still in the catalog, every parent
-   uid already seen (the writer emits parents before children). Returns "" when
-   the ship is loadable, else the reason in the same words the builders used to
-   throw, so both paths refuse identically.
+/* The save checks that need no world: a uid present, unique within the ship and
+   across the whole save, every part name still in the catalog, every parent uid
+   already seen (the writer emits parents before children), a scenario the table
+   knows, and every uid the ship references -- controller, fuel link, dock seam
+   -- one of its own parts. Returns "" when the ship is loadable, else the reason
+   in the same words the builders used to throw, so both paths refuse identically.
 
    buildShipFromSaveParts relies on this; preflightSave runs it over the whole
    save BEFORE a cross-system switch tears the running game down (#302). */
@@ -434,6 +435,27 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
         prior.insert(sp.uid);
         if(saveUids.insert(sp.uid).second == false) {
             return "load: two ships claim part uid " + std::to_string(sp.uid);
+        }
+    }
+    /* References the ship resolves against its OWN uid set. The builders look
+       these up the same way, so checking them here is free -- and it is what
+       keeps a corrupt file from costing a career on the cross-system path. */
+    if(s.controller != 0 && prior.count(s.controller) == 0) {
+        return "load: saved ship '" + s.name + "' names a controller uid "
+               + std::to_string(s.controller) + " it does not have";
+    }
+    for(const SaveFuelLink &fl : s.fuel_links) {
+        if(prior.count(fl.from) == 0 || prior.count(fl.to) == 0) {
+            return "load: saved ship '" + s.name + "' has a fuel link between uids "
+                   + std::to_string(fl.from) + " and " + std::to_string(fl.to)
+                   + ", parts it does not have";
+        }
+    }
+    for(const SaveDock &d : s.docks) {
+        if(prior.count(d.port) == 0 || prior.count(d.root) == 0) {
+            return "load: saved ship '" + s.name + "' has a dock seam ("
+                   + std::to_string(d.port) + ", " + std::to_string(d.root)
+                   + ") naming parts it does not have";
         }
     }
     return "";
@@ -481,9 +503,11 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
         uidToPart[sp.uid] = p;
         if(savedUidToPart != nullptr
            && !savedUidToPart->insert(std::make_pair(sp.uid, p)).second) {
-            /* Cross-ship uid collisions are refused by validateShipParts before
-               anything is built; this stays as the belt because the caller's map
-               spans every ship in the load. */
+            /* This IS the cross-ship uid check on a same-system load: the
+               validateShipParts call above gets a fresh set per ship, so its
+               cross-ship half only bites in preflightSave, which that path never
+               runs. The caller's map spans every ship, so it catches what the
+               per-ship walk cannot. */
             delete v;   // ~Vehicle frees the parts, including p
             throw std::runtime_error("load: two ships claim part uid "
                                      + std::to_string(sp.uid));
@@ -834,14 +858,15 @@ void save_game(Game &g, const std::string &dir) {
            g.gameName.c_str());
 }
 
-/* Parse the whole save and run the world-free checks over it, building nothing.
-   Deliberately the SAME parser and the SAME catalog the builders use, not a
-   second validator: validateShipParts is the one walk.
+/* Parse the whole save and run every check that needs no world, building
+   nothing. Deliberately the SAME parser, catalog and scenario table the builders
+   use, not a second validator: validateShipParts is the one walk.
 
-   What it cannot catch is what only construction against the NEW system knows:
-   scenario names, fuel links, dock seams and body references. So a cross-system
-   load is still not fully transactional (#302) -- this closes the dominant
-   class, a corrupt or hand-edited ship file, which used to cost the career. */
+   What is left behind the switch is what genuinely needs the NEW world: the
+   body references. Those do not even throw -- g.sys.find(s.home) falls back to
+   the home body leniently, so an edited system that dropped a body parks the
+   ship somewhere plausible and wrong. That is the remaining hole in #302, and
+   it is silent rather than fatal. */
 std::string preflightSave(const std::string &dir, const PartsCatalog &cat) {
     SaveMeta meta;
     try {
@@ -860,6 +885,11 @@ std::string preflightSave(const std::string &dir, const PartsCatalog &cat) {
         }
         if(std::string why = validateShipParts(s, cat, saveUids); !why.empty()) {
             return why;
+        }
+        try {
+            resolveScenario(s.scenario);   // throws for a name the table lacks
+        } catch(const std::exception &e) {
+            return e.what();
         }
     }
     return "";

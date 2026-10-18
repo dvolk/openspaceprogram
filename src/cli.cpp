@@ -1197,6 +1197,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     args.cli_given.terrain_px = app.get_option("--terrain-px")->count() > 0;
     args.cli_given.exhaust_scale =
         app.get_option("--exhaust-scale")->count() > 0;
+    args.cli_given.start_time =
+        app.get_option("--start-time")->count() > 0;
     args.cli_given.cam_shake =
         app.get_option("--cam-shake")->count() > 0;
     args.cli_given.time_accel =

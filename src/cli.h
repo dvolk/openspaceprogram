@@ -24,6 +24,7 @@ struct GameArgs {
         bool fov = false;
         bool terrain_px = false;
         bool exhaust_scale = false;
+        bool start_time = false;   // an explicit epoch: a new game keeps it
         bool cam_shake = false;
         bool time_accel = false;     // overrides a paused load
         bool sky_dim = false;

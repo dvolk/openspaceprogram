@@ -755,11 +755,10 @@ static std::string saveSystemFile(const std::string &dir, bool *format_ok = null
 }
 
 bool Game::newGame() {
-    /* Free any retire from this frame before deciding whether a game runs: a
-       corpse is not a vessel, and leaving it queued would let the new world and
-       the old corpse coexist until the next loop iteration. */
-    sweepRetired();
     // Any vehicle in the world, not just the active one, means a game runs.
+    // A retire queued this frame does NOT count: retire() already took it out of
+    // `vehicles`, and sweepRetired() runs at the top of the loop, never from a
+    // game action (game.h) -- so the corpse is freed on its own schedule.
     if(!vehicles.empty()) {
         toast("A game is already running");
         return false;
@@ -769,7 +768,7 @@ bool Game::newGame() {
        directory (#299). startNewGame mints before calling this; every other way
        in (--new-game, a bare newGame) mints here. Mint after the guard above so
        a refused new game leaves no orphan directory. */
-    if(gameId.empty() && ensureGameDir().empty()) {
+    if(gameId.empty() && !mintGameDir()) {
         toast("Too many same-named games this second; try again");
         return false;
     }
@@ -777,8 +776,10 @@ bool Game::newGame() {
        --start-time and a load -- so a New Game on a system that had been
        running opened at the old game's epoch, and the science stamps and Flight
        Summary inherited it (#299). setTime also re-derives the rails and drops
-       the world-stamped caches, which a fresh world wants anyway. */
-    setTime(0.0);
+       the world-stamped caches, which a fresh world wants anyway. An explicit
+       --start-time is a deliberate epoch (daylight, a body alignment), so it
+       wins: resetting it would silently neuter the knob. */
+    if(!args.cli_given.start_time) { setTime(0.0); }
     // A new game starts in the Space Center with NO ship, paused.
     time_accel = 0;
     clearFlightSummary();   // a prior recover's summary is not this game's
@@ -840,15 +841,14 @@ bool Game::startNewGame(const std::string &name, const std::string &sysPath,
     args.exhaust_scale = exhaustScale;
     // The game's identity is minted AFTER the switch, so a failed switch
     // leaves no orphan dir; minting here, not at first save, keeps the
-    // same-second collision check sound.
-    const std::string gdir = newGameDir(datadir::saves(), name);
-    if(gdir.empty()) {
+    // same-second collision check sound. gameName first: mintGameDir names the
+    // directory after it.
+    gameName = name;
+    if(!mintGameDir()) {
         toast("Too many same-named games this second; try again");
         return false;
     }
-    ensure_dir(gdir);
-    gameId = baseName(gdir);
-    gameName = name;
+    const std::string gdir = datadir::saves() + "/" + gameId;
     /* The difficulty rides in the line because it changes every engine's
        thrust for the whole game: a save whose burns look wrong is read
        before the save file is opened. */
@@ -858,16 +858,31 @@ bool Game::startNewGame(const std::string &name, const std::string &sysPath,
     return newGame();
 }
 
+bool Game::mintGameDir() {
+    const std::string dir = newGameDir(datadir::saves(), gameName);
+    if(dir.empty()) { return false; }
+    ensure_dir(dir);
+    gameId = baseName(dir);
+    return true;
+}
+
 std::string Game::ensureGameDir() {
     if(!gameId.empty()) { return datadir::saves() + "/" + gameId; }
-    const std::string dir = newGameDir(datadir::saves(), gameName);
-    if(dir.empty()) {
+    /* Minting is for a game that EXISTS. quitToTitle clears the identity with
+       the rest of the game, so a save from the title afterwards would invent a
+       fresh game dir named after the dead one -- a phantom entry in the games
+       list holding an empty game. events.cpp:492 closes exactly this hole for
+       F5/F9; the Save window and --save/--resave reach the same mint ungated
+       (#299). */
+    if(!gameRunning(*this)) {
+        toast("Save failed: no game is running");
+        return "";
+    }
+    if(!mintGameDir()) {
         toast("Save failed: too many same-named games this second");
         return "";
     }
-    ensure_dir(dir);
-    gameId = baseName(dir);
-    return dir;
+    return datadir::saves() + "/" + gameId;
 }
 
 /* If the save's system (meta.system) differs from the running one, switch into
@@ -892,10 +907,11 @@ bool Game::ensureSystemForSave(const std::string &dir, bool *switched) {
     /* Parse and validate the whole save BEFORE the switch. switchSystem tears
        the running game down, so a load that throws afterwards costs the career
        -- which is exactly what the format guard above was hoisted for, and this
-       is the rest of it (#302). Catches a corrupt or hand-edited ship file: bad
-       JSON, a missing file, unknown part names, uid collisions, a parent that
-       comes after its child. It cannot catch what only construction against the
-       new system knows (scenario names, fuel links, dock seams). */
+       is the rest of it (#302). Everything that needs no world is here: bad
+       JSON, a missing file, part names against the catalog, uid collisions, a
+       parent after its child, a scenario the table lacks, and uid references
+       (controller, fuel links, dock seams). What still throws behind the switch
+       is the body lookup -- and that one does not throw, it falls back silently. */
     if(std::string why = preflightSave(dir, parts); !why.empty()) {
         printf("[load] refused %s: %s (before the system switch)\n",
                dir.c_str(), why.c_str());
@@ -942,11 +958,15 @@ bool Game::loadFrom(const std::string &dir) {
         load_game(*this, dir);
     } catch(const std::exception &e) {
         printf("[load] refused %s: %s\n", dir.c_str(), e.what());
-        /* Only when the system did NOT change: a switch replaced the world and
-           the old clock belongs to bodies that no longer exist. */
+        /* The two scalars are world-independent, so restore them either way --
+           after a failed cross-system load the title's backdrop would otherwise
+           sit frozen at the save's warp 0. Only the clock is switch-dependent:
+           its epoch belongs to bodies that no longer exist. (switchSystem never
+           writes `time`, so re-setting it there would be a harmless no-op --
+           it is skipped for honesty, not necessity.) */
+        time_accel = prev_accel;
+        args.exhaust_scale = prev_exhaust;
         if(!switched) {
-            time_accel = prev_accel;
-            args.exhaust_scale = prev_exhaust;
             setTime(prev_time);
             printf("[load] clock restored: t=%.1f, warp %d, exhaust %.2fx\n",
                    time, time_accel, args.exhaust_scale);

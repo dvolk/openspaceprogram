@@ -654,6 +654,10 @@ struct Game {
     bool startNewGame(const std::string &name, const std::string &sysPath,
                       float exhaustScale);
     std::string ensureGameDir();    // "" on a mint failure (a toast already fired)
+    /* Claim a fresh saves/<stamp>-<gameName>/ dir unconditionally: this STARTS a
+       game, so it is not gated on one already being in charge the way
+       ensureGameDir is. Sets gameId. False = the name was taken this second. */
+    bool mintGameDir();
     /* Does NOT make `active` the player's ship -- the caller does. --load skips
        this (a save records live-or-railed state). */
     void settleVehicles(Vehicle *active);
