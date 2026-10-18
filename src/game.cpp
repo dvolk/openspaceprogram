@@ -904,21 +904,13 @@ bool Game::ensureSystemForSave(const std::string &dir, bool *switched) {
     if(sysfile.empty() || baseName(sysfile) == baseName(systemPath)) {
         return true;   // same system (or none recorded) -- nothing to switch
     }
-    /* Parse and validate the whole save BEFORE the switch. switchSystem tears
-       the running game down, so a load that throws afterwards costs the career
-       -- which is exactly what the format guard above was hoisted for, and this
-       is the rest of it (#302). Everything that needs no world is here: bad
-       JSON, a missing file, part names against the catalog, uid collisions, a
-       parent after its child, a scenario the table lacks, and uid references
-       (controller, fuel links, dock seams). What still throws behind the switch
-       is the body lookup -- and that one does not throw, it falls back silently. */
-    if(std::string why = preflightSave(dir, parts); !why.empty()) {
-        printf("[load] refused %s: %s (before the system switch)\n",
-               dir.c_str(), why.c_str());
-        fflush(stdout);
-        toast("Load failed: %s", why.c_str());
-        return false;
-    }
+    /* Load the new system, validate the save against it, and only then install.
+       installSystem is the half that tears the running game down, so everything
+       worth refusing is refused with the career still intact (#302). That
+       includes the save's body references, which need the NEW world to resolve:
+       a name the new system lacks used to fall back to another body and re-read
+       the saved position in the wrong frame -- a ship 540 km underground,
+       reported as "flying low" (#303). */
     // Sync the bodies the save's ships sit on, then the new system's home --
     // last, so the cap drops it first.
     std::vector<std::string> syncNames = saveShipBodies(dir);
@@ -926,7 +918,20 @@ bool Game::ensureSystemForSave(const std::string &dir, bool *switched) {
         syncNames.push_back(hn);
     }
     try {
-        switchSystem(sysfile, syncNames);
+        const WorldShaders world = get_world_shaders();
+        System newSys = load_system(sysfile.c_str(), world.terrain, world.sun,
+                                    nullptr);
+        if(std::string why = preflightSave(dir, parts, &newSys); !why.empty()) {
+            printf("[load] refused %s: %s (before the system switch)\n",
+                   dir.c_str(), why.c_str());
+            fflush(stdout);
+            toast("Load failed: %s", why.c_str());
+            /* Nothing adopted these bodies and System owns no destructor, so
+               they are ours to free -- the same delete switchSystem does. */
+            for(TerrainBody *b : newSys.bodies) { delete b; }
+            return false;
+        }
+        installSystem(std::move(newSys), sysfile, syncNames);
     } catch(const std::exception &e) {
         printf("[load] cannot switch to system '%s': %s\n",
                sysfile.c_str(), e.what());
@@ -1071,20 +1076,28 @@ void Game::quitToTitle() {
 
 void Game::switchSystem(const std::string &path,
                         const std::vector<std::string> &syncNames) {
-    /* In-process system switch: replace the running system, land on the title.
-       Transactional: load the NEW system before anything is torn down, and
-       re-point sys / home / sun / focusTargets at it before the old bodies are
-       deleted, so nothing ever points at freed memory. jobs.abort waits for the
-       in-flight snapshot read (what makes the delete safe) and is terminal,
-       hence jobs.restart. */
-    // Shaders are registry singletons: re-fetch the boot's files (cache hit,
-    // not a recompile).
+    /* Shaders are registry singletons: re-fetch the boot's files (cache hit, not
+       a recompile). load_system throwing here is survivable precisely because
+       installSystem is what destroys things. */
     const WorldShaders world = get_world_shaders();
-    System newSys = load_system(path.c_str(), world.terrain, world.sun, nullptr);
+    installSystem(load_system(path.c_str(), world.terrain, world.sun, nullptr),
+                  path, syncNames);
+}
 
+/* The install half of a system switch: adopt an already-loaded system and land on
+   the title. Transactional by construction -- the new system is loaded by the
+   caller, so a bad system file throws before this runs and nothing is lost. It
+   re-points sys / home / sun / focusTargets at the new system before the old
+   bodies are deleted, so nothing ever points at freed memory. Split out for the
+   same reason: a caller can validate a save against the new world before the
+   teardown (#302). jobs.abort waits for the in-flight snapshot read (what makes
+   the delete safe) and is terminal, hence jobs.restart. */
+void Game::installSystem(System &&newSys, const std::string &path,
+                         const std::vector<std::string> &syncNames) {
+    const WorldShaders world = get_world_shaders();
     unloadGame();
     std::vector<TerrainBody *> oldBodies = sys.bodies;
-    sys = newSys;
+    sys = std::move(newSys);
     // The star field belongs to the system, so it swaps with the system.
     assert(skybox != nullptr);   // render.cpp draws with it unguarded
     skybox->load(sys.skybox_faces);

@@ -1,0 +1,208 @@
+{
+  "active_ship": "v0",
+  "crew_pool": [
+    {
+      "fuel": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        10.0,
+        0.0
+      ],
+      "id": "kerbal_1",
+      "mass": 87.05000305175781,
+      "part": "kerbal",
+      "seat_name": "Vela",
+      "seat_profile": 2,
+      "stage": 1,
+      "uid": 2
+    },
+    {
+      "fuel": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        10.0,
+        0.0
+      ],
+      "id": "kerbal_1",
+      "mass": 87.05000305175781,
+      "part": "kerbal",
+      "seat_name": "Corvin",
+      "seat_profile": 3,
+      "stage": 1,
+      "uid": 3
+    },
+    {
+      "fuel": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        10.0,
+        0.0
+      ],
+      "id": "kerbal_1",
+      "mass": 87.05000305175781,
+      "part": "kerbal",
+      "seat_name": "Marla",
+      "seat_profile": 4,
+      "stage": 1,
+      "uid": 4
+    },
+    {
+      "fuel": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        10.0,
+        0.0
+      ],
+      "id": "kerbal_1",
+      "mass": 87.05000305175781,
+      "part": "kerbal",
+      "seat_name": "Ilo",
+      "seat_profile": 5,
+      "stage": 1,
+      "uid": 5
+    },
+    {
+      "fuel": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        10.0,
+        0.0
+      ],
+      "id": "kerbal_1",
+      "mass": 87.05000305175781,
+      "part": "kerbal",
+      "seat_name": "Brann",
+      "seat_profile": 6,
+      "stage": 1,
+      "uid": 6
+    },
+    {
+      "fuel": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        10.0,
+        0.0
+      ],
+      "id": "kerbal_1",
+      "mass": 87.05000305175781,
+      "part": "kerbal",
+      "seat_name": "Yusra",
+      "seat_profile": 7,
+      "stage": 1,
+      "uid": 7
+    },
+    {
+      "fuel": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        10.0,
+        0.0
+      ],
+      "id": "kerbal_1",
+      "mass": 87.05000305175781,
+      "part": "kerbal",
+      "seat_name": "Ottilie",
+      "seat_profile": 8,
+      "stage": 1,
+      "uid": 8
+    }
+  ],
+  "exhaust_scale": 1.0,
+  "experiments": "res/data/experiments.json",
+  "format": 4,
+  "kerbals": "res/data/kerbals.json",
+  "parts": "res/data/parts.json",
+  "roster": [
+    {
+      "engineering": 3,
+      "id": 1,
+      "name": "Ash",
+      "piloting": 4,
+      "science": 2
+    },
+    {
+      "engineering": 2,
+      "id": 2,
+      "name": "Vela",
+      "piloting": 3,
+      "science": 5
+    },
+    {
+      "engineering": 5,
+      "id": 3,
+      "name": "Corvin",
+      "piloting": 2,
+      "science": 2
+    },
+    {
+      "engineering": 2,
+      "id": 4,
+      "name": "Marla",
+      "piloting": 5,
+      "science": 1
+    },
+    {
+      "engineering": 3,
+      "id": 5,
+      "name": "Ilo",
+      "piloting": 3,
+      "science": 3
+    },
+    {
+      "engineering": 4,
+      "id": 6,
+      "name": "Brann",
+      "piloting": 4,
+      "science": 3
+    },
+    {
+      "engineering": 3,
+      "id": 7,
+      "name": "Yusra",
+      "piloting": 2,
+      "science": 4
+    },
+    {
+      "engineering": 5,
+      "id": 8,
+      "name": "Ottilie",
+      "piloting": 3,
+      "science": 4
+    }
+  ],
+  "saved_at": "2026-10-18T07:48:34Z",
+  "ships": [
+    "v0"
+  ],
+  "system": "res/systems/ksp_system.json",
+  "time": 8.083333333333314,
+  "time_accel": 1
+}

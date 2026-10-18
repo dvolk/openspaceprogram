@@ -678,6 +678,11 @@ struct Game {
        synchronously; empty = the title backdrop. */
     void switchSystem(const std::string &path,
                       const std::vector<std::string> &syncNames = {});
+    /* The install half of switchSystem, on an already-loaded system. Call it
+       directly only to validate something against the new world between the load
+       and the teardown (Game::ensureSystemForSave, #302). */
+    void installSystem(System &&newSys, const std::string &path,
+                       const std::vector<std::string> &syncNames);
     // Keeps the "ship" focus entry on the active ship (else a random non-star
     // backdrop).
     void syncShipFocus();

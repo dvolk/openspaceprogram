@@ -1,0 +1,25 @@
+# A save that names a body the target system does not have must refuse, and it
+# must refuse BEFORE the switch tears the running game down (#302, #303).
+# This is what a body rename or removal in res/systems/ leaves behind: the
+# system file stays internally consistent (its own orbit, home and building
+# references are all validated), while every older save's pointers into it
+# dangle.
+# The old behaviour was the worst of both: no refusal and no warning. The saved
+# position was re-read in the wrong body's frame, so the ship appeared somewhere
+# plausible and wrong -- and the next save wrote that back.
+NAME refuse-dangling-body-before-switch
+ARGS --system res/systems/solar_system.json --time-accel 1 --startship racer,res/ships/racer.json,Earth,rot-orbit
+ARGS --reload e2e/fixtures/save_dangling_body --reload-at 4000
+ARGS --timeout 10
+EXPECT Loaded system 'res/systems/solar_system.json'
+EXPECT [load] refused e2e/fixtures/save_dangling_body: load: saved ship 'racer' names body 'Earth', which the target system does not have (before the system switch)
+# Refused before the switch, so nothing was destroyed: the new system is loaded
+# read-only and dropped, and the career is exactly as it was.
+FORBID switched before loading
+FORBID [game] switched system
+FORBID [game] unloaded
+FORBID Loaded game from
+FORBID science reset by the system switch
+FORBID Segmentation
+FORBID GL_
+LIMIT 120

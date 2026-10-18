@@ -1048,6 +1048,16 @@ int main(int argc, char **argv)
         }
     }
 
+    /* --title-body: the backdrop pin. Hard error on a miss, like every other
+       body flag (#72) -- a typo should not quietly change what the boot shows.
+       pickTitleBody's printed fallback stays for a system switch that drops the
+       pinned body mid-run, where exiting is not an option. */
+    if(!args.title_body.empty() && sys.find(args.title_body) == nullptr) {
+        printf("error: --title-body '%s' is not a body in %s\n",
+               args.title_body.c_str(), game.systemPath.c_str());
+        return 1;
+    }
+
     // --surfmap-body: pin the Surface Map's body. Applied AFTER the --load
     // branch so it resolves against the system the boot runs. Hard error on a
     // miss, not a silent fallback (#72).

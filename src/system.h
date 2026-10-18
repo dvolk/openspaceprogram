@@ -46,7 +46,9 @@ struct System {
     // once physics + a shader live.
     std::vector<WorldBuilding> world_buildings;
 
-    TerrainBody *find(const std::string &name) {
+    // Read-only, so const: a caller validating a save against a system it does
+    // not own yet (#302/#303) holds it by const reference.
+    TerrainBody *find(const std::string &name) const {
         for(auto&& b : bodies) {
             if(b->name == name) { return b; }
         }

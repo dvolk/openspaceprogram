@@ -1,0 +1,23 @@
+# The same-system half of #303: a ship file naming a body this system lacks used
+# to load happily. g.sys.find(pose.body) returned null and the builder fell back
+# to the ship's home body, so the saved position was re-read around a different
+# world. Reproduced as a ship saved 10 km above Minmus loading 540 km inside
+# Kerbin, with the game reporting alt_agl=-540341 m as "flying low".
+# Nothing warned, and the next save wrote the wrong state back.
+# The save layer now resolves body names the way every other layer does
+# (system.cpp, buildings.cpp, --startship): a non-empty name that misses throws.
+# An EMPTY name still falls back -- the writer emits "" for a vehicle with no
+# home or no SOI parent, which is "nothing recorded", not "dangling".
+NAME refuse-dangling-pose-body
+ARGS --system res/systems/ksp_system.json --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --reload e2e/fixtures/save_dangling_pose_body --reload-at 4000
+ARGS --timeout 10
+EXPECT [load] refused e2e/fixtures/save_dangling_pose_body: load: saved ship 'racer' has a pose body 'Kerbin Minor' that is not in this system
+# A refusal on the same-system path is still a transaction: the clock comes back
+# (#301) and the running game keeps its science.
+EXPECT [load] clock restored
+EXPECT [load] science score=0 recovered=0 (unchanged)
+FORBID Loaded game from
+FORBID Segmentation
+FORBID GL_
+LIMIT 120

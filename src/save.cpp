@@ -400,6 +400,27 @@ SaveShip saveShipFromVehicle(Vehicle *v,
 
 // ---- restore (SaveShip -> Game) --------------------------------------------
 
+/* A save's body names resolve against the world they land in. A NON-EMPTY name
+   the system lacks is a dangling reference -- the body was renamed or removed
+   under the save -- and substituting a different body re-reads the saved
+   position in the wrong frame. Reproduced: a ship parked 10 km above Minmus
+   loads 540 km inside Kerbin and the game reports it as "flying low" (#303).
+   Every other layer already refuses this (system.cpp's orbit and home lookups,
+   buildings.cpp, --startship); the save layer was the one that papered over it.
+
+   An EMPTY name is not dangling: the writer emits "" for a vehicle with no home
+   or no SOI parent, so the caller keeps its fallback. */
+static TerrainBody *resolveBody(const System &sys, const std::string &name,
+                                const std::string &what, const char *field) {
+    TerrainBody *b = sys.find(name);
+    if(b == nullptr) {
+        throw std::runtime_error("load: " + what + " has a " + field
+                                 + " body '" + name
+                                 + "' that is not in this system");
+    }
+    return b;
+}
+
 /* The save checks that need no world: a uid present, unique within the ship and
    across the whole save, every part name still in the catalog, every parent uid
    already seen (the writer emits parents before children), a scenario the table
@@ -574,15 +595,16 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
     v->activeStage_ = s.active_stage;
     v->totalStages_ = s.total_stages;
 
-    v->home = g.sys.find(s.home);
-    if(v->home == nullptr) { v->home = g.home; }
+    const std::string who = "saved ship '" + s.name + "'";
+    v->home = s.home.empty() ? g.home
+                             : resolveBody(g.sys, s.home, who, "home");
     v->scenario = scn;
     // Vehicle::slot is deliberately NOT restored: the next placement recomputes it.
     v->sun = g.sun;
     // BEFORE setSoi, whose observe is then a no-op on the unchanged body.
     v->flog = s.flog;
-    TerrainBody *pb = g.sys.find(s.pose.body);
-    if(pb == nullptr) { pb = v->home; }
+    TerrainBody *pb = s.pose.body.empty() ? v->home
+                                          : resolveBody(g.sys, s.pose.body, who, "pose");
     v->setSoi(s.pose.rotating ? pb->rot_frame : pb->frame, g.time);
 
     v->placeShip(s.pose.pos, s.pose.rot);
@@ -698,8 +720,9 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
     /* Walking: the saved pose is the kerbal's own. A seated person is not a
        vehicle at all -- they are a `seats` element of their capsule (part.h),
        built by buildSeatParts. */
-    TerrainBody *body = g.sys.find(s.pose.body);
-    if(body == nullptr) { body = g.home; }
+    TerrainBody *body = s.pose.body.empty()
+        ? g.home
+        : resolveBody(g.sys, s.pose.body, "saved kerbal '" + s.name + "'", "pose");
     k->home = body;
     k->setSoi(s.pose.rotating ? body->rot_frame : body->frame, g.time);
     k->placeShip(s.pose.pos, s.pose.rot);
@@ -858,16 +881,18 @@ void save_game(Game &g, const std::string &dir) {
            g.gameName.c_str());
 }
 
-/* Parse the whole save and run every check that needs no world, building
-   nothing. Deliberately the SAME parser, catalog and scenario table the builders
-   use, not a second validator: validateShipParts is the one walk.
+/* Parse the whole save and run every check that can run before the world
+   changes, building nothing. Deliberately the SAME parser, catalog and scenario
+   table the builders use, not a second validator: validateShipParts is the one
+   walk.
 
-   What is left behind the switch is what genuinely needs the NEW world: the
-   body references. Those do not even throw -- g.sys.find(s.home) falls back to
-   the home body leniently, so an edited system that dropped a body parks the
-   ship somewhere plausible and wrong. That is the remaining hole in #302, and
-   it is silent rather than fatal. */
-std::string preflightSave(const std::string &dir, const PartsCatalog &cat) {
+   `sys` is the system the ships will land in. Pass it on a cross-system load and
+   the body references check too, which is what keeps a dangling body name from
+   costing the career behind the switch (#302) -- and from silently parking a
+   ship inside the wrong body (#303). Pass nullptr when there is no new world to
+   check against; the builders then refuse the same names as they build. */
+std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
+                          const System *sys) {
     SaveMeta meta;
     try {
         meta = saveMetaFromJson(readJsonFile(dir + "/save.json"));
@@ -890,6 +915,16 @@ std::string preflightSave(const std::string &dir, const PartsCatalog &cat) {
             resolveScenario(s.scenario);   // throws for a name the table lacks
         } catch(const std::exception &e) {
             return e.what();
+        }
+        if(sys != nullptr) {
+            const std::string names[2] = {s.home, s.pose.body};
+            for(const std::string &n : names) {
+                // "" means "nothing recorded", not "dangling" (resolveBody).
+                if(!n.empty() && sys->find(n) == nullptr) {
+                    return "load: saved ship '" + s.name + "' names body '" + n
+                           + "', which the target system does not have";
+                }
+            }
         }
     }
     return "";
