@@ -206,7 +206,7 @@ static void installHeadlessHooks(Game &game) {
     // lands on Title).
     if(args.quit_title_ms >= 0) {
         game.addHook(kHookPreScene, args.quit_title_ms, nullptr,
-                     [](Game &g) { g.quitToTitle(); });
+                     [](Game &g) { g.resetToTitle(); });
     }
     // --space-center: only from Flight (the hub is an excursion above a
     // running game).
@@ -1638,8 +1638,8 @@ int main(int argc, char **argv)
     // TerrainBody* and may be sampling it off-thread). Pads are owned by the
     // bodies (TerrainBody::pads), freed below; the vehicles are owned by
     // Game::vehicles and must die BEFORE the bodies -- a Vehicle holds
-    // m_parent and its frame, both owned by the body. quitToTitle /
-    // switchSystem already ran unloadGame, which empties the list, so this is
+    // m_parent and its frame, both owned by the body. resetToTitle /
+    // switchSystem already ran resetWorld, which empties the list, so this is
     // a no-op on those paths.
     game.jobs.abort();
 

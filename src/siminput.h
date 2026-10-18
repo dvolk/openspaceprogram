@@ -30,6 +30,10 @@ struct TimeSeries {
         head = (head + 1) % N;
         if(count < N) { count++; }
     }
+    /* A load moves sim `time` BACKWARDS, so samples kept across a teardown
+       leave a non-monotonic x-axis spanning the game that just died (#304).
+       The ring needs no zeroing: `count` is the only reader. */
+    void clear() { head = 0; count = 0; }
     // Oldest-first copy into the staging buffers (a wrapped ring is not
     // contiguous).
     int stage() {

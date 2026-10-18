@@ -3063,7 +3063,7 @@ static void navSpaceCenterExit(Game &g, float bw) {
               [&g](int choice) {
             if(choice != 0) { return; }
             setWinOpen(W_SpaceCenterMenu, false);
-            g.quitToTitle();
+            g.resetToTitle();
         });
     }
 }

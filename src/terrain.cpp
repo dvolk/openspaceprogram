@@ -26,7 +26,7 @@ static void free_shell(TerrainBody::Shell *s) {
 
 TerrainBody::~TerrainBody() {
     /* No vehicles here: a body never owns a Vehicle, so Game::vehicles must
-       already be empty before the first body dies (Game::unloadGame). A live
+       already be empty before the first body dies (Game::resetWorld). A live
        Vehicle holds m_parent and its frame -- both owned by the body -- so a
        vehicle outliving its body leaves the tick and the renderer following
        freed memory. */

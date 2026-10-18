@@ -782,6 +782,12 @@ bool Game::newGame() {
     if(!args.cli_given.start_time) { setTime(0.0); }
     // A new game starts in the Space Center with NO ship, paused.
     time_accel = 0;
+    /* The world is already empty (the guard above), so this runs only the
+       ephemera half -- but it is THE list, which is the point. newGame used to
+       clear flightSummary and science and nothing else, so the previous
+       career's card, toasts, latch and telemetry ran on behind the new
+       one (#304). */
+    clearEphemeralState();
     clearFlightSummary();   // a prior recover's summary is not this game's
     science.reset();        // a fresh career: no score, nothing recovered
     /* A fresh career gets the full cast standing again: deaths shrink the pool
@@ -868,7 +874,7 @@ bool Game::mintGameDir() {
 
 std::string Game::ensureGameDir() {
     if(!gameId.empty()) { return datadir::saves() + "/" + gameId; }
-    /* Minting is for a game that EXISTS. quitToTitle clears the identity with
+    /* Minting is for a game that EXISTS. resetToTitle clears the identity with
        the rest of the game, so a save from the title afterwards would invent a
        fresh game dir named after the dead one -- a phantom entry in the games
        list holding an empty game. events.cpp:492 closes exactly this hole for
@@ -1019,8 +1025,12 @@ bool Game::loadFrom(const std::string &dir) {
         if(switched) { enterTitle(*this); }
         return false;
     }
-    // The thrust latch is per-active-ship and not in the save: clear it.
-    thrust_latched = false;
+    /* load_game replaced the world IN PLACE -- it never runs resetWorld -- so the
+       ephemera list has to run here: a card, a toast, a telemetry series or a
+       thrust latch from the game that just ended is not this one's (#304).
+       SUCCESS only: a refused same-system load leaves the old game running, and
+       clearing then would be exactly the bug this list exists to prevent. */
+    clearEphemeralState();
     // A shipless save is still a game: land on the hub, not the title.
     if(ship != nullptr) { enterFlight(*this); } else { enterSpaceCenter(*this); }
     return true;
@@ -1054,7 +1064,67 @@ void Game::quickload() {
     }
 }
 
-void Game::unloadGame() {
+/* The one list (#304): state that belongs to the game that is ending but is not
+   part of the world. Three callers: resetWorld (every teardown), a SUCCESSFUL
+   load (load_game replaces the world in place, so it never runs the fleet
+   half), and newGame (no world to tear down, same list). The boot --load path
+   needs no call: there the list is exactly what a fresh Game already holds.
+   World state is NOT here -- part_sels, flightSummary and the vehicle list go
+   where the world is replaced (resetWorld, load_game).
+
+   The rule: if the next game can read the value as if it were its own, it goes
+   here. The bug class this exists for is OMISSION -- unloadGame, newGame,
+   installSystem and loadFrom each cleared its own subset, so whatever was
+   unlisted survived a reset. Two deliberate exceptions: gameName (case 260
+   pins that a bare newGame after quit-to-title names its saves/ dir after the
+   dead game) and the wall-clock perf series, which stay monotonic across a
+   teardown. */
+void Game::clearEphemeralState() {
+    /* A card up over a teardown asks about a world that is going away. Its
+       callbacks hold identity, not pointers (game.h:312) -- but identity into
+       the OLD system resolves to nothing, or worse to a same-named body in the
+       new one. Dropping the card is the rule, so no card can outlive the world
+       its subject lived in; a1e3236's pad-name fix is the exception that
+       should not have needed writing. Printed because the only way in is a
+       hook (while a card is modal every key is swallowed, events.cpp:417), so
+       without a line on stdout the rule is not e2e-assertable. */
+    if(question != nullptr) {
+        printf("[game] reset: dropped pending question: %s\n",
+               oneLine(question->text).c_str());
+        fflush(stdout);
+        question.reset();
+    }
+    toasts.clear();
+    /* Per-active-ship, and a teardown has none. Not the only place this needs
+       clearing: ui_remove_vehicle hands control to a successor, which must not
+       inherit the latch, so it clears its own (game.cpp). */
+    thrust_latched = false;
+    /* One-shot compute requests posted to the old world: the next frame would
+       ask for a map/grid over bodies the next game may not have. */
+    surfmap.compute_requested = false;
+    xferPlanner.pc_compute_requested = false;
+    /* Identity-only readers (#296): nothing dereferences these, so a stale one
+       is a wrong comparison rather than a crash -- which is exactly why nobody
+       ever bothered nulling them at the sites. Cleared as a group: render.cpp
+       gates on pose_jitter_armed, and half-clearing a group is how the next
+       one of these bugs gets made. */
+    pose_jitter_armed = false;
+    pose_jitter_prev_ship = nullptr;
+    pose_jitter_prev_frame = nullptr;
+    // The snapshot describes a ship that is about to die; updateShipView
+    // re-takes it on the next state pass (render.cpp:78 nulls it for no ship).
+    hud.view.ship = nullptr;
+    /* Sim-time series: a load moves `time` BACKWARDS, so kept samples leave a
+       non-monotonic x-axis spanning the game that just died. The perf series
+       are wall-clock, so they stay monotonic across a teardown and are
+       deliberately left alone. */
+    hud.view.energy_series.clear();
+    hud.view.angmom_series.clear();
+    // A rebind grab is a live input grab on a UI that is going away.
+    rebind_capture_slot = -1;
+}
+
+void Game::resetWorld() {
     /* Tear the vehicles down to the shipless-boot state. ~Vehicle detaches the
        welds, unregisters physics and deletes its parts -- and a seat occupant
        is OWNED by its capsule Part, so ~Part frees it with the ship (part.h).
@@ -1062,9 +1132,10 @@ void Game::unloadGame() {
        therefore the whole teardown, and it must happen BEFORE any body dies:
        a Vehicle holds m_parent and its frame, both owned by the body, so a
        live one outliving its body is a dangling pointer the tick and the
-       renderer would follow. switchSystem honours that (unloadGame, then the
+       renderer would follow. switchSystem honours that (resetWorld, then the
        old bodies). part_sels holds Part* into them: it goes first. No job drain
        needed -- no continuation touches a Vehicle. */
+    clearEphemeralState();
     part_sels.clear();
     /* A transfer row names a Vehicle and points at it, so the rows go with the
        vehicles. update() rebuilds them each refresh, but quit-to-title leaves
@@ -1091,12 +1162,14 @@ void Game::unloadGame() {
     // The title screen is an orbit view: a quitting free-cam pilot keeps no pose.
     if(camera != nullptr) { camera->mode = CAM_ORBIT; }
     syncShipFocus();
+    // The string is a frozen e2e anchor (cases 66, 67, 68, 90, 102, 260, 262,
+    // 264 EXPECT it), so the function rename did not take it with it.
     printf("[game] unloaded: ships torn down, no active vessel\n");
     fflush(stdout);
 }
 
-void Game::quitToTitle() {
-    unloadGame();
+void Game::resetToTitle() {
+    resetWorld();
     enterTitle(*this);
 }
 
@@ -1127,7 +1200,7 @@ void Game::switchSystem(const std::string &path,
 void Game::installSystem(System &&newSys, const std::string &path,
                          const std::vector<std::string> &syncNames) {
     const WorldShaders world = get_world_shaders();
-    unloadGame();
+    resetWorld();
     std::vector<TerrainBody *> oldBodies = sys.bodies;
     sys = std::move(newSys);
     // The star field belongs to the system, so it swaps with the system.
@@ -1854,6 +1927,11 @@ bool Game::ui_remove_vehicle(Vehicle *v) {
         if(next != nullptr) {
             next->leaveRails();
             ship = next;
+            /* The latch is per-active-ship and this handoff does not go through
+               select_vehicle (dropVehicleRefs already nulled `ship`), so it has
+               to clear its own: a successor inheriting it ignites on the next
+               tick with nobody holding thrust. */
+            thrust_latched = false;
             if(time_accel >= kRailsWarp) {
                 time_accel = 10;
                 toast("Active ship: %s, warp 10x", ship->name.c_str());

@@ -1,0 +1,29 @@
+# The rule game.h:312 states for every Question -- onAnswer captures IDENTITY,
+# never a pointer -- with the subject killed by a GAME action rather than a
+# teardown, so the card drop in clearEphemeralState (#304) cannot hide it.
+# Case 164 proves the deferred round trip, but its occupant is still ALIVE at
+# answer time, so a pointer-capturing callback reads identically there; this is
+# the case where the pointer would already be freed.
+# racer is the ACTIVE ship (the first built, main.cpp) and stands grounded on
+# the pad, so --recover retires it; the top-of-loop sweep frees it a frame
+# later. The card answered at 3000ms must re-find the occupant through the
+# pad's NAME and find nobody.
+NAME pad-card-answers-after-occupant-recovered
+ARGS --time-accel 1 --timeout 12
+ARGS --vab res/ships/tanker.json --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --startship probe,res/ships/tanker.json,Kerbin,high-orbit
+ARGS --vab-launch 2000 --recover 2300
+ARGS --ui-click 3000,"Question/Clear the pad"
+EXPECT [vab] launch refused: 'racer' occupies 'main_space_port'
+EXPECT [ask] racer is standing on Main space port. Clear the pad?  [Clear the pad | Cancel]
+EXPECT 'racer' recovered
+EXPECT [toast] The pad is clear now
+# A game action is not a teardown: the card has to still be up to be answered.
+FORBID [game] reset: dropped pending question
+# The occupant is gone, so the crew guard case 164 answers into never runs.
+FORBID Cannot remove
+FORBID Segmentation
+FORBID Assertion
+FORBID GL_
+FORBID error:
+LIMIT 90

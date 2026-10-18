@@ -490,7 +490,7 @@ struct Game {
        a same-body query filters Vehicle::m_parent.
 
        Ordering invariant: these die BEFORE the bodies they reference
-       (unloadGame / switchSystem). A Vehicle holds m_parent and its frame, both
+       (resetWorld / switchSystem). A Vehicle holds m_parent and its frame, both
        owned by the body, so a live one outliving its body leaves the tick and
        the renderer following freed memory. */
     std::vector<Vehicle *> vehicles;
@@ -670,10 +670,19 @@ struct Game {
     void quickload();
     /* True iff the switch ran, so the caller must not run the heavy phase. */
     bool ensureSystemForSave(const std::string &dir, bool *switched = nullptr);
-    /* No job drain: no background continuation dereferences a Vehicle. */
-    void unloadGame();
-    // unloadGame + enterTitle: the flight pause menu's "Quit to title".
-    void quitToTitle();
+    /* The one list of state that belongs to a game and dies with it (#304).
+       Three callers only: resetWorld, a SUCCESSFUL load, and newGame. The bug
+       class is OMISSION -- every teardown used to clear its own subset, so
+       whatever was unlisted survived the reset. The definition carries the
+       rule and the two deliberate exceptions. */
+    void clearEphemeralState();
+    /* The only teardown. resetWorld = clearEphemeralState + the fleet, in the
+       one order that is safe (refs first, then the vehicles they borrow, then
+       the bodies' owners get to die). No job drain: no background
+       continuation dereferences a Vehicle. */
+    void resetWorld();
+    // resetWorld + enterTitle: the flight pause menu's "Quit to title".
+    void resetToTitle();
     /* Transactional (see game.cpp). `syncNames` are body NAMES to build
        synchronously; empty = the title backdrop. */
     void switchSystem(const std::string &path,
@@ -753,13 +762,13 @@ struct Game {
     void retire(Vehicle *v);
     /* Free everything retire() parked since the last sweep. Called once per
        frame at the top of the loop (main.cpp) and before any bulk teardown
-       (unloadGame) -- never from a game action, which is what makes the
+       (resetWorld) -- never from a game action, which is what makes the
        deferral worth having. */
     void sweepRetired();
     /* retire()'s deferred half. Nothing walks or reads it: a retired Vehicle is
        out of the world and waiting to be freed, not a container of state. */
     std::vector<Vehicle *> retired;
-    /* retire()'s two halves, public only so the bulk teardowns (unloadGame,
+    /* retire()'s two halves, public only so the bulk teardowns (resetWorld,
        load_game) can read what they are clearing. A game action calls retire(). */
     void removeVehicle(Vehicle *v);
     // Clears every reference the Game and the transfer planner hold to a
