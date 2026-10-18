@@ -286,9 +286,12 @@ void Game::ask(std::string text, std::vector<std::string> labels,
        and returns, and ESC has no last choice to pick. */
     assert(!labels.empty());
     /* Replacing a live card loses the old one's callback with no trace, so the
-       player's next key answers a question they never saw asked. Two widgets
-       asking in one draw pass is the way this happens; printed rather than
-       asserted because it is reachable without crashing anything. */
+       player's next key answers a question they never saw asked. The scrim
+       (drawQuestionScrim, #234) means no second WIDGET can ask while a card is
+       up, so the route is a hook asking over one: hook phases are not gated by
+       modality, and vabLaunch asks (the pad-clear card) from --vab-launch.
+       Printed rather than asserted because the old card is merely lost, not a
+       memory error, and a headless hook should not abort the game. */
     if(question != nullptr) {
         printf("[ask] replaced an unanswered card: %s\n",
                oneLine(question->text).c_str());
@@ -1255,17 +1258,23 @@ void Game::resetWorld() {
 
 /* The UI's deferral (#304). A button in the draw pass queues the change instead
    of running it, so the frame that received the click finishes drawing the world
-   it was drawn with, and the teardown happens where a hook's would: before this
-   frame's update, refresh and paint. The lambda owns everything it needs --
-   capture by VALUE, since the widget's locals are gone by then. */
+   it was drawn with, and the teardown happens where a hook's would: before the
+   NEXT frame's update, refresh and paint. Capture by VALUE: these sheets keep
+   what they show in function-local statics (the New Game name buffer, the save
+   and slot lists, the title menu's `last`, which rescans at 1 Hz), so a
+   reference would not read a dead local -- it would read whatever the next
+   frame's draw pass wrote there before this op ran. */
 void Game::requestWorldOp(std::function<void()> op) {
     worldOps.push_back(std::move(op));
 }
 
 void Game::runWorldOps() {
     if(worldOps.empty()) { return; }
-    /* Swap first: an op may queue another (a load sheet that opens a confirm),
-       and that one belongs to the NEXT frame, not this one. */
+    /* Swap first, so an op that queues another has it run on the NEXT frame
+       rather than inside the loop that is already running -- two world changes
+       in one frame would make the second read a world the first replaced. No op
+       does that today; the swap is what stops it being an accident waiting to
+       happen. */
     std::vector<std::function<void()>> ops;
     ops.swap(worldOps);
     for(std::function<void()> &op : ops) { op(); }

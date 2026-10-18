@@ -620,6 +620,7 @@ int main() {
     CHECK(near(metaOut.time, meta.time));
     CHECK(metaOut.time_accel == meta.time_accel);
     CHECK(metaOut.active_ship == meta.active_ship);
+    CHECK(metaOut.active_ship_recorded == true);   // this build always records
     CHECK(near(metaOut.exhaust_scale, meta.exhaust_scale));
     CHECK(metaOut.science_score == 7);
     CHECK(metaOut.recovered.size() == 3);   // the log round-trips as 3 entries
@@ -742,6 +743,40 @@ int main() {
     CHECK(ships_refused({"v0", std::string("v0\0x", 4)}));
     CHECK(ships_refused({"v0\n"}));
     CHECK(!ships_refused({"v0", "v1", "capsule-7"}));   // ordinary keys pass
+
+    /* "active_ship" has three states and the file says which one it is (#270):
+       a slug, "" (a fleet with nothing flown), or no key at all. Only the third
+       is unrecorded, and it is the only one the loader may "recover" by picking
+       a vessel for the player. */
+    {
+        nlohmann::json j = nlohmann::json::object();
+        j["ships"] = {"v0", "v1"};
+        CHECK(saveMetaFromJson(j).active_ship_recorded == false);   // no key
+        j["active_ship"] = "";
+        const SaveMeta none = saveMetaFromJson(j);
+        CHECK(none.active_ship_recorded == true);
+        CHECK(none.active_ship.empty());        // a deliberate "nothing is flown"
+        j["active_ship"] = "v1";
+        CHECK(saveMetaFromJson(j).active_ship == "v1");
+    }
+    /* A recorded slug the "ships" list lacks refuses rather than flying a
+       DIFFERENT vessel, and so does a recorded value of the wrong type: "" is a
+       meaning this build writes on purpose, so "active_ship": 42 must not
+       degrade into it. */
+    auto active_refused = [](const nlohmann::json &val) {
+        nlohmann::json j = nlohmann::json::object();
+        j["ships"] = {"v0", "v1"};
+        j["active_ship"] = val;
+        try { saveMetaFromJson(j); } catch(const std::runtime_error &) { return true; }
+        return false;
+    };
+    CHECK(active_refused("v9"));
+    CHECK(active_refused(42));
+    CHECK(active_refused(nullptr));
+    CHECK(!active_refused(""));        // the deliberate "nothing is flown"
+    CHECK(!active_refused("v0"));
+    // this build always records, so what it writes always reads back recorded
+    CHECK(saveMetaFromJson(saveMetaToJson(SaveMeta())).active_ship_recorded == true);
 
     /* A non-string entry is not a vehicle to skip: skipping drops a ship file
        and the load reports success with a smaller fleet. */

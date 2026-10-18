@@ -217,12 +217,12 @@ struct SaveMeta {
     /* SAVE SLUG of what you fly. "" is a MEANING, not an absence: this build
        writes it when the fleet has vessels and none of them is flown, which is
        the state recoverActive() leaves (it does no handoff) and is NOT the same
-       save as one that records nothing at all (#270). `active_recorded` keeps
-       those apart: false only for a hand-edited or foreign file with no key,
-       where the loader picks the first vessel rather than opening an
+       save as one that records nothing at all (#270). `active_ship_recorded`
+       keeps those apart: false only for a hand-edited or foreign file with no
+       key, where the loader picks the first vessel rather than opening an
        empty-handed game the file never described. */
     std::string active_ship;
-    bool active_recorded = true;
+    bool active_ship_recorded = true;
     /* Engine-performance difficulty: multiplies every engine's exhaust
        velocity. A save is not portable across scales. */
     float exhaust_scale = 1.0f;
@@ -668,14 +668,14 @@ inline nlohmann::json saveMetaToJson(const SaveMeta &m) {
 
 inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     SaveMeta m;
-    /* One of the two reads that refuse rather than default (the other is a
-       crew entry's top-level "seats" array in saveShipFromJson). Every other
-       read keeps the struct's default for an absent key, which is right for an
-       ADDITIVE schema change and wrong for a RENAMED one: a foreign-format save
-       would load as a list of half-defaulted ships (a missing "pos" parks a
-       ship at the body's centre, silently). Refuse instead -- no save backward
-       compatibility is promised. An absent key means the current format; a
-       present non-integer is refused too (1.5 would truncate into range). */
+    /* One of the reads that refuse rather than default -- see the note above
+       saveMetaToJson for which. Every other read keeps the struct's default for
+       an absent key, which is right for an ADDITIVE schema change and wrong for
+       a RENAMED one: a foreign-format save would load as a list of
+       half-defaulted ships (a missing "pos" parks a ship at the body's centre,
+       silently). Refuse instead -- no save backward compatibility is promised.
+       An absent key means the current format; a present non-integer is refused
+       too (1.5 would truncate into range). */
     if(j.contains("format")) {
         if(!j["format"].is_number_integer()) {
             throw std::runtime_error(std::string("save: \"format\" must be an "
@@ -701,9 +701,18 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     if(j.contains("time") && j["time"].is_number()) { m.time = j["time"].get<double>(); }
     if(j.contains("time_accel") && j["time_accel"].is_number()) { m.time_accel = j["time_accel"].get<int>(); }
     /* Presence is the fact, not the value: an absent key means the file records
-       nothing, "" means it records that nothing is flown (#270). */
-    m.active_recorded = j.contains("active_ship");
-    if(m.active_recorded && j["active_ship"].is_string()) {
+       nothing, "" means it records that nothing is flown (#270). A present
+       value of the WRONG type refuses rather than degrading into "": that state
+       is reserved for a deliberate "nothing is flown", so a corrupt
+       "active_ship": 42 must not be read as one -- same reasoning, and the same
+       sentence shape, as the non-string "ships" entry below. */
+    m.active_ship_recorded = j.contains("active_ship");
+    if(m.active_ship_recorded) {
+        if(!j["active_ship"].is_string()) {
+            throw std::runtime_error(std::string("save: save.json: active_ship "
+                                     "must be a string, got ")
+                                     + j["active_ship"].type_name());
+        }
         m.active_ship = j["active_ship"].get<std::string>();
     }
     if(j.contains("exhaust_scale") && j["exhaust_scale"].is_number()) {

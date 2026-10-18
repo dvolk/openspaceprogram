@@ -3247,8 +3247,10 @@ void drawNewGame(Game &g) {
                 const std::string path =
                     "res/systems/" + systems[(size_t)sysSel] + ".json";
                 /* Deferred (#304): startNewGame switches system and tears the
-                   world down, and nameBuf is imgui's buffer -- gone by the time
-                   this runs, so the name is copied. */
+                   world down. nameBuf, systems and sysSel are all sheet-local
+                   statics, so they would still EXIST when this runs -- they
+                   would just hold whatever the next frame's draw left in them,
+                   which is why the name and the scale are copied out. */
                 const std::string gameName = nameBuf;
                 const float exhaust = exhaustSel;   // static: copy, do not capture
                 g.requestWorldOp([&g, gameName, path, exhaust] {

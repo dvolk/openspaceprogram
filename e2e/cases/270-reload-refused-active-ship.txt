@@ -1,0 +1,18 @@
+# #270's rule lives in saveMetaFromJson, not preflightSave, precisely so that
+# EVERY path refuses in the same words -- boot --load of a same-system slot runs
+# no preflight at all (case 214 pins that path). This pins the in-game path: a
+# running game, a refused reload, and the running game still standing.
+#
+# The two sentences differ only in their prefix ("Load failed:" from boot,
+# "[load] refused" from the reload), which is the point: the diagnosis is the
+# same, and the second line is the one that says the career survived.
+NAME reload-refused-active-ship
+ARGS --new-game 1000 --timeout 5 --time-accel 1
+ARGS --reload e2e/fixtures/save_active_unknown_slug --reload-at 2500
+EXPECT [load] refused e2e/fixtures/save_active_unknown_slug: save: save.json: flies "v9", which its "ships" list has no entry for
+EXPECT [load] running game unchanged
+FORBID Loaded game from
+FORBID [game] unloaded
+FORBID GL_
+FORBID error:
+LIMIT 60

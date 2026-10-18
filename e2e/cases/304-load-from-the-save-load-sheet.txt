@@ -1,0 +1,27 @@
+# #304's fourth UI site, and until now the only one with no case at all: the
+# Save/Load sheet's Load button runs inside drawUi, which is LAST in all six
+# scenes' widget lists -- safe only by that ordering convention, since the load
+# deletes Vehicles immediately rather than deferring like retire() does. It now
+# queues the load for the top of the next frame (Game::requestWorldOp), and this
+# is the deferred lambda with the most captures, so it is the one worth pinning.
+# (170 covers the title menu's "Load last save", 134 the New Game sheet,
+# 167/168 the quit card.)
+#
+# The sheet keeps its selection in function-local statics -- gameSel and slotSel
+# both start at 0 -- so a staged slot is the selected row and one click is
+# enough. The dir name is a plausible minted stamp so list_games() parses a game
+# name out of it; the case asserts on the tail of the path, since the scratch
+# --data-dir prefix varies per run.
+NAME load-from-the-save-load-sheet
+SEED e2e/fixtures/save_racer saves/20260101_000000-probe/save1
+ARGS --timeout 6
+ARGS --ui-click 1500,"Title Menu/Save/Load"
+ARGS --ui-click 3000,"Save/Load/Load##saveload"
+EXPECT saves/20260101_000000-probe/save1 (active: racer)
+EXPECT [scene] title -> flight (enterFlight)
+EXPECT [toast] Loaded probe/save1
+FORBID Load failed
+FORBID [load] refused
+FORBID GL_
+FORBID error:
+LIMIT 60

@@ -13,7 +13,7 @@ EXPECT Loaded game from e2e/fixtures/save_active_none (active: (none))
 EXPECT [spacecenter] entered
 EXPECT [crew] loaded 'Ash' aboard 'racer'
 FORBID (active: racer)
-FORBID [scene] load -> flight
+FORBID [scene] title -> flight
 FORBID Load failed
 FORBID [load] refused
 FORBID GL_

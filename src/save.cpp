@@ -1483,11 +1483,12 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
 
     // the active ship
     /* Three states, and the save says which one it is (#270):
-       - a slug: fly that vessel. preflightSave refuses a slug the "ships" list
-         has no entry for, so a recorded name always resolves.
-       - "" (recorded): a fleet with nothing flown -- exactly what recoverActive
-         leaves, since it does no handoff. Honour it; picking a vessel here would
-         open a game the file never described.
+       - a slug: fly that vessel. saveMetaFromJson refuses a slug the "ships"
+         list has no entry for -- NOT preflightSave, which the boot --load and
+         quickload paths never run -- so a recorded name always resolves.
+       - "" (key present): a fleet with nothing flown -- exactly what
+         recoverActive leaves, since it does no handoff. Honour it; picking a
+         vessel here would open a game the file never described.
        - no key at all: a hand-edited or foreign file. Fall back to the first
          vessel in save order, which is what a fresh boot makes active. This used
          to be byName.begin(), i.e. the alphabetically first NAME -- a kerbal
@@ -1496,9 +1497,9 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
     if(!meta.active_ship.empty()) {
         std::map<std::string, Vehicle *>::const_iterator it =
             b->bySlug.find(meta.active_ship);
-        assert(it != b->bySlug.end());   // preflightSave refused it otherwise
+        assert(it != b->bySlug.end());   // saveMetaFromJson refused it otherwise
         active = it->second;
-    } else if(!meta.active_recorded && !g.vehicles.empty()) {
+    } else if(!meta.active_ship_recorded && !g.vehicles.empty()) {
         active = g.vehicles[0];
     }
     g.ship = active;
