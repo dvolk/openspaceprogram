@@ -961,15 +961,25 @@ int main(int argc, char **argv)
     cam->setViewport(display.get_width(), display.get_height());
     game.camera = cam;
     // Orbit-camera targets. Seeded BEFORE the --vab / --free-cam framing below
-    // so that framing stays the last word. A --load boot already synced the
-    // "ship" entry, so insert only when absent.
-    if(game.ship != nullptr &&
-       (game.focusTargets.empty() || game.focusTargets[0].body != nullptr)) {
+    // so that framing stays the last word. Boot seeds the list exactly once, as
+    // [ship?] + the current bodies. A --load boot from a DIFFERENT system has
+    // already run switchSystem, which clears and rebuilds the list from the NEW
+    // bodies (game.cpp:1028) -- Game::sys is a reference to main's `sys`, which
+    // that switch reassigns -- so appending without clearing put every body in
+    // twice and doubled every focusBody index (#298).
+    game.focusTargets.clear();
+    if(game.ship != nullptr) {
         game.focusTargets.push_back({ "ship", nullptr });
     }
     for (TerrainBody *b : sys.bodies) {
         game.focusTargets.push_back({ b->name.c_str(), b });
     }
+    /* The list is [ship?] + the current bodies, exactly once. Worth a line: a
+       doubled list is invisible in play (the G-cycle name sequence is the same
+       either way) and only shows up as a doubled focusBody index (#298). */
+    printf("[cam] focus: %zu targets (%d body/bodies)\n",
+           game.focusTargets.size(), (int)sys.bodies.size());
+    fflush(stdout);
     if(ship == nullptr && args.load_name.empty()) {
         /* No vessel and no loaded game: the floor scene is the TITLE screen.
            Decided before the --vab entry below so an editor opened with nothing
