@@ -285,6 +285,15 @@ void Game::ask(std::string text, std::vector<std::string> labels,
     /* A card with no buttons can never be answered: drawQuestion draws the text
        and returns, and ESC has no last choice to pick. */
     assert(!labels.empty());
+    /* Replacing a live card loses the old one's callback with no trace, so the
+       player's next key answers a question they never saw asked. Two widgets
+       asking in one draw pass is the way this happens; printed rather than
+       asserted because it is reachable without crashing anything. */
+    if(question != nullptr) {
+        printf("[ask] replaced an unanswered card: %s\n",
+               oneLine(question->text).c_str());
+        fflush(stdout);
+    }
     question = std::make_unique<Question>();
     question->text = std::move(text);
     question->labels = std::move(labels);
@@ -1242,6 +1251,24 @@ void Game::resetWorld() {
     // 264 EXPECT it), so the function rename did not take it with it.
     printf("[game] unloaded: ships torn down, no active vessel\n");
     fflush(stdout);
+}
+
+/* The UI's deferral (#304). A button in the draw pass queues the change instead
+   of running it, so the frame that received the click finishes drawing the world
+   it was drawn with, and the teardown happens where a hook's would: before this
+   frame's update, refresh and paint. The lambda owns everything it needs --
+   capture by VALUE, since the widget's locals are gone by then. */
+void Game::requestWorldOp(std::function<void()> op) {
+    worldOps.push_back(std::move(op));
+}
+
+void Game::runWorldOps() {
+    if(worldOps.empty()) { return; }
+    /* Swap first: an op may queue another (a load sheet that opens a confirm),
+       and that one belongs to the NEXT frame, not this one. */
+    std::vector<std::function<void()>> ops;
+    ops.swap(worldOps);
+    for(std::function<void()> &op : ops) { op(); }
 }
 
 void Game::resetToTitle() {

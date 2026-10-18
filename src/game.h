@@ -661,8 +661,11 @@ struct Game {
     /* Does NOT make `active` the player's ship -- the caller does. --load skips
        this (a save records live-or-railed state). */
     void settleVehicles(Vehicle *active);
-    /* A same-system refusal leaves the running game untouched; a cross-system one
-       already switched, so it lands on the title. */
+    /* Refusal costs nothing (#302, #305): the whole save is built -- against the
+       INCOMING system when it differs -- before installSystem tears anything
+       down. Only a failure AFTER the switch (a mesh place_world_buildings needs
+       but validate_world_buildings does not check) costs the career, and that
+       path says so on stdout and lands on the title. */
     bool loadFrom(const std::string &dir);
     // Quicksave (F5): the game dir's next quicksave-NN pool slot.
     void quicksave();
@@ -681,6 +684,17 @@ struct Game {
        the bodies' owners get to die). No job drain: no background
        continuation dereferences a Vehicle. */
     void resetWorld();
+    /* Queue a world change (load / new game / quit to title) for the top of the
+       NEXT frame. Only the UI pass needs it: a teardown deletes Vehicles
+       immediately where retire() defers, so one that runs inside drawUi frees
+       what every LATER widget in the same frame borrows -- safe today only
+       because drawSaveLoad happens to be last in each scene's widget list,
+       which makes widget ORDER load-bearing state (#304). The events and hook
+       phases need no deferral: they already run before refresh and paint. */
+    void requestWorldOp(std::function<void()> op);
+    /* The frame loop only, next to sweepRetired(): run what the UI queued
+       before anything reads the world this frame. */
+    void runWorldOps();
     // resetWorld + enterTitle: the flight pause menu's "Quit to title".
     void resetToTitle();
     /* Transactional (see game.cpp). `syncNames` are body NAMES to build
@@ -768,6 +782,9 @@ struct Game {
     /* retire()'s deferred half. Nothing walks or reads it: a retired Vehicle is
        out of the world and waiting to be freed, not a container of state. */
     std::vector<Vehicle *> retired;
+    /* The same deferral, one level up: world changes the UI asked for while it
+       drew, run at the top of the next frame (requestWorldOp). */
+    std::vector<std::function<void()>> worldOps;
     /* retire()'s two halves, public only so the bulk teardowns (resetWorld,
        load_game) can read what they are clearing. A game action calls retire(). */
     void removeVehicle(Vehicle *v);

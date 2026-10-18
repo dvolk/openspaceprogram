@@ -3010,9 +3010,16 @@ static void navTitle(Game &g, float bw) {
         const size_t slash = last.find('/');   // latestSave: "<game>/<slot>"
         const std::string game = gameDirName(last.substr(0, slash));
         const std::string slot = last.substr(slash + 1);
-        if(g.loadFrom(datadir::saves() + "/" + last)) {
-            g.toast("Loaded %s / %s", game.c_str(), slot.c_str());
-        }
+        /* Deferred: the load tears the fleet down immediately, and this window
+           is Root -- the rest of the frame's widgets would read the new world
+           (or nothing) under a click that has not finished drawing (#304).
+           `last` rescans at 1 Hz, so the slot is captured, not looked up again. */
+        const std::string dir = datadir::saves() + "/" + last;
+        g.requestWorldOp([&g, dir, game, slot] {
+            if(g.loadFrom(dir)) {
+                g.toast("Loaded %s / %s", game.c_str(), slot.c_str());
+            }
+        });
     }
     // Opens the New Game setup sheet (system + difficulty), not an immediate start.
     if(ImGui::Button("New Game", ImVec2(bw, 0.0f))) {
@@ -3063,7 +3070,10 @@ static void navSpaceCenterExit(Game &g, float bw) {
               [&g](int choice) {
             if(choice != 0) { return; }
             setWinOpen(W_SpaceCenterMenu, false);
-            g.resetToTitle();
+            /* The card answers inside drawQuestion, i.e. after this frame's
+               refresh and paint -- so the teardown it starts waits for the top
+               of the next frame, where a hook's would run (#304). */
+            g.requestWorldOp([&g] { g.resetToTitle(); });
         });
     }
 }
@@ -3236,9 +3246,16 @@ void drawNewGame(Game &g) {
             } else {
                 const std::string path =
                     "res/systems/" + systems[(size_t)sysSel] + ".json";
-                if(g.startNewGame(nameBuf, path, exhaustSel)) {
-                    setWinOpen(W_NewGame, false);
-                }
+                /* Deferred (#304): startNewGame switches system and tears the
+                   world down, and nameBuf is imgui's buffer -- gone by the time
+                   this runs, so the name is copied. */
+                const std::string gameName = nameBuf;
+                const float exhaust = exhaustSel;   // static: copy, do not capture
+                g.requestWorldOp([&g, gameName, path, exhaust] {
+                    if(g.startNewGame(gameName, path, exhaust)) {
+                        setWinOpen(W_NewGame, false);
+                    }
+                });
             }
         }
         ImGui::SameLine();
@@ -3482,13 +3499,19 @@ void drawSaveLoad(Game &g) {
             if(ImGui::Button("Load##saveload") && gameSel >= 0 && slotSel >= 0) {
                 const std::string dir = datadir::saves() + "/" +
                                        games[gameSel].dirName + "/" + slots[slotSel];
-                // loadFrom does the load, the scene decision and the failure toast, and adopts the
-                // game's identity so the next save lands here.
-                if(g.loadFrom(dir)) {
-                    g.toast("Loaded %s/%s", games[gameSel].name.c_str(),
-                            slots[slotSel].c_str());
-                    setWinOpen(W_SaveLoad, false);
-                }
+                const std::string gameName = games[gameSel].name;
+                const std::string slotName = slots[slotSel];
+                /* Deferred to the top of the next frame (#304): the load deletes
+                   the fleet immediately, and this sheet is drawn last in every
+                   scene only by convention. loadFrom does the load, the scene
+                   decision and the failure toast, and adopts the game's
+                   identity so the next save lands here. */
+                g.requestWorldOp([&g, dir, gameName, slotName] {
+                    if(g.loadFrom(dir)) {
+                        g.toast("Loaded %s/%s", gameName.c_str(), slotName.c_str());
+                        setWinOpen(W_SaveLoad, false);
+                    }
+                });
             }
             ImGui::SameLine();
             if(ImGui::Button("Delete##saveload") && gameSel >= 0 && slotSel >= 0) {

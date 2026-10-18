@@ -5,6 +5,7 @@
 
 #include "vab.h"
 
+#include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -679,17 +680,19 @@ void vabLaunch(Game &g) {
                   {"Clear the pad", "Cancel"},
                   [&g, padName, siteId](int choice) {
                 if(choice != 0) { return; }
+                /* Both lookups are total here, and that is an invariant rather
+                   than a hope: a card cannot outlive the world it was asked in,
+                   because every teardown drops it (clearEphemeralState, #304)
+                   and a system switch always runs a teardown. So the body and
+                   the site this callback named are still the ones that asked --
+                   case 258 pins the drop, and the toasts that used to sit on
+                   these two nulls were dead code. */
                 TerrainBody *padBody = g.sys.find(padName);
-                if(padBody == nullptr) {
-                    g.toast("Clear the pad: %s is not in this system", padName.c_str());
-                    return;
-                }
+                assert(padBody != nullptr
+                       && "a Question outlived the system it was asked in");
                 StaticBuilding *padSite = find_launch_site(padBody, siteId);
-                if(padSite == nullptr) {
-                    g.toast("Clear the pad: %s has no launch site '%s' here",
-                            padName.c_str(), siteId.c_str());
-                    return;
-                }
+                assert(padSite != nullptr
+                       && "a launch site vanished under a live Question");
                 Vehicle *occ = findPadOccupant(padSite, g.vehicles);
                 if(occ == nullptr) {
                     g.toast("The pad is clear now");

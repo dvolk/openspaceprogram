@@ -1351,6 +1351,11 @@ int main(int argc, char **argv)
            successor ui_remove_vehicle picked before erasing -- stays valid until that
            frame ends, and nothing here can reach one that is already gone. */
         game.sweepRetired();
+        /* World changes the UI queued while it drew (load / new game / quit to
+           title) run here, not inside the widget that was clicked: a teardown
+           deletes Vehicles immediately, so one run mid-draw frees what every
+           later widget in that frame borrows (#304). */
+        game.runWorldOps();
 
         /* Read visibility from the window flags every frame rather than latching
            SDL_EVENT_WINDOW_OCCLUDED / _MINIMIZED: a window that starts behind
