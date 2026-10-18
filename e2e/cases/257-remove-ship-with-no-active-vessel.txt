@@ -1,0 +1,27 @@
+# A game may hold vessels with NONE of them active: recoverActive() detaches the
+# last one without handing off, and the tracking list still shows the rest. The
+# removal of a NON-active vessel used to print "active unchanged: <ship>" by
+# reading `ship` blind -- a segfault, not a wrong name.
+# Three vessels because the successor logic only runs for the ACTIVE one; two
+# rcs_test ships because ui_remove_vehicle refuses a crewed vessel (#231's crew
+# rule). --recover-anywhere so the recover works off orbit, --recover leaving
+# the world active-free.
+NAME remove-ship-with-no-active-vessel
+ARGS --time-accel 1 --timeout 8
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --startship one,res/ships/rcs_test.json,Kerbin,rot-orbit
+ARGS --startship two,res/ships/rcs_test.json,Kerbin,rot-orbit
+ARGS --space-center 1000 --recover 2000 --recover-anywhere
+ARGS --tracking 4000 --ui-click 5000,"Tracking Ship List/x##rm_one"
+EXPECT 'racer' recovered
+EXPECT Removed 'one' (active unchanged: (none))
+# Two deaths: the recover peels the crew and retires 'racer', the click retires
+# 'one'. The second one is the case -- it happens with no active vessel at all.
+EXPECT [vehicle] retired: 'racer' (2 vehicle(s) left in the world)
+EXPECT [vehicle] retired: 'one' (1 vehicle(s) left in the world)
+CHECK out.count("[vehicle] retired:") == 2
+FORBID Segmentation
+FORBID Assertion
+FORBID GL_
+FORBID error:
+LIMIT 90

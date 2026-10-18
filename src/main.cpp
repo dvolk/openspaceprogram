@@ -1607,9 +1607,10 @@ int main(int argc, char **argv)
     // Stop the worker BEFORE the bodies it may still hold (a job captures a
     // TerrainBody* and may be sampling it off-thread). Pads are owned by the
     // bodies (TerrainBody::pads), freed below; the vehicles are owned by
-    // Game::vehicles and must die BEFORE the bodies, because ~Vehicle
-    // dereferences its body's frame. quitToTitle / switchSystem already ran
-    // unloadGame, which empties the list, so this is a no-op on those paths.
+    // Game::vehicles and must die BEFORE the bodies -- a Vehicle holds
+    // m_parent and its frame, both owned by the body. quitToTitle /
+    // switchSystem already ran unloadGame, which empties the list, so this is
+    // a no-op on those paths.
     game.jobs.abort();
 
     game.sweepRetired();

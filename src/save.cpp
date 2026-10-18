@@ -860,10 +860,11 @@ void load_game(Game &g, const std::string &dir) {
         g.args.exhaust_scale = meta.exhaust_scale;
     }
 
-    /* Transactional: a load that throws leaves the running FLEET exactly as it
-       was (only detached from the bodies' ship lists, not deleted), and the
-       roster as it was too (RosterRollback, above). NOT rolled back: the clock,
-       frames, time_accel and exhaust_scale set above. */
+    /* Transactional: a load that throws leaves the running world exactly as it
+       was -- the old vehicles were only moved out of Game::vehicles into
+       `detached` (below), never deleted -- and the roster as it was too
+       (RosterRollback, above). NOT rolled back: the clock, frames, time_accel
+       and exhaust_scale set above. */
 
     std::vector<SaveShip> saves;
     saves.reserve(meta.ships.size());

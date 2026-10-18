@@ -26,9 +26,10 @@ static void free_shell(TerrainBody::Shell *s) {
 
 TerrainBody::~TerrainBody() {
     /* No vehicles here: a body never owns a Vehicle, so Game::vehicles must
-       already be empty before the first body dies (Game::unloadGame). A Vehicle
-       references its body's frame, so getting that order wrong is a
-       use-after-free in ~Vehicle rather than a leak. */
+       already be empty before the first body dies (Game::unloadGame). A live
+       Vehicle holds m_parent and its frame -- both owned by the body -- so a
+       vehicle outliving its body leaves the tick and the renderer following
+       freed memory. */
     // Pads: registries own the render assets, so only the rigid Body goes.
     for(auto *p : pads) {
         RemoveBody(p->body);

@@ -490,7 +490,9 @@ struct Game {
        a same-body query filters Vehicle::m_parent.
 
        Ordering invariant: these die BEFORE the bodies they reference
-       (unloadGame / switchSystem), because ~Vehicle dereferences its frame. */
+       (unloadGame / switchSystem). A Vehicle holds m_parent and its frame, both
+       owned by the body, so a live one outliving its body leaves the tick and
+       the renderer following freed memory. */
     std::vector<Vehicle *> vehicles;
 
     // The player-controlled ship (every vessel is in `vehicles` above).
@@ -619,7 +621,8 @@ struct Game {
     // --- Surface Map state (gameui.cpp draws it; surfmap.cpp fills it) ---
     SurfmapState surfmap;
 
-    // --- control transitions (events + the SHIPS window + selftest) --------
+    /* --- control transitions (a keypress, a part/crew window button, or a
+       --eva/--board/--pick CLI hook) --- */
     // V: put a seat occupant out, or hand control back to the last ship.
     void toggle_eva();
     /* kerbalEVA MINTS the Kerbal vehicle from a seat's suit Part; kerbalBoard

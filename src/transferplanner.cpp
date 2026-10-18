@@ -348,15 +348,19 @@ void TransferPlanner::clearPorkchopPlan() {
     xfer_tof_log = xfer_prev_tof_log;
 }
 
+void TransferPlanner::dropTargets() {
+    xferTargets.clear();
+    xfer_sel = TargetRef();
+    xfer_target = -1;
+}
+
 void TransferPlanner::invalidateClockState() {
     // Clock jump or system swap: everything stamped against the old world is
     // stale. Clearing xferTargets also frees the old system's pointers.
     clearPorkchopPlan();
     pc.valid = false;
     xfer.valid = false;
-    xferTargets.clear();
-    xfer_sel = TargetRef();
-    xfer_target = -1;
+    dropTargets();
     // A sweep interrupted by the swap never runs its continuation (abort() drops
     // the queued ones, restart() the landed one) -- and that continuation is the
     // only other place pc_in_flight clears. Without this the window shows

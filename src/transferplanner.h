@@ -79,6 +79,14 @@ public:
        of the same name. This is the CLI's shape, where there is no row to click. */
     void selectTargetByName(const std::string &name);
 
+    /* Drop the rows, leaving anything clock-stamped alone. A row's name points
+       INTO a Vehicle and its `ship` IS that Vehicle, so a teardown that deletes
+       the vessels wholesale -- quit-to-title, a load -- must call this or the
+       list outlives what it points at. update() rebuilds the list every refresh,
+       so the gap is only the frames in between, and the TARGET block, the map's
+       transfer plane, --select-target and the relvel marker all read it. */
+    void dropTargets();
+
     std::vector<XferTarget> xferTargets;
     /* The selection is an IDENTITY, and xfer_target is derived from it on every
        rebuild (update). xferTargets is rebuilt from scratch each refresh, so an

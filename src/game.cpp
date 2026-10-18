@@ -755,6 +755,10 @@ static std::string saveSystemFile(const std::string &dir, bool *format_ok = null
 }
 
 bool Game::newGame() {
+    /* Free any retire from this frame before deciding whether a game runs: a
+       corpse is not a vessel, and leaving it queued would let the new world and
+       the old corpse coexist until the next loop iteration. */
+    sweepRetired();
     // Any vehicle in the world, not just the active one, means a game runs.
     if(!vehicles.empty()) {
         toast("A game is already running");
@@ -957,11 +961,17 @@ void Game::unloadGame() {
        is OWNED by its capsule Part, so ~Part frees it with the ship (part.h).
        A walking kerbal, by contrast, IS a list entry. Deleting the vehicles is
        therefore the whole teardown, and it must happen BEFORE any body dies:
-       a Vehicle dereferences its frame in ~Vehicle. switchSystem honours that
-       (unloadGame, then the old bodies). part_sels holds Part* into them:
-       it goes first. No job drain needed -- no continuation touches a
-       Vehicle. */
+       a Vehicle holds m_parent and its frame, both owned by the body, so a
+       live one outliving its body is a dangling pointer the tick and the
+       renderer would follow. switchSystem honours that (unloadGame, then the
+       old bodies). part_sels holds Part* into them: it goes first. No job drain
+       needed -- no continuation touches a Vehicle. */
     part_sels.clear();
+    /* A transfer row names a Vehicle and points at it, so the rows go with the
+       vehicles. update() rebuilds them each refresh, but quit-to-title leaves
+       frames between here and the next world where the TARGET window, the map's
+       plane and --select-target would read freed names. */
+    xferPlanner.dropTargets();
     clearFlightSummary();   // a summary from THIS game must not leak into the next
     science.reset();        // ...and neither must the career score / archive
     /* Retired vehicles are not in `vehicles`, so this is the other half of the
@@ -1753,8 +1763,11 @@ bool Game::ui_remove_vehicle(Vehicle *v) {
                    removedName.c_str());
         }
     } else {
+        /* A game can hold vessels with NONE of them active: recoverActive()
+           detaches the last one without a handoff, and the tracking list still
+           lists the rest. Reading `ship` blind here segfaults. */
         printf("Removed '%s' (active unchanged: %s)\n",
-               removedName.c_str(), ship->name.c_str());
+               removedName.c_str(), ship ? ship->name.c_str() : "(none)");
     }
     return true;
 }
