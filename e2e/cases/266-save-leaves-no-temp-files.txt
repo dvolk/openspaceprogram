@@ -1,0 +1,24 @@
+# FILE / NOFILE (#271): assert on the tree the game wrote under its scratch
+# --data-dir, which no stdout assertion could ever reach. save_game now writes
+# each file to <path>.tmp and renames it into place (#304), so a crash or a
+# full disk mid-dump leaves a reader either the whole old file or the whole new
+# one instead of a truncation the previous save.json still points at.
+#
+# What this pins is the rename CONTRACT: a completed save leaves no temp
+# anywhere in the slot, so the rename cannot be failing quietly and leaving
+# debris for the orphan sweep to trip over. It does NOT pin torn-write safety
+# itself -- nothing here can kill the process mid-dump -- that stays a
+# code-review property of writeJson.
+# The game dir is stamped YYYYMMDD_HHMMSS-<gameName>, hence the globs.
+NAME save-leaves-no-temp-files
+ARGS --timeout 6 --time-accel 1
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --save slotA
+EXPECT Saved 1 ship(s) to
+FILE saves/*/slotA/save.json "format" "active_ship"
+FILE saves/*/slotA/ships/v0.json "racer"
+NOFILE saves/*/slotA/*.tmp
+NOFILE saves/*/slotA/ships/*.tmp
+FORBID Save failed
+FORBID error:
+LIMIT 60

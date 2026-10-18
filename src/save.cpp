@@ -49,12 +49,33 @@ std::string nowString() {
     return std::string(buf);
 }
 
+/* Write-then-rename (#304). An ofstream truncates its target the moment it
+   opens, so a crash or a full disk partway through dump() used to leave the
+   slot holding a half-written file that the PREVIOUS save.json still pointed
+   at. Writing to <path>.tmp and renaming means a reader sees either the whole
+   old file or the whole new one: rename within one filesystem is atomic. The
+   temp is unlinked on every failure path so a refused save leaves no junk for
+   the orphan sweep to mistake for a ship. */
 void writeJson(const std::string &path, const nlohmann::json &j) {
-    std::ofstream f(path.c_str());
-    if(!f.is_open()) { throw std::runtime_error("save: cannot write " + path); }
-    f << j.dump(2) << "\n";
-    f.flush();
-    if(!f.good()) { throw std::runtime_error("save: error writing " + path); }
+    const std::string tmp = path + ".tmp";
+    {
+        std::ofstream f(tmp.c_str());
+        if(!f.is_open()) { throw std::runtime_error("save: cannot write " + tmp); }
+        f << j.dump(2) << "\n";
+        f.flush();
+        if(!f.good()) {
+            std::error_code ec;
+            std::filesystem::remove(tmp, ec);   // best effort: the throw is the answer
+            throw std::runtime_error("save: error writing " + tmp);
+        }
+    }
+    std::error_code ec;
+    std::filesystem::rename(tmp, path, ec);
+    if(ec) {
+        std::error_code rm;
+        std::filesystem::remove(tmp, rm);
+        throw std::runtime_error("save: cannot install " + path + ": " + ec.message());
+    }
 }
 
 nlohmann::json readJsonFile(const std::string &path) {

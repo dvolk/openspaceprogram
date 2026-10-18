@@ -5,11 +5,14 @@ Usage: python3 e2e/run.py [selectors] [--jobs N] [--force] [--game PATH]
 [--limit S] [--show-cmd]. --limit overrides every case's LIMIT (a slow box,
 or a case you want to drive by hand); --show-cmd prints the exact command +
 env so a failure re-runs under a debugger. Case keys: NAME ARGS EXPECT FORBID
-CHECK LIMIT WRITE SEED EXIT. CHECK sees out and
+CHECK LIMIT WRITE SEED FILE NOFILE EXIT. CHECK sees out and
 the parsed logs (orbit/dbg/att/eva/fuel/drainlog/drag/shake/cam/terrain/surf/
 xfer/porkchop/surfmap/mapb/plane/slew/toast) plus first/last/re. ARGS tokenizes like a
 shell, so a value may be quoted to carry spaces. SEED <fixture> <path-under-
-data-dir> [AGE_DAYS] stages an existing save into the case's scratch --data-dir. EXIT
+data-dir> [AGE_DAYS] stages an existing save into the case's scratch --data-dir.
+FILE <path-under-data-dir> [substring...] and NOFILE <path-under-data-dir>
+assert on what the GAME wrote there (#271); both take globs, since a game dir is
+stamped YYYYMMDD_HHMMSS-<name>. EXIT
 <code> is the exit code the case demands (default 0) -- without it a game that
 correctly refuses a bad boot flag looks identical to one that crashed. Full
 battery and --jobs>2 need --force. Artifacts land in tmp/e2e/runs/<stamp>/ +
@@ -184,6 +187,8 @@ def parse_cases(path):
     check = []
     writes = []
     seeds = []
+    files = []
+    nofiles = []
     limit = DEFAULT_LIMIT
     # EXIT: the exit code the case demands. Default 0; a boot-time refusal
     # (a bad --vab def, an unknown --startship body) is a PASS only if the
@@ -232,6 +237,17 @@ def parse_cases(path):
                     raise ValueError("%s: SEED needs <fixture> <dest>"
                                      % os.path.basename(path))
                 seeds.append((src, dst, int(age) if age else None))
+            elif key == "FILE":
+                # FILE <path under the scratch data dir> [substring ...]: the
+                # game's own output, which no stdout assertion can reach
+                # (#271). The path may glob -- a game dir is stamped
+                # YYYYMMDD_HHMMSS-<name>, so no case can name it outright.
+                fpath, _, fbody = rest.partition(" ")
+                files.append((fpath.strip(), shlex.split(fbody)))
+            elif key == "NOFILE":
+                # NOFILE <path under the scratch data dir>: must NOT match
+                # anything (an orphaned ship file, a temp the save left).
+                nofiles.append(rest)
             else:
                 raise ValueError("%s: unknown key %r" % (os.path.basename(path), key))
     if not args:
@@ -244,6 +260,8 @@ def parse_cases(path):
         "check": check,
         "writes": writes,
         "seeds": seeds,
+        "files": files,
+        "nofiles": nofiles,
         "limit": limit,
         "exit": want_exit,
     }
@@ -765,6 +783,34 @@ def run_case(case):
             continue
         if not ok:
             diag.append("CHECK failed: %s" % expr)
+
+    # 4) FILE / NOFILE: what the game wrote under its scratch --data-dir.
+    # stdout cannot show a torn file, an orphan the sweep missed, or a saved
+    # field nobody prints (#271, #268). A path may glob; FILE needs at least
+    # one match, and each substring is checked against the matched contents
+    # JOINED -- so "saves/*/slot*/ships/*.json" asks "is it in some ship
+    # file", which is what a slug-keyed save makes a name lookup become.
+    for pattern, subs in case.get("files", []):
+        hits = sorted(glob.glob(os.path.join(data_dir, pattern)))
+        if not hits:
+            diag.append("FILE missing: %s" % pattern)
+            continue
+        blob = ""
+        for hp in hits:
+            try:
+                with open(hp, errors="replace") as fh:
+                    blob += fh.read()
+            except OSError as e:
+                diag.append("FILE unreadable: %s (%s)" % (hp, e))
+        for s in subs:
+            if s not in blob:
+                diag.append("FILE %s lacks %r" % (pattern, s))
+    for pattern in case.get("nofiles", []):
+        hits = sorted(glob.glob(os.path.join(data_dir, pattern)))
+        if hits:
+            diag.append("NOFILE found: %s (%s)"
+                        % (pattern, ", ".join(os.path.relpath(h, data_dir)
+                                              for h in hits[:4])))
 
     passed = (not diag)
     return passed, diag, out, duration
