@@ -2,9 +2,10 @@
 # the cast list in before it builds anything, so a refusal that kept the intruder
 # left the still-standing suits wearing ids the roster no longer names -- and the
 # NEXT save writes those ids, which this same loader refuses ("crew pool entry
-# names roster id 1"). The career becomes a file the game wrote and cannot read,
-# three saves after the bad byte. This fixture shrinks the roster to Bram + Cyd
-# and then fails on a part def that is gone, so the refusal lands after the swap.
+# 'kerbal' names roster id 1"). The career becomes a file the game wrote and
+# cannot read, three saves after the bad byte. This fixture shrinks the roster
+# to Bram + Cyd and then fails on a part def that is gone, so the refusal lands
+# after the swap.
 # The end of the chain was checked by hand: with the rollback the save this run
 # writes loads clean; without it, --load of that dir refuses.
 NAME crew-pool-roster-rollback

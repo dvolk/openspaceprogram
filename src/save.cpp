@@ -50,23 +50,33 @@ std::string nowString() {
 }
 
 /* Write-then-rename (#304). An ofstream truncates its target the moment it
-   opens, so a crash or a full disk partway through dump() used to leave the
+   opens, so a crash or a full disk partway through the write used to leave the
    slot holding a half-written file that the PREVIOUS save.json still pointed
    at. Writing to <path>.tmp and renaming means a reader sees either the whole
-   old file or the whole new one: rename within one filesystem is atomic. The
-   temp is unlinked on every failure path so a refused save leaves no junk for
-   the orphan sweep to mistake for a ship. */
+   old file or the whole new one: rename within one filesystem is atomic. Every
+   failure path unlinks the temp; save_game's orphan sweep collects a leftover
+   .tmp as well, since a process killed between the write and the rename leaves
+   one no reader would ever open. */
 void writeJson(const std::string &path, const nlohmann::json &j) {
+    /* Serialize BEFORE opening anything. dump() throws on invalid UTF-8 in any
+       string it walks -- and names arrive from UI text or a hand-edited file --
+       so a throw with the temp already open would leave it behind: the orphan
+       sweep filters by extension and never collects a .tmp. */
+    const std::string text = j.dump(2) + "\n";
     const std::string tmp = path + ".tmp";
     {
         std::ofstream f(tmp.c_str());
-        if(!f.is_open()) { throw std::runtime_error("save: cannot write " + tmp); }
-        f << j.dump(2) << "\n";
-        f.flush();
+        if(!f.is_open()) { throw std::runtime_error("save: cannot write " + path); }
+        f << text;
+        /* close() is where a full disk or an NFS error actually surfaces, and
+           the destructor closes after this scope -- i.e. after the rename. An
+           unchecked close failure would install a truncated temp, which is the
+           exact outcome this function exists to prevent. */
+        f.close();
         if(!f.good()) {
             std::error_code ec;
             std::filesystem::remove(tmp, ec);   // best effort: the throw is the answer
-            throw std::runtime_error("save: error writing " + tmp);
+            throw std::runtime_error("save: error writing " + path);
         }
     }
     std::error_code ec;
@@ -840,8 +850,8 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
    their ids too, and a pool entry clashing with another pool entry or with
    someone already in Game::vehicles is the same corruption. Anonymous people
    (id 0) may repeat: they claim nothing. */
-void refuseDoubleClaim(const std::vector<Vehicle *> &built,
-                       const std::vector<Part *> &pool) {
+static void refuseDoubleClaim(const std::vector<Vehicle *> &built,
+                              const std::vector<Part *> &pool) {
     std::set<uint64_t> worn;
     for(const Part *suit : pool) {
         if(suit == nullptr || suit->kerbal == nullptr) { continue; }
@@ -984,11 +994,20 @@ void save_game(Game &g, const std::string &dir) {
         std::error_code ec;
         fs::directory_iterator it(dir + "/ships", ec), end;
         for(; !ec && it != end; it.increment(ec)) {
-            if(it->path().extension() != ".json") { continue; }
+            const std::string ext = it->path().extension().string();
+            /* A leftover <slug>.json.tmp is a writeJson that died between the
+               write and the rename. Nothing ever reads it, so it is debris. */
+            if(ext == ".tmp") {
+                std::error_code rm;
+                fs::remove(it->path(), rm);
+                continue;
+            }
+            if(ext != ".json") { continue; }
             const std::string stem = it->path().stem().string();
             if(std::find(meta.ships.begin(), meta.ships.end(), stem)
                == meta.ships.end()) {
-                fs::remove(it->path(), ec);
+                std::error_code rm;
+                fs::remove(it->path(), rm);
             }
         }
     }
@@ -1013,8 +1032,12 @@ void save_game(Game &g, const std::string &dir) {
    edited --kerbals file cannot break it, and refusing that would be a new bug
    dressed up as a fix.
 
-   What still only throws after the switch: refuseDoubleClaim and
-   checkPartInvariants, both of which need a built Vehicle (#302). */
+   What still throws only AFTER the switch is everything the builders enforce
+   against a BUILT part: the seat and inventory shape rules (buildSeatParts,
+   buildInventoryItems -- validateShipParts walks s.parts and never descends
+   into sp.seats or sp.inventory), the crew-pool-with-no-pad-in-the-new-system
+   check, refuseDoubleClaim and checkPartInvariants. Each costs a career on the
+   cross-system path exactly as a dangling body name did (#302). */
 std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
                           const System &sys, const CrewRoster &roster) {
     SaveMeta meta;
@@ -1053,15 +1076,21 @@ std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
         }
         /* A seated person's identity is a roster id on its seat entry. The
            builder refuses these too, but only once the world has been replaced
-           -- which is exactly what costs a career on a cross-system load (#302). */
-        for(const SavePart &sp : s.parts) {
-            for(const SavePart &seat : sp.seats) {
-                if(std::string why = refuseUnknownRosterId(bind,
-                                                          seat.seat_profile,
-                                                          "'" + s.name
-                                                          + "' seat");
-                   !why.empty()) {
-                    return why;
+           -- which is exactly what costs a career on a cross-system load (#302).
+           Skipped for a crew ship: buildKerbalFromSave rebuilds a person from
+           the ShipDef and suit_inventory and never reads `parts`, so a
+           hand-edited crew file carrying a parts array would be refused here
+           and load fine anyway. */
+        if(!s.is_crew) {
+            for(const SavePart &sp : s.parts) {
+                for(const SavePart &seat : sp.seats) {
+                    if(std::string why = refuseUnknownRosterId(bind,
+                                                              seat.seat_profile,
+                                                              "'" + s.name
+                                                              + "' seat");
+                       !why.empty()) {
+                        return why;
+                    }
                 }
             }
         }

@@ -179,6 +179,17 @@ FUEL_LINK_RE = re.compile(r"links=(\S+)")
 FUEL_LINK_PAIR_RE = re.compile(r"g?(\d+)->g?(\d+)")
 
 
+def under_data_dir(pattern, case_path, key):
+    """A FILE/NOFILE pattern is relative to the case's scratch --data-dir. An
+    absolute one would silently escape it -- os.path.join drops the first
+    argument -- so it is a case bug, caught at parse time."""
+    if os.path.isabs(pattern):
+        raise ValueError("%s: %s path must be under the scratch data dir, not "
+                         "absolute: %r" % (os.path.basename(case_path), key,
+                                           pattern))
+    return pattern
+
+
 def parse_cases(path):
     name = os.path.basename(path)
     args = []
@@ -241,13 +252,20 @@ def parse_cases(path):
                 # FILE <path under the scratch data dir> [substring ...]: the
                 # game's own output, which no stdout assertion can reach
                 # (#271). The path may glob -- a game dir is stamped
-                # YYYYMMDD_HHMMSS-<name>, so no case can name it outright.
+                # YYYYMMDD_HHMMSS-<name>, so no case can name it outright. An
+                # absolute path would silently escape the scratch dir, so it is
+                # a case bug. Substrings are shlex-split: quote one that
+                # carries a space.
                 fpath, _, fbody = rest.partition(" ")
-                files.append((fpath.strip(), shlex.split(fbody)))
+                files.append((under_data_dir(fpath.strip(), path, key),
+                              shlex.split(fbody)))
             elif key == "NOFILE":
                 # NOFILE <path under the scratch data dir>: must NOT match
                 # anything (an orphaned ship file, a temp the save left).
-                nofiles.append(rest)
+                # Vacuous if the pattern can never match -- a typo passes the
+                # case without testing it, so pair it with a FILE on the same
+                # directory.
+                nofiles.append(under_data_dir(rest, path, key))
             else:
                 raise ValueError("%s: unknown key %r" % (os.path.basename(path), key))
     if not args:
@@ -799,7 +817,10 @@ def run_case(case):
         for hp in hits:
             try:
                 with open(hp, errors="replace") as fh:
-                    blob += fh.read()
+                    # Joined WITH a separator: without one, a substring could
+                    # straddle the end of one file and the start of the next
+                    # and pass on text neither file contains.
+                    blob += fh.read() + "\n"
             except OSError as e:
                 diag.append("FILE unreadable: %s (%s)" % (hp, e))
         for s in subs:
