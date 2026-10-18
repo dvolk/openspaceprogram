@@ -889,6 +889,20 @@ bool Game::ensureSystemForSave(const std::string &dir, bool *switched) {
     if(sysfile.empty() || baseName(sysfile) == baseName(systemPath)) {
         return true;   // same system (or none recorded) -- nothing to switch
     }
+    /* Parse and validate the whole save BEFORE the switch. switchSystem tears
+       the running game down, so a load that throws afterwards costs the career
+       -- which is exactly what the format guard above was hoisted for, and this
+       is the rest of it (#302). Catches a corrupt or hand-edited ship file: bad
+       JSON, a missing file, unknown part names, uid collisions, a parent that
+       comes after its child. It cannot catch what only construction against the
+       new system knows (scenario names, fuel links, dock seams). */
+    if(std::string why = preflightSave(dir, parts); !why.empty()) {
+        printf("[load] refused %s: %s (before the system switch)\n",
+               dir.c_str(), why.c_str());
+        fflush(stdout);
+        toast("Load failed: %s", why.c_str());
+        return false;
+    }
     // Sync the bodies the save's ships sit on, then the new system's home --
     // last, so the cap drops it first.
     std::vector<std::string> syncNames = saveShipBodies(dir);

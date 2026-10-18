@@ -1082,3 +1082,12 @@ void save_game(Game &g, const std::string &dir);
 // Replace the live game state with the one in dir. CLI --load and the in-game
 // Load menu.
 void load_game(Game &g, const std::string &dir);
+
+struct PartsCatalog;   // shipdef.h; only needed by reference below
+
+/* Read and parse a save -- save.json plus every ship file -- and run the part
+   of its validation that needs no world, WITHOUT building anything. "" = looks
+   loadable, else the reason, worded as load_game words it. A cross-system load
+   must switch systems before it can load, and switchSystem tears the running
+   game down, so anything worth refusing has to be caught before that (#302). */
+std::string preflightSave(const std::string &dir, const PartsCatalog &cat);

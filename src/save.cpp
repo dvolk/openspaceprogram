@@ -400,6 +400,45 @@ SaveShip saveShipFromVehicle(Vehicle *v,
 
 // ---- restore (SaveShip -> Game) --------------------------------------------
 
+/* The part-tree checks that need no world: a uid present, unique within the ship
+   and across the whole save, every part name still in the catalog, every parent
+   uid already seen (the writer emits parents before children). Returns "" when
+   the ship is loadable, else the reason in the same words the builders used to
+   throw, so both paths refuse identically.
+
+   buildShipFromSaveParts relies on this; preflightSave runs it over the whole
+   save BEFORE a cross-system switch tears the running game down (#302). */
+static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
+                                     std::set<uint64_t> &saveUids) {
+    std::set<uint64_t> prior;   // uids at earlier indices of THIS ship
+    for(size_t i = 0; i < s.parts.size(); i++) {
+        const SavePart &sp = s.parts[i];
+        /* Refuse rather than guess: uid 0 is a save predating part identity,
+           a repeated uid is a corrupt or hand-edited file. */
+        if(sp.uid == 0) {
+            return "load: saved ship '" + s.name + "' part '" + sp.id
+                   + "' has no uid (save predates part identity)";
+        }
+        if(prior.count(sp.uid) != 0) {
+            return "load: saved ship '" + s.name + "' has two parts with uid "
+                   + std::to_string(sp.uid);
+        }
+        if(cat.find(sp.part) == nullptr) {
+            return "load: saved ship '" + s.name + "' has a part '" + sp.part
+                   + "' that is no longer in the parts file";
+        }
+        if(i > 0 && prior.count(sp.parent) == 0) {
+            return "load: saved ship '" + s.name + "' part '" + sp.id
+                   + "' has an unknown parent uid " + std::to_string(sp.parent);
+        }
+        prior.insert(sp.uid);
+        if(saveUids.insert(sp.uid).second == false) {
+            return "load: two ships claim part uid " + std::to_string(sp.uid);
+        }
+    }
+    return "";
+}
+
 // Parts are rebuilt from the SOLVED poses, not a re-derived attach spec: a
 // docking seam's relative geometry is not recoverable from an attach spec.
 // `savedUidToPart` (optional) is the caller's because it must span every ship
@@ -407,6 +446,12 @@ SaveShip saveShipFromVehicle(Vehicle *v,
 Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
                                 std::map<uint64_t, Part *> *savedUidToPart) {
     const PartsCatalog &cat = g.parts;
+    /* Validate before constructing: nothing to unwind, and the same walk is what
+       preflightSave runs before a cross-system switch (#302). */
+    std::set<uint64_t> saveUids;
+    if(std::string why = validateShipParts(s, cat, saveUids); !why.empty()) {
+        throw std::runtime_error(why);
+    }
     // Resolve the scenario BEFORE constructing: it throws, and the rollback
     // only walks `built`.
     const ScenarioDef *scn = resolveScenario(s.scenario);
@@ -414,27 +459,11 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
     v->name = s.name;
     v->defPath = s.defPath;
     std::map<uint64_t, size_t> uidToIndex;
-    std::map<uint64_t, Part *> uidToPart;
+    std::map<uint64_t, Part *> uidToPart;   // controller / seams / fuel links
     for(size_t i = 0; i < s.parts.size(); i++) {
         const SavePart &sp = s.parts[i];
-        /* Refuse rather than guess: uid 0 is a save predating part identity,
-           a repeated uid is a corrupt or hand-edited file. */
-        if(sp.uid == 0) {
-            delete v;
-            throw std::runtime_error("load: saved ship '" + s.name + "' part '" + sp.id
-                                     + "' has no uid (save predates part identity)");
-        }
-        if(uidToPart.find(sp.uid) != uidToPart.end()) {
-            delete v;
-            throw std::runtime_error("load: saved ship '" + s.name + "' has two parts "
-                                     "with uid " + std::to_string(sp.uid));
-        }
         const PartDef *pd = cat.find(sp.part);
-        if(pd == nullptr) {
-            delete v;
-            throw std::runtime_error("load: saved ship '" + s.name + "' has a part "
-                                     "'" + sp.part + "' that is no longer in the parts file");
-        }
+        assert(pd != nullptr);   // validateShipParts refused it otherwise
         Part *p = make_part(*pd, sp.mass, sp.hull_margin,
                             &sp.fuel, &sp.experiments, sp.id, g.partsshader);
         // What only a save knows: where the part sits in the staging order and
@@ -445,21 +474,17 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
             v->setRoot(p);
         } else {
             std::map<uint64_t, size_t>::const_iterator it = uidToIndex.find(sp.parent);
-            if(it == uidToIndex.end()) {
-                delete p;   // not yet attached, so ~Vehicle won't free it
-                delete v;
-                throw std::runtime_error("load: saved ship '" + s.name + "' part '" +
-                                         sp.id + "' has an unknown parent uid " +
-                                         std::to_string(sp.parent));
-            }
+            assert(it != uidToIndex.end());   // validateShipParts refused it
             v->attach(p, it->second, sp.pos, sp.rot);
         }
         uidToIndex[sp.uid] = i;
         uidToPart[sp.uid] = p;
         if(savedUidToPart != nullptr
            && !savedUidToPart->insert(std::make_pair(sp.uid, p)).second) {
-            /* p is attached now, so ~Vehicle frees it. */
-            delete v;
+            /* Cross-ship uid collisions are refused by validateShipParts before
+               anything is built; this stays as the belt because the caller's map
+               spans every ship in the load. */
+            delete v;   // ~Vehicle frees the parts, including p
             throw std::runtime_error("load: two ships claim part uid "
                                      + std::to_string(sp.uid));
         }
@@ -807,6 +832,37 @@ void save_game(Game &g, const std::string &dir) {
     }
     printf("Saved %zu ship(s) to %s (game '%s')\n", vehicles.size(), dir.c_str(),
            g.gameName.c_str());
+}
+
+/* Parse the whole save and run the world-free checks over it, building nothing.
+   Deliberately the SAME parser and the SAME catalog the builders use, not a
+   second validator: validateShipParts is the one walk.
+
+   What it cannot catch is what only construction against the NEW system knows:
+   scenario names, fuel links, dock seams and body references. So a cross-system
+   load is still not fully transactional (#302) -- this closes the dominant
+   class, a corrupt or hand-edited ship file, which used to cost the career. */
+std::string preflightSave(const std::string &dir, const PartsCatalog &cat) {
+    SaveMeta meta;
+    try {
+        meta = saveMetaFromJson(readJsonFile(dir + "/save.json"));
+    } catch(const std::exception &e) {
+        return e.what();
+    }
+    std::set<uint64_t> saveUids;   // spans every ship, as the load's map does
+    for(size_t i = 0; i < meta.ships.size(); i++) {
+        SaveShip s;
+        try {
+            s = saveShipFromJson(
+                readJsonFile(dir + "/ships/" + meta.ships[i] + ".json"));
+        } catch(const std::exception &e) {
+            return e.what();
+        }
+        if(std::string why = validateShipParts(s, cat, saveUids); !why.empty()) {
+            return why;
+        }
+    }
+    return "";
 }
 
 void load_game(Game &g, const std::string &dir) {
