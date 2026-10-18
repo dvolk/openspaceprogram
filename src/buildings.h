@@ -83,9 +83,15 @@ std::vector<WorldBuilding> parse_world_buildings_all(
    carries its ships. */
 glm::dmat3 buildingOrient(const glm::dvec3 &up, double heading_rad);
 
+/* The checks place_world_buildings would throw on, without instantiating or
+   needing physics: type in the catalog, body in the system, unique instance id
+   per body. A cross-system load runs this on the incoming system so a bad
+   definition refuses before the switch destroys the running game (#302). */
+void validate_world_buildings(const System &sys, const BuildingsCatalog &cat);
+
 /* Instantiate every world building on its body (TerrainBody::pads).
    `sys.world_buildings` must already be parsed; needs live physics
-   (create_physics) and a part shader. */
+   (create_physics) and a part shader. Validates first (see above). */
 void place_world_buildings(System &sys, const BuildingsCatalog &cat,
                            Shader *shader, TerrainBody *sun);
 

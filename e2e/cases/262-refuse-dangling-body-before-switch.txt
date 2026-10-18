@@ -7,12 +7,15 @@
 # The old behaviour was the worst of both: no refusal and no warning. The saved
 # position was re-read in the wrong body's frame, so the ship appeared somewhere
 # plausible and wrong -- and the next save wrote that back.
+# The fixture keeps a home the target system HAS and a pose body it does not:
+# that split is what makes the bug bite, and it is what makes the fallback look
+# correct in a lazier test.
 NAME refuse-dangling-body-before-switch
 ARGS --system res/systems/solar_system.json --time-accel 1 --startship racer,res/ships/racer.json,Earth,rot-orbit
 ARGS --reload e2e/fixtures/save_dangling_body --reload-at 4000
 ARGS --timeout 10
 EXPECT Loaded system 'res/systems/solar_system.json'
-EXPECT [load] refused e2e/fixtures/save_dangling_body: load: saved ship 'racer' names body 'Earth', which the target system does not have (before the system switch)
+EXPECT [load] refused e2e/fixtures/save_dangling_body: load: saved ship 'racer' has a pose body 'Earth' that is not in this system (before the system switch)
 # Refused before the switch, so nothing was destroyed: the new system is loaded
 # read-only and dropped, and the career is exactly as it was.
 FORBID switched before loading

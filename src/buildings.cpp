@@ -244,11 +244,14 @@ glm::dmat3 buildingOrient(const glm::dvec3 &up, double heading_rad) {
                              glm::dvec3(0.0, 0.0, 1.0));
 }
 
-void place_world_buildings(System &sys, const BuildingsCatalog &cat,
-                           Shader *shader, TerrainBody *sun) {
+/* Everything place_world_buildings can reject, checked before anything is
+   instantiated. A cross-system load runs this on the incoming system so a bad
+   building definition refuses BEFORE the switch tears the running game down
+   (#302): the same throw from inside the placement loop lands after the
+   teardown, by which point the fleet and the science are already gone. */
+void validate_world_buildings(const System &sys, const BuildingsCatalog &cat) {
     for(const WorldBuilding &w : sys.world_buildings) {
-        const BuildingDef *def = cat.find(w.type);
-        if(def == nullptr) {
+        if(cat.find(w.type) == nullptr) {
             std::string avail;
             for(size_t i = 0; i < cat.buildings.size(); i++) {
                 if(i) { avail += ", "; }
@@ -257,17 +260,27 @@ void place_world_buildings(System &sys, const BuildingsCatalog &cat,
             throw std::runtime_error("buildings: '" + w.id + "' has unknown type '"
                                      + w.type + "' (catalog has: " + avail + ")");
         }
-        TerrainBody *hb = sys.find(w.body);
-        if(hb == nullptr) {
+        if(sys.find(w.body) == nullptr) {
             throw std::runtime_error("buildings: '" + w.id + "' names unknown body '"
                                      + w.body + "'");
         }
-        for(auto *p : hb->pads) {
-            if(p->id == w.id) {
+        // Instance ids are per body, which is what the placement check below used
+        // to compare against; nothing is placed yet, so compare against the list.
+        for(const WorldBuilding &other : sys.world_buildings) {
+            if(&other != &w && other.id == w.id && other.body == w.body) {
                 throw std::runtime_error("buildings: duplicate instance id '"
-                                         + w.id + "' on " + hb->name);
+                                         + w.id + "' on " + w.body);
             }
         }
+    }
+}
+
+void place_world_buildings(System &sys, const BuildingsCatalog &cat,
+                           Shader *shader, TerrainBody *sun) {
+    validate_world_buildings(sys, cat);
+    for(const WorldBuilding &w : sys.world_buildings) {
+        const BuildingDef *def = cat.find(w.type);   // validated above
+        TerrainBody *hb = sys.find(w.body);          // validated above
         const glm::dvec3 up = w.dir();
         Mesh *m = get_mesh(std::string("res/") + def->mesh);
         Texture *t = get_texture(std::string("res/") + def->texture);

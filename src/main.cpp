@@ -706,6 +706,22 @@ int main(int argc, char **argv)
     // Set before the boot --load so ensureSystemForSave sees it.
     game.systemPath = args.system_file;
 
+    /* A body pin that does not resolve is a typo, not a game state, so it is a
+       hard error like --surfmap-body and --vab-body already are (#72). Called
+       where each branch's system is final -- after ensureSystemForSave on the
+       load path, before pickTitleBody on the boot path -- so it never prints
+       after the random-pick fallback it exists to prevent. pickTitleBody keeps
+       that fallback: it also runs after a switch that drops the pinned body,
+       where exiting is not an option. */
+    auto checkTitlePin = [&]() {
+        if(args.title_body.empty() || sys.find(args.title_body) != nullptr) {
+            return true;
+        }
+        printf("error: --title-body '%s' is not a body in %s\n",
+               args.title_body.c_str(), game.systemPath.c_str());
+        return false;
+    };
+
     // Silent no-op with no device/assets. --audio-log must be set before
     // init(), where the trace prints.
     game.audio.setDebug(args.audio_log);
@@ -786,6 +802,7 @@ int main(int argc, char **argv)
         if(!game.ensureSystemForSave(load_dir, &switched)) {
             exit(1);   // reason already printed + toasted by ensureSystemForSave
         }
+        if(!checkTitlePin()) { return 1; }   // the system is final now
         if(!switched) {
             // Boot, not a runtime reload: sync the save's ship bodies present
             // in THIS system, plus home.
@@ -815,6 +832,7 @@ int main(int argc, char **argv)
         if(ship != nullptr) { enterFlight(game); }
         else { enterSpaceCenter(game); }
     } else {
+        if(!checkTitlePin()) { return 1; }   // before pickTitleBody's fallback
         std::vector<TerrainBody *> sync;
         if(!args.radial_test.empty() || !args.dock_test.empty()) {
             sync.push_back(home);   // the test ships sit here
@@ -1046,16 +1064,6 @@ int main(int argc, char **argv)
             }
             game.vab.siteName = args.vab_site;
         }
-    }
-
-    /* --title-body: the backdrop pin. Hard error on a miss, like every other
-       body flag (#72) -- a typo should not quietly change what the boot shows.
-       pickTitleBody's printed fallback stays for a system switch that drops the
-       pinned body mid-run, where exiting is not an option. */
-    if(!args.title_body.empty() && sys.find(args.title_body) == nullptr) {
-        printf("error: --title-body '%s' is not a body in %s\n",
-               args.title_body.c_str(), game.systemPath.c_str());
-        return 1;
     }
 
     // --surfmap-body: pin the Surface Map's body. Applied AFTER the --load

@@ -1084,13 +1084,14 @@ void save_game(Game &g, const std::string &dir);
 void load_game(Game &g, const std::string &dir);
 
 struct PartsCatalog;   // shipdef.h; only needed by reference below
-struct System;         // system.h; only needed by pointer below
+struct System;         // system.h; only needed by reference below
 
 /* Read and parse a save -- save.json plus every ship file -- and run everything
    worth refusing WITHOUT building anything. "" = looks loadable, else the reason,
-   worded as load_game words it. A cross-system load must switch systems before it
-   can load, and switchSystem tears the running game down, so anything worth
-   refusing has to be caught before that (#302). Pass the target `sys` and the
-   save's body references check too; nullptr skips them (#303). */
+   worded as load_game words it (the validators are shared, not duplicated). A
+   cross-system load must switch systems before it can load, and switchSystem
+   tears the running game down, so anything worth refusing has to be caught
+   before that -- against the target `sys`, already loaded but not installed
+   (#302, #303). */
 std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
-                          const System *sys);
+                          const System &sys);

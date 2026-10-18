@@ -482,6 +482,64 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
     return "";
 }
 
+/* The kerbal-def checks, world-free: the def file must exist and describe
+   exactly one kerbal part. `def` (optional) takes the parsed def so the builder
+   does not read the file twice. "" = fine.
+
+   preflightSave runs this before a cross-system switch: a missing def used to
+   throw only after the teardown, which cost the career (#302). */
+static std::string validateKerbalDef(const SaveShip &s, const PartsCatalog &cat,
+                                     ShipDef *def) {
+    ShipDef parsed;
+    try {
+        parsed = load_ship_def(resdir::path(s.defPath).c_str(), cat);
+    } catch(const std::exception &e) {
+        return e.what();
+    }
+    /* The same rule make_suit states for a suit, and it matters twice as much
+       here: build_ship would happily build a four-part ship from a racer def and
+       call the result a person. Its extra parts never reach the writer's
+       suit_inventory, so they vanish on the next save, and Game::kerbalBoard
+       asserts a kerbal has exactly one part the moment anyone boards. */
+    if(parsed.parts.size() != 1) {
+        return "load: kerbal '" + s.name + "' has def '" + s.defPath
+               + "', which is not exactly one part (got "
+               + std::to_string(parsed.parts.size()) + ")";
+    }
+    if(parsed.parts[0].def->type != "kerbal") {
+        return "load: kerbal '" + s.name + "' has def '" + s.defPath
+               + "', which is a '" + parsed.parts[0].def->type
+               + "' part, not a kerbal";
+    }
+    if(def != nullptr) { *def = std::move(parsed); }
+    return "";
+}
+
+/* The crew-pool checks that need neither the roster nor a world: a pool entry is
+   a person standing on the pad, so it must be a known kerbal part carrying no
+   seats of its own -- the same rule buildSeatParts gives a seat (a non-kerbal
+   here breaks checkPartInvariants; a nested seat array would silently lose a
+   person). The roster-id check stays with the builder, which has the roster. */
+static std::string validateCrewPool(const std::vector<SavePart> &pool,
+                                    const PartsCatalog &cat) {
+    for(const SavePart &sp : pool) {
+        const PartDef *pd = cat.find(sp.part);
+        if(pd == nullptr) {
+            return "load: crew pool entry '" + sp.part
+                   + "' is not in the parts file";
+        }
+        if(pd->type != "kerbal") {
+            return "load: crew pool entry '" + sp.part + "' is a '" + pd->type
+                   + "' part, not a kerbal";
+        }
+        if(!sp.seats.empty()) {
+            return "load: crew pool entry '" + sp.part + "' has "
+                   + std::to_string(sp.seats.size()) + " seat(s) of its own";
+        }
+    }
+    return "";
+}
+
 // Parts are rebuilt from the SOLVED poses, not a re-derived attach spec: a
 // docking seam's relative geometry is not recoverable from an attach spec.
 // `savedUidToPart` (optional) is the caller's because it must span every ship
@@ -596,13 +654,26 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
     v->totalStages_ = s.total_stages;
 
     const std::string who = "saved ship '" + s.name + "'";
-    v->home = s.home.empty() ? g.home
-                             : resolveBody(g.sys, s.home, who, "home");
+    /* An empty name is not dangling -- the writer emits "" for a vehicle with no
+       home / no SOI parent -- but it is unreachable from a live save, so a load
+       that lands here is a hand-authored file quietly re-parking the ship on
+       another body. Say so (#303). */
+    if(s.home.empty()) {
+        printf("[load] '%s' saved no home body: using %s\n",
+               s.name.c_str(), g.home->name.c_str());
+        v->home = g.home;
+    } else {
+        v->home = resolveBody(g.sys, s.home, who, "home");
+    }
     v->scenario = scn;
     // Vehicle::slot is deliberately NOT restored: the next placement recomputes it.
     v->sun = g.sun;
     // BEFORE setSoi, whose observe is then a no-op on the unchanged body.
     v->flog = s.flog;
+    if(s.pose.body.empty()) {
+        printf("[load] '%s' saved no pose body: placing around %s\n",
+               s.name.c_str(), v->home->name.c_str());
+    }
     TerrainBody *pb = s.pose.body.empty() ? v->home
                                           : resolveBody(g.sys, s.pose.body, who, "pose");
     v->setSoi(s.pose.rotating ? pb->rot_frame : pb->frame, g.time);
@@ -647,23 +718,11 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
                                  + std::to_string(s.profile_id)
                                  + ", which the roster has no entry for");
     }
-    const PartsCatalog &cat = g.parts;
-    ShipDef def = load_ship_def(resdir::path(s.defPath).c_str(), cat);
-    /* The same rule make_suit states for a suit, and it matters twice as
-       much here: build_ship would happily build a four-part ship from a racer
-       def and call the result a person. Its extra parts never reach the writer's
-       suit_inventory, so they vanish on the next save, and Game::kerbalBoard
-       asserts a kerbal has exactly one part the moment anyone boards. A ShipDef
-       owns nothing, so throwing here frees nothing. */
-    if(def.parts.size() != 1) {
-        throw std::runtime_error("load: kerbal '" + s.name + "' has def '"
-                                 + s.defPath + "', which is not exactly one part (got "
-                                 + std::to_string(def.parts.size()) + ")");
-    }
-    if(def.parts[0].def->type != "kerbal") {
-        throw std::runtime_error("load: kerbal '" + s.name + "' has def '"
-                                 + s.defPath + "', which is a '"
-                                 + def.parts[0].def->type + "' part, not a kerbal");
+    /* A ShipDef owns nothing, so throwing here frees nothing. The rule and its
+       wording live in validateKerbalDef, which preflightSave also runs (#302). */
+    ShipDef def;
+    if(std::string why = validateKerbalDef(s, g.parts, &def); !why.empty()) {
+        throw std::runtime_error(why);
     }
     Kerbal *k = new Kerbal;
     k->name = s.name;
@@ -882,22 +941,26 @@ void save_game(Game &g, const std::string &dir) {
 }
 
 /* Parse the whole save and run every check that can run before the world
-   changes, building nothing. Deliberately the SAME parser, catalog and scenario
-   table the builders use, not a second validator: validateShipParts is the one
-   walk.
+   changes, building nothing. Deliberately the SAME parser, catalog, scenario
+   table and validators the builders use, not a second set of rules: each check
+   is one function that both paths call, so they cannot drift.
 
-   `sys` is the system the ships will land in. Pass it on a cross-system load and
-   the body references check too, which is what keeps a dangling body name from
-   costing the career behind the switch (#302) -- and from silently parking a
-   ship inside the wrong body (#303). Pass nullptr when there is no new world to
-   check against; the builders then refuse the same names as they build. */
+   `sys` is the system the ships will land in, so the body references check too --
+   which is what keeps a dangling body name from costing the career behind the
+   switch (#302), and from silently parking a ship inside the wrong body (#303).
+
+   What still only throws after the switch needs the roster or a built Vehicle:
+   the roster-id lookups, refuseDoubleClaim and checkPartInvariants (#302). */
 std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
-                          const System *sys) {
+                          const System &sys) {
     SaveMeta meta;
     try {
         meta = saveMetaFromJson(readJsonFile(dir + "/save.json"));
     } catch(const std::exception &e) {
         return e.what();
+    }
+    if(std::string why = validateCrewPool(meta.crew_pool, cat); !why.empty()) {
+        return why;
     }
     std::set<uint64_t> saveUids;   // spans every ship, as the load's map does
     for(size_t i = 0; i < meta.ships.size(); i++) {
@@ -911,20 +974,28 @@ std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
         if(std::string why = validateShipParts(s, cat, saveUids); !why.empty()) {
             return why;
         }
+        if(s.is_crew) {
+            if(std::string why = validateKerbalDef(s, cat, nullptr);
+               !why.empty()) {
+                return why;
+            }
+        }
         try {
             resolveScenario(s.scenario);   // throws for a name the table lacks
         } catch(const std::exception &e) {
             return e.what();
         }
-        if(sys != nullptr) {
-            const std::string names[2] = {s.home, s.pose.body};
-            for(const std::string &n : names) {
-                // "" means "nothing recorded", not "dangling" (resolveBody).
-                if(!n.empty() && sys->find(n) == nullptr) {
-                    return "load: saved ship '" + s.name + "' names body '" + n
-                           + "', which the target system does not have";
-                }
+        // The same rule and the same words the builders use. A crew file's
+        // `home` is never read (saveShipFromJson returns before it), so "" there
+        // is normal, not dangling.
+        const std::string who = "saved ship '" + s.name + "'";
+        try {
+            if(!s.home.empty()) { resolveBody(sys, s.home, who, "home"); }
+            if(!s.pose.body.empty()) {
+                resolveBody(sys, s.pose.body, who, "pose");
             }
+        } catch(const std::exception &e) {
+            return e.what();
         }
     }
     return "";
@@ -1023,27 +1094,15 @@ void load_game(Game &g, const std::string &dir) {
         /* The pad's cast is built in the same transaction as the ships: the
            ship-file parse above can throw too, and a pool built before it would
            leak. Building it here also lets refuseDoubleClaim see the ids these
-           suits wear. */
+           suits wear. The part / type / seats rule lives in validateCrewPool,
+           which preflightSave also runs before a cross-system switch (#302);
+           what stays inside the loop needs the roster. */
+        if(std::string why = validateCrewPool(meta.crew_pool, g.parts);
+           !why.empty()) {
+            throw std::runtime_error(why);
+        }
         for(const SavePart &sp : meta.crew_pool) {
-            const PartDef *pd = g.parts.find(sp.part);
-            if(pd == nullptr) {
-                throw std::runtime_error("load: crew pool entry '" + sp.part
-                                         + "' is not in the parts file");
-            }
-            /* A pool entry is a person standing on the pad: the same validation
-               buildSeatParts gives a seat, for the same reasons (a non-kerbal
-               here breaks checkPartInvariants; a nested seat array would
-               silently lose a person). */
-            if(pd->type != "kerbal") {
-                throw std::runtime_error("load: crew pool entry '" + sp.part
-                                         + "' is a '" + pd->type
-                                         + "' part, not a kerbal");
-            }
-            if(!sp.seats.empty()) {
-                throw std::runtime_error("load: crew pool entry '" + sp.part
-                                         + "' has " + std::to_string(sp.seats.size())
-                                         + " seat(s) of its own");
-            }
+            const PartDef *pd = g.parts.find(sp.part);   // validated above
             const KerbalProfile *src = (sp.seat_profile != 0)
                 ? g.roster.find(sp.seat_profile) : nullptr;
             if(sp.seat_profile != 0 && src == nullptr) {

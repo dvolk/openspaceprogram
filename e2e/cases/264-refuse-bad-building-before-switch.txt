@@ -1,0 +1,19 @@
+# A system file that load_system accepts but place_world_buildings refuses used
+# to crash the game (exit 139). Placement runs inside the switch, AFTER the
+# running game has been torn down, so the throw landed in a half-switched world:
+# the caller still believed the switch had failed and rolled the clock onto
+# bodies that no longer exist.
+# validate_world_buildings now runs on the loaded-but-uninstalled system, so the
+# switch is refused with the fleet, the science and the scene intact.
+NAME refuse-bad-building-before-switch
+ARGS --system res/systems/ksp_system.json --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --switch-system e2e/fixtures/system_bad_building.json --switch-at 4000
+ARGS --timeout 10
+EXPECT [switch] cannot switch to 'e2e/fixtures/system_bad_building.json': buildings: 'bad_pad' has unknown type 'no_such_building' (catalog has: space_port)
+# Nothing was destroyed, so the game carries on with the system it already had.
+FORBID [game] unloaded
+FORBID [game] switched system
+FORBID science reset
+FORBID Segmentation
+FORBID GL_
+LIMIT 120

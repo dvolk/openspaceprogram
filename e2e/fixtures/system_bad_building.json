@@ -1,0 +1,151 @@
+{
+  "home": "Kerbin",
+  "soi_law": "patched_conic",
+  "epoch_year": 1,
+  "skybox": "res/skybox/v1",
+  "bodies": [
+    {
+      "name": "Kerbol",
+      "type": "star",
+      "radius": 261600000,
+      "mass": 1.757e+28,
+      "g": 17.131,
+      "seed": 0.1,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "palette": [
+          [
+            0.0,
+            [
+              1.0,
+              0.8,
+              0.35
+            ]
+          ],
+          [
+            1.0,
+            [
+              1.0,
+              1.0,
+              0.75
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 1e+18,
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "orb_ang_speed": 0.0
+      },
+      "transfer_dv": 0.0,
+      "science_mult": 2.0
+    },
+    {
+      "name": "Kerbin",
+      "type": "planet",
+      "orbits": "Kerbol",
+      "radius": 600000,
+      "mass": 5.292e+22,
+      "g": 9.81,
+      "seed": 1,
+      "has_sea": true,
+      "power_scaler": 3,
+      "surface": {
+        "amplitude": 5000,
+        "persistence": 0.6,
+        "frequency": 1.1,
+        "sea_color": [
+          0.2,
+          0.45,
+          0.65
+        ],
+        "palette": [
+          [
+            0.0,
+            [
+              0.13,
+              0.45,
+              0.13
+            ]
+          ],
+          [
+            0.45,
+            [
+              0.45,
+              0.55,
+              0.2
+            ]
+          ],
+          [
+            0.8,
+            [
+              0.55,
+              0.45,
+              0.35
+            ]
+          ],
+          [
+            1.0,
+            [
+              1.0,
+              1.0,
+              1.0
+            ]
+          ]
+        ],
+        "atmosphere": {
+          "color": [
+            0.3,
+            0.5,
+            1.0
+          ],
+          "thickness": 15000,
+          "power": 4.0,
+          "intensity": 0.7,
+          "sea_level_density": 1.225,
+          "scale_height": 5500,
+          "height": 70000
+        },
+        "clouds": {
+          "height": 2500,
+          "coverage": 0.6,
+          "freq": 10,
+          "drift": 1e-05
+        }
+      },
+      "inertial": {
+        "orb_ang_speed": 6.826918657082229e-07,
+        "arg_peri": 0.0,
+        "true_anomaly0": 3.14
+      },
+      "rotating": {
+        "rot_ang_speed": 0.00029157665354214053,
+        "spin_phase0": 3.355854362286427,
+        "axial_tilt": 0.40910517666747087,
+        "tilt_azimuth": 3.6482047113650014
+      },
+      "transfer_dv": 0.0,
+      "science_mult": 1.0
+    }
+  ],
+  "world_buildings": [
+    {
+      "id": "bad_pad",
+      "type": "no_such_building",
+      "display_name": "Broken pad",
+      "body": "Kerbin",
+      "lat_deg": 0.0,
+      "lon_deg": 0.0,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    }
+  ]
+}

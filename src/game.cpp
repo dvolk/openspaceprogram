@@ -885,6 +885,23 @@ std::string Game::ensureGameDir() {
     return datadir::saves() + "/" + gameId;
 }
 
+/* System owns no destructor -- it is a bag of borrowed-looking pointers -- so
+   whoever drops the last reference to a system's bodies frees them: the old
+   system mid-switch, and a loaded-but-rejected one. One place to say it, so a
+   future ~System cannot quietly double-free. */
+static void freeBodies(const std::vector<TerrainBody *> &bodies) {
+    for(TerrainBody *b : bodies) { delete b; }
+}
+
+/* System owns no destructor, so a loaded system that is never adopted leaks its
+   bodies. This frees them on any exit that is not an install: a refused load or
+   a rejected switch. installSystem moves the bodies out of the System, so after
+   a successful install the guard has nothing left to free. */
+struct SystemGuard {
+    System &sys;
+    ~SystemGuard() { freeBodies(sys.bodies); }
+};
+
 /* If the save's system (meta.system) differs from the running one, switch into
    it FIRST so the ships load onto the right bodies. False = the switch failed. */
 bool Game::ensureSystemForSave(const std::string &dir, bool *switched) {
@@ -921,15 +938,24 @@ bool Game::ensureSystemForSave(const std::string &dir, bool *switched) {
         const WorldShaders world = get_world_shaders();
         System newSys = load_system(sysfile.c_str(), world.terrain, world.sun,
                                     nullptr);
-        if(std::string why = preflightSave(dir, parts, &newSys); !why.empty()) {
+        SystemGuard guard{newSys};
+        /* Both halves of the refusal happen with the old world still in place.
+           The buildings belong to the incoming system, and place_world_buildings
+           -- which runs inside installSystem, after the teardown -- is the one
+           thing there that can reject a system load_system accepted (#302). */
+        std::string why;
+        try {
+            validate_world_buildings(newSys, buildings);
+            why = preflightSave(dir, parts, newSys);
+        } catch(const std::exception &e) {
+            why = e.what();
+        }
+        if(!why.empty()) {
             printf("[load] refused %s: %s (before the system switch)\n",
                    dir.c_str(), why.c_str());
             fflush(stdout);
             toast("Load failed: %s", why.c_str());
-            /* Nothing adopted these bodies and System owns no destructor, so
-               they are ours to free -- the same delete switchSystem does. */
-            for(TerrainBody *b : newSys.bodies) { delete b; }
-            return false;
+            return false;   // the guard frees the rejected system
         }
         installSystem(std::move(newSys), sysfile, syncNames);
     } catch(const std::exception &e) {
@@ -1077,21 +1103,27 @@ void Game::quitToTitle() {
 void Game::switchSystem(const std::string &path,
                         const std::vector<std::string> &syncNames) {
     /* Shaders are registry singletons: re-fetch the boot's files (cache hit, not
-       a recompile). load_system throwing here is survivable precisely because
-       installSystem is what destroys things. */
+       a recompile). Both checks below run before installSystem destroys anything,
+       which is what makes a switch to a broken system survivable: load_system
+       covers the file, validate_world_buildings the definitions it accepts but
+       place_world_buildings would refuse (#302). */
     const WorldShaders world = get_world_shaders();
-    installSystem(load_system(path.c_str(), world.terrain, world.sun, nullptr),
-                  path, syncNames);
+    System newSys = load_system(path.c_str(), world.terrain, world.sun, nullptr);
+    SystemGuard guard{newSys};
+    validate_world_buildings(newSys, buildings);
+    installSystem(std::move(newSys), path, syncNames);
 }
 
 /* The install half of a system switch: adopt an already-loaded system and land on
-   the title. Transactional by construction -- the new system is loaded by the
-   caller, so a bad system file throws before this runs and nothing is lost. It
-   re-points sys / home / sun / focusTargets at the new system before the old
-   bodies are deleted, so nothing ever points at freed memory. Split out for the
-   same reason: a caller can validate a save against the new world before the
-   teardown (#302). jobs.abort waits for the in-flight snapshot read (what makes
-   the delete safe) and is terminal, hence jobs.restart. */
+   the title. From here the teardown is NOT recoverable, so anything that can
+   reject the new system has to have run already: load_system for the file
+   itself, and validate_world_buildings for definitions load_system accepts but
+   place_world_buildings (below, after the teardown) refuses -- that one used to
+   crash the game, because the caller then rolled the clock onto bodies that no
+   longer exist (#302). It re-points sys / home / sun / focusTargets at the new
+   system before the old bodies are deleted, so nothing ever points at freed
+   memory. jobs.abort waits for the in-flight snapshot read (what makes the
+   delete safe) and is terminal, hence jobs.restart. */
 void Game::installSystem(System &&newSys, const std::string &path,
                          const std::vector<std::string> &syncNames) {
     const WorldShaders world = get_world_shaders();
@@ -1122,7 +1154,7 @@ void Game::installSystem(System &&newSys, const std::string &path,
     // Old bodies are reachable only from oldBodies now: abort the terrain
     // stream (it captures them), then delete.
     jobs.abort();
-    for(TerrainBody *b : oldBodies) { delete b; }
+    freeBodies(oldBodies);
     jobs.restart();
     // The sync set resolves against the NEW system; unknown names drop out. A
     // bare switch lands on the title, so the backdrop must be the solid one.
