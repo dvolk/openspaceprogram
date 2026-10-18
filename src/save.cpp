@@ -1263,7 +1263,13 @@ std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
 /* What a successful build produced, waiting to be installed. Nothing here is
    in the live world yet: on a cross-system load the incoming system is not
    even installed, so a refusal costs nothing (#305). Completes the opaque
-   BuiltSave the header forward-declares. */
+   BuiltSave the header forward-declares.
+
+   Owns the built vehicles and the pad's new pool. The destructor frees them,
+   so a throw between a successful build and the commit cannot leak -- and
+   discardSaveWorld is just `delete`. The roster swap rides along: a build
+   that is never committed must put the running cast list back (the "career
+   the game wrote and cannot read" failure). */
 struct BuiltSave {
     SaveMeta meta;
     std::vector<SaveShip> saves;              // parsed, for the commit's phase 2
@@ -1272,6 +1278,21 @@ struct BuiltSave {
     std::map<std::string, Vehicle *> bySlug;
     std::map<uint64_t, Part *> savedUidToPart;
     std::string dir;
+    // Roster rollback (RosterRollback's job, deferred to the commit).
+    CrewRoster *roster = nullptr;
+    std::vector<KerbalProfile> rosterPrior;
+    bool rosterSwapped = false;
+
+    ~BuiltSave() {
+        for(Vehicle *v : vehicles) { delete v; }
+        for(Part *p : pool) { delete p; }
+        if(rosterSwapped && roster != nullptr) {
+            printf("[load] roster restored: %zu kerbal(s)\n", rosterPrior.size());
+            fflush(stdout);
+            roster->profiles = std::move(rosterPrior);
+        }
+    }
+    void commitRoster() { rosterSwapped = false; }
 };
 
 /* Build the whole save against `w`. Throws on any rule -- including the three
@@ -1298,11 +1319,12 @@ BuiltSave *buildSaveWorld(Game &g, const LoadWorld &w, const std::string &dir) {
        every kerbal's profile id against this.
        On SUCCESS the swap is permanent for the session: newGame and
        switchSystem do not re-read --kerbals, so a roster a save brought in stays
-       in charge afterwards. On a REFUSAL it rolls back with everything else --
-       the standing cast still wears the old ids (RosterRollback). */
-    RosterRollback rosterRollback(g.roster);
+       in charge afterwards. On a REFUSAL BuiltSave's destructor rolls it back --
+       the standing cast still wears the old ids. */
+    out->roster = &g.roster;
     if(!meta.roster.empty()) {
-        rosterRollback.swapped = true;
+        out->rosterPrior = g.roster.profiles;
+        out->rosterSwapped = true;
         g.roster = rosterFromSave(meta, g.roster);
     }
     /* The building pool is the save's (format 4: crew_pool). Built OFF the pad
@@ -1324,52 +1346,41 @@ BuiltSave *buildSaveWorld(Game &g, const LoadWorld &w, const std::string &dir) {
 
     std::vector<Vehicle *> &built = out->vehicles;
     built.resize(out->saves.size(), nullptr);
-    try {
-        for(size_t i = 0; i < out->saves.size(); i++) {
-            const SaveShip &s = out->saves[i];
-            built[i] = s.is_crew
-                ? buildKerbalFromSave(g, ww, s)
-                : buildShipFromSaveParts(g, ww, s, &out->savedUidToPart);
-            out->bySlug[meta.ships[i]] = built[i];
-        }
-        /* The pad's cast is built in the same transaction as the ships: the
-           ship-file parse above can throw too, and a pool built before it would
-           leak. Building it here also lets refuseDoubleClaim see the ids these
-           suits wear. The part / type / seats rule -- roster ids included --
-           lives in validateCrewPool, which preflightSave also runs before a
-           cross-system switch (#302), so the loop below can trust every id it
-           reads. */
-        if(std::string why = validateCrewPool(meta.crew_pool, g.parts, g.roster);
-           !why.empty()) {
-            throw std::runtime_error(why);
-        }
-        for(const SavePart &sp : meta.crew_pool) {
-            const PartDef *pd = g.parts.find(sp.part);   // validated above
-            const KerbalProfile *src = (sp.seat_profile != 0)
-                ? g.roster.find(sp.seat_profile) : nullptr;
-            Part *suit = makeSuitPart(g, sp, pd, src);
-            out->pool.push_back(suit);
-            // What the suit carries rides home with it (saveSeatPart writes it).
-            buildInventoryItems(g, sp.inventory, suit, "crew pool");
-        }
-        /* Needs the WHOLE built list, so it runs after the loop: two files can
-           each load fine and still claim one roster entry between them. The
-           pad's new pool wears ids too -- it is checked here and still
-           uncommitted. */
-        refuseDoubleClaim(built, out->pool);
-    } catch(...) {
-        /* Delete what was built: a seat occupant is owned by the capsule it was
-           parked in, so its ship frees it, and a seat in a file that was not
-           reached yet allocated nothing. The built vehicles were never adopted,
-           so no walk ever saw them. The new pool was never on the pad: free it
-           and the running cast stands. The roster rolls back with the rest. */
-        for(Vehicle *v : built) { delete v; }
-        for(Part *p : out->pool) { delete p; }
-        throw;
+    for(size_t i = 0; i < out->saves.size(); i++) {
+        const SaveShip &s = out->saves[i];
+        built[i] = s.is_crew
+            ? buildKerbalFromSave(g, ww, s)
+            : buildShipFromSaveParts(g, ww, s, &out->savedUidToPart);
+        out->bySlug[meta.ships[i]] = built[i];
     }
-    /* The build cannot refuse from here, so the cast list it resolved against
-       is the one the session keeps. */
-    rosterRollback.commit();
+    /* The pad's cast is built in the same transaction as the ships: the
+       ship-file parse above can throw too, and a pool built before it would
+       leak. Building it here also lets refuseDoubleClaim see the ids these
+       suits wear. The part / type / seats rule -- roster ids included --
+       lives in validateCrewPool, which preflightSave also runs before a
+       cross-system switch (#302), so the loop below can trust every id it
+       reads. */
+    if(std::string why = validateCrewPool(meta.crew_pool, g.parts, g.roster);
+       !why.empty()) {
+        throw std::runtime_error(why);
+    }
+    for(const SavePart &sp : meta.crew_pool) {
+        const PartDef *pd = g.parts.find(sp.part);   // validated above
+        const KerbalProfile *src = (sp.seat_profile != 0)
+            ? g.roster.find(sp.seat_profile) : nullptr;
+        Part *suit = makeSuitPart(g, sp, pd, src);
+        out->pool.push_back(suit);
+        // What the suit carries rides home with it (saveSeatPart writes it).
+        buildInventoryItems(g, sp.inventory, suit, "crew pool");
+    }
+    /* Needs the WHOLE built list, so it runs after the loop: two files can
+       each load fine and still claim one roster entry between them. The
+       pad's new pool wears ids too -- it is checked here and still
+       uncommitted. */
+    refuseDoubleClaim(built, out->pool);
+    /* The build cannot refuse from here. The roster stays swapped until the
+       commit adopts it -- BuiltSave's destructor rolls it back if the caller
+       discards this (an install that throws after the build, say). */
     return out.release();
 }
 
@@ -1434,6 +1445,10 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
         for(Vehicle *v : g.vehicles) { delete v; }
     }
     g.vehicles = b->vehicles;
+    /* Adopted: ~BuiltSave must not free them. Everything below reads the fleet
+       from g.vehicles -- b->vehicles is empty from here. */
+    b->vehicles.clear();
+    b->commitRoster();
     g.ship = nullptr;
     g.kerbal = nullptr;
     g.lastShip = nullptr;
@@ -1443,7 +1458,7 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
        stays lenient, unlike a dock SEAM (a dropped seam strands a real joint). */
     for(size_t i = 0; i < b->saves.size(); i++) {
         const SaveShip &s = b->saves[i];
-        Vehicle *v = b->vehicles[i];
+        Vehicle *v = g.vehicles[i];
         if(!s.is_crew) {
             if(!s.dock_target_ship.empty()) {
                 std::map<std::string, Vehicle *>::const_iterator t =
@@ -1480,15 +1495,15 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
        in save order, which is what a fresh boot makes active. This
        used to be byName.begin(), i.e. the alphabetically first NAME -- a kerbal
        called 'Ash' beat a ship called 'racer'. */
-    if(active == nullptr && !b->vehicles.empty()) { active = b->vehicles[0]; }
+    if(active == nullptr && !g.vehicles.empty()) { active = g.vehicles[0]; }
     g.ship = active;
     g.kerbal = (active != nullptr && active->isEva()) ? static_cast<Kerbal *>(active) : nullptr;
     g.lastShip = nullptr;
     // The save may enter OR leave the no-ship state.
     g.syncShipFocus();
     size_t invItems = 0;
-    for(size_t i = 0; i < b->vehicles.size(); i++) {
-        for(Part *p : b->vehicles[i]->parts) { invItems += countPartInventory(p); }
+    for(size_t i = 0; i < g.vehicles.size(); i++) {
+        for(Part *p : g.vehicles[i]->parts) { invItems += countPartInventory(p); }
     }
     if(invItems > 0) {
         printf("Loaded %zu inventory item(s) with the ships\n", invItems);
@@ -1510,8 +1525,6 @@ void load_game(Game &g, const std::string &dir) {
 }
 
 void discardSaveWorld(BuiltSave *b) {
-    if(b == nullptr) { return; }
-    for(Vehicle *v : b->vehicles) { delete v; }
-    for(Part *p : b->pool) { delete p; }
+    // ~BuiltSave frees the vehicles, the pool, and rolls the roster back.
     delete b;
 }

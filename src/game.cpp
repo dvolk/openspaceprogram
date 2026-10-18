@@ -1073,27 +1073,37 @@ bool Game::loadFrom(const std::string &dir) {
         // buildSaveWorld reads the save's clock itself; time here is only a hint.
         LoadWorld w{ newSys, newSys.home, newSys.root, 0.0 };
         built = buildSaveWorld(*this, w, dir);
-        /* Build succeeded: the career is about to go. installSystem is the
-           point of no return -- it tears the old fleet down and re-points us
-           at the new bodies (the same TerrainBody* the built vehicles hold).
-           The guard frees nothing after the move: newSys.bodies is empty. */
-        installSystem(std::move(newSys), sysfile, syncNames);
-        printf("[load] save is from system '%s'; switched before loading\n",
-               sysfile.c_str());
-        fflush(stdout);
-        /* Ownership transfers into commitSaveWorld (which wraps it in a
-           unique_ptr). Null it first so a throw inside the commit cannot
-           double-free through the catch below. */
-        BuiltSave *adopt = built;
-        built = nullptr;
-        commitSaveWorld(*this, adopt, true);   // resetWorld already emptied the fleet
     } catch(const std::exception &e) {
+        // Build refused: the old game is intact (discardSaveWorld rolls the
+        // roster back and frees anything half-built).
         discardSaveWorld(built);
         printf("[load] refused %s: %s (before the system switch)\n",
                dir.c_str(), e.what());
         fflush(stdout);
         toast("Load failed: %s", e.what());
-        // The build refused before install: the old game is intact. Stay.
+        return false;
+    }
+
+    /* Point of no return. installSystem tears the running fleet down; from
+       here a throw is a half-switched world, not a refusal with the career
+       intact -- so the message must not claim otherwise. place_world_buildings
+       can still throw on a missing mesh/texture that validate_world_buildings
+       does not cover (it only checks types/ids). */
+    try {
+        installSystem(std::move(newSys), sysfile, syncNames);
+        printf("[load] save is from system '%s'; switched before loading\n",
+               sysfile.c_str());
+        fflush(stdout);
+        BuiltSave *adopt = built;
+        built = nullptr;
+        commitSaveWorld(*this, adopt, true);   // resetWorld already emptied the fleet
+    } catch(const std::exception &e) {
+        discardSaveWorld(built);
+        printf("[load] failed AFTER the system switch: %s\n", e.what());
+        printf("[load] the previous career is gone; landing on the title\n");
+        fflush(stdout);
+        toast("Load failed: %s", e.what());
+        enterTitle(*this);
         return false;
     }
     clearEphemeralState();
