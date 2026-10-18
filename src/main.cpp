@@ -1317,6 +1317,13 @@ int main(int argc, char **argv)
         const Uint32 iter_start_ms = SDL_GetTicks();
         pf_iter = std::chrono::steady_clock::now();
 
+        /* Free the vehicles retired since the last frame (#297). One point per
+           frame, before anything reads the world: a Vehicle* captured anywhere
+           in the previous frame -- an imgui row, a planner target, the
+           successor remove_ship picked before erasing -- stays valid until that
+           frame ends, and nothing here can reach one that is already gone. */
+        game.sweepRetired();
+
         /* Read visibility from the window flags every frame rather than latching
            SDL_EVENT_WINDOW_OCCLUDED / _MINIMIZED: a window that starts behind
            others is occluded from frame one, and a missed event cannot wedge the
@@ -1605,6 +1612,7 @@ int main(int argc, char **argv)
     // unloadGame, which empties the list, so this is a no-op on those paths.
     game.jobs.abort();
 
+    game.sweepRetired();
     for(Vehicle *v : game.vehicles) { delete v; }
     game.vehicles.clear();
 

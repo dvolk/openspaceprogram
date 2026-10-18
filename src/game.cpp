@@ -328,22 +328,21 @@ void Game::dropPartWindowsFor(Vehicle *ship) {
 
 void Game::removeVehicle(Vehicle *v) {
     if(std::erase(vehicles, v) == 0) {
-        /* Every delete site reaches this through a walk of the list or a pointer
-           the list holds, so a miss means the list and the world already
-           disagree -- which is the bug, not the erase. */
+        /* retire() only ever gets a vehicle the list holds, and the bulk
+           teardowns clear the list wholesale rather than calling this. A miss
+           means the list and the world already disagree -- which is the bug,
+           not the erase. */
         assert(!"removeVehicle: the vehicle is not in Game::vehicles");
     }
 }
 
-/* Every reference the Game and the transfer planner hold to a vehicle that is
-   about to be deleted. EVERY delete site calls it immediately BEFORE the delete:
-   updateDocking, remove_ship, recoverActive, pickUpItem and kerbalBoard. A
-   missed one is a use-after-free in a later frame -- the planner holds its
-   target list across frames (render.cpp rebuilds it, updateShipView reads the
-   previous frame's), so a dangling Vehicle* there is read by the map plane and
-   the burn marker long before anything notices. List membership is
-   removeVehicle's -- only remove_ship needs the list intact while it scans
-   for the next ship to hand control to. */
+/* retire()'s second half: every reference the Game and the transfer planner
+   hold to a vehicle that is about to die. A missed one is a use-after-free in a
+   later frame -- the planner holds its target list across frames (render.cpp
+   rebuilds it, updateShipView reads the previous frame's), so a dangling
+   Vehicle* there is read by the map plane and the burn marker long before
+   anything notices. List membership is removeVehicle's -- only remove_ship
+   needs the list intact while it scans for the next ship to hand control to. */
 void Game::dropVehicleRefs(Vehicle *v) {
     dropPartWindowsFor(v);
     // Ships that had v targeted for docking now dangle -- drop their intent.
@@ -377,6 +376,42 @@ void Game::dropVehicleRefs(Vehicle *v) {
        this, so nulling it here is what keeps select_ship from releasing control
        back to a corpse. */
     if(ship == v) { ship = nullptr; }
+}
+
+/* The one way a live Vehicle dies (#297).
+
+   This used to be three calls at five sites -- erase, drop refs, delete -- in an
+   order each site had to remember. A missed dropVehicleRefs is a use-after-free
+   a frame later, and deleting in the middle of an imgui handler frees memory
+   that a row of the SAME frame still points at. So the free moves to one sweep
+   point and everything else happens here, in one order, once.
+
+   The hull leaves the Bullet world NOW rather than at the sweep: a retired ship
+   that stayed registered would still collide on the next substep with the ship
+   that just absorbed it or staged it away. ~Vehicle's hullInWorld() guard then
+   makes the deferred delete skip the unregister. Nothing else about a retired
+   vehicle is reachable -- it is out of Game::vehicles, and every pointer the
+   Game and the planner kept across frames was just cleared. */
+void Game::retire(Vehicle *v) {
+    removeVehicle(v);
+    dropVehicleRefs(v);
+    // A railed ship is already out of the world; RemoveBody on an unregistered
+    // body is UB.
+    if(v->hullInWorld()) { RemoveBody(v->hull); }
+    /* One line per death, at the moment it stops being a world object rather
+       than at the sweep a frame later: this is the point a bug would get wrong,
+       and the count is what makes "did every ship actually die?" assertable
+       (recover-esc-multi and the dock cases read it). Flushed because a death
+       near a crash is exactly the line worth having. */
+    printf("[vehicle] retired: '%s' (%zu vehicle(s) left in the world)\n",
+           v->name.c_str(), vehicles.size());
+    fflush(stdout);
+    retired.push_back(v);
+}
+
+void Game::sweepRetired() {
+    for(Vehicle *v : retired) { delete v; }
+    retired.clear();
 }
 
 void Game::clearFlightSummary() {
@@ -929,6 +964,10 @@ void Game::unloadGame() {
     part_sels.clear();
     clearFlightSummary();   // a summary from THIS game must not leak into the next
     science.reset();        // ...and neither must the career score / archive
+    /* Retired vehicles are not in `vehicles`, so this is the other half of the
+       teardown -- and it has to come first, because the bodies they still
+       reference die below. */
+    sweepRetired();
     for(Vehicle *v : vehicles) { delete v; }
     vehicles.clear();
     ship = nullptr;
@@ -1223,17 +1262,12 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
     assert(k->parts.size() == 1);
     const std::string who = k->name;
     const bool wasActive = (this->ship == k);
-    /* Boarding deletes a VEHICLE, so every reference to it goes first: its part
-       window, the Target window's selection, the active/last pointers. */
-    dropVehicleRefs(k);
-
     /* The suit outlives the vehicle: take it off the parts list FIRST so
        ~Vehicle does not free it. The walker is in Game::vehicles (kerbalEVA
        added it), so it leaves the list too or the next walk reads freed
        memory. */
-    removeVehicle(k);
     k->parts.clear();
-    delete k;
+    retire(k);
 
     /* Park the suit as a seat occupant (part.h). `owner` is the vehicle the
        capsule sits on. Identity (Part::kerbal) stays on the suit. */
@@ -1332,16 +1366,11 @@ bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
         return false;
     }
 
-    /* Clear itemShip->parts BEFORE the delete: ~Vehicle deletes its parts, and
+    /* Clear itemShip->parts BEFORE the retire: ~Vehicle deletes its parts, and
        the item is already owned by dest -- leaving it in double-frees. */
-    removeVehicle(itemShip);
     if(ship == itemShip) { ship->releaseControl(); }
-    dropVehicleRefs(itemShip);
     itemShip->parts.clear();
-    // A railed ship is already out of the world; RemoveBody on an
-    // unregistered body is UB.
-    if(itemShip->hullInWorld()) { RemoveBody(itemShip->hull); }
-    delete itemShip;
+    retire(itemShip);
     // The carrier's compound gains the item's mass.
     if(dest->owner != nullptr) { dest->owner->rebuildCompound(); }
     toast("Picked up %s", item->def->name.c_str());
@@ -1466,9 +1495,9 @@ void Game::updateDocking() {
        || a->dockArmPort == nullptr) { return; }
     Vehicle *b = a->dockTargetShip;
     /* The target must be another live ship still carrying that port. Every
-       delete site (updateDocking, remove_ship, recoverActive, pickUpItem,
-       kerbalBoard) calls dropVehicleRefs first, so a pointer that survives here
-       is one that was never dropped -- the belt, not the braces. */
+       death goes through retire(), which drops this intent before the hull
+       leaves the world, so a pointer that survives here is one that was never
+       dropped -- the belt, not the braces. */
     bool targetOk = (b != a && !b->isEva());
     if(targetOk) {
         targetOk = false;
@@ -1519,12 +1548,13 @@ void Game::updateDocking() {
     a->dockTargetShip = nullptr;   // the intent is consumed by the dock
     a->dockTargetPort = nullptr;   // (both halves: re-arm and re-target on
     a->dockArmPort = nullptr;      //  a redock)
-    removeVehicle(b);
-    dropVehicleRefs(b);
+    /* b's parts are already a's, so this frees the empty vessel -- and its hull
+       leaves the Bullet world here, not at the sweep, or the ship that just
+       swallowed it spends the next substep colliding with a ghost. */
+    retire(b);
     toast("Docked with %s", bName.c_str());
     printf("[dock] t=%.3f a=\"%s\" b=\"%s\" d=%.3f m v=%.3f m/s\n",
            time, a->name.c_str(), bName.c_str(), bestD, bestV);
-    delete b;
 }
 
 /* Undock: split the most recent seam off the active ship into its own vessel. */
@@ -1689,9 +1719,7 @@ bool Game::remove_ship(Vehicle *v) {
         }
     }
 
-    removeVehicle(v);
-    dropVehicleRefs(v);
-    delete v;
+    retire(v);
 
     if(wasActive) {
         if(next != nullptr) {
@@ -1780,10 +1808,6 @@ void Game::recoverActive() {
     flightSummary.repeatScience = rec.repeat;
     flightSummary.newExperiments = rec.fresh;
 
-    // Part windows on the ship would dangle with it. A seat occupant is never
-    // right-clickable (it is not rendered), so none can point at one.
-    dropVehicleRefs(v);
-
     /* The crew come home: suits peel off to the launch pad before the ship
        dies (part.h: a kerbal is a Part at one place). */
     {
@@ -1796,9 +1820,9 @@ void Game::recoverActive() {
         }
     }
 
-    // Out of the vehicle list, then delete.
-    removeVehicle(v);
-    delete v;
+    // Part windows on the ship would dangle with it, and the crew are already
+    // home: out of the list, out of every reference, out of the world.
+    retire(v);
 
     // No handoff to a neighbour: the flight is over.
     syncShipFocus();

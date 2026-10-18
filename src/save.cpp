@@ -810,6 +810,10 @@ void save_game(Game &g, const std::string &dir) {
 }
 
 void load_game(Game &g, const std::string &dir) {
+    /* A load replaces the world wholesale, so nothing from the old one may
+       still be waiting to die: retire() parked these out of Game::vehicles,
+       where the detach below would never find them. */
+    g.sweepRetired();
     SaveMeta meta = saveMetaFromJson(readJsonFile(dir + "/save.json"));
     /* The save's roster REPLACES the --kerbals file's, so a save stays itself
        after the data file is edited; an absent roster (a save predating the

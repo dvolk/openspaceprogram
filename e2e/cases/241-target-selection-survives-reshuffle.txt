@@ -16,6 +16,10 @@ ARGS --ui-click 4000,"Tracking Ship List/x##rm_pad two"
 ARGS --xfer-log --orbit-interval 1
 EXPECT [target] hook: selected "pad three" (index 3)
 EXPECT Removed 'pad two' (active unchanged: pad one)
+# The click's removal is one death, and the surviving three keep their order
+# (#297: retire is the only way a live vehicle leaves the world).
+EXPECT [vehicle] retired: 'pad two' (3 vehicle(s) left in the world)
+CHECK out.count("[vehicle] retired:") == 1
 CHECK re.search(r"Removed 'pad two'.*target=\"pad three\"", out, re.S)
 FORBID target="pad four"
 FORBID Cannot remove

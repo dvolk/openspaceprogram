@@ -730,12 +730,26 @@ struct Game {
                         int mx, int my);
     // Its entries would dangle after delete.
     void dropPartWindowsFor(Vehicle *ship);
-    /* Out of Game::vehicles. Every delete site calls this BEFORE deleting, so
-       no walk of the list can reach a freed Vehicle. #297 grows this into
-       retire() + one deferred sweep; for now it is the erase and nothing more. */
+    /* The one way a live Vehicle dies: out of Game::vehicles, out of every
+       reference the Game and the transfer planner hold, and out of the physics
+       world -- then parked in `retired` until the next sweep frees it. After
+       this only the caller's own surgery may touch `v` (handing a suit off its
+       parts list, peeling crew to the pad); the object stays VALID so a pointer
+       captured earlier in the frame cannot dangle under it. */
+    void retire(Vehicle *v);
+    /* Free everything retire() parked since the last sweep. Called once per
+       frame at the top of the loop (main.cpp) and before any bulk teardown
+       (unloadGame) -- never from a game action, which is what makes the
+       deferral worth having. */
+    void sweepRetired();
+    /* retire()'s deferred half. Nothing walks or reads it: a retired Vehicle is
+       out of the world and waiting to be freed, not a container of state. */
+    std::vector<Vehicle *> retired;
+    /* retire()'s two halves, public only so the bulk teardowns (unloadGame,
+       load_game) can read what they are clearing. A game action calls retire(). */
     void removeVehicle(Vehicle *v);
     // Clears every reference the Game and the transfer planner hold to a
-    // vehicle that is about to be deleted. Call immediately BEFORE the delete.
+    // vehicle that is about to die.
     void dropVehicleRefs(Vehicle *v);
     // Every game teardown calls this (scene transitions close nothing).
     void clearFlightSummary();

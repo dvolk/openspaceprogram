@@ -1,12 +1,16 @@
 NAME eva-board-round-trip
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,pad --eva 2000 --board 4000
 # Boarding deletes the walking VEHICLE and parks its suit Part in the capsule as
-# a seat (part.h), so the fleet must come back to exactly one vessel. It was
+# a seat (part.h), so the world must come back to exactly one vessel. It was
 # briefly two: the handoff read a stale active pointer at the freed walker.
 EXPECT Crew: 'Ash' aboard 'racer' part 0 (1/1)
 EXPECT EVA: 'Ash' out of 'racer' part 0
 EXPECT Board: 'Ash' into 'racer' part 0
 EXPECT Active ship 1 of 1: racer
+# The walker's VEHICLE is the only thing that dies -- the suit survives it,
+# which is why kerbalBoard clears the parts list before retiring (#297).
+EXPECT [vehicle] retired: 'Ash' (1 vehicle(s) left in the world)
+CHECK out.count("[vehicle] retired:") == 1
 FORBID GL_
 FORBID error:
 CHECK out.count("EVA: 'Ash' out of 'racer'") == 1

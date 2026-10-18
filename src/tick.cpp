@@ -24,8 +24,8 @@ void tick(Game &g) {
 
     /* The live list, not a snapshot: an SoI crossing re-homes a Vehicle without
        moving it between containers, so a mid-tick crossing cannot reshuffle or
-       dangle the walk. Only a delete changes it, and every delete site erases
-       from Game::vehicles before freeing. */
+       dangle the walk. Only a death changes it, and Game::retire erases the
+       vehicle before anything can see the frame again. */
     std::vector<Vehicle *> &vehicles = g.vehicles;
 
     // Sync the difficulty scale onto every ship.
@@ -162,10 +162,11 @@ void tick(Game &g) {
         g.logic_ticks++;   // one logic tick ran (its substeps are not counted)
 
         if(g.time_accel != 0) {
-            /* No re-snapshot here. updateDocking() deletes the absorbed ship at
-               the end of a step, but it erases it from the live list first, so
-               the next step's walk simply stops seeing it -- which is exactly
-               what the old per-step collectVehiclesInto was reconstructing. */
+            /* No re-snapshot here. updateDocking() retires the absorbed ship at
+               the end of a step, but retiring takes it out of the live list
+               first, so the next step's walk simply stops seeing it -- which is
+               exactly what the old per-step collectVehiclesInto was
+               reconstructing. The free itself waits for the frame's sweep. */
 
             // SOI owner before this tick's frame bookkeeping (handoff drops
             // warp to 1x).
