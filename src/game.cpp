@@ -952,7 +952,7 @@ bool Game::ensureSystemForSave(const std::string &dir, bool *switched) {
         std::string why;
         try {
             validate_world_buildings(newSys, buildings);
-            why = preflightSave(dir, parts, newSys);
+            why = preflightSave(dir, parts, newSys, roster);
         } catch(const std::exception &e) {
             why = e.what();
         }

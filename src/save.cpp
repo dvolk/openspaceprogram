@@ -78,6 +78,18 @@ void writeJson(const std::string &path, const nlohmann::json &j) {
     }
 }
 
+/* One roster id, one lookup, one sentence. The builders throw with these words
+   and preflightSave refuses with them, so the two paths cannot disagree about
+   either the rule or the wording (#302) -- the same reason validateShipParts
+   exists. 0 = a save predating the roster, which stays anonymous under the name
+   the file carries. */
+static std::string refuseUnknownRosterId(const CrewRoster &roster, uint64_t id,
+                                         const std::string &who) {
+    if(id == 0 || roster.find(id) != nullptr) { return ""; }
+    return "load: " + who + " names roster id " + std::to_string(id)
+           + ", which the roster has no entry for";
+}
+
 nlohmann::json readJsonFile(const std::string &path) {
     std::ifstream f(path.c_str());
     if(!f.is_open()) { throw std::runtime_error("load: cannot open " + path); }
@@ -270,15 +282,14 @@ void buildSeatParts(Game &g, const std::vector<SavePart> &saved, Part *cap,
         }
         /* Identity lives in the roster, so naming one means finding it there:
            rebuilding past a missing entry would silently strip that person's
-           skills and name. 0 = a save predating the roster, which stays
-           anonymous under the name the file carries. */
+           skills and name. Same rule and same words as preflightSave (#302). */
+        if(std::string why = refuseUnknownRosterId(g.roster, sp.seat_profile,
+                                                  "'" + shipName + "' seat");
+           !why.empty()) {
+            throw std::runtime_error(why);
+        }
         const KerbalProfile *profile = (sp.seat_profile != 0)
             ? g.roster.find(sp.seat_profile) : nullptr;
-        if(sp.seat_profile != 0 && profile == nullptr) {
-            throw std::runtime_error("load: '" + shipName + "' seat names roster id "
-                                     + std::to_string(sp.seat_profile)
-                                     + ", which the roster has no entry for");
-        }
         Part *suit = makeSuitPart(g, sp, pd, profile);
         /* The seat edge before the pockets: buildInventoryItems copies the
            container's owner onto each item. A throw leaves everything wired into
@@ -536,13 +547,13 @@ static std::string validateKerbalDef(const SaveShip &s, const PartsCatalog &cat,
     return "";
 }
 
-/* The crew-pool checks that need neither the roster nor a world: a pool entry is
-   a person standing on the pad, so it must be a known kerbal part carrying no
-   seats of its own -- the same rule buildSeatParts gives a seat (a non-kerbal
-   here breaks checkPartInvariants; a nested seat array would silently lose a
-   person). The roster-id check stays with the builder, which has the roster. */
+/* The crew-pool checks that need no world: a pool entry is a person standing on
+   the pad, so it must be a known kerbal part carrying no seats of its own --
+   the same rule buildSeatParts gives a seat (a non-kerbal here breaks
+   checkPartInvariants; a nested seat array would silently lose a person). */
 static std::string validateCrewPool(const std::vector<SavePart> &pool,
-                                    const PartsCatalog &cat) {
+                                    const PartsCatalog &cat,
+                                    const CrewRoster &roster) {
     for(const SavePart &sp : pool) {
         const PartDef *pd = cat.find(sp.part);
         if(pd == nullptr) {
@@ -556,6 +567,11 @@ static std::string validateCrewPool(const std::vector<SavePart> &pool,
         if(!sp.seats.empty()) {
             return "load: crew pool entry '" + sp.part + "' has "
                    + std::to_string(sp.seats.size()) + " seat(s) of its own";
+        }
+        if(std::string why = refuseUnknownRosterId(roster, sp.seat_profile,
+                                                  "crew pool entry '" + sp.part
+                                                  + "'"); !why.empty()) {
+            return why;
         }
     }
     return "";
@@ -730,15 +746,15 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
 Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
     /* The roster is where identity lives, so a kerbal naming one must find it
        there: rebuilding past a missing entry would silently strip that person's
-       skills and name. 0 = a save predating the roster, which stays anonymous.
-       Checked before the build so a throw frees nothing but `k` itself. */
+       skills and name. Checked before the build so a throw frees nothing but `k`
+       itself. Same rule and same words as preflightSave (#302). */
+    if(std::string why = refuseUnknownRosterId(g.roster, s.profile_id,
+                                              "kerbal '" + s.name + "'");
+       !why.empty()) {
+        throw std::runtime_error(why);
+    }
     const KerbalProfile *profile = (s.profile_id != 0)
         ? g.roster.find(s.profile_id) : nullptr;
-    if(s.profile_id != 0 && profile == nullptr) {
-        throw std::runtime_error("load: kerbal '" + s.name + "' names roster id "
-                                 + std::to_string(s.profile_id)
-                                 + ", which the roster has no entry for");
-    }
     /* A ShipDef owns nothing, so throwing here frees nothing. The rule and its
        wording live in validateKerbalDef, which preflightSave also runs (#302). */
     ShipDef def;
@@ -881,6 +897,25 @@ struct RosterRollback {
     }
 };
 
+/* The roster a load binds people to: the save's own when it carries one -- so a
+   save stays itself after --kerbals is edited -- otherwise the running cast list
+   (a save predating the roster). Every roster id the save names is looked up in
+   THIS, so preflightSave must check against it too: checking the list standing
+   now would refuse a save that merely disagrees with an edited data file, which
+   is the exact thing a save carries its roster to survive (#302). */
+CrewRoster rosterFromSave(const SaveMeta &meta, const CrewRoster &running) {
+    if(meta.roster.empty()) { return running; }
+    CrewRoster next;
+    for(const SaveKerbal &sk : meta.roster) {
+        KerbalProfile p;
+        p.id = sk.id;
+        p.name = sk.name;
+        for(int r = 0; r < NumSkills; r++) { p.skill[r] = sk.skill[r]; }
+        next.profiles.push_back(p);
+    }
+    return next;
+}
+
 } // namespace
 
 // ---- the public entry points (declared in save.h) ---------------------------
@@ -970,17 +1005,27 @@ void save_game(Game &g, const std::string &dir) {
    which is what keeps a dangling body name from costing the career behind the
    switch (#302), and from silently parking a ship inside the wrong body (#303).
 
-   What still only throws after the switch needs the roster or a built Vehicle:
-   the roster-id lookups, refuseDoubleClaim and checkPartInvariants (#302). */
+   `roster` is here for the same reason: a save naming a roster entry the roster
+   lacks used to be the builder's business only, so a CROSS-SYSTEM load of it
+   switched systems -- tearing the running career down -- and only then refused.
+   The ids are checked against the roster the LOAD will bind to (rosterFromSave),
+   not the one standing now: a save carries its own cast list precisely so an
+   edited --kerbals file cannot break it, and refusing that would be a new bug
+   dressed up as a fix.
+
+   What still only throws after the switch: refuseDoubleClaim and
+   checkPartInvariants, both of which need a built Vehicle (#302). */
 std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
-                          const System &sys) {
+                          const System &sys, const CrewRoster &roster) {
     SaveMeta meta;
     try {
         meta = saveMetaFromJson(readJsonFile(dir + "/save.json"));
     } catch(const std::exception &e) {
         return e.what();
     }
-    if(std::string why = validateCrewPool(meta.crew_pool, cat); !why.empty()) {
+    const CrewRoster bind = rosterFromSave(meta, roster);
+    if(std::string why = validateCrewPool(meta.crew_pool, cat, bind);
+       !why.empty()) {
         return why;
     }
     std::set<uint64_t> saveUids;   // spans every ship, as the load's map does
@@ -999,6 +1044,25 @@ std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
             if(std::string why = validateKerbalDef(s, cat, nullptr);
                !why.empty()) {
                 return why;
+            }
+            if(std::string why = refuseUnknownRosterId(bind, s.profile_id,
+                                                      "kerbal '" + s.name + "'");
+               !why.empty()) {
+                return why;
+            }
+        }
+        /* A seated person's identity is a roster id on its seat entry. The
+           builder refuses these too, but only once the world has been replaced
+           -- which is exactly what costs a career on a cross-system load (#302). */
+        for(const SavePart &sp : s.parts) {
+            for(const SavePart &seat : sp.seats) {
+                if(std::string why = refuseUnknownRosterId(bind,
+                                                          seat.seat_profile,
+                                                          "'" + s.name
+                                                          + "' seat");
+                   !why.empty()) {
+                    return why;
+                }
             }
         }
         try {
@@ -1039,14 +1103,7 @@ void load_game(Game &g, const std::string &dir) {
     RosterRollback rosterRollback(g.roster);
     if(!meta.roster.empty()) {
         rosterRollback.swapped = true;
-        g.roster.profiles.clear();
-        for(const SaveKerbal &sk : meta.roster) {
-            KerbalProfile p;
-            p.id = sk.id;
-            p.name = sk.name;
-            for(int r = 0; r < NumSkills; r++) { p.skill[r] = sk.skill[r]; }
-            g.roster.profiles.push_back(p);
-        }
+        g.roster = rosterFromSave(meta, g.roster);
     }
     /* The building pool is the save's (format 4: crew_pool). Built OFF the pad
        and committed only once the whole load succeeds: a refused load must
@@ -1115,10 +1172,11 @@ void load_game(Game &g, const std::string &dir) {
         /* The pad's cast is built in the same transaction as the ships: the
            ship-file parse above can throw too, and a pool built before it would
            leak. Building it here also lets refuseDoubleClaim see the ids these
-           suits wear. The part / type / seats rule lives in validateCrewPool,
-           which preflightSave also runs before a cross-system switch (#302);
-           what stays inside the loop needs the roster. */
-        if(std::string why = validateCrewPool(meta.crew_pool, g.parts);
+           suits wear. The part / type / seats rule -- roster ids included --
+           lives in validateCrewPool, which preflightSave also runs before a
+           cross-system switch (#302), so the loop below can trust every id it
+           reads. */
+        if(std::string why = validateCrewPool(meta.crew_pool, g.parts, g.roster);
            !why.empty()) {
             throw std::runtime_error(why);
         }
@@ -1126,11 +1184,6 @@ void load_game(Game &g, const std::string &dir) {
             const PartDef *pd = g.parts.find(sp.part);   // validated above
             const KerbalProfile *src = (sp.seat_profile != 0)
                 ? g.roster.find(sp.seat_profile) : nullptr;
-            if(sp.seat_profile != 0 && src == nullptr) {
-                throw std::runtime_error("load: crew pool entry names roster id "
-                                         + std::to_string(sp.seat_profile)
-                                         + ", which the roster has no entry for");
-            }
             Part *suit = makeSuitPart(g, sp, pd, src);
             newPool.push_back(suit);
             // What the suit carries rides home with it (saveSeatPart writes it).

@@ -1,0 +1,24 @@
+# The wrong version of #302's fix, caught. A save carries its OWN cast list
+# (save.json's "roster") precisely so editing res/data/kerbals.json cannot break
+# it, and load_game swaps that list in BEFORE any builder resolves an id against
+# it. So the pre-switch roster check has to run against the roster the LOAD will
+# bind to, not the one standing now. Checking the running list instead refuses a
+# perfectly loadable save: a new bug dressed up as a fix.
+# The fixture is save_solar plus a roster entry the shipped kerbals.json has
+# never heard of -- id 9001, "Rook" -- with the capsule's seat naming it. The
+# load is cross-system, so preflight runs; and because the seat id only resolves
+# in the save's own list, a successful load also proves the swap happened before
+# the builders looked (otherwise they refuse, after the switch, which FORBID
+# below catches).
+NAME cross-system-save-carries-its-own-roster
+ARGS --time-accel 1 --timeout 8
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --reload e2e/fixtures/save_solar_own_roster --reload-at 3000
+EXPECT Loaded game from e2e/fixtures/save_solar_own_roster
+FORBID [load] refused
+FORBID [load] roster restored
+FORBID Segmentation
+FORBID Assertion
+FORBID GL_
+FORBID error:
+LIMIT 90
