@@ -29,6 +29,10 @@
 #include "science.h"     // Experiment (science data on parts + the recover score)
 
 struct Game;   // save_game / load_game take one; keeps game.h out of this header
+struct System;         // system.h; only needed by reference below
+class TerrainBody;     // terrain.h; LoadWorld holds two
+struct PartsCatalog;   // shipdef.h; only needed by reference below
+struct CrewRoster;     // crew.h; only needed by reference below
 
 /* Cross-part references are keyed by Part::uid, NOT the def-authored instance
    id: `id` is unique only within one ship def, and a docked ship carries two
@@ -1080,12 +1084,41 @@ inline void delete_save(const std::string &dir, const std::string &base) {
 void save_game(Game &g, const std::string &dir);
 
 // Replace the live game state with the one in dir. CLI --load and the in-game
-// Load menu.
+// Load menu. Same-system only: a cross-system load must build against the
+// incoming system first (buildSaveWorld + commitSaveWorld, #305).
 void load_game(Game &g, const std::string &dir);
 
-struct PartsCatalog;   // shipdef.h; only needed by reference below
-struct System;         // system.h; only needed by reference below
-struct CrewRoster;     // crew.h; only needed by reference below
+/* The world a save's builders resolve against. Catalogs come from Game (they
+   do not change with the system); the bodies do. A cross-system load builds
+   against the INCOMING system while the running career is still intact, and
+   only installs once every rule has passed (#305). */
+struct LoadWorld {
+    System &sys;
+    TerrainBody *home;
+    TerrainBody *sun;
+    double time;   // the save's epoch
+};
+
+/* What a successful build produced, waiting to be installed. Nothing here is
+   in the live world yet. */
+struct BuiltSave;
+
+/* Build the whole save against `w`. Throws on any rule -- including the three
+   that used to fire only after a cross-system switch had already torn the
+   running career down (checkPartInvariants, addSeat, make_part/build_ship).
+   The live game is untouched except a roster swap that rolls back on throw.
+   Does NOT move the clock: the commit does. Returns a heap BuiltSave the
+   caller must either commitSaveWorld or delete. */
+BuiltSave *buildSaveWorld(Game &g, const LoadWorld &w, const std::string &dir);
+
+/* Adopt a successful build into the live game. Takes ownership of `b`.
+   `fleetAlreadyGone` when installSystem already tore the old vehicles down
+   (a cross-system load): resetWorld emptied Game::vehicles. Moves the clock
+   to the save's epoch and then parks the rails. */
+void commitSaveWorld(Game &g, BuiltSave *b, bool fleetAlreadyGone);
+
+/* Free a built save the caller decided not to commit (BuiltSave is opaque). */
+void discardSaveWorld(BuiltSave *b);
 
 /* Read and parse a save -- save.json plus every ship file -- and run everything
    worth refusing WITHOUT building anything. "" = looks loadable, else the reason,

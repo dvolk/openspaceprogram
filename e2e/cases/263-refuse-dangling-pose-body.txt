@@ -13,10 +13,13 @@ ARGS --system res/systems/ksp_system.json --time-accel 1 --startship racer,res/s
 ARGS --reload e2e/fixtures/save_dangling_pose_body --reload-at 4000
 ARGS --timeout 10
 EXPECT [load] refused e2e/fixtures/save_dangling_pose_body: load: saved ship 'racer' has a pose body 'Kerbin Minor' that is not in this system
-# A refusal on the same-system path is still a transaction: the clock comes back
-# (#301) and the running game keeps its science.
-EXPECT [load] clock restored
-EXPECT [load] science score=0 recovered=0 (unchanged)
+# A refusal is still a transaction: the running game is untouched (#305/#301).
+# Nothing restores the clock because nothing moved it -- the build refuses
+# before commitSaveWorld, the only clock writer.
+EXPECT [load] running game unchanged
+EXPECT science score=0 recovered=0
+FORBID [load] clock restored
+FORBID science reset
 FORBID Loaded game from
 FORBID Segmentation
 FORBID GL_

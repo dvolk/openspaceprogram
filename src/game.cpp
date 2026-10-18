@@ -979,57 +979,123 @@ bool Game::ensureSystemForSave(const std::string &dir, bool *switched) {
 }
 
 bool Game::loadFrom(const std::string &dir) {
-    bool switched = false;
-    if(!ensureSystemForSave(dir, &switched)) { return false; }
-    /* load_game moves the clock BEFORE anything can fail: setTime re-derives
-       every body's frame tree to the save's epoch (a ship restored into a
-       ROTATING frame captures its rail state from those transforms), and
-       time_accel and exhaust_scale come from the file too. A refusal that left
-       them there handed the surviving game a paused clock at the SAVE's time
-       with its bodies parked at the SAVE's epoch (#301). Rails are a pure
-       function of `time`, so setting it back puts the frames back exactly. */
-    const double prev_time = time;
-    const int prev_accel = time_accel;
-    const float prev_exhaust = args.exhaust_scale;
-    try {
-        load_game(*this, dir);
-    } catch(const std::exception &e) {
-        printf("[load] refused %s: %s\n", dir.c_str(), e.what());
-        /* The two scalars are world-independent, so restore them either way --
-           after a failed cross-system load the title's backdrop would otherwise
-           sit frozen at the save's warp 0. Only the clock is switch-dependent:
-           its epoch belongs to bodies that no longer exist. (switchSystem never
-           writes `time`, so re-setting it there would be a harmless no-op --
-           it is skipped for honesty, not necessity.) */
-        time_accel = prev_accel;
-        args.exhaust_scale = prev_exhaust;
-        if(!switched) {
-            setTime(prev_time);
-            printf("[load] clock restored: t=%.1f, warp %d, exhaust %.2fx\n",
-                   time, time_accel, args.exhaust_scale);
-        }
-        // A same-system refusal leaves science intact (load_game adopts it only
-        // on success); a cross-system one already reset it.
-        if(switched) {
-            printf("[load] science reset by the system switch "
-                   "(score=%d, %zu recovered)\n",
-                   science.score, science.recovered.size());
-        } else {
-            printf("[load] science score=%d recovered=%zu (unchanged)\n",
-                   science.score, science.recovered.size());
-        }
+    /* Transactional end to end (#305): a cross-system load BUILDS the whole
+       save against the incoming system while the running career is still
+       alive, and only then installs. Every rule -- including the three that
+       used to fire only after the switch (checkPartInvariants, addSeat,
+       make_part/build_ship) -- therefore refuses with the fleet, the science
+       and the scene intact. A refusal never moves the clock either (#301):
+       commitSaveWorld is the only writer, and it runs after the build. */
+    bool format_ok = true;
+    const std::string sysfile = saveSystemFile(dir, &format_ok);
+    if(!format_ok) {
+        printf("[load] refused %s: its \"format\" is not this build's format %d\n",
+               dir.c_str(), kSaveFormat);
         fflush(stdout);
-        toast("Load failed: %s", e.what());
-        // A switch tore the old ships down: a failed load leaves no game, so
-        // title. Without a switch the old game and scene are intact: stay.
-        if(switched) { enterTitle(*this); }
+        toast("Load failed: this save's format is not this build's");
         return false;
     }
-    /* load_game replaced the world IN PLACE -- it never runs resetWorld -- so the
-       ephemera list has to run here: a card, a toast, a telemetry series or a
-       thrust latch from the game that just ended is not this one's (#304).
-       SUCCESS only: a refused same-system load leaves the old game running, and
-       clearing then would be exactly the bug this list exists to prevent. */
+    const bool cross = !sysfile.empty()
+        && baseName(sysfile) != baseName(systemPath.empty()
+                                         ? args.system_file : systemPath);
+
+    if(!cross) {
+        try {
+            if(std::string why = preflightSave(dir, parts, sys, roster);
+               !why.empty()) {
+                printf("[load] refused %s: %s\n", dir.c_str(), why.c_str());
+                printf("[load] running game unchanged (t=%.1f, warp %d, "
+                       "science score=%d recovered=%zu)\n",
+                       time, time_accel, science.score, science.recovered.size());
+                fflush(stdout);
+                toast("Load failed: %s", why.c_str());
+                return false;
+            }
+            load_game(*this, dir);
+        } catch(const std::exception &e) {
+            printf("[load] refused %s: %s\n", dir.c_str(), e.what());
+            /* A refusal never moves the clock (commitSaveWorld is the only
+               writer, and it runs after the build), so there is nothing to
+               restore -- say what is still standing instead (#301). */
+            printf("[load] running game unchanged (t=%.1f, warp %d, "
+                   "science score=%d recovered=%zu)\n",
+                   time, time_accel, science.score, science.recovered.size());
+            fflush(stdout);
+            toast("Load failed: %s", e.what());
+            return false;
+        }
+        clearEphemeralState();
+        if(ship != nullptr) { enterFlight(*this); } else { enterSpaceCenter(*this); }
+        return true;
+    }
+
+    /* Cross-system. Load the incoming system, build against it, and only then
+       install -- the point of no return. */
+    std::vector<std::string> syncNames;
+    try {
+        syncNames = saveShipBodies(dir);
+        if(std::string hn = systemHomeName(sysfile); !hn.empty()) {
+            syncNames.push_back(hn);
+        }
+    } catch(const std::exception &e) {
+        toast("Load failed: %s", e.what());
+        return false;
+    }
+
+    System newSys = System{};
+    try {
+        const WorldShaders world = get_world_shaders();
+        newSys = load_system(sysfile.c_str(), world.terrain, world.sun, nullptr);
+    } catch(const std::exception &e) {
+        printf("[load] cannot switch to system '%s': %s\n", sysfile.c_str(), e.what());
+        fflush(stdout);
+        toast("Load failed: %s", e.what());
+        return false;
+    }
+    // Free the incoming system's bodies on any exit that is not the install
+    // (after installSystem's move, newSys.bodies is empty and this is a no-op).
+    struct Guard {
+        std::vector<TerrainBody *> *bodies;
+        ~Guard() { for(TerrainBody *b : *bodies) { delete b; } }
+    } guard{ &newSys.bodies };
+
+    BuiltSave *built = nullptr;
+    try {
+        validate_world_buildings(newSys, buildings);
+        if(std::string why = preflightSave(dir, parts, newSys, roster);
+           !why.empty()) {
+            printf("[load] refused %s: %s (before the system switch)\n",
+                   dir.c_str(), why.c_str());
+            fflush(stdout);
+            toast("Load failed: %s", why.c_str());
+            return false;
+        }
+        // buildSaveWorld reads the save's clock itself; time here is only a hint.
+        LoadWorld w{ newSys, newSys.home, newSys.root, 0.0 };
+        built = buildSaveWorld(*this, w, dir);
+        /* Build succeeded: the career is about to go. installSystem is the
+           point of no return -- it tears the old fleet down and re-points us
+           at the new bodies (the same TerrainBody* the built vehicles hold).
+           The guard frees nothing after the move: newSys.bodies is empty. */
+        installSystem(std::move(newSys), sysfile, syncNames);
+        printf("[load] save is from system '%s'; switched before loading\n",
+               sysfile.c_str());
+        fflush(stdout);
+        /* Ownership transfers into commitSaveWorld (which wraps it in a
+           unique_ptr). Null it first so a throw inside the commit cannot
+           double-free through the catch below. */
+        BuiltSave *adopt = built;
+        built = nullptr;
+        commitSaveWorld(*this, adopt, true);   // resetWorld already emptied the fleet
+    } catch(const std::exception &e) {
+        discardSaveWorld(built);
+        printf("[load] refused %s: %s (before the system switch)\n",
+               dir.c_str(), e.what());
+        fflush(stdout);
+        toast("Load failed: %s", e.what());
+        // The build refused before install: the old game is intact. Stay.
+        return false;
+    }
     clearEphemeralState();
     // A shipless save is still a game: land on the hub, not the title.
     if(ship != nullptr) { enterFlight(*this); } else { enterSpaceCenter(*this); }

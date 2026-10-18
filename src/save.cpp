@@ -9,6 +9,7 @@
 #include <filesystem>  // directory_iterator in save_game
 #include <fstream>
 #include <map>
+#include <memory>   // unique_ptr (BuiltSave's build/commit halves)
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -213,6 +214,25 @@ static std::string validateSeatArray(const PartsCatalog &cat,
         return "load: '" + shipName + "' capsule '" + pd.name + "' has "
                + std::to_string(saved.size()) + " seat(s), more than its "
                + std::to_string(pd.crew_capacity) + "-seat capacity";
+    }
+    /* Explicit seat_slot values must be in range and unique. addSeat would
+       refuse the second claim of a slot only once the capsule is BUILT, which
+       on a cross-system load is after the switch already tore the career down
+       (#305). The capacity rule above cannot see this: two entries can name
+       the same slot while the count still fits. */
+    std::set<int> namedSlots;
+    for(const SavePart &sp : saved) {
+        if(sp.seat_slot < 0) { continue; }
+        if(sp.seat_slot >= pd.crew_capacity) {
+            return "load: '" + shipName + "' capsule '" + pd.name
+                   + "' names seat slot " + std::to_string(sp.seat_slot)
+                   + " but has only " + std::to_string(pd.crew_capacity)
+                   + " seat(s)";
+        }
+        if(!namedSlots.insert(sp.seat_slot).second) {
+            return "load: '" + shipName + "' capsule '" + pd.name
+                   + "' has two seats naming slot " + std::to_string(sp.seat_slot);
+        }
     }
     for(const SavePart &sp : saved) {
         const PartDef *sd = cat.find(sp.part);
@@ -660,7 +680,7 @@ static std::string validateCrewPool(const std::vector<SavePart> &pool,
 // docking seam's relative geometry is not recoverable from an attach spec.
 // `savedUidToPart` (optional) is the caller's because it must span every ship
 // file -- a dock target's port lives in another ship.
-Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
+Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
                                 std::map<uint64_t, Part *> *savedUidToPart) {
     const PartsCatalog &cat = g.parts;
     /* Validate before constructing: nothing to unwind, and the same walk is what
@@ -776,14 +796,14 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
        another body. Say so (#303). */
     if(s.home.empty()) {
         printf("[load] '%s' saved no home body: using %s\n",
-               s.name.c_str(), g.home->name.c_str());
-        v->home = g.home;
+               s.name.c_str(), w.home->name.c_str());
+        v->home = w.home;
     } else {
-        v->home = resolveBody(g.sys, s.home, who, "home");
+        v->home = resolveBody(w.sys, s.home, who, "home");
     }
     v->scenario = scn;
     // Vehicle::slot is deliberately NOT restored: the next placement recomputes it.
-    v->sun = g.sun;
+    v->sun = w.sun;
     // BEFORE setSoi, whose observe is then a no-op on the unchanged body.
     v->flog = s.flog;
     if(s.pose.body.empty()) {
@@ -791,8 +811,8 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
                s.name.c_str(), v->home->name.c_str());
     }
     TerrainBody *pb = s.pose.body.empty() ? v->home
-                                          : resolveBody(g.sys, s.pose.body, who, "pose");
-    v->setSoi(s.pose.rotating ? pb->rot_frame : pb->frame, g.time);
+                                          : resolveBody(w.sys, s.pose.body, who, "pose");
+    v->setSoi(s.pose.rotating ? pb->rot_frame : pb->frame, w.time);
 
     v->placeShip(s.pose.pos, s.pose.rot);
     v->setVelocity(s.pose.vel);
@@ -822,7 +842,7 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
 // build_ship's init() re-seeds the suit tank full, so the saved contents must
 // be restored after it. A WALKING kerbal only -- a seated one is a `seats`
 // element of its capsule's part entry, not a vehicle (part.h).
-Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
+Kerbal *buildKerbalFromSave(Game &g, const LoadWorld &w, const SaveShip &s) {
     /* The roster is where identity lives, so a kerbal naming one must find it
        there: rebuilding past a missing entry would silently strip that person's
        skills and name. Checked before the build so a throw frees nothing but `k`
@@ -846,11 +866,11 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
        save's own roster reaches the kerbal instead of leaving two spellings. */
     if(profile != nullptr) { k->name = profile->name; }
     k->defPath = s.defPath;
-    k->home = g.home;
+    k->home = w.home;
     k->scenario = nullptr;
-    k->m_parent = g.home;
-    k->sun = g.sun;
-    k->frame = g.home->rot_frame;
+    k->m_parent = w.home;
+    k->sun = w.sun;
+    k->frame = w.home->rot_frame;
     /* build_ship can throw with parts attached; k is not in the load's
        `built` list yet, so the rollback would not free it. */
     try {
@@ -896,15 +916,17 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
        vehicle at all -- they are a `seats` element of their capsule (part.h),
        built by buildSeatParts. */
     TerrainBody *body = s.pose.body.empty()
-        ? g.home
-        : resolveBody(g.sys, s.pose.body, "saved kerbal '" + s.name + "'", "pose");
+        ? w.home
+        : resolveBody(w.sys, s.pose.body, "saved kerbal '" + s.name + "'", "pose");
     k->home = body;
-    k->setSoi(s.pose.rotating ? body->rot_frame : body->frame, g.time);
+    k->setSoi(s.pose.rotating ? body->rot_frame : body->frame, w.time);
     k->placeShip(s.pose.pos, s.pose.rot);
     k->setVelocity(s.pose.vel);
     SetAngVelocity(k->hull, s.pose.angvel);
-    // a railed kerbal stays parked (phase 2 skips crew)
-    if(s.onRails) { k->goOnRails(); }
+    /* NOT goOnRails here: the commit runs it after setTime + the heavy phase,
+       because isGrounded reads terrain height and a build against an
+       uninstalled system has no ground yet (#305). The save's `onRails` is
+       restored in the commit's phase 2, like every ship. */
     /* The identity binding is the one fact about a loaded kerbal the vehicle
        list cannot show, so make it observable: a save that silently rebuilds
        anonymous people is exactly the bug this line exists to catch. */
@@ -1082,6 +1104,18 @@ void save_game(Game &g, const std::string &dir) {
            g.gameName.c_str());
 }
 
+/* True if the system has a VAB_LAUNCH_PAD. Checks the world_buildings list,
+   not TerrainBody::pads, so it works on a system that is loaded but not yet
+   installed (place_world_buildings is what fills pads -- and a cross-system
+   preflight must not depend on it). Same data find_launch_site reads, one
+   stage earlier. */
+static bool systemHasCrewPad(const System &sys) {
+    for(const WorldBuilding &w : sys.world_buildings) {
+        if(w.hasFlag("VAB_LAUNCH_PAD")) { return true; }
+    }
+    return false;
+}
+
 /* Parse the whole save and run every check that can run before the world
    changes, building nothing. Deliberately the SAME parser, catalog, scenario
    table and validators the builders use, not a second set of rules: each check
@@ -1115,8 +1149,9 @@ std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
     }
     /* A standing cast needs somewhere to stand. load_game throws this once the
        ships are built, which on the cross-system path is after the switch
-       already tore the running game down (#302). */
-    if(!meta.crew_pool.empty() && homeCrewPad(sys) == nullptr) {
+       already tore the running game down (#302). systemHasCrewPad, not
+       homeCrewPad: the incoming system's pads are not placed yet. */
+    if(!meta.crew_pool.empty() && !systemHasCrewPad(sys)) {
         return "load: the save has " + std::to_string(meta.crew_pool.size())
                + " kerbal(s) standing at the launch site, but this system has no "
                "VAB_LAUNCH_PAD to stand them on";
@@ -1225,12 +1260,38 @@ std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
     return "";
 }
 
-void load_game(Game &g, const std::string &dir) {
+/* What a successful build produced, waiting to be installed. Nothing here is
+   in the live world yet: on a cross-system load the incoming system is not
+   even installed, so a refusal costs nothing (#305). Completes the opaque
+   BuiltSave the header forward-declares. */
+struct BuiltSave {
+    SaveMeta meta;
+    std::vector<SaveShip> saves;              // parsed, for the commit's phase 2
+    std::vector<Vehicle *> vehicles;          // save order
+    std::vector<Part *> pool;                 // the home pad's new standing cast
+    std::map<std::string, Vehicle *> bySlug;
+    std::map<uint64_t, Part *> savedUidToPart;
+    std::string dir;
+};
+
+/* Build the whole save against `w`. Throws on any rule -- including the three
+   that used to fire only after a cross-system switch had already torn the
+   running career down (checkPartInvariants, addSeat, make_part/build_ship).
+   The live game is untouched except a roster swap that rolls back on throw.
+   Does NOT move the clock: the commit does, so a refusal leaves it alone. */
+BuiltSave *buildSaveWorld(Game &g, const LoadWorld &w, const std::string &dir) {
     /* A load replaces the world wholesale, so nothing from the old one may
        still be waiting to die: retire() parked these out of Game::vehicles,
-       where the detach below would never find them. */
+       where the commit's delete would never find them. */
     g.sweepRetired();
-    SaveMeta meta = saveMetaFromJson(readJsonFile(dir + "/save.json"));
+    std::unique_ptr<BuiltSave> out(new BuiltSave);
+    out->dir = dir;
+    out->meta = saveMetaFromJson(readJsonFile(dir + "/save.json"));
+    SaveMeta &meta = out->meta;
+    /* The save's clock is the epoch the builders stamp setSoi with. The
+       caller's w.time is only a hint (a cross-system load does not yet know
+       the save's time when it prepares the target system). */
+    LoadWorld ww{ w.sys, w.home, w.sun, meta.time };
     /* The save's roster REPLACES the --kerbals file's, so a save stays itself
        after the data file is edited; an absent roster (a save predating the
        roster) keeps the file's. Done before the ships are built, which resolves
@@ -1247,66 +1308,29 @@ void load_game(Game &g, const std::string &dir) {
     /* The building pool is the save's (format 4: crew_pool). Built OFF the pad
        and committed only once the whole load succeeds: a refused load must
        leave the running cast standing, exactly as it leaves the running ships.
-       The build itself runs in the ships' try below, so one rollback frees it
-       whatever throws. No fallback mint -- an empty pool is a spent cast, a
-       legal state. */
-    StaticBuilding *homePad = homeCrewPad(g.sys);
-    if(homePad == nullptr && !meta.crew_pool.empty()) {
+       No fallback mint -- an empty pool is a spent cast, a legal state.
+       The pad itself is resolved at commit: a cross-system build runs before
+       place_world_buildings, so homeCrewPad is not meaningful yet. */
+    if(!meta.crew_pool.empty() && !systemHasCrewPad(w.sys)) {
         throw std::runtime_error("load: the save has " + std::to_string(meta.crew_pool.size())
                                  + " kerbal(s) standing at the launch site, but this "
                                  + "system has no VAB_LAUNCH_PAD to stand them on");
     }
-    std::vector<Part *> newPool;
-    /* setTime, not a bare assignment: the clock jumps here and the load starts
-       paused, so no tick re-derives the bodies' orbits/spin from the new epoch.
-       Done BEFORE the ships: a ship restored into the ROTATING frame and then
-       parked as coasting captures its inertial rail state from these transforms. */
-    g.setTime(meta.time);
-    g.time_accel = 0;
-    // A save is not portable across exhaust scales, so the file wins over
-    // Settings -- unless --exhaust-scale was given (cli_given beats files).
-    if(!g.args.cli_given.exhaust_scale) {
-        g.args.exhaust_scale = meta.exhaust_scale;
-    }
 
-    /* Transactional: a load that throws leaves the running world exactly as it
-       was -- the old vehicles were only moved out of Game::vehicles into
-       `detached` (below), never deleted -- and the roster as it was too
-       (RosterRollback, above). The clock above is NOT rolled back here: it has
-       to move before the ships can be built, so Game::loadFrom snapshots it and
-       puts it back if this throws (#301). */
-
-    std::vector<SaveShip> saves;
-    saves.reserve(meta.ships.size());
     for(size_t i = 0; i < meta.ships.size(); i++) {
-        saves.push_back(saveShipFromJson(
+        out->saves.push_back(saveShipFromJson(
             readJsonFile(dir + "/ships/" + meta.ships[i] + ".json")));
     }
 
-    /* Detach the running ships but keep them ALIVE until the load commits: out
-       of the one container the builders adopt into, and g.ship etc. stay valid
-       throughout the build. Swapped rather than moved so g.vehicles is left
-       genuinely empty for anything that asks "is a game running?" mid-load. */
-    std::vector<Vehicle *> detached;
-    detached.swap(g.vehicles);
-
-    /* Keyed by SLUG, filled as the build walks the list and read in phase 2, by
-       which point every file is built. Names cannot key anything -- two vehicles
-       may share one (#266). */
-    std::map<std::string, Vehicle *> bySlug;
-    // Keyed by the SAVED uid; the rebuilt Part carries a fresh uid of its own.
-    std::map<uint64_t, Part *> savedUidToPart;
-    std::vector<Vehicle *> built(saves.size(), nullptr);
-    // The first vessel in save order, for the active-ship fallback below.
-    Vehicle *firstBuilt = nullptr;
+    std::vector<Vehicle *> &built = out->vehicles;
+    built.resize(out->saves.size(), nullptr);
     try {
-        for(size_t i = 0; i < saves.size(); i++) {
-            const SaveShip &s = saves[i];
+        for(size_t i = 0; i < out->saves.size(); i++) {
+            const SaveShip &s = out->saves[i];
             built[i] = s.is_crew
-                ? buildKerbalFromSave(g, s)
-                : buildShipFromSaveParts(g, s, &savedUidToPart);
-            bySlug[meta.ships[i]] = built[i];
-            if(firstBuilt == nullptr) { firstBuilt = built[i]; }
+                ? buildKerbalFromSave(g, ww, s)
+                : buildShipFromSaveParts(g, ww, s, &out->savedUidToPart);
+            out->bySlug[meta.ships[i]] = built[i];
         }
         /* The pad's cast is built in the same transaction as the ships: the
            ship-file parse above can throw too, and a pool built before it would
@@ -1324,7 +1348,7 @@ void load_game(Game &g, const std::string &dir) {
             const KerbalProfile *src = (sp.seat_profile != 0)
                 ? g.roster.find(sp.seat_profile) : nullptr;
             Part *suit = makeSuitPart(g, sp, pd, src);
-            newPool.push_back(suit);
+            out->pool.push_back(suit);
             // What the suit carries rides home with it (saveSeatPart writes it).
             buildInventoryItems(g, sp.inventory, suit, "crew pool");
         }
@@ -1332,33 +1356,57 @@ void load_game(Game &g, const std::string &dir) {
            each load fine and still claim one roster entry between them. The
            pad's new pool wears ids too -- it is checked here and still
            uncommitted. */
-        refuseDoubleClaim(built, newPool);
+        refuseDoubleClaim(built, out->pool);
     } catch(...) {
-        /* Put the running ships back into the container BEFORE deleting
-           anything, so the container never holds a freed pointer. Then delete
-           what was built: a seat occupant is owned by the capsule it was parked
-           in, so its ship frees it, and a seat in a file that was not reached
-           yet allocated nothing. The built vehicles were never adopted, so no
-           walk ever saw them. The new pool was never on the pad: free it and
-           the running cast stands. */
-        detached.swap(g.vehicles);
+        /* Delete what was built: a seat occupant is owned by the capsule it was
+           parked in, so its ship frees it, and a seat in a file that was not
+           reached yet allocated nothing. The built vehicles were never adopted,
+           so no walk ever saw them. The new pool was never on the pad: free it
+           and the running cast stands. The roster rolls back with the rest. */
         for(Vehicle *v : built) { delete v; }
-        for(Part *p : newPool) { delete p; }
+        for(Part *p : out->pool) { delete p; }
         throw;
     }
-
-    /* Commit the pool now that the load cannot refuse: the save's cast replaces
-       the standing one (the old suits are freed). The roster the ships and the
-       pool were resolved against commits with it. */
+    /* The build cannot refuse from here, so the cast list it resolved against
+       is the one the session keeps. */
     rosterRollback.commit();
+    return out.release();
+}
+
+/* Adopt a successful build into the live game. Takes ownership of `b`.
+   `fleetAlreadyGone` when installSystem already tore the old vehicles down
+   (a cross-system load): resetWorld emptied Game::vehicles, so there is
+   nothing left to delete. Moves the clock to the save's epoch and THEN parks
+   the rails, because goOnRails captures the inertial state from the frame
+   transforms as of that instant -- and isGrounded reads terrain, which a
+   pre-install build cannot. */
+void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
+    std::unique_ptr<BuiltSave> b(bp);
+    SaveMeta &meta = b->meta;
+    /* setTime, not a bare assignment: the clock jumps here and the load starts
+       paused, so no tick re-derives the bodies' orbits/spin from the new epoch.
+       AFTER the build: a refused load never moves it, so Game::loadFrom no
+       longer needs its snapshot/restore (#301). */
+    g.setTime(meta.time);
+    g.time_accel = 0;
+    // A save is not portable across exhaust scales, so the file wins over
+    // Settings -- unless --exhaust-scale was given (cli_given beats files).
+    if(!g.args.cli_given.exhaust_scale) {
+        g.args.exhaust_scale = meta.exhaust_scale;
+    }
+
+    StaticBuilding *homePad = homeCrewPad(g.sys);
     if(homePad != nullptr) {
         for(Part *p : homePad->crew) { delete p; }
-        homePad->crew = std::move(newPool);
+        homePad->crew = std::move(b->pool);
         if(!homePad->crew.empty()) {
             printf("[crew] %zu kerbal(s) standing at '%s' (from save)\n",
                    homePad->crew.size(), homePad->id.c_str());
         }
+    } else {
+        for(Part *p : b->pool) { delete p; }
     }
+    b->pool.clear();
 
     // Success path only: a refused load must not clobber the running career
     // score / recovered log.
@@ -1368,7 +1416,7 @@ void load_game(Game &g, const std::string &dir) {
     // load leaves the running identity untouched.
     {
         namespace fs = std::filesystem;
-        const fs::path gamedir = fs::path(dir).parent_path();
+        const fs::path gamedir = fs::path(b->dir).parent_path();
         if(gamedir.parent_path().filename() == "saves") {
             const std::string dn = gamedir.filename().string();
             if(!dn.empty()) {
@@ -1378,14 +1426,14 @@ void load_game(Game &g, const std::string &dir) {
         }
     }
     /* The save's ships take over the container in SAVE order, which is what
-       makes a load -> resave round trip keep its v0/v1/.. put. `built` stays
-       intact: phase 2 below indexes it by slug. Then the deletion the detach
-       above deferred. part_sels holds Part* into the old ships. */
+       makes a load -> resave round trip keep its v0/v1/.. put. part_sels holds
+       Part* into the old ships. */
     g.part_sels.clear();
     g.clearFlightSummary();  // a prior recover's summary is not this save's
-    g.vehicles = built;
-    for(Vehicle *v : detached) { delete v; }
-    detached.clear();
+    if(!fleetAlreadyGone) {
+        for(Vehicle *v : g.vehicles) { delete v; }
+    }
+    g.vehicles = b->vehicles;
     g.ship = nullptr;
     g.kerbal = nullptr;
     g.lastShip = nullptr;
@@ -1393,24 +1441,24 @@ void load_game(Game &g, const std::string &dir) {
 
     /* Phase 2: cross-references + world state. A dock INTENT naming a gone part
        stays lenient, unlike a dock SEAM (a dropped seam strands a real joint). */
-    for(size_t i = 0; i < saves.size(); i++) {
-        const SaveShip &s = saves[i];
-        if(s.is_crew) { continue; }
-        // built[i] IS saves[i]. A name lookup here used to resolve a duplicate
-        // name to whichever vehicle was built last, wiring the wrong ship's
-        // dock intent and rail state.
-        Vehicle *v = built[i];
-        if(!s.dock_target_ship.empty()) {
-            std::map<std::string, Vehicle *>::const_iterator t = bySlug.find(s.dock_target_ship);
-            if(t != bySlug.end()) {
-                v->dockTargetShip = t->second;
-                v->dockTargetPort = findSavedPart(savedUidToPart, s.dock_target_port,
-                                                  t->second);
+    for(size_t i = 0; i < b->saves.size(); i++) {
+        const SaveShip &s = b->saves[i];
+        Vehicle *v = b->vehicles[i];
+        if(!s.is_crew) {
+            if(!s.dock_target_ship.empty()) {
+                std::map<std::string, Vehicle *>::const_iterator t =
+                    b->bySlug.find(s.dock_target_ship);
+                if(t != b->bySlug.end()) {
+                    v->dockTargetShip = t->second;
+                    v->dockTargetPort = findSavedPart(b->savedUidToPart,
+                                                      s.dock_target_port, t->second);
+                }
             }
+            v->dockArmPort = findSavedPart(b->savedUidToPart, s.dock_arm_port, v);
         }
-        v->dockArmPort = findSavedPart(savedUidToPart, s.dock_arm_port, v);
-        // buildShipFromSaveParts left the hull out of the world: this is the one
-        // place it is added or parked. A non-rail-eligible ship stays live.
+        // build left the hull out of the world: this is the one place it is
+        // added or parked. A non-rail-eligible ship stays live. Crew too --
+        // a walking kerbal that was saved live is not on rails.
         if(s.onRails) {
             if(!v->goOnRails()) { v->enterWorld(); }
         } else {
@@ -1424,26 +1472,46 @@ void load_game(Game &g, const std::string &dir) {
        vehicle, and a seat is data on a Part (part.h). */
     Vehicle *active = nullptr;
     if(!meta.active_ship.empty()) {
-        std::map<std::string, Vehicle *>::const_iterator it = bySlug.find(meta.active_ship);
-        if(it != bySlug.end()) { active = it->second; }
+        std::map<std::string, Vehicle *>::const_iterator it =
+            b->bySlug.find(meta.active_ship);
+        if(it != b->bySlug.end()) { active = it->second; }
     }
     /* Nothing recorded (or a slug the save no longer has): take the first vessel
        in save order, which is what a fresh boot makes active. This
        used to be byName.begin(), i.e. the alphabetically first NAME -- a kerbal
        called 'Ash' beat a ship called 'racer'. */
-    if(active == nullptr) { active = firstBuilt; }
+    if(active == nullptr && !b->vehicles.empty()) { active = b->vehicles[0]; }
     g.ship = active;
     g.kerbal = (active != nullptr && active->isEva()) ? static_cast<Kerbal *>(active) : nullptr;
     g.lastShip = nullptr;
     // The save may enter OR leave the no-ship state.
     g.syncShipFocus();
     size_t invItems = 0;
-    for(size_t i = 0; i < built.size(); i++) {
-        for(Part *p : built[i]->parts) { invItems += countPartInventory(p); }
+    for(size_t i = 0; i < b->vehicles.size(); i++) {
+        for(Part *p : b->vehicles[i]->parts) { invItems += countPartInventory(p); }
     }
     if(invItems > 0) {
         printf("Loaded %zu inventory item(s) with the ships\n", invItems);
     }
-    printf("Loaded game from %s (active: %s)\n", dir.c_str(),
+    printf("Loaded game from %s (active: %s)\n", b->dir.c_str(),
            (active != nullptr) ? active->name.c_str() : "(none)");
+}
+
+void load_game(Game &g, const std::string &dir) {
+    /* Same-system entry (boot --load, and the in-game path after
+       ensureSystemForSave already switched). Build against the live system,
+       then commit. A cross-system load builds against the INCOMING system
+       before installSystem, using these two halves directly (Game::loadFrom,
+       #305). */
+    SaveMeta meta = saveMetaFromJson(readJsonFile(dir + "/save.json"));
+    LoadWorld w{ g.sys, g.home, g.sun, meta.time };
+    BuiltSave *b = buildSaveWorld(g, w, dir);
+    commitSaveWorld(g, b, false);
+}
+
+void discardSaveWorld(BuiltSave *b) {
+    if(b == nullptr) { return; }
+    for(Vehicle *v : b->vehicles) { delete v; }
+    for(Part *p : b->pool) { delete p; }
+    delete b;
 }
