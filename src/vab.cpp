@@ -666,16 +666,24 @@ void vabLaunch(Game &g) {
             fflush(stdout);
             /* Deferred by construction: the card answers on a later frame, so
                the callback re-finds the occupant and re-resolves the site by
-               ID instead of holding this pointer. ui_remove_vehicle's own guards
-               (crew aboard, last ship) do the refusing. A crew policy for pad
-               clearing is the open half of #231. */
-            TerrainBody *padBody = hb;
+               ID instead of holding this pointer -- and the BODY by NAME, which
+               the same rule requires (game.h: a Question callback captures
+               identity, never a pointer). Holding hb segfaults when a system
+               switch while the card is up frees it. ui_remove_vehicle's own
+               guards (crew aboard, last ship) do the refusing. A crew policy
+               for pad clearing is the open half of #231. */
+            const std::string padName = hb->name;
             std::string siteId = site->id;
             g.ask(blocker->name + " is standing on " + site->display_name
                     + ". Clear the pad?",
                   {"Clear the pad", "Cancel"},
-                  [&g, padBody, siteId](int choice) {
+                  [&g, padName, siteId](int choice) {
                 if(choice != 0) { return; }
+                TerrainBody *padBody = g.sys.find(padName);
+                if(padBody == nullptr) {
+                    g.toast("Clear the pad: %s is not in this system", padName.c_str());
+                    return;
+                }
                 Vehicle *occ = findPadOccupant(find_launch_site(padBody, siteId),
                                                g.vehicles);
                 if(occ == nullptr) {
