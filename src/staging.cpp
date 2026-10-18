@@ -406,8 +406,9 @@ uint64_t stagingSignature(const BuildShip &ship, double g, double exhaust_scale)
     for(size_t i = 0; i < ship.parts.size(); i++) {
         const BuildPart &bp = ship.parts[i];
         /* The def POINTER, not its contents: the catalog is loaded once
-           (ships.cpp:112) and no PartDef is written after load, so identity is
-           the whole state computeStaging reads from it (mass, capacity, rates,
+           (main.cpp's load_parts_catalog, moved into Game::parts) and no
+           PartDef is written after load, so identity is the whole state
+           computeStaging reads from it (mass, capacity, rates,
            barriers). If a parts hot-reload ever lands, this assumption breaks
            -- a freed catalog's addresses get reused by the next one and the
            cache goes silently stale. Mix a catalog epoch in then. */

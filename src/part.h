@@ -234,3 +234,33 @@ struct Part {
         return m;
     }
 };
+
+class Shader;   // make_part / make_suit build the Body's render assets with it
+
+/* The ship def a NEW suit is minted from (make_suit, via the crew pool). A save
+   does NOT write it: a seat's part entry names the catalog PART by name
+   (SavePart::part), and buildSeatParts resolves that against the parts file.
+   Only a WALKING kerbal has a defPath, and buildKerbalFromSave now refuses one
+   unless the def is a single kerbal part. */
+constexpr const char *const kKerbalShipDef = "res/ships/kerbal.json";
+
+/* The ONE way a Part is minted from a catalog def (#278): render assets,
+   collision hull, id, resources, findings, the chute canopy and the engine
+   shroud. Everything the call sites used to differ in -- a save's own mass /
+   hull_margin / fuel / findings vs the catalog's for a fresh part -- is an
+   argument, so a field added to Part lands in every path or none. `fuel` and
+   `experiments` may be null: a fresh part then takes capacity from the def,
+   nothing in it, and no findings. Callers keep their own refusals (the e2e
+   cases pin those messages), stage + chute deploy state, and identity. */
+Part *make_part(const PartDef &pd, double mass, double hull_margin,
+                const std::vector<double> *fuel,
+                const std::vector<Experiment> *experiments,
+                const std::string &id, Shader *partsshader);
+
+/* Mint a suit Part from a kerbal ship def (the occupant of a seat). Its Body is
+   created but never enters the physics world -- a seat's mass rides the
+   containment edge through Part::effectiveMass. Tanks are seeded full like
+   Vehicle::init does; a load overwrites the contents from the save. Throws if
+   the def is unusable. */
+Part *make_suit(const std::string &defPath, const PartsCatalog &cat,
+                Shader *partsshader);

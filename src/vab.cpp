@@ -21,7 +21,7 @@
 #include "mesh.h"     // get_mesh (the part mesh's vertex array)
 #include "part.h"     // Part (a standing suit's kerbal id, on the pad's crew line)
 #include "resdir.h"   // resdir::path
-#include "ships.h"    // Ships::catalog (resolve the armed palette name)
+#include "shipdef.h"  // PartsCatalog (resolve the armed palette name)
 #include "btcommon.h" // complete Bullet types (the ghost hulls + collision objects)
 
 namespace {
@@ -179,7 +179,7 @@ static const PartDef *armedChildDef(const Game &g, const BuildShip **asmOut) {
         return sub.parts[0].def;
     }
     if(g.vab.armed.empty()) { return nullptr; }
-    return g.ships.catalog().find(g.vab.armed);
+    return g.parts.find(g.vab.armed);
 }
 
 void vabUpdateHover(Game &g, int px, int py) {
@@ -307,7 +307,7 @@ int vabPlace(Game &g) {
         return (int)ri;
     }
 
-    const PartDef *childDef = g.ships.catalog().find(g.vab.armed);
+    const PartDef *childDef = g.parts.find(g.vab.armed);
     if(childDef == nullptr) { return -1; }
 
     int idn = (int)g.vab.build.parts.size() + 1;
@@ -413,7 +413,7 @@ void vabLinkClick(Game &g) {
             return;
         }
     }
-    const PartDef *ld = g.ships.catalog().find("fuel_link");
+    const PartDef *ld = g.parts.find("fuel_link");
     if(ld == nullptr) {
         g.toast("The catalog has no \"fuel_link\" part");
         g.vab.linkMode = false;
@@ -585,7 +585,7 @@ bool vabLoad(Game &g, const char *name) {
     }
     ShipDef def;
     try {
-        def = load_ship_def(file.c_str(), g.ships.catalog());
+        def = load_ship_def(file.c_str(), g.parts);
     } catch(const std::exception &e) {
         printf("[vab] load failed %s: %s\n", stem.c_str(), e.what());
         fflush(stdout);
@@ -689,10 +689,10 @@ void vabLaunch(Game &g) {
     }
     /* A kerbal-rooted build is a PERSON, and a person is one part (part.h). The
        palette hides kerbal parts, so this only bites a def loaded from a file
-       (--vab, the VAB's load). Guard rather than throw: place_ship_def's throw
-       would land inside a UI handler, and a launch is something the player can
-       undo by editing the build. */
-    if(!Ships::kerbalDefConsistent(def)) {
+       (--vab, the VAB's load). Guard rather than throw: place_vehicle_def's
+       throw would land inside a UI handler, and a launch is something the player
+       can undo by editing the build. */
+    if(!kerbalDefConsistent(def)) {
         printf("[vab] launch refused: '%s' is kerbal-rooted but has %d parts\n",
                def.name.c_str(), (int)def.parts.size());
         fflush(stdout);
@@ -716,14 +716,13 @@ void vabLaunch(Game &g) {
     /* defPath "": the ship was built in memory -- no file to respawn from.
        build_ship throws on a data bug the build can still be holding (a
        fuel-link loop: vabLinkClick refuses to author one, a def loaded off disk
-       may already contain one). place_ship_def frees the half-built vehicle and
-       rethrows, so the build and the crew plan are untouched -- report it the
-       way vabLoad does rather than letting a throw land in an imgui handler,
+       may already contain one). place_vehicle_def frees the half-built vehicle
+       and rethrows, so the build and the crew plan are untouched -- report it
+       the way vabLoad does rather than letting a throw land in an imgui handler,
        which is a SIGABRT and a lost game (#291). */
     Vehicle *v = nullptr;
     try {
-        v = g.ships.place_ship_def(def, "", def.name, hb, sc, g.sys, g.vehicles,
-                                   g.time, site);
+        v = place_vehicle_def(g, def, "", def.name, hb, sc, site);
     } catch(const std::exception &e) {
         printf("[vab] launch refused: %s\n", e.what());
         fflush(stdout);
@@ -747,12 +746,12 @@ void vabLaunch(Game &g) {
             for(size_t i = 0; i < v->parts.size(); i++) {
                 if(v->parts[i]->id == a.partId) { pi = i; break; }
             }
-            Part *suit = Ships::takeCrewById(g.sys, a.profileId);
+            Part *suit = takeCrewById(g.sys, a.profileId);
             assert(pi < v->parts.size() && suit != nullptr);   // checked above
-            g.ships.fill_seat(v, pi, g.sys, suit, a.slot);
+            fill_seat(v, pi, g.sys, suit, a.slot);
         }
     } else {
-        g.ships.spawn_crew(v, g.sys);
+        spawn_crew(v, g.sys);
     }
     g.select_ship(v);
     vabClearHover(g);
@@ -844,7 +843,7 @@ void vabPruneSeats(Game &g) {
 }
 
 std::string vabSeatProblem(const Game &g) {
-    StaticBuilding *pad = Ships::homeCrewPad(g.sys);
+    StaticBuilding *pad = homeCrewPad(g.sys);
     for(const VabState::SeatAssign &a : g.vab.seatAssigns) {
         if(a.profileId == 0) { continue; }   // a chosen empty seat names nobody
         const KerbalProfile *p = g.roster.find(a.profileId);

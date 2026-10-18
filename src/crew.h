@@ -8,7 +8,8 @@
 // its identity (Part::kerbal): a seat, a walk and a save all read the person,
 // never this file. Assignment IS the world -- on the pad, in a seat, or walking
 // (part.h) -- so this roster deliberately carries no status: launch takes from
-// the pad FIFO, recover returns, death does not (Ships::takeCrew / returnCrew).
+// the pad FIFO, recover returns, death does not (vehicle.cpp: takeCrew /
+// returnCrew).
 
 #include <cstdint>
 #include <string>

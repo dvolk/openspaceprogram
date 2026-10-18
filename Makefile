@@ -277,6 +277,7 @@ TINC  = -I./src -I./middleware/glm/ -I./middleware/bullet3/src \
 TLIBS = $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB)
 # Real-Bullet tests share these TUs.
 TCOMMON_OBJS = $(TESTDIR)/obj/physics.o $(TESTDIR)/obj/body.o $(TESTDIR)/obj/vehicle.o \
+               $(TESTDIR)/obj/eva.o $(TESTDIR)/obj/crew.o $(TESTDIR)/obj/inventory.o \
                $(TESTDIR)/obj/shipdef.o $(TESTDIR)/obj/frame.o $(TESTDIR)/obj/terrain.o \
                $(TESTDIR)/obj/shader.o $(TESTDIR)/obj/camera.o $(TESTDIR)/obj/mesh.o \
                $(TESTDIR)/obj/texture.o $(TESTDIR)/obj/gldebug.o $(TESTDIR)/obj/buildings.o
@@ -347,7 +348,7 @@ $(TESTDIR)/test_scenarios: $(TESTDIR)/obj/test_scenarios.o $(TESTDIR)/obj/system
 	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
 
 # Building catalog + system world_buildings (src/buildings.cpp).
-$(TESTDIR)/test_buildings: $(TESTDIR)/obj/test_buildings.o $(TESTDIR)/obj/buildings.o $(TESTDIR)/obj/system.o $(TCOMMON_OBJS)
+$(TESTDIR)/test_buildings: $(TESTDIR)/obj/test_buildings.o $(TESTDIR)/obj/system.o $(TCOMMON_OBJS)
 	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
 
 # Local TestCrew : Vehicle stands in for Kerbal (eva.cpp is too heavy).
@@ -357,7 +358,7 @@ $(TESTDIR)/test_contain: $(TESTDIR)/obj/test_contain.o $(TCOMMON_OBJS)
 $(TESTDIR)/test_inertia: $(TESTDIR)/obj/test_inertia.o $(TCOMMON_OBJS)
 	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
 
-$(TESTDIR)/test_inventory: $(TESTDIR)/obj/test_inventory.o $(TESTDIR)/obj/inventory.o $(TCOMMON_OBJS)
+$(TESTDIR)/test_inventory: $(TESTDIR)/obj/test_inventory.o $(TCOMMON_OBJS)
 	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
 
 $(TESTDIR)/test_rotation: $(TESTDIR)/obj/test_rotation.o $(TCOMMON_OBJS)

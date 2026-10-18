@@ -13,6 +13,7 @@
 
 #include "eva.h"      // Kerbal
 #include "inventory.h" // inventoryRemove / inventoryAdd
+#include "part.h"     // make_suit (the crew pool's suits)
 #include "physics.h"  // AddPhysicsBody, RemoveBody, setPosRot
 #include "pick.h"     // pickShipPart (pickAt)
 #include "save.h"     // load_game (Game::loadFrom)
@@ -383,6 +384,31 @@ void Game::clearFlightSummary() {
     setWinOpen(W_FlightSummary, false);
 }
 
+/* The named crew pool (Game::roster) becomes standing people: one suit Part per
+   profile, parked on the home system's crew pad (crew.h). The pad holds the
+   pool, so a system switch empties it and a new game refills it. A suit whose
+   def will not load skips its profile rather than ending the mint. */
+void Game::mintCrewPool() {
+    StaticBuilding *pad = homeCrewPad(sys);
+    if(pad == nullptr) {
+        printf("[crew] no VAB_LAUNCH_PAD: nowhere to stand the crew pool\n");
+        return;
+    }
+    for(const KerbalProfile &p : roster.profiles) {
+        Part *suit = nullptr;
+        try {
+            suit = make_suit(kKerbalShipDef, parts, partsshader);
+        } catch(const std::exception &e) {
+            printf("Crew: %s\n", e.what());
+            continue;
+        }
+        suit->kerbal = std::make_unique<KerbalProfile>(p);
+        pad->crew.push_back(suit);
+    }
+    printf("[crew] %zu kerbal(s) standing at '%s'\n",
+           pad->crew.size(), pad->id.c_str());
+}
+
 /* Situation experiment (identity + provenance) for a science run: localPart's
    COM on poseVehicle (null = the vehicle's own COM) in the body's rotating
    frame. Stars and banded gas giants have no biome. `runnerName` is who ran it
@@ -706,11 +732,11 @@ bool Game::newGame() {
     /* A fresh career gets the full cast standing again: deaths shrink the pool
        (death does not return a suit) and a system switch empties it (new
        buildings, new pad), and only the boot mint ever restored it. */
-    if(StaticBuilding *home = Ships::homeCrewPad(sys)) {
+    if(StaticBuilding *home = homeCrewPad(sys)) {
         for(Part *p : home->crew) { delete p; }
         home->crew.clear();
     }
-    ships.mintCrewPool(roster, sys);
+    mintCrewPool();
     enterSpaceCenter(*this);
     printf("[game] new game: Space Center, no ship, paused\n");
     fflush(stdout);
@@ -950,7 +976,6 @@ void Game::switchSystem(const std::string &path,
     /* load_system propagated the new tree at t=0 but the clock did not move:
        bring the bodies to `time` or a paused game renders t=0 and snaps later. */
     syncRails();
-    ships.setSun(sun);
     focusTargets.clear();
     for(TerrainBody *b : sys.bodies) {
         focusTargets.push_back({ b->name.c_str(), b });
@@ -995,7 +1020,7 @@ void Game::switchSystem(const std::string &path,
 
 void Game::settleVehicles(Vehicle *active) {
     // Ships sharing an orbit scenario are spaced by slot.
-    ships.apply_scenarios(vehicles, sys, time);
+    apply_scenarios(*this);
     /* Idle ships park on rails: flying ones coast on their conic, pad ships
        freeze. Neither free fall nor grounded refuses and stays in physics. */
     for(auto *s : vehicles) {
@@ -1127,7 +1152,7 @@ void Game::kerbalEVA(Part *suit) {
        def) while a seat writes a catalog part name (SavePart::part). Both resolve
        to the same one-part kerbal def, which is what buildKerbalFromSave now
        requires of this path. */
-    k->defPath = Ships::kKerbalShipDef;
+    k->defPath = kKerbalShipDef;
     k->home = ship->home;
     k->scenario = ship->scenario;
     k->m_parent = ship->m_parent;
@@ -1767,7 +1792,7 @@ void Game::recoverActive() {
             Part *cap = suit->container;
             if(cap != nullptr) { cap->removeSeat(suit); }
             // returnCrew unowns the suit and whatever its pockets hold.
-            Ships::returnCrew(sys, suit);
+            returnCrew(sys, suit);
         }
     }
 

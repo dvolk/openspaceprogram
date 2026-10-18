@@ -22,7 +22,7 @@
 #include "postfx.h"   // PostFX
 #include "scene.h"    // SceneId, SceneFrame, Backdrop
 #include "science.h"  // Experiment
-#include "ships.h"    // Ships
+#include "shipdef.h"  // PartsCatalog (the part types the world is built from)
 #include "siminput.h" // TimeSeries
 #include "staging.h"  // StageRow (the Staging window's cached table)
 #include "system.h"   // System
@@ -357,11 +357,9 @@ struct Game {
     // --- borrowed subsystems (main creates + deletes) ---------------------
     Renderer &display;
     PostFX *postfx;
-    Ships &ships;   // the vehicle builder; the vehicles it builds live in
-                    // Game::vehicles below
     /* The named crew pool (crew.h). Borrowed like the rest: main loads it from
-       --kerbals, a save replaces its contents. Ships borrows it too, to name a
-       kerbal it mints for a capsule seat. */
+       --kerbals, a save replaces its contents. A minted capsule seat takes its
+       name from here. */
     CrewRoster &roster;
     System &sys;
     TerrainBody *sun;
@@ -512,6 +510,10 @@ struct Game {
     Shader *lineshader = nullptr;
     Shader *partsshader = nullptr;
     BuildingsCatalog buildings;   // world-building types (res/data/buildings.json)
+    /* The part types the world is built from (res/data/parts.json, or
+       --parts). main loads it and moves it in; a save records only the file
+       name, so a load resolves part names against whatever is live here. */
+    PartsCatalog parts;
     Mesh *engine_plume_mesh = nullptr;
     Texture *engine_plume_texture = nullptr;
     Mesh *ref_circle_xz = nullptr;
@@ -737,12 +739,16 @@ struct Game {
     void dropVehicleRefs(Vehicle *v);
     // Every game teardown calls this (scene transitions close nothing).
     void clearFlightSummary();
+    /* The crew pool becomes the world: one suit Part per roster profile,
+       standing at the home system's crew pad (crew.h). Called at boot and on
+       every new game, once the parts catalog and the pad exist. */
+    void mintCrewPool();
 
-    Game(Renderer &display, PostFX *postfx, Ships &ships, CrewRoster &roster,
+    Game(Renderer &display, PostFX *postfx, CrewRoster &roster,
          System &sys,
          TerrainBody *sun, TerrainBody *home, GameArgs &args,
          Uint32 sim_win_id)
-        : display(display), postfx(postfx), ships(ships), roster(roster),
+        : display(display), postfx(postfx), roster(roster),
           sys(sys),
           sun(sun), home(home), args(args), sim_win_id(sim_win_id),
           xferPlanner(*this)   // borrows the Game it is a member of

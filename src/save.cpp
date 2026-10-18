@@ -18,9 +18,8 @@
 #include "eva.h"       // Kerbal
 #include "game.h"      // Game, Scene
 #include "physics.h"   // RemoveBody, AddPhysicsBody, SetAngVelocity, GetAngVelocity
-#include "part.h"      // Part
+#include "part.h"      // Part, make_part, make_suit
 #include "resdir.h"    // resdir::path
-#include "ships.h"     // Ships, Ships::new_part_from_def
 #include "shipdef.h"   // PartsCatalog, PartDef, ResourceType, ShipDef, scenario_by_name
 #include "system.h"    // System
 #include "terrain.h"   // TerrainBody
@@ -137,7 +136,7 @@ SavePart saveSeatPart(const Part *suit) {
 // `container`, so the caller frees them with the owning vehicle.
 void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
                          Part *container, const std::string &shipName) {
-    const PartsCatalog &cat = g.ships.catalog();
+    const PartsCatalog &cat = g.parts;
     // a live add refuses a full container; a load must too
     if((int)saved.size() > container->def->inventory_capacity) {
         throw std::runtime_error("load: '" + shipName + "' part '"
@@ -173,8 +172,8 @@ void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
             throw std::runtime_error("load: '" + shipName + "' inventory item '"
                                      + si.part + "' is a crew part, not cargo");
         }
-        Part *item = g.ships.new_part_from_def(*pd, si.mass, si.hull_margin,
-                                               &si.fuel, &si.experiments, si.id);
+        Part *item = make_part(*pd, si.mass, si.hull_margin,
+                               &si.fuel, &si.experiments, si.id, g.partsshader);
         container->contents.push_back(item);
         item->container = container;
         item->owner = container->owner;   // the vehicle the container is on
@@ -190,8 +189,8 @@ void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
    entry wins over the name the file carries. */
 Part *makeSuitPart(Game &g, const SavePart &sp, const PartDef *pd,
                    const KerbalProfile *rosterSrc) {
-    Part *suit = g.ships.new_part_from_def(*pd, sp.mass, sp.hull_margin,
-                                           &sp.fuel, &sp.experiments, sp.id);
+    Part *suit = make_part(*pd, sp.mass, sp.hull_margin,
+                           &sp.fuel, &sp.experiments, sp.id, g.partsshader);
     KerbalProfile prof;
     prof.id = sp.seat_profile;
     prof.name = sp.seat_name;
@@ -212,7 +211,7 @@ Part *makeSuitPart(Game &g, const SavePart &sp, const PartDef *pd,
 void buildSeatParts(Game &g, const std::vector<SavePart> &saved, Part *cap,
                     const std::string &shipName) {
     if(saved.empty()) { return; }   // the overwhelmingly common case
-    const PartsCatalog &cat = g.ships.catalog();
+    const PartsCatalog &cat = g.parts;
     if(cap->def->crew_capacity <= 0) {
         throw std::runtime_error("load: '" + shipName + "' part '" + cap->def->name
                                  + "' holds " + std::to_string(saved.size())
@@ -407,7 +406,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
 // file -- a dock target's port lives in another ship.
 Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
                                 std::map<uint64_t, Part *> *savedUidToPart) {
-    const PartsCatalog &cat = g.ships.catalog();
+    const PartsCatalog &cat = g.parts;
     // Resolve the scenario BEFORE constructing: it throws, and the rollback
     // only walks `built`.
     const ScenarioDef *scn = resolveScenario(s.scenario);
@@ -436,8 +435,8 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
             throw std::runtime_error("load: saved ship '" + s.name + "' has a part "
                                      "'" + sp.part + "' that is no longer in the parts file");
         }
-        Part *p = g.ships.new_part_from_def(*pd, sp.mass, sp.hull_margin,
-                                            &sp.fuel, &sp.experiments, sp.id);
+        Part *p = make_part(*pd, sp.mass, sp.hull_margin,
+                            &sp.fuel, &sp.experiments, sp.id, g.partsshader);
         // What only a save knows: where the part sits in the staging order and
         // whether its chute was deployed when the ship was saved.
         p->stage = sp.stage;
@@ -577,9 +576,9 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s) {
                                  + std::to_string(s.profile_id)
                                  + ", which the roster has no entry for");
     }
-    const PartsCatalog &cat = g.ships.catalog();
+    const PartsCatalog &cat = g.parts;
     ShipDef def = load_ship_def(resdir::path(s.defPath).c_str(), cat);
-    /* The same rule Ships::make_suit states for a suit, and it matters twice as
+    /* The same rule make_suit states for a suit, and it matters twice as
        much here: build_ship would happily build a four-part ship from a racer
        def and call the result a person. Its extra parts never reach the writer's
        suit_inventory, so they vanish on the next save, and Game::kerbalBoard
@@ -754,7 +753,7 @@ void save_game(Game &g, const std::string &dir) {
         meta.roster.push_back(sk);
     }
     /* Unassigned kerbals standing on the home pad (the building pool). */
-    if(StaticBuilding *home = Ships::homeCrewPad(g.sys)) {
+    if(StaticBuilding *home = homeCrewPad(g.sys)) {
         for(Part *suit : home->crew) {
             if(suit != nullptr) { meta.crew_pool.push_back(saveSeatPart(suit)); }
         }
@@ -838,7 +837,7 @@ void load_game(Game &g, const std::string &dir) {
        The build itself runs in the ships' try below, so one rollback frees it
        whatever throws. No fallback mint -- an empty pool is a spent cast, a
        legal state. */
-    StaticBuilding *homePad = Ships::homeCrewPad(g.sys);
+    StaticBuilding *homePad = homeCrewPad(g.sys);
     if(homePad == nullptr && !meta.crew_pool.empty()) {
         throw std::runtime_error("load: the save has " + std::to_string(meta.crew_pool.size())
                                  + " kerbal(s) standing at the launch site, but this "
@@ -899,7 +898,7 @@ void load_game(Game &g, const std::string &dir) {
            leak. Building it here also lets refuseDoubleClaim see the ids these
            suits wear. */
         for(const SavePart &sp : meta.crew_pool) {
-            const PartDef *pd = g.ships.catalog().find(sp.part);
+            const PartDef *pd = g.parts.find(sp.part);
             if(pd == nullptr) {
                 throw std::runtime_error("load: crew pool entry '" + sp.part
                                          + "' is not in the parts file");

@@ -516,6 +516,34 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog);
 ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                         const std::string &path);
 
+/* A def whose ROOT part is kerbal-typed describes a PERSON, and a person is
+   exactly one part (part.h). True when `def` is consistent with that: no
+   kerbal root, or exactly one part. The spawn path enforces it so the game
+   can never write a save its loader then refuses -- a Kerbal minted from a
+   multi-part def loses its extra parts on the way out (the writer reads a
+   walker's part 0 only), and Game::kerbalBoard asserts one part the moment
+   anyone boards. Each site keeps its own message: the e2e cases pin them. */
+bool kerbalDefConsistent(const ShipDef &def);
+
+/* One vehicle the game spawns at boot. The first four fields are required;
+   `site` is an optional pad id, meaningful only for an on_pad scenario. */
+struct DebugStartShip {
+    std::string ship;      // ship def path
+    std::string name;      // display name
+    std::string body;      // the body it sits on (a name in the system)
+    std::string scenario;  // the spawn scenario (a --startship field)
+    std::string site;      // pad id ("" = the body's default site)
+};
+
+// The parsed "ships" array.
+struct DebugStartShips {
+    std::vector<DebugStartShip> ships;
+};
+
+// Parse + validate the debug-start-ships JSON; throws std::runtime_error naming
+// the file + the offending entry.
+DebugStartShips loadDebugStartShips(const char *path);
+
 /* The ship-def slugs in `dir` (file base names with ".json" stripped), sorted. */
 inline std::vector<std::string> list_ship_defs(const std::string &dir) {
     std::vector<std::string> names;

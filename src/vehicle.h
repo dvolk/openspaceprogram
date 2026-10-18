@@ -226,7 +226,7 @@ public:
     bool onRails = false;
     bool railFrozen = false;    // grounded park: no conic, static in the
                                 // rotating frame
-    /* Initialised, not just declared: game.cpp, ships.cpp and save.cpp set
+    /* Initialised, not just declared: game.cpp and save.cpp set
        onRails + railFrozen without goOnRails(), so the rail pose can be
        unwritten -- leaveRails() would then place the hull at garbage. */
     glm::dvec3 rail_pos = glm::dvec3(0.0);   // m, cluster COM in ship->frame coords
@@ -695,6 +695,77 @@ glm::dmat3 faceAlong(const glm::dvec3 &dir);
    binormal so each orbit keeps its shape. Pads ignore it. */
 void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
                    System &sys, double slot_offset, double t);
+
+struct Game;   // game.h: the parts catalog, the part shader, the star, the roster
+
+/* A name made unique against every live vehicle: first use keeps the bare name,
+   later ones get " #2", " #3" .. Names are display text -- the save keys a
+   vehicle by its slug (#266), so a clash no longer mis-resolves a load. Worth
+   preventing anyway: the ship list, the tracking window, toasts and the
+   [undock] line all show names, and two ships called 'racer' are unreadable
+   there. Name-keyed resolution also still lives in the transfer planner, which
+   looks a --transfer-target up by display name (transferplanner.cpp) -- a clash
+   there does pick the wrong vessel, so this dedup is not only cosmetic.
+
+   `roster` (nullable) additionally reserves the kerbals' names. A kerbal's
+   display name IS its roster name and is never deduped, so without this a ship
+   could be named 'Ash' while a kerbal named 'Ash' flies. */
+std::string dedupVehicleName(const std::vector<Vehicle *> &vehicles,
+                             const std::string &base,
+                             const CrewRoster *roster = nullptr);
+
+/* --- bringing a vehicle into the world -------------------------------------
+   place_vehicle_def builds the vehicle and Game::vehicles adopts it. The
+   journal is stamped with Game::time. `site`: the pad to stand on (on_pad
+   scenarios); nullptr -> the body's default site, its first VAB_LAUNCH_PAD.
+   Scenario is NOT applied -- spawn_vehicle is the caller's job. */
+Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPath,
+                           const std::string &wantName, TerrainBody *hb,
+                           const ScenarioDef *sc,
+                           const StaticBuilding *site = nullptr);
+
+/* Register an out-of-band vehicle; its builder already placed it, so it takes
+   no orbit slot. */
+void add_vehicle(Game &g, Vehicle *v, TerrainBody *home, const ScenarioDef *sc);
+
+/* Apply every vehicle's scenario (the startup spawn_vehicle pass). */
+void apply_scenarios(Game &g);
+
+/* Build the --startship / --startships-file entries. Returns the first vehicle
+   built (the natural active one), nullptr if empty. */
+Vehicle *build_start_vehicles(Game &g, const std::vector<DebugStartShip> &entries);
+
+/* --- the home pad's crew pool ----------------------------------------------
+   The pool is the cast: launch takes, recover returns, death does not. A suit
+   standing on the pad is a Part with no container and no vehicle (part.h). */
+
+// The pad unassigned kerbals stand on (the body's default VAB_LAUNCH_PAD).
+StaticBuilding *homeCrewPad(System &sys);
+
+// Take a suit from the home pad (nullptr if the pool is empty). Caller owns it.
+Part *takeCrew(System &sys);
+
+/* Take ONE named kerbal off the home pad by roster id (nullptr if nobody
+   standing there wears that id). The VAB's seat assignments name people, so
+   the pad is searched rather than served FIFO. Caller owns the result. */
+Part *takeCrewById(System &sys, uint64_t profileId);
+
+// Park a suit back on the home pad (recover). Takes ownership.
+void returnCrew(System &sys, Part *suit);
+
+/* Fill one seat of `ship` (part). False if the part is no capsule or the pad
+   has no kerbal left -- an empty seat is a legal state, not a failure. The
+   occupant is a suit Part parked in the capsule (part.h); no Kerbal vehicle
+   exists until someone goes EVA.
+   `suit` = the person to park (nullptr: draw FIFO from the pad);
+   `slot` = which seat (0-based; -1 = the first free one). */
+bool fill_seat(Vehicle *ship, size_t part, System &sys,
+               Part *suit = nullptr, int slot = -1);
+
+/* Every seat of every capsule part of `ship`, drawn FIFO from the home pad's
+   crew pool: a 3-berth capsule launches with three people while the pad can
+   supply them, and the rest fly empty once it cannot. */
+void spawn_crew(Vehicle *ship, System &sys);
 
 /* --radial-test spin diagnostics: rotational state + tidal torque. */
 void spin_log(Vehicle *ship, double time);

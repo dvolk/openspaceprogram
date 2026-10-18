@@ -1,7 +1,7 @@
-# A pad id on an orbit bed is a config error, not a no-op. place_ship's
+# A pad id on an orbit bed is a config error, not a no-op. place_vehicle's
 # supportMargin measures how far to lift the ship by reading the SITE's hull as
-# what it rests on -- a lie when the base comes from terrain, so place_ship
-# asserts site == nullptr || sc->on_pad (ships.cpp). Reject it at boot rather
+# what it rests on -- a lie when the base comes from terrain, so place_vehicle
+# asserts site == nullptr || sc->on_pad (vehicle.cpp). Reject it at boot rather
 # than trusting the assert: an -O2 build has no assert to fire.
 NAME startship-site-on-orbit
 ARGS --timeout 4 --vab res/ships/racer.json --startship racer,res/ships/racer.json,Kerbin,rot-orbit,polar_pad

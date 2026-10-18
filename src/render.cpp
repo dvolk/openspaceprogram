@@ -921,7 +921,7 @@ void paintVab(Game &g) {
                 }
             }
         } else if(!g.vab.armed.empty()) {
-            const PartDef *ad = g.ships.catalog().find(g.vab.armed);
+            const PartDef *ad = g.parts.find(g.vab.armed);
             if(ad != nullptr) {
                 Mesh *gm = get_mesh(std::string("res/") + ad->mesh);
                 Texture *gt = get_texture(std::string("res/") + ad->texture);

@@ -3547,7 +3547,7 @@ void drawVabSeatWindow(Game &g) {
         g.vab.seatPlaced = true;
     }
 
-    StaticBuilding *pad = Ships::homeCrewPad(g.sys);
+    StaticBuilding *pad = homeCrewPad(g.sys);
     bool open = true;
     if(ImGui::Begin(name, &open, ImGuiWindowFlags_NoSavedSettings)) {
         ImGui::Text("%s  (%s)", bp->def->label().c_str(), bp->id.c_str());
@@ -3902,8 +3902,8 @@ void drawVabUI(Game &g) {
         + ImGui::GetFrameHeight() * 3.0f
         + ImGui::GetTextLineHeight() * 4.0f;
     ImGui::BeginChild("palette_parts", ImVec2(0.0f, -below), true);
-    for(size_t i = 0; i < g.ships.catalog().parts.size(); i++) {
-        const PartDef &pd = g.ships.catalog().parts[i];
+    for(size_t i = 0; i < g.parts.parts.size(); i++) {
+        const PartDef &pd = g.parts.parts[i];
         if(pd.fuel_link) { continue; }
         /* A kerbal is a person, not a component: it belongs to a seat or to the
            roster, never to a build. Offering it lets a player root a ship on one
@@ -3944,7 +3944,7 @@ void drawVabUI(Game &g) {
                         g.vab.subassemblies[(size_t)g.vab.armedAsm].name.c_str());
         } else {
             // g.vab.armed holds the catalog id; show its display name.
-            const PartDef *ad = g.ships.catalog().find(g.vab.armed);
+            const PartDef *ad = g.parts.find(g.vab.armed);
             ImGui::Text("armed: %s",
                         ad != nullptr ? ad->label().c_str()
                                       : g.vab.armed.c_str());

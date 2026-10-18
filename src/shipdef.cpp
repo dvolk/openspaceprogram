@@ -1404,3 +1404,67 @@ double resolveHullMargin(double shipMargin, double partMargin) {
     if(partMargin >= 0.0) { return partMargin; }
     return -1.0;
 }
+
+bool kerbalDefConsistent(const ShipDef &def) {
+    const bool kerbalRoot = !def.parts.empty()
+        && def.parts[0].def != nullptr
+        && def.parts[0].def->type == "kerbal";
+    return !kerbalRoot || def.parts.size() == 1;
+}
+
+// Every start-ship entry must name all four; a missing/empty one is a config error.
+static const char *const kStartShipFields[] = {"ship", "name", "body", "scenario"};
+
+DebugStartShips loadDebugStartShips(const char *path) {
+    std::ifstream f(path);
+    if(!f.is_open()) {
+        throw std::runtime_error(std::string("start ships: cannot open ") + path);
+    }
+    nlohmann::json doc;
+    try {
+        doc = nlohmann::json::parse(f, nullptr, true);
+    } catch(const std::exception &e) {
+        throw std::runtime_error(std::string("start ships: bad JSON in ") + path
+                                 + std::string(": ") + e.what());
+    }
+    if(!doc.is_object() || !doc.contains("ships") || !doc["ships"].is_array()
+       || doc["ships"].empty()) {
+        throw std::runtime_error(std::string("start ships: no ships in ") + path);
+    }
+
+    DebugStartShips list;
+    const nlohmann::json &arr = doc["ships"];
+    for(size_t i = 0; i < arr.size(); i++) {
+        const nlohmann::json &ev = arr[i];
+        if(!ev.is_object()) {
+            throw std::runtime_error(std::string("start ships: entry ")
+                                     + std::to_string(i) + " of " + path
+                                     + " must be an object");
+        }
+
+        DebugStartShip e;
+        for(const char *const field : kStartShipFields) {
+            if(!ev.contains(field) || !ev[field].is_string()
+               || ev[field].get<std::string>().empty()) {
+                throw std::runtime_error(std::string("start ships: entry ")
+                                         + std::to_string(i) + " of " + path
+                                         + " is missing required field \""
+                                         + field + "\"");
+            }
+        }
+        e.ship = ev["ship"].get<std::string>();
+        e.name = ev["name"].get<std::string>();
+        e.body = ev["body"].get<std::string>();
+        e.scenario = ev["scenario"].get<std::string>();
+        if(ev.contains("site")) {
+            if(!ev["site"].is_string()) {
+                throw std::runtime_error(std::string("start ships: entry ")
+                                         + std::to_string(i) + " of " + path
+                                         + ": \"site\" must be a string");
+            }
+            e.site = ev["site"].get<std::string>();
+        }
+        list.ships.push_back(e);
+    }
+    return list;
+}

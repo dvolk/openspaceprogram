@@ -48,7 +48,6 @@
 #include "vehicle.h"
 #include "radialtest.h"
 #include "docktest.h"
-#include "ships.h"
 #include "buildings.h"
 #include "game.h"
 #include "events.h"
@@ -663,8 +662,10 @@ int main(int argc, char **argv)
 
     /* parts.json gives mass + behavior, the defs give stack order + offsets.
        Ships sharing a (body, scenario) get spaced apart; each pad ship stands
-       on its named site, else the body's default. */
-    Ships ships(args.parts_file, partsshader, sun, roster);
+       on its named site, else the body's default. The catalog moves into the
+       Game below: everything that mints a Part or a ship reads it there. */
+    PartsCatalog parts =
+        load_parts_catalog(resdir::path(args.parts_file).c_str());
 
     /* World buildings: placed once physics + the part shader are live, before
        any ship stands on a pad. */
@@ -672,16 +673,10 @@ int main(int argc, char **argv)
         load_buildings_catalog(resdir::path("res/data/buildings.json").c_str());
     place_world_buildings(sys, buildings, partsshader, sun);
 
-    /* Unassigned kerbals stand on the home pad (the building pool). A --load
-       replaces this with the save's crew_pool. */
-    if(args.load_name.empty()) {
-        ships.mintCrewPool(roster, sys);
-    }
-
     /* A family with no def silently falls back to generic behavior -- a
        parts.json typo should not hide. The suit's family is hard-coded in
        game.cpp, so check it too. */
-    for(const PartDef &p : ships.catalog().parts) {
+    for(const PartDef &p : parts.parts) {
         if(!p.experiment_family.empty() && defFor(p.experiment_family) == nullptr) {
             printf("warning: part '%s' has experiment_family '%s' with no def in %s\n",
                    p.name.c_str(), p.experiment_family.c_str(),
@@ -694,10 +689,20 @@ int main(int argc, char **argv)
     }
 
     // The running game: borrows the subsystems above, owns the runtime state.
-    Game game(display, postfx, ships, roster, sys, sun, home, args, sim_win_id);
+    Game game(display, postfx, roster, sys, sun, home, args, sim_win_id);
     game.bigger = bigger;   // the UI pass draws with it
     game.skybox = &skybox;  // set before any boot --load can switch systems
+    /* Set before anything mints a Part: mintCrewPool and the start ships build
+       their render assets with it, and a null here gives a hull that renders as
+       a crash rather than a missing shader. */
+    game.partsshader = partsshader;
+    game.parts = std::move(parts);   // mintCrewPool + the loaders build with it
     game.buildings = std::move(buildings);   // switchSystem re-places pads
+    /* Unassigned kerbals stand on the home pad (the building pool). A --load
+       replaces this with the save's crew_pool. */
+    if(args.load_name.empty()) {
+        game.mintCrewPool();
+    }
     // Set before the boot --load so ensureSystemForSave sees it.
     game.systemPath = args.system_file;
 
@@ -775,7 +780,6 @@ int main(int argc, char **argv)
             }
             printf("Load: using saves slot '%s'\n", load_dir.c_str());
         }
-        game.partsshader = partsshader;   // load_game builds parts with it
         // Honor the save's system: a solar save loaded into KSP must land on
         // Earth, not Kerbin. A switch runs its own heavy phase.
         bool switched = false;
@@ -831,24 +835,23 @@ int main(int argc, char **argv)
 
         if(!args.radial_test.empty()) {
             RadialTestShip rts = build_radial_test_ship(
-                args.radial_test, ships.catalog(), home, sun, partsshader);
-            ships.add_ship(game.vehicles, rts.v, home, rts.sc, game.time);
+                args.radial_test, game.parts, home, sun, partsshader);
+            add_vehicle(game, rts.v, home, rts.sc);
             first = rts.v;
         } else if(!args.dock_test.empty()) {
             DockTestShips dts = build_dock_test_ships(
-                args.dock_test, ships.catalog(), home, sun, partsshader, sys);
+                args.dock_test, game.parts, home, sun, partsshader, sys);
             /* Both are already placed (the builder ran spawn_vehicle), so the null
                scenario means apply_scenarios skips them. The probe is active; the
                station rides on rails. */
-            ships.add_ship(game.vehicles, dts.probe, home, nullptr, game.time);
-            ships.add_ship(game.vehicles, dts.station, home, nullptr, game.time);
+            add_vehicle(game, dts.probe, home, nullptr);
+            add_vehicle(game, dts.station, home, nullptr);
             first = dts.probe;
         } else {
             // A typo in any field throws deep in here: report it, don't core
             // dump.
             try {
-                first = ships.buildDebugStartShips(start_ships, sys,
-                                                   game.vehicles, game.time);
+                first = build_start_vehicles(game, start_ships);
             } catch(const std::exception &e) {
                 printf("error: %s\n", e.what());
                 return 1;
@@ -984,7 +987,7 @@ int main(int argc, char **argv)
            the top of main as SIGABRT (#16). */
         try {
             ShipDef vdef = load_ship_def(resdir::path(args.vab).c_str(),
-                                         ships.catalog());
+                                         game.parts);
             game.vab.build = BuildShip::fromShipDef(vdef);
         } catch(const std::exception &e) {
             printf("error: --vab: %s\n", e.what());
@@ -1152,7 +1155,7 @@ int main(int argc, char **argv)
 
     game.skyboxshader = skyboxshader;
     game.lineshader = lineshader;
-    game.partsshader = partsshader;
+    // game.partsshader was set at boot, before anything minted a Part.
     game.engine_plume_mesh = engine_plume_mesh;
     game.engine_plume_texture = engine_plume_texture;
     game.ref_circle_xz = ref_circle_xz;
@@ -1594,12 +1597,16 @@ int main(int argc, char **argv)
 
     if(perf_on) { perf_summary(); }
 
-    // The ships + pads are owned by the bodies (TerrainBody::ships / ::pads):
-    // freed when the bodies are deleted below.
-
     // Stop the worker BEFORE the bodies it may still hold (a job captures a
-    // TerrainBody* and may be sampling it off-thread).
+    // TerrainBody* and may be sampling it off-thread). Pads are owned by the
+    // bodies (TerrainBody::pads), freed below; the vehicles are owned by
+    // Game::vehicles and must die BEFORE the bodies, because ~Vehicle
+    // dereferences its body's frame. quitToTitle / switchSystem already ran
+    // unloadGame, which empties the list, so this is a no-op on those paths.
     game.jobs.abort();
+
+    for(Vehicle *v : game.vehicles) { delete v; }
+    game.vehicles.clear();
 
     for(auto&& body : sys.bodies) { delete body; }
 
