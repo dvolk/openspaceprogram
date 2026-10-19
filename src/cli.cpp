@@ -173,11 +173,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         ->delimiter(',');
     std::vector<std::string> vab_link;
     app.add_option("--vab-link", vab_link,
-                   "Click a fuel link at this loop time: a flat list of "
+                   "Add a fuel link at this loop time: a flat list of "
                    "MS,FROM_ID,TO_ID groups (e.g. 4000,capsule_1,fuel_tank_1 "
                    "= at 4s link capsule_1 into fuel_tank_1). Repeat the flag "
-                   "for more links. The headless stand-in for the VAB's "
-                   "\"Add fuel link\" + two part clicks (test hook)")
+                   "for more links (test hook). Players click \"Add fuel link\" "
+                   "then the source and destination parts, and case 246 does "
+                   "that; this survives for case 247, whose four parts are not "
+                   "all pickable from one camera framing (#311).")
         ->delimiter(',');
     app.add_option("--reload", args.reload_dir,
                    "Load this save dir over the running game at --reload-at "

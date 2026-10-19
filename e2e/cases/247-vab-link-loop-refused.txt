@@ -2,12 +2,20 @@
 # launch. heavy_two already feeds rtank12 -> central_engine2, so asking for the
 # reverse direction is refused where it is made. The check runs over fuel GROUPS
 # (the tree never crosses a fuel barrier), exactly as build_ship groups them, so
-# a link that closes a loop two hops away is caught too. --vab-link is the
-# headless stand-in for "Add fuel link" + two part clicks.
+# a link that closes a loop two hops away is caught too.
 # The legal link in the same run is what tells a refusal apart from link mode
 # being broken, and LAUNCHING it is what proves the guard did not reject
 # something build_ship would have accepted. Which hop the refusal names FIRST
 # follows the file's part order, so pin membership, not the chain's order.
+#
+# This one keeps --vab-link, unlike 246 which clicks "Add fuel link" and picks
+# both parts. The four parts it links (central_engine2, rtank12, rtank21,
+# central_engine1) are not all pickable from one camera framing: from the
+# default view a scan finds 3, 7, 8, 16, 17 and none of the others, and a drag
+# that exposes central_engine2 hides rtank12. Pinning four pixels to a dragged
+# camera is a worse test of a fuel-group guard than the hook is. The drag route
+# does work -- see #311 -- so this becomes convertible if the editor ever gets a
+# way to aim a pick at a part rather than at a pixel.
 NAME vab-link-loop-refused
 ARGS --vab res/ships/heavy_two.json --timeout 8
 ARGS --vab-link 1500,central_engine2,rtank12

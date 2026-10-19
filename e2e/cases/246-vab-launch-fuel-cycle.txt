@@ -8,10 +8,19 @@
 # The link click on the same design pins the OTHER half of the message: the
 # clicked pair is legal, so the refusal must say the design already loops and
 # name the links to delete, not blame the pair the player just clicked.
+#
+# Driven as a player does it now: "Add fuel link", click the source part, click
+# the destination. --vab-link named the pair by id, so the case never knew
+# whether those parts were clickable; the "Link source: capsule_1" toast is the
+# click saying which part it took, so the pick is pinned like the detach cases.
 NAME vab-launch-fuel-cycle
-ARGS --vab e2e/fixtures/cycle_ship.json --vab-link 1500,capsule_1,engine_1
-ARGS --vab-launch 3000 --timeout 6
+ARGS --vab e2e/fixtures/cycle_ship.json --timeout 6
+ARGS --ui-click 1200,"VAB/Add fuel link"
+ARGS --sim-mouse 1800,0,960,450,LMB
+ARGS --sim-mouse 2400,0,960,660,LMB
+ARGS --vab-launch 3500
 EXPECT [vab] entered the editor (sim keeps coasting)
+EXPECT [toast] Link source: capsule_1 -- now click the destination
 EXPECT [vab] fuel link refused: the design already loops:
 EXPECT [toast] This design already has a fuel-link loop:
 EXPECT [vab] launch refused: build_ship: fuel links form a cycle
@@ -20,6 +29,7 @@ CHECK "capsule_1->fuel_tank_1" in out and "fuel_tank_1->capsule_1" in out
 FORBID [vab] launched
 FORBID terminate called
 FORBID Assertion
+FORBID FAILED
 FORBID GL_
 FORBID error:
 LIMIT 60
