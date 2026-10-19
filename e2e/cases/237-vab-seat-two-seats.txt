@@ -3,6 +3,13 @@
 # suit away. The launch is REFUSED before the ship exists rather than built with
 # a seat the pad cannot fill, because a ship that flies half-crewed reads like a
 # success.
+#
+# This one keeps --vab-assign, and it is the exception rather than the rule: the
+# seat dropdown lists an already-seated person as "Ace  (seated)" inside a
+# BeginDisabled (gameui.cpp:3663), so no click can name the same person twice.
+# The refusal is not a gate the UI has and the hook duplicates -- it is the
+# guard for a plan that went stale under the player, which the UI cannot build
+# on purpose. --vab-assign is how the case gets the plan into that state.
 NAME vab-seat-two-seats
 ARGS --vab-empty --vab-arm capsule_r1.5h3 --kerbals e2e/fixtures/three_kerbals.json
 ARGS --time-accel 1 --timeout 12 --frame-cap 30

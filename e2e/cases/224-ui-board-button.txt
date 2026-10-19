@@ -2,11 +2,13 @@ NAME ui-board-button
 ARGS --time-accel 0 --timeout 6 --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --sim-mouse 1000,0,960,540,RMB
 ARGS --eva 2000
-ARGS --ui-click 3000,"Board"
+ARGS --ui-click 3000,"racer > Capsule (2m)##0/Board"
 # RMB picks the capsule, which opens its part window; --eva puts Ash out beside
-# it; --ui-click presses the window's Board button. The bare label is deliberate:
-# a part window's title carries the ship's ADDRESS ("racer > Capsule (2m)##0x.."),
-# so a qualified "window/label" path cannot be written down in advance.
+# it; --ui-click presses the window's Board button. The path is qualified now
+# that a part window's name is stable ("racer > Capsule (2m)##0"); it used to
+# carry the Vehicle pointer, which left a bare "Board" as the only writable
+# form -- and a bare label is satisfied by ANY window's Board, so the case could
+# have pressed a different capsule's button and still passed.
 # Boarding deletes the walking Kerbal and parks its suit in the capsule as a seat
 # (part.h) -- and the loop that drew the button kept the pointer and read
 # k->parts immediately after: heap-use-after-free at gameui.cpp:2198 under ASan.

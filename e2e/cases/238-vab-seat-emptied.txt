@@ -3,22 +3,33 @@
 # said anything" and put the pad's FIFO line aboard (issue #287). The pad still
 # has all three kerbals standing on it, so auto-fill COULD have crewed the
 # capsule -- it must not.
-# KERBAL '-' in --vab-assign is the window's "Empty" entry: the dropdowns are
-# invisible to --ui-click (issue #251), so this hook is the only way in.
+#
+# Both choices are dropdown rows now: Seat 1 -> Ace, Seat 1 -> Empty. The hook
+# used to print each assignment as evidence of its own work; that is gone, and
+# FORBID Crew: is what carries the case instead. It is not a weak substitute:
+# if the clicks never landed there is no seat plan, auto-fill crews the capsule
+# from a full pad, and "Crew: 'Ace' aboard" appears. Silence and an explicit
+# Empty look identical in the outcome only once a plan exists -- making one is
+# what the two clicks are for.
 NAME vab-seat-emptied
 ARGS --vab-empty --vab-arm capsule_r1.5h3 --kerbals e2e/fixtures/three_kerbals.json
 ARGS --time-accel 1 --timeout 12 --frame-cap 30
-ARGS --vab-place 2000
-ARGS --vab-assign 3000,0,0,Ace --vab-assign 3500,0,0,- --vab-launch 6000
+ARGS --vab-place 2000 --sim-mouse 2500,0,960,540,RMB
+ARGS --ui-click 3000,"Crew##capsule_r1.5h3_1/Seat 1##s0"
+ARGS --ui-click 3600,"##Combo_00/Ace"
+ARGS --ui-click 4200,"Crew##capsule_r1.5h3_1/Seat 1##s0"
+ARGS --ui-click 4800,"##Combo_00/Empty"
+ARGS --vab-launch 6000
 EXPECT [crew] 3 kerbal(s) standing at
-EXPECT [vab] assign hook: 'capsule_r1.5h3_1' seat 0 = 'Ace'
-EXPECT [vab] assign hook: 'capsule_r1.5h3_1' seat 0 = (empty)
+EXPECT [vab] seat window: 'capsule_r1.5h3_1' (3 seats)
 EXPECT [vab] launched 'Ship' (1 parts)
+FORBID seat window: nothing under the cursor
 FORBID Crew:
 FORBID no kerbal left
 FORBID dropped the seat plan
 FORBID Assertion
 FORBID Segmentation
+FORBID FAILED
 FORBID GL_
 FORBID error:
 LIMIT 90

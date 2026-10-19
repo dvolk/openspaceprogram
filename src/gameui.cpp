@@ -2044,10 +2044,16 @@ void drawPartWindows(Game &g) {
         // Catalog display_name; falls back to the machine id for older catalogs.
         const char *disp = def->label().c_str();
 
-        // The "##suffix" is a hidden ImGui window id, unique per (ship, part).
+        /* The "##suffix" is a hidden ImGui window id, unique per (ship, part).
+           It used to carry the Vehicle pointer, so a part window's registered
+           name differed on every run: --ui-list could not be diffed and
+           --ui-click had to fall back to a bare "Board" label, which any other
+           window could satisfy instead. The visible prefix already names the
+           ship and dedupVehicleName keeps those unique (vehicle.cpp:418), so
+           the part index alone is unique per (ship, part). */
         char name[256];
-        snprintf(name, sizeof(name), "%s > %s##%p#%zu",
-                 ship->name.c_str(), disp, (const void *)ship, part);
+        snprintf(name, sizeof(name), "%s > %s##%zu",
+                 ship->name.c_str(), disp, part);
         if(!live.placed) {
             // Open near the mouse (the part was picked there), flipping sides when there is no room.
             const ImGuiViewport *vp = ImGui::GetMainViewport();

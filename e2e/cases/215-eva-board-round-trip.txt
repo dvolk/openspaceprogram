@@ -1,8 +1,18 @@
-NAME eva-board-round-trip
-ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,pad --eva 2000 --board 4000
 # Boarding deletes the walking VEHICLE and parks its suit Part in the capsule as
 # a seat (part.h), so the world must come back to exactly one vessel. It was
 # briefly two: the handoff read a stale active pointer at the freed walker.
+#
+# Both halves are button presses now: RMB picks the capsule, which opens its part
+# window, and the window's EVA and Board buttons do the round trip. The window is
+# named "racer > Capsule (2m)##0" -- the suffix used to carry the Vehicle
+# pointer, so this path could not be written down and --ui-click had to take a
+# bare "Board" (case 224). A qualified path is what makes the case say WHICH
+# capsule it pressed.
+NAME eva-board-round-trip
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --sim-mouse 1000,0,960,540,RMB
+ARGS --ui-click 2000,"racer > Capsule (2m)##0/EVA"
+ARGS --ui-click 4000,"racer > Capsule (2m)##0/Board"
 EXPECT Crew: 'Ash' aboard 'racer' part 0 (1/1)
 EXPECT EVA: 'Ash' out of 'racer' part 0
 EXPECT Board: 'Ash' into 'racer' part 0
@@ -11,6 +21,7 @@ EXPECT Active ship 1 of 1: racer
 # which is why kerbalBoard clears the parts list before retiring (#297).
 EXPECT [vehicle] retired: 'Ash' (1 vehicle(s) left in the world)
 CHECK out.count("[vehicle] retired:") == 1
+FORBID FAILED
 FORBID GL_
 FORBID error:
 CHECK out.count("EVA: 'Ash' out of 'racer'") == 1
