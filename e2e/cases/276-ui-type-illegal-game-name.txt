@@ -4,17 +4,27 @@
 # sanitising. A hook that passed the name straight to startNewGame would test
 # the check in isolation and miss the button ignoring it.
 # "/" is in the blocklist, so the sheet must stay on screen and no game may
-# start. The warning under the field is drawn from the same predicate, so it is
-# part of the assertion rather than a nicety.
+# start.
+# The second half is not a bonus, it is what makes the first half mean anything.
+# An EMPTY field produces the identical refusal -- safeGameName("") is false --
+# so "no game started" alone cannot tell a dropped keystroke from a working one.
+# Retyping the same field with a legal name and getting a game proves the text
+# really landed, and that the refusal was about the content.
 NAME ui-type-illegal-game-name
-ARGS --timeout 8
+ARGS --timeout 12
 ARGS --ui-click 1500,"Title Menu/New Game"
 ARGS --ui-type 2500,"##newgame_name",bad/name
 ARGS --ui-click 4000,"New Game/Start"
+ARGS --ui-type 5500,"##newgame_name",goodname
+ARGS --ui-click 7000,"New Game/Start"
 EXPECT typed="bad/name"
 EXPECT [toast] Give the game a name
-FORBID [game] new game
-FORBID [scene] title -> spacecenter
+FORBID [game] new game 'bad
 FORBID FAILED
 FORBID error:
 FORBID GL_
+# The refusal held: the first Start did nothing, the second one started the game
+# the second typing put in the field.
+EXPECT [game] new game 'goodname'
+CHECK out.index("[toast] Give the game a name") < out.index("new game 'goodname'")
+EXPECT Timeout reached (12.

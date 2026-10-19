@@ -7,6 +7,7 @@ ARGS --reload e2e/fixtures/save_corrupt --reload-at 3000
 EXPECT [game] new game: Space Center, no ship
 EXPECT [load] refused e2e/fixtures/save_corrupt
 EXPECT no_such_part_in_the_catalog
+FORBID FAILED
 FORBID [scene] spacecenter -> title
 FORBID Segmentation
 FORBID GL_

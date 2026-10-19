@@ -11,7 +11,8 @@
 #
 # --map-plane 3 is a shortcut, not the only way in, and the shortcut is why this
 # case is worth reading carefully. The combo refuses "Target orbit" while no
-# target is set (gameui.cpp:2695 toasts instead of switching), so the state is
+# target is set (the Map plane combo toasts instead of switching,
+# gameui.cpp:2698), so the state is
 # not reachable by asking for it -- but it IS reachable by asking for it WITH a
 # target and then losing the target, which is the branch the resolved-plane
 # widget exists for. Converting this case to that route would test the reachable

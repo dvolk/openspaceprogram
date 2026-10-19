@@ -9,6 +9,8 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include <algorithm>   // stable_sort on the --ui-* queue
+
 #include <CLI11/CLI11.hpp>
 
 /* Parses the leading "AT_MS," of a --ui-* value, leaving everything after the
@@ -192,8 +194,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--reload-at", args.reload_ms,
                    "Loop time in ms at which --reload fires (-1 = never)");
     app.add_option("--quit-title", args.quit_title_ms,
-                   "Fire the flight pause menu's \"Quit to title\" once at this "
-                   "loop time in ms (headless test hook; -1 = never)");
+                   "Jump to the title screen at this loop time in ms. No button "
+                   "does this: from flight the hub is in between, and the hub's "
+                   "\"Return to title\" asks first (case 260 walks that). From "
+                   "the Tracking Station or the Research Lab there is no title "
+                   "exit at all -- issue #310 (headless test hook; -1 = never)");
     app.add_option("--recover", args.recover_ms,
                    "Fire the Space Center menu's \"Recover Vessel\" once at "
                    "this loop time in ms (Game::recoverActive, headless; "
@@ -206,10 +211,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Choose a transfer target at this loop time: MS,NAME groups "
                    "(e.g. 4000,Mun = at 4s pick Mun in the Target window). "
                    "Repeat the flag for more picks; NAME 'none' clears the "
-                   "selection. The headless stand-in for the Target window's "
-                   "combo, which --ui-click cannot reach. --transfer-target, if "
-                   "given, re-asserts itself on every rebuild and wins (test "
-                   "hook)")
+                   "selection. The combo it stands in for is clickable now "
+                   "(#251), and cases 241/242 use it; this survives for case "
+                   "243 alone, which needs a selection INSIDE the state pass, "
+                   "in the window where a removed ship's name still backs a "
+                   "target row. --transfer-target, if given, re-asserts itself "
+                   "on every rebuild and wins (test hook)")
         ->delimiter(',');
     app.add_option("--experiment", args.experiment_ms,
                    "Fire the part window's \"Run Experiment\" once at this "
@@ -1217,6 +1224,17 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         c.type_after = text;
         args.ui_clicks.push_back(c);
     }
+
+    /* The harness serves the queue in order, one press per frame, and skips an
+       entry whose widget is not drawn yet rather than blocking on it -- so a
+       later op could otherwise fire before an earlier one settles. --ui-click
+       and --ui-type are parsed into one vector, so a --ui-type written after a
+       --ui-click sits behind it regardless of its timestamp. Order by when they
+       are asked for; stable, so equal timestamps keep the author's order. */
+    std::stable_sort(args.ui_clicks.begin(), args.ui_clicks.end(),
+                     [](const UiClick &a, const UiClick &b) {
+                         return a.at_ms < b.at_ms;
+                     });
 
     // Any of the --free-cam-* options opts in to starting in free-cam mode.
     args.use_free_cam = !args.free_cam_pos.empty() || !args.free_cam_fwd.empty()

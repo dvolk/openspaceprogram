@@ -9,6 +9,7 @@ NAME sim-press-digit-keys
 ARGS --ui-click 400,"Title Menu/New Game" --ui-click 1000,"New Game/Start" --timeout 8
 ARGS --sim-press 2500,0,3
 EXPECT [scene] spacecenter -> tracking (push)
+FORBID FAILED
 FORBID has no scancode
 FORBID GL_
 FORBID error:

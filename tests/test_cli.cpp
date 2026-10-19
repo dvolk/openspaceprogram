@@ -93,13 +93,50 @@ int main() {
         assert(ok);
         assert(args.ui_list_ms == 1200);
         assert(args.ui_clicks.size() == 3);
+        // Given out of time order on purpose: the queue is served in order and
+        // an entry whose widget is not drawn yet is skipped rather than waited
+        // on, so a later op could otherwise fire before an earlier one settles.
         assert(args.ui_clicks[0].at_ms == 1500);
         assert(args.ui_clicks[0].path == "Title Menu/New Game");
-        assert(args.ui_clicks[1].at_ms == 3000);
-        assert(args.ui_clicks[1].path == "Game Menu/Tracking Station");
+        assert(args.ui_clicks[1].at_ms == 2500);
+        assert(args.ui_clicks[1].path == "Save/Load,slot 1");
+        assert(args.ui_clicks[2].at_ms == 3000);
+        assert(args.ui_clicks[2].path == "Game Menu/Tracking Station");
         // Only the first comma splits: the path keeps the rest of them.
-        assert(args.ui_clicks[2].at_ms == 2500);
-        assert(args.ui_clicks[2].path == "Save/Load,slot 1");
+        assert(args.ui_clicks[0].type_after.empty());
+    }
+
+    // 3c2) --ui-type: the path ends at the SECOND comma, so TEXT keeps the rest
+    //      of them, and the entries share --ui-click's queue and its sort.
+    {
+        GameArgs args;
+        const char *argv[] = {"osp",
+                              "--ui-type", "4000,##newslot,slot, one",
+                              "--ui-click", "3000,Save/Load"};
+        bool ok = false;
+        int code = -1;
+        run(5, (char **)argv, args, ok, code);
+        assert(ok);
+        assert(args.ui_clicks.size() == 2);
+        assert(args.ui_clicks[0].at_ms == 3000);
+        assert(args.ui_clicks[0].path == "Save/Load");
+        assert(args.ui_clicks[0].type_after.empty());
+        assert(args.ui_clicks[1].at_ms == 4000);
+        assert(args.ui_clicks[1].path == "##newslot");
+        assert(args.ui_clicks[1].type_after == "slot, one");
+    }
+
+    // 3c3) --ui-type needs both commas, a path and non-empty TEXT: an empty
+    //      TEXT would be a click that silently types nothing.
+    for(const char *bad : {"4000,##newslot", "4000,,name", "4000,##newslot,"}) {
+        GameArgs args;
+        const char *argv[] = {"osp", "--ui-type", bad};
+        bool ok = true;
+        int code = 0;
+        run(3, (char **)argv, args, ok, code);
+        assert(!ok);
+        assert(code == 1);
+        assert(args.ui_clicks.empty());
     }
 
     // 3d) --ui-click without the AT_MS comma fails (the path alone is not a

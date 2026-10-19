@@ -11,6 +11,7 @@ ARGS --ui-click 400,"Title Menu/New Game" --ui-click 1000,"New Game/Start" --tim
 ARGS --reload e2e/fixtures/save_active_unknown_slug --reload-at 2500
 EXPECT [load] refused e2e/fixtures/save_active_unknown_slug: save: save.json: flies "v9", which its "ships" list has no entry for
 EXPECT [load] running game unchanged
+FORBID FAILED
 FORBID Loaded game from
 FORBID [game] unloaded
 FORBID GL_

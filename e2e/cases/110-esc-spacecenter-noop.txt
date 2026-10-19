@@ -6,6 +6,7 @@ ARGS --time-accel 1 --timeout 8 --ui-click 400,"Title Menu/New Game" --ui-click 
 ARGS --sim-press 2500,0,ESCAPE
 EXPECT [game] new game: Space Center, no ship
 EXPECT Timeout reached (8.
+FORBID FAILED
 FORBID [scene] spacecenter -> title
 FORBID GL_
 FORBID error:

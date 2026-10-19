@@ -777,13 +777,12 @@ bool Game::newGame() {
     }
     /* A game with no identity cannot be saved: quicksave() writes into whatever
        gameId names, and after a quit-to-title that is the PREVIOUS game's
-       directory (#299). startNewGame mints before calling this; every other way
-       in (--new-game, a bare newGame) mints here. Mint after the guard above so
-       a refused new game leaves no orphan directory. */
-    if(gameId.empty() && !mintGameDir()) {
-        toast("Too many same-named games this second; try again");
-        return false;
-    }
+       directory (#299). The caller mints first -- startNewGame claims the dir
+       before calling this, and it is the only caller -- so minting here would be
+       dead code that quietly hides a caller who forgot. Mint-before-newGame is
+       also what keeps a REFUSED new game from leaving an orphan directory:
+       startNewGame's vehicle guard runs before its mint. */
+    assert(!gameId.empty() && "a new game needs its saves/ dir claimed first");
     /* A new career starts at t=0. Nothing else writes `time` -- only boot
        --start-time and a load -- so a New Game on a system that had been
        running opened at the old game's epoch, and the science stamps and Flight
@@ -1163,10 +1162,15 @@ void Game::quickload() {
    The rule: if the next game can read the value as if it were its own, it goes
    here. The bug class this exists for is OMISSION -- unloadGame, newGame,
    installSystem and loadFrom each cleared its own subset, so whatever was
-   unlisted survived a reset. Two deliberate exceptions: gameName (case 260
-   pins that a bare newGame after quit-to-title names its saves/ dir after the
-   dead game) and the wall-clock perf series, which stay monotonic across a
-   teardown. */
+   unlisted survived a reset. Two deliberate exceptions: gameName and the
+   wall-clock perf series, which stay monotonic across a teardown.
+   gameName used to have a reason as well as an exception -- case 260 reached
+   newGame() through --new-game with the dead game's name still in hand, and the
+   directory it minted had to match. That flag is gone and 260 now goes through
+   startNewGame, which overwrites gameName before it mints, so the exception
+   rests only on the title screen and the save list wanting a name to show.
+   Whether it should be cleared after all is open (see the issue filed from the
+   2026_10_19 review); clearing it is a behaviour change, not a cleanup. */
 void Game::clearEphemeralState() {
     /* A card up over a teardown asks about a world that is going away. Its
        callbacks hold identity, not pointers (game.h:312) -- but identity into
@@ -1243,9 +1247,9 @@ void Game::resetWorld() {
     lastShip = nullptr;
     /* The game's identity belongs to the game that just ended. Leaving gameId
        set meant a later quicksave wrote into the PREVIOUS game's saves/<id>/
-       directory (#299); newGame() mints a fresh one when this is empty. A load
-       sets it from its own directory afterwards, so the switch path is
-       unaffected. */
+       directory (#299). A new game claims a fresh one before it starts
+       (startNewGame, and newGame asserts it is set); a load sets it from its own
+       directory afterwards, so the switch path is unaffected. */
     gameId.clear();
     // The title screen is an orbit view: a quitting free-cam pilot keeps no pose.
     if(camera != nullptr) { camera->mode = CAM_ORBIT; }
