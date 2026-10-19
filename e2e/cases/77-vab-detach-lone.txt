@@ -1,19 +1,26 @@
 # Detach a leaf from a loaded build. --vab-detach selected the part BY INDEX and
 # fired vabDetachSelected, skipping the one thing a player must do: aim a pick at
-# the part. The index is also what the case never checked -- a hook that selects
-# part 2 proves nothing about whether part 2 is reachable by picking it.
+# the part.
 #
-# The click route asserts that. "[vab] select" names the part the pick landed on,
-# so the case pins the pick to engine_1 before the button runs; if the editor
-# camera ever reframes and the pixel hits a neighbour, this fails instead of
-# quietly detaching something else. The imgui panel shows the same fact as plain
-# Text, which --ui-list cannot see: text items carry no item id.
+# The click route makes the pick explicit. "[vab] select" names the part the pick
+# landed on, so the case says which part it means before the button runs. It is
+# not the only thing that would catch a wrong pick -- "deleted <id>" names the
+# mutated part too -- but it localises the failure to the pick instead of leaving
+# it looking like the button misbehaved.
+#
+# 1920x1080 is pinned because the pick is a pixel: at 1280x720 the editor aims
+# its camera differently and this pixel misses the ship entirely.
 NAME vab-detach-lone
-ARGS --vab res/ships/tanker.json --timeout 8
+ARGS --vab res/ships/tanker.json --width 1920 --height 1080 --timeout 8
 ARGS --sim-mouse 1500,0,960,670,LMB
 ARGS --ui-click 2500,"VAB/Detach subtree"
+ARGS --vab-launch 4000
 CHECK re.search(r"\[vab\] select 2 engine_1", out)
 CHECK re.search(r"\[vab\] deleted engine_1 \(single part, not stashed\)", out)
+# A lone part is deleted, not stashed: nothing lands in the subassembly list,
+# and the launch carries the other six.
+FORBID to Subassemblies
+CHECK re.search(r"\[vab\] launched 'tanker' \(6 parts\)", out)
 FORBID FAILED
 FORBID GL_
 FORBID error:

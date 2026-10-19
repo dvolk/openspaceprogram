@@ -4,17 +4,21 @@
 # This used to run --vab-detach 1 on tanker. Two reasons it does not any more:
 # the hook selects the part by index, so the case never proved the part was
 # reachable by picking it; and tanker's part 1 is occluded from the default
-# editor camera -- a scan of the pickable pixels finds 0, 2, 3, 4 and 6 but never
-# 1 or 5, so a player at the default view cannot click it either (#311). stager is
-# a straight chain, so dec_1 is a subtree root that IS pickable, and the stash
-# arithmetic is the same shape: 3 parts go, 4 stay.
+# editor camera -- a dense scan of the tanker silhouette finds parts 2, 3, 4 and
+# 6 only, never 1 or 5 -- so a player at the default view cannot click it either
+# (#311). stager is a straight chain, so dec_1 is a subtree root that IS pickable,
+# and the stash arithmetic is the same shape: 3 parts go, 4 stay.
+#
+# The stash itself is asserted, not inferred from the launch count: the toast
+# says it went to Subassemblies and how many came with it.
 NAME vab-detach-asm
-ARGS --vab res/ships/stager.json --timeout 8
+ARGS --vab res/ships/stager.json --width 1920 --height 1080 --timeout 8
 ARGS --sim-mouse 1500,0,960,600,LMB
 ARGS --ui-click 2500,"VAB/Detach subtree"
 ARGS --vab-launch 4000
 CHECK re.search(r"\[vab\] select 4 dec_1", out)
 CHECK re.search(r"\[vab\] detached dec_1 \(3 parts\)", out)
+EXPECT [toast] Detached dec_1 (+2) to Subassemblies
 CHECK re.search(r"\[vab\] launched 'stager' \(4 parts\)", out)
 FORBID FAILED
 FORBID GL_

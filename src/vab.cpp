@@ -386,6 +386,14 @@ void vabLinkClick(Game &g) {
         return;   // empty space: stay in link mode, keep waiting
     }
     const BuildPart &bp = g.vab.build.parts[(size_t)g.vab.hover];
+    /* Name the part each click took. The source already says so in its toast,
+       but the destination's only output is the RESULT -- and a refusal prints
+       the loop that already existed, not the part just clicked -- so a test
+       could aim the destination at any part at all and still pass (246).
+       hover only comes from pickVabPart, which skips a part with no def. */
+    printf("[vab] link %s %s\n",
+           g.vab.linkFromId.empty() ? "src" : "dest", bp.id.c_str());
+    fflush(stdout);
     if(g.vab.linkFromId.empty()) {
         g.vab.linkFromId = bp.id;
         g.toast("Link source: %s -- now click the destination", bp.id.c_str());
@@ -993,7 +1001,10 @@ void vabInstallHooks(Game &g) {
        used to allow: any ship file at all, including the testships that
        list_vab_ship_defs hides from the picker (shipdef.h:578) -- a case could
        load a ship no player can pick. */
-    /* --vab-detach: headless stand-in for Del/X on a selected part. */
+    /* --vab-detach: select by index and detach, in one step. Players pick the
+       part and click "Detach subtree"; cases 77, 78, 239 and 240 do that. This
+       is left for 244, which wants a detach and a launch close enough to land
+       in one frame. */
     if(args.vab_detach_ms >= 0 && args.vab_detach_idx >= 0) {
         const int idx = args.vab_detach_idx;
         g.addHook(kHookPreScene, args.vab_detach_ms, inVab, [idx](Game &g) {
@@ -1136,13 +1147,11 @@ void vabClickAfterUI(Game &g) {
         /* The panel says "selected: <id> (<label>)" as plain imgui Text, which
            has no item id, so --ui-list cannot show it (the registry skips
            id==0). A test that aims a 3D pick at a part therefore cannot tell
-           whether it hit the part it meant -- and a wrong pick then mutates a
-           different part, silently. This line makes the pick assertable, which
-           is what lets a case click a pixel and CHECK the part it selected
-           (#311). */
-        const BuildPart &bp = g.vab.build.parts[(size_t)g.vab.selected];
+           whether it hit the part it meant. This line makes the pick
+           assertable, so a case can pin it (#311). hover only comes from
+           pickVabPart, which skips a part with no def. */
         printf("[vab] select %d %s\n", g.vab.selected,
-               bp.def != nullptr ? bp.id.c_str() : "?");
+               g.vab.build.parts[(size_t)g.vab.selected].id.c_str());
         fflush(stdout);
     }
 }

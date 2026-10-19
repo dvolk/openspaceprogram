@@ -7,13 +7,18 @@
 #
 # The detach is the player's route now: click the doomed capsule, click "Detach
 # subtree". --vab-detach 1 selected by index and never checked that a pick lands
-# on part 1; the "[vab] select" line pins it. The pick pixel is 900,680 rather
-# than the 1000,610 that also selects part 1, because the seat window the assign
-# opens sits at 980,621-1259,689 and swallows a click inside it -- correct
-# behaviour, and worth knowing when one of these cases stops selecting.
+# on part 1; the "[vab] select" line says which part the click took.
+#
+# The pick is 900,680, NOT the 1000,610 that also selects part 1: --vab-assign
+# opens the seat window, and a click inside it is swallowed. Measured with this
+# case's own sequence, at x=1000 that covers the whole band y=580..700, and at
+# y=610 it starts near x=970. Do not read the extent off --ui-list's item rects
+# (the Seat rows report 980,621-1259,641): the window's title bar and padding
+# reach further than any row, so a pixel chosen "just outside a row" can still be
+# swallowed. 900,680 sits clear of the measured edge.
 NAME vab-seat-detached-two
 ARGS --vab e2e/fixtures/two_capsules.json --kerbals e2e/fixtures/three_kerbals.json
-ARGS --time-accel 1 --timeout 12 --frame-cap 30
+ARGS --width 1920 --height 1080 --time-accel 1 --timeout 12 --frame-cap 30
 ARGS --vab-assign 3000,1,0,Ace --vab-assign 3200,0,0,Bram
 ARGS --sim-mouse 4500,0,900,680,LMB
 ARGS --ui-click 5000,"VAB/Detach subtree"
@@ -29,6 +34,7 @@ EXPECT [vab] launched 'two capsules' (1 parts)
 FORBID Crew: 'Ace'
 FORBID Crew: 'Cyd'
 FORBID No seats named
+FORBID to Subassemblies
 FORBID Assertion
 FORBID Segmentation
 FORBID FAILED
