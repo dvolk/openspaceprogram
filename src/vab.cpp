@@ -1094,49 +1094,15 @@ void vabInstallHooks(Game &g) {
             fflush(stdout);
         });
     }
-    /* --vab-link: the headless fuel-link click. It sets the state a hovered
-       part would leave behind (link mode + a picked source + a hovered
-       destination) and calls the same handler, so the authoring guards -- a
-       duplicate direction, a loop -- run exactly as they do under the mouse. */
-    for(const GameArgs::VabLinkArg &l : args.vab_links) {
-        const std::string from = l.from, to = l.to;
-        g.addHook(kHookPreScene, l.ms, inVab, [from, to](Game &g) {
-            int hover = -1;
-            bool fromFound = false;
-            for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
-                const std::string &id = g.vab.build.parts[i].id;
-                if(id == from) { fromFound = true; }
-                if(id == to) { hover = (int)i; }
-            }
-            if(!fromFound || hover < 0) {
-                const std::string missing = (!fromFound && hover < 0)
-                    ? ("'" + from + "' and '" + to + "'")
-                    : (!fromFound ? "'" + from + "'" : "'" + to + "'");
-                printf("[vab] link hook: no build part %s\n", missing.c_str());
-                fflush(stdout);
-                return;
-            }
-            g.vab.linkMode = true;
-            g.vab.linkFromId = from;
-            g.vab.hover = hover;
-            vabLinkClick(g);
-            printf("[vab] link hook: '%s' -> '%s' (build has %d fuel link(s))\n",
-                   from.c_str(), to.c_str(), (int)g.vab.build.fuelLinks.size());
-            fflush(stdout);
-        });
-    }
     if(args.vab_launch_ms >= 0) {
         g.addHook(kHookPreScene, args.vab_launch_ms, inVab,
                   [](Game &g) { vabLaunch(g); });
     }
-    /* --vab-place: headless placement hook. It is NOT the same thing as a
-       --sim-mouse click: vabPlace attaches at g.vab.hoverParent, and with no
-       --sim-mouse position pushed the hover pass never hovers anything, so
-       this lands on the ROOT node. A click at a pixel hovers whatever is
-       there, which for a multi-part build is a different parent. The cases
-       that use this flag want the root placement, so it stays; targeting a
-       specific part is #311. The gate mirrors vabUpdate's overUI skip: no
-       place while imgui owns the mouse. */
+    /* --vab-place: headless placement at the CURRENT hover. It is not the same
+       as a --sim-mouse click: with no cursor pushed, vabPlace attaches at the
+       ROOT node, which is what these cases want. A click aimed with --ui-focus
+       attaches under whatever part it names, so a multi-part build can now be
+       built by clicking -- the hook is left for the root-placement cases. */
     if(args.vab_place_ms >= 0) {
         g.addHook(kHookVabPlace, args.vab_place_ms,
             [](Game &g) { return !ImGui::GetIO().WantCaptureMouse; },
