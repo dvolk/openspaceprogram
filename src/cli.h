@@ -56,8 +56,10 @@ struct GameArgs {
     int vab_launch_ms = -1;
     int vab_detach_idx = -1;
     int vab_detach_ms = -1;  // --vab-detach-at
-    /* --vab-assign MS,PART_IDX,SLOT,KERBAL (repeatable): the headless seat
-       window. cli.cpp groups the flat list, so a group here is always whole. */
+    /* --vab-assign MS,PART_IDX,SLOT,KERBAL (repeatable). Cases drive the seat
+       window with clicks; this survives for case 237, which needs a plan the
+       window greys out (one person in two seats). cli.cpp groups the flat list,
+       so a group here is always whole. */
     struct VabAssignArg {
         int ms, partIdx, slot;
         std::string kerbal;

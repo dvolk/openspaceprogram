@@ -159,10 +159,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "list of MS,PART_IDX,SLOT,KERBAL groups (e.g. 4000,0,0,Ace "
                    "= at 4s put Ace in seat 1 of build part 0). KERBAL '-' "
                    "empties that seat, which is a choice: the launch then leaves "
-                   "it empty instead of drawing the pad's line. Repeat the flag "
-                   "for more seats. The headless stand-in for the seat window "
-                   "(right-click a capsule in the VAB), which it opens as it "
-                   "assigns (test hook)")
+                   "it empty instead of drawing the pad's line. Cases drive the "
+                   "seat window itself now -- right-click the capsule with "
+                   "--ui-focus + CUR, then \"Crew##<part>/Seat N##sN\" and the "
+                   "\"##Combo_00/<name>\" row. It survives for case 237 alone: "
+                   "the dropdown greys out an already-seated person, so the "
+                   "two-seats-for-one-person plan it guards cannot be built by "
+                   "clicking (test hook)")
         ->delimiter(',');
     app.add_option("--reload", args.reload_dir,
                    "Load this save dir over the running game at --reload-at "
@@ -919,12 +922,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             }
             /* "-" is the seat window's "Empty": it records the choice that
                nobody sits in this seat (issue #287), and the dropdown offers it
-               as a real row now. --vab-assign survives for what a click cannot
-               do: naming the SAME person twice, which the dropdown greys out
-               (gameui.cpp:3663) so the launch-refusal guard has no other way
-               in, and reaching a seat on a multi-part build, where a fixed
-               pixel pick lands on whatever part is under it (#311). CLI11 drops
-               a trailing empty field, so the sentinel has to be a token rather
+               as a real row now. --vab-assign survives for ONE thing a click
+               cannot do: naming the SAME person twice. The dropdown lists an
+               already-seated person as "Name  (seated)" inside a BeginDisabled
+               (gameui.cpp:3846-3851), so the launch-refusal guard has no other
+               way in -- case 237. Reaching a seat on a multi-part build used to
+               be a second reason (#311, a fixed pixel pick lands on whatever
+               part is under it); --ui-focus retired that one. CLI11 drops a
+               trailing empty field, so the sentinel has to be a token rather
                than an empty KERBAL. */
             if(vab_assign[i + 3].empty()) {
                 printf("error: --vab-assign needs a kerbal name, or '-' for an "

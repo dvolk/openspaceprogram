@@ -5,27 +5,37 @@
 # after vector::erase then showed up as mojibake in the toast instead of a
 # plausible part name, and a shorter id hides it.
 #
-# The detach is the player's route now: --ui-focus names the doomed capsule, the
-# game finds a pixel that picks it, click there, then click "Detach subtree".
-# --vab-detach 1 selected by index and never checked that a pick lands on part 1;
-# the "[vab] select" line says which part the click took.
+# Everything here is the player's route now. --ui-focus names a capsule, the game
+# finds a pixel that picks it, and the RMB there opens that capsule's seat window
+# -- click the seat, click the person. The detach is the same shape: aim, click,
+# then "Detach subtree". The "[vab] select" line says which part the click took;
+# --vab-detach 1 used to select by index and never checked that a pick landed on
+# part 1.
 #
-# The aim happens AFTER the two assigns, and that ordering matters: --vab-assign
-# opens the seat window, and a click inside it is swallowed -- correct behaviour,
-# but it means the pixel the aim picks has to be one the window does not cover.
-# The aim's spiral only asks the 3D pick whether a pixel hits the part; it does
-# not know about windows. If this case ever stops selecting, check whether the
-# seat window now covers the reported pixel.
+# The detach aim still happens AFTER the two seat windows are open, and that is
+# the ordering to watch: a click inside a seat window is swallowed by the window
+# (correct behaviour), and the aim's spiral only asks the 3D pick whether a pixel
+# hits the part -- it does not know about windows. Measured at 1080p the aim
+# reports 960,643 for capsule_r1.5h3_2 while its own seat window sits around
+# 1100,734, so the click reaches the part. If this case ever stops selecting,
+# check whether a seat window now covers the reported pixel.
 NAME vab-seat-detached-two
 ARGS --vab e2e/fixtures/two_capsules.json --kerbals e2e/fixtures/three_kerbals.json
 ARGS --width 1920 --height 1080 --time-accel 1 --timeout 12 --frame-cap 30
-ARGS --vab-assign 3000,1,0,Ace --vab-assign 3200,0,0,Bram
-ARGS --ui-focus 4000,capsule_r1.5h3_2
-ARGS --sim-mouse 4500,0,CUR,CUR,LMB
-ARGS --ui-click 5000,"VAB/Detach subtree"
-ARGS --ui-click 7000,"VAB TopBar/LAUNCH"
-EXPECT [vab] assign hook: 'capsule_r1.5h3_2' seat 0 = 'Ace'
-EXPECT [vab] assign hook: 'capsule_r1.5h3_1' seat 0 = 'Bram'
+ARGS --ui-focus 2000,capsule_r1.5h3_2
+ARGS --sim-mouse 2100,0,CUR,CUR,RMB
+ARGS --ui-click 2600,"Crew##capsule_r1.5h3_2/Seat 1##s0"
+ARGS --ui-click 3000,"##Combo_00/Ace"
+ARGS --ui-focus 3400,capsule_r1.5h3_1
+ARGS --sim-mouse 3500,0,CUR,CUR,RMB
+ARGS --ui-click 4000,"Crew##capsule_r1.5h3_1/Seat 1##s0"
+ARGS --ui-click 4400,"##Combo_00/Bram"
+ARGS --ui-focus 5000,capsule_r1.5h3_2
+ARGS --sim-mouse 5500,0,CUR,CUR,LMB
+ARGS --ui-click 6000,"VAB/Detach subtree"
+ARGS --ui-click 8000,"VAB TopBar/LAUNCH"
+EXPECT [vab] seat window: 'capsule_r1.5h3_2' (3 seats)
+EXPECT [vab] seat window: 'capsule_r1.5h3_1' (3 seats)
 EXPECT [vab] select 1 capsule_r1.5h3_2
 EXPECT [vab] deleted capsule_r1.5h3_2 (single part, not stashed)
 EXPECT [vab] dropped the seat plan for 'capsule_r1.5h3_2' 'Ace' (it left the build)

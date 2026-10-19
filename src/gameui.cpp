@@ -3763,8 +3763,11 @@ void drawSaveLoad(Game &g) {
    A user-placed popup, not a slot window.
 
    These dropdowns go through uiBeginCombo, so --ui-list and --ui-click can name
-   them (#251 is closed); --vab-assign stays as the headless route only because
-   the VAB's 3D view cannot be driven without it (#311). */
+   them (#251 is closed), and --ui-focus aims the right-click at a named part
+   (#311 is closed), so the whole window is driven by clicks in the suite.
+   --vab-assign survives only for the plan this window refuses to build: an
+   already-seated person is a greyed row, so case 237 needs the hook to get
+   'Ace' into two seats and reach the launch guard. */
 void drawVabSeatWindow(Game &g) {
     if(g.vab.seatPartId.empty()) { return; }
     const BuildPart *bp = nullptr;
