@@ -4,13 +4,23 @@
 # longer than std::string's small-buffer on purpose: reading the erased entry
 # after vector::erase then showed up as mojibake in the toast instead of a
 # plausible part name, and a shorter id hides it.
+#
+# The detach is the player's route now: click the doomed capsule, click "Detach
+# subtree". --vab-detach 1 selected by index and never checked that a pick lands
+# on part 1; the "[vab] select" line pins it. The pick pixel is 900,680 rather
+# than the 1000,610 that also selects part 1, because the seat window the assign
+# opens sits at 980,621-1259,689 and swallows a click inside it -- correct
+# behaviour, and worth knowing when one of these cases stops selecting.
 NAME vab-seat-detached-two
 ARGS --vab e2e/fixtures/two_capsules.json --kerbals e2e/fixtures/three_kerbals.json
 ARGS --time-accel 1 --timeout 12 --frame-cap 30
 ARGS --vab-assign 3000,1,0,Ace --vab-assign 3200,0,0,Bram
-ARGS --vab-detach 1 --vab-detach-at 5000 --vab-launch 7000
+ARGS --sim-mouse 4500,0,900,680,LMB
+ARGS --ui-click 5000,"VAB/Detach subtree"
+ARGS --vab-launch 7000
 EXPECT [vab] assign hook: 'capsule_r1.5h3_2' seat 0 = 'Ace'
 EXPECT [vab] assign hook: 'capsule_r1.5h3_1' seat 0 = 'Bram'
+EXPECT [vab] select 1 capsule_r1.5h3_2
 EXPECT [vab] deleted capsule_r1.5h3_2 (single part, not stashed)
 EXPECT [vab] dropped the seat plan for 'capsule_r1.5h3_2' 'Ace' (it left the build)
 EXPECT [toast] 1 seat assignment dropped: no such seat in this build
@@ -21,6 +31,7 @@ FORBID Crew: 'Cyd'
 FORBID No seats named
 FORBID Assertion
 FORBID Segmentation
+FORBID FAILED
 FORBID GL_
 FORBID error:
 LIMIT 90

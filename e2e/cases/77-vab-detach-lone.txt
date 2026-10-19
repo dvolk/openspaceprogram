@@ -1,7 +1,19 @@
+# Detach a leaf from a loaded build. --vab-detach selected the part BY INDEX and
+# fired vabDetachSelected, skipping the one thing a player must do: aim a pick at
+# the part. The index is also what the case never checked -- a hook that selects
+# part 2 proves nothing about whether part 2 is reachable by picking it.
+#
+# The click route asserts that. "[vab] select" names the part the pick landed on,
+# so the case pins the pick to engine_1 before the button runs; if the editor
+# camera ever reframes and the pixel hits a neighbour, this fails instead of
+# quietly detaching something else. The imgui panel shows the same fact as plain
+# Text, which --ui-list cannot see: text items carry no item id.
 NAME vab-detach-lone
-ARGS --vab res/ships/tanker.json --vab-detach 2 --vab-detach-at 1500 --timeout 8
-EXPECT Main loop starting
+ARGS --vab res/ships/tanker.json --timeout 8
+ARGS --sim-mouse 1500,0,960,670,LMB
+ARGS --ui-click 2500,"VAB/Detach subtree"
+CHECK re.search(r"\[vab\] select 2 engine_1", out)
 CHECK re.search(r"\[vab\] deleted engine_1 \(single part, not stashed\)", out)
-CHECK re.search(r"\[vab\] detach hook: build 6 parts, 0 subassemblies", out)
+FORBID FAILED
 FORBID GL_
 FORBID error:

@@ -1133,5 +1133,16 @@ void vabClickAfterUI(Game &g) {
         // nothing armed: a plain click selects the hovered part
         g.vab.selected = g.vab.hover;
         g.vab.linkSel = -1;
+        /* The panel says "selected: <id> (<label>)" as plain imgui Text, which
+           has no item id, so --ui-list cannot show it (the registry skips
+           id==0). A test that aims a 3D pick at a part therefore cannot tell
+           whether it hit the part it meant -- and a wrong pick then mutates a
+           different part, silently. This line makes the pick assertable, which
+           is what lets a case click a pixel and CHECK the part it selected
+           (#311). */
+        const BuildPart &bp = g.vab.build.parts[(size_t)g.vab.selected];
+        printf("[vab] select %d %s\n", g.vab.selected,
+               bp.def != nullptr ? bp.id.c_str() : "?");
+        fflush(stdout);
     }
 }

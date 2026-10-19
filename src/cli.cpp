@@ -152,8 +152,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "(headless test hook for the launch path; -1 = never)");
     app.add_option("--vab-detach", args.vab_detach_idx,
                    "Select this build part (index) and fire the VAB's detach "
-                   "(vabDetachSelected) once -- the headless stand-in for "
-                   "Del/X on a selected part (test hook; -1 = never)");
+                   "(vabDetachSelected) once (test hook; -1 = never). Players "
+                   "click the part then \"Detach subtree\" in the panel, and "
+                   "cases 77, 78, 239 and 240 do that; this survives only for "
+                   "case 244, which needs a detach and a launch in the SAME "
+                   "frame -- something no click sequence produces.");
     app.add_option("--vab-detach-at", args.vab_detach_ms,
                    "Fire the --vab-detach hook once at this loop time in ms "
                    "(test hook; -1 = never)");
