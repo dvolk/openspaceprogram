@@ -20,6 +20,7 @@ EXPECT Removed 'one' (active unchanged: (none))
 EXPECT [vehicle] retired: 'racer' (2 vehicle(s) left in the world)
 EXPECT [vehicle] retired: 'one' (1 vehicle(s) left in the world)
 CHECK out.count("[vehicle] retired:") == 2
+FORBID FAILED
 FORBID Segmentation
 FORBID Assertion
 FORBID GL_

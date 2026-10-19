@@ -25,6 +25,14 @@ ARGS --ui-list 5400
 EXPECT [ask] Return to the title screen?
 EXPECT path="Game Menu/Controls" FAILED MISMATCH nothing was hovered at release
 EXPECT [ask] answered 1
+# The MISMATCH above is the point, so the guard names the OTHER failure modes
+# rather than forbidding FAILED wholesale: a click that found nothing, matched
+# two widgets, was greyed out or collided with a --sim-mouse gesture means the
+# case stopped testing what it claims to.
+FORBID FAILED ambiguous
+FORBID FAILED blocked
+FORBID FAILED disabled
+FORBID FAILED not found
 FORBID window="Controls"
 FORBID [scene] spacecenter -> title
 FORBID GL_

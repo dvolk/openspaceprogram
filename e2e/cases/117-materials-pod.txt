@@ -1,7 +1,7 @@
 NAME materials-pod
 ARGS --time-accel 1 --timeout 8 --startship labpod,res/ships/labpod.json,Kerbin,rot-orbit
 ARGS --pod-experiment 1500
-ARGS --sim-press 3000,0,ESCAPE --recover 4000 --recover-anywhere
+ARGS --recover 4000 --recover-anywhere
 EXPECT [science] t=
 EXPECT recorded
 EXPECT materials study

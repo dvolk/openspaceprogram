@@ -13,6 +13,7 @@ EXPECT [load] refused e2e/fixtures/save_crew_pool_badpart
 EXPECT crew pool entry 'fuel_tank' is a 'fuel_tank' part, not a kerbal
 EXPECT [vab] launched 'tanker' (7 parts)
 EXPECT Crew: 'Bram' aboard 'tanker' part 0 (1/1)
+FORBID FAILED
 FORBID no kerbal left
 FORBID Assertion
 FORBID Segmentation

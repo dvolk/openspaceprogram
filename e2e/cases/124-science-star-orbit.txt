@@ -1,7 +1,7 @@
 NAME science-star-orbit
 ARGS --time-accel 1 --timeout 8 --info-log --startship racer,res/ships/racer.json,Kerbol,rot-orbit
 ARGS --experiment 1500
-ARGS --sim-press 3000,0,ESCAPE --recover 4000 --recover-anywhere
+ARGS --recover 4000 --recover-anywhere
 EXPECT [science] t=
 EXPECT recorded
 EXPECT Low orbit observation on Kerbol

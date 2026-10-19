@@ -20,6 +20,7 @@ EXPECT [Return | Stay]
 EXPECT window="Question" label="Return"
 EXPECT window="Question" label="Stay"
 EXPECT [ask] answered 1
+FORBID FAILED
 FORBID [scene] spacecenter -> title
 FORBID GL_
 FORBID error:

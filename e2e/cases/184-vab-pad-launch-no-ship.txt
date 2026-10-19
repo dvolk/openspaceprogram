@@ -22,5 +22,6 @@ EXPECT [scene] vab -> flight (enterFlight)
 CHECK len(surf) >= 3
 CHECK all(abs(s["alt_agl"]) < 1000.0 for s in surf)
 CHECK all(s["sit"] == "landed" for s in surf)
+FORBID FAILED
 FORBID GL_
 FORBID error:

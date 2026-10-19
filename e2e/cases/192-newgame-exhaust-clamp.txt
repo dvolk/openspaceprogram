@@ -6,6 +6,7 @@
 NAME newgame-exhaust-clamp
 ARGS --timeout 8 --exhaust-scale 5 --ui-click 1500,"Title Menu/New Game" --ui-click 2500,"New Game/Start"
 EXPECT [game] new game 'game1' (exhaust 2.00x)
+FORBID FAILED
 FORBID exhaust 5.00x
 FORBID GL_
 LIMIT 30

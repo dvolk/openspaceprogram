@@ -7,5 +7,6 @@ EXPECT [science] recovered +13
 EXPECT [scene] spacecenter -> research (push)
 EXPECT [scene] research -> spacecenter (pop)
 EXPECT Timeout reached (12.
+FORBID FAILED
 FORBID GL_
 FORBID error:

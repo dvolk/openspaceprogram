@@ -23,5 +23,6 @@ CHECK porkchop[0]["dep_hi"] == last(porkchop)["dep_hi"]
 CHECK last(porkchop)["tof_lo"] <= 60 and last(porkchop)["dep_lo"] == 0
 CHECK last(porkchop)["tof_min"] <= last(porkchop)["tof_hi"]
 CHECK last(porkchop)["t_dep_min"] <= last(porkchop)["dep_hi"]
+FORBID FAILED
 FORBID GL_
 FORBID error:

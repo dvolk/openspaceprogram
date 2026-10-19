@@ -8,5 +8,6 @@ ARGS --ui-click 2500,"Game Menu/Return to title"
 ARGS --ui-click 3200,"Question/Return"
 EXPECT [ask] answered 0
 EXPECT [scene] spacecenter -> title
+FORBID FAILED
 FORBID GL_
 FORBID error:

@@ -14,6 +14,7 @@ EXPECT [ask] Quit the game?
 EXPECT [Quit | Stay]
 EXPECT window="Question" label="Quit"
 EXPECT [ask] answered 0
+FORBID FAILED
 FORBID Timeout reached
 FORBID GL_
 FORBID error:

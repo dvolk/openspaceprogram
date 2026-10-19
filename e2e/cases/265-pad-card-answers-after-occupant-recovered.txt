@@ -19,6 +19,7 @@ EXPECT [ask] racer is standing on Main space port. Clear the pad?  [Clear the pa
 EXPECT 'racer' recovered
 EXPECT [toast] The pad is clear now
 # A game action is not a teardown: the card has to still be up to be answered.
+FORBID FAILED
 FORBID [game] reset: dropped pending question
 # The occupant is gone, so the crew guard case 164 answers into never runs.
 FORBID Cannot remove

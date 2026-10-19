@@ -6,6 +6,7 @@ NAME question-quit-title-free
 ARGS --timeout 5
 ARGS --ui-click 1500,"Title Menu/Quit game"
 EXPECT label="Quit game"
+FORBID FAILED
 FORBID [ask]
 FORBID Timeout reached
 FORBID GL_

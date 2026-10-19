@@ -13,6 +13,7 @@ EXPECT [ask] Return to the title screen?
 EXPECT [ask] answered 1
 EXPECT Timeout reached (9.
 CHECK out.count("[ask] answered") == 1
+FORBID FAILED
 FORBID Segmentation
 FORBID GL_
 FORBID error:

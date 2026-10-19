@@ -11,6 +11,7 @@ ARGS --vab res/ships/tanker.json --ui-click 5000,"Game Menu/VAB" --vab-launch 75
 EXPECT [game] new game: Space Center, no ship, paused
 EXPECT [vab] launched 'tanker' (7 parts)
 EXPECT Crew: 'Ace' aboard 'tanker' part 0 (1/1)
+FORBID FAILED
 FORBID no kerbal left
 FORBID Assertion
 FORBID Segmentation

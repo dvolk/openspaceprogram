@@ -28,6 +28,7 @@ CHECK last(xfer)["tof"] > 1e7
 # value itself decays it geometrically while the button is down -- the ToF free-falls
 # under a handle that barely moves.
 CHECK len(set(x["tof"] for x in xfer if x["t"] > 10.0)) == 1
+FORBID FAILED
 FORBID Assertion
 FORBID Segmentation
 FORBID GL_

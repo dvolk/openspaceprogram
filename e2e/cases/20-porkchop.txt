@@ -18,5 +18,6 @@ CHECK last(porkchop)["dv_hi"] > last(porkchop)["dv_min"]
 CHECK last(porkchop)["dv_hi"] < 100 * last(porkchop)["dv_min"]
 CHECK last(porkchop)["t_dep_min"] >= 0
 CHECK last(porkchop)["tof_min"] > 0
+FORBID FAILED
 FORBID GL_
 FORBID error:

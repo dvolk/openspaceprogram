@@ -28,5 +28,6 @@ EXPECT [scene] vab -> flight (enterFlight)
 # nothing here (no ship, so no line), so every surf row is post-launch.
 CHECK len(surf) >= 3
 CHECK all(s["alt_agl"] > 50000.0 for s in surf)
+FORBID FAILED
 FORBID GL_
 FORBID error:

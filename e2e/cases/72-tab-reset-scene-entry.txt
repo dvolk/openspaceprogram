@@ -10,5 +10,6 @@ EXPECT [ui] TAB-hide dropped at scene entry
 EXPECT [scene] spacecenter -> tracking (push)
 EXPECT [scene] tracking -> spacecenter (pop)
 EXPECT Timeout reached (10.
+FORBID FAILED
 FORBID GL_
 FORBID error:

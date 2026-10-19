@@ -16,6 +16,7 @@ EXPECT Crew: 'Solo' aboard 'racer' part 0 (1/1)
 EXPECT [recover] t=
 EXPECT [vab] launched 'tanker' (7 parts)
 EXPECT Crew: 'Solo' aboard 'tanker' part 0 (1/1)
+FORBID FAILED
 FORBID no kerbal left
 FORBID GL_
 FORBID error:

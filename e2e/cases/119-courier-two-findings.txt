@@ -14,7 +14,7 @@ ARGS --store 3000
 # the fleet; F6 steps by list position and would need this fleet to stay two
 # vessels in a known order. "Recover Vessel" needs a ship active.
 ARGS --sim-press 3500,50,V
-ARGS --sim-press 4000,0,ESCAPE --recover 5000 --recover-anywhere
+ARGS --recover 5000 --recover-anywhere
 EXPECT recorded 'Low orbit observation
 EXPECT recorded 'Low orbit materials study
 EXPECT moved 'Low orbit materials study

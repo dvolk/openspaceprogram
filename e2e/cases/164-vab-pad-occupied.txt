@@ -28,6 +28,7 @@ EXPECT [vab] launch refused: 'racer' occupies 'main_space_port'
 EXPECT [ask] racer is standing on Main space port. Clear the pad?  [Clear the pad | Cancel]
 EXPECT [ask] answered 0
 EXPECT Cannot remove racer -- EVA its crew out first
+FORBID FAILED
 FORBID [vab] launched
 FORBID Refusing to remove the last ship
 FORBID GL_

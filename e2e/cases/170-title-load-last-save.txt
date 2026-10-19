@@ -16,6 +16,7 @@ EXPECT [scene] title -> flight (enterFlight)
 EXPECT [toast] Loaded older_start / save1
 # Above "New Game", as asked -- --ui-list dumps in draw order.
 CHECK out.index('label="Load last save"') < out.index('label="New Game"')
+FORBID FAILED
 FORBID [load] refused
 FORBID GL_
 FORBID error:

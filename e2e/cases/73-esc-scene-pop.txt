@@ -8,5 +8,6 @@ EXPECT [scene] tracking -> spacecenter (pop)
 EXPECT [scene] spacecenter -> flight (pop)
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT Timeout reached (10.
+FORBID FAILED
 FORBID GL_
 FORBID error:

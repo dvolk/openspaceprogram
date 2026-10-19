@@ -20,6 +20,7 @@ ARGS --ui-click 3000,"Save/Load/Load##saveload"
 EXPECT saves/20260101_000000-probe/save1 (active: racer)
 EXPECT [scene] title -> flight (enterFlight)
 EXPECT [toast] Loaded probe/save1
+FORBID FAILED
 FORBID Load failed
 FORBID [load] refused
 FORBID GL_

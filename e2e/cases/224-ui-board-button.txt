@@ -17,6 +17,7 @@ EXPECT [pick] t=
 EXPECT EVA: 'Ash' out of 'racer' part 0
 EXPECT Board: 'Ash' into 'racer' part 0
 EXPECT Active ship 1 of 1: racer
+FORBID FAILED
 FORBID Segmentation
 FORBID GL_
 FORBID error:
