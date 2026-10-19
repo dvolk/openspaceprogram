@@ -8,6 +8,7 @@ EXPECT [flight] vessel='escaper'
 EXPECT left Kerbin
 EXPECT entered
 EXPECT [recover] t=
-EXPECT [spacecenter] entered
+EXPECT [scene] spacecenter -> spacecenter (enterSpaceCenter)
+FORBID FAILED
 FORBID GL_
 FORBID error:

@@ -16,6 +16,7 @@ EXPECT Saved 1 ship(s) to
 FILE saves/*/slotA/save.json '"active_ship": ""'
 FILE saves/*/slotA/ships/v0.json "tanker"
 NOFILE saves/*/slotA/*.tmp
+FORBID FAILED
 FORBID Save failed
 FORBID GL_
 FORBID error:

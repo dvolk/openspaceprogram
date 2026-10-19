@@ -31,7 +31,7 @@ EXPECT materials study
 EXPECT moved
 EXPECT [science] recovered +31
 EXPECT [recover] t=
-EXPECT [spacecenter] entered
+EXPECT [scene] spacecenter -> spacecenter (enterSpaceCenter)
 EXPECT [uifocus] 'labpod/materials_pod_1' ->
 EXPECT ship=labpod part=1 (materials_pod)
 EXPECT ship=labpod part=0 (capsule)

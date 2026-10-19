@@ -12,7 +12,7 @@ EXPECT recorded
 EXPECT Low orbit barometer on Kerbin
 EXPECT [science] recovered +13
 EXPECT [recover] t=
-EXPECT [spacecenter] entered
+EXPECT [scene] spacecenter -> spacecenter (enterSpaceCenter)
 FORBID FAILED
 FORBID GL_
 FORBID error:

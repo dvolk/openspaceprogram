@@ -185,9 +185,10 @@ static bool splitStartship(const std::string &spec, DebugStartShip &out) {
 
 /* Register the CLI headless hooks (cli.h). Only armed ones are registered;
    within a phase the registration order IS the firing order, and the e2e
-   cases lean on it (e.g. --reload before --recover). Each act() runs at fire
-   time, against that frame's state. The VAB hooks join the same pre-scene
-   phase (vabInstallHooks, called right after this). */
+   cases lean on it (case 244 needs its --vab-detach before its --vab-launch,
+   both at the same ms). Each act() runs at fire time, against that frame's
+   state. The VAB hooks join the same pre-scene phase (vabInstallHooks, called
+   right after this). */
 static void installHeadlessHooks(Game &game) {
     GameArgs &args = game.args;
 
@@ -203,11 +204,15 @@ static void installHeadlessHooks(Game &game) {
         game.addHook(kHookPreScene, args.quit_title_ms, nullptr,
                      [](Game &g) { g.resetToTitle(); });
     }
-    // --recover: what the hub's "Recover Vessel" button does, and nothing more:
-    // recoverActive refuses a walking kerbal, so a case that wants its ship
-    // recovered boards first (118) or hands control back to the ship (119)
-    // exactly as a player would. The hook used to hunt for the ship holding
-    // findings and switch to it, which tested a path the UI does not offer.
+    /* --recover: what the hub's "Recover Vessel" button does, and nothing more.
+       The recover cases press that button instead (ESC opens the hub, then
+       --ui-click "Game Menu/Recover Vessel"). The hook survives for the two
+       states where the button cannot be reached at all: 271, where the hub hides
+       it while a crew member walks, and 265, where the game is in the VAB with a
+       question card up and ESC answers the card. It used to hunt for the ship
+       holding findings and switch to it, which tested a path the UI does not
+       offer; that is gone, and 118/119 board or hand back to the ship exactly as
+       a player does. */
     if(args.recover_ms >= 0) {
         game.addHook(kHookPreScene, args.recover_ms, nullptr,
                      [](Game &game) { game.recoverActive(); });

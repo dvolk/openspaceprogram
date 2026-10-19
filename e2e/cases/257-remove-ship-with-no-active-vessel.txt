@@ -4,8 +4,8 @@
 # reading `ship` blind -- a segfault, not a wrong name.
 # Three vessels because the successor logic only runs for the ACTIVE one; two
 # rcs_test ships because ui_remove_vehicle refuses a crewed vessel (#231's crew
-# rule). --recover-anywhere so the recover works off orbit, --recover leaving
-# the world active-free.
+# rule). --recover-anywhere so the recover works off orbit; the hub's "Recover
+# Vessel" button is what leaves the world active-free.
 NAME remove-ship-with-no-active-vessel
 ARGS --time-accel 1 --timeout 8
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit

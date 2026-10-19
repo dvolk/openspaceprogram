@@ -4,7 +4,6 @@ ARGS --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --ui-focus 1000,racer/capsule_1
 ARGS --sim-mouse 1100,0,CUR,CUR,RMB
 ARGS --ui-click 1500,"racer > Capsule (2m)##0/Run Experiment"
-ARGS --recover-anywhere
 ARGS --sim-press 3900,0,ESCAPE
 ARGS --ui-click 4000,"Game Menu/Recover Vessel"
 EXPECT Landed observation

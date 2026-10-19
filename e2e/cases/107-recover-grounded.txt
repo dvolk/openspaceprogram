@@ -3,11 +3,13 @@
 # ESC pops flight -> hub, and the button sits in the hub's Game Menu.
 #
 # This is the case that covers the button under the game's OWN rule: recover
-# needs the ship grounded on its home body (game.cpp:2143), with no debug flag in
+# needs the ship grounded on its home body (game.cpp:2137), with no debug flag in
 # play. The orbit cases click this same button and pass --recover-anywhere, which
 # is a permission rather than a shortcut: it relaxes that one rule and nothing
-# else. Only 265 and 271 still use the --recover hook, and both are states where
-# the button cannot be reached at all.
+# else. 116 and 121 start grounded, so they need no flag either, and 108 covers
+# the other half of the gate -- grounded on somebody else's body. Only 265 and
+# 271 still use the --recover hook, and both are states where the button cannot
+# be reached at all.
 NAME recover-grounded
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --sim-press 1000,0,ESCAPE
@@ -15,7 +17,7 @@ ARGS --ui-click 2000,"Game Menu/Recover Vessel"
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [recover] t=
 EXPECT 'racer' recovered
-EXPECT [spacecenter] entered
+EXPECT [scene] spacecenter -> spacecenter (enterSpaceCenter)
 EXPECT Timeout reached (8.
 FORBID FAILED
 FORBID GL_

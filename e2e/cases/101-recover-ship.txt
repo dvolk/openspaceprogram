@@ -5,11 +5,12 @@ ARGS --ui-click 2000,"Game Menu/Recover Vessel"
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [recover] t=
 EXPECT 'racer' recovered
-EXPECT [spacecenter] entered
+EXPECT [scene] spacecenter -> spacecenter (enterSpaceCenter)
 EXPECT Timeout reached (8.
 # Recover retires the flown vessel exactly once, and it is the last thing left
 # in the world when it goes (#297).
 EXPECT [vehicle] retired: 'racer' (0 vehicle(s) left in the world)
 CHECK out.count("[vehicle] retired:") == 1
+FORBID FAILED
 FORBID GL_
 FORBID error:

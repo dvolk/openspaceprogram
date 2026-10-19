@@ -8,5 +8,6 @@ EXPECT [science] recovered +21
 EXPECT +6 repeat
 EXPECT High orbit observation on Kerbin
 EXPECT [recover] t=
+FORBID FAILED
 FORBID GL_
 FORBID error:

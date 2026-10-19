@@ -12,7 +12,7 @@ EXPECT recorded
 EXPECT Low orbit observation on Kerbol
 EXPECT [science] recovered +25
 EXPECT [recover] t=
-EXPECT [spacecenter] entered
+EXPECT [scene] spacecenter -> spacecenter (enterSpaceCenter)
 CHECK len(surf) >= 1 and surf[0]["body"] == "Kerbol" and surf[0]["bme"] == "-" and surf[0]["sit"] == "low orbit"
 FORBID FAILED
 FORBID GL_

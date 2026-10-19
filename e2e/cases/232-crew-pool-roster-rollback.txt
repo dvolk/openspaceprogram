@@ -23,6 +23,7 @@ ARGS --resave tmp/e2e_save_out
 EXPECT [load] refused e2e/fixtures/save_crew_pool_roster_shrink
 # Preflight refused before the swap: nothing to restore, and the running cast
 # list is still the --kerbals file's three.
+FORBID FAILED
 FORBID roster restored
 FORBID [load] roster restored
 EXPECT Saved 0 ship(s) to tmp/e2e_save_out

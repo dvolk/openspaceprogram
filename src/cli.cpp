@@ -370,9 +370,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "item, through imgui's own input queue -- so the widget "
                    "must exist and be on screen, unlike the --*-at hooks that "
                    "call the action directly. WINDOW may be omitted to match "
-                   "the label in any window; labels are exact, minus the ## "
-                   "suffix. Repeat the flag, or space-separate the values, "
-                   "for more clicks.")
+                   "the label in any window; labels match exactly, imgui's ## "
+                   "disambiguator included, so --ui-list is the source of "
+                   "truth for what to write. Repeat the flag, or "
+                   "space-separate the values, for more clicks.")
         ->expected(-1);
 
     app.add_option("--ui-list", args.ui_list_ms,

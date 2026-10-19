@@ -36,7 +36,7 @@ EXPECT moved 'Low orbit observation
 EXPECT new: Low orbit observation
 FORBID new: Low orbit materials study
 EXPECT [recover] t=
-EXPECT [spacecenter] entered
+EXPECT [scene] spacecenter -> spacecenter (enterSpaceCenter)
 EXPECT ship=labpod part=0 (capsule)
 EXPECT ship=labpod part=1 (materials_pod)
 EXPECT EVA: 'Ash' out of 'labpod' part 0
