@@ -140,14 +140,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "(so sim-input can place it without clicking the palette)");
     app.add_option("--vab-place", args.vab_place_ms,
                    "Fire the VAB's place (vabPlace) once at this loop time in "
-                   "ms (headless test hook; -1 = never)");
+                   "ms (headless test hook; -1 = never). It places at the "
+                   "current hover, so with no --sim-mouse position pushed that "
+                   "means the ROOT node -- which is what the existing cases "
+                   "rely on. A pushed --sim-mouse position now moves the hover "
+                   "for real, so a click can target another node (#311).");
     app.add_option("--vab-launch", args.vab_launch_ms,
                    "Fire the VAB's LAUNCH once at this loop time in ms "
                    "(headless test hook for the launch path; -1 = never)");
-    app.add_option("--vab-close", args.vab_close_ms,
-                   "Fire the VAB's \"Back to game\" (vabClose) once at this loop "
-                   "time in ms -- the headless path into the camera "
-                   "park/restore round trip (test hook; -1 = never)");
     app.add_option("--vab-detach", args.vab_detach_idx,
                    "Select this build part (index) and fire the VAB's detach "
                    "(vabDetachSelected) once -- the headless stand-in for "

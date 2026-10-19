@@ -975,13 +975,16 @@ void vabClose(Game &g) {
     g.toastLog("Back from the VAB -- the sim keeps running");
 }
 
-/* Register the headless transition hooks (--vab-launch, --vab-close,
-   --vab-detach, --vab-assign, ...), each fired at most once. They join the pre-scene phase
+/* Register the headless transition hooks (--vab-launch, --vab-detach,
+   --vab-assign, ...), each fired at most once. They join the pre-scene phase
    AFTER the main-loop hooks -- the order the old per-frame poll used -- and
    a launch collapses the stack to Flight, so the live scene is read after
    them. The inVab gate reproduces the old early return. --vab-place is its
    own phase: it runs inside vabUpdate, after the hover pass that arms the
-   ghost it places. */
+   ghost it places. --vab-open, --vab-load, --vab-save and --vab-close are
+   gone: the scene transition is a title-screen button and the load, save and
+   back-to-game controls are widgets, all reachable with
+   --ui-click/--ui-type. */
 void vabInstallHooks(Game &g) {
     GameArgs &args = g.args;
     auto inVab = [](Game &g) { return sceneIs(g, SceneId::Vab); };
@@ -1068,14 +1071,14 @@ void vabInstallHooks(Game &g) {
         g.addHook(kHookPreScene, args.vab_launch_ms, inVab,
                   [](Game &g) { vabLaunch(g); });
     }
-    if(args.vab_close_ms >= 0) {
-        g.addHook(kHookPreScene, args.vab_close_ms, inVab,
-                  [](Game &g) { vabClose(g); });
-    }
-    /* --vab-place: headless placement hook (sim-mouse button events do not
-       update SDL_GetMouseState, so the LMB edge can't be driven headless).
-       The gate mirrors vabUpdate's overUI skip: no place while imgui owns
-       the mouse. */
+    /* --vab-place: headless placement hook. It is NOT the same thing as a
+       --sim-mouse click: vabPlace attaches at g.vab.hoverParent, and with no
+       --sim-mouse position pushed the hover pass never hovers anything, so
+       this lands on the ROOT node. A click at a pixel hovers whatever is
+       there, which for a multi-part build is a different parent. The cases
+       that use this flag want the root placement, so it stays; targeting a
+       specific part is #311. The gate mirrors vabUpdate's overUI skip: no
+       place while imgui owns the mouse. */
     if(args.vab_place_ms >= 0) {
         g.addHook(kHookVabPlace, args.vab_place_ms,
             [](Game &g) { return !ImGui::GetIO().WantCaptureMouse; },
@@ -1095,9 +1098,7 @@ void vabUpdate(Game &g) {
     /* Delete/Detach renumber the tree under an assignment's feet; drop the ones
        that no longer name a seat before the window reads them. */
     vabPruneSeats(g);
-    float fmx = 0, fmy = 0;   // SDL3 reports mouse position in float
-    const Uint32 mb = SDL_GetMouseState(&fmx, &fmy);
-    const int mx = (int)fmx, my = (int)fmy;
+    const int mx = g.mposX, my = g.mposY;
     const bool overUI = ImGui::GetIO().WantCaptureMouse;
     if(overUI) {
         vabClearHover(g);
@@ -1107,8 +1108,7 @@ void vabUpdate(Game &g) {
     /* --vab-place: polled here, after the hover pass, because the ghost it
        places is what that pass armed (see vabInstallHooks). */
     g.fireHooks(kHookVabPlace);
-    const bool lmb = (mb & SDL_BUTTON_LMASK) != 0;
-    if(lmb && !g.vab.lmbPrev && !overUI) {
+    if(g.lmbPressed && !overUI) {
         if(g.vab.linkMode) {
             vabLinkClick(g);
         } else if(!g.vab.armed.empty() || g.vab.armedAsm >= 0) {
@@ -1119,5 +1119,4 @@ void vabUpdate(Game &g) {
             g.vab.linkSel = -1;
         }
     }
-    g.vab.lmbPrev = lmb;
 }

@@ -56,7 +56,6 @@ struct GameArgs {
     std::string vab_arm;
     int vab_place_ms = -1;
     int vab_launch_ms = -1;
-    int vab_close_ms = -1;   // camera park/restore round trip
     int vab_detach_idx = -1;
     int vab_detach_ms = -1;  // --vab-detach-at
     /* --vab-assign MS,PART_IDX,SLOT,KERBAL (repeatable): the headless seat

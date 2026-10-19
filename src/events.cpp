@@ -383,6 +383,11 @@ void hubKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
 void poll_events(Game &g) {
     SDL_Event ev;
 
+    /* lmbPressed lives exactly one frame: set here, consumed by vabUpdate in
+       this frame's LOGIC phase. Clearing on entry is what keeps a click made in
+       another scene from placing a part when the VAB next opens. */
+    g.lmbPressed = false;
+
     /* Modality is decided ONCE per batch: answerQuestion() runs the card's
        callback synchronously inside this loop, so re-reading g.question per
        event would let a second event in the same batch reach the scene under a
@@ -558,6 +563,7 @@ void poll_events(Game &g) {
             curScene(g).keys(g, ksc, kmod, ev.key.repeat);
         }
         if(ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+            if(ev.button.button == SDL_BUTTON_LEFT) { g.lmbPressed = true; }
             // RMB over 3D (not over a UI window) moves the camera.
             if(ev.button.button == SDL_BUTTON_RIGHT &&
                !ImGui::GetIO().WantCaptureMouse) {
@@ -586,6 +592,10 @@ void poll_events(Game &g) {
             }
         }
         if(ev.type == SDL_EVENT_MOUSE_MOTION) {
+            // The VAB polls this for hover/place/select (vabUpdate), so it has
+            // to be maintained here rather than read from SDL_GetMouseState.
+            g.mposX = (int)ev.motion.x;
+            g.mposY = (int)ev.motion.y;
             if(g.rmbCam && !ImGui::GetIO().WantCaptureMouse) {
                 g.rmbMoved += std::abs(ev.motion.xrel)
                             + std::abs(ev.motion.yrel);

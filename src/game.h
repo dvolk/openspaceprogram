@@ -208,8 +208,6 @@ struct VabState {
     std::vector<Subassembly> subassemblies;
     int armedAsm = -1;       // armed subassembly (exclusive with `armed`)
 
-    bool lmbPrev = false;    // LMB edge detect for click-to-place
-
     /* --- seat assignments (the seat window: right-click a capsule) ---------
        Who sits where, chosen in the editor instead of drawn FIFO off the pad at
        launch. Keyed by BuildPart::id, NOT the part index: the tree renumbers
@@ -480,6 +478,18 @@ struct Game {
     int rmbDownX = 0, rmbDownY = 0;
     Uint32 rmbDownMs = 0;
     int rmbMoved = 0;               // |xrel| + |yrel| while held
+    /* Cursor position and the LMB edge, fed by the EVENT queue (events.cpp)
+       rather than polled from SDL_GetMouseState. The poll reads the DEVICE,
+       which a pushed event never updates, so --sim-mouse could move the camera
+       (that reads the events) while the VAB's hover/place/select -- also a poll
+       -- sat frozen. One source for both, so synthetic input drives the editor
+       the way it drives everything else.
+       lmbPressed is an edge, not the held state: --sim-mouse issues a
+       zero-duration click as DOWN then UP in the same poll, so a held flag
+       would be back to false before vabUpdate ever looked. RMB clicks already
+       work that way, off the UP event. */
+    int mposX = 0, mposY = 0;
+    bool lmbPressed = false;    // consumed by vabUpdate each frame
     bool poly_mode = false;         // F11 wireframe
     bool screenshot_requested = false;
     /* Every Vehicle in the world, in spawn order, OWNED here (a TerrainBody
