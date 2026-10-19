@@ -23,7 +23,6 @@ EXPECT [toast] Nothing to launch
 # that an ARMED build stays unplaced, so the arm has to be observed.
 CHECK re.search(r"\[uiclick\][^\n]*Capsule \(3m\)##capsule_r1\.5h3[^\n]*pressed", out)
 FORBID launched
-FORBID place hook
 FORBID FAILED
 FORBID GL_
 FORBID error:

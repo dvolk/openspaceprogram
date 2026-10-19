@@ -1052,21 +1052,6 @@ void vabInstallHooks(Game &g) {
         g.addHook(kHookPreScene, args.vab_launch_ms, inVab,
                   [](Game &g) { vabLaunch(g); });
     }
-    /* --vab-place: headless placement at the CURRENT hover. It is not the same
-       as a --sim-mouse click: with no cursor pushed, vabPlace attaches at the
-       ROOT node, which is what these cases want. A click aimed with --ui-focus
-       attaches under whatever part it names, so a multi-part build can now be
-       built by clicking -- the hook is left for the root-placement cases. */
-    if(args.vab_place_ms >= 0) {
-        g.addHook(kHookVabPlace, args.vab_place_ms,
-            [](Game &g) { return !ImGui::GetIO().WantCaptureMouse; },
-            [](Game &g) {
-                const int placed = vabPlace(g);   // -1 = no ghost/armed part
-                printf("[vab] place hook: %d\n",
-                       placed >= 0 ? (int)g.vab.build.parts.size() : -1);
-                fflush(stdout);
-            });
-    }
 }
 
 /* The editor's mouse half, part 1: hover-pick and ghost preview, which must
@@ -1081,9 +1066,6 @@ void vabUpdate(Game &g) {
     } else {
         vabUpdateHover(g, g.mposX, g.mposY);
     }
-    /* --vab-place: polled here, after the hover pass, because the ghost it
-       places is what that pass armed (see vabInstallHooks). */
-    g.fireHooks(kHookVabPlace);
 }
 
 /* The editor's mouse half, part 2: what a left click DOES. Called after

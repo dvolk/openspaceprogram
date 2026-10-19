@@ -13,7 +13,7 @@ NAME vab-seat-full
 ARGS --vab-empty --kerbals e2e/fixtures/three_kerbals.json
 ARGS --time-accel 1 --timeout 12 --frame-cap 30
 ARGS --ui-click 1000,"Capsule (3m)##capsule_r1.5h3"
-ARGS --vab-place 2000 --sim-mouse 2500,0,960,540,RMB
+ARGS --sim-mouse 2000,0,960,540,LMB --sim-mouse 2500,0,960,540,RMB
 ARGS --ui-click 3000,"Crew##capsule_r1.5h3_1/Seat 1##s0"
 ARGS --ui-click 3600,"##Combo_00/Cyd"
 ARGS --ui-click 4200,"Crew##capsule_r1.5h3_1/Seat 2##s1"

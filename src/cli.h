@@ -53,7 +53,6 @@ struct GameArgs {
     std::string autopilot;  // engage a slew mode at startup
     std::string vab;   // ship def to open in the VAB scene (empty = flight)
     bool vab_empty = false;
-    int vab_place_ms = -1;
     int vab_launch_ms = -1;
     int vab_detach_idx = -1;
     int vab_detach_ms = -1;  // --vab-detach-at

@@ -356,7 +356,6 @@ struct GameHook {
    Game::dropVehicleRefs); --map-dump needs the g.hud.view that sc.refresh
    fills. */
 enum HookPhase { kHookPreScene,    // before the live scene's update
-                 kHookVabPlace,    // inside vabUpdate, after the hover pass
                  kHookPostUpdate,  // after sc.update
                  kHookPostRefresh, // after sc.refresh
                  kHookPhaseCount };

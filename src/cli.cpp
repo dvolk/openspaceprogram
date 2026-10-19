@@ -135,14 +135,6 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_flag("--vab-empty", args.vab_empty,
                  "Open the VAB editor scene with an EMPTY build (the main "
                  "menu's \"Go to VAB\") instead of flying (test hook)");
-    app.add_option("--vab-place", args.vab_place_ms,
-                   "Fire the VAB's place (vabPlace) once at this loop time in "
-                   "ms (headless test hook; -1 = never). It places at the "
-                   "current hover: on an EMPTY build that is the ROOT node, "
-                   "which is what the cases using this flag want; on a "
-                   "non-empty build with no --sim-mouse position pushed there "
-                   "is no hover and it places nothing. To build under a "
-                   "specific part, aim with --ui-focus and click there.");
     app.add_option("--vab-launch", args.vab_launch_ms,
                    "Fire the VAB's LAUNCH once at this loop time in ms "
                    "(headless test hook for the launch path; -1 = never)");

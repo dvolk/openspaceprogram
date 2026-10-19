@@ -6,15 +6,16 @@
 # unnoticed for as long as it did.
 #
 # A click in the 3D area places the armed part, so LAUNCH finds one part. The
-# place is the click's, not the hook's: --vab-place prints "[vab] place hook:",
-# a plain click prints nothing, so FORBID on that line proves which path ran.
+# place is the click's: --vab-place used to fire vabPlace headlessly and print
+# "[vab] place hook:" so a case could tell the two paths apart. The flag and its
+# hook are gone now, so the launch count is the whole oracle -- and it is the
+# better one, because it is what the player sees.
 NAME vab-click-places
 ARGS --vab-empty --timeout 6 --frame-cap 30
 ARGS --ui-click 1000,"Capsule (3m)##capsule_r1.5h3"
 ARGS --sim-mouse 2000,0,960,540,LMB
 ARGS --vab-launch 3500
 EXPECT [vab] launched 'Ship' (1 parts)
-FORBID place hook
 CHECK re.search(r"\[vab\] launched 'Ship' \((\d+) parts\)", out).group(1) == "1"
 FORBID FAILED
 FORBID GL_
