@@ -5,7 +5,7 @@
 # container, then demand reach") reported "no kerbal in reach" and blamed the
 # courier for the container's bad choice.
 # Driven through the buttons now, the pairing is visible in their labels: the pod
-# offers "Take  (to Ash)" and the capsule offers "Store  (into capsule)", both
+# offers "Take  (to Vela)" and the capsule offers "Store  (into capsule)", both
 # under labpod's own windows. The racer on the pad has no window open, and every
 # path here is qualified by window, so a bare label cannot quietly satisfy the
 # other ship.
@@ -28,7 +28,7 @@ ARGS --sim-mouse 3800,0,CUR,CUR,RMB
 ARGS --ui-click 4100,"labpod > Capsule (2m)##0/EVA"
 ARGS --ui-click 4600,"labpod > Materials Pod (2m)##1/Take  (to Vela)##pod_take"
 ARGS --ui-click 5100,"labpod > Capsule (2m)##0/Store  (into capsule)"
-EXPECT out of 'labpod' part 0
+EXPECT EVA: 'Vela' out of 'labpod' part 0
 EXPECT moved 'Low orbit materials study on Kerbin' Materials Pod (2m) -> Kerbal
 EXPECT moved 'Low orbit materials study on Kerbin' Kerbal -> Capsule (2m)
 # Exactly two transfers: the take and the store. A third would mean a pairing
@@ -36,9 +36,11 @@ EXPECT moved 'Low orbit materials study on Kerbin' Kerbal -> Capsule (2m)
 CHECK out.count(" moved '") == 2
 EXPECT ship=labpod part=1 (materials_pod)
 EXPECT ship=labpod part=0 (capsule)
-# The Take label names the courier, so the pairing is asserted by name: in this
-# fleet the roster seats Vela in labpod's capsule.
-EXPECT EVA: 'Vela' out of 'labpod' part 0
+# The Take label names the courier, so the pairing is asserted by name. Which
+# kerbal that is follows the roster's row order (mintCrewPool pushes suits in
+# res/data/kerbals.json order, takeCrew pops the front, and --startship order
+# decides who fills which capsule): 'extra' takes Ash, labpod takes Vela. If
+# that shifts, the click path stops matching and FORBID FAILED catches it.
 FORBID FAILED
 FORBID ship=extra
 FORBID GL_

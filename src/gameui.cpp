@@ -2107,14 +2107,17 @@ void drawPartWindows(Game &g) {
             // down, then left.
             static const int kx[] = {0, 1, 2, 3, 4, 5, -1, -2, 0, 0, 0, 0};
             static const int ky[] = {0, 0, 0, 0, 0, 0,  0,  0, 1, 2, 3,-1};
+            const float xlo = (float)vp->WorkPos.x;
+            const float ylo = (float)vp->WorkPos.y;
+            /* A viewport smaller than the estimate leaves an empty clamp range
+               (hi < lo is UB, and silently yields a negative coordinate), so keep
+               the range non-empty: such a window just sits at the work origin. */
+            const float xhi = std::max(xlo, xlo + (float)vp->WorkSize.x - maxw);
+            const float yhi = std::max(ylo, ylo + (float)vp->WorkSize.y - maxh);
             const float x0 = x, y0 = y;
             for(int t = 0; t < 12; t++) {
-                x = std::clamp(x0 + (float)kx[t] * step,
-                               (float)vp->WorkPos.x,
-                               (float)vp->WorkPos.x + vp->WorkSize.x - maxw);
-                y = std::clamp(y0 + (float)ky[t] * step,
-                               (float)vp->WorkPos.y,
-                               (float)vp->WorkPos.y + vp->WorkSize.y - maxh);
+                x = std::clamp(x0 + (float)kx[t] * step, xlo, xhi);
+                y = std::clamp(y0 + (float)ky[t] * step, ylo, yhi);
                 if(!clashes(x, y)) { break; }
             }
             ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Appearing);
@@ -2267,9 +2270,8 @@ void drawPartWindows(Game &g) {
                 freeKerbalsInto(vehicles, free_ks);
                 for(Kerbal *k : free_ks) {
                     // Reach decides what is LISTED; canBoard / canMoveExperiment
-                    // decide what is OFFERED. Both are the same gates the
-                    // --board / --take / --store hooks ask, so a button cannot
-                    // offer what an action would refuse.
+                    // decide what is OFFERED -- the same gates the actions ask, so
+                    // a button cannot offer what an action would refuse.
                     if(!g.kerbalInRange(k, ship->parts[part])) { continue; }
                     anyInRange = true;
                     // dist is for the on-screen readout only (the gate above did the math).

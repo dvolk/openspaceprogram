@@ -185,9 +185,9 @@ static bool splitStartship(const std::string &spec, DebugStartShip &out) {
 
 /* Register the CLI headless hooks (cli.h). Only armed ones are registered;
    within a phase the registration order IS the firing order, and the e2e
-   cases lean on it (e.g. --eva before --take). Each act() runs at fire time,
-   against that frame's state. The VAB hooks join the same pre-scene phase
-   (vabInstallHooks, called right after this). */
+   cases lean on it (e.g. --reload before --recover). Each act() runs at fire
+   time, against that frame's state. The VAB hooks join the same pre-scene
+   phase (vabInstallHooks, called right after this). */
 static void installHeadlessHooks(Game &game) {
     GameArgs &args = game.args;
 

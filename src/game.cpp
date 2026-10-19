@@ -1444,12 +1444,6 @@ void freeKerbalsInto(const std::vector<Vehicle *> &vehicles,
     }
 }
 
-std::vector<Kerbal *> freeKerbals(const std::vector<Vehicle *> &vehicles) {
-    std::vector<Kerbal *> out;
-    freeKerbalsInto(vehicles, out);
-    return out;
-}
-
 /* Reach check: `k` must be within kBoardingRange of `part`. A raw position
    subtraction is only a distance within one frame. */
 bool Game::kerbalInRange(Kerbal *k, Part *part) {
@@ -1591,10 +1585,10 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
        forever is not a failure mode worth depending on a def never changing. */
     if(ship == k) { return; }
     Part *capPart = ship->parts[part];
-    /* Reach is decided by canBoard, which both callers (the Board button and
-       --board) ask first. It is not re-checked here and the refusals below are
-       not a substitute for it: boarding something out of reach is the state the
-       gate exists to prevent, so say so loudly rather than inventing a teleport. */
+    /* Reach is decided by canBoard, which the Board button asks first. It is not
+       re-checked here and the refusals below are not a substitute for it:
+       boarding something out of reach is the state the gate exists to prevent, so
+       say so loudly rather than inventing a teleport. */
     assert(kerbalInRange(k, capPart));
     const PartDef *capDef = capPart->def;
     if(capDef->crew_capacity <= 0) {

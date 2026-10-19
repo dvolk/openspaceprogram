@@ -329,9 +329,9 @@ enum LogGate { kGateOrbit, kGateDbg, kGateInfo, kGateAtt, kGateShake,
    args -- installHeadlessHooks (main.cpp) and vabInstallHooks (vab.cpp) --
    and polled by Game::fireHooks at the phase points below. Registration
    order within a phase IS the firing order, and the e2e cases depend on it
-   (e.g. --eva before --take). gate is an extra per-frame condition: the VAB
-   hooks only fire while the VAB is the live scene, and --vab-place also
-   waits for the mouse to be off the UI. */
+   (e.g. --vab-place before --vab-launch). gate is an extra per-frame
+   condition: the VAB hooks only fire while the VAB is the live scene, and
+   --vab-place also waits for the mouse to be off the UI. */
 struct GameHook {
     int ms;
     bool fired = false;
@@ -632,8 +632,8 @@ struct Game {
     // --- Surface Map state (gameui.cpp draws it; surfmap.cpp fills it) ---
     SurfmapState surfmap;
 
-    /* --- control transitions (a keypress, a part/crew window button, or a
-       --eva/--board/--pick CLI hook) --- */
+    /* --- control transitions (a keypress, a part/crew window button, or the
+       --eva load-probe hook) --- */
     // V: put a seat occupant out, or hand control back to the last ship.
     void toggle_eva();
     /* kerbalEVA MINTS the Kerbal vehicle from a seat's suit Part; kerbalBoard
@@ -768,9 +768,9 @@ struct Game {
        capsule-to-capsule or ship-to-ship transfer is not a courier move, so a
        future transfer of that shape needs its own gate rather than this one.
        Reach is owed only to the end the courier is NOT carrying, because the suit
-       they carry is their root part and so is trivially in reach. The buttons and
-       the --take / --store / --board hooks all ask these, so a gate cannot drift
-       into two copies that disagree. */
+       they carry is their root part and so is trivially in reach. Every button
+       that offers such a move asks these first, so a button cannot offer what the
+       move would refuse. */
     bool canMoveExperiment(Part *from, Part *to, Kerbal *courier);
     bool canBoard(Kerbal *courier, Vehicle *ship, size_t part);
     // Push a one-shot on-screen message (printf-style).
@@ -851,9 +851,8 @@ std::vector<Part *> vehicleSeats(Vehicle *v);
 /* Display name for a person: their owned profile, else empty. */
 std::string seatName(const Part *suit);
 /* Free kerbals are the isEva entries of Game::vehicles; a seated crew member is
-   not a vehicle at all (part.h). */
-std::vector<Kerbal *> freeKerbals(const std::vector<Vehicle *> &vehicles);
-/* Same walk into a reused buffer (cleared here), for per-frame callers. */
+   not a vehicle at all (part.h). Walked into a reused buffer (cleared here), for
+   per-frame callers. */
 void freeKerbalsInto(const std::vector<Vehicle *> &vehicles,
                      std::vector<Kerbal *> &out);
 

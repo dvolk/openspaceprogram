@@ -17,6 +17,10 @@ ARGS --sim-press 2500,0,ESCAPE --recover 3500
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [toast] Cannot recover
 EXPECT a crew member can't be recovered
+# The aim and the EVA click both have to land for the walker to exist at all;
+# without this, a missed click shows up as the FORBID below rather than as the
+# click that missed.
+FORBID FAILED
 # The refusal is the whole point: no flight ends here.
 FORBID [recover] t=
 FORBID [science] recovered

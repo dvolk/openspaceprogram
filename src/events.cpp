@@ -87,8 +87,15 @@ void emit_sim_events(Game &g) {
             if(slash == std::string::npos) {
                 why = vabAimAtPart(g, f.part, sx, sy);
             } else {
-                why = flightAimAtPart(g, f.part.substr(0, slash),
-                                      f.part.substr(slash + 1), sx, sy);
+                /* Gate the scene here rather than inside the aim: these pixels
+                   only mean ship parts in Flight, and from another scene they
+                   mean something else entirely -- the aim would either lie about
+                   clickability or land on an unrelated pixel. */
+                if(!sceneIs(g, SceneId::Flight)) { why = "not in the flight scene"; }
+                else {
+                    why = flightAimAtPart(g, f.part.substr(0, slash),
+                                          f.part.substr(slash + 1), sx, sy);
+                }
             }
             f.done = true;
             if(!why.empty()) {

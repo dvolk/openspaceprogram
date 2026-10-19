@@ -44,6 +44,10 @@ PickRay pickRay(const Camera &cam, int W, int H, int px, int py) {
 // Render-frame point -> window pixel, the inverse of pickRay's unprojection.
 // The same -renderOrigin shifts cancel, so p_render maps straight as
 // v = R * (pS - pos). false if behind the camera.
+// pickRay reads the projection's w-row Z coefficient (cam.projection[2][3])
+// rather than assuming it; this inverts the specific value that coefficient
+// has for every camera here (camera.cpp builds it as -1), which is what lets
+// the -v.z divide stand in for it.
 bool projectPixel(const Game &g, const glm::dvec3 &pS, double &px, double &py) {
     const Camera &cam = *g.camera;
     const glm::dmat3 R(cam.view);

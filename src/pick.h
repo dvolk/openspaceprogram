@@ -66,7 +66,9 @@ std::string aimAtPoint(Game &g, const glm::dvec3 &pS,
                        double &sx, double &sy);
 
 /* Where <partId> on the ship named <shipName> can be CLICKED, for --ui-focus.
-   Mirrors the VAB's vabAimAtPart. */
+   Mirrors the VAB's vabAimAtPart. Precondition: the flight scene is live -- the
+   caller gates it, because these pixels only mean ship parts there (from the VAB
+   they mean the build tree, so an aim would either lie or hit something else). */
 std::string flightAimAtPart(Game &g, const std::string &shipName,
                             const std::string &partId, double &sx, double &sy);
 
