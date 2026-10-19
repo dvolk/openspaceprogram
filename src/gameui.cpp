@@ -19,6 +19,7 @@
 #include "version.h"     // VERSION
 #include "physics.h"     // GetAngVelocity
 #include "siminput.h"    // the --sim-press / --sim-mouse queues
+#include "uiinput.h"     // uiCombo: a Combo --ui-click can otherwise not name (#251)
 #include "fmt.h"         // fmt_dist / fmt_time
 #include "orbitsample.h" // OrbitSampleCache + open-arc sampling
 #include "orbitmap.h"    // OrbitMap + contrastingColor
@@ -305,7 +306,7 @@ static void draw_telemetry_cell(Game &g, int idx) {
     const char *items[kNumSeries];
     for(int i = 0; i < kNumSeries; i++) { items[i] = kSeries[i].name; }
     ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
-    ImGui::Combo("##series", &g.hud.telemetry_sel[idx], items, kNumSeries);
+    uiCombo("##series", &g.hud.telemetry_sel[idx], items, kNumSeries);
     ImGui::PopItemWidth();
 
     const int sel = g.hud.telemetry_sel[idx];
@@ -480,7 +481,7 @@ void drawUIReadouts(Game &g) {
                 items += '\0';
             };
             int wm = (int)args.window_mode;
-            if(ImGui::Combo("Window mode", &wm,
+            if(uiCombo("Window mode", &wm,
                             "windowed\0borderless\0fullscreen\0exclusive\0")) {
                 args.window_mode = static_cast<WindowMode>(wm);
                 g.display.setWindowMode(args.window_mode,
@@ -512,7 +513,7 @@ void drawUIReadouts(Game &g) {
                 const bool native_fs =
                     (args.window_mode == WindowMode::Fullscreen);
                 ImGui::BeginDisabled(native_fs);
-                if(ImGui::Combo("Display mode", &sel, items.c_str())) {
+                if(uiCombo("Display mode", &sel, items.c_str())) {
                     args.screen_width = modes[sel].width;
                     args.screen_height = modes[sel].height;
                     if(!native_fs) {
@@ -541,7 +542,7 @@ void drawUIReadouts(Game &g) {
                 }
                 // Split literals: in C, "\02" is the OCTAL escape for 0x02, not a
                 // null + '2' -- one literal would list 2x/4x as missing-glyph boxes.
-                if(ImGui::Combo("Antialiasing", &sel,
+                if(uiCombo("Antialiasing", &sel,
                                 "none\0" "2x\0" "4x\0" "8x\0")) {
                     args.msaa_samples = aa_values[sel];
                     g.toast("Antialiasing: %s (applies on restart)",
@@ -605,7 +606,7 @@ void drawUIReadouts(Game &g) {
                              "%.2f")) {
             g.audio.setMusicVolume(music_volume);
         }
-        if(ImGui::Combo("UI style", &ui_style, "Dark\0Light\0Classic\0")) {
+        if(uiCombo("UI style", &ui_style, "Dark\0Light\0Classic\0")) {
             g.apply_ui_style();
         }
         if(ImGui::SliderFloat("Window rounding", &window_rounding,
@@ -1132,7 +1133,7 @@ void drawUIReadouts(Game &g) {
             sm_items.push_back(b->name.c_str());
             if(g.surfmap.body == b) { sm_sel = (int)sm_items.size() - 1; }
         }
-        ImGui::Combo("Body", &sm_sel, sm_items.data(), (int)sm_items.size());
+        uiCombo("Body", &sm_sel, sm_items.data(), (int)sm_items.size());
         g.surfmap.body = (sm_sel > 0 && sm_sel <= (int)sys.bodies.size())
             ? sys.bodies[sm_sel - 1]
             : nullptr;
@@ -2688,7 +2689,7 @@ void drawUIMap(Game &g) {
                                              "Target orbit" };
             ImGui::PushItemWidth(avail_w * 0.5f);
             int plane_sel = g.hud.view.ref_plane.mode;
-            if(ImGui::Combo("Map plane", &plane_sel, kPlanes, 4)) {
+            if(uiCombo("Map plane", &plane_sel, kPlanes, 4)) {
                 if(plane_sel == kRefTarget && !g.hud.view.target_plane_ok) {
                     g.toast("No transfer target: pick one in the TARGET window");
                 } else {

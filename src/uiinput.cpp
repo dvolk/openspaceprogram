@@ -337,3 +337,28 @@ void ImGuiTestEngineHook_Log(ImGuiContext *ctx, const char *fmt, ...) {}
 const char *ImGuiTestEngine_FindItemDebugLabel(ImGuiContext *ctx, ImGuiID id) {
     return labelOf(id);
 }
+
+/* Attach `label` to whatever widget was submitted last. The registry already
+   holds that id -- ItemAdd registered it with an empty label -- and
+   ImGuiTestEngineHook_ItemInfo fills the empty one in, so this costs nothing
+   when the registry is not armed. */
+static void nameLastItem(const char *label) {
+    ImGuiContext *ctx = ImGui::GetCurrentContext();
+    if(ctx == nullptr || !ctx->TestEngineHookItems) { return; }
+    const ImGuiID id = ImGui::GetItemID();
+    if(id == 0) { return; }
+    ImGuiTestEngineHook_ItemInfo(ctx, id, label, 0);
+}
+
+bool uiCombo(const char *label, int *current,
+             const char *items_separated_by_zeros) {
+    const bool changed = ImGui::Combo(label, current, items_separated_by_zeros);
+    nameLastItem(label);
+    return changed;
+}
+
+bool uiCombo(const char *label, int *current, const char *const *items, int count) {
+    const bool changed = ImGui::Combo(label, current, items, count);
+    nameLastItem(label);
+    return changed;
+}
