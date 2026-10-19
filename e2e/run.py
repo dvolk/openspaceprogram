@@ -7,7 +7,7 @@ or a case you want to drive by hand); --show-cmd prints the exact command +
 env so a failure re-runs under a debugger. Case keys: NAME ARGS EXPECT FORBID
 CHECK LIMIT WRITE SEED FILE NOFILE EXIT. CHECK sees out and
 the parsed logs (orbit/dbg/att/eva/fuel/drainlog/drag/shake/cam/terrain/surf/
-xfer/porkchop/surfmap/mapb/plane/slew/toast) plus first/last/re. ARGS tokenizes like a
+xfer/porkchop/surfmap/mapb/plane/slew/toast/scene) plus first/last/re. ARGS tokenizes like a
 shell, so a value may be quoted to carry spaces. SEED <fixture> <path-under-
 data-dir> [AGE_DAYS] stages an existing save into the case's scratch --data-dir.
 FILE <path-under-data-dir> [substring...] and NOFILE <path-under-data-dir>
@@ -165,6 +165,10 @@ SURF_RE = re.compile(
     r"roll=([-\d.e+]+) deg\s+hdg=([-\d.e+]+) deg\s+acc=([-\d.e+]+) m/s2\s+"
     r"body=\"([^\"]*)\"\s+bme=\"([^\"]*)\"\s+sit=\"([^\"]*)\""
 )
+# A scene CHANGE only. The two refusal lines ("already in X -- push refused",
+# "X is the floor -- pop refused") name no from/to pair, so they are not rows:
+# a refused transition must not anchor anything.
+SCENE_RE = re.compile(r"\[scene\]\s+(\w+) -> (\w+)\s+\((\w+)\)\s+t=([\d.]+)s")
 DRAINLOG_RATE_RE = re.compile(r"g(\d+)=([-\d.]+)")
 FUEL_RE = re.compile(
     r"\[fuel\]\s+t=([\d.]+)s\s+ship=\"([^\"]*)\"\s+(.*)"
@@ -551,6 +555,14 @@ def parse_surf(out):
     return rows
 
 
+def parse_scene(out):
+    rows = []
+    for m in SCENE_RE.finditer(out):
+        frm, to, verb, t = m.groups()
+        rows.append({"from": frm, "to": to, "verb": verb, "t": float(t)})
+    return rows
+
+
 def parse_drag(out):
     rows = []
     for m in DRAG_RE.finditer(out):
@@ -771,6 +783,7 @@ def run_case(case):
     cam = parse_cam(out)
     terrain = parse_terrain(out)
     surf = parse_surf(out)
+    scene = parse_scene(out)
     mapb = parse_mapb(out)
     plane = parse_plane(out)
     slew = parse_slew(out)
@@ -782,6 +795,7 @@ def run_case(case):
         "cam": cam,
         "terrain": terrain,
         "surf": surf, "mapb": mapb, "plane": plane, "slew": slew,
+        "scene": scene,
         "toast": toast,
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,

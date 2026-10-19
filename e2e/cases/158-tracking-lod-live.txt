@@ -12,6 +12,11 @@ ARGS --terrain-log --orbit-interval 1 --sim-press 800,0,ESCAPE --ui-click 1200,"
 # The station is a hop from the hub, not a hop from flight: ESC opens the hub and
 # its button opens the station, which is the route a player takes.
 EXPECT [scene] spacecenter -> tracking (push)
-CHECK len(terrain) >= 3 and terrain[-1]["t"] > terrain[0]["t"]
+# Anchored on the push: --ui-click retries for up to 2s, so the push can land
+# anywhere in [1.2s, 3.2s] of a 6s run, and an unanchored count would be
+# satisfied by the flight samples before it. The count is the claim -- a frozen
+# tree prints no [terrain] line at all.
+CHECK len([x for x in terrain if x["t"] >= scene[-1]["t"]]) >= 3
+FORBID FAILED
 FORBID GL_
 FORBID error:

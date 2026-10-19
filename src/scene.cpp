@@ -204,7 +204,8 @@ void pushScene(Game &g, SceneId id) {
     if(g.sceneStack.empty()) { return; }   // main seeds the stack before the loop
     if(curSceneId(g) == id) {
         // A programming-error guard (not reachable from the UI).
-        printf("[scene] already in %s -- push refused\n", sceneName(id));
+        printf("[scene] already in %s -- push refused t=%.1fs\n", sceneName(id),
+               g.time);
         fflush(stdout);
         return;
     }
@@ -225,13 +226,15 @@ void pushScene(Game &g, SceneId id) {
     g.sceneStack.push_back(f);
     kScenes[(size_t)id].enter(g);
     g.ensure_ui_visible();
-    printf("[scene] %s -> %s (push)\n", sceneName(from), sceneName(id));
+    printf("[scene] %s -> %s (push) t=%.1fs\n", sceneName(from), sceneName(id),
+           g.time);
     fflush(stdout);
 }
 
 void popScene(Game &g) {
     if(g.sceneStack.size() <= 1) {
-        printf("[scene] %s is the floor -- pop refused\n", sceneName(curSceneId(g)));
+        printf("[scene] %s is the floor -- pop refused t=%.1fs\n",
+               sceneName(curSceneId(g)), g.time);
         fflush(stdout);
         return;
     }
@@ -240,7 +243,8 @@ void popScene(Game &g) {
     kScenes[(size_t)f.id].exit(g);
     if(f.camValid) { restoreCamera(g, f.cam); }
     g.ensure_ui_visible();
-    printf("[scene] %s -> %s (pop)\n", sceneName(f.id), sceneName(curSceneId(g)));
+    printf("[scene] %s -> %s (pop) t=%.1fs\n", sceneName(f.id),
+           sceneName(curSceneId(g)), g.time);
     fflush(stdout);
 }
 
@@ -267,7 +271,8 @@ static void setBaseScene(Game &g, SceneId id, const char *verb) {
     // Logged only when something actually moved, so a redundant call is quiet.
     if(depth > 1 || from != id) {
         g.ensure_ui_visible();
-        printf("[scene] %s -> %s (%s)\n", sceneName(from), sceneName(id), verb);
+        printf("[scene] %s -> %s (%s) t=%.1fs\n", sceneName(from), sceneName(id),
+               verb, g.time);
         fflush(stdout);
     }
 }
