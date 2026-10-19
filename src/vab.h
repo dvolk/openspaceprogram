@@ -21,6 +21,12 @@ glm::dvec3 vabNodePos(const Game &g, int partIdx, int nodeIdx);
 // Build-frame (S) point -> window pixel.
 bool vabProject(const Game &g, const glm::dvec3 &pS, double &px, double &py);
 
+// Where a named build part can be CLICKED, for --ui-focus. Returns empty on
+// success (and a pixel whose real pick lands on that part), or the reason it
+// could not be aimed: wrong scene, no such part, behind the camera, or hidden
+// from this angle -- which is the case a test must answer by orbiting.
+std::string vabAimAtPart(Game &g, const std::string &id, double &sx, double &sy);
+
 // Nearest STACK node to the mouse within `thresholdPx`; -1 if none.
 // Occupied ports are skipped (falls through to surface attach).
 int pickVabNode(Game &g, int px, int py, int partIdx, double thresholdPx);

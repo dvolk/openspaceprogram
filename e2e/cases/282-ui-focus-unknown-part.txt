@@ -1,0 +1,10 @@
+# A part id that is not in the build must say so, not click empty space. Without
+# this, a typo in a case's part name would look like a pick that missed rather
+# than a case that asks for the wrong thing.
+NAME ui-focus-unknown-part
+ARGS --vab res/ships/tanker.json --width 1920 --height 1080 --timeout 5 --frame-cap 25
+ARGS --ui-focus 1500,no_such_part
+EXPECT [uifocus] 'no_such_part' FAILED no such part in the build
+FORBID [vab] select
+FORBID GL_
+FORBID error:

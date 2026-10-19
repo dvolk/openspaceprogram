@@ -347,6 +347,19 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "the rmb=/cap= gates). Repeat the flag to append more "
                    "quintuples.")
         ->delimiter(',');
+    std::vector<std::string> ui_focus;
+    app.add_option("--ui-focus", ui_focus,
+                   "Park the simulated cursor on a named build part: a flat "
+                   "list of MS,PART_ID pairs (e.g. 1500,engine_1 = at 1.5s put "
+                   "the cursor on the part whose id is engine_1). The test "
+                   "names the PART; the game projects it to a pixel with the "
+                   "same math the pick uses, so the case carries no pixel that "
+                   "only means something in one camera framing. It is a "
+                   "teleport, not a drag, and the real raycast pick still runs: "
+                   "if another part is in front, that one gets selected and the "
+                   "case sees it. Click where it lands with X,Y = CUR. Prints "
+                   "[uifocus] so a case can pin it. Editor only.")
+        ->delimiter(',');
 
     std::vector<std::string> sim_mode;
     app.add_option("--sim-mode", sim_mode,
@@ -1060,22 +1073,35 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                 return false;
             }
             const unsigned long d = v;
-            v = (unsigned long)strtol(sim_mouse[i + 2].c_str(), &end, 10);
-            if(end == sim_mouse[i + 2].c_str() || *end != '\0') {
-                printf("error: --sim-mouse X '%s' is not an "
-                       "integer pixel\n", sim_mouse[i + 2].c_str());
+            /* X,Y may be "CUR": wherever the simulated cursor already stands.
+               That is what lets a case aim with --ui-focus (a part id) and then
+               click there, instead of hardcoding a pixel that only means
+               something in one camera framing. */
+            auto parse_xy = [&](const char *what, const std::string &s,
+                                int &out) -> bool {
+                if(s == "CUR" || s == "cur" || s == "Cur") {
+                    out = kSimCurPos;
+                    return true;
+                }
+                char *e = nullptr;
+                const long r = strtol(s.c_str(), &e, 10);
+                if(e == s.c_str() || *e != '\0') {
+                    printf("error: --sim-mouse %s '%s' is not an integer pixel "
+                           "or CUR\n", what, s.c_str());
+                    return false;
+                }
+                out = (int)r;
+                return true;
+            };
+            int x = 0, y = 0;
+            if(!parse_xy("X", sim_mouse[i + 2], x)) {
                 *exit_code = 1;
                 return false;
             }
-            const int x = (int)v;
-            v = (unsigned long)strtol(sim_mouse[i + 3].c_str(), &end, 10);
-            if(end == sim_mouse[i + 3].c_str() || *end != '\0') {
-                printf("error: --sim-mouse Y '%s' is not an "
-                       "integer pixel\n", sim_mouse[i + 3].c_str());
+            if(!parse_xy("Y", sim_mouse[i + 3], y)) {
                 *exit_code = 1;
                 return false;
             }
-            const int y = (int)v;
             const int b = sim_parse_button(sim_mouse[i + 4]);
             if(b < 0) {
                 printf("error: --sim-mouse button '%s' is not a known SDL "
@@ -1093,6 +1119,35 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             a.started = false;
             a.released = false;
             args.sim_mouse_actions.push_back(a);
+        }
+    }
+
+    if(!ui_focus.empty()) {
+        if(ui_focus.size() % 2 != 0) {
+            printf("error: --ui-focus expects MS,PART_ID pairs; got %zu "
+                   "value(s)\n", ui_focus.size());
+            *exit_code = 1;
+            return false;
+        }
+        for(size_t i = 0; i < ui_focus.size(); i += 2) {
+            char *end = nullptr;
+            const unsigned long t = strtoul(ui_focus[i].c_str(), &end, 10);
+            if(end == ui_focus[i].c_str() || *end != '\0') {
+                printf("error: --ui-focus time '%s' is not an integer ms\n",
+                       ui_focus[i].c_str());
+                *exit_code = 1;
+                return false;
+            }
+            if(ui_focus[i + 1].empty()) {
+                printf("error: --ui-focus needs a part id\n");
+                *exit_code = 1;
+                return false;
+            }
+            UiFocus f;
+            f.at_ms = (Uint32)t;
+            f.part = ui_focus[i + 1];
+            f.done = false;
+            args.ui_focuses.push_back(f);
         }
     }
 

@@ -19,8 +19,10 @@
 NAME vab-launch-fuel-cycle
 ARGS --vab e2e/fixtures/cycle_ship.json --width 1920 --height 1080 --timeout 6
 ARGS --ui-click 1200,"VAB/Add fuel link"
-ARGS --sim-mouse 1800,0,960,450,LMB
-ARGS --sim-mouse 2400,0,960,660,LMB
+ARGS --ui-focus 1800,capsule_1
+ARGS --sim-mouse 1900,0,CUR,CUR,LMB
+ARGS --ui-focus 2400,engine_1
+ARGS --sim-mouse 2500,0,CUR,CUR,LMB
 ARGS --vab-launch 3500
 EXPECT [vab] entered the editor (sim keeps coasting)
 EXPECT [vab] link src capsule_1

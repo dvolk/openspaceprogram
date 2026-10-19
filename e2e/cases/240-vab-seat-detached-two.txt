@@ -5,22 +5,23 @@
 # after vector::erase then showed up as mojibake in the toast instead of a
 # plausible part name, and a shorter id hides it.
 #
-# The detach is the player's route now: click the doomed capsule, click "Detach
-# subtree". --vab-detach 1 selected by index and never checked that a pick lands
-# on part 1; the "[vab] select" line says which part the click took.
+# The detach is the player's route now: --ui-focus names the doomed capsule, the
+# game finds a pixel that picks it, click there, then click "Detach subtree".
+# --vab-detach 1 selected by index and never checked that a pick lands on part 1;
+# the "[vab] select" line says which part the click took.
 #
-# The pick is 900,680, NOT the 1000,610 that also selects part 1: --vab-assign
-# opens the seat window, and a click inside it is swallowed. Measured with this
-# case's own sequence, at x=1000 that covers the whole band y=580..700, and at
-# y=610 it starts near x=970. Do not read the extent off --ui-list's item rects
-# (the Seat rows report 980,621-1259,641): the window's title bar and padding
-# reach further than any row, so a pixel chosen "just outside a row" can still be
-# swallowed. 900,680 sits clear of the measured edge.
+# The aim happens AFTER the two assigns, and that ordering matters: --vab-assign
+# opens the seat window, and a click inside it is swallowed -- correct behaviour,
+# but it means the pixel the aim picks has to be one the window does not cover.
+# The aim's spiral only asks the 3D pick whether a pixel hits the part; it does
+# not know about windows. If this case ever stops selecting, check whether the
+# seat window now covers the reported pixel.
 NAME vab-seat-detached-two
 ARGS --vab e2e/fixtures/two_capsules.json --kerbals e2e/fixtures/three_kerbals.json
 ARGS --width 1920 --height 1080 --time-accel 1 --timeout 12 --frame-cap 30
 ARGS --vab-assign 3000,1,0,Ace --vab-assign 3200,0,0,Bram
-ARGS --sim-mouse 4500,0,900,680,LMB
+ARGS --ui-focus 4000,capsule_r1.5h3_2
+ARGS --sim-mouse 4500,0,CUR,CUR,LMB
 ARGS --ui-click 5000,"VAB/Detach subtree"
 ARGS --vab-launch 7000
 EXPECT [vab] assign hook: 'capsule_r1.5h3_2' seat 0 = 'Ace'

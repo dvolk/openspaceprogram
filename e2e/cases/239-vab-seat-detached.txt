@@ -15,10 +15,11 @@
 NAME vab-seat-detached
 ARGS --vab res/ships/small_docker.json --kerbals e2e/fixtures/three_kerbals.json
 ARGS --width 1920 --height 1080 --time-accel 1 --timeout 12 --frame-cap 30
-ARGS --sim-mouse 2000,0,960,490,RMB
+ARGS --ui-focus 1500,capsule_1
+ARGS --sim-mouse 2000,0,CUR,CUR,RMB
 ARGS --ui-click 2600,"Crew##capsule_1/Seat 1##s0"
 ARGS --ui-click 3200,"##Combo_00/Ace"
-ARGS --sim-mouse 4000,0,960,490,LMB
+ARGS --sim-mouse 4000,0,CUR,CUR,LMB
 ARGS --ui-click 5000,"VAB/Detach subtree"
 ARGS --vab-launch 7000
 EXPECT [vab] seat window: 'capsule_1' (1 seats)

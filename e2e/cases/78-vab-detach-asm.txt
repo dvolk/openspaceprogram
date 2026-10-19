@@ -1,19 +1,20 @@
 # Detaching a SUBTREE ROOT stashes the whole subtree as a subassembly, and the
 # launch that follows carries only what is left.
 #
-# This used to run --vab-detach 1 on tanker. Two reasons it does not any more:
-# the hook selects the part by index, so the case never proved the part was
-# reachable by picking it; and tanker's part 1 is occluded from the default
-# editor camera -- a dense scan of the tanker silhouette finds parts 2, 3, 4 and
-# 6 only, never 1 or 5 -- so a player at the default view cannot click it either
-# (#311). stager is a straight chain, so dec_1 is a subtree root that IS pickable,
-# and the stash arithmetic is the same shape: 3 parts go, 4 stay.
+# This used to run --vab-detach 1 on tanker. The hook selected the part by index,
+# so the case never proved the part was reachable by picking it. It also sits
+# behind the core from the editor's default angle, which is normal for a 3D
+# scene -- a player orbits and clicks it, and --ui-focus says so plainly rather
+# than picking a neighbour (#311). stager is a straight chain, so dec_1 is a
+# subtree root that is pickable from any angle, and the stash arithmetic is the
+# same shape: 3 parts go, 4 stay.
 #
 # The stash itself is asserted, not inferred from the launch count: the toast
 # says it went to Subassemblies and how many came with it.
 NAME vab-detach-asm
 ARGS --vab res/ships/stager.json --width 1920 --height 1080 --timeout 8
-ARGS --sim-mouse 1500,0,960,600,LMB
+ARGS --ui-focus 1500,dec_1
+ARGS --sim-mouse 1600,0,CUR,CUR,LMB
 ARGS --ui-click 2500,"VAB/Detach subtree"
 ARGS --vab-launch 4000
 CHECK re.search(r"\[vab\] select 4 dec_1", out)

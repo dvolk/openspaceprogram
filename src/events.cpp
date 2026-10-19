@@ -75,7 +75,15 @@ void emit_sim_events(Game &g) {
             bev.button.y = y;
             SDL_PushEvent(&bev);
         };
+        /* X,Y may be CUR: wherever the simulated cursor stands, which is how a
+           case clicks where --ui-focus just aimed it. */
+        auto at_xy = [&](const SimMouseAction &a, int &x, int &y) {
+            x = a.x == kSimCurPos ? g.args.sim_mouse_x : a.x;
+            y = a.y == kSimCurPos ? g.args.sim_mouse_y : a.y;
+        };
         for(auto &a : g.args.sim_mouse_actions) {
+            int ax = 0, ay = 0;
+            at_xy(a, ax, ay);
             if(!a.started && now >= a.time_ms) {
                 if(a.button == 4 || a.button == 5) {
                     // SDL3 wheel events carry the scroll amount in x/y
@@ -85,34 +93,69 @@ void emit_sim_events(Game &g) {
                     wev.wheel.which = 0;
                     wev.wheel.x = 0.0f;
                     wev.wheel.y = (a.button == 4) ? 1 : -1;
-                    wev.wheel.mouse_x = a.x;
-                    wev.wheel.mouse_y = a.y;
+                    wev.wheel.mouse_x = ax;
+                    wev.wheel.mouse_y = ay;
                     // The imgui backend takes the mouse position from motion
                     // events only -- park the cursor first.
-                    push_motion(a.x, a.y);
+                    push_motion(ax, ay);
                     SDL_PushEvent(&wev);
                     a.started = true;
                     a.released = true;   // complete: skip the release path
                 } else if(a.button != 0 && a.up_ms > a.time_ms) {
                     // drag: press, then move
-                    push_btn(SDL_EVENT_MOUSE_BUTTON_DOWN, a.button, a.x, a.y);
-                    push_motion(a.x, a.y);
+                    push_btn(SDL_EVENT_MOUSE_BUTTON_DOWN, a.button, ax, ay);
+                    push_motion(ax, ay);
                 } else if(a.button != 0) {
                     // click: move, press, release (same frame)
-                    push_motion(a.x, a.y);
-                    push_btn(SDL_EVENT_MOUSE_BUTTON_DOWN, a.button, a.x, a.y);
-                    push_btn(SDL_EVENT_MOUSE_BUTTON_UP, a.button, a.x, a.y);
+                    push_motion(ax, ay);
+                    push_btn(SDL_EVENT_MOUSE_BUTTON_DOWN, a.button, ax, ay);
+                    push_btn(SDL_EVENT_MOUSE_BUTTON_UP, a.button, ax, ay);
                     a.released = true;
                 } else {
-                    push_motion(a.x, a.y);
+                    push_motion(ax, ay);
                 }
                 a.started = true;
             }
             if(a.button != 0 && a.started && !a.released
                && now >= a.up_ms) {
-                push_btn(SDL_EVENT_MOUSE_BUTTON_UP, a.button, a.x, a.y);
+                push_btn(SDL_EVENT_MOUSE_BUTTON_UP, a.button, ax, ay);
                 a.released = true;
             }
+        }
+    }
+
+    /* --ui-focus: park the simulated cursor on a named part. The case names the
+       PART; vabProject turns it into the pixel the pick would hit there, so the
+       case carries no coordinate that only means something in one framing. It
+       pushes a real MOTION, so the cursor moves for imgui and the VAB hover
+       alike, and the raycast pick still decides what is under it -- an occluded
+       part selects its occluder, and the case sees that. */
+    if(!g.args.ui_focuses.empty()) {
+        const Uint32 now = SDL_GetTicks() - g.loop_start_ms;
+        for(auto &f : g.args.ui_focuses) {
+            if(f.done || now < f.at_ms) { continue; }
+            double sx = 0, sy = 0;
+            const std::string why = vabAimAtPart(g, f.part, sx, sy);
+            f.done = true;
+            if(!why.empty()) {
+                printf("[uifocus] '%s' FAILED %s\n", f.part.c_str(), why.c_str());
+                fflush(stdout);
+                continue;
+            }
+            SDL_Event mev = {0};
+            mev.type = SDL_EVENT_MOUSE_MOTION;
+            mev.motion.windowID = g.sim_win_id;
+            mev.motion.which = 0;
+            mev.motion.x = sx;
+            mev.motion.y = sy;
+            mev.motion.xrel = sx - g.args.sim_mouse_x;
+            mev.motion.yrel = sy - g.args.sim_mouse_y;
+            mev.motion.state = 0;
+            SDL_PushEvent(&mev);
+            g.args.sim_mouse_x = (int)sx;
+            g.args.sim_mouse_y = (int)sy;
+            printf("[uifocus] '%s' -> %d,%d\n", f.part.c_str(), (int)sx, (int)sy);
+            fflush(stdout);
         }
     }
 

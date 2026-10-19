@@ -1,0 +1,14 @@
+# The part 280 refuses, after an RMB drag to top-down (pitch += dyrel/200, so a
+# 320px drop is ~1.6 rad). Now the aim lands and the click selects the part it
+# named -- which is the whole point: the case says which PART it means, and
+# orbiting is a step the case takes for the same reason a player does it.
+NAME ui-focus-after-orbit
+ARGS --vab res/ships/tanker.json --width 1920 --height 1080 --timeout 6 --frame-cap 30
+ARGS --sim-mouse 800,1200,960,300,RMB --sim-mouse 1400,0,960,620,0
+ARGS --ui-focus 2200,tank_r1.5h3_1
+ARGS --sim-mouse 2700,0,CUR,CUR,LMB
+CHECK re.search(r"\[uifocus\] 'tank_r1.5h3_1' -> \d+,\d+", out)
+EXPECT [vab] select 1 tank_r1.5h3_1
+FORBID FAILED
+FORBID GL_
+FORBID error:

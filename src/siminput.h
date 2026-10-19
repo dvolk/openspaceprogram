@@ -62,16 +62,30 @@ struct SimKeyPress {
 };
 
 /* --sim-mouse: drag (button!=0, dur>0), click (button!=0, dur==0), move
-   (button==0), wheel notch (button 4/5). (x,y) are absolute window pixels;
-   MOUSEMOTION carries the delta. */
+   (button==0), wheel notch (button 4/5). (x,y) are absolute window pixels, or
+   the literal "CUR" to use wherever the simulated cursor already stands --
+   which is how a case clicks a part it aimed at with --ui-focus instead of
+   hardcoding a pixel that only means something in one camera framing. */
+static const int kSimCurPos = -0x7fffffff;   // "not a pixel, use the cursor"
 struct SimMouseAction {
     Uint32 time_ms;   // action start
     Uint32 up_ms;     // button release time
-    int x;            // window pixels
+    int x;            // window pixels; kSimCurPos = "wherever the cursor is"
     int y;
     Uint8 button;     // SDL code (1=LEFT,2=MIDDLE,3=RIGHT); 0 = move only
     bool started;     // button-down + motion emitted
     bool released;    // button-up emitted
+};
+
+/* --ui-focus: park the simulated cursor on a named part. The test says which
+   PART it means; the game projects it to a pixel with the same math the pick
+   uses. It is a teleport rather than a drag, but it lands on the real cursor
+   position, so the real raycast pick still runs -- if another part is in
+   front, that one gets selected and the case sees it. */
+struct UiFocus {
+    Uint32 at_ms;      // when to aim
+    std::string part;  // build part id
+    bool done;         // aimed, or gave up (no such part / not the editor)
 };
 
 /* --ui-click: synthetic imgui click addressed by the widget's "Window/Label"

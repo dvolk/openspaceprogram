@@ -2,17 +2,16 @@
 # fired vabDetachSelected, skipping the one thing a player must do: aim a pick at
 # the part.
 #
-# The click route makes the pick explicit. "[vab] select" names the part the pick
-# landed on, so the case says which part it means before the button runs. It is
-# not the only thing that would catch a wrong pick -- "deleted <id>" names the
-# mutated part too -- but it localises the failure to the pick instead of leaving
-# it looking like the button misbehaved.
-#
-# 1920x1080 is pinned because the pick is a pixel: at 1280x720 the editor aims
-# its camera differently and this pixel misses the ship entirely.
+# The click route makes the pick explicit: --ui-focus names the part and the game
+# finds a pixel whose real pick lands on it, so the case carries no coordinate
+# that only means something in one camera framing. "[vab] select" then says which
+# part the click took. It is not the only thing that would catch a wrong pick --
+# "deleted <id>" names the mutated part too -- but it localises the failure to
+# the pick instead of leaving it looking like the button misbehaved.
 NAME vab-detach-lone
 ARGS --vab res/ships/tanker.json --width 1920 --height 1080 --timeout 8
-ARGS --sim-mouse 1500,0,960,670,LMB
+ARGS --ui-focus 1500,engine_1
+ARGS --sim-mouse 1600,0,CUR,CUR,LMB
 ARGS --ui-click 2500,"VAB/Detach subtree"
 ARGS --vab-launch 4000
 CHECK re.search(r"\[vab\] select 2 engine_1", out)

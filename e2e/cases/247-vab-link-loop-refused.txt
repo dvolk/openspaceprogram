@@ -8,28 +8,46 @@
 # something build_ship would have accepted. Which hop the refusal names FIRST
 # follows the file's part order, so pin membership, not the chain's order.
 #
-# This one keeps --vab-link, unlike 246 which clicks "Add fuel link" and picks
-# both parts. The four parts it links (central_engine2, rtank12, rtank21,
-# central_engine1) are not all pickable from one camera framing: from the
-# default view a scan finds 3, 7, 8, 16, 17 and none of the others, and a drag
-# that exposes central_engine2 hides rtank12. Pinning four pixels to a dragged
-# camera is a worse test of a fuel-group guard than the hook is. The drag route
-# does work -- see #311 -- so this becomes convertible if the editor ever gets a
-# way to aim a pick at a part rather than at a pixel.
+# Driven as a player does it: "Add fuel link", click the source, click the
+# destination. --ui-focus names the PART and the game finds a pixel whose real
+# pick lands on it, so the case carries no coordinate tied to one framing.
+# It does orbit once, between the two clicks -- which is what a player would do:
+# no single angle exposes all four parts (from the default view rtank21 is
+# hidden; from the top-down one central_engine1 is). The legal pair is
+# rtank21 -> central_engine2 rather than the hook's central_engine1, because
+# central_engine1 is the one hidden in the angle the refused pair needs.
+#
+# FORBID lists the click failures individually instead of bare FAILED:
+# "Add fuel link" relabels itself to "Cancel fuel link" when it toggles, so
+# --ui-click's release check no longer finds the item it pressed and reports a
+# spurious MISMATCH. The press landed -- the "link src" line proves it. (#320)
 NAME vab-link-loop-refused
-ARGS --vab res/ships/heavy_two.json --timeout 8
-ARGS --vab-link 1500,central_engine2,rtank12
-ARGS --vab-link 2500,rtank21,central_engine1
-ARGS --vab-launch 4000
+ARGS --vab res/ships/heavy_two.json --width 1920 --height 1080 --timeout 8
+ARGS --sim-mouse 800,1200,960,300,RMB --sim-mouse 1400,0,960,560,0
+ARGS --ui-click 2000,"VAB/Add fuel link"
+ARGS --ui-focus 2400,central_engine2 --sim-mouse 2800,0,CUR,CUR,LMB
+ARGS --ui-focus 3200,rtank12 --sim-mouse 3600,0,CUR,CUR,LMB
+ARGS --ui-click 4200,"VAB/Add fuel link"
+ARGS --ui-focus 4600,rtank21 --sim-mouse 5000,0,CUR,CUR,LMB
+ARGS --ui-focus 5400,central_engine2 --sim-mouse 5800,0,CUR,CUR,LMB
+ARGS --vab-launch 6500
+EXPECT [vab] link src central_engine2
+EXPECT [vab] link dest rtank12
 EXPECT [vab] fuel link refused (a loop cannot drain):
 EXPECT [toast] Fuel links cannot form a loop:
 CHECK "central_engine2->rtank12" in out and "rtank12->central_engine2" in out
-CHECK re.search(r"\[vab\] fuel link fuel_link_\d+: rtank21 -> central_engine1", out)
+EXPECT [vab] link src rtank21
+EXPECT [vab] link dest central_engine2
+CHECK re.search(r"\[vab\] fuel link fuel_link_\d+: rtank21 -> central_engine2", out)
 CHECK re.search(r"\[vab\] launched 'heavy_two' \(23 parts\)", out)
 CHECK len(re.findall(r"\[vab\] fuel link refused", out)) == 1
-CHECK len(re.findall(r"\[vab\] link hook:", out)) == 2
+CHECK len(re.findall(r"\[vab\] link (?:src|dest) ", out)) == 4
 FORBID terminate called
 FORBID Assertion
+FORBID not found
+FORBID ambiguous
+FORBID disabled
+FORBID clipped
 FORBID GL_
 FORBID error:
 LIMIT 60

@@ -109,6 +109,7 @@ struct GameArgs {
     std::vector<SimMouseAction> sim_mouse_actions;
     int sim_mouse_x = 0;   // simulated cursor; each motion carries the delta from here
     int sim_mouse_y = 0;
+    std::vector<UiFocus> ui_focuses;   // park that cursor on a named part
     std::vector<SimModeChange> sim_mode_changes;
 
     std::vector<UiClick> ui_clicks;  // imgui clicks by "Window/Label"
