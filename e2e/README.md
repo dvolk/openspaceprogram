@@ -19,7 +19,9 @@ For a 3D pick, `--ui-focus MS,PART_ID` parks the cursor on a pixel whose real
 raycast lands on that part, and `--sim-mouse MS,0,CUR,CUR,BTN` clicks there. A
 fixed pixel on a multi-part build picks whatever is under it, which is how 233
 used to fail. The aim prints `[uifocus] ... -> x,y` or `FAILED <why>`, so every
-such case carries `FORBID FAILED`.
+such case carries `FORBID FAILED`. In the VAB, RMB there opens the part window,
+whose title is the catalog label with the build id as its suffix --
+`Capsule (3m)##capsule_r1.5h3_1/Seat 1##s0`, not a name you can invent.
 
 A greyed-out row is an assertion, not a mistake. `--ui-click` refuses a disabled
 widget, and the refusal line is what the case EXPECTs (236, 237). Pin WHICH

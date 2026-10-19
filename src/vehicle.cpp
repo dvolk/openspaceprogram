@@ -2180,6 +2180,10 @@ const char * Vehicle::resourceName(int r) {
     return "?";
 }
 
+const char * Vehicle::resourceUnit(int r) {
+    return (ResourceType)r == ResourceType::EC ? "Wh" : "kg";
+}
+
 void Vehicle::fuel_log(double time) {
     // distinct group ids, ascending
     std::vector<int> groups;

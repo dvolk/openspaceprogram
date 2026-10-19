@@ -158,8 +158,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Put a named kerbal in a VAB seat at this loop time: a flat "
                    "list of MS,PART_IDX,SLOT,KERBAL groups (e.g. 4000,0,0,Ace "
                    "= at 4s put Ace in seat 1 of build part 0). Cases drive the "
-                   "seat window itself now -- right-click the capsule with "
-                   "--ui-focus + CUR, then \"Crew##<part>/Seat N##sN\" and the "
+                   "part window itself now -- right-click the capsule with "
+                   "--ui-focus + CUR, then "
+                   "\"<label>##<part>/Seat N##sN\" and the "
                    "\"##Combo_00/<name>\" row (\"Empty\" is a row too, and it is "
                    "a choice: the launch then leaves that seat empty instead of "
                    "drawing the pad's line). It survives for case 237 alone: "
@@ -920,10 +921,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                     return false;
                 }
             }
-            /* The seat plan is built through the seat window now. --vab-assign
+            /* The seat plan is built through the part window now. --vab-assign
                survives for ONE thing a click cannot do: naming the SAME person
                twice. The dropdown lists an already-seated person as
-               "Name  (seated)" inside a BeginDisabled (gameui.cpp:3846-3851), so
+               "Name  (seated)" inside a BeginDisabled (gameui.cpp:3889-3901), so
                the launch-refusal guard has no other way in -- case 237. Reaching
                a seat on a multi-part build used to be a second reason (#311, a
                fixed pixel pick lands on whatever part is under it); --ui-focus

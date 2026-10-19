@@ -17,7 +17,7 @@
 #include "../middleware/imgui/imgui.h"   // ImGui::GetIO().WantCaptureMouse
 
 #include "buildings.h" // find_launch_site
-#include "crew.h"     // KerbalProfile (the seat window lists the cast by name)
+#include "crew.h"     // KerbalProfile (the part window's seat rows name the cast)
 #include "datadir.h" // datadir::ships (VAB Save target -- never the install tree)
 #include "mesh.h"     // get_mesh (the part mesh's vertex array)
 #include "part.h"     // Part (a standing suit's kerbal id, on the pad's crew line)
@@ -633,7 +633,7 @@ bool vabLoad(Game &g, const char *name) {
                 "seats they name", n, n == 1 ? "" : "s");
     }
     g.vab.seatAssigns.clear();
-    g.vab.seatPartId.clear();
+    g.vab.partWinId.clear();
     printf("[vab] loaded %s (%d parts)\n", stem.c_str(), (int)g.vab.build.parts.size());
     fflush(stdout);
     g.toast("Loaded %s (%d parts)", stem.c_str(), (int)g.vab.build.parts.size());
@@ -724,7 +724,7 @@ void vabLaunch(Game &g) {
         g.toast("Launch refused: a kerbal must be a single part");
         return;
     }
-    /* Crew chosen in the seat window: validate it BEFORE the ship exists. A
+    /* Crew chosen in the part window: validate it BEFORE the ship exists. A
        person who is not standing on the pad (taken by an earlier launch, left
        behind by a system switch) cannot be put in a seat, and a ship that
        launched with the seat half-filled reads like a success. */
@@ -787,7 +787,7 @@ void vabLaunch(Game &g) {
        pad. Keep the names and the NEXT launch of this build refuses over people
        who are already in orbit. */
     g.vab.seatAssigns.clear();
-    g.vab.seatPartId.clear();
+    g.vab.partWinId.clear();
     /* Collapse the stack to [Flight]: the launched ship is the active one now;
        leaving the editor's camera pose would make the next vabOpen skip
        capturing one. */
@@ -860,10 +860,10 @@ void vabPruneSeats(Game &g) {
             g.toast("No seats named: the next launch draws the pad's line");
         }
     }
-    // The window follows its part: no part (or no seats) means no window.
-    if(!g.vab.seatPartId.empty()
-       && !buildPartById(g, g.vab.seatPartId)) {
-        g.vab.seatPartId.clear();
+    // The window follows its part: no part means no window.
+    if(!g.vab.partWinId.empty()
+       && !buildPartById(g, g.vab.partWinId)) {
+        g.vab.partWinId.clear();
     }
 }
 
@@ -895,32 +895,46 @@ std::string vabSeatProblem(const Game &g) {
     return "";
 }
 
-void vabOpenSeatWindow(Game &g, int partIdx, int px, int py) {
+/* Open the VAB part window for build part `partIdx`, to be placed near the click
+   at (px, py). Any part with a def qualifies: seats are one section of the
+   dossier, not the condition for opening it. */
+void vabOpenPartWindow(Game &g, int partIdx, int px, int py) {
     if(partIdx < 0 || (size_t)partIdx >= g.vab.build.parts.size()) { return; }
     const BuildPart &bp = g.vab.build.parts[(size_t)partIdx];
-    if(bp.def == nullptr || bp.def->crew_capacity <= 0) {
-        printf("[vab] no seats on '%s'\n", bp.id.c_str());
-        fflush(stdout);
-        return;
+    if(bp.def == nullptr) { return; }
+    g.vab.partWinId = bp.id;
+    g.vab.partWinMx = px;
+    g.vab.partWinMy = py;
+    g.vab.partWinPlaced = false;   // place it next to the click on the first draw
+    /* The stat rows are plain imgui Text, so --ui-list cannot see them and a
+       case has nothing to pin. This line is the testable face of the dossier:
+       what the window decided the part carries. Log-style short names, as
+       Vehicle::resourceName uses everywhere else stdout is the reader. */
+    char res[200];
+    res[0] = '\0';
+    size_t used = 0;
+    for(int r = 0; r < (int)ResourceType::Num; r++) {
+        if(bp.def->capacity[r] <= 0.0f) { continue; }
+        const int n = snprintf(res + used, sizeof(res) - used, "%s%.1f%s %s",
+                               used ? ", " : "", bp.def->capacity[r],
+                               Vehicle::resourceUnit(r), Vehicle::resourceName(r));
+        if(n < 0 || (size_t)n >= sizeof(res) - used) { break; }
+        used += (size_t)n;
     }
-    g.vab.seatPartId = bp.id;
-    g.vab.seatMx = px;
-    g.vab.seatMy = py;
-    g.vab.seatPlaced = false;   // place it next to the click on the first draw
-    printf("[vab] seat window: '%s' (%d seats)\n", bp.id.c_str(),
-           bp.def->crew_capacity);
+    printf("[vab] part window: '%s' seats %d, carries %s\n", bp.id.c_str(),
+           bp.def->crew_capacity, res[0] ? res : "nothing");
     fflush(stdout);
 }
 
-void vabPickSeat(Game &g, int px, int py) {
+void vabPickPart(Game &g, int px, int py) {
     int idx = -1;
     PickBodyHit hit;
     if(!pickVabPart(g, px, py, idx, hit)) {
-        printf("[vab] seat window: nothing under the cursor\n");
+        printf("[vab] part window: nothing under the cursor\n");
         fflush(stdout);
         return;
     }
-    vabOpenSeatWindow(g, idx, px, py);
+    vabOpenPartWindow(g, idx, px, py);
 }
 
 /* Aim the editor's orbit camera at the build tree. */
@@ -1036,7 +1050,7 @@ void vabInstallHooks(Game &g) {
                 return;
             }
             const ImGuiIO &io = ImGui::GetIO();
-            vabOpenSeatWindow(g, partIdx, (int)io.DisplaySize.x / 2,
+            vabOpenPartWindow(g, partIdx, (int)io.DisplaySize.x / 2,
                               (int)io.DisplaySize.y / 2);
             const bool ok = vabAssignSeat(g, partId, slot, p->id);
             printf("[vab] assign hook: '%s' seat %d = '%s'%s\n", partId.c_str(),

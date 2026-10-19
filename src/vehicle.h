@@ -463,6 +463,11 @@ public:
     /* --fuel-log: each group's fuel mass + the fuel links. */
     static const char *resourceName(int r);
 
+    /* What a quantity of that resource is measured in. EC is stored energy, so
+       it is the one type without a mass (Part::effectiveMass skips it for the
+       same reason); everything else is kilograms. */
+    static const char *resourceUnit(int r);
+
     void fuel_log(double time);
 
     /* --drain-log: thrust this tick (N) + each group's drain rate (kg/s). */

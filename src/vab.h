@@ -62,15 +62,16 @@ bool vabLoad(Game &g, const char *name);
 // LAUNCH: place the tree on the home body's pad, take control, switch to Flight.
 void vabLaunch(Game &g);
 
-/* --- seat assignments (the seat window) ------------------------------------
-   Right-click a capsule in the VAB to open a window with one dropdown per seat,
-   listing the kerbals standing on the pad (VabState::seatAssigns, game.h). */
+/* --- seat assignments (the VAB part window) --------------------------------
+   Right-click a part in the VAB to open its dossier: what it is, what it holds,
+   and -- if it is a capsule -- one dropdown per seat listing the kerbals
+   standing on the pad (VabState::seatAssigns, game.h). */
 
-// RMB click in the VAB: open the seat window for the capsule under the cursor.
-void vabPickSeat(Game &g, int px, int py);
+// RMB click in the VAB: open the part window for the part under the cursor.
+void vabPickPart(Game &g, int px, int py);
 
-// Open the seat window for build part `partIdx`. Refuses a part with no seats.
-void vabOpenSeatWindow(Game &g, int partIdx, int px, int py);
+// Open the part window for build part `partIdx`, placed near (px, py).
+void vabOpenPartWindow(Game &g, int partIdx, int px, int py);
 
 // Put `profileId` in that seat, or empty it (profileId 0). False if the part or
 // slot is not a seat of the current build.
@@ -87,7 +88,7 @@ void vabPruneSeats(Game &g);
 std::string vabSeatProblem(const Game &g);
 
 // The window itself (gameui.cpp), drawn while the Vab scene is live.
-void drawVabSeatWindow(Game &g);
+void drawVabPartWindow(Game &g);
 
 void vabAimCamera(Game &g);
 

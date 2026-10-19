@@ -1,11 +1,11 @@
 # WHO flies, said by the player instead of by the front of the FIFO line. The
-# seat window (right-click a capsule in the VAB) is the feature: 'Bram' goes up
+# part window (right-click a capsule in the VAB) is the feature: 'Bram' goes up
 # because the window said so -- and 'Ace', first in line, stays on the pad,
 # because naming any seat turns auto-fill off entirely.
 #
 # This used to be blocked by #311: tanker is seven parts, and a right-click at a
 # fixed pixel picks whatever is under it -- measured, 960,540 lands on
-# 'tank_r1.5h3_2' and the game answers "no seats". --ui-focus is what unblocked
+# 'tank_r1.5h3_2', a part with no seat to name. --ui-focus is what unblocked
 # it: a bare PART_ID names a VAB build part and the game projects IT to a pixel,
 # so the case names the capsule instead of gambling on a coordinate.
 NAME vab-seat-assign
@@ -13,10 +13,10 @@ ARGS --vab res/ships/tanker.json --kerbals e2e/fixtures/three_kerbals.json
 ARGS --time-accel 1 --timeout 12 --frame-cap 30
 ARGS --ui-focus 2000,capsule_1
 ARGS --sim-mouse 2100,0,CUR,CUR,RMB
-ARGS --ui-click 3000,"Crew##capsule_1/Seat 1##s0"
+ARGS --ui-click 3000,"Capsule (2m)##capsule_1/Seat 1##s0"
 ARGS --ui-click 3600,"##Combo_00/Bram"
 ARGS --ui-click 5000,"VAB TopBar/LAUNCH"
-EXPECT [vab] seat window: 'capsule_1' (1 seats)
+EXPECT [vab] part window: 'capsule_1' seats 1
 EXPECT Crew: 'Bram' aboard 'tanker' part 0 (1/1)
 EXPECT [vab] launched 'tanker' (7 parts)
 FORBID Crew: 'Ace'

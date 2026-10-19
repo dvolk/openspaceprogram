@@ -20,7 +20,7 @@ ARGS --vab e2e/fixtures/two_capsules.json --kerbals e2e/fixtures/three_kerbals.j
 ARGS --time-accel 1 --timeout 8 --frame-cap 30
 ARGS --ui-focus 2000,capsule_r1.5h3_2
 ARGS --sim-mouse 2100,0,CUR,CUR,RMB
-ARGS --ui-click 2600,"Crew##capsule_r1.5h3_2/Seat 1##s0"
+ARGS --ui-click 2600,"Capsule (3m)##capsule_r1.5h3_2/Seat 1##s0"
 ARGS --ui-click 3000,"##Combo_00/Ace"
 ARGS --vab-detach 1 --vab-detach-at 5000 --vab-launch 5000
 EXPECT [vab] dropped the seat plan for 'capsule_r1.5h3_2' 'Ace' (it left the build)

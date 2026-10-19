@@ -66,6 +66,15 @@ unsigned int ramp_color(float t) {
 }
 } // namespace
 
+/* Resource labels, in ResourceType order. Three windows list resources (the
+   ship HUD's bars, a flight part window, the VAB part window) and they all say
+   the same substance names, so they say them from here. The units come from
+   Vehicle::resourceUnit, next to the short log names. */
+static const char *resNames[(int)ResourceType::Num] = {
+    "Hydrogen", "LOX", "Electric charge", "Oxygen", "Water", "Food",
+    "Hydrazine", "Jet fuel"
+};
+
 // Cached orbit samplings keyed on the object's pointer; valid only
 // while it is on a fixed Keplerian conic. See OrbitSampleCache.
 static std::map<const void *, OrbitSampleCache> orbit_caches;
@@ -2003,10 +2012,6 @@ void drawUIReadouts(Game &g) {
 
     drawWin(g, W_Resources, [&] {
         // Aggregate across the active ship's parts; only types with capacity show.
-        static const char *resNames[(int)ResourceType::Num] = {
-            "Hydrogen", "LOX", "Electric charge", "Oxygen", "Water", "Food",
-            "Hydrazine", "Jet fuel"
-        };
         // Display order: fuels first, then life support (independent of enum order).
         static const ResourceType resOrder[] = {
             ResourceType::Hydrogen, ResourceType::LOX, ResourceType::JetFuel,
@@ -2247,21 +2252,13 @@ void drawPartWindows(Game &g) {
                             def->fullThrust(), def->totalPropellantRate(),
                             def->exhaust_velocity);
             }
-            static const char *resNames[(int)ResourceType::Num] = {
-                "Hydrogen", "LOX", "EC", "Oxygen", "Water", "Food", "Hydrazine", "Jet fuel"
-            };
-            // EC is stored energy (watt-hours), not a substance: a battery drains under load
-            // without losing mass.
-            static const char *resUnits[(int)ResourceType::Num] = {
-                "kg", "kg", "Wh", "kg", "kg", "kg", "kg", "kg"
-            };
             for(int r = 0; r < (int)ResourceType::Num; r++) {
                 if(def->capacity[(size_t)r] <= 0.0f) { continue; }
                 ImGui::Text("%s: %.1f%s/%.1f%s", resNames[r],
                             ship->parts[part]->resources.current[r],
-                            resUnits[r],
+                            Vehicle::resourceUnit(r),
                             ship->parts[part]->resources.capacity[r],
-                            resUnits[r]);
+                            Vehicle::resourceUnit(r));
             }
             // --- docking port ------------------------------------------------
             // Docking is intent-driven (Game::updateDocking): the active ship docks only with
@@ -3753,62 +3750,110 @@ void drawSaveLoad(Game &g) {
     });
 }
 
-/* The VAB seat window: right-click a capsule in the 3D view (vabPickSeat,
-   events.cpp) and one dropdown per seat appears, listing the kerbals standing
-   on the pad. Choosing here is what makes a launch fill NAMED seats instead of
-   drawing people off the pad FIFO (VabState::seatAssigns, game.h). Plain
-   Begin/End, placed once per open with ImGuiCond_Appearing -- unlike the flight
-   part windows, which now measure their size and re-place every frame
-   (drawPartWindows). There is only one seat window at a time (seatPartId,
-   game.h:245) and opening it resets seatPlaced, so it follows the click and
-   cannot overlap another part's window; #324's "stacks on itself" premise is
-   wrong and says so there. A user-placed popup, not a slot window.
+/* The VAB part window: right-click a part in the 3D view (vabPickPart,
+   events.cpp) and it says what that part IS -- identity, mass, size, thrust,
+   what it holds -- and, if it is a capsule, one dropdown per seat listing the
+   kerbals standing on the pad. Choosing a seat is what makes a launch fill NAMED
+   seats instead of drawing people off the pad FIFO (VabState::seatAssigns,
+   game.h). The read-only half is the VAB twin of flight's part windows
+   (drawPartWindows). It is read-only because the build tree carries no resource
+   state (BuildPart, shipdef.h:346) and Vehicle::init fills every tank to capacity
+   when the ship is built (vehicle.cpp:1285): these are the numbers the ship
+   launches with. Editing fill would be a feature of its own -- it has to say what
+   a fuel GROUP's fill means before one part's fill means anything.
 
-   These dropdowns go through uiBeginCombo, so --ui-list and --ui-click can name
-   them (#251 is closed), and --ui-focus aims the right-click at a named part
+   Plain Begin/End, placed once per open with ImGuiCond_Appearing -- unlike the
+   flight part windows, which now measure their size and re-place every frame
+   (drawPartWindows). There is only one at a time (partWinId, game.h:245) and
+   opening it resets partWinPlaced, so it follows the click and cannot overlap
+   another part's window; #324's "stacks on itself" premise is wrong and says so
+   there. A user-placed popup, not a slot window.
+
+   The seat dropdowns go through uiBeginCombo, so --ui-list and --ui-click can
+   name them (#251 is closed), and --ui-focus aims the right-click at a named part
    (#311 is closed), so the whole window is driven by clicks in the suite.
    --vab-assign survives only for the plan this window refuses to build: an
-   already-seated person is a greyed row, so case 237 needs the hook to get
-   'Ace' into two seats and reach the launch guard. */
-void drawVabSeatWindow(Game &g) {
-    if(g.vab.seatPartId.empty()) { return; }
+   already-seated person is a greyed row, so case 237 needs the hook to get 'Ace'
+   into two seats and reach the launch guard. */
+void drawVabPartWindow(Game &g) {
+    if(g.vab.partWinId.empty()) { return; }
     const BuildPart *bp = nullptr;
     for(const BuildPart &p : g.vab.build.parts) {
-        if(p.id == g.vab.seatPartId) { bp = &p; break; }
+        if(p.id == g.vab.partWinId) { bp = &p; break; }
     }
-    if(bp == nullptr || bp->def == nullptr || bp->def->crew_capacity <= 0) {
-        g.vab.seatPartId.clear();   // the part was deleted or detached
+    if(bp == nullptr || bp->def == nullptr) {
+        g.vab.partWinId.clear();   // the part was deleted or detached
         return;
     }
+    const PartDef &def = *bp->def;
 
+    /* The title is the catalog label with the build id as the hidden ## suffix,
+       so two capsules of the same def are two windows and --ui-click names the
+       one it means. */
     char name[256];
-    snprintf(name, sizeof(name), "Crew##%s", bp->id.c_str());
-    if(!g.vab.seatPlaced) {
-        // Near the click, flipping sides when there is no room (as drawPartWindows).
+    snprintf(name, sizeof(name), "%s##%s", def.label().c_str(), bp->id.c_str());
+    if(!g.vab.partWinPlaced) {
+        /* Near the click, flipping sides when there is no room (as
+           drawPartWindows). The size below is an ESTIMATE, not a measurement --
+           imgui has not auto-fitted this window yet -- so it has to suit the
+           biggest dossier (a 3-seat capsule that also carries resources). The
+           clamp rescues only the left/top edges, so under-estimating the height
+           risks a bottom row off screen, while over-estimating only flips
+           earlier than it needed to. */
         const ImGuiViewport *vp = ImGui::GetMainViewport();
-        const float maxw = 300.0f, maxh = 260.0f, gap = 12.0f;
-        float x = (float)g.vab.seatMx + gap;
-        float y = (float)g.vab.seatMy + gap;
+        const float maxw = 320.0f, maxh = 420.0f, gap = 12.0f;
+        float x = (float)g.vab.partWinMx + gap;
+        float y = (float)g.vab.partWinMy + gap;
         if(x + maxw > vp->WorkPos.x + vp->WorkSize.x) {
-            x = (float)g.vab.seatMx - gap - maxw;
+            x = (float)g.vab.partWinMx - gap - maxw;
         }
         if(y + maxh > vp->WorkPos.y + vp->WorkSize.y) {
-            y = (float)g.vab.seatMy - gap - maxh;
+            y = (float)g.vab.partWinMy - gap - maxh;
         }
         x = std::max(x, (float)vp->WorkPos.x);
         y = std::max(y, (float)vp->WorkPos.y);
         ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Appearing);
-        g.vab.seatPlaced = true;
+        g.vab.partWinPlaced = true;
     }
 
     StaticBuilding *pad = homeCrewPad(g.sys);
     bool open = true;
     if(ImGui::Begin(name, &open, ImGuiWindowFlags_NoSavedSettings)) {
-        ImGui::Text("%s  (%s)", bp->def->label().c_str(), bp->id.c_str());
-        ImGui::Text("%d kerbal(s) at the launch pad",
-                    pad != nullptr ? (int)pad->crew.size() : 0);
-        ImGui::Separator();
-        for(int slot = 0; slot < bp->def->crew_capacity; slot++) {
+        ImGui::Text("%s (%s)", def.label().c_str(), bp->id.c_str());
+        if(!def.type.empty()) { ImGui::Text("Type: %s", def.type.c_str()); }
+        /* def->mass is DRY (staging.h); the second number is what the ship
+           launches with, because Vehicle::init tops every tank up when it builds
+           the ship. EC is stored energy, so it rides neither number. */
+        double prop = 0.0;
+        for(int r = 0; r < (int)ResourceType::Num; r++) {
+            if(r == (int)ResourceType::EC) { continue; }
+            prop += def.capacity[r];
+        }
+        ImGui::Text("Mass: %.3fkg + %.3fkg at launch", def.mass, prop);
+        ImGui::Text("Size: %.1fm dia x %.1fm", def.radius * 2.0, def.height);
+        if(def.torque > 0.0) {
+            ImGui::Text("Torque: %.0fN m (reaction wheel)", def.torque);
+        }
+        if(def.jet) {
+            ImGui::Text("Jet: %.0fN static, air-breathing (%.1fkg/s jet fuel, intake %.2fm^2, %.0fm/s exhaust)",
+                        def.jet_fan_thrust, def.propellant_rate[(int)ResourceType::JetFuel],
+                        def.jet_intake_area, def.exhaust_velocity);
+        } else if(def.totalPropellantRate() > 0.0 && def.exhaust_velocity > 0.0) {
+            ImGui::Text("Thrust: %.0fN (%.1fkg/s @ %.0fm/s)",
+                        def.fullThrust(), def.totalPropellantRate(), def.exhaust_velocity);
+        }
+        for(int r = 0; r < (int)ResourceType::Num; r++) {
+            if(def.capacity[r] <= 0.0f) { continue; }
+            ImGui::Text("Carries %.1f%s %s", def.capacity[r],
+                        Vehicle::resourceUnit(r), resNames[r]);
+        }
+        if(def.crew_capacity > 0) {
+            ImGui::Separator();
+            ImGui::Text("%d kerbal(s) at the launch pad",
+                        pad != nullptr ? (int)pad->crew.size() : 0);
+        }
+        // A part with no seats runs none of this loop.
+        for(int slot = 0; slot < def.crew_capacity; slot++) {
             uint64_t cur = 0;
             for(const VabState::SeatAssign &a : g.vab.seatAssigns) {
                 if(a.partId == bp->id && a.slot == slot) { cur = a.profileId; }
@@ -3861,7 +3906,7 @@ void drawVabSeatWindow(Game &g) {
         }
     }
     ImGui::End();
-    if(!open) { g.vab.seatPartId.clear(); }
+    if(!open) { g.vab.partWinId.clear(); }
 }
 
 void drawVabUI(Game &g) {
@@ -4224,8 +4269,8 @@ void drawVabUI(Game &g) {
     }
     ImGui::End();
 
-    // The seat window, if a capsule was right-clicked (vabPickSeat).
-    drawVabSeatWindow(g);
+    // The part dossier, if a part was right-clicked (vabPickPart).
+    drawVabPartWindow(g);
 
     /* Staging table: one row per stage period (flight order), with vacuum delta-v and TWR
        against the SURFACE GRAVITY OF THE BODY THIS BUILD LAUNCHES FROM (fuel links

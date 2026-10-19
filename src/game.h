@@ -218,7 +218,7 @@ struct VabState {
     std::vector<Subassembly> subassemblies;
     int armedAsm = -1;       // armed subassembly (exclusive with `armed`)
 
-    /* --- seat assignments (the seat window: right-click a capsule) ---------
+    /* --- seat assignments (the VAB part window: right-click a part) --------
        Who sits where, chosen in the editor instead of drawn FIFO off the pad at
        launch. Keyed by BuildPart::id, NOT the part index: the tree renumbers
        under the player's feet. Session-only like the rest of VabState -- a ship
@@ -240,11 +240,11 @@ struct VabState {
     };
     std::vector<SeatAssign> seatAssigns;
 
-    // The seat window: the build part it shows ("" = closed). An ID, not an
-    // index -- the tree renumbers under the player's feet.
-    std::string seatPartId;
-    int seatMx = 0, seatMy = 0;   // where it was opened (first-draw placement)
-    bool seatPlaced = false;
+    // The VAB part window (dossier + seats): the build part it shows ("" =
+    // closed). An ID, not an index -- the tree renumbers under the player's feet.
+    std::string partWinId;
+    int partWinMx = 0, partWinMy = 0;   // where it was opened (first-draw placement)
+    bool partWinPlaced = false;
 
     /* The Staging window's table, cached against a content hash of the build
        (#293). The window redraws every frame; the build only changes when the
