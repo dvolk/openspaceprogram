@@ -326,7 +326,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "only means something in one camera framing. It is a "
                    "teleport, not a drag, and the real raycast pick still runs: "
                    "if another part is in front, that one gets selected and the "
-                   "case sees it. Click where it lands with X,Y = CUR. Prints "
+                   "case sees it. Click where it lands with X,Y = CUR: a CUR "
+                   "action re-aims on its own frame, since the ship has moved "
+                   "since this line ran, and an action that carries its own "
+                   "pixels retires the aim. A failed re-aim prints [uifocus] "
+                   "... re-aim FAILED and clicks where the cursor stands, so "
+                   "FORBID FAILED. Prints "
                    "[uifocus] so a case can pin it. A bare PART_ID is a VAB "
                    "build part; SHIP/PART_ID is a part of a ship in the world, "
                    "which is how a Flight case reaches a part's RMB window.")

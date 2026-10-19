@@ -9,8 +9,9 @@
 #
 # Earth, because only the heightmap bodies index memory on the way to a
 # height: a procedural body just returns NaN and limps on as -nan readouts.
-# --vab-launch cannot catch this: that hook fires in vabUpdate, ahead of the
-# state pass, so only the real button click lands on the stale frame.
+# --vab-launch cannot catch this: its hook fires in the pre-scene phase
+# (main.cpp:1263), so the frame's state pass (sc.refresh, 1336) then runs for the
+# ship it just built. Only the real button click builds a ship AFTER that pass.
 #
 # What this case pins is the never-taken snapshot reaching the readouts at all
 # (the launch completes and the SURFACE log goes sane). It cannot pin the

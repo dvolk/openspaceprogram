@@ -143,21 +143,31 @@ void emit_sim_events(Game &g) {
                    in a tumbling orbit even 30 ms is enough to swap a part for its
                    neighbour. An action that carries its own pixels is the case
                    moving the cursor itself, which retires the aim. */
+                /* One CUR action follows one aim, and CUR means "wherever the
+                   LAST --ui-focus left the cursor", so the last live aim is the
+                   one to recompute. They all get retired either way: an aim is
+                   spent once a click has been issued behind it. */
+                UiFocus *aim = nullptr;
                 for(auto &f : g.args.ui_focuses) {
                     if(!f.live) { continue; }
                     f.live = false;
-                    if(a.x != kSimCurPos || a.y != kSimCurPos) { continue; }
+                    if(a.x == kSimCurPos && a.y == kSimCurPos) { aim = &f; }
+                }
+                if(aim != nullptr) {
                     double sx = 0, sy = 0;
-                    const std::string why = aim_at(f, sx, sy);
+                    const std::string why = aim_at(*aim, sx, sy);
                     if(why.empty()) {
                         ax = (int)sx; ay = (int)sy;
                         printf("[uifocus] '%s' re-aim -> %d,%d\n",
-                               f.part.c_str(), ax, ay);
+                               aim->part.c_str(), ax, ay);
                     } else {
-                        // Keep the stale cursor: the case still gets a click, and
-                        // its own EXPECTs show what it landed on.
+                        /* ax/ay stay at where CUR stands (at_xy above), which is
+                           what a case without a re-aim would click. Falling back
+                           to an EARLIER aim's fresh pixel would click a part this
+                           action never asked for. The case still gets its click,
+                           and its own EXPECTs show what it landed on. */
                         printf("[uifocus] '%s' re-aim FAILED %s\n",
-                               f.part.c_str(), why.c_str());
+                               aim->part.c_str(), why.c_str());
                     }
                     fflush(stdout);
                 }

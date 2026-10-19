@@ -339,9 +339,9 @@ enum LogGate { kGateOrbit, kGateDbg, kGateInfo, kGateAtt, kGateShake,
    args -- installHeadlessHooks (main.cpp) and vabInstallHooks (vab.cpp) --
    and polled by Game::fireHooks at the phase points below. Registration
    order within a phase IS the firing order, and the e2e cases depend on it
-   (e.g. --vab-place before --vab-launch). gate is an extra per-frame
-   condition: the VAB hooks only fire while the VAB is the live scene, and
-   --vab-place also waits for the mouse to be off the UI. */
+   (case 244 needs its detach to fire before its launch, both at the same ms).
+   gate is an extra per-frame condition: the VAB hooks only fire while the VAB
+   is the live scene. */
 struct GameHook {
     int ms;
     bool fired = false;

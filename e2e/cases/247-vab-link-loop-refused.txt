@@ -21,6 +21,9 @@
 # "Add fuel link" relabels itself to "Cancel fuel link" when it toggles, so
 # --ui-click's release check no longer finds the item it pressed and reports a
 # spurious MISMATCH. The press landed -- the "link src" line proves it. (#320)
+# The list covers a failed --ui-focus re-aim too: it prints its own line and then
+# clicks where the cursor stands, which would otherwise pass unnoticed while the
+# case clicked a part it never named.
 NAME vab-link-loop-refused
 ARGS --vab res/ships/heavy_two.json --width 1920 --height 1080 --timeout 8
 ARGS --sim-mouse 800,1200,960,300,RMB --sim-mouse 1400,0,960,560,0
@@ -48,6 +51,7 @@ FORBID not found
 FORBID ambiguous
 FORBID disabled
 FORBID clipped
+FORBID re-aim FAILED
 FORBID GL_
 FORBID error:
 LIMIT 60

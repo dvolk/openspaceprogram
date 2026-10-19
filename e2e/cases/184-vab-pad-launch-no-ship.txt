@@ -9,8 +9,9 @@
 # HUD never samples at all, so it pins the never-taken-snapshot readouts
 # instead. Earth because only the heightmap bodies index memory on the way to
 # a height: a procedural body returns NaN and limps on as -nan readouts.
-# --vab-launch cannot catch either: that hook fires in vabUpdate, ahead of the
-# state pass, so only the real button click lands on the stale frame.
+# --vab-launch cannot catch either: its hook fires in the pre-scene phase
+# (main.cpp:1263), so the frame's state pass (sc.refresh, 1336) then runs for the
+# ship it just built. Only the real button click builds a ship AFTER that pass.
 NAME vab-pad-launch-no-ship
 ARGS --system res/systems/solar_system.json --timeout 10
 ARGS --vab res/ships/racer.json --info-log --orbit-interval 1

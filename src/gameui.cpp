@@ -2176,9 +2176,17 @@ void drawPartWindows(Game &g) {
                 // It grew into a neighbour, or hangs off the viewport: move it.
                 float px, py;
                 place(win->Pos.x, win->Pos.y, win->Size.x, win->Size.y, px, py);
-                ImGui::SetNextWindowPos(ImVec2(px, py), ImGuiCond_Always);
-                live.askX = px;
-                live.askY = py;
+                /* A window taller than the work area cannot be moved into fit --
+                   place() clamps it back to the spot it is already at, and imgui
+                   gives it a scrollbar instead. Asking again every frame is a
+                   no-op imgui still has to pay for, so only ask when the spot
+                   actually changed. */
+                if(std::abs(px - win->Pos.x) > 0.5f
+                   || std::abs(py - win->Pos.y) > 0.5f) {
+                    ImGui::SetNextWindowPos(ImVec2(px, py), ImGuiCond_Always);
+                    live.askX = px;
+                    live.askY = py;
+                }
             }
         }
         /* From here the body can fire a button that deletes a vehicle, and
@@ -2195,17 +2203,22 @@ void drawPartWindows(Game &g) {
             bool worldChanged = false;
         /* AlwaysAutoResize is not cosmetic. Without it imgui auto-fits a window
            for the two frames after it opens and then FREEZES the size
-           (AutoFitFrames is set once, at creation -- imgui.cpp:6746). The content
+           (AutoFitFrames is set once, at creation -- imgui.cpp:6748). The content
            here outgrows that first fit: a Board row for a kerbal who walks into
            reach, a Store row under it, one line per finding a suit carries. The
-           overflow is not a scrollbar the player could drag -- imgui does not
-           register an item that fails its clip test, so a button pushed past the
-           frozen bottom simply stops existing: --ui-click reports it as "no such
-           item drawn", and a player never sees it at all. Measured: the 6-seat
-           capsule window freezes at 284x479 with 443 of content; six carried
-           findings make the content 551 and the bottom button undrawable.
-           The cost is no resize grip on these popups (imgui disables it for
-           auto-resizing windows); the layout pass above is what positions them. */
+           overflow is not lost -- imgui gives a scrollbar (7989 gates it on
+           NoScrollbar only) -- but the row starts out of view, and the layout pass
+           above measures a window size that has stopped matching its content.
+           Measured on the 6-seat capsule: frozen at 284x479 while the content
+           grows from ~443 to ~530 px with six carried findings, so the bottom
+           button waits behind a scrollbar nobody asked for. To --ui-click, which
+           cannot scroll, that row does not exist at all: imgui does not register
+           an item that fails its clip test.
+           With the flag the window follows its content, and if the content cannot
+           fit the viewport imgui clamps the auto-fit to the work area (6887) and
+           the scrollbar comes back, so this is not a dead end. The cost is no
+           resize grip on these popups (imgui disables it for auto-resizing
+           windows, 7030); the layout pass above is what positions them. */
         if(ImGui::Begin(name, &open, ImGuiWindowFlags_NoSavedSettings
                                    | ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Ship: %s", ship->name.c_str());
@@ -2550,7 +2563,10 @@ void drawPartWindows(Game &g) {
                        id, but the test engine registers the LABEL, so two stowed
                        parts of one kind drew two indistinguishable "Drop"s. The
                        index is what a player counts down the list, and unlike
-                       item->uid it is the same on every run. */
+                       item->uid it is the same on every run. It is a SNAPSHOT
+                       index, though: dropItem erases from the live list, so rows
+                       already drawn this frame keep their pre-drop numbers and only
+                       renumber next frame. */
                     char drop_id[32];
                     snprintf(drop_id, sizeof(drop_id), "Drop##drop_%zu", ii);
                     if(ImGui::SmallButton(drop_id)) {

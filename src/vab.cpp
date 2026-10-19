@@ -988,12 +988,10 @@ void vabClose(Game &g) {
    --vab-assign, ...), each fired at most once. They join the pre-scene phase
    AFTER the main-loop hooks -- the order the old per-frame poll used -- and
    a launch collapses the stack to Flight, so the live scene is read after
-   them. The inVab gate reproduces the old early return. --vab-place is its
-   own phase: it runs inside vabUpdate, after the hover pass that arms the
-   ghost it places. --vab-open, --vab-load, --vab-save and --vab-close are
-   gone: the scene transition is a title-screen button and the load, save and
-   back-to-game controls are widgets, all reachable with
-   --ui-click/--ui-type. */
+   them. The inVab gate reproduces the old early return. --vab-open,
+   --vab-load, --vab-save and --vab-close are gone: the scene transition is a
+   title-screen button and the load, save and back-to-game controls are
+   widgets, all reachable with --ui-click/--ui-type. */
 void vabInstallHooks(Game &g) {
     GameArgs &args = g.args;
     auto inVab = [](Game &g) { return sceneIs(g, SceneId::Vab); };

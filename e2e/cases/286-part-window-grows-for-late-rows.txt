@@ -5,12 +5,14 @@
 # size (AutoFitFrames is set once, at creation), so without AlwaysAutoResize the
 # window keeps the height its content had at open time. Here the capsule window
 # opens with six seat rows and 443px of content in a 479px window; each Exp click
-# adds a "what this kerbal carries" line under that seat, and six of them make the
-# content 551px. imgui does not register an item that fails its clip test, so the
-# button at the bottom of the crew section -- the capsule's own Run Experiment --
-# stops being drawn: a player never sees it, and --ui-click reports "no such item
-# drawn". With the window tracking its content it moves down the screen instead,
-# which the layout pass then keeps on the viewport.
+# adds a "what this kerbal carries" line under that seat, and six of them push the
+# content past 530px. imgui does give a scrollbar for the overflow, so the row is
+# not gone -- it is out of view behind a scroll nobody asked for, and the window
+# no longer measures what it holds. imgui does not register an item that fails its
+# clip test, so --ui-click reports the capsule's own Run Experiment -- the button
+# at the bottom of the crew section -- as "no such item drawn". With the window
+# tracking its content it moves down the screen instead, which the layout pass then
+# keeps on the viewport.
 NAME part-window-grows-for-late-rows
 ARGS --width 1920 --height 1080 --timeout 9 --frame-cap 30
 ARGS --startship power_test,res/ships/power_test.json,Kerbin,rot-orbit
