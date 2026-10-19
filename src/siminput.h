@@ -86,6 +86,11 @@ struct UiFocus {
     Uint32 at_ms;      // when to aim
     std::string part;  // build part id
     bool done;         // aimed, or gave up (no such part / not the editor)
+    /* Set once the aim landed, cleared by the next --sim-mouse. The aim and the
+       click are separate ops, and the ship moves between them: a pixel that
+       selected the pod can sit over its neighbour 30 ms later (#327), so a CUR
+       click recomputes the pixel on the frame it is emitted. */
+    bool live = false;
 };
 
 /* --ui-click: synthetic imgui click addressed by the widget's "Window/Label"

@@ -77,26 +77,27 @@ void emit_sim_events(Game &g) {
        1100, and under a coarse --frame-cap both can fall due in one batch. The
        MOTION has to be in that batch ahead of the click, or the click lands on
        the stale cursor. */
+    /* One aim computation, shared by the --ui-focus op and the CUR re-aim in
+       --sim-mouse below. */
+    auto aim_at = [&](const UiFocus &f, double &sx, double &sy) -> std::string {
+        const size_t slash = f.part.rfind('/');
+        if(slash == std::string::npos) {
+            return vabAimAtPart(g, f.part, sx, sy);
+        }
+        /* Gate the scene here rather than inside the aim: these pixels only
+           mean ship parts in Flight, and from another scene they mean something
+           else entirely -- the aim would either lie about clickability or land
+           on an unrelated pixel. */
+        if(!sceneIs(g, SceneId::Flight)) { return "not in the flight scene"; }
+        return flightAimAtPart(g, f.part.substr(0, slash),
+                               f.part.substr(slash + 1), sx, sy);
+    };
     if(!g.args.ui_focuses.empty()) {
         const Uint32 now = SDL_GetTicks() - g.loop_start_ms;
         for(auto &f : g.args.ui_focuses) {
             if(f.done || now < f.at_ms) { continue; }
             double sx = 0, sy = 0;
-            std::string why;
-            const size_t slash = f.part.rfind('/');
-            if(slash == std::string::npos) {
-                why = vabAimAtPart(g, f.part, sx, sy);
-            } else {
-                /* Gate the scene here rather than inside the aim: these pixels
-                   only mean ship parts in Flight, and from another scene they
-                   mean something else entirely -- the aim would either lie about
-                   clickability or land on an unrelated pixel. */
-                if(!sceneIs(g, SceneId::Flight)) { why = "not in the flight scene"; }
-                else {
-                    why = flightAimAtPart(g, f.part.substr(0, slash),
-                                          f.part.substr(slash + 1), sx, sy);
-                }
-            }
+            const std::string why = aim_at(f, sx, sy);
             f.done = true;
             if(!why.empty()) {
                 printf("[uifocus] '%s' FAILED %s\n", f.part.c_str(), why.c_str());
@@ -104,6 +105,7 @@ void emit_sim_events(Game &g) {
                 continue;
             }
             push_motion((int)sx, (int)sy);
+            f.live = true;   // a later CUR click re-aims on its own frame
             printf("[uifocus] '%s' -> %d,%d\n", f.part.c_str(), (int)sx, (int)sy);
             fflush(stdout);
         }
@@ -134,6 +136,31 @@ void emit_sim_events(Game &g) {
             int ax = 0, ay = 0;
             at_xy(a, ax, ay);
             if(!a.started && now >= a.time_ms) {
+                /* A CUR action means "where --ui-focus last aimed", but the ship
+                   has moved since: recompute the pixel on THIS frame, in the same
+                   batch as the button, so the click lands on the part the case
+                   named and not on whatever drifted under the old pixel (#327) --
+                   in a tumbling orbit even 30 ms is enough to swap a part for its
+                   neighbour. An action that carries its own pixels is the case
+                   moving the cursor itself, which retires the aim. */
+                for(auto &f : g.args.ui_focuses) {
+                    if(!f.live) { continue; }
+                    f.live = false;
+                    if(a.x != kSimCurPos || a.y != kSimCurPos) { continue; }
+                    double sx = 0, sy = 0;
+                    const std::string why = aim_at(f, sx, sy);
+                    if(why.empty()) {
+                        ax = (int)sx; ay = (int)sy;
+                        printf("[uifocus] '%s' re-aim -> %d,%d\n",
+                               f.part.c_str(), ax, ay);
+                    } else {
+                        // Keep the stale cursor: the case still gets a click, and
+                        // its own EXPECTs show what it landed on.
+                        printf("[uifocus] '%s' re-aim FAILED %s\n",
+                               f.part.c_str(), why.c_str());
+                    }
+                    fflush(stdout);
+                }
                 if(a.button == 4 || a.button == 5) {
                     // SDL3 wheel events carry the scroll amount in x/y
                     SDL_Event wev = {0};
