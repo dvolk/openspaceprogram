@@ -2068,17 +2068,19 @@ void drawPartWindows(Game &g) {
              - the window's size is unknown until imgui has finished auto-fitting
                it (AutoFitFrames counts down from 2), so the first frames place
                against an estimate;
-             - the content GROWS after placement: Board / Take / Store rows
-               appear when a crew member walks into reach, so a window that was
-               clear of its neighbour can grow into it and bury that neighbour's
-               buttons again.
-           Measured at 1080p: a 1-seat capsule window is 284x299, a 6-seat one
-           284x479, a materials pod 241x209. The estimate is therefore the small
-           common case, not the worst case -- the real size takes over as soon as
-           it is known, which is what makes a 479-tall window safe without
-           shoving every small window away from the mouse.
-           A window the PLAYER moved stays where they put it: we only ever ask
-           for askX/askY, so any other Pos is theirs. */
+             - the content CHANGES after that: a Board row replaces "(no one in
+               reach to board or store)", a Store row appears under it, the suit
+               window grows a line per finding it carries. The window tracks its
+               content (AlwaysAutoResize at the Begin below), so growing is
+               exactly what it does -- and a window that was clear of its
+               neighbour can grow into it, or off the bottom edge.
+           Measured at 1080p: a 1-seat capsule window is ~284x300, a 6-seat one
+           ~284x480, a materials pod ~280x210 -- so the estimate is the middle
+           case, not the worst case; the real size takes over as soon as it is
+           known, which is what keeps a 480-tall window safe without shoving
+           every small window away from the mouse.
+           A window whose Pos is not where we asked for it is the player's own
+           (we only ever ask for askX/askY), and we stop moving it. */
         ImGuiWindow *win = ImGui::FindWindowByName(name);
         const bool sized = win != nullptr && win->AutoFitFramesX <= 0
                         && win->AutoFitFramesY <= 0;
@@ -2101,25 +2103,34 @@ void drawPartWindows(Game &g) {
            WILL be this frame (the spot we asked for, not last frame's Pos): two
            windows resolving in the same frame must not step into each other's
            move, which is how a one-pass layout oscillates. */
+        struct Rect { float x, y, w, h; };
+        /* Collected once per window per frame, not inside the candidate loop: a
+           user-moved window's rect costs a name rebuild plus a
+           FindWindowByName, and there are 12 candidates to test. Reused buffer --
+           this pass runs every frame. */
+        static std::vector<Rect> others;
+        others.clear();
+        for(const PartSel &other : g.part_sels) {
+            if(&other == &live || !other.placed
+               || other.part >= other.ship->parts.size()) { continue; }
+            Rect r = {other.askX, other.askY,
+                      other.winW > 0 ? other.winW : estw,
+                      other.winH > 0 ? other.winH : esth};
+            if(other.userMoved) {
+                char oname[256];
+                snprintf(oname, sizeof(oname), "%s > %s##%zu",
+                         other.ship->name.c_str(),
+                         other.ship->parts[other.part]->def->label().c_str(),
+                         other.part);
+                const ImGuiWindow *w = ImGui::FindWindowByName(oname);
+                if(w == nullptr) { continue; }
+                r = {w->Pos.x, w->Pos.y, w->Size.x, w->Size.y};
+            }
+            others.push_back(r);
+        }
         auto clashes = [&](float cx, float cy, float cw, float ch) {
-            for(const PartSel &other : g.part_sels) {
-                if(&other == &live || !other.placed
-                   || other.part >= other.ship->parts.size()) { continue; }
-                float ox = other.askX, oy = other.askY;
-                float ow = other.winW > 0 ? other.winW : estw;
-                float oh = other.winH > 0 ? other.winH : esth;
-                if(other.userMoved) {
-                    char oname[256];
-                    snprintf(oname, sizeof(oname), "%s > %s##%zu",
-                             other.ship->name.c_str(),
-                             other.ship->parts[other.part]->def->label().c_str(),
-                             other.part);
-                    const ImGuiWindow *w = ImGui::FindWindowByName(oname);
-                    if(w == nullptr) { continue; }
-                    ox = w->Pos.x; oy = w->Pos.y;
-                    ow = w->Size.x; oh = w->Size.y;
-                }
-                if(cx < ox + ow && cx + cw > ox && cy < oy + oh && cy + ch > oy) {
+            for(const Rect &o : others) {
+                if(cx < o.x + o.w && cx + cw > o.x && cy < o.y + o.h && cy + ch > o.y) {
                     return true;
                 }
             }
@@ -2182,7 +2193,21 @@ void drawPartWindows(Game &g) {
             /* A successful pickup may have dropped an EARLIER part_sels entry, shifting what
                this loop indexes. */
             bool worldChanged = false;
-        if(ImGui::Begin(name, &open, ImGuiWindowFlags_NoSavedSettings)) {
+        /* AlwaysAutoResize is not cosmetic. Without it imgui auto-fits a window
+           for the two frames after it opens and then FREEZES the size
+           (AutoFitFrames is set once, at creation -- imgui.cpp:6746). The content
+           here outgrows that first fit: a Board row for a kerbal who walks into
+           reach, a Store row under it, one line per finding a suit carries. The
+           overflow is not a scrollbar the player could drag -- imgui does not
+           register an item that fails its clip test, so a button pushed past the
+           frozen bottom simply stops existing: --ui-click reports it as "no such
+           item drawn", and a player never sees it at all. Measured: the 6-seat
+           capsule window freezes at 284x479 with 443 of content; six carried
+           findings make the content 551 and the bottom button undrawable.
+           The cost is no resize grip on these popups (imgui disables it for
+           auto-resizing windows); the layout pass above is what positions them. */
+        if(ImGui::Begin(name, &open, ImGuiWindowFlags_NoSavedSettings
+                                   | ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Ship: %s", ship->name.c_str());
             ImGui::Text("Part #%zu  (stage %d)", part,
                         ship->parts[part]->stage);
@@ -2278,7 +2303,7 @@ void drawPartWindows(Game &g) {
                 /* Iterate the SLOTS, not the compacted list: the button ids below
                    are slot numbers, so a row keeps its id when a middle seat
                    empties. */
-                char btn[64];   // "Store  (into capsule)##store_<name>" is the longest here
+                char btn[32];   // slot ids only ("Exp##exp12"); name ids use std::string below
                 for(size_t slot = 0; slot < ship->parts[part]->seats.size(); slot++) {
                     Part *suit = ship->parts[part]->seats[slot];
                     if(suit == nullptr) { continue; }
@@ -2354,8 +2379,11 @@ void drawPartWindows(Game &g) {
                        kerbals in reach drew two indistinguishable "Board"s
                        (#326). The hidden id names the kerbal, which also lets a
                        case pin WHO it let in. */
-                    snprintf(btn, sizeof(btn), "Board##board_%s", k->name.c_str());
-                    const bool boardClicked = ImGui::SmallButton(btn);
+                    /* std::string rather than a fixed buffer: the roster puts no
+                       limit on a name (crew.cpp:64), and a truncated hidden id
+                       would put two walkers back under one label. */
+                    const std::string board = "Board##board_" + k->name;
+                    const bool boardClicked = ImGui::SmallButton(board.c_str());
                     ImGui::EndDisabled();
                     if(boardClicked) {
                         g.kerbalBoard(k, ship, part);
@@ -2407,11 +2435,10 @@ void drawPartWindows(Game &g) {
                                    name in the visible label too. The hidden id
                                    fixes the test half without deciding that copy
                                    question. */
-                                snprintf(btn, sizeof(btn),
-                                         "Store  (into capsule)##store_%s",
-                                         k->name.c_str());
+                                const std::string store
+                                    = "Store  (into capsule)##store_" + k->name;
                                 const bool storeClicked
-                                    = ImGui::SmallButton(btn);
+                                    = ImGui::SmallButton(store.c_str());
                                 ImGui::EndDisabled();
                                 if(storeClicked) {
                                     g.moveExperiment(k->parts[0],
@@ -2512,12 +2539,21 @@ void drawPartWindows(Game &g) {
                    buffer is reused -- this popup redraws every frame. */
                 static std::vector<Part *> items;
                 items = cont->contents;
-                for(Part *item : items) {
+                for(size_t ii = 0; ii < items.size(); ii++) {
+                    Part *item = items[ii];
                     const char *in = item->def->label().c_str();
                     ImGui::PushID(item);
                     ImGui::Text("  %s  (%.1f kg)", in,
                                 item->effectiveMass());
-                    if(ImGui::SmallButton("Drop")) {
+                    /* The hidden id is the row number, for the same reason as the
+                       seat rows (#326): PushID(item) gives each row its own imgui
+                       id, but the test engine registers the LABEL, so two stowed
+                       parts of one kind drew two indistinguishable "Drop"s. The
+                       index is what a player counts down the list, and unlike
+                       item->uid it is the same on every run. */
+                    char drop_id[32];
+                    snprintf(drop_id, sizeof(drop_id), "Drop##drop_%zu", ii);
+                    if(ImGui::SmallButton(drop_id)) {
                         g.dropItem(item);
                     }
                     ImGui::PopID();
@@ -2550,7 +2586,12 @@ void drawPartWindows(Game &g) {
                     ImGui::PushID(v);
                     ImGui::Text("  %s (%.1f m, %.1f kg)", v->name.c_str(),
                                 dist, v->getMass());
-                    if(ImGui::SmallButton("Pick up")) {
+                    /* Named by the cargo ship, same reason as "Drop" above: two
+                       free items in range drew two indistinguishable "Pick up"s.
+                       Ship names are deduped on spawn (dedupVehicleName), and a
+                       std::string keeps a long name from truncating onto another. */
+                    const std::string pick = "Pick up##pick_" + v->name;
+                    if(ImGui::SmallButton(pick.c_str())) {
                         // Picking up the ship you are flying leaves orbit-view -- hand the player back to
                         // the carrier.
                         const bool wasFlying = (g.ship == v);
@@ -3700,8 +3741,10 @@ void drawSaveLoad(Game &g) {
    events.cpp) and one dropdown per seat appears, listing the kerbals standing
    on the pad. Choosing here is what makes a launch fill NAMED seats instead of
    drawing people off the pad FIFO (VabState::seatAssigns, game.h). Plain
-   Begin/End like the flight part windows -- a user-placed popup, not a slot
-   window.
+   Begin/End, placed once with ImGuiCond_Appearing -- unlike the flight part
+   windows, which now measure their size and re-place every frame (drawPartWindows);
+   this one still stacks on itself when a capsule has several seats (#324).
+   A user-placed popup, not a slot window.
 
    These dropdowns go through uiBeginCombo, so --ui-list and --ui-click can name
    them (#251 is closed); --vab-assign stays as the headless route only because

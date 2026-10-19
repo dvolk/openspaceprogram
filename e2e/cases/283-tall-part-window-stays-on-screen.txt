@@ -8,10 +8,11 @@
 # at 1920x720 the window moves from y=371 to y=241, which is the difference between
 # "Run Experiment" being a button and being a memory of one.
 #
-# The oracle is the click, not a rect. An item below the viewport is not registered by
-# the test engine at all, so --ui-click reports "not found" for a button that IS drawn
-# -- the harness agreeing with what a player would see. power_test is the only ship
-# with the 6-seat capsule (capsule_r2.25h4.5), and its window is the tallest there is.
+# The oracle is the click, not a rect. imgui does not register an item that fails its
+# clip test, so --ui-click reports "not found" for a button the player never sees
+# either -- the harness agreeing with what a player would get. power_test is the only
+# ship with the 6-seat capsule (capsule_r2.25h4.5), and its window is the tallest
+# there is.
 NAME tall-part-window-stays-on-screen
 ARGS --time-accel 1 --timeout 7 --width 1920 --height 720
 ARGS --startship power_test,res/ships/power_test.json,Kerbin,rot-orbit

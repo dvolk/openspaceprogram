@@ -20,5 +20,7 @@ FORBID FAILED
 FORBID GL_
 FORBID error:
 # The part is armed by a palette click now (--vab-arm is gone), so the case also
-# proves the arm click stays inside the window: it selects the row without placing,
-# and the count is still exactly the one part the 3D click placed.
+# shows that arm click selecting the row WITHOUT placing: the count is still exactly
+# the one part the 3D click placed. What it cannot show is a click in the 3D area
+# landing through a window -- that click is at 960,540, outside every window. 279
+# covers that one.

@@ -78,10 +78,11 @@ struct PartSel {
     int mx = 0, my = 0; // mouse at pick, window pixels (window placement)
     /* Window layout, written by drawPartWindows. Placement is NOT one-off: the
        size is unknown until imgui finishes auto-fitting (two frames), and the
-       content GROWS later -- Board / Take / Store rows appear when a crew
-       member walks into reach -- so a window placed clear of its neighbour can
-       grow into it. ask* is where WE asked for it, so any other Pos is the
-       player's own drag. winW/winH are imgui's measured size, 0 until known. */
+       window is AlwaysAutoResize so its size follows its content -- Board /
+       Take / Store rows appear when a crew member walks into reach -- so a
+       window placed clear of its neighbour can grow into it. ask* is where WE
+       asked for it, so any other Pos is the player's own drag. winW/winH are
+       imgui's measured size, 0 until known. */
     bool placed = false;
     float askX = 0, askY = 0;
     float winW = 0, winH = 0;
