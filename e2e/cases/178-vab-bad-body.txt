@@ -1,6 +1,9 @@
 # --vab-body pins where the VAB launch will stand, so a typo must not fall back
 # to home silently: the case would measure a launch it never asked for (#16).
 # --surfmap-body already made the same call for the same reason (#72).
+# This guards the PARSER, not the game: a player picks the body from the top-bar
+# dropdown, where every row is a real body, so a wrong body can only arrive
+# through this flag. Launch cases click the dropdown instead (58).
 NAME vab-bad-body
 ARGS --timeout 4 --vab res/ships/racer.json --vab-body Nope
 EXPECT error: --vab-body 'Nope' is not a body in

@@ -1,6 +1,8 @@
 # --vab-site names a launch pad by its world-building id, so a typo used to
 # leave the launch on the DEFAULT pad -- the case measured a pad it never asked
 # for, and only found out at LAUNCH time through a toast (#16). Refuse at boot.
+# This guards the PARSER, not the game: the top-bar site dropdown lists pads by
+# NAME and every row is real, so a bad id can only arrive through this flag.
 NAME vab-bad-site
 ARGS --timeout 4 --vab res/ships/racer.json --vab-site not_a_pad
 EXPECT error: --vab-site 'not_a_pad' is not a launch pad on Kerbin

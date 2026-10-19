@@ -210,13 +210,20 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "(headless test hook; -1 = never)");
     app.add_option("--vab-scenario", args.vab_scenario,
                    "Seed the VAB's launch scenario (the top-bar dropdown's "
-                   "value; empty = \"pad\")");
+                   "value; empty = \"pad\"). Cases pick the row instead "
+                   "(\"VAB TopBar/##vabscn\" then \"##Combo_00/<name>\"); only "
+                   "the typo guards pass this now, and dev-only beds need "
+                   "--dev-scenarios for the row to exist at all.");
     app.add_option("--vab-body", args.vab_body,
-                   "Seed the VAB's launch body (the top-bar dropdown's "
-                   "value; empty = the home body)");
+                   "Seed the VAB's launch body (the top-bar dropdown's value; "
+                   "empty = the home body). Cases pick the row instead "
+                   "(\"VAB TopBar/##vabbody\" then \"##Combo_00/<name>\"); only "
+                   "the typo guard passes this now.");
     app.add_option("--vab-site", args.vab_site,
                    "Seed the VAB's launch site (the top-bar site dropdown's "
-                   "world-building id; empty = the first VAB_LAUNCH_PAD)");
+                   "world-building id; empty = the first VAB_LAUNCH_PAD). The "
+                   "dropdown shows site NAMES, so a case clicking it cannot name "
+                   "a building id; only the typo guard passes this now.");
     app.add_flag("--dev-scenarios", args.dev_scenarios,
                  "Add the dev-only start beds (orbit, ellipse, escape, "
                  "distance-ladder, heliocentric) to the VAB's scenario "
