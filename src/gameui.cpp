@@ -2275,16 +2275,28 @@ void drawPartWindows(Game &g) {
                     if(suit != nullptr) { seats.push_back(suit); }
                 }
                 ImGui::Text("Crew: %d / %d", (int)seats.size(), def->crew_capacity);
-                for(size_t ci = 0; ci < seats.size(); ci++) {
-                    Part *suit = seats[ci];
+                /* Iterate the SLOTS, not the compacted list: the button ids below
+                   are slot numbers, so a row keeps its id when a middle seat
+                   empties. */
+                char btn[64];   // "Store  (into capsule)##store_<name>" is the longest here
+                for(size_t slot = 0; slot < ship->parts[part]->seats.size(); slot++) {
+                    Part *suit = ship->parts[part]->seats[slot];
+                    if(suit == nullptr) { continue; }
                     ImGui::PushID(suit);
                     ImGui::Text("  %s", seatName(suit).c_str());
-                    if(ImGui::SmallButton("EVA")) {
+                    /* The ## id is not decoration: PushID(suit) already gives each
+                       row its own imgui id, but the test engine registers the
+                       LABEL, so N seats registered N identical "EVA"s and no seat's
+                       button could be addressed at all (#326). The suffix is hidden
+                       on screen, and it names the slot a player reads top-down. */
+                    snprintf(btn, sizeof(btn), "EVA##eva%zu", slot);
+                    if(ImGui::SmallButton(btn)) {
                         g.kerbalEVA(suit);
                     }
                     ImGui::SameLine();
                     // Per-crew experiment: the "pick a kerbal" path (no roles yet).
-                    if(ImGui::SmallButton("Exp")) {
+                    snprintf(btn, sizeof(btn), "Exp##exp%zu", slot);
+                    if(ImGui::SmallButton(btn)) {
                         g.runSeatExperiment(suit);
                     }
                     // What this kerbal is carrying (unrecovered); a repeat still banks, just less.
@@ -2337,7 +2349,13 @@ void drawPartWindows(Game &g) {
                     ImGui::Text("  %s (%.1f m)%s", k->name.c_str(), dist,
                                 full ? "  (capsule full)" : "");
                     ImGui::BeginDisabled(!boardable);
-                    const bool boardClicked = ImGui::SmallButton("Board");
+                    /* Same reason as the seat rows: PushID(k) makes the imgui id
+                       unique but the test engine registers the LABEL, so two
+                       kerbals in reach drew two indistinguishable "Board"s
+                       (#326). The hidden id names the kerbal, which also lets a
+                       case pin WHO it let in. */
+                    snprintf(btn, sizeof(btn), "Board##board_%s", k->name.c_str());
+                    const bool boardClicked = ImGui::SmallButton(btn);
                     ImGui::EndDisabled();
                     if(boardClicked) {
                         g.kerbalBoard(k, ship, part);
@@ -2384,8 +2402,16 @@ void drawPartWindows(Game &g) {
                                                         " holds that finding)");
                                 }
                                 ImGui::BeginDisabled(!storable);
+                                /* Addressable by WHO deposits: two walkers in
+                                   reach draw two of these, and #323 asks for the
+                                   name in the visible label too. The hidden id
+                                   fixes the test half without deciding that copy
+                                   question. */
+                                snprintf(btn, sizeof(btn),
+                                         "Store  (into capsule)##store_%s",
+                                         k->name.c_str());
                                 const bool storeClicked
-                                    = ImGui::SmallButton("Store  (into capsule)");
+                                    = ImGui::SmallButton(btn);
                                 ImGui::EndDisabled();
                                 if(storeClicked) {
                                     g.moveExperiment(k->parts[0],

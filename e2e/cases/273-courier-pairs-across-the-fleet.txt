@@ -5,10 +5,10 @@
 # container, then demand reach") reported "no kerbal in reach" and blamed the
 # courier for the container's bad choice.
 # Driven through the buttons now, the pairing is visible in their labels: the pod
-# offers "Take  (to Vela)" and the capsule offers "Store  (into capsule)", both
-# under labpod's own windows. The racer on the pad has no window open, and every
-# path here is qualified by window, so a bare label cannot quietly satisfy the
-# other ship.
+# offers "Take  (to Vela)" and the capsule offers "Store  (into capsule)##store_Vela",
+# both under labpod's own windows. The racer on the pad has no window open, and every
+# path here is qualified by window, so a bare label cannot quietly satisfy the other
+# ship.
 NAME courier-pairs-across-the-fleet
 ARGS --time-accel 1 --timeout 9 --frame-cap 30 --width 1920 --height 1080
 ARGS --startship extra,res/ships/racer.json,Kerbin,pad
@@ -25,9 +25,9 @@ ARGS --sim-mouse 3100,0,CUR,CUR,RMB
 ARGS --ui-click 3400,"labpod > Materials Pod (2m)##1/Run Experiment##pod_run"
 ARGS --ui-focus 3700,labpod/capsule_1
 ARGS --sim-mouse 3800,0,CUR,CUR,RMB
-ARGS --ui-click 4100,"labpod > Capsule (2m)##0/EVA"
+ARGS --ui-click 4100,"labpod > Capsule (2m)##0/EVA##eva0"
 ARGS --ui-click 4600,"labpod > Materials Pod (2m)##1/Take  (to Vela)##pod_take"
-ARGS --ui-click 5100,"labpod > Capsule (2m)##0/Store  (into capsule)"
+ARGS --ui-click 5100,"labpod > Capsule (2m)##0/Store  (into capsule)##store_Vela"
 EXPECT EVA: 'Vela' out of 'labpod' part 0
 EXPECT moved 'Low orbit materials study on Kerbin' Materials Pod (2m) -> Kerbal
 EXPECT moved 'Low orbit materials study on Kerbin' Kerbal -> Capsule (2m)

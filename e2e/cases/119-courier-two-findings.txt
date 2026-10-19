@@ -9,9 +9,9 @@ ARGS --ui-click 1000,"labpod > Capsule (2m)##0/Run Experiment"
 ARGS --ui-focus 1200,labpod/materials_pod_1
 ARGS --sim-mouse 1300,0,CUR,CUR,RMB
 ARGS --ui-click 1500,"labpod > Materials Pod (2m)##1/Run Experiment##pod_run"
-ARGS --ui-click 2000,"labpod > Capsule (2m)##0/EVA"
+ARGS --ui-click 2000,"labpod > Capsule (2m)##0/EVA##eva0"
 ARGS --ui-click 2500,"labpod > Materials Pod (2m)##1/Take  (to Ash)##pod_take"
-ARGS --ui-click 3000,"labpod > Capsule (2m)##0/Store  (into capsule)"
+ARGS --ui-click 3000,"labpod > Capsule (2m)##0/Store  (into capsule)##store_Ash"
 # Both experiments are the buttons a player presses: the capsule's "Run
 # Experiment" (its first seat) and the pod's "Run Experiment##pod_run". The
 # ##pod_run suffix exists precisely so a bare "Run Experiment" cannot satisfy

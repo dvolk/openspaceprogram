@@ -12,7 +12,7 @@ ARGS --time-accel 1 --timeout 9 --width 1920 --height 1080
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --ui-focus 1000,racer/capsule_1
 ARGS --sim-mouse 1100,0,CUR,CUR,RMB
-ARGS --ui-click 1500,"racer > Capsule (2m)##0/EVA"
+ARGS --ui-click 1500,"racer > Capsule (2m)##0/EVA##eva0"
 ARGS --sim-press 2500,0,ESCAPE --recover 3500
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [toast] Cannot recover

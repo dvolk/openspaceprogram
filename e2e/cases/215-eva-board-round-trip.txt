@@ -11,8 +11,8 @@
 NAME eva-board-round-trip
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --sim-mouse 1000,0,960,540,RMB
-ARGS --ui-click 2000,"racer > Capsule (2m)##0/EVA"
-ARGS --ui-click 4000,"racer > Capsule (2m)##0/Board"
+ARGS --ui-click 2000,"racer > Capsule (2m)##0/EVA##eva0"
+ARGS --ui-click 4000,"racer > Capsule (2m)##0/Board##board_Ash"
 EXPECT Crew: 'Ash' aboard 'racer' part 0 (1/1)
 EXPECT EVA: 'Ash' out of 'racer' part 0
 EXPECT Board: 'Ash' into 'racer' part 0
