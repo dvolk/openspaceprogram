@@ -10,20 +10,22 @@
 # The sweep must have LANDED before the click: "Send best" is disabled mid-sweep,
 # and --ui-click refuses a greyed-out widget rather than pressing it. 12x12 and a
 # 9s click keep that true even under an asan build on a loaded box.
-# P must also come AFTER --select-target's own ms: the hook fires after the state
-# pass, and P is handled inside it, so asking for both in the same millisecond
-# races a sweep against a target that does not exist yet (asan loses that race).
+# The target is chosen by clicking the combo, and P must come AFTER that click:
+# the sweep is for whatever the target is when P fires, so a sweep that starts
+# before the choice exists sweeps for no target at all.
 # The EXPECT pins window= so it matches a click that actually pressed the button,
 # not the FAILED line that names the same path.
 NAME porkchop-plan-survives-reshuffle
 ARGS --time-accel 1 --timeout 22 --frame-cap 30
 ARGS --startships e2e/fixtures/pad_four.json --kerbals e2e/fixtures/tiny_kerbals.json
-ARGS --select-target 3000,"pad three" --sim-press 11500,0,ESCAPE --ui-click 12000,"Game Menu/Tracking Station"
 ARGS --porkchop-log --porkchop-n 12 --xfer-log --orbit-interval 1
-ARGS --ui-click 2000,"Windows/Target" --ui-click 2600,"Target/Porkchop"
+ARGS --ui-click 1200,"Windows/Target" --ui-click 1800,"Target/Target"
+ARGS --ui-click 2400,"##Combo_00/pad three" --ui-click 3000,"Target/Porkchop"
 ARGS --sim-press 3500,0,P
 ARGS --ui-click 9000,"Porkchop/Send best to Target"
+ARGS --sim-press 11500,0,ESCAPE --ui-click 12000,"Game Menu/Tracking Station"
 ARGS --ui-click 15000,"Tracking Ship List/x##rm_pad two"
+EXPECT path="##Combo_00/pad three" window="##Combo_00" label="pad three"
 EXPECT target="pad three" 12x12
 EXPECT path="Porkchop/Send best to Target" window=
 EXPECT Removed 'pad two' (active unchanged: pad one)
@@ -33,4 +35,5 @@ FORBID Assertion
 FORBID Segmentation
 FORBID GL_
 FORBID error:
+FORBID FAILED
 LIMIT 120

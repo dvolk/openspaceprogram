@@ -306,6 +306,10 @@ static void draw_telemetry_cell(Game &g, int idx) {
     const char *items[kNumSeries];
     for(int i = 0; i < kNumSeries; i++) { items[i] = kSeries[i].name; }
     ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
+    /* One label per cell, and the cells are ##tc0..##tc3: four combos in one
+       frame all called "##series". A bare --ui-click "##series" is therefore
+       ambiguous by construction and the harness says so; a case has to name the
+       window it means. */
     uiCombo("##series", &g.hud.telemetry_sel[idx], items, kNumSeries);
     ImGui::PopItemWidth();
 
@@ -685,7 +689,7 @@ void drawUIReadouts(Game &g) {
         }
         const char *cur = (xfer_target >= 0)
                          ? xferTargets[xfer_target].name : "none";
-        if(ImGui::BeginCombo("Target", cur)) {
+        if(uiBeginCombo("Target", cur)) {
             // "none" is a real entry so the target can be cleared back to -1 from here.
             if(ImGui::Selectable("none", xfer_target == -1)) {
                 planner.selectTarget(std::string(), false);
@@ -3246,7 +3250,7 @@ void drawNewGame(Game &g) {
         ImGui::SetNextItemWidth(-1.0f);
         if(systems.empty()) {
             ImGui::TextDisabled("(none in res/systems)");
-        } else if(ImGui::BeginCombo("##newgame_system",
+        } else if(uiBeginCombo("##newgame_system",
                                     systems[(size_t)sysSel].c_str())) {
             for(size_t i = 0; i < systems.size(); i++) {
                 if(ImGui::Selectable(systems[i].c_str(), (int)i == sysSel)) {
@@ -3568,9 +3572,9 @@ void drawSaveLoad(Game &g) {
    Begin/End like the flight part windows -- a user-placed popup, not a slot
    window.
 
-   imgui's BeginCombo never reports a label to the test-engine hooks, so these
-   dropdowns are invisible to --ui-list and --ui-click (issue #251). The e2e
-   cases drive the same state through --vab-assign instead. */
+   These dropdowns go through uiBeginCombo, so --ui-list and --ui-click can name
+   them (#251 is closed); --vab-assign stays as the headless route only because
+   the VAB's 3D view cannot be driven without it (#311). */
 void drawVabSeatWindow(Game &g) {
     if(g.vab.seatPartId.empty()) { return; }
     const BuildPart *bp = nullptr;
@@ -3621,7 +3625,7 @@ void drawVabSeatWindow(Game &g) {
             char lbl[64];
             snprintf(lbl, sizeof(lbl), "Seat %d##s%d", slot + 1, slot);
             ImGui::SetNextItemWidth(-1.0f);
-            if(ImGui::BeginCombo(lbl, preview)) {
+            if(uiBeginCombo(lbl, preview)) {
                 if(ImGui::Selectable("Empty", cur == 0)) {
                     vabAssignSeat(g, bp->id, slot, 0);
                 }
@@ -3749,7 +3753,7 @@ void drawVabUI(Game &g) {
             ImGui::SameLine();
             ImGui::SetNextItemWidth(160);
             const char *cur = shipNames[(size_t)loadSel].c_str();
-            if(ImGui::BeginCombo("##vabload", cur)) {
+            if(uiBeginCombo("##vabload", cur)) {
                 for(size_t i = 0; i < shipNames.size(); i++) {
                     if(ImGui::Selectable(shipNames[i].c_str(), (int)i == loadSel)) {
                         loadSel = (int)i;
@@ -3772,7 +3776,7 @@ void drawVabUI(Game &g) {
         // Line 2: where + how to launch (vabLaunch resolves both). Pad scenarios also pick a
         // launch SITE.
         ImGui::SetNextItemWidth(160);
-        if(ImGui::BeginCombo("##vabbody", g.vab.bodyName.c_str())) {
+        if(uiBeginCombo("##vabbody", g.vab.bodyName.c_str())) {
             for(size_t i = 0; i < g.sys.bodies.size(); i++) {
                 const char *nm = g.sys.bodies[i]->name.c_str();
                 if(ImGui::Selectable(nm, g.vab.bodyName == nm)) {
@@ -3785,7 +3789,7 @@ void drawVabUI(Game &g) {
         }
         ImGui::SameLine();
         ImGui::SetNextItemWidth(160);
-        if(ImGui::BeginCombo("##vabscn", g.vab.scenarioName.c_str())) {
+        if(uiBeginCombo("##vabscn", g.vab.scenarioName.c_str())) {
             for(size_t i = 0; i < scenario_count(); i++) {
                 const char *nm = scenario_name_at(i);
                 /* Dev beds are hidden without --dev-scenarios. A dev bed armed
@@ -3815,7 +3819,7 @@ void drawVabUI(Game &g) {
                 }
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(160);
-                if(ImGui::BeginCombo("##vabsite", siteLabel.c_str())) {
+                if(uiBeginCombo("##vabsite", siteLabel.c_str())) {
                     if(hb != nullptr) {
                         for(auto *p : hb->pads) {
                             if(!p->hasFlag("VAB_LAUNCH_PAD")) { continue; }

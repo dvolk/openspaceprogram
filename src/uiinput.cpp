@@ -338,27 +338,51 @@ const char *ImGuiTestEngine_FindItemDebugLabel(ImGuiContext *ctx, ImGuiID id) {
     return labelOf(id);
 }
 
-/* Attach `label` to whatever widget was submitted last. The registry already
-   holds that id -- ItemAdd registered it with an empty label -- and
-   ImGuiTestEngineHook_ItemInfo fills the empty one in, so this costs nothing
-   when the registry is not armed. */
-static void nameLastItem(const char *label) {
+/* The id a combo is about to submit, or 0 when it will submit nothing.
+   BeginCombo derives it with window->GetID(label), so asking the same question
+   BEFORE the call is exact -- asking which item is "last" afterwards is not,
+   because BeginCombo returns before its ItemAdd when the window is skipping
+   items (leaving LastItemData holding an unrelated widget), and because on the
+   frames where it returns true we are standing inside the popup window. */
+static ImGuiID comboItemID(const char *label) {
     ImGuiContext *ctx = ImGui::GetCurrentContext();
-    if(ctx == nullptr || !ctx->TestEngineHookItems) { return; }
-    const ImGuiID id = ImGui::GetItemID();
+    if(ctx == nullptr || !ctx->TestEngineHookItems) { return 0; }
+    ImGuiWindow *w = ImGui::GetCurrentWindow();
+    if(w->SkipItems) { return 0; }
+    return w->GetID(label);
+}
+
+/* Hand the registry the label imgui never reported. ItemAdd registered this id
+   earlier in the same pass with an empty label, and ITEM_INFO fills only an
+   empty one, so a widget that did name itself keeps its own name. */
+static void labelComboItem(ImGuiID id, const char *label) {
     if(id == 0) { return; }
+    ImGuiContext *ctx = ImGui::GetCurrentContext();
+    if(ctx == nullptr) { return; }
     ImGuiTestEngineHook_ItemInfo(ctx, id, label, 0);
 }
 
 bool uiCombo(const char *label, int *current,
              const char *items_separated_by_zeros) {
+    const ImGuiID id = comboItemID(label);
     const bool changed = ImGui::Combo(label, current, items_separated_by_zeros);
-    nameLastItem(label);
+    labelComboItem(id, label);
     return changed;
 }
 
 bool uiCombo(const char *label, int *current, const char *const *items, int count) {
+    const ImGuiID id = comboItemID(label);
     const bool changed = ImGui::Combo(label, current, items, count);
-    nameLastItem(label);
+    labelComboItem(id, label);
     return changed;
+}
+
+bool uiBeginCombo(const char *label, const char *preview_value,
+                  ImGuiComboFlags flags) {
+    const ImGuiID id = comboItemID(label);
+    const bool open = ImGui::BeginCombo(label, preview_value, flags);
+    // Before the popup's own items are submitted, while the entry we want is
+    // still the newest one for this id.
+    labelComboItem(id, label);
+    return open;
 }
