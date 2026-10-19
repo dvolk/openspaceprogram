@@ -304,29 +304,38 @@ static void installHeadlessHooks(Game &game) {
         game.addHook(kHookPreScene, args.take_ms, nullptr, [](Game &game) {
             Part *from = nullptr;   // the instrument holding a finding to take
             Part *to = nullptr;     // the courier (the kerbal's suit)
-            // After an EVA the instrument sits on a DIFFERENT ship than the
-            // active one: search every vehicle.
+            /* Pair every instrument with every courier instead of taking the
+               first of each. The first instrument in vehicle order can be out of
+               reach (or uncarryable) while a later one is fine, and picking it
+               then reporting "no kerbal in reach" blames the wrong half. The UI
+               never has this problem: the player opens the part window they mean.
+               After an EVA the instrument sits on a DIFFERENT ship than the
+               active one, so the search spans every vehicle either way. */
+            const std::vector<Kerbal *> couriers = freeKerbals(game.vehicles);
             for(auto *s : game.vehicles) {
                 for(Part *p : s->parts) {
-                    if(p->def != nullptr && !p->experiments.empty()
-                       && p->def->experiment_storage == ExpStorage::Instrument) {
-                        from = p; break;
+                    // The Take block's own predicate, not the storage role: a
+                    // part that produces a family is what offers a Take button.
+                    if(p->def == nullptr || p->experiments.empty()
+                       || p->def->experiment_family.empty()) {
+                        continue;
                     }
+                    for(Kerbal *k : couriers) {
+                        if(!k->parts.empty()
+                           && game.canMoveExperiment(p, k->parts[0], k)) {
+                            from = p; to = k->parts[0]; break;
+                        }
+                    }
+                    if(from != nullptr) { break; }
                 }
                 if(from != nullptr) { break; }
             }
-            // Needs a FREE (EVA) kerbal in reach of the part -- the Take
-            // button's gate (canMoveExperiment).
-            if(from != nullptr) {
-                for(Kerbal *k : freeKerbals(game.vehicles)) {
-                    if(!k->parts.empty()
-                       && game.canMoveExperiment(from, k->parts[0], k)) {
-                        to = k->parts[0]; break;
-                    }
-                }
+            if(from != nullptr) { game.moveExperiment(from, to, 0); }
+            else {
+                printf("[hook] --take: no instrument a courier can take (nothing"
+                       " holds a finding, or none is in reach, or no courier can"
+                       " carry it), ignored\n");
             }
-            if(from != nullptr && to != nullptr) { game.moveExperiment(from, to, 0); }
-            else { printf("[hook] --take: no instrument/free-kerbal-in-reach, ignored\n"); }
         });
     }
     // --store: move the courier's first held finding onto its container
@@ -335,30 +344,31 @@ static void installHeadlessHooks(Game &game) {
         game.addHook(kHookPreScene, args.store_ms, nullptr, [](Game &game) {
             Part *from = nullptr;   // the courier (the kerbal's suit)
             Part *to = nullptr;     // the container (the capsule)
-            // After an EVA the container sits on a DIFFERENT ship: search every
-            // vehicle.
+            // Paired like --take: the first container in vehicle order may be
+            // one this courier cannot reach or cannot fill.
+            const std::vector<Kerbal *> couriers = freeKerbals(game.vehicles);
             for(auto *s : game.vehicles) {
                 for(Part *p : s->parts) {
-                    if(p->def != nullptr
-                       && p->def->experiment_storage == ExpStorage::Container) {
-                        to = p; break;
+                    if(p->def == nullptr
+                       || p->def->experiment_storage != ExpStorage::Container) {
+                        continue;
                     }
-                }
-                if(to != nullptr) { break; }
-            }
-            // A FREE (EVA) kerbal in reach of the capsule, carrying a finding --
-            // the Store button's gate (canMoveExperiment, which also checks the
-            // capsule can take this family).
-            if(to != nullptr) {
-                for(Kerbal *k : freeKerbals(game.vehicles)) {
-                    if(!k->parts.empty()
-                       && game.canMoveExperiment(k->parts[0], to, k)) {
-                        from = k->parts[0]; break;
+                    for(Kerbal *k : couriers) {
+                        if(!k->parts.empty()
+                           && game.canMoveExperiment(k->parts[0], p, k)) {
+                            from = k->parts[0]; to = p; break;
+                        }
                     }
+                    if(from != nullptr) { break; }
                 }
+                if(from != nullptr) { break; }
             }
-            if(from != nullptr && to != nullptr) { game.moveExperiment(from, to, 0); }
-            else { printf("[hook] --store: no free-kerbal-in-reach/container, ignored\n"); }
+            if(from != nullptr) { game.moveExperiment(from, to, 0); }
+            else {
+                printf("[hook] --store: no container a courier can store into"
+                       " (nobody holds a finding, or none is in reach, or every"
+                       " container already holds it), ignored\n");
+            }
         });
     }
     // --tracking: fired after --space-center.

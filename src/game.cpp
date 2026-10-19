@@ -1458,30 +1458,32 @@ bool Game::kerbalInRange(Kerbal *k, Part *part) {
     return dist <= kBoardingRange;
 }
 
-/* One end of a transfer is the kerbal's own suit, so reach is only owed to the
-   OTHER end. Checking reach against both would refuse a legal dance: the courier
-   standing on the capsule it just stored into. */
-bool Game::canMoveExperiment(Part *from, Part *to, Kerbal *k) {
+/* A courier move always has the walker's own suit on one end, so reach is owed
+   only to the OTHER end: the suit is the walker's root part (kerbalEVA's
+   setRoot), so checking reach against it measures 0 and proves nothing. A
+   transfer with the suit on neither end is not a courier move and refuses --
+   see the header. */
+bool Game::canMoveExperiment(Part *from, Part *to, Kerbal *courier) {
     if(from == nullptr || to == nullptr || from == to
-       || k == nullptr || k->parts.empty()) {
+       || courier == nullptr || courier->parts.empty()) {
         return false;
     }
-    Part *suit = k->parts[0];
+    Part *suit = courier->parts[0];
     if(from != suit && to != suit) { return false; }
     Part *remote = from == suit ? to : from;
-    if(!kerbalInRange(k, remote)) { return false; }
+    if(!kerbalInRange(courier, remote)) { return false; }
     if(from->experiments.empty()) { return false; }
     return to->canReceive() && to->canHold(from->experiments[0]);
 }
 
-bool Game::canBoard(Kerbal *k, Vehicle *ship, size_t part) {
-    if(k == nullptr || ship == nullptr || part >= ship->parts.size()) {
+bool Game::canBoard(Kerbal *courier, Vehicle *ship, size_t part) {
+    if(courier == nullptr || ship == nullptr || part >= ship->parts.size()) {
         return false;
     }
     Part *cap = ship->parts[part];
     if(cap->def == nullptr || cap->def->crew_capacity <= 0) { return false; }
     if((int)cap->seatCount() >= cap->def->crew_capacity) { return false; }
-    return kerbalInRange(k, cap);
+    return kerbalInRange(courier, cap);
 }
 
 /* Put the person in `suit`'s seat onto the surface beside its capsule. This
@@ -1585,6 +1587,11 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
        forever is not a failure mode worth depending on a def never changing. */
     if(ship == k) { return; }
     Part *capPart = ship->parts[part];
+    /* Reach is decided by canBoard, which both callers (the Board button and
+       --board) ask first. It is not re-checked here and the refusals below are
+       not a substitute for it: boarding something out of reach is the state the
+       gate exists to prevent, so say so loudly rather than inventing a teleport. */
+    assert(kerbalInRange(k, capPart));
     const PartDef *capDef = capPart->def;
     if(capDef->crew_capacity <= 0) {
         toast("Board: part %zu is not a capsule", part);

@@ -751,14 +751,17 @@ struct Game {
     /* `to` must be a transfer destination with a free slot. */
     void moveExperiment(Part *from, Part *to, size_t which);
     bool kerbalInRange(Kerbal *k, Part *part);
-    /* The gates the crew buttons apply, in ONE place. A walking kerbal is the
-       courier for a finding, so they must be within reach of whichever end they
-       are NOT carrying (a seated occupant cannot reach out); for a transfer
-       `from` must hold one and `to` must take it; for a board the capsule must
-       have a free seat. The buttons and the --take / --store / --board hooks both
-       ask these, so a gate cannot drift into two copies that disagree. */
-    bool canMoveExperiment(Part *from, Part *to, Kerbal *k);
-    bool canBoard(Kerbal *k, Vehicle *ship, size_t part);
+    /* The gates the crew buttons apply, in ONE place. Both are about a WALKING
+       kerbal acting as a courier. canMoveExperiment moves a finding to or from
+       that courier's OWN suit (parts[0]) and refuses anything else: a
+       capsule-to-capsule or ship-to-ship transfer is not a courier move, so a
+       future transfer of that shape needs its own gate rather than this one.
+       Reach is owed only to the end the courier is NOT carrying, because the suit
+       they carry is their root part and so is trivially in reach. The buttons and
+       the --take / --store / --board hooks all ask these, so a gate cannot drift
+       into two copies that disagree. */
+    bool canMoveExperiment(Part *from, Part *to, Kerbal *courier);
+    bool canBoard(Kerbal *courier, Vehicle *ship, size_t part);
     // Push a one-shot on-screen message (printf-style).
     void toast(const char *fmt, ...);
     /* Console line only. Scene transitions use this -- the move is visible, the

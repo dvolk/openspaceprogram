@@ -30,6 +30,11 @@ struct UiItem {
     ImRect visible;   // ... clipped to its window's clip rect when drawn
     std::string window;
     std::string label;
+    /* A BeginDisabled() item still registers, still gets a rect, and still
+       becomes HoveredId when pointed at (imgui.cpp:5078 -- "when disabled we'll
+       return false but still set HoveredId"). So a click aimed at it looks clean
+       and activates nothing. Record it and refuse. */
+    bool disabled = false;
 };
 
 // The items of the imgui pass that just finished, and of the one in flight;
@@ -105,10 +110,10 @@ void dumpUiItems(Uint32 now_ms) {
         // --ui-click refuse a rect the dump advertised as live.
         const bool clipped = it.visible.Min.x > it.visible.Max.x
                           || it.visible.Min.y > it.visible.Max.y;
-        printf("[uilist] window=\"%s\" label=\"%s\" rect=%.0f,%.0f-%.0f,%.0f%s\n",
+        printf("[uilist] window=\"%s\" label=\"%s\" rect=%.0f,%.0f-%.0f,%.0f%s%s\n",
                it.window.c_str(), it.label.c_str(),
                it.rect.Min.x, it.rect.Min.y, it.rect.Max.x, it.rect.Max.y,
-               clipped ? " clipped" : "");
+               clipped ? " clipped" : "", it.disabled ? " disabled" : "");
     }
     fflush(stdout);
 }
@@ -165,6 +170,10 @@ void uiInputFrame(ImGuiContext *ctx, ImGuiContextHook *hook) {
                 ? std::string("MISMATCH hovered \"") + lab
                   + "\" at release (the item moved or is covered)"
                 : "MISMATCH nothing was hovered at release");
+        } else if(ctx->HoveredIdIsDisabled) {
+            // It turned disabled between the pass we aimed at and the press.
+            failClick(c, now, "disabled at release (the gate closed between the"
+                              " frame we aimed at and the frame we pressed)");
         }
         // Re-assert the position: the backend may have queued its own since.
         io.AddMousePosEvent(g_press_x, g_press_y);
@@ -224,6 +233,15 @@ void uiInputFrame(ImGuiContext *ctx, ImGuiContextHook *hook) {
             continue;
         }
         const UiItem &hit = *hits[0];
+        /* A disabled widget takes the click and does nothing with it, so a case
+           that clicks one reads as a clean press and fails three EXPECTs later.
+           Refuse here, where the reason is known. */
+        if(hit.disabled) {
+            failClick(c, now, "disabled (the widget is greyed out -- the gate"
+                              " that greys it is what this case should assert)");
+            c.done = true;
+            continue;
+        }
         /* ItemAdd fires before imgui's clip early-out, so an item scrolled out
            of its window still registers -- with a rect that would land the
            click on whatever is drawn there instead. */
@@ -298,6 +316,8 @@ void ImGuiTestEngineHook_ItemAdd(ImGuiContext *ctx, ImGuiID id, const ImRect &bb
     it.visible = it.rect;
     it.visible.ClipWith(w->ClipRect);
     it.window = w->Name ? w->Name : "";
+    it.disabled = item_data != nullptr
+               && (item_data->ItemFlags & ImGuiItemFlags_Disabled) != 0;
     g_filling.push_back(std::move(it));
 }
 

@@ -1,0 +1,22 @@
+# --take / --store must PAIR an instrument with a courier, not take the first of
+# each. Here a second ship sits ahead of the flown one in the vehicle list, so
+# the first capsule in list order belongs to a ship nobody is standing beside --
+# the old "first container, then demand reach" order reported "no kerbal in
+# reach" and blamed the courier for the container's bad choice.
+NAME courier-pairs-across-the-fleet
+ARGS --time-accel 1 --timeout 9 --frame-cap 30
+ARGS --startship extra,res/ships/racer.json,Kerbin,pad
+ARGS --startship labpod,res/ships/labpod.json,Kerbin,rot-orbit
+# Fly the second ship: the pod and the crew that do the dance are on labpod.
+ARGS --sim-press 1000,50,F6
+ARGS --pod-experiment 1500 --eva 2000 --take 2500 --store 3000
+EXPECT out of 'labpod' part 0
+EXPECT moved 'Low orbit materials study on Kerbin' Materials Pod (2m) -> Kerbal
+EXPECT moved 'Low orbit materials study on Kerbin' Kerbal -> Capsule (2m)
+# Exactly two transfers: the take and the store. A third would mean a hook found
+# a second pairing it should not have made.
+CHECK out.count(" moved '") == 2
+FORBID --take: no instrument
+FORBID --store: no container
+FORBID GL_
+FORBID error:

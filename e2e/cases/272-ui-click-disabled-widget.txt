@@ -1,0 +1,17 @@
+# --ui-click on a greyed-out widget: imgui sets HoveredId for a disabled item
+# (imgui.cpp:5078), so the press and release both land and NOTHING activates.
+# "Apply DPI" is disabled whenever the pending DPI equals the live one, which is
+# every boot until someone moves the DPI slider.
+NAME ui-click-disabled-widget
+ARGS --timeout 9 --frame-cap 60
+ARGS --ui-click 1500,"Title Menu/New Game" --ui-click 2500,"New Game/Start"
+ARGS --ui-click 5000,"Game Menu/Settings"
+ARGS --ui-click 6500,"Settings/Apply DPI"
+# Not an EXPECT: the loop timestamp on this line moves with the frame rate, and
+# a case that pins "loop=6.50s" fails on a box that renders one frame slower.
+CHECK any('path="Settings/Apply DPI" FAILED disabled' in l for l in out.split("\n"))
+# --ui-list marks the greyed-out items, so an author learns the same thing
+# without pressing anything.
+CHECK any("disabled" in l for l in out.split("\n") if "Apply DPI" in l)
+FORBID GL_
+FORBID error:

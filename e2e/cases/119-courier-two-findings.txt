@@ -1,16 +1,19 @@
-# two findings couriered home; only the non-pod one scores as new
+# two findings run, one couriered home; the one left on the walking crew member
+# does not score
 NAME courier-two-findings
-ARGS --time-accel 1 --timeout 10 --startship labpod,res/ships/labpod.json,Kerbin,rot-orbit
+ARGS --time-accel 1 --timeout 10 --frame-cap 30 --startship labpod,res/ships/labpod.json,Kerbin,rot-orbit
 ARGS --experiment 1000
 ARGS --pod-experiment 1500
 ARGS --eva 2000
 ARGS --take 2500
 ARGS --store 3000
-# Switch control back to the ship (F6) rather than boarding: boarding would carry
-# the suit's still-held study home, and the point here is that a finding left on
-# a walking crew member is NOT banked. "Recover Vessel" needs a ship active, so
-# this switch is what a player would do.
-ARGS --sim-press 3500,50,F6
+# Hand control back to the ship with V (Slot::ToggleEva -> lastShip) rather than
+# boarding: boarding would carry the suit's still-held study home, and the point
+# here is that a finding left on a walking crew member is NOT banked. V is what a
+# player reaches for and lands on the ship the walk came from whatever else is in
+# the fleet; F6 steps by list position and would need this fleet to stay two
+# vessels in a known order. "Recover Vessel" needs a ship active.
+ARGS --sim-press 3500,50,V
 ARGS --space-center 4000 --recover 5000 --recover-anywhere
 EXPECT recorded 'Low orbit observation
 EXPECT recorded 'Low orbit materials study

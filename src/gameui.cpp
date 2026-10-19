@@ -2217,10 +2217,15 @@ void drawPartWindows(Game &g) {
                         ship->GetPositionRelTo(ship->parts[part], k->frame);
                     const double dist =
                         glm::length(k->get_center_of_mass() - capCom);
+                    /* The annotation names ONE reason, so it cannot go stale when
+                       canBoard grows a condition. The gate below is the general
+                       predicate; this is just the label. */
+                    const bool full = ((int)ship->parts[part]->seatCount()
+                                       >= def->crew_capacity);
                     const bool boardable = g.canBoard(k, ship, part);
                     ImGui::PushID(k);
                     ImGui::Text("  %s (%.1f m)%s", k->name.c_str(), dist,
-                                boardable ? "" : "  (capsule full)");
+                                full ? "  (capsule full)" : "");
                     ImGui::BeginDisabled(!boardable);
                     const bool boardClicked = ImGui::SmallButton("Board");
                     ImGui::EndDisabled();
@@ -2240,7 +2245,13 @@ void drawPartWindows(Game &g) {
                         ImGui::PopID();
                         break;
                     }
-                    // Store (the dance deposit).
+                    /* Store (the dance deposit). Offered whenever this capsule can
+                       take findings at all: hiding the button on a refusal would
+                       leave a player holding a sample with no visible way to
+                       deposit it, so the refusal is a greyed button plus the
+                       reason. Inside the canReceive branch the only way
+                       canMoveExperiment can still refuse is canHold -- reach was
+                       established by the loop above -- so the note is exact. */
                     if(!k->parts.empty()) {
                         const std::vector<Experiment> &held =
                             k->parts[0]->experiments;
@@ -2254,9 +2265,19 @@ void drawPartWindows(Game &g) {
                                                     repeat ? "  (repeat)" : "");
                             }
                             ImGui::Unindent();
-                            if(g.canMoveExperiment(k->parts[0],
-                                                   ship->parts[part], k)) {
-                                if(ImGui::SmallButton("Store  (into capsule)")) {
+                            if(ship->parts[part]->canReceive()) {
+                                const bool storable
+                                    = g.canMoveExperiment(k->parts[0],
+                                                          ship->parts[part], k);
+                                if(!storable) {
+                                    ImGui::TextDisabled("  (this capsule already"
+                                                        " holds that finding)");
+                                }
+                                ImGui::BeginDisabled(!storable);
+                                const bool storeClicked
+                                    = ImGui::SmallButton("Store  (into capsule)");
+                                ImGui::EndDisabled();
+                                if(storeClicked) {
                                     g.moveExperiment(k->parts[0],
                                                      ship->parts[part], 0);
                                 }
@@ -2317,7 +2338,12 @@ void drawPartWindows(Game &g) {
                         // A successful take empties the pod; the next iteration's
                         // canHold(pod->experiments[0]) would read an empty vector.
                         if(pod->experiments.empty()) { break; }
-                        if(!g.canMoveExperiment(pod, k->parts[0], k)) { continue; }
+                        // Guarded here, not inside the gate: canMoveExperiment
+                        // cannot protect a caller that already indexed.
+                        if(k->parts.empty()
+                           || !g.canMoveExperiment(pod, k->parts[0], k)) {
+                            continue;
+                        }
                         anyTake = true;
                         ImGui::PushID(k);
                         char takeLabel[192];

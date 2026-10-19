@@ -1,0 +1,15 @@
+# recovering while a crew member walks: the hub hides the button, and --recover
+# now refuses the same way instead of switching to the ship behind the player's back
+NAME recover-refused-walking
+ARGS --time-accel 1 --timeout 9 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --eva 1500
+ARGS --space-center 2500 --recover 3500
+EXPECT [scene] flight -> spacecenter (push)
+EXPECT [toast] Cannot recover
+EXPECT a crew member can't be recovered
+# The refusal is the whole point: no flight ends here.
+FORBID [recover] t=
+FORBID [science] recovered
+EXPECT Timeout reached (9.
+FORBID GL_
+FORBID error:
