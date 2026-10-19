@@ -6,7 +6,7 @@
 # and it fails on the pre-fix binary with "has no scancode" and no transition.
 # The decimal escape still works (75/76 keep sending 49..52); names just win.
 NAME sim-press-digit-keys
-ARGS --new-game 1000 --timeout 8
+ARGS --ui-click 400,"Title Menu/New Game" --ui-click 1000,"New Game/Start" --timeout 8
 ARGS --sim-press 2500,0,3
 EXPECT [scene] spacecenter -> tracking (push)
 FORBID has no scancode

@@ -197,11 +197,6 @@ static void installHeadlessHooks(Game &game) {
         game.addHook(kHookPreScene, args.reload_ms, nullptr,
                      [dir](Game &g) { g.loadFrom(dir); });
     }
-    // --new-game: Game::newGame from the title screen, before the scene read.
-    if(args.new_game_ms >= 0) {
-        game.addHook(kHookPreScene, args.new_game_ms, nullptr,
-                     [](Game &g) { g.newGame(); });
-    }
     // --quit-title: before the scene is read (it tears the ships down and
     // lands on Title).
     if(args.quit_title_ms >= 0) {

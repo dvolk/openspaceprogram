@@ -1,5 +1,5 @@
 NAME title-newgame
-ARGS --new-game 2000 --timeout 8
+ARGS --ui-click 1400,"Title Menu/New Game" --ui-click 2000,"New Game/Start" --timeout 8
 EXPECT [scene] flight -> title (enterTitle)
 EXPECT [scene] title -> spacecenter (enterSpaceCenter)
 EXPECT [game] new game: Space Center, no ship

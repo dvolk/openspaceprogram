@@ -6,7 +6,7 @@
 # The affirmative answer is what matters here: the loop must actually stop
 # early, so "Timeout reached" is forbidden rather than an exit line asserted.
 NAME question-quit
-ARGS --new-game 1000 --timeout 6
+ARGS --ui-click 400,"Title Menu/New Game" --ui-click 1000,"New Game/Start" --timeout 6
 ARGS --ui-click 2500,"Game Menu/Quit game"
 ARGS --ui-list 3000
 ARGS --ui-click 3400,"Question/Quit"

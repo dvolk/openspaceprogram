@@ -191,9 +191,6 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "(the Save/Load window's Load button, headless)");
     app.add_option("--reload-at", args.reload_ms,
                    "Loop time in ms at which --reload fires (-1 = never)");
-    app.add_option("--new-game", args.new_game_ms,
-                   "Fire the title screen's New Game once at this loop time in "
-                   "ms (headless test hook; -1 = never)");
     app.add_option("--quit-title", args.quit_title_ms,
                    "Fire the flight pause menu's \"Quit to title\" once at this "
                    "loop time in ms (headless test hook; -1 = never)");

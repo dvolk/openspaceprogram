@@ -1,9 +1,14 @@
 # A New Game must own its saves/ directory (#299).
 # gameId is adopted from the save that was loaded (save.cpp:976-984), but
 # unloadGame left it set and Game::newGame never minted one -- only
-# startNewGame does. So quit-to-title then a bare newGame() (which is exactly
-# what --new-game calls) left the fresh career pointing at the PREVIOUS game's
-# directory, and the next save wrote a slot into it.
+# startNewGame does. So quit-to-title then a new game left the fresh career
+# pointing at the PREVIOUS game's directory, and the next save wrote a slot
+# into it.
+# The route here is the player's, which is the stronger version of the check:
+# startNewGame mints before it calls newGame, so a regression in EITHER half
+# lands slotB inside gameA and the CHECK below fires. The old route reached
+# newGame() directly through --new-game, a path nothing in the game takes, so
+# it could only ever catch the second half.
 # SEED stages gameA under a real saves/ tree because the identity is adopted only
 # when the save's grandparent directory is literally named "saves"; a fixture
 # path like e2e/fixtures/save_racer never sets gameId at all, which is why this
@@ -12,17 +17,29 @@ NAME new-game-mints-its-own-game-dir
 SEED e2e/fixtures/save_racer saves/20260101_000000-gameA/slotA
 ARGS --timeout 6 --time-accel 1
 ARGS --load slotA
-ARGS --quit-title 2000 --new-game 3000
+# Both hops are the player's: ESC from the flight the save opens in, the hub's
+# "Return to title", the card's "Return", then the title's New Game.
+# --quit-title used to jump flight -> title directly, which is not a transition
+# any button makes: from flight the hub is in between, and the card is in front
+# of that one.
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Return to title" --ui-click 2500,"Question/Return"
+ARGS --ui-click 3000,"Title Menu/New Game" --ui-click 3500,"New Game/Start"
 ARGS --resave slotB
 EXPECT saves/20260101_000000-gameA/slotA (active: racer)
 EXPECT [game] unloaded: ships torn down, no active vessel
 # A fresh career also starts at t=0: nothing else writes Game::time, so a new
 # game on a system that had been running used to open at the old game's epoch.
+EXPECT [game] new game 'game1'
 EXPECT [game] new game: Space Center, no ship, paused (t=0.0)
 EXPECT Saved 0 ship(s) to
 CHECK "20260101_000000-gameA/slotB" not in out
-CHECK re.search(r"Saved 0 ship\(s\) to \S*/saves/20\d{6}_\d{6}-gameA/slotB", out)
+# A fresh stamp AND a fresh name: the sheet's default (gameui.cpp:3189), not the
+# loaded save's. Inheriting gameA's identity is the regression, and either half
+# of it puts slotB back under 20260101_000000-gameA.
+CHECK re.search(r"Saved 0 ship\(s\) to \S*/saves/20\d{6}_\d{6}-game1/slotB", out)
 FORBID A game is already running
+FORBID FAILED
 FORBID Segmentation
 FORBID Assertion
 FORBID GL_

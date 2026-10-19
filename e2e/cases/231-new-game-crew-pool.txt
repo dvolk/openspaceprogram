@@ -6,7 +6,9 @@
 NAME new-game-crew-pool
 ARGS --system res/systems/ksp_system.json --kerbals e2e/fixtures/three_kerbals.json
 ARGS --switch-system res/systems/solar_system.json
-ARGS --switch-at 2000 --new-game 3000 --time-accel 1 --timeout 14 --frame-cap 30
+ARGS --switch-at 2000 --time-accel 1 --timeout 14 --frame-cap 30
+# A system switch lands on the title, so New Game is one click away.
+ARGS --ui-click 2400,"Title Menu/New Game" --ui-click 3000,"New Game/Start"
 ARGS --vab res/ships/tanker.json --ui-click 5000,"Game Menu/VAB" --vab-launch 7500
 EXPECT [game] new game: Space Center, no ship, paused
 EXPECT [vab] launched 'tanker' (7 parts)

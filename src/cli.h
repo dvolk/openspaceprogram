@@ -86,7 +86,6 @@ struct GameArgs {
     std::vector<SelectTargetArg> select_targets;
     std::string reload_dir; // save dir to load over the running game
     int reload_ms = -1;     // --reload-at
-    int new_game_ms = -1;
     int quit_title_ms = -1;
     int recover_ms = -1;
     bool recover_anywhere = false;  // default: home body only
