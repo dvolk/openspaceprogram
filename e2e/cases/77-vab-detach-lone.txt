@@ -13,7 +13,7 @@ ARGS --vab res/ships/tanker.json --width 1920 --height 1080 --timeout 8
 ARGS --ui-focus 1500,engine_1
 ARGS --sim-mouse 1600,0,CUR,CUR,LMB
 ARGS --ui-click 2500,"VAB/Detach subtree"
-ARGS --vab-launch 4000
+ARGS --ui-click 4000,"VAB TopBar/LAUNCH"
 CHECK re.search(r"\[vab\] select 2 engine_1", out)
 CHECK re.search(r"\[vab\] deleted engine_1 \(single part, not stashed\)", out)
 # A lone part is deleted, not stashed: nothing lands in the subassembly list,

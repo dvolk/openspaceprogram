@@ -17,7 +17,7 @@ ARGS --ui-click 1000,"Capsule (3m)##capsule_r1.5h3"
 ARGS --sim-mouse 2000,0,960,540,LMB --sim-mouse 2500,0,960,540,RMB
 ARGS --ui-click 3000,"Crew##capsule_r1.5h3_1/Seat 3##s2"
 ARGS --ui-click 3700,"##Combo_00/Cyd"
-ARGS --vab-launch 6000
+ARGS --ui-click 6000,"VAB TopBar/LAUNCH"
 EXPECT [vab] seat window: 'capsule_r1.5h3_1' (3 seats)
 CHECK re.search(r"Crew: 'Cyd' aboard '.*' part 0 \(1/3\)", out)
 EXPECT [vab] launched 'Ship' (1 parts)

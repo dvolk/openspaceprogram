@@ -16,7 +16,7 @@ ARGS --vab res/ships/stager.json --width 1920 --height 1080 --timeout 8
 ARGS --ui-focus 1500,dec_1
 ARGS --sim-mouse 1600,0,CUR,CUR,LMB
 ARGS --ui-click 2500,"VAB/Detach subtree"
-ARGS --vab-launch 4000
+ARGS --ui-click 4000,"VAB TopBar/LAUNCH"
 CHECK re.search(r"\[vab\] select 4 dec_1", out)
 CHECK re.search(r"\[vab\] detached dec_1 \(3 parts\)", out)
 EXPECT [toast] Detached dec_1 (+2) to Subassemblies

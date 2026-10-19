@@ -1048,6 +1048,13 @@ void vabInstallHooks(Game &g) {
             fflush(stdout);
         });
     }
+    /* --vab-launch: the launch itself is driven by the top bar's LAUNCH button
+       (--ui-click "VAB TopBar/LAUNCH"), which is all the other cases needed this
+       hook for. It survives for ONE thing a click cannot do: land in the SAME
+       frame as another hook. A --ui-click presses in one frame and releases in
+       the next (ButtonBehavior needs the release), and vabUpdate prunes the seat
+       plan between frames, so case 244's stale-plan launch -- detach and launch
+       with no prune in between -- only arrives through here. */
     if(args.vab_launch_ms >= 0) {
         g.addHook(kHookPreScene, args.vab_launch_ms, inVab,
                   [](Game &g) { vabLaunch(g); });

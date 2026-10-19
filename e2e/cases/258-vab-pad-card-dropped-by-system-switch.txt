@@ -10,7 +10,7 @@ NAME vab-pad-card-dropped-by-system-switch
 ARGS --time-accel 1 --timeout 12
 ARGS --vab res/ships/tanker.json --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --startship probe,res/ships/tanker.json,Kerbin,high-orbit
-ARGS --vab-launch 2000 --switch-system res/systems/solar_system.json --switch-at 2500
+ARGS --ui-click 2000,"VAB TopBar/LAUNCH" --switch-system res/systems/solar_system.json --switch-at 2500
 EXPECT [vab] launch refused: 'racer' occupies 'main_space_port'
 EXPECT [ask] racer is standing on Main space port. Clear the pad?  [Clear the pad | Cancel]
 EXPECT [game] reset: dropped pending question: racer is standing on Main space port. Clear the pad?

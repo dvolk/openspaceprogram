@@ -4,7 +4,7 @@
 # one part, and boarding would abort on). A toast, not a crash, and the editor
 # stays open with the build intact.
 NAME vab-launch-kerbal-multidef
-ARGS --vab e2e/fixtures/kerbal_rover.json --vab-launch 3000 --timeout 6
+ARGS --vab e2e/fixtures/kerbal_rover.json --ui-click 3000,"VAB TopBar/LAUNCH" --timeout 6
 EXPECT [vab] entered the editor (sim keeps coasting)
 EXPECT [vab] launch refused: 'kerbalrover' is kerbal-rooted but has 2 parts
 EXPECT [toast] Launch refused: a kerbal must be a single part

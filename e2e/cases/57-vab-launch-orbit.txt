@@ -1,5 +1,5 @@
 NAME vab-launch-orbit
-ARGS --vab res/ships/tanker.json --vab-scenario rot-orbit --vab-launch 2000 --timeout 12
+ARGS --vab res/ships/tanker.json --vab-scenario rot-orbit --ui-click 2000,"VAB TopBar/LAUNCH" --timeout 12
 EXPECT Main loop starting
 EXPECT [vab] launched 'tanker' (7 parts)
 EXPECT Spawn 'rot-orbit' around

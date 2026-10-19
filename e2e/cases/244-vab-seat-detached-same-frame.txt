@@ -7,11 +7,18 @@
 # path itself, so vabLaunch prunes its own plan before reading it (issue #288).
 # The plan is dropped out loud, so the crew falls back to the pad's line rather
 # than half-filling from a stale choice.
+#
+# This is the one case that keeps --vab-launch, and it was checked rather than
+# assumed: switching it to --ui-click "VAB TopBar/LAUNCH" (like every other case
+# now does) left it PASSING with vabLaunch's own prune removed. A click presses
+# in one frame and releases in the next, so vabUpdate prunes the plan in between
+# and the stale entry never reaches the fill loop. Same-frame arrival needs two
+# hooks.
 NAME vab-seat-detached-same-frame
 ARGS --vab e2e/fixtures/two_capsules.json --kerbals e2e/fixtures/three_kerbals.json
 ARGS --time-accel 1 --timeout 8 --frame-cap 30
 ARGS --vab-assign 3000,1,0,Ace
-ARGS --vab-detach 1 --vab-detach-at 5000 --vab-launch 5010
+ARGS --vab-detach 1 --vab-detach-at 5000 --vab-launch 5000
 EXPECT [vab] dropped the seat plan for 'capsule_r1.5h3_2' 'Ace' (it left the build)
 EXPECT [toast] No seats named: the next launch draws the pad's line
 EXPECT Crew: 'Ace' aboard 'two capsules' part 0 (1/3)

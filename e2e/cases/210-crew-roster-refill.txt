@@ -10,7 +10,7 @@ ARGS --kerbals e2e/fixtures/tiny_kerbals.json --time-accel 1 --timeout 14 --fram
 ARGS --vab res/ships/tanker.json --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --recover 2000 --recover-anywhere
 ARGS --ui-click 5000,"Game Menu/VAB"
-ARGS --vab-launch 7500
+ARGS --ui-click 7500,"VAB TopBar/LAUNCH"
 EXPECT Roster: 1 kerbal(s) from e2e/fixtures/tiny_kerbals.json
 EXPECT Crew: 'Solo' aboard 'racer' part 0 (1/1)
 EXPECT [recover] t=

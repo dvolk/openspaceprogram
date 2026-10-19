@@ -5,7 +5,7 @@ NAME vab-root-place
 # the def id, which no other widget in the game can match.
 ARGS --vab-empty --timeout 8
 ARGS --ui-click 800,"Capsule (2m)##capsule"
-ARGS --sim-mouse 1500,0,960,540,LMB --vab-launch 2500
+ARGS --sim-mouse 1500,0,960,540,LMB --ui-click 2500,"VAB TopBar/LAUNCH"
 EXPECT Main loop starting
 EXPECT [vab] entered the editor (sim keeps coasting)
 CHECK re.search(r"\[vab\] launched '.*' \(1 parts\)", out)

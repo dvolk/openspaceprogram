@@ -8,7 +8,7 @@ ARGS --kerbals e2e/fixtures/three_kerbals.json --time-accel 1 --timeout 14 --fra
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --recover 2000 --recover-anywhere
 ARGS --reload e2e/fixtures/save_crew_pool_badpart --reload-at 3000
-ARGS --vab res/ships/tanker.json --ui-click 5000,"Game Menu/VAB" --vab-launch 7500
+ARGS --vab res/ships/tanker.json --ui-click 5000,"Game Menu/VAB" --ui-click 7500,"VAB TopBar/LAUNCH"
 EXPECT [load] refused e2e/fixtures/save_crew_pool_badpart
 EXPECT crew pool entry 'fuel_tank' is a 'fuel_tank' part, not a kerbal
 EXPECT [vab] launched 'tanker' (7 parts)

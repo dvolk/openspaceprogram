@@ -23,7 +23,7 @@ ARGS --vab-assign 3000,1,0,Ace --vab-assign 3200,0,0,Bram
 ARGS --ui-focus 4000,capsule_r1.5h3_2
 ARGS --sim-mouse 4500,0,CUR,CUR,LMB
 ARGS --ui-click 5000,"VAB/Detach subtree"
-ARGS --vab-launch 7000
+ARGS --ui-click 7000,"VAB TopBar/LAUNCH"
 EXPECT [vab] assign hook: 'capsule_r1.5h3_2' seat 0 = 'Ace'
 EXPECT [vab] assign hook: 'capsule_r1.5h3_1' seat 0 = 'Bram'
 EXPECT [vab] select 1 capsule_r1.5h3_2

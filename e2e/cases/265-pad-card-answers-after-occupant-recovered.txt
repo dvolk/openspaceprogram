@@ -20,7 +20,7 @@ NAME pad-card-answers-after-occupant-recovered
 ARGS --time-accel 1 --timeout 12
 ARGS --vab res/ships/tanker.json --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --startship probe,res/ships/tanker.json,Kerbin,high-orbit
-ARGS --vab-launch 2000 --recover 2300
+ARGS --ui-click 2000,"VAB TopBar/LAUNCH" --recover 2300
 ARGS --ui-click 3000,"Question/Clear the pad"
 EXPECT [vab] launch refused: 'racer' occupies 'main_space_port'
 EXPECT [ask] racer is standing on Main space port. Clear the pad?  [Clear the pad | Cancel]

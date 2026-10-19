@@ -23,7 +23,7 @@ ARGS --ui-focus 1800,capsule_1
 ARGS --sim-mouse 1900,0,CUR,CUR,LMB
 ARGS --ui-focus 2400,engine_1
 ARGS --sim-mouse 2500,0,CUR,CUR,LMB
-ARGS --vab-launch 3500
+ARGS --ui-click 3500,"VAB TopBar/LAUNCH"
 EXPECT [vab] entered the editor (sim keeps coasting)
 EXPECT [vab] link src capsule_1
 EXPECT [toast] Link source: capsule_1 -- now click the destination

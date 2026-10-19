@@ -30,7 +30,7 @@ ARGS --ui-focus 3200,rtank12 --sim-mouse 3600,0,CUR,CUR,LMB
 ARGS --ui-click 4200,"VAB/Add fuel link"
 ARGS --ui-focus 4600,rtank21 --sim-mouse 5000,0,CUR,CUR,LMB
 ARGS --ui-focus 5400,central_engine2 --sim-mouse 5800,0,CUR,CUR,LMB
-ARGS --vab-launch 6500
+ARGS --ui-click 6500,"VAB TopBar/LAUNCH"
 EXPECT [vab] link src central_engine2
 EXPECT [vab] link dest rtank12
 EXPECT [vab] fuel link refused (a loop cannot drain):

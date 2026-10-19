@@ -4,7 +4,7 @@
 # name it at boot instead; the message is scenario_by_name's own and already
 # lists the valid names.
 NAME vab-bad-scenario
-ARGS --timeout 4 --vab res/ships/racer.json --vab-scenario bogus --vab-launch 2000
+ARGS --timeout 4 --vab res/ships/racer.json --vab-scenario bogus --ui-click 2000,"VAB TopBar/LAUNCH"
 EXPECT error: --vab-scenario: unknown scenario 'bogus'
 EXIT 1
 FORBID terminate called

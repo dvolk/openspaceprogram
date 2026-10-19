@@ -137,7 +137,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "menu's \"Go to VAB\") instead of flying (test hook)");
     app.add_option("--vab-launch", args.vab_launch_ms,
                    "Fire the VAB's LAUNCH once at this loop time in ms "
-                   "(headless test hook for the launch path; -1 = never)");
+                   "(test hook; -1 = never). Cases click the top bar's LAUNCH "
+                   "instead -- \"VAB TopBar/LAUNCH\" -- because that is what a "
+                   "player does. This survives only for case 244, which needs "
+                   "the launch in the SAME frame as a detach: a click presses "
+                   "in one frame and releases in the next, and the seat plan is "
+                   "pruned between frames.");
     app.add_option("--vab-detach", args.vab_detach_idx,
                    "Select this build part (index) and fire the VAB's detach "
                    "(vabDetachSelected) once (test hook; -1 = never). Players "

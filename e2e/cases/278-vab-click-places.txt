@@ -14,7 +14,7 @@ NAME vab-click-places
 ARGS --vab-empty --timeout 6 --frame-cap 30
 ARGS --ui-click 1000,"Capsule (3m)##capsule_r1.5h3"
 ARGS --sim-mouse 2000,0,960,540,LMB
-ARGS --vab-launch 3500
+ARGS --ui-click 3500,"VAB TopBar/LAUNCH"
 EXPECT [vab] launched 'Ship' (1 parts)
 CHECK re.search(r"\[vab\] launched 'Ship' \((\d+) parts\)", out).group(1) == "1"
 FORBID FAILED

@@ -20,7 +20,7 @@ ARGS --ui-click 3000,"Crew##capsule_r1.5h3_1/Seat 1##s0"
 ARGS --ui-click 3600,"##Combo_00/Ace"
 ARGS --ui-click 4200,"Crew##capsule_r1.5h3_1/Seat 1##s0"
 ARGS --ui-click 4800,"##Combo_00/Empty"
-ARGS --vab-launch 6000
+ARGS --ui-click 6000,"VAB TopBar/LAUNCH"
 EXPECT [crew] 3 kerbal(s) standing at
 EXPECT [vab] seat window: 'capsule_r1.5h3_1' (3 seats)
 EXPECT [vab] launched 'Ship' (1 parts)

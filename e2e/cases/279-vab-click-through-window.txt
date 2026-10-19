@@ -16,7 +16,7 @@ NAME vab-click-through-window
 ARGS --vab-empty --timeout 6 --frame-cap 30
 ARGS --ui-click 1000,"Capsule (3m)##capsule_r1.5h3"
 ARGS --sim-mouse 2000,0,1750,100,LMB
-ARGS --vab-launch 3500
+ARGS --ui-click 3500,"VAB TopBar/LAUNCH"
 EXPECT [toast] Nothing to launch
 # Without this the case passes vacuously: an arm click that never landed would
 # leave the build empty and "Nothing to launch" would print anyway. The claim is
