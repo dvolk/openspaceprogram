@@ -141,13 +141,6 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--vab-place", args.vab_place_ms,
                    "Fire the VAB's place (vabPlace) once at this loop time in "
                    "ms (headless test hook; -1 = never)");
-    app.add_option("--vab-load", args.vab_load,
-                   "Load this ship (name, or a path) into the VAB build tree "
-                   "(vabLoad), replacing the current build (headless test "
-                   "hook; empty = never)");
-    app.add_option("--vab-load-at", args.vab_load_ms,
-                   "Fire the --vab-load hook once at this loop time in ms "
-                   "(headless test hook; -1 = never)");
     app.add_option("--vab-launch", args.vab_launch_ms,
                    "Fire the VAB's LAUNCH once at this loop time in ms "
                    "(headless test hook for the launch path; -1 = never)");
@@ -161,13 +154,6 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Del/X on a selected part (test hook; -1 = never)");
     app.add_option("--vab-detach-at", args.vab_detach_ms,
                    "Fire the --vab-detach hook once at this loop time in ms "
-                   "(test hook; -1 = never)");
-    app.add_option("--vab-save", args.vab_save,
-                   "Save the VAB build as this ship name (vabSave) -- the "
-                   "headless stand-in for the top bar's Save (test hook; "
-                   "empty = never)");
-    app.add_option("--vab-save-at", args.vab_save_ms,
-                   "Fire the --vab-save hook once at this loop time in ms "
                    "(test hook; -1 = never)");
     std::vector<std::string> vab_assign;
     app.add_option("--vab-assign", vab_assign,

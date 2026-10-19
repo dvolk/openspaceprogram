@@ -1169,8 +1169,8 @@ void Game::quickload() {
    directory it minted had to match. That flag is gone and 260 now goes through
    startNewGame, which overwrites gameName before it mints, so the exception
    rests only on the title screen and the save list wanting a name to show.
-   Whether it should be cleared after all is open (see the issue filed from the
-   2026_10_19 review); clearing it is a behaviour change, not a cleanup. */
+   Whether it should be cleared after all is open (#314); clearing it is a
+   behaviour change, not a cleanup. */
 void Game::clearEphemeralState() {
     /* A card up over a teardown asks about a world that is going away. Its
        callbacks hold identity, not pointers (game.h:312) -- but identity into

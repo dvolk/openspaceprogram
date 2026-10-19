@@ -1,9 +1,25 @@
+# Load replaces the build: the editor holds racer, and loading stager swaps the
+# whole build rather than merging into it. The part count is the witness --
+# racer is 4 and stager is 7, so a merge would read neither.
+#
+# Driven through the top bar now (load dropdown -> row -> Load), which is the
+# route a player takes and retires --vab-load. The initial --vab stays: opening
+# the editor with a ship in it is still a setup knob, not this case's subject.
+#
+# This case used to load 'tanker', and the dropdown cannot. list_vab_ship_defs
+# filters out anything with "testship": true (shipdef.h:578), which is what the
+# picker shows, so --vab-load was reaching a ship no player can pick -- the same
+# class of thing as a hook making a transition no button offers. 'stager' is in
+# the list and has the same 7 parts, so the numbers did not move.
 NAME vab-load
-ARGS --vab res/ships/racer.json
-ARGS --vab-load tanker --vab-load-at 1500
-ARGS --vab-launch 2500 --timeout 12
+ARGS --vab res/ships/racer.json --timeout 12
+ARGS --ui-click 1500,"VAB TopBar/##vabload"
+ARGS --ui-click 2100,"##Combo_00/stager"
+ARGS --ui-click 2700,"VAB TopBar/Load"
+ARGS --ui-click 3300,"VAB TopBar/LAUNCH"
 EXPECT Main loop starting
-EXPECT [vab] loaded tanker (7 parts)
-EXPECT [vab] launched 'tanker' (7 parts)
+EXPECT [vab] loaded stager (7 parts)
+EXPECT [vab] launched 'stager' (7 parts)
+FORBID FAILED
 FORBID GL_
 FORBID error:

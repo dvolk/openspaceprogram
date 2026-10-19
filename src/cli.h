@@ -55,14 +55,10 @@ struct GameArgs {
     bool vab_empty = false;
     std::string vab_arm;
     int vab_place_ms = -1;
-    std::string vab_load;
-    int vab_load_ms = -1;   // --vab-load-at
     int vab_launch_ms = -1;
     int vab_close_ms = -1;   // camera park/restore round trip
     int vab_detach_idx = -1;
     int vab_detach_ms = -1;  // --vab-detach-at
-    std::string vab_save;
-    int vab_save_ms = -1;   // --vab-save-at
     /* --vab-assign MS,PART_IDX,SLOT,KERBAL (repeatable): the headless seat
        window. cli.cpp groups the flat list, so a group here is always whole. */
     struct VabAssignArg {

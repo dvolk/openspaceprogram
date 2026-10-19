@@ -1,15 +1,38 @@
-NAME vab-save-rename
 # Save-as renames the ship's identity: the JSON "name" must follow the
 # save stem, not the loaded file's old name. The reload in the middle
 # re-reads the FILE (the bug site), so on old code the launch below
 # prints 'racer', not 'racer2'.
-ARGS --vab res/ships/racer.json
-ARGS --vab-save racer2 --vab-save-at 1500
-ARGS --vab-load racer2 --vab-load-at 2000
-ARGS --vab-launch 3000 --timeout 12
+#
+# Every step is a click now, which retires --vab, --vab-save, --vab-load and
+# --vab-launch from this case: New Game -> VAB -> the load dropdown -> Load ->
+# type the new stem -> Save -> load the saved stem -> LAUNCH. The top bar needs
+# no 3D picking (#311), so this drives the whole bar, and it is the proof that
+# the non-3D half of the VAB is convertible.
+#
+# The typed stem REPLACES what Load put in the field ("racer"). Appending would
+# save "racer2" too and hide the difference, so the witness is the file's own
+# name field plus the absence of a concatenated stem, not the save line alone.
+NAME vab-save-rename
+ARGS --timeout 12
+ARGS --ui-click 1500,"Title Menu/New Game"
+ARGS --ui-click 2200,"New Game/Start"
+ARGS --ui-click 3000,"Game Menu/VAB"
+ARGS --ui-click 3600,"VAB TopBar/##vabload"
+ARGS --ui-click 4200,"##Combo_00/racer"
+ARGS --ui-click 4800,"VAB TopBar/Load"
+ARGS --ui-type 5400,"VAB TopBar/##savename",racer2
+ARGS --ui-click 6000,"VAB TopBar/Save"
+ARGS --ui-click 6600,"VAB TopBar/##vabload"
+ARGS --ui-click 7200,"##Combo_00/racer2"
+ARGS --ui-click 7800,"VAB TopBar/Load"
+ARGS --ui-click 8400,"VAB TopBar/LAUNCH"
 EXPECT [vab] entered the editor (sim keeps coasting)
+EXPECT [vab] loaded racer (4 parts)
 EXPECT [vab] saved racer2 (4 parts)
 EXPECT [vab] loaded racer2 (4 parts)
 EXPECT [vab] launched 'racer2' (4 parts)
+FILE ships/racer2.json '"name": "racer2"'
+NOFILE ships/racerracer2.json
+FORBID FAILED
 FORBID GL_
 FORBID error:

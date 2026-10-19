@@ -669,6 +669,10 @@ def run_case(case):
     # saves/ is wiped, not just settings.json: a case that saves leaves the
     # slot on disk, and a later run of any case that asks "does the player
     # have a save?" would answer for the previous run instead.
+    #
+    # ships/ for the same reason and with the same consequence: the VAB writes
+    # the player's ships there, so a FILE ships/... assertion would be satisfied
+    # by the previous run of the very case making it.
     data_dir = os.path.join(REPO_ROOT, "tmp", "e2e", "data", case["name"])
     os.makedirs(data_dir, exist_ok=True)
     try:
@@ -676,6 +680,7 @@ def run_case(case):
     except FileNotFoundError:
         pass
     shutil.rmtree(os.path.join(data_dir, "saves"), ignore_errors=True)
+    shutil.rmtree(os.path.join(data_dir, "ships"), ignore_errors=True)
 
     # WRITE staging (after cleanup so a fixture is live for exactly this
     # case). settings.json goes in the scratch data dir (datadir.h).

@@ -985,17 +985,11 @@ void vabClose(Game &g) {
 void vabInstallHooks(Game &g) {
     GameArgs &args = g.args;
     auto inVab = [](Game &g) { return sceneIs(g, SceneId::Vab); };
-    if(!args.vab_load.empty() && args.vab_load_ms >= 0) {
-        const std::string path = args.vab_load;
-        g.addHook(kHookPreScene, args.vab_load_ms, inVab,
-                  [path](Game &g) { vabLoad(g, path.c_str()); });
-    }
-    /* --vab-save: headless stand-in for the top bar's Save button. */
-    if(!args.vab_save.empty() && args.vab_save_ms >= 0) {
-        const std::string path = args.vab_save;
-        g.addHook(kHookPreScene, args.vab_save_ms, inVab,
-                  [path](Game &g) { vabSave(g, path.c_str()); });
-    }
+    /* The top bar's Load and Save are clickable now, and --ui-type fills the
+       name field, so both headless stand-ins are gone. Note what --vab-load
+       used to allow: any ship file at all, including the testships that
+       list_vab_ship_defs hides from the picker (shipdef.h:578) -- a case could
+       load a ship no player can pick. */
     /* --vab-detach: headless stand-in for Del/X on a selected part. */
     if(args.vab_detach_ms >= 0 && args.vab_detach_idx >= 0) {
         const int idx = args.vab_detach_idx;
