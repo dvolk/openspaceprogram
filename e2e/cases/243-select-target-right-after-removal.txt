@@ -13,8 +13,13 @@
 # phase, not a missing widget. A click is handled inside the imgui pass, so the
 # earliest a UI selection can follow a UI removal is the NEXT pass -- by which
 # point the state pass has already rebuilt the list and the window this case is
-# about has closed. The hook fires in that window. 241 and 242 select through the
-# combo now; this one cannot, so the flag stays for it alone.
+# about has closed. The hook fires in that window. Measured, there is a blunter
+# reason too: the Target combo is a flight-scene window, so with the Tracking
+# Station up -- where this removal happens -- --ui-click "Windows/Target" reports
+# not found and there is no row to click at all. 241 and 242 select through the
+# combo now; this one cannot, so the flag stays for it alone. Checked both ways:
+# with dropVehicleRefs' erase_if removed (game.cpp:381) this case FAILS on its
+# index oracle, so the hook is still reaching the bug.
 NAME select-target-right-after-removal
 ARGS --time-accel 1 --timeout 12 --frame-cap 4
 ARGS --startships e2e/fixtures/pad_four.json --kerbals e2e/fixtures/tiny_kerbals.json
