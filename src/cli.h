@@ -88,7 +88,6 @@ struct GameArgs {
     int reload_ms = -1;     // --reload-at
     int new_game_ms = -1;
     int quit_title_ms = -1;
-    int space_center_ms = -1;
     int recover_ms = -1;
     bool recover_anywhere = false;  // default: home body only
     int experiment_ms = -1;
@@ -97,10 +96,6 @@ struct GameArgs {
     int board_ms = -1;        // the reverse of --eva (Game::kerbalBoard)
     int take_ms = -1;         // the take/store dance's "Take"
     int store_ms = -1;        // the take/store dance's "Store"
-    int tracking_ms = -1;
-    int tracking_close_ms = -1;
-    int research_ms = -1;
-    int research_close_ms = -1;
     std::string switch_system_path;
     int switch_system_ms = -1;      // --switch-at
     std::string vab_scenario;  // VAB launch scenario (empty = "pad")

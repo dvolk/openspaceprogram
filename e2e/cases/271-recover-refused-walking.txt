@@ -3,7 +3,7 @@
 NAME recover-refused-walking
 ARGS --time-accel 1 --timeout 9 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --eva 1500
-ARGS --space-center 2500 --recover 3500
+ARGS --sim-press 2500,0,ESCAPE --recover 3500
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [toast] Cannot recover
 EXPECT a crew member can't be recovered

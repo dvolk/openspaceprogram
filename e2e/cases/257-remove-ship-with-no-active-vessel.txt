@@ -11,8 +11,8 @@ ARGS --time-accel 1 --timeout 8
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --startship one,res/ships/rcs_test.json,Kerbin,rot-orbit
 ARGS --startship two,res/ships/rcs_test.json,Kerbin,rot-orbit
-ARGS --space-center 1000 --recover 2000 --recover-anywhere
-ARGS --tracking 4000 --ui-click 5000,"Tracking Ship List/x##rm_one"
+ARGS --sim-press 1000,0,ESCAPE --recover 2000 --recover-anywhere
+ARGS --ui-click 4000,"Game Menu/Tracking Station" --ui-click 5000,"Tracking Ship List/x##rm_one"
 EXPECT 'racer' recovered
 EXPECT Removed 'one' (active unchanged: (none))
 # Two deaths: the recover peels the crew and retires 'racer', the click retires

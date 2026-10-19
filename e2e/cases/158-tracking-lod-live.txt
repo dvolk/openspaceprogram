@@ -1,7 +1,7 @@
 NAME tracking-lod-live
 ARGS --time-accel 5 --timeout 6 --frame-cap 60
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --terrain-log --orbit-interval 1 --tracking 0
+ARGS --terrain-log --orbit-interval 1 --sim-press 800,0,ESCAPE --ui-click 1200,"Game Menu/Tracking Station"
 # The Tracking Station draws no world (the map covers it), but its terrain LOD
 # still runs (#212): the LOD is what owns the ground's Bullet collision bodies
 # (#24), so a ship coasting off-rails behind the map needs the tree to keep
@@ -9,7 +9,9 @@ ARGS --terrain-log --orbit-interval 1 --tracking 0
 # leaf is near enough to carry a Bullet body, so every line reads collision=0
 # and the grounded-ship claim is not what this case proves. The station's old
 # row refreshed g.hud.view only, so the tree froze and no [terrain] line appeared.
-EXPECT [scene] flight -> tracking (push)
+# The station is a hop from the hub, not a hop from flight: ESC opens the hub and
+# its button opens the station, which is the route a player takes.
+EXPECT [scene] spacecenter -> tracking (push)
 CHECK len(terrain) >= 3 and terrain[-1]["t"] > terrain[0]["t"]
 FORBID GL_
 FORBID error:

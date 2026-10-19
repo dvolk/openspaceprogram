@@ -1,7 +1,10 @@
 NAME tab-reset-scene-entry
 ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --sim-press 1000,0,TAB --space-center 2000 --sim-press 2500,0,TAB
-ARGS --tracking 3000 --sim-press 3500,0,TAB --tracking-close 4000
+ARGS --sim-press 1000,0,TAB --sim-press 2000,0,ESCAPE --sim-press 2500,0,TAB
+ARGS --ui-click 3000,"Game Menu/Tracking Station" --sim-press 3500,0,TAB --sim-press 4000,0,ESCAPE
+# The pop is ESC, not the list's "Back to Space Center": the TAB at 3500 hides
+# the windows, so there is no button left to click -- which is itself the state
+# this case is about.
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [ui] TAB-hide dropped at scene entry
 EXPECT [scene] spacecenter -> tracking (push)

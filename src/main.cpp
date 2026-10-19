@@ -208,18 +208,11 @@ static void installHeadlessHooks(Game &game) {
         game.addHook(kHookPreScene, args.quit_title_ms, nullptr,
                      [](Game &g) { g.resetToTitle(); });
     }
-    // --space-center: only from Flight (the hub is an excursion above a
-    // running game).
-    if(args.space_center_ms >= 0) {
-        game.addHook(kHookPreScene, args.space_center_ms, nullptr, [](Game &g) {
-            if(sceneIs(g, SceneId::Flight)) { pushScene(g, SceneId::SpaceCenter); }
-        });
-    }
-    // --recover: fired after --space-center. What the hub's "Recover Vessel"
-    // button does, and nothing more: recoverActive refuses a walking kerbal, so
-    // a case that wants its ship recovered boards first (118, 119) exactly as a
-    // player would. The hook used to hunt for the ship holding findings and
-    // switch to it, which tested a path the UI does not offer.
+    // --recover: what the hub's "Recover Vessel" button does, and nothing more:
+    // recoverActive refuses a walking kerbal, so a case that wants its ship
+    // recovered boards first (118) or hands control back to the ship (119)
+    // exactly as a player would. The hook used to hunt for the ship holding
+    // findings and switch to it, which tested a path the UI does not offer.
     if(args.recover_ms >= 0) {
         game.addHook(kHookPreScene, args.recover_ms, nullptr,
                      [](Game &game) { game.recoverActive(); });
@@ -369,30 +362,6 @@ static void installHeadlessHooks(Game &game) {
                        " (nobody holds a finding, or none is in reach, or every"
                        " container already holds it), ignored\n");
             }
-        });
-    }
-    // --tracking: fired after --space-center.
-    if(args.tracking_ms >= 0) {
-        game.addHook(kHookPreScene, args.tracking_ms, nullptr,
-                     [](Game &g) { pushScene(g, SceneId::TrackingStation); });
-    }
-    // --tracking-close: popScene, fired after --tracking.
-    if(args.tracking_close_ms >= 0) {
-        game.addHook(kHookPreScene, args.tracking_close_ms, nullptr, [](Game &g) {
-            if(sceneIs(g, SceneId::TrackingStation)) { popScene(g); }
-            else { printf("[hook] --tracking-close: not in the tracking station, ignored\n"); }
-        });
-    }
-    // --research: fired after --space-center.
-    if(args.research_ms >= 0) {
-        game.addHook(kHookPreScene, args.research_ms, nullptr,
-                     [](Game &g) { pushScene(g, SceneId::ResearchLab); });
-    }
-    // --research-close: popScene, fired after --research.
-    if(args.research_close_ms >= 0) {
-        game.addHook(kHookPreScene, args.research_close_ms, nullptr, [](Game &g) {
-            if(sceneIs(g, SceneId::ResearchLab)) { popScene(g); }
-            else { printf("[hook] --research-close: not in the research lab, ignored\n"); }
         });
     }
     /* --atlas-dump: the System Atlas as text; reads the system, not the

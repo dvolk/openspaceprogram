@@ -1,6 +1,6 @@
 NAME research-esc-back
 ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --space-center 1000 --research 2000 --sim-press 3000,0,ESCAPE
+ARGS --sim-press 1000,0,ESCAPE --ui-click 2000,"Game Menu/Research Lab" --sim-press 3000,0,ESCAPE
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [scene] spacecenter -> research (push)
 EXPECT [scene] research -> spacecenter (pop)

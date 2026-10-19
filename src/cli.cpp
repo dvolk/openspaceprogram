@@ -171,10 +171,6 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--quit-title", args.quit_title_ms,
                    "Fire the flight pause menu's \"Quit to title\" once at this "
                    "loop time in ms (headless test hook; -1 = never)");
-    app.add_option("--space-center", args.space_center_ms,
-                   "Push the Space Center hub once at this loop time in ms "
-                   "(the flight pause menu's \"Space Center\", headless; "
-                   "-1 = never)");
     app.add_option("--recover", args.recover_ms,
                    "Fire the Space Center menu's \"Recover Vessel\" once at "
                    "this loop time in ms (Game::recoverActive, headless; "
@@ -220,22 +216,6 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Fire the take/store dance's \"Store\" once at this loop "
                    "time in ms (Game::moveExperiment from the active ship's "
                    "courier to its first container, headless; -1 = never)");
-    app.add_option("--tracking", args.tracking_ms,
-                   "Push the Tracking Station once at this loop time in ms "
-                   "(the Space Center hub's \"Tracking Station\", headless; "
-                   "-1 = never)");
-    app.add_option("--tracking-close", args.tracking_close_ms,
-                   "Pop the Tracking Station back to the hub once at this "
-                   "loop time in ms (its menu's \"Back to Space Center\", "
-                   "headless; -1 = never)");
-    app.add_option("--research", args.research_ms,
-                   "Push the Research Lab once at this loop time in ms "
-                   "(the Space Center hub's \"Research Lab\", headless; "
-                   "-1 = never)");
-    app.add_option("--research-close", args.research_close_ms,
-                   "Pop the Research Lab back to the hub once at this "
-                   "loop time in ms (its window's \"Back to Space Center\", "
-                   "headless; -1 = never)");
     app.add_option("--switch-system", args.switch_system_path,
                    "Swap to this system JSON over the running game at "
                    "--switch-at (the in-process system switch, "

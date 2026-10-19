@@ -16,7 +16,7 @@
 # and --ui-click matches the registered label exactly -- which is what
 # --ui-list prints, so the dump is the whole contract.
 NAME remove-dropped-stage
-ARGS --timeout 11 --startship stager,res/ships/stager.json,Kerbin,rot-orbit --tracking 2500
+ARGS --timeout 11 --startship stager,res/ships/stager.json,Kerbin,rot-orbit --sim-press 2000,0,ESCAPE --ui-click 2500,"Game Menu/Tracking Station"
 ARGS --sim-press 1500,0,SPACE
 ARGS --ui-click 3500,"Tracking Ship List/stager Decoupler (2m)"
 ARGS --ui-click 4500,"Tracking Ship List/x##rm_stager Decoupler (2m)"

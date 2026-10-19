@@ -12,7 +12,7 @@
 NAME select-target-right-after-removal
 ARGS --time-accel 1 --timeout 12 --frame-cap 4
 ARGS --startships e2e/fixtures/pad_four.json --kerbals e2e/fixtures/tiny_kerbals.json
-ARGS --tracking 2000
+ARGS --sim-press 1500,0,ESCAPE --ui-click 2000,"Game Menu/Tracking Station"
 ARGS --ui-click 4000,"Tracking Ship List/x##rm_pad two"
 ARGS --select-target 4300,"pad three"
 ARGS --xfer-log --orbit-interval 1

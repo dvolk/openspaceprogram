@@ -1,7 +1,7 @@
 NAME barometer-flying-low
 ARGS --time-accel 1 --timeout 8 --startship baropod,res/ships/baropod.json,Kerbin,flying-low
 ARGS --pod-experiment 1200
-ARGS --space-center 2500 --recover 3500 --recover-anywhere
+ARGS --sim-press 2500,0,ESCAPE --recover 3500 --recover-anywhere
 EXPECT [science] t=
 EXPECT recorded
 EXPECT Flying low barometer of

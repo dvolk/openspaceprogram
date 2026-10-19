@@ -8,7 +8,7 @@ ARGS --store 3000
 # The walker boards before the flight can end: "Recover Vessel" is not offered
 # for a crew member, and --recover no longer reaches around that.
 ARGS --board 3500
-ARGS --space-center 4000 --recover 5000 --recover-anywhere
+ARGS --sim-press 4000,0,ESCAPE --recover 5000 --recover-anywhere
 EXPECT [science] t=
 EXPECT recorded
 EXPECT materials study
