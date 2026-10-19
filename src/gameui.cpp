@@ -2077,6 +2077,46 @@ void drawPartWindows(Game &g) {
             }
             x = std::max(x, (float)vp->WorkPos.x);
             y = std::max(y, (float)vp->WorkPos.y);
+            /* Adjacent parts pick a few tens of pixels apart, so a second part
+               window lands almost exactly on the first and buries its buttons --
+               the player cannot see them, let alone press them. Try the asked-for
+               spot, then steps away from it, and take the first that clears every
+               part window already open. The other windows' rects are their real
+               ones; the new window's are the same estimate the side flip above
+               uses, since its size is unknown until the first Begin. */
+            auto clashes = [&](float cx, float cy) {
+                for(const PartSel &other : g.part_sels) {
+                    if(&other == &live || !other.placed
+                       || other.part >= other.ship->parts.size()) { continue; }
+                    char oname[256];
+                    snprintf(oname, sizeof(oname), "%s > %s##%zu",
+                             other.ship->name.c_str(),
+                             other.ship->parts[other.part]->def->label().c_str(),
+                             other.part);
+                    const ImGuiWindow *w = ImGui::FindWindowByName(oname);
+                    if(w == nullptr) { continue; }
+                    if(cx < w->Pos.x + w->Size.x && cx + maxw > w->Pos.x
+                       && cy < w->Pos.y + w->Size.y && cy + maxh > w->Pos.y) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+            const float step = 96.0f;
+            // Right first (the screen is wide and a part window is tall), then
+            // down, then left.
+            static const int kx[] = {0, 1, 2, 3, 4, 5, -1, -2, 0, 0, 0, 0};
+            static const int ky[] = {0, 0, 0, 0, 0, 0,  0,  0, 1, 2, 3,-1};
+            const float x0 = x, y0 = y;
+            for(int t = 0; t < 12; t++) {
+                x = std::clamp(x0 + (float)kx[t] * step,
+                               (float)vp->WorkPos.x,
+                               (float)vp->WorkPos.x + vp->WorkSize.x - maxw);
+                y = std::clamp(y0 + (float)ky[t] * step,
+                               (float)vp->WorkPos.y,
+                               (float)vp->WorkPos.y + vp->WorkSize.y - maxh);
+                if(!clashes(x, y)) { break; }
+            }
             ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Appearing);
             live.placed = true;
         }
@@ -3693,7 +3733,7 @@ void drawVabUI(Game &g) {
     int hoveredLink = -1;   // the fuel-link list row under the mouse (overlay reads it)
 
     /* Free-port gizmos: a green dot at every unconsumed stack node, projected to window
-       pixels (vabProject). Drawn on the foreground layer so the far-side ports stay
+       pixels (projectPixel). Drawn on the foreground layer so the far-side ports stay
        discoverable. */
     if(g.camera != nullptr) {
         ImDrawList *dl = ImGui::GetForegroundDrawList();
@@ -3705,7 +3745,7 @@ void drawVabUI(Game &g) {
                 if(n.surface) { continue; }
                 if(g.vab.build.nodeOccupied((int)i, n.id)) { continue; }
                 double px = 0, py = 0;
-                if(!vabProject(g, vabNodePos(g, (int)i, (int)k), px, py)) { continue; }
+                if(!projectPixel(g, vabNodePos(g, (int)i, (int)k), px, py)) { continue; }
                 const ImVec2 c((float)px, (float)py);
                 dl->AddCircleFilled(c, 4.0f, IM_COL32(90, 230, 140, 210));
                 dl->AddCircle(c, 4.0f, IM_COL32(15, 60, 30, 255), 0, 1.5f);
@@ -4140,8 +4180,8 @@ void drawVabUI(Game &g) {
             }
             if(from == nullptr || to == nullptr) { continue; }
             double ax = 0, ay = 0, bx = 0, by = 0;
-            if(!vabProject(g, from->localPos, ax, ay)) { continue; }
-            if(!vabProject(g, to->localPos, bx, by)) { continue; }
+            if(!projectPixel(g, from->localPos, ax, ay)) { continue; }
+            if(!projectPixel(g, to->localPos, bx, by)) { continue; }
             const ImVec2 A((float)ax, (float)ay), B((float)bx, (float)by);
             const ImVec2 mid((A.x + B.x) * 0.5f, (A.y + B.y) * 0.5f);
             const float len = sqrtf((B.x - A.x) * (B.x - A.x)
