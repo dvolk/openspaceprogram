@@ -913,12 +913,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                 }
             }
             /* "-" is the seat window's "Empty": it records the choice that
-               nobody sits in this seat (issue #287). Naming nothing is the only
-               way a test can reach that state -- the seat window only opens by
-               clicking a part in the VAB's 3D view, which synthetic input
-               cannot do yet (#311), so --vab-assign is the only way in. CLI11
-               drops a trailing empty field, so the sentinel has to be a token
-               rather than an empty KERBAL. */
+               nobody sits in this seat (issue #287), and the dropdown offers it
+               as a real row now. --vab-assign survives for what a click cannot
+               do: naming the SAME person twice, which the dropdown greys out
+               (gameui.cpp:3663) so the launch-refusal guard has no other way
+               in, and reaching a seat on a multi-part build, where a fixed
+               pixel pick lands on whatever part is under it (#311). CLI11 drops
+               a trailing empty field, so the sentinel has to be a token rather
+               than an empty KERBAL. */
             if(vab_assign[i + 3].empty()) {
                 printf("error: --vab-assign needs a kerbal name, or '-' for an "
                        "empty seat\n");

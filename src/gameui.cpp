@@ -2048,9 +2048,18 @@ void drawPartWindows(Game &g) {
            It used to carry the Vehicle pointer, so a part window's registered
            name differed on every run: --ui-list could not be diffed and
            --ui-click had to fall back to a bare "Board" label, which any other
-           window could satisfy instead. The visible prefix already names the
-           ship and dedupVehicleName keeps those unique (vehicle.cpp:418), so
-           the part index alone is unique per (ship, part). */
+           window could satisfy instead. The visible prefix names the ship, and
+           every path that SPAWNS a ship dedups its name (dedupVehicleName,
+           vehicle.cpp:418), so the part index alone is unique.
+
+           What is NOT enforced is name uniqueness on LOAD: the loader assigns
+           the saved name verbatim (save.cpp:696) with no dedup, even though the
+           same layer rejects duplicate roster names and part uids. A
+           hand-authored save with two ships sharing a name (the
+           save_roster_named fixture, case 212) therefore merges their part
+           windows into one -- Begin(name) hashes the name, so the second ship's
+           body lands inside the first window. Unreachable in play, since the
+           game never writes such a save; #315. */
         char name[256];
         snprintf(name, sizeof(name), "%s > %s##%zu",
                  ship->name.c_str(), disp, part);

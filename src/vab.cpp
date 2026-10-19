@@ -975,8 +975,8 @@ void vabClose(Game &g) {
     g.toastLog("Back from the VAB -- the sim keeps running");
 }
 
-/* Register the headless transition hooks (--vab-load, --vab-launch,
-   --vab-close, ...), each fired at most once. They join the pre-scene phase
+/* Register the headless transition hooks (--vab-launch, --vab-close,
+   --vab-detach, --vab-assign, ...), each fired at most once. They join the pre-scene phase
    AFTER the main-loop hooks -- the order the old per-frame poll used -- and
    a launch collapses the stack to Flight, so the live scene is read after
    them. The inVab gate reproduces the old early return. --vab-place is its
