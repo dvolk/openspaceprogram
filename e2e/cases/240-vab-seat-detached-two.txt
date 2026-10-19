@@ -12,13 +12,16 @@
 # --vab-detach 1 used to select by index and never checked that a pick landed on
 # part 1.
 #
-# The detach aim still happens AFTER the two seat windows are open, and that is
-# the ordering to watch: a click inside a seat window is swallowed by the window
-# (correct behaviour), and the aim's spiral only asks the 3D pick whether a pixel
-# hits the part -- it does not know about windows. Measured at 1080p the aim
-# reports 960,643 for capsule_r1.5h3_2 while its own seat window sits around
-# 1100,734, so the click reaches the part. If this case ever stops selecting,
-# check whether a seat window now covers the reported pixel.
+# The detach aim still happens AFTER both seat windows have been opened, and that
+# is the ordering to watch: a click inside a seat window is swallowed by the
+# window (correct behaviour), and the aim's spiral only asks the 3D pick whether a
+# pixel hits the part -- it does not know about windows. Only ONE seat window is
+# on screen at a time (VabState::seatPartId, game.h:245; opening another
+# capsule's window replaces it, vab.cpp:906), so at the detach aim the live
+# window is capsule_r1.5h3_1's: measured at 1080p its rows span 980,517-1259,585
+# while the aim for capsule_r1.5h3_2 reports 960,643, clear of that box. If this
+# case ever stops selecting, check whether a seat window now covers the reported
+# pixel.
 NAME vab-seat-detached-two
 ARGS --vab e2e/fixtures/two_capsules.json --kerbals e2e/fixtures/three_kerbals.json
 ARGS --width 1920 --height 1080 --time-accel 1 --timeout 12 --frame-cap 30

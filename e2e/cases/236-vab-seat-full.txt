@@ -4,7 +4,7 @@
 #
 # Two dropdowns, filled in the order a player would fill them, then a third that
 # is not filled at all. Once Cyd and Ace are seated, Seat 3 lists Cyd as
-# "Cyd  (seated)" inside a BeginDisabled (gameui.cpp:3663), and the harness
+# "Cyd  (seated)" inside a BeginDisabled (gameui.cpp:3850), and the harness
 # refuses a disabled widget instead of reporting a clean press -- so the greyed
 # row is an assertion here, not a click that went wrong. That is the UI half of
 # the one-person-two-seats rule; case 237 owns the launch-time refusal that

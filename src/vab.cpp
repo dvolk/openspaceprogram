@@ -1015,8 +1015,10 @@ void vabInstallHooks(Game &g) {
             fflush(stdout);
         });
     }
-    /* --vab-assign: the headless seat window. It opens the window as it assigns,
-       so --ui-list dumps what the player would have seen. */
+    /* --vab-assign: a seat plan the window refuses to build. It still opens the
+       window it stands in for, so --ui-list dumps the rows a player would have
+       had. Case 237 is the only user: the dropdown greys an already-seated
+       person, so naming one person twice has no click path. */
     for(const GameArgs::VabAssignArg &a : args.vab_assigns) {
         const int partIdx = a.partIdx, slot = a.slot;
         const std::string kerbal = a.kerbal;
@@ -1027,11 +1029,8 @@ void vabInstallHooks(Game &g) {
                 return;
             }
             const std::string partId = g.vab.build.parts[(size_t)partIdx].id;
-            /* "-" is the window's "Empty" entry: it records the choice that nobody
-               sits in this seat (issue #287). */
-            const bool emptySeat = kerbal == "-";
-            const KerbalProfile *p = emptySeat ? nullptr : g.roster.byName(kerbal);
-            if(!emptySeat && p == nullptr) {
+            const KerbalProfile *p = g.roster.byName(kerbal);
+            if(p == nullptr) {
                 printf("[vab] assign hook: no kerbal '%s'\n", kerbal.c_str());
                 fflush(stdout);
                 return;
@@ -1039,10 +1038,9 @@ void vabInstallHooks(Game &g) {
             const ImGuiIO &io = ImGui::GetIO();
             vabOpenSeatWindow(g, partIdx, (int)io.DisplaySize.x / 2,
                               (int)io.DisplaySize.y / 2);
-            const bool ok = vabAssignSeat(g, partId, slot, emptySeat ? 0 : p->id);
-            const std::string who = emptySeat ? "(empty)" : ("'" + kerbal + "'");
-            printf("[vab] assign hook: '%s' seat %d = %s%s\n", partId.c_str(),
-                   slot, who.c_str(), ok ? "" : " (no such seat)");
+            const bool ok = vabAssignSeat(g, partId, slot, p->id);
+            printf("[vab] assign hook: '%s' seat %d = '%s'%s\n", partId.c_str(),
+                   slot, kerbal.c_str(), ok ? "" : " (no such seat)");
             fflush(stdout);
         });
     }

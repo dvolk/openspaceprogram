@@ -3757,10 +3757,12 @@ void drawSaveLoad(Game &g) {
    events.cpp) and one dropdown per seat appears, listing the kerbals standing
    on the pad. Choosing here is what makes a launch fill NAMED seats instead of
    drawing people off the pad FIFO (VabState::seatAssigns, game.h). Plain
-   Begin/End, placed once with ImGuiCond_Appearing -- unlike the flight part
-   windows, which now measure their size and re-place every frame (drawPartWindows);
-   this one still stacks on itself when a capsule has several seats (#324).
-   A user-placed popup, not a slot window.
+   Begin/End, placed once per open with ImGuiCond_Appearing -- unlike the flight
+   part windows, which now measure their size and re-place every frame
+   (drawPartWindows). There is only one seat window at a time (seatPartId,
+   game.h:245) and opening it resets seatPlaced, so it follows the click and
+   cannot overlap another part's window; #324's "stacks on itself" premise is
+   wrong and says so there. A user-placed popup, not a slot window.
 
    These dropdowns go through uiBeginCombo, so --ui-list and --ui-click can name
    them (#251 is closed), and --ui-focus aims the right-click at a named part

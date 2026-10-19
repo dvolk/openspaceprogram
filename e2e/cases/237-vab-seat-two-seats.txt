@@ -26,6 +26,13 @@ ARGS --vab-assign 5200,0,1,Ace
 ARGS --ui-click 6000,"VAB TopBar/LAUNCH"
 # The UI's own guard, pressed rather than described.
 EXPECT path="##Combo_00/Ace  (seated)" FAILED disabled
+# Pin WHICH refusal: the harness has a second disabled branch, "disabled at
+# release" (uiinput.cpp:185), and its line contains the text above. This case is
+# about the row being greyed out when the combo is drawn (gameui.cpp:3850); if a
+# click ever survives to release, the gate this asserts is no longer the one that
+# stopped it. Same reason 236 forbids it.
+FORBID FAILED disabled at release
+FORBID FAILED MISMATCH
 EXPECT [vab] launch refused: 'Ace' cannot sit in two seats
 EXPECT [toast] Launch refused: 'Ace' cannot sit in two seats
 FORBID [vab] launched
