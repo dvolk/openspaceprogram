@@ -9,13 +9,16 @@
 # what it means: Inc 0 and no node ticks, where the same slot with a target reads
 # 6 deg and draws them (case 198).
 #
-# In play this state is only reachable through --map-plane 3: the ORBITAL window
-# refuses the combo selection while no target is set, and its widget shows the
-# resolved plane rather than the requested one when a target disappears under the
-# slot. Neither branch is reachable from the battery -- imgui combos are not in
-# the --ui-click registry (--ui-list for "Orbital Map" lists only "Reset view"
-# and "##mapnav") -- so what this case pins is the fallback those two branches
-# exist to keep honest.
+# --map-plane 3 is a shortcut, not the only way in, and the shortcut is why this
+# case is worth reading carefully. The combo refuses "Target orbit" while no
+# target is set (gameui.cpp:2695 toasts instead of switching), so the state is
+# not reachable by asking for it -- but it IS reachable by asking for it WITH a
+# target and then losing the target, which is the branch the resolved-plane
+# widget exists for. Converting this case to that route would test the reachable
+# version of the state instead of the requested-and-refused one; it needs the
+# target to actually disappear, so it is a case of its own rather than an edit.
+# Combos are addressable now (#251), so the route is open: --ui-click
+# "Orbital Map/Map plane" then "##Combo_00/Target orbit".
 NAME orbit-plane-target-none
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,inertial-orbit
 ARGS --map-plane 3

@@ -12,7 +12,7 @@
 # same render frame as n_orb, so the error is a number rather than a squint.
 NAME markers-in-orbit-plane
 ARGS --timeout 12 --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --plane-log --dbg-log --slew-log --orbit-interval 2 --map-plane 0
+ARGS --plane-log --dbg-log --slew-log --orbit-interval 2
 ARGS --sim-press 2000,0,Z
 EXPECT [planelog]
 EXPECT mode=prograde

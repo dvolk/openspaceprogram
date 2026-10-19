@@ -11,7 +11,7 @@
 # keeping a constant angle to it: n_orb.y is cos(Inc) and must not drift.
 NAME orbit-plane-rot-frame
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --plane-log --orbit-log --orbit-interval 1 --map-dump 6000 --map-plane 0
+ARGS --plane-log --orbit-log --orbit-interval 1 --map-dump 6000
 ARGS --sim-press 1500,0,ESCAPE
 ARGS --ui-click 2500,"Game Menu/Settings"
 ARGS --ui-click 3500,"Settings/Orbital plane"

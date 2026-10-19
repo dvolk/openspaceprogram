@@ -7,7 +7,7 @@
 # node ticks, and the node vector is logged as the noise the gate suppresses.
 NAME orbit-plane-coplanar
 ARGS --time-accel 1 --timeout 7 --startship racer,res/ships/racer.json,Kerbin,rot-orbit-eq
-ARGS --plane-log --orbit-log --orbit-interval 1 --map-plane 0
+ARGS --plane-log --orbit-log --orbit-interval 1
 ARGS --sim-press 1500,0,ESCAPE
 ARGS --ui-click 2500,"Game Menu/Settings"
 ARGS --ui-click 3500,"Settings/Orbital plane"

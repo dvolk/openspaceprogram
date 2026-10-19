@@ -10,7 +10,7 @@
 # away from the orbit's prograde by an amount that grows as the ship slows.
 NAME plane-overlay-while-flying
 ARGS --timeout 8 --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,flying-low
-ARGS --plane-log --orbit-log --orbit-interval 2 --map-plane 0
+ARGS --plane-log --orbit-log --orbit-interval 2
 EXPECT [planelog]
 FORBID FAILED
 FORBID GL_
