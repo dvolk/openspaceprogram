@@ -2206,7 +2206,10 @@ void drawPartWindows(Game &g) {
                 static std::vector<Kerbal *> free_ks;
                 freeKerbalsInto(vehicles, free_ks);
                 for(Kerbal *k : free_ks) {
-                    // Board/Store gate: the same kerbalInRange the Take button and the headless hooks use.
+                    // Reach decides what is LISTED; canBoard / canMoveExperiment
+                    // decide what is OFFERED. Both are the same gates the
+                    // --board / --take / --store hooks ask, so a button cannot
+                    // offer what an action would refuse.
                     if(!g.kerbalInRange(k, ship->parts[part])) { continue; }
                     anyInRange = true;
                     // dist is for the on-screen readout only (the gate above did the math).
@@ -2214,12 +2217,14 @@ void drawPartWindows(Game &g) {
                         ship->GetPositionRelTo(ship->parts[part], k->frame);
                     const double dist =
                         glm::length(k->get_center_of_mass() - capCom);
-                    const bool full = ((int)ship->parts[part]->seatCount()
-                                       >= def->crew_capacity);
+                    const bool boardable = g.canBoard(k, ship, part);
                     ImGui::PushID(k);
                     ImGui::Text("  %s (%.1f m)%s", k->name.c_str(), dist,
-                                full ? "  (capsule full)" : "");
-                    if(ImGui::SmallButton("Board")) {
+                                boardable ? "" : "  (capsule full)");
+                    ImGui::BeginDisabled(!boardable);
+                    const bool boardClicked = ImGui::SmallButton("Board");
+                    ImGui::EndDisabled();
+                    if(boardClicked) {
                         g.kerbalBoard(k, ship, part);
                         /* Boarding DELETES the walking vehicle: what survives is
                            its suit Part, now parked in the capsule as a seat
@@ -2235,8 +2240,7 @@ void drawPartWindows(Game &g) {
                         ImGui::PopID();
                         break;
                     }
-                    // Store (the dance deposit): moveExperiment re-checks canHold (a Container is
-                    // unlimited per family).
+                    // Store (the dance deposit).
                     if(!k->parts.empty()) {
                         const std::vector<Experiment> &held =
                             k->parts[0]->experiments;
@@ -2250,7 +2254,8 @@ void drawPartWindows(Game &g) {
                                                     repeat ? "  (repeat)" : "");
                             }
                             ImGui::Unindent();
-                            if(ship->parts[part]->canReceive()) {
+                            if(g.canMoveExperiment(k->parts[0],
+                                                   ship->parts[part], k)) {
                                 if(ImGui::SmallButton("Store  (into capsule)")) {
                                     g.moveExperiment(k->parts[0],
                                                      ship->parts[part], 0);
@@ -2312,11 +2317,7 @@ void drawPartWindows(Game &g) {
                         // A successful take empties the pod; the next iteration's
                         // canHold(pod->experiments[0]) would read an empty vector.
                         if(pod->experiments.empty()) { break; }
-                        if(!g.kerbalInRange(k, pod)) { continue; }
-                        if(k->parts.empty() ||
-                           !k->parts[0]->canHold(pod->experiments[0])) {
-                            continue;
-                        }
+                        if(!g.canMoveExperiment(pod, k->parts[0], k)) { continue; }
                         anyTake = true;
                         ImGui::PushID(k);
                         char takeLabel[192];

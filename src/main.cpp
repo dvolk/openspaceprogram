@@ -215,23 +215,14 @@ static void installHeadlessHooks(Game &game) {
             if(sceneIs(g, SceneId::Flight)) { pushScene(g, SceneId::SpaceCenter); }
         });
     }
-    // --recover: fired after --space-center.
+    // --recover: fired after --space-center. What the hub's "Recover Vessel"
+    // button does, and nothing more: recoverActive refuses a walking kerbal, so
+    // a case that wants its ship recovered boards first (118, 119) exactly as a
+    // player would. The hook used to hunt for the ship holding findings and
+    // switch to it, which tested a path the UI does not offer.
     if(args.recover_ms >= 0) {
-        game.addHook(kHookPreScene, args.recover_ms, nullptr, [](Game &game) {
-            // The active ship may be a free EVA kerbal, which recoverActive
-            // refuses -- recover the ship holding the findings.
-            if(game.ship != nullptr && game.ship->isEva()) {
-                for(auto *s : game.vehicles) {
-                    if(s->isEva()) { continue; }
-                    bool holdsFinding = false;
-                    for(Part *p : s->parts) {
-                        if(!p->experiments.empty()) { holdsFinding = true; break; }
-                    }
-                    if(holdsFinding) { game.select_vehicle(s); break; }
-                }
-            }
-            game.recoverActive();
-        });
+        game.addHook(kHookPreScene, args.recover_ms, nullptr,
+                     [](Game &game) { game.recoverActive(); });
     }
     // --experiment: mirrors the UI -- a walking kerbal runs it itself, else
     // the active ship's first seat.
@@ -292,11 +283,10 @@ static void installHeadlessHooks(Game &game) {
             const std::vector<Kerbal *> freeK = freeKerbals(game.vehicles);
             for(auto *s : game.vehicles) {
                 for(size_t i = 0; i < s->parts.size(); i++) {
-                    Part *cap = s->parts[i];
-                    if(cap->def == nullptr || cap->def->crew_capacity <= 0) { continue; }
-                    if(cap->seatCount() >= cap->def->crew_capacity) { continue; }
                     for(Kerbal *f : freeK) {
-                        if(game.kerbalInRange(f, cap)) {
+                        // The Board button's own gate, so the hook cannot board
+                        // a capsule the UI would refuse.
+                        if(game.canBoard(f, s, i)) {
                             ship = s; part = i; k = f; break;
                         }
                     }
@@ -326,11 +316,11 @@ static void installHeadlessHooks(Game &game) {
                 if(from != nullptr) { break; }
             }
             // Needs a FREE (EVA) kerbal in reach of the part -- the Take
-            // button's gate (kerbalInRange).
+            // button's gate (canMoveExperiment).
             if(from != nullptr) {
                 for(Kerbal *k : freeKerbals(game.vehicles)) {
-                    if(game.kerbalInRange(k, from) && !k->parts.empty()
-                       && k->parts[0]->canHold(from->experiments[0])) {
+                    if(!k->parts.empty()
+                       && game.canMoveExperiment(from, k->parts[0], k)) {
                         to = k->parts[0]; break;
                     }
                 }
@@ -357,11 +347,12 @@ static void installHeadlessHooks(Game &game) {
                 if(to != nullptr) { break; }
             }
             // A FREE (EVA) kerbal in reach of the capsule, carrying a finding --
-            // the Store button's gate.
+            // the Store button's gate (canMoveExperiment, which also checks the
+            // capsule can take this family).
             if(to != nullptr) {
                 for(Kerbal *k : freeKerbals(game.vehicles)) {
-                    if(game.kerbalInRange(k, to) && !k->parts.empty()
-                       && !k->parts[0]->experiments.empty()) {
+                    if(!k->parts.empty()
+                       && game.canMoveExperiment(k->parts[0], to, k)) {
                         from = k->parts[0]; break;
                     }
                 }

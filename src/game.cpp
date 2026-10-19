@@ -1458,6 +1458,32 @@ bool Game::kerbalInRange(Kerbal *k, Part *part) {
     return dist <= kBoardingRange;
 }
 
+/* One end of a transfer is the kerbal's own suit, so reach is only owed to the
+   OTHER end. Checking reach against both would refuse a legal dance: the courier
+   standing on the capsule it just stored into. */
+bool Game::canMoveExperiment(Part *from, Part *to, Kerbal *k) {
+    if(from == nullptr || to == nullptr || from == to
+       || k == nullptr || k->parts.empty()) {
+        return false;
+    }
+    Part *suit = k->parts[0];
+    if(from != suit && to != suit) { return false; }
+    Part *remote = from == suit ? to : from;
+    if(!kerbalInRange(k, remote)) { return false; }
+    if(from->experiments.empty()) { return false; }
+    return to->canReceive() && to->canHold(from->experiments[0]);
+}
+
+bool Game::canBoard(Kerbal *k, Vehicle *ship, size_t part) {
+    if(k == nullptr || ship == nullptr || part >= ship->parts.size()) {
+        return false;
+    }
+    Part *cap = ship->parts[part];
+    if(cap->def == nullptr || cap->def->crew_capacity <= 0) { return false; }
+    if((int)cap->seatCount() >= cap->def->crew_capacity) { return false; }
+    return kerbalInRange(k, cap);
+}
+
 /* Put the person in `suit`'s seat onto the surface beside its capsule. This
    MINTS the Kerbal vehicle: the suit Part leaves the capsule's seat and becomes
    the vehicle's one part, keeping its uid, fuel and pockets. */
