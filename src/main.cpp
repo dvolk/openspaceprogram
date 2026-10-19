@@ -851,11 +851,9 @@ int main(int argc, char **argv)
             printf("error: --vab: %s\n", e.what());
             return 1;
         }
-        game.vab.armed = args.vab_arm;   // test hook: pre-arm a palette part
         vabOpen(game);
     } else if(args.vab_empty) {
         // --vab-empty: headless entry to the same editor as the menu's VAB.
-        game.vab.armed = args.vab_arm;   // test hook: pre-arm a palette part
         vabOpen(game);
     }
     if(sceneIs(game, SceneId::Vab)) {

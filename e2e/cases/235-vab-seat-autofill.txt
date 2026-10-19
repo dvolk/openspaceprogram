@@ -2,8 +2,9 @@
 # part. A 3-berth capsule used to launch with a single person while two stood
 # watching from the pad (issue #275); the pad has three, so all three go up.
 NAME vab-seat-autofill
-ARGS --vab-empty --vab-arm capsule_r1.5h3 --kerbals e2e/fixtures/three_kerbals.json
+ARGS --vab-empty --kerbals e2e/fixtures/three_kerbals.json
 ARGS --time-accel 1 --timeout 12 --frame-cap 30
+ARGS --ui-click 1000,"Capsule (3m)##capsule_r1.5h3"
 ARGS --vab-place 2000 --vab-launch 4000
 CHECK re.search(r"Crew: 'Ace' aboard '.*' part 0 \(1/3\)", out)
 CHECK re.search(r"Crew: 'Bram' aboard '.*' part 0 \(2/3\)", out)

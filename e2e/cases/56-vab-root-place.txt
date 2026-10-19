@@ -1,8 +1,14 @@
 NAME vab-root-place
-ARGS --vab-empty --vab-arm capsule --timeout 8
+# The palette row is what arms a part, so clicking it replaces --vab-arm. The path is
+# a bare label on purpose: the palette rows live in a child frame whose registered name
+# carries an id hash ("Palette/palette_parts_7CAC8B23"), while the "##capsule" suffix is
+# the def id, which no other widget in the game can match.
+ARGS --vab-empty --timeout 8
+ARGS --ui-click 800,"Capsule (2m)##capsule"
 ARGS --vab-place 1500 --vab-launch 2500
 EXPECT Main loop starting
 EXPECT [vab] entered the editor (sim keeps coasting)
 CHECK re.search(r"\[vab\] launched '.*' \(1 parts\)", out)
+FORBID FAILED
 FORBID GL_
 FORBID error:

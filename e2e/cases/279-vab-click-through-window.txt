@@ -13,7 +13,8 @@
 # describes the frame that just drew. The Palette window is at roughly
 # 1642,42..1884,60+; 1750,100 is inside it.
 NAME vab-click-through-window
-ARGS --vab-empty --vab-arm capsule_r1.5h3 --timeout 6 --frame-cap 30
+ARGS --vab-empty --timeout 6 --frame-cap 30
+ARGS --ui-click 1000,"Capsule (3m)##capsule_r1.5h3"
 ARGS --sim-mouse 2000,0,1750,100,LMB
 ARGS --vab-launch 3500
 EXPECT [toast] Nothing to launch
@@ -22,3 +23,7 @@ FORBID place hook
 FORBID FAILED
 FORBID GL_
 FORBID error:
+# The part is armed by a palette click at 1000 now, so the arm the 2000 click would
+# have placed is real -- and 1750,100 is itself a palette ROW (they run from y=42 in
+# 18 px steps), which imgui takes as a selection. Arming is not placing: the build is
+# still empty, and "Nothing to launch" is the whole claim.

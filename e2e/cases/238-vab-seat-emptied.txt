@@ -12,8 +12,9 @@
 # Empty look identical in the outcome only once a plan exists -- making one is
 # what the two clicks are for.
 NAME vab-seat-emptied
-ARGS --vab-empty --vab-arm capsule_r1.5h3 --kerbals e2e/fixtures/three_kerbals.json
+ARGS --vab-empty --kerbals e2e/fixtures/three_kerbals.json
 ARGS --time-accel 1 --timeout 12 --frame-cap 30
+ARGS --ui-click 1000,"Capsule (3m)##capsule_r1.5h3"
 ARGS --vab-place 2000 --sim-mouse 2500,0,960,540,RMB
 ARGS --ui-click 3000,"Crew##capsule_r1.5h3_1/Seat 1##s0"
 ARGS --ui-click 3600,"##Combo_00/Ace"

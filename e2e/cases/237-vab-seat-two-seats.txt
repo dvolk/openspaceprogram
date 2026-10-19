@@ -11,8 +11,9 @@
 # guard for a plan that went stale under the player, which the UI cannot build
 # on purpose. --vab-assign is how the case gets the plan into that state.
 NAME vab-seat-two-seats
-ARGS --vab-empty --vab-arm capsule_r1.5h3 --kerbals e2e/fixtures/three_kerbals.json
+ARGS --vab-empty --kerbals e2e/fixtures/three_kerbals.json
 ARGS --time-accel 1 --timeout 12 --frame-cap 30
+ARGS --ui-click 1000,"Capsule (3m)##capsule_r1.5h3"
 ARGS --vab-place 2000
 ARGS --vab-assign 3000,0,0,Ace --vab-assign 3500,0,1,Ace --vab-launch 6000
 EXPECT [vab] launch refused: 'Ace' cannot sit in two seats

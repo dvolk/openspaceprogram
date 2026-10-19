@@ -9,7 +9,8 @@
 # place is the click's, not the hook's: --vab-place prints "[vab] place hook:",
 # a plain click prints nothing, so FORBID on that line proves which path ran.
 NAME vab-click-places
-ARGS --vab-empty --vab-arm capsule_r1.5h3 --timeout 6 --frame-cap 30
+ARGS --vab-empty --timeout 6 --frame-cap 30
+ARGS --ui-click 1000,"Capsule (3m)##capsule_r1.5h3"
 ARGS --sim-mouse 2000,0,960,540,LMB
 ARGS --vab-launch 3500
 EXPECT [vab] launched 'Ship' (1 parts)
@@ -18,3 +19,6 @@ CHECK re.search(r"\[vab\] launched 'Ship' \((\d+) parts\)", out).group(1) == "1"
 FORBID FAILED
 FORBID GL_
 FORBID error:
+# The part is armed by a palette click now (--vab-arm is gone), so the case also
+# proves the arm click stays inside the window: it selects the row without placing,
+# and the count is still exactly the one part the 3D click placed.
