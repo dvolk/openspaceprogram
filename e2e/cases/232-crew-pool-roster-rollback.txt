@@ -15,7 +15,9 @@
 NAME crew-pool-roster-rollback
 ARGS --kerbals e2e/fixtures/three_kerbals.json --time-accel 1 --timeout 12 --frame-cap 30
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --recover 2000 --recover-anywhere
+ARGS --recover-anywhere
+ARGS --sim-press 1900,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Recover Vessel"
 ARGS --reload e2e/fixtures/save_crew_pool_roster_shrink --reload-at 3000
 ARGS --resave tmp/e2e_save_out
 EXPECT [load] refused e2e/fixtures/save_crew_pool_roster_shrink

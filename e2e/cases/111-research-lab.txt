@@ -4,7 +4,8 @@ ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --ui-focus 1000,racer/capsule_1
 ARGS --sim-mouse 1100,0,CUR,CUR,RMB
 ARGS --ui-click 1500,"racer > Capsule (2m)##0/Run Experiment"
-ARGS --sim-press 3000,0,ESCAPE --recover 4000 --recover-anywhere
+ARGS --sim-press 3000,0,ESCAPE --recover-anywhere
+ARGS --ui-click 4000,"Game Menu/Recover Vessel"
 ARGS --ui-click 5000,"Game Menu/Research Lab" --ui-click 6000,"Research Lab/Back to Space Center"
 EXPECT [science] recovered +13
 EXPECT [scene] spacecenter -> research (push)

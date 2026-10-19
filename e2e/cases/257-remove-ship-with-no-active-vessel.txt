@@ -11,7 +11,8 @@ ARGS --time-accel 1 --timeout 8
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --startship one,res/ships/rcs_test.json,Kerbin,rot-orbit
 ARGS --startship two,res/ships/rcs_test.json,Kerbin,rot-orbit
-ARGS --sim-press 1000,0,ESCAPE --recover 2000 --recover-anywhere
+ARGS --sim-press 1000,0,ESCAPE --recover-anywhere
+ARGS --ui-click 2000,"Game Menu/Recover Vessel"
 ARGS --ui-click 4000,"Game Menu/Tracking Station" --ui-click 5000,"Tracking Ship List/x##rm_one"
 EXPECT 'racer' recovered
 EXPECT Removed 'one' (active unchanged: (none))

@@ -178,10 +178,18 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--recover", args.recover_ms,
                    "Fire the Space Center menu's \"Recover Vessel\" once at "
                    "this loop time in ms (Game::recoverActive, headless; "
-                   "-1 = never)");
+                   "-1 = never). Cases press the button instead -- ESC to open "
+                   "the hub, then \"Game Menu/Recover Vessel\" -- because that "
+                   "is what a player does. It survives for two states where the "
+                   "button cannot be reached: 271, where the hub hides it while "
+                   "a crew member walks, and 265, where the game is in the VAB "
+                   "with a question card up and ESC answers the card instead of "
+                   "opening the hub.");
     app.add_flag("--recover-anywhere", args.recover_anywhere,
                  "Let 'Recover Vessel' recover the active ship anywhere "
-                 "(the default requires it grounded on the home body)");
+                 "(the default requires it grounded on the home body). A "
+                 "permission, not a way to act: the orbit cases pair it with a "
+                 "click on the same button.");
     std::vector<std::string> select_target;
     app.add_option("--select-target", select_target,
                    "Choose a transfer target at this loop time: MS,NAME groups "

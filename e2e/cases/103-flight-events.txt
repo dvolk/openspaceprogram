@@ -1,7 +1,9 @@
 NAME flight-events
 ARGS --time-accel 10000 --timeout 12
 ARGS --startship escaper,res/ships/racer.json,Kerbin,escape
-ARGS --recover 8000 --recover-anywhere
+ARGS --recover-anywhere
+ARGS --sim-press 7900,0,ESCAPE
+ARGS --ui-click 8000,"Game Menu/Recover Vessel"
 EXPECT [flight] vessel='escaper'
 EXPECT left Kerbin
 EXPECT entered

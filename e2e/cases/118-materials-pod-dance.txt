@@ -11,7 +11,9 @@ ARGS --ui-click 2500,"labpod > Capsule (2m)##0/EVA##eva0"
 ARGS --ui-click 3000,"labpod > Materials Pod (2m)##1/Take  (to Ash)##pod_take"
 ARGS --ui-click 3500,"labpod > Capsule (2m)##0/Store  (into capsule)##store_Ash"
 ARGS --ui-click 4000,"labpod > Capsule (2m)##0/Board##board_Ash"
-ARGS --recover 5000 --recover-anywhere
+ARGS --recover-anywhere
+ARGS --sim-press 4900,0,ESCAPE
+ARGS --ui-click 5000,"Game Menu/Recover Vessel"
 # Every step is a click a player could make: RMB-pick a part to open its window
 # (--ui-focus aims the cursor at the part, so the case names parts, never
 # pixels), then press the window's button. The part windows stay open once

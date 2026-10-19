@@ -2,11 +2,12 @@
 # Vessel" button, which is the only way a player ends a flight successfully.
 # ESC pops flight -> hub, and the button sits in the hub's Game Menu.
 #
-# This is the case that covers the button itself. The other recover cases go
-# through --recover because they are in orbit and need --recover-anywhere, which
-# no button offers -- recoverActive refuses unless the ship is grounded on the
-# home body (game.cpp:2143). Until now nothing clicked this button at all, so
-# the suite would not have noticed it disappearing.
+# This is the case that covers the button under the game's OWN rule: recover
+# needs the ship grounded on its home body (game.cpp:2143), with no debug flag in
+# play. The orbit cases click this same button and pass --recover-anywhere, which
+# is a permission rather than a shortcut: it relaxes that one rule and nothing
+# else. Only 265 and 271 still use the --recover hook, and both are states where
+# the button cannot be reached at all.
 NAME recover-grounded
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --sim-press 1000,0,ESCAPE

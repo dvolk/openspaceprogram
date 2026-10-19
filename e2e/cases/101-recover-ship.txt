@@ -1,6 +1,7 @@
 NAME recover-ship
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --sim-press 1000,0,ESCAPE --recover 2000 --recover-anywhere
+ARGS --sim-press 1000,0,ESCAPE --recover-anywhere
+ARGS --ui-click 2000,"Game Menu/Recover Vessel"
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [recover] t=
 EXPECT 'racer' recovered

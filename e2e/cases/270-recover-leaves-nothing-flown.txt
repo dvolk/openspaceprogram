@@ -7,7 +7,9 @@ NAME recover-leaves-nothing-flown
 ARGS --time-accel 1 --timeout 8
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --startship tanker,res/ships/tanker.json,Kerbin,rot-orbit
-ARGS --recover 2000 --recover-anywhere
+ARGS --recover-anywhere
+ARGS --sim-press 1900,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Recover Vessel"
 ARGS --save slotA
 EXPECT [recover] t=
 EXPECT Saved 1 ship(s) to

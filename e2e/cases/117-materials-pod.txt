@@ -4,7 +4,9 @@ ARGS --startship labpod,res/ships/labpod.json,Kerbin,rot-orbit
 ARGS --ui-focus 1000,labpod/materials_pod_1
 ARGS --sim-mouse 1100,0,CUR,CUR,RMB
 ARGS --ui-click 1500,"labpod > Materials Pod (2m)##1/Run Experiment##pod_run"
-ARGS --recover 4000 --recover-anywhere
+ARGS --recover-anywhere
+ARGS --sim-press 3900,0,ESCAPE
+ARGS --ui-click 4000,"Game Menu/Recover Vessel"
 EXPECT [science] t=
 EXPECT recorded
 EXPECT materials study

@@ -1,6 +1,8 @@
 NAME science-recover-load
 ARGS --load e2e/fixtures/save_science --time-accel 1 --timeout 6
-ARGS --recover 2500 --recover-anywhere
+ARGS --recover-anywhere
+ARGS --sim-press 2400,0,ESCAPE
+ARGS --ui-click 2500,"Game Menu/Recover Vessel"
 EXPECT Loaded game from e2e/fixtures/save_science (active: racer)
 EXPECT [science] recovered +21
 EXPECT +6 repeat

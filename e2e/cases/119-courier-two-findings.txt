@@ -26,7 +26,9 @@ ARGS --ui-click 3000,"labpod > Capsule (2m)##0/Store  (into capsule)##store_Ash"
 # the fleet; F6 steps by list position and would need this fleet to stay two
 # vessels in a known order. "Recover Vessel" needs a ship active.
 ARGS --sim-press 3500,50,V
-ARGS --recover 5000 --recover-anywhere
+ARGS --recover-anywhere
+ARGS --sim-press 4900,0,ESCAPE
+ARGS --ui-click 5000,"Game Menu/Recover Vessel"
 EXPECT recorded 'Low orbit observation
 EXPECT recorded 'Low orbit materials study
 EXPECT moved 'Low orbit materials study
