@@ -200,34 +200,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "target row. --transfer-target, if given, re-asserts itself "
                    "on every rebuild and wins (test hook)")
         ->delimiter(',');
-    app.add_option("--experiment", args.experiment_ms,
-                   "Fire the part window's \"Run Experiment\" once at this "
-                   "loop time in ms (Game::runExperiment, headless; "
-                   "-1 = never)");
-    app.add_option("--pod-experiment", args.pod_experiment_ms,
-                   "Fire a science pod's \"Run Experiment\" once at this loop "
-                   "time in ms (Game::runPodExperiment on the active ship's "
-                   "first experiment-family part, headless; -1 = never)");
     app.add_option("--eva", args.eva_ms,
                    "Fire the part window's \"EVA\" once at this loop time in "
                    "ms (Game::kerbalEVA on the active ship's first crew "
-                   "kerbal, headless; -1 = never). The take/store dance needs "
-                   "a FREE kerbal in reach, so the e2e EVAs before --take/--store.");
-    app.add_option("--board", args.board_ms,
-                   "Fire the part window's \"Board\" once at this loop time in "
-                   "ms (Game::kerbalBoard: the first walking kerbal in reach of "
-                   "the first capsule with a free seat, headless; -1 = never). "
-                   "The reverse of --eva, so --eva then --board round-trips a "
-                   "person through their seat.");
-    app.add_option("--take", args.take_ms,
-                   "Fire the take/store dance's \"Take\" once at this loop "
-                   "time in ms (Game::moveExperiment from the active ship's "
-                   "first held finding to its first free kerbal in reach, "
-                   "headless; -1 = never)");
-    app.add_option("--store", args.store_ms,
-                   "Fire the take/store dance's \"Store\" once at this loop "
-                   "time in ms (Game::moveExperiment from the active ship's "
-                   "courier to its first container, headless; -1 = never)");
+                   "kerbal, headless; -1 = never). The e2e drives EVA and the "
+                   "rest of the crew buttons through --ui-focus + --ui-click; "
+                   " this survives as a probe of which vehicle a --load made "
+                   "active.");
     app.add_option("--switch-system", args.switch_system_path,
                    "Swap to this system JSON over the running game at "
                    "--switch-at (the in-process system switch, "

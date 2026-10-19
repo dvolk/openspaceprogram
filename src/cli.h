@@ -77,12 +77,7 @@ struct GameArgs {
     int quit_title_ms = -1;
     int recover_ms = -1;
     bool recover_anywhere = false;  // default: home body only
-    int experiment_ms = -1;
-    int pod_experiment_ms = -1;
-    int eva_ms = -1;
-    int board_ms = -1;        // the reverse of --eva (Game::kerbalBoard)
-    int take_ms = -1;         // the take/store dance's "Take"
-    int store_ms = -1;        // the take/store dance's "Store"
+    int eva_ms = -1;          // the load-probe hook; the crew buttons are driven by UI clicks
     std::string switch_system_path;
     int switch_system_ms = -1;      // --switch-at
     std::string vab_scenario;  // VAB launch scenario (empty = "pad")

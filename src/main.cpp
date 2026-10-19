@@ -212,151 +212,16 @@ static void installHeadlessHooks(Game &game) {
         game.addHook(kHookPreScene, args.recover_ms, nullptr,
                      [](Game &game) { game.recoverActive(); });
     }
-    // --experiment: mirrors the UI -- a walking kerbal runs it itself, else
-    // the active ship's first seat.
-    if(args.experiment_ms >= 0) {
-        game.addHook(kHookPreScene, args.experiment_ms, nullptr, [](Game &game) {
-            if(game.ship == nullptr) {
-                printf("[hook] --experiment: no kerbal, ignored\n");
-            } else if(game.ship->isEva()) {
-                game.runExperiment(static_cast<Kerbal *>(game.ship));
-            } else {
-                std::vector<Part *> seats = vehicleSeats(game.ship);
-                if(seats.empty()) { printf("[hook] --experiment: no kerbal, ignored\n"); }
-                else { game.runSeatExperiment(seats.front()); }
-            }
-        });
-    }
-    // --pod-experiment: the active ship's first experiment-family part + its
-    // first seat.
-    if(args.pod_experiment_ms >= 0) {
-        game.addHook(kHookPreScene, args.pod_experiment_ms, nullptr, [](Game &game) {
-            Part *pod = nullptr;
-            std::string runner;
-            if(game.ship != nullptr) {
-                for(Part *p : game.ship->parts) {
-                    if(p->def != nullptr && !p->def->experiment_family.empty()) {
-                        pod = p; break;
-                    }
-                }
-                std::vector<Part *> seats = vehicleSeats(game.ship);
-                if(!seats.empty()) { runner = seatName(seats.front()); }
-            }
-            if(pod != nullptr && !runner.empty()) { game.runPodExperiment(pod, runner); }
-            else { printf("[hook] --pod-experiment: no pod+kerbal, ignored\n"); }
-        });
-    }
-    // --eva: Game::kerbalEVA on the active ship's first seat. Fired before
-    // --take / --store in the e2e.
+    // --eva: Game::kerbalEVA on the active ship's first seat. The e2e drives
+    // EVA, Board, Take, Store and both Run Experiment buttons through the UI
+    // now (--ui-focus + --ui-click); this survives as a probe of WHICH vehicle a
+    // load made active, which is what cases 212 and 213 use it for.
     if(args.eva_ms >= 0) {
         game.addHook(kHookPreScene, args.eva_ms, nullptr, [](Game &game) {
             std::vector<Part *> seats = game.ship != nullptr ? vehicleSeats(game.ship)
                                                              : std::vector<Part *>{};
             if(!seats.empty()) { game.kerbalEVA(seats.front()); }
             else { printf("[hook] --eva: no crew aboard, ignored\n"); }
-        });
-    }
-    // --board: the reverse of --eva, so one process round-trips a person
-    // through their seat.
-    if(args.board_ms >= 0) {
-        game.addHook(kHookPreScene, args.board_ms, nullptr, [](Game &game) {
-            Vehicle *ship = nullptr;
-            size_t part = 0;
-            Kerbal *k = nullptr;
-            /* Any vessel with a free seat, not just the active one: after an
-               EVA the walker stands beside the ship it left, and the e2e may
-               have switched control since. The walking crew are collected once:
-               freeKerbals walks every vehicle, so calling it per candidate part
-               is quadratic in a list that is only getting bigger. */
-            const std::vector<Kerbal *> freeK = freeKerbals(game.vehicles);
-            for(auto *s : game.vehicles) {
-                for(size_t i = 0; i < s->parts.size(); i++) {
-                    for(Kerbal *f : freeK) {
-                        // The Board button's own gate, so the hook cannot board
-                        // a capsule the UI would refuse.
-                        if(game.canBoard(f, s, i)) {
-                            ship = s; part = i; k = f; break;
-                        }
-                    }
-                    if(k != nullptr) { break; }
-                }
-                if(k != nullptr) { break; }
-            }
-            if(k != nullptr) { game.kerbalBoard(k, ship, part); }
-            else { printf("[hook] --board: no kerbal in reach of a free seat, ignored\n"); }
-        });
-    }
-    // --take: move the first held finding off its instrument onto its courier
-    // (the kerbal's suit).
-    if(args.take_ms >= 0) {
-        game.addHook(kHookPreScene, args.take_ms, nullptr, [](Game &game) {
-            Part *from = nullptr;   // the instrument holding a finding to take
-            Part *to = nullptr;     // the courier (the kerbal's suit)
-            /* Pair every instrument with every courier instead of taking the
-               first of each. The first instrument in vehicle order can be out of
-               reach (or uncarryable) while a later one is fine, and picking it
-               then reporting "no kerbal in reach" blames the wrong half. The UI
-               never has this problem: the player opens the part window they mean.
-               After an EVA the instrument sits on a DIFFERENT ship than the
-               active one, so the search spans every vehicle either way. */
-            const std::vector<Kerbal *> couriers = freeKerbals(game.vehicles);
-            for(auto *s : game.vehicles) {
-                for(Part *p : s->parts) {
-                    // The Take block's own predicate, not the storage role: a
-                    // part that produces a family is what offers a Take button.
-                    if(p->def == nullptr || p->experiments.empty()
-                       || p->def->experiment_family.empty()) {
-                        continue;
-                    }
-                    for(Kerbal *k : couriers) {
-                        if(!k->parts.empty()
-                           && game.canMoveExperiment(p, k->parts[0], k)) {
-                            from = p; to = k->parts[0]; break;
-                        }
-                    }
-                    if(from != nullptr) { break; }
-                }
-                if(from != nullptr) { break; }
-            }
-            if(from != nullptr) { game.moveExperiment(from, to, 0); }
-            else {
-                printf("[hook] --take: no instrument a courier can take (nothing"
-                       " holds a finding, or none is in reach, or no courier can"
-                       " carry it), ignored\n");
-            }
-        });
-    }
-    // --store: move the courier's first held finding onto its container
-    // (the capsule).
-    if(args.store_ms >= 0) {
-        game.addHook(kHookPreScene, args.store_ms, nullptr, [](Game &game) {
-            Part *from = nullptr;   // the courier (the kerbal's suit)
-            Part *to = nullptr;     // the container (the capsule)
-            // Paired like --take: the first container in vehicle order may be
-            // one this courier cannot reach or cannot fill.
-            const std::vector<Kerbal *> couriers = freeKerbals(game.vehicles);
-            for(auto *s : game.vehicles) {
-                for(Part *p : s->parts) {
-                    if(p->def == nullptr
-                       || p->def->experiment_storage != ExpStorage::Container) {
-                        continue;
-                    }
-                    for(Kerbal *k : couriers) {
-                        if(!k->parts.empty()
-                           && game.canMoveExperiment(k->parts[0], p, k)) {
-                            from = k->parts[0]; to = p; break;
-                        }
-                    }
-                    if(from != nullptr) { break; }
-                }
-                if(from != nullptr) { break; }
-            }
-            if(from != nullptr) { game.moveExperiment(from, to, 0); }
-            else {
-                printf("[hook] --store: no container a courier can store into"
-                       " (nobody holds a finding, or none is in reach, or every"
-                       " container already holds it), ignored\n");
-            }
         });
     }
     /* --atlas-dump: the System Atlas as text; reads the system, not the
