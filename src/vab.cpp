@@ -895,6 +895,21 @@ std::string vabSeatProblem(const Game &g) {
     return "";
 }
 
+/* One part, one selection. The panel's controls (rotate / stage / Detach /
+   Delete) act on g.vab.selected, so a right-click that opens a part window moves
+   the edit target too: otherwise the screen shows one part's identity card while
+   the buttons edit another. Printing the pick is what makes a 3D pick assertable
+   -- the panel's "selected: <id> (<label>)" line is plain imgui Text, which
+   --ui-list cannot show (the registry skips id==0), so a case aiming a pick at a
+   part could not otherwise tell whether it hit the part it meant (#311). */
+static void vabSelect(Game &g, int idx) {
+    g.vab.selected = idx;
+    g.vab.linkSel = -1;   // the two selections are exclusive
+    printf("[vab] select %d %s\n", idx,
+           g.vab.build.parts[(size_t)idx].id.c_str());
+    fflush(stdout);
+}
+
 /* Open the VAB part window for build part `partIdx`, to be placed near the click
    at (px, py). Any part with a def qualifies: seats are one section of the
    dossier, not the condition for opening it. */
@@ -935,6 +950,7 @@ void vabPickPart(Game &g, int px, int py) {
         return;
     }
     vabOpenPartWindow(g, idx, px, py);
+    vabSelect(g, idx);
 }
 
 /* Aim the editor's orbit camera at the build tree. */
@@ -975,6 +991,12 @@ void vabEnter(Game &g) {
     g.vab.linkMode = false;
     g.vab.linkFromId.clear();
     g.vab.linkSel = -1;      // no link selected on a fresh entry
+    /* The part window follows a part of THIS session's build; a build id from a
+       previous visit would name a part that no longer exists (or, worse, still
+       exists but is not what the player last pointed at). partWinPlaced goes with
+       it: without the reset the window is placed nowhere in particular. */
+    g.vab.partWinId.clear();
+    g.vab.partWinPlaced = false;
     vabAimCamera(g);
     printf("[vab] entered the editor (sim keeps coasting)\n");
     fflush(stdout);
@@ -1029,10 +1051,11 @@ void vabInstallHooks(Game &g) {
             fflush(stdout);
         });
     }
-    /* --vab-assign: a seat plan the window refuses to build. It still opens the
-       window it stands in for, so --ui-list dumps the rows a player would have
-       had. Case 237 is the only user: the dropdown greys an already-seated
-       person, so naming one person twice has no click path. */
+    /* --vab-assign: a seat plan the window refuses to build. Case 237 is the
+       only user: the dropdown greys an already-seated person, so naming one
+       person twice has no click path. It writes the plan directly rather than
+       opening the window it stands in for: that would leave a dossier on screen
+       for a part the player never pointed at. */
     for(const GameArgs::VabAssignArg &a : args.vab_assigns) {
         const int partIdx = a.partIdx, slot = a.slot;
         const std::string kerbal = a.kerbal;
@@ -1049,9 +1072,6 @@ void vabInstallHooks(Game &g) {
                 fflush(stdout);
                 return;
             }
-            const ImGuiIO &io = ImGui::GetIO();
-            vabOpenPartWindow(g, partIdx, (int)io.DisplaySize.x / 2,
-                              (int)io.DisplaySize.y / 2);
             const bool ok = vabAssignSeat(g, partId, slot, p->id);
             printf("[vab] assign hook: '%s' seat %d = '%s'%s\n", partId.c_str(),
                    slot, kerbal.c_str(), ok ? "" : " (no such seat)");
@@ -1108,16 +1128,7 @@ void vabClickAfterUI(Game &g) {
         vabPlace(g);
     } else if(g.vab.hover >= 0) {
         // nothing armed: a plain click selects the hovered part
-        g.vab.selected = g.vab.hover;
-        g.vab.linkSel = -1;
-        /* The panel says "selected: <id> (<label>)" as plain imgui Text, which
-           has no item id, so --ui-list cannot show it (the registry skips
-           id==0). A test that aims a 3D pick at a part therefore cannot tell
-           whether it hit the part it meant. This line makes the pick
-           assertable, so a case can pin it (#311). hover only comes from
-           pickVabPart, which skips a part with no def. */
-        printf("[vab] select %d %s\n", g.vab.selected,
-               g.vab.build.parts[(size_t)g.vab.selected].id.c_str());
-        fflush(stdout);
+        /* hover only comes from pickVabPart, which skips a part with no def. */
+        vabSelect(g, g.vab.hover);
     }
 }

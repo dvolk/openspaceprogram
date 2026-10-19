@@ -7,10 +7,11 @@
 # The first seat is the player's own: place the capsule, right-click it, pick the
 # seat, pick Ace. The second is not reachable by hand, and the case now PROVES
 # that instead of asserting it in a comment -- the dropdown lists an already-
-# seated person as "Ace  (seated)" inside a BeginDisabled (gameui.cpp:3889-3901),
-# and --ui-click refuses the row as disabled. So the UI cannot build this plan on
-# purpose, and --vab-assign is how the case gets the plan into the stale state the
-# refusal guards. That makes this the exception rather than the rule.
+# seated person as "Ace  (seated)" inside a BeginDisabled (drawVabPartWindow's
+# seat rows), and --ui-click refuses the row as disabled. So the UI cannot build
+# this plan on purpose, and --vab-assign is how the case gets the plan into the
+# stale state the refusal guards. That makes this the exception rather than the
+# rule.
 NAME vab-seat-two-seats
 ARGS --vab-empty --kerbals e2e/fixtures/three_kerbals.json
 ARGS --time-accel 1 --timeout 12 --frame-cap 30
@@ -28,7 +29,7 @@ ARGS --ui-click 6000,"VAB TopBar/LAUNCH"
 EXPECT path="##Combo_00/Ace  (seated)" FAILED disabled
 # Pin WHICH refusal: the harness has a second disabled branch, "disabled at
 # release" (uiinput.cpp:185), and its line contains the text above. This case is
-# about the row being greyed out when the combo is drawn (gameui.cpp:3900); if a
+# about the row being greyed out when the combo is drawn (drawVabPartWindow); if a
 # click ever survives to release, the gate this asserts is no longer the one that
 # stopped it. Same reason 236 forbids it.
 FORBID FAILED disabled at release

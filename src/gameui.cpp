@@ -75,6 +75,25 @@ static const char *resNames[(int)ResourceType::Num] = {
     "Hydrazine", "Jet fuel"
 };
 
+/* The part card's physical lines, shared by flight's part windows and the VAB's:
+   how big it is and what it does (a wheel, a jet, a rocket). Mass and contents
+   stay with each caller -- flight reads the live Part (crew, burned fuel), the
+   VAB reads the def plus the fill the ship launches with. */
+static void drawPartPhysique(const PartDef &def) {
+    ImGui::Text("Size: %.1fm dia x %.1fm", def.radius * 2.0, def.height);
+    if(def.torque > 0.0) {
+        ImGui::Text("Torque: %.0fN m (reaction wheel)", def.torque);
+    }
+    if(def.jet) {
+        ImGui::Text("Jet: %.0fN static, air-breathing (%.1fkg/s jet fuel, intake %.2fm^2, %.0fm/s exhaust)",
+                    def.jet_fan_thrust, def.propellant_rate[(int)ResourceType::JetFuel],
+                    def.jet_intake_area, def.exhaust_velocity);
+    } else if(def.totalPropellantRate() > 0.0 && def.exhaust_velocity > 0.0) {
+        ImGui::Text("Thrust: %.0fN (%.1fkg/s @ %.0fm/s)",
+                    def.fullThrust(), def.totalPropellantRate(), def.exhaust_velocity);
+    }
+}
+
 // Cached orbit samplings keyed on the object's pointer; valid only
 // while it is on a fixed Keplerian conic. See OrbitSampleCache.
 static std::map<const void *, OrbitSampleCache> orbit_caches;
@@ -2238,20 +2257,7 @@ void drawPartWindows(Game &g) {
             }
             /* effectiveMass: a capsule with crew shows body + crew, matching the ship HUD. */
             ImGui::Text("Mass: %.3fkg", ship->parts[part]->effectiveMass());
-            ImGui::Text("Size: %.1fm dia x %.1fm",
-                        def->radius * 2.0, def->height);
-            if(def->torque > 0.0) {
-                ImGui::Text("Torque: %.0fN m (reaction wheel)", def->torque);
-            }
-            if(def->jet) {
-                ImGui::Text("Jet: %.0fN static, air-breathing (%.1fkg/s jet fuel, intake %.2fm^2, %.0fm/s exhaust)",
-                            def->jet_fan_thrust, def->propellant_rate[(int)ResourceType::JetFuel],
-                            def->jet_intake_area, def->exhaust_velocity);
-            } else if(def->totalPropellantRate() > 0.0 && def->exhaust_velocity > 0.0) {
-                ImGui::Text("Thrust: %.0fN (%.1fkg/s @ %.0fm/s)",
-                            def->fullThrust(), def->totalPropellantRate(),
-                            def->exhaust_velocity);
-            }
+            drawPartPhysique(*def);
             for(int r = 0; r < (int)ResourceType::Num; r++) {
                 if(def->capacity[(size_t)r] <= 0.0f) { continue; }
                 ImGui::Text("%s: %.1f%s/%.1f%s", resNames[r],
@@ -3795,11 +3801,11 @@ void drawVabPartWindow(Game &g) {
     if(!g.vab.partWinPlaced) {
         /* Near the click, flipping sides when there is no room (as
            drawPartWindows). The size below is an ESTIMATE, not a measurement --
-           imgui has not auto-fitted this window yet -- so it has to suit the
-           biggest dossier (a 3-seat capsule that also carries resources). The
-           clamp rescues only the left/top edges, so under-estimating the height
-           risks a bottom row off screen, while over-estimating only flips
-           earlier than it needed to. */
+           imgui has not auto-fitted this window yet -- and it is a loose one: the
+           widest card measured is 625px (a jet's Jet: row is ~84 characters), so
+           the flip fires late for that part and early for a 284px capsule. It is
+           only the first guess; the clamp after Begin is what keeps the card on
+           screen, using the size imgui actually measured. */
         const ImGuiViewport *vp = ImGui::GetMainViewport();
         const float maxw = 320.0f, maxh = 420.0f, gap = 12.0f;
         float x = (float)g.vab.partWinMx + gap;
@@ -3819,29 +3825,40 @@ void drawVabPartWindow(Game &g) {
     StaticBuilding *pad = homeCrewPad(g.sys);
     bool open = true;
     if(ImGui::Begin(name, &open, ImGuiWindowFlags_NoSavedSettings)) {
+        /* Keep the card inside the work area, every frame. The placement above
+           cannot know the width: the window auto-fits to its widest Text row, and
+           a Jet: row is ~625px, which at a 1000px-wide viewport put the card 137px
+           off the right edge. imgui's auto-fit clamp bounds the SIZE, not the
+           position, so nothing else rescues this. A row outside the viewport is
+           not just clipped -- --ui-click never registers an item that fails its
+           clip test, so it stops existing for the suite. GetWindowSize is last
+           frame's, which is final two frames after the window appears. */
+        const ImGuiViewport *vp = ImGui::GetMainViewport();
+        const ImVec2 pos = ImGui::GetWindowPos();
+        const ImVec2 size = ImGui::GetWindowSize();
+        float hx = vp->WorkPos.x + vp->WorkSize.x - size.x;
+        float hy = vp->WorkPos.y + vp->WorkSize.y - size.y;
+        if(hx < vp->WorkPos.x) { hx = vp->WorkPos.x; }   // wider than the screen
+        if(hy < vp->WorkPos.y) { hy = vp->WorkPos.y; }
+        if(pos.x < vp->WorkPos.x || pos.y < vp->WorkPos.y
+           || pos.x > hx || pos.y > hy) {
+            ImGui::SetWindowPos(ImVec2(std::min(std::max(pos.x, vp->WorkPos.x), hx),
+                                       std::min(std::max(pos.y, vp->WorkPos.y), hy)));
+        }
         ImGui::Text("%s (%s)", def.label().c_str(), bp->id.c_str());
         if(!def.type.empty()) { ImGui::Text("Type: %s", def.type.c_str()); }
-        /* def->mass is DRY (staging.h); the second number is what the ship
-           launches with, because Vehicle::init tops every tank up when it builds
-           the ship. EC is stored energy, so it rides neither number. */
-        double prop = 0.0;
+        /* def->mass is DRY (staging.h); the second number is everything the tanks
+           hold at launch, because Vehicle::init tops every one up when it builds
+           the ship. That is capacity, not what an engine would burn: a part
+           carrying something the game counts as inert load shows up here too. EC
+           is stored energy, so it rides neither number. */
+        double carried = 0.0;
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             if(r == (int)ResourceType::EC) { continue; }
-            prop += def.capacity[r];
+            carried += def.capacity[r];
         }
-        ImGui::Text("Mass: %.3fkg + %.3fkg at launch", def.mass, prop);
-        ImGui::Text("Size: %.1fm dia x %.1fm", def.radius * 2.0, def.height);
-        if(def.torque > 0.0) {
-            ImGui::Text("Torque: %.0fN m (reaction wheel)", def.torque);
-        }
-        if(def.jet) {
-            ImGui::Text("Jet: %.0fN static, air-breathing (%.1fkg/s jet fuel, intake %.2fm^2, %.0fm/s exhaust)",
-                        def.jet_fan_thrust, def.propellant_rate[(int)ResourceType::JetFuel],
-                        def.jet_intake_area, def.exhaust_velocity);
-        } else if(def.totalPropellantRate() > 0.0 && def.exhaust_velocity > 0.0) {
-            ImGui::Text("Thrust: %.0fN (%.1fkg/s @ %.0fm/s)",
-                        def.fullThrust(), def.totalPropellantRate(), def.exhaust_velocity);
-        }
+        ImGui::Text("Mass: %.3fkg + %.3fkg at launch", def.mass, carried);
+        drawPartPhysique(def);
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             if(def.capacity[r] <= 0.0f) { continue; }
             ImGui::Text("Carries %.1f%s %s", def.capacity[r],

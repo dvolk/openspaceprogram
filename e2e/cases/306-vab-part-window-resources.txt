@@ -4,6 +4,12 @@
 # and capacities per part, with EC in watt-hours because EC is stored energy and
 # rides no mass.
 #
+# What this does NOT pin is the Text itself: --ui-list registers items, not
+# labels, so deleting the Carries/Mass/Size rows would leave this case green while
+# the numbers they print stay correct. It pins the data the window is built from
+# and the seat rows it does or does not create. Closing that gap needs a way for
+# the harness to read Text rows, not another assertion here.
+#
 # The --ui-list dump lands while the TANK's window is live: a part with no seats
 # gets no seat rows, which is the "if the part has seats" half of the widget. The
 # second right-click is the other half on the same window -- a capsule shows its

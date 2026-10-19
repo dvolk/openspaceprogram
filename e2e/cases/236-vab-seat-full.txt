@@ -4,11 +4,11 @@
 #
 # Two dropdowns, filled in the order a player would fill them, then a third that
 # is not filled at all. Once Cyd and Ace are seated, Seat 3 lists Cyd as
-# "Cyd  (seated)" inside a BeginDisabled (gameui.cpp:3900), and the harness
-# refuses a disabled widget instead of reporting a clean press -- so the greyed
-# row is an assertion here, not a click that went wrong. That is the UI half of
-# the one-person-two-seats rule; case 237 owns the launch-time refusal that
-# guards a plan which went stale after it was made.
+# "Cyd  (seated)" inside a BeginDisabled (drawVabPartWindow's seat rows), and the
+# harness refuses a disabled widget instead of reporting a clean press -- so the
+# greyed row is an assertion here, not a click that went wrong. That is the UI
+# half of the one-person-two-seats rule; case 237 owns the launch-time refusal
+# that guards a plan which went stale after it was made.
 NAME vab-seat-full
 ARGS --vab-empty --kerbals e2e/fixtures/three_kerbals.json
 ARGS --time-accel 1 --timeout 12 --frame-cap 30

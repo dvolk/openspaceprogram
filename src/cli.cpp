@@ -924,13 +924,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             /* The seat plan is built through the part window now. --vab-assign
                survives for ONE thing a click cannot do: naming the SAME person
                twice. The dropdown lists an already-seated person as
-               "Name  (seated)" inside a BeginDisabled (gameui.cpp:3889-3901), so
-               the launch-refusal guard has no other way in -- case 237. Reaching
-               a seat on a multi-part build used to be a second reason (#311, a
-               fixed pixel pick lands on whatever part is under it); --ui-focus
-               retired that one. CLI11 drops empty fields from the list, so a
-               missing KERBAL arrives as a short group and the check above
-               reports it. */
+               "Name  (seated)" inside a BeginDisabled (drawVabPartWindow's seat
+               rows), so the launch-refusal guard has no other way in -- case 237.
+               Reaching a seat on a multi-part build used to be a second reason
+               (#311, a fixed pixel pick lands on whatever part is under it);
+               --ui-focus retired that one. CLI11 drops empty fields from the
+               list, so a missing KERBAL arrives as a short group and the check
+               above reports it. */
             args.vab_assigns.push_back({(int)v[0], (int)v[1], (int)v[2],
                                         vab_assign[i + 3]});
         }
