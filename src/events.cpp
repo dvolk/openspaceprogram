@@ -7,6 +7,7 @@
 #include <GL/glew.h>   // glPolygonMode + GL constants
 
 #include "eva.h"        // Kerbal
+#include "pick.h"       // flightAimAtPart (--ui-focus SHIP/PART)
 #include "siminput.h"   // SimKeyPress, SimMouseAction
 #include "uiinput.h"    // emit_ui_input
 #include "gldebug.h"    // check_gl_error()
@@ -46,24 +47,65 @@ void emit_sim_events(Game &g) {
         }
     }
 
+    /* One motion pusher for both synthetic cursors, updating the tracked
+       position so the next event's delta is right. */
+    auto push_motion = [&](int x, int y) {
+        SDL_Event mev = {0};
+        mev.type = SDL_EVENT_MOUSE_MOTION;
+        mev.motion.windowID = g.sim_win_id;
+        mev.motion.which = 0;
+        mev.motion.x = x;
+        mev.motion.y = y;
+        mev.motion.xrel = x - g.args.sim_mouse_x;
+        mev.motion.yrel = y - g.args.sim_mouse_y;
+        mev.motion.state = 0;
+        SDL_PushEvent(&mev);
+        g.args.sim_mouse_x = x;
+        g.args.sim_mouse_y = y;
+    };
+
+    /* --ui-focus: park the simulated cursor on a named part. The case names the
+       PART; projectPixel turns it into the pixel the pick would hit there, so the
+       case carries no coordinate that only means something in one framing. It
+       pushes a real MOTION, so the cursor moves for imgui and the VAB hover
+       alike, and the raycast pick still decides what is under it -- an occluded
+       part selects its occluder, and the case sees that.
+       Bare PART_ID aims at the VAB build; SHIP/PART_ID aims at a part of a ship
+       in the world (the Flight scene's part windows are opened by RMB-picking a
+       part, so they need this too). VAB part ids never contain '/'.
+       Deliberately emitted BEFORE --sim-mouse: a case aims at 1000 and clicks at
+       1100, and under a coarse --frame-cap both can fall due in one batch. The
+       MOTION has to be in that batch ahead of the click, or the click lands on
+       the stale cursor. */
+    if(!g.args.ui_focuses.empty()) {
+        const Uint32 now = SDL_GetTicks() - g.loop_start_ms;
+        for(auto &f : g.args.ui_focuses) {
+            if(f.done || now < f.at_ms) { continue; }
+            double sx = 0, sy = 0;
+            std::string why;
+            const size_t slash = f.part.rfind('/');
+            if(slash == std::string::npos) {
+                why = vabAimAtPart(g, f.part, sx, sy);
+            } else {
+                why = flightAimAtPart(g, f.part.substr(0, slash),
+                                      f.part.substr(slash + 1), sx, sy);
+            }
+            f.done = true;
+            if(!why.empty()) {
+                printf("[uifocus] '%s' FAILED %s\n", f.part.c_str(), why.c_str());
+                fflush(stdout);
+                continue;
+            }
+            push_motion((int)sx, (int)sy);
+            printf("[uifocus] '%s' -> %d,%d\n", f.part.c_str(), (int)sx, (int)sy);
+            fflush(stdout);
+        }
+    }
+
     /* --sim-mouse: synthetic mouse events in the order each gesture needs.
        Motion carries the delta from the previous simulated position. */
     if(!g.args.sim_mouse_actions.empty()) {
         const Uint32 now = SDL_GetTicks() - g.loop_start_ms;
-        auto push_motion = [&](int x, int y) {
-            SDL_Event mev = {0};
-            mev.type = SDL_EVENT_MOUSE_MOTION;
-            mev.motion.windowID = g.sim_win_id;
-            mev.motion.which = 0;
-            mev.motion.x = x;
-            mev.motion.y = y;
-            mev.motion.xrel = x - g.args.sim_mouse_x;
-            mev.motion.yrel = y - g.args.sim_mouse_y;
-            mev.motion.state = 0;
-            SDL_PushEvent(&mev);
-            g.args.sim_mouse_x = x;
-            g.args.sim_mouse_y = y;
-        };
         auto push_btn = [&](SDL_EventType type, int button, int x, int y) {
             SDL_Event bev = {0};
             bev.type = type;
@@ -121,41 +163,6 @@ void emit_sim_events(Game &g) {
                 push_btn(SDL_EVENT_MOUSE_BUTTON_UP, a.button, ax, ay);
                 a.released = true;
             }
-        }
-    }
-
-    /* --ui-focus: park the simulated cursor on a named part. The case names the
-       PART; vabProject turns it into the pixel the pick would hit there, so the
-       case carries no coordinate that only means something in one framing. It
-       pushes a real MOTION, so the cursor moves for imgui and the VAB hover
-       alike, and the raycast pick still decides what is under it -- an occluded
-       part selects its occluder, and the case sees that. */
-    if(!g.args.ui_focuses.empty()) {
-        const Uint32 now = SDL_GetTicks() - g.loop_start_ms;
-        for(auto &f : g.args.ui_focuses) {
-            if(f.done || now < f.at_ms) { continue; }
-            double sx = 0, sy = 0;
-            const std::string why = vabAimAtPart(g, f.part, sx, sy);
-            f.done = true;
-            if(!why.empty()) {
-                printf("[uifocus] '%s' FAILED %s\n", f.part.c_str(), why.c_str());
-                fflush(stdout);
-                continue;
-            }
-            SDL_Event mev = {0};
-            mev.type = SDL_EVENT_MOUSE_MOTION;
-            mev.motion.windowID = g.sim_win_id;
-            mev.motion.which = 0;
-            mev.motion.x = sx;
-            mev.motion.y = sy;
-            mev.motion.xrel = sx - g.args.sim_mouse_x;
-            mev.motion.yrel = sy - g.args.sim_mouse_y;
-            mev.motion.state = 0;
-            SDL_PushEvent(&mev);
-            g.args.sim_mouse_x = (int)sx;
-            g.args.sim_mouse_y = (int)sy;
-            printf("[uifocus] '%s' -> %d,%d\n", f.part.c_str(), (int)sx, (int)sy);
-            fflush(stdout);
         }
     }
 

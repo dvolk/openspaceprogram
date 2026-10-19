@@ -1,6 +1,9 @@
 NAME barometer-flying-high
-ARGS --time-accel 1 --timeout 8 --startship baropod,res/ships/baropod.json,Kerbin,flying-high
-ARGS --pod-experiment 1200
+ARGS --time-accel 1 --timeout 8 --width 1920 --height 1080
+ARGS --startship baropod,res/ships/baropod.json,Kerbin,flying-high
+ARGS --ui-focus 800,baropod/barometer_1
+ARGS --sim-mouse 900,0,CUR,CUR,RMB
+ARGS --ui-click 1200,"baropod > Barometer##1/Run Experiment##pod_run"
 ARGS --recover 3500 --recover-anywhere
 EXPECT [science] t=
 EXPECT recorded
@@ -8,5 +11,6 @@ EXPECT Flying high barometer on Kerbin
 EXPECT [science] recovered +12
 EXPECT [recover] t=
 EXPECT [spacecenter] entered
+FORBID FAILED
 FORBID GL_
 FORBID error:

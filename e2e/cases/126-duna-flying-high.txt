@@ -1,9 +1,12 @@
 NAME duna-flying-high
-ARGS --time-accel 1 --timeout 6
+ARGS --time-accel 1 --timeout 6 --width 1920 --height 1080
 ARGS --startship baropod,res/ships/baropod.json,Duna,flying-high
-ARGS --pod-experiment 1200
+ARGS --ui-focus 800,baropod/barometer_1
+ARGS --sim-mouse 900,0,CUR,CUR,RMB
+ARGS --ui-click 1200,"baropod > Barometer##1/Run Experiment##pod_run"
 EXPECT [science] t=
 EXPECT recorded
 EXPECT Flying high barometer on Duna
+FORBID FAILED
 FORBID GL_
 FORBID error:

@@ -1,14 +1,28 @@
 # pod materials study -> EVA take/store -> recover scores the sample
 NAME materials-pod-dance
-ARGS --time-accel 1 --timeout 9 --startship labpod,res/ships/labpod.json,Kerbin,rot-orbit
-ARGS --pod-experiment 1500
-ARGS --eva 2000
-ARGS --take 2500
-ARGS --store 3000
+ARGS --time-accel 1 --timeout 9 --width 1920 --height 1080
+ARGS --startship labpod,res/ships/labpod.json,Kerbin,rot-orbit
+ARGS --ui-focus 1000,labpod/materials_pod_1
+ARGS --sim-mouse 1100,0,CUR,CUR,RMB
+ARGS --ui-click 1500,"labpod > Materials Pod (2m)##1/Run Experiment##pod_run"
+ARGS --ui-focus 2000,labpod/capsule_1
+ARGS --sim-mouse 2100,0,CUR,CUR,RMB
+ARGS --ui-click 2500,"labpod > Capsule (2m)##0/EVA"
+ARGS --ui-click 3000,"labpod > Materials Pod (2m)##1/Take  (to Ash)##pod_take"
+ARGS --ui-click 3500,"labpod > Capsule (2m)##0/Store  (into capsule)"
+ARGS --ui-click 4000,"labpod > Capsule (2m)##0/Board"
+ARGS --recover 5000 --recover-anywhere
+# Every step is a click a player could make: RMB-pick a part to open its window
+# (--ui-focus aims the cursor at the part, so the case names parts, never
+# pixels), then press the window's button. The part windows stay open once
+# opened, so only the two RMB picks need aiming; the four button clicks address
+# windows by name.
+# The Take and Store labels carry who/where they act on ("Take  (to Ash)",
+# "Store  (into capsule)"), so the paths pin who the game thinks the courier is
+# -- a wrong courier fails the click outright instead of moving the sample
+# somewhere else.
 # The walker boards before the flight can end: "Recover Vessel" is not offered
 # for a crew member, and --recover no longer reaches around that.
-ARGS --board 3500
-ARGS --recover 5000 --recover-anywhere
 EXPECT [science] t=
 EXPECT recorded
 EXPECT materials study
@@ -16,5 +30,13 @@ EXPECT moved
 EXPECT [science] recovered +31
 EXPECT [recover] t=
 EXPECT [spacecenter] entered
+EXPECT [uifocus] 'labpod/materials_pod_1' ->
+EXPECT ship=labpod part=1 (materials_pod)
+EXPECT ship=labpod part=0 (capsule)
+EXPECT EVA: 'Ash' out of 'labpod' part 0
+EXPECT Board: 'Ash' into 'labpod' part 0
+EXPECT moved 'Low orbit materials study on Kerbin' Materials Pod (2m) -> Kerbal
+EXPECT moved 'Low orbit materials study on Kerbin' Kerbal -> Capsule (2m)
+FORBID FAILED
 FORBID GL_
 FORBID error:

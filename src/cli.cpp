@@ -338,8 +338,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         ->delimiter(',');
     std::vector<std::string> ui_focus;
     app.add_option("--ui-focus", ui_focus,
-                   "Park the simulated cursor on a named build part: a flat "
-                   "list of MS,PART_ID pairs (e.g. 1500,engine_1 = at 1.5s put "
+                   "Park the simulated cursor on a named part: a flat "
+                   "list of MS,PART pairs (e.g. 1500,engine_1 = at 1.5s put "
                    "the cursor on the part whose id is engine_1). The test "
                    "names the PART; the game projects it to a pixel with the "
                    "same math the pick uses, so the case carries no pixel that "
@@ -347,7 +347,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "teleport, not a drag, and the real raycast pick still runs: "
                    "if another part is in front, that one gets selected and the "
                    "case sees it. Click where it lands with X,Y = CUR. Prints "
-                   "[uifocus] so a case can pin it. Editor only.")
+                   "[uifocus] so a case can pin it. A bare PART_ID is a VAB "
+                   "build part; SHIP/PART_ID is a part of a ship in the world, "
+                   "which is how a Flight case reaches a part's RMB window.")
         ->delimiter(',');
 
     std::vector<std::string> sim_mode;

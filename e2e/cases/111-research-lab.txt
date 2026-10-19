@@ -1,6 +1,9 @@
 NAME research-lab
-ARGS --time-accel 1 --timeout 12 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --experiment 1500
+ARGS --time-accel 1 --timeout 12 --width 1920 --height 1080
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --ui-focus 1000,racer/capsule_1
+ARGS --sim-mouse 1100,0,CUR,CUR,RMB
+ARGS --ui-click 1500,"racer > Capsule (2m)##0/Run Experiment"
 ARGS --sim-press 3000,0,ESCAPE --recover 4000 --recover-anywhere
 ARGS --ui-click 5000,"Game Menu/Research Lab" --ui-click 6000,"Research Lab/Back to Space Center"
 EXPECT [science] recovered +13

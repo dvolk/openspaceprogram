@@ -10,12 +10,14 @@
 #include "camera.h"    // Camera
 #include "frame.h"     // Frame (the per-ship frame transform)
 #include "game.h"      // Game (the vehicles, the camera)
+#include "part.h"      // Part (id, to name a part from a test)
 #include "terrain.h"   // TerrainBody + StaticBuilding
 #include "vehicle.h"   // Vehicle (parts)
 
 #include "btcommon.h"  // complete Bullet types (double precision)
 #include <BulletCollision/CollisionDispatch/btCollisionWorld.h>
 
+#include <cmath>
 #include <numbers>
 
 PickRay pickRay(const Camera &cam, int W, int H, int px, int py) {
@@ -37,6 +39,23 @@ PickRay pickRay(const Camera &cam, int W, int H, int px, int py) {
         cam.pos,
         glm::normalize(glm::transpose(R) * dirView)
     };
+}
+
+// Render-frame point -> window pixel, the inverse of pickRay's unprojection.
+// The same -renderOrigin shifts cancel, so p_render maps straight as
+// v = R * (pS - pos). false if behind the camera.
+bool projectPixel(const Game &g, const glm::dvec3 &pS, double &px, double &py) {
+    const Camera &cam = *g.camera;
+    const glm::dmat3 R(cam.view);
+    const glm::dvec3 v = R * (pS - cam.pos);
+    if(v.z >= -1e-6) { return false; }
+    const double fx = cam.projection[0][0];
+    const double fy = cam.projection[1][1];
+    const double nx = fx * v.x / (-v.z);
+    const double ny = fy * v.y / (-v.z);
+    px = (nx + 1.0) * 0.5 * (double)cam.viewport_w;
+    py = (1.0 - ny) * 0.5 * (double)cam.viewport_h;
+    return true;
 }
 
 /* Physics-free seam for the VAB build tree too (no rigid body). */
@@ -127,6 +146,71 @@ bool pickShipPart(Game &g, int px, int py,
     part = bestPart;
     hit = bestHit;
     return true;
+}
+
+std::string aimAtPoint(Game &g, const glm::dvec3 &pS,
+                       const std::function<bool(int, int)> &verify,
+                       double &sx, double &sy) {
+    if(g.camera == nullptr) { return "no camera"; }
+    double ox = 0, oy = 0;
+    if(!projectPixel(g, pS, ox, oy)) { return "behind the camera"; }
+    const int vw = g.camera->viewport_w, vh = g.camera->viewport_h;
+    auto hits = [&](int px, int py) {
+        if(px < 0 || py < 0 || px >= vw || py >= vh) { return false; }
+        return verify(px, py);
+    };
+    if(hits((int)ox, (int)oy)) { sx = ox; sy = oy; return std::string(); }
+    // Rings around the projected centre. A part's screen footprint is a few
+    // tens of pixels at the editor's framing, so this reaches past any single
+    // part while staying cheap (each probe is one pick over the ship).
+    for(int r = 6; r <= 160; r += 6) {
+        for(int a = 0; a < 360; a += 15) {
+            const double rad = (double)a * std::numbers::pi / 180.0;
+            const int px = (int)(ox + std::cos(rad) * r);
+            const int py = (int)(oy + std::sin(rad) * r);
+            if(hits(px, py)) { sx = px; sy = py; return std::string(); }
+        }
+    }
+    return "not clickable from this camera angle (orbit and aim again)";
+}
+
+std::string flightAimAtPart(Game &g, const std::string &shipName,
+                            const std::string &partId, double &sx, double &sy) {
+    if(g.ship == nullptr) { return "no active ship to pick against"; }
+    Vehicle *want = nullptr;
+    for(Vehicle *s : g.vehicles) {
+        if(s->name == shipName) { want = s; break; }
+    }
+    if(want == nullptr) { return "no ship named '" + shipName + "' in the world"; }
+    size_t wantPart = 0;
+    bool found = false;
+    for(size_t i = 0; i < want->parts.size(); i++) {
+        if(want->parts[i]->id == partId) { wantPart = i; found = true; break; }
+    }
+    if(!found) {
+        return "no part '" + partId + "' on ship '" + shipName + "'";
+    }
+    btCompoundShape *cs = want->compoundShape();
+    if(cs == nullptr || (int)wantPart >= cs->getNumChildShapes()) {
+        return "ship '" + shipName + "' has no collision shape";
+    }
+
+    /* The part's own transform, exactly as pickShipPart casts against it, then
+       hopped into the frame the camera's view is built in. */
+    const btTransform child = want->hull->btBody->getCenterOfMassTransform()
+                            * cs->getChildTransform((int)wantPart);
+    const btVector3 c = child.getOrigin();
+    const glm::dvec4 pS = want->renderXform(g.ship->frame)
+                        * glm::dvec4(c.getX(), c.getY(), c.getZ(), 1.0);
+
+    return aimAtPoint(g, glm::dvec3(pS.x, pS.y, pS.z),
+                      [&](int px, int py) {
+        Vehicle *gotShip = nullptr;
+        size_t gotPart = 0;
+        PickBodyHit hit;
+        return pickShipPart(g, px, py, gotShip, gotPart, hit)
+            && gotShip == want && gotPart == wantPart;
+    }, sx, sy);
 }
 
 /* One deck holds one ship: two grounded ships wake and torque each other, so an

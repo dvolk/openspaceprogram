@@ -91,69 +91,23 @@ std::string nextBuildId(const BuildShip &bs, const std::string &base, int &n) {
 
 } // namespace
 
-// Build-frame (S) point -> window pixel, the inverse of pickRay's
-// unprojection. false if behind the camera.
-bool vabProject(const Game &g, const glm::dvec3 &pS, double &px, double &py) {
-    const Camera &cam = *g.camera;
-    // The -renderOrigin shifts cancel, so S-frame points map straight as
-    // v = R * (pS - pos) (the same contract pickRay inverts).
-    const glm::dmat3 R(cam.view);
-    const glm::dvec3 v = R * (pS - cam.pos);
-    if(v.z >= -1e-6) { return false; }
-    const double fx = cam.projection[0][0];
-    const double fy = cam.projection[1][1];
-    const double nx = fx * v.x / (-v.z);
-    const double ny = fy * v.y / (-v.z);
-    px = (nx + 1.0) * 0.5 * (double)cam.viewport_w;
-    py = (1.0 - ny) * 0.5 * (double)cam.viewport_h;
-    return true;
-}
-
-/* Where part <id> can be CLICKED, for --ui-focus. Empty string = aimed and
-   (sx,sy) is a pixel whose real pick lands on that part; otherwise the reason,
-   so a case that names the wrong part fails loudly instead of clicking empty
-   space.
-   Aiming at the part's origin is not enough: the pick is a raycast that keeps
-   the nearest hit, and an interior part's origin usually sits behind whatever
-   is in front of it along the view ray (measured: tanker's part 1 projects to
-   960,540 from the default view and the pick there returns part 3). So start at
-   the origin and spiral out until the real pick returns the part we meant.
-   Nothing is faked -- every candidate is confirmed by the same pickVabPart a
-   click would run. If no pixel in the spiral selects it, the part really is
-   hidden from this angle and the case has to orbit, exactly as a player would. */
+/* Where part <id> can be CLICKED, for --ui-focus. The spiral in aimAtPoint is
+   load-bearing, not decoration: tanker's part 1 projects to 960,540 from the
+   default VAB view and the pick there returns part 3, so the projection alone
+   would aim a click at the wrong part. */
 std::string vabAimAtPart(Game &g, const std::string &id, double &sx, double &sy) {
     if(!sceneIs(g, SceneId::Vab)) { return "not in the VAB editor"; }
-    if(g.camera == nullptr) { return "no camera"; }
     int want = -1;
     for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
         if(g.vab.build.parts[i].id == id) { want = (int)i; break; }
     }
     if(want < 0) { return "no such part in the build"; }
-
-    double ox = 0, oy = 0;
-    if(!vabProject(g, g.vab.build.parts[(size_t)want].localPos, ox, oy)) {
-        return "behind the camera";
-    }
-    const int vw = g.camera->viewport_w, vh = g.camera->viewport_h;
-    auto hits = [&](int px, int py) {
-        if(px < 0 || py < 0 || px >= vw || py >= vh) { return false; }
+    return aimAtPoint(g, g.vab.build.parts[(size_t)want].localPos,
+                      [&](int px, int py) {
         int got = -1;
         PickBodyHit hit;
         return pickVabPart(g, px, py, got, hit) && got == want;
-    };
-    if(hits((int)ox, (int)oy)) { sx = ox; sy = oy; return std::string(); }
-    // Rings around the origin. A part's screen footprint is a few tens of
-    // pixels at the editor's framing, so this reaches past any single part
-    // while staying cheap (each probe is one raycast over the build).
-    for(int r = 6; r <= 160; r += 6) {
-        for(int a = 0; a < 360; a += 15) {
-            const double rad = (double)a * 3.14159265358979 / 180.0;
-            const int px = (int)(ox + std::cos(rad) * r);
-            const int py = (int)(oy + std::sin(rad) * r);
-            if(hits(px, py)) { sx = px; sy = py; return std::string(); }
-        }
-    }
-    return "not clickable from this camera angle (orbit and aim again)";
+    }, sx, sy);
 }
 
 btCollisionShape *vabPartHull(const PartDef *def) { return vabAsset(def).hull; }
@@ -199,7 +153,7 @@ int pickVabNode(Game &g, int px, int py, int partIdx, double thresholdPx) {
         if(bp.def->nodes[i].surface) { continue; }   // stack ports only
         if(g.vab.build.nodeOccupied(partIdx, bp.def->nodes[i].id)) { continue; }
         double sx = 0, sy = 0;
-        if(!vabProject(g, vabNodePos(g, partIdx, (int)i), sx, sy)) { continue; }
+        if(!projectPixel(g, vabNodePos(g, partIdx, (int)i), sx, sy)) { continue; }
         const double d = glm::length(glm::dvec2(sx - (double)px, sy - (double)py));
         if(d < best) { best = d; bestI = (int)i; }
     }

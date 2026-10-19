@@ -1,11 +1,15 @@
 NAME science-experiment
-ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --experiment 1500
+ARGS --time-accel 1 --timeout 8 --width 1920 --height 1080
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --ui-focus 1000,racer/capsule_1
+ARGS --sim-mouse 1100,0,CUR,CUR,RMB
+ARGS --ui-click 1500,"racer > Capsule (2m)##0/Run Experiment"
 ARGS --recover 4000 --recover-anywhere
 EXPECT [science] t=
 EXPECT recorded
 EXPECT [science] recovered +13
 EXPECT [recover] t=
 EXPECT [spacecenter] entered
+FORBID FAILED
 FORBID GL_
 FORBID error:

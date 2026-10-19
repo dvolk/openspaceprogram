@@ -1,12 +1,24 @@
 # two findings run, one couriered home; the one left on the walking crew member
 # does not score
 NAME courier-two-findings
-ARGS --time-accel 1 --timeout 10 --frame-cap 30 --startship labpod,res/ships/labpod.json,Kerbin,rot-orbit
-ARGS --experiment 1000
-ARGS --pod-experiment 1500
-ARGS --eva 2000
-ARGS --take 2500
-ARGS --store 3000
+ARGS --time-accel 1 --timeout 10 --frame-cap 30 --width 1920 --height 1080
+ARGS --startship labpod,res/ships/labpod.json,Kerbin,rot-orbit
+ARGS --ui-focus 700,labpod/capsule_1
+ARGS --sim-mouse 800,0,CUR,CUR,RMB
+ARGS --ui-click 1000,"labpod > Capsule (2m)##0/Run Experiment"
+ARGS --ui-focus 1200,labpod/materials_pod_1
+ARGS --sim-mouse 1300,0,CUR,CUR,RMB
+ARGS --ui-click 1500,"labpod > Materials Pod (2m)##1/Run Experiment##pod_run"
+ARGS --ui-click 2000,"labpod > Capsule (2m)##0/EVA"
+ARGS --ui-click 2500,"labpod > Materials Pod (2m)##1/Take  (to Ash)##pod_take"
+ARGS --ui-click 3000,"labpod > Capsule (2m)##0/Store  (into capsule)"
+# Both experiments are the buttons a player presses: the capsule's "Run
+# Experiment" (its first seat) and the pod's "Run Experiment##pod_run". The
+# ##pod_run suffix exists precisely so a bare "Run Experiment" cannot satisfy
+# the pod click, and the two paths here prove it: swap them and the case fails.
+# --frame-cap 30 makes the frame clock coarse (~333ms), so several scripted
+# events fall due in one batch; emit_sim_events pushes the aim before the click,
+# which is what keeps an aim-then-click pair correct at any frame rate.
 # Hand control back to the ship with V (Slot::ToggleEva -> lastShip) rather than
 # boarding: boarding would carry the suit's still-held study home, and the point
 # here is that a finding left on a walking crew member is NOT banked. V is what a
@@ -23,5 +35,9 @@ EXPECT new: Low orbit observation
 FORBID new: Low orbit materials study
 EXPECT [recover] t=
 EXPECT [spacecenter] entered
+EXPECT ship=labpod part=0 (capsule)
+EXPECT ship=labpod part=1 (materials_pod)
+EXPECT EVA: 'Ash' out of 'labpod' part 0
+FORBID FAILED
 FORBID GL_
 FORBID error:
