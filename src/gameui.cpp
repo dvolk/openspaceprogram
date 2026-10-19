@@ -2063,31 +2063,52 @@ void drawPartWindows(Game &g) {
         char name[256];
         snprintf(name, sizeof(name), "%s > %s##%zu",
                  ship->name.c_str(), disp, part);
-        if(!live.placed) {
-            // Open near the mouse (the part was picked there), flipping sides when there is no room.
-            const ImGuiViewport *vp = ImGui::GetMainViewport();
-            const float maxw = 320.0f, maxh = 340.0f, gap = 12.0f;
-            float x = (float)live.mx + gap;
-            float y = (float)live.my + gap;
-            if(x + maxw > vp->WorkPos.x + vp->WorkSize.x) {
-                x = (float)live.mx - gap - maxw;
-            }
-            if(y + maxh > vp->WorkPos.y + vp->WorkSize.y) {
-                y = (float)live.my - gap - maxh;
-            }
-            x = std::max(x, (float)vp->WorkPos.x);
-            y = std::max(y, (float)vp->WorkPos.y);
-            /* Adjacent parts pick a few tens of pixels apart, so a second part
-               window lands almost exactly on the first and buries its buttons --
-               the player cannot see them, let alone press them. Try the asked-for
-               spot, then steps away from it, and take the first that clears every
-               part window already open. The other windows' rects are their real
-               ones; the new window's are the same estimate the side flip above
-               uses, since its size is unknown until the first Begin. */
-            auto clashes = [&](float cx, float cy) {
-                for(const PartSel &other : g.part_sels) {
-                    if(&other == &live || !other.placed
-                       || other.part >= other.ship->parts.size()) { continue; }
+        /* Placement, every frame rather than once. Two reasons it cannot be a
+           one-off:
+             - the window's size is unknown until imgui has finished auto-fitting
+               it (AutoFitFrames counts down from 2), so the first frames place
+               against an estimate;
+             - the content GROWS after placement: Board / Take / Store rows
+               appear when a crew member walks into reach, so a window that was
+               clear of its neighbour can grow into it and bury that neighbour's
+               buttons again.
+           Measured at 1080p: a 1-seat capsule window is 284x299, a 6-seat one
+           284x479, a materials pod 241x209. The estimate is therefore the small
+           common case, not the worst case -- the real size takes over as soon as
+           it is known, which is what makes a 479-tall window safe without
+           shoving every small window away from the mouse.
+           A window the PLAYER moved stays where they put it: we only ever ask
+           for askX/askY, so any other Pos is theirs. */
+        ImGuiWindow *win = ImGui::FindWindowByName(name);
+        const bool sized = win != nullptr && win->AutoFitFramesX <= 0
+                        && win->AutoFitFramesY <= 0;
+        if(sized) {
+            live.winW = win->Size.x;
+            live.winH = win->Size.y;
+        }
+        const float estw = 300.0f, esth = 300.0f, gap = 12.0f, step = 96.0f;
+        const float resw = live.winW > 0 ? live.winW : estw;
+        const float resh = live.winH > 0 ? live.winH : esth;
+        const ImGuiViewport *vp = ImGui::GetMainViewport();
+        const float xlo = (float)vp->WorkPos.x, ylo = (float)vp->WorkPos.y;
+        const float xhiW = xlo + (float)vp->WorkSize.x;
+        const float yhiW = ylo + (float)vp->WorkSize.y;
+        /* Adjacent parts pick a few tens of pixels apart, so a second part
+           window lands almost exactly on the first and buries its buttons --
+           the player cannot see them, let alone press them. Try the asked-for
+           spot, then steps away from it, and take the first that clears every
+           other part window. Each other window is measured against where it
+           WILL be this frame (the spot we asked for, not last frame's Pos): two
+           windows resolving in the same frame must not step into each other's
+           move, which is how a one-pass layout oscillates. */
+        auto clashes = [&](float cx, float cy, float cw, float ch) {
+            for(const PartSel &other : g.part_sels) {
+                if(&other == &live || !other.placed
+                   || other.part >= other.ship->parts.size()) { continue; }
+                float ox = other.askX, oy = other.askY;
+                float ow = other.winW > 0 ? other.winW : estw;
+                float oh = other.winH > 0 ? other.winH : esth;
+                if(other.userMoved) {
                     char oname[256];
                     snprintf(oname, sizeof(oname), "%s > %s##%zu",
                              other.ship->name.c_str(),
@@ -2095,40 +2116,67 @@ void drawPartWindows(Game &g) {
                              other.part);
                     const ImGuiWindow *w = ImGui::FindWindowByName(oname);
                     if(w == nullptr) { continue; }
-                    if(cx < w->Pos.x + w->Size.x && cx + maxw > w->Pos.x
-                       && cy < w->Pos.y + w->Size.y && cy + maxh > w->Pos.y) {
-                        return true;
-                    }
+                    ox = w->Pos.x; oy = w->Pos.y;
+                    ow = w->Size.x; oh = w->Size.y;
                 }
-                return false;
-            };
-            const float step = 96.0f;
-            // Right first (the screen is wide and a part window is tall), then
-            // down, then left.
-            static const int kx[] = {0, 1, 2, 3, 4, 5, -1, -2, 0, 0, 0, 0};
-            static const int ky[] = {0, 0, 0, 0, 0, 0,  0,  0, 1, 2, 3,-1};
-            const float xlo = (float)vp->WorkPos.x;
-            const float ylo = (float)vp->WorkPos.y;
-            /* A viewport smaller than the estimate leaves an empty clamp range
+                if(cx < ox + ow && cx + cw > ox && cy < oy + oh && cy + ch > oy) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        // Right first (the screen is wide and a part window is tall), then down,
+        // then left. Falls through on the last candidate if none is clear.
+        static const int kx[] = {0, 1, 2, 3, 4, 5, -1, -2, 0, 0, 0, 0};
+        static const int ky[] = {0, 0, 0, 0, 0, 0,  0,  0, 1, 2, 3,-1};
+        auto place = [&](float x0, float y0, float cw, float ch,
+                         float &ox, float &oy) {
+            /* A viewport smaller than the window leaves an empty clamp range
                (hi < lo is UB, and silently yields a negative coordinate), so keep
                the range non-empty: such a window just sits at the work origin. */
-            const float xhi = std::max(xlo, xlo + (float)vp->WorkSize.x - maxw);
-            const float yhi = std::max(ylo, ylo + (float)vp->WorkSize.y - maxh);
-            const float x0 = x, y0 = y;
+            const float xhi = std::max(xlo, xhiW - cw);
+            const float yhi = std::max(ylo, yhiW - ch);
+            ox = x0; oy = y0;
             for(int t = 0; t < 12; t++) {
-                x = std::clamp(x0 + (float)kx[t] * step, xlo, xhi);
-                y = std::clamp(y0 + (float)ky[t] * step, ylo, yhi);
-                if(!clashes(x, y)) { break; }
+                ox = std::clamp(x0 + (float)kx[t] * step, xlo, xhi);
+                oy = std::clamp(y0 + (float)ky[t] * step, ylo, yhi);
+                if(!clashes(ox, oy, cw, ch)) { return; }
             }
-            ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Appearing);
+        };
+        if(!live.placed) {
+            // Open near the mouse (the part was picked there), flipping sides when there is no room.
+            float x = (float)live.mx + gap;
+            float y = (float)live.my + gap;
+            if(x + resw > xhiW) { x = (float)live.mx - gap - resw; }
+            if(y + resh > yhiW) { y = (float)live.my - gap - resh; }
+            float px, py;
+            place(std::max(x, xlo), std::max(y, ylo), resw, resh, px, py);
+            ImGui::SetNextWindowPos(ImVec2(px, py), ImGuiCond_Appearing);
+            live.askX = px;
+            live.askY = py;
             live.placed = true;
+        } else if(win != nullptr) {
+            if(std::abs(win->Pos.x - live.askX) > 0.5f
+               || std::abs(win->Pos.y - live.askY) > 0.5f) {
+                live.userMoved = true;   // the player put it there; leave it be
+            } else if(sized && (clashes(win->Pos.x, win->Pos.y, win->Size.x, win->Size.y)
+                                || win->Pos.x + win->Size.x > xhiW
+                                || win->Pos.y + win->Size.y > yhiW)) {
+                // It grew into a neighbour, or hangs off the viewport: move it.
+                float px, py;
+                place(win->Pos.x, win->Pos.y, win->Size.x, win->Size.y, px, py);
+                ImGui::SetNextWindowPos(ImVec2(px, py), ImGuiCond_Always);
+                live.askX = px;
+                live.askY = py;
+            }
         }
         /* From here the body can fire a button that deletes a vehicle, and
            dropVehicleRefs -> dropPartWindowsFor erase_from part_sels: a reference
            into the vector would then alias whatever shifted into this slot, and
            the rest of the body (sel.point, and the next iteration's index) would
-           read the wrong window. `placed` is the only field the body writes, and
-           it is written above, so work from a copy. */
+           read the wrong window. The layout fields above are the only fields
+           this loop writes, and they are all written before this copy, so the
+           body works from a copy. */
         const PartSel sel = live;
         bool open = true;
             /* A successful pickup may have dropped an EARLIER part_sels entry, shifting what
