@@ -53,6 +53,14 @@ float g_press_y = 0.0f;
 // Park the cursor on the frame after a release (see uiInputFrame).
 bool g_park_next = false;
 
+/* The --ui-type whose field was just focused, and how far its typing has got.
+   Three frames: imgui's select-all shortcut is edge-triggered, so the press and
+   the release cannot share a frame, and the characters have to arrive after the
+   selection exists or they append instead of replacing. */
+UiClick *g_type = nullptr;
+enum { kTypeSelectDown, kTypeSelectUp, kTypeChars };
+int g_type_phase = kTypeSelectDown;
+
 // Wall clock allowed for a window to open and settle before a --ui-click
 // gives up.
 const Uint32 kUiClickRetryMs = 2000;
@@ -164,16 +172,19 @@ void uiInputFrame(ImGuiContext *ctx, ImGuiContextHook *hook) {
            the window moved or another widget covers the point -- and imgui
            will activate whatever IS there, so say so rather than log a clean
            click. */
+        bool failed = false;
         if(ctx->HoveredId != g_press_id) {
             const char *lab = labelOf(ctx->HoveredId);
             failClick(c, now, lab != nullptr
                 ? std::string("MISMATCH hovered \"") + lab
                   + "\" at release (the item moved or is covered)"
                 : "MISMATCH nothing was hovered at release");
+            failed = true;
         } else if(ctx->HoveredIdIsDisabled) {
             // It turned disabled between the pass we aimed at and the press.
             failClick(c, now, "disabled at release (the gate closed between the"
                               " frame we aimed at and the frame we pressed)");
+            failed = true;
         }
         // Re-assert the position: the backend may have queued its own since.
         io.AddMousePosEvent(g_press_x, g_press_y);
@@ -183,6 +194,38 @@ void uiInputFrame(ImGuiContext *ctx, ImGuiContextHook *hook) {
         c.up_sent = true;
         c.done = true;
         g_park_next = true;
+        /* A --ui-type only types if its click actually landed: typing goes to
+           whatever has keyboard focus, and after a failed click that is not the
+           field the case named. */
+        if(!failed && !c.type_after.empty()) {
+            c.done = false;
+            g_type = &c;
+            g_type_phase = kTypeSelectDown;
+        }
+        return;
+    }
+
+    if(g_type != nullptr) {
+        UiClick &c = *g_type;
+        /* Select all before typing. These fields open pre-filled ("game1",
+           "save1"), so characters alone would append to what the case did not
+           ask for. */
+        if(g_type_phase == kTypeSelectDown) {
+            io.AddKeyEvent(ImGuiMod_Ctrl, true);
+            io.AddKeyEvent(ImGuiKey_A, true);
+            g_type_phase = kTypeSelectUp;
+        } else if(g_type_phase == kTypeSelectUp) {
+            io.AddKeyEvent(ImGuiKey_A, false);
+            io.AddKeyEvent(ImGuiMod_Ctrl, false);
+            g_type_phase = kTypeChars;
+        } else {
+            io.AddInputCharactersUTF8(c.type_after.c_str());
+            printf("[uitype] loop=%.2fs path=\"%s\" typed=\"%s\"\n",
+                   now / 1000.0, c.path.c_str(), c.type_after.c_str());
+            fflush(stdout);
+            c.done = true;
+            g_type = nullptr;
+        }
         return;
     }
 

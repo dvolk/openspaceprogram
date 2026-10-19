@@ -1,0 +1,22 @@
+# Text entry through the widget. --ui-type clicks the field to focus it, sends a
+# select-all, then queues the characters through imgui's own input queue, so the
+# widget's length cap and the game's own name check are what run -- only the OS's
+# key-to-text translation is skipped.
+# The select-all is the part that can silently break: the field opens holding
+# "game1", so characters alone would append and the game would start as
+# "game1nova". The dir name is the witness -- it is <stamp>-<name>, so the tail
+# says exactly what the field ended up holding.
+NAME ui-type-game-name
+ARGS --timeout 9
+ARGS --ui-click 1500,"Title Menu/New Game"
+ARGS --ui-type 2500,"##newgame_name",nova
+ARGS --ui-click 4000,"New Game/Start"
+EXPECT path="##newgame_name" window="New Game" label="##newgame_name"
+EXPECT typed="nova"
+EXPECT [game] new game 'nova'
+EXPECT [scene] title -> spacecenter (enterSpaceCenter)
+CHECK re.search(r"new game 'nova' .*-nova\n", out)
+FORBID new game 'game1
+FORBID FAILED
+FORBID error:
+FORBID GL_

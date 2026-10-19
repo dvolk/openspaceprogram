@@ -1,0 +1,20 @@
+# The point of typing through the widget rather than calling startNewGame: the
+# field's own validation runs. safeGameName (gameui.cpp:3159) blocks what would
+# break a saves/ directory name, and the Start button refuses rather than
+# sanitising. A hook that passed the name straight to startNewGame would test
+# the check in isolation and miss the button ignoring it.
+# "/" is in the blocklist, so the sheet must stay on screen and no game may
+# start. The warning under the field is drawn from the same predicate, so it is
+# part of the assertion rather than a nicety.
+NAME ui-type-illegal-game-name
+ARGS --timeout 8
+ARGS --ui-click 1500,"Title Menu/New Game"
+ARGS --ui-type 2500,"##newgame_name",bad/name
+ARGS --ui-click 4000,"New Game/Start"
+EXPECT typed="bad/name"
+EXPECT [toast] Give the game a name
+FORBID [game] new game
+FORBID [scene] title -> spacecenter
+FORBID FAILED
+FORBID error:
+FORBID GL_

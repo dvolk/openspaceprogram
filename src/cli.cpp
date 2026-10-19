@@ -11,6 +11,32 @@
 
 #include <CLI11/CLI11.hpp>
 
+/* Parses the leading "AT_MS," of a --ui-* value, leaving everything after the
+   comma in `rest`. Prints the error and returns false; the callers are the
+   --ui-click and --ui-type loops, which share the time token exactly. */
+static bool parse_ui_time(const std::string &spec, const char *flag,
+                          Uint32 &at_ms, std::string &rest) {
+    const size_t comma = spec.find(',');
+    if(comma == std::string::npos) {
+        printf("error: %s expects AT_MS,... (e.g. %s 1500,\"Title Menu/"
+               "New Game\"); got '%s'\n", flag, flag, spec.c_str());
+        return false;
+    }
+    const std::string ts = spec.substr(0, comma);
+    char *end = nullptr;
+    const unsigned long t = strtoul(ts.c_str(), &end, 10);
+    // The end-pointer test alone would accept "-5" (strtoul wraps); the range
+    // test also keeps the Uint32 cast honest.
+    if(ts.empty() || end != ts.c_str() + ts.size() || t > 0xFFFFFFFFUL) {
+        printf("error: %s time '%s' is not a loop time in ms "
+               "(0..4294967295)\n", flag, ts.c_str());
+        return false;
+    }
+    at_ms = (Uint32)t;
+    rest = spec.substr(comma + 1);
+    return true;
+}
+
 bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 {
     CLI::App app{"Open Space Program"};
@@ -359,6 +385,19 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Dump every clickable imgui item (window, label, rect) at "
                    "this loop time in ms, for writing --ui-click paths "
                    "(test hook; -1 = never)");
+
+    std::vector<std::string> ui_type;
+    app.add_option("--ui-type", ui_type,
+                   "Synthetic imgui text entry for e2e testing: "
+                   "AT_MS,WINDOW/LABEL,TEXT. Clicks the widget to focus it, "
+                   "selects all, then queues TEXT through imgui's own character "
+                   "input -- so the widget's filters and length cap run, and a "
+                   "pre-filled field (\"game1\", \"save1\") is replaced rather "
+                   "than appended to. Fails like --ui-click if the widget is "
+                   "not there. TEXT may contain commas; a path that does cannot "
+                   "be named here. Repeat the flag, or space-separate the "
+                   "values.")
+        ->expected(-1);
 
     app.add_option("--atlas-dump", args.atlas_dump_ms,
                    "Print the System Atlas at this loop time in ms: one "
@@ -1121,25 +1160,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     /* Split each AT_MS,WINDOW/LABEL value at the FIRST comma -- the path itself
        may contain commas. */
     for(const std::string &spec : ui_click) {
-        const size_t comma = spec.find(',');
-        if(comma == std::string::npos) {
-            printf("error: --ui-click expects AT_MS,WINDOW/LABEL (e.g. "
-                   "1500,\"Title Menu/New Game\"); got '%s'\n", spec.c_str());
+        Uint32 at_ms = 0;
+        std::string path;
+        if(!parse_ui_time(spec, "--ui-click", at_ms, path)) {
             *exit_code = 1;
             return false;
         }
-        const std::string ts = spec.substr(0, comma);
-        char *end = nullptr;
-        const unsigned long t = strtoul(ts.c_str(), &end, 10);
-        // The end-pointer test alone would accept "-5" (strtoul wraps); the
-        // range test also keeps the Uint32 cast honest.
-        if(ts.empty() || end != ts.c_str() + ts.size() || t > 0xFFFFFFFFUL) {
-            printf("error: --ui-click time '%s' is not a loop time in ms "
-                   "(0..4294967295)\n", ts.c_str());
-            *exit_code = 1;
-            return false;
-        }
-        const std::string path = spec.substr(comma + 1);
         if(path.empty()) {
             printf("error: --ui-click '%s' has an empty WINDOW/LABEL path\n",
                    spec.c_str());
@@ -1147,11 +1173,51 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             return false;
         }
         UiClick c;
-        c.at_ms = (Uint32)t;
+        c.at_ms = at_ms;
         c.path = path;
         c.down_sent = false;
         c.up_sent = false;
         c.done = false;
+        args.ui_clicks.push_back(c);
+    }
+
+    /* --ui-type is a --ui-click that keeps going, so it lands in the same
+       queue. The path ends at the SECOND comma, which means a path containing a
+       comma cannot be named here; TEXT may contain anything. */
+    for(const std::string &spec : ui_type) {
+        Uint32 at_ms = 0;
+        std::string rest;
+        if(!parse_ui_time(spec, "--ui-type", at_ms, rest)) {
+            *exit_code = 1;
+            return false;
+        }
+        const size_t comma = rest.find(',');
+        if(comma == std::string::npos) {
+            printf("error: --ui-type expects AT_MS,WINDOW/LABEL,TEXT (e.g. "
+                   "2000,\"##newgame_name\",mygame); got '%s'\n", spec.c_str());
+            *exit_code = 1;
+            return false;
+        }
+        const std::string path = rest.substr(0, comma);
+        const std::string text = rest.substr(comma + 1);
+        if(path.empty()) {
+            printf("error: --ui-type '%s' has an empty WINDOW/LABEL path\n",
+                   spec.c_str());
+            *exit_code = 1;
+            return false;
+        }
+        if(text.empty()) {
+            printf("error: --ui-type '%s' has empty TEXT\n", spec.c_str());
+            *exit_code = 1;
+            return false;
+        }
+        UiClick c;
+        c.at_ms = at_ms;
+        c.path = path;
+        c.down_sent = false;
+        c.up_sent = false;
+        c.done = false;
+        c.type_after = text;
         args.ui_clicks.push_back(c);
     }
 

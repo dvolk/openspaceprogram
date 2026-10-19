@@ -83,6 +83,12 @@ struct UiClick {
     bool down_sent;    // press queued (item found)
     bool up_sent;      // release queued
     bool done;         // clicked, or gave up
+    /* --ui-type: text to enter once the click has focused this widget. Empty
+       for a plain --ui-click. It goes through imgui's own input queue (a
+       select-all, then the characters), so the widget's own filters, length cap
+       and commit path are what run -- only the OS-level key-to-text translation
+       is skipped. */
+    std::string type_after;
 };
 
 /* --sim-mode: scripted runtime display-mode change. */
