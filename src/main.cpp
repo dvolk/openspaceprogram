@@ -1523,6 +1523,11 @@ int main(int argc, char **argv)
             drawToasts(game);
 
             ImGui::Render();
+            /* The editor's left click runs here, not in vabUpdate: after
+               Render, WantCaptureMouse describes the frame that just drew, so
+               a click that imgui took cannot also place a part. See
+               vabClickAfterUI. */
+            if(sceneIs(game, SceneId::Vab)) { vabClickAfterUI(game); }
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
             if(screenshot_requested == true) {

@@ -383,9 +383,11 @@ void hubKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
 void poll_events(Game &g) {
     SDL_Event ev;
 
-    /* lmbPressed lives exactly one frame: set here, consumed by vabUpdate in
-       this frame's LOGIC phase. Clearing on entry is what keeps a click made in
-       another scene from placing a part when the VAB next opens. */
+    /* lmbPressed lives exactly one frame: set here, consumed later in the same
+       loop iteration by vabClickAfterUI -- deliberately after the imgui frame,
+       so the gate is this frame's WantCaptureMouse. Clearing on entry is what
+       keeps a click made in another scene from placing a part when the VAB
+       next opens. */
     g.lmbPressed = false;
 
     /* Modality is decided ONCE per batch: answerQuestion() runs the card's

@@ -1091,32 +1091,47 @@ void vabInstallHooks(Game &g) {
     }
 }
 
-/* The editor's mouse half: hover-pick, ghost preview, LMB places/links/selects.
-   While the cursor is over an imgui window the UI owns the mouse (no pick/place).
-   WantCaptureMouse holds LAST frame's value -- at most one frame stale. */
+/* The editor's mouse half, part 1: hover-pick and ghost preview, which must
+   resolve before the 3D pass draws them. WantCaptureMouse here is LAST
+   frame's value -- the click half therefore lives in vabClickAfterUI. */
 void vabUpdate(Game &g) {
     /* Delete/Detach renumber the tree under an assignment's feet; drop the ones
        that no longer name a seat before the window reads them. */
     vabPruneSeats(g);
-    const int mx = g.mposX, my = g.mposY;
-    const bool overUI = ImGui::GetIO().WantCaptureMouse;
-    if(overUI) {
+    if(ImGui::GetIO().WantCaptureMouse) {
         vabClearHover(g);
     } else {
-        vabUpdateHover(g, mx, my);
+        vabUpdateHover(g, g.mposX, g.mposY);
     }
     /* --vab-place: polled here, after the hover pass, because the ghost it
        places is what that pass armed (see vabInstallHooks). */
     g.fireHooks(kHookVabPlace);
-    if(g.lmbPressed && !overUI) {
-        if(g.vab.linkMode) {
-            vabLinkClick(g);
-        } else if(!g.vab.armed.empty() || g.vab.armedAsm >= 0) {
-            vabPlace(g);
-        } else if(g.vab.hover >= 0) {
-            // nothing armed: a plain click selects the hovered part
-            g.vab.selected = g.vab.hover;
-            g.vab.linkSel = -1;
-        }
+}
+
+/* The editor's mouse half, part 2: what a left click DOES. Called after
+   ImGui::Render, not from vabUpdate, because the gate has to be THIS frame's
+   WantCaptureMouse. --sim-mouse pushes MOTION and BUTTON_DOWN in one
+   poll_events batch, so on the frame a click lands, the value vabUpdate
+   sampled is still the previous frame's: the cursor read as being over empty
+   space, and a click aimed at the palette placed a part THROUGH the palette
+   window (measured: a click at 1750,100 inside the Palette rect still
+   launched 1 part). A real flick-and-click delivers the same pair in one
+   batch, so this is a game bug, not just a harness one.
+   Deferring within the frame is safe: lmbPressed is an edge that lives
+   exactly one frame (poll_events clears it on entry). The hover it acts on is
+   one frame older than the gate -- unavoidable, the ghost is drawn before
+   imgui runs -- so a click on the very frame the cursor leaves a window sees a
+   cleared hover and does nothing rather than attaching at the wrong parent. */
+void vabClickAfterUI(Game &g) {
+    if(!g.lmbPressed) { return; }
+    if(ImGui::GetIO().WantCaptureMouse) { return; }   // imgui took this click
+    if(g.vab.linkMode) {
+        vabLinkClick(g);
+    } else if(!g.vab.armed.empty() || g.vab.armedAsm >= 0) {
+        vabPlace(g);
+    } else if(g.vab.hover >= 0) {
+        // nothing armed: a plain click selects the hovered part
+        g.vab.selected = g.vab.hover;
+        g.vab.linkSel = -1;
     }
 }

@@ -486,10 +486,11 @@ struct Game {
        the way it drives everything else.
        lmbPressed is an edge, not the held state: --sim-mouse issues a
        zero-duration click as DOWN then UP in the same poll, so a held flag
-       would be back to false before vabUpdate ever looked. RMB clicks already
-       work that way, off the UP event. */
+       would be back to false before the editor ever looked. RMB clicks already
+       work that way, off the UP event. poll_events clears it on entry, so it
+       lives exactly one frame; vabClickAfterUI is its only consumer. */
     int mposX = 0, mposY = 0;
-    bool lmbPressed = false;    // consumed by vabUpdate each frame
+    bool lmbPressed = false;    // one-frame edge; cleared by poll_events
     bool poly_mode = false;         // F11 wireframe
     bool screenshot_requested = false;
     /* Every Vehicle in the world, in spawn order, OWNED here (a TerrainBody

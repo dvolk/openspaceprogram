@@ -1,0 +1,24 @@
+# The mirror of 278: a click INSIDE an imgui window must not place a part
+# through it.
+#
+# This is a real bug, not a harness artefact. --sim-mouse pushes MOTION and
+# BUTTON_DOWN in one poll_events batch, so on the frame the click lands the
+# WantCaptureMouse the editor sampled is still the PREVIOUS frame's -- the
+# cursor read as being over empty space, and the click placed a part through
+# the Palette window (measured: a click at 1750,100, inside the Palette rect,
+# launched 1 part). A real flick-and-click delivers the same event pair, so a
+# player could do this too.
+#
+# vabClickAfterUI now runs after ImGui::Render, where WantCaptureMouse
+# describes the frame that just drew. The Palette window is at roughly
+# 1642,42..1884,60+; 1750,100 is inside it.
+NAME vab-click-through-window
+ARGS --vab-empty --vab-arm capsule_r1.5h3 --timeout 6 --frame-cap 30
+ARGS --sim-mouse 2000,0,1750,100,LMB
+ARGS --vab-launch 3500
+EXPECT [toast] Nothing to launch
+FORBID launched
+FORBID place hook
+FORBID FAILED
+FORBID GL_
+FORBID error:

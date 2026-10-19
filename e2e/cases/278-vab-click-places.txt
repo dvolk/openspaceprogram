@@ -1,0 +1,20 @@
+# The VAB used to poll SDL_GetMouseState for the cursor and the left button, so
+# a pushed --sim-mouse never reached the editor: --vab-place existed because
+# there was no other way to place a part headless. The cursor now comes from the
+# event queue, so a synthetic click drives the editor like it drives everything
+# else -- and nothing in the suite tested that, which is how the freeze went
+# unnoticed for as long as it did.
+#
+# A click in the 3D area places the armed part, so LAUNCH finds one part. The
+# place is the click's, not the hook's: --vab-place prints "[vab] place hook:",
+# a plain click prints nothing, so FORBID on that line proves which path ran.
+NAME vab-click-places
+ARGS --vab-empty --vab-arm capsule_r1.5h3 --timeout 6 --frame-cap 30
+ARGS --sim-mouse 2000,0,960,540,LMB
+ARGS --vab-launch 3500
+EXPECT [vab] launched 'Ship' (1 parts)
+FORBID place hook
+CHECK re.search(r"\[vab\] launched 'Ship' \((\d+) parts\)", out).group(1) == "1"
+FORBID FAILED
+FORBID GL_
+FORBID error:

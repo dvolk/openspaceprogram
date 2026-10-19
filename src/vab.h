@@ -96,6 +96,11 @@ void vabInstallHooks(Game &g);
 // (scene.cpp vabUpdateLive: vabUpdate then tick).
 void vabUpdate(Game &g);
 
+// What a left click DOES in the editor. Separate from vabUpdate because it
+// must run after ImGui::Render, where WantCaptureMouse describes THIS frame
+// (see the comment at the definition). Only the VAB consumes the LMB edge.
+void vabClickAfterUI(Game &g);
+
 // Scene transitions. The Vab is a LIVE scene (sim keeps coasting). Open/Close
 // are the player-facing pair (push/pop the scene stack); Enter/Exit are the
 // scene table's lifecycle hooks.
