@@ -1,0 +1,27 @@
+# a walking crew member's own "Run Experiment" -- the suit window, not a part's
+#
+# Retiring --experiment left every converted case pressing a PART window's button, so
+# the other half of the same action -- the walker's suit window, gameui.cpp's
+# ship->isEva() && part == 0 block, which calls Game::runExperiment -- had no coverage
+# (#325). It is reachable the way a player reaches it: a walking kerbal is a vehicle in
+# its own right, so --ui-focus takes "Ash/kerbal_1", RMB opens its window, and the
+# button is a click.
+#
+# The witness is WHO recorded. The capsule has no crew from 1.6s on, so a recorder at
+# all means the walker did the work; the [science] line names them.
+NAME suit-experiment-from-the-walker
+ARGS --time-accel 1 --timeout 9 --width 1920 --height 1080
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --ui-focus 1000,racer/capsule_1
+ARGS --sim-mouse 1100,0,CUR,CUR,RMB
+ARGS --ui-click 1500,"racer > Capsule (2m)##0/EVA##eva0"
+ARGS --ui-focus 4000,Ash/kerbal_1
+ARGS --sim-mouse 4100,0,CUR,CUR,RMB
+ARGS --ui-click 4600,"Ash > Kerbal##0/Run Experiment"
+EXPECT EVA: 'Ash' out of 'racer' part 0
+EXPECT ship=Ash part=0 (kerbal)
+EXPECT 'Ash' recorded 'Low orbit observation
+EXPECT [science] t=
+FORBID FAILED
+FORBID GL_
+FORBID error:
