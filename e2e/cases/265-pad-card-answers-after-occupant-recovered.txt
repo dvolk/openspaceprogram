@@ -8,6 +8,14 @@
 # the pad, so --recover retires it; the top-of-loop sweep frees it a frame
 # later. The card answered at 3000ms must re-find the occupant through the
 # pad's NAME and find nobody.
+#
+# --recover stays, and not because the button is unreachable: racer is grounded
+# at home, so "Game Menu/Recover Vessel" would work (cases 106/107/108 click it).
+# It cannot be reached FROM THIS STATE. The launch was refused, so the game is in
+# the VAB with the card up, and ESC answers the card instead of popping the
+# scene -- measured, the first ESC prints [ask] answered 1 and the card is gone
+# before the recover. Dismissing the subject to reach the button would test
+# something else, so the hook does the kill and the card stays the subject.
 NAME pad-card-answers-after-occupant-recovered
 ARGS --time-accel 1 --timeout 12
 ARGS --vab res/ships/tanker.json --startship racer,res/ships/racer.json,Kerbin,pad

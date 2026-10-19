@@ -1,10 +1,21 @@
+# Recovering a ship that is grounded on its home body: the hub's "Recover
+# Vessel" button, which is the only way a player ends a flight successfully.
+# ESC pops flight -> hub, and the button sits in the hub's Game Menu.
+#
+# This is the case that covers the button itself. The other recover cases go
+# through --recover because they are in orbit and need --recover-anywhere, which
+# no button offers -- recoverActive refuses unless the ship is grounded on the
+# home body (game.cpp:2143). Until now nothing clicked this button at all, so
+# the suite would not have noticed it disappearing.
 NAME recover-grounded
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,pad
-ARGS --sim-press 1000,0,ESCAPE --recover 2000
+ARGS --sim-press 1000,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Recover Vessel"
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [recover] t=
 EXPECT 'racer' recovered
 EXPECT [spacecenter] entered
 EXPECT Timeout reached (8.
+FORBID FAILED
 FORBID GL_
 FORBID error:

@@ -1,10 +1,17 @@
+# Grounded, but not at home: racer sits on Moho's pad while its home body is
+# Kerbin, so the hub's "Recover Vessel" button refuses. Same button as case 106,
+# different half of the gate -- 106 fails the grounded test, this one fails
+# m_parent != home (game.cpp:2143). A ship in interplanetary space that happens
+# to be sitting on something must still not end its flight.
 NAME recover-wrong-body
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Moho,pad
-ARGS --sim-press 1000,0,ESCAPE --recover 2000
+ARGS --sim-press 1000,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Recover Vessel"
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [toast] Cannot recover
 EXPECT grounded on the home body
 EXPECT Timeout reached (8.
 FORBID [recover]
+FORBID FAILED
 FORBID GL_
 FORBID error:

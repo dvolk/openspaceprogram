@@ -1,5 +1,12 @@
 # recovering while a crew member walks: the hub hides the button, and --recover
 # now refuses the same way instead of switching to the ship behind the player's back
+#
+# The hook is the only way in, and that is a statement about the UI, not the
+# harness: navSpaceCenter draws "Recover Vessel" under `g.ship != nullptr &&
+# !g.ship->isEva()` (gameui.cpp:3087), so with a walker active there is no button
+# to click. Note the inconsistency with cases 106/108, where the button IS drawn
+# in a state where recoverActive can only refuse. Hiding here and showing there
+# is not the same call; #316.
 NAME recover-refused-walking
 ARGS --time-accel 1 --timeout 9 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --eva 1500
