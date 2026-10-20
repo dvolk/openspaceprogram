@@ -1361,8 +1361,8 @@ void Game::installSystem(System &&newSys, const std::string &path,
 void Game::settleVehicles(Vehicle *active) {
     // Ships sharing an orbit scenario are spaced by slot.
     apply_scenarios(*this);
-    /* Idle ships park on rails: flying ones coast on their conic, pad ships
-       freeze. Neither free fall nor grounded refuses and stays in physics. */
+    /* Idle ships park on rails: clear of the air they coast on their conic,
+       pad ships freeze. A ship in the air stays in physics. */
     for(auto *s : vehicles) {
         if(s != active) { s->goOnRails(); }
     }
@@ -1730,13 +1730,14 @@ void Game::toggle_eva() {
 }
 
 /* Enter rails warp: park every ship. Refuses -- keeping the current accel --
-   if any ship is not rail-eligible (e.g. a suborbital descent). */
+   if any ship is in the air (drag and the ground need physics). A suborbital
+   arc in vacuum is allowed; railsTick stops it where it reaches the air. */
 bool Game::enter_rails_warp() {
     for(auto *s : vehicles) {
         if(!s->canRail()) {
-            printf("Rails warp refused: '%s' is neither in free fall nor "
-                   "grounded (warp stays %d)\n", s->name.c_str(), time_accel);
-            toast("Rails warp refused: '%s' is not in free fall",
+            printf("Rails warp refused: '%s' is in the atmosphere "
+                   "(warp stays %d)\n", s->name.c_str(), time_accel);
+            toast("Rails warp refused: '%s' is in the atmosphere",
                   s->name.c_str());
             return false;
         }

@@ -244,6 +244,9 @@ static const ScenarioDef kScenarios[] = {
     {"ellipse-peri",   true,  false, 0.0,  false,  0, 10e3, 1000e3, 0.0, 0.0},
     {"ellipse-apo",    true,  false, 0.0,  false,  1, 10e3, 1000e3, 0.0, 0.0},
     {"ellipse-mid",    true,  false, 0.0,  false,  2, 10e3, 1000e3, 0.0, 0.0},
+    /* Periapsis under the surface: the departure shape a burn leaves behind
+       (high and receding, conic meets the ground). Rails must accept it. */
+    {"ellipse-low",    true,  false, 0.0,  false,  2, -100e3, 2000e3, 0.0, 0.0},
     {"escape",         true,  false, 0.85, false, -1, 0.0,     0.0, 2.0, 0.0},
     /* the absolute-radius distance ladder (see ScenarioDef) */
     {"neptune",        true,  false, 0.0,  false, -1, 0.0,     0.0, 0.0, 4.495e12},
@@ -3037,8 +3040,14 @@ bool Vehicle::inTerrainBand() {
 /* isGrounded's speed threshold must sit above a walking kerbal's (kWalkSpeed);
    see kShipGroundBand/kShipGroundSpeed in constants.h. */
 
-bool Vehicle::isOrbiting() {
-    return !inTerrainBand();
+bool Vehicle::inAtmosphere() {
+    if(m_parent == nullptr) { return false; }
+    const AtmosphereParams &atm = m_parent->surface.atmosphere;
+    if(atm.sea_level_density <= 0.0 || atm.scale_height <= 0.0) {
+        return false;   // a visual-only rim is not a drag regime
+    }
+    const double ref = (double)m_parent->radius + m_parent->surface.sea_level;
+    return glm::length(comPos()) - ref < atm.top();
 }
 
 bool Vehicle::isGrounded() {
@@ -3053,7 +3062,10 @@ bool Vehicle::isGrounded() {
 
 bool Vehicle::canRail() {
     if(onRails) { return true; }
-    return isGrounded() || isOrbiting();
+    /* A parked ship freezes; anything clear of the air is a valid conic. A
+       suborbital arc is NOT refused: see the header for why periapsis is not a
+       gate, and railsTick for where such an arc actually stops. */
+    return isGrounded() || !inAtmosphere();
 }
 
 bool Vehicle::goOnRails() {
@@ -3128,8 +3140,8 @@ void Vehicle::leaveRails() {
            name.c_str(), frame->body->name.c_str());
 }
 
-void Vehicle::railsTick(double t, const double step) {
-    if(!onRails || railFrozen) { return; }
+RailEnd Vehicle::railsTick(double t, const double step) {
+    if(!onRails || railFrozen) { return RailEndNone; }
     assert(frame->body != nullptr);
     // The caller must hand us the instant the frame tree was last snapshotted at: the
     // conic advances by `step` but its RESULT composes with those transforms. Exact
@@ -3140,6 +3152,7 @@ void Vehicle::railsTick(double t, const double step) {
        a planet's sphere, and the player brings the warp down for that. Sampling
        MID-step cannot be honest: the handoff must land on the tree's instant, but the
        crossing happened earlier (#164). */
+    const glm::dvec3 prev_pos = rail_pos;   // an exact-radial conic can hit r = 0
     propagateKepler(rail_pos, rail_vel, frame->body->mu, step,
                     rail_pos, rail_vel);
     rail_epoch = t;   // the advance ends at the caller's instant, == the tree's
@@ -3148,7 +3161,59 @@ void Vehicle::railsTick(double t, const double step) {
                name.c_str(), frame->name.c_str(), target->name.c_str());
         moveToRailFrame(target, t);
     }
+
+    /* A conic models a vacuum coast. Stop where the air or the ground needs
+       physics -- the endpoint test shares the SoI test's blind spot, so a step
+       long enough to jump the air is the player's to avoid. */
+    RailEnd end = RailEndNone;
+    const double r = glm::length(rail_pos);
+    const double ref = (double)m_parent->radius + m_parent->surface.sea_level;
+    const AtmosphereParams &atm = m_parent->surface.atmosphere;
+    const bool has_air = atm.sea_level_density > 0.0 && atm.scale_height > 0.0;
+    if(has_air && r - ref < atm.top()) { end = RailEndAtmosphere; }
+    /* max_height is the highest relief above sea level: a cheap sphere that
+       contains every peak, so the terrain noise runs only for a ship that
+       could actually be in it. */
+    if(r < ref + m_parent->surface.max_height) {
+        if(r > 0.0) {
+            Frame *rot = frame->getRotFrame();
+            const glm::dvec3 com =
+                frame->GetOrientRelTo(rot) * rail_pos + frame->GetPositionRelTo(rot);
+            const double ground =
+                m_parent->GetTerrainHeight(glm::vec3(glm::normalize(com)));
+            if(r < ground) {
+                // Land the COM on the surface; the ground park below freezes it.
+                rail_pos *= ground / r;
+                end = RailEndGround;
+            }
+        } else {
+            /* Through the focus: a radial conic has no direction left to place
+               it on, so put it back where the step started. */
+            rail_pos = prev_pos;
+            end = RailEndGround;
+        }
+    }
+    if(end != RailEndNone) {
+        if(end == RailEndGround) {
+            /* A warp stop cannot model an impact (Bullet would tunnel at this
+               speed), so park the way a landed ship parks: frozen in the spin
+               frame, at rest. Control input wakes it. */
+            Frame *rot = frame->getRotFrame();
+            const glm::dmat3 O = frame->GetOrientRelTo(rot);
+            rail_pos = O * rail_pos + frame->GetPositionRelTo(rot);
+            rail_orient = O * rail_orient;
+            rail_vel = glm::dvec3(0.0);
+            frame = rot;
+            rail_epoch = rot->rail_time;
+            railFrozen = true;
+            writeRailPose();
+            return end;
+        }
+        leaveRails();   // writes the pose and re-adds the hull
+        return end;
+    }
     writeRailPose();
+    return RailEndNone;
 }
 
 void Vehicle::railRootState(glm::dvec3 &p, glm::dvec3 &v) const {

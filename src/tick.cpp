@@ -182,8 +182,22 @@ void tick(Game &g) {
             if(g.time_accel >= kRailsWarp) {
                 /* Rails warp: analytic coast (or frozen on the ground);
                    Bullet is not stepped. */
+                const double step = g.dt * g.time_accel;
+                RailEnd end = RailEndNone;
+                Vehicle *ended = nullptr;
                 for(auto *s : vehicles) {
-                    s->railsTick(g.time, g.dt * g.time_accel);
+                    const RailEnd e = s->railsTick(g.time, step);
+                    if(e != RailEndNone && ended == nullptr) { end = e; ended = s; }
+                }
+                if(ended != nullptr) {
+                    /* Air and ground are not a conic: hand the ship back to
+                       physics and stop the clock so the player flies the rest. */
+                    g.time_accel = 1;
+                    const char *why = (end == RailEndGround) ? "hit the ground"
+                                                             : "entered the atmosphere";
+                    printf("Rails warp: '%s' %s, warp -> 1\n",
+                           ended->name.c_str(), why);
+                    g.toast("Rails: '%s' %s, warp 1x", ended->name.c_str(), why);
                 }
             } else {
 

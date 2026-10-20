@@ -103,10 +103,11 @@ inline constexpr double kShipGroundBand = 100.0;   // m
 inline constexpr double kShipGroundSpeed = 3.0;    // m/s
 
 /* The "in the terrain band" periapsis depth [m]: a conic whose periapsis
-   is at or below radius + this is not an orbit (isOrbiting() == false),
-   so rails need isGrounded() instead.
-   Changes: which ships rails-warp as orbiters vs refuse.
-   Where: Vehicle::inTerrainBand / isOrbiting (vehicle.cpp). */
+   is at or below radius + this reads as flying, not orbiting.
+   Changes: whether a prox-woken ship uses the ground or the flying radii.
+   Where: Vehicle::inTerrainBand (game.cpp updateProximity).
+   Rails do NOT use this: they refuse the air, and stop a conic at the
+   ground. */
 inline constexpr double kTerrainBand = 3000.0;
 
 // -- HUD ------------------------------------------------------------------------

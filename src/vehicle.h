@@ -53,6 +53,14 @@ struct ShipCmd {
     ShipCmd(ShipCmdType t, float a = 0.0f) : type(t), amount(a) { }
 };
 
+/* Why a rails tick stopped a coasting ship: the conic reached something a
+   two-body coast cannot model (drag, or the ground). */
+enum RailEnd {
+    RailEndNone = 0,
+    RailEndAtmosphere,
+    RailEndGround
+};
+
 /* Autopilot slew targets -- mutually exclusive (last one wins); the stick
    composes with them. */
 enum SlewMode {
@@ -230,9 +238,11 @@ public:
        onRails + railFrozen without goOnRails(), so the rail pose can be
        unwritten -- leaveRails() would then place the hull at garbage. */
     glm::dvec3 rail_pos = glm::dvec3(0.0);   // m, cluster COM in ship->frame coords
-    glm::dvec3 rail_vel = glm::dvec3(0.0);   // m/s, inertial, ship->frame coords
-    glm::dmat3 rail_orient = glm::dmat3(1.0); // cluster axes -> frame axes
-    /* Frame S's axes at park time (the ship is rigid: nothing per-part). */
+    glm::dvec3 rail_vel = glm::dvec3(0.0);   // m/s, ship->frame coords
+    glm::dmat3 rail_orient = glm::dmat3(1.0); // park frame -> ship->frame axes
+    /* Frame S's axes at park time (the ship is rigid: nothing per-part).
+       rail_orient * railRot is the hull's S -> frame rotation, so railRot stays
+       valid across a frame hop that re-expresses rail_orient. */
     glm::dmat3 railRot = glm::dmat3(1.0);
     /* The instant rail_pos/rail_vel describe: must equal frame->rail_time when
        composed. */
@@ -608,16 +618,19 @@ public:
        3 km of the surface). A PERIAPSIS test, not proximity. */
     bool inTerrainBand();
 
-    /* The conic misses the body (periapsis above the terrain band). */
-    bool isOrbiting();
+    /* Inside the body's PHYSICAL atmosphere NOW (a density model about sea
+       level, drag.h). A visual-only rim does not count. */
+    bool inAtmosphere();
 
     /* Resting on the surface NOW: in the rotating surface frame, near-static in
        it, within a generous band of the analytic terrain. Both are needed:
        either alone calls a hover "landed". */
     bool isGrounded();
 
-    /* Rail-eligible: ORBITING coasts, GROUNDED freezes in the rotating surface
-       frame. */
+    /* Rail-eligible: GROUNDED freezes in the rotating surface frame; anything
+       clear of the air coasts on its conic. Periapsis is deliberately NOT a gate
+       -- a departure burn can drop it below the surface while the ship is high
+       and climbing. railsTick stops a conic at the air/ground instead. */
     bool canRail();
 
     /* Park out of the world and coast analytically. False if not rail-eligible. */
@@ -628,8 +641,10 @@ public:
 
     /* Per-tick rail advance: propagate the conic, test the END of the advance for
        an SoI boundary, hand off there, refresh the parked transforms. The test
-       only sees the endpoint, so a long step can fly past a whole sphere. */
-    void railsTick(double t, const double step);
+       only sees the endpoint, so a long step can fly past a whole sphere.
+       A coast that reaches the air or the ground leaves the rails here, so the
+       caller owns the warp drop. */
+    RailEnd railsTick(double t, const double step);
 
     /* Re-anchor the rail state on another frame and re-home it (setSoi). Asserts
        that the rail state and BOTH frames share one instant, and that the target

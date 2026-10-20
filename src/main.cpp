@@ -831,15 +831,14 @@ int main(int argc, char **argv)
     }
 
     /* Boot straight into rails warp: the active ship parks too (works on the pad
-       -- the frozen mode), unless some ship is not rail-eligible, then clamp to
-       the top physics warp. */
+       -- the frozen mode), unless some ship is in the air, then clamp to the
+       top physics warp. */
     if(time_accel >= kRailsWarp) {
         bool all_eligible = true;
         for(auto *s : game.vehicles) {
             if(!s->canRail()) {
-                printf("Rails warp refused at start: '%s' is neither in free "
-                       "fall nor grounded; clamping time accel to 10\n",
-                       s->name.c_str());
+                printf("Rails warp refused at start: '%s' is in the atmosphere; "
+                       "clamping time accel to 10\n", s->name.c_str());
                 all_eligible = false;
                 break;
             }
