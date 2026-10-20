@@ -523,6 +523,7 @@ test-py: test-gen
 
 # E2E runner (e2e/run.py). Headless via xvfb-run when no display.
 # CASES is required and capped at 5 by the runner; there is no full battery.
+# Each run starts a 10-minute cooldown, so back-to-back runs are refused.
 #   make e2e CASES="save/172 vab/177"
 # JOBS=N overrides parallel cases (default 2).
 CASES ?=

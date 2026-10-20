@@ -3,10 +3,12 @@
 
 Usage: python3 e2e/run.py <selectors> [--jobs N] [--game PATH] [--limit S]
 [--show-cmd] [--kind K]. At most 5 cases run per invocation; there is no full
-battery and no flag that raises the cap. --limit overrides every case's LIMIT
-(a slow box, or a case you want to drive by hand); --show-cmd prints the exact
-command + env so a failure re-runs under a debugger; --kind runs one kind of
-case (repeatable). Case keys: NAME CLAIM KIND NOGLCHECK ARGS EXPECT FORBID
+battery and no flag that raises the cap. A run also starts a 10-minute
+cooldown, so the next invocation refuses until it expires. --limit overrides
+every case's LIMIT (a slow box, or a case you want to drive by hand);
+--show-cmd prints the exact command + env so a failure re-runs under a
+debugger; --kind runs one kind of case (repeatable). Case keys: NAME CLAIM
+KIND NOGLCHECK ARGS EXPECT FORBID
 CHECK LIMIT WRITE SEED FILE NOFILE EXIT. CLAIM is one sentence: what the case
 pins. KIND says what sort of evidence it is -- invariant (behaviour or a
 player route), golden (tuned numbers or content tables: update deliberately),
@@ -51,6 +53,12 @@ DEFAULT_JOBS = 2
 # Hard cap per invocation. There is no full-battery mode: a case earns its
 # place by narrowing the change under test, not by running everything again.
 MAX_CASES = 5
+# No run may start within this long of the previous run's end. The stamp is
+# also written when a run starts, so a concurrent invocation is refused and a
+# crashed run still cools the box down.
+COOLDOWN_S = 10 * 60
+RUN_STAMP = os.path.join(REPO_ROOT, "tmp", "e2e", "last_run")
+STAMP_FMT = "%Y-%m-%dT%H:%M:%SZ"
 # --limit: run every case under this wall-clock ceiling instead of its own
 # LIMIT (raise it to drive one case by hand on a slow box; the case's own
 # --timeout still decides when the game exits). --show-cmd: print the exact
@@ -973,6 +981,42 @@ def new_run_dir():
             n += 1
 
 
+def parse_stamp(text):
+    try:
+        return datetime.datetime.strptime(text.strip(), STAMP_FMT).replace(
+            tzinfo=datetime.timezone.utc)
+    except (AttributeError, ValueError):
+        return None
+
+
+def last_run_time():
+    """When the last run ended (UTC), or None.
+
+    RUN_STAMP is written when a run starts and again when it ends, so a
+    concurrent invocation is refused and an interrupted run still counts. A
+    tree that predates the stamp falls back to the last history row, which
+    records the start time."""
+    try:
+        with open(RUN_STAMP) as f:
+            t = parse_stamp(f.read())
+        if t is not None:
+            return t
+    except OSError:
+        pass
+    try:
+        with open(os.path.join(REPO_ROOT, "tmp", "e2e", "history.csv")) as f:
+            rows = list(csv.DictReader(f))
+    except OSError:
+        return None
+    return parse_stamp(rows[-1].get("datetime_utc", "")) if rows else None
+
+
+def stamp_run(t):
+    os.makedirs(os.path.dirname(RUN_STAMP), exist_ok=True)
+    with open(RUN_STAMP, "w") as f:
+        f.write(t.strftime(STAMP_FMT) + "\n")
+
+
 HISTORY_FIELDS = ["datetime_utc", "commit", "dirty", "renderer", "game",
                   "jobs", "cases", "n", "passed", "failed", "run_duration_s",
                   "run_dir"]
@@ -1173,10 +1217,23 @@ def main():
         print("e2e/INDEX.md lists every case with its claim and kind.")
         return 1
 
+    now = datetime.datetime.now(datetime.timezone.utc)
+    last = last_run_time()
+    if last is not None:
+        age = (now - last).total_seconds()
+        if age < COOLDOWN_S:
+            ready = (last + datetime.timedelta(seconds=COOLDOWN_S))
+            print("Refusing to run: e2e last ran at %s (%.0fs ago)."
+                  % (last.strftime(STAMP_FMT), age))
+            print("The cooldown is %d minutes; the next run can start at %s."
+                  % (COOLDOWN_S // 60, ready.strftime(STAMP_FMT)))
+            return 1
+
     # Cases are independent (own Xvfb display + stdout capture), so they can
     # run concurrently. Progress prints in completion order; the final table
     # stays in case-file order.
-    started = datetime.datetime.now(datetime.timezone.utc)
+    started = now
+    stamp_run(started)
     total = len(case_files)
     results = [None] * total
     if args.jobs == 1:
@@ -1191,6 +1248,10 @@ def main():
                 results[i] = fut.result()
                 print_progress(done, total, results[i])
     finished = datetime.datetime.now(datetime.timezone.utc)
+    # The cooldown runs from the END of the run: a long serial run must still
+    # buy the box ten quiet minutes. The start stamp above covers a concurrent
+    # invocation while this one is still going.
+    stamp_run(finished)
 
     # Persist before printing so the console can point at the artifacts.
     # A persist failure must not swallow the summary or the exit code.

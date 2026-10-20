@@ -13,8 +13,9 @@ kind says how much weight the assertions carry.
 | | **total** | **286** |
 
 There is no full battery: the runner takes at most 5 cases per
-invocation. Select by number, name or path (a whole subject is usually
-too wide), e.g. `python3 e2e/run.py save/172 262`.
+invocation and starts a 10-minute cooldown. Select by number, name or
+path (a whole subject is usually too wide), e.g.
+`python3 e2e/run.py save/172 262`.
 
 ## flight (53)
 
