@@ -110,6 +110,17 @@ struct UiClick {
     std::string type_after;
 };
 
+/* --ui-scroll: synthetic imgui wheel input for e2e testing. Scrolls at the
+   centre of TARGET, a window name (e.g. "##Combo_00" from --ui-list) or a
+   "Window/Label" item. notches > 0 scrolls up, < 0 down. */
+struct UiScroll {
+    Uint32 at_ms;      // start looking
+    std::string target;
+    int notches;
+    bool positioned;   // cursor parked over the target, wheel goes next frame
+    bool done;         // scrolled, or gave up
+};
+
 /* --sim-mode: scripted runtime display-mode change. */
 struct SimModeChange {
     Uint32 at_ms;     // when it applies

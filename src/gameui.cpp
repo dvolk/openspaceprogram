@@ -29,7 +29,7 @@
 #include "vab.h"         // the editor ops (drawVabUI)
 #include "render.h"      // updateShipView (re-take a stale g.hud.view snapshot)
 #include "staging.h"     // computeStaging
-#include "shipdef.h"     // list_vab_ship_defs
+#include "shipdef.h"     // list_vab_vehicle_defs
 #include "resdir.h"      // resdir::path
 #include "settings.h"    // kTerrainPxMin/Max (the Settings ladder's bounds)
 #include "system.h"      // list_systems
@@ -3964,10 +3964,12 @@ void drawVabUI(Game &g) {
 
     // g.vab.saveName holds a NAME, not a path -- .json and where the file lives
     // are vabSave's business. vabEnter seeds it; load and clear update it.
-    // The load picker: ship NAMES (stock + the player's data-dir ships/, data dir wins).
-    // Testships filtered out. Cached, re-read on mtime change.
-    static std::vector<std::string> shipNames;
-    static bool shipsScanned = false;   // a real mtime could be the epoch; don't rely on that
+    // The load picker: vehicle NAMES (stock + the player's data-dir ships/, data
+    // dir wins). Testships stay hidden unless --dev-vehicles. Cached, re-read on
+    // mtime change.
+    static std::vector<std::string> vehicleNames;
+    static bool vehiclesScanned = false;   // a real mtime could be the epoch; don't rely on that
+    static bool vehiclesScannedDev = false;  // the roster depends on --dev-vehicles
     static std::filesystem::file_time_type stockMtime, userMtime;
     {
         std::error_code ec;
@@ -3979,25 +3981,29 @@ void drawVabUI(Game &g) {
         const auto um = std::filesystem::last_write_time(userDir, ec);
         const std::filesystem::file_time_type user =
             ec ? std::filesystem::file_time_type{} : um;
-        if(!shipsScanned || stock != stockMtime || user != userMtime) {
-            shipNames = list_vab_ship_defs(stockDir);
-            for(const std::string &s : list_vab_ship_defs(userDir)) {
-                if(std::find(shipNames.begin(), shipNames.end(), s) == shipNames.end()) {
-                    shipNames.push_back(s);
+        if(!vehiclesScanned || stock != stockMtime || user != userMtime
+           || vehiclesScannedDev != g.args.dev_vehicles) {
+            vehicleNames = list_vab_vehicle_defs(stockDir, g.args.dev_vehicles);
+            for(const std::string &s :
+                list_vab_vehicle_defs(userDir, g.args.dev_vehicles)) {
+                if(std::find(vehicleNames.begin(), vehicleNames.end(), s)
+                   == vehicleNames.end()) {
+                    vehicleNames.push_back(s);
                 }
             }
-            std::sort(shipNames.begin(), shipNames.end());
+            std::sort(vehicleNames.begin(), vehicleNames.end());
             stockMtime = stock;
             userMtime = user;
-            shipsScanned = true;
+            vehiclesScanned = true;
+            vehiclesScannedDev = g.args.dev_vehicles;
         }
     }
     static int loadSel = 0;
-    if(loadSel >= (int)shipNames.size()) { loadSel = (int)shipNames.size() - 1; }
+    if(loadSel >= (int)vehicleNames.size()) { loadSel = (int)vehicleNames.size() - 1; }
     if(loadSel < 0) { loadSel = 0; }   // an empty list clamps to -1 above; keep valid
 
     /* Top bar: a fixed top-center window mirroring the HUD, in two lines: Back to game /
-       save name / Save / ship picker + Load / Clear, then the launch body + scenario
+       save name / Save / vehicle picker + Load / Clear, then the launch body + scenario
        dropdowns and LAUNCH. */
     drawWin(g, W_VabTopBar, [&] {
         if(ImGui::Button("Back to game##vab")) { vabClose(g); }
@@ -4008,13 +4014,14 @@ void drawVabUI(Game &g) {
         if(ImGui::Button("Save")) { vabSave(g, g.vab.saveName); }
         // Load: replace the build with a named ship; vabLoad points the save name
         // at it, so a following Save round-trips it.
-        if(!shipNames.empty()) {
+        if(!vehicleNames.empty()) {
             ImGui::SameLine();
             ImGui::SetNextItemWidth(160);
-            const char *cur = shipNames[(size_t)loadSel].c_str();
-            if(uiBeginCombo("##vabload", cur)) {
-                for(size_t i = 0; i < shipNames.size(); i++) {
-                    if(ImGui::Selectable(shipNames[i].c_str(), (int)i == loadSel)) {
+            const char *cur = vehicleNames[(size_t)loadSel].c_str();
+            if(uiBeginCombo("##vabload", cur,
+                            g.args.dev_vehicles ? ImGuiComboFlags_HeightLarge : 0)) {
+                for(size_t i = 0; i < vehicleNames.size(); i++) {
+                    if(ImGui::Selectable(vehicleNames[i].c_str(), (int)i == loadSel)) {
                         loadSel = (int)i;
                     }
                 }
@@ -4022,7 +4029,7 @@ void drawVabUI(Game &g) {
             }
             ImGui::SameLine();
             if(ImGui::Button("Load")) {
-                vabLoad(g, shipNames[(size_t)loadSel].c_str());
+                vabLoad(g, vehicleNames[(size_t)loadSel].c_str());
             }
         } else {
             ImGui::SameLine();

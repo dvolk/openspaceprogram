@@ -1,5 +1,6 @@
 // uiinput.h -- synthetic imgui interaction for the e2e tests: click a widget
-// by its "Window/Label" path instead of by window pixels (see --ui-click).
+// by its "Window/Label" path, or wheel-scroll a named window/item, instead of
+// by window pixels (see --ui-click / --ui-scroll).
 
 #pragma once
 
@@ -8,9 +9,10 @@
 struct Game;
 
 /* Arm the synthetic imgui input: install the frame hook and the item registry
-   while --ui-click / --ui-list work remains. Clicks resolve on the items the
-   PRECEDING imgui pass drew and queue through imgui's own input path, so the
-   widget activates through normal hit-testing. */
+   while --ui-click / --ui-scroll / --ui-list work remains. Clicks resolve on
+   the items the PRECEDING imgui pass drew; scrolls use those items or the live
+   window list, and queue through imgui's own input path, so the widget
+   activates through normal hit-testing. */
 void emit_ui_input(Game &g);
 
 /* imgui never tells the test-engine hooks what a combo is called. BeginCombo

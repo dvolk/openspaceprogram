@@ -50,6 +50,7 @@ struct GameArgs {
     bool vab_empty = false;
     bool recover_anywhere = false;  // default: home body only
     bool dev_scenarios = false;  // --dev-scenarios: the VAB dropdown's dev beds
+    bool dev_vehicles = false;   // --dev-vehicles: the VAB picker's test defs
     std::string dock_test;
     int initial_time_accel = 1;
     double start_time = 0.0;   // the sim clock's t0 (s)
@@ -67,6 +68,7 @@ struct GameArgs {
     std::vector<SimModeChange> sim_mode_changes;
 
     std::vector<UiClick> ui_clicks;  // imgui clicks by "Window/Label"
+    std::vector<UiScroll> ui_scrolls;  // imgui wheel scrolls by window
     int ui_list_ms = -1;             // dump the clickable items
     int atlas_dump_ms = -1;          // print the System Atlas rows + dossiers
     int map_plane = -1;              // the orbit map's plane combo (0 equ, 1 ecl, 2 orb, 3 tgt)

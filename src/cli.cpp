@@ -15,7 +15,7 @@
 
 /* Parses the leading "AT_MS," of a --ui-* value, leaving everything after the
    comma in `rest`. Prints the error and returns false; the callers are the
-   --ui-click and --ui-type loops, which share the time token exactly. */
+   --ui-click/--ui-type/--ui-scroll loops, which share the time token exactly. */
 static bool parse_ui_time(const std::string &spec, const char *flag,
                           Uint32 &at_ms, std::string &rest) {
     const size_t comma = spec.find(',');
@@ -133,6 +133,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "player-facing beds (currently just \"pad\"); the dev beds "
                  "still resolve by name here and in --startship, so this "
                  "gates the UI only");
+    app.add_flag("--dev-vehicles", args.dev_vehicles,
+                 "Add the test vehicle defs (\"testship\": true) to the VAB's "
+                 "Load picker. Without it the picker offers only player-facing "
+                 "vehicles; test defs still resolve here and in --vab/--startship, "
+                 "so this gates the UI only");
 
     // Docking pair: probe (active) + station, nose-to-nose (see src/docktest.cpp).
     app.add_option("--dock-test", args.dock_test,
@@ -272,8 +277,21 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_option("--ui-list", args.ui_list_ms,
                    "Dump every clickable imgui item (window, label, rect) at "
-                   "this loop time in ms, for writing --ui-click paths "
-                   "(test hook; -1 = never)");
+                   "this loop time in ms, for writing --ui-click paths and "
+                   "--ui-scroll targets (test hook; -1 = never)");
+
+    std::vector<std::string> ui_scroll;
+    app.add_option("--ui-scroll", ui_scroll,
+                   "Synthetic imgui wheel scroll for e2e testing: "
+                   "AT_MS,TARGET,NOTCHES. NOTCHES > 0 scrolls up, < 0 down "
+                   "(|NOTCHES| <= 100). TARGET is a window name (e.g. "
+                   "##Combo_00, the popup --ui-list reports) or a visible "
+                   "WINDOW/LABEL item; labels are tried first when TARGET has "
+                   "no slash. A row below a popup's fold has no label until "
+                   "it is scrolled into view, so target the popup window "
+                   "first. TARGET may contain commas -- NOTCHES is the last "
+                   "field. Repeat the flag, or space-separate the values.")
+        ->expected(-1);
 
     std::vector<std::string> ui_type;
     app.add_option("--ui-type", ui_type,
@@ -1021,6 +1039,42 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         args.ui_clicks.push_back(c);
     }
 
+    /* --ui-scroll splits at the LAST comma: TARGET may carry one of its own,
+       while NOTCHES is always the single integer at the end. */
+    for(const std::string &spec : ui_scroll) {
+        Uint32 at_ms = 0;
+        std::string rest;
+        if(!parse_ui_time(spec, "--ui-scroll", at_ms, rest)) {
+            *exit_code = 1;
+            return false;
+        }
+        const size_t comma = rest.rfind(',');
+        if(comma == std::string::npos) {
+            printf("error: --ui-scroll expects AT_MS,TARGET,NOTCHES (e.g. "
+                   "2000,\"##Combo_00\",-1); got '%s'\n", spec.c_str());
+            *exit_code = 1;
+            return false;
+        }
+        const std::string target = rest.substr(0, comma);
+        const std::string ns = rest.substr(comma + 1);
+        char *end = nullptr;
+        const long n = strtol(ns.c_str(), &end, 10);
+        if(target.empty() || ns.empty() || end != ns.c_str() + ns.size()
+           || n == 0 || n < -100 || n > 100) {
+            printf("error: --ui-scroll '%s' needs a non-empty TARGET and "
+                   "NOTCHES in -100..100, nonzero\n", spec.c_str());
+            *exit_code = 1;
+            return false;
+        }
+        UiScroll s;
+        s.at_ms = at_ms;
+        s.target = target;
+        s.notches = (int)n;
+        s.positioned = false;
+        s.done = false;
+        args.ui_scrolls.push_back(s);
+    }
+
     /* --ui-type is a --ui-click that keeps going, so it lands in the same
        queue. The path ends at the SECOND comma, which means a path containing a
        comma cannot be named here; TEXT may contain anything. */
@@ -1069,6 +1123,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
        are asked for; stable, so equal timestamps keep the author's order. */
     std::stable_sort(args.ui_clicks.begin(), args.ui_clicks.end(),
                      [](const UiClick &a, const UiClick &b) {
+                         return a.at_ms < b.at_ms;
+                     });
+    std::stable_sort(args.ui_scrolls.begin(), args.ui_scrolls.end(),
+                     [](const UiScroll &a, const UiScroll &b) {
                          return a.at_ms < b.at_ms;
                      });
 

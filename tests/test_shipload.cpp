@@ -2092,12 +2092,13 @@ int main() {
         CHECK(refused == 1);   // link_parent.json, and nothing else
     }
 
-    // list_vab_ship_defs: list_ship_defs minus the testships. A temp dir with
-    // one flagged def, one non-boolean flag (fail-open: kept), one broken
-    // file (fail-open: kept), and two unflagged defs pins the filter + the
-    // fail-open stance without depending on res/ships' roster.
+    // list_vab_vehicle_defs: list_ship_defs minus the testships unless the
+    // caller opts in (--dev-vehicles). A temp dir with one flagged def, one
+    // non-boolean flag (fail-open: kept), one broken file (fail-open: kept),
+    // and two unflagged defs pins the filter + the fail-open stance without
+    // depending on res/ships' roster.
     {
-        const std::string dir = "/tmp/test_list_vab_ship_defs";
+        const std::string dir = "/tmp/test_list_vab_vehicle_defs";
         CHECK(std::system(("rm -rf '" + dir + "'").c_str()) == 0);
         CHECK(mkdir(dir.c_str(), 0755) == 0 || access(dir.c_str(), F_OK) == 0);
         { std::ofstream f((dir + "/aaa.json").c_str()); f << "{}"; }
@@ -2105,24 +2106,29 @@ int main() {
         { std::ofstream f((dir + "/ccc.json").c_str()); f << "{ \"testship\": \"yes\" }"; }
         { std::ofstream f((dir + "/ddd.json").c_str()); f << "not json"; }
         { std::ofstream f((dir + "/eee.json").c_str()); f << "{ \"testship\": false }"; }
-        const std::vector<std::string> got = list_vab_ship_defs(dir);
+        const std::vector<std::string> got = list_vab_vehicle_defs(dir, false);
         CHECK(got.size() == 4);   // bbb (flagged) is the only one filtered
         CHECK(got.size() >= 1 && got[0] == "aaa");
         CHECK(got.size() >= 2 && got[1] == "ccc");
         CHECK(got.size() >= 3 && got[2] == "ddd");
         CHECK(got.size() >= 4 && got[3] == "eee");
         CHECK(std::find(got.begin(), got.end(), std::string("bbb")) == got.end());
+        const std::vector<std::string> all = list_vab_vehicle_defs(dir, true);
+        CHECK(all == std::vector<std::string>({"aaa", "bbb", "ccc", "ddd", "eee"}));
         CHECK(std::system(("rm -rf '" + dir + "'").c_str()) == 0);
     }
 
-    // list_vab_ship_defs on the real res/ships: exactly the fliable stock
-    // ships the VAB should offer -- the testships (e2e/scenario ships) are
-    // marked and stay out.
+    // list_vab_vehicle_defs on the real res/ships: exactly the fliable stock
+    // ships the VAB should offer by default -- the testships (e2e/scenario
+    // ships) are marked and stay out. --dev-vehicles opts them back in.
     {
-        const std::vector<std::string> vab = list_vab_ship_defs("res/ships");
+        const std::vector<std::string> vab = list_vab_vehicle_defs("res/ships", false);
         const std::vector<std::string> want =
             { "glider", "heavy_asp", "jet", "racer", "stager" };
         CHECK(vab == want);
+        const std::vector<std::string> all = list_vab_vehicle_defs("res/ships", true);
+        CHECK(all.size() > vab.size());
+        CHECK(std::find(all.begin(), all.end(), std::string("ranger")) != all.end());
     }
 
 

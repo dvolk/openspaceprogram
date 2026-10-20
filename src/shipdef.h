@@ -561,7 +561,7 @@ inline std::vector<std::string> list_ship_defs(const std::string &dir) {
 }
 
 /* True if the ship-def file is marked "testship": true -- an e2e/scenario ship
-   the VAB Load picker hides. Fail-open on bad data. */
+   the VAB Load picker hides unless --dev-vehicles. Fail-open on bad data. */
 inline bool shipDefIsTestship(const std::string &path) {
     std::ifstream f(path);
     if(!f.is_open()) { return false; }
@@ -574,11 +574,15 @@ inline bool shipDefIsTestship(const std::string &path) {
     return doc["testship"].get<bool>();
 }
 
-/* The VAB Load picker's list for `dir`: list_ship_defs minus the testships. */
-inline std::vector<std::string> list_vab_ship_defs(const std::string &dir) {
+/* The VAB Load picker's list for `dir`: list_ship_defs, minus the testships
+   unless the caller asks for them (--dev-vehicles). */
+inline std::vector<std::string> list_vab_vehicle_defs(const std::string &dir,
+                                                      bool include_testships) {
     std::vector<std::string> names;
     for(const std::string &s : list_ship_defs(dir)) {
-        if(shipDefIsTestship(dir + "/" + s + ".json")) { continue; }
+        if(!include_testships && shipDefIsTestship(dir + "/" + s + ".json")) {
+            continue;
+        }
         names.push_back(s);
     }
     return names;

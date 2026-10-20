@@ -106,6 +106,39 @@ int main() {
         assert(args.ui_clicks[0].type_after.empty());
     }
 
+    // 3c4) --ui-scroll: TARGET may carry commas, NOTCHES is the last field.
+    //       Entries are sorted by time like the click queue.
+    {
+        GameArgs args;
+        const char *argv[] = {"osp",
+                              "--ui-scroll", "2000,##Combo_00,-1",
+                              "--ui-scroll", "1500,Save/Load,slot 1,3"};
+        bool ok = false;
+        int code = -1;
+        run(5, (char **)argv, args, ok, code);
+        assert(ok);
+        assert(args.ui_scrolls.size() == 2);
+        assert(args.ui_scrolls[0].at_ms == 1500);
+        assert(args.ui_scrolls[0].target == "Save/Load,slot 1");
+        assert(args.ui_scrolls[0].notches == 3);
+        assert(args.ui_scrolls[1].at_ms == 2000);
+        assert(args.ui_scrolls[1].target == "##Combo_00");
+        assert(args.ui_scrolls[1].notches == -1);
+    }
+
+    // 3c5) --ui-scroll needs both commas, a target and nonzero notches.
+    for(const char *bad : {"2000,##Combo_00", "2000,,1", "2000,##Combo_00,0",
+                           "2000,##Combo_00,101"}) {
+        GameArgs args;
+        const char *argv[] = {"osp", "--ui-scroll", bad};
+        bool ok = true;
+        int code = 0;
+        run(3, (char **)argv, args, ok, code);
+        assert(!ok);
+        assert(code == 1);
+        assert(args.ui_scrolls.empty());
+    }
+
     // 3c2) --ui-type: the path ends at the SECOND comma, so TEXT keeps the rest
     //      of them, and the entries share --ui-click's queue and its sort.
     {

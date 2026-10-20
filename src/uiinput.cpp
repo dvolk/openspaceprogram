@@ -132,6 +132,60 @@ void failClick(const UiClick &c, Uint32 now_ms, const std::string &why) {
     fflush(stdout);
 }
 
+void failScroll(const UiScroll &s, Uint32 now_ms, const std::string &why) {
+    printf("[uiscroll] loop=%.2fs target=\"%s\" FAILED %s\n",
+           now_ms / 1000.0, s.target.c_str(), why.c_str());
+    fflush(stdout);
+}
+
+/* Where a --ui-scroll should put the cursor: an item's visible centre, else
+   its window's centre. A bare window name is a window target -- that is how a
+   combo popup, whose rows have labels but whose window does not, is scrolled.
+   Pos/Size rather than ClipRect: at NewFramePre a popup's clip rect can still
+   be the viewport. */
+bool scrollPoint(const std::string &target, float &x, float &y,
+                 std::string &why, bool &fatal) {
+    fatal = false;
+    std::vector<const UiItem *> hits;
+    findMatches(target, hits);
+    if(hits.size() > 1) {
+        why = "ambiguous (" + std::to_string(hits.size())
+            + " matches) -- qualify it as Window/Label";
+        fatal = true;
+        return false;
+    }
+    const UiItem *hit = hits.empty() ? nullptr : hits[0];
+    const char *winName = hit != nullptr ? hit->window.c_str()
+                                         : target.c_str();
+    ImGuiWindow *w = ImGui::FindWindowByName(winName);
+    /* Active/ScrollMax still describe the previous pass at NewFramePre. */
+    if(w == nullptr || !w->Active || w->Size.x <= 0.0f || w->Size.y <= 0.0f) {
+        why = "not found (no such window or item drawn within 2.0s; "
+              "--ui-list dumps what is)";
+        return false;
+    }
+    if(w->Collapsed || (w->Flags & ImGuiWindowFlags_NoScrollWithMouse)
+       || w->ScrollMax.y <= 0.0f) {
+        why = "not scrollable (the target has no vertical scroll range)";
+        return false;
+    }
+    if(hit != nullptr && hit->visible.GetArea() > 0.0f) {
+        x = (hit->visible.Min.x + hit->visible.Max.x) * 0.5f;
+        y = (hit->visible.Min.y + hit->visible.Max.y) * 0.5f;
+    } else {
+        x = w->Pos.x + w->Size.x * 0.5f;
+        y = w->Pos.y + w->Size.y * 0.5f;
+    }
+    const ImGuiViewport *vp = ImGui::GetMainViewport();
+    if(vp != nullptr
+       && (x < vp->Pos.x || y < vp->Pos.y
+           || x > vp->Pos.x + vp->Size.x || y > vp->Pos.y + vp->Size.y)) {
+        why = "off screen (the target's centre is outside the viewport)";
+        return false;
+    }
+    return true;
+}
+
 // The NewFramePre hook this module installs (0 = not installed).
 ImGuiID g_hook = 0;
 
@@ -226,6 +280,40 @@ void uiInputFrame(ImGuiContext *ctx, ImGuiContextHook *hook) {
             c.done = true;
             g_type = nullptr;
         }
+        return;
+    }
+
+    /* --ui-scroll takes two frames: imgui trickles a wheel queued behind a
+       mouse-position event, so park the cursor over the target first. */
+    for(UiScroll &s : g.args.ui_scrolls) {
+        if(s.done || now < s.at_ms) { continue; }
+        float x = 0.0f, y = 0.0f;
+        std::string why;
+        bool fatal = false;
+        if(!scrollPoint(s.target, x, y, why, fatal)) {
+            if(fatal || pastDeadline(now, s.at_ms)) {
+                failScroll(s, now, why);
+                s.done = true;
+            }
+            break;
+        }
+        if(!s.positioned) {
+            io.AddMousePosEvent(x, y);
+            s.positioned = true;
+            printf("[uiscroll] loop=%.2fs target=\"%s\" at=%.0f,%.0f aimed\n",
+                   now / 1000.0, s.target.c_str(), x, y);
+            fflush(stdout);
+            break;
+        }
+        io.AddMousePosEvent(x, y);
+        io.AddMouseWheelEvent(0.0f, (float)s.notches);
+        printf("[uiscroll] loop=%.2fs target=\"%s\" at=%.0f,%.0f notches=%d\n",
+               now / 1000.0, s.target.c_str(), x, y, s.notches);
+        fflush(stdout);
+        s.done = true;
+        g_park_next = true;
+        /* Do not let a click due this same frame press against a wheel imgui
+           will defer: it would release against the pre-scroll layout. */
         return;
     }
 
@@ -327,6 +415,9 @@ void emit_ui_input(Game &g) {
     bool pending = g.args.ui_list_ms >= 0;
     for(const UiClick &c : g.args.ui_clicks) {
         if(!c.done) { pending = true; break; }
+    }
+    for(const UiScroll &s : g.args.ui_scrolls) {
+        if(!s.done) { pending = true; break; }
     }
     if(g_press != nullptr) { pending = true; }
     ctx->TestEngineHookItems = pending;
