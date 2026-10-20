@@ -564,6 +564,23 @@ std::string shipDefFile(const std::string &spec) {
 
 } // namespace
 
+/* Forget every editor target that names a part of the CURRENT tree. Callers
+   replace or empty the tree; the build, the launch config and the subassembly
+   stash are theirs. */
+static void forgetBuildTargets(Game &g) {
+    vabClearHover(g);
+    g.vab.selected = -1;
+    g.vab.linkMode = false;
+    g.vab.linkFromId.clear();
+    // A stale index would flip Del from "detach" to destructive "delete".
+    g.vab.linkSel = -1;
+    g.vab.seatAssigns.clear();
+    g.vab.partWinId.clear();
+    g.vab.partWinPlaced = false;
+    g.vab.stagingSig = 0;
+    g.vab.stagingRows.clear();
+}
+
 void vabSave(Game &g, const char *name) {
     // Always saved to the data dir's ships/ (user content).
     const std::string stem = shipDefStem(name != nullptr ? name : "");
@@ -609,31 +626,24 @@ bool vabLoad(Game &g, const char *name) {
         return false;
     }
     /* Replace the current build, then re-aim the editor (not a scene entry). */
+    const int droppedSeats = (int)g.vab.seatAssigns.size();
     g.vab.build = BuildShip::fromShipDef(def);
+    forgetBuildTargets(g);
     vabAimCamera(g);
-    vabClearHover(g);
-    g.vab.selected = -1;
-    g.vab.linkMode = false;
-    g.vab.linkFromId.clear();
-    // linkSel indexes the tree that was just replaced; reset it (a stale one
-    // would flip Del from "detach" to destructive "delete").
-    g.vab.linkSel = -1;
+    snprintf(g.vab.saveName, sizeof(g.vab.saveName), "%s", stem.c_str());
     /* A design on disk holds no people (crew stands on the pad), and loading it
        replaces every part in the build, so the seats the player named belong to
        parts that are no longer here. Say so: the next launch falls back to the
        pad's line, and a player who named a crew cannot otherwise see the choice
        go (issue #288). Do NOT claim the loaded design has no seats -- it may have
        plenty, just not these ones. */
-    if(!g.vab.seatAssigns.empty()) {
-        const int n = (int)g.vab.seatAssigns.size();
+    if(droppedSeats > 0) {
         printf("[vab] dropped %d seat assignment(s): the loaded design replaced "
-               "the parts they name\n", n);
+               "the parts they name\n", droppedSeats);
         fflush(stdout);
         g.toast("%d seat assignment%s dropped: the loaded design replaced the "
-                "seats they name", n, n == 1 ? "" : "s");
+                "seats they name", droppedSeats, droppedSeats == 1 ? "" : "s");
     }
-    g.vab.seatAssigns.clear();
-    g.vab.partWinId.clear();
     printf("[vab] loaded %s (%d parts)\n", stem.c_str(), (int)g.vab.build.parts.size());
     fflush(stdout);
     g.toast("Loaded %s (%d parts)", stem.c_str(), (int)g.vab.build.parts.size());
@@ -644,23 +654,13 @@ void vabClearBuild(Game &g) {
     assert(sceneIs(g, SceneId::Vab) && "clear runs only while the editor is up");
     const int n = (int)g.vab.build.parts.size();
     g.vab.build = BuildShip{};
-    g.vab.selected = -1;
-    g.vab.linkMode = false;
-    g.vab.linkFromId.clear();
-    g.vab.linkSel = -1;
-    /* A tool left armed would root itself on the next viewport click, so the
+    /* An armed tool would root itself on the next viewport click, so the
        workspace would not stay empty. */
     g.vab.armed.clear();
     g.vab.armedAsm = -1;
     g.vab.ghostRoll = 0.0;
-    vabClearHover(g);
-    /* The plan, the dossier and the staging table name parts of the tree that
-       just went away. */
-    g.vab.seatAssigns.clear();
-    g.vab.partWinId.clear();
-    g.vab.partWinPlaced = false;
-    g.vab.stagingSig = 0;
-    g.vab.stagingRows.clear();
+    forgetBuildTargets(g);
+    snprintf(g.vab.saveName, sizeof(g.vab.saveName), "untitled");
     vabAimCamera(g);   // an empty build re-frames on the origin
     printf("[vab] cleared the workspace (%d parts removed)\n", n);
     fflush(stdout);
@@ -998,6 +998,11 @@ void vabEnter(Game &g) {
     // VAB_LAUNCH_PAD) until the top-bar combo picks one.
     if(g.vab.bodyName.empty() && g.home != nullptr) { g.vab.bodyName = g.home->name; }
     if(g.vab.scenarioName.empty()) { g.vab.scenarioName = "pad"; }
+    // Seed the save name once; load and clear keep it in step afterwards.
+    if(g.vab.saveName[0] == 0) {
+        snprintf(g.vab.saveName, sizeof(g.vab.saveName), "%s",
+                 g.vab.build.name.empty() ? "untitled" : g.vab.build.name.c_str());
+    }
     vabClearHover(g);
     g.vab.selected = -1;
     g.vab.linkMode = false;

@@ -170,6 +170,10 @@ struct HudState {
    through the ship-def files. */
 struct VabState {
     BuildShip build;                       // physics-free (shipdef.h)
+    /* The top bar's save-name buffer, seeded from the build on first entry.
+       It lives here, not in a drawVabUI static, so load and clear keep it in
+       step with the tree they replace. */
+    char saveName[128] = {0};
     glm::dvec3 center = glm::dvec3(0.0);   // bbox center of the parts (S frame)
 
     // Names, not pointers, so they survive; "" falls back to g.home / "pad" / the

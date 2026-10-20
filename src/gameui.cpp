@@ -3962,13 +3962,8 @@ void drawVabUI(Game &g) {
         }
     }
 
-    // The save NAME (not a path -- .json and where the file lives are vabSave's business).
-    static char saveName[128] = {0};
-    if(saveName[0] == 0) {
-        snprintf(saveName, sizeof(saveName), "%s",
-                 g.vab.build.name.empty() ? "untitled" : g.vab.build.name.c_str());
-    }
-
+    // g.vab.saveName holds a NAME, not a path -- .json and where the file lives
+    // are vabSave's business. vabEnter seeds it; load and clear update it.
     // The load picker: ship NAMES (stock + the player's data-dir ships/, data dir wins).
     // Testships filtered out. Cached, re-read on mtime change.
     static std::vector<std::string> shipNames;
@@ -4002,17 +3997,17 @@ void drawVabUI(Game &g) {
     if(loadSel < 0) { loadSel = 0; }   // an empty list clamps to -1 above; keep valid
 
     /* Top bar: a fixed top-center window mirroring the HUD, in two lines: Back to game /
-       save name / Save / ship picker + Load / Clear build, then the launch body + scenario
+       save name / Save / ship picker + Load / Clear, then the launch body + scenario
        dropdowns and LAUNCH. */
     drawWin(g, W_VabTopBar, [&] {
         if(ImGui::Button("Back to game##vab")) { vabClose(g); }
         ImGui::SameLine();
         ImGui::SetNextItemWidth(140);
-        ImGui::InputText("##savename", saveName, sizeof(saveName));
+        ImGui::InputText("##savename", g.vab.saveName, sizeof(g.vab.saveName));
         ImGui::SameLine();
-        if(ImGui::Button("Save")) { vabSave(g, saveName); }
-        // Load: replace the build with a named ship and point the save name at it, so a
-        // following Save round-trips it.
+        if(ImGui::Button("Save")) { vabSave(g, g.vab.saveName); }
+        // Load: replace the build with a named ship; vabLoad points the save name
+        // at it, so a following Save round-trips it.
         if(!shipNames.empty()) {
             ImGui::SameLine();
             ImGui::SetNextItemWidth(160);
@@ -4027,10 +4022,7 @@ void drawVabUI(Game &g) {
             }
             ImGui::SameLine();
             if(ImGui::Button("Load")) {
-                const std::string &nm = shipNames[(size_t)loadSel];
-                if(vabLoad(g, nm.c_str())) {
-                    snprintf(saveName, sizeof(saveName), "%s", nm.c_str());
-                }
+                vabLoad(g, shipNames[(size_t)loadSel].c_str());
             }
         } else {
             ImGui::SameLine();
@@ -4040,16 +4032,12 @@ void drawVabUI(Game &g) {
         // Disabled on an empty build: there is nothing to confirm.
         ImGui::SameLine();
         ImGui::BeginDisabled(g.vab.build.parts.empty());
-        if(ImGui::Button("Clear build")) {
+        if(ImGui::Button("Clear")) {
             g.ask("Clear the workspace?\n\nEvery part in the build is removed. "
                   "There is no undo. Subassemblies are kept.",
                   {"Clear", "Cancel"},
                   [&g](int choice) {
-                      if(choice != 0) { return; }
-                      vabClearBuild(g);
-                      // The name still points at the ship that was just
-                      // cleared; a Save of the next design must not overwrite it.
-                      snprintf(saveName, sizeof(saveName), "untitled");
+                      if(choice == 0) { vabClearBuild(g); }
                   });
         }
         ImGui::EndDisabled();

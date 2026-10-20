@@ -1,4 +1,4 @@
-# "Clear build" empties the workspace. It is destructive and the editor has no
+# "Clear" empties the workspace. It is destructive and the editor has no
 # undo, so the card is the guard: Cancel must leave the tanker's seven parts
 # alone (the later clear reports 7 removed, which is the proof), and the second
 # pass confirms. Once empty, the button is greyed and the click is refused --
@@ -9,21 +9,21 @@
 # root itself at the origin and the launch would carry 1 part instead of
 # refusing. Save proves the name field was reset: it must fail as "untitled"
 # rather than overwrite the cleared tanker.
-NAME vab-clear-build
+NAME vab-clear
 ARGS --vab res/ships/tanker.json --width 1920 --height 1080 --timeout 10
 ARGS --ui-click 1500,"Capsule (3m)##capsule_r1.5h3"
-ARGS --ui-click 2200,"VAB TopBar/Clear build"
+ARGS --ui-click 2200,"VAB TopBar/Clear"
 ARGS --ui-click 2800,"Question/Cancel"
-ARGS --ui-click 3600,"VAB TopBar/Clear build"
+ARGS --ui-click 3600,"VAB TopBar/Clear"
 ARGS --ui-click 4200,"Question/Clear"
-ARGS --ui-click 5000,"VAB TopBar/Clear build"
+ARGS --ui-click 5000,"VAB TopBar/Clear"
 ARGS --sim-mouse 5600,0,960,540,LMB
 ARGS --ui-click 6200,"VAB TopBar/Save"
 ARGS --ui-click 7000,"VAB TopBar/LAUNCH"
 CHECK re.search(r"\[vab\] cleared the workspace \(7 parts removed\)", out)
 EXPECT [toast] Workspace cleared
 EXPECT [vab] camera aimed at the build: 0 part(s)
-EXPECT path="VAB TopBar/Clear build" FAILED disabled
+EXPECT path="VAB TopBar/Clear" FAILED disabled
 EXPECT [toast] Save FAILED: untitled
 EXPECT [toast] Nothing to launch
 FORBID launched
