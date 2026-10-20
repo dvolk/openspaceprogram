@@ -1173,13 +1173,11 @@ void Game::clearEphemeralState() {
        clearing: ui_remove_vehicle hands control to a successor, which must not
        inherit the latch, so it clears its own (game.cpp). */
     thrust_latched = false;
-    /* One-shot compute requests posted to the old world: the next frame would
-       ask for a map/grid over bodies the next game may not have. */
-    surfmap.compute_requested = false;
-    /* The planner is REPLACED rather than picked over: nearly every field names
-       a Vehicle, a body, or an orbit in the world that is going away, so a new
-       field resets by default instead of leaking into the next career (#346).
-       What survives is listed in resetForNewWorld. */
+    /* Both world-stamped caches are REPLACED rather than picked over: nearly
+       every field names a body, a Vehicle, or an orbit in the world that is
+       going away, so a new field resets by default instead of leaking into the
+       next career (#346). What survives is listed in resetForNewWorld. */
+    surfmap.resetForNewWorld();
     xferPlanner.resetForNewWorld();
     /* A grid sweep or terrain bake still on the worker was posted against the
        old fleet, so its result is for a world that no longer exists. Only
@@ -1334,9 +1332,12 @@ void Game::installSystem(System &&newSys, const std::string &path,
     sun = sys.root;
     titleBody = nullptr;   // the old system's pick dangles with oldBodies;
                            // the sync-set block re-picks it
-    surfmap.body = nullptr;   // a combo pick names an old-system body deleted
-                              // below; invalidateClockStampedCaches resets the
-                              // map's cache, not this pointer.
+    /* The Surface Map's body pick is the same kind of pick, but it cannot ride
+       along with the rest of the map's state: resetWorld above replaced
+       SurfmapState wholesale and deliberately keeps that pick, because on a
+       same-system New Game or quickload it names a TerrainBody that is still
+       alive. Here the bodies DO die, so it goes. */
+    surfmap.body = nullptr;
     /* load_system propagated the new tree at t=0 but the clock did not move:
        bring the bodies to `time` or a paused game renders t=0 and snaps later. */
     syncRails();

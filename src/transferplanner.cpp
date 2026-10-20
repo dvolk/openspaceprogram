@@ -521,9 +521,10 @@ void TransferPlanner::porkchopCompute() {
         }
         // Main-thread continuation: publish the result, clear "sweeping".
         return [this, res, t_now, tname, t_is_ship, epoch]() {
-            // Epoch bumped since posting: the grid is for the old world (load
-            // does NOT abort jobs). Drop before touching the target list -- a
-            // SHIP target list was freed by the load (UAF risk).
+            // Epoch bumped since posting: the grid is for the old world. Only
+            // installSystem aborts jobs, so a teardown lets it land and drop
+            // here. Drop before touching the target list -- a SHIP target list
+            // was freed by the load (UAF risk).
             if(epoch != this->g->cache_epoch) {
                 if(pc_in_flight > 0) { pc_in_flight--; }
                 return;

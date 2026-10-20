@@ -8,6 +8,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "audio.h"
@@ -273,13 +274,18 @@ struct MapState {
 };
 
 /* Surface Map SESSION state (Game::surfmap), not save state: the pixels are
-   re-baked from the body on demand. valid / computed_at are also the
-   clock-stamped cache's: invalidateClockStampedCaches() resets them, so the
-   window reads state the clock owns. in_flight is NOT: its job survives a clock
-   jump and its continuation clears the count, so only installSystem zeroes it --
-   next to the jobs.abort() that discards those continuations. */
+   re-baked from the body on demand. Everything but the three toggles and the
+   two counters (rev, in_flight) belongs to the world the map was baked in, so a
+   teardown replaces the struct wholesale -- see resetForNewWorld. valid is also
+   the clock-stamped cache's: invalidateClockStampedCaches() clears it on a clock
+   jump, which is the only invalidation that route gets. in_flight is NOT: its
+   job survives a clock jump and its continuation clears the count, so only
+   installSystem zeroes it -- next to the jobs.abort() that discards those
+   continuations. */
 struct SurfmapState {
-    // null = the active ship's parent, else the system home.
+    /* null = the active ship's parent, else the system home. A pick of a body
+       in THIS system, so it outlives a same-system teardown -- those are the
+       same TerrainBody objects -- and dies where the bodies do (installSystem). */
     TerrainBody *body = nullptr;
     bool shade = true;    // bake the terminator (the "Sun shading" box)
     bool sea = false;     // paint the sea (the "Ocean" box)
@@ -294,13 +300,47 @@ struct SurfmapState {
     int w = 0;
     int h = 0;
     std::string body_name;
-    double computed_at = -1.0;  // sim seconds of the last compute
     bool valid = false;
     int rev = 0;
     // Jobs posted but not landed (the window shows "mapping ...").
     int in_flight = 0;
     // M: one-shot compute request (events.cpp sets, the state pass consumes).
     bool compute_requested = false;
+
+    /* The world was replaced -- quit-to-title, a new game, a load. Build the
+       replacement and move the survivors across, so a field added here resets
+       by default rather than leaking the dead game's pixels into the next one
+       (#346). Same shape as TransferPlanner::resetForNewWorld, and called from
+       Game::clearEphemeralState.
+
+       What survives, and why:
+         shade / sea / site_labels   the player's boxes in the window
+         body       a pick of a body in THIS system. A same-system teardown keeps
+             the very TerrainBody objects it names, so a pinned --surfmap-body or
+             combo pick stays put; installSystem nulls it where the bodies die.
+         rev        a monotonic stamp, not world state. The window's two
+             textures are program-lifetime statics keyed by rev (gameui.cpp), so
+             restarting it at 0 makes the next bake look unchanged and leaves
+             the old body's pixels on screen.
+         in_flight  a bake posted before the teardown still runs its
+             continuation -- only installSystem discards those -- so it still
+             owns a slot.
+
+       What this fixes: a New Game started with --start-time -- newGame skips its
+       setTime(0.0) for that knob, so nothing invalidates the cache -- kept a map
+       that was valid, correctly named and baked for the game that had just
+       ended, and the window's auto-rebake (gameui.cpp) cannot fire while
+       valid && body_name still matches the body on screen. */
+    void resetForNewWorld() {
+        SurfmapState fresh;
+        fresh.body = body;
+        fresh.shade = shade;
+        fresh.sea = sea;
+        fresh.site_labels = site_labels;
+        fresh.rev = rev;
+        fresh.in_flight = in_flight;
+        *this = std::move(fresh);
+    }
 };
 
 // Biome::None when the body has no classifiable surface or terrain is not ready.
@@ -420,7 +460,6 @@ struct Game {
     void invalidateClockStampedCaches() {
         xferPlanner.invalidateClockState();
         surfmap.valid = false;
-        surfmap.computed_at = -1.0;
         cache_epoch++;
         /* NOT the in_flight counters. A queued or running job still owes its
            continuation, and that continuation is what clears them; zeroing here

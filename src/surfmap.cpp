@@ -137,9 +137,10 @@ void surfmapCompute(Game &g) {
             std::make_shared<std::vector<unsigned char> >(std::move(px));
         std::shared_ptr<std::vector<unsigned char> > pshpx =
             std::make_shared<std::vector<unsigned char> >(std::move(shpx));
-        return [&g, ppx, pshpx, w, h, body_name, t_now, epoch]() {
+        return [&g, ppx, pshpx, w, h, body_name, epoch]() {
             // Epoch bumped after we posted: this map is for the old world.
-            // Drop it (the load path does NOT abort jobs).
+            // Drop it -- quit-to-title, a new game and a same-system load never
+            // abort jobs (only installSystem does, game.cpp).
             if(epoch != g.cache_epoch) {
                 if(g.surfmap.in_flight > 0) { g.surfmap.in_flight--; }
                 return;
@@ -149,7 +150,6 @@ void surfmapCompute(Game &g) {
             g.surfmap.w = w;
             g.surfmap.h = h;
             g.surfmap.body_name = body_name;
-            g.surfmap.computed_at = t_now;
             g.surfmap.valid = true;
             g.surfmap.rev++;
             if(g.surfmap.in_flight > 0) { g.surfmap.in_flight--; }
