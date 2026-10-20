@@ -1193,6 +1193,10 @@ void Game::clearEphemeralState() {
     hud.view.angmom_series.clear();
     // A rebind grab is a live input grab on a UI that is going away.
     rebind_capture_slot = -1;
+    /* The VAB is an editor over the world that is going away: its build's
+       launch body/pad, its seat plan and its save name all name that world. A
+       fresh game starts the editor empty with the defaults (#337). */
+    vab = VabState{};
 }
 
 void Game::resetWorld() {
