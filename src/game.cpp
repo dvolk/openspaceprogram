@@ -757,13 +757,13 @@ void Game::newGame() {
        shipless save is a game with no vehicles (scene.h:gameRunning). */
     assert(!gameRunning(*this) && "a new game starts from the title");
     /* A game with no identity cannot be saved: quicksave() writes into whatever
-       playthroughId names, and after a quit-to-title that is the PREVIOUS game's
+       gameId names, and after a quit-to-title that is the PREVIOUS game's
        directory (#299). The caller mints first -- startNewGame claims the dir
        before calling this, and it is the only caller -- so minting here would be
        dead code that quietly hides a caller who forgot. Mint-before-newGame is
        also what keeps a REFUSED new game from leaving an orphan directory:
        startNewGame's vehicle guard runs before its mint. */
-    assert(!playthroughId.empty() && "a new game needs its saves/ dir claimed first");
+    assert(!gameId.empty() && "a new game needs its saves/ dir claimed first");
     /* A new career starts at t=0. Nothing else writes `time` -- only boot
        --start-time and a load -- so a New Game on a system that had been
        running opened at the old game's epoch, and the science stamps and Flight
@@ -842,51 +842,51 @@ bool Game::startNewGame(const std::string &name, const std::string &sysPath,
     if(exhaustScale < 0.5f) { exhaustScale = 0.5f; }
     if(exhaustScale > 5.0f) { exhaustScale = 5.0f; }
     args.exhaust_scale = exhaustScale;
-    // The playthrough dir is minted AFTER the switch, so a failed switch
+    // The game's identity is minted AFTER the switch, so a failed switch
     // leaves no orphan dir; minting here, not at first save, keeps the
-    // same-second collision check sound. playthroughName first:
-    // mintPlaythroughDir names the directory after it.
-    playthroughName = name;
-    if(!mintPlaythroughDir()) {
+    // same-second collision check sound. gameName first: mintGameDir names the
+    // directory after it.
+    gameName = name;
+    if(!mintGameDir()) {
         toast("Too many same-named games this second; try again");
         return false;
     }
-    const std::string ptDir = datadir::saves() + "/" + playthroughId;
+    const std::string gdir = datadir::saves() + "/" + gameId;
     /* The difficulty rides in the line because it changes every engine's
        thrust for the whole game: a save whose burns look wrong is read
        before the save file is opened. */
     printf("[game] new game '%s' (exhaust %.2fx) -> %s\n", name.c_str(),
-           exhaustScale, ptDir.c_str());
+           exhaustScale, gdir.c_str());
     fflush(stdout);
     newGame();
     return true;
 }
 
-bool Game::mintPlaythroughDir() {
-    const std::string dir = newPlaythroughDir(datadir::saves(), playthroughName);
+bool Game::mintGameDir() {
+    const std::string dir = newGameDir(datadir::saves(), gameName);
     if(dir.empty()) { return false; }
     ensure_dir(dir);
-    playthroughId = baseName(dir);
+    gameId = baseName(dir);
     return true;
 }
 
-std::string Game::ensurePlaythroughDir() {
-    if(!playthroughId.empty()) { return datadir::saves() + "/" + playthroughId; }
+std::string Game::ensureGameDir() {
+    if(!gameId.empty()) { return datadir::saves() + "/" + gameId; }
     /* Minting is for a game that EXISTS. resetToTitle clears the identity with
        the rest of the game, so a save from the title afterwards would invent a
-       fresh playthrough dir named after the dead one -- a phantom entry in the
-       playthrough list holding an empty game. events.cpp gates F5/F9 on
-       gameRunning; the Save window calls ensurePlaythroughDir, whose own gate
-       closes the hole (#299). */
+       fresh game dir named after the dead one -- a phantom entry in the games
+       list holding an empty game. events.cpp:595 gates F5/F9 on gameRunning;
+       the Save window calls ensureGameDir, whose own gate closes the hole
+       (#299). */
     if(!gameRunning(*this)) {
         toast("Save failed: no game is running");
         return "";
     }
-    if(!mintPlaythroughDir()) {
+    if(!mintGameDir()) {
         toast("Save failed: too many same-named games this second");
         return "";
     }
-    return datadir::saves() + "/" + playthroughId;
+    return datadir::saves() + "/" + gameId;
 }
 
 /* System owns no destructor -- it is a bag of borrowed-looking pointers -- so
@@ -1110,29 +1110,29 @@ bool Game::loadFrom(const std::string &dir) {
 }
 
 void Game::quicksave() {
-    const std::string ptDir = ensurePlaythroughDir();
-    if(ptDir.empty()) { return; }   // ensurePlaythroughDir already toasted
-    const std::string slot = nextQuicksave(ptDir);
+    const std::string gamedir = ensureGameDir();
+    if(gamedir.empty()) { return; }   // ensureGameDir already toasted
+    const std::string slot = nextQuicksave(gamedir);
     try {
-        save_game(*this, ptDir + "/" + slot);
+        save_game(*this, gamedir + "/" + slot);
     } catch(const std::exception &e) {
         toast("Quicksave failed: %s", e.what());
         return;
     }
-    toast("Quicksaved %s (game '%s')", slot.c_str(), playthroughName.c_str());
+    toast("Quicksaved %s (game '%s')", slot.c_str(), gameName.c_str());
 }
 
 void Game::quickload() {
-    if(playthroughId.empty()) {
+    if(gameId.empty()) {
         toast("No quicksaves to load (no game yet)");
         return;
     }
-    const std::string slot = latestQuicksave(datadir::saves() + "/" + playthroughId);
+    const std::string slot = latestQuicksave(datadir::saves() + "/" + gameId);
     if(slot.empty()) {
         toast("No quicksaves to load");
         return;
     }
-    if(loadFrom(datadir::saves() + "/" + playthroughId + "/" + slot)) {
+    if(loadFrom(datadir::saves() + "/" + gameId + "/" + slot)) {
         toast("Loaded %s", slot.c_str());
     }
 }
@@ -1148,17 +1148,15 @@ void Game::quickload() {
    The rule: if the next game can read the value as if it were its own, it goes
    here. The bug class this exists for is OMISSION -- unloadGame, newGame,
    installSystem and loadFrom each cleared its own subset, so whatever was
-   unlisted survived a reset. Two deliberate exceptions: playthroughName and the
-   wall-clock perf series. The perf series stays monotonic across a teardown;
-   playthroughName is only a label, and the dir claim next to it -- playthroughId
-   -- DOES die here (resetWorld), so the pair is deliberately asymmetric.
-   playthroughName used to have a reason as well as an exception -- case 260
-   reached newGame() through --new-game with the dead playthrough's name still
-   in hand, and the directory it minted had to match. That flag is gone and 260
-   now goes through startNewGame, which overwrites playthroughName before it
-   mints, so the exception rests only on the title screen and the save list
-   wanting a name to show. Whether it should be cleared after all is open
-   (#314); clearing it is a behaviour change, not a cleanup. */
+   unlisted survived a reset. Two deliberate exceptions: gameName and the
+   wall-clock perf series, which stay monotonic across a teardown.
+   gameName used to have a reason as well as an exception -- case 260 reached
+   newGame() through --new-game with the dead game's name still in hand, and the
+   directory it minted had to match. That flag is gone and 260 now goes through
+   startNewGame, which overwrites gameName before it mints, so the exception
+   rests only on the title screen and the save list wanting a name to show.
+   Whether it should be cleared after all is open (#314); clearing it is a
+   behaviour change, not a cleanup. */
 void Game::clearEphemeralState() {
     /* A card up over a teardown asks about a world that is going away. Its
        callbacks hold identity, not pointers (question.h) -- but identity into
@@ -1242,12 +1240,12 @@ void Game::resetWorld() {
     ship = nullptr;
     kerbal = nullptr;
     lastShip = nullptr;
-    /* The playthrough claim belongs to the game that just ended. Leaving
-       playthroughId set meant a later quicksave wrote into the PREVIOUS game's
-       saves/<id>/ directory (#299). A new game claims a fresh one before it
-       starts (startNewGame, and newGame asserts it is set); a load sets it from
-       its own directory afterwards, so the switch path is unaffected. */
-    playthroughId.clear();
+    /* The game's identity belongs to the game that just ended. Leaving gameId
+       set meant a later quicksave wrote into the PREVIOUS game's saves/<id>/
+       directory (#299). A new game claims a fresh one before it starts
+       (startNewGame, and newGame asserts it is set); a load sets it from its own
+       directory afterwards, so the switch path is unaffected. */
+    gameId.clear();
     /* Warp belongs to the flight that ended. The Title runs tick as its update,
        so a warp that survived the teardown kept the menu simulating -- clock
        running on behind the buttons. The clock itself deliberately stays: the

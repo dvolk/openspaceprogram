@@ -186,7 +186,7 @@ path (a whole subject is usually too wide), e.g.
 | `save/130-reload-refused-shipless.txt` | invariant | A refused same-system shipless reload leaves the old game intact. |
 | `save/131-boot-load-shipless-cross.txt` | invariant | A cross-system shipless save loads onto the new system's hub. |
 | `save/133-reload-refused-science.txt` | invariant | A refused reload does not clobber the running career's science. |
-| `save/170-title-load-last-save.txt` | invariant | Load last save picks the most recently written save, not the newest playthrough. |
+| `save/170-title-load-last-save.txt` | invariant | Load last save picks the most recently written save, not the newest game. |
 | `save/171-title-no-save-no-resume.txt` | invariant | With no saves, the title offers no Load last save button. |
 | `save/172-reload-refused-bad-format.txt` | invariant | A save declaring another format is refused loudly, not half-parsed. |
 | `save/181-resave-round-trip.txt` | invariant | A save/load round trip preserves every field the writer emits. |

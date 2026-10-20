@@ -4,7 +4,7 @@ KIND invariant
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --timeout 8
 # The save path is the window's: the first Save mints <stamp>-game1 and writes
-# into it, which is the same ensurePlaythroughDir the old --save used.
+# into it, which is the same ensureGameDir the old --save used.
 ARGS --sim-press 700,0,ESCAPE
 ARGS --ui-click 1100,"Game Menu/Save/Load"
 ARGS --ui-type 1800,"Save/Load/##newslot",e2e_slot

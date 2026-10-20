@@ -3217,7 +3217,7 @@ static void drawMenuWindow(Game &g, Win win, bool isRoot, const char *heading,
 
 /* The per-scene nav blocks. Each closes its own menu before the transition it starts. */
 static void navTitle(Game &g, float bw) {
-    /* "last" means the newest save by WRITE time, not the newest playthrough
+    /* "last" means the newest save by WRITE time, not the newest game dir
        (save.h:latestSave). This menu is Root -- open every frame -- so the saves/ scan
        refreshes at ~1 Hz. Cached as a path, never a pointer: the slot can be deleted
        between frames. */
@@ -3230,17 +3230,17 @@ static void navTitle(Game &g, float bw) {
     }
     // Above "New Game": resuming beats starting over when there is a save.
     if(!last.empty() && ImGui::Button("Load last save", ImVec2(bw, 0.0f))) {
-        const size_t slash = last.find('/');   // latestSave: "<playthrough>/<slot>"
-        const std::string ptLabel = playthroughDisplayName(last.substr(0, slash));
+        const size_t slash = last.find('/');   // latestSave: "<game>/<slot>"
+        const std::string gameLabel = gameDisplayName(last.substr(0, slash));
         const std::string slot = last.substr(slash + 1);
         /* Deferred: the load tears the fleet down immediately, and this window
            is Root -- the rest of the frame's widgets would read the new world
            (or nothing) under a click that has not finished drawing (#304).
            `last` rescans at 1 Hz, so the slot is captured, not looked up again. */
         const std::string dir = datadir::saves() + "/" + last;
-        g.requestWorldOp([&g, dir, ptLabel, slot] {
+        g.requestWorldOp([&g, dir, gameLabel, slot] {
             if(g.loadFrom(dir)) {
-                g.toast("Loaded %s / %s", ptLabel.c_str(), slot.c_str());
+                g.toast("Loaded %s / %s", gameLabel.c_str(), slot.c_str());
             }
         });
     }
@@ -3340,7 +3340,7 @@ void drawSpaceCenterTopBar(Game &g) {
     });
 }
 
-// A save-slot name is a single directory under a playthrough dir: whitelist to letters,
+// A save-slot name is a single directory under a game dir: whitelist to letters,
 // digits, - _ . so it can never carry a path separator or be a dot-name.
 static bool safeSlotName(const std::string &n) {
     if(n.empty() || n == "." || n == "..") { return false; }
@@ -3352,10 +3352,9 @@ static bool safeSlotName(const std::string &n) {
     return true;
 }
 
-// A playthrough name is the tail of a playthrough dir name under saves/
-// (<stamp>-<name>, save.h). Blocklist instead of the slot whitelist: forbid only what
-// breaks a dir name.
-static bool safePlaythroughName(const std::string &n) {
+// A game name is the tail of a game dir name under saves/ (<stamp>-<name>). Blocklist
+// instead of the slot whitelist: forbid only what breaks a dir name.
+static bool safeGameName(const std::string &n) {
     if(n.empty() || n == "." || n == "..") { return false; }
     for(unsigned char c : n) {
         if(c < 0x20) { return false; }
@@ -3374,9 +3373,9 @@ static bool safePlaythroughName(const std::string &n) {
 static constexpr float kExhaustUiMin = 0.8f;
 static constexpr float kExhaustUiMax = 2.0f;
 
-/* The New Game setup sheet: the playthrough's name, which star system to load,
-   and the exhaust-velocity scale (difficulty). The system list is a directory
-   scan of res/systems, cached and re-read only when its mtime changes. */
+/* The New Game setup sheet: the game's name, which star system to load, and the
+   exhaust-velocity scale (difficulty). The system list is a directory scan of
+   res/systems, cached and re-read only when its mtime changes. */
 void drawNewGame(Game &g) {
     // Selection + the scanned list persist across frames (and a close/reopen, so the last
     // pick sticks).
@@ -3384,7 +3383,7 @@ void drawNewGame(Game &g) {
     static bool scanned = false;
     static std::filesystem::file_time_type dirMtime;
     static int sysSel = 0;
-    // The playthrough's display name: the dir under saves/ it mints is <stamp>-<name>.
+    // The game's display name: the dir under saves/ it mints is <stamp>-<name>.
     static char nameBuf[256] = "game1";
     // The slider's draft value, committed to args.exhaust_scale only by Start: bound live,
     // it would survive Cancel / X and leak into settings.json via "Save settings".
@@ -3440,7 +3439,7 @@ void drawNewGame(Game &g) {
         ImGui::Text("Game name");
         ImGui::SetNextItemWidth(220);
         ImGui::InputText("##newgame_name", nameBuf, sizeof(nameBuf));
-        if(!safePlaythroughName(nameBuf)) {
+        if(!safeGameName(nameBuf)) {
             ImGui::TextDisabled("(no / \\ : * ? \" < > | or control chars)");
         }
         ImGui::Spacing();
@@ -3472,7 +3471,7 @@ void drawNewGame(Game &g) {
         if(ImGui::Button("Start", ImVec2(120.0f, 0.0f))) {
             if(systems.empty()) {
                 g.toast("No systems in res/systems");
-            } else if(!safePlaythroughName(nameBuf)) {
+            } else if(!safeGameName(nameBuf)) {
                 g.toast("Give the game a name (spaces are fine)");
             } else {
                 const std::string path =
@@ -3482,10 +3481,10 @@ void drawNewGame(Game &g) {
                    statics, so they would still EXIST when this runs -- they
                    would just hold whatever the next frame's draw left in them,
                    which is why the name and the scale are copied out. */
-                const std::string playthroughName = nameBuf;
+                const std::string gameName = nameBuf;
                 const float exhaust = exhaustSel;   // static: copy, do not capture
-                g.requestWorldOp([&g, playthroughName, path, exhaust] {
-                    if(g.startNewGame(playthroughName, path, exhaust)) {
+                g.requestWorldOp([&g, gameName, path, exhaust] {
+                    if(g.startNewGame(gameName, path, exhaust)) {
                         setWinOpen(W_NewGame, false);
                     }
                 });
@@ -3634,14 +3633,14 @@ void drawSaveLoad(Game &g) {
     // The slot name and the selections persist (static): so the player does not retype,
     // and Load/Delete act on the chosen row.
     static char nameBuf[256] = "save1";
-    static int ptSel = 0;      // index into the playthrough list
-    static int slotSel = 0;    // index into the selected playthrough's slots
-    static int prevPtSel = -2;   // a playthrough switch re-picks the first slot
+    static int gameSel = 0;    // index into the games list
+    static int slotSel = 0;    // index into the selected game's slots
+    static int prevGameSel = -2;   // a game switch re-picks the first slot
     /* Both lists are directory scans: refresh at ~1 Hz while the window is open. A save
        or delete resets the timer, so your own action shows on the next frame. */
     static const double kRescanSec = 1.0;
     static double nextRescan = 0.0;
-    static std::vector<PlaythroughEntry> playthroughs;
+    static std::vector<GameEntry> games;
     static std::vector<std::string> slots;
 
     drawWin(g, W_SaveLoad, [&] {
@@ -3650,18 +3649,18 @@ void drawSaveLoad(Game &g) {
         const bool due = ImGui::GetTime() >= nextRescan;
         if(due) {
             nextRescan = ImGui::GetTime() + kRescanSec;
-            playthroughs = list_playthroughs(datadir::saves());
+            games = list_games(datadir::saves());
         }
-        if(ptSel < 0 || ptSel >= (int)playthroughs.size()) {
-            ptSel = (int)playthroughs.size() - 1;
+        if(gameSel < 0 || gameSel >= (int)games.size()) {
+            gameSel = (int)games.size() - 1;
         }
-        if(due || ptSel != prevPtSel) {
+        if(due || gameSel != prevGameSel) {
             slots.clear();
-            if(ptSel >= 0) {
-                slots = list_saves(datadir::saves() + "/" + playthroughs[ptSel].dirName);
+            if(gameSel >= 0) {
+                slots = list_saves(datadir::saves() + "/" + games[gameSel].dirName);
             }
         }
-        if(ptSel != prevPtSel) { slotSel = 0; prevPtSel = ptSel; }
+        if(gameSel != prevGameSel) { slotSel = 0; prevGameSel = gameSel; }
         if(slotSel < 0 || slotSel >= (int)slots.size()) {
             slotSel = (int)slots.size() - 1;
         }
@@ -3669,7 +3668,7 @@ void drawSaveLoad(Game &g) {
         // --- save-as: capture the live ships + crew + clock ----------------
         ImGui::TextWrapped(
             "Save the current game (%s) -- its ships, crew and clock -- "
-            "into a slot of it.", g.playthroughName.c_str());
+            "into a slot of it.", g.gameName.c_str());
         ImGui::SetNextItemWidth(220);
         ImGui::InputText("##newslot", nameBuf, sizeof(nameBuf));
         ImGui::SameLine();
@@ -3677,14 +3676,14 @@ void drawSaveLoad(Game &g) {
         // rotation and a wrap could clobber it.
         const bool nameOk = safeSlotName(nameBuf) && quicksaveNN(nameBuf) < 0;
         if(ImGui::Button("Save##saveload") && nameOk) {
-            const std::string ptDir = g.ensurePlaythroughDir();
-            if(ptDir.empty()) {
+            const std::string gamedir = g.ensureGameDir();
+            if(gamedir.empty()) {
                 g.toast("Save failed: no game directory");
             } else {
-                const std::string dir = ptDir + "/" + nameBuf;
+                const std::string dir = gamedir + "/" + nameBuf;
                 try {
                     save_game(g, dir);
-                    g.toast("Saved to %s/%s", g.playthroughName.c_str(), nameBuf);
+                    g.toast("Saved to %s/%s", g.gameName.c_str(), nameBuf);
                     nextRescan = 0.0;   // the new slot joins the list next frame
                 } catch(const std::exception &e) {
                     g.toast("Save failed: %s", e.what());
@@ -3702,18 +3701,18 @@ void drawSaveLoad(Game &g) {
 
         ImGui::Separator();
 
-        // --- load / delete an existing playthrough's slot -------------------
+        // --- load / delete an existing game's slot --------------------------
         ImGui::Text("Existing games and their saves:");
-        if(playthroughs.empty()) {
+        if(games.empty()) {
             ImGui::TextDisabled("(none yet)");
         } else {
-            // Two half-width columns (playthroughs | slots of the selected one).
+            // Two half-width columns (games | slots of the selected game).
             const float full = ImGui::GetContentRegionAvail().x;
             const float w = (full - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
-            ImGui::BeginChild("##playthroughs", ImVec2(w, 180.0f));
-            for(size_t i = 0; i < playthroughs.size(); i++) {
-                if(ImGui::Selectable(playthroughs[i].name.c_str(), (int)i == ptSel)) {
-                    ptSel = (int)i;
+            ImGui::BeginChild("##games", ImVec2(w, 180.0f));
+            for(size_t i = 0; i < games.size(); i++) {
+                if(ImGui::Selectable(games[i].name.c_str(), (int)i == gameSel)) {
+                    gameSel = (int)i;
                 }
             }
             ImGui::EndChild();
@@ -3729,33 +3728,30 @@ void drawSaveLoad(Game &g) {
             }
             ImGui::EndChild();
             ImGui::Spacing();
-            if(ImGui::Button("Load##saveload") && ptSel >= 0 && slotSel >= 0) {
+            if(ImGui::Button("Load##saveload") && gameSel >= 0 && slotSel >= 0) {
                 const std::string dir = datadir::saves() + "/" +
-                                       playthroughs[ptSel].dirName + "/" + slots[slotSel];
-                /* ptLabel is the list's display label, which for same-named
-                   playthroughs carries a "(stamp)" suffix: it is for the toast,
-                   never something to compare against Game::playthroughName. */
-                const std::string ptLabel = playthroughs[ptSel].name;
+                                       games[gameSel].dirName + "/" + slots[slotSel];
+                const std::string gameName = games[gameSel].name;
                 const std::string slotName = slots[slotSel];
                 /* Deferred to the top of the next frame (#304): the load deletes
                    the fleet immediately, and this sheet is drawn last in every
                    scene only by convention. loadFrom does the load, the scene
-                   decision and the failure toast, and adopts the playthrough's
+                   decision and the failure toast, and adopts the game's
                    identity so the next save lands here. */
-                g.requestWorldOp([&g, dir, ptLabel, slotName] {
+                g.requestWorldOp([&g, dir, gameName, slotName] {
                     if(g.loadFrom(dir)) {
-                        g.toast("Loaded %s/%s", ptLabel.c_str(), slotName.c_str());
+                        g.toast("Loaded %s/%s", gameName.c_str(), slotName.c_str());
                         setWinOpen(W_SaveLoad, false);
                     }
                 });
             }
             ImGui::SameLine();
-            if(ImGui::Button("Delete##saveload") && ptSel >= 0 && slotSel >= 0) {
+            if(ImGui::Button("Delete##saveload") && gameSel >= 0 && slotSel >= 0) {
                 const std::string dir = datadir::saves() + "/" +
-                                       playthroughs[ptSel].dirName + "/" + slots[slotSel];
+                                       games[gameSel].dirName + "/" + slots[slotSel];
                 try {
                     delete_save(dir, datadir::saves());
-                    g.toast("Deleted %s/%s", playthroughs[ptSel].name.c_str(),
+                    g.toast("Deleted %s/%s", games[gameSel].name.c_str(),
                             slots[slotSel].c_str());
                     slotSel = 0;   // the slot list shrank under the selection
                     nextRescan = 0.0;   // and the deleted row goes away next frame

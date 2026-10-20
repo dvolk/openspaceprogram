@@ -587,7 +587,7 @@ void poll_events(Game &g) {
                 }
             }
             /* F5/F9 are scene-neutral. gameRunning gates the no-game states: a
-               title-screen F5 would mint a phantom playthrough dir. */
+               title-screen F5 would mint a phantom game dir. */
             if(!ev.key.repeat && gameRunning(g)) {
                 if(slotFired(Slot::Quicksave, ksc, kmod, g.binds)) {
                     g.quicksave();

@@ -9,8 +9,7 @@
 # debris for the orphan sweep to trip over. It does NOT pin torn-write safety
 # itself -- nothing here can kill the process mid-dump -- that stays a
 # code-review property of writeJson.
-# The playthrough dir is stamped YYYYMMDD_HHMMSS-<playthroughName>, hence the
-# globs.
+# The game dir is stamped YYYYMMDD_HHMMSS-<gameName>, hence the globs.
 NAME save-leaves-no-temp-files
 CLAIM Saving leaves no .tmp files behind; each write is renamed into place.
 KIND invariant

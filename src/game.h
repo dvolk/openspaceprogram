@@ -446,11 +446,10 @@ struct Game {
     // What save_game records -- not args.system_file. Updated by switchSystem.
     std::string systemPath;
 
-    std::string playthroughName = "game1";
-    /* The playthrough's identity: the saves/ dir it lives in, named
-       <YYYYMMDD_HHMMSS>-<playthroughName> (save.h). Empty = this game has never
-       claimed one. */
-    std::string playthroughId;
+    std::string gameName = "game1";
+    /* The stored form of THIS game: the saves/ dir it writes into, named
+       <YYYYMMDD_HHMMSS>-<gameName> (save.h). Empty = never claimed one. */
+    std::string gameId;
 
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
@@ -709,14 +708,11 @@ struct Game {
     /* False if a game is running or the system switch failed (world untouched). */
     bool startNewGame(const std::string &name, const std::string &sysPath,
                       float exhaustScale);
-    /* The playthrough dir this game writes into, minting one if it has none.
-       "" if no game is running or the mint fails (a toast already fired). */
-    std::string ensurePlaythroughDir();
-    /* Claim a fresh saves/<stamp>-<playthroughName>/ dir unconditionally: this
-       STARTS a game, so it is not gated on one already being in charge the way
-       ensurePlaythroughDir is. Sets playthroughId. False = the name was taken
-       this second. */
-    bool mintPlaythroughDir();
+    std::string ensureGameDir();    // "" on a mint failure (a toast already fired)
+    /* Claim a fresh saves/<stamp>-<gameName>/ dir unconditionally: this STARTS a
+       game, so it is not gated on one already being in charge the way
+       ensureGameDir is. Sets gameId. False = the name was taken this second. */
+    bool mintGameDir();
     /* Does NOT make `active` the player's ship -- the caller does. --load skips
        this (a save records live-or-railed state). */
     void settleVehicles(Vehicle *active);
@@ -726,9 +722,9 @@ struct Game {
        but validate_world_buildings does not check) costs the career, and that
        path says so on stdout and lands on the title. */
     bool loadFrom(const std::string &dir);
-    // Quicksave (F5): the playthrough dir's next quicksave-NN pool slot.
+    // Quicksave (F5): the game dir's next quicksave-NN pool slot.
     void quicksave();
-    // Quickload (F9): the newest quicksave of this playthrough by mtime.
+    // Quickload (F9): the newest quicksave of this game by mtime.
     void quickload();
     /* True iff the switch ran, so the caller must not run the heavy phase. */
     bool ensureSystemForSave(const std::string &dir, bool *switched = nullptr);

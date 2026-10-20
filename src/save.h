@@ -869,15 +869,14 @@ inline std::vector<std::string> list_saves(const std::string &base) {
     return names;
 }
 
-// ---- playthroughs: the <stamp>-<name> dir one game's saves live under -----
-/* A playthrough is the on-disk half of a game: the named, stamped directory
-   under saves/ that its slots live in. The running thing stays a "game" (the
-   Game class, newGame, gameRunning); these names never mean that, which is the
-   whole point of the split.
-   Stamp-first so `ls` sorts chronologically; each start mints a fresh stamp. */
+// ---- games: the <stamp>-<name> dir a game's saves live under -------------
+/* A game is ONE thing in two forms: the running session (Game) and the
+   saves/<stamp>-<name>/ dir its slots live under. gameName/gameId name the
+   stored form of THAT game, not a second concept. Stamp-first so `ls` sorts
+   chronologically; each start mints a fresh stamp. */
 
-// The local-time stamp newPlaythroughDir prepends: YYYYMMDD_HHMMSS.
-inline std::string playthroughStamp(time_t t) {
+// The local-time stamp newGameDir prepends: YYYYMMDD_HHMMSS.
+inline std::string gameStamp(time_t t) {
     struct tm m;
 #if defined(_WIN32)
     localtime_s(&m, &t);   // mingw/MSVC Annex K; args reversed vs localtime_r
@@ -891,21 +890,20 @@ inline std::string playthroughStamp(time_t t) {
 
 // A fresh <stamp>-<name> dir under base: the stamp bumps one second at a time
 // while the dir exists; "" if 60 bumps do not clear it.
-inline std::string newPlaythroughDir(const std::string &base,
-                                     const std::string &name,
-                                     time_t now = time(nullptr)) {
+inline std::string newGameDir(const std::string &base, const std::string &name,
+                              time_t now = time(nullptr)) {
     namespace fs = std::filesystem;
     for(int bump = 0; bump < 60; bump++) {
-        const std::string dir = base + "/" + playthroughStamp(now + bump) + "-" + name;
+        const std::string dir = base + "/" + gameStamp(now + bump) + "-" + name;
         std::error_code ec;
         if(!fs::exists(dir, ec)) { return dir; }
     }
     return "";
 }
 
-// Display name of a playthrough dir: strip exactly ONE leading <YYYYMMDD_HHMMSS>-
-// so a name that itself starts with stamp-like digits still round-trips.
-inline std::string playthroughDisplayName(const std::string &dirName) {
+// Display name of a game dir: strip exactly ONE leading <YYYYMMDD_HHMMSS>- so a
+// name that itself starts with stamp-like digits still round-trips.
+inline std::string gameDisplayName(const std::string &dirName) {
     static const size_t kStamp = 15;   // 8 digits + '_' + 6 digits
     // Need the stamp (0..14), a dash (15), and a non-empty name (16+).
     if(dirName.size() <= kStamp + 1 || dirName[kStamp] != '-') {
@@ -921,57 +919,55 @@ inline std::string playthroughDisplayName(const std::string &dirName) {
     return dirName.substr(kStamp + 1);
 }
 
-// One listed playthrough: `dirName` is the identity the slots live under (the
-// same string Game::playthroughId holds for the running game), `name` the
+// One listed game: `dirName` is the identity the slots live under, `name` the
 // display label (duplicates get their stamp appended).
-struct PlaythroughEntry {
+struct GameEntry {
     std::string dirName;
     std::string name;
 };
 
-// Playthroughs under base: subdirectories holding at least one slot, sorted by
-// dirName (chronological). A legacy flat save directly under base is NOT one.
-inline std::vector<PlaythroughEntry> list_playthroughs(const std::string &base) {
-    std::vector<PlaythroughEntry> playthroughs;
+// Games under base: subdirectories holding at least one slot, sorted by dirName
+// (chronological). A legacy flat save directly under base is NOT a game.
+inline std::vector<GameEntry> list_games(const std::string &base) {
+    std::vector<GameEntry> games;
     namespace fs = std::filesystem;
     std::error_code ec;
     auto it = fs::directory_iterator(base, ec);
-    if(ec) { return playthroughs; }   // base missing or not a directory
+    if(ec) { return games; }   // base missing or not a directory
     for(const auto &entry : it) {
         if(!fs::is_directory(entry)) { continue; }
         const std::string dirName = entry.path().filename().string();
         if(list_saves(entry.path().string()).empty()) { continue; }
-        playthroughs.push_back({dirName, playthroughDisplayName(dirName)});
+        games.push_back({dirName, gameDisplayName(dirName)});
     }
-    std::sort(playthroughs.begin(), playthroughs.end(),
-              [](const PlaythroughEntry &a, const PlaythroughEntry &b) {
+    std::sort(games.begin(), games.end(),
+              [](const GameEntry &a, const GameEntry &b) {
                   return a.dirName < b.dirName;
               });
     // Duplicate labels get their stamp appended. Count from dirName
     // (immutable), not name: appending as we go would un-duplicate the entries
     // already labelled.
-    for(size_t i = 0; i < playthroughs.size(); i++) {
-        const std::string orig = playthroughDisplayName(playthroughs[i].dirName);
+    for(size_t i = 0; i < games.size(); i++) {
+        const std::string orig = gameDisplayName(games[i].dirName);
         int n = 0;
-        for(const PlaythroughEntry &e : playthroughs) {
-            if(playthroughDisplayName(e.dirName) == orig) { n++; }
+        for(const GameEntry &e : games) {
+            if(gameDisplayName(e.dirName) == orig) { n++; }
         }
         if(n <= 1) { continue; }
-        const std::string &dn = playthroughs[i].dirName;
+        const std::string &dn = games[i].dirName;
         std::string stamp = dn;
-        if(dn.size() > 16 && playthroughDisplayName(dn).size() == dn.size() - 16) {
+        if(dn.size() > 16 && gameDisplayName(dn).size() == dn.size() - 16) {
             stamp = dn.substr(0, 4) + "-" + dn.substr(4, 2) + "-" +
                     dn.substr(6, 2) + " " + dn.substr(9, 2) + ":" +
                     dn.substr(11, 2);
         }
-        playthroughs[i].name += " (" + stamp + ")";
+        games[i].name += " (" + stamp + ")";
     }
-    return playthroughs;
+    return games;
 }
 
 // Resolve a bare slot name under base: base/<slot> (a legacy flat save)
-// first, then the UNIQUE base/<playthrough>/<slot>. "" when missing or
-// ambiguous.
+// first, then the UNIQUE base/<game>/<slot>. "" when missing or ambiguous.
 inline std::string find_slot(const std::string &base, const std::string &slot) {
     namespace fs = std::filesystem;
     std::error_code ec;
@@ -993,10 +989,10 @@ inline std::string find_slot(const std::string &base, const std::string &slot) {
     return n == 1 ? found + "/" + slot : "";
 }
 
-// The most recently WRITTEN save under base, as "<playthrough dir>/<slot>"; ""
-// when base holds none. Recency is the save.json mtime, NOT the playthrough's
-// start stamp. Ties break on the path, never on directory_iterator order. The
-// two-level layout only: a legacy flat saves/<slot>/ is not offered.
+// The most recently WRITTEN save under base, as "<game dir>/<slot>"; "" when
+// base holds none. Recency is the save.json mtime, NOT the game dir's start
+// stamp. Ties break on the path, never on directory_iterator order. Game layout
+// only: a legacy flat saves/<slot>/ is not offered.
 inline std::string latestSave(const std::string &base) {
     namespace fs = std::filesystem;
     std::vector<std::pair<std::string, fs::file_time_type>> slots;
@@ -1005,14 +1001,14 @@ inline std::string latestSave(const std::string &base) {
     if(ec) { return ""; }   // base missing or not a directory
     for(const auto &entry : it) {
         if(!fs::is_directory(entry)) { continue; }
-        const std::string ptName = entry.path().filename().string();
+        const std::string game = entry.path().filename().string();
         for(const std::string &slot : list_saves(entry.path().string())) {
             // The FILE's mtime: a save overwrites save.json in place.
             const fs::path meta = entry.path() / slot / "save.json";
             ec.clear();
             const fs::file_time_type t = fs::last_write_time(meta, ec);
             if(ec) { continue; }   // stat failed: skip rather than throw
-            slots.push_back({ptName + "/" + slot, t});
+            slots.push_back({game + "/" + slot, t});
         }
     }
     if(slots.empty()) { return ""; }
@@ -1026,7 +1022,7 @@ inline std::string latestSave(const std::string &base) {
     return newest->first;
 }
 
-// ---- quicksaves: a rotating pool of 100 slots in a playthrough dir -------
+// ---- quicksaves: a rotating pool of 100 slots in a game dir -------------
 // quicksave-00 .. quicksave-99. F5 writes quicksave-<max NN + 1>, overwriting the
 // oldest by mtime once full; F9 loads the newest. Age is mtime, not NN: after a
 // wrap or a hand deletion the two orders diverge.

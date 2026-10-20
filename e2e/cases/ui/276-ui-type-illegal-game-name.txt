@@ -1,14 +1,13 @@
 # The point of typing through the widget rather than calling startNewGame: the
-# field's own validation runs. safePlaythroughName (gameui.cpp) blocks what
-# would break a saves/ directory name, and the Start button refuses rather than
+# field's own validation runs. safeGameName (gameui.cpp:3159) blocks what would
+# break a saves/ directory name, and the Start button refuses rather than
 # sanitising. A hook that passed the name straight to startNewGame would test
 # the check in isolation and miss the button ignoring it.
 # "/" is in the blocklist, so the sheet must stay on screen and no game may
 # start.
 # The second half is not a bonus, it is what makes the first half mean anything.
-# An EMPTY field produces the identical refusal -- safePlaythroughName("") is
-# false -- so "no game started" alone cannot tell a dropped keystroke from a
-# working one.
+# An EMPTY field produces the identical refusal -- safeGameName("") is false --
+# so "no game started" alone cannot tell a dropped keystroke from a working one.
 # Retyping the same field with a legal name and getting a game proves the text
 # really landed, and that the refusal was about the content.
 NAME ui-type-illegal-game-name

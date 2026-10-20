@@ -1,11 +1,11 @@
-# The title menu's "Load last save" (navTitle). SEED stages two playthroughs
+# The title menu's "Load last save" (navTitle). SEED stages two games
 # into the case's scratch --data-dir, and deliberately makes the OLDER game
 # dir hold the NEWER write: "last" is the save the player last WROTE, not the
-# newest playthrough they started (save.h:latestSave, whose mtime rule
+# newest game they started (save.h:latestSave, whose mtime rule
 # tests/test_save.cpp pins without a UI). A checkout gives every fixture the
 # same mtime, hence the AGE_DAYS stamps.
 NAME title-load-last-save
-CLAIM Load last save picks the most recently written save, not the newest playthrough.
+CLAIM Load last save picks the most recently written save, not the newest game.
 KIND invariant
 SEED e2e/fixtures/save_mun saves/20260909_000000-newer_start/quicksave-00 40
 SEED e2e/fixtures/save_racer saves/20260101_000000-older_start/save1 1
