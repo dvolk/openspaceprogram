@@ -1,8 +1,12 @@
 #include <iostream>
 #include <algorithm>
 #include <assert.h>
-#include <cstring>
+#include <condition_variable>
+#include <deque>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <utility>
 
 #include <GL/glew.h>
 #include <SDL3/SDL.h>
@@ -12,6 +16,94 @@
 #include "gldebug.h"
 
 using namespace std;
+
+/* PNG encoding of a 1080p frame costs ~200 ms (4x that at 4K), all of it
+   compression: doing it on the main thread froze the game for the whole write.
+   The grab itself stays on the GL thread (a sync we cannot avoid); the surface
+   is then handed here to be flipped and encoded. RGB, not RGBA: the alpha byte
+   of a read-back framebuffer is not meaningful and an alpha channel only slowed
+   compression and bloated the file. */
+class ScreenshotWriter
+{
+public:
+    ScreenshotWriter() : worker_(&ScreenshotWriter::run, this) {}
+    ~ScreenshotWriter() {
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            stop_ = true;
+        }
+        cv_.notify_one();
+        if(worker_.joinable()) { worker_.join(); }   // drains queued shots
+    }
+    ScreenshotWriter(const ScreenshotWriter &) = delete;
+    ScreenshotWriter &operator=(const ScreenshotWriter &) = delete;
+
+    // Takes ownership of the surface (bottom-up as read); it is flipped, encoded
+    // and freed on the worker. False when the queue is full.
+    bool push(SDL_Surface *surface, std::string path) {
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            if(queue_.size() >= kMaxPending) { return false; }
+            queue_.emplace_back(surface, std::move(path));
+        }
+        cv_.notify_one();
+        return true;
+    }
+
+    Renderer::ShotState poll() {
+        std::lock_guard<std::mutex> lk(mu_);
+        if(saved_ > 0) { saved_--; return Renderer::ShotState::Saved; }
+        if(failed_ > 0) { failed_--; return Renderer::ShotState::Failed; }
+        return Renderer::ShotState::None;
+    }
+
+private:
+    // Three queued plus the one being encoded: 4 full frames resident (8 MB
+    // each at 1080p, 33 MB at 4K), plus the RGB copy IMG_SavePNG makes.
+    static constexpr size_t kMaxPending = 3;
+
+    void run() {
+        for(;;) {
+            SDL_Surface *surface = nullptr;
+            std::string path;
+            {
+                std::unique_lock<std::mutex> lk(mu_);
+                cv_.wait(lk, [this]{ return stop_ || !queue_.empty(); });
+                // stop_ with an empty queue: shutdown, unless shots are still
+                // queued (a user who pressed F12 just before quitting still
+                // gets the file).
+                if(queue_.empty()) { return; }
+                surface = queue_.front().first;
+                path = std::move(queue_.front().second);
+                queue_.pop_front();
+            }
+            const int w = surface->w, h = surface->h;
+            // glReadPixels is bottom-up, the PNG top-down. Row swaps: cheap, but
+            // 33 MB at 4K, so not on the frame that took the shot.
+            SDL_FlipSurface(surface, SDL_FLIP_VERTICAL);
+            // IMG_SavePNG yields true or sets SDL_GetError.
+            const bool ok = IMG_SavePNG(surface, path.c_str());
+            if(ok) {
+                printf("Screenshot saved: %s (%dx%d)\n", path.c_str(), w, h);
+            } else {
+                printf("Failed to save screenshot %s: %s\n", path.c_str(), SDL_GetError());
+            }
+            SDL_DestroySurface(surface);
+            {
+                std::lock_guard<std::mutex> lk(mu_);
+                (ok ? saved_ : failed_)++;
+            }
+        }
+    }
+
+    std::mutex mu_;
+    std::condition_variable cv_;
+    std::deque<std::pair<SDL_Surface *, std::string>> queue_;
+    int saved_ = 0;
+    int failed_ = 0;
+    bool stop_ = false;
+    std::thread worker_;
+};
 
 Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
                    bool gl_debug, int vsync)
@@ -368,36 +460,37 @@ void Renderer::SwapBuffers()
 
 bool Renderer::SaveScreenshot(const char *filename)
 {
+    /* No lazy-init guard here: SDL_image 3 has no IMG_Init, and its libpng
+       loader initializes on first use without a lock. It is already loaded by
+       then -- texture.cpp/skybox.cpp IMG_Load at startup, on this thread. */
+    if(!m_shots) { m_shots = std::make_unique<ScreenshotWriter>(); }
+
     const int w = m_screen_width;
     const int h = m_screen_height;
-
-    unsigned char *pixels = new unsigned char[w * h * 4];
-    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    /* GL_BGRA is the framebuffer's native byte order: B,G,R,A in memory.
+       SDL3's packed names run high bit to low bit, so the format naming THAT
+       memory layout is XRGB8888 (its little-endian bytes are B,G,R,X). X =
+       unused alpha: the framebuffer's alpha is meaningless, and an RGB PNG is
+       quicker to encode and smaller than RGBA. */
+    SDL_Surface *surface = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_XRGB8888);
+    if(!surface) { return false; }
+    // Read straight into the surface: no second full-frame buffer, no per-pixel
+    // copy. Safe because pitch is 4-aligned and a 4-byte pixel row always is.
+    assert(surface->pitch == w * 4);
+    glReadPixels(0, 0, w, h, GL_BGRA, GL_UNSIGNED_BYTE, surface->pixels);
     check_gl_error();
 
-    bool ok = false;
-    // glReadPixels yields [R,G,B,A]; SDL3's 8888 names are the reverse of memory
-    // order, so ABGR8888 is the match (RGBA8888 would scramble).
-    SDL_Surface *surface = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_ABGR8888);
-    if (surface) {
-        // glReadPixels is bottom-up, the SDL surface top-down: flip vertically.
-        // Alpha forced opaque so a viewer doesn't re-blend translucent layers.
-        for (int y = 0; y < h; y++) {
-            const unsigned char *src = pixels + (h - 1 - y) * w * 4;
-            unsigned char *dst = (unsigned char *)surface->pixels + y * surface->pitch;
-            memcpy(dst, src, w * 4);
-            for (int x = 0; x < w; x++) {
-                dst[x * 4 + 3] = 255;
-            }
-        }
-        if (IMG_SavePNG(surface, filename)) {
-            printf("Screenshot saved: %s (%dx%d)\n", filename, w, h);
-            ok = true;
-        } else {
-            printf("Failed to save screenshot %s: %s\n", filename, SDL_GetError());
-        }
+    if(!m_shots->push(surface, filename)) {
+        // F12 spam against a slow encoder: the game reports the shot as failed,
+        // say why on the console.
+        printf("Failed to save screenshot %s: encoder still busy\n", filename);
         SDL_DestroySurface(surface);
+        return false;
     }
-    delete[] pixels;
-    return ok;
+    return true;
+}
+
+Renderer::ShotState Renderer::PollScreenshot()
+{
+    return m_shots ? m_shots->poll() : ShotState::None;
 }

@@ -1,0 +1,12 @@
+# F12 writes a PNG of the live frame. The encode moved off the render thread,
+# so the toast now reports the worker's outcome a frame or two later: the file
+# check alone would pass with a dead completion path, and the toast alone would
+# pass on an empty file. --vab-empty is a still scene, so the shot is cheap and
+# its backdrop is a constant (0.55,0.62,0.68) to compare a capture against.
+NAME screenshot
+CLAIM F12 writes a PNG under the data dir's screenshots/ and toasts the outcome.
+KIND harness
+ARGS --vab-empty --timeout 8 --sim-press 3500,0,F12
+EXPECT Screenshot saved
+EXPECT [toast] Screenshot saved
+FILE screenshots/*.png

@@ -560,7 +560,9 @@ void poll_events(Game &g) {
             const SDL_Scancode ksc = ev.key.scancode;
             const Uint16 kmod = ev.key.mod;
             /* Scene-neutral slots: these work in flight AND in the editor. */
-            if(slotFired(Slot::Screenshot, ksc, kmod, g.binds)) {
+            // Not on key repeat: holding F12 would queue a shot per repeat and
+            // pile up full-frame buffers behind the (slow) PNG encoder.
+            if(!ev.key.repeat && slotFired(Slot::Screenshot, ksc, kmod, g.binds)) {
                 g.screenshot_requested = true;
             }
             if(slotFired(Slot::Wireframe, ksc, kmod, g.binds)) {

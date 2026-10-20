@@ -8,9 +8,9 @@ kind says how much weight the assertions carry.
 |---|---|---|
 | `invariant` | a behaviour or a player route the game must keep | 242 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 30 |
-| `harness` | CLI/test-engine plumbing, not game spec | 10 |
+| `harness` | CLI/test-engine plumbing, not game spec | 11 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **286** |
+| | **total** | **287** |
 
 There is no full battery: the runner takes at most 5 cases per
 invocation and starts a 10-minute cooldown. Select by number, name or
@@ -327,7 +327,7 @@ path (a whole subject is usually too wide), e.g.
 | `render/206-orbit-plane-keybind.txt` | invariant | F3 flips the same flag as the Settings checkbox. |
 | `render/313-postfx-gamma.txt` | invariant | Gamma post-fx produces the expected output. |
 
-## harness (11)
+## harness (12)
 
 | case | kind | pins |
 |---|---|---|
@@ -342,3 +342,4 @@ path (a whole subject is usually too wide), e.g.
 | `harness/280-ui-focus-refuses-hidden-part.txt` | harness | --ui-focus refuses a part no pixel can reach instead of aiming at a neighbour. |
 | `harness/281-ui-focus-after-orbit.txt` | harness | --ui-focus lands after the camera is orbited. |
 | `harness/282-ui-focus-unknown-part.txt` | harness | --ui-focus says an unknown part is unknown rather than clicking empty space. |
+| `harness/343-screenshot.txt` | harness | F12 writes a PNG under the data dir's screenshots/ and toasts the outcome. |

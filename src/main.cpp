@@ -1265,15 +1265,23 @@ int main(int argc, char **argv)
                 /* F12 answers with a toast: a silent shot is indistinguishable
                    from a dead key. The toast never lands in a shot -- a
                    screenshot frame draws no toasts, so a burst of shots cannot
-                   photograph the previous one's message. */
-                if(display.SaveScreenshot(fname)) {
-                    screenshot_count++;
-                    game.toast("Screenshot saved");
-                } else {
-                    // SaveScreenshot already printed the path and SDL_GetError.
+                   photograph the previous one's message. The encode runs on a
+                   worker thread, so the toast reports the outcome here, a
+                   frame or two later (see PollScreenshot below). The number is
+                   spent on the request: a queued name must not be handed out
+                   again while its encode is still in flight. */
+                screenshot_count++;
+                if(!display.SaveScreenshot(fname)) {
                     game.toast("Screenshot failed");
                 }
                 screenshot_requested = false;
+            }
+
+            // An encode finished since the last frame (renderer worker thread).
+            switch(display.PollScreenshot()) {
+                case Renderer::ShotState::Saved:  game.toast("Screenshot saved"); break;
+                case Renderer::ShotState::Failed: game.toast("Screenshot failed"); break;
+                case Renderer::ShotState::None:   break;
             }
 
             // SwapBuffers is where the vsync block lives.
