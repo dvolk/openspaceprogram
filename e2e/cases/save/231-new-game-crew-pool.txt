@@ -5,23 +5,36 @@
 # legal state, so nothing complained.
 # The switch is the New Game sheet's own system picker (startNewGame switches,
 # then newGame mints) -- the player's route, and the one that used to launch
-# empty. --vab loads tanker at boot; the build is session state and outlives
-# the switch, so the VAB after the new game still holds it.
+# empty. The ship is loaded AFTER the new game, through the VAB's own picker:
+# the build is the game's, not the session's, so a New Game clears it (#337).
+# It used to lean on --vab at boot and assume the build outlived the switch
+# (#342), which is the behaviour the game does NOT have.
+# 'baikonur' is solar_system.json's pad, so the [crew] line below can only be
+# the re-mint in the NEW system: the boot mint in ksp_system names
+# 'main_space_port'.
 NAME new-game-crew-pool
-CLAIM New Game re-mints the pad cast in the new system.
+CLAIM New Game re-mints the pad cast in the new system, and a launch fills named seats from it.
 KIND invariant
 ARGS --system res/systems/ksp_system.json --kerbals e2e/fixtures/three_kerbals.json
-ARGS --vab res/ships/tanker.json --timeout 16 --frame-cap 30
-ARGS --sim-press 1500,0,ESCAPE
+ARGS --timeout 16 --frame-cap 30
 ARGS --ui-click 2000,"Title Menu/New Game"
 ARGS --ui-click 2500,"New Game/##newgame_system"
 ARGS --ui-click 3000,"##Combo_00/solar_system"
 ARGS --ui-click 3500,"New Game/Start"
-ARGS --ui-click 6000,"Game Menu/VAB" --ui-click 8500,"VAB TopBar/LAUNCH"
+ARGS --ui-click 6000,"Game Menu/VAB"
+ARGS --ui-click 7000,"VAB TopBar/##vabload"
+ARGS --ui-click 7600,"##Combo_00/racer"
+ARGS --ui-click 8200,"VAB TopBar/Load"
+ARGS --ui-click 9000,"VAB TopBar/LAUNCH"
 EXPECT [game] switched system -> res/systems/solar_system.json (home Earth,
 EXPECT [game] new game: Space Center, no ship, paused
-EXPECT [vab] launched 'tanker' (7 parts)
-EXPECT Crew: 'Ace' aboard 'tanker' part 0 (1/1)
+EXPECT [crew] 3 kerbal(s) standing at 'baikonur'
+EXPECT [vab] launched 'racer' (4 parts)
+EXPECT Crew: 'Ace' aboard 'racer' part 0 (1/1)
+# The New Game really did clear the build (#337): the editor opens empty, which
+# is why the case loads a ship instead of assuming the boot's survived. Without
+# the CHECK the case would still pass if the build started surviving again.
+CHECK out.count("[vab] camera aimed at the build: 0 part") == 1
 FORBID FAILED
 FORBID no kerbal left
 FORBID error:

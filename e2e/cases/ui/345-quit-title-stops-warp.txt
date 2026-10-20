@@ -1,0 +1,24 @@
+# Quitting to the title must leave the title screen AT REST. The Title runs tick
+# as its update, so the warp the flight was flying at used to survive the
+# teardown: the menu sat at 10x with the clock running on behind the buttons.
+# The clock itself deliberately stays (the world and its season are the ones on
+# screen), so the witness is the clock read LATER by someone else: a staged save
+# that the title's "Load last save" refuses prints the live t and warp it found
+# ([load] running game unchanged), which is not the statement that paused the
+# world. Without the fix, t there has advanced ~25 sim-seconds and warp reads 10.
+NAME quit-title-stops-warp
+CLAIM Quitting to the title drops the flight's warp, so the title screen is not simulating.
+KIND invariant
+SEED e2e/fixtures/save_dangling_body saves/20260101_000000-gameA/slotA
+ARGS --time-accel 10 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Return to title" --ui-click 2500,"Question/Return"
+ARGS --ui-click 5000,"Title Menu/Load last save"
+EXPECT [game] unloaded: ships torn down, no active vessel (warp 10 -> 0)
+EXPECT [scene] spacecenter -> title (enterTitle)
+EXPECT [load] refused
+EXPECT [load] running game unchanged
+# Less than a sim-second of drift across the 2.5 wall-seconds between the
+# teardown and the load -- warp 10 would have put ~25 there.
+CHECK abs(float(re.search(r"enterTitle\) t=([0-9.]+)s", out).group(1)) - float(re.search(r"unchanged \(t=([0-9.]+), warp 0", out).group(1))) < 1.0
+FORBID error:

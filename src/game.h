@@ -658,8 +658,9 @@ struct Game {
     void load_settings();
     // Takes control of `v` (releases + parks the current one).
     void select_vehicle(Vehicle *v);
-    /* Space Center, no ship, paused. False (plus a toast) if a game is running. */
-    bool newGame();
+    /* Space Center, no ship, paused. Cannot fail: startNewGame is the only
+       caller and it refuses a running game first (asserted here). */
+    void newGame();
     /* False if a game is running or the system switch failed (world untouched). */
     bool startNewGame(const std::string &name, const std::string &sysPath,
                       float exhaustScale);
@@ -689,10 +690,10 @@ struct Game {
        whatever was unlisted survived the reset. The definition carries the
        rule and the two deliberate exceptions. */
     void clearEphemeralState();
-    /* The only teardown. resetWorld = clearEphemeralState + the fleet, in the
-       one order that is safe (refs first, then the vehicles they borrow, then
-       the bodies' owners get to die). No job drain: no background
-       continuation dereferences a Vehicle. */
+    /* The only teardown. resetWorld = clearEphemeralState + the fleet + the
+       warp (the title it lands on is at rest), in the one order that is safe
+       (refs first, then the vehicles they borrow, then the bodies' owners get to
+       die). No job drain: no background continuation dereferences a Vehicle. */
     void resetWorld();
     /* Queue a world change (load / new game / quit to title) for the top of the
        NEXT frame. Only the UI pass needs it: a teardown deletes Vehicles
@@ -705,7 +706,7 @@ struct Game {
     /* The frame loop only, next to sweepRetired(): run what the UI queued
        before anything reads the world this frame. */
     void runWorldOps();
-    // resetWorld + enterTitle: the flight pause menu's "Quit to title".
+    // resetWorld + enterTitle: the hub's "Return to title".
     void resetToTitle();
     /* Transactional (see game.cpp). `syncNames` are body NAMES to build
        synchronously; empty = the title backdrop. */
@@ -828,8 +829,11 @@ struct Game {
           sun(sun), home(home), args(args), sim_win_id(sim_win_id),
           xferPlanner(*this)   // borrows the Game it is a member of
     {
-        // Never empty: Flight is the floor scene, and curSceneId reads back()
-        // unguarded.
+        /* Never empty: curSceneId reads back() unguarded. The seed is Flight so
+           a boot with a vessel keeps that floor without a transition; the
+           no-vessel boot collapses it to the Title, which is why that boot logs
+           "flight -> title". Consequence worth knowing: gameRunning() is true
+           from construction until main.cpp says otherwise. */
         sceneStack.reserve(4);
         sceneStack.push_back(SceneFrame{});   // Flight, no parked camera
         // --surfmap-noshade (CLI) mirrors the Surface Map "Sun shading" box.

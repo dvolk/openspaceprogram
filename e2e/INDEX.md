@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 243 |
+| `invariant` | a behaviour or a player route the game must keep | 244 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 30 |
 | `harness` | CLI/test-engine plumbing, not game spec | 11 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **288** |
+| | **total** | **289** |
 
 There is no full battery: the runner takes at most 5 cases per
 invocation and starts a 10-minute cooldown. Select by number, name or
@@ -204,7 +204,7 @@ path (a whole subject is usually too wide), e.g.
 | `save/228-crew-pool-load.txt` | invariant | A save's pad cast is rebuilt as written, with no fallback mint. |
 | `save/229-crew-pool-badpart.txt` | invariant | A crew-pool entry naming a non-person is refused and the running cast survives. |
 | `save/230-crew-pool-dup.txt` | invariant | A roster id worn by both a seat and a pool suit is refused. |
-| `save/231-new-game-crew-pool.txt` | invariant | New Game re-mints the pad cast in the new system. |
+| `save/231-new-game-crew-pool.txt` | invariant | New Game re-mints the pad cast in the new system, and a launch fills named seats from it. |
 | `save/232-crew-pool-roster-rollback.txt` | invariant | A refused load rolls the roster back with the fleet. |
 | `save/259-focus-list-seeded-once-across-systems.txt` | invariant | A cross-system boot seeds the focus list once, not twice. |
 | `save/260-new-game-mints-its-own-game-dir.txt` | invariant | A New Game mints its own saves/ directory. |
@@ -225,7 +225,7 @@ path (a whole subject is usually too wide), e.g.
 | `save/318-reload-refused-active-ship.txt` | invariant | An in-game reload with a bad active_ship refuses and the game survives. |
 | `save/319-deep-tree-rolls-back-roster.txt` | invariant | A build-time refusal after a roster swap restores the running roster. |
 
-## ui (44)
+## ui (45)
 
 | case | kind | pins |
 |---|---|---|
@@ -273,6 +273,7 @@ path (a whole subject is usually too wide), e.g.
 | `ui/276-ui-type-illegal-game-name.txt` | invariant | An illegal game name keeps the sheet open and starts nothing. |
 | `ui/277-save-slot-through-the-window.txt` | invariant | The Save/Load window's Save button writes the typed slot. |
 | `ui/344-staff-lounge.txt` | invariant | The Staff Lounge opens from the hub, reports where each staff member is, and returns. |
+| `ui/345-quit-title-stops-warp.txt` | invariant | Quitting to the title drops the flight's warp, so the title screen is not simulating. |
 
 ## render (49)
 

@@ -749,15 +749,13 @@ static std::string saveSystemFile(const std::string &dir, bool *format_ok = null
     return "";
 }
 
-bool Game::newGame() {
-    // Any vehicle in the world, not just the active one, means a game runs.
-    // A retire queued this frame does NOT count: retire() already took it out of
-    // `vehicles`, and sweepRetired() runs at the top of the loop, never from a
-    // game action (game.h) -- so the corpse is freed on its own schedule.
-    if(!vehicles.empty()) {
-        toast("A game is already running");
-        return false;
-    }
+void Game::newGame() {
+    /* Invariants, not user-facing checks: startNewGame is the only caller and
+       refused a running game before it got here, and a system switch on the way
+       collapsed the stack to the Title (installSystem). The predicate for "a
+       game is in charge" is the scene floor, not the fleet -- a recovered or
+       shipless save is a game with no vehicles (scene.h:gameRunning). */
+    assert(!gameRunning(*this) && "a new game starts from the title");
     /* A game with no identity cannot be saved: quicksave() writes into whatever
        gameId names, and after a quit-to-title that is the PREVIOUS game's
        directory (#299). The caller mints first -- startNewGame claims the dir
@@ -796,7 +794,6 @@ bool Game::newGame() {
     printf("[game] new game: Space Center, no ship, paused (t=%.1f)\n", time);
     fflush(stdout);
     toastLog("New game -- Space Center");
-    return true;
 }
 
 // The "home" body name a system JSON records ("" when absent). The New Game
@@ -815,7 +812,13 @@ static std::string systemHomeName(const std::string &path) {
 
 bool Game::startNewGame(const std::string &name, const std::string &sysPath,
                         float exhaustScale) {
-    if(!vehicles.empty()) {
+    /* THE guard, and the only one that can fire: the New Game sheet is drawn
+       only by the Title scene (kTitleWins / titleDrawUi), so a player is never
+       anywhere else. Checked BEFORE the switch -- switchSystem tears the running
+       career down, so a guard after it could only notice a game it already
+       destroyed. The predicate is the scene floor, not the fleet: a recovered or
+       shipless save is a game with no vehicles (scene.h:gameRunning). */
+    if(gameRunning(*this)) {
         toast("A game is already running");
         return false;
     }
@@ -855,7 +858,8 @@ bool Game::startNewGame(const std::string &name, const std::string &sysPath,
     printf("[game] new game '%s' (exhaust %.2fx) -> %s\n", name.c_str(),
            exhaustScale, gdir.c_str());
     fflush(stdout);
-    return newGame();
+    newGame();
+    return true;
 }
 
 bool Game::mintGameDir() {
@@ -1019,7 +1023,7 @@ bool Game::loadFrom(const std::string &dir) {
             return false;
         }
         clearEphemeralState();
-        if(ship != nullptr) { enterFlight(*this); } else { enterSpaceCenter(*this); }
+        enterGameFloor(*this);
         return true;
     }
 
@@ -1101,8 +1105,7 @@ bool Game::loadFrom(const std::string &dir) {
         return false;
     }
     clearEphemeralState();
-    // A shipless save is still a game: land on the hub, not the title.
-    if(ship != nullptr) { enterFlight(*this); } else { enterSpaceCenter(*this); }
+    enterGameFloor(*this);
     return true;
 }
 
@@ -1234,12 +1237,22 @@ void Game::resetWorld() {
        (startNewGame, and newGame asserts it is set); a load sets it from its own
        directory afterwards, so the switch path is unaffected. */
     gameId.clear();
+    /* Warp belongs to the flight that ended. The Title runs tick as its update,
+       so a warp that survived the teardown kept the menu simulating -- clock
+       running on behind the buttons. The clock itself deliberately stays: the
+       world and its season are the ones on screen. */
+    const int dropped_warp = time_accel;
+    time_accel = 0;
     // The title screen is an orbit view: a quitting free-cam pilot keeps no pose.
     if(camera != nullptr) { camera->mode = CAM_ORBIT; }
     syncShipFocus();
-    // The string is a frozen e2e anchor (cases 66, 67, 68, 90, 102, 260, 262,
-    // 264 EXPECT it), so the function rename did not take it with it.
-    printf("[game] unloaded: ships torn down, no active vessel\n");
+    /* The prefix is a frozen e2e anchor, so the function rename did not take it
+       with it. EXPECTed by 66, 67, 68, 260, 345; FORBIDden by 90, 102, 262,
+       264, 268, 305, 315, 318, 319 -- those assert that a REFUSED load never
+       tears the career down, so the anchor cuts both ways. The warp suffix is
+       what makes the pause above observable at all. */
+    printf("[game] unloaded: ships torn down, no active vessel (warp %d -> 0)\n",
+           dropped_warp);
     fflush(stdout);
 }
 

@@ -99,10 +99,16 @@ void enterTitle(Game &g);
 // Collapse to [SpaceCenter] -- the floor of a game with no active vessel (new
 // game, or a recovered / shipless game).
 void enterSpaceCenter(Game &g);
+/* Collapse to wherever this game belongs: [Flight] with an active vessel,
+   [SpaceCenter] without one. The rule a load or a boot --load used to spell
+   out at each call site. */
+void enterGameFloor(Game &g);
 // "Go to" a scene: pop down if on the stack, else push (the 1/2/3/4 shortcuts).
 // Unlike enterFlight, no collapse.
 void goScene(Game &g, SceneId id);
-// True when a game is in charge (stack floor is not Title).
+/* True when a game is in charge (stack floor is not Title). THE predicate for
+   "may I start/replace a game": the fleet is not one -- a recovered or shipless
+   save is a game with no vehicles. */
 bool gameRunning(const Game &g);
 
 // Capture / apply a camera pose.

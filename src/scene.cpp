@@ -298,6 +298,13 @@ void enterSpaceCenter(Game &g) {
     setBaseScene(g, SceneId::SpaceCenter, "enterSpaceCenter");
 }
 
+/* The one place that says where a game belongs. A load and a boot --load each
+   used to spell the ternary, so changing the rule meant a hunt through
+   game.cpp and main.cpp. */
+void enterGameFloor(Game &g) {
+    if(g.ship != nullptr) { enterFlight(g); } else { enterSpaceCenter(g); }
+}
+
 void goScene(Game &g, SceneId id) {
     if(g.sceneStack.empty()) { return; }
     int top = -1;
