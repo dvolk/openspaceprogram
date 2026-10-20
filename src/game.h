@@ -273,9 +273,11 @@ struct MapState {
 };
 
 /* Surface Map SESSION state (Game::surfmap), not save state: the pixels are
-   re-baked from the body on demand. valid / computed_at / in_flight are also
-   the clock-stamped cache's: invalidateClockStampedCaches() resets them, so
-   the window reads state the clock owns. */
+   re-baked from the body on demand. valid / computed_at are also the
+   clock-stamped cache's: invalidateClockStampedCaches() resets them, so the
+   window reads state the clock owns. in_flight is NOT: its job survives a clock
+   jump and its continuation clears the count, so only installSystem zeroes it --
+   next to the jobs.abort() that discards those continuations. */
 struct SurfmapState {
     // null = the active ship's parent, else the system home.
     TerrainBody *body = nullptr;
@@ -420,10 +422,11 @@ struct Game {
         surfmap.valid = false;
         surfmap.computed_at = -1.0;
         cache_epoch++;
-        // In-flight counters are only decremented by their continuations; on the
-        // switch path those are discarded (jobs.restart).
-        xferPlanner.pc_in_flight = 0;
-        surfmap.in_flight = 0;
+        /* NOT the in_flight counters. A queued or running job still owes its
+           continuation, and that continuation is what clears them; zeroing here
+           says "nothing is running" while something is, which lets a second
+           sweep post on top of the first. installSystem zeroes them next to
+           jobs.abort() -- the only place the continuations are discarded. */
     }
     /* A clock move OUTSIDE a tick (a load, --start-time); a system swap invalidates
        directly. */

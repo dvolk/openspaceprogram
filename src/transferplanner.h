@@ -1,10 +1,22 @@
 // transferplanner.h -- the game-side transfer planner: the TARGET window's
 // target selection + the min-dv solver cache. Pure math is in transfer.h.
+//
+// LIFETIME. Almost everything the planner remembers belongs to the game it
+// plans in: the target rows hold Vehicle*, the solve and the grid are stamped
+// against two particular orbits, and a "Send best" plan counts down to an
+// absolute departure time. So the object is REPLACEABLE -- it holds a Game
+// POINTER rather than a reference for exactly that reason, and
+// resetForNewWorld() swaps in a fresh one (#346). What survives is the
+// player's own setup, listed in one place there. A new field therefore resets
+// by default, which is the safe direction to fail in: forgetting one loses a
+// grid, not a leftover from the game that just ended.
 #pragma once
 
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <SDL3/SDL.h>
@@ -39,7 +51,8 @@ public:
         Vehicle *ship;       // ship target (intercept only)
     };
 
-    explicit TransferPlanner(Game &g) : g(g) {}
+    // A POINTER, not a reference: resetForNewWorld() replaces *this wholesale.
+    explicit TransferPlanner(Game &g) : g(&g) {}
 
     // Per-frame: rebuild the target list, recompute on input change or every
     // 30 frames, fire the --xfer-log.
@@ -70,6 +83,15 @@ public:
     // Clock jump or system swap: drop every stamp against the old world.
     void invalidateClockState();
 
+    /* The world was replaced -- quit-to-title, a new game, a load. Replace the
+       whole planner with a fresh one and move the survivors across: the player's
+       own setup plus two stamps that outlive a world. The definition lists them
+       and says why each one survives; the point of doing it here rather than
+       field by field is that a new member resets by default, so forgetting one
+       loses a grid rather than leaking the last career's into the next.
+       Called from Game::clearEphemeralState, so all three routes get it. */
+    void resetForNewWorld();
+
     /* Select by IDENTITY ("" clears), resolving against the current list so the
        caller sees this frame's index. `isShip` is part of the identity: the list
        can hold a body and a vessel under one name, and the combo shows a row for
@@ -79,14 +101,6 @@ public:
     /* Select by name alone, taking the LAST match -- a vessel wins over a body
        of the same name. This is the CLI's shape, where there is no row to click. */
     void selectTargetByName(const std::string &name);
-
-    /* Drop the rows, leaving anything clock-stamped alone. A row's name points
-       INTO a Vehicle and its `ship` IS that Vehicle, so a teardown that deletes
-       the vessels wholesale -- quit-to-title, a load -- must call this or the
-       list outlives what it points at. update() rebuilds the list every refresh,
-       so the gap is only the frames in between, and the TARGET block, the map's
-       transfer plane, and the relvel marker all read it. */
-    void dropTargets();
 
     std::vector<XferTarget> xferTargets;
     /* The selection is an IDENTITY, and xfer_target is derived from it on every
@@ -172,7 +186,15 @@ public:
     float  xfer_prev_tof_log = (float)std::log10(3600.0);
 
 private:
-    Game &g;
+    Game *g;
+
+    /* Drop the rows, leaving anything clock-stamped alone. A row's name points
+       INTO a Vehicle and its `ship` IS that Vehicle, so the rows must not
+       outlive the fleet: update() rebuilds the list every refresh, but anything
+       scanning it in between -- the TARGET block, the map's transfer plane, the
+       relvel marker -- reads freed names. A Game teardown gets here through
+       resetForNewWorld, which replaces the list empty. */
+    void dropTargets();
 
     /* Point xfer_target at xfer_sel in the CURRENT xferTargets, or clear the
        selection when it is not there: a deleted target takes it with it, and
@@ -180,6 +202,12 @@ private:
        Called on every rebuild. */
     void resolveTarget();
 };
+
+/* resetForNewWorld() replaces *this, so assignment has to exist. A reference or
+   const member -- the Game& this class used to hold -- silently deletes it, and
+   the call would then fail to compile a long way from here. */
+static_assert(std::is_move_assignable_v<TransferPlanner>,
+              "TransferPlanner must stay assignable: resetForNewWorld() replaces it");
 
 /* Erase the rows whose ship is `v`. True if one went -- the selection index is
    stale either way (it points into the pre-erase list) and the caller must

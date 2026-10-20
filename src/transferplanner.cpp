@@ -199,7 +199,7 @@ void TransferPlanner::selectTargetByName(const std::string &name) {
 
 void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
     xferTargets.clear();
-    if(g.ship == nullptr) {
+    if(g->ship == nullptr) {
         // No active ship: drop any stale target / plan (orbit-view boot).
         xfer_sel = TargetRef();
         xfer_target = -1;
@@ -209,8 +209,8 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         return;
     }
     {
-        TerrainBody *pb = g.ship->frame->body;
-        for(auto *b : g.sys.bodies) {
+        TerrainBody *pb = g->ship->frame->body;
+        for(auto *b : g->sys.bodies) {
             if(b->frame && b->frame->parent == pb->frame) {
                 xferTargets.push_back({b->name.c_str(), b, nullptr});
             }
@@ -218,14 +218,14 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         /* Sibling vessels: Game::vehicles filtered to the subject's SoI body.
            Every entry is flyable -- a seated kerbal is a seat on its capsule's
            Part (part.h), never a target here. */
-        for(auto *s : g.vehicles) {
-            if(s != g.ship && s->m_parent == pb) {
+        for(auto *s : g->vehicles) {
+            if(s != g->ship && s->m_parent == pb) {
                 xferTargets.push_back({s->name.c_str(), nullptr, s});
             }
         }
         // --transfer-target wins over the window's combo on every rebuild.
-        if(!g.args.transfer_target.empty()) {
-            selectTargetByName(g.args.transfer_target);
+        if(!g->args.transfer_target.empty()) {
+            selectTargetByName(g->args.transfer_target);
         } else {
             resolveTarget();
         }
@@ -268,7 +268,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         xfer.frame++;
         if(xfer.frame - xfer.period_frame >= 30) {
             xfer.period_frame = xfer.frame;
-            const InertialShip s1 = shipInertial(g, com, vel);
+            const InertialShip s1 = shipInertial(*g, com, vel);
             pc_period = targetInertial(xferTargets[xfer_target], s1.inertial)
                             .tof_max / 3.0;
         }
@@ -279,7 +279,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
             || std::fabs(xfer.tof_log - xfer_tof_log) > 1e-12
             || xfer.frame - xfer.solved_frame >= 30;
         if(dirty) {
-            const InertialShip s1 = shipInertial(g, com, vel);
+            const InertialShip s1 = shipInertial(*g, com, vel);
             const XferTarget &t = xferTargets[xfer_target];
             const InertialTarget d = targetInertial(t, s1.inertial);
             // Scale for the porkchop range sliders: one target period, the
@@ -303,7 +303,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
             xfer.valid = sol.valid;
             if(sol.valid) {
                 // A dv delta carries no stasis term: it cancels in the difference.
-                const glm::dmat3 O = g.ship->frame->GetOrientRelTo(s1.inertial);
+                const glm::dmat3 O = g->ship->frame->GetOrientRelTo(s1.inertial);
                 xfer.burn_dir = glm::transpose(O) * (sol.v_departure - s1.v);
             } else {
                 xfer.burn_dir = glm::dvec3(0.0);
@@ -316,15 +316,15 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
     }
 
     // --xfer-log: the planner's current solution.
-    if(g.args.xfer_log && xfer_target >= 0 && xfer_compute) {
-        if(g.logDue(kGateXfer, SDL_GetTicks(), g.orbit_log_interval_ms)) {
+    if(g->args.xfer_log && xfer_target >= 0 && xfer_compute) {
+        if(g->logDue(kGateXfer, SDL_GetTicks(), g->orbit_log_interval_ms)) {
             const char *tn = xferTargets[xfer_target].name;
             if(xfer.valid) {
                 printf("[xferlog] t=%.1fs target=\"%s\" dv_dep=%.6g m/s "
                        "dv_cap=%.6g m/s total=%.6g m/s tof=%.6g s "
                        "v_inf=%.6g m/s r_cap=%.6g m "
                        "burn=[%.4f %.4f %.4f] retrograde=%d rev=%d\n",
-                       g.time, tn, xfer.sol.dv_departure,
+                       g->time, tn, xfer.sol.dv_departure,
                        xfer.sol.dv_capture, xfer.sol.total_dv,
                        xfer.sol.tof, xfer.sol.v_inf, xfer.sol.r_cap,
                        xfer.burn_dir.x, xfer.burn_dir.y,
@@ -332,7 +332,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
                        xfer.sol.revolutions);
             } else {
                 printf("[xferlog] t=%.1fs target=\"%s\" no-solution\n",
-                       g.time, tn);
+                       g->time, tn);
             }
             fflush(stdout);
         }
@@ -361,11 +361,49 @@ void TransferPlanner::invalidateClockState() {
     pc.valid = false;
     xfer.valid = false;
     dropTargets();
-    // A sweep interrupted by the swap never runs its continuation (abort() drops
-    // the queued ones, restart() the landed one) -- and that continuation is the
-    // only other place pc_in_flight clears. Without this the window shows
-    // "sweeping" and disables Compute forever.
-    pc_in_flight = 0;
+    /* Deliberately NOT pc_in_flight. A sweep that is queued or running still
+       owes its continuation, and that continuation is the only other place the
+       count clears -- so zeroing it here (which this used to) tells the window
+       the sweep is over mid-flight: its "sweeping" line vanishes, Compute
+       re-enables, and the player posts a SECOND grid on top of the first. The
+       one caller that really does discard continuations -- installSystem's
+       jobs.abort() -- zeroes it where that happens (game.cpp). */
+}
+
+void TransferPlanner::resetForNewWorld() {
+    /* Replace the whole planner, then move the survivors onto the replacement.
+       Building the fresh one first keeps the survivor list a single run of
+       assignments: a field added to the class resets by default, and a field
+       that must survive appears exactly once -- a save/restore pair would have
+       to be edited in two places that nothing checks against each other.
+
+       What survives, and why:
+         xfer_compute, pcCustomDep/pcDepLo/Hi, pcCustomTof/pcTofLo/Hi
+             the player's setup in the TARGET and Porkchop windows. The bounds
+             are what the window seeded them with rather than what a sweep
+             produced, so they are the player's, not the world's.
+         pc_rev   a monotonic stamp, not world state. The window caches its
+             heatmap in a program-lifetime static keyed by rev (gameui.cpp), so
+             restarting at 0 makes the new game's first sweep look unchanged:
+             no rebuild, the old game's pixels, and the assert after that block
+             fires as soon as the new grid is a different size.
+         pc_in_flight
+             a sweep posted before the teardown still runs its continuation --
+             only installSystem aborts jobs -- so it still owns a slot.
+
+       Everything else names a Vehicle, a body, or a clock stamp in the world
+       that is going away. */
+    TransferPlanner fresh(*g);
+    fresh.xfer_compute = xfer_compute;
+    fresh.pcCustomDep = pcCustomDep;
+    fresh.pcDepLo = pcDepLo;
+    fresh.pcDepHi = pcDepHi;
+    fresh.pcCustomTof = pcCustomTof;
+    fresh.pcTofLo = pcTofLo;
+    fresh.pcTofHi = pcTofHi;
+    fresh.pc_rev = pc_rev;
+    fresh.pc_in_flight = pc_in_flight;
+    *this = std::move(fresh);
 }
 
 bool TransferPlanner::targetPlaneNormal(Frame *focus_inertial,
@@ -404,7 +442,7 @@ void TransferPlanner::porkchopCompute() {
 
     // Snapshot ship/target state in the parent's INERTIAL frame -- the ONLY game
     // state read; the grid sweep is pure and runs on the background worker.
-    const InertialShip s1 = shipInertial(g, g.hud.view.pos, g.hud.view.vel);
+    const InertialShip s1 = shipInertial(*g, g->hud.view.pos, g->hud.view.vel);
     const InertialTarget d = targetInertial(t, s1.inertial);
 
     double t_dep_lo, t_dep_hi;
@@ -425,30 +463,30 @@ void TransferPlanner::porkchopCompute() {
     const double mu_p = s1.mu_parent, mu_t = d.mu, r_cap = d.r_cap;
     /* --porkchop-bench sweeps several sizes off THIS one snapshot, so the grids
        differ only in resolution. Swept ascending; the live plot keeps the largest. */
-    std::vector<int> sizes = g.args.porkchop_bench;
+    std::vector<int> sizes = g->args.porkchop_bench;
     // assign, not push_back: GCC 15 loses the buffer origin through the
     // unique/erase below and warns -Wfree-nonheap-object on push_back's growth
     // path -- which cannot run here, since sizes is empty so capacity is 0.
     // False positive (ASan-clean), but it was the tree's only warning.
-    if(sizes.empty()) { sizes.assign(1, g.args.porkchop_n); }
+    if(sizes.empty()) { sizes.assign(1, g->args.porkchop_n); }
     // A repeated size would redo identical work and rewrite the same CSV.
     std::sort(sizes.begin(), sizes.end());
     sizes.erase(std::unique(sizes.begin(), sizes.end()), sizes.end());
-    const bool dump = !g.args.porkchop_dump.empty();
+    const bool dump = !g->args.porkchop_dump.empty();
     // A bench sweep exists to be read, so it implies --porkchop-log.
-    const bool log = g.args.porkchop_log || dump || !g.args.porkchop_bench.empty();
-    const std::string dump_dir = g.args.porkchop_dump;
+    const bool log = g->args.porkchop_log || dump || !g->args.porkchop_bench.empty();
+    const std::string dump_dir = g->args.porkchop_dump;
     const bool capture = d.capture;
     const std::string tname = t.name;
     // The kind travels with the name: a grid swept for the VESSEL "Mun" must not
     // be handed to the moon Mun if the vessel is deleted mid-sweep.
     const bool t_is_ship = t.ship != nullptr;
-    const double t_now = g.time;
-    const int epoch = g.cache_epoch;      // drop the result if the world changes
-    JobRunner *jobs = &g.jobs;           // stopping() is thread-safe (job.h)
+    const double t_now = g->time;
+    const int epoch = g->cache_epoch;      // drop the result if the world changes
+    JobRunner *jobs = &g->jobs;           // stopping() is thread-safe (job.h)
 
     pc_in_flight++;
-    g.jobs.post("Porkchop grid", [r1,v1,r2,v2,mu_p,mu_t,r_cap,
+    g->jobs.post("Porkchop grid", [r1,v1,r2,v2,mu_p,mu_t,r_cap,
                                   t_dep_lo,t_dep_hi,tof_lo,tof_hi,
                                   sizes,capture,log,tname,t_is_ship,t_now,
                                   epoch,dump,dump_dir,jobs,this]()
@@ -486,7 +524,7 @@ void TransferPlanner::porkchopCompute() {
             // Epoch bumped since posting: the grid is for the old world (load
             // does NOT abort jobs). Drop before touching the target list -- a
             // SHIP target list was freed by the load (UAF risk).
-            if(epoch != this->g.cache_epoch) {
+            if(epoch != this->g->cache_epoch) {
                 if(pc_in_flight > 0) { pc_in_flight--; }
                 return;
             }

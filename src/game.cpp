@@ -1176,7 +1176,17 @@ void Game::clearEphemeralState() {
     /* One-shot compute requests posted to the old world: the next frame would
        ask for a map/grid over bodies the next game may not have. */
     surfmap.compute_requested = false;
-    xferPlanner.pc_compute_requested = false;
+    /* The planner is REPLACED rather than picked over: nearly every field names
+       a Vehicle, a body, or an orbit in the world that is going away, so a new
+       field resets by default instead of leaking into the next career (#346).
+       What survives is listed in resetForNewWorld. */
+    xferPlanner.resetForNewWorld();
+    /* A grid sweep or terrain bake still on the worker was posted against the
+       old fleet, so its result is for a world that no longer exists. Only
+       installSystem aborts jobs, so bump the epoch and let each continuation
+       take its mismatch branch -- the same rule setTime applies on the routes
+       that move the clock (game.h). */
+    cache_epoch++;
     /* Identity-only readers (#296): nothing dereferences these, so a stale one
        is a wrong comparison rather than a crash -- which is exactly why nobody
        ever bothered nulling them at the sites. Cleared as a group: render.cpp
@@ -1215,11 +1225,12 @@ void Game::resetWorld() {
        needed -- no continuation touches a Vehicle. */
     clearEphemeralState();
     part_sels.clear();
-    /* A transfer row names a Vehicle and points at it, so the rows go with the
-       vehicles. update() rebuilds them each refresh, but quit-to-title leaves
-       frames between here and the next world where the TARGET window and the
-       map's plane would read freed names. */
-    xferPlanner.dropTargets();
+    /* A transfer row names a Vehicle and points at it, so the rows must die with
+       the vehicles: the bulk `delete v` below never runs dropVehicleRefs, so a
+       row left here outlives what it points at. resetForNewWorld above already
+       replaced the planner with an empty list, which is why there is no
+       dropTargets() call; update() rebuilds the rows each refresh, and every
+       reader of the old ones also needs a live ship, which this nulls. */
     clearFlightSummary();   // a summary from THIS game must not leak into the next
     science.reset();        // ...and neither must the career score / archive
     /* Retired vehicles are not in `vehicles`, so this is the other half of the
@@ -1341,6 +1352,13 @@ void Game::installSystem(System &&newSys, const std::string &path,
     jobs.abort();
     freeBodies(oldBodies);
     jobs.restart();
+    /* The in-flight counters belong HERE rather than with the cache invalidation
+       above: abort() discarded the queued jobs and restart() the landed one, so
+       no continuation is left to clear them, and a stale count leaves a window
+       saying "sweeping"/"mapping" with its button disabled forever. Everywhere
+       else the jobs survive, so their continuations own the counts. */
+    xferPlanner.pc_in_flight = 0;
+    surfmap.in_flight = 0;
     // The sync set resolves against the NEW system; unknown names drop out. A
     // bare switch lands on the title, so the backdrop must be the solid one.
     std::vector<TerrainBody *> sync;

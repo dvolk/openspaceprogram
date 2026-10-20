@@ -49,7 +49,9 @@ struct CameraSnapshot {
 // camValid false when there was no camera to capture.
 struct SceneFrame {
     SceneId id = SceneId::Flight;
-    CameraSnapshot cam;
+    CameraSnapshot cam = {};   // = {} is not decoration: glm::dvec3 default-
+                               // initializes pos/fwd/up to garbage, and camValid
+                               // is the only thing keeping them unread
     bool camValid = false;
 };
 
