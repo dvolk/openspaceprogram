@@ -761,15 +761,17 @@ int main(int argc, char **argv)
     if(ship == nullptr && args.load_name.empty()) {
         /* No vessel and no loaded game: the floor scene is the TITLE screen.
            Decided before the --vab entry below so an editor opened with nothing
-           to fly sits on [title, vab]. */
+           to fly sits on [title, vab]. The stack is seeded as the Title, so
+           this is the one boot branch that logs no transition -- the print is
+           its anchor. */
         enterTitle(game);
         game.parkTitleCamera();
         printf("[boot] no vessel: title screen\n");
         fflush(stdout);
     } else {
-        /* A vessel or a loaded game owns its floor. Usually a no-op -- the
-           constructor seeds the floor as Flight -- but the landing rule then
-           lives in one function instead of in what a default happens to be. */
+        /* A vessel or a loaded game takes the floor from the Title the stack is
+           seeded with, so every boot says where it landed. On the --load route
+           this re-affirms the landing above; setBaseScene logs only on a move. */
         enterGameFloor(game);
     }
 

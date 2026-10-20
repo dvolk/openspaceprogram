@@ -4,6 +4,7 @@ KIND canary
 ARGS --timeout 4
 EXPECT [boot] no vessel: title screen
 EXPECT [title] backdrop:
-EXPECT [scene] flight -> title (enterTitle)
+# No [scene] line: the stack is seeded as the Title, so a shipless boot makes no
+# transition to log. The [boot] print is the anchor for the floor.
 EXPECT Main loop starting
 FORBID error:

@@ -829,13 +829,13 @@ struct Game {
           sun(sun), home(home), args(args), sim_win_id(sim_win_id),
           xferPlanner(*this)   // borrows the Game it is a member of
     {
-        /* Never empty: curSceneId reads back() unguarded. The seed is Flight so
-           a boot with a vessel keeps that floor without a transition; the
-           no-vessel boot collapses it to the Title, which is why that boot logs
-           "flight -> title". Consequence worth knowing: gameRunning() is true
-           from construction until main.cpp says otherwise. */
+        /* Never empty: curSceneId reads back() unguarded. The seed is the Title
+           because no game is in charge until main.cpp puts one in charge, which
+           is what gameRunning() reports. So a ship boot logs its way in
+           ("title -> flight") and a shipless one simply stays: no phantom
+           flight to unwind, and every floor change is a logged decision. */
         sceneStack.reserve(4);
-        sceneStack.push_back(SceneFrame{});   // Flight, no parked camera
+        sceneStack.push_back(SceneFrame{.id = SceneId::Title});
         // --surfmap-noshade (CLI) mirrors the Surface Map "Sun shading" box.
         surfmap.shade = !args.surfmap_noshade;
     }

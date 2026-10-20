@@ -7,6 +7,6 @@ ARGS --system res/systems/ksp_system.json --load e2e/fixtures/save_shipless --ti
 ARGS --timeout 8
 EXPECT Loaded system 'res/systems/ksp_system.json'
 EXPECT Loaded game from e2e/fixtures/save_shipless (active: (none))
-EXPECT [scene] flight -> spacecenter (enterSpaceCenter)
+EXPECT [scene] title -> spacecenter (enterSpaceCenter)
 FORBID [boot] no vessel: title screen
 LIMIT 120

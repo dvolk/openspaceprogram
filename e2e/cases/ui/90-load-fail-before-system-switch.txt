@@ -22,7 +22,9 @@ EXPECT no longer in the parts file (before the system switch)
 FORBID switched before loading
 FORBID [game] switched system
 FORBID [game] unloaded
-FORBID [scene] flight -> title
+# Any floor -> title, from flight or from the hub: the stack is seeded as the
+# Title, so naming only the verb covers every way a teardown could land there.
+FORBID enterTitle
 FORBID Loaded game from
 FORBID science reset by the system switch
 LIMIT 120

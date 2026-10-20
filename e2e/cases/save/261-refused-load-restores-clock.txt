@@ -25,6 +25,7 @@ CHECK (lambda m: m is not None and int(m.group(1)) >= 500)(re.search(r"running g
 FORBID running game unchanged (t=3.
 FORBID running game unchanged (t=0.
 FORBID [load] clock restored
-FORBID [scene] flight -> title
+# A refusal that landed on the title would lose the career with the clock.
+FORBID enterTitle
 FORBID error:
 LIMIT 120

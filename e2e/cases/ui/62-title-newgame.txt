@@ -2,7 +2,8 @@ NAME title-newgame
 CLAIM New Game from the title opens the hub.
 KIND invariant
 ARGS --ui-click 1400,"Title Menu/New Game" --ui-click 2000,"New Game/Start" --timeout 8
-EXPECT [scene] flight -> title (enterTitle)
+# The boot made no scene transition (the stack is seeded as the Title), so the
+# only transition here is the one New Game makes.
 EXPECT [scene] title -> spacecenter (enterSpaceCenter)
 EXPECT [game] new game: Space Center, no ship
 FORBID FAILED
