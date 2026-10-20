@@ -63,18 +63,18 @@ int main() {
         assert(args.timeout_seconds == 5.0);
     }
 
-    // 3b) --recover-anywhere: off by default, on when passed (with the
-    //     --recover hook it travels with).
+    // 3b) --recover-anywhere: off by default, on when passed. It is a
+    //     permission, not a way to act -- the cases pair it with a click on
+    //     the hub's Recover Vessel.
     {
         GameArgs args;
         assert(!args.recover_anywhere);
-        const char *argv[] = {"osp", "--recover-anywhere", "--recover", "2000"};
+        const char *argv[] = {"osp", "--recover-anywhere"};
         bool ok = false;
         int code = -1;
-        run(4, (char **)argv, args, ok, code);
+        run(2, (char **)argv, args, ok, code);
         assert(ok);
         assert(args.recover_anywhere);
-        assert(args.recover_ms == 2000);
     }
 
     // 3c) --ui-click: one value per click, split at the FIRST comma so the

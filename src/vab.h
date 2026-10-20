@@ -91,10 +91,6 @@ std::string vabSeatProblem(const Game &g);
 void drawVabPartWindow(Game &g);
 
 void vabAimCamera(Game &g);
-
-// Register the headless VAB hooks at boot, before the main loop. They all join
-// the pre-scene phase: a launch flips the scene to Flight.
-void vabInstallHooks(Game &g);
 // Per-frame step while the Vab scene is live. The sim keeps ticking around it
 // (scene.cpp vabUpdateLive: vabUpdate then tick).
 void vabUpdate(Game &g);

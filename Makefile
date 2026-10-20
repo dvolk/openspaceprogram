@@ -371,6 +371,9 @@ $(TESTDIR)/test_shipload: $(TESTDIR)/obj/test_shipload.o $(TESTDIR)/obj/shipdef.
 $(TESTDIR)/test_save: $(TESTDIR)/obj/test_save.o
 	$(CXX) -o $@ $^
 
+$(TESTDIR)/test_hooks: $(TESTDIR)/obj/test_hooks.o
+	$(CXX) -o $@ $^
+
 $(TESTDIR)/test_crew: $(TESTDIR)/obj/test_crew.o $(TESTDIR)/obj/shipdef.o
 	$(CXX) -o $@ $^
 
@@ -464,7 +467,7 @@ TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
         test_orbit test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
         test_terrain test_drag test_audio test_jet test_jobs test_orbitmap test_orbitcam \
         test_pick test_settings test_keys test_cli test_fmt test_retrograde test_skybox \
-        test_belts test_railangles test_scenarios test_buildings test_orient
+        test_belts test_railangles test_scenarios test_buildings test_orient test_hooks
 
 # Short-name aliases: `make test_fuel` builds + runs one test (from the repo
 # root -- some need res/). `make test` runs the whole set.

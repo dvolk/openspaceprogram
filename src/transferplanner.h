@@ -2,6 +2,7 @@
 // target selection + the min-dv solver cache. Pure math is in transfer.h.
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -84,7 +85,7 @@ public:
        the vessels wholesale -- quit-to-title, a load -- must call this or the
        list outlives what it points at. update() rebuilds the list every refresh,
        so the gap is only the frames in between, and the TARGET block, the map's
-       transfer plane, --select-target and the relvel marker all read it. */
+       transfer plane, and the relvel marker all read it. */
     void dropTargets();
 
     std::vector<XferTarget> xferTargets;
@@ -179,3 +180,17 @@ private:
        Called on every rebuild. */
     void resolveTarget();
 };
+
+/* Erase the rows whose ship is `v`. True if one went -- the selection index is
+   stale either way (it points into the pre-erase list) and the caller must
+   reset it. A row's name points INTO the Vehicle, so the row cannot outlive it:
+   anything that scans the list before the next rebuild reads freed memory
+   (issue #276 / case 243). */
+inline bool eraseShipTargetRows(std::vector<TransferPlanner::XferTarget> &rows,
+                                Vehicle *v) {
+    const size_t before = rows.size();
+    std::erase_if(rows, [v](const TransferPlanner::XferTarget &t) {
+        return t.ship == v;
+    });
+    return rows.size() != before;
+}

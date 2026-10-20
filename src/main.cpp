@@ -184,73 +184,19 @@ static bool splitStartship(const std::string &spec, DebugStartShip &out) {
 }
 
 /* Register the CLI headless hooks (cli.h). Only armed ones are registered;
-   within a phase the registration order IS the firing order, and the e2e
-   cases lean on it (case 244 needs its --vab-detach before its --vab-launch,
-   both at the same ms). Each act() runs at fire time, against that frame's
-   state. The VAB hooks join the same pre-scene phase (vabInstallHooks, called
-   right after this). */
+   within a phase the registration order IS the firing order. Each act() runs
+   at fire time, against that frame's state. These are observation dumps, not
+   actions -- the actions are UI clicks now (see tests/test_hooks.cpp for the
+   invariants the old action hooks used to smuggle). */
 static void installHeadlessHooks(Game &game) {
     GameArgs &args = game.args;
 
-    /* --recover: what the hub's "Recover Vessel" button does, and nothing more.
-       The recover cases press that button instead (ESC opens the hub, then
-       --ui-click "Game Menu/Recover Vessel"). The hook survives for the two
-       states where the button cannot be reached at all: 271, where the hub hides
-       it while a crew member walks, and 265, where the game is in the VAB with a
-       question card up and ESC answers the card. It used to hunt for the ship
-       holding findings and switch to it, which tested a path the UI does not
-       offer; that is gone, and 118/119 board or hand back to the ship exactly as
-       a player does. */
-    if(args.recover_ms >= 0) {
-        game.addHook(kHookPreScene, args.recover_ms, nullptr,
-                     [](Game &game) { game.recoverActive(); });
-    }
     /* --atlas-dump: the System Atlas as text; reads the system, not the
        window, so it works from any scene. The e2e cover for the dossier
        (imgui Text rows are not clickable, so --ui-list cannot see them). */
     if(args.atlas_dump_ms >= 0) {
         game.addHook(kHookPreScene, args.atlas_dump_ms, nullptr,
                      [](Game &g) { dumpAtlas(g); });
-    }
-    /* --switch-system: Game::switchSystem. Before the scene is read -- it
-       tears the current system down and lands on Title. */
-    if(!args.switch_system_path.empty() && args.switch_system_ms >= 0) {
-        const std::string path = args.switch_system_path;
-        game.addHook(kHookPreScene, args.switch_system_ms, nullptr, [path](Game &g) {
-            // A bad path throws from load_system: catch it, keep running on the
-            // current system.
-            try {
-                g.switchSystem(path);
-            } catch(const std::exception &e) {
-                printf("[switch] cannot switch to '%s': %s\n",
-                       path.c_str(), e.what());
-                fflush(stdout);
-                g.toast("Switch failed: %s", e.what());
-            }
-        });
-    }
-    /* --select-target: the Target window's combo, headless. The phase keeps
-       the old poll site (after sc.update): a vessel deleted earlier in the
-       frame has already lost its xferTargets rows (Game::dropVehicleRefs),
-       which is what keeps the name lookup off a borrowed name pointer (it
-       points into the Vehicle). */
-    for(const GameArgs::SelectTargetArg &a : args.select_targets) {
-        const std::string name = a.name;
-        game.addHook(kHookPostUpdate, a.ms, nullptr,
-                     [name](Game &game) {
-                game.xferPlanner.selectTargetByName(name == "none" ? std::string()
-                                                                   : name);
-                // Say what the planner actually took: a name that is not a
-                // target now is dropped, not queued, so the case author sees
-                // a typo.
-                const int idx = game.xferPlanner.xfer_target;
-                const std::string where = idx >= 0
-                    ? " (index " + std::to_string(idx) + ")"
-                    : " (not in the target list)";
-                printf("[target] hook: selected \"%s\"%s\n",
-                       name.c_str(), where.c_str());
-                fflush(stdout);
-            });
     }
     /* --map-dump: the orbit map's plane basis per combo slot. Its phase is
        AFTER the state pass -- sc.refresh is what fills Game::hud.view, so
@@ -981,7 +927,6 @@ int main(int argc, char **argv)
     // Headless hooks: registered once from the CLI args; the loop polls the
     // phases (Game::fireHooks) and the bodies live next to the registration.
     installHeadlessHooks(game);
-    vabInstallHooks(game);
     if(args.map_plane >= 0) { game.map.plane = args.map_plane; }
     const double startup_s =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - prog_start).count();
@@ -1198,21 +1143,14 @@ int main(int argc, char **argv)
           LOGIC
         */
         // The fixed-timestep loop lives in tick.cpp.
-        /* Headless hooks first, then the LIVE scene's per-frame step. A
-           launch collapses the stack to Flight, so the scene is read after
-           them. The bodies + registration order (the e2e relies on it) are
-           in installHeadlessHooks / vabInstallHooks. */
+        /* Headless hooks first, then the LIVE scene's per-frame step. The
+           bodies + registration order are in installHeadlessHooks. */
         game.fireHooks(kHookPreScene);
         {
             const SceneDef &sc = curScene(game);
             sc.update(game);
         }
-        /* --select-target hooks keep the old poll site: a vessel removed
-           earlier this frame has already had its xferTargets rows erased
-           (Game::dropVehicleRefs), so the name lookup cannot hit a borrowed
-           name pointer to a dead Vehicle. The list itself is rebuilt by the
-           state pass below, so its orbits are one frame old -- fine for a
-           name match (see installHeadlessHooks). */
+        /* Post-update hooks (none today; the phase stays for a future one). */
         game.fireHooks(kHookPostUpdate);
         pf_b = std::chrono::steady_clock::now();
 

@@ -642,12 +642,11 @@ bool vabLoad(Game &g, const char *name) {
 
 void vabLaunch(Game &g) {
     if(g.vab.build.parts.empty()) { g.toast("Nothing to launch"); return; }
-    /* The editor prunes the seat plan once per frame (vabUpdate), so a plan can
-       still name a part that left the build when the launch arrives from the test
-       hooks, which fire detach/assign/launch inside one frame. The fill loop
-       below treats the plan as the player's last word on the crew, so prune
-       first: an entry naming a part that is not in this build has no seat to
-       fill. */
+    /* The editor prunes the seat plan once per frame (vabUpdate), so the plan
+       can still name a part that left the build when the launch reads it in
+       that same frame. The fill loop below treats the plan as the player's last
+       word on the crew, so prune first: an entry naming a part that is not in
+       this build has no seat to fill. */
     vabPruneSeats(g);
     ShipDef def = g.vab.build.toShipDef();
     // Launch config from the top bar dropdowns, with the startup defaults
@@ -694,8 +693,8 @@ void vabLaunch(Game &g) {
                    because every teardown drops it (clearEphemeralState, #304)
                    and a system switch always runs a teardown. So the body and
                    the site this callback named are still the ones that asked --
-                   case 258 pins the drop, and the toasts that used to sit on
-                   these two nulls were dead code. */
+                   tests/test_hooks.cpp pins the drop, and the toasts that used
+                   to sit on these two nulls were dead code. */
                 TerrainBody *padBody = g.sys.find(padName);
                 assert(padBody != nullptr
                        && "a Question outlived the system it was asked in");
@@ -837,22 +836,17 @@ bool vabAssignSeat(Game &g, const std::string &partId, int slot,
 /* Drop assignments whose seat is no longer in the build: Delete and Detach
    renumber the tree under them. A plan for a part that left is gone -- say so,
    because otherwise the next launch silently draws the pad's line again
-   (issue #288). */
+   (issue #288). The pure rule is pruneSeatPlan (seatplan.h). */
 void vabPruneSeats(Game &g) {
-    int dropped = 0;
-    for(size_t i = g.vab.seatAssigns.size(); i-- > 0; ) {
-        const VabState::SeatAssign &a = g.vab.seatAssigns[i];
-        if(seatExists(g, a.partId, a.slot)) { continue; }
-        const KerbalProfile *p = g.roster.find(a.profileId);
-        const std::string who = p != nullptr ? " '" + p->name + "'" : "";
-        // Named HERE, per entry: a summary cannot say which of several parts
-        // went, and naming one of them reads as blaming the wrong one.
-        printf("[vab] dropped the seat plan for '%s'%s (it left the build)\n",
-               a.partId.c_str(), who.c_str());
-        fflush(stdout);
-        g.vab.seatAssigns.erase(g.vab.seatAssigns.begin() + (std::ptrdiff_t)i);
-        dropped++;
-    }
+    const int dropped = pruneSeatPlan(
+        g.vab.seatAssigns,
+        [&g](const std::string &partId, int slot) {
+            return seatExists(g, partId, slot);
+        },
+        [&g](uint64_t profileId) -> std::string {
+            const KerbalProfile *p = g.roster.find(profileId);
+            return p != nullptr ? p->name : std::string();
+        });
     if(dropped > 0) {
         g.toast("%d seat assignment%s dropped: no such seat in this build",
                 dropped, dropped == 1 ? "" : "s");
@@ -869,30 +863,21 @@ void vabPruneSeats(Game &g) {
 
 std::string vabSeatProblem(const Game &g) {
     StaticBuilding *pad = homeCrewPad(g.sys);
-    for(const VabState::SeatAssign &a : g.vab.seatAssigns) {
-        if(a.profileId == 0) { continue; }   // a chosen empty seat names nobody
-        const KerbalProfile *p = g.roster.find(a.profileId);
-        const std::string who = p != nullptr
-            ? p->name : ("roster id " + std::to_string(a.profileId));
-        bool standing = false;
-        if(pad != nullptr) {
+    return seatPlanProblem(
+        g.vab.seatAssigns,
+        [pad](uint64_t profileId) {
+            if(pad == nullptr) { return false; }
             for(const Part *suit : pad->crew) {
-                if(suit->kerbal != nullptr
-                   && suit->kerbal->id == a.profileId) {
-                    standing = true;
-                    break;
+                if(suit->kerbal != nullptr && suit->kerbal->id == profileId) {
+                    return true;
                 }
             }
-        }
-        if(!standing) { return "'" + who + "' is not at the launch pad"; }
-        for(const VabState::SeatAssign &b : g.vab.seatAssigns) {
-            if(&b == &a) { continue; }
-            if(b.profileId == a.profileId) {
-                return "'" + who + "' cannot sit in two seats";
-            }
-        }
-    }
-    return "";
+            return false;
+        },
+        [&g](uint64_t profileId) -> std::string {
+            const KerbalProfile *p = g.roster.find(profileId);
+            return p != nullptr ? p->name : std::string();
+        });
 }
 
 /* One part, one selection. The panel's controls (rotate / stage / Detach /
@@ -1018,77 +1003,6 @@ void vabClose(Game &g) {
     printf("[vab] back to %s (sim keeps coasting)\n", sceneName(curSceneId(g)));
     fflush(stdout);
     g.toastLog("Back from the VAB -- the sim keeps running");
-}
-
-/* Register the headless transition hooks (--vab-launch, --vab-detach,
-   --vab-assign, ...), each fired at most once. They join the pre-scene phase
-   AFTER the main-loop hooks -- the order the old per-frame poll used -- and
-   a launch collapses the stack to Flight, so the live scene is read after
-   them. The inVab gate reproduces the old early return. --vab-open,
-   --vab-load, --vab-save and --vab-close are gone: the scene transition is a
-   title-screen button and the load, save and back-to-game controls are
-   widgets, all reachable with --ui-click/--ui-type. */
-void vabInstallHooks(Game &g) {
-    GameArgs &args = g.args;
-    auto inVab = [](Game &g) { return sceneIs(g, SceneId::Vab); };
-    /* The top bar's Load and Save are clickable now, and --ui-type fills the
-       name field, so both headless stand-ins are gone. Note what --vab-load
-       used to allow: any ship file at all, including the testships that
-       list_vab_ship_defs hides from the picker (shipdef.h:578) -- a case could
-       load a ship no player can pick. */
-    /* --vab-detach: select by index and detach, in one step. Players pick the
-       part and click "Detach subtree"; cases 77, 78, 239 and 240 do that. This
-       is left for 244, which wants a detach and a launch close enough to land
-       in one frame. */
-    if(args.vab_detach_ms >= 0 && args.vab_detach_idx >= 0) {
-        const int idx = args.vab_detach_idx;
-        g.addHook(kHookPreScene, args.vab_detach_ms, inVab, [idx](Game &g) {
-            g.vab.selected = idx;
-            g.vab.linkSel = -1;   // a part detach, not a fuel-link delete
-            vabDetachSelected(g);
-            printf("[vab] detach hook: build %d parts, %d subassemblies\n",
-                   (int)g.vab.build.parts.size(), (int)g.vab.subassemblies.size());
-            fflush(stdout);
-        });
-    }
-    /* --vab-assign: a seat plan the window refuses to build. Case 237 is the
-       only user: the dropdown greys an already-seated person, so naming one
-       person twice has no click path. It writes the plan directly rather than
-       opening the window it stands in for: that would leave a dossier on screen
-       for a part the player never pointed at. */
-    for(const GameArgs::VabAssignArg &a : args.vab_assigns) {
-        const int partIdx = a.partIdx, slot = a.slot;
-        const std::string kerbal = a.kerbal;
-        g.addHook(kHookPreScene, a.ms, inVab, [partIdx, slot, kerbal](Game &g) {
-            if(partIdx < 0 || (size_t)partIdx >= g.vab.build.parts.size()) {
-                printf("[vab] assign hook: no build part %d\n", partIdx);
-                fflush(stdout);
-                return;
-            }
-            const std::string partId = g.vab.build.parts[(size_t)partIdx].id;
-            const KerbalProfile *p = g.roster.byName(kerbal);
-            if(p == nullptr) {
-                printf("[vab] assign hook: no kerbal '%s'\n", kerbal.c_str());
-                fflush(stdout);
-                return;
-            }
-            const bool ok = vabAssignSeat(g, partId, slot, p->id);
-            printf("[vab] assign hook: '%s' seat %d = '%s'%s\n", partId.c_str(),
-                   slot, kerbal.c_str(), ok ? "" : " (no such seat)");
-            fflush(stdout);
-        });
-    }
-    /* --vab-launch: the launch itself is driven by the top bar's LAUNCH button
-       (--ui-click "VAB TopBar/LAUNCH"), which is all the other cases needed this
-       hook for. It survives for ONE thing a click cannot do: land in the SAME
-       frame as another hook. A --ui-click presses in one frame and releases in
-       the next (ButtonBehavior needs the release), and vabUpdate prunes the seat
-       plan between frames, so case 244's stale-plan launch -- detach and launch
-       with no prune in between -- only arrives through here. */
-    if(args.vab_launch_ms >= 0) {
-        g.addHook(kHookPreScene, args.vab_launch_ms, inVab,
-                  [](Game &g) { vabLaunch(g); });
-    }
 }
 
 /* The editor's mouse half, part 1: hover-pick and ghost preview, which must

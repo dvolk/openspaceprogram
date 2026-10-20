@@ -269,15 +269,6 @@ static std::string joinLabels(const std::vector<std::string> &labels) {
     return out;
 }
 
-// The log line must not wrap, or an e2e EXPECT can't match the choices.
-static std::string oneLine(const std::string &s) {
-    std::string out = s;
-    for(char &c : out) {
-        if(c == '\n' || c == '\r') { c = ' '; }
-    }
-    return out;
-}
-
 /* The card is drawn by the UI pass (drawQuestion); this holds the pending one.
    Mirrored to stdout so tests can see it too. */
 void Game::ask(std::string text, std::vector<std::string> labels,
@@ -288,32 +279,24 @@ void Game::ask(std::string text, std::vector<std::string> labels,
     /* Replacing a live card loses the old one's callback with no trace, so the
        player's next key answers a question they never saw asked. The scrim
        (drawQuestionScrim, #234) means no second WIDGET can ask while a card is
-       up, so the route is a hook asking over one: hook phases are not gated by
-       modality, and vabLaunch asks (the pad-clear card) from --vab-launch.
-       Printed rather than asserted because the old card is merely lost, not a
-       memory error, and a headless hook should not abort the game. */
+       up, so a replace should be unreachable -- printed rather than asserted
+       because the old card is merely lost, not a memory error. */
     if(question != nullptr) {
         printf("[ask] replaced an unanswered card: %s\n",
-               oneLine(question->text).c_str());
+               questionOneLine(question->text).c_str());
         fflush(stdout);
     }
     question = std::make_unique<Question>();
     question->text = std::move(text);
     question->labels = std::move(labels);
     question->onAnswer = std::move(onAnswer);
-    printf("[ask] %s  [%s]\n", oneLine(question->text).c_str(),
+    printf("[ask] %s  [%s]\n", questionOneLine(question->text).c_str(),
            joinLabels(question->labels).c_str());
     fflush(stdout);
 }
 
 void Game::answerQuestion(int choice) {
-    if(!question) { return; }
-    printf("[ask] answered %d\n", choice);
-    fflush(stdout);
-    // Close before firing: an answer may open the next question.
-    auto fn = std::move(question->onAnswer);
-    question.reset();
-    if(fn) { fn(choice); }
+    answerPendingQuestion(question, choice);
 }
 
 // One window per part: re-picking an already-open part is a no-op.
@@ -374,13 +357,13 @@ void Game::dropVehicleRefs(Vehicle *v) {
         xferPlanner.xfer.burn_dir = glm::dvec3(0.0);
     }
     /* The list holds v's name pointer in its own row, so the row cannot outlive
-       it either: anything that scans the list before the next rebuild (the
-       --select-target hook does) would read freed memory. Erasing shifts every
-       later row, and the index is only this frame's address, so drop it too and
-       let the next rebuild re-derive it from the name. */
-    const size_t rowsBefore = xferPlanner.xferTargets.size();
-    std::erase_if(xferPlanner.xferTargets, [v](const TransferPlanner::XferTarget &t) { return t.ship == v; });
-    if(xferPlanner.xferTargets.size() != rowsBefore) { xferPlanner.xfer_target = -1; }
+       it either: anything that scans the list before the next rebuild would
+       read freed memory. Erasing shifts every later row, and the index is only
+       this frame's address, so drop it too and let the next rebuild re-derive
+       it from the name. */
+    if(eraseShipTargetRows(xferPlanner.xferTargets, v)) {
+        xferPlanner.xfer_target = -1;
+    }
     if(kerbal == v) { kerbal = nullptr; }
     if(lastShip == v) { lastShip = nullptr; }
     /* The active pointer needs the same treatment: a caller that is about to
@@ -1173,19 +1156,15 @@ void Game::quickload() {
    behaviour change, not a cleanup. */
 void Game::clearEphemeralState() {
     /* A card up over a teardown asks about a world that is going away. Its
-       callbacks hold identity, not pointers (game.h:312) -- but identity into
+       callbacks hold identity, not pointers (question.h) -- but identity into
        the OLD system resolves to nothing, or worse to a same-named body in the
        new one. Dropping the card is the rule, so no card can outlive the world
        its subject lived in; a1e3236's pad-name fix is the exception that
-       should not have needed writing. Printed because the only way in is a
-       hook (while a card is modal every key is swallowed, events.cpp:417), so
-       without a line on stdout the rule is not e2e-assertable. */
-    if(question != nullptr) {
-        printf("[game] reset: dropped pending question: %s\n",
-               oneLine(question->text).c_str());
-        fflush(stdout);
-        question.reset();
-    }
+       should not have needed writing. Printed so a drop is visible on stdout;
+       the rule is pinned by tests/test_hooks.cpp, since no click path reaches
+       a teardown under a live card (a modal card swallows every key,
+       events.cpp:417). */
+    dropPendingQuestion(question);
     toasts.clear();
     /* Per-active-ship, and a teardown has none. Not the only place this needs
        clearing: ui_remove_vehicle hands control to a successor, which must not
@@ -1231,8 +1210,8 @@ void Game::resetWorld() {
     part_sels.clear();
     /* A transfer row names a Vehicle and points at it, so the rows go with the
        vehicles. update() rebuilds them each refresh, but quit-to-title leaves
-       frames between here and the next world where the TARGET window, the map's
-       plane and --select-target would read freed names. */
+       frames between here and the next world where the TARGET window and the
+       map's plane would read freed names. */
     xferPlanner.dropTargets();
     clearFlightSummary();   // a summary from THIS game must not leak into the next
     science.reset();        // ...and neither must the career score / archive

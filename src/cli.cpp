@@ -135,75 +135,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_flag("--vab-empty", args.vab_empty,
                  "Open the VAB editor scene with an EMPTY build (the main "
                  "menu's \"Go to VAB\") instead of flying (test hook)");
-    app.add_option("--vab-launch", args.vab_launch_ms,
-                   "Fire the VAB's LAUNCH once at this loop time in ms "
-                   "(test hook; -1 = never). Cases click the top bar's LAUNCH "
-                   "instead -- \"VAB TopBar/LAUNCH\" -- because that is what a "
-                   "player does. This survives only for case 244, which needs "
-                   "the launch in the SAME frame as a detach: a click presses "
-                   "in one frame and releases in the next, and the seat plan is "
-                   "pruned between frames.");
-    app.add_option("--vab-detach", args.vab_detach_idx,
-                   "Select this build part (index) and fire the VAB's detach "
-                   "(vabDetachSelected) once (test hook; -1 = never). Players "
-                   "click the part then \"Detach subtree\" in the panel, and "
-                   "cases 77, 78, 239 and 240 do that; this survives only for "
-                   "case 244, which needs a detach and a launch in the SAME "
-                   "frame -- something no click sequence produces.");
-    app.add_option("--vab-detach-at", args.vab_detach_ms,
-                   "Fire the --vab-detach hook once at this loop time in ms "
-                   "(test hook; -1 = never)");
-    std::vector<std::string> vab_assign;
-    app.add_option("--vab-assign", vab_assign,
-                   "Put a named kerbal in a VAB seat at this loop time: a flat "
-                   "list of MS,PART_IDX,SLOT,KERBAL groups (e.g. 4000,0,0,Ace "
-                   "= at 4s put Ace in seat 1 of build part 0). Cases drive the "
-                   "part window itself now -- right-click the capsule with "
-                   "--ui-focus + CUR, then "
-                   "\"<label>##<part>/Seat N##sN\" and the "
-                   "\"##Combo_00/<name>\" row (\"Empty\" is a row too, and it is "
-                   "a choice: the launch then leaves that seat empty instead of "
-                   "drawing the pad's line). It survives for case 237 alone: "
-                   "the dropdown greys out an already-seated person, so the "
-                   "two-seats-for-one-person plan it guards cannot be built by "
-                   "clicking (test hook)")
-        ->delimiter(',');
-    app.add_option("--recover", args.recover_ms,
-                   "Fire the Space Center menu's \"Recover Vessel\" once at "
-                   "this loop time in ms (Game::recoverActive, headless; "
-                   "-1 = never). Cases press the button instead -- ESC to open "
-                   "the hub, then \"Game Menu/Recover Vessel\" -- because that "
-                   "is what a player does. It survives for case 265 alone: the "
-                   "game is in the VAB with a question card up, and ESC answers "
-                   "the card instead of opening the hub.");
     app.add_flag("--recover-anywhere", args.recover_anywhere,
                  "Let 'Recover Vessel' recover the active ship anywhere "
                  "(the default requires it grounded on the home body). A "
                  "permission, not a way to act: the orbit cases pair it with a "
                  "click on the same button.");
-    std::vector<std::string> select_target;
-    app.add_option("--select-target", select_target,
-                   "Choose a transfer target at this loop time: MS,NAME groups "
-                   "(e.g. 4000,Mun = at 4s pick Mun in the Target window). "
-                   "Repeat the flag for more picks; NAME 'none' clears the "
-                   "selection. The combo it stands in for is clickable now "
-                   "(#251), and cases 241/242 use it; this survives for case "
-                   "243 alone, which needs a selection INSIDE the state pass, "
-                   "in the window where a removed ship's name still backs a "
-                   "target row. --transfer-target, if given, re-asserts itself "
-                   "on every rebuild and wins (test hook)")
-        ->delimiter(',');
-    app.add_option("--switch-system", args.switch_system_path,
-                   "Swap to this system JSON over the running game at "
-                   "--switch-at (the in-process system switch, "
-                   "Game::switchSystem; lands on the Title screen). The New "
-                   "Game sheet's system picker calls switchSystem and a "
-                   "cross-system load runs installSystem -- the same teardown; "
-                   "this survives for case 258 alone, "
-                   "where a question card is modal and every key is swallowed");
-    app.add_option("--switch-at", args.switch_system_ms,
-                   "Loop time in ms at which --switch-system fires "
-                   "(headless test hook; -1 = never)");
     app.add_flag("--dev-scenarios", args.dev_scenarios,
                  "Add the dev-only start beds (orbit, ellipse, escape, "
                  "distance-ladder, heliocentric) to the VAB's scenario "
@@ -864,70 +800,6 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                     return false;
                 }
             }
-        }
-    }
-
-    /* --vab-assign: group the flat list into MS,PART_IDX,SLOT,KERBAL quads. */
-    if(!vab_assign.empty()) {
-        if(vab_assign.size() % 4 != 0) {
-            printf("error: --vab-assign expects MS,PART_IDX,SLOT,KERBAL "
-                   "groups; got %zu value(s)\n", vab_assign.size());
-            *exit_code = 1;
-            return false;
-        }
-        for(size_t i = 0; i < vab_assign.size(); i += 4) {
-            long v[3] = {0, 0, 0};
-            static const char *kFields[3] = { "time", "part index", "slot" };
-            for(int f = 0; f < 3; f++) {
-                const std::string &s = vab_assign[i + (size_t)f];
-                char *end = nullptr;
-                v[f] = strtol(s.c_str(), &end, 10);
-                if(end == s.c_str() || *end != '\0') {
-                    printf("error: --vab-assign %s '%s' is not an integer\n",
-                           kFields[f], s.c_str());
-                    *exit_code = 1;
-                    return false;
-                }
-            }
-            /* The seat plan is built through the part window now. --vab-assign
-               survives for ONE thing a click cannot do: naming the SAME person
-               twice. The dropdown lists an already-seated person as
-               "Name  (seated)" inside a BeginDisabled (drawVabPartWindow's seat
-               rows), so the launch-refusal guard has no other way in -- case 237.
-               Reaching a seat on a multi-part build used to be a second reason
-               (#311, a fixed pixel pick lands on whatever part is under it);
-               --ui-focus retired that one. CLI11 drops empty fields from the
-               list, so a missing KERBAL arrives as a short group and the check
-               above reports it. */
-            args.vab_assigns.push_back({(int)v[0], (int)v[1], (int)v[2],
-                                        vab_assign[i + 3]});
-        }
-    }
-
-    /* --select-target: group the flat list into MS,NAME pairs. */
-    if(!select_target.empty()) {
-        if(select_target.size() % 2 != 0) {
-            printf("error: --select-target expects MS,NAME groups; "
-                   "got %zu value(s)\n", select_target.size());
-            *exit_code = 1;
-            return false;
-        }
-        for(size_t i = 0; i < select_target.size(); i += 2) {
-            const std::string &s = select_target[i];
-            char *end = nullptr;
-            long ms = strtol(s.c_str(), &end, 10);
-            if(end == s.c_str() || *end != '\0') {
-                printf("error: --select-target time '%s' is not an integer\n",
-                       s.c_str());
-                *exit_code = 1;
-                return false;
-            }
-            if(select_target[i + 1].empty()) {
-                printf("error: --select-target needs a target name, or 'none'\n");
-                *exit_code = 1;
-                return false;
-            }
-            args.select_targets.push_back({(int)ms, select_target[i + 1]});
         }
     }
 

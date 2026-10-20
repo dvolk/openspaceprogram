@@ -3785,10 +3785,9 @@ void drawSaveLoad(Game &g) {
 
    The seat dropdowns go through uiBeginCombo, so --ui-list and --ui-click can
    name them (#251 is closed), and --ui-focus aims the right-click at a named part
-   (#311 is closed), so the whole window is driven by clicks in the suite.
-   --vab-assign survives only for the plan this window refuses to build: an
-   already-seated person is a greyed row, so case 237 needs the hook to get 'Ace'
-   into two seats and reach the launch guard. */
+   (#311 is closed), so the whole window is driven by clicks in the suite. The
+   double-seat plan the window refuses to build is pinned by seatPlanProblem
+   (tests/test_hooks.cpp), which is the same guard the launch runs. */
 void drawVabPartWindow(Game &g) {
     if(g.vab.partWinId.empty()) { return; }
     const BuildPart *bp = nullptr;

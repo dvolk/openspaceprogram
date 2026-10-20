@@ -53,29 +53,7 @@ struct GameArgs {
     std::string autopilot;  // engage a slew mode at startup
     std::string vab;   // ship def to open in the VAB scene (empty = flight)
     bool vab_empty = false;
-    int vab_launch_ms = -1;
-    int vab_detach_idx = -1;
-    int vab_detach_ms = -1;  // --vab-detach-at
-    /* --vab-assign MS,PART_IDX,SLOT,KERBAL (repeatable). Cases drive the seat
-       window with clicks; this survives for case 237, which needs a plan the
-       window greys out (one person in two seats). cli.cpp groups the flat list,
-       so a group here is always whole. */
-    struct VabAssignArg {
-        int ms, partIdx, slot;
-        std::string kerbal;
-    };
-    std::vector<VabAssignArg> vab_assigns;
-    /* --select-target MS,NAME (repeatable): the Target window's combo, headless.
-       NAME "none" clears the selection. */
-    struct SelectTargetArg {
-        int ms;
-        std::string name;
-    };
-    std::vector<SelectTargetArg> select_targets;
-    int recover_ms = -1;
     bool recover_anywhere = false;  // default: home body only
-    std::string switch_system_path;
-    int switch_system_ms = -1;      // --switch-at
     bool dev_scenarios = false;  // --dev-scenarios: the VAB dropdown's dev beds
     std::string dock_test;
     int initial_time_accel = 1;

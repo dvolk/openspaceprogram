@@ -28,6 +28,8 @@
 #include "system.h"   // System
 #include "terrain.h"  // TerrainBody
 #include "transferplanner.h"
+#include "question.h"   // Question, dropPendingQuestion, answerPendingQuestion
+#include "seatplan.h"   // SeatAssign, pruneSeatPlan, seatPlanProblem
 #include "ui.h"       // ui::Options
 #include "eva.h"      // Kerbal
 #include "vehicle.h"  // Vehicle
@@ -233,11 +235,7 @@ struct VabState {
        and getting the pad's line (issue #287). An entry whose part leaves the
        build is dropped -- and the player is told, because the fallback to the
        line is otherwise invisible (issue #288). */
-    struct SeatAssign {
-        std::string partId;
-        int slot = 0;            // 0-based seat within the capsule
-        uint64_t profileId = 0;  // roster id worn by the standing suit; 0 = empty
-    };
+    using SeatAssign = ::SeatAssign;   // seatplan.h: the pure rules live there
     std::vector<SeatAssign> seatAssigns;
 
     // The VAB part window (dossier + seats): the build part it shows ("" =
@@ -317,14 +315,9 @@ inline PoseSituation poseSituation(const TerrainBody *body, const glm::vec3 &dir
     return { biomeAt(dir, body->params()), situation };
 }
 
-/* The question card (drawQuestion, gameui.cpp): answered on a LATER frame, so
-   onAnswer must capture IDENTITY (a name, an id), never a pointer -- the subject
-   can be gone by then. */
-struct Question {
-    std::string text;
-    std::vector<std::string> labels;   // one button each, in order
-    std::function<void(int choice)> onAnswer;
-};
+/* The question card (drawQuestion, gameui.cpp). The pure rules live in
+   question.h: answered on a LATER frame, so onAnswer must capture IDENTITY
+   (a name, an id), never a pointer -- the subject can be gone by then. */
 
 /* Wall-clock log gates: each throttled log needs its own "last fired" clock,
    or only the first one fires. All share --orbit-interval (Game::
@@ -334,14 +327,11 @@ enum LogGate { kGateOrbit, kGateDbg, kGateInfo, kGateAtt, kGateShake,
                kGateCam, kGateEva, kGateDrag, kGateTerrain, kGatePlane,
                kGateSkyDim, kGateXfer, kGateCount };
 
-/* A headless test hook (cli.h --vab-* etc): fires act() once, at/after ms
-   from loop start (Game::loop_start_ms). Registered at boot from the CLI
-   args -- installHeadlessHooks (main.cpp) and vabInstallHooks (vab.cpp) --
-   and polled by Game::fireHooks at the phase points below. Registration
-   order within a phase IS the firing order, and the e2e cases depend on it
-   (case 244 needs its detach to fire before its launch, both at the same ms).
-   gate is an extra per-frame condition: the VAB hooks only fire while the VAB
-   is the live scene. */
+/* A headless test hook (cli.h --atlas-dump / --map-dump): fires act() once,
+   at/after ms from loop start (Game::loop_start_ms). Registered at boot from
+   the CLI args (installHeadlessHooks, main.cpp) and polled by Game::fireHooks
+   at the phase points below. Registration order within a phase IS the firing
+   order. gate is an extra per-frame condition. */
 struct GameHook {
     int ms;
     bool fired = false;
@@ -350,11 +340,8 @@ struct GameHook {
 };
 
 /* Where in the frame a phase's hooks are polled. The split is semantic: a
-   hook that tears the world down runs before the scene is read; the
-   --select-target hook keeps the old poll site (after sc.update, so this
-   frame's removals have already erased their xferTargets rows -- see
-   Game::dropVehicleRefs); --map-dump needs the g.hud.view that sc.refresh
-   fills. */
+   hook that tears the world down runs before the scene is read; --map-dump
+   needs the g.hud.view that sc.refresh fills. */
 enum HookPhase { kHookPreScene,    // before the live scene's update
                  kHookPostUpdate,  // after sc.update
                  kHookPostRefresh, // after sc.refresh
@@ -395,11 +382,11 @@ struct Game {
     std::vector<SceneFrame> sceneStack;
     VabState vab;
 
-    /* Headless test hooks (cli.h --vab-* etc): registered at boot by
-       installHeadlessHooks (main.cpp) + vabInstallHooks (vab.cpp), fired
-       once each by fireHooks at the phase points. A SINGLE hook's ms is
-       -1 = never (the registration guards skip it); repeatables must pass
-       ms >= 0. Each hook's `fired` latches so it fires at most once per run. */
+    /* Headless test hooks (cli.h --atlas-dump / --map-dump): registered at
+       boot by installHeadlessHooks (main.cpp), fired once each by fireHooks
+       at the phase points. A SINGLE hook's ms is -1 = never (the registration
+       guards skip it); repeatables must pass ms >= 0. Each hook's `fired`
+       latches so it fires at most once per run. */
     std::array<std::vector<GameHook>, kHookPhaseCount> hooks;
     // Unlatched hooks per phase; lets fireHooks skip a phase with none.
     std::array<int, kHookPhaseCount> hooks_pending = {};
