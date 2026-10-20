@@ -173,11 +173,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "this loop time in ms (Game::recoverActive, headless; "
                    "-1 = never). Cases press the button instead -- ESC to open "
                    "the hub, then \"Game Menu/Recover Vessel\" -- because that "
-                   "is what a player does. It survives for two states where the "
-                   "button cannot be reached: 271, where the hub hides it while "
-                   "a crew member walks, and 265, where the game is in the VAB "
-                   "with a question card up and ESC answers the card instead of "
-                   "opening the hub.");
+                   "is what a player does. It survives for case 265 alone: the "
+                   "game is in the VAB with a question card up, and ESC answers "
+                   "the card instead of opening the hub.");
     app.add_flag("--recover-anywhere", args.recover_anywhere,
                  "Let 'Recover Vessel' recover the active ship anywhere "
                  "(the default requires it grounded on the home body). A "
@@ -195,17 +193,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "target row. --transfer-target, if given, re-asserts itself "
                    "on every rebuild and wins (test hook)")
         ->delimiter(',');
-    app.add_option("--eva", args.eva_ms,
-                   "Fire the part window's \"EVA\" once at this loop time in "
-                   "ms (Game::kerbalEVA on the active ship's first crew "
-                   "kerbal, headless; -1 = never). The e2e drives EVA and the "
-                   "rest of the crew buttons through --ui-focus + --ui-click; "
-                   " this survives as a probe of which vehicle a --load made "
-                   "active.");
     app.add_option("--switch-system", args.switch_system_path,
                    "Swap to this system JSON over the running game at "
                    "--switch-at (the in-process system switch, "
-                   "Game::switchSystem; lands on the Title screen)");
+                   "Game::switchSystem; lands on the Title screen). The New "
+                   "Game sheet's system picker calls switchSystem and a "
+                   "cross-system load runs installSystem -- the same teardown; "
+                   "this survives for case 258 alone, "
+                   "where a question card is modal and every key is swallowed");
     app.add_option("--switch-at", args.switch_system_ms,
                    "Loop time in ms at which --switch-system fires "
                    "(headless test hook; -1 = never)");

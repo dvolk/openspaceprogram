@@ -7,12 +7,11 @@
 # FORBID below is exactly what it used to do: park the camera on a ship 300 m
 # away and leave the seated kerbal out of reach.
 NAME load-no-active-ship
-ARGS --load e2e/fixtures/save_no_active --time-accel 1 --timeout 3 --eva 2500
+ARGS --load e2e/fixtures/save_no_active --time-accel 1 --timeout 3
 EXPECT [crew] loaded 'Ash' aboard 'racer'
-EXPECT Loaded game from e2e/fixtures/save_no_active (active: racer)
-EXPECT EVA: 'Ash' out of 'racer' part 0
+EXPECT Loaded game from e2e/fixtures/save_no_active (active: racer) [v0]
 FORBID (active: Ash)
-FORBID --eva: no crew aboard
+FORBID [load] refused
 FORBID GL_
 FORBID error:
 LIMIT 60

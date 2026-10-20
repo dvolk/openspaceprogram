@@ -1,7 +1,13 @@
+# The Surface Map's body survives a system switch as "nobody pinned" -- the
+# pin names an old-system body that the switch deletes (installSystem nulls
+# surfmap.body). The map then falls back to the active ship's parent, which
+# after a cross-system load is the NEW home. --switch-system used to do the
+# switch; the player's route is loading a save from the other system.
 NAME surfmap-body-switch
-ARGS --system res/systems/ksp_system.json --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --surfmap-body Kerbin
-ARGS --switch-system res/systems/solar_system.json --switch-at 3000
+SEED e2e/fixtures/save_solar saves/20260101_000000-reload/save1
+ARGS --system res/systems/ksp_system.json --surfmap-body Kerbin
+ARGS --ui-click 1500,"Title Menu/Save/Load"
+ARGS --ui-click 3000,"Save/Load/Load##saveload"
 ARGS --sim-press 5000,0,M
 ARGS --timeout 12 --surfmap-log --surfmap-n 128
 EXPECT Loaded system 'res/systems/ksp_system.json'
@@ -10,6 +16,7 @@ EXPECT [surfmap]
 CHECK last(surfmap)["body"] == "Earth"
 CHECK last(surfmap)["w"] == 128 and last(surfmap)["h"] == 64
 CHECK all(0.0 <= c <= 1.0 for c in last(surfmap)["albedo"])
+FORBID FAILED
 FORBID GL_
 FORBID error:
 LIMIT 120

@@ -23,8 +23,8 @@ ARGS --ui-click 5000,"Game Menu/Recover Vessel"
 # names it too ("Take  (to Ash)", "Store  (into capsule)##store_Ash",
 # "Board##board_Ash"), so the paths pin who the game thinks the courier is -- a wrong
 # courier fails the click outright instead of moving the sample somewhere else.
-# The walker boards before the flight can end: "Recover Vessel" is not offered
-# for a crew member, and --recover no longer reaches around that.
+# The walker boards before the flight can end: a free kerbal is not a mission
+# (recoverActive refuses), so the crew is back in the capsule before the click.
 EXPECT [science] t=
 EXPECT recorded
 EXPECT materials study

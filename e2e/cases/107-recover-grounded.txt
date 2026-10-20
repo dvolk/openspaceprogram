@@ -7,9 +7,9 @@
 # play. The orbit cases click this same button and pass --recover-anywhere, which
 # is a permission rather than a shortcut: it relaxes that one rule and nothing
 # else. 116 and 121 start grounded, so they need no flag either, and 108 covers
-# the other half of the gate -- grounded on somebody else's body. Only 265 and
-# 271 still use the --recover hook, and both are states where the button cannot
-# be reached at all.
+# the other half of the gate -- grounded on somebody else's body. 265 still uses
+# the --recover hook: the game is in the VAB with a question card up, and every
+# key answers the card instead of opening the hub.
 NAME recover-grounded
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --sim-press 1000,0,ESCAPE

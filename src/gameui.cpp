@@ -3273,9 +3273,11 @@ static void navSpaceCenter(Game &g, float bw) {
         setWinOpen(W_SpaceCenterMenu, false);
         popScene(g);
     }
-    // Recover Vessel ends the flight successfully. Not offered for a free EVA kerbal;
-    // recoverActive also refuses unless the ship is grounded on the home body.
-    if(g.ship != nullptr && !g.ship->isEva()
+    /* Recover Vessel ends the flight successfully. Shown whenever there is a
+       ship to recover -- including a walking crew member, where recoverActive
+       refuses. It used to hide for a walker while showing in other refuse-only
+       states (in orbit, say); one rule, not two (#316). */
+    if(g.ship != nullptr
        && ImGui::Button("Recover Vessel", ImVec2(bw, 0.0f))) {
         g.recoverActive();
     }

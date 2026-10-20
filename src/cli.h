@@ -74,7 +74,6 @@ struct GameArgs {
     std::vector<SelectTargetArg> select_targets;
     int recover_ms = -1;
     bool recover_anywhere = false;  // default: home body only
-    int eva_ms = -1;          // the load-probe hook; the crew buttons are driven by UI clicks
     std::string switch_system_path;
     int switch_system_ms = -1;      // --switch-at
     bool dev_scenarios = false;  // --dev-scenarios: the VAB dropdown's dev beds

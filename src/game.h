@@ -641,8 +641,7 @@ struct Game {
     // --- Surface Map state (gameui.cpp draws it; surfmap.cpp fills it) ---
     SurfmapState surfmap;
 
-    /* --- control transitions (a keypress, a part/crew window button, or the
-       --eva load-probe hook) --- */
+    /* --- control transitions (a keypress or a part/crew window button) --- */
     // V: put a seat occupant out, or hand control back to the last ship.
     void toggle_eva();
     /* kerbalEVA MINTS the Kerbal vehicle from a seat's suit Part; kerbalBoard

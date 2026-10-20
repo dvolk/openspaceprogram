@@ -1494,13 +1494,16 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
          to be byName.begin(), i.e. the alphabetically first NAME -- a kerbal
          called 'Ash' beat a ship called 'racer'. */
     Vehicle *active = nullptr;
+    std::string activeSlug;
     if(!meta.active_ship.empty()) {
         std::map<std::string, Vehicle *>::const_iterator it =
             b->bySlug.find(meta.active_ship);
         assert(it != b->bySlug.end());   // saveMetaFromJson refused it otherwise
         active = it->second;
+        activeSlug = meta.active_ship;
     } else if(!meta.active_ship_recorded && !g.vehicles.empty()) {
-        active = g.vehicles[0];
+        active = g.vehicles[0];   // save order, so the slug is ships[0]
+        activeSlug = meta.ships[0];
     }
     g.ship = active;
     g.kerbal = (active != nullptr && active->isEva()) ? static_cast<Kerbal *>(active) : nullptr;
@@ -1514,8 +1517,15 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
     if(invItems > 0) {
         printf("Loaded %zu inventory item(s) with the ships\n", invItems);
     }
-    printf("Loaded game from %s (active: %s)\n", b->dir.c_str(),
-           (active != nullptr) ? active->name.c_str() : "(none)");
+    /* Name alone cannot tell two same-named ships apart (212), so the slug
+       rides along outside the parens: the load picks by slug, and this is what
+       says WHICH one. Cases match "(active: <name>)" as a substring. */
+    if(active != nullptr) {
+        printf("Loaded game from %s (active: %s) [%s]\n", b->dir.c_str(),
+               active->name.c_str(), activeSlug.c_str());
+    } else {
+        printf("Loaded game from %s (active: (none))\n", b->dir.c_str());
+    }
 }
 
 void load_game(Game &g, const std::string &dir) {

@@ -205,18 +205,6 @@ static void installHeadlessHooks(Game &game) {
         game.addHook(kHookPreScene, args.recover_ms, nullptr,
                      [](Game &game) { game.recoverActive(); });
     }
-    // --eva: Game::kerbalEVA on the active ship's first seat. The e2e drives
-    // EVA, Board, Take, Store and both Run Experiment buttons through the UI
-    // now (--ui-focus + --ui-click); this survives as a probe of WHICH vehicle a
-    // load made active, which is what cases 212 and 213 use it for.
-    if(args.eva_ms >= 0) {
-        game.addHook(kHookPreScene, args.eva_ms, nullptr, [](Game &game) {
-            std::vector<Part *> seats = game.ship != nullptr ? vehicleSeats(game.ship)
-                                                             : std::vector<Part *>{};
-            if(!seats.empty()) { game.kerbalEVA(seats.front()); }
-            else { printf("[hook] --eva: no crew aboard, ignored\n"); }
-        });
-    }
     /* --atlas-dump: the System Atlas as text; reads the system, not the
        window, so it works from any scene. The e2e cover for the dossier
        (imgui Text rows are not clickable, so --ui-list cannot see them). */

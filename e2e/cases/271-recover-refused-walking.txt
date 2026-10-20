@@ -1,28 +1,26 @@
-# recovering while a crew member walks: the hub hides the button, and --recover
-# now refuses the same way instead of switching to the ship behind the player's back
+# Recovering while a crew member walks: the hub now offers the button and
+# recoverActive refuses -- the same shape as 106 (in orbit) and 108 (wrong body).
 #
-# The hook is the only way in, and that is a statement about the UI, not the
-# harness: navSpaceCenter draws "Recover Vessel" under `g.ship != nullptr &&
-# !g.ship->isEva()` (gameui.cpp:3273), so with a walker active there is no button
-# to click. The --ui-list below is what pins THAT, rather than leaving it a claim
-# in this comment: with the walker active and the hub open, no row named "Recover
-# Vessel" is drawn at all. Note the inconsistency with cases 106/108, where the
-# button IS drawn in a state where recoverActive can only refuse. Hiding here and
-# showing there is not the same call; #316.
+# It used to hide the button for a walker while SHOWING it in those refuse-only
+# states, so this case had to drive Game::recoverActive through --recover to
+# reach the refusal at all (#316). One gate now: the button is drawn whenever
+# there is an active ship, and the refusal lives where the rule lives.
 NAME recover-refused-walking
 ARGS --time-accel 1 --timeout 9 --width 1920 --height 1080
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --ui-focus 1000,racer/capsule_1
 ARGS --sim-mouse 1100,0,CUR,CUR,RMB
 ARGS --ui-click 1500,"racer > Capsule (2m)##0/EVA##eva0"
-ARGS --sim-press 2500,0,ESCAPE --recover 3500
-ARGS --ui-list 3600
+ARGS --sim-press 2500,0,ESCAPE
+ARGS --ui-click 3500,"Game Menu/Recover Vessel"
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [toast] Cannot recover
 EXPECT a crew member can't be recovered
-# The hub is open and the walker is active: the button a player would press is
-# not drawn, which is why this case has to use the hook at all.
-CHECK 'label="Recover Vessel"' not in out
+# The hub is open and the walker is active: the button is drawn, and pressing
+# it is the whole subject. The CHECK pins THAT rather than a claim in this
+# comment: --ui-click's success line carries label="Recover Vessel", and a
+# missing button fails the click without printing it.
+CHECK 'label="Recover Vessel"' in out
 # The aim and the EVA click both have to land for the walker to exist at all;
 # without this, a missed click shows up as the FORBID below rather than as the
 # click that missed.

@@ -4,23 +4,17 @@
 # save_roster_named: rename v0, copy its ship into v1 with fresh part uids and no
 # seat, and offset it 300 m along the track.
 #
-# Every reference here is a SLUG, so the load makes the CREWED ship active no
-# matter what either of them is called. Measured against the old name-keyed load
-# on the same shape: byName['Ash'] held whichever of the two was built last --
-# v1, the uncrewed copy -- so the active vehicle came back with nobody to put on
-# EVA:
-#
-#   old:  [hook] --eva: no crew aboard, ignored
-#   new:  [crew] t=3.1 EVA: 'Ash' out of 'Ash' part 0
-#
-# --eva is the probe: it acts on the ACTIVE vehicle's crew, so it only fires if
-# the load picked v0.
+# Every reference here is a SLUG, so the load must make the CREWED ship (v0)
+# active no matter what either of them is called. Measured against the old
+# name-keyed load on the same shape: byName['Ash'] held whichever of the two was
+# built last -- v1, the uncrewed copy -- so the active vehicle came back with
+# nobody aboard. The load line now prints the slug alongside the name, which is
+# what says WHICH 'Ash' -- the name alone cannot.
 NAME save-name-clash
-ARGS --load e2e/fixtures/save_name_clash --time-accel 1 --timeout 5 --eva 2500
+ARGS --load e2e/fixtures/save_name_clash --time-accel 1 --timeout 5
 EXPECT [crew] loaded 'Ash' aboard 'Ash'
-EXPECT Loaded game from e2e/fixtures/save_name_clash (active: Ash)
-EXPECT EVA: 'Ash' out of 'Ash' part 0
-FORBID --eva: no crew aboard
+EXPECT Loaded game from e2e/fixtures/save_name_clash (active: Ash) [v0]
+FORBID (active: Ash) [v1]
 FORBID [load] refused
 FORBID GL_
 FORBID error:

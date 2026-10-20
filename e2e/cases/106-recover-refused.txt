@@ -1,8 +1,8 @@
-# The hub offers "Recover Vessel" whenever there is a ship that is not walking
-# (gameui.cpp:3273), and recoverActive then refuses because the ship is in orbit
-# rather than grounded on its home body. So the button is drawn in a state where
-# it can only refuse -- pressing it is the whole subject here, which is why this
-# is a click and not the --recover hook.
+# The hub offers "Recover Vessel" whenever there is a ship (gameui.cpp), and
+# recoverActive then refuses because the ship is in orbit rather than grounded
+# on its home body. So the button is drawn in a state where it can only refuse
+# -- pressing it is the whole subject here, which is why this is a click and not
+# the --recover hook.
 NAME recover-refused
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --sim-press 1000,0,ESCAPE
