@@ -1,11 +1,14 @@
 NAME switch-save-load
+SEED e2e/fixtures/save_solar saves/20260101_000000-reload/save1
 ARGS --system res/systems/ksp_system.json --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --reload e2e/fixtures/save_solar --reload-at 4000
-ARGS --timeout 10
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+ARGS --timeout 12
 EXPECT Loaded system 'res/systems/ksp_system.json'
 EXPECT [load] save is from system 'res/systems/solar_system.json'; switched before loading
 EXPECT Loaded system 'res/systems/solar_system.json'
-EXPECT Loaded game from e2e/fixtures/save_solar (active: racer)
+EXPECT saves/20260101_000000-reload/save1 (active: racer)
 FORBID Segmentation
 FORBID GL_
 FORBID error:

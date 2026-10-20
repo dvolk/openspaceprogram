@@ -168,17 +168,6 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "two-seats-for-one-person plan it guards cannot be built by "
                    "clicking (test hook)")
         ->delimiter(',');
-    app.add_option("--reload", args.reload_dir,
-                   "Load this save dir over the running game at --reload-at "
-                   "(the Save/Load window's Load button, headless)");
-    app.add_option("--reload-at", args.reload_ms,
-                   "Loop time in ms at which --reload fires (-1 = never)");
-    app.add_option("--quit-title", args.quit_title_ms,
-                   "Jump to the title screen at this loop time in ms. No button "
-                   "does this: from flight the hub is in between, and the hub's "
-                   "\"Return to title\" asks first (case 260 walks that). From "
-                   "the Tracking Station or the Research Lab there is no title "
-                   "exit at all -- issue #310 (headless test hook; -1 = never)");
     app.add_option("--recover", args.recover_ms,
                    "Fire the Space Center menu's \"Recover Vessel\" once at "
                    "this loop time in ms (Game::recoverActive, headless; "
@@ -220,22 +209,6 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--switch-at", args.switch_system_ms,
                    "Loop time in ms at which --switch-system fires "
                    "(headless test hook; -1 = never)");
-    app.add_option("--vab-scenario", args.vab_scenario,
-                   "Seed the VAB's launch scenario (the top-bar dropdown's "
-                   "value; empty = \"pad\"). Cases pick the row instead "
-                   "(\"VAB TopBar/##vabscn\" then \"##Combo_00/<name>\"); only "
-                   "the typo guards pass this now, and dev-only beds need "
-                   "--dev-scenarios for the row to exist at all.");
-    app.add_option("--vab-body", args.vab_body,
-                   "Seed the VAB's launch body (the top-bar dropdown's value; "
-                   "empty = the home body). Cases pick the row instead "
-                   "(\"VAB TopBar/##vabbody\" then \"##Combo_00/<name>\"); only "
-                   "the typo guard passes this now.");
-    app.add_option("--vab-site", args.vab_site,
-                   "Seed the VAB's launch site (the top-bar site dropdown's "
-                   "world-building id; empty = the first VAB_LAUNCH_PAD). The "
-                   "dropdown shows site NAMES, so a case clicking it cannot name "
-                   "a building id; only the typo guard passes this now.");
     app.add_flag("--dev-scenarios", args.dev_scenarios,
                  "Add the dev-only start beds (orbit, ellipse, escape, "
                  "distance-ladder, heliocentric) to the VAB's scenario "

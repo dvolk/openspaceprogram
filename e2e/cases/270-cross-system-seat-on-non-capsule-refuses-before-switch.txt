@@ -9,10 +9,14 @@
 # validateSeatArray refuses it from the catalog def, the same def buildSeatParts
 # reads off its built capsule, so the refusal lands with the old world intact.
 NAME cross-system-seat-on-non-capsule-refuses-before-switch
-ARGS --time-accel 1 --timeout 8
+SEED e2e/fixtures/save_solar_bad_seat saves/20260101_000000-reload/save1
+ARGS --time-accel 1 --timeout 10
 ARGS --startship racer,res/ships/racer.json,Kerbin,pad
-ARGS --reload e2e/fixtures/save_solar_bad_seat --reload-at 3000
-EXPECT [load] refused e2e/fixtures/save_solar_bad_seat: load: 'racer' part 'reaction_wheel' holds 1 seat(s) but is not a capsule (crew_capacity 0) (before the system switch)
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+EXPECT [load] refused
+EXPECT holds 1 seat(s) but is not a capsule (crew_capacity 0) (before the system switch)
 FORBID [game] unloaded
 FORBID [game] switched system
 FORBID science reset by the system switch

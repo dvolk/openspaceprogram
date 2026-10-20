@@ -1,10 +1,17 @@
 NAME reload
-ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --reload e2e/fixtures/save_racer --reload-at 2000
+# In-game load through the Save/Load sheet's Load button (the player path);
+# --reload is gone. SEED stages the slot under the scratch data-dir so the
+# sheet can list it; the assertion matches the staged path tail, since the
+# data-dir prefix varies per run.
+SEED e2e/fixtures/save_racer saves/20260101_000000-reload/save1
+ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 1000,0,ESCAPE
+ARGS --ui-click 1500,"Game Menu/Save/Load"
+ARGS --ui-click 3000,"Save/Load/Load##saveload"
 ARGS --orbit-log --orbit-interval 0.5
-EXPECT Loaded game from e2e/fixtures/save_racer (active: racer)
+EXPECT saves/20260101_000000-reload/save1 (active: racer)
 EXPECT [orbitlog]
-EXPECT Timeout reached (8.
+EXPECT Timeout reached (10.
 CHECK len(orbit) >= 4
 FORBID Segmentation
 FORBID GL_

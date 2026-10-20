@@ -7,11 +7,15 @@
 # names against the catalog) now run before the switch, so the running game,
 # its system and its scene are all still intact afterwards.
 NAME load-fail-before-system-switch
+SEED e2e/fixtures/save_bad_part saves/20260101_000000-reload/save1
 ARGS --system res/systems/ksp_system.json --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --reload e2e/fixtures/save_bad_part --reload-at 4000
-ARGS --timeout 10
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+ARGS --timeout 12
 EXPECT Loaded system 'res/systems/ksp_system.json'
-EXPECT [load] refused e2e/fixtures/save_bad_part: load: saved ship 'racer' has a part 'nonexistent_part' that is no longer in the parts file (before the system switch)
+EXPECT [load] refused
+EXPECT no longer in the parts file (before the system switch)
 # No switch means no teardown: nothing was torn down, so nothing was lost.
 FORBID switched before loading
 FORBID [game] switched system

@@ -11,10 +11,13 @@
 # The running game is ksp_system with a ship in orbit: after the refusal it
 # must still be there, on its own system, with no switch and no teardown.
 NAME cross-system-deep-containment-refuses-before-switch
-ARGS --system res/systems/ksp_system.json --time-accel 1 --timeout 8
+SEED e2e/fixtures/save_solar_deep_tree saves/20260101_000000-reload/save1
+ARGS --system res/systems/ksp_system.json --time-accel 1 --timeout 10
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --reload e2e/fixtures/save_solar_deep_tree --reload-at 3000
-EXPECT [load] refused e2e/fixtures/save_solar_deep_tree
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+EXPECT [load] refused
 EXPECT has a broken containment tree
 # Build refused BEFORE installSystem: nothing was torn down.
 FORBID switched before loading

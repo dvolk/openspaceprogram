@@ -243,7 +243,7 @@ int main() {
     }
     {
         // An id used by a fragment AND the inline array would shadow one of
-        // them in the VAB picker / --vab-site.
+        // them in the VAB picker.
         nlohmann::json doc;
         doc["world_buildings_files"] = { "res/data/earth_launch_sites.json" };
         doc["world_buildings"] = nlohmann::json::array({

@@ -72,17 +72,11 @@ struct GameArgs {
         std::string name;
     };
     std::vector<SelectTargetArg> select_targets;
-    std::string reload_dir; // save dir to load over the running game
-    int reload_ms = -1;     // --reload-at
-    int quit_title_ms = -1;
     int recover_ms = -1;
     bool recover_anywhere = false;  // default: home body only
     int eva_ms = -1;          // the load-probe hook; the crew buttons are driven by UI clicks
     std::string switch_system_path;
     int switch_system_ms = -1;      // --switch-at
-    std::string vab_scenario;  // VAB launch scenario (empty = "pad")
-    std::string vab_body;      // VAB launch body (empty = home body)
-    std::string vab_site;      // VAB launch site (building id)
     bool dev_scenarios = false;  // --dev-scenarios: the VAB dropdown's dev beds
     std::string dock_test;
     int initial_time_accel = 1;

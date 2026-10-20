@@ -13,14 +13,16 @@
 # The end of the chain was checked by hand: with the rollback the save this run
 # writes loads clean; without it, --load of that dir refuses.
 NAME crew-pool-roster-rollback
-ARGS --kerbals e2e/fixtures/three_kerbals.json --time-accel 1 --timeout 12 --frame-cap 30
+SEED e2e/fixtures/save_crew_pool_roster_shrink saves/20260101_000000-reload/save1
+ARGS --kerbals e2e/fixtures/three_kerbals.json --time-accel 1 --timeout 14 --frame-cap 30
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --recover-anywhere
 ARGS --sim-press 1900,0,ESCAPE
 ARGS --ui-click 2000,"Game Menu/Recover Vessel"
-ARGS --reload e2e/fixtures/save_crew_pool_roster_shrink --reload-at 3000
+ARGS --ui-click 2800,"Game Menu/Save/Load"
+ARGS --ui-click 3800,"Save/Load/Load##saveload"
 ARGS --resave tmp/e2e_save_out
-EXPECT [load] refused e2e/fixtures/save_crew_pool_roster_shrink
+EXPECT [load] refused
 # Preflight refused before the swap: nothing to restore, and the running cast
 # list is still the --kerbals file's three.
 FORBID FAILED

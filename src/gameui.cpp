@@ -3752,6 +3752,12 @@ void drawSaveLoad(Game &g) {
                     g.toast("Delete failed: %s", e.what());
                 }
             }
+            ImGui::SameLine();
+            /* A refused load leaves the sheet open so another slot can be tried,
+               but then it sits over the menu that would close it. */
+            if(ImGui::Button("Close##saveload")) {
+                setWinOpen(W_SaveLoad, false);
+            }
         }
     });
 }
@@ -4049,8 +4055,7 @@ void drawVabUI(Game &g) {
         if(uiBeginCombo("##vabscn", g.vab.scenarioName.c_str())) {
             for(size_t i = 0; i < scenario_count(); i++) {
                 const char *nm = scenario_name_at(i);
-                /* Dev beds are hidden without --dev-scenarios. A dev bed armed
-                   at boot by --vab-scenario keeps its label on the combo but
+                /* Dev beds are hidden without --dev-scenarios. A dev bed
                    cannot be re-picked: switching away drops it for good. */
                 if(!g.args.dev_scenarios && scenario_dev_only_at(i)) { continue; }
                 if(ImGui::Selectable(nm, g.vab.scenarioName == nm)) { g.vab.scenarioName = nm; }

@@ -350,7 +350,7 @@ struct GameHook {
 };
 
 /* Where in the frame a phase's hooks are polled. The split is semantic: a
-   --reload decides the scene, so it runs before the scene is read; the
+   hook that tears the world down runs before the scene is read; the
    --select-target hook keeps the old poll site (after sc.update, so this
    frame's removals have already erased their xferTargets rows -- see
    Game::dropVehicleRefs); --map-dump needs the g.hud.view that sc.refresh

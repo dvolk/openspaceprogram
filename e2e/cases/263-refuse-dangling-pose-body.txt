@@ -9,10 +9,14 @@
 # An EMPTY name still falls back -- the writer emits "" for a vehicle with no
 # home or no SOI parent, which is "nothing recorded", not "dangling".
 NAME refuse-dangling-pose-body
+SEED e2e/fixtures/save_dangling_pose_body saves/20260101_000000-reload/save1
 ARGS --system res/systems/ksp_system.json --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --reload e2e/fixtures/save_dangling_pose_body --reload-at 4000
-ARGS --timeout 10
-EXPECT [load] refused e2e/fixtures/save_dangling_pose_body: load: saved ship 'racer' has a pose body 'Kerbin Minor' that is not in this system
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+ARGS --timeout 12
+EXPECT [load] refused
+EXPECT has a pose body 'Kerbin Minor' that is not in this system
 # A refusal is still a transaction: the running game is untouched (#305/#301).
 # Nothing restores the clock because nothing moved it -- the build refuses
 # before commitSaveWorld, the only clock writer.

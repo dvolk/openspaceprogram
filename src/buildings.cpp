@@ -222,7 +222,7 @@ std::vector<WorldBuilding> parse_world_buildings_all(
     for(const WorldBuilding &w : parse_world_buildings(doc, path)) {
         out.push_back(w);
     }
-    // Ids are handles (--vab-site, VAB picker); a duplicate would silently
+    // Ids are handles (the VAB picker); a duplicate would silently
     // shadow one of the two.
     for(size_t i = 0; i < out.size(); i++) {
         for(size_t k = i + 1; k < out.size(); k++) {

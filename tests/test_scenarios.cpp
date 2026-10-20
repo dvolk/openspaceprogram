@@ -88,7 +88,7 @@ static void check_system(const char *path) {
 /* The VAB dropdown's dev gate. The dropdown shows only the non-dev beds, so the
    table must keep at least one -- and today that is exactly "pad". Hiding is a
    UI filter, never a lookup one: every bed, dev or not, still resolves by name
-   for --vab-scenario, --startship, the save fixtures and this test. */
+   for --startship, the save fixtures and this test. */
 static void check_vab_gate() {
     int shown = 0;
     for(size_t i = 0; i < scenario_count(); i++) {

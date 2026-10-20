@@ -1,7 +1,7 @@
-# The VAB's site dropdown was never under test: --vab-site takes a world-building
-# id, the dropdown shows pad NAMES, and no case could reach the second pad. Now
-# the case does what a player does -- open the dropdown, pick "Polar pad" -- and
-# the launch lands where that pad stands.
+# The VAB's site dropdown was never under test: the retired --vab-site hook took
+# a world-building id, the dropdown shows pad NAMES, and no case could reach the
+# second pad. Now the case does what a player does -- open the dropdown, pick
+# "Polar pad" -- and the launch lands where that pad stands.
 #
 # lat=90 is the oracle: the default pad stands at lat 0.29 / lon 270.3, so a
 # dropdown pick that never reached the launch would leave the ship at the equator

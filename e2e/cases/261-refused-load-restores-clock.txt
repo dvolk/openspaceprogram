@@ -7,10 +7,14 @@
 # t=500 with warp 4; the corrupt fixture's own clock is t=3.08, warp 1. The
 # confirmation line must still show the running clock, not the save's.
 NAME refused-load-restores-clock
+SEED e2e/fixtures/save_corrupt saves/20260101_000000-reload/save1
 ARGS --system res/systems/ksp_system.json --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --start-time 500 --time-accel 4
-ARGS --reload e2e/fixtures/save_corrupt --reload-at 3000 --timeout 5
-EXPECT [load] refused e2e/fixtures/save_corrupt
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+ARGS --timeout 8
+EXPECT [load] refused
 EXPECT no_such_part_in_the_catalog
 EXPECT [load] running game unchanged
 EXPECT warp 4

@@ -7,11 +7,15 @@
 # which means the switch must never happen. On the tree that introduced this
 # case it FAILS, printing [game] unloaded + switched system + science reset.
 NAME cross-system-unknown-roster-refuses-before-switch
-ARGS --time-accel 1 --timeout 8
+SEED e2e/fixtures/save_solar_bad_roster saves/20260101_000000-reload/save1
+ARGS --time-accel 1 --timeout 10
 ARGS --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --startship probe,res/ships/tanker.json,Kerbin,high-orbit
-ARGS --reload e2e/fixtures/save_solar_bad_roster --reload-at 3000
-EXPECT [load] refused e2e/fixtures/save_solar_bad_roster: load: 'racer' seat names roster id 99, which the roster has no entry for (before the system switch)
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+EXPECT [load] refused
+EXPECT names roster id 99, which the roster has no entry for (before the system switch)
 FORBID [game] unloaded
 FORBID [game] switched system
 FORBID science reset by the system switch

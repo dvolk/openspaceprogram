@@ -4,7 +4,8 @@
 # Before the transaction the pad was cleared and refilled from the file first,
 # so a refused load left the career holding a stranger's crew -- or nobody.
 NAME crew-pool-badpart
-ARGS --kerbals e2e/fixtures/three_kerbals.json --time-accel 1 --timeout 14 --frame-cap 30
+SEED e2e/fixtures/save_crew_pool_badpart saves/20260101_000000-reload/save1
+ARGS --kerbals e2e/fixtures/three_kerbals.json --time-accel 1 --timeout 16 --frame-cap 30
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --recover-anywhere
 # Two ESCs, because the key means different things per scene: the first pops the
@@ -12,9 +13,13 @@ ARGS --recover-anywhere
 # hub that carries "Recover Vessel".
 ARGS --sim-press 1900,0,ESCAPE --sim-press 2100,0,ESCAPE
 ARGS --ui-click 2300,"Game Menu/Recover Vessel"
-ARGS --reload e2e/fixtures/save_crew_pool_badpart --reload-at 3000
-ARGS --vab res/ships/tanker.json --ui-click 5000,"Game Menu/VAB" --ui-click 7500,"VAB TopBar/LAUNCH"
-EXPECT [load] refused e2e/fixtures/save_crew_pool_badpart
+ARGS --ui-click 3200,"Game Menu/Save/Load"
+ARGS --ui-click 4200,"Save/Load/Load##saveload"
+# A refused load leaves the sheet open (so another slot can be tried) and it
+# sits over the menu; Close dismisses it before the next menu click.
+ARGS --ui-click 4800,"Save/Load/Close##saveload"
+ARGS --vab res/ships/tanker.json --ui-click 5500,"Game Menu/VAB" --ui-click 8000,"VAB TopBar/LAUNCH"
+EXPECT [load] refused
 EXPECT crew pool entry 'fuel_tank' is a 'fuel_tank' part, not a kerbal
 EXPECT [vab] launched 'tanker' (7 parts)
 EXPECT Crew: 'Bram' aboard 'tanker' part 0 (1/1)

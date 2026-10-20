@@ -192,18 +192,6 @@ static bool splitStartship(const std::string &spec, DebugStartShip &out) {
 static void installHeadlessHooks(Game &game) {
     GameArgs &args = game.args;
 
-    // --reload: before the scene is read -- a load decides the scene.
-    if(!args.reload_dir.empty() && args.reload_ms >= 0) {
-        const std::string dir = args.reload_dir;
-        game.addHook(kHookPreScene, args.reload_ms, nullptr,
-                     [dir](Game &g) { g.loadFrom(dir); });
-    }
-    // --quit-title: before the scene is read (it tears the ships down and
-    // lands on Title).
-    if(args.quit_title_ms >= 0) {
-        game.addHook(kHookPreScene, args.quit_title_ms, nullptr,
-                     [](Game &g) { g.resetToTitle(); });
-    }
     /* --recover: what the hub's "Recover Vessel" button does, and nothing more.
        The recover cases press that button instead (ESC opens the hub, then
        --ui-click "Game Menu/Recover Vessel"). The hook survives for the two
@@ -542,7 +530,7 @@ int main(int argc, char **argv)
     game.systemPath = args.system_file;
 
     /* A body pin that does not resolve is a typo, not a game state, so it is a
-       hard error like --surfmap-body and --vab-body already are (#72). Called
+       hard error like --surfmap-body already is (#72). Called
        where each branch's system is final -- after ensureSystemForSave on the
        load path, before pickTitleBody on the boot path -- so it never prints
        after the random-pick fallback it exists to prevent. pickTitleBody keeps
@@ -672,9 +660,7 @@ int main(int argc, char **argv)
         if(!args.radial_test.empty() || !args.dock_test.empty()) {
             sync.push_back(home);   // the test ships sit here
         } else if(!args.vab.empty() || args.vab_empty) {
-            TerrainBody *vb = args.vab_body.empty()
-                             ? home : sys.find(args.vab_body);
-            sync.push_back(vb != nullptr ? vb : home);   // the launch body
+            sync.push_back(home);   // the launch body is the home pad by default
         } else if(!start_ships.empty()) {
             for(const DebugStartShip &fe : start_ships) {
                 sync.push_back(sys.find(fe.body));   // required, non-empty
@@ -860,43 +846,6 @@ int main(int argc, char **argv)
     } else if(args.vab_empty) {
         // --vab-empty: headless entry to the same editor as the menu's VAB.
         vabOpen(game);
-    }
-    if(sceneIs(game, SceneId::Vab)) {
-        /* --vab-scenario / --vab-body / --vab-site override the launch config.
-           Pins a test relies on, so a miss is a hard error (#16): a silent
-           fallback measures a launch nobody asked for. */
-        if(!args.vab_scenario.empty()) {
-            try {
-                scenario_by_name(args.vab_scenario);
-            } catch(const std::exception &e) {
-                printf("error: --vab-scenario: %s\n", e.what());
-                return 1;
-            }
-            game.vab.scenarioName = args.vab_scenario;
-        }
-        TerrainBody *vab_body = home;
-        if(!args.vab_body.empty()) {
-            TerrainBody *b = sys.find(args.vab_body);
-            if(b == nullptr) {
-                printf("error: --vab-body '%s' is not a body in %s\n",
-                       args.vab_body.c_str(), game.systemPath.c_str());
-                return 1;
-            }
-            vab_body = b;
-            game.vab.bodyName = args.vab_body;
-        }
-        if(!args.vab_site.empty()) {
-            // nullptr means "not a VAB_LAUNCH_PAD on the launch body":
-            // find_launch_site defaults only for an empty id.
-            if(vab_body == nullptr
-               || find_launch_site(vab_body, args.vab_site) == nullptr) {
-                printf("error: --vab-site '%s' is not a launch pad on %s\n",
-                       args.vab_site.c_str(),
-                       vab_body ? vab_body->name.c_str() : "<no launch body>");
-                return 1;
-            }
-            game.vab.siteName = args.vab_site;
-        }
     }
 
     // --surfmap-body: pin the Surface Map's body. Applied AFTER the --load

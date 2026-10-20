@@ -11,10 +11,13 @@
 # the builders looked (otherwise they refuse, after the switch, which FORBID
 # below catches).
 NAME cross-system-save-carries-its-own-roster
-ARGS --time-accel 1 --timeout 8
+SEED e2e/fixtures/save_solar_own_roster saves/20260101_000000-reload/save1
+ARGS --time-accel 1 --timeout 10
 ARGS --startship racer,res/ships/racer.json,Kerbin,pad
-ARGS --reload e2e/fixtures/save_solar_own_roster --reload-at 3000
-EXPECT Loaded game from e2e/fixtures/save_solar_own_roster
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+EXPECT saves/20260101_000000-reload/save1
 FORBID [load] refused
 FORBID [load] roster restored
 FORBID Segmentation

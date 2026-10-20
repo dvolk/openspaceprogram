@@ -1,10 +1,13 @@
 NAME title-load-spin-t0
+SEED e2e/fixtures/save_railed_t0 saves/20260101_000000-reload/save1
 ARGS --timeout 25 --info-log --orbit-interval 0.25
-ARGS --reload e2e/fixtures/save_railed_t0 --reload-at 4000
-ARGS --sim-press 1000,0,PERIOD,1200,0,PERIOD,1400,0,PERIOD,9000,0,PERIOD
+ARGS --sim-press 1000,0,PERIOD,1200,0,PERIOD,1400,0,PERIOD
+ARGS --ui-click 2000,"Title Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+ARGS --sim-press 9000,0,PERIOD
 EXPECT [boot] no vessel: title screen
 EXPECT [toast] Time accel: 1000x (rails)
-EXPECT Loaded game from e2e/fixtures/save_railed_t0 (active: racer)
+EXPECT saves/20260101_000000-reload/save1 (active: racer)
 EXPECT [scene] title -> flight (enterFlight)
 EXPECT [toast] Time accel: 1x
 CHECK out.index("1000x") < out.index("Loaded game from")

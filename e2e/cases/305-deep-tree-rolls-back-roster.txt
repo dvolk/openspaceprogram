@@ -8,11 +8,14 @@
 # build swaps the roster in, then refuses the containment tree: the destructor
 # restores the three kerbals from --kerbals.
 NAME deep-tree-rolls-back-roster
+SEED e2e/fixtures/save_solar_deep_tree_roster saves/20260101_000000-reload/save1
 ARGS --system res/systems/ksp_system.json --kerbals e2e/fixtures/three_kerbals.json
-ARGS --time-accel 1 --timeout 8
+ARGS --time-accel 1 --timeout 10
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --reload e2e/fixtures/save_solar_deep_tree_roster --reload-at 3000
-EXPECT [load] refused e2e/fixtures/save_solar_deep_tree_roster
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+EXPECT [load] refused
 EXPECT has a broken containment tree
 EXPECT [load] roster restored: 3 kerbal(s)
 # Build refused BEFORE installSystem: nothing was torn down.

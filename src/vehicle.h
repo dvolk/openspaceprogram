@@ -664,7 +664,7 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
 struct ScenarioDef {
     const char *name;
     /* Dev-only beds stay out of the VAB dropdown unless --dev-scenarios. The
-       name resolves either way: --vab-scenario, --startship, saves and the
+       name resolves either way: --startship, saves and the
        e2e fixtures all name dev beds, so this gates the picker, not the
        scenario. No default: adding a bed means deciding this. */
     bool dev_only;

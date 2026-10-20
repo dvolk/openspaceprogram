@@ -11,11 +11,15 @@
 # that split is what makes the bug bite, and it is what makes the fallback look
 # correct in a lazier test.
 NAME refuse-dangling-body-before-switch
+SEED e2e/fixtures/save_dangling_body saves/20260101_000000-reload/save1
 ARGS --system res/systems/solar_system.json --time-accel 1 --startship racer,res/ships/racer.json,Earth,rot-orbit
-ARGS --reload e2e/fixtures/save_dangling_body --reload-at 4000
-ARGS --timeout 10
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+ARGS --timeout 12
 EXPECT Loaded system 'res/systems/solar_system.json'
-EXPECT [load] refused e2e/fixtures/save_dangling_body: load: saved ship 'racer' has a pose body 'Earth' that is not in this system (before the system switch)
+EXPECT [load] refused
+EXPECT has a pose body 'Earth' that is not in this system (before the system switch)
 # Refused before the switch, so nothing was destroyed: the new system is loaded
 # read-only and dropped, and the career is exactly as it was.
 FORBID switched before loading

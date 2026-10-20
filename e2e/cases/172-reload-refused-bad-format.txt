@@ -9,17 +9,21 @@ NAME reload-refused-bad-format
 # literal value means editing this case on every bump for no extra information.
 # The fixture's own format is deliberately absurd (see its save.json) so it
 # cannot one day BE this build's format.
+SEED e2e/fixtures/save_bad_format saves/20260101_000000-reload/save1
 ARGS --system res/systems/ksp_system.json --time-accel 1
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --reload e2e/fixtures/save_bad_format --reload-at 2000
+ARGS --sim-press 1000,0,ESCAPE
+ARGS --ui-click 1500,"Game Menu/Save/Load"
+ARGS --ui-click 3000,"Save/Load/Load##saveload"
 ARGS --orbit-log --orbit-interval 0.5
-ARGS --timeout 8
-EXPECT [load] refused e2e/fixtures/save_bad_format: its "format" is not this build's format
-EXPECT Timeout reached (8.
+ARGS --timeout 10
+EXPECT [load] refused
+EXPECT its "format" is not this build's format
+EXPECT Timeout reached (10.
 EXPECT [orbitlog]
 CHECK len(orbit) >= 4
 FORBID terminate called
-FORBID Loaded game from e2e/fixtures/save_bad_format
+FORBID Loaded game from
 FORBID switched system
 FORBID Segmentation
 FORBID GL_
