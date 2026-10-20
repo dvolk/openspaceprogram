@@ -4002,8 +4002,8 @@ void drawVabUI(Game &g) {
     if(loadSel < 0) { loadSel = 0; }   // an empty list clamps to -1 above; keep valid
 
     /* Top bar: a fixed top-center window mirroring the HUD, in two lines: Back to game /
-       save name / Save / ship picker + Load, then the launch body + scenario dropdowns and
-       LAUNCH. */
+       save name / Save / ship picker + Load / Clear build, then the launch body + scenario
+       dropdowns and LAUNCH. */
     drawWin(g, W_VabTopBar, [&] {
         if(ImGui::Button("Back to game##vab")) { vabClose(g); }
         ImGui::SameLine();
@@ -4036,6 +4036,23 @@ void drawVabUI(Game &g) {
             ImGui::SameLine();
             ImGui::TextDisabled("(no ships)");
         }
+        // Clearing is destructive and the editor has no undo, so it asks first.
+        // Disabled on an empty build: there is nothing to confirm.
+        ImGui::SameLine();
+        ImGui::BeginDisabled(g.vab.build.parts.empty());
+        if(ImGui::Button("Clear build")) {
+            g.ask("Clear the workspace?\n\nEvery part in the build is removed. "
+                  "There is no undo. Subassemblies are kept.",
+                  {"Clear", "Cancel"},
+                  [&g](int choice) {
+                      if(choice != 0) { return; }
+                      vabClearBuild(g);
+                      // The name still points at the ship that was just
+                      // cleared; a Save of the next design must not overwrite it.
+                      snprintf(saveName, sizeof(saveName), "untitled");
+                  });
+        }
+        ImGui::EndDisabled();
 
         // Line 2: where + how to launch (vabLaunch resolves both). Pad scenarios also pick a
         // launch SITE.

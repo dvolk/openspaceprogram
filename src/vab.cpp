@@ -640,6 +640,33 @@ bool vabLoad(Game &g, const char *name) {
     return true;
 }
 
+void vabClearBuild(Game &g) {
+    assert(sceneIs(g, SceneId::Vab) && "clear runs only while the editor is up");
+    const int n = (int)g.vab.build.parts.size();
+    g.vab.build = BuildShip{};
+    g.vab.selected = -1;
+    g.vab.linkMode = false;
+    g.vab.linkFromId.clear();
+    g.vab.linkSel = -1;
+    /* A tool left armed would root itself on the next viewport click, so the
+       workspace would not stay empty. */
+    g.vab.armed.clear();
+    g.vab.armedAsm = -1;
+    g.vab.ghostRoll = 0.0;
+    vabClearHover(g);
+    /* The plan, the dossier and the staging table name parts of the tree that
+       just went away. */
+    g.vab.seatAssigns.clear();
+    g.vab.partWinId.clear();
+    g.vab.partWinPlaced = false;
+    g.vab.stagingSig = 0;
+    g.vab.stagingRows.clear();
+    vabAimCamera(g);   // an empty build re-frames on the origin
+    printf("[vab] cleared the workspace (%d parts removed)\n", n);
+    fflush(stdout);
+    g.toast("Workspace cleared");
+}
+
 void vabLaunch(Game &g) {
     if(g.vab.build.parts.empty()) { g.toast("Nothing to launch"); return; }
     /* The editor prunes the seat plan once per frame (vabUpdate), so the plan
