@@ -1,0 +1,9 @@
+NAME staging-basic
+CLAIM Staging drops the spent stage and leaves the ship flying under the next one.
+KIND invariant
+ARGS --time-accel 1 --timeout 12 --startship stager,res/ships/stager.json,Kerbin,pad
+ARGS --sim-press 2000,100,SPACE
+ARGS --sim-press 6000,100,SPACE
+EXPECT Stage: dropped
+EXPECT Stage: nothing left to separate
+FORBID error:

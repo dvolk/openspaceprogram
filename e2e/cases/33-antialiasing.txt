@@ -1,8 +1,0 @@
-NAME antialiasing
-ARGS --msaa 2x --timeout 4
-EXPECT Main loop starting
-CHECK re.search(r"MSAA: \d+ sample\(s\)", out)
-FORBID GL_
-FORBID error:
-FORBID Error compiling shader
-FORBID Error linking shader program

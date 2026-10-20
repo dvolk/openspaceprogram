@@ -1,0 +1,18 @@
+NAME fuel-link-symmetric
+CLAIM A symmetric fuel link drains both tanks at the same rate.
+KIND golden
+ARGS --time-accel 1 --startship heavy_two,res/ships/heavy_two.json,Kerbin,pad
+ARGS --fuel-log --att-log --timeout 55
+ARGS --sim-press 1000,40000,T
+EXPECT [fuel]
+FORBID error:
+CHECK len(fuel) >= 5
+CHECK len(first(fuel)["links"]) == 2
+CHECK first(fuel)["links"][0][0] != first(fuel)["links"][1][0]
+CHECK first(fuel)["links"][0][1] == first(fuel)["links"][1][1]
+CHECK all(-0.005 * r["groups"][r["links"][0][0]]["H2"][1] <= r["groups"][r["links"][0][0]]["H2"][0] - r["groups"][r["links"][1][0]]["H2"][0] <= 0.005 * r["groups"][r["links"][0][0]]["H2"][1] for r in fuel)
+CHECK last(fuel)["groups"][last(fuel)["links"][0][0]]["H2"][0] < first(fuel)["groups"][first(fuel)["links"][0][0]]["H2"][0]
+CHECK last(fuel)["groups"][last(fuel)["links"][1][0]]["H2"][0] < first(fuel)["groups"][first(fuel)["links"][1][0]]["H2"][0]
+CHECK first(fuel)["groups"][first(fuel)["links"][0][0]]["H2"][0] - last(fuel)["groups"][last(fuel)["links"][0][0]]["H2"][0] > 0.1 * first(fuel)["groups"][first(fuel)["links"][0][0]]["H2"][1]
+CHECK all((r["groups"][r["links"][0][0]]["H2"][0] > 0.0 or r["groups"][r["links"][1][0]]["H2"][0] > 0.0) == (r["groups"][r["links"][0][1]]["H2"][0] == r["groups"][r["links"][0][1]]["H2"][1]) for r in fuel)
+CHECK max(a["wnorm"] for a in att if 2.0 < a["t"] < 38.0) < 0.01

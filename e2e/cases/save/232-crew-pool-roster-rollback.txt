@@ -1,0 +1,43 @@
+# A refused load must not leave the save's ROSTER behind either. If the cast
+# list from the save were kept after a refusal, the still-standing suits would
+# wear ids the roster no longer names -- and the NEXT save writes those ids,
+# which this same loader refuses ("crew pool entry 'kerbal' names roster id 1").
+# The career becomes a file the game wrote and cannot read, three saves after
+# the bad byte.
+# #305 tightened this further: the same-system path runs preflight BEFORE any
+# roster swap, so a bad part never brings the intruder in at all. BuiltSave's
+# destructor rolls the swap back for the build-time refusals that do (deep
+# containment, addSeat, make_part) -- those used to leave the roster behind.
+# This fixture shrinks the roster to Bram + Cyd and then fails on a part def
+# that is gone, so the refusal lands before the swap.
+# The end of the chain was checked by hand: with the rollback the save this run
+# writes loads clean; without it, --load of that dir refuses.
+NAME crew-pool-roster-rollback
+CLAIM A refused load rolls the roster back with the fleet.
+KIND invariant
+SEED e2e/fixtures/save_crew_pool_roster_shrink saves/20260101_000000-reload/save1
+ARGS --kerbals e2e/fixtures/three_kerbals.json --time-accel 1 --timeout 14 --frame-cap 30
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --recover-anywhere
+ARGS --sim-press 1900,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Recover Vessel"
+ARGS --ui-click 2800,"Game Menu/Save/Load"
+ARGS --ui-click 3800,"Save/Load/Load##saveload"
+# The refused load leaves the sheet open. The save that follows is the window's
+# Save, the same save_game call the old --resave made at exit.
+ARGS --ui-type 4600,"Save/Load/##newslot",out
+ARGS --ui-click 5200,"Save/Load/Save##saveload"
+EXPECT [load] refused
+# Preflight refused before the swap: nothing to restore, and the running cast
+# list is still the --kerbals file's three.
+FORBID FAILED
+FORBID roster restored
+FORBID [load] roster restored
+EXPECT Saved 0 ship(s) to
+FILE saves/*/out/save.json "format"
+# The running roster is still the --kerbals file's three; the bad save's
+# Bram+Cyd roster must not have replaced it.
+FILE saves/*/out/save.json '"name": "Ace"'
+# the refusal itself toasts "Load failed: ..." -- that is the point of the case
+FORBID error:
+LIMIT 90

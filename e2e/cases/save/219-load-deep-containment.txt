@@ -1,0 +1,22 @@
+NAME save-load-deep-containment
+CLAIM A containment tree past the depth cap is refused, not asserted.
+KIND invariant
+SEED e2e/fixtures/save_racer_deep_tree saves/20260101_000000-reload/save1
+ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 1000,0,ESCAPE
+ARGS --ui-click 1500,"Game Menu/Save/Load"
+ARGS --ui-click 3000,"Save/Load/Load##saveload"
+ARGS --orbit-log --orbit-interval 0.5
+# A part chain 17 levels deep, which no live game can build (a crate in a pod,
+# not a fourteen-deep nesting). checkContainmentTree caps its walk at 16 so a
+# wired cycle cannot overflow the stack, but the cap only makes the walk RETURN
+# false -- the loader used to build the tree anyway and let rebuildCompound
+# assert on it, which aborts instead of refusing. Now the load runs the same
+# check itself, where refusing is still an option.
+EXPECT [load] refused
+EXPECT contained 17 deep
+EXPECT has a broken containment tree
+EXPECT Timeout reached
+EXPECT [orbitlog]
+CHECK len(orbit) >= 4
+FORBID error:

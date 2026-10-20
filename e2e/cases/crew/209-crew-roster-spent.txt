@@ -1,0 +1,15 @@
+# A fixed pool with more seats than people: the first capsule claims the only
+# kerbal, the second seat stays EMPTY and the ship flies uncrewed. That is a
+# legal state, not a failure -- the run must reach its timeout clean.
+NAME crew-roster-spent
+CLAIM A pool with more seats than people leaves the extra seats empty.
+KIND invariant
+ARGS --kerbals e2e/fixtures/tiny_kerbals.json --time-accel 1 --timeout 6
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --startship racer2,res/ships/racer.json,Kerbin,rot-orbit
+EXPECT Roster: 1 kerbal(s) from e2e/fixtures/tiny_kerbals.json
+EXPECT Crew: 'Solo' aboard 'racer' part 0 (1/1)
+EXPECT Crew: no kerbal left for 'racer2' part 0 (1 seats)
+EXPECT Timeout reached
+FORBID error:
+LIMIT 60

@@ -1,0 +1,17 @@
+NAME reload-refused-shipless
+CLAIM A refused same-system shipless reload leaves the old game intact.
+KIND invariant
+# A refused SAME-SYSTEM load on a shipless hub leaves the old game (and its
+# hub scene) intact -- it must NOT dump to the title front door. (A refused
+# cross-system load already switched systems, so it does go to the title: 90.)
+SEED e2e/fixtures/save_corrupt saves/20260101_000000-reload/save1
+ARGS --system res/systems/ksp_system.json --ui-click 400,"Title Menu/New Game" --ui-click 1000,"New Game/Start" --timeout 8
+ARGS --ui-click 2000,"Game Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+EXPECT [game] new game: Space Center, no ship
+EXPECT [load] refused
+EXPECT no_such_part_in_the_catalog
+FORBID FAILED
+FORBID [scene] spacecenter -> title
+FORBID error:
+LIMIT 120

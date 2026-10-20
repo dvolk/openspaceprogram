@@ -521,14 +521,25 @@ test-py: test-gen
 		python3 utils/skybox/make_skybox.py --verify --out res/skybox/dsm_1024_g3_ds2; \
 	fi
 
-# E2E battery (e2e/run.py). Headless via xvfb-run when no display.
+# E2E runner (e2e/run.py). Headless via xvfb-run when no display.
+# CASES is required and capped at 5 by the runner; there is no full battery.
+#   make e2e CASES="save/172 vab/177"
 # JOBS=N overrides parallel cases (default 2).
+CASES ?=
 JOBS ?=
 E2E_JOBS = $(if $(JOBS),--jobs $(JOBS),)
-# --force: this target IS the full-battery intent (run.py otherwise refuses).
-.PHONY: e2e
+# The index must match the cases before the runner starts; after editing a
+# case, `make e2e-index` (or python3 e2e/index.py) refreshes it.
+.PHONY: e2e e2e-index
 e2e: all
-	python3 e2e/run.py $(E2E_JOBS) --force --game $(BINDIR)/$(TARGET)
+	@test -n "$(CASES)" || { \
+		echo 'Name cases: make e2e CASES="save/172 vab/177" (max 5).'; \
+		exit 1; }
+	python3 e2e/index.py --check
+	python3 e2e/run.py $(CASES) $(E2E_JOBS) --game $(BINDIR)/$(TARGET)
+
+e2e-index:
+	python3 e2e/index.py
 
 # Regenerate the windows .ico from the master PNG (needs ImageMagick; IM6
 # users: MAGICK=convert). Sizes cover Explorer/taskbar up to 500% DPI;
@@ -618,13 +629,16 @@ deb:
 	@$(MAKE) --no-print-directory all
 	bash utils/make_deb.sh $(DISTDIR) "$(LINUX_BIN)"
 
-# Full gates first (unit + native e2e + wine smoke), then package.
+# Smoke gates first (unit + 5 native cases + wine smoke), then package. The
+# e2e run is deliberately a cross-section, not coverage: there is no full
+# battery and the runner caps an invocation at 5 cases.
+RELEASE_E2E ?= harness/01-smoke flight/03-thrust-ascent vab/52-vab-launch save/53-save ui/66-quit-title
 .PHONY: release
 release: icon-check
 	@$(MAKE) --no-print-directory test
-	@$(MAKE) --no-print-directory e2e
+	@$(MAKE) --no-print-directory e2e CASES="$(RELEASE_E2E)"
 	@$(MAKE) --no-print-directory OS=windows all
-	@python3 e2e/run.py --force --game $(WINDOWS_BIN) $(WINE_CASES)
+	@python3 e2e/run.py --game $(WINDOWS_BIN) $(WINE_CASES)
 	@$(MAKE) --no-print-directory artifacts
 
 # GL probe: Mesa 26 rejects draws in default VAO 0 -- need a real

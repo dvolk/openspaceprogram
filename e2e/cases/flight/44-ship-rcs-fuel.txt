@@ -1,0 +1,11 @@
+NAME ship-rcs-fuel
+CLAIM RCS translation burns monopropellant at the expected rate.
+KIND golden
+ARGS --time-accel 10 --timeout 18 --fuel-log --orbit-log --orbit-interval 0.5 --sim-press 1000,14000,N --frame-cap 30 --startship rcs_test,res/ships/rcs_test.json,Kerbin,inertial-orbit
+EXPECT Building ship 'rcs_test' (2 parts)
+FORBID error:
+CHECK len(fuel) >= 3
+CHECK first(fuel)["groups"][0]["N2H4"][0] > 30.0
+CHECK first(fuel)["groups"][0]["N2H4"][1] > 35.0
+CHECK first(fuel)["groups"][0]["N2H4"][0] - last(fuel)["groups"][0]["N2H4"][0] > 0.5
+CHECK abs(last(orbit)["E"] - first(orbit)["E"]) > 100.0

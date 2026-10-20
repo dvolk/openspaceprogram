@@ -1,0 +1,11 @@
+NAME prox-fly
+CLAIM Proximity checks report the right state for a ship flying near another.
+KIND invariant
+ARGS --startships e2e/fixtures/startships_fly.json --time-accel 1 --timeout 6 --prox-log
+ARGS --sim-press 1500,0,PERIOD
+EXPECT [prox]
+EXPECT ENGAGED
+EXPECT , fly)
+EXPECT warp CAPPED
+FORBID , ground)
+FORBID error:

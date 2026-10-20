@@ -1,0 +1,11 @@
+NAME spin-regression
+CLAIM Radial-test stacks hold attitude with no phantom spin and no NaN.
+KIND invariant
+ARGS --radial-test stacks --time-accel 10 --timeout 15 --spin-log
+EXPECT Main loop starting
+EXPECT [spin] t=
+EXPECT ship=stacks4 parts=4
+EXPECT w=[
+EXPECT tidal gravity torque |tau|=
+FORBID error:
+FORBID nan

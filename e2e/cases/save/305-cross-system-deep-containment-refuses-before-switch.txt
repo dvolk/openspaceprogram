@@ -1,0 +1,31 @@
+# #305: a cross-system save whose ship fails a BUILD-TIME rule (here the
+# containment-tree walk) used to switch systems first -- tearing the running
+# career down -- and only then refuse. The three post-switch rules were
+# checkPartInvariants, addSeat, and make_part/build_ship: all need a built
+# Vehicle, so preflightSave could not see them and the build used to run after
+# installSystem.
+# Now the whole save is built against the INCOMING system while the old fleet
+# is still flying. This fixture is solar_system with a 17-deep inventory nest
+# (the same corruption case 219 pins same-system). A live game cannot build
+# that; checkContainmentTree caps at 16 and the load refuses.
+# The running game is ksp_system with a ship in orbit: after the refusal it
+# must still be there, on its own system, with no switch and no teardown.
+NAME cross-system-deep-containment-refuses-before-switch
+CLAIM A cross-system deep containment failure refuses before the switch.
+KIND invariant
+SEED e2e/fixtures/save_solar_deep_tree saves/20260101_000000-reload/save1
+ARGS --system res/systems/ksp_system.json --time-accel 1 --timeout 10
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+EXPECT [load] refused
+EXPECT has a broken containment tree
+# Build refused BEFORE installSystem: nothing was torn down.
+FORBID switched before loading
+FORBID [game] switched system
+FORBID [game] unloaded
+FORBID science reset
+FORBID Loaded game from
+FORBID error:
+LIMIT 120

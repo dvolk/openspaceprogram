@@ -1,0 +1,14 @@
+# The other half of case 166: the card's affirmative answer actually routes.
+# The callback runs on a LATER frame than the ask (immediate mode has no
+# blocking ask()), so this is the case that proves the deferred half -- the
+# transition happens on the answer frame, not the click frame.
+NAME question-return
+CLAIM The question card's affirmative answer routes on the answer frame.
+KIND invariant
+ARGS --ui-click 400,"Title Menu/New Game" --ui-click 1000,"New Game/Start" --timeout 8
+ARGS --ui-click 2500,"Game Menu/Return to title"
+ARGS --ui-click 3200,"Question/Return"
+EXPECT [ask] answered 0
+EXPECT [scene] spacecenter -> title
+FORBID FAILED
+FORBID error:

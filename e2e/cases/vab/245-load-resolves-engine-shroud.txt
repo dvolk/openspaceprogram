@@ -1,0 +1,21 @@
+# A Part's shroud is a def-derived render asset resolved at build time, like the
+# chute canopy. Only the def-spawn path (vehicle.cpp) resolved it, so every LOADED
+# engine silently lost the cylinder that hides what it shrouds -- invisible in the
+# save file, and invisible until something draws it. The four mint sites are now
+# one helper (issue #278) that resolves both, and the load reports each shroud the
+# way the spawn path does (case 55) -- plus the ship, because hand-authored
+# fixtures carry empty part ids, so a bare part id cannot tell two ships apart.
+# The two "could not" FORBIDs carry weight: get_mesh substitutes a cube
+# placeholder and keeps going, so the [shroud] line alone would pass on a missing
+# shroud mesh while the player sees a cube over every loaded engine.
+NAME load-resolves-engine-shroud
+CLAIM A loaded engine resolves its shroud like a spawned one.
+KIND invariant
+ARGS --load e2e/fixtures/save_racer --time-accel 1 --timeout 4
+EXPECT Loaded game from e2e/fixtures/save_racer (active: racer)
+EXPECT [shroud] engine_1: bare
+EXPECT ship='racer'
+FORBID could not import
+FORBID could not load
+FORBID error:
+LIMIT 40

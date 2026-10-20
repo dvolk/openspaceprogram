@@ -1,0 +1,11 @@
+NAME atmo-top
+CLAIM Above the atmosphere's top boundary density and drag are exactly zero.
+KIND invariant
+ARGS --time-accel 1 --timeout 6 --drag-log
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+EXPECT [drag]
+CHECK len(drag) >= 2
+CHECK all(d["alt"] > 70000 for d in drag)
+CHECK all(d["rho"] == 0.0 for d in drag)
+CHECK all(d["F"] == 0.0 for d in drag)
+FORBID error:

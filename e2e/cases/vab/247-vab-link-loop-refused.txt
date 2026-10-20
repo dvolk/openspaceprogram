@@ -1,0 +1,56 @@
+# The same loop caught where the player can still undo it: the click, not the
+# launch. heavy_two already feeds rtank12 -> central_engine2, so asking for the
+# reverse direction is refused where it is made. The check runs over fuel GROUPS
+# (the tree never crosses a fuel barrier), exactly as build_ship groups them, so
+# a link that closes a loop two hops away is caught too.
+# The legal link in the same run is what tells a refusal apart from link mode
+# being broken, and LAUNCHING it is what proves the guard did not reject
+# something build_ship would have accepted. Which hop the refusal names FIRST
+# follows the file's part order, so pin membership, not the chain's order.
+#
+# Driven as a player does it: "Add fuel link", click the source, click the
+# destination. --ui-focus names the PART and the game finds a pixel whose real
+# pick lands on it, so the case carries no coordinate tied to one framing.
+# It does orbit once, between the two clicks -- which is what a player would do:
+# no single angle exposes all four parts (from the default view rtank21 is
+# hidden; from the top-down one central_engine1 is). The legal pair is
+# rtank21 -> central_engine2 rather than the hook's central_engine1, because
+# central_engine1 is the one hidden in the angle the refused pair needs.
+#
+# FORBID lists the click failures individually instead of bare FAILED:
+# "Add fuel link" relabels itself to "Cancel fuel link" when it toggles, so
+# --ui-click's release check no longer finds the item it pressed and reports a
+# spurious MISMATCH. The press landed -- the "link src" line proves it. (#320)
+# The list covers a failed --ui-focus re-aim too: it prints its own line and then
+# clicks where the cursor stands, which would otherwise pass unnoticed while the
+# case clicked a part it never named.
+NAME vab-link-loop-refused
+CLAIM A fuel-link click that closes a loop is refused where it is made.
+KIND invariant
+ARGS --vab res/ships/heavy_two.json --width 1920 --height 1080 --timeout 8
+ARGS --sim-mouse 800,1200,960,300,RMB --sim-mouse 1400,0,960,560,0
+ARGS --ui-click 2000,"VAB/Add fuel link"
+ARGS --ui-focus 2400,central_engine2 --sim-mouse 2800,0,CUR,CUR,LMB
+ARGS --ui-focus 3200,rtank12 --sim-mouse 3600,0,CUR,CUR,LMB
+ARGS --ui-click 4200,"VAB/Add fuel link"
+ARGS --ui-focus 4600,rtank21 --sim-mouse 5000,0,CUR,CUR,LMB
+ARGS --ui-focus 5400,central_engine2 --sim-mouse 5800,0,CUR,CUR,LMB
+ARGS --ui-click 6500,"VAB TopBar/LAUNCH"
+EXPECT [vab] link src central_engine2
+EXPECT [vab] link dest rtank12
+EXPECT [vab] fuel link refused (a loop cannot drain):
+EXPECT [toast] Fuel links cannot form a loop:
+CHECK "central_engine2->rtank12" in out and "rtank12->central_engine2" in out
+EXPECT [vab] link src rtank21
+EXPECT [vab] link dest central_engine2
+CHECK re.search(r"\[vab\] fuel link fuel_link_\d+: rtank21 -> central_engine2", out)
+CHECK re.search(r"\[vab\] launched 'heavy_two' \(23 parts\)", out)
+CHECK len(re.findall(r"\[vab\] fuel link refused", out)) == 1
+CHECK len(re.findall(r"\[vab\] link (?:src|dest) ", out)) == 4
+FORBID not found
+FORBID ambiguous
+FORBID disabled
+FORBID clipped
+FORBID re-aim FAILED
+FORBID error:
+LIMIT 60

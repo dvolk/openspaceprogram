@@ -1,9 +1,0 @@
-NAME eva-jump
-ARGS --time-accel 1 --timeout 8 --eva-log --orbit-interval 0.1 --sim-press 1500,0,SPACE --frame-cap 30 --startship kerbal,res/ships/kerbal.json,Kerbin,pad
-EXPECT Building ship 'kerbal' (1 parts)
-FORBID GL_
-FORBID error:
-CHECK len(eva) > 20
-CHECK any(e["mode"] == "space" for e in eva if e["t"] > 1.5)
-CHECK all(e["mode"] == "ground" for e in eva if e["t"] > 4.0)
-CHECK max(e["alt"] for e in eva) > 5.5

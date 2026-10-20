@@ -1,0 +1,21 @@
+# Boot --load from a DIFFERENT system seeds focusTargets twice (#298).
+# ensureSystemForSave runs switchSystem during boot, and switchSystem clears and
+# rebuilds the focus list from the NEW bodies (game.cpp:1028). main.cpp then
+# appended sys.bodies again -- Game::sys is a reference to main's local `sys`,
+# which that switch reassigns -- so every body sat in the list twice: 64 entries
+# where 32 is correct, and every focusBody index past the first was doubled.
+# The G-cycle cannot see this: a doubled list is two copies of the SAME names, so
+# the sequence it prints is identical either way. Only the list LENGTH differs,
+# which is why boot reports it. solar_system has 31 bodies, so [ship] + 31 = 32.
+NAME focus-list-seeded-once-across-systems
+CLAIM A cross-system boot seeds the focus list once, not twice.
+KIND invariant
+ARGS --system res/systems/ksp_system.json --load e2e/fixtures/save_solar --time-accel 1
+ARGS --timeout 5
+EXPECT [load] save is from system 'res/systems/solar_system.json'; switched before loading
+EXPECT Loaded game from e2e/fixtures/save_solar (active: racer)
+EXPECT [cam] focus: 32 targets (31 body/bodies)
+CHECK out.count("[cam] focus:") == 1
+FORBID [cam] focus: 64
+FORBID error:
+LIMIT 120

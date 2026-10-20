@@ -1,6 +1,0 @@
-NAME vab-launch
-ARGS --vab res/ships/tanker.json --ui-click 2000,"VAB TopBar/LAUNCH" --timeout 12
-EXPECT Main loop starting
-EXPECT [vab] launched 'tanker' (7 parts)
-FORBID GL_
-FORBID error:

@@ -1,0 +1,30 @@
+# A refused load must not move the running game's clock (#301).
+# It used to: load_game called g.setTime(meta.time) before the ships could
+# throw, so a refusal left the surviving game paused at the SAVE's time with
+# its bodies parked at the SAVE's epoch. The fix is structural -- the build
+# runs first and commitSaveWorld is the only clock writer -- so a refusal has
+# nothing to restore. This case pins that: the running game here starts at
+# t=500 with warp 4; the corrupt fixture's own clock is t=3.08, warp 1. The
+# confirmation line must still show the running clock, not the save's.
+NAME refused-load-restores-clock
+CLAIM A refused load does not move the running game's clock.
+KIND invariant
+SEED e2e/fixtures/save_corrupt saves/20260101_000000-reload/save1
+ARGS --system res/systems/ksp_system.json --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --start-time 500 --time-accel 4
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+ARGS --timeout 8
+EXPECT [load] refused
+EXPECT no_such_part_in_the_catalog
+EXPECT [load] running game unchanged
+EXPECT warp 4
+# Still near where it was (500 + whatever warp 4 ran), not at the save's 3.08.
+CHECK (lambda m: m is not None and int(m.group(1)) >= 500)(re.search(r"running game unchanged \(t=(\d+)\.\d+, warp 4", out))
+FORBID running game unchanged (t=3.
+FORBID running game unchanged (t=0.
+FORBID [load] clock restored
+FORBID [scene] flight -> title
+FORBID error:
+LIMIT 120

@@ -1,9 +1,0 @@
-NAME orbit-burn
-ARGS --time-accel 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --timeout 12 --orbit-log --orbit-interval 0.5
-ARGS --sim-press 500,500,R
-ARGS --sim-press 1500,3000,T
-EXPECT [orbitlog]
-CHECK len(orbit) >= 2 and abs(last(orbit)["E"] - first(orbit)["E"]) > 1e5
-FORBID GL_
-FORBID error:

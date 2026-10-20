@@ -1,0 +1,14 @@
+NAME com-torque
+CLAIM Thrust through the COM produces no spurious torque.
+KIND invariant
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --att-log --orbit-interval 0.3 --drain-log
+ARGS --sim-press 1000,5000,T
+ARGS --timeout 14
+LIMIT 40
+EXPECT [attlog]
+FORBID error:
+CHECK len(att) >= 10
+CHECK any(d["thrust"] > 0 for d in drainlog)
+CHECK max(a["wnorm"] for a in att) < 1e-3
+CHECK all(a["wnorm"] == a["wnorm"] for a in att)

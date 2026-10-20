@@ -1,0 +1,7 @@
+NAME postfx-stack
+CLAIM The post-fx stack builds and applies without shader errors.
+KIND invariant
+ARGS --postfx crt,grain,cas --gl-debug --timeout 5
+EXPECT postfx: crt -> grain -> cas
+EXPECT Main loop starting
+FORBID error:

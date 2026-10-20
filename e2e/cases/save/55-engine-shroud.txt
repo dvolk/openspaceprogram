@@ -1,0 +1,9 @@
+NAME engine-shroud
+CLAIM A loaded engine resolves the shroud its def asks for.
+KIND invariant
+ARGS --timeout 12 --startship stager,res/ships/stager.json,Kerbin,pad
+EXPECT [shroud] engine_upper: shrouded
+EXPECT [shroud] engine_boost: bare
+FORBID error:
+FORBID could not import
+FORBID could not load

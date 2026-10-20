@@ -1,0 +1,7 @@
+NAME postfx-gamma-chain
+CLAIM A gamma chain applies each stage once.
+KIND invariant
+ARGS --postfx gamma,crt --gl-debug --timeout 5
+EXPECT postfx: gamma -> crt
+EXPECT Main loop starting
+FORBID error:

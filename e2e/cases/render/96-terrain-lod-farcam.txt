@@ -1,0 +1,16 @@
+NAME terrain-lod-farcam
+CLAIM A far camera still gets terrain collision under the ship.
+KIND invariant
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad --width 1920 --height 1080
+ARGS --terrain-px 512 --free-cam-pos 0 4000000 0
+ARGS --timeout 14 --terrain-log --orbit-interval 2
+EXPECT [terrain]
+EXPECT Main loop starting
+FORBID error:
+CHECK len(terrain) > 3
+CHECK all(t["patches"] == 6 for t in terrain)
+CHECK all(t["deepest"] == 1 for t in terrain)
+CHECK last(terrain)["max_depth"] == 12
+CHECK last(terrain)["cam_r"] > 3.9e6
+CHECK last(terrain)["deep_off"] > 3.0e6
+LIMIT 90

@@ -1,0 +1,12 @@
+NAME dock-save-load
+CLAIM A docked pair survives save/load as one vessel.
+KIND invariant
+ARGS --load e2e/fixtures/save_docked --time-accel 1 --timeout 5
+ARGS --sim-press 500,0,U --fuel-log
+EXPECT Loaded game from e2e/fixtures/save_docked (active: dockprobe)
+EXPECT [undock] t=
+EXPECT a="dockprobe" b="dockstation"
+CHECK out.count("[undock]") == 1
+CHECK len(fuel) >= 1 and len(first(fuel)["groups"]) == 2
+FORBID Cannot undock
+FORBID error:

@@ -1,0 +1,26 @@
+# Detach a leaf from a loaded build. --vab-detach selected the part BY INDEX and
+# fired vabDetachSelected, skipping the one thing a player must do: aim a pick at
+# the part.
+#
+# The click route makes the pick explicit: --ui-focus names the part and the game
+# finds a pixel whose real pick lands on it, so the case carries no coordinate
+# that only means something in one camera framing. "[vab] select" then says which
+# part the click took. It is not the only thing that would catch a wrong pick --
+# "deleted <id>" names the mutated part too -- but it localises the failure to
+# the pick instead of leaving it looking like the button misbehaved.
+NAME vab-detach-lone
+CLAIM Detaching a leaf by a real pick removes it from the build.
+KIND invariant
+ARGS --vab res/ships/tanker.json --width 1920 --height 1080 --timeout 8
+ARGS --ui-focus 1500,engine_1
+ARGS --sim-mouse 1600,0,CUR,CUR,LMB
+ARGS --ui-click 2500,"VAB/Detach subtree"
+ARGS --ui-click 4000,"VAB TopBar/LAUNCH"
+CHECK re.search(r"\[vab\] select 2 engine_1", out)
+CHECK re.search(r"\[vab\] deleted engine_1 \(single part, not stashed\)", out)
+# A lone part is deleted, not stashed: nothing lands in the subassembly list,
+# and the launch carries the other six.
+FORBID to Subassemblies
+CHECK re.search(r"\[vab\] launched 'tanker' \(6 parts\)", out)
+FORBID FAILED
+FORBID error:

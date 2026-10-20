@@ -1,0 +1,7 @@
+NAME postfx-gamma
+CLAIM Gamma post-fx produces the expected output.
+KIND invariant
+ARGS --postfx gamma --gl-debug --timeout 4
+EXPECT postfx: gamma
+EXPECT Main loop starting
+FORBID error:

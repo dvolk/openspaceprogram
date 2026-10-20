@@ -1,0 +1,43 @@
+# The "Target orbit" slot with NO transfer target. uiRefPlane falls back to the
+# ecliptic, and RefPlane::mode is what keeps that honest: every label prints ecl,
+# the overlay draws the ecliptic ring, and --map-dump drops the tgt row rather
+# than printing the fallback under a "tgt" name. Print refPlaneName(g.map.plane)
+# at any call site instead of the resolved mode, or emit the row anyway, and this
+# case fails.
+#
+# The scenario's orbit lies exactly IN the ecliptic, so the fallback also shows
+# what it means: Inc 0 and no node ticks, where the same slot with a target reads
+# 6 deg and draws them (case 198).
+#
+# --map-plane 3 is a shortcut, not the only way in, and the shortcut is why this
+# case is worth reading carefully. The combo refuses "Target orbit" while no
+# target is set (the Map plane combo toasts instead of switching,
+# gameui.cpp:2698), so the state is
+# not reachable by asking for it -- but it IS reachable by asking for it WITH a
+# target and then losing the target, which is the branch the resolved-plane
+# widget exists for. Converting this case to that route would test the reachable
+# version of the state instead of the requested-and-refused one; it needs the
+# target to actually disappear, so it is a case of its own rather than an edit.
+# Combos are addressable now (#251), so the route is open: --ui-click
+# "Orbital Map/Map plane" then "##Combo_00/Target orbit".
+NAME orbit-plane-target-none
+CLAIM With no target the Target orbit slot falls back to the ecliptic and says so.
+KIND invariant
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,inertial-orbit
+ARGS --map-plane 3
+ARGS --plane-log --orbit-log --orbit-interval 1 --map-dump 6000
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2500,"Game Menu/Settings"
+ARGS --ui-click 3500,"Settings/Orbital plane"
+EXPECT [planelog]
+FORBID FAILED
+FORBID error:
+FORBID slot=tgt
+CHECK len(mapb) == 3
+CHECK all(p["plane"] == "ecl" for p in plane if p["t"] > 1.0)
+CHECK all(o["plane"] == "ecl" for o in orbit if o["t"] > 1.0)
+# The drawn reference IS the Ecliptic slot's normal.
+CHECK all(abs(p["n_ref"][0] - mapb[1]["n"][0]) < 1e-6 and abs(p["n_ref"][1] - mapb[1]["n"][1]) < 1e-6 and abs(p["n_ref"][2] - mapb[1]["n"][2]) < 1e-6 for p in plane if p["t"] > 1.0)
+# And this orbit sits in that plane: nothing to measure, nothing to mark.
+CHECK all(abs(p["inc"]) < 0.001 for p in plane if p["t"] > 1.0)
+CHECK all(p["ticks"] == "-" for p in plane if p["t"] > 1.0)

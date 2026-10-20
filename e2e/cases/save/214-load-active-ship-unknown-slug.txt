@@ -1,0 +1,26 @@
+# #266's active-ship guard: save.json is save_roster_named with "active_ship"
+# pointed at v9 -- a slug its ships list (v0, v1) does not have. The writer
+# cannot produce this (it records g.ship, and every slug it writes is in the
+# list), so this is a hand-edited save, or one whose fleet shrank under it. A
+# seat cannot be named here at all any more: a slug keys a vehicle, and a seat is
+# data on a Part (part.h).
+#
+# #270 changed what the load owes you. It used to fall back to the first vessel
+# in save order and report success -- flying a ship the save never named -- which
+# is the same papering-over #303 refused for a dangling body name. The rule lives
+# in saveMetaFromJson, not preflightSave, because it is a fact about this one
+# document: boot --load of a same-system slot runs no preflight at all (main.cpp),
+# so a preflight rule would be invisible here. Same words on every path.
+#
+# Case 213 keeps the other half: the key ABSENT still falls back to the first
+# vessel, and 316-load-active-ship-none pins that "" means none is flown.
+NAME load-active-ship-unknown-slug
+CLAIM A save naming a missing active ship is refused.
+KIND invariant
+ARGS --load e2e/fixtures/save_active_unknown_slug --time-accel 1 --timeout 3
+EXPECT Load failed: save: save.json: flies "v9", which its "ships" list has no entry for
+FORBID Loaded game from
+FORBID (active:
+FORBID [crew] loaded
+EXIT 1
+LIMIT 60

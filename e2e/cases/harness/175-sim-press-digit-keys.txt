@@ -1,0 +1,16 @@
+# --sim-press digit keys (#108). sim_parse_key tried the decimal SDL-keycode
+# escape FIRST, so "3" became keycode 3 -- which has no scancode -- and the
+# digit keys were unreachable from the harness. The scene-switch shortcuts are
+# 1/2/3/4, so 75-scene-switch-keys.txt has to send the raw keycodes 49..52
+# instead of 1234: it pins the shortcut, not the parser. This pins the parser,
+# and it fails on the pre-fix binary with "has no scancode" and no transition.
+# The decimal escape still works (75/76 keep sending 49..52); names just win.
+NAME sim-press-digit-keys
+CLAIM Digit keys sent by --sim-press parse as digits, not raw SDL keycodes.
+KIND harness
+ARGS --ui-click 400,"Title Menu/New Game" --ui-click 1000,"New Game/Start" --timeout 8
+ARGS --sim-press 2500,0,3
+EXPECT [scene] spacecenter -> tracking (push)
+FORBID FAILED
+FORBID has no scancode
+FORBID error:

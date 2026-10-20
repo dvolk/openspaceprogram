@@ -1,0 +1,17 @@
+NAME recover-ship
+CLAIM Recover retires the flown vessel exactly once and leaves an empty world.
+KIND invariant
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 1000,0,ESCAPE --recover-anywhere
+ARGS --ui-click 2000,"Game Menu/Recover Vessel"
+EXPECT [scene] flight -> spacecenter (push)
+EXPECT [recover] t=
+EXPECT 'racer' recovered
+EXPECT [scene] spacecenter -> spacecenter (enterSpaceCenter)
+EXPECT Timeout reached (8.
+# Recover retires the flown vessel exactly once, and it is the last thing left
+# in the world when it goes (#297).
+EXPECT [vehicle] retired: 'racer' (0 vehicle(s) left in the world)
+CHECK out.count("[vehicle] retired:") == 1
+FORBID FAILED
+FORBID error:

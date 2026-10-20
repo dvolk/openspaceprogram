@@ -1,0 +1,14 @@
+NAME rebind-thrust
+CLAIM A rebound thrust key burns and the key it replaced no longer does.
+KIND invariant
+WRITE settings.json {"keybinds": {"thrust": [{"sc": 24, "mods": 0}]}}
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Moho,pad
+ARGS --timeout 12 --dbg-log
+ARGS --sim-press 1000,1500,R
+ARGS --sim-press 3500,1500,T
+ARGS --sim-press 6500,2000,U
+EXPECT [dbg]
+CHECK any(d["t"] <= 6.0 for d in dbg)
+CHECK all(d["alt"] < 10 for d in dbg if d["t"] <= 6.0)
+CHECK last(dbg)["alt"] > 10
+FORBID error:

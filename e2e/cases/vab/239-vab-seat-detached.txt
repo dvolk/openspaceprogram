@@ -1,0 +1,37 @@
+# A named capsule is detached out of the build. The plan for it cannot survive
+# -- the part is gone from the tree -- but it must not vanish in silence either:
+# the next launch falls back to the pad's line, and a player who watched their
+# own choice disappear has no way to know that (issue #288).
+# This is also the assign -> detach -> launch sequence that used to reach
+# vabLaunch's assert when nothing pruned the stale entry in between.
+#
+# Both halves are the player's route now: RMB-pick the capsule to open its seat
+# window, pick Ace from the seat dropdown, LMB-pick the capsule, click "Detach
+# subtree". --vab-assign named the seat by (part index, slot) and --vab-detach
+# selected by index, so the case never learned whether either part was reachable
+# by picking it. The "[vab] part window" and "[vab] select" lines say which part
+# each click took; the drop line names 'Ace', so the plan's existence is still
+# pinned without the hook printing it.
+NAME vab-seat-detached
+CLAIM Detaching a named capsule drops its plan and falls back to the pad line.
+KIND invariant
+ARGS --vab res/ships/small_docker.json --kerbals e2e/fixtures/three_kerbals.json
+ARGS --width 1920 --height 1080 --time-accel 1 --timeout 12 --frame-cap 30
+ARGS --ui-focus 1500,capsule_1
+ARGS --sim-mouse 2000,0,CUR,CUR,RMB
+ARGS --ui-click 2600,"Capsule (2m)##capsule_1/Seat 1##s0"
+ARGS --ui-click 3200,"##Combo_00/Ace"
+ARGS --sim-mouse 4000,0,CUR,CUR,LMB
+ARGS --ui-click 5000,"VAB/Detach subtree"
+ARGS --ui-click 7000,"VAB TopBar/LAUNCH"
+EXPECT [vab] part window: 'capsule_1' seats 1
+EXPECT [vab] select 1 capsule_1
+EXPECT [vab] detached capsule_1 (6 parts)
+EXPECT [toast] Detached capsule_1 (+5) to Subassemblies
+EXPECT [vab] dropped the seat plan for 'capsule_1' 'Ace' (it left the build)
+EXPECT [toast] 1 seat assignment dropped: no such seat in this build
+EXPECT [toast] No seats named: the next launch draws the pad's line
+EXPECT [vab] launched 'small docker' (1 parts)
+FORBID FAILED
+FORBID error:
+LIMIT 90

@@ -1,0 +1,17 @@
+# --ui-focus names a PART and the game finds a pixel whose real pick lands on it.
+# The failure paths matter as much as the success: if the aim silently fell back
+# to a neighbour, every case that uses it would be testing the wrong part.
+#
+# tanker's part 1 (tank_r1.5h3_1) sits behind the core from the editor's default
+# angle. Its origin projects to 960,540 and the pick there returns part 3, and no
+# ring around that origin hits part 1 either, so the honest answer is a refusal
+# that tells the test to orbit -- not a click on whatever happens to be in front.
+NAME ui-focus-refuses-hidden-part
+CLAIM --ui-focus refuses a part no pixel can reach instead of aiming at a neighbour.
+KIND harness
+ARGS --vab res/ships/tanker.json --width 1920 --height 1080 --timeout 6 --frame-cap 30
+ARGS --ui-focus 1500,tank_r1.5h3_1
+ARGS --sim-mouse 2000,0,CUR,CUR,LMB
+EXPECT [uifocus] 'tank_r1.5h3_1' FAILED not clickable from this camera angle
+FORBID [vab] select
+FORBID error:

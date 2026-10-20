@@ -1,0 +1,25 @@
+# #302's remaining hole: a cross-system load that PREFLIGHT accepts and the
+# BUILDER refuses. This save's seat names roster id 99, and the roster-id check
+# lives with the builder because only the builder holds g.roster -- so
+# preflightSave waves it through, installSystem tears the running career down,
+# and only then does load_game refuse. The player is left with no game.
+# The EXPECTs below are the FIXED behaviour: refuse with the old world intact,
+# which means the switch must never happen. On the tree that introduced this
+# case it FAILS, printing [game] unloaded + switched system + science reset.
+NAME cross-system-unknown-roster-refuses-before-switch
+CLAIM A cross-system load with an unknown roster id refuses before the switch.
+KIND invariant
+SEED e2e/fixtures/save_solar_bad_roster saves/20260101_000000-reload/save1
+ARGS --time-accel 1 --timeout 10
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --startship probe,res/ships/tanker.json,Kerbin,high-orbit
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+EXPECT [load] refused
+EXPECT names roster id 99, which the roster has no entry for (before the system switch)
+FORBID [game] unloaded
+FORBID [game] switched system
+FORBID science reset by the system switch
+FORBID error:
+LIMIT 90

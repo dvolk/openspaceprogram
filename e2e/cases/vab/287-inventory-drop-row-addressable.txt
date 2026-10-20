@@ -1,0 +1,29 @@
+# An inventory row is addressable by its place in the list.
+#
+# The Drop button used to be labelled plain "Drop" for every stowed part. PushID
+# gave each row its own imgui id, but the test engine registers the LABEL, so a
+# container holding two items registered two identical "kerbal > Kerbal##0/Drop"
+# paths and --ui-click refused both as ambiguous -- the same defect as the seat
+# rows (#326), and the same fix: a hidden id naming the row a player counts down
+# the list. Unlike item->uid, the index is the same on every run, so a case can
+# write it.
+#
+# This suit carries one item, so the case shows the row being addressed, not two
+# rows colliding: the fixture with two items in one container (save_inventory's
+# cargo_1) belongs to a ship the load does not make active, and its cargo part is
+# occluded from the orbit camera, so opening that window would need a ship switch
+# and a re-frame before it proved anything.
+NAME inventory-drop-row-addressable
+CLAIM Each inventory row's Drop button has a distinct addressable label.
+KIND invariant
+ARGS --load e2e/fixtures/save_inventory --timeout 6 --width 1920 --height 1080 --frame-cap 30
+ARGS --ui-focus 2000,kerbal/kerbal_1
+ARGS --sim-mouse 2050,0,CUR,CUR,RMB
+ARGS --ui-click 3000,"kerbal > Kerbal##0/Drop##drop_0"
+EXPECT Loaded 4 inventory item(s) with the ships
+EXPECT [toast] Dropped mono_tank_r1
+FORBID FAILED
+FORBID ambiguous
+FORBID error:
+# The suit is the active ship in that save, so its own window is the one the
+# camera can reach: aim it, RMB it open, then press the first row's Drop.

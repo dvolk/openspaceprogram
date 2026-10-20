@@ -1,0 +1,25 @@
+NAME view-live-unpainted
+CLAIM The Research Lab still advances the view snapshot without painting 3D.
+KIND invariant
+ARGS --time-accel 5 --timeout 6 --frame-cap 60
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --info-log --terrain-log --orbit-interval 1 --sim-press 800,0,ESCAPE --ui-click 1200,"Game Menu/Research Lab"
+# The Research Lab paints no 3D world, but the state pass (SceneDef::refresh)
+# still runs there (#212): g.hud.view advances -- lon is the ground sliding under
+# the ship -- and the terrain LOD keeps tracking the camera, which is what
+# gives the ground its collision bodies (#24). Before the split the lab's
+# draw3d row was an empty function, so both froze at the moment of the push
+# and no [terrain] line appeared at all.
+# The lab is a hop from the hub, not a hop from flight: ESC opens the hub and its
+# button opens the lab, which is the route a player takes.
+EXPECT [scene] spacecenter -> research (push)
+# Anchored on the push, because the claim is about the LAB. --ui-click retries
+# for up to 2s, so the push can land anywhere in [1.2s, 3.2s] of a 6s run; an
+# unanchored count would be satisfied by the flight samples that precede it and
+# the case would pass with the lab frozen solid. scene[-1] is the push: both
+# logs and the scene line stamp g.time.
+CHECK len([s for s in surf if s["t"] >= scene[-1]["t"]]) >= 3
+CHECK max(s["lon"] for s in surf if s["t"] >= scene[-1]["t"]) - min(s["lon"] for s in surf if s["t"] >= scene[-1]["t"]) > 0.5
+CHECK len([x for x in terrain if x["t"] >= scene[-1]["t"]]) >= 3
+FORBID FAILED
+FORBID error:

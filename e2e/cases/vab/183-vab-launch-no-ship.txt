@@ -1,0 +1,37 @@
+# #235: launch from a VAB that has no active ship. The LAUNCH button runs
+# INSIDE the imgui pass, so the ship it builds has no g.hud.view snapshot for this
+# frame: the state pass (refreshVab -> updateShipView) already ran, and on a
+# shipless VAB it returned early every frame, leaving the snapshot at zeros.
+# vabDrawUi keeps drawing after drawVabUI returns, so the HUD's AGL line then
+# sampled terrain along glm::normalize(pos) = NaN, and Heightmap::sample's
+# (int)u turned that NaN into a wild row offset (ASan SEGV; debug builds die
+# in vector operator[] with index 18446738275503703868).
+#
+# Earth, because only the heightmap bodies index memory on the way to a
+# height: a procedural body just returns NaN and limps on as -nan readouts.
+# --vab-launch cannot catch this: its hook fires in the pre-scene phase
+# (main.cpp:1263), so the frame's state pass (sc.refresh, 1336) then runs for the
+# ship it just built. Only the real button click builds a ship AFTER that pass.
+#
+# What this case pins is the never-taken snapshot reaching the readouts at all
+# (the launch completes and the SURFACE log goes sane). It cannot pin the
+# ShipView::ship stamp by itself: the inertial-orbit scenario leaves the ship
+# in the inertial frame, so the HUD is in orbital mode and never samples
+# terrain. 184 is the pad-scenario twin that does.
+NAME vab-launch-no-ship
+CLAIM Launching from a shipless VAB does not sample NaN terrain.
+KIND invariant
+ARGS --system res/systems/solar_system.json --timeout 10 --dev-scenarios
+ARGS --vab res/ships/racer.json
+ARGS --info-log --orbit-interval 1
+ARGS --ui-click 3000,"VAB TopBar/##vabscn"
+ARGS --ui-click 3500,"##Combo_00/inertial-orbit"
+ARGS --ui-click 5000,"VAB TopBar/LAUNCH"
+EXPECT [vab] launched 'racer' (4 parts)
+EXPECT [scene] vab -> flight (enterFlight)
+# The launch frame's own readouts: a snapshot that was never taken prints
+# nothing here (no ship, so no line), so every surf row is post-launch.
+CHECK len(surf) >= 3
+CHECK all(s["alt_agl"] > 50000.0 for s in surf)
+FORBID FAILED
+FORBID error:

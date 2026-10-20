@@ -1,0 +1,12 @@
+NAME eva-spawn
+CLAIM EVA spawns the roster's lowest-id kerbal at the capsule.
+KIND invariant
+ARGS --time-accel 1 --timeout 9 --eva-log --orbit-interval 0.3 --sim-press 1000,0,V,2500,2000,W --frame-cap 30 --startship racer,res/ships/racer.json,Kerbin,pad
+# The kerbal is named from the shipped roster (res/data/kerbals.json): the
+# lowest id is the first one a seat claims, so 'Ash' is id 1.
+EXPECT Crew: 'Ash' aboard 'racer' part 0 (1/1)
+EXPECT EVA: 'Ash' out of 'racer' part 0
+EXPECT Active ship 2 of 2: Ash
+FORBID error:
+CHECK len(eva) > 5
+CHECK max((e["vel"][0]**2 + e["vel"][1]**2 + e["vel"][2]**2)**0.5 for e in eva) > 1.5

@@ -1,0 +1,10 @@
+NAME boot-load-nonhome
+CLAIM Boot --load of a non-home-body ship lands in the right frame.
+KIND invariant
+ARGS --system res/systems/ksp_system.json --load e2e/fixtures/save_mun --time-accel 1
+ARGS --timeout 8
+EXPECT Loaded system 'res/systems/ksp_system.json'
+EXPECT [heavy] sync: Kerbol, Mun, Kerbin
+EXPECT Loaded game from e2e/fixtures/save_mun (active: racer)
+FORBID [boot] no vessel: title screen
+LIMIT 120

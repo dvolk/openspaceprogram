@@ -1,9 +1,0 @@
-NAME spacecenter-back
-ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --sim-press 1000,0,ESCAPE
-ARGS --sim-press 2000,0,ESCAPE
-EXPECT [scene] flight -> spacecenter (push)
-EXPECT [scene] spacecenter -> flight (pop)
-EXPECT Timeout reached (10.
-FORBID GL_
-FORBID error:

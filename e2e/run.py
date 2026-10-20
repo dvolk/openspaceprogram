@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
-"""E2E battery: run e2e/cases/*.txt against the game binary.
+"""E2E runner: run selected e2e/cases/<subject>/*.txt against the game binary.
 
-Usage: python3 e2e/run.py [selectors] [--jobs N] [--force] [--game PATH]
-[--limit S] [--show-cmd]. --limit overrides every case's LIMIT (a slow box,
-or a case you want to drive by hand); --show-cmd prints the exact command +
-env so a failure re-runs under a debugger. Case keys: NAME ARGS EXPECT FORBID
-CHECK LIMIT WRITE SEED FILE NOFILE EXIT. CHECK sees out and
+Usage: python3 e2e/run.py <selectors> [--jobs N] [--game PATH] [--limit S]
+[--show-cmd] [--kind K]. At most 5 cases run per invocation; there is no full
+battery and no flag that raises the cap. --limit overrides every case's LIMIT
+(a slow box, or a case you want to drive by hand); --show-cmd prints the exact
+command + env so a failure re-runs under a debugger; --kind runs one kind of
+case (repeatable). Case keys: NAME CLAIM KIND NOGLCHECK ARGS EXPECT FORBID
+CHECK LIMIT WRITE SEED FILE NOFILE EXIT. CLAIM is one sentence: what the case
+pins. KIND says what sort of evidence it is -- invariant (behaviour or a
+player route), golden (tuned numbers or content tables: update deliberately),
+harness (CLI/test plumbing, not game spec) or canary (proves it boots). Both
+are required; `python3 e2e/index.py` turns them into e2e/INDEX.md. GL errors
+and crash strings are forbidden by default, so a case names only its own
+refusals; NOGLCHECK opts out of the GL drains for timing-sensitive cases.
+CHECK sees out and
 the parsed logs (orbit/dbg/att/eva/fuel/drainlog/drag/shake/cam/terrain/surf/
 xfer/porkchop/surfmap/mapb/plane/slew/toast/scene) plus first/last/re. ARGS tokenizes like a
 shell, so a value may be quoted to carry spaces. SEED <fixture> <path-under-
@@ -14,9 +23,8 @@ FILE <path-under-data-dir> [substring...] and NOFILE <path-under-data-dir>
 assert on what the GAME wrote there (#271); both take globs, since a game dir is
 stamped YYYYMMDD_HHMMSS-<name>. EXIT
 <code> is the exit code the case demands (default 0) -- without it a game that
-correctly refuses a bad boot flag looks identical to one that crashed. Full
-battery and --jobs>2 need --force. Artifacts land in tmp/e2e/runs/<stamp>/ +
-history.csv.
+correctly refuses a bad boot flag looks identical to one that crashed.
+Artifacts land in tmp/e2e/runs/<stamp>/ + history.csv.
 """
 
 import argparse
@@ -40,6 +48,9 @@ CASES_DIR = os.path.join(REPO_ROOT, "e2e", "cases")
 GAME = None
 DEFAULT_LIMIT = 120.0
 DEFAULT_JOBS = 2
+# Hard cap per invocation. There is no full-battery mode: a case earns its
+# place by narrowing the change under test, not by running everything again.
+MAX_CASES = 5
 # --limit: run every case under this wall-clock ceiling instead of its own
 # LIMIT (raise it to drive one case by hand on a slow box; the case's own
 # --timeout still decides when the game exits). --show-cmd: print the exact
@@ -47,6 +58,19 @@ DEFAULT_JOBS = 2
 # gdb/valgrind without reconstructing the invocation by hand.
 LIMIT = None
 SHOW_CMD = False
+# Every case forbids these. A GL error, an abort and a shader failure are never
+# an expected outcome, and repeating the same six lines in 286 files buried the
+# assertions a case actually makes. "error:" is NOT here: a clean boot refusal
+# prints it on purpose (177, 190, 191).
+DEFAULT_FORBID = [
+    "GL_",
+    "Segmentation",
+    "Assertion",
+    "terminate called",
+    "Error compiling shader",
+    "Error linking shader program",
+]
+KINDS = ("invariant", "golden", "harness", "canary")
 
 ORBIT_RE = re.compile(
     r"\[orbitlog\]\s+t=([\d.]+)s\s+frame=\"([^\"]*)\"\s+r=([-\d.e+]+) m\s+"
@@ -196,6 +220,9 @@ def under_data_dir(pattern, case_path, key):
 
 def parse_cases(path):
     name = os.path.basename(path)
+    claim = ""
+    kind = ""
+    noglcheck = False
     args = []
     expect = []
     forbid = []
@@ -219,6 +246,12 @@ def parse_cases(path):
             rest = rest.strip()
             if key == "NAME":
                 name = rest
+            elif key == "CLAIM":
+                claim = rest
+            elif key == "KIND":
+                kind = rest.lower()
+            elif key == "NOGLCHECK":
+                noglcheck = True
             elif key == "ARGS":
                 # shlex, not split(): a value may be quoted to carry spaces
                 # (--ui-click 2000,"Game Menu/Tracking Station"). No shipped
@@ -274,8 +307,17 @@ def parse_cases(path):
                 raise ValueError("%s: unknown key %r" % (os.path.basename(path), key))
     if not args:
         raise ValueError("%s: no ARGS" % os.path.basename(path))
+    if not claim:
+        raise ValueError("%s: no CLAIM (one sentence: what does this pin?)"
+                         % os.path.basename(path))
+    if kind not in KINDS:
+        raise ValueError("%s: KIND must be one of %s, not %r"
+                         % (os.path.basename(path), ", ".join(KINDS), kind))
     return {
         "name": name,
+        "claim": claim,
+        "kind": kind,
+        "noglcheck": noglcheck,
         "args": args,
         "expect": expect,
         "forbid": forbid,
@@ -703,14 +745,14 @@ def run_case(case):
             t = time.time() - age_days * 86400.0
             os.utime(meta, (t, t))
 
-    # FORBID GL_ is the suite's GL-error tripwire: the game prints
-    # "GL_<ENUM> - file:line" from its glGetError drains, and those drains are
-    # off by default (the call can flush the command buffer, ~100 sites). A
-    # case that forbids GL_ is asking for the check, so turn the drains on for
-    # it. --gl-debug would also do it, but it installs the debug callback too,
-    # whose driver chatter (Mesa performance warnings) trips the same FORBID.
+    # GL_ is the suite's GL-error tripwire: the game prints "GL_<ENUM> -
+    # file:line" from its glGetError drains, and those drains are off by
+    # default (the call can flush the command buffer, ~100 sites). Every case
+    # gets the drains unless NOGLCHECK says its timing is the subject;
+    # --gl-debug would install the debug callback too, whose driver chatter
+    # (Mesa performance warnings) trips the same FORBID.
     args = list(case["args"])
-    if any("GL_" in s for s in case["forbid"]):
+    if not case.get("noglcheck"):
         args.append("--gl-error-checks")
 
     cmd = build_cmd(game, args + ["--data-dir", data_dir])
@@ -769,8 +811,8 @@ def run_case(case):
     missing = [s for s in case["expect"] if s not in out]
     for s in missing:
         diag.append("EXPECT not found: %r" % s)
-    hit = [s for s in case["forbid"] if s in out]
-    for s in hit:
+    hit = [s for s in case["forbid"] + DEFAULT_FORBID if s in out]
+    for s in dict.fromkeys(hit):
         diag.append("FORBID found: %r" % s)
 
     # 3) CHECK
@@ -857,18 +899,21 @@ def run_case(case):
 
 
 def select_cases(case_files, selectors):
-    """Filter to cases whose NAME or filename contains any selector (case-insensitive)."""
+    """Filter to cases whose NAME, filename or subject path contains any
+    selector (case-insensitive). A path selector like `save/` or
+    `save/270` scopes a run to one group."""
     if not selectors:
         return case_files
     sel = [s.lower() for s in selectors]
     out = []
     for path in case_files:
         base = os.path.splitext(os.path.basename(path))[0].lower()
+        rel = os.path.splitext(os.path.relpath(path, CASES_DIR))[0].lower()
         try:
             name = parse_cases(path)["name"].lower()
         except ValueError:
             name = ""
-        if any(s in name or s in base for s in sel):
+        if any(s in name or s in base or s in rel for s in sel):
             out.append(path)
     return out
 
@@ -1051,14 +1096,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("selectors", nargs="*",
-                        help="case name/filename substring(s) to run; "
-                             "default: all cases")
+                        help="case name/filename/path substring(s) to run; "
+                             "at most %d cases per invocation" % MAX_CASES)
     parser.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
                         help="max cases to run in parallel (1 = serial; "
                              "default: 2)")
-    parser.add_argument("--force", action="store_true",
-                        help="run even when heavy (full battery, or "
-                             "--jobs > 2), despite the warning above")
     parser.add_argument("--game", default=None,
                         help="game binary to launch (default: ./osp)")
     parser.add_argument("--limit", type=float, default=None,
@@ -1071,6 +1113,9 @@ def main():
                              "env it differs in) before running it, so a "
                              "failure can be re-run under gdb/valgrind "
                              "without rebuilding the invocation by hand")
+    parser.add_argument("--kind", action="append", choices=KINDS,
+                        help="run only cases of this KIND (repeatable): "
+                             "invariant, golden, harness or canary")
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be >= 1")
@@ -1095,30 +1140,37 @@ def main():
         args.jobs = 1
     selectors = args.selectors
 
-    # Full battery and --jobs>2 are expensive; require --force.
-    reasons = []
     if not selectors:
-        reasons.append("a full battery takes a LONG time")
-    if args.jobs > 2:
-        reasons.append("each case already runs a full game loop -- more "
-                       "parallelism is usually overkill")
-    if reasons and not args.force:
-        print("Refusing to run: " + "; ".join(reasons) + ".")
-        print("Consider whether you really need it -- a targeted selector "
-              "(e.g. `python3 e2e/run.py orbit`) and the default 2 jobs "
-              "usually cover what a change needs.")
-        print("Run it anyway with --force.")
+        print("Refusing to run: the full battery is retired.")
+        print("Name at most %d cases, e.g. `python3 e2e/run.py save/172`."
+              % MAX_CASES)
+        print("Find one in e2e/INDEX.md; run the matching unit test instead "
+              "when the claim is pure logic.")
         return 1
 
-    all_files = sorted(glob.glob(os.path.join(CASES_DIR, "*.txt")))
+    all_files = sorted(glob.glob(os.path.join(CASES_DIR, "**", "*.txt"),
+                                 recursive=True))
     if not all_files:
         print("no case files found in %s" % CASES_DIR)
         return 1
 
     case_files = select_cases(all_files, selectors)
+    if args.kind:
+        case_files = [p for p in case_files
+                      if parse_cases(p)["kind"] in args.kind]
     if not case_files:
         print("no case matches %r" % (selectors,))
         print("available: %s" % ", ".join(available_names(all_files)))
+        return 1
+    if len(case_files) > MAX_CASES:
+        print("Refusing to run %d cases: the hard limit is %d per invocation."
+              % (len(case_files), MAX_CASES))
+        print("Narrow the selector (subject, name or number) and run again:")
+        for p in case_files[:10]:
+            print("  " + os.path.splitext(os.path.relpath(p, CASES_DIR))[0])
+        if len(case_files) > 10:
+            print("  ... and %d more" % (len(case_files) - 10))
+        print("e2e/INDEX.md lists every case with its claim and kind.")
         return 1
 
     # Cases are independent (own Xvfb display + stdout capture), so they can

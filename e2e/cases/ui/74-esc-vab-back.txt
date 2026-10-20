@@ -1,0 +1,14 @@
+NAME esc-vab-back
+CLAIM ESC in the VAB returns to the hub.
+KIND invariant
+ARGS --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --vab res/ships/tanker.json --sim-press 3000,0,ESCAPE
+EXPECT [vab] entered the editor (sim keeps coasting)
+EXPECT [vab] back to flight (sim keeps coasting)
+EXPECT [scene] flight -> vab (push)
+EXPECT [scene] vab -> flight (pop)
+EXPECT [cam] parked: orbit focus=ship dist=
+EXPECT [cam] restored: orbit focus=ship dist=
+CHECK len(re.findall(r"\[cam\] (?:parked|restored): orbit focus=ship dist=([\d.]+) m", out)) == 2
+CHECK len(set(re.findall(r"\[cam\] (?:parked|restored): orbit focus=ship dist=([\d.]+) m", out))) == 1
+FORBID error:

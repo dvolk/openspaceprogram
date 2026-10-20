@@ -1,6 +1,0 @@
-NAME inventory-load
-ARGS --load e2e/fixtures/save_inventory --timeout 5
-EXPECT Loaded 4 inventory item(s) with the ships
-EXPECT Loaded game from e2e/fixtures/save_inventory (active: kerbal)
-FORBID GL_
-FORBID error:

@@ -1,8 +1,0 @@
-NAME postfx-stack
-ARGS --postfx crt,grain,cas --gl-debug --timeout 5
-EXPECT postfx: crt -> grain -> cas
-EXPECT Main loop starting
-FORBID GL_
-FORBID error:
-FORBID Error compiling shader
-FORBID Error linking shader program

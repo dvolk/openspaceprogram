@@ -1,8 +1,0 @@
-NAME staging-basic
-ARGS --time-accel 1 --timeout 12 --startship stager,res/ships/stager.json,Kerbin,pad
-ARGS --sim-press 2000,100,SPACE
-ARGS --sim-press 6000,100,SPACE
-EXPECT Stage: dropped
-EXPECT Stage: nothing left to separate
-FORBID GL_
-FORBID error:

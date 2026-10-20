@@ -1,0 +1,18 @@
+# The hub offers "Recover Vessel" whenever there is a ship (gameui.cpp), and
+# recoverActive then refuses because the ship is in orbit rather than grounded
+# on its home body. So the button is drawn in a state where it can only refuse
+# -- pressing it is the whole subject here, which is why this is a click and not
+# the --recover hook.
+NAME recover-refused
+CLAIM Recover refuses a flying ship, and the button is what is clicked.
+KIND invariant
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 1000,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Recover Vessel"
+EXPECT [scene] flight -> spacecenter (push)
+EXPECT [toast] Cannot recover
+EXPECT grounded on the home body
+EXPECT Timeout reached (8.
+FORBID [recover]
+FORBID FAILED
+FORBID error:

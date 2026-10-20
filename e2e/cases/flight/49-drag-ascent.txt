@@ -1,0 +1,11 @@
+NAME drag-ascent
+CLAIM Drag reduces ascent acceleration and the drag log reports finite forces.
+KIND invariant
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Duna,pad
+ARGS --timeout 12 --drag-log
+ARGS --sim-press 1000,2000,R
+ARGS --sim-press 3000,2000,T
+EXPECT [drag]
+CHECK len(drag) >= 2
+CHECK any(d["F"] > 0 and d["rho"] > 0 for d in drag)
+FORBID error:

@@ -1,0 +1,14 @@
+NAME jet-vtol
+CLAIM A jet VTOL lifts off and burns jet fuel.
+KIND invariant
+ARGS --time-accel 1 --startship jet,res/ships/jet.json,Duna,pad
+ARGS --timeout 14 --dbg-log --fuel-log
+ARGS --sim-press 1000,2000,R
+ARGS --sim-press 3000,6000,T
+EXPECT [dbg]
+CHECK len(dbg) >= 2
+CHECK last(dbg)["alt"] - first(dbg)["alt"] > 100
+EXPECT [fuel]
+CHECK len(fuel) >= 2
+CHECK first(fuel)["groups"][0]["JF"][0] - last(fuel)["groups"][0]["JF"][0] > 1.0
+FORBID error:

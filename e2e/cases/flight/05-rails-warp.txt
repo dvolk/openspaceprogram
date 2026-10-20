@@ -1,0 +1,11 @@
+NAME rails-warp
+CLAIM Rails warp advances the conic and reports the orbit at the warp rate.
+KIND invariant
+ARGS --time-accel 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --timeout 10
+ARGS --sim-press 1500,50,PERIOD
+ARGS --sim-press 2500,50,COMMA
+EXPECT @@@ racer parked on rails around Kerbin
+EXPECT @@@ racer left the rails around Kerbin
+EXPECT [toast] Time accel: 100x (rails)
+FORBID error:

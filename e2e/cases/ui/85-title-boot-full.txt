@@ -1,0 +1,11 @@
+NAME title-boot-full
+CLAIM The full solar system boots to the title with a backdrop.
+KIND canary
+ARGS --system res/systems/solar_system_full.json --timeout 6
+EXPECT Loaded system 'res/systems/solar_system_full.json'
+EXPECT [boot] no vessel: title screen
+EXPECT [title] backdrop:
+EXPECT [scene] flight -> title (enterTitle)
+EXPECT Main loop starting
+FORBID error:
+LIMIT 180

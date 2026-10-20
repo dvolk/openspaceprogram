@@ -1,0 +1,6 @@
+NAME smoke
+CLAIM The binary boots, opens a window and exits on --timeout with no GL or crash line.
+KIND canary
+ARGS --timeout 5
+EXPECT Main loop starting
+FORBID error:

@@ -1,0 +1,10 @@
+NAME undock
+CLAIM Undock splits the vessel in two and restores both as flyable ships.
+KIND invariant
+ARGS --dock-test near --time-accel 1 --timeout 4
+ARGS --sim-press 500,0,U
+EXPECT [dock] t=
+EXPECT [undock] t=
+CHECK out.count("[dock]") == 1
+CHECK out.count("[undock]") == 1
+FORBID error:

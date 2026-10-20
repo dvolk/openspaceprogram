@@ -1,0 +1,20 @@
+NAME save-load-crew-top-seats
+CLAIM A seats array at a crew entry's top level is refused.
+KIND invariant
+SEED e2e/fixtures/save_kerbal_top_seats saves/20260101_000000-reload/save1
+ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 1000,0,ESCAPE
+ARGS --ui-click 1500,"Game Menu/Save/Load"
+ARGS --ui-click 3000,"Save/Load/Load##saveload"
+ARGS --orbit-log --orbit-interval 0.5
+# A `seats` array at the TOP level of a crew entry's file. Seats live inside a
+# capsule's part entry, and a walking kerbal has no parts to hold one, so the key
+# belongs to nothing -- and the parse layer is the only place that still sees it:
+# buildKerbalFromSave gets a SaveShip, where the array is already gone. Unknown
+# keys are usually ignored; a silently lost person is not usually harmless.
+EXPECT [load] refused
+EXPECT has a top-level seats array
+EXPECT Timeout reached
+EXPECT [orbitlog]
+CHECK len(orbit) >= 4
+FORBID error:

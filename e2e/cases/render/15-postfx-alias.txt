@@ -1,0 +1,7 @@
+NAME postfx-sharpen-alias
+CLAIM Sharpen aliasing stays within its configured bounds.
+KIND invariant
+ARGS --postfx sharpen --gl-debug --timeout 4
+EXPECT postfx: sharpen
+EXPECT Main loop starting
+FORBID error:

@@ -1,0 +1,12 @@
+NAME exit-midstream-full
+CLAIM The game exits cleanly mid-stream on the full system.
+KIND canary
+ARGS --system res/systems/solar_system_full.json --timeout 1
+EXPECT Loaded system 'res/systems/solar_system_full.json'
+EXPECT Main loop starting
+FORBID free(): invalid pointer
+FORBID free(): corrupted
+FORBID double free
+FORBID invalid user data pointer
+FORBID error:
+LIMIT 90

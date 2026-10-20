@@ -1,9 +1,0 @@
-NAME part-pick
-ARGS --time-accel 0 --timeout 15 --startship racer,res/ships/racer.json,Kerbin,pad
-ARGS --sim-mouse 1000,0,960,540,0
-ARGS --sim-mouse 1200,0,960,540,RMB
-EXPECT Main loop starting
-EXPECT ship=racer part=0 (capsule)
-FORBID miss px=
-FORBID GL_
-FORBID error:

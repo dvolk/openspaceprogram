@@ -1,0 +1,26 @@
+# #302's remaining class, pinned at last. The seat and inventory rules lived
+# with the builders, enforced against a BUILT Part -- so preflightSave could not
+# see them and a CROSS-SYSTEM load of such a save switched systems (tearing the
+# running career down) and only then refused. Cases 217/218/221/82 pin these
+# rules, but every one of their fixtures is ksp_system -- the running default --
+# so they reload in place and never switch: nothing pinned the cross-system
+# variant of any of them.
+# Here a kerbal seat is parked on a reaction wheel (crew_capacity 0).
+# validateSeatArray refuses it from the catalog def, the same def buildSeatParts
+# reads off its built capsule, so the refusal lands with the old world intact.
+NAME cross-system-seat-on-non-capsule-refuses-before-switch
+CLAIM A cross-system seat-rule violation refuses before the switch.
+KIND invariant
+SEED e2e/fixtures/save_solar_bad_seat saves/20260101_000000-reload/save1
+ARGS --time-accel 1 --timeout 10
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+EXPECT [load] refused
+EXPECT holds 1 seat(s) but is not a capsule (crew_capacity 0) (before the system switch)
+FORBID [game] unloaded
+FORBID [game] switched system
+FORBID science reset by the system switch
+FORBID error:
+LIMIT 90

@@ -1,0 +1,11 @@
+NAME boot-load-cross-system
+CLAIM Boot --load from another system switches and lands in flight.
+KIND invariant
+ARGS --system res/systems/ksp_system.json --load e2e/fixtures/save_solar --time-accel 1
+ARGS --timeout 5
+EXPECT Loaded system 'res/systems/ksp_system.json'
+EXPECT [load] save is from system 'res/systems/solar_system.json'; switched before loading
+EXPECT Loaded system 'res/systems/solar_system.json'
+EXPECT Loaded game from e2e/fixtures/save_solar (active: racer)
+EXPECT [scene] title -> flight (enterFlight)
+LIMIT 120

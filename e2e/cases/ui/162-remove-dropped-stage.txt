@@ -1,0 +1,32 @@
+# The Ship List's "x" is how a dropped stage gets deleted. Staging leaves a
+# debris vessel in the fleet and nothing else removes it: recover_ship is the
+# gameplay path and refuses anything still flying. So stage a stager, walk
+# into the Tracking Station (its Ship List is open on entry), select the
+# debris and remove it.
+#
+# Removing the ACTIVE vessel is the branch worth pinning -- control must hand
+# back to the parent, and the print is the only witness that it did. "1 of 1"
+# counts only vessels: stager + its dropped stage, with the kerbal a seat on
+# stager's capsule rather than a fleet row (part.h). The second click on the
+# same row is the assertion that the fleet actually lost the ship: the row is
+# gone, so --ui-click reports "not found".
+#
+# The rows are addressable because each "x" carries a "##rm_<name>" id. The
+# list draws one "x" per vessel, so a bare "x" is ambiguous by construction,
+# and --ui-click matches the registered label exactly -- which is what
+# --ui-list prints, so the dump is the whole contract.
+NAME remove-dropped-stage
+CLAIM The Ship List's x removes a dropped stage's debris.
+KIND invariant
+ARGS --timeout 11 --startship stager,res/ships/stager.json,Kerbin,rot-orbit --sim-press 2000,0,ESCAPE --ui-click 2500,"Game Menu/Tracking Station"
+ARGS --sim-press 1500,0,SPACE
+ARGS --ui-click 3500,"Tracking Ship List/stager Decoupler (2m)"
+ARGS --ui-click 4500,"Tracking Ship List/x##rm_stager Decoupler (2m)"
+ARGS --ui-click 6500,"Tracking Ship List/x##rm_stager Decoupler (2m)"
+EXPECT Stage: dropped 1 ship(s)
+EXPECT Removed 'stager Decoupler (2m)'; active ship 1 of 1: stager
+EXPECT path="Tracking Ship List/x##rm_stager Decoupler (2m)" FAILED not found
+FORBID FAILED ambiguous
+FORBID FAILED MISMATCH
+FORBID FAILED blocked
+FORBID error:

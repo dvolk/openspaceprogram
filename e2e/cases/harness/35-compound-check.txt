@@ -1,0 +1,13 @@
+# --compound-check self-test: staging must reproduce the compound
+NAME compound-check
+CLAIM The compound-check self-test reproduces the staged compound.
+KIND harness
+ARGS --time-accel 1 --timeout 15 --compound-check --startship stager,res/ships/stager.json,Kerbin,rot-orbit
+ARGS --sim-press 3000,0,SPACE
+EXPECT Main loop starting
+EXPECT [compound] t=
+EXPECT ship=stager parts=7
+EXPECT Stage: dropped
+EXPECT ship=stager parts=4
+FORBID does NOT reproduce
+FORBID error:

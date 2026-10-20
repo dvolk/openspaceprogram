@@ -1,0 +1,28 @@
+# A cross-system save that cannot be built must not cost the running career
+# (#302). switchSystem tears the game down, so the old order -- switch into the
+# save's system, THEN discover the ship file is bad -- left the player on the
+# title with no fleet and no science. The format guard was already hoisted for
+# exactly this reason; this is the rest of it.
+# The parse and the world-free part of validation (uids, parent order, part
+# names against the catalog) now run before the switch, so the running game,
+# its system and its scene are all still intact afterwards.
+NAME load-fail-before-system-switch
+CLAIM A cross-system save that cannot be built leaves the running career intact.
+KIND invariant
+SEED e2e/fixtures/save_bad_part saves/20260101_000000-reload/save1
+ARGS --system res/systems/ksp_system.json --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+ARGS --timeout 12
+EXPECT Loaded system 'res/systems/ksp_system.json'
+EXPECT [load] refused
+EXPECT no longer in the parts file (before the system switch)
+# No switch means no teardown: nothing was torn down, so nothing was lost.
+FORBID switched before loading
+FORBID [game] switched system
+FORBID [game] unloaded
+FORBID [scene] flight -> title
+FORBID Loaded game from
+FORBID science reset by the system switch
+LIMIT 120

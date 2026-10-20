@@ -1,0 +1,18 @@
+# A kerbal's display name IS its roster name and is never deduped, so a SHIP
+# must not be allowed to take one. The save no longer keys anything by name
+# (#266), but names are still what the ship list, the tracking window, toasts and
+# the [undock] line show -- and the transfer planner looks a --transfer-target up
+# by display name (transferplanner.cpp), so a ship and a person sharing one pick
+# the wrong vessel there. Ask for a ship named after the only kerbal: the ship
+# yields to "Solo #2" and the person keeps the bare name.
+NAME crew-name-clash
+CLAIM A ship may not take a kerbal's display name.
+KIND invariant
+ARGS --kerbals e2e/fixtures/tiny_kerbals.json --time-accel 1 --timeout 6
+ARGS --startship Solo,res/ships/racer.json,Kerbin,pad
+EXPECT Roster: 1 kerbal(s) from e2e/fixtures/tiny_kerbals.json
+EXPECT Crew: 'Solo' aboard 'Solo #2' part 0 (1/1)
+EXPECT Timeout reached
+FORBID Crew: 'Solo' aboard 'Solo' part
+FORBID error:
+LIMIT 60

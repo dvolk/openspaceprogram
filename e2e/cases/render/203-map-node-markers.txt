@@ -1,0 +1,40 @@
+# The orbit map's AN/DN markers: where the drawn orbit crosses the plane the map
+# is showing. --map-dump reports them per slot because the markers are pure
+# drawing -- every slot's picture still looks plausible if the map is handed the
+# wrong plane, so the only way to catch that is to pin which slots get a crossing
+# at all.
+#
+# The racer starts in Kerbin's RAIL plane, which makes the pattern exact: the
+# Ecliptic slot is its own plane and the Orbital slot always is, so neither has a
+# crossing to mark; the Equatorial slot (23.44 deg of obliquity) and Minmus's
+# authored 6 deg plane both cross it.
+NAME map-node-markers
+CLAIM The map marks AN/DN per slot where the drawn orbit crosses the shown plane.
+KIND invariant
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,inertial-orbit
+ARGS --transfer-target Minmus --map-plane 3
+ARGS --map-dump 6000 --orbit-log --orbit-interval 2
+EXPECT [mapdump]
+FORBID FAILED
+FORBID error:
+CHECK len(mapb) == 4
+CHECK set(r["slot"] for r in mapb if r["an"] is not None) == set(["equ", "tgt"])
+CHECK all(r["dn"] is not None for r in mapb if r["an"] is not None)
+CHECK all(r["an"] is None and r["dn"] is None for r in mapb if r["slot"] in ("ecl", "orb"))
+# Each marker lies in the plane it was computed against.
+CHECK all(abs(sum(a*b for a,b in zip(r["an"], r["n"]))) < 2.0 for r in mapb if r["an"] is not None)
+CHECK all(abs(sum(a*b for a,b in zip(r["dn"], r["n"]))) < 2.0 for r in mapb if r["dn"] is not None)
+# The active ship is never put on rails (updateProximity skips it), so the
+# integrator gives this nominally circular orbit a real eccentricity -- tiny, but
+# it is exactly what makes the two node radii differ, and the dump prints metres
+# to 0 dp. Assert the premise rather than lean on it.
+CHECK all(o["ecc"] < 1e-5 for o in orbit)
+# ... and each crossing sits on the orbit: within a few metres of the orbit's own
+# radius, and the two ends of one node line (antipodal to the same tolerance --
+# an eccentric orbit's node radii differ by ~2*p*e, under a metre here).
+CHECK all(abs((sum(v*v for v in r["an"])**0.5) - orbit[-1]["r"]) < 5.0 for r in mapb if r["an"] is not None)
+CHECK all(abs(r["dn"][i] + r["an"][i]) < 5.0 for r in mapb if r["an"] is not None for i in (0, 1, 2))
+# The two marked slots disagree about WHERE the crossings are, which is the point
+# of drawing them per plane: the equatorial and Minmus planes cut this orbit
+# along different lines (their node directions are ~139 deg apart).
+CHECK abs(sum(a*b for a,b in zip(mapb[0]["an"], mapb[3]["an"]))) < 0.99 * orbit[-1]["r"] ** 2

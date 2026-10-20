@@ -1,0 +1,46 @@
+# The flight markers (prograde / retrograde / radial / normal) and the prograde
+# autopilot are ORBITAL, so they must sit in the plane the orbital-plane overlay
+# draws -- including inside the rotating surface frame, where the ship's own
+# velocity is the ground-relative one. paintWorld used that vector: the ground's
+# motion (182 m/s at this bed) is not in the orbit plane, so the prograde icon
+# hung ~2 deg off the cyan ring and the normal pair tilted with it. SAS prograde
+# aimed the nose at the same wrong vector.
+#
+# The rot-orbit bed is the point: an inertial-frame ship never had the bug, and
+# rails warp moves a ship into the inertial frame -- which is why raising time
+# accel looked like a fix. --plane-log now prints the markers as placed, in the
+# same render frame as n_orb, so the error is a number rather than a squint.
+NAME markers-in-orbit-plane
+CLAIM Flight markers lie in the plane the overlay draws, including in the surface frame.
+KIND invariant
+ARGS --timeout 12 --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --plane-log --dbg-log --slew-log --orbit-interval 2
+ARGS --sim-press 2000,0,Z
+EXPECT [planelog]
+EXPECT mode=prograde
+FORBID FAILED
+FORBID error:
+CHECK len(plane) >= 2
+# The rotating frame is the one under test; rails warp would put the ship in the
+# inertial one and hide the whole bug.
+CHECK all(p["frame"] == "rot" for p in plane)
+# Prograde lies IN the orbit plane and the normal marker IS that normal.
+CHECK all(abs(sum(a*b for a,b in zip(p["prg"], p["n_orb"]))) < 1e-5 for p in plane)
+CHECK all(abs(sum(a*b for a,b in zip(p["nrm"], p["n_orb"]))) > 0.99999 for p in plane)
+# And the marker is NOT the ground-relative velocity the bug used: --dbg-log
+# prints the ship's velocity in its own frame, and the sine of the angle between
+# it and the marker is 0.033 at every sample here (1.9 deg). Assert the gap, or a
+# regression to vel could still pass the checks above wherever the ground happens
+# to move in-plane. max() because the gap vanishes at the node line: the bug is
+# 0.0 at EVERY row, the fix 0.033 at most of them.
+CHECK abs(plane[-1]["t"] - dbg[-1]["t"]) < 0.5
+CHECK max((abs(1 - (sum(a*b for a,b in zip(p["prg"], d["vel"])) / d["v"]) ** 2)) ** 0.5 for p, d in zip(plane, dbg)) > 0.01
+# SAS prograde aims at the same plane: pair each hold with the nearest plane row
+# (the normal itself turns ~1.3e-4/s with the ground under it, hence 5e-3 rather
+# than 1e-5; the bug sat at 3.3e-2).
+CHECK all(abs(sum(a*b for a,b in zip(s["target"], min(plane, key=lambda p: abs(p["t"] - s["t"]))["n_orb"]))) < 5e-3 for s in slew if s["mode"] == "prograde")
+# The Map plane combo is not dead in the rotating frame either: the Equatorial
+# slot measures this rail-plane orbit at Kerbin's 23.44 deg of obliquity and
+# finds a node line, where the Ecliptic slot reads 0 and finds none.
+CHECK all(abs(p["inc"] - 23.44) < 0.01 for p in plane)
+CHECK all(p["ticks"] == "drawn" for p in plane)

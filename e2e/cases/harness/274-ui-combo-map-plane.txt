@@ -1,0 +1,25 @@
+# A Combo is now addressable. BeginCombo registers its frame with the 3-arg
+# ItemAdd, which emits no test-engine ITEM_INFO, so the combo sat in the registry
+# under an EMPTY label and --ui-click could not name it -- while a checkbox
+# beside it worked fine (#251). uiCombo registers the label the widget already
+# knows. The popup is imgui's "##Combo_00": the name is the popup's NESTING DEPTH
+# (g.BeginComboDepth), not an id hash, so it is stable across runs -- but it
+# names whichever popup is open at depth 0, not this combo. A second click
+# inside it picks the item.
+NAME ui-combo-map-plane
+CLAIM A Combo is addressable by its label and its popup by nesting depth.
+KIND harness
+ARGS --time-accel 1 --timeout 9 --frame-cap 30 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --plane-log --orbit-interval 1
+ARGS --ui-click 2500,"Orbital Map/Map plane" --ui-click 3200,"##Combo_00/Orbital"
+# The two click lines. A refused click prints path="..." FAILED instead, so
+# these only match a press; FORBID FAILED catches that.
+EXPECT path="Orbital Map/Map plane" window="Orbital Map" label="Map plane"
+EXPECT path="##Combo_00/Orbital" window="##Combo_00" label="Orbital"
+# The map actually moved: equatorial before the choice, orbital after it. The
+# second CHECK carries the direction -- without it, a combo that started on
+# Orbital and slid back to Equatorial would pass the first one.
+CHECK re.search(r"plane=equ\b.*plane=orb\b", out, re.S)
+CHECK not re.search(r"plane=orb\b.*plane=equ\b", out, re.S)
+FORBID FAILED
+FORBID error:

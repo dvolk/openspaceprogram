@@ -1,0 +1,10 @@
+NAME prox-ground
+CLAIM Proximity checks report ground contact for a landed ship.
+KIND invariant
+ARGS --startships e2e/fixtures/startships.json --time-accel 1 --timeout 5 --prox-log
+ARGS --prox-ground-on 600 --prox-ground-off 1000
+EXPECT [prox]
+EXPECT ENGAGED
+EXPECT , ground)
+FORBID , fly)
+FORBID error:

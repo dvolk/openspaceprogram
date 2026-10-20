@@ -1,0 +1,29 @@
+# a seat's own Exp button runs the experiment for THAT seat's crew member, not the
+# capsule's first seat
+#
+# The capsule-level "Run Experiment" is seats.front(), so a case that only presses it
+# cannot tell which of six crew did the work. The per-seat rows used to register six
+# identical "EVA" and six identical "Exp" labels -- distinct rects, distinct imgui ids
+# (PushID per row), but the test engine registers the LABEL, so --ui-click refused them
+# all as ambiguous and no seat's button was addressable at all (#326). The rows now
+# carry hidden slot ids, and the [science] line names who recorded, which is the witness
+# that the id picked the seat rather than the window's first row.
+# power_test is the only ship with the 6-seat capsule (capsule_r2.25h4.5), and the
+# roster's row order seats Ash in slot 0 and Vela in slot 1 -- so exp1 is Vela and must
+# not be Ash.
+NAME seat-experiment-names-the-sitter
+CLAIM A per-seat Experiment button names the crew member who ran it.
+KIND invariant
+ARGS --time-accel 1 --timeout 7 --width 1920 --height 1080
+ARGS --startship power_test,res/ships/power_test.json,Kerbin,rot-orbit
+ARGS --ui-focus 2000,power_test/capsule_1
+ARGS --sim-mouse 2100,0,CUR,CUR,RMB
+ARGS --ui-click 3000,"power_test > Capsule (4.5m)##0/Exp##exp1"
+EXPECT ship=power_test part=0 (capsule_r2.25h4.5)
+EXPECT 'Vela' recorded 'Low orbit observation
+EXPECT [science] t=
+# The other candidate for this effect is the capsule's first seat. If the slot id were
+# ignored and the first-seat path ran instead, the recorder would be Ash.
+FORBID 'Ash' recorded
+FORBID FAILED
+FORBID error:

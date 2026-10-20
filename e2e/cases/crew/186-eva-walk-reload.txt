@@ -1,0 +1,29 @@
+# A FREE EVA kerbal rebuilt from a save must walk like the live one. The suit's
+# feet are frictionless on purpose (the Kerbal ctor, src/eva.h): the walk force
+# goes in at the COM, so foot friction pairs with it into a tipping couple the
+# attitude authority cannot out-torque. That grip used to be applied at the two
+# live build sites only, so the load path rebuilt the hull with the default
+# friction and the kerbal rolled itself over the moment it tried to walk: |w|
+# peaks near 3.9 rad/s and the long axis ends up horizontal, while a kerbal with
+# frictionless feet holds |w| under 1e-3 and keeps the axis radial. The COM drop
+# from tipping is only ~0.18 m, so altitude alone would not see it.
+NAME eva-walk-reload
+CLAIM A reloaded kerbal walks like a live one; foot friction is rebuilt.
+KIND invariant
+ARGS --load e2e/fixtures/save_eva_ground --time-accel 1 --timeout 8 --eva-log --att-log --orbit-interval 0.2 --sim-press 1500,2500,W --frame-cap 30
+EXPECT Loaded game from e2e/fixtures/save_eva_ground (active: kerbal)
+FORBID error:
+CHECK len(eva) > 10
+# The first sample sits above the deck until the load's contact settles, so the
+# state checks run from a second after the load (sim time starts at the saved
+# clock, not 0).
+CHECK all(e["mode"] == "ground" for e in eva if e["t"] > first(eva)["t"] + 1.0)
+# It walks: 2.5 s at kWalkSpeed covers ~6 m against a 1.5 m bar, and stops when
+# W comes up.
+CHECK max((e["vel"][0]**2 + e["vel"][1]**2 + e["vel"][2]**2)**0.5 for e in eva) > 1.5
+CHECK ((last(eva)["pos"][0] - first(eva)["pos"][0])**2 + (last(eva)["pos"][1] - first(eva)["pos"][1])**2 + (last(eva)["pos"][2] - first(eva)["pos"][2])**2)**0.5 > 1.5
+CHECK (last(eva)["vel"][0]**2 + last(eva)["vel"][1]**2 + last(eva)["vel"][2]**2)**0.5 < 0.5
+# Upright the whole way: nothing spinning, and the long axis (nose = local +Z)
+# still pointing where it started.
+CHECK max(a["wnorm"] for a in att if a["t"] > first(att)["t"] + 1.0) < 1.0
+CHECK all(sum(n*f for n,f in zip(a["nose"], first(att)["nose"])) > 0.9 for a in att if a["t"] > first(att)["t"] + 1.0)

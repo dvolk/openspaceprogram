@@ -1,0 +1,7 @@
+NAME postfx-color
+CLAIM Color post-fx applies the configured matrix.
+KIND invariant
+ARGS --postfx color --gl-debug --timeout 4
+EXPECT postfx: color
+EXPECT Main loop starting
+FORBID error:

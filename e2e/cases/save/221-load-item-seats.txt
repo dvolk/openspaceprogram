@@ -1,0 +1,19 @@
+NAME save-load-item-seats
+CLAIM A seats array on an inventory item is refused.
+KIND invariant
+SEED e2e/fixtures/save_racer_item_seats saves/20260101_000000-reload/save1
+ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 1000,0,ESCAPE
+ARGS --ui-click 1500,"Game Menu/Save/Load"
+ARGS --ui-click 3000,"Save/Load/Load##saveload"
+ARGS --orbit-log --orbit-interval 0.5
+# A `seats` array hanging off an inventory item (a cargo crate holding a person).
+# buildSeatParts only ever runs for an ATTACHED part, so the array had nowhere to
+# be parked: the item loaded, the person inside it was dropped, and the save
+# looked fine afterwards. A seat belongs to a capsule, so say so and refuse.
+EXPECT [load] refused
+EXPECT inventory item 'cargo' holds 1 seat(s)
+EXPECT Timeout reached
+EXPECT [orbitlog]
+CHECK len(orbit) >= 4
+FORBID error:

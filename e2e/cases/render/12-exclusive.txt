@@ -1,0 +1,7 @@
+NAME exclusive
+CLAIM Exclusive fullscreen is accepted or cleanly refused.
+KIND invariant
+ARGS --exclusive --width 640 --height 480 --timeout 4
+EXPECT Main loop starting
+CHECK re.search(r"window: [1-9]\d{2,4}x[1-9]\d{2,4} \(exclusive\)", out)
+FORBID error:

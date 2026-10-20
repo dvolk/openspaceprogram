@@ -1,8 +1,0 @@
-NAME postfx-gamma
-ARGS --postfx gamma --gl-debug --timeout 4
-EXPECT postfx: gamma
-EXPECT Main loop starting
-FORBID GL_
-FORBID error:
-FORBID Error compiling shader
-FORBID Error linking shader program

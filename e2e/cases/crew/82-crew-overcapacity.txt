@@ -1,0 +1,17 @@
+NAME save-load-crew-overcapacity
+CLAIM A capsule refuses more crew than its capacity.
+KIND invariant
+SEED e2e/fixtures/save_racer_overcrew saves/20260101_000000-reload/save1
+ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 1000,0,ESCAPE
+ARGS --ui-click 1500,"Game Menu/Save/Load"
+ARGS --ui-click 3000,"Save/Load/Load##saveload"
+ARGS --orbit-log --orbit-interval 0.5
+EXPECT [load] refused
+EXPECT has 2 seat(s), more than its
+EXPECT 1-seat capacity
+# bare "Timeout reached": the elapsed figure drifts with frame timing
+EXPECT Timeout reached
+EXPECT [orbitlog]
+CHECK len(orbit) >= 4
+FORBID error:

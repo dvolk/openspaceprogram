@@ -1,8 +1,0 @@
-NAME borderless
-ARGS --borderless --width 800 --height 600 --timeout 4
-EXPECT Main loop starting
-EXPECT window: 800x600 (borderless)
-FORBID GL_
-FORBID error:
-FORBID Error compiling shader
-FORBID Error linking shader program

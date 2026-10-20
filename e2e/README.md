@@ -1,7 +1,57 @@
-# Driving the UI in a case
+# E2E cases
+
+`e2e/INDEX.md` is the map: one row per case with its claim and kind. Read that
+before the case files, and regenerate it after editing a case
+(`python3 e2e/index.py`; `--check` fails if it is stale).
+
+## Layout
+
+Cases live under a subject directory: `flight/`, `crew/`, `science/`, `vab/`,
+`save/`, `ui/`, `render/`, `harness/`. Selectors match the case name, the
+filename and the relative path:
+
+```
+python3 e2e/run.py 172              # one case by number
+python3 e2e/run.py save/172         # one case by path
+python3 e2e/run.py 172 177 262      # up to five at once
+```
+
+There is no full-battery mode. At most five cases run per invocation; a wider
+selection is refused with the list of what it matched. `--kind` is a filter on
+top of that narrow selection (e.g. `172 177 --kind invariant`), not a way to
+select the whole suite. Prefer the unit tests for anything whose claim is pure
+logic.
+
+## What a case asserts
+
+Every case declares both, and `run.py` refuses to load one without them:
+
+```
+NAME    dock
+CLAIM   Two ports in range mate into one vessel and the absorbed hull leaves the world once.
+KIND    invariant
+```
+
+`KIND` is the weight of the evidence, not a topic:
+
+- `invariant` -- a behaviour or player route the game must keep
+- `golden` -- tuned numbers or a content table; update deliberately when tuning
+- `harness` -- CLI/test-engine plumbing, not game spec
+- `canary` -- only proves the thing boots
+
+Do not read an `EXPECT` string as a requirement on its own. The claim says what
+the case is for; a `golden` case's numbers are the current tuning, not a law.
+
+GL errors and crash strings (`Segmentation`, `Assertion`, `terminate called`,
+shader compile/link failures) are forbidden in every case, so do not repeat
+them in `FORBID`. `error:` is not default: a clean boot refusal prints it on
+purpose. `NOGLCHECK` turns the GL drains off for a case whose subject is frame
+timing.
+
+## Driving the UI in a case
 
 The case format (NAME/ARGS/EXPECT/CHECK/...) is documented in `run.py`'s
-docstring. This file is about the part that is easy to get wrong: clicking the
+docstring. This section is about the part that is easy to get wrong: clicking the
 game's own widgets instead of using a headless hook.
 
 Discover the address first. `--ui-list MS` prints every clickable item as

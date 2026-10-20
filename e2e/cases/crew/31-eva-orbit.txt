@@ -1,0 +1,15 @@
+NAME eva-orbit
+CLAIM A kerbal can EVA in orbit and the suit state is kept.
+KIND invariant
+ARGS --time-accel 1 --timeout 6 --orbit-log --orbit-interval 0.5 --prox-log --sim-press 1000,0,V --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+# Named from the shipped roster: 'Ash' is the lowest id, so the first seat
+# claims them (see 29-eva-spawn).
+EXPECT Crew: 'Ash' aboard 'racer' part 0 (1/1)
+EXPECT EVA: 'Ash' out of 'racer' part 0
+EXPECT Active ship 2 of 2: Ash
+FORBID error:
+CHECK len(orbit) > 5
+CHECK all(o["ecc"] < 0.01 and 2000.0 < o["v"] < 2500.0 for o in orbit if o["t"] > 1.3)
+CHECK out.count("parked on rails") == 1
+CHECK out.count("ENGAGED") >= 1
+CHECK out.count("RELEASED") == 0

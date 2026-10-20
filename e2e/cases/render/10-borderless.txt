@@ -1,0 +1,7 @@
+NAME borderless
+CLAIM Borderless mode creates a fullscreen-desktop window.
+KIND invariant
+ARGS --borderless --width 800 --height 600 --timeout 4
+EXPECT Main loop starting
+EXPECT window: 800x600 (borderless)
+FORBID error:

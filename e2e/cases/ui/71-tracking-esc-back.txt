@@ -1,0 +1,11 @@
+NAME tracking-esc-back
+CLAIM ESC pops the Tracking Station to the hub.
+KIND invariant
+ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 1000,0,ESCAPE --ui-click 2000,"Game Menu/Tracking Station" --sim-press 3000,0,ESCAPE
+EXPECT [scene] flight -> spacecenter (push)
+EXPECT [scene] spacecenter -> tracking (push)
+EXPECT [scene] tracking -> spacecenter (pop)
+EXPECT Timeout reached (10.
+FORBID FAILED
+FORBID error:

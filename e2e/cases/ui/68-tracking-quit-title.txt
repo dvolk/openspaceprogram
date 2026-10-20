@@ -1,0 +1,20 @@
+# Quit to title from the Tracking Station. The player path: ESC (or "Back to
+# Space Center") pops to the hub, then "Return to title" + the card's "Return".
+# --quit-title used to call resetToTitle from inside the station, a transition
+# no button offers (and issue #310's "no route back to the title" is about
+# there being no DIRECT exit -- the hub is one ESC away).
+NAME tracking-quit-title
+CLAIM Tracking, hub, Return to title asks and lands on the title.
+KIND invariant
+ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 1000,0,ESCAPE --ui-click 2000,"Game Menu/Tracking Station"
+ARGS --sim-press 2500,0,ESCAPE
+ARGS --ui-click 3000,"Game Menu/Return to title" --ui-click 3500,"Question/Return"
+EXPECT [scene] flight -> spacecenter (push)
+EXPECT [scene] spacecenter -> tracking (push)
+EXPECT [scene] tracking -> spacecenter (pop)
+EXPECT [game] unloaded: ships torn down
+EXPECT [scene] spacecenter -> title (enterTitle)
+EXPECT Timeout reached (10.
+FORBID FAILED
+FORBID error:

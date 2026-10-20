@@ -1,0 +1,13 @@
+# Quit to title from a live flight. The player path is ESC to the hub, then
+# "Return to title", then the card's "Return" -- --quit-title used to jump
+# flight -> title directly, which is not a transition any button makes.
+NAME quit-title
+CLAIM Flight, hub, Return to title asks and lands on the title.
+KIND invariant
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Return to title" --ui-click 2500,"Question/Return"
+EXPECT [game] unloaded: ships torn down
+EXPECT [scene] spacecenter -> title (enterTitle)
+EXPECT Timeout reached (8.
+FORBID error:

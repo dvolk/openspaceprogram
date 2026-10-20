@@ -1,0 +1,16 @@
+NAME vab-launch-orbit
+CLAIM The start-bed dropdown launches the build on an orbit bed.
+KIND invariant
+ARGS --dev-scenarios --vab res/ships/tanker.json --timeout 12
+ARGS --ui-click 1000,"VAB TopBar/##vabscn"
+ARGS --ui-click 1500,"##Combo_00/rot-orbit"
+ARGS --ui-click 2000,"VAB TopBar/LAUNCH"
+EXPECT Main loop starting
+EXPECT [vab] launched 'tanker' (7 parts)
+EXPECT Spawn 'rot-orbit' around
+FORBID FAILED
+FORBID error:
+# rot-orbit is one of the dev-only start beds, so the case asks for the same
+# dropdown a dev build shows and picks the row a player would pick. The flag
+# seeded the same value behind the dropdown; the click makes the dropdown itself
+# part of what is under test.

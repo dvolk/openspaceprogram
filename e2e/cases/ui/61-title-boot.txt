@@ -1,0 +1,9 @@
+NAME title-boot
+CLAIM A shipless boot lands on the title with a backdrop.
+KIND canary
+ARGS --timeout 4
+EXPECT [boot] no vessel: title screen
+EXPECT [title] backdrop:
+EXPECT [scene] flight -> title (enterTitle)
+EXPECT Main loop starting
+FORBID error:

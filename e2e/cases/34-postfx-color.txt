@@ -1,8 +1,0 @@
-NAME postfx-color
-ARGS --postfx color --gl-debug --timeout 4
-EXPECT postfx: color
-EXPECT Main loop starting
-FORBID GL_
-FORBID error:
-FORBID Error compiling shader
-FORBID Error linking shader program

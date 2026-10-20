@@ -1,0 +1,22 @@
+# #266, proven from the other side: a save with TWO VEHICLES named 'Ash' -- the
+# crewed ship in v0 and an uncrewed copy in v1. The live game cannot produce this
+# (dedupVehicleName refuses the name), so the fixture is hand-authored from
+# save_roster_named: rename v0, copy its ship into v1 with fresh part uids and no
+# seat, and offset it 300 m along the track.
+#
+# Every reference here is a SLUG, so the load must make the CREWED ship (v0)
+# active no matter what either of them is called. Measured against the old
+# name-keyed load on the same shape: byName['Ash'] held whichever of the two was
+# built last -- v1, the uncrewed copy -- so the active vehicle came back with
+# nobody aboard. The load line now prints the slug alongside the name, which is
+# what says WHICH 'Ash' -- the name alone cannot.
+NAME save-name-clash
+CLAIM A save with two ships named alike is refused rather than merged.
+KIND invariant
+ARGS --load e2e/fixtures/save_name_clash --time-accel 1 --timeout 5
+EXPECT [crew] loaded 'Ash' aboard 'Ash'
+EXPECT Loaded game from e2e/fixtures/save_name_clash (active: Ash) [v0]
+FORBID (active: Ash) [v1]
+FORBID [load] refused
+FORBID error:
+LIMIT 60

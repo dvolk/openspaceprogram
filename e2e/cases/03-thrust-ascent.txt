@@ -1,9 +1,0 @@
-NAME thrust-ascent
-ARGS --startship racer,res/ships/racer.json,Moho,pad --time-accel 1
-ARGS --timeout 10 --dbg-log
-ARGS --sim-press 1000,2000,R
-ARGS --sim-press 3000,2000,T
-EXPECT [dbg]
-CHECK len(dbg) >= 2 and last(dbg)["alt"] - first(dbg)["alt"] > 10
-FORBID GL_
-FORBID error:

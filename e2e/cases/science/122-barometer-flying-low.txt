@@ -1,0 +1,19 @@
+NAME barometer-flying-low
+CLAIM A flying-low barometer run scores the flying-low value.
+KIND golden
+ARGS --time-accel 1 --timeout 8 --width 1920 --height 1080
+ARGS --startship baropod,res/ships/baropod.json,Kerbin,flying-low
+ARGS --ui-focus 800,baropod/barometer_1
+ARGS --sim-mouse 900,0,CUR,CUR,RMB
+ARGS --ui-click 1200,"baropod > Barometer##1/Run Experiment##pod_run"
+ARGS --recover-anywhere
+ARGS --sim-press 3400,0,ESCAPE
+ARGS --ui-click 3500,"Game Menu/Recover Vessel"
+EXPECT [science] t=
+EXPECT recorded
+EXPECT Flying low barometer of
+EXPECT [science] recovered +11
+EXPECT [recover] t=
+EXPECT [scene] spacecenter -> spacecenter (enterSpaceCenter)
+FORBID FAILED
+FORBID error:

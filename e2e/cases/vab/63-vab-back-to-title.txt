@@ -1,0 +1,21 @@
+# The VAB opened straight from the title screen (no game running), and the top
+# bar's "Back to game" pops it back to the title rather than to a flight. The
+# backdrop is pinned to Kerbin by --title-body, so the park and the restore must
+# agree on the same distance.
+#
+# Driven by the button now; --vab-close fired vabClose directly and skipped only
+# the click.
+NAME vab-back-to-title
+CLAIM Back to game from a title-opened VAB returns to the title.
+KIND invariant
+ARGS --vab-empty --title-body Kerbin --timeout 8
+ARGS --ui-click 2000,"VAB TopBar/Back to game##vab"
+EXPECT [scene] title -> vab (push)
+EXPECT [scene] vab -> title (pop)
+EXPECT [title] backdrop: Kerbin (pinned), 1200000 m out
+EXPECT [cam] parked: orbit focus=Kerbin dist=1200000.0 m
+EXPECT [cam] restored: orbit focus=Kerbin dist=1200000.0 m
+CHECK len(re.findall(r"\[cam\] (?:parked|restored): orbit focus=Kerbin dist=([\d.]+) m", out)) == 2
+CHECK len(set(re.findall(r"\[cam\] (?:parked|restored): orbit focus=Kerbin dist=([\d.]+) m", out))) == 1
+FORBID FAILED
+FORBID error:

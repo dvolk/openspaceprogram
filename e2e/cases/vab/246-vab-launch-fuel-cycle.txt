@@ -1,0 +1,41 @@
+# A fuel-link loop cannot drain, so build_ship throws -- and vabLaunch called it
+# straight out of the LAUNCH button, so the throw landed in an imgui handler:
+# "terminate called after throwing an instance of 'std::runtime_error'" and
+# SIGABRT (EXIT 134), with the editor and the build gone (#291). A def off disk
+# can hold a loop even though vabLinkClick now refuses to author one, so the
+# launch still has to catch it: printf + toast + stay in the editor, exactly how
+# the kerbal-rooted guard (case 226) refuses.
+# The link click on the same design pins the OTHER half of the message: the
+# clicked pair is legal, so the refusal must say the design already loops and
+# name the links to delete, not blame the pair the player just clicked.
+#
+# Driven as a player does it now: "Add fuel link", click the source part, click
+# the destination. --vab-link named the pair by id, so the case never knew
+# whether those parts were clickable. Both ends now name what they took: the
+# source through its toast, the destination through "[vab] link dest", which
+# exists because the destination's only other output is the RESULT -- and a
+# refusal prints the loop that already existed, not the part just clicked, so
+# aiming this click at a different part used to pass unnoticed.
+NAME vab-launch-fuel-cycle
+CLAIM A fuel-link loop makes LAUNCH refuse with a toast, not abort.
+KIND invariant
+ARGS --vab e2e/fixtures/cycle_ship.json --width 1920 --height 1080 --timeout 6
+ARGS --ui-click 1200,"VAB/Add fuel link"
+ARGS --ui-focus 1800,capsule_1
+ARGS --sim-mouse 1900,0,CUR,CUR,LMB
+ARGS --ui-focus 2400,engine_1
+ARGS --sim-mouse 2500,0,CUR,CUR,LMB
+ARGS --ui-click 3500,"VAB TopBar/LAUNCH"
+EXPECT [vab] entered the editor (sim keeps coasting)
+EXPECT [vab] link src capsule_1
+EXPECT [toast] Link source: capsule_1 -- now click the destination
+EXPECT [vab] link dest engine_1
+EXPECT [vab] fuel link refused: the design already loops:
+EXPECT [toast] This design already has a fuel-link loop:
+EXPECT [vab] launch refused: build_ship: fuel links form a cycle
+EXPECT [toast] Launch refused: build_ship: fuel links form a cycle
+CHECK "capsule_1->fuel_tank_1" in out and "fuel_tank_1->capsule_1" in out
+FORBID [vab] launched
+FORBID FAILED
+FORBID error:
+LIMIT 60

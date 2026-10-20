@@ -1,8 +1,0 @@
-NAME title-boot
-ARGS --timeout 4
-EXPECT [boot] no vessel: title screen
-EXPECT [title] backdrop:
-EXPECT [scene] flight -> title (enterTitle)
-EXPECT Main loop starting
-FORBID GL_
-FORBID error:

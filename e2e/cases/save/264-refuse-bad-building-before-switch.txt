@@ -1,0 +1,27 @@
+# A system file that load_system accepts but place_world_buildings refuses used
+# to crash the game (exit 139). Placement runs inside the switch, AFTER the
+# running game has been torn down, so the throw landed in a half-switched world:
+# the caller still believed the switch had failed and rolled the clock onto
+# bodies that no longer exist.
+# validate_world_buildings now runs on the loaded-but-uninstalled system, so the
+# switch is refused with the fleet, the science and the scene intact. The player
+# route is loading a save from that system -- loadFrom (the UI Load button) runs
+# the same validation before installSystem (#302). --switch-system used to call
+# switchSystem directly; the load path is the same refusal, in the same words
+# modulo the "[load] refused" prefix.
+NAME refuse-bad-building-before-switch
+CLAIM A system whose buildings cannot be placed is refused before the switch.
+KIND invariant
+SEED e2e/fixtures/save_bad_building_system saves/20260101_000000-reload/save1
+ARGS --system res/systems/ksp_system.json --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+ARGS --timeout 12
+EXPECT [load] refused
+EXPECT buildings: 'bad_pad' has unknown type 'no_such_building' (catalog has: space_port)
+# Nothing was destroyed, so the game carries on with the system it already had.
+FORBID [game] unloaded
+FORBID [game] switched system
+FORBID science reset
+LIMIT 120

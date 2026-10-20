@@ -1,0 +1,15 @@
+NAME glider-aoa-swing
+CLAIM A glider's AoA swings toward the trimmed angle and settles.
+KIND invariant
+ARGS --time-accel 1 --startship glider,res/ships/glider.json,Duna,pad
+ARGS --timeout 10 --drag-log
+ARGS --sim-press 1000,2000,R
+ARGS --sim-press 1500,3000,T
+ARGS --sim-press 5500,2500,W
+EXPECT [drag]
+CHECK len(drag) >= 2
+CHECK any(d["F"] > 0 and d["rho"] > 0 for d in drag)
+CHECK max(abs(d.get("aoa", 0.0)) for d in drag) > 30
+CHECK max(d.get("a", 0.0) for d in drag) > min(d.get("a", 0.0) for d in drag) * 1.05
+CHECK (lambda ds: (ds and max(ds, key=lambda d: abs(d["aoa"]))["cd"] > min(ds, key=lambda d: abs(d["aoa"]))["cd"] * 1.05))([d for d in drag if d.get("aoa") is not None and d.get("cd") is not None])
+FORBID error:

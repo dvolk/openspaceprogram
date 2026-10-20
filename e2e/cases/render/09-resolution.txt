@@ -1,0 +1,7 @@
+NAME resolution
+CLAIM A resized window keeps the framebuffer and aspect correct.
+KIND invariant
+ARGS --width 640 --height 480 --timeout 4
+EXPECT Main loop starting
+EXPECT window: 640x480 (windowed)
+FORBID error:

@@ -1,0 +1,21 @@
+NAME save-load-crew-dup-profile
+CLAIM Two seats naming one roster id are refused.
+KIND invariant
+SEED e2e/fixtures/save_racer_dup_profile saves/20260101_000000-reload/save1
+ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 1000,0,ESCAPE
+ARGS --ui-click 1500,"Game Menu/Save/Load"
+ARGS --ui-click 3000,"Save/Load/Load##saveload"
+ARGS --orbit-log --orbit-interval 0.5
+# Two seats in one capsule, both naming roster id 1. A roster entry has exactly
+# one wearer -- refuseDoubleClaim (save.cpp) checks that across the fleet AND
+# the pad's pool -- but nothing read the rule at load time: both people printed,
+# both rode the compound, and the process only aborted a minute later when the
+# VAB asked the roster for a free profile. The assert is now a refusal, in the
+# same pass that resolves the ids.
+EXPECT [load] refused
+EXPECT two people claim roster id 1
+EXPECT Timeout reached
+EXPECT [orbitlog]
+CHECK len(orbit) >= 4
+FORBID error:

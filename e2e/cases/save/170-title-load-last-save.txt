@@ -1,0 +1,23 @@
+# The title menu's "Load last save" (navTitle). SEED stages two playthroughs
+# into the case's scratch --data-dir, and deliberately makes the OLDER game
+# dir hold the NEWER write: "last" is the save the player last WROTE, not the
+# newest playthrough they started (save.h:latestSave, whose mtime rule
+# tests/test_save.cpp pins without a UI). A checkout gives every fixture the
+# same mtime, hence the AGE_DAYS stamps.
+NAME title-load-last-save
+CLAIM Load last save picks the most recently written save, not the newest playthrough.
+KIND invariant
+SEED e2e/fixtures/save_mun saves/20260909_000000-newer_start/quicksave-00 40
+SEED e2e/fixtures/save_racer saves/20260101_000000-older_start/save1 1
+ARGS --timeout 8
+ARGS --ui-list 1500
+ARGS --ui-click 2000,"Title Menu/Load last save"
+EXPECT window="Title Menu" label="Load last save"
+EXPECT saves/20260101_000000-older_start/save1 (active: racer)
+EXPECT [scene] title -> flight (enterFlight)
+EXPECT [toast] Loaded older_start / save1
+# Above "New Game", as asked -- --ui-list dumps in draw order.
+CHECK out.index('label="Load last save"') < out.index('label="New Game"')
+FORBID FAILED
+FORBID [load] refused
+FORBID error:

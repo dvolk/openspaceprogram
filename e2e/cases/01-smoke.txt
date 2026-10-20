@@ -1,7 +1,0 @@
-NAME smoke
-ARGS --timeout 5
-EXPECT Main loop starting
-FORBID GL_
-FORBID error:
-FORBID Error compiling shader
-FORBID Error linking shader program

@@ -1,0 +1,19 @@
+NAME save-load-crew-baddef
+CLAIM A seat whose part is not a capsule is refused at load.
+KIND invariant
+SEED e2e/fixtures/save_racer_baddef saves/20260101_000000-reload/save1
+ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 1000,0,ESCAPE
+ARGS --ui-click 1500,"Game Menu/Save/Load"
+ARGS --ui-click 3000,"Save/Load/Load##saveload"
+ARGS --orbit-log --orbit-interval 0.5
+# A seat's part name is data, not a promise: this one names a capsule, parked in
+# a capsule. Before the guard it was built anyway and parked as a person, and the
+# next rebuildCompound asserted on the containment invariant -- a crash, not a
+# refusal.
+EXPECT [load] refused
+EXPECT is a 'capsule' part, not a kerbal seat
+EXPECT Timeout reached
+EXPECT [orbitlog]
+CHECK len(orbit) >= 4
+FORBID error:

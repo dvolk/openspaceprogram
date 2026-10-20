@@ -1,0 +1,38 @@
+# The Target window's combo stores an IDENTITY, not a slot. xferTargets is
+# rebuilt from scratch on every refresh, so removing a DIFFERENT ship shifts
+# every index after it: "pad three" sits at index 3, and deleting "pad two"
+# moves it to index 2. An index-based selection would have slid onto "pad four"
+# -- the map's transfer plane, the burn marker and the TARGET block all follow
+# it -- with no player action and no message (issue #276).
+# The selection is a real player route now: the Windows menu opens the Target
+# window, "Target/Target" is the combo frame, and the popup item is a second
+# click. Combos used to be invisible to --ui-click (#251), which is why this
+# case used --select-target.
+# The Target window only draws in flight and the remove button only exists in
+# the Tracking Station's list, so the case crosses the hub: select here, remove
+# there. Only "pad one" has a kerbal, so the other three are removable at all.
+NAME target-selection-survives-reshuffle
+CLAIM Target selection is an identity and survives a fleet reshuffle.
+KIND invariant
+ARGS --time-accel 1 --timeout 14 --frame-cap 30
+ARGS --startships e2e/fixtures/pad_four.json --kerbals e2e/fixtures/tiny_kerbals.json
+ARGS --xfer-log --orbit-interval 1
+ARGS --ui-click 2000,"Windows/Target" --ui-click 2600,"Target/Target"
+ARGS --ui-click 3200,"##Combo_00/pad three"
+ARGS --sim-press 4500,0,ESCAPE --ui-click 5000,"Game Menu/Tracking Station"
+ARGS --ui-click 6500,"Tracking Ship List/x##rm_pad two"
+EXPECT path="##Combo_00/pad three" window="##Combo_00" label="pad three"
+EXPECT Removed 'pad two' (active unchanged: pad one)
+# The click's removal is one death, and the surviving three keep their order
+# (#297: retire is the only way a live vehicle leaves the world).
+EXPECT [vehicle] retired: 'pad two' (3 vehicle(s) left in the world)
+CHECK out.count("[vehicle] retired:") == 1
+# Chosen before the removal, and still the same vessel after it. The second
+# CHECK is the case: an index-based selection would name "pad four" here.
+CHECK out.index('target="pad three"') < out.index("Removed 'pad two'")
+CHECK re.search(r"Removed 'pad two'.*target=\"pad three\"", out, re.S)
+FORBID target="pad four"
+FORBID Cannot remove
+FORBID error:
+FORBID FAILED
+LIMIT 90

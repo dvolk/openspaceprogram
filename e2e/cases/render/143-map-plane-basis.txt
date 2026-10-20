@@ -1,0 +1,42 @@
+# The orbit map's plane basis, per combo slot (#181). The map is pure drawing,
+# so a flipped e2 is invisible to every check but an eyeball: --map-dump prints
+# what each slot actually draws with, from the same mapPlaneBasis the two map
+# windows call.
+#
+# Kerbin on a POLAR bed. All three slots pin their screen-x to the focus
+# frame's +X, so all three take OrbitMap::setPlane's pinned path -- below it,
+# the canonical branch only answers the no-ship default and the node-line branch
+# only the tests.
+# Kerbin's Ecliptic normal is exactly +Y, so that slot's basis reads the same
+# X/Z it always did. All three must agree on handedness -- a prograde body at
+# +e1 moves along -e2, printed as sweep=-1.
+NAME map-plane-basis
+CLAIM Each map plane slot draws the basis it claims.
+KIND invariant
+ARGS --time-accel 1 --timeout 6 --map-dump 2500 --startship racer,res/ships/racer.json,Kerbin,high-polar
+FORBID error:
+CHECK len(mapb) == 3
+CHECK [r["slot"] for r in mapb] == ["equ", "ecl", "orb"]
+CHECK all(r["sweep"] == -1 for r in mapb)
+# Each slot's (e1, e2) is an orthonormal pair spanning the plane it claims.
+CHECK all(abs(sum(a*a for a in r["e1"]) - 1.0) < 1e-5 for r in mapb)
+CHECK all(abs(sum(a*a for a in r["e2"]) - 1.0) < 1e-5 for r in mapb)
+CHECK all(abs(sum(a*b for a,b in zip(r["e1"], r["e2"]))) < 1e-5 for r in mapb)
+CHECK all(abs(sum(a*b for a,b in zip(r["n"], r["e1"]))) < 1e-5 for r in mapb)
+CHECK all(abs(sum(a*b for a,b in zip(r["n"], r["e2"]))) < 1e-5 for r in mapb)
+# Equatorial means the POLE, not the rail normal (#173): on Kerbin the two
+# slot normals sit exactly the 23.44 deg axial tilt apart.
+CHECK abs(sum(a*b for a,b in zip(mapb[0]["n"], mapb[1]["n"])) - 0.917477) < 1e-5
+# And Orbital means the SHIP'S plane: a polar bed puts h across the pole.
+CHECK abs(sum(a*b for a,b in zip(mapb[2]["n"], mapb[0]["n"]))) < 1e-5
+# That h lies along the Equatorial slot's own screen-x: the high-polar bed puts
+# the ship's angular momentum at normalize(X - (X.pole)pole), which is exactly
+# where #173 pins the Equatorial view.
+CHECK abs(sum(a*b for a,b in zip(mapb[2]["n"], mapb[0]["e1"])) - 1.0) < 1e-5
+# So the pinned Orbital screen-x is the pole's negative -- strip h out of +X
+# and the only part of +X left is -pole. Pinned as a number because this slot
+# used to fall back to the node line here (e1 = (0.076153,0,-0.997096)), a
+# quarter turn away, for a conditioning worry that does not exist in doubles:
+# h sits 20 deg from +X, leaving |t| = 0.35 of in-plane reference (#185).
+CHECK abs(sum(a*b for a,b in zip(mapb[2]["e1"], mapb[0]["n"])) + 1.0) < 1e-5
+CHECK abs(sum(a*b for a,b in zip(mapb[2]["e1"], mapb[0]["e1"]))) < 1e-5

@@ -1,0 +1,14 @@
+# The rails gate is the air, not periapsis: a ship flying in the atmosphere
+# has drag and a ground to hit, and a conic models neither. A bedship at
+# flying-low is not grounded, but rails warp still refuses.
+NAME rails-atmosphere-refused
+CLAIM Rails warp refuses a ship flying in air: the gate is the air, not periapsis.
+KIND invariant
+ARGS --startship racer,res/ships/racer.json,Kerbin,flying-low --time-accel 10
+ARGS --timeout 8
+ARGS --sim-press 1500,50,PERIOD
+EXPECT Rails warp refused: 'racer' is in the atmosphere
+EXPECT [toast] Rails warp refused: 'racer' is in the atmosphere
+FORBID Time accel: 100x
+FORBID frozen on rails
+FORBID error:

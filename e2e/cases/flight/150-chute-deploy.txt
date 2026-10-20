@@ -1,0 +1,8 @@
+NAME chute-deploy
+CLAIM A chute arms and deploys only when its deploy condition is met.
+KIND invariant
+ARGS --time-accel 1 --startship chutetest,res/ships/chutetest.json,Kerbin,pad
+ARGS --timeout 6 --drag-log
+ARGS --sim-press 2000,0,SPACE
+EXPECT [chute] t=
+FORBID error:

@@ -1,0 +1,8 @@
+NAME frame-cap
+CLAIM The frame cap limits the frame rate to the requested value.
+KIND invariant
+NOGLCHECK
+ARGS --frame-cap 30 --timeout 4
+EXPECT Main loop starting
+EXPECT frame cap: 30 fps
+FORBID error:

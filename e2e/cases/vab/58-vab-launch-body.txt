@@ -1,0 +1,19 @@
+NAME vab-launch-body
+CLAIM The body and start-bed dropdowns choose where the build launches.
+KIND invariant
+ARGS --dev-scenarios --vab res/ships/tanker.json --timeout 12
+ARGS --ui-click 1000,"VAB TopBar/##vabbody"
+ARGS --ui-click 1500,"##Combo_00/Duna"
+ARGS --ui-click 2000,"VAB TopBar/##vabscn"
+ARGS --ui-click 2500,"##Combo_00/rot-orbit"
+ARGS --ui-click 3000,"VAB TopBar/LAUNCH"
+EXPECT Main loop starting
+EXPECT [vab] launched 'tanker' (7 parts)
+EXPECT Spawn 'rot-orbit' around Duna
+FORBID FAILED
+FORBID error:
+# Both halves of the top bar are now the player's own: pick the body from the
+# body dropdown, then the start bed from the scenario dropdown (rot-orbit is a
+# dev-only bed, hence --dev-scenarios, which is what makes the row exist in a dev
+# build). The body combo is the system's body list, so Duna is a row a case can
+# name without knowing any id.

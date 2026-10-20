@@ -1,0 +1,24 @@
+NAME title-load-spin
+CLAIM Loading a railed save from the title spins the surface correctly.
+KIND invariant
+SEED e2e/fixtures/save_railed saves/20260101_000000-reload/save1
+ARGS --timeout 25 --info-log --orbit-interval 0.25
+ARGS --sim-press 1000,0,PERIOD,1200,0,PERIOD,1400,0,PERIOD
+ARGS --ui-click 2000,"Title Menu/Save/Load"
+ARGS --ui-click 3500,"Save/Load/Load##saveload"
+ARGS --sim-press 9000,0,PERIOD
+EXPECT [boot] no vessel: title screen
+EXPECT [toast] Time accel: 1000x (rails)
+EXPECT saves/20260101_000000-reload/save1 (active: racer)
+EXPECT [scene] title -> flight (enterFlight)
+EXPECT [toast] Time accel: 1x
+CHECK out.index("1000x") < out.index("Loaded game from")
+CHECK len(surf) >= 2
+CHECK len(surf) >= 2 and any(s["t"] > surf[0]["t"] for s in surf)
+CHECK len(surf) >= 2 and max(min(abs(b["lon"] - a["lon"]), 360 - abs(b["lon"] - a["lon"])) for a, b in zip(surf, surf[1:])) < 1.0
+CHECK len(surf) >= 2 and max(abs(b["lat"] - a["lat"]) for a, b in zip(surf, surf[1:])) < 0.5
+CHECK len(surf) >= 2 and max(abs(b["hs"] - a["hs"]) for a, b in zip(surf, surf[1:])) < 50.0
+FORBID error:
+# "inf" would false-positive on [surfinfo]/[orbinfo]
+FORBID nan
+LIMIT 180

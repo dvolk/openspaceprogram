@@ -1,0 +1,59 @@
+# Two capsules, both named, and the SECOND one is detached out of the build (a
+# lone part is deleted rather than stashed). The plan for the part that left is
+# dropped; the plan for the one that stayed must still fly. The ids here are
+# longer than std::string's small-buffer on purpose: reading the erased entry
+# after vector::erase then showed up as mojibake in the toast instead of a
+# plausible part name, and a shorter id hides it.
+#
+# Everything here is the player's route now. --ui-focus names a capsule, the game
+# finds a pixel that picks it, and the RMB there opens that capsule's part window
+# -- click the seat, click the person. The detach is the same shape: aim, click,
+# then "Detach subtree". The "[vab] select" line says which part the click took;
+# --vab-detach 1 used to select by index and never checked that a pick landed on
+# part 1.
+#
+# The detach aim still happens AFTER both part windows have been opened, and that
+# is the ordering to watch: a click inside a part window is swallowed by the
+# window (correct behaviour), and the aim's spiral only asks the 3D pick whether a
+# pixel hits the part -- it does not know about windows. Only ONE part window is
+# on screen at a time (VabState::partWinId, game.h:245; opening another capsule's
+# window replaces it, vab.cpp:906), so at the detach aim the live window is
+# capsule_r1.5h3_1's: measured at 1080p it starts 12px right of the click that
+# opened it and its seat rows span 980,607-1288,675, while the aim for
+# capsule_r1.5h3_2 reports 960,643 -- 12px clear of its left edge. That margin is
+# thin and it is luck: the window is placed against the OTHER capsule's pixel, and
+# the dossier's stat block pushes the seat rows down into the row band this aim
+# sits in. If this case ever stops selecting, check whether the window now covers
+# the reported pixel.
+NAME vab-seat-detached-two
+CLAIM Detaching one of two named capsules keeps the other's plan.
+KIND invariant
+ARGS --vab e2e/fixtures/two_capsules.json --kerbals e2e/fixtures/three_kerbals.json
+ARGS --width 1920 --height 1080 --time-accel 1 --timeout 12 --frame-cap 30
+ARGS --ui-focus 2000,capsule_r1.5h3_2
+ARGS --sim-mouse 2100,0,CUR,CUR,RMB
+ARGS --ui-click 2600,"Capsule (3m)##capsule_r1.5h3_2/Seat 1##s0"
+ARGS --ui-click 3000,"##Combo_00/Ace"
+ARGS --ui-focus 3400,capsule_r1.5h3_1
+ARGS --sim-mouse 3500,0,CUR,CUR,RMB
+ARGS --ui-click 4000,"Capsule (3m)##capsule_r1.5h3_1/Seat 1##s0"
+ARGS --ui-click 4400,"##Combo_00/Bram"
+ARGS --ui-focus 5000,capsule_r1.5h3_2
+ARGS --sim-mouse 5500,0,CUR,CUR,LMB
+ARGS --ui-click 6000,"VAB/Detach subtree"
+ARGS --ui-click 8000,"VAB TopBar/LAUNCH"
+EXPECT [vab] part window: 'capsule_r1.5h3_2' seats 3
+EXPECT [vab] part window: 'capsule_r1.5h3_1' seats 3
+EXPECT [vab] select 1 capsule_r1.5h3_2
+EXPECT [vab] deleted capsule_r1.5h3_2 (single part, not stashed)
+EXPECT [vab] dropped the seat plan for 'capsule_r1.5h3_2' 'Ace' (it left the build)
+EXPECT [toast] 1 seat assignment dropped: no such seat in this build
+CHECK re.search(r"Crew: 'Bram' aboard '.*' part 0 \(1/3\)", out)
+EXPECT [vab] launched 'two capsules' (1 parts)
+FORBID Crew: 'Ace'
+FORBID Crew: 'Cyd'
+FORBID No seats named
+FORBID to Subassemblies
+FORBID FAILED
+FORBID error:
+LIMIT 90

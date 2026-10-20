@@ -1,0 +1,13 @@
+# The other half of the gate in case 170: with nothing in saves/ there is
+# nothing to resume, so the button is absent rather than present and dead.
+# The runner wipes the scratch data dir's saves/ before every case, which is
+# what makes "no saves" a state a case can rely on.
+NAME title-no-save-no-resume
+CLAIM With no saves, the title offers no Load last save button.
+KIND invariant
+ARGS --timeout 5
+ARGS --ui-list 1500
+EXPECT window="Title Menu" label="New Game"
+FORBID label="Load last save"
+FORBID [load]
+FORBID error:
