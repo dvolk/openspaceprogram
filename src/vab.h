@@ -56,13 +56,14 @@ void vabDetachSelected(Game &g);
 void vabSave(Game &g, const char *name);
 
 // REPLACES the current build; leaves it untouched on failure. Lookup by name
-// (data dir's ships/ wins over stock).
+// (data dir's ships/ wins over stock). On success the save name follows.
 bool vabLoad(Game &g, const char *name);
 
 // Empty the build tree and everything that names a part in it: selection,
 // hover/ghost, fuel-link picks, the armed part or subassembly, the seat plan,
 // the part window and the staging table. The launch config and the subassembly
-// stash are untouched, and the camera re-frames on the empty origin.
+// stash are untouched; the save name resets to "untitled" and the camera
+// re-frames on the empty origin.
 void vabClearBuild(Game &g);
 
 // LAUNCH: place the tree on the home body's pad, take control, switch to Flight.

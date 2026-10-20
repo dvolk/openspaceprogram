@@ -4040,6 +4040,7 @@ void drawVabUI(Game &g) {
                       if(choice == 0) { vabClearBuild(g); }
                   });
         }
+        ImGui::SetItemTooltip("Remove every part from the build");
         ImGui::EndDisabled();
 
         // Line 2: where + how to launch (vabLaunch resolves both). Pad scenarios also pick a

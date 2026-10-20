@@ -564,16 +564,22 @@ std::string shipDefFile(const std::string &spec) {
 
 } // namespace
 
-/* Forget every editor target that names a part of the CURRENT tree. Callers
-   replace or empty the tree; the build, the launch config and the subassembly
-   stash are theirs. */
-static void forgetBuildTargets(Game &g) {
+/* Forget the picks that point into the tree. Whether its build-keyed plan and
+   cache survive is the caller's call (vabEnter keeps them across a visit). */
+static void forgetPicks(Game &g) {
     vabClearHover(g);
     g.vab.selected = -1;
     g.vab.linkMode = false;
     g.vab.linkFromId.clear();
     // A stale index would flip Del from "detach" to destructive "delete".
     g.vab.linkSel = -1;
+}
+
+/* Forget every editor target that names a part of the CURRENT tree. Callers
+   replace or empty the tree; the build, the launch config and the subassembly
+   stash are theirs. */
+static void forgetBuildTargets(Game &g) {
+    forgetPicks(g);
     g.vab.seatAssigns.clear();
     g.vab.partWinId.clear();
     g.vab.partWinPlaced = false;
@@ -998,16 +1004,12 @@ void vabEnter(Game &g) {
     // VAB_LAUNCH_PAD) until the top-bar combo picks one.
     if(g.vab.bodyName.empty() && g.home != nullptr) { g.vab.bodyName = g.home->name; }
     if(g.vab.scenarioName.empty()) { g.vab.scenarioName = "pad"; }
-    // Seed the save name once; load and clear keep it in step afterwards.
+    // Seed an empty save name from the build; load and clear overwrite it.
     if(g.vab.saveName[0] == 0) {
         snprintf(g.vab.saveName, sizeof(g.vab.saveName), "%s",
                  g.vab.build.name.empty() ? "untitled" : g.vab.build.name.c_str());
     }
-    vabClearHover(g);
-    g.vab.selected = -1;
-    g.vab.linkMode = false;
-    g.vab.linkFromId.clear();
-    g.vab.linkSel = -1;      // no link selected on a fresh entry
+    forgetPicks(g);
     /* The part window follows a part of THIS session's build; a build id from a
        previous visit would name a part that no longer exists (or, worse, still
        exists but is not what the player last pointed at). partWinPlaced goes with

@@ -16,9 +16,13 @@ ARGS --vab res/ships/racer.json --timeout 12
 ARGS --ui-click 1500,"VAB TopBar/##vabload"
 ARGS --ui-click 2100,"##Combo_00/stager"
 ARGS --ui-click 2700,"VAB TopBar/Load"
-ARGS --ui-click 3300,"VAB TopBar/LAUNCH"
+# Save keeps the loaded identity, which used to be the UI's job: vabLoad itself
+# now points the name at stager, so a Save here must not land on racer.
+ARGS --ui-click 3300,"VAB TopBar/Save"
+ARGS --ui-click 4000,"VAB TopBar/LAUNCH"
 EXPECT Main loop starting
 EXPECT [vab] loaded stager (7 parts)
+EXPECT [vab] saved stager
 EXPECT [vab] launched 'stager' (7 parts)
 FORBID FAILED
 FORBID GL_
