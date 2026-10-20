@@ -1,12 +1,22 @@
 NAME save
+# The save is the window's Save button now, not a flag that writes at timeout:
+# ESC to the hub, Save/Load, type the slot, Save. The burn runs first, so the
+# captured state is post-burn, which is what the old --save wrote at exit.
 ARGS --time-accel 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --timeout 12 --save tmp/e2e_save --orbit-log --orbit-interval 0.5
+ARGS --timeout 15 --orbit-log --orbit-interval 0.5
 ARGS --sim-press 500,500,R
 ARGS --sim-press 1500,3000,T
+ARGS --sim-press 10500,0,ESCAPE
+ARGS --ui-click 11000,"Game Menu/Save/Load"
+ARGS --ui-type 11800,"Save/Load/##newslot",e2e_save
+ARGS --ui-click 12500,"Save/Load/Save##saveload"
 # One file, not two: the seated kerbal is a `seats` element of the capsule's
 # part entry, not a fleet entry of its own (part.h).
-EXPECT Saved 1 ship(s) to tmp/e2e_save
+EXPECT Saved 1 ship(s) to
+FILE saves/*/e2e_save/save.json "format" "active_ship"
 EXPECT [orbitlog]
 CHECK len(orbit) >= 2 and abs(last(orbit)["E"] - first(orbit)["E"]) > 1e5
+FORBID Save failed
+FORBID FAILED
 FORBID GL_
 FORBID error:

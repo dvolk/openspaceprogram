@@ -15,7 +15,7 @@
 # hid for so long.
 NAME new-game-mints-its-own-game-dir
 SEED e2e/fixtures/save_racer saves/20260101_000000-gameA/slotA
-ARGS --timeout 6 --time-accel 1
+ARGS --timeout 9 --time-accel 1
 ARGS --load slotA
 # Both hops are the player's: ESC from the flight the save opens in, the hub's
 # "Return to title", the card's "Return", then the title's New Game.
@@ -25,7 +25,11 @@ ARGS --load slotA
 ARGS --sim-press 1500,0,ESCAPE
 ARGS --ui-click 2000,"Game Menu/Return to title" --ui-click 2500,"Question/Return"
 ARGS --ui-click 3000,"Title Menu/New Game" --ui-click 3500,"New Game/Start"
-ARGS --resave slotB
+# Save the fresh career through the window; the old --resave called save_game
+# at timeout.
+ARGS --ui-click 4500,"Game Menu/Save/Load"
+ARGS --ui-type 5100,"Save/Load/##newslot",slotB
+ARGS --ui-click 5700,"Save/Load/Save##saveload"
 EXPECT saves/20260101_000000-gameA/slotA (active: racer)
 EXPECT [game] unloaded: ships torn down, no active vessel
 # A fresh career also starts at t=0: nothing else writes Game::time, so a new
@@ -33,6 +37,7 @@ EXPECT [game] unloaded: ships torn down, no active vessel
 EXPECT [game] new game 'game1'
 EXPECT [game] new game: Space Center, no ship, paused (t=0.0)
 EXPECT Saved 0 ship(s) to
+FILE saves/*/slotB/save.json "format" '"active_ship": ""'
 CHECK "20260101_000000-gameA/slotB" not in out
 # A fresh stamp AND a fresh name: the sheet's default (gameui.cpp:3189), not the
 # loaded save's. Inheriting gameA's identity is the regression, and either half

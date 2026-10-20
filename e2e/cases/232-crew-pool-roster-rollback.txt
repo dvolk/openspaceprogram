@@ -21,14 +21,21 @@ ARGS --sim-press 1900,0,ESCAPE
 ARGS --ui-click 2000,"Game Menu/Recover Vessel"
 ARGS --ui-click 2800,"Game Menu/Save/Load"
 ARGS --ui-click 3800,"Save/Load/Load##saveload"
-ARGS --resave tmp/e2e_save_out
+# The refused load leaves the sheet open. The save that follows is the window's
+# Save, the same save_game call the old --resave made at exit.
+ARGS --ui-type 4600,"Save/Load/##newslot",out
+ARGS --ui-click 5200,"Save/Load/Save##saveload"
 EXPECT [load] refused
 # Preflight refused before the swap: nothing to restore, and the running cast
 # list is still the --kerbals file's three.
 FORBID FAILED
 FORBID roster restored
 FORBID [load] roster restored
-EXPECT Saved 0 ship(s) to tmp/e2e_save_out
+EXPECT Saved 0 ship(s) to
+FILE saves/*/out/save.json "format"
+# The running roster is still the --kerbals file's three; the bad save's
+# Bram+Cyd roster must not have replaced it.
+FILE saves/*/out/save.json '"name": "Ace"'
 # the refusal itself toasts "Load failed: ..." -- that is the point of the case
 FORBID Assertion
 FORBID Segmentation

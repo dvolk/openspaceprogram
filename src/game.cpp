@@ -872,8 +872,7 @@ std::string Game::ensureGameDir() {
        the rest of the game, so a save from the title afterwards would invent a
        fresh game dir named after the dead one -- a phantom entry in the games
        list holding an empty game. events.cpp:492 closes exactly this hole for
-       F5/F9; the Save window and --save/--resave reach the same mint ungated
-       (#299). */
+       F5/F9, but the Save window reaches the same mint ungated (#299). */
     if(!gameRunning(*this)) {
         toast("Save failed: no game is running");
         return "";

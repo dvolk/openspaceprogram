@@ -40,13 +40,8 @@ struct GameArgs {
     std::vector<std::string> startship;
     std::string startships_file;
 
-    // --save captures the game into a directory when --timeout is spent;
     // --load replaces the ships at startup. Bare names resolve under saves/.
-    std::string save_name;
     std::string load_name;
-    // Same capture as --save but legal with --load: the load -> fly -> save
-    // round trip in one process (#51).
-    std::string resave_name;
     std::string data_dir;   // user data directory; empty = per-OS default
 
     std::string radial_test;

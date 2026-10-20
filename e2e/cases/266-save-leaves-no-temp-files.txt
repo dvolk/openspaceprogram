@@ -13,12 +13,16 @@
 NAME save-leaves-no-temp-files
 ARGS --timeout 6 --time-accel 1
 ARGS --startship racer,res/ships/racer.json,Kerbin,pad
-ARGS --save slotA
+ARGS --sim-press 700,0,ESCAPE
+ARGS --ui-click 1100,"Game Menu/Save/Load"
+ARGS --ui-type 1800,"Save/Load/##newslot",slotA
+ARGS --ui-click 2400,"Save/Load/Save##saveload"
 EXPECT Saved 1 ship(s) to
 FILE saves/*/slotA/save.json "format" "active_ship"
 FILE saves/*/slotA/ships/v0.json "racer"
 NOFILE saves/*/slotA/*.tmp
 NOFILE saves/*/slotA/ships/*.tmp
 FORBID Save failed
+FORBID FAILED
 FORBID error:
 LIMIT 60

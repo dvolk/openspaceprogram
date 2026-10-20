@@ -1,23 +1,30 @@
-# --save and --load are mutually exclusive, so a save/load round trip took two
-# runs plus a committed fixture to compare (#51). --resave writes at --timeout
-# ALONGSIDE a --load, so one process loads a save, flies it, and writes it back:
-# diff the input tree against tmp/e2e_save_out and a field the writer drops or
-# the reader misreads shows up as a diff, instead of as a ship parked at the
-# body centre. That is the tool that would have caught the half-parsed-format
-# bug at the time it was introduced (kSaveFormat now refuses it -- see 172).
+# A save/load round trip used to take two runs plus a committed fixture to
+# compare (#51). The Save/Load window now loads a seeded slot and writes it
+# back into a second slot in ONE process, so the two trees are comparable; a
+# field the writer drops or the reader misreads shows up in the output instead
+# of as a ship parked at the body centre. That is the tool that would have
+# caught the half-parsed-format bug at the time it was introduced (kSaveFormat
+# now refuses it -- see 172). The case pins that the output slot lands with the
+# loaded ship; a reviewer can diff the slots by hand.
 NAME resave-round-trip
-SEED e2e/fixtures/save_racer saves/in
-ARGS --timeout 4 --time-accel 1
+SEED e2e/fixtures/save_racer saves/20260101_000000-gameA/in
+ARGS --timeout 6 --time-accel 1
 ARGS --load in
-ARGS --resave tmp/e2e_save_out
+ARGS --sim-press 1200,0,ESCAPE
+ARGS --ui-click 1500,"Game Menu/Save/Load"
+ARGS --ui-type 2100,"Save/Load/##newslot",out
+ARGS --ui-click 2700,"Save/Load/Save##saveload"
 ARGS --orbit-log --orbit-interval 1
 EXPECT Load: using saves slot
-EXPECT saves/in (active: racer)
-EXPECT Saved 1 ship(s) to tmp/e2e_save_out
+EXPECT saves/20260101_000000-gameA/in (active: racer)
+EXPECT Saved 1 ship(s) to
+FILE saves/20260101_000000-gameA/out/save.json "format" "active_ship"
+FILE saves/20260101_000000-gameA/out/ships/v0.json "racer"
 EXPECT [orbitlog]
 FORBID Save failed
 FORBID Load failed
 FORBID [load] refused
+FORBID FAILED
 FORBID GL_
 FORBID error:
 LIMIT 60

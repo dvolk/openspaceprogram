@@ -1,7 +1,17 @@
 NAME save-game
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --timeout 8 --save e2e_slot
+ARGS --timeout 8
+# The save path is the window's: the first Save mints <stamp>-game1 and writes
+# into it, which is the same ensureGameDir the old --save used.
+ARGS --sim-press 700,0,ESCAPE
+ARGS --ui-click 1100,"Game Menu/Save/Load"
+ARGS --ui-type 1800,"Save/Load/##newslot",e2e_slot
+ARGS --ui-click 2400,"Save/Load/Save##saveload"
+EXPECT Saved 1 ship(s) to
 EXPECT /data/save-game/saves/
 EXPECT -game1/e2e_slot (game 'game1')
+FILE saves/*/e2e_slot/save.json "format" "active_ship"
+FORBID Save failed
+FORBID FAILED
 FORBID GL_
 FORBID error:

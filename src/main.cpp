@@ -1104,30 +1104,6 @@ int main(int argc, char **argv)
             if(elapsed_s >= args.timeout_seconds) {
                 printf("Timeout reached (%.1f s); exiting main loop.\n", elapsed_s);
                 fflush(stdout);
-                /* --save / --resave: capture the live state before exiting. A bare
-                   name is a slot of the CURRENT game under saves/; a path is used
-                   as-is. --resave skips the exclusion so one process can load, fly
-                   and write back for a round-trip diff (#51). */
-                const std::string save_name = !args.save_name.empty()
-                                            ? args.save_name : args.resave_name;
-                if(!save_name.empty()) {
-                    std::string save_dir = save_name;
-                    if(save_dir.find('/') == std::string::npos) {
-                        const std::string gamedir = game.ensureGameDir();
-                        if(gamedir.empty()) {
-                            printf("Save failed: could not create the game dir\n");
-                            exit(1);
-                        }
-                        save_dir = gamedir + "/" + save_dir;
-                    }
-                    try {
-                        save_game(game, save_dir);
-                    } catch(const std::exception &e) {
-                        printf("Save failed: %s\n", e.what());
-                        exit(1);
-                    }
-                    fflush(stdout);
-                }
                 running = false;
             }
         }

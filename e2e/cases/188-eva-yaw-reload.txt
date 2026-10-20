@@ -10,9 +10,14 @@
 # suit slews 118 degrees to the fresh camera. See #241.
 #
 # Fixture mint (re-mint the fixture and the golden vector below together):
-#   ./osp --time-accel 1 --timeout 5 --frame-cap 30 --orbit-interval 1 \
-#         --sim-press 2000,1000,Q --startship kerbal,res/ships/kerbal.json,Kerbin,inertial-orbit \
-#         --save e2e/fixtures/save_eva_yaw
+#   ./osp --data-dir tmp/eva_yaw_fixture --time-accel 1 --timeout 8 --frame-cap 30 \
+#         --orbit-interval 1 --sim-press 2000,1000,Q \
+#         --startship kerbal,res/ships/kerbal.json,Kerbin,inertial-orbit \
+#         --sim-press 5000,0,ESCAPE --ui-click 5500,"Game Menu/Save/Load" \
+#         --ui-type 6200,"Save/Load/##newslot",e2e_yaw \
+#         --ui-click 6800,"Save/Load/Save##saveload"
+#   rm -rf e2e/fixtures/save_eva_yaw
+#   cp -r tmp/eva_yaw_fixture/saves/*/e2e_yaw e2e/fixtures/save_eva_yaw
 NAME eva-yaw-reload
 ARGS --load e2e/fixtures/save_eva_yaw --time-accel 1 --timeout 6 --eva-log --att-log --orbit-interval 1 --frame-cap 30
 EXPECT Loaded game from e2e/fixtures/save_eva_yaw (active: kerbal)

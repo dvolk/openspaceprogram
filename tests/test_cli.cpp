@@ -200,31 +200,6 @@ int main() {
         assert(sim_parse_key("nope") == 0);
     }
 
-    // 6) --resave: legal alongside --load -- that pairing is the whole point
-    //    (load a save, fly it, write it back, all in one process, #51) -- and,
-    //    like --save, it needs --timeout, since the write lands when the
-    //    wall-clock budget is spent.
-    {
-        GameArgs args;
-        const char *argv[] = {"osp", "--load", "in", "--resave", "out",
-                              "--timeout", "5"};
-        bool ok = false;
-        int code = -1;
-        run(7, (char **)argv, args, ok, code);
-        assert(ok);
-        assert(args.load_name == "in");
-        assert(args.resave_name == "out");
-    }
-    {
-        GameArgs args;
-        const char *argv[] = {"osp", "--load", "in", "--resave", "out"};
-        bool ok = true;
-        int code = 0;
-        run(5, (char **)argv, args, ok, code);
-        assert(!ok);
-        assert(code == 1);
-    }
-
     printf("test_cli: all checks passed\n");
     return 0;
 }

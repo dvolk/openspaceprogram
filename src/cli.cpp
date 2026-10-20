@@ -86,27 +86,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "orbit but default to the same pad. Overrides --startship. "
                    "Try e2e/fixtures/startships.json");
 
-    app.add_option("--save", args.save_name,
-                   "Save the game (its ships + crew + clock) when the "
-                   "--timeout budget is spent, then exit (the headless/e2e "
-                   "path). A bare name is a slot of the current game under "
-                   "the data dir's saves/ (<stamp>-<gameName>/<slot>, the "
-                   "dir minted at this first save); a path is used as-is. "
-                   "Mutually exclusive with --load");
     app.add_option("--load", args.load_name,
                    "Load the game from this saved directory at startup "
                    "instead of building the start ships (--startship/--startships are ignored). "
                    "A bare name resolves to the data dir's saves/<name> "
                    "(legacy flat) or the unique saves/<game>/<name>; a path "
-                   "is used as-is. Mutually exclusive with --save");
-    app.add_option("--resave", args.resave_name,
-                   "Write this save dir when the --timeout budget is spent -- "
-                   "the same capture as --save, but legal alongside --load, "
-                   "which is the whole point: load a save, run it, write it "
-                   "back, and diff the two trees. That is how a save/load "
-                   "drift (a field the writer drops or the reader misreads) "
-                   "gets caught in one process instead of two runs plus a "
-                   "committed fixture. Same name rules as --save");
+                   "is used as-is. In-game saving and loading go through the "
+                   "Save/Load window.");
     app.add_option("--data-dir", args.data_dir,
                    "User data directory (saves/ + settings.json). Default: "
                    "the per-OS user data directory (on Linux: "
@@ -1120,25 +1106,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     args.cli_given.sky_dim_cone =
         app.get_option("--sky-dim-cone")->count() > 0;
 
-    if(!args.save_name.empty() && !args.load_name.empty()) {
-        printf("error: --save and --load are mutually exclusive\n");
-        *exit_code = 1;
-        return false;
-    }
     if(!args.vab.empty() && args.vab_empty) {
         printf("error: --vab and --vab-empty are mutually exclusive\n");
-        *exit_code = 1;
-        return false;
-    }
-    if(!args.save_name.empty() && args.timeout_seconds <= 0.0) {
-        printf("error: --save needs --timeout (the save is taken when the "
-               "wall-clock budget is spent)\n");
-        *exit_code = 1;
-        return false;
-    }
-    if(!args.resave_name.empty() && args.timeout_seconds <= 0.0) {
-        printf("error: --resave needs --timeout (the save is taken when the "
-               "wall-clock budget is spent)\n");
         *exit_code = 1;
         return false;
     }
