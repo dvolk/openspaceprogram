@@ -1000,7 +1000,7 @@ int main() {
         fs::remove_all(sb);
     }
 
-    // --- games: the <stamp>-<name> dirs under saves/ -----------------------
+    // --- playthroughs: the <stamp>-<name> dirs under saves/ ----------------
     // The stamp is a local-time round-trip (mktime is localtime_r's inverse),
     // and the display name strips exactly ONE leading <stamp>-.
     {
@@ -1012,22 +1012,22 @@ int main() {
         m.tm_min = 40;
         m.tm_sec = 12;
         m.tm_isdst = -1;
-        CHECK(gameStamp(mktime(&m)) == "20260929_174012");
+        CHECK(playthroughStamp(mktime(&m)) == "20260929_174012");
     }
-    CHECK(gameDirName("20260929_174012-My Career") == "My Career");
-    CHECK(gameDirName("20260929_174012-game1") == "game1");
+    CHECK(playthroughDisplayName("20260929_174012-My Career") == "My Career");
+    CHECK(playthroughDisplayName("20260929_174012-game1") == "game1");
     // A name that itself starts with stamp-like digits still round-trips:
-    // exactly one leading stamp is stripped (the one newGameDir prepended).
-    CHECK(gameDirName("20260929_174012-20260101_000000-restart")
+    // exactly one leading stamp is stripped (the one newPlaythroughDir prepended).
+    CHECK(playthroughDisplayName("20260929_174012-20260101_000000-restart")
           == "20260101_000000-restart");
     // Renamed / mangled by hand: no valid leading stamp -> the whole name.
-    CHECK(gameDirName("My Career") == "My Career");
-    CHECK(gameDirName("2026092-174012-Career") == "2026092-174012-Career");
-    CHECK(gameDirName("x20260929_174012-Career") == "x20260929_174012-Career");
+    CHECK(playthroughDisplayName("My Career") == "My Career");
+    CHECK(playthroughDisplayName("2026092-174012-Career") == "2026092-174012-Career");
+    CHECK(playthroughDisplayName("x20260929_174012-Career") == "x20260929_174012-Career");
 
-    // newGameDir: <stamp>-<name> under base; a taken dir bumps the second.
+    // newPlaythroughDir: <stamp>-<name> under base; a taken dir bumps the second.
     {
-        const std::string base = "tmp/test_save_gamedirs";
+        const std::string base = "tmp/test_save_ptdirs";
         fs::remove_all(base);
         struct tm m = {};
         m.tm_year = 2026 - 1900;
@@ -1038,26 +1038,26 @@ int main() {
         m.tm_sec = 12;
         m.tm_isdst = -1;
         const time_t t = mktime(&m);
-        CHECK(newGameDir(base, "game1", t) == base + "/20260929_174012-game1");
-        // a same-named game started the same second gets the next second
+        CHECK(newPlaythroughDir(base, "game1", t) == base + "/20260929_174012-game1");
+        // a same-named playthrough started the same second gets the next second
         fs::create_directories(base + "/20260929_174012-game1");
-        CHECK(newGameDir(base, "game1", t) == base + "/20260929_174013-game1");
+        CHECK(newPlaythroughDir(base, "game1", t) == base + "/20260929_174013-game1");
         // ...and a differently-named one may share the original second
-        CHECK(newGameDir(base, "solar", t) == base + "/20260929_174012-solar");
+        CHECK(newPlaythroughDir(base, "solar", t) == base + "/20260929_174012-solar");
         fs::remove_all(base);
     }
 
-    // list_games + find_slot: the two-tier saves/<game>/<slot> layout.
+    // list_playthroughs + find_slot: the two-tier saves/<playthrough>/<slot> layout.
     {
-        const std::string base = "tmp/test_save_games/saves";
-        fs::remove_all("tmp/test_save_games");
-        auto slot = [&](const std::string &game, const std::string &s) {
-            fs::create_directories(base + "/" + game + "/" + s);
-            std::ofstream f(base + "/" + game + "/" + s + "/save.json");
+        const std::string base = "tmp/test_save_pts/saves";
+        fs::remove_all("tmp/test_save_pts");
+        auto slot = [&](const std::string &ptDir, const std::string &s) {
+            fs::create_directories(base + "/" + ptDir + "/" + s);
+            std::ofstream f(base + "/" + ptDir + "/" + s + "/save.json");
             f << "{}";
         };
-        // two same-named games (different stamps), one other game, a renamed
-        // dir, a legacy flat save, and a game that never saved (hidden)
+        // two same-named playthroughs (different stamps), one other playthrough, a
+        // renamed dir, a legacy flat save, and one that never saved (hidden)
         slot("20260101_100000-Career", "save1");
         slot("20260202_110000-Career", "save1");   // save1 -> ambiguous
         slot("20260303_120000-Solar", "orbit");    // orbit -> unique two-tier
@@ -1066,26 +1066,26 @@ int main() {
         { std::ofstream f(base + "/save2/save.json"); f << "{}"; }
         fs::create_directories(base + "/20260404_140000-Empty");   // no slots
 
-        std::vector<GameEntry> gs = list_games(base);
-        CHECK(gs.size() == 4);
-        if(gs.size() == 4) {
-            CHECK(gs[0].dirName == "20260101_100000-Career");
-            CHECK(gs[0].name == "Career (2026-01-01 10:00)");
-            CHECK(gs[1].dirName == "20260202_110000-Career");
-            CHECK(gs[1].name == "Career (2026-02-02 11:00)");
-            CHECK(gs[2].dirName == "20260303_120000-Solar");
-            CHECK(gs[2].name == "Solar");          // a unique label stays bare
-            CHECK(gs[3].dirName == "My Career");
-            CHECK(gs[3].name == "My Career");
+        std::vector<PlaythroughEntry> pts = list_playthroughs(base);
+        CHECK(pts.size() == 4);
+        if(pts.size() == 4) {
+            CHECK(pts[0].dirName == "20260101_100000-Career");
+            CHECK(pts[0].name == "Career (2026-01-01 10:00)");
+            CHECK(pts[1].dirName == "20260202_110000-Career");
+            CHECK(pts[1].name == "Career (2026-02-02 11:00)");
+            CHECK(pts[2].dirName == "20260303_120000-Solar");
+            CHECK(pts[2].name == "Solar");          // a unique label stays bare
+            CHECK(pts[3].dirName == "My Career");
+            CHECK(pts[3].name == "My Career");
         }
 
         CHECK(find_slot(base, "save2") == base + "/save2");   // legacy flat
         CHECK(find_slot(base, "orbit")
               == base + "/20260303_120000-Solar/orbit");
         CHECK(find_slot(base, "save3") == base + "/My Career/save3");
-        CHECK(find_slot(base, "save1").empty());   // two games hold it
+        CHECK(find_slot(base, "save1").empty());   // two playthroughs hold it
         CHECK(find_slot(base, "missing").empty());
-        fs::remove_all("tmp/test_save_games");
+        fs::remove_all("tmp/test_save_pts");
     }
 
     // --- quicksaves: the quicksave-00..99 rotating pool --------------------
@@ -1106,7 +1106,7 @@ int main() {
         CHECK(quicksaveName(99) == "quicksave-99");
     }
     {
-        const std::string base = "tmp/test_save_quicksave/game";
+        const std::string base = "tmp/test_save_quicksave/pt";
         fs::remove_all("tmp/test_save_quicksave");
         // a pool slot whose save.json is `age` seconds old (the pool orders
         // by the FILE's mtime -- a rewrite moves the file, not the dir).
@@ -1124,7 +1124,7 @@ int main() {
                 fs::file_time_type::clock::now() - std::chrono::seconds(age),
                 ec);
         };
-        // an empty (or missing) game dir -> the first slot; nothing to load
+        // an empty (or missing) playthrough dir -> the first slot; nothing to load
         CHECK(nextQuicksave(base) == "quicksave-00");
         CHECK(latestQuicksave(base).empty());
 
@@ -1152,7 +1152,7 @@ int main() {
         // first. save_game rewrites save.json in place, so its mtime -- not
         // the slot dir's -- is the pool's age. Here 00 is created first, 01
         // second, then 00 is rewritten (age 5) and becomes the newest.
-        const std::string base = "tmp/test_save_quickrewrite/game";
+        const std::string base = "tmp/test_save_quickrewrite/pt";
         fs::remove_all("tmp/test_save_quickrewrite");
         auto slot = [&](const std::string &s, int age) {
             fs::create_directories(base + "/" + s);
@@ -1186,7 +1186,7 @@ int main() {
     }
     {
         // pool full (all 100 slots) -> overwrite the oldest by mtime
-        const std::string base = "tmp/test_save_quickfull/game";
+        const std::string base = "tmp/test_save_quickfull/pt";
         fs::remove_all("tmp/test_save_quickfull");
         for(int nn = 0; nn < 100; nn++) {
             const std::string s = quicksaveName(nn);
@@ -1209,8 +1209,8 @@ int main() {
     {
         // latestSave: the newest save anywhere under saves/, which is what the
         // title menu's "Load last save" offers. Recency is the save.json
-        // WRITE time, not the game dir's start stamp -- the playthrough you
-        // were just in is usually not the newest one you started.
+        // WRITE time, not the playthrough dir's start stamp -- the playthrough
+        // you were just in is usually not the newest one you started.
         const std::string base = "tmp/test_save_latest";
         fs::remove_all(base);
         auto slot = [&](const std::string &s, int age) {
@@ -1229,16 +1229,16 @@ int main() {
 
         slot("20260101_000000-old_game/save1", 10);
         CHECK(latestSave(base) == "20260101_000000-old_game/save1");
-        // A newer game dir whose slot was written earlier does not take over:
-        // the dir stamp is when the game STARTED, not when it was saved.
+        // A newer playthrough whose slot was written earlier does not take over:
+        // the dir stamp is when the playthrough STARTED, not when it was saved.
         slot("20260909_000000-new_game/quicksave-00", 500);
         CHECK(latestSave(base) == "20260101_000000-old_game/save1");
-        // ...and the newest write wins across the game boundary.
+        // ...and the newest write wins across the playthrough boundary.
         slot("20260909_000000-new_game/quicksave-01", 1);
         CHECK(latestSave(base) == "20260909_000000-new_game/quicksave-01");
-        // A game dir with no slot, a dir that is not a slot (no save.json) and
+        // A playthrough with no slot, a dir that is not a slot (no save.json) and
         // a legacy flat saves/<slot>/ are all invisible -- the same call
-        // list_games makes. The flat one is stamped newest on purpose.
+        // list_playthroughs makes. The flat one is stamped newest on purpose.
         fs::create_directories(base + "/20261010_000000-empty_game");
         fs::create_directories(base + "/20261011_000000-no_slot/save1");
         fs::create_directories(base + "/legacy_flat");

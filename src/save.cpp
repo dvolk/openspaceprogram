@@ -1102,7 +1102,7 @@ void save_game(Game &g, const std::string &dir) {
         }
     }
     printf("Saved %zu ship(s) to %s (game '%s')\n", vehicles.size(), dir.c_str(),
-           g.gameName.c_str());
+           g.playthroughName.c_str());
 }
 
 /* True if the system has a VAB_LAUNCH_PAD. Checks the world_buildings list,
@@ -1424,16 +1424,16 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
     // score / recovered log.
     g.science.setFrom(meta.science_score, meta.recovered);
 
-    // Game identity comes from the save's location, adopted here so a REFUSED
-    // load leaves the running identity untouched.
+    /* The playthrough identity comes from the save's location, adopted here so a
+       REFUSED load leaves the running identity untouched. */
     {
         namespace fs = std::filesystem;
-        const fs::path gamedir = fs::path(b->dir).parent_path();
-        if(gamedir.parent_path().filename() == "saves") {
-            const std::string dn = gamedir.filename().string();
+        const fs::path ptDir = fs::path(b->dir).parent_path();
+        if(ptDir.parent_path().filename() == "saves") {
+            const std::string dn = ptDir.filename().string();
             if(!dn.empty()) {
-                g.gameId = dn;
-                g.gameName = gameDirName(dn);
+                g.playthroughId = dn;
+                g.playthroughName = playthroughDisplayName(dn);
             }
         }
     }

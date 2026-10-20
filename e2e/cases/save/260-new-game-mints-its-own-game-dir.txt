@@ -1,9 +1,9 @@
 # A New Game must own its saves/ directory (#299).
-# gameId is adopted from the save that was loaded (save.cpp:976-984), but
-# unloadGame left it set and Game::newGame never minted one -- only
-# startNewGame does. So quit-to-title then a new game left the fresh career
-# pointing at the PREVIOUS game's directory, and the next save wrote a slot
-# into it.
+# playthroughId is adopted from the save that was loaded (save.cpp, on the
+# load's success path), but unloadGame left it set and Game::newGame never
+# minted one -- only startNewGame does. So quit-to-title then a new game left
+# the fresh career pointing at the PREVIOUS game's directory, and the next save
+# wrote a slot into it.
 # The route here is the player's, which is the stronger version of the check:
 # startNewGame mints before it calls newGame, so a regression in EITHER half
 # lands slotB inside gameA and the CHECK below fires. The old route reached
@@ -11,8 +11,8 @@
 # it could only ever catch the second half.
 # SEED stages gameA under a real saves/ tree because the identity is adopted only
 # when the save's grandparent directory is literally named "saves"; a fixture
-# path like e2e/fixtures/save_racer never sets gameId at all, which is why this
-# hid for so long.
+# path like e2e/fixtures/save_racer never sets playthroughId at all, which is
+# why this hid for so long.
 NAME new-game-mints-its-own-game-dir
 CLAIM A New Game mints its own saves/ directory.
 KIND invariant

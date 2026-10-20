@@ -22,8 +22,8 @@ xfer/porkchop/surfmap/mapb/plane/slew/toast/scene) plus first/last/re. ARGS toke
 shell, so a value may be quoted to carry spaces. SEED <fixture> <path-under-
 data-dir> [AGE_DAYS] stages an existing save into the case's scratch --data-dir.
 FILE <path-under-data-dir> [substring...] and NOFILE <path-under-data-dir>
-assert on what the GAME wrote there (#271); both take globs, since a game dir is
-stamped YYYYMMDD_HHMMSS-<name>. EXIT
+assert on what the GAME wrote there (#271); both take globs, since a playthrough
+dir is stamped YYYYMMDD_HHMMSS-<name>. EXIT
 <code> is the exit code the case demands (default 0) -- without it a game that
 correctly refuses a bad boot flag looks identical to one that crashed.
 Artifacts land in tmp/e2e/runs/<stamp>/ + history.csv.
@@ -296,7 +296,7 @@ def parse_cases(path):
             elif key == "FILE":
                 # FILE <path under the scratch data dir> [substring ...]: the
                 # game's own output, which no stdout assertion can reach
-                # (#271). The path may glob -- a game dir is stamped
+                # (#271). The path may glob -- a playthrough dir is stamped
                 # YYYYMMDD_HHMMSS-<name>, so no case can name it outright. An
                 # absolute path would silently escape the scratch dir, so it is
                 # a case bug. Substrings are shlex-split: quote one that

@@ -7,11 +7,11 @@
 # (170 covers the title menu's "Load last save", 134 the New Game sheet,
 # 167/168 the quit card.)
 #
-# The sheet keeps its selection in function-local statics -- gameSel and slotSel
+# The sheet keeps its selection in function-local statics -- ptSel and slotSel
 # both start at 0 -- so a staged slot is the selected row and one click is
-# enough. The dir name is a plausible minted stamp so list_games() parses a game
-# name out of it; the case asserts on the tail of the path, since the scratch
-# --data-dir prefix varies per run.
+# enough. The dir name is a plausible minted stamp so list_playthroughs() parses
+# a playthrough name out of it; the case asserts on the tail of the path, since
+# the scratch --data-dir prefix varies per run.
 NAME load-from-the-save-load-sheet
 CLAIM The Save/Load sheet defers the load to the next frame and it succeeds.
 KIND invariant
