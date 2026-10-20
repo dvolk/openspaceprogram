@@ -1075,7 +1075,7 @@ void save_game(Game &g, const std::string &dir) {
     /* Drop ship files this game no longer has. A save directory is REUSED
        (quicksave rotation, Save-As), so a shrunk ship list leaves orphan
        ships/vN.json that nothing reads but that make the tree lie about its
-       ships. E2E 181 writes a loaded save back to a second slot, where the
+       ships. No case pins the sweep yet (#309); a reused slot is where the
        stale file would show up. Done AFTER the writes, so a throw partway
        leaves the previous files alone rather than deleting first and writing
        half. */

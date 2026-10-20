@@ -1,6 +1,7 @@
-# The Save/Load window is the game's own save path, and nothing in the suite used
-# it: every save case went through --save / --reload / --resave, so the slot field
-# and the Save button could have been deleted without a single case noticing.
+# The Save/Load window is the game's own save path. Until this case, no case
+# clicked its Save button: the save coverage went through the CLI flags
+# (--save, --resave, and the retired --reload), so the slot field and the Save
+# button could have been deleted without a single case noticing.
 # Found by scanning the live registry against the paths the cases actually click
 # (tmp/ui_coverage.py) -- the same way "Recover Vessel" turned out to be uncovered.
 #

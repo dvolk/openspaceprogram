@@ -871,8 +871,9 @@ std::string Game::ensureGameDir() {
     /* Minting is for a game that EXISTS. resetToTitle clears the identity with
        the rest of the game, so a save from the title afterwards would invent a
        fresh game dir named after the dead one -- a phantom entry in the games
-       list holding an empty game. events.cpp:492 closes exactly this hole for
-       F5/F9, but the Save window reaches the same mint ungated (#299). */
+       list holding an empty game. events.cpp:595 gates F5/F9 on gameRunning;
+       the Save window calls ensureGameDir, whose own gate closes the hole
+       (#299). */
     if(!gameRunning(*this)) {
         toast("Save failed: no game is running");
         return "";
