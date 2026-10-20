@@ -25,6 +25,7 @@ enum class SceneId : int {
     SpaceCenter,
     TrackingStation,
     ResearchLab,
+    StaffLounge,
     COUNT
 };
 

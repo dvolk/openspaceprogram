@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 242 |
+| `invariant` | a behaviour or a player route the game must keep | 243 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 30 |
 | `harness` | CLI/test-engine plumbing, not game spec | 11 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **287** |
+| | **total** | **288** |
 
 There is no full battery: the runner takes at most 5 cases per
 invocation and starts a 10-minute cooldown. Select by number, name or
@@ -225,7 +225,7 @@ path (a whole subject is usually too wide), e.g.
 | `save/318-reload-refused-active-ship.txt` | invariant | An in-game reload with a bad active_ship refuses and the game survives. |
 | `save/319-deep-tree-rolls-back-roster.txt` | invariant | A build-time refusal after a roster swap restores the running roster. |
 
-## ui (43)
+## ui (44)
 
 | case | kind | pins |
 |---|---|---|
@@ -272,6 +272,7 @@ path (a whole subject is usually too wide), e.g.
 | `ui/275-ui-type-game-name.txt` | invariant | Typing a game name through the widget runs the field's own validation. |
 | `ui/276-ui-type-illegal-game-name.txt` | invariant | An illegal game name keeps the sheet open and starts nothing. |
 | `ui/277-save-slot-through-the-window.txt` | invariant | The Save/Load window's Save button writes the typed slot. |
+| `ui/344-staff-lounge.txt` | invariant | The Staff Lounge opens from the hub, reports where each staff member is, and returns. |
 
 ## render (49)
 

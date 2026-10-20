@@ -1940,7 +1940,7 @@ void drawUIReadouts(Game &g) {
             "Game (one-shot)",
             "Flight (piloting)",
             "Camera (free mode)",
-            "EVA (the kerbal)",
+            "EVA (on foot)",
         };
         for(int gi = 0; gi < (int)SlotGroup::GROUP_COUNT; gi++) {
             const SlotGroup grp = (SlotGroup)gi;
@@ -2534,7 +2534,7 @@ void drawPartWindows(Game &g) {
                         ImGui::PopID();
                     }
                     if(!anyTake) {
-                        ImGui::TextDisabled("Take  (needs a kerbal on EVA, in reach)");
+                        ImGui::TextDisabled("Take  (needs staff on EVA, in reach)");
                     }
                 }
             }
@@ -3267,6 +3267,11 @@ static void navSpaceCenter(Game &g, float bw) {
         setWinOpen(W_SpaceCenterMenu, false);
         pushScene(g, SceneId::ResearchLab);
     }
+    // The Staff Lounge: the roster, and where everyone is, another excursion.
+    if(ImGui::Button("Staff Lounge", ImVec2(bw, 0.0f))) {
+        setWinOpen(W_SpaceCenterMenu, false);
+        pushScene(g, SceneId::StaffLounge);
+    }
     // Offered only when the hub sits ON TOP of a live flight; when the hub IS the floor
     // there is nothing to pop to.
     if(g.ship != nullptr && ImGui::Button("Resume Flight", ImVec2(bw, 0.0f))) {
@@ -3873,7 +3878,7 @@ void drawVabPartWindow(Game &g) {
         }
         if(def.crew_capacity > 0) {
             ImGui::Separator();
-            ImGui::Text("%d kerbal(s) at the launch pad",
+            ImGui::Text("%d staff at the launch pad",
                         pad != nullptr ? (int)pad->crew.size() : 0);
         }
         // A part with no seats runs none of this loop.
@@ -5224,6 +5229,110 @@ void dumpMapBasis(Game &g) {
                g.time, refPlaneName(slot),
                m.n.x, m.n.y, m.n.z, m.e1.x, m.e1.y, m.e1.z,
                m.e2.x, m.e2.y, m.e2.z, sweep > 0.0 ? 1 : -1, an_s, dn_s);
+    }
+    fflush(stdout);
+}
+
+// ---- Staff Lounge ---------------------------------------------------------
+// The roster (crew.h) with where the world currently has each person. Assignment,
+// hiring and firing will grow here; the lookup below is what they will move.
+static bool staffWhereIs(const Game &g, uint64_t id, char *out, size_t n) {
+    for(Vehicle *v : g.vehicles) {
+        if(v->isEva()) {
+            if(static_cast<Kerbal *>(v)->profileId() != id) { continue; }
+            if(v->m_parent != nullptr) {
+                snprintf(out, n, "On EVA (%s)", v->m_parent->name.c_str());
+            } else {
+                snprintf(out, n, "On EVA");
+            }
+            return true;
+        }
+        for(Part *cap : v->parts) {
+            for(Part *suit : cap->seats) {
+                if(suit == nullptr || suit->kerbal == nullptr
+                   || suit->kerbal->id != id) { continue; }
+                if(v->m_parent != nullptr) {
+                    snprintf(out, n, "Aboard %s (%s)", v->name.c_str(),
+                             v->m_parent->name.c_str());
+                } else {
+                    snprintf(out, n, "Aboard %s", v->name.c_str());
+                }
+                return true;
+            }
+        }
+    }
+    // Unassigned people stand in a building's pool (StaticBuilding::crew); the
+    // pad is the only one today, but the scan is per-building already.
+    for(TerrainBody *b : g.sys.bodies) {
+        for(StaticBuilding *site : b->pads) {
+            for(Part *suit : site->crew) {
+                if(suit == nullptr || suit->kerbal == nullptr
+                   || suit->kerbal->id != id) { continue; }
+                snprintf(out, n, "At %s", site->display_name.c_str());
+                return true;
+            }
+        }
+    }
+    // Death does not return a suit (crew.h), so a roster member can simply be absent.
+    snprintf(out, n, "Missing");
+    return false;
+}
+
+void drawStaffLounge(Game &g) {
+    drawWin(g, W_StaffLounge, [&] {
+        // Back to the hub (the frame below); Esc does the same (popKeyActions).
+        if(ImGui::Button("Back to Space Center")) {
+            popScene(g);
+        }
+        ImGui::Separator();
+        ImGui::Text("Staff: %d", (int)g.roster.profiles.size());
+        ImGui::TextDisabled("Where each staff member is right now.");
+        ImGui::Separator();
+        if(g.roster.profiles.empty()) {
+            ImGui::TextDisabled("No staff in the roster.");
+            return;
+        }
+        if(ImGui::BeginTable("##staffRoster", 3,
+                             ImGuiTableFlags_RowBg
+                             | ImGuiTableFlags_BordersInnerV)) {
+            ImGui::TableSetupColumn("staff", ImGuiTableColumnFlags_WidthFixed,
+                                    ImGui::GetFontSize() * 9.0f);
+            ImGui::TableSetupColumn("P/S/E", ImGuiTableColumnFlags_WidthFixed,
+                                    ImGui::GetFontSize() * 4.5f);
+            ImGui::TableSetupColumn("location",
+                                    ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableHeadersRow();
+            for(const KerbalProfile &p : g.roster.profiles) {
+                char where[160];
+                const bool here = staffWhereIs(g, p.id, where, sizeof where);
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(p.name.c_str());
+                ImGui::TableNextColumn();
+                ImGui::Text("%d/%d/%d", p.skill[SkillPiloting],
+                            p.skill[SkillScience],
+                            p.skill[SkillEngineering]);
+                ImGui::TableNextColumn();
+                if(here) { ImGui::TextUnformatted(where); }
+                else { ImGui::TextDisabled("%s", where); }
+            }
+            ImGui::EndTable();
+        }
+        ImGui::Separator();
+        ImGui::TextDisabled("P/S/E: piloting / science / engineering");
+    });
+}
+
+/* --staff-dump MS: the Staff Lounge's rows to stdout. The same resolver fills
+   the window, so the terminal and the window cannot disagree. */
+void dumpStaff(Game &g) {
+    printf("[staff] roster=%zu\n", g.roster.profiles.size());
+    for(const KerbalProfile &p : g.roster.profiles) {
+        char where[160];
+        staffWhereIs(g, p.id, where, sizeof where);
+        printf("[staff] %s skills=%d/%d/%d where=%s\n", p.name.c_str(),
+               p.skill[SkillPiloting], p.skill[SkillScience],
+               p.skill[SkillEngineering], where);
     }
     fflush(stdout);
 }

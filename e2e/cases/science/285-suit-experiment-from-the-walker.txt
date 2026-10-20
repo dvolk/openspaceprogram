@@ -19,7 +19,7 @@ ARGS --sim-mouse 1100,0,CUR,CUR,RMB
 ARGS --ui-click 1500,"racer > Capsule (2m)##0/EVA##eva0"
 ARGS --ui-focus 4000,Ash/kerbal_1
 ARGS --sim-mouse 4100,0,CUR,CUR,RMB
-ARGS --ui-click 4600,"Ash > Kerbal##0/Run Experiment"
+ARGS --ui-click 4600,"Ash > Staff##0/Run Experiment"
 EXPECT EVA: 'Ash' out of 'racer' part 0
 EXPECT ship=Ash part=0 (kerbal)
 EXPECT 'Ash' recorded 'Low orbit observation

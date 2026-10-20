@@ -10,5 +10,5 @@ void poll_events(Game &g);
 void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);
 void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);
 void hubKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);
-void trackingKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);
-void labKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);
+// The excursions on top of the hub (tracking, lab, lounge): Esc pops back.
+void popKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);

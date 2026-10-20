@@ -35,6 +35,8 @@ enum Win : int {
     W_TrackingMap, W_TrackingShipList,
     // research lab
     W_ResearchLab, W_ResearchAtlas,
+    // staff lounge
+    W_StaffLounge,
     // editor
     W_VabTopBar,
     W_Staging,
@@ -55,7 +57,7 @@ extern const WinDef kWins[W_Count];
 struct WinSet { const Win *ids; size_t n; };
 
 extern const WinSet kFlightWins, kTitleWins, kVabWins, kSpaceCenterWins,
-    kTrackingWins, kResearchWins;
+    kTrackingWins, kResearchWins, kStaffLoungeWins;
 
 bool winInScene(const Game &g, Win w);
 

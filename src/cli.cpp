@@ -318,6 +318,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Research Lab's Atlas draws, so the terminal and the "
                    "window cannot disagree (test hook; -1 = never)");
 
+    app.add_option("--staff-dump", args.staff_dump_ms,
+                   "Print the Staff Lounge at this loop time in ms: one "
+                   "[staff] line per staff member with their skills (P/S/E) "
+                   "and where the world has them -- At <building>, Aboard "
+                   "<ship> (<body>), On EVA (<body>), or Missing. "
+                   "The same strings the Staff Lounge window draws "
+                   "(test hook; -1 = never)");
+
     app.add_option("--map-plane", args.map_plane,
                    "Test hook: start the orbit map in this plane slot "
                    "(0 equatorial, 1 ecliptic, 2 orbital, 3 target orbit -- "

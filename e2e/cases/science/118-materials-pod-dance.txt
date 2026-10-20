@@ -39,7 +39,7 @@ EXPECT ship=labpod part=1 (materials_pod)
 EXPECT ship=labpod part=0 (capsule)
 EXPECT EVA: 'Ash' out of 'labpod' part 0
 EXPECT Board: 'Ash' into 'labpod' part 0
-EXPECT moved 'Low orbit materials study on Kerbin' Materials Pod (2m) -> Kerbal
-EXPECT moved 'Low orbit materials study on Kerbin' Kerbal -> Capsule (2m)
+EXPECT moved 'Low orbit materials study on Kerbin' Materials Pod (2m) -> Staff
+EXPECT moved 'Low orbit materials study on Kerbin' Staff -> Capsule (2m)
 FORBID FAILED
 FORBID error:

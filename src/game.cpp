@@ -533,7 +533,7 @@ void Game::runSuitExperiment(Part *suit, Vehicle *poseVehicle, Part *localPart,
 
 void Game::runExperiment(Kerbal *k) {
     if(k == nullptr || k->parts.empty()) {
-        toast("No experiment: no kerbal");
+        toast("No experiment: no staff member");
         return;
     }
     runSuitExperiment(k->parts[0], k, nullptr, k->name, "");
@@ -559,7 +559,7 @@ void Game::runPodExperiment(Part *pod, const std::string &runner) {
         return;
     }
     if(runner.empty()) {
-        toast("No experiment: no kerbal to run it");
+        toast("No experiment: no staff member to run it");
         return;
     }
     Vehicle *ship = pod->owner;

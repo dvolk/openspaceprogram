@@ -98,6 +98,13 @@ void researchLabDrawUi(Game &g) {
     drawSaveLoad(g);
 }
 
+void staffLoungeDrawUi(Game &g) {
+    setWinOpen(W_StaffLounge, true);
+    drawStaffLounge(g);
+    drawUIReadouts(g);
+    drawSaveLoad(g);
+}
+
 }   // namespace
 
 /* Every scene refreshes every frame; only the scenes that show a world paint it.
@@ -130,12 +137,18 @@ const SceneDef kScenes[(size_t)SceneId::COUNT] = {
       .backdrop = Backdrop::Sky, .wins = kTrackingWins,
       .enter = floorEnter, .exit = floorExit,
       .update = tick, .refresh = refreshWorld, .paint = noPaint,
-      .drawUi = trackingDrawUi, .keys = trackingKeyActions },
+      .drawUi = trackingDrawUi, .keys = popKeyActions },
     { .name = "research", .pilot = false,
       .backdrop = Backdrop::Studio, .wins = kResearchWins,
       .enter = researchLabEnter, .exit = floorExit,
       .update = tick, .refresh = refreshWorld, .paint = noPaint,
-      .drawUi = researchLabDrawUi, .keys = labKeyActions },
+      .drawUi = researchLabDrawUi, .keys = popKeyActions },
+    // The roster view; like the lab, the sim runs but nothing is painted.
+    { .name = "staff", .pilot = false,
+      .backdrop = Backdrop::Studio, .wins = kStaffLoungeWins,
+      .enter = floorEnter, .exit = floorExit,
+      .update = tick, .refresh = refreshWorld, .paint = noPaint,
+      .drawUi = staffLoungeDrawUi, .keys = popKeyActions },
 };
 
 const char *sceneName(SceneId id) { return kScenes[(size_t)id].name; }

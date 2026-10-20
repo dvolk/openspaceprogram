@@ -299,7 +299,7 @@ DISPLAY_BASE = {
     "decoupler":      "Decoupler",
     "docking_port":   "Docking Port",
     "nose_cap":       "Nose Cap",
-    "kerbal":         "Kerbal",
+    "kerbal":         "Staff",
     "cargo":          "Cargo Crate",
     "materials_pod":  "Materials Pod",
     "barometer":      "Barometer",

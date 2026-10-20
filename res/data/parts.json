@@ -962,7 +962,7 @@
     {
       "name": "kerbal",
       "type": "kerbal",
-      "display_name": "Kerbal",
+      "display_name": "Staff",
       "mesh": "meshes/kerbal.obj",
       "texture": "textures/kerbal.png",
       "mass": 87.05,

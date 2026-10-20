@@ -31,8 +31,8 @@ ARGS --ui-click 4100,"labpod > Capsule (2m)##0/EVA##eva0"
 ARGS --ui-click 4600,"labpod > Materials Pod (2m)##1/Take  (to Vela)##pod_take"
 ARGS --ui-click 5100,"labpod > Capsule (2m)##0/Store  (into capsule)##store_Vela"
 EXPECT EVA: 'Vela' out of 'labpod' part 0
-EXPECT moved 'Low orbit materials study on Kerbin' Materials Pod (2m) -> Kerbal
-EXPECT moved 'Low orbit materials study on Kerbin' Kerbal -> Capsule (2m)
+EXPECT moved 'Low orbit materials study on Kerbin' Materials Pod (2m) -> Staff
+EXPECT moved 'Low orbit materials study on Kerbin' Staff -> Capsule (2m)
 # Exactly two transfers: the take and the store. A third would mean a pairing
 # it should not have made.
 CHECK out.count(" moved '") == 2

@@ -753,7 +753,7 @@ void vabLaunch(Game &g) {
         printf("[vab] launch refused: '%s' is kerbal-rooted but has %d parts\n",
                def.name.c_str(), (int)def.parts.size());
         fflush(stdout);
-        g.toast("Launch refused: a kerbal must be a single part");
+        g.toast("Launch refused: a staff member must be a single part");
         return;
     }
     /* Crew chosen in the part window: validate it BEFORE the ship exists. A

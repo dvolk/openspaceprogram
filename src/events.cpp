@@ -447,13 +447,7 @@ void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
 }
 
 /* Same Esc slot as flight's, so rebinding moves both. */
-void trackingKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
-    if(slotFired(Slot::Menu, ksc, kmod, g.binds) && !repeat) {
-        popScene(g);   // the hub is the frame below
-    }
-}
-
-void labKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
+void popKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(slotFired(Slot::Menu, ksc, kmod, g.binds) && !repeat) {
         popScene(g);   // the hub is the frame below
     }

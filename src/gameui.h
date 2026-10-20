@@ -25,6 +25,9 @@ void dumpAtlas(Game &g);
 void dumpMapBasis(Game &g);
 void researchLabEnter(Game &g);
 
+void drawStaffLounge(Game &g);
+void dumpStaff(Game &g);
+
 // A load adopts the game's identity, so the next save lands in its dir.
 void drawSaveLoad(Game &g);
 

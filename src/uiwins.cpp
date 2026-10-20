@@ -228,6 +228,13 @@ const WinDef kWins[W_Count] = {
                   .closable = true, .default_open = true },
         .role = WinRole::Persistent, .inList = false,
     },
+    // --- staff lounge ----------------------------------------------------
+    [W_StaffLounge] = {
+        .name = "Staff Lounge", .label = "Staff Lounge",
+        .opts = { .slot = ui::Slot::MiddleLeft, .initial_size = ImVec2(545.0f, 520.0f),
+                  .default_open = true },
+        .role = WinRole::Root, .inList = false,
+    },
     // --- editor ----------------------------------------------------------
     [W_VabTopBar] = {
         .name = "VAB TopBar", .label = "VAB TopBar",
@@ -277,6 +284,9 @@ static const Win kTrackingWinIds[] = {
 static const Win kResearchWinIds[] = {
     W_ResearchLab, W_ResearchAtlas, W_Settings, W_Controls, W_SaveLoad,
 };
+static const Win kStaffLoungeWinIds[] = {
+    W_StaffLounge, W_Settings, W_Controls, W_SaveLoad,
+};
 
 const WinSet kFlightWins = { kFlightWinIds, sizeof(kFlightWinIds) / sizeof(Win) };
 const WinSet kTitleWins  = { kTitleWinIds,  sizeof(kTitleWinIds)  / sizeof(Win) };
@@ -287,6 +297,8 @@ const WinSet kTrackingWins = { kTrackingWinIds,
                                sizeof(kTrackingWinIds) / sizeof(Win) };
 const WinSet kResearchWins = { kResearchWinIds,
                                sizeof(kResearchWinIds) / sizeof(Win) };
+const WinSet kStaffLoungeWins = { kStaffLoungeWinIds,
+                                  sizeof(kStaffLoungeWinIds) / sizeof(Win) };
 
 bool winInScene(const Game &g, Win w) {
     const WinSet &set = curScene(g).wins;

@@ -198,6 +198,12 @@ static void installHeadlessHooks(Game &game) {
         game.addHook(kHookPreScene, args.atlas_dump_ms, nullptr,
                      [](Game &g) { dumpAtlas(g); });
     }
+    /* --staff-dump: the Staff Lounge as text; reads the roster + world, not the
+       window, so it works from any scene. */
+    if(args.staff_dump_ms >= 0) {
+        game.addHook(kHookPreScene, args.staff_dump_ms, nullptr,
+                     [](Game &g) { dumpStaff(g); });
+    }
     /* --map-dump: the orbit map's plane basis per combo slot. Its phase is
        AFTER the state pass -- sc.refresh is what fills Game::hud.view, so
        dumping before it silently reports a plausible-but-wrong basis. Needs
