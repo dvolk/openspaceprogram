@@ -4075,10 +4075,12 @@ void drawVabUI(Game &g) {
 
     // g.vab.saveName holds a NAME, not a path -- .json and where the file lives
     // are vabSave's business. vabEnter seeds it; load and clear update it.
-    // The load picker: vehicle NAMES from the stock tree and the player's
-    // data-dir ships/ (first listing wins), plus -- when Game Debug's
-    // dev-vehicles switch is on -- the defs marked "testship": true and the dev
-    // tree kFixtureVehicleRoot. Cached, re-read on mtime change or a flip.
+    // The load picker: vehicle NAMES from the stock tree, the player's data-dir
+    // ships/ and -- when Game Debug's dev-vehicles switch is on -- the defs
+    // marked "testship": true plus the dev tree kFixtureVehicleRoot. The roster
+    // is a set of names, so which tree a row opens is shipDefFile's call (vab.cpp:
+    // dev tree first), not this listing's order. Cached, re-read on mtime change
+    // or a flip.
     static std::vector<std::string> vehicleNames;
     static bool vehiclesScanned = false;   // a real mtime could be the epoch; don't rely on that
     static bool vehiclesScannedDev = false;  // the roster depends on the switch

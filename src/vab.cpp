@@ -545,10 +545,11 @@ std::string shipDefStem(const std::string &spec) {
     return s;
 }
 
-// Resolve a ship-def name (or path) to a file. Data-dir ships/ wins over
-// stock res/ships/, and the dev tree (Game Debug's dev-vehicles switch) comes
-// LAST -- a fixture must never shadow a player's or a stock ship. When nothing
-// exists, the stock path is what the loader's error names.
+// Resolve a ship-def name (or path) to a file. The dev tree (Game Debug's
+// dev-vehicles switch) wins, then the data-dir ships/, then stock res/ships/ --
+// so a dev def can stand in for a stock one, which is what a fixture overriding
+// stock content needs. When nothing exists, the stock path is what the loader's
+// error names.
 std::string shipDefFile(const std::string &spec, bool dev_vehicles) {
     if(spec.find('/') != std::string::npos
        || spec.find('\\') != std::string::npos) {
@@ -559,15 +560,13 @@ std::string shipDefFile(const std::string &spec, bool dev_vehicles) {
     const std::string stem = shipDefStem(spec);
     if(stem.empty()) { return std::string(); }
     std::error_code ec;
-    const std::string user = datadir::ships() + "/" + stem + ".json";
-    if(std::filesystem::is_regular_file(user, ec)) { return user; }
-    const std::string stock = resdir::path("res/ships/" + stem + ".json");
-    if(std::filesystem::is_regular_file(stock, ec)) { return stock; }
     if(dev_vehicles) {
         const std::string dev = resdir::path(kFixtureVehicleRoot + "/" + stem + ".json");
         if(std::filesystem::is_regular_file(dev, ec)) { return dev; }
     }
-    return stock;
+    const std::string user = datadir::ships() + "/" + stem + ".json";
+    if(std::filesystem::is_regular_file(user, ec)) { return user; }
+    return resdir::path("res/ships/" + stem + ".json");
 }
 
 } // namespace
