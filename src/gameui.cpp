@@ -2103,8 +2103,8 @@ static int shade8(float v) {
    -- the Staff Lounge, a capsule's seat rows, the rows of walkers in boarding
    range, the VAB's seat dropdown -- so all four fill and outline it the same
    way. The outline is a neutral ink rather than a darkened version of the
-   fill: the fills span the wheel, so a hue-matched rim would be a second
-   colour nobody asked for. */
+   fill: the fills run most of the colour wheel (crew.cpp: kKerbalHueArc), so
+   a hue-matched rim would be a second colour nobody asked for. */
 static void shadeDot(ImDrawList *dl, const ImVec2 &c, float r,
                      const glm::vec3 &comp) {
     dl->AddCircleFilled(c, r, IM_COL32(shade8(comp.r), shade8(comp.g),
@@ -2465,19 +2465,20 @@ void drawPartWindows(Game &g) {
                                        >= def->crew_capacity);
                     const bool boardable = g.canBoard(k, ship, part);
                     ImGui::PushID(k);
-                    /* A walker wears the same shade as a seated one: the root
-                       part of a Kerbal vehicle IS the suit (eva.h: profile()),
-                       so the seat rows' helper covers this row too. Same
-                       two-space indent as those rows, so the dot costs no
-                       layout. */
+                    /* A walker wears the same shade as a seated one, and
+                       eva.h: profile() is what owns that identity -- the suit
+                       part is the walker's root, but that is eva.h's fact to
+                       keep. Same two-space indent as the seat rows, so the dot
+                       costs no layout. */
+                    const KerbalProfile *who = k->profile();
                     const float dotr = ImGui::GetFontSize() * 0.28f;
                     const ImVec2 at = ImGui::GetCursorScreenPos();
                     shadeDot(ImGui::GetWindowDrawList(),
                              ImVec2(at.x + dotr,
                                     at.y + ImGui::GetTextLineHeight() * 0.5f),
                              dotr,
-                             suitComplexion(k->parts.empty() ? nullptr
-                                                             : k->parts[0]));
+                             who != nullptr ? who->complexion()
+                                            : kKerbalBaseGreen);
                     ImGui::Text("  %s (%.1f m)%s", k->name.c_str(), dist,
                                 full ? "  (capsule full)" : "");
                     ImGui::BeginDisabled(!boardable);
@@ -4100,6 +4101,16 @@ void drawVabPartWindow(Game &g) {
             snprintf(lbl, sizeof(lbl), "Seat %d##s%d", slot + 1, slot);
             ImGui::SetNextItemWidth(-1.0f);
             if(uiBeginCombo(lbl, preview)) {
+                /* The shade dot needs a gutter of its own. A combo popup sizes
+                   itself to its WIDEST row, so a dot pinned to the row's right
+                   edge lands on that row's last glyph -- and a dot in front of
+                   the name would have to rename the row, which is what
+                   --ui-click addresses ("##Combo_00/Bram", #326). Widening the
+                   rows' left padding moves the text, not the label. */
+                const float dotr = ImGui::GetFontSize() * 0.28f;
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                                    ImVec2(dotr * 2.6f,
+                                           ImGui::GetStyle().FramePadding.y));
                 if(ImGui::Selectable("Empty", cur == 0)) {
                     vabAssignSeat(g, bp->id, slot, 0);
                 }
@@ -4133,20 +4144,17 @@ void drawVabPartWindow(Game &g) {
                             vabAssignSeat(g, bp->id, slot, kp.id);
                         }
                         if(seated) { ImGui::EndDisabled(); }
-                        /* The dot goes at the row's RIGHT edge on purpose: the
-                           label is what --ui-click addresses (e2e names these
-                           rows "##Combo_00/Bram"), so a dot in front of the
-                           name would have to rename the row out from under the
-                           suite. Drawn after Selectable, whose rect it needs. */
-                        const float dotr = ImGui::GetFontSize() * 0.28f;
+                        /* Drawn after Selectable, whose rect it needs: the dot
+                           sits in the left gutter the FramePadding push bought,
+                           clear of the name at both ends of the popup. */
                         const ImVec2 lo = ImGui::GetItemRectMin();
                         const ImVec2 hi = ImGui::GetItemRectMax();
                         shadeDot(ImGui::GetWindowDrawList(),
-                                 ImVec2(hi.x - dotr - ImGui::GetStyle().FramePadding.x,
-                                        (lo.y + hi.y) * 0.5f),
+                                 ImVec2(lo.x + dotr, (lo.y + hi.y) * 0.5f),
                                  dotr, kp.complexion());
                     }
                 }
+                ImGui::PopStyleVar();   // the dot's FramePadding gutter
                 ImGui::EndCombo();
             }
         }

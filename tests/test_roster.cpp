@@ -133,26 +133,37 @@ int main() {
         for(uint64_t id = 1; id <= 64; id++) {
             const glm::vec3 c = kerbal_complexion(id);
             /* Never a black hole, never blown out: partsShader.fs caps light at
-               1.0, so a channel over 1 here is a channel the sun flattens. */
+               1.0, so a channel over 1 here is a channel the sun flattens. The
+               bounds sit outside what the dials actually produce -- brightest
+               channel measures 0.44..0.83 over ids 1..1024 -- so they catch a
+               palette that drifts neon or soot without pinning the current one
+               to its own noise. */
             const float hi = std::max(c.r, std::max(c.g, c.b));
-            CHECK(hi >= 0.45f && hi <= 0.92f);
+            CHECK(hi >= 0.40f && hi <= 0.92f);
             /* The tint is defined as the quotient, and the shader only ever sees
-               the quotient, so the round trip is the contract. */
+               the quotient, so the round trip is the contract. The bounds are
+               the shader's tolerance: the palette measures 0.42..2.70 over ids
+               1..4096, and a multiplier much past that means a channel the
+               texture cannot supply (crew.cpp: kerbal_tint). */
             const glm::vec3 t = kerbal_tint(id);
-            CHECK(t.r > 0.05f && t.g > 0.05f && t.b > 0.05f);
-            CHECK(t.r < 4.5f && t.g < 4.5f && t.b < 4.5f);
+            CHECK(t.r > 0.25f && t.g > 0.25f && t.b > 0.25f);
+            CHECK(t.r < 3.5f && t.g < 3.5f && t.b < 3.5f);
             CHECK(std::abs(t.r * kKerbalBaseGreen.r - c.r) < 1e-5f);
             CHECK(std::abs(t.g * kKerbalBaseGreen.g - c.g) < 1e-5f);
             CHECK(std::abs(t.b * kKerbalBaseGreen.b - c.b) < 1e-5f);
         }
 
         /* A suit with no chroma is indistinguishable from concrete, so the
-           half-green mix has to keep SOME colour in it. Scoped to 16 ids, not
-           64, because the mix is honest about one cost: a hue near magenta is
-           the base green's complement and cancels toward grey (crew.h), which
-           the phi draw does not reach until past the shipped cast. Widening
-           this loop is the point at which the hue arc has to stop short. */
-        for(uint64_t id = 1; id <= 16; id++) {
+           green mix has to keep SOME colour in it. At mix 0.35 an unarc'd hue
+           put id 3 -- a shipped kerbal -- on #7a7473 at chroma 0.056, so the
+           hue draw stops short of the green's complementary band (crew.cpp:
+           kKerbalHueArc). Scoped to 64 ids because that arc is 12 degrees short
+           of the complement, not clear of it: the worst shade measures 0.212
+           through id 64, 0.155 through 256, 0.102 through 1024. Widening this
+           loop past ~256 is the point at which the arc has to become a band
+           skipped around the complement -- the trade-off is written out in
+           crew.cpp next to the dial. */
+        for(uint64_t id = 1; id <= 64; id++) {
             const glm::vec3 c = kerbal_complexion(id);
             const float hi = std::max(c.r, std::max(c.g, c.b));
             const float lo = std::min(c.r, std::min(c.g, c.b));

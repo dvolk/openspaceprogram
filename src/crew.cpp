@@ -47,32 +47,44 @@ glm::vec3 hsv_rgb(float h, float s, float v) {
 }
 }
 
-/* Three dials on the cast's look, and only these:
+/* Four dials on the cast's look, and only these:
    kKerbalGreenMix  how much of the species green every suit wears -- the dial
                     for "varied" against "all kerbal-green";
+   kKerbalHueArc    how much of the colour wheel that hue may draw from;
    sat, val below   how colourful, how bright.
-   Hue is left to run the whole wheel: it is what tells two suits apart, so
-   narrowing it is the one change that costs separation.
+   Hue is what tells two suits apart, so it gets as much of the wheel as the
+   mix can survive -- which is the whole question, because the mix has a cost
+   and the arc is what pays it.
 
-   A LERP weight, not a scale: 0 is the raw picked hue (reads as candy), 1 is
-   everyone in the texture's own green (reads as one clone). The mix is what
-   makes a crew look like one species with different complexions -- sage and
-   khaki, not neon. It has one known cost, and at 0.35 it reaches the shipped
-   cast: a hue near magenta is the green's COMPLEMENT, so the mix cancels it
-   toward grey -- id 3 (Corvin) lands on #7a747a, chroma 0.06, and id 11 joins
-   it. That is what the chroma floor in tests/test_roster.cpp is for, and it is
-   red right now. The fix is NOT to raise the mix back: stopping the hue draw
-   short of the complementary band costs nothing -- hue = 0.8 * unit(...) keeps
-   every shade of a 64-kerbal cast above 0.21 chroma and measures BETTER on
-   separation (0.143 for the cast against 0.128 with the whole wheel). */
+   The mix is a LERP weight, not a scale: 0 is the raw picked hue (reads as
+   candy), 1 is everyone in the texture's own green (reads as one clone). It is
+   what makes a crew look like one species with different complexions -- sage
+   and khaki, not neon. Its cost: a hue near the green's COMPLEMENT cancels
+   toward grey. The green sits at 120 degrees, so the danger band is centred on
+   300 and runs roughly 269-332 across these sat/val ranges. Given the whole
+   wheel at 0.35, id 3 (Corvin) lands on #7a7473 at chroma 0.056 -- a suit the
+   colour of concrete -- which is what the chroma floor in
+   tests/test_roster.cpp refuses.
+
+   The arc stops the draw at 288 degrees, which is 12 degrees SHORT of the
+   complement rather than clear of the band, so it buys range rather than
+   immunity: worst chroma measures 0.212 through id 64, 0.155 through 256,
+   0.102 through 1024, because {id*phi} is dense and walks back over the edge
+   (id 809). Skipping a band CENTRED on 300 instead -- hue = frac(0.933 + 0.8 *
+   unit(id*phi)) -- holds 0.24 out past id 4096 and separates the cast better
+   (0.17 against 0.14). It was not taken because it also lifts the cast's
+   WORST chroma from 0.23 to 0.48, which is the candy level the player backed
+   away from. Past a couple hundred named kerbals that trade is worth
+   revisiting; until then the floor is scoped to 64 ids, not to infinity. */
 const float kKerbalGreenMix = 0.35f;
+const float kKerbalHueArc = 0.8f;
 
 /* The three picks come from a Kronecker sequence -- the fractional parts of id
    times three irrationals. Roster ids are small and consecutive, and a hash of
    them still lands some pairs a hair apart in every channel; this sequence
-   spreads consecutive integers near-optimally, so 8 kerbals leave 0.10 of
-   channel separation and a 32-kerbal cast still leaves 0.05. Being pure
-   arithmetic, a shade is reproducible from the id alone: nothing to carry
+   spreads consecutive integers near-optimally, so 8 kerbals leave 0.14 of
+   channel separation, a 32-kerbal cast 0.06 and a 64-kerbal one 0.02. Being
+   pure arithmetic, a shade is reproducible from the id alone: nothing to carry
    through the roster file, the save, or a rebuilt world -- though only within
    one -march setting, since the arithmetic below contracts to an FMA on avx2
    targets. The float32 result never changes the printed byte (checked for ids
@@ -88,7 +100,7 @@ glm::vec3 kerbal_complexion(uint64_t id) {
     if(id == 0) { return kKerbalBaseGreen; }   // anonymous: the texture's own green
     const double d = (double)id;
     auto unit = [](double x) { return x - std::floor(x); };   // 0..1
-    const float hue = (float)unit(d * std::numbers::phi_v<double>);
+    const float hue = kKerbalHueArc * (float)unit(d * std::numbers::phi_v<double>);
     const float sat = 0.45f + 0.40f * (float)unit(d * std::numbers::sqrt2_v<double>);
     const float val = 0.55f + 0.30f * (float)unit(d * std::numbers::sqrt3_v<double>);
     const glm::vec3 pick = hsv_rgb(hue, sat, val);
