@@ -56,3 +56,7 @@ utils/parts_wiki/
 
 # bear -- make
 compile_commands.json
+
+# Vim swap files (one got committed by a broad git add)
+*.swp
+.*.swp
