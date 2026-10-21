@@ -1,0 +1,17 @@
+# The fit latches on the FOCUS, which is a body AND a ship. Two ships around
+# the same Kerbin have different orbits, so F6 from one to the other must
+# refit: a body-only latch would keep the first ship's framing and push the
+# second ship's apoapsis off the window.
+NAME map-fit-switch-same-body
+CLAIM Switching ships around the same body refits the map to the new orbit.
+KIND invariant
+ARGS --timeout 6 --startship racer,res/ships/racer.json,Kerbin,inertial-orbit
+ARGS --startship probe,res/ships/racer.json,Kerbin,high-orbit
+ARGS --sim-press 2500,50,F6
+EXPECT Active ship 2 of 2: probe
+FORBID error:
+CHECK re.search(r"\[mapfit\] Kerbin: body 600000 m, fit 725000 m -> 7250\.0 m/px", out)
+CHECK re.search(r"\[mapfit\] Kerbin: body 600000 m, fit 1100000 m -> 11000\.0 m/px", out)
+# Exactly the two fits: the opening one and the switch. A latch that re-fires
+# every draw would fit the same ship hundreds of times here.
+CHECK len(re.findall(r"\[mapfit\]", out)) == 2

@@ -264,7 +264,7 @@ struct VabState {
    on the defaults. map.plane is NOT just chrome: ShipView's Inc/LAN/LPe are
    measured in it (see ShipView), so the readouts follow the picture. */
 struct MapState {
-    // Meters per pixel. A boot seed only: the first draw fits it to fit_body.
+    // Meters per pixel. A boot seed only: the first draw fits it to the focus.
     float scale = kMapMinScale;
     // RefPlaneMode (frame.h). ImGui::Combo needs an int*.
     int plane = kRefEquator;
@@ -272,11 +272,17 @@ struct MapState {
     ImVec2 pan = ImVec2(0.0f, 0.0f);
     // Right-click cycles chrome: 0 = full window, 1 = bare map, 2 = no chrome.
     int mode = 0;
-    /* The body this view was fitted to: its radius sets the scale, so
-       arriving at Earth or Gilly opens at the same screen size as Kerbin.
-       Compared only, never dereferenced; clearEphemeralState nulls it with
-       the world it belongs to, so the next draw re-fits. */
+    /* The body and the ship this view was last fitted to, which latch the fit:
+       it only re-runs when the focus changes -- a new body (SOI crossing) or a
+       new ship (F6, a launch), even around the same body -- or "Reset view"
+       forces it, so a maneuver does not drag the camera. The scale itself comes
+       from that ship's orbit, floored at the body's radius: arriving at Earth
+       or Gilly opens at the same screen size as Kerbin, and a low orbit opens
+       framed on the orbit. Both are compared only, never dereferenced;
+       clearEphemeralState nulls them with the world they belong to, so the next
+       draw re-fits. */
     TerrainBody *fit_body = nullptr;
+    Vehicle *fit_ship = nullptr;
     /* The player has wheeled or panned since the last fit. A focus change
        then leaves their framing alone -- the fit is the opening view, and
        "Reset view" asks for it back. */

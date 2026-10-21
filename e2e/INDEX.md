@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 245 |
+| `invariant` | a behaviour or a player route the game must keep | 248 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 30 |
 | `harness` | CLI/test-engine plumbing, not game spec | 11 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **290** |
+| | **total** | **293** |
 
 There is no full battery: the runner takes at most 5 cases per
 invocation and starts a 10-minute cooldown. Select by number, name or
@@ -273,7 +273,7 @@ path (a whole subject is usually too wide), e.g.
 | `ui/344-staff-lounge.txt` | invariant | The Staff Lounge opens from the hub, reports where each staff member is, and returns. |
 | `ui/345-quit-title-stops-warp.txt` | invariant | Quitting to the title drops the flight's warp, so the title screen is not simulating. |
 
-## render (52)
+## render (55)
 
 | case | kind | pins |
 |---|---|---|
@@ -326,9 +326,12 @@ path (a whole subject is usually too wide), e.g.
 | `render/205-plane-overlay-while-flying.txt` | invariant | A flying suborbital ship still gets the plane overlay. |
 | `render/206-orbit-plane-keybind.txt` | invariant | F3 flips the same flag as the Settings checkbox. |
 | `render/313-postfx-gamma.txt` | invariant | Gamma post-fx produces the expected output. |
-| `render/350-map-fit-earth.txt` | invariant | The orbital map's initial zoom is the focus body's radius at 100 px. |
+| `render/350-map-fit-earth.txt` | invariant | The orbital map's initial zoom is the ship's apoapsis at 100 px. |
 | `render/351-map-fit-small-body.txt` | invariant | The fit also zooms IN for a body far smaller than Kerbin. |
-| `render/352-map-fit-follows-focus.txt` | invariant | A focus change refits the map, and Kerbin's opening zoom is unchanged. |
+| `render/352-map-fit-follows-focus.txt` | invariant | A focus change refits the map to the new ship's orbit. |
+| `render/353-map-fit-landed-body-floor.txt` | invariant | A landed ship opens framed on the body's disk. |
+| `render/354-map-fit-open-conic.txt` | invariant | An escaping ship's map opens framed on its current radius. |
+| `render/355-map-fit-switch-same-body.txt` | invariant | Switching ships around the same body refits the map to the new orbit. |
 
 ## harness (12)
 

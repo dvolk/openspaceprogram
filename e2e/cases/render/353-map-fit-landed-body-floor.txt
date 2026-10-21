@@ -1,0 +1,15 @@
+# A ship sitting on the launch pad has no orbit worth framing. Its rotation-only
+# state is an ellipse that grazes the surface -- apoapsis at the pad, periapsis
+# deep inside the body -- so the fit lands on Kerbin's 600 km disk: 6002.6
+# m/pixel, within 0.05% of the old flat 6000 the map was tuned at. The exact
+# figure is the launch site's rotation speed; what must not move is that the
+# BODY, not an orbit, sets the zoom.
+NAME map-fit-landed-body-floor
+CLAIM A landed ship opens framed on the body's disk.
+KIND invariant
+ARGS --timeout 4 --startship racer,res/ships/racer.json,Kerbin,pad
+FORBID error:
+CHECK re.search(r"\[mapfit\] Kerbin: body 600000 m, fit 600264 m -> 6002\.6 m/px", out)
+# The fit is the view a focus opens with, not a per-frame camera: one line for
+# the whole run, so a latch that re-fires every draw fails here.
+CHECK len(re.findall(r"\[mapfit\]", out)) == 1

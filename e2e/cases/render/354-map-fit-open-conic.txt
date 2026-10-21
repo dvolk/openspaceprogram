@@ -1,0 +1,9 @@
+# An escaping ship has no apoapsis (-1 in the elements), so the fit falls back
+# to the radius it is at now. That is self-consistent with the open arc, which
+# the map already truncates at the view edge rather than at a fixed distance.
+NAME map-fit-open-conic
+CLAIM An escaping ship's map opens framed on its current radius.
+KIND invariant
+ARGS --timeout 4 --startship racer,res/ships/racer.json,Kerbin,escape
+FORBID error:
+CHECK re.search(r"\[mapfit\] Kerbin: body 600000 m, fit 685000 m -> 6850\.0 m/px", out)

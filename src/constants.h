@@ -129,15 +129,18 @@ inline constexpr double kSurfaceModeAlt = 30e3;
 inline constexpr float kMapMinScale = 100.0f;          // 10^2
 inline constexpr float kMapMaxScale = 3.16227766e10f;  // 10^10.5
 
-/* The map's initial and "Reset view" zoom, expressed as the focus body's
-   radius in pixels: every body opens the same size on screen, whether it is
-   600 km Kerbin, 6371 km Earth or 13 km Gilly. 100 reproduces the old flat
-   6000 m/pixel default exactly for Kerbin (600 000 / 100), so the look the
-   map was tuned in is unchanged; only other bodies move. Bodies under 10 km
-   cannot reach it: kMapMinScale is the wheel's floor, and the fit clamps.
+/* The map's initial and "Reset view" zoom, expressed as the RADIUS of what
+   the view is fitted to, in pixels. That radius is the ship's apoapsis while
+   its conic is elliptic and its current radius once the conic opens (ecc >= 1:
+   escaping, or a degenerate radial state), never less than the focus body's
+   own radius -- so a low orbit opens framed on the orbit and a ship on the pad
+   opens framed on the planet. Kerbin on the pad lands within a few hundred
+   metres of the old flat 6000 m/pixel the map was tuned at (its rotation puts
+   the apoapsis a hair above the surface). Extents past kMapMaxScale or under
+   kMapMinScale clamp to the wheel's bounds instead.
    Changes: what the map looks like on arrival at a body and after Reset view.
-   Where: fitMapView (gameui.cpp), MapState::fit_body (game.h). */
-inline constexpr float kMapBodyRadiusPx = 100.0f;
+   Where: fitMapView (gameui.cpp), MapState::fit_body/fit_ship (game.h). */
+inline constexpr float kMapFitRadiusPx = 100.0f;
 
 /* Ascending / descending node marker colors, linear-ish sRGB [0,1] per
    channel. Kept as bare channels because the two places that draw them want

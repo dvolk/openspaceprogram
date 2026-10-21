@@ -371,6 +371,10 @@ void Game::dropVehicleRefs(Vehicle *v) {
        this, so nulling it here is what keeps select_vehicle from releasing control
        back to a corpse. */
     if(ship == v) { ship = nullptr; }
+    /* The map's fit latch holds v too. It is only ever compared, never read,
+       but a Vehicle allocated later can land on v's block and read back as
+       "same ship", which silently skips the refit a focus change owes us. */
+    if(map.fit_ship == v) { map.fit_ship = nullptr; }
 }
 
 /* The one way a live Vehicle dies (#297).
@@ -1193,8 +1197,11 @@ void Game::clearEphemeralState() {
     pose_jitter_armed = false;
     pose_jitter_prev_ship = nullptr;
     pose_jitter_prev_frame = nullptr;
-    // The body the map was fitted to dies with the world; null re-fits on next draw.
+    /* What the map was fitted to dies with the world; nulling re-fits on the
+       next draw. Both, or a recycled allocation at the same address could read
+       as "same focus" and leave the dead framing in place. */
     map.fit_body = nullptr;
+    map.fit_ship = nullptr;
     // The snapshot describes a ship that is about to die; updateShipView
     // re-takes it on the next state pass (render.cpp:78 nulls it for no ship).
     hud.view.ship = nullptr;

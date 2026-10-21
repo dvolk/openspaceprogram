@@ -2753,22 +2753,47 @@ static void drawMapNodes(OrbitMap &map, ImDrawList *dl, const OrbitElements &o,
     }
 }
 
-/* Fit a map view to a body: its disk is kMapBodyRadiusPx pixels of radius and the pan
-   recentres. Both maps call it every draw with their focus body, which makes it a no-op
-   unless that body changed; "Reset view" forces it. A framing the player has wheeled or
-   panned is theirs to keep -- the fit is only the view a body opens with. */
-static void fitMapView(MapState &m, TerrainBody &body, bool force = false) {
+/* Fit a map view to a body and the ship orbiting it: the fit radius is the
+   orbit's farthest reach -- apoapsis on an elliptic conic, the current radius
+   once the conic is open (ecc >= 1: escaping, or a degenerate radial state),
+   floored at the body's own radius -- and that radius is kMapFitRadiusPx
+   pixels. So a low orbit opens framed on the orbit and a landed ship opens
+   framed on the planet.
+   Both maps call it every draw with their focus, which makes it a no-op unless
+   the focus changed: a new body or a new ship refits, "Reset view" forces it.
+   A framing the player has wheeled or panned is theirs to keep -- the fit is
+   only the view a focus opens with, and an orbit that changes under a maneuver
+   does not move the camera. */
+static void fitMapView(MapState &m, TerrainBody &body, const ShipView *view,
+                       bool force = false) {
+    Vehicle *ship = view ? view->ship : nullptr;
+    // The elements being fitted must describe an orbit around the body the
+    // caller is framing, or the two maps' focus and snapshot can drift apart.
+    assert(!ship || ship->m_parent == &body);
     if(!force) {
-        if(m.fit_body == &body) { return; }
-        if(m.posed) { m.fit_body = &body; return; }
+        if(m.fit_body == &body && m.fit_ship == ship) { return; }
+        if(m.posed) {
+            m.fit_body = &body;
+            m.fit_ship = ship;
+            return;
+        }
     }
     assert(body.radius > 0.0f);
-    m.scale = std::clamp(body.radius / kMapBodyRadiusPx, kMapMinScale, kMapMaxScale);
+    double extent = body.radius;
+    if(view) {
+        const OrbitElements &o = view->o;
+        // apoapsis is -1 for a non-elliptic conic; its radius is the reach
+        // that means there, and the open arc is truncated at the view edge.
+        const double reach = o.ecc < 1.0 ? o.apoapsis : o.distance;
+        if(reach > extent) { extent = reach; }
+    }
+    m.scale = std::clamp((float)(extent / kMapFitRadiusPx), kMapMinScale, kMapMaxScale);
     m.pan = ImVec2(0.0f, 0.0f);
     m.fit_body = &body;
+    m.fit_ship = ship;
     m.posed = false;
-    printf("[mapfit] %s: radius %.0f m -> %.1f m/px\n",
-           body.name.c_str(), body.radius, m.scale);
+    printf("[mapfit] %s: body %.0f m, fit %.0f m -> %.1f m/px\n",
+           body.name.c_str(), body.radius, extent, m.scale);
     fflush(stdout);
 }
 
@@ -2808,11 +2833,11 @@ void drawUIMap(Game &g) {
            ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
             map_mode = (map_mode + 1) % 3;
         }
-        /* The focus body, fitted before the trajectory sampling below reads map_scale
-           for its extent. A ship that changed SOI arrives at a zoom that fits the new
-           body instead of keeping the old one. */
+        /* The focus, fitted before the trajectory sampling below reads map_scale
+           for its extent. A ship that changed SOI, or a switch to another ship,
+           arrives at a zoom that fits what is actually being looked at. */
         TerrainBody *focus = ship->m_parent;
-        fitMapView(g.map, *focus);
+        fitMapView(g.map, *focus, &g.hud.view);
         const float avail_w = ImGui::GetContentRegionAvail().x;
         const float avail_h = ImGui::GetContentRegionAvail().y;
         const float isp = ImGui::GetStyle().ItemSpacing.y;
@@ -2958,7 +2983,7 @@ void drawUIMap(Game &g) {
             ImGui::PopItemWidth();
             ImGui::SameLine();
             if(ImGui::Button("Reset view")) {
-                fitMapView(g.map, *focus, true);
+                fitMapView(g.map, *focus, &g.hud.view, true);
             }
         }
 
@@ -4696,8 +4721,10 @@ void drawTrackingMap(Game &g) {
         // The focus body: the ship's parent when there is one, else home (a new game before
         // its first launch). Ship-specific bits are absent then.
         TerrainBody *focus = ship ? ship->m_parent : g.home;
-        // Same fit as the flight map: the body, not Kerbin's zoom, sets the scale.
-        fitMapView(g.map, *focus);
+        // Same fit as the flight map: the orbit's reach around the body, not a
+        // fixed zoom. With no ship, g.hud.view describes a dead vessel, so the
+        // fit falls back to the body's own disk.
+        fitMapView(g.map, *focus, ship ? &g.hud.view : nullptr);
 
         // Empty with no ship.
         bool closed = false;
