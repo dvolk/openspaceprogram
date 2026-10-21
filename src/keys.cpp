@@ -212,7 +212,7 @@ const char *slotLabel(Slot s) {
         case Slot::ToggleFreeCam:  return "Toggle free camera";
         case Slot::CycleTarget:    return "Cycle orbit target";
         case Slot::ToggleWindows:  return "Toggle windows";
-        case Slot::DebugInfo:      return "Debug info";
+        case Slot::DebugInfo:      return "Game Debug";
         case Slot::Telemetry:      return "Telemetry plots";
         case Slot::NextShip:       return "Next ship";
         case Slot::ToggleEva:      return "Toggle EVA";

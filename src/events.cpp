@@ -373,17 +373,6 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
             g.surfmap.compute_requested = true;
         }
     }
-    /* F1 / F2: diagnostic overlays. Gated on the scene owning the window. */
-    if(slotFired(Slot::DebugInfo, ksc, kmod, g.binds)) {
-        if(!repeat && winInScene(g, W_Debug)) {
-            setWinOpen(W_Debug, !winOpen(W_Debug));
-        }
-    }
-    if(slotFired(Slot::Telemetry, ksc, kmod, g.binds)) {
-        if(!repeat && winInScene(g, W_Telemetry)) {
-            setWinOpen(W_Telemetry, !winOpen(W_Telemetry));
-        }
-    }
     if(slotFired(Slot::ResetWindows, ksc, kmod, g.binds)) {
         ui::ResetGui();
     }
@@ -584,6 +573,21 @@ void poll_events(Game &g) {
             if(slotFired(Slot::ToggleWindows, ksc, kmod, g.binds)) {
                 if(!ev.key.repeat) {
                     g.toggle_windows();
+                }
+            }
+            /* F1 / F2: diagnostic overlays. Scene-neutral because GAME DEBUG is
+               in every scene set -- its dev options (the Load sheet's save
+               roots, save.h) are needed before a game exists, and F1 is how you
+               reach them. Still gated on the scene owning the window, which is
+               what keeps F2 (flight-only TELEMETRY) a no-op outside flight. */
+            if(slotFired(Slot::DebugInfo, ksc, kmod, g.binds)) {
+                if(!ev.key.repeat && winInScene(g, W_Debug)) {
+                    setWinOpen(W_Debug, !winOpen(W_Debug));
+                }
+            }
+            if(slotFired(Slot::Telemetry, ksc, kmod, g.binds)) {
+                if(!ev.key.repeat && winInScene(g, W_Telemetry)) {
+                    setWinOpen(W_Telemetry, !winOpen(W_Telemetry));
                 }
             }
             /* F5/F9 are scene-neutral. gameRunning gates the no-game states: a

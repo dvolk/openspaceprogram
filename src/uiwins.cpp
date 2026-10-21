@@ -47,10 +47,12 @@ const WinDef kWins[W_Count] = {
         .role = WinRole::Persistent, .inList = false,
     },
     [W_Debug] = {
-        .name = "Game Debug Info", .label = "Game Debug Info",
+        .name = "Game Debug", .label = "Game Debug",
         .opts = { .slot = ui::Slot::TopCenter, .closable = true,
                   .default_open = false },
-        // F1: flight-only diagnostics overlay.
+        // F1: the diagnostics overlay AND the dev-only options (save.h roots).
+        // In every scene set: the options it holds (load a fixture save) are
+        // needed before a game exists, and its readouts skip a missing ship.
         .role = WinRole::Persistent, .inList = false,
     },
     [W_Telemetry] = {
@@ -265,27 +267,29 @@ static const Win kFlightWinIds[] = {
 // The set, not a guard in each window's body, is what hides the flight
 // readouts here.
 static const Win kTitleWinIds[] = {
-    W_TitleMenu, W_Readme, W_NewGame, W_Settings, W_Controls, W_SaveLoad,
+    W_TitleMenu, W_Readme, W_NewGame, W_Settings, W_Controls, W_Debug,
+    W_SaveLoad,
 };
 // The VAB has no menu of its own.
 static const Win kVabWinIds[] = {
-    W_VabTopBar, W_Staging, W_Settings, W_Controls, W_SaveLoad,
+    W_VabTopBar, W_Staging, W_Settings, W_Controls, W_Debug, W_SaveLoad,
 };
 // No flight readouts -- the top bar is career state, not a vessel's.
 static const Win kSpaceCenterWinIds[] = {
     W_SpaceCenterMenu, W_SpaceCenterTopBar, W_FlightSummary, W_Settings,
-    W_Controls, W_SaveLoad,
+    W_Controls, W_Debug, W_SaveLoad,
 };
 // The map + ship list are copies of the flight windows, free to diverge.
 static const Win kTrackingWinIds[] = {
-    W_TrackingMap, W_TrackingShipList, W_Settings, W_Controls,
+    W_TrackingMap, W_TrackingShipList, W_Settings, W_Controls, W_Debug,
     W_SaveLoad,
 };
 static const Win kResearchWinIds[] = {
-    W_ResearchLab, W_ResearchAtlas, W_Settings, W_Controls, W_SaveLoad,
+    W_ResearchLab, W_ResearchAtlas, W_Settings, W_Controls, W_Debug,
+    W_SaveLoad,
 };
 static const Win kStaffLoungeWinIds[] = {
-    W_StaffLounge, W_Settings, W_Controls, W_SaveLoad,
+    W_StaffLounge, W_Settings, W_Controls, W_Debug, W_SaveLoad,
 };
 
 const WinSet kFlightWins = { kFlightWinIds, sizeof(kFlightWinIds) / sizeof(Win) };

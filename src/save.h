@@ -919,12 +919,39 @@ inline std::string gameDisplayName(const std::string &dirName) {
     return dirName.substr(kStamp + 1);
 }
 
-// One listed game: `dirName` is the identity the slots live under, `name` the
-// display label (duplicates get their stamp appended).
+// One listed game: `root`/`dirName` is where its slots live, `name` the display
+// label (duplicates get their stamp appended).
 struct GameEntry {
     std::string dirName;
     std::string name;
+    std::string root;   // the base this game was found under
 };
+
+// Duplicate labels get their stamp appended. Count from dirName
+// (immutable), not name: appending as we go would un-duplicate the entries
+// already labelled. One pass over the FULL list, so the multi-root overload
+// below also sees cross-root collisions -- and it disambiguates those by the
+// ROOT, since dir names are unique only WITHIN one base.
+inline void stampDuplicateNames(std::vector<GameEntry> &games) {
+    for(size_t i = 0; i < games.size(); i++) {
+        const std::string orig = gameDisplayName(games[i].dirName);
+        int n = 0;
+        for(const GameEntry &e : games) {
+            if(gameDisplayName(e.dirName) == orig) { n++; }
+        }
+        if(n <= 1) { continue; }
+        const std::string &dn = games[i].dirName;
+        // A minted game dir carries its own stamp, so show that. A hand-named
+        // one has none: show which root it came from.
+        std::string stamp = games[i].root;
+        if(dn.size() > 16 && gameDisplayName(dn).size() == dn.size() - 16) {
+            stamp = dn.substr(0, 4) + "-" + dn.substr(4, 2) + "-" +
+                    dn.substr(6, 2) + " " + dn.substr(9, 2) + ":" +
+                    dn.substr(11, 2);
+        }
+        games[i].name += " (" + stamp + ")";
+    }
+}
 
 // Games under base: subdirectories holding at least one slot, sorted by dirName
 // (chronological). A legacy flat save directly under base is NOT a game.
@@ -938,33 +965,39 @@ inline std::vector<GameEntry> list_games(const std::string &base) {
         if(!fs::is_directory(entry)) { continue; }
         const std::string dirName = entry.path().filename().string();
         if(list_saves(entry.path().string()).empty()) { continue; }
-        games.push_back({dirName, gameDisplayName(dirName)});
+        games.push_back({dirName, gameDisplayName(dirName), base});
     }
     std::sort(games.begin(), games.end(),
               [](const GameEntry &a, const GameEntry &b) {
                   return a.dirName < b.dirName;
               });
-    // Duplicate labels get their stamp appended. Count from dirName
-    // (immutable), not name: appending as we go would un-duplicate the entries
-    // already labelled.
-    for(size_t i = 0; i < games.size(); i++) {
-        const std::string orig = gameDisplayName(games[i].dirName);
-        int n = 0;
-        for(const GameEntry &e : games) {
-            if(gameDisplayName(e.dirName) == orig) { n++; }
-        }
-        if(n <= 1) { continue; }
-        const std::string &dn = games[i].dirName;
-        std::string stamp = dn;
-        if(dn.size() > 16 && gameDisplayName(dn).size() == dn.size() - 16) {
-            stamp = dn.substr(0, 4) + "-" + dn.substr(4, 2) + "-" +
-                    dn.substr(6, 2) + " " + dn.substr(9, 2) + ":" +
-                    dn.substr(11, 2);
-        }
-        games[i].name += " (" + stamp + ")";
-    }
+    stampDuplicateNames(games);
     return games;
 }
+
+/* Games under each base in turn: the Load sheet's save locations. The player's
+   saves/ dir is always first; Game Debug adds trees (extra_save_roots, game.h).
+   Each entry keeps the root it came from, so a slot path is
+   root + "/" + dirName + "/" + slot whichever root it is. Labels are stamped
+   across the WHOLE list, so two roots holding the same game dir name still get
+   distinguishable rows. */
+inline std::vector<GameEntry> list_games(const std::vector<std::string> &bases) {
+    std::vector<GameEntry> games;
+    for(const std::string &base : bases) {
+        for(const GameEntry &e : list_games(base)) { games.push_back(e); }
+    }
+    stampDuplicateNames(games);
+    return games;
+}
+
+/* The e2e fixture saves, as a games base: the fixtures live at
+   e2e/fixtures/<slot>/save.json, so e2e/fixtures IS a game dir and "e2e" is the
+   base -- list_games yields one game labelled "fixtures" with a slot per
+   fixture. No new scanning code, no fixture move.
+   cwd-relative on purpose: a fixture's save.json names its roster and crew defs
+   cwd-relative too (resdir::path passes non-"res/" paths through), so this base
+   is listable exactly where those loads resolve. */
+inline const std::string kFixtureRoot = "e2e";
 
 // Resolve a bare slot name under base: base/<slot> (a legacy flat save)
 // first, then the UNIQUE base/<game>/<slot>. "" when missing or ambiguous.

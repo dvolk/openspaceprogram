@@ -1587,6 +1587,23 @@ void drawUIReadouts(Game &g) {
     });
 
     drawWin(g, W_Debug, [&] {
+        /* --- dev-only options ---------------------------------------------
+           These change what OTHER windows offer, which is why the window is in
+           every scene set: they have to be reachable before a game is running.
+           The first is the Load sheet's save locations -- tick it and the e2e
+           fixture saves appear as one game ("fixtures"), so a case's starting
+           state can be reproduced by hand instead of with --load. */
+        bool fixtures = std::find(g.extra_save_roots.begin(),
+                                  g.extra_save_roots.end(),
+                                  kFixtureRoot)
+                     != g.extra_save_roots.end();
+        if(ImGui::Checkbox("Load e2e fixture saves", &fixtures)) {
+            if(fixtures) { g.extra_save_roots.push_back(kFixtureRoot); }
+            else { std::erase(g.extra_save_roots, kFixtureRoot); }
+            // The sheet rescans at ~1 Hz, so the rows land within a second.
+        }
+        ImGui::Separator();
+
         ImGui::Text("Time: %f", time);
         if(sys.home && sys.home->cal.valid()) {
             CalTime ct = sys.home->cal.at(time);
@@ -1645,6 +1662,11 @@ void drawUIReadouts(Game &g) {
                             lt.day, lt.hh, lt.mm, lt.ss);
             }
         }
+        /* Everything below is the flown vessel's state. With no vessel (title,
+           Space Center) the options above ARE the window -- which is what lets
+           the window sit in every scene set. ui::Window ends the window itself,
+           so returning from the body is safe. */
+        if(ship == nullptr || camera == nullptr) { return; }
         ImGui::Text("Patches: %d", ship->m_parent->CountPatches());
         ImGui::Text("Cam speed: %d", cam_speed);
         ImGui::Text("Time Accel: %d%s", time_accel,
@@ -3629,10 +3651,22 @@ void drawReadme(Game &g) {
     });
 }
 
+/* Case-insensitive matching for the Save/Load filter. Explicit ASCII, not
+   std::tolower: the locale would make a typed needle disagree with the name on
+   disk for anything outside ASCII. */
+static std::string lowerCase(const std::string &s) {
+    std::string out = s;
+    for(char &c : out) {
+        if(c >= 'A' && c <= 'Z') { c = (char)(c - 'A' + 'a'); }
+    }
+    return out;
+}
+
 void drawSaveLoad(Game &g) {
     // The slot name and the selections persist (static): so the player does not retype,
     // and Load/Delete act on the chosen row.
     static char nameBuf[256] = "save1";
+    static char filterBuf[128] = "";
     static int gameSel = 0;    // index into the games list
     static int slotSel = 0;    // index into the selected game's slots
     static int prevGameSel = -2;   // a game switch re-picks the first slot
@@ -3649,7 +3683,11 @@ void drawSaveLoad(Game &g) {
         const bool due = ImGui::GetTime() >= nextRescan;
         if(due) {
             nextRescan = ImGui::GetTime() + kRescanSec;
-            games = list_games(datadir::saves());
+            // The player's saves/ always first, then the Game Debug additions.
+            std::vector<std::string> roots{datadir::saves()};
+            roots.insert(roots.end(), g.extra_save_roots.begin(),
+                         g.extra_save_roots.end());
+            games = list_games(roots);
         }
         if(gameSel < 0 || gameSel >= (int)games.size()) {
             gameSel = (int)games.size() - 1;
@@ -3657,7 +3695,8 @@ void drawSaveLoad(Game &g) {
         if(due || gameSel != prevGameSel) {
             slots.clear();
             if(gameSel >= 0) {
-                slots = list_saves(datadir::saves() + "/" + games[gameSel].dirName);
+                slots = list_saves(games[gameSel].root + "/"
+                                   + games[gameSel].dirName);
             }
         }
         if(gameSel != prevGameSel) { slotSel = 0; prevGameSel = gameSel; }
@@ -3706,6 +3745,35 @@ void drawSaveLoad(Game &g) {
         if(games.empty()) {
             ImGui::TextDisabled("(none yet)");
         } else {
+            /* The slot column is the long one -- 50 fixture saves with Game
+               Debug on, a quicksave pool of up to 100 -- and imgui draws only
+               what fits, so a save below the fold can be neither seen nor
+               clicked. The filter narrows the column instead of scrolling it.
+               `shown` holds INDICES INTO `slots`: the rows are a view, the
+               selection is not, so Load/Delete still address the real slot
+               list. The games column is not filtered -- it is short, and
+               emptying it while its saves show would be confusing. */
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+            ImGui::InputText("##filter", filterBuf, sizeof filterBuf);
+            const std::string needle = lowerCase(filterBuf);
+            std::vector<int> shown;
+            for(size_t i = 0; i < slots.size(); i++) {
+                if(needle.empty()
+                   || lowerCase(slots[i]).find(needle) != std::string::npos) {
+                    shown.push_back((int)i);
+                }
+            }
+            /* A filter can hide the selected row: park on the first match, and
+               gate the buttons on the selection being one of the rows on
+               screen -- the frame-top clamp would otherwise re-park slotSel on
+               a hidden slot and Load would act on it. */
+            if(!shown.empty()
+               && std::find(shown.begin(), shown.end(), slotSel) == shown.end()) {
+                slotSel = shown[0];
+            }
+            const bool selShown =
+                std::find(shown.begin(), shown.end(), slotSel) != shown.end();
+
             // Two half-width columns (games | slots of the selected game).
             const float full = ImGui::GetContentRegionAvail().x;
             const float w = (full - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
@@ -3720,17 +3788,20 @@ void drawSaveLoad(Game &g) {
             ImGui::BeginChild("##slots", ImVec2(w, 180.0f));
             if(slots.empty()) {
                 ImGui::TextDisabled("(no saves in this game)");
+            } else if(shown.empty()) {
+                ImGui::TextDisabled("(none match \"%s\")", filterBuf);
             }
-            for(size_t i = 0; i < slots.size(); i++) {
-                if(ImGui::Selectable(slots[i].c_str(), (int)i == slotSel)) {
-                    slotSel = (int)i;
+            for(int i : shown) {
+                if(ImGui::Selectable(slots[i].c_str(), i == slotSel)) {
+                    slotSel = i;
                 }
             }
             ImGui::EndChild();
             ImGui::Spacing();
-            if(ImGui::Button("Load##saveload") && gameSel >= 0 && slotSel >= 0) {
-                const std::string dir = datadir::saves() + "/" +
-                                       games[gameSel].dirName + "/" + slots[slotSel];
+            if(ImGui::Button("Load##saveload") && gameSel >= 0 && slotSel >= 0
+               && selShown) {
+                const std::string dir = games[gameSel].root + "/" +
+                                      games[gameSel].dirName + "/" + slots[slotSel];
                 const std::string gameName = games[gameSel].name;
                 const std::string slotName = slots[slotSel];
                 /* Deferred to the top of the next frame (#304): the load deletes
@@ -3746,11 +3817,17 @@ void drawSaveLoad(Game &g) {
                 });
             }
             ImGui::SameLine();
-            if(ImGui::Button("Delete##saveload") && gameSel >= 0 && slotSel >= 0) {
-                const std::string dir = datadir::saves() + "/" +
-                                       games[gameSel].dirName + "/" + slots[slotSel];
+            if(ImGui::Button("Delete##saveload") && gameSel >= 0 && slotSel >= 0
+               && selShown) {
+                /* delete_save re-checks the path against THIS game's root, so a
+                   fixture row really does delete the fixture (git-tracked, so
+                   recoverable). Deliberate: the sheet is one list, and the
+                   fixture rows only ever appear when Game Debug asks for them. */
+                const std::string root = games[gameSel].root;
+                const std::string dir = root + "/" +
+                                      games[gameSel].dirName + "/" + slots[slotSel];
                 try {
-                    delete_save(dir, datadir::saves());
+                    delete_save(dir, root);
                     g.toast("Deleted %s/%s", games[gameSel].name.c_str(),
                             slots[slotSel].c_str());
                     slotSel = 0;   // the slot list shrank under the selection

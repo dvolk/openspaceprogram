@@ -27,7 +27,7 @@ enum class Slot {
     ToggleFreeCam, // 'LShift+c' free-cam on/off
     CycleTarget,   // 'g'  orbit mode: cycle the target body/ship
     ToggleWindows, // TAB  the info windows
-    DebugInfo,     // F1   the Game Debug Info window
+    DebugInfo,     // F1   the GAME DEBUG window (readouts + dev options)
     Telemetry,     // F2   the TELEMETRY plots
     NextShip,      // F6   next selectable ship
     ToggleEva,     // 'v'  EVA out of the ship / back in

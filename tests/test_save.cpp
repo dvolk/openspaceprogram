@@ -1088,6 +1088,59 @@ int main() {
         fs::remove_all("tmp/test_save_games");
     }
 
+    /* list_games over MULTIPLE roots: the Load sheet's save locations (Game
+       Debug adds save.h kFixtureRoot). What the sheet depends on is that each
+       entry knows the root it came from -- it builds root/dirName/slot -- that
+       root order is the listing order, and that a missing root contributes
+       nothing instead of throwing. */
+    {
+        const std::string saves = "tmp/test_save_roots/saves";
+        const std::string e2e = "tmp/test_save_roots/e2e";
+        fs::remove_all("tmp/test_save_roots");
+        auto slot = [&](const std::string &base, const std::string &game,
+                        const std::string &s) {
+            fs::create_directories(base + "/" + game + "/" + s);
+            std::ofstream f(base + "/" + game + "/" + s + "/save.json");
+            f << "{}";
+        };
+        slot(saves, "20260101_100000-Career", "save1");
+        // The fixture layout: one game dir, a slot per fixture.
+        slot(e2e, "fixtures", "save_racer");
+        slot(e2e, "fixtures", "save_mun");
+        fs::create_directories(e2e + "/cases");   // no slot inside: not a game
+
+        const std::vector<std::string> roots{saves, e2e};
+        std::vector<GameEntry> gs = list_games(roots);
+        CHECK(gs.size() == 2);
+        if(gs.size() == 2) {
+            CHECK(gs[0].root == saves);
+            CHECK(gs[0].name == "Career");
+            CHECK(gs[1].root == e2e);
+            CHECK(gs[1].dirName == "fixtures");
+            CHECK(gs[1].name == "fixtures");
+            CHECK(list_saves(gs[1].root + "/" + gs[1].dirName)
+                  == (std::vector<std::string>{"save_mun", "save_racer"}));
+        }
+
+        // A player game dir named like the fixture tree is two ROWS, and the
+        // label says which root each came from (dir names are unique only
+        // within one base). Concatenated in root order, so Career (the only
+        // saves/ game that sorts before "fixtures") comes first.
+        slot(saves, "fixtures", "save1");
+        std::vector<GameEntry> clash = list_games(roots);
+        CHECK(clash.size() == 3);
+        if(clash.size() == 3) {
+            CHECK(clash[0].name == "Career");
+            CHECK(clash[1].name == "fixtures (" + saves + ")");
+            CHECK(clash[2].name == "fixtures (" + e2e + ")");
+        }
+
+        // A missing root is empty, not an error (a dist build has no e2e/).
+        const std::vector<std::string> gone{saves, "tmp/test_save_roots/nope"};
+        CHECK(list_games(gone).size() == 2);
+        fs::remove_all("tmp/test_save_roots");
+    }
+
     // --- quicksaves: the quicksave-00..99 rotating pool --------------------
     // NN parsing (exactly two digits), next-slot selection (max NN + 1, and
     // overwrite-the-oldest-by-mtime at the wrap), and the newest-by-mtime

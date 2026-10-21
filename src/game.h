@@ -450,6 +450,11 @@ struct Game {
     /* The stored form of THIS game: the saves/ dir it writes into, named
        <YYYYMMDD_HHMMSS>-<gameName> (save.h). Empty = never claimed one. */
     std::string gameId;
+    /* Extra trees the Load sheet lists games from, beyond the player's saves/
+       dir -- which is never in here and never needs to be. Writing a save still
+       goes to saves/<gameId>/ only; these are read-only sources for the sheet.
+       Game Debug's fixture checkbox toggles kFixtureRoot (save.h) here. */
+    std::vector<std::string> extra_save_roots;
 
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
