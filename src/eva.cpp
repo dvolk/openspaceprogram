@@ -29,9 +29,12 @@ static const double kGroundBand  = 0.25;    // m above restAlt still "grounded"
 static const double kFloorDrop   = 0.4;     // m below restAlt -> snap back up
 
 /* The analytic half of evaArmCommands' contact test, without the Bullet query:
-   a rebuilt kerbal has no contacts to find yet, and the pose says everything. */
+   a hull freshly added by enterWorld has no manifolds to find, and the pose
+   already says everything. Terrain only -- a kerbal loaded standing on a
+   structure that rises above the analytic surface reads "space" until the first
+   tick's BodyInContact flips it back. */
 void Kerbal::settleContact() {
-    assert(m_parent != nullptr);
+    assert(m_parent != nullptr && !parts.empty());
     const glm::dvec3 pos = get_center_of_mass();
     const glm::dvec3 radial = glm::normalize(pos);
     const double alt = glm::length(pos)

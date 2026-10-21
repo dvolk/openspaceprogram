@@ -1597,10 +1597,20 @@ void drawUIReadouts(Game &g) {
                                   g.extra_save_roots.end(),
                                   kFixtureRoot)
                      != g.extra_save_roots.end();
+        /* kFixtureRoot is cwd-relative on purpose (save.h), so outside a repo
+           checkout -- a packaged build, or the game run from elsewhere -- there
+           is nothing to add and ticking the box would do nothing at all. Say so
+           rather than offer a control that lies. */
+        const bool fixturesHere = std::filesystem::exists(kFixtureRoot);
+        ImGui::BeginDisabled(!fixturesHere);
         if(ImGui::Checkbox("Load e2e fixture saves", &fixtures)) {
             if(fixtures) { g.extra_save_roots.push_back(kFixtureRoot); }
             else { std::erase(g.extra_save_roots, kFixtureRoot); }
             // The sheet rescans at ~1 Hz, so the rows land within a second.
+        }
+        ImGui::EndDisabled();
+        if(!fixturesHere) {
+            ImGui::TextDisabled("(no %s/ here)", kFixtureRoot.c_str());
         }
         ImGui::Separator();
 
@@ -3763,14 +3773,12 @@ void drawSaveLoad(Game &g) {
                     shown.push_back((int)i);
                 }
             }
-            /* A filter can hide the selected row: park on the first match, and
-               gate the buttons on the selection being one of the rows on
-               screen -- the frame-top clamp would otherwise re-park slotSel on
-               a hidden slot and Load would act on it. */
-            if(!shown.empty()
-               && std::find(shown.begin(), shown.end(), slotSel) == shown.end()) {
-                slotSel = shown[0];
-            }
+            /* A filter that hides the selected row does NOT move the selection:
+               parking it on the first match would let Load fire on a save
+               nobody picked (measured: select save_eva_yaw, type "padwall",
+               click Load -> save_eva_padwall). The buttons gate on the
+               selection being one of the rows on screen instead, and the
+               frame-top clamp keeps it a real index into `slots`. */
             const bool selShown =
                 std::find(shown.begin(), shown.end(), slotSel) != shown.end();
 
@@ -3813,16 +3821,23 @@ void drawSaveLoad(Game &g) {
                     if(g.loadFrom(dir)) {
                         g.toast("Loaded %s/%s", gameName.c_str(), slotName.c_str());
                         setWinOpen(W_SaveLoad, false);
+                        // The sheet reopens on the list the player expects to
+                        // see, not still narrowed to the save just loaded.
+                        filterBuf[0] = '\0';
                     }
                 });
             }
             ImGui::SameLine();
+            /* Only the player's own saves/ is deletable. The fixture rows come
+               from a root the sheet can list but never write (game.h
+               extra_save_roots), and they are git-tracked files other cases
+               load -- one stray click would destroy a fixture nobody can put
+               back by playing. */
+            const bool deletable = gameSel >= 0
+                                && games[gameSel].root == datadir::saves();
+            if(!deletable) { ImGui::BeginDisabled(); }
             if(ImGui::Button("Delete##saveload") && gameSel >= 0 && slotSel >= 0
-               && selShown) {
-                /* delete_save re-checks the path against THIS game's root, so a
-                   fixture row really does delete the fixture (git-tracked, so
-                   recoverable). Deliberate: the sheet is one list, and the
-                   fixture rows only ever appear when Game Debug asks for them. */
+               && selShown && deletable) {
                 const std::string root = games[gameSel].root;
                 const std::string dir = root + "/" +
                                       games[gameSel].dirName + "/" + slots[slotSel];
@@ -3835,6 +3850,11 @@ void drawSaveLoad(Game &g) {
                 } catch(const std::exception &e) {
                     g.toast("Delete failed: %s", e.what());
                 }
+            }
+            if(!deletable) {
+                ImGui::EndDisabled();
+                ImGui::SameLine();
+                ImGui::TextDisabled("(not a saves/ dir)");
             }
             ImGui::SameLine();
             /* A refused load leaves the sheet open so another slot can be tried,

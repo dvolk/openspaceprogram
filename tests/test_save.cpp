@@ -1070,9 +1070,9 @@ int main() {
         CHECK(gs.size() == 4);
         if(gs.size() == 4) {
             CHECK(gs[0].dirName == "20260101_100000-Career");
-            CHECK(gs[0].name == "Career (2026-01-01 10:00)");
+            CHECK(gs[0].name == "Career (2026-01-01 10:00:00)");
             CHECK(gs[1].dirName == "20260202_110000-Career");
-            CHECK(gs[1].name == "Career (2026-02-02 11:00)");
+            CHECK(gs[1].name == "Career (2026-02-02 11:00:00)");
             CHECK(gs[2].dirName == "20260303_120000-Solar");
             CHECK(gs[2].name == "Solar");          // a unique label stays bare
             CHECK(gs[3].dirName == "My Career");
@@ -1125,19 +1125,56 @@ int main() {
         // A player game dir named like the fixture tree is two ROWS, and the
         // label says which root each came from (dir names are unique only
         // within one base). Concatenated in root order, so Career (the only
-        // saves/ game that sorts before "fixtures") comes first.
+        // saves/ game that sorts before "fixtures") comes first. The root goes
+        // by its last element: datadir::saves() is often absolute and the
+        // sheet's column is not.
         slot(saves, "fixtures", "save1");
         std::vector<GameEntry> clash = list_games(roots);
         CHECK(clash.size() == 3);
         if(clash.size() == 3) {
             CHECK(clash[0].name == "Career");
-            CHECK(clash[1].name == "fixtures (" + saves + ")");
-            CHECK(clash[2].name == "fixtures (" + e2e + ")");
+            CHECK(clash[1].name == "fixtures (saves)");
+            CHECK(clash[2].name == "fixtures (e2e)");
         }
 
         // A missing root is empty, not an error (a dist build has no e2e/).
         const std::vector<std::string> gone{saves, "tmp/test_save_roots/nope"};
         CHECK(list_games(gone).size() == 2);
+
+        // Labelling runs ONCE over the joined list. Stamping per-base and again
+        // over the concatenation suffixes an in-base duplicate twice -- and the
+        // trigger is the commonest one there is, two games named game1.
+        slot(saves, "20260101_100000-game1", "save1");
+        slot(saves, "20260101_100001-game1", "save1");
+        std::vector<GameEntry> twins = list_games(roots);
+        CHECK(twins.size() == 5);
+        if(twins.size() == 5) {
+            CHECK(twins[1].name == "game1 (2026-01-01 10:00:00)");
+            CHECK(twins[2].name == "game1 (2026-01-01 10:00:01)");
+        }
+
+        // newGameDir breaks a name clash by bumping SECONDS (save.h), so the
+        // stamp has to reach the seconds or the two rows read identically.
+        CHECK(twins.size() != 5 || twins[1].name != twins[2].name);
+
+        // Two roots sharing a last element (".../a/saves", ".../b/saves") widen
+        // to the whole path -- the leaf alone would put the same label on both.
+        const std::string a = "tmp/test_save_roots/a/saves";
+        const std::string b = "tmp/test_save_roots/b/saves";
+        slot(a, "fixtures", "save1");
+        slot(b, "fixtures", "save1");
+        const std::vector<std::string> both{a, b};
+        std::vector<GameEntry> wide = list_games(both);
+        CHECK(wide.size() == 2);
+        if(wide.size() == 2) {
+            CHECK(wide[0].name == "fixtures (" + a + ")");
+            CHECK(wide[1].name == "fixtures (" + b + ")");
+        }
+
+        // A base listed twice contributes once: twice would be two entries
+        // sharing dirName AND root, i.e. labels nothing can separate.
+        const std::vector<std::string> twice{e2e, e2e};
+        CHECK(list_games(twice).size() == 1);
         fs::remove_all("tmp/test_save_roots");
     }
 

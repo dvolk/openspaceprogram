@@ -927,11 +927,32 @@ struct GameEntry {
     std::string root;   // the base this game was found under
 };
 
-// Duplicate labels get their stamp appended. Count from dirName
-// (immutable), not name: appending as we go would un-duplicate the entries
-// already labelled. One pass over the FULL list, so the multi-root overload
-// below also sees cross-root collisions -- and it disambiguates those by the
-// ROOT, since dir names are unique only WITHIN one base.
+// What tells one game dir from another that shares its display name: a minted
+// dir carries its own stamp, to the SECOND -- newGameDir breaks a name clash by
+// bumping seconds, so a minute-granular label still reads identically. "" when
+// the dir was hand-named and carries no stamp.
+inline std::string gameDirStamp(const std::string &dirName) {
+    if(dirName.size() <= 16 ||
+       gameDisplayName(dirName).size() != dirName.size() - 16) {
+        return "";
+    }
+    return dirName.substr(0, 4) + "-" + dirName.substr(4, 2) + "-" +
+           dirName.substr(6, 2) + " " + dirName.substr(9, 2) + ":" +
+           dirName.substr(11, 2) + ":" + dirName.substr(13, 2);
+}
+
+// The root a hand-named dir came from, as its last path element: the sheet's
+// column is narrow and datadir::saves() is often absolute.
+inline std::string gameRootLabel(const std::string &root) {
+    const std::string leaf = std::filesystem::path(root).filename().string();
+    return leaf.empty() ? root : leaf;
+}
+
+/* Duplicate labels get a suffix naming what makes them different. Count from
+   dirName (immutable), not name: appending as we go would un-duplicate the
+   entries already labelled. One pass over the FULL list, so a cross-root
+   collision is seen too -- dir names are unique only WITHIN one base, so those
+   disambiguate by ROOT, widened to the whole path when two roots share a leaf. */
 inline void stampDuplicateNames(std::vector<GameEntry> &games) {
     for(size_t i = 0; i < games.size(); i++) {
         const std::string orig = gameDisplayName(games[i].dirName);
@@ -940,22 +961,26 @@ inline void stampDuplicateNames(std::vector<GameEntry> &games) {
             if(gameDisplayName(e.dirName) == orig) { n++; }
         }
         if(n <= 1) { continue; }
-        const std::string &dn = games[i].dirName;
-        // A minted game dir carries its own stamp, so show that. A hand-named
-        // one has none: show which root it came from.
-        std::string stamp = games[i].root;
-        if(dn.size() > 16 && gameDisplayName(dn).size() == dn.size() - 16) {
-            stamp = dn.substr(0, 4) + "-" + dn.substr(4, 2) + "-" +
-                    dn.substr(6, 2) + " " + dn.substr(9, 2) + ":" +
-                    dn.substr(11, 2);
+
+        std::string stamp = gameDirStamp(games[i].dirName);
+        if(stamp.empty()) {
+            stamp = gameRootLabel(games[i].root);
+            for(const GameEntry &e : games) {
+                if(&e == &games[i] || gameDisplayName(e.dirName) != orig) { continue; }
+                if(!gameDirStamp(e.dirName).empty()) { continue; }
+                if(gameRootLabel(e.root) == stamp) { stamp = games[i].root; break; }
+            }
         }
         games[i].name += " (" + stamp + ")";
     }
 }
 
-// Games under base: subdirectories holding at least one slot, sorted by dirName
-// (chronological). A legacy flat save directly under base is NOT a game.
-inline std::vector<GameEntry> list_games(const std::string &base) {
+/* Games under base, UNLABELLED: subdirectories holding at least one slot,
+   sorted by dirName (chronological). A legacy flat save directly under base is
+   NOT a game. Scanning is split from labelling because labelling must run once
+   over the final list: stamping per-base and then again over the joined list
+   suffixes an in-base duplicate twice, and the two rows still read the same. */
+inline std::vector<GameEntry> scanGames(const std::string &base) {
     std::vector<GameEntry> games;
     namespace fs = std::filesystem;
     std::error_code ec;
@@ -971,6 +996,11 @@ inline std::vector<GameEntry> list_games(const std::string &base) {
               [](const GameEntry &a, const GameEntry &b) {
                   return a.dirName < b.dirName;
               });
+    return games;
+}
+
+inline std::vector<GameEntry> list_games(const std::string &base) {
+    std::vector<GameEntry> games = scanGames(base);
     stampDuplicateNames(games);
     return games;
 }
@@ -980,11 +1010,16 @@ inline std::vector<GameEntry> list_games(const std::string &base) {
    Each entry keeps the root it came from, so a slot path is
    root + "/" + dirName + "/" + slot whichever root it is. Labels are stamped
    across the WHOLE list, so two roots holding the same game dir name still get
-   distinguishable rows. */
+   distinguishable rows. A repeated base is scanned once: it would otherwise
+   contribute two entries sharing BOTH dirName and root, i.e. labels nothing
+   can separate. */
 inline std::vector<GameEntry> list_games(const std::vector<std::string> &bases) {
     std::vector<GameEntry> games;
+    std::vector<std::string> seen;
     for(const std::string &base : bases) {
-        for(const GameEntry &e : list_games(base)) { games.push_back(e); }
+        if(std::find(seen.begin(), seen.end(), base) != seen.end()) { continue; }
+        seen.push_back(base);
+        for(const GameEntry &e : scanGames(base)) { games.push_back(e); }
     }
     stampDuplicateNames(games);
     return games;

@@ -1476,6 +1476,13 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
             }
             v->dockArmPort = findSavedPart(b->savedUidToPart, s.dock_arm_port, v);
         }
+        // A rebuilt kerbal wears the constructor's "standing" default until its
+        // first tick, and the load starts paused: settle it from the pose.
+        // BEFORE the rails branch -- goOnRails moves the pose into the body's
+        // inertial node, and settleContact's terrain lookup wants the rotating
+        // frame (railsTick converts for the same reason). enterWorld leaves the
+        // pose where build put it, so either way it is valid here.
+        if(v->isEva()) { static_cast<Kerbal *>(v)->settleContact(); }
         // build left the hull out of the world: this is the one place it is
         // added or parked. A non-rail-eligible ship stays live. Crew too --
         // a walking kerbal that was saved live is not on rails.
@@ -1484,9 +1491,6 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
         } else {
             v->enterWorld();
         }
-        // A rebuilt kerbal wears the constructor's "standing" default until its
-        // first tick, and the load starts paused: settle it from the pose.
-        if(v->isEva()) { static_cast<Kerbal *>(v)->settleContact(); }
     }
 
     // the active ship
