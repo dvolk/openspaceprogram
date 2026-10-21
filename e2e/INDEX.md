@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 244 |
+| `invariant` | a behaviour or a player route the game must keep | 242 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 30 |
 | `harness` | CLI/test-engine plumbing, not game spec | 11 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **289** |
+| | **total** | **287** |
 
 There is no full battery: the runner takes at most 5 cases per
 invocation and starts a 10-minute cooldown. Select by number, name or
@@ -127,7 +127,7 @@ path (a whole subject is usually too wide), e.g.
 | `science/284-seat-experiment-names-the-sitter.txt` | invariant | A per-seat Experiment button names the crew member who ran it. |
 | `science/285-suit-experiment-from-the-walker.txt` | invariant | A walking kerbal's suit window runs its own experiment. |
 
-## vab (39)
+## vab (37)
 
 | case | kind | pins |
 |---|---|---|
@@ -138,13 +138,11 @@ path (a whole subject is usually too wide), e.g.
 | `vab/58-vab-launch-body.txt` | invariant | The body and start-bed dropdowns choose where the build launches. |
 | `vab/59-vab-load.txt` | invariant | Load replaces the whole build rather than merging into it. |
 | `vab/60-vab-close.txt` | invariant | Back to game parks and restores the camera to its exact flight distance. |
-| `vab/63-vab-back-to-title.txt` | invariant | Back to game from a title-opened VAB returns to the title. |
 | `vab/77-vab-detach-lone.txt` | invariant | Detaching a leaf by a real pick removes it from the build. |
 | `vab/78-vab-detach-asm.txt` | invariant | Detaching a subtree root stashes it and launches only what remains. |
 | `vab/132-vab-save-rename.txt` | invariant | Save-as renames the ship identity in the file and on reload. |
 | `vab/164-vab-pad-occupied.txt` | invariant | A launch onto an occupied pad asks before placing a second ship. |
 | `vab/165-vab-pad-neighbour-clear.txt` | invariant | Occupancy is per pad: a ship on the polar pad does not block the main port. |
-| `vab/177-vab-bad-def.txt` | invariant | A bad --vab def exits 1 with the loader's message, not a crash. |
 | `vab/183-vab-launch-no-ship.txt` | invariant | Launching from a shipless VAB does not sample NaN terrain. |
 | `vab/184-vab-pad-launch-no-ship.txt` | invariant | A pad launch from a shipless VAB survives the first frame. |
 | `vab/190-startship-bad-site.txt` | invariant | A bad --startship site fails at boot and lists the body's pads. |

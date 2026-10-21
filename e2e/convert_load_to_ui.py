@@ -182,8 +182,10 @@ def convert(path, apply):
     # The sheet route drives 6-9 clicks; a renamed widget, a clipped row or an
     # ambiguous label otherwise surfaces as "EXPECT not found: Loaded game from"
     # three steps from the cause. run.py's DEFAULT_FORBID does not cover the
-    # test engine's own lines, so pin it here.
-    if not any(l == "FORBID FAILED" for l in out):
+    # test engine's own lines, so pin it here -- unless the case already names
+    # which FAILED lines it tolerates, in which case its policy stands.
+    scoped_failed = any(re.match(r'FORBID\b.*\bFAILED\b', l.strip()) for l in out)
+    if not scoped_failed:
         # Anchor on the last assertion: with no FORBID of its own to join,
         # "after the last FORBID" would land the line above the case's prose.
         last = max((j for j, l in enumerate(out)

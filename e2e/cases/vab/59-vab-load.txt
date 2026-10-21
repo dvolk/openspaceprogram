@@ -3,15 +3,16 @@
 # racer is 4 and stager is 7, so a merge would read neither.
 #
 # Driven through the top bar now (load dropdown -> row -> Load), which is the
-# route a player takes and retires --vab-load. The initial --vab stays: opening
-# the editor with a ship in it is still a setup knob, not this case's subject.
+# route a player takes and retires --vab-load. The starting build comes from the
+# same picker: --vab is gone, so the editor opens empty and loads racer like any
+# other def.
 #
 # This case used to load 'tanker', and the default dropdown cannot. The
 # list_vab_vehicle_defs helper filters out anything with "testship": true unless
-# (shipdef.h), which is what the picker shows, so --vab-load was
-# reaching a ship no player can pick -- the same class of thing as a hook making
-# a transition no button offers. 'stager' is in the list and has the same 7
-# parts, so the numbers did not move.
+# dev vehicles are on (shipdef.h), which is what the picker shows, so
+# --vab-load was reaching a ship no player can pick -- the same class of thing
+# as a hook making a transition no button offers. 'stager' is in the list and
+# has the same 7 parts, so the numbers did not move.
 NAME vab-load
 CLAIM Load replaces the whole build rather than merging into it.
 KIND invariant
@@ -26,20 +27,15 @@ ARGS --ui-click 9700,"VAB TopBar/Load"
 # now points the name at stager, so a Save here must not land on racer.
 ARGS --ui-click 10300,"VAB TopBar/Save"
 ARGS --ui-click 11000,"VAB TopBar/LAUNCH"
-# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
-# the 4 key.
-# Game Debug turns on dev vehicles, which is what puts this def in the
-# Load picker; the filter narrows the roster to one row, and row + Load
-# do the rest. Same vabLoad() either way, so the assertions below are
-# unchanged -- and every scripted event here is shifted +7000ms because
-# the editor opens at 2.6s, not at boot.
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start,
+# then the 4 key, then the picker. No dev vehicles and no filter here: racer and
+# stager are both stock defs, and the case's own --ui-list pins what the open
+# popup offers, so the preamble must not narrow it. Same vabLoad() --vab racer
+# used, so the assertions below are unchanged -- and every scripted event here
+# is shifted +7000ms because the editor opens at 2.6s, not at boot.
 ARGS --ui-click 1000,"Title Menu/New Game"
 ARGS --ui-click 1600,"New Game/Start"
 ARGS --sim-press 2600,0,4
-ARGS --sim-press 3100,0,F1
-ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
-ARGS --sim-press 4100,0,F1
-ARGS --ui-type 4600,"VAB TopBar/##vehfilter",racer
 ARGS --ui-click 5100,"VAB TopBar/##vabload"
 ARGS --ui-click 5700,"racer"
 ARGS --ui-click 6300,"VAB TopBar/Load"

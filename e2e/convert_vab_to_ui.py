@@ -188,9 +188,13 @@ def convert(path, apply):
     # The route is 4-10 clicks; a dead one must name itself rather than show up
     # as a missing game assertion three steps later. Unless the case's SUBJECT is
     # a refusal -- a case that EXPECTs a FAILED line (280, 282) cannot also
-    # forbid the word.
+    # forbid the word -- or the case already names which FAILED lines it
+    # tolerates: 247 forbids "re-aim FAILED" but not the palette toggle's
+    # spurious release MISMATCH, which is what "Add fuel link" produces when it
+    # renames itself to "Cancel fuel link" under the cursor (#320).
     wants_failed = any(l.startswith("EXPECT ") and "FAILED" in l for l in out)
-    if not wants_failed and not any(l == "FORBID FAILED" for l in out):
+    scoped_failed = any(re.match(r'FORBID\b.*\bFAILED\b', l.strip()) for l in out)
+    if not wants_failed and not scoped_failed:
         # With no FORBID of its own to join, "after the last FORBID" lands the
         # line on line 1, above the case's prose (343). Anchor on the last
         # assertion instead.

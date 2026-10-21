@@ -70,5 +70,4 @@ FORBID disabled
 FORBID clipped
 FORBID re-aim FAILED
 FORBID error:
-FORBID FAILED
 LIMIT 60
