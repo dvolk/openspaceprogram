@@ -1,8 +1,24 @@
 NAME load-crew-pocket
 CLAIM A seated kerbal's pocket tank contributes its mass.
 KIND invariant
-ARGS --load e2e/fixtures/save_racer_pocket --time-accel 1 --timeout 4 --compound-check
+ARGS --timeout 9 --compound-check
 ARGS --orbit-log --orbit-interval 1
+# Reached by the Save/Load sheet, not --load: Game Debug ticks the e2e
+# fixture root, the sheet picks the "fixtures" game, the slot filter
+# narrows 50 saves to this one row, and row + Load button do the rest.
+# Same load_game() either way, so the assertions below are unchanged --
+# and every scripted event here is shifted +5000ms because the load now
+# lands at 4s, not at boot. The PERIOD presses climb the warp ladder
+# where --time-accel used to: a sheet load starts paused.
+ARGS --sim-press 500,0,F1
+ARGS --ui-click 1000,"Game Debug/Load e2e fixture saves"
+ARGS --sim-press 1500,0,F1
+ARGS --ui-click 2000,"Title Menu/Save/Load"
+ARGS --ui-click 2500,"fixtures"
+ARGS --ui-type 3000,"Save/Load/##filter",save_racer_pocket
+ARGS --ui-click 3800,"save_racer_pocket"
+ARGS --ui-click 4000,"Save/Load/Load##saveload"
+ARGS --sim-press 4300,0,PERIOD
 # A seated kerbal whose suit pockets hold a mono tank -- the shape every seat in
 # a flown ship has, and the one the seat fold had never loaded. The item is not a
 # seat, so it rides the capsule's mass through Part::effectiveMass like any other
@@ -14,6 +30,7 @@ ARGS --orbit-log --orbit-interval 1
 EXPECT [crew] loaded 'kerbal' aboard 'racer'
 EXPECT Loaded 1 inventory item(s) with the ships
 EXPECT Loaded game from e2e/fixtures/save_racer_pocket (active: racer)
+EXPECT [toast] Loaded fixtures/save_racer_pocket
 EXPECT [orbitlog]
 CHECK abs(max(float(m) for m in re.findall(r"\[compound\].*mass=([\d.]+) kg", out)) - 2914.1) < 0.05
 CHECK len(orbit) >= 4

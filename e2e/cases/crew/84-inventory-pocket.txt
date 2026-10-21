@@ -1,8 +1,25 @@
 NAME inventory-pocket
 CLAIM An item in a suit pocket rides the kerbal and can be taken out.
 KIND invariant
-ARGS --load e2e/fixtures/save_inventory --timeout 18
-ARGS --time-accel 10 --eva-log --orbit-interval 0.5 --sim-press 1000,14000,W --frame-cap 30 --prox-warp 10
+ARGS --timeout 23
+ARGS --eva-log --orbit-interval 0.5 --sim-press 6000,14000,W --frame-cap 30 --prox-warp 10
+# Reached by the Save/Load sheet, not --load: Game Debug ticks the e2e
+# fixture root, the sheet picks the "fixtures" game, the slot filter
+# narrows 50 saves to this one row, and row + Load button do the rest.
+# Same load_game() either way, so the assertions below are unchanged --
+# and every scripted event here is shifted +5000ms because the load now
+# lands at 4s, not at boot. The PERIOD presses climb the warp ladder
+# where --time-accel used to: a sheet load starts paused.
+ARGS --sim-press 500,0,F1
+ARGS --ui-click 1000,"Game Debug/Load e2e fixture saves"
+ARGS --sim-press 1500,0,F1
+ARGS --ui-click 2000,"Title Menu/Save/Load"
+ARGS --ui-click 2500,"fixtures"
+ARGS --ui-type 3000,"Save/Load/##filter",save_inventory
+ARGS --ui-click 3800,"save_inventory"
+ARGS --ui-click 4000,"Save/Load/Load##saveload"
+ARGS --sim-press 4300,0,PERIOD
+ARGS --sim-press 4400,0,PERIOD
 EXPECT Loaded 4 inventory item(s) with the ships
 CHECK len(eva) > 5
 CHECK all(e["mode"] == "space" for e in eva)

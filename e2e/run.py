@@ -824,24 +824,31 @@ def run_case(case):
         diag.append("FORBID found: %r" % s)
 
     # 3) CHECK
-    orbit = parse_orbit(out)
-    dbg = parse_dbg(out)
-    xfer = parse_xfer(out)
-    porkchop = parse_porkchop(out)
-    surfmap = parse_surfmap(out)
-    att = parse_att(out)
-    eva = parse_eva(out)
-    fuel = parse_fuel(out)
-    drainlog = parse_drainlog(out)
-    drag = parse_drag(out)
-    shake = parse_shake(out)
-    cam = parse_cam(out)
-    terrain = parse_terrain(out)
-    surf = parse_surf(out)
+    # Telemetry belongs to the world that printed it. A successful load starts a
+    # new one, so rows before the LAST load line describe a world the case is no
+    # longer testing -- a sheet load from the Title would otherwise leave the
+    # Title's rows at the head of every list, and first()/all()/last() would
+    # read them. A boot load cuts nothing: its line precedes every row.
+    cut = out.rfind("Loaded game from ")
+    world = out[cut:] if cut >= 0 else out
+    orbit = parse_orbit(world)
+    dbg = parse_dbg(world)
+    xfer = parse_xfer(world)
+    porkchop = parse_porkchop(world)
+    surfmap = parse_surfmap(world)
+    att = parse_att(world)
+    eva = parse_eva(world)
+    fuel = parse_fuel(world)
+    drainlog = parse_drainlog(world)
+    drag = parse_drag(world)
+    shake = parse_shake(world)
+    cam = parse_cam(world)
+    terrain = parse_terrain(world)
+    surf = parse_surf(world)
     scene = parse_scene(out)
-    mapb = parse_mapb(out)
-    plane = parse_plane(out)
-    slew = parse_slew(out)
+    mapb = parse_mapb(world)
+    plane = parse_plane(world)
+    slew = parse_slew(world)
     toast = parse_toast(out)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
