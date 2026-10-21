@@ -2,6 +2,7 @@
 
 #include "eva.h"
 
+#include <cassert>
 #include <cstdio>
 
 #define GLM_ENABLE_EXPERIMENTAL
@@ -26,6 +27,18 @@ static const double kMaxRate     = 6.0;     // rad/s attitude slew cap
 static const double kYawRate     = 1.5;     // rad/s QE yaw about the view axis
 static const double kGroundBand  = 0.25;    // m above restAlt still "grounded"
 static const double kFloorDrop   = 0.4;     // m below restAlt -> snap back up
+
+/* The analytic half of evaArmCommands' contact test, without the Bullet query:
+   a rebuilt kerbal has no contacts to find yet, and the pose says everything. */
+void Kerbal::settleContact() {
+    assert(m_parent != nullptr);
+    const glm::dvec3 pos = get_center_of_mass();
+    const glm::dvec3 radial = glm::normalize(pos);
+    const double alt = glm::length(pos)
+        - (double)m_parent->GetTerrainHeight(glm::vec3(radial));
+    grounded = alt < restAlt() + kGroundBand;
+    mode = grounded ? EVA_GROUND : EVA_SPACE;
+}
 
 void evaArmCommands(Game &g, const std::function<bool(Slot)> &active) {
     Kerbal *k = static_cast<Kerbal *>(g.ship);

@@ -1424,8 +1424,12 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
     // score / recovered log.
     g.science.setFrom(meta.science_score, meta.recovered);
 
-    // Game identity comes from the save's location, adopted here so a REFUSED
-    // load leaves the running identity untouched.
+    /* Game identity comes from the save's location, adopted here so a REFUSED
+       load leaves the running identity untouched. Only a game dir under a
+       saves/ parent carries one: that is what keeps a Game Debug fixture load
+       (e2e/fixtures/<slot>, save.h kFixtureRoot) from adopting an identity a
+       later Save would write back into the repo. A root named saves/ at any
+       depth counts -- deliberate, and the only root that should. */
     {
         namespace fs = std::filesystem;
         const fs::path gamedir = fs::path(b->dir).parent_path();
@@ -1480,6 +1484,9 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
         } else {
             v->enterWorld();
         }
+        // A rebuilt kerbal wears the constructor's "standing" default until its
+        // first tick, and the load starts paused: settle it from the pose.
+        if(v->isEva()) { static_cast<Kerbal *>(v)->settleContact(); }
     }
 
     // the active ship

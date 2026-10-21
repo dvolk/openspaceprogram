@@ -62,6 +62,13 @@ struct Kerbal : Vehicle {
         return parts[0]->def->height / 2.0 + hullMargin() + terrainMargin();
     }
 
+    /* mode/grounded are per-tick state, so a rebuilt kerbal wears the
+       constructor's "standing at the KSC" default until its first tick. A load
+       starts paused, so nothing ticks: derive the regime from the loaded pose
+       instead of letting the first read (or --eva-log's first row) claim an
+       orbital kerbal is standing. */
+    void settleContact();
+
     // Per-substep EVA law: ground walking + jump, or RCS + camera-facing
     // attitude; analytic fall-through guard in both modes.
     void applyEva(double h);
