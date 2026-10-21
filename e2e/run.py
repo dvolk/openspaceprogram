@@ -4,7 +4,8 @@
 Usage: python3 e2e/run.py <selectors> [--jobs N] [--game PATH] [--limit S]
 [--show-cmd] [--kind K]. At most 5 cases run per invocation; there is no full
 battery and no flag that raises the cap. A run also starts a 10-minute
-cooldown, so the next invocation refuses until it expires. --limit overrides
+cooldown, so the next invocation refuses until it expires; --no-cooldown skips
+that wait, for a session running its batches back to back. --limit overrides
 every case's LIMIT (a slow box, or a case you want to drive by hand);
 --show-cmd prints the exact command + env so a failure re-runs under a
 debugger; --kind runs one kind of case (repeatable). Case keys: NAME CLAIM
@@ -1180,6 +1181,12 @@ def main():
     parser.add_argument("--kind", action="append", choices=KINDS,
                         help="run only cases of this KIND (repeatable): "
                              "invariant, golden, harness or canary")
+    parser.add_argument("--no-cooldown", action="store_true",
+                        help="skip the ten-minute wait since the last run. The "
+                             "cooldown is a courtesy to the box, not a "
+                             "correctness rule, so a conversion session can run "
+                             "its batches back to back; every run still stamps "
+                             "itself, so the guard is intact for everyone else")
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be >= 1")
@@ -1239,7 +1246,7 @@ def main():
 
     now = datetime.datetime.now(datetime.timezone.utc)
     last = last_run_time()
-    if last is not None:
+    if last is not None and not args.no_cooldown:
         age = (now - last).total_seconds()
         if age < COOLDOWN_S:
             ready = (last + datetime.timedelta(seconds=COOLDOWN_S))
