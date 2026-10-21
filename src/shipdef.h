@@ -574,8 +574,14 @@ inline bool shipDefIsTestship(const std::string &path) {
     return doc["testship"].get<bool>();
 }
 
+/* The dev ship-def tree: Game Debug's dev-vehicles switch (game.h) lists it in
+   the VAB picker and vabLoad resolves bare names from it. cwd-relative on
+   purpose, like kFixtureRoot (save.h) -- it is the repo, not installed content,
+   so a packaged build simply has nothing there. */
+inline const std::string kFixtureVehicleRoot = "e2e/vehicles";
+
 /* The VAB Load picker's list for `dir`: list_ship_defs, minus the testships
-   unless the caller asks for them (--dev-vehicles). */
+   unless the caller asks for them (Game::dev_vehicles). */
 inline std::vector<std::string> list_vab_vehicle_defs(const std::string &dir,
                                                       bool include_testships) {
     std::vector<std::string> names;

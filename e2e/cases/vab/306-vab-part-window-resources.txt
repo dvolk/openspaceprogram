@@ -18,13 +18,30 @@
 NAME vab-part-window-resources
 CLAIM A tank's part window reports the resources it carries.
 KIND invariant
-ARGS --vab res/ships/tanker.json --kerbals e2e/fixtures/three_kerbals.json
-ARGS --width 1920 --height 1080 --time-accel 1 --timeout 10 --frame-cap 30
-ARGS --ui-focus 2000,tank_r1.5h3_2
-ARGS --sim-mouse 2100,0,CUR,CUR,RMB
-ARGS --ui-list 2500
-ARGS --ui-focus 3000,capsule_1
-ARGS --sim-mouse 3100,0,CUR,CUR,RMB
+ARGS --kerbals e2e/fixtures/three_kerbals.json
+ARGS --width 1920 --height 1080 --time-accel 1 --timeout 17 --frame-cap 30
+ARGS --ui-focus 9000,tank_r1.5h3_2
+ARGS --sim-mouse 9100,0,CUR,CUR,RMB
+ARGS --ui-list 9500
+ARGS --ui-focus 10000,capsule_1
+ARGS --sim-mouse 10100,0,CUR,CUR,RMB
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +7000ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
+ARGS --ui-type 4600,"VAB TopBar/##vehfilter",tanker
+ARGS --ui-click 5100,"VAB TopBar/##vabload"
+ARGS --ui-click 5700,"tanker"
+ARGS --ui-click 6300,"VAB TopBar/Load"
 EXPECT [vab] part window: 'tank_r1.5h3_2' seats 0, carries 1410.2kg H2, 1410.2kg LOX
 EXPECT [vab] part window: 'capsule_1' seats 1, carries 2000.0Wh EC
 CHECK 'label="Seat 1##s0"' not in out

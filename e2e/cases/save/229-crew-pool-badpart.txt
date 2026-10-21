@@ -7,20 +7,35 @@ NAME crew-pool-badpart
 CLAIM A crew-pool entry naming a non-person is refused and the running cast survives.
 KIND invariant
 SEED e2e/fixtures/save_crew_pool_badpart saves/20260101_000000-reload/save1
-ARGS --kerbals e2e/fixtures/three_kerbals.json --time-accel 1 --timeout 16 --frame-cap 30
+ARGS --kerbals e2e/fixtures/three_kerbals.json --time-accel 1 --timeout 21.4 --frame-cap 30
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --recover-anywhere
 # Two ESCs, because the key means different things per scene: the first pops the
 # VAB the boot pushed (the --vab below is what opens it), the second is the flight
 # hub that carries "Recover Vessel".
-ARGS --sim-press 1900,0,ESCAPE --sim-press 2100,0,ESCAPE
-ARGS --ui-click 2300,"Game Menu/Recover Vessel"
-ARGS --ui-click 3200,"Game Menu/Save/Load"
-ARGS --ui-click 4200,"Save/Load/Load##saveload"
+ARGS --sim-press 7300,0,ESCAPE --sim-press 7500,0,ESCAPE
+ARGS --ui-click 7700,"Game Menu/Recover Vessel"
+ARGS --ui-click 8600,"Game Menu/Save/Load"
+ARGS --ui-click 9600,"Save/Load/Load##saveload"
 # A refused load leaves the sheet open (so another slot can be tried) and it
 # sits over the menu; Close dismisses it before the next menu click.
-ARGS --ui-click 4800,"Save/Load/Close##saveload"
-ARGS --vab res/ships/tanker.json --ui-click 5500,"Game Menu/VAB" --ui-click 8000,"VAB TopBar/LAUNCH"
+ARGS --ui-click 10200,"Save/Load/Close##saveload"
+ARGS --ui-click 10900,"Game Menu/VAB" --ui-click 13400,"VAB TopBar/LAUNCH"
+# Reached the way a player reaches the editor: the boot's start ship is already a game, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +5400ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --sim-press 1000,0,4
+ARGS --sim-press 1500,0,F1
+ARGS --ui-click 2000,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 2500,0,F1
+ARGS --ui-type 3000,"VAB TopBar/##vehfilter",tanker
+ARGS --ui-click 3500,"VAB TopBar/##vabload"
+ARGS --ui-click 4100,"tanker"
+ARGS --ui-click 4700,"VAB TopBar/Load"
 EXPECT [load] refused
 EXPECT crew pool entry 'fuel_tank' is a 'fuel_tank' part, not a kerbal
 EXPECT [vab] launched 'tanker' (7 parts)

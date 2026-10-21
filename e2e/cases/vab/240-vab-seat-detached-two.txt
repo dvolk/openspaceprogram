@@ -28,20 +28,37 @@
 NAME vab-seat-detached-two
 CLAIM Detaching one of two named capsules keeps the other's plan.
 KIND invariant
-ARGS --vab e2e/fixtures/two_capsules.json --kerbals e2e/fixtures/three_kerbals.json
-ARGS --width 1920 --height 1080 --time-accel 1 --timeout 12 --frame-cap 30
-ARGS --ui-focus 2000,capsule_r1.5h3_2
-ARGS --sim-mouse 2100,0,CUR,CUR,RMB
-ARGS --ui-click 2600,"Capsule (3m)##capsule_r1.5h3_2/Seat 1##s0"
-ARGS --ui-click 3000,"##Combo_00/Ace"
-ARGS --ui-focus 3400,capsule_r1.5h3_1
-ARGS --sim-mouse 3500,0,CUR,CUR,RMB
-ARGS --ui-click 4000,"Capsule (3m)##capsule_r1.5h3_1/Seat 1##s0"
-ARGS --ui-click 4400,"##Combo_00/Bram"
-ARGS --ui-focus 5000,capsule_r1.5h3_2
-ARGS --sim-mouse 5500,0,CUR,CUR,LMB
-ARGS --ui-click 6000,"VAB/Detach subtree"
-ARGS --ui-click 8000,"VAB TopBar/LAUNCH"
+ARGS --kerbals e2e/fixtures/three_kerbals.json
+ARGS --width 1920 --height 1080 --time-accel 1 --timeout 19 --frame-cap 30
+ARGS --ui-focus 9000,capsule_r1.5h3_2
+ARGS --sim-mouse 9100,0,CUR,CUR,RMB
+ARGS --ui-click 9600,"Capsule (3m)##capsule_r1.5h3_2/Seat 1##s0"
+ARGS --ui-click 10000,"##Combo_00/Ace"
+ARGS --ui-focus 10400,capsule_r1.5h3_1
+ARGS --sim-mouse 10500,0,CUR,CUR,RMB
+ARGS --ui-click 11000,"Capsule (3m)##capsule_r1.5h3_1/Seat 1##s0"
+ARGS --ui-click 11400,"##Combo_00/Bram"
+ARGS --ui-focus 12000,capsule_r1.5h3_2
+ARGS --sim-mouse 12500,0,CUR,CUR,LMB
+ARGS --ui-click 13000,"VAB/Detach subtree"
+ARGS --ui-click 15000,"VAB TopBar/LAUNCH"
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +7000ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
+ARGS --ui-type 4600,"VAB TopBar/##vehfilter",two_capsules
+ARGS --ui-click 5100,"VAB TopBar/##vabload"
+ARGS --ui-click 5700,"two_capsules"
+ARGS --ui-click 6300,"VAB TopBar/Load"
 EXPECT [vab] part window: 'capsule_r1.5h3_2' seats 3
 EXPECT [vab] part window: 'capsule_r1.5h3_1' seats 3
 EXPECT [vab] select 1 capsule_r1.5h3_2

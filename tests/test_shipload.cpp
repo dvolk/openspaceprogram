@@ -2066,26 +2066,26 @@ int main() {
         }
     }
 
-    /* Same sweep over the e2e fixtures. A case asserts on stdout, so a fixture
-       that stops loading only fails if some EXPECT happens to name what the
-       load used to print -- a parser tightening can break one silently. The
-       allowed failures are the fleet/list files (not ship defs at all) and the
-       one fixture that exists to be refused (case 256). */
+    /* Same sweep over the e2e vehicle defs (e2e/vehicles, the tree Game Debug
+       puts in the VAB picker). A case asserts on stdout, so a def that stops
+       loading only fails if some EXPECT happens to name what the load used to
+       print -- a parser tightening can break one silently. Every file here IS a
+       ship def, so the only allowed failure is the one that exists to be
+       refused (case 256). */
     {
-        const std::vector<std::string> slugs = list_ship_defs("e2e/fixtures");
+        const std::vector<std::string> slugs = list_ship_defs("e2e/vehicles");
         CHECK(!slugs.empty());
         int refused = 0;
         for(size_t i = 0; i < slugs.size(); i++) {
-            const std::string path = "e2e/fixtures/" + slugs[i] + ".json";
+            const std::string path = "e2e/vehicles/" + slugs[i] + ".json";
             try {
                 CHECK(!load_ship_def(path.c_str(), cat).parts.empty());
             } catch(const std::exception &e) {
                 const std::string w = e.what();
-                const bool notAShip = w.find("no parts in ") != std::string::npos;
                 const bool meantToFail
                     = w.find("is a fuel link (a fuel link cannot have parts attached)")
                       != std::string::npos;
-                CHECK(notAShip || meantToFail);
+                CHECK(meantToFail);   // every file here IS a ship def
                 if(meantToFail) { refused++; }
             }
         }
@@ -2093,10 +2093,10 @@ int main() {
     }
 
     // list_vab_vehicle_defs: list_ship_defs minus the testships unless the
-    // caller opts in (--dev-vehicles). A temp dir with one flagged def, one
-    // non-boolean flag (fail-open: kept), one broken file (fail-open: kept),
-    // and two unflagged defs pins the filter + the fail-open stance without
-    // depending on res/ships' roster.
+    // caller opts in (Game::dev_vehicles, set by Game Debug). A temp dir with
+    // one flagged def, one non-boolean flag (fail-open: kept), one broken file
+    // (fail-open: kept), and two unflagged defs pins the filter + the fail-open
+    // stance without depending on res/ships' roster.
     {
         const std::string dir = "/tmp/test_list_vab_vehicle_defs";
         CHECK(std::system(("rm -rf '" + dir + "'").c_str()) == 0);

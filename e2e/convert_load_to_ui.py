@@ -184,8 +184,11 @@ def convert(path, apply):
     # three steps from the cause. run.py's DEFAULT_FORBID does not cover the
     # test engine's own lines, so pin it here.
     if not any(l == "FORBID FAILED" for l in out):
-        last = max((j for j, l in enumerate(out) if l.startswith("FORBID ")),
-                   default=-1)
+        # Anchor on the last assertion: with no FORBID of its own to join,
+        # "after the last FORBID" would land the line above the case's prose.
+        last = max((j for j, l in enumerate(out)
+                    if re.match(r'(EXPECT|FORBID|CHECK|EXIT|FILE|NOFILE)\b', l.strip())),
+                   default=len(out) - 1)
         out.insert(last + 1, "FORBID FAILED")
 
     # Pin the sheet's own toast: it is the new route's evidence.

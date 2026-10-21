@@ -46,11 +46,8 @@ struct GameArgs {
 
     std::string radial_test;
     std::string autopilot;  // engage a slew mode at startup
-    std::string vab;   // ship def to open in the VAB scene (empty = flight)
-    bool vab_empty = false;
     bool recover_anywhere = false;  // default: home body only
     bool dev_scenarios = false;  // --dev-scenarios: the VAB dropdown's dev beds
-    bool dev_vehicles = false;   // --dev-vehicles: the VAB picker's test defs
     std::string dock_test;
     int initial_time_accel = 1;
     double start_time = 0.0;   // the sim clock's t0 (s)

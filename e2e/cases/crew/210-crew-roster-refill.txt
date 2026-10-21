@@ -8,16 +8,31 @@
 NAME crew-roster-refill
 CLAIM Recovering a ship returns its crew to the pad and the next launch can re-seat them.
 KIND invariant
-ARGS --kerbals e2e/fixtures/tiny_kerbals.json --time-accel 1 --timeout 14 --frame-cap 30
-ARGS --vab res/ships/tanker.json --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --kerbals e2e/fixtures/tiny_kerbals.json --time-accel 1 --timeout 19.4 --frame-cap 30
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --recover-anywhere
 # Two ESCs, because the key means different things per scene: the first pops the
 # VAB back to flight (the case boots in the editor with a ship already flown), the
 # second is the flight hub that carries "Recover Vessel".
-ARGS --sim-press 1900,0,ESCAPE --sim-press 2100,0,ESCAPE
-ARGS --ui-click 2300,"Game Menu/Recover Vessel"
-ARGS --ui-click 5000,"Game Menu/VAB"
-ARGS --ui-click 7500,"VAB TopBar/LAUNCH"
+ARGS --sim-press 7300,0,ESCAPE --sim-press 7500,0,ESCAPE
+ARGS --ui-click 7700,"Game Menu/Recover Vessel"
+ARGS --ui-click 10400,"Game Menu/VAB"
+ARGS --ui-click 12900,"VAB TopBar/LAUNCH"
+# Reached the way a player reaches the editor: the boot's start ship is already a game, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +5400ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --sim-press 1000,0,4
+ARGS --sim-press 1500,0,F1
+ARGS --ui-click 2000,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 2500,0,F1
+ARGS --ui-type 3000,"VAB TopBar/##vehfilter",tanker
+ARGS --ui-click 3500,"VAB TopBar/##vabload"
+ARGS --ui-click 4100,"tanker"
+ARGS --ui-click 4700,"VAB TopBar/Load"
 EXPECT Roster: 1 kerbal(s) from e2e/fixtures/tiny_kerbals.json
 EXPECT Crew: 'Solo' aboard 'racer' part 0 (1/1)
 EXPECT [recover] t=

@@ -1612,6 +1612,15 @@ void drawUIReadouts(Game &g) {
         if(!fixturesHere) {
             ImGui::TextDisabled("(no %s/ here)", kFixtureRoot.c_str());
         }
+
+        /* One switch, two effects: the defs marked "testship": true appear in the
+           VAB's Load picker, and the dev tree joins it. They are the same kind
+           of content -- scenario ships that are not player-facing -- and a
+           player who wants one wants the other. */
+        ImGui::Checkbox("Dev vehicles in the VAB picker", &g.dev_vehicles);
+        if(!std::filesystem::exists(kFixtureVehicleRoot)) {
+            ImGui::TextDisabled("(no %s/ here)", kFixtureVehicleRoot.c_str());
+        }
         ImGui::Separator();
 
         ImGui::Text("Time: %f", time);
@@ -4066,43 +4075,48 @@ void drawVabUI(Game &g) {
 
     // g.vab.saveName holds a NAME, not a path -- .json and where the file lives
     // are vabSave's business. vabEnter seeds it; load and clear update it.
-    // The load picker: vehicle NAMES (stock + the player's data-dir ships/, data
-    // dir wins). Testships stay hidden unless --dev-vehicles. Cached, re-read on
-    // mtime change.
+    // The load picker: vehicle NAMES from the stock tree and the player's
+    // data-dir ships/ (first listing wins), plus -- when Game Debug's
+    // dev-vehicles switch is on -- the defs marked "testship": true and the dev
+    // tree kFixtureVehicleRoot. Cached, re-read on mtime change or a flip.
     static std::vector<std::string> vehicleNames;
     static bool vehiclesScanned = false;   // a real mtime could be the epoch; don't rely on that
-    static bool vehiclesScannedDev = false;  // the roster depends on --dev-vehicles
-    static std::filesystem::file_time_type stockMtime, userMtime;
+    static bool vehiclesScannedDev = false;  // the roster depends on the switch
+    static std::vector<std::filesystem::file_time_type> rootMtime;
     {
+        std::vector<std::string> roots{resdir::path("res/ships"),
+                                       datadir::ships()};
+        if(g.dev_vehicles) { roots.push_back(kFixtureVehicleRoot); }
         std::error_code ec;
-        const std::string stockDir = resdir::path("res/ships");
-        const std::string userDir = datadir::ships();
-        const auto sm = std::filesystem::last_write_time(stockDir, ec);
-        const std::filesystem::file_time_type stock =
-            ec ? std::filesystem::file_time_type{} : sm;
-        const auto um = std::filesystem::last_write_time(userDir, ec);
-        const std::filesystem::file_time_type user =
-            ec ? std::filesystem::file_time_type{} : um;
-        if(!vehiclesScanned || stock != stockMtime || user != userMtime
-           || vehiclesScannedDev != g.args.dev_vehicles) {
-            vehicleNames = list_vab_vehicle_defs(stockDir, g.args.dev_vehicles);
-            for(const std::string &s :
-                list_vab_vehicle_defs(userDir, g.args.dev_vehicles)) {
-                if(std::find(vehicleNames.begin(), vehicleNames.end(), s)
-                   == vehicleNames.end()) {
-                    vehicleNames.push_back(s);
+        std::vector<std::filesystem::file_time_type> now;
+        for(const std::string &r : roots) {
+            const auto mt = std::filesystem::last_write_time(r, ec);
+            now.push_back(ec ? std::filesystem::file_time_type{} : mt);
+        }
+        if(!vehiclesScanned || now != rootMtime
+           || vehiclesScannedDev != g.dev_vehicles) {
+            vehicleNames.clear();
+            for(const std::string &r : roots) {
+                for(const std::string &s : list_vab_vehicle_defs(r, g.dev_vehicles)) {
+                    if(std::find(vehicleNames.begin(), vehicleNames.end(), s)
+                       == vehicleNames.end()) {
+                        vehicleNames.push_back(s);
+                    }
                 }
             }
             std::sort(vehicleNames.begin(), vehicleNames.end());
-            stockMtime = stock;
-            userMtime = user;
+            rootMtime = now;
             vehiclesScanned = true;
-            vehiclesScannedDev = g.args.dev_vehicles;
+            vehiclesScannedDev = g.dev_vehicles;
         }
     }
     static int loadSel = 0;
     if(loadSel >= (int)vehicleNames.size()) { loadSel = (int)vehicleNames.size() - 1; }
-    if(loadSel < 0) { loadSel = 0; }   // an empty list clamps to -1 above; keep valid
+    if(loadSel < 0) { loadSel = 0;   }   // an empty list clamps to -1 above; keep valid
+    /* Same needle the Load sheet's slot column uses: the roster is 40+ names and
+       a combo popup draws only what fits, so a row below the fold is neither
+       visible nor clickable. */
+    static char vehFilter[128] = "";
 
     /* Top bar: a fixed top-center window mirroring the HUD, in two lines: Back to game /
        save name / Save / vehicle picker + Load / Clear, then the launch body + scenario
@@ -4118,21 +4132,42 @@ void drawVabUI(Game &g) {
         // at it, so a following Save round-trips it.
         if(!vehicleNames.empty()) {
             ImGui::SameLine();
+            ImGui::SetNextItemWidth(110);
+            ImGui::InputText("##vehfilter", vehFilter, sizeof vehFilter);
+            ImGui::SameLine();
+            const std::string needle = lowerCase(vehFilter);
+            std::vector<int> shown;
+            for(size_t i = 0; i < vehicleNames.size(); i++) {
+                if(needle.empty()
+                   || lowerCase(vehicleNames[i]).find(needle) != std::string::npos) {
+                    shown.push_back((int)i);
+                }
+            }
+            const bool selShown = std::find(shown.begin(), shown.end(), loadSel)
+                               != shown.end();
             ImGui::SetNextItemWidth(160);
             const char *cur = vehicleNames[(size_t)loadSel].c_str();
             if(uiBeginCombo("##vabload", cur,
-                            g.args.dev_vehicles ? ImGuiComboFlags_HeightLarge : 0)) {
-                for(size_t i = 0; i < vehicleNames.size(); i++) {
-                    if(ImGui::Selectable(vehicleNames[i].c_str(), (int)i == loadSel)) {
-                        loadSel = (int)i;
+                            g.dev_vehicles ? ImGuiComboFlags_HeightLarge : 0)) {
+                for(int i : shown) {
+                    if(ImGui::Selectable(vehicleNames[(size_t)i].c_str(), i == loadSel)) {
+                        loadSel = i;
                     }
+                }
+                if(shown.empty()) {
+                    ImGui::TextDisabled("(none match \"%s\")", vehFilter);
                 }
                 ImGui::EndCombo();
             }
             ImGui::SameLine();
+            /* A filter that hides the selected row does not move the selection
+               (the Load sheet's rule): Load would otherwise fire on a ship
+               nobody picked. */
+            ImGui::BeginDisabled(!selShown);
             if(ImGui::Button("Load")) {
                 vabLoad(g, vehicleNames[(size_t)loadSel].c_str());
             }
+            ImGui::EndDisabled();
         } else {
             ImGui::SameLine();
             ImGui::TextDisabled("(no ships)");

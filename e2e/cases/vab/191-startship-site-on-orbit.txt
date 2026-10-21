@@ -6,7 +6,7 @@
 NAME startship-site-on-orbit
 CLAIM A pad id on an orbit bed is refused at boot.
 KIND invariant
-ARGS --timeout 4 --vab res/ships/racer.json --startship racer,res/ships/racer.json,Kerbin,rot-orbit,polar_pad
+ARGS --timeout 4 --startship racer,res/ships/racer.json,Kerbin,rot-orbit,polar_pad
 EXPECT error: start ships: entry 0: "site" needs an on_pad scenario, not 'rot-orbit'
 EXIT 1
 FORBID [vab] launched

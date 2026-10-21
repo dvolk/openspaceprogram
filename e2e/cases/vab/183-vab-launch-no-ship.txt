@@ -21,12 +21,28 @@
 NAME vab-launch-no-ship
 CLAIM Launching from a shipless VAB does not sample NaN terrain.
 KIND invariant
-ARGS --system res/systems/solar_system.json --timeout 10 --dev-scenarios
-ARGS --vab res/ships/racer.json
+ARGS --system res/systems/solar_system.json --timeout 17 --dev-scenarios
 ARGS --info-log --orbit-interval 1
-ARGS --ui-click 3000,"VAB TopBar/##vabscn"
-ARGS --ui-click 3500,"##Combo_00/inertial-orbit"
-ARGS --ui-click 5000,"VAB TopBar/LAUNCH"
+ARGS --ui-click 10000,"VAB TopBar/##vabscn"
+ARGS --ui-click 10500,"##Combo_00/inertial-orbit"
+ARGS --ui-click 12000,"VAB TopBar/LAUNCH"
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +7000ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
+ARGS --ui-type 4600,"VAB TopBar/##vehfilter",racer
+ARGS --ui-click 5100,"VAB TopBar/##vabload"
+ARGS --ui-click 5700,"racer"
+ARGS --ui-click 6300,"VAB TopBar/Load"
 EXPECT [vab] launched 'racer' (4 parts)
 EXPECT [scene] vab -> flight (enterFlight)
 # The launch frame's own readouts: a snapshot that was never taken prints

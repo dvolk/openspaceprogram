@@ -22,10 +22,25 @@
 NAME vab-pad-occupied
 CLAIM A launch onto an occupied pad asks before placing a second ship.
 KIND invariant
-ARGS --vab res/ships/tanker.json --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --startship probe,res/ships/tanker.json,Kerbin,high-orbit
-ARGS --ui-click 2000,"VAB TopBar/LAUNCH" --timeout 12
-ARGS --ui-click 3000,"Question/Clear the pad"
+ARGS --ui-click 7400,"VAB TopBar/LAUNCH" --timeout 17.4
+ARGS --ui-click 8400,"Question/Clear the pad"
+# Reached the way a player reaches the editor: the boot's start ship is already a game, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +5400ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --sim-press 1000,0,4
+ARGS --sim-press 1500,0,F1
+ARGS --ui-click 2000,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 2500,0,F1
+ARGS --ui-type 3000,"VAB TopBar/##vehfilter",tanker
+ARGS --ui-click 3500,"VAB TopBar/##vabload"
+ARGS --ui-click 4100,"tanker"
+ARGS --ui-click 4700,"VAB TopBar/Load"
 EXPECT [vab] launch refused: 'racer' occupies 'main_space_port'
 EXPECT [ask] racer is standing on Main space port. Clear the pad?  [Clear the pad | Cancel]
 EXPECT [ask] answered 0

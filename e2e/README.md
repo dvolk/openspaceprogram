@@ -19,9 +19,40 @@ python3 e2e/run.py 172 177 262      # up to five at once
 There is no full-battery mode. At most five cases run per invocation; a wider
 selection is refused with the list of what it matched. A run also starts a
 10-minute cooldown: until it expires, every invocation refuses, including
-`make e2e`. `--kind` is a filter on top of that narrow selection (e.g.
+`make e2e`. That wait is a courtesy to the box, not a correctness rule, so a
+session converting cases can run its batches back to back with `--no-cooldown`.
+`--kind` is a filter on top of that narrow selection (e.g.
 `172 177 --kind invariant`), not a way to select the whole suite. Prefer the
 unit tests for anything whose claim is pure logic.
+
+## Getting somewhere through the UI, not a flag
+
+Where a player route exists, a case takes it. Two routes cover the save and the
+editor:
+
+- **A saved game.** Game Debug (F1) ticks the e2e fixture root; the Load sheet
+  picks the "fixtures" game; the slot filter narrows ~47 slots to one row; row +
+  Load call the same `load_game()` that `--load` did. A load starts PAUSED, so
+  the preamble presses PERIOD (WarpUp) once per decade of the warp the case used
+  to pass as `--time-accel`. `e2e/convert_load_to_ui.py` writes this preamble.
+- **The VAB.** Title Menu -> New Game -> Start, then the `4` key; Game Debug
+  turns on dev vehicles, which is what puts a def in the Load picker (the
+  `testship` marks and `e2e/vehicles`); the filter narrows the roster, and row +
+  Load call the same `vabLoad()`. `e2e/convert_vab_to_ui.py` writes that one.
+
+Both shift the case's own scripted events later -- the setup lands at 2-6 s, not
+at boot -- and grow `--timeout` to match. Both add `FORBID FAILED`: a route is
+4-10 clicks, and a dead click should name itself instead of surfacing as a
+missing assertion three steps later.
+
+Fixtures live in `e2e/fixtures/` (saves, rosters, start-ship lists) and
+`e2e/vehicles/` (ship defs the picker lists). Game Debug's two switches are the
+only way those trees reach the game, and both grey out when the tree is absent,
+which is what a packaged build has.
+
+Boot flags that have no player route yet are still here (`--startship`,
+`--kerbals`, `--system`, `--dev-scenarios`); see the open issues for which ones
+are next.
 
 ## What a case asserts
 

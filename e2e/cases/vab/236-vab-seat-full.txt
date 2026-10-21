@@ -13,16 +13,16 @@
 NAME vab-seat-full
 CLAIM Seats filled out of pad order land where the player put them.
 KIND invariant
-ARGS --vab-empty --kerbals e2e/fixtures/three_kerbals.json
-ARGS --time-accel 1 --timeout 12 --frame-cap 30
-ARGS --ui-click 1000,"Capsule (3m)##capsule_r1.5h3"
-ARGS --sim-mouse 2000,0,960,540,LMB --sim-mouse 2500,0,960,540,RMB
-ARGS --ui-click 3000,"Capsule (3m)##capsule_r1.5h3_1/Seat 1##s0"
-ARGS --ui-click 3600,"##Combo_00/Cyd"
-ARGS --ui-click 4200,"Capsule (3m)##capsule_r1.5h3_1/Seat 2##s1"
-ARGS --ui-click 4800,"##Combo_00/Ace"
-ARGS --ui-click 5400,"Capsule (3m)##capsule_r1.5h3_1/Seat 3##s2"
-ARGS --ui-click 6000,"##Combo_00/Cyd  (seated)"
+ARGS --kerbals e2e/fixtures/three_kerbals.json
+ARGS --time-accel 1 --timeout 15.5 --frame-cap 30
+ARGS --ui-click 4500,"Capsule (3m)##capsule_r1.5h3"
+ARGS --sim-mouse 5500,0,960,540,LMB --sim-mouse 6000,0,960,540,RMB
+ARGS --ui-click 6500,"Capsule (3m)##capsule_r1.5h3_1/Seat 1##s0"
+ARGS --ui-click 7100,"##Combo_00/Cyd"
+ARGS --ui-click 7700,"Capsule (3m)##capsule_r1.5h3_1/Seat 2##s1"
+ARGS --ui-click 8300,"##Combo_00/Ace"
+ARGS --ui-click 8900,"Capsule (3m)##capsule_r1.5h3_1/Seat 3##s2"
+ARGS --ui-click 9500,"##Combo_00/Cyd  (seated)"
 # The refused row leaves Seat 3's dropdown OPEN, and an open combo owns the
 # mouse: a LAUNCH click then lands on the popup's scrim, not the button (the
 # harness reports it as MISMATCH, nothing hovered at release). --vab-launch fired
@@ -32,8 +32,19 @@ ARGS --ui-click 6000,"##Combo_00/Cyd  (seated)"
 # scrim reason. Seat 3 therefore ends up EXPLICITLY empty rather than unplanned;
 # that distinction is 238's claim, not this case's, and the launch is the same
 # either way.
-ARGS --ui-click 6500,"##Combo_00/Empty"
-ARGS --ui-click 7000,"VAB TopBar/LAUNCH"
+ARGS --ui-click 10000,"##Combo_00/Empty"
+ARGS --ui-click 10500,"VAB TopBar/LAUNCH"
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what the palette and
+# the dev roster need. Every scripted event here is shifted +3500ms
+# because the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
 EXPECT [vab] part window: 'capsule_r1.5h3_1' seats 3
 CHECK re.search(r"Crew: 'Cyd' aboard '.*' part 0 \(1/3\)", out)
 CHECK re.search(r"Crew: 'Ace' aboard '.*' part 0 \(2/3\)", out)

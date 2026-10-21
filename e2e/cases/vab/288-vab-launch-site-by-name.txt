@@ -16,10 +16,27 @@
 NAME vab-launch-site-by-name
 CLAIM The VAB site dropdown launches on the named pad.
 KIND invariant
-ARGS --timeout 8 --vab res/ships/racer.json --info-log --orbit-interval 1
-ARGS --ui-click 1000,"VAB TopBar/##vabsite"
-ARGS --ui-click 1500,"##Combo_00/Polar pad"
-ARGS --ui-click 2500,"VAB TopBar/LAUNCH"
+ARGS --timeout 15 --info-log --orbit-interval 1
+ARGS --ui-click 8000,"VAB TopBar/##vabsite"
+ARGS --ui-click 8500,"##Combo_00/Polar pad"
+ARGS --ui-click 9500,"VAB TopBar/LAUNCH"
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +7000ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
+ARGS --ui-type 4600,"VAB TopBar/##vehfilter",racer
+ARGS --ui-click 5100,"VAB TopBar/##vabload"
+ARGS --ui-click 5700,"racer"
+ARGS --ui-click 6300,"VAB TopBar/Load"
 EXPECT [vab] launched 'racer' (4 parts)
 EXPECT [scene] vab -> flight (enterFlight)
 CHECK len(surf) >= 3

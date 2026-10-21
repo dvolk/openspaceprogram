@@ -27,15 +27,32 @@
 NAME vab-link-loop-refused
 CLAIM A fuel-link click that closes a loop is refused where it is made.
 KIND invariant
-ARGS --vab res/ships/heavy_two.json --width 1920 --height 1080 --timeout 8
-ARGS --sim-mouse 800,1200,960,300,RMB --sim-mouse 1400,0,960,560,0
-ARGS --ui-click 2000,"VAB/Add fuel link"
-ARGS --ui-focus 2400,central_engine2 --sim-mouse 2800,0,CUR,CUR,LMB
-ARGS --ui-focus 3200,rtank12 --sim-mouse 3600,0,CUR,CUR,LMB
-ARGS --ui-click 4200,"VAB/Add fuel link"
-ARGS --ui-focus 4600,rtank21 --sim-mouse 5000,0,CUR,CUR,LMB
-ARGS --ui-focus 5400,central_engine2 --sim-mouse 5800,0,CUR,CUR,LMB
-ARGS --ui-click 6500,"VAB TopBar/LAUNCH"
+ARGS --width 1920 --height 1080 --timeout 15
+ARGS --sim-mouse 7800,1200,960,300,RMB --sim-mouse 8400,0,960,560,0
+ARGS --ui-click 9000,"VAB/Add fuel link"
+ARGS --ui-focus 9400,central_engine2 --sim-mouse 9800,0,CUR,CUR,LMB
+ARGS --ui-focus 10200,rtank12 --sim-mouse 10600,0,CUR,CUR,LMB
+ARGS --ui-click 11200,"VAB/Add fuel link"
+ARGS --ui-focus 11600,rtank21 --sim-mouse 12000,0,CUR,CUR,LMB
+ARGS --ui-focus 12400,central_engine2 --sim-mouse 12800,0,CUR,CUR,LMB
+ARGS --ui-click 13500,"VAB TopBar/LAUNCH"
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +7000ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
+ARGS --ui-type 4600,"VAB TopBar/##vehfilter",heavy_two
+ARGS --ui-click 5100,"VAB TopBar/##vabload"
+ARGS --ui-click 5700,"heavy_two"
+ARGS --ui-click 6300,"VAB TopBar/Load"
 EXPECT [vab] link src central_engine2
 EXPECT [vab] link dest rtank12
 EXPECT [vab] fuel link refused (a loop cannot drain):
@@ -53,4 +70,5 @@ FORBID disabled
 FORBID clipped
 FORBID re-aim FAILED
 FORBID error:
+FORBID FAILED
 LIMIT 60

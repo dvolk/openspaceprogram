@@ -11,11 +11,28 @@
 NAME vab-detach-lone
 CLAIM Detaching a leaf by a real pick removes it from the build.
 KIND invariant
-ARGS --vab res/ships/tanker.json --width 1920 --height 1080 --timeout 8
-ARGS --ui-focus 1500,engine_1
-ARGS --sim-mouse 1600,0,CUR,CUR,LMB
-ARGS --ui-click 2500,"VAB/Detach subtree"
-ARGS --ui-click 4000,"VAB TopBar/LAUNCH"
+ARGS --width 1920 --height 1080 --timeout 15
+ARGS --ui-focus 8500,engine_1
+ARGS --sim-mouse 8600,0,CUR,CUR,LMB
+ARGS --ui-click 9500,"VAB/Detach subtree"
+ARGS --ui-click 11000,"VAB TopBar/LAUNCH"
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +7000ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
+ARGS --ui-type 4600,"VAB TopBar/##vehfilter",tanker
+ARGS --ui-click 5100,"VAB TopBar/##vabload"
+ARGS --ui-click 5700,"tanker"
+ARGS --ui-click 6300,"VAB TopBar/Load"
 CHECK re.search(r"\[vab\] select 2 engine_1", out)
 CHECK re.search(r"\[vab\] deleted engine_1 \(single part, not stashed\)", out)
 # A lone part is deleted, not stashed: nothing lands in the subassembly list,

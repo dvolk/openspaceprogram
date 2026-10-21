@@ -15,10 +15,21 @@
 NAME vab-click-through-window
 CLAIM A click inside a VAB window does not place a part through it.
 KIND invariant
-ARGS --vab-empty --timeout 6 --frame-cap 30
-ARGS --ui-click 1000,"Capsule (3m)##capsule_r1.5h3"
-ARGS --sim-mouse 2000,0,1750,100,LMB
-ARGS --ui-click 3500,"VAB TopBar/LAUNCH"
+ARGS --timeout 9.5 --frame-cap 30
+ARGS --ui-click 4500,"Capsule (3m)##capsule_r1.5h3"
+ARGS --sim-mouse 5500,0,1750,100,LMB
+ARGS --ui-click 7000,"VAB TopBar/LAUNCH"
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what the palette and
+# the dev roster need. Every scripted event here is shifted +3500ms
+# because the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
 EXPECT [toast] Nothing to launch
 # Without this the case passes vacuously: an arm click that never landed would
 # leave the build empty and "Nothing to launch" would print anyway. The claim is

@@ -12,13 +12,33 @@
 # "attach": "surface" -- a stack child is ALSO rejected by the node rule (a
 # fuel_link def has no nodes), which would let this case pass with the new
 # check deleted. The message says "no \"parent\"" for the same reason.
-# EXIT 1 is the pass condition -- a clean refusal, not a throw.
+#
+# It used to arrive through --vab, whose loader error reached main and made EXIT
+# 1 the pass condition. The def now comes from the picker, so the refusal is
+# vabLoad's: the editor opens, the load fails, the game keeps running. Same
+# parser, same message, no exit -- what the parser refuses is unchanged, only
+# who reports it.
 NAME vab-link-parent
 CLAIM A part parented to a fuel link is refused by the parser.
 KIND invariant
-ARGS --timeout 4 --vab e2e/fixtures/link_parent.json
-EXPECT error: --vab: ship: part 'engine_1' in e2e/fixtures/link_parent.json:
+ARGS --timeout 11
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start,
+# then the 4 key. Game Debug's dev-vehicles switch is what puts this def in the
+# Load picker at all -- it lives in e2e/vehicles, not res/ships.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
+ARGS --ui-type 4600,"VAB TopBar/##vehfilter",link_parent
+ARGS --ui-click 5100,"VAB TopBar/##vabload"
+ARGS --ui-click 5700,"link_parent"
+ARGS --ui-click 6300,"VAB TopBar/Load"
+EXPECT [vab] entered the editor
+EXPECT [vab] load failed link_parent: ship: part 'engine_1' in e2e/vehicles/link_parent.json:
 EXPECT which is a fuel link (a fuel link cannot have parts attached)
-EXIT 1
-FORBID [vab] entered the editor
+FORBID [vab] loaded link_parent
+FORBID FAILED
+FORBID error:
 LIMIT 60

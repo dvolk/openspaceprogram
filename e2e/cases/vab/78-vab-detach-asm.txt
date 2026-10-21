@@ -14,11 +14,28 @@
 NAME vab-detach-asm
 CLAIM Detaching a subtree root stashes it and launches only what remains.
 KIND invariant
-ARGS --vab res/ships/stager.json --width 1920 --height 1080 --timeout 8
-ARGS --ui-focus 1500,dec_1
-ARGS --sim-mouse 1600,0,CUR,CUR,LMB
-ARGS --ui-click 2500,"VAB/Detach subtree"
-ARGS --ui-click 4000,"VAB TopBar/LAUNCH"
+ARGS --width 1920 --height 1080 --timeout 15
+ARGS --ui-focus 8500,dec_1
+ARGS --sim-mouse 8600,0,CUR,CUR,LMB
+ARGS --ui-click 9500,"VAB/Detach subtree"
+ARGS --ui-click 11000,"VAB TopBar/LAUNCH"
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +7000ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
+ARGS --ui-type 4600,"VAB TopBar/##vehfilter",stager
+ARGS --ui-click 5100,"VAB TopBar/##vabload"
+ARGS --ui-click 5700,"stager"
+ARGS --ui-click 6300,"VAB TopBar/Load"
 CHECK re.search(r"\[vab\] select 4 dec_1", out)
 CHECK re.search(r"\[vab\] detached dec_1 \(3 parts\)", out)
 EXPECT [toast] Detached dec_1 (+2) to Subassemblies

@@ -15,9 +15,26 @@
 NAME vab-pad-launch-no-ship
 CLAIM A pad launch from a shipless VAB survives the first frame.
 KIND invariant
-ARGS --system res/systems/solar_system.json --timeout 10
-ARGS --vab res/ships/racer.json --info-log --orbit-interval 1
-ARGS --ui-click 5000,"VAB TopBar/LAUNCH"
+ARGS --system res/systems/solar_system.json --timeout 17
+ARGS --info-log --orbit-interval 1
+ARGS --ui-click 12000,"VAB TopBar/LAUNCH"
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +7000ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
+ARGS --ui-type 4600,"VAB TopBar/##vehfilter",racer
+ARGS --ui-click 5100,"VAB TopBar/##vabload"
+ARGS --ui-click 5700,"racer"
+ARGS --ui-click 6300,"VAB TopBar/Load"
 EXPECT [vab] launched 'racer' (4 parts)
 EXPECT [scene] vab -> flight (enterFlight)
 # On the deck, not orbit: a stale snapshot reads as zeros, which would put the

@@ -456,6 +456,13 @@ struct Game {
        Game Debug's fixture checkbox toggles kFixtureRoot (save.h) here. */
     std::vector<std::string> extra_save_roots;
 
+    /* Game Debug's dev-vehicles switch, and the only thing that sets it. The
+       VAB's Load picker shows the defs marked "testship": true and lists
+       kFixtureVehicleRoot (shipdef.h) alongside the stock and player trees;
+       vabLoad resolves a bare name from that tree too. Read-only -- the editor
+       still saves to the data dir's ships/. */
+    bool dev_vehicles = false;
+
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
     double time = 0;   // the analytic sim clock (s), advanced by the tick

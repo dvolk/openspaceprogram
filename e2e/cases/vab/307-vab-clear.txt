@@ -12,16 +12,33 @@
 NAME vab-clear
 CLAIM Clear asks first, empties the workspace, then refuses when already empty.
 KIND invariant
-ARGS --vab res/ships/tanker.json --width 1920 --height 1080 --timeout 10
-ARGS --ui-click 1500,"Capsule (3m)##capsule_r1.5h3"
-ARGS --ui-click 2200,"VAB TopBar/Clear"
-ARGS --ui-click 2800,"Question/Cancel"
-ARGS --ui-click 3600,"VAB TopBar/Clear"
-ARGS --ui-click 4200,"Question/Clear"
-ARGS --ui-click 5000,"VAB TopBar/Clear"
-ARGS --sim-mouse 5600,0,960,540,LMB
-ARGS --ui-click 6200,"VAB TopBar/Save"
-ARGS --ui-click 7000,"VAB TopBar/LAUNCH"
+ARGS --width 1920 --height 1080 --timeout 17
+ARGS --ui-click 8500,"Capsule (3m)##capsule_r1.5h3"
+ARGS --ui-click 9200,"VAB TopBar/Clear"
+ARGS --ui-click 9800,"Question/Cancel"
+ARGS --ui-click 10600,"VAB TopBar/Clear"
+ARGS --ui-click 11200,"Question/Clear"
+ARGS --ui-click 12000,"VAB TopBar/Clear"
+ARGS --sim-mouse 12600,0,960,540,LMB
+ARGS --ui-click 13200,"VAB TopBar/Save"
+ARGS --ui-click 14000,"VAB TopBar/LAUNCH"
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +7000ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
+ARGS --ui-type 4600,"VAB TopBar/##vehfilter",tanker
+ARGS --ui-click 5100,"VAB TopBar/##vabload"
+ARGS --ui-click 5700,"tanker"
+ARGS --ui-click 6300,"VAB TopBar/Load"
 CHECK re.search(r"\[vab\] cleared the workspace \(7 parts removed\)", out)
 EXPECT [toast] Workspace cleared
 EXPECT [vab] camera aimed at the build: 0 part(s)

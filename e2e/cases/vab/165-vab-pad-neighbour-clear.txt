@@ -5,8 +5,24 @@
 NAME vab-pad-neighbour-clear
 CLAIM Occupancy is per pad: a ship on the polar pad does not block the main port.
 KIND invariant
-ARGS --vab res/ships/tanker.json --startship racer,res/ships/racer.json,Kerbin,pad,polar_pad
-ARGS --ui-click 2000,"VAB TopBar/LAUNCH" --timeout 12
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad,polar_pad
+ARGS --ui-click 7400,"VAB TopBar/LAUNCH" --timeout 17.4
+# Reached the way a player reaches the editor: the boot's start ship is already a game, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +5400ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --sim-press 1000,0,4
+ARGS --sim-press 1500,0,F1
+ARGS --ui-click 2000,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 2500,0,F1
+ARGS --ui-type 3000,"VAB TopBar/##vehfilter",tanker
+ARGS --ui-click 3500,"VAB TopBar/##vabload"
+ARGS --ui-click 4100,"tanker"
+ARGS --ui-click 4700,"VAB TopBar/Load"
 EXPECT [vab] launched 'tanker' (7 parts)
 FORBID launch refused
 FORBID error:
+FORBID FAILED

@@ -546,8 +546,10 @@ std::string shipDefStem(const std::string &spec) {
 }
 
 // Resolve a ship-def name (or path) to a file. Data-dir ships/ wins over
-// stock res/ships/.
-std::string shipDefFile(const std::string &spec) {
+// stock res/ships/, and the dev tree (Game Debug's dev-vehicles switch) comes
+// LAST -- a fixture must never shadow a player's or a stock ship. When nothing
+// exists, the stock path is what the loader's error names.
+std::string shipDefFile(const std::string &spec, bool dev_vehicles) {
     if(spec.find('/') != std::string::npos
        || spec.find('\\') != std::string::npos) {
         const std::string p = resdir::path(spec);
@@ -559,7 +561,13 @@ std::string shipDefFile(const std::string &spec) {
     std::error_code ec;
     const std::string user = datadir::ships() + "/" + stem + ".json";
     if(std::filesystem::is_regular_file(user, ec)) { return user; }
-    return resdir::path("res/ships/" + stem + ".json");
+    const std::string stock = resdir::path("res/ships/" + stem + ".json");
+    if(std::filesystem::is_regular_file(stock, ec)) { return stock; }
+    if(dev_vehicles) {
+        const std::string dev = resdir::path(kFixtureVehicleRoot + "/" + stem + ".json");
+        if(std::filesystem::is_regular_file(dev, ec)) { return dev; }
+    }
+    return stock;
 }
 
 } // namespace
@@ -609,7 +617,7 @@ void vabSave(Game &g, const char *name) {
 bool vabLoad(Game &g, const char *name) {
     const std::string spec = name != nullptr ? name : "";
     const std::string stem = shipDefStem(spec);
-    const std::string file = shipDefFile(spec);
+    const std::string file = shipDefFile(spec, g.dev_vehicles);
     if(file.empty()) {
         printf("[vab] load failed %s: empty name\n", spec.c_str());
         fflush(stdout);

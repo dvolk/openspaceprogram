@@ -5,9 +5,20 @@ KIND invariant
 # a bare label on purpose: the palette rows live in a child frame whose registered name
 # carries an id hash ("Palette/palette_parts_7CAC8B23"), while the "##capsule" suffix is
 # the def id, which no other widget in the game can match.
-ARGS --vab-empty --timeout 8
-ARGS --ui-click 800,"Capsule (2m)##capsule"
-ARGS --sim-mouse 1500,0,960,540,LMB --ui-click 2500,"VAB TopBar/LAUNCH"
+ARGS --timeout 11.5
+ARGS --ui-click 4300,"Capsule (2m)##capsule"
+ARGS --sim-mouse 5000,0,960,540,LMB --ui-click 6000,"VAB TopBar/LAUNCH"
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what the palette and
+# the dev roster need. Every scripted event here is shifted +3500ms
+# because the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
 EXPECT Main loop starting
 EXPECT [vab] entered the editor (sim keeps coasting)
 CHECK re.search(r"\[vab\] launched '.*' \(1 parts\)", out)

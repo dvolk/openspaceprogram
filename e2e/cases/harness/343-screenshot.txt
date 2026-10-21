@@ -1,12 +1,23 @@
 # F12 writes a PNG of the live frame. The encode moved off the render thread,
 # so the toast now reports the worker's outcome a frame or two later: the file
 # check alone would pass with a dead completion path, and the toast alone would
-# pass on an empty file. --vab-empty is a still scene, so the shot is cheap and
+# pass on an empty file. The editor is a still scene, so the shot is cheap and
 # its backdrop is a constant (0.55,0.62,0.68) to compare a capture against.
 NAME screenshot
 CLAIM F12 writes a PNG under the data dir's screenshots/ and toasts the outcome.
 KIND harness
-ARGS --vab-empty --timeout 8 --sim-press 3500,0,F12
+ARGS --timeout 11.5 --sim-press 7000,0,F12
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start,
+# then the 4 key. Game Debug turns on dev vehicles, which is what the palette
+# and the dev roster need. Every scripted event here is shifted +3500ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
 EXPECT Screenshot saved
 EXPECT [toast] Screenshot saved
 FILE screenshots/*.png
+FORBID FAILED

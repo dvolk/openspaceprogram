@@ -1,18 +1,29 @@
-# --dev-vehicles puts the testships back in the VAB's Load picker. transporter
+# puts the testships back in the VAB's Load picker. transporter
 # is marked "testship": true and sorts last, so it is absent by default and
 # below the popup's fold with the flag: the scroll is what makes it reachable.
 # The loaded part count is the witness that the def resolved, not just the name.
 NAME vab-dev-vehicles
 CLAIM Dev vehicles appear in the Load picker, below the fold until scrolled.
 KIND invariant
-ARGS --vab-empty --dev-vehicles --timeout 12
-ARGS --ui-click 1500,"VAB TopBar/##vabload"
+ARGS --timeout 15.5
+ARGS --ui-click 5000,"VAB TopBar/##vabload"
 # The popup window is named after the combo id --ui-list reports. transporter
 # is below the fold before the scroll, so it is not even in the item registry.
-ARGS --ui-list 1900
-ARGS --ui-scroll 2100,"##Combo_00",-20
-ARGS --ui-click 2800,"##Combo_00/transporter"
-ARGS --ui-click 3400,"VAB TopBar/Load"
+ARGS --ui-list 5400
+ARGS --ui-scroll 5600,"##Combo_00",-20
+ARGS --ui-click 6300,"##Combo_00/transporter"
+ARGS --ui-click 6900,"VAB TopBar/Load"
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what the palette and
+# the dev roster need. Every scripted event here is shifted +3500ms
+# because the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
 EXPECT [vab] loaded transporter (5 parts)
 EXPECT [vab] camera aimed at the build: 5 part(s)
 CHECK '[uilist] window="##Combo_00" label="transporter"' not in out

@@ -9,8 +9,23 @@ NAME vab-close
 CLAIM Back to game parks and restores the camera to its exact flight distance.
 KIND invariant
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --vab res/ships/tanker.json --timeout 10
-ARGS --ui-click 2000,"VAB TopBar/Back to game##vab"
+ARGS --timeout 15.4
+ARGS --ui-click 7400,"VAB TopBar/Back to game##vab"
+# Reached the way a player reaches the editor: the boot's start ship is already a game, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +5400ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --sim-press 1000,0,4
+ARGS --sim-press 1500,0,F1
+ARGS --ui-click 2000,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 2500,0,F1
+ARGS --ui-type 3000,"VAB TopBar/##vehfilter",tanker
+ARGS --ui-click 3500,"VAB TopBar/##vabload"
+ARGS --ui-click 4100,"tanker"
+ARGS --ui-click 4700,"VAB TopBar/Load"
 EXPECT [vab] entered the editor (sim keeps coasting)
 EXPECT [vab] back to flight (sim keeps coasting)
 EXPECT [scene] flight -> vab (push)

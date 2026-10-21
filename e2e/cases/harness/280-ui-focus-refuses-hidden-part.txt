@@ -9,9 +9,26 @@
 NAME ui-focus-refuses-hidden-part
 CLAIM --ui-focus refuses a part no pixel can reach instead of aiming at a neighbour.
 KIND harness
-ARGS --vab res/ships/tanker.json --width 1920 --height 1080 --timeout 6 --frame-cap 30
-ARGS --ui-focus 1500,tank_r1.5h3_1
-ARGS --sim-mouse 2000,0,CUR,CUR,LMB
+ARGS --width 1920 --height 1080 --timeout 13 --frame-cap 30
+ARGS --ui-focus 8500,tank_r1.5h3_1
+ARGS --sim-mouse 9000,0,CUR,CUR,LMB
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +7000ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
+ARGS --ui-type 4600,"VAB TopBar/##vehfilter",tanker
+ARGS --ui-click 5100,"VAB TopBar/##vabload"
+ARGS --ui-click 5700,"tanker"
+ARGS --ui-click 6300,"VAB TopBar/Load"
 EXPECT [uifocus] 'tank_r1.5h3_1' FAILED not clickable from this camera angle
 FORBID [vab] select
 FORBID error:

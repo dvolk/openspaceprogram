@@ -1,9 +1,24 @@
 NAME vab-view-live
 CLAIM The VAB's state pass takes a ship snapshot without terrain LOD.
 KIND invariant
-ARGS --time-accel 5 --timeout 5 --frame-cap 60
+ARGS --time-accel 5 --timeout 10.4 --frame-cap 60
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --vab res/ships/tanker.json --info-log --orbit-interval 1
+ARGS --info-log --orbit-interval 1
+# Reached the way a player reaches the editor: the boot's start ship is already a game, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +5400ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --sim-press 1000,0,4
+ARGS --sim-press 1500,0,F1
+ARGS --ui-click 2000,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 2500,0,F1
+ARGS --ui-type 3000,"VAB TopBar/##vehfilter",tanker
+ARGS --ui-click 3500,"VAB TopBar/##vabload"
+ARGS --ui-click 4100,"tanker"
+ARGS --ui-click 4700,"VAB TopBar/Load"
 # The editor draws no world and parks its camera at the build tree, so its
 # state pass takes the ship snapshot WITHOUT the terrain LOD: the sim keeps
 # coasting while you build, and the shared ORBITAL/SURFACE readouts read g.hud.view
@@ -14,3 +29,4 @@ EXPECT [scene] flight -> vab (push)
 CHECK len(surf) >= 3 and abs(surf[-1]["lon"] - surf[0]["lon"]) > 0.5
 CHECK all(s["alt_asl"] > 80000.0 for s in surf)
 FORBID error:
+FORBID FAILED

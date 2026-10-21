@@ -8,24 +8,41 @@
 #
 # This case used to load 'tanker', and the default dropdown cannot. The
 # list_vab_vehicle_defs helper filters out anything with "testship": true unless
-# --dev-vehicles (shipdef.h), which is what the picker shows, so --vab-load was
+# (shipdef.h), which is what the picker shows, so --vab-load was
 # reaching a ship no player can pick -- the same class of thing as a hook making
 # a transition no button offers. 'stager' is in the list and has the same 7
 # parts, so the numbers did not move.
 NAME vab-load
 CLAIM Load replaces the whole build rather than merging into it.
 KIND invariant
-ARGS --vab res/ships/racer.json --timeout 12
-ARGS --ui-click 1500,"VAB TopBar/##vabload"
+ARGS --timeout 19
+ARGS --ui-click 8500,"VAB TopBar/##vabload"
 # The open popup must not offer a testship: this pins the default side of
-# --dev-vehicles (308 pins the opt-in side).
-ARGS --ui-list 1900
-ARGS --ui-click 2100,"##Combo_00/stager"
-ARGS --ui-click 2700,"VAB TopBar/Load"
+# (308 pins the opt-in side).
+ARGS --ui-list 8900
+ARGS --ui-click 9100,"##Combo_00/stager"
+ARGS --ui-click 9700,"VAB TopBar/Load"
 # Save keeps the loaded identity, which used to be the UI's job: vabLoad itself
 # now points the name at stager, so a Save here must not land on racer.
-ARGS --ui-click 3300,"VAB TopBar/Save"
-ARGS --ui-click 4000,"VAB TopBar/LAUNCH"
+ARGS --ui-click 10300,"VAB TopBar/Save"
+ARGS --ui-click 11000,"VAB TopBar/LAUNCH"
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +7000ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
+ARGS --ui-type 4600,"VAB TopBar/##vehfilter",racer
+ARGS --ui-click 5100,"VAB TopBar/##vabload"
+ARGS --ui-click 5700,"racer"
+ARGS --ui-click 6300,"VAB TopBar/Load"
 EXPECT Main loop starting
 EXPECT [vab] loaded stager (7 parts)
 EXPECT [vab] saved stager

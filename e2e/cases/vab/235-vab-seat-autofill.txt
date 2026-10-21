@@ -4,14 +4,26 @@
 NAME vab-seat-autofill
 CLAIM With no names, every seat is auto-filled from the pad.
 KIND invariant
-ARGS --vab-empty --kerbals e2e/fixtures/three_kerbals.json
-ARGS --time-accel 1 --timeout 12 --frame-cap 30
-ARGS --ui-click 1000,"Capsule (3m)##capsule_r1.5h3"
-ARGS --sim-mouse 2000,0,960,540,LMB --ui-click 4000,"VAB TopBar/LAUNCH"
+ARGS --kerbals e2e/fixtures/three_kerbals.json
+ARGS --time-accel 1 --timeout 15.5 --frame-cap 30
+ARGS --ui-click 4500,"Capsule (3m)##capsule_r1.5h3"
+ARGS --sim-mouse 5500,0,960,540,LMB --ui-click 7500,"VAB TopBar/LAUNCH"
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what the palette and
+# the dev roster need. Every scripted event here is shifted +3500ms
+# because the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
 CHECK re.search(r"Crew: 'Ace' aboard '.*' part 0 \(1/3\)", out)
 CHECK re.search(r"Crew: 'Bram' aboard '.*' part 0 \(2/3\)", out)
 CHECK re.search(r"Crew: 'Cyd' aboard '.*' part 0 \(3/3\)", out)
 EXPECT [vab] launched 'Ship' (1 parts)
 FORBID no kerbal left
 FORBID error:
+FORBID FAILED
 LIMIT 90

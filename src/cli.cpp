@@ -115,12 +115,6 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         ->check(CLI::IsMember({"prograde", "retrograde", "radial-out",
                                "radial-in", "normal", "anti-normal",
                                "kill-rot"}));
-    app.add_option("--vab", args.vab,
-                   "Open the VAB editor scene with this ship def loaded "
-                   "(physics-free build tree) instead of flying");
-    app.add_flag("--vab-empty", args.vab_empty,
-                 "Open the VAB editor scene with an EMPTY build (the main "
-                 "menu's \"Go to VAB\") instead of flying (test hook)");
     app.add_flag("--recover-anywhere", args.recover_anywhere,
                  "Let 'Recover Vessel' recover the active ship anywhere "
                  "(the default requires it grounded on the home body). A "
@@ -133,11 +127,6 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "player-facing beds (currently just \"pad\"); the dev beds "
                  "still resolve by name here and in --startship, so this "
                  "gates the UI only");
-    app.add_flag("--dev-vehicles", args.dev_vehicles,
-                 "Add the test vehicle defs (\"testship\": true) to the VAB's "
-                 "Load picker. Without it the picker offers only player-facing "
-                 "vehicles; test defs still resolve here and in --vab/--startship, "
-                 "so this gates the UI only");
 
     // Docking pair: probe (active) + station, nose-to-nose (see src/docktest.cpp).
     app.add_option("--dock-test", args.dock_test,
@@ -1171,12 +1160,6 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         app.get_option("--sky-dim")->count() > 0;
     args.cli_given.sky_dim_cone =
         app.get_option("--sky-dim-cone")->count() > 0;
-
-    if(!args.vab.empty() && args.vab_empty) {
-        printf("error: --vab and --vab-empty are mutually exclusive\n");
-        *exit_code = 1;
-        return false;
-    }
 
     return true;
 }

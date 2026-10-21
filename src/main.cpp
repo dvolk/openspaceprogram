@@ -598,8 +598,6 @@ int main(int argc, char **argv)
         std::vector<TerrainBody *> sync;
         if(!args.radial_test.empty() || !args.dock_test.empty()) {
             sync.push_back(home);   // the test ships sit here
-        } else if(!args.vab.empty() || args.vab_empty) {
-            sync.push_back(home);   // the launch body is the home pad by default
         } else if(!start_ships.empty()) {
             for(const DebugStartShip &fe : start_ships) {
                 sync.push_back(sys.find(fe.body));   // required, non-empty
@@ -773,25 +771,6 @@ int main(int argc, char **argv)
            seeded with, so every boot says where it landed. On the --load route
            this re-affirms the landing above; setBaseScene logs only on a move. */
         enterGameFloor(game);
-    }
-
-    /* --vab: open the editor with a def loaded as a physics-free build tree;
-       paintVab draws only that. */
-    if(!args.vab.empty()) {
-        /* A bad --vab def is a harness typo: load_ship_def's throw must not reach
-           the top of main as SIGABRT (#16). */
-        try {
-            ShipDef vdef = load_ship_def(resdir::path(args.vab).c_str(),
-                                         game.parts);
-            game.vab.build = BuildShip::fromShipDef(vdef);
-        } catch(const std::exception &e) {
-            printf("error: --vab: %s\n", e.what());
-            return 1;
-        }
-        vabOpen(game);
-    } else if(args.vab_empty) {
-        // --vab-empty: headless entry to the same editor as the menu's VAB.
-        vabOpen(game);
     }
 
     // --surfmap-body: pin the Surface Map's body. Applied AFTER the --load

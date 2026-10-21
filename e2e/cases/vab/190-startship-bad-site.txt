@@ -5,7 +5,7 @@
 NAME startship-bad-site
 CLAIM A bad --startship site fails at boot and lists the body's pads.
 KIND invariant
-ARGS --timeout 4 --vab res/ships/racer.json --startship racer,res/ships/racer.json,Kerbin,pad,moon_pad
+ARGS --timeout 4 --startship racer,res/ships/racer.json,Kerbin,pad,moon_pad
 EXPECT error: start ships: entry 0: 'moon_pad' is not a launch pad on Kerbin (available: main_space_port, polar_pad)
 EXIT 1
 FORBID [vab] launched

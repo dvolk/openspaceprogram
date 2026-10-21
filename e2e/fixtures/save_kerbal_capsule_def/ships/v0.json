@@ -1,5 +1,5 @@
 {
-  "defPath": "e2e/fixtures/one_capsule.json",
+  "defPath": "e2e/vehicles/one_capsule.json",
   "flog": {
     "events": [
       {
