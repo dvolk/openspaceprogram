@@ -1,6 +1,9 @@
 # The lounge is the staff view. Its rows are resolved from the live world, so
 # the dump pins WHERE each staff member is -- a seat, a building's pool, or
 # absent -- which --ui-list cannot see (imgui Text rows are not clickable).
+# Ash's row also pins that the shade= field is there, but not its value: the
+# palette is derived arithmetic (src/crew.h) and tests/test_roster.cpp pins
+# what it must satisfy, so freezing a hex here would only resist retuning it.
 NAME staff-lounge
 CLAIM The Staff Lounge opens from the hub, reports where each staff member is, and returns.
 KIND invariant
@@ -12,7 +15,7 @@ ARGS --ui-list 2500
 ARGS --ui-click 3000,"Staff Lounge/Back to Space Center"
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [staff] roster=8
-EXPECT [staff] Ash skills=4/2/3 where=Aboard racer (Kerbin)
+EXPECT [staff] Ash skills=4/2/3 where=Aboard racer (Kerbin) shade=
 EXPECT [staff] Vela skills=3/5/2 where=At Main space port
 EXPECT [staff] Ottilie skills=3/4/5 where=At Main space port
 EXPECT [scene] spacecenter -> staff (push)

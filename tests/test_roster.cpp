@@ -11,6 +11,8 @@
 #include "crew.h"
 #include "save.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <functional>
@@ -113,6 +115,75 @@ int main() {
         CHECK(expect_throw([&](){ load_crew_roster("res/data/nope.json"); }));
     }
 
+    // ---- the shade each kerbal wears ---------------------------------------
+    {
+        /* The cast is deliberately not all one colour (crew.h): hue is what
+           tells two suits apart, so the checks below are about being told
+           apart, not about staying green. */
+        CHECK(kerbal_complexion(0) == kKerbalBaseGreen);
+        CHECK(kerbal_tint(0) == glm::vec3(1.0f));
+
+        /* kKerbalBaseGreen mirrors the literal utils/gen_kerbal.py writes into
+           textures/kerbal.png. A mirror with nothing pinning it drifts, and
+           then the tint no longer produces the complexion it claims to. */
+        CHECK(std::abs(kKerbalBaseGreen.r * 255.0f - 60.0f) < 0.01f);
+        CHECK(std::abs(kKerbalBaseGreen.g * 255.0f - 200.0f) < 0.01f);
+        CHECK(std::abs(kKerbalBaseGreen.b * 255.0f - 60.0f) < 0.01f);
+
+        for(uint64_t id = 1; id <= 64; id++) {
+            const glm::vec3 c = kerbal_complexion(id);
+            /* Never a black hole, never blown out: partsShader.fs caps light at
+               1.0, so a channel over 1 here is a channel the sun flattens. */
+            const float hi = std::max(c.r, std::max(c.g, c.b));
+            CHECK(hi >= 0.45f && hi <= 0.92f);
+            /* The tint is defined as the quotient, and the shader only ever sees
+               the quotient, so the round trip is the contract. */
+            const glm::vec3 t = kerbal_tint(id);
+            CHECK(t.r > 0.05f && t.g > 0.05f && t.b > 0.05f);
+            CHECK(t.r < 4.5f && t.g < 4.5f && t.b < 4.5f);
+            CHECK(std::abs(t.r * kKerbalBaseGreen.r - c.r) < 1e-5f);
+            CHECK(std::abs(t.g * kKerbalBaseGreen.g - c.g) < 1e-5f);
+            CHECK(std::abs(t.b * kKerbalBaseGreen.b - c.b) < 1e-5f);
+        }
+
+        /* A suit with no chroma is indistinguishable from concrete, so the
+           half-green mix has to keep SOME colour in it. Scoped to 16 ids, not
+           64, because the mix is honest about one cost: a hue near magenta is
+           the base green's complement and cancels toward grey (crew.h), which
+           the phi draw does not reach until past the shipped cast. Widening
+           this loop is the point at which the hue arc has to stop short. */
+        for(uint64_t id = 1; id <= 16; id++) {
+            const glm::vec3 c = kerbal_complexion(id);
+            const float hi = std::max(c.r, std::max(c.g, c.b));
+            const float lo = std::min(c.r, std::min(c.g, c.b));
+            CHECK((hi - lo) / hi >= 0.15f);
+        }
+
+        /* The point of the whole thing: two kerbals side by side are not the
+           same colour. Measured on the COMPLEXION -- the tint is only a means
+           to it, and the shader multiplies a flat texture whose channels differ
+           by 3x, so a tint gap says nothing until the base is multiplied in.
+           Largest channel difference, because that is what a player sees on a
+           0.4m suit. */
+        auto apart = [](const glm::vec3 &a, const glm::vec3 &b) {
+            return std::max(std::abs(a.r - b.r),
+                            std::max(std::abs(a.g - b.g), std::abs(a.b - b.b)));
+        };
+        CrewRoster r = load_crew_roster("res/data/kerbals.json");
+        for(size_t i = 0; i < r.profiles.size(); i++) {
+            for(size_t j = i + 1; j < r.profiles.size(); j++) {
+                CHECK(apart(r.profiles[i].complexion(),
+                            r.profiles[j].complexion()) >= 0.07f);
+            }
+        }
+        // And it holds as the cast grows: ids 1..32 stay told apart.
+        for(uint64_t i = 1; i <= 32; i++) {
+            for(uint64_t j = i + 1; j <= 32; j++) {
+                CHECK(apart(kerbal_complexion(i), kerbal_complexion(j)) >= 0.03f);
+            }
+        }
+    }
+
     // ---- the save round trip ----------------------------------------------
     {
         CrewRoster r = load_crew_roster("res/data/kerbals.json");
@@ -139,6 +210,12 @@ int main() {
             for(int s = 0; s < NumSkills; s++) {
                 CHECK(back.roster[i].skill[s] == m.roster[i].skill[s]);
             }
+            /* The save carries no shade field, so a load re-derives it from the
+               id it does carry. This breaks if a shade ever becomes stored and
+               the save forgets to round-trip it. */
+            KerbalProfile rebuilt;
+            rebuilt.id = back.roster[i].id;
+            CHECK(rebuilt.complexion() == r.profiles[i].complexion());
         }
 
         /* An absent roster key keeps the roster empty, which is how a save

@@ -74,19 +74,23 @@ struct Body {
        passes the matrix in. */
     void UpdateModelMatrix();
 
-    /* xform: see DrawModelAt. */
+    /* xform: see DrawModelAt. opts: see DrawOpts -- a ship part's own look (a
+       kerbal's complexion, crew.h) rides here, so the default-constructed
+       DrawOpts stays the "nothing special" case. */
     void Draw(const Camera* camera, glm::vec3 & sunlightVec, float shadow,
-              const glm::dmat4 &xform = glm::dmat4(1.0)) {
+              const glm::dmat4 &xform = glm::dmat4(1.0),
+              const DrawOpts &opts = DrawOpts()) {
         UpdateModelMatrix();
-        DrawAt(camera, sunlightVec, shadow, model_matrix, xform);
+        DrawAt(camera, sunlightVec, shadow, model_matrix, xform, opts);
     }
 
     /* Draw at an explicit model matrix, leaving model_matrix untouched. */
     void DrawAt(const Camera* camera, glm::vec3 & sunlightVec, float shadow,
                 const glm::dmat4 &modelMat,
-                const glm::dmat4 &xform = glm::dmat4(1.0)) {
+                const glm::dmat4 &xform = glm::dmat4(1.0),
+                const DrawOpts &opts = DrawOpts()) {
         DrawModelAt(camera, mesh, shader, texture, modelMat, sunlightVec,
-                    shadow, xform);
+                    shadow, xform, opts);
     }
 };
 

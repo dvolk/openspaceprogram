@@ -2591,7 +2591,14 @@ void Vehicle::Draw(const Camera* camera, Frame *renderFrame) {
         glm::dvec3 pp; glm::dmat3 pr;
         partPoseRelCom(p, pp, pr);
         const glm::dmat4 model = glm::translate(pp) * glm::dmat4(pr);
-        p->body->DrawAt(camera, sunlightVec, shadow, model, xformShip);
+        /* A person, not a module: the flat green texture is tinted per kerbal
+           (crew.h), so kerbals who walk at the same time are not clones. A
+           seated suit is not in `parts` and a pad suit is not drawn at all, so
+           in practice this colors the one walking kerbal. Only a kerbal-type
+           part owns a profile (part.h), so every other part stays neutral. */
+        DrawOpts opts;
+        if(p->kerbal != nullptr) { opts.tint = p->kerbal->tint(); }
+        p->body->DrawAt(camera, sunlightVec, shadow, model, xformShip, opts);
 
         // shroud: the open cylinder hides the engine below
         if(p->shroud != nullptr && hasChildBelow(p)) {

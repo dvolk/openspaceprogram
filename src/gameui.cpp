@@ -2090,6 +2090,35 @@ void drawUIReadouts(Game &g) {
     });
 }
 
+/* One channel of a kerbal's complexion (crew.h) as an 8-bit byte. Rounds, not
+   truncates: the framebuffer rounds too, so truncating prints a byte darker
+   than the suit draws. */
+static int shade8(float v) {
+    return (int)(glm::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f);
+}
+
+/* The dot that makes a roster row read as a person: each kerbal wears its own
+   colour (crew.h), and a seated or parked suit is never drawn at all (issue
+   #359), so these rows are where who-is-who is legible. Four places draw one
+   -- the Staff Lounge, a capsule's seat rows, the rows of walkers in boarding
+   range, the VAB's seat dropdown -- so all four fill and outline it the same
+   way. The outline is a neutral ink rather than a darkened version of the
+   fill: the fills span the wheel, so a hue-matched rim would be a second
+   colour nobody asked for. */
+static void shadeDot(ImDrawList *dl, const ImVec2 &c, float r,
+                     const glm::vec3 &comp) {
+    dl->AddCircleFilled(c, r, IM_COL32(shade8(comp.r), shade8(comp.g),
+                                       shade8(comp.b), 255));
+    dl->AddCircle(c, r, IM_COL32(18, 20, 24, 255), 0, 1.5f);
+}
+
+/* A suit's fully lit shade. An anonymous suit -- no profile, or the roster id 0
+   a pre-roster save leaves behind (save.cpp) -- wears the texture's own green. */
+static glm::vec3 suitComplexion(const Part *suit) {
+    return (suit != nullptr && suit->kerbal != nullptr)
+         ? suit->kerbal->complexion() : kKerbalBaseGreen;
+}
+
 /* One plain imgui window per part right-clicked in the 3D view (g.part_sels, opened
    by pickAt). Plain Begin/End -- user-placed popups, NOT slot-layout windows. Staging
    that drops the part leaves the entry stale (dropped, not re-pointed). */
@@ -2365,6 +2394,14 @@ void drawPartWindows(Game &g) {
                     Part *suit = ship->parts[part]->seats[slot];
                     if(suit == nullptr) { continue; }
                     ImGui::PushID(suit);
+                    /* The row's two-space indent doubles as the shade dot's
+                       room, so naming the person's colour moves nothing. */
+                    const float dotr = ImGui::GetFontSize() * 0.28f;
+                    const ImVec2 at = ImGui::GetCursorScreenPos();
+                    shadeDot(ImGui::GetWindowDrawList(),
+                             ImVec2(at.x + dotr,
+                                    at.y + ImGui::GetTextLineHeight() * 0.5f),
+                             dotr, suitComplexion(suit));
                     ImGui::Text("  %s", seatName(suit).c_str());
                     /* The ## id is not decoration: PushID(suit) already gives each
                        row its own imgui id, but the test engine registers the
@@ -2428,6 +2465,19 @@ void drawPartWindows(Game &g) {
                                        >= def->crew_capacity);
                     const bool boardable = g.canBoard(k, ship, part);
                     ImGui::PushID(k);
+                    /* A walker wears the same shade as a seated one: the root
+                       part of a Kerbal vehicle IS the suit (eva.h: profile()),
+                       so the seat rows' helper covers this row too. Same
+                       two-space indent as those rows, so the dot costs no
+                       layout. */
+                    const float dotr = ImGui::GetFontSize() * 0.28f;
+                    const ImVec2 at = ImGui::GetCursorScreenPos();
+                    shadeDot(ImGui::GetWindowDrawList(),
+                             ImVec2(at.x + dotr,
+                                    at.y + ImGui::GetTextLineHeight() * 0.5f),
+                             dotr,
+                             suitComplexion(k->parts.empty() ? nullptr
+                                                             : k->parts[0]));
                     ImGui::Text("  %s (%.1f m)%s", k->name.c_str(), dist,
                                 full ? "  (capsule full)" : "");
                     ImGui::BeginDisabled(!boardable);
@@ -4083,6 +4133,18 @@ void drawVabPartWindow(Game &g) {
                             vabAssignSeat(g, bp->id, slot, kp.id);
                         }
                         if(seated) { ImGui::EndDisabled(); }
+                        /* The dot goes at the row's RIGHT edge on purpose: the
+                           label is what --ui-click addresses (e2e names these
+                           rows "##Combo_00/Bram"), so a dot in front of the
+                           name would have to rename the row out from under the
+                           suite. Drawn after Selectable, whose rect it needs. */
+                        const float dotr = ImGui::GetFontSize() * 0.28f;
+                        const ImVec2 lo = ImGui::GetItemRectMin();
+                        const ImVec2 hi = ImGui::GetItemRectMax();
+                        shadeDot(ImGui::GetWindowDrawList(),
+                                 ImVec2(hi.x - dotr - ImGui::GetStyle().FramePadding.x,
+                                        (lo.y + hi.y) * 0.5f),
+                                 dotr, kp.complexion());
                     }
                 }
                 ImGui::EndCombo();
@@ -5484,8 +5546,11 @@ void drawStaffLounge(Game &g) {
         if(ImGui::BeginTable("##staffRoster", 3,
                              ImGuiTableFlags_RowBg
                              | ImGuiTableFlags_BordersInnerV)) {
+            /* The staff column is the bare-name width plus exactly what the dot
+               below costs, so the two cannot drift apart. */
+            const float dotr = ImGui::GetFontSize() * 0.28f;
             ImGui::TableSetupColumn("staff", ImGuiTableColumnFlags_WidthFixed,
-                                    ImGui::GetFontSize() * 9.0f);
+                                    ImGui::GetFontSize() * 9.0f + dotr * 2.6f);
             ImGui::TableSetupColumn("P/S/E", ImGuiTableColumnFlags_WidthFixed,
                                     ImGui::GetFontSize() * 4.5f);
             ImGui::TableSetupColumn("location",
@@ -5496,6 +5561,19 @@ void drawStaffLounge(Game &g) {
                 const bool here = staffWhereIs(g, p.id, where, sizeof where);
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
+                /* A dot in this kerbal's own colour (crew.h): the suit's
+                   texture is one flat green that the tint recolours per person,
+                   and only a walking kerbal is drawn at all, so this row is
+                   where the cast is legible as people. The dot hangs off the
+                   cell's cursor and a Dummy reserves its room, so the table
+                   still lays the row out itself. */
+                const ImVec2 cell = ImGui::GetCursorScreenPos();
+                shadeDot(ImGui::GetWindowDrawList(),
+                         ImVec2(cell.x + dotr,
+                                cell.y + ImGui::GetTextLineHeight() * 0.5f),
+                         dotr, p.complexion());
+                ImGui::Dummy(ImVec2(dotr * 2.6f, 0.0f));
+                ImGui::SameLine(0.0f, 0.0f);
                 ImGui::TextUnformatted(p.name.c_str());
                 ImGui::TableNextColumn();
                 ImGui::Text("%d/%d/%d", p.skill[SkillPiloting],
@@ -5519,9 +5597,16 @@ void dumpStaff(Game &g) {
     for(const KerbalProfile &p : g.roster.profiles) {
         char where[160];
         staffWhereIs(g, p.id, where, sizeof where);
-        printf("[staff] %s skills=%d/%d/%d where=%s\n", p.name.c_str(),
+        /* The fully lit shade this kerbal's suit wears (crew.h) -- the same
+           byte the Staff Lounge's dot is filled with. Appended after `where`
+           so the suite's existing per-row EXPECTs keep matching;
+           tests/test_roster.cpp pins the palette itself. */
+        const glm::vec3 c = p.complexion();
+        printf("[staff] %s skills=%d/%d/%d where=%s shade=%02x%02x%02x\n",
+               p.name.c_str(),
                p.skill[SkillPiloting], p.skill[SkillScience],
-               p.skill[SkillEngineering], where);
+               p.skill[SkillEngineering], where,
+               shade8(c.r), shade8(c.g), shade8(c.b));
     }
     fflush(stdout);
 }

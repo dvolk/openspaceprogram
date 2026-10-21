@@ -311,7 +311,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Print the Staff Lounge at this loop time in ms: one "
                    "[staff] line per staff member with their skills (P/S/E) "
                    "and where the world has them -- At <building>, Aboard "
-                   "<ship> (<body>), On EVA (<body>), or Missing. "
+                   "<ship> (<body>), On EVA (<body>), or Missing -- plus the "
+                   "fully lit shade their suit wears. "
                    "The same strings the Staff Lounge window draws "
                    "(test hook; -1 = never)");
 

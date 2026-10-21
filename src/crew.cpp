@@ -2,8 +2,10 @@
 
 #include "crew.h"
 
+#include <cmath>      // floor (the Kronecker sequence below)
 #include <cstdio>
 #include <fstream>
+#include <numbers>    // phi / sqrt2 / sqrt3
 #include <stdexcept>
 
 #include <nlohmann/json.hpp>
@@ -23,6 +25,81 @@ const KerbalProfile *CrewRoster::find(uint64_t id) const {
         if(p.id == id) { return &p; }
     }
     return nullptr;
+}
+
+namespace {
+/* HSV to RGB with h in [0,1). */
+glm::vec3 hsv_rgb(float h, float s, float v) {
+    const float seg = h * 6.0f;
+    const int i = (int)seg % 6;
+    const float f = seg - (float)i;
+    const float p = v * (1.0f - s);
+    const float q = v * (1.0f - f * s);
+    const float t = v * (1.0f - (1.0f - f) * s);
+    switch(i) {
+        case 0: return glm::vec3(v, t, p);
+        case 1: return glm::vec3(q, v, p);
+        case 2: return glm::vec3(p, v, t);
+        case 3: return glm::vec3(p, q, v);
+        case 4: return glm::vec3(t, p, v);
+        default: return glm::vec3(v, p, q);
+    }
+}
+}
+
+/* Three dials on the cast's look, and only these:
+   kKerbalGreenMix  how much of the species green every suit wears -- the dial
+                    for "varied" against "all kerbal-green";
+   sat, val below   how colourful, how bright.
+   Hue is left to run the whole wheel: it is what tells two suits apart, so
+   narrowing it is the one change that costs separation.
+
+   A LERP weight, not a scale: 0 is the raw picked hue (reads as candy), 1 is
+   everyone in the texture's own green (reads as one clone). The mix is what
+   makes a crew look like one species with different complexions -- sage and
+   khaki, not neon. It has one known cost, and at 0.35 it reaches the shipped
+   cast: a hue near magenta is the green's COMPLEMENT, so the mix cancels it
+   toward grey -- id 3 (Corvin) lands on #7a747a, chroma 0.06, and id 11 joins
+   it. That is what the chroma floor in tests/test_roster.cpp is for, and it is
+   red right now. The fix is NOT to raise the mix back: stopping the hue draw
+   short of the complementary band costs nothing -- hue = 0.8 * unit(...) keeps
+   every shade of a 64-kerbal cast above 0.21 chroma and measures BETTER on
+   separation (0.143 for the cast against 0.128 with the whole wheel). */
+const float kKerbalGreenMix = 0.35f;
+
+/* The three picks come from a Kronecker sequence -- the fractional parts of id
+   times three irrationals. Roster ids are small and consecutive, and a hash of
+   them still lands some pairs a hair apart in every channel; this sequence
+   spreads consecutive integers near-optimally, so 8 kerbals leave 0.10 of
+   channel separation and a 32-kerbal cast still leaves 0.05. Being pure
+   arithmetic, a shade is reproducible from the id alone: nothing to carry
+   through the roster file, the save, or a rebuilt world -- though only within
+   one -march setting, since the arithmetic below contracts to an FMA on avx2
+   targets. The float32 result never changes the printed byte (checked for ids
+   1..500), so that is a note, not a hazard.
+
+   Hue takes the phi axis, so it gets the best-spread sequence. Saturation and
+   value stay in narrow bands: below 0.45 a suit reads as grey concrete, above
+   0.9 as a neon sticker, and the shader's dark side (min_light 0.15) crushes a
+   low-value suit into the background. Past id ~2^51 the products leave the
+   double's exact range and the fraction collapses to zero, so a hand-edited
+   roster could invent a duplicate shade. */
+glm::vec3 kerbal_complexion(uint64_t id) {
+    if(id == 0) { return kKerbalBaseGreen; }   // anonymous: the texture's own green
+    const double d = (double)id;
+    auto unit = [](double x) { return x - std::floor(x); };   // 0..1
+    const float hue = (float)unit(d * std::numbers::phi_v<double>);
+    const float sat = 0.45f + 0.40f * (float)unit(d * std::numbers::sqrt2_v<double>);
+    const float val = 0.55f + 0.30f * (float)unit(d * std::numbers::sqrt3_v<double>);
+    const glm::vec3 pick = hsv_rgb(hue, sat, val);
+    return pick * (1.0f - kKerbalGreenMix) + kKerbalBaseGreen * kKerbalGreenMix;
+}
+
+/* The suit texture is one flat green, so the tint is whatever turns that green
+   into the complexion -- which is why a blue or a crimson kerbal costs the
+   shader a multiplier over 3 on one channel and under 0.3 on another. */
+glm::vec3 kerbal_tint(uint64_t id) {
+    return kerbal_complexion(id) / kKerbalBaseGreen;
 }
 
 const KerbalProfile *CrewRoster::byName(const std::string &name) const {
