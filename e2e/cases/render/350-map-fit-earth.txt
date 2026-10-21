@@ -1,0 +1,13 @@
+# The orbital map opens fitted to the focus body, not to a flat 6000 m/pixel.
+# That flat value was tuned for 600 km Kerbin (its radius at 100 px); at it,
+# 6371 km Earth does not even fit the 480 px map window.
+#
+# [mapfit] prints the scale on every fit (world load, focus change, Reset
+# view), so the opening scale is observable without a screenshot.
+NAME map-fit-earth
+CLAIM The orbital map's initial zoom is the focus body's radius at 100 px.
+KIND invariant
+ARGS --timeout 4 --system res/systems/solar_system.json
+ARGS --startship racer,res/ships/racer.json,Earth,inertial-orbit
+FORBID error:
+CHECK re.search(r"\[mapfit\] Earth: radius 6371000 m -> 63710\.0 m/px", out)

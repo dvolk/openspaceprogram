@@ -122,17 +122,22 @@ inline constexpr double kSurfaceModeAlt = 30e3;
 
 /* Wheel-zoom bounds [m/pixel] for the orbital maps (flight + tracking), one
    shared pair so the two windows cannot drift apart. The upper bound decides
-   whether a whole planetary system fits on screen at once.
+   whether a whole planetary system fits on screen at once, and the lower one
+   how far into a body's neighbourhood a wheel can go.
    Changes: only how far the map scrolls -- no physics, no science.
    Where: the wheel-zoom clamps (gameui.cpp). */
 inline constexpr float kMapMinScale = 100.0f;          // 10^2
 inline constexpr float kMapMaxScale = 3.16227766e10f;  // 10^10.5
 
-/* The map's scale [m/pixel] at startup and after "Reset view": enough to
-   see the focus body plus its immediate moons without any scrolling.
-   Changes: what the map looks like before the player touches the wheel.
-   Where: Game::map.scale (game.h). */
-inline constexpr float kMapDefaultScale = 6000.0f;
+/* The map's initial and "Reset view" zoom, expressed as the focus body's
+   radius in pixels: every body opens the same size on screen, whether it is
+   600 km Kerbin, 6371 km Earth or 13 km Gilly. 100 reproduces the old flat
+   6000 m/pixel default exactly for Kerbin (600 000 / 100), so the look the
+   map was tuned in is unchanged; only other bodies move. Bodies under 10 km
+   cannot reach it: kMapMinScale is the wheel's floor, and the fit clamps.
+   Changes: what the map looks like on arrival at a body and after Reset view.
+   Where: fitMapView (gameui.cpp), MapState::fit_body (game.h). */
+inline constexpr float kMapBodyRadiusPx = 100.0f;
 
 /* Ascending / descending node marker colors, linear-ish sRGB [0,1] per
    channel. Kept as bare channels because the two places that draw them want

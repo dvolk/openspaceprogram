@@ -1,0 +1,14 @@
+# Kerbin is the body the old flat 6000 m/pixel default was tuned for, so its
+# opening zoom must not move. And the fit follows a focus change: F6 hands the
+# map to a ship at the Mun, which then opens at the Mun's own radius (200 km)
+# instead of keeping Kerbin's framing.
+NAME map-fit-follows-focus
+CLAIM A focus change refits the map, and Kerbin's opening zoom is unchanged.
+KIND invariant
+ARGS --timeout 6 --startship racer,res/ships/racer.json,Kerbin,inertial-orbit
+ARGS --startship probe,res/ships/racer.json,Mun,inertial-orbit
+ARGS --sim-press 2500,50,F6
+EXPECT Active ship 2 of 2: probe
+FORBID error:
+CHECK re.search(r"\[mapfit\] Kerbin: radius 600000 m -> 6000\.0 m/px", out)
+CHECK re.search(r"\[mapfit\] Mun: radius 200000 m -> 2000\.0 m/px", out)

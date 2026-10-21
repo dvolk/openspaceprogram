@@ -1193,6 +1193,8 @@ void Game::clearEphemeralState() {
     pose_jitter_armed = false;
     pose_jitter_prev_ship = nullptr;
     pose_jitter_prev_frame = nullptr;
+    // The body the map was fitted to dies with the world; null re-fits on next draw.
+    map.fit_body = nullptr;
     // The snapshot describes a ship that is about to die; updateShipView
     // re-takes it on the next state pass (render.cpp:78 nulls it for no ship).
     hud.view.ship = nullptr;

@@ -2753,6 +2753,25 @@ static void drawMapNodes(OrbitMap &map, ImDrawList *dl, const OrbitElements &o,
     }
 }
 
+/* Fit a map view to a body: its disk is kMapBodyRadiusPx pixels of radius and the pan
+   recentres. Both maps call it every draw with their focus body, which makes it a no-op
+   unless that body changed; "Reset view" forces it. A framing the player has wheeled or
+   panned is theirs to keep -- the fit is only the view a body opens with. */
+static void fitMapView(MapState &m, TerrainBody &body, bool force = false) {
+    if(!force) {
+        if(m.fit_body == &body) { return; }
+        if(m.posed) { m.fit_body = &body; return; }
+    }
+    assert(body.radius > 0.0f);
+    m.scale = std::clamp(body.radius / kMapBodyRadiusPx, kMapMinScale, kMapMaxScale);
+    m.pan = ImVec2(0.0f, 0.0f);
+    m.fit_body = &body;
+    m.posed = false;
+    printf("[mapfit] %s: radius %.0f m -> %.1f m/px\n",
+           body.name.c_str(), body.radius, m.scale);
+    fflush(stdout);
+}
+
 // The orbital map: right-clicking cycles its chrome (full window -> bare map -> no
 // window).
 void drawUIMap(Game &g) {
@@ -2789,6 +2808,11 @@ void drawUIMap(Game &g) {
            ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
             map_mode = (map_mode + 1) % 3;
         }
+        /* The focus body, fitted before the trajectory sampling below reads map_scale
+           for its extent. A ship that changed SOI arrives at a zoom that fits the new
+           body instead of keeping the old one. */
+        TerrainBody *focus = ship->m_parent;
+        fitMapView(g.map, *focus);
         const float avail_w = ImGui::GetContentRegionAvail().x;
         const float avail_h = ImGui::GetContentRegionAvail().y;
         const float isp = ImGui::GetStyle().ItemSpacing.y;
@@ -2851,9 +2875,8 @@ void drawUIMap(Game &g) {
             }
         }
     
-        // The focus body and the map plane -- a normal in the focus's inertial frame;
-        // OrbitMap derives an in-plane basis from it.
-        TerrainBody *focus = ship->m_parent;
+        // The map plane -- a normal in the focus's inertial frame; OrbitMap derives an
+        // in-plane basis from it.
         glm::dvec3 plane_n, plane_x;
         mapPlaneBasis(focus->frame, orbit_pos, orbit_vel, true, map_plane,
                       g.hud.view.target_h_hat, plane_n, plane_x);
@@ -2935,8 +2958,7 @@ void drawUIMap(Game &g) {
             ImGui::PopItemWidth();
             ImGui::SameLine();
             if(ImGui::Button("Reset view")) {
-                map_pan = ImVec2(0.0f, 0.0f);
-                map_scale = kMapDefaultScale;
+                fitMapView(g.map, *focus, true);
             }
         }
 
@@ -2963,10 +2985,12 @@ void drawUIMap(Game &g) {
             map_pan.x = (mouse.x - u * old_scale / new_scale) - center_x;
             map_pan.y = (mouse.y - v * old_scale / new_scale) - center_y;
             map_scale = new_scale;
+            g.map.posed = true;
         }
         if(ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
             map_pan.x += g_io.MouseDelta.x;
             map_pan.y += g_io.MouseDelta.y;
+            g.map.posed = true;
         }
 
         OrbitMap proj;
@@ -4672,6 +4696,8 @@ void drawTrackingMap(Game &g) {
         // The focus body: the ship's parent when there is one, else home (a new game before
         // its first launch). Ship-specific bits are absent then.
         TerrainBody *focus = ship ? ship->m_parent : g.home;
+        // Same fit as the flight map: the body, not Kerbin's zoom, sets the scale.
+        fitMapView(g.map, *focus);
 
         // Empty with no ship.
         bool closed = false;
@@ -4749,10 +4775,12 @@ void drawTrackingMap(Game &g) {
             map_pan.x = (mouse.x - u * old_scale / new_scale) - center_x;
             map_pan.y = (mouse.y - v * old_scale / new_scale) - center_y;
             map_scale = new_scale;
+            g.map.posed = true;
         }
         if(ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
             map_pan.x += g_io.MouseDelta.x;
             map_pan.y += g_io.MouseDelta.y;
+            g.map.posed = true;
         }
 
         OrbitMap proj;

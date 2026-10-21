@@ -1,0 +1,9 @@
+# Same fit, the other extreme: at the old flat 6000 m/pixel, 13 km Gilly was a
+# two-pixel dot. Its own radius at 100 px puts the map where a player can see an
+# orbit around it.
+NAME map-fit-small-body
+CLAIM The fit also zooms IN for a body far smaller than Kerbin.
+KIND invariant
+ARGS --timeout 4 --startship racer,res/ships/racer.json,Gilly,inertial-orbit
+FORBID error:
+CHECK re.search(r"\[mapfit\] Gilly: radius 13000 m -> 130\.0 m/px", out)

@@ -14,7 +14,7 @@
 #include "audio.h"
 #include "camera.h"   // Camera, CameraMode
 #include "cli.h"      // GameArgs
-#include "constants.h" // kMapDefaultScale
+#include "constants.h" // kMapMinScale (MapState's boot scale)
 #include "crew.h"     // CrewRoster (the named crew pool)
 #include "display.h"  // Renderer
 #include "flightlog.h"
@@ -264,13 +264,23 @@ struct VabState {
    on the defaults. map.plane is NOT just chrome: ShipView's Inc/LAN/LPe are
    measured in it (see ShipView), so the readouts follow the picture. */
 struct MapState {
-    float scale = kMapDefaultScale;   // meters per pixel
+    // Meters per pixel. A boot seed only: the first draw fits it to fit_body.
+    float scale = kMapMinScale;
     // RefPlaneMode (frame.h). ImGui::Combo needs an int*.
     int plane = kRefEquator;
     // Pan offset from the window center, in pixels (P4 navigation).
     ImVec2 pan = ImVec2(0.0f, 0.0f);
     // Right-click cycles chrome: 0 = full window, 1 = bare map, 2 = no chrome.
     int mode = 0;
+    /* The body this view was fitted to: its radius sets the scale, so
+       arriving at Earth or Gilly opens at the same screen size as Kerbin.
+       Compared only, never dereferenced; clearEphemeralState nulls it with
+       the world it belongs to, so the next draw re-fits. */
+    TerrainBody *fit_body = nullptr;
+    /* The player has wheeled or panned since the last fit. A focus change
+       then leaves their framing alone -- the fit is the opening view, and
+       "Reset view" asks for it back. */
+    bool posed = false;
 };
 
 /* Surface Map SESSION state (Game::surfmap), not save state: the pixels are
