@@ -18,7 +18,17 @@ and crash strings are forbidden by default, so a case names only its own
 refusals; NOGLCHECK opts out of the GL drains for timing-sensitive cases.
 CHECK sees out and
 the parsed logs (orbit/dbg/att/eva/fuel/drainlog/drag/shake/cam/terrain/surf/
-xfer/porkchop/surfmap/mapb/plane/slew/toast/scene) plus first/last/re. ARGS tokenizes like a
+xfer/porkchop/surfmap/mapb/plane/slew/toast/scene) plus first/last/re. The row
+lists parse stdout from the LAST "Loaded game from" line: a successful load
+starts a new world, and rows the previous world printed are not evidence about
+the one under test (toast/scene stay whole-run -- they describe the run).
+The load-through-the-UI shape most save/load cases now take: Game Debug ticks
+the e2e fixture root, the sheet picks the "fixtures" game, the slot filter
+narrows the list to one row, and the row + Load button do the rest. The load
+lands at 4s, so a case's own scripted events shift +5000ms and the clock
+resumes on the warp ladder (PERIOD presses) -- a load starts paused, where
+--time-accel used to hand a boot load its warp. e2e/convert_load_to_ui.py
+generates that preamble. ARGS tokenizes like a
 shell, so a value may be quoted to carry spaces. SEED <fixture> <path-under-
 data-dir> [AGE_DAYS] stages an existing save into the case's scratch --data-dir.
 FILE <path-under-data-dir> [substring...] and NOFILE <path-under-data-dir>
@@ -829,6 +839,9 @@ def run_case(case):
     # longer testing -- a sheet load from the Title would otherwise leave the
     # Title's rows at the head of every list, and first()/all()/last() would
     # read them. A boot load cuts nothing: its line precedes every row.
+    # `scene` and `toast` deliberately stay whole-run -- they describe the run,
+    # not a world, so a CHECK that mixes one with a world-scoped row list is
+    # comparing across that line and should say so.
     cut = out.rfind("Loaded game from ")
     world = out[cut:] if cut >= 0 else out
     orbit = parse_orbit(world)
