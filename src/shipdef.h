@@ -307,12 +307,15 @@ struct ShipPart {
 struct ShipDef {
     std::string name;
     std::vector<ShipPart> parts;
-    int controller;        // part index; -1 = default (first reaction wheel)
+    /* Defaults so a ShipDef declared before it is filled is never read with
+       indeterminate scalars: mintCrewPool and the load path both declare one and
+       then assign it, and make_suit -> resolveHullMargin reads hull_margin. */
+    int controller = -1;   // part index; -1 = default (first reaction wheel)
 
     /* Hull margin (m) for EVERY part of this ship; -1 = not set -> the catalog
        value, then the physics default. Ship-level because the welded-hull overlap
        problem depends on the SHIP'S layout. */
-    double hull_margin;
+    double hull_margin = -1.0;
 
     int controllerIndex() const {
         if(controller >= 0) { return controller; }

@@ -16,8 +16,9 @@ static bool removeFromContainer(Part *item) {
     /* A seat occupant is held through `seats`, not `contents`: this function
        would clear its hold edge while the capsule still lists it (and owns it),
        breaking checkPartInvariants and the free-once rule. Seats move through
-       addSeat/removeSeat only. */
-    if(item->isSeat()) { return false; }
+       addSeat/removeSeat only. The guard is on ANY held kerbal part, not just
+       one a capsule holds -- see Part::isContainedPerson. */
+    if(item->isContainedPerson()) { return false; }
     auto &c = src->contents;
     auto it = std::find(c.begin(), c.end(), item);
     if(it != c.end()) {
@@ -42,6 +43,24 @@ static bool inSubtree(Part *root, Part *target) {
     return false;
 }
 
+/* These two walk CONTENTS only, unlike inSubtree / countPartInventory /
+   inventorySetOwner, which cross the seats edge too. That is deliberate, and
+   the difference is what each walk is FOR (#291):
+   - this pair reaches a person's POCKETS -- the cargo in their suit's
+     contents, never the suit itself (the root's own resources are not part of
+     either total). EVA RCS drains the suit tank with consumeResourceMass first
+     and only falls back to inventoryDrain when the suit alone cannot cover the
+     flow (eva.cpp), so suit tank and pockets are alternatives, not one pool.
+   - a suit can never hold seats: a kerbal def has no crew_capacity, so
+     ensureSeats() leaves `seats` empty and addSeat() refuses. So there is no
+     occupant here to miss, and the walk cannot skip a person.
+   - ship fuel does not come through here at all -- engines draw from fuel
+     groups (Vehicle::consumeResourceMass / buildFuelGroups), so "a seated
+     suit's tank is not ship fuel" is already true by a different route.
+   If a kerbal def ever grows crew_capacity, a seated suit could nest a seated
+   suit and this pair would under-count; the load path refuses that nesting
+   today (validateSeatArray / validateInventoryArray), and checkContainmentTree
+   reports it. */
 float inventorySubtreeResource(Part *root, int res) {
     if(root == nullptr) { return 0.0f; }
     float total = 0.0f;

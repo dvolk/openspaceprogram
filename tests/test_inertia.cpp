@@ -694,7 +694,8 @@ static void test_contained_kerbal() {
     k->def = &s.defs.back();
     cap->addSeat(k);
     k->owner = s.v;                 // the vehicle the capsule rides
-    CHECK_TRUE(k->isSeat(), "a kerbal part parked in a capsule is a seat");
+    CHECK_TRUE(k->isContainedPerson(),
+               "a kerbal part parked in a capsule is a seat");
     CHECK_TRUE(cap->seatCount() == 1, "the capsule shows one seat taken");
 
     finishShip(s);

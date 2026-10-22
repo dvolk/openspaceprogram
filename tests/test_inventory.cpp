@@ -279,7 +279,7 @@ int main() {
         IT->container = nullptr;
         /* (b) a kerbal parked as cargo: a person is not inventory */
         Part *KP = mkPart(I, "stowaway", 90.0, 1.0, 1.0, 1.0, 0, false);
-        // hand-wire a kerbal-typed def so isSeat() fires
+        // hand-wire a kerbal-typed def so isContainedPerson() fires
         S3.defs.push_back(PartDef());
         S3.defs.back().name = "stowaway-def";
         S3.defs.back().type = "kerbal";
@@ -464,10 +464,11 @@ int main() {
         S8.v->setRoot(CAP8);
         S8.v->controller = CAP8;
         Part *SUIT = mkPart(S8, "suit8", 90.0, 1.0, 1.0, 1.0, 3, false);
-        S8.defs.back().type = "kerbal";     // what makes it a seat (Part::isSeat)
+        S8.defs.back().type = "kerbal";     // what makes it a seat (Part::isContainedPerson)
         CHECK_TRUE(CAP8->addSeat(SUIT), "the suit is parked in the capsule");
         SUIT->owner = S8.v;
-        CHECK_TRUE(SUIT->isSeat(), "a kerbal part held by a capsule is a seat");
+        CHECK_TRUE(SUIT->isContainedPerson(),
+                   "a kerbal part held by a capsule is a seat");
         CHECK_TRUE(S8.v->checkPartInvariants(), "the seated ship is consistent");
 
         CHECK_TRUE(!inventoryRemove(SUIT), "inventoryRemove refuses a seat");
@@ -482,7 +483,7 @@ int main() {
 
         // The way out, for contrast: removeSeat hands it over unheld.
         CHECK_TRUE(CAP8->removeSeat(SUIT) == SUIT, "removeSeat unparks it");
-        CHECK_TRUE(!SUIT->isSeat(), "unheld, it is no longer a seat");
+        CHECK_TRUE(!SUIT->isContainedPerson(), "unheld, it is no longer a seat");
         delete SUIT;   // unparked, so nobody owns it now
         delete CRATE;
         destroyVehicle(S8.v);   // frees CAP8, whose seat is empty again

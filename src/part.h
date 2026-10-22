@@ -125,9 +125,17 @@ struct Part {
     bool isFuelBarrier() const { return def != nullptr && def->isFuelBarrier(); }
     bool isCapsule() const { return def != nullptr && def->crew_capacity > 0; }
     bool isContainer() const { return def != nullptr && def->inventory_capacity > 0; }
-    /* A seat OCCUPANT: a kerbal-type suit held by a capsule. Derived from the
-       def type and the hold edge, so it cannot drift from either. */
-    bool isSeat() const {
+    /* A PERSON that is being held: a kerbal-typed Part with a container. Named
+       for what it actually tests, because the predicate must NOT tighten to
+       `container->isCapsule()` (#291). The two edges mean different things:
+       `seats` is how a capsule holds a suit, `contents` is how anything holds
+       cargo, and this is the guard on the second one -- removeFromContainer
+       refuses on it, and checkContainmentTree reports "a person is not cargo"
+       through it. Both would stop firing for a kerbal part held by a part that
+       is not a capsule, which is exactly the state they exist to catch.
+       Derived from the def type and the hold edge, so it cannot drift from
+       either. */
+    bool isContainedPerson() const {
         return container != nullptr && def != nullptr && def->type == "kerbal";
     }
     /* Seats taken (non-null slots). `def->crew_capacity` is the ceiling. */
@@ -260,7 +268,13 @@ Part *make_part(const PartDef &pd, double mass, double hull_margin,
 /* Mint a suit Part from a kerbal ship def (the occupant of a seat). Its Body is
    created but never enters the physics world -- a seat's mass rides the
    containment edge through Part::effectiveMass. Tanks are seeded full like
-   Vehicle::init does; a load overwrites the contents from the save. Throws if
-   the def is unusable. */
-Part *make_suit(const std::string &defPath, const PartsCatalog &cat,
-                Shader *partsshader);
+   Vehicle::init does; a load overwrites the contents from the save.
+
+   Split from the load (#291): the crew pool mints one suit per roster entry, so
+   a single-call make_suit parsed res/ships/kerbal.json once per person (8 file
+   parses at boot, and again on every New Game). Load once with load_suit_def,
+   then mint as many suits as needed. `def` must come from load_suit_def: the
+   one-part / kerbal-type checks live there, so make_suit cannot be handed a
+   def that would mint a half-person. */
+ShipDef load_suit_def(const std::string &defPath, const PartsCatalog &cat);
+Part *make_suit(const ShipDef &def, Shader *partsshader);

@@ -275,10 +275,12 @@ TINC  = -I./src -I./middleware/glm/ -I./middleware/bullet3/src \
         -I./middleware/imgui/ -I./middleware/ -I$(MWROOT)/assimp/include/ -I./middleware/assimp/include/ \
         -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
 TLIBS = $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB)
-# Real-Bullet tests share these TUs.
+# Real-Bullet tests share these TUs. part.o is here because build_ship mints
+# every part through make_part.
 TCOMMON_OBJS = $(TESTDIR)/obj/physics.o $(TESTDIR)/obj/body.o $(TESTDIR)/obj/vehicle.o \
                $(TESTDIR)/obj/eva.o $(TESTDIR)/obj/crew.o $(TESTDIR)/obj/inventory.o \
-               $(TESTDIR)/obj/shipdef.o $(TESTDIR)/obj/frame.o $(TESTDIR)/obj/terrain.o \
+               $(TESTDIR)/obj/part.o $(TESTDIR)/obj/shipdef.o $(TESTDIR)/obj/frame.o \
+               $(TESTDIR)/obj/terrain.o \
                $(TESTDIR)/obj/shader.o $(TESTDIR)/obj/camera.o $(TESTDIR)/obj/mesh.o \
                $(TESTDIR)/obj/texture.o $(TESTDIR)/obj/gldebug.o $(TESTDIR)/obj/buildings.o
 
@@ -359,6 +361,10 @@ $(TESTDIR)/test_inertia: $(TESTDIR)/obj/test_inertia.o $(TCOMMON_OBJS)
 	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
 
 $(TESTDIR)/test_inventory: $(TESTDIR)/obj/test_inventory.o $(TCOMMON_OBJS)
+	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+
+# The crew pool's suit-def gate (src/part.cpp). Needs res/ and the part mint.
+$(TESTDIR)/test_suitdef: $(TESTDIR)/obj/test_suitdef.o $(TCOMMON_OBJS)
 	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
 
 $(TESTDIR)/test_rotation: $(TESTDIR)/obj/test_rotation.o $(TCOMMON_OBJS)
@@ -462,6 +468,7 @@ $(TESTDIR)/test_orient: $(TESTDIR)/obj/test_orient.o $(BULLET3_OBJS)
 
 TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
         test_power test_staging test_staging_dv test_dock test_contain test_inertia test_inventory \
+        test_suitdef \
         test_rotation test_shipload test_save test_crew test_roster test_calendar \
         test_flightlog test_science test_bodylimits \
         test_orbit test_orbitsample test_transfer test_porkchop test_surfmap test_eva \

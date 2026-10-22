@@ -139,7 +139,8 @@ int main() {
         CHECK_TRUE(tank->container == nullptr && cap->container == nullptr
                    && portA->container == nullptr,
                    "freshly built parts are contained nowhere");
-        CHECK_TRUE(!suit->isSeat(), "a suit with no container is not a seat");
+        CHECK_TRUE(!suit->isContainedPerson(),
+                   "a suit with no container is not a seat");
         CHECK_TRUE(A.v->checkPartInvariants(), "A passes the invariant unwired");
     }
 
@@ -154,7 +155,7 @@ int main() {
         CHECK_TRUE(cap->seats[0] == suit, "seats[0] is the suit");
         CHECK_TRUE(cap->seats[0]->container == cap, "back-reference holds");
         CHECK_TRUE(suit->owner == A.v, "owner names the vehicle the capsule rides");
-        CHECK_TRUE(suit->isSeat(), "the occupant reads as a seat");
+        CHECK_TRUE(suit->isContainedPerson(), "the occupant reads as a seat");
         CHECK_TRUE(suit->kerbal != nullptr && suit->kerbal->id == 7,
                    "the suit owns who sits in it");
         CHECK_TRUE(cap->seatCount() == 1, "seatCount: one seat taken");

@@ -2378,21 +2378,24 @@ void drawPartWindows(Game &g) {
             if(def->crew_capacity > 0) {
                 ImGui::Separator();
                 /* A seat is this capsule's occupant (part.h): a suit Part parked
-                   in it, not a Kerbal vehicle. The snapshot of suits is safe
-                   to keep iterating after a button fires -- an EVA hands the
+                   in it, not a Kerbal vehicle. The slot loop below iterates
+                   `seats` in place rather than compacting it into a vector:
+                   this window redraws every frame for every capsule, and the
+                   snapshot was allocated only to count the rows and name the
+                   first one (#291). A button that fires can empty a slot, but
+                   each iteration re-reads its own slot, and an EVA hands the
                    suit to the kerbal it just minted, so it stays alive. */
-                std::vector<Part *> seats;
-                for(Part *suit : ship->parts[part]->seats) {
-                    if(suit != nullptr) { seats.push_back(suit); }
-                }
-                ImGui::Text("Crew: %d / %d", (int)seats.size(), def->crew_capacity);
-                /* Iterate the SLOTS, not the compacted list: the button ids below
+                Part *firstSuit = nullptr;
+                ImGui::Text("Crew: %d / %d", ship->parts[part]->seatCount(),
+                            def->crew_capacity);
+                /* Iterate the SLOTS, not a compacted list: the button ids below
                    are slot numbers, so a row keeps its id when a middle seat
                    empties. */
                 char btn[32];   // slot ids only ("Exp##exp12"); name ids use std::string below
                 for(size_t slot = 0; slot < ship->parts[part]->seats.size(); slot++) {
                     Part *suit = ship->parts[part]->seats[slot];
                     if(suit == nullptr) { continue; }
+                    if(firstSuit == nullptr) { firstSuit = suit; }
                     ImGui::PushID(suit);
                     /* The row's two-space indent doubles as the shade dot's
                        room, so naming the person's colour moves nothing. */
@@ -2434,9 +2437,9 @@ void drawPartWindows(Game &g) {
                 }
                 // Capsule-level "Run Experiment": first seat (stable for
                 // --sim-press).
-                if(!seats.empty()) {
+                if(firstSuit != nullptr) {
                     if(ImGui::SmallButton("Run Experiment")) {
-                        g.runSeatExperiment(seats.front());
+                        g.runSeatExperiment(firstSuit);
                     }
                 }
                 // Free kerbals in boarding reach: a Board button each, plus Store when one holds a
@@ -2581,9 +2584,12 @@ void drawPartWindows(Game &g) {
                 ImGui::Separator();
                 /* The first seat on this ship (part.h): a seated kerbal is a suit
                    Part parked in a capsule, and the provenance a pod records is a
-                   NAME, not a pointer. */
-                std::vector<Part *> seats = vehicleSeats(ship);
-                std::string runner = seats.empty() ? "" : seatName(seats.front());
+                   NAME, not a pointer. firstVehicleSeat, not vehicleSeats: this
+                   is redrawn every frame the window is open, and the whole list
+                   was allocated to name one runner (#291). */
+                Part *runnerSuit = firstVehicleSeat(ship);
+                std::string runner =
+                    runnerSuit != nullptr ? seatName(runnerSuit) : "";
                 if(!runner.empty()) {
                     // ##id: keep this distinct from the capsule's "Run Experiment".
                     if(ImGui::SmallButton("Run Experiment##pod_run")) {
@@ -2683,11 +2689,7 @@ void drawPartWindows(Game &g) {
                     if(v->parts.size() != 1) { continue; }
                     if(v->parts[0]->container != nullptr) { continue; }
                     // A crewed ship is not stowable: its capsule holds a seat.
-                    bool crewed = false;
-                    for(Part *p : v->parts) {
-                        if(p->seatCount() > 0) { crewed = true; break; }
-                    }
-                    if(crewed) { continue; }
+                    if(firstVehicleSeat(v) != nullptr) { continue; }
                     if(v == ship) { continue; }
                     /* distanceTo: COM-to-COM in the common root frame -- a raw coordinate difference
                        would mix the two frames. */

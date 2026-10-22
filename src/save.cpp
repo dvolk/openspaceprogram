@@ -19,7 +19,7 @@
 #include "eva.h"       // Kerbal
 #include "game.h"      // Game, Scene
 #include "physics.h"   // RemoveBody, AddPhysicsBody, SetAngVelocity, GetAngVelocity
-#include "part.h"      // Part, make_part, make_suit
+#include "part.h"      // Part, make_part
 #include "resdir.h"    // resdir::path
 #include "shipdef.h"   // PartsCatalog, PartDef, ResourceType, ShipDef, scenario_by_name
 #include "system.h"    // System
@@ -240,8 +240,9 @@ static std::string validateSeatArray(const PartsCatalog &cat,
             return "load: '" + shipName + "' seat part '" + sp.part
                    + "' is not in the parts file";
         }
-        /* A seat is a PERSON, and only a kerbal-type Part is one (Part::isSeat).
-           Anything else here is a hand-edited file, not a game state. */
+        /* A seat is a PERSON, and only a kerbal-type Part is one
+           (Part::isContainedPerson). Anything else here is a hand-edited file,
+           not a game state. */
         if(sd->type != "kerbal") {
             return "load: '" + shipName + "' seat part '" + sp.part + "' is a '"
                    + sd->type + "' part, not a kerbal seat";
@@ -620,11 +621,12 @@ static std::string validateKerbalDef(const SaveShip &s, const PartsCatalog &cat,
     } catch(const std::exception &e) {
         return e.what();
     }
-    /* The same rule make_suit states for a suit, and it matters twice as much
-       here: build_ship would happily build a four-part ship from a racer def and
-       call the result a person. Its extra parts never reach the writer's
-       suit_inventory, so they vanish on the next save, and Game::kerbalBoard
-       asserts a kerbal has exactly one part the moment anyone boards. */
+    /* The same rule load_suit_def states for a suit, and it matters twice as
+       much here: build_ship would happily build a four-part ship from a racer
+       def and call the result a person. Its extra parts never reach the
+       writer's suit_inventory, so they vanish on the next save, and
+       Game::kerbalBoard asserts a kerbal has exactly one part the moment anyone
+       boards. */
     if(parsed.parts.size() != 1) {
         return "load: kerbal '" + s.name + "' has def '" + s.defPath
                + "', which is not exactly one part (got "

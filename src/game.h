@@ -923,6 +923,10 @@ void load_settings_args(GameArgs &args);
 /* Every seat occupant on the vehicle, in part order (part.h: a seat is a Part
    on a capsule). Empty = the vehicle has no crew. */
 std::vector<Part *> vehicleSeats(Vehicle *v);
+/* The first occupied seat, or nullptr -- the form for a caller that only needs
+   to know whether anyone is aboard, so it does not allocate a vector to answer
+   a yes/no question. */
+Part *firstVehicleSeat(Vehicle *v);
 /* Display name for a person: their owned profile, else empty. */
 std::string seatName(const Part *suit);
 /* Free kerbals are the isEva entries of Game::vehicles; a seated crew member is

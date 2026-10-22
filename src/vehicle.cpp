@@ -17,8 +17,6 @@
 #include "inventory.h" // inventorySetOwner (the suit's pockets ride its vehicle)
 #include "resdir.h"    // resdir::path
 #include "system.h"    // System (spawn_vehicle resolves the home body's SOI)
-#include "mesh.h"      // get_mesh
-#include "texture.h"   // get_texture
 #include "drag.h"      // the drag law (airDensity / dragForce)
 #include "constants.h" // kSoiMargin, kShipGround*, kTerrainBand
 
@@ -79,31 +77,16 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
 
     for(size_t i = 0; i < n; i++) {
         const PartDef &pd = *physical[i].def;
-
-        // Shared registries: one import + GPU upload per part FILE, not per part.
-        Mesh *mesh = get_mesh(std::string("res/") + pd.mesh);
-        Texture *tex = get_texture(std::string("res/") + pd.texture);
-
-        Body *b = create_part_body(mesh, partsshader, tex, (float)pd.mass,
-                                   resolveHullMargin(def.hull_margin, pd.hull_margin));
-
-        Part *part = new Part;
-        part->body  = b;
-        part->def   = &pd;
-        part->id    = physical[i].id;
+        /* The one mint (#278): render assets, collision hull, id, resources,
+           the chute canopy and the engine shroud. build_ship hand-rolled this
+           block, so a field added to Part landed in the save path and not here
+           (#278 caught exactly that for the shroud). A fresh ship takes the
+           def's own mass, the def's ship-level margin, empty tanks and no
+           findings; build_ship's Vehicle::init() call then tops every tank up. */
+        Part *part = make_part(pd, pd.mass,
+                               resolveHullMargin(def.hull_margin, pd.hull_margin),
+                               nullptr, nullptr, physical[i].id, partsshader);
         part->stage = physical[i].stage;
-
-        if(!pd.shroud.empty()) {
-            part->shroud = get_mesh(std::string("res/") + pd.shroud);
-            part->shroud_texture =
-                get_texture(std::string("res/") + pd.shroud_texture);
-        }
-
-        if(!pd.chute_mesh.empty()) {
-            part->chute_mesh = get_mesh(std::string("res/") + pd.chute_mesh);
-            part->chute_texture =
-                get_texture(std::string("res/") + pd.chute_texture);
-        }
 
         if(i == 0) {
             ship->setRoot(part);
@@ -999,7 +982,7 @@ bool Vehicle::checkContainmentTree(Part *p, int depth) const {
                    (unsigned long long)c->uid);
             return false;
         }
-        if(c->isSeat()) {
+        if(c->isContainedPerson()) {
             printf("[part] '%s': part uid %llu is a kerbal in inventory; "
                    "a person is not cargo\n", name.c_str(),
                    (unsigned long long)c->uid);

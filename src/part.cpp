@@ -45,19 +45,18 @@ Part *make_part(const PartDef &pd, double mass, double hull_margin,
     return p;
 }
 
-/* Mint a suit Part from a kerbal ship def (the occupant of a seat, part.h). The
-   Body exists to carry mass + render assets; it never enters the physics world,
-   because a seat's mass rides the containment edge (Part::effectiveMass), not
-   the capsule's compound. */
-Part *make_suit(const std::string &defPath, const PartsCatalog &cat,
-                Shader *partsshader)
+/* Load and validate the def a NEW suit is minted from. The two checks are the
+   whole contract make_suit relies on, so they run once per def, not once per
+   suit (#291). */
+ShipDef load_suit_def(const std::string &defPath, const PartsCatalog &cat)
 {
     ShipDef def = load_ship_def(resdir::path(defPath).c_str(), cat);
     /* A seat is exactly ONE Part, and it must be a kerbal-type part: that is
-       what makes it a seat rather than an inventory item (Part::isSeat). A
-       multi-part def would silently drop the rest, and parking a non-kerbal
-       part in a capsule breaks checkPartInvariants -- a hand-edited save's
-       defPath must be refused here, not asserted on two calls later. */
+       what makes it a seat rather than an inventory item
+       (Part::isContainedPerson). A multi-part def would silently drop the rest,
+       and parking a non-kerbal part in a capsule breaks checkPartInvariants --
+       a hand-edited save's defPath must be refused here, not asserted on two
+       calls later. */
     if(def.parts.size() != 1) {
         throw std::runtime_error(std::string("suit: '") + defPath
                                  + "' is not exactly one part (got "
@@ -68,6 +67,17 @@ Part *make_suit(const std::string &defPath, const PartsCatalog &cat,
         throw std::runtime_error(std::string("suit: '") + defPath + "' is a '"
                                  + pd->type + "' part, not a kerbal suit");
     }
+    return def;
+}
+
+Part *make_suit(const ShipDef &def, Shader *partsshader)
+{
+    /* The contract load_suit_def establishes. The null check comes first so a
+       ShipDef built some other way (BuildShip::toShipDef leaves ShipPart::def
+       unset) reports the contract break instead of crashing on the deref. */
+    assert(def.parts.size() == 1 && def.parts[0].def != nullptr
+           && def.parts[0].def->type == "kerbal");
+    const PartDef *pd = def.parts[0].def;
     // A fresh part takes the def's own mass and the def's ship-level margin.
     Part *suit = make_part(*pd, pd->mass,
                            resolveHullMargin(def.hull_margin, pd->hull_margin),

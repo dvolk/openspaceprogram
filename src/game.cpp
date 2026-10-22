@@ -13,7 +13,7 @@
 
 #include "eva.h"      // Kerbal
 #include "inventory.h" // inventoryRemove / inventoryAdd
-#include "part.h"     // make_suit (the crew pool's suits)
+#include "part.h"     // load_suit_def / make_suit (the crew pool's suits)
 #include "physics.h"  // AddPhysicsBody, RemoveBody, setPosRot
 #include "pick.h"     // pickShipPart (pickAt)
 #include "save.h"     // load_game (Game::loadFrom)
@@ -420,22 +420,26 @@ void Game::clearFlightSummary() {
 
 /* The named crew pool (Game::roster) becomes standing people: one suit Part per
    profile, parked on the home system's crew pad (crew.h). The pad holds the
-   pool, so a system switch empties it and a new game refills it. A suit whose
-   def will not load skips its profile rather than ending the mint. */
+   pool, so a system switch empties it and a new game refills it. The suit def
+   is loaded ONCE for the whole mint: it is the same file for every profile, and
+   parsing it per person costs a file read per roster entry at boot and again on
+   every New Game (#291). If that one def will not load there are no suits to
+   mint at all, so say so and stop rather than skipping each profile in turn. */
 void Game::mintCrewPool() {
     StaticBuilding *pad = homeCrewPad(sys);
     if(pad == nullptr) {
         printf("[crew] no VAB_LAUNCH_PAD: nowhere to stand the crew pool\n");
         return;
     }
+    ShipDef suitDef;
+    try {
+        suitDef = load_suit_def(kKerbalShipDef, parts);
+    } catch(const std::exception &e) {
+        printf("Crew: %s\n", e.what());
+        return;
+    }
     for(const KerbalProfile &p : roster.profiles) {
-        Part *suit = nullptr;
-        try {
-            suit = make_suit(kKerbalShipDef, parts, partsshader);
-        } catch(const std::exception &e) {
-            printf("Crew: %s\n", e.what());
-            continue;
-        }
+        Part *suit = make_suit(suitDef, partsshader);
         suit->kerbal = std::make_unique<KerbalProfile>(p);
         pad->crew.push_back(suit);
     }
@@ -546,7 +550,7 @@ void Game::runExperiment(Kerbal *k) {
 /* A SEATED kerbal runs one: the suit Part is the storage, and the live pose is
    the capsule it sits in -- there is no body of its own (part.h). */
 void Game::runSeatExperiment(Part *suit) {
-    if(suit == nullptr || !suit->isSeat() || suit->container == nullptr) {
+    if(suit == nullptr || !suit->isContainedPerson() || suit->container == nullptr) {
         toast("No experiment: no seat occupant");
         return;
     }
@@ -1452,6 +1456,19 @@ std::vector<Part *> vehicleSeats(Vehicle *v) {
     return out;
 }
 
+/* The first occupied seat, or nullptr. The form for a caller that only needs to
+   know whether anyone is aboard: vehicleSeats() builds a vector, which the part
+   window paid for once a frame and the pick-up/remove guards paid for to answer
+   a yes/no question (#291). */
+Part *firstVehicleSeat(Vehicle *v) {
+    for(Part *p : v->parts) {
+        for(Part *suit : p->seats) {
+            if(suit != nullptr) { return suit; }
+        }
+    }
+    return nullptr;
+}
+
 std::string seatName(const Part *suit) {
     if(suit == nullptr || suit->kerbal == nullptr) { return ""; }
     return suit->kerbal->name;
@@ -1512,7 +1529,7 @@ bool Game::canBoard(Kerbal *courier, Vehicle *ship, size_t part) {
    MINTS the Kerbal vehicle: the suit Part leaves the capsule's seat and becomes
    the vehicle's one part, keeping its uid, fuel and pockets. */
 void Game::kerbalEVA(Part *suit) {
-    if(suit == nullptr || !suit->isSeat()) {
+    if(suit == nullptr || !suit->isContainedPerson()) {
         toast("EVA: no seat occupant");
         return;
     }
@@ -1722,7 +1739,7 @@ bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
     }
     /* A crewed ship is not cargo: the capsule owns its seat occupants, and the
        suit part would dangle in the destination container. */
-    if(!vehicleSeats(itemShip).empty()) {
+    if(firstVehicleSeat(itemShip) != nullptr) {
         toast("Pick up: %s has crew aboard -- EVA them out first",
               itemShip->name.c_str());
         return false;
@@ -1762,12 +1779,12 @@ void Game::toggle_eva() {
         }
         return;
     }
-    std::vector<Part *> seats = vehicleSeats(ship);
-    if(seats.empty()) {
+    Part *suit = firstVehicleSeat(ship);
+    if(suit == nullptr) {
         toast("EVA: no crew aboard %s", ship->name.c_str());
         return;
     }
-    kerbalEVA(seats.front());
+    kerbalEVA(suit);
 }
 
 /* Enter rails warp: park every ship. Refuses -- keeping the current accel --
@@ -2071,7 +2088,7 @@ bool Game::ui_remove_vehicle(Vehicle *v) {
               v->name.c_str());
         return false;
     }
-    if(!vehicleSeats(v).empty()) {
+    if(firstVehicleSeat(v) != nullptr) {
         toast("Cannot remove %s -- EVA its crew out first", v->name.c_str());
         return false;
     }
@@ -2187,10 +2204,13 @@ void Game::recoverActive() {
     flightSummary.newExperiments = rec.fresh;
 
     /* The crew come home: suits peel off to the launch pad before the ship
-       dies (part.h: a kerbal is a Part at one place). */
+       dies (part.h: a kerbal is a Part at one place). `afoot` rather than
+       `home`: this function dereferences Game::home (the home body) a few dozen
+       lines up, and a local of the same name reading like a body invites the
+       wrong guess (#291). */
     {
-        std::vector<Part *> home = vehicleSeats(v);
-        for(Part *suit : home) {
+        std::vector<Part *> afoot = vehicleSeats(v);
+        for(Part *suit : afoot) {
             Part *cap = suit->container;
             if(cap != nullptr) { cap->removeSeat(suit); }
             // returnCrew unowns the suit and whatever its pockets hold.
