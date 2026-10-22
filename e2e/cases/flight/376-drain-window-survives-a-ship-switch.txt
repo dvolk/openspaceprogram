@@ -1,0 +1,36 @@
+# --drain-log's sampler derived each tick's step by subtracting its own stored
+# timestamp from the sim clock. It only samples the ACTIVE ship, so a ship the
+# player flew away from kept a stale timestamp and came back billing itself for
+# its whole inactive stretch: four racers on four pads, F6 cycling through all
+# of them and back, and "pad one"'s first row after returning claimed dt=9.233s
+# for a window that held 0.25s of flight.
+#
+# The kg/s survived that bug -- each group divides by the time THAT group
+# actually spent flowing, not by the row's interval -- so what broke is dt=, the
+# field that says what a row covers. A row claiming 9.2s of sim for a 0.25s
+# window misattributes when the fuel moved, and anything reading dt as the
+# covered interval (the tiling check in 376-drain-rate-warp-invariant) is then
+# wrong. The sampler now takes the tick's sim advance from the caller, which
+# knows it, instead of differencing a clock it cannot tell apart from paused.
+#
+# The flow figures are pinned anyway: they are the guard against the other
+# mistake, dividing a group's spend by the whole row instead of by the time it
+# burned, which would smear 11.360 kg/s across the idle stretch.
+NAME drain-window-survives-a-ship-switch
+CLAIM Switching ships does not stretch a --drain-log row's interval or corrupt its kg/s.
+KIND golden
+ARGS --timeout 20 --startships e2e/fixtures/pad_four.json
+ARGS --drain-log --sim-press 500,19000,T,4000,0,F6,7000,0,F6,10000,0,F6,13000,0,F6
+EXPECT [drainlog]
+FORBID error:
+FORBID FAILED
+# No row covers more than a print interval plus a tick. The stale-timestamp bug
+# put the returning ship's first row at dt=9.233s -- the whole stretch it sat
+# inactive -- so this is the check that fails there.
+CHECK all(r["dt"] <= 1.5 for r in drainlog)
+# The steady burn before the first switch, as an anchor for the figure below.
+CHECK all(abs(v - 11.36) < 0.05 * 11.36 for r in [r for r in drainlog if r["ship"] == "pad one" and r["t"] < 8.0] for v in r["rates"].values() if v > 1.0)
+# It really did come back, and the row that carries its spend across the switch
+# still reads the flow rate rather than a duty-cycle average of it.
+CHECK len([r for r in drainlog if r["ship"] == "pad one" and r["t"] > 12.0]) >= 3
+CHECK abs(max(v for r in [r for r in drainlog if r["ship"] == "pad one" and r["t"] > 12.0][:1] for v in r["rates"].values()) - 11.36) < 0.05 * 11.36

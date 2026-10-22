@@ -297,7 +297,7 @@ void tick(Game &g) {
            dt= in the row says how much sim that row covers. A paused ship
            never steps, so it prints nothing rather than repeating a row. */
         if(g.ship && g.args.drain_log) {
-            if(g.time_accel != 0) { g.ship->drainSample(g.time); }
+            if(g.time_accel != 0) { g.ship->drainSample(g.dt * g.time_accel); }
             if(g.logDue(kGateDrain, SDL_GetTicks(), kStateLogMs)) {
                 g.ship->drain_log(g.time);
             }

@@ -2323,22 +2323,22 @@ void Vehicle::dropDrainWindow() {
     drainPrimed_ = false;
 }
 
-/* --drain-log's sampler: called on every tick the sim steps this ship. Each
-   sample adds one tick's spend to the running totals, so the rows tile the
-   timeline -- whatever the warp, every sim second between two prints is
-   counted exactly once. */
-void Vehicle::drainSample(double time) {
+/* --drain-log's sampler: called on every tick the sim steps this ship, with
+   the sim time that tick advanced by (g.dt * g.time_accel). Each sample adds
+   one tick's spend to the running totals, so the rows tile the timeline --
+   whatever the warp, every sim second between two prints is counted exactly
+   once. The step is the caller's, not a difference of this ship's clock: a
+   ship the player stopped flying is not sampled, and resuming from its stale
+   timestamp would bill it for the whole stretch it sat inactive. */
+void Vehicle::drainSample(double step) {
+    assert(step > 0.0);   // the caller only samples while the sim advances
     const std::map<int, double> cur = groupFuelMasses();
     if(!drainPrimed_) {   // the first sample only sets the baseline
         drainPrimed_ = true;
         drainPrevMass_ = cur;
-        drainPrevTime_ = time;
         return;
     }
-    const double step = time - drainPrevTime_;
-    if(step <= 0.0) { return; }   // the clock did not move; nothing to measure
     drainSpan_ += step;
-    drainPrevTime_ = time;
     for(std::map<int, double>::const_iterator it = drainPrevMass_.begin();
          it != drainPrevMass_.end(); ++it) {
         std::map<int, double>::const_iterator now = cur.find(it->first);

@@ -227,11 +227,14 @@ public:
        still counted (measuring a fixed 0.5s window and printing only the last
        one before the gate covered 13% of the sim at 10x and read a real burn
        as 0.000). Each group's rate divides by the time THAT group spent, so a
-       brief burn reports its flow rate rather than a duty-cycle average. */
+       brief burn reports its flow rate rather than a duty-cycle average.
+       The step comes from the caller rather than from this clock: a ship that
+       stops being sampled (the player switches to another) would otherwise
+       resume with one step spanning its whole inactive stretch and dilute its
+       next rate. */
     std::map<int, double> drainPrevMass_;   // group -> kg at the last sample
     std::map<int, double> drainSpent_;      // group -> kg spent since the print
     std::map<int, double> drainSpentSpan_;  // group -> s of sim it spent in
-    double drainPrevTime_ = 0.0;
     double drainSpan_ = 0.0;                // s of sim covered since the print
     bool drainPrimed_ = false;              // a sample ran on this part tree
 
@@ -527,9 +530,10 @@ public:
        nothing when nothing has stepped, so it cannot repeat a stale row. */
     void drain_log(double time);
 
-    /* --drain-log's sampler: call it EVERY tick the sim steps this ship so the
-       rate's interval is sim time whatever the warp (#376). */
-    void drainSample(double time);
+    /* --drain-log's sampler: call it EVERY tick the sim steps this ship, with
+       how much that tick advanced sim time, so the rate's interval is sim time
+       whatever the warp (#376). */
+    void drainSample(double step);
 
     /* --drain-log: forget the baseline and whatever accumulated. Call it
        whenever buildFuelGroups() has just renumbered the groups (a decouple or
