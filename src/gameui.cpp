@@ -2082,7 +2082,7 @@ void drawUIReadouts(Game &g) {
             double cur = 0, cap = 0;
             for(Part *p : ship->parts) {
                 cur += p->resources.current[(int)r];
-                cap += p->resources.capacity[(int)r];
+                cap += p->capacityOf((int)r);
             }
             if(cap <= 0) { continue; }
             ImGui::ProgressBar((float)(cur / cap), ImVec2(-1, 0), resNames[(int)r]);
@@ -2333,7 +2333,7 @@ void drawPartWindows(Game &g) {
                 ImGui::Text("%s: %.1f%s/%.1f%s", resNames[r],
                             ship->parts[part]->resources.current[r],
                             Vehicle::resourceUnit(r),
-                            ship->parts[part]->resources.capacity[r],
+                            def->capacity[r],
                             Vehicle::resourceUnit(r));
             }
             // --- docking port ------------------------------------------------

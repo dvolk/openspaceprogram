@@ -1314,8 +1314,7 @@ void Vehicle::init() {
         Part *p = parts[i];
         if(!p->isTank()) { continue; }
         for(int r = 0; r < (int)ResourceType::Num; r++) {
-            p->resources.capacity[r] = p->def->capacity[r];
-            p->resources.current[r]  = p->def->capacity[r];
+            p->resources.current[r] = p->def->capacity[r];
         }
     }
     finalize();
@@ -1547,7 +1546,7 @@ void Vehicle::powerTick(double h) {
         constantDraw += p->powerDrawConstant();
         if(p->isBattery()) {
             ecCharge += p->resources.current[(int)ResourceType::EC];
-            ecCapacity += p->resources.capacity[(int)ResourceType::EC];
+            ecCapacity += p->capacityOf((int)ResourceType::EC);
         }
     }
     // No EC system -> ungated. Otherwise the wheels need power left over after
@@ -1592,7 +1591,7 @@ void Vehicle::chargeEC(double wh) {
     double freeCap = 0.0;
     for(Part *p : parts) {
         if(p->isBattery()) {
-            freeCap += p->resources.capacity[(int)ResourceType::EC]
+            freeCap += p->capacityOf((int)ResourceType::EC)
                      - p->resources.current[(int)ResourceType::EC];
         }
     }
@@ -1600,7 +1599,7 @@ void Vehicle::chargeEC(double wh) {
     double add = (wh < freeCap) ? wh : freeCap;
     for(Part *p : parts) {
         if(!p->isBattery()) { continue; }
-        const double cap = p->resources.capacity[(int)ResourceType::EC];
+        const double cap = p->capacityOf((int)ResourceType::EC);
         const double have = p->resources.current[(int)ResourceType::EC];
         const double free = cap - have;
         if(free <= 0.0) { continue; }
@@ -1617,7 +1616,7 @@ void Vehicle::getPower(double *gen, double *constDraw, double *charge, double *c
         c += p->powerDrawConstant();
         if(p->isBattery()) {
             q += p->resources.current[(int)ResourceType::EC];
-            cap += p->resources.capacity[(int)ResourceType::EC];
+            cap += p->capacityOf((int)ResourceType::EC);
         }
     }
     if(gen) { *gen = g; }
@@ -2264,7 +2263,7 @@ void Vehicle::fuel_log(double time) {
                 if(p->fuelGroup != g || !p->isTank()) { continue; }
                 if(p->def->capacity[r] <= 0.0f) { continue; }
                 cur += p->resources.current[r];
-                cap += p->resources.capacity[r];
+                cap += p->def->capacity[r];
                 tankCur.push_back(p->resources.current[r]);
             }
             printf("%s:%.1f/%.1f[", resourceName(r), cur, cap);

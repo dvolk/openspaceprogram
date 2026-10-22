@@ -37,7 +37,6 @@ Part *make_part(const PartDef &pd, double mass, double hull_margin,
         p->shroud_texture = get_texture(std::string("res/") + pd.shroud_texture);
     }
     for(int r = 0; r < (int)ResourceType::Num; r++) {
-        p->resources.capacity[r] = pd.capacity[r];
         // No cast: SavePart.fuel is double and the store is double (#379), so
         // this was the last narrowing on the load path -- half a ULP at 12 kWh
         // is one substep of charge, thrown away on every load.
@@ -90,7 +89,7 @@ Part *make_suit(const ShipDef &def, Shader *partsshader)
        full here, which is right for a fresh crew member. */
     if(suit->isTank()) {
         for(int r = 0; r < (int)ResourceType::Num; r++) {
-            suit->resources.current[r] = suit->resources.capacity[r];
+            suit->resources.current[r] = suit->capacityOf(r);
         }
     }
     return suit;
