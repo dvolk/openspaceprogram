@@ -493,8 +493,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_flag("--drain-log", args.drain_log,
                  "Print each fuel group's drain rate (kg/s) to stdout every "
-                 "0.5s of wall time -- the change in a group's fuel mass "
-                 "between samples; a rate needs an interval, so a paused ship "
+                 "0.5s of wall time. The rate is measured over 0.5s of SIM "
+                 "time, sampled on every physics tick, so it means the same "
+                 "at any warp; a ship that has never stepped (a paused load) "
                  "prints no row. The instrument for how fuel is flowing "
                  "(which groups feed the engines and at what rate)");
 

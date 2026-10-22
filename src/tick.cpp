@@ -290,8 +290,13 @@ void tick(Game &g) {
             }
         }
 
-        /* --drain-log: fuel drain rates. */
+        /* --drain-log: fuel drain rates. The sampler runs on every stepping
+           tick so the rate's window is a fixed slice of SIM time whatever the
+           warp (#376); the print stays on the wall-clock gate like the rest
+           of the family. A paused ship never steps, so its rows repeat the
+           last closed window -- dt= in the row says how long that was. */
         if(g.ship && g.args.drain_log) {
+            if(g.time_accel != 0) { g.ship->drainSample(g.time); }
             if(g.logDue(kGateDrain, SDL_GetTicks(), kStateLogMs)) {
                 g.ship->drain_log(g.time);
             }

@@ -1,0 +1,31 @@
+# --drain-log measured its window BETWEEN PRINTS, so the interval it divided
+# by was however much SIM time the warp covered in half a second of wall time.
+# At 10x that was 5.2s of sim per row, so the same engine at the same throttle
+# read ~10.5 kg/s at 10x and 105.4 kg/s at 1x: a burn shorter than the window
+# looked like a trickle, and dt= (which the row prints) was the print gap rather
+# than the interval the rate described (#376). The sampler now runs on every
+# physics tick over a fixed 0.5s SIM window, so the rate is warp-invariant.
+#
+# 38-asparagus-flight pins these same rated-flow numbers at 1x. This is the
+# half that makes them a RATE rather than a coincidence of the print cadence:
+# the same numbers at 10x, over a window that is still half a second.
+NAME drain-rate-warp-invariant
+CLAIM --drain-log's kg/s figures do not depend on the warp factor.
+KIND golden
+ARGS --timeout 14 --time-accel 10 --startship heavy_asp,res/ships/heavy_asp.json,Kerbin,pad
+ARGS --drain-log --sim-press 500,12000,T
+EXPECT [drainlog]
+FORBID error:
+FORBID FAILED
+# dt= is the SIM time the window covered: 0.5s plus at most one tick of
+# overshoot, and at 10x one tick is 1/6 s of sim. It is NOT the gap between
+# rows, which is what the old code divided by -- 5.2s here.
+CHECK all(0.5 <= r["dt"] <= 0.7 for r in drainlog)
+# The first stage's two feeding groups at the rated flow 38 pins at 1x. A
+# warp-scaled window divides the same spend by ~10x the interval and lands near
+# 10.5, which is what this case is for. Rows taken before the throttle armed
+# print thrust=0.0N, so the thrust filter below already excludes them and every
+# row it keeps is a closed window of a steady burn.
+CHECK len([r for r in drainlog if abs(r["thrust"] - 927872.0) < 0.01 * 927872.0]) >= 4
+CHECK all(len([v for v in r["rates"].values() if v > 1.0]) == 2 for r in drainlog if abs(r["thrust"] - 927872.0) < 0.01 * 927872.0)
+CHECK all(abs(v - 105.44) < 0.05 * 105.44 for r in [r for r in drainlog if abs(r["thrust"] - 927872.0) < 0.01 * 927872.0] for v in r["rates"].values() if v > 1.0)

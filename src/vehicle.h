@@ -220,9 +220,15 @@ public:
     /* Cached per group; buildFuelGroups clears them. */
     mutable std::map<int, std::vector<std::vector<int> > > drainLayers_;
 
-    /* --drain-log state: last sample's mass + time, for the rate. */
-    std::map<int, double> drainPrevMass_;
-    double drainPrevTime_ = 0.0;
+    /* --drain-log state. The rate is measured over a fixed span of SIM time,
+       sampled every tick by drainSample(); the wall-clock gate in tick.cpp
+       decides only WHEN to print. Sampling at print time instead makes the
+       window whatever warp did between two prints -- 5.2 s of sim at 10x --
+       so a burn shorter than that reads as a trickle (#376). */
+    std::map<int, double> drainWinPrevMass_;
+    std::map<int, double> drainWinDelta_;   // kg spent in the last closed window
+    double drainWinStart_ = 0.0;
+    double drainWinSpan_ = 0.0;            // s of sim that window covered
 
     /* --dv-log state: the running delta-v budget, in m/s since the ship
        existed. Three routes to the same number:
@@ -511,8 +517,16 @@ public:
 
     void fuel_log(double time);
 
-    /* --drain-log: thrust this tick (N) + each group's drain rate (kg/s). */
+    /* --drain-log: thrust this tick (N) + each group's drain rate (kg/s),
+       over the last window drainSample() closed. */
     void drain_log(double time);
+
+    /* --drain-log's sampler: call it EVERY tick while the flag is on so the
+       rate's window is a fixed slice of sim time whatever the warp (#376). */
+    void drainSample(double time);
+
+    /* Per-group fuel mass (kg) summed over the ship's tanks, EC excluded. */
+    std::map<int, double> groupFuelMasses() const;
 
     /* --dv-log: the running delta-v budget (see the dvDelivered_ block). */
     void dv_log(double time);

@@ -11,6 +11,7 @@
 #include <stdexcept>
 
 #include "buildings.h" // find_launch_site, buildingOrient (a pad's own axes)
+#include "cli.h"       // kStateLogMs (the --drain-log window matches the print cadence)
 #include "crew.h"      // CrewRoster (the names a vehicle may not take)
 #include "eva.h"       // Kerbal (a kerbal-rooted def builds this subclass)
 #include "game.h"      // Game (the parts catalog, the part shader, the star)
@@ -2292,13 +2293,13 @@ void Vehicle::fuel_log(double time) {
     fflush(stdout);
 }
 
-void Vehicle::drain_log(double time) {
-    // Each group's total fuel mass now, in one pass over the parts.
+/* Each group's total fuel mass now, in one pass over the parts. A tank that has
+   run dry contributes nothing and so drops out of the map entirely; the caller
+   turns that into a spend, not a vanishing group. */
+std::map<int, double> Vehicle::groupFuelMasses() const {
     std::map<int, double> cur;
-    double thrust = 0.0;
     for(size_t i = 0; i < parts.size(); i++) {
         Part *p = parts[i];
-        thrust += (double)p->armedThrust;
         if(p->fuelGroup < 0 || !p->isTank()) { continue; }
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             if(r == (int)ResourceType::EC) { continue; }   // energy (Wh), no mass
@@ -2306,23 +2307,54 @@ void Vehicle::drain_log(double time) {
             cur[p->fuelGroup] += p->resources.current[r];
         }
     }
-    if(drainPrevTime_ > 0.0 && time > drainPrevTime_) {
-        const double dt = time - drainPrevTime_;
-        printf("[drainlog] t=%.3fs dt=%.3fs ship=\"%s\" thrust=%.1fN",
-               time, dt, name.c_str(), thrust);
-        for(std::map<int, double>::iterator it = cur.begin(); it != cur.end(); ++it) {
-            const int g = it->first;
-            const double mass = it->second;
-            const double prev = drainPrevMass_.count(g) ? drainPrevMass_[g] : mass;
-            double rate = (prev - mass) / dt;
-            if(rate < 0.0) { rate = 0.0; }   /* float noise / a stage that just dropped */
-            printf(" g%d=%.3f", g, rate);
-        }
-        printf(" kg/s\n");
-        fflush(stdout);
+    return cur;
+}
+
+/* --drain-log's sampler: called every tick while the sim runs. The window is a
+   fixed slice of SIM time -- the same 0.5 s the family prints at -- so a rate
+   means the same thing at 1x and at 10x. Measuring between PRINTS instead made
+   the window however much sim time the warp covered in between (5.2 s at 10x),
+   so a burn shorter than that read as a trickle (#376). */
+void Vehicle::drainSample(double time) {
+    const std::map<int, double> cur = groupFuelMasses();
+    if(drainWinStart_ <= 0.0) {   // first sample only opens the window
+        drainWinStart_ = time;
+        drainWinPrevMass_ = cur;
+        return;
     }
-    drainPrevTime_ = time;
-    drainPrevMass_.swap(cur);
+    const double span = time - drainWinStart_;
+    if(span < kStateLogMs / 1000.0) { return; }
+    // Rebuild from scratch so a group that left with a stage stops reporting.
+    drainWinDelta_.clear();
+    for(std::map<int, double>::const_iterator it = cur.begin(); it != cur.end(); ++it) {
+        // A group that appeared mid-window has no baseline: it spent 0, not
+        // its whole load.
+        const double prev = drainWinPrevMass_.count(it->first) ? drainWinPrevMass_[it->first] : it->second;
+        double spent = prev - it->second;
+        if(spent < 0.0) { spent = 0.0; }   /* a transfer in / float noise */
+        drainWinDelta_[it->first] = spent;
+    }
+    drainWinSpan_ = span;
+    drainWinPrevMass_ = cur;
+    drainWinStart_ = time;
+}
+
+/* --drain-log: thrust this tick (N) plus each group's drain rate (kg/s) over
+   the last window drainSample() closed. Nothing prints until a window has
+   closed -- a rate needs an interval -- so a just-loaded paused ship is silent
+   here even though the rest of the family keeps sampling. */
+void Vehicle::drain_log(double time) {
+    if(drainWinSpan_ <= 0.0) { return; }
+    double thrust = 0.0;
+    for(size_t i = 0; i < parts.size(); i++) { thrust += (double)parts[i]->armedThrust; }
+    printf("[drainlog] t=%.3fs dt=%.3fs ship=\"%s\" thrust=%.1fN",
+           time, drainWinSpan_, name.c_str(), thrust);
+    for(std::map<int, double>::const_iterator it = drainWinDelta_.begin();
+         it != drainWinDelta_.end(); ++it) {
+        printf(" g%d=%.3f", it->first, it->second / drainWinSpan_);
+    }
+    printf(" kg/s\n");
+    fflush(stdout);
 }
 
 /* --dv-log: the running delta-v budget. dv_del and dv_rocket are two routes to
@@ -2612,8 +2644,13 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
     if(controllerDropped) { controller = parts[0]; }
     clearThrust();
     buildFuelGroups();
-    drainPrevTime_ = 0.0;
-    drainPrevMass_.clear();
+    // buildFuelGroups() above just decided which groups still exist, so the
+    // drain window's baseline is stale. Drop the window; the next sample
+    // reopens it against the post-split part tree.
+    drainWinPrevMass_.clear();
+    drainWinDelta_.clear();
+    drainWinStart_ = 0.0;
+    drainWinSpan_ = 0.0;
 
     /* Finalize (no tank re-seed), place at the root's world pose, give it its COM
        velocity. The caller enters it into the world. */
