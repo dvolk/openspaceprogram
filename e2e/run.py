@@ -22,8 +22,8 @@ deliberately pins a refusal of an absent path opts out with a
 and crash strings are forbidden by default, so a case names only its own
 refusals; NOGLCHECK opts out of the GL drains for timing-sensitive cases.
 CHECK sees out and
-the parsed logs (orbit/dbg/att/eva/fuel/drainlog/drag/shake/cam/terrain/surf/
-xfer/porkchop/surfmap/mapb/plane/slew/toast/scene) plus first/last/re. The row
+the parsed logs (orbit/dbg/att/eva/fuel/drainlog/dv/drag/shake/cam/terrain/
+surf/xfer/porkchop/surfmap/mapb/plane/slew/toast/scene) plus first/last/re. The row
 lists parse stdout from the LAST "Loaded game from" line: a successful load
 starts a new world, and rows the previous world printed are not evidence about
 the one under test (toast/scene stay whole-run -- they describe the run).
@@ -178,6 +178,21 @@ EVA_RE = re.compile(
 DRAINLOG_RE = re.compile(
     r"\[drainlog\]\s+t=([\d.]+)s\s+dt=([\d.]+)s\s+ship=\"([^\"]*)\"\s+"
     r"thrust=([-\d.]+)N\s+(.*)"
+)
+# --dv-log (vehicle.cpp dv_log): the running delta-v budget, cumulative since
+# the ship existed. dv_del integrates the force the integrator was handed,
+# dv_rocket the Tsiolkovsky cost of the propellant actually drained, dv_along
+# the delivered impulse projected onto the velocity. mass is the ANALYTIC ship
+# (getMass, what the fuel bookkeeping and the HUD use); hullmass is the compound
+# Bullet actually accelerates, which rebuildCompound only re-makes once the two
+# drift past kMassRebuildFrac apart -- so they differ by design, and a case pins
+# the band rather than hiding it in a tolerance. A case takes the DIFFERENCE
+# between two rows: that is what one burn spent.
+DV_RE = re.compile(
+    r"\[dv\]\s+t=([\d.]+)s\s+ship=\"([^\"]*)\"\s+mass=([-\d.]+)\s*kg\s+"
+    r"hullmass=([-\d.]+)\s*kg\s+thrust=([-\d.]+)N\s+dv_del=([-\d.]+)\s+"
+    r"dv_along=([-\d.]+)\s+dv_rocket=([-\d.]+)\s+prop=([-\d.]+)\s*kg\s+"
+    r"ve=([-\d.]+) m/s\s+dv_left=([-\d.]+)"
 )
 DRAG_RE = re.compile(
     r"\[drag\]\s+t=([\d.]+)s\s+alt=([-\d.]+) m\s+rho=([-\d.e+]+) kg/m3\s+"
@@ -631,6 +646,22 @@ def parse_drainlog(out):
     return rows
 
 
+def parse_dv(out):
+    rows = []
+    for m in DV_RE.finditer(out):
+        (t, ship, mass, hullmass, thrust, dv_del, dv_along, dv_rocket,
+         prop, ve, dv_left) = m.groups()
+        rows.append({
+            "t": float(t), "ship": ship, "mass": float(mass),
+            "hullmass": float(hullmass),
+            "thrust": float(thrust), "dv_del": float(dv_del),
+            "dv_along": float(dv_along), "dv_rocket": float(dv_rocket),
+            "prop": float(prop), "ve": float(ve),
+            "dv_left": float(dv_left),
+        })
+    return rows
+
+
 def parse_shake(out):
     rows = []
     for m in SHAKE_RE.finditer(out):
@@ -923,6 +954,7 @@ def run_case(case):
     eva = parse_eva(world)
     fuel = parse_fuel(world)
     drainlog = parse_drainlog(world)
+    dv = parse_dv(world)
     drag = parse_drag(world)
     shake = parse_shake(world)
     cam = parse_cam(world)
@@ -936,7 +968,7 @@ def run_case(case):
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "att": att, "eva": eva,
-        "fuel": fuel, "drainlog": drainlog, "drag": drag, "shake": shake,
+        "fuel": fuel, "drainlog": drainlog, "dv": dv, "drag": drag, "shake": shake,
         "cam": cam,
         "terrain": terrain,
         "surf": surf, "mapb": mapb, "plane": plane, "slew": slew,

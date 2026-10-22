@@ -1,0 +1,34 @@
+# The other sign. 356 says a prograde burn adds the delta-v it spent; this says
+# the same engine fired the other way subtracts it, so the ship's orbital energy
+# falls and dv_along comes back negative. That is a real distinction rather than
+# a duplicate: dv_del integrates |F|, so it grows no matter which way the nose
+# points, and only dv_along and E know whether the burn was worth doing. A
+# retrograde toggle that steered to prograde, or an energy readout with a flipped
+# sign, passes 356 and fails here.
+#
+# The 7 s settle delay is load-bearing. The ship spawns nose-prograde, so B
+# starts a 180-degree turn; ignite during it and the first half of the burn is
+# prograde, dv_along comes back a mush instead of -dv_del, and the case stops
+# pinning the sign.
+NAME retrograde-burn-costs-energy
+CLAIM A settled retrograde burn spends the same delta-v and takes orbital energy away.
+KIND invariant
+ARGS --timeout 20 --time-accel 1
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --orbit-log --orbit-interval 1.0 --dv-log
+ARGS --sim-press 1000,0,B
+ARGS --sim-press 8000,8000,T
+EXPECT [dv]
+EXPECT [toast] Autopilot: Retrograde engaged
+CHECK len(dv) >= 8 and len(orbit) >= 8
+CHECK abs(last(dv)["dv_del"] - last(dv)["dv_rocket"]) < 0.01 * last(dv)["dv_rocket"]
+# Settled: the whole burn is against the velocity, so the along-velocity budget
+# is the negative of the delivered one.
+CHECK abs(last(dv)["dv_along"] + last(dv)["dv_del"]) < 0.01 * last(dv)["dv_del"]
+# The speed fell by the delta-v spent.
+CHECK abs(first(orbit)["v"] - last(orbit)["v"] - last(dv)["dv_del"]) < 0.02 * last(dv)["dv_del"]
+CHECK last(orbit)["E"] < first(orbit)["E"]
+# The energy bracket, with the inequality flipped for the negative dv_along.
+CHECK last(orbit)["E"] - first(orbit)["E"] >= max(o["v"] for o in orbit) * last(dv)["dv_along"]
+CHECK last(orbit)["E"] - first(orbit)["E"] <= min(o["v"] for o in orbit) * last(dv)["dv_along"]
+FORBID error:

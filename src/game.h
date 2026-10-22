@@ -387,7 +387,7 @@ inline PoseSituation poseSituation(const TerrainBody *body, const glm::vec3 &dir
    is polled. */
 enum LogGate { kGateOrbit, kGateDbg, kGateInfo, kGateAtt, kGateShake,
                kGateCam, kGateEva, kGateDrag, kGateTerrain, kGatePlane,
-               kGateSkyDim, kGateXfer, kGateCount };
+               kGateSkyDim, kGateXfer, kGateDv, kGateCount };
 
 /* A headless test hook (cli.h --atlas-dump / --map-dump): fires act() once,
    at/after ms from loop start (Game::loop_start_ms). Registered at boot from

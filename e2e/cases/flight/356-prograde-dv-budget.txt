@@ -1,0 +1,70 @@
+# The delta-v books. A prograde burn has to buy the velocity it costs, and the
+# game reaches that number by three routes that only share the part table: the
+# impulse the integrator was handed (dv_del: armedThrust over the hull mass
+# Bullet accelerates, per substep), the Tsiolkovsky cost of the propellant the
+# engines actually drained (dv_rocket: ve * ln(m0/m1) in ApplyThrust), and the
+# orbital energy the conic gained (--orbit-log E). Because PartDef::fullThrust()
+# IS rate * ve, agreeing here does not validate the part table -- what it
+# validates is that the two sides still agree on the MASS they push (the hull
+# vs the analytic ship), on the CLOCK they integrate (the substep h summed vs
+# the tick's step), and on the throttle-down factor and exhaust_scale, each of
+# which has to land on both sides at once. Before --dv-log nothing in the suite
+# joined fuel burnt to velocity bought -- 04-orbit-burn only asks that the
+# apoapsis MOVES, so a burn that emptied its tanks and delivered half the
+# delta-v it charged for still passed.
+#
+# rot-orbit is the bed: 685 km, so vacuum (no drag to explain away) and a 338
+# m/s burn still leaves the ship bound (escape there is 3211 m/s, the burn takes
+# it from 2271 to 2609). Z is the player's prograde toggle, so the burn is
+# actually prograde rather than merely aimed; the run's only thrust is the one
+# burn, so first->last of [dv] IS the burn.
+NAME prograde-dv-budget
+CLAIM A prograde burn delivers the delta-v its propellant cost, as speed and as orbital energy.
+KIND invariant
+ARGS --timeout 26 --time-accel 1
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --orbit-log --orbit-interval 1.0 --dv-log --fuel-log
+ARGS --sim-press 1000,0,Z
+ARGS --sim-press 2000,18000,T
+EXPECT [dv]
+EXPECT [toast] Autopilot: Prograde engaged
+CHECK len(dv) >= 10 and len(orbit) >= 10
+# The impulse the integrator was handed == what the rocket equation says the
+# fuel it burned cost. Measured gap is 0.044%: the drain lands all at once at
+# the tick boundary while the force spreads over it, and dv_del divides by a
+# hull mass that lags the draining fuel by up to a rebuild band. 1% is 22x the
+# measured gap and still catches a 10% mis-book.
+CHECK abs(last(dv)["dv_del"] - last(dv)["dv_rocket"]) < 0.01 * last(dv)["dv_rocket"]
+# SAS held the nose on the velocity, so none of that impulse went sideways.
+CHECK last(dv)["dv_along"] > 0.99 * last(dv)["dv_del"]
+# The headline: the speed the orbit log measures rose by the delta-v spent.
+CHECK abs(last(orbit)["v"] - first(orbit)["v"] - last(dv)["dv_del"]) < 0.02 * last(dv)["dv_del"]
+# The same money in the other currency: dE = integral of v.a dt, so a prograde
+# burn of dv_along at a speed held between v_min and v_max must land the energy
+# inside that bracket. No tolerance -- the bracket is exact by construction, and
+# the coast legs only widen it.
+CHECK last(orbit)["E"] - first(orbit)["E"] <= max(o["v"] for o in orbit) * last(dv)["dv_along"]
+CHECK last(orbit)["E"] - first(orbit)["E"] >= min(o["v"] for o in orbit) * last(dv)["dv_along"]
+# The mass bookkeeping the delta-v rests on: the analytic ship got lighter by
+# exactly the propellant the engines report taking. Both numbers come off the
+# same resources.current ledger, so this is bookkeeping, not physics -- the only
+# slack is print rounding, mass at 2dp and prop at 3dp accumulating over the
+# ~18 logged intervals of the burn (measured 0.023 kg at --physics-hz 50, 0 at
+# 55/90/120). 0.05 kg is still 4000x smaller than the burn.
+CHECK abs(first(dv)["mass"] - last(dv)["mass"] - last(dv)["prop"]) < 0.05
+# The hull Bullet actually accelerates is allowed to lag that ledger, and does:
+# refreshCompound only re-makes it once the two drift past kMassRebuildFrac
+# (0.1%) apart, and it runs BEFORE the tick's drain, so one tick's draw rides on
+# top of the band. That bounds the lag at 0.1% of the ship plus a tick's draw,
+# measured 8.7e-4 to 9.9e-4 of mass from --physics-hz 50 to 120. 2e-3 is the
+# room left over that bound, and it still has teeth: a hull that stopped
+# tracking the ledger would cross it 0.5 s into the burn.
+CHECK max(abs(o["mass"] - o["hullmass"]) for o in dv) < 2e-3 * first(dv)["mass"]
+# And the propellant the engines report taking is the propellant missing from
+# the tanks. [fuel] prints one decimal, so the print error is 0.05 kg per
+# reading (0.2 kg over the four readings); 0.5 kg is 6x the measured 0.08 kg.
+CHECK abs((first(fuel)["groups"][0]["H2"][0] + first(fuel)["groups"][0]["LOX"][0]) - (last(fuel)["groups"][0]["H2"][0] + last(fuel)["groups"][0]["LOX"][0]) - last(dv)["prop"]) < 0.5
+# The HUD's number is the same budget: what it says is left falls by what the
+# burn spent.
+CHECK abs((first(dv)["dv_left"] - last(dv)["dv_left"]) - last(dv)["dv_rocket"]) < 0.01 * last(dv)["dv_rocket"]
+FORBID error:

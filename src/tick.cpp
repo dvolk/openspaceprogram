@@ -33,6 +33,7 @@ void tick(Game &g) {
         s->m_thrust = 0.0;
         s->exhaust_scale = g.args.exhaust_scale;
         s->drag_cd = g.args.drag_cd;
+        s->dv_log_enabled = g.args.dv_log;
     }
 
     while (g.accumulator >= g.dt) {
@@ -351,6 +352,18 @@ void tick(Game &g) {
                        o.ang_momentum, o.energy,
                        refPlaneName(ref.mode), lan_s, lpe_s);
                 fflush(stdout);
+            }
+        }
+
+        /* --dv-log: the delta-v budget. Its own gate slot, but it reuses the
+           --orbit-log interval so the two logs sample at the same rate and a
+           CHECK can compare their first/last rows without resampling either.
+           The t= values still differ: the gates are independent, so they fire
+           on different ticks. */
+        if(g.ship && g.args.dv_log) {
+            const Uint32 now_ms = SDL_GetTicks();
+            if(g.logDue(kGateDv, now_ms, g.orbit_log_interval_ms)) {
+                g.ship->dv_log(g.time);
             }
         }
 

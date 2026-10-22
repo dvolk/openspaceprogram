@@ -1712,7 +1712,9 @@ glm::dvec3 Vehicle::processGravity() {
     return applyGravity();
 }
 
-void Vehicle::applyThrustForce() {
+void Vehicle::applyThrustForce(double h) {
+    // The whole delta-v budget rests on h being the duration Bullet advances.
+    assert(h > 0.0 && "thrust force needs the substep it is applied over");
     const glm::dvec3 com = comPos();
     glm::dvec3 ftotal(0.0);
     for(Part *p : parts) {
@@ -1730,6 +1732,24 @@ void Vehicle::applyThrustForce() {
     const glm::dvec3 dcom = comOffset();
     if(glm::length2(dcom) > 0.0) {
         ApplyTorque(hull, -glm::cross(dcom, ftotal));
+    }
+    /* --dv-log: the impulse this substep hands the integrator. hull->mass is
+       the mass Bullet actually accelerates (rebuildCompound), NOT getMass(),
+       so a hull mass that lags the draining fuel shows up as a gap against
+       dvRocket_. The along-velocity term uses the NON-ROTATING velocity: what
+       a burn buys is measured against the conic, and inside the surface frame
+       GetVel() is ground-relative. */
+    if(dv_log_enabled && hull->mass > 0.0) {
+        const double inv_m = 1.0 / (double)hull->mass;
+        dvDelivered_ += glm::length(ftotal) * h * inv_m;
+        Frame *inertial = frame->getNonRotFrame();
+        glm::dvec3 ip, iv;
+        comStateIn(inertial, ip, iv);
+        const double speed = glm::length(iv);
+        if(speed > 0.0) {
+            const glm::dvec3 f_inertial = frame->GetOrientRelTo(inertial) * ftotal;
+            dvAlong_ += glm::dot(f_inertial, iv) * h * inv_m / speed;
+        }
     }
 }
 
@@ -1978,7 +1998,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
 }
 
 void Vehicle::applyControlForces(double h) {
-    applyThrustForce();
+    applyThrustForce(h);
     applyRotationForce(h);
     applyRcsForce(h);
 }
@@ -2265,6 +2285,31 @@ void Vehicle::drain_log(double time) {
     }
     drainPrevTime_ = time;
     drainPrevMass_.swap(cur);
+}
+
+/* --dv-log: the running delta-v budget. dv_del and dv_rocket are two routes to
+   the same number -- the impulse the integrator was handed, and the Tsiolkovsky
+   cost of the propellant the engines drained -- so a burn that does not buy the
+   velocity it costs shows up as a gap between them. dv_along is the delivered
+   impulse projected onto the (non-rotating) velocity direction: on a prograde
+   burn it equals dv_del, and the shortfall is what the pointing threw away.
+   dv_left is the HUD's number, so the readout is pinned against the flight.
+   Two masses, deliberately: `mass` is the analytic ship (getMass, what the fuel
+   bookkeeping and the HUD use), `hullmass` is the compound Bullet actually
+   accelerates, which rebuildCompound() only re-makes once the two drift past
+   kMassRebuildFrac apart. `ve` is the LAST rocket in part order, so on a
+   mixed-Isp ship the line reads coherently but that number is not a ship
+   property. */
+void Vehicle::dv_log(double time) {
+    if(hull == nullptr) { return; }
+    printf("[dv] t=%.3fs ship=\"%s\" mass=%.2f kg hullmass=%.2f kg "
+           "thrust=%.1fN dv_del=%.3f dv_along=%.3f dv_rocket=%.3f "
+           "prop=%.3f kg ve=%.1f m/s dv_left=%.1f m/s\n",
+           time, name.c_str(), getMass(), hull->mass,
+           glm::length(lastThrustForce),
+           dvDelivered_, dvAlong_, dvRocket_, propSpent_, dvVeLast_,
+           getDeltaV());
+    fflush(stdout);
 }
 
 float Vehicle::GetWheelTorque() {
@@ -2691,6 +2736,12 @@ void Vehicle::ApplyThrust(double step) {
     const double rho = airDensityAtCom();
     const double rho_sea = (m_parent != nullptr)
         ? (double)m_parent->surface.atmosphere.sea_level_density : 0.0;
+    /* --dv-log: the ship mass as this tick's drains proceed. getMass() walks
+       every part and recurses into containment, so take it ONCE here and walk
+       it down by each engine's draw instead of once per engine. The drain
+       removes exactly what it is told from resources.current, which is what
+       effectiveMass() sums, so the cursor stays exact. */
+    double dvMass = dv_log_enabled ? (double)getMass() : 0.0;
     for(Part *p : parts) {
         if(!p->isThruster()) { continue; }
         if(p->stage < as) { continue; } /* not ignited yet */
@@ -2728,15 +2779,33 @@ void Vehicle::ApplyThrust(double step) {
         // succeed; the guard is kept only so we never arm thrust off a
         // failed drain.
         bool ok = true;
+        double dm = 0.0;   // kg this engine actually took, for --dv-log
         for(int r = 0; r < (int)ResourceType::Num && ok; r++) {
             const double rate_r = p->def->propellant_rate[r];
             if(rate_r <= 0.0) { continue; }
             const float amt = (float)(rate_r * (double)thruster_util * step * s);
             if(!consumeResourceMass((ResourceType)r, amt, p)) { ok = false; }
+            dm += (double)amt;
         }
         if(ok) {
             p->armedThrust = (float)(p->thrust() * thruster_util * exhaust_scale * s);
             m_thrust = 1.0;
+            /* --dv-log: the rocket-equation side of the budget. Charge this
+               engine's draw against the ship mass as it stands AFTER its drain,
+               so a multi-engine ship charges each engine at the mass that
+               engine actually pushed. Jets are excluded: they shed mass into
+               the air and their thrust already balances intake momentum, so
+               they own no vacuum delta-v. */
+            if(dv_log_enabled && dm > 0.0) {
+                const double m_after = dvMass - dm;
+                if(m_after > 0.0) {
+                    const double ve = p->exhaustVelocity() * exhaust_scale;
+                    dvRocket_ += ve * log(dvMass / m_after);
+                    propSpent_ += dm;
+                    dvVeLast_ = ve;   // last rocket in part order: see dv_log()
+                }
+                dvMass = m_after;
+            }
         }
     }
 }

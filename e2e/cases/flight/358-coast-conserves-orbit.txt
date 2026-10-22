@@ -1,0 +1,31 @@
+# Nothing pushes, so the orbit must not change. A coasting ship in vacuum feels
+# only the body's gravity, which is conservative: the two-body energy E and the
+# specific angular momentum |h| are both constants of the motion, and a circular
+# bed stays circular. Every delta-v claim in the suite (356, 357, 43) measures a
+# CHANGE in E, so if the gravity integrator leaked energy the baseline would
+# drift under them and a burn would look like it bought or cost energy it never
+# touched. This is the case that says the baseline does not move.
+#
+# rot-orbit again: 685 km, above the atmosphere, so the only thing that can move
+# E is the integrator. The measured drift over 14 s is 1.1e-7 of E and 5.5e-8 of
+# |h| -- the per-part gravity sum and the COM lag. So 1e-6 is about 9x the
+# measured drift rather than orders of magnitude clear of it: it still catches a
+# real leak (drag switched on, a velocity-dependent force, an energy-injecting
+# integrator) by a wide margin, but it is not a tight conservation bound, and
+# tightening it further means chasing the last bits of float on every machine
+# that runs the suite.
+NAME coast-conserves-orbit
+CLAIM A ship coasting in vacuum keeps its orbital energy and angular momentum.
+KIND invariant
+ARGS --timeout 14 --time-accel 1
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --orbit-log --orbit-interval 0.5
+EXPECT [orbitlog]
+CHECK len(orbit) >= 20
+CHECK abs(last(orbit)["E"] - first(orbit)["E"]) < 1e-6 * abs(first(orbit)["E"])
+CHECK abs(last(orbit)["h"] - first(orbit)["h"]) < 1e-6 * first(orbit)["h"]
+# A circular bed that stays circular: no eccentricity grows in, and the apsides
+# stay one radius.
+CHECK abs(last(orbit)["ecc"]) < 1e-5
+CHECK abs(last(orbit)["apo"] - last(orbit)["peri"]) < 1e-5 * last(orbit)["sma"]
+FORBID error:

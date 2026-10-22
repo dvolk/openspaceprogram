@@ -6,18 +6,18 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 248 |
+| `invariant` | a behaviour or a player route the game must keep | 251 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 30 |
 | `harness` | CLI/test-engine plumbing, not game spec | 11 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **293** |
+| | **total** | **296** |
 
 There is no full battery: the runner takes at most 5 cases per
 invocation and starts a 10-minute cooldown. Select by number, name or
 path (a whole subject is usually too wide), e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (53)
+## flight (56)
 
 | case | kind | pins |
 |---|---|---|
@@ -74,6 +74,9 @@ path (a whole subject is usually too wide), e.g.
 | `flight/310-rails-atmosphere-drop.txt` | invariant | Rails warp drops to 1x when a coasting conic reaches the atmosphere. |
 | `flight/311-rails-departure-periapsis.txt` | invariant | Rails warp allows a high receding burn whose periapsis is under the ground. |
 | `flight/312-soi-warp-max.txt` | invariant | Warp to the system's maximum still crosses an SOI and drops to 1x. |
+| `flight/356-prograde-dv-budget.txt` | invariant | A prograde burn delivers the delta-v its propellant cost, as speed and as orbital energy. |
+| `flight/357-retrograde-burn-costs-energy.txt` | invariant | A settled retrograde burn spends the same delta-v and takes orbital energy away. |
+| `flight/358-coast-conserves-orbit.txt` | invariant | A ship coasting in vacuum keeps its orbital energy and angular momentum. |
 
 ## crew (24)
 

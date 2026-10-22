@@ -488,6 +488,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "samples; the instrument for how fuel is flowing (which "
                  "groups feed the engines and at what rate)");
 
+    app.add_flag("--dv-log", args.dv_log,
+                 "Print the ship's running delta-v budget to stdout: the "
+                 "impulse the integrator was handed (|F|/m per substep), the "
+                 "part of it along the velocity, the Tsiolkovsky budget for "
+                 "the propellant the engines actually drained, and the "
+                 "delta-v the HUD still claims -- the instrument for 'did "
+                 "the burn buy the velocity it cost?'");
+
     app.add_flag("--power-log", args.power_log,
                  "Periodically print the ship's electrical balance to "
                  "stdout -- generation (W), constant draw (W), stored "

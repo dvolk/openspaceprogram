@@ -224,6 +224,35 @@ public:
     std::map<int, double> drainPrevMass_;
     double drainPrevTime_ = 0.0;
 
+    /* --dv-log state: the running delta-v budget, in m/s since the ship
+       existed. Three routes to the same number:
+         dvDelivered_ integrates the force the integrator was actually handed
+         (|F| * h / hull mass, per substep -- applyThrustForce);
+         dvAlong_ is that impulse projected onto the velocity direction, so
+         dvDelivered_ - dvAlong_ is what the burn's pointing threw away. Times
+         |v| it is the orbital energy the burn bought, but only for a constant
+         |v|: a case brackets it between min|v| and max|v| instead;
+         dvRocket_ integrates the Tsiolkovsky budget over the propellant the
+         engines actually drained (ve * ln(m_before/m_after), per engine per
+         tick -- ApplyThrust).
+       dvDelivered_ and dvRocket_ share the part table's ve and propellant rate
+       (PartDef::fullThrust() IS rate * ve), so their agreement does NOT prove
+       the part table -- it proves the two sides agree on the MASS basis (the
+       hull Bullet accelerates vs the analytic getMass()), on the CLOCK basis
+       (the substep h summed vs the tick's step), and on the throttle-down
+       factor s and exhaust_scale, each of which must land on both sides.
+       LIMITATION: this is the MAIN-ENGINE budget. RCS pushes go through
+       applyRcsForce() and jets drain their own fuel without a vacuum dv, so
+       neither reaches it and dv_del reads 0 for an RCS-only nudge (#368).
+       dvAlong_ also stays put while the inertial speed is 0: no direction to
+       project onto. */
+    bool dv_log_enabled = false;   // synced from args per tick (tick.cpp)
+    double dvDelivered_ = 0.0;
+    double dvAlong_ = 0.0;
+    double dvRocket_ = 0.0;
+    double propSpent_ = 0.0;       // kg of rocket propellant drained
+    double dvVeLast_ = 0.0;        // last ve used, exhaust_scale applied (m/s)
+
     /* EC gate for the wheels (powerTick). Default true: no EC system = ungated. */
     bool powered_ = true;
 
@@ -417,9 +446,11 @@ public:
 
     glm::dvec3 processGravity();
 
-    // Bullet clears the accumulated forces every stepSimulation: re-apply the
-    // thrust before EVERY substep.
-    void applyThrustForce();
+    /* Bullet clears the accumulated forces every stepSimulation: re-apply the
+       thrust before EVERY substep. `h` is that substep's duration: --dv-log
+       integrates |F|*h/m over it, so the budget needs the same clock the
+       integrator advanced by. */
+    void applyThrustForce(double h);
 
     /* Lift + drag (reports/aerodynamics2026_09_11). LIFT acts PART BY PART;
        DRAG acts SHIP-LEVEL at the center of pressure, which preserves the
@@ -482,6 +513,9 @@ public:
 
     /* --drain-log: thrust this tick (N) + each group's drain rate (kg/s). */
     void drain_log(double time);
+
+    /* --dv-log: the running delta-v budget (see the dvDelivered_ block). */
+    void dv_log(double time);
 
     /* The largest wheel's rated torque (N m) for the HUD; the total is
        maxTorque() (the sum). */
