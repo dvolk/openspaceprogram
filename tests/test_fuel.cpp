@@ -784,6 +784,43 @@ static void test_mass_figure_sees_a_sub_float_ulp_draw() {
     CHECK_TRUE(dv0 - s.v->getDeltaV() > 0.0,
                "delta-v moves too: the propellant inside the log is not quantized");
     destroyShip(s);
+
+    /* The same draw against a 1 kg tank, where the stored value is nowhere near
+       its double ULP, so the check can see the REQUEST's width: 0.001f is
+       0.0010000000475 kg, which a 200 t tank hides under 3 ULP of its own. */
+    Ship s2; s2.v = new Vehicle;
+    Part *eng2 = addPart(s2, 0, 0, true);
+    Part *small = addPart(s2, 1, 1);
+    link(s2, eng2, small);
+    initShip(s2);
+    CHECK_TRUE(s2.v->consumeResourceMass(ResourceType::Hydrogen, 0.001, eng2),
+               "the same 1 g draw fits");
+    CHECK_NEAR(small->resources.current[(int)ResourceType::Hydrogen], 0.999, 1e-13,
+               "and it is a double draw, not a float-rounded one");
+    destroyShip(s2);
+}
+
+/* The last dribble of a burn. ApplyThrust sizes the burn with
+   s = min(avail / desired) and then RECOMPUTES the draw as desired * s, which is
+   not the same number as avail: 25 * (7/25) = 7.000000000000000888. The draw is
+   refused unless the pool covers it, so that ULP used to fail the draw and trip
+   assert(drained && "s must cover every draw") -- on the last tick of an
+   ordinary burn. */
+static void test_applythrust_last_dribble_fits() {
+    printf("== ApplyThrust: the sized draw must not overshoot the tank ==\n");
+    Ship s; s.v = new Vehicle;
+    Part *eng = addPart(s, 0, 0, true);
+    Part *tank = addPart(s, 7, 7);   /* 7 kg of each, against a 25 kg request */
+    link(s, eng, tank);
+    initShip(s);
+
+    s.v->ApplyThrust_TESTONLY(25.0);
+    CHECK_NEAR(tank->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+               "the H2 dribble burns instead of being refused");
+    CHECK_NEAR(tank->resources.current[(int)ResourceType::LOX], 0.0, 1e-9,
+               "and so does the LOX one");
+    CHECK_TRUE(eng->armedThrust > 0.0, "the engine still fires on the remainder");
+    destroyShip(s);
 }
 
 int main() {
@@ -816,6 +853,8 @@ int main() {
     test_applythrust_unbalanced_tanks();
     printf("\n");
     test_mass_figure_sees_a_sub_float_ulp_draw();
+    printf("\n");
+    test_applythrust_last_dribble_fits();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

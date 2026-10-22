@@ -376,10 +376,10 @@ public:
     const std::vector<std::vector<int> > &fuelDrainLayers(Part *engine) const;
 
     /* Draw `amt` kg of `type`, LAYER by LAYER and pro-rata -- first-tank-first
-       would torque the ship. False if the total cannot cover amt. Double like
-       the store it draws from: a float request sized against the double
-       availableResourceMass could round ABOVE the remainder and trip the
-       caller's "the drain must fit" assert (#382). */
+       would torque the ship. False if the total cannot cover amt, so a caller
+       that sized a draw from availableResourceMass must clamp it: recomputing
+       it as desired * (avail / desired) can land an ULP above avail (#382).
+       Double like the store it draws from. */
     bool consumeResourceMass(enum ResourceType type, double amt /* kg */, Part *engine);
 
     /* Total kg of `type` available to `engine`, so a burn can be sized before

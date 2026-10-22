@@ -2861,13 +2861,14 @@ void Vehicle::ApplyThrust(double step) {
            draining is what stops a multi-propellant engine from taking the
            propellants it can get and then failing on one it cannot (#371). */
         double s = 1.0;
+        double avail[(int)ResourceType::Num] = {0.0};
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             const double rate_r = p->def->propellant_rate[r];
             if(rate_r <= 0.0) { continue; }
             const double desired = rate_r * (double)thruster_util * step;
-            const double avail = availableResourceMass((ResourceType)r, p);
+            avail[r] = availableResourceMass((ResourceType)r, p);
             // desired <= 0: a zero-length tick
-            const double si = (desired > 0.0) ? (avail / desired) : 0.0;
+            const double si = (desired > 0.0) ? (avail[r] / desired) : 0.0;
             if(si < s) { s = si; }
         }
         if(s > 1.0) { s = 1.0; }
@@ -2876,7 +2877,13 @@ void Vehicle::ApplyThrust(double step) {
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             const double rate_r = p->def->propellant_rate[r];
             if(rate_r <= 0.0) { continue; }
-            const double amt = rate_r * (double)thruster_util * step * s;
+            double amt = rate_r * (double)thruster_util * step * s;
+            /* desired * (avail / desired) is not avail: it can land an ULP above
+               it (25 * (7/25) = 7.000000000000000888), and consumeResourceMass
+               refuses a draw the pool cannot cover -- so the last tick of an
+               ordinary burn failed its own draw and tripped the assert below.
+               Clamp to what the sizing loop measured. */
+            if(amt > avail[r]) { amt = avail[r]; }
             const bool drained = consumeResourceMass((ResourceType)r, amt, p);
             assert(drained && "s must cover every draw; no build sets NDEBUG");
             (void)drained;

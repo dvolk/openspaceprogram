@@ -127,8 +127,10 @@ struct Part {
     bool isContainer() const { return def != nullptr && def->inventory_capacity > 0; }
     /* How much of that resource the part can hold, straight off the def: it is
        table data, not per-part state, so a copy here could only drift (#383).
-       A part with no def -- only test scaffolds build those -- holds nothing. */
-    double capacityOf(int r) const { return def != nullptr ? def->capacity[r] : 0.0; }
+       The def table itself is float (PartDef::capacity), so this widens rather
+       than adds precision. Every Part is minted with a def (make_part), so a
+       missing one is a bug, not a state to survive. */
+    double capacityOf(int r) const { assert(def != nullptr); return def->capacity[r]; }
     /* A PERSON that is being held: a kerbal-typed Part with a container. Named
        for what it actually tests, because the predicate must NOT tighten to
        `container->isCapsule()` (#291). The two edges mean different things:
