@@ -72,9 +72,10 @@ ShipDef load_suit_def(const std::string &defPath, const PartsCatalog &cat)
 
 Part *make_suit(const ShipDef &def, Shader *partsshader)
 {
-    /* The contract load_suit_def establishes. The null check comes first so a
-       ShipDef built some other way (BuildShip::toShipDef leaves ShipPart::def
-       unset) reports the contract break instead of crashing on the deref. */
+    /* The contract load_suit_def establishes, asserted before the deref. A
+       ShipDef that skipped load_suit_def can still carry a null def: toShipDef
+       copies BuildPart::def, and a BuildPart whose part the catalog lost has
+       one. */
     assert(def.parts.size() == 1 && def.parts[0].def != nullptr
            && def.parts[0].def->type == "kerbal");
     const PartDef *pd = def.parts[0].def;

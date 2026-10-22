@@ -58,9 +58,10 @@ static bool inSubtree(Part *root, Part *target) {
      groups (Vehicle::consumeResourceMass / buildFuelGroups), so "a seated
      suit's tank is not ship fuel" is already true by a different route.
    If a kerbal def ever grows crew_capacity, a seated suit could nest a seated
-   suit and this pair would under-count; the load path refuses that nesting
-   today (validateSeatArray / validateInventoryArray), and checkContainmentTree
-   reports it. */
+   suit and this pair would under-count. Nothing in the runtime refuses that
+   shape -- checkContainmentTree takes a kerbal-typed seat in a part that has
+   just become a capsule -- so the save path is what pins it: validateSeatArray
+   refuses a seat part that carries seats of its own. */
 float inventorySubtreeResource(Part *root, int res) {
     if(root == nullptr) { return 0.0f; }
     float total = 0.0f;
