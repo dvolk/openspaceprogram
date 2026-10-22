@@ -12,8 +12,9 @@
 # exactly 12000.0 Wh while coasting, moving only while the wheels worked.
 #
 # The invariant that ties a row together is that the charge slope equals the
-# watts the SAME row prints. That needs no constant copied out of parts.json, so
-# it survives a parts rebalance and still fails on a battery that lies.
+# watts the SAME row prints. The case names the ship's parts once -- to say
+# which ship it flew -- and never uses them to predict the charge, so a parts
+# rebalance moves the identity pin only, and a battery that lies still fails.
 NAME power-log-balances-the-battery
 CLAIM --power-log's charge moves at the rate its own printed watts imply.
 KIND golden
@@ -38,10 +39,12 @@ CHECK all(b["charge"] <= a["charge"] for a, b in zip(power, power[1:]))
 # are the assertions #379 fails.
 CHECK first([r for r in power if r["t"] < 3.0])["charge"] > last([r for r in power if r["t"] < 3.0])["charge"]
 CHECK first([r for r in power if r["t"] > 8.5])["charge"] > last([r for r in power if r["t"] > 8.5])["charge"]
-# The post-release coast is the long one (11 s), which puts its slope inside a
-# 20% band even though charge prints to only 0.1 Wh. 301.6 W net is 0.0838 Wh/s,
-# and both numbers come off the rows themselves.
-CHECK abs((first([r for r in power if r["t"] > 8.5])["charge"] - last([r for r in power if r["t"] > 8.5])["charge"]) / (last([r for r in power if r["t"] > 8.5])["t"] - first([r for r in power if r["t"] > 8.5])["t"]) - (600.0 - 298.4) / 3600.0) < 0.2 * (600.0 - 298.4) / 3600.0
+# The post-release coast is the long one (11 s), which is what makes the slope
+# readable at all: charge prints to only 0.1 Wh, so over 11 s the ~0.9 Wh that
+# moves carries ~5% quantisation -- comfortably inside the 20% band, where two
+# adjacent rows would be all rounding error. The expected Wh/s comes out of the
+# gen= and const_draw= the rows themselves print, not out of parts.json.
+CHECK abs((first([r for r in power if r["t"] > 8.5])["charge"] - last([r for r in power if r["t"] > 8.5])["charge"]) / (last([r for r in power if r["t"] > 8.5])["t"] - first([r for r in power if r["t"] > 8.5])["t"]) - (power[0]["const_draw"] - power[0]["gen"]) / 3600.0) < 0.2 * (power[0]["const_draw"] - power[0]["gen"]) / 3600.0
 # Commanding attitude adds the wheel's draw, so the drain during the slew is
 # several times the coast drain. Deliberately a ratio and not a figure:
 # --power-log does not print the wheel's watts, so the case pins that
