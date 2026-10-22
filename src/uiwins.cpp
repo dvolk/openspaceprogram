@@ -34,17 +34,22 @@ static void surfaceMapSize(ImGuiSizeCallbackData *d) {
 #pragma GCC diagnostic ignored "-Wpedantic"
 const WinDef kWins[W_Count] = {
     // --- shared across scenes ---------------------------------------------
+    /* Settings, Controls and Save/Load are drawn in every scene but only the
+       title and the hub have a menu window to open them from, so in flight,
+       the tracking station, the lab and the lounge they were unreachable
+       (#378). The Windows panel lists the scene's own set, so these three are
+       rows wherever they are drawn; the menu buttons stay as they were. */
     [W_Settings] = {
         .name = "Settings", .label = "Settings",
         .opts = { .slot = ui::Slot::BottomCenter, .closable = true,
                   .default_open = false },
-        .role = WinRole::Persistent, .inList = false,
+        .role = WinRole::Persistent, .inList = true,
     },
     [W_Controls] = {
         .name = "Controls", .label = "Controls",
         .opts = { .slot = ui::Slot::BottomCenter, .closable = true,
                   .default_open = false },
-        .role = WinRole::Persistent, .inList = false,
+        .role = WinRole::Persistent, .inList = true,
     },
     [W_Debug] = {
         .name = "Game Debug", .label = "Game Debug",
@@ -67,7 +72,11 @@ const WinDef kWins[W_Count] = {
         .name = "Save/Load", .label = "Save / Load",
         .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(380.0f, 360.0f),
                   .closable = true, .default_open = false },
-        .role = WinRole::Transient, .inList = false,
+        // Transient, not Persistent: apply_ui_visible force-sets a Persistent
+        // window back to default_open, so a TAB cycle would shut a sheet the
+        // player opened on purpose. Its open state is left to nav code and
+        // the panel row.
+        .role = WinRole::Transient, .inList = true,
     },
 
     // --- flight ----------------------------------------------------------
