@@ -732,18 +732,35 @@ void spawn_crew(Vehicle *ship, System &sys) {
 }
 
 /* --spin-log: the ship's rotational state, plus the tidal torque that is left to
-   spin it. */
+   spin it.
+   `mass` is the analytic part sum -- the same basis --mass-log calls `mass` --
+   rather than hull->mass: a ship's mass is a property of its parts, and the
+   compound is a physics-world quantity that --mass-log already reports
+   separately as hullmass. The KINEMATICS are the hull's, so they print only
+   while the hull is in the world. goOnRails() does RemoveBody(hull) and the
+   hull keeps its last in-world velocity, so printing them for a railed ship
+   reads as a live state for a body nothing is accelerating -- the trap
+   --mass-log deliberately refuses. railed= makes the omission a stated fact
+   instead of a gap a reader guesses at, and one printf keeps the optional
+   fragment from tearing. The COM and the tidal torque are frame-analytic
+   (partWorldPose goes through frameS, not the hull), so they stay honest on
+   the rails. */
 void spin_log(Vehicle *ship, double time) {
     if(ship->hull == nullptr) { return; }
 
     const glm::dvec3 com = ship->get_center_of_mass();
-    const glm::dvec3 v = GetVelocity(ship->hull);
-    const glm::dvec3 w = GetAngVelocity(ship->hull);
-    printf("[spin] t=%.2fs ship=%s parts=%zu mass=%.1f kg com=[%.1f %.1f %.1f]"
-           " |v|=%.3f m/s w=[%.3e %.3e %.3e] |w|=%.3e rad/s\n",
-           time, ship->name.c_str(), ship->parts.size(), ship->hull->mass,
-           com.x, com.y, com.z, glm::length(v),
-           w.x, w.y, w.z, glm::length(w));
+    char kin[128] = "";
+    if(ship->hullInWorld()) {
+        const glm::dvec3 v = GetVelocity(ship->hull);
+        const glm::dvec3 w = GetAngVelocity(ship->hull);
+        snprintf(kin, sizeof kin,
+                 " |v|=%.3f m/s w=[%.3e %.3e %.3e] |w|=%.3e rad/s",
+                 glm::length(v), w.x, w.y, w.z, glm::length(w));
+    }
+    printf("[spin] t=%.2fs ship=%s parts=%zu mass=%.1f kg"
+           " com=[%.1f %.1f %.1f] railed=%d%s\n",
+           time, ship->name.c_str(), ship->parts.size(), ship->getMass(),
+           com.x, com.y, com.z, ship->onRails ? 1 : 0, kin);
 
     const double G = 6.674e-11;
     const double M = ship->m_parent->mass;

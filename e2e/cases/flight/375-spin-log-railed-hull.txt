@@ -1,0 +1,37 @@
+# --spin-log reported a ship that is NOT in the physics world as if it were.
+# goOnRails() does RemoveBody(hull) (src/vehicle.cpp:3193), but the hull stays
+# allocated and keeps its last in-world velocity and angular velocity, and
+# spin_log guarded only `hull == nullptr`. So a rails-warp run printed a
+# plausible |v| and w=[...] for a body nothing is accelerating: someone hunting
+# a spin problem at warp reads a healthy ship that does not exist.
+#
+# --mass-log faces the identical trap and deliberately prints no hullmass= for
+# an out-of-world hull, with railed= making the omission a stated fact. spin_log
+# now follows the same rule: the hull's kinematics go, the frame-analytic half
+# (COM, tidal torque, part count, the analytic mass) stays.
+#
+# 100x is the point: it is above kRailsWarp (11), so Bullet never steps this
+# ship and every sample is a railed one. The kinematics must be ABSENT, not
+# merely wrong -- a plausible wrong number is exactly what the bug shipped.
+NAME spin-log-railed-hull
+CLAIM --spin-log withholds hull kinematics for a ship outside the physics world.
+KIND invariant
+ARGS --timeout 6 --time-accel 100 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --spin-log
+EXPECT [spin] t=
+EXPECT railed=1
+EXPECT tidal gravity torque |tau|=
+FORBID w=[
+FORBID |v|=
+FORBID error:
+FORBID FAILED
+# The analytic half survives the rails and must keep printing: the COM and the
+# tidal torque come from the part tree through frameS, not from the hull, so a
+# railed ship still has a real centre of mass and a real tidal torque. Pin the
+# shape of the row rather than its numbers -- railed=1 with nothing after it on
+# the line is the whole claim.
+CHECK re.search(r"\[spin\] t=[\d.]+s ship=racer parts=4 mass=[\d.]+ kg com=\[[^\]]+\] railed=1\n", out) is not None
+# And the mass is the analytic part sum, the same basis --mass-log calls mass:
+# a railed ship has no compound in the world to report, yet the number is still
+# true of the ship.
+CHECK float(re.search(r"\[spin\] t=\S+ ship=racer parts=4 mass=([\d.]+)", out).group(1)) > 2000.0

@@ -429,9 +429,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_flag("--spin-log", args.spin_log_enabled,
                  "Print the ship's rotational state to stdout every 0.5s of "
-                 "wall time, paused or not: mass, centre of mass, velocity, "
-                 "angular velocity, and the tidal gravity torque left to spin "
-                 "it; also implied by --radial-test");
+                 "wall time, paused or not: mass, centre of mass, and the "
+                 "tidal gravity torque left to spin it, plus velocity and "
+                 "angular velocity only while the hull is in the physics world "
+                 "-- a ship on rails has none, and railed= says so. Also "
+                 "implied by --radial-test");
 
     app.add_flag("--slew-log", args.slew_log_enabled,
                  "Print the prograde/retrograde autopilot state (slew error "
