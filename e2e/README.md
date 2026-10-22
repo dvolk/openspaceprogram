@@ -74,6 +74,15 @@ KIND    invariant
 Do not read an `EXPECT` string as a requirement on its own. The claim says what
 the case is for; a `golden` case's numbers are the current tuning, not a law.
 
+A path a case names is checked before the case runs: every `e2e/...` or
+`res/...` string in ARGS, SEED, or the text of an EXPECT/FORBID/CHECK has to
+exist in the repo. A fixture that moved then fails with its own path named
+instead of as a missing assertion three lines later. Case 89 pins a refusal of
+a system file that must NOT exist, so it opts out with a `# missing-ok: <path>`
+line -- the only case that needs it. `python3 e2e/index.py --check` parses every
+case file, and `make test` runs it, so a stale path fails on the commit that
+introduces it rather than days later when someone spends a run on it.
+
 GL errors and crash strings (`Segmentation`, `Assertion`, `terminate called`,
 shader compile/link failures) are forbidden in every case, so do not repeat
 them in `FORBID`. `error:` is not default: a clean boot refusal prints it on
