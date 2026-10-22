@@ -6,18 +6,18 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 251 |
+| `invariant` | a behaviour or a player route the game must keep | 252 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 30 |
-| `harness` | CLI/test-engine plumbing, not game spec | 11 |
+| `harness` | CLI/test-engine plumbing, not game spec | 12 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **296** |
+| | **total** | **298** |
 
 There is no full battery: the runner takes at most 5 cases per
 invocation and starts a 10-minute cooldown. Select by number, name or
 path (a whole subject is usually too wide), e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (56)
+## flight (57)
 
 | case | kind | pins |
 |---|---|---|
@@ -77,6 +77,7 @@ path (a whole subject is usually too wide), e.g.
 | `flight/356-prograde-dv-budget.txt` | invariant | A prograde burn delivers the delta-v its propellant cost, as speed and as orbital energy. |
 | `flight/357-retrograde-burn-costs-energy.txt` | invariant | A settled retrograde burn spends the same delta-v and takes orbital energy away. |
 | `flight/358-coast-conserves-orbit.txt` | invariant | A ship coasting in vacuum keeps its orbital energy and angular momentum. |
+| `flight/374-mass-log-while-paused.txt` | invariant | A periodic log can be read from a paused, just-loaded world. |
 
 ## crew (24)
 
@@ -336,7 +337,7 @@ path (a whole subject is usually too wide), e.g.
 | `render/354-map-fit-open-conic.txt` | invariant | An escaping ship's map opens framed on its current radius. |
 | `render/355-map-fit-switch-same-body.txt` | invariant | Switching ships around the same body refits the map to the new orbit. |
 
-## harness (12)
+## harness (13)
 
 | case | kind | pins |
 |---|---|---|
@@ -352,3 +353,4 @@ path (a whole subject is usually too wide), e.g.
 | `harness/281-ui-focus-after-orbit.txt` | harness | --ui-focus lands after the camera is orbited. |
 | `harness/282-ui-focus-unknown-part.txt` | harness | --ui-focus says an unknown part is unknown rather than clicking empty space. |
 | `harness/343-screenshot.txt` | harness | F12 writes a PNG under the data dir's screenshots/ and toasts the outcome. |
+| `harness/379-periodic-log-warp-rate.txt` | harness | A periodic log samples at a wall-clock rate whatever the warp. |

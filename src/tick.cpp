@@ -257,63 +257,58 @@ void tick(Game &g) {
                 g.toast("SOI: now around %s, warp 1x",
                         g.ship->m_parent->name.c_str());
             }
+        }
 
-            /* --spin-log (or --radial-test): spin diagnostics, once per
-               0.5 s of sim time. */
-            if(g.ship && (g.args.spin_log_enabled || !g.args.radial_test.empty())) {
-                static double last_spin_log = -1e30;
-                if(g.time - last_spin_log >= 0.5) {
-                    last_spin_log = g.time;
-                    spin_log(g.ship, g.time);
-                }
+        /* The periodic state logs. Wall-clock gated like --orbit-log below, and
+           deliberately OUTSIDE the time_accel gate: a SIM-clock gate prints
+           nothing while the player is paused (a load sets time_accel = 0), goes
+           quiet for the rest of a run once New Game rewinds g.time to 0 under a
+           process-wide stamp, and fires on EVERY tick once one tick advances
+           more than the interval at warp (#374). */
+
+        /* --spin-log (or --radial-test): spin diagnostics. */
+        if(g.ship && (g.args.spin_log_enabled || !g.args.radial_test.empty())) {
+            if(g.logDue(kGateSpin, SDL_GetTicks(), kStateLogMs)) {
+                spin_log(g.ship, g.time);
             }
+        }
 
-            /* --mass-log: every vehicle on the SAME tick, so a split's mass can
-               be added up -- the survivor of a decoupler is a different Vehicle
-               from g.ship, and a per-ship sample taken on different ticks is not
-               one snapshot of the fleet (#367). */
-            if(g.args.mass_log) {
-                static double last_mass_log = -1e30;
-                if(g.time - last_mass_log >= 0.5) {
-                    last_mass_log = g.time;
-                    for(auto *s : vehicles) { mass_log(s, g.time); }
-                }
+        /* --mass-log: every vehicle on the SAME tick, so a split's mass can
+           be added up -- the survivor of a decoupler is a different Vehicle
+           from g.ship, and a per-ship sample taken on different ticks is not
+           one snapshot of the fleet (#367). */
+        if(g.args.mass_log) {
+            if(g.logDue(kGateMass, SDL_GetTicks(), kStateLogMs)) {
+                for(auto *s : vehicles) { mass_log(s, g.time); }
             }
+        }
 
-            /* --fuel-log: fuel mass + links, once per 0.5 s of sim time. */
-            if(g.ship && g.args.fuel_log) {
-                static double last_fuel_log = -1e30;
-                if(g.time - last_fuel_log >= 0.5) {
-                    last_fuel_log = g.time;
-                    g.ship->fuel_log(g.time);
-                }
+        /* --fuel-log: fuel mass + links. */
+        if(g.ship && g.args.fuel_log) {
+            if(g.logDue(kGateFuel, SDL_GetTicks(), kStateLogMs)) {
+                g.ship->fuel_log(g.time);
             }
+        }
 
-            /* --drain-log: fuel drain rates, once per 0.5 s of sim time. */
-            if(g.ship && g.args.drain_log) {
-                static double last_drain_log = -1e30;
-                if(g.time - last_drain_log >= 0.5) {
-                    last_drain_log = g.time;
-                    g.ship->drain_log(g.time);
-                }
+        /* --drain-log: fuel drain rates. */
+        if(g.ship && g.args.drain_log) {
+            if(g.logDue(kGateDrain, SDL_GetTicks(), kStateLogMs)) {
+                g.ship->drain_log(g.time);
             }
+        }
 
-            /* --power-log: power balance, once per 0.5 s of sim time. */
-            if(g.ship && g.args.power_log) {
-                static double last_power_log = -1e30;
-                if(g.time - last_power_log >= 0.5) {
-                    last_power_log = g.time;
-                    g.ship->power_log(g.time);
-                }
+        /* --power-log: power balance. */
+        if(g.ship && g.args.power_log) {
+            if(g.logDue(kGatePower, SDL_GetTicks(), kStateLogMs)) {
+                g.ship->power_log(g.time);
             }
+        }
 
-            /* --slew-log: autopilot state, once per 0.1 s of sim time. */
-            if(g.ship && g.args.slew_log_enabled) {
-                static double last_slew_log = -1e30;
-                if(g.time - last_slew_log >= 0.1) {
-                    last_slew_log = g.time;
-                    g.ship->slew_log(g.time);
-                }
+        /* --slew-log: autopilot state. 10Hz, not 2Hz: a slew is a turn being
+           steered, and at 2Hz the error curve is undersampled. */
+        if(g.ship && g.args.slew_log_enabled) {
+            if(g.logDue(kGateSlew, SDL_GetTicks(), kSlewLogMs)) {
+                g.ship->slew_log(g.time);
             }
         }
 
@@ -446,10 +441,7 @@ void tick(Game &g) {
            time_accel; runs over all ships (frozen-in deformation shows on
            idle/railed ones). */
         if(g.args.compound_check) {
-            static Uint32 last_compound_ms = 0;
-            const Uint32 now_ms = SDL_GetTicks();
-            if(now_ms - last_compound_ms >= g.orbit_log_interval_ms) {
-                last_compound_ms = now_ms;
+            if(g.logDue(kGateCompound, SDL_GetTicks(), g.orbit_log_interval_ms)) {
                 for(auto *s : vehicles) { s->compoundCheck(g.time); }
             }
         }

@@ -1,0 +1,49 @@
+# The periodic --*-log family (--spin-log, --mass-log, --fuel-log, --drain-log,
+# --power-log, --slew-log) used to gate on SIM time: `g.time - last >= 0.5`,
+# with `last` a function-local static. That made a flag unreadable at exactly
+# the moments a case wants a sample (#374):
+#   - A load sets time_accel = 0, so a loaded world printed NOTHING until the
+#     player pressed PERIOD enough to get warp off zero.
+#   - The stamp is process-wide but Game::newGame rewinds g.time to 0, so a New
+#     Game (or any load back to an earlier epoch) went quiet for the rest of the
+#     run: the stamp sat ahead of the clock it was compared against.
+# Gating on wall time like --orbit-log and --dv-log already did fixes both, and
+# --dv-log is the proof: it printed 5 rows in this same paused window while
+# --mass-log printed none.
+#
+# Quickload is the whole bug in one key: it rewinds the clock from ~65s to the
+# ~6s the quicksave recorded AND leaves the game paused, so the old gate had two
+# independent reasons to print nothing after it. It also gives #367 the sample
+# it was missing -- a ship's mass read straight out of a loaded world, with no
+# PERIOD press first. The fleet-wide half of that (a split's two ships adding up
+# across a save) needs a fixture with a split in it, which does not exist yet;
+# this case pins that the read is possible at all.
+NAME mass-log-while-paused
+CLAIM A periodic log can be read from a paused, just-loaded world.
+KIND invariant
+ARGS --timeout 12 --time-accel 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --mass-log
+ARGS --sim-press 500,0,F5
+ARGS --sim-press 6500,0,F9
+EXPECT Saved 1 ship(s)
+EXPECT Loaded game from
+EXPECT [toast] Loaded quicksave-00
+EXPECT [mass]
+FORBID error:
+FORBID FAILED
+# Everything below the load line is the loaded world, and that world is PAUSED.
+# Every sample therefore prints the same t=: "the log reads while the clock is
+# frozen" is a stated fact rather than something a row count hints at. This is
+# the assertion that fails on the old gate -- it printed zero rows here.
+CHECK len(mass) >= 4
+CHECK len({m["t"] for m in mass}) == 1
+# The mass is flat because nothing is armed -- no I, no T -- so the only thing
+# that could move it is a drain, and there is none. A row taken while the world
+# still ran would show up here as a second value.
+CHECK len({m["mass"] for m in mass}) == 1
+CHECK all(m["ship"] == "racer" and m["parts"] == 4 for m in mass)
+# No absolute mass here on purpose: this is an invariant case, and the number
+# would go golden the moment racer.json's fuel load changes. What the case owns
+# is that a paused loaded world PRINTS at all, and that its rows agree with each
+# other. The flood half of #374 is the other new case,
+# harness/379-periodic-log-warp-rate.txt.

@@ -352,7 +352,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_option("--orbit-interval", args.orbit_interval,
                    "Wall-clock seconds between --orbit-log / --plane-log lines "
-                   "(default: 1)")
+                   "(default: 1). Never shorter than one --physics-hz tick: no "
+                   "log can sample faster than the sim steps. The state logs "
+                   "(--mass-log, --fuel-log, --drain-log, --power-log, "
+                   "--spin-log, --slew-log) keep their own cadence, stated in "
+                   "each flag's help")
         ->check(CLI::PositiveNumber);
 
     app.add_flag("--dbg-log", args.dbg_log,
@@ -424,15 +428,18 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "e2e set the map's body without driving the combo click");
 
     app.add_flag("--spin-log", args.spin_log_enabled,
-                 "Periodically print the ship's spin diagnostics (per-part "
-                 "angular velocities, inter-part contact impulses, tidal "
-                 "torque) to stdout; also implied by --radial-test");
+                 "Print the ship's rotational state to stdout every 0.5s of "
+                 "wall time, paused or not: mass, centre of mass, velocity, "
+                 "angular velocity, and the tidal gravity torque left to spin "
+                 "it; also implied by --radial-test");
 
     app.add_flag("--slew-log", args.slew_log_enabled,
-                 "Periodically print the prograde/retrograde autopilot "
-                 "state (slew error angle, angular velocity split into the "
-                 "slew/roll/third axes, braking-curve rate) to stdout; "
-                 "the instrument for hunting the prograde wobble");
+                 "Print the prograde/retrograde autopilot state (slew error "
+                 "angle, angular velocity split into the slew/roll/third "
+                 "axes, braking-curve rate) to stdout every 0.1s of wall "
+                 "time; only while the ship is under control, since a pause "
+                 "clears the applied slew. The instrument for hunting the "
+                 "prograde wobble");
 
     app.add_flag("--att-log", args.att_log,
                  "Periodically print the ship's nose direction and the "
@@ -477,16 +484,17 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "instrument for the com-torque e2e test");
 
     app.add_flag("--fuel-log", args.fuel_log,
-                 "Periodically print each fuel group's fuel mass (per "
-                 "resource, plus each member tank) and the ship's fuel "
-                 "links to stdout; the instrument for the fuel-link "
+                 "Print each fuel group's fuel mass (per resource, plus each "
+                 "member tank) and the ship's fuel links to stdout every 0.5s "
+                 "of wall time, paused or not; the instrument for the fuel-link "
                  "drain-rate bug (symmetric radial groups must stay equal)");
 
     app.add_flag("--drain-log", args.drain_log,
-                 "Periodically print each fuel group's drain rate (kg/s) "
-                 "to stdout -- the change in a group's fuel mass between "
-                 "samples; the instrument for how fuel is flowing (which "
-                 "groups feed the engines and at what rate)");
+                 "Print each fuel group's drain rate (kg/s) to stdout every "
+                 "0.5s of wall time -- the change in a group's fuel mass "
+                 "between samples; a rate needs an interval, so a paused ship "
+                 "prints no row. The instrument for how fuel is flowing "
+                 "(which groups feed the engines and at what rate)");
 
     app.add_flag("--dv-log", args.dv_log,
                  "Print the ship's running delta-v budget to stdout: the "
@@ -497,23 +505,25 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "the burn buy the velocity it cost?'");
 
     app.add_flag("--mass-log", args.mass_log,
-                 "Periodically print EVERY vehicle's mass to stdout, not "
-                 "just the active ship's: the analytic part sum and the "
-                 "compound Bullet accelerates. A decoupler hands its subtree "
-                 "to a new Vehicle, so a split's mass can only be added up if "
-                 "the survivor prints its own");
+                 "Print EVERY vehicle's mass to stdout every 0.5s of wall "
+                 "time, paused or not, not just the active ship's: the "
+                 "analytic part sum and the compound Bullet accelerates. A "
+                 "decoupler hands its subtree to a new Vehicle, so a split's "
+                 "mass can only be added up if the survivor prints its own");
 
     app.add_flag("--power-log", args.power_log,
-                 "Periodically print the ship's electrical balance to "
-                 "stdout -- generation (W), constant draw (W), stored "
-                 "charge (Wh) and the wheel gate -- the instrument for "
-                 "'is the ship losing power?' (life support + the active "
+                 "Print the ship's electrical balance to stdout every 0.5s of "
+                 "wall time, paused or not -- generation (W), constant draw "
+                 "(W), stored charge (Wh) and the wheel gate -- the instrument "
+                 "for 'is the ship losing power?' (life support + the active "
                  "wheels drain the battery; an RTG charges it)");
 
     app.add_flag("--prox-log", args.prox_log,
                  "Print proximity engage/release events, the active-ship "
-                 "wake, the warp cap, and a throttled per-ship distance "
-                 "snapshot -- the instrument for the proximity e2e tests");
+                 "wake, the warp cap, and a per-ship distance snapshot "
+                 "throttled to --orbit-interval -- the snapshot only runs "
+                 "while unpaused, since it rides the proximity pass itself. "
+                 "The instrument for the proximity e2e tests");
 
     app.add_option("--prox-fly-on", args.prox_fly_on,
                    "Engage radius (m) while the active ship is flying: a "
@@ -817,6 +827,20 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                     return false;
                 }
             }
+        }
+
+        /* An --orbit-interval below one tick cannot be honoured: it truncates
+           to 0ms in the log gate, so every throttled log fires on every tick.
+           A log cannot sample faster than the thing it samples, so the tick
+           period IS the floor -- refuse rather than round. (--physics-hz is
+           already range-checked 5..1000, so the floor is 0.001..0.2 s.) */
+        const double tick_s = 1.0 / args.physics_hz;
+        if(args.orbit_interval < tick_s) {
+            printf("error: --orbit-interval %g s is shorter than one physics "
+                   "tick (1/%g Hz = %g s); no log can sample faster than the "
+                   "sim steps\n", args.orbit_interval, args.physics_hz, tick_s);
+            *exit_code = 1;
+            return false;
         }
     }
 

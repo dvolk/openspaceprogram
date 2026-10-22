@@ -6,6 +6,7 @@
 // CLI11 + plain C++ only.
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -50,6 +51,88 @@ int main() {
         assert(code == 0);
         assert(out.find("--startship") != std::string::npos);
         assert(out.find("--version") != std::string::npos);
+    }
+
+    // 2b) The state logs' --help text states the cadence tick.cpp gates them
+    //     at. That number lives in cli.h (kStateLogMs / kSlewLogMs) AND in the
+    //     help string, so this is what stops --help silently lying when one
+    //     side moves. CLI11 re-wraps descriptions to the terminal width, so
+    //     match the short token rather than a whole phrase.
+    {
+        const char *argv[] = {"osp", "--help"};
+        GameArgs args;
+        bool ok = true;
+        int code = -1;
+        std::string out = run(2, (char **)argv, args, ok, code);
+        char state_s[16], slew_s[16];
+        snprintf(state_s, sizeof state_s, "%.1fs", kStateLogMs / 1000.0);
+        snprintf(slew_s, sizeof slew_s, "%.1fs", kSlewLogMs / 1000.0);
+        /* The flag's own description: CLI11 puts the entry on its own line and
+           wraps the text as a hanging indent. Anchor on the ENTRY, not the
+           first mention -- --orbit-interval's description names all six of
+           these flags, and its wrap can start a line with one of them. */
+        auto block = [&](const char *flag) {
+            const size_t n = strlen(flag);
+            std::string b;
+            bool in = false;
+            std::istringstream ls(out);
+            std::string line;
+            while(std::getline(ls, line)) {
+                const size_t s = line.find_first_not_of(" \t");
+                if(s == std::string::npos) { continue; }
+                const std::string t = line.substr(s);
+                const bool entry = t.compare(0, n, flag) == 0
+                                && t.size() > n && (t[n] == ' ' || t[n] == '\t');
+                if(entry) { b = t; in = true; continue; }
+                if(in) {
+                    if(t.compare(0, 2, "--") == 0) { break; }
+                    b += " " + t;
+                }
+            }
+            assert(in);
+            return b;
+        };
+        for(const char *flag : {"--spin-log", "--mass-log", "--fuel-log",
+                                "--drain-log", "--power-log"}) {
+            assert(block(flag).find(state_s) != std::string::npos);
+        }
+        assert(block("--slew-log").find(slew_s) != std::string::npos);
+    }
+
+    // 2c) The log gate's floor. An --orbit-interval under one physics tick
+    //     passes CLI11's finiteness and positivity checks and then truncates
+    //     to 0ms in the gate, so every throttled log fires on every tick. A
+    //     log cannot sample faster than the sim steps, so refuse it. (The
+    //     refusal message goes through printf, not std::cout, so it is not in
+    //     the captured output -- same as the --ui-scroll refusals above.)
+    {
+        const char *argv[] = {"osp", "--orbit-interval", "0.0001"};
+        GameArgs args;
+        bool ok = true;
+        int code = -1;
+        run(3, (char **)argv, args, ok, code);
+        assert(!ok);
+        assert(code == 1);
+    }
+    // The floor tracks --physics-hz rather than being a magic constant: the
+    // SAME 0.02 s is accepted at 100 Hz (one tick = 0.01 s) and refused at
+    // 20 Hz (one tick = 0.05 s).
+    {
+        const char *argv[] = {"osp", "--physics-hz", "100", "--orbit-interval", "0.02"};
+        GameArgs args;
+        bool ok = false;
+        int code = -1;
+        run(5, (char **)argv, args, ok, code);
+        assert(ok);
+    }
+    {
+        const char *argv[] = {"osp", "--physics-hz", "20", "--orbit-interval", "0.02"};
+        GameArgs args;
+        bool ok = true;
+        int code = -1;
+        run(5, (char **)argv, args, ok, code);
+        assert(!ok);
+        assert(code == 1);
     }
 
     // 3) a valid flag set parses (true), filling the field.

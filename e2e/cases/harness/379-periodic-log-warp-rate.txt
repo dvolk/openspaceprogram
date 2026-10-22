@@ -1,0 +1,36 @@
+# A --*-log gated on SIM time fires on EVERY tick once one tick advances more
+# than its interval: at --time-accel 100 a 60Hz tick steps 1.67s of sim time,
+# so a 0.5s gate is crossed inside every single tick. Measured before the fix,
+# one ship in a 6s run printed 366 [mass] rows -- and --mass-log prints per
+# VEHICLE, so a fleet multiplies that. A long high-warp run buried the
+# interesting rows under the rest (#374).
+#
+# The family now gates on wall time, so the row count tracks the length of the
+# run and not the warp factor. 100x is the worst case on purpose: it is above
+# kRailsWarp (11), the path that skips Bullet entirely and so runs the tick loop
+# as fast as it can go.
+#
+# This is the flood half of #374; the paused half is
+# flight/374-mass-log-while-paused.txt. It carries its own case number rather
+# than 374 because e2e selectors are substrings -- two files sharing a numeric
+# prefix would make "run 374" silently run both, which is exactly what #331
+# complains about.
+NAME periodic-log-warp-rate
+CLAIM A periodic log samples at a wall-clock rate whatever the warp.
+KIND harness
+ARGS --timeout 6 --time-accel 100 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --mass-log
+EXPECT [mass]
+FORBID error:
+FORBID FAILED
+# 6s of wall time at the 500ms cadence is ~12 samples. The bound is loose enough
+# to survive a slow machine -- the gate is wall clock, so a hitch DROPS rows, it
+# never adds them -- and 10x tighter than the 366 the sim-clock gate produced.
+CHECK len(mass) >= 6
+CHECK len(mass) <= 30
+# One ship, so rows == samples. The flood scaled with fleet size, and a case
+# that cannot say how many vehicles printed cannot read its own row count.
+CHECK len({m["ship"] for m in mass}) == 1
+# The rows still carry distinct sim times: wall-clock gating throttles the log,
+# it does not freeze what it reports.
+CHECK len({m["t"] for m in mass}) == len(mass)

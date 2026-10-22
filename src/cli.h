@@ -161,3 +161,11 @@ struct GameArgs {
 /* Fills args from the command line. Returns true on success; false with the
    process exit code in *exit_code for --help / --version or invalid input. */
 bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code);
+
+/* Cadence of the periodic state logs, in WALL-clock ms: 2Hz for the books
+   (--spin-log, --mass-log, --fuel-log, --drain-log, --power-log), 10Hz for
+   --slew-log, whose error curve is undersampled slower than that. They keep
+   their own rate rather than following --orbit-interval. tick.cpp gates on
+   these; --help states them; tests/test_cli.cpp fails if the two drift apart. */
+inline constexpr int kStateLogMs = 500;
+inline constexpr int kSlewLogMs = 100;

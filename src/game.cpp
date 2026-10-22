@@ -1857,9 +1857,13 @@ void Game::updateProximity() {
     }
 
     if(args.prox_log) {
-        static double last_snap = -1e30;
-        if(time - last_snap >= 0.5) {
-            last_snap = time;
+        /* Wall clock like every other throttled log: a SIM-clock stamp here
+           floods at warp -- one tick crosses the 0.5s gate -- and goes quiet
+           for the rest of a run once a load rewinds `time` under the stamp
+           (#374). The snapshot still only runs while unpaused, because this is
+           the proximity pass: unlike the tick.cpp logs, lifting the print out
+           of the time_accel gate would mean lifting the pass with it. */
+        if(logDue(kGateProxSnap, SDL_GetTicks(), orbit_log_interval_ms)) {
             printf("[prox] t=%.3f regime=%s r_on=%.0f r_off=%.0f\n",
                    time, grounded ? "ground" : "fly", r_on, r_off);
             for(auto *s : vehicles) {
