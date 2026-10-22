@@ -227,8 +227,8 @@ int main(int argc, char **argv)
     datadir::init(args.data_dir);
 
     // settings.json phase 1: these fields must reach window creation -- the
-    // mode/size and the MSAA count are fixed in the GLX visual, and setWindowMode
-    // can't change the MSAA after. CLI flags win field by field.
+    // mode and size are fixed at creation. (MSAA is not: it is a property of
+    // the scene target now, settable live.) CLI flags win field by field.
     load_settings_args(args);
 
     /* The glGetError drains (gldebug.h) are opt-in: --gl-debug turns them on with
@@ -720,12 +720,11 @@ int main(int argc, char **argv)
     const float camFov = (float)glm::radians(args.camFovDeg);
     // The drawable size the Renderer actually got (the WM may have clamped it).
     const float camAspect = (float)display.get_width() / (float)display.get_height();
-    /* zNear = 1 m clips anything nearer than that, which CAM_FIRST hits in anger:
-       the eye sits on the controller's top face (render.cpp), so a part stacked
-       above the pod vanishes. Lowering it is not free on the 24-bit unorm window
-       buffer -- window depth is zNear/d, so it multiplies the far-field collapse
-       by the same factor. Pairs with #263. */
-    const float camZNear = 1.0f;
+    /* 5 cm clears the controller's top face: with the eye on it, a part
+       stacked above the pod was clipped out entirely. Reverse-Z on the scene
+       target's float depth makes this free -- depth is zNear/d, so the far
+       end keeps its 2^-24 *relative* precision at any zNear (#263). */
+    const float camZNear = 0.05f;
     // Stored only: the projection is infinite-far, and no shader reads a far
     // limit (camera.cpp reverseZInfinitePerspective ignores zFar).
     const float camZFar = 1e13;
@@ -1197,7 +1196,10 @@ int main(int argc, char **argv)
                 check_gl_error();
             }
 
-            postfx->Begin();  // no-op unless --postfx effects are active
+            /* The 3D pass always has its own float-depth target (#263); the
+               window only ever receives the composite and the UI. The clear
+               must land inside the pair or it would wipe the window instead. */
+            display.BeginScene();
             // The VAB gets a studio backdrop (no skybox there); flight clears
             // to black.
             if(sc.backdrop == Backdrop::Studio) {
@@ -1205,11 +1207,17 @@ int main(int argc, char **argv)
             } else {
                 display.Clear(0, 0, 0, 1);
             }
-
-            // Begin/End stay together: Begin binds the offscreen target, End
-            // blits it back, and the clear must land between them (#212).
             sc.paint(game);
-            postfx->End();  // no-op unless --postfx effects are active
+            display.EndScene();   // resolve MSAA -> the scene texture
+            /* Wireframe is a view of the 3D pass, so it ends with that pass:
+               the composite is 2D, and in GL_LINE its quad would be drawn as
+               two edges and the window would keep the previous frame. */
+            if(poly_mode == true) {
+                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            }
+            // Always covers the window: the effect chain, or a copy of the
+            // scene when no effect is on.
+            postfx->Composite(display.sceneTexture());
 
             /*
               ImGui stuff below
@@ -1217,9 +1225,6 @@ int main(int argc, char **argv)
 
             glUseProgram(0);
             glBindBuffer(GL_ARRAY_BUFFER, 0);
-            if(poly_mode == true) {
-                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-            }
 
             sc.drawUi(game);
 

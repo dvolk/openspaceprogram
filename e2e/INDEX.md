@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 253 |
+| `invariant` | a behaviour or a player route the game must keep | 254 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 34 |
 | `harness` | CLI/test-engine plumbing, not game spec | 12 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **303** |
+| | **total** | **304** |
 
 There is no full battery: the runner takes at most 5 cases per
 invocation and starts a 10-minute cooldown. Select by number, name or
@@ -282,7 +282,7 @@ path (a whole subject is usually too wide), e.g.
 | `ui/344-staff-lounge.txt` | invariant | The Staff Lounge opens from the hub, reports where each staff member is, and returns. |
 | `ui/345-quit-title-stops-warp.txt` | invariant | Quitting to the title drops the flight's warp, so the title screen is not simulating. |
 
-## render (55)
+## render (56)
 
 | case | kind | pins |
 |---|---|---|
@@ -297,7 +297,7 @@ path (a whole subject is usually too wide), e.g.
 | `render/23-surfmap.txt` | invariant | The Surface Map draws the body's shaded surface. |
 | `render/24-surfmap-noshade.txt` | invariant | The Surface Map's no-shade mode draws without lighting. |
 | `render/32-postfx-gamma-chain.txt` | invariant | A gamma chain applies each stage once. |
-| `render/33-antialiasing.txt` | invariant | MSAA is requested and the framebuffer reports the sample count. |
+| `render/33-antialiasing.txt` | invariant | MSAA reaches the scene framebuffer, whose depth is float. |
 | `render/34-postfx-color.txt` | invariant | Color post-fx applies the configured matrix. |
 | `render/95-terrain-lod.txt` | invariant | Terrain LOD reaches the depth that carries collision under the camera. |
 | `render/96-terrain-lod-farcam.txt` | invariant | A far camera still gets terrain collision under the ship. |
@@ -334,6 +334,7 @@ path (a whole subject is usually too wide), e.g.
 | `render/204-markers-in-orbit-plane.txt` | invariant | Flight markers lie in the plane the overlay draws, including in the surface frame. |
 | `render/205-plane-overlay-while-flying.txt` | invariant | A flying suborbital ship still gets the plane overlay. |
 | `render/206-orbit-plane-keybind.txt` | invariant | F3 flips the same flag as the Settings checkbox. |
+| `render/263-scene-target-msaa.txt` | invariant | MSAA is rebuilt live on the scene target, still over float depth. |
 | `render/313-postfx-gamma.txt` | invariant | Gamma post-fx produces the expected output. |
 | `render/350-map-fit-earth.txt` | invariant | The orbital map's initial zoom is the ship's apoapsis at 100 px. |
 | `render/351-map-fit-small-body.txt` | invariant | The fit also zooms IN for a body far smaller than Kerbin. |

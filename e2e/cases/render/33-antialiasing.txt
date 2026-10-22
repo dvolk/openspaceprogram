@@ -1,7 +1,10 @@
+# The sample count is the scene target's, not the window's (the window is only
+# ever a blit destination since #263). The depth width is the reason that target
+# exists: 24-bit unorm collapses every body past ~1.7e7 m onto the clear value.
 NAME antialiasing
-CLAIM MSAA is requested and the framebuffer reports the sample count.
+CLAIM MSAA reaches the scene framebuffer, whose depth is float.
 KIND invariant
 ARGS --msaa 2x --timeout 4
 EXPECT Main loop starting
-CHECK re.search(r"MSAA: \d+ sample\(s\)", out)
+CHECK re.search(r"MSAA: 2 sample\(s\), 32-bit depth", out)
 FORBID error:

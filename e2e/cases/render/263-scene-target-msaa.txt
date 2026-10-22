@@ -1,0 +1,20 @@
+# The scene target is an FBO, not the window's GLX visual, so changing the
+# sample count rebuilds it mid-frame -- no restart, and the depth stays float.
+# Covers the no-MSAA startup branch (its colour texture is the draw target
+# itself) and the live switch to a multisampled one.
+#
+# ##Combo_00 is imgui's positional id for the Antialiasing combo's popup: it is
+# the first combo in the Settings window, so adding another above it renames
+# this path (the --ui-click failure is loud, not silent).
+NAME scene-target-msaa
+CLAIM MSAA is rebuilt live on the scene target, still over float depth.
+KIND invariant
+ARGS --timeout 6 --msaa none
+ARGS --ui-click 1500,"Title Menu/Settings"
+ARGS --ui-click 2500,"Settings/Antialiasing"
+ARGS --ui-click 3000,"##Combo_00/4x"
+EXPECT Main loop starting
+CHECK re.search(r"MSAA: 0 sample\(s\), 32-bit depth", out)
+CHECK re.search(r"MSAA: 4 sample\(s\), 32-bit depth", out)
+EXPECT [toast] Antialiasing: 4x
+FORBID error:

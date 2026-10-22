@@ -528,9 +528,8 @@ void paintWorld(Game &g) {
 
     const glm::dvec3 com = ship ? ship->get_center_of_mass() : glm::dvec3(0.0);
 
-    // Starfield first as pure background: depth test and write off, so every
-    // body draws over it -- even far ones, whose reverse-Z depth collapsed to
-    // the 0.0 background.
+    // Starfield first as pure background: depth test and write off, one pass
+    // regardless of how many bodies the scene has.
     if(g.draw_starfield) {
         glDepthMask(GL_FALSE);
         glDisable(GL_DEPTH_TEST);
@@ -617,10 +616,9 @@ void paintWorld(Game &g) {
             if(!g.args.no_atmosphere) {
                 planet->DrawAtmosphere(camera, sun, rf);
             }
-            /* Rings last: the depth test is what hides the far arc -- but only
-               while the planet's own depth survives quantization, and on the
-               24-bit unorm window buffer it does not past ~1.7e7 m (#263). There
-               the whole ring draws over its own planet. */
+            /* Rings last: the depth test is what hides the far arc behind the
+               planet. That test is real now -- the scene target's float depth
+               separates a planet from its ring at any range (#263). */
             if(!g.args.no_rings) {
                 planet->DrawRings(camera, sun, rf);
             }

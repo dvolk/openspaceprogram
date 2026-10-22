@@ -583,9 +583,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     std::string msaa;
     app.add_option("--msaa", msaa,
-                   "Multisample antialiasing: none | 2x | 4x | 8x "
-                   "(default 4x). Fixed at window creation (the GLX visual "
-                   "is chosen then), so it applies at launch/restart")
+                   "Multisample antialiasing on the scene target: none | 2x | "
+                   "4x | 8x (default 4x). Applies live -- Settings can change "
+                   "it mid-flight")
         ->check(CLI::IsMember({"none", "2x", "4x", "8x"}));
 
     app.add_option("--width", args.screen_width,

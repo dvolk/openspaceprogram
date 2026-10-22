@@ -25,9 +25,11 @@ struct FXDef {
     int n_params;
 };
 
-// Post-processing chain: no effects = zero cost; otherwise ping-pong fullscreen
-// passes, the last compositing to the screen. Begin before the 3D scene, End
-// after it.
+// Post-processing chain over the scene target's resolved texture: the enabled
+// effects ping-pong, and the last pass writes the window. No effects enabled
+// still means one copy pass, so the window is always covered. No depth
+// attachment: the scene depth lives in the Renderer's scene target (#263) and
+// nothing in here tests it.
 class PostFX
 {
 public:
@@ -52,14 +54,12 @@ public:
                   float value);
     float GetParam(const std::string& name, const std::string& param) const;
 
-    // True if any effect is enabled (drives Begin/End).
-    bool Active() const;
-
-    // (Re)create the offscreen targets (startup + resize).
+    // (Re)create the ping-pong targets (startup + resize).
     void Resize(int width, int height);
 
-    void Begin();
-    void End();
+    // Run the chain over the scene target's texture and composite to the
+    // window. Called once per frame, after Renderer::EndScene().
+    void Composite(unsigned int sceneTexture);
 
 private:
     void RebuildTargets(int width, int height);
@@ -75,9 +75,11 @@ private:
     };
     std::vector<Effect> m_effects;
 
+    // The identity pass, so Composite() has one code path whether or not an
+    // effect is enabled.
+    std::unique_ptr<Shader> m_copy;
     GLuint m_fbo[2];
     GLuint m_colorTex[2];
-    GLuint m_depthRB[2];
     GLuint m_quadVAO;
     GLuint m_quadVBO;
     int m_width;

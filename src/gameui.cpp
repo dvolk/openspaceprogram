@@ -560,8 +560,8 @@ void drawUIReadouts(Game &g) {
                 ImGui::TextDisabled("(fullscreen: the display's native "
                                     "resolution)");
             }
-            // MSAA is fixed at window creation (the GLX visual is chosen then): this sets
-            // the LAUNCH value, effective on restart.
+            // MSAA belongs to the scene target, not the window's visual, so
+            // this rebuilds that target and takes effect on the next frame.
             {
                 static const int aa_values[] = {0, 2, 4, 8};
                 static const char *const aa_names[] = {"none", "2x", "4x",
@@ -577,8 +577,17 @@ void drawUIReadouts(Game &g) {
                 if(uiCombo("Antialiasing", &sel,
                                 "none\0" "2x\0" "4x\0" "8x\0")) {
                     args.msaa_samples = aa_values[sel];
-                    g.toast("Antialiasing: %s (applies on restart)",
-                            aa_names[sel]);
+                    g.display.setMsaaSamples(args.msaa_samples);
+                    // Report the grant, not the request: a driver that clamps
+                    // 8x to 4x (or refuses the multisampled float depth) would
+                    // otherwise leave the menu claiming something is on.
+                    const int granted = g.display.grantedMsaaSamples();
+                    if(granted == args.msaa_samples) {
+                        g.toast("Antialiasing: %s", aa_names[sel]);
+                    } else {
+                        g.toast("Antialiasing: %s (%dx granted)",
+                                aa_names[sel], granted);
+                    }
                 }
             }
             ImGui::Separator();

@@ -115,7 +115,7 @@ struct GameArgs {
     // The glGetError drains without the debug callback (gldebug.h). The e2e
     // runner sets it for cases that FORBID GL_.
     bool gl_error_checks = false;
-    int msaa_samples = 4;   // the window's sample count (0 = none)
+    int msaa_samples = 4;   // the scene target's sample count (0 = none)
 
     int screen_width = 1920;
     int screen_height = 1080;
