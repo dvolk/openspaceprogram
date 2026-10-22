@@ -1,0 +1,35 @@
+# A 300ms --sim-press hold at 10x is 3s of sim -- shorter than the ~5.2s of sim
+# between two --drain-log rows. Measuring a fixed 0.5s window and printing only
+# the last one before each print covered 13% of the timeline at 10x, so this
+# burn read 0.000 kg/s in every row around it while --mass-log showed 597kg
+# gone. Measuring between prints instead (#376's original bug) reads ~13 kg/s:
+# a real number, but a duty-cycle average that depends on the warp.
+#
+# The sampler accumulates every tick, so the burn is counted whatever the warp,
+# and each group's rate divides by the time THAT group spent. The row therefore
+# reads the flow rate -- 105.44 kg/s, the figure 38-asparagus-flight pins at 1x
+# -- and dt= says the row covered 5.2s, longer than the burn.
+#
+# The mass log corroborates it from the other side: the spend it records
+# implies a burn of ~2.8s of sim, strictly shorter than the row that reports
+# the rate. That pairing is the point -- a rate that fits inside its own
+# interval is only honest if the interval is the whole gap.
+NAME drain-rate-short-burn
+CLAIM A burn shorter than the gap between --drain-log rows still reports its true kg/s.
+KIND golden
+ARGS --timeout 12 --time-accel 10 --startship heavy_asp,res/ships/heavy_asp.json,Kerbin,pad
+ARGS --drain-log --mass-log --sim-press 500,300,T
+EXPECT [drainlog]
+EXPECT [mass]
+FORBID error:
+FORBID FAILED
+# Some row must show flow, and every flow figure must be the rated one.
+CHECK len([v for r in drainlog for v in r["rates"].values() if v > 1.0]) >= 2
+CHECK all(abs(v - 105.44) < 0.05 * 105.44 for r in drainlog for v in r["rates"].values() if v > 1.0)
+# Two groups feed the engine, so the kg the ship lost is 2 * 105.44 * (the
+# seconds it actually burned). That duration must be positive and must fit
+# inside the row that printed the rate -- if it did not, the row would be
+# reporting a window that misses part of the burn.
+CHECK 0.0 < (mass[0]["mass"] - mass[-1]["mass"]) / (2 * 105.44) < min(r["dt"] for r in drainlog if any(v > 1.0 for v in r["rates"].values()))
+# Nothing else sheds mass here: no staging, no chute, no leak.
+CHECK all(abs(m["mass"] - mass[-1]["mass"]) < 0.01 for m in mass if m["t"] > 20.0)
