@@ -231,17 +231,28 @@ FUEL_LINK_RE = re.compile(r"links=(\S+)")
 FUEL_LINK_PAIR_RE = re.compile(r"g?(\d+)->g?(\d+)")
 
 # A repo-relative fixture path a case names, resolved against the repo root (the
-# game runs with cwd=REPO_ROOT). Compound flag values are comma-joined
-# (--startship name,def,body,pad), so each piece is checked on its own. A leading
-# "./" counts: resdir::path() strips one, so the game accepts that spelling too.
-FIXTURE_ARG_RE = re.compile(r"^(?:\./)?(?:e2e|res)/[A-Za-z0-9_.\-/]+$")
-# The same shape inside an assertion's free text. A moved fixture shows up there
-# as a stale EXPECT string, not a refused load, because the game echoes the path
-# back from inside a save (#360: case 227's ARGS were fine, its EXPECT was not).
-FIXTURE_TEXT_RE = re.compile(r"(?:^|[\s\"'])(\.?/?(?:e2e|res)/[A-Za-z0-9_.\-/]+)")
+# game runs with cwd=REPO_ROOT). One shape for every place a path can appear:
+# ARGS values are comma-joined (--startship name,def,body,pad) and a flag can
+# carry its path as --foo=res/..., so matching whole tokens only would miss
+# both. A path inside an assertion's free text is the quieter half of #360:
+# case 227's ARGS were fine, its EXPECT was not, because the game echoes the
+# path back from inside a save. A backslash stays part of the token so a CHECK
+# that escapes punctuation for its OWN regex ("res/ships/racer\.json") reads as
+# one path instead of a truncated one; fixture_path() undoes the escapes. The
+# lookbehind is not decoration: "e2e/fixtures/save_x" contains "res/save_x",
+# which is no path the repo has -- case 186 proved that by failing the gate.
+FIXTURE_PATH_RE = re.compile(r"(?<![A-Za-z0-9_/-])(?:e2e|res)/[A-Za-z0-9_.\\/-]+")
 # A case that pins a REFUSAL of a path deliberately has no such file. It opts out
 # of the existence check with a `# missing-ok: <path>` comment line.
 MISSING_OK_RE = re.compile(r"^#\s*missing-ok:\s*(\S+)")
+
+
+def fixture_path(token):
+    """The path as the repo would spell it. A CHECK may escape punctuation for
+    its own regex, and resdir::path() accepts a leading "./", so both spellings
+    name one file -- and a `# missing-ok:` line has to match either spelling."""
+    token = token.replace("\\", "")
+    return token[2:] if token.startswith("./") else token
 
 
 def under_data_dir(pattern, case_path, key):
@@ -263,8 +274,9 @@ def check_fixture_paths(pairs, case_path, allowed):
     Check every path a case names, at parse time, so the diagnosis names the
     dead path instead. `pairs` is (where-it-appeared, token); `allowed` is the
     case's own missing-ok list."""
+    allowed = {fixture_path(p) for p in allowed}
     for key, token in pairs:
-        token = token[2:] if token.startswith("./") else token
+        token = fixture_path(token)
         if token in allowed:
             continue
         if not os.path.exists(os.path.join(REPO_ROOT, token)):
@@ -373,16 +385,16 @@ def parse_cases(path):
         raise ValueError("%s: no ARGS" % os.path.basename(path))
     # Every repo-relative path the case names, wherever it names it: the inputs
     # it hands the game, and the assertion text it expects the game to echo back.
-    # ARGS needs the shape filter -- most of its tokens are flags, not paths.
+    # The (?:e2e|res)/ prefix in FIXTURE_PATH_RE is the shape filter -- most of
+    # ARGS' tokens are flags, timings and key names.
     fixture_paths = []
     for tok in args:
-        fixture_paths.extend(("ARGS", piece) for piece in tok.split(",")
-                             if FIXTURE_ARG_RE.match(piece))
+        fixture_paths.extend(("ARGS", p) for p in FIXTURE_PATH_RE.findall(tok))
     fixture_paths.extend(("SEED", src) for src, _, _ in seeds)
     for key, texts in (("EXPECT", expect), ("FORBID", forbid), ("CHECK", check)):
         for text in texts:
-            fixture_paths.extend((key, tok)
-                                 for tok in FIXTURE_TEXT_RE.findall(text))
+            fixture_paths.extend((key, p)
+                                 for p in FIXTURE_PATH_RE.findall(text))
     check_fixture_paths(fixture_paths, path, missing_ok)
     if not claim:
         raise ValueError("%s: no CLAIM (one sentence: what does this pin?)"
@@ -1009,10 +1021,12 @@ def case_kind(path):
     """The case's KIND, or "" if the file does not parse. A broken case must not
     take down the whole invocation: run_one() turns the same ValueError into one
     per-case FAIL, so filtering on a raw parse_cases() here would raise out of
-    main() and every other selected case would never run."""
+    main() and every other selected case would never run. Name the file anyway:
+    a silent "" drops it from a --kind selection as if it never existed."""
     try:
         return parse_cases(path)["kind"]
-    except ValueError:
+    except ValueError as e:
+        print("warning: %s" % e)
         return ""
 
 
