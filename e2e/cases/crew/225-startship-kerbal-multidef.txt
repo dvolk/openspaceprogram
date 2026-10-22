@@ -6,7 +6,7 @@
 NAME startship-kerbal-multidef
 CLAIM A kerbal def with more than one part is refused at boot.
 KIND invariant
-ARGS --timeout 4 --startship rover,e2e/fixtures/kerbal_rover.json,Kerbin,pad
-EXPECT error: ship def 'e2e/fixtures/kerbal_rover.json': a kerbal-rooted def must be exactly one part (got 2)
+ARGS --timeout 4 --startship rover,e2e/vehicles/kerbal_rover.json,Kerbin,pad
+EXPECT error: ship def 'e2e/vehicles/kerbal_rover.json': a kerbal-rooted def must be exactly one part (got 2)
 EXIT 1
 LIMIT 60

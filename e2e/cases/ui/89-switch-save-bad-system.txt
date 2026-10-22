@@ -8,6 +8,9 @@ ARGS --ui-click 2000,"Game Menu/Save/Load"
 ARGS --ui-click 3500,"Save/Load/Load##saveload"
 ARGS --timeout 10
 EXPECT Loaded system 'res/systems/ksp_system.json'
+# The save names a system file that must NOT exist -- that is the refusal under
+# test, so the path-existence check has to let this one through.
+# missing-ok: res/nonexistent_system.json
 EXPECT [load] cannot switch to system 'res/nonexistent_system.json'
 FORBID Loaded game from
 LIMIT 120

@@ -14,7 +14,12 @@ CHECK LIMIT WRITE SEED FILE NOFILE EXIT. CLAIM is one sentence: what the case
 pins. KIND says what sort of evidence it is -- invariant (behaviour or a
 player route), golden (tuned numbers or content tables: update deliberately),
 harness (CLI/test plumbing, not game spec) or canary (proves it boots). Both
-are required; `python3 e2e/index.py` turns them into e2e/INDEX.md. GL errors
+are required; `python3 e2e/index.py` turns them into e2e/INDEX.md. Every
+`e2e/...` or `res/...` path a case names -- in ARGS, SEED, or the text of an
+EXPECT/FORBID/CHECK -- must exist in the repo, so a fixture that moved fails
+with its own path named rather than as a missing assertion; a case that
+deliberately pins a refusal of an absent path opts out with a
+`# missing-ok: <path>` comment line. GL errors
 and crash strings are forbidden by default, so a case names only its own
 refusals; NOGLCHECK opts out of the GL drains for timing-sensitive cases.
 CHECK sees out and
@@ -225,6 +230,19 @@ FUEL_RES_RE = re.compile(r"([A-Za-z0-9]+):([-\d.]+)/([-\d.]+)\[([^\]]*)\]")
 FUEL_LINK_RE = re.compile(r"links=(\S+)")
 FUEL_LINK_PAIR_RE = re.compile(r"g?(\d+)->g?(\d+)")
 
+# A repo-relative fixture path a case names, resolved against the repo root (the
+# game runs with cwd=REPO_ROOT). Compound flag values are comma-joined
+# (--startship name,def,body,pad), so each piece is checked on its own. A leading
+# "./" counts: resdir::path() strips one, so the game accepts that spelling too.
+FIXTURE_ARG_RE = re.compile(r"^(?:\./)?(?:e2e|res)/[A-Za-z0-9_.\-/]+$")
+# The same shape inside an assertion's free text. A moved fixture shows up there
+# as a stale EXPECT string, not a refused load, because the game echoes the path
+# back from inside a save (#360: case 227's ARGS were fine, its EXPECT was not).
+FIXTURE_TEXT_RE = re.compile(r"(?:^|[\s\"'])(\.?/?(?:e2e|res)/[A-Za-z0-9_.\-/]+)")
+# A case that pins a REFUSAL of a path deliberately has no such file. It opts out
+# of the existence check with a `# missing-ok: <path>` comment line.
+MISSING_OK_RE = re.compile(r"^#\s*missing-ok:\s*(\S+)")
+
 
 def under_data_dir(pattern, case_path, key):
     """A FILE/NOFILE pattern is relative to the case's scratch --data-dir. An
@@ -235,6 +253,25 @@ def under_data_dir(pattern, case_path, key):
                          "absolute: %r" % (os.path.basename(case_path), key,
                                            pattern))
     return pattern
+
+
+def check_fixture_paths(pairs, case_path, allowed):
+    """A fixture that moved leaves its case pointing at the old path. The game
+    then reports it cannot open the def, so the case fails on a missing EXPECT
+    -- which reads like a behaviour change and hides the real bug (#360: the
+    vehicle defs moved under e2e/vehicles/ and two cases kept the old path).
+    Check every path a case names, at parse time, so the diagnosis names the
+    dead path instead. `pairs` is (where-it-appeared, token); `allowed` is the
+    case's own missing-ok list."""
+    for key, token in pairs:
+        token = token[2:] if token.startswith("./") else token
+        if token in allowed:
+            continue
+        if not os.path.exists(os.path.join(REPO_ROOT, token)):
+            raise ValueError("%s: %s names a path the repo does not have: %r "
+                             "(a deliberate missing path needs a "
+                             "'# missing-ok: %s' line)"
+                             % (os.path.basename(case_path), key, token, token))
 
 
 def parse_cases(path):
@@ -251,6 +288,9 @@ def parse_cases(path):
     files = []
     nofiles = []
     limit = DEFAULT_LIMIT
+    # Paths a case deliberately names without the file existing (see
+    # MISSING_OK_RE), collected from `# missing-ok: <path>` comment lines.
+    missing_ok = []
     # EXIT: the exit code the case demands. Default 0; a boot-time refusal
     # (a bad --vab def, an unknown --startship body) is a PASS only if the
     # process exits nonzero, which no case could ask for before this key.
@@ -258,7 +298,12 @@ def parse_cases(path):
     with open(path) as f:
         for raw in f:
             line = raw.strip()
-            if not line or line.startswith("#"):
+            if line.startswith("#"):
+                m = MISSING_OK_RE.match(line)
+                if m:
+                    missing_ok.append(m.group(1))
+                continue
+            if not line:
                 continue
             key, _, rest = line.partition(" ")
             key = key.upper()
@@ -326,6 +371,19 @@ def parse_cases(path):
                 raise ValueError("%s: unknown key %r" % (os.path.basename(path), key))
     if not args:
         raise ValueError("%s: no ARGS" % os.path.basename(path))
+    # Every repo-relative path the case names, wherever it names it: the inputs
+    # it hands the game, and the assertion text it expects the game to echo back.
+    # ARGS needs the shape filter -- most of its tokens are flags, not paths.
+    fixture_paths = []
+    for tok in args:
+        fixture_paths.extend(("ARGS", piece) for piece in tok.split(",")
+                             if FIXTURE_ARG_RE.match(piece))
+    fixture_paths.extend(("SEED", src) for src, _, _ in seeds)
+    for key, texts in (("EXPECT", expect), ("FORBID", forbid), ("CHECK", check)):
+        for text in texts:
+            fixture_paths.extend((key, tok)
+                                 for tok in FIXTURE_TEXT_RE.findall(text))
+    check_fixture_paths(fixture_paths, path, missing_ok)
     if not claim:
         raise ValueError("%s: no CLAIM (one sentence: what does this pin?)"
                          % os.path.basename(path))
@@ -947,6 +1005,17 @@ def select_cases(case_files, selectors):
     return out
 
 
+def case_kind(path):
+    """The case's KIND, or "" if the file does not parse. A broken case must not
+    take down the whole invocation: run_one() turns the same ValueError into one
+    per-case FAIL, so filtering on a raw parse_cases() here would raise out of
+    main() and every other selected case would never run."""
+    try:
+        return parse_cases(path)["kind"]
+    except ValueError:
+        return ""
+
+
 def available_names(case_files):
     names = []
     for path in case_files:
@@ -1227,8 +1296,7 @@ def main():
 
     case_files = select_cases(all_files, selectors)
     if args.kind:
-        case_files = [p for p in case_files
-                      if parse_cases(p)["kind"] in args.kind]
+        case_files = [p for p in case_files if case_kind(p) in args.kind]
     if not case_files:
         print("no case matches %r" % (selectors,))
         print("available: %s" % ", ".join(available_names(all_files)))
