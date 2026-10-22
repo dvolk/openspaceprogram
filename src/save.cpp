@@ -157,7 +157,7 @@ SavePart saveItemPart(const Part *c) {
     si.mass = c->body->mass;
     si.hull_margin = c->body->hull_margin;
     for(int r = 0; r < (int)ResourceType::Num; r++) {
-        si.fuel.push_back((double)c->resources.current[r]);
+        si.fuel.push_back(c->resources.current[r]);
     }
     si.experiments = c->experiments;
     for(Part *n : c->contents) {
@@ -442,7 +442,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
         // part 0 is the suit; without this a partly-burned tank re-seeds full
         if(!v->parts.empty()) {
             for(int r = 0; r < (int)ResourceType::Num; r++) {
-                s.suit_fuel.push_back((double)v->parts[0]->resources.current[r]);
+                s.suit_fuel.push_back(v->parts[0]->resources.current[r]);
             }
             for(Part *c : v->parts[0]->contents) {
                 s.suit_inventory.push_back(saveItemPart(c));
@@ -467,7 +467,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
         sp.mass = p->body->mass;
         sp.hull_margin = p->body->hull_margin;
         for(int r = 0; r < (int)ResourceType::Num; r++) {
-            sp.fuel.push_back((double)p->resources.current[r]);
+            sp.fuel.push_back(p->resources.current[r]);
         }
         sp.experiments = p->experiments;
         for(Part *c : p->contents) {

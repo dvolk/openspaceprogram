@@ -38,8 +38,11 @@ Part *make_part(const PartDef &pd, double mass, double hull_margin,
     }
     for(int r = 0; r < (int)ResourceType::Num; r++) {
         p->resources.capacity[r] = pd.capacity[r];
+        // No cast: SavePart.fuel is double and the store is double (#379), so
+        // this was the last narrowing on the load path -- half a ULP at 12 kWh
+        // is one substep of charge, thrown away on every load.
         p->resources.current[r] = (fuel != nullptr && r < (int)fuel->size())
-            ? (float)(*fuel)[r] : 0.0f;
+            ? (*fuel)[r] : 0.0;
     }
     if(experiments != nullptr) { p->experiments = *experiments; }
     return p;

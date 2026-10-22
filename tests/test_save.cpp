@@ -288,6 +288,14 @@ int main() {
     CHECK(crewFuelOut.suit_fuel.size() == 8);
     CHECK(near(crewFuelOut.suit_fuel[6], 8.5));   // Hydrazine
     CHECK(crewFuelOut.suit_fuel[0] == 0.0);       // Hydrogen
+    /* #379: the tank vector is double all the way to the part (make_part
+       copies it into the double store), so a quantity a float cannot hold must
+       survive the save. Half a float ULP at 12 kWh is one substep of charge:
+       a load that rounds it away quietly refunds part of a burn. */
+    SaveShip fineFuel = crewFuel;
+    fineFuel.suit_fuel[2] = 11999.99965;   // EC; float would read 12000.0
+    SaveShip fineFuelOut = saveShipFromJson(saveShipToJson(fineFuel));
+    CHECK(fineFuelOut.suit_fuel[2] == 11999.99965);
     // an absent suit_fuel (a save that predates the field) stays empty
     SaveShip crewOld;
     crewOld.name = "kerbal";

@@ -233,7 +233,7 @@ struct Part {
         double m = body->mass;
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             if(r == (int)ResourceType::EC) { continue; }   // energy, no mass
-            m += (double)resources.current[r];
+            m += resources.current[r];
         }
         for(Part *c : contents) { m += c->effectiveMass(); }
         for(Part *s : seats) {
