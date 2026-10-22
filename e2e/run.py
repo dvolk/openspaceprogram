@@ -22,7 +22,7 @@ deliberately pins a refusal of an absent path opts out with a
 and crash strings are forbidden by default, so a case names only its own
 refusals; NOGLCHECK opts out of the GL drains for timing-sensitive cases.
 CHECK sees out and
-the parsed logs (orbit/dbg/att/eva/fuel/drainlog/dv/mass/drag/shake/cam/
+the parsed logs (orbit/dbg/att/eva/fuel/drainlog/power/dv/mass/drag/shake/cam/
 terrain/surf/xfer/porkchop/surfmap/mapb/plane/slew/toast/scene) plus
 first/last/re. The row lists parse stdout from the LAST "Loaded game from"
 line: a successful load
@@ -179,6 +179,18 @@ EVA_RE = re.compile(
 DRAINLOG_RE = re.compile(
     r"\[drainlog\]\s+t=([\d.]+)s\s+dt=([\d.]+)s\s+ship=\"([^\"]*)\"\s+"
     r"thrust=([-\d.]+)N\s+(.*)"
+)
+# --power-log (vehicle.cpp power_log): the whole electrical model in one row.
+# gen/const_draw are watts (the RTGs and life support); charge/capacity are
+# watt-hours pooled across the ship's battery parts; powered= is the gate the
+# reaction wheels live behind -- they are electric, so no power means no
+# attitude control. charge is the only one of the four that MOVES, and it
+# should move by (gen - const_draw - wheels-while-commanding) x dt: a ship
+# whose charge sits still is a ship whose battery is decorative (#379).
+POWER_RE = re.compile(
+    r"\[powerlog\]\s+t=([\d.]+)s\s+ship=\"([^\"]*)\"\s+powered=(\d+)\s+"
+    r"gen=([-\d.]+)W\s+const_draw=([-\d.]+)W\s+charge=([-\d.]+)Wh\s+"
+    r"capacity=([-\d.]+)Wh"
 )
 # --dv-log (vehicle.cpp dv_log): the running delta-v budget, cumulative since
 # the ship existed. dv_del integrates the force the integrator was handed,
@@ -659,6 +671,18 @@ def parse_drainlog(out):
     return rows
 
 
+def parse_power(out):
+    rows = []
+    for m in POWER_RE.finditer(out):
+        (t, ship, powered, gen, const_draw, charge, capacity) = m.groups()
+        rows.append({
+            "t": float(t), "ship": ship, "powered": int(powered),
+            "gen": float(gen), "const_draw": float(const_draw),
+            "charge": float(charge), "capacity": float(capacity),
+        })
+    return rows
+
+
 def parse_dv(out):
     rows = []
     for m in DV_RE.finditer(out):
@@ -980,6 +1004,7 @@ def run_case(case):
     eva = parse_eva(world)
     fuel = parse_fuel(world)
     drainlog = parse_drainlog(world)
+    power = parse_power(world)
     dv = parse_dv(world)
     mass = parse_mass(world)
     drag = parse_drag(world)
@@ -995,7 +1020,7 @@ def run_case(case):
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "att": att, "eva": eva,
-        "fuel": fuel, "drainlog": drainlog, "dv": dv, "mass": mass,
+        "fuel": fuel, "drainlog": drainlog, "power": power, "dv": dv, "mass": mass,
         "drag": drag, "shake": shake,
         "cam": cam,
         "terrain": terrain,

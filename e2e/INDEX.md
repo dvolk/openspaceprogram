@@ -7,17 +7,17 @@ kind says how much weight the assertions carry.
 | kind | meaning | cases |
 |---|---|---|
 | `invariant` | a behaviour or a player route the game must keep | 253 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 31 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 32 |
 | `harness` | CLI/test-engine plumbing, not game spec | 12 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **300** |
+| | **total** | **301** |
 
 There is no full battery: the runner takes at most 5 cases per
 invocation and starts a 10-minute cooldown. Select by number, name or
 path (a whole subject is usually too wide), e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (59)
+## flight (60)
 
 | case | kind | pins |
 |---|---|---|
@@ -80,6 +80,7 @@ path (a whole subject is usually too wide), e.g.
 | `flight/374-mass-log-while-paused.txt` | invariant | A periodic log can be read from a paused, just-loaded world. |
 | `flight/375-spin-log-railed-hull.txt` | invariant | --spin-log withholds hull kinematics for a ship outside the physics world. |
 | `flight/376-drain-rate-warp-invariant.txt` | golden | --drain-log's kg/s figures do not depend on the warp factor. |
+| `flight/377-power-log-balances-the-battery.txt` | golden | --power-log's charge moves at the rate its own printed watts imply. |
 
 ## crew (24)
 

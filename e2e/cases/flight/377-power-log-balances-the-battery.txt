@@ -1,0 +1,49 @@
+# --power-log prints the whole electrical model in one row -- generation,
+# constant draw, stored charge, and the powered= gate the reaction wheels live
+# behind -- and nothing in the battery could read any of it: run.py had no
+# parser for [powerlog] and no case asserted a thing about it (#377). So a ship
+# that stopped MAKING power, or stopped LOSING it, kept its battery bar green.
+#
+# power_test is the smallest ship that shows all of it: a 600 W capsule, a
+# 298.45 W RTG and a 2250 W wheel on a 12000 Wh battery. The RTG does NOT cover
+# life support, so the battery has to fall over a coast. That is the #379
+# regression: a substep's 4.65e-4 Wh sat under half a float ULP at 12000, so
+# drainEC's `have - share` rounded straight back to `have` and the charge sat at
+# exactly 12000.0 Wh while coasting, moving only while the wheels worked.
+#
+# The invariant that ties a row together is that the charge slope equals the
+# watts the SAME row prints. That needs no constant copied out of parts.json, so
+# it survives a parts rebalance and still fails on a battery that lies.
+NAME power-log-balances-the-battery
+CLAIM --power-log's charge moves at the rate its own printed watts imply.
+KIND golden
+ARGS --timeout 20 --startship power_test,res/ships/power_test.json,Kerbin,rot-orbit
+ARGS --power-log --sim-press 3000,5000,W
+EXPECT [powerlog]
+FORBID error:
+FORBID FAILED
+# The ship's own numbers, steady on every row: one RTG, one capsule, one 12 kWh
+# battery, and the wheels stay online the whole time because there is charge.
+CHECK len(power) >= 20
+CHECK all(r["gen"] == 298.4 and r["const_draw"] == 600.0 and r["capacity"] == 12000.0 for r in power)
+CHECK all(r["powered"] == 1 for r in power)
+CHECK all(0.0 <= r["charge"] <= r["capacity"] for r in power)
+# Generation is under the constant draw, so the pool can only ever fall. A
+# rising charge would mean the balance was computed somewhere other than where
+# the watts are printed.
+CHECK all(b["charge"] <= a["charge"] for a, b in zip(power, power[1:]))
+# Coasting before W is pressed, and coasting again after it is released: the
+# charge has to actually move. On the float store both spans read flat --
+# 12000.0 throughout the first, 11996.5 throughout the second -- so these two
+# are the assertions #379 fails.
+CHECK first([r for r in power if r["t"] < 3.0])["charge"] > last([r for r in power if r["t"] < 3.0])["charge"]
+CHECK first([r for r in power if r["t"] > 8.5])["charge"] > last([r for r in power if r["t"] > 8.5])["charge"]
+# The post-release coast is the long one (11 s), which puts its slope inside a
+# 20% band even though charge prints to only 0.1 Wh. 301.6 W net is 0.0838 Wh/s,
+# and both numbers come off the rows themselves.
+CHECK abs((first([r for r in power if r["t"] > 8.5])["charge"] - last([r for r in power if r["t"] > 8.5])["charge"]) / (last([r for r in power if r["t"] > 8.5])["t"] - first([r for r in power if r["t"] > 8.5])["t"]) - (600.0 - 298.4) / 3600.0) < 0.2 * (600.0 - 298.4) / 3600.0
+# Commanding attitude adds the wheel's draw, so the drain during the slew is
+# several times the coast drain. Deliberately a ratio and not a figure:
+# --power-log does not print the wheel's watts, so the case pins that
+# commanding multiplies the draw, not what the multiplier is.
+CHECK (first([r for r in power if 3.4 < r["t"] < 8.2])["charge"] - last([r for r in power if 3.4 < r["t"] < 8.2])["charge"]) / (last([r for r in power if 3.4 < r["t"] < 8.2])["t"] - first([r for r in power if 3.4 < r["t"] < 8.2])["t"]) > 5.0 * (first([r for r in power if r["t"] > 8.5])["charge"] - last([r for r in power if r["t"] > 8.5])["charge"]) / (last([r for r in power if r["t"] > 8.5])["t"] - first([r for r in power if r["t"] > 8.5])["t"])
