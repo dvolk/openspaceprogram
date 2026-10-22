@@ -29,9 +29,13 @@ enum class ResourceType {
     Num
 };
 
+/* Doubles, not floats: a substep's worth of EC on a big battery is ~5e-4 Wh,
+   under half a float ULP at 12 kWh, so drainEC's `have - share` rounded straight
+   back to `have` and the ship never lost charge (#379). The save format is
+   already double (save.h), so this removes a narrowing rather than adding one. */
 struct ResourceContent {
-    float current[(int)ResourceType::Num];
-    float capacity[(int)ResourceType::Num];
+    double current[(int)ResourceType::Num];
+    double capacity[(int)ResourceType::Num];
 
     ResourceContent() {
         for(int i = 0; i < (int)ResourceType::Num; i++) {

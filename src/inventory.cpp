@@ -62,9 +62,9 @@ static bool inSubtree(Part *root, Part *target) {
    shape -- checkContainmentTree takes a kerbal-typed seat in a part that has
    just become a capsule -- so the save path is what pins it: validateSeatArray
    refuses a seat part that carries seats of its own. */
-float inventorySubtreeResource(Part *root, int res) {
-    if(root == nullptr) { return 0.0f; }
-    float total = 0.0f;
+double inventorySubtreeResource(Part *root, int res) {
+    if(root == nullptr) { return 0.0; }
+    double total = 0.0;
     for(Part *c : root->contents) {
         total += c->resources.current[res];
         total += inventorySubtreeResource(c, res);
@@ -73,14 +73,14 @@ float inventorySubtreeResource(Part *root, int res) {
 }
 
 /* Drain up to `amt` from root's subtree, DFS, returning how much was taken. */
-static float drainSubtree(Part *root, int res, float amt) {
-    if(root == nullptr || amt <= 0.0f) { return 0.0f; }
-    float drained = 0.0f;
+static double drainSubtree(Part *root, int res, double amt) {
+    if(root == nullptr || amt <= 0.0) { return 0.0; }
+    double drained = 0.0;
     for(Part *c : root->contents) {
         if(drained >= amt) { break; }
-        float have = c->resources.current[res];
-        if(have > 0.0f) {
-            const float take = (have < amt - drained) ? have : (amt - drained);
+        const double have = c->resources.current[res];
+        if(have > 0.0) {
+            const double take = (have < amt - drained) ? have : (amt - drained);
             c->resources.current[res] = have - take;
             /* body->mass is DRY structure (fuel rides effectiveMass through
                resources.current), so a drain only touches the contents. */

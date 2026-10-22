@@ -373,12 +373,12 @@ public:
 
     /* Total kg of `type` available to `engine`, so a burn can be sized before
        draining. */
-    float availableResourceMass(enum ResourceType type, Part *engine) const;
+    double availableResourceMass(enum ResourceType type, Part *engine) const;
 
     /* includeJets counts jet fuel too. */
     void enginePropellantMask(bool *burn, bool includeJets) const;
 
-    float fuelMassMasked(const bool *burn) const;
+    double fuelMassMasked(const bool *burn) const;
 
     float getDeltaV();
 

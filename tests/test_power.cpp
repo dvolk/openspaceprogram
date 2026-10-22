@@ -22,7 +22,9 @@
 //     active stick adds the wheels' draw; charging/drain clamp to the pool
 //     (never below 0, never above capacity);
 //   * EC has NO mass: draining/charging never touches a part's mass
-//     (unlike propellant).
+//     (unlike propellant);
+//   * the store's precision: a substep's worth of Wh still moves a big
+//     battery, which is what powerTick actually hands it (#379).
 //
 // The ships here are built by hand (parts, no links needed -- the EC pool is
 // ship-global, not fuel-group-based), and powerTick/drainEC/chargeEC are
@@ -300,6 +302,31 @@ static void test_drain_prorata_across_batteries() {
     destroyShip(s);
 }
 
+/* A substep's worth of Wh must survive the store. powerTick runs per substep,
+   so on a big battery one substep is a tiny number: power_test's 600 W capsule
+   behind a 298.45 W RTG nets 301.55 W, and at h=1/180 s that is 4.65e-4 Wh.
+   resources.current used to be float, where half an ULP at 12000 is 4.9e-4 --
+   so `have - share` rounded straight back to `have` and the ship lost NOTHING
+   while coasting, forever: the EC gate was decorative and the battery bar
+   stayed green (#379). Every other test here calls powerTick with h = 1 s or
+   3600 s, which is why none of them saw it. */
+static void test_substep_drain_survives_the_store() {
+    printf("== Balance: a substep's Wh survives a big battery ==\n");
+    Ship s; s.v = new Vehicle;
+    addPowerPart(s, 0.0, 600.0, 298.45, 12000.0, 0.0);  // capsule + RTG + 12 kWh
+    initShip(s);
+    CHECK_NEAR(totalEC(s), 12000.0, 1e-9, "battery seeded full");
+
+    const double h = 1.0 / 180.0;   // the substep the sim actually takes
+    for(int i = 0; i < 1800; i++) { s.v->powerTick(h); }   // 10 s of flight
+
+    /* 301.55 W for 10 s = 0.8376 Wh. Small in absolute terms, and the whole
+       point is that it is not zero. */
+    CHECK_NEAR(totalEC(s), 12000.0 - 301.55 * 10.0 / 3600.0, 1e-6,
+               "1800 substeps of a 301.55 W net draw move the charge");
+    destroyShip(s);
+}
+
 /* EC has NO mass: draining and charging the pool must not change a part's
    mass (unlike propellant). */
 static void test_ec_no_mass_change() {
@@ -336,6 +363,8 @@ int main() {
     test_active_wheel_draws();
     printf("\n");
     test_drain_prorata_across_batteries();
+    printf("\n");
+    test_substep_drain_survives_the_store();
     printf("\n");
     test_ec_no_mass_change();
 

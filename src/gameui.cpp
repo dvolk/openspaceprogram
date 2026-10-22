@@ -2079,13 +2079,13 @@ void drawUIReadouts(Game &g) {
             ResourceType::Water, ResourceType::Food
         };
         for(ResourceType r : resOrder) {
-            float cur = 0, cap = 0;
+            double cur = 0, cap = 0;
             for(Part *p : ship->parts) {
                 cur += p->resources.current[(int)r];
                 cap += p->resources.capacity[(int)r];
             }
             if(cap <= 0) { continue; }
-            ImGui::ProgressBar(cur / cap, ImVec2(-1, 0), resNames[(int)r]);
+            ImGui::ProgressBar((float)(cur / cap), ImVec2(-1, 0), resNames[(int)r]);
         }
     });
 }

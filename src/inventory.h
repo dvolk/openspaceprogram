@@ -23,7 +23,7 @@ bool inventoryRemove(Part *item);
 // Sum resource `res` over `root`'s inventory subtree (cargo only -- seat suit
 // tanks belong to the person, not the container). Pocket tanks sit outside
 // the ship's fuel groups, so the EVA pocket draw reads them here.
-float inventorySubtreeResource(Part *root, int res);
+double inventorySubtreeResource(Part *root, int res);
 
 // Drain up to `amt` of resource `res` from `root`'s inventory subtree.
 // All-or-nothing: a partial draw never applies a full-force kick.

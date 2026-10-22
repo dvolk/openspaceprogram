@@ -894,8 +894,7 @@ Kerbal *buildKerbalFromSave(Game &g, const LoadWorld &w, const SaveShip &s) {
     if(!s.suit_fuel.empty() && !k->parts.empty()) {
         Part *suit = k->parts[0];
         for(size_t r = 0; r < s.suit_fuel.size() && r < (size_t)ResourceType::Num; r++) {
-            const float cur = (float)s.suit_fuel[r];
-            suit->resources.current[r] = cur;
+            suit->resources.current[r] = s.suit_fuel[r];
         }
     }
     if(!s.suit_experiments.empty() && !k->parts.empty()) {

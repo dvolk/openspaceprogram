@@ -1444,27 +1444,27 @@ bool Vehicle::consumeResourceMass(enum ResourceType type, float amt, Part *engin
     // Drain-or-nothing: no partial burn if the layers cannot cover the request.
     if(availableResourceMass(type, engine) < amt) { return false; }
     /* Drain layer by layer (furthest first), pro-rata across the layer's tanks. */
-    float remaining = amt;
-    for(size_t li = 0; li < layers.size() && remaining > 0.0f; li++) {
-        float layerTotal = 0;
+    double remaining = amt;
+    for(size_t li = 0; li < layers.size() && remaining > 0.0; li++) {
+        double layerTotal = 0;
         for(size_t gi = 0; gi < layers[li].size(); gi++) {
             const int grp = layers[li][gi];
             for(Part *p : parts) {
                 if(!p->isTank() || p->fuelGroup != grp) { continue; }
-                if(p->resources.current[(int)type] > 0.0f) {
+                if(p->resources.current[(int)type] > 0.0) {
                     layerTotal += p->resources.current[(int)type];
                 }
             }
         }
-        if(layerTotal <= 0.0f) { continue; }
-        float take = remaining < layerTotal ? remaining : layerTotal;
+        if(layerTotal <= 0.0) { continue; }
+        const double take = remaining < layerTotal ? remaining : layerTotal;
         for(size_t gi = 0; gi < layers[li].size(); gi++) {
             const int grp = layers[li][gi];
             for(Part *p : parts) {
                 if(!p->isTank() || p->fuelGroup != grp) { continue; }
-                float have = p->resources.current[(int)type];
-                if(have <= 0.0f) { continue; }
-                float share = take * have / layerTotal;
+                const double have = p->resources.current[(int)type];
+                if(have <= 0.0) { continue; }
+                double share = take * have / layerTotal;
                 if(share > have) { share = have; }
                 p->resources.current[(int)type] = have - share;
                 /* Fuel leaves resources.current; the body mass is the DRY structure. */
@@ -1475,8 +1475,8 @@ bool Vehicle::consumeResourceMass(enum ResourceType type, float amt, Part *engin
     return true;
 }
 
-float Vehicle::availableResourceMass(enum ResourceType type, Part *engine) const {
-    float total = 0.0f;
+double Vehicle::availableResourceMass(enum ResourceType type, Part *engine) const {
+    double total = 0.0;
     for(const std::vector<int> &layer : fuelDrainLayers(engine)) {
         for(const int grp : layer) {
             for(Part *p : parts) {
@@ -1502,8 +1502,8 @@ void Vehicle::enginePropellantMask(bool *burn, bool includeJets) const {
 }
 
 // Current mass (kg) of the resources flagged in `burn`, summed over all parts.
-float Vehicle::fuelMassMasked(const bool *burn) const {
-    float fuel = 0.0f;
+double Vehicle::fuelMassMasked(const bool *burn) const {
+    double fuel = 0.0;
     for(Part *p : parts) {
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             if(burn[r]) { fuel += p->resources.current[r]; }
@@ -1517,7 +1517,7 @@ float Vehicle::getDeltaV() {
     // mask and `ve` from the FIRST rocket, so MIXED engine types are an estimate (#41).
     bool burn[(int)ResourceType::Num];
     enginePropellantMask(burn, /*includeJets=*/false);
-    const float remaining_fuel = fuelMassMasked(burn); /* kg */
+    const double remaining_fuel = fuelMassMasked(burn); /* kg */
     double ve = 0;   // first ROCKET thruster's exhaust velocity
     for(Part *p : parts) { if(p->isThruster() && !p->isJet()) { ve = p->exhaustVelocity(); break; } }
     // Tsiolkovsky: dv = ve * ln(m_fueled / m_dry).
@@ -1580,9 +1580,9 @@ void Vehicle::drainEC(double wh) {
     double take = (wh < total) ? wh : total;
     for(Part *p : parts) {
         if(!p->isBattery()) { continue; }
-        float have = p->resources.current[(int)ResourceType::EC];
-        if(have <= 0.0f) { continue; }
-        float share = (float)(take * have / total);
+        const double have = p->resources.current[(int)ResourceType::EC];
+        if(have <= 0.0) { continue; }
+        double share = take * have / total;
         if(share > have) { share = have; }
         p->resources.current[(int)ResourceType::EC] = have - share;
     }
@@ -1601,11 +1601,11 @@ void Vehicle::chargeEC(double wh) {
     double add = (wh < freeCap) ? wh : freeCap;
     for(Part *p : parts) {
         if(!p->isBattery()) { continue; }
-        float cap = p->resources.capacity[(int)ResourceType::EC];
-        float have = p->resources.current[(int)ResourceType::EC];
-        float free = cap - have;
-        if(free <= 0.0f) { continue; }
-        float share = (float)(add * free / freeCap);
+        const double cap = p->resources.capacity[(int)ResourceType::EC];
+        const double have = p->resources.current[(int)ResourceType::EC];
+        const double free = cap - have;
+        if(free <= 0.0) { continue; }
+        double share = add * free / freeCap;
         if(share > free) { share = free; }
         p->resources.current[(int)ResourceType::EC] = have + share;
     }
@@ -1686,7 +1686,7 @@ float Vehicle::getMaxTWR() {
     // ALL burnable propellant (rocket and jet): max TWR is at the lightest mass.
     bool burn[(int)ResourceType::Num];
     enginePropellantMask(burn, /*includeJets=*/true);
-    const float remaining_fuel = fuelMassMasked(burn); /* kg */
+    const double remaining_fuel = fuelMassMasked(burn); /* kg */
     return GetActiveThrust() / ((getMass() - remaining_fuel) * m_parent->g);
 }
 
@@ -2258,8 +2258,8 @@ void Vehicle::fuel_log(double time) {
         for(size_t ri = 0; ri < res.size(); ri++) {
             if(ri > 0) { printf(" "); }
             const int r = res[ri];
-            float cur = 0.0f, cap = 0.0f;
-            std::vector<float> tankCur;
+            double cur = 0.0, cap = 0.0;
+            std::vector<double> tankCur;
             for(size_t i = 0; i < parts.size(); i++) {
                 Part *p = parts[i];
                 if(p->fuelGroup != g || !p->isTank()) { continue; }
