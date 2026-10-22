@@ -496,6 +496,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "delta-v the HUD still claims -- the instrument for 'did "
                  "the burn buy the velocity it cost?'");
 
+    app.add_flag("--mass-log", args.mass_log,
+                 "Periodically print EVERY vehicle's mass to stdout, not "
+                 "just the active ship's: the analytic part sum and the "
+                 "compound Bullet accelerates. A decoupler hands its subtree "
+                 "to a new Vehicle, so a split's mass can only be added up if "
+                 "the survivor prints its own");
+
     app.add_flag("--power-log", args.power_log,
                  "Periodically print the ship's electrical balance to "
                  "stdout -- generation (W), constant draw (W), stored "

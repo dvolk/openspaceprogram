@@ -1,9 +1,69 @@
+# Staging is the rocket equation, not just a counter. A decoupler hands its
+# subtree to a NEW Vehicle (Vehicle::extractSubtreeAsShip): the parts are
+# re-parented, the old ship's `parts` is swapped down to what it keeps, and both
+# ships rebuild their compound. The bookkeeping was always checked -- "Stage:
+# dropped" names a ship count and a part count, and the stage counter moves --
+# but the MASS was not. The periodic logs here are gated on g.ship, and the one
+# that does walk all of g.vehicles (--compound-check) calls rebuildCompound()
+# before it prints, so it can only ever show a compound agreeing with itself,
+# never whether a split moved the mass it moved. Before --mass-log the survivor
+# of a split printed nothing that could be added up (#367). A stage that left
+# its mass in the ship it left would have flown the rest of the mission with
+# phantom inertia -- more fuel than it has, worse acceleration than the VAB's
+# per-stage delta-v table promised -- and every case here would still have
+# passed.
+#
+# --mass-log prints EVERY vehicle on the same tick, so the split is one snapshot
+# of the fleet rather than two samples that happened to land on different ticks.
+# Nothing is armed in this case -- no I, no T -- so no engine drains and a ship's
+# mass is flat between samples: the only thing that can move it is the split, and
+# the before/after arithmetic is exact rather than a rate over an interval.
 NAME staging-basic
-CLAIM Staging drops the spent stage and leaves the ship flying under the next one.
+CLAIM Staging drops the spent stage into a ship of its own, taking its mass with it and leaving the rest flying under the next one.
 KIND invariant
 ARGS --time-accel 1 --timeout 12 --startship stager,res/ships/stager.json,Kerbin,pad
 ARGS --sim-press 2000,100,SPACE
 ARGS --sim-press 6000,100,SPACE
+ARGS --mass-log
 EXPECT Stage: dropped
 EXPECT Stage: nothing left to separate
+EXPECT [mass]
 FORBID error:
+# The split made a second vehicle, and it is the one holding the stage: 7 parts
+# became 4 + 3, so nothing vanished and nothing got copied into both ships. The
+# count is this bed's, not a law -- a walking kerbal is itself a vehicle and
+# prints rows -- so anyone who puts crew on `stager` should expect to widen it.
+CHECK len({m["ship"] for m in mass}) == 2
+CHECK first([m for m in mass if m["ship"] == "stager"])["parts"] == 7
+CHECK last([m for m in mass if m["ship"] == "stager"])["parts"] == 4
+CHECK all(m["parts"] == 3 for m in mass if m["ship"] != "stager")
+# The active ship's mass is flat either side of the drop -- exactly two distinct
+# values across the whole run, the pre-split one and the post-split one. This is
+# what makes the next line arithmetic instead of a rate: with no engine armed
+# there is nothing else that could have spent the difference.
+CHECK len({m["mass"] for m in mass if m["ship"] == "stager"}) == 2
+# The headline: the stage's mass left the ship that dropped it and is all of it
+# sitting on the new one. Measured 4235.86 = 2766.63 + 1469.23, a gap of 0.00 --
+# both sides of the sum are printed at 2dp, so the only slack is that rounding
+# (0.015 kg worst case). 0.05 kg is still 30000x smaller than the stage.
+CHECK abs(first([m for m in mass if m["ship"] == "stager"])["mass"] - last([m for m in mass if m["ship"] == "stager"])["mass"] - last([m for m in mass if m["ship"] != "stager"])["mass"]) < 0.05
+# Both compounds were rebuilt by the split AND both hulls are in the Bullet
+# world for the whole run (a hull out of the world prints no hullmass at all), so
+# the sum above is a physics statement and not just a bookkeeping one. 0.05 kg is
+# far tighter than the engine's own contract -- refreshCompound() tolerates a
+# hull up to kMassRebuildFrac (0.1%, i.e. 4.2 kg here) off its part table -- and
+# it is only that tight because both ships rebuilt at the split and nothing
+# drains in between. Do NOT copy this line into a thrusting case: there the
+# analytic ledger runs ahead of the hull by design and it fails legitimately.
+# It also does NOT catch a missed rebuild: leaving a survivor's compound stale
+# lets Bullet accelerate 4235.9 kg for one tick, unseen, because on the physics
+# path refreshCompound() re-makes any hull past that band on the next tick, well
+# before the next 0.5 s sample. The engine self-heals that one; the mass that has
+# to add up is the part table's, and that is the line above.
+#
+# Teeth, measured: silently dropping the last dropped part from the new ship
+# while still removing it from the old one (so 500 kg of engine just vanishes)
+# fails the sum and the part count, and passes every assertion this case had
+# before #367 -- "Stage: dropped" and "nothing left to separate" both still
+# print, because the stage counter and the ship count are unaffected.
+CHECK all(m["hullmass"] is not None and abs(m["hullmass"] - m["mass"]) < 0.05 for m in mass)

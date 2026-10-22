@@ -268,6 +268,18 @@ void tick(Game &g) {
                 }
             }
 
+            /* --mass-log: every vehicle on the SAME tick, so a split's mass can
+               be added up -- the survivor of a decoupler is a different Vehicle
+               from g.ship, and a per-ship sample taken on different ticks is not
+               one snapshot of the fleet (#367). */
+            if(g.args.mass_log) {
+                static double last_mass_log = -1e30;
+                if(g.time - last_mass_log >= 0.5) {
+                    last_mass_log = g.time;
+                    for(auto *s : vehicles) { mass_log(s, g.time); }
+                }
+            }
+
             /* --fuel-log: fuel mass + links, once per 0.5 s of sim time. */
             if(g.ship && g.args.fuel_log) {
                 static double last_fuel_log = -1e30;

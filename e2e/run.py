@@ -22,9 +22,10 @@ deliberately pins a refusal of an absent path opts out with a
 and crash strings are forbidden by default, so a case names only its own
 refusals; NOGLCHECK opts out of the GL drains for timing-sensitive cases.
 CHECK sees out and
-the parsed logs (orbit/dbg/att/eva/fuel/drainlog/dv/drag/shake/cam/terrain/
-surf/xfer/porkchop/surfmap/mapb/plane/slew/toast/scene) plus first/last/re. The row
-lists parse stdout from the LAST "Loaded game from" line: a successful load
+the parsed logs (orbit/dbg/att/eva/fuel/drainlog/dv/mass/drag/shake/cam/
+terrain/surf/xfer/porkchop/surfmap/mapb/plane/slew/toast/scene) plus
+first/last/re. The row lists parse stdout from the LAST "Loaded game from"
+line: a successful load
 starts a new world, and rows the previous world printed are not evidence about
 the one under test (toast/scene stay whole-run -- they describe the run).
 The load-through-the-UI shape most save/load cases now take: Game Debug ticks
@@ -193,6 +194,18 @@ DV_RE = re.compile(
     r"hullmass=([-\d.]+)\s*kg\s+thrust=([-\d.]+)N\s+dv_del=([-\d.]+)\s+"
     r"dv_along=([-\d.]+)\s+dv_rocket=([-\d.]+)\s+prop=([-\d.]+)\s*kg\s+"
     r"ve=([-\d.]+) m/s\s+dv_left=([-\d.]+)"
+)
+# --mass-log (vehicle.cpp mass_log): one line per VEHICLE per sample, so the
+# fleet's mass adds up. A decoupler hands its subtree to a new Vehicle, so the
+# active ship's rows alone cannot show whether a split kept the mass it moved
+# (#367) -- the survivor's rows are the other half of the sum. hullmass is
+# absent for a hull out of the world: that number is the last one it had in
+# physics rather than anything being accelerated now, and railed= is printed on
+# every row so its absence stays a stated fact instead of something a parser
+# infers (a nan hullmass then reads as a hole, not as a railed ship).
+MASS_RE = re.compile(
+    r"\[mass\]\s+t=([\d.]+)s\s+ship=\"([^\"]*)\"\s+parts=(\d+)\s+"
+    r"mass=([-\d.]+)\s*kg(?:\s+hullmass=([-\d.]+)\s*kg)?\s+railed=(\d)"
 )
 DRAG_RE = re.compile(
     r"\[drag\]\s+t=([\d.]+)s\s+alt=([-\d.]+) m\s+rho=([-\d.e+]+) kg/m3\s+"
@@ -662,6 +675,19 @@ def parse_dv(out):
     return rows
 
 
+def parse_mass(out):
+    rows = []
+    for m in MASS_RE.finditer(out):
+        (t, ship, parts, mass, hullmass, railed) = m.groups()
+        rows.append({
+            "t": float(t), "ship": ship, "parts": int(parts),
+            "mass": float(mass),
+            "hullmass": float(hullmass) if hullmass is not None else None,
+            "railed": int(railed),
+        })
+    return rows
+
+
 def parse_shake(out):
     rows = []
     for m in SHAKE_RE.finditer(out):
@@ -955,6 +981,7 @@ def run_case(case):
     fuel = parse_fuel(world)
     drainlog = parse_drainlog(world)
     dv = parse_dv(world)
+    mass = parse_mass(world)
     drag = parse_drag(world)
     shake = parse_shake(world)
     cam = parse_cam(world)
@@ -968,7 +995,8 @@ def run_case(case):
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "att": att, "eva": eva,
-        "fuel": fuel, "drainlog": drainlog, "dv": dv, "drag": drag, "shake": shake,
+        "fuel": fuel, "drainlog": drainlog, "dv": dv, "mass": mass,
+        "drag": drag, "shake": shake,
         "cam": cam,
         "terrain": terrain,
         "surf": surf, "mapb": mapb, "plane": plane, "slew": slew,

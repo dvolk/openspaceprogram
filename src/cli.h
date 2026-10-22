@@ -100,6 +100,7 @@ struct GameArgs {
     bool fuel_log = false;        // per-fuel-group fuel mass + links
     bool drain_log = false;      // per-fuel-group drain rate (kg/s)
     bool dv_log = false;         // the ship's delta-v budget (spent vs delivered)
+    bool mass_log = false;       // every vehicle's mass, active or not
     bool power_log = false;      // power balance (gen/draw/pool/gate)
     bool prox_log = false;       // proximity engage/release + distances
     double prox_fly_on = 2000.0;    // engage radius while the active ship flies (m)

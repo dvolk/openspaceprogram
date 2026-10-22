@@ -759,6 +759,27 @@ void spin_log(Vehicle *ship, double time) {
     fflush(stdout);
 }
 
+/* --mass-log: the two mass bases for every vehicle, not just the active one.
+   `mass` is the analytic part sum (getMass, what the HUD and the fuel book
+   claim); `hullmass` is the compound Bullet accelerates, which only re-makes
+   once the two drift past kMassRebuildFrac apart -- so they differ by design,
+   and a case pins whichever pair it is actually claiming about. One printf, not
+   several: a torn line would let the optional hullmass read as absent (dv_log
+   prints whole lines for the same reason). A hull out of the world prints no
+   hullmass -- that number would be the last one it had in physics, not anything
+   being accelerated now -- and railed= says so rather than leaving the gap for
+   a parser to guess at. */
+void mass_log(Vehicle *ship, double time) {
+    char hull[48] = "";
+    if(ship->hullInWorld()) {
+        snprintf(hull, sizeof(hull), " hullmass=%.2f kg", ship->hull->mass);
+    }
+    printf("[mass] t=%.3fs ship=\"%s\" parts=%zu mass=%.2f kg%s railed=%d\n",
+           time, ship->name.c_str(), ship->parts.size(), ship->getMass(),
+           hull, ship->onRails ? 1 : 0);
+    fflush(stdout);
+}
+
 /* --- Vehicle method definitions --- */
 
 bool Vehicle::hullInWorld() const {

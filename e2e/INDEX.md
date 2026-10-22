@@ -21,7 +21,7 @@ path (a whole subject is usually too wide), e.g.
 
 | case | kind | pins |
 |---|---|---|
-| `flight/02-staging-basic.txt` | invariant | Staging drops the spent stage and leaves the ship flying under the next one. |
+| `flight/02-staging-basic.txt` | invariant | Staging drops the spent stage into a ship of its own, taking its mass with it and leaving the rest flying under the next one. |
 | `flight/03-thrust-ascent.txt` | invariant | A full-throttle ascent gains altitude and speed while the engine burns. |
 | `flight/04-orbit-burn.txt` | invariant | A prograde burn raises the apoapsis and turns a coast into an orbit. |
 | `flight/05-rails-warp.txt` | invariant | Rails warp advances the conic and reports the orbit at the warp rate. |

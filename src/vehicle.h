@@ -823,3 +823,9 @@ void spawn_crew(Vehicle *ship, System &sys);
 
 /* --radial-test spin diagnostics: rotational state + tidal torque. */
 void spin_log(Vehicle *ship, double time);
+
+/* --mass-log: one line per VEHICLE, so a fleet's mass can be added up. The
+   active ship alone cannot: a decoupler hands its subtree to a NEW Vehicle
+   (extractSubtreeAsShip), so unless that survivor prints its own mass there is
+   no way to check a split moved the mass it moved (#367). */
+void mass_log(Vehicle *ship, double time);
