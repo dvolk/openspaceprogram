@@ -630,6 +630,135 @@ static void test_applythrust_scarcest_limits_burn() {
     }
 }
 
+/* #371: the two propellants live in SEPARATE tanks holding different amounts,
+   so the scarce one would run out first. ApplyThrust sizes the whole burn by
+   s = min over propellants of (avail / desired) BEFORE draining, so the tanks
+   drain in lockstep and the scarce propellant caps the burn. The leak this
+   pins: drain H2 first, fail the LOX draw, and the H2 is gone with
+   armedThrust still 0 -- the ship lighter by propellant that bought no
+   delta-v. Both scarcity orders, a crossfeed layer that reaches the plentiful
+   tank first, and two engines sharing one pool in the same tick. */
+static void test_applythrust_unbalanced_tanks() {
+    printf("== ApplyThrust: separate propellant tanks, scarce one caps the burn ==\n");
+
+    /* LOX is scarce: 10 kg against 100 kg of H2. */
+    {
+        Ship s; s.v = new Vehicle;
+        Part *eng = addPart(s, 0, 0, true);
+        Part *h2tank = addPart(s, 100, 0);
+        Part *loxtank = addPart(s, 0, 10);
+        link(s, eng, h2tank); link(s, h2tank, loxtank);
+        initShip(s);
+        s.v->dv_log_enabled = true;
+
+        const double mass0 = s.v->getMass();
+        CHECK_NEAR(mass0, 410.0, 1e-9, "3 dry parts (100 kg) + 100 H2 + 10 LOX");
+        s.v->ApplyThrust_TESTONLY(50.0);   /* wants 50 kg of each propellant */
+
+        CHECK_NEAR(loxtank->resources.current[(int)ResourceType::LOX], 0.0, 1e-9,
+                   "LOX tank emptied (10 -> 0)");
+        CHECK_NEAR(h2tank->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-6,
+                   "H2 drained 10 in lockstep, not the full 50 (the leak)");
+        CHECK_NEAR(eng->armedThrust, 40.0, 1e-5, "partial thrust = 200 * (10/50)");
+        CHECK_NEAR(s.v->propSpent_, 20.0, 1e-6, "propSpent counts both propellants");
+        CHECK_NEAR(mass0 - s.v->getMass(), 20.0, 1e-5,
+                   "the ship shed exactly the propellant it booked");
+
+        /* Next tick: LOX is gone, so s = 0 -- nothing may be drained (the
+           remaining H2 is stranded, not quietly burned as if it had oxidizer).
+           ApplyThrust never clears armedThrust (the tick loop's clearThrust
+           does), so reset it to see the no-thrust outcome. */
+        eng->armedThrust = 0.0f;
+        s.v->ApplyThrust_TESTONLY(50.0);
+        CHECK_NEAR(h2tank->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-6,
+                   "no oxidizer: the next tick drains no H2 at all");
+        CHECK_NEAR(s.v->propSpent_, 20.0, 1e-6, "and books no more propellant");
+        CHECK_NEAR(eng->armedThrust, 0.0, 1e-9, "and arms no thrust");
+        destroyShip(s);
+    }
+
+    /* Mirror: H2 is scarce (10 kg) against 100 kg of LOX. */
+    {
+        Ship s; s.v = new Vehicle;
+        Part *eng = addPart(s, 0, 0, true);
+        Part *h2tank = addPart(s, 10, 0);
+        Part *loxtank = addPart(s, 0, 100);
+        link(s, eng, h2tank); link(s, h2tank, loxtank);
+        initShip(s);
+        s.v->dv_log_enabled = true;
+
+        const double mass0 = s.v->getMass();
+        CHECK_NEAR(mass0, 410.0, 1e-9, "3 dry parts (100 kg) + 10 H2 + 100 LOX");
+        s.v->ApplyThrust_TESTONLY(50.0);
+
+        CHECK_NEAR(h2tank->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+                   "H2 tank emptied (10 -> 0)");
+        CHECK_NEAR(loxtank->resources.current[(int)ResourceType::LOX], 90.0, 1e-6,
+                   "LOX drained 10 in lockstep, not the full 50");
+        CHECK_NEAR(eng->armedThrust, 40.0, 1e-5, "partial thrust = 200 * (10/50)");
+        CHECK_NEAR(s.v->propSpent_, 20.0, 1e-6, "propSpent counts both propellants");
+        CHECK_NEAR(mass0 - s.v->getMass(), 20.0, 1e-5,
+                   "the ship shed exactly the propellant it booked");
+        destroyShip(s);
+    }
+
+    /* Crossfeed: the PLENTIFUL H2 sits one layer FURTHER out (a fuel link), so
+       the layer-by-layer drain would reach it before the scarce near LOX. An
+       unscaled drain would take the full 50 kg of H2 and then fail on LOX. */
+    {
+        Ship s; s.v = new Vehicle;
+        Part *eng = addPart(s, 0, 0, true);
+        Part *loxtank = addPart(s, 0, 10);   /* engine's own group: layer 0 */
+        Part *h2tank = addPart(s, 100, 0);   /* own group, linked: layer 1 */
+        link(s, eng, loxtank);               /* h2tank is NOT in the part tree */
+        initShip(s);
+        s.v->fuelLinks.push_back(Vehicle::FuelLink{h2tank, loxtank});
+        s.v->dv_log_enabled = true;
+
+        const double mass0 = s.v->getMass();
+        CHECK_NEAR(mass0, 410.0, 1e-9, "3 dry parts (100 kg) + 100 H2 + 10 LOX");
+        s.v->ApplyThrust_TESTONLY(50.0);
+
+        CHECK_NEAR(h2tank->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-6,
+                   "far H2 layer drained 10 (not the full 50)");
+        CHECK_NEAR(loxtank->resources.current[(int)ResourceType::LOX], 0.0, 1e-9,
+                   "near LOX layer drained 10 to empty");
+        CHECK_NEAR(eng->armedThrust, 40.0, 1e-5, "partial thrust = 200 * (10/50)");
+        CHECK_NEAR(s.v->propSpent_, 20.0, 1e-6, "propSpent counts both propellants");
+        CHECK_NEAR(mass0 - s.v->getMass(), 20.0, 1e-5,
+                   "the ship shed exactly the propellant it booked");
+        destroyShip(s);
+    }
+
+    /* Two engines draw the same tank set in ONE tick. Each engine re-sizes
+       from the live tanks, so the second sees LOX at 0 and stands down: the
+       H2 is drained once, not once per engine, and no thrust is armed off an
+       empty pool. */
+    {
+        Ship s; s.v = new Vehicle;
+        Part *tank = addPart(s, 100, 10);
+        Part *eng1 = addPart(s, 0, 0, true);
+        Part *eng2 = addPart(s, 0, 0, true);
+        link(s, tank, eng1); link(s, tank, eng2);
+        initShip(s);
+        s.v->dv_log_enabled = true;
+
+        const double mass0 = s.v->getMass();
+        s.v->ApplyThrust_TESTONLY(50.0);
+
+        CHECK_NEAR(tank->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-6,
+                   "shared H2 drained once (10), not once per engine");
+        CHECK_NEAR(tank->resources.current[(int)ResourceType::LOX], 0.0, 1e-9,
+                   "shared LOX emptied by the first engine");
+        CHECK_NEAR(eng1->armedThrust, 40.0, 1e-5, "first engine: partial thrust");
+        CHECK_NEAR(eng2->armedThrust, 0.0, 1e-9, "second engine: empty pool, no thrust");
+        CHECK_NEAR(s.v->propSpent_, 20.0, 1e-6, "the shared draw is booked once");
+        CHECK_NEAR(mass0 - s.v->getMass(), 20.0, 1e-5,
+                   "and shed exactly that");
+        destroyShip(s);
+    }
+}
+
 int main() {
     test_prorata_in_group();
     printf("\n");
@@ -656,6 +785,8 @@ int main() {
     test_fuel_link_insufficient();
     printf("\n");
     test_applythrust_scarcest_limits_burn();
+    printf("\n");
+    test_applythrust_unbalanced_tanks();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

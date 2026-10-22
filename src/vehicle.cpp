@@ -2760,9 +2760,10 @@ void Vehicle::ApplyThrust(double step) {
             }
             continue;
         }
-        /* Scale the whole burn by s = min over propellants of (available / desired), so
-           they drain in lockstep; sizing from the min BEFORE draining avoids partial
-           leaks. */
+        /* Size the whole burn by s = min over propellants of (available / desired), so
+           they drain in lockstep and the scarcest caps the burn. Sizing BEFORE
+           draining is what stops a multi-propellant engine from taking the
+           propellants it can get and then failing on one it cannot (#371). */
         double s = 1.0;
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             const double rate_r = p->def->propellant_rate[r];
@@ -2775,37 +2776,33 @@ void Vehicle::ApplyThrust(double step) {
         }
         if(s > 1.0) { s = 1.0; }
         if(s <= 0.0) { continue; }
-        // s <= every avail/desired, so each drain below is guaranteed to
-        // succeed; the guard is kept only so we never arm thrust off a
-        // failed drain.
-        bool ok = true;
         double dm = 0.0;   // kg this engine actually took, for --dv-log
-        for(int r = 0; r < (int)ResourceType::Num && ok; r++) {
+        for(int r = 0; r < (int)ResourceType::Num; r++) {
             const double rate_r = p->def->propellant_rate[r];
             if(rate_r <= 0.0) { continue; }
             const float amt = (float)(rate_r * (double)thruster_util * step * s);
-            if(!consumeResourceMass((ResourceType)r, amt, p)) { ok = false; }
+            const bool drained = consumeResourceMass((ResourceType)r, amt, p);
+            assert(drained && "s must cover every draw; no build sets NDEBUG");
+            (void)drained;
             dm += (double)amt;
         }
-        if(ok) {
-            p->armedThrust = (float)(p->thrust() * thruster_util * exhaust_scale * s);
-            m_thrust = 1.0;
-            /* --dv-log: the rocket-equation side of the budget. Charge this
-               engine's draw against the ship mass as it stands AFTER its drain,
-               so a multi-engine ship charges each engine at the mass that
-               engine actually pushed. Jets are excluded: they shed mass into
-               the air and their thrust already balances intake momentum, so
-               they own no vacuum delta-v. */
-            if(dv_log_enabled && dm > 0.0) {
-                const double m_after = dvMass - dm;
-                if(m_after > 0.0) {
-                    const double ve = p->exhaustVelocity() * exhaust_scale;
-                    dvRocket_ += ve * log(dvMass / m_after);
-                    propSpent_ += dm;
-                    dvVeLast_ = ve;   // last rocket in part order: see dv_log()
-                }
-                dvMass = m_after;
+        p->armedThrust = (float)(p->thrust() * thruster_util * exhaust_scale * s);
+        m_thrust = 1.0;
+        /* --dv-log: the rocket-equation side of the budget. Charge this
+           engine's draw against the ship mass as it stands AFTER its drain, so
+           a multi-engine ship charges each engine at the mass that engine
+           actually pushed. Jets are excluded: they shed mass into the air and
+           their thrust already balances intake momentum, so they own no
+           vacuum delta-v. */
+        if(dv_log_enabled && dm > 0.0) {
+            const double m_after = dvMass - dm;
+            if(m_after > 0.0) {
+                const double ve = p->exhaustVelocity() * exhaust_scale;
+                dvRocket_ += ve * log(dvMass / m_after);
+                propSpent_ += dm;
+                dvVeLast_ = ve;   // last rocket in part order: see dv_log()
             }
+            dvMass = m_after;
         }
     }
 }
