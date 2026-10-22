@@ -19,8 +19,7 @@ python3 e2e/run.py 172 177 262      # up to five at once
 There is no full-battery mode. At most five cases run per invocation; a wider
 selection is refused with the list of what it matched. A run also starts a
 10-minute cooldown: until it expires, every invocation refuses, including
-`make e2e`. That wait is a courtesy to the box, not a correctness rule, so a
-session converting cases can run its batches back to back with `--no-cooldown`.
+`make e2e`, and there is no flag that skips it.
 `--kind` is a filter on top of that narrow selection (e.g.
 `172 177 --kind invariant`), not a way to select the whole suite. Prefer the
 unit tests for anything whose claim is pure logic.
