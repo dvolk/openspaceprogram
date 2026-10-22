@@ -645,7 +645,7 @@ int main(int argc, char **argv)
         ship = first;
         if(first != nullptr) {
             printf("[dbg-dv] getMass=%.2f kg  getDeltaV=%.1f m/s\n",
-                   (double)first->getMass(), (double)first->getDeltaV());
+                   first->getMass(), first->getDeltaV());
         }
         /* --autopilot: engage a slew mode (test hook for the Autopilot toggles).
            slewRequest is held until toggled. */
@@ -1141,7 +1141,7 @@ int main(int argc, char **argv)
                 if(audDbg && firing != lastFiring) {
                     printf("[hook] firing %d -> %d (armed=%d, thrust=%.0f N, throttle=%.2f)\n",
                            (int)lastFiring, (int)firing, armedN,
-                           (double)ship->getThrust(), (double)ship->thruster_util);
+                           ship->getThrust(), (double)ship->thruster_util);
                     fflush(stdout);
                     lastFiring = firing;
                 }

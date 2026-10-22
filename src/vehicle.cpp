@@ -1089,7 +1089,7 @@ void Vehicle::refreshCompound() {
     if(hull == nullptr) { rebuildCompound(); return; }
     glm::dvec3 pOrigin; glm::dmat3 pBasis;
     fromBt(principal, pOrigin, pBasis);
-    const double total = (double)getMass();
+    const double total = getMass();
     if(glm::length(compoundCom() - pOrigin) > kComRebuildTol
        || std::fabs(total - hull->mass) > kMassRebuildFrac * hull->mass) {
         rebuildCompound();
@@ -1436,7 +1436,7 @@ const std::vector<std::vector<int> > &Vehicle::fuelDrainLayers(Part *engine) con
     return res.first->second;
 }
 
-bool Vehicle::consumeResourceMass(enum ResourceType type, float amt, Part *engine) {
+bool Vehicle::consumeResourceMass(enum ResourceType type, double amt, Part *engine) {
     const std::vector<std::vector<int> > &layers = fuelDrainLayers(engine);
     if(layers.empty()) { return false; }
     // Drain-or-nothing: no partial burn if the layers cannot cover the request.
@@ -1510,7 +1510,7 @@ double Vehicle::fuelMassMasked(const bool *burn) const {
     return fuel;
 }
 
-float Vehicle::getDeltaV() {
+double Vehicle::getDeltaV() {
     // Rocket propellant only (jets give no vacuum dv). LIMITATION: ship-wide UNION
     // mask and `ve` from the FIRST rocket, so MIXED engine types are an estimate (#41).
     bool burn[(int)ResourceType::Num];
@@ -1519,21 +1519,20 @@ float Vehicle::getDeltaV() {
     double ve = 0;   // first ROCKET thruster's exhaust velocity
     for(Part *p : parts) { if(p->isThruster() && !p->isJet()) { ve = p->exhaustVelocity(); break; } }
     // Tsiolkovsky: dv = ve * ln(m_fueled / m_dry).
-    return (float)(ve * exhaust_scale)
-         * log(getMass() / (getMass() - remaining_fuel));
+    return ve * exhaust_scale * log(getMass() / (getMass() - remaining_fuel));
 }
 
-float Vehicle::getMass() {
+double Vehicle::getMass() {
     // effectiveMass: the ship's mass includes what is parked in it (containment).
-    float r = 0;
+    double r = 0.0;
     for(Part *p : parts) {
-        r += (float)p->effectiveMass();
+        r += p->effectiveMass();
     }
     return r;
 }
 
 double Vehicle::feltAccel() {
-    const double m = (double)getMass();
+    const double m = getMass();
     return m > 0.0 ? glm::length(lastThrustForce + lastAeroForce) / m : 0.0;
 }
 
@@ -1651,7 +1650,7 @@ int Vehicle::deployChutes(int stage) {
 
 int Vehicle::numStages() { return totalStages_; }
 
-float Vehicle::getThrust() {
+double Vehicle::getThrust() {
     /* Actual thrust at the current throttle and air state (jets via jetThrust, drag.h). */
     const int as = activeStage();
     const double v_air = glm::length(airRelativeVel(get_center_of_mass()));
@@ -1669,18 +1668,18 @@ float Vehicle::getThrust() {
             t += p->thrust();
         }
     }
-    return (float)(t * thruster_util * exhaust_scale);
+    return t * thruster_util * exhaust_scale;
 }
 
-float Vehicle::getTWR() {
+double Vehicle::getTWR() {
     return getThrust() / (getMass() * m_parent->g);
 }
 
-float Vehicle::getFullThrustTWR() {
+double Vehicle::getFullThrustTWR() {
     return GetActiveThrust() / (getMass() * m_parent->g);
 }
 
-float Vehicle::getMaxTWR() {
+double Vehicle::getMaxTWR() {
     // ALL burnable propellant (rocket and jet): max TWR is at the lightest mass.
     bool burn[(int)ResourceType::Num];
     enginePropellantMask(burn, /*includeJets=*/true);
@@ -2104,7 +2103,7 @@ void Vehicle::applyRcsForce(double h) {
     if(F <= 0.0) { return; }
     // flow this substep (kg) = thrust / (Isp * g0) * h
     const double flow = (F / (kRcsIsp * 9.81)) * h;
-    if(consumeResourceMass(ResourceType::Hydrazine, (float)flow, e)) {
+    if(consumeResourceMass(ResourceType::Hydrazine, flow, e)) {
         ApplyCentralForce(hull, F * rcsWorldDir());
         rcsFiring = true;
     }
@@ -2806,7 +2805,7 @@ void Vehicle::adjustThrottle(float delta) {
     if(thruster_util < 0) { thruster_util = 0; }
 }
 
-float Vehicle::GetActiveThrust() {
+double Vehicle::GetActiveThrust() {
     /* FULL-THROTTLE thrust of the ignited engines: rockets at their rated value, jets
        at their sea-level peak (v = v_e/2), so a jet is dead in vacuum. */
     const int as = activeStage();
@@ -2823,7 +2822,7 @@ float Vehicle::GetActiveThrust() {
             t += p->thrust();
         }
     }
-    return (float)(t * exhaust_scale);
+    return t * exhaust_scale;
 }
 
 void Vehicle::ApplyThrust(double step) {
@@ -2839,7 +2838,7 @@ void Vehicle::ApplyThrust(double step) {
        it down by each engine's draw instead of once per engine. The drain
        removes exactly what it is told from resources.current, which is what
        effectiveMass() sums, so the cursor stays exact. */
-    double dvMass = dv_log_enabled ? (double)getMass() : 0.0;
+    double dvMass = dv_log_enabled ? getMass() : 0.0;
     for(Part *p : parts) {
         if(!p->isThruster()) { continue; }
         if(p->stage < as) { continue; } /* not ignited yet */
@@ -2850,8 +2849,7 @@ void Vehicle::ApplyThrust(double step) {
                 v_air, rho, rho_sea, p->def->jet_fan_thrust, p->jetFuelRate(),
                 p->def->exhaust_velocity, p->def->jet_intake_area);
             if(T <= 0.0) { continue; }
-            const float flow =
-                (float)(p->jetFuelRate() * (double)thruster_util * step); /* kg this tick */
+            const double flow = p->jetFuelRate() * (double)thruster_util * step; /* kg this tick */
             if(consumeResourceMass(ResourceType::JetFuel, flow, p)) {
                 p->armedThrust = (float)(T * thruster_util * exhaust_scale);
                 m_thrust = 1.0;
@@ -2878,11 +2876,11 @@ void Vehicle::ApplyThrust(double step) {
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             const double rate_r = p->def->propellant_rate[r];
             if(rate_r <= 0.0) { continue; }
-            const float amt = (float)(rate_r * (double)thruster_util * step * s);
+            const double amt = rate_r * (double)thruster_util * step * s;
             const bool drained = consumeResourceMass((ResourceType)r, amt, p);
             assert(drained && "s must cover every draw; no build sets NDEBUG");
             (void)drained;
-            dm += (double)amt;
+            dm += amt;
         }
         p->armedThrust = (float)(p->thrust() * thruster_util * exhaust_scale * s);
         m_thrust = 1.0;

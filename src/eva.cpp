@@ -145,7 +145,7 @@ void Kerbal::applyEva(double h) {
     } else {
         // RCS: fixed thrust while held AND hydrazine is available (consume-then-arm).
         if(glm::length2(rcsDir) > 0.0) {
-            const float flow = (float)(kRcsFlow * h);
+            const double flow = kRcsFlow * h;
             // Suit tank first, then pocket inventory (not in this ship's fuel groups).
             bool haveFuel = consumeResourceMass(ResourceType::Hydrazine, flow, parts[0]);
             if(!haveFuel) {

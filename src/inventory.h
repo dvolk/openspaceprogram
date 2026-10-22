@@ -27,4 +27,4 @@ double inventorySubtreeResource(Part *root, int res);
 
 // Drain up to `amt` of resource `res` from `root`'s inventory subtree.
 // All-or-nothing: a partial draw never applies a full-force kick.
-bool inventoryDrain(Part *root, int res, float amt);
+bool inventoryDrain(Part *root, int res, double amt);

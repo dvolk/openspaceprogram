@@ -91,8 +91,8 @@ static double drainSubtree(Part *root, int res, double amt) {
     return drained;
 }
 
-bool inventoryDrain(Part *root, int res, float amt) {
-    if(root == nullptr || amt <= 0.0f) { return false; }
+bool inventoryDrain(Part *root, int res, double amt) {
+    if(root == nullptr || amt <= 0.0) { return false; }
     // all-or-nothing like the suit: a draw the subtree can't cover thrusts nothing
     if(inventorySubtreeResource(root, res) < amt) { return false; }
     drainSubtree(root, res, amt);

@@ -19,7 +19,9 @@
 //     both one hop out -- heavy_two) drains both arms together, and the
 //     dual chain C->B->A, D->E->A drains {C,D}, then {B,E}, then A;
 //   * a flow no single tank can cover still fires (the pool supplies it),
-//     and a flow above the total is refused with no partial drain.
+//     and a flow above the total is refused with no partial drain;
+//   * the mass and delta-v figures keep the store's precision -- a draw under
+//     a float ULP at 200 t still moves them (#382).
 //
 // Links the REAL SetMass (src/physics.cpp, as test_thrust.cpp does), so the
 // part-mass shedding + Bullet inertia update is exercised too. No GL context
@@ -759,6 +761,31 @@ static void test_applythrust_unbalanced_tanks() {
     }
 }
 
+/* The figures a player plans a burn with must not be narrower than the store
+   they are built from (#382). A float sum of a 200 t ship has ULP 0.0156 kg, so
+   a gram of propellant vanishes from getMass() -- and from the delta-v that
+   mass feeds -- even though the tank holds it exactly. */
+static void test_mass_figure_sees_a_sub_float_ulp_draw() {
+    printf("== getMass/getDeltaV: precision the store can hold, the figure can too ==\n");
+    Ship s; s.v = new Vehicle;
+    Part *eng = addPart(s, 0, 0, true);
+    Part *tank = addPart(s, 100000, 100000);   /* 200 t of propellant */
+    link(s, eng, tank);
+    initShip(s);
+
+    const double mass0 = s.v->getMass();
+    const double dv0 = s.v->getDeltaV();
+    CHECK_NEAR(mass0, 200200.0, 1e-9, "2 dry parts (100 kg) + 200 t of propellant");
+
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 0.001, eng),
+               "a 1 g draw fits");
+    CHECK_NEAR(mass0 - s.v->getMass(), 0.001, 1e-6,
+               "the mass figure moves by the gram, not by nothing");
+    CHECK_TRUE(dv0 - s.v->getDeltaV() > 0.0,
+               "delta-v moves too: the propellant inside the log is not quantized");
+    destroyShip(s);
+}
+
 int main() {
     test_prorata_in_group();
     printf("\n");
@@ -787,6 +814,8 @@ int main() {
     test_applythrust_scarcest_limits_burn();
     printf("\n");
     test_applythrust_unbalanced_tanks();
+    printf("\n");
+    test_mass_figure_sees_a_sub_float_ulp_draw();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

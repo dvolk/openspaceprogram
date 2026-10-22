@@ -376,8 +376,11 @@ public:
     const std::vector<std::vector<int> > &fuelDrainLayers(Part *engine) const;
 
     /* Draw `amt` kg of `type`, LAYER by LAYER and pro-rata -- first-tank-first
-       would torque the ship. False if the total cannot cover amt. */
-    bool consumeResourceMass(enum ResourceType type, float amt /* kg */, Part *engine);
+       would torque the ship. False if the total cannot cover amt. Double like
+       the store it draws from: a float request sized against the double
+       availableResourceMass could round ABOVE the remainder and trip the
+       caller's "the drain must fit" assert (#382). */
+    bool consumeResourceMass(enum ResourceType type, double amt /* kg */, Part *engine);
 
     /* Total kg of `type` available to `engine`, so a burn can be sized before
        draining. */
@@ -388,10 +391,13 @@ public:
 
     double fuelMassMasked(const bool *burn) const;
 
-    float getDeltaV();
+    /* The figures a player plans a burn with, in double: the fuel they are made
+       of is stored in double (#379), and narrowing on the way to the readout
+       throws that precision away -- ULP(0.0078kg) at 97t, ~1kg at 10kt (#382). */
+    double getDeltaV();
 
     /* TODO should be cached per frame */
-    float getMass();
+    double getMass();
 
     /* Felt acceleration [m/s^2]: |thrust + aero| / mass, no gravity. */
     double feltAccel();
@@ -433,16 +439,16 @@ public:
 
     int numStages();
 
-    float getThrust();
+    double getThrust();
 
     // current Thrust-to-weight ratio
-    float getTWR();
+    double getTWR();
 
     // full throttle TWR
-    float getFullThrustTWR();
+    double getFullThrustTWR();
 
     // empty TWR
-    float getMaxTWR();
+    double getMaxTWR();
 
     void setVelocity(glm::dvec3 vel);
 
@@ -621,7 +627,7 @@ protected:
 
     /* Full-throttle thrust RIGHT NOW (N): every ignited engine, jets at
        sea-level peak. */
-    float GetActiveThrust();
+    double GetActiveThrust();
 
     /* Once per tick: consumes the fuel and arms the per-thruster thrust
        (applyThrustForce applies it per substep). A thruster that can't consume
