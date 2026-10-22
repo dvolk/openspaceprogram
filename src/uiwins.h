@@ -15,8 +15,7 @@ struct Game;
    Root        the scene's identity; forced open every frame, excluded from
                TAB and the panel. closable alone does NOT give this.
    Chrome      scene furniture; hidden by TAB, not a TAB toggle or panel row.
-   Transient   modal-ish (Save/Load); nav code or a panel row opens it, and
-               a TAB-hide never force-sets its open state.
+   Transient   modal-ish (Save/Load); open state is the nav code's job.
    Persistent  everything else; TAB and the panel toggle it. */
 enum class WinRole : unsigned char { Root, Chrome, Transient, Persistent };
 
