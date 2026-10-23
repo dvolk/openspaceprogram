@@ -198,8 +198,9 @@ struct Part {
         return def != nullptr && def->capacity[(int)ResourceType::EC] > 0.0f;
     }
     /* Top every resource up to the def's capacity. A fresh ship and a fresh
-       suit both start full, and the rule is the same one -- only the contents
-       are state, never the capacity (#383). */
+       suit both start full, and it is one rule, not two -- only the contents
+       are state, never the capacity (#383). A non-tank's capacity is all zero,
+       so this is a no-op there and callers need not ask isTank() first. */
     void fillTanks() {
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             resources.current[r] = capacityOf(r);

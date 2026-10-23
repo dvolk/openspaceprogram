@@ -1,0 +1,20 @@
+# A walker takes its suit from the home pad pool, so a roster of one can only
+# name one walker. The second keeps the suit the def minted, and make_part never
+# gives a suit a KerbalProfile -- without one the person boards as a nameless
+# seat and a save writes the profile rather than Vehicle::name, so the spelling
+# would be gone for the career (#291). The name is kept on an anonymous profile
+# (id 0), which refuseDoubleClaimId treats as claiming nothing, so two of them
+# can coexist.
+NAME anonymous-walker-keeps-name
+CLAIM A walker spawned on a spent pool keeps its name on an anonymous profile.
+KIND invariant
+ARGS --kerbals e2e/fixtures/tiny_kerbals.json --time-accel 1 --timeout 6
+ARGS --startship Solo,res/ships/kerbal.json,Kerbin,pad
+ARGS --startship k2,res/ships/kerbal.json,Kerbin,rot-orbit
+EXPECT Roster: 1 kerbal(s) from e2e/fixtures/tiny_kerbals.json
+EXPECT [crew] pool spent: 'k2' is anonymous
+FORBID [crew] pool spent: 'Solo' is anonymous
+EXPECT Timeout reached
+FORBID error:
+FORBID Assertion
+LIMIT 60

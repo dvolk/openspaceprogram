@@ -539,19 +539,15 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
             v->finalize();
             if(suit->kerbal != nullptr) { v->name = suit->kerbal->name; }
         } else {
-            /* The pool is spent, so this walker keeps the minted def suit and
-               has no roster entry behind it. Give it an ANONYMOUS profile
-               (id 0, which refuseDoubleClaimId treats as claiming nothing) that
-               carries the requested name: an identity-less suit survives
-               boarding as a nameless seat, and seatName() then reads "" for the
-               rest of the career -- the save writes the profile, not the
-               Vehicle::name, so the spelling is gone for good (#291). */
-            if(!v->parts.empty() && v->parts[0]->kerbal == nullptr) {
-                KerbalProfile anon;
-                anon.name = nm;
-                v->parts[0]->kerbal = std::make_unique<KerbalProfile>(anon);
-            }
-            printf("[crew] pool spent: '%s' boards anonymous\n", nm.c_str());
+            /* The pool is spent, so this walker keeps the minted def suit --
+               and make_part never gives a suit a profile. Give it an ANONYMOUS
+               one (id 0, which refuseDoubleClaimId treats as claiming nothing)
+               carrying the requested name: an identity-less suit boards as a
+               nameless seat, and a save writes the profile rather than
+               Vehicle::name, so the spelling would be gone for good (#291). */
+            v->parts[0]->kerbal = std::make_unique<KerbalProfile>();
+            v->parts[0]->kerbal->name = nm;
+            printf("[crew] pool spent: '%s' is anonymous\n", nm.c_str());
         }
     }
     v->setVelocity(glm::dvec3(0, 0, 0));
@@ -899,22 +895,18 @@ void Vehicle::rebuildCompound() {
         inS->addChildShape(toBt(p->localPos, p->localRot), p->body->shape);
         // effectiveMass: body mass + contained crew/inventory (part.h)
         masses[i] = (btScalar)p->effectiveMass();
+        /* Bullet's calculatePrincipalAxisTransform btAsserts every child mass
+           > 0, but btAssert compiles out unless BT_DEBUG is defined (btScalar.h)
+           and we never define it, so that guard is not live in ANY config we
+           build (#389). The invariant is ours: a zero-mass child would keep its
+           collision hull and its drag silhouette while weighing nothing, and
+           --mass-log would still report mass and hullmass agreeing.
+           make_part asserts the def's mass and the save loader refuses negative
+           contents, so a zero here means a Part was minted some other way. */
+        assert(masses[i] > 0 && "a part in the compound weighs nothing");
         total += masses[i];
         compoundParts.push_back(p);
     }
-    /* Bullet's calculatePrincipalAxisTransform btAsserts every child mass > 0,
-       but btAssert compiles out unless BT_DEBUG is defined (btScalar.h) and we
-       never define it, so that guard is not live in ANY config we build (#389).
-       The invariant is ours: a zero-mass child would keep its collision hull and
-       its drag silhouette while weighing nothing, and the compound would stay
-       self-consistent enough that --mass-log reports mass and hullmass agreeing.
-       make_part asserts the def's mass, so a zero here means a Part was minted
-       some other way or its contents went negative. */
-    for(size_t i = 0; i < parts.size(); i++) {
-        assert(parts[i]->effectiveMass() > 0.0
-               && "a part in the compound weighs nothing");
-    }
-    if(total <= 0) { delete inS; compoundParts.clear(); aeroHull.clear(); return; }
 
     btVector3 inertiaDiag(0, 0, 0);
     inS->calculatePrincipalAxisTransform(&masses[0], principal, inertiaDiag);
@@ -1334,9 +1326,7 @@ void Vehicle::init() {
     /* Seed each tank's resources at construction only -- extractSubtreeAsShip() must
        NOT re-seed a stage that has been burning. */
     for(size_t i = 0; i < parts.size(); i++) {
-        Part *p = parts[i];
-        if(!p->isTank()) { continue; }
-        p->fillTanks();
+        parts[i]->fillTanks();
     }
     finalize();
 }

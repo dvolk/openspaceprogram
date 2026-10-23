@@ -36,13 +36,8 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         * ((double)home->GetTerrainHeight(pad_dir) + 50.0);
 
     auto makePart = [&](const PartDef *def) -> Part * {
-        Mesh *mesh = get_mesh(std::string("res/") + def->mesh);
-        Texture *tex = get_texture(std::string("res/") + def->texture);
-        Body *b = create_part_body(mesh, partsshader, tex, (float)def->mass,
-                                   def->hull_margin);
-        Part *p = new Part;
-        p->body  = b;
-        p->def   = def;
+        Part *p = make_part(*def, def->hull_margin, nullptr, nullptr,
+                            def->name, partsshader);
         p->stage = 1;
         return p;
     };

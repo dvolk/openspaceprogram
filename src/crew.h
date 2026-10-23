@@ -33,8 +33,9 @@ const char *skill_name(Skill s);
    is never drawn, so today that means the one walking kerbal plus the UI dots).
    Both the complexion and the tint are derived from the roster id -- stable for
    the life of a save -- so a shade follows the person through pad, seat and
-   walk with nothing to store or save. id 0 is the anonymous suit a pre-roster
-   save carries: it wears the texture's own green. */
+   walk with nothing to store or save. id 0 is an anonymous suit: one a
+   pre-roster save carries, or one minted for a kerbal spawned when the pad
+   pool was spent (#291). It wears the texture's own green. */
 glm::vec3 kerbal_complexion(uint64_t id);   // the fully lit suit color
 glm::vec3 kerbal_tint(uint64_t id);         // what multiplies the texture to get it
 

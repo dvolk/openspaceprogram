@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 256 |
+| `invariant` | a behaviour or a player route the game must keep | 257 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 34 |
 | `harness` | CLI/test-engine plumbing, not game spec | 12 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **306** |
+| | **total** | **307** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -85,7 +85,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/376-drain-window-survives-a-ship-switch.txt` | golden | Switching ships does not stretch a --drain-log row's interval or corrupt its kg/s. |
 | `flight/377-power-log-balances-the-battery.txt` | golden | --power-log's charge moves at the rate its own printed watts imply. |
 
-## crew (24)
+## crew (25)
 
 | case | kind | pins |
 |---|---|---|
@@ -113,6 +113,7 @@ judgement. Select by number, name or path, e.g.
 | `crew/225-startship-kerbal-multidef.txt` | invariant | A kerbal def with more than one part is refused at boot. |
 | `crew/226-vab-launch-kerbal-multidef.txt` | invariant | The VAB refuses to launch a multi-part kerbal with a toast. |
 | `crew/271-recover-refused-walking.txt` | invariant | Recover is offered for a walking kerbal and refuses without tearing the game down. |
+| `crew/291-anonymous-walker-keeps-name.txt` | invariant | A walker spawned on a spent pool keeps its name on an anonymous profile. |
 
 ## science (18)
 

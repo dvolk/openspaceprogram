@@ -4127,9 +4127,10 @@ void drawVabPartWindow(Game &g) {
                 }
                 if(pad != nullptr) {
                     for(const Part *suit : pad->crew) {
-                        /* A save predating the roster leaves a suit anonymous
-                           (seat_profile 0, save.cpp). The plan is keyed by
-                           roster id, so there is nothing to name here -- and
+                        /* An anonymous suit (profile id 0) has nothing to key
+                           the plan on: it comes from a save predating the
+                           roster (seat_profile 0, save.cpp) or from a kerbal
+                           spawned when the pad pool was spent (#291). And
                            offering id 0 would collide with the empty-seat
                            marker, which is also 0. */
                         if(suit->kerbal == nullptr || suit->kerbal->id == 0) {

@@ -122,6 +122,27 @@ static std::string refuseVirtualPartDef(const PartDef &pd, const std::string &wh
            + "', which has no body to build";
 }
 
+/* What a part HOLDS is save data and what it CAN hold is catalog data (#383),
+   but a negative amount is neither: it drives a part's effectiveMass below its
+   own structure, and rebuildCompound asserts every child of the compound weighs
+   something -- so a hand-edited file would abort the process instead of being
+   refused (#389). Refuse it wherever a save names contents, the way the other
+   save rules do.
+   Over-capacity is deliberately NOT refused: #389 made the catalog
+   authoritative for a part's mass, so a rebalanced parts file reaches existing
+   saves on purpose, and a tank that was legal when it was written must not
+   brick the career over night. */
+static std::string refuseBadContents(const std::vector<double> &fuel,
+                                     const std::string &who) {
+    for(size_t r = 0; r < fuel.size(); r++) {
+        if(fuel[r] >= 0.0) { continue; }
+        return "load: " + who + " holds " + std::to_string(fuel[r])
+               + " kg in resource slot " + std::to_string(r)
+               + ", which is not an amount a tank can hold";
+    }
+    return "";
+}
+
 nlohmann::json readJsonFile(const std::string &path) {
     std::ifstream f(path.c_str());
     if(!f.is_open()) { throw std::runtime_error("load: cannot open " + path); }
@@ -256,6 +277,13 @@ static std::string validateSeatArray(const PartsCatalog &cat,
             return "load: '" + shipName + "' seat part '" + sp.part + "' is a '"
                    + sd->type + "' part, not a kerbal seat";
         }
+        /* No virtual-part guard here on purpose: a fuel_link def is not
+           kerbal-typed, so the check above already refuses it. */
+        if(std::string why = refuseBadContents(
+               sp.fuel, "'" + shipName + "' seat part '" + sp.part + "'");
+           !why.empty()) {
+            return why;
+        }
         /* A seat cannot hold seats, so a nested array is corruption rather than
            a state the game can be in -- and dropping it silently would lose a
            person. */
@@ -304,6 +332,11 @@ static std::string validateInventoryArray(const PartsCatalog &cat,
         }
         if(std::string why = refuseVirtualPartDef(
                *ipd, "'" + shipName + "' inventory item '" + si.part + "'");
+           !why.empty()) {
+            return why;
+        }
+        if(std::string why = refuseBadContents(
+               si.fuel, "'" + shipName + "' inventory item '" + si.part + "'");
            !why.empty()) {
             return why;
         }
@@ -591,6 +624,11 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
                   !why.empty()) {
             return why;
         }
+        if(std::string why = refuseBadContents(
+               sp.fuel, "saved ship '" + s.name + "' part '" + sp.id + "'");
+           !why.empty()) {
+            return why;
+        }
         if(i > 0 && prior.count(sp.parent) == 0) {
             return "load: saved ship '" + s.name + "' part '" + sp.id
                    + "' has an unknown parent uid " + std::to_string(sp.parent);
@@ -632,6 +670,14 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
    throw only after the teardown, which cost the career (#302). */
 static std::string validateKerbalDef(const SaveShip &s, const PartsCatalog &cat,
                                      ShipDef *def) {
+    /* The suit's own tanks: buildKerbalFromSave copies suit_fuel straight into
+       resources.current, so a negative amount is a negative-mass vehicle
+       standing in the world (#389). */
+    if(std::string why = refuseBadContents(s.suit_fuel,
+                                           "saved kerbal '" + s.name + "'");
+       !why.empty()) {
+        return why;
+    }
     ShipDef parsed;
     try {
         parsed = load_ship_def(resdir::path(s.defPath).c_str(), cat);
@@ -674,6 +720,11 @@ static std::string validateCrewPool(const std::vector<SavePart> &pool,
         if(pd->type != "kerbal") {
             return "load: crew pool entry '" + sp.part + "' is a '" + pd->type
                    + "' part, not a kerbal";
+        }
+        if(std::string why = refuseBadContents(sp.fuel,
+                                               "crew pool entry '" + sp.part + "'");
+           !why.empty()) {
+            return why;
         }
         if(!sp.seats.empty()) {
             return "load: crew pool entry '" + sp.part + "' has "
