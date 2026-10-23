@@ -197,6 +197,14 @@ struct Part {
     bool isBattery() const {
         return def != nullptr && def->capacity[(int)ResourceType::EC] > 0.0f;
     }
+    /* Top every resource up to the def's capacity. A fresh ship and a fresh
+       suit both start full, and the rule is the same one -- only the contents
+       are state, never the capacity (#383). */
+    void fillTanks() {
+        for(int r = 0; r < (int)ResourceType::Num; r++) {
+            resources.current[r] = capacityOf(r);
+        }
+    }
 
     /* Can this part hold finding `e` under its PartDef.experiment_storage role
        (shipdef.h ExpStorage)? Never the exact same finding twice; the role sets

@@ -539,7 +539,19 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
             v->finalize();
             if(suit->kerbal != nullptr) { v->name = suit->kerbal->name; }
         } else {
-            printf("[crew] pool spent: '%s' has no identity\n", nm.c_str());
+            /* The pool is spent, so this walker keeps the minted def suit and
+               has no roster entry behind it. Give it an ANONYMOUS profile
+               (id 0, which refuseDoubleClaimId treats as claiming nothing) that
+               carries the requested name: an identity-less suit survives
+               boarding as a nameless seat, and seatName() then reads "" for the
+               rest of the career -- the save writes the profile, not the
+               Vehicle::name, so the spelling is gone for good (#291). */
+            if(!v->parts.empty() && v->parts[0]->kerbal == nullptr) {
+                KerbalProfile anon;
+                anon.name = nm;
+                v->parts[0]->kerbal = std::make_unique<KerbalProfile>(anon);
+            }
+            printf("[crew] pool spent: '%s' boards anonymous\n", nm.c_str());
         }
     }
     v->setVelocity(glm::dvec3(0, 0, 0));
@@ -1324,9 +1336,7 @@ void Vehicle::init() {
     for(size_t i = 0; i < parts.size(); i++) {
         Part *p = parts[i];
         if(!p->isTank()) { continue; }
-        for(int r = 0; r < (int)ResourceType::Num; r++) {
-            p->resources.current[r] = p->def->capacity[r];
-        }
+        p->fillTanks();
     }
     finalize();
 }

@@ -91,10 +91,6 @@ Part *make_suit(const ShipDef &def, Shader *partsshader)
                            nullptr, nullptr, def.parts[0].id, partsshader);
     /* Seeded like Vehicle::init does for a tank: a partly-burned suit re-seeds
        full here, which is right for a fresh crew member. */
-    if(suit->isTank()) {
-        for(int r = 0; r < (int)ResourceType::Num; r++) {
-            suit->resources.current[r] = suit->capacityOf(r);
-        }
-    }
+    if(suit->isTank()) { suit->fillTanks(); }
     return suit;
 }

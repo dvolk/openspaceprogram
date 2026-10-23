@@ -885,11 +885,13 @@ Kerbal *buildKerbalFromSave(Game &g, const LoadWorld &w, const SaveShip &s) {
        save's own roster reaches the kerbal instead of leaving two spellings. */
     if(profile != nullptr) { k->name = profile->name; }
     k->defPath = s.defPath;
-    k->home = w.home;
     k->scenario = nullptr;
-    k->m_parent = w.home;
     k->sun = w.sun;
-    k->frame = w.home->rot_frame;
+    /* NOT home / frame / m_parent yet -- the saved pose decides them. `home`
+       becomes the pose's own body below and setSoi sets frame + m_parent, so
+       seeding all three to the save's home here was a store nothing between
+       here and setSoi ever read (build_ship places off the hull AABBs and
+       enterWorld only adds the shape). It read as meaningful and was not (#291). */
     /* build_ship can throw with parts attached; k is not in the load's
        `built` list yet, so the rollback would not free it. */
     try {
