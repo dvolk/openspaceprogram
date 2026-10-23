@@ -2121,8 +2121,8 @@ static void shadeDot(ImDrawList *dl, const ImVec2 &c, float r,
     dl->AddCircle(c, r, IM_COL32(18, 20, 24, 255), 0, 1.5f);
 }
 
-/* A suit's fully lit shade. An anonymous suit -- no profile, or the roster id 0
-   a pre-roster save leaves behind (save.cpp) -- wears the texture's own green. */
+/* A suit's fully lit shade. Every kerbal suit wears a roster entry (#394), so
+   the base green is only what a part that is NOT a person gets. */
 static glm::vec3 suitComplexion(const Part *suit) {
     return (suit != nullptr && suit->kerbal != nullptr)
          ? suit->kerbal->complexion() : kKerbalBaseGreen;
@@ -4127,15 +4127,11 @@ void drawVabPartWindow(Game &g) {
                 }
                 if(pad != nullptr) {
                     for(const Part *suit : pad->crew) {
-                        /* An anonymous suit (profile id 0) has nothing to key
-                           the plan on: it comes from a save predating the
-                           roster (seat_profile 0, save.cpp) or from a kerbal
-                           spawned when the pad pool was spent (#291). And
-                           offering id 0 would collide with the empty-seat
-                           marker, which is also 0. */
-                        if(suit->kerbal == nullptr || suit->kerbal->id == 0) {
-                            continue;
-                        }
+                        /* Every suit standing on the pad wears a roster entry
+                           (crew.h: the roster is the cast), so its id is always
+                           a legal key for the plan. id 0 belongs to the "Empty"
+                           row above -- a plan marker, not a person (#394). */
+                        assert(suit->kerbal != nullptr && suit->kerbal->id != 0);
                         const KerbalProfile &kp = *suit->kerbal;
                         /* Already in another seat of THIS build: naming one
                            person twice makes the launch refuse, so grey it out

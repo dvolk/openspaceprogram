@@ -33,10 +33,6 @@
             0.0
           ],
           "id": "kerbal_1",
-          "part": "kerbal",
-          "seat_name": "kerbal",
-          "stage": 1,
-          "uid": 5,
           "inventory": [
             {
               "fuel": [
@@ -51,8 +47,6 @@
               ],
               "id": "cargo_1",
               "part": "cargo",
-              "stage": 1,
-              "uid": 300,
               "seats": [
                 {
                   "fuel": [
@@ -68,12 +62,17 @@
                   "id": "kerbal_2",
                   "part": "kerbal",
                   "stage": 1,
-                  "uid": 301,
-                  "seat_name": "Hidden"
+                  "uid": 301
                 }
-              ]
+              ],
+              "stage": 1,
+              "uid": 300
             }
-          ]
+          ],
+          "part": "kerbal",
+          "seat_profile": 1,
+          "stage": 1,
+          "uid": 5
         }
       ],
       "stage": 1,

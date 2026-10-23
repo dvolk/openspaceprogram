@@ -97,7 +97,6 @@ const float kKerbalHueArc = 0.8f;
    double's exact range and the fraction collapses to zero, so a hand-edited
    roster could invent a duplicate shade. */
 glm::vec3 kerbal_complexion(uint64_t id) {
-    if(id == 0) { return kKerbalBaseGreen; }   // anonymous: the texture's own green
     const double d = (double)id;
     auto unit = [](double x) { return x - std::floor(x); };   // 0..1
     const float hue = kKerbalHueArc * (float)unit(d * std::numbers::phi_v<double>);

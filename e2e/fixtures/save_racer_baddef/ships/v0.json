@@ -34,7 +34,7 @@
           ],
           "id": "kerbal_1",
           "part": "capsule",
-          "seat_name": "kerbal",
+          "seat_profile": 1,
           "stage": 1,
           "uid": 5
         }

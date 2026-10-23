@@ -4,9 +4,9 @@
 # refusals only a BUILD can see -- deep containment, addSeat, make_part -- and
 # those must put the running cast list back or the career becomes a file the
 # game wrote and cannot read (case 232's failure mode, one step later).
-# This fixture is the 305 deep tree PLUS a shrunk roster (Bram + Cyd). The
-# build swaps the roster in, then refuses the containment tree: the destructor
-# restores the three kerbals from --kerbals.
+# This fixture is the 305 deep tree PLUS a rewritten roster (Bram + Cyd + its
+# own kerbal at id 1). The build swaps the roster in, then refuses the
+# containment tree: the destructor restores the three kerbals from --kerbals.
 NAME deep-tree-rolls-back-roster
 CLAIM A build-time refusal after a roster swap restores the running roster.
 KIND invariant

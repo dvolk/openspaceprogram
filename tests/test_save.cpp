@@ -459,31 +459,32 @@ int main() {
         ash.inventory.push_back(pocket);
         cap.seats.push_back(ash);
 
-        SavePart anonymous;
-        anonymous.part = "kerbal";
-        anonymous.uid = 403;
-        anonymous.seat_name = "Nobody";
-        cap.seats.push_back(anonymous);
+        /* A seat naming no roster entry round-trips as 0. Parsing is shape-only;
+           refusing that id is the loader's job (refuseUnknownRosterId). There is
+           no name key to carry a spelling any more -- the roster owns it (#394). */
+        SavePart unprofiled;
+        unprofiled.part = "kerbal";
+        unprofiled.uid = 403;
+        cap.seats.push_back(unprofiled);
 
         nlohmann::json capJ = savePartToJson(cap);
         CHECK(capJ.contains("seats"));
         // The capsule is not itself a seat: no identity keys on it.
         CHECK(!capJ.contains("seat_profile"));
         CHECK(!capJ.contains("seat_name"));
+        CHECK(!capJ["seats"][0].contains("seat_name"));
         SavePart capOut = savePartFromJson(capJ);
         CHECK(capOut.seats.size() == 2);
         if(capOut.seats.size() == 2) {
             CHECK(capOut.seats[0].part == "kerbal");
             CHECK(capOut.seats[0].uid == 402);
             CHECK(capOut.seats[0].seat_profile == 1);
-            CHECK(capOut.seats[0].seat_name.empty());
             CHECK(near(capOut.seats[0].fuel[(int)ResourceType::Hydrazine], 6.25));
             CHECK(capOut.seats[0].inventory.size() == 1);
             if(!capOut.seats[0].inventory.empty()) {
                 CHECK(capOut.seats[0].inventory[0].uid == 404);
             }
             CHECK(capOut.seats[1].seat_profile == 0);
-            CHECK(capOut.seats[1].seat_name == "Nobody");
         }
         // A part with no seats writes no `seats` key at all.
         CHECK(!savePartToJson(SavePart{}).contains("seats"));
@@ -847,9 +848,9 @@ int main() {
 
     /* A seat's roster id is uid-keyed like every other reference in a save: a
        non-uid value (a string -- the shape a hand-edited file could have) reads
-       back as the "absent" 0 = anonymous, which is what a save predating the
-       roster means. A float would truncate to a valid id and bind the wrong
-       person, so it is refused the same way. */
+       back as the "absent" 0, which the loader refuses rather than rebuilding
+       somebody unnamed (#394). A float would truncate to a valid id and bind
+       the wrong person, so it is refused the same way. */
     CHECK(savePartFromJson(nlohmann::json::parse(
               R"({"part":"kerbal","uid":5,"seat_profile":"1"})")).seat_profile == 0);
     CHECK(savePartFromJson(nlohmann::json::parse(

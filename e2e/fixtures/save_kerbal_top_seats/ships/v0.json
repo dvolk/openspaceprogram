@@ -46,6 +46,7 @@
       7.083699272991684e-09
     ]
   },
+  "profile_id": 1,
   "seats": [
     {
       "fuel": [
@@ -60,7 +61,6 @@
       ],
       "id": "kerbal_x",
       "part": "kerbal",
-      "seat_name": "Ghost",
       "uid": 888
     }
   ],

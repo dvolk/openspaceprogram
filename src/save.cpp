@@ -92,11 +92,13 @@ void writeJson(const std::string &path, const nlohmann::json &j) {
 /* One roster id, one lookup, one sentence. The builders throw with these words
    and preflightSave refuses with them, so the two paths cannot disagree about
    either the rule or the wording (#302) -- the same reason validateShipParts
-   exists. 0 = a save predating the roster, which stays anonymous under the name
-   the file carries. */
+   exists. The roster IS the cast (crew.h), so 0 names nothing: a save carrying a
+   kerbal with no roster entry is refused, not rebuilt as somebody anonymous.
+   There used to be such a thing -- a save predating the roster, and a walker
+   minted on a spent pad pool -- and both are gone (#394). */
 static std::string refuseUnknownRosterId(const CrewRoster &roster, uint64_t id,
                                          const std::string &who) {
-    if(id == 0 || roster.find(id) != nullptr) { return ""; }
+    if(id != 0 && roster.find(id) != nullptr) { return ""; }
     return "load: " + who + " names roster id " + std::to_string(id)
            + ", which the roster has no entry for";
 }
@@ -105,10 +107,10 @@ static std::string refuseUnknownRosterId(const CrewRoster &roster, uint64_t id,
    refuseDoubleClaim applies it to the parts the load built; preflightSave
    applies it to the ids the SAVE names, which is the same set: a suit's id is
    its seat's seat_profile and a kerbal's is its profile_id, whatever the roster
-   swap does to the name beside it (#302). Anonymous people (id 0) claim
-   nothing. */
+   swap does to the name beside it (#302). Every id here is one the roster has,
+   because refuseUnknownRosterId ran first at every site. */
 static std::string refuseDoubleClaimId(std::set<uint64_t> &claimed, uint64_t id) {
-    if(id == 0 || claimed.insert(id).second) { return ""; }
+    if(claimed.insert(id).second) { return ""; }
     return "load: two people claim roster id " + std::to_string(id);
 }
 
@@ -202,10 +204,11 @@ SavePart saveItemPart(const Part *c) {
    the suit owns (Part::kerbal). */
 SavePart saveSeatPart(const Part *suit) {
     SavePart sp = saveItemPart(suit);
-    if(suit->kerbal != nullptr) {
-        sp.seat_profile = suit->kerbal->id;
-        sp.seat_name = suit->kerbal->name;
-    }
+    /* A kerbal suit always wears a roster entry (crew.h: the roster is the
+       cast), so the save names the entry and nothing else -- not the name,
+       which is the entry's (#394). */
+    assert(suit->kerbal != nullptr && suit->kerbal->id != 0);
+    sp.seat_profile = suit->kerbal->id;
     if(suit->container != nullptr) {
         for(size_t i = 0; i < suit->container->seats.size(); i++) {
             if(suit->container->seats[i] == suit) {
@@ -392,18 +395,15 @@ void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
 /* One SavePart -> a suit Part: body + def + fuel + findings + the identity it
    OWNS (Part::kerbal). A capsule's seat occupant and a kerbal standing on the
    home pad are the same Part; only the hold edge differs, so each caller
-   validates and wires its own. `rosterSrc` is the roster entry the save names
-   (null = anonymous): the roster owns the spelling and the skills, so a found
-   entry wins over the name the file carries. */
+   validates and wires its own. `rosterSrc` is the roster entry the save names,
+   which the caller has already refused if the roster has no such entry: the
+   roster owns the spelling, the skills and the shade, so there is no other
+   identity a suit could be built with (#394). */
 Part *makeSuitPart(Game &g, const SavePart &sp, const PartDef *pd,
-                   const KerbalProfile *rosterSrc) {
+                   const KerbalProfile &rosterSrc) {
     Part *suit = make_part(*pd, sp.hull_margin,
                            &sp.fuel, &sp.experiments, sp.id, g.partsshader);
-    KerbalProfile prof;
-    prof.id = sp.seat_profile;
-    prof.name = sp.seat_name;
-    if(rosterSrc != nullptr) { prof = *rosterSrc; }
-    suit->kerbal = std::make_unique<KerbalProfile>(std::move(prof));
+    suit->kerbal = std::make_unique<KerbalProfile>(rosterSrc);
     return suit;
 }
 
@@ -436,9 +436,9 @@ void buildSeatParts(Game &g, const std::vector<SavePart> &saved, Part *cap,
            !why.empty()) {
             throw std::runtime_error(why);
         }
-        const KerbalProfile *profile = (sp.seat_profile != 0)
-            ? g.roster.find(sp.seat_profile) : nullptr;
-        Part *suit = makeSuitPart(g, sp, g.parts.find(sp.part), profile);
+        const KerbalProfile *found = g.roster.find(sp.seat_profile);
+        assert(found != nullptr);   // validateSeatArray refused otherwise
+        Part *suit = makeSuitPart(g, sp, g.parts.find(sp.part), *found);
         /* The seat edge before the pockets: buildInventoryItems copies the
            container's owner onto each item. A throw leaves everything wired into
            the capsule, which the caller's rollback frees with the ship. */
@@ -484,6 +484,9 @@ SaveShip saveShipFromVehicle(Vehicle *v,
            a seat on a capsule Part and is captured in that part's `seats`. */
         Kerbal *k = static_cast<Kerbal *>(v);
         s.profile_id = k->profileId();
+        /* Writing 0 here would produce a save this file's own loader refuses, so
+           catch it on the way out instead (#394). */
+        assert(s.profile_id != 0 && "a walker wears no roster entry");
         s.pose.body = (v->m_parent != nullptr) ? v->m_parent->name : "";
         s.pose.rotating = v->frame->isRotFrame();
         v->frameS(s.pose.pos, s.pose.rot);
@@ -930,8 +933,8 @@ Kerbal *buildKerbalFromSave(Game &g, const LoadWorld &w, const SaveShip &s) {
        !why.empty()) {
         throw std::runtime_error(why);
     }
-    const KerbalProfile *profile = (s.profile_id != 0)
-        ? g.roster.find(s.profile_id) : nullptr;
+    const KerbalProfile *profile = g.roster.find(s.profile_id);
+    assert(profile != nullptr);   // refuseUnknownRosterId above
     /* A ShipDef owns nothing, so throwing here frees nothing. The rule and its
        wording live in validateKerbalDef, which preflightSave also runs (#302). */
     ShipDef def;
@@ -939,10 +942,9 @@ Kerbal *buildKerbalFromSave(Game &g, const LoadWorld &w, const SaveShip &s) {
         throw std::runtime_error(why);
     }
     Kerbal *k = new Kerbal;
-    k->name = s.name;
-    /* The roster owns the name, so it wins over the saved one: a rename in the
-       save's own roster reaches the kerbal instead of leaving two spellings. */
-    if(profile != nullptr) { k->name = profile->name; }
+    /* The roster owns the name, so the saved ship name is only what the refusal
+       above called this file: the person is spelled as the cast spells them. */
+    k->name = profile->name;
     k->defPath = s.defPath;
     k->scenario = nullptr;
     k->sun = w.sun;
@@ -960,13 +962,10 @@ Kerbal *buildKerbalFromSave(Game &g, const LoadWorld &w, const SaveShip &s) {
         delete k;
         throw;
     }
-    /* Identity is owned by the suit Part (part.h). */
+    /* Identity is owned by the suit Part (part.h), and it is the roster entry
+       this kerbal names -- nothing else could mint a person (#394). */
     if(!k->parts.empty()) {
-        KerbalProfile prof;
-        prof.id = s.profile_id;
-        prof.name = k->name;
-        if(profile != nullptr) { prof = *profile; }
-        k->parts[0]->kerbal = std::make_unique<KerbalProfile>(std::move(prof));
+        k->parts[0]->kerbal = std::make_unique<KerbalProfile>(*profile);
     }
     // Only the contents -- effectiveMass() reads them from resources.current.
     if(!s.suit_fuel.empty() && !k->parts.empty()) {
@@ -1007,8 +1006,8 @@ Kerbal *buildKerbalFromSave(Game &g, const LoadWorld &w, const SaveShip &s) {
        uninstalled system has no ground yet (#305). The save's `onRails` is
        restored in the commit's phase 2, like every ship. */
     /* The identity binding is the one fact about a loaded kerbal the vehicle
-       list cannot show, so make it observable: a save that silently rebuilds
-       anonymous people is exactly the bug this line exists to catch. */
+       list cannot show, so make it observable: a person who came back wearing
+       the wrong roster entry is exactly what this line is there to catch. */
     printf("[crew] loaded '%s' on EVA\n", k->name.c_str());
     return k;
 }
@@ -1018,8 +1017,7 @@ Kerbal *buildKerbalFromSave(Game &g, const LoadWorld &w, const SaveShip &s) {
    wrong pick or a shrink later. So refuse it here, where the ids are read.
    `pool` is the home pad's standing crew (save.json's crew_pool): they wear
    their ids too, and a pool entry clashing with another pool entry or with
-   someone already in Game::vehicles is the same corruption. Anonymous people
-   (id 0) may repeat: they claim nothing. */
+   someone already in Game::vehicles is the same corruption. */
 static void refuseDoubleClaim(const std::vector<Vehicle *> &built,
                               const std::vector<Part *> &pool) {
     std::set<uint64_t> worn;
@@ -1446,9 +1444,9 @@ BuiltSave *buildSaveWorld(Game &g, const LoadWorld &w, const std::string &dir) {
     }
     for(const SavePart &sp : meta.crew_pool) {
         const PartDef *pd = g.parts.find(sp.part);   // validated above
-        const KerbalProfile *src = (sp.seat_profile != 0)
-            ? g.roster.find(sp.seat_profile) : nullptr;
-        Part *suit = makeSuitPart(g, sp, pd, src);
+        const KerbalProfile *src = g.roster.find(sp.seat_profile);
+        assert(src != nullptr);   // validateCrewPool refused otherwise
+        Part *suit = makeSuitPart(g, sp, pd, *src);
         out->pool.push_back(suit);
         // What the suit carries rides home with it (saveSeatPart writes it).
         buildInventoryItems(g, sp.inventory, suit, "crew pool");

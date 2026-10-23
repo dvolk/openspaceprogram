@@ -518,37 +518,36 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
         throw;
     }
     /* A walker takes its suit from the home pad pool (part.h: a kerbal is a
-       Part at one place). The minted def suit is replaced by the pooled one. */
+       Part at one place). The minted def suit is replaced by the pooled one.
+       A kerbal IS a roster entry (crew.h: the roster is the cast), so a spent
+       pool means there is no person left to place -- refuse the spawn rather
+       than mint somebody off the def. Nothing in the game creates a person:
+       mintCrewPool at boot and a load's crew_pool are the only sources, and
+       both name the roster they came from (#394). */
     if(is_kerbal && !v->parts.empty()) {
         Part *suit = takeCrew(g.sys);
-        if(suit != nullptr) {
-            Part *minted = v->parts[0];
-            suit->localPos = minted->localPos;
-            suit->localRot = minted->localRot;
-            suit->stage = minted->stage;
-            suit->owner = v;
-            v->parts[0] = suit;
-            /* build_ship left `controller` and the compound's part list on the
-               minted suit. Re-point before the delete, then finalize: the
-               pooled suit may weigh differently (partly-burned tank, pocket
-               items), and the hull/compoundParts must follow parts[0] or both
-               dangle at freed memory (Kerbal::applyEva reads controller). */
-            if(v->controller == minted) { v->controller = suit; }
-            delete minted;
-            inventorySetOwner(suit, v);
-            v->finalize();
-            if(suit->kerbal != nullptr) { v->name = suit->kerbal->name; }
-        } else {
-            /* The pool is spent, so this walker keeps the minted def suit --
-               and make_part never gives a suit a profile. Give it an ANONYMOUS
-               one (id 0, which refuseDoubleClaimId treats as claiming nothing)
-               carrying the requested name: an identity-less suit boards as a
-               nameless seat, and a save writes the profile rather than
-               Vehicle::name, so the spelling would be gone for good (#291). */
-            v->parts[0]->kerbal = std::make_unique<KerbalProfile>();
-            v->parts[0]->kerbal->name = nm;
-            printf("[crew] pool spent: '%s' is anonymous\n", nm.c_str());
+        if(suit == nullptr) {
+            delete v;
+            throw std::runtime_error("place_vehicle: no kerbal on the home pad for '"
+                                     + nm + "': the cast is already in the world");
         }
+        Part *minted = v->parts[0];
+        suit->localPos = minted->localPos;
+        suit->localRot = minted->localRot;
+        suit->stage = minted->stage;
+        suit->owner = v;
+        v->parts[0] = suit;
+        /* build_ship left `controller` and the compound's part list on the
+           minted suit. Re-point before the delete, then finalize: the pooled
+           suit may weigh differently (partly-burned tank, pocket items), and the
+           hull/compoundParts must follow parts[0] or both dangle at freed memory
+           (Kerbal::applyEva reads controller). */
+        if(v->controller == minted) { v->controller = suit; }
+        delete minted;
+        inventorySetOwner(suit, v);
+        v->finalize();
+        assert(suit->kerbal != nullptr && suit->kerbal->id != 0);
+        v->name = suit->kerbal->name;
     }
     v->setVelocity(glm::dvec3(0, 0, 0));
     // Re-home: starts the flight journal. Then the list adopts it.
@@ -660,7 +659,8 @@ Part *takeCrewById(System &sys, uint64_t profileId) {
     if(home == nullptr) { return nullptr; }
     for(size_t i = 0; i < home->crew.size(); i++) {
         Part *suit = home->crew[i];
-        if(suit->kerbal == nullptr || suit->kerbal->id != profileId) { continue; }
+        assert(suit->kerbal != nullptr);   // the pool is minted from the roster
+        if(suit->kerbal->id != profileId) { continue; }
         home->crew.erase(home->crew.begin() + (std::ptrdiff_t)i);
         suit->container = nullptr;
         inventorySetOwner(suit, nullptr);   // as takeCrew: no dangling owner
@@ -671,6 +671,7 @@ Part *takeCrewById(System &sys, uint64_t profileId) {
 
 void returnCrew(System &sys, Part *suit) {
     if(suit == nullptr) { return; }
+    assert(suit->kerbal != nullptr);   // a person IS a roster entry (crew.h)
     StaticBuilding *home = homeCrewPad(sys);
     if(home == nullptr) {
         /* Nowhere to stand, so the person is gone -- and LOUDLY so: a system
@@ -678,7 +679,7 @@ void returnCrew(System &sys, Part *suit) {
            delete reads exactly like a successful flight home. */
         printf("[crew] '%s' is gone: this system has no VAB_LAUNCH_PAD to "
                "stand them on\n",
-               (suit->kerbal ? suit->kerbal->name : "?").c_str());
+               suit->kerbal->name.c_str());
         fflush(stdout);
         delete suit;
         return;
@@ -714,6 +715,7 @@ bool fill_seat(Vehicle *ship, size_t part, System &sys, Part *suit, int slot) {
        suit (Part::kerbal) -- the person owns it. A named assignment has already
        been checked against the build, so a refused slot here is a bug. */
     assert(capPart->addSeat(suit, slot < 0 ? (size_t)-1 : (size_t)slot));
+    assert(suit->kerbal != nullptr);   // a person IS a roster entry (crew.h)
     suit->owner = ship;
     /* Whatever the suit carries in its pockets rides the ship too (a recovered
        kerbal comes home with its loot). */
@@ -721,7 +723,7 @@ bool fill_seat(Vehicle *ship, size_t part, System &sys, Part *suit, int slot) {
     // Rebuild so the compound carries the crew mass.
     ship->rebuildCompound();
     printf("Crew: '%s' aboard '%s' part %zu (%d/%d)\n",
-           (suit->kerbal ? suit->kerbal->name : "?").c_str(),
+           suit->kerbal->name.c_str(),
            ship->name.c_str(), part,
            capPart->seatCount(), capDef->crew_capacity);
     return true;

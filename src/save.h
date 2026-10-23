@@ -78,12 +78,13 @@ struct SavePart {
        decide by part type whether an entry is a person -- the shape says it.
        Only a capsule (crew_capacity > 0) may have any. */
     std::vector<SavePart> seats;
-    /* Seat occupant only: the roster entry this person IS (CrewRoster::id);
-       0 = anonymous, which is what a save predating the roster reads as. */
+    /* Seat occupant only: the roster entry this person IS (CrewRoster::id).
+       There is no other kind of kerbal: the roster is the cast, so a seat or a
+       walker naming 0 (or an id the roster has no entry for) is refused on load
+       rather than rebuilt as somebody unnamed. The name is NOT saved beside it
+       -- the roster owns the spelling, skills and shade, and a second copy here
+       could only drift (the same reason mass is not saved, #389). */
     uint64_t seat_profile = 0;
-    /* Seat occupant only: the name of an anonymous occupant. Ignored when
-       seat_profile names a roster entry -- the roster owns the name. */
-    std::string seat_name;
     /* Seat occupant only: the slot index in the capsule's `seats` (stable for
        IVA). -1 = fill free slots in write order. */
     int seat_slot = -1;
@@ -160,9 +161,9 @@ struct SaveShip {
     // crew (is_crew true): a kerbal walking on its own two feet (eva.h). Its
     // suit is the one Part of its own vehicle, so the suit's state lives here;
     // a SEATED person's suit state lives in the capsule's `seats` entry.
-    /* The roster entry this kerbal IS (CrewRoster::id). 0 = anonymous, which is
-       what a save predating the roster reads as; a nonzero id the roster has no
-       entry for is refused on load. */
+    /* The roster entry this kerbal IS (CrewRoster::id). Every kerbal is a cast
+       member, so 0 (or an id the roster has no entry for) is refused on load;
+       the name is not saved beside it -- the entry owns the spelling (#394). */
     uint64_t profile_id = 0;
     /* Suit tank contents (kg per ResourceType); empty = the save predates the
        field. */
@@ -384,7 +385,6 @@ inline nlohmann::json savePartToJson(const SavePart &p) {
         j["inventory"] = inv;
     }
     if(p.seat_profile != 0) { j["seat_profile"] = p.seat_profile; }
-    if(!p.seat_name.empty()) { j["seat_name"] = p.seat_name; }
     if(p.seat_slot >= 0) { j["seat_slot"] = p.seat_slot; }
     if(!p.seats.empty()) {
         nlohmann::json ss = nlohmann::json::array();
@@ -415,7 +415,6 @@ inline SavePart savePartFromJson(const nlohmann::json &j) {
         for(auto &&sp : j["inventory"]) { if(sp.is_object()) { p.inventory.push_back(savePartFromJson(sp)); } }
     }
     p.seat_profile = readUid(j, "seat_profile");
-    if(j.contains("seat_name") && j["seat_name"].is_string()) { p.seat_name = j["seat_name"].get<std::string>(); }
     if(j.contains("seat_slot") && j["seat_slot"].is_number_integer()) { p.seat_slot = j["seat_slot"].get<int>(); }
     if(j.contains("seats") && j["seats"].is_array()) {
         for(auto &&sp : j["seats"]) { if(sp.is_object()) { p.seats.push_back(savePartFromJson(sp)); } }
@@ -557,7 +556,7 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     // Absent (an old save) leaves flog default.
     if(j.contains("flog") && j["flog"].is_object()) { s.flog = saveFlogFromJson(j["flog"]); }
     if(s.is_crew) {
-        // Absent (a save predating the roster) leaves 0 = anonymous.
+        // Absent leaves 0, which the loader refuses: every kerbal names one.
         s.profile_id = readUid(j, "profile_id");
         if(j.contains("pose") && j["pose"].is_object()) { s.pose = savePoseFromJson(j["pose"]); }
         if(j.contains("onRails") && j["onRails"].is_boolean()) { s.onRails = j["onRails"].get<bool>(); }

@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 257 |
+| `invariant` | a behaviour or a player route the game must keep | 258 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 34 |
 | `harness` | CLI/test-engine plumbing, not game spec | 12 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **307** |
+| | **total** | **308** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -113,7 +113,7 @@ judgement. Select by number, name or path, e.g.
 | `crew/225-startship-kerbal-multidef.txt` | invariant | A kerbal def with more than one part is refused at boot. |
 | `crew/226-vab-launch-kerbal-multidef.txt` | invariant | The VAB refuses to launch a multi-part kerbal with a toast. |
 | `crew/271-recover-refused-walking.txt` | invariant | Recover is offered for a walking kerbal and refuses without tearing the game down. |
-| `crew/291-anonymous-walker-keeps-name.txt` | invariant | A walker spawned on a spent pool keeps its name on an anonymous profile. |
+| `crew/394-spent-pool-kerbal-refused.txt` | invariant | A kerbal spawned on a spent pad pool is refused, not minted off the def. |
 
 ## science (18)
 
@@ -180,7 +180,7 @@ judgement. Select by number, name or path, e.g.
 | `vab/307-vab-clear.txt` | invariant | Clear asks first, empties the workspace, then refuses when already empty. |
 | `vab/308-vab-dev-vehicles.txt` | invariant | Dev vehicles appear in the Load picker, below the fold until scrolled. |
 
-## save (51)
+## save (52)
 
 | case | kind | pins |
 |---|---|---|
@@ -235,6 +235,7 @@ judgement. Select by number, name or path, e.g.
 | `save/319-deep-tree-rolls-back-roster.txt` | invariant | A build-time refusal after a roster swap restores the running roster. |
 | `save/380-saved-part-mass-is-ignored.txt` | invariant | A save's own per-part mass cannot outweigh the parts catalog. |
 | `save/381-saved-virtual-part-refused.txt` | invariant | A save that names a virtual part (a fuel_link) as a body is refused, not built. |
+| `save/394-unprofiled-seat-refused.txt` | invariant | A save whose seat names no roster entry is refused, not rebuilt nameless. |
 
 ## ui (45)
 

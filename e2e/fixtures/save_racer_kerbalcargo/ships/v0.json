@@ -40,7 +40,7 @@
             }
           ],
           "part": "kerbal",
-          "seat_name": "kerbal",
+          "seat_profile": 1,
           "stage": 1,
           "uid": 5
         }

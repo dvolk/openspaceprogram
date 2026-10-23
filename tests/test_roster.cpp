@@ -119,9 +119,9 @@ int main() {
     {
         /* The cast is deliberately not all one colour (crew.h): hue is what
            tells two suits apart, so the checks below are about being told
-           apart, not about staying green. */
-        CHECK(kerbal_complexion(0) == kKerbalBaseGreen);
-        CHECK(kerbal_tint(0) == glm::vec3(1.0f));
+           apart, not about staying green. There is no shade for an anonymous
+           kerbal -- a roster entry with id 0 is refused above, so the shade
+           function is never asked for one (#394). */
 
         /* kKerbalBaseGreen mirrors the literal utils/gen_kerbal.py writes into
            textures/kerbal.png. A mirror with nothing pinning it drifts, and
@@ -277,7 +277,7 @@ int main() {
         CHECK(j["profile_id"] == 3);
         CHECK(saveShipFromJson(j).profile_id == 3);
 
-        // Absent = 0 = anonymous, which is what a pre-roster save reads as.
+        // Absent leaves 0, which the loader refuses: every kerbal names one.
         nlohmann::json bare;
         bare["is_crew"] = true;
         CHECK(saveShipFromJson(bare).profile_id == 0);

@@ -34,7 +34,7 @@
           ],
           "id": "kerbal_1",
           "part": "kerbal",
-          "seat_name": "kerbal",
+          "seat_profile": 1,
           "stage": 1,
           "uid": 5
         }
@@ -61,8 +61,6 @@
         0.0,
         -1.125
       ],
-      "stage": 1,
-      "uid": 2,
       "seats": [
         {
           "fuel": [
@@ -77,12 +75,14 @@
           ],
           "id": "kerbal_1",
           "part": "kerbal",
-          "seat_name": "kerbal",
+          "seat_profile": 2,
+          "seat_slot": -1,
           "stage": 1,
-          "uid": 77,
-          "seat_slot": -1
+          "uid": 77
         }
-      ]
+      ],
+      "stage": 1,
+      "uid": 2
     },
     {
       "fuel": [

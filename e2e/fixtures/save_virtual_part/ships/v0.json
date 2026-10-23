@@ -34,7 +34,7 @@
           ],
           "id": "kerbal_1",
           "part": "kerbal",
-          "seat_name": "kerbal",
+          "seat_profile": 1,
           "stage": 1,
           "uid": 5
         }
@@ -109,16 +109,6 @@
       "uid": 4
     },
     {
-      "part": "fuel_link",
-      "uid": 77,
-      "id": "fl_as_part",
-      "parent": 1,
-      "stage": 1,
-      "pos": [
-        0.0,
-        0.0,
-        -3.0
-      ],
       "fuel": [
         0,
         0,
@@ -128,7 +118,17 @@
         0,
         0,
         0
-      ]
+      ],
+      "id": "fl_as_part",
+      "parent": 1,
+      "part": "fuel_link",
+      "pos": [
+        0.0,
+        0.0,
+        -3.0
+      ],
+      "stage": 1,
+      "uid": 77
     }
   ],
   "pose": {

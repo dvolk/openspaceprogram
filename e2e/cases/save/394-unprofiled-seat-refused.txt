@@ -1,0 +1,12 @@
+# The roster is the cast (crew.h), so a person in a save is a roster entry and
+# nothing else. A seat that names id 0 used to rebuild as somebody anonymous --
+# a name carried in the save itself (`seat_name`, now gone), invisible to the VAB
+# seat combo and to takeCrewById, and free to pile up on the home pad (#394).
+# The fixture is save_racer with its seat's seat_profile zeroed.
+NAME unprofiled-seat-refused
+CLAIM A save whose seat names no roster entry is refused, not rebuilt nameless.
+KIND invariant
+ARGS --load e2e/fixtures/save_unprofiled_seat --timeout 4
+EXPECT Load failed: load: 'racer' seat names roster id 0, which the roster has no entry for
+EXIT 1
+LIMIT 60

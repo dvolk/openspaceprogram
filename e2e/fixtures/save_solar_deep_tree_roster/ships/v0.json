@@ -34,7 +34,7 @@
           ],
           "id": "kerbal_1",
           "part": "kerbal",
-          "seat_name": "kerbal",
+          "seat_profile": 1,
           "stage": 1,
           "uid": 5
         }
@@ -120,15 +120,6 @@
         0
       ],
       "id": "cargo_probe",
-      "parent": 1,
-      "part": "cargo",
-      "pos": [
-        0.0,
-        0.5,
-        0.0
-      ],
-      "stage": 1,
-      "uid": 100,
       "inventory": [
         {
           "fuel": [
@@ -142,9 +133,6 @@
             0
           ],
           "id": "cargo_n16",
-          "part": "cargo",
-          "stage": 1,
-          "uid": 216,
           "inventory": [
             {
               "fuel": [
@@ -158,9 +146,6 @@
                 0
               ],
               "id": "cargo_n15",
-              "part": "cargo",
-              "stage": 1,
-              "uid": 215,
               "inventory": [
                 {
                   "fuel": [
@@ -174,9 +159,6 @@
                     0
                   ],
                   "id": "cargo_n14",
-                  "part": "cargo",
-                  "stage": 1,
-                  "uid": 214,
                   "inventory": [
                     {
                       "fuel": [
@@ -190,9 +172,6 @@
                         0
                       ],
                       "id": "cargo_n13",
-                      "part": "cargo",
-                      "stage": 1,
-                      "uid": 213,
                       "inventory": [
                         {
                           "fuel": [
@@ -206,9 +185,6 @@
                             0
                           ],
                           "id": "cargo_n12",
-                          "part": "cargo",
-                          "stage": 1,
-                          "uid": 212,
                           "inventory": [
                             {
                               "fuel": [
@@ -222,9 +198,6 @@
                                 0
                               ],
                               "id": "cargo_n11",
-                              "part": "cargo",
-                              "stage": 1,
-                              "uid": 211,
                               "inventory": [
                                 {
                                   "fuel": [
@@ -238,9 +211,6 @@
                                     0
                                   ],
                                   "id": "cargo_n10",
-                                  "part": "cargo",
-                                  "stage": 1,
-                                  "uid": 210,
                                   "inventory": [
                                     {
                                       "fuel": [
@@ -254,9 +224,6 @@
                                         0
                                       ],
                                       "id": "cargo_n9",
-                                      "part": "cargo",
-                                      "stage": 1,
-                                      "uid": 209,
                                       "inventory": [
                                         {
                                           "fuel": [
@@ -270,9 +237,6 @@
                                             0
                                           ],
                                           "id": "cargo_n8",
-                                          "part": "cargo",
-                                          "stage": 1,
-                                          "uid": 208,
                                           "inventory": [
                                             {
                                               "fuel": [
@@ -286,9 +250,6 @@
                                                 0
                                               ],
                                               "id": "cargo_n7",
-                                              "part": "cargo",
-                                              "stage": 1,
-                                              "uid": 207,
                                               "inventory": [
                                                 {
                                                   "fuel": [
@@ -302,9 +263,6 @@
                                                     0
                                                   ],
                                                   "id": "cargo_n6",
-                                                  "part": "cargo",
-                                                  "stage": 1,
-                                                  "uid": 206,
                                                   "inventory": [
                                                     {
                                                       "fuel": [
@@ -318,9 +276,6 @@
                                                         0
                                                       ],
                                                       "id": "cargo_n5",
-                                                      "part": "cargo",
-                                                      "stage": 1,
-                                                      "uid": 205,
                                                       "inventory": [
                                                         {
                                                           "fuel": [
@@ -334,9 +289,6 @@
                                                             0
                                                           ],
                                                           "id": "cargo_n4",
-                                                          "part": "cargo",
-                                                          "stage": 1,
-                                                          "uid": 204,
                                                           "inventory": [
                                                             {
                                                               "fuel": [
@@ -350,9 +302,6 @@
                                                                 0
                                                               ],
                                                               "id": "cargo_n3",
-                                                              "part": "cargo",
-                                                              "stage": 1,
-                                                              "uid": 203,
                                                               "inventory": [
                                                                 {
                                                                   "fuel": [
@@ -366,9 +315,6 @@
                                                                     0
                                                                   ],
                                                                   "id": "cargo_n2",
-                                                                  "part": "cargo",
-                                                                  "stage": 1,
-                                                                  "uid": 202,
                                                                   "inventory": [
                                                                     {
                                                                       "fuel": [
@@ -382,9 +328,6 @@
                                                                         0
                                                                       ],
                                                                       "id": "cargo_n1",
-                                                                      "part": "cargo",
-                                                                      "stage": 1,
-                                                                      "uid": 201,
                                                                       "inventory": [
                                                                         {
                                                                           "fuel": [
@@ -402,39 +345,96 @@
                                                                           "stage": 1,
                                                                           "uid": 200
                                                                         }
-                                                                      ]
+                                                                      ],
+                                                                      "part": "cargo",
+                                                                      "stage": 1,
+                                                                      "uid": 201
                                                                     }
-                                                                  ]
+                                                                  ],
+                                                                  "part": "cargo",
+                                                                  "stage": 1,
+                                                                  "uid": 202
                                                                 }
-                                                              ]
+                                                              ],
+                                                              "part": "cargo",
+                                                              "stage": 1,
+                                                              "uid": 203
                                                             }
-                                                          ]
+                                                          ],
+                                                          "part": "cargo",
+                                                          "stage": 1,
+                                                          "uid": 204
                                                         }
-                                                      ]
+                                                      ],
+                                                      "part": "cargo",
+                                                      "stage": 1,
+                                                      "uid": 205
                                                     }
-                                                  ]
+                                                  ],
+                                                  "part": "cargo",
+                                                  "stage": 1,
+                                                  "uid": 206
                                                 }
-                                              ]
+                                              ],
+                                              "part": "cargo",
+                                              "stage": 1,
+                                              "uid": 207
                                             }
-                                          ]
+                                          ],
+                                          "part": "cargo",
+                                          "stage": 1,
+                                          "uid": 208
                                         }
-                                      ]
+                                      ],
+                                      "part": "cargo",
+                                      "stage": 1,
+                                      "uid": 209
                                     }
-                                  ]
+                                  ],
+                                  "part": "cargo",
+                                  "stage": 1,
+                                  "uid": 210
                                 }
-                              ]
+                              ],
+                              "part": "cargo",
+                              "stage": 1,
+                              "uid": 211
                             }
-                          ]
+                          ],
+                          "part": "cargo",
+                          "stage": 1,
+                          "uid": 212
                         }
-                      ]
+                      ],
+                      "part": "cargo",
+                      "stage": 1,
+                      "uid": 213
                     }
-                  ]
+                  ],
+                  "part": "cargo",
+                  "stage": 1,
+                  "uid": 214
                 }
-              ]
+              ],
+              "part": "cargo",
+              "stage": 1,
+              "uid": 215
             }
-          ]
+          ],
+          "part": "cargo",
+          "stage": 1,
+          "uid": 216
         }
-      ]
+      ],
+      "parent": 1,
+      "part": "cargo",
+      "pos": [
+        0.0,
+        0.5,
+        0.0
+      ],
+      "stage": 1,
+      "uid": 100
     }
   ],
   "pose": {

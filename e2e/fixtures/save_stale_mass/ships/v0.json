@@ -19,6 +19,7 @@
         0.0
       ],
       "id": "capsule_1",
+      "mass": 0.0,
       "part": "capsule",
       "seats": [
         {
@@ -34,14 +35,13 @@
           ],
           "id": "kerbal_1",
           "part": "kerbal",
-          "seat_name": "kerbal",
+          "seat_profile": 1,
           "stage": 1,
           "uid": 5
         }
       ],
       "stage": 1,
-      "uid": 1,
-      "mass": 0.0
+      "uid": 1
     },
     {
       "fuel": [
@@ -99,6 +99,7 @@
         0.0
       ],
       "id": "engine_1",
+      "mass": 99999.0,
       "parent": 3,
       "part": "engine",
       "pos": [
@@ -107,8 +108,7 @@
         -4.25
       ],
       "stage": 1,
-      "uid": 4,
-      "mass": 99999.0
+      "uid": 4
     }
   ],
   "pose": {

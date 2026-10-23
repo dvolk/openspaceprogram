@@ -34,7 +34,7 @@
           ],
           "id": "kerbal_1",
           "part": "kerbal",
-          "seat_name": "kerbal",
+          "seat_profile": 1,
           "stage": 1,
           "uid": 5
         },
@@ -51,7 +51,7 @@
           ],
           "id": "kerbal_1",
           "part": "kerbal",
-          "seat_name": "kerbal #2",
+          "seat_profile": 2,
           "stage": 1,
           "uid": 6
         }

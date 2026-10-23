@@ -3,6 +3,15 @@
   "exhaust_scale": 1.0,
   "format": 4,
   "parts": "res/data/parts.json",
+  "roster": [
+    {
+      "engineering": 3,
+      "id": 1,
+      "name": "kerbal",
+      "piloting": 3,
+      "science": 3
+    }
+  ],
   "saved_at": "2026-09-25T02:22:09Z",
   "ships": [
     "v0"

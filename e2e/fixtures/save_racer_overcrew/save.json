@@ -2,6 +2,22 @@
   "active_ship": "v0",
   "format": 4,
   "parts": "res/data/parts.json",
+  "roster": [
+    {
+      "engineering": 3,
+      "id": 1,
+      "name": "kerbal",
+      "piloting": 3,
+      "science": 3
+    },
+    {
+      "engineering": 3,
+      "id": 2,
+      "name": "kerbal #2",
+      "piloting": 3,
+      "science": 3
+    }
+  ],
   "saved_at": "2026-09-20T01:25:18",
   "ships": [
     "v0"

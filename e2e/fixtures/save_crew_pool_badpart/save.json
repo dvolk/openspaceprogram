@@ -14,7 +14,6 @@
       ],
       "id": "kerbal_1",
       "part": "fuel_tank",
-      "seat_name": "Bram",
       "seat_profile": 2,
       "stage": 1,
       "uid": 2
@@ -32,7 +31,6 @@
       ],
       "id": "kerbal_1",
       "part": "kerbal",
-      "seat_name": "Cyd",
       "seat_profile": 3,
       "stage": 1,
       "uid": 3

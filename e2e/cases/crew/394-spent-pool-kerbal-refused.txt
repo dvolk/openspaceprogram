@@ -1,0 +1,18 @@
+# A kerbal IS a roster entry: crew.h calls the roster the cast, and nothing in
+# the game creates a person -- mintCrewPool at boot and a load's crew_pool are
+# the only sources, and both name the roster they came from. So a spent pad pool
+# means there is no person left to place, and the spawn is refused.
+# It used to mint a suit off the def and give it an anonymous profile (id 0):
+# that person could never be picked by the VAB seat combo or takeCrewById, yet
+# returnCrew stood them back on the pad, so the pad could outnumber the cast
+# (#394).
+NAME spent-pool-kerbal-refused
+CLAIM A kerbal spawned on a spent pad pool is refused, not minted off the def.
+KIND invariant
+ARGS --kerbals e2e/fixtures/tiny_kerbals.json --time-accel 1 --timeout 6
+ARGS --startship Solo,res/ships/kerbal.json,Kerbin,pad
+ARGS --startship k2,res/ships/kerbal.json,Kerbin,rot-orbit
+EXPECT Roster: 1 kerbal(s) from e2e/fixtures/tiny_kerbals.json
+EXPECT error: place_vehicle: no kerbal on the home pad for 'k2': the cast is already in the world
+EXIT 1
+LIMIT 60
