@@ -12,15 +12,19 @@
 #include "shipdef.h"  // load_ship_def, PartDef, PartsCatalog, resolveHullMargin
 #include "texture.h"  // get_texture
 
-Part *make_part(const PartDef &pd, double mass, double hull_margin,
+Part *make_part(const PartDef &pd, double hull_margin,
                 const std::vector<double> *fuel,
                 const std::vector<Experiment> *experiments,
                 const std::string &id, Shader *partsshader)
 {
+    /* A physical part always weighs what its def says. The catalog refuses
+       mass <= 0 (shipdef.cpp); only a virtual fuel_link def has none, and it
+       never reaches here -- it is a fuel-group edge, never a Body. */
+    assert(pd.mass > 0.0);
     Mesh *mesh = get_mesh(std::string("res/") + pd.mesh);
     Texture *tex = get_texture(std::string("res/") + pd.texture);
     Part *p = new Part;
-    p->body = create_part_body(mesh, partsshader, tex, (float)mass, hull_margin);
+    p->body = create_part_body(mesh, partsshader, tex, (float)pd.mass, hull_margin);
     p->def = &pd;
     p->id = id;
     /* The chute canopy and the engine shroud are resolved at build time, so every
@@ -81,8 +85,8 @@ Part *make_suit(const ShipDef &def, Shader *partsshader)
     assert(def.parts.size() == 1 && def.parts[0].def != nullptr
            && def.parts[0].def->type == "kerbal");
     const PartDef *pd = def.parts[0].def;
-    // A fresh part takes the def's own mass and the def's ship-level margin.
-    Part *suit = make_part(*pd, pd->mass,
+    // A fresh part takes the def's ship-level margin; its mass is the def's.
+    Part *suit = make_part(*pd,
                            resolveHullMargin(def.hull_margin, pd->hull_margin),
                            nullptr, nullptr, def.parts[0].id, partsshader);
     /* Seeded like Vehicle::init does for a tank: a partly-burned suit re-seeds

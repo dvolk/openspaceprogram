@@ -1,0 +1,31 @@
+NAME saved-part-mass-is-ignored
+CLAIM A save's own per-part mass cannot outweigh the parts catalog.
+KIND invariant
+ARGS --timeout 9 --mass-log
+# Reached by the Save/Load sheet, not --load: Game Debug ticks the e2e
+# fixture root, the sheet picks the "fixtures" game, the slot filter
+# narrows the fixture list to this one row, and row + Load button do
+# the rest. A sheet load starts paused, so the press climbs the warp ladder.
+ARGS --sim-press 500,0,F1
+ARGS --ui-click 1000,"Game Debug/Load e2e fixture saves"
+ARGS --sim-press 1500,0,F1
+ARGS --ui-click 2000,"Title Menu/Save/Load"
+ARGS --ui-click 2500,"fixtures"
+ARGS --ui-type 3000,"Save/Load/##filter",save_stale_mass
+ARGS --ui-click 3800,"save_stale_mass"
+ARGS --ui-click 4000,"Save/Load/Load##saveload"
+ARGS --sim-press 4300,0,PERIOD
+# A part's mass is catalog data: nothing mutates it at runtime, so a save that
+# carries its own copy is only ever a copy -- and until #389 that copy WON on
+# load, which froze a career ship's mass against a rebalanced catalog and let
+# stale fixture copies drift unnoticed (the save_racer capsule carried a whole
+# crew member twice, 97.05 kg of it). The fixture here is save_racer with the
+# capsule's saved mass set to 0 and the engine's to 99999: had the save still
+# owned mass, the hull would read ~98116 kg. It reads what the parts file says.
+EXPECT Loaded game from e2e/fixtures/save_stale_mass (active: racer)
+EXPECT [toast] Loaded fixtures/save_stale_mass
+CHECK abs(max(float(m) for m in re.findall(r'\[mass\] t=\S+ ship="racer" parts=\d+ mass=([\d.]+) kg', out)) - 2766.63) < 0.05
+FORBID Load failed
+FORBID [load] refused
+FORBID error:
+FORBID FAILED

@@ -1,0 +1,26 @@
+NAME saved-virtual-part-refused
+CLAIM A save that names a virtual part (a fuel_link) as a body is refused, not built.
+KIND invariant
+ARGS --timeout 9 --mass-log
+# Reached by the Save/Load sheet, not --load: Game Debug ticks the e2e
+# fixture root, the sheet picks the "fixtures" game, the slot filter
+# narrows the fixture list to this one row, and row + Load button do
+# the rest.
+ARGS --sim-press 500,0,F1
+ARGS --ui-click 1000,"Game Debug/Load e2e fixture saves"
+ARGS --sim-press 1500,0,F1
+ARGS --ui-click 2000,"Title Menu/Save/Load"
+ARGS --ui-click 2500,"fixtures"
+ARGS --ui-type 3000,"Save/Load/##filter",save_virtual_part
+ARGS --ui-click 3800,"save_virtual_part"
+ARGS --ui-click 4000,"Save/Load/Load##saveload"
+# A fuel_link def is a directed fuel-group edge: the catalog skips its
+# mesh/mass/size validation (shipdef.cpp), so minting a Part from it asserts in
+# make_part and costs the process -- a hand-edited save should cost a sentence,
+# not a career. The fixture is save_racer with a fuel_link appended as a real
+# part at uid 77.
+EXPECT load: saved ship 'racer' part 'fl_as_part' is the virtual part 'fuel_link', which has no body to build
+EXPECT [load] refused
+FORBID Assertion
+FORBID error:
+FORBID FAILED

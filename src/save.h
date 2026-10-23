@@ -5,8 +5,9 @@
 // plus dir/ships/<slug>.json, one file per VEHICLE -- a vessel or a walking
 // kerbal. A seated person is not one: they are a `seats` element of their
 // capsule's part entry (SavePart). The world re-derives from the analytic clock,
-// so only the ships are authoritative: part structure, tank contents, mass,
-// pose, staging, docking, crew.
+// so only the ships are authoritative: part structure, tank contents, pose,
+// staging, docking, crew. A part's mass is NOT authoritative here -- it is
+// catalog data, read off the PartDef on load (#389).
 // Pure JSON (de)serialization and the save-directory helpers are header-only
 // (unit-testable headless); the Game-coupled capture/restore lives in save.cpp.
 
@@ -43,9 +44,18 @@ struct CrewRoster;     // crew.h; only needed by reference below
 // A part instance in a saved ship. Two meanings of 0: a part's own `uid` must be
 // nonzero (0 = a save predating part identity, refused on load), while 0 in a
 // *reference* is the legitimate "absent" default. `pos`/`rot` are ship-local
-// (frame-S); `mass` is the part's OWN mass (a seat occupant's mass rides the
-// containment edge, part.h); `hull_margin` is the resolved collision margin
-// (-1 = absent).
+// (frame-S); `hull_margin` is the resolved collision margin (-1 = absent).
+/* Mass is NOT saved (#389). Nothing mutates a part's mass at runtime -- the only
+   writes to Body::mass are at creation (body.cpp) and the catalog parse -- so a
+   saved mass was always a copy of PartDef::mass, and on load that copy WON. A
+   rebalanced catalog therefore left a career ship's mass frozen while its hull,
+   drag, capacities and thrust all moved, and the copies had already rotted: the
+   save_racer fixtures carried a capsule 97.05 kg heavy, which is a whole crew
+   member double-counted from before the seats refactor (#291). `hull_margin`
+   stays because it is resolved from a per-ship choice the save is the only
+   record of; mass is table data. Same call #383 made for capacities.
+   No format bump: dropping a written key cannot be misread in either direction
+   (save.h's rule), so a pre-existing save just stops carrying a dead field. */
 struct SavePart {
     std::string part;
     uint64_t uid = 0;        // the key every cross-part reference uses; 0 = absent
@@ -56,7 +66,6 @@ struct SavePart {
     int chute = 0;
     glm::dvec3 pos = glm::dvec3(0.0);
     glm::dmat3 rot = glm::dmat3(1.0);
-    double mass = 0.0;
     double hull_margin = -1.0;
     std::vector<double> fuel;   // one entry per ResourceType (Num)
     /* Science experiments on this part (v1 ships them only on kerbal suits).
@@ -359,7 +368,6 @@ inline nlohmann::json savePartToJson(const SavePart &p) {
     if(p.chute != 0) { j["chute"] = p.chute; }
     if(p.pos != glm::dvec3(0.0)) { j["pos"] = std::vector<double>({p.pos.x, p.pos.y, p.pos.z}); }
     if(p.rot != glm::dmat3(1.0)) { j["rot"] = mat3ToVec(p.rot); }
-    j["mass"]   = p.mass;
     if(p.hull_margin >= 0.0) { j["hull_margin"] = p.hull_margin; }
     j["fuel"]   = p.fuel;
     if(!p.experiments.empty()) { j["experiments"] = experimentListToJson(p.experiments); }
@@ -389,7 +397,6 @@ inline SavePart savePartFromJson(const nlohmann::json &j) {
     if(j.contains("chute") && j["chute"].is_number()) { p.chute = j["chute"].get<int>(); }
     if(j.contains("pos") && j["pos"].is_array()) { p.pos = vec3FromJson(j["pos"]); }
     if(j.contains("rot") && j["rot"].is_array()) { p.rot = mat3FromVec(j["rot"]); }
-    if(j.contains("mass") && j["mass"].is_number()) { p.mass = j["mass"].get<double>(); }
     if(j.contains("hull_margin") && j["hull_margin"].is_number()) { p.hull_margin = j["hull_margin"].get<double>(); }
     if(j.contains("fuel") && j["fuel"].is_array()) {
         for(auto &&f : j["fuel"]) { if(f.is_number()) { p.fuel.push_back(f.get<double>()); } }

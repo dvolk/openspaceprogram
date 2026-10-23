@@ -260,13 +260,18 @@ constexpr const char *const kKerbalShipDef = "res/ships/kerbal.json";
 
 /* The ONE way a Part is minted from a catalog def (#278): render assets,
    collision hull, id, resources, findings, the chute canopy and the engine
-   shroud. Everything the call sites used to differ in -- a save's own mass /
+   shroud. Everything the call sites used to differ in -- a save's own
    hull_margin / fuel / findings vs the catalog's for a fresh part -- is an
    argument, so a field added to Part lands in every path or none. `fuel` and
    `experiments` may be null: a fresh part then takes capacity from the def,
    nothing in it, and no findings. Callers keep their own refusals (the e2e
-   cases pin those messages), stage + chute deploy state, and identity. */
-Part *make_part(const PartDef &pd, double mass, double hull_margin,
+   cases pin those messages), stage + chute deploy state, and identity.
+   Mass is deliberately NOT an argument (#389): it is catalog data, so a Part's
+   mass is always its def's and there is no path that mints a part weighing
+   something else. The save used to carry its own copy and win on load, which
+   froze a career ship's mass against a rebalanced catalog and let stale fixture
+   copies drift for months unnoticed. */
+Part *make_part(const PartDef &pd, double hull_margin,
                 const std::vector<double> *fuel,
                 const std::vector<Experiment> *experiments,
                 const std::string &id, Shader *partsshader);

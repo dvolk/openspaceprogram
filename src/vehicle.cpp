@@ -81,9 +81,9 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
            the chute canopy and the engine shroud. build_ship hand-rolled this
            block, so a field added to Part landed in the save path and not here
            (#278 caught exactly that for the shroud). A fresh ship takes the
-           def's own mass, the def's ship-level margin, empty tanks and no
-           findings; build_ship's Vehicle::init() call then tops every tank up. */
-        Part *part = make_part(pd, pd.mass,
+           def's ship-level margin, empty tanks and no findings; build_ship's
+           Vehicle::init() call then tops every tank up. */
+        Part *part = make_part(pd,
                                resolveHullMargin(def.hull_margin, pd.hull_margin),
                                nullptr, nullptr, physical[i].id, partsshader);
         part->stage = physical[i].stage;
@@ -890,7 +890,18 @@ void Vehicle::rebuildCompound() {
         total += masses[i];
         compoundParts.push_back(p);
     }
-    /* calculatePrincipalAxisTransform btAsserts every child mass > 0 */
+    /* Bullet's calculatePrincipalAxisTransform btAsserts every child mass > 0,
+       but btAssert compiles out unless BT_DEBUG is defined (btScalar.h) and we
+       never define it, so that guard is not live in ANY config we build (#389).
+       The invariant is ours: a zero-mass child would keep its collision hull and
+       its drag silhouette while weighing nothing, and the compound would stay
+       self-consistent enough that --mass-log reports mass and hullmass agreeing.
+       make_part asserts the def's mass, so a zero here means a Part was minted
+       some other way or its contents went negative. */
+    for(size_t i = 0; i < parts.size(); i++) {
+        assert(parts[i]->effectiveMass() > 0.0
+               && "a part in the compound weighs nothing");
+    }
     if(total <= 0) { delete inS; compoundParts.clear(); aeroHull.clear(); return; }
 
     btVector3 inertiaDiag(0, 0, 0);

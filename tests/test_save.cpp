@@ -64,7 +64,6 @@ int main() {
     root.stage = 1;
     root.pos = glm::dvec3(0.0);
     root.rot = glm::dmat3(1.0);
-    root.mass = 1246.87;
     root.hull_margin = -1.0;   // unset (omitted in the JSON)
     for(int r = 0; r < 3; r++) {
         root.fuel.push_back(r == 2 ? 1999.8 : 0.0);   // EC = index 2
@@ -81,7 +80,6 @@ int main() {
     tank.chute = 1;          // deployed (ChuteDeployed, part.h)
     tank.pos = glm::dvec3(0.0, 0.0, -2.25);
     tank.rot = glm::dmat3(1.0);
-    tank.mass = 896.7;
     tank.hull_margin = 0.1;
     for(int r = 0; r < 3; r++) {
         tank.fuel.push_back((r == 0 || r == 1) ? 406.58 : 0.0);   // Hydrogen=0, LOX=1
@@ -131,7 +129,6 @@ int main() {
         CHECK(a.chute == b.chute);
         CHECK(vnear(a.pos, b.pos));
         CHECK(mnear(a.rot, b.rot));
-        CHECK(near(a.mass, b.mass));
         CHECK(near(a.hull_margin, b.hull_margin));
         CHECK(a.fuel.size() == b.fuel.size());
         for(size_t r = 0; r < a.fuel.size() && r < b.fuel.size(); r++) {
@@ -391,7 +388,6 @@ int main() {
         container.part = "cargo";
         container.uid = 201;
         container.id = "cargo_1";
-        container.mass = 250.0;
         container.fuel = std::vector<double>(8, 0.0);
 
         // item 1: a mono tank (directly in the container)
@@ -399,7 +395,6 @@ int main() {
         item1.part = "mono_tank_r1";
         item1.uid = 202;
         item1.id = "mono_1";
-        item1.mass = 88.99;
         item1.fuel = std::vector<double>(8, 0.0);
         item1.fuel[(int)ResourceType::Hydrazine] = 42.5;
         container.inventory.push_back(item1);
@@ -409,7 +404,6 @@ int main() {
         item2.part = "kerbal";
         item2.uid = 203;
         item2.id = "suit_1";
-        item2.mass = 97.05;
         item2.fuel = std::vector<double>(8, 0.0);
         item2.fuel[(int)ResourceType::Hydrazine] = 3.0;
         // item 3: a small part nested inside item2
@@ -417,7 +411,6 @@ int main() {
         item3.part = "cargo";
         item3.uid = 204;
         item3.id = "nested_cargo_1";
-        item3.mass = 250.0;
         item3.fuel = std::vector<double>(8, 0.0);
         item2.inventory.push_back(item3);
         container.inventory.push_back(item2);
@@ -449,14 +442,12 @@ int main() {
         cap.part = "capsule";
         cap.uid = 401;
         cap.id = "capsule_1";
-        cap.mass = 1149.82;
         cap.fuel = std::vector<double>(8, 0.0);
 
         SavePart ash;
         ash.part = "kerbal";
         ash.uid = 402;
         ash.id = "kerbal_1";
-        ash.mass = 87.05;
         ash.fuel = std::vector<double>(8, 0.0);
         ash.fuel[(int)ResourceType::Hydrazine] = 6.25;
         ash.seat_profile = 1;
@@ -464,7 +455,6 @@ int main() {
         SavePart pocket;
         pocket.part = "mono_tank_r1";
         pocket.uid = 404;
-        pocket.mass = 88.99;
         pocket.fuel = std::vector<double>(8, 0.0);
         ash.inventory.push_back(pocket);
         cap.seats.push_back(ash);
@@ -472,7 +462,6 @@ int main() {
         SavePart anonymous;
         anonymous.part = "kerbal";
         anonymous.uid = 403;
-        anonymous.mass = 87.05;
         anonymous.seat_name = "Nobody";
         cap.seats.push_back(anonymous);
 
@@ -531,7 +520,6 @@ int main() {
         pocket.part = "mono_tank_r1";
         pocket.uid = 301;
         pocket.id = "pocket_tank_1";
-        pocket.mass = 88.99;
         pocket.fuel = std::vector<double>(8, 0.0);
         pocket.fuel[(int)ResourceType::Hydrazine] = 78.54;
         // and a nested item, depth-first like a ship part's inventory
@@ -539,7 +527,6 @@ int main() {
         nested.part = "cargo";
         nested.uid = 302;
         nested.id = "pocket_cargo_1";
-        nested.mass = 250.0;
         nested.fuel = std::vector<double>(8, 0.0);
         pocket.inventory.push_back(nested);
         crewInv.suit_inventory.push_back(pocket);

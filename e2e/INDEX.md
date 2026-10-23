@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 254 |
+| `invariant` | a behaviour or a player route the game must keep | 256 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 34 |
 | `harness` | CLI/test-engine plumbing, not game spec | 12 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **304** |
+| | **total** | **306** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -179,7 +179,7 @@ judgement. Select by number, name or path, e.g.
 | `vab/307-vab-clear.txt` | invariant | Clear asks first, empties the workspace, then refuses when already empty. |
 | `vab/308-vab-dev-vehicles.txt` | invariant | Dev vehicles appear in the Load picker, below the fold until scrolled. |
 
-## save (49)
+## save (51)
 
 | case | kind | pins |
 |---|---|---|
@@ -232,6 +232,8 @@ judgement. Select by number, name or path, e.g.
 | `save/317-recover-leaves-nothing-flown.txt` | invariant | The writer records an empty active_ship after the last vessel is recovered. |
 | `save/318-reload-refused-active-ship.txt` | invariant | An in-game reload with a bad active_ship refuses and the game survives. |
 | `save/319-deep-tree-rolls-back-roster.txt` | invariant | A build-time refusal after a roster swap restores the running roster. |
+| `save/380-saved-part-mass-is-ignored.txt` | invariant | A save's own per-part mass cannot outweigh the parts catalog. |
+| `save/381-saved-virtual-part-refused.txt` | invariant | A save that names a virtual part (a fuel_link) as a body is refused, not built. |
 
 ## ui (45)
 

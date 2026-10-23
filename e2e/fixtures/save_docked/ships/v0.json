@@ -26,7 +26,6 @@
         0.0
       ],
       "id": "",
-      "mass": 50.0,
       "part": "docking_port_r1",
       "stage": 1,
       "uid": 8
@@ -43,7 +42,6 @@
         0.0
       ],
       "id": "",
-      "mass": 1149.8199462890625,
       "parent": 8,
       "part": "capsule",
       "pos": [
@@ -66,7 +64,6 @@
         0.0
       ],
       "id": "",
-      "mass": 31.420000076293945,
       "parent": 9,
       "part": "rcs_r1",
       "pos": [
@@ -89,7 +86,6 @@
         0.0
       ],
       "id": "",
-      "mass": 10.45,
       "parent": 10,
       "part": "mono_tank_r1",
       "pos": [
@@ -112,7 +108,6 @@
         0.0
       ],
       "id": "",
-      "mass": 100.52999877929688,
       "parent": 11,
       "part": "reaction_wheel",
       "pos": [
@@ -135,7 +130,6 @@
         0.0
       ],
       "id": "",
-      "mass": 125.35,
       "parent": 12,
       "part": "tank_r1h3",
       "pos": [
@@ -158,7 +152,6 @@
         0.0
       ],
       "id": "",
-      "mass": 500.0,
       "parent": 13,
       "part": "engine",
       "pos": [
@@ -181,7 +174,6 @@
         0.0
       ],
       "id": "",
-      "mass": 500.0,
       "parent": 8,
       "part": "engine",
       "pos": [
@@ -215,7 +207,6 @@
         0.0
       ],
       "id": "",
-      "mass": 125.35,
       "parent": 1,
       "part": "tank_r1h3",
       "pos": [
@@ -249,7 +240,6 @@
         0.0
       ],
       "id": "",
-      "mass": 100.52999877929688,
       "parent": 2,
       "part": "reaction_wheel",
       "pos": [
@@ -283,7 +273,6 @@
         0.0
       ],
       "id": "",
-      "mass": 10.45,
       "parent": 3,
       "part": "mono_tank_r1",
       "pos": [
@@ -317,7 +306,6 @@
         0.0
       ],
       "id": "",
-      "mass": 31.420000076293945,
       "parent": 4,
       "part": "rcs_r1",
       "pos": [
@@ -351,7 +339,6 @@
         0.0
       ],
       "id": "",
-      "mass": 1149.8199462890625,
       "parent": 5,
       "part": "capsule",
       "pos": [
@@ -385,7 +372,6 @@
         0.0
       ],
       "id": "",
-      "mass": 50.0,
       "parent": 6,
       "part": "docking_port_r1",
       "pos": [

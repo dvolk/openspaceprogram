@@ -35,7 +35,6 @@
         0.0
       ],
       "id": "",
-      "mass": 50.0,
       "part": "docking_port_r1",
       "stage": 1,
       "uid": 16
@@ -52,7 +51,6 @@
         0.0
       ],
       "id": "",
-      "mass": 1149.8199462890625,
       "parent": 16,
       "part": "capsule",
       "pos": [
@@ -75,7 +73,6 @@
         0.0
       ],
       "id": "",
-      "mass": 31.420000076293945,
       "parent": 17,
       "part": "rcs_r1",
       "pos": [
@@ -98,7 +95,6 @@
         0.0
       ],
       "id": "",
-      "mass": 10.449999809265137,
       "parent": 18,
       "part": "mono_tank_r1",
       "pos": [
@@ -121,7 +117,6 @@
         0.0
       ],
       "id": "",
-      "mass": 100.52999877929688,
       "parent": 19,
       "part": "reaction_wheel",
       "pos": [
@@ -144,7 +139,6 @@
         0.0
       ],
       "id": "",
-      "mass": 125.3499984741211,
       "parent": 20,
       "part": "tank_r1h3",
       "pos": [
@@ -167,7 +161,6 @@
         0.0
       ],
       "id": "",
-      "mass": 500.0,
       "parent": 21,
       "part": "engine",
       "pos": [

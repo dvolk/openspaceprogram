@@ -19,7 +19,6 @@
         0.0
       ],
       "id": "capsule_1",
-      "mass": 1246.8699493408203,
       "part": "capsule",
       "stage": 1,
       "uid": 1
@@ -36,7 +35,6 @@
         0.0
       ],
       "id": "reaction_wheel_1",
-      "mass": 100.52999877929688,
       "parent": 1,
       "part": "reaction_wheel",
       "pos": [
@@ -59,7 +57,6 @@
         0.0
       ],
       "id": "fuel_tank_1",
-      "mass": 83.57,
       "parent": 2,
       "part": "fuel_tank",
       "pos": [
@@ -82,7 +79,6 @@
         0.0
       ],
       "id": "engine_1",
-      "mass": 500.0,
       "parent": 3,
       "part": "engine",
       "pos": [

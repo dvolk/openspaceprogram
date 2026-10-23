@@ -32,7 +32,6 @@
         0.0
       ],
       "id": "capsule_1",
-      "mass": 1149.8199462890625,
       "part": "no_such_part",
       "seats": [
         {
@@ -47,7 +46,6 @@
             0.0
           ],
           "id": "kerbal_1",
-          "mass": 87.05000305175781,
           "part": "kerbal",
           "seat_name": "Ace",
           "seat_profile": 2,
@@ -71,7 +69,6 @@
         0.0
       ],
       "id": "reaction_wheel_1",
-      "mass": 100.52999877929688,
       "parent": 4,
       "part": "reaction_wheel",
       "pos": [
@@ -94,7 +91,6 @@
         0.0
       ],
       "id": "fuel_tank_1",
-      "mass": 83.56999969482422,
       "parent": 5,
       "part": "fuel_tank",
       "pos": [
@@ -117,7 +113,6 @@
         0.0
       ],
       "id": "engine_1",
-      "mass": 500.0,
       "parent": 6,
       "part": "engine",
       "pos": [

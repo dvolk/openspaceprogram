@@ -112,6 +112,16 @@ static std::string refuseDoubleClaimId(std::set<uint64_t> &claimed, uint64_t id)
     return "load: two people claim roster id " + std::to_string(id);
 }
 
+/* A virtual def (a fuel_link) is a directed fuel-group edge, not a Body: the
+   catalog skips its mesh/mass/size validation (shipdef.cpp), so minting a Part
+   from it asserts in make_part. Refuse it wherever a save NAMES a part, so a
+   hand-edited file costs a sentence rather than the process (#389). */
+static std::string refuseVirtualPartDef(const PartDef &pd, const std::string &who) {
+    if(!pd.fuel_link) { return ""; }
+    return "load: " + who + " is the virtual part '" + pd.name
+           + "', which has no body to build";
+}
+
 nlohmann::json readJsonFile(const std::string &path) {
     std::ifstream f(path.c_str());
     if(!f.is_open()) { throw std::runtime_error("load: cannot open " + path); }
@@ -154,7 +164,6 @@ SavePart saveItemPart(const Part *c) {
     si.part = c->def->name;
     si.uid = c->uid;
     si.id = c->id;
-    si.mass = c->body->mass;
     si.hull_margin = c->body->hull_margin;
     for(int r = 0; r < (int)ResourceType::Num; r++) {
         si.fuel.push_back(c->resources.current[r]);
@@ -293,6 +302,11 @@ static std::string validateInventoryArray(const PartsCatalog &cat,
             return "load: '" + shipName + "' inventory item '" + si.part
                    + "' is not in the parts file";
         }
+        if(std::string why = refuseVirtualPartDef(
+               *ipd, "'" + shipName + "' inventory item '" + si.part + "'");
+           !why.empty()) {
+            return why;
+        }
         /* A kerbal-type part is a person, not cargo. Parked anywhere other than
            a capsule it is a seat occupant in a non-capsule, which
            checkPartInvariants refuses -- and rebuildCompound asserts on that, so
@@ -325,7 +339,7 @@ void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
     for(size_t i = 0; i < saved.size(); i++) {
         const SavePart &si = saved[i];
         const PartDef *pd = cat.find(si.part);   // validated above
-        Part *item = make_part(*pd, si.mass, si.hull_margin,
+        Part *item = make_part(*pd, si.hull_margin,
                                &si.fuel, &si.experiments, si.id, g.partsshader);
         container->contents.push_back(item);
         item->container = container;
@@ -342,7 +356,7 @@ void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
    entry wins over the name the file carries. */
 Part *makeSuitPart(Game &g, const SavePart &sp, const PartDef *pd,
                    const KerbalProfile *rosterSrc) {
-    Part *suit = make_part(*pd, sp.mass, sp.hull_margin,
+    Part *suit = make_part(*pd, sp.hull_margin,
                            &sp.fuel, &sp.experiments, sp.id, g.partsshader);
     KerbalProfile prof;
     prof.id = sp.seat_profile;
@@ -464,7 +478,6 @@ SaveShip saveShipFromVehicle(Vehicle *v,
         sp.chute = p->chute;
         sp.pos = p->localPos;
         sp.rot = p->localRot;
-        sp.mass = p->body->mass;
         sp.hull_margin = p->body->hull_margin;
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             sp.fuel.push_back(p->resources.current[r]);
@@ -570,9 +583,13 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
             return "load: saved ship '" + s.name + "' has two parts with uid "
                    + std::to_string(sp.uid);
         }
-        if(cat.find(sp.part) == nullptr) {
+        if(const PartDef *spd = cat.find(sp.part); spd == nullptr) {
             return "load: saved ship '" + s.name + "' has a part '" + sp.part
                    + "' that is no longer in the parts file";
+        } else if(std::string why = refuseVirtualPartDef(
+                      *spd, "saved ship '" + s.name + "' part '" + sp.id + "'");
+                  !why.empty()) {
+            return why;
         }
         if(i > 0 && prior.count(sp.parent) == 0) {
             return "load: saved ship '" + s.name + "' part '" + sp.id
@@ -703,7 +720,7 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
         const SavePart &sp = s.parts[i];
         const PartDef *pd = cat.find(sp.part);
         assert(pd != nullptr);   // validateShipParts refused it otherwise
-        Part *p = make_part(*pd, sp.mass, sp.hull_margin,
+        Part *p = make_part(*pd, sp.hull_margin,
                             &sp.fuel, &sp.experiments, sp.id, g.partsshader);
         // What only a save knows: where the part sits in the staging order and
         // whether its chute was deployed when the ship was saved.

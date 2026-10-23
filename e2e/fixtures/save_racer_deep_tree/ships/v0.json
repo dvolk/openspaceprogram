@@ -19,7 +19,6 @@
         0.0
       ],
       "id": "capsule_1",
-      "mass": 1246.8699493408203,
       "part": "capsule",
       "seats": [
         {
@@ -34,7 +33,6 @@
             0.0
           ],
           "id": "kerbal_1",
-          "mass": 87.05,
           "part": "kerbal",
           "seat_name": "kerbal",
           "stage": 1,
@@ -56,7 +54,6 @@
         0.0
       ],
       "id": "reaction_wheel_1",
-      "mass": 100.52999877929688,
       "parent": 1,
       "part": "reaction_wheel",
       "pos": [
@@ -79,7 +76,6 @@
         0.0
       ],
       "id": "fuel_tank_1",
-      "mass": 83.57,
       "parent": 2,
       "part": "fuel_tank",
       "pos": [
@@ -102,7 +98,6 @@
         0.0
       ],
       "id": "engine_1",
-      "mass": 500.0,
       "parent": 3,
       "part": "engine",
       "pos": [
@@ -125,7 +120,6 @@
         0
       ],
       "id": "cargo_probe",
-      "mass": 100.0,
       "parent": 1,
       "part": "cargo",
       "pos": [
@@ -148,7 +142,6 @@
             0
           ],
           "id": "cargo_n16",
-          "mass": 10.0,
           "part": "cargo",
           "stage": 1,
           "uid": 216,
@@ -165,7 +158,6 @@
                 0
               ],
               "id": "cargo_n15",
-              "mass": 10.0,
               "part": "cargo",
               "stage": 1,
               "uid": 215,
@@ -182,7 +174,6 @@
                     0
                   ],
                   "id": "cargo_n14",
-                  "mass": 10.0,
                   "part": "cargo",
                   "stage": 1,
                   "uid": 214,
@@ -199,7 +190,6 @@
                         0
                       ],
                       "id": "cargo_n13",
-                      "mass": 10.0,
                       "part": "cargo",
                       "stage": 1,
                       "uid": 213,
@@ -216,7 +206,6 @@
                             0
                           ],
                           "id": "cargo_n12",
-                          "mass": 10.0,
                           "part": "cargo",
                           "stage": 1,
                           "uid": 212,
@@ -233,7 +222,6 @@
                                 0
                               ],
                               "id": "cargo_n11",
-                              "mass": 10.0,
                               "part": "cargo",
                               "stage": 1,
                               "uid": 211,
@@ -250,7 +238,6 @@
                                     0
                                   ],
                                   "id": "cargo_n10",
-                                  "mass": 10.0,
                                   "part": "cargo",
                                   "stage": 1,
                                   "uid": 210,
@@ -267,7 +254,6 @@
                                         0
                                       ],
                                       "id": "cargo_n9",
-                                      "mass": 10.0,
                                       "part": "cargo",
                                       "stage": 1,
                                       "uid": 209,
@@ -284,7 +270,6 @@
                                             0
                                           ],
                                           "id": "cargo_n8",
-                                          "mass": 10.0,
                                           "part": "cargo",
                                           "stage": 1,
                                           "uid": 208,
@@ -301,7 +286,6 @@
                                                 0
                                               ],
                                               "id": "cargo_n7",
-                                              "mass": 10.0,
                                               "part": "cargo",
                                               "stage": 1,
                                               "uid": 207,
@@ -318,7 +302,6 @@
                                                     0
                                                   ],
                                                   "id": "cargo_n6",
-                                                  "mass": 10.0,
                                                   "part": "cargo",
                                                   "stage": 1,
                                                   "uid": 206,
@@ -335,7 +318,6 @@
                                                         0
                                                       ],
                                                       "id": "cargo_n5",
-                                                      "mass": 10.0,
                                                       "part": "cargo",
                                                       "stage": 1,
                                                       "uid": 205,
@@ -352,7 +334,6 @@
                                                             0
                                                           ],
                                                           "id": "cargo_n4",
-                                                          "mass": 10.0,
                                                           "part": "cargo",
                                                           "stage": 1,
                                                           "uid": 204,
@@ -369,7 +350,6 @@
                                                                 0
                                                               ],
                                                               "id": "cargo_n3",
-                                                              "mass": 10.0,
                                                               "part": "cargo",
                                                               "stage": 1,
                                                               "uid": 203,
@@ -386,7 +366,6 @@
                                                                     0
                                                                   ],
                                                                   "id": "cargo_n2",
-                                                                  "mass": 10.0,
                                                                   "part": "cargo",
                                                                   "stage": 1,
                                                                   "uid": 202,
@@ -403,7 +382,6 @@
                                                                         0
                                                                       ],
                                                                       "id": "cargo_n1",
-                                                                      "mass": 10.0,
                                                                       "part": "cargo",
                                                                       "stage": 1,
                                                                       "uid": 201,
@@ -420,7 +398,6 @@
                                                                             0
                                                                           ],
                                                                           "id": "cargo_n0",
-                                                                          "mass": 10.0,
                                                                           "part": "cargo",
                                                                           "stage": 1,
                                                                           "uid": 200
