@@ -15,9 +15,11 @@
 //        seat, so this is the backstop for a plan that goes stale (was case
 //        237 / --vab-assign).
 //
-//   transferplanner.h eraseShipTargetRows -- a removed vessel leaves the
-//        target list at once; the row's name points INTO the Vehicle (was
-//        case 243 / --select-target).
+//   transferplanner.h eraseShipTargetRows / findTargetRow -- a removed vessel
+//        leaves the target list at once, and the selection is an IDENTITY that
+//        is resolved against that list rather than a slot in it: a body and a
+//        vessel may share a name, and retiring one must not retarget the other
+//        (was case 243 / --select-target; issue #392).
 //
 //   question.h dropPendingQuestion / answerPendingQuestion -- a teardown drops
 //        the card (was case 258 / --switch-system), and the card closes before
@@ -41,8 +43,9 @@ static int failures = 0;
         } \
     } while(0)
 
-// Distinct addresses, never dereferenced: eraseShipTargetRows only compares.
+// Distinct addresses, never dereferenced: the row helpers only compare them.
 static Vehicle *fakeV(int n) { return reinterpret_cast<Vehicle *>(0x1000 + n); }
+static TerrainBody *fakeB(int n) { return reinterpret_cast<TerrainBody *>(0x2000 + n); }
 static const char *names[] = { "a", "b", "c" };
 
 static void test_prune_drops_stale() {
@@ -120,6 +123,33 @@ static void test_erase_rows() {
     CHECK(rows.empty());
 }
 
+static void test_target_identity() {
+    /* A body and a vessel can share a name and the combo lists a row for each,
+       so the KIND is part of the identity (#392). The name pointer is the
+       object's own string, so these two rows are two different targets. */
+    std::vector<TransferPlanner::XferTarget> rows = {
+        { names[0], fakeB(1), nullptr },   // the body "a"
+        { names[0], nullptr, fakeV(1) },   // a vessel also called "a"
+    };
+    const TargetRef bodyRef{names[0], false};
+    const TargetRef shipRef{names[0], true};
+    CHECK(findTargetRow(rows, bodyRef) == &rows[0]);
+    CHECK(findTargetRow(rows, shipRef) == &rows[1]);
+    CHECK(!targetMatches(rows[0], shipRef));
+    CHECK(!targetMatches(rows[1], bodyRef));
+    // No target and target-gone are the same answer, so callers have one check.
+    CHECK(findTargetRow(rows, TargetRef{}) == nullptr);
+    CHECK(findTargetRow(rows, TargetRef{"zz", false}) == nullptr);
+    /* Retiring the vessel: its row goes, the body's stays. This is the pair
+       Game::dropVehicleRefs relies on -- the ship selection stops resolving (so
+       dropStaleTarget leaves NO selection rather than the row that slid up,
+       which here would be the moon), while a body selection is untouched. */
+    eraseShipTargetRows(rows, fakeV(1));
+    CHECK(rows.size() == 1);
+    CHECK(findTargetRow(rows, shipRef) == nullptr);
+    CHECK(findTargetRow(rows, bodyRef) == &rows[0]);
+}
+
 static void test_drop_question() {
     auto q = std::make_unique<Question>();
     q->text = "Clear the pad?\nSecond line";
@@ -166,6 +196,7 @@ int main() {
     test_problem_not_at_pad();
     test_problem_empty_seat_and_ok();
     test_erase_rows();
+    test_target_identity();
     test_drop_question();
     test_answer_closes_first();
     test_answer_noop_without_card();

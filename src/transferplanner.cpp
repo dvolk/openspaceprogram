@@ -178,6 +178,18 @@ void TransferPlanner::selectTargetByName(const std::string &name) {
     dropStaleTarget();
 }
 
+const TransferPlanner::XferTarget *TransferPlanner::target() const {
+    return findTargetRow(xferTargets, xfer_sel);
+}
+
+bool TransferPlanner::isTarget(const XferTarget &t) const {
+    return targetMatches(t, xfer_sel);
+}
+
+void TransferPlanner::dropStaleTarget() {
+    if(findTargetRow(xferTargets, xfer_sel) == nullptr) { xfer_sel = TargetRef(); }
+}
+
 void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
     xferTargets.clear();
     if(g->ship == nullptr) {
@@ -508,7 +520,9 @@ void TransferPlanner::porkchopCompute() {
             }
             /* Still the selected target? The sweep was posted for an identity,
                so ask the selection rather than a row number that has since
-               moved (#392). */
+               moved (#392). The selection alone is the whole answer: retirement
+               and rebuild both clear an identity that no longer resolves, so a
+               selection that still matches this one names a live row. */
             const bool still_target = (TargetRef{tname, t_is_ship} == xfer_sel);
             if(still_target && res) {
                 pc = std::move(*res);

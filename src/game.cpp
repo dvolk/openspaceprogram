@@ -351,7 +351,9 @@ void Game::dropVehicleRefs(Vehicle *v) {
        its row looked up on demand, "the row is gone" is exactly what "v was the
        target" means, and no index has to be remembered alongside (#392). */
     eraseShipTargetRows(xferPlanner.xferTargets, v);
-    if(!xferPlanner.xfer_sel.empty() && xferPlanner.target() == nullptr) {
+    /* An empty selection resolves to null too, which is harmless: with no target
+       there is no solve to invalidate (update() clears it in that frame). */
+    if(xferPlanner.target() == nullptr) {
         xferPlanner.xfer_sel = TargetRef();
         xferPlanner.xfer.valid = false;
         xferPlanner.xfer.burn_dir = glm::dvec3(0.0);
