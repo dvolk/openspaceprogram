@@ -344,25 +344,17 @@ void Game::dropVehicleRefs(Vehicle *v) {
     for(auto *s : vehicles) {
         if(s->dockTargetShip == v) { s->dockTargetShip = nullptr; s->dockTargetPort = nullptr; }
     }
-    /* The planner holds v's name pointer + handle until its next rebuild: if v
-       was the target, drop the selection so nothing reads it in between. The
-       name goes with the index -- xfer_target is derived from it, so leaving it
-       would have the next rebuild re-select a vessel that no longer exists. */
-    if(xferPlanner.xfer_target >= 0
-       && xferPlanner.xfer_target < (int)xferPlanner.xferTargets.size()
-       && xferPlanner.xferTargets[xferPlanner.xfer_target].ship == v) {
+    /* The list holds v's name pointer in its own row, and that row's `ship` IS
+       v, so the row cannot outlive it: anything that scans the list before the
+       next rebuild would read freed memory. Erase the rows FIRST, then drop the
+       selection if it no longer resolves -- with the selection an identity and
+       its row looked up on demand, "the row is gone" is exactly what "v was the
+       target" means, and no index has to be remembered alongside (#392). */
+    eraseShipTargetRows(xferPlanner.xferTargets, v);
+    if(!xferPlanner.xfer_sel.empty() && xferPlanner.target() == nullptr) {
         xferPlanner.xfer_sel = TargetRef();
-        xferPlanner.xfer_target = -1;
         xferPlanner.xfer.valid = false;
         xferPlanner.xfer.burn_dir = glm::dvec3(0.0);
-    }
-    /* The list holds v's name pointer in its own row, so the row cannot outlive
-       it either: anything that scans the list before the next rebuild would
-       read freed memory. Erasing shifts every later row, and the index is only
-       this frame's address, so drop it too and let the next rebuild re-derive
-       it from the name. */
-    if(eraseShipTargetRows(xferPlanner.xferTargets, v)) {
-        xferPlanner.xfer_target = -1;
     }
     if(kerbal == v) { kerbal = nullptr; }
     if(lastShip == v) { lastShip = nullptr; }

@@ -759,10 +759,7 @@ void paintWorld(Game &g) {
     // Target ship's relative velocity: two markers (you-target / target-you),
     // when a ship is targeted or a docking port is selected.
     Vehicle *relvel_target = nullptr;
-    if(planner.xfer_target >= 0 &&
-       planner.xfer_target < (int)planner.xferTargets.size()) {
-        relvel_target = planner.xferTargets[planner.xfer_target].ship;
-    }
+    if(const auto *t = planner.target()) { relvel_target = t->ship; }
     if(relvel_target == nullptr &&
        ship->dockTargetShip != nullptr && ship->dockTargetPort != nullptr) {
         relvel_target = ship->dockTargetShip;

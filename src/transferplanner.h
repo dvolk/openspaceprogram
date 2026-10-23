@@ -103,22 +103,29 @@ public:
     void selectTargetByName(const std::string &name);
 
     std::vector<XferTarget> xferTargets;
-    /* The selection is an IDENTITY, and xfer_target is derived from it on every
-       rebuild (update). xferTargets is rebuilt from scratch each refresh, so an
-       index alone silently re-points at another vessel when a sibling docks,
-       undocks, is removed or boards -- the map's transfer plane, the burn
-       marker and the TARGET block all follow it with no player action. A name
-       is only stable while names are, but dedupVehicleName's " #N" suffix is a
-       rename the player caused, not a reshuffle they did not. */
+    /* The selection is an IDENTITY and it is the ONLY thing remembered: the row
+       it happens to name is resolved on demand through target(). xferTargets is
+       rebuilt from scratch each refresh, so a stored row number re-points at
+       another vessel the moment a sibling docks, undocks, is removed or boards
+       -- the map's transfer plane, the burn marker and the TARGET block would
+       all follow it with no player action. A name is only stable while names
+       are, but dedupVehicleName's " #N" suffix is a rename the player caused,
+       not a reshuffle they did not. */
     TargetRef xfer_sel;
-    int xfer_target = -1;
+    /* The selected row in THIS frame's list, or null. One scan of a list that
+       is already in cache, so every reader takes a pointer and there is no
+       index left to keep in step with a rebuild (#392). */
+    const XferTarget *target() const { return findTarget(xfer_sel); }
+    /* Does this row name the selection? The combo highlights a row, so it asks
+       by identity rather than by row number. */
+    bool isTarget(const XferTarget &t) const { return matches(t, xfer_sel); }
     bool xfer_auto = true;                     // auto min-dv ToF vs pinned
     float xfer_tof_log = (float)std::log10(3600.0); // log10(s), the pinned ToF
     struct {
-        int target = -2;        // target index at last compute (the solve's
-                                // owner: xfer.valid can outlive xfer_target
-                                // by a frame, so pair the solution with THIS
-                                // index, never the live one)
+        TargetRef target;     // the target the solve was computed FOR (the
+                              // solve's owner: xfer.valid can outlive the
+                              // selection by a frame, so pair the solution
+                              // with THIS, never with the live selection)
         bool auto_tof = true;
         double tof_log = -1.0;
         int frame = 0;          // per-frame counter while a target is set
@@ -196,11 +203,30 @@ private:
        resetForNewWorld, which replaces the list empty. */
     void dropTargets();
 
-    /* Point xfer_target at xfer_sel in the CURRENT xferTargets, or clear the
-       selection when it is not there: a deleted target takes it with it, and
-       keeping the index would name whichever vessel landed in that slot.
-       Called on every rebuild. */
-    void resolveTarget();
+    /* Does a row name this identity? A body and a vessel can share a name and
+       the combo lists a row for each, so the kind is part of the answer. */
+    static bool matches(const XferTarget &t, const TargetRef &ref) {
+        return !ref.empty() && t.name == ref.name
+            && (t.ship != nullptr) == ref.isShip;
+    }
+
+    /* The row an identity names in the CURRENT list, or null. */
+    const XferTarget *findTarget(const TargetRef &ref) const {
+        if(ref.empty()) { return nullptr; }
+        for(const XferTarget &t : xferTargets) {
+            if(matches(t, ref)) { return &t; }
+        }
+        return nullptr;
+    }
+
+    /* Drop a selection whose target is gone: a deleted target takes it with it,
+       and leaving the identity would have it name whichever vessel later takes
+       that name. Called on every rebuild and by both select paths. */
+    void dropStaleTarget() {
+        if(!xfer_sel.empty() && findTarget(xfer_sel) == nullptr) {
+            xfer_sel = TargetRef();
+        }
+    }
 };
 
 /* resetForNewWorld() replaces *this, so assignment has to exist. A reference or
@@ -209,16 +235,14 @@ private:
 static_assert(std::is_move_assignable_v<TransferPlanner>,
               "TransferPlanner must stay assignable: resetForNewWorld() replaces it");
 
-/* Erase the rows whose ship is `v`. True if one went -- the selection index is
-   stale either way (it points into the pre-erase list) and the caller must
-   reset it. A row's name points INTO the Vehicle, so the row cannot outlive it:
-   anything that scans the list before the next rebuild reads freed memory
-   (issue #276 / case 243). */
-inline bool eraseShipTargetRows(std::vector<TransferPlanner::XferTarget> &rows,
+/* Erase the rows whose ship is `v`. A row's name points INTO the Vehicle, so
+   the row cannot outlive it: anything that scans the list before the next
+   rebuild reads freed memory (issue #276 / case 243). Nothing else needs to be
+   reset -- the selection is an identity, so it resolves to null once its row is
+   gone rather than sliding onto whichever row moved up (#392). */
+inline void eraseShipTargetRows(std::vector<TransferPlanner::XferTarget> &rows,
                                 Vehicle *v) {
-    const size_t before = rows.size();
     std::erase_if(rows, [v](const TransferPlanner::XferTarget &t) {
         return t.ship == v;
     });
-    return rows.size() != before;
 }

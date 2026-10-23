@@ -105,16 +105,18 @@ static void test_erase_rows() {
         { names[1], nullptr, fakeV(2) },
         { names[2], nullptr, fakeV(3) },
     };
-    CHECK(eraseShipTargetRows(rows, fakeV(2)));
+    eraseShipTargetRows(rows, fakeV(2));
     CHECK(rows.size() == 2);
     CHECK(rows[0].ship == fakeV(1));
     CHECK(rows[1].ship == fakeV(3));
-    // A vessel that is not in the list leaves it alone.
-    CHECK(!eraseShipTargetRows(rows, fakeV(9)));
+    /* A vessel that is not in the list leaves it alone. Erasing is all the
+       caller has to do: the selection is an IDENTITY resolved against this
+       list, so it does not slide onto whichever row moved up (#392). */
+    eraseShipTargetRows(rows, fakeV(9));
     CHECK(rows.size() == 2);
     // Clearing the last one empties the list.
-    CHECK(eraseShipTargetRows(rows, fakeV(1)));
-    CHECK(eraseShipTargetRows(rows, fakeV(3)));
+    eraseShipTargetRows(rows, fakeV(1));
+    eraseShipTargetRows(rows, fakeV(3));
     CHECK(rows.empty());
 }
 

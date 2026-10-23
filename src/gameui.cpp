@@ -425,7 +425,10 @@ void drawUIReadouts(Game &g) {
 
     // The transfer planner's state (the TARGET window's readouts + inputs).
     std::vector<TransferPlanner::XferTarget> &xferTargets = planner.xferTargets;
-    int &xfer_target = planner.xfer_target;
+    /* The selected row, resolved on demand. The list is rebuilt every refresh,
+       so a row number kept here would be this frame's address at best and
+       another vessel's row at worst (#392). */
+    auto xferTarget = [&] { return planner.target(); };
     bool &xfer_compute = planner.xfer_compute;
     bool &xfer_auto = planner.xfer_auto;
     float &xfer_tof_log = planner.xfer_tof_log;
@@ -724,16 +727,16 @@ void drawUIReadouts(Game &g) {
             ImGui::Text("No transfer targets: no child bodies or ships here.");
             return;
         }
-        const char *cur = (xfer_target >= 0)
-                         ? xferTargets[xfer_target].name : "none";
+        const TransferPlanner::XferTarget *sel = xferTarget();
+        const char *cur = (sel != nullptr) ? sel->name : "none";
         if(uiBeginCombo("Target", cur)) {
-            // "none" is a real entry so the target can be cleared back to -1 from here.
-            if(ImGui::Selectable("none", xfer_target == -1)) {
+            // "none" is a real entry so the target can be cleared from here.
+            if(ImGui::Selectable("none", sel == nullptr)) {
                 planner.selectTarget(std::string(), false);
             }
             for(int i = 0; i < (int)xferTargets.size(); i++) {
                 if(ImGui::Selectable(xferTargets[i].name,
-                                     i == xfer_target)) {
+                                     planner.isTarget(xferTargets[i]))) {
                     // By identity, and the row's KIND with it: a body and a
                     // vessel can share a name, and the list shows both rows.
                     planner.selectTarget(xferTargets[i].name,
@@ -764,12 +767,15 @@ void drawUIReadouts(Game &g) {
         if(ImGui::Checkbox("Compute transfer", &xfer_compute) && !xfer_compute) {
             planner.clearPorkchopPlan();
         }
-        if(xfer_target < 0) {
+        /* Re-resolved rather than reusing `sel`: the combo above may have just
+           changed the selection, and the row it names is this frame's. */
+        const TransferPlanner::XferTarget *t = xferTarget();
+        if(t == nullptr) {
             ImGui::Text("Select a target body or ship.");
             return;
         }
         if(!xfer_compute) { return; }
-        const bool isShip = xferTargets[xfer_target].ship != nullptr;
+        const bool isShip = t->ship != nullptr;
         if(isShip) {
             ImGui::TextDisabled("ship target: intercept only, no capture burn");
         }
@@ -868,11 +874,12 @@ void drawUIReadouts(Game &g) {
             ImGui::Text("No transfer targets: no child bodies or ships here.");
             return;
         }
-        if(xfer_target < 0) {
+        const TransferPlanner::XferTarget *t = xferTarget();
+        if(t == nullptr) {
             ImGui::Text("Select a target body or ship (Target window).");
             return;
         }
-        const char *tn = xferTargets[xfer_target].name;
+        const char *tn = t->name;
 
         // The grid sweep runs on the background worker (g.jobs), so this is a one-shot
         // button, not a per-frame re-sweep.
@@ -2876,8 +2883,7 @@ void drawUIMap(Game &g) {
     int &map_plane = g.map.plane;
     ImVec2 &map_pan = g.map.pan;
     int &map_mode = g.map.mode;
-    std::vector<TransferPlanner::XferTarget> &xferTargets = planner.xferTargets;
-    int &xfer_target = planner.xfer_target;
+    auto xferTarget = [&] { return planner.target(); };   // resolved per read (#392)
     auto &xfer = planner.xfer;
 
     // Mode 2 strips the chrome: the window is invisible but still hit-tested, so the map
@@ -3090,10 +3096,7 @@ void drawUIMap(Game &g) {
         // The body selected in the TARGET window, highlighted on the map; nullptr for a
         // ship target.
         TerrainBody *sel_body = nullptr;
-        if(xfer_target >= 0 && xfer_target < (int)xferTargets.size() &&
-           xferTargets[xfer_target].body) {
-            sel_body = xferTargets[xfer_target].body;
-        }
+        if(const auto *t = xferTarget()) { sel_body = t->body; }
 
         // SOI ring, faint. Skipped when sub-pixel or far off-view (a huge circle is useless
         // and expensive).
@@ -3175,12 +3178,12 @@ void drawUIMap(Game &g) {
             }
         }
 
-        // The solution belongs to the target the solve USED: xfer.valid lags the TARGET
-        // window by a frame -- clearing the combo there is not re-validated until the next
-        // planner.update(), so pairing xfer.sol with the live xfer_target read xferTargets[-1]
-        // when "none" was clicked.
-        if(xfer.valid && xfer_target == xfer.target &&
-           xfer.target >= 0 && xfer.target < (int)xferTargets.size()) {
+        /* The solution belongs to the target the solve USED. xfer.target is the
+           IDENTITY it was computed for, so pairing it with the live selection
+           needs no row at all: clicking "none" clears the selection and the pair
+           stops matching in the same frame -- which is where the old index
+           pairing read xferTargets[-1] (#392). */
+        if(xfer.valid && xfer.target == planner.xfer_sel) {
             const TransferSolution &sol = xfer.sol;
             // Even-in-anomaly (not uniform-in-time) so the leg draws with an even outline.
             std::vector<glm::dvec3> xfer_pts =
@@ -3190,7 +3193,7 @@ void drawUIMap(Game &g) {
             proj.drawDot(dl, arrival, 4.0f, col_xfer);
             char xfer_label[96];
             snprintf(xfer_label, sizeof(xfer_label), "%s  %.0f m/s",
-                     xferTargets[xfer.target].name, sol.total_dv);
+                     xfer.target.name.c_str(), sol.total_dv);
             const ImVec2 apx = proj.px(arrival);
             dl->AddText(ImVec2(apx.x + 5.0f, apx.y + 4.0f), col_xfer,
                         xfer_label);
@@ -4769,8 +4772,7 @@ void drawTrackingMap(Game &g) {
     float &map_scale = g.map.scale;
     int &map_plane = g.map.plane;
     ImVec2 &map_pan = g.map.pan;
-    std::vector<TransferPlanner::XferTarget> &xferTargets = planner.xferTargets;
-    int &xfer_target = planner.xfer_target;
+    auto xferTarget = [&] { return planner.target(); };   // resolved per read (#392)
 
     /* Full-screen and chrome-less: the map IS the Tracking Station view (no controls --
        they would overflow the auto-fit window off-screen). Diverged from drawUIMap on
@@ -4910,10 +4912,7 @@ void drawTrackingMap(Game &g) {
         const ImVec2 focus_px = proj.px(glm::dvec3(0.0, 0.0, 0.0));
 
         TerrainBody *sel_body = nullptr;
-        if(xfer_target >= 0 && xfer_target < (int)xferTargets.size() &&
-           xferTargets[xfer_target].body) {
-            sel_body = xferTargets[xfer_target].body;
-        }
+        if(const auto *t = xferTarget()) { sel_body = t->body; }
 
         // SOI ring, faint. Skipped when sub-pixel or far off-view.
         auto draw_soi = [&](const glm::dvec3 &center, double soi_m, ImU32 col) {

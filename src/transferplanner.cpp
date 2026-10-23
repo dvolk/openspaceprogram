@@ -158,28 +158,9 @@ void dumpPorkchop(const std::string &dir, const std::string &target,
 }
 } // namespace
 
-/* Point xfer_target at the (name, is_ship) selection in the CURRENT list. A
-   selection that is no longer there means the target was deleted, and the
-   selection goes with it -- keeping the index instead would have it name
-   whichever vessel happened to land in that slot (issue #276). */
-void TransferPlanner::resolveTarget() {
-    xfer_target = -1;
-    if(xfer_sel.empty()) { return; }
-    for(int i = 0; i < (int)xferTargets.size(); i++) {
-        const XferTarget &t = xferTargets[i];
-        if(t.name != xfer_sel.name) { continue; }
-        // A body and a vessel can share a name; the combo lists both, so the
-        // row clicked is part of what the player chose.
-        if((t.ship != nullptr) != xfer_sel.isShip) { continue; }
-        xfer_target = i;
-        return;
-    }
-    xfer_sel = TargetRef();
-}
-
 void TransferPlanner::selectTarget(const std::string &name, bool isShip) {
     xfer_sel = TargetRef{name, isShip};
-    resolveTarget();
+    dropStaleTarget();
 }
 
 void TransferPlanner::selectTargetByName(const std::string &name) {
@@ -194,7 +175,7 @@ void TransferPlanner::selectTargetByName(const std::string &name) {
     // A name-only request cannot know the kind, so an unresolved one is dropped
     // rather than left pending on a guess.
     if(xfer_sel.name != name) { xfer_sel = TargetRef(); }
-    resolveTarget();
+    dropStaleTarget();
 }
 
 void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
@@ -202,7 +183,6 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
     if(g->ship == nullptr) {
         // No active ship: drop any stale target / plan (orbit-view boot).
         xfer_sel = TargetRef();
-        xfer_target = -1;
         xfer.valid = false;
         xfer.burn_dir = glm::dvec3(0.0);
         pc_period = 0.0;
@@ -227,7 +207,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         if(!g->args.transfer_target.empty()) {
             selectTargetByName(g->args.transfer_target);
         } else {
-            resolveTarget();
+            dropStaleTarget();
         }
     }
 
@@ -244,23 +224,25 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         clearPorkchopPlan();
     }
 
-    if(xfer_target < 0) {
+    const XferTarget *t = target();
+    if(t == nullptr) {
         xfer.valid = false;
         xfer.burn_dir = glm::dvec3(0.0);
-        // Forget the solved target too: xfer.frame only advances while a target
-        // is set, so re-picking the SAME index would clear no dirty term and
-        // leave the solution blank for up to 30 frames.
-        xfer.target = -2;
+        // Forget which target the solve belongs to too: xfer.frame only
+        // advances while a target is set, so re-picking the SAME target would
+        // clear no dirty term and leave the solution blank for up to 30 frames.
+        xfer.target = TargetRef();
     } else if(!xfer_compute) {
         /* A target is also just something to look at: its orbit is on the map
            and its plane is one of the map's planes. With planning off nothing
            solves, so the HUD burn marker, the map arc and the window's solution
-           block all go quiet together -- and xfer.target = -2 means a stale
-           solution cannot be drawn for a frame on the way back, nor a solve be
-           skipped on the way forward (that term is what makes it dirty). */
+           block all go quiet together -- and an unstamped xfer.target means a
+           stale solution cannot be drawn for a frame on the way back, nor a
+           solve be skipped on the way forward (that term is what makes it
+           dirty). */
         xfer.valid = false;
         xfer.burn_dir = glm::dvec3(0.0);
-        xfer.target = -2;
+        xfer.target = TargetRef();
         // The target's own period still feeds the porkchop range sliders, which
         // describe the target rather than a plan. Same 30-frame cadence as a
         // live solve: a scalar the sliders read is not worth a state lift on
@@ -269,19 +251,17 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         if(xfer.frame - xfer.period_frame >= 30) {
             xfer.period_frame = xfer.frame;
             const InertialShip s1 = shipInertial(*g, com, vel);
-            pc_period = targetInertial(xferTargets[xfer_target], s1.inertial)
-                            .tof_max / 3.0;
+            pc_period = targetInertial(*t, s1.inertial).tof_max / 3.0;
         }
     } else {
         xfer.frame++;
-        const bool dirty = xfer.target != xfer_target
+        const bool dirty = xfer.target != xfer_sel
             || xfer.auto_tof != xfer_auto
             || std::fabs(xfer.tof_log - xfer_tof_log) > 1e-12
             || xfer.frame - xfer.solved_frame >= 30;
         if(dirty) {
             const InertialShip s1 = shipInertial(*g, com, vel);
-            const XferTarget &t = xferTargets[xfer_target];
-            const InertialTarget d = targetInertial(t, s1.inertial);
+            const InertialTarget d = targetInertial(*t, s1.inertial);
             // Scale for the porkchop range sliders: one target period, the
             // same quantity the auto range is built from (tof_max = 3 of
             // them), so the sliders' ends and the auto window cannot disagree.
@@ -308,7 +288,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
             } else {
                 xfer.burn_dir = glm::dvec3(0.0);
             }
-            xfer.target = xfer_target;
+            xfer.target = xfer_sel;
             xfer.auto_tof = xfer_auto;
             xfer.tof_log = xfer_tof_log;
             xfer.solved_frame = xfer.frame;
@@ -316,9 +296,9 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
     }
 
     // --xfer-log: the planner's current solution.
-    if(g->args.xfer_log && xfer_target >= 0 && xfer_compute) {
+    if(g->args.xfer_log && t != nullptr && xfer_compute) {
         if(g->logDue(kGateXfer, SDL_GetTicks(), g->orbit_log_interval_ms)) {
-            const char *tn = xferTargets[xfer_target].name;
+            const char *tn = t->name;
             if(xfer.valid) {
                 printf("[xferlog] t=%.1fs target=\"%s\" dv_dep=%.6g m/s "
                        "dv_cap=%.6g m/s total=%.6g m/s tof=%.6g s "
@@ -351,7 +331,6 @@ void TransferPlanner::clearPorkchopPlan() {
 void TransferPlanner::dropTargets() {
     xferTargets.clear();
     xfer_sel = TargetRef();
-    xfer_target = -1;
 }
 
 void TransferPlanner::invalidateClockState() {
@@ -408,24 +387,22 @@ void TransferPlanner::resetForNewWorld() {
 
 bool TransferPlanner::targetPlaneNormal(Frame *focus_inertial,
                                         glm::dvec3 &n_hat) const {
-    if(focus_inertial == nullptr
-       || xfer_target < 0 || xfer_target >= (int)xferTargets.size()) {
-        return false;
-    }
-    const XferTarget &t = xferTargets[xfer_target];
+    if(focus_inertial == nullptr) { return false; }
+    const XferTarget *t = target();
+    if(t == nullptr) { return false; }
     // A grounded vessel's "conic" about the focus is the circle the ground draws
     // under it -- the body's own equator plane, which the Equatorial slot
     // already offers under an honest name.
-    if(t.ship && t.ship->isGrounded()) { return false; }
+    if(t->ship && t->ship->isGrounded()) { return false; }
     // The same state lift the solver uses, so the plane the map shows cannot
     // disagree with the transfer planned to this target.
-    const InertialTarget d = targetInertial(t, focus_inertial);
+    const InertialTarget d = targetInertial(*t, focus_inertial);
     const glm::dvec3 h = glm::cross(d.r, d.v);
     const double hl = glm::length(h);
     if(hl <= 1e-9) { return false; }
     // An escaping ship target has no orbit to share a plane with. A body target
     // is on rails, so its conic is closed by construction.
-    if(t.ship && orbitalPeriod(d.r, d.v, focus_inertial->body->mu) <= 0.0) {
+    if(t->ship && orbitalPeriod(d.r, d.v, focus_inertial->body->mu) <= 0.0) {
         return false;
     }
     n_hat = h / hl;
@@ -433,17 +410,17 @@ bool TransferPlanner::targetPlaneNormal(Frame *focus_inertial,
 }
 
 void TransferPlanner::porkchopCompute() {
-    if(xfer_target < 0 || xfer_target >= (int)xferTargets.size()) { return; }
+    const XferTarget *t = target();
+    if(t == nullptr) { return; }
     // One sweep at a time: the window's button is disabled mid-sweep but the P
     // key is not, and a --porkchop-bench list can queue minutes of worker time
     // that abort() would then have to wait out.
     if(pc_in_flight > 0) { return; }
-    const XferTarget &t = xferTargets[xfer_target];
 
     // Snapshot ship/target state in the parent's INERTIAL frame -- the ONLY game
     // state read; the grid sweep is pure and runs on the background worker.
     const InertialShip s1 = shipInertial(*g, g->hud.view.pos, g->hud.view.vel);
-    const InertialTarget d = targetInertial(t, s1.inertial);
+    const InertialTarget d = targetInertial(*t, s1.inertial);
 
     double t_dep_lo, t_dep_hi;
     if(pcCustomDep) {
@@ -477,10 +454,10 @@ void TransferPlanner::porkchopCompute() {
     const bool log = g->args.porkchop_log || dump || !g->args.porkchop_bench.empty();
     const std::string dump_dir = g->args.porkchop_dump;
     const bool capture = d.capture;
-    const std::string tname = t.name;
+    const std::string tname = t->name;
     // The kind travels with the name: a grid swept for the VESSEL "Mun" must not
     // be handed to the moon Mun if the vessel is deleted mid-sweep.
-    const bool t_is_ship = t.ship != nullptr;
+    const bool t_is_ship = t->ship != nullptr;
     const double t_now = g->time;
     const int epoch = g->cache_epoch;      // drop the result if the world changes
     JobRunner *jobs = &g->jobs;           // stopping() is thread-safe (job.h)
@@ -529,10 +506,10 @@ void TransferPlanner::porkchopCompute() {
                 if(pc_in_flight > 0) { pc_in_flight--; }
                 return;
             }
-            const bool still_target = (xfer_target >= 0
-                && xfer_target < (int)xferTargets.size()
-                && xferTargets[xfer_target].name == tname
-                && (xferTargets[xfer_target].ship != nullptr) == t_is_ship);
+            /* Still the selected target? The sweep was posted for an identity,
+               so ask the selection rather than a row number that has since
+               moved (#392). */
+            const bool still_target = (TargetRef{tname, t_is_ship} == xfer_sel);
             if(still_target && res) {
                 pc = std::move(*res);
                 pc_computed_at = t_now;
