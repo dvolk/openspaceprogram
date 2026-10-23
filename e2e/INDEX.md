@@ -12,9 +12,10 @@ kind says how much weight the assertions carry.
 | `canary` | only proves the thing boots | 4 |
 | | **total** | **304** |
 
-There is no full battery: the runner takes at most 5 cases per
-invocation and starts a 10-minute cooldown. Select by number, name or
-path (a whole subject is usually too wide), e.g.
+The whole battery runs: `python3 e2e/run.py` with no selectors, or
+`make e2e-all` -- which is what `make release` runs. Nothing caps or
+paces a run: how much e2e a change deserves is the caller's
+judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
 ## flight (62)

@@ -13,16 +13,17 @@ filename and the relative path:
 ```
 python3 e2e/run.py 172              # one case by number
 python3 e2e/run.py save/172         # one case by path
-python3 e2e/run.py 172 177 262      # up to five at once
+python3 e2e/run.py 172 177 262      # several at once
+python3 e2e/run.py                  # the whole battery (make e2e-all)
 ```
 
-There is no full-battery mode. At most five cases run per invocation; a wider
-selection is refused with the list of what it matched. A run also starts a
-10-minute cooldown: until it expires, every invocation refuses, including
-`make e2e`, and there is no flag that skips it.
-`--kind` is a filter on top of that narrow selection (e.g.
-`172 177 --kind invariant`), not a way to select the whole suite. Prefer the
-unit tests for anything whose claim is pure logic.
+The whole battery runs, and it is slow: a few hundred cases at `--jobs 6` is on
+the order of ten minutes. That is why it belongs to `make release` and not to a
+working loop. Nothing caps or paces a run -- how much e2e a change deserves is
+the caller's judgement, not the runner's policy.
+`--kind` filters a selection (e.g. `172 177 --kind invariant`); it is not a way
+to name the whole suite. Prefer the unit tests for anything whose claim is pure
+logic.
 
 ## Getting somewhere through the UI, not a flag
 

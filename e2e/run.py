@@ -2,9 +2,9 @@
 """E2E runner: run selected e2e/cases/<subject>/*.txt against the game binary.
 
 Usage: python3 e2e/run.py <selectors> [--jobs N] [--game PATH] [--limit S]
-[--show-cmd] [--kind K]. At most 5 cases run per invocation; there is no full
-battery and no flag that raises the cap. A run also starts a 10-minute
-cooldown, so the next invocation refuses until it expires. --limit overrides
+[--show-cmd] [--kind K]. No selectors runs the whole battery -- that is what
+`make release` does. Nothing caps or paces a run: how much e2e is worth running
+is the caller's judgement, not the runner's policy. --limit overrides
 every case's LIMIT (a slow box, or a case you want to drive by hand);
 --show-cmd prints the exact command + env so a failure re-runs under a
 debugger; --kind runs one kind of case (repeatable). Case keys: NAME CLAIM
@@ -66,15 +66,6 @@ CASES_DIR = os.path.join(REPO_ROOT, "e2e", "cases")
 GAME = None
 DEFAULT_LIMIT = 120.0
 DEFAULT_JOBS = 2
-# Hard cap per invocation. There is no full-battery mode: a case earns its
-# place by narrowing the change under test, not by running everything again.
-MAX_CASES = 5
-# No run may start within this long of the previous run's end. The stamp is
-# also written when a run starts, so a concurrent invocation is refused and a
-# crashed run still cools the box down.
-COOLDOWN_S = 10 * 60
-RUN_STAMP = os.path.join(REPO_ROOT, "tmp", "e2e", "last_run")
-STAMP_FMT = "%Y-%m-%dT%H:%M:%SZ"
 # --limit: run every case under this wall-clock ceiling instead of its own
 # LIMIT (raise it to drive one case by hand on a slow box; the case's own
 # --timeout still decides when the game exits). --show-cmd: print the exact
@@ -83,9 +74,9 @@ STAMP_FMT = "%Y-%m-%dT%H:%M:%SZ"
 LIMIT = None
 SHOW_CMD = False
 # Every case forbids these. A GL error, an abort and a shader failure are never
-# an expected outcome, and repeating the same six lines in 286 files buried the
-# assertions a case actually makes. "error:" is NOT here: a clean boot refusal
-# prints it on purpose (177, 190, 191).
+# an expected outcome, and repeating the same six lines in every case file
+# buried the assertions a case actually makes. "error:" is NOT here: a clean
+# boot refusal prints it on purpose (177, 190, 191).
 DEFAULT_FORBID = [
     "GL_",
     "Segmentation",
@@ -1110,7 +1101,7 @@ def case_kind(path):
     try:
         return parse_cases(path)["kind"]
     except ValueError as e:
-        print("warning: %s" % e)
+        warn("warning: %s" % e)
         return ""
 
 
@@ -1169,40 +1160,9 @@ def new_run_dir():
             n += 1
 
 
-def parse_stamp(text):
-    try:
-        return datetime.datetime.strptime(text.strip(), STAMP_FMT).replace(
-            tzinfo=datetime.timezone.utc)
-    except (AttributeError, ValueError):
-        return None
-
-
-def last_run_time():
-    """When the last run ended (UTC), or None.
-
-    RUN_STAMP is written when a run starts and again when it ends, so a
-    concurrent invocation is refused and an interrupted run still counts. A
-    tree that predates the stamp falls back to the last history row, which
-    records the start time."""
-    try:
-        with open(RUN_STAMP) as f:
-            t = parse_stamp(f.read())
-        if t is not None:
-            return t
-    except OSError:
-        pass
-    try:
-        with open(os.path.join(REPO_ROOT, "tmp", "e2e", "history.csv")) as f:
-            rows = list(csv.DictReader(f))
-    except OSError:
-        return None
-    return parse_stamp(rows[-1].get("datetime_utc", "")) if rows else None
-
-
-def stamp_run(t):
-    os.makedirs(os.path.dirname(RUN_STAMP), exist_ok=True)
-    with open(RUN_STAMP, "w") as f:
-        f.write(t.strftime(STAMP_FMT) + "\n")
+def warn(msg):
+    """Diagnostic line. stderr, so it cannot land inside a parsed run summary."""
+    print(msg, file=sys.stderr, flush=True)
 
 
 HISTORY_FIELDS = ["datetime_utc", "commit", "dirty", "renderer", "game",
@@ -1329,7 +1289,7 @@ def main():
     )
     parser.add_argument("selectors", nargs="*",
                         help="case name/filename/path substring(s) to run; "
-                             "at most %d cases per invocation" % MAX_CASES)
+                             "omit to run the whole battery")
     parser.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
                         help="max cases to run in parallel (1 = serial; "
                              "default: 2)")
@@ -1372,14 +1332,9 @@ def main():
         args.jobs = 1
     selectors = args.selectors
 
-    if not selectors:
-        print("Refusing to run: the full battery is retired.")
-        print("Name at most %d cases, e.g. `python3 e2e/run.py save/172`."
-              % MAX_CASES)
-        print("Find one in e2e/INDEX.md; run the matching unit test instead "
-              "when the claim is pure logic.")
-        return 1
-
+    # No selectors means the whole battery. That is what `make release` runs;
+    # the wide-selection warning below is what tells a day-to-day runner it has
+    # asked for too much.
     all_files = sorted(glob.glob(os.path.join(CASES_DIR, "**", "*.txt"),
                                  recursive=True))
     if not all_files:
@@ -1390,37 +1345,22 @@ def main():
     if args.kind:
         case_files = [p for p in case_files if case_kind(p) in args.kind]
     if not case_files:
-        print("no case matches %r" % (selectors,))
-        print("available: %s" % ", ".join(available_names(all_files)))
+        # Name every filter that contributed: with no selectors a --kind that
+        # matches nothing otherwise reads as `no case matches ()`.
+        asked = ["%r" % s for s in selectors]
+        asked += ["--kind %s" % k for k in (args.kind or [])]
+        print("no case matches %s" % " ".join(asked))
+        names = available_names(all_files)
+        print("available: %s" % ", ".join(names[:40]))
+        if len(names) > 40:
+            print("... %d more; e2e/INDEX.md lists every case with its claim."
+                  % (len(names) - 40))
         return 1
-    if len(case_files) > MAX_CASES:
-        print("Refusing to run %d cases: the hard limit is %d per invocation."
-              % (len(case_files), MAX_CASES))
-        print("Narrow the selector (subject, name or number) and run again:")
-        for p in case_files[:10]:
-            print("  " + os.path.splitext(os.path.relpath(p, CASES_DIR))[0])
-        if len(case_files) > 10:
-            print("  ... and %d more" % (len(case_files) - 10))
-        print("e2e/INDEX.md lists every case with its claim and kind.")
-        return 1
-
-    now = datetime.datetime.now(datetime.timezone.utc)
-    last = last_run_time()
-    if last is not None:
-        age = (now - last).total_seconds()
-        if age < COOLDOWN_S:
-            ready = (last + datetime.timedelta(seconds=COOLDOWN_S))
-            print("Refusing to run: e2e last ran at %s (%.0fs ago)."
-                  % (last.strftime(STAMP_FMT), age))
-            print("The cooldown is %d minutes; the next run can start at %s."
-                  % (COOLDOWN_S // 60, ready.strftime(STAMP_FMT)))
-            return 1
 
     # Cases are independent (own Xvfb display + stdout capture), so they can
     # run concurrently. Progress prints in completion order; the final table
     # stays in case-file order.
-    started = now
-    stamp_run(started)
+    started = datetime.datetime.now(datetime.timezone.utc)
     total = len(case_files)
     results = [None] * total
     if args.jobs == 1:
@@ -1435,10 +1375,6 @@ def main():
                 results[i] = fut.result()
                 print_progress(done, total, results[i])
     finished = datetime.datetime.now(datetime.timezone.utc)
-    # The cooldown runs from the END of the run: a long serial run must still
-    # buy the box ten quiet minutes. The start stamp above covers a concurrent
-    # invocation while this one is still going.
-    stamp_run(finished)
 
     # Persist before printing so the console can point at the artifacts.
     # A persist failure must not swallow the summary or the exit code.

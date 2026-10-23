@@ -533,8 +533,8 @@ test-py: test-gen
 	fi
 
 # E2E runner (e2e/run.py). Headless via xvfb-run when no display.
-# CASES is required and capped at 5 by the runner; there is no full battery.
-# Each run starts a 10-minute cooldown, so back-to-back runs are refused.
+# CASES names the cases. `make e2e-all` is the whole battery -- slow enough
+# that it belongs to `make release`, not to a working loop.
 #   make e2e CASES="save/172 vab/177"
 # JOBS=N overrides parallel cases (default 2).
 CASES ?=
@@ -542,13 +542,28 @@ JOBS ?=
 E2E_JOBS = $(if $(JOBS),--jobs $(JOBS),)
 # The index must match the cases before the runner starts; after editing a
 # case, `make e2e-index` (or python3 e2e/index.py) refreshes it.
-.PHONY: e2e e2e-index
+.PHONY: e2e e2e-all e2e-index
 e2e: all
 	@test -n "$(CASES)" || { \
-		echo 'Name cases: make e2e CASES="save/172 vab/177" (max 5).'; \
+		echo 'Name cases: make e2e CASES="save/172 vab/177", or make e2e-all.'; \
 		exit 1; }
 	python3 e2e/index.py --check
 	python3 e2e/run.py $(CASES) $(E2E_JOBS) --game $(BINDIR)/$(TARGET)
+
+# Every case in e2e/cases/: no selectors means the whole battery. CASES is
+# rejected rather than ignored, so `make e2e-all CASES=...` cannot quietly run
+# everything when one case was wanted.
+# The battery runs wide because its cost is each case's scripted wall-clock
+# timeline, not CPU: a native case is a quarter of a core on the EGL path, and
+# 286 cases at --jobs 6 took 498 s against 2960 s of summed case time. Wine
+# stays serialized inside run.py regardless of this. JOBS=N still overrides.
+E2E_ALL_JOBS ?= 6
+e2e-all: all
+	@test -z "$(CASES)" || { \
+		echo 'e2e-all runs every case; name cases with make e2e CASES="...".'; \
+		exit 1; }
+	python3 e2e/index.py --check
+	python3 e2e/run.py --jobs $(if $(JOBS),$(JOBS),$(E2E_ALL_JOBS)) --game $(BINDIR)/$(TARGET)
 
 e2e-index:
 	python3 e2e/index.py
@@ -576,8 +591,10 @@ LINUX_BIN=$(BUILDROOT)/linux-$(MARCH_TOK)-$(MTUNE_TOK)/release/osp
 WINDOWS_BIN=$(BUILDROOT)/windows-$(MARCH_TOK)-$(MTUNE_TOK)/release/osp.exe
 # Cached under tmp/. APPIMAGE_EXTRACT_AND_RUN so it works without FUSE.
 APPIMAGETOOL=tmp/appimagetool-x86_64.AppImage
-# Wine parity smoke (not the full matrix). run.py auto-serializes .exe games.
-WINE_CASES ?= smoke vab-launch vab-launch-orbit vab-launch-body
+# Wine parity smoke (not the full matrix): the four cases that boot the game
+# and fly a ship, native selectors spelled out so they cannot over-match.
+# run.py auto-serializes .exe games.
+WINE_CASES ?= harness/01-smoke vab/52-vab-launch vab/57-vab-launch-orbit vab/58-vab-launch-body
 
 # Package only (no test/e2e gates). Version from `version` target; dirty
 # trees keep -dirty in the name.
@@ -641,14 +658,13 @@ deb:
 	@$(MAKE) --no-print-directory all
 	bash utils/make_deb.sh $(DISTDIR) "$(LINUX_BIN)"
 
-# Smoke gates first (unit + 5 native cases + wine smoke), then package. The
-# e2e run is deliberately a cross-section, not coverage: there is no full
-# battery and the runner caps an invocation at 5 cases.
-RELEASE_E2E ?= harness/01-smoke flight/03-thrust-ascent vab/52-vab-launch save/53-save ui/66-quit-title
+# Gates first (unit + the whole e2e battery + wine parity smoke), then package.
+# The battery is slow -- that is the price of coverage -- so it runs here and
+# nowhere in a working loop. e2e-all widens it to E2E_ALL_JOBS cases at once.
 .PHONY: release
 release: icon-check
 	@$(MAKE) --no-print-directory test
-	@$(MAKE) --no-print-directory e2e CASES="$(RELEASE_E2E)"
+	@$(MAKE) --no-print-directory e2e-all
 	@$(MAKE) --no-print-directory OS=windows all
 	@python3 e2e/run.py --game $(WINDOWS_BIN) $(WINE_CASES)
 	@$(MAKE) --no-print-directory artifacts

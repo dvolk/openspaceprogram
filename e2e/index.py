@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate e2e/INDEX.md from the cases' NAME/CLAIM/KIND headers.
 
-The index is the one page to read before the 286 case files: it says what each
+The index is the one page to read before the case files: it says what each
 case pins and what kind of evidence it is. `--check` fails when the committed
 index is stale (run it after adding or editing a case).
 """
@@ -66,9 +66,10 @@ def render(rows):
     out += [
         "| | **total** | **%d** |" % len(rows),
         "",
-        "There is no full battery: the runner takes at most 5 cases per",
-        "invocation and starts a 10-minute cooldown. Select by number, name or",
-        "path (a whole subject is usually too wide), e.g.",
+        "The whole battery runs: `python3 e2e/run.py` with no selectors, or",
+        "`make e2e-all` -- which is what `make release` runs. Nothing caps or",
+        "paces a run: how much e2e a change deserves is the caller's",
+        "judgement. Select by number, name or path, e.g.",
         "`python3 e2e/run.py save/172 262`.",
         "",
     ]
