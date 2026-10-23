@@ -7,10 +7,8 @@
 #include <cmath>
 #include <stdexcept>
 
-#include "body.h"     // create_part_body
-#include "mesh.h"     // get_mesh
+#include "part.h"     // make_part
 #include "physics.h"  // GetVelocity
-#include "texture.h"  // get_texture
 
 DockTestShips build_dock_test_ships(const std::string &mode,
                                     const PartsCatalog &part_catalog,

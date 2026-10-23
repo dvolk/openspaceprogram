@@ -1,10 +1,11 @@
 # A walker takes its suit from the home pad pool, so a roster of one can only
 # name one walker. The second keeps the suit the def minted, and make_part never
-# gives a suit a KerbalProfile -- without one the person boards as a nameless
-# seat and a save writes the profile rather than Vehicle::name, so the spelling
-# would be gone for the career (#291). The name is kept on an anonymous profile
-# (id 0), which refuseDoubleClaimId treats as claiming nothing, so two of them
-# can coexist.
+# gives a suit a KerbalProfile -- so place_vehicle mints an anonymous one (id 0,
+# which refuseDoubleClaimId treats as claiming nothing) carrying the requested
+# name (#291). This case pins the spawn: the second walker is the anonymous one,
+# the named one is not. What it does NOT pin is the profile surviving a save +
+# load -- that needs the walker aboard a capsule, and #394 covers what an
+# id-0 person is good for.
 NAME anonymous-walker-keeps-name
 CLAIM A walker spawned on a spent pool keeps its name on an anonymous profile.
 KIND invariant

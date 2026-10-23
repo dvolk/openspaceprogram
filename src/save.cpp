@@ -126,8 +126,9 @@ static std::string refuseVirtualPartDef(const PartDef &pd, const std::string &wh
    but a negative amount is neither: it drives a part's effectiveMass below its
    own structure, and rebuildCompound asserts every child of the compound weighs
    something -- so a hand-edited file would abort the process instead of being
-   refused (#389). Refuse it wherever a save names contents, the way the other
-   save rules do.
+   refused (#389). A crew_pool suit is in no compound, so there the refusal is
+   preventive rather than dodging an assert; it is the same rule either way.
+   Refuse it wherever a save names contents, the way the other save rules do.
    Over-capacity is deliberately NOT refused: #389 made the catalog
    authoritative for a part's mass, so a rebalanced parts file reaches existing
    saves on purpose, and a tank that was legal when it was written must not
@@ -277,8 +278,15 @@ static std::string validateSeatArray(const PartsCatalog &cat,
             return "load: '" + shipName + "' seat part '" + sp.part + "' is a '"
                    + sd->type + "' part, not a kerbal seat";
         }
-        /* No virtual-part guard here on purpose: a fuel_link def is not
-           kerbal-typed, so the check above already refuses it. */
+        /* The type check above makes a virtual def unreachable in practice -- a
+           fuel_link marker carries no mass, so minting one asserts in
+           make_part -- but nothing in the catalog says a marker cannot be
+           kerbal-typed, so guard it here like the other three arrays. */
+        if(std::string why = refuseVirtualPartDef(
+               *sd, "'" + shipName + "' seat part '" + sp.part + "'");
+           !why.empty()) {
+            return why;
+        }
         if(std::string why = refuseBadContents(
                sp.fuel, "'" + shipName + "' seat part '" + sp.part + "'");
            !why.empty()) {
@@ -625,7 +633,7 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
             return why;
         }
         if(std::string why = refuseBadContents(
-               sp.fuel, "saved ship '" + s.name + "' part '" + sp.id + "'");
+               sp.fuel, "saved ship '" + s.name + "' part '" + sp.part + "'");
            !why.empty()) {
             return why;
         }
@@ -662,9 +670,9 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
     return "";
 }
 
-/* The kerbal-def checks, world-free: the def file must exist and describe
-   exactly one kerbal part. `def` (optional) takes the parsed def so the builder
-   does not read the file twice. "" = fine.
+/* The kerbal-def checks, world-free: what its suit holds, then that the def
+   file exists and describes exactly one kerbal part. `def` (optional) takes the
+   parsed def so the builder does not read the file twice. "" = fine.
 
    preflightSave runs this before a cross-system switch: a missing def used to
    throw only after the teardown, which cost the career (#302). */

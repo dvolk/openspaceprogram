@@ -218,11 +218,12 @@ struct SaveMeta {
     int format = kSaveFormat;
     std::string saved_at;    // wall-clock (human-readable; not parsed back)
     /* The four paths below are PROVENANCE: written so a save says what tables
-       made it, never read back into this struct. The load re-reads "system"
-       itself (saveSystemFile, via ensureSystemForSave) and takes the parts,
-       experiments and roster from the command line, so editing these keys
-       cannot re-point an old save (#291). Same reason mass is not saved
-       (#389): table data belongs to the tables. */
+       made it. saveMetaFromJson parses all four, and nothing reads the fields
+       back. The parts, experiments and roster a load actually uses come from
+       the command line, so editing those keys changes nothing (#291) -- unlike
+       "system", which the load re-reads raw (saveSystemFile) and which DOES
+       choose which world the save loads into (#302). Same spirit as not saving
+       mass (#389): the tables own table data. */
     std::string system;      // the system file (res/systems/ksp_system.json)
     std::string parts;       // the parts catalog file (res/data/parts.json)
     std::string experiments; // the family table file (res/data/experiments.json)

@@ -5,9 +5,7 @@
 
 #include <stdexcept>
 
-#include "body.h"     // create_part_body
-#include "mesh.h"     // get_mesh
-#include "texture.h"  // get_texture
+#include "part.h"  // make_part
 
 RadialTestShip build_radial_test_ship(const std::string &mode,
                                       const PartsCatalog &part_catalog,
