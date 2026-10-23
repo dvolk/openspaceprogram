@@ -5,10 +5,13 @@
 - Use assert for important invariants
 - You can make issues with the 'tea' command: 'tea issue create -o json --title <title> -' and stdin. List issues 'tea issue ls -o json'. Comment on an issue with 'tea comments add <idx> "body"'.
 - Create issues if anything looks odd, buggy or poorly designed. Issues can be speculative/future investigative work.
+- When making issues keep the title 'ELI5' level and in the body include, if appropriate, how to repro, expected, impact on player, fix ideas. Close issues when they're done.
 - Performance is very important as we might scale up the game a lot later.
 - Write concise comments.
 - Upon completing your work: spawn a subagent to do a full adversarial quality pass through it for any remaining bugs, code smells, issues or QoL improvements.
+- Always run subagents and commands in the foreground / wait for them to finish.
 - Source code in ./src/. build -> 'bear -- make', tests -> 'make test', e2e -> 'python3 e2e/run.py <selector> [<selector>...]', run game -> 'SDL_VIDEODRIVER=offscreen ./osp --timeout <s>'
+- Keep e2e use low - usually run 1-5 cases (not selectors) per feature/ticket. If you find yourself running the same cases a third time, choose a different debugging strat. Don't e2e for changes you *know* will pass.
 - Assets in ./res/{meshes,textures,shaders,audio,fonts,data}/; ships in ./res/ships/, systems in ./res/systems/
 - Don't use memory: the projects moves quickly and it's usually faster to re-derive than to wrestle with outdated or incorrect notes.
 - Keep commit titles under 80 chars and use commit body to elaborate. Give yourself credit.
