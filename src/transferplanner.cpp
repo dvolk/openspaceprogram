@@ -5,6 +5,7 @@
 #include "bodylimits.h"  // shellEdge (the capture-orbit radius)
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <numbers>
 #include <cctype>
@@ -176,6 +177,12 @@ void TransferPlanner::selectTargetByName(const std::string &name) {
     // rather than left pending on a guess.
     if(xfer_sel.name != name) { xfer_sel = TargetRef(); }
     dropStaleTarget();
+    /* This is the one row matcher that does not go through targetMatches (it
+       picks the kind off the row rather than matching one), so pin that what it
+       produces is something target() can find. If the row rules ever grow a
+       term this function does not know about, --transfer-target would select a
+       row the next rebuild clears -- a headless-only failure no case covers. */
+    assert(xfer_sel.empty() || findTargetRow(xferTargets, xfer_sel) != nullptr);
 }
 
 const TransferPlanner::XferTarget *TransferPlanner::target() const {

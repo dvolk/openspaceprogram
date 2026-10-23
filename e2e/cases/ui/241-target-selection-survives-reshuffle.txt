@@ -38,9 +38,13 @@ CHECK out.count("[vehicle] retired:") == 2
 CHECK out.index('target="pad three"') < out.index("Removed 'pad two'")
 CHECK re.search(r"Removed 'pad two'.*target=\"pad three\"", out, re.S)
 # Retiring the TARGET itself ends the selection rather than handing it to the
-# next row: nothing solves for a vessel that is no longer in the world, so the
-# log stops naming it from the moment it dies.
-CHECK out.count('target="pad three"', out.index("Removed 'pad three'")) == 0
+# next row, and says so. The first CHECK pins the cadence (one solve logged per
+# --orbit-interval from the pick at 3.2s to the death at 8.5s), so the second is
+# a real claim: the log went quiet for the rest of a 16s run instead of naming a
+# row that survived the reshuffle.
+EXPECT [toast] Transfer target pad three is gone
+CHECK len(xfer) >= 5
+CHECK all(r["target"] == "pad three" and r["t"] < 9.5 for r in xfer)
 FORBID target="pad four"
 FORBID Cannot remove
 FORBID error:

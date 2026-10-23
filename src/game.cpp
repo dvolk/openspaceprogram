@@ -351,9 +351,16 @@ void Game::dropVehicleRefs(Vehicle *v) {
        its row looked up on demand, "the row is gone" is exactly what "v was the
        target" means, and no index has to be remembered alongside (#392). */
     eraseShipTargetRows(xferPlanner.xferTargets, v);
-    /* An empty selection resolves to null too, which is harmless: with no target
-       there is no solve to invalidate (update() clears it in that frame). */
-    if(xferPlanner.target() == nullptr) {
+    /* The empty check gates the toast: an empty identity resolves to null too,
+       and with no target there is nothing lost to report (xfer.valid is only
+       ever set where a row resolved, so there is no solve to invalidate). */
+    if(!xferPlanner.xfer_sel.empty() && xferPlanner.target() == nullptr) {
+        /* Say it: the combo flipping to "none", the map arc vanishing and the
+           swept grid going stale all happen with no player action, and docking
+           makes it sharp -- the docked vessel dies, so a transfer planned at it
+           dies with it. v->name is still alive here; the hull is only freed at
+           the sweep. */
+        toast("Transfer target %s is gone", v->name.c_str());
         xferPlanner.xfer_sel = TargetRef();
         xferPlanner.xfer.valid = false;
         xferPlanner.xfer.burn_dir = glm::dvec3(0.0);

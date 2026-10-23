@@ -95,10 +95,10 @@ public:
     /* Select by IDENTITY ("" clears), resolving against the current list so the
        caller sees this frame's index. `isShip` is part of the identity: the list
        can hold a body and a vessel under one name, and the combo shows a row for
-       each. This must NOT rebuild xferTargets: the Target window holds a row
-       pointer across the click, and the list it drew is the list the click
-       landed in. Rebuilding belongs to update(), and retirement erases rows
-       through Game::dropVehicleRefs. */
+       each. This must NOT rebuild xferTargets: the Target window calls it from
+       inside its own loop over the rows, so a rebuild would reallocate the
+       vector mid-iteration. Rebuilding belongs to update(), and retirement
+       erases rows through Game::dropVehicleRefs. */
     void selectTarget(const std::string &name, bool isShip);
 
     /* Select by name alone, taking the LAST match -- a vessel wins over a body
@@ -118,8 +118,9 @@ public:
     /* The selected row in the CURRENT list, or null. One scan of a list that is
        already in cache, so every reader takes a pointer and there is no index
        left to keep in step with a rebuild (#392). "Current" means whatever was
-       built last: the ship view and the job continuations run before update()
-       rebuilds, so their list may be the previous frame's. */
+       built last: the ship view reads it during a paint and the tick paths read
+       it when they retire a vehicle, both before update() rebuilds, so their
+       list may be the previous frame's. */
     const XferTarget *target() const;
     /* Does this row name the selection? The combo highlights a row, so it asks
        by identity rather than by row number. */
@@ -222,9 +223,12 @@ static_assert(std::is_move_assignable_v<TransferPlanner>,
               "TransferPlanner must stay assignable: resetForNewWorld() replaces it");
 
 /* Does a row name this identity? A body and a vessel can share a name and the
-   combo lists a row for each, so the kind is part of the answer. The name
-   POINTER is the object's own string, so a match means the same object, not
-   merely the same label. */
+   combo lists a row for each, so the kind is part of the answer. The compare is
+   TEXTUAL (TargetRef::name is a copy), so a match means the same label and kind,
+   not the same object: dedupVehicleName keeps labels unique among LIVE vehicles,
+   so a retired name can be reused later. That is safe only because every death
+   clears a selection that no longer resolves -- an identity is never carried
+   across its object's lifetime. */
 inline bool targetMatches(const TransferPlanner::XferTarget &t, const TargetRef &ref) {
     return !ref.empty() && t.name == ref.name
         && (t.ship != nullptr) == ref.isShip;
@@ -232,9 +236,11 @@ inline bool targetMatches(const TransferPlanner::XferTarget &t, const TargetRef 
 
 /* The row an identity names in `rows`, or null. An empty identity names nothing,
    which is what makes "the target is gone" and "there is no target" the same
-   answer everywhere it is asked. */
+   answer everywhere it is asked -- and keeps the common no-target case from
+   walking the list at all. */
 inline const TransferPlanner::XferTarget *findTargetRow(
         const std::vector<TransferPlanner::XferTarget> &rows, const TargetRef &ref) {
+    if(ref.empty()) { return nullptr; }
     for(const TransferPlanner::XferTarget &t : rows) {
         if(targetMatches(t, ref)) { return &t; }
     }

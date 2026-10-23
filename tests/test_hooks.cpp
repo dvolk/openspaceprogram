@@ -125,8 +125,8 @@ static void test_erase_rows() {
 
 static void test_target_identity() {
     /* A body and a vessel can share a name and the combo lists a row for each,
-       so the KIND is part of the identity (#392). The name pointer is the
-       object's own string, so these two rows are two different targets. */
+       so the KIND is part of the identity (#392). The name compare is textual,
+       so these two rows are only ever told apart by that term. */
     std::vector<TransferPlanner::XferTarget> rows = {
         { names[0], fakeB(1), nullptr },   // the body "a"
         { names[0], nullptr, fakeV(1) },   // a vessel also called "a"
@@ -140,10 +140,12 @@ static void test_target_identity() {
     // No target and target-gone are the same answer, so callers have one check.
     CHECK(findTargetRow(rows, TargetRef{}) == nullptr);
     CHECK(findTargetRow(rows, TargetRef{"zz", false}) == nullptr);
-    /* Retiring the vessel: its row goes, the body's stays. This is the pair
-       Game::dropVehicleRefs relies on -- the ship selection stops resolving (so
-       dropStaleTarget leaves NO selection rather than the row that slid up,
-       which here would be the moon), while a body selection is untouched. */
+    /* Retiring the vessel: its row goes, the body's stays. This is the LOOKUP
+       half of what Game::dropVehicleRefs relies on -- a ship selection stops
+       resolving while a same-named body selection stays put. The CLEARING half
+       (the selection then goes empty rather than sliding onto the row that
+       moved up) lives in the planner's out-of-line methods, which this binary
+       does not link; e2e 241 pins it. */
     eraseShipTargetRows(rows, fakeV(1));
     CHECK(rows.size() == 1);
     CHECK(findTargetRow(rows, shipRef) == nullptr);
