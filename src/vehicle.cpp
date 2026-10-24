@@ -1258,6 +1258,12 @@ glm::dmat3 Vehicle::partRot(const Part *p) const {
 
 glm::dvec3 Vehicle::partAxis(const Part *p, int n) const { return partRot(p)[n]; }
 
+glm::dvec3 Vehicle::partThrustDir(const Part *p) const {
+    // Zero gimbal (every part without TVC, and every TVC part at rest) is
+    // EXACTLY the authored axis: gimbalDir early-returns partRot[2].
+    return gimbalDir(partRot(p), p->gimbal[0], p->gimbal[1]);
+}
+
 glm::dvec3 Vehicle::partVel(const Part *p) const {
     return GetVelocity(hull)
          + glm::cross(GetAngVelocity(hull), partPos(p) - comPos());
@@ -1772,25 +1778,36 @@ void Vehicle::applyThrustForce(double h) {
     assert(h > 0.0 && "thrust force needs the substep it is applied over");
     const glm::dvec3 com = comPos();
     glm::dvec3 ftotal(0.0);
+    /* TVC aims every nozzle at ONE lateral direction in the root part's
+       frame (the frame rcsWorldDir uses): a ring of surface-mounted engines
+       then ADDS pitch authority instead of coupling stick pitch into a roll
+       couple around the ring. The same stick the wheels answer to drives it;
+       no EC/wheel gate -- a mechanical gimbal works when the power is dead.
+       No stick recenters, so a coasting ship settles. */
+    const Part *tvcRef = rootPart();
+    glm::dvec3 latShip(0.0);
+    if(tvcRef != nullptr && (stick[1] != 0.0f || stick[2] != 0.0f)) {
+        latShip = (double)stick[2] * partAxis(tvcRef, 0)
+                - (double)stick[1] * partAxis(tvcRef, 1);
+        const double l = glm::length(latShip);   // both sticks: keep |lat| <= 1
+        if(l > 1.0) { latShip /= l; }
+    }
     for(Part *p : parts) {
         if(!p->isThruster()) { continue; }
-        /* TVC actuator: the same stick the wheels answer to (body-relative
-           pitch/yaw) aims the nozzle. Driven here, not in applyRotationForce:
-           a wheel-less or unpowered ship still steers on its engines (no EC
-           gate -- a mechanical gimbal). An unarmed engine recenters, so a
-           coasting ship settles. */
         if(p->def->gimbal_max > 0.0) {
-            const double armed = (p->armedThrust != 0.0f) ? 1.0 : 0.0;
-            const double target[2] = {armed * (double)stick[1] * p->def->gimbal_max,
-                                      armed * (double)stick[2] * p->def->gimbal_max};
+            const double scale = (p->armedThrust != 0.0f) ? p->def->gimbal_max : 0.0;
+            double target[2];
+            gimbalTargets(partRot(p), scale * latShip, target);
             gimbalStep(p->gimbal, target, p->def->gimbal_rate, h);
+            /* Targets project a <=gimbal_max vector, so the state cannot
+               leave its bounds -- only an authoring bug can trip this. */
+            assert(std::fabs(p->gimbal[0]) <= p->def->gimbal_max + 1e-9
+                && std::fabs(p->gimbal[1]) <= p->def->gimbal_max + 1e-9);
         }
         if(p->armedThrust == 0.0f) { continue; }
         // Along the (possibly gimballed) engine axis, applied AT the engine:
         // an off-axis or tilted engine torques the ship directly.
-        const glm::dvec3 ft = (p->def->gimbal_max > 0.0)
-            ? gimbalDir(partRot(p), p->gimbal[0], p->gimbal[1]) * (double)p->armedThrust
-            : partAxis(p, 2) * (double)p->armedThrust;
+        const glm::dvec3 ft = partThrustDir(p) * (double)p->armedThrust;
         ApplyForce(hull, partPos(p) - com, ft);
         ftotal += ft;
     }
@@ -2223,9 +2240,7 @@ void Vehicle::tq_log(double time) {
     }
     for(Part *p : parts) {
         if(p->isThruster() && p->armedThrust != 0.0f) {
-            F += (p->def->gimbal_max > 0.0)
-                ? gimbalDir(partRot(p), p->gimbal[0], p->gimbal[1]) * (double)p->armedThrust
-                : partAxis(p, 2) * (double)p->armedThrust;
+            F += partThrustDir(p) * (double)p->armedThrust;
         }
     }
     const glm::dvec3 dcom = comOffset();
@@ -2502,6 +2517,7 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     for(Part *q : B->parts) {
         q->localPos = T_rot * q->localPos + T_pos;
         q->localRot = T_rot * q->localRot;
+        q->gimbal[0] = q->gimbal[1] = 0.0;  // fresh actuators in the merged frame
     }
 
     // rigid-body state before the move
@@ -2639,6 +2655,7 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
         Part *q = parts[i];
         q->localPos = glm::transpose(RR) * (q->localPos - pR);
         q->localRot = glm::transpose(RR) * q->localRot;
+        q->gimbal[0] = q->gimbal[1] = 0.0;  // the old ship's deflection is not this stage's
         nvParts.push_back(q);
     }
     root->parent = nullptr;   // root of the new ship

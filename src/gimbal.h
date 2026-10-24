@@ -8,11 +8,15 @@
 // applied after the inner one). The deviation force applied at the engine's
 // offset from the COM is what torques the ship -- see Vehicle::applyThrustForce.
 //
-// Sign convention (pinned in tests/test_gimbal.cpp): for an engine stacked
-// along the ship's axis, target angles {stick[1], stick[2]} * gimbal_max give
-// the SAME nose rotation sign as the reaction-wheel torque in
-// Vehicle::applyRotationForce -- W/S and A/D feel the same with wheels, TVC,
-// or both.
+// Sign convention (pinned in tests/test_gimbal.cpp): the actuator targets for
+// a whole ship come from ONE lateral direction in the ship's root frame
+// (gimbalTargets), so a ring of surface-mounted engines ADDS authority rather
+// than rolling the ship, and engines keep steering the way the pilot commands
+// even when mounted rolled. That shared lateral answers the stick the same way
+// the reaction-wheel torque in Vehicle::applyRotationForce does -- for the
+// ordinary case of engines levers BELOW the COM. An engine on the far side of
+// the COM (reversed engines in a docked pair, COM travel mid-burn) pushes the
+// nose the other way; a torque-aware mixer is the autopilot stage's job.
 
 #include <cmath>
 
@@ -40,9 +44,20 @@ inline void gimbalStep(double cur[2], const double target[2], double rate, doubl
     }
 }
 
+/* The actuator angles that aim this engine's thrust at a SHARED lateral
+   offset `lateral` (world axes; magnitude = the commanded deflection, rad):
+   project it onto the engine's gimbal plane. To first order the achieved
+   deviation is exactly that projection, so every engine on the ship pushes
+   the SAME way instead of around its own ring. */
+inline void gimbalTargets(const glm::dmat3 &partRot, const glm::dvec3 &lateral,
+                          double out[2]) {
+    out[0] = -glm::dot(lateral, partRot[1]);   // pitch: deviates along -local Y
+    out[1] =  glm::dot(lateral, partRot[0]);   // yaw:   deviates along +local X
+}
+
 /* The attitude-authority term of a gimballed engine: the torque its thrust
-   would produce at lever `rel` (from the COM). Exposed so the attitude law
-   (autopilot slews) can budget TVC alongside wheel torque. */
+   would produce at lever `rel` (from the COM). Staged: the autopilot's
+   authority budget (mixing TVC with wheel torque) is its first consumer. */
 inline glm::dvec3 gimbalTorque(const glm::dvec3 &rel, double thrust,
                                const glm::dvec3 &dir) {
     return glm::cross(rel, dir * thrust);

@@ -1716,6 +1716,28 @@ int main() {
         std::remove(bad);
     }
 
+    // engine gimbal (TVC): a negative limit is rejected...
+    {
+        const char *bad = "/tmp/test_shipload_badcat.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"name\": \"x\", \"mesh\": \"m\", \"texture\": \"t\","
+             " \"mass\": 1, \"gimbal_max\": -0.1 } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
+        std::remove(bad);
+    }
+    // ...and a deflection limit with a dead actuator (no positive
+    // gimbal_rate) is authored data nobody can use: refuse the load.
+    {
+        const char *bad = "/tmp/test_shipload_badcat.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"name\": \"x\", \"mesh\": \"m\", \"texture\": \"t\","
+             " \"mass\": 1, \"gimbal_max\": 0.05 } ] }";
+        f.close();
+        CHECK(expect_throw_saying([&](){ load_parts_catalog(bad); }, "gimbal_rate"));
+        std::remove(bad);
+    }
+
     // a chute (chute_area > 0) without its canopy pair is a catalog bug
     {
         const char *bad = "/tmp/test_shipload_badcat.json";

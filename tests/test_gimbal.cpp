@@ -21,6 +21,7 @@
 #include <cstdio>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include "gimbal.h"
 
@@ -126,6 +127,40 @@ static void test_dir_sign_convention() {
                "yaw>0 torques about -up, like the A/D wheel axis");
 }
 
+static void test_targets() {
+    printf("== gimbalTargets: one shared lateral for the whole ship ==\n");
+    const double g = 0.0873;   // 5 deg
+
+    // An engine aligned with the ship: a -up lateral IS pitch +g, +right IS yaw +g
+    // (the closed form of gimbalDir read backwards).
+    double out[2];
+    gimbalTargets(ident(), glm::dvec3(0.0, -g, 0.0), out);
+    CHECK_NEAR(out[0], g, 1e-12, "lateral -up -> pitch +g");
+    CHECK_NEAR(out[1], 0.0, 0.0, "pure pitch lateral -> no yaw");
+    gimbalTargets(ident(), glm::dvec3(g, 0.0, 0.0), out);
+    CHECK_NEAR(out[0], 0.0, 0.0, "pure yaw lateral -> no pitch");
+    CHECK_NEAR(out[1], g, 1e-12, "lateral +right -> yaw +g");
+
+    // The point of the shared vector: for an engine in ANY rolled or reversed
+    // attitude, the first-order deviation gimbalDir achieves (dir - authored
+    // +Z) equals the SAME lateral vector -- every nozzle pushes the same way,
+    // so a ring adds authority instead of coupling pitch into roll. Tolerance
+    // covers the second-order terms of a 5 deg swing (~4e-3).
+    const glm::dmat3 rolls[3] = {
+        glm::mat3_cast(glm::angleAxis(1.5707963267948966, glm::dvec3(0.0, 0.0, 1.0))),  // rolled 90
+        glm::mat3_cast(glm::angleAxis(3.141592653589793, glm::dvec3(0.0, 0.0, 1.0))),   // rolled 180
+        glm::mat3_cast(glm::angleAxis(3.141592653589793, glm::dvec3(1.0, 0.0, 0.0))),   // reversed
+    };
+    const glm::dvec3 lat = g * glm::dvec3(0.7, -0.7, 0.0);
+    for(const glm::dmat3 &rot : rolls) {
+        gimbalTargets(rot, lat, out);
+        CHECK_TRUE(std::fabs(out[0]) <= g + 1e-12 && std::fabs(out[1]) <= g + 1e-12,
+                   "projected angles stay within the lateral's magnitude");
+        const glm::dvec3 dev = gimbalDir(rot, out[0], out[1]) - rot[2];
+        checkVec(dev, lat, 1e-2, "achieved deviation == the shared lateral, any attitude");
+    }
+}
+
 static void test_step() {
     printf("== gimbalStep: rate limit ==\n");
     double cur[2] = {0.0, 0.0};
@@ -180,6 +215,7 @@ int main() {
     test_dir_identity();
     test_dir_closed_form();
     test_dir_sign_convention();
+    test_targets();
     test_step();
     test_torque();
     printf("%s: %d checks, %d failures\n",

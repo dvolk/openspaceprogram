@@ -211,6 +211,10 @@ public:
     glm::dmat3 partRot(const Part *p) const;
     /* the part's local axis n (0 = right, 1 = up, 2 = nose) in world axes */
     glm::dvec3 partAxis(const Part *p, int n) const;
+    /* The direction a thruster on this part pushes RIGHT NOW: the authored +Z
+       swung by the part's live gimbal state (src/gimbal.h). Zero gimbal is
+       exactly partAxis(p, 2). */
+    glm::dvec3 partThrustDir(const Part *p) const;
     glm::dvec3 partVel(const Part *p) const;
     glm::dvec3 partAngVel(const Part *p) const;
 
