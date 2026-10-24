@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 258 |
+| `invariant` | a behaviour or a player route the game must keep | 259 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 34 |
 | `harness` | CLI/test-engine plumbing, not game spec | 12 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **308** |
+| | **total** | **309** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (62)
+## flight (63)
 
 | case | kind | pins |
 |---|---|---|
@@ -53,6 +53,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/51-jet-vtol.txt` | invariant | A jet VTOL lifts off and burns jet fuel. |
 | `flight/79-dock-save-load.txt` | invariant | A docked pair survives save/load as one vessel. |
 | `flight/80-glider-aoa-swing.txt` | invariant | A glider's AoA swings toward the trimmed angle and settles. |
+| `flight/95-tvc-vacuum.txt` | invariant | A wheel-less ship steers in vacuum by gimballed thrust alone. |
 | `flight/97-nuclear-engine.txt` | golden | A nuclear engine produces its rated thrust and hydrogen rate. |
 | `flight/98-atmo-top.txt` | invariant | Above the atmosphere's top boundary density and drag are exactly zero. |
 | `flight/99-rails-airless-arc.txt` | invariant | Rails warp accepts a suborbital arc on an airless body and parks it at the ground. |

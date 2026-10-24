@@ -18,6 +18,7 @@
 #include "resdir.h"    // resdir::path
 #include "system.h"    // System (spawn_vehicle resolves the home body's SOI)
 #include "drag.h"      // the drag law (airDensity / dragForce)
+#include "gimbal.h"    // the engine-gimbal law (gimbalDir / gimbalStep)
 #include "constants.h" // kSoiMargin, kShipGround*, kTerrainBand
 
 /* One rigid body per part, welded parent-first in the def's construction order.
@@ -1773,10 +1774,23 @@ void Vehicle::applyThrustForce(double h) {
     glm::dvec3 ftotal(0.0);
     for(Part *p : parts) {
         if(!p->isThruster()) { continue; }
+        /* TVC actuator: the same stick the wheels answer to (body-relative
+           pitch/yaw) aims the nozzle. Driven here, not in applyRotationForce:
+           a wheel-less or unpowered ship still steers on its engines (no EC
+           gate -- a mechanical gimbal). An unarmed engine recenters, so a
+           coasting ship settles. */
+        if(p->def->gimbal_max > 0.0) {
+            const double armed = (p->armedThrust != 0.0f) ? 1.0 : 0.0;
+            const double target[2] = {armed * (double)stick[1] * p->def->gimbal_max,
+                                      armed * (double)stick[2] * p->def->gimbal_max};
+            gimbalStep(p->gimbal, target, p->def->gimbal_rate, h);
+        }
         if(p->armedThrust == 0.0f) { continue; }
-        // Along the engine's own +Z, applied AT the engine: an off-axis or
-        // tilted engine torques the ship directly.
-        const glm::dvec3 ft = partAxis(p, 2) * (double)p->armedThrust;
+        // Along the (possibly gimballed) engine axis, applied AT the engine:
+        // an off-axis or tilted engine torques the ship directly.
+        const glm::dvec3 ft = (p->def->gimbal_max > 0.0)
+            ? gimbalDir(partRot(p), p->gimbal[0], p->gimbal[1]) * (double)p->armedThrust
+            : partAxis(p, 2) * (double)p->armedThrust;
         ApplyForce(hull, partPos(p) - com, ft);
         ftotal += ft;
     }
@@ -2209,7 +2223,9 @@ void Vehicle::tq_log(double time) {
     }
     for(Part *p : parts) {
         if(p->isThruster() && p->armedThrust != 0.0f) {
-            F += partAxis(p, 2) * (double)p->armedThrust;
+            F += (p->def->gimbal_max > 0.0)
+                ? gimbalDir(partRot(p), p->gimbal[0], p->gimbal[1]) * (double)p->armedThrust
+                : partAxis(p, 2) * (double)p->armedThrust;
         }
     }
     const glm::dvec3 dcom = comOffset();

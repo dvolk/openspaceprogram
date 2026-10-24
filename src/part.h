@@ -69,6 +69,10 @@ struct Part {
     int stage = 1;              // from the ship def (1 = single stage)
     int fuelGroup = -1;         // fuel-group id (Vehicle::buildFuelGroups); -1 = a fuel barrier
     float armedThrust = 0.0f;   // N armed this tick (disarmed by clearThrust)
+    /* Engine-gimbal state (rad): [0] pitch about the part's local X, [1] yaw
+       about its local Y. Transient like armedThrust (not saved); driven by
+       Vehicle::applyThrustForce through the src/gimbal.h law. */
+    double gimbal[2] = {0.0, 0.0};
     /* Parachute state (ChuteState); inert for non-chute parts. Set by
        Vehicle::deployChutes on the stage press; save-persisted. */
     ChuteState chute = ChuteStowed;

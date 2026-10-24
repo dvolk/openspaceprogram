@@ -157,6 +157,11 @@ struct PartDef {
     double jet_fan_thrust;    // N; static (fan) thrust at sea level -- the VTOL floor
     double jet_intake_area;   // m^2; effective intake/capture area (the ram term)
     double rcs_thrust;        // N; > 0 -> RCS translation authority (hydrazine mono)
+    /* Engine gimbal / TVC (src/gimbal.h): the nozzle may swing +/-gimbal_max
+       (rad) at gimbal_rate (rad/s). gimbal_max = 0 -> the thrust line stays
+       locked to the part's +Z. */
+    double gimbal_max;
+    double gimbal_rate;
     /* Electrical (KSP-style EC), independent of each other:
        power_draw (W) > 0           -> draws EC only while ACTIVE (reaction wheel);
        power_draw_constant (W) > 0  -> draws EC ALL THE TIME (capsule life support);

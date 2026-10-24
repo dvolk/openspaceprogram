@@ -1,0 +1,15 @@
+NAME tvc-vacuum
+CLAIM A wheel-less ship steers in vacuum by gimballed thrust alone.
+KIND invariant
+ARGS --time-accel 1 --startship tvc_test,res/ships/tvc_test.json,Kerbin,inertial-orbit
+ARGS --att-log --orbit-interval 0.3
+ARGS --sim-press 1000,6000,T
+ARGS --sim-press 2000,500,S
+ARGS --timeout 12
+LIMIT 40
+EXPECT [attlog]
+FORBID error:
+CHECK len(att) >= 10
+CHECK max(a["wnorm"] for a in att if a["t"] < 1.5) < 1e-3
+CHECK max(a["wnorm"] for a in att if 2.5 < a["t"] < 5.0) > 0.05
+CHECK all(a["wnorm"] == a["wnorm"] and a["wnorm"] < 1e4 for a in att)

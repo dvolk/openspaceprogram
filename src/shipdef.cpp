@@ -12,7 +12,8 @@
 PartDef::PartDef()
     : mass(0.0), radius(1.0), height(2.0), torque(0.0),
       exhaust_velocity(0.0), jet(false), jet_fan_thrust(0.0),
-      jet_intake_area(0.0), rcs_thrust(0.0), power_draw(0.0),
+      jet_intake_area(0.0), rcs_thrust(0.0), gimbal_max(0.0), gimbal_rate(0.0),
+      power_draw(0.0),
       power_draw_constant(0.0), power_gen(0.0),
       crew_capacity(0), inventory_capacity(0), decoupler(false), docking_port(false),
       fuel_barrier(false), fuel_link(false), hull_margin(-1.0),
@@ -136,6 +137,22 @@ PartsCatalog load_parts_catalog(const char *path) {
         d.rcs_thrust = pv.value("rcs_thrust", 0.0);
         if(d.rcs_thrust < 0.0) {
             throw std::runtime_error(ctx + "\"rcs_thrust\" must be >= 0 (N)");
+        }
+
+        /* Engine gimbal (TVC): a part either cannot gimbal at all or needs a
+           nonzero slew rate to reach its limit -- a limit with a dead
+           actuator is authored data nobody can use. */
+        d.gimbal_max = pv.value("gimbal_max", 0.0);
+        if(d.gimbal_max < 0.0) {
+            throw std::runtime_error(ctx + "\"gimbal_max\" must be >= 0 (rad)");
+        }
+        d.gimbal_rate = pv.value("gimbal_rate", 0.0);
+        if(d.gimbal_rate < 0.0) {
+            throw std::runtime_error(ctx + "\"gimbal_rate\" must be >= 0 (rad/s)");
+        }
+        if(d.gimbal_max > 0.0 && d.gimbal_rate <= 0.0) {
+            throw std::runtime_error(ctx + "\"gimbal_max\" > 0 requires a positive "
+                                          "\"gimbal_rate\" (rad/s)");
         }
 
         d.power_draw = pv.value("power_draw", 0.0);
