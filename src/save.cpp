@@ -475,7 +475,7 @@ size_t countPartInventory(Part *p) {
 SaveShip saveShipFromVehicle(Vehicle *v,
                              const std::map<const Vehicle *, std::string> &slugs) {
     SaveShip s;
-    s.name = v->name;
+    s.name = v->displayName();
     s.defPath = v->defPath;
     s.is_crew = v->isEva();
     s.flog = v->flog;
@@ -483,6 +483,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
         /* A Kerbal vehicle exists ONLY while walking (eva.h): a seated person is
            a seat on a capsule Part and is captured in that part's `seats`. */
         Kerbal *k = static_cast<Kerbal *>(v);
+        assert(k->name.empty());   // displayName() owns the spelling
         s.profile_id = k->profileId();
         /* Writing 0 here would produce a save this file's own loader refuses, so
            catch it on the way out instead (#394). */
@@ -942,9 +943,8 @@ Kerbal *buildKerbalFromSave(Game &g, const LoadWorld &w, const SaveShip &s) {
         throw std::runtime_error(why);
     }
     Kerbal *k = new Kerbal;
-    /* The roster owns the name, so the saved ship name is only what the refusal
-       above called this file: the person is spelled as the cast spells them. */
-    k->name = profile->name;
+    /* No name copy: the roster profile this kerbal wears owns the spelling, and
+       Kerbal::displayName() reads it (eva.h). */
     k->defPath = s.defPath;
     k->scenario = nullptr;
     k->sun = w.sun;
@@ -1008,7 +1008,7 @@ Kerbal *buildKerbalFromSave(Game &g, const LoadWorld &w, const SaveShip &s) {
     /* The identity binding is the one fact about a loaded kerbal the vehicle
        list cannot show, so make it observable: a person who came back wearing
        the wrong roster entry is exactly what this line is there to catch. */
-    printf("[crew] loaded '%s' on EVA\n", k->name.c_str());
+    printf("[crew] loaded '%s' on EVA\n", k->displayName().c_str());
     return k;
 }
 
@@ -1611,7 +1611,7 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
        says WHICH one. Cases match "(active: <name>)" as a substring. */
     if(active != nullptr) {
         printf("Loaded game from %s (active: %s) [%s]\n", b->dir.c_str(),
-               active->name.c_str(), activeSlug.c_str());
+               active->displayName().c_str(), activeSlug.c_str());
     } else {
         printf("Loaded game from %s (active: (none))\n", b->dir.c_str());
     }

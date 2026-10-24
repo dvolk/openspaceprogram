@@ -1943,7 +1943,7 @@ void drawUIReadouts(Game &g) {
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,
                                  ImVec4(0.40f, 0.55f, 0.80f, 1.0f));
         }
-        if(ImGui::Button(v->name.c_str())) {
+        if(ImGui::Button(v->displayName().c_str())) {
             g.select_vehicle(v);
         }
         if(active) {
@@ -1958,7 +1958,7 @@ void drawUIReadouts(Game &g) {
             // so this never truncates; if it somehow did, two rows would share an
             // imgui id and --ui-click would report the label as ambiguous.
             char rm_id[256];
-            snprintf(rm_id, sizeof(rm_id), "x##rm_%s", v->name.c_str());
+            snprintf(rm_id, sizeof(rm_id), "x##rm_%s", v->displayName().c_str());
             if(ImGui::SmallButton(rm_id)) {
                 /* Stop iterating only when a row really went away. A refusal
                    (a capsule with its own crew aboard still gets an "x")
@@ -1974,7 +1974,7 @@ void drawUIReadouts(Game &g) {
     });
 
     drawWin(g, W_VesselInfo, [&] {
-        ImGui::Text("Ship: %s", ship->name.c_str());
+        ImGui::Text("Ship: %s", ship->displayName().c_str());
         ImGui::Text("Stage: %d / %d  (SPACE to drop)",
                     ship->activeStage(), ship->numStages());
         ImGui::Text("Mass: %.3fkg", ship->getMass());
@@ -2172,7 +2172,7 @@ void drawPartWindows(Game &g) {
            game never writes such a save; #315. */
         char name[256];
         snprintf(name, sizeof(name), "%s > %s##%zu",
-                 ship->name.c_str(), disp, part);
+                 ship->displayName().c_str(), disp, part);
         /* Placement, every frame rather than once. Two reasons it cannot be a
            one-off:
              - the window's size is unknown until imgui has finished auto-fitting
@@ -2229,7 +2229,7 @@ void drawPartWindows(Game &g) {
             if(other.userMoved) {
                 char oname[256];
                 snprintf(oname, sizeof(oname), "%s > %s##%zu",
-                         other.ship->name.c_str(),
+                         other.ship->displayName().c_str(),
                          other.ship->parts[other.part]->def->label().c_str(),
                          other.part);
                 const ImGuiWindow *w = ImGui::FindWindowByName(oname);
@@ -2331,7 +2331,7 @@ void drawPartWindows(Game &g) {
            windows, 7030); the layout pass above is what positions them. */
         if(ImGui::Begin(name, &open, ImGuiWindowFlags_NoSavedSettings
                                    | ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Ship: %s", ship->name.c_str());
+            ImGui::Text("Ship: %s", ship->displayName().c_str());
             ImGui::Text("Part #%zu  (stage %d)", part,
                         ship->parts[part]->stage);
             ImGui::Separator();
@@ -2363,7 +2363,7 @@ void drawPartWindows(Game &g) {
                     if(act != ship) {
                         // On another ship: make it the dock target (the other ship's half of the intent).
                         if(act->dockTargetPort == ship->parts[part]) {
-                            ImGui::Text("Docking target of %s", act->name.c_str());
+                            ImGui::Text("Docking target of %s", act->displayName().c_str());
                             if(ImGui::SmallButton("Clear docking target")) {
                                 act->dockTargetShip = nullptr;
                                 act->dockTargetPort = nullptr;
@@ -2371,12 +2371,12 @@ void drawPartWindows(Game &g) {
                         } else if(ImGui::SmallButton("Target for docking")) {
                             act->dockTargetShip = ship;
                             act->dockTargetPort = ship->parts[part];
-                            g.toast("Docking target: %s", ship->name.c_str());
+                            g.toast("Docking target: %s", ship->displayName().c_str());
                         }
                     } else {
                         // On the ACTIVE ship: arm it as the port that does the mating.
                         if(act->dockArmPort == ship->parts[part]) {
-                            ImGui::Text("Armed port of %s", act->name.c_str());
+                            ImGui::Text("Armed port of %s", act->displayName().c_str());
                             if(ImGui::SmallButton("Disarm port")) {
                                 act->dockArmPort = nullptr;
                             }
@@ -2498,7 +2498,7 @@ void drawPartWindows(Game &g) {
                              dotr,
                              who != nullptr ? who->complexion()
                                             : kKerbalBaseGreen);
-                    ImGui::Text("  %s (%.1f m)%s", k->name.c_str(), dist,
+                    ImGui::Text("  %s (%.1f m)%s", k->displayName().c_str(), dist,
                                 full ? "  (capsule full)" : "");
                     ImGui::BeginDisabled(!boardable);
                     /* Same reason as the seat rows: PushID(k) makes the imgui id
@@ -2509,7 +2509,7 @@ void drawPartWindows(Game &g) {
                     /* std::string rather than a fixed buffer: the roster puts no
                        limit on a name (crew.cpp:64), and a truncated hidden id
                        would put two walkers back under one label. */
-                    const std::string board = "Board##board_" + k->name;
+                    const std::string board = "Board##board_" + k->displayName();
                     const bool boardClicked = ImGui::SmallButton(board.c_str());
                     ImGui::EndDisabled();
                     if(boardClicked) {
@@ -2563,7 +2563,7 @@ void drawPartWindows(Game &g) {
                                    fixes the test half without deciding that copy
                                    question. */
                                 const std::string store
-                                    = "Store  (into capsule)##store_" + k->name;
+                                    = "Store  (into capsule)##store_" + k->displayName();
                                 const bool storeClicked
                                     = ImGui::SmallButton(store.c_str());
                                 ImGui::EndDisabled();
@@ -2641,7 +2641,7 @@ void drawPartWindows(Game &g) {
                         ImGui::PushID(k);
                         char takeLabel[192];
                         snprintf(takeLabel, sizeof(takeLabel),
-                                 "Take  (to %s)##pod_take", k->name.c_str());
+                                 "Take  (to %s)##pod_take", k->displayName().c_str());
                         if(ImGui::SmallButton(takeLabel)) {
                             g.moveExperiment(pod, k->parts[0], 0);
                         }
@@ -3174,7 +3174,7 @@ void drawUIMap(Game &g) {
                 // Label offset from the marker (px): +x right, -y up.
                 const float label_dx = 6.0f, label_dy = 14.0f;
                 dl->AddText(ImVec2(tpx.x + label_dx, tpx.y - label_dy),
-                            col_vessel, s->name.c_str());
+                            col_vessel, s->displayName().c_str());
             }
         }
 
@@ -4730,7 +4730,7 @@ void drawTrackingShipList(Game &g) {
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,
                                  ImVec4(0.40f, 0.55f, 0.80f, 1.0f));
         }
-        if(ImGui::Button(v->name.c_str())) {
+        if(ImGui::Button(v->displayName().c_str())) {
             g.select_vehicle(v);
         }
         if(active) {
@@ -4739,7 +4739,7 @@ void drawTrackingShipList(Game &g) {
         if(!v->isEva()) {
             ImGui::SameLine();
             char rm_id[256];
-            snprintf(rm_id, sizeof(rm_id), "x##rm_%s", v->name.c_str());
+            snprintf(rm_id, sizeof(rm_id), "x##rm_%s", v->displayName().c_str());
             if(ImGui::SmallButton(rm_id)) {
                 /* Only a real removal stops the list (and hides "Fly"):
                    a refusal toasts and leaves the row in place. */
@@ -4996,7 +4996,7 @@ void drawTrackingMap(Game &g) {
                 // Label offset from the marker (px): +x right, -y up.
                 const float label_dx = 6.0f, label_dy = 14.0f;
                 dl->AddText(ImVec2(tpx.x + label_dx, tpx.y - label_dy),
-                            col_vessel, s->name.c_str());
+                            col_vessel, s->displayName().c_str());
             }
         }
 
@@ -5518,10 +5518,10 @@ static bool staffWhereIs(const Game &g, uint64_t id, char *out, size_t n) {
                 if(suit == nullptr || suit->kerbal == nullptr
                    || suit->kerbal->id != id) { continue; }
                 if(v->m_parent != nullptr) {
-                    snprintf(out, n, "Aboard %s (%s)", v->name.c_str(),
+                    snprintf(out, n, "Aboard %s (%s)", v->displayName().c_str(),
                              v->m_parent->name.c_str());
                 } else {
-                    snprintf(out, n, "Aboard %s", v->name.c_str());
+                    snprintf(out, n, "Aboard %s", v->displayName().c_str());
                 }
                 return true;
             }

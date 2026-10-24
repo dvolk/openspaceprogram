@@ -219,7 +219,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
            Part (part.h), never a target here. */
         for(auto *s : g->vehicles) {
             if(s != g->ship && s->m_parent == pb) {
-                xferTargets.push_back({s->name.c_str(), nullptr, s});
+                xferTargets.push_back({s->displayName().c_str(), nullptr, s});
             }
         }
         // --transfer-target wins over the window's combo on every rebuild.

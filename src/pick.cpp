@@ -183,7 +183,7 @@ std::string flightAimAtPart(Game &g, const std::string &shipName,
     if(g.ship == nullptr) { return "no active ship to pick against"; }
     Vehicle *want = nullptr;
     for(Vehicle *s : g.vehicles) {
-        if(s->name == shipName) { want = s; break; }
+        if(s->displayName() == shipName) { want = s; break; }
     }
     if(want == nullptr) { return "no ship named '" + shipName + "' in the world"; }
     size_t wantPart = 0;

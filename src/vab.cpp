@@ -711,7 +711,7 @@ void vabLaunch(Game &g) {
            the out is right there, and nothing silently relocates. */
         if(Vehicle *blocker = findPadOccupant(site, g.vehicles)) {
             printf("[vab] launch refused: '%s' occupies '%s'\n",
-                   blocker->name.c_str(), site->id.c_str());
+                   blocker->displayName().c_str(), site->id.c_str());
             fflush(stdout);
             /* Deferred by construction: the card answers on a later frame, so
                the callback re-finds the occupant and re-resolves the site by
@@ -723,7 +723,7 @@ void vabLaunch(Game &g) {
                for pad clearing is the open half of #231. */
             const std::string padName = hb->name;
             std::string siteId = site->id;
-            g.ask(blocker->name + " is standing on " + site->display_name
+            g.ask(blocker->displayName() + " is standing on " + site->display_name
                     + ". Clear the pad?",
                   {"Clear the pad", "Cancel"},
                   [&g, padName, siteId](int choice) {
@@ -831,10 +831,10 @@ void vabLaunch(Game &g) {
        leaving the editor's camera pose would make the next vabOpen skip
        capturing one. */
     enterFlight(g);
-    printf("[vab] launched '%s' (%d parts)\n", v->name.c_str(),
+    printf("[vab] launched '%s' (%d parts)\n", v->displayName().c_str(),
            (int)g.vab.build.parts.size());
     fflush(stdout);
-    g.toast("Launched %s", v->name.c_str());
+    g.toast("Launched %s", v->displayName().c_str());
     if(!g.vab.subassemblies.empty()) {
         const int n = (int)g.vab.subassemblies.size();
         g.toast("%d subassemb%s stayed in the VAB", n, n == 1 ? "ly" : "ies");

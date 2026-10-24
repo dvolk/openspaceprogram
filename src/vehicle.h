@@ -78,7 +78,11 @@ struct ScenarioDef;
 
 class Vehicle {
 public:
-    std::string name;   // display name
+    /* A ship's own name. A Kerbal leaves this empty: its display name is the
+       roster profile the suit owns (eva.h), so there is no second spelling to
+       keep in step. Read displayName(), not this, wherever a player or a log
+       sees a vehicle name. */
+    std::string name;
     std::string defPath; // ship def it was built from ("" = test ship)
     std::vector<Part *> parts;   // each Part owns its Body (see part.h)
 
@@ -363,6 +367,12 @@ public:
        Vehicle at all, so every Vehicle here is free: there is no aboard state to
        ask about (part.h: the seat lives on the capsule). */
     virtual bool isEva() const;
+
+    /* The one name a player or a log should show. A ship stores it in `name`;
+       a walking kerbal derives it from the suit's roster profile, the profile
+       that also owns the spelling a seat reads. Returns a reference: the
+       transfer planner keeps a pointer into this string. */
+    virtual const std::string &displayName() const { return name; }
 
     /* Assign Part::fuelGroup: a connected component of the part tree across the
        fuel-CONDUCTING parts; PartDef::fuel_barrier parts are WALLS and keep -1.

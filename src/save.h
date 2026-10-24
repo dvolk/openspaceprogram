@@ -162,8 +162,9 @@ struct SaveShip {
     // suit is the one Part of its own vehicle, so the suit's state lives here;
     // a SEATED person's suit state lives in the capsule's `seats` entry.
     /* The roster entry this kerbal IS (CrewRoster::id). Every kerbal is a cast
-       member, so 0 (or an id the roster has no entry for) is refused on load;
-       the name is not saved beside it -- the entry owns the spelling (#394). */
+       member, so 0 (or an id the roster has no entry for) is refused on load.
+       The roster entry owns the spelling; this file's `name` is a label only,
+       and the loader derives the display name from the profile (#394). */
     uint64_t profile_id = 0;
     /* Suit tank contents (kg per ResourceType); empty = the save predates the
        field. */

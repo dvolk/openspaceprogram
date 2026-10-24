@@ -828,7 +828,7 @@ int main(int argc, char **argv)
         for(auto *s : game.vehicles) {
             if(!s->canRail()) {
                 printf("Rails warp refused at start: '%s' is in the atmosphere; "
-                       "clamping time accel to 10\n", s->name.c_str());
+                       "clamping time accel to 10\n", s->displayName().c_str());
                 all_eligible = false;
                 break;
             }

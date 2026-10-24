@@ -101,7 +101,7 @@ void tick(Game &g) {
                         g.toast("Control input: left the rails, warp 1x");
                     }
                     printf("Control input: '%s' left the rails, warp -> %d\n",
-                           g.ship->name.c_str(), g.time_accel);
+                           g.ship->displayName().c_str(), g.time_accel);
                 }
             }
             if(g.ship->isEva()) {
@@ -197,8 +197,8 @@ void tick(Game &g) {
                     const char *why = (end == RailEndGround) ? "hit the ground"
                                                              : "entered the atmosphere";
                     printf("Rails warp: '%s' %s, warp -> 1\n",
-                           ended->name.c_str(), why);
-                    g.toast("Rails: '%s' %s, warp 1x", ended->name.c_str(), why);
+                           ended->displayName().c_str(), why);
+                    g.toast("Rails: '%s' %s, warp 1x", ended->displayName().c_str(), why);
                 }
             } else {
 
@@ -236,7 +236,7 @@ void tick(Game &g) {
                         if(s->onRails) { continue; }
                         const glm::dvec3 v = GetVelocity(s->hull);
                         printf("[accel] %-28s |F|=%9.0fN  v=(%8.2f,%8.2f,%8.2f) |v|=%7.2f\n",
-                               s->name.c_str(), glm::length(s->lastThrustForce),
+                               s->displayName().c_str(), glm::length(s->lastThrustForce),
                                v.x, v.y, v.z, glm::length(v));
                     }
                 }
@@ -251,7 +251,7 @@ void tick(Game &g) {
             // A pause (0) is the player's call and stays put.
             if(g.ship && soiOwner != g.ship->m_parent && g.time_accel > 1) {
                 printf("SOI switch: '%s' now around %s (was %s), warp -> 1\n",
-                       g.ship->name.c_str(), g.ship->m_parent->name.c_str(),
+                       g.ship->displayName().c_str(), g.ship->m_parent->name.c_str(),
                        soiOwner->name.c_str());
                 g.time_accel = 1;
                 g.toast("SOI: now around %s, warp 1x",

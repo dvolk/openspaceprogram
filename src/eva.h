@@ -50,6 +50,14 @@ struct Kerbal : Vehicle {
 
     bool isEva() const override { return true; }
 
+    /* The person's name lives on the roster profile the suit owns; this walker
+       keeps no copy of it. Vehicle::name stays empty, so a stray rename cannot
+       leave the walker and its seat disagreeing. */
+    const std::string &displayName() const override {
+        const KerbalProfile *p = profile();
+        return p != nullptr ? p->name : Vehicle::name;
+    }
+
     /* A Kerbal vehicle exists ONLY while the person is walking. Seated, there is
        no object here at all: the suit Part sits in the capsule as a seat
        (part.h), and minting this class IS going EVA (Game::kerbalEVA), while

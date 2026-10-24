@@ -203,11 +203,13 @@ private:
     Game *g;
 
     /* Drop the rows, leaving anything clock-stamped alone. A row's name points
-       INTO a Vehicle and its `ship` IS that Vehicle, so the rows must not
-       outlive the fleet: update() rebuilds the list every refresh, but anything
-       scanning it in between -- the TARGET block, the map's transfer plane, the
-       relvel marker -- reads freed names. A Game teardown gets here through
-       resetForNewWorld, which replaces the list empty. */
+       INTO a Vehicle's displayName() storage (its own `name`, or the suit
+       profile's for a walking kerbal) and its `ship` IS that Vehicle, so the
+       rows must not outlive the fleet: update() rebuilds the list every
+       refresh, but anything scanning it in between -- the TARGET block, the
+       map's transfer plane, the relvel marker -- reads freed names. A Game
+       teardown gets here through resetForNewWorld, which replaces the list
+       empty. */
     void dropTargets();
 
     /* Drop a selection whose target is gone: a deleted target takes it with it,

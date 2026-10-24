@@ -412,7 +412,7 @@ std::string dedupVehicleName(const std::vector<Vehicle *> &vehicles,
     while(true) {
         bool taken = roster != nullptr && roster->byName(nm) != nullptr;
         for(Vehicle *s : vehicles) {
-            if(s->name == nm) { taken = true; break; }
+            if(s->displayName() == nm) { taken = true; break; }
         }
         if(!taken) { return nm; }
         nm = base + " #" + std::to_string(n);
@@ -491,7 +491,10 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
                                  + std::to_string(def.parts.size()) + ")");
     }
     Vehicle *v = is_kerbal ? static_cast<Vehicle *>(new Kerbal) : new Vehicle;
-    v->name = nm;
+    /* A Kerbal's display name is the roster profile's (eva.h), so its requested
+       label is not stored; `nm` survives only in the empty-pool refusal below.
+       Ships keep their deduped name here. */
+    if(!is_kerbal) { v->name = nm; }
     v->defPath = defPath;
     v->home = hb;
     v->scenario = sc;
@@ -547,7 +550,7 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
         inventorySetOwner(suit, v);
         v->finalize();
         assert(suit->kerbal != nullptr && suit->kerbal->id != 0);
-        v->name = suit->kerbal->name;
+        assert(v->name.empty());   // the profile owns the walker's name
     }
     v->setVelocity(glm::dvec3(0, 0, 0));
     // Re-home: starts the flight journal. Then the list adopts it.
@@ -705,7 +708,7 @@ bool fill_seat(Vehicle *ship, size_t part, System &sys, Part *suit, int slot) {
         suit = takeCrew(sys);
         if(suit == nullptr) {
             printf("Crew: no kerbal left for '%s' part %zu (%d seats)\n",
-                   ship->name.c_str(), part, capDef->crew_capacity);
+                   ship->displayName().c_str(), part, capDef->crew_capacity);
             return false;
         }
     }
@@ -724,7 +727,7 @@ bool fill_seat(Vehicle *ship, size_t part, System &sys, Part *suit, int slot) {
     ship->rebuildCompound();
     printf("Crew: '%s' aboard '%s' part %zu (%d/%d)\n",
            suit->kerbal->name.c_str(),
-           ship->name.c_str(), part,
+           ship->displayName().c_str(), part,
            capPart->seatCount(), capDef->crew_capacity);
     return true;
 }
@@ -769,7 +772,7 @@ void spin_log(Vehicle *ship, double time) {
     }
     printf("[spin] t=%.2fs ship=%s parts=%zu mass=%.1f kg"
            " com=[%.1f %.1f %.1f] railed=%d%s\n",
-           time, ship->name.c_str(), ship->parts.size(), ship->getMass(),
+           time, ship->displayName().c_str(), ship->parts.size(), ship->getMass(),
            com.x, com.y, com.z, ship->onRails ? 1 : 0, kin);
 
     const double G = 6.674e-11;
@@ -802,7 +805,7 @@ void mass_log(Vehicle *ship, double time) {
         snprintf(hull, sizeof(hull), " hullmass=%.2f kg", ship->hull->mass);
     }
     printf("[mass] t=%.3fs ship=\"%s\" parts=%zu mass=%.2f kg%s railed=%d\n",
-           time, ship->name.c_str(), ship->parts.size(), ship->getMass(),
+           time, ship->displayName().c_str(), ship->parts.size(), ship->getMass(),
            hull, ship->onRails ? 1 : 0);
     fflush(stdout);
 }
@@ -991,7 +994,7 @@ void Vehicle::rebuildAeroHull() {
 bool Vehicle::checkContainmentTree(Part *p, int depth) const {
     if(depth > 16) {
         printf("[part] '%s': part uid %llu is contained %d deep -- deeper than "
-               "the walk allows (a cycle, or a hand-edited tree)\n", name.c_str(),
+               "the walk allows (a cycle, or a hand-edited tree)\n", displayName().c_str(),
                (unsigned long long)p->uid, depth);
         return false;
     }
@@ -1001,7 +1004,7 @@ bool Vehicle::checkContainmentTree(Part *p, int depth) const {
        happily carry the extra person. */
     if(p->isCapsule() && p->seatCount() > p->def->crew_capacity) {
         printf("[part] '%s': part uid %llu holds %d seat occupant(s) but has "
-               "only %d seat(s)\n", name.c_str(), (unsigned long long)p->uid,
+               "only %d seat(s)\n", displayName().c_str(), (unsigned long long)p->uid,
                p->seatCount(), p->def->crew_capacity);
         return false;
     }
@@ -1010,19 +1013,19 @@ bool Vehicle::checkContainmentTree(Part *p, int depth) const {
         if(suit == nullptr) { continue; }
         if(suit->container != p) {
             printf("[part] '%s': seats holds part uid %llu, but "
-                   "its container points elsewhere\n", name.c_str(),
+                   "its container points elsewhere\n", displayName().c_str(),
                    (unsigned long long)suit->uid);
             return false;
         }
         if(suit->def == nullptr || suit->def->type != "kerbal") {
             printf("[part] '%s': part uid %llu sits in a seat, but is "
-                   "not a kerbal\n", name.c_str(),
+                   "not a kerbal\n", displayName().c_str(),
                    (unsigned long long)suit->uid);
             return false;
         }
         if(!p->isCapsule()) {
             printf("[part] '%s': part uid %llu is a seat occupant, but "
-                   "this part is not a capsule\n", name.c_str(),
+                   "this part is not a capsule\n", displayName().c_str(),
                    (unsigned long long)suit->uid);
             return false;
         }
@@ -1033,20 +1036,20 @@ bool Vehicle::checkContainmentTree(Part *p, int depth) const {
     for(Part *c : p->contents) {
         if(c->container != p) {
             printf("[part] '%s': contents lists part uid %llu, but its "
-                   "container points elsewhere\n", name.c_str(),
+                   "container points elsewhere\n", displayName().c_str(),
                    (unsigned long long)c->uid);
             return false;
         }
         if(c->isContainedPerson()) {
             printf("[part] '%s': part uid %llu is a kerbal in inventory; "
-                   "a person is not cargo\n", name.c_str(),
+                   "a person is not cargo\n", displayName().c_str(),
                    (unsigned long long)c->uid);
             return false;
         }
         if(p->def == nullptr || p->def->inventory_capacity <= 0) {
             printf("[part] '%s': part uid %llu is an inventory "
                    "item, but this part is not a container\n",
-                   name.c_str(), (unsigned long long)c->uid);
+                   displayName().c_str(), (unsigned long long)c->uid);
             return false;
         }
         if(!checkContainmentTree(c, depth + 1)) { return false; }
@@ -1061,7 +1064,7 @@ bool Vehicle::checkPartInvariants() const {
     for(Part *p : parts) {
         if(p->owner != this) {
             printf("[part] '%s': part '%s' (uid %llu) is attached to the wrong "
-                   "vehicle\n", name.c_str(), p->id.c_str(),
+                   "vehicle\n", displayName().c_str(), p->id.c_str(),
                    (unsigned long long)p->uid);
             fflush(stdout);
             return false;
@@ -1072,7 +1075,7 @@ bool Vehicle::checkPartInvariants() const {
                inventory item is never in a parts list either. A suit Part that
                is both in a parts list and held would be deleted twice. */
             printf("[part] '%s': part '%s' (uid %llu) is attached to this "
-                   "vehicle AND contained by part uid %llu\n", name.c_str(),
+                   "vehicle AND contained by part uid %llu\n", displayName().c_str(),
                    p->id.c_str(), (unsigned long long)p->uid,
                    (unsigned long long)p->container->uid);
             fflush(stdout);
@@ -1195,7 +1198,7 @@ void Vehicle::checkCompoundInvariants() const {
                "(com err %.4g m, tol %.4g; inertia err %.4g kg m^2, tol "
                "%.4g; child pos err %.4g m, tol %.4g; child rot err "
                "%.4g)\n",
-               name.c_str(), comErr, comTol, iErr, iTol,
+               displayName().c_str(), comErr, comTol, iErr, iTol,
                childPosErr, childTol, childRotErr);
         fflush(stdout);
         assert(false && "compound must reproduce the part assembly");
@@ -1267,7 +1270,7 @@ void Vehicle::compoundCheck(double time) {
     printf("[compound] t=%.2fs ship=%s parts=%zu mass=%.1f kg "
            "com=[%.1f %.1f %.1f] |v|=%.3f m/s |w|=%.5f rad/s "
            "I=[%.4g %.4g %.4g] kg m^2\n",
-           time, name.c_str(), parts.size(), hull->mass,
+           time, displayName().c_str(), parts.size(), hull->mass,
            com.x, com.y, com.z,
            glm::length(GetVelocity(hull)),
            glm::length(GetAngVelocity(hull)),
@@ -1642,7 +1645,7 @@ void Vehicle::power_log(double time) {
     getPower(&gen, &constDraw, &charge, &capacity);
     printf("[powerlog] t=%.1fs ship=\"%s\" powered=%d gen=%.1fW "
            "const_draw=%.1fW charge=%.1fWh capacity=%.1fWh\n",
-           time, name.c_str(), (int)powered_, gen, constDraw, charge, capacity);
+           time, displayName().c_str(), (int)powered_, gen, constDraw, charge, capacity);
     fflush(stdout);
 }
 
@@ -2253,7 +2256,7 @@ void Vehicle::fuel_log(double time) {
     }
     std::sort(groups.begin(), groups.end());
     // One line per sample (e2e-greppable).
-    printf("[fuel] t=%.3fs ship=\"%s\"", time, name.c_str());
+    printf("[fuel] t=%.3fs ship=\"%s\"", time, displayName().c_str());
     for(size_t gi = 0; gi < groups.size(); gi++) {
         const int g = groups[gi];
         std::vector<int> res;
@@ -2374,7 +2377,7 @@ void Vehicle::drain_log(double time) {
     double thrust = 0.0;
     for(size_t i = 0; i < parts.size(); i++) { thrust += (double)parts[i]->armedThrust; }
     printf("[drainlog] t=%.3fs dt=%.3fs ship=\"%s\" thrust=%.1fN",
-           time, drainSpan_, name.c_str(), thrust);
+           time, drainSpan_, displayName().c_str(), thrust);
     for(std::map<int, double>::const_iterator it = drainPrevMass_.begin();
          it != drainPrevMass_.end(); ++it) {
         double rate = 0.0;
@@ -2413,7 +2416,7 @@ void Vehicle::dv_log(double time) {
     printf("[dv] t=%.3fs ship=\"%s\" mass=%.2f kg hullmass=%.2f kg "
            "thrust=%.1fN dv_del=%.3f dv_along=%.3f dv_rocket=%.3f "
            "prop=%.3f kg ve=%.1f m/s dv_left=%.1f m/s\n",
-           time, name.c_str(), getMass(), hull->mass,
+           time, displayName().c_str(), getMass(), hull->mass,
            glm::length(lastThrustForce),
            dvDelivered_, dvAlong_, dvRocket_, propSpent_, dvVeLast_,
            getDeltaV());
@@ -2472,6 +2475,8 @@ std::vector<Part *> Vehicle::droppedPartsAtStage(int stage) {
 void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     if(B == nullptr || B == this || B->parts.empty()) { return; }
     if(portA == nullptr || !portA->isDockingPort()) { return; }
+    /* Before any part surgery: displayName() reads parts[0] for a kerbal. */
+    const std::string bName = B->displayName();
 
     /* Rigid rebase of B's parts into this ship's S: with S at (p, R) and S_B at
        (p_B, R_B), x_S = R^T R_B x_Sb + R^T (p_B - p), and R^T R_B for rotations. */
@@ -2538,7 +2543,7 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
        dock (B) first. */
     seams.insert(seams.end(), B->seams.begin(), B->seams.end());
     B->seams.clear();
-    seams.push_back(DockSeam{ portA, bRoot, B->name });
+    seams.push_back(DockSeam{ portA, bRoot, bName });
 
     // Rebuild as the union and regroup fuel: the ports are fuel barriers, so the two
     // fuel systems stay separate.
@@ -3080,7 +3085,7 @@ void Vehicle::moveToFrame(Frame *newFrame, double t) {
     // Logged before the asserts: this is the detail you want when one fires.
     printf("@@@ %s frame %s -> %s: com (%.0f %.0f %.0f) -> (%.0f %.0f %.0f)"
            " vel (%.0f %.0f %.0f) -> (%.0f %.0f %.0f) |fpos| %.3g\n",
-           name.c_str(), frame->name.c_str(), newFrame->name.c_str(),
+           displayName().c_str(), frame->name.c_str(), newFrame->name.c_str(),
            oldCom.x, oldCom.y, oldCom.z, newCom.x, newCom.y, newCom.z,
            oldVel.x, oldVel.y, oldVel.z, newVel.x, newVel.y, newVel.z,
            glm::length(fpos));
@@ -3291,12 +3296,12 @@ bool Vehicle::goOnRails() {
     if(!railFrozen) { writeRailPose(); }
     if(grounded) {
         printf("@@@ %s frozen on rails (grounded around %s)\n",
-               name.c_str(), frame->body->name.c_str());
+               displayName().c_str(), frame->body->name.c_str());
     } else {
         const OrbitElements el =
             computeOrbitElements(p, v, inertial->body->mu);
         printf("@@@ %s parked on rails around %s: sma=%.6g m ecc=%.4f\n",
-               name.c_str(), inertial->body->name.c_str(),
+               displayName().c_str(), inertial->body->name.c_str(),
                el.semi_major, el.ecc);
     }
     return true;
@@ -3309,7 +3314,7 @@ void Vehicle::leaveRails() {
     onRails = false;
     railFrozen = false;
     printf("@@@ %s left the rails around %s\n",
-           name.c_str(), frame->body->name.c_str());
+           displayName().c_str(), frame->body->name.c_str());
 }
 
 RailEnd Vehicle::railsTick(double t, const double step) {
@@ -3330,7 +3335,7 @@ RailEnd Vehicle::railsTick(double t, const double step) {
     rail_epoch = t;   // the advance ends at the caller's instant, == the tree's
     if(Frame *target = soiTarget(rail_pos, true)) {
         printf("@@@ %s rails SoI switch: %s -> %s\n",
-               name.c_str(), frame->name.c_str(), target->name.c_str());
+               displayName().c_str(), frame->name.c_str(), target->name.c_str());
         moveToRailFrame(target, t);
     }
 
