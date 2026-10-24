@@ -1,0 +1,9 @@
+{
+  "name": "tvc_top_test",
+  "testship": true,
+  "parts": [
+    { "part": "tank_r1h1", "id": "tank_1", "stage": 1 },
+    { "part": "engine", "id": "eng_1", "parent": "tank_1", "attach": "up",
+      "parentNode": "top", "childNode": "bottom", "stage": 1 }
+  ]
+}

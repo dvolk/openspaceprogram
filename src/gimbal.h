@@ -16,7 +16,9 @@
 // the reaction-wheel torque in Vehicle::applyRotationForce does -- for the
 // ordinary case of engines levers BELOW the COM. An engine on the far side of
 // the COM (reversed engines in a docked pair, COM travel mid-burn) pushes the
-// nose the other way; a torque-aware mixer is the autopilot stage's job.
+// nose the other way; Vehicle::applyThrustForce flips its deflection so the
+// torques add -- for the stick path AND the autopilot's (case
+// 109-tvc-feel-top-engine pins that wheel-feel parity).
 
 #include <cmath>
 
@@ -61,6 +63,34 @@ inline void gimbalTargets(const glm::dmat3 &partRot, const glm::dvec3 &lateral,
                           double out[2]) {
     out[0] = -glm::dot(lateral, partRot[1]);   // pitch: deviates along -local Y
     out[1] =  glm::dot(lateral, partRot[0]);   // yaw:   deviates along +local X
+}
+
+/* Split one commanded attitude torque between the wheels and TVC:
+   - Roll about the ship's stack axis (`shipZ`, the mixer's root frame) is
+     wheels-only: a lateral deviation can never produce it.
+   - The transverse part goes to TVC FIRST (it is the stronger actuator on a
+     big rocket): up to `tvcMax` N m, converted into the shared lateral
+     deflection vector `lat` (world axes, rad). The mixer applies it with
+     each engine's torque-aware sign; `heffMag` = Sum(T_i*|h_i|) over the
+     armed gimballed engines maps torque (N m) to deflection (rad).
+   - The remainder (roll + any TVC shortfall) goes to `tauWheels`, clamped
+     to `wheelAvail`. Both are zero when nothing is available -- a ship with
+     no wheels and no armed engine has no attitude authority at all. */
+inline void tvcSplit(const glm::dvec3 &tauCmd, const glm::dvec3 &shipZ,
+                     double tvcMax, double heffMag, double wheelAvail,
+                     glm::dvec3 &tauWheels, glm::dvec3 &lat) {
+    const bool tvcLive = (tvcMax > 0.0 && heffMag > 0.0);
+    const glm::dvec3 tauP = tauCmd - shipZ * glm::dot(tauCmd, shipZ);
+    const double tp = glm::length(tauP);
+    const double tvcTake = (tvcLive && tp < tvcMax) ? tp : (tvcLive ? tvcMax : 0.0);
+    /* For engines below the COM the torque of a lateral L is -heffMag *
+       (shipZ x L) with heffMag > 0, so the L producing tauP is shipZ x taup. */
+    lat = (tp > 0.0 && tvcLive)
+        ? glm::cross(shipZ, tauP) * (tvcTake / (tp * heffMag))
+        : glm::dvec3(0.0);
+    glm::dvec3 rest = tauCmd - (tp > 0.0 ? tauP * (tvcTake / tp) : glm::dvec3(0.0));
+    const double rl = glm::length(rest);
+    tauWheels = (rl > wheelAvail && rl > 0.0) ? rest * (wheelAvail / rl) : rest;
 }
 
 /* The attitude-authority term of a gimballed engine: the torque its thrust

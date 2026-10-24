@@ -1783,7 +1783,15 @@ void Vehicle::applyThrustForce(double h) {
        then ADDS pitch authority instead of coupling stick pitch into a roll
        couple around the ring. The same stick the wheels answer to drives it;
        no EC/wheel gate -- a mechanical gimbal works when the power is dead.
-       No stick recenters, so a coasting ship settles. */
+       No stick recenters, so a coasting ship settles.
+       The autopilot's aim (tvcSlewLat_, from the slew law's torque split)
+       adds onto the stick's, and the SUM is clamped to the stop. Sign per
+       engine: a deflection of shared lateral L levers an engine at height
+       h (along the stack axis) by torque ~ -h * (shipZ x L), so engines on
+       the far side of the COM (reversed engines in a docked pair, upper
+       stages above COM mid-burn) must deflect OPPOSITE for their torques
+       to add instead of fight. Ring symmetry is untouched: same-height
+       engines share the sign. */
     const Part *tvcRef = rootPart();
     glm::dvec3 latShip(0.0);
     if(tvcRef != nullptr && (stick[1] != 0.0f || stick[2] != 0.0f)) {
@@ -1792,12 +1800,24 @@ void Vehicle::applyThrustForce(double h) {
         const double l = glm::length(latShip);   // both sticks: keep |lat| <= 1
         if(l > 1.0) { latShip /= l; }
     }
+    const glm::dvec3 shipZ = (tvcRef != nullptr) ? partAxis(tvcRef, 2) : glm::dvec3(0.0);
     for(Part *p : parts) {
         if(!p->isThruster()) { continue; }
         if(p->def->gimbal_max > 0.0) {
-            const double scale = (p->armedThrust != 0.0f) ? p->def->gimbal_max : 0.0;
+            glm::dvec3 lat(0.0);
+            if(p->armedThrust != 0.0f) {
+                lat = p->def->gimbal_max * latShip + tvcSlewLat_;
+                const double l = glm::length(lat);
+                if(l > p->def->gimbal_max) { lat *= p->def->gimbal_max / l; }
+            }
+            if(tvcRef != nullptr) {
+                const double height = glm::dot(partPos(p) - com, shipZ);
+                // Same near-COM dead zone tvcAuthority budgets with: an
+                // engine there has no useful lever, so no flip either.
+                if(height > 1e-6) { lat = -lat; }
+            }
             double target[2];
-            gimbalTargets(partRot(p), scale * latShip, target);
+            gimbalTargets(partRot(p), lat, target);
             gimbalStep(p->gimbal, target, p->def->gimbal_rate, h);
             /* Targets project a <=gimbal_max vector, so the state cannot
                leave its bounds -- only an authoring bug can trip this. */
@@ -2079,8 +2099,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
 }
 
 void Vehicle::applyControlForces(double h) {
-    applyThrustForce(h);
+    /* Rotation runs BEFORE thrust so the slew law's TVC aim (tvcSlewLat_) is
+       aimed before applyThrustForce steps the actuators and pushes along
+       them -- same-substep, no lag. */
     applyRotationForce(h);
+    applyThrustForce(h);
     applyRcsForce(h);
 }
 
@@ -2090,13 +2113,15 @@ Part * Vehicle::firstWheel() {
 }
 
 void Vehicle::applyRotationForce(double h) {
-    if(firstWheel() == nullptr) { return; }
-    /* Power gate: the wheels are electric -- no power, no control. powered_ comes
-       from powerTick this substep. */
-    if(!powered_) { return; }
-    /* Manual stick, body-relative: pitch (W/S) about the ship's right axis,
-       yaw (A/D) about its up axis, roll (Q/E) about the nose. */
-    if(stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f) {
+    /* The autopilot's TVC aim is per-substep: cleared here, re-armed by the
+       law below, consumed by applyThrustForce this same substep. */
+    tvcSlewLat_ = glm::dvec3(0.0);
+    /* Power gate: the wheels are electric -- no power, no wheel torque.
+       powered_ comes from powerTick this substep. */
+    if(firstWheel() != nullptr && powered_
+    && (stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f)) {
+        /* Manual stick, body-relative: pitch (W/S) about the ship's right axis,
+           yaw (A/D) about its up axis, roll (Q/E) about the nose. */
         Part *rw0 = firstWheel();
         const glm::dvec3 pitchAxis = -partAxis(rw0, 0);  // right (W/S)
         const glm::dvec3 yawAxis   = -partAxis(rw0, 1);  // up    (A/D)
@@ -2108,7 +2133,12 @@ void Vehicle::applyRotationForce(double h) {
         // Every wheel turns the same body on the same axis, so their torques sum.
         ApplyTorque(hull, maxTorque() * worldAxis);
     }
-    /* Autopilot: one authority-bounded step of the slew/kill-rot law. */
+    /* Autopilot: one authority-bounded step of the slew/kill-rot law. It
+       runs on ANY attitude authority -- wheels and/or TVC -- so a wheel-less
+       ship (rcs_test, tvc_test) or an unpowered one still flies on its
+       gimballed engines while they burn, and a ship with neither gets
+       silence, not fake slewing (the #401 lesson: never promise a maneuver
+       the hardware cannot deliver). */
     if(slew == SlewKillRot) {
         killRotStep(h);
     }
@@ -2157,6 +2187,7 @@ void Vehicle::applyRcsForce(double h) {
 void Vehicle::slew_log(double time) {
     if(slew == SlewNone) { return; }
     Part *wheel = firstWheel();
+    if(wheel == nullptr) { wheel = rootPart(); }
     if(wheel == nullptr) { return; }
     const glm::dvec3 facing = partAxis(wheel, 2);
     if(slew == SlewKillRot) {
@@ -2195,7 +2226,12 @@ void Vehicle::slew_log(double time) {
     const double w_third = glm::dot(w, thirdAxis);
     const glm::dmat3 I = getInertia();
     const double Ieff = glm::dot(axis, I * axis);
-    const double alpha = (Ieff > 0.0) ? maxTorque() / Ieff : 0.0;
+    /* Log the same authority budget the law actually has (wheels + TVC), or a
+       wheel-less ship's trace would read alpha=0 while it flies on its engines. */
+    const double wheelMax = (firstWheel() != nullptr && powered_) ? maxTorque() : 0.0;
+    double tvcMax, heffMag;
+    tvcAuthority(tvcMax, heffMag);
+    const double alpha = (Ieff > 0.0) ? (wheelMax + tvcMax) / Ieff : 0.0;
     const double w_des = (alpha > 0.0) ? std::sqrt(2.0 * alpha * E) : 0.0;
     /* The two directions at 6 dp, not 3: e2e pairs target= with --plane-log's
        n_orb, and a 3 dp component leaves ~3e-3 of dot-product slack -- the same
@@ -2967,6 +3003,31 @@ double Vehicle::maxTorque() {
     return t;
 }
 
+/* TVC attitude authority from the ARMED gimballed engines, so it scales
+   with throttle (and falls to zero when the engines quit mid-slew). Small
+   angle (gimbal_max ~ 5 deg): a deflection of |lat| rad off the stack axis
+   pushes a lateral force T*|lat| at lever |h|, so
+     heffMag = Sum(T_i*|h_i|)   N m / rad,  tvcMax = heffMag*sin(gimbal_max).
+   The lever is the COM height along the MIXER's stack axis (the root part,
+   the frame applyThrustForce aims in); engines near COM height have no
+   useful pitch/yaw lever -- excluded, exactly as the mixer's sign flip is
+   moot for them. */
+void Vehicle::tvcAuthority(double &tvcMax, double &heffMag) const {
+    tvcMax = 0.0; heffMag = 0.0;
+    const Part *ref = rootPart();
+    if(ref == nullptr) { return; }
+    const glm::dvec3 com = comPos();
+    const glm::dvec3 shipZ = partAxis(ref, 2);
+    for(const Part *p : parts) {
+        const double armed = p->armedThrust;
+        if(armed == 0.0 || p->def->gimbal_max <= 0.0) { continue; }
+        const double lever = std::fabs(glm::dot(partPos(p) - com, shipZ));
+        if(lever < 1e-6) { continue; }
+        heffMag += armed * lever;
+        tvcMax  += armed * std::sin(p->def->gimbal_max) * lever;
+    }
+}
+
 glm::dmat3 Vehicle::getInertia() {
     glm::dvec3 com; glm::dmat3 R;
     fromBt(hull->btBody->getCenterOfMassTransform(), com, R);
@@ -3001,11 +3062,31 @@ glm::dvec3 Vehicle::slewTargetDir() {
     return (slew == SlewRetrograde || slew == SlewAntiNormal) ? -dir : dir;
 }
 
+/* Route one commanded attitude torque through the available actuators.
+   wheelMax/tvcMax/heffMag come from the caller's authority budget (the
+   wheels' rating when live, the armed engines' TVC authority); tvcSplit
+   caps each actuator, so the delivered total never exceeds the budget --
+   the autopilot stays no stronger than maxed manual hardware (the
+   test_slew3d authority pin), whatever the law commanded. */
+void Vehicle::actuateAttitude(glm::dvec3 torque, double wheelMax, double tvcMax,
+                              double heffMag) {
+    glm::dvec3 tauW, lat;
+    tvcSplit(torque, partAxis(rootPart(), 2), tvcMax, heffMag, wheelMax, tauW, lat);
+    tvcSlewLat_ = lat;
+    if(glm::length2(tauW) > 0.0) { ApplyTorque(hull, tauW); }
+}
+
 void Vehicle::slewToward(glm::dvec3 dir, double h) {
     if(glm::length2(dir) < 1e-12) { return; } /* no direction to align to */
     dir = glm::normalize(dir);
-    Part *wheel = firstWheel();
-    const glm::dvec3 facing = partAxis(wheel, 2);
+    /* Facing reference: the wheels' nose when there are wheels (the law's
+       long-standing frame), else the root part's stack axis -- which is the
+       frame the TVC mixer steers in, so a wheel-less ship aims consistently
+       with its engines. */
+    Part *ref = firstWheel();
+    if(ref == nullptr) { ref = rootPart(); }
+    if(ref == nullptr) { return; }
+    const glm::dvec3 facing = partAxis(ref, 2);
     const double E = glm::acos(glm::clamp(glm::dot(facing, dir), -1.0, 1.0));
     if(E < 1e-9) { return; } /* already aligned */
     glm::dvec3 axis = glm::cross(facing, dir); /* + turns the nose toward dir */
@@ -3018,33 +3099,47 @@ void Vehicle::slewToward(glm::dvec3 dir, double h) {
     const glm::dmat3 I = getInertia();
     const double Ieff = glm::dot(axis, I * axis); /* kg m^2 about the slew axis */
     if(Ieff <= 0.0) { return; }
-    const double alpha = maxTorque() / Ieff; /* rad/s^2, wheel-limited */
+    /* Authority budget this substep: wheels (when live) + TVC (when the
+       gimballed engines are armed), so the braking curve and the actuator
+       bound scale with throttle. Nothing available: hold position -- the law
+       does not pretend to slew (#401's lesson). */
+    const double wheelMax = (firstWheel() != nullptr && powered_) ? maxTorque() : 0.0;
+    double tvcMax, heffMag;
+    tvcAuthority(tvcMax, heffMag);
+    const double authMax = wheelMax + tvcMax;
+    if(authMax <= 0.0) { return; }
+    const double alpha = authMax / Ieff; /* rad/s^2, actuator-limited */
     const double w_des = std::min(std::sqrt(2.0 * alpha * E), E / (2.0 * h));
     /* Drive the FULL transverse angular velocity toward the braking-curve rate: damping
        only the slew-axis component leaves the third-axis spin alive, which is the
        sustained wobble about a prograde/retrograde target. Roll is left free. */
-    const glm::dvec3 w_now = partAngVel(wheel);
+    const glm::dvec3 w_now = partAngVel(ref);
     const glm::dvec3 w_transverse = w_now - facing * glm::dot(w_now, facing);
     glm::dvec3 dW = axis * w_des - w_transverse; /* desired change in rate */
     glm::dvec3 torque = I * dW / h;
-        // authority bound: at most maxTorque() N m
-    const double tq = glm::length(torque);
-    if(tq > maxTorque()) { torque *= maxTorque() / tq; }
-    ApplyTorque(hull, torque);
+    /* authority bound: at most wheelMax + tvcMax N m, split between them */
+    actuateAttitude(torque, wheelMax, tvcMax, heffMag);
 }
 
 void Vehicle::killRotStep(double h) {
-    Part *wheel = firstWheel();
-    const glm::dvec3 w = partAngVel(wheel);
+    Part *ref = firstWheel();
+    if(ref == nullptr) { ref = rootPart(); }
+    if(ref == nullptr) { return; }
+    const glm::dvec3 w = partAngVel(ref);
     if(glm::length2(w) == 0.0) { return; } /* at rest: nothing to kill */
+    const double wheelMax = (firstWheel() != nullptr && powered_) ? maxTorque() : 0.0;
+    double tvcMax, heffMag;
+    tvcAuthority(tvcMax, heffMag);
+    if(wheelMax + tvcMax <= 0.0) { return; } /* no attitude authority to fight with */
     const glm::dmat3 I = getInertia();
     /* Full-tensor cancel, as in slewToward: tau = I * (-w) / h. Scaling each world axis
        by I[i][i] alone needs a world-aligned principal basis, else the under-cancel
        couples axes into a period-2 limit cycle. */
     glm::dvec3 torque = I * (-w) / h;
-    const double tq = glm::length(torque);
-    if(tq > maxTorque()) { torque *= maxTorque() / tq; }
-    ApplyTorque(hull, torque);
+    /* Bound + split: a wheel-less ship cannot kill its ROLL about the stack
+       axis (a lateral deflection never levers that way), and the split drops
+       exactly that component instead of pretending. */
+    actuateAttitude(torque, wheelMax, tvcMax, heffMag);
 }
 
 glm::dvec3 Vehicle::GetPositionRelTo(const Part *part, Frame *relTo) {

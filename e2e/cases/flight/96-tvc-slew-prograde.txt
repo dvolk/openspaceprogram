@@ -1,0 +1,30 @@
+NAME tvc-slew-prograde
+CLAIM The autopilot flies a wheel-less ship on gimballed thrust: a prograde hold chases back a stick disturbance.
+KIND invariant
+# tvc_test has no reaction wheel: pre-#417 the slew law never ran on it
+# (applyRotationForce early-returned), so SAS was silent and a stick tap
+# left the nose drifting forever. Now the law budgets authority from the
+# ARMED engines (throttle from T), splits its torque to TVC, and recovers.
+# Z toggles prograde hold once (persistent); the S tap (4s) breaks the lock;
+# while the burn runs the E-column must spike then hold near zero (a few
+# degrees: the target is a velocity vector the TVC force itself bends).
+# When T releases at 9s the armed thrust -- and with it the whole TVC
+# authority -- drops to zero, and E must drift: the law never pretends to
+# steer a ship with no actuators (#401's lesson), and that drift is what
+# tells engine-off from engine-on in this log.
+ARGS --time-accel 1 --startship tvc_test,res/ships/tvc_test.json,Kerbin,rot-orbit
+ARGS --att-log --slew-log --orbit-interval 0.3
+ARGS --sim-press 1000,8000,T
+ARGS --sim-press 1000,0,Z
+ARGS --sim-press 4000,400,S
+ARGS --timeout 12
+LIMIT 90
+EXPECT [attlog]
+EXPECT [slew]
+FORBID error:
+CHECK len(att) >= 10
+CHECK len(slew) >= 10
+CHECK max(s["E"] for s in slew if 4.3 < s["t"] < 5.5) > 0.02
+CHECK max(s["E"] for s in slew if 6.0 < s["t"] < 8.8) < 0.06
+CHECK last(slew)["E"] > 0.3
+CHECK all(a["wnorm"] == a["wnorm"] and a["wnorm"] < 1e4 for a in att)

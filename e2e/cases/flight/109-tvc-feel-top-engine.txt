@@ -1,0 +1,20 @@
+NAME tvc-feel-top-engine
+CLAIM An engine ABOVE the COM still steers the nose the same way: the mixer flips its deflection so the torque adds.
+KIND invariant
+# tvc_top_test stacks the gimballed engine on TOP of the tank, so its COM
+# lever is positive. Without the mixer's torque-aware sign flip it would
+# push the nose the OPPOSITE way from tvc_test's below-COM engine for the
+# same S tap. Same spawn, same tap as 95-tvc-vacuum: the nose must tip
+# toward -Z there and here alike (both ships spawn nose=+X).
+ARGS --time-accel 1 --startship tvc_top_test,res/ships/tvc_top_test.json,Kerbin,inertial-orbit
+ARGS --att-log --orbit-interval 0.3
+ARGS --sim-press 1000,6000,T
+ARGS --sim-press 2000,500,S
+ARGS --timeout 12
+LIMIT 90
+EXPECT [attlog]
+FORBID error:
+CHECK len(att) >= 10
+CHECK max(a["wnorm"] for a in att if 2.5 < a["t"] < 5.0) > 0.3
+CHECK min(a["nose"][2] for a in att if 2.5 < a["t"] < 6.0) < -0.1
+CHECK all(a["wnorm"] == a["wnorm"] and a["wnorm"] < 1e4 for a in att)

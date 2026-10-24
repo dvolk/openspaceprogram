@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 259 |
+| `invariant` | a behaviour or a player route the game must keep | 261 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 34 |
 | `harness` | CLI/test-engine plumbing, not game spec | 12 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **309** |
+| | **total** | **311** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (63)
+## flight (65)
 
 | case | kind | pins |
 |---|---|---|
@@ -54,6 +54,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/79-dock-save-load.txt` | invariant | A docked pair survives save/load as one vessel. |
 | `flight/80-glider-aoa-swing.txt` | invariant | A glider's AoA swings toward the trimmed angle and settles. |
 | `flight/95-tvc-vacuum.txt` | invariant | A wheel-less ship steers in vacuum by gimballed thrust alone. |
+| `flight/96-tvc-slew-prograde.txt` | invariant | The autopilot flies a wheel-less ship on gimballed thrust: a prograde hold chases back a stick disturbance. |
 | `flight/97-nuclear-engine.txt` | golden | A nuclear engine produces its rated thrust and hydrogen rate. |
 | `flight/98-atmo-top.txt` | invariant | Above the atmosphere's top boundary density and drag are exactly zero. |
 | `flight/99-rails-airless-arc.txt` | invariant | Rails warp accepts a suborbital arc on an airless body and parks it at the ground. |
@@ -64,6 +65,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/106-recover-refused.txt` | invariant | Recover refuses a flying ship, and the button is what is clicked. |
 | `flight/107-recover-grounded.txt` | invariant | Recover succeeds for a ship grounded on its home body. |
 | `flight/108-recover-wrong-body.txt` | invariant | Recover refuses a ship grounded on someone else's body. |
+| `flight/109-tvc-feel-top-engine.txt` | invariant | An engine ABOVE the COM still steers the nose the same way: the mixer flips its deflection so the torque adds. |
 | `flight/150-chute-deploy.txt` | invariant | A chute arms and deploys only when its deploy condition is met. |
 | `flight/151-chute-terminal.txt` | golden | A deployed chute reaches chute terminal velocity, not hull terminal. |
 | `flight/152-chute-flip.txt` | golden | A chute below the COM weathervanes the ship nose-down; one above hangs it nose-up. |

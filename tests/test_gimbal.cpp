@@ -237,6 +237,83 @@ static void test_torque() {
     CHECK_NEAR(t2 / t1, 2.0, 1e-4, "torque ~ sin(angle): linear at small angles");
 }
 
+static void test_split() {
+    printf("== tvcSplit: wheel/TVC torque split (the autopilot's mixer) ==\n");
+    const glm::dvec3 Z(0.0, 0.0, 1.0);       // stack axis
+    const double heff = 1e5;                // Sum(T*|h|), N m/rad
+    const double tvcMax = 8750.0;           // heff * sin(gimbal_max)
+    const double wheelMax = 5200.0;         // one big wheel pack
+    glm::dvec3 tauW, lat;
+
+    // Roll about the stack axis is wheels-ONLY: a lateral deflection can
+    // never lever that way, so split must hand it over untouched.
+    tvcSplit(glm::dvec3(0.0, 0.0, 3000.0), Z, tvcMax, heff, wheelMax, tauW, lat);
+    checkVec(lat, glm::dvec3(0.0), 0.0, "roll command -> zero TVC aim");
+    checkVec(tauW, glm::dvec3(0.0, 0.0, 3000.0), 1e-12, "roll -> wheels untouched");
+
+    // ... and clamped to the wheels when they are the only actuator for it.
+    tvcSplit(glm::dvec3(0.0, 0.0, 9000.0), Z, tvcMax, heff, wheelMax, tauW, lat);
+    CHECK_NEAR(glm::length(tauW), wheelMax, 1e-9, "roll beyond wheels -> clamped");
+    CHECK_TRUE(tauW.z > 0.0, "roll clamp keeps direction");
+
+    // Pure transverse inside TVC reach: all of it goes to the engines, the
+    // wheels get nothing. The aim magnitude is torque/lever, and it is
+    // always perpendicular to the stack axis.
+    tvcSplit(glm::dvec3(2000.0, 0.0, 0.0), Z, tvcMax, heff, wheelMax, tauW, lat);
+    checkVec(tauW, glm::dvec3(0.0), 1e-12, "transverse within TVC -> wheels idle");
+    checkVec(lat, glm::dvec3(0.0, 2000.0 / heff, 0.0), 1e-12,
+             "aim = cross(Z, tau) * tvcTake/(tp*heff)");
+    // Round trip through the mixer's physics: for the ordinary case (engines
+    // below the COM) the delivered torque is -heff * (Z x lat).
+    checkVec(-heff * glm::cross(Z, lat), glm::dvec3(2000.0, 0.0, 0.0), 1e-9,
+             "aim drives exactly the TVC share of the command");
+
+    // Bigger transverse than TVC can take: TVC fills to tvcMax, the wheels
+    // absorb the shortfall; nothing is dropped, nothing doubles.
+    tvcSplit(glm::dvec3(10000.0, 0.0, 3000.0), Z, tvcMax, heff, wheelMax, tauW, lat);
+    CHECK_NEAR(glm::length(lat), tvcMax / heff, 1e-12, "TVC saturates at tvcMax");
+    checkVec(tauW, glm::dvec3(10000.0 - tvcMax, 0.0, 3000.0), 1e-9,
+             "wheels take the transverse shortfall AND the roll");
+    CHECK_NEAR(glm::length(tauW), std::hypot(10000.0 - tvcMax, 3000.0), 1e-9,
+               "shortfall fits under the wheel cap here");
+
+    // ... and when it does NOT fit, the wheels clamp -- the autopilot never
+    // commands more than the hardware (the test_slew3d authority pin, now
+    // against the COMBINED budget).
+    tvcSplit(glm::dvec3(10000.0, 0.0, 9000.0), Z, tvcMax, heff, wheelMax, tauW, lat);
+    CHECK_NEAR(glm::length(lat), tvcMax / heff, 1e-12, "TVC share unchanged by wheel clamp");
+    CHECK_NEAR(glm::length(tauW), wheelMax, 1e-12, "wheel remainder clamps to rating");
+    CHECK_TRUE(glm::dot(tauW, glm::dvec3(10000.0 - tvcMax, 0.0, 9000.0)) > 0.0,
+               "clamped remainder keeps its direction");
+
+    // No gimballed authority (the plain wheel ship): split degrades to the
+    // old wheel-only clamp, aim stays zero.
+    tvcSplit(glm::dvec3(4000.0, 0.0, 0.0), Z, 0.0, 0.0, wheelMax, tauW, lat);
+    checkVec(lat, glm::dvec3(0.0), 0.0, "no TVC -> no aim");
+    checkVec(tauW, glm::dvec3(4000.0, 0.0, 0.0), 1e-12, "no TVC -> wheels take all");
+    tvcSplit(glm::dvec3(9000.0, 0.0, 0.0), Z, 0.0, heff, wheelMax, tauW, lat);
+    checkVec(lat, glm::dvec3(0.0), 1e-12, "tvcMax 0 with levers present -> zero aim");
+    CHECK_NEAR(glm::length(tauW), wheelMax, 1e-12, "no TVC -> wheel clamp only");
+
+    // No actuator at all: zero everywhere (the law skips the slew itself;
+    // split must not invent authority from nothing).
+    tvcSplit(glm::dvec3(1000.0, 0.0, 1000.0), Z, 0.0, 0.0, 0.0, tauW, lat);
+    CHECK_NEAR(glm::length(tauW) + glm::length(lat), 0.0, 0.0, "no hardware -> no torque");
+
+    // Zero command, and the aligned-everything guards: quiet, no NaN.
+    tvcSplit(glm::dvec3(0.0), Z, tvcMax, heff, wheelMax, tauW, lat);
+    CHECK_NEAR(glm::length(tauW) + glm::length(lat), 0.0, 0.0, "zero command -> quiet");
+    tvcSplit(glm::dvec3(2000.0, 0.0, 0.0), Z, tvcMax, 0.0, wheelMax, tauW, lat);
+    CHECK_NEAR(glm::length(lat), 0.0, 0.0, "heff 0 (engines at COM height) -> all wheels");
+    checkVec(tauW, glm::dvec3(2000.0, 0.0, 0.0), 1e-12, "heff 0 -> wheels take all");
+
+    // A tilted stack axis still splits along ITS roll, not world Z.
+    const glm::dvec3 tilted = glm::normalize(glm::dvec3(0.0, 1.0, 1.0));
+    tvcSplit(tilted * 500.0, tilted, tvcMax, heff, wheelMax, tauW, lat);
+    checkVec(lat, glm::dvec3(0.0), 1e-12, "roll about a tilted stack axis -> no TVC");
+    checkVec(tauW, tilted * 500.0, 1e-12, "tilted roll -> wheels");
+}
+
 int main() {
     printf("== test_gimbal: the engine-gimbal law (src/gimbal.h) ==\n");
     test_dir_identity();
@@ -246,6 +323,7 @@ int main() {
     test_targets();
     test_step();
     test_torque();
+    test_split();
     printf("%s: %d checks, %d failures\n",
            g_failures ? "FAIL" : "PASS", g_checks, g_failures);
     return g_failures ? 1 : 0;

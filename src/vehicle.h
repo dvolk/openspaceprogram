@@ -331,6 +331,23 @@ public:
        accumulated torque each stepSimulation. stick: manual; slew: autopilot. */
     float stick[3] = {0.0f, 0.0f, 0.0f};
     int slew = SlewNone;
+    /* The autopilot's TVC aim: one shared lateral deflection vector (world
+       axes, rad) computed by the slew law's torque split (gimbal.h
+       tvcSplit) each substep, consumed by applyThrustForce's mixer. Cleared
+       when nothing commands it, so a released autopilot recenters. */
+    glm::dvec3 tvcSlewLat_{};
+    /* TVC attitude authority this substep, from the ARMED gimballed engines
+       (scales with throttle): max |torque| (N m) and the torque-per-rad
+       lever sum Sum(T_i*|h_i|) that maps torque to lateral deflection.
+       Engines within a hair of COM height have no useful pitch/yaw lever
+       and are excluded. */
+    void tvcAuthority(double &tvcMax, double &heffMag) const;
+    /* Send one commanded attitude torque to the actuators: roll about the
+       stack axis is wheels-only, transverse goes to TVC first up to tvcMax,
+       the remainder to the wheels (gimbal.h tvcSplit). Stashes the TVC half
+       in tvcSlewLat_ for applyThrustForce this same substep. */
+    void actuateAttitude(glm::dvec3 torque, double wheelMax, double tvcMax,
+                         double heffMag);
     glm::dvec3 lastThrustForce{};  // debug: total thrust force applied last substep
     /* The Autopilot-window mode: persistent, unlike `slew`. */
     SlewMode slewRequest = SlewNone;
