@@ -1903,6 +1903,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastDragCd = 0.0;
     lastChuteCdA = 0.0;
     lastControlDeflections.clear();  // a no-air substep reports no steering
+    // Fins swing back to neutral whenever this substep produces no steering
+    // (vacuum, no-atmosphere body, below sea level, --drag-cd 0).
+    for(Part *p : parts) {
+        if(p->def != nullptr && p->def->control_area > 0.0) { p->controlDefl = 0.0; }
+    }
 
     // --drag-cd 0 = no aero at all (the master off switch).
     if(drag_cd <= 0.0) { return lastAeroForce; }
@@ -2074,6 +2079,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             const double sign =
                 controlDeflectionSign(ri, forceDir, about, ax.targetSign);
             const double deflection = sign * (double)sv * d->max_deflection;
+            p->controlDefl = deflection;  // the mesh swing (Vehicle::Draw)
             lastControlDeflections.push_back({d, ctrlIndex++, deflection});
             if(sv == 0.0f || clc <= 0.0 || deflection == 0.0) { continue; }
             const glm::dvec3 F = controlForce(q, d->control_area, clc,
@@ -2796,10 +2802,28 @@ void Vehicle::Draw(const Camera* camera, Frame *renderFrame) {
     const float shadow = ComputeTerrainShadow(m_parent, frame,
                                               get_center_of_mass(), sun);
 
+    /* Deflected fins swing on their VISUAL hinge (controlSurfaceVisualRot):
+       the mesh tips the same way the aero law's force bends the ship. The
+       hinge axes are the ship's, so the root rotation is hoisted lazily --
+       only ships with stick-deflected surfaces pay for it. */
+    glm::dmat3 rootRot;
+    bool rootRotReady = false;
+
     for(Part *p : parts) {
         // One body per ship, so a part's pose is derived, not read off its own body.
         glm::dvec3 pp; glm::dmat3 pr;
         partPoseRelCom(p, pp, pr);
+        if(p->def != nullptr && p->def->control_area > 0.0 && p->controlDefl != 0.0) {
+            if(not rootRotReady) {
+                glm::dvec3 rp;
+                partPoseRelCom(rootPart(), rp, rootRot);
+                rootRotReady = true;
+            }
+            const ControlAxisParams ax = controlAxisParams(p->def->control_axis);
+            pr = glm::mat3_cast(
+                     controlSurfaceVisualRot(ax.aboutAxis, p->controlDefl, rootRot))
+                 * pr;
+        }
         const glm::dmat4 model = glm::translate(pp) * glm::dmat4(pr);
         /* A person, not a module: the flat green texture is tinted per kerbal
            (crew.h), so kerbals who walk at the same time are not clones. A
@@ -3412,6 +3436,11 @@ bool Vehicle::goOnRails() {
         // instant rail_pos describes.
         rail_epoch = inertial->rail_time;
     }
+
+    /* Fins go neutral with the sim: nothing rewrites controlDefl on rails, so
+       a grounded parked ship (canRail() admits it in air) would otherwise
+       hold its last stick deflection forever. */
+    for(Part *p : parts) { p->controlDefl = 0.0; }
 
     // out of the world: the one body
     if(hullInWorld()) { RemoveBody(hull); }

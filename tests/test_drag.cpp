@@ -435,6 +435,38 @@ static void test_controlDeflectionSign() {
     }
 }
 
+/* The visual hinge must tip the mesh the SAME way the control law bends the
+   ship: controlForce gives F = +defl * forceDir, and at small angles a surface
+   whose chord tipped by `bend` lifts along `bend` (flow runs along -nose).
+   Pins that the hinge is the FIN's hinge, not the torque axis: rotating a
+   roll surface about the nose would leave bend ~ 0 (no flap). */
+static void test_controlSurfaceVisualRot() {
+    printf("== controlSurfaceVisualRot: mesh tip follows the commanded force ==\n");
+    const glm::dmat3 I(1.0);
+    const glm::dvec3 nose(0,0,1), right(1,0,0), up(0,1,0);
+    const double d = 0.3;  // rad; +defl -> +forceDir in controlForce
+    const auto bend = [&](int aboutAxis) {
+        return glm::mat3_cast(controlSurfaceVisualRot(aboutAxis, d, I)) * nose - nose;
+    };
+    // Pitch (aboutAxis 0): the law's force is +defl * liftDir (~up).
+    CHECK_TRUE(glm::dot(bend(0), up) > 0.0, "elevator tips toward its +up force");
+    CHECK_TRUE(std::abs(glm::dot(bend(0), right)) < 1e-12, "elevator does not sideslip");
+    // Yaw (aboutAxis 1): the law's force is +defl * yawDir (~right).
+    CHECK_TRUE(glm::dot(bend(1), right) > 0.0, "rudder tips toward its +right force");
+    CHECK_TRUE(std::abs(glm::dot(bend(1), up)) < 1e-12, "rudder does not pitch the mesh");
+    // Roll (aboutAxis 2): FLAPS about right -- a nose-axis rotation bends ~ nothing.
+    CHECK_TRUE(glm::dot(bend(2), up) > 0.0, "aileron flaps toward its +up force");
+    CHECK_TRUE(std::abs(glm::dot(bend(2), right)) < 1e-12, "aileron does not sideslip");
+    // Mirrored deflection tips the mesh the other way.
+    const auto bendNeg = [&](int aboutAxis) {
+        return glm::mat3_cast(controlSurfaceVisualRot(aboutAxis, -d, I)) * nose - nose;
+    };
+    const glm::dvec3 want[3] = { up, right, up };
+    for(int ax = 0; ax < 3; ax++) {
+        CHECK_TRUE(glm::dot(bendNeg(ax), want[ax]) < 0.0, "-defl tips opposite");
+    }
+}
+
 static void test_controlCl() {
     printf("== controlCl: deflection effectiveness (cl_control, fallback cl) ==\n");
     // cl_control > 0 -> it is the deflection effectiveness (the part's own
@@ -674,6 +706,8 @@ int main() {
     test_controlForce();
     printf("\n");
     test_controlDeflectionSign();
+    printf("\n");
+    test_controlSurfaceVisualRot();
     printf("\n");
     test_controlCl();
 

@@ -73,6 +73,13 @@ struct Part {
        about its local Y. Transient like armedThrust (not saved); driven by
        Vehicle::applyThrustForce through the src/gimbal.h law. */
     double gimbal[2] = {0.0, 0.0};
+    /* Control-surface deflection (rad, signed; positive = the torque the part's
+       control_axis steers, matching the aero law's sign flip). Transient like
+       gimbal (not saved): applyAeroForce zeroes it every substep and rewrites
+       it for each deflecting surface that substep reaches; goOnRails zeroes it
+       too (nothing runs there). Render-only -- the force uses the same number
+       locally; this field exists so Vehicle::Draw can swing the mesh. */
+    double controlDefl = 0.0;
     /* Parachute state (ChuteState); inert for non-chute parts. Set by
        Vehicle::deployChutes on the stage press; save-persisted. */
     ChuteState chute = ChuteStowed;

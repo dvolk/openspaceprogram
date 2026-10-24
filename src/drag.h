@@ -13,6 +13,7 @@
 #include <vector>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>  // controlSurfaceVisualRot
 
 #include "constants.h"  // kRhoFloor
 
@@ -236,4 +237,20 @@ inline double controlDeflectionSign(const glm::dvec3 &ri,
                                     double targetSign = -1.0) {
     const double d = glm::dot(glm::cross(ri, forceDir), aboutAxis);
     return (d >= 0.0) ? targetSign : -targetSign;
+}
+
+/* The VISUAL hinge of a control-surface mesh at commanded deflection defl
+   (signed rad, the control law's sign; Vehicle::Draw only). The visual hinge
+   is NOT the torque axis (aboutAxis): a surface hinged at angle t produces
+   force along t x nose, so to bend the same way the law's defl does --
+   - a rudder (Yaw) tips +defl about UP,
+   - an elevator or aileron tips -defl about RIGHT (aboutAxis 2 hinges on
+     right, not nose: ailerons FLAP, they do not sweep).
+   controlDeflectionSign already gives left/right surfaces opposite defl, so
+   this yields differential aileron flapping for free. Assumes the mesh's
+   chord runs along the part's nose axis (res/meshes/wing.obj). */
+inline glm::dquat controlSurfaceVisualRot(int aboutAxis, double defl,
+                                          const glm::dmat3 &rootRot) {
+    return (aboutAxis == 1) ? glm::angleAxis(defl, rootRot[1])
+                            : glm::angleAxis(-defl, rootRot[0]);
 }
