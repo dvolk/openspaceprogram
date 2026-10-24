@@ -11,6 +11,7 @@
 
 #include "billboard.h"
 #include "constants.h"  // kNodeAnRgb/kNodeDnRgb (the plane overlay's node ticks)
+#include "gimbal.h"     // gimbalRot (the plume swings with the gimballed thrust)
 #include "mesh.h"
 #include "orbit.h"
 #include "physics.h"   // debug_draw
@@ -646,6 +647,11 @@ void paintWorld(Game &g) {
                (precision). */
             glm::dvec3 plumePos; glm::dmat3 plumeRot;
             ship->partPoseRelCom(p, plumePos, plumeRot);
+            /* TVC: the exhaust leaves along the swung thrust axis, so the
+               plume frame rides the part's live gimbal (zero gimbal is
+               exactly the authored pose). The pivot is the part's own
+               origin -- the mesh already hangs from it. */
+            plumeRot = gimbalRot(plumeRot, p->gimbal[0], p->gimbal[1]);
             glm::dmat4 Model = glm::translate(plumePos) * glm::dmat4(plumeRot)
                 * glm::dmat4(glm::dmat3(radius, 0.0, 0.0,
                                          0.0, radius, 0.0,

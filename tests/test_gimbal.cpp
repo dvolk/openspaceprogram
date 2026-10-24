@@ -127,6 +127,33 @@ static void test_dir_sign_convention() {
                "yaw>0 torques about -up, like the A/D wheel axis");
 }
 
+static void test_rot() {
+    printf("== gimbalRot: the swung frame (plume/nozzle draw) ==\n");
+    // Zero angles: EXACTLY the authored frame (every non-TVC part, always).
+    const glm::dmat3 rot(glm::dvec3(0.0, 0.0, -1.0),
+                         glm::dvec3(0.0, 1.0, 0.0),
+                         glm::dvec3(1.0, 0.0, 0.0));
+    checkVec(gimbalRot(rot, 0.0, 0.0)[0], rot[0], 0.0, "zero angles keep local X");
+    checkVec(gimbalRot(rot, 0.0, 0.0)[1], rot[1], 0.0, "zero angles keep local Y");
+    checkVec(gimbalRot(rot, 0.0, 0.0)[2], rot[2], 0.0, "zero angles keep local Z");
+    // The draw frame and the force direction are ONE rotation: the frame's
+    // +Z column is exactly gimbalDir, and the frame stays orthonormal
+    // (a sheared plume mesh would show up here).
+    const double p = 0.3, y = 0.2;
+    const glm::dmat3 sw = gimbalRot(rot, p, y);
+    checkVec(sw[2], gimbalDir(rot, p, y), 1e-12, "frame +Z == gimbalDir exactly");
+    CHECK_NEAR(glm::length(sw[0]), 1.0, 1e-12, "swung local X stays unit");
+    CHECK_NEAR(glm::length(sw[1]), 1.0, 1e-12, "swung local Y stays unit");
+    CHECK_NEAR(glm::dot(sw[0], sw[1]), 0.0, 1e-12, "swung axes stay perpendicular");
+    checkVec(glm::cross(sw[0], sw[1]), sw[2], 1e-12, "right-handed: x x y == z");
+    // The swing happens ABOUT the part's own axes: at tiny pitch the frame's
+    // +Z tips toward -its own +Y (the same first-order fact as gimbalDir).
+    const double e = 1e-3;
+    const glm::dmat3 swt = gimbalRot(rot, e, 0.0);
+    CHECK_TRUE(glm::dot(swt[2] - rot[2], -rot[1]) > 0.9 * e,
+               "tiny pitch tips +Z toward -local Y");
+}
+
 static void test_targets() {
     printf("== gimbalTargets: one shared lateral for the whole ship ==\n");
     const double g = 0.0873;   // 5 deg
@@ -215,6 +242,7 @@ int main() {
     test_dir_identity();
     test_dir_closed_form();
     test_dir_sign_convention();
+    test_rot();
     test_targets();
     test_step();
     test_torque();

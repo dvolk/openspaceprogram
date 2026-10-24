@@ -23,14 +23,22 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+/* The part's pose SWUNG by its gimbal angles: the authored frame rotated by
+   the same q that gimbalDir applies, so anything that draws the engine --
+   plume now, nozzle later -- swings with the thrust vector. Orthonormality
+   holds: q is a rotation. */
+inline glm::dmat3 gimbalRot(const glm::dmat3 &partRot, double pitch, double yaw) {
+    if(pitch == 0.0 && yaw == 0.0) { return partRot; }
+    const glm::dquat q = glm::angleAxis(yaw, partRot[1])
+                       * glm::angleAxis(pitch, partRot[0]);
+    return glm::mat3_cast(q) * partRot;
+}
+
 /* The gimballed thrust direction (unit) in WORLD axes: the part's authored +Z
    rotated by `pitch` about its local X, then `yaw` about its local Y (rad).
    Zero angles return the authored axis untouched. */
 inline glm::dvec3 gimbalDir(const glm::dmat3 &partRot, double pitch, double yaw) {
-    if(pitch == 0.0 && yaw == 0.0) { return partRot[2]; }
-    const glm::dquat q = glm::angleAxis(yaw, partRot[1])
-                       * glm::angleAxis(pitch, partRot[0]);
-    return glm::normalize(q * partRot[2]);
+    return gimbalRot(partRot, pitch, yaw)[2];
 }
 
 /* One actuator step: move each angle toward its target at <= rate * h (rad,
