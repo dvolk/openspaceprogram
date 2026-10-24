@@ -2118,16 +2118,42 @@ int main() {
         CHECK(std::system(("rm -rf '" + dir + "'").c_str()) == 0);
     }
 
-    // list_vab_vehicle_defs on the real res/ships: exactly the fliable stock
-    // ships the VAB should offer by default -- the testships (e2e/scenario
-    // ships) are marked and stay out. --dev-vehicles opts them back in.
+    // list_vab_vehicle_defs on the real res/ships. `want` is derived from the
+    // files here -- an independent scan/parse, not the function under test --
+    // so adding or removing a stock ship needs no fixture change, while a
+    // leaked testship flag or a wrongly-hidden stock ship still trips the
+    // anchors below.
     {
+        std::vector<std::string> want, want_all;
+        for(std::filesystem::directory_iterator it("res/ships"), end; it != end; ++it) {
+            const std::filesystem::path &p = it->path();
+            if(p.extension() != ".json") { continue; }
+            nlohmann::json doc;
+            try { std::ifstream f(p); doc = nlohmann::json::parse(f); }
+            catch(const std::exception &) {}   // fail-open, like the impl
+            const bool flagged = doc.is_object() && doc.contains("testship")
+                                 && doc["testship"].is_boolean() && doc["testship"].get<bool>();
+            want_all.push_back(p.stem().string());
+            if(!flagged) { want.push_back(p.stem().string()); }
+        }
+        std::sort(want.begin(), want.end());
+        std::sort(want_all.begin(), want_all.end());
         const std::vector<std::string> vab = list_vab_vehicle_defs("res/ships", false);
-        const std::vector<std::string> want =
-            { "glider", "heavy_asp", "jet", "racer", "stager" };
+        if(vab != want) {   // CHECK only prints the expression; name the culprits
+            for(const std::string &s : want)
+                if(std::find(vab.begin(), vab.end(), s) == vab.end()) { printf("   vab missing %s\n", s.c_str()); }
+            for(const std::string &s : vab)
+                if(std::find(want.begin(), want.end(), s) == want.end()) { printf("   vab has extra %s\n", s.c_str()); }
+        }
         CHECK(vab == want);
+        // Roster anchors: the stock ships reach the picker, scenario ships don't.
+        for(const std::string stock : { "glider", "heavy_asp", "jet",
+                                        "mars_explorer_mk1", "racer", "stager" }) {
+            CHECK(std::find(vab.begin(), vab.end(), stock) != vab.end());
+        }
+        CHECK(std::find(vab.begin(), vab.end(), std::string("ranger")) == vab.end());
         const std::vector<std::string> all = list_vab_vehicle_defs("res/ships", true);
-        CHECK(all.size() > vab.size());
+        CHECK(all == want_all);
         CHECK(std::find(all.begin(), all.end(), std::string("ranger")) != all.end());
     }
 
