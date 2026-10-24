@@ -1,0 +1,320 @@
+{
+  "name": "mars_explorer_mk1",
+  "parts": [
+    {
+      "part": "capsule",
+      "id": "capsule_1",
+      "attach": "down",
+      "angle": 0.0
+    },
+    {
+      "part": "reaction_wheel",
+      "id": "reaction_wheel_2",
+      "parent": "capsule_1",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0
+    },
+    {
+      "part": "tank_r1h3",
+      "id": "tank_r1h3_3",
+      "parent": "reaction_wheel_2",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0
+    },
+    {
+      "part": "nuclear_engine",
+      "id": "nuclear_engine_4",
+      "parent": "tank_r1h3_3",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0
+    },
+    {
+      "part": "decoupler_r1",
+      "id": "decoupler_r1_5",
+      "parent": "nuclear_engine_4",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0,
+      "stage": 2
+    },
+    {
+      "part": "adapter_r1.5to1",
+      "id": "adapter_r1.5to1_6",
+      "parent": "decoupler_r1_5",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0
+    },
+    {
+      "part": "reaction_wheel_r1.5h0.375",
+      "id": "reaction_wheel_r1.5h0.375_7",
+      "parent": "adapter_r1.5to1_6",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0
+    },
+    {
+      "part": "tank_r1.5h5",
+      "id": "tank_r1.5h5_7",
+      "parent": "reaction_wheel_r1.5h0.375_7",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0
+    },
+    {
+      "part": "orbital_engine_r1.5h1.5",
+      "id": "orbital_engine_r1.5h1.5_8",
+      "parent": "tank_r1.5h5_7",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0,
+      "stage": 2
+    },
+    {
+      "part": "decoupler_r1.5",
+      "id": "decoupler_r1.5_10",
+      "parent": "orbital_engine_r1.5h1.5_8",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0,
+      "stage": 3
+    },
+    {
+      "part": "adapter_r2.25to1.5",
+      "id": "adapter_r2.25to1.5_10",
+      "parent": "decoupler_r1.5_10",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0
+    },
+    {
+      "part": "tank_r2.25h5",
+      "id": "tank_r2.25h5_11",
+      "parent": "adapter_r2.25to1.5_10",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0
+    },
+    {
+      "part": "tank_r2.25h5",
+      "id": "tank_r2.25h5_12",
+      "parent": "tank_r2.25h5_11",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0
+    },
+    {
+      "part": "engine_r2.25h4.5",
+      "id": "engine_r2.25h4.5_13",
+      "parent": "tank_r2.25h5_12",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0,
+      "stage": 4
+    },
+    {
+      "part": "decoupler_r2.25",
+      "id": "decoupler_r2.25_15",
+      "parent": "tank_r2.25h5_11",
+      "attach": "surface",
+      "childNode": "srf",
+      "point": [
+        1.4412329421524317,
+        -1.7175945365752834,
+        -1.0
+      ],
+      "normal": [
+        0.6427876096865394,
+        -0.766044443118978,
+        0.0
+      ],
+      "roll": 0.0,
+      "stage": 4
+    },
+    {
+      "part": "tank_r2.25h5",
+      "id": "tank_r2.25h5_16",
+      "parent": "decoupler_r2.25_15",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0
+    },
+    {
+      "part": "engine_r2.25h4.5",
+      "id": "engine_r2.25h4.5_17",
+      "parent": "tank_r2.25h5_16",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0,
+      "stage": 4
+    },
+    {
+      "part": "nose_cap_r2.25h1.125",
+      "id": "nose_cap_r2.25h1.125_18",
+      "parent": "decoupler_r2.25_15",
+      "attach": "down",
+      "parentNode": "top",
+      "childNode": "bottom",
+      "angle": 0.0
+    },
+    {
+      "part": "decoupler_r2.25",
+      "id": "decoupler_r2.25_15_2",
+      "parent": "tank_r2.25h5_11",
+      "attach": "surface",
+      "childNode": "srf",
+      "point": [
+        1.7175945365752836,
+        1.4412329421524313,
+        -1.0
+      ],
+      "normal": [
+        0.7660444431189781,
+        0.6427876096865391,
+        0.0
+      ],
+      "roll": 0.0,
+      "stage": 4
+    },
+    {
+      "part": "tank_r2.25h5",
+      "id": "tank_r2.25h5_16_2",
+      "parent": "decoupler_r2.25_15_2",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0
+    },
+    {
+      "part": "engine_r2.25h4.5",
+      "id": "engine_r2.25h4.5_17_2",
+      "parent": "tank_r2.25h5_16_2",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0,
+      "stage": 4
+    },
+    {
+      "part": "nose_cap_r2.25h1.125",
+      "id": "nose_cap_r2.25h1.125_18_2",
+      "parent": "decoupler_r2.25_15_2",
+      "attach": "down",
+      "parentNode": "top",
+      "childNode": "bottom",
+      "angle": 0.0
+    },
+    {
+      "part": "decoupler_r2.25",
+      "id": "decoupler_r2.25_15_3",
+      "parent": "tank_r2.25h5_11",
+      "attach": "surface",
+      "childNode": "srf",
+      "point": [
+        -1.4412329421524315,
+        1.7175945365752836,
+        -1.0
+      ],
+      "normal": [
+        -0.6427876096865393,
+        0.7660444431189781,
+        0.0
+      ],
+      "roll": 0.0,
+      "stage": 4
+    },
+    {
+      "part": "tank_r2.25h5",
+      "id": "tank_r2.25h5_16_3",
+      "parent": "decoupler_r2.25_15_3",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0
+    },
+    {
+      "part": "engine_r2.25h4.5",
+      "id": "engine_r2.25h4.5_17_3",
+      "parent": "tank_r2.25h5_16_3",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0,
+      "stage": 4
+    },
+    {
+      "part": "nose_cap_r2.25h1.125",
+      "id": "nose_cap_r2.25h1.125_18_3",
+      "parent": "decoupler_r2.25_15_3",
+      "attach": "down",
+      "parentNode": "top",
+      "childNode": "bottom",
+      "angle": 0.0
+    },
+    {
+      "part": "decoupler_r2.25",
+      "id": "decoupler_r2.25_15_4",
+      "parent": "tank_r2.25h5_11",
+      "attach": "surface",
+      "childNode": "srf",
+      "point": [
+        -1.7175945365752836,
+        -1.4412329421524313,
+        -1.0
+      ],
+      "normal": [
+        -0.7660444431189781,
+        -0.6427876096865391,
+        0.0
+      ],
+      "roll": 0.0,
+      "stage": 4
+    },
+    {
+      "part": "tank_r2.25h5",
+      "id": "tank_r2.25h5_16_4",
+      "parent": "decoupler_r2.25_15_4",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0
+    },
+    {
+      "part": "engine_r2.25h4.5",
+      "id": "engine_r2.25h4.5_17_4",
+      "parent": "tank_r2.25h5_16_4",
+      "attach": "down",
+      "parentNode": "bottom",
+      "childNode": "top",
+      "angle": 0.0,
+      "stage": 4
+    },
+    {
+      "part": "nose_cap_r2.25h1.125",
+      "id": "nose_cap_r2.25h1.125_18_4",
+      "parent": "decoupler_r2.25_15_4",
+      "attach": "down",
+      "parentNode": "top",
+      "childNode": "bottom",
+      "angle": 0.0
+    }
+  ]
+}
