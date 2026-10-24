@@ -10,6 +10,12 @@ CHECK last(xfer)["dv_dep"] > 100 and last(xfer)["dv_dep"] < 5000
 CHECK last(xfer)["dv_cap"] > 0
 CHECK abs(last(xfer)["total"] - last(xfer)["dv_dep"] - last(xfer)["dv_cap"]) < 1e-3 * last(xfer)["total"]
 CHECK last(xfer)["tof"] > 0
+# r_cap is a RADIUS around Mun (radius 200 km) and r_cap_asl the same point as
+# a height over its sea level (#405). Every shipped system has sea_level 0, so
+# a bare "> 0" would pass even against the wrong body's datum: pin that the two
+# keys differ by exactly the TARGET's radius, which is what the Transfer window
+# subtracts.
 CHECK last(xfer)["r_cap"] > 200000
+CHECK abs(last(xfer)["r_cap"] - last(xfer)["r_cap_asl"] - 200000) < 1
 CHECK abs((last(xfer)["burn"][0]**2 + last(xfer)["burn"][1]**2 + last(xfer)["burn"][2]**2)**0.5 - last(xfer)["dv_dep"]) < 0.01 * last(xfer)["dv_dep"]
 FORBID error:

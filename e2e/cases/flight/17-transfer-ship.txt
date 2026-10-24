@@ -11,6 +11,10 @@ CHECK len(xfer) >= 2
 CHECK last(xfer)["target"] == "transporter"
 CHECK last(xfer)["dv_dep"] > 0 and last(xfer)["dv_dep"] < 20000
 CHECK last(xfer)["dv_cap"] == 0
+# A ship target has no capture burn, so the capture pair is ABSENT rather than
+# a 0 that would read as a burn at the target's centre (#405).
+CHECK last(xfer)["r_cap"] is None
+CHECK last(xfer)["r_cap_asl"] is None
 CHECK last(xfer)["total"] == last(xfer)["dv_dep"]
 CHECK last(xfer)["tof"] > 0
 # A near-co-orbital rendezvous is a nudge, not a launch: if the phasing

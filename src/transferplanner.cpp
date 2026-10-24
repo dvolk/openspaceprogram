@@ -66,9 +66,9 @@ InertialTarget targetInertial(const TransferPlanner::XferTarget &t,
         d.mu = t.body->mu;
         // Capture "orbit" at the near-body shell edge (bodylimits.h): the
         // LowOrbit/HighOrbit boundary -- above the air on every body, and on
-        // the sea-level datum.
-        d.r_cap = t.body->radius + t.body->surface.sea_level
-                + shellEdge(t.body->surface.atmosphere.top());
+        // the sea-level datum. r_cap is therefore a RADIUS; both the Transfer
+        // window and --xfer-log print its height off that datum (#405).
+        d.r_cap = t.body->seaLevelRadius() + shellEdge(t.body->surface.atmosphere.top());
         if(tf->orb_ang_speed > 0.0) {
             // 3 target periods covers the min-dv point with margin.
             d.tof_max = 3.0 * (2.0 * std::numbers::pi / tf->orb_ang_speed);
@@ -319,13 +319,24 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         if(g->logDue(kGateXfer, SDL_GetTicks(), g->orbit_log_interval_ms)) {
             const char *tn = t->name;
             if(xfer.valid) {
+                /* r_cap is the capture periapsis RADIUS around the target and
+                   r_cap_asl the same point as a HEIGHT above its sea level
+                   (#405). A solution with no capture burn prints neither. */
+                char cap_s[96] = "";
+                if(xfer.sol.r_cap > 0.0 && t->body != nullptr) {
+                    const int n = snprintf(cap_s, sizeof cap_s,
+                                           " r_cap=%.6g m r_cap_asl=%.6g m",
+                                           xfer.sol.r_cap,
+                                           xfer.sol.r_cap - t->body->seaLevelRadius());
+                    assert(n > 0 && n < (int)sizeof cap_s);
+                }
                 printf("[xferlog] t=%.1fs target=\"%s\" dv_dep=%.6g m/s "
                        "dv_cap=%.6g m/s total=%.6g m/s tof=%.6g s "
-                       "v_inf=%.6g m/s r_cap=%.6g m "
+                       "v_inf=%.6g m/s%s "
                        "burn=[%.4f %.4f %.4f] retrograde=%d rev=%d\n",
                        g->time, tn, xfer.sol.dv_departure,
                        xfer.sol.dv_capture, xfer.sol.total_dv,
-                       xfer.sol.tof, xfer.sol.v_inf, xfer.sol.r_cap,
+                       xfer.sol.tof, xfer.sol.v_inf, cap_s,
                        xfer.burn_dir.x, xfer.burn_dir.y,
                        xfer.burn_dir.z, xfer.sol.retrograde ? 1 : 0,
                        xfer.sol.revolutions);

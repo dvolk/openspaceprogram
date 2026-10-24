@@ -833,7 +833,13 @@ void drawUIReadouts(Game &g) {
                                                tof_s, sizeof tof_s));
             ImGui::PopItemWidth();
         }
-        if(!xfer.valid) {
+        /* The solve belongs to the target it was computed FOR, and xfer.valid
+           outlives a combo change by a frame, so pair on the IDENTITY rather
+           than on valid alone -- the map draws its leg under this same test.
+           Skipping it shows the new target's label over the old target's
+           numbers for one frame, which puts the capture node a whole body
+           radius off (#405). */
+        if(!xfer.valid || xfer.target != planner.xfer_sel) {
             ImGui::Text("No transfer solution for this target / ToF.");
             return;
         }
@@ -841,8 +847,15 @@ void drawUIReadouts(Game &g) {
         char dist_s[32], time_s[40];
         ImGui::Text("dv depart:  %08.1f m/s", sol.dv_departure);
         if(!isShip) {
-            ImGui::Text("dv capture: %08.1f m/s @ %s",
-                        sol.dv_capture, fmt_dist(sol.r_cap, dist_s, sizeof dist_s));
+            /* sol.r_cap is a capture periapsis RADIUS around the target, so the
+               plan reads as a height above the TARGET's own sea level (#405).
+               A body solve always has one: planTransfer only sets a capture leg
+               when r_cap > 0, and a body's r_cap is its sea-level radius plus
+               the near-body shell edge. */
+            assert(t->body != nullptr && sol.r_cap > 0.0);
+            ImGui::Text("dv capture: %08.1f m/s @ %s", sol.dv_capture,
+                        fmt_dist(sol.r_cap - t->body->seaLevelRadius(),
+                                 dist_s, sizeof dist_s));
             if(sol.capture_orbit_period > 0.0) {
                 ImGui::Text("capture P:  %s",
                             fmt_time(sol.capture_orbit_period, time_s, sizeof time_s));
@@ -1785,19 +1798,27 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("Bod: %s (%c)", ship->m_parent->name.c_str(),
                     ship->frame->isRotFrame() ? 'R' : 'I');
         ImGui::Text("Vel: %.1fm/s", speed);
-        /* R is a RADIUS from the focus, not an altitude; ApA/PeA are apsis RADII for the
-           same reason. The SURFACE window has the real altitude (calling these "Alt" was
-           #171's sibling complaint; the `_r` field names are #404). */
+        /* Two datums in one window, on purpose: R and SMa are RADII from the
+           focus (orbital elements), while ApA/PeA are HEIGHTS above the parent's
+           mean sea level, because "a 100 km orbit" is what the player means. PeA
+           reads negative while the periapsis is under the ground, which is the
+           honest way to say "this arc comes back down". #404 is why the two never
+           share a word, and #405 is why these stopped printing radii behind a
+           label that says "A".
+           A ship actually resting on the ground is NOT covered here: its
+           elements are near-radial fiction (orbit.h, #404), so PeA reads deep
+           underground and the countdowns run anyway. */
         ImGui::Text("  R: %s", fmt_dist(distance, dist_s, sizeof dist_s));
         /* Every line below is always present; "-" = the quantity does not exist for
            this orbit class. */
+        const double sea_r = ship->m_parent->seaLevelRadius();
         const bool circular = o.traj == TrajectoryClass::Elliptic
                             && (o.apoapsis_r - o.periapsis_r) < 10e3;
-        if(o.traj == TrajectoryClass::Elliptic) { ImGui::Text("ApA: %s", fmt_dist(o.apoapsis_r, dist_s, sizeof dist_s)); }
+        if(o.traj == TrajectoryClass::Elliptic) { ImGui::Text("ApA: %s", fmt_dist(apoapsisAsl(o, sea_r), dist_s, sizeof dist_s)); }
         else { ImGui::Text("ApA: -"); }
         if(o.traj == TrajectoryClass::Elliptic && !circular) { ImGui::Text("ApT: %.1fs", o.time_to_apo); }
         else { ImGui::Text("ApT: -"); }
-        ImGui::Text("PeA: %s", fmt_dist(o.periapsis_r, dist_s, sizeof dist_s));
+        ImGui::Text("PeA: %s", fmt_dist(periapsisAsl(o, sea_r), dist_s, sizeof dist_s));
         if(!circular && o.time_to_peri >= 0.0) { ImGui::Text("PeT: %.1fs", o.time_to_peri); }
         else { ImGui::Text("PeT: -"); }
         if(o.period > 0.0) { ImGui::Text("  T: %.1fs", o.period); }
@@ -5224,7 +5245,8 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
     const double e = std::sqrt(std::max(0.0, 1.0 - (h * h / fr->parent_mu) / a));
     snprintf(v, sizeof v, "%.4f", e);
     line("eccentricity", v);
-    // From the parent's centre (what ORBITAL's PeA/ApA show) and above its mean sea level.
+    // Both halves here: from the parent's centre, and above its mean sea level
+    // (which is what ORBITAL's PeA/ApA show -- #405).
     const double surf = par->seaLevelRadius();
     line("periapsis", fmt_dist(a * (1.0 - e), v, sizeof v));
     line("periapsis alt", fmt_dist(a * (1.0 - e) - surf, v, sizeof v));

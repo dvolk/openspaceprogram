@@ -131,7 +131,11 @@ PLANE_RE = re.compile(
 XFER_RE = re.compile(
     r"\[xferlog\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+"
     r"dv_dep=([-\d.e+]+) m/s\s+dv_cap=([-\d.e+]+) m/s\s+total=([-\d.e+]+) m/s\s+"
-    r"tof=([-\d.e+]+) s\s+v_inf=([-\d.e+]+) m/s\s+r_cap=([-\d.e+]+) m\s+"
+    r"tof=([-\d.e+]+) s\s+v_inf=([-\d.e+]+) m/s\s+"
+    # r_cap is the capture periapsis RADIUS around the target, r_cap_asl the
+    # same point as a HEIGHT above its sea level (#405). Both absent = this
+    # solution has no capture burn.
+    r"(?:r_cap=([-\d.e+]+) m\s+r_cap_asl=([-\d.e+]+) m\s+)?"
     r"burn=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s*(?:retrograde=(\d))?\s*(?:rev=(\d))?"
 )
 PORKCHOP_RE = re.compile(
@@ -554,13 +558,17 @@ def parse_toast(out):
 def parse_xfer(out):
     rows = []
     for m in XFER_RE.finditer(out):
-        (t, target, dv_dep, dv_cap, total, tof, v_inf, r_cap,
+        (t, target, dv_dep, dv_cap, total, tof, v_inf, r_cap, r_cap_asl,
          bx, by, bz, retro, rev) = m.groups()
         rows.append({
             "t": float(t), "target": target,
             "dv_dep": float(dv_dep), "dv_cap": float(dv_cap),
             "total": float(total), "tof": float(tof),
-            "v_inf": float(v_inf), "r_cap": float(r_cap),
+            "v_inf": float(v_inf),
+            # None = no capture burn. r_cap is a radius from the target's
+            # centre; r_cap_asl is the height over its sea level (#405).
+            "r_cap": float(r_cap) if r_cap is not None else None,
+            "r_cap_asl": float(r_cap_asl) if r_cap_asl is not None else None,
             "burn": (float(bx), float(by), float(bz)),
             # -1 = a log line from before the field existed, not "prograde".
             "retrograde": int(retro) if retro is not None else -1,

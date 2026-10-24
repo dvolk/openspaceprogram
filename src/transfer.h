@@ -17,7 +17,9 @@ struct TransferSolution {
     double dv_capture = 0.0;     // m/s, circularize at r_cap around target
     double total_dv = 0.0;       // m/s
     double tof = 0.0;            // s, time of flight of the best transfer
-    double r_cap = 0.0;          // m, capture periapsis used (0 = none)
+    double r_cap = 0.0;          // m, capture periapsis used (0 = none): a
+                                 // RADIUS from the target's centre, i.e. its
+                                 // seaLevelRadius() + shellEdge() (#405)
     double v_inf = 0.0;          // m/s, hyperbolic excess at the target
     double capture_orbit_period = -1.0; // s, period of the r_cap circle
     double transfer_semi_major = 0.0;   // m, negative for a hyperbolic leg
