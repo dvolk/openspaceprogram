@@ -9,6 +9,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <map>
 #include <string>
@@ -380,12 +381,17 @@ inline std::vector<LabEntry> labEntries(const std::vector<Experiment> &recovered
 
 // ---- the situation classifier --------------------------------------------
 
-// Low/high ORBIT cut [m ASL]: the near-body shell edge plus a margin. `soi`
-// is the NEAR-BODY (rotating-frame) SoI, not the inertial orbital sphere
-// (that would make high-orbit nearly unreachable). The shell always contains
-// the atmosphere (bodylimits.h shellEdge), so no atmoTop term is needed.
-inline double orbitCutAlt(double soi, double radius, double sea_level) {
-    return (soi - radius - sea_level) + kOrbitCutMargin;
+// Low/high ORBIT cut [m ASL]: the near-body shell edge plus a margin. `soi` is
+// the NEAR-BODY (rotating-frame) SoI, not the inertial orbital sphere (that
+// would make high-orbit nearly unreachable); `sea_level_radius` is the body's
+// seaLevelRadius() -- the loader puts the shell on that sphere (system.cpp),
+// so the cut sits at the same datum as every other altitude. The shell always
+// contains the atmosphere (bodylimits.h shellEdge), so no atmoTop term is needed.
+inline double orbitCutAlt(double soi, double sea_level_radius) {
+    // Both args are double, so a swap compiles and makes the cut hugely
+    // negative (everything reads HighOrbit). The SoI is always outside the body.
+    assert(soi >= sea_level_radius);
+    return (soi - sea_level_radius) + kOrbitCutMargin;
 }
 
 /* Situation from live state: grounded -> Landed; air -> FlyingLow/High; above

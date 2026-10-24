@@ -369,8 +369,7 @@ inline PoseSituation poseSituation(const TerrainBody *body, const glm::vec3 &dir
     const double atmoTop = body->surface.atmosphere.top();
     const SciSituation situation =
         situationFor(grounded, altAsl, atmoTop,
-                     orbitCutAlt(body->rot_frame->soi, (double)body->radius,
-                                 (double)body->surface.sea_level));
+                     orbitCutAlt(body->rot_frame->soi, body->seaLevelRadius()));
     if(!body->hasClassifiableSurface() || !body->ready) {
         return { Biome::None, situation };
     }

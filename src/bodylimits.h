@@ -68,9 +68,8 @@ inline double inertialSoi(double lawSoi, double rotSoi, double shell) {
 /* The load-time ordering asserts (system.cpp calls this per body). The values are
    derived, so a failure means a code regression or hand-edited JSON -- the
    message names the body and the broken invariant. */
-inline void validateBodyLimits(const std::string &name, double radius,
-                               double sea_level, double atmoTop,
-                               double rotSoi, double inertSoi) {
+inline void validateBodyLimits(const std::string &name, double sea_level_radius,
+                               double atmoTop, double rotSoi, double inertSoi) {
     const auto fail = [&name](const std::string &what) {
         throw std::runtime_error("system: " + name + ": " + what);
     };
@@ -78,19 +77,20 @@ inline void validateBodyLimits(const std::string &name, double radius,
     if(shell < atmoTop + kSoiMargin) {
         fail("atmosphere top reaches past the near-body shell's enter band");
     }
-    if(rotSoi - kSoiMargin <= radius + sea_level) {
+    if(rotSoi - kSoiMargin <= sea_level_radius) {
         fail("near-body shell is un-enterable (soi - margin at or below the surface)");
     }
-    // 100 m of slack: rotSoi uses the JSON's DOUBLE radius while
-    // TerrainBody::radius is float -- star-scale rounding is tens of metres,
-    // real regressions are kilometres.
-    if(rotSoi + 100.0 < radius + sea_level + shell) {
+    /* The loader sets rotSoi to exactly this datum plus shellEdge (system.cpp),
+       so the two agree to the bit; 1 m of slack leaves room for a rounding
+       change while still catching a shell measured off another radius, which
+       is a sea_level-sized (km) error. */
+    if(rotSoi + 1.0 < sea_level_radius + shell) {
         fail("near-body SOI is smaller than the derived shell");
     }
     if(inertSoi < rotSoi + 2.0 * kSoiMargin) {
         fail("inertial SOI does not clear the near-body shell's hysteresis band");
     }
-    if(inertSoi <= radius + sea_level + kInertialOrbitFrac * shell) {
+    if(inertSoi <= sea_level_radius + kInertialOrbitFrac * shell) {
         fail("inertial SOI does not contain the inertial-orbit spawn bed");
     }
 }

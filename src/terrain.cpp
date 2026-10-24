@@ -300,8 +300,9 @@ float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
     const glm::dvec3 center = planet->frame->root_pos;
     const glm::dvec3 d = pos - center; // center -> point
 
-    // Cheap reject: the ray misses the (radius + max relief) sphere.
-    const double R = (double)planet->radius + (double)planet->surface.max_height;
+    // Cheap reject: the ray misses the (mean-sea datum + max relief) sphere.
+    // max_height is relief above sea level, so the datum is part of it (#406).
+    const double R = planet->seaLevelRadius() + (double)planet->surface.max_height;
     const double b = glm::dot(d, dir);
     const double c = glm::dot(d, d) - R * R;
     const double disc = b * b - c;

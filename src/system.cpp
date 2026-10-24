@@ -546,7 +546,10 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         rf->root_pos = glm::dvec3(0);
         rf->root_vel = glm::dvec3(0);
         rf->root_orient = glm::dmat3(1.0);
-        rf->soi = radius + (double)s.sea_level + shell;
+        // Datum + shell, in ONE expression, off the same float radius physics
+        // uses: soi - seaLevelRadius() is then exactly shellEdge() for every body,
+        // which is what science.h's orbit cut and bodylimits.h's asserts read.
+        rf->soi = body->seaLevelRadius() + shell;
         if(bv.contains("rotating") && bv["rotating"].is_object()) {
             const nlohmann::json &rot = bv["rotating"];
             rf->rot_ang_speed = rot.value("rot_ang_speed", 0.0);
@@ -726,7 +729,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     // The ordering the game needs (bodylimits.h). Derived values cannot fail
     // these; this is the tripwire for future edits.
     for(TerrainBody *b : sys.bodies) {
-        validateBodyLimits(b->name, b->radius, b->surface.sea_level,
+        validateBodyLimits(b->name, b->seaLevelRadius(),
                            b->surface.atmosphere.top(),
                            b->rot_frame->soi, b->frame->soi);
     }

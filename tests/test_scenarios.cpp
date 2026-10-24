@@ -13,18 +13,29 @@
 // measured from it. Re-derive each from the file and compare.
 //
 // Runs from the repo root (it loads res/systems/*.json).
+//
+// It also gates one loader invariant that every shipped file shares: the
+// rotating frame's SoI is the mean-sea datum plus the derived shell
+// (check_system). Only a real system file can catch a body measured off some
+// other radius, and the science tiers are read off that difference.
 
 #include "system.h"
 #include "vehicle.h"
 #include "frame.h"
 #include "body.h"
+#include "bodylimits.h"
+#include "science.h"   // orbitCutAlt: the tier boundary the datum feeds
 
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#include <nlohmann/json.hpp>
 
 static int failures = 0;
 
@@ -51,9 +62,117 @@ static TerrainBody *find_body(const System &sys, const std::string &name) {
     return nullptr;
 }
 
+/* The datum the whole altitude ladder stands on (#406): the loader puts the
+   near-body shell on the MEAN-SEA sphere, so a body's rotating SoI is exactly
+   seaLevelRadius() + shellEdge(atmo top). science.h's low/high orbit cut is
+   measured as (soi - datum), so a body whose SoI is measured off another radius
+   shifts its science tiers silently -- and only a real system file can show it,
+   since that is where radius, sea level and atmosphere are authored. Returns the
+   number of bodies that disagree. */
+static int check_datum(const char *path, const System &sys) {
+    int bad = 0;
+    for(TerrainBody *b : sys.bodies) {
+        const double want = b->seaLevelRadius()
+                          + shellEdge(b->surface.atmosphere.top());
+        if(b->rot_frame->soi != want) {
+            printf("  %s: %s rot SoI %.1f != datum %.1f + shell %.1f (off by %+.6f m)\n",
+                   path, b->name.c_str(), b->rot_frame->soi,
+                   b->seaLevelRadius(), want, b->rot_frame->soi - want);
+            bad++;
+        }
+    }
+    printf("  %s: %d/%d bodies' rot SoI sits on the mean-sea datum\n",
+           path, (int)sys.bodies.size() - bad, (int)sys.bodies.size());
+    return bad;
+}
+
+/* Every shipped file has sea_level 0 or absent (#412), so the line above cannot
+   tell a datum from a radius. Load a MUTATED copy with Kerbin's sea 12 km up:
+   the shell must ride with the datum, and the low/high orbit cut -- which is
+   what a player's science tier turns on -- must not move. */
+static void check_raised_sea() {
+    const char *src = "res/systems/ksp_system.json";
+    std::ifstream f(src);
+    if(!f.is_open()) {
+        printf("  cannot open %s (run from the repo root)\n", src);
+        failures++;
+        return;
+    }
+    nlohmann::json j = nlohmann::json::parse(f);
+    TerrainBody *dry_b = nullptr;
+    System dry = load_system(src, nullptr, nullptr);
+    dry_b = find_body(dry, "Kerbin");
+    if(dry_b == nullptr) {
+        printf("  %s: no Kerbin to raise the sea on\n", src);
+        failures++;
+        return;
+    }
+    const double dry_sea = dry_b->seaLevelRadius();
+    const double dry_soi = dry_b->rot_frame->soi;
+    const double dry_cut = orbitCutAlt(dry_soi, dry_sea);
+
+    const double wet_sea_m = 12000.0;
+    bool patched = false;
+    for(auto &bv : j["bodies"]) {
+        if(bv.value("name", std::string()) != "Kerbin") { continue; }
+        if(!bv.contains("surface") || !bv["surface"].is_object()) { bv["surface"] = nlohmann::json::object(); }
+        bv["surface"]["sea_level"] = wet_sea_m;
+        patched = true;
+    }
+    if(!patched) {
+        printf("  %s: no Kerbin entry to patch\n", src);
+        failures++;
+        return;
+    }
+    std::filesystem::create_directories("tmp");
+    const std::string tmp = "tmp/test_scenarios_raised_sea.json";
+    {
+        std::ofstream o(tmp);
+        o << j.dump();
+    }
+    System wet;
+    try {
+        wet = load_system(tmp.c_str(), nullptr, nullptr);
+    } catch(const std::exception &e) {
+        printf("  a body with a 12 km sea level fails to load: %s\n", e.what());
+        failures++;
+        return;
+    }
+    TerrainBody *b = find_body(wet, "Kerbin");
+    if(b == nullptr) {
+        printf("  %s: Kerbin vanished from the mutated system\n", tmp.c_str());
+        failures++;
+        return;
+    }
+    if(b->seaLevelRadius() != dry_sea + wet_sea_m) {
+        printf("  Kerbin datum %.1f, expected %.1f (sea_level did not reach the body)\n",
+               b->seaLevelRadius(), dry_sea + wet_sea_m);
+        failures++;
+    }
+    // The shell rides with the datum...
+    if(b->rot_frame->soi != dry_soi + wet_sea_m) {
+        printf("  Kerbin rot SoI %.1f, expected %.1f: the shell did not lift with "
+               "the datum (off by %+.1f m)\n",
+               b->rot_frame->soi, dry_soi + wet_sea_m,
+               b->rot_frame->soi - (dry_soi + wet_sea_m));
+        failures++;
+    }
+    // ...so the cut over mean sea, and with it the science tiers, hold still.
+    const double wet_cut = orbitCutAlt(b->rot_frame->soi, b->seaLevelRadius());
+    if(wet_cut != dry_cut) {
+        printf("  Kerbin's low/high orbit cut moved %.1f m with the datum: %.1f -> %.1f\n",
+               wet_cut - dry_cut, dry_cut, wet_cut);
+        failures++;
+    }
+    if(check_datum(tmp.c_str(), wet)) { failures++; }
+    printf("  %s: a 12 km sea lifts Kerbin's shell with the datum and holds the "
+           "orbit cut at %.0f m\n", tmp.c_str(), dry_cut);
+}
+
 static void check_system(const char *path) {
     System sys = load_system(path, nullptr, nullptr);
     int checked = 0;
+    int datum_bad = 0;
     for(size_t i = 0; i < scenario_count(); i++) {
         const std::string sname = scenario_name_at(i);
         if(sname.compare(0, 5, "heli-") != 0) { continue; }
@@ -76,6 +195,10 @@ static void check_system(const char *path) {
         }
         checked++;
     }
+    /* The datum the whole altitude ladder stands on (#406), pinned per body for
+       every shipped file: see check_datum's note. */
+    datum_bad += check_datum(path, sys);
+
     if(checked == 0) {
         printf("  %s: no heli-* bed matched a body here (expected at least one "
                "for a solar-system file)\n", path);
@@ -83,6 +206,7 @@ static void check_system(const char *path) {
     } else {
         printf("  %s: %d heli-* beds match their rails\n", path, checked);
     }
+    if(datum_bad) { failures += datum_bad; }
 }
 
 /* The VAB dropdown's dev gate. The dropdown shows only the non-dev beds, so the
@@ -134,6 +258,14 @@ int main() {
         "res/systems/solar_system_full.json",
     };
     for(const char *p : paths) { check_system(p); }
+    // ...but the datum gate covers every shipped file, including the one the
+    // game boots by default.
+    for(const char *p : { "res/systems/ksp_system.json",
+                          "res/systems/old_system.json" }) {
+        System sys = load_system(p, nullptr, nullptr);
+        if(check_datum(p, sys)) failures++;
+    }
+    check_raised_sea();
     if(failures) {
         printf("test_scenarios: %d FAILED\n", failures);
         return 1;

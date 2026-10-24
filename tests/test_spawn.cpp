@@ -201,7 +201,9 @@ int main() {
     // Build the spawn cases (scenarios) exactly as spawn_vehicle computes them.
     std::vector<SpawnCase> cases;
 
-    // Helper: r = radius + alt_frac * (rot soi - radius); rot soi = radius + 100 km.
+    /* Helper: r = datum + alt_frac * (rot soi - datum), with the fixture's rot
+       soi = datum + 100 km. The fixture bodies have no sea, so datum == radius
+       there; a raised sea would move both the bed and the shell (#406). */
     auto add = [&](const char *desc, bool on_pad, double alt_frac, bool polar,
                    double bodyRadius, double bodyMu, Frame *bodyFrame,
                    Frame *expectedFrame, bool eq_plane = false) {

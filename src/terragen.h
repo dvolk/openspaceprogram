@@ -76,7 +76,7 @@ inline OceanMode parseOceanMode(const std::string &v, const std::string &body) {
 struct AtmosphereParams {
     bool enabled = false;
     glm::vec3 color = glm::vec3(0.3f, 0.5f, 1.0f);  // rim tint (N2/O2 blue)
-    float thickness = 0.0f;  // RENDER ONLY: shell radius above radius + max_height
+    float thickness = 0.0f;  // RENDER ONLY: rim above the highest ground
     float power = 3.0f;       // Fresnel falloff (higher = tighter rim)
     float intensity = 1.0f;   // overall alpha scale
     /* The physical half (src/drag.h): rho(alt) = sea_level_density *
@@ -98,7 +98,7 @@ struct AtmosphereParams {
    equirectangular map the shader fetches. */
 struct CloudParams {
     bool enabled = false;
-    float height = 2500.0f;   // [m] above radius + max_height
+    float height = 2500.0f;   // [m] above the highest ground (datum + max_height)
     glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f);  // cloud tint (white)
     float coverage = 0.6f;    // 0..1: how much of the deck is cloudy
     float freq = 10.0f;       // pattern scale (unit-sphere noise coords)
@@ -318,6 +318,13 @@ struct TerrainParams {
     Surface surface;
     float radius = 0.0f;
     COLOUR (*colour_func)(float, float, float) = nullptr;
+    /* The mean-sea sphere [m] (#404): the datum every altitude in the game is
+       measured from, so relief/sea/palette math and orbit apsides agree. Doubles
+       because the ADD is not float math: radius and sea_level are floats and a
+       planetary sum would drop the metres we print. TerrainBody has the twin
+       accessor over its own live fields -- bodies read that one, worker math
+       read this one (the snapshot is empty until refreshParamsCache()). */
+    double seaLevelRadius() const { return (double)radius + (double)surface.sea_level; }
 };
 
 // ---------------------------------------------------------------------------
@@ -434,7 +441,8 @@ inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t,
         assert(t.colour_func != nullptr);
         c = (*t.colour_func)(h, t.radius - 1, t.radius + 3000);
     } else {
-        const float tt = (h - (t.radius + s.sea_level)) / s.max_height;
+        const float sea_r = (float)t.seaLevelRadius();
+        const float tt = (h - sea_r) / s.max_height;
         c = s.PaletteColor(tt);
     }
 
@@ -448,7 +456,7 @@ inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t,
        height clamp runs at the grid's band-limited detail, so with a non-zero
        sea_level a coarse patch gets a sea-level plain in its inland palette (#193). */
     if (s.ocean_mode == OceanMode::Flat && s.has_sea
-        && height <= t.radius + s.sea_level) {
+        && height <= (float)t.seaLevelRadius()) {
         color = s.sea_color;
     }
     return color;
@@ -482,8 +490,7 @@ inline Biome biomeFromAltitude(double alt, const Surface &s) {
 
 // Biome at a unit direction in the body's rotating frame (full-detail height).
 inline Biome biomeAt(const glm::vec3 &p, const TerrainParams &t) {
-    const double alt = (double)terrainHeight(p, t) - (double)t.radius
-                     - (double)t.surface.sea_level;
+    const double alt = (double)terrainHeight(p, t) - t.seaLevelRadius();
     return biomeFromAltitude(alt, t.surface);
 }
 

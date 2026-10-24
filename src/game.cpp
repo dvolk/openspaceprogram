@@ -475,8 +475,7 @@ bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
     }
     const glm::vec3 dir = glm::vec3(sp / r);
     // ASL: above sea level -- same datum as the aero altitude and atmo top.
-    const double altAsl = r - ((double)body->radius
-                               + (double)body->surface.sea_level);
+    const double altAsl = r - body->seaLevelRadius();
     // Biome + situation: the two halves of the finding's key.
     const PoseSituation ps = poseSituation(body, dir, altAsl, poseVehicle->isGrounded());
     // A surface body's biome needs measured terrain (max_height).

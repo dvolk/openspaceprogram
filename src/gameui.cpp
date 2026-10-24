@@ -440,9 +440,7 @@ void drawUIReadouts(Game &g) {
        surface; row 2 the clock. */
     drawWin(g, W_Hud, [&] {
         if(ship) {
-            const double asl = distance
-                - ((double)ship->m_parent->radius
-                   + (double)ship->m_parent->surface.sea_level);
+            const double asl = distance - ship->m_parent->seaLevelRadius();
             const bool surface_mode = ship->frame->isRotFrame()
                                    && asl < kSurfaceModeAlt;
             // AGL is a full-detail terrain sample: ask only in the mode that shows it.
@@ -1606,8 +1604,7 @@ void drawUIReadouts(Game &g) {
             ImGui::TextDisabled("cursor: lat %+.1f  lon %.1f  elev %s%s",
                                 glm::degrees(lat), glm::degrees(lon),
                                 fmt_dist((double)sm_body->GetTerrainHeight(dir)
-                                         - (double)sm_body->radius
-                                         - (double)sm_body->surface.sea_level,
+                                         - sm_body->seaLevelRadius(),
                                          elev_s, sizeof elev_s),
                                 site_s);
         } else {
@@ -1722,7 +1719,7 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("Camera altitude: %0.f",
                     glm::length(camera->GetPos()) - ship->m_parent->GetTerrainHeight(glm::normalize(camera->GetPos())));
         ImGui::Text("Camera ASL: %0.f", glm::length(camera->GetPos())
-                    - (ship->m_parent->radius + ship->m_parent->surface.sea_level));
+                    - ship->m_parent->seaLevelRadius());
         ImGui::Text("Camera Pos: %.0f %.0f %0.f", camera->GetPos().x, camera->GetPos().y, camera->GetPos().z);
         ImGui::Text("Cam forward: %.2f %.2f %.2f",
                     camera->forward.x, camera->forward.y, camera->forward.z);
@@ -1869,8 +1866,7 @@ void drawUIReadouts(Game &g) {
     drawWin(g, W_Surface, [&] {
         char dist_s[32];
         const TerrainBody *b = ship->m_parent;
-        const double altAsl = distance - ((double)b->radius
-                                          + (double)b->surface.sea_level);
+        const double altAsl = distance - b->seaLevelRadius();
         // Bme/Sit: the science identity of this pose (game.h poseSituation). "-" when there
         // is no biome to name.
         const PoseSituation ps = poseSituation(
@@ -1898,8 +1894,7 @@ void drawUIReadouts(Game &g) {
         const Uint32 now_ms = SDL_GetTicks();
         if(g.logDue(kGateInfo, now_ms, g.orbit_log_interval_ms)) {
             const TerrainBody *b = ship->m_parent;
-            const double altAsl = distance - ((double)b->radius
-                                          + (double)b->surface.sea_level);
+            const double altAsl = distance - b->seaLevelRadius();
             const PoseSituation ps = poseSituation(
                 b, glm::normalize(glm::vec3(view.surf_pos)), altAsl,
                 ship->isGrounded());
@@ -3160,10 +3155,11 @@ void drawUIMap(Game &g) {
     
         // The atmosphere top (top() in meters above sea level) as a blue disk under the
         // orbit line, with the same min-pixel floor as the body disk.
+        // top() is metres above MEAN SEA, so the disk starts at the datum (#406).
         const double atmo_top = focus->surface.atmosphere.top();
         if(atmo_top > 0.0) {
             proj.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0),
-                         focus->radius + atmo_top, col_atmo, 3.0f);
+                         focus->seaLevelRadius() + atmo_top, col_atmo, 3.0f);
         }
         // closed=true for the ellipse; false for the open arc (a chord would close it).
         proj.drawOrbit(dl, *traj_pts, col_ship, 1.0f, closed);
@@ -4973,10 +4969,11 @@ void drawTrackingMap(Game &g) {
         draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->frame->soi, soi_col);
         draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->rot_frame->soi, shell_col);
 
+        // top() is metres above MEAN SEA, so the disk starts at the datum (#406).
         const double atmo_top = focus->surface.atmosphere.top();
         if(atmo_top > 0.0) {
             proj.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0),
-                         focus->radius + atmo_top, col_atmo, 3.0f);
+                         focus->seaLevelRadius() + atmo_top, col_atmo, 3.0f);
         }
         proj.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0), focus->radius, col_body, 3.0f);
 

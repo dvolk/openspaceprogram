@@ -2,7 +2,6 @@
 // transferplanner.h). The pure-math solver is in transfer.h.
 #include "transferplanner.h"
 #include "game.h"   // complete Game (the header only forward-declares it)
-#include "bodylimits.h"  // shellEdge (the capture-orbit radius)
 
 #include <algorithm>
 #include <cassert>
@@ -64,11 +63,15 @@ InertialTarget targetInertial(const TransferPlanner::XferTarget &t,
         d.r = tf->GetPositionRelTo(inertial);
         d.v = tf->GetVelocityRelTo(inertial);
         d.mu = t.body->mu;
-        // Capture "orbit" at the near-body shell edge (bodylimits.h): the
-        // LowOrbit/HighOrbit boundary -- above the air on every body, and on
-        // the sea-level datum. r_cap is therefore a RADIUS; both the Transfer
-        // window and --xfer-log print its height off that datum (#405).
-        d.r_cap = t.body->seaLevelRadius() + shellEdge(t.body->surface.atmosphere.top());
+        /* Capture "orbit" at the near-body shell edge: the LowOrbit/HighOrbit
+           boundary, above the air on every body. Ask the frame for it rather
+           than re-deriving datum + shellEdge -- the ship switches into THIS
+           sphere, so the plan cannot disagree with it (the loader's derivation
+           is pinned in tests/test_scenarios.cpp). r_cap is a RADIUS, so both
+           the Transfer window and --xfer-log print its height off the datum
+           (#405/#406). */
+        assert(t.body->rot_frame != nullptr);
+        d.r_cap = t.body->rot_frame->soi;
         if(tf->orb_ang_speed > 0.0) {
             // 3 target periods covers the min-dv point with margin.
             d.tof_max = 3.0 * (2.0 * std::numbers::pi / tf->orb_ang_speed);

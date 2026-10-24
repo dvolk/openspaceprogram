@@ -765,7 +765,8 @@ struct ScenarioDef {
     bool dev_only;
     bool on_pad;
     double alt_frac; // circular: fraction of the near-body shell (rot SOI -
-                     // radius), or of the atmosphere top if atmo_frac
+                     // TerrainBody::seaLevelRadius()), or of the atmosphere
+                     // top if atmo_frac
     bool polar;
     int ell_phase;   // -1: circular; 0: periapsis; 1: apoapsis; 2: 90 deg
     double peri_alt; // ellipse: periapsis ABOVE MEAN SEA LEVEL (m), i.e. a

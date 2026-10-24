@@ -19,7 +19,8 @@ struct TransferSolution {
     double tof = 0.0;            // s, time of flight of the best transfer
     double r_cap = 0.0;          // m, capture periapsis used (0 = none): a
                                  // RADIUS from the target's centre, i.e. its
-                                 // seaLevelRadius() + shellEdge() (#405)
+                                 // rotating-frame SoI -- the sphere the ship
+                                 // switches into (#405/#406)
     double v_inf = 0.0;          // m/s, hyperbolic excess at the target
     double capture_orbit_period = -1.0; // s, period of the r_cap circle
     double transfer_semi_major = 0.0;   // m, negative for a hyperbolic leg

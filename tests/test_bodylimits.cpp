@@ -141,32 +141,33 @@ static void test_lift() {
 static void test_validate() {
     printf("== validateBodyLimits: the ordering asserts ==\n");
 
-    // Kerbin as derived: fine.
-    CHECK_NOTHROW(validateBodyLimits("Kerbin", 600e3, 0.0, 70e3,
+    // Kerbin as derived: fine (sea-level datum, atmo top, rot SoI, inert SoI).
+    CHECK_NOTHROW(validateBodyLimits("Kerbin", 600e3, 70e3,
                                      700e3, 84159290.0), "Kerbin passes");
     // A star (dummy shell, authored universe-bound SOI): fine.
-    CHECK_NOTHROW(validateBodyLimits("Kerbol", 261600000.0, 0.0, 0.0,
+    CHECK_NOTHROW(validateBodyLimits("Kerbol", 261600000.0, 0.0,
                                      261700000.0, 1e18), "star passes");
-    // A raised sea level shifts the shell with the datum: fine.
-    CHECK_NOTHROW(validateBodyLimits("Wet", 600e3, 10e3, 70e3,
+    // A raised sea level lifts the datum AND the shell that sits on it, so the
+    // rot SoI (datum + shellEdge = 610 + 100 km) still clears the surface: fine.
+    CHECK_NOTHROW(validateBodyLimits("Wet", 610e3, 70e3,
                                      710e3, 84e6), "sea level passes");
     // A lifted tiny moon at exactly the derived floors: fine.
-    CHECK_NOTHROW(validateBodyLimits("Gilly", 13e3, 0.0, 0.0,
+    CHECK_NOTHROW(validateBodyLimits("Gilly", 13e3, 0.0,
                                      113e3, 148e3), "lifted Gilly passes");
 
     // A rot SOI that does not cover the derived shell (the old Jool shape:
     // air to 200 km, shell only 100 km).
-    CHECK_THROWS(validateBodyLimits("Joolish", 6e6, 0.0, 200e3,
+    CHECK_THROWS(validateBodyLimits("Joolish", 6e6, 200e3,
                                     6.1e6, 2.4e9), "short shell throws");
     // An un-enterable shell (the old system.cpp flat-1e5 default bug).
-    CHECK_THROWS(validateBodyLimits("Tiny", 600e3, 0.0, 0.0,
+    CHECK_THROWS(validateBodyLimits("Tiny", 600e3, 0.0,
                                     605e3, 1e9), "un-enterable throws");
     // Overlapping hysteresis bands (the old Gilly data).
-    CHECK_THROWS(validateBodyLimits("Gillyish", 13e3, 0.0, 0.0,
+    CHECK_THROWS(validateBodyLimits("Gillyish", 13e3, 0.0,
                                     113e3, 126120.0), "nesting throws");
     // Nesting OK but the inertial-orbit bed (13 + 125 = 138 km) falls
     // outside the SOI: the finding-1 regression, pinned.
-    CHECK_THROWS(validateBodyLimits("Phobosish", 13e3, 0.0, 0.0,
+    CHECK_THROWS(validateBodyLimits("Phobosish", 13e3, 0.0,
                                     113e3, 138e3), "spawn bed throws");
 }
 

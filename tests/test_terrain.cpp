@@ -717,7 +717,7 @@ int main() {
         // with biomeFromAltitude fed terrainHeight minus the sea-level datum.
         const TerrainParams kp = kerbin();
         const double alt = (double)terrainHeight({0.0, 0.0, 1.0}, kp)
-                         - (double)kp.radius - (double)kp.surface.sea_level;
+                         - kp.seaLevelRadius();
         check(biomeAt({0.0, 0.0, 1.0}, kp) == biomeFromAltitude(alt, kp.surface),
               "biome: biomeAt matches the altitude-based decision");
         TerrainParams banded_body = kp;
@@ -781,8 +781,7 @@ int main() {
         bool biome_ok = true;
         for(const auto &p : dirs) {
             fl.surface.ocean_mode = OceanMode::Mesh;
-            const bool below
-                = terrainHeight(p, fl) <= fl.radius + fl.surface.sea_level;
+            const bool below = terrainHeight(p, fl) <= fl.seaLevelRadius();
             fl.surface.ocean_mode = OceanMode::Flat;
             if(!below) continue;
             any_sea = true;

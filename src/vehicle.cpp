@@ -332,13 +332,13 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
         // radius (the neptune/oort ladder); otherwise alt_frac scales the ALTITUDE
         // ABOVE SEA LEVEL -- against the atmosphere top for flying beds, against the
         // near-body shell for the orbit beds.
-        const double sea = (double)home->surface.sea_level;
+        const double sea_r = home->seaLevelRadius();
         const double top = home->surface.atmosphere.top();
-        const double shell = home->rot_frame->soi - home->radius - sea;
+        const double shell = home->rot_frame->soi - sea_r;
         const double alt = (sc.atmo_frac && top > 0.0)
                          ? sc.alt_frac * top
                          : sc.alt_frac * shell;
-        const double r = sc.abs_r > 0.0 ? sc.abs_r : home->radius + sea + alt;
+        const double r = sc.abs_r > 0.0 ? sc.abs_r : sea_r + alt;
         /* Which plane the bed's orbit sits in, in the home frame's axes. A polar bed
            sits over the GEOGRAPHIC pole (#174) -- the frame's +Y is the RAIL plane's
            normal, off the spin axis by the axial tilt. An -eq bed (#182) hangs off
@@ -1823,9 +1823,7 @@ double Vehicle::airDensityAtCom() const {
     if(r <= 0.0) { return 0.0; }
     // Altitude above SEA LEVEL (the fixed reference radius), like
     // applyAeroForce: the atmosphere is a spherically-symmetric shell.
-    const double ref_radius =
-        (double)m_parent->radius + (double)m_parent->surface.sea_level;
-    return airDensity(dragAtm(atm), r - ref_radius);
+    return airDensity(dragAtm(atm), r - m_parent->seaLevelRadius());
 }
 
 /* The ship's velocity relative to the AIR (#60/#97). The air is at rest in the body's
@@ -1868,9 +1866,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     const glm::dvec3 com = comPos();
     const double r = glm::length(com);
     if(r <= 0.0) { return lastAeroForce; }
-    const double ref_radius =
-        (double)m_parent->radius + (double)m_parent->surface.sea_level;
-    const double alt = r - ref_radius;
+    const double alt = r - m_parent->seaLevelRadius();
     lastDragAlt = alt;
     if(alt <= 0.0) { return lastAeroForce; }  // at / below sea level (in the sea)
 
@@ -3224,8 +3220,7 @@ bool Vehicle::inAtmosphere() {
     if(atm.sea_level_density <= 0.0 || atm.scale_height <= 0.0) {
         return false;   // a visual-only rim is not a drag regime
     }
-    const double ref = (double)m_parent->radius + m_parent->surface.sea_level;
-    return glm::length(comPos()) - ref < atm.top();
+    return glm::length(comPos()) - m_parent->seaLevelRadius() < atm.top();
 }
 
 bool Vehicle::isGrounded() {
@@ -3345,7 +3340,7 @@ RailEnd Vehicle::railsTick(double t, const double step) {
        long enough to jump the air is the player's to avoid. */
     RailEnd end = RailEndNone;
     const double r = glm::length(rail_pos);
-    const double ref = (double)m_parent->radius + m_parent->surface.sea_level;
+    const double ref = m_parent->seaLevelRadius();
     const AtmosphereParams &atm = m_parent->surface.atmosphere;
     const bool has_air = atm.sea_level_density > 0.0 && atm.scale_height > 0.0;
     if(has_air && r - ref < atm.top()) { end = RailEndAtmosphere; }

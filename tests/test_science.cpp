@@ -497,12 +497,14 @@ int main() {
         CHECK(situationFromId("") == SciSituation::LowOrbit);   // default
     }
 
-    // --- the orbit cut: shell edge (soi - radius - sea_level) + margin -----
+    // --- the orbit cut: shell edge (soi - seaLevelRadius) + margin ---------
     {
-        CHECK(orbitCutAlt(700000.0, 600000.0, 0.0) == 110000.0);    // Kerbin: 100km shell + 10km
-        CHECK(orbitCutAlt(6240000.0, 6000000.0, 0.0) == 250000.0);  // Jool: derived 240km shell
-        CHECK(orbitCutAlt(710000.0, 600000.0, 10000.0) == 110000.0); // a raised sea shifts with the datum
-        CHECK(orbitCutAlt(6371000.0, 6371000.0, 0.0) == 10000.0);   // degenerate pin: a real body cannot load with its shell at its own surface (validateBodyLimits refuses)
+        CHECK(orbitCutAlt(700000.0, 600000.0) == 110000.0);    // Kerbin: 100km shell + 10km
+        CHECK(orbitCutAlt(6240000.0, 6000000.0) == 250000.0);  // Jool: derived 240km shell
+        // A raised sea moves the datum AND the shell that sits on it, so the
+        // cut over mean sea is unchanged: that is what two args guarantee.
+        CHECK(orbitCutAlt(710000.0, 610000.0) == 110000.0);
+        CHECK(orbitCutAlt(6371000.0, 6371000.0) == 10000.0);   // degenerate pin: a real body cannot load with its shell at its own surface (validateBodyLimits refuses)
         CHECK(kOrbitCutMargin == 10000.0);
         CHECK(kFlyingLowFrac == 0.2);
     }

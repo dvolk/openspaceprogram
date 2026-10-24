@@ -58,6 +58,9 @@ void surfmapCompute(Game &g) {
     // colours from THIS snapshot: surface.max_height is applied LATER by
     // AttachRoot on the main thread, so a live per-pixel read would race it.
     const TerrainParams tp = body->params();
+    // Hoisted datum: the sea test runs per pixel, and a hand-rolled
+    // radius + sea_level there is one more place to get the datum wrong (#406).
+    const double sea_r = tp.seaLevelRadius();
     const bool ocean = g.surfmap.sea;     // the "Ocean" box (per-pixel below)
     /* Launch sites the window's overlay marks. Counted here because the worker
        never touches game state, and logged so e2e can pin the marker filter -- a
@@ -75,7 +78,7 @@ void surfmapCompute(Game &g) {
     // `g` is captured by REFERENCE only for the returned continuation; the
     // worker body never touches game state (a by-value capture would copy
     // the non-copyable Game).
-    g.jobs.post("Surface map", [&g, tp, sun_dir, w, h, baked, has_sun, ocean,
+    g.jobs.post("Surface map", [&g, tp, sea_r, sun_dir, w, h, baked, has_sun, ocean,
                                 log, n_sites, body_name, t_now, epoch]()
                 -> std::function<void()> {
         // Worker: build the pixel buffers (pure). shared_ptr because the
@@ -97,8 +100,7 @@ void surfmapCompute(Game &g) {
                 // (same coverage as the 3D ocean shell, and the same predicate as
                 // a Flat-sea body's painted sea_color floor -- issue #193).
                 const bool under_sea = ocean && tp.surface.has_sea
-                    && terrainHeight((glm::vec3)d, tp)
-                       <= (double)tp.radius + (double)tp.surface.sea_level;
+                    && terrainHeight((glm::vec3)d, tp) <= sea_r;
                 const glm::vec3 c = under_sea
                     ? tp.surface.sea_color
                     : terrainSurfaceColor((glm::vec3)d, tp);

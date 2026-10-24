@@ -134,7 +134,9 @@ struct TerrainBody {
        from the CENTRE, so every altitude in the game is "focus radius minus
        THIS", not minus `radius`: the two differ wherever the system file sets
        a sea level. Anything that already adds surface.sea_level to radius is
-       spelling this by hand. */
+       spelling this by hand. Reads the body's LIVE fields, so it is valid from
+       the moment the loader sets them; TerrainParams carries the twin for
+       worker-side terrain math, where only the snapshot is in hand. */
     double seaLevelRadius() const { return (double)radius + (double)surface.sea_level; }
     /* Science fields (system JSON, utils/sci_dist.py). transfer_dv is the
        approach leg [m/s]: home->planet, parent->moon. */
@@ -293,10 +295,11 @@ struct TerrainBody {
     }
 
     // Atmosphere rim shell on demand, just above the highest terrain so no
-    // peak pokes through.
+    // peak pokes through. max_height is relief ABOVE MEAN SEA (#406), so the
+    // shell starts at the datum, not at `radius`.
     void BuildAtmosphere(Shader *atmosphereshader) {
         if(atmosphere != nullptr || !surface.atmosphere.enabled) return;
-        float shell_radius = radius + surface.max_height
+        float shell_radius = (float)seaLevelRadius() + surface.max_height
                              + surface.atmosphere.thickness;
         if(shell_radius <= radius) shell_radius = radius * 1.02f;
         Mesh *m = create_atmosphere_mesh(shell_radius, 128);
@@ -311,7 +314,7 @@ struct TerrainBody {
     // a solid placeholder until the continuation uploads the real grid.
     void BuildClouds(Shader *cloudshader, int res, JobRunner &jobs) {
         if(clouds != nullptr || !surface.clouds.enabled) return;
-        float shell_radius = radius + surface.max_height
+        float shell_radius = (float)seaLevelRadius() + surface.max_height
                              + surface.clouds.height;
         if(shell_radius <= radius) shell_radius = radius * 1.02f;
         Mesh *m = create_atmosphere_mesh(shell_radius, res);
@@ -363,7 +366,7 @@ struct TerrainBody {
         if(ocean != nullptr || !surface.has_sea
            || surface.ocean_mode != OceanMode::Mesh) return;
         // Offset above sea level: coplanar surfaces z-fight at the coastline.
-        float shell_radius = radius + surface.sea_level + 0.1f;
+        float shell_radius = (float)seaLevelRadius() + 0.1f;
         Mesh *m = create_atmosphere_mesh(shell_radius, 128);
         ocean = new Shell;
         ocean->mesh = m;
