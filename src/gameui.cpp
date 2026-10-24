@@ -1380,7 +1380,7 @@ void drawUIReadouts(Game &g) {
             // N matches the Orbital Map: the cache is keyed on N and both maps draw the same
             // ship in one frame.
             const int N = 64;
-            const bool closed = (o.ecc < 1.0);
+            const bool closed = (o.traj == TrajectoryClass::Elliptic);
             std::vector<glm::dvec3> pts_local;
             const std::vector<glm::dvec3> *pts = nullptr;
             if(closed) {
@@ -1390,7 +1390,7 @@ void drawUIReadouts(Game &g) {
             } else {
                 // Open arc: the map spans the whole body, so cap it a couple of ship radii out.
                 const double r_cap =
-                    std::max(4.0 * o.periapsis, o.distance) * 2.0;
+                    std::max(4.0 * o.periapsis_r, o.distance) * 2.0;
                 pts_local = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N,
                                                  r_cap);
                 pts = &pts_local;
@@ -1787,17 +1787,17 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("Vel: %.1fm/s", speed);
         /* R is a RADIUS from the focus, not an altitude; ApA/PeA are apsis RADII for the
            same reason. The SURFACE window has the real altitude (calling these "Alt" was
-           #171's sibling complaint). */
+           #171's sibling complaint; the `_r` field names are #404). */
         ImGui::Text("  R: %s", fmt_dist(distance, dist_s, sizeof dist_s));
         /* Every line below is always present; "-" = the quantity does not exist for
            this orbit class. */
-        const bool circular = o.ecc < 1.0
-                            && (o.apoapsis - o.periapsis) < 10e3;
-        if(o.ecc < 1.0) { ImGui::Text("ApA: %s", fmt_dist(o.apoapsis, dist_s, sizeof dist_s)); }
+        const bool circular = o.traj == TrajectoryClass::Elliptic
+                            && (o.apoapsis_r - o.periapsis_r) < 10e3;
+        if(o.traj == TrajectoryClass::Elliptic) { ImGui::Text("ApA: %s", fmt_dist(o.apoapsis_r, dist_s, sizeof dist_s)); }
         else { ImGui::Text("ApA: -"); }
-        if(o.ecc < 1.0 && !circular) { ImGui::Text("ApT: %.1fs", o.time_to_apo); }
+        if(o.traj == TrajectoryClass::Elliptic && !circular) { ImGui::Text("ApT: %.1fs", o.time_to_apo); }
         else { ImGui::Text("ApT: -"); }
-        ImGui::Text("PeA: %s", fmt_dist(o.periapsis, dist_s, sizeof dist_s));
+        ImGui::Text("PeA: %s", fmt_dist(o.periapsis_r, dist_s, sizeof dist_s));
         if(!circular && o.time_to_peri >= 0.0) { ImGui::Text("PeT: %.1fs", o.time_to_peri); }
         else { ImGui::Text("PeT: -"); }
         if(o.period > 0.0) { ImGui::Text("  T: %.1fs", o.period); }
@@ -1892,14 +1892,30 @@ void drawUIReadouts(Game &g) {
             else { snprintf(lan_s, sizeof lan_s, "-"); }
             if(view.plane.lpe_ok) { snprintf(lpe_s, sizeof lpe_s, "%.6g deg", glm::degrees(view.plane.lpe)); }
             else { snprintf(lpe_s, sizeof lpe_s, "-"); }
-            // r/apo_r/peri_r are RADII from the focus, not altitudes.
+            /* The _r apsides are RADII from the focus, the _asl ones metres above
+               its mean sea level (#404). An OPEN conic has no apoapsis, so the
+               three apo_* keys print "-" instead of a -1 sentinel -- [orbitlog]
+               drops that pair entirely, and two dumps of the same orbit must not
+               disagree about what "no apoapsis" looks like. */
+            const double sea_r = b->seaLevelRadius();
+            char apo_s[96];
+            if(o.traj == TrajectoryClass::Elliptic) {
+                const int n = snprintf(apo_s, sizeof apo_s,
+                                       "apo_r=%.6g m apo_asl=%.6g m apo_t=%.6g s",
+                                       o.apoapsis_r, apoapsisAsl(o, sea_r),
+                                       o.time_to_apo);
+                assert(n > 0 && n < (int)sizeof apo_s);
+            } else {
+                snprintf(apo_s, sizeof apo_s, "apo_r=- apo_asl=- apo_t=-");
+            }
             printf("[orbinfo] t=%.1fs body=\"%s\" vel=%.6g m/s r=%.6g m "
-                   "apo_r=%.6g m apo_t=%.6g s peri_r=%.6g m peri_t=%.6g s "
+                   "%s peri_r=%.6g m peri_asl=%.6g m peri_t=%.6g s "
                    "period=%.6g s inc=%.6g deg ecc=%.6g sma=%.6g m "
                    "plane=%s lan=%s lpe=%s prg=%.6g deg rtg=%.6g deg "
                    "energy=%.6g J/kg\n",
                    time, b->name.c_str(), speed, distance,
-                   o.apoapsis, o.time_to_apo, o.periapsis, o.time_to_peri,
+                   apo_s,
+                   o.periapsis_r, periapsisAsl(o, sea_r), o.time_to_peri,
                    o.period, glm::degrees(view.plane.inc), o.ecc, o.semi_major,
                    refPlaneName(view.ref_plane.mode), lan_s, lpe_s,
                    glm::degrees(prograde_angle),
@@ -2824,7 +2840,7 @@ static void drawMapNodes(OrbitMap &map, ImDrawList *dl, const OrbitElements &o,
 
 /* Fit a map view to a body and the ship orbiting it: the fit radius is the
    orbit's farthest reach -- apoapsis on an elliptic conic, the current radius
-   once the conic is open (ecc >= 1: escaping, or a degenerate radial state),
+   once the conic is open (escaping, or a degenerate radial state),
    floored at the body's own radius -- and that radius is kMapFitRadiusPx
    pixels. So a low orbit opens framed on the orbit and a landed ship opens
    framed on the planet.
@@ -2851,9 +2867,10 @@ static void fitMapView(MapState &m, TerrainBody &body, const ShipView *view,
     double extent = body.radius;
     if(view) {
         const OrbitElements &o = view->o;
-        // apoapsis is -1 for a non-elliptic conic; its radius is the reach
-        // that means there, and the open arc is truncated at the view edge.
-        const double reach = o.ecc < 1.0 ? o.apoapsis : o.distance;
+        // An open conic has no apoapsis; its reach is the current radius, and
+        // the open arc is truncated at the view edge.
+        const double reach = o.traj == TrajectoryClass::Elliptic ? o.apoapsis_r
+                                                                : o.distance;
         if(reach > extent) { extent = reach; }
     }
     m.scale = std::clamp((float)(extent / kMapFitRadiusPx), kMapMinScale, kMapMaxScale);
@@ -2917,9 +2934,9 @@ void drawUIMap(Game &g) {
             : 0.0f;
         const float map_w = std::max(0.0f, avail_w);
         const float map_h = std::max(0.0f, avail_h - controls_h);
-        // The ship's trajectory: a closed Kepler ellipse, or an open arc when escaping
-        // (ecc >= 1).
-        const bool closed = (o.ecc < 1.0);
+        // The ship's trajectory: a closed Kepler ellipse, or an open arc when the
+        // conic is escaping.
+        const bool closed = (o.traj == TrajectoryClass::Elliptic);
         // A reference into the cache (closed) or a local (open) -- never a copy every frame.
         std::vector<glm::dvec3> traj_local;
         const std::vector<glm::dvec3> *traj_pts = nullptr;
@@ -2935,7 +2952,7 @@ void drawUIMap(Game &g) {
             // r_cap is the view extent, never below a few periapsis radii or the current radius.
             const double r_cap = std::max<double>(
                 std::max(map_w, map_h) * (double)map_scale,
-                std::max(4.0 * o.periapsis, o.distance));
+                std::max(4.0 * o.periapsis_r, o.distance));
             const int N = 64;
             traj_local = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N, r_cap);
             traj_pts = &traj_local;
@@ -2962,7 +2979,7 @@ void drawUIMap(Game &g) {
                     glm::cross(orbit_vel, h)/mu - orbit_pos/o.distance;
                 const double el = glm::length(evec);
                 if(el > 1e-9) {
-                    peri_p = (o.periapsis / el) * evec;
+                    peri_p = (o.periapsis_r / el) * evec;
                     have_peri = true;
                 }
             }
@@ -4813,7 +4830,7 @@ void drawTrackingMap(Game &g) {
         glm::dvec3 peri_p, apo_p, tmp;
         bool have_peri = false, have_apo = false;
         if(ship) {
-            closed = (o.ecc < 1.0);
+            closed = (o.traj == TrajectoryClass::Elliptic);
             if(closed) {
                 // Per-ship cache, trusted only while on rails; off rails re-sample every frame.
                 // Fixed N: shared with the Surface Map.
@@ -4823,7 +4840,7 @@ void drawTrackingMap(Game &g) {
             } else {
                 const double r_cap = std::max<double>(
                     (double)std::max(mapW, mapH) * map_scale,
-                    std::max(4.0 * o.periapsis, o.distance));
+                    std::max(4.0 * o.periapsis_r, o.distance));
                 const int N = 64;
                 traj_local = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N, r_cap);
                 traj_pts = &traj_local;
@@ -4845,7 +4862,7 @@ void drawTrackingMap(Game &g) {
                         glm::cross(orbit_vel, h)/mu - orbit_pos/o.distance;
                     const double el = glm::length(evec);
                     if(el > 1e-9) {
-                        peri_p = (o.periapsis / el) * evec;
+                        peri_p = (o.periapsis_r / el) * evec;
                         have_peri = true;
                     }
                 }
@@ -5208,7 +5225,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
     snprintf(v, sizeof v, "%.4f", e);
     line("eccentricity", v);
     // From the parent's centre (what ORBITAL's PeA/ApA show) and above its mean sea level.
-    const double surf = (double)par->radius + (double)par->surface.sea_level;
+    const double surf = par->seaLevelRadius();
     line("periapsis", fmt_dist(a * (1.0 - e), v, sizeof v));
     line("periapsis alt", fmt_dist(a * (1.0 - e) - surf, v, sizeof v));
     if(e < 1.0) {

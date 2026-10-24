@@ -47,7 +47,7 @@ static void conic_state(double a, double e, double nu,
 
 static void check_all_finite(const OrbitElements &o, const char *label) {
     const double f[] = { o.distance, o.speed, o.semi_major, o.ecc,
-                         o.periapsis, o.apoapsis, o.period,
+                         o.periapsis_r, o.apoapsis_r, o.period,
                          o.ang_momentum, o.energy, o.radial_vel,
                          o.true_anomaly, o.ecc_anomaly,
                          o.mean_anomaly, o.time_to_peri, o.time_to_apo };
@@ -72,8 +72,8 @@ int main() {
         const double T = TWOPI * sqrt(rc * rc * rc / MU);
         CHECK_NEAR(o.ecc, 0.0, 1e-12);
         CHECK_NEAR(o.semi_major, rc, 1e-6 * rc);
-        CHECK_NEAR(o.periapsis, rc, 1e-6 * rc);
-        CHECK_NEAR(o.apoapsis, rc, 1e-6 * rc);
+        CHECK_NEAR(o.periapsis_r, rc, 1e-6 * rc);
+        CHECK_NEAR(o.apoapsis_r, rc, 1e-6 * rc);
         CHECK_NEAR(o.period, T, 1e-9 * T);
         CHECK_NEAR(o.energy, -MU / (2.0 * rc), 1e-6 * MU / rc);
         // countdowns: periapsis a full period away, apoapsis half
@@ -93,8 +93,8 @@ int main() {
         const double T = TWOPI * sqrt(a * a * a / MU);
         CHECK_NEAR(o.ecc, e, 1e-12);
         CHECK_NEAR(o.semi_major, a, 1e-9 * a);
-        CHECK_NEAR(o.periapsis, rp, 1e-6 * rp);
-        CHECK_NEAR(o.apoapsis, ra, 1e-6 * ra);
+        CHECK_NEAR(o.periapsis_r, rp, 1e-6 * rp);
+        CHECK_NEAR(o.apoapsis_r, ra, 1e-6 * ra);
         CHECK_NEAR(o.true_anomaly, 0.0, 1e-9);
         CHECK_NEAR(o.mean_anomaly, 0.0, 1e-9);
         CHECK_NEAR(o.time_to_peri, T, 1e-9 * T);      // next periapsis = full orbit
@@ -364,8 +364,8 @@ int main() {
         check_all_finite(o, "hyperbolic@peri");
         CHECK_NEAR(o.ecc, e, 1e-12);
         CHECK_NEAR(o.semi_major, a, 1e-9 * -a);
-        CHECK_NEAR(o.periapsis, rp, 1e-6 * rp);       // finite, not NaN
-        CHECK(o.apoapsis == -1.0);                    // no apoapsis
+        CHECK_NEAR(o.periapsis_r, rp, 1e-6 * rp);       // finite, not NaN
+        CHECK(o.apoapsis_r == -1.0);                    // no apoapsis
         CHECK(o.period == -1.0);                      // no period
         CHECK(o.time_to_apo == -1.0);
         CHECK(o.time_to_peri == -1.0);                // already passing it: gone
@@ -423,7 +423,7 @@ int main() {
                                                glm::dvec3(0, vp, 0), MU);
         check_all_finite(o, "parabolic");
         CHECK_NEAR(o.ecc, 1.0, 1e-9);
-        CHECK_NEAR(o.periapsis, rp, 1e-6 * rp);
+        CHECK_NEAR(o.periapsis_r, rp, 1e-6 * rp);
         CHECK_NEAR(o.energy, 0.0, 1e-6 * MU / rp);
         CHECK(o.time_to_apo == -1.0);
     }
@@ -475,11 +475,11 @@ int main() {
         OrbitElements o = computeOrbitElements(p0, v0, MU);
         glm::dvec3 p, v;
         propagateKepler(p0, v0, MU, o.time_to_apo, p, v);
-        CHECK_NEAR(glm::length(p), o.apoapsis, 1e-7 * o.apoapsis);
-        CHECK_NEAR(glm::dot(p, v), 0.0, 1e-5 * o.apoapsis * o.speed); // r_dot = 0
+        CHECK_NEAR(glm::length(p), o.apoapsis_r, 1e-7 * o.apoapsis_r);
+        CHECK_NEAR(glm::dot(p, v), 0.0, 1e-5 * o.apoapsis_r * o.speed); // r_dot = 0
         propagateKepler(p0, v0, MU, o.time_to_peri, p, v);
-        CHECK_NEAR(glm::length(p), o.periapsis, 1e-7 * o.periapsis);
-        CHECK_NEAR(glm::dot(p, v), 0.0, 1e-5 * o.periapsis * o.speed);
+        CHECK_NEAR(glm::length(p), o.periapsis_r, 1e-7 * o.periapsis_r);
+        CHECK_NEAR(glm::dot(p, v), 0.0, 1e-5 * o.periapsis_r * o.speed);
     }
 
     // --- propagateKepler: conservation + reversibility -----------------------
@@ -983,8 +983,8 @@ int main() {
             const OrbitElements o = computeOrbitElements(pos, vel, MU);
             glm::dvec3 an(0.0), dn(0.0);
             CHECK(orbitNodePoints(o, n_z, MU, an, dn) == (kNodeAn | kNodeDn));
-            CHECK_NEAR(glm::length(an), o.periapsis, 1e-9 * o.periapsis);
-            CHECK_NEAR(glm::length(dn), o.apoapsis, 1e-9 * o.apoapsis);
+            CHECK_NEAR(glm::length(an), o.periapsis_r, 1e-9 * o.periapsis_r);
+            CHECK_NEAR(glm::length(dn), o.apoapsis_r, 1e-9 * o.apoapsis_r);
         }
         // Retrograde (inc past 90 deg): the labels must follow the crossing,
         // not the tilt -- AN is still the northbound one.
@@ -1088,6 +1088,66 @@ int main() {
             if(inc <= 1e-7) { CHECK(!drew); }
             if(inc >= 1e-3) { CHECK(drew); }
         }
+    }
+
+    /* --- #404: the apsides are RADII from the focus, not altitudes ----------
+       A guidance loop and --orbit-log printed the same word for numbers a
+       whole body radius apart, and both read plausible. These pins say which
+       is which, and that the helper subtracts the SEA-LEVEL radius. */
+    {
+        const double rp = 1.0e6, ra = 4.0e6;   // radii from the focus
+        const double a = (rp + ra) / 2.0;
+        const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
+        const OrbitElements o = computeOrbitElements(glm::dvec3(rp, 0, 0),
+                                                     glm::dvec3(0, vp, 0), MU);
+        const double sea_r = 600e3 + 500.0;    // a Kerbin-sized body, sea level up
+        CHECK(o.traj == TrajectoryClass::Elliptic);
+        CHECK_NEAR(o.periapsis_r, rp, 1e-6 * rp);
+        CHECK_NEAR(periapsisAsl(o, sea_r), rp - sea_r, 1e-6 * rp);
+        CHECK_NEAR(apoapsisAsl(o, sea_r), ra - sea_r, 1e-6 * ra);
+    }
+    /* An open conic has no apoapsis, and its -1 sentinel satisfies a naive
+       `apoapsis below target -> burn` gate at once. traj is the gate. */
+    {
+        const double e = 2.0, rp = 1.0e6;
+        const double a = rp / (1.0 - e);
+        const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
+        const OrbitElements o = computeOrbitElements(glm::dvec3(rp, 0, 0),
+                                                     glm::dvec3(0, vp, 0), MU);
+        CHECK(o.traj == TrajectoryClass::Hyperbolic);
+        CHECK(o.apoapsis_r == -1.0);
+        CHECK_NEAR(periapsisAsl(o, 600e3), rp - 600e3, 1e-6 * rp);
+    }
+    /* Parabolic: no apoapsis, no period, no passage timing. NOTE that e lands
+       on exactly 1.0 only because MU and rp make sqrt(2*MU/rp) round-trip;
+       at other constants this state classifies Elliptic or Hyperbolic, so pin
+       e itself first -- otherwise an enum mismatch here points nowhere near the
+       cause. What the branch owes is the apoapsis/period/timing triple. */
+    {
+        const double rp = 1.0e6;
+        const double vp = sqrt(2.0 * MU / rp);   // escape speed, tangential
+        const OrbitElements o = computeOrbitElements(glm::dvec3(rp, 0, 0),
+                                                     glm::dvec3(0, vp, 0), MU);
+        CHECK(o.ecc == 1.0);
+        CHECK(o.traj == TrajectoryClass::Parabolic);
+        CHECK(o.apoapsis_r == -1.0);
+        CHECK(o.period == -1.0);
+        CHECK(o.time_to_peri == -1.0);
+        CHECK(o.time_to_apo == -1.0);
+    }
+    /* The third trap in #404: a ship at rest on the ground. Its state is
+       radial, so h = 0, periapsis sits AT THE CENTRE and the conic is not an
+       ellipse at all. Read as an altitude that is "600 km underground", which
+       is what a logged suborbital run once looked like at a glance. Guidance
+       asks Vehicle::inTerrainBand() rather than these numbers. */
+    {
+        const double r = 600e3;
+        const OrbitElements o = computeOrbitElements(glm::dvec3(r, 0, 0),
+                                                     glm::dvec3(100.0, 0, 0), MU);
+        CHECK(o.traj != TrajectoryClass::Elliptic);
+        CHECK_NEAR(o.periapsis_r, 0.0, 1e-9);
+        CHECK(o.apoapsis_r == -1.0);
+        CHECK_NEAR(periapsisAsl(o, r), -r, 1e-9);
     }
 
     if(failures == 0) {

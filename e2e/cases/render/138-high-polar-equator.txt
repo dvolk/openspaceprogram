@@ -13,4 +13,4 @@ ARGS --time-accel 1 --timeout 6 --orbit-log --orbit-interval 1 --startship racer
 FORBID error:
 CHECK len(orbit) > 3
 CHECK all(abs(o["inc"] - 90.0) < 0.01 for o in orbit if o["t"] > 1.0)
-CHECK all(o["ecc"] < 0.01 and o["peri"] > 700000.0 for o in orbit if o["t"] > 1.0)
+CHECK all(o["ecc"] < 0.01 and o["peri_asl"] > 100e3 for o in orbit if o["t"] > 1.0)

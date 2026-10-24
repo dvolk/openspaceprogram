@@ -90,7 +90,13 @@ KINDS = ("invariant", "golden", "harness", "canary")
 ORBIT_RE = re.compile(
     r"\[orbitlog\]\s+t=([\d.]+)s\s+frame=\"([^\"]*)\"\s+r=([-\d.e+]+) m\s+"
     r"v=([-\d.e+]+) m/s\s+sma=([-\d.e+]+) m\s+ecc=([-\d.e+]+)\s+"
-    r"peri=([-\d.e+]+) m\s+apo=([-\d.e+]+) m\s+inc=([-\d.e+]+) deg\s+"
+    # Units live in the key names (#404): *_r are radii from the body CENTRE,
+    # *_asl metres above its mean sea level. The apo_* pair is ABSENT on an
+    # open conic -- it has no apoapsis, and a -1 there reads like a plausible
+    # altitude (that is how a suborbital ship got logged as "in orbit").
+    r"peri_r=([-\d.e+]+) m\s+peri_asl=([-\d.e+]+) m\s+"
+    r"(?:apo_r=([-\d.e+]+) m\s+apo_asl=([-\d.e+]+) m\s+)?"
+    r"inc=([-\d.e+]+) deg\s+"
     r"T=([-\d.e+]+) s\s+ttAp=([-\d.e+]+) s\s+ttPe=([-\d.e+]+) s\s+"
     r"\|h\|=([-\d.e+]+) m2/s\s+E=([-\d.e+]+) J/kg"
     # Plane angles (#171) trail the line; optional so nothing else breaks.
@@ -453,12 +459,19 @@ def parse_cases(path):
 def parse_orbit(out):
     rows = []
     for m in ORBIT_RE.finditer(out):
-        (t, frame, r, v, sma, ecc, peri, apo, inc, T, ttAp, ttPe, h, E,
-         plane, lan, lpe) = m.groups()
+        (t, frame, r, v, sma, ecc, peri_r, peri_asl, apo_r, apo_asl, inc, T,
+         ttAp, ttPe, h, E, plane, lan, lpe) = m.groups()
         rows.append({
             "t": float(t), "frame": frame, "r": float(r), "v": float(v),
-            "sma": float(sma), "ecc": float(ecc), "peri": float(peri),
-            "apo": float(apo), "inc": float(inc), "T": float(T),
+            "sma": float(sma), "ecc": float(ecc),
+            # *_r: radius from the body centre. *_asl: metres above its mean
+            # sea level. Neither is the other (#404). apo_* is None when the
+            # conic is open, so an apoapsis CHECK on an escaping ship fails
+            # loudly instead of passing off a sentinel.
+            "peri_r": float(peri_r), "peri_asl": float(peri_asl),
+            "apo_r": float(apo_r) if apo_r is not None else None,
+            "apo_asl": float(apo_asl) if apo_asl is not None else None,
+            "inc": float(inc), "T": float(T),
             "ttAp": float(ttAp), "ttPe": float(ttPe), "h": float(h),
             "E": float(E),
             # None on a line without the #171 tail.

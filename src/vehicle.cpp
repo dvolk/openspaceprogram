@@ -308,8 +308,10 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
     if(sc.ell_phase >= 0) {
         // Ellipse in the equatorial plane (world X-Z), prograde like the circular
         // beds: periapsis along +Z, apsides are root-frame directions.
-        const double rp = home->radius + sc.peri_alt;
-        const double ra = home->radius + sc.apo_alt;
+        /* The bed apsides are authored ABOVE MEAN SEA LEVEL (#404), so they
+           build radii from seaLevelRadius(), not the bare radius. */
+        const double rp = home->seaLevelRadius() + sc.peri_alt;
+        const double ra = home->seaLevelRadius() + sc.apo_alt;
         const double p = 2.0 * rp * ra / (rp + ra); // semi-latus rectum a(1-e^2)
         const double e = (ra - rp) / (ra + rp);
         const double h = sqrt(home->mu * p);        // specific angular momentum
@@ -3210,8 +3212,7 @@ bool Vehicle::inTerrainBand() {
     glm::dvec3 p, v;
     comStateIn(inertial, p, v);
     const OrbitElements el = computeOrbitElements(p, v, inertial->body->mu);
-    return el.periapsis <= inertial->body->radius
-                         + inertial->body->surface.sea_level + kTerrainBand;
+    return periapsisAsl(el, inertial->body->seaLevelRadius()) <= kTerrainBand;
 }
 
 /* isGrounded's speed threshold must sit above a walking kerbal's (kWalkSpeed);

@@ -18,4 +18,5 @@ FORBID frozen on rails
 FORBID error:
 # The premise: the conic really does meet the ground (periapsis at or below
 # the sea-level radius), not a grazing orbit that would pass the old gate.
-CHECK all(o["peri"] < 600000 for o in orbit)
+# peri_asl is metres above mean sea level, so "under the ground" is < 0 (#404).
+CHECK all(o["peri_asl"] < 0.0 for o in orbit)

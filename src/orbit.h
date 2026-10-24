@@ -6,19 +6,31 @@
 // separate call orbitPlaneAngles, which needs the plane they are measured
 // in (#171).
 // time_to_peri / time_to_apo: seconds to the NEXT passage, -1 = never.
+// UNITS: periapsis_r / apoapsis_r / semi_major / distance are RADII FROM THE
+// BODY CENTRE, never heights above the ground. 600 km off on Kerbin, and both
+// readings look plausible (#404). Use periapsisAsl/apoapsisAsl below.
 
 #include <cassert>
 #include <cmath>
 #include <numbers>
 #include <glm/glm.hpp>
 
+/* Which conic the state lies on. Gate on THIS, never on apoapsis_r: an open
+   trajectory has no apoapsis, and the field's -1 sentinel makes a gate like
+   `apoapsis_r < target_alt` read TRUE at once for a ship that is escaping
+   (#404). Parabolic is the exactly-e == 1 measure-zero case, kept because
+   computeOrbitElements branches on it. */
+enum class TrajectoryClass { Elliptic, Parabolic, Hyperbolic };
+
 struct OrbitElements {
     double distance = 0.0;      // m, radius from focus
     double speed = 0.0;         // m/s
     double semi_major = 0.0;    // m (negative for hyperbolic trajectories)
     double ecc = 0.0;           // eccentricity
-    double periapsis = 0.0;     // m, radius at periapsis
-    double apoapsis = 0.0;      // m, radius at apoapsis (-1 for non-elliptic)
+    TrajectoryClass traj = TrajectoryClass::Elliptic;
+    double periapsis_r = 0.0;   // m, RADIUS at periapsis from the focus
+    double apoapsis_r = 0.0;    // m, radius at apoapsis; -1 unless
+                                // traj == Elliptic
     double period = 0.0;        // s (-1 for non-elliptic trajectories)
     double ang_momentum = 0.0;  // |h|, m^2/s
     double energy = 0.0;        // specific orbital energy, J/kg
@@ -62,7 +74,7 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
     o.ecc_dir = o.ecc > 0.0 ? ecc_vec / o.ecc : glm::dvec3(0.0);
     o.radial_vel = glm::dot(pos, vel) / distance;
     // Stays finite in the parabolic limit where (1-e)*a is 0 * inf.
-    o.periapsis = h_len * h_len / (mu * (1.0 + o.ecc));
+    o.periapsis_r = h_len * h_len / (mu * (1.0 + o.ecc));
 
     // atan2 of (e sin nu, e cos nu) picks the quadrant directly.
     o.true_anomaly = 0.0;
@@ -73,7 +85,8 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
     }
 
     if(o.ecc < 1.0) {
-        o.apoapsis = (1.0 + o.ecc) * o.semi_major;
+        o.traj = TrajectoryClass::Elliptic;
+        o.apoapsis_r = (1.0 + o.ecc) * o.semi_major;
         o.period = 2.0 * std::numbers::pi * sqrt(o.semi_major * o.semi_major * o.semi_major / mu);
         // atan2 form is quadrant-safe (no acos + branch flip).
         o.ecc_anomaly = wrapAngleToPositive(
@@ -87,7 +100,8 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
         if(o.time_to_apo <= 0.0) { o.time_to_apo += o.period; }
     } else if(o.ecc > 1.0) {
         // Hyperbolic: asinh is quadrant-safe; nu stays inside the asymptotes.
-        o.apoapsis = -1.0;
+        o.traj = TrajectoryClass::Hyperbolic;
+        o.apoapsis_r = -1.0;
         o.period = -1.0;
         const double sh = sqrt(o.ecc * o.ecc - 1.0) * sin(o.true_anomaly)
                         / (1.0 + o.ecc * cos(o.true_anomaly));
@@ -100,12 +114,32 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
         o.time_to_apo = -1.0;
     } else {
         // Exactly parabolic (measure zero): no period, no passage timing.
-        o.apoapsis = -1.0;
+        o.traj = TrajectoryClass::Parabolic;
+        o.apoapsis_r = -1.0;
         o.period = -1.0;
         o.time_to_peri = -1.0;
         o.time_to_apo = -1.0;
     }
     return o;
+}
+
+/* Apsides are RADII from the body centre; a guidance loop, a "did I reach
+   orbit" test and every player-facing altitude want metres above sea level
+   (#404). Pass the body's SEA-LEVEL radius (TerrainBody::seaLevelRadius), not
+   its bare radius -- the two differ wherever the system file sets a sea level.
+   apoapsisAsl asserts the conic is closed: an open trajectory has no apoapsis,
+   and subtracting from its -1 sentinel yields a plausible-looking large
+   negative altitude. Periapsis exists for every conic, so no gate there.
+   A landed ship is not covered by any of this: at v ~ 0 its elements go
+   near-parabolic (ecc -> 1, apoapsis_r -> the current radius), so ask
+   Vehicle::inTerrainBand() whether it is on the ground at all. */
+inline double periapsisAsl(const OrbitElements &o, double sea_level_radius) {
+    return o.periapsis_r - sea_level_radius;
+}
+
+inline double apoapsisAsl(const OrbitElements &o, double sea_level_radius) {
+    assert(o.traj == TrajectoryClass::Elliptic);
+    return o.apoapsis_r - sea_level_radius;
 }
 
 /* A normal is not enough: an in-plane angle needs a zero direction too.

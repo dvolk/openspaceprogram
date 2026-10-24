@@ -32,7 +32,7 @@ struct OrbitSampleCache {
     glm::dvec3 h_hat = glm::dvec3(0.0, 1.0, 0.0);  // orbital-plane normal
     glm::dvec3 e_hat = glm::dvec3(1.0, 0.0, 0.0);  // periapsis direction
     int N = 0;
-    double apoapsis = -1.0;  // cheap LOD / view-cull input
+    double apoapsis_r = -1.0;  // cheap LOD / view-cull input; radius, not altitude
     std::vector<glm::dvec3> pts;  // in the focus's inertial frame
 
     // use_cache: caller decides (a ship passes its onRails flag; off rails
@@ -43,11 +43,11 @@ struct OrbitSampleCache {
                                           const glm::dvec3 &vel, double mu,
                                           int N, bool use_cache = true) {
         const OrbitElements o = computeOrbitElements(pos, vel, mu);
-        const bool closed = o.ecc < 1.0 && o.period > 0.0;
+        const bool closed = o.traj == TrajectoryClass::Elliptic && o.period > 0.0;
         if(!closed) {
             valid = false;
             pts.clear();
-            apoapsis = -1.0;
+            apoapsis_r = -1.0;
             return pts;
         }
         const glm::dvec3 h = glm::cross(pos, vel);
@@ -86,7 +86,7 @@ struct OrbitSampleCache {
         this->mu = mu;  // param shadows the member; store it explicitly
         this->h_hat = h_hat; this->e_hat = e_hat;
         this->N = N;
-        apoapsis = o.apoapsis;
+        apoapsis_r = o.apoapsis_r;
         valid = true;
         return pts;
     }

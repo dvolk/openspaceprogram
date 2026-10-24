@@ -130,6 +130,12 @@ struct TerrainBody {
     double mu = 0.0;       // gravitational parameter [m^3/s^2]
     double g = 0.0;        // [m/s^2]
     float mass = 0.0f;     // [kg]
+    /* The radius of the mean-sea sphere [m] (#404). Orbit apsides are radii
+       from the CENTRE, so every altitude in the game is "focus radius minus
+       THIS", not minus `radius`: the two differ wherever the system file sets
+       a sea level. Anything that already adds surface.sea_level to radius is
+       spelling this by hand. */
+    double seaLevelRadius() const { return (double)radius + (double)surface.sea_level; }
     /* Science fields (system JSON, utils/sci_dist.py). transfer_dv is the
        approach leg [m/s]: home->planet, parent->moon. */
     double science_mult = 1.0;

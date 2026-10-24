@@ -27,5 +27,5 @@ CHECK abs(last(orbit)["h"] - first(orbit)["h"]) < 1e-6 * first(orbit)["h"]
 # A circular bed that stays circular: no eccentricity grows in, and the apsides
 # stay one radius.
 CHECK abs(last(orbit)["ecc"]) < 1e-5
-CHECK abs(last(orbit)["apo"] - last(orbit)["peri"]) < 1e-5 * last(orbit)["sma"]
+CHECK abs(last(orbit)["apo_r"] - last(orbit)["peri_r"]) < 1e-5 * last(orbit)["sma"]
 FORBID error:

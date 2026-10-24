@@ -1,6 +1,7 @@
 // tick.cpp -- the fixed-timestep logic tick (see tick.h).
 #include "tick.h"
 
+#include <cassert>
 #include <cstdio>
 
 #include "keys.h"                // Slot, slotHeld, slotSimKey (the command map)
@@ -354,12 +355,32 @@ void tick(Game &g) {
                 else { snprintf(lan_s, sizeof lan_s, "-"); }
                 if(pa.lpe_ok) { snprintf(lpe_s, sizeof lpe_s, "%.4f deg", glm::degrees(pa.lpe)); }
                 else { snprintf(lpe_s, sizeof lpe_s, "-"); }
+                /* peri_r/apo_r are RADII from the body centre and peri_asl/apo_asl
+                   are metres above its mean sea level (#404) -- printing only one
+                   of the pair is what let a suborbital "periapsis 561 km
+                   underground" read as "a 38 x 881 km orbit". An OPEN conic has
+                   no apoapsis, so its two keys are absent rather than holding a
+                   sentinel: a gate like `apo_asl < target` on an escaping ship
+                   must fail loudly, not read true off a -1. */
+                const double sea_r = g.ship->m_parent->seaLevelRadius();
+                char apo_s[64];
+                if(o.traj == TrajectoryClass::Elliptic) {
+                    const int n = snprintf(apo_s, sizeof apo_s,
+                                           "apo_r=%.6g m apo_asl=%.6g m",
+                                           o.apoapsis_r, apoapsisAsl(o, sea_r));
+                    // A truncated row parses as nothing at all, so a silently
+                    // short buffer loses samples instead of failing loudly.
+                    assert(n > 0 && n < (int)sizeof apo_s);
+                } else {
+                    apo_s[0] = '\0';
+                }
                 printf("[orbitlog] t=%.1fs frame=\"%s\" r=%.6g m v=%.6g m/s "
-                       "sma=%.6g m ecc=%.6g peri=%.6g m apo=%.6g m "
+                       "sma=%.6g m ecc=%.6g peri_r=%.6g m peri_asl=%.6g m %s "
                        "inc=%.4f deg T=%.6g s ttAp=%.6g s ttPe=%.6g s "
                        "|h|=%.6f m2/s E=%.6f J/kg plane=%s lan=%s lpe=%s\n",
                        g.time, g.ship->frame->name.c_str(), o.distance, o.speed,
-                       o.semi_major, o.ecc, o.periapsis, o.apoapsis,
+                       o.semi_major, o.ecc, o.periapsis_r, periapsisAsl(o, sea_r),
+                       apo_s,
                        glm::degrees(pa.inc), o.period,
                        o.time_to_apo, o.time_to_peri,
                        o.ang_momentum, o.energy,

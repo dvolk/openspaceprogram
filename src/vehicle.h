@@ -768,8 +768,9 @@ struct ScenarioDef {
                      // radius), or of the atmosphere top if atmo_frac
     bool polar;
     int ell_phase;   // -1: circular; 0: periapsis; 1: apoapsis; 2: 90 deg
-    double peri_alt; // ellipse: periapsis altitude above the body radius (m)
-    double apo_alt;  // ellipse: apoapsis altitude (m)
+    double peri_alt; // ellipse: periapsis ABOVE MEAN SEA LEVEL (m), i.e. a
+                     // radius minus TerrainBody::seaLevelRadius() (#404)
+    double apo_alt;  // ellipse: apoapsis above mean sea level (m)
     double esc_frac; // escape: launch speed in local escape velocities (0 = not escape)
     double abs_r;    // > 0: absolute circular-orbit radius from the body
                      // centre (m), overriding alt_frac

@@ -20,8 +20,9 @@ CHECK len(plane) >= 2
 CHECK all(p["frame"] == "rot" for p in plane)
 # The state the old gate refused: a suborbital arc, periapsis deep under the
 # surface. Assert the premise so the case cannot drift into a real orbit and
-# stop testing anything.
-CHECK all(o["peri"] < 600000 for o in orbit)
+# stop testing anything. peri_asl is above mean sea level, so underground is
+# negative (#404).
+CHECK all(o["peri_asl"] < 0.0 for o in orbit)
 # A suborbital arc still has a plane, and the markers still sit in it.
 CHECK all(abs(sum(a*b for a,b in zip(p["prg"], p["n_orb"]))) < 1e-5 for p in plane)
 CHECK all(abs(sum(a*b for a,b in zip(p["nrm"], p["n_orb"]))) > 0.99999 for p in plane)
