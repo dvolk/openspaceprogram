@@ -1,0 +1,3 @@
+# Raw run logs stay on disk, not in git (85 MB across 33 files).
+# Regenerate with scripts/matrix.sh; the generated table.md IS committed.
+*.log

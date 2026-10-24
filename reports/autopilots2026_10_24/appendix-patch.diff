@@ -1,0 +1,703 @@
+diff --git a/src/cli.cpp b/src/cli.cpp
+index acfec86..22fed25 100644
+--- a/src/cli.cpp
++++ b/src/cli.cpp
+@@ -115,6 +115,25 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
+         ->check(CLI::IsMember({"prograde", "retrograde", "radial-out",
+                                "radial-in", "normal", "anti-normal",
+                                "kill-rot"}));
++    /* PROTOTYPE (pilot.h): mission autopilot knobs for measurement runs. */
++    app.add_option("--pilot", args.pilot,
++                   "PROTOTYPE: engage a mission autopilot at startup: "
++                   "ascent | land")
++        ->check(CLI::IsMember({"ascent", "land"}));
++    app.add_option("--pilot-alt", args.pilot_alt,
++                   "PROTOTYPE: ascent target circular-orbit altitude (m ASL)");
++    app.add_option("--pilot-inc", args.pilot_inc,
++                   "PROTOTYPE: ascent target orbital inclination (deg)");
++    app.add_option("--pilot-clear", args.pilot_clear,
++                   "PROTOTYPE: altitude (m ASL) at which the ascent leaves the "
++                   "vertical climb (default -1 = the body's atmosphere top)");
++    app.add_option("--pilot-law", args.pilot_law,
++                   "PROTOTYPE: ascent law: 0 = burn to the target apoapsis then "
++                   "circularize at the node, 1 = never coast (hold prograde until "
++                   "the orbit closes)");
++    app.add_flag("--pilot-no-stage", args.pilot_no_stage,
++                 "PROTOTYPE: the pilot does not auto-stage; the player presses "
++                 "SPACE");
+     app.add_flag("--recover-anywhere", args.recover_anywhere,
+                  "Let 'Recover Vessel' recover the active ship anywhere "
+                  "(the default requires it grounded on the home body). A "
+diff --git a/src/cli.h b/src/cli.h
+index ee66ad9..070eaf5 100644
+--- a/src/cli.h
++++ b/src/cli.h
+@@ -46,6 +46,13 @@ struct GameArgs {
+ 
+     std::string radial_test;
+     std::string autopilot;  // engage a slew mode at startup
++    /* PROTOTYPE (pilot.h): engage a mission autopilot at startup. */
++    std::string pilot;
++    double pilot_alt = 50000.0;
++    double pilot_inc = 0.0;
++    double pilot_clear = -1.0;
++    int pilot_law = 1;            // 0 = coast-and-circularize, 1 = burn till closed
++    bool pilot_no_stage = false;
+     bool recover_anywhere = false;  // default: home body only
+     bool dev_scenarios = false;  // --dev-scenarios: the VAB dropdown's dev beds
+     std::string dock_test;
+diff --git a/src/main.cpp b/src/main.cpp
+index b4fc72e..2167df5 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -52,6 +52,7 @@
+ #include "game.h"
+ #include "events.h"
+ #include "tick.h"
++#include "pilot.h"   // PROTOTYPE mission autopilot
+ #include "render.h"
+ #include "gameui.h"
+ #include "vab.h"
+@@ -661,6 +662,18 @@ int main(int argc, char **argv)
+             first->setSlewRequest((SlewMode)m);
+             printf("Autopilot: %s engaged at startup\n", args.autopilot.c_str());
+         }
++        /* PROTOTYPE (pilot.h): mission autopilot at startup. */
++        if(!args.pilot.empty() && first != nullptr) {
++            double clear = args.pilot_clear;
++            if(args.pilot == "ascent" && clear < 0.0) {
++                clear = first->m_parent->surface.atmosphere.top();
++                printf("Pilot: auto-clear altitude %.0f m (atmosphere top)\n",
++                       clear);
++            }
++            engage_pilot(args.pilot == "ascent" ? PilotAscent : PilotLand,
++                         args.pilot_alt, args.pilot_inc,
++                         !args.pilot_no_stage, clear, args.pilot_law);
++        }
+     }
+ 
+     Mesh *engine_plume_mesh = get_mesh("res/meshes/engine_plume.obj");
+diff --git a/src/pilot.cpp b/src/pilot.cpp
+new file mode 100644
+index 0000000..133b552
+--- /dev/null
++++ b/src/pilot.cpp
+@@ -0,0 +1,360 @@
++/* PROTOTYPE (measure-only) -- see pilot.h. Throws numbers at the wall: which
++   ascent/descent laws actually fly in this physics, and where they die. */
++#include "pilot.h"
++
++#include <algorithm>
++#include <cassert>
++#include <cmath>
++#include <cstdio>
++
++#define GLM_ENABLE_EXPERIMENTAL
++#include <glm/gtc/matrix_transform.hpp>
++#include <glm/gtx/norm.hpp>
++
++#include "frame.h"
++#include "orbit.h"
++#include "part.h"
++#include "terrain.h"
++#include "vehicle.h"
++
++const char *pilotPhaseName(PilotPhase p) {
++    switch(p) {
++        case PhIdle: return "idle";
++        case PhVertical: return "vertical";
++        case PhTurn: return "turn";
++        case PhPrograde: return "prograde";
++        case PhCoast: return "coast";
++        case PhCircularize: return "circularize";
++        case PhDone: return "done";
++        case PhDeorbit: return "deorbit";
++        case PhDive: return "dive";
++        case PhBrake: return "brake";
++    }
++    return "?";
++}
++
++/* Tunables, all in one place so a sweep is a one-line change. */
++static constexpr double kTurnRateDeg = 1.2;     // max commanded path turn (deg/s)
++static constexpr double kAoALimitDeg = 2.5;     // turn governor: |AoA| budget in air
++static constexpr double kProgradeHoldDeg = 3.0; // turn ends this close to horizontal
++static constexpr double kDryBurnS = 1.5;        // stage this far before a pool runs out
++static constexpr double kBrakeLead = 1.15;      // suicide-burn lead factor
++static constexpr double kBrakeKp = 0.9;         // closing-speed gain (s^-1)
++static constexpr double kChuteMaxSpeed = 250.0;  // m/s airspeed to deploy
++static constexpr double kPointGateDeg = 8.0;     // no burn until the nose is this close
++static constexpr double kPointGateAscDeg = 25.0; // ascent legs: lag is tolerable
++static constexpr double kTrackDeg = 12.0;        // pitch over only while tracking
++
++/* Available thrust at FULL throttle. Vehicle::getThrust() is scaled by
++   thruster_util, which the pilot itself commands, so guidance that reads it
++   while coasting measures its own zero and can never restart; the full-throttle
++   primitive (Vehicle::GetActiveThrust) is protected, so this mirrors its rocket
++   branch. See report: an autopilot needs a public "available thrust" read. */
++static double availThrust(Vehicle *ship) {
++    const int as = ship->activeStage();
++    double t = 0.0;
++    for(Part *p : ship->parts) {
++        if(!p->isThruster() || p->isJet() || p->stage < as) { continue; }
++        t += p->thrust();
++    }
++    return t * ship->exhaust_scale;
++}
++
++static double wheelAuthority(Vehicle *ship) {
++    double t = 0.0;
++    for(Part *p : ship->parts) {
++        if(p->isWheel()) { t += p->wheelTorque(); }
++    }
++    return t;
++}
++
++/* The launch heading for the requested inclination, in this frame's axes.
++   At the pad the body's spin axis is horizontal, so north = the horizontal
++   part of omega-hat and east = the co-rotation direction. */
++static glm::dvec3 launchHeading(Vehicle *ship, const glm::dvec3 &com,
++                                const glm::dvec3 &rhat, double inc_deg) {
++    TerrainBody *b = ship->m_parent;
++    if(b == nullptr || b->rot_frame == nullptr) { return glm::dvec3(0.0); }
++    Frame *R = b->rot_frame;
++    const glm::dmat3 o = R->GetOrientRelTo(ship->frame);   // rot -> this frame
++    const glm::dvec3 w = o * R->omega();
++    const glm::dvec3 cor = glm::cross(w, com);             // ground speed at com
++    if(glm::length2(cor) < 1e-9) { return glm::dvec3(0.0); }
++    const glm::dvec3 east = glm::normalize(cor);
++    const glm::dvec3 what = glm::normalize(w);
++    glm::dvec3 north = what - rhat * glm::dot(what, rhat);
++    if(glm::length2(north) < 1e-9) { return east; }       // at the pole
++    north = glm::normalize(north);
++    const double i = glm::radians(inc_deg);
++    return glm::normalize(east * std::cos(i) + north * std::sin(i));
++}
++
++/* Would a lit engine this stage run dry within kDryBurnS? */
++static bool litEngineDry(Vehicle *ship) {
++    const int as = ship->activeStage();
++    for(Part *p : ship->parts) {
++        if(!p->isThruster() || p->isJet()) { continue; }
++        if(p->stage < as) { continue; }           // not ignited
++        const PartDef *d = p->def;
++        if(d == nullptr) { continue; }
++        double worst = 1e30;
++        bool any = false;
++        for(int r = 0; r < (int)ResourceType::Num; r++) {
++            const double rate = d->propellant_rate[r];
++            if(rate <= 0.0) { continue; }
++            any = true;
++            const double s = ship->availableResourceMass((ResourceType)r, p) / rate;
++            if(s < worst) { worst = s; }
++        }
++        if(any && worst < kDryBurnS) { return true; }
++    }
++    return false;
++}
++
++void pilotStep(Pilot &p, Vehicle *ship, PilotOut &out, double dt) {
++    TerrainBody *b = ship->m_parent;
++    if(b == nullptr || p.mission == PilotNone) { return; }
++
++    const glm::dvec3 com = ship->comPos();
++    const double r = glm::length(com);
++    if(r <= 0.0) { return; }
++    const glm::dvec3 rhat = com / r;
++    const double ref_r = (double)b->radius + (double)b->surface.sea_level;
++    const double alt_asl = r - ref_r;
++    const double terrain_r = b->GetTerrainHeight(rhat);
++    const double h_gnd = r - terrain_r;
++    if(h_gnd > 100.0) { p.airborne = true; }
++    const double mu = b->mu;
++    const double g_local = mu / (r * r);
++
++    const glm::dvec3 v_orb = ship->GetVel();
++    const glm::dvec3 v_air = ship->airRelativeVel(com);
++    const double v_air_len = glm::length(v_air);
++    const double rho = ship->airDensityAtCom();
++    p.q = 0.5 * rho * v_air_len * v_air_len;
++    p.alpha = glm::degrees(ship->lastDragAlpha);
++    p.tau_aero = glm::length(ship->lastAeroTorque);
++    p.tau_wheel = wheelAuthority(ship);
++    p.v_air = v_air_len;
++    p.v_orb = glm::length(v_orb);
++    p.alt = alt_asl;
++    p.slew_err = glm::degrees(ship->lastSlewErr);
++    p.slew_rate = glm::degrees(ship->lastSlewRate);
++
++    Frame *inertial = ship->frame->getNonRotFrame();
++    glm::dvec3 ip, iv;
++    ship->comStateIn(inertial, ip, iv);
++    const OrbitElements el = computeOrbitElements(ip, iv, mu);
++    p.apo = el.apoapsis - (double)b->radius;
++    p.peri = el.periapsis - (double)b->radius;
++
++    const double target_r = ref_r + p.target_alt;
++
++    // Attitude references. Inside the AIR the aero force cares about the
++    // air-relative flow, not the orbital velocity: on Kerbin the ground itself
++    // moves east at 175 m/s, so orbital prograde at low speed is ~90 deg off
++    // the flow.
++    const bool inAir = rho > 0.0;
++    /* guidanceDir is consumed in ship->frame axes (slewToward), so an inertial
++       vector must be rotated into them first. On a rotating body the difference
++       is the co-rotation velocity: 175 m/s on Kerbin, i.e. tens of degrees of
++       pointing error at orbital-insertion speeds. */
++    const glm::dvec3 iv_frame = inertial->GetOrientRelTo(ship->frame) * iv;
++    glm::dvec3 prg = inAir ? v_air : iv_frame;
++    if(glm::length2(prg) < 1e-9) { prg = rhat; }
++    prg = glm::normalize(prg);
++    const glm::dvec3 rgo = -prg;
++
++    auto stageGuard = [&]() {
++        return p.autostage && ship->activeStage() > ship->minStage_ && litEngineDry(ship);
++    };
++
++    switch(p.phase) {
++    case PhVertical: {
++        out.nose = rhat;
++        out.throttle = 1.0;
++        out.thrust = true;
++        p.theta = 1.5707963267948966;
++        // Leave the vertical leg once the air stops being the constraint: above
++        // the physical atmosphere, or on a body with none.
++        double clear = p.clear_alt;
++        if(clear < 0.0) { clear = b->surface.atmosphere.top(); }
++        if(alt_asl >= clear || el.apoapsis >= target_r) {
++            p.heading = launchHeading(ship, com, rhat, p.target_inc_deg);
++            p.heading_set = glm::length2(p.heading) > 1e-9;
++            p.phase = PhTurn;
++        }
++        break;
++    }
++    case PhTurn: {
++        if(!p.heading_set) {
++            p.heading = launchHeading(ship, com, rhat, p.target_inc_deg);
++            p.heading_set = glm::length2(p.heading) > 1e-9;
++        }
++        // Authority governor: the aero torque only exists because of AoA, so
++        // the measured AoA is the direct readout of whether the wheels can
++        // afford another degree of turn.
++        double rate = glm::radians(kTurnRateDeg);
++        if(inAir && std::fabs(p.alpha) > kAoALimitDeg) { rate = 0.0; }
++        /* Slew-aware: only spend turn-rate budget while the vehicle is actually
++           following. The wheels slew a 100 t stack at ~0.06 deg/s^2, so any
++           program faster than that is a command the airframe ignores -- and a
++           throttle that stays open through the resulting lag burns in a stale
++           direction. */
++        if(p.slew_err > kTrackDeg) { rate = 0.0; }
++        p.theta = std::max(0.0, p.theta - rate * dt);
++        const glm::dvec3 horiz = p.heading_set ? p.heading : glm::normalize(v_air);
++        out.nose = glm::normalize(rhat * std::sin(p.theta)
++                                  + horiz * std::cos(p.theta));
++        out.throttle = 1.0;
++        out.thrust = true;
++        const bool turned = p.theta <= glm::radians(kProgradeHoldDeg);
++        /* LawApoapsis stops the pitch-over as soon as the target apoapsis
++           exists -- cheap when thrust is feeble, but on an airless body it can
++           leave a near-radial arc that no node burn can fix. */
++        const double over = (p.law == Pilot::LawApoapsis)
++            ? target_r : target_r + 2.0 * p.target_alt;
++        if(turned || el.apoapsis >= over) { p.phase = PhPrograde; }
++        break;
++    }
++    case PhPrograde: {
++        out.nose = prg;
++        out.throttle = 1.0;
++        out.thrust = true;
++        if(el.apoapsis >= target_r) {
++            if(p.law == Pilot::LawContinuous) {
++                p.node_r = target_r;
++                p.phase = PhCircularize;
++            } else {
++                p.phase = PhCoast;
++            }
++        }
++        break;
++    }
++    case PhCoast: {
++        out.throttle = 0.0;
++        out.thrust = false;
++        out.nose = prg;
++        /* Centre the circularization burn ON the apoapsis passage: predict when
++           we get there and start half a burn-duration early, so the dv lands
++           symmetrically about the node. Gating on an apsis-distance window
++           instead starts the burn wherever the tick happens to fall, and a
++           high-TWR ship spends most of the burn off-node. */
++        const double apo = el.apoapsis;
++        if(apo <= 0.0) { p.phase = PhDone; break; }   // already escaping: nothing to raise
++        const double mass = ship->getMass();
++        const double a_max = (mass > 0.0) ? availThrust(ship) / mass : 0.0;
++        const double v_apo = std::sqrt(std::max(0.0, mu * (2.0 / apo - 1.0 / el.semi_major)));
++        const double dv = std::sqrt(mu / apo) - v_apo;
++        const double t_burn = (a_max > 1e-6) ? dv / a_max : 1e30;
++        const double t_apo = (el.time_to_apo > 0.0) ? el.time_to_apo : 1e30;
++        p.d_dv = dv; p.d_amax = a_max; p.d_gap = t_apo;
++        if(apo <= r + 1.0 || t_apo <= 0.5 * t_burn) {
++            p.node_r = std::max(apo, target_r);
++            p.phase = PhCircularize;
++        }
++        break;
++    }
++    case PhCircularize: {
++        out.nose = prg;
++        const double tol = std::max(200.0, 0.001 * target_r);
++        if(el.periapsis >= target_r - tol) { p.phase = PhDone; break; }
++        if(el.ecc >= 1.0) { out.throttle = 0.0; out.thrust = false; p.phase = PhCoast; break; }
++        const double mass = ship->getMass();
++        const double a_max = (mass > 0.0) ? availThrust(ship) / mass : 0.0;
++        if(a_max <= 0.0) { out.throttle = 0.0; out.thrust = false; p.phase = PhCoast; break; }
++        /* Throttle to the dv still owed at the node, not the dv owed right now:
++           a burn this long cannot be re-planned every tick or it chases itself. */
++        const double node = p.node_r;
++        if(node <= 0.0) { p.phase = PhCoast; out.throttle = 0.0; break; }
++        const double v_circ = std::sqrt(mu / node);
++        const double dv_left = v_circ - glm::length(v_orb);
++        p.d_dv = dv_left; p.d_amax = a_max; p.d_gap = node - r;
++        p.d_vneed = v_circ;
++        if(dv_left <= 0.005 * v_circ) { p.phase = PhDone; out.throttle = 0.0; break; }
++        /* Full throttle while the node still owes real dv, tapering over the
++           last few ticks so the burn ends on the target speed instead of
++           overshooting it. */
++        out.throttle = std::min(1.0, dv_left / std::max(1e-6, a_max * dt));
++        out.thrust = true;
++        break;
++    }
++    case PhDeorbit: {
++        out.nose = rgo;
++        out.throttle = 1.0;
++        out.thrust = true;
++        // Kill the orbit: put the periapsis under the local surface.
++        if(el.periapsis <= terrain_r) { p.phase = PhDive; }
++        break;
++    }
++    case PhDive: {
++        out.nose = rgo;
++        out.throttle = 0.0;
++        out.thrust = false;
++        // A canopy does the job the engine would otherwise do.
++        bool chuteOut = false, chuteReady = false;
++        for(Part *pa : ship->parts) {
++            if(!pa->isChute()) { continue; }
++            if(pa->chute == ChuteDeployed) { chuteOut = true; }
++            else if(p.autostage && rho > 0.0 && v_air_len < kChuteMaxSpeed
++                    && h_gnd < 5000.0) { chuteReady = true; }
++        }
++        if(chuteReady) { out.stage = true; }
++        const double mass = ship->getMass();
++        const double T = availThrust(ship);
++        const double a_net = (mass > 0.0) ? (T / mass - g_local) : 0.0;
++        const double v = glm::length(v_orb);
++        // Suicide trigger: the stopping distance reaches the ground.
++        if(!chuteOut && a_net > 0.0 && v > 0.0
++           && h_gnd <= kBrakeLead * v * v / (2.0 * a_net)) {
++            p.phase = PhBrake;
++        }
++        break;
++    }
++    case PhBrake: {
++        out.nose = rgo;
++        const double mass = ship->getMass();
++        const double T = availThrust(ship);
++        const double a_max = (mass > 0.0) ? std::max(0.0, T / mass - g_local) : 0.0;
++        const double v = glm::length(v_orb);
++        const double h = std::max(1.0, h_gnd);
++        // Closed loop: hold the closing speed on the soft-landing profile.
++        const double v_tgt = kBrakeLead * std::sqrt(2.0 * std::max(0.5, a_max) * h);
++        double thr = 0.0;
++        if(v > v_tgt) {
++            const double a_need = (v * v - v_tgt * v_tgt) / (2.0 * h);
++            thr = (a_max > 0.0) ? std::min(1.0, std::max(0.2, a_need / a_max)) : 0.0;
++        } else {
++            thr = kBrakeKp * std::max(0.0, v - v_tgt) / std::max(1.0, a_max);
++        }
++        out.throttle = thr;
++        out.thrust = thr > 0.0;
++        if(ship->isGrounded()) { p.phase = PhDone; }
++        break;
++    }
++    case PhDone:
++    case PhIdle:
++    default: break;
++    }
++
++    /* Pointing gate: a burn only counts once the nose is actually near the
++       commanded direction. Wheels slew a 100 t stack at ~0.06 deg/s^2, so a
++       180 deg flip costs ~110 s; igniting on the tick the phase changes pushes
++       the ship the WRONG way for the whole flip (a "deorbit" burn that ends in
++       escape). */
++    const double gate = (p.phase == PhVertical || p.phase == PhTurn
++                         || p.phase == PhPrograde) ? kPointGateAscDeg : kPointGateDeg;
++    if(p.slew_err > gate) {
++        out.throttle = 0.0;
++        out.thrust = false;
++        p.gated_ticks++;
++    }
++
++    if(stageGuard()) { out.stage = true; }
++    if(ship->isGrounded() && p.airborne && p.phase != PhIdle && p.phase != PhDone) {
++        // Landed (a ship that never left the pad is not "landed").
++        out.throttle = 0.0;
++        out.thrust = false;
++        p.phase = PhDone;
++    }
++}
+diff --git a/src/pilot.h b/src/pilot.h
+new file mode 100644
+index 0000000..d55e0f0
+--- /dev/null
++++ b/src/pilot.h
+@@ -0,0 +1,109 @@
++#pragma once
++
++/* PROTOTYPE (measure-only) -- mission guidance on top of the existing slew +
++   throttle + staging primitives. Not the shipped design; it exists to produce
++   numbers about what an ascent/descent autopilot can actually do here. */
++
++#include <glm/glm.hpp>
++
++enum PilotMission {
++    PilotNone = 0,
++    PilotAscent,
++    PilotLand,
++};
++
++enum PilotPhase {
++    PhIdle = 0,
++    PhVertical,     // radial-out climb (zero AoA: the aero-neutral attitude)
++    PhTurn,         // ramp the commanded flight-path angle toward horizontal
++    PhPrograde,     // burn to raise apoapsis to the target
++    PhCoast,        // engines off until the circularization window
++    PhCircularize,  // prograde burn until periapsis reaches the target
++    PhDone,
++    PhDeorbit,      // retrograde burn until periapsis is inside the target band
++    PhDive,         // coast down to the suicide-burn trigger
++    PhBrake,        // closed-loop retrograde deceleration to a soft stop
++};
++
++const char *pilotPhaseName(PilotPhase p);
++
++struct Pilot {
++    PilotMission mission = PilotNone;
++    PilotPhase phase = PhIdle;
++    bool autostage = true;
++
++    // Ascent target: circular orbit at this altitude above sea level, with this
++    // inclination (deg, relative to the body's equator).
++    double target_alt = 50000.0;
++    double target_inc_deg = 0.0;
++    /* Altitude (m ASL) at which the vertical leg ends. <0 = the body's physical
++       atmosphere top (0 on a body with no air). */
++    double clear_alt = -1.0;
++    /* Ascent guidance law:
++       LawApoapsis    burn to the target apoapsis, coast, circularize at the node.
++       LawContinuous  never coast: hold prograde and burn until the orbit closes.
++       Which one wins depends on thrust/weight, and on an airless body the
++       coast-first law can leave a near-radial arc it cannot fix. */
++    static constexpr int LawApoapsis = 0;
++    static constexpr int LawContinuous = 1;
++    int law = LawContinuous;
++
++    // Turn state: commanded flight-path angle from the local horizontal (rad).
++    double theta = 1.5707963267948966;
++    /* Radius (m from the body centre) of the node this circularization burn was
++       planned about, captured at burn entry: the burn must aim at the node as
++       it was, not at the apoapsis the burn itself is raising. */
++    double node_r = 0.0;
++    // The launch heading (unit, this frame's axes) once decided.
++    glm::dvec3 heading = glm::dvec3(0.0);
++    bool heading_set = false;
++    bool airborne = false;    // cleared the pad: only then does ground = landed
++
++    // Diagnostics for the [pilot] line.
++    double q = 0.0;            // dynamic pressure of the AIR (Pa)
++    double tau_aero = 0.0;     // measured aero torque last substep (N m)
++    double tau_wheel = 0.0;    // wheel authority (N m)
++    double alpha = 0.0;        // angle of attack (deg)
++    double v_air = 0.0;
++    double v_orb = 0.0;
++    double apo = 0.0, peri = 0.0;
++    double alt = 0.0;
++    double d_dv = 0.0, d_vneed = 0.0, d_amax = 0.0, d_gap = 0.0;
++    /* Pointing state: the commanded attitude is only a command until the wheels
++       get the nose there. A burn in a stale direction is wasted dv. */
++    double slew_err = 0.0;      // deg, nose vs commanded
++    double slew_rate = 0.0;     // deg/s, body rate
++    int stages = 0;
++    int gated_ticks = 0;  // ticks where a burn was withheld for want of pointing
++
++    void engage(PilotMission m, double alt_m, double inc_deg, bool staging,
++                double clear_m = -1.0, int guidance = LawContinuous) {
++        mission = m;
++        phase = (m == PilotAscent) ? PhVertical : PhDeorbit;
++        target_alt = alt_m;
++        target_inc_deg = inc_deg;
++        autostage = staging;
++        clear_alt = clear_m;
++        law = guidance;
++        theta = 1.5707963267948966;
++        heading_set = false;
++        airborne = false;
++        stages = 0;
++    }
++    void release() { mission = PilotNone; phase = PhIdle; }
++};
++
++struct PilotOut {
++    glm::dvec3 nose = glm::dvec3(0.0);  // frame axes, unit
++    double throttle = 0.0;              // 0..1
++    bool stage = false;
++    bool thrust = false;                // arm the Thrust command this tick
++};
++
++/* One guidance step. Reads the ship's live state, writes the phase and the
++   command. Pure-ish: it only mutates `p`. */
++void pilotStep(Pilot &p, class Vehicle *ship, PilotOut &out, double dt);
++
++/* PROTOTYPE hook: engages the one static pilot over the active ship (tick.cpp). */
++void engage_pilot(PilotMission m, double alt_m, double inc_deg, bool autostage,
++                  double clear_m = -1.0, int law = Pilot::LawContinuous);
+diff --git a/src/tick.cpp b/src/tick.cpp
+index 672bc9f..c044de0 100644
+--- a/src/tick.cpp
++++ b/src/tick.cpp
+@@ -7,8 +7,20 @@
+ #include "eva.h"                 // evaArmCommands (the kerbal's controls)
+ #include "orbit.h"               // OrbitElements, computeOrbitElements
+ #include "physics.h"             // physics_tick()
++#include "pilot.h"               // PROTOTYPE mission guidance
+ #include "timestep.h"            // substepCount()
+ 
++/* PROTOTYPE: one mission-autopilot state, driving the active ship. */
++static Pilot s_pilot;
++void engage_pilot(PilotMission m, double alt_m, double inc_deg, bool autostage,
++                  double clear_m, int law) {
++    s_pilot.engage(m, alt_m, inc_deg, autostage, clear_m, law);
++    printf("Pilot: %s engaged (target alt %.0f m, inc %.1f deg, autostage %d,"
++           " clear alt %.0f m, law %d)\n",
++           (m == PilotAscent) ? "ascent" : "landing", alt_m, inc_deg,
++           (int)autostage, clear_m, law);
++}
++
+ void tick(Game &g) {
+     double newTime = (double)(SDL_GetTicks()) * 0.001;
+     double frameTime = newTime - g.currentTime;
+@@ -121,6 +133,40 @@ void tick(Game &g) {
+                 }
+                 g.ship->slew = g.ship->slewRequest;
+             }
++            /* PROTOTYPE (pilot.h): mission guidance. Same hook as slewRequest --
++               after clearRotCmd, so the commanded attitude holds. */
++            if(game_running && s_pilot.mission != PilotNone) {
++                if(g.ship->onRails) {
++                    g.ship->leaveRails();
++                    g.time_accel = 1;
++                }
++                PilotOut po;
++                pilotStep(s_pilot, g.ship, po, g.dt * g.time_accel);
++                g.ship->guidanceDir = po.nose;
++                g.ship->slew = SlewGuidance;
++                g.ship->thruster_util = (float)po.throttle;
++                if(po.thrust) {
++                    g.ship->Command(ShipCmd(Thrust), true, g.dt * g.time_accel);
++                }
++                if(po.stage) { g.stage(); s_pilot.stages++; }
++                Vehicle *s = g.ship;
++                printf("[pilot] t=%.1f ph=%s alt=%.0f h_gnd=%.0f apo=%.0f peri=%.0f"
++                       " thr=%.2f v_air=%.0f v_orb=%.0f q=%.0f AoA=%.1f"
++                       " tau_aero=%.0f tau_wheel=%.0f cpLev=%+.2f stage=%d/%d"
++                       " mass=%.0f dv=%+.1f vneed=%.1f amax=%.2f gap=%.0f"
++                       " ptErr=%.1f ptRate=%.2f gated=%d\n",
++                       g.time, pilotPhaseName(s_pilot.phase), s_pilot.alt,
++                       glm::length(s->comPos())
++                         - s->m_parent->GetTerrainHeight(glm::normalize(s->comPos())),
++                       s_pilot.apo, s_pilot.peri, po.throttle,
++                       s_pilot.v_air, s_pilot.v_orb, s_pilot.q, s_pilot.alpha,
++                       s_pilot.tau_aero, s_pilot.tau_wheel,
++                       s->lastAeroCpLever, s->activeStage(), s->numStages(),
++                       s->getMass(), s_pilot.d_dv, s_pilot.d_vneed,
++                       s_pilot.d_amax, s_pilot.d_gap,
++                       s_pilot.slew_err, s_pilot.slew_rate,
++                       s_pilot.gated_ticks);
++            }
+             // Baseline sticks are pre-flipped for screen-direction yaw/roll;
+             // flip_* settings invert away from that default.
+             const float f_pitch = g.flip_pitch ? -1.0f : 1.0f;
+diff --git a/src/vehicle.cpp b/src/vehicle.cpp
+index 9ab1c5c..cdaf752 100644
+--- a/src/vehicle.cpp
++++ b/src/vehicle.cpp
+@@ -1850,6 +1850,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
+     lastDragAlpha = 0.0;
+     lastDragArea = 0.0;
+     lastDragCd = 0.0;
++    lastAeroCpLever = 0.0;   // PROTOTYPE
+     lastChuteCdA = 0.0;
+     lastControlDeflections.clear();  // a no-air substep reports no steering
+ 
+@@ -1941,6 +1942,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
+         lastDragCd = (cpArea > 0.0) ? (cdNum / cpArea) : 0.0;
+         if(cpArea > 0.0) { cp /= cpArea; }
+         else { cp = com; }  // degenerate: no per-part area -> act through the COM
++        // PROTOTYPE probe: signed CP offset along the nose axis.
++        lastAeroCpLever = glm::dot(cp - com, nose);
+         const glm::dvec3 fdrag = dragForce(da, drag_cd * lastDragCd, A_ship,
+                                            alt, vrel);
+         if(glm::length2(fdrag) > 0.0) {
+@@ -2952,6 +2955,7 @@ glm::dvec3 Vehicle::slewTargetDir() {
+     // centre, which the surface frame and the inertial one share.
+     if(slew == SlewRadialOut) { return  pos; }
+     if(slew == SlewRadialIn) { return -pos; }
++    if(slew == SlewGuidance) { return guidanceDir; }   // PROTOTYPE (pilot.h)
+     const bool prg = (slew == SlewPrograde || slew == SlewRetrograde);
+     const bool nrm = (slew == SlewNormal || slew == SlewAntiNormal);
+     if(!prg && !nrm) { return glm::dvec3(0.0); }
+@@ -2976,6 +2980,8 @@ void Vehicle::slewToward(glm::dvec3 dir, double h) {
+     Part *wheel = firstWheel();
+     const glm::dvec3 facing = partAxis(wheel, 2);
+     const double E = glm::acos(glm::clamp(glm::dot(facing, dir), -1.0, 1.0));
++    lastSlewErr = E;                              /* PROTOTYPE probe */
++    lastSlewRate = glm::length(partAngVel(wheel)); /* PROTOTYPE probe */
+     if(E < 1e-9) { return; } /* already aligned */
+     glm::dvec3 axis = glm::cross(facing, dir); /* + turns the nose toward dir */
+     if(glm::length2(axis) < 1e-12) {
+diff --git a/src/vehicle.h b/src/vehicle.h
+index 7d03462..a22c4af 100644
+--- a/src/vehicle.h
++++ b/src/vehicle.h
+@@ -71,7 +71,8 @@ enum SlewMode {
+     SlewRadialIn,    /* align nose toward the SOI body */
+     SlewNormal,      /* align nose with the orbital-plane normal (r x v) */
+     SlewAntiNormal,  /* align nose against it */
+-    SlewKillRot      /* kill the spin */
++    SlewKillRot,     /* kill the spin */
++    SlewGuidance     /* PROTOTYPE: align nose with guidanceDir (pilot.h) */
+ };
+ 
+ struct ScenarioDef;
+@@ -311,6 +312,15 @@ public:
+     double lastDragAlpha = 0.0;  // pitch angle of attack (rad)
+     double lastDragArea = 0.0;  // silhouette facing the flow (m^2)
+     double lastDragCd = 0.0;  // area-weighted mean of the parts' cds
++    /* PROTOTYPE probe: the centre of pressure signed along the nose axis
++       (+ = ahead of the COM = aerodynamically unstable weathervane). */
++    double lastAeroCpLever = 0.0;
++    /* PROTOTYPE probes (slewToward): how far the nose still is from the commanded
++       direction, and the wheel-limited slew capability that has to close it. An
++       autopilot that commands an attitude the wheels cannot reach in the time
++       available burns in a stale direction, so pointing lag is guidance error. */
++    double lastSlewErr = 0.0;      // rad, nose vs slew target
++    double lastSlewRate = 0.0;     // rad/s, |body angular rate|
+     /* Deployed chutes' EFFECTIVE Cd·A (m^2) last substep (0 = none): nominal
+        chute_area shrunk by kChuteAccelLimit at high q. NOT in lastDragArea. */
+     double lastChuteCdA = 0.0;
+@@ -331,6 +341,8 @@ public:
+     /* The Autopilot-window mode: persistent, unlike `slew`. */
+     SlewMode slewRequest = SlewNone;
+     void setSlewRequest(SlewMode m);
++    /* PROTOTYPE: the nose target for SlewGuidance, in this frame's axes. */
++    glm::dvec3 guidanceDir = glm::dvec3(0.0);
+ 
+     void setRoot(Part *part);
+ 
