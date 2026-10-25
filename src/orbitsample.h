@@ -83,6 +83,10 @@ struct OrbitSampleCache {
     // but writing into this entry's pts reuses its capacity, so the per-frame
     // map redraw stops malloc-ing. Leaves the entry unusable for closed
     // sampling (valid=false), as the closed path does for an open state.
+    // Note: the entry is shared across the map windows; while a ship's
+    // trajectory is open, a closed sample by another window re-samples
+    // instead of hitting -- correct over stale, and open arcs have no key
+    // to hit anyway.
     const std::vector<glm::dvec3> &sampleOpen(const glm::dvec3 &pos,
                                               const glm::dvec3 &vel, double mu,
                                               int N, double r_cap) {

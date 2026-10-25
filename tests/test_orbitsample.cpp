@@ -224,6 +224,10 @@ int main() {
         check(cache.sampleOpen(glm::dvec3(r, 0, 0), glm::dvec3(0, v, 0), mu, N,
                                10.0 * r).empty(),
               "sampleOpen: closed orbit -> empty");
+        // A closed sample AFTER open state must re-sample, not serve the arc.
+        const std::vector<glm::dvec3> &c2 =
+            cache.sample(glm::dvec3(r, 0, 0), glm::dvec3(0, v, 0), mu, N, true);
+        check(cache.valid && !c2.empty(), "closed after open: re-samples, not stale arc");
     }
 
     // 10. TRANSFER ARC (elliptic): a leg from periapsis to apoapsis. The

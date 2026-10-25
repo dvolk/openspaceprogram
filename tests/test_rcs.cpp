@@ -228,6 +228,40 @@ static void test_scratch_reuse() {
     CHECK_TRUE(s.c.empty(), "no nozzles -> empty solution in a warm Scratch");
 }
 
+/* Goldens from the PRE-scratch allocator (nested-vector rcs.h, printed at
+   17 significant digits from the pre-rewrite source). They pin the flat
+   rewrite as a bit-exact translation -- including the LS ridge residuals
+   (0.9999999975 != 1.0) an "improved" solver would silently tidy away. */
+static void test_golden_answers() {
+    printf("== rcsAllocate: pre-rewrite goldens ==\n");
+    struct GCase {
+        std::vector<RcsNozzle> noz;
+        glm::dvec3 F;
+        std::vector<double> want;
+    };
+    const std::vector<RcsNozzle> five = {
+        nz(glm::dvec3(0,0,1),  glm::dvec3(1,0,0.5),  200.0),
+        nz(glm::dvec3(0,0,-1), glm::dvec3(-1,0,0.5), 200.0),
+        nz(glm::dvec3(1,0,0),  glm::dvec3(0,0.5,0),  150.0),
+        nz(glm::dvec3(-1,0,0), glm::dvec3(0,-0.5,0), 150.0),
+        nz(glm::dvec3(0,1,0),  glm::dvec3(0.5,0,0),  100.0),
+    };
+    const GCase cases[] = {
+        { { nz(glm::dvec3(1,0,0), glm::dvec3(0,0,0), 100.0) }, glm::dvec3(80,0,0),
+          { 0.80000000000000004 } },
+        { { nz(glm::dvec3(0,0,1), glm::dvec3(1,0,0), 200.0),
+            nz(glm::dvec3(0,0,-1), glm::dvec3(-1,0,0), 200.0) }, glm::dvec3(0,0,200),
+          { 0.99999999750000002, 0 } },
+        { five, glm::dvec3(30,-20,100),
+          { 0.49999999900000003, 0, 0.1999999999, 0, 0 } },
+        { five, glm::dvec3(0,0,900), { 1, 0, 0, 0, 0 } },
+    };
+    for(const GCase &gc : cases) {
+        CHECK_TRUE(same(rcsAllocate(gc.noz, gc.F), gc.want),
+                   "answer matches the pre-rewrite golden bit-for-bit");
+    }
+}
+
 int main() {
     printf("=== rcs.h: nozzle allocator ===\n\n");
     test_one_way();
@@ -247,6 +281,8 @@ int main() {
     test_zero_demand_and_empty();
     printf("\n");
     test_scratch_reuse();
+    printf("\n");
+    test_golden_answers();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

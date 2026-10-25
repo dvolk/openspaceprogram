@@ -893,7 +893,13 @@ void Vehicle::rebuildCompound() {
     delete hull; hull = nullptr;
     compoundParts.clear();
     principal = btTransform::getIdentity();
-    if(parts.empty()) { aeroHull.clear(); return; }
+    if(parts.empty()) {
+        // an emptied hull has no cached key; rebuildAeroHull must recompute
+        // (an empty hull for the empty geometry) rather than trust valid.
+        aeroHull.clear();
+        aeroGeomValid = false;
+        return;
+    }
 
     // ownership back-pointers (part.h)
     for(Part *p : parts) { p->owner = this; }
@@ -975,6 +981,9 @@ static uint64_t aeroGeomFingerprint(const std::vector<Part *> &parts) {
     };
     uint64_t h = mix(0, (uint64_t)parts.size());
     for(const Part *p : parts) {
+        // uid first: Part/Body addresses are recycled by the allocator, so a
+        // pointer alone could alias an old part; uid is process-unique.
+        h = mix(h, p->uid);
         h = mix(h, (uint64_t)(uintptr_t)p->body);
         for(int i = 0; i < 3; i++) { h = mix(h, std::bit_cast<uint64_t>(p->localPos[i])); }
         for(int c = 0; c < 3; c++) {
@@ -2736,8 +2745,9 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     }
     parts.insert(parts.end(), B->parts.begin(), B->parts.end());
     B->parts.clear();
-    // the cached aero hull went with the parts
+    // the cached aero hull went with the parts (and its key with it)
     B->aeroHull.clear();
+    B->aeroGeomValid = false;
     fuelLinks.insert(fuelLinks.end(), B->fuelLinks.begin(), B->fuelLinks.end());
     B->fuelLinks.clear();
 
