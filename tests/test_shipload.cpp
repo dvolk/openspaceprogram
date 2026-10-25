@@ -341,6 +341,39 @@ int main() {
         std::remove(hm);
     }
 
+    /* RCS nozzle enumeration (PartDef::rcsNozzleCount/Dir): the sim builds
+       its allocator columns in this order and render draws a plume per slot
+       off Part::rcsFired -- a drift lands plumes on un-fired nozzles. */
+    {
+        const char *nz = "/tmp/test_shipload_rcsnoz.json";
+        std::ofstream f(nz);
+        f << "{ \"parts\": [ "
+             "{ \"name\": \"pod\", \"type\": \"engine\", \"mesh\": \"a.obj\", "
+             "\"texture\": \"a.png\", \"mass\": 1.0, \"rcs_thrust\": 60 }, "
+             "{ \"name\": \"box\", \"type\": \"engine\", \"mesh\": \"a.obj\", "
+             "\"texture\": \"a.png\", \"mass\": 1.0, \"rcs_thrust\": 60, "
+             "\"rcs_nozzle_dirs\": [[1,0,0],[0,2,0],[0,0,1],[0,0,-1]] } ] }";
+        f.close();
+        PartsCatalog ncat = load_parts_catalog(nz);
+        const PartDef *pod = ncat.find("pod");
+        CHECK(pod->rcsNozzleCount() == 6);  // no dirs -> legacy six
+        const glm::dvec3 want[6] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+        for(int i = 0; i < 6; i++) { CHECK(vnear(pod->rcsNozzleDir(i), want[i])); }
+        const PartDef *box = ncat.find("box");
+        CHECK(box->rcsNozzleCount() == 4);
+        CHECK(vnear(box->rcsNozzleDir(1), glm::dvec3(0,1,0)));  // normalized, parse order
+        std::remove(nz);
+        // The cap IS Part::rcsFired's size: a seventh dir must be refused at load.
+        const char *ng = "/tmp/test_shipload_rcsnoz7.json";
+        std::ofstream g7(ng);
+        g7 << "{ \"parts\": [ { \"name\": \"greedy\", \"type\": \"engine\", \"mesh\": \"a.obj\", "
+              "\"texture\": \"a.png\", \"mass\": 1.0, \"rcs_thrust\": 60, "
+              "\"rcs_nozzle_dirs\": [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1],[1,1,1]] } ] }";
+        g7.close();
+        CHECK(expect_throw_saying([&]{ load_parts_catalog(ng); }, "more than 6 dirs"));
+        std::remove(ng);
+    }
+
     // sized parts: radius/height are explicit, thrust scales with the size.
     const PartDef *e225 = cat.find("engine_r2.25h4.5");
     const PartDef *e15  = cat.find("engine_r1.5h3");

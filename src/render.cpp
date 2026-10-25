@@ -511,6 +511,38 @@ static void drawOrbitPlane(Game &g, const glm::dmat4 &VP) {
     }
 }
 
+/* Additive plume strip (engine_plume mesh + texture): every plume pass --
+   engine, per-nozzle RCS, the EVA COM puff -- shares this state dance:
+   partsshader with its authoring uniforms pinned, additive blend, no depth
+   writes, no culling (the strip is a one-sided quad). */
+static void drawPlumeQuad(Game &g, const glm::dmat4 &Model, const glm::dmat4 &View,
+                          const glm::mat4 &Projection) {
+    glm::mat4 ModelViewFloat = View * Model;
+    g.partsshader->Bind();
+    g.partsshader->setUniform_mat4(0, Projection * ModelViewFloat);
+    g.partsshader->setUniform_mat4(1, glm::mat4(1.0)); // identity (GLM 1.0.0+: default ctor is zero)
+    g.partsshader->setUniform_vec3(2, glm::vec3(1, 1, 1));
+    // Pin the shadow/alpha/tint/flat uniforms rather than inherit the
+    // last part draw's values.
+    g.partsshader->setUniform_vec1(3, 1.0f);
+    g.partsshader->setUniform_vec1(4, 1.0f);
+    g.partsshader->setUniform_vec3(5, glm::vec3(1, 1, 1));
+    g.partsshader->setUniform_vec1(6, 0.0f);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g.engine_plume_texture->id);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE);
+    // Additive and translucent: no depth writes, like every other
+    // translucent pass here.
+    glDepthMask(GL_FALSE);
+    glDisable(GL_CULL_FACE);
+    g.engine_plume_mesh->Draw();
+    glEnable(GL_CULL_FACE);
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 /* Paint half of the 3D pass (#212). The postfx Begin/End pair lives in main.cpp
    around the clear and this call: no path leaves an FBO bound with no blit. */
 void paintWorld(Game &g) {
@@ -656,40 +688,57 @@ void paintWorld(Game &g) {
                 * glm::dmat4(glm::dmat3(radius, 0.0, 0.0,
                                          0.0, radius, 0.0,
                                          0.0, 0.0, height / 2.0));
-            // already render-frame relative (COM == renderOrigin)
-            glm::mat4 ModelViewFloat = View * Model;
-            g.partsshader->Bind();
-            g.partsshader->setUniform_mat4(0, Projection * ModelViewFloat);
-            g.partsshader->setUniform_mat4(1, glm::mat4(1.0)); // identity (GLM 1.0.0+: default ctor is zero)
-            g.partsshader->setUniform_vec3(2, glm::vec3(1, 1, 1));
-            // Pin the shadow/alpha/tint/flat uniforms rather than inherit the
-            // last part draw's values.
-            g.partsshader->setUniform_vec1(3, 1.0f);
-            g.partsshader->setUniform_vec1(4, 1.0f);
-            g.partsshader->setUniform_vec3(5, glm::vec3(1, 1, 1));
-            g.partsshader->setUniform_vec1(6, 0.0f);
-
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, g.engine_plume_texture->id);
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_ONE, GL_ONE);
-            // Additive and translucent: no depth writes, like every other
-            // translucent pass here.
-            glDepthMask(GL_FALSE);
-            glDisable(GL_CULL_FACE);
-            g.engine_plume_mesh->Draw();
-            glEnable(GL_CULL_FACE);
-            glDepthMask(GL_TRUE);
-            glDisable(GL_BLEND);
-            glBindTexture(GL_TEXTURE_2D, 0);
+            drawPlumeQuad(g, Model, View, Projection);
         }
     }
     /* end draw engine plume */
 
-    /* RCS plume: from the COM along the armed ship-relative direction. The quad
-       spans the exhaust direction and the camera axis LEAST aligned with it,
-       keeping the flat strip screen-facing. */
-    if(ship && ship->rcsFiring && glm::length2(ship->rcsDir) > 1e-12) {
+    /* RCS plumes (#428 follow-up): one per nozzle that fired the last RCS
+       substep (Part::rcsFired), hanging off the pod OPPOSITE its force dir --
+       the exhaust leaves backwards, exactly like an engine's. */
+    if(ship && ship->rcsFiring) {
+        const glm::dvec3 camR = glm::normalize(glm::cross(g.camera->forward, g.camera->up));
+        for(Part *p : ship->parts) {
+            if(!p->isRcs()) { continue; }
+            bool posed = false;
+            glm::dvec3 podPos; glm::dmat3 podRot;
+            for(size_t ni = 0; ni < p->def->rcsNozzleCount(); ni++) {
+                const double N = p->rcsFired[ni];
+                if(N <= 1e-6) { continue; }  // NNLS dust is not a visible firing
+                if(!posed) { ship->partPoseRelCom(p, podPos, podRot); posed = true; }
+                /* The strip extends toward -z, so its z rides the nozzle's
+                   FORCE dir: the flame leaves backwards, opposite the push. */
+                const glm::dvec3 zw = glm::normalize(podRot * p->def->rcsNozzleDir(ni));
+                /* The strip is a one-sided flat quad: seed its width axis
+                   from the camera (as the COM puff does) so it never goes
+                   edge-on and collapses to a sliver. */
+                const glm::dvec3 seed = (std::abs(glm::dot(camR, zw)) < std::abs(glm::dot(g.camera->up, zw)))
+                    ? camR : g.camera->up;
+                const glm::dvec3 xw = glm::normalize(seed - glm::dot(seed, zw) * zw);
+                const glm::dmat3 basis(xw, glm::cross(zw, xw), zw);
+                /* engine_plume.obj units: half-width 2, strip spans z -1..-5
+                   (length 4, a 1-unit gap from the pivot). Offset by sz to
+                   close the gap so it hangs off the pod center: the flame is
+                   4*sz long -- ~0.8 m at the box's 60 N, ~1.4 m at a legacy
+                   pod's 200 N. */
+                const double sz = 0.025 * std::sqrt(N);
+                const double sx = 0.25 * sz;
+                glm::dmat4 Model = glm::translate(podPos + zw * sz) * glm::dmat4(basis)
+                    * glm::dmat4(glm::dmat3(sx, 0.0, 0.0,
+                                            0.0, sx, 0.0,
+                                            0.0, 0.0, sz));
+                drawPlumeQuad(g, Model, View, Projection);
+            }
+        }
+    }
+    /* end draw per-nozzle RCS plumes */
+
+    /* Nozzle-less RCS (the EVA suit, eva.cpp) gets the old COM puff: from the
+       COM along the armed ship-relative direction. The quad spans the exhaust
+       direction and the camera axis LEAST aligned with it, keeping the flat
+       strip screen-facing. Ships with pods draw plumes per nozzle, above. */
+    if(ship && ship->rcsFiring && glm::length2(ship->rcsDir) > 1e-12
+       && ship->maxRcsThrust() <= 0.0) {
         const glm::dvec3 z = ship->rcsWorldDir();  // thrust dir; the mesh extends toward -z
         const glm::dvec3 camR = glm::normalize(glm::cross(g.camera->forward, g.camera->up));
         const glm::dvec3 seed = (std::abs(glm::dot(camR, z)) < std::abs(glm::dot(g.camera->up, z)))
@@ -703,28 +752,7 @@ void paintWorld(Game &g) {
             * glm::dmat4(glm::dmat3(sx, 0.0, 0.0,
                                          0.0, sx, 0.0,
                                          0.0, 0.0, sz));
-        glm::mat4 ModelViewFloat = View * Model;
-        g.partsshader->Bind();
-        g.partsshader->setUniform_mat4(0, Projection * ModelViewFloat);
-        g.partsshader->setUniform_mat4(1, glm::mat4(1.0)); // identity (GLM 1.0.0+: default ctor is zero)
-        g.partsshader->setUniform_vec3(2, glm::vec3(1, 1, 1));
-        // pin the authoring uniforms like the engine plume does
-        g.partsshader->setUniform_vec1(3, 1.0f);
-        g.partsshader->setUniform_vec1(4, 1.0f);
-        g.partsshader->setUniform_vec3(5, glm::vec3(1, 1, 1));
-        g.partsshader->setUniform_vec1(6, 0.0f);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, g.engine_plume_texture->id);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_ONE, GL_ONE);
-        glDepthMask(GL_FALSE);   // additive/translucent: no depth writes
-        glDisable(GL_CULL_FACE);
-        g.engine_plume_mesh->Draw();
-        glEnable(GL_CULL_FACE);
-        glDepthMask(GL_TRUE);
-        glDisable(GL_BLEND);
-        glBindTexture(GL_TEXTURE_2D, 0);
+        drawPlumeQuad(g, Model, View, Projection);
     }
     /* end draw RCS plume */
 

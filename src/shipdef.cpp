@@ -158,6 +158,11 @@ PartsCatalog load_parts_catalog(const char *path) {
                 }
                 d.rcs_nozzles.push_back(v / L);
             }
+            // Part::rcsFired (the render plume slots) is fixed at kMaxRcsNozzles.
+            if(d.rcs_nozzles.size() > PartDef::kMaxRcsNozzles) {
+                throw std::runtime_error(ctx + "\"rcs_nozzle_dirs\" has more than "
+                                         + std::to_string(PartDef::kMaxRcsNozzles) + " dirs");
+            }
         }
 
         /* Engine gimbal (TVC): a part either cannot gimbal at all or needs a

@@ -2193,6 +2193,11 @@ void Vehicle::applyRcsForce(double h) {
     lastRcsNozzles.clear();
     lastRcsCmd = glm::dvec3(0.0);
     lastRcsAch = glm::dvec3(0.0);
+    // Likewise the plume slots: only nozzles FIRING this substep stay lit.
+    for(Part *p : parts) {
+        if(!p->isRcs()) { continue; }
+        for(double &f : p->rcsFired) { f = 0.0; }
+    }
     if(glm::length2(rcsDir) < 1e-12) { return; }
     const double Fmax = maxRcsThrust();
     const glm::dvec3 dirW = rcsWorldDir();
@@ -2204,13 +2209,14 @@ void Vehicle::applyRcsForce(double h) {
        part's LOCAL frame; a pod without dirs is the legacy omnidirectional
        unit -- six dirs along the part's own axes. rcs_thrust is PER nozzle. */
     std::vector<RcsNozzle> noz;
-    std::vector<size_t> nozPart;  // nozzle -> index into parts
+    std::vector<size_t> nozPart;   // nozzle -> index into parts
+    std::vector<size_t> nozLocal;  // nozzle -> its slot on that part (Part::rcsFired)
     const glm::dvec3 com = comPos();
     for(size_t pi = 0; pi < parts.size(); pi++) {
         const Part *p = parts[pi];
         if(!p->isRcs()) { continue; }
         const glm::dvec3 axes[3] = { partAxis(p, 0), partAxis(p, 1), partAxis(p, 2) };
-        const auto addNozzle = [&](const glm::dvec3 &local) {
+        const auto addNozzle = [&](const glm::dvec3 &local, size_t localIdx) {
             glm::dvec3 d(0.0);
             for(int k = 0; k < 3; k++) { d += local[k] * axes[k]; }
             const double L = glm::length(d);
@@ -2218,17 +2224,12 @@ void Vehicle::applyRcsForce(double h) {
             d /= L;
             noz.push_back({ d, partPos(p) - com, p->rcsThrust(), nozzleTag(local) });
             nozPart.push_back(pi);
+            nozLocal.push_back(localIdx);
         };
-        if(!p->def->rcs_nozzles.empty()) {
-            for(const glm::dvec3 &nd : p->def->rcs_nozzles) { addNozzle(nd); }
-        } else {
-            for(int k = 0; k < 3; k++) {
-                glm::dvec3 a(0.0);
-                a[k] = 1.0;
-                addNozzle(a);
-                a[k] = -1.0;
-                addNozzle(a);
-            }
+        // The one enumeration (PartDef::rcsNozzleDir): authored dirs in order,
+        // else the legacy six. Render walks the same slots for the plumes.
+        for(size_t ni = 0; ni < p->def->rcsNozzleCount(); ni++) {
+            addNozzle(p->def->rcsNozzleDir(ni), ni);
         }
     }
     if(noz.empty()) { return; }
@@ -2254,6 +2255,7 @@ void Vehicle::applyRcsForce(double h) {
         if(c[i] <= 0.0) { continue; }
         const double N = c[i] * noz[i].thrust;
         fpart[nozPart[i]] += noz[i].dir * N;
+        parts[nozPart[i]]->rcsFired[nozLocal[i]] = N;  // the plume (render.cpp)
         lastRcsNozzles.push_back({ parts[nozPart[i]]->id, noz[i].tag, N });
     }
     glm::dvec3 Fach(0.0);
@@ -3523,7 +3525,10 @@ bool Vehicle::goOnRails() {
     /* Fins go neutral with the sim: nothing rewrites controlDefl on rails, so
        a grounded parked ship (canRail() admits it in air) would otherwise
        hold its last stick deflection forever. */
-    for(Part *p : parts) { p->controlDefl = 0.0; }
+    for(Part *p : parts) {
+        p->controlDefl = 0.0;
+        if(p->isRcs()) { for(double &f : p->rcsFired) { f = 0.0; } }
+    }
     lastRcsNozzles.clear();  // likewise the [rcs] log: no substeps, no nozzles
 
     // out of the world: the one body

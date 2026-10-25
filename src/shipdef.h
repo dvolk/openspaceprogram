@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -166,6 +167,20 @@ struct PartDef {
        omitted dir is -X (child +X faces away from the hull). Empty -> legacy
        omnidirectional pod: six directions along the part's own axes. */
     std::vector<glm::dvec3> rcs_nozzles;
+    /* The ONE nozzle enumeration (parsed order capped at kMaxRcsNozzles):
+       the sim builds its allocator columns in this order and render draws a
+       plume per slot off Part::rcsFired, so a plume always lands on a nozzle
+       that fired. */
+    static constexpr size_t kMaxRcsNozzles = 6;  // == sizeof Part::rcsFired
+    size_t rcsNozzleCount() const { return rcs_nozzles.empty() ? kMaxRcsNozzles : rcs_nozzles.size(); }
+    glm::dvec3 rcsNozzleDir(size_t i) const {
+        assert(i < rcsNozzleCount());
+        if(!rcs_nozzles.empty()) { return rcs_nozzles[i]; }
+        // Legacy pod: +X,-X,+Y,-Y,+Z,-Z along the part's own axes.
+        glm::dvec3 d(0.0);
+        d[i / 2] = (i % 2 == 0) ? 1.0 : -1.0;
+        return d;
+    }
     /* Engine gimbal / TVC (src/gimbal.h): the nozzle may swing +/-gimbal_max
        (rad) at gimbal_rate (rad/s). gimbal_max = 0 -> the thrust line stays
        locked to the part's +Z. */

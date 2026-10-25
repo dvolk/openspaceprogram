@@ -80,6 +80,12 @@ struct Part {
        too (nothing runs there). Render-only -- the force uses the same number
        locally; this field exists so Vehicle::Draw can swing the mesh. */
     double controlDefl = 0.0;
+    /* Per-nozzle thrust (N) fired THIS RCS substep, indexed by
+       PartDef::rcsNozzleCount()/rcsNozzleDir() (authored order, else the
+       legacy six). Transient like controlDefl: applyRcsForce zeroes it every
+       substep and rewrites the nozzles that fired; goOnRails zeroes it.
+       Render-only -- the per-nozzle plumes (render.cpp). */
+    double rcsFired[PartDef::kMaxRcsNozzles] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
     /* Parachute state (ChuteState); inert for non-chute parts. Set by
        Vehicle::deployChutes on the stage press; save-persisted. */
     ChuteState chute = ChuteStowed;
