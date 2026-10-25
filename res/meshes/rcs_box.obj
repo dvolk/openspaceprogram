@@ -1,18 +1,18 @@
-# rcs_box: a plain cube, 0.8m across, 0.5m tall, centered at the part origin.
+# rcs_box: a plain cube, 0.3m on a side, centered at the part origin.
 # Solid-gray texture (textures/rcs_box.png). Visual only -- the collision hull
 # comes from the PartDef radius/height. The part's +X is the face away from a
 # surface mount (the srf node points -X, #428); nozzles live on the 5 exposed
 # faces, not the mount.
 # Faces are CCW seen from outside; each vn matches its winding's normal.
 o rcs_box
-v -0.4 -0.4 -0.25
-v  0.4 -0.4 -0.25
-v  0.4  0.4 -0.25
-v -0.4  0.4 -0.25
-v -0.4 -0.4  0.25
-v  0.4 -0.4  0.25
-v  0.4  0.4  0.25
-v -0.4  0.4  0.25
+v -0.15 -0.15 -0.15
+v  0.15 -0.15 -0.15
+v  0.15  0.15 -0.15
+v -0.15  0.15 -0.15
+v -0.15 -0.15  0.15
+v  0.15 -0.15  0.15
+v  0.15  0.15  0.15
+v -0.15  0.15  0.15
 vn 0 0 -1
 vn 0 0 1
 vn -1 0 0
