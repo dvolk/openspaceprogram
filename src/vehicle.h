@@ -155,6 +155,18 @@ public:
 
     btCompoundShape *compoundShape() const;
 
+    /* The part shapes at their authored poses in frame S -- the input to
+       Bullet's principal-axis solve, and the source of the child poses the
+       hull compound is re-based from. Held between rebuilds so a burn, which
+       changes only the MASSES, can re-solve in place instead of minting a
+       compound, a rigid body and their broadphase proxies every time the mass
+       drifts past kMassRebuildFrac. Never registered with a world and its
+       child poses only change at a rebuild, so it wants no AABB tree. */
+    btCompoundShape *geomS = nullptr;
+    /* The per-child masses fed to that solve (kept out of the hot path so the
+       re-solve allocates nothing). */
+    std::vector<btScalar> geomMasses;
+
     /* Always through a quaternion: btMatrix3x3 is row-major and glm
        column-major, so copying elements silently transposes. */
     static btTransform toBt(const glm::dvec3 &pos, const glm::dmat3 &rot);
@@ -186,6 +198,15 @@ public:
     void refreshCompound();
     static constexpr double kComRebuildTol = 0.01;
     static constexpr double kMassRebuildFrac = 1e-3;
+
+    /* Fuel burn moves MASSES but not geometry, so it does not need a new
+       compound or rigid body: re-solve the principal frame against the shapes
+       in `geomS`, re-base the live compound's children, and re-set the body's
+       mass props and pose. Bit-identical to what rebuildCompound() would have
+       produced for the same parts, and it allocates nothing. False = the
+       geometry moved under us (or there is nothing to refresh), so the caller
+       must do the full rebuild. */
+    bool refreshMassProps();
 
     /* The compound must reproduce the assembly it was built from (mass
        properties + child poses), recomputed independently. */

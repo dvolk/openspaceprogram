@@ -892,6 +892,7 @@ void Vehicle::rebuildCompound() {
 
     delete hull; hull = nullptr;
     compoundParts.clear();
+    delete geomS; geomS = nullptr;    // its child shapes belong to the parts
     principal = btTransform::getIdentity();
     if(parts.empty()) {
         // an emptied hull has no cached key; rebuildAeroHull must recompute
@@ -904,14 +905,14 @@ void Vehicle::rebuildCompound() {
     // ownership back-pointers (part.h)
     for(Part *p : parts) { p->owner = this; }
 
-    btCompoundShape *inS = new btCompoundShape(true, (int)parts.size());
-    std::vector<btScalar> masses(parts.size());
+    geomS = new btCompoundShape(false, (int)parts.size());
+    geomMasses.resize(parts.size());
     btScalar total = 0;
     for(size_t i = 0; i < parts.size(); i++) {
         Part *p = parts[i];
-        inS->addChildShape(toBt(p->localPos, p->localRot), p->body->shape);
+        geomS->addChildShape(toBt(p->localPos, p->localRot), p->body->shape);
         // effectiveMass: body mass + contained crew/inventory (part.h)
-        masses[i] = (btScalar)p->effectiveMass();
+        geomMasses[i] = (btScalar)p->effectiveMass();
         /* Bullet's calculatePrincipalAxisTransform btAsserts every child mass
            > 0, but btAssert compiles out unless BT_DEBUG is defined (btScalar.h)
            and we never define it, so that guard is not live in ANY config we
@@ -920,24 +921,27 @@ void Vehicle::rebuildCompound() {
            --mass-log would still report mass and hullmass agreeing.
            make_part asserts the def's mass and the save loader refuses negative
            contents, so a zero here means a Part was minted some other way. */
-        assert(masses[i] > 0 && "a part in the compound weighs nothing");
-        total += masses[i];
+        assert(geomMasses[i] > 0 && "a part in the compound weighs nothing");
+        total += geomMasses[i];
         compoundParts.push_back(p);
     }
 
     btVector3 inertiaDiag(0, 0, 0);
-    inS->calculatePrincipalAxisTransform(&masses[0], principal, inertiaDiag);
+    geomS->calculatePrincipalAxisTransform(&geomMasses[0], principal, inertiaDiag);
 
     /* Re-base the children into the COM/principal frame: left in S, the body's origin
        sits at the root part while its inertia is diagonal about the principal axes --
-       inconsistent under off-axis torque. */
-    btCompoundShape *nc = new btCompoundShape(true, inS->getNumChildShapes());
+       inconsistent under off-axis torque.
+       dynamicAabbTree=false: a compound's own dbvt only feeds queryAabb(), which
+       nothing in the Bullet we link ever calls on a shape -- the broadphase gives
+       the HULL one proxy for its whole AABB. Minting a node per child was pure
+       cost, and a burn-driven rebuild re-minted the whole tree every time. */
+    btCompoundShape *nc = new btCompoundShape(false, geomS->getNumChildShapes());
     const btTransform toBody = principal.inverse();
-    for(int i = 0; i < inS->getNumChildShapes(); i++) {
-        nc->addChildShape(toBody * inS->getChildTransform(i),
-                          inS->getChildShape(i));
+    for(int i = 0; i < geomS->getNumChildShapes(); i++) {
+        nc->addChildShape(toBody * geomS->getChildTransform(i),
+                          geomS->getChildShape(i));
     }
-    delete inS;
 
     hull = new Body;            // mesh/shader/texture stay null: drawn part by part
     hull->shape = nc;
@@ -954,6 +958,11 @@ void Vehicle::rebuildCompound() {
     glm::dvec3 pOrigin; glm::dmat3 pBasis;
     fromBt(principal, pOrigin, pBasis);
     hull->btBody->setWorldTransform(toBt(sPos + sRot * pOrigin, sRot * pBasis));
+    /* The ctor diagonalized the world tensor about the pose the body was MINTED
+       at (identity here), and btCollisionObject::setWorldTransform() does not
+       refresh it. Without this the ship answers torque with its principal axes
+       read as world axes until something calls proceedToTransform (#438). */
+    hull->btBody->updateInertiaTensor();
     if(have) {
         SetVelocity(hull, vCom + glm::cross(omega, sRot * (pOrigin - oldOrigin)));
         SetAngVelocity(hull, omega);
@@ -964,6 +973,61 @@ void Vehicle::rebuildCompound() {
 
     checkCompoundInvariants();
     assert(checkPartInvariants() && "containment invariant broken (see [part] above)");
+}
+
+/* Fuel burn: the MASSES move, the geometry does not, so the ship does not need
+   a new compound or a new rigid body. This re-solves the principal frame
+   against `geomS` -- the same shapes, poses and order the live compound was
+   built from -- re-bases that compound's children into the new frame, and
+   re-sets the body's mass props, pose and COM velocity. It stands in for the
+   rebuildCompound() this call would otherwise pay, so it must land on the same
+   numbers: same solve, same child poses, same pose/velocity carry. */
+bool Vehicle::refreshMassProps() {
+    if(hull == nullptr || hull->btBody == nullptr) { return false; }
+    btCompoundShape *nc = compoundShape();
+    if(nc == nullptr || geomS == nullptr
+       || geomS->getNumChildShapes() != (int)parts.size()
+       || nc->getNumChildShapes() != (int)parts.size()) { return false; }
+
+    geomMasses.resize(parts.size());
+    btScalar total = 0;
+    for(size_t i = 0; i < parts.size(); i++) {
+        // effectiveMass, exactly as rebuildCompound counts it
+        geomMasses[i] = (btScalar)parts[i]->effectiveMass();
+        assert(geomMasses[i] > 0 && "a part in the compound weighs nothing");
+        total += geomMasses[i];
+    }
+
+    /* Frame S and the velocities are read BEFORE `principal` moves: S is
+       derived from the body pose through the OLD principal. */
+    glm::dvec3 sPos, vCom, omega, oldOrigin;
+    glm::dmat3 sRot(1.0);
+    frameS(sPos, sRot);
+    vCom = GetVelocity(hull);
+    omega = GetAngVelocity(hull);
+    glm::dmat3 ignore;
+    fromBt(principal, oldOrigin, ignore);
+
+    btVector3 inertiaDiag(0, 0, 0);
+    geomS->calculatePrincipalAxisTransform(&geomMasses[0], principal, inertiaDiag);
+
+    const btTransform toBody = principal.inverse();
+    for(int i = 0; i < nc->getNumChildShapes(); i++) {
+        // shouldRecalculateLocalAabb=false: refresh the bounds once below rather
+        // than once per child.
+        nc->updateChildTransform(i, toBody * geomS->getChildTransform(i), false);
+    }
+    nc->recalculateLocalAabb();   // getAabb() reads the cached local bounds
+
+    hull->mass = (double)total;
+    hull->btBody->setMassProps(total, inertiaDiag);
+    glm::dvec3 pOrigin; glm::dmat3 pBasis;
+    fromBt(principal, pOrigin, pBasis);
+    hull->btBody->setWorldTransform(toBt(sPos + sRot * pOrigin, sRot * pBasis));
+    hull->btBody->updateInertiaTensor();
+    // The COM moved WITHIN S, so its world velocity changed by omega x shift.
+    SetVelocity(hull, vCom + glm::cross(omega, sRot * (pOrigin - oldOrigin)));
+    return true;
 }
 
 /* The silhouette inputs: the part set, each part's collision body, and its
@@ -1155,8 +1219,17 @@ void Vehicle::refreshCompound() {
     glm::dvec3 pOrigin; glm::dmat3 pBasis;
     fromBt(principal, pOrigin, pBasis);
     const double total = getMass();
-    if(glm::length(compoundCom() - pOrigin) > kComRebuildTol
-       || std::fabs(total - hull->mass) > kMassRebuildFrac * hull->mass) {
+    if(glm::length(compoundCom() - pOrigin) <= kComRebuildTol
+       && std::fabs(total - hull->mass) <= kMassRebuildFrac * hull->mass) {
+        return;
+    }
+    /* A burn is what usually trips that gate, and burning changes only the
+       masses: while the parts still fingerprint as the geometry the compound
+       and `geomS` were built from, update the SAME body in place. Staging,
+       docking and part damage change the fingerprint and pay the full rebuild;
+       so does anything that leaves the mirrors inconsistent. */
+    if(!(aeroGeomValid && aeroGeomFingerprint(parts) == aeroGeomKey)
+       || !refreshMassProps()) {
         rebuildCompound();
     }
 }
@@ -1247,6 +1320,58 @@ void Vehicle::checkCompoundInvariants() const {
                childPosErr, childTol, childRotErr);
         fflush(stdout);
         assert(false && "compound must reproduce the part assembly");
+    }
+
+    /* `geomS` is the mirror refreshMassProps() re-solves against, so it must
+       hold the same shapes at the same authored poses, in part order. It is
+       only ever rebuilt here, so a part that changed shape or mount without a
+       rebuild shows up here before a mass refresh can fly on a stale solve. */
+    if(geomS == nullptr || geomS->getNumChildShapes() != (int)parts.size()) {
+        printf("[compound] '%s': the S-frame geometry mirror holds %d children "
+               "for %zu parts\n", displayName().c_str(),
+               geomS ? geomS->getNumChildShapes() : -1, parts.size());
+        fflush(stdout);
+        assert(false && "the S-frame geometry mirror must mirror the parts");
+    } else {
+        for(size_t i = 0; i < parts.size(); i++) {
+            glm::dvec3 cp; glm::dmat3 cr;
+            fromBt(geomS->getChildTransform((int)i), cp, cr);
+            const Part *p = parts[i];
+            assert(geomS->getChildShape((int)i) == p->body->shape
+                   && "the S-frame mirror points at another part's shape");
+            assert(glm::length(cp - p->localPos) < 1e-12
+                   && "the S-frame mirror lags a part's mount");
+        }
+    }
+
+    /* The tensor Bullet actually answers torque with has to be the local
+       diagonal rotated into the body's ACTUAL pose -- setWorldTransform() does
+       not refresh it, so a rebuild that forgets updateInertiaTensor() leaves
+       the principal axes read as world axes (#438). */
+    glm::dvec3 wPos; glm::dmat3 wRot;
+    fromBt(hull->btBody->getWorldTransform(), wPos, wRot);
+    const btVector3 li = hull->btBody->getLocalInertia();
+    if(li.getX() > 0.0 && li.getY() > 0.0 && li.getZ() > 0.0) {
+        const glm::dmat3 localInv(1.0 / li.getX(), 0.0, 0.0,
+                                  0.0, 1.0 / li.getY(), 0.0,
+                                  0.0, 0.0, 1.0 / li.getZ());
+        const glm::dmat3 wantInv = wRot * localInv * glm::transpose(wRot);
+        const btMatrix3x3 &gotInv = hull->btBody->getInvInertiaTensorWorld();
+        double wInvErr = 0.0;
+        double wInvScale = 0.0;
+        for(int c = 0; c < 3; c++) {
+            for(int r = 0; r < 3; r++) {
+                wInvErr = std::max(wInvErr, std::fabs(gotInv[r][c] - wantInv[r][c]));
+                wInvScale = std::max(wInvScale, std::fabs(wantInv[r][c]));
+            }
+        }
+        if(wInvErr > 1e-12 * std::max(1.0, wInvScale)) {
+            printf("[compound] '%s': the world inverse inertia is stale (max err "
+                   "%.4g, scale %.4g) -- the pose was set without refreshing it\n",
+                   displayName().c_str(), wInvErr, wInvScale);
+            fflush(stdout);
+            assert(false && "the world inverse inertia must follow the body pose");
+        }
     }
 }
 
@@ -1805,6 +1930,8 @@ Vehicle::Vehicle() { }
 Vehicle::~Vehicle() {
     if(hullInWorld()) { RemoveBody(hull); }
     delete hull; hull = nullptr;
+    // geomS only borrows the part shapes; deleting it frees no part geometry.
+    delete geomS; geomS = nullptr;
     compoundParts.clear();
     /* ~Part owns what it contains, so a capsule frees its seat occupants
        (part.h). No crew list to walk: a seated kerbal is not a Vehicle. */

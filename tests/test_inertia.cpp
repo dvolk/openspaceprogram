@@ -660,6 +660,265 @@ static void test_refresh() {
     destroyShip(s);
 }
 
+/* --- the burn path: refresh the mass WITHOUT rebuilding -------------------
+
+   Fuel burn is what usually trips refreshCompound()'s drift gate, and it moves
+   nothing but the masses. Minting a fresh compound shape, a fresh rigid body
+   and their broadphase proxies every time a tank loses 0.1% of its mass is
+   pure churn, so Vehicle::refreshMassProps() re-solves the SAME Bullet
+   primitive against the held S-frame shape mirror and updates the live body in
+   place. The bar is that it must be indistinguishable from the rebuild it
+   replaces -- same principal frame, same child poses, same mass props, same
+   world pose and COM velocity -- so this builds the same ship twice, drains
+   both the same way, takes the refresh on one and the full rebuild on the
+   other, and compares everything bit for bit.
+
+   Deliberately placed at a ROTATED frame S with the ship moving and spinning:
+   a rigid body's transform IS its COM transform, so a body frame that is not
+   world-aligned is where a mis-based child or a forgotten
+   updateInertiaTensor() shows up. The world inverse inertia is also checked in
+   absolute terms, not just between the two ships: btCollisionObject's
+   setWorldTransform() does NOT refresh that tensor, and rebuildCompound()
+   mints its body at the identity pose, so a rebuild that skips the refresh
+   leaves the ship answering torque with its principal axes read as world axes
+   (#438).
+
+   Frame S is the anchor: a mass shift moves the COM WITHIN S, so the hull's
+   transform moves with it and every part's WORLD pose has to come out
+   unchanged. That is the player-visible half of the pin -- a burn must not
+   teleport the ship.                                                        */
+#define CHECK_EXACT(actual, expected, msg)                                     \
+    do {                                                                        \
+        g_checks++;                                                             \
+        if (!((actual) == (expected))) {                                        \
+            g_failures++;                                                       \
+            printf("FAIL: %s (got %.17g, want %.17g)\n", (msg),                 \
+                   (double)(actual), (double)(expected));                       \
+        }                                                                       \
+    } while (0)
+
+/* The same ship, from the same numbers, every time: the two halves of the
+   comparison only mean something if their inputs are identical. */
+static Ship buildBurnShip() {
+    const glm::dvec3 sPos(1200.0, 640.0, -350.0);
+    const glm::dmat3 sRot = glm::dmat3(
+        glm::angleAxis(0.6, glm::dvec3(0.0, 1.0, 0.0))
+      * glm::angleAxis(0.4, glm::dvec3(1.0, 0.0, 0.0)));
+    Ship s; s.v = new TestVehicle;
+    addBox(s, "capsule",  300.0, 1.0, 1.0, 1.2,
+           sPos + sRot * glm::dvec3(0.0, 0.0,  6.0), sRot);
+    addBox(s, "tank",    9000.0, 2.0, 2.0, 2.5,
+           sPos + sRot * glm::dvec3(0.0, 0.0,  0.0), sRot);
+    addBox(s, "engine",  1500.0, 1.5, 1.5, 1.0,
+           sPos + sRot * glm::dvec3(0.0, 0.0, -4.0), sRot);
+    finishShip(s);
+    SetVelocity(s.v->hull, glm::dvec3(120.0, -30.0, 410.0));
+    SetAngVelocity(s.v->hull, glm::dvec3(0.02, -0.11, 0.05));
+    return s;
+}
+
+/* Everything a mass refresh could get wrong, read off the live body. */
+struct HullSnap {
+    glm::dvec3 pOrigin; glm::dmat3 pBasis;      // the principal frame
+    glm::dvec3 localInertia;                    // Bullet's, about that frame
+    double mass;
+    glm::dvec3 wPos; glm::dmat3 wRot;           // the body pose == COM pose
+    glm::dvec3 vel, omega;
+    glm::dmat3 invInertiaWorld;                 // the tensor torque answers with
+    std::vector<glm::dvec3> childPos;
+    std::vector<glm::dmat3> childRot;
+};
+
+static HullSnap snapHull(Vehicle *v) {
+    HullSnap h;
+    Vehicle::fromBt(v->principal, h.pOrigin, h.pBasis);
+    const btVector3 li = v->hull->btBody->getLocalInertia();
+    h.localInertia = glm::dvec3(li.getX(), li.getY(), li.getZ());
+    h.mass = v->hull->mass;
+    Vehicle::fromBt(v->hull->btBody->getWorldTransform(), h.wPos, h.wRot);
+    h.vel = GetVelocity(v->hull);
+    h.omega = GetAngVelocity(v->hull);
+    // btMatrix3x3 is row-major, glm column-major: fill by columns.
+    const btMatrix3x3 &m = v->hull->btBody->getInvInertiaTensorWorld();
+    h.invInertiaWorld = glm::dmat3(m[0][0], m[1][0], m[2][0],
+                                   m[0][1], m[1][1], m[2][1],
+                                   m[0][2], m[1][2], m[2][2]);
+    btCompoundShape *cs = static_cast<btCompoundShape *>(v->hull->shape);
+    for(int i = 0; i < cs->getNumChildShapes(); i++) {
+        glm::dvec3 cp; glm::dmat3 cr;
+        Vehicle::fromBt(cs->getChildTransform(i), cp, cr);
+        h.childPos.push_back(cp);
+        h.childRot.push_back(cr);
+    }
+    return h;
+}
+
+static void cmpHull(const HullSnap &a, const HullSnap &b, const char *what) {
+    char buf[160];
+    CHECK_EXACT(a.mass, b.mass, what);
+    for(int c = 0; c < 3; c++) {
+        snprintf(buf, sizeof(buf), "%s: principal origin %d", what, c);
+        CHECK_EXACT(a.pOrigin[c], b.pOrigin[c], buf);
+        snprintf(buf, sizeof(buf), "%s: local inertia %d", what, c);
+        CHECK_EXACT(a.localInertia[c], b.localInertia[c], buf);
+        snprintf(buf, sizeof(buf), "%s: world pos %d", what, c);
+        CHECK_EXACT(a.wPos[c], b.wPos[c], buf);
+        snprintf(buf, sizeof(buf), "%s: velocity %d", what, c);
+        CHECK_EXACT(a.vel[c], b.vel[c], buf);
+        snprintf(buf, sizeof(buf), "%s: angular velocity %d", what, c);
+        CHECK_EXACT(a.omega[c], b.omega[c], buf);
+        for(int r = 0; r < 3; r++) {
+            snprintf(buf, sizeof(buf), "%s: principal basis %d %d", what, c, r);
+            CHECK_EXACT(a.pBasis[c][r], b.pBasis[c][r], buf);
+            snprintf(buf, sizeof(buf), "%s: world rot %d %d", what, c, r);
+            CHECK_EXACT(a.wRot[c][r], b.wRot[c][r], buf);
+            snprintf(buf, sizeof(buf), "%s: world inv inertia %d %d", what, c, r);
+            CHECK_EXACT(a.invInertiaWorld[c][r], b.invInertiaWorld[c][r], buf);
+        }
+        for(size_t i = 0; i < a.childPos.size(); i++) {
+            snprintf(buf, sizeof(buf), "%s: child %zu pos %d", what, i, c);
+            CHECK_EXACT(a.childPos[i][c], b.childPos[i][c], buf);
+            for(int r = 0; r < 3; r++) {
+                snprintf(buf, sizeof(buf), "%s: child %zu rot %d %d", what, i, c, r);
+                CHECK_EXACT(a.childRot[i][c][r], b.childRot[i][c][r], buf);
+            }
+        }
+    }
+}
+
+/* The part poses the world sees. Frame S is the anchor, so a mass-only change
+   must leave every hull's position AND attitude exactly where they were. */
+struct PartPose { glm::dvec3 pos; glm::dmat3 rot; };
+
+static std::vector<PartPose> partPoses(Ship &s) {
+    std::vector<PartPose> out;
+    for(Part *p : s.v->parts) {
+        PartPose pp;
+        s.v->partWorldPose(p, pp.pos, pp.rot);
+        out.push_back(pp);
+    }
+    return out;
+}
+
+static void cmpPartPoses(Ship &s, const std::vector<PartPose> &want,
+                         const char *msg) {
+    char buf[128];
+    for(size_t i = 0; i < s.v->parts.size(); i++) {
+        PartPose got;
+        s.v->partWorldPose(s.v->parts[i], got.pos, got.rot);
+        const double tol = 1e-9 * std::max(1.0, glm::length(want[i].pos));
+        for(int c = 0; c < 3; c++) {
+            snprintf(buf, sizeof(buf), "%s: part %zu pos %d", msg, i, c);
+            CHECK_NEAR(got.pos[c], want[i].pos[c], tol, buf);
+            for(int r = 0; r < 3; r++) {
+                snprintf(buf, sizeof(buf), "%s: part %zu rot %d %d", msg, i, c, r);
+                CHECK_NEAR(got.rot[c][r], want[i].rot[c][r], 1e-12, buf);
+            }
+        }
+    }
+}
+
+/* The absolute #438 pin: the tensor Bullet answers torque with must be the
+   body's local diagonal inverse, rotated into the pose the body is actually
+   at. */
+static void checkWorldInvInertia(Vehicle *v, const char *msg) {
+    const HullSnap h = snapHull(v);
+    const glm::dmat3 localInv(1.0 / h.localInertia.x, 0.0, 0.0,
+                              0.0, 1.0 / h.localInertia.y, 0.0,
+                              0.0, 0.0, 1.0 / h.localInertia.z);
+    const glm::dmat3 want = h.wRot * localInv * glm::transpose(h.wRot);
+    char buf[128];
+    for(int c = 0; c < 3; c++) {
+        for(int r = 0; r < 3; r++) {
+            snprintf(buf, sizeof(buf), "%s: inv inertia [%d][%d]", msg, c, r);
+            CHECK_NEAR(h.invInertiaWorld[c][r], want[c][r],
+                       1e-9 * std::max(1.0, std::fabs(want[c][r])), buf);
+        }
+    }
+}
+
+static void test_mass_refresh() {
+    Ship a = buildBurnShip();
+    Ship b = buildBurnShip();
+
+    const std::vector<PartPose> posesA0 = partPoses(a);
+    const std::vector<PartPose> posesB0 = partPoses(b);
+    const HullSnap before = snapHull(a.v);
+
+    /* Burn 2% of the tank: 20x over kMassRebuildFrac, and the COM drops
+       ~0.1 m -- far over kComRebuildTol, so this is what trips the gate. */
+    a.v->parts[1]->body->mass *= 0.98;
+    b.v->parts[1]->body->mass *= 0.98;
+
+    CHECK_TRUE(a.v->refreshMassProps(),
+               "burn refresh: only masses moved, so the in-place refresh applies");
+    b.v->rebuildCompound();
+
+    const HullSnap ha = snapHull(a.v), hb = snapHull(b.v);
+    cmpHull(ha, hb, "burn: the refresh must equal the rebuild, bit for bit");
+
+    /* Not a vacuous pass: the burn really did move things. */
+    CHECK_TRUE(!(ha.pOrigin == before.pOrigin),
+               "burn: the drain must move the COM (else nothing was tested)");
+    CHECK_TRUE(ha.mass != before.mass, "burn: the drain must change the mass");
+    CHECK_TRUE(!(ha.localInertia == before.localInertia),
+               "burn: the drain must change the inertia");
+    CHECK_TRUE(!(ha.childRot == before.childRot),
+               "burn: the children must be re-based into the new principal frame");
+
+    /* And the ship did not teleport: frame S held, every hull stayed put. */
+    cmpPartPoses(a, posesA0, "burn: the refresh must not move the hulls");
+    cmpPartPoses(b, posesB0, "burn: the rebuild must not move the hulls");
+
+    checkWorldInvInertia(a.v, "burn refresh");
+    checkWorldInvInertia(b.v, "burn rebuild");
+
+    /* The mirrors a later refresh reads must still agree with the parts. That
+       assert runs inside checkCompoundInvariants, so reaching here is the
+       pass. */
+    a.v->checkCompoundInvariants();
+
+    destroyShip(a);
+    destroyShip(b);
+
+    /* Routing: burn-driven drift keeps the live body; a geometry change does
+       not. Only the full rebuild may swap the rigid body out from under the
+       physics world. */
+    Ship c = buildBurnShip();
+    btRigidBody *bodyBefore = c.v->hull->btBody;
+    const std::vector<PartPose> posesC0 = partPoses(c);
+    c.v->parts[1]->body->mass *= 0.98;
+    c.v->refreshCompound();
+    g_checks++;
+    if(c.v->hull->btBody != bodyBefore) {
+        g_failures++;
+        printf("FAIL: burn routing: refreshCompound rebuilt the body for a "
+               "mass-only drift\n");
+    }
+    const double burnt = c.v->getMass();
+    CHECK_NEAR(c.v->hull->mass, burnt, 1e-6 * burnt,
+               "burn routing: the live body carries the burnt mass");
+    cmpPartPoses(c, posesC0, "burn routing: the hulls stay put");
+    checkWorldInvInertia(c.v, "burn routing");
+
+    /* A mount moved is geometry, not mass: the fingerprint no longer matches,
+       so the full rebuild must run. The pointer cannot witness that -- the
+       allocator hands the fresh Body the address the old one just freed -- so
+       read the compound instead: only a rebuild re-mints the S-frame mirror
+       the children are re-based from, so a mass-only refresh here would leave
+       the moved hull 1 m off where it is authored. */
+    c.v->parts[0]->localPos += glm::dvec3(0.0, 0.0, 1.0);
+    c.v->refreshCompound();
+    {
+        btCompoundShape *cs = static_cast<btCompoundShape *>(c.v->hull->shape);
+        glm::dvec3 cp; glm::dmat3 cr;
+        Vehicle::fromBt(c.v->principal * cs->getChildTransform(0), cp, cr);
+        CHECK_NEAR(cp.z, c.v->parts[0]->localPos.z, 1e-9,
+                   "geometry routing: the compound must carry the moved mount");
+    }
+    destroyShip(c);
+}
+
 /* --- a seated kerbal (the containment edge's mass) -----------------------
 
    The compound's mass is the sum of each part's effectiveMass -- its own body
@@ -734,6 +993,7 @@ int main() {
     test_general_assembly();
     test_contained_kerbal();
     test_refresh();
+    test_mass_refresh();
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }
