@@ -706,9 +706,10 @@ void paintWorld(Game &g) {
                 const double N = p->rcsFired[ni];
                 if(N <= 1e-6) { continue; }  // NNLS dust is not a visible firing
                 if(!posed) { ship->partPoseRelCom(p, podPos, podRot); posed = true; }
-                /* The strip extends toward -z, so its z rides the nozzle's
-                   FORCE dir: the flame leaves backwards, opposite the push. */
-                const glm::dvec3 zw = glm::normalize(podRot * p->def->rcsNozzleDir(ni));
+                /* The strip extends toward -z, so its z rides the FORCE dir
+                   (= -bell dir: rcs_nozzles are exhaust rays, shipdef.h):
+                   the flame runs out along the fired bell's own ray. */
+                const glm::dvec3 zw = -glm::normalize(podRot * p->def->rcsNozzleDir(ni));
                 /* The strip is a one-sided flat quad: seed its width axis
                    from the camera (as the COM puff does) so it never goes
                    edge-on and collapses to a sliver. */
@@ -717,13 +718,14 @@ void paintWorld(Game &g) {
                 const glm::dvec3 xw = glm::normalize(seed - glm::dot(seed, zw) * zw);
                 const glm::dmat3 basis(xw, glm::cross(zw, xw), zw);
                 /* engine_plume.obj units: half-width 2, strip spans z -1..-5
-                   (length 4, a 1-unit gap from the pivot). Offset by sz to
-                   close the gap so it hangs off the pod center: the flame is
-                   4*sz long -- ~0.8 m at the box's 60 N, ~1.4 m at a legacy
-                   pod's 200 N. */
+                   (length 4, a 1-unit gap from the pivot). Start the strip
+                   AT THE BELL'S FACE (part radius out along the ray, then
+                   close the mesh's own gap): the flame is 4*sz long --
+                   ~0.8 m at the box's 60 N, ~1.4 m at a legacy pod's 200 N. */
                 const double sz = 0.025 * std::sqrt(N);
                 const double sx = 0.25 * sz;
-                glm::dmat4 Model = glm::translate(podPos + zw * sz) * glm::dmat4(basis)
+                glm::dmat4 Model = glm::translate(podPos + zw * (sz - p->def->radius))
+                    * glm::dmat4(basis)
                     * glm::dmat4(glm::dmat3(sx, 0.0, 0.0,
                                             0.0, sx, 0.0,
                                             0.0, 0.0, sz));

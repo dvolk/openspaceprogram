@@ -2177,9 +2177,10 @@ double Vehicle::maxRcsThrust() {
     return t;
 }
 
-/* Log label for a nozzle direction (part-local): "+Z"-style, the axis of the
-   biggest component. Authored dirs are axis-aligned today; a diagonal one
-   still labels by its dominant axis. */
+/* Log label for a BELL (part-local): "+Z"-style, the axis of the biggest
+   component -- the nozzle that fired, NOT the force: [rcs] thrust acts along
+   the OPPOSITE of the label. Authored bells are axis-aligned today; a
+   diagonal one still labels by its dominant axis. */
 static std::string nozzleTag(const glm::dvec3 &d) {
     const int ax = (std::fabs(d.x) >= std::fabs(d.y) && std::fabs(d.x) >= std::fabs(d.z)) ? 0
                  : (std::fabs(d.y) >= std::fabs(d.z)) ? 1 : 2;
@@ -2205,9 +2206,12 @@ void Vehicle::applyRcsForce(double h) {
     const glm::dvec3 Fdem = dirW * Fmax;  // full authority on the key, as before
     lastRcsCmd = Fdem;
 
-    /* Nozzle model (#428): authored dirs (a 5-dir box's exposed faces) in the
-       part's LOCAL frame; a pod without dirs is the legacy omnidirectional
-       unit -- six dirs along the part's own axes. rcs_thrust is PER nozzle. */
+    /* Nozzle model (#428): authored dirs are the pods' BELL directions
+       (exhaust rays, facing out of the exposed faces) in the part's LOCAL
+       frame; the ship is pushed OPPOSITE a bell. A pod without dirs is the
+       legacy omnidirectional unit -- six dirs along the part's own axes
+       (symmetric, so the sign flip is invisible there). rcs_thrust is PER
+       nozzle. */
     std::vector<RcsNozzle> noz;
     std::vector<size_t> nozPart;   // nozzle -> index into parts
     std::vector<size_t> nozLocal;  // nozzle -> its slot on that part (Part::rcsFired)
@@ -2222,7 +2226,8 @@ void Vehicle::applyRcsForce(double h) {
             const double L = glm::length(d);
             if(L <= 1e-9) { return; }  // degenerate mount: drop that nozzle
             d /= L;
-            noz.push_back({ d, partPos(p) - com, p->rcsThrust(), nozzleTag(local) });
+            // Reaction: a bell throwing gas along d pushes the ship along -d.
+            noz.push_back({ -d, partPos(p) - com, p->rcsThrust(), nozzleTag(local) });
             nozPart.push_back(pi);
             nozLocal.push_back(localIdx);
         };

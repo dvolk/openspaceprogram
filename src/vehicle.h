@@ -537,7 +537,8 @@ public:
        idiom as lastControlDeflections: empty = no translation requested). */
     struct RcsNozzleLog {
         std::string part;   // the pod's def name
-        std::string tag;    // nozzle direction label, local frame ("+Z")
+        std::string tag;    // the BELL that fired (part-local, "+Z"); its
+                            // force acts along the OPPOSITE of the tag
         double thrust;      // N actually fired
     };
     std::vector<RcsNozzleLog> lastRcsNozzles;

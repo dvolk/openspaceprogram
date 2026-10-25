@@ -160,12 +160,15 @@ struct PartDef {
     double rcs_thrust;        // N; > 0 -> RCS translation authority (hydrazine mono).
                               // Rated thrust PER ACTUATOR (per nozzle; for a
                               // nozzle-less legacy pod, per axis).
-    /* Nozzle thrust directions in the part's LOCAL frame, unit-normalized
-       (src/rcs.h allocator, #428): a nozzle is one-way, and a 5-direction
-       box omits its mount face. For a surface-mounted part the mount side is
-       the SURFACE NODE's side -- the synthesized srf node points -X, so the
-       omitted dir is -X (child +X faces away from the hull). Empty -> legacy
-       omnidirectional pod: six directions along the part's own axes. */
+    /* Nozzle BELL (exhaust-ray) directions in the part's LOCAL frame,
+       unit-normalized (src/rcs.h allocator, #428): a bell throws gas along
+       its dir and the ship is pushed OPPOSITE it (reaction), so dirs are NOT
+       force directions. Bells face out of the pod's faces; a 5-direction
+       box omits its mount face (a bell there would fire into the hull).
+       For a surface-mounted part the mount side is the SURFACE NODE's side
+       -- the synthesized srf node points -X, so the omitted bell is -X
+       (child +X faces away from the hull). Empty -> legacy omnidirectional
+       pod: six dirs along the part's own axes (symmetric pairs). */
     std::vector<glm::dvec3> rcs_nozzles;
     /* The ONE nozzle enumeration (parsed order capped at kMaxRcsNozzles):
        the sim builds its allocator columns in this order and render draws a

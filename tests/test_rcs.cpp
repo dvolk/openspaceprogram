@@ -95,8 +95,12 @@ static void test_pair_cancels() {
 }
 
 static void test_missing_face_is_honest() {
-    printf("== rcsAllocate: the mount face has no nozzle (the 5-dir cone) ==\n");
-    /* The box: dirs +/-X, +/-Y, +Z; demand straight -Z (into the mount). */
+    printf("== rcsAllocate: no nozzle means no thrust (the honest cone) ==\n");
+    /* Allocator view: dir = the FORCE a nozzle delivers. A real 5-bell box
+       omits its mount BELL, so the force it lacks points AWAY from the
+       mount; this stand-in box just omits a -Z nozzle -- what's pinned is
+       "no thrust outside the installed nozzles' cone", by whatever
+       geometry the part happens to have. */
     std::vector<RcsNozzle> box;
     const glm::dvec3 dirs[5] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1}};
     for(const glm::dvec3 &d : dirs) { box.push_back(nz(d, glm::dvec3(0,0,0), 60.0)); }

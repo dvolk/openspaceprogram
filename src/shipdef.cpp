@@ -139,8 +139,10 @@ PartsCatalog load_parts_catalog(const char *path) {
             throw std::runtime_error(ctx + "\"rcs_thrust\" must be >= 0 (N)");
         }
 
-        /* Nozzle directions (part-local, unit; src/rcs.h #428). A zero vector
-           or a malformed triple is authored garbage: refuse the load. */
+        /* Nozzle BELL dirs (exhaust rays, part-local, unit; the ship is
+           pushed opposite -- see PartDef::rcs_nozzles, src/rcs.h #428). A
+           zero vector or a malformed triple is authored garbage: refuse
+           the load. */
         d.rcs_nozzles.clear();
         if(pv.contains("rcs_nozzle_dirs")) {
             if(!pv["rcs_nozzle_dirs"].is_array()) {
