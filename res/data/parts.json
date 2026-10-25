@@ -740,7 +740,7 @@
       "mesh": "meshes/rcs_box.obj",
       "texture": "textures/rcs_box.png",
       "mass": 12.0,
-      "radius": 0.2,
+      "radius": 0.15,
       "height": 0.3,
       "rcs_thrust": 60,
       "rcs_nozzle_dirs": [
