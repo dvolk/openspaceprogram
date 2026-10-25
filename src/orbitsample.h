@@ -24,6 +24,50 @@ inline bool orbitKeyEqDir(const glm::dvec3 &u, const glm::dvec3 &v) {
     return glm::dot(u, v) >= 1.0 - 1e-6;
 }
 
+// Sample an OPEN trajectory as a finite arc in TRUE ANOMALY, truncated at
+// r_cap, symmetric about periapsis. Nothing to cache (no period). r_cap must
+// be >= the ship's current radius so the ship lies on the arc. Empty for a
+// closed orbit or degenerate state. Into appends nothing: pts is cleared and
+// (when N fits) reuses its capacity.
+inline void sampleOpenTrajectoryInto(const glm::dvec3 &pos, const glm::dvec3 &vel,
+                                     double mu, int N, double r_cap,
+                                     std::vector<glm::dvec3> &pts) {
+    pts.clear();
+    if(!(mu > 0.0) || N < 2 || !(r_cap > 0.0)) { return; }
+    const double r0 = glm::length(pos);
+    if(r0 < 1e-9) { return; }
+    const glm::dvec3 h = glm::cross(pos, vel);
+    const double h_len = glm::length(h);
+    if(h_len < 1e-9) { return; }   // radial: no conic
+    const OrbitElements o = computeOrbitElements(pos, vel, mu);
+    if(!(o.ecc >= 1.0)) { return; }  // closed orbit, not an open arc
+    const double e = o.ecc;
+    const double p = h_len * h_len / mu;   // semi-latus rectum, always > 0
+    // Truncate where r(nu) reaches r_cap; clamp guards the e ~ 1 edge.
+    const double nu_cap = std::acos(glm::clamp((p / r_cap - 1.0) / e, -1.0, 1.0));
+    const glm::dvec3 hhat = h / h_len;
+    const glm::dvec3 evec = glm::cross(vel, h) / mu - pos / r0;
+    const double e_len = glm::length(evec);
+    if(e_len < 1e-9) { return; }
+    const glm::dvec3 rhat_p = evec / e_len;
+    const glm::dvec3 thathat = glm::cross(hhat, rhat_p);
+    pts.reserve(N);
+    for(int i = 0; i < N; i++) {
+        const double nu = -nu_cap + (2.0 * nu_cap) * (double)i / (N - 1);
+        const double r = p / (1.0 + e * std::cos(nu));
+        pts.push_back(r * (std::cos(nu) * rhat_p + std::sin(nu) * thathat));
+    }
+}
+
+inline std::vector<glm::dvec3> sampleOpenTrajectory(const glm::dvec3 &pos,
+                                                     const glm::dvec3 &vel,
+                                                     double mu, int N,
+                                                     double r_cap) {
+    std::vector<glm::dvec3> pts;
+    sampleOpenTrajectoryInto(pos, vel, mu, N, r_cap, pts);
+    return pts;
+}
+
 // One cached orbit sampling. Reuse one instance per orbiting body.
 struct OrbitSampleCache {
     bool valid = false;
@@ -34,6 +78,19 @@ struct OrbitSampleCache {
     int N = 0;
     double apoapsis_r = -1.0;  // cheap LOD / view-cull input; radius, not altitude
     std::vector<glm::dvec3> pts;  // in the focus's inertial frame
+
+    // Open arc: no cache key to check (off rails the arc moves every frame),
+    // but writing into this entry's pts reuses its capacity, so the per-frame
+    // map redraw stops malloc-ing. Leaves the entry unusable for closed
+    // sampling (valid=false), as the closed path does for an open state.
+    const std::vector<glm::dvec3> &sampleOpen(const glm::dvec3 &pos,
+                                              const glm::dvec3 &vel, double mu,
+                                              int N, double r_cap) {
+        sampleOpenTrajectoryInto(pos, vel, mu, N, r_cap, pts);
+        valid = false;
+        apoapsis_r = -1.0;
+        return pts;
+    }
 
     // use_cache: caller decides (a ship passes its onRails flag; off rails
     // the orbit is moving, so re-sample every frame). On a near-circle
@@ -117,41 +174,7 @@ inline int orbitSamplesForRadius(double r_px) {
     return 64;
 }
 
-// Sample an OPEN trajectory as a finite arc in TRUE ANOMALY, truncated at
-// r_cap, symmetric about periapsis. Nothing to cache (no period). r_cap must
-// be >= the ship's current radius so the ship lies on the arc. Empty for a
-// closed orbit or degenerate state.
-inline std::vector<glm::dvec3> sampleOpenTrajectory(const glm::dvec3 &pos,
-                                                     const glm::dvec3 &vel,
-                                                     double mu, int N,
-                                                     double r_cap) {
-    std::vector<glm::dvec3> pts;
-    if(!(mu > 0.0) || N < 2 || !(r_cap > 0.0)) { return pts; }
-    const double r0 = glm::length(pos);
-    if(r0 < 1e-9) { return pts; }
-    const glm::dvec3 h = glm::cross(pos, vel);
-    const double h_len = glm::length(h);
-    if(h_len < 1e-9) { return pts; }   // radial: no conic
-    const OrbitElements o = computeOrbitElements(pos, vel, mu);
-    if(!(o.ecc >= 1.0)) { return pts; }  // closed orbit, not an open arc
-    const double e = o.ecc;
-    const double p = h_len * h_len / mu;   // semi-latus rectum, always > 0
-    // Truncate where r(nu) reaches r_cap; clamp guards the e ~ 1 edge.
-    const double nu_cap = std::acos(glm::clamp((p / r_cap - 1.0) / e, -1.0, 1.0));
-    const glm::dvec3 hhat = h / h_len;
-    const glm::dvec3 evec = glm::cross(vel, h) / mu - pos / r0;
-    const double e_len = glm::length(evec);
-    if(e_len < 1e-9) { return pts; }
-    const glm::dvec3 rhat_p = evec / e_len;
-    const glm::dvec3 thathat = glm::cross(hhat, rhat_p);
-    pts.reserve(N);
-    for(int i = 0; i < N; i++) {
-        const double nu = -nu_cap + (2.0 * nu_cap) * (double)i / (N - 1);
-        const double r = p / (1.0 + e * std::cos(nu));
-        pts.push_back(r * (std::cos(nu) * rhat_p + std::sin(nu) * thathat));
-    }
-    return pts;
-}
+// Sample an OPEN trajectory: see sampleOpenTrajectoryInto above the cache.
 
 // Sample a TRANSFER CONIC arc (departure state propagated over tof) as N+1
 // points, even in ANOMALY (endpoints exactly at departure / arrival).

@@ -23,6 +23,7 @@
 #include "btcommon.h"
 #include "body.h"
 #include "physics.h"
+#include "rcs.h"      // the RCS nozzle allocator + per-substep Scratch
 #include "shipdef.h"
 #include "part.h"
 #include "terrain.h"
@@ -139,9 +140,14 @@ public:
     std::vector<Part *> compoundParts;
 
     /* The union of the part collision hulls, in frame S, reduced to extreme
-       points; rebuilt with the compound. applyAeroForce projects it for the drag
-       silhouette -- AREA is rotation-invariant, so only v̂ rotates into S. */
+       points; rebuilt when the GEOMETRY changes. applyAeroForce projects it
+       for the drag silhouette -- AREA is rotation-invariant, so only v̂
+       rotates into S. Geometry = the part set + their mounts: mass (fuel
+       burn, the usual reason refreshCompound rebuilds) does NOT change the
+       silhouette, so the rebuild is fingerprint-gated. */
     std::vector<glm::dvec3> aeroHull;
+    uint64_t aeroGeomKey = 0;      // fingerprint aeroHull was last built from
+    bool aeroGeomValid = false;    // false = no hull computed yet
     void rebuildAeroHull();
 
     /* In the physics world? Asked of Bullet, not a flag. */
@@ -552,6 +558,14 @@ public:
     Part *firstRcsPart();
     double maxRcsThrust();
     void applyRcsForce(double h);
+    /* Reused solve + enumeration buffers: applyRcsForce runs EVERY sim
+       substep, so these persist (capacity only grows) and the hot path
+       allocates nothing after warmup. Only applyRcsForce touches them. */
+    rcs::Scratch rcsScratch;
+    std::vector<RcsNozzle> rcsNoz;        // this substep's nozzles
+    std::vector<size_t> rcsNozPart;      // nozzle -> index into parts
+    std::vector<size_t> rcsNozLocal;     // nozzle -> slot on that part (Part::rcsFired)
+    std::vector<glm::dvec3> rcsFpart;    // per-part summed force, parts-sized
     /* s, hydrazine efficiency -- the EVA suit's value. */
     static constexpr double kRcsIsp = 220.0;
 

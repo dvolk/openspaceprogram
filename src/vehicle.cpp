@@ -2,8 +2,10 @@
 #include "vehicle.h"
 
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <map>
@@ -958,7 +960,37 @@ void Vehicle::rebuildCompound() {
     assert(checkPartInvariants() && "containment invariant broken (see [part] above)");
 }
 
+/* The silhouette inputs: the part set, each part's collision body, and its
+   mount. Anything that changes what the ship presents to the air changes
+   this fingerprint; fuel burn (mass, and the COM shift that makes
+   refreshCompound rebuild) does not. splitmix64 mixing; doubles enter as
+   exact bits, so a collision means the geometry was bit-identical anyway
+   (modulo 2^64 bad luck). */
+static uint64_t aeroGeomFingerprint(const std::vector<Part *> &parts) {
+    const auto mix = [](uint64_t h, uint64_t v) {
+        uint64_t x = h ^ (v + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2));
+        x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ull;
+        x = (x ^ (x >> 27)) * 0x94d049bb133111ebull;
+        return x ^ (x >> 31);
+    };
+    uint64_t h = mix(0, (uint64_t)parts.size());
+    for(const Part *p : parts) {
+        h = mix(h, (uint64_t)(uintptr_t)p->body);
+        for(int i = 0; i < 3; i++) { h = mix(h, std::bit_cast<uint64_t>(p->localPos[i])); }
+        for(int c = 0; c < 3; c++) {
+            for(int r = 0; r < 3; r++) { h = mix(h, std::bit_cast<uint64_t>(p->localRot[c][r])); }
+        }
+    }
+    return h;
+}
+
 void Vehicle::rebuildAeroHull() {
+    // Gate: a compound rebuild driven by mass drift (the common burn case)
+    // must not pay for the convex hull again; only a GEOMETRY change does.
+    const uint64_t key = aeroGeomFingerprint(parts);
+    if(aeroGeomValid && key == aeroGeomKey) { return; }
+    aeroGeomKey = key;
+    aeroGeomValid = true;  // every exit below leaves the hull right for this key
     aeroHull.clear();
     size_t cap = 0;
     for(Part *p : parts) {
@@ -2220,10 +2252,14 @@ void Vehicle::applyRcsForce(double h) {
        frame; the ship is pushed OPPOSITE a bell. A pod without dirs is the
        legacy omnidirectional unit -- six dirs along the part's own axes
        (symmetric, so the sign flip is invisible there). rcs_thrust is PER
-       nozzle. */
-    std::vector<RcsNozzle> noz;
-    std::vector<size_t> nozPart;   // nozzle -> index into parts
-    std::vector<size_t> nozLocal;  // nozzle -> its slot on that part (Part::rcsFired)
+       nozzle. The enumeration buffers are members (rcsNoz...): this runs
+       every substep and must not malloc. */
+    std::vector<RcsNozzle> &noz = rcsNoz;
+    std::vector<size_t> &nozPart = rcsNozPart;
+    std::vector<size_t> &nozLocal = rcsNozLocal;
+    noz.clear();
+    nozPart.clear();
+    nozLocal.clear();
     const glm::dvec3 com = comPos();
     for(size_t pi = 0; pi < parts.size(); pi++) {
         const Part *p = parts[pi];
@@ -2248,7 +2284,8 @@ void Vehicle::applyRcsForce(double h) {
     }
     if(noz.empty()) { return; }
 
-    const std::vector<double> c = rcsAllocate(noz, Fdem);
+    rcsAllocateInto(noz, Fdem, rcsScratch);
+    const std::vector<double> &c = rcsScratch.c;
 
     /* Fuel: hydrazine mono, flow from the FIRING thrust (drain-or-nothing,
        as the engines do it). */
@@ -2264,7 +2301,8 @@ void Vehicle::applyRcsForce(double h) {
     /* Force AT THE POD (rel COM), not the COM: an off-center pod translates
        AND spins the ship. The allocator cancels spin where it can; the rest
        is the honest physics #428 exists to deliver. */
-    std::vector<glm::dvec3> fpart(parts.size(), glm::dvec3(0.0));
+    std::vector<glm::dvec3> &fpart = rcsFpart;  // member: reused, see rcsNoz above
+    fpart.assign(parts.size(), glm::dvec3(0.0));
     for(size_t i = 0; i < noz.size(); i++) {
         if(c[i] <= 0.0) { continue; }
         const double N = c[i] * noz[i].thrust;

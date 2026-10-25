@@ -1392,7 +1392,6 @@ void drawUIReadouts(Game &g) {
             // ship in one frame.
             const int N = 64;
             const bool closed = (o.traj == TrajectoryClass::Elliptic);
-            std::vector<glm::dvec3> pts_local;
             const std::vector<glm::dvec3> *pts = nullptr;
             if(closed) {
                 // Per-ship cache (shared with the Orbital Map), trusted only while on rails.
@@ -1402,9 +1401,10 @@ void drawUIReadouts(Game &g) {
                 // Open arc: the map spans the whole body, so cap it a couple of ship radii out.
                 const double r_cap =
                     std::max(4.0 * o.periapsis_r, o.distance) * 2.0;
-                pts_local = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N,
-                                                 r_cap);
-                pts = &pts_local;
+                // Same per-ship entry: no key to hit, but the buffer reuse
+                // keeps the per-frame redraw off the malloc path.
+                pts = &orbit_caches[(const void *)ship].sampleOpen(
+                    orbit_pos, orbit_vel, mu, N, r_cap);
             }
             if(pts && !pts->empty()) {
                 // The points live in the ship's non-rotating frame, the map's pixels in the body's
@@ -2953,8 +2953,8 @@ void drawUIMap(Game &g) {
         // The ship's trajectory: a closed Kepler ellipse, or an open arc when the
         // conic is escaping.
         const bool closed = (o.traj == TrajectoryClass::Elliptic);
-        // A reference into the cache (closed) or a local (open) -- never a copy every frame.
-        std::vector<glm::dvec3> traj_local;
+        // A reference into the per-ship cache (closed hits; open reuses the
+        // buffer) -- never a copy every frame.
         const std::vector<glm::dvec3> *traj_pts = nullptr;
         if(closed) {
             // Per-ship cache, trusted only while the ship is ON RAILS; off rails the orbit is
@@ -2970,8 +2970,8 @@ void drawUIMap(Game &g) {
                 std::max(map_w, map_h) * (double)map_scale,
                 std::max(4.0 * o.periapsis_r, o.distance));
             const int N = 64;
-            traj_local = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N, r_cap);
-            traj_pts = &traj_local;
+            traj_pts = &orbit_caches[(const void *)ship].sampleOpen(
+                orbit_pos, orbit_vel, mu, N, r_cap);
         }
 
         // Periapsis (both cases) and apoapsis (closed only): a closed orbit propagates to
@@ -4899,7 +4899,6 @@ void drawTrackingMap(Game &g) {
 
         // Empty with no ship.
         bool closed = false;
-        std::vector<glm::dvec3> traj_local;
         const std::vector<glm::dvec3> *traj_pts = nullptr;
         glm::dvec3 peri_p, apo_p, tmp;
         bool have_peri = false, have_apo = false;
@@ -4916,8 +4915,8 @@ void drawTrackingMap(Game &g) {
                     (double)std::max(mapW, mapH) * map_scale,
                     std::max(4.0 * o.periapsis_r, o.distance));
                 const int N = 64;
-                traj_local = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N, r_cap);
-                traj_pts = &traj_local;
+                traj_pts = &orbit_caches[(const void *)ship].sampleOpen(
+                    orbit_pos, orbit_vel, mu, N, r_cap);
             }
             if(closed) {
                 if(o.time_to_peri > 0.0) {

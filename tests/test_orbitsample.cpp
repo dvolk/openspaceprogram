@@ -203,6 +203,29 @@ int main() {
         check(pts.empty(), "open: closed orbit -> empty");
     }
 
+    // 9b. OrbitSampleCache::sampleOpen -- the map windows' per-frame redraw
+    // path: same answers as the free sampler, the pts buffer REUSED across
+    // calls (no malloc after warmup), and the entry left unusable for a
+    // closed sample.
+    {
+        const double e = 1.5, rp = 7.0e6;
+        const double v_p = std::sqrt(mu * (1.0 + e) / rp);
+        const glm::dvec3 pos(rp, 0.0, 0.0), vel(0.0, v_p, 0.0);
+        OrbitSampleCache cache;
+        const std::vector<glm::dvec3> &a = cache.sampleOpen(pos, vel, mu, N, 10.0 * rp);
+        const std::vector<glm::dvec3> ref =
+            sampleOpenTrajectory(pos, vel, mu, N, 10.0 * rp);
+        check(a.size() == ref.size() && a == ref, "sampleOpen: matches the free sampler");
+        check(!cache.valid, "sampleOpen: entry not servable as a closed sample");
+        const glm::dvec3 *first = a.data();
+        const std::vector<glm::dvec3> &b = cache.sampleOpen(pos, vel, mu, N, 10.0 * rp);
+        check(b.data() == first, "sampleOpen: buffer reused, no per-frame malloc");
+        const double r = 7.0e6, v = std::sqrt(mu / r);
+        check(cache.sampleOpen(glm::dvec3(r, 0, 0), glm::dvec3(0, v, 0), mu, N,
+                               10.0 * r).empty(),
+              "sampleOpen: closed orbit -> empty");
+    }
+
     // 10. TRANSFER ARC (elliptic): a leg from periapsis to apoapsis. The
     // endpoints must be exactly the departure and arrival states, and the
     // points must be even in ECCENTRIC ANOMALY (radius r_i = a(1 - e cos

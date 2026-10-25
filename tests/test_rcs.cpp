@@ -186,6 +186,48 @@ static void test_zero_demand_and_empty() {
     CHECK_TRUE(rcsAllocate(none, glm::dvec3(0,0,100)).empty(), "no nozzles -> empty solution");
 }
 
+/* The game's hot path (Vehicle::applyRcsForce) keeps ONE Scratch across
+   substeps and nozzle sets. A reused buffer must never carry state between
+   solves: same inputs -> bit-identical answers, and shrinking to a smaller
+   nozzle set (stale capacity) must not leak old columns. */
+static bool same(const std::vector<double> &a, const std::vector<double> &b) {
+    if(a.size() != b.size()) { return false; }
+    for(size_t i = 0; i < a.size(); i++) { if(!(a[i] == b[i])) { return false; } }
+    return true;
+}
+
+static void test_scratch_reuse() {
+    printf("== rcsAllocateInto: one Scratch, reused, stays honest ==\n");
+    const std::vector<RcsNozzle> big = {
+        nz(glm::dvec3(0,0,1),  glm::dvec3(1,0,0.5),  200.0),
+        nz(glm::dvec3(0,0,-1), glm::dvec3(-1,0,0.5), 200.0),
+        nz(glm::dvec3(1,0,0),  glm::dvec3(0,0.5,0),  150.0),
+        nz(glm::dvec3(-1,0,0), glm::dvec3(0,-0.5,0), 150.0),
+        nz(glm::dvec3(0,1,0),  glm::dvec3(0.5,0,0),  100.0),
+    };
+    rcs::Scratch s;
+    const glm::dvec3 F(30, -20, 100);
+    rcsAllocateInto(big, F, s);
+    CHECK_TRUE(same(s.c, rcsAllocate(big, F)), "reused Scratch == fresh solve");
+    const double first = s.c[0];
+    rcsAllocateInto(big, F, s);  // repeat: no state drifted into the second solve
+    CHECK_TRUE(same(s.c, rcsAllocate(big, F)) && s.c[0] == first,
+               "same Scratch twice -> identical answers");
+    /* Over-rating: the pin-and-resolve passes also run through the Scratch. */
+    rcsAllocateInto(big, glm::dvec3(0,0,900), s);
+    CHECK_TRUE(same(s.c, rcsAllocate(big, glm::dvec3(0,0,900))),
+               "pinned passes reuse the Scratch honestly");
+    /* Shrink: 5 nozzles' capacity then 1 nozzle -- old columns must not leak. */
+    const std::vector<RcsNozzle> small = { nz(glm::dvec3(0,0,1), glm::dvec3(0,0,0), 60.0) };
+    rcsAllocateInto(small, glm::dvec3(0,0,40), s);
+    CHECK_TRUE(same(s.c, rcsAllocate(small, glm::dvec3(0,0,40))),
+               "small solve after big keeps only its own columns");
+    /* And back to empty: the solution empties, no residue of the last. */
+    const std::vector<RcsNozzle> none;
+    rcsAllocateInto(none, glm::dvec3(0,0,100), s);
+    CHECK_TRUE(s.c.empty(), "no nozzles -> empty solution in a warm Scratch");
+}
+
 int main() {
     printf("=== rcs.h: nozzle allocator ===\n\n");
     test_one_way();
@@ -203,6 +245,8 @@ int main() {
     test_legacy_pod_is_omnidirectional();
     printf("\n");
     test_zero_demand_and_empty();
+    printf("\n");
+    test_scratch_reuse();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {
