@@ -36,3 +36,6 @@ void drawQuestion(Game &g);
 
 // Toasts must float above every window.
 void drawToasts(Game &g);
+
+// F4 force overlay: thrust + RCS arrows on the active ship (foreground).
+void drawForceOverlay(Game &g);

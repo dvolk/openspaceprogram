@@ -35,6 +35,16 @@ void tick(Game &g) {
         s->exhaust_scale = g.args.exhaust_scale;
         s->drag_cd = g.args.drag_cd;
         s->dv_log_enabled = g.args.dv_log;
+        // The F4 force overlay records on the active ship only (the only
+        // one drawn), and only in a piloting scene (a VAB/studio ship's
+        // world coords through that scene's camera are meaningless). Off
+        // edge: clear, so a ship that stops being recorded cannot paint
+        // its weeks-old arrows when recording reaches it again (while
+        // paused, where the per-substep clear never runs).
+        const bool wantRecord = g.show_force_overlay && s == g.ship
+                             && curScene(g).pilot;
+        if(!wantRecord && s->recordForceVecs) { s->lastForceVecs.clear(); }
+        s->recordForceVecs = wantRecord;
     }
 
     while (g.accumulator >= g.dt) {

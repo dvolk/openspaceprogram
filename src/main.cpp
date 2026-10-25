@@ -1233,6 +1233,10 @@ int main(int argc, char **argv)
             // or TAB.
             drawQuestion(game);
 
+            // F4 force arrows: foreground draw list, so above the world
+            // AND the windows (only the toasts below draw over them).
+            drawForceOverlay(game);
+
             // Toasts: above everything, including the menu.
             drawToasts(game);
 

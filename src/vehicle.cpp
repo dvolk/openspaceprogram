@@ -1831,6 +1831,11 @@ void Vehicle::applyThrustForce(double h) {
         const glm::dvec3 ft = partThrustDir(p) * (double)p->armedThrust;
         ApplyForce(hull, partPos(p) - com, ft);
         ftotal += ft;
+        if(recordForceVecs) {
+            // Same arm Bullet got; the drawer anchors it at the CURRENT COM
+            // (see the ForceVec doc in vehicle.h).
+            lastForceVecs.push_back({ partPos(p) - com, ft, kForceThrust });
+        }
     }
     lastThrustForce = ftotal;
     if(glm::length2(ftotal) < 1e-24) { return; }
@@ -2106,6 +2111,10 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
 }
 
 void Vehicle::applyControlForces(double h) {
+    /* The force overlay records one substep's worth: clear here, the only
+       caller of both force appliers. Off means off: stale vectors stay
+       unrecorded (the overlay shows the last armed substep while paused). */
+    if(recordForceVecs) { lastForceVecs.clear(); }
     /* Rotation runs BEFORE thrust so the slew law's TVC aim (tvcSlewLat_) is
        aimed before applyThrustForce steps the actuators and pushes along
        them -- same-substep, no lag. */
@@ -2268,6 +2277,11 @@ void Vehicle::applyRcsForce(double h) {
         if(glm::length2(fpart[pi]) <= 0.0) { continue; }
         ApplyForce(hull, partPos(parts[pi]) - com, fpart[pi]);
         Fach += fpart[pi];
+        if(recordForceVecs) {
+            // Same arm Bullet got; the drawer anchors it at the CURRENT COM
+            // (see the ForceVec doc in vehicle.h).
+            lastForceVecs.push_back({ partPos(parts[pi]) - com, fpart[pi], kForceRcs });
+        }
     }
     lastRcsAch = Fach;
     rcsFiring = true;
@@ -3535,6 +3549,7 @@ bool Vehicle::goOnRails() {
         if(p->isRcs()) { for(double &f : p->rcsFired) { f = 0.0; } }
     }
     lastRcsNozzles.clear();  // likewise the [rcs] log: no substeps, no nozzles
+    lastForceVecs.clear();   // and the force overlay: no substeps, no arrows
 
     // out of the world: the one body
     if(hullInWorld()) { RemoveBody(hull); }

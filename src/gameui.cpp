@@ -3342,6 +3342,63 @@ void drawToasts(Game &g) {
     ImGui::PopFont();
 }
 
+/* Force overlay (F4): arrows for the thrust + RCS the last simulated substep
+   applied to the active ship. Foreground draw list, like the VAB fuel-link
+   lines: no depth test, always on top. Anchoring: the recorded pos is the
+   application point rel COM AT RECORD TIME; the anchor is that plus the
+   ship's CURRENT COM, so the ship's travel between the recorded substep and
+   this paint pass cancels (see Vehicle::ForceVec). Arrow length scales with
+   the camera-to-ship distance -- the strongest arrow spans a fixed fraction
+   of it, so screen size stays legible at any zoom. */
+void drawForceOverlay(Game &g) {
+    // Screenshots DO include the arrows: unlike toasts, the overlay is
+    // explicitly opted into, and photographing it is the point.
+    if(!g.show_force_overlay || g.ship == nullptr || g.camera == nullptr) { return; }
+    const std::vector<Vehicle::ForceVec> &fvs = g.ship->lastForceVecs;
+    if(fvs.empty()) { return; }
+    double fmax = 0.0;
+    for(const Vehicle::ForceVec &fv : fvs) { fmax = std::max(fmax, glm::length(fv.vec)); }
+    // The COM is where the ship draws (it IS the render origin); cam.pos is
+    // the unshifted eye position in the same space (the draw/view -renderOrigin
+    // shifts cancel, pick.cpp).
+    const glm::dvec3 com = g.ship->get_center_of_mass();
+    const double camDist = glm::length(g.camera->pos - com);
+    if(fmax <= 0.0 || camDist < 1e-3) { return; }
+    const double lenW = camDist * 0.12;  // world length of the STRONGEST arrow
+    ImDrawList *dl = ImGui::GetForegroundDrawList();
+    for(const Vehicle::ForceVec &fv : fvs) {
+        const double mag = glm::length(fv.vec);
+        if(mag <= 0.0) { continue; }
+        const glm::dvec3 dir = fv.vec / mag;
+        const glm::dvec3 base = com + fv.pos;
+        double ax, ay, bx, by;
+        if(!projectPixel(g, base, ax, ay)) { continue; }
+        if(!projectPixel(g, base + dir * (lenW * (mag / fmax)), bx, by)) { continue; }
+        // RCS cyan, engine thrust orange: the two overlay kinds.
+        const ImU32 col = (fv.kind == Vehicle::kForceRcs)
+                        ? IM_COL32(80, 220, 255, 230)
+                        : IM_COL32(255, 165, 40, 235);
+        const ImVec2 A((float)ax, (float)ay), B((float)bx, (float)by);
+        const float dx = B.x - A.x, dy = B.y - A.y;
+        const float len2 = sqrtf(dx * dx + dy * dy);
+        dl->AddCircleFilled(A, 3.0f, col, 12);   // the application point
+        dl->AddLine(A, B, col, 2.0f);
+        if(len2 > 12.0f) {
+            const ImVec2 d(dx / len2, dy / len2), p(-d.y, d.x);
+            dl->AddTriangleFilled(
+                B,
+                ImVec2(B.x - d.x * 10.0f + p.x * 4.0f,
+                       B.y - d.y * 10.0f + p.y * 4.0f),
+                ImVec2(B.x - d.x * 10.0f - p.x * 4.0f,
+                       B.y - d.y * 10.0f - p.y * 4.0f),
+                col);
+        }
+        char buf[32];
+        snprintf(buf, sizeof buf, "%.0f N", mag);
+        dl->AddText(ImVec2(B.x + 6.0f, B.y - 6.0f), col, buf);
+    }
+}
+
 /* The main menu: one shared shell for every scene. Items are fixed-width buttons: the
    window is AlwaysAutoResize and imgui measures from the PREVIOUS frame's content, so
    a hand-centered Text item feeds back into the measurement.

@@ -38,6 +38,8 @@ void KeyBindings::resetDefaults() {
     // F3 is the free function key next to the F1/F2 diagnostics: the overlay is
     // wanted mid-burn, and Settings is three clicks away.
     add(Slot::ToggleOrbitPlane,SDL_SCANCODE_F3);
+    // F4 sits beside it: the force arrows are wanted mid-burn too.
+    add(Slot::ToggleForceOverlay,SDL_SCANCODE_F4);
     add(Slot::ResetWindows,  SDL_SCANCODE_F10);
     add(Slot::Menu,          SDL_SCANCODE_ESCAPE);
     add(Slot::GoSpaceCenter, SDL_SCANCODE_1);
@@ -147,6 +149,7 @@ const char *slotName(Slot s) {
         // Same word as the Settings checkbox and its settings.json key, so the
         // overlay has one name across the UI, the key map and the save file.
         case Slot::ToggleOrbitPlane: return "orbital_plane";
+        case Slot::ToggleForceOverlay: return "force_overlay";
         case Slot::ResetWindows:   return "reset_windows";
         case Slot::Menu:           return "menu";
         case Slot::GoSpaceCenter:  return "go_space_center";
@@ -225,6 +228,7 @@ const char *slotLabel(Slot s) {
         case Slot::SurfaceMap:     return "Compute surface map";
         case Slot::Wireframe:      return "Toggle wireframe";
         case Slot::ToggleOrbitPlane: return "Toggle orbital plane";
+        case Slot::ToggleForceOverlay: return "Toggle force overlay";
         case Slot::ResetWindows:   return "Reset windows";
         case Slot::Menu:           return "Main menu";
         case Slot::GoSpaceCenter:  return "Go to Space Center";
@@ -282,6 +286,7 @@ SlotGroup slotGroup(Slot s) {
         case Slot::Porkchop: case Slot::SurfaceMap:
         case Slot::Wireframe: case Slot::ResetWindows: case Slot::Menu:
         case Slot::ToggleOrbitPlane:
+        case Slot::ToggleForceOverlay:
         case Slot::GoSpaceCenter: case Slot::GoFlight:
         case Slot::GoTracking: case Slot::GoVab:
             return SlotGroup::Game;

@@ -629,6 +629,10 @@ struct Game {
     bool draw_starfield = true;
     bool draw_ref_circles = false;   // the render frame's XZ + XY rings
     bool draw_orbit_plane = false;   // orbital plane + reference plane + node line
+    /* F4: thrust + RCS arrows on the active ship (gameui.cpp
+       drawForceOverlay). Debug-facing, so not a Settings checkbox and not
+       saved: it should be off by default for a fresh session. */
+    bool show_force_overlay = false;
 
     // render.cpp skyGain: the gain the sky fades to when the sun is in view and the
     // camera is in sunlight. sky_dim = 1 disables the fade.

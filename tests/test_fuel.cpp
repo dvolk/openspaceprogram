@@ -76,9 +76,11 @@ struct Ship {
 };
 
 /* Add one part. h2/lox > 0 -> a tank; engine -> a thruster; barrier -> a
-   fuel wall (decoupler). Returns the new Part (index parts.size()-1). */
+   fuel wall (decoupler); rcsThrust > 0 -> an RCS pod (hyd kg of hydrazine
+   in its own capacity). Returns the new Part (index parts.size()-1). */
 static Part *addPart(Ship &s, float h2, float lox, bool engine = false,
-                     bool barrier = false) {
+                     bool barrier = false, double rcsThrust = 0.0,
+                     float hyd = 0.0f) {
     /* DRY structure mass only. The fuel (h2/lox) is NOT baked into the body:
        init() seeds it into resources.current, and Part::effectiveMass adds it
        back (body dry + contents), so the ship's mass is 100 + h2 + lox either
@@ -104,6 +106,8 @@ static Part *addPart(Ship &s, float h2, float lox, bool engine = false,
         d.exhaust_velocity = 100.0;
     }
     d.fuel_barrier = barrier;
+    d.rcs_thrust = rcsThrust;
+    d.capacity[(int)ResourceType::Hydrazine] = hyd;
     s.defs.push_back(d);
 
     Part *p = new Part;
@@ -823,6 +827,79 @@ static void test_applythrust_last_dribble_fits() {
     destroyShip(s);
 }
 
+/* Force overlay (F4, gameui.cpp drawForceOverlay): Vehicle::lastForceVecs
+   carries the force sites the LAST recorded substep actually applied to the
+   hull. Pins:
+     * recording happens ONLY while recordForceVecs is set -- the sim hot
+       path pays nothing while the overlay is off, yet the forces still land;
+     * applyControlForces clears once per substep, so a no-command substep
+       leaves NO ghost arrows;
+     * the recorded vectors are the applied forces: the thrust entries sum
+       to lastThrustForce, and the single pod's entry equals lastRcsAch.
+   One engine + one legacy RCS pod (empty rcs_nozzles -> the six axis bells),
+   both parked at the origin: engine thrust +Z, rcsDir +Z allocated onto the
+   -Z bell (the ship is pushed opposite the bell). */
+static void test_force_overlay_recording() {
+    printf("== Force overlay: lastForceVecs records the substep's applied forces ==\n");
+    Ship s; s.v = new Vehicle;
+    Part *eng = addPart(s, 100, 100, /*engine=*/true);
+    Part *pod = addPart(s, 0, 0, false, false, /*rcsThrust=*/60.0, /*hyd=*/10.0);
+    link(s, eng, pod);
+    initShip(s);
+    /* Park the ship 1 km out: partPos is then 1000-ish while partPos - com
+       stays ~0, so the pos pins below cannot be satisfied by an absolute
+       partPos regression. */
+    s.v->placeShip(glm::dvec3(0.0, 0.0, 1000.0), glm::dmat3(1.0));
+
+    s.v->ApplyThrust_TESTONLY(50.0);            // tanks plentiful -> full 200 N
+    CHECK_NEAR(eng->armedThrust, 200.0, 1e-5, "engine armed at full thrust");
+    s.v->rcsDir = glm::dvec3(0.0, 0.0, 1.0);    // the pod allocates 60 N along +Z
+    s.v->recordForceVecs = true;
+    s.v->applyControlForces(1.0 / 60.0);
+
+    int nThrust = 0, nRcs = 0;
+    glm::dvec3 thrustSum(0.0), rcsSum(0.0);
+    for(const Vehicle::ForceVec &fv : s.v->lastForceVecs) {
+        CHECK_TRUE(fv.kind == Vehicle::kForceThrust || fv.kind == Vehicle::kForceRcs,
+                   "every recorded entry carries a known kind");
+        if(fv.kind == Vehicle::kForceThrust) {
+            nThrust++; thrustSum += fv.vec;
+            CHECK_TRUE(glm::length(fv.pos - (s.v->partPos(eng) - s.v->comPos())) < 1e-9,
+                       "thrust arrow pos is the Bullet arm (partPos rel COM)");
+        } else {
+            nRcs++; rcsSum += fv.vec;
+            CHECK_TRUE(glm::length(fv.pos - (s.v->partPos(pod) - s.v->comPos())) < 1e-9,
+                       "rcs arrow pos is the Bullet arm (partPos rel COM)");
+        }
+    }
+    CHECK_TRUE(nThrust == 1, "one engine -> one thrust arrow");
+    CHECK_TRUE(nRcs == 1, "one firing pod -> one rcs arrow (per pod, not per bell)");
+    CHECK_TRUE(glm::length(thrustSum - s.v->lastThrustForce) < 1e-9,
+               "thrust entries sum to the force Bullet got");
+    CHECK_TRUE(glm::length(rcsSum - s.v->lastRcsAch) < 1e-9,
+               "rcs entries sum to the achieved RCS force");
+    CHECK_NEAR(glm::length(rcsSum), 60.0, 1e-5, "the pod delivered the demanded 60 N");
+
+    /* A substep with no armed commands clears: the overlay must not keep
+       drawing last substep's arrows. */
+    s.v->clearThrust();
+    s.v->clearRcs();
+    s.v->applyControlForces(1.0 / 60.0);
+    CHECK_TRUE(s.v->lastForceVecs.empty(), "no-command substep -> no arrows");
+
+    /* Overlay off: forces are still applied, nothing is recorded. */
+    s.v->recordForceVecs = false;
+    s.v->ApplyThrust_TESTONLY(50.0);
+    s.v->rcsDir = glm::dvec3(1.0, 0.0, 0.0);
+    s.v->applyControlForces(1.0 / 60.0);
+    CHECK_TRUE(s.v->lastForceVecs.empty(), "recording off -> nothing captured");
+    CHECK_NEAR(glm::length(s.v->lastThrustForce), 200.0, 1e-9,
+               "the engine still fired (200 N) while unrecorded");
+    CHECK_NEAR(glm::length(s.v->lastRcsAch), 60.0, 1e-5,
+               "the pod still fired (60 N) while unrecorded");
+    destroyShip(s);
+}
+
 int main() {
     test_prorata_in_group();
     printf("\n");
@@ -855,6 +932,8 @@ int main() {
     test_mass_figure_sees_a_sub_float_ulp_draw();
     printf("\n");
     test_applythrust_last_dribble_fits();
+    printf("\n");
+    test_force_overlay_recording();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

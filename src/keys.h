@@ -40,6 +40,7 @@ enum class Slot {
     SurfaceMap,    // 'm'  the surface map
     Wireframe,     // F11  wireframe
     ToggleOrbitPlane, // F3  the orbital plane overlay (Settings checkbox mirror)
+    ToggleForceOverlay, // F4 thrust/RCS force arrows in flight (debug overlay)
     ResetWindows,  // F10  reset the window layout
     Menu,          // ESC  the main menu
     GoSpaceCenter, // '1'  Space Center hub
