@@ -307,6 +307,9 @@ $(TESTDIR)/test_slew3d: $(TESTDIR)/obj/test_slew3d.o
 $(TESTDIR)/test_gimbal: $(TESTDIR)/obj/test_gimbal.o
 	$(CXX) -o $@ $^
 
+$(TESTDIR)/test_rcs: $(TESTDIR)/obj/test_rcs.o
+	$(CXX) -o $@ $^
+
 # Links the real physics chain (Bullet + GL).
 $(TESTDIR)/test_thrust: $(TESTDIR)/obj/test_thrust.o $(TCOMMON_OBJS)
 	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
@@ -469,7 +472,7 @@ $(TESTDIR)/test_cli: $(TESTDIR)/obj/test_cli.o $(TESTDIR)/obj/cli.o $(TESTDIR)/o
 $(TESTDIR)/test_orient: $(TESTDIR)/obj/test_orient.o $(BULLET3_OBJS)
 	$(CXX) -o $@ $^ $(TLIBS)
 
-TESTS = test_frames test_spawn test_attitude test_slew3d test_gimbal test_thrust test_fuel \
+TESTS = test_frames test_spawn test_attitude test_slew3d test_gimbal test_rcs test_thrust test_fuel \
         test_power test_staging test_staging_dv test_dock test_contain test_inertia test_inventory \
         test_suitdef \
         test_rotation test_shipload test_save test_crew test_roster test_calendar \

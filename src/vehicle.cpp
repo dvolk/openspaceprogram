@@ -19,6 +19,7 @@
 #include "system.h"    // System (spawn_vehicle resolves the home body's SOI)
 #include "drag.h"      // the drag law (airDensity / dragForce)
 #include "gimbal.h"    // the engine-gimbal law (gimbalDir / gimbalStep)
+#include "rcs.h"       // the RCS nozzle allocator (rcsAllocate)
 #include "constants.h" // kSoiMargin, kShipGround*, kTerrainBand
 
 /* One rigid body per part, welded parent-first in the def's construction order.
@@ -2176,17 +2177,99 @@ double Vehicle::maxRcsThrust() {
     return t;
 }
 
+/* Log label for a nozzle direction (part-local): "+Z"-style, the axis of the
+   biggest component. Authored dirs are axis-aligned today; a diagonal one
+   still labels by its dominant axis. */
+static std::string nozzleTag(const glm::dvec3 &d) {
+    const int ax = (std::fabs(d.x) >= std::fabs(d.y) && std::fabs(d.x) >= std::fabs(d.z)) ? 0
+                 : (std::fabs(d.y) >= std::fabs(d.z)) ? 1 : 2;
+    const char letters[3] = {'X', 'Y', 'Z'};
+    const double comp[3] = {d.x, d.y, d.z};
+    return std::string(comp[ax] >= 0.0 ? "+" : "-") + letters[ax];
+}
+
 void Vehicle::applyRcsForce(double h) {
+    // Reset the log: a substep with no translation demand reports none.
+    lastRcsNozzles.clear();
+    lastRcsCmd = glm::dvec3(0.0);
+    lastRcsAch = glm::dvec3(0.0);
     if(glm::length2(rcsDir) < 1e-12) { return; }
-    Part *e = firstRcsPart();
-    if(e == nullptr) { return; }
-    const double F = maxRcsThrust();
-    if(F <= 0.0) { return; }
+    const double Fmax = maxRcsThrust();
+    const glm::dvec3 dirW = rcsWorldDir();
+    if(Fmax <= 0.0 || glm::length2(dirW) < 1e-12) { return; }
+    const glm::dvec3 Fdem = dirW * Fmax;  // full authority on the key, as before
+    lastRcsCmd = Fdem;
+
+    /* Nozzle model (#428): authored dirs (a 5-dir box's exposed faces) in the
+       part's LOCAL frame; a pod without dirs is the legacy omnidirectional
+       unit -- six dirs along the part's own axes. rcs_thrust is PER nozzle. */
+    std::vector<RcsNozzle> noz;
+    std::vector<size_t> nozPart;  // nozzle -> index into parts
+    const glm::dvec3 com = comPos();
+    for(size_t pi = 0; pi < parts.size(); pi++) {
+        const Part *p = parts[pi];
+        if(!p->isRcs()) { continue; }
+        const glm::dvec3 axes[3] = { partAxis(p, 0), partAxis(p, 1), partAxis(p, 2) };
+        const auto addNozzle = [&](const glm::dvec3 &local) {
+            glm::dvec3 d(0.0);
+            for(int k = 0; k < 3; k++) { d += local[k] * axes[k]; }
+            const double L = glm::length(d);
+            if(L <= 1e-9) { return; }  // degenerate mount: drop that nozzle
+            d /= L;
+            noz.push_back({ d, partPos(p) - com, p->rcsThrust(), nozzleTag(local) });
+            nozPart.push_back(pi);
+        };
+        if(!p->def->rcs_nozzles.empty()) {
+            for(const glm::dvec3 &nd : p->def->rcs_nozzles) { addNozzle(nd); }
+        } else {
+            for(int k = 0; k < 3; k++) {
+                glm::dvec3 a(0.0);
+                a[k] = 1.0;
+                addNozzle(a);
+                a[k] = -1.0;
+                addNozzle(a);
+            }
+        }
+    }
+    if(noz.empty()) { return; }
+
+    const std::vector<double> c = rcsAllocate(noz, Fdem);
+
+    /* Fuel: hydrazine mono, flow from the FIRING thrust (drain-or-nothing,
+       as the engines do it). */
+    double fired = 0.0;
+    for(size_t i = 0; i < noz.size(); i++) { fired += c[i] * noz[i].thrust; }
+    if(fired <= 0.0) { return; }
     // flow this substep (kg) = thrust / (Isp * g0) * h
-    const double flow = (F / (kRcsIsp * 9.81)) * h;
-    if(consumeResourceMass(ResourceType::Hydrazine, flow, e)) {
-        ApplyCentralForce(hull, F * rcsWorldDir());
-        rcsFiring = true;
+    const double flow = (fired / (kRcsIsp * 9.81)) * h;
+    if(!consumeResourceMass(ResourceType::Hydrazine, flow, firstRcsPart())) {
+        return;  // no propellant, no force
+    }
+
+    /* Force AT THE POD (rel COM), not the COM: an off-center pod translates
+       AND spins the ship. The allocator cancels spin where it can; the rest
+       is the honest physics #428 exists to deliver. */
+    std::vector<glm::dvec3> fpart(parts.size(), glm::dvec3(0.0));
+    for(size_t i = 0; i < noz.size(); i++) {
+        if(c[i] <= 0.0) { continue; }
+        const double N = c[i] * noz[i].thrust;
+        fpart[nozPart[i]] += noz[i].dir * N;
+        lastRcsNozzles.push_back({ parts[nozPart[i]]->id, noz[i].tag, N });
+    }
+    glm::dvec3 Fach(0.0);
+    for(size_t pi = 0; pi < parts.size(); pi++) {
+        if(glm::length2(fpart[pi]) <= 0.0) { continue; }
+        ApplyForce(hull, partPos(parts[pi]) - com, fpart[pi]);
+        Fach += fpart[pi];
+    }
+    lastRcsAch = Fach;
+    rcsFiring = true;
+    // Same spurious-torque cancellation as applyThrustForce / applyAeroForce:
+    // RCS now lands at the pod, so it is genuinely off-COM (comOffset is the
+    // internal hull-COM vs physical-COM gap that Bullet's rel-force arm uses).
+    const glm::dvec3 dcom = comOffset();
+    if(glm::length2(dcom) > 0.0) {
+        ApplyTorque(hull, -glm::cross(dcom, Fach));
     }
 }
 
@@ -3441,6 +3524,7 @@ bool Vehicle::goOnRails() {
        a grounded parked ship (canRail() admits it in air) would otherwise
        hold its last stick deflection forever. */
     for(Part *p : parts) { p->controlDefl = 0.0; }
+    lastRcsNozzles.clear();  // likewise the [rcs] log: no substeps, no nozzles
 
     // out of the world: the one body
     if(hullInWorld()) { RemoveBody(hull); }

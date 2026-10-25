@@ -156,7 +156,16 @@ struct PartDef {
     bool jet;
     double jet_fan_thrust;    // N; static (fan) thrust at sea level -- the VTOL floor
     double jet_intake_area;   // m^2; effective intake/capture area (the ram term)
-    double rcs_thrust;        // N; > 0 -> RCS translation authority (hydrazine mono)
+    double rcs_thrust;        // N; > 0 -> RCS translation authority (hydrazine mono).
+                              // Rated thrust PER ACTUATOR (per nozzle; for a
+                              // nozzle-less legacy pod, per axis).
+    /* Nozzle thrust directions in the part's LOCAL frame, unit-normalized
+       (src/rcs.h allocator, #428): a nozzle is one-way, and a 5-direction
+       box omits its mount face. For a surface-mounted part the mount side is
+       the SURFACE NODE's side -- the synthesized srf node points -X, so the
+       omitted dir is -X (child +X faces away from the hull). Empty -> legacy
+       omnidirectional pod: six directions along the part's own axes. */
+    std::vector<glm::dvec3> rcs_nozzles;
     /* Engine gimbal / TVC (src/gimbal.h): the nozzle may swing +/-gimbal_max
        (rad) at gimbal_rate (rad/s). gimbal_max = 0 -> the thrust line stays
        locked to the part's +Z. */

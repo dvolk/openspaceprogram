@@ -1,0 +1,17 @@
+NAME rcs-box-pair-clean-translate
+CLAIM A symmetric pair of 5-direction RCS boxes translates the ship WITHOUT spinning it.
+KIND invariant
+# rcs_box_pair surface-mounts identical boxes at angle 0/180 on a mono tank.
+# The allocator must fire matching nozzles on both (measured: box_l[+Z] +
+# box_r[+Z] for N) so the off-COM torques cancel exactly: pure translation.
+ARGS --time-accel 1 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit
+ARGS --att-log --orbit-log --orbit-interval 0.5 --drag-log
+ARGS --sim-press 2000,3000,N
+ARGS --timeout 8
+LIMIT 90
+EXPECT [rcs]
+FORBID error:
+CHECK len(att) >= 10
+CHECK abs(last(orbit)["E"] - first(orbit)["E"]) > 1000.0
+CHECK max(a["wnorm"] for a in att) < 0.02
+CHECK all(a["wnorm"] == a["wnorm"] for a in att)

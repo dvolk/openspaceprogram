@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 261 |
+| `invariant` | a behaviour or a player route the game must keep | 263 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 34 |
 | `harness` | CLI/test-engine plumbing, not game spec | 12 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **311** |
+| | **total** | **313** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (65)
+## flight (67)
 
 | case | kind | pins |
 |---|---|---|
@@ -66,6 +66,8 @@ judgement. Select by number, name or path, e.g.
 | `flight/107-recover-grounded.txt` | invariant | Recover succeeds for a ship grounded on its home body. |
 | `flight/108-recover-wrong-body.txt` | invariant | Recover refuses a ship grounded on someone else's body. |
 | `flight/109-tvc-feel-top-engine.txt` | invariant | An engine ABOVE the COM still steers the nose the same way: the mixer flips its deflection so the torque adds. |
+| `flight/110-rcs-box-pair.txt` | invariant | A symmetric pair of 5-direction RCS boxes translates the ship WITHOUT spinning it. |
+| `flight/111-rcs-box-one-spin.txt` | invariant | A single off-center RCS box translates AND spins the ship: force at the pod, not the COM (#428). |
 | `flight/150-chute-deploy.txt` | invariant | A chute arms and deploys only when its deploy condition is met. |
 | `flight/151-chute-terminal.txt` | golden | A deployed chute reaches chute terminal velocity, not hull terminal. |
 | `flight/152-chute-flip.txt` | golden | A chute below the COM weathervanes the ship nose-down; one above hangs it nose-up. |

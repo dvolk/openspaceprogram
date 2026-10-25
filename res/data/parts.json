@@ -734,6 +734,24 @@
       "drag_backward": 1.1
     },
     {
+      "name": "rcs_box",
+      "type": "rcs",
+      "display_name": "RCS box (5-dir)",
+      "mesh": "meshes/rcs_box.obj",
+      "texture": "textures/rcs_box.png",
+      "mass": 12.0,
+      "radius": 0.5,
+      "height": 0.5,
+      "rcs_thrust": 60,
+      "rcs_nozzle_dirs": [
+        [1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]
+      ],
+      "drag": 0.8,
+      "drag_forward": 1.1,
+      "drag_side": 1.1,
+      "drag_backward": 1.1
+    },
+    {
       "name": "adapter_r1to1.5",
       "type": "adapter",
       "display_name": "Adapter 1 to 1.5",

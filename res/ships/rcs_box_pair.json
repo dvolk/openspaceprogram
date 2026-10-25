@@ -1,0 +1,9 @@
+{
+  "name": "rcs_box_pair",
+  "testship": true,
+  "parts": [
+    { "part": "mono_tank_r1", "id": "tank_1" },
+    { "part": "rcs_box", "id": "box_l", "parent": "tank_1", "attach": "surface", "angle": 0 },
+    { "part": "rcs_box", "id": "box_r", "parent": "tank_1", "attach": "surface", "angle": 180 }
+  ]
+}

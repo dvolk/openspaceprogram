@@ -139,6 +139,27 @@ PartsCatalog load_parts_catalog(const char *path) {
             throw std::runtime_error(ctx + "\"rcs_thrust\" must be >= 0 (N)");
         }
 
+        /* Nozzle directions (part-local, unit; src/rcs.h #428). A zero vector
+           or a malformed triple is authored garbage: refuse the load. */
+        d.rcs_nozzles.clear();
+        if(pv.contains("rcs_nozzle_dirs")) {
+            if(!pv["rcs_nozzle_dirs"].is_array()) {
+                throw std::runtime_error(ctx + "\"rcs_nozzle_dirs\" must be an array");
+            }
+            for(const auto &e : pv["rcs_nozzle_dirs"]) {
+                if(!e.is_array() || e.size() != 3
+                   || !e[0].is_number() || !e[1].is_number() || !e[2].is_number()) {
+                    throw std::runtime_error(ctx + "\"rcs_nozzle_dirs\" entries must be [x,y,z] numbers");
+                }
+                const glm::dvec3 v(e[0].get<double>(), e[1].get<double>(), e[2].get<double>());
+                const double L = glm::length(v);
+                if(L <= 1e-6) {
+                    throw std::runtime_error(ctx + "\"rcs_nozzle_dirs\" entry must be non-zero");
+                }
+                d.rcs_nozzles.push_back(v / L);
+            }
+        }
+
         /* Engine gimbal (TVC): a part either cannot gimbal at all or needs a
            nonzero slew rate to reach its limit -- a limit with a dead
            actuator is authored data nobody can use. */

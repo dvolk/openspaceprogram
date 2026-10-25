@@ -527,11 +527,22 @@ public:
 
     /* --- RCS translation (hydrazine mono, KSP-style) --------------------
        Field-driven (Part::isRcs). rcsDir is armed in whatever frame the control
-       law uses -- ship axes for a ship, the render frame for the EVA suit. The
-       force goes AT the COM: the COM-translation approximation. */
+       law uses -- ship axes for a ship, the render frame for the EVA suit.
+       Force is allocated per NOZZLE at the pod's position (src/rcs.h, #428):
+       an off-center pod translates AND spins the ship, as reality demands. */
     glm::dvec3 rcsDir = glm::dvec3(0.0);  // armed dir (see above); 0 = off
     /* Burned this tick: the render pass draws the plume off this. */
     bool rcsFiring = false;
+    /* The last airless-or-not substep's allocation, for the [rcs] log (same
+       idiom as lastControlDeflections: empty = no translation requested). */
+    struct RcsNozzleLog {
+        std::string part;   // the pod's def name
+        std::string tag;    // nozzle direction label, local frame ("+Z")
+        double thrust;      // N actually fired
+    };
+    std::vector<RcsNozzleLog> lastRcsNozzles;
+    glm::dvec3 lastRcsCmd = glm::dvec3(0.0);  // demanded force (world, N)
+    glm::dvec3 lastRcsAch = glm::dvec3(0.0);  // achieved force (world, N)
     void clearRcs();
     /* The armed RCS direction in WORLD axes (unit; (0,0,0) disarmed). Resolved at
        the point of use, so it tracks the live attitude. Virtual: its frame is the

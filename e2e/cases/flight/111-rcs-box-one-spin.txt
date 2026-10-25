@@ -1,0 +1,18 @@
+NAME rcs-box-one-spins
+CLAIM A single off-center RCS box translates AND spins the ship: force at the pod, not the COM (#428).
+KIND invariant
+# rcs_box_one mounts ONE box to the side of a mono tank. Holding N fires it
+# along the tank axis 0.5 m off the COM: the ship gains orbital energy
+# (translation) while |w| ramps up (the physical torque) -- the old COM-force
+# model could not spin the ship at all.
+ARGS --time-accel 1 --startship rcs_box_one,res/ships/rcs_box_one.json,Kerbin,inertial-orbit
+ARGS --att-log --orbit-log --orbit-interval 0.5 --drag-log
+ARGS --sim-press 2000,3000,N
+ARGS --timeout 8
+LIMIT 90
+EXPECT [rcs]
+FORBID error:
+CHECK len(att) >= 10
+CHECK abs(last(orbit)["E"] - first(orbit)["E"]) > 100.0
+CHECK max(a["wnorm"] for a in att if a["t"] > 2.5) > 0.3
+CHECK max(a["wnorm"] for a in att if a["t"] < 1.8) < 0.05

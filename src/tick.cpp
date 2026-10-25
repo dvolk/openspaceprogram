@@ -446,6 +446,21 @@ void tick(Game &g) {
                     }
                     printf("\n");
                 }
+                /* RCS nozzle allocation (#428): which nozzles fired for the
+                   commanded move; ach < cmd (or nothing firing at all -- a
+                   demand outside every nozzle's cone) is the hardware saying
+                   it cannot deliver. */
+                if(glm::length2(g.ship->lastRcsCmd) > 0.0) {
+                    const glm::dvec3 cmd = g.ship->lastRcsCmd;
+                    const glm::dvec3 ach = g.ship->lastRcsAch;
+                    printf("[rcs] cmd=(%.0f %.0f %.0f)N ach=(%.0f %.0f %.0f)N",
+                           cmd.x, cmd.y, cmd.z, ach.x, ach.y, ach.z);
+                    for(const Vehicle::RcsNozzleLog &nl : g.ship->lastRcsNozzles) {
+                        printf(" %s[%s]=%.0fN", nl.part.c_str(), nl.tag.c_str(),
+                               nl.thrust);
+                    }
+                    printf("\n");
+                }
                 fflush(stdout);
             }
         }
