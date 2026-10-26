@@ -71,6 +71,10 @@ WING_STALL_ANGLE   = 0.35     # rad (~20 deg), where lift peaks + the flow stall
 RUDDER_DENSITY        = 50.0  # kg/m^3, control-surface structure (skin + spars)
 RUDDER_CL             = 6.0   # deflection effectiveness (per radian)
 RUDDER_MAX_DEFLECTION = 0.35  # rad (~20 deg), the travel limit
+# Fraction of a control surface's footprint that actually becomes authority.
+# Not a physical constant: it is the knob that keeps a fin's moment near the
+# ship's own wheel budget (#399 asks for that ratio to come from the sim).
+CONTROL_AREA_FRACTION = 0.5
 
 # Per-type aerodynamic shape coefficients (src/drag.h partCd).
 # drag = symmetric default; drag_forward/side/backward by how the part faces
@@ -119,7 +123,8 @@ DRAG_CD = {
                        "drag_backward": 1.3},
     "kerbal":         {"drag": 0.5, "drag_forward": 0.5, "drag_side": 0.9,
                        "drag_backward": 0.9},
-    # thin plate (wing / control surfaces): span +Z, thickness Y
+    # thin plate (wing / control surfaces): chord along the part's own +Z, so
+    # the flow along its chord is the low-drag case and spanwise is blunt
     "wing":           {"drag": 0.1, "drag_forward": 0.2, "drag_side": 1.0,
                        "drag_backward": 0.2},
     "rudder":         {"drag": 0.1, "drag_forward": 0.2, "drag_side": 1.0,
@@ -209,10 +214,10 @@ PARTS = [
     ("cargo",            "cargo",          "meshes/fuel_tank.obj",                "textures/fuel_tank.png"),
     ("materials_pod",    "materials_pod",  "meshes/materials_pod.obj",           "textures/materials_pod.png"),
     ("barometer",        "barometer",      "meshes/barometer.obj",                "textures/barometer.png"),
-    ("wing",             "wing",           "meshes/wing.obj",                     "textures/wing.png"),
-    ("rudder",           "rudder",         "meshes/wing.obj",                     "textures/rudder.png"),
-    ("elevator",         "elevator",       "meshes/wing.obj",                     "textures/elevator.png"),
-    ("aileron",          "aileron",        "meshes/wing.obj",                     "textures/aileron.png"),
+    ("wing",             "wing",           "meshes/wing_r2h2.obj",                "textures/wing.png"),
+    ("rudder",           "rudder",         "meshes/fin_r1h2.obj",                 "textures/rudder.png"),
+    ("elevator",         "elevator",       "meshes/fin_r1h2.obj",                 "textures/elevator.png"),
+    ("aileron",          "aileron",        "meshes/fin_r1h2.obj",                 "textures/aileron.png"),
     # the parachute rides the nose-cap hull; the canopy is an overlay mesh
     ("chute",            "chute",          "meshes/nose_cap.obj",                 "textures/nose_cap.png"),
     ("fuel_link",        "fuel_link",      None,                           None),
@@ -290,14 +295,44 @@ for _n, _f in EXTRA_FIELDS.items():
 
 
 def mesh_geom(mesh_file):
-    """(radius, height, volume): half largest x/y span, z span, enclosed volume
-    (or bounding-cylinder fallback if not watertight)."""
+    """(radius, height, volume, planform): half largest x/y span, z span,
+    enclosed volume (or bounding-cylinder fallback if not watertight), and the
+    area of the mesh's x/z footprint."""
     t = trimesh.load_mesh(os.path.join(REPO_ROOT, "res", mesh_file), process=False)
     ext = t.extents                       # (x, y, z) spans
     radius = max(ext[0], ext[1]) / 2.0
     height = ext[2]
     volume = float(t.volume) if t.is_watertight else math.pi * radius * radius * height
-    return round(radius, 3), round(height, 3), volume
+    return round(radius, 3), round(height, 3), volume, hull_area([(v[0], v[2]) for v in t.vertices])
+
+
+def hull_area(pts):
+    """Area of the 2D convex hull of (x, y) points: monotone chain + shoelace.
+    A plate's footprint (gen_wing.py) is its planform, so this is what a lifting
+    surface actually pushes on, whatever the planform's shape."""
+    p = sorted(set((float(x), float(y)) for x, y in pts))
+    if len(p) < 3:
+        return 0.0
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    hull = []
+    for q in p:
+        while len(hull) >= 2 and cross(hull[-2], hull[-1], q) <= 0.0:
+            hull.pop()
+        hull.append(q)
+    k = len(hull) + 1
+    for q in reversed(p):
+        while len(hull) >= k and cross(hull[-2], hull[-1], q) <= 0.0:
+            hull.pop()
+        hull.append(q)
+    a = 0.0
+    for i in range(len(hull) - 1):
+        x0, y0 = hull[i]
+        x1, y1 = hull[i + 1]
+        a += x0 * y1 - x1 * y0
+    return abs(a) / 2.0
 
 
 def clean(x):
@@ -363,7 +398,7 @@ def generate(name, ptype, mesh, texture):
         e.update(EXTRA_FIELDS[name])
         return e
 
-    radius, height, volume = mesh_geom(mesh)
+    radius, height, volume, planform = mesh_geom(mesh)
     e = {
         "name": name,
         "type": ptype,
@@ -465,7 +500,10 @@ def generate(name, ptype, mesh, texture):
         e["mass"] = clean(volume * WING_DENSITY)
         e["radius"] = radius
         e["height"] = height
-        e["lift_area"] = clean(radius * height)
+        # The plate's real footprint, not radius*height: that product is a
+        # triangle's area, so it only ever matched the old 2x2 delta by
+        # coincidence and under-reads a rectangle by 2x (#455).
+        e["lift_area"] = clean(planform)
         e["cl"] = WING_CL
         e["stall_angle"] = WING_STALL_ANGLE
     elif ptype in ("rudder", "elevator", "aileron"):
@@ -473,7 +511,11 @@ def generate(name, ptype, mesh, texture):
         e["mass"] = clean(volume * RUDDER_DENSITY)
         e["radius"] = radius
         e["height"] = height
-        e["control_area"] = clean(radius * height)
+        # A hinged plate does not earn its whole footprint: it works against the
+        # flow it turns, and this authority is already 10-30x the ship's wheel
+        # budget at cruise (#399), so credit it with a fraction and keep that
+        # fraction in one place rather than in the footprint.
+        e["control_area"] = clean(planform * CONTROL_AREA_FRACTION)
         e["control_axis"] = {"rudder": "yaw", "elevator": "pitch",
                              "aileron": "roll"}[ptype]
         e["cl_control"] = RUDDER_CL
