@@ -130,12 +130,12 @@ void Audio::primeTrack(MIX_Track *t) {
 void Audio::setLoop(const char *path, bool active, float gain) {
     if(mixer_ == nullptr) { return; }
     if(!active) {
-        // Fade out (no mid-wave cut). Arm the fade exactly ONCE: re-arming
-        // every frame would never let it complete. The track is kept warm
-        // for the next ignition.
-        loopActive_ = false;
+        /* Fade out (no mid-wave cut), once per playing track. update() clears
+           loopStopping_ when a fade lands so a later ignition keeps this warm
+           track, which means !loopStopping_ alone re-arms an already-silent
+           track every other frame while coasting. */
         if(loop_ == nullptr) { return; }
-        if(!loopStopping_) {
+        if(!loopStopping_ && MIX_TrackPlaying(loop_)) {
             loopStopping_ = true;
             if(dbg_) { printf("[aud] setLoop: STOP (fading out)\n"); fflush(stdout); }
             MIX_StopTrack(loop_, MIX_TrackMSToFrames(loop_, 150));
@@ -157,7 +157,6 @@ void Audio::setLoop(const char *path, bool active, float gain) {
         if(!MIX_SetTrackAudio(loop_, a)) { MIX_DestroyTrack(loop_); loop_ = nullptr; return; }
         primeTrack(loop_);   // warm the buffers off the real-time thread
         loopPath_ = path;
-        loopActive_ = false;
     }
     loopGain_ = gain;
     if(!MIX_TrackPlaying(loop_)) {
@@ -175,7 +174,6 @@ void Audio::setLoop(const char *path, bool active, float gain) {
         }
     }
     MIX_SetTrackGain(loop_, gain * sfxVol_);
-    loopActive_ = true;
     if(dbg_) {
         printf("[aud] setLoop: active gain=%.2f playing=%d\n",
                (double)gain, (int)MIX_TrackPlaying(loop_));

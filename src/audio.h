@@ -46,11 +46,20 @@ public:
     // One-shot SFX. `balance` trims a hot one-shot relative to the SFX master.
     void playOnce(const std::string &path, float balance = 1.0f);
 
-    // Looping SFX (engine hum). `path` is a C string to avoid per-frame
-    // temporaries (called every frame in a pilot scene).
+    /* Looping SFX (engine hum). `path` is a C string to avoid per-frame
+       temporaries (called every frame in a pilot scene). Predecoded, which
+       puts it on SDL3_mixer's RAW decoder: that serves in-memory audio in
+       fixed 256-byte chunks, so a 44.1kHz stereo S16 loop costs a fresh
+       audio-queue track node every 1.45 ms (~580/s, #439). Measured as free --
+       transient, off the render thread -- so do not "fix" it by predecoding the
+       music as well; see setMusic. */
     void setLoop(const char *path, bool active, float gain);
 
-    // Ambient music: streams (a full predecode of a long OGG stalls boot).
+    /* Ambient music: streams. Predecoding this one does NOT pay for itself:
+       res/audio/ville_seppanen-1_g.ogg is 600 s of 44.1kHz stereo F32, so a
+       decode-up-front lands ~212 MB, and it moves the music onto the same
+       256-byte RAW chunk path the hum uses -- 32 frames a put, ~1380/s. More
+       allocation AND more RAM, not less (#439). */
     void setMusic(const std::string &path);
     void stopMusic();
 
@@ -89,9 +98,8 @@ private:
 
     MIX_Track *loop_ = nullptr;
     std::string loopPath_;
-    bool loopActive_ = false;
     float loopGain_ = 0.0f;   // the throttle; the gain applied is gain*sfxVol_
-    bool loopStopping_ = false;   // arms the stop-fade exactly once
+    bool loopStopping_ = false;   // armed while a stop-fade is running
 
     MIX_Track *music_ = nullptr;
     std::string musicPath_;
