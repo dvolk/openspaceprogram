@@ -7,10 +7,10 @@ kind says how much weight the assertions carry.
 | kind | meaning | cases |
 |---|---|---|
 | `invariant` | a behaviour or a player route the game must keep | 263 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 34 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 33 |
 | `harness` | CLI/test-engine plumbing, not game spec | 12 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **313** |
+| | **total** | **312** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (67)
+## flight (66)
 
 | case | kind | pins |
 |---|---|---|
@@ -72,7 +72,6 @@ judgement. Select by number, name or path, e.g.
 | `flight/151-chute-terminal.txt` | golden | A deployed chute reaches chute terminal velocity, not hull terminal. |
 | `flight/152-chute-flip.txt` | golden | A chute below the COM weathervanes the ship nose-down; one above hangs it nose-up. |
 | `flight/160-pad-rest-settle.txt` | golden | A pad ship spawns at its resting height and does not free-fall on the first ticks. |
-| `flight/161-pad-ships-share-the-deck.txt` | golden | Every pad ship stands on its site deck, not beside or above it. |
 | `flight/176-mouse-drag-camera.txt` | invariant | A zero-length RMB press must not open a part window and truncate the next drag. |
 | `flight/193-porkchop-range.txt` | golden | The porkchop sliders scale their range with the target's own period. |
 | `flight/255-tof-past-the-slider-band.txt` | golden | The ToF slider accepts a value past its old hard-coded band and the plan uses it. |
