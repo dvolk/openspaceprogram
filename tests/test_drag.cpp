@@ -313,6 +313,22 @@ static void test_wing_lifts_up() {
                                         liftDirection(vrel, right, noseD), 0.35);
         CHECK_NEAR(fd.alpha, -th, 1e-9, "nose below the flow -> AoA < 0");
         CHECK_TRUE(Ld.y < 0.0, "a wing below the flow pushes down");
+
+        // And the same world answer from an AIRFRAME FLOPPED UPSIDE DOWN: roll
+        // 180 deg so its up axis points at the ground, keep the nose above the
+        // flow. The body AoA and the wing normal both flip, so the force does
+        // not -- which is the half a flipped alpha cannot fake, and what breaks
+        // if alpha's plane and liftDirection() ever stop agreeing.
+        const glm::dvec3 rightInv(-1.0, 0.0, 0.0);
+        const glm::dvec3 noseInv(0.0, std::sin(th), std::cos(th));
+        const glm::dvec3 upInv = glm::cross(noseInv, rightInv);
+        CHECK_TRUE(upInv.y < 0.0, "rolled airframe: its up axis points down");
+        const AeroFrame fi = aeroFrame(vrel, rightInv, upInv, noseInv);
+        const glm::dvec3 li = liftDirection(vrel, rightInv, noseInv);
+        CHECK_TRUE(li.y < 0.0, "the rolled wing normal points at the ground");
+        const glm::dvec3 Li = liftForce(q, 4.0, 6.0, fi.alpha, li, 0.35);
+        CHECK_NEAR(fi.alpha, -th, 1e-9, "rolled: nose above flow reads AoA < 0");
+        CHECK_TRUE(Li.y > 0.0, "rolled airframe, nose above the flow: still LIFTS");
     }
 }
 

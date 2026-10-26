@@ -1,0 +1,25 @@
+NAME drag-log-lift-readings
+CLAIM The --drag-log's signed lift and attitude readings parse in flight and stay inside their bounds.
+KIND harness
+ARGS --time-accel 1 --startship jet,res/ships/jet.json,Duna,pad
+ARGS --timeout 20 --drag-log
+ARGS --sim-press 1000,2000,R
+ARGS --sim-press 1500,4000,T
+ARGS --sim-press 6000,1500,W
+EXPECT [drag]
+CHECK len(drag) >= 5
+CHECK any(d["F"] > 0 and d["rho"] > 0 for d in drag)
+# L_up (the lift part . local vertical) and Up (the airframe's own up axis .
+# local vertical), both from #448. Every row carries them; Up is a cosine and
+# L_up a COMPONENT of the printed |L|, so both bounds are hard -- a dot taken
+# between mismatched frames or against the wrong vector shows up here as a
+# component larger than its magnitude.
+CHECK all(("L_up" in d and "up" in d) for d in drag)
+CHECK all(abs(d["up"]) <= 1.0 + 1e-9 for d in drag)
+CHECK all(abs(d["L_up"]) <= abs(d["L"]) + 1e-6 for d in drag)
+CHECK any(d["L"] > 1000 and abs(d["L_up"]) > 1.0 for d in drag)
+# The SIGN law -- a wing above the flow lifts -- is NOT pinned here and cannot
+# be: aoa and L_up are both odd in alpha, so any relation between them is even
+# under a sign flip. tests/test_drag's test_wing_lifts_up pins it, in a frame
+# where the geometry is known. A real "plane flies" golden needs #451 first.
+FORBID error:

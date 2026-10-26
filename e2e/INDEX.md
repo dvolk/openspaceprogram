@@ -6,9 +6,9 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 265 |
+| `invariant` | a behaviour or a player route the game must keep | 264 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 33 |
-| `harness` | CLI/test-engine plumbing, not game spec | 12 |
+| `harness` | CLI/test-engine plumbing, not game spec | 13 |
 | `canary` | only proves the thing boots | 4 |
 | | **total** | **314** |
 
@@ -89,7 +89,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/376-drain-window-survives-a-ship-switch.txt` | golden | Switching ships does not stretch a --drain-log row's interval or corrupt its kg/s. |
 | `flight/377-power-log-balances-the-battery.txt` | golden | --power-log's charge moves at the rate its own printed watts imply. |
 | `flight/395-surface-aoa-readout.txt` | invariant | [surfinfo] reports the aero angle of attack while the ship has air-relative flow, and "-" when it has none. |
-| `flight/448-lift-sign-follows-aoa.txt` | invariant | In flight the lift's vertical reading keeps the AoA's sign: no more pitched-up-with-lift-down. |
+| `flight/448-drag-log-lift-readings.txt` | harness | The --drag-log's signed lift and attitude readings parse in flight and stay inside their bounds. |
 
 ## crew (25)
 

@@ -167,7 +167,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_flag("--drag-log", args.drag_log,
                  "Log the active ship's drag per tick (altitude, density, "
-                 "speed, force) -- the 'is drag acting?' instrument");
+                 "speed, force, signed lift L_up and attitude Up readings) -- "
+                 "the 'is drag acting?' instrument");
 
     app.add_option("--timeout", args.timeout_seconds,
                    "Auto-exit the main loop after this many wall-clock "

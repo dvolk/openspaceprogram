@@ -353,7 +353,7 @@ public:
     glm::dvec3 lastAeroTorque = glm::dvec3(0.0);  // moment about the COM
     double lastDragAlt = 0.0;
     double lastDragRho = 0.0;
-    double lastDragAlpha = 0.0;  // pitch angle of attack (rad)
+    double lastDragAlpha = 0.0;  // AoA (rad); + = nose above the flow (drag.h)
     /* Whether lastDragAlpha measured a flow worth reading: AeroFrame::valid AND
        the air-relative speed clears kAoAFlowFloor. False alpha is not "flying
        straight down the flow" -- it is "there is no flow to have an angle to". */
