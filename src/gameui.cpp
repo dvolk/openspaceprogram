@@ -85,7 +85,8 @@ static void drawPartPhysique(const PartDef &def) {
         ImGui::Text("Torque: %.0fN m (reaction wheel)", def.torque);
     }
     if(def.jet) {
-        ImGui::Text("Jet: %.0fN static, air-breathing (%.1fkg/s jet fuel, intake %.2fm^2, %.0fm/s exhaust)",
+        ImGui::Text("Jet: %.0fN static at sea level, air-breathing (%.2fkg/s jet fuel "
+                    "at sea level, intake %.2fm^2, %.0fm/s exhaust)",
                     def.jet_fan_thrust, def.propellant_rate[(int)ResourceType::JetFuel],
                     def.jet_intake_area, def.exhaust_velocity);
     } else if(def.totalPropellantRate() > 0.0 && def.exhaust_velocity > 0.0) {

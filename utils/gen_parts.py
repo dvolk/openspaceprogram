@@ -20,6 +20,11 @@ PROP_DENSITY = 133.0             # kg/m^3, 50/50 LH2 + LOX mixture by mass
 TANK_DRY_DENSITY = 13.3          # kg/m^3, structural wall mass per tank volume
 ENGINE_THRUST_PER_M2 = 50000.0   # N, thrust at radius = 1 m (scales with r^2)
 ENGINE_MASS_PER_N = 0.01         # kg per newton of thrust (~100 N/kg)
+# TVC (#415): a wheel-less rocket steers on thrust alone. The six hydrogen
+# engines (chemical + orbital) gimbal +/-5 deg at 90 deg/s; the nuclear one
+# does not.
+ENGINE_GIMBAL_MAX = 0.0873       # rad (+/-5 deg)
+ENGINE_GIMBAL_RATE = 1.5708      # rad/s (90 deg/s)
 # Nuclear thermal: H2 only (no oxidizer), higher Isp, lower thrust, heavier.
 NUCLEAR_THRUST_PER_M2 = 30000.0  # N, thrust at radius = 1 m (scales with r^2)
 NUCLEAR_EXHAUST_VELOCITY = 9000.0  # m/s (Isp = 9000/9.81 ~ 917 s), ~2x chemical
@@ -28,11 +33,11 @@ HYDRAZINE_DENSITY = 100.0        # kg/m^3, monopropellant hydrazine (mono)
 RCS_THRUST_PER_M2 = 200.0        # N, RCS thrust at radius = 1 m (scales with r^2)
 
 # Jet (air-breathing): T = T_fan + m_f*V_E + rho*A*v*(V_E - v) (src/drag.h jetThrust)
-JET_FAN_PER_M2    = 32000.0      # N, static (fan) thrust at radius = 1 m
+JET_FAN_PER_M2    = 90000.0      # N, static (fan) thrust at radius = 1 m
 JET_EXH_VEL       = 550.0        # m/s, the real exhaust velocity (not a knob)
-JET_INTAKE_PER_M2 = 0.9          # m^2, effective intake area at radius = 1 m
-JET_FUEL_PER_M2   = 6.82         # kg/s, jet-fuel flow at radius = 1 m
-JET_MASS_PER_M2   = 1200.0       # kg, engine mass at radius = 1 m (~120 kN class)
+JET_INTAKE_PER_M2 = 0.35         # m^2, effective intake area at radius = 1 m
+JET_FUEL_PER_M2   = 1.2          # kg/s, jet-fuel flow at radius = 1 m (~0.47 lb/lbf/h)
+JET_MASS_PER_M2   = 700.0        # kg, engine mass at radius = 1 m (~129 N/kg)
 
 JET_FUEL_DENSITY = 70.0          # kg/m^3, jet fuel (separate resource from H2/LOX)
 
@@ -130,6 +135,16 @@ DRAG_CD = {
                        "drag_backward": 1.2},
 }
 
+# Per-part Cd overrides on top of the type's family: rcs_box is a flush cube
+# with no slipstream face along its own axis, so it has no low-drag side.
+DRAG_CD_BY_NAME = {
+    "rcs_box":        {"drag": 0.8, "drag_side": 1.1},
+}
+
+# The Cd family those tables write. It is NOT a legal EXTRA_FIELDS key: that
+# table is applied before the family, so a drag key there is silently clobbered.
+DRAG_KEYS = ("drag", "drag_forward", "drag_side", "drag_backward")
+
 # --- the catalog: (name, type, mesh, texture). Add a part = add a line. ----
 # fuel_link is virtual (mesh/texture = None). Radial sizes 1.0 / 1.5 / 2.25 m.
 PARTS = [
@@ -173,6 +188,7 @@ PARTS = [
     ("rcs_r1",           "rcs",            "meshes/reaction_wheel_r1h0.25.obj",   "textures/reaction_wheel.png"),
     ("rcs_r1.5",         "rcs",            "meshes/reaction_wheel_r1.5h0.375.obj","textures/reaction_wheel.png"),
     ("rcs_r2.25",        "rcs",            "meshes/reaction_wheel_r2.25h0.5625.obj","textures/reaction_wheel.png"),
+    ("rcs_box",          "rcs",            "meshes/rcs_box.obj",                  "textures/rcs_box.png"),
     ("adapter_r1to1.5",  "adapter",        "meshes/adapter_r1to1.5.obj",          "textures/adapter.png"),
     ("adapter_r1to2.25", "adapter",        "meshes/adapter_r1to2.25.obj",         "textures/adapter.png"),
     ("adapter_r1.5to1",  "adapter",        "meshes/adapter_r1.5to1.obj",          "textures/adapter.png"),
@@ -233,6 +249,13 @@ EXTRA_FIELDS = {
     "cargo":             {"inventory_capacity": 10},
     "materials_pod":     {"experiment_family": "materials study",
                           "experiment_storage": "instrument"},
+    # rcs_box: a flush 0.3 m cube of five fixed bells, not a round pod. Mass and
+    # the per-nozzle rating are DECLARED (like the decouplers'), and the bells
+    # are authored -- the -X mount face has none, so it cannot fire into the
+    # hull (src/rcs.h, #428).
+    "rcs_box":           {"mass": 12.0, "rcs_thrust": 60,
+                          "rcs_nozzle_dirs": [
+                              [1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]},
     # barometer: tiny stick instrument, mass declared (mesh supplies shape only);
     # scores biome-specific science only on the surface (res/data/experiments.json).
     "barometer":         {"mass": 10, "experiment_family": "barometer",
@@ -262,6 +285,8 @@ for _n, _f in EXTRA_FIELDS.items():
                      ("chute_mesh", "meshes/"), ("chute_texture", "textures/")):
         if _k in _f:
             assert _f[_k].startswith(_pfx), _f[_k]
+    # ... and no part declares a Cd here, where DRAG_CD would overwrite it
+    assert not (set(_f) & set(DRAG_KEYS)), _n
 
 
 def mesh_geom(mesh_file):
@@ -317,6 +342,9 @@ def display_name_for(name, ptype, radius, height):
         return base
     if name == "decoupler_radial":
         return "Radial Decoupler"
+    if name == "rcs_box":
+        # the count comes from the authored bells, so the label cannot rot
+        return "RCS box (%d-dir)" % len(EXTRA_FIELDS[name]["rcs_nozzle_dirs"])
     if ptype == "adapter":
         m = re.match(r"adapter_r(.*)to(.*)$", name)
         if m:
@@ -368,6 +396,9 @@ def generate(name, ptype, mesh, texture):
         e["height"] = height
         e["propellant"] = propellant
         e["exhaust_velocity"] = ve
+        if ptype in ("engine", "orbital_engine"):
+            e["gimbal_max"] = ENGINE_GIMBAL_MAX
+            e["gimbal_rate"] = ENGINE_GIMBAL_RATE
     elif ptype == "jet":
         # jet_fan_thrust is the static (fan) thrust; the ram term is added at
         # runtime. Burns JET FUEL only (air is the free oxidizer -- no LOX).
@@ -405,10 +436,14 @@ def generate(name, ptype, mesh, texture):
         e["height"] = height
         e["capacity"] = {"jetfuel": clean(capacity)}
     elif ptype == "rcs":
-        e["mass"] = clean(volume * MASS_DENSITY[ptype])
+        # The round pods scale with their face area; rcs_box declares its mass
+        # and rating (a fixed box of nozzles does not scale).
+        declared = EXTRA_FIELDS.get(name, {})
+        e["mass"] = clean(declared.get("mass", volume * MASS_DENSITY[ptype]))
         e["radius"] = radius
         e["height"] = height
-        e["rcs_thrust"] = clean(RCS_THRUST_PER_M2 * radius * radius)
+        e["rcs_thrust"] = clean(declared.get("rcs_thrust",
+                                             RCS_THRUST_PER_M2 * radius * radius))
     elif ptype in ("decoupler", "docking_port", "barometer", "chute"):
         # mass is declared in EXTRA_FIELDS; radius/height follow the mesh
         e["mass"] = clean(EXTRA_FIELDS[name]["mass"])
@@ -463,12 +498,14 @@ def generate(name, ptype, mesh, texture):
             e["power_draw"] = clean(WHEEL_DRAW_WATTS_PER_M * radius)
 
     e.update(EXTRA_FIELDS.get(name, {}))
-    d = DRAG_CD.get(ptype)
-    if d is not None:
-        e["drag"] = d["drag"]
-        e["drag_forward"] = d["drag_forward"]
-        e["drag_side"] = d["drag_side"]
-        e["drag_backward"] = d["drag_backward"]
+    d = dict(DRAG_CD.get(ptype) or {})
+    d.update(DRAG_CD_BY_NAME.get(name, {}))
+    if d:
+        # A name override sits ON TOP of its type's family, so the family must
+        # be complete (a lone override would silently lose a Cd axis).
+        assert set(d) == set(DRAG_KEYS), name
+        for _k in DRAG_KEYS:
+            e[_k] = d[_k]
     return e
 
 
@@ -544,6 +581,12 @@ def check(parts, path):
                 if cb[name].get(k) != gb[name].get(k):
                     out.append(f"{name}.{k}: committed={cb[name].get(k)!r} "
                                f"generated={gb[name].get(k)!r}")
+    # Text too, not just parsed values: the layout (key order, 12 vs 12.0, one
+    # nozzle bell per line) is this script's to choose as well, and a
+    # parsed-only check would stay green while a regenerate churned the file.
+    with open(path) as f:
+        if f.read() != dump_parts(parts) + "\n":
+            out.append("text: regenerating parts.json would change its layout")
     if out:
         print(f"DRIFT   {path}:")
         for line in out:
@@ -551,6 +594,15 @@ def check(parts, path):
         return False
     print(f"OK      {path}")
     return True
+
+
+def dump_parts(parts):
+    """The catalog as text. indent=2 would spread a nozzle's [x, y, z] over five
+    lines, so each integer triple is put back on one -- the committed file's
+    shape, so regenerating it is a no-op."""
+    text = json.dumps({"parts": parts}, indent=2)
+    return re.sub(r"\[\s+(-?\d+),\s+(-?\d+),\s+(-?\d+)\s+\]",
+                  lambda m: "[%s, %s, %s]" % m.groups(), text)
 
 
 def main():
@@ -580,7 +632,7 @@ def main():
         return
 
     with open(a.out, "w") as f:
-        json.dump({"parts": parts}, f, indent=2)
+        f.write(dump_parts(parts))
         f.write("\n")
     print("\nwrote %s" % a.out)
 

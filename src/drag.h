@@ -213,14 +213,23 @@ inline double controlCl(double cl, double clControl) {
     return (clControl > 0.0) ? clControl : cl;
 }
 
+/* The jet AIR GATE shared by thrust and fuel flow: available air as a fraction
+   of the body's own sea level, capped at 1. The tank drains with it -- thin air
+   gives less thrust AND less burn, and vacuum gives neither. */
+inline double jetAirGate(double rho, double rho_sea) {
+    if(!(rho > 0.0) || !(rho_sea > 0.0)) { return 0.0; }  // NaN fails closed
+    const double d = rho / rho_sea;
+    return (d >= 1.0) ? 1.0 : d;
+}
+
 /* JET ENGINE (air-breathing) thrust, newtons:
-     T(v, rho) = T_fan·d  +  ṁ_f·v_e·d  +  rho·A·v·(v_e − v)   d = min(rho/rho_sea, 1)
+     T(v, rho) = T_fan·d  +  ṁ_f·v_e·d  +  rho·A·v·(v_e − v)   d = jetAirGate(rho, rho_sea)
    d gates the fan + fuel terms on available air; rho = 0 kills every term. The net
    is clamped at 0 (a jet never reverses). */
 inline double jetThrust(double v, double rho, double rho_sea,
                         double T_fan, double m_f, double v_e, double A) {
-    if(rho <= 0.0 || rho_sea <= 0.0) { return 0.0; }   /* no air -> no thrust */
-    const double d = (rho / rho_sea < 1.0) ? rho / rho_sea : 1.0;
+    const double d = jetAirGate(rho, rho_sea);
+    if(d <= 0.0) { return 0.0; }   /* no air -> no thrust */
     const double speed = (v < 0.0) ? 0.0 : v;
     const double T = T_fan * d + m_f * v_e * d + rho * A * speed * (v_e - speed);
     return (T < 0.0) ? 0.0 : T;

@@ -3295,7 +3295,10 @@ void Vehicle::ApplyThrust(double step) {
                 v_air, rho, rho_sea, p->def->jet_fan_thrust, p->jetFuelRate(),
                 p->def->exhaust_velocity, p->def->jet_intake_area);
             if(T <= 0.0) { continue; }
-            const double flow = p->jetFuelRate() * (double)thruster_util * step; /* kg this tick */
+            /* Burn with the air, not against it: the same density gate jetThrust
+               uses, so a thin-air jet is weak AND sips fuel (no air, no burn). */
+            const double flow = p->jetFuelRate() * (double)thruster_util * step
+                              * jetAirGate(rho, rho_sea); /* kg this tick */
             if(consumeResourceMass(ResourceType::JetFuel, flow, p)) {
                 p->armedThrust = (float)(T * thruster_util * exhaust_scale);
                 m_thrust = 1.0;

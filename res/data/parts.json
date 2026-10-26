@@ -371,16 +371,16 @@
       "display_name": "Jet (2m)",
       "mesh": "meshes/engine.obj",
       "texture": "textures/jet_engine.png",
-      "mass": 1200,
+      "mass": 700,
       "radius": 1.0,
       "height": 2.0,
       "propellant": {
-        "jetfuel": 6.82
+        "jetfuel": 1.2
       },
       "exhaust_velocity": 550.0,
       "jet": true,
-      "jet_fan_thrust": 32000,
-      "jet_intake_area": 0.9,
+      "jet_fan_thrust": 90000,
+      "jet_intake_area": 0.35,
       "shroud": "meshes/engine_shroud.obj",
       "shroud_texture": "textures/engine_shroud.png",
       "drag": 0.6,
@@ -744,7 +744,11 @@
       "height": 0.3,
       "rcs_thrust": 60,
       "rcs_nozzle_dirs": [
-        [1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, -1, 0],
+        [0, 0, 1],
+        [0, 0, -1]
       ],
       "drag": 0.8,
       "drag_forward": 1.1,

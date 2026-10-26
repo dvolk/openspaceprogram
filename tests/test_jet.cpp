@@ -4,14 +4,15 @@
 // FREE air. Pinned here without Bullet/GL so the law is independent of
 // the render/physics chain (like test_drag).
 //
-//   T(v, rho) = T_fan*d + m_f*v_e*d + rho*A*v*(v_e - v),   d = min(rho/rho_sea, 1)
+//   T(v, rho) = T_fan*d + m_f*v_e*d + rho*A*v*(v_e - v),   d = jetAirGate(rho, rho_sea)
 //
 //   vacuum (rho = 0)      -> 0 (a jet cannot thrust in space)
 //   v = 0 (at rest)       -> T_fan + m_f*v_e (the static/fan thrust)
 //   v = v_e/2             -> the ram term peaks (thrust maximum)
 //   v = v_e               -> the ram term is back to 0 (thrust = static)
-//   v > v_e               -> the ram term is negative; the net clamps at 0
-//   rho < rho_sea         -> the fan + fuel terms scale with rho/rho_sea
+//   v > v_e               -> the ram term turns negative; the net clamps at 0
+//                            once it outweighs the static terms
+//   rho < rho_sea         -> the fan + fuel terms scale with d (the flow does too)
 //   degenerate inputs     -> handled (no negative thrust)
 //
 // Build & run (from repo root) -- also part of `make test`:
@@ -46,7 +47,7 @@ static int g_checks = 0;
 
 /* Reference values (the r1 jet, res/data/parts.json) at Kerbin sea level
    (rho_sea = 1.225). */
-static const double T_FAN = 32000.0, M_F = 6.82, V_E = 550.0, A = 0.9;
+static const double T_FAN = 90000.0, M_F = 1.2, V_E = 550.0, A = 0.35;
 static const double RHO_SEA = 1.225;
 
 static double T(double v, double rho) {
@@ -64,10 +65,10 @@ static void test_static() {
     CHECK_TRUE(T(0.0, RHO_SEA) > T_FAN, "static thrust >= the fan thrust");
 
     // A bigger fan -> a bigger resting thrust (the fan IS the VTOL
-    // capability: 40k takes off easier than 32k).
-    CHECK_TRUE(jetThrust(0.0, RHO_SEA, RHO_SEA, 40000.0, M_F, V_E, A)
+    // capability: a 25% bigger fan lifts more).
+    CHECK_TRUE(jetThrust(0.0, RHO_SEA, RHO_SEA, 1.25 * T_FAN, M_F, V_E, A)
                > jetThrust(0.0, RHO_SEA, RHO_SEA, T_FAN, M_F, V_E, A),
-               "T_fan=40k beats T_fan=32k at rest");
+               "a bigger fan beats the reference fan at rest");
 }
 
 static void test_ram() {
@@ -124,11 +125,34 @@ static void test_density() {
                1e-9, "rho > rho_sea: fan clamps at 1, ram follows local rho");
 }
 
+static void test_air_gate() {
+    printf("== jetAirGate: the share of sea-level air (thrust AND fuel) ==\n");
+
+    CHECK_NEAR(jetAirGate(RHO_SEA, RHO_SEA), 1.0, 1e-12, "sea level -> 1");
+    CHECK_NEAR(jetAirGate(0.5 * RHO_SEA, RHO_SEA), 0.5, 1e-12, "half density -> half");
+    CHECK_NEAR(jetAirGate(2.0 * RHO_SEA, RHO_SEA), 1.0, 1e-12, "denser clamps at 1");
+    CHECK_NEAR(jetAirGate(0.0, RHO_SEA), 0.0, 0.0, "vacuum -> 0 (no thrust, no burn)");
+    CHECK_NEAR(jetAirGate(RHO_SEA, 0.0), 0.0, 0.0, "no sea-level reference -> 0");
+    CHECK_NEAR(jetAirGate(std::nan(""), RHO_SEA), 0.0, 0.0,
+               "NaN density fails closed (no thrust AND no burn)");
+
+    // The flow gate IS the gate the thrust law uses: at any density, static
+    // thrust is the gate times the sea-level static, so the tank drains in
+    // lockstep with the fan + fuel terms (ApplyThrust multiplies by the same
+    // jetAirGate).
+    const double gates[] = {0.1, 0.3, 0.75, 1.0};
+    for(double g : gates) {
+        CHECK_NEAR(T(0.0, g * RHO_SEA),
+                   jetAirGate(g * RHO_SEA, RHO_SEA) * (T_FAN + M_F * V_E),
+                   1e-12, "flow gate == the thrust's fan gate");
+    }
+}
+
 static void test_vacuum() {
     printf("== jetThrust: vacuum ==\n");
 
     // No air at all: ZERO thrust at ANY speed -- a jet cannot run without
-    // air (and, in ApplyThrust, burns no fuel).
+    // air, and ApplyThrust burns no fuel (the flow is gated by jetAirGate).
     CHECK_NEAR(jetThrust(0.0, 0.0, RHO_SEA, T_FAN, M_F, V_E, A), 0.0, 0.0,
                "rho=0 at rest -> 0");
     CHECK_NEAR(jetThrust(300.0, 0.0, RHO_SEA, T_FAN, M_F, V_E, A), 0.0, 0.0,
@@ -163,6 +187,8 @@ int main() {
     test_overspeed();
     printf("\n");
     test_density();
+    printf("\n");
+    test_air_gate();
     printf("\n");
     test_vacuum();
     printf("\n");

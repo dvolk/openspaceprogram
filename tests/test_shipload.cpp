@@ -126,6 +126,27 @@ int main() {
         CHECK(cap != nullptr && cap->chute_area == 0.0);
     }
 
+    /* TVC in the SHIPPED catalog (#442): the gimbals were hand-added to
+       parts.json long after the generator learned them, so a generator that
+       forgets a field silently deletes a ship's steering authority. Pin the
+       six hydrogen engines (+/-5 deg at 90 deg/s) and the two thrusters that
+       must NOT gimbal. */
+    {
+        const char *gimballed[] = {"engine", "engine_r1.5h3", "engine_r2.25h4.5",
+                                   "orbital_engine", "orbital_engine_r1.5h1.5",
+                                   "orbital_engine_r2.25h2.25"};
+        for(const char *n : gimballed) {
+            const PartDef *d = cat.find(n);
+            CHECK(d != nullptr);
+            CHECK(d != nullptr && near(d->gimbal_max, 0.0873)
+                  && near(d->gimbal_rate, 1.5708));
+        }
+        const PartDef *nu = cat.find("nuclear_engine");
+        const PartDef *jt = cat.find("jet");
+        CHECK(nu != nullptr && nu->gimbal_max == 0.0 && nu->gimbal_rate == 0.0);
+        CHECK(jt != nullptr && jt->gimbal_max == 0.0 && jt->gimbal_rate == 0.0);
+    }
+
     // the EVA kerbal: a crew-mass part with no ship behaviors (no wheel or
     // thruster) but a small hydrazine tank for its RCS suit -- the mass is
     // the DRY suit (the propellant rides capacity / effectiveMass, like the
