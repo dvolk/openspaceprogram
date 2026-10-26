@@ -341,6 +341,15 @@ public:
     /* Last substep's aero (applyAeroForce), for the --drag-log. */
     glm::dvec3 lastAeroForce = glm::dvec3(0.0);   // total (lift + drag)
     glm::dvec3 lastLiftForce = glm::dvec3(0.0);   // the lift part
+    /* lastLiftForce . local vertical (away from the body centre): + = the wings
+       are holding the airframe UP. Signed so the --drag-log can pin the lift
+       DIRECTION, not just its magnitude -- a flipped AoA sign hid exactly that
+       (#448), and |L| alone cannot see it. */
+    double lastLiftVert = 0.0;
+    /* The airframe's own up axis . local vertical: +1 upright, 0 on its side,
+       -1 inverted. The --drag-log's guard rail -- L_up only means "the wings
+       hold the ship up" while this is positive. */
+    double lastUpVert = 0.0;
     glm::dvec3 lastAeroTorque = glm::dvec3(0.0);  // moment about the COM
     double lastDragAlt = 0.0;
     double lastDragRho = 0.0;

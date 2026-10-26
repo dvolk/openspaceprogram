@@ -53,11 +53,20 @@ inline glm::dvec3 dragForce(const DragAtmosphere &a, double cd, double area,
 }
 
 /* The aerodynamic flow frame: the ship's air-relative velocity decomposed
-   against its body axes (x right, y up, z nose). */
+   against its body axes (x right, y up, z nose).
+
+   ALPHA IS THE CONVENTIONAL ANGLE OF ATTACK: positive when the NOSE sits above
+   the flight path. That is what every downstream law assumes -- liftCurve()
+   signs the lift by alpha, so the sign chosen here decides whether a pitched-up
+   wing lifts or drives the airframe into the ground. The flow comes AT the nose
+   from ahead, so v_rel points BACKWARD: a nose above the flow has v_rel leaning
+   DOWN, i.e. dot(v_rel, up) < 0, hence the negated up term. BETA needs no such
+   flip -- v_rel leaning toward +right already means the wind arrives from the
+   ship's right, which IS the conventional positive sideslip. */
 struct AeroFrame {
     double v = 0.0;         // speed |v_rel|
-    double alpha = 0.0;     // pitch angle of attack (flow vs nose, Y-Z plane), rad
-    double beta = 0.0;      // sideslip (flow vs nose, X-Z plane), rad
+    double alpha = 0.0;     // angle of attack, rad; + = nose above flight path
+    double beta = 0.0;      // sideslip, rad; + = flow from the ship's right
     bool valid = false;     // false when v=0 or the nose axis is degenerate
 };
 
@@ -68,7 +77,7 @@ inline AeroFrame aeroFrame(const glm::dvec3 &v_rel,
     const double v = glm::length(v_rel);
     if(v <= 0.0 || glm::length(nose) <= 0.0) { return f; }
     f.v = v;
-    f.alpha = std::atan2(glm::dot(v_rel, up), glm::dot(v_rel, nose));
+    f.alpha = std::atan2(-glm::dot(v_rel, up), glm::dot(v_rel, nose));
     f.beta  = std::atan2(glm::dot(v_rel, right), glm::dot(v_rel, nose));
     f.valid = true;
     return f;

@@ -2114,6 +2114,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     // Reset so a substep with no air reports zero.
     lastAeroForce = glm::dvec3(0.0);
     lastLiftForce = glm::dvec3(0.0);
+    lastLiftVert = 0.0;
+    lastUpVert = 0.0;
     lastAeroTorque = glm::dvec3(0.0);
     lastDragAlt = 0.0;
     lastDragRho = 0.0;
@@ -2172,6 +2174,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     const glm::dvec3 nose  = rootRot[2];
     const glm::dvec3 right = rootRot[0];
     const glm::dvec3 up    = rootRot[1];
+    lastUpVert = glm::dot(up, com / r);  // upright? (see lastUpVert)
     const AeroFrame fr = aeroFrame(vrel, right, up, nose);
     const double alpha   = fr.valid ? fr.alpha   : 0.0;
     lastDragAlpha = alpha;
@@ -2334,6 +2337,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
 
     lastAeroForce = ftotal;
     lastLiftForce = lift_total;
+    lastLiftVert = glm::dot(lift_total, com / r);
     lastAeroTorque = moment;
     if(glm::length2(ftotal) <= 0.0) { return lastAeroForce; }
 

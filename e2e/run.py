@@ -223,7 +223,7 @@ MASS_RE = re.compile(
 DRAG_RE = re.compile(
     r"\[drag\]\s+t=([\d.]+)s\s+alt=([-\d.]+) m\s+rho=([-\d.e+]+) kg/m3\s+"
     r"\|v\|=([-\d.]+) m/s\s+\|F\|=([-\d.]+) N"
-    r"(?:\s+\|L\|=([-\d.]+) N)?"
+    r"(?:\s+\|L\|=([-\d.]+) N)?(?:\s+L_up=([-\d.]+) N)?(?:\s+Up=([-\d.]+))?"
     r"(?:\s+\|tau\|=([-\d.]+) Nm)?"
     r"\s+Cd=([-\d.]+)"
     r"(?:\s+A=([-\d.]+) m2)?(?:\s+AoA=([-\d.e+]+) deg)?"
@@ -796,13 +796,17 @@ def parse_scene(out):
 def parse_drag(out):
     rows = []
     for m in DRAG_RE.finditer(out):
-        (t, alt, rho, v, F, L, tau, cd, a, aoa, chute) = m.groups()
+        (t, alt, rho, v, F, L, lup, up, tau, cd, a, aoa, chute) = m.groups()
         row = {
             "t": float(t), "alt": float(alt), "rho": float(rho),
             "v": float(v), "F": float(F), "cd": float(cd),
         }
         if L is not None:
             row["L"] = float(L)
+        if lup is not None:
+            row["L_up"] = float(lup)
+        if up is not None:
+            row["up"] = float(up)
         if tau is not None:
             row["tau"] = float(tau)
         if a is not None:

@@ -1,0 +1,22 @@
+NAME lift-sign-follows-aoa
+CLAIM In flight the lift's vertical reading keeps the AoA's sign: no more pitched-up-with-lift-down.
+KIND invariant
+ARGS --time-accel 1 --startship jet,res/ships/jet.json,Duna,pad
+ARGS --timeout 20 --drag-log
+ARGS --sim-press 1000,2000,R
+ARGS --sim-press 1500,4000,T
+ARGS --sim-press 6000,1500,W
+EXPECT [drag]
+CHECK len(drag) >= 3
+CHECK any(d["F"] > 0 and d["rho"] > 0 for d in drag)
+# The two signed readings (#448) on every row: L_up = lift . local vertical,
+# up = the airframe's up axis . local vertical. Rows where the wing is actually
+# lifting (|AoA| in 3..35 deg, short of the 2x-stall dead zone) AND the ship is
+# far enough off its side that L_up means something (|up| >= 0.3) must agree in
+# sign. The sign LAW itself -- a wing above the flow lifts -- is pinned by
+# test_drag's chain test, where the geometry is known; a pad-launched ship here
+# cannot hold level flight, so this case pins the readings, not the trim.
+CHECK all(("L_up" in d and "up" in d) for d in drag)
+CHECK (lambda rs: len(rs) >= 2)([d for d in drag if 3 <= abs(d.get("aoa", 0.0)) <= 35 and abs(d.get("up", 0.0)) >= 0.3])
+CHECK all(d["aoa"] * d["L_up"] > 0 for d in drag if 3 <= abs(d.get("aoa", 0.0)) <= 35 and abs(d.get("up", 0.0)) >= 0.3)
+FORBID error:

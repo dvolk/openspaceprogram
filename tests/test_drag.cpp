@@ -164,10 +164,22 @@ static void test_aeroFrame() {
     CHECK_NEAR(f0.alpha, 0.0, 1e-12, "alpha 0 (prograde)");
     CHECK_NEAR(f0.beta, 0.0, 1e-12, "beta 0 (prograde)");
 
-    // Pure pitch: v has a +Y component -> alpha = atan2(vy, vz) = 45 deg.
+    // v leans +Y while the nose stays along +Z: the flight path is ABOVE the
+    // nose, so the nose sits below it -> alpha = -45 deg.
     AeroFrame fp = aeroFrame(glm::dvec3(0.0, 300.0, 300.0), right, up, nose);
-    CHECK_NEAR(fp.alpha, M_PI / 4.0, 1e-12, "alpha = 45 deg for (0,300,300)");
+    CHECK_NEAR(fp.alpha, -M_PI / 4.0, 1e-12, "alpha = -45 deg for (0,300,300)");
     CHECK_NEAR(fp.beta, 0.0, 1e-12, "beta 0 (pure pitch)");
+
+    // The convention that decides whether wings lift: nose pitched 20 deg above
+    // a horizontal flight path -> alpha = +20 deg, so liftCurve() pushes the
+    // airframe UP (see test_liftForce for the force half of that chain).
+    {
+        const double th = 20.0 * M_PI / 180.0;
+        const glm::dvec3 pitched(0.0, std::sin(th), std::cos(th));
+        const glm::dvec3 upT = glm::cross(pitched, right);  // the ship's +Y
+        AeroFrame fu = aeroFrame(glm::dvec3(0.0, 0.0, 300.0), right, upT, pitched);
+        CHECK_NEAR(fu.alpha, th, 1e-9, "nose above the flow -> alpha > 0");
+    }
 
     // Pure bank: v has a +X component -> beta = atan2(vx, vz) = 45 deg.
     AeroFrame fb = aeroFrame(glm::dvec3(300.0, 0.0, 300.0), right, up, nose);
@@ -262,6 +274,46 @@ static void test_liftForce() {
                "no lift area -> zero");
     CHECK_TRUE(liftForce(q, S, 0.0, alpha, liftDir) == glm::dvec3(0.0),
                "no cl (a rocket) -> zero");
+}
+
+/* The whole chain, from a real geometry to a force in world axes.
+   test_aeroFrame pins the ANGLE and test_liftForce pins the FORCE given an
+   angle, but the bug either half alone cannot see: a flipped AoA sign still
+   passes both, because liftCurve() is odd in alpha, so the mirrored angle
+   yields a mirrored force and every pairwise relation still agrees (#448).
+   Only the composition says which way a wing actually pushes: a wing whose
+   nose sits ABOVE the air it ploughs through must push the airframe skyward. */
+static void test_wing_lifts_up() {
+    printf("== chain: nose above the flow -> the wing pushes UP ==\n");
+    // World: local up is +Y, the ship flies horizontally along +Z at 100 m/s.
+    const glm::dvec3 right(1.0, 0.0, 0.0);
+    const glm::dvec3 vrel(0.0, 0.0, 100.0);
+    const double q = 0.5 * 1.225 * 100.0 * 100.0;  // sea-level Kerbin-ish
+
+    for(double th_deg : {5.0, 15.0}) {
+        const double th = th_deg * M_PI / 180.0;
+        // The ship's own frame, pitched th ABOVE the flight path.
+        const glm::dvec3 nose(0.0, std::sin(th), std::cos(th));
+        const glm::dvec3 up   = glm::cross(nose, right);  // the ship's +Y
+        const AeroFrame fr = aeroFrame(vrel, right, up, nose);
+        CHECK_NEAR(fr.alpha, th, 1e-9, "AoA = the pitch above the flow");
+
+        const glm::dvec3 ld = liftDirection(vrel, right, nose);
+        CHECK_NEAR(glm::dot(ld, glm::dvec3(0.0, 1.0, 0.0)), 1.0, 1e-9,
+                   "the wing normal points at the sky");
+        const glm::dvec3 L = liftForce(q, 4.0, 6.0, fr.alpha, ld, 0.35);
+        CHECK_TRUE(L.y > 0.0, "a wing above the flow LIFTS");
+
+        // The mirror: fly with the nose BELOW the flow (a dive) and the same
+        // wing drives the airframe down.
+        const glm::dvec3 noseD(0.0, -std::sin(th), std::cos(th));
+        const glm::dvec3 upD = glm::cross(noseD, right);
+        const AeroFrame fd = aeroFrame(vrel, right, upD, noseD);
+        const glm::dvec3 Ld = liftForce(q, 4.0, 6.0, fd.alpha,
+                                        liftDirection(vrel, right, noseD), 0.35);
+        CHECK_NEAR(fd.alpha, -th, 1e-9, "nose below the flow -> AoA < 0");
+        CHECK_TRUE(Ld.y < 0.0, "a wing below the flow pushes down");
+    }
 }
 
 static void test_liftCurve() {
@@ -696,6 +748,8 @@ int main() {
     test_liftDirection();
     printf("\n");
     test_liftForce();
+    printf("\n");
+    test_wing_lifts_up();
     printf("\n");
     test_liftCurve();
     printf("\n");
