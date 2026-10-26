@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <functional>
+#include <limits>
 #include <map>
 #include <numbers>
 #include <stdexcept>
@@ -552,9 +553,12 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
            hull/compoundParts must follow parts[0] or both dangle at freed memory
            (Kerbal::applyEva reads controller). */
         if(v->controller == minted) { v->controller = suit; }
-        delete minted;
         inventorySetOwner(suit, v);
         v->finalize();
+        /* Free the minted part only after the rebuild: until finalize() swaps
+           them, the compound and its geomS mirror still hold child pointers
+           into its shape stack. */
+        delete minted;
         assert(suit->kerbal != nullptr && suit->kerbal->id != 0);
         assert(v->name.empty());   // the profile owns the walker's name
     }
@@ -932,11 +936,17 @@ void Vehicle::rebuildCompound() {
     /* Re-base the children into the COM/principal frame: left in S, the body's origin
        sits at the root part while its inertia is diagonal about the principal axes --
        inconsistent under off-axis torque.
-       dynamicAabbTree=false: a compound's own dbvt only feeds queryAabb(), which
-       nothing in the Bullet we link ever calls on a shape -- the broadphase gives
-       the HULL one proxy for its whole AABB. Minting a node per child was pure
-       cost, and a burn-driven rebuild re-minted the whole tree every time. */
-    btCompoundShape *nc = new btCompoundShape(false, geomS->getNumChildShapes());
+       geomS gets no dbvt AABB tree (it never enters a world and nothing walks its
+       children the way Bullet does); the live compound keeps its tree, because
+       btCollisionWorld::rayTest/convexSweepTest (btCollisionWorld.cpp:572/908) and
+       btCompoundCollisionAlgorithm (btCompoundCollisionAlgorithm.cpp:58/252) cull
+       children through getDynamicAabbTree(). Re-minting that tree was most of
+       rebuildCompound's cost -- 13.4k allocations per 20s of throttle -- so the
+       point of keeping it is that refreshMassProps() no longer rebuilds. An
+       A/B (tmp/heap_pass_c_tree.sh, tree on vs off, orbit-burn and pad-launch
+       captures) measured the same allocation count both ways: 41.2k vs 41.1k
+       per 20s flying, 26.2k both ways on the pad. */
+    btCompoundShape *nc = new btCompoundShape(true, geomS->getNumChildShapes());
     const btTransform toBody = principal.inverse();
     for(int i = 0; i < geomS->getNumChildShapes(); i++) {
         nc->addChildShape(toBody * geomS->getChildTransform(i),
@@ -1027,6 +1037,10 @@ bool Vehicle::refreshMassProps() {
     hull->btBody->updateInertiaTensor();
     // The COM moved WITHIN S, so its world velocity changed by omega x shift.
     SetVelocity(hull, vCom + glm::cross(omega, sRot * (pOrigin - oldOrigin)));
+    // The mass path now owns most rebuilds, so its invariants run here too:
+    // this is the only place that notices a stale geomS mirror or a world
+    // tensor that stopped following the pose (#438).
+    checkHullMirrorInvariants();
     return true;
 }
 
@@ -1049,6 +1063,11 @@ static uint64_t aeroGeomFingerprint(const std::vector<Part *> &parts) {
         // pointer alone could alias an old part; uid is process-unique.
         h = mix(h, p->uid);
         h = mix(h, (uint64_t)(uintptr_t)p->body);
+        /* The shape pointer too: geomS and the live compound hold it. A part
+           that re-makes its Body/hull in place (part damage eating a panel, say)
+           would otherwise keep a matching fingerprint and leave the mass path
+           updating children that point at freed shapes. */
+        h = mix(h, (uint64_t)(uintptr_t)p->body->shape);
         for(int i = 0; i < 3; i++) { h = mix(h, std::bit_cast<uint64_t>(p->localPos[i])); }
         for(int c = 0; c < 3; c++) {
             for(int r = 0; r < 3; r++) { h = mix(h, std::bit_cast<uint64_t>(p->localRot[c][r])); }
@@ -1322,10 +1341,24 @@ void Vehicle::checkCompoundInvariants() const {
         assert(false && "compound must reproduce the part assembly");
     }
 
+    checkHullMirrorInvariants();
+}
+
+/* The two cheap halves of the compound invariants: the S-frame geometry mirror
+   and the world inverse inertia. Both are O(parts) with no analytic recompute,
+   so refreshMassProps() can afford them -- and must run them, because a mass
+   refresh is the hot path now and checkCompoundInvariants() only runs at a
+   full rebuild. */
+void Vehicle::checkHullMirrorInvariants() const {
+    if(hull == nullptr || hull->btBody == nullptr) { return; }
+
     /* `geomS` is the mirror refreshMassProps() re-solves against, so it must
        hold the same shapes at the same authored poses, in part order. It is
-       only ever rebuilt here, so a part that changed shape or mount without a
-       rebuild shows up here before a mass refresh can fly on a stale solve. */
+       only rebuilt at a full rebuild, so this is the tripwire for a part whose
+       shape or mount moved while the fingerprint still said otherwise: today
+       every runtime writer of localPos/localRot (setRoot, attach*, absorbShip,
+       extractSubtreeAsShip) ends in rebuildCompound(), so if that pairing ever
+       slips, the mass path is the first place it would bite. */
     if(geomS == nullptr || geomS->getNumChildShapes() != (int)parts.size()) {
         printf("[compound] '%s': the S-frame geometry mirror holds %d children "
                "for %zu parts\n", displayName().c_str(),
@@ -1341,13 +1374,21 @@ void Vehicle::checkCompoundInvariants() const {
                    && "the S-frame mirror points at another part's shape");
             assert(glm::length(cp - p->localPos) < 1e-12
                    && "the S-frame mirror lags a part's mount");
+            // Both sides are glm (fromBt inverts toBt), so the authored pose is
+            // the yardstick -- no Bullet round trip in the comparison.
+            for(int c = 0; c < 3; c++) {
+                for(int r = 0; r < 3; r++) {
+                    assert(std::fabs(cr[c][r] - p->localRot[c][r]) < 1e-12
+                           && "the S-frame mirror lags a part's orientation");
+                }
+            }
         }
     }
 
     /* The tensor Bullet actually answers torque with has to be the local
        diagonal rotated into the body's ACTUAL pose -- setWorldTransform() does
-       not refresh it, so a rebuild that forgets updateInertiaTensor() leaves
-       the principal axes read as world axes (#438). */
+       not refresh it, so a rebuild or a mass refresh that forgets
+       updateInertiaTensor() leaves the principal axes read as world axes (#438). */
     glm::dvec3 wPos; glm::dmat3 wRot;
     fromBt(hull->btBody->getWorldTransform(), wPos, wRot);
     const btVector3 li = hull->btBody->getLocalInertia();
@@ -1365,7 +1406,11 @@ void Vehicle::checkCompoundInvariants() const {
                 wInvScale = std::max(wInvScale, std::fabs(wantInv[r][c]));
             }
         }
-        if(wInvErr > 1e-12 * std::max(1.0, wInvScale)) {
+        /* Relative to the tensor's own magnitude, and scaled by btScalar's
+           precision: btcommon.h forces double, but a float build would fail a
+           fixed 1e-12 for arithmetic alone. */
+        const double tol = 100.0 * std::numeric_limits<btScalar>::epsilon() * wInvScale;
+        if(wInvErr > tol) {
             printf("[compound] '%s': the world inverse inertia is stale (max err "
                    "%.4g, scale %.4g) -- the pose was set without refreshing it\n",
                    displayName().c_str(), wInvErr, wInvScale);

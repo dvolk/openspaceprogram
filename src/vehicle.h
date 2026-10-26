@@ -212,6 +212,11 @@ public:
        properties + child poses), recomputed independently. */
     void checkCompoundInvariants() const;
 
+    /* The cheap half of those invariants -- the geomS mirror and the world
+       inverse-inertia tensor -- so refreshMassProps() can check itself instead
+       of waiting for a full rebuild to notice. */
+    void checkHullMirrorInvariants() const;
+
     /* The containment invariant (part.h): each part is attached to exactly this
        vehicle and the container/contents/seats edges agree. */
     bool checkPartInvariants() const;

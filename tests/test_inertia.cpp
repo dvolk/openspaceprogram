@@ -705,12 +705,29 @@ static Ship buildBurnShip() {
         glm::angleAxis(0.6, glm::dvec3(0.0, 1.0, 0.0))
       * glm::angleAxis(0.4, glm::dvec3(1.0, 0.0, 0.0)));
     Ship s; s.v = new TestVehicle;
-    addBox(s, "capsule",  300.0, 1.0, 1.0, 1.2,
-           sPos + sRot * glm::dvec3(0.0, 0.0,  6.0), sRot);
+    Part *cap = addBox(s, "capsule",  300.0, 1.0, 1.0, 1.2,
+                       sPos + sRot * glm::dvec3(0.0, 0.0,  6.0), sRot);
     addBox(s, "tank",    9000.0, 2.0, 2.0, 2.5,
            sPos + sRot * glm::dvec3(0.0, 0.0,  0.0), sRot);
     addBox(s, "engine",  1500.0, 1.5, 1.5, 1.0,
            sPos + sRot * glm::dvec3(0.0, 0.0, -4.0), sRot);
+    /* A crewed ship, so the mass path is fed effectiveMass() and not just
+       body->mass: the capsule's occupant weighs the compound without adding a
+       child, and the refresh must smear it the same way the rebuild does. */
+    s.defs[0].crew_capacity = 1;
+    PartDef kd;
+    kd.name = "suit";
+    kd.type = "kerbal";
+    kd.mass = 97.05f;
+    s.defs.push_back(kd);
+    Part *k = new Part;
+    k->body = new Body;
+    k->body->btBody = nullptr;
+    k->body->shape = new btBoxShape(btVector3(0.4, 0.5, 0.4));
+    k->body->mass = 97.05;
+    k->def = &s.defs.back();
+    cap->addSeat(k);
+    k->owner = s.v;
     finishShip(s);
     SetVelocity(s.v->hull, glm::dvec3(120.0, -30.0, 410.0));
     SetAngVelocity(s.v->hull, glm::dvec3(0.02, -0.11, 0.05));
@@ -725,6 +742,7 @@ struct HullSnap {
     glm::dvec3 wPos; glm::dmat3 wRot;           // the body pose == COM pose
     glm::dvec3 vel, omega;
     glm::dmat3 invInertiaWorld;                 // the tensor torque answers with
+    glm::dvec3 localAabbMin, localAabbMax;      // the compound's cached bounds
     std::vector<glm::dvec3> childPos;
     std::vector<glm::dmat3> childRot;
 };
@@ -744,6 +762,16 @@ static HullSnap snapHull(Vehicle *v) {
                                    m[0][1], m[1][1], m[2][1],
                                    m[0][2], m[1][2], m[2][2]);
     btCompoundShape *cs = static_cast<btCompoundShape *>(v->hull->shape);
+    /* getAabb(identity) answers from the compound's CACHED local bounds, which
+       is what recalculateLocalAabb() maintains and what the broadphase proxy
+       and btCompoundCollisionAlgorithm's child culling read. A refresh that
+       re-bases every child but skips the recompute still flies the ship, still
+       keeps the child transforms bit-exact, and still reports the same inertia
+       -- only these numbers go stale. */
+    btVector3 lo, hi;
+    cs->getAabb(btTransform::getIdentity(), lo, hi);
+    h.localAabbMin = glm::dvec3(lo.getX(), lo.getY(), lo.getZ());
+    h.localAabbMax = glm::dvec3(hi.getX(), hi.getY(), hi.getZ());
     for(int i = 0; i < cs->getNumChildShapes(); i++) {
         glm::dvec3 cp; glm::dmat3 cr;
         Vehicle::fromBt(cs->getChildTransform(i), cp, cr);
@@ -763,6 +791,14 @@ static void cmpHull(const HullSnap &a, const HullSnap &b, const char *what) {
         CHECK_EXACT(a.localInertia[c], b.localInertia[c], buf);
         snprintf(buf, sizeof(buf), "%s: world pos %d", what, c);
         CHECK_EXACT(a.wPos[c], b.wPos[c], buf);
+        /* The cached bounds, not the pose: getAabb() answers from these, so the
+           broadphase proxy and the compound algorithm's child culling see
+           whatever is stored here. A refresh that re-bases the children without
+           re-running recalculateLocalAabb() keeps the OLD box. */
+        snprintf(buf, sizeof(buf), "%s: local aabb min %d", what, c);
+        CHECK_EXACT(a.localAabbMin[c], b.localAabbMin[c], buf);
+        snprintf(buf, sizeof(buf), "%s: local aabb max %d", what, c);
+        CHECK_EXACT(a.localAabbMax[c], b.localAabbMax[c], buf);
         snprintf(buf, sizeof(buf), "%s: velocity %d", what, c);
         CHECK_EXACT(a.vel[c], b.vel[c], buf);
         snprintf(buf, sizeof(buf), "%s: angular velocity %d", what, c);
@@ -856,6 +892,19 @@ static void test_mass_refresh() {
 
     const HullSnap ha = snapHull(a.v), hb = snapHull(b.v);
     cmpHull(ha, hb, "burn: the refresh must equal the rebuild, bit for bit");
+
+    /* Absolute, not just refresh-vs-rebuild. Both paths get their numbers from
+       effectiveMass(), so comparing them cannot see a bug they share -- the
+       crew would simply vanish from both sides. This sums the parts by hand and
+       adds the seated suit, so a mass path that reads body->mass (or drops the
+       containment recursion) fails here. */
+    double wantMass = 97.05;   // buildBurnShip's occupant: a seat, not a part
+    for(size_t i = 0; i < a.v->parts.size(); i++) { wantMass += a.mass[i]; }
+    wantMass -= 0.02 * a.mass[1];   // the 2% tank drain
+    CHECK_NEAR(ha.mass, wantMass, 1e-9 * wantMass,
+               "burn: the refreshed mass must include contained crew");
+    CHECK_NEAR(hb.mass, wantMass, 1e-9 * wantMass,
+               "burn: the rebuilt mass must include contained crew");
 
     /* Not a vacuous pass: the burn really did move things. */
     CHECK_TRUE(!(ha.pOrigin == before.pOrigin),
