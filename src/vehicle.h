@@ -597,24 +597,36 @@ public:
 
     /* --- force overlay (F4, gameui.cpp drawForceOverlay) -----------------
        What the LAST recorded substep actually applied to the hull, per force
-       site. pos is the application point rel COM AT RECORD TIME (the same
-       arm Bullet got): the drawer adds the ship's CURRENT COM, so the ship's
-       travel between the recorded substep and the paint pass cancels (an
-       absolute pos would trail the ship by up to a tick of velocity -- tens
-       of meters in orbit). The attitude lag over that window is negligible.
+       site -- aero (drag at the center of pressure, chute at the canopy
+       anchor, lift + steering at each surface) AND control (engine, RCS
+       pod). The tick.cpp substep loop owns the per-substep clear. pos is
+       the application point rel COM AT RECORD TIME (the same arm Bullet
+       got): the drawer adds the ship's CURRENT COM, so the ship's travel
+       between the recorded substep and the paint pass cancels (an absolute
+       pos would trail the ship by up to a tick of velocity -- tens of
+       meters in orbit). The attitude lag over that window is negligible.
        pos/vec are in the ship's Bullet-world basis -- the same basis as
        partPos/partAxis, NOT frame S -- and the active ship's frame IS the
-       render frame, so they point the same way the ship draws.
+       render frame, so they point the same way the ship draws. Gravity is
+       deliberately not recorded: it always acts at the COM, so its arrow
+       would be a constant.
        Recorded ONLY while recordForceVecs is set, so the sim hot path pays
        nothing when the overlay is off. */
     struct ForceVec {
         glm::dvec3 pos;  // application point, rel COM at record time
         glm::dvec3 vec;  // the force itself (N, ship Bullet-world basis)
-        int kind;        // kForceThrust | kForceRcs
+        int kind;        // kForce* below; the drawer colors by kind
     };
-    static constexpr int kForceThrust = 0, kForceRcs = 1;
+    static constexpr int kForceThrust = 0, kForceRcs = 1, kForceDrag = 2,
+                         kForceLift = 3, kForceChute = 4, kForceCtrl = 5;
+    static constexpr int kForceKindCount = 6;
     std::vector<ForceVec> lastForceVecs;
     bool recordForceVecs = false;
+    /* The per-substep boundary: the tick.cpp loop that runs the appliers
+       opens every substep with this (named, so tests run the real thing). */
+    void beginForceRecordSubstep() {
+        if(recordForceVecs) { lastForceVecs.clear(); }
+    }
 
     /* Autopilot diagnostic (throttled; --slew-log). */
     void slew_log(double time);

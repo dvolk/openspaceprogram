@@ -570,10 +570,11 @@ void poll_events(Game &g) {
                             g.draw_orbit_plane ? "on" : "off");
                 }
             }
-            /* F4: the force overlay -- arrows for the thrust + RCS the last
-               simulated substep applied to the active ship (debug aid, no
-               Settings mirror). Recording is gated to piloting scenes in
-               tick.cpp, which also clears stale vectors on the off edge. */
+            /* F4: the force overlay -- arrows for the engine/RCS/aero
+               forces the last simulated substep applied to the active ship
+               (debug aid, no Settings mirror). Recording is gated to
+               piloting scenes in tick.cpp, which also clears stale vectors
+               on the off edge. */
             if(slotFired(Slot::ToggleForceOverlay, ksc, kmod, g.binds)) {
                 if(!ev.key.repeat) {
                     g.show_force_overlay = !g.show_force_overlay;

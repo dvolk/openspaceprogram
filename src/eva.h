@@ -82,10 +82,8 @@ struct Kerbal : Vehicle {
     void applyEva(double h);
 
     void applyControlForces(double h) override {
-        // The base clears lastForceVecs per substep; keep that contract
-        // even though the suit's law applies its forces through other
-        // doors (which is why the overlay shows nothing for EVA today).
-        lastForceVecs.clear();
+        /* The overlay's per-substep clear is owned by the tick loop. The
+           suit's jets bypass the recording appliers entirely: #435. */
         applyEva(h);
     }
 

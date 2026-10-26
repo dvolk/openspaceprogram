@@ -2221,6 +2221,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             ApplyForce(hull, rcp, fdrag);        // translation + (rcp x fdrag)
             moment += glm::cross(rcp, fdrag);
             ftotal += fdrag;
+            // The overlay sees drag AT THE CENTER OF PRESSURE: that offset
+            // IS the weathervane story.
+            if(recordForceVecs) {
+                lastForceVecs.push_back({ rcp, fdrag, kForceDrag });
+            }
         }
     }
 
@@ -2249,6 +2254,9 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         ApplyForce(hull, ri, fchute);            // translation + (ri x fchute)
         moment += glm::cross(ri, fchute);
         ftotal += fchute;
+        if(recordForceVecs) {
+            lastForceVecs.push_back({ ri, fchute, kForceChute });
+        }
         lastChuteCdA += area;  // the EFFECTIVE (limited) area: the drag log
                                // then shows the limiter working.
     }
@@ -2266,6 +2274,9 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         moment += glm::cross(ri, flift);
         ftotal += flift;
         lift_total += flift;
+        if(recordForceVecs) {
+            lastForceVecs.push_back({ ri, flift, kForceLift });
+        }
     }
 
     // Control surfaces: each steers ONE axis, driven by that axis's stick alone. The
@@ -2307,6 +2318,9 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             ApplyForce(hull, ri, F);
             ftotal += F;
             moment += glm::cross(ri, F);
+            if(recordForceVecs) {
+                lastForceVecs.push_back({ ri, F, kForceCtrl });
+            }
         }
     }
 
@@ -2324,10 +2338,9 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
 }
 
 void Vehicle::applyControlForces(double h) {
-    /* The force overlay records one substep's worth: clear here, the only
-       caller of both force appliers. Off means off: stale vectors stay
-       unrecorded (the overlay shows the last armed substep while paused). */
-    if(recordForceVecs) { lastForceVecs.clear(); }
+    /* The force overlay's per-substep clear lives in the tick.cpp substep
+       loop (it feeds the aero + control appliers together); this override
+       chain cannot skip it. */
     /* Rotation runs BEFORE thrust so the slew law's TVC aim (tvcSlewLat_) is
        aimed before applyThrustForce steps the actuators and pushes along
        them -- same-substep, no lag. */

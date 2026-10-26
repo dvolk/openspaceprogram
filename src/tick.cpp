@@ -235,6 +235,10 @@ void tick(Game &g) {
                 // (and so feel no drag -- the known rails gap).
                 for(auto *s : vehicles) {
                     if(s->onRails) { continue; }
+                    // The F4 force overlay: one substep's worth, opened
+                    // here -- the single boundary owner for every applier
+                    // below, whichever order they run in.
+                    s->beginForceRecordSubstep();
                     s->processGravity();
                     s->applyAeroForce(h);
                     // Power before control forces so the gate is current.

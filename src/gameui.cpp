@@ -3342,14 +3342,41 @@ void drawToasts(Game &g) {
     ImGui::PopFont();
 }
 
-/* Force overlay (F4): arrows for the thrust + RCS the last simulated substep
-   applied to the active ship. Foreground draw list, like the VAB fuel-link
-   lines: no depth test, always on top. Anchoring: the recorded pos is the
-   application point rel COM AT RECORD TIME; the anchor is that plus the
-   ship's CURRENT COM, so the ship's travel between the recorded substep and
-   this paint pass cancels (see Vehicle::ForceVec). Arrow length scales with
-   the camera-to-ship distance -- the strongest arrow spans a fixed fraction
-   of it, so screen size stays legible at any zoom. */
+/* Force overlay (F4): arrows for the forces the last simulated substep
+   applied to the active ship -- engine thrust, RCS pods, and the whole aero
+   law (drag at the center of pressure, chutes at their canopy anchors,
+   lift and control-surface forces at each surface). Foreground draw list,
+   like the VAB fuel-link lines: no depth test, always on top. Anchoring:
+   the recorded pos is the application point rel COM AT RECORD TIME; the
+   anchor is that plus the ship's CURRENT COM, so the ship's travel between
+   the recorded substep and this paint pass cancels (see Vehicle::ForceVec).
+   Arrow length scales with the camera-to-ship distance -- the strongest
+   arrow spans a fixed fraction of it, so screen size stays legible at any
+   zoom. A bottom-left legend names only the kinds on screen. */
+static ImU32 forceKindColor(int kind) {
+    switch(kind) {
+        case Vehicle::kForceRcs:   return IM_COL32(80, 220, 255, 230);
+        case Vehicle::kForceDrag:  return IM_COL32(110, 230, 110, 230);
+        case Vehicle::kForceLift:  return IM_COL32(70, 210, 190, 230);
+        case Vehicle::kForceChute: return IM_COL32(240, 230, 120, 230);
+        case Vehicle::kForceCtrl:  return IM_COL32(200, 140, 255, 230);
+        case Vehicle::kForceThrust: return IM_COL32(255, 165, 40, 235);
+        default:
+            assert(!"unknown force overlay kind");
+            return IM_COL32(255, 255, 255, 230);
+    }
+}
+static const char *forceKindName(int kind) {
+    switch(kind) {
+        case Vehicle::kForceRcs:   return "RCS";
+        case Vehicle::kForceDrag:  return "drag (at center of pressure)";
+        case Vehicle::kForceLift:  return "lift";
+        case Vehicle::kForceChute: return "chute";
+        case Vehicle::kForceCtrl:  return "control surface";
+        case Vehicle::kForceThrust: return "thrust";
+        default:                   return "?";
+    }
+}
 void drawForceOverlay(Game &g) {
     // Screenshots DO include the arrows: unlike toasts, the overlay is
     // explicitly opted into, and photographing it is the point.
@@ -3366,21 +3393,34 @@ void drawForceOverlay(Game &g) {
     if(fmax <= 0.0 || camDist < 1e-3) { return; }
     const double lenW = camDist * 0.12;  // world length of the STRONGEST arrow
     ImDrawList *dl = ImGui::GetForegroundDrawList();
+    // Single scale across kinds on purpose: a deployed chute SHOULD dwarf
+    // the fins -- that ratio is the finding, not an artifact. Tiny forces
+    // keep a readable stub + color below; only labels are culled.
+    bool present[Vehicle::kForceKindCount] = {};
     for(const Vehicle::ForceVec &fv : fvs) {
         const double mag = glm::length(fv.vec);
-        if(mag <= 0.0) { continue; }
+        if(mag <= 0.0 || fv.kind < 0 || fv.kind >= Vehicle::kForceKindCount) {
+            continue;
+        }
         const glm::dvec3 dir = fv.vec / mag;
         const glm::dvec3 base = com + fv.pos;
         double ax, ay, bx, by;
         if(!projectPixel(g, base, ax, ay)) { continue; }
         if(!projectPixel(g, base + dir * (lenW * (mag / fmax)), bx, by)) { continue; }
-        // RCS cyan, engine thrust orange: the two overlay kinds.
-        const ImU32 col = (fv.kind == Vehicle::kForceRcs)
-                        ? IM_COL32(80, 220, 255, 230)
-                        : IM_COL32(255, 165, 40, 235);
-        const ImVec2 A((float)ax, (float)ay), B((float)bx, (float)by);
-        const float dx = B.x - A.x, dy = B.y - A.y;
-        const float len2 = sqrtf(dx * dx + dy * dy);
+        const ImU32 col = forceKindColor(fv.kind);
+        const ImVec2 A((float)ax, (float)ay);
+        ImVec2 B((float)bx, (float)by);
+        float dx = B.x - A.x, dy = B.y - A.y;
+        float len2 = sqrtf(dx * dx + dy * dy);
+        if(len2 < 1e-3f) { continue; }  // force projects to a point here
+        if(len2 < 14.0f) {
+            // Minimum screen stub: a small force against a huge one (the
+            // chute-vs-fins case) still shows its DIRECTION at any zoom.
+            const float s = 14.0f / len2;
+            dx *= s; dy *= s; len2 *= s;
+            B = ImVec2(A.x + dx, A.y + dy);
+        }
+        present[fv.kind] = true;  // legend claims only kinds actually drawn
         dl->AddCircleFilled(A, 3.0f, col, 12);   // the application point
         dl->AddLine(A, B, col, 2.0f);
         if(len2 > 12.0f) {
@@ -3393,9 +3433,33 @@ void drawForceOverlay(Game &g) {
                        B.y - d.y * 10.0f - p.y * 4.0f),
                 col);
         }
-        char buf[32];
-        snprintf(buf, sizeof buf, "%.0f N", mag);
-        dl->AddText(ImVec2(B.x + 6.0f, B.y - 6.0f), col, buf);
+        // Label the big forces only: a glider's wing trim otherwise stacks
+        // dozens of numbers on the few pixels near their anchors.
+        if(mag >= 0.08 * fmax) {
+            char buf[32];
+            snprintf(buf, sizeof buf, "%.0f N", mag);
+            dl->AddText(ImVec2(B.x + 6.0f, B.y - 6.0f), col, buf);
+        }
+    }
+    // Legend: anchored just ABOVE the Orbital Map window where it is open
+    // (its default home is the bottom-left slot), else the screen corner.
+    // Shadowed text like the toasts, so it reads over bright terrain.
+    const ImGuiViewport *vp = ImGui::GetMainViewport();
+    const float lineH = ImGui::GetTextLineHeight();
+    float y = vp->WorkPos.y + vp->WorkSize.y - 8.0f - lineH;
+    if(const ImGuiWindow *map = ImGui::FindWindowByName("Orbital Map")) {
+        if(map->WasActive) { y = std::min(y, map->Pos.y - 6.0f - lineH); }
+    }
+    const float x = vp->WorkPos.x + 12.0f;
+    for(int kind = 0; kind < Vehicle::kForceKindCount; kind++) {
+        if(!present[kind]) { continue; }
+        const ImU32 col = forceKindColor(kind);
+        dl->AddLine(ImVec2(x, y + lineH * 0.5f), ImVec2(x + 18.0f, y + lineH * 0.5f),
+                    col, 3.0f);
+        dl->AddText(ImVec2(x + 25.0f, y + 1.0f), IM_COL32(0, 0, 0, 180),
+                    forceKindName(kind));
+        dl->AddText(ImVec2(x + 24.0f, y), col, forceKindName(kind));
+        y -= lineH;
     }
 }
 

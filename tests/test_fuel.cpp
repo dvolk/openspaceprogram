@@ -832,8 +832,8 @@ static void test_applythrust_last_dribble_fits() {
    hull. Pins:
      * recording happens ONLY while recordForceVecs is set -- the sim hot
        path pays nothing while the overlay is off, yet the forces still land;
-     * applyControlForces clears once per substep, so a no-command substep
-       leaves NO ghost arrows;
+     * a no-command substep EMITS nothing (the per-substep clear itself is
+       owned by the tick.cpp substep loop and emulated here);
      * the recorded vectors are the applied forces: the thrust entries sum
        to lastThrustForce, and the single pod's entry equals lastRcsAch.
    One engine + one legacy RCS pod (empty rcs_nozzles -> the six axis bells),
@@ -880,15 +880,34 @@ static void test_force_overlay_recording() {
                "rcs entries sum to the achieved RCS force");
     CHECK_NEAR(glm::length(rcsSum), 60.0, 1e-5, "the pod delivered the demanded 60 N");
 
-    /* A substep with no armed commands clears: the overlay must not keep
-       drawing last substep's arrows. */
+    /* A no-command substep emits no entries -- with the REAL per-substep
+       boundary (the same beginForceRecordSubstep the tick.cpp loop calls),
+       that is what keeps the overlay from drawing last substep's arrows. */
     s.v->clearThrust();
     s.v->clearRcs();
+    s.v->beginForceRecordSubstep();
     s.v->applyControlForces(1.0 / 60.0);
-    CHECK_TRUE(s.v->lastForceVecs.empty(), "no-command substep -> no arrows");
+    CHECK_TRUE(s.v->lastForceVecs.empty(),
+               "no-command substep -> no zero-force entries");
 
-    /* Overlay off: forces are still applied, nothing is recorded. */
+    /* Boundary ownership: the appliers APPEND; only the boundary resets.
+       Two applier calls without a boundary accumulate (tick.cpp would have
+       cleared between them); with one, the list is a single substep's. */
+    s.v->beginForceRecordSubstep();
+    s.v->ApplyThrust_TESTONLY(50.0);
+    s.v->rcsDir = glm::dvec3(0.0, 0.0, 1.0);
+    s.v->applyControlForces(1.0 / 60.0);
+    CHECK_TRUE(s.v->lastForceVecs.size() == 2, "boundary -> one substep's worth");
+    s.v->applyControlForces(1.0 / 60.0);
+    CHECK_TRUE(s.v->lastForceVecs.size() == 4,
+               "no boundary -> the appliers append (the boundary owns freshness)");
+
+    /* Overlay off: forces are still applied, nothing is recorded. (While
+       OFF the boundary leaves the list alone -- the drawer never reads it,
+       gated on Game::show_force_overlay. Clear so the pin below means "the
+       unrecorded substep ADDED nothing", not "was empty before".) */
     s.v->recordForceVecs = false;
+    s.v->lastForceVecs.clear();
     s.v->ApplyThrust_TESTONLY(50.0);
     s.v->rcsDir = glm::dvec3(1.0, 0.0, 0.0);
     s.v->applyControlForces(1.0 / 60.0);
