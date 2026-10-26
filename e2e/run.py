@@ -246,11 +246,15 @@ TERRAIN_RE = re.compile(
     r"deepest=(\d+)\s+max_depth=(\d+)\s+collision=(\d+)\s+"
     r"deep_off=([-\d.e+]+) m\s+cam_r=([-\d.e+]+) m"
 )
+# aoa prints "-" (no value) outside an atmosphere or at rest in air, so it gets
+# its own alternative rather than a wider character class that would eat the "-".
 SURF_RE = re.compile(
     r"\[surfinfo\]\s+t=([\d.]+)s\s+alt_agl=([-\d.e+]+) m\s+"
     r"alt_asl=([-\d.e+]+) m\s+vs=([-\d.e+]+) m/s\s+hs=([-\d.e+]+) m/s\s+"
     r"lat=([-\d.e+]+) deg\s+lon=([-\d.e+]+) deg\s+pitch=([-\d.e+]+) deg\s+"
-    r"roll=([-\d.e+]+) deg\s+hdg=([-\d.e+]+) deg\s+acc=([-\d.e+]+) m/s2\s+"
+    r"roll=([-\d.e+]+) deg\s+hdg=([-\d.e+]+) deg\s+"
+    r"(?:aoa=([-\d.e+]+) deg|aoa=-)\s+"
+    r"acc=([-\d.e+]+) m/s2\s+"
     r"body=\"([^\"]*)\"\s+bme=\"([^\"]*)\"\s+sit=\"([^\"]*)\""
 )
 # A scene CHANGE only. The two refusal lines ("already in X -- push refused",
@@ -766,13 +770,16 @@ def parse_terrain(out):
 def parse_surf(out):
     rows = []
     for m in SURF_RE.finditer(out):
-        (t, agl, asl, vs, hs, lat, lon, pitch, roll, hdg, acc,
+        (t, agl, asl, vs, hs, lat, lon, pitch, roll, hdg, aoa, acc,
          body, bme, sit) = m.groups()
         rows.append({
             "t": float(t), "alt_agl": float(agl), "alt_asl": float(asl),
             "vs": float(vs), "hs": float(hs), "lat": float(lat),
             "lon": float(lon), "pitch": float(pitch), "roll": float(roll),
-            "hdg": float(hdg), "acc": float(acc),
+            "hdg": float(hdg),
+            # None when the ship had no air-relative flow to have an angle to.
+            "aoa": float(aoa) if aoa is not None else None,
+            "acc": float(acc),
             "body": body, "bme": bme, "sit": sit,
         })
     return rows

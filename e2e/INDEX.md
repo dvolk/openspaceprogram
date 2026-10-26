@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 263 |
+| `invariant` | a behaviour or a player route the game must keep | 264 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 33 |
 | `harness` | CLI/test-engine plumbing, not game spec | 12 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **312** |
+| | **total** | **313** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (66)
+## flight (67)
 
 | case | kind | pins |
 |---|---|---|
@@ -88,6 +88,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/376-drain-rate-warp-invariant.txt` | golden | --drain-log's kg/s figures do not depend on the warp factor, and consecutive rows account for all the sim time between them. |
 | `flight/376-drain-window-survives-a-ship-switch.txt` | golden | Switching ships does not stretch a --drain-log row's interval or corrupt its kg/s. |
 | `flight/377-power-log-balances-the-battery.txt` | golden | --power-log's charge moves at the rate its own printed watts imply. |
+| `flight/395-surface-aoa-readout.txt` | invariant | [surfinfo] reports the aero angle of attack while the ship has air-relative flow, and "-" when it has none. |
 
 ## crew (25)
 

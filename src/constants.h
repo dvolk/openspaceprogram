@@ -71,6 +71,15 @@ inline constexpr double kRhoFloor = 1e-15;
    canopy area finally inflates. */
 inline constexpr double kChuteAccelLimit = 50.0;
 
+/* Angle-of-attack display floor [m/s]: below this air-relative speed the flow
+   has no usable direction, so AoA is not a flight quantity. A ship parked in
+   air still carries ~1e-4 m/s of integrator jitter against the co-rotating
+   atmosphere, which reads as a full +/-90 deg AoA on a nose-up hull.
+   Display only -- the aero laws still see every frame, however slow.
+   Where: Vehicle::applyAeroForce (lastDragAlphaValid), SURFACE window,
+   [surfinfo]. */
+inline constexpr double kAoAFlowFloor = 0.1;
+
 // -- science situations -------------------------------------------------------
 
 /* FlyingLow/FlyingHigh split, as a fraction of the atmosphere top:

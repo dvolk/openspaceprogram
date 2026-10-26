@@ -1885,6 +1885,14 @@ void drawUIReadouts(Game &g) {
         ImGui::Text(" Pt: %.2f", glm::degrees(pitch));
         ImGui::Text("  R: %.2f", glm::degrees(roll));
         ImGui::Text("Hdg: %.2f", glm::degrees(yaw));
+        /* AoA: the aero law's own alpha (drag.h AeroFrame) -- air-relative flow
+           against the nose, so there is none outside an atmosphere. Same number
+           --drag-log prints. */
+        if(ship->lastDragAlphaValid) {
+            ImGui::Text("AoA: %.2f", glm::degrees(ship->lastDragAlpha));
+        } else {
+            ImGui::Text("AoA: -");
+        }
         ImGui::Text("Acc: %.1fm/s2", ship->feltAccel());
     });
 
@@ -1938,10 +1946,19 @@ void drawUIReadouts(Game &g) {
                    glm::degrees(prograde_angle),
                    glm::degrees(retrograde_angle),
                    o.energy);
+            /* aoa: the aero law's alpha (see the SURFACE window). "-" when there
+               is no flow to have an angle to -- vacuum, or sitting still in air
+               -- the same way [orbinfo] prints "-" for a missing apoapsis. */
+            char aoa_s[32];
+            const int aoa_n = ship->lastDragAlphaValid
+                ? snprintf(aoa_s, sizeof aoa_s, "%.6g deg",
+                           glm::degrees(ship->lastDragAlpha))
+                : snprintf(aoa_s, sizeof aoa_s, "-");
+            assert(aoa_n > 0 && aoa_n < (int)sizeof aoa_s);
             printf("[surfinfo] t=%.1fs "
                    "alt_agl=%.6g m alt_asl=%.6g m "
                    "vs=%.6g m/s hs=%.6g m/s lat=%.8g deg lon=%.8g deg "
-                   "pitch=%.6g deg roll=%.6g deg hdg=%.6g deg "
+                   "pitch=%.6g deg roll=%.6g deg hdg=%.6g deg aoa=%s "
                    "acc=%.6g m/s2 body=\"%s\" bme=\"%s\" sit=\"%s\"\n",
                    time,
                    distance - b->GetTerrainHeight(glm::normalize(pos)),
@@ -1949,6 +1966,7 @@ void drawUIReadouts(Game &g) {
                    ver_speed, hor_speed2,
                    glm::degrees(latitude), glm::degrees(longitude),
                    glm::degrees(pitch), glm::degrees(roll), glm::degrees(yaw),
+                   aoa_s,
                    ship->feltAccel(), b->name.c_str(), bme,
                    situationName(ps.situation));
             fflush(stdout);

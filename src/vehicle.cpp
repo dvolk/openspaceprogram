@@ -2118,6 +2118,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastDragAlt = 0.0;
     lastDragRho = 0.0;
     lastDragAlpha = 0.0;
+    lastDragAlphaValid = false;
     lastDragArea = 0.0;
     lastDragCd = 0.0;
     lastChuteCdA = 0.0;
@@ -2174,6 +2175,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     const AeroFrame fr = aeroFrame(vrel, right, up, nose);
     const double alpha   = fr.valid ? fr.alpha   : 0.0;
     lastDragAlpha = alpha;
+    /* A flow slower than kAoAFlowFloor has no usable direction: a parked ship's
+       jitter against the co-rotating air would read as a full side-slip.
+       isfinite because AeroFrame::valid cannot refuse a NaN axis (length() <= 0
+       is false for NaN), and a NaN printed here silently drops the whole
+       [surfinfo] row in e2e rather than failing loudly. */
+    lastDragAlphaValid = fr.valid && std::isfinite(fr.v)
+                      && std::isfinite(fr.alpha) && fr.v >= kAoAFlowFloor;
     const glm::dvec3 vhat    = vrel / std::sqrt(v2);
     // The flow in S: area and dots are rotation-invariant, so rotate the flow, not the verts.
     const glm::dvec3 vhatS   = glm::transpose(sRot) * vhat;

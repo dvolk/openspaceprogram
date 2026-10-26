@@ -345,6 +345,10 @@ public:
     double lastDragAlt = 0.0;
     double lastDragRho = 0.0;
     double lastDragAlpha = 0.0;  // pitch angle of attack (rad)
+    /* Whether lastDragAlpha measured a flow worth reading: AeroFrame::valid AND
+       the air-relative speed clears kAoAFlowFloor. False alpha is not "flying
+       straight down the flow" -- it is "there is no flow to have an angle to". */
+    bool lastDragAlphaValid = false;
     double lastDragArea = 0.0;  // silhouette facing the flow (m^2)
     double lastDragCd = 0.0;  // area-weighted mean of the parts' cds
     /* Deployed chutes' EFFECTIVE Cd·A (m^2) last substep (0 = none): nominal

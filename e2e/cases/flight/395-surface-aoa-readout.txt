@@ -1,0 +1,18 @@
+# [surfinfo] aoa= is the SURFACE window's AoA: the aero law's own alpha (drag.h
+# AeroFrame), air-relative flow against the nose. Two ways it goes wrong:
+# a parked ship co-rotates with the air, so its only "flow" is integrator jitter
+# (~1e-4 m/s measured) -- nearly perpendicular to a nose-up hull, so atan2 hands
+# back a full +/-90 deg that means nothing; and outside an atmosphere there is no
+# flow at all. Both must read "-", not a number (kAoAFlowFloor, constants.h).
+# Nose-up climb is the numeric half: the flow runs along the nose, so AoA sits
+# near zero. |aoa| is pinned, not aoa, so the case does not freeze the sign
+# convention against conventional aero.
+NAME surface-aoa-readout
+CLAIM [surfinfo] reports the aero angle of attack while the ship has air-relative flow, and "-" when it has none.
+KIND invariant
+ARGS --time-accel 1 --timeout 6 --info-log --orbit-interval 0.5 --startship racer,res/ships/racer.json,Kerbin,pad --sim-press 1000,0,SPACE,1500,4000,T
+FORBID error:
+CHECK len(surf) >= 6
+CHECK any(s["aoa"] is None for s in surf if s["t"] < 1.2)
+CHECK all(s["aoa"] is not None for s in surf if s["t"] >= 2.0)
+CHECK all(abs(s["aoa"]) < 1.0 for s in surf if s["t"] >= 2.0)
