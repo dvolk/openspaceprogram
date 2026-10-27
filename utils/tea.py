@@ -200,6 +200,23 @@ def confirm_issue(index):
         return None
 
 
+def note_unapplied_labels(args, held):
+    """tea ignores a label name it does not know -- a typo'd --labels exits 0 and
+    changes nothing. The re-read already knows the truth, so diff it out loud."""
+    have = {l for l in (held or "").split(",") if l}
+    want = {l for l in (args.labels or "").split(",") if l}
+    gone = {l for l in (args.remove_labels or "").split(",") if l}
+    missing = sorted(want - have)
+    leftover = sorted(gone & have)
+    if missing:
+        print(f"note: not on the issue after the edit: {', '.join(missing)} -- "
+              f"tea silently ignores a label name it does not know (see "
+              f"`tea labels ls` for the real spellings)", file=sys.stderr)
+    if leftover:
+        print(f"note: still on the issue after --remove-labels: "
+              f"{', '.join(leftover)}", file=sys.stderr)
+
+
 def cmd_new(args):
     body = get_body(args)
     tea_args = ["issue", "create", "-o", "json", "--title", args.title,
@@ -356,6 +373,8 @@ def cmd_edit(args):
     # (tea silently ignores an unknown label), and confirmed:false says that this
     # answer carries no proof.
     issue = None if args.no_confirm else confirm_issue(args.index)
+    if issue is not None:
+        note_unapplied_labels(args, issue["labels"])
     print(json.dumps({"ok": True, "index": args.index,
                       "confirmed": issue is not None, "issue": issue}))
 
