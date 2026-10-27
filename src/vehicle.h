@@ -899,6 +899,21 @@ struct ScenarioDef {
     /* Which plane a non-polar orbit bed sits in (#182). False (default) is the
        body's RAIL plane, where its system-file rails live; true is its EQUATOR. */
     bool eq_plane = false;
+    /* Circular beds only: the bed's speed as a fraction of circular speed
+       MEASURED IN THE RESOLVED FRAME, so on a body's rotational frame it is a
+       fraction of AIRSPEED -- the air co-rotates with the ground (drag.h), and
+       applying the fraction to the INERTIAL circular speed instead leaves
+       Kerbin's slow bed with 16 m/s of air: a drop, not a start. 0 (default) =
+       circular, which is what makes an in-atmosphere bed hold its altitude band
+       with no lift at all (#99) -- and why every flying bed enters at km/s, i.e.
+       a re-entry slam rather than flight (~700 g of drag on the shipped jet at
+       the instant it spawns on Kerbin flying-low). A slow fraction instead starts
+       level, in air, at a fraction of that body's orbital speed -- scale-free, so
+       it never means escape anywhere, but the same fraction sits above stall on a
+       thick atmosphere and under it on a thin one (a glide). Which body to spawn
+       it over is the dev's call: it is a bed, not a mission (#451). It ignores the
+       ship: a bed is a position + velocity, and lift is the ship's problem. */
+    double speed_frac = 0.0;
 };
 
 /* Look up a scenario by name; throws if unknown. */
@@ -911,6 +926,12 @@ bool scenario_dev_only_at(size_t i);
 
 // Nose (local +Z) along `dir`; roll axis = the axis most orthogonal to it.
 glm::dmat3 faceAlong(const glm::dvec3 &dir);
+
+/* Same, but the ship's +Y takes `up_ref` (projected out of `dir`) instead of a
+   picked axis. `up_ref` must not be parallel to `dir` -- asserted. Use this
+   whenever the roll means something: the axis pick above is DISCRETE, so a
+   degree or two of tilt in `dir` can flip it a full 90 deg (#451). */
+glm::dmat3 faceAlong(const glm::dvec3 &dir, const glm::dvec3 &up_ref);
 
 /* slot_offset (m): lateral separation for ships sharing an orbit bed, along the
    binormal so each orbit keeps its shape. Pads ignore it. */

@@ -229,6 +229,17 @@ static const ScenarioDef kScenarios[] = {
        every body (#99). */
     {"flying-low",     true,  false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0, true},
     {"flying-high",    true,  false, 0.5,  false, -1, 0.0,     0.0, 0.0, 0.0, true},
+    /* flying-low's altitude, but SUBORBITAL: its circular speed (2.4 km/s inertial,
+       2.2 km/s of AIR on Kerbin) puts ~700 g of drag on the shipped jet at the
+       instant it spawns, which is a chute-entry rig, not an airframe test. 0.08 of
+       the air-relative circular speed starts level at 180 m/s on Kerbin -- 2.5x the
+       71 m/s stall speed of a 3 t two-wing hull at 7 km -- 75 m/s on Duna (under
+       its 122 m/s stall there, so the bed glides) and 267 m/s on Eve (3.4x stall in
+       thick air: a hard start) (#451). What the bed does not fix is what it
+       exposes: at these speeds the shipped hulls drag as ~31 m^2 of bluff body at
+       Cd 0.76, so the jet bleeds 180 -> 103 m/s and sinks ~65 m/s while the aero
+       torque weathervanes it back to zero AoA, which zeroes its lift (#454/#399). */
+    {"flying-slow",    true,  false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0, true, false, 0.08},
     {"ellipse-peri",   true,  false, 0.0,  false,  0, 10e3, 1000e3, 0.0, 0.0},
     {"ellipse-apo",    true,  false, 0.0,  false,  1, 10e3, 1000e3, 0.0, 0.0},
     {"ellipse-mid",    true,  false, 0.0,  false,  2, 10e3, 1000e3, 0.0, 0.0},
@@ -286,6 +297,20 @@ glm::dmat3 faceAlong(const glm::dvec3 &dir)
     }
     const glm::dvec3 x = glm::normalize(refs[best] - glm::dot(refs[best], z) * z);
     const glm::dvec3 y = glm::cross(z, x);
+    return glm::dmat3(x, y, z);
+}
+
+// The same basis with the roll NAMED: +Y along `up_ref` once its component along
+// the nose is removed. The one above picks its roll axis from three candidates,
+// and a candidate is chosen by comparison, so `dir` tilting a degree or two off
+// a coordinate plane rotates the whole airframe 90 deg about its own nose.
+glm::dmat3 faceAlong(const glm::dvec3 &dir, const glm::dvec3 &up_ref)
+{
+    const glm::dvec3 z = glm::normalize(dir);
+    const glm::dvec3 y0 = up_ref - glm::dot(up_ref, z) * z;
+    assert(glm::length2(y0) > 1e-12);   // up_ref along the nose: no roll to solve for
+    const glm::dvec3 y = glm::normalize(y0);
+    const glm::dvec3 x = glm::cross(y, z);
     return glm::dmat3(x, y, z);
 }
 
@@ -355,11 +380,13 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
                                    : glm::dvec3(0, 0, 1);
         shipWorldPos = center + home->frame->root_orient * (rhat_local * r);
 
-        // Circular speed (vis-viva with semi-major axis == r); esc_frac makes
-        // it a hyperbola instead.
-        const double speed = sc.esc_frac > 0.0
-                           ? sc.esc_frac * sqrt(2.0 * home->mu / r)
-                           : sqrt(home->mu / r);
+        // Circular speed (vis-viva with semi-major axis == r); esc_frac makes it
+        // a hyperbola instead. speed_frac is NOT applied here: it scales the
+        // frame-relative velocity below, where the air is what it moves through.
+        assert(!(sc.esc_frac > 0.0 && sc.speed_frac > 0.0));
+        const double v_circ = sqrt(home->mu / r);
+        const double speed = sc.esc_frac > 0.0 ? sc.esc_frac * sqrt(2.0) * v_circ
+                         : v_circ;
 
         // Prograde, about the plane's OWN normal. Normalize: with an inclined
         // body rhat is not orthogonal to the reference axis, so the raw cross
@@ -383,25 +410,49 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
     // velWorld is RELATIVE to home in root-frame axes; the root-frame velocity is
     // that plus home's own root velocity. Then express both in the resolved frame.
     const glm::dvec3 target = glm::transpose(frame->root_orient) * (shipWorldPos - frame->root_pos);
-    const glm::dvec3 vel = glm::transpose(frame->root_orient)
-                          * (velWorld + home->frame->root_vel - frame->root_vel)
-                          - frame->GetStasisVelocity(target);
+    glm::dvec3 vel = glm::transpose(frame->root_orient)
+                   * (velWorld + home->frame->root_vel - frame->root_vel)
+                   - frame->GetStasisVelocity(target);
+
+    /* A speed_frac bed is slow RELATIVE TO THE AIR, which means relative to the
+       frame: the atmosphere co-rotates, so in the body's rotational frame this
+       velocity IS the air-relative one (Vehicle::airRelativeVel). Scaling the
+       inertial circular speed instead leaves Kerbin's flying-slow bed with 16 m/s
+       of air -- the ground and its air already move 177 m/s prograde -- i.e. a
+       drop from the pad, not a start in flight (#451). */
+    if(sc.speed_frac > 0.0) {
+        assert(sc.ell_phase < 0);   // "of circular speed" is meaningless on an ellipse
+        vel *= sc.speed_frac;
+    }
 
     if(frame != ship->frame) {
         ship->moveToFrame(frame, t);
     }
 
-    // Nose (local +Z) along prograde. `target` is in the resolved frame's axes, so
-    // `orient` must be too: faceAlong returns a root-frame attitude.
-    const glm::dmat3 orient =
-        glm::transpose(frame->root_orient) * faceAlong(velWorld);
+    /* The nose along prograde, the roll from the local vertical -- but only for a
+       bed that FLIES. `target` is in the resolved frame's axes, so `orient` must
+       be too: faceAlong returns a root-frame attitude. A flying bed's roll is not
+       free: on Kerbin the co-rotation term tilts the air-relative velocity 1.5 deg
+       out of the orbit plane, which is enough to flip faceAlong's roll AXIS 90 deg
+       and start the airframe on its side -- lifting sideways, with W and S yawing
+       it instead of pitching it (#451). No orbital bed cares about its roll, and
+       its goldens were authored with whichever axis faceAlong preferred. */
+    const glm::dmat3 orient = sc.atmo_frac
+        ? glm::transpose(frame->root_orient)
+          * faceAlong(frame->root_orient * vel,
+                      frame->root_orient * glm::normalize(target))
+        : glm::transpose(frame->root_orient) * faceAlong(velWorld);
     ship->placeShipAtCom(target, orient);
     ship->setVelocity(vel);
 
+    /* |v| is the authored start: the orbital speed for a circular/elliptical bed,
+       the AIR-relative speed for a speed_frac one -- in the body's rotational
+       frame the air sits still, so that is the only speed a flight bed feels. */
     printf("Spawn '%s' around %s: frame '%s' @ world (%.0f, %.0f, %.0f), r = %.0f m, |v| = %.1f m/s\n",
            sc.name, home->name.c_str(), frame->name.c_str(),
            shipWorldPos.x, shipWorldPos.y, shipWorldPos.z,
-           glm::length(shipWorldPos - center), glm::length(velWorld));
+           glm::length(shipWorldPos - center),
+           sc.speed_frac > 0.0 ? glm::length(vel) : glm::length(velWorld));
 }
 
 /* Ships sharing a (body, scenario) orbit bed are pushed this far apart along the

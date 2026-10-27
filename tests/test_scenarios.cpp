@@ -5,6 +5,11 @@
 // must keep at least one player-facing bed and every bed must still resolve by
 // name (see check_vab_gate).
 //
+// The flying beds' speeds are load-bearing in both directions: the circular ones
+// are what the science bands and the chute-entry cases run on, and the slow one
+// is what a plane is judged flying on, so check_flying_beds pins which is which
+// and check_spawn_attitude pins the roll a flying bed starts with.
+//
 // heli-* pins a circular heliocentric radius so the transfer planner can be
 // handed a planet-like origin orbit (it only lists children of the orbited
 // body). Those radii are hand-copied from a system file's orb_ang_speed +
@@ -247,8 +252,106 @@ static void check_vab_gate() {
            shown, scenario_count());
 }
 
+/* The flying beds' speed contract. flying-low/flying-high are circular ON
+   PURPOSE: the science runs score their altitude band, so the bed has to hold
+   that altitude with no lift (cases 122/123/126), and 151/152 use the km/s
+   entry as the thing they test -- "the deployed chute reaches chute terminal
+   from ~1.2 km/s; hull-only would stay >200 m/s". Slow those down and they
+   still pass while testing nothing. flying-slow exists so a plane can start
+   in air slow enough to fly (#451) -- the table pins the intent; e2e 451 pins
+   that its fraction counts against the AIR-relative speed, because only a
+   running game knows how fast the air itself is moving. */
+static void check_flying_beds() {
+    const ScenarioDef *low = nullptr, *high = nullptr, *slow = nullptr;
+    try {
+        low  = scenario_by_name("flying-low");
+        high = scenario_by_name("flying-high");
+        slow = scenario_by_name("flying-slow");
+    } catch(const std::exception &e) {
+        printf("  a flying bed does not resolve: %s\n", e.what());
+        failures++;
+        return;
+    }
+    if(low->speed_frac != 0.0 || high->speed_frac != 0.0) {
+        printf("  flying-low/high are no longer circular: the science bands stop "
+               "holding altitude and the chute entry cases stop having an entry\n");
+        failures++;
+    }
+    if(!(slow->speed_frac > 0.0 && slow->speed_frac < 1.0)) {
+        printf("  flying-slow speed_frac = %g: it must be suborbital but moving\n",
+               slow->speed_frac);
+        failures++;
+    }
+    if(!slow->atmo_frac || slow->alt_frac != low->alt_frac) {
+        printf("  flying-slow is not flying-low's altitude (alt_frac %g, atmo_frac %d): "
+               "it must sit in the same air, only slower\n",
+               slow->alt_frac, slow->atmo_frac ? 1 : 0);
+        failures++;
+    }
+    /* The fraction needs a circular speed to be a fraction OF, and air to be a
+       fraction of AIR. The table is positional and 13 fields wide, so a row that
+       grows a field can hand speed_frac to the wrong slot and still compile. */
+    for(size_t i = 0; i < scenario_count(); i++) {
+        const std::string sname = scenario_name_at(i);
+        const ScenarioDef *d = scenario_by_name(sname);
+        if(d->speed_frac <= 0.0) { continue; }
+        if(d->ell_phase >= 0 || d->esc_frac > 0.0 || !d->atmo_frac) {
+            printf("  scenario '%s' sets speed_frac = %g on a bed the fraction "
+                   "cannot describe (ell_phase %d, esc_frac %g, atmo_frac %d)\n",
+                   sname.c_str(), d->speed_frac, d->ell_phase, d->esc_frac,
+                   d->atmo_frac ? 1 : 0);
+            failures++;
+        }
+    }
+    printf("  flying beds: low/high circular (entry rigs), slow at %.2f x the "
+           "air-relative circular speed\n", slow->speed_frac);
+}
+
+/* The roll a flying bed spawns with. The one-argument faceAlong picks its roll
+   AXIS from three candidates and keeps the one with the smallest dot, so a dir
+   tilting a degree or two off a coordinate plane answers with a 90 deg roll: on
+   Kerbin flying-slow, whose air-relative velocity sits 1.5 deg out of the orbit
+   plane (the co-rotation term), that stood the wings vertical and sent the lift
+   sideways (#451). The up_ref form has nothing to choose and cannot jump. */
+static void check_spawn_attitude() {
+    const double tilt = 1.5 * 3.14159265358979323846 / 180.0;
+    const glm::dvec3 flat(1.0, 0.0, 0.0);
+    const glm::dvec3 tilted(std::cos(tilt), std::sin(tilt), 0.0);
+    const glm::dvec3 up(0.0, 1.0, 0.0);
+    // The axis pick really does jump a quarter turn over 1.5 deg of tilt.
+    const glm::dmat3 a = faceAlong(flat), b = faceAlong(tilted);
+    const double nose_kept = glm::dot(a[2], b[2]);           // noses 1.5 deg apart
+    const double up_kept = glm::dot(a[1], b[1]);
+    if(up_kept > 0.1) {
+        printf("  faceAlong's roll survived a %.1f deg dir tilt: the test below is "
+               "not pinning the hazard (up axes still %.3f apart)\n", tilt * 57.29578, up_kept);
+        failures++;
+    }
+    if(nose_kept < 0.999) {
+        printf("  faceAlong stopped holding the nose on dir: cos = %.6f\n", nose_kept);
+        failures++;
+    }
+    // The up_ref form: +Y along the local vertical once its component along the
+    // nose is removed -- so it sits tilt degrees off true up, no further. Nose
+    // along dir, basis right-handed.
+    const glm::dmat3 m = faceAlong(tilted, up);
+    const double y_up = glm::dot(m[1], up);
+    const double nose_dir = glm::dot(m[2], glm::normalize(tilted));
+    const double right = glm::dot(glm::cross(m[1], m[2]), m[0]);
+    if(y_up < std::cos(tilt) - 1e-9 || nose_dir < 0.9999 || right < 0.9999) {
+        printf("  faceAlong(dir, up) is not level: up=%.6f (want %.6f) nose=%.6f "
+               "right=%.6f\n", y_up, std::cos(tilt), nose_dir, right);
+        failures++;
+    }
+    printf("  spawn attitude: faceAlong's axis pick rolls %.0f deg over a %.1f deg "
+           "tilt; the up_ref form holds the wings level\n",
+           std::acos(up_kept) * 57.29578, tilt * 57.29578);
+}
+
 int main() {
     check_vab_gate();
+    check_flying_beds();
+    check_spawn_attitude();
     // The files the heli-* radii were read off. ksp_system/old_system are not
     // checked: they have no Mercury/Earth/Jupiter/Uranus.
     const char *paths[] = {

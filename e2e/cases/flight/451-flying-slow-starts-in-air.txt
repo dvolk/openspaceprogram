@@ -1,0 +1,30 @@
+NAME flying-slow-starts-in-air
+CLAIM The flying-slow bed starts wings-level with its nose along the air at a fraction of the AIR-relative circular speed, so a plane enters its altitude band moving rather than dropping.
+KIND golden
+ARGS --time-accel 1 --startship jet,res/ships/jet.json,Kerbin,flying-slow
+ARGS --timeout 12 --drag-log --orbit-interval 0.2
+EXPECT Spawn 'flying-slow' around Kerbin
+EXPECT frame 'Kerbin (rotational)'
+CHECK len(drag) >= 3
+# speed_frac only means what it says in the frame the air sits still in, so name
+# that frame: a bed that slipped into the inertial one would fail here rather
+# than as a wrong number further down.
+# Kerbin's flying-low bed runs CIRCULAR at 2412 m/s, which is what lets it hold
+# 7 km with no lift at all (#99). 0.08 of that speed, read off the frame the bed
+# resolves into, is 180 m/s of air: the start a wing can carry.
+CHECK 150.0 < float(re.search(r"Spawn 'flying-slow' around Kerbin:.*?\|v\| = ([\d.]+) m/s", out).group(1)) < 188.0
+# The upper bound is the bug this bed was written around. The atmosphere
+# co-rotates, so scaling the INERTIAL circular speed prints 193 m/s while
+# handing the ship 16 m/s of air -- Kerbin's ground and its air already move
+# 177 m/s prograde. --orbit-interval 0.2 puts the first row at t=0, holding the
+# speed the bed promised (179 m/s) instead of a wall-clock-gated sample of
+# something already decaying at 45 m/s^2.
+CHECK drag[0]["v"] > 0.9 * float(re.search(r"Spawn 'flying-slow' around Kerbin:.*?\|v\| = ([\d.]+) m/s", out).group(1))
+# Nose along the flow, wings level. Up is the airframe's own +Y against the local
+# vertical; the air-relative velocity here sits 1.5 deg out of the orbit plane
+# (the co-rotation term), and faceAlong picks its roll axis from three candidates,
+# so that tilt used to be answered with a 90 deg roll -- lift sideways, and W/S
+# yawing the ship instead of pitching it.
+CHECK abs(drag[0]["aoa"]) < 2.0
+CHECK drag[0]["up"] > 0.9
+FORBID error:

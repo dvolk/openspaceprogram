@@ -7,10 +7,10 @@ kind says how much weight the assertions carry.
 | kind | meaning | cases |
 |---|---|---|
 | `invariant` | a behaviour or a player route the game must keep | 264 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 33 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 34 |
 | `harness` | CLI/test-engine plumbing, not game spec | 13 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **314** |
+| | **total** | **315** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (68)
+## flight (69)
 
 | case | kind | pins |
 |---|---|---|
@@ -90,6 +90,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/377-power-log-balances-the-battery.txt` | golden | --power-log's charge moves at the rate its own printed watts imply. |
 | `flight/395-surface-aoa-readout.txt` | invariant | [surfinfo] reports the aero angle of attack while the ship has air-relative flow, and "-" when it has none. |
 | `flight/448-drag-log-lift-readings.txt` | harness | The --drag-log's signed lift and attitude readings parse in flight and stay inside their bounds. |
+| `flight/451-flying-slow-starts-in-air.txt` | golden | The flying-slow bed starts wings-level with its nose along the air at a fraction of the AIR-relative circular speed, so a plane enters its altitude band moving rather than dropping. |
 
 ## crew (25)
 
