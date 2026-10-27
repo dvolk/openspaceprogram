@@ -9,14 +9,16 @@ Every subcommand prints JSON to stdout (errors are an {"error": ...}
 object on stdout with non-zero exit, so output can be piped freely).
 Bodies are given with --body or piped on stdin. tea receives them via
 --description-file - (quoting never matters) except comments, which
-only accept a flag -- so a comment rides argv: visible in ps, and capped by
-the kernel at MAX_ARG_STRLEN bytes per argument.
+only accept a flag -- so a comment rides argv: visible in ps, and the kernel
+will not exec an argument that reaches MAX_ARG_STRLEN bytes.
 
-tea's own output is inconsistent: `issue create` answers JSON, `issue edit`
-and `issue close/reopen` ignore -o and print a rendered card. So the writes
-here confirm themselves by re-reading the issue: edit answers with
-{"ok": ..., "issue": {index, state, title, labels, body_chars}} and
-close/open with the same per index, up to CONFIRM_MAX indexes.
+tea's own output is inconsistent: `issue create` answers JSON, while `issue
+edit` and `issue close/reopen` ignore -o entirely and print a rendered card. So
+the writes here prove themselves by re-reading the issue: edit answers
+{"ok":..., "confirmed":..., "issue":{index,state,title,labels,url,closed_at,
+body_chars}}, close/open the same per index (up to CONFIRM_MAX of them).
+confirmed:false means no proof came back: --no-confirm skips the re-read on
+purpose, and any other reason is written to stderr.
 
 Bodies and comments are MARKDOWN -- the web UI renders them, and headings,
 bullets and ``` fences are what make a ticket skimmable. Neither path escapes
@@ -36,16 +38,17 @@ Usage:
                        (--comments off answers "comments": null, because tea's
                         own --comments=false answers [] like a quiet issue)
   utils/tea.py comment INDEX [--body "..." | < body.md]
-  utils/tea.py close INDEX [INDEX...]
-  utils/tea.py open INDEX [INDEX...]
+  utils/tea.py close INDEX [INDEX...] [--no-confirm]
+  utils/tea.py open INDEX [INDEX...] [--no-confirm]
   utils/tea.py edit INDEX [--title ...] [--body ...] [--close | --open]
-                          [--labels a,b] [--remove-labels a,b]
+                          [--labels a,b] [--remove-labels a,b] [--no-confirm]
                           (an empty pipe is not a body; a blank --body needs
                            --allow-empty-body)
 """
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 
@@ -82,6 +85,11 @@ def run_tea(args, stdin_text=None, allow_fail=False):
         fail(f"could not run tea: {e}")
     if proc.returncode != 0:
         if allow_fail:
+            # The caller carries on without the data, so a null in the JSON must
+            # not be a mystery: the reason goes to stderr, stdout stays JSON.
+            print(f"note: tea {' '.join(args)} failed: "
+                  f"{proc.stderr.strip() or 'exit ' + str(proc.returncode)}",
+                  file=sys.stderr)
             return None
         fail(proc.stderr.strip() or f"tea {' '.join(args)} failed "
              f"(exit {proc.returncode})")
@@ -164,23 +172,32 @@ def norm_issue(d):
 
 def confirm_issue(index):
     """What the server holds after a write, in the fields that show the write
-    landed. `tea issue edit` ignores -o and prints a rendered card, so there is
-    no payload to echo and re-reading is the only proof. None means the re-read
-    failed or came back odd -- which does not mean the write did, so it must
-    never take the process down: the write is already done."""
+    landed. `tea issue edit` and `tea issue close` ignore -o and print a
+    rendered card, so there is no payload to echo and re-reading is the only
+    proof. None means the re-read failed or came back unreadable -- and the
+    write already ran by then, so this must never take the process down; it says
+    why on stderr instead."""
     out = run_tea(["issue", str(index), "-o", "json", "--comments=false"],
                   allow_fail=True)
     if out is None:
-        return None
+        return None                     # run_tea already said why
     try:
         d = json.loads(out)
-    except json.JSONDecodeError:
+        if not isinstance(d, dict) or "index" not in d:
+            raise ValueError(f"no index in {out[:60]!r}")
+        # state and title are in every real payload; a re-read that answers with
+        # an index and nothing else proves nothing and must not say otherwise.
+        if "state" not in d or "title" not in d:
+            raise ValueError(f"payload has no state/title: {out[:60]!r}")
+        d = norm_issue(d)
+        return {"index": d["index"], "state": d.get("state"),
+                "title": d.get("title"), "labels": d.get("labels"),
+                "url": d.get("url"), "closed_at": d.get("closedAt"),
+                "body_chars": len(d.get("body") or "")}
+    except (ValueError, TypeError, KeyError) as e:
+        print(f"note: re-read of issue {index} came back unreadable ({e}) -- "
+              f"the write itself already ran", file=sys.stderr)
         return None
-    if not isinstance(d, dict) or "index" not in d:
-        return None
-    d = norm_issue(d)
-    return {"index": d["index"], "state": d["state"], "title": d["title"],
-            "labels": d["labels"], "body_chars": len(d.get("body") or "")}
 
 
 def cmd_new(args):
@@ -201,7 +218,14 @@ def ls_page(args, page):
                 "--page", str(page)]
     if args.keyword:
         tea_args += ["--keyword", args.keyword]
-    return [norm_issue(d) for d in parse_json(run_tea(tea_args))]
+    data = parse_json(run_tea(tea_args))
+    # Iterating a dict or a bare {} yields nothing, so a payload that is not a
+    # list would answer "no issues" -- the complete-looking-empty answer this
+    # wrapper exists to avoid.
+    if not isinstance(data, list):
+        fail(f"tea issue ls answered {type(data).__name__}, not a list: "
+             f"{str(data)[:120]}")
+    return [norm_issue(d) for d in data]
 
 
 def cmd_ls(args):
@@ -259,8 +283,10 @@ def cmd_comment(args):
     body = get_body(args)
     if len(body.encode()) >= MAX_ARG_STRLEN:
         fail(f"comment is {len(body)} chars ({len(body.encode())} bytes); tea "
-             f"passes a comment as one argv string and the kernel caps that at "
-             f"{MAX_ARG_STRLEN} bytes -- split it into two comments")
+             f"passes a comment as one argv string and the kernel will not exec "
+             f"an argument of {MAX_ARG_STRLEN} bytes (largest that works is "
+             f"{MAX_ARG_STRLEN - 1}) -- split it into two comments, piped: "
+             f"utils/tea.py comment {args.index} < part.md")
     run_tea(["comments", "add", str(args.index), "--description", body,
              "-o", "json"])
     print(json.dumps({"ok": True, "index": args.index}))
@@ -269,15 +295,20 @@ def cmd_comment(args):
 def cmd_state(cmd, args):
     run_tea(["issue", cmd, *[str(i) for i in args.indexes], "-o", "json"])
     # Same reason as cmd_edit: tea renders a card instead of a payload, so
-    # confirming means re-reading -- and a bulk state change should not quietly
-    # turn into a hundred extra calls.
-    if len(args.indexes) <= CONFIRM_MAX:
-        issues = [confirm_issue(i) for i in args.indexes]
-    else:
-        print(f"note: {len(args.indexes)} indexes changed without re-reading "
-              f"them (over {CONFIRM_MAX}) -- check with ls", file=sys.stderr)
-        issues = None
-    print(json.dumps({"ok": True, "indexes": args.indexes, "issues": issues}))
+    # confirming means re-reading -- one extra call per index, which a bulk
+    # change should not pay without being told (hence --no-confirm, and the
+    # CONFIRM_MAX ceiling).
+    issues, confirmed = None, False
+    if not args.no_confirm:
+        if len(args.indexes) <= CONFIRM_MAX:
+            issues = [confirm_issue(i) for i in args.indexes]
+            confirmed = all(i is not None for i in issues)
+        else:
+            print(f"note: {len(args.indexes)} indexes changed without re-reading "
+                  f"them (over {CONFIRM_MAX}) -- pass --no-confirm to mean it "
+                  f"from the start, or check with ls", file=sys.stderr)
+    print(json.dumps({"ok": True, "indexes": args.indexes,
+                      "confirmed": confirmed, "issues": issues}))
 
 
 def cmd_edit(args):
@@ -321,9 +352,12 @@ def cmd_edit(args):
         run_tea(["issue", "reopen", str(args.index), "-o", "json"])
     # tea issue edit ignores -o and prints its rendered card, so there is no
     # payload to echo: re-read the issue and hand back the fields that prove the
-    # write landed. A labels-only edit that matched nothing used to answer ok.
+    # write landed. A labels-only edit that matched nothing used to answer ok
+    # (tea silently ignores an unknown label), and confirmed:false says that this
+    # answer carries no proof.
+    issue = None if args.no_confirm else confirm_issue(args.index)
     print(json.dumps({"ok": True, "index": args.index,
-                      "issue": confirm_issue(args.index)}))
+                      "confirmed": issue is not None, "issue": issue}))
 
 
 class JsonParser(argparse.ArgumentParser):
@@ -371,6 +405,8 @@ def main():
     for name, tcmd in (("close", "close"), ("open", "reopen")):
         sp = sub.add_parser(name, help=f"{name} issues")
         sp.add_argument("indexes", nargs="+", type=check_index)
+        sp.add_argument("--no-confirm", action="store_true",
+                        help="skip the re-read that proves the change landed")
         sp.set_defaults(fn=lambda a, t=tcmd: cmd_state(t, a))
 
     sp = sub.add_parser("edit", help="edit title/body/state/labels")
@@ -379,6 +415,8 @@ def main():
     sp.add_argument("--body", help="new body (a piped file works too)")
     sp.add_argument("--allow-empty-body", action="store_true",
                     help="let --body \"\" clear the description")
+    sp.add_argument("--no-confirm", action="store_true",
+                    help="skip the re-read that proves the change landed")
     sp.add_argument("--labels", help="comma-separated label names to add")
     sp.add_argument("--remove-labels", help="comma-separated label names to drop")
     sp.add_argument("--close", action="store_true")
@@ -390,4 +428,15 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+        # Flush inside the try: with a big list the write can succeed only as
+        # far as the pipe holds, and the BrokenPipeError then surfaces here
+        # rather than as "Exception ignored while flushing sys.stdout".
+        sys.stdout.flush()
+    except BrokenPipeError:
+        # `ls --all | head -1` closes stdout under us. Point what is left at
+        # /dev/null so the interpreter's shutdown flush cannot add a second
+        # traceback to a run whose JSON already went out.
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        sys.exit(1)
