@@ -22,13 +22,17 @@ sentence, write the body as a markdown file and pipe it:
 Usage:
   utils/tea.py new --title "..." [--body "..." | < body.md] [--labels a,b]
   utils/tea.py ls [--state all|open|closed] [--keyword str] [--limit N]
-                       [--all | --page N]   (--all walks every page; a bare page is a page)
+                       [--all | --page N]
+                       (--all walks every page; a bare page is one page, and the
+                        server caps a page at 50 rows however big --limit is)
   utils/tea.py show INDEX [--comments]
   utils/tea.py comment INDEX [--body "..." | < body.md]
   utils/tea.py close INDEX [INDEX...]
   utils/tea.py open INDEX [INDEX...]
   utils/tea.py edit INDEX [--title ...] [--body ...] [--close | --open]
                           [--labels a,b] [--remove-labels a,b]
+                          (an empty pipe is not a body; a blank --body needs
+                           --allow-empty-body)
 """
 
 import argparse
@@ -40,7 +44,11 @@ TEA = "tea"
 
 # tea's ls JSON omits url/body/created unless asked; index comes back as str.
 LS_FIELDS = "index,state,title,url,author,labels,created,updated"
-LS_MAX_PAGES = 100   # --all guard: 100 pages x limit is far past this repo
+# Gitea clamps one page to this many rows whatever --limit asks for, so
+# `--limit 500` is still a 50-row page and not "everything".
+SERVER_PAGE_CAP = 50
+LS_MAX_PAGES = 100      # --all guard: 100 pages x cap is far past this repo
+BODY_MAX_CHARS = 1 << 20  # past this it is not an issue description (/dev/zero, ...)
 
 
 def run_tea(args, stdin_text=None):
@@ -84,13 +92,35 @@ def check_limit(n):
     return n
 
 
+def check_page(n):
+    n = int(n)
+    if n < 1:
+        raise argparse.ArgumentTypeError("--page must be >= 1")
+    return n
+
+
+def read_pipe():
+    # Bounded: an unbounded read() over /dev/zero OOMs before we can complain.
+    data = sys.stdin.read(BODY_MAX_CHARS + 1)
+    if len(data) > BODY_MAX_CHARS:
+        fail(f"body is over {BODY_MAX_CHARS} chars -- that is not an issue description")
+    return data
+
+
 def get_body(args):
-    if args.body is not None:
+    # Unlike edit, new/comment are pointless without a body, so a blank one is
+    # an error rather than a thing the caller might have meant.
+    if args.body is not None and not sys.stdin.isatty():
+        piped = read_pipe()
+        if piped.strip():
+            fail("body given twice: pass --body or pipe markdown, not both")
+        body = args.body
+    elif args.body is not None:
         body = args.body
     elif sys.stdin.isatty():
         fail("no body: pass --body or pipe markdown on stdin")
     else:
-        body = sys.stdin.read()
+        body = read_pipe()
     if not body.strip():
         fail("body is empty")
     return body
@@ -134,21 +164,33 @@ def ls_page(args, page):
 def cmd_ls(args):
     # A page is one page: callers that forget --page keep getting the newest
     # slice and see a complete-looking list (that cost us 11 issues once), so
-    # --all walks the pages and a full single page says so on stderr.
-    if args.all and args.page > 1:
+    # --all walks the pages and a full single page says so on stderr. The server
+    # clamps a page to SERVER_PAGE_CAP, so a big --limit is not "everything".
+    if args.all and args.page is not None:
         fail("--all and --page are mutually exclusive")
+    step = min(args.limit, SERVER_PAGE_CAP)
+    if args.limit > step:
+        print(f"note: the server caps a page at {SERVER_PAGE_CAP} rows, so "
+              f"--limit {args.limit} fetches {step} -- pass --all for the "
+              f"whole list", file=sys.stderr)
     if not args.all:
-        rows = ls_page(args, args.page)
-        if len(rows) == args.limit:
-            print(f"note: page full at {args.limit} items -- pass --all for the "
-                  f"whole list (or --page {args.page + 1})", file=sys.stderr)
+        page = args.page or 1
+        rows = ls_page(args, page)
+        if len(rows) >= step:
+            print(f"note: page full at {len(rows)} items -- pass --all for the "
+                  f"whole list (or --page {page + 1})", file=sys.stderr)
         print(json.dumps(rows))
         return
     out, page = [], 1
     while True:
         rows = ls_page(args, page)
         out += rows
-        if len(rows) < args.limit or page >= LS_MAX_PAGES:
+        if len(rows) < step:
+            break
+        if page >= LS_MAX_PAGES:
+            print(f"note: stopped after {LS_MAX_PAGES} pages ({len(out)} items) "
+                  f"-- raise LS_MAX_PAGES if there really are more",
+                  file=sys.stderr)
             break
         page += 1
     print(json.dumps(out))
@@ -178,12 +220,21 @@ def cmd_edit(args):
     # Piped stdin is a body even without --body, same as new/comment -- but an
     # EMPTY pipe means "no body given", not "clear the description". Devnull and
     # empty pipes are what a caller uses when it only wants labels; taking them
-    # as a blank body once wiped the descriptions of 49 issues.
+    # as a blank body once wiped the descriptions of 49 issues. A blank --body is
+    # the same write wearing a different hat (usually a "$(cat typoed.path)" that
+    # expanded to nothing), so it needs its own opt-in.
     body = args.body
-    if body is None and not sys.stdin.isatty():
-        piped = sys.stdin.read()
+    if not sys.stdin.isatty():
+        piped = read_pipe()
         if piped.strip():
+            if body is not None:
+                fail("body given twice: pass --body or pipe markdown, not both")
             body = piped
+    if body is not None and not body.strip() and not args.allow_empty_body:
+        fail("blank --body would clear the description -- pass "
+             "--allow-empty-body if that is really what you mean")
+    if args.close and args.is_open:
+        fail("--close and --open contradict each other")
     if not any([args.title is not None, body is not None, args.close,
                 args.is_open, args.labels, args.remove_labels]):
         fail("nothing to change: pass --title/--body/--close/--open/--labels")
@@ -207,9 +258,17 @@ def cmd_edit(args):
     print(json.dumps({"ok": True, "index": args.index}))
 
 
+class JsonParser(argparse.ArgumentParser):
+    """argparse would print usage on stderr and exit 2; keep the one contract
+    this wrapper has with its callers: every failure is a JSON object."""
+
+    def error(self, message):
+        fail(f"{self.prog}: {message}")
+
+
 def main():
-    p = argparse.ArgumentParser(prog="utils/tea.py",
-                                description=__doc__.splitlines()[0])
+    p = JsonParser(prog="utils/tea.py",
+                   description=__doc__.splitlines()[0])
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sp = sub.add_parser("new", help="create an issue")
@@ -223,8 +282,10 @@ def main():
     sp.add_argument("--state", default="open",
                     choices=["open", "closed", "all"])
     sp.add_argument("--keyword")
-    sp.add_argument("--limit", type=check_limit, default=30)
-    sp.add_argument("--page", type=check_limit, default=1, help="1-based page")
+    sp.add_argument("--limit", type=check_limit, default=30,
+                    help=f"rows per page (the server caps a page at "
+                         f"{SERVER_PAGE_CAP} regardless)")
+    sp.add_argument("--page", type=check_page, default=None, help="1-based page")
     sp.add_argument("--all", action="store_true",
                     help="walk every page and print one combined list")
     sp.set_defaults(fn=cmd_ls)
@@ -247,7 +308,9 @@ def main():
     sp = sub.add_parser("edit", help="edit title/body/state/labels")
     sp.add_argument("index", type=check_index)
     sp.add_argument("--title")
-    sp.add_argument("--body", help="new body; empty string is allowed")
+    sp.add_argument("--body", help="new body (a piped file works too)")
+    sp.add_argument("--allow-empty-body", action="store_true",
+                    help="let --body \"\" clear the description")
     sp.add_argument("--labels", help="comma-separated label names to add")
     sp.add_argument("--remove-labels", help="comma-separated label names to drop")
     sp.add_argument("--close", action="store_true")
