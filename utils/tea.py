@@ -22,10 +22,14 @@ here proves itself by re-reading: new answers {"ok":..., "confirmed":...,
 "issue":{...}}, edit/close/open answer {"ok":..., "indexes":[...],
 "confirmed":..., "issues":[{index,state,title,labels,url,closed_at,
 body_chars}, ...]}, comment answers the {author,created,chars} of the comment it
-found again -- or adds "predates_attempt" when the only match is older than the
-send, because that is somebody else's identical text and not proof.
+found again, and only believes it when that match is dated after the send -- a
+match dated before it, or carrying no date, is shown with confirmed:false
+because it could be somebody else's identical text.
 confirmed:false means no proof came back: --no-confirm skips the re-read on
-purpose, and any other reason is written to stderr. Past CONFIRM_MAX indexes the
+purpose, and any other reason is written to stderr. It means the write is not
+known to have taken effect, not that it failed: the state and labels a write was
+meant to produce are checked, so a close that tea did not apply says so rather
+than confirming the issue still exists. Past CONFIRM_MAX indexes the
 proof is one walk of the issue list rather than one re-read per index, because a
 bulk sweep is exactly when a silent typo costs the most and "no proof" is the
 worst answer.
@@ -86,7 +90,8 @@ LS_FIELDS = "index,state,title,url,author,labels,created,updated"
 # Gitea clamps one page to this many rows whatever --limit asks for, so
 # `--limit 500` is still a 50-row page and not "everything".
 SERVER_PAGE_CAP = 50
-LS_MAX_PAGES = 100      # --all guard: 100 pages x cap is far past this repo
+LS_MAX_PAGES = 100      # 100 pages x cap is far past this repo; guards both
+                        # `ls --all` and the bulk proof walk after a write
 BODY_MAX_CHARS = 1 << 20  # past this it is not an issue description (/dev/zero, ...)
 # The kernel's per-argument exec limit (32 pages). Comments have no file/stdin
 # path in tea, so they hit it.
@@ -105,9 +110,29 @@ LABEL_PAGE = 50
 LABEL_MAX_PAGES = 20
 
 
+_saw_timeout = False  # set when a tea call gave no answer at all (vs. refusing)
+
+
+def tea_cmd(args):
+    """How to name a tea call in a message. Joining argv raw would paste a whole
+    comment body into the error object on stdout -- up to 128 KB of it."""
+    return " ".join(a if len(a) <= 60 else f"{a[:40]}... ({len(a)} chars)"
+                    for a in args)
+
+
+def caveat():
+    """Appended to any write failure, because a call that timed out is not a
+    call that was refused: the difference decides whether a retry duplicates the
+    write."""
+    return (" -- one of this run's calls went unanswered, so a write may have "
+            "reached the server anyway: check before re-running it"
+            if _saw_timeout else "")
+
+
 def run_tea(args, stdin_text=None, allow_fail=False):
     # Never inherit our stdin: an unexpected tea prompt would hang the caller.
     # subprocess.run forbids stdin+input together, so feed via input= only.
+    global _saw_timeout
     argv = [TEA, *args]
     try:
         if stdin_text is None:
@@ -118,12 +143,13 @@ def run_tea(args, stdin_text=None, allow_fail=False):
                                   input=stdin_text, timeout=TEA_TIMEOUT)
     except subprocess.TimeoutExpired:
         # subprocess.run kills the child, but the request may already have
-        # reached Gitea, so this is "unknown", never "nothing happened".
-        msg = (f"tea {' '.join(args)} gave no answer within {TEA_TIMEOUT}s -- "
-               f"the request may have reached the server anyway, so check "
-               f"before retrying it")
+        # reached Gitea, so this is "unknown", never "nothing happened". The flag
+        # is what lets a caller's {"error": ...} say that instead of implying the
+        # server refused it.
+        _saw_timeout = True
+        msg = f"tea {tea_cmd(args)} gave no answer within {TEA_TIMEOUT}s"
         if allow_fail:
-            print(f"note: {msg}", file=sys.stderr)
+            note(msg + caveat())
             return None
         fail(msg)
     except OSError as e:
@@ -135,11 +161,10 @@ def run_tea(args, stdin_text=None, allow_fail=False):
         if allow_fail:
             # The caller carries on without the data, so a null in the JSON must
             # not be a mystery: the reason goes to stderr, stdout stays JSON.
-            print(f"note: tea {' '.join(args)} failed: "
-                  f"{proc.stderr.strip() or 'exit ' + str(proc.returncode)}",
-                  file=sys.stderr)
+            note(f"tea {tea_cmd(args)} failed: "
+                 f"{proc.stderr.strip() or 'exit ' + str(proc.returncode)}")
             return None
-        fail(proc.stderr.strip() or f"tea {' '.join(args)} failed "
+        fail(proc.stderr.strip() or f"tea {tea_cmd(args)} failed "
              f"(exit {proc.returncode})")
     return proc.stdout
 
@@ -152,8 +177,40 @@ def parse_json(out):
 
 
 def fail(msg):
-    print(json.dumps({"error": msg}))
+    # If any call in this run went unanswered, say so on the way out: an error
+    # object that reads as "the server refused it" invites a retry of a write
+    # that may already have landed.
+    flush_note_count()
+    print(json.dumps({"error": msg + caveat()}))
     sys.exit(1)
+
+
+_noted = set()  # notes already printed this run, so one can be said once
+_NOTE_LIMIT = 40  # ... and a run never says more than this many different ones
+_notes_dropped = 0
+
+
+def note(msg):
+    """A stderr note, printed at most once per identical message. Row-by-row
+    paths (a list walk over 450 issues) would otherwise bury the answer under
+    450 copies of the same complaint, and a note about every row is a note
+    nobody reads: past the limit they are counted instead, and the count is said
+    when the command is done."""
+    global _notes_dropped
+    if msg in _noted:
+        return
+    if len(_noted) >= _NOTE_LIMIT:
+        _notes_dropped += 1
+        return
+    _noted.add(msg)
+    print(f"note: {msg}", file=sys.stderr)
+
+
+def flush_note_count():
+    if _notes_dropped:
+        print(f"note: {_notes_dropped} more note(s) not printed -- {len(_noted)} "
+              f"different ones already were; the JSON answer is unchanged",
+              file=sys.stderr)
 
 
 def check_index(idx):
@@ -234,23 +291,24 @@ def label_vocab():
     carries it."""
     global _label_vocab
     if _label_vocab is None:
-        names, junk, page, explained = [], 0, 1, False
+        names, junk, page = [], 0, 1
+        # Keep asking until a page comes back empty rather than until a page
+        # looks short: the server is known to clamp page sizes (issues pages cap
+        # at 50 however big --limit is), and a clamp below LABEL_PAGE would
+        # otherwise truncate the vocabulary with no hint at all.
         while page <= LABEL_MAX_PAGES:
             out = run_tea(["labels", "ls", "-o", "json",
                            "--limit", str(LABEL_PAGE), "--page", str(page)],
                           allow_fail=True)
             if out is None:
-                explained = True          # run_tea already said why
-                break
+                break                     # run_tea already said why
             try:
                 data = json.loads(out)
             except json.JSONDecodeError:
                 data = None
             if not isinstance(data, list):
-                print("note: tea labels ls did not answer a list, so labels are "
-                      "split on spaces and a name containing a space will look "
-                      "like two", file=sys.stderr)
-                explained = True
+                note("tea labels ls did not answer a list, so labels are split "
+                     "on spaces and a name containing a space will look like two")
                 break
             for entry in data:
                 name = entry.get("name") if isinstance(entry, dict) else entry
@@ -258,20 +316,18 @@ def label_vocab():
                     names.append(name)
                 else:
                     junk += 1
-            if len(data) < LABEL_PAGE:
+            if not data:
                 break
             page += 1
         if junk:
-            print(f"note: tea labels ls answered {junk} unreadable label(s) -- a "
-                  f"multi-word one among them will not be recognized",
-                  file=sys.stderr)
+            note(f"tea labels ls answered {junk} unreadable label(s) -- a "
+                 f"multi-word one among them will not be recognized")
         if page > LABEL_MAX_PAGES:
-            print(f"note: stopped reading the label list after "
-                  f"{LABEL_MAX_PAGES} pages -- a multi-word label past that gets "
-                  f"split wrong", file=sys.stderr)
-        if not names and not explained:
-            print("note: no label vocabulary, so labels are split on spaces and "
-                  "a name containing a space will look like two", file=sys.stderr)
+            note(f"stopped reading the label list after {LABEL_MAX_PAGES} pages "
+                 f"-- a multi-word label past that gets split wrong")
+        if not names:
+            note("no label vocabulary, so labels are split on spaces and a name "
+                 "containing a space will look like two")
         _label_vocab = sorted(((n, n.split()) for n in names),
                               key=lambda entry: len(entry[1]), reverse=True)
     return _label_vocab
@@ -300,9 +356,9 @@ def split_labels(text, index=None):
     unknown = [n for n in out if n not in known]
     if vocab and unknown:
         tag = f"issue {index}: " if index is not None else ""
-        print(f"note: {tag}labels not on the repo's own label list: "
-              f"{', '.join(unknown)} -- the vocabulary is stale, or tea joined "
-              f"something it should not have", file=sys.stderr)
+        note(f"{tag}labels not on the repo's own label list: "
+             f"{', '.join(unknown)} -- the vocabulary is stale, or tea joined "
+             f"something it should not have")
     return out
 
 
@@ -321,8 +377,7 @@ def labels_of(d, index=None):
             else:
                 # Never die over one junk entry: ls/show would then answer
                 # nothing at all about an issue that is right there.
-                print(f"note: ignoring an unreadable label entry {entry!r}",
-                      file=sys.stderr)
+                note(f"ignoring an unreadable label entry {entry!r}")
         return names
     if isinstance(labels, str) and labels.strip():
         return split_labels(labels, index)
@@ -376,13 +431,12 @@ def confirm_issue(index):
         seen = int(d["index"])
         if seen != index:
             raise ValueError(f"answered index {seen} for a re-read of {index}")
-        return {"index": seen, "state": d.get("state"),
-                "title": d.get("title"), "labels": labels_of(d, seen),
-                "url": d.get("url"), "closed_at": d.get("closedAt"),
-                "body_chars": len(d.get("body") or "")}
+        return issue_proof(seen, d.get("state"), d.get("title"),
+                           labels_of(d, seen), d.get("url"), d.get("closedAt"),
+                           len(d.get("body") or ""))
     except (ValueError, TypeError, KeyError) as e:
-        print(f"note: re-read of issue {index} came back unreadable ({e}) -- "
-              f"the write itself already ran", file=sys.stderr)
+        note(f"re-read of issue {index} came back unreadable ({e}) -- the write "
+             f"itself already ran")
         return None
 
 
@@ -393,68 +447,100 @@ def split_requested(text):
     return {t.strip() for t in (text or "").split(",") if t.strip()}
 
 
+def issue_proof(index, state, title, labels, url, closed_at, body_chars):
+    """The one shape a proof answer has, so the per-index re-read and the list
+    walk cannot drift into two different shapes for the same event."""
+    return {"index": index, "state": state, "title": title, "labels": labels,
+            "url": url, "closed_at": closed_at, "body_chars": body_chars}
+
+
 def note_unapplied_labels(issue, want, gone, batch):
     """tea ignores a label name it does not know -- a typo'd --labels exits 0 and
     changes nothing. The re-read already knows the truth, so diff it out loud.
-    Takes the wanted/dropped sets rather than the parsed args: not every
-    subcommand has both flags, and reading a missing attribute here would crash
-    after the write already landed."""
+    Returns whether the labels now match what was asked, which is what a caller
+    means by "the write landed". Takes the sets rather than the parsed args: not
+    every subcommand has both flags, and reading a missing attribute here would
+    crash after the write already landed."""
     have = set(issue["labels"])
     missing = sorted(want - have)
     leftover = sorted(gone & have)
     tag = f"issue {issue['index']}: " if batch else ""
+    ok = True
     if missing:
-        print(f"note: {tag}not on the issue after the write: {', '.join(missing)}"
-              f" -- tea silently ignores a label name it does not know (see "
-              f"`tea labels ls` for the real spellings)", file=sys.stderr)
+        note(f"{tag}not on the issue after the write: {', '.join(missing)} -- "
+             f"tea silently ignores a label name it does not know (see "
+             f"`tea labels ls` for the real spellings)")
+        ok = False
     if leftover:
-        print(f"note: {tag}still on the issue after --remove-labels: "
-              f"{', '.join(leftover)}", file=sys.stderr)
+        note(f"{tag}still on the issue after --remove-labels: "
+             f"{', '.join(leftover)}")
+        ok = False
+    # The other way round: the diff above is only trustworthy if the name asked
+    # for is one the repo knows. If the label list came back short, a multi-word
+    # label reads as several single-word ones and a removal can look successful
+    # when it was never possible.
+    vocab = {name for name, _ in label_vocab()}
+    if vocab:
+        unreal = sorted((want | gone) - vocab)
+        if unreal:
+            note(f"{tag}not on the repo's own label list: {', '.join(unreal)} -- "
+                 f"either a name tea quietly ignored, or the label list was read "
+                 f"incompletely, so this comparison cannot be trusted")
+            ok = False
+    return ok
 
 
 def confirm_comment(index, body, sent_at):
     """`tea comments add` ignores -o and prints a card, so the comment has to be
     found again to be believed. Compared with all runs of whitespace collapsed,
-    which covers Gitea trimming the edges and any CRLF that came in on the pipe;
-    the last match wins, as our comment is the newest of an equal pair. A match
-    older than the moment we sent it belongs to somebody else who typed the same
-    thing, and saying so is cheap -- re-posting a comment that looked like it
-    failed is exactly how that happens. None plus a stderr note means the write
-    already ran and only the proof is missing."""
+    which covers Gitea trimming the edges and any CRLF that came in on the pipe.
+    Of several equal comments the one with the newest date is taken to be ours; a
+    match dated before we sent it, or carrying no date at all, is returned but
+    not counted as proof -- re-posting a comment that looked like it failed is
+    exactly how a borrowed match happens. Returns (comment, believed);
+    (None, False) with a stderr note means the write already ran and only the
+    proof is missing."""
     out = run_tea(["issue", str(index), "-o", "json", "--comments"],
                   allow_fail=True)
     if out is None:
-        return None                     # run_tea already said why
+        return None, False              # run_tea already said why
     try:
         d = json.loads(out)
         comments = d.get("comments") if isinstance(d, dict) else None
         if not isinstance(comments, list):
             raise ValueError(f"no comments in {out[:60]!r}")
         want = " ".join(body.split())
-        found = None
-        for c in comments:
-            if (isinstance(c, dict) and isinstance(c.get("body"), str)
-                    and " ".join(c["body"].split()) == want):
-                found = c
-        if found is None:
-            print(f"note: issue {index} has no comment matching the text that "
-                  f"was posted -- it may still have landed, check "
-                  f"`utils/tea.py show {index} --comments`", file=sys.stderr)
-            return None
+        matches = [c for c in comments
+                   if isinstance(c, dict) and isinstance(c.get("body"), str)
+                   and " ".join(c["body"].split()) == want]
+        if not matches:
+            note(f"issue {index} has no comment matching the text that was "
+                 f"posted -- it may still have landed, check "
+                 f"`utils/tea.py show {index} --comments`")
+            return None, False
+        # ISO-8601 UTC sorts as text, so the newest date is the max. With no date
+        # to sort on, "the last equal one" is the only guess left, and it is a
+        # guess that can credit somebody else's older comment as ours.
+        dated = [c for c in matches if isinstance(c.get("created"), str)]
+        found = max(dated, key=lambda c: c["created"]) if dated else matches[-1]
         created = found.get("created")
+        proof = {"author": found.get("author"), "created": created,
+                 "chars": len(found["body"])}
+        if not isinstance(created, str):
+            note(f"the matching comment on issue {index} has no date, so it "
+                 f"cannot be told from an older comment with the same text")
+            return proof, False
         if _predates(created, sent_at):
-            print(f"note: the matching comment on issue {index} is dated "
-                  f"{created!r}, before this attempt -- it may be an older "
-                  f"comment with the same text, so it is not counted as proof; "
-                  f"`show {index} --comments` will settle it", file=sys.stderr)
-            return {"author": found.get("author"), "created": created,
-                    "chars": len(found["body"]), "predates_attempt": True}
-        return {"author": found.get("author"), "created": created,
-                "chars": len(found["body"])}
+            note(f"the matching comment on issue {index} is dated {created!r}, "
+                 f"before this attempt -- it may be an older comment with the "
+                 f"same text, so it is not counted as proof; `show {index} "
+                 f"--comments` will settle it")
+            return proof, False
+        return proof, True
     except (ValueError, TypeError, KeyError) as e:
-        print(f"note: re-read of issue {index}'s comments came back unreadable "
-              f"({e}) -- the comment itself already ran", file=sys.stderr)
-        return None
+        note(f"re-read of issue {index}'s comments came back unreadable ({e}) "
+             f"-- the comment itself already ran")
+        return None, False
 
 
 def _predates(created, sent_at):
@@ -466,44 +552,105 @@ def _predates(created, sent_at):
                                         time.gmtime(sent_at - 120)))
 
 
-def confirm_many(indexes):
+def confirm_many(indexes, want=None, gone=None, want_state=None):
     """Proof for a write that touched several indexes. Few of them: re-read each
     one. Past CONFIRM_MAX: walk the issue list once instead, which costs fewer
     calls than one re-read per index and beats the alternative of answering with
     no proof at all -- which is what a bulk sweep most needs, since that is when
-    a silent typo costs the most. Returns (issues, confirmed); an index that is
-    simply not in the list gets named, not dropped."""
+    a silent typo costs the most.
+
+    Returns (issues, confirmed), where confirmed means the CHANGE is there, not
+    that the issue is there: an index that cannot be found, a state that did not
+    move, or labels tea quietly ignored each make it false, each with a note
+    saying which. Before this, `close` over eleven issues answered
+    confirmed:true while every one of them was still open."""
+    want = want or set()
+    gone = gone or set()
     if len(indexes) <= CONFIRM_MAX:
         issues = [confirm_issue(i) for i in indexes]
-        return issues, all(i is not None for i in issues)
-    want = set(indexes)
+    else:
+        issues = walk_issue_list(indexes)
+        if issues is None:
+            return None, False          # walk_issue_list already said why
+    ok = True
+    for index, issue in zip(indexes, issues):
+        if issue is None:
+            ok = False                  # confirm_* already said why
+            continue
+        if want_state and issue["state"] != want_state:
+            note(f"issue {index} is {issue['state']!r} after the write meant to "
+                 f"make it {want_state!r}")
+            ok = False
+        if not note_unapplied_labels(issue, want, gone, len(indexes) > 1):
+            ok = False
+    return issues, ok
+
+
+def walk_issue_list(indexes):
+    """The bulk proof: one pass over the issue list rather than one re-read per
+    index. Runs after the write, so it reports what it could not see and never
+    ends the process -- ls_rows would, and that would leave a write with an error
+    object instead of an answer. One entry per requested index, null where the
+    list had nothing to say."""
+    asked = set(indexes)
     found, page = {}, 1
-    while True:
-        rows = ls_rows("all", None, SERVER_PAGE_CAP, page)
+    while page <= LS_MAX_PAGES:
+        page_rows = ls_page_soft(page)
+        if page_rows is None:
+            note(f"the bulk proof stopped after {page - 1} page(s) of the issue "
+                 f"list -- {len(asked)} indexes are unproven")
+            return None
+        rows, seen = page_rows
         for row in rows:
-            if row["index"] in want:
-                # The list carries no closedAt and no body, so those two say
-                # "not asked" here rather than looking like "absent".
-                found[row["index"]] = {"index": row["index"],
-                                       "state": row.get("state"),
-                                       "title": row.get("title"),
-                                       "labels": row["labels"],
-                                       "url": row.get("url"),
-                                       "closed_at": None, "body_chars": None}
-        if len(rows) < SERVER_PAGE_CAP:
-            break
-        if page >= LS_MAX_PAGES:
-            print(f"note: stopped walking the issue list after {LS_MAX_PAGES} "
-                  f"pages -- some of the {len(want)} indexes may be further on",
-                  file=sys.stderr)
+            if row["index"] in asked:
+                found[row["index"]] = row
+        if not seen:
             break
         page += 1
-    missing = sorted(want - set(found))
+    else:
+        note(f"stopped walking the issue list after {LS_MAX_PAGES} pages -- some "
+             f"of the {len(asked)} indexes may be further on")
+    missing = sorted(asked - set(found))
     if missing:
-        print(f"note: not in the issue list after the write: "
-              f"{', '.join(str(i) for i in missing)} -- check with ls (a pull "
-              f"request shares its number with an issue)", file=sys.stderr)
-    return [found[i] for i in indexes if i in found], not missing
+        note(f"not in the issue list after the write: "
+             f"{', '.join(str(i) for i in missing)} -- check with ls (a pull "
+             f"request shares its number with an issue)")
+    note("bulk proof came from the issue list, so closed_at and body_chars are "
+         "null in it, not absent from the issue")
+    return [found.get(i) for i in indexes]
+
+
+def ls_page_soft(page):
+    """One page of the issue list, for the bulk proof only: nothing here may end
+    the process, so a bad payload is a note and a None. Returns (rows, rows_seen)
+    -- the raw count, so an all-junk page does not read as the end of the list."""
+    out = run_tea(_ls_argv("all", None, SERVER_PAGE_CAP, page), allow_fail=True)
+    if out is None:
+        return None                     # run_tea already said why
+    try:
+        data = json.loads(out)
+    except json.JSONDecodeError:
+        note(f"the issue list answered something that is not JSON: {out[:60]!r}")
+        return None
+    if not isinstance(data, list):
+        note(f"the issue list answered {type(data).__name__}, not a list -- no "
+             f"bulk proof")
+        return None
+    rows = []
+    for d in data:
+        if not isinstance(d, dict) or "index" not in d:
+            note(f"ignoring an unreadable row in the issue list: {str(d)[:60]}")
+            continue
+        try:
+            idx = int(d["index"])
+        except (TypeError, ValueError):
+            note(f"ignoring a row whose index is not a number: {d['index']!r}")
+            continue
+        # The list carries no closedAt and no body, so those two are null here:
+        # "the list was not asked", which the note in walk_issue_list spells out.
+        rows.append(issue_proof(idx, d.get("state"), d.get("title"),
+                                labels_of(d, idx), d.get("url"), None, None))
+    return rows, len(data)
 
 
 def cmd_new(args):
@@ -522,24 +669,30 @@ def cmd_new(args):
     # catches a typo'd --labels on a brand new issue. Without the re-read the
     # field is null, because [] is exactly the lie the re-read exists to avoid.
     issue = None if args.no_confirm else confirm_issue(d["index"])
+    confirmed = False
     if issue is not None:
         d["labels"] = issue["labels"]
-        note_unapplied_labels(issue, split_requested(args.labels), set(), False)
+        confirmed = note_unapplied_labels(issue, split_requested(args.labels),
+                                          set(), False)
     else:
         d["labels"] = None
     print(json.dumps({"ok": True, "index": d["index"],
-                      "confirmed": issue is not None, "issue": d}))
+                      "confirmed": confirmed, "issue": d}))
 
 
-def ls_rows(state, keyword, limit, page):
+def _ls_argv(state, keyword, limit, page):
     tea_args = ["issue", "ls", "-o", "json", "--fields", LS_FIELDS,
                 "--state", state, "--limit", str(limit), "--page", str(page)]
     if keyword:
         tea_args += ["--keyword", keyword]
-    data = parse_json(run_tea(tea_args))
-    # Iterating a dict or a bare {} yields nothing, so a payload that is not a
-    # list would answer "no issues" -- the complete-looking-empty answer this
-    # wrapper exists to avoid.
+    return tea_args
+
+
+def ls_rows(state, keyword, limit, page):
+    # A read, so an unusable payload is a hard error: a partial list would be
+    # the complete-looking-empty answer this wrapper exists to prevent. The bulk
+    # proof after a write cannot afford that, so it uses ls_page_soft instead.
+    data = parse_json(run_tea(_ls_argv(state, keyword, limit, page)))
     if not isinstance(data, list):
         fail(f"tea issue ls answered {type(data).__name__}, not a list: "
              f"{str(data)[:120]}")
@@ -555,15 +708,17 @@ def cmd_ls(args):
         fail("--all and --page are mutually exclusive")
     step = min(args.limit, SERVER_PAGE_CAP)
     if args.limit > step:
-        print(f"note: the server caps a page at {SERVER_PAGE_CAP} rows, so "
-              f"--limit {args.limit} fetches {step} -- pass --all for the "
-              f"whole list", file=sys.stderr)
+        note(f"the server caps a page at {SERVER_PAGE_CAP} rows, so --limit "
+             f"{args.limit} fetches {step} -- pass --all for the whole list")
     if not args.all:
         page = args.page or 1
         rows = ls_rows(args.state, args.keyword, args.limit, page)
-        if len(rows) >= step:
-            print(f"note: page full at {len(rows)} items -- pass --all for the "
-                  f"whole list (or --page {page + 1})", file=sys.stderr)
+        if not rows and page > 1:
+            note(f"page {page} is empty -- past the end of the list, not an "
+                 f"empty repository")
+        elif len(rows) >= step:
+            note(f"page full at {len(rows)} items -- pass --all for the whole "
+                 f"list (or --page {page + 1})")
         print(json.dumps(rows))
         return
     out, page = [], 1
@@ -573,9 +728,8 @@ def cmd_ls(args):
         if len(rows) < step:
             break
         if page >= LS_MAX_PAGES:
-            print(f"note: stopped after {LS_MAX_PAGES} pages ({len(out)} items) "
-                  f"-- raise LS_MAX_PAGES if there really are more",
-                  file=sys.stderr)
+            note(f"stopped after {LS_MAX_PAGES} pages ({len(out)} items) -- "
+                 f"raise LS_MAX_PAGES if there really are more")
             break
         page += 1
     print(json.dumps(out))
@@ -612,27 +766,39 @@ def cmd_comment(args):
              "-o", "json"])
     # No payload comes back from that call, so the proof is finding the comment
     # again -- one extra read, which is why --no-confirm exists here too.
-    comment = None if args.no_confirm else confirm_comment(args.index, body,
-                                                           sent_at)
-    # A match that predates the attempt is reported but not believed, so the
-    # caller still sees what is on the issue without being told it is ours.
+    comment = believed = None
+    if not args.no_confirm:
+        comment, believed = confirm_comment(args.index, body, sent_at)
+    # A match that predates the attempt, or has no date to place it, is reported
+    # but not believed, so the caller still sees what is on the issue without
+    # being told it is ours.
     print(json.dumps({"ok": True, "index": args.index,
-                      "confirmed": (comment is not None
-                                    and not comment.get("predates_attempt")),
-                      "comment": comment}))
+                      "confirmed": bool(believed), "comment": comment}))
 
 
 def cmd_state(cmd, args):
     # dict.fromkeys keeps the order and drops a repeated index, so the tea call
     # and every re-read happen once per issue.
     indexes = list(dict.fromkeys(args.indexes))
-    run_tea(["issue", cmd, *[str(i) for i in indexes], "-o", "json"])
+    want_state = "closed" if cmd == "close" else "open"
+    if run_tea(["issue", cmd, *[str(i) for i in indexes], "-o", "json"],
+               allow_fail=True) is None:
+        # One bad index among many makes tea exit non-zero after applying the
+        # rest, so an error on its own would read as though nothing moved -- and
+        # "re-run the lot" is exactly the wrong next move. Say what each index is
+        # now, then fail.
+        issues, _ = confirm_many(indexes, want_state=want_state)
+        seen = ", ".join(f"{i}={issue['state'] if issue else 'unknown'}"
+                         for i, issue in zip(indexes, issues or []))
+        fail(f"the {cmd} did not go through for all of "
+             f"{', '.join(str(i) for i in indexes)} -- state now: {seen}")
     # tea renders a card instead of a payload, so confirming means re-reading:
     # one re-read per index while there are few, one walk of the list past
-    # CONFIRM_MAX. --no-confirm still means "I know, skip it".
+    # CONFIRM_MAX. --no-confirm still means "I know, skip it". want_state is what
+    # makes the answer mean "it is closed now" rather than "that issue exists".
     issues, confirmed = None, False
     if not args.no_confirm:
-        issues, confirmed = confirm_many(indexes)
+        issues, confirmed = confirm_many(indexes, want_state=want_state)
     print(json.dumps({"ok": True, "indexes": indexes,
                       "confirmed": confirmed, "issues": issues}))
 
@@ -651,12 +817,14 @@ def cmd_edit(args):
             if body is not None:
                 fail("body given twice: pass --body or pipe markdown, not both")
             body = piped
-            # A description is the one thing here that a stray pipe rewrites, so
-            # name it: a labels edit should not carry a description silently.
-            print("note: sending piped stdin as the new description",
-                  file=sys.stderr)
     if body is not None:
         check_body(body, "body")
+        if args.body is None:
+            # A description is the one thing here that a stray pipe rewrites, so
+            # say it after the body is known to be sendable: a labels edit should
+            # not carry a description silently, and announcing a write that is
+            # about to be refused is its own little lie.
+            note("sending piped stdin as the new description")
     if body is not None and not body.strip() and not args.allow_empty_body:
         fail("blank --body would clear the description -- pass "
              "--allow-empty-body if that is really what you mean")
@@ -675,10 +843,11 @@ def cmd_edit(args):
              "--labels/--remove-labels/--close/--open (piped stdin counts as a "
              "--body)")
     if args.title is not None and not args.title.strip():
-        print("note: --title \"\" asks tea to unset the title, which Gitea may "
-              "not accept", file=sys.stderr)
+        note("--title \"\" asks tea to unset the title, which Gitea may not "
+             "accept")
     want = split_requested(args.labels)
     gone = split_requested(args.remove_labels)
+    want_state = ("closed" if args.close else "open" if args.is_open else None)
     edited = any([args.title is not None, body is not None, args.labels,
                   args.remove_labels])
     if edited:
@@ -694,17 +863,20 @@ def cmd_edit(args):
         if run_tea(tea_args, stdin_text=body, allow_fail=True) is None:
             # One typo'd index among many makes tea exit non-zero while still
             # applying the good ones, so "the edit failed" alone would read as
-            # though nothing changed -- and the fix for that is not to re-run the
-            # whole sweep. Ask what actually carries the change and say it.
+            # though nothing changed -- and re-running the whole sweep is the
+            # wrong response to that. Ask what actually carries the change.
             if len(indexes) > 1:
-                applied, _ = confirm_many(indexes)
-                landed = [i["index"] for i in applied or [] if i
-                          and want <= set(i["labels"])
-                          and not gone & set(i["labels"])]
-                print(f"note: the change is on: "
-                      f"{', '.join(str(i) for i in landed) or 'nothing confirmed'}"
-                      f" -- tea applies the indexes it can and still exits "
-                      f"non-zero, so re-run only the rest", file=sys.stderr)
+                applied, _ = confirm_many(indexes, want, gone)
+                landed = [i for i, issue in zip(indexes, applied or [])
+                          if issue is not None
+                          and want <= set(issue["labels"])
+                          and not gone & set(issue["labels"])]
+                note(f"end state matches on: "
+                     f"{', '.join(str(i) for i in landed) or 'nothing confirmed'}"
+                     f" -- tea applies the indexes it can and still exits "
+                     f"non-zero, so re-run only the rest. For --remove-labels "
+                     f"this cannot tell a removal from a label that was never "
+                     f"there, so read the notes above")
             fail(f"the edit did not go through for all of "
                  f"{', '.join(str(i) for i in indexes)}")
     # tea issue edit has no state flags, so --close/--open are a second call
@@ -714,7 +886,14 @@ def cmd_edit(args):
         verb = "close" if args.close else "reopen"
         if run_tea(["issue", verb, *[str(i) for i in indexes], "-o", "json"],
                    allow_fail=True) is None:
-            fail(f"the {verb} did not land"
+            # Same reason as in cmd_state: with several indexes some of them may
+            # have moved before tea refused, so the answer names the states
+            # rather than implying none did.
+            seen_now, _ = confirm_many(indexes, want, gone, want_state)
+            states = ", ".join(f"{i}={issue['state'] if issue else 'unknown'}"
+                               for i, issue in zip(indexes, seen_now or []))
+            fail(f"the {verb} did not go through for all of "
+                 f"{', '.join(str(i) for i in indexes)} -- state now: {states}"
                  + (" -- the title/body/labels part did, so re-run only the "
                     f"{verb}" if edited else ""))
     # tea issue edit ignores -o and prints its rendered card, so there is no
@@ -724,10 +903,13 @@ def cmd_edit(args):
     # answer carries no proof.
     issues, confirmed = None, False
     if not args.no_confirm:
-        issues, confirmed = confirm_many(indexes)
-        for issue in issues or []:
-            if issue is not None:
-                note_unapplied_labels(issue, want, gone, len(indexes) > 1)
+        issues, confirmed = confirm_many(indexes, want, gone, want_state)
+        if args.title is not None:
+            for issue in issues or []:
+                if issue is not None and issue["title"] != args.title:
+                    note(f"issue {issue['index']} is titled {issue['title']!r}, "
+                         f"not {args.title!r}")
+                    confirmed = False
     print(json.dumps({"ok": True, "indexes": indexes,
                       "confirmed": confirmed, "issues": issues}))
 
@@ -811,6 +993,7 @@ if __name__ == "__main__":
         # far as the pipe holds, and the BrokenPipeError then surfaces here
         # rather than as "Exception ignored while flushing sys.stdout".
         sys.stdout.flush()
+        flush_note_count()
     except BrokenPipeError:
         # `ls --all | head -1` closes stdout under us. Point what is left at
         # /dev/null so the interpreter's shutdown flush cannot add a second
@@ -826,4 +1009,5 @@ if __name__ == "__main__":
         traceback.print_exc(file=sys.stderr)
         print(json.dumps({"error": f"utils/tea.py crashed: "
                                    f"{type(e).__name__}: {e}"}))
+        flush_note_count()
         sys.exit(1)
