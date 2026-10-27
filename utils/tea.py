@@ -11,6 +11,14 @@ Bodies are given with --body or piped on stdin. tea receives them via
 --description-file - (quoting never matters) except comments, which
 only accept a flag.
 
+Bodies and comments are MARKDOWN -- the web UI renders them, and headings,
+bullets and ``` fences are what make a ticket skimmable. Neither path escapes
+anything, so structure survives either way; --body in a shell one-liner just
+makes prose paragraphs the easy thing to type. For anything longer than a
+sentence, write the body as a markdown file and pipe it:
+
+  utils/tea.py new --title "..." < tmp/issue.md      # or a <<'MD' heredoc
+
 Usage:
   utils/tea.py new --title "..." [--body "..." | < body.md] [--labels a,b]
   utils/tea.py ls [--state all|open|closed] [--keyword str] [--limit N]
