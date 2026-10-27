@@ -9,7 +9,14 @@ Every subcommand prints JSON to stdout (errors are an {"error": ...}
 object on stdout with non-zero exit, so output can be piped freely).
 Bodies are given with --body or piped on stdin. tea receives them via
 --description-file - (quoting never matters) except comments, which
-only accept a flag.
+only accept a flag -- so a comment rides argv: visible in ps, and capped by
+the kernel at MAX_ARG_STRLEN bytes per argument.
+
+tea's own output is inconsistent: `issue create` answers JSON, `issue edit`
+and `issue close/reopen` ignore -o and print a rendered card. So the writes
+here confirm themselves by re-reading the issue: edit answers with
+{"ok": ..., "issue": {index, state, title, labels, body_chars}} and
+close/open with the same per index, up to CONFIRM_MAX indexes.
 
 Bodies and comments are MARKDOWN -- the web UI renders them, and headings,
 bullets and ``` fences are what make a ticket skimmable. Neither path escapes
@@ -26,6 +33,8 @@ Usage:
                        (--all walks every page; a bare page is one page, and the
                         server caps a page at 50 rows however big --limit is)
   utils/tea.py show INDEX [--comments]
+                       (--comments off answers "comments": null, because tea's
+                        own --comments=false answers [] like a quiet issue)
   utils/tea.py comment INDEX [--body "..." | < body.md]
   utils/tea.py close INDEX [INDEX...]
   utils/tea.py open INDEX [INDEX...]
@@ -49,18 +58,31 @@ LS_FIELDS = "index,state,title,url,author,labels,created,updated"
 SERVER_PAGE_CAP = 50
 LS_MAX_PAGES = 100      # --all guard: 100 pages x cap is far past this repo
 BODY_MAX_CHARS = 1 << 20  # past this it is not an issue description (/dev/zero, ...)
+# The kernel's per-argument exec limit (32 pages). Comments have no file/stdin
+# path in tea, so they hit it.
+MAX_ARG_STRLEN = 131072
+CONFIRM_MAX = 10        # re-read this many indexes after a state change, no more
 
 
-def run_tea(args, stdin_text=None):
+def run_tea(args, stdin_text=None, allow_fail=False):
     # Never inherit our stdin: an unexpected tea prompt would hang the caller.
     # subprocess.run forbids stdin+input together, so feed via input= only.
-    if stdin_text is None:
-        proc = subprocess.run([TEA, *args], capture_output=True, text=True,
-                              stdin=subprocess.DEVNULL)
-    else:
-        proc = subprocess.run([TEA, *args], capture_output=True, text=True,
-                              input=stdin_text)
+    argv = [TEA, *args]
+    try:
+        if stdin_text is None:
+            proc = subprocess.run(argv, capture_output=True, text=True,
+                                  stdin=subprocess.DEVNULL)
+        else:
+            proc = subprocess.run(argv, capture_output=True, text=True,
+                                  input=stdin_text)
+    except OSError as e:
+        # execve itself can refuse the call (E2BIG when an argument goes over
+        # the kernel's per-argument limit); an uncaught OSError here would print
+        # a traceback and break the JSON-error contract every caller relies on.
+        fail(f"could not run tea: {e}")
     if proc.returncode != 0:
+        if allow_fail:
+            return None
         fail(proc.stderr.strip() or f"tea {' '.join(args)} failed "
              f"(exit {proc.returncode})")
     return proc.stdout
@@ -140,6 +162,27 @@ def norm_issue(d):
     return d
 
 
+def confirm_issue(index):
+    """What the server holds after a write, in the fields that show the write
+    landed. `tea issue edit` ignores -o and prints a rendered card, so there is
+    no payload to echo and re-reading is the only proof. None means the re-read
+    failed or came back odd -- which does not mean the write did, so it must
+    never take the process down: the write is already done."""
+    out = run_tea(["issue", str(index), "-o", "json", "--comments=false"],
+                  allow_fail=True)
+    if out is None:
+        return None
+    try:
+        d = json.loads(out)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(d, dict) or "index" not in d:
+        return None
+    d = norm_issue(d)
+    return {"index": d["index"], "state": d["state"], "title": d["title"],
+            "labels": d["labels"], "body_chars": len(d.get("body") or "")}
+
+
 def cmd_new(args):
     body = get_body(args)
     tea_args = ["issue", "create", "-o", "json", "--title", args.title,
@@ -199,13 +242,25 @@ def cmd_ls(args):
 def cmd_show(args):
     # tea ignores --fields here and returns the full object; norm_issue unifies.
     tea_args = ["issue", str(args.index), "-o", "json"]
-    # tea prompts interactively about comments unless told either way.
+    # tea prompts interactively about comments unless told either way -- and
+    # with --comments=false it still answers comments: [], exactly what an issue
+    # with no discussion answers, so "not asked" has to be said explicitly.
     tea_args.append("--comments" if args.comments else "--comments=false")
-    print(json.dumps(norm_issue(parse_json(run_tea(tea_args)))))
+    d = norm_issue(parse_json(run_tea(tea_args)))
+    if not args.comments:
+        d["comments"] = None
+    print(json.dumps(d))
 
 
 def cmd_comment(args):
+    # tea has no --description-file for comments: the body rides argv, which is
+    # both visible in ps and capped by the kernel at MAX_ARG_STRLEN per argument.
+    # Say that in words rather than letting execve answer "argument list too long".
     body = get_body(args)
+    if len(body.encode()) >= MAX_ARG_STRLEN:
+        fail(f"comment is {len(body)} chars ({len(body.encode())} bytes); tea "
+             f"passes a comment as one argv string and the kernel caps that at "
+             f"{MAX_ARG_STRLEN} bytes -- split it into two comments")
     run_tea(["comments", "add", str(args.index), "--description", body,
              "-o", "json"])
     print(json.dumps({"ok": True, "index": args.index}))
@@ -213,7 +268,16 @@ def cmd_comment(args):
 
 def cmd_state(cmd, args):
     run_tea(["issue", cmd, *[str(i) for i in args.indexes], "-o", "json"])
-    print(json.dumps({"ok": True, "indexes": args.indexes}))
+    # Same reason as cmd_edit: tea renders a card instead of a payload, so
+    # confirming means re-reading -- and a bulk state change should not quietly
+    # turn into a hundred extra calls.
+    if len(args.indexes) <= CONFIRM_MAX:
+        issues = [confirm_issue(i) for i in args.indexes]
+    else:
+        print(f"note: {len(args.indexes)} indexes changed without re-reading "
+              f"them (over {CONFIRM_MAX}) -- check with ls", file=sys.stderr)
+        issues = None
+    print(json.dumps({"ok": True, "indexes": args.indexes, "issues": issues}))
 
 
 def cmd_edit(args):
@@ -255,7 +319,11 @@ def cmd_edit(args):
         run_tea(["issue", "close", str(args.index), "-o", "json"])
     if args.is_open:
         run_tea(["issue", "reopen", str(args.index), "-o", "json"])
-    print(json.dumps({"ok": True, "index": args.index}))
+    # tea issue edit ignores -o and prints its rendered card, so there is no
+    # payload to echo: re-read the issue and hand back the fields that prove the
+    # write landed. A labels-only edit that matched nothing used to answer ok.
+    print(json.dumps({"ok": True, "index": args.index,
+                      "issue": confirm_issue(args.index)}))
 
 
 class JsonParser(argparse.ArgumentParser):
