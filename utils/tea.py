@@ -10,15 +10,25 @@ object on stdout with non-zero exit, so output can be piped freely).
 Bodies are given with --body or piped on stdin. tea receives them via
 --description-file - (quoting never matters) except comments, which
 only accept a flag -- so a comment rides argv: visible in ps, and the kernel
-will not exec an argument that reaches MAX_ARG_STRLEN bytes.
+will not exec an argument that reaches MAX_ARG_STRLEN bytes. Gitea accepts a
+comment that large (measured: 131071 bytes landed on #465, and 131072 is the
+first size that will not exec), so that kernel cap is the real limit here and
+the guard below it is not hiding a stricter server-side one.
 
-tea's own output is inconsistent: `issue create` answers JSON, while `issue
-edit` and `issue close/reopen` ignore -o entirely and print a rendered card. So
-the writes here prove themselves by re-reading the issue: edit answers
-{"ok":..., "confirmed":..., "issue":{index,state,title,labels,url,closed_at,
-body_chars}}, close/open the same per index (up to CONFIRM_MAX of them).
-confirmed:false means no proof came back: --no-confirm skips the re-read on
-purpose, and any other reason is written to stderr.
+tea's own output is inconsistent: `issue create` answers JSON but leaves the
+labels it just set out of the answer, while `issue edit`, `issue close/reopen`
+and `comments add` ignore -o entirely and print a rendered card. So every write
+here proves itself by re-reading: new answers {"ok":..., "confirmed":...,
+"issue":{...}}, edit/close/open answer {"ok":..., "indexes":[...],
+"confirmed":..., "issues":[{index,state,title,labels,url,closed_at,
+body_chars}, ...]}, comment answers the {author,created,chars} of the comment it
+found again. confirmed:false means no proof came back: --no-confirm skips the
+re-read on purpose, and any other reason is written to stderr.
+
+"labels" is a JSON list of names in every command's output. It has to be: tea's
+ls renders them as one space-joined string, and real label names contain spaces
+("Status/Need More Info"), so that string cannot be split by whitespace -- the
+wrapper splits it against the repo's own label list instead (tea labels ls).
 
 Bodies and comments are MARKDOWN -- the web UI renders them, and headings,
 bullets and ``` fences are what make a ticket skimmable. Neither path escapes
@@ -30,6 +40,7 @@ sentence, write the body as a markdown file and pipe it:
 
 Usage:
   utils/tea.py new --title "..." [--body "..." | < body.md] [--labels a,b]
+                       [--no-confirm]
   utils/tea.py ls [--state all|open|closed] [--keyword str] [--limit N]
                        [--all | --page N]
                        (--all walks every page; a bare page is one page, and the
@@ -37,13 +48,16 @@ Usage:
   utils/tea.py show INDEX [--comments]
                        (--comments off answers "comments": null, because tea's
                         own --comments=false answers [] like a quiet issue)
-  utils/tea.py comment INDEX [--body "..." | < body.md]
+  utils/tea.py comment INDEX [--body "..." | < body.md] [--no-confirm]
   utils/tea.py close INDEX [INDEX...] [--no-confirm]
+                       (a repeated INDEX is written once and re-read once)
   utils/tea.py open INDEX [INDEX...] [--no-confirm]
-  utils/tea.py edit INDEX [--title ...] [--body ...] [--close | --open]
+  utils/tea.py edit INDEX [INDEX...] [--title ...] [--body ...]
+                          [--close | --open]
                           [--labels a,b] [--remove-labels a,b] [--no-confirm]
                           (an empty pipe is not a body; a blank --body needs
-                           --allow-empty-body)
+                           --allow-empty-body; several indexes are for labels
+                           and state only -- --title/--body takes one)
 """
 
 import argparse
@@ -156,6 +170,53 @@ def get_body(args):
     return body
 
 
+_label_vocab = None  # repo label names, fetched at most once per run
+
+
+def label_vocab():
+    """Every label the repo knows, longest name first. tea renders an issue's
+    labels as one space-joined string and real names hold spaces
+    ("Status/Need More Info"), so the vocabulary is the only thing that can
+    split that string back into names. Empty means we could not ask."""
+    global _label_vocab
+    if _label_vocab is None:
+        names = []
+        out = run_tea(["labels", "ls", "-o", "json"], allow_fail=True)
+        if out is not None:
+            try:
+                data = json.loads(out)
+            except json.JSONDecodeError:
+                data = None
+            if isinstance(data, list):
+                names = [d["name"] for d in data
+                         if isinstance(d, dict) and isinstance(d.get("name"), str)]
+            else:
+                print("note: tea labels ls did not answer a list, so labels are "
+                      "split on spaces and a name containing a space will look "
+                      "like two", file=sys.stderr)
+        _label_vocab = sorted(names, key=len, reverse=True)
+    return _label_vocab
+
+
+def split_labels(text):
+    """Greedy longest match over the vocabulary, so "Status/Need More Info
+    Priority/High" gives two names and not five."""
+    vocab = label_vocab()
+    words = text.split()
+    out, i = [], 0
+    while i < len(words):
+        for name in vocab:
+            parts = name.split()
+            if words[i:i + len(parts)] == parts:
+                out.append(name)
+                i += len(parts)
+                break
+        else:
+            out.append(words[i])
+            i += 1
+    return out
+
+
 def norm_issue(d):
     # ls and single-issue JSON have different shapes; unify the common keys.
     if "index" not in d:
@@ -165,8 +226,26 @@ def norm_issue(d):
         del d["id"]  # db id, not the issue index
     if "user" in d:
         d["author"] = d.pop("user")
-    if isinstance(d.get("labels"), list):
-        d["labels"] = ",".join(l["name"] for l in d["labels"])
+    # ls gives one space-joined string, show/create a list of objects. Both
+    # become a list of names: a joined string cannot be split by its caller,
+    # and a diff between the two shapes shows differences that are not there.
+    labels = d.get("labels")
+    if isinstance(labels, list):
+        names = []
+        for entry in labels:
+            name = entry.get("name") if isinstance(entry, dict) else entry
+            if isinstance(name, str) and name.strip():
+                names.append(name)
+            else:
+                # Never die over one junk entry: ls/show would then answer
+                # nothing at all about an issue that is right there.
+                print(f"note: ignoring an unreadable label entry {entry!r}",
+                      file=sys.stderr)
+        d["labels"] = names
+    elif isinstance(labels, str) and labels.strip():
+        d["labels"] = split_labels(labels)
+    else:
+        d["labels"] = []
     return d
 
 
@@ -200,21 +279,59 @@ def confirm_issue(index):
         return None
 
 
-def note_unapplied_labels(args, held):
+def note_unapplied_labels(issue, want="", gone="", batch=False):
     """tea ignores a label name it does not know -- a typo'd --labels exits 0 and
-    changes nothing. The re-read already knows the truth, so diff it out loud."""
-    have = {l for l in (held or "").split(",") if l}
-    want = {l for l in (args.labels or "").split(",") if l}
-    gone = {l for l in (args.remove_labels or "").split(",") if l}
+    changes nothing. The re-read already knows the truth, so diff it out loud.
+    Takes the wanted/dropped lists rather than the parsed args: not every
+    subcommand has both flags, and reading a missing attribute here would crash
+    after the write already landed."""
+    have = set(issue["labels"])
+    want = {l.strip() for l in want.split(",") if l.strip()}
+    gone = {l.strip() for l in gone.split(",") if l.strip()}
     missing = sorted(want - have)
     leftover = sorted(gone & have)
+    tag = f"issue {issue['index']}: " if batch else ""
     if missing:
-        print(f"note: not on the issue after the edit: {', '.join(missing)} -- "
-              f"tea silently ignores a label name it does not know (see "
+        print(f"note: {tag}not on the issue after the write: {', '.join(missing)}"
+              f" -- tea silently ignores a label name it does not know (see "
               f"`tea labels ls` for the real spellings)", file=sys.stderr)
     if leftover:
-        print(f"note: still on the issue after --remove-labels: "
+        print(f"note: {tag}still on the issue after --remove-labels: "
               f"{', '.join(leftover)}", file=sys.stderr)
+
+
+def confirm_comment(index, body):
+    """`tea comments add` ignores -o and prints a card, so the comment has to be
+    found again to be believed. Compared with the edges stripped because Gitea
+    trims them; the last match wins, as our comment is the newest of any equal
+    pair. None plus a stderr note means the write already ran and only the
+    proof is missing."""
+    out = run_tea(["issue", str(index), "-o", "json", "--comments"],
+                  allow_fail=True)
+    if out is None:
+        return None                     # run_tea already said why
+    try:
+        d = json.loads(out)
+        comments = d.get("comments") if isinstance(d, dict) else None
+        if not isinstance(comments, list):
+            raise ValueError(f"no comments in {out[:60]!r}")
+        want = body.strip()
+        found = None
+        for c in comments:
+            if (isinstance(c, dict) and isinstance(c.get("body"), str)
+                    and c["body"].strip() == want):
+                found = c
+        if found is None:
+            print(f"note: issue {index} has no comment matching the text that "
+                  f"was posted -- it may still have landed, check "
+                  f"`utils/tea.py show {index} --comments`", file=sys.stderr)
+            return None
+        return {"author": found.get("author"), "created": found.get("created"),
+                "chars": len(found["body"])}
+    except (ValueError, TypeError, KeyError) as e:
+        print(f"note: re-read of issue {index}'s comments came back unreadable "
+              f"({e}) -- the comment itself already ran", file=sys.stderr)
+        return None
 
 
 def cmd_new(args):
@@ -226,7 +343,17 @@ def cmd_new(args):
     if args.milestone:
         tea_args += ["--milestone", args.milestone]
     out = run_tea(tea_args, stdin_text=body)
-    print(json.dumps(norm_issue(parse_json(out))))
+    d = norm_issue(parse_json(out))
+    # tea's create payload does not fill in the labels it just set: #466 was
+    # created with two and answered "labels": []. So the labels (and the state)
+    # in this answer come from a re-read, like every other write here -- which
+    # is also what catches a typo'd --labels on a brand new issue.
+    issue = None if args.no_confirm else confirm_issue(d["index"])
+    if issue is not None:
+        d["labels"] = issue["labels"]
+        note_unapplied_labels(issue, args.labels or "")
+    print(json.dumps({"ok": True, "index": d["index"],
+                      "confirmed": issue is not None, "issue": d}))
 
 
 def ls_page(args, page):
@@ -306,25 +433,32 @@ def cmd_comment(args):
              f"utils/tea.py comment {args.index} < part.md")
     run_tea(["comments", "add", str(args.index), "--description", body,
              "-o", "json"])
-    print(json.dumps({"ok": True, "index": args.index}))
+    # No payload comes back from that call, so the proof is finding the comment
+    # again -- one extra read, which is why --no-confirm exists here too.
+    comment = None if args.no_confirm else confirm_comment(args.index, body)
+    print(json.dumps({"ok": True, "index": args.index,
+                      "confirmed": comment is not None, "comment": comment}))
 
 
 def cmd_state(cmd, args):
-    run_tea(["issue", cmd, *[str(i) for i in args.indexes], "-o", "json"])
+    # dict.fromkeys keeps the order and drops a repeated index, so the tea call
+    # and every re-read happen once per issue.
+    indexes = list(dict.fromkeys(args.indexes))
+    run_tea(["issue", cmd, *[str(i) for i in indexes], "-o", "json"])
     # Same reason as cmd_edit: tea renders a card instead of a payload, so
     # confirming means re-reading -- one extra call per index, which a bulk
     # change should not pay without being told (hence --no-confirm, and the
     # CONFIRM_MAX ceiling).
     issues, confirmed = None, False
     if not args.no_confirm:
-        if len(args.indexes) <= CONFIRM_MAX:
-            issues = [confirm_issue(i) for i in args.indexes]
+        if len(indexes) <= CONFIRM_MAX:
+            issues = [confirm_issue(i) for i in indexes]
             confirmed = all(i is not None for i in issues)
         else:
-            print(f"note: {len(args.indexes)} indexes changed without re-reading "
+            print(f"note: {len(indexes)} indexes changed without re-reading "
                   f"them (over {CONFIRM_MAX}) -- pass --no-confirm to mean it "
                   f"from the start, or check with ls", file=sys.stderr)
-    print(json.dumps({"ok": True, "indexes": args.indexes,
+    print(json.dumps({"ok": True, "indexes": indexes,
                       "confirmed": confirmed, "issues": issues}))
 
 
@@ -350,9 +484,17 @@ def cmd_edit(args):
     if not any([args.title is not None, body is not None, args.close,
                 args.is_open, args.labels, args.remove_labels]):
         fail("nothing to change: pass --title/--body/--close/--open/--labels")
+    # tea issue edit takes several indexes, which is what a labels sweep over a
+    # pile of issues wants (one call instead of one per issue). Title and body
+    # are the exception: the same text landing on every listed issue is almost
+    # always a slip, and the damage is not obvious later.
+    indexes = list(dict.fromkeys(args.indexes))
+    if len(indexes) > 1 and (args.title is not None or body is not None):
+        fail("--title/--body take one index -- several indexes are for "
+             "--labels/--remove-labels/--close/--open")
     if any([args.title is not None, body is not None, args.labels,
             args.remove_labels]):
-        tea_args = ["issue", "edit", str(args.index), "-o", "json"]
+        tea_args = ["issue", "edit", *[str(i) for i in indexes], "-o", "json"]
         if args.title is not None:
             tea_args += ["--title", args.title]
         if body is not None:
@@ -364,19 +506,30 @@ def cmd_edit(args):
         run_tea(tea_args, stdin_text=body)
     # tea issue edit has no state flags; close/reopen are their own subcommands.
     if args.close:
-        run_tea(["issue", "close", str(args.index), "-o", "json"])
+        run_tea(["issue", "close", *[str(i) for i in indexes], "-o", "json"])
     if args.is_open:
-        run_tea(["issue", "reopen", str(args.index), "-o", "json"])
+        run_tea(["issue", "reopen", *[str(i) for i in indexes], "-o", "json"])
     # tea issue edit ignores -o and prints its rendered card, so there is no
-    # payload to echo: re-read the issue and hand back the fields that prove the
+    # payload to echo: re-read the issues and hand back the fields that prove the
     # write landed. A labels-only edit that matched nothing used to answer ok
     # (tea silently ignores an unknown label), and confirmed:false says that this
     # answer carries no proof.
-    issue = None if args.no_confirm else confirm_issue(args.index)
-    if issue is not None:
-        note_unapplied_labels(args, issue["labels"])
-    print(json.dumps({"ok": True, "index": args.index,
-                      "confirmed": issue is not None, "issue": issue}))
+    issues, confirmed = None, False
+    if not args.no_confirm:
+        if len(indexes) <= CONFIRM_MAX:
+            issues = [confirm_issue(i) for i in indexes]
+            confirmed = all(i is not None for i in issues)
+            for issue in issues:
+                if issue is not None:
+                    note_unapplied_labels(issue, args.labels or "",
+                                          args.remove_labels or "",
+                                          len(indexes) > 1)
+        else:
+            print(f"note: {len(indexes)} indexes changed without re-reading "
+                  f"them (over {CONFIRM_MAX}) -- pass --no-confirm to mean it "
+                  f"from the start, or check with ls", file=sys.stderr)
+    print(json.dumps({"ok": True, "indexes": indexes,
+                      "confirmed": confirmed, "issues": issues}))
 
 
 class JsonParser(argparse.ArgumentParser):
@@ -397,6 +550,8 @@ def main():
     sp.add_argument("--body", help="markdown; omit to read stdin")
     sp.add_argument("--labels")
     sp.add_argument("--milestone")
+    sp.add_argument("--no-confirm", action="store_true",
+                    help="skip the re-read that fills in the real labels")
     sp.set_defaults(fn=cmd_new)
 
     sp = sub.add_parser("ls", help="list issues (JSON array)")
@@ -419,6 +574,8 @@ def main():
     sp = sub.add_parser("comment", help="add a comment")
     sp.add_argument("index", type=check_index)
     sp.add_argument("--body", help="markdown; omit to read stdin")
+    sp.add_argument("--no-confirm", action="store_true",
+                    help="skip the re-read that finds the comment again")
     sp.set_defaults(fn=cmd_comment)
 
     for name, tcmd in (("close", "close"), ("open", "reopen")):
@@ -429,7 +586,8 @@ def main():
         sp.set_defaults(fn=lambda a, t=tcmd: cmd_state(t, a))
 
     sp = sub.add_parser("edit", help="edit title/body/state/labels")
-    sp.add_argument("index", type=check_index)
+    sp.add_argument("indexes", nargs="+", type=check_index,
+                    help="several indexes are for labels/state only")
     sp.add_argument("--title")
     sp.add_argument("--body", help="new body (a piped file works too)")
     sp.add_argument("--allow-empty-body", action="store_true",
