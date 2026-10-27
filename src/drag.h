@@ -266,7 +266,8 @@ inline double controlDeflectionSign(const glm::dvec3 &ri,
      right, not nose: ailerons FLAP, they do not sweep).
    controlDeflectionSign already gives left/right surfaces opposite defl, so
    this yields differential aileron flapping for free. Assumes the mesh's
-   chord runs along the part's nose axis (res/meshes/wing.obj). */
+   chord runs along the part's nose axis, which is the surface-mount frame
+   gen_wing.py authors plates in (res/meshes/fin_r1h2.obj). */
 inline glm::dquat controlSurfaceVisualRot(int aboutAxis, double defl,
                                           const glm::dmat3 &rootRot) {
     return (aboutAxis == 1) ? glm::angleAxis(defl, rootRot[1])

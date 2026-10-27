@@ -295,21 +295,30 @@ for _n, _f in EXTRA_FIELDS.items():
 
 
 def mesh_geom(mesh_file):
-    """(radius, height, volume, planform): half largest x/y span, z span,
-    enclosed volume (or bounding-cylinder fallback if not watertight), and the
-    area of the mesh's x/z footprint."""
+    """(radius, height, volume, planform, extents): half largest x/y span, z
+    span, enclosed volume (or bounding-cylinder fallback if not watertight),
+    the area of the mesh's x/z footprint, and the raw (x, y, z) spans."""
     t = trimesh.load_mesh(os.path.join(REPO_ROOT, "res", mesh_file), process=False)
     ext = t.extents                       # (x, y, z) spans
     radius = max(ext[0], ext[1]) / 2.0
     height = ext[2]
-    volume = float(t.volume) if t.is_watertight else math.pi * radius * radius * height
-    return round(radius, 3), round(height, 3), volume, hull_area([(v[0], v[2]) for v in t.vertices])
+    if t.is_watertight:
+        volume = float(t.volume)
+        # A watertight mesh wound inside-out has a NEGATIVE volume, and volume
+        # is what every mass below is minted from.
+        assert volume > 0.0, mesh_file
+    else:
+        volume = math.pi * radius * radius * height
+    return (round(radius, 3), round(height, 3), volume,
+            hull_area([(v[0], v[2]) for v in t.vertices]),
+            (float(ext[0]), float(ext[1]), float(ext[2])))
 
 
 def hull_area(pts):
     """Area of the 2D convex hull of (x, y) points: monotone chain + shoelace.
     A plate's footprint (gen_wing.py) is its planform, so this is what a lifting
-    surface actually pushes on, whatever the planform's shape."""
+    surface actually pushes on -- convex hull, so a planform with a notch in it
+    would over-declare."""
     p = sorted(set((float(x), float(y)) for x, y in pts))
     if len(p) < 3:
         return 0.0
@@ -333,6 +342,19 @@ def hull_area(pts):
         x1, y1 = hull[i + 1]
         a += x0 * y1 - x1 * y0
     return abs(a) / 2.0
+
+
+def plate(name, mesh, extents):
+    """Assert a plate part is authored in the frame a surface mount expects:
+    thin along Y, so its span is X (outboard -- the synthesized surface node
+    sits at -radius, shipdef.h) and its chord is Z (fore-aft -- the parent's
+    stack axis, shipdef.cpp surfaceMatingRot). Get this wrong and the numbers
+    below stop describing the part: radius is no longer half the span, the
+    footprint is no longer the planform, and the plate mounts edge-up. That is
+    how a transposed gen_wing.py hid for as long as the wing was square."""
+    ex, ey, ez = extents
+    assert ey < ex and ey < ez, ("%s (%s): extents %gx%gx%g are not a Y-thin plate"
+                                 % (name, mesh, ex, ey, ez))
 
 
 def clean(x):
@@ -398,7 +420,7 @@ def generate(name, ptype, mesh, texture):
         e.update(EXTRA_FIELDS[name])
         return e
 
-    radius, height, volume, planform = mesh_geom(mesh)
+    radius, height, volume, planform, extents = mesh_geom(mesh)
     e = {
         "name": name,
         "type": ptype,
@@ -497,25 +519,29 @@ def generate(name, ptype, mesh, texture):
         e["height"] = height
         e["power_gen"] = clean(volume * RTG_WATTS_PER_M3)
     elif ptype == "wing":
+        plate(name, mesh, extents)
         e["mass"] = clean(volume * WING_DENSITY)
         e["radius"] = radius
         e["height"] = height
-        # The plate's real footprint, not radius*height: that product is a
-        # triangle's area, so it only ever matched the old 2x2 delta by
-        # coincidence and under-reads a rectangle by 2x (#455).
+        # The mesh's footprint, since that is the plate the air pushes on. The
+        # radius*height this replaces is (span/2)*chord, which is exactly right
+        # for a tapered planform and half the area of a rectangle (#455).
         e["lift_area"] = clean(planform)
+        assert e["lift_area"] > 0, (name, mesh)
         e["cl"] = WING_CL
         e["stall_angle"] = WING_STALL_ANGLE
     elif ptype in ("rudder", "elevator", "aileron"):
         # one steering axis each: rudder=yaw, elevator=pitch, aileron=roll
+        plate(name, mesh, extents)
         e["mass"] = clean(volume * RUDDER_DENSITY)
         e["radius"] = radius
         e["height"] = height
-        # A hinged plate does not earn its whole footprint: it works against the
-        # flow it turns, and this authority is already 10-30x the ship's wheel
-        # budget at cruise (#399), so credit it with a fraction and keep that
-        # fraction in one place rather than in the footprint.
+        # A fin keeps the authority it had before its mesh got its own shape:
+        # 0.5 is a compatibility factor, not a derived one, and #399 (a fin's
+        # moment runs many times the ship's wheel budget, growing with v^2) is
+        # where that ratio should actually come from.
         e["control_area"] = clean(planform * CONTROL_AREA_FRACTION)
+        assert e["control_area"] > 0, (name, mesh)
         e["control_axis"] = {"rudder": "yaw", "elevator": "pitch",
                              "aileron": "roll"}[ptype]
         e["cl_control"] = RUDDER_CL

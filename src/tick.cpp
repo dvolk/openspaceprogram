@@ -433,15 +433,25 @@ void tick(Game &g) {
 
         /* --drag-log: the active ship's aero (last substep). rho>0 with
            Cd/A/|F| all 0 is the density floor reporting vacuum, not broken
-           geometry. */
+           geometry. AoA prints '-' with no value when there is no usable flow
+           (kAoAFlowFloor), like [flight] and [surfinfo] do: a parked ship's
+           ~1e-4 m/s jitter reads as a full +/-90 deg swing, and a number in a
+           log gets treated as a measurement. */
         if(g.ship && g.args.drag_log) {
             const Uint32 now_ms = SDL_GetTicks();
             if(g.logDue(kGateDrag, now_ms, g.orbit_log_interval_ms)) {
                 const glm::dvec3 v = g.ship->GetVel();
+                char aoa_txt[24];
+                if(g.ship->lastDragAlphaValid) {
+                    snprintf(aoa_txt, sizeof aoa_txt, "AoA=%.1f deg",
+                             glm::degrees(g.ship->lastDragAlpha));
+                } else {
+                    snprintf(aoa_txt, sizeof aoa_txt, "AoA=-");
+                }
                 printf("[drag] t=%.1fs alt=%.1f m rho=%.5g kg/m3 "
                        "|v|=%.2f m/s |F|=%.2f N |L|=%.2f N L_up=%.2f N Up=%.2f "
                        "|tau|=%.2f Nm "
-                       "Cd=%.3f A=%.2f m2 AoA=%.1f deg Chute=%.2f m2\n",
+                       "Cd=%.3f A=%.2f m2 %s Chute=%.2f m2\n",
                        g.time, g.ship->lastDragAlt, g.ship->lastDragRho,
                        glm::length(v),
                        glm::length(g.ship->lastAeroForce),
@@ -449,7 +459,7 @@ void tick(Game &g) {
                        g.ship->lastLiftVert, g.ship->lastUpVert,
                        glm::length(g.ship->lastAeroTorque),
                        g.ship->lastDragCd, g.ship->lastDragArea,
-                       glm::degrees(g.ship->lastDragAlpha),
+                       aoa_txt,
                        g.ship->lastChuteCdA);
                 // Control surfaces' applied deflections.
                 if(!g.ship->lastControlDeflections.empty()) {

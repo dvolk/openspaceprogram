@@ -489,8 +489,16 @@ $(TESTS):
 	$(MAKE) --no-print-directory $(TESTDIR)/$@
 	$(TESTDIR)/$@
 
+.PHONY: test-parts
+test-parts:
+	@if python3 -c "import importlib.util as u; exit(1 if u.find_spec('trimesh') is None else 0)"; then \
+		python3 utils/gen_parts.py --check; \
+	else \
+		echo "test-parts: SKIP parts.json drift pin -- missing python module: trimesh" >&2; \
+	fi
+
 .PHONY: test
-test: test-gen $(addprefix $(TESTDIR)/,$(TESTS))
+test: test-gen test-parts $(addprefix $(TESTDIR)/,$(TESTS))
 	@$(foreach t,$(TESTS),$(TESTDIR)/$(t) || exit 1; )
 
 # Python data-gen self-tests: the sci_phase "mirrors system.cpp epoch state"

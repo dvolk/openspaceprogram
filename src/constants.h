@@ -77,7 +77,7 @@ inline constexpr double kChuteAccelLimit = 50.0;
    atmosphere, which reads as a full +/-90 deg AoA on a nose-up hull.
    Display only -- the aero laws still see every frame, however slow.
    Where: Vehicle::applyAeroForce (lastDragAlphaValid), SURFACE window,
-   [surfinfo]. */
+   [surfinfo], --drag-log. */
 inline constexpr double kAoAFlowFloor = 0.1;
 
 // -- science situations -------------------------------------------------------
