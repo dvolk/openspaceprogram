@@ -1900,7 +1900,7 @@ void drawUIReadouts(Game &g) {
        DEBUG window shows, raw SI (the instrument-log convention in fmt.h that e2e
        CHECK parses). Independent of whether the windows are open. */
     if(args.info_log && ship) {
-        const Uint32 now_ms = SDL_GetTicks();
+        const Uint32 now_ms = g.logClockMs();
         if(g.logDue(kGateInfo, now_ms, g.orbit_log_interval_ms)) {
             const TerrainBody *b = ship->m_parent;
             const double altAsl = distance - b->seaLevelRadius();

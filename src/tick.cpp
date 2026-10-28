@@ -32,6 +32,7 @@ void tick(Game &g) {
         }
     }
     const long long ticks_before = g.logic_ticks;
+    const double time_before = g.time;   // for the --sim-steps exit report
 
     /* The live list, not a snapshot: an SoI crossing re-homes a Vehicle without
        moving it between containers, so a mid-tick crossing cannot reshuffle or
@@ -182,6 +183,7 @@ void tick(Game &g) {
         // the frame tree and the ship integration must share the clock.
         g.time += g.dt * g.time_accel;
         g.logic_ticks++;   // one logic tick ran (its substeps are not counted)
+        g.sim_ticks_run++; // the --sim-steps clock's own count: never rewound
 
         if(g.time_accel != 0) {
             /* No re-snapshot here. updateDocking() retires the absorbed ship at
@@ -571,13 +573,26 @@ void tick(Game &g) {
     }
 
     /* --sim-steps (#472): spend the budget on the ticks actually run, then stop
-       the main loop. Counting ticks rather than frames keeps the promise even if
-       a frame ever steps more than once. */
+       the main loop. In this mode the accumulator is set to exactly dt, so one
+       frame runs one tick; counting ticks instead of frames keeps the promise if
+       that ever changes. */
     if(g.sim_steps_left >= 0) {
         g.sim_steps_left -= (g.logic_ticks - ticks_before);
         if(g.sim_steps_left <= 0) {
-            printf("Sim steps reached (%lld ticks, %.2f s sim); exiting main loop.\n",
-                   g.args.sim_steps, g.time - g.sim_clock_base);
+            // Report where the sim clock ended up, not a delta: a load or a New
+            // Game mid-run brings its own t0, so a difference reads like a
+            // confident -9999996.92 s of negative flight.
+            printf("Sim steps reached (%lld ticks); sim clock t = %.2f s; exiting main loop.\n",
+                   g.args.sim_steps, g.time);
+            // A paused sim still spends ticks and scripted presses, so every log
+            // row samples the same state. Say so -- otherwise the case reads as a
+            // quiet pass on nothing at all.
+            if(!(g.time > time_before)) {
+                printf("WARNING: --sim-steps ran %lld ticks but the sim never advanced "
+                       "(paused? --time-accel 0?) -- scripted input fired into a frozen "
+                       "world and every log row sampled the same state. This run "
+                       "measured nothing.\n", g.args.sim_steps);
+            }
             fflush(stdout);
             g.running = false;
         }

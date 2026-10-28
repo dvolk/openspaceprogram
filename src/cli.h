@@ -29,6 +29,8 @@ struct GameArgs {
         bool time_accel = false;     // overrides a paused load
         bool sky_dim = false;
         bool sky_dim_cone = false;
+        bool frame_cap = false;    // --sim-steps uncaps the frame unless asked
+        bool idle_fps = false;     // ...and skips the occluded-window throttle
     } cli_given;
 
     std::string system_file = "res/systems/ksp_system.json";

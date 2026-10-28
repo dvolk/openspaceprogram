@@ -26,6 +26,7 @@
 #include "shipdef.h"  // PartsCatalog (the part types the world is built from)
 #include "siminput.h" // TimeSeries
 #include "staging.h"  // StageRow (the Staging window's cached table)
+#include "timestep.h"  // scriptedClockMs (--sim-steps)
 #include "system.h"   // System
 #include "terrain.h"  // TerrainBody
 #include "transferplanner.h"
@@ -526,30 +527,43 @@ struct Game {
     // Each log needs its own "last fired" clock, or only the first one fires.
     const Uint32 orbit_log_interval_ms = (Uint32)(args.orbit_interval * 1000.0);
 
-    /* --sim-steps (cli.cpp) makes a run reproducible (#472): exactly one tick per
-       frame and a fixed number of ticks, so two runs of one flight step
-       identically. That only holds if everything the run READS is keyed to the sim
-       clock too -- a --sim-press on the wall clock lands on a different tick on a
-       faster machine, and a wall-gated [drag] row samples a different substep. So
-       both clocks below switch together when the mode is on, and stay exactly as
-       they were (process-relative for the logs, loop-relative for the schedules)
-       when it is off. Neither is the player-facing choice: a sim-clock log gate
-       would go quiet while paused and fire on every tick at warp (#374), which is
-       why the mode, not the default, decides. */
+    /* --sim-steps (cli.cpp) makes a scripted run reproducible (#472): exactly one
+       tick per frame and a fixed number of ticks. The step count alone is not
+       enough -- a --sim-press on the wall clock lands on a different tick on a
+       faster machine, and a wall-gated log row samples a different substep -- so
+       the two clocks below switch together when the mode is on, and stay exactly
+       as they were (process-relative for the logs, loop-relative for the
+       schedules) when it is off. Off is the player's choice for good reasons: a
+       sim-clock log gate goes quiet while paused and fires on every tick at warp
+       (#374).
+       Scope, honestly: this makes the CADENCE of inputs and logs deterministic. It
+       does not yet make a run over TERRAIN deterministic -- the terrain LOD
+       requests are driven by the camera's wall-clock-smoothed shake, which is
+       std::rand() on a wall-clock dt (render.cpp camShakeStep), and the collision
+       bodies those patches own arrive on job continuations whenever the worker
+       finishes. A grounded ship can therefore settle differently run to run; how
+       often is a measurement question, not a guarantee either way (#475). Flights
+       that never touch the ground collision tree (the 458 envelope cases) are
+       reproducible today.
+       The scripted clock counts TICKS, not g.time: g.time can rewind (a load or a
+       New Game mid-run) and stops dead while paused, and either would freeze or
+       reverse a schedule. One tick always moves it dt. */
     long long sim_steps_left = -1;     // < 0: off. Else ticks still owed.
-    double sim_clock_base = 0.0;       // g.time when the main loop started
+    long long sim_ticks_run = 0;       // spent so far: the scripted clock's base
 
-    // The clock --sim-press / --sim-mouse / --ui-click schedules are keyed to.
+    /* The clock --sim-press / --sim-mouse / --sim-mode / --ui-* schedules are
+       keyed to. Always run-relative ms (t=0 when the main loop starts), so a case
+       file's delays keep their meaning; scripted mode just measures that elapsed
+       run time by ticks instead of the wall clock. */
     Uint32 schedClockMs() const {
-        return (sim_steps_left >= 0)
-             ? (Uint32)((time - sim_clock_base) * 1000.0)
-             : (Uint32)(SDL_GetTicks() - loop_start_ms);
+        return (sim_steps_left >= 0) ? scriptedClockMs(sim_ticks_run, dt)
+                                     : (Uint32)(SDL_GetTicks() - loop_start_ms);
     }
-    // The clock the periodic state logs gate on.
+    // The clock the periodic state logs gate on: process-relative ms when the
+    // wall clock is in charge (that is what --orbit-interval has always meant).
     Uint32 logClockMs() const {
-        return (sim_steps_left >= 0)
-             ? (Uint32)((time - sim_clock_base) * 1000.0)
-             : (Uint32)SDL_GetTicks();
+        return (sim_steps_left >= 0) ? scriptedClockMs(sim_ticks_run, dt)
+                                     : (Uint32)SDL_GetTicks();
     }
 
     // True once per interval_ms, stamping the gate as it fires.

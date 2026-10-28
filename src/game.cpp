@@ -46,7 +46,10 @@ void Game::addHook(HookPhase phase, int ms,
 void Game::fireHooks(HookPhase phase) {
     if(hooks_pending[(size_t)phase] == 0) { return; }
     hooks_polled = true;
-    const int ms = (int)(SDL_GetTicks() - loop_start_ms);
+    // The same clock the scripted keys/scrolls/dumps use, so under --sim-steps a
+    // --map-dump lands on the tick the case means rather than on a wall instant
+    // (which differs once the run is no longer 1x real time).
+    const long long ms = (long long)schedClockMs();
     std::vector<GameHook> &vec = hooks[(size_t)phase];
     for(size_t i = 0; i < vec.size(); i++) {
         GameHook &h = vec[i];
@@ -1864,7 +1867,7 @@ void Game::updateProximity() {
            (#374). The snapshot still only runs while unpaused, because this is
            the proximity pass: unlike the tick.cpp logs, lifting the print out
            of the time_accel gate would mean lifting the pass with it. */
-        if(logDue(kGateProxSnap, SDL_GetTicks(), orbit_log_interval_ms)) {
+        if(logDue(kGateProxSnap, logClockMs(), orbit_log_interval_ms)) {
             printf("[prox] t=%.3f regime=%s r_on=%.0f r_off=%.0f\n",
                    time, grounded ? "ground" : "fly", r_on, r_off);
             for(auto *s : vehicles) {

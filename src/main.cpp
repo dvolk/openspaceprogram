@@ -910,11 +910,9 @@ int main(int argc, char **argv)
     // events.cpp and the timeout check below both measure from this.
     game.loop_start_ms = SDL_GetTicks();
 
-    /* --sim-steps: the same budget in TICKS instead of wall seconds (#472).
-       sim_clock_base is where the sim clock starts, since a load brings its own
-       t0 and the scripted ms are relative to the run, not to save history. */
+    /* --sim-steps: the same budget in TICKS instead of wall seconds (#472). The
+       scripted clock counts ticks run (game.h), so nothing else needs a base. */
     game.sim_steps_left = args.sim_steps;
-    game.sim_clock_base = game.time;
 
     game.sky_dim = args.sky_dim;
     game.sky_dim_cone = args.sky_dim_cone;
@@ -930,18 +928,31 @@ int main(int argc, char **argv)
         printf(" | auto-exit after %.1f s (wall clock)", args.timeout_seconds);
     }
     if(args.sim_steps >= 0) {
-        printf(" | scripted: %lld logic ticks, sim-clocked schedules", args.sim_steps);
+        printf(" | scripted: %lld logic ticks, tick-clocked schedules", args.sim_steps);
+        if(args.timeout_seconds > 0.0) {
+            printf(" | NOTE --timeout %.1f s is wall clock and may cut the scripted "
+                   "run short of its %lld ticks", args.timeout_seconds, args.sim_steps);
+        }
     }
     printf("\n");
     fflush(stdout);
 
-    // --frame-cap: budget per loop iteration (0 = uncapped). The logic tick
-    // runs off the wall clock regardless.
-    const int cap_ms = (args.frame_cap > 0) ? (int)(1000.0 / (double)args.frame_cap) : 0;
+    /* --frame-cap: budget per loop iteration (0 = uncapped). In the wall-clock
+       mode the logic tick runs off its own accumulator, so this bounds the drawing
+       only. Under --sim-steps the sim takes exactly one tick per frame, so the
+       frame rate IS the sim's rate: the 60 fps default would spread 840 steps over
+       14 real seconds, and the idle throttle's 100 ms budget spread that same run
+       over 85 s (measured). So a scripted run is uncapped unless it asked for a
+       rate -- if a case names --frame-cap, the slow frames are part of what it is
+       measuring. */
+    const bool scripted = (args.sim_steps >= 0);
+    const int eff_frame_cap = (scripted && !args.cli_given.frame_cap) ? 0 : args.frame_cap;
+    const int cap_ms = (eff_frame_cap > 0) ? (int)(1000.0 / (double)eff_frame_cap) : 0;
     if (cap_ms > 0) {
-        printf("frame cap: %d fps\n", args.frame_cap);
+        printf("frame cap: %d fps\n", eff_frame_cap);
     } else {
-        printf("frame cap: off (uncapped)\n");
+        printf("frame cap: off (uncapped%s)\n",
+               scripted ? " -- scripted: one tick per frame" : "");
     }
     printf("logic tick: %.0f Hz (%.1f ms)\n",
            args.physics_hz, 1000.0 / args.physics_hz);
@@ -951,18 +962,22 @@ int main(int argc, char **argv)
        the 3D pass is not only pixels -- sc.refresh re-poses the camera and runs
        the terrain LOD that owns the ground's collision bodies, so dropping a draw
        would change the simulation. #212 split that state from the paint so a
-       later gate CAN drop pixels; --idle-fps does not use it. The logic tick is
-       untouched, so a minimized window still warps at full rate; only one-shot
-       presses quantise to the idle interval.
+       later gate CAN drop pixels; --idle-fps does not use it. In the wall-clock
+       mode the logic tick is untouched by this, so a minimized window still warps
+       at full rate; only one-shot presses quantise to the idle interval.
        Floor: tick.cpp's spiral-of-death clamp takes at most 10 ticks per frame,
        so an idle frame slower than 10/dt silently loses sim time -- hence the
        physics_hz/8 floor. This bounds IDLE_MS only: a --frame-cap slower than
-       physics_hz/10 loses sim time hidden or not. */
+       physics_hz/10 loses sim time hidden or not.
+       Off under --sim-steps: there the frame budget IS the tick rate (one tick per
+       frame, no clamp to lose time), so an idle 100 ms budget would quietly run the
+       case 6x slower for no benefit. */
+    const bool idle_on = (args.idle_fps > 0) && !scripted;
     const double idle_fps = std::max((double)args.idle_fps,
                                      args.physics_hz / 8.0);
-    const int idle_ms = (args.idle_fps > 0)
+    const int idle_ms = idle_on
         ? std::max(1, (int)(1000.0 / idle_fps)) : 0;
-    if(args.idle_fps > 0) {
+    if(idle_on) {
         printf("idle: %d ms/frame while the window is occluded/minimized",
                idle_ms);
         if(idle_fps > (double)args.idle_fps) {
@@ -972,7 +987,7 @@ int main(int argc, char **argv)
         }
         printf("\n");
     } else {
-        printf("idle: off (--idle-fps 0)\n");
+        printf("idle: off (%s)\n", scripted ? "--sim-steps" : "--idle-fps 0");
     }
 
     // Per-frame phase timing. Pushed into Game::hud.perf_* EVERY frame; --perf
@@ -1086,11 +1101,18 @@ int main(int argc, char **argv)
         if(idling != idled_last) {
             idled_last = idling;
             if(idling) {
-                // The ceiling this budget can hold, not a promise about
-                // --physics-hz.
-                printf("[idle] window hidden: %d ms/frame budget "
-                       "(sim ceiling %.0f Hz at 10 ticks/frame)\n",
-                       iter_cap_ms, 10000.0 / (double)iter_cap_ms);
+                if(scripted) {
+                    // --sim-steps takes --idle-fps off the table (see above), so a
+                    // hidden window changes nothing but the draw.
+                    printf("[idle] window hidden: --idle-fps not applied under "
+                           "--sim-steps, drawing every frame\n");
+                } else {
+                    // The ceiling this budget can hold, not a promise about
+                    // --physics-hz.
+                    printf("[idle] window hidden: %d ms/frame budget "
+                           "(sim ceiling %.0f Hz at 10 ticks/frame)\n",
+                           iter_cap_ms, 10000.0 / (double)iter_cap_ms);
+                }
             } else {
                 printf("[idle] window visible: drawing every frame\n");
             }

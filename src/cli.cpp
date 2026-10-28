@@ -172,19 +172,27 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_option("--timeout", args.timeout_seconds,
                    "Auto-exit the main loop after this many wall-clock "
-                   "seconds (0 = run until closed; default: 0)")
+                   "seconds (0 = run until closed; default: 0). A --sim-steps "
+                   "run exits on its step budget instead, but this cutoff still "
+                   "applies, so don't pair them unless the timeout is a stray "
+                   "guard rail.")
         ->check(CLI::NonNegativeNumber);
 
     app.add_option("--sim-steps", args.sim_steps,
                    "Run exactly this many logic ticks, then exit. For e2e: a "
                    "flight measured in STEPS rather than wall seconds, so two "
                    "runs of one case step identically (#472). In this mode the "
-                   "sim takes one tick per frame regardless of frame rate, and "
-                   "--sim-press/--sim-mouse/--ui-click and the --*-log rows are "
-                   "keyed to SIM seconds rather than wall ones. At the default "
-                   "--physics-hz 60, 600 steps = 10 s of sim. Prefer it over "
-                   "--timeout for anything you intend to pin: a wall-clock "
-                   "cutoff lands on a different tick on a slower machine.")
+                   "sim takes one tick per frame and the frame cap is lifted "
+                   "unless the case names --frame-cap. The --sim-press / "
+                   "--sim-mouse / --ui-click delays and the --*-log intervals "
+                   "are then counted from logic ticks rather than the wall "
+                   "clock -- same ms, but machine-independent. Note that makes "
+                   "them immune to --time-accel and to a paused sim: 1000 ms is "
+                   "60 ticks whatever the accel, which is what a flight case "
+                   "assumes. At the default --physics-hz 60, 600 steps = 10 s "
+                   "of sim. Prefer it over --timeout for anything you intend to "
+                   "pin: a wall-clock cutoff lands on a different tick on a "
+                   "slower machine.")
         ->check(CLI::PositiveNumber);
 
     std::vector<std::string> sim_press;
@@ -1217,6 +1225,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         app.get_option("--sky-dim")->count() > 0;
     args.cli_given.sky_dim_cone =
         app.get_option("--sky-dim-cone")->count() > 0;
+    args.cli_given.frame_cap =
+        app.get_option("--frame-cap")->count() > 0;
+    args.cli_given.idle_fps =
+        app.get_option("--idle-fps")->count() > 0;
 
     return true;
 }

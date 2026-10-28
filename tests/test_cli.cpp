@@ -12,6 +12,7 @@
 #include <string>
 
 #include "cli.h"
+#include "timestep.h"   // scriptedClockMs: the --sim-steps clock
 #include "version.h"
 
 /* Run parse_cli with stdout captured. `ok` is its return, `code` its
@@ -314,6 +315,55 @@ int main() {
         assert(sim_parse_key("BACKSPACE") == SDLK_BACKSPACE);
         assert(sim_parse_key("LALT") == SDLK_LALT);
         assert(sim_parse_key("nope") == 0);
+    }
+
+    // 3f) --sim-steps: off by default (-1), and a positive tick count. Zero is
+    //     refused: it exits before the first tick, so the run could not observe
+    //     anything -- which is exactly the silent no-op the mode must not become.
+    {
+        GameArgs args;
+        assert(args.sim_steps == -1);
+        const char *argv[] = {"osp", "--sim-steps", "840"};
+        bool ok = false;
+        int code = -1;
+        run(3, (char **)argv, args, ok, code);
+        assert(ok);
+        assert(args.sim_steps == 840);
+    }
+    for(const char *bad : {"0", "-1", "abc"}) {
+        GameArgs args;
+        const char *argv[] = {"osp", "--sim-steps", bad};
+        bool ok = true;
+        int code = 0;
+        run(3, (char **)argv, args, ok, code);
+        assert(!ok);
+        // CLI11's own validator reports these, so the code is its ParseError
+        // rather than the 1 our hand-written checks use. Only nonzero matters:
+        // main() exits with it.
+        assert(code != 0);
+    }
+
+    // 3g) The scripted clock (#472): ms counted from TICKS. It must be monotone
+    //     and land exactly on a whole ms boundary when N ticks meet the log
+    //     interval -- 600 ticks at 60 Hz = exactly 10000 ms, so a 1 s log gate
+    //     fires its last row inside the run instead of one tick too late. And it
+    //     must survive nonsense rather than hit the UB of casting a negative
+    //     double to an integer type.
+    {
+        assert(scriptedClockMs(0, 1.0 / 60.0) == 0);
+        assert(scriptedClockMs(600, 1.0 / 60.0) == 10000);
+        assert(scriptedClockMs(840, 1.0 / 60.0) == 14000);
+        assert(scriptedClockMs(-5, 1.0 / 60.0) == 0);
+        // A long run saturates instead of wrapping, or a schedule could land at
+        // the start of the run again.
+        assert(scriptedClockMs(4000000000LL, 1.0 / 60.0) == 4294967295U);
+        bool monotone = true;
+        for(long long n = 1; n <= 2000; ++n) {
+            if(scriptedClockMs(n, 1.0 / 60.0) <= scriptedClockMs(n - 1, 1.0 / 60.0)) {
+                monotone = false;
+            }
+        }
+        assert(monotone);
     }
 
     printf("test_cli: all checks passed\n");

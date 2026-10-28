@@ -319,7 +319,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
 
     // --xfer-log: the planner's current solution.
     if(g->args.xfer_log && t != nullptr && xfer_compute) {
-        if(g->logDue(kGateXfer, SDL_GetTicks(), g->orbit_log_interval_ms)) {
+        if(g->logDue(kGateXfer, g->logClockMs(), g->orbit_log_interval_ms)) {
             const char *tn = t->name;
             if(xfer.valid) {
                 /* r_cap is the capture periapsis RADIUS around the target and
