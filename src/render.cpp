@@ -63,7 +63,9 @@ static void camShakeStep(Game &g, Vehicle *ship) {
     // --shake-log: felt accel + live amplitude at the --orbit-interval cadence.
     // The gate takes the scripted clock (cadence must not depend on frame rate
     // under --sim-steps); the smoothing above stays on the wall clock, since it
-    // is what the player feels.
+    // is what the player feels. So only the WHEN is pinned here -- the numbers
+    // mix std::rand() with a wall-clock dt and differ run to run whatever the
+    // gate does (#475). Pin the row count, not the amplitudes.
     if(g.args.shake_log) {
         if(g.logDue(kGateShake, g.logClockMs(), g.orbit_log_interval_ms)) {
             printf("[shakelog] t=%.3fs a=%.3f m/s2 amp=%.4f m "
@@ -257,7 +259,8 @@ static float skyGain(Game &g, Frame *rf, TerrainBody *sun, Camera *camera,
     const float gain = (float)(1.0 + (g.sky_dim - 1.0) * t);
     // --sky-dim-log: the fade's inputs, tunable from the command line. Gate on
     // the scripted clock under --sim-steps; the fade itself keeps its wall-clock
-    // smoothing.
+    // smoothing, so fade=/gain= vary with frame rate -- pin the cadence, not the
+    // fade (#475).
     if(g.args.sky_dim_log && g.logDue(kGateSkyDim, g.logClockMs(), 200)) {
         std::printf("[skydim] t=%.1fs sun_off=%.1f limb=%.1f in_view=%.2f "
                     "lit=%.2f fade=%.2f gain=%.3f\n", g.time,
@@ -381,7 +384,10 @@ void refreshWorld(Game &g) {
 
         /* --terrain-log: the local body's tree as the LOD just left it.
            deep_off is the camera-to-nearest-deepest-leaf distance; collision
-           counts leaves with a Bullet body (#24). */
+           counts leaves with a Bullet body (#24). The gate takes the scripted
+           clock, but the tree itself is what #475 is about: it is refined from a
+           shaken camera and filled by job workers, so these numbers are not
+           pinn-able in a scripted run yet. */
         if(g.args.terrain_log && planet == localBody && planet->ready) {
             const Uint32 now_ms = g.logClockMs();
             if(g.logDue(kGateTerrain, now_ms, g.orbit_log_interval_ms)) {
@@ -402,7 +408,9 @@ void refreshWorld(Game &g) {
     /* --cam-log: the camera as this frame left it, so a --sim-mouse drag that
        never reached the camera cannot pass silently. rmb= and cap= are the
        gates in events.cpp's mouse handlers: a right-button drag only looks when
-       rmb is armed AND imgui is not capturing the mouse. */
+       rmb is armed AND imgui is not capturing the mouse. Cadence follows the
+       scripted clock; the pose itself carries the wall-clock shake, so pin which
+       rows print, not their numbers (#475). */
     if(g.args.cam_log) {
         const Uint32 now_ms = g.logClockMs();
         if(g.logDue(kGateCam, now_ms, g.orbit_log_interval_ms)) {

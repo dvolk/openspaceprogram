@@ -1,0 +1,30 @@
+# flight/472-scripted-paused-sim-says-so.txt -- a scripted run that observed
+# nothing must not pass quietly (#472, C2).
+#
+# --sim-steps spends its budget on LOGIC TICKS, and the scripted clock counts the
+# same ticks, so a frozen sim still burns ticks and still fires scheduled input.
+# With --time-accel 0 (what a --load gives you by default, and what a case gets if
+# it means to pause) that means: 300 ticks run, presses land on a world that
+# cannot move, every log row samples the same state -- and the process exits 0, so
+# the harness would report a clean pass over a run that measured nothing.
+#
+# The WARNING is the guard rail. It counts the sim advance over the WHOLE run
+# (dt*time_accel summed per tick), so a run that pauses on its last tick -- or
+# reloads and rewinds the clock, flight/472-scripted-cadence-across-a-load -- does
+# not trip it.
+NAME scripted-paused-sim-says-so
+CLAIM A scripted run whose sim never advances prints the rows AND says the run measured nothing, instead of exiting 0 on a frozen world.
+KIND harness
+ARGS --sim-steps 300 --time-accel 0 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --drag-log
+# The cadence is intact: a 1 s gate over 5 s of run prints 5 rows, all of them the
+# same frozen state. Printing rows is not the point of the case -- it is what makes
+# the silent version look healthy.
+EXPECT [drag]
+CHECK len(drag) == 5
+CHECK len({d["v"] for d in drag}) == 1
+CHECK all(d["F"] == 0.0 for d in drag)
+# The guard rail.
+EXPECT WARNING: --sim-steps ran
+EXPECT the sim advanced 0.00 s
+FORBID error:

@@ -381,13 +381,16 @@ inline PoseSituation poseSituation(const TerrainBody *body, const glm::vec3 &dir
    question.h: answered on a LATER frame, so onAnswer must capture IDENTITY
    (a name, an id), never a pointer -- the subject can be gone by then. */
 
-/* Wall-clock log gates: each throttled log needs its own "last fired" clock,
-   or only the first one fires. All share --orbit-interval (Game::
+/* Log gates: each throttled log needs its own "last fired" clock,
+   or only the first one fires. Wall-clock clocks unless --sim-steps replaces
+   them (logClockMs, below). All share --orbit-interval (Game::
    orbit_log_interval_ms) except the ones whose cadence is fixed where they are
    polled: kGateSkyDim, and the tick.cpp state logs (spin/mass/fuel/drain/
    power/slew), which keep the rate each was written to sample at.
    Wall clock is what makes a log readable at any instant the player can see:
-   a SIM-clock gate prints nothing while paused and floods at warp (#374). */
+   a SIM-clock gate prints nothing while paused and floods at warp (#374).
+   --sim-steps swaps in the tick clock for a scripted run (#472), which fixes the
+   CADENCE of the rows only -- see the scope note on sim_steps_left below. */
 enum LogGate { kGateOrbit, kGateDbg, kGateInfo, kGateAtt, kGateShake,
                kGateCam, kGateEva, kGateDrag, kGateTerrain, kGatePlane,
                kGateSkyDim, kGateXfer, kGateDv, kGateCompound, kGateProxSnap,
@@ -395,10 +398,15 @@ enum LogGate { kGateOrbit, kGateDbg, kGateInfo, kGateAtt, kGateShake,
                kGateSlew, kGateCount };
 
 /* A headless test hook (cli.h --atlas-dump / --map-dump): fires act() once,
-   at/after ms from loop start (Game::loop_start_ms). Registered at boot from
+   at/after ms on the schedule clock (Game::schedClockMs(): loop_start_ms normally,
+   the tick clock under --sim-steps). Registered at boot from
    the CLI args (installHeadlessHooks, main.cpp) and polled by Game::fireHooks
    at the phase points below. Registration order within a phase IS the firing
-   order. gate is an extra per-frame condition. */
+   order. gate is an extra per-frame condition.
+   The phases sit on different sides of tick() (kHookPreScene before it,
+   kHookPostRefresh after), so under --sim-steps two hooks given the SAME ms fire
+   in phase order but sample clocks one tick apart -- a dump line's t= can differ
+   by one dt between the phases. Order between phases is not stable across modes. */
 struct GameHook {
     int ms;
     bool fired = false;
@@ -545,11 +553,18 @@ struct Game {
        often is a measurement question, not a guarantee either way (#475). Flights
        that never touch the ground collision tree (the 458 envelope cases) are
        reproducible today.
+       Related, and worth knowing before a case pins one of these: converting a log
+       gate to this clock fixes WHEN the row prints, not what the number is. The
+       [shakelog] / [camlog] / [terrain] / [skydim] values are camera state smoothed
+       on a wall-clock dt (and [porkchop] depends on job timing), so they vary with
+       frame rate whatever the gate is. --pose-jitter prints a wall-clock frame dt
+       too. Pin the cadence of those, not their payload, until #475 lands.
        The scripted clock counts TICKS, not g.time: g.time can rewind (a load or a
        New Game mid-run) and stops dead while paused, and either would freeze or
        reverse a schedule. One tick always moves it dt. */
     long long sim_steps_left = -1;     // < 0: off. Else ticks still owed.
     long long sim_ticks_run = 0;       // spent so far: the scripted clock's base
+    double sim_seconds_ran = 0.0;      // sum of dt*time_accel: what the run simulated
 
     /* The clock --sim-press / --sim-mouse / --sim-mode / --ui-* schedules are
        keyed to. Always run-relative ms (t=0 when the main loop starts), so a case

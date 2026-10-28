@@ -30,13 +30,15 @@ inline int substepCount(double step) {
    also freezes g.time while the step budget keeps draining, so the scripted
    presses never fall due at all. Both were reproduced in review.
    Ticks run is monotone by construction, and it matches what the option
-   promises: N steps at --physics-hz is N/hz seconds. */
+   promises: N steps at --physics-hz is N/hz seconds of RUN time. Sim seconds are
+   a different number -- at --time-accel 100 one tick is 100xdt of sim but still
+   only dt of run -- and this clock deliberately tracks the run. */
 inline uint32_t scriptedClockMs(long long ticksRun, double dt) {
     if(ticksRun < 0) { ticksRun = 0; }
     const double ms = (double)ticksRun * dt * 1000.0;
     // Round rather than truncate: N steps at 60 Hz must land exactly on the log
     // interval, or the run's last row falls off the end.
     double whole = std::llround(ms);
-    if(whole > 4294967295.0) { whole = 4294967295.0; }   // ~49.7 days of sim
+    if(whole > 4294967295.0) { whole = 4294967295.0; }   // ~49.7 days of run
     return (uint32_t)whole;
 }

@@ -32,7 +32,6 @@ void tick(Game &g) {
         }
     }
     const long long ticks_before = g.logic_ticks;
-    const double time_before = g.time;   // for the --sim-steps exit report
 
     /* The live list, not a snapshot: an SoI crossing re-homes a Vehicle without
        moving it between containers, so a mid-tick crossing cannot reshuffle or
@@ -184,6 +183,9 @@ void tick(Game &g) {
         g.time += g.dt * g.time_accel;
         g.logic_ticks++;   // one logic tick ran (its substeps are not counted)
         g.sim_ticks_run++; // the --sim-steps clock's own count: never rewound
+        /* How much sim this run actually simulated, summed per tick so a load
+           that rewinds g.time cannot corrupt it (--sim-steps exit report). */
+        g.sim_seconds_ran += g.dt * g.time_accel;
 
         if(g.time_accel != 0) {
             /* No re-snapshot here. updateDocking() retires the absorbed ship at
@@ -579,19 +581,26 @@ void tick(Game &g) {
     if(g.sim_steps_left >= 0) {
         g.sim_steps_left -= (g.logic_ticks - ticks_before);
         if(g.sim_steps_left <= 0) {
-            // Report where the sim clock ended up, not a delta: a load or a New
-            // Game mid-run brings its own t0, so a difference reads like a
-            // confident -9999996.92 s of negative flight.
-            printf("Sim steps reached (%lld ticks); sim clock t = %.2f s; exiting main loop.\n",
-                   g.args.sim_steps, g.time);
-            // A paused sim still spends ticks and scripted presses, so every log
-            // row samples the same state. Say so -- otherwise the case reads as a
-            // quiet pass on nothing at all.
-            if(!(g.time > time_before)) {
-                printf("WARNING: --sim-steps ran %lld ticks but the sim never advanced "
-                       "(paused? --time-accel 0?) -- scripted input fired into a frozen "
-                       "world and every log row sampled the same state. This run "
-                       "measured nothing.\n", g.args.sim_steps);
+            /* sim_seconds_ran is what this run simulated, summed tick by tick:
+               neither a load rewinding g.time (which brings its own t0, so a
+               difference reads like a confident -9999996.92 s of negative
+               flight) nor warp at 1e5 can mislead it. Print both numbers: the
+               sim clock alone says nothing to a run that reloaded. */
+            printf("Sim steps reached (%lld ticks); the sim advanced %.2f s "
+                   "(clock t = %.2f s); exiting main loop.\n",
+                   g.args.sim_steps, g.sim_seconds_ran, g.time);
+            /* A paused sim still spends ticks and scripted presses, so every log
+               row samples the same state. Warn over the WHOLE run -- a per-frame
+               check would cry wolf for a run that paused on its last tick and
+               miss a run that was frozen for all of it. A case that means a
+               paused sim (--time-accel 0 with logs to read) still sees this, so
+               the message says which of the two it is. */
+            if(!(g.sim_seconds_ran > 0.0)) {
+                printf("WARNING: --sim-steps ran %lld ticks and the sim never advanced "
+                       "once (--time-accel 0? paused?) -- scripted input fired into a "
+                       "frozen world and every log row sampled the same state. Unless "
+                       "this case means a paused sim, it measured nothing.\n",
+                       g.args.sim_steps);
             }
             fflush(stdout);
             g.running = false;

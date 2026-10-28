@@ -61,8 +61,9 @@ UiClick *g_type = nullptr;
 enum { kTypeSelectDown, kTypeSelectUp, kTypeChars };
 int g_type_phase = kTypeSelectDown;
 
-// Wall clock allowed for a window to open and settle before a --ui-click
-// gives up.
+// Run time allowed for a window to open and settle before a --ui-click gives
+// up. Measured on the schedule clock (Game::schedClockMs), so under --sim-steps
+// this is 2000 ms of TICKS -- 120 frames at 60 Hz.
 const Uint32 kUiClickRetryMs = 2000;
 
 // Wrap-safe form of `now >= at + kUiClickRetryMs` for a wrapping Uint32 clock.

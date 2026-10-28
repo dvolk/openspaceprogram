@@ -1,0 +1,45 @@
+# flight/472-scripted-cadence-across-a-load.txt -- the clock a scripted run
+# counts on must not be the clock a save rewinds (#472, C1).
+#
+# This is flight/374's command line with --timeout 12 replaced by --sim-steps
+# 720. Quickload is the interesting part: it puts the sim clock back from ~65 s
+# to the ~5 s the quicksave recorded. The scripted clock that 44341a1 shipped was
+# `(Uint32)((g.time - base) * 1000)`, so the rewind made it NEGATIVE -- and a
+# negative double converted to uint32_t is undefined behaviour, which in practice
+# landed the gates ~4.29e9 ms in the future: every throttled log in the run went
+# quiet at once and the case still exited 0 as a clean pass. Counting TICKS RUN
+# (scriptedClockMs, timestep.h) cannot be rewound by anything a save does.
+#
+# The same rewind also leaves the world paused, which is why the post-load rows
+# all print one t= -- that half is flight/374's claim, and it survives here too.
+NAME scripted-cadence-across-a-load
+CLAIM A scripted run keeps printing its logs at an exact cadence through a quickload that rewinds the sim clock, and keeps printing them after it.
+KIND invariant
+ARGS --sim-steps 720 --time-accel 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --mass-log
+ARGS --sim-press 500,0,F5
+ARGS --sim-press 6500,0,F9
+EXPECT [mass]
+EXPECT Saved 1 ship(s)
+EXPECT Loaded game from
+# The CHECK row lists are world-scoped: e2e/run.py cuts the log at the last
+# "Loaded game from", so what follows is the LOADED world -- exactly the part the
+# bug ate. The whole run printed 24 [mass] rows (13 before the load, 11 after);
+# these see the 11. Before the fix they saw none of them: the rewind put the gate
+# clock ~4.29e9 ms ahead and nothing printed again for the rest of the run.
+CHECK len(mass) == 11
+# 720 ticks at 60 Hz with --sim-steps buys a 500 ms gate 24 times over the run, so
+# the post-load rows are still arriving on cadence -- 11 rows in the 5.5 s of run
+# left after the load at 6.5 s.
+# They all print the same t= because a load leaves the world paused: that is
+# flight/374's fact, restated here so the repeats read as deliberate rather than as
+# a stall.
+CHECK len({m["t"] for m in mass}) == 1
+CHECK mass[0]["t"] == 5.0
+# The run spent its whole budget -- the case is not reading a truncated run.
+EXPECT Sim steps reached
+# The run's own report says what it simulated, not where the clock ended: 720
+# ticks at 10x is 65 s of sim up to the load, then a frozen world. A bare "sim
+# clock t = 5.00 s" would read like the run lasted 5 s.
+CHECK all(m["ship"] == "racer" and m["parts"] == 4 for m in mass)
+FORBID error:

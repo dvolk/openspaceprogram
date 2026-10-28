@@ -183,15 +183,19 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "flight measured in STEPS rather than wall seconds, so two "
                    "runs of one case step identically (#472). In this mode the "
                    "sim takes one tick per frame and the frame cap is lifted "
-                   "unless the case names --frame-cap. The --sim-press / "
-                   "--sim-mouse / --ui-click delays and the --*-log intervals "
-                   "are then counted from logic ticks rather than the wall "
+                   "unless the case names --frame-cap (or --idle-fps, to test the "
+                   "idle path itself). The --sim-press / --sim-mouse / --ui-click "
+                   "delays and the --*-log intervals are then counted from logic "
+                   "ticks rather than the wall "
                    "clock -- same ms, but machine-independent. Note that makes "
                    "them immune to --time-accel and to a paused sim: 1000 ms is "
                    "60 ticks whatever the accel, which is what a flight case "
                    "assumes. At the default --physics-hz 60, 600 steps = 10 s "
-                   "of sim. Prefer it over --timeout for anything you intend to "
-                   "pin: a wall-clock cutoff lands on a different tick on a "
+                   "of RUN, which is 10 s of sim only at --time-accel 1. Input is "
+                   "polled at the top of a frame, so an event scheduled at or "
+                   "after N/hz ms can never fire, and the run prints a NOTE when "
+                   "that happens. Prefer it over --timeout for anything you intend "
+                   "to pin: a wall-clock cutoff lands on a different tick on a "
                    "slower machine.")
         ->check(CLI::PositiveNumber);
 
@@ -372,8 +376,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "frame transform shows up as a number");
 
     app.add_option("--orbit-interval", args.orbit_interval,
-                   "Wall-clock seconds between --orbit-log / --plane-log lines "
-                   "(default: 1). Never shorter than one --physics-hz tick: no "
+                   "Seconds of the run's clock between --orbit-log / --plane-log "
+                   "lines (wall clock, or logic ticks under --sim-steps; "
+                   "default: 1). Never shorter than one --physics-hz tick: no "
                    "log can sample faster than the sim steps. The state logs "
                    "(--mass-log, --fuel-log, --drain-log, --power-log, "
                    "--spin-log, --slew-log) keep their own cadence, stated in "

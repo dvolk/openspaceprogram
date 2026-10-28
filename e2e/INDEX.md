@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 265 |
+| `invariant` | a behaviour or a player route the game must keep | 266 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 36 |
-| `harness` | CLI/test-engine plumbing, not game spec | 13 |
+| `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **318** |
+| | **total** | **320** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (72)
+## flight (74)
 
 | case | kind | pins |
 |---|---|---|
@@ -94,6 +94,8 @@ judgement. Select by number, name or path, e.g.
 | `flight/458-glider-flight-envelope.txt` | golden | The shipped glider pays air for the union of its parts AS MOUNTED (4.3 m2 nose-on, 26 m2 broadside, not a 30 m2 balloon), its lift owes induced drag, and with only yaw surfaces it can be steered past vertical but never pulled out. |
 | `flight/458-jet-flight-envelope.txt` | golden | The shipped jet pays air for the union of its parts AS MOUNTED (4.4 m2 nose-on, 35 m2 broadside, not a 30 m2 balloon), the lift it makes owes induced drag, and a held stick pitches it 77 deg off a flow it cannot damp out. |
 | `flight/461-pad-def-attitude-starts-level.txt` | invariant | A ship def can ask for its pad attitude, so a winged airframe starts with its nose on the horizon and its wings level instead of standing on its tail. |
+| `flight/472-scripted-cadence-across-a-load.txt` | invariant | A scripted run keeps printing its logs at an exact cadence through a quickload that rewinds the sim clock, and keeps printing them after it. |
+| `flight/472-scripted-paused-sim-says-so.txt` | harness | A scripted run whose sim never advances prints the rows AND says the run measured nothing, instead of exiting 0 on a frozen world. |
 
 ## crew (25)
 

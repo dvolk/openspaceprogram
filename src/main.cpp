@@ -957,6 +957,30 @@ int main(int argc, char **argv)
     printf("logic tick: %.0f Hz (%.1f ms)\n",
            args.physics_hz, 1000.0 / args.physics_hz);
 
+    /* Scripted schedules are polled at the top of the frame, BEFORE that frame's
+       tick, so the last thing a run can act on is an event due at the clock of
+       its (N-1)th tick. A press scheduled past that is a silent no-op -- the case
+       runs the full budget, the press never lands, and the difference looks like
+       physics. Name it at boot instead. */
+    if(scripted) {
+        const long long last_ms = (long long)scriptedClockMs(
+            args.sim_steps - 1, 1.0 / args.physics_hz);
+        int late = 0;
+        for(const SimKeyPress &k : args.sim_presses) { if((long long)k.down_ms > last_ms) { late++; } }
+        for(const SimMouseAction &m : args.sim_mouse_actions) { if((long long)m.time_ms > last_ms) { late++; } }
+        for(const UiFocus &f : args.ui_focuses) { if((long long)f.at_ms > last_ms) { late++; } }
+        for(const SimModeChange &m : args.sim_mode_changes) { if((long long)m.at_ms > last_ms) { late++; } }
+        for(const UiClick &c : args.ui_clicks) { if((long long)c.at_ms > last_ms) { late++; } }
+        for(const UiScroll &s : args.ui_scrolls) { if((long long)s.at_ms > last_ms) { late++; } }
+        if(late > 0) {
+            printf("NOTE: %d scripted input event(s) are scheduled after the last "
+                   "pollable tick (%lld ms of run time with --sim-steps %lld at "
+                   "%.0f Hz) and can never fire. Raise --sim-steps or move them "
+                   "earlier.\n", late, last_ms, args.sim_steps, args.physics_hz);
+            fflush(stdout);
+        }
+    }
+
     /* --idle-fps: while the window is occluded or minimized the loop idles
        instead of drawing into a swap that goes nowhere. Throttled, NOT skipped:
        the 3D pass is not only pixels -- sc.refresh re-poses the camera and runs
@@ -969,12 +993,19 @@ int main(int argc, char **argv)
        so an idle frame slower than 10/dt silently loses sim time -- hence the
        physics_hz/8 floor. This bounds IDLE_MS only: a --frame-cap slower than
        physics_hz/10 loses sim time hidden or not.
-       Off under --sim-steps: there the frame budget IS the tick rate (one tick per
-       frame, no clamp to lose time), so an idle 100 ms budget would quietly run the
-       case 6x slower for no benefit. */
-    const bool idle_on = (args.idle_fps > 0) && !scripted;
-    const double idle_fps = std::max((double)args.idle_fps,
-                                     args.physics_hz / 8.0);
+       Off under --sim-steps UNLESS THE CASE ASKS: there the frame budget IS the
+       tick rate (one tick per frame, no clamp to lose time), so the default idle
+       100 ms budget would quietly run a case 6x slower for no benefit. A case that
+       names --idle-fps wants the idle path itself under test (--force-occluded is
+       its headless cover), so it gets it: the run just takes longer, never fewer
+       ticks. */
+    const bool idle_on = (args.idle_fps > 0) && (!scripted || args.cli_given.idle_fps);
+    /* The floor is the clamp's, not the idle path's: only the wall-clock mode can
+       lose ticks to a slow frame, so a scripted case's --idle-fps is taken as
+       given. */
+    const double idle_fps = scripted
+        ? (double)args.idle_fps
+        : std::max((double)args.idle_fps, args.physics_hz / 8.0);
     const int idle_ms = idle_on
         ? std::max(1, (int)(1000.0 / idle_fps)) : 0;
     if(idle_on) {
@@ -987,7 +1018,9 @@ int main(int argc, char **argv)
         }
         printf("\n");
     } else {
-        printf("idle: off (%s)\n", scripted ? "--sim-steps" : "--idle-fps 0");
+        printf("idle: off (%s)\n",
+               scripted ? "--sim-steps; name --idle-fps to test the idle path"
+                        : "--idle-fps 0");
     }
 
     // Per-frame phase timing. Pushed into Game::hud.perf_* EVERY frame; --perf
@@ -1102,10 +1135,13 @@ int main(int argc, char **argv)
             idled_last = idling;
             if(idling) {
                 if(scripted) {
-                    // --sim-steps takes --idle-fps off the table (see above), so a
-                    // hidden window changes nothing but the draw.
-                    printf("[idle] window hidden: --idle-fps not applied under "
-                           "--sim-steps, drawing every frame\n");
+                    // Only reachable when the case named --idle-fps (see above).
+                    // One tick per frame, so this budget changes how long the run
+                    // takes, never how many ticks it runs.
+                    printf("[idle] window hidden: %d ms/frame budget "
+                           "(--sim-steps: one tick per frame, so this slows the "
+                           "run down rather than losing sim time)\n",
+                           iter_cap_ms);
                 } else {
                     // The ceiling this budget can hold, not a promise about
                     // --physics-hz.
@@ -1123,6 +1159,11 @@ int main(int argc, char **argv)
             const double elapsed_s = (SDL_GetTicks() - game.loop_start_ms) * 0.001;
             if(elapsed_s >= args.timeout_seconds) {
                 printf("Timeout reached (%.1f s); exiting main loop.\n", elapsed_s);
+                if(scripted) {
+                    // The NOTE at boot said this could happen; say what it cost.
+                    printf("  %lld of %lld scripted ticks never ran: --timeout is "
+                           "wall clock.\n", game.sim_steps_left, args.sim_steps);
+                }
                 fflush(stdout);
                 running = false;
             }

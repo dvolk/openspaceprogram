@@ -364,6 +364,47 @@ int main() {
             }
         }
         assert(monotone);
+        // --physics-hz is range-checked 5..1000 in cli.cpp, so one tick is
+        // always >= 1 ms: that is what keeps the clock strictly increasing (a
+        // sub-ms tick would make repeated stamps fall due on the same ms) at
+        // either allowed extreme.
+        assert(scriptedClockMs(5, 0.2) == 1000);       // 5 Hz
+        assert(scriptedClockMs(1000, 0.001) == 1000);  // 1000 Hz
+        // And the rounding DIRECTION, which is the whole reason a scripted run
+        // keeps its last log row: one tick at 60 Hz is 16.67 ms, and a truncated
+        // ladder slips ~16 ms per gate -- 840 steps then prints 13 [drag] rows
+        // instead of 14.
+        assert(scriptedClockMs(1, 1.0 / 60.0) == 17);
+    }
+
+    // 3h) cli_given.frame_cap / cli_given.idle_fps: what a scripted run reads to
+    //     know the case ASKED for a frame rate or the idle throttle. Get these
+    //     wrong and a case's own --frame-cap is silently lifted (its slow frames
+    //     were the thing under test), or the idle path stops being exercised by
+    //     the --force-occluded cases the moment they move to --sim-steps.
+    {
+        GameArgs args;
+        const char *argv[] = {"osp", "--sim-steps", "840"};
+        bool ok = false;
+        int code = -1;
+        run(3, (char **)argv, args, ok, code);
+        assert(ok);
+        assert(!args.cli_given.frame_cap);
+        assert(!args.cli_given.idle_fps);
+        assert(args.frame_cap == 60);   // the default still stands; the MODE lifts it
+    }
+    {
+        GameArgs args;
+        const char *argv[] = {"osp", "--sim-steps", "840",
+                              "--frame-cap", "30", "--idle-fps", "5"};
+        bool ok = false;
+        int code = -1;
+        run(7, (char **)argv, args, ok, code);
+        assert(ok);
+        assert(args.cli_given.frame_cap);
+        assert(args.cli_given.idle_fps);
+        assert(args.frame_cap == 30);
+        assert(args.idle_fps == 5);
     }
 
     printf("test_cli: all checks passed\n");
