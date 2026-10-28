@@ -433,6 +433,137 @@ static void test_partAero() {
     }
 }
 
+/* #483: a surface feels the flow AT ITSELF, v_rel + w x r, not the COM's. drag.h
+   knows no bodies and no angular velocity, so what is pinned here is the
+   COMPOSITION applyAeroForce runs (one cross product, then partAero, then
+   liftForce with that surface's own q) and the question a flight golden cannot
+   cheaply answer: does the sweep make a moment that OPPOSES the rotation? Get the
+   sign wrong and the airframe still flies -- it just feeds every swing back into
+   itself -- so "the numbers moved" is not evidence. The wiring is pinned by
+   flight/458-glider, whose AoA series used to be 14.8, -108.6, 75.2, -36.5 ...
+   (tumbling to the end of the run) and now decays to under a degree by t=10. */
+static void test_local_flow_sweep() {
+    printf("== local flow: w x r is damping, and its sign is the whole game ==\n");
+    const double S = 4.0, cl = 6.0, stall = 0.35;
+    const double rho = 1.225, v = 100.0;
+    const glm::dmat3 ship(1.0);                 // right +X, up +Y, nose +Z
+    const glm::dvec3 nose = ship[2];
+    const glm::dvec3 vrel(0.0, 0.0, v);         // dead along the nose: 0 AoA, 0 beta
+
+    struct Surf { glm::dvec3 vp; double q; PartAero pa; glm::dvec3 F; };
+    const auto surf = [&](const glm::dvec3 &r, const glm::dvec3 &w) {
+        Surf s;
+        s.vp = vrel + glm::cross(w, r);
+        s.q = 0.5 * rho * glm::dot(s.vp, s.vp);
+        s.pa = partAero(ship, s.vp);
+        s.F = s.pa.valid ? liftForce(s.q, S, cl, s.pa.alpha, s.pa.liftDir, stall)
+                         : glm::dvec3(0.0);
+        return s;
+    };
+
+    // A body that is not spinning is bit-identical to the pre-#483 law, not
+    // approximately equal to it.
+    {
+        const Surf s = surf(glm::dvec3(0.0, 0.0, 3.0), glm::dvec3(0.0));
+        CHECK_TRUE(s.vp == vrel, "no spin: the sweep is exactly zero, not nearly");
+        // Compared against the SAME expression on the COM flow, so this says "the
+        // sweep contributed nothing", not "these two spellings of q agree".
+        CHECK_NEAR(s.q, 0.5 * rho * glm::dot(vrel, vrel), 0.0,
+                   "and so is the change in dynamic pressure");
+        CHECK_NEAR(glm::length(s.F), 0.0, 0.0, "so a 0-deg wing still lifts nothing");
+    }
+
+    // The bug, stated: on the COM's flow every surface of this airframe sees 0 deg,
+    // however fast it is rotating. No sweep, no damping.
+    {
+        const PartAero same = partAero(ship, vrel);
+        CHECK_NEAR(same.alpha, 0.0, 0.0, "COM flow: every surface sees the same 0 deg");
+        CHECK_NEAR(glm::length(liftForce(0.5 * rho * v * v, S, cl, same.alpha,
+                                         same.liftDir, stall)),
+                   0.0, 0.0, "COM flow: a pitching airframe gets nothing out of it");
+    }
+
+    // Pitch rate, carried by two LIFTING surfaces displaced fore-aft (a tail and a
+    // canard). Note what does NOT damp here: a wing on the pitch axis (the shipped
+    // wings, at the COM's height) has no fore-aft offset, so its sweep runs along
+    // the nose and leaves alpha alone. Pitch damping needs surfaces ahead of or
+    // behind the pivot, which is why a control surface with no alpha term (#454)
+    // leaves this airframe with so little of it.
+    {
+        const glm::dvec3 w(0.5, 0.0, 0.0);                    // about the ship's right
+        const glm::dvec3 rCanard(0.0, 0.0, 3.0), rTail(0.0, 0.0, -2.5);
+        const Surf c = surf(rCanard, w), t = surf(rTail, w);
+        CHECK_TRUE(c.pa.valid && t.pa.valid, "the swept frames are usable");
+        CHECK_NEAR(c.pa.alpha, std::atan2(3.0 * 0.5, v), 1e-12,
+                   "the surface the pitch drives DOWN meets the flow from below");
+        CHECK_NEAR(t.pa.alpha, -std::atan2(2.5 * 0.5, v), 1e-12,
+                   "and the one being lifted meets it from above");
+        CHECK_TRUE(c.pa.alpha * t.pa.alpha < 0.0, "the pair tilts OPPOSITE ways");
+        const glm::dvec3 F = c.F + t.F;
+        const glm::dvec3 M = glm::cross(rCanard, c.F) + glm::cross(rTail, t.F);
+        CHECK_TRUE(glm::dot(M, w) < 0.0, "the pair's moment OPPOSES the pitch rate");
+        CHECK_TRUE(glm::length(F) < glm::length(c.F) + glm::length(t.F),
+                   "the forces partly cancel: a couple, not a climb");
+        // Twice the rate: damping at least doubles, because q rises with the sweep
+        // too. Pinning the inequality beats pinning a factor -- the factor is where
+        // the law is soft, the sign and growth are where it is wrong or right.
+        const Surf c2 = surf(rCanard, 2.0 * w), t2 = surf(rTail, 2.0 * w);
+        const glm::dvec3 M2 = glm::cross(rCanard, c2.F) + glm::cross(rTail, t2.F);
+        CHECK_TRUE(std::fabs(glm::dot(M2, 2.0 * w)) > 2.0 * std::fabs(glm::dot(M, w)),
+                   "damping grows at least as fast as the rate it opposes");
+        // It is damping, not a bias: spin the other way and the moment follows.
+        const Surf cn = surf(rCanard, -w), tn = surf(rTail, -w);
+        const glm::dvec3 Mn = glm::cross(rCanard, cn.F) + glm::cross(rTail, tn.F);
+        CHECK_TRUE(glm::dot(Mn, -w) < 0.0, "reversed spin is opposed too");
+        CHECK_TRUE(glm::dot(M, Mn) < 0.0, "and the two moments point opposite ways");
+    }
+
+    // Roll rate, one wing either side: the classic roll damping no control input
+    // is asked for. The vertical forces cancel exactly, so a symmetric airframe
+    // does not start climbing because it rolled.
+    {
+        const glm::dvec3 w(0.0, 0.0, 0.6);                    // about the ship's nose
+        const glm::dvec3 rR(4.0, 0.0, 0.0), rL(-4.0, 0.0, 0.0);
+        const Surf a = surf(rR, w), b = surf(rL, w);
+        CHECK_NEAR(a.pa.alpha, -std::atan2(4.0 * 0.6, v), 1e-12,
+                   "the rising tip's local flow comes up at it");
+        CHECK_NEAR(b.pa.alpha, -a.pa.alpha, 0.0, "its twin sees the mirror, exactly");
+        const glm::dvec3 F = a.F + b.F;
+        CHECK_NEAR(F.y, 0.0, 0.0, "the two lifts cancel vertically");
+        CHECK_NEAR(F.x, 0.0, 0.0, "and sideways");
+        const glm::dvec3 M = glm::cross(rR, a.F) + glm::cross(rL, b.F);
+        CHECK_TRUE(glm::dot(M, w) < 0.0, "while both together oppose the roll");
+        // What is left over is the tilted pair pushing along the flow -- small, and
+        // the honest consequence of a rolling wing pair, not a bug to chase.
+        CHECK_TRUE(std::fabs(F.z) < 0.1 * (glm::length(a.F) + glm::length(b.F)),
+                   "the leftover along the flow is small next to the lift");
+    }
+
+    // A surface the spin carries SIDEWAYS keeps its angle but gains flow speed, so
+    // its force grows. That is why the dynamic pressure is per-surface now rather
+    // than one ship-wide q.
+    {
+        const glm::dvec3 w(0.0, 0.0, 2.0);
+        const glm::dvec3 r(0.0, 3.0, 0.0);
+        const Surf s = surf(r, w);
+        CHECK_NEAR(s.pa.alpha, 0.0, 0.0, "a sideways sweep leaves the ANGLE alone");
+        CHECK_TRUE(s.q > 0.5 * rho * v * v, "but the surface still feels a faster flow");
+    }
+
+    // Self-limiting, and worth pinning as a consequence rather than discovering it
+    // as a surprise: spin a surface backwards through the air faster than the body
+    // flies and its own flow reverses, the deep-stall droop takes its force away,
+    // and the damping term cannot run away with a fast tumble.
+    {
+        const glm::dvec3 w(0.0, 30.0, 0.0);                  // yaw, hard
+        const glm::dvec3 r(4.0, 0.0, 0.0);                   // a wingtip 4 m out
+        const Surf s = surf(r, w);
+        CHECK_TRUE(glm::length(glm::cross(w, r)) > v, "the tip outruns the air it flies in");
+        CHECK_TRUE(glm::dot(s.vp, nose) < 0.0, "so its flow comes from behind");
+        CHECK_NEAR(glm::length(s.F), 0.0, 0.0, "and the droop leaves it no lift to damp with");
+    }
+}
+
 static void test_liftCurve() {
     printf("== liftCurve: linear up to stall, soft droop, deep stall ==\n");
     const double cl = 6.0;        // per radian
@@ -1420,6 +1551,8 @@ int main() {
     test_wing_lifts_up();
     printf("\n");
     test_partAero();
+    printf("\n");
+    test_local_flow_sweep();
     printf("\n");
     test_liftCurve();
     printf("\n");

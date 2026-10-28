@@ -1,5 +1,5 @@
 NAME glider-flight-envelope
-CLAIM The shipped glider pays air for the union of its parts AS MOUNTED (4.3 m2 nose-on, 26 m2 broadside, not a 30 m2 balloon), its lift owes induced drag, and with only yaw surfaces it can be steered past vertical but never pulled out.
+CLAIM The shipped glider pays air for the union of its parts AS MOUNTED (4.3 m2 nose-on, 26 m2 broadside, not a 30 m2 balloon), its lift owes induced drag, and with only yaw surfaces it can be steered past vertical -- but since #483 the rotation sweep at its surfaces damps it back onto the flow instead of leaving it tumbling.
 KIND golden
 ARGS --time-accel 1 --startship glider,res/ships/glider.json,Kerbin,flying-slow
 ARGS --sim-steps 840 --drag-log --mass-log
@@ -15,43 +15,63 @@ CHECK all(d.get("aoa") is not None and abs(d["aoa"]) < 1.0 for d in drag[:3])
 # the mount offsets it first dropped (which had it at 3.4, charging one part
 # instead of a union).
 CHECK 4.0 < min(d.get("a", 0.0) for d in drag[:3]) < 5.0
-# Turned over, its planforms come into the wind: 26 m2, a 6.1x swing (the jet
-# shows 8.1x). Every run prints the same rows under --sim-steps -- the balloon law
-# showed 1.2x here, since a bubble does not change shape.
-CHECK max(d.get("a", 0.0) for d in drag) > 4.0 * min(d.get("a", 0.0) for d in drag)
+# Turned over, its planforms come into the wind. RE-BASELINED by #483: the worst
+# row used to be 26.4 m2 (a 6.1x swing) because the airframe tumbled over again and
+# again; it now turns over ONCE, at t=4, and 17.7 m2 is what the 1 s sampling
+# catches. The factor is 4.08 on that row, so this sits at 3.0 rather than the 4.0
+# it was -- pinning a 2% margin on a row that happens to land mid-swing is asking
+# for a false alarm at the next law change. The balloon law showed 1.2x here.
+CHECK max(d.get("a", 0.0) for d in drag) > 3.0 * min(d.get("a", 0.0) for d in drag)
 # On the clean rows the force printed IS the law printed: |F| / (q * Cd * A) =
 # --drag-cd's 1.2 default. The knob-sensitive pin: --drag-cd 0.2 or 8 fails it
 # while the shape pins above still pass.
 CHECK 1.15 < max(d["F"] / (0.5 * d["rho"] * d["v"] * d["v"] * d["cd"] * d["a"]) for d in drag[:3]) < 1.25
-# |L| / q, lift in area units: 2 x 8 m2 at CLmax 2.1 = 33 m2-equivalent ceiling;
-# the deterministic run samples 24.8. It used to sample 14.4 because the balloon's
-# drag bled the airframe before it could fly at a useful AoA.
-CHECK 10.0 < max(d["L"] / (0.5 * d["rho"] * d["v"] * d["v"]) for d in drag if d.get("L") and d["v"] > 1.0) < 60.0
+# |L| / q, lift in area units: 2 x 8 m2 at CLmax 2.1 = 33 m2-equivalent ceiling.
+# RE-BASELINED by #483: it samples 11.2, not 24.8. The old peak came from a
+# tumbling airframe held at a large AoA by its own rotation; now the one recovery
+# row (t=5) carries the peak. The floor is 8.0 rather than 10.0 because that peak
+# is no longer a plateau -- it is one row of a decaying swing, and a pin that
+# depends on where the 1 s samples happen to land is a pin on the sampling.
+CHECK 8.0 < max(d["L"] / (0.5 * d["rho"] * d["v"] * d["v"]) for d in drag if d.get("L") and d["v"] > 1.0) < 60.0
 # #462's coupling: the lifting substeps pay induced drag and the post-stall rows
 # (|L| = 0, the droop) pay none. Charge it unconditionally, or drop it, and one of
 # these fails.
 CHECK any(d.get("induced", 0.0) > 0.0 for d in drag)
 CHECK all(d.get("induced", 0.0) > 0.0 for d in drag if d.get("L", 0.0) / max(0.5 * d["rho"] * d["v"] * d["v"], 1.0) > 1.0)
 CHECK all(d.get("induced", 0.0) == 0.0 for d in drag if d.get("L", 0.0) == 0.0)
-# PINNING A BUG: the airframe goes past vertical and stays there. Every row of the
-# 840-tick budget, AoA -0.2, -0.2, -0.1, 142.0, 14.8, -108.6, 75.2, -36.5, -58.1,
-# -6.6, -96.4, 14.0, 100.1, 48.8 -- A only yaws it and there is no pitch surface,
-# so nothing pulls it out. Before #463 the balloon's drag at the centre of pressure
-# hid the missing static margin; here it is the whole story. Expected to FAIL when
-# #454 lands, and re-baselined in that commit.
+# IT STILL GOES PAST VERTICAL -- and now it comes back. All 14 rows of the
+# 840-tick budget, AoA -0.2, -0.2, -0.1, 143.1, 6.7, 2.5, -1.4, -0.1, -0.0, 0.1,
+# 0.0, -0.2, 0.5, -0.5. The A stick yaws it over (there is no pitch surface on this
+# ship at all) and it rolls past vertical at t=4; what changed with #483 is the
+# tail of that series. Before it: 14.8, -108.6, 75.2, -36.5, -58.1, -6.6, -96.4,
+# 14.0, 100.1, 48.8 -- over and under, every row, to the end of the run.
 CHECK max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) > 90.0
-# And the flow spends its time in the back hemisphere (Beta to 170 deg), which is
-# the half the silhouette cache cannot key directly: past +-90 in one angle the
-# angles must wrap by 180 together, because AeroFrame's two share their atan2
-# denominator. When that wrap was missing, every row past 90 keyed a different
-# flow's cell -- 9% off on a hull shaped like this one (tmp/review_20261028).
+# THE SETTLE, pinned: seven seconds in, every remaining row sits inside 10 deg of
+# the flow (the worst is 1.4). Drop the w x r sweep out of the lift loop and the
+# same rows read 75.2, -36.5, -58.1, -96.4, 100.1, 48.8, so this fails on the old
+# law rather than passing by luck. Note what it is NOT: no airframe is trimmed here
+# (a symmetric section at 0 deg makes no lift in this law, so "settled" means
+# nose-on and descending, not gliding). Damping without static margin (#454) is
+# exactly this much recovery and no more.
+CHECK all(abs(d["aoa"]) < 10.0 for d in drag if d["t"] >= 7.0)
+# And the speed it keeps: the tumble used to eat 60% of it (73 m/s by t=14 against
+# a 173 m/s start). Flying nose-on costs it a third.
+CHECK min(d["v"] for d in drag if d["t"] >= 9.0) > 100.0
+# And the flow reaches the back hemisphere (Beta to -104.8 at the t=4 roll-over;
+# it used to reach 170 because the airframe tumbled repeatedly), which is the half
+# the silhouette cache cannot key directly: past +-90 in one angle the angles must
+# wrap by 180 together, because AeroFrame's two share their atan2 denominator. When
+# that wrap was missing, every row past 90 keyed a different flow's cell -- 9% off
+# on a hull shaped like this one (tmp/review_20261028).
 CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) > 90.0
 CHECK any(d.get("L", 0.0) == 0.0 for d in drag)
-# RESTORED (0.788 measured): this peak lives inside the tumble, and while the run
-# stepped against wall-clock frames it read 0.74, 0.76, 0.79 in three runs -- #472,
-# not physics. There is still no steady state to measure on an airframe with no
-# engine and no pitch surface, so the band is wide; #454 is what narrows it.
-CHECK (lambda ds: 0.74 < max(d["L"] / d["F"] for d in ds) < 0.84)([d for d in drag if d["F"] > 0.0])
+# RE-BASELINED by #483 (0.511 measured, was 0.786). This peak used to live inside
+# the tumble -- a wing held at a huge AoA while the airframe spun broadside. Now the
+# airframe recovers, and the peak is the single t=5 row of that recovery. While the
+# run stepped against wall-clock frames this number read 0.74, 0.76, 0.79 in three
+# runs, which is why #472's --sim-steps matters: the value is only worth pinning
+# because every run prints the same rows.
+CHECK (lambda ds: 0.45 < max(d["L"] / d["F"] for d in ds) < 0.60)([d for d in drag if d["F"] > 0.0])
 # What the airframe is built from: A is held for 3 s and both rudders reach their
 # travel limit, and the shipped glider has NO pitch surface at all -- the stick
 # cannot ask for nose-up, which is half of why nothing about trim can be tuned on

@@ -43,20 +43,27 @@ CHECK all(d.get("induced", 0.0) == 0.0 for d in drag if d.get("L", 0.0) == 0.0)
 # It flies in the pitch plane: A is the only thing moving and the flow stays on
 # the centreline, so the yaw-plane angle AeroFrame reports stays put.
 CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 5.0
-# PINNING A BUG, NOT CELEBRATING ONE: a held stick puts this airframe 77 deg off
+# PINNING A BUG, NOT CELEBRATING ONE: a held stick puts this airframe 78 deg off
 # the flow and it is still swinging when the case ends. Under --sim-steps the
 # series is fixed, run after run -- all 14 rows of the 840-tick budget, AoA
-# -0.3, 0.3, -0.1, 77.0, -4.1, 66.3, 5.9, -73.8, 12.2, 77.0, 14.2, -67.8, -54.8,
-# 29.3. It does not go over the top -- honest 35 m2 of broadside is real pitch
-# damping, and the first cut of #463 (3.4 m2 broadside, mount offsets dropped) had
-# taken that away, which is why the upper bound below is pinned as firmly as the
-# lower one. #454 (static margin) is what brings the excursion down; when it lands,
-# EXPECT THE LOWER CHECK TO FAIL and re-baseline it to a sane envelope in that
-# commit.
+# -0.3, 0.3, -0.1, 77.8, -5.5, 68.9, 4.5, -75.4, 13.7, 78.4, 13.0, -69.3, -54.6,
+# 30.4. #483 moved these numbers and did NOT settle this airframe, which is the
+# point of running it next to the glider (whose series stops tumbling). The sweep
+# damps a LIFTING surface that the rotation carries through the air; this ship's
+# pitch surfaces are elevons whose force comes from deflection alone (no alpha
+# term, so no sweep, no damping), and its wings sit on the pitch axis, so their
+# sweep runs along the nose and leaves their alpha alone. #454 (a surface's own
+# angle having a say) is what brings the excursion down; when it lands, EXPECT THE
+# LOWER CHECK TO FAIL and re-baseline it to a sane envelope in that commit.
+# It does not go over the top -- honest 35 m2 of broadside is real pitch damping,
+# and the first cut of #463 (3.4 m2 broadside, mount offsets dropped) had taken
+# that away, which is why the upper bound below is pinned as firmly as the lower
+# one.
 CHECK max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) > 60.0
 CHECK max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) < 90.0
 CHECK any(d.get("L", 0.0) == 0.0 for d in drag)
-# RESTORED (0.810 measured; the band is the same width the loose one was). This
+# RESTORED (0.810 measured; 0.808 after #483 -- the swing moved, the ratio did not
+# much). This
 # peak lives inside the swing above, and while the run stepped against wall-clock
 # frames it read 0.75, 0.90, 0.92, 1.16 in four runs -- #472, not physics. With
 # --sim-steps 840 every run of this case prints the same rows (identical to the

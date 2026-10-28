@@ -167,7 +167,14 @@ inline glm::dvec3 liftForce(double q, double S, double cl, double alpha,
    float noise, ~1e-11 N and N m on the totals at 5 deg AoA. Pinned part by part
    over jet.json and glider.json in test_shipload, and as pure geometry in
    tests/test_drag.cpp, because a flight log cannot tell "nothing moved" from
-   "the law is broken". */
+   "the law is broken".
+   That claim is about the FRAMES alone. v_rel here is a per-surface quantity now
+   (#483): the aero pass hands each part v_rel + w x r measured at that part's own
+   offset, so a rotating airframe's surfaces meet a flow the COM does not. That is
+   NOT a no-op on shipped content -- the glider's tumble decays to under 2 deg and
+   it keeps 50% more of its speed. Two claims, two pins: test_shipload for the
+   frames, flight/458-glider for the flow. A body that is not spinning still gets
+   bit-identical numbers, because w x r is exactly zero. */
 struct PartAero {
     double alpha = 0.0;                 // rad, this part's own angle of attack
     glm::dvec3 liftDir = glm::dvec3(0.0);   // unit, this part's own; zero if unusable

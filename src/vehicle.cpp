@@ -2231,6 +2231,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     const auto partPosS = [&](const Part *p) {
         return sPos + sRot * p->localPos;
     };
+    /* The body's spin, relative to frame S -- GetAngVelocity is already S-frame
+       and frame-relative (see the frame-change law, which subtracts the new
+       frame's omega), so vrel + w x r is the air-relative velocity of a point at
+       offset r. Same convention the chute harness uses below. */
+    const glm::dvec3 w = GetAngVelocity(hull);
 
     // One flow frame for every part (one rigid body). Root local axes: nose +Z,
     // right +X, up +Y.
@@ -2256,7 +2261,12 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     const glm::dvec3 vhat    = vrel / std::sqrt(v2);
     // The flow in S: area and dots are rotation-invariant, so rotate the flow, not the verts.
     const glm::dvec3 vhatS   = glm::transpose(sRot) * vhat;
-    const double q = 0.5 * rho * v2;  // dynamic pressure (shared by all parts)
+    /* There is no ship-wide dynamic pressure any more. Every surface law now
+       carries its own, 0.5 * rho * |vrel + w x r|^2, because the flow it answers
+       to is its own (#483). The hull's FORM drag stays a COM-frame quantity on
+       purpose: its area is one union projected on one flow direction, which is a
+       shape property of the whole body rather than of a surface, and per-surface
+       flows would break the shared projection plane the union needs (#463). */
 
     glm::dvec3 ftotal(0.0);
     glm::dvec3 lift_total(0.0);
@@ -2386,10 +2396,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         const glm::dvec3 ri = partPosS(p)
             + sRot * (p->localRot[2] * PartDef::chuteCanopyOffset(*p->def))
             - com;
-        // The flow AT THE CANOPY: vrel plus the rotation sweep (ω x r). That sweep IS
+        // The flow AT THE CANOPY: vrel plus the rotation sweep (w x r). That sweep IS
         // the harness damping -- without it the restoring torque spins the ship up
-        // without bound under its own canopy.
-        const glm::dvec3 vp = vrel + glm::cross(GetAngVelocity(hull), ri);
+        // without bound under its own canopy. Every other surface law now does the
+        // same (#483); this one always has.
+        const glm::dvec3 vp = vrel + glm::cross(w, ri);
         const double vpl = glm::length(vp);
         if(vpl <= 0.0) { continue; }
         const double qpt = 0.5 * rho * vpl * vpl;
@@ -2409,24 +2420,40 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                                // then shows the limiter working.
     }
 
-    // LIFT (per part): each surface lifts on its OWN area at its OWN position and
-    // in its OWN frame (#453) -- the angle a wing is mounted at is incidence, not
-    // decoration. The moment still comes from the surfaces' distribution.
+    // LIFT (per part): each surface lifts on its OWN area at its OWN position, in
+    // its OWN frame (#453), against the flow AT ITSELF (#483) -- the angle a wing
+    // is mounted at is incidence, not decoration, and a wing the body is sweeping
+    // down through the air meets a tilted flow that its twin on the other tip does
+    // not. The moment comes from the surfaces' distribution.
     for(Part *p : parts) {
         if(p->def == nullptr) { continue; }
         const PartDef *d = p->def;
         if(d->lift_area <= 0.0) { continue; }   // the frame is only worth building
                                                 // for a surface that lifts
+        const glm::dvec3 ri = partPosS(p) - com;  // surface's offset from the COM
+        /* The rotation sweep, w x r, is the whole difference: a body turning at w
+           carries this surface through the air at w x r, so its angle of attack
+           tilts by atan(|w x r| / along-flow) and its twin's tilts the other way.
+           Equal and opposite lift changes = a moment that opposes w, which IS
+           aerodynamic damping; the chute harness has always done this (see above)
+           and said so. Measured on the shipped jet mid-swing: |w| up to 2.0 rad/s,
+           |w x r| up to 7.4 m/s against |v_rel| 70-180 m/s -- about 10% of the flow,
+           and a QUARTER of its axial component when the airframe sits 77 deg off
+           it, which is several degrees of local alpha.
+           A body that is not spinning is bit-identical to the old law: w x r is
+           exactly zero, so vp and qp come out of the same arithmetic as the vrel
+           and v2 this loop used. */
+        const glm::dvec3 vp = vrel + glm::cross(w, ri);
+        const double qp = 0.5 * rho * glm::length2(vp);   // this surface's own q
         /* The mount in S: localRot is part-local, sRot carries it into the same
            frame the flow and the hull live in. One mat3 multiply plus two atan2
            per LIFTING part per substep -- not per part, which is why the
            lift_area test above comes first. */
-        const PartAero pa = partAero(sRot * p->localRot, vrel);
+        const PartAero pa = partAero(sRot * p->localRot, vp);
         if(!pa.valid) { continue; }   // a mount with no usable axis lifts nothing
-        const glm::dvec3 flift = liftForce(q, d->lift_area, d->cl, pa.alpha,
+        const glm::dvec3 flift = liftForce(qp, d->lift_area, d->cl, pa.alpha,
                                            pa.liftDir, d->stall_angle);
         if(glm::length2(flift) <= 0.0) { continue; }
-        const glm::dvec3 ri = partPosS(p) - com;  // surface's offset from the COM
         ApplyForce(hull, ri, flift);             // translation + (ri x flift)
         moment += glm::cross(ri, flift);
         ftotal += flift;
@@ -2435,14 +2462,15 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             lastForceVecs.push_back({ ri, flift, kForceLift });
         }
         /* The price of that lift (#462): a surface that turns the flow downward
-           pays induced drag ~ CL^2 / (pi e AR) for it, along the flow. CL comes
+           pays induced drag ~ CL^2 / (pi e AR) for it, along the flow IT feels
+           (#483), not the COM's. CL comes
            from the lift just computed instead of a second curve evaluation --
            same law, so the induced term follows any change to it. The span is
            the mesh's own widest extent across the stack axis (#457), which is
            the span whether the planform was authored along X or Y; for the
            shipped wing that is the same 4 m the authored radius stated. Applied
            at the same offset as the lift, because it is the same wing. */
-        const double clPart = glm::length(flift) / (q * d->lift_area);
+        const double clPart = glm::length(flift) / (qp * d->lift_area);
         const double cdi = inducedCd(clPart, 2.0 * d->meshSpanHalf(), d->lift_area);
         if(cdi <= 0.0) { continue; }
         /* drag_cd scales the hull's air -- form drag and induced alike --
@@ -2450,7 +2478,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
            (0 = no air) would be wrong. A deployed canopy is a separate term below
            and stays unmultiplied: the dial is a hull-law knob, not an atmosphere
            killer. */
-        const glm::dvec3 find = -vhat * (drag_cd * q * d->lift_area * cdi);
+        // glm::length(vp) > 0 here: flift is non-zero, so qp is, so the flow is.
+        const glm::dvec3 find = -(vp / glm::length(vp)) * (drag_cd * qp * d->lift_area * cdi);
         ApplyForce(hull, ri, find);
         moment += glm::cross(ri, find);
         ftotal += find;
@@ -2484,11 +2513,22 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                glider.json the total control force and moment are unchanged by this
                (pinned in test_shipload): a fin and its twin, mounted 180 deg apart
                on the stack, flip their normals and their deflections together. */
-            const PartAero pa = partAero(sRot * p->localRot, vrel);
+            /* The flow AT THE SURFACE (#483), for the same reason the lift loop
+               pays it: a body turning at w drags its surfaces through the air, so a
+               fin 4 m behind the COM meets a flow tilted by w x r -- ~7 m/s at the
+               |w| this jet reaches mid-swing. What that tilts here is the force
+               DIRECTION (liftDir) and the sign of the leverage, not the magnitude:
+               controlForce is a deflection law, with no alpha term, so a surface
+               this airframe has not touched with the stick still makes no force
+               however it is swinging (#454 is what gives a surface a say from its
+               own angle). */
+            const glm::dvec3 ri = partPosS(p) - com;
+            const glm::dvec3 vp = vrel + glm::cross(w, ri);
+            const double qp = 0.5 * rho * glm::length2(vp);
+            const PartAero pa = partAero(sRot * p->localRot, vp);
             const glm::dvec3 forceDir = pa.liftDir;   // zero when the frame is unusable
             const glm::dvec3 about =
                 (ax.aboutAxis == 0) ? right : (ax.aboutAxis == 1) ? up : nose;
-            const glm::dvec3 ri = partPosS(p) - com;
             /* The deflection sign is POSITION-DEPENDENT: a tail and a canard need
                opposite deflections for the same torque (controlDeflectionSign). With
                no usable flow the surface makes no force at all, and controlDeflectionSign
@@ -2501,7 +2541,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             p->controlDefl = deflection;  // the mesh swing (Vehicle::Draw)
             lastControlDeflections.push_back({d, ctrlIndex++, deflection});
             if(sv == 0.0f || clc <= 0.0 || deflection == 0.0) { continue; }
-            const glm::dvec3 F = controlForce(q, d->control_area, clc,
+            const glm::dvec3 F = controlForce(qp, d->control_area, clc,
                                               deflection, forceDir);
             if(glm::length2(F) <= 0.0) { continue; }
             ApplyForce(hull, ri, F);

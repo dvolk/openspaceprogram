@@ -1890,7 +1890,10 @@ void drawUIReadouts(Game &g) {
            outside an atmosphere. Same number --drag-log prints. It is an
            attitude reading, not what any one surface feels: since #453 every
            lifting and steering part works out its own alpha from its own mount,
-           so on an airframe with incidence or dihedral no single angle explains
+           and since #483 from the flow AT ITS OWN OFFSET too (a rotating body
+           sweeps its surfaces through the air at w x r, worth several degrees of
+           local alpha mid-swing on the shipped jet). On any airframe with
+           incidence, dihedral, or a rotation under way, no single angle explains
            the forces this ship makes. */
         if(ship->lastDragAlphaValid) {
             ImGui::Text("AoA: %.2f", glm::degrees(ship->lastDragAlpha));
@@ -1952,7 +1955,8 @@ void drawUIReadouts(Game &g) {
                    o.energy);
             /* aoa: the airframe's angle of attack (see the SURFACE window -- the
                attitude reading, not a per-surface one; #453 made each surface
-               compute its own). "-" when there is no flow to have an angle to --
+               compute its own from its mount and #483 from the flow at its own
+               offset). "-" when there is no flow to have an angle to --
                vacuum, or sitting still in air -- the same way [orbinfo] prints
                "-" for a missing apoapsis. */
             char aoa_s[32];
