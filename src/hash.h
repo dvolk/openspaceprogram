@@ -6,12 +6,17 @@
 // table cache, staging.cpp).
 
 #include <cstdint>
-#include <cstring>   // memcpy, for a double's exact bits
 #include <string>
 
 namespace fnv {
 
-inline uint64_t start() { return 1469598103934665603ull; }
+/* FNV-1a 64's offset basis, the canonical 14695981039346656037.
+   Anything already hashed with a different start is stale by definition: the
+   staging signature is a per-session cache key (nothing notices), and a part
+   geometry fingerprint is stamped into saves, so changing this is exactly what
+   shipdef.cpp's kGeomEpoch says a geometry-invalidator is for. Do not "fix" it
+   quietly. */
+inline uint64_t start() { return 14695981039346656037ull; }
 
 // Eight mixes, low byte first.
 inline void mix(uint64_t &h, uint64_t v) {
@@ -20,12 +25,16 @@ inline void mix(uint64_t &h, uint64_t v) {
     }
 }
 
-// A double's exact bit pattern: the fingerprint moves when the number does, and
-// -0.0 is not mixed as if it were 0.0.
+/* A double's exact bytes, in address order: the same value on the same file
+   means the same hash on any host, which mixDouble-by-way-of-uint64 would not
+   give (it mixes the integer's low byte first, and that is the high address on
+   a big-endian machine). Same order as `mix` on the little-endian hosts that
+   write today's saves, so this changes no stored value. */
 inline void mixDouble(uint64_t &h, double d) {
-    uint64_t bits;
-    std::memcpy(&bits, &d, sizeof(bits));
-    mix(h, bits);
+    const unsigned char *b = reinterpret_cast<const unsigned char *>(&d);
+    for(size_t i = 0; i < sizeof(d); i++) {
+        h = (h ^ (uint64_t)b[i]) * 1099511628211ull;
+    }
 }
 
 // The length goes in first so "ab","c" and "a","bc" are not one byte stream.

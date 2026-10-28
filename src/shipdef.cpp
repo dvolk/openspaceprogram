@@ -78,9 +78,20 @@ static glm::dvec3 parse_vec3(const nlohmann::json &obj, const char *key,
    is that a re-export changing only comments or float precision moves the value
    too -- a false refusal, which is the safe direction: it costs a sentence
    rather than flying a ship nobody built. */
+/* Bump when the SHAPE a mesh file yields changes without the file's bytes
+   changing. A saved pose was solved against the hull assimp BUILT from the .obj
+   (vab.cpp raycasts body->hullVerts, part.cpp feeds get_mesh through
+   mesh.cpp's post-processing flags), so an assimp pin bump or a flag change
+   moves every hull and leaves every .obj byte identical -- #456's failure mode
+   with nothing in the file to see it. This is also the lever for any change to
+   what partGeomFingerprint itself covers: bump it and every existing save says
+   so in words, rather than as a pair of meaningless hex numbers. */
+static const uint64_t kGeomEpoch = 1;
+
 uint64_t partGeomFingerprint(const PartDef &d) {
     if(d.fuel_link) { return 0; }   // a marker entry: no body, so no shape
     uint64_t h = fnv::start();
+    fnv::mix(h, kGeomEpoch);
     fnv::mixText(h, d.mesh);
     fnv::mixDouble(h, d.radius);
     fnv::mixDouble(h, d.height);
@@ -88,7 +99,10 @@ uint64_t partGeomFingerprint(const PartDef &d) {
     if(!m.is_open()) {
         /* Unreadable folds in one stable value rather than throwing: the
            catalog has never required the file to exist (tests name "a.obj"),
-           and a file that appears later moves the fingerprint, as it should. */
+           and a file that appears later moves the fingerprint, as it should. An
+           EMPTY file hashes the same as a missing one -- both mean "no geometry
+           to read here", and the mesh path mixed above keeps the two parts
+           apart. */
         fnv::mix(h, 0);
     } else {
         uint64_t total = 0;

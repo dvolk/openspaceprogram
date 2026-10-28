@@ -1274,6 +1274,11 @@ void discardSaveWorld(BuiltSave *b);
    tears the running game down, so anything worth refusing has to be caught
    before that -- against the target `sys`, already loaded but not installed, and
    against `roster`, the cast list standing now: a save that carries its own is
-   checked against its own, exactly as the builders will resolve it (#302, #303). */
+   checked against its own, exactly as the builders will resolve it (#302, #303).
+   `allowGeomDrift` is the game's --allow-part-geom-drift: a part whose geometry
+   has moved since the save is a refusal unless the player asked to fly it anyway
+   (#456). It must be passed here too, or preflight refuses a load the build
+   would have allowed. */
 std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
-                          const System &sys, const CrewRoster &roster);
+                          const System &sys, const CrewRoster &roster,
+                          bool allowGeomDrift);

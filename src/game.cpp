@@ -961,7 +961,8 @@ bool Game::ensureSystemForSave(const std::string &dir, bool *switched) {
         std::string why;
         try {
             validate_world_buildings(newSys, buildings);
-            why = preflightSave(dir, parts, newSys, roster);
+            why = preflightSave(dir, parts, newSys, roster,
+                                args.allow_part_geom_drift);
         } catch(const std::exception &e) {
             why = e.what();
         }
@@ -1010,7 +1011,8 @@ bool Game::loadFrom(const std::string &dir) {
 
     if(!cross) {
         try {
-            if(std::string why = preflightSave(dir, parts, sys, roster);
+            if(std::string why = preflightSave(dir, parts, sys, roster,
+                                               args.allow_part_geom_drift);
                !why.empty()) {
                 printf("[load] refused %s: %s\n", dir.c_str(), why.c_str());
                 printf("[load] running game unchanged (t=%.1f, warp %d, "
@@ -1071,7 +1073,8 @@ bool Game::loadFrom(const std::string &dir) {
     BuiltSave *built = nullptr;
     try {
         validate_world_buildings(newSys, buildings);
-        if(std::string why = preflightSave(dir, parts, newSys, roster);
+        if(std::string why = preflightSave(dir, parts, newSys, roster,
+                                           args.allow_part_geom_drift);
            !why.empty()) {
             printf("[load] refused %s: %s (before the system switch)\n",
                    dir.c_str(), why.c_str());

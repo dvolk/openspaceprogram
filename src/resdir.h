@@ -10,6 +10,7 @@
 // directory as the hint before anything loads; with no hint -- a test harness, a
 // lost binary -- the search starts at cwd.
 
+#include <cassert>
 #include <filesystem>
 #include <string>
 
@@ -22,10 +23,19 @@ inline std::string &hint() {
     return h;
 }
 
+// Set once root() has searched: after that a hint can never take effect, and a
+// silent no-op is how an install-tree launch (cwd far from res/) starts loading
+// the wrong tree -- invisible in the dev tree, where cwd IS the repo.
+inline bool &frozen() {
+    static bool f = false;
+    return f;
+}
+
 // Call once at startup with SDL_GetBasePath()'s answer (SDL owns the pointer --
-// do not free it, and do not call this after the first path(), which has
-// already resolved the root).
+// do not free it). It must precede the first path(): that ordering is the whole
+// contract, so it asserts rather than degrades.
 inline void setHint(const char *base) {
+    assert(!frozen());
     if(base == nullptr) { return; }
     if(!hint().empty()) { return; }
     hint() = base;
@@ -34,6 +44,7 @@ inline void setHint(const char *base) {
 // The install root that contains res/ (trailing '/'). Resolved once.
 inline const std::string &root() {
     static const std::string r = []() -> std::string {
+        frozen() = true;
         namespace fs = std::filesystem;
         fs::path p = hint().empty() ? fs::path(".") : fs::path(hint());
         // Each level: <dir>/res (dev tree) or

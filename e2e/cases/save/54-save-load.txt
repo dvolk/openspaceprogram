@@ -23,9 +23,11 @@ EXPECT Loaded game from e2e/fixtures/save_racer (active: racer)
 EXPECT [toast] Loaded fixtures/save_racer
 # Every committed fixture predates the per-part geometry fingerprint (#456), so
 # the load says so once per ship instead of quietly keeping the ship unverifiable:
-# the next save from that game pins each part's shape. Case 456 is the half where
-# a recorded fingerprint DOES disagree.
-EXPECT [load] note: saved ship 'racer' records no part geometry
+# the next save from that game pins each part's shape. Toasted, not printed -- a
+# note that only reaches a console is a note nobody reads. Case 456 is the half
+# where a recorded fingerprint DOES disagree.
+EXPECT [toast] Load note: saved ship 'racer' records no part geometry
+CHECK len([t for t in toast if "records no part geometry" in t]) == 1
 EXPECT [orbitlog]
 CHECK len(orbit) >= 2
 CHECK first(orbit)["r"] > 6e5 and first(orbit)["r"] < 7.2e5

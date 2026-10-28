@@ -97,6 +97,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "User data directory (saves/ + settings.json). Default: "
                    "the per-OS user data directory (on Linux: "
                    "~/.local/share/openspaceprogram/)");
+    app.add_flag("--allow-part-geom-drift", args.allow_part_geom_drift,
+                 "Load a ship whose parts have changed shape since the save "
+                 "instead of refusing it (#456). A save keeps solved part "
+                 "positions, so this rebuilds the saved positions against "
+                 "today's meshes: wings can end up buried in a fuselage or "
+                 "floating beside a wing it was bolted to. The load prints one "
+                 "line per affected ship. For retaking a save you know moved, "
+                 "not for ignoring the warning.");
 
     // Spin-test ship (no JSON def); all parts are passive tanks, so any spin is
     // self-inflicted.

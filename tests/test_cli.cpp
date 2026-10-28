@@ -161,6 +161,21 @@ int main() {
         assert(args.recover_anywhere);
     }
 
+    // 3b') --allow-part-geom-drift: off by default, because the default for a
+    //      save whose parts changed shape is to refuse it (#456). On, it loads
+    //      the ship reshaped and says so -- so the flag's spelling is part of
+    //      the contract the refusal message points at.
+    {
+        GameArgs args;
+        assert(!args.allow_part_geom_drift);
+        const char *argv[] = {"osp", "--allow-part-geom-drift"};
+        bool ok = false;
+        int code = -1;
+        run(2, (char **)argv, args, ok, code);
+        assert(ok);
+        assert(args.allow_part_geom_drift);
+    }
+
     // 3c) --ui-click: one value per click, split at the FIRST comma so the
     //     path keeps its own commas (and its spaces, which the shell / the
     //     e2e ARGS line quote away). --ui-list is the one-shot dump time.

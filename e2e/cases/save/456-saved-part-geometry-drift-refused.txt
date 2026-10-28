@@ -22,7 +22,9 @@ ARGS --ui-click 4000,"Save/Load/Load##saveload"
 # bytes + radius/height + attach nodes, shipdef.cpp) recorded -- all four true
 # except engine_1's last hex digit, which stands for a mesh or size edit. The
 # three true ones matter: the refusal has to name the part that moved rather
-# than the first entry it walked past.
+# than the first entry it walked past. Its sibling case
+# 456-saved-parent-shape-drift-refused corrupts the ROOT instead, which is the
+# half of the rule that protects a child solved against a moved parent.
 EXPECT load: saved ship 'racer' part 'engine_1' is the part 'engine', whose geometry is not what this save recorded
 EXPECT [load] refused
 FORBID Loaded game from

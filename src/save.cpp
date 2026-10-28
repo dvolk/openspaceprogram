@@ -618,17 +618,24 @@ static TerrainBody *resolveBody(const System &sys, const std::string &name,
 
    buildShipFromSaveParts relies on this; preflightSave runs it over the whole
    save BEFORE a cross-system switch tears the running game down (#302).
-   `note` (optional) takes the one sentence a save that predates the part
-   geometry key deserves; the caller that is actually loading prints it, so a
-   path that preflights and then builds says it once rather than twice. */
+   `note` (optional) takes the one sentence a ship whose geometry has moved (or
+   predates the key) deserves; the caller that is actually loading prints it, so
+   a path that preflights and then builds says it once rather than twice, and a
+   load that later refuses a different ship never prints a promise it will not
+   keep. `allowDrift` (--allow-part-geom-drift) downgrades a mismatch to that
+   note: the shapes moved, the poses are what the save recorded, and the player
+   asked to fly it. */
 static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
                                      std::set<uint64_t> &saveUids,
+                                     bool allowDrift,
                                      std::string *note = nullptr) {
     std::set<uint64_t> prior;   // uids at earlier indices of THIS ship
     /* The uids that are somebody's parent. Together with a part's own parent
        field, that is the set of parts whose SHAPE a saved pose was solved
-       between -- a lone part (a walking kerbal's suit) is in no such relation,
-       so retouching its mesh must not cost the save. */
+       between. The only thing it excludes is a ship with one part and no seam
+       to anybody -- nothing was solved between two shapes, so retouching that
+       part's mesh must not cost the save. (A walking kerbal is not that case:
+       an is_crew ship never comes here at all, it goes to buildKerbalFromSave.) */
     std::set<uint64_t> parents;
     for(const SavePart &sp : s.parts) {
         if(sp.parent != 0) { parents.insert(sp.parent); }
@@ -676,12 +683,24 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
                             " its geometry.";
                 }
             } else if(sp.geom != now) {
-                return "load: saved ship '" + s.name + "' part '" + sp.id
-                       + "' is the part '" + sp.part + "', whose geometry is not"
-                       + " what this save recorded (it recorded " + sp.geom
-                       + ", the parts file now says " + now
-                       + "). A save keeps solved part positions, so this ship"
-                       + " would rebuild reshaped -- rebuild it in the VAB.";
+                const std::string moved
+                    = "saved ship '" + s.name + "' part '" + sp.id
+                      + "' is the part '" + sp.part + "', whose geometry is not"
+                      + " what this save recorded (it recorded " + sp.geom
+                      + ", the parts file now says " + now + ")";
+                if(!allowDrift) {
+                    return "load: " + moved
+                           + ". A save keeps solved part positions, so this ship"
+                           + " would rebuild reshaped -- rebuild it in the VAB,"
+                           + " or pass --allow-part-geom-drift to load it as it"
+                           + " was saved and see what it flies like.";
+                }
+                if(note != nullptr && note->empty()) {
+                    *note = moved
+                            + ": loading it anyway (--allow-part-geom-drift),"
+                            + " so its parts sit where the save put them against"
+                            + " shapes that have since moved.";
+                }
             }
         }
         if(std::string why = refuseBadContents(
@@ -811,23 +830,24 @@ static std::string validateCrewPool(const std::vector<SavePart> &pool,
 // `savedUidToPart` (optional) is the caller's because it must span every ship
 // file -- a dock target's port lives in another ship.
 Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
-                                std::map<uint64_t, Part *> *savedUidToPart) {
+                                std::map<uint64_t, Part *> *savedUidToPart,
+                                std::vector<std::string> *notes) {
     const PartsCatalog &cat = g.parts;
     /* Validate before constructing: nothing to unwind, and the same walk is what
        preflightSave runs before a cross-system switch (#302). The geometry note
-       rides out rather than printing here because a sheet load validates twice
-       (preflight, then this), and a promise to the player belongs on the path
-       that is actually loading the ship. */
+       is handed to the caller rather than printed here: a load builds every
+       ship before it commits, and a "re-save it to pin its geometry" promise
+       printed for ship A and then thrown over ship B describes a load that never
+       happened. load_game says them once the world is really loaded. */
     std::set<uint64_t> saveUids;
     std::string geomNote;
-    if(std::string why = validateShipParts(s, cat, saveUids, &geomNote);
+    if(std::string why = validateShipParts(s, cat, saveUids,
+                                           g.args.allow_part_geom_drift,
+                                           &geomNote);
        !why.empty()) {
         throw std::runtime_error(why);
     }
-    if(!geomNote.empty()) {
-        printf("[load] note: %s\n", geomNote.c_str());
-        fflush(stdout);
-    }
+    if(!geomNote.empty() && notes != nullptr) { notes->push_back(geomNote); }
     // Resolve the scenario BEFORE constructing: it throws, and the rollback
     // only walks `built`.
     const ScenarioDef *scn = resolveScenario(s.scenario);
@@ -1275,7 +1295,8 @@ static bool systemHasCrewPad(const System &sys) {
    dangling body name did, and each is a state the game cannot reach -- the rules
    above are the ones a hand-edited or older file hits. */
 std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
-                          const System &sys, const CrewRoster &roster) {
+                          const System &sys, const CrewRoster &roster,
+                          bool allowGeomDrift) {
     SaveMeta meta;
     try {
         meta = saveMetaFromJson(readJsonFile(dir + "/save.json"));
@@ -1315,7 +1336,12 @@ std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
         } catch(const std::exception &e) {
             return e.what();
         }
-        if(std::string why = validateShipParts(s, cat, saveUids); !why.empty()) {
+        /* No note out of here: preflight is a pre-check, and the load that
+           follows it says the sentence once (buildShipFromSaveParts →
+           load_game). A cross-system switch that refuses here has not torn the
+           running game down yet, which is the whole point of preflighting. */
+        if(std::string why = validateShipParts(s, cat, saveUids, allowGeomDrift);
+           !why.empty()) {
             return why;
         }
         if(s.is_crew) {
@@ -1413,6 +1439,10 @@ struct BuiltSave {
     std::map<std::string, Vehicle *> bySlug;
     std::map<uint64_t, Part *> savedUidToPart;
     std::string dir;
+    /* #456: what the build wants said about part geometry once the load has
+       actually happened -- per ship, in ship order. Printed by load_game, not
+       here, because a build that throws over one ship discards them all. */
+    std::vector<std::string> geomNotes;
     // Roster rollback (RosterRollback's job, deferred to the commit).
     CrewRoster *roster = nullptr;
     std::vector<KerbalProfile> rosterPrior;
@@ -1485,7 +1515,8 @@ BuiltSave *buildSaveWorld(Game &g, const LoadWorld &w, const std::string &dir) {
         const SaveShip &s = out->saves[i];
         built[i] = s.is_crew
             ? buildKerbalFromSave(g, ww, s)
-            : buildShipFromSaveParts(g, ww, s, &out->savedUidToPart);
+            : buildShipFromSaveParts(g, ww, s, &out->savedUidToPart,
+                                     &out->geomNotes);
         out->bySlug[meta.ships[i]] = built[i];
     }
     /* The pad's cast is built in the same transaction as the ships: the
@@ -1671,6 +1702,28 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
                active->displayName().c_str(), activeSlug.c_str());
     } else {
         printf("Loaded game from %s (active: (none))\n", b->dir.c_str());
+    }
+    /* #456: the build collected one sentence per ship whose part geometry is
+       unverifiable or has moved. They are said HERE, after the load succeeded,
+       rather than as each ship was built: a build that refuses a later ship
+       throws and discards the earlier ones, and a "re-save it to pin its
+       geometry" promise printed for ship A would then describe a load that never
+       happened. Toasted rather than printed: a player who never opens a console
+       still has to learn their ship is one parts-file edit from a reshaped hull
+       -- a stdout-only note is a note nobody reads. */
+    /* The save names the parts file it was written against (save.json's
+       "parts"), and nothing has read that name back: #389 made the RUNNING
+       catalog authoritative. So --parts-file tmp/experiment.json + F5 stamps an
+       experimental shape into the save, and the next default-catalog load
+       refuses every part with a sentence that blames the meshes. Name both
+       catalogs before that confusion starts (#456). */
+    if(!meta.parts.empty() && meta.parts != g.args.parts_file) {
+        g.toast("Load note: this save was written against the parts file %s;"
+                " this game is using %s", meta.parts.c_str(),
+                g.args.parts_file.c_str());
+    }
+    for(const std::string &n : b->geomNotes) {
+        g.toast("Load note: %s", n.c_str());
     }
 }
 

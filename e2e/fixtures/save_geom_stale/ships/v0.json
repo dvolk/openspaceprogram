@@ -18,7 +18,7 @@
         0.0,
         0.0
       ],
-      "geom": "00e05315d9418146",
+      "geom": "81fb7e1f5bdeed2f",
       "id": "capsule_1",
       "part": "capsule",
       "seats": [
@@ -54,7 +54,7 @@
         0.0,
         0.0
       ],
-      "geom": "6b97f685d2bd74fb",
+      "geom": "fee5c00de77ca96e",
       "id": "reaction_wheel_1",
       "parent": 1,
       "part": "reaction_wheel",
@@ -77,7 +77,7 @@
         0.0,
         0.0
       ],
-      "geom": "218d541e1c77e73a",
+      "geom": "b784b012319f8af9",
       "id": "fuel_tank_1",
       "parent": 2,
       "part": "fuel_tank",
@@ -100,7 +100,7 @@
         0.0,
         0.0
       ],
-      "geom": "7c393d08a5396ce9",
+      "geom": "aeca0efd6dea53e9",
       "id": "engine_1",
       "parent": 3,
       "part": "engine",

@@ -1,0 +1,24 @@
+NAME saved-parent-shape-drift-refused
+CLAIM A save is also refused when the part that MOVED is the parent a pose was solved against, not the child holding the pose.
+KIND invariant
+ARGS --timeout 9
+# The other half of validateShipParts' pose-relation rule (#456). A child's
+# position came out of the PARENT's shape -- its radius and surface node -- so a
+# stale fingerprint on the ROOT part means every child sitting off it is now in
+# the wrong place, even though each child's own part is untouched. Case 456
+# corrupts the leaf (engine_1) and so only pins the "has a parent" half; this one
+# corrupts capsule_1, the root, which nothing else would catch.
+# Same fixture ship otherwise: all four fingerprints true except one hex digit.
+ARGS --sim-press 500,0,F1
+ARGS --ui-click 1000,"Game Debug/Load e2e fixture saves"
+ARGS --sim-press 1500,0,F1
+ARGS --ui-click 2000,"Title Menu/Save/Load"
+ARGS --ui-click 2500,"fixtures"
+ARGS --ui-type 3000,"Save/Load/##filter",save_geom_stale_root
+ARGS --ui-click 3800,"save_geom_stale_root"
+ARGS --ui-click 4000,"Save/Load/Load##saveload"
+EXPECT load: saved ship 'racer' part 'capsule_1' is the part 'capsule', whose geometry is not what this save recorded
+EXPECT [load] refused
+FORBID Loaded game from
+FORBID error:
+FORBID FAILED

@@ -45,6 +45,11 @@ struct GameArgs {
     // --load replaces the ships at startup. Bare names resolve under saves/.
     std::string load_name;
     std::string data_dir;   // user data directory; empty = per-OS default
+    /* --allow-part-geom-drift: load a ship whose recorded part geometry no longer
+       matches the parts file instead of refusing it (#456). The poses are what
+       the save solved; the parts are today's shapes, so the ship may be reshaped
+       in ways the sim will happily fly. */
+    bool allow_part_geom_drift = false;
 
     std::string radial_test;
     std::string autopilot;  // engage a slew mode at startup

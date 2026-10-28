@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <dirent.h>
@@ -158,6 +159,39 @@ int main() {
                      R"("texture":"textures/capsule.png","mass":10.0,)"
                      R"("radius":1.0,"height":2.0})", "missing2") == missing);
         CHECK(missing != g0);
+        /* The mesh-byte half above only means anything if the meshes are
+           readable: run this test somewhere without res/ and every check above
+           passes while no file is ever opened. Say so out loud instead. */
+        CHECK(std::filesystem::exists("res/meshes/capsule.obj"));
+
+        /* The two #456 fixtures carry REAL fingerprints, so retouching one of
+           those four meshes makes them stale. Pin them here, where the failure
+           says "the fixture is out of date, re-stamp it", rather than surfacing
+           as an e2e refusal that names a part the case never touched. */
+        struct GeomFixture { const char *path; const char *badId; };
+        const GeomFixture fxs[] = {
+            // The deliberate drift each case is about is the LAST hex digit.
+            { "e2e/fixtures/save_geom_stale/ships/v0.json", "engine_1" },
+            { "e2e/fixtures/save_geom_stale_root/ships/v0.json", "capsule_1" },
+        };
+        for(const GeomFixture &fx : fxs) {
+            std::ifstream f(fx.path);
+            CHECK(f.is_open());   // a fixture that moved fails here, not in e2e
+            if(!f.is_open()) { continue; }
+            nlohmann::json doc = nlohmann::json::parse(f, nullptr, false);
+            CHECK(!doc.is_discarded());
+            if(doc.is_discarded() || !doc.contains("parts")) { continue; }
+            for(auto &&e : doc["parts"]) {
+                const std::string id = e.value("id", std::string(""));
+                const PartDef *pd = cat.find(e.value("part", std::string("")));
+                CHECK(pd != nullptr);
+                if(pd == nullptr) { continue; }
+                const std::string want = geomFingerprintHex(pd->geom_fingerprint);
+                const std::string have = e.value("geom", std::string(""));
+                if(id == fx.badId) { CHECK(have != want); }
+                else { CHECK(have == want); }
+            }
+        }
     }
 
     // controlAxisParams: the pure axis -> (moment axis, force plane, stick,

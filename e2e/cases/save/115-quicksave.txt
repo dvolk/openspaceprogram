@@ -11,4 +11,9 @@ EXPECT -game1/quicksave-01 (game 'game1')
 EXPECT quicksave-01 (active: racer)
 EXPECT [toast] Quicksaved quicksave-01 (game 'game1')
 EXPECT [toast] Loaded quicksave-01
+# The write side of #456, which no stdout line shows: the save the GAME wrote
+# must pin each part's shape. Without this the two refusal cases could pass on
+# hand-written JSON while the writer silently stopped recording, leaving every
+# future save unverifiable.
+FILE saves/*/quicksave-01/ships/v0.json '"geom"'
 FORBID error:

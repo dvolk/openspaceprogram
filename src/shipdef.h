@@ -118,7 +118,9 @@ struct PartDef {
        #456) because a save keeps SOLVED part poses rather than the attach spec
        that produced them, so if any of this moves after the save the ship it
        rebuilds is not the ship that was flown. 0 = no body to shape (a virtual
-       fuel_link def), which is also "absent" in the save format. */
+       fuel_link def, which refuseVirtualPartDef never lets into a save anyway);
+       an absent key in a save is its own thing -- an empty string, "we do not
+       know", not this zero. */
     uint64_t geom_fingerprint = 0;
 
     const Node *findNode(const std::string &id) const {
@@ -588,9 +590,11 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog);
    A mesh file that cannot be read folds in an empty stream rather than
    throwing: the catalog never required the file to exist, and a file that shows
    up later moves the fingerprint -- which is the point.
-   Not covered: a part's drag/lift areas. They ride on the same fields but a
-   saved pose does not depend on them, and #389 made catalog numbers
-   authoritative over what a save carries. */
+   Not covered: what a part's geometry DOES rather than where it sits -- its
+   drag and lift areas, and the chute canopy anchor (shipdef.h puts it at
+   height/2 + 0.75*sqrt(chute_area), so retuning chute_area visibly moves the
+   canopy on an already-saved ship). #389 made those catalog-only, and a saved
+   pose does not depend on them. */
 uint64_t partGeomFingerprint(const PartDef &d);
 
 /* The fingerprint as 16 lowercase hex digits -- what a save writes and reads
