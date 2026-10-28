@@ -648,7 +648,9 @@ def _edit_one(tracker, labels, index, args, want_ids, gone_ids):
                  f"request, or the issue may be in another repo (numbers are "
                  f"shared)")
             return None, False
-        if status != 200:
+        # 201 for an update, measured on this server: it is Gitea saying "here is
+        # the object", not a second create.
+        if status not in (200, 201):
             note(f"issue {index}: the title/body/state write was refused "
                  f"(HTTP {status}: {_why(issue)})")
             return None, False
