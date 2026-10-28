@@ -401,12 +401,16 @@ inline double unionProjectedArea(const std::vector<std::vector<glm::dvec2>> &pol
 
    A cell whose corners are not all filled reports a MISS and the caller uses the
    exact area for the direction it is already flying -- which the per-part
-   projections it computes anyway give for free. The cache is therefore never a
-   cost: the worst case equals the uncached law, and filling is pure saving. */
+   projections it computes anyway give for free. So a MISS is never wrong, but it
+   is not free either: the substep pays its own exact pass PLUS up to `budget` node
+   evaluations. Filling trades this substep's time for later hits; the caller keeps
+   the budget small. Cost of one node pass, measured on a pod-plus-two-plates hull:
+   0.009 ms at 13 parts, 0.18 ms at 100, 0.58 ms at 200 -- the overlap prune is
+   pair-wise, so it grows quadratically with the part count. */
 struct SilhouetteMemo {
     // 5 deg nodes over +-75 deg in both angles. kFoldHalf is the atan2 chart's
-    // own bound: past +-90 the flow comes from behind, and a silhouette is
-    // symmetric in the view direction, so those directions fold onto this chart
+    // own bound: past +-90 the flow comes from behind, and both angles enter a
+    // direction through tan(), whose period folds those directions onto this chart
     // (see fold). The cached range stops short of that bound on purpose -- see
     // the note on kHalf.
     static constexpr int kSteps = 31;
@@ -414,15 +418,17 @@ struct SilhouetteMemo {
     // The angles parameterise a direction as tan(alpha), tan(beta), which blows up
     // at 90 deg, so cells near +-90 span an enormous slice of direction space and
     // blending across them is poor -- at the rim the parameterisation is not merely
-    // coarse but ambiguous (see flowDirection). Measured over the folded sphere,
-    // 31 nodes: worst blend error 0.7% for a smooth silhouette, 5.0% for a
-    // plate-dominated one (a wing-led ship is the sharp case) with this +-75
-    // range; the +-90 range Stage 1 first shipped measures 6.9%. So the cached
-    // range stops at 75 deg: it holds the blend error to a few percent and refuses
-    // the rim, where the extreme attitudes MISS and the caller's exact union --
-    // which it can compute anyway -- answers them instead.
+    // coarse but ambiguous (see flowDirection). Measured over the folded sphere on
+    // a jet-shaped hull (pod + two 8 m plates, mounts honoured): worst 8.3%, mean
+    // 0.22% in-chart (tmp/review_20261028/probe_chart.cpp). Widening this to +-90
+    // with 37 nodes keeps the same 5 deg cells and the same error, so the narrower
+    // range buys nothing in resolution -- it exists to refuse the rim, where the
+    // blend is unbounded. The 8% lives in the middle of the chart instead: the
+    // union JUMPS where a part slides in or out of another part's shadow, and no
+    // smooth interpolation of neighbouring nodes follows a jump. #473.
     static constexpr double kHalf = 75.0 * std::numbers::pi_v<double> / 180.0;
     static constexpr double kStep = (2.0 * kHalf) / (kSteps - 1);
+    static_assert(kHalf <= kFoldHalf, "the chart may not exceed the fold's own chart");
 
     std::vector<float> area;       // [m^2]; node (i, j) at j * kSteps + i
     std::vector<uint32_t> stamp;   // the generation the node was filled at
@@ -433,35 +439,43 @@ struct SilhouetteMemo {
         stamp.assign(kSteps * kSteps, 0u);
         gen = 1;                   // 0 means "never filled"
     }
-    // Drop the table without allocating. A ship with no parts has no silhouette
-    // to remember: a filled node outliving its hull would charge drag for a body
-    // that is not there, and the old balloon law could not do that because an
-    // empty hull projected to zero area.
+    /* Free the table. A ship that stops having parts stops having a silhouette:
+       a node outliving its hull would report an area for a body that is not
+       there, and the old balloon law could not do that because an empty hull
+       projected to zero area. Frees the buffer on purpose -- this is called when
+       a ship is absorbed, and the shell may live on. */
     void clear() {
-        area.clear();
-        stamp.clear();
+        std::vector<float>().swap(area);
+        std::vector<uint32_t>().swap(stamp);
         gen = 0;
     }
+    // Geometry changed: nothing in the table is trustworthy. No allocation here --
+    // a parked or orbital ship that never flies in a direction should not pay
+    // 7.7 kB for a table it never consults (fillAround allocates on first use).
     void invalidate() {
-        if(area.empty()) { reset(); }
-        else { gen++; }
+        gen++;
+        if(gen == 0) { gen = 1; }   // skip 0: it means "never filled"
     }
     bool empty() const { return area.empty(); }
 
     static double alphaAt(int i) { return -kHalf + i * kStep; }
     static double betaAt(int j) { return -kHalf + j * kStep; }
 
-    /* AeroFrame's angles come from atan2 over the SAME denominator, dot(v, nose),
-       so a flow from behind the nose lands past +-90 in BOTH at once. A silhouette
-       is symmetric in the view direction, so the back hemisphere folds onto this
-       chart by REVERSING the flow: each angle wraps by 180 under its own sign.
-       That reversal is the exact symmetry (a projected point set seen from the
-       other side is its mirror image -- same area, same overlaps). Note it is not
-       180 - alpha, which would mirror the ship's left and right and charge a
-       broadside for a quartering one. Wrapping only alpha keys a straight-tail
-       flow as a quartering one, and leaving beta un-wrapped was the bug: a
-       straight-down flow landed in the straight-up row and a straight-tail flow
-       in the quartering one. The clamps are insurance for a hand-fed pair. */
+    /* AeroFrame's two angles come from atan2 over the SAME denominator, dot(v,
+       nose), so a flow from behind the nose lands past +-90 in BOTH at once. Both
+       angles only ever build a direction through tan() (see flowDirection), and tan
+       has period 180, so re-expressing an angle by -+180 names the SAME flow line:
+       the fold is exact, not an approximation. (The other symmetry, area(d) ==
+       area(-d), is real but is not what this leans on -- a half turn in one angle
+       is not a flow reversal.) Each angle wraps under ITS OWN sign, because that is
+       what atan2 emitted: (-135, +157) wraps to (+45, -23) and both name one
+       direction. Wrapping only alpha -- the bug this pins -- left beta at the clamp
+       below, so a straight-tail flow keyed the straight-up cell: 9% off on a
+       jet-shaped hull (tmp/review_20261028/probe_chart.cpp), and the error grows
+       with how far the ship has yawed off its tail. Note it is NOT 180 - alpha,
+       which would mirror the ship's left and right and charge a broadside for a
+       quartering one. The clamps are insurance for hand-fed pairs only: one angle
+       cannot cross the bound without the other, since they share a denominator. */
     static void fold(double &alpha, double &beta) {
         if(alpha > kFoldHalf) { alpha -= std::numbers::pi; }
         else if(alpha < -kFoldHalf) { alpha += std::numbers::pi; }
@@ -520,12 +534,16 @@ struct SilhouetteMemo {
        nothing: it is answered by the caller's exact union instead. */
     template <class ExactFn>
     int fillAround(double alpha, double beta, int budget, ExactFn exact) {
-        if(budget <= 0 || area.empty()
-           || !std::isfinite(alpha) || !std::isfinite(beta)) {
-            return 0;
-        }
+        if(budget <= 0 || !std::isfinite(alpha) || !std::isfinite(beta)) { return 0; }
         fold(alpha, beta);
         if(!charted(alpha, beta)) { return 0; }
+        /* The table appears the first time a ship actually asks for a direction.
+           A ship that never flies in one never pays for it (7.7 kB each). */
+        if(area.empty()) {
+            area.assign(kSteps * kSteps, 0.0f);
+            stamp.assign(kSteps * kSteps, 0u);
+            if(gen == 0) { gen = 1; }
+        }
         const int i0 = cellOf(alpha), j0 = cellOf(beta);
         int filled = 0;
         for(int dj = 0; dj <= 1; dj++) {

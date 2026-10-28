@@ -854,6 +854,43 @@ static void test_partMounts() {
     }
     CHECK_NEAR(unionProjectedArea(stack), 1.0, 1e-12, "a stack along the view == one face");
     CHECK_NEAR(unionProjectedArea(spread), 3.0, 1e-12, "the same parts across the view == three");
+
+    /* Which way the mount TURNS the part is unpinned by everything above: a cube is
+       symmetric enough that transposing the rotation changes nothing measurable. So
+       pin the identity the implementation stands on -- projecting an offset part
+       equals projecting that part's vertices after they have been turned and moved
+       -- with an ASYMMETRIC part on an OFF-AXIS mount, and then show the pin bites
+       by asking for the transposed mount. Hand-built rotations keep this file
+       linking nothing but glm and drag.h. */
+    const std::vector<glm::dvec3> wedge{glm::dvec3(0.0, 0.0, 0.0), glm::dvec3(2.0, 0.0, 0.0),
+                                        glm::dvec3(0.0, 1.0, 0.0)};
+    const double cs = std::cos(1.0), sn = std::sin(1.0);
+    const glm::mat3 turnX(1.0, 0.0, 0.0, 0.0, cs, sn, 0.0, -sn, cs);
+    const glm::mat3 turnY(cs, 0.0, -sn, 0.0, 1.0, 0.0, sn, 0.0, cs);
+    const glm::mat3 turn = turnY * turnX;
+    const glm::dvec3 off(3.0, -2.0, 1.0);
+    const FlowPlane side = flowPlane(glm::normalize(glm::dvec3(-0.6, 0.7, 0.3)));
+    CHECK_TRUE(std::fabs(glm::length(turn[0]) - 1.0) < 1e-6 &&
+                   std::fabs(glm::length(turn[1]) - 1.0) < 1e-6 &&
+                   std::fabs(glm::dot(turn[0], turn[1])) < 1e-6,
+               "the test's turn is a rotation (else the pin means nothing)");
+    std::vector<glm::dvec2> fast, brute, backwards;
+    projectPartHull(wedge, turn, off, side, fast);
+    std::vector<glm::dvec3> world;
+    for(const glm::dvec3 &v : wedge) {
+        world.push_back(glm::dvec3(turn * v) + off);
+    }
+    projectHull(world, side, brute);
+    /* Both sides of this identity go through the same float-valued mount matrix but
+       combine it differently, so they agree to ~2e-8, not to a ulp. The law itself
+       is good to a few percent; a mount is not where the precision lives. */
+    CHECK_NEAR(polygonArea2(fast), polygonArea2(brute), 1e-6,
+               "an offset part projects like its turned, moved vertices");
+    CHECK_TRUE(glm::length(centre(fast) - centre(brute)) < 1e-6,
+               "and lands on the same polygon, not just the same area");
+    projectPartHull(wedge, glm::transpose(turn), off, side, backwards);
+    CHECK_TRUE(glm::length(centre(backwards) - centre(brute)) > 1e-3,
+               "a transposed mount WOULD disagree -- so the pin above bites");
 }
 
 static void test_silhouetteMemo() {
@@ -885,6 +922,22 @@ static void test_silhouetteMemo() {
     CHECK_TRUE(memo.lookup(0.13, -0.29, out), "still a hit");
     CHECK_TRUE(calls == 0, "a hit computes nothing");
     CHECK_NEAR(out, exact(0.13, -0.29), 1e-6, "hit reads the cached surface");
+
+    /* Lazy allocation: a geometry change bumps a counter, it does not buy a table.
+       The 961-node table (7.7 kB) appears the first time the ship actually asks
+       for a direction, so the ships that never fly -- parked, in orbit, the ones
+       the player never looks at -- carry nothing. */
+    memo.clear();
+    CHECK_TRUE(memo.empty(), "clear frees the table");
+    memo.invalidate();
+    CHECK_TRUE(memo.empty(), "invalidate alone allocates nothing");
+    CHECK_TRUE(!memo.lookup(0.2, 0.2, out), "and a query there is a miss");
+    calls = 0;
+    CHECK_TRUE(memo.fillAround(0.2, 0.2, 1, counted) == 1, "the first fill makes the table");
+    CHECK_TRUE(!memo.empty(), "and it is there from then on");
+    memo.invalidate();
+    CHECK_TRUE(!memo.empty(), "a generation bump keeps the buffer");
+    CHECK_TRUE(!memo.lookup(0.2, 0.2, out), "but the old node no longer answers");
 
     // The budget is a per-call cap, and it spreads the fill over substeps.
     memo.reset();
@@ -954,7 +1007,7 @@ static void test_silhouetteMemo() {
     CHECK_TRUE(worstLine < 1e-9, "to machine precision");
     printf("   chart: %d of %d folded directions cached, %d left exact (%d broadside rim)\n",
            onChart, onChart + offChart, offChart, rim);
-    CHECK_TRUE(onChart + offChart == 728, "every grid direction was classified");
+    CHECK_TRUE(onChart + offChart == 728, "the grid is 9x9x9 minus the origin, all classified");
     CHECK_TRUE(onChart > 100 && offChart > 10,
                "the chart covers most of the sphere but deliberately not all");
     /* The rim itself is worth naming: a flow exactly broadside reads +-90 deg in
@@ -984,14 +1037,21 @@ static void test_silhouetteMemo() {
     CHECK_TRUE(calls == 4, "and its four nodes were computed once");
     double ra = fb.alpha, rb = fb.beta;
     SilhouetteMemo::fold(ra, rb);
-    CHECK_NEAR(rb, 0.0, 1e-12, "astern with up folds to ahead with up, at zero yaw");
+    CHECK_TRUE(std::fabs(rb) < 1e-12, "astern with up folds to ahead with up, at zero yaw");
     CHECK_NEAR(out, exact(ra, rb), 1e-6, "the nodes answer the reversed flow");
     /* The bug this pins: wrapping alpha alone left beta clamped at +-90, so every
        row past 90 deg read the area of a quartering flow instead of its own. */
     CHECK_TRUE(std::fabs(exact(ra, SilhouetteMemo::kFoldHalf) - out) > 1e-3,
                "beta clamped instead of wrapped is a different answer");
-    CHECK_TRUE(!memo.lookup(std::numbers::pi - ra, rb, out),
-               "and 180-alpha (mirroring the ship) is still the wrong fold");
+    /* Spelled out as a direction rather than an area, so the pin cannot be satisfied
+       by an empty cell: this is the key the old fold used, and the flow it names is
+       not the flow being asked about. */
+    const double oldA = fb.alpha > 0.0 ? fb.alpha - std::numbers::pi
+                                       : fb.alpha + std::numbers::pi;
+    const double oldB = fb.beta > 0.0 ? SilhouetteMemo::kFoldHalf : -SilhouetteMemo::kFoldHalf;
+    const glm::dvec3 keyedByTheOldFold = flowDirection(oldA, oldB, right, up, nose);
+    CHECK_TRUE(std::fabs(glm::dot(keyedByTheOldFold, astern)) < 0.9,
+               "the old fold keyed a broadside direction to a flow that is nearly astern");
 
     /* Off the chart: past +-75 deg the tan() spacing spans an enormous slice of
        direction space, so the memo refuses and the caller's exact union -- which

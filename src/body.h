@@ -51,9 +51,11 @@ struct Body {
     btCollisionShape *shape = nullptr;
 
     /* The collision hull's VERTICES (part-local frame), captured once at build
-       time from body->shape; projectedArea(hullVerts, v̂) is the drag area facing
-       the flow. Hull vertices, not mesh triangles, keep the silhouette exact for
-       a non-convex mesh. */
+       time from body->shape. The aero law projects these: drag.h's projectPartHull
+       carries them through the part's mount into one shared plane, and the ship's
+       drag area is the UNION of those polygons (#463) -- not the sum, and not the
+       hull of the merged vertices. Hull vertices, not mesh triangles, keep the
+       silhouette exact for a non-convex mesh. */
     std::vector<glm::dvec3> hullVerts;
 
     /* The shape's inertia diagonal per kilogram. A fixed shape's inertia is

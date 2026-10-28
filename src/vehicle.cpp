@@ -2251,7 +2251,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
        is false for NaN), and a NaN printed here silently drops the whole
        [surfinfo] row in e2e rather than failing loudly. */
     lastDragAlphaValid = fr.valid && std::isfinite(fr.v)
-                      && std::isfinite(fr.alpha) && fr.v >= kAoAFlowFloor;
+                      && std::isfinite(fr.alpha) && std::isfinite(fr.beta)
+                      && fr.v >= kAoAFlowFloor;
     const glm::dvec3 vhat    = vrel / std::sqrt(v2);
     // The flow in S: area and dots are rotation-invariant, so rotate the flow, not the verts.
     const glm::dvec3 vhatS   = glm::transpose(sRot) * vhat;
@@ -2278,14 +2279,15 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         return unionProjectedArea(aeroSilNode);
     };
     /* How many silhouette nodes one substep may compute. A node is a whole
-       project-and-union pass, so filling all four corners of a fresh cell in one
-       substep would spike the frame the first time a ship bows into a new corner
-       of its own envelope; one per substep spreads it, and a 5 deg cell is still
-       fully filled within four substeps of arriving in it. Measured on the
-       shipped jet (10 hulls, 336 hull verts): 6 s of level flight computed 9
-       nodes for 1068 aero substeps; a deliberate tumble, which sweeps the chart,
-       pays at most one extra union pass per substep -- the bound, since a miss
-       also unions the current direction. */
+       project-and-union pass -- 0.009 ms on a 13-part hull, but the union's
+       overlap prune is pair-wise, so it grows quadratically (0.58 ms at 200
+       parts) -- so filling all four corners of a fresh cell in one substep would
+       spike the frame the first time a ship bows into a new corner of its own
+       envelope; one per substep spreads it, and a 5 deg cell is still fully
+       filled within four substeps of arriving in it. Measured on the shipped jet
+       (13 parts, 336 hull verts): 6 s of level flight fills 9 nodes and hits
+       about 99% of its queries; a deliberate 14 s tumble that sweeps the chart
+       fills 88 and still answers about 10% of its queries with the exact union. */
     static constexpr int kSilFillNodes = 1;
 
     // DRAG: AREA = the UNION of the parts' silhouettes facing the flow;
@@ -2328,17 +2330,27 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         /* The ship's silhouette: the union of those polygons, cached per flow
            DIRECTION (speed and density multiply the force, they do not change
            its shape). A miss falls back to the exact union of the polygons this
-           substep already projected, so the cache is never a cost to the
-           physics -- the fill budget below only decides how quickly it stops
-           being needed. */
+           substep already projected, so the cache can never be wrong; it is not
+           free, though -- a filling substep pays that exact pass plus up to
+           kSilFillNodes node passes, and the budget only decides how quickly the
+           cache stops being needed.
+           A substep with no meaningful flow direction does not consult the chart
+           at all -- the same test the AoA readout uses (lastDragAlphaValid).
+           aeroFrame::valid only refuses v == 0, so a parked ship's jitter passes
+           it, and warming the table with those angles spends fills on a direction
+           this ship is not flying; the log then prints a concrete area for a row
+           whose angle it has just dashed.
+           */
         double A_ship = 0.0;
-        if(!aeroSil.lookup(alpha, fr.beta, A_ship)) {
-            aeroSil.fillAround(alpha, fr.beta, kSilFillNodes,
-                               [&](double na, double nb) {
-                                   return unionAtS(glm::transpose(sRot)
-                                       * flowDirection(na, nb, right, up, nose));
-                               });
-            A_ship = unionProjectedArea(aeroSilParts);
+        if(lastDragAlphaValid) {
+            if(!aeroSil.lookup(alpha, fr.beta, A_ship)) {
+                aeroSil.fillAround(alpha, fr.beta, kSilFillNodes,
+                                   [&](double na, double nb) {
+                                       return unionAtS(glm::transpose(sRot)
+                                           * flowDirection(na, nb, right, up, nose));
+                                   });
+                A_ship = unionProjectedArea(aeroSilParts);
+            }
         }
         lastDragArea = A_ship;
         /* The coefficient and the centre of pressure stay weighted by the SUM of
@@ -2424,9 +2436,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         const double clPart = glm::length(flift) / (q * d->lift_area);
         const double cdi = inducedCd(clPart, 2.0 * d->radius, d->lift_area);
         if(cdi <= 0.0) { continue; }
-        /* drag_cd scales ALL the aero this ship feels, form drag and induced
-           alike -- otherwise --drag-cd tunes only half the law, and its
-           documented meaning (0 = no air) would be wrong. */
+        /* drag_cd scales the hull's air -- form drag and induced alike --
+           otherwise the knob tunes only half the law, and its documented meaning
+           (0 = no air) would be wrong. A deployed canopy is a separate term below
+           and stays unmultiplied: the dial is a hull-law knob, not an atmosphere
+           killer. */
         const glm::dvec3 find = -vhat * (drag_cd * q * d->lift_area * cdi);
         ApplyForce(hull, ri, find);
         moment += glm::cross(ri, find);
