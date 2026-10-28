@@ -16,21 +16,27 @@ only X-Total-Count says so, the issue and pull request numbers share one space,
 bodies are markdown that a shell will happily eat, and every answer needs to be
 the same shape for a caller that is a script and not a human.
 
-Contract, unchanged from the tea version:
-- every subcommand prints JSON on stdout; every failure is {"error": ...} there
-  with non-zero exit, so output can be piped freely;
+Contract:
+- every subcommand prints one JSON value on stdout; every failure is
+  {"error": ...} there with non-zero exit, so output can be piped freely;
 - explanations that are not failures go to stderr as "note: ...", deduped and
   capped so a 450-row listing cannot bury its own answer;
-- a write answers {"ok": true, "confirmed": bool, ...} where confirmed means the
-  server said it did the thing -- not that the issue exists. It is not a promise
-  that nothing failed: when the proof is missing, the reason is on stderr;
+- a write answers {"ok": true, "confirmed": bool, "wrote": bool, "per_index":
+  [...], ...}. `confirmed` means the change was read back and found to be what
+  was asked -- title, description text, state, labels -- not that the request was
+  accepted. `wrote` says a write went out (or went out without an answer), which
+  is what tells a caller that retrying could change things twice. `per_index`
+  gives the same two answers per index, because a note a long sweep caps away is
+  not a record. A write that is not confirmed is still an answer, not a failure:
+  the exit code stays 0 and the reason is on stderr.
 - a request that got no answer is never reported as "nothing happened": retrying
   a write that landed is how duplicate comments get made.
 
 Config comes from tea's own config (~/.config/tea/config.yml: the default login
 gives the server url and token, and the git remote gives owner/repo). Set
 TEAWRAP_BASE and TEAWRAP_TOKEN to point it somewhere else -- tests do, at a mock
-server, so a test run can never touch the real tracker.
+server, so a test run can never touch the real tracker. Setting only the base is
+an error rather than a way to leak the configured token to another host.
 
 Bodies and comments are MARKDOWN -- the web UI renders them, and headings,
 bullets and ``` fences are what make a ticket skimmable. For anything longer
@@ -62,7 +68,8 @@ Usage:
                           [--close | --open] [--labels a,b] [--remove-labels a,b]
                           (an empty pipe is not a body; a blank --body needs
                            --allow-empty-body; several indexes are for labels
-                           and state only -- --title/--body takes one)
+                           and state only -- --title/--body takes one; --body
+                           wins over a pipe and says so, it does not swallow it)
   utils/tea.py labels            (the repo's label list, names and ids)
 
 Labels within one name group ("Priority/") are exclusive on this server, so
@@ -106,6 +113,14 @@ class Tracker:
     def __init__(self):
         base = os.environ.get("TEAWRAP_BASE")
         token = os.environ.get("TEAWRAP_TOKEN")
+        if base and not token:
+            # The token in tea's config belongs to the url in tea's config. A
+            # caller that redirects the wrapper at some other host -- a proxy, a
+            # mirror, a test server on another name -- must say which token that
+            # host gets.
+            fail("TEAWRAP_BASE is set without TEAWRAP_TOKEN -- not sending the "
+                 "token from the tracker config to a host it was not issued "
+                 "for; set TEAWRAP_TOKEN too (a test value is fine)")
         if not base or not token:
             url, tok = self._login()
             base = base or url
@@ -133,8 +148,14 @@ class Tracker:
 
     @staticmethod
     def _slug():
-        proc = subprocess.run(["git", "remote", "get-url", "origin"],
-                              capture_output=True, text=True, timeout=10)
+        try:
+            proc = subprocess.run(["git", "remote", "get-url", "origin"],
+                                  capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.SubprocessError) as e:
+            # A missing git says "FileNotFoundError" in a traceback, which tells
+            # the caller nothing about what to do next.
+            fail(f"could not run `git remote get-url origin`: {e} -- run this "
+                 f"inside the repo")
         url = proc.stdout.strip()
         # https://host/owner/repo(.git) or git@host:owner/repo(.git)
         m = re.search(r"[:/]([^/:]+)/([^/:]+?)(?:\.git)?/?$", url)
@@ -143,12 +164,17 @@ class Tracker:
                  f"({url!r}) -- run this inside the repo")
         return m.group(1), m.group(2)
 
-    def call(self, method, path, params=None, payload=None):
+    def call(self, method, path, params=None, payload=None, soft=False):
         """One API call -> (status, parsed body or None, headers).
 
         HTTP errors come back as a value rather than an exception: several
         callers need the status and the server's message, and one place that
         formats them is one place that cannot forget the timeout caveat.
+
+        soft=True is for a call on a path where something may already have been
+        written. A request that gets no answer then returns (None, None, {}) --
+        no status, so `status != 200` already covers it -- instead of ending the
+        run, which would take the proof of a change that did land along with it.
         """
         url = f"{self.base}/api/v1{path}"
         if params:
@@ -163,12 +189,14 @@ class Tracker:
                                      method=method)
         try:
             with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
-                return resp.status, _json_or_none(resp.read()), dict(resp.headers)
+                return resp.status, _json_or_none(resp.read()), _hdr(resp.headers)
         except urllib.error.HTTPError as e:
-            return e.code, _json_or_none(e.read()), dict(e.headers)
+            return e.code, _json_or_none(e.read()), _hdr(e.headers)
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             # The request may already have reached Gitea, so this is "unknown",
             # never "nothing happened".
+            if soft:
+                return None, None, {}
             fail(f"{method} {path} got no answer ({e}) -- if that was a write it "
                  f"may have reached the server, so check before retrying it")
 
@@ -207,7 +235,6 @@ def _logins_from_yaml(text):
             current = {}
             logins.append(current)
             stripped = stripped[2:]
-            indent = len(line) - len(line.lstrip("- "))
         elif current is None:
             continue
         m = re.match(r"([A-Za-z0-9_\-]+):\s*(.*)$", stripped)
@@ -224,6 +251,35 @@ def _json_or_none(raw):
     try:
         return json.loads(raw.decode("utf-8", "replace"))
     except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+
+class _Headers(dict):
+    """Response headers with a case-insensitive get. HTTP header names have no
+    agreed case, and a proxy that lowercases one would otherwise turn an exact
+    count into "no total" -- a silently dumber answer."""
+
+    def get(self, name, default=None):
+        return super().get(name.lower(), default)
+
+
+def _hdr(msg):
+    return _Headers((k.lower(), v) for k, v in (msg.items() if msg else []))
+
+
+def total_count(headers):
+    """X-Total-Count as an int, or None when the server did not say one -- or
+    said something that is not a number. The rows are the answer; the count only
+    says whether there are more of them, so a junk count is a note and not a
+    reason to lose a listing already in hand."""
+    raw = headers.get("X-Total-Count")
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        note(f"the server answered X-Total-Count {raw!r}, which is not a number "
+             f"-- no paging notes this time, but the rows are still the answer")
         return None
 
 
@@ -295,9 +351,10 @@ def check_page(n):
 
 
 def check_body(text, what):
-    """Refuse locally what tea could not have sent, before touching the network.
-    A NUL byte survives reading but not the JSON encode, and a body this size is
-    a mistake (or /dev/zero) rather than a description."""
+    """Refuse locally what should never be sent, before touching the network. A
+    NUL byte means binary input reached a description; bytes that are not UTF-8
+    arrive as lone surrogates that would be mangled on the way out; and a body
+    this size is a mistake (or /dev/zero) rather than a description."""
     if "\x00" in text:
         fail(f"{what} contains a NUL byte")
     try:
@@ -337,11 +394,16 @@ def norm_issue(d, body_chars=True):
     already ran."""
     if not isinstance(d, dict) or "number" not in d:
         fail(f"the server answered an issue with something else: {str(d)[:160]}")
+    milestone = d.get("milestone")
     out = {"index": d["number"], "state": d.get("state"), "title": d.get("title"),
            "url": d.get("html_url"),
            "author": (d.get("user") or {}).get("login"),
            "labels": [l.get("name") for l in d.get("labels") or []
                       if isinstance(l, dict)],
+           # Read back rather than assumed: a milestone that could be set and
+           # never seen is a field the tool cannot say anything about.
+           "milestone": (milestone.get("title")
+                         if isinstance(milestone, dict) else None),
            "created": d.get("created_at"), "updated": d.get("updated_at")}
     if body_chars:
         out["closed_at"] = d.get("closed_at")
@@ -368,6 +430,7 @@ class Labels:
         self.tracker = tracker
         self._by_name = None
         self._by_id = None
+        self._asked_names = {}     # id -> name, remembered for after a write
 
     def by_name(self):
         """name -> the whole label object. The whole object because a label write
@@ -388,8 +451,8 @@ class Labels:
             self._by_name = {(l.get("name") or ""): l for l in rows
                              if l.get("id") is not None}
             self._by_name.pop("", None)
-            total = headers.get("X-Total-Count")
-            if total is not None and int(total) != len(self._by_name):
+            total = total_count(headers)
+            if total is not None and total != len(self._by_name):
                 note(f"the label list answered {len(self._by_name)} of the "
                      f"{total} labels the server counts -- a name past what was "
                      f"read will look unknown")
@@ -403,18 +466,41 @@ class Labels:
         return self._by_id
 
     def ids(self, names, what):
-        """Resolve names to ids; unknown names are an error, not a no-op."""
+        """Resolve names to ids; unknown names are an error, not a no-op.
+
+        This is where the vocabulary is fetched: before anything is written, so
+        a typo costs nothing, and the names are remembered for the post-write
+        report, which must not need the network to describe a change that has
+        already landed."""
+        if not names:
+            return []
         vocab = self.by_name()
         unknown = [n for n in names if n not in vocab]
         if unknown:
+            spellings = (", ".join(sorted(vocab)) if vocab
+                         else "(this repo has no labels at all)")
             fail(f"{', '.join(unknown)} not in the repo's label list -- "
-                 f"spellings are: {', '.join(sorted(vocab))}")
-        return [vocab[n]["id"] for n in names]
+                 f"spellings are: {spellings}")
+        out = []
+        for n in names:
+            label_id = vocab[n]["id"]
+            self._asked_names[label_id] = n
+            out.append(label_id)
+        return out
 
     def names(self, ids):
-        inverse = {i: n for n, l in self.by_name().items()
-                   for i in [l["id"]]}
-        return [inverse.get(i, f"id {i}") for i in ids]
+        """id -> name, preferring what ids() resolved earlier this run. An
+        after-the-fact report that has to ask the server again can fail the run
+        with the write already done, and that is a worse answer than a name it
+        already knows."""
+        if not ids:
+            return []
+        missing = [i for i in ids if i not in self._asked_names]
+        if missing:
+            inverse = {l["id"]: n for n, l in self.by_name().items()}
+            for i in missing:
+                self._asked_names[i] = inverse.get(i, f"id {i}")
+        return [self._asked_names[i] for i in ids]
 
 
 def exclusive_group(label):
@@ -443,7 +529,7 @@ def rival_ids(labels, on_issue, want_ids):
             and exclusive_group(l) in groups}
 
 
-def label_ids_for_edit(tracker, labels, args):
+def label_ids_for_edit(labels, args):
     want = [t.strip() for t in (args.labels or "").split(",") if t.strip()]
     gone = [t.strip() for t in (args.remove_labels or "").split(",")
             if t.strip()]
@@ -467,27 +553,59 @@ def cmd_new(args):
                "labels": labels.ids(want, "--labels")}
     if args.milestone is not None:
         payload["milestone"] = milestone_id(tracker, args.milestone)
-    # 201 is the create answer and it carries the labels it just set, so this
-    # needs no re-read -- the thing the tea version could not do.
-    d, _ = tracker.api("POST", tracker.repo_path("/issues"), payload=payload,
-                       want=(201,))
-    d = norm_issue(d)
+    # 201 is the create answer and it carries the labels it just set, so a good
+    # answer needs no re-read -- the thing the tea version could not do.
+    status, raw, _ = tracker.call("POST", tracker.repo_path("/issues"),
+                                  payload=payload, soft=True)
+    if status is None:
+        fail("the create got no answer -- the issue may exist, so check with "
+             "`ls` before sending it again")
+    if status != 201:
+        fail(f"the create was refused (HTTP {status}: {_why(raw)})")
+    if not isinstance(raw, dict) or "number" not in raw:
+        # Accepted and unreadable. Saying "failed" here invites a retry, and a
+        # retry makes a second issue, so the answer says only what is known.
+        note("the issue was created but its answer was not an issue object -- "
+             "look it up with `ls --limit 5` before creating it again")
+        print(json.dumps({"ok": True, "index": None, "written": True,
+                          "confirmed": False, "issue": None}))
+        return
+    d = norm_issue(raw)
     missing = [n for n in want if n not in d["labels"]]
     if missing:
         note(f"created issue {d['index']} without: {', '.join(missing)} -- the "
              f"server took the label list and answered without these")
-    print(json.dumps({"ok": True, "index": d["index"],
-                      "confirmed": not missing, "issue": d}))
+    milestone_ok = args.milestone is None or d["milestone"] == args.milestone
+    if not milestone_ok:
+        note(f"created issue {d['index']} with milestone {d['milestone']!r}, not "
+             f"{args.milestone!r} -- this server may want the milestone under a "
+             f"different field than `milestone`")
+    print(json.dumps({"ok": True, "index": d["index"], "written": True,
+                      "confirmed": not missing and milestone_ok, "issue": d}))
 
 
 def milestone_id(tracker, title):
-    rows, _ = tracker.api("GET", tracker.repo_path("/milestones"),
-                          {"state": "all", "limit": SERVER_PAGE_CAP})
-    names = [m.get("title") for m in rows or [] if isinstance(m, dict)]
-    if title not in names:
-        fail(f"milestone {title!r} not in this repo -- milestones: "
-             f"{', '.join(n for n in names if n) or '(none)'}")
-    return next(m["id"] for m in rows if m.get("title") == title)
+    """Milestone id by exact title, paged like the label list: a milestone past
+    the first 50 should not read as "not in this repo"."""
+    rows, page, headers = [], 1, {}
+    while page <= LS_MAX_PAGES:
+        part, headers = tracker.api("GET", tracker.repo_path("/milestones"),
+                                    {"state": "all", "limit": SERVER_PAGE_CAP,
+                                     "page": page})
+        if not isinstance(part, list):
+            fail(f"the milestone list came back {type(part).__name__}")
+        rows += [m for m in part if isinstance(m, dict)]
+        if not part or len(part) < SERVER_PAGE_CAP:
+            break
+        page += 1
+    for m in rows:
+        if m.get("title") == title and isinstance(m.get("id"), int):
+            return m["id"]
+    names = ", ".join(n for n in (m.get("title") for m in rows) if n) or "(none)"
+    total = total_count(headers)
+    more = (f" -- and the server counts {total}, so this list is short"
+            if total is not None and total != len(rows) else "")
+    fail(f"milestone {title!r} not in this repo -- milestones: {names}{more}")
 
 
 def cmd_ls(args):
@@ -503,15 +621,19 @@ def cmd_ls(args):
         if not isinstance(rows, list):
             fail(f"the issue list came back {type(rows).__name__}, not a list")
         out = [norm_issue(d, body_chars=False) for d in rows]
-        total = headers.get("X-Total-Count")
+        total = total_count(headers)
         page = args.page or 1
         if total is not None:
-            total = int(total)
-            past = page * args.limit
-            if not out and past > total:
+            if not out and total == 0:
+                # The one case the past-the-end message rules out is the case in
+                # front of it, so it gets its own sentence.
+                note("nothing matches this filter -- the repo may well have "
+                     "issues, just not ones matching it")
+            elif not out and page * args.limit > total:
                 note(f"page {page} is empty -- past the end of {total} matching "
                      f"issues, not an empty repository")
-            elif past < total or (page - 1) * args.limit + len(out) < total:
+            elif page * args.limit < total or \
+                    (page - 1) * args.limit + len(out) < total:
                 note(f"{len(out)} of {total} matching issues on this page -- "
                      f"pass --all for the whole list (or --page {page + 1})")
         elif len(rows) >= args.limit:
@@ -519,13 +641,20 @@ def cmd_ls(args):
                  f"-- pass --all for the whole list")
         print(json.dumps(out))
         return
-    out, page = [], 1
+    out, page, seen, repeats = [], 1, set(), 0
     while page <= LS_MAX_PAGES:
         status, rows, headers = tracker.call(
-            "GET", tracker.repo_path("/issues"), {**params, "page": page})
-        if status != 200 or not isinstance(rows, list):
-            why = (f"HTTP {status}: {_why(rows)}" if status != 200
-                   else f"came back {type(rows).__name__}, not a list")
+            "GET", tracker.repo_path("/issues"), {**params, "page": page},
+            soft=True)
+        if status is None:
+            why = "got no answer"
+        elif status != 200:
+            why = f"HTTP {status}: {_why(rows)}"
+        elif not isinstance(rows, list):
+            why = f"came back {type(rows).__name__}, not a list"
+        else:
+            why = None
+        if why:
             if not out:
                 # Nothing read: a hard error, because an empty list here looks
                 # like an empty repository.
@@ -535,20 +664,35 @@ def cmd_ls(args):
             # and let the exit code and the note say that it is short.
             print(json.dumps(out))
             note(f"the list is short: {len(out)} issues from {page - 1} "
-                 f"page(s), then page {page} failed ({why}) -- the exit code "
-                 f"says these are not all of them")
+                 f"page(s), then page {page} {why} -- the exit code says these "
+                 f"are not all of them")
             flush_note_count()
             sys.exit(1)
-        out += [norm_issue(d, body_chars=False) for d in rows]
-        total = headers.get("X-Total-Count")
+        total = total_count(headers)
+        for d in rows:
+            row = norm_issue(d, body_chars=False)
+            # A server that ignores `page`, or a sort order that moves under a
+            # concurrent write, can hand the same issue back twice. Listing it
+            # twice reads as two issues; listing it once and saying so does not.
+            if row["index"] in seen:
+                repeats += 1
+                continue
+            seen.add(row["index"])
+            out.append(row)
         if len(rows) < args.limit:
             break
-        if total is not None and len(out) >= int(total):
+        if total is not None and len(seen) >= total:
             break
         page += 1
     if page > LS_MAX_PAGES:
-        note(f"stopped after {LS_MAX_PAGES} pages ({len(out)} items) -- raise "
-             f"LS_MAX_PAGES if there really are more")
+        # The walk pages at --limit, not at the server's cap, so a small --limit
+        # hits this ceiling long before the repo runs out.
+        note(f"stopped after {LS_MAX_PAGES} pages of {args.limit} ({len(out)} "
+             f"items) -- raise --limit, or LS_MAX_PAGES if there really are "
+             f"more")
+    if repeats:
+        note(f"{repeats} issue(s) were answered on more than one page -- listed "
+             f"once each")
     print(json.dumps(out))
 
 
@@ -602,22 +746,50 @@ def comment_out(c):
 def cmd_comment(args):
     tracker = Tracker()
     body = get_body(args)
+    if not body.strip():
+        # An empty comment is a notification and an email for nobody. `edit` has
+        # --allow-empty-body for clearing a description; a comment has no such
+        # reason to be blank.
+        fail("a comment with no text is not a comment -- nothing was posted")
     # `tea comments add` printed a card and had to be found again to be believed.
     # This answers the comment itself, with the server's id and date, so the
     # proof is the response and an identical older comment cannot be mistaken
     # for ours.
-    c, _ = tracker.api("POST", tracker.repo_path(f"/issues/{args.index}/comments"),
-                       payload={"body": body}, want=(201,))
-    proof = comment_out(c)
-    print(json.dumps({"ok": True, "index": args.index,
-                      "confirmed": proof["id"] is not None,
-                      "comment": proof}))
+    status, raw, _ = tracker.call(
+        "POST", tracker.repo_path(f"/issues/{args.index}/comments"),
+        payload={"body": body}, soft=True)
+    if status is None:
+        fail(f"the comment got no answer -- it may have been posted, so check "
+             f"with `show {args.index} --comments` before sending it again")
+    if status != 201:
+        fail(f"the comment was refused (HTTP {status}: {_why(raw)})")
+    if not isinstance(raw, dict) or raw.get("id") is None:
+        # Posted and unreadable: the answer must not read as "nothing happened",
+        # because reposting is the natural and wrong reaction.
+        note("the comment was accepted but its answer carried no id -- look for "
+             f"it with `show {args.index} --comments` before posting again")
+        print(json.dumps({"ok": True, "index": args.index, "written": True,
+                          "confirmed": False, "comment": None}))
+        return
+    proof = comment_out(raw)
+    print(json.dumps({"ok": True, "index": args.index, "written": True,
+                      "confirmed": proof["id"] is not None, "comment": proof}))
+
+
+def _res(proof=None, ok=False, wrote=False, answered=True):
+    """One index's edit result: what the issue looks like now (if anything does),
+    whether the change was confirmed, whether a write went out (or may have), and
+    whether the server answered at all."""
+    return {"proof": proof, "ok": ok, "wrote": wrote, "answered": answered}
 
 
 def _edit_one(tracker, labels, index, args, want_ids, gone_ids):
-    """One issue's edit. Returns (proof, ok); a refused write is reported for
-    this index rather than ending the run, because a sweep over many issues
-    usually has one bad index among good ones, and the good ones have landed.
+    """One issue's edit -> one _res().
+
+    A refused write is reported for this index rather than ending the run,
+    because a sweep over many issues usually has one bad index among good ones.
+    A write whose answer never arrived counts as `wrote` and as unanswered: the
+    caller has to know that retrying could make the change twice.
 
     Labels are set by reading the issue, working out the set it should end with,
     and PUTting that whole set. Add-then-remove calls would be two calls and are
@@ -642,61 +814,88 @@ def _edit_one(tracker, labels, index, args, want_ids, gone_ids):
     if payload:
         status, issue, _ = tracker.call("PATCH",
                                         tracker.repo_path(f"/issues/{index}"),
-                                        payload=payload)
+                                        payload=payload, soft=True)
+        if status is None:
+            note(f"issue {index}: the title/body/state write got no answer -- it "
+                 f"may have landed, so check before sending it again")
+            return _res(wrote=True, answered=False)
         if status == 404:
             note(f"issue {index}: no such issue -- the number may be a pull "
                  f"request, or the issue may be in another repo (numbers are "
                  f"shared)")
-            return None, False
+            return _res()
         # 201 for an update, measured on this server: it is Gitea saying "here is
         # the object", not a second create.
         if status not in (200, 201):
             note(f"issue {index}: the title/body/state write was refused "
                  f"(HTTP {status}: {_why(issue)})")
-            return None, False
+            return _res()
         landed = ", ".join(k for k in ("title", "body", "state") if k in payload)
     if want_ids or gone_ids:
         status, current, _ = tracker.call("GET",
-                                          tracker.repo_path(f"/issues/{index}"))
-        if status != 200:
-            note(f"issue {index}: could not read its labels back (HTTP {status}: "
-                 f"{_why(current)})"
+                                          tracker.repo_path(f"/issues/{index}"),
+                                          soft=True)
+        if status != 200 or not isinstance(current, dict):
+            note(f"issue {index}: could not read its current labels (HTTP "
+                 f"{status}: {_why(current)})"
                  + (f" -- the {landed} part did land" if landed else ""))
-            # Even so, say what the part that did land looks like: "nothing
-            # happened" would be a lie about a state change the caller made.
-            return proof_of(_read_issue(tracker, index) if landed else None), False
+            # Say what the part that did land looks like rather than guessing at
+            # the label set: replacing a set that was not read can drop a label.
+            return _res(proof_of(issue), wrote=bool(landed))
         on_issue = [l for l in current.get("labels") or [] if isinstance(l, dict)]
-        before_names = {l.get("name") for l in on_issue}
-        rivals = rival_ids(labels, on_issue, want_ids)
+        usable = [l for l in on_issue if isinstance(l.get("id"), int)]
+        if len(usable) != len(on_issue):
+            note(f"issue {index}: {len(on_issue) - len(usable)} of its labels "
+                 f"came back without an id -- a label write replaces the whole "
+                 f"set, so those would be lost; not writing the set")
+            return _res(proof_of(current), wrote=bool(landed))
+        before_names = {n for n in (l.get("name") for l in usable)
+                        if isinstance(n, str)}
+        rivals = rival_ids(labels, usable, want_ids)
         # Dropped on purpose so the asked-for label can land; not a surprise.
-        rival_names = {labels.names([i])[0] for i in rivals}
-        have_ids = {l.get("id") for l in on_issue}
+        rival_names = {l.get("name") for l in usable if l.get("id") in rivals}
+        have_ids = {l["id"] for l in usable}
         final = sorted((have_ids - set(gone_ids) - rivals) | set(want_ids))
         if rivals:
-            note(f"issue {index}: {', '.join(sorted(rival_names))} came off to "
-                 f"let the asked-for label in -- one label per group")
-        status, answered, _ = tracker.call(
+            note(f"issue {index}: {', '.join(sorted(n for n in rival_names if n))}"
+                 f" came off to let the asked-for label in -- one label per group")
+        status, put_body, _ = tracker.call(
             "PUT", tracker.repo_path(f"/issues/{index}/labels"),
-            payload={"labels": final})
+            payload={"labels": final}, soft=True)
         # 200 answers the label list; 204 means yes-with-no-body (both seen from
         # this server), and the read at the end is what is believed either way.
+        if status is None:
+            note(f"issue {index}: the label write got no answer -- it may have "
+                 f"landed, so check before sending it again")
+            return _res(proof_of(current), wrote=True, answered=False)
         if status not in (200, 204):
             note(f"issue {index}: setting labels refused (HTTP {status}: "
-                 f"{_why(answered)})"
+                 f"{_why(put_body)})"
                  + (f" -- the {landed} part did land" if landed else ""))
-            return proof_of(_read_issue(tracker, index) if landed else None), False
+            return _res(proof_of(current), wrote=bool(landed))
     # What an edit did is believed from a read, not from the write answers: this
     # server has answered a label write with yes and nothing done (measured).
     fresh = _read_issue(tracker, index)
     if fresh is None:
         note(f"issue {index}: took the write but would not read back -- not "
              f"confirming")
-        return proof_of(issue), False
+        return _res(proof_of(issue), wrote=True)
     proof = issue_proof(fresh)
     ok = True
     if args.title is not None and proof["title"] != args.title:
         note(f"issue {index} is titled {proof['title']!r}, not {args.title!r}")
         ok = False
+    if args.body is not None:
+        # The proof carries a length, not the text, so the description is
+        # compared against the body the read came back with. This is the one
+        # field this repo has already lost in bulk once, so a write that says it
+        # set it and did not is the worst answer this tool can give.
+        got = (fresh.get("body") or "").replace("\r\n", "\n").strip()
+        if got != args.body.replace("\r\n", "\n").strip():
+            note(f"issue {index}: the description after the write is "
+                 f"{len(got)} characters, not the {len(args.body.strip())} sent "
+                 f"-- not confirming")
+            ok = False
     want_state = "closed" if args.close else "open" if args.is_open else None
     if want_state and proof["state"] != want_state:
         note(f"issue {index} is {proof['state']!r} after the write meant to "
@@ -723,7 +922,9 @@ def _edit_one(tracker, labels, index, args, want_ids, gone_ids):
         if lost:
             note(f"issue {index}: came off the issue although it was not asked "
                  f"for: {', '.join(lost)}")
-    return proof, ok
+    # Reached only by an accepted write, so the write is counted even when the
+    # read-back says it did not do what was asked.
+    return _res(proof, ok=ok, wrote=True)
 
 
 def _read_issue(tracker, index):
@@ -731,7 +932,8 @@ def _read_issue(tracker, index):
     that run after something was already written: losing the proof of a change
     that landed is worse than an uncertain answer, and a sweep over 40 indexes
     must not die on the 41st read."""
-    status, body, _ = tracker.call("GET", tracker.repo_path(f"/issues/{index}"))
+    status, body, _ = tracker.call("GET", tracker.repo_path(f"/issues/{index}"),
+                                   soft=True)
     if status != 200 or not isinstance(body, dict) or "number" not in body:
         return None
     return body
@@ -748,18 +950,28 @@ def _edit_many(tracker, labels, indexes, args, want_ids, gone_ids):
     """Apply the same change to several indexes. The server answers each one, so
     the proof is per index and a bad index does not hide what the good ones did.
     A total failure is an error; a partial one is an answer with
-    confirmed:false, because "nothing happened" would be a lie."""
-    proofs, oks = [], []
-    for index in indexes:
-        proof, ok = _edit_one(tracker, labels, index, args, want_ids, gone_ids)
-        proofs.append(proof)
-        oks.append(ok)
-    if not any(oks) and all(p is None for p in proofs):
+    confirmed:false, because "nothing happened" would be a lie. `wrote` says that
+    some index took a write (or never answered one), which is what tells a caller
+    that retrying the same command could change things twice."""
+    results = [_edit_one(tracker, labels, index, args, want_ids, gone_ids)
+               for index in indexes]
+    oks = [r["ok"] for r in results]
+    if not any(oks) and all(r["proof"] is None for r in results):
+        if any(not r["answered"] for r in results):
+            fail("no index was confirmed and at least one write got no answer "
+                 "-- it may have landed, so check before sending it again")
         fail("no index ended up with the change -- see the notes above, and "
              "note that part of an edit can land even when the whole of it did "
              "not")
-    print(json.dumps({"ok": True, "indexes": indexes,
-                      "confirmed": all(oks), "issues": proofs}))
+    print(json.dumps({
+        "ok": True, "indexes": indexes, "confirmed": all(oks),
+        "wrote": any(r["wrote"] for r in results),
+        # Which index is which, in the answer and not only in a stderr note a
+        # long sweep can cap away.
+        "per_index": [{"index": index, "confirmed": r["ok"],
+                       "answered": r["proof"] is not None}
+                      for index, r in zip(indexes, results)],
+        "issues": [r["proof"] for r in results]}))
 
 
 def cmd_edit(args):
@@ -775,11 +987,20 @@ def cmd_edit(args):
     if body is None and not sys.stdin.isatty():
         piped = read_pipe()
         if piped.strip():
-            if body is not None:
-                fail("body given twice: pass --body or pipe markdown, not both")
             body = piped
-            check_body(body, "body")
             note("sending piped stdin as the new description")
+    elif body is not None and not sys.stdin.isatty():
+        # Not read, because a stdin that is not meant for this command must not
+        # be swallowed (or waited on). But it must not be dropped in silence
+        # either: a caller that pipes a description and also passes --body has
+        # two bodies, and the piped one is the one that would vanish.
+        note("stdin is a pipe and --body was given: the --body text is used and "
+             "the piped text is ignored -- drop one of them if that was not the "
+             "plan")
+    if body is not None:
+        # Same policy for both ways of passing a body: the size and encodability
+        # checks belong to the body, not to the channel it arrived through.
+        check_body(body, "body")
     if body is not None and not body.strip() and not args.allow_empty_body:
         fail("blank --body would clear the description -- pass "
              "--allow-empty-body if that is really what you mean")
@@ -797,7 +1018,7 @@ def cmd_edit(args):
         note("--title \"\" asks Gitea to unset the title, which it may not "
              "accept")
     args.body = body
-    want_ids, gone_ids = label_ids_for_edit(tracker, labels, args)
+    want_ids, gone_ids = label_ids_for_edit(labels, args)
     _edit_many(tracker, labels, indexes, args, want_ids, gone_ids)
 
 
