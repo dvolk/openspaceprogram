@@ -151,6 +151,37 @@ inline glm::dvec3 liftForce(double q, double S, double cl, double alpha,
     return liftDir * (q * S * liftCurve(cl, alpha, stallAngle));
 }
 
+/* One surface's OWN view of the flow (#453): its angle of attack and its own lift
+   direction, both out of the part's frame (columns = right, up, nose) instead of
+   the ship's. A wing mounted with incidence, dihedral, or upside down then lifts
+   the way it is bolted rather than the way the pod is pointed -- the difference
+   between an airframe that can be trimmed and one where the editor's wing angle
+   is decoration.
+   Note what this does NOT do: a part turned 180 deg about its own nose flips up
+   AND right, so alpha flips sign and liftDir flips with it, and the force comes
+   out the SAME as the ship-wide frame's. That is why the shipped airframes --
+   wing_1 at attach angle 0 and wing_2 at 180 on one parent -- keep flying exactly
+   as they do today once each part reads its own frame: measured over jet.json and
+   glider.json at 5 deg AoA, 3e-12 N of float noise on the total lift and on the
+   moment (tmp/part_frames.cpp). tests/test_drag.cpp pins the mechanism, because a
+   flight log cannot tell "nothing moved" from "the law is broken". */
+struct PartAero {
+    double alpha = 0.0;                 // rad, this part's own angle of attack
+    glm::dvec3 liftDir = glm::dvec3(0.0);   // unit, this part's own; zero if unusable
+    bool valid = false;                 // false -> no usable frame or no lift axis
+};
+
+inline PartAero partAero(const glm::dmat3 &partRot, const glm::dvec3 &v_rel) {
+    PartAero pa;
+    const AeroFrame fr = aeroFrame(v_rel, partRot[0], partRot[1], partRot[2]);
+    if(!fr.valid) { return pa; }
+    pa.liftDir = liftDirection(v_rel, partRot[0], partRot[2]);
+    if(glm::dot(pa.liftDir, pa.liftDir) <= 0.0) { return pa; }
+    pa.alpha = fr.alpha;
+    pa.valid = true;
+    return pa;
+}
+
 /* The 2-D cross product (z-component) of (b-a) x (c-a). */
 inline double cross2(const glm::dvec2 &a, const glm::dvec2 &b,
                      const glm::dvec2 &c) {
@@ -653,15 +684,21 @@ inline double controlDeflectionSign(const glm::dvec3 &ri,
    (signed rad, the control law's sign; Vehicle::Draw only). The visual hinge
    is NOT the torque axis (aboutAxis): a surface hinged at angle t produces
    force along t x nose, so to bend the same way the law's defl does --
-   - a rudder (Yaw) tips +defl about UP,
-   - an elevator or aileron tips -defl about RIGHT (aboutAxis 2 hinges on
-     right, not nose: ailerons FLAP, they do not sweep).
+   - a rudder (Yaw) tips +defl about the SURFACE's own up,
+   - an elevator or aileron tips -defl about its own RIGHT (aboutAxis 2 hinges
+     on right, not nose: ailerons FLAP, they do not sweep).
+   partRot is the PART's own frame, not the ship's (#453): the force leaves
+   along the surface's normal and swings about the axis the surface is bolted
+   at, so a v-tail fin hinges on its own slanted up and a mirrored mount hinges
+   on an upside-down axis. A mount flip turns that axis AND the instance's
+   commanded defl around together, so the world-space hinge of every shipped
+   part is bit-identical to the root-frame one it replaces.
    controlDeflectionSign already gives left/right surfaces opposite defl, so
    this yields differential aileron flapping for free. Assumes the mesh's
    chord runs along the part's nose axis, which is the surface-mount frame
    gen_wing.py authors plates in (res/meshes/fin_r1h2.obj). */
 inline glm::dquat controlSurfaceVisualRot(int aboutAxis, double defl,
-                                          const glm::dmat3 &rootRot) {
-    return (aboutAxis == 1) ? glm::angleAxis(defl, rootRot[1])
-                            : glm::angleAxis(-defl, rootRot[0]);
+                                          const glm::dmat3 &partRot) {
+    return (aboutAxis == 1) ? glm::angleAxis(defl, partRot[1])
+                            : glm::angleAxis(-defl, partRot[0]);
 }

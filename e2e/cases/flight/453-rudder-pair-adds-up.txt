@@ -1,0 +1,35 @@
+NAME rudder-pair-adds-up
+CLAIM The jet's two rudders are bolted the other way round, so one stick drives them to OPPOSITE printed deflections and they still push the SAME way: a held rudder throws the airframe off the centreline instead of cancelling itself out.
+KIND golden
+ARGS --time-accel 1 --startship jet,res/ships/jet.json,Kerbin,flying-slow
+ARGS --sim-steps 300 --drag-log
+ARGS --sim-press 1000,3000,D
+EXPECT [drag]
+EXPECT [ctrl]
+CHECK len(drag) >= 4
+# #453's fingerprint, straight off the log: the pair deflects ANTI-symmetrically
+# (-20.1 deg and +20.1 deg) because a fin mounted at angle 0 and its twin at 180
+# present opposite plate normals, and BOTH of them still reach max_deflection
+# (0.35 rad = 20.1 deg). The force direction comes off each surface's own frame
+# (partAero) while the deflection sign is still chosen about the SHIP's commanded
+# axis, because the stick promises a ship torque. Choose that sign about the
+# PART's own axis instead -- the tidy-looking alternative -- and the yaw checks
+# below fail (measured on the mutant: the pair's forces cancel, so the airframe
+# never leaves a couple of degrees of side-slip; the printed deflections stay
+# antisymmetric because a real flow is never exactly along the nose, which is
+# why the checks that bite are the motion ones). Pinned as pure math, both ways
+# round, by test_drag's test_control_pair_frames.
+CHECK any(a["deg"] < -15.0 and b["deg"] > 15.0 for a in ctrl for b in ctrl if a["t"] == b["t"] and a["axis"] == "yaw" and b["axis"] == "yaw" and a["index"] != b["index"])
+# The pair's yaw force survives the mirror. Held full rudder, the airframe is
+# 100 deg side-slipping one second later and stays off the centreline for the
+# rest of the run (Beta: -0.0, 99.9, -3.7, 37.9, 80.4). A/D mirrors it exactly
+# (Beta -0.0, -99.9, +3.7, -38.0, -80.4), so this is the stick and not the pose
+# the bed happened to start in.
+CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) > 90.0
+# And it is not one lucky sample: every later row is still side-slipping. With
+# no rudder input the same airframe never passes 5 deg (pinned in 458), so the
+# whole band is control authority. #454 (static margin, and the damping it
+# implies) will move these two numbers; re-baseline them there rather than
+# widening them here.
+CHECK min(abs(d["beta"]) for d in drag[1:] if d.get("beta") is not None) > 3.0
+FORBID error:

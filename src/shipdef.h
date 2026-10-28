@@ -50,10 +50,12 @@ struct ResourceContent {
    from the surface's OFFSET from the COM. */
 enum class ControlAxis { Pitch, Yaw, Roll };
 
-/* Per-axis steering parameters. Pure (no glm) so tests can pin the mapping. */
+/* Per-axis steering parameters. Pure (no glm) so tests can pin the mapping.
+   aboutAxis says which SHIP axis the stick promises to turn (and which local axis
+   a fin hinged for that axis swings about); the force itself follows the surface's
+   own normal (#453), so there is no per-axis force direction here. */
 struct ControlAxisParams {
     int aboutAxis = -1;
-    int forceDirKind = -1;
     int stickIndex = -1;
     double targetSign = -1.0;
 };
@@ -61,11 +63,11 @@ inline ControlAxisParams controlAxisParams(ControlAxis axis) {
     ControlAxisParams p;
     switch(axis) {
         case ControlAxis::Pitch:
-            p.aboutAxis = 0; p.forceDirKind = 0; p.stickIndex = 1; p.targetSign = -1.0; break;
+            p.aboutAxis = 0; p.stickIndex = 1; p.targetSign = -1.0; break;
         case ControlAxis::Yaw:
-            p.aboutAxis = 1; p.forceDirKind = 1; p.stickIndex = 2; p.targetSign = -1.0; break;
+            p.aboutAxis = 1; p.stickIndex = 2; p.targetSign = -1.0; break;
         case ControlAxis::Roll:
-            p.aboutAxis = 2; p.forceDirKind = 0; p.stickIndex = 0; p.targetSign = +1.0; break;
+            p.aboutAxis = 2; p.stickIndex = 0; p.targetSign = +1.0; break;
     }
     return p;
 }

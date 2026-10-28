@@ -365,25 +365,23 @@ int main() {
         }
     }
 
-    // controlAxisParams: the pure axis -> (moment axis, force plane, stick,
-    // target sign) selection (I1). The moment axis MUST equal the reaction
-    // wheel's axis for that control, and the target sign the wheel's torque
-    // sign on a positive stick (pitch -> -right, yaw -> -up, roll -> +nose).
-    // Pinning it here means a swap (about, targetSign) can't slip through.
+    // controlAxisParams: the pure axis -> (moment axis, stick, target sign)
+    // selection (I1). The moment axis MUST equal the reaction wheel's axis for
+    // that control, and the target sign the wheel's torque sign on a positive
+    // stick (pitch -> -right, yaw -> -up, roll -> +nose). Pinning it here means a
+    // swap (about, targetSign) can't slip through. There is no force direction
+    // here any more: the force follows the surface's own normal (#453).
     {
         const ControlAxisParams pitch = controlAxisParams(ControlAxis::Pitch);
         CHECK(pitch.aboutAxis == 0);        // moment about RIGHT (wheel: -right)
-        CHECK(pitch.forceDirKind == 0);     // force in the up plane (liftDir)
         CHECK(pitch.stickIndex == 1);       // driven by W/S (stick[1])
         CHECK(pitch.targetSign == -1.0);    // wheel W/S -> -right
         const ControlAxisParams yaw = controlAxisParams(ControlAxis::Yaw);
         CHECK(yaw.aboutAxis == 1);          // moment about UP (wheel: -up)
-        CHECK(yaw.forceDirKind == 1);       // force in the right plane (yawDir)
         CHECK(yaw.stickIndex == 2);         // driven by A/D (stick[2])
         CHECK(yaw.targetSign == -1.0);      // wheel A/D -> -up
         const ControlAxisParams roll = controlAxisParams(ControlAxis::Roll);
         CHECK(roll.aboutAxis == 2);         // moment about NOSE (wheel: +nose)
-        CHECK(roll.forceDirKind == 0);      // force in the up plane (liftDir)
         CHECK(roll.stickIndex == 0);        // driven by Q/E (stick[0])
         CHECK(roll.targetSign == +1.0);     // wheel Q/E -> +nose (the +1!)
         // the three axes are distinct: different moment axis AND stick

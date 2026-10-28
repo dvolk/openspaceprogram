@@ -2256,7 +2256,6 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     const glm::dvec3 vhat    = vrel / std::sqrt(v2);
     // The flow in S: area and dots are rotation-invariant, so rotate the flow, not the verts.
     const glm::dvec3 vhatS   = glm::transpose(sRot) * vhat;
-    const glm::dvec3 liftDir = liftDirection(vrel, right, nose);
     const double q = 0.5 * rho * v2;  // dynamic pressure (shared by all parts)
 
     glm::dvec3 ftotal(0.0);
@@ -2410,13 +2409,22 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                                // then shows the limiter working.
     }
 
-    // LIFT (per part): each surface lifts on its OWN area at its OWN position, so the
-    // moment comes from the surfaces' distribution.
+    // LIFT (per part): each surface lifts on its OWN area at its OWN position and
+    // in its OWN frame (#453) -- the angle a wing is mounted at is incidence, not
+    // decoration. The moment still comes from the surfaces' distribution.
     for(Part *p : parts) {
         if(p->def == nullptr) { continue; }
         const PartDef *d = p->def;
-        const glm::dvec3 flift = liftForce(q, d->lift_area, d->cl, alpha,
-                                           liftDir, d->stall_angle);
+        if(d->lift_area <= 0.0) { continue; }   // the frame is only worth building
+                                                // for a surface that lifts
+        /* The mount in S: localRot is part-local, sRot carries it into the same
+           frame the flow and the hull live in. One mat3 multiply plus two atan2
+           per LIFTING part per substep -- not per part, which is why the
+           lift_area test above comes first. */
+        const PartAero pa = partAero(sRot * p->localRot, vrel);
+        if(!pa.valid) { continue; }   // a mount with no usable axis lifts nothing
+        const glm::dvec3 flift = liftForce(q, d->lift_area, d->cl, pa.alpha,
+                                           pa.liftDir, d->stall_angle);
         if(glm::length2(flift) <= 0.0) { continue; }
         const glm::dvec3 ri = partPosS(p) - com;  // surface's offset from the COM
         ApplyForce(hull, ri, flift);             // translation + (ri x flift)
@@ -2457,12 +2465,6 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     // the surface so its offset from the COM is the steering leverage.
     {
         lastControlDeflections.clear();
-        // Force directions out of the flow (mirrors liftDirection): pitch/roll share the
-        // "up" plane, yaw uses the ship's right axis.
-        const glm::dvec3 yawDirRaw = right - glm::dot(right, vhat) * vhat;
-        const double yawLen = glm::length(yawDirRaw);
-        const glm::dvec3 yawDir = (yawLen > 0.0) ? yawDirRaw / yawLen
-                                                 : glm::dvec3(0.0);
         int ctrlIndex = 0;  // the Nth control surface (disambiguates instances)
         for(Part *p : parts) {
             if(p->def == nullptr) { continue; }
@@ -2473,7 +2475,17 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             // pure controlAxisParams (pinned in test_shipload)
             const ControlAxisParams ax = controlAxisParams(d->control_axis);
             const float sv = stick[ax.stickIndex];   // 0 when that stick is free
-            const glm::dvec3 forceDir = (ax.forceDirKind == 0) ? liftDir : yawDir;
+            /* The force leaves along the SURFACE's own normal out of the flow (#453),
+               not along a ship-wide direction. A v-tail's fin then pushes a pitch/yaw
+               mix, and a fin mounted upside down pushes the way it is bolted rather
+               than the way the pod points. The COMMAND axis below stays the ship's:
+               the stick promises a ship torque, and the sign picks the deflection
+               that delivers it whichever way the surface faces. Measured on jet.json
+               and glider.json: the total control force and moment are unchanged to
+               7e-12 N, because a fin mounted at 0 deg and its twin at 180 flip their
+               normals and their deflections together. */
+            const glm::dvec3 forceDir
+                = partAero(sRot * p->localRot, vrel).liftDir;  // zero if unusable
             const glm::dvec3 about =
                 (ax.aboutAxis == 0) ? right : (ax.aboutAxis == 1) ? up : nose;
             const glm::dvec3 ri = partPosS(p) - com;
@@ -3317,24 +3329,19 @@ void Vehicle::Draw(const Camera* camera, Frame *renderFrame) {
 
     /* Deflected fins swing on their VISUAL hinge (controlSurfaceVisualRot):
        the mesh tips the same way the aero law's force bends the ship. The
-       hinge axes are the ship's, so the root rotation is hoisted lazily --
-       only ships with stick-deflected surfaces pay for it. */
-    glm::dmat3 rootRot;
-    bool rootRotReady = false;
-
+       hinge axes are the SURFACE's own (#453) -- the force leaves along the
+       surface's normal, so the mesh has to hinge about the axis the surface
+       is bolted at, which its part pose already carries. No root frame to
+       hoist: a v-tail fin's hinge is its own slanted axis, and an upside-down
+       mount swings about an axis that is upside down too. */
     for(Part *p : parts) {
         // One body per ship, so a part's pose is derived, not read off its own body.
         glm::dvec3 pp; glm::dmat3 pr;
         partPoseRelCom(p, pp, pr);
         if(p->def != nullptr && p->def->control_area > 0.0 && p->controlDefl != 0.0) {
-            if(not rootRotReady) {
-                glm::dvec3 rp;
-                partPoseRelCom(rootPart(), rp, rootRot);
-                rootRotReady = true;
-            }
             const ControlAxisParams ax = controlAxisParams(p->def->control_axis);
             pr = glm::mat3_cast(
-                     controlSurfaceVisualRot(ax.aboutAxis, p->controlDefl, rootRot))
+                     controlSurfaceVisualRot(ax.aboutAxis, p->controlDefl, pr))
                  * pr;
         }
         const glm::dmat4 model = glm::translate(pp) * glm::dmat4(pr);
