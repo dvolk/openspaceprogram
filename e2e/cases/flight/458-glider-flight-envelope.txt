@@ -1,0 +1,33 @@
+NAME glider-flight-envelope
+CLAIM The shipped glider presents a bounded silhouette to the air, carries a bounded share of its weight, and has only yaw surfaces to fly with.
+KIND golden
+ARGS --time-accel 1 --startship glider,res/ships/glider.json,Kerbin,flying-slow
+ARGS --timeout 14 --drag-log --mass-log
+ARGS --sim-press 1000,3000,R
+ARGS --sim-press 1500,6000,T
+ARGS --sim-press 3000,3000,A
+EXPECT [drag]
+EXPECT [ctrl]
+CHECK len(drag) >= 10
+# Same silhouette reading as the jet case, on the nose-on rows: 30.8 m2 of hull
+# shadow for an airframe that is a pod and two wings (#462, #463). Re-baseline on
+# purpose when those land.
+CHECK all(d.get("aoa") is not None and abs(d["aoa"]) < 1.0 for d in drag[:3])
+CHECK 28.0 < min(d.get("a", 0.0) for d in drag[:3]) < 33.0
+# |L| / q, the measured lift capability in area units: 14.4 sampled here against
+# the catalog's 2 x 8 m2 x CLmax 2.1 = 33 m2-equivalent at the top of the linear
+# band. #455's ablation moved this 4x and no assertion noticed.
+CHECK 10.0 < max(d["L"] / (0.5 * d["rho"] * d["v"] * d["v"]) for d in drag if d.get("L") and d["v"] > 1.0) < 20.0
+# How much of its weight the glider can carry: 0.36 g at best. This is the ship
+# with no engine doing the work, so this number IS the flight model -- under it,
+# the airframe falls (#455's envelope table: L/Dmax 0.56).
+CHECK 0.25 < max(d["L_up"] for d in drag if d.get("L_up")) / (max(m["mass"] for m in mass) * 9.81) < 0.5
+CHECK 0.3 < max(d["L"] / d["F"] for d in drag if d.get("L") and d.get("F")) < 0.7
+# What the airframe is built from: A is held for 3 s and both rudders reach their
+# travel limit, and the shipped glider has NO pitch surface at all -- the stick
+# cannot ask for nose-up, which is half of why nothing about trim can be tuned on
+# it (#454). If a tailplane ever ships, that last line is the one to change.
+CHECK all(d["t"] is not None for d in ctrl)
+CHECK any(d["axis"] == "yaw" and abs(d["deg"]) > 15.0 for d in ctrl)
+CHECK all(d["axis"] == "yaw" for d in ctrl)
+FORBID error:

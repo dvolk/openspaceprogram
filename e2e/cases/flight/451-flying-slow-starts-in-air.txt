@@ -20,6 +20,12 @@ CHECK 150.0 < float(re.search(r"Spawn 'flying-slow' around Kerbin:.*?\|v\| = ([\
 # speed the bed promised (179 m/s) instead of a wall-clock-gated sample of
 # something already decaying at 45 m/s^2.
 CHECK drag[0]["v"] > 0.9 * float(re.search(r"Spawn 'flying-slow' around Kerbin:.*?\|v\| = ([\d.]+) m/s", out).group(1))
+# The same line now also prints the speed the AIR feels (#459), which is the one
+# the aero pass uses. On a speed_frac bed the two agree -- that IS the bed's
+# promise -- whereas the circular flying-low bed prints |v| = 2412 m/s next to
+# |v_air| = 2112 m/s, because the atmosphere co-rotates. A missing field fails
+# here (the regex raises) instead of quietly reading as one fewer number.
+CHECK abs(float(re.search(r"\|v_air\| = ([\d.]+) m/s", out).group(1)) - drag[0]["v"]) < 20.0
 # Nose along the flow, wings level. Up is the airframe's own +Y against the local
 # vertical; the air-relative velocity here sits 1.5 deg out of the orbit plane
 # (the co-rotation term), and faceAlong picks its roll axis from three candidates,

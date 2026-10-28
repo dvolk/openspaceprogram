@@ -1,0 +1,38 @@
+NAME jet-flight-envelope
+CLAIM The shipped jet presents a bounded silhouette to the air, its wings carry a bounded share of its weight, and holding pitch actually moves the elevons.
+KIND golden
+ARGS --time-accel 1 --startship jet,res/ships/jet.json,Kerbin,flying-slow
+ARGS --timeout 14 --drag-log --mass-log
+ARGS --sim-press 1000,3000,R
+ARGS --sim-press 1500,6000,T
+ARGS --sim-press 3000,3000,W
+EXPECT [drag]
+EXPECT [ctrl]
+CHECK len(drag) >= 10
+# The area the air actually pays for, read on the nose-on rows (|AoA| < 1 deg, so
+# the hull sits edge-on to the flow): 30.8 m2 for an airframe whose two wings add
+# 0.8 m2 of material, because the convex hull spans wingtip to wingtip and fills
+# the fuselage gap in (#462, #463). This band is the number those tickets exist to
+# MOVE -- when one lands, re-baseline it on purpose instead of widening the band,
+# and say so in the commit.
+CHECK all(d.get("aoa") is not None and abs(d["aoa"]) < 1.0 for d in drag[:3])
+CHECK 28.0 < min(d.get("a", 0.0) for d in drag[:3]) < 33.0
+# Lift capability in area units: |L| / q. Two wings at lift_area 8 and cl 6 reach
+# 33 m2-equivalent at the top of the linear band (CLmax 2.1); the sampled peak
+# lands lower because the 1 s log gate catches the airframe mid-swing and into
+# the stall droop. A 4x cut to lift_area drops it under the floor, a 4x raise
+# puts it over the ceiling. That is the point (#458): both used to move nothing.
+CHECK 10.0 < max(d["L"] / (0.5 * d["rho"] * d["v"] * d["v"]) for d in drag if d.get("L") and d["v"] > 1.0) < 20.0
+# The envelope number a player feels: how much of the ship's weight the wings
+# ever carry, against the g res/systems declares for Kerbin. 0.84 g today, which
+# is why the jet only "flies" while its engine pushes it (#455).
+CHECK 0.6 < max(d["L_up"] for d in drag if d.get("L_up")) / (max(m["mass"] for m in mass) * 9.81) < 1.0
+# L/D of the same rows: 0.42 at best, against 30-50 for a sailplane (#455).
+CHECK 0.3 < max(d["L"] / d["F"] for d in drag if d.get("L") and d.get("F")) < 0.6
+# The surfaces earn their keep. W is held for 3 s and the elevons reach their
+# max_deflection (0.35 rad = 20.1 deg printed); every row carries the t= of the
+# [drag] sample it printed under. Nothing parsed [ctrl] before #458, so no case
+# could see a control surface move at all.
+CHECK all(d["t"] is not None for d in ctrl)
+CHECK any(d["axis"] == "pitch" and abs(d["deg"]) > 15.0 for d in ctrl)
+FORBID error:

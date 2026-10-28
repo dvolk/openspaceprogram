@@ -447,12 +447,24 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
 
     /* |v| is the authored start: the orbital speed for a circular/elliptical bed,
        the AIR-relative speed for a speed_frac one -- in the body's rotational
-       frame the air sits still, so that is the only speed a flight bed feels. */
-    printf("Spawn '%s' around %s: frame '%s' @ world (%.0f, %.0f, %.0f), r = %.0f m, |v| = %.1f m/s\n",
+       frame the air sits still, so that is the only speed a flight bed feels.
+       That one field meaning two things costs debugging sessions (#459): on
+       Kerbin flying-low |v| says 2412 m/s while the air only ever feels
+       2112-2251 m/s, because the atmosphere co-rotates. So an in-atmosphere bed
+       also prints the number the aero pass will actually use, from the same
+       helper applyAeroForce uses and after the ship is placed and its velocity
+       set -- so the two cannot drift apart. */
+    char air_txt[48] = "";
+    if(sc.atmo_frac) {
+        snprintf(air_txt, sizeof air_txt, " |v_air| = %.1f m/s",
+                 glm::length(ship->airRelativeVel(target)));
+    }
+    printf("Spawn '%s' around %s: frame '%s' @ world (%.0f, %.0f, %.0f), r = %.0f m, |v| = %.1f m/s%s\n",
            sc.name, home->name.c_str(), frame->name.c_str(),
            shipWorldPos.x, shipWorldPos.y, shipWorldPos.z,
            glm::length(shipWorldPos - center),
-           sc.speed_frac > 0.0 ? glm::length(vel) : glm::length(velWorld));
+           sc.speed_frac > 0.0 ? glm::length(vel) : glm::length(velWorld),
+           air_txt);
 }
 
 /* Ships sharing a (body, scenario) orbit bed are pushed this far apart along the

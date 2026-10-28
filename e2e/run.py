@@ -229,6 +229,15 @@ DRAG_RE = re.compile(
     r"(?:\s+A=([-\d.]+) m2)?(?:\s+(?:AoA=([-\d.e+]+) deg|AoA=-))?"
     r"(?:\s+Chute=([-\d.]+) m2)?"
 )
+# --drag-log's control surfaces (src/tick.cpp): one [ctrl] line under each [drag]
+# line, one "name[index](axis)=±deg" term per surface the aero pass scored. It
+# carries no t= of its own -- it prints inside the same log gate -- so parse_ctrl
+# borrows the timestamp of the [drag] row above it. Every surface prints even at
+# zero travel, so a missing row means the aero pass did not run or the part is
+# not a surface, NOT that a surface held at zero. Until now nothing parsed this:
+# no case could assert a surface moved, which is the whole observable of #453
+# (per-part incidence) and #454 (static margin).
+CTRL_ITEM_RE = re.compile(r"([^\s\[]+)\[(\d+)\]\((\w+)\)=([-+]\d+\.\d+)deg")
 SHAKE_RE = re.compile(
     r"\[shakelog\]\s+t=([\d.]+)s\s+a=([-\d.]+) m/s2\s+"
     r"amp=([-\d.]+) m\s+off=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]"
@@ -785,6 +794,25 @@ def parse_surf(out):
     return rows
 
 
+def parse_ctrl(out):
+    """One row per surface per --drag-log sample (see CTRL_ITEM_RE). The [ctrl]
+    line has no timestamp of its own, so each row carries the t= of the [drag]
+    line it printed under; a row whose t is None would mean a [ctrl] with no
+    [drag] above it, which tick.cpp cannot produce."""
+    rows = []
+    t = None
+    for line in out.splitlines():
+        if line.startswith("[ctrl]"):
+            for name, idx, axis, deg in CTRL_ITEM_RE.findall(line):
+                rows.append({"t": t, "name": name, "index": int(idx),
+                             "axis": axis, "deg": float(deg)})
+        elif line.startswith("[drag]"):
+            m = DRAG_RE.match(line)
+            if m:
+                t = float(m.group(1))
+    return rows
+
+
 def parse_scene(out):
     rows = []
     for m in SCENE_RE.finditer(out):
@@ -1031,6 +1059,7 @@ def run_case(case):
     dv = parse_dv(world)
     mass = parse_mass(world)
     drag = parse_drag(world)
+    ctrl = parse_ctrl(world)
     shake = parse_shake(world)
     cam = parse_cam(world)
     terrain = parse_terrain(world)
@@ -1045,6 +1074,7 @@ def run_case(case):
         "porkchop": porkchop, "surfmap": surfmap, "att": att, "eva": eva,
         "fuel": fuel, "drainlog": drainlog, "power": power, "dv": dv, "mass": mass,
         "drag": drag, "shake": shake,
+        "ctrl": ctrl,
         "cam": cam,
         "terrain": terrain,
         "surf": surf, "mapb": mapb, "plane": plane, "slew": slew,
