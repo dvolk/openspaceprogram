@@ -525,6 +525,33 @@ struct Game {
     // --- the wall-clock log gates (--orbit-interval; tick.cpp + xfer-log) --
     // Each log needs its own "last fired" clock, or only the first one fires.
     const Uint32 orbit_log_interval_ms = (Uint32)(args.orbit_interval * 1000.0);
+
+    /* --sim-steps (cli.cpp) makes a run reproducible (#472): exactly one tick per
+       frame and a fixed number of ticks, so two runs of one flight step
+       identically. That only holds if everything the run READS is keyed to the sim
+       clock too -- a --sim-press on the wall clock lands on a different tick on a
+       faster machine, and a wall-gated [drag] row samples a different substep. So
+       both clocks below switch together when the mode is on, and stay exactly as
+       they were (process-relative for the logs, loop-relative for the schedules)
+       when it is off. Neither is the player-facing choice: a sim-clock log gate
+       would go quiet while paused and fire on every tick at warp (#374), which is
+       why the mode, not the default, decides. */
+    long long sim_steps_left = -1;     // < 0: off. Else ticks still owed.
+    double sim_clock_base = 0.0;       // g.time when the main loop started
+
+    // The clock --sim-press / --sim-mouse / --ui-click schedules are keyed to.
+    Uint32 schedClockMs() const {
+        return (sim_steps_left >= 0)
+             ? (Uint32)((time - sim_clock_base) * 1000.0)
+             : (Uint32)(SDL_GetTicks() - loop_start_ms);
+    }
+    // The clock the periodic state logs gate on.
+    Uint32 logClockMs() const {
+        return (sim_steps_left >= 0)
+             ? (Uint32)((time - sim_clock_base) * 1000.0)
+             : (Uint32)SDL_GetTicks();
+    }
+
     // True once per interval_ms, stamping the gate as it fires.
     bool logDue(LogGate gate, Uint32 now_ms, Uint32 interval_ms) {
         assert(gate >= 0 && gate < kGateCount);

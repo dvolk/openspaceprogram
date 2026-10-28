@@ -21,7 +21,7 @@ void emit_sim_events(Game &g) {
     /* --sim-press: synthetic keys that fell due, down-then-up, polled in the
        same frame so one-shot actions fire on time. */
     if(!g.args.sim_presses.empty()) {
-        const Uint32 now = SDL_GetTicks() - g.loop_start_ms;
+        const Uint32 now = g.schedClockMs();  // sim ms under --sim-steps (#472)
         auto push_key = [&](SDL_EventType type, const SimKeyPress &p) {
             SDL_Event kev = {0};
             kev.type = type;
@@ -93,7 +93,7 @@ void emit_sim_events(Game &g) {
                                f.part.substr(slash + 1), sx, sy);
     };
     if(!g.args.ui_focuses.empty()) {
-        const Uint32 now = SDL_GetTicks() - g.loop_start_ms;
+        const Uint32 now = g.schedClockMs();  // sim ms under --sim-steps (#472)
         for(auto &f : g.args.ui_focuses) {
             if(f.done || now < f.at_ms) { continue; }
             double sx = 0, sy = 0;
@@ -114,7 +114,7 @@ void emit_sim_events(Game &g) {
     /* --sim-mouse: synthetic mouse events in the order each gesture needs.
        Motion carries the delta from the previous simulated position. */
     if(!g.args.sim_mouse_actions.empty()) {
-        const Uint32 now = SDL_GetTicks() - g.loop_start_ms;
+        const Uint32 now = g.schedClockMs();  // sim ms under --sim-steps (#472)
         auto push_btn = [&](SDL_EventType type, int button, int x, int y) {
             SDL_Event bev = {0};
             bev.type = type;
@@ -213,7 +213,7 @@ void emit_sim_events(Game &g) {
     /* --sim-mode: scripted display-mode changes; poll_events' SIZE_CHANGED
        finishes the resize. */
     if(!g.args.sim_mode_changes.empty()) {
-        const Uint32 now = SDL_GetTicks() - g.loop_start_ms;
+        const Uint32 now = g.schedClockMs();  // sim ms under --sim-steps (#472)
         for(auto &m : g.args.sim_mode_changes) {
             if(!m.done && now >= m.at_ms) {
                 m.done = true;

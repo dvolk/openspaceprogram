@@ -92,7 +92,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/448-drag-log-lift-readings.txt` | harness | The --drag-log's signed lift and attitude readings parse in flight and stay inside their bounds. |
 | `flight/451-flying-slow-starts-in-air.txt` | golden | The flying-slow bed starts wings-level with its nose along the air at a fraction of the AIR-relative circular speed, so a plane enters its altitude band moving rather than dropping. |
 | `flight/458-glider-flight-envelope.txt` | golden | The shipped glider pays air for the union of its parts AS MOUNTED (4.3 m2 nose-on, 26 m2 broadside, not a 30 m2 balloon), its lift owes induced drag, and with only yaw surfaces it can be steered past vertical but never pulled out. |
-| `flight/458-jet-flight-envelope.txt` | golden | The shipped jet pays air for the union of its parts AS MOUNTED (4.4 m2 nose-on, 35 m2 broadside, not a 30 m2 balloon), the lift it makes owes induced drag, and a held stick pitches it 75 deg off a flow it cannot damp out. |
+| `flight/458-jet-flight-envelope.txt` | golden | The shipped jet pays air for the union of its parts AS MOUNTED (4.4 m2 nose-on, 35 m2 broadside, not a 30 m2 balloon), the lift it makes owes induced drag, and a held stick pitches it 77 deg off a flow it cannot damp out. |
 | `flight/461-pad-def-attitude-starts-level.txt` | invariant | A ship def can ask for its pad attitude, so a winged airframe starts with its nose on the horizon and its wings level instead of standing on its tail. |
 
 ## crew (25)

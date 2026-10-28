@@ -52,6 +52,10 @@ struct GameArgs {
     int initial_time_accel = 1;
     double start_time = 0.0;   // the sim clock's t0 (s)
     double timeout_seconds = 0.0;
+    /* --sim-steps: run exactly this many logic ticks, then exit (-1 = off). A
+       scripted e2e flight's length in TICKS rather than wall seconds, so two runs
+       step identically and the clocks the run reads switch to sim time (#472). */
+    long long sim_steps = -1;
     float exhaust_scale = 1.0f;  // difficulty: scales ve (thrust + delta-v)
     float cam_shake = 1.0f;   // camera shake at high accel (0 = off)
     double drag_cd = 1.2;       // the drag coefficient (0 = off)

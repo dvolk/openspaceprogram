@@ -175,6 +175,18 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "seconds (0 = run until closed; default: 0)")
         ->check(CLI::NonNegativeNumber);
 
+    app.add_option("--sim-steps", args.sim_steps,
+                   "Run exactly this many logic ticks, then exit. For e2e: a "
+                   "flight measured in STEPS rather than wall seconds, so two "
+                   "runs of one case step identically (#472). In this mode the "
+                   "sim takes one tick per frame regardless of frame rate, and "
+                   "--sim-press/--sim-mouse/--ui-click and the --*-log rows are "
+                   "keyed to SIM seconds rather than wall ones. At the default "
+                   "--physics-hz 60, 600 steps = 10 s of sim. Prefer it over "
+                   "--timeout for anything you intend to pin: a wall-clock "
+                   "cutoff lands on a different tick on a slower machine.")
+        ->check(CLI::PositiveNumber);
+
     std::vector<std::string> sim_press;
     app.add_option("--sim-press", sim_press,
                    "Synthetic keypresses for e2e testing: a flat list of "

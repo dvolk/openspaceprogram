@@ -1,8 +1,8 @@
 NAME jet-flight-envelope
-CLAIM The shipped jet pays air for the union of its parts AS MOUNTED (4.4 m2 nose-on, 35 m2 broadside, not a 30 m2 balloon), the lift it makes owes induced drag, and a held stick pitches it 75 deg off a flow it cannot damp out.
+CLAIM The shipped jet pays air for the union of its parts AS MOUNTED (4.4 m2 nose-on, 35 m2 broadside, not a 30 m2 balloon), the lift it makes owes induced drag, and a held stick pitches it 77 deg off a flow it cannot damp out.
 KIND golden
 ARGS --time-accel 1 --startship jet,res/ships/jet.json,Kerbin,flying-slow
-ARGS --timeout 14 --drag-log --mass-log
+ARGS --sim-steps 840 --drag-log --mass-log
 ARGS --sim-press 1000,3000,R
 ARGS --sim-press 1500,6000,T
 ARGS --sim-press 3000,3000,W
@@ -28,9 +28,10 @@ CHECK max(d.get("a", 0.0) for d in drag) > 6.0 * min(d.get("a", 0.0) for d in dr
 # pin above still passes -- the pins are not decoration.
 CHECK 1.15 < max(d["F"] / (0.5 * d["rho"] * d["v"] * d["v"] * d["cd"] * d["a"]) for d in drag[:3]) < 1.25
 # |L| / q, lift capability in area units: 2 wings x 8 m2 at CLmax 2.1 = 33
-# m2-equivalent, and it gets there (25..32 depending on the run). It used to
-# sample 13.5 because the balloon's 9x-inflated drag bled the airframe before it
-# could reach a useful AoA.
+# m2-equivalent, and the deterministic run samples 23.9. It used to sample 13.5
+# because the balloon's 9x-inflated drag bled the airframe before it could reach
+# a useful AoA. The band stays wide because where a swing happens to be sampled is
+# a physics question, not a shape one; #454 gives it a steady state to pin.
 CHECK 10.0 < max(d["L"] / (0.5 * d["rho"] * d["v"] * d["v"]) for d in drag if d.get("L") and d["v"] > 1.0) < 60.0
 # #462's coupling, and the pin that says the induced term is not decoration: the
 # substeps that lift (|L| / q over 1, comfortably above the 3-decimal print) pay
@@ -42,20 +43,25 @@ CHECK all(d.get("induced", 0.0) == 0.0 for d in drag if d.get("L", 0.0) == 0.0)
 # It flies in the pitch plane: A is the only thing moving and the flow stays on
 # the centreline, so the yaw-plane angle AeroFrame reports stays put.
 CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 5.0
-# PINNING A BUG, NOT CELEBRATING ONE: a held stick puts this airframe 75 deg off
-# the flow and it is still swinging (AoA 0, 72, 4, 51, 28, -73, -2, 76, 25, -62)
-# when the case ends. It no longer loops right over -- honest 35 m2 of broadside
-# is real pitch damping, and the first cut of #463 (3.4 m2 broadside, mount
-# offsets dropped) had taken that away. #454 (static margin) is what brings this
-# excursion down; when it lands, EXPECT THIS CHECK TO FAIL and re-baseline it to
-# a sane envelope in that commit.
+# PINNING A BUG, NOT CELEBRATING ONE: a held stick puts this airframe 77 deg off
+# the flow and it is still swinging when the case ends. Under --sim-steps the
+# series is exact, run after run: AoA 0.3, -0.1, 77.0, -4.1, 66.3, 6.0, -73.7,
+# 12.2, 76.9, 14.2, -67.7, -54.8. It does not go over the top -- honest 35 m2 of
+# broadside is real pitch damping, and the first cut of #463 (3.4 m2 broadside,
+# mount offsets dropped) had taken that away, which is why the upper bound below
+# is pinned as firmly as the lower one. #454 (static margin) is what brings the
+# excursion down; when it lands, EXPECT THE LOWER CHECK TO FAIL and re-baseline it
+# to a sane envelope in that commit.
 CHECK max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) > 60.0
+CHECK max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) < 90.0
 CHECK any(d.get("L", 0.0) == 0.0 for d in drag)
-# DROPPED on purpose (was 0.85..0.95 max L/F): that peak lives inside the swing
-# above, and two runs of this case give 0.75 and 0.90 -- #472, not physics (the
-# sim steps against wall-clock frames and tick.cpp discards the leftover). Pin the
-# shape (area, ratio, force-vs-law) and the coupling instead; re-pin the ratio
-# with #472's fixed step budget and #454's damping giving it a steady state.
+# RESTORED (0.810 measured; the band is the same width the loose one was). This
+# peak lives inside the swing above, and while the run stepped against wall-clock
+# frames it read 0.75, 0.90, 0.92, 1.16 in four runs -- #472, not physics. With
+# --sim-steps 840 the two runs of this case are byte-identical, so the number is
+# worth pinning again: widen it deliberately when the physics moves, not by
+# accident because a CI box was busy.
+CHECK (lambda ds: 0.75 < max(d["L"] / d["F"] for d in ds) < 0.87)([d for d in drag if d["F"] > 0.0])
 # The surfaces earn their keep. W is held for 3 s and the elevons reach their
 # max_deflection (0.35 rad = 20.1 deg printed); every row carries the t= of the
 # [drag] sample it printed under. Nothing parsed [ctrl] before #458, so no case

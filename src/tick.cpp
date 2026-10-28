@@ -11,17 +11,27 @@
 #include "timestep.h"            // substepCount()
 
 void tick(Game &g) {
-    double newTime = (double)(SDL_GetTicks()) * 0.001;
-    double frameTime = newTime - g.currentTime;
-    g.currentTime = newTime;
-    g.accumulator += frameTime;
+    /* --sim-steps (#472): exactly one tick per frame, decided by the sim rather
+       than by how long this frame happened to take. Wall-clock stepping is what
+       makes a long flight irreproducible -- a slow frame drops the leftover time
+       below, so two runs of one case step a different number of times. */
+    const bool scripted = (g.sim_steps_left >= 0);
+    if(scripted) {
+        g.accumulator = g.dt;
+    } else {
+        double newTime = (double)(SDL_GetTicks()) * 0.001;
+        double frameTime = newTime - g.currentTime;
+        g.currentTime = newTime;
+        g.accumulator += frameTime;
 
-    /* Spiral-of-death clamp: at most 10 ticks of catch-up, i.e. 10/physics_hz
-       seconds of wall-clock hitch tolerance. A frame slower than that
-       silently drops sim time. */
-    if(g.accumulator > 10 * g.dt) {
-        g.accumulator = 10 * g.dt;
+        /* Spiral-of-death clamp: at most 10 ticks of catch-up, i.e. 10/physics_hz
+           seconds of wall-clock hitch tolerance. A frame slower than that
+           silently drops sim time. */
+        if(g.accumulator > 10 * g.dt) {
+            g.accumulator = 10 * g.dt;
+        }
     }
+    const long long ticks_before = g.logic_ticks;
 
     /* The live list, not a snapshot: an SoI crossing re-homes a Vehicle without
        moving it between containers, so a mid-tick crossing cannot reshuffle or
@@ -279,11 +289,14 @@ void tick(Game &g) {
            nothing while the player is paused (a load sets time_accel = 0), goes
            quiet for the rest of a run once New Game rewinds g.time to 0 under a
            process-wide stamp, and fires on EVERY tick once one tick advances
-           more than the interval at warp (#374). */
+           more than the interval at warp (#374). --sim-steps flips that choice
+           for a scripted run, because there the wall clock is the thing being
+           removed: a wall-gated row samples a different substep on a faster
+           machine, so a case's max/min metrics move between runs (#472). */
 
         /* --spin-log (or --radial-test): spin diagnostics. */
         if(g.ship && (g.args.spin_log_enabled || !g.args.radial_test.empty())) {
-            if(g.logDue(kGateSpin, SDL_GetTicks(), kStateLogMs)) {
+            if(g.logDue(kGateSpin, g.logClockMs(), kStateLogMs)) {
                 spin_log(g.ship, g.time);
             }
         }
@@ -293,14 +306,14 @@ void tick(Game &g) {
            from g.ship, and a per-ship sample taken on different ticks is not
            one snapshot of the fleet (#367). */
         if(g.args.mass_log) {
-            if(g.logDue(kGateMass, SDL_GetTicks(), kStateLogMs)) {
+            if(g.logDue(kGateMass, g.logClockMs(), kStateLogMs)) {
                 for(auto *s : vehicles) { mass_log(s, g.time); }
             }
         }
 
         /* --fuel-log: fuel mass + links. */
         if(g.ship && g.args.fuel_log) {
-            if(g.logDue(kGateFuel, SDL_GetTicks(), kStateLogMs)) {
+            if(g.logDue(kGateFuel, g.logClockMs(), kStateLogMs)) {
                 g.ship->fuel_log(g.time);
             }
         }
@@ -313,14 +326,14 @@ void tick(Game &g) {
            never steps, so it prints nothing rather than repeating a row. */
         if(g.ship && g.args.drain_log) {
             if(g.time_accel != 0) { g.ship->drainSample(g.dt * g.time_accel); }
-            if(g.logDue(kGateDrain, SDL_GetTicks(), kStateLogMs)) {
+            if(g.logDue(kGateDrain, g.logClockMs(), kStateLogMs)) {
                 g.ship->drain_log(g.time);
             }
         }
 
         /* --power-log: power balance. */
         if(g.ship && g.args.power_log) {
-            if(g.logDue(kGatePower, SDL_GetTicks(), kStateLogMs)) {
+            if(g.logDue(kGatePower, g.logClockMs(), kStateLogMs)) {
                 g.ship->power_log(g.time);
             }
         }
@@ -328,14 +341,14 @@ void tick(Game &g) {
         /* --slew-log: autopilot state. 10Hz, not 2Hz: a slew is a turn being
            steered, and at 2Hz the error curve is undersampled. */
         if(g.ship && g.args.slew_log_enabled) {
-            if(g.logDue(kGateSlew, SDL_GetTicks(), kSlewLogMs)) {
+            if(g.logDue(kGateSlew, g.logClockMs(), kSlewLogMs)) {
                 g.ship->slew_log(g.time);
             }
         }
 
         // --orbit-log: orbital elements in the body's inertial frame.
         if(g.ship && g.args.orbit_log) {
-            const Uint32 now_ms = SDL_GetTicks();
+            const Uint32 now_ms = g.logClockMs();
             if(g.logDue(kGateOrbit, now_ms, g.orbit_log_interval_ms)) {
                 const double mu = g.ship->m_parent->mu;
                 glm::dvec3 o_pos = g.ship->get_center_of_mass();
@@ -409,7 +422,7 @@ void tick(Game &g) {
            The t= values still differ: the gates are independent, so they fire
            on different ticks. */
         if(g.ship && g.args.dv_log) {
-            const Uint32 now_ms = SDL_GetTicks();
+            const Uint32 now_ms = g.logClockMs();
             if(g.logDue(kGateDv, now_ms, g.orbit_log_interval_ms)) {
                 g.ship->dv_log(g.time);
             }
@@ -417,7 +430,7 @@ void tick(Game &g) {
 
         // --dbg-log: ship pos/alt/vel in its own frame
         if(g.ship && g.args.dbg_log) {
-            const Uint32 now_ms = SDL_GetTicks();
+            const Uint32 now_ms = g.logClockMs();
             if(g.logDue(kGateDbg, now_ms, g.orbit_log_interval_ms)) {
                 glm::dvec3 p = g.ship->get_center_of_mass();
                 glm::dvec3 v = g.ship->GetVel();
@@ -438,7 +451,7 @@ void tick(Game &g) {
            ~1e-4 m/s jitter reads as a full +/-90 deg swing, and a number in a
            log gets treated as a measurement. */
         if(g.ship && g.args.drag_log) {
-            const Uint32 now_ms = SDL_GetTicks();
+            const Uint32 now_ms = g.logClockMs();
             if(g.logDue(kGateDrag, now_ms, g.orbit_log_interval_ms)) {
                 const glm::dvec3 v = g.ship->GetVel();
                 char aoa_txt[24];
@@ -506,7 +519,7 @@ void tick(Game &g) {
 
         // --att-log: the ship's nose + angular velocity (attitude-physics e2e)
         if(g.ship && g.args.att_log) {
-            const Uint32 now_ms = SDL_GetTicks();
+            const Uint32 now_ms = g.logClockMs();
             if(g.logDue(kGateAtt, now_ms, g.orbit_log_interval_ms)) {
                 g.ship->att_log(g.time);
             }
@@ -522,14 +535,14 @@ void tick(Game &g) {
            time_accel; runs over all ships (frozen-in deformation shows on
            idle/railed ones). */
         if(g.args.compound_check) {
-            if(g.logDue(kGateCompound, SDL_GetTicks(), g.orbit_log_interval_ms)) {
+            if(g.logDue(kGateCompound, g.logClockMs(), g.orbit_log_interval_ms)) {
                 for(auto *s : vehicles) { s->compoundCheck(g.time); }
             }
         }
 
         // --eva-log: the kerbal's mode + state (the EVA e2e assertions)
         if(g.ship && g.args.eva_log && g.ship->isEva()) {
-            const Uint32 now_ms = SDL_GetTicks();
+            const Uint32 now_ms = g.logClockMs();
             if(g.logDue(kGateEva, now_ms, g.orbit_log_interval_ms)) {
                 Kerbal *k = static_cast<Kerbal *>(g.ship);
                 const glm::dvec3 p = k->get_center_of_mass();
@@ -555,5 +568,18 @@ void tick(Game &g) {
         }
 
         g.accumulator -= g.dt;
+    }
+
+    /* --sim-steps (#472): spend the budget on the ticks actually run, then stop
+       the main loop. Counting ticks rather than frames keeps the promise even if
+       a frame ever steps more than once. */
+    if(g.sim_steps_left >= 0) {
+        g.sim_steps_left -= (g.logic_ticks - ticks_before);
+        if(g.sim_steps_left <= 0) {
+            printf("Sim steps reached (%lld ticks, %.2f s sim); exiting main loop.\n",
+                   g.args.sim_steps, g.time - g.sim_clock_base);
+            fflush(stdout);
+            g.running = false;
+        }
     }
 }

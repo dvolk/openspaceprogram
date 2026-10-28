@@ -204,7 +204,7 @@ void uiInputFrame(ImGuiContext *ctx, ImGuiContextHook *hook) {
     g_done.swap(g_filling);
     g_filling.clear();
 
-    const Uint32 now = SDL_GetTicks() - g.loop_start_ms;
+    const Uint32 now = g.schedClockMs();  // sim ms under --sim-steps (#472)
 
     if(g.args.ui_list_ms >= 0 && now >= (Uint32)g.args.ui_list_ms) {
         dumpUiItems(now);

@@ -910,6 +910,12 @@ int main(int argc, char **argv)
     // events.cpp and the timeout check below both measure from this.
     game.loop_start_ms = SDL_GetTicks();
 
+    /* --sim-steps: the same budget in TICKS instead of wall seconds (#472).
+       sim_clock_base is where the sim clock starts, since a load brings its own
+       t0 and the scripted ms are relative to the run, not to save history. */
+    game.sim_steps_left = args.sim_steps;
+    game.sim_clock_base = game.time;
+
     game.sky_dim = args.sky_dim;
     game.sky_dim_cone = args.sky_dim_cone;
 
@@ -922,6 +928,9 @@ int main(int argc, char **argv)
     printf("Main loop starting: startup took %.3f s", startup_s);
     if(args.timeout_seconds > 0.0) {
         printf(" | auto-exit after %.1f s (wall clock)", args.timeout_seconds);
+    }
+    if(args.sim_steps >= 0) {
+        printf(" | scripted: %lld logic ticks, sim-clocked schedules", args.sim_steps);
     }
     printf("\n");
     fflush(stdout);
