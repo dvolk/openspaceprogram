@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 266 |
+| `invariant` | a behaviour or a player route the game must keep | 267 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 36 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **320** |
+| | **total** | **321** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -192,7 +192,7 @@ judgement. Select by number, name or path, e.g.
 | `vab/307-vab-clear.txt` | invariant | Clear asks first, empties the workspace, then refuses when already empty. |
 | `vab/308-vab-dev-vehicles.txt` | invariant | Dev vehicles appear in the Load picker, below the fold until scrolled. |
 
-## save (52)
+## save (53)
 
 | case | kind | pins |
 |---|---|---|
@@ -248,6 +248,7 @@ judgement. Select by number, name or path, e.g.
 | `save/380-saved-part-mass-is-ignored.txt` | invariant | A save's own per-part mass cannot outweigh the parts catalog. |
 | `save/381-saved-virtual-part-refused.txt` | invariant | A save that names a virtual part (a fuel_link) as a body is refused, not built. |
 | `save/394-unprofiled-seat-refused.txt` | invariant | A save whose seat names no roster entry is refused, not rebuilt nameless. |
+| `save/456-saved-part-geometry-drift-refused.txt` | invariant | A save whose recorded part geometry no longer matches the parts file is refused, not rebuilt reshaped. |
 
 ## ui (45)
 

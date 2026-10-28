@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -110,6 +111,15 @@ struct PartDef {
     /* Attachment nodes. Empty -> load_parts_catalog synthesizes them from the
        size above. */
     std::vector<Node> nodes;
+
+    /* What this part's SHAPE was, hashed: the mesh file's bytes, radius, height
+       and the attach nodes (partGeomFingerprint). load_parts_catalog fills it
+       and nothing writes it afterwards. A save records it per part (save.h,
+       #456) because a save keeps SOLVED part poses rather than the attach spec
+       that produced them, so if any of this moves after the save the ship it
+       rebuilds is not the ship that was flown. 0 = no body to shape (a virtual
+       fuel_link def), which is also "absent" in the save format. */
+    uint64_t geom_fingerprint = 0;
 
     const Node *findNode(const std::string &id) const {
         for(size_t i = 0; i < nodes.size(); i++) {
@@ -569,6 +579,23 @@ struct PartsCatalog {
    field. The catalog must outlive any ShipDef (the parts point into it). */
 PartsCatalog load_parts_catalog(const char *path);
 ShipDef load_ship_def(const char *path, const PartsCatalog &catalog);
+
+/* FNV-1a over everything that decides a part's SHAPE: the mesh FILE's bytes,
+   radius, height, and every attach node (id, pos, dir, surface). load_parts_
+   catalog computes it once per part; a save records it (save.h, #456) so a
+   parts-file or mesh change that would reshape a saved ship is refused instead
+   of rebuilding the ship silently wrong.
+   A mesh file that cannot be read folds in an empty stream rather than
+   throwing: the catalog never required the file to exist, and a file that shows
+   up later moves the fingerprint -- which is the point.
+   Not covered: a part's drag/lift areas. They ride on the same fields but a
+   saved pose does not depend on them, and #389 made catalog numbers
+   authoritative over what a save carries. */
+uint64_t partGeomFingerprint(const PartDef &d);
+
+/* The fingerprint as 16 lowercase hex digits -- what a save writes and reads
+   (a 64-bit value as a decimal is 20 digits nobody can eyeball in a diff). */
+std::string geomFingerprintHex(uint64_t v);
 
 /* Parse a ship def from an already-parsed JSON document. Same contract as
    load_ship_def. */

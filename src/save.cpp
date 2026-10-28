@@ -524,6 +524,11 @@ SaveShip saveShipFromVehicle(Vehicle *v,
         sp.pos = p->localPos;
         sp.rot = p->localRot;
         sp.hull_margin = p->body->hull_margin;
+        /* #456: the SHAPE this part's pose was solved between. Recorded for
+           every part of a vessel, not just the children: a child's pose was
+           solved against its PARENT's shape, and the parent's own entry is the
+           only place that records it. */
+        sp.geom = geomFingerprintHex(p->def->geom_fingerprint);
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             sp.fuel.push_back(p->resources.current[r]);
         }
@@ -612,10 +617,22 @@ static TerrainBody *resolveBody(const System &sys, const std::string &name,
    in the same words the builders used to throw, so both paths refuse identically.
 
    buildShipFromSaveParts relies on this; preflightSave runs it over the whole
-   save BEFORE a cross-system switch tears the running game down (#302). */
+   save BEFORE a cross-system switch tears the running game down (#302).
+   `note` (optional) takes the one sentence a save that predates the part
+   geometry key deserves; the caller that is actually loading prints it, so a
+   path that preflights and then builds says it once rather than twice. */
 static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
-                                     std::set<uint64_t> &saveUids) {
+                                     std::set<uint64_t> &saveUids,
+                                     std::string *note = nullptr) {
     std::set<uint64_t> prior;   // uids at earlier indices of THIS ship
+    /* The uids that are somebody's parent. Together with a part's own parent
+       field, that is the set of parts whose SHAPE a saved pose was solved
+       between -- a lone part (a walking kerbal's suit) is in no such relation,
+       so retouching its mesh must not cost the save. */
+    std::set<uint64_t> parents;
+    for(const SavePart &sp : s.parts) {
+        if(sp.parent != 0) { parents.insert(sp.parent); }
+    }
     for(size_t i = 0; i < s.parts.size(); i++) {
         const SavePart &sp = s.parts[i];
         /* Refuse rather than guess: uid 0 is a save predating part identity,
@@ -628,13 +645,44 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
             return "load: saved ship '" + s.name + "' has two parts with uid "
                    + std::to_string(sp.uid);
         }
-        if(const PartDef *spd = cat.find(sp.part); spd == nullptr) {
+        const PartDef *spd = cat.find(sp.part);
+        if(spd == nullptr) {
             return "load: saved ship '" + s.name + "' has a part '" + sp.part
                    + "' that is no longer in the parts file";
         } else if(std::string why = refuseVirtualPartDef(
                       *spd, "saved ship '" + s.name + "' part '" + sp.id + "'");
                   !why.empty()) {
             return why;
+        }
+        /* #456: a save keeps the SOLVED poses, never the attach edge that
+           produced them, so nothing else can tell a still-true pose from one the
+           parts file has since moved. a27bcd1 is the repro: the wing's mesh went
+           2x2 -> 4x2 and its radius 1.0 -> 2.0, and every save written before it
+           reloads with its wings 1 m inside the fuselage, +30 kg and +6 m2 of
+           lift each, with nothing said. Refuse the ship -- the alternative is
+           flying a vessel nobody built. */
+        if(sp.parent != 0 || parents.count(sp.uid) != 0) {
+            const std::string now = geomFingerprintHex(spd->geom_fingerprint);
+            if(sp.geom.empty()) {
+                /* Unverifiable rather than wrong: refuse nothing over it, or
+                   every save predating this key would die, but say so once per
+                   ship -- the next save from that game pins it, and until then
+                   the player is one parts-file edit from a reshaped ship. */
+                if(note != nullptr && note->empty()) {
+                    *note = "saved ship '" + s.name + "' records no part"
+                            " geometry, so a parts-file or mesh change since it"
+                            " was written can rebuild it reshaped with nobody"
+                            " told (it predates the check). Re-save it to pin"
+                            " its geometry.";
+                }
+            } else if(sp.geom != now) {
+                return "load: saved ship '" + s.name + "' part '" + sp.id
+                       + "' is the part '" + sp.part + "', whose geometry is not"
+                       + " what this save recorded (it recorded " + sp.geom
+                       + ", the parts file now says " + now
+                       + "). A save keeps solved part positions, so this ship"
+                       + " would rebuild reshaped -- rebuild it in the VAB.";
+            }
         }
         if(std::string why = refuseBadContents(
                sp.fuel, "saved ship '" + s.name + "' part '" + sp.part + "'");
@@ -766,10 +814,19 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
                                 std::map<uint64_t, Part *> *savedUidToPart) {
     const PartsCatalog &cat = g.parts;
     /* Validate before constructing: nothing to unwind, and the same walk is what
-       preflightSave runs before a cross-system switch (#302). */
+       preflightSave runs before a cross-system switch (#302). The geometry note
+       rides out rather than printing here because a sheet load validates twice
+       (preflight, then this), and a promise to the player belongs on the path
+       that is actually loading the ship. */
     std::set<uint64_t> saveUids;
-    if(std::string why = validateShipParts(s, cat, saveUids); !why.empty()) {
+    std::string geomNote;
+    if(std::string why = validateShipParts(s, cat, saveUids, &geomNote);
+       !why.empty()) {
         throw std::runtime_error(why);
+    }
+    if(!geomNote.empty()) {
+        printf("[load] note: %s\n", geomNote.c_str());
+        fflush(stdout);
     }
     // Resolve the scenario BEFORE constructing: it throws, and the rollback
     // only walks `built`.

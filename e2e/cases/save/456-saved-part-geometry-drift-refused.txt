@@ -1,0 +1,30 @@
+NAME saved-part-geometry-drift-refused
+CLAIM A save whose recorded part geometry no longer matches the parts file is refused, not rebuilt reshaped.
+KIND invariant
+ARGS --timeout 9
+# Reached by the Save/Load sheet, not --load: Game Debug ticks the e2e
+# fixture root, the sheet picks the "fixtures" game, the slot filter narrows
+# the fixture list to this one row, and row + Load button do the rest.
+ARGS --sim-press 500,0,F1
+ARGS --ui-click 1000,"Game Debug/Load e2e fixture saves"
+ARGS --sim-press 1500,0,F1
+ARGS --ui-click 2000,"Title Menu/Save/Load"
+ARGS --ui-click 2500,"fixtures"
+ARGS --ui-type 3000,"Save/Load/##filter",save_geom_stale
+ARGS --ui-click 3800,"save_geom_stale"
+ARGS --ui-click 4000,"Save/Load/Load##saveload"
+# A save keeps SOLVED part poses, never the attach edge that produced them, so
+# nothing else can tell a still-true pose from one the parts file has since
+# moved. a27bcd1 is the real repro: the wing's mesh went 2x2 -> 4x2 and its
+# radius 1.0 -> 2.0, and every save written before it reloaded with its wings
+# 1 m inside the fuselage, +30 kg and +6 m2 of lift each, with nothing said.
+# The fixture is save_racer with each part's geometry fingerprint (mesh file
+# bytes + radius/height + attach nodes, shipdef.cpp) recorded -- all four true
+# except engine_1's last hex digit, which stands for a mesh or size edit. The
+# three true ones matter: the refusal has to name the part that moved rather
+# than the first entry it walked past.
+EXPECT load: saved ship 'racer' part 'engine_1' is the part 'engine', whose geometry is not what this save recorded
+EXPECT [load] refused
+FORBID Loaded game from
+FORBID error:
+FORBID FAILED

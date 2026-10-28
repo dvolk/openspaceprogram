@@ -3,23 +3,39 @@
 // resdir.h -- read-only assets (the res/ tree). Game code names assets
 // "res/..." and keeps that identity; path() resolves it only at the point of
 // I/O.
-
-#include <SDL3/SDL.h>
+//
+// The search itself is std::filesystem only, so a data-model TU that links
+// without SDL or GL (shipdef.cpp's part geometry fingerprint, #456) can resolve
+// a res path the same way the renderer does. main.cpp hands in the executable's
+// directory as the hint before anything loads; with no hint -- a test harness, a
+// lost binary -- the search starts at cwd.
 
 #include <filesystem>
 #include <string>
 
 namespace resdir {
 
+// The hint, empty until set. A separate function-local static because root()'s
+// first call freezes it.
+inline std::string &hint() {
+    static std::string h;
+    return h;
+}
+
+// Call once at startup with SDL_GetBasePath()'s answer (SDL owns the pointer --
+// do not free it, and do not call this after the first path(), which has
+// already resolved the root).
+inline void setHint(const char *base) {
+    if(base == nullptr) { return; }
+    if(!hint().empty()) { return; }
+    hint() = base;
+}
+
 // The install root that contains res/ (trailing '/'). Resolved once.
 inline const std::string &root() {
     static const std::string r = []() -> std::string {
         namespace fs = std::filesystem;
-        // SDL caches this -- do not free the pointer.
-        fs::path p = ".";
-        if(const char *base = SDL_GetBasePath()) {
-            p = fs::path(base);
-        }
+        fs::path p = hint().empty() ? fs::path(".") : fs::path(hint());
         // Each level: <dir>/res (dev tree) or
         // <dir>/share/openspaceprogram/res (FHS).
         for(int i = 0; i < 8; i++) {

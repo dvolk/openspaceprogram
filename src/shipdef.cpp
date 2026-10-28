@@ -2,12 +2,16 @@
 
 #include <cassert>
 #include <cmath>
+#include <cstdio>
 #include <fstream>
 #include <map>
 #include <stdexcept>
 
 #include <glm/gtc/quaternion.hpp>   // angleAxis / mat3_cast
 #include <nlohmann/json.hpp>
+
+#include "hash.h"     // partGeomFingerprint's FNV-1a mixer
+#include "resdir.h"   // the part mesh path, resolved the way part.cpp resolves it
 
 PartDef::PartDef()
     : mass(0.0), radius(1.0), height(2.0), torque(0.0),
@@ -59,6 +63,67 @@ static glm::dvec3 parse_vec3(const nlohmann::json &obj, const char *key,
         }
     }
     return glm::dvec3(a[0].get<double>(), a[1].get<double>(), a[2].get<double>());
+}
+
+/* What a part's SHAPE was, hashed (#456). A save keeps SOLVED part poses, not
+   the attach spec that produced them (save.h), so the shapes a pose was solved
+   between are the only way to tell an old save from a reshaped one: the parent's
+   radius and nodes say where the child was bolted, and the child's own size says
+   how far it stuck out. a27bcd1 is the repro: the wing's mesh went 2x2 -> 4x2
+   and its radius 1.0 -> 2.0, so every pre-commit save rebuilds its wings 1 m
+   inside the fuselage, +30 kg and +6 m2 of lift each, with nobody told.
+   The mesh goes in as the FILE's bytes rather than parsed vertices: assimp is
+   not in this translation unit (the parse stays GL-free and headless-testable),
+   and an in-place edit and a swapped path are the same event to a save. The cost
+   is that a re-export changing only comments or float precision moves the value
+   too -- a false refusal, which is the safe direction: it costs a sentence
+   rather than flying a ship nobody built. */
+uint64_t partGeomFingerprint(const PartDef &d) {
+    if(d.fuel_link) { return 0; }   // a marker entry: no body, so no shape
+    uint64_t h = fnv::start();
+    fnv::mixText(h, d.mesh);
+    fnv::mixDouble(h, d.radius);
+    fnv::mixDouble(h, d.height);
+    std::ifstream m(resdir::path("res/" + d.mesh), std::ios::binary);
+    if(!m.is_open()) {
+        /* Unreadable folds in one stable value rather than throwing: the
+           catalog has never required the file to exist (tests name "a.obj"),
+           and a file that appears later moves the fingerprint, as it should. */
+        fnv::mix(h, 0);
+    } else {
+        uint64_t total = 0;
+        char buf[4096];
+        for(;;) {
+            m.read(buf, (std::streamsize)sizeof(buf));
+            const std::streamsize got = m.gcount();
+            if(got <= 0) { break; }
+            for(std::streamsize k = 0; k < got; k++) {
+                h = (h ^ (uint64_t)(unsigned char)buf[k]) * 1099511628211ull;
+            }
+            total += (uint64_t)got;
+        }
+        fnv::mix(h, total);
+    }
+    /* Nodes last: they are usually synthesized from radius/height, and an
+       authored set is exactly the kind of edit that moves a bolt point. */
+    fnv::mix(h, (uint64_t)d.nodes.size());
+    for(const Node &nd : d.nodes) {
+        fnv::mixText(h, nd.id);
+        fnv::mixDouble(h, nd.pos.x);
+        fnv::mixDouble(h, nd.pos.y);
+        fnv::mixDouble(h, nd.pos.z);
+        fnv::mixDouble(h, nd.dir.x);
+        fnv::mixDouble(h, nd.dir.y);
+        fnv::mixDouble(h, nd.dir.z);
+        fnv::mix(h, nd.surface ? 1 : 0);
+    }
+    return h;
+}
+
+std::string geomFingerprintHex(uint64_t v) {
+    char buf[17];
+    std::snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)v);
+    return std::string(buf);
 }
 
 PartsCatalog load_parts_catalog(const char *path) {
@@ -432,6 +497,10 @@ PartsCatalog load_parts_catalog(const char *path) {
             }
             d.synthesizeNodes();   // no-op if explicit nodes were given
         }
+
+        /* Last, so it covers the synthesized nodes as well as the authored ones
+           (#456). A virtual marker skips it: no body, no shape. */
+        d.geom_fingerprint = partGeomFingerprint(d);
 
         cat.parts.push_back(d);
     }

@@ -67,6 +67,14 @@ struct SavePart {
     glm::dvec3 pos = glm::dvec3(0.0);
     glm::dmat3 rot = glm::dmat3(1.0);
     double hull_margin = -1.0;
+    /* The part def's geometry fingerprint as this build saved the ship --
+       shipdef.h's partGeomFingerprint, 16 hex digits (#456). A save keeps
+       SOLVED part poses, not the attach spec that produced them, so a part whose
+       mesh, size or attach nodes moved since the save would rebuild the ship
+       reshaped with nobody told; load compares this and refuses. Absent = not
+       recorded: a save predating the check, or a part that has no pose to go
+       wrong (an inventory item, a seat occupant, a walking kerbal's suit). */
+    std::string geom;
     std::vector<double> fuel;   // one entry per ResourceType (Num)
     /* Science experiments on this part (v1 ships them only on kerbal suits).
        Empty = none. */
@@ -378,6 +386,7 @@ inline nlohmann::json savePartToJson(const SavePart &p) {
     if(p.pos != glm::dvec3(0.0)) { j["pos"] = std::vector<double>({p.pos.x, p.pos.y, p.pos.z}); }
     if(p.rot != glm::dmat3(1.0)) { j["rot"] = mat3ToVec(p.rot); }
     if(p.hull_margin >= 0.0) { j["hull_margin"] = p.hull_margin; }
+    if(!p.geom.empty()) { j["geom"] = p.geom; }
     j["fuel"]   = p.fuel;
     if(!p.experiments.empty()) { j["experiments"] = experimentListToJson(p.experiments); }
     if(!p.inventory.empty()) {
@@ -406,6 +415,19 @@ inline SavePart savePartFromJson(const nlohmann::json &j) {
     if(j.contains("pos") && j["pos"].is_array()) { p.pos = vec3FromJson(j["pos"]); }
     if(j.contains("rot") && j["rot"].is_array()) { p.rot = mat3FromVec(j["rot"]); }
     if(j.contains("hull_margin") && j["hull_margin"].is_number()) { p.hull_margin = j["hull_margin"].get<double>(); }
+    /* NOT permissive, unlike the reads around it: a fingerprint that fails to
+       read is exactly the key whose silent absence turns a #456 refusal back
+       into a silent reshape, so a mis-typed one costs a sentence instead. An
+       absent key stays permissive -- that is a save predating the check, and
+       validateShipParts says so in its own words. */
+    if(j.contains("geom")) {
+        if(!j["geom"].is_string()) {
+            throw std::runtime_error(std::string("save: part \"geom\" must be a ")
+                                     + "fingerprint string, got "
+                                     + j["geom"].type_name());
+        }
+        p.geom = j["geom"].get<std::string>();
+    }
     if(j.contains("fuel") && j["fuel"].is_array()) {
         for(auto &&f : j["fuel"]) { if(f.is_number()) { p.fuel.push_back(f.get<double>()); } }
     }

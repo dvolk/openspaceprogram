@@ -846,6 +846,30 @@ int main() {
     CHECK(oldOut.uid == 0);
     CHECK(oldOut.parent == 0);
 
+    /* A part's geometry fingerprint (#456): written when the save has one,
+       absent when it predates the key, and the one SavePart read that is NOT
+       permissive about its type -- a fingerprint that fails to read would turn a
+       reshape refusal back into silence. The value is shipdef.cpp's 16-hex-digit
+       form, which this test only compares as a string (it does not link
+       shipdef.cpp). */
+    {
+        SavePart gp;
+        gp.part = "wing";
+        gp.geom = "000000001234abcd";
+        nlohmann::json gj = savePartToJson(gp);
+        CHECK(gj.contains("geom"));
+        CHECK(gj["geom"].get<std::string>() == "000000001234abcd");
+        CHECK(savePartFromJson(gj).geom == "000000001234abcd");
+        CHECK(!savePartToJson(SavePart{}).contains("geom"));
+        CHECK(savePartFromJson(savePartToJson(SavePart{})).geom.empty());
+        bool geomThrew = false;
+        try {
+            savePartFromJson(nlohmann::json::parse(
+                R"({"part":"wing","uid":3,"geom":19})"));
+        } catch(const std::runtime_error &) { geomThrew = true; }
+        CHECK(geomThrew);
+    }
+
     /* A seat's roster id is uid-keyed like every other reference in a save: a
        non-uid value (a string -- the shape a hand-edited file could have) reads
        back as the "absent" 0, which the loader refuses rather than rebuilding

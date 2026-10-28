@@ -240,6 +240,11 @@ int main(int argc, char **argv)
     Renderer display(args.screen_width, args.screen_height, args.window_mode,
                      args.msaa_samples, args.gl_debug, args.vsync);
     check_gl_error();
+    /* resdir resolves res/ from the executable's directory (resdir.h). SDL owns
+       the pointer; the first path() call freezes the root, so this sits ahead of
+       every asset load below -- including the part catalog's geometry
+       fingerprints, which hash the mesh FILES (shipdef.cpp, #456). */
+    resdir::setHint(SDL_GetBasePath());
     const Uint32 sim_win_id = SDL_GetWindowID(display.get_display());
     /* --sim-press: keycodes -> scancodes now SDL is up (the CLI parse ran before
        the video subsystem existed). */

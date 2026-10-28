@@ -81,6 +81,85 @@ int main() {
     CHECK(cat.parts.size() >= 35);
     CHECK(cat.find("nope") == nullptr);
 
+    /* Part geometry fingerprints (#456) -- what a save records per part so a
+       parts-file or mesh change that would reshape it is refused rather than
+       flown. The VALUES are not pinned here (they follow the mesh files, and
+       they move whenever an .obj is retouched, which is the point). What must
+       hold: every part with a body has one and a virtual marker has none; two
+       loads of one file agree; the three things a saved pose was solved between
+       -- radius, height, the mesh, the attach nodes -- each move it; and a part
+       with no mesh file on disk still gets a stable value rather than throwing
+       or collapsing to 0 ("absent" in the save format). */
+    {
+        for(const PartDef &d : cat.parts) {
+            if(d.fuel_link) { CHECK(d.geom_fingerprint == 0); }   // no body
+            else { CHECK(d.geom_fingerprint != 0); }
+        }
+        const PartsCatalog again = load_parts_catalog("res/data/parts.json");
+        CHECK(again.parts.size() == cat.parts.size());
+        for(size_t i = 0; i < cat.parts.size(); i++) {
+            CHECK(cat.parts[i].geom_fingerprint == again.parts[i].geom_fingerprint);
+        }
+
+        /* One part, one real mesh, one field changed at a time. `tag` only keeps
+           the temp files apart: the same body under two tags must hash the same,
+           which is what makes a save's recorded value mean anything. */
+        auto geomOf = [](const std::string &body, const char *tag) -> uint64_t {
+            const std::string f = std::string("/tmp/test_geom_") + tag + ".json";
+            std::ofstream o(f);
+            o << "{\"parts\":[" << body << "]}";
+            o.close();
+            const PartsCatalog c = load_parts_catalog(f.c_str());
+            const uint64_t v = c.parts[0].geom_fingerprint;
+            std::remove(f.c_str());
+            return v;
+        };
+        const std::string base =
+            R"({"name":"a","type":"engine","mesh":"meshes/capsule.obj",)"
+            R"("texture":"textures/capsule.png","mass":10.0,)"
+            R"("radius":1.0,"height":2.0})";
+        const uint64_t g0 = geomOf(base, "base");
+        CHECK(g0 != 0);
+        CHECK(geomOf(base, "base_again") == g0);
+        // A rebalance must not refuse anyone's save: #389 made mass, capacity
+        // and thrust catalog-only, and none of them shapes a pose.
+        CHECK(geomOf(R"({"name":"a","type":"engine","mesh":"meshes/capsule.obj",)"
+                     R"("texture":"textures/capsule.png","mass":999.0,)"
+                     R"("radius":1.0,"height":2.0})", "heavier") == g0);
+        // The size: where a surface or stacked child was bolted.
+        CHECK(geomOf(R"({"name":"a","type":"engine","mesh":"meshes/capsule.obj",)"
+                     R"("texture":"textures/capsule.png","mass":10.0,)"
+                     R"("radius":2.0,"height":2.0})", "fatter") != g0);
+        CHECK(geomOf(R"({"name":"a","type":"engine","mesh":"meshes/capsule.obj",)"
+                     R"("texture":"textures/capsule.png","mass":10.0,)"
+                     R"("radius":1.0,"height":3.0})", "taller") != g0);
+        // The mesh itself: a swapped file, and an in-place edit of one (the
+        // capsule .obj and the engine .obj are both real, so the mesh path is
+        // not the only thing that can move).
+        CHECK(geomOf(R"({"name":"a","type":"engine","mesh":"meshes/engine.obj",)"
+                     R"("texture":"textures/capsule.png","mass":10.0,)"
+                     R"("radius":1.0,"height":2.0})", "mesh_swap") != g0);
+        // Authored nodes rather than the synthesized set: a moved bolt point.
+        CHECK(geomOf(R"({"name":"a","type":"engine","mesh":"meshes/capsule.obj",)"
+                     R"("texture":"textures/capsule.png","mass":10.0,)"
+                     R"("radius":1.0,"height":2.0,)"
+                     R"("nodes":[{"id":"top","pos":[0,0,0.9],"dir":[0,0,1]}]})",
+                     "nodes") != g0);
+        /* A part whose mesh file is not on disk (every test catalog so far) gets
+           a stable value rather than 0 -- a part whose mesh APPEARS later moves
+           it, which is the whole point. */
+        const uint64_t missing = geomOf(R"({"name":"a","type":"engine",)"
+                                        R"("mesh":"meshes/not_here.obj",)"
+                                        R"("texture":"textures/capsule.png","mass":10.0,)"
+                                        R"("radius":1.0,"height":2.0})", "missing1");
+        CHECK(missing != 0);
+        CHECK(geomOf(R"({"name":"a","type":"engine",)"
+                     R"("mesh":"meshes/not_here.obj",)"
+                     R"("texture":"textures/capsule.png","mass":10.0,)"
+                     R"("radius":1.0,"height":2.0})", "missing2") == missing);
+        CHECK(missing != g0);
+    }
+
     // controlAxisParams: the pure axis -> (moment axis, force plane, stick,
     // target sign) selection (I1). The moment axis MUST equal the reaction
     // wheel's axis for that control, and the target sign the wheel's torque

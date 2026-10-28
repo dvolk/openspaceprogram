@@ -4,9 +4,10 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <map>
 #include <set>
+
+#include "hash.h"   // the staging cache key's FNV-1a mixer
 
 namespace {
 
@@ -376,33 +377,14 @@ double partPropellantMass(const PartDef &def, const bool *burn) {
     return m;
 }
 
-namespace {
-
-// FNV-1a, byte at a time so the caller need not care about endianness.
-inline void sigMix(uint64_t &h, uint64_t v) {
-    for(int i = 0; i < 8; i++) {
-        h = (h ^ ((v >> (i * 8)) & 0xffull)) * 1099511628211ull;
-    }
-}
-
-// The length goes in first so "ab","c" and "a","bc" are not one byte stream.
-inline void sigMixText(uint64_t &h, const std::string &s) {
-    sigMix(h, (uint64_t)s.size());
-    for(size_t i = 0; i < s.size(); i++) {
-        h = (h ^ (uint64_t)(unsigned char)s[i]) * 1099511628211ull;
-    }
-}
-
-} // namespace
-
 uint64_t stagingSignature(const BuildShip &ship, double g, double exhaust_scale) {
     /* Same normalization computeStaging applies, so two builds that would
        produce identical rows share one cache entry. */
     if(!(exhaust_scale > 0.0)) { exhaust_scale = 1.0; }
 
-    uint64_t h = 1469598103934665603ull;
-    sigMix(h, (uint64_t)ship.parts.size());
-    sigMix(h, (uint64_t)ship.fuelLinks.size());
+    uint64_t h = fnv::start();
+    fnv::mix(h, (uint64_t)ship.parts.size());
+    fnv::mix(h, (uint64_t)ship.fuelLinks.size());
     for(size_t i = 0; i < ship.parts.size(); i++) {
         const BuildPart &bp = ship.parts[i];
         /* The def POINTER, not its contents: the catalog is loaded once
@@ -412,25 +394,24 @@ uint64_t stagingSignature(const BuildShip &ship, double g, double exhaust_scale)
            barriers). If a parts hot-reload ever lands, this assumption breaks
            -- a freed catalog's addresses get reused by the next one and the
            cache goes silently stale. Mix a catalog epoch in then. */
-        sigMix(h, (uint64_t)(uintptr_t)bp.def);
-        sigMix(h, (uint64_t)(bp.parent + 1));
-        sigMix(h, (uint64_t)bp.stage);
+        fnv::mix(h, (uint64_t)(uintptr_t)bp.def);
+        fnv::mix(h, (uint64_t)(bp.parent + 1));
+        fnv::mix(h, (uint64_t)bp.stage);
         /* The ID, not just the shape: computeStaging resolves every fuel link
            through an id -> index map (staging.cpp:452), so swapping the ids of
            two same-def parts can move a link across a fuel barrier and change
            the rows. Loading design B over design A must not show A's numbers. */
-        sigMixText(h, bp.id);
+        fnv::mixText(h, bp.id);
     }
     for(size_t k = 0; k < ship.fuelLinks.size(); k++) {
         const BuildShip::FuelLink &fl = ship.fuelLinks[k];
         /* Only the ENDPOINTS: a link's own id is never read, and an id that
            appears in no link cannot change a row. */
-        sigMixText(h, fl.from);
-        sigMixText(h, fl.to);
+        fnv::mixText(h, fl.from);
+        fnv::mixText(h, fl.to);
     }
-    uint64_t bits = 0;
-    memcpy(&bits, &g, sizeof(bits));             sigMix(h, bits);
-    memcpy(&bits, &exhaust_scale, sizeof(bits)); sigMix(h, bits);
+    fnv::mixDouble(h, g);
+    fnv::mixDouble(h, exhaust_scale);
     return h;
 }
 

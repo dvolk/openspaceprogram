@@ -21,6 +21,11 @@ ARGS --ui-click 4000,"Save/Load/Load##saveload"
 ARGS --sim-press 4300,0,PERIOD
 EXPECT Loaded game from e2e/fixtures/save_racer (active: racer)
 EXPECT [toast] Loaded fixtures/save_racer
+# Every committed fixture predates the per-part geometry fingerprint (#456), so
+# the load says so once per ship instead of quietly keeping the ship unverifiable:
+# the next save from that game pins each part's shape. Case 456 is the half where
+# a recorded fingerprint DOES disagree.
+EXPECT [load] note: saved ship 'racer' records no part geometry
 EXPECT [orbitlog]
 CHECK len(orbit) >= 2
 CHECK first(orbit)["r"] > 6e5 and first(orbit)["r"] < 7.2e5
