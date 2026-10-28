@@ -346,6 +346,12 @@ static void test_wing_lifts_up() {
      so it lives here. */
 static void test_partAero() {
     printf("== partAero: each surface sees the flow in its own frame (#453) ==\n");
+    /* Some pins below demand EXACT equality (tolerance 0 against 0.0). That is
+       deliberate: the claims are "an aligned mount sees the same number" and "a
+       mount flip negates this", both of which hold bitwise for these frames, and
+       exactness is what says shipped flight did not move. If a future change to
+       liftForce/aeroFrame regroups the arithmetic and one goes red, widen it --
+       that is a numerics change, not a physics one. */
     const double q = 0.5 * 1.225 * 100.0 * 100.0;
     const double S = 4.0, cl = 6.0, stall = 0.35;
     // Flying 5 deg nose-up along +Z: the air moves with +Z and leans DOWN, so
@@ -601,122 +607,165 @@ static void test_controlDeflectionSign() {
 /* #453 pinned at the level that decides the design: the control force leaves
    along each SURFACE's own normal (partAero), while the deflection SIGN is
    still chosen about the SHIP's commanded axis, because the stick promises a
-   SHIP torque. A rudder and its 180-deg-rolled twin (what build_ship bolts on
-   either side of a stack) have opposite plate normals, so they need opposite
-   deflections to push the same way -- and choosing the sign about the ship's
-   axis delivers exactly that. Choosing it about the PART's own axis does not:
-   a yaw surface's normal IS its own up at zero angle of attack, so the triple
-   product is identically zero, every instance takes the same branch, and the
-   pair cancels -- the ship loses all yaw authority. Pin both, because the
-   second looks like a tidy simplification. */
+   SHIP torque. A rudder and its twin, mounted 180 deg apart on the stack, have
+   opposite plate normals, so they need OPPOSITE deflections to push the SAME
+   way -- and choosing the sign about the ship's axis delivers exactly that.
+   Choosing it about the PART's own axis does not: a yaw surface's plate normal
+   IS its own up, so the triple product controlDeflectionSign measures is zero by
+   construction (float noise on a real, slightly non-orthonormal frame), and each
+   instance's sign is then decided by that noise. Measured on jet.json and
+   glider.json that reverses the yaw force (51450 N -> -51450 N, and the moment
+   off by 3.8e5 N m); on the exact frames below the pair cancels outright. Either
+   way the stick stops meaning anything -- pin both, because the wrong version
+   looks like a tidy simplification. */
 static void test_control_pair_frames() {
     printf("== control pair: surface normal, ship-axis command ==\n");
-    const glm::dvec3 nose(0,0,1), right(1,0,0), up(0,1,0);
+    const glm::dvec3 right(1,0,0), up(0,1,0);
     const double q = 1000.0, S = 2.0, clc = 4.0, maxDefl = 0.35, stick = 1.0;
     const glm::dvec3 vrel(0.0, 0.0, 100.0);   // dead ahead: alpha = 0
 
-    /* A vertical fin's plate normal is the ship's -right: its own frame has
-       nose +Z, up -X, right +Y (the frame gen_wing.py bolts plates into). */
+    /* The shipped rudder pose: the plate's span (mesh +X) lies along the ship's
+       up, its face normal (mesh +Y) along the ship's -right, chord along +Z --
+       a vertical fin, exactly as res/ships/jet.json bolts it on at 90 deg. */
     const glm::dmat3 mUp(glm::dvec3(0,1,0), glm::dvec3(-1,0,0), glm::dvec3(0,0,1));
     // Its twin, mounted the other way round: the same pose rolled 180 deg about
-    // the part's own nose -- which is what a 0/180 surface attach angle does.
+    // the part's own nose -- which is what a 90/270 (or 0/180) attach angle does.
     // Built from exact columns rather than angleAxis(pi, ...), whose sin(pi) is
-    // ~1.2e-16, so "the pair cancels" below is checked exactly rather than at
-    // the noise floor.
+    // ~1.2e-16, so the exactness claimed below is real rather than at the noise
+    // floor.
     const glm::dmat3 flip(glm::dvec3(-1,0,0), glm::dvec3(0,-1,0), glm::dvec3(0,0,1));
     const glm::dmat3 mDn = mUp * flip;
 
-    const auto force = [&](const glm::dmat3 &mount, const glm::dvec3 &ri,
+    struct Surf { double defl; glm::dvec3 F; };
+    const auto drive = [&](const glm::dmat3 &mount, const glm::dvec3 &ri,
                            const glm::dvec3 &aboutAxis) {
-        const glm::dvec3 n = liftDirection(vrel, mount[0], mount[2]);
-        const double sign = controlDeflectionSign(ri, n, aboutAxis, -1.0);  // yaw: -up
-        return controlForce(q, S, clc, sign * stick * maxDefl, n);
+        const PartAero pa = partAero(mount, vrel);
+        const double sign = controlDeflectionSign(ri, pa.liftDir, aboutAxis, -1.0);
+        const double defl = pa.valid ? sign * stick * maxDefl : 0.0;
+        return Surf{ defl, controlForce(q, S, clc, defl, pa.liftDir) };
     };
     const glm::dvec3 riUp(0, 2.0, -3.0), riDn(0, -2.0, -3.0);
 
     // The normals are opposite -- that is the whole point.
-    const glm::dvec3 nUp = liftDirection(vrel, mUp[0], mUp[2]);
-    const glm::dvec3 nDn = liftDirection(vrel, mDn[0], mDn[2]);
+    const glm::dvec3 nUp = partAero(mUp, vrel).liftDir;
+    const glm::dvec3 nDn = partAero(mDn, vrel).liftDir;
     CHECK_TRUE(glm::length(nUp + nDn) < 1e-12, "mirrored mounts face opposite ways");
 
     // Ship-axis command: the pair ADDS, and it yaws.
-    const glm::dvec3 fA1 = force(mUp, riUp, up);
-    const glm::dvec3 fA2 = force(mDn, riDn, up);
-    CHECK_TRUE(fA1 == fA2, "mirrored pair pushes the SAME way");
-    CHECK_TRUE(glm::length(fA1 + fA2) == 2.0 * glm::length(fA1),
+    const Surf sA1 = drive(mUp, riUp, up);
+    const Surf sA2 = drive(mDn, riDn, up);
+    CHECK_TRUE(sA1.F == sA2.F, "mirrored pair pushes the SAME way");
+    CHECK_TRUE(glm::length(sA1.F + sA2.F) == 2.0 * glm::length(sA1.F),
                "mirrored pair keeps full yaw authority");
-    CHECK_TRUE(std::abs(glm::dot(fA1 + fA2, right)) > 0.0, "and that way is a sideslip");
-    CHECK_TRUE(glm::dot(glm::cross(riUp, fA1) + glm::cross(riDn, fA2), up) != 0.0,
+    CHECK_TRUE(std::abs(glm::dot(sA1.F + sA2.F, right)) > 0.0, "and that way is a sideslip");
+    CHECK_TRUE(glm::dot(glm::cross(riUp, sA1.F) + glm::cross(riDn, sA2.F), up) != 0.0,
                "the pair torques the ship about its yaw axis");
 
-    // Part-axis command (the tempting wrong simplification): the triple product
-    // is identically zero, both fins take the same sign, the pair cancels.
-    const glm::dvec3 fB1 = force(mUp, riUp, mUp[1]);
-    const glm::dvec3 fB2 = force(mDn, riDn, mDn[1]);
-    CHECK_TRUE(fB1 == -fB2, "part-axis sign: the pair CANCELS");
-    CHECK_TRUE(glm::length(fB1 + fB2) < 1e-12, "part-axis sign: zero yaw authority");
+    /* And the MESH follows the force: opposite spans plus opposite deflections
+       must land both twins in the same pose (that is why the shipped animation
+       did not change), with each chord tip swinging along its own surface's
+       force. A hinge chosen from the ship frame instead of the surface's span
+       puts that swing 90 deg off -- the rudders sweep in their own plane. */
+    const glm::dquat vA1 = controlSurfaceVisualRot(sA1.defl, mUp);
+    const glm::dquat vA2 = controlSurfaceVisualRot(sA2.defl, mDn);
+    CHECK_TRUE(std::fabs(glm::dot(vA1, vA2)) > 0.999999, "mirrored twins swing alike");
+    const glm::dvec3 tip = glm::mat3_cast(vA1) * mUp[2] - mUp[2];
+    CHECK_TRUE(glm::dot(tip, sA1.F) > 0.9 * glm::length(tip) * glm::length(sA1.F),
+               "the chord tip swings along the force that surface makes");
+
+    // Part-axis command (the tempting wrong simplification). The deciding triple
+    // product is zero by construction, so the sign is noise; here it comes out
+    // exactly and the pair cancels.
+    const double dShip = glm::dot(glm::cross(riUp, nUp), up);
+    const double dPart = glm::dot(glm::cross(riUp, nUp), mUp[1]);
+    CHECK_TRUE(std::fabs(dPart) < 1e-15, "part-axis: the sign is decided by float noise");
+    CHECK_TRUE(std::fabs(dShip) > 1.0, "ship-axis: the sign is decided by the lever arm");
+    const Surf sB1 = drive(mUp, riUp, mUp[1]);
+    const Surf sB2 = drive(mDn, riDn, mDn[1]);
+    CHECK_TRUE(sB1.F == -sB2.F, "part-axis sign: the pair CANCELS");
+    CHECK_TRUE(glm::length(sB1.F + sB2.F) < 1e-12, "part-axis sign: zero yaw authority");
 }
 
-/* The visual hinge must tip the mesh the SAME way the control law bends the
-   ship: controlForce gives F = +defl * forceDir, and at small angles a surface
-   whose chord tipped by `bend` lifts along `bend` (flow runs along -nose).
-   Pins that the hinge is the FIN's hinge, not the torque axis: rotating a
-   roll surface about the nose would leave bend ~ 0 (no flap). */
+/* The visual hinge must tip the mesh the SAME way the surface's own force
+   pushes: controlForce gives F = defl * partAero(...).liftDir (the plate's own
+   normal out of the flow), and a plate hinged along its own SPAN moves its chord
+   tip along that normal. Pinned on the mounts that actually ship -- including
+   the 90/270 pair the jet's and glider's rudders use, where a hinge picked from
+   the SHIP frame swings the fin about its own face instead (28 deg off, and
+   perpendicular to its force). */
 static void test_controlSurfaceVisualRot() {
-    printf("== controlSurfaceVisualRot: mesh tip follows the commanded force ==\n");
-    const glm::dmat3 I(1.0);
-    const glm::dvec3 nose(0,0,1), right(1,0,0), up(0,1,0);
-    const double d = 0.3;  // rad; +defl -> +forceDir in controlForce
-    const auto bend = [&](int aboutAxis) {
-        return glm::mat3_cast(controlSurfaceVisualRot(aboutAxis, d, I)) * nose - nose;
-    };
-    // Pitch (aboutAxis 0): the law's force is +defl * the surface's own normal
-    // out of the flow (~up).
-    CHECK_TRUE(glm::dot(bend(0), up) > 0.0, "elevator tips toward its +up force");
-    CHECK_TRUE(std::abs(glm::dot(bend(0), right)) < 1e-12, "elevator does not sideslip");
-    // Yaw (aboutAxis 1): the force is +defl * that surface's normal (~right).
-    CHECK_TRUE(glm::dot(bend(1), right) > 0.0, "rudder tips toward its +right force");
-    CHECK_TRUE(std::abs(glm::dot(bend(1), up)) < 1e-12, "rudder does not pitch the mesh");
-    // Roll (aboutAxis 2): FLAPS about right -- a nose-axis rotation bends ~ nothing.
-    CHECK_TRUE(glm::dot(bend(2), up) > 0.0, "aileron flaps toward its +up force");
-    CHECK_TRUE(std::abs(glm::dot(bend(2), right)) < 1e-12, "aileron does not sideslip");
-    // Mirrored deflection tips the mesh the other way.
-    const auto bendNeg = [&](int aboutAxis) {
-        return glm::mat3_cast(controlSurfaceVisualRot(aboutAxis, -d, I)) * nose - nose;
-    };
-    const glm::dvec3 want[3] = { up, right, up };
-    for(int ax = 0; ax < 3; ax++) {
-        CHECK_TRUE(glm::dot(bendNeg(ax), want[ax]) < 0.0, "-defl tips opposite");
-    }
+    printf("== controlSurfaceVisualRot: mesh tip follows the surface's own force ==\n");
+    const glm::dvec3 nose(0,0,1), up(0,1,0);
+    const double d = 0.3;  // rad; +defl -> +force along the plate's own normal
+    // Flying ~5.7 deg nose-up, so the flow sits in the ship's Y/Z plane.
+    const double aoa = 0.1;
+    const glm::dvec3 vrel(0.0, -100.0 * std::sin(aoa), 100.0 * std::cos(aoa));
 
-    /* #453: the hinge axes are the SURFACE's own, and a mirrored mount flips
-       that axis AND the instance's commanded deflection together (controlDeflectionSign
-       picks the deflection that delivers the SHIP's commanded torque whichever way
-       the fin faces). Pin that the two flips cancel: a fin bolted on at 180 deg
-       about its own nose, told to deflect -d, tips exactly as an upright fin told
-       to deflect +d -- so the shipped animation does not change. */
-    {
-        const glm::dmat3 flip = glm::mat3_cast(glm::angleAxis(glm::pi<double>(), nose));
-        for(int ax = 0; ax < 3; ax++) {
-            const glm::dvec3 mirrored
-                = glm::mat3_cast(controlSurfaceVisualRot(ax, -d, flip)) * nose - nose;
-            const std::string msg = "mount flip + -defl == upright +defl (axis "
-                                    + std::to_string(ax) + ")";
-            CHECK_TRUE(glm::length(mirrored - bend(ax)) < 1e-12, msg.c_str());
+    /* A surface mesh is a plate: span +X, normal +Y, chord +Z (fin_r1h2.obj). */
+    const glm::dmat3 level(1.0);                                    // horizontal plate
+    const glm::dmat3 rudder(glm::dvec3(0,1,0), glm::dvec3(-1,0,0), glm::dvec3(0,0,1));
+    const glm::dmat3 flip(glm::dvec3(-1,0,0), glm::dvec3(0,-1,0), glm::dvec3(0,0,1));
+    const glm::dmat3 upsideDown = level * flip;                     // 180 deg about its nose
+    const glm::dmat3 slant = glm::mat3_cast(glm::angleAxis(glm::radians(30.0), nose));
+    const glm::dmat3 mounts[] = { level, rudder, upsideDown, slant };
+    const char *names[] = { "level", "shipped rudder", "upside down", "30 deg slant" };
+
+    for(int m = 0; m < 4; m++) {
+        const glm::dmat3 &mt = mounts[m];
+        const PartAero pa = partAero(mt, vrel);
+        CHECK_TRUE(pa.valid, "mount has a usable flow");
+        const glm::dvec3 tipPos
+            = glm::mat3_cast(controlSurfaceVisualRot(+d, mt)) * mt[2] - mt[2];
+        const glm::dvec3 tipNeg
+            = glm::mat3_cast(controlSurfaceVisualRot(-d, mt)) * mt[2] - mt[2];
+        /* Reversing the command reverses the SWING (the tip's travel along the
+           plate normal) and leaves the chord's foreshortening alone -- the
+           (cos t - 1) part, second order in t, is even in t. */
+        CHECK_TRUE(std::fabs(glm::dot(tipPos, mt[1]) + glm::dot(tipNeg, mt[1])) < 1e-15,
+                   (std::string(names[m]) + ": -defl reverses the swing").c_str());
+        CHECK_TRUE(std::fabs(glm::dot(tipPos, mt[2]) - glm::dot(tipNeg, mt[2])) < 1e-15,
+                   (std::string(names[m]) + ": -defl keeps the chord foreshortening").c_str());
+        for(int s = 0; s < 2; s++) {
+            const double defl = (s == 0) ? +d : -d;
+            const glm::dquat q = controlSurfaceVisualRot(defl, mt);
+            const glm::dmat3 R = glm::mat3_cast(q);
+            const glm::dvec3 tip = R * mt[2] - mt[2];          // where the chord tip goes
+            const glm::dvec3 force = pa.liftDir * defl;        // what the law applies
+            const std::string tag = std::string(names[m])
+                                  + (defl > 0.0 ? " +defl" : " -defl");
+            // The whole point of the helper: mesh motion matches force.
+            CHECK_TRUE(glm::dot(tip, force)
+                           > 0.9 * glm::length(tip) * glm::length(force),
+                       ("tip swings along the force (" + tag + ")").c_str());
+            // The SPAN is the hinge line, so it does not move; the plate normal
+            // does. Pinning both is what separates a hinge about the span from a
+            // spin about the face normal, which is the 90 deg error.
+            CHECK_TRUE(glm::dot(R * mt[0], mt[0]) > 0.9999,
+                       ("span stays put (" + tag + ")").c_str());
+            CHECK_TRUE(glm::dot(R * mt[1], mt[1]) < 0.999,
+                       ("normal swings, so this is not a spin about the face ("
+                        + tag + ")").c_str());
         }
     }
 
-    /* A tilted surface (a v-tail's fin) hinges on its OWN slanted axis, so its
-       tip swings out of the ship's plane -- the behaviour the ship-frame hinge
-       could not express. 30 deg of roll about the nose puts up' = -sin30*right +
-       cos30*up, and the tip bends along up' x nose = cos30*right + sin30*up. */
+    /* A mirrored mount reverses its span AND (via controlDeflectionSign) its
+       commanded deflection, so the world-space swing is the one the ship-frame
+       rule used to produce: that is why the shipped fins do not change pose. */
     {
-        const double tilt = glm::radians(30.0);
-        const glm::dmat3 slant = glm::mat3_cast(glm::angleAxis(tilt, nose));
-        const glm::dvec3 b = glm::mat3_cast(controlSurfaceVisualRot(1, d, slant)) * nose - nose;
-        CHECK_TRUE(glm::dot(b, up) > 0.0, "a v-tail fin's tip swings up too");
-        CHECK_TRUE(std::abs(glm::dot(b, up) / glm::dot(b, right) - std::tan(tilt)) < 1e-9,
-                   "the out-of-plane mix is exactly the mount tilt");
+        const glm::dvec3 tA = glm::mat3_cast(controlSurfaceVisualRot(+d, level)) * nose - nose;
+        const glm::dvec3 tB = glm::mat3_cast(controlSurfaceVisualRot(-d, upsideDown)) * nose
+                            - nose;
+        CHECK_TRUE(glm::length(tA - tB) < 1e-15, "mount flip + -defl == upright +defl");
+    }
+
+    /* The shipped rudder's span IS the ship's up, so on that mount the hinge axis
+       is the ship's up -- the axis the pre-#453 root-frame code used. Anything
+       else on that mount is the bug this pin exists for. */
+    {
+        const glm::dquat q = controlSurfaceVisualRot(d, rudder);
+        const glm::dquat aboutShipUp = glm::angleAxis(-d, up);
+        CHECK_TRUE(std::fabs(glm::dot(q, aboutShipUp)) > 0.9999,
+                   "a 90-deg-mounted fin hinges on the ship's up, like it used to");
     }
 }
 

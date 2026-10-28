@@ -6,8 +6,8 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 268 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 37 |
+| `invariant` | a behaviour or a player route the game must keep | 269 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 36 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
 | | **total** | **323** |
@@ -91,7 +91,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/395-surface-aoa-readout.txt` | invariant | [surfinfo] reports the aero angle of attack while the ship has air-relative flow, and "-" when it has none. |
 | `flight/448-drag-log-lift-readings.txt` | harness | The --drag-log's signed lift and attitude readings parse in flight and stay inside their bounds. |
 | `flight/451-flying-slow-starts-in-air.txt` | golden | The flying-slow bed starts wings-level with its nose along the air at a fraction of the AIR-relative circular speed, so a plane enters its altitude band moving rather than dropping. |
-| `flight/453-rudder-pair-adds-up.txt` | golden | The jet's two rudders are bolted the other way round, so one stick drives them to OPPOSITE printed deflections and they still push the SAME way: a held rudder throws the airframe off the centreline instead of cancelling itself out. |
+| `flight/453-rudder-pair-adds-up.txt` | invariant | The jet's two rudders are bolted the other way round, so one stick drives them to OPPOSITE printed deflections and they still push the SAME way: a held rudder throws the airframe off the centreline instead of cancelling itself out. |
 | `flight/458-glider-flight-envelope.txt` | golden | The shipped glider pays air for the union of its parts AS MOUNTED (4.3 m2 nose-on, 26 m2 broadside, not a 30 m2 balloon), its lift owes induced drag, and with only yaw surfaces it can be steered past vertical but never pulled out. |
 | `flight/458-jet-flight-envelope.txt` | golden | The shipped jet pays air for the union of its parts AS MOUNTED (4.4 m2 nose-on, 35 m2 broadside, not a 30 m2 balloon), the lift it makes owes induced drag, and a held stick pitches it 77 deg off a flow it cannot damp out. |
 | `flight/461-pad-def-attitude-starts-level.txt` | invariant | A ship def can ask for its pad attitude, so a winged airframe starts with its nose on the horizon and its wings level instead of standing on its tail. |

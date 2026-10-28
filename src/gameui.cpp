@@ -1885,9 +1885,13 @@ void drawUIReadouts(Game &g) {
         ImGui::Text(" Pt: %.2f", glm::degrees(pitch));
         ImGui::Text("  R: %.2f", glm::degrees(roll));
         ImGui::Text("Hdg: %.2f", glm::degrees(yaw));
-        /* AoA: the aero law's own alpha (drag.h AeroFrame) -- air-relative flow
-           against the nose, so there is none outside an atmosphere. Same number
-           --drag-log prints. */
+        /* AoA: the AIRFRAME's angle of attack -- drag.h AeroFrame against the
+           root's axes, air-relative flow against the nose, so there is none
+           outside an atmosphere. Same number --drag-log prints. It is an
+           attitude reading, not what any one surface feels: since #453 every
+           lifting and steering part works out its own alpha from its own mount,
+           so on an airframe with incidence or dihedral no single angle explains
+           the forces this ship makes. */
         if(ship->lastDragAlphaValid) {
             ImGui::Text("AoA: %.2f", glm::degrees(ship->lastDragAlpha));
         } else {
@@ -1946,9 +1950,11 @@ void drawUIReadouts(Game &g) {
                    glm::degrees(prograde_angle),
                    glm::degrees(retrograde_angle),
                    o.energy);
-            /* aoa: the aero law's alpha (see the SURFACE window). "-" when there
-               is no flow to have an angle to -- vacuum, or sitting still in air
-               -- the same way [orbinfo] prints "-" for a missing apoapsis. */
+            /* aoa: the airframe's angle of attack (see the SURFACE window -- the
+               attitude reading, not a per-surface one; #453 made each surface
+               compute its own). "-" when there is no flow to have an angle to --
+               vacuum, or sitting still in air -- the same way [orbinfo] prints
+               "-" for a missing apoapsis. */
             char aoa_s[32];
             const int aoa_n = ship->lastDragAlphaValid
                 ? snprintf(aoa_s, sizeof aoa_s, "%.6g deg",

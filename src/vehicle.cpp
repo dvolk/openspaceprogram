@@ -2480,20 +2480,24 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                mix, and a fin mounted upside down pushes the way it is bolted rather
                than the way the pod points. The COMMAND axis below stays the ship's:
                the stick promises a ship torque, and the sign picks the deflection
-               that delivers it whichever way the surface faces. Measured on jet.json
-               and glider.json: the total control force and moment are unchanged to
-               7e-12 N, because a fin mounted at 0 deg and its twin at 180 flip their
-               normals and their deflections together. */
-            const glm::dvec3 forceDir
-                = partAero(sRot * p->localRot, vrel).liftDir;  // zero if unusable
+               that delivers it whichever way the surface faces. On jet.json and
+               glider.json the total control force and moment are unchanged by this
+               (pinned in test_shipload): a fin and its twin, mounted 180 deg apart
+               on the stack, flip their normals and their deflections together. */
+            const PartAero pa = partAero(sRot * p->localRot, vrel);
+            const glm::dvec3 forceDir = pa.liftDir;   // zero when the frame is unusable
             const glm::dvec3 about =
                 (ax.aboutAxis == 0) ? right : (ax.aboutAxis == 1) ? up : nose;
             const glm::dvec3 ri = partPosS(p) - com;
-            // The deflection sign is POSITION-DEPENDENT: a tail and a canard need
-            // opposite deflections for the same torque (controlDeflectionSign).
+            /* The deflection sign is POSITION-DEPENDENT: a tail and a canard need
+               opposite deflections for the same torque (controlDeflectionSign). With
+               no usable flow the surface makes no force at all, and controlDeflectionSign
+               on a zero direction is decided by float noise -- so ask for no travel
+               rather than printing and animating a full-deflection fin that pushes 0 N. */
             const double sign =
                 controlDeflectionSign(ri, forceDir, about, ax.targetSign);
-            const double deflection = sign * (double)sv * d->max_deflection;
+            const double deflection = pa.valid ? sign * (double)sv * d->max_deflection
+                                               : 0.0;
             p->controlDefl = deflection;  // the mesh swing (Vehicle::Draw)
             lastControlDeflections.push_back({d, ctrlIndex++, deflection});
             if(sv == 0.0f || clc <= 0.0 || deflection == 0.0) { continue; }
@@ -3328,21 +3332,17 @@ void Vehicle::Draw(const Camera* camera, Frame *renderFrame) {
                                               get_center_of_mass(), sun);
 
     /* Deflected fins swing on their VISUAL hinge (controlSurfaceVisualRot):
-       the mesh tips the same way the aero law's force bends the ship. The
-       hinge axes are the SURFACE's own (#453) -- the force leaves along the
-       surface's normal, so the mesh has to hinge about the axis the surface
-       is bolted at, which its part pose already carries. No root frame to
-       hoist: a v-tail fin's hinge is its own slanted axis, and an upside-down
-       mount swings about an axis that is upside down too. */
+       the mesh tips the same way its own force bends. A surface hinges along
+       its own SPAN, which its part pose already carries (#453), so there is no
+       ship frame to hoist and no per-axis selector to consult: a v-tail fin's
+       hinge is its own slanted span, and a mirrored mount's is upside down
+       along with its deflection. */
     for(Part *p : parts) {
         // One body per ship, so a part's pose is derived, not read off its own body.
         glm::dvec3 pp; glm::dmat3 pr;
         partPoseRelCom(p, pp, pr);
         if(p->def != nullptr && p->def->control_area > 0.0 && p->controlDefl != 0.0) {
-            const ControlAxisParams ax = controlAxisParams(p->def->control_axis);
-            pr = glm::mat3_cast(
-                     controlSurfaceVisualRot(ax.aboutAxis, p->controlDefl, pr))
-                 * pr;
+            pr = glm::mat3_cast(controlSurfaceVisualRot(p->controlDefl, pr)) * pr;
         }
         const glm::dmat4 model = glm::translate(pp) * glm::dmat4(pr);
         /* A person, not a module: the flat green texture is tinted per kerbal

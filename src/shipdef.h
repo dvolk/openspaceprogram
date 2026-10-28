@@ -51,9 +51,10 @@ struct ResourceContent {
 enum class ControlAxis { Pitch, Yaw, Roll };
 
 /* Per-axis steering parameters. Pure (no glm) so tests can pin the mapping.
-   aboutAxis says which SHIP axis the stick promises to turn (and which local axis
-   a fin hinged for that axis swings about); the force itself follows the surface's
-   own normal (#453), so there is no per-axis force direction here. */
+   aboutAxis is a SHIP axis only: the one the stick promises to turn, and the one
+   controlDeflectionSign measures a surface's leverage about. The force itself
+   follows the surface's own normal and its mesh hinges on its own span (#453),
+   so there is no per-axis force direction or hinge axis here. */
 struct ControlAxisParams {
     int aboutAxis = -1;
     int stickIndex = -1;

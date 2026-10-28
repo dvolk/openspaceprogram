@@ -156,15 +156,18 @@ inline glm::dvec3 liftForce(double q, double S, double cl, double alpha,
    the ship's. A wing mounted with incidence, dihedral, or upside down then lifts
    the way it is bolted rather than the way the pod is pointed -- the difference
    between an airframe that can be trimmed and one where the editor's wing angle
-   is decoration.
+   is decoration. Only the angles a surface mount can express reach here:
+   attachSurface keeps the child's +Z along the parent's, so a mount tilts and
+   rolls a chord but cannot sweep it in plan view.
    Note what this does NOT do: a part turned 180 deg about its own nose flips up
    AND right, so alpha flips sign and liftDir flips with it, and the force comes
    out the SAME as the ship-wide frame's. That is why the shipped airframes --
-   wing_1 at attach angle 0 and wing_2 at 180 on one parent -- keep flying exactly
-   as they do today once each part reads its own frame: measured over jet.json and
-   glider.json at 5 deg AoA, 3e-12 N of float noise on the total lift and on the
-   moment (tmp/part_frames.cpp). tests/test_drag.cpp pins the mechanism, because a
-   flight log cannot tell "nothing moved" from "the law is broken". */
+   wing_1 at attach angle 0 and wing_2 at 180 on one parent, rudders at 90 and
+   270 -- keep flying exactly as they do today once each part reads its own frame:
+   float noise, ~1e-11 N and N m on the totals at 5 deg AoA. Pinned part by part
+   over jet.json and glider.json in test_shipload, and as pure geometry in
+   tests/test_drag.cpp, because a flight log cannot tell "nothing moved" from
+   "the law is broken". */
 struct PartAero {
     double alpha = 0.0;                 // rad, this part's own angle of attack
     glm::dvec3 liftDir = glm::dvec3(0.0);   // unit, this part's own; zero if unusable
@@ -681,24 +684,22 @@ inline double controlDeflectionSign(const glm::dvec3 &ri,
 }
 
 /* The VISUAL hinge of a control-surface mesh at commanded deflection defl
-   (signed rad, the control law's sign; Vehicle::Draw only). The visual hinge
-   is NOT the torque axis (aboutAxis): a surface hinged at angle t produces
-   force along t x nose, so to bend the same way the law's defl does --
-   - a rudder (Yaw) tips +defl about the SURFACE's own up,
-   - an elevator or aileron tips -defl about its own RIGHT (aboutAxis 2 hinges
-     on right, not nose: ailerons FLAP, they do not sweep).
-   partRot is the PART's own frame, not the ship's (#453): the force leaves
-   along the surface's normal and swings about the axis the surface is bolted
-   at, so a v-tail fin hinges on its own slanted up and a mirrored mount hinges
-   on an upside-down axis. A mount flip turns that axis AND the instance's
-   commanded defl around together, so the world-space hinge of every shipped
-   part is bit-identical to the root-frame one it replaces.
-   controlDeflectionSign already gives left/right surfaces opposite defl, so
-   this yields differential aileron flapping for free. Assumes the mesh's
-   chord runs along the part's nose axis, which is the surface-mount frame
-   gen_wing.py authors plates in (res/meshes/fin_r1h2.obj). */
-inline glm::dquat controlSurfaceVisualRot(int aboutAxis, double defl,
-                                          const glm::dmat3 &partRot) {
-    return (aboutAxis == 1) ? glm::angleAxis(defl, partRot[1])
-                            : glm::angleAxis(-defl, partRot[0]);
+   (signed rad, the control law's sign; Vehicle::Draw only). ONE rule, whatever
+   axis the surface steers: a surface hinges along its own SPAN. A surface mesh
+   is authored as a plate -- span along the part's +X, plate normal +Y, chord
+   +Z (fin_r1h2.obj: 2 m span, 0.1 m thick, 2 m chord) -- so the hinge axis is
+   partRot[0] and nothing else. Rotating the chord (partRot[2]) by t about
+   partRot[0] moves its tip along -t * partRot[1] (col0 x col2 = -col1), and the
+   law pushes along the SURFACE's own normal with the sign of defl (controlForce
+   = defl * partAero(...).liftDir), so t = -defl tips the mesh the way its own
+   force pushes (#453).
+   This is also why the torque axis (ControlAxisParams::aboutAxis) is NOT the
+   hinge axis and has no business here: it names the SHIP axis the stick promises
+   to turn, and controlDeflectionSign resolves the per-instance sign -- left and
+   right surfaces get opposite defl (differential aileron flapping for free), and
+   a mirrored mount, whose span is reversed along with its defl, gets the same
+   world-space swing as its upright twin. A v-tail fin hinges on its own slanted
+   span, which a ship-frame hinge could not express. */
+inline glm::dquat controlSurfaceVisualRot(double defl, const glm::dmat3 &partRot) {
+    return glm::angleAxis(-defl, partRot[0]);
 }
