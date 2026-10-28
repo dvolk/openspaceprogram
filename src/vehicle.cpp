@@ -983,8 +983,12 @@ void Vehicle::rebuildCompound() {
     principal = btTransform::getIdentity();
     if(parts.empty()) {
         // An emptied hull has no cached geometry: refreshAeroGeom must re-key
-        // (and re-generation the silhouette cache) rather than trust valid.
+        // (and re-generation the silhouette cache) rather than trust valid. The
+        // table itself goes too -- a node filled by the old part set would
+        // survive as a non-zero silhouette for a ship with no hull to apply it
+        // to, and the balloon law could not lie that way.
         aeroSilParts.clear();
+        aeroSil.clear();
         aeroGeomValid = false;
         return;
     }
@@ -2180,6 +2184,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastDragAlt = 0.0;
     lastDragRho = 0.0;
     lastDragAlpha = 0.0;
+    lastDragBeta = 0.0;
     lastDragAlphaValid = false;
     lastDragArea = 0.0;
     lastDragCd = 0.0;
@@ -2239,6 +2244,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     const AeroFrame fr = aeroFrame(vrel, right, up, nose);
     const double alpha   = fr.valid ? fr.alpha   : 0.0;
     lastDragAlpha = alpha;
+    lastDragBeta  = fr.valid ? fr.beta : 0.0;
     /* A flow slower than kAoAFlowFloor has no usable direction: a parked ship's
        jitter against the co-rotating air would read as a full side-slip.
        isfinite because AeroFrame::valid cannot refuse a NaN axis (length() <= 0
@@ -2260,19 +2266,16 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     // direction's own plane. Separate scratch because the CURRENT direction's
     // polygons are the exact fallback and have to survive the fill.
     auto unionAtS = [&](const glm::dvec3 &dirS) {
-        static thread_local std::vector<std::vector<glm::dvec2>> node;
         const FlowPlane pl = flowPlane(dirS);
-        node.clear();
-        node.reserve(parts.size());
+        aeroSilNode.clear();
+        aeroSilNode.reserve(parts.size());
         for(Part *p : parts) {
             if(p->body == nullptr || p->body->hullVerts.empty()) { continue; }
-            const glm::mat3 toLocal = glm::transpose(p->localRot);
-            node.emplace_back();
-            projectHull(p->body->hullVerts,
-                        FlowPlane{toLocal * pl.u, toLocal * pl.w, pl.valid},
-                        node.back());
+            aeroSilNode.emplace_back();
+            projectPartHull(p->body->hullVerts, p->localRot, p->localPos, pl,
+                            aeroSilNode.back());
         }
-        return unionProjectedArea(node);
+        return unionProjectedArea(aeroSilNode);
     };
     /* How many silhouette nodes one substep may compute. A node is a whole
        project-and-union pass, so filling all four corners of a fresh cell in one
@@ -2302,13 +2305,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         double cdNum = 0.0;      // sum of (partArea x part cd) for the cd mean
         for(Part *p : parts) {
             if(p->body == nullptr || p->body->hullVerts.empty()) { continue; }
-            // hullVerts are part-local: rotate the flow to the part, not the verts to the world.
-            const glm::mat3 toLocal = glm::transpose(p->localRot);
+            // hullVerts are part-local: projectPartHull carries them through the
+            // mount into the SHARED plane, so a wing 4 m off the centreline lands
+            // 4 m off the centreline in the union. (Its own area is translation-
+            // invariant, which is why the mount position used to be ignorable.)
             aeroSilParts.emplace_back();
             std::vector<glm::dvec2> &poly = aeroSilParts.back();
-            projectHull(p->body->hullVerts,
-                        FlowPlane{toLocal * plS.u, toLocal * plS.w, plS.valid},
-                        poly);
+            projectPartHull(p->body->hullVerts, p->localRot, p->localPos, plS, poly);
             const double a = polygonArea2(poly);
             cp += a * partPosS(p);
             cpArea += a;
@@ -2338,6 +2341,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             A_ship = unionProjectedArea(aeroSilParts);
         }
         lastDragArea = A_ship;
+        /* The coefficient and the centre of pressure stay weighted by the SUM of
+           the parts' areas, while the force uses their UNION. That is not a
+           contradiction: the union answers "how much air does this shape stop",
+           the mean answers "what is that air worth per m^2 of it", and the CP
+           answers "where does it push" -- none of which is the other. A ship whose
+           parts overlap in the view gets no extra drag, but its cd still leans
+           toward whichever part presents the most material. */
         lastDragCd = (cpArea > 0.0) ? (cdNum / cpArea) : 0.0;
         if(cpArea > 0.0) { cp /= cpArea; }
         else { cp = com; }  // degenerate: no per-part area -> act through the COM
@@ -2414,11 +2424,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         const double clPart = glm::length(flift) / (q * d->lift_area);
         const double cdi = inducedCd(clPart, 2.0 * d->radius, d->lift_area);
         if(cdi <= 0.0) { continue; }
-        const glm::dvec3 find = -vhat * (q * d->lift_area * cdi);
+        /* drag_cd scales ALL the aero this ship feels, form drag and induced
+           alike -- otherwise --drag-cd tunes only half the law, and its
+           documented meaning (0 = no air) would be wrong. */
+        const glm::dvec3 find = -vhat * (drag_cd * q * d->lift_area * cdi);
         ApplyForce(hull, ri, find);
         moment += glm::cross(ri, find);
         ftotal += find;
-        lastInducedCdA += d->lift_area * cdi;   // the drag log's extra CdA
+        lastInducedCdA += drag_cd * d->lift_area * cdi;   // the drag log's extra CdA
         if(recordForceVecs) {
             lastForceVecs.push_back({ ri, find, kForceDrag });
         }
@@ -3078,7 +3091,8 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     B->parts.clear();
     // B's cached silhouette went with its parts (and its key with it)
     B->aeroSilParts.clear();
-    B->aeroSil.reset();
+    B->aeroSilNode.clear();
+    B->aeroSil.clear();
     B->aeroGeomValid = false;
     fuelLinks.insert(fuelLinks.end(), B->fuelLinks.begin(), B->fuelLinks.end());
     B->fuelLinks.clear();

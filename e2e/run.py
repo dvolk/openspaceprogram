@@ -228,6 +228,7 @@ DRAG_RE = re.compile(
     r"\s+Cd=([-\d.]+)"
     r"(?:\s+A=([-\d.]+) m2)?(?:\s+(?:AoA=([-\d.e+]+) deg|AoA=-))?"
     r"(?:\s+Chute=([-\d.]+) m2)?(?:\s+Induced=([-\d.]+) m2)?"
+    r"(?:\s+(?:Beta=([-\d.e+]+) deg|Beta=-))?"
 )
 # --drag-log's control surfaces (src/tick.cpp): one [ctrl] line under each [drag]
 # line, one "name[index](axis)=±deg" term per surface the aero pass scored. It
@@ -824,7 +825,8 @@ def parse_scene(out):
 def parse_drag(out):
     rows = []
     for m in DRAG_RE.finditer(out):
-        (t, alt, rho, v, F, L, lup, up, tau, cd, a, aoa, chute, ind) = m.groups()
+        (t, alt, rho, v, F, L, lup, up, tau, cd, a, aoa, chute, ind,
+         beta) = m.groups()
         row = {
             "t": float(t), "alt": float(alt), "rho": float(rho),
             "v": float(v), "F": float(F), "cd": float(cd),
@@ -845,6 +847,8 @@ def parse_drag(out):
             row["chute"] = float(chute)
         if ind is not None:
             row["induced"] = float(ind)
+        if beta is not None:
+            row["beta"] = float(beta)
         rows.append(row)
     return rows
 

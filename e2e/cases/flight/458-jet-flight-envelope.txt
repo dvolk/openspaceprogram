@@ -1,5 +1,5 @@
 NAME jet-flight-envelope
-CLAIM The shipped jet pays air for the union of its parts (3.4 m2 nose-on, not a 30 m2 balloon), the lift it makes now owes induced drag, and a held stick tumbles an airframe that has no pitch stability.
+CLAIM The shipped jet pays air for the union of its parts AS MOUNTED (4.4 m2 nose-on, 35 m2 broadside, not a 30 m2 balloon), the lift it makes owes induced drag, and a held stick pitches it 75 deg off a flow it cannot damp out.
 KIND golden
 ARGS --time-accel 1 --startship jet,res/ships/jet.json,Kerbin,flying-slow
 ARGS --timeout 14 --drag-log --mass-log
@@ -10,22 +10,27 @@ EXPECT [drag]
 EXPECT [ctrl]
 CHECK len(drag) >= 10
 CHECK all(d.get("aoa") is not None and abs(d["aoa"]) < 1.0 for d in drag[:3])
-# RE-BASELINED 2026_10_28 for #463: 28-33 m2 -> 3.4 m2, exactly the collapse the
-# ticket asked for. The nose-on rows used to pay for a convex skin stretched
-# wingtip to wingtip and up the fuselage; the union charges the pod, the two
-# plates edge-on and the fins, and no air that is not there.
-CHECK 3.0 < min(d.get("a", 0.0) for d in drag[:3]) < 4.0
-# Turned broadside the same airframe presents ~3x the area (10.1 m2 at AoA ~91
-# deg): the area tracks the SHAPE, not a bubble around it. Reproduced to 0.01 m2
-# across runs, unlike everything measured inside the tumble below (#472).
-CHECK max(d.get("a", 0.0) for d in drag) > 2.0 * min(d.get("a", 0.0) for d in drag)
-# |L| / q, lift capability in area units: it used to sample 13.5 and now reaches
-# the catalog ceiling (2 wings x 8 m2 at CLmax 2.1 = 33 m2-equivalent). The lift
-# doubled because the balloon's 9x-inflated drag used to bleed the airframe before
-# it could ever reach a useful AoA. The band is deliberately loose: this peak lives
-# inside the tumble, and a run-to-run spread of 32..34 (jet) / 24..34 (glider) is
-# what #472 gives us. 4x the lift_area drops it under the floor; 4x the silhouette
-# pushes L/F out of its band below.
+# RE-BASELINED 2026_10_28, twice: first by #463 (the union replaces the convex
+# balloon), then by its fix -- a part's silhouette must land where the part is
+# MOUNTED, not all of them on the ship's origin. Nose-on the honest number is
+# 4.4 m2: the pod's 3.1 m2 disc, two wings seen edge-on at 0.4 m2 each, the fins.
+# (The first cut printed 3.4 because 13 polygons piled on one origin and the
+# union charged the widest part; test_drag's projectPartHull pins the difference.)
+CHECK 4.0 < min(d.get("a", 0.0) for d in drag[:3]) < 5.0
+# Broadside the wings turn their 8 m2 planforms to the wind and the same airframe
+# presents 35 m2 -- an 8.0x swing, reproduced to 0.01 across runs (#472 does not
+# touch it: that number is shape, not trajectory). Under the balloon law the ratio
+# was 1.1x, because a bubble barely changes size when you turn it.
+CHECK max(d.get("a", 0.0) for d in drag) > 6.0 * min(d.get("a", 0.0) for d in drag)
+# On the clean rows (no chute, no stall, |AoA| < 1 deg) the force printed IS the
+# law printed: |F| / (q * Cd * A) = the --drag-cd knob's default, 1.2. This is the
+# pin the tuning knob answers, so --drag-cd 0.2 or 8 fails it while every shape
+# pin above still passes -- the pins are not decoration.
+CHECK 1.15 < max(d["F"] / (0.5 * d["rho"] * d["v"] * d["v"] * d["cd"] * d["a"]) for d in drag[:3]) < 1.25
+# |L| / q, lift capability in area units: 2 wings x 8 m2 at CLmax 2.1 = 33
+# m2-equivalent, and it gets there (25..32 depending on the run). It used to
+# sample 13.5 because the balloon's 9x-inflated drag bled the airframe before it
+# could reach a useful AoA.
 CHECK 10.0 < max(d["L"] / (0.5 * d["rho"] * d["v"] * d["v"]) for d in drag if d.get("L") and d["v"] > 1.0) < 60.0
 # #462's coupling, and the pin that says the induced term is not decoration: the
 # substeps that lift (|L| / q over 1, comfortably above the 3-decimal print) pay
@@ -34,26 +39,27 @@ CHECK 10.0 < max(d["L"] / (0.5 * d["rho"] * d["v"] * d["v"]) for d in drag if d.
 CHECK any(d.get("induced", 0.0) > 0.0 for d in drag)
 CHECK all(d.get("induced", 0.0) > 0.0 for d in drag if d.get("L", 0.0) / max(0.5 * d["rho"] * d["v"] * d["v"], 1.0) > 1.0)
 CHECK all(d.get("induced", 0.0) == 0.0 for d in drag if d.get("L", 0.0) == 0.0)
-# L/D 0.91 (was 0.42): the drag fell ~9x and the lift did not. Still nowhere near
-# a sailplane's 30-50 (#455), because these wings are thick plates at AR 2.
-CHECK 0.85 < max(d["L"] / d["F"] for d in drag if d.get("L") and d.get("F")) < 0.95
-# DROPPED on purpose (was 0.6..1.0 g): "how much of its weight the wings carry"
-# now peaks inside the tumble, and the tumble is not reproducible run to run --
-# 0.28 g and 0.96 g for two runs of this case, because the tick clamp discards
-# accumulated time when frames are slow (#472). Re-pin it with #472's fixed step
-# budget, and with #454's static margin giving it a steady state to measure.
-# PINNING A BUG, NOT CELEBRATING ONE: |AoA| reaches 143-178 deg -- holding W for
-# 3 s tumbles the airframe end over end, |L| collapsing to 0 in the droop and
-# recovering on the far side. The balloon's imaginary 30 m2 at the centre of
-# pressure was the only pitch damping this ship had; #463 removed it and the
-# missing static margin is now visible. When #454 lands, THIS CHECK IS EXPECTED
-# TO FAIL: re-baseline it to a sane envelope in that commit.
-CHECK max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) > 90.0
+# It flies in the pitch plane: A is the only thing moving and the flow stays on
+# the centreline, so the yaw-plane angle AeroFrame reports stays put.
+CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 5.0
+# PINNING A BUG, NOT CELEBRATING ONE: a held stick puts this airframe 75 deg off
+# the flow and it is still swinging (AoA 0, 72, 4, 51, 28, -73, -2, 76, 25, -62)
+# when the case ends. It no longer loops right over -- honest 35 m2 of broadside
+# is real pitch damping, and the first cut of #463 (3.4 m2 broadside, mount
+# offsets dropped) had taken that away. #454 (static margin) is what brings this
+# excursion down; when it lands, EXPECT THIS CHECK TO FAIL and re-baseline it to
+# a sane envelope in that commit.
+CHECK max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) > 60.0
 CHECK any(d.get("L", 0.0) == 0.0 for d in drag)
+# DROPPED on purpose (was 0.85..0.95 max L/F): that peak lives inside the swing
+# above, and two runs of this case give 0.75 and 0.90 -- #472, not physics (the
+# sim steps against wall-clock frames and tick.cpp discards the leftover). Pin the
+# shape (area, ratio, force-vs-law) and the coupling instead; re-pin the ratio
+# with #472's fixed step budget and #454's damping giving it a steady state.
 # The surfaces earn their keep. W is held for 3 s and the elevons reach their
 # max_deflection (0.35 rad = 20.1 deg printed); every row carries the t= of the
 # [drag] sample it printed under. Nothing parsed [ctrl] before #458, so no case
-# could see a control surface move at all.
+# could see a surface move at all.
 CHECK all(d["t"] is not None for d in ctrl)
 CHECK any(d["axis"] == "pitch" and abs(d["deg"]) > 15.0 for d in ctrl)
 FORBID error:

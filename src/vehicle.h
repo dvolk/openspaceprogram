@@ -153,6 +153,9 @@ public:
        refreshCompound rebuilds) does NOT change the silhouette, so the cache
        invalidation is fingerprint-gated. */
     std::vector<std::vector<glm::dvec2>> aeroSilParts;
+    // Scratch for filling cache nodes: those polygons belong to the cell
+    // corners' flow directions, not the substep's, so they need their own set.
+    std::vector<std::vector<glm::dvec2>> aeroSilNode;
     SilhouetteMemo aeroSil;
     uint64_t aeroGeomKey = 0;      // fingerprint the silhouette cache is keyed to
     bool aeroGeomValid = false;    // false = no geometry cached yet
@@ -362,6 +365,10 @@ public:
     double lastDragAlt = 0.0;
     double lastDragRho = 0.0;
     double lastDragAlpha = 0.0;  // AoA (rad); + = nose above the flow (drag.h)
+    /* The flow's angle off the nose in the YAW plane (rad), AeroFrame's other
+       angle. Not a control readout (#450 wants it bundled with a yaw law) -- it
+       is the silhouette cache's second key, so the drag log prints it. */
+    double lastDragBeta = 0.0;
     /* Whether lastDragAlpha measured a flow worth reading: AeroFrame::valid AND
        the air-relative speed clears kAoAFlowFloor. False alpha is not "flying
        straight down the flow" -- it is "there is no flow to have an angle to". */

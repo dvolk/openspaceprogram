@@ -85,10 +85,11 @@ inline AeroFrame aeroFrame(const glm::dvec3 &v_rel,
 }
 
 /* The inverse of those two angles: the unit flow direction that aeroFrame()
-   would report as (alpha, beta). Exact for +-90 deg in both (the atan2 chart
-   itself reaches +-180 in alpha; SilhouetteMemo folds the back hemisphere onto
-   this chart, where the tangent parameterisation holds). Zero for a degenerate
-   frame. */
+   would report as (alpha, beta). Exact everywhere except the corner where both
+   reach +-90: the direction is built from their TANGENTS, and at the rim both are
+   infinite -- only their ratio says which broadside direction it is, so that one
+   point is ambiguous (SilhouetteMemo keeps its chart inside +-75 for the same
+   reason, and answers the rim exactly). Zero for a degenerate frame. */
 inline glm::dvec3 flowDirection(double alpha, double beta,
                                 const glm::dvec3 &right, const glm::dvec3 &up,
                                 const glm::dvec3 &nose) {
@@ -182,7 +183,9 @@ inline FlowPlane flowPlane(const glm::dvec3 &dir) {
    the projected vertices, which IS the silhouette -- so this stays right for a
    NON-convex mesh. Symmetric in the view direction. `out` is caller-owned
    scratch (this runs per part per physics substep); it ends up a CCW polygon,
-   empty for a degenerate (collinear) projection. */
+   empty for a degenerate (collinear) projection. The output is CONVEX by
+   construction -- unionProjectedArea is only correct for convex rings, because
+   inside one slab it assumes two active edges cannot cross. */
 inline void projectHull(const std::vector<glm::dvec3> &hullVerts,
                         const FlowPlane &pl, std::vector<glm::dvec2> &out) {
     out.clear();
@@ -217,6 +220,23 @@ inline void projectHull(const std::vector<glm::dvec3> &hullVerts,
     }
     h.pop_back();                              // drop the duplicated start point
     out.swap(h);                               // out keeps the hull, h the buffer
+}
+
+/* One PART's silhouette in a flow plane shared by the whole ship: its collision
+   verts through its MOUNT (rotation and position) into that one 2-D basis.
+   A part's area alone is translation-invariant, which is why the mount position
+   used to be ignorable; it stops being ignorable the moment two parts' polygons
+   are unioned (#463), so this is the only projection a ship should use. */
+inline void projectPartHull(const std::vector<glm::dvec3> &hullVerts,
+                            const glm::mat3 &localRot, const glm::dvec3 &localPos,
+                            const FlowPlane &pl, std::vector<glm::dvec2> &out) {
+    // Rotating the basis into the part costs two mat3-vec multiplies and keeps
+    // the ship's basis shared; the alternative is rotating every vert (2x the
+    // parts' vert count) into the ship frame.
+    const glm::mat3 toLocal = glm::transpose(localRot);
+    projectHull(hullVerts, FlowPlane{toLocal * pl.u, toLocal * pl.w, pl.valid}, out);
+    const glm::dvec2 off{glm::dot(localPos, pl.u), glm::dot(localPos, pl.w)};
+    for(glm::dvec2 &q : out) { q += off; }
 }
 
 /* Shoelace area of a simple polygon (either winding). Zero for a degenerate
@@ -283,10 +303,13 @@ inline double unionProjectedArea(const std::vector<std::vector<glm::dvec2>> &pol
             if(!(xlo < xhi)) { continue; }
             for(size_t i = 0; i < pa.size(); i++) {
                 const glm::dvec2 &p = pa[i], &q = pa[(i + 1) % pa.size()];
-                if(std::max(p.x, q.x) <= xlo || std::min(p.x, q.x) >= xhi) { continue; }
+                const double alo = std::min(p.x, q.x), ahi = std::max(p.x, q.x);
+                if(ahi <= xlo || alo >= xhi) { continue; }
                 for(size_t j = 0; j < pb.size(); j++) {
                     const glm::dvec2 &r = pb[j], &s = pb[(j + 1) % pb.size()];
-                    if(std::max(r.x, s.x) <= xlo || std::min(r.x, s.x) >= xhi) { continue; }
+                    // Prune against THIS edge's x-range, not just the two
+                    // polygons' overlap -- an order of magnitude more pairs die here.
+                    if(std::max(r.x, s.x) <= alo || std::min(r.x, s.x) >= ahi) { continue; }
                     const double d1x = q.x - p.x, d1y = q.y - p.y;
                     const double d2x = s.x - r.x, d2y = s.y - r.y;
                     const double den = d1x * d2y - d1y * d2x;
@@ -301,10 +324,13 @@ inline double unionProjectedArea(const std::vector<std::vector<glm::dvec2>> &pol
         }
     }
     std::sort(xs.begin(), xs.end());
-    // Unique to a relative epsilon: two breakpoints that agree but differ by a
-    // rounding hair would make a zero-width slab whose midpoint is meaningless.
-    const double extent = xs.back() - xs.front();
-    const double eps = 1e-12 * (extent > 0.0 ? extent : 1.0);
+    // Unique to a relative epsilon. Every vertex x is already in the list
+    // exactly, so this only merges a crossing that landed a rounding hair off an
+    // endpoint. Scaled by the coordinate magnitude rather than the whole ship's
+    // span, so a small part's own breakpoints cannot be swallowed by the ship
+    // being large next to it.
+    const double scale = std::max(std::fabs(xs.front()), std::fabs(xs.back()));
+    const double eps = 1e-12 * (scale > 1.0 ? scale : 1.0);
     size_t n = 0;
     for(size_t i = 0; i < xs.size(); i++) {
         if(n == 0 || xs[i] - xs[n - 1] > eps) { xs[n++] = xs[i]; }
@@ -323,10 +349,11 @@ inline double unionProjectedArea(const std::vector<std::vector<glm::dvec2>> &pol
             bool hit = false;
             for(size_t i = 0; i < poly.size(); i++) {
                 const glm::dvec2 &p = poly[i], &q = poly[(i + 1) % poly.size()];
-                // Half-open so a vertex shared by two edges counts once; an edge
-                // lying ON xm is kept by the equality.
-                if((p.x <= xm && q.x > xm) || (q.x <= xm && p.x > xm)
-                   || (p.x == xm && q.x == xm)) {
+                // Half-open so a vertex shared by two edges counts once. An edge
+                // lying ON xm cannot reach here: xm is a slab MIDPOINT and every
+                // vertex x is a breakpoint, so no vertex sits at xm -- which also
+                // means a straddling edge has p.x != q.x and the divide is safe.
+                if((p.x <= xm && q.x > xm) || (q.x <= xm && p.x > xm)) {
                     const double t = (xm - p.x) / (q.x - p.x);
                     const double y = p.y + t * (q.y - p.y);
                     if(!hit) { lo = hi = y; hit = true; }
@@ -377,11 +404,24 @@ inline double unionProjectedArea(const std::vector<std::vector<glm::dvec2>> &pol
    projections it computes anyway give for free. The cache is therefore never a
    cost: the worst case equals the uncached law, and filling is pure saving. */
 struct SilhouetteMemo {
-    // 5 deg nodes over +-90 deg in both angles. Past +-90 the flow comes from
-    // behind, and a silhouette is symmetric in the view direction, so those
-    // directions fold onto this chart (see fold).
-    static constexpr int kSteps = 37;
-    static constexpr double kHalf = std::numbers::pi_v<double> / 2.0;
+    // 5 deg nodes over +-75 deg in both angles. kFoldHalf is the atan2 chart's
+    // own bound: past +-90 the flow comes from behind, and a silhouette is
+    // symmetric in the view direction, so those directions fold onto this chart
+    // (see fold). The cached range stops short of that bound on purpose -- see
+    // the note on kHalf.
+    static constexpr int kSteps = 31;
+    static constexpr double kFoldHalf = std::numbers::pi_v<double> / 2.0;
+    // The angles parameterise a direction as tan(alpha), tan(beta), which blows up
+    // at 90 deg, so cells near +-90 span an enormous slice of direction space and
+    // blending across them is poor -- at the rim the parameterisation is not merely
+    // coarse but ambiguous (see flowDirection). Measured over the folded sphere,
+    // 31 nodes: worst blend error 0.7% for a smooth silhouette, 5.0% for a
+    // plate-dominated one (a wing-led ship is the sharp case) with this +-75
+    // range; the +-90 range Stage 1 first shipped measures 6.9%. So the cached
+    // range stops at 75 deg: it holds the blend error to a few percent and refuses
+    // the rim, where the extreme attitudes MISS and the caller's exact union --
+    // which it can compute anyway -- answers them instead.
+    static constexpr double kHalf = 75.0 * std::numbers::pi_v<double> / 180.0;
     static constexpr double kStep = (2.0 * kHalf) / (kSteps - 1);
 
     std::vector<float> area;       // [m^2]; node (i, j) at j * kSteps + i
@@ -393,6 +433,15 @@ struct SilhouetteMemo {
         stamp.assign(kSteps * kSteps, 0u);
         gen = 1;                   // 0 means "never filled"
     }
+    // Drop the table without allocating. A ship with no parts has no silhouette
+    // to remember: a filled node outliving its hull would charge drag for a body
+    // that is not there, and the old balloon law could not do that because an
+    // empty hull projected to zero area.
+    void clear() {
+        area.clear();
+        stamp.clear();
+        gen = 0;
+    }
     void invalidate() {
         if(area.empty()) { reset(); }
         else { gen++; }
@@ -402,22 +451,26 @@ struct SilhouetteMemo {
     static double alphaAt(int i) { return -kHalf + i * kStep; }
     static double betaAt(int j) { return -kHalf + j * kStep; }
 
-    /* AeroFrame's alpha comes from atan2, so it spans +-180: seen from behind, a
-       silhouette is the silhouette seen from in front, so the back hemisphere
-       folds onto this chart by REVERSING the flow -- alpha -+ 180, beta left
-       alone. That reversal is the exact symmetry (a projected point set seen
-       from the other side is its mirror image, same area, same overlaps); note
-       it is not 180 - alpha, which would mirror the ship's left and right and
-       charge a broadside for a quartering one. Reversing also puts the nose
-       component of the flow back on the +side, which is why beta lands inside
-       +-90 on its own -- the clamps are only insurance against a hand-fed pair. */
+    /* AeroFrame's angles come from atan2 over the SAME denominator, dot(v, nose),
+       so a flow from behind the nose lands past +-90 in BOTH at once. A silhouette
+       is symmetric in the view direction, so the back hemisphere folds onto this
+       chart by REVERSING the flow: each angle wraps by 180 under its own sign.
+       That reversal is the exact symmetry (a projected point set seen from the
+       other side is its mirror image -- same area, same overlaps). Note it is not
+       180 - alpha, which would mirror the ship's left and right and charge a
+       broadside for a quartering one. Wrapping only alpha keys a straight-tail
+       flow as a quartering one, and leaving beta un-wrapped was the bug: a
+       straight-down flow landed in the straight-up row and a straight-tail flow
+       in the quartering one. The clamps are insurance for a hand-fed pair. */
     static void fold(double &alpha, double &beta) {
-        if(alpha > kHalf) { alpha -= std::numbers::pi; }
-        else if(alpha < -kHalf) { alpha += std::numbers::pi; }
-        if(alpha > kHalf) { alpha = kHalf; }
-        else if(alpha < -kHalf) { alpha = -kHalf; }
-        if(beta > kHalf) { beta = kHalf; }
-        else if(beta < -kHalf) { beta = -kHalf; }
+        if(alpha > kFoldHalf) { alpha -= std::numbers::pi; }
+        else if(alpha < -kFoldHalf) { alpha += std::numbers::pi; }
+        if(beta > kFoldHalf) { beta -= std::numbers::pi; }
+        else if(beta < -kFoldHalf) { beta += std::numbers::pi; }
+        if(alpha > kFoldHalf) { alpha = kFoldHalf; }
+        else if(alpha < -kFoldHalf) { alpha = -kFoldHalf; }
+        if(beta > kFoldHalf) { beta = kFoldHalf; }
+        else if(beta < -kFoldHalf) { beta = -kFoldHalf; }
     }
 
     // The cell index whose lower corner is at or below `angle` (angle folded).
@@ -433,13 +486,19 @@ struct SilhouetteMemo {
         if(f > 1.0) { return 1.0; }
         return f;
     }
+    // Inside the cached range (both angles already folded).
+    static bool charted(double alpha, double beta) {
+        return std::fabs(alpha) <= kHalf && std::fabs(beta) <= kHalf;
+    }
 
     /* A hit: all four corners of the cell were filled at this generation, so
-       bilinear between them. Anything else (no table, a NaN angle, a corner not
-       yet filled) is a MISS and leaves `out` alone. */
+       bilinear between them. Anything else (no table, a NaN angle, a direction
+       outside the cached range, a corner not yet filled) is a MISS and leaves
+       `out` alone. */
     bool lookup(double alpha, double beta, double &out) const {
         if(area.empty() || !std::isfinite(alpha) || !std::isfinite(beta)) { return false; }
         fold(alpha, beta);
+        if(!charted(alpha, beta)) { return false; }
         const size_t k00 = (size_t)cellOf(beta) * kSteps + cellOf(alpha);
         if(stamp[k00] != gen || stamp[k00 + 1] != gen
            || stamp[k00 + kSteps] != gen || stamp[k00 + kSteps + 1] != gen) {
@@ -457,7 +516,8 @@ struct SilhouetteMemo {
     /* Fill this cell's missing corners, at most `budget` of them -- the caller
        spreads the cost over substeps. `exact(alpha, beta)` computes the area at
        a node; the caller holds the parts, the ship frame and the union. Returns
-       how many nodes were filled. */
+       how many nodes were filled. A direction outside the cached range fills
+       nothing: it is answered by the caller's exact union instead. */
     template <class ExactFn>
     int fillAround(double alpha, double beta, int budget, ExactFn exact) {
         if(budget <= 0 || area.empty()
@@ -465,6 +525,7 @@ struct SilhouetteMemo {
             return 0;
         }
         fold(alpha, beta);
+        if(!charted(alpha, beta)) { return 0; }
         const int i0 = cellOf(alpha), j0 = cellOf(beta);
         int filled = 0;
         for(int dj = 0; dj <= 1; dj++) {
@@ -489,7 +550,14 @@ struct SilhouetteMemo {
    to draw. `span` must be the SPAN, not the thickness -- for a plate part,
    PartDef::radius is half the largest x/y extent of the mesh, which for a wing
    IS its half-span (#457 wants an honest per-part box; until then that is the
-   only span the catalog states). */
+   only span the catalog states).
+
+   Known overcharge until #457: AR is computed PER PART, so a lifting surface
+   modelled as two half-plates (the shipped jet's wings, mounted at angle 0 and
+   180) pays two AR-2 systems instead of one 8 m AR-4 system -- twice the induced
+   drag. Half-wings are genuinely separate lifting bodies only if they are
+   separated; co-planar halves share one span. The extents #457 emits are what
+   tells those cases apart. */
 inline double inducedCd(double cl, double span, double area, double oswald = 0.8) {
     if(!(area > 0.0) || !(span > 0.0) || !(oswald > 0.0)) { return 0.0; }
     const double ar = (span * span) / area;

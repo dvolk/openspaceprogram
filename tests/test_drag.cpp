@@ -786,9 +786,78 @@ static void test_unionArea() {
     }
 }
 
+/* projectPartHull: the MOUNT belongs to the shape. A part's own area is
+   translation-invariant, which is how the per-part law could ignore localPos for
+   years; the moment two parts' polygons are unioned, ignoring it piles every
+   part's silhouette on the origin and charges a spread ship one part's worth of
+   air. This lives in drag.h rather than vehicle.cpp precisely so the ship's
+   projection is the one being pinned. */
+static void test_partMounts() {
+    printf("== projectPartHull: a part's mount position is part of its silhouette ==\n");
+
+    // A 1 m cube's collision verts, as a part holds them (hull-local).
+    std::vector<glm::dvec3> box;
+    for(int k = 0; k < 8; k++) {
+        box.push_back(glm::dvec3((k & 1) ? 0.5 : -0.5, (k & 2) ? 0.5 : -0.5,
+                                 (k & 4) ? 0.5 : -0.5));
+    }
+    const glm::mat3 id(1.0);
+    const FlowPlane pl = flowPlane(glm::dvec3(0.0, 0.0, 1.0));  // looking down the z axis
+
+    std::vector<std::vector<glm::dvec2>> apart, piled;
+    for(const glm::dvec3 &pos : { glm::dvec3(0.0), glm::dvec3(10.0, 0.0, 0.0) }) {
+        apart.emplace_back();
+        projectPartHull(box, id, pos, pl, apart.back());
+        piled.emplace_back();
+        projectPartHull(box, id, glm::dvec3(0.0), pl, piled.back());
+    }
+    CHECK_NEAR(unionProjectedArea(apart), 2.0, 1e-12,
+               "two mounts 10 m apart == the sum (the union sees the gap)");
+    CHECK_NEAR(unionProjectedArea(piled), 1.0, 1e-12,
+               "the same mount twice charges one face");
+    // What let the old law get away with it: a mount moves a polygon, it never
+    // resizes it.
+    CHECK_NEAR(polygonArea2(apart[1]), 1.0, 1e-12, "a mount does not resize a part");
+
+    /* The offset is read in the SHARED basis, not the part's: a part spun on its
+       mount still sits where it is mounted. Built without gtc so this test stays
+       pure math: a 60 deg spin about the flow axis. */
+    const double ca = std::cos(1.0471975516), sa = std::sin(1.0471975516);
+    const glm::mat3 spin(ca, sa, 0.0, -sa, ca, 0.0, 0.0, 0.0, 1.0);
+    const glm::dvec3 mount(4.0, 0.0, 1.5);
+    std::vector<glm::dvec2> upright, turned;
+    projectPartHull(box, id, mount, pl, upright);
+    projectPartHull(box, spin, mount, pl, turned);
+    const auto centre = [](const std::vector<glm::dvec2> &poly) {
+        glm::dvec2 c(0.0);
+        for(const glm::dvec2 &q : poly) { c += q; }
+        return (poly.empty() ? c : c / (double)poly.size());
+    };
+    // Stated against the plane's own basis, which is what "shared" means here.
+    const glm::dvec2 want{glm::dot(mount, pl.u), glm::dot(mount, pl.w)};
+    CHECK_TRUE(glm::length(want) > 1.0, "the mount is off the flow axis (else this proves nothing)");
+    CHECK_NEAR(centre(upright).x, want.x, 1e-12, "the part lands where it is mounted");
+    CHECK_NEAR(centre(upright).y, want.y, 1e-12, "measured in the ship's basis, not the part's");
+    CHECK_NEAR(centre(turned).x, want.x, 1e-12, "a spun mount stays put");
+    CHECK_NEAR(centre(turned).y, want.y, 1e-12, "and keeps its place");
+
+    /* The undercharge this fixes, at ship scale: parts stacked ALONG the view all
+       project the same face, so the union is one face either way (which is why
+       rockets barely moved when #463 landed) -- spread ACROSS the view they are
+       the whole ship, and a law that drops the mount still sees one face. */
+    std::vector<std::vector<glm::dvec2>> stack, spread;
+    for(int k = 0; k < 3; k++) {
+        stack.emplace_back();
+        projectPartHull(box, id, glm::dvec3(0.0, 0.0, k * 2.0), pl, stack.back());
+        spread.emplace_back();
+        projectPartHull(box, id, glm::dvec3(k * 2.0, 0.0, 0.0), pl, spread.back());
+    }
+    CHECK_NEAR(unionProjectedArea(stack), 1.0, 1e-12, "a stack along the view == one face");
+    CHECK_NEAR(unionProjectedArea(spread), 3.0, 1e-12, "the same parts across the view == three");
+}
+
 static void test_silhouetteMemo() {
     printf("== SilhouetteMemo: lazy, generation-stamped direction table ==\n");
-
     SilhouetteMemo memo;
     double out = -1.0;
     // Before reset() there is no table at all: every query is a miss (a ship
@@ -848,17 +917,92 @@ static void test_silhouetteMemo() {
     CHECK_TRUE(!memo.lookup(std::nan(""), 0.0, out), "NaN alpha -> miss");
     CHECK_TRUE(memo.fillAround(0.0, std::nan(""), 4, counted) == 0, "NaN beta fills nothing");
 
-    /* The back hemisphere: a flow from behind is the same silhouette seen from
-       the front, so alpha outside +-90 deg folds by reversing the flow. Filling
-       at alpha = 3 rad and querying at 3 - pi must land on the same nodes. */
+    /* The back hemisphere. aeroFrame's two angles share atan2's denominator,
+       dot(v, nose), so a flow from BEHIND the nose reads past +-90 deg in BOTH at
+       once -- which is why a fold test written with a hand-fed pair like
+       (3.0, 0.2) proves nothing: no ship can fly that pair. The fold reverses the
+       flow, wrapping each angle by 180 under its own sign; afterwards the pair
+       must still describe the SAME flow line. */
+    const glm::dvec3 right(1, 0, 0), up(0, 1, 0), nose(0, 0, 1);
+    int onChart = 0, offChart = 0, lineBroken = 0, rim = 0;
+    double worstLine = 0.0;
+    for(int ix = -4; ix <= 4; ix++) {
+        for(int iy = -4; iy <= 4; iy++) {
+            for(int iz = -4; iz <= 4; iz++) {
+                if(ix == 0 && iy == 0 && iz == 0) { continue; }
+                const glm::dvec3 v = glm::normalize(
+                    glm::dvec3((double)ix, (double)iy, (double)iz));
+                const AeroFrame f = aeroFrame(v, right, up, nose);
+                double a = f.alpha, b = f.beta;
+                SilhouetteMemo::fold(a, b);
+                if(!SilhouetteMemo::charted(a, b)) {
+                    offChart++;
+                    // Broadside to the nose: both angles sit at exactly +-90, where
+                    // flowDirection has nothing to work with (see below).
+                    if(std::fabs(f.alpha) > 1.5 && std::fabs(f.beta) > 1.5) { rim++; }
+                    continue;
+                }
+                const glm::dvec3 d = flowDirection(a, b, right, up, nose);
+                const double along = std::fabs(glm::dot(d, v));
+                if(std::fabs(along - 1.0) > worstLine) { worstLine = std::fabs(along - 1.0); }
+                if(along < 0.999) { lineBroken++; }
+                onChart++;
+            }
+        }
+    }
+    CHECK_TRUE(lineBroken == 0, "the fold keeps the flow line for every cached direction");
+    CHECK_TRUE(worstLine < 1e-9, "to machine precision");
+    printf("   chart: %d of %d folded directions cached, %d left exact (%d broadside rim)\n",
+           onChart, onChart + offChart, offChart, rim);
+    CHECK_TRUE(onChart + offChart == 728, "every grid direction was classified");
+    CHECK_TRUE(onChart > 100 && offChart > 10,
+               "the chart covers most of the sphere but deliberately not all");
+    /* The rim itself is worth naming: a flow exactly broadside reads +-90 deg in
+       BOTH angles, and flowDirection builds the direction from tan(alpha) and
+       tan(beta), both infinite there -- the RATIO of the two is what says which
+       broadside direction, so the corner cannot encode it. That is the second
+       reason the chart stops at +-75: past there the parameterisation is not just
+       coarse, at the limit it is ambiguous. */
+    CHECK_TRUE(rim > 0, "the grid contains rim directions");
+    {
+        double a = 1.5707963267948966, b = 1.5707963267948966;
+        SilhouetteMemo::fold(a, b);
+        CHECK_TRUE(!SilhouetteMemo::charted(a, b), "the rim is off the chart");
+    }
+
+    // One of them, spelled out: straight astern with a little up -- the mid-row of
+    // a tumble, and the row the old fold keyed wrong.
+    const glm::dvec3 astern = glm::normalize(-nose + up * 0.3);
+    const AeroFrame fb = aeroFrame(astern, right, up, nose);
+    CHECK_TRUE(std::fabs(fb.alpha) > SilhouetteMemo::kFoldHalf, "from behind: alpha past 90 deg");
+    CHECK_TRUE(std::fabs(fb.beta) > SilhouetteMemo::kFoldHalf,
+               "and beta is past 90 too (same atan2 denominator)");
     memo.reset();
     calls = 0;
-    memo.fillAround(3.0, 0.2, 4, counted);
-    CHECK_TRUE(memo.lookup(3.0 - std::numbers::pi, 0.2, out), "the fold is consistent");
-    CHECK_NEAR(out, exact(3.0 - std::numbers::pi, 0.2), 1e-6,
-               "and lands on the reversed flow, not its mirror");
-    CHECK_TRUE(!memo.lookup(std::numbers::pi - 3.0, -0.2, out),
-               "the mirror cell stays empty (180-alpha is the wrong fold)");
+    memo.fillAround(fb.alpha, fb.beta, 4, counted);
+    CHECK_TRUE(memo.lookup(fb.alpha, fb.beta, out), "a back-hemisphere direction caches, then hits");
+    CHECK_TRUE(calls == 4, "and its four nodes were computed once");
+    double ra = fb.alpha, rb = fb.beta;
+    SilhouetteMemo::fold(ra, rb);
+    CHECK_NEAR(rb, 0.0, 1e-12, "astern with up folds to ahead with up, at zero yaw");
+    CHECK_NEAR(out, exact(ra, rb), 1e-6, "the nodes answer the reversed flow");
+    /* The bug this pins: wrapping alpha alone left beta clamped at +-90, so every
+       row past 90 deg read the area of a quartering flow instead of its own. */
+    CHECK_TRUE(std::fabs(exact(ra, SilhouetteMemo::kFoldHalf) - out) > 1e-3,
+               "beta clamped instead of wrapped is a different answer");
+    CHECK_TRUE(!memo.lookup(std::numbers::pi - ra, rb, out),
+               "and 180-alpha (mirroring the ship) is still the wrong fold");
+
+    /* Off the chart: past +-75 deg the tan() spacing spans an enormous slice of
+       direction space, so the memo refuses and the caller's exact union -- which
+       it can compute anyway -- answers instead. */
+    CHECK_TRUE(!SilhouetteMemo::charted(1.45, 0.0), "83 deg alpha is off the chart");
+    CHECK_TRUE(memo.fillAround(1.45, 0.0, 4, counted) == 0, "so it fills nothing");
+    CHECK_TRUE(!memo.lookup(1.45, 0.0, out), "and every query there is a miss");
+    CHECK_TRUE(memo.fillAround(1.30, 1.30, 4, counted) == 4,
+               "inside the range it fills, even in a far corner");
+    CHECK_TRUE(memo.lookup(1.30, 1.30, out), "and hits");
+    CHECK_NEAR(out, exact(1.30, 1.30), 1e-6, "with no blend error on a linear surface");
 }
 
 static void test_flowDirection() {
@@ -986,6 +1130,8 @@ int main() {
     test_projectedArea();
     printf("\n");
     test_unionArea();
+    printf("\n");
+    test_partMounts();
     printf("\n");
     test_silhouetteMemo();
     printf("\n");

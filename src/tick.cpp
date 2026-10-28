@@ -451,7 +451,7 @@ void tick(Game &g) {
                 printf("[drag] t=%.1fs alt=%.1f m rho=%.5g kg/m3 "
                        "|v|=%.2f m/s |F|=%.2f N |L|=%.2f N L_up=%.2f N Up=%.2f "
                        "|tau|=%.2f Nm "
-                       "Cd=%.3f A=%.2f m2 %s Chute=%.2f m2 Induced=%.3f m2\n",
+                       "Cd=%.3f A=%.2f m2 %s Chute=%.2f m2 Induced=%.3f m2",
                        g.time, g.ship->lastDragAlt, g.ship->lastDragRho,
                        glm::length(v),
                        glm::length(g.ship->lastAeroForce),
@@ -462,6 +462,17 @@ void tick(Game &g) {
                        aoa_txt,
                        g.ship->lastChuteCdA,
                        g.ship->lastInducedCdA);
+                /* The flow's yaw-plane angle, printed last so the existing
+                   parsers keep working. A silhouette is cached per DIRECTION, and
+                   a direction needs both angles: a log that prints only AoA
+                   cannot explain its own area (#463). The UI readout still waits
+                   for a yaw law (#450) -- this is the debug line. */
+                if(g.ship->lastDragAlphaValid) {
+                    printf(" Beta=%.1f deg", glm::degrees(g.ship->lastDragBeta));
+                } else {
+                    printf(" Beta=-");
+                }
+                printf("\n");
                 // Control surfaces' applied deflections.
                 if(!g.ship->lastControlDeflections.empty()) {
                     printf("[ctrl]");
