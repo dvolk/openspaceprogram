@@ -46,7 +46,11 @@ Usage:
   utils/tea.py ls [--state all|open|closed] [--keyword str] [--limit N]
                        [--all | --page N]
                        (a page is a page; --all walks them, and X-Total-Count
-                        makes both the page size and the total exact)
+                        makes both the page size and the total exact. If a page
+                        partway through --all fails, the issues already read are
+                        still printed and the exit code is 1 -- losing nine good
+                        pages over a bad tenth is how a list comes to look
+                        complete and empty)
   utils/tea.py show INDEX [--comments]
                        (--comments off answers "comments": null, because an empty
                         list would look like an issue nobody discussed)
@@ -517,10 +521,24 @@ def cmd_ls(args):
         return
     out, page = [], 1
     while page <= LS_MAX_PAGES:
-        rows, headers = tracker.api("GET", tracker.repo_path("/issues"),
-                                    {**params, "page": page})
-        if not isinstance(rows, list):
-            fail(f"the issue list came back {type(rows).__name__}, not a list")
+        status, rows, headers = tracker.call(
+            "GET", tracker.repo_path("/issues"), {**params, "page": page})
+        if status != 200 or not isinstance(rows, list):
+            why = (f"HTTP {status}: {_why(rows)}" if status != 200
+                   else f"came back {type(rows).__name__}, not a list")
+            if not out:
+                # Nothing read: a hard error, because an empty list here looks
+                # like an empty repository.
+                fail(f"the issue list did not answer ({why})")
+            # Pages already read are real issues. Losing them because a later
+            # page failed is the old tea wrapper's bug, so print what was read
+            # and let the exit code and the note say that it is short.
+            print(json.dumps(out))
+            note(f"the list is short: {len(out)} issues from {page - 1} "
+                 f"page(s), then page {page} failed ({why}) -- the exit code "
+                 f"says these are not all of them")
+            flush_note_count()
+            sys.exit(1)
         out += [norm_issue(d, body_chars=False) for d in rows]
         total = headers.get("X-Total-Count")
         if len(rows) < args.limit:
