@@ -222,20 +222,25 @@ int main() {
                      * (wing->mesh_max.z - wing->mesh_min.z), wing->lift_area));
         }
         /* #458's C++ half: every plate part's declared aero area against the
-           footprint its mesh actually draws. The catalog uses two conventions --
-           lift_area equals the planform (wing: 4 m x 2 m = 8 m^2), control_area
-           is half it (fin: 4 m^2 drawn, 2 declared) -- so the check is a band
-           rather than an equality. It is still the number #458 asked for: the
-           wing going 2 m^2 -> 8 m^2 in a27bcd1 would have failed a 2x band, and
-           so does a mesh retouched without the area following it. #478 asks which
-           convention is the intended one. */
+           footprint its mesh actually draws. Pin the ratios the catalog uses
+           rather than a loose band, so drift in either direction has to be
+           argued with: lift_area equals the planform (wing: 4 m x 2 m = 8 m^2,
+           ratio 1.0) while control_area is HALF it (the fins draw 4 m^2 and
+           declare 2, ratio 0.5). #478 asks which convention is the intended one;
+           whichever wins, this is where the losing half gets converted. It is
+           also the number #458 asked for: the wing going 2 m^2 -> 8 m^2 in
+           a27bcd1 fails here instead of quietly changing how a saved ship flies. */
         for(const PartDef &d : cat.parts) {
-            const double area = d.lift_area > 0.0 ? d.lift_area : d.control_area;
-            if(area <= 0.0 || !d.has_mesh_extents) { continue; }
-            // The same span the induced-drag law would take, times the chord.
-            const double planform = 2.0 * d.meshSpanHalf() * (d.mesh_max.z - d.mesh_min.z);
-            CHECK(area <= planform + 1e-9);        // no more lift than the plate holds
-            CHECK(area >= 0.5 * planform - 1e-9);  // ... and not less than half it
+            if(d.lift_area > 0.0) {
+                const double planform = 2.0 * d.meshSpanHalf()
+                                      * (d.mesh_max.z - d.mesh_min.z);
+                CHECK(near(d.lift_area, planform));
+            }
+            if(d.control_area > 0.0) {
+                const double planform = 2.0 * d.meshSpanHalf()
+                                      * (d.mesh_max.z - d.mesh_min.z);
+                CHECK(near(d.control_area, 0.5 * planform));
+            }
         }
         for(const PartDef &d : cat.parts) {
             if(d.fuel_link) { CHECK(!d.has_mesh_extents); continue; }
@@ -245,6 +250,22 @@ int main() {
             // 1%: parts.json stores the generated 0.5625 as 0.562.
             CHECK(std::fabs(std::max(hx, hy) - d.radius) <= 0.01 * d.radius);
             CHECK(std::fabs(d.meshHalfLength() - d.height / 2.0) <= 0.01 * d.height);
+            /* meshHalfSpan() symmetrises the box about the part origin because
+               the origin IS the stack axis. A mesh modelled off-centre would get
+               the larger half-span on both sides and place a child on the far
+               side of air, so keep every shipped mesh centred. Measured: 0. */
+            CHECK(std::fabs(d.mesh_min.x + d.mesh_max.x) <= 1e-6);
+            CHECK(std::fabs(d.mesh_min.y + d.mesh_max.y) <= 1e-6);
+            /* The CHILD side of a surface attach still bolts at the part's
+               surface node, which synthesizeNodes() mints from the authored
+               radius, not from this box (#480). Today they agree to a tenth of a
+               mm; the day a part is authored spanning Y the node sits half a span
+               outside the mesh, so fail on that rather than ship a child floating
+               off its own tip. */
+            const Node *srf = d.findSurfaceNode();
+            if(srf != nullptr) {
+                CHECK(std::fabs(std::fabs(srf->pos.x) - std::fabs(d.mesh_min.x)) <= 1e-3);
+            }
         }
         /* No mesh on disk: readMeshGeom says so rather than throwing, and the
            helpers fall back to the authored cylinder instead of reporting a
@@ -272,8 +293,75 @@ int main() {
                 CHECK(near(hx, 1.5) && near(hy, 1.5));
                 CHECK(near(c.parts[0].meshSpanHalf(), 1.5));
                 CHECK(near(c.parts[0].meshHalfLength(), 2.0));
+                /* One absolute fingerprint VALUE, because every other pin here
+                   checks AGREEMENT between two loads of the same catalog. The
+                   fixtures in e2e/cases/save carry hex for parts with real
+                   meshes; this is the only pin for what a part with NO mesh
+                   hashes to. Change the mixer or what it covers and this has to
+                   be re-stamped on purpose, which is the point. */
+                CHECK(geomFingerprintHex(c.parts[0].geom_fingerprint) == "cfad0500f7989c76");
             }
             std::remove(f.c_str());
+        }
+        /* The helpers on a part built by hand, spanning Y instead of X. No
+           shipped part is authored that way, so this is the only thing that can
+           tell an X/Y swap in meshHalfSpan() from a fix -- and a plate authored
+           along Y is exactly what the extents exist to handle. */
+        {
+            PartDef plate;
+            plate.radius = 2.0;
+            plate.height = 2.0;
+            plate.has_mesh_extents = true;
+            plate.mesh_min = glm::dvec3(-0.05, -2.0, -1.0);
+            plate.mesh_max = glm::dvec3( 0.05,  2.0,  1.0);
+            double hx = 0.0, hy = 0.0;
+            plate.meshHalfSpan(hx, hy);
+            CHECK(near(hx, 0.05) && near(hy, 2.0));   // thickness, then half-span
+            CHECK(near(plate.meshSpanHalf(), 2.0));   // the span, whichever axis
+            CHECK(near(plate.meshHalfLength(), 1.0));
+            PartDef round;
+            round.radius = 1.5;
+            round.height = 4.0;   // no mesh read, so the authored size stands in
+            round.meshHalfSpan(hx, hy);
+            CHECK(near(hx, 1.5) && near(hy, 1.5));
+            CHECK(near(round.meshSpanHalf(), 1.5));
+            CHECK(near(round.meshHalfLength(), 2.0));
+        }
+        /* The contact rule itself, where the catalog cannot test it: every parent
+           a shipped def attaches to is round, so a rule that ignored Y entirely
+           would still pass the whole suite. */
+        {
+            // Same plate turned 90 deg, same answer turned 90 deg.
+            const EllipseContact xspan = ellipseContact(2.0, 0.05, glm::radians(90.0), 0.3);
+            const EllipseContact yspan = ellipseContact(0.05, 2.0, glm::radians(0.0), 0.3);
+            CHECK(vnear(xspan.point, glm::dvec3(0.0, 0.05, 0.3)));
+            CHECK(vnear(yspan.point, glm::dvec3(0.05, 0.0, 0.3)));
+            CHECK(std::fabs(xspan.normal.y - yspan.normal.x) < 1e-12);
+            // The tip of the span, and the flat of the face.
+            const EllipseContact tip = ellipseContact(2.0, 0.05, 0.0, 0.0);
+            CHECK(vnear(tip.point, glm::dvec3(2.0, 0.0, 0.0)));
+            CHECK(vnear(tip.normal, glm::dvec3(1.0, 0.0, 0.0)));
+            /* At 45 deg the contact stays on the plate and the normal leaves the
+               FACE it is on, not the corner: the old cylinder rule put this
+               contact 1.41 m out along the diagonal instead. */
+            const EllipseContact diag = ellipseContact(2.0, 0.05, glm::radians(45.0), 0.0);
+            CHECK(diag.point.x > 0.049 && diag.point.x < 0.051);
+            CHECK(diag.point.y > 0.049 && diag.point.y < 0.051);
+            CHECK(diag.normal.y > 0.99 && std::fabs(diag.normal.x) < 0.02);
+            // A plate modelled with NO thickness still gets a finite contact, on
+            // its face. Dividing by the half-span instead gives NaN, a pose that
+            // solves, and a ship that cannot be flown.
+            const EllipseContact flat = ellipseContact(2.0, 0.0, glm::radians(45.0), 0.25);
+            CHECK(vnear(flat.point, glm::dvec3(0.0, 0.0, 0.25)));
+            CHECK(vnear(flat.normal, glm::dvec3(0.0, 1.0, 0.0)));
+            // A round parent is the circle the rule always used, at every angle.
+            for(int deg = 0; deg < 360; deg += 30) {
+                const EllipseContact c = ellipseContact(0.6, 0.6, glm::radians((double)deg), 0.0);
+                CHECK(near(glm::length(c.point), 0.6));
+                CHECK(near(glm::length(c.normal), 1.0));
+                CHECK(near(c.normal.x, c.point.x / 0.6));
+                CHECK(near(c.normal.y, c.point.y / 0.6));
+            }
         }
     }
 

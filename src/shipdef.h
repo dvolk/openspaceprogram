@@ -118,10 +118,15 @@ struct PartDef {
        rather than the cylinder above.
        Derived from the .obj's `v` lines: the same bytes geom_fingerprint hashes
        and the same vertices mesh.cpp hands Bullet to convex-hull (physics.cpp
-       BuildHull), whose aiProcess flags transform nothing, so the collision
-       hull's AABB is this AABB. Missing mesh or no vertices ->
-       has_mesh_extents false, and the helpers below fall back to the authored
-       size rather than reporting a zero-size part. */
+       BuildHull), whose aiProcess flags transform nothing, so this IS the hull's
+       box before Bullet grows it by the shape's collision margin. Missing mesh
+       or no vertices -> has_mesh_extents false, and the helpers below fall back
+       to the authored size rather than reporting a zero-size part.
+       The box is symmetrised about the part origin, because the part origin IS
+       the stack axis: a mesh modelled off-centre would get the larger half-span
+       on both sides, exactly the lie the authored radius tells. Every mesh in
+       this catalog has its box centred on the axis to <1e-6 m, pinned in
+       tests/test_shipload.cpp, so nothing shipped depends on that yet. */
     glm::dvec3 mesh_min = glm::dvec3(0.0);
     glm::dvec3 mesh_max = glm::dvec3(0.0);
     bool has_mesh_extents = false;
@@ -374,14 +379,16 @@ struct ShipPart {
     int parent;            // part index of the attach parent; -1 = root
     AttachMode attach;
     double angle;          // stack edge: roll about the mating axis. surface
-                           //   edge: consumed into contactNormal (cylinder shorthand).
+                           //   edge: clock angle about the parent's stack axis,
+                           //   turned into a contact by ellipseContact().
     double offset;         // m of gap along the attach axis / contact normal
     /* Stack edges mate two named nodes (defaults: parent "bottom"/"top" and
        child "top"/"bottom" for down/up). */
     std::string parentNode;
     std::string childNode;   // surface edge: the child's surface node id
     /* Surface edges: contact point + outward normal in the PARENT's local
-       frame (explicit "point"/"normal" or the "angle"[+"z"] cylinder shorthand). */
+       frame (explicit "point"/"normal", or the "angle"[+"z"] shorthand -- "z"
+       has to land within the parent's mesh along its stack axis). */
     glm::dvec3 contactPoint;
     glm::dvec3 contactNormal;
     double roll;
@@ -562,6 +569,19 @@ AttachPose attachSurface(const glm::dvec3 &parentPos, const glm::dmat3 &parentRo
                          const Node &childNode, double rollDeg = 0.0,
                          double offset = 0.0);
 
+/* Where the surface "angle" shorthand puts its contact on a parent whose
+   cross-section across the stack axis is the ELLIPSE bounded by (hx, hy), and
+   the outward normal there. A round parent (hx == hy) is the circle the rule
+   always used.
+   Exposed for the unit test rather than left inline in the parser: every parent
+   in the shipped catalog is round, so nothing else in the suite can tell an X/Y
+   swap here from a fix, and a plate parent is exactly what the rule is for. */
+struct EllipseContact {
+    glm::dvec3 point;    // parent-local, at height z along the stack axis
+    glm::dvec3 normal;   // unit, out of the ellipse
+};
+EllipseContact ellipseContact(double hx, double hy, double azimuthRad, double z);
+
 /* A surface edge's authoring data: the contact in the PARENT's local frame
    plus the child's roll about it. */
 struct SurfaceEdge {
@@ -627,6 +647,18 @@ struct PartsCatalog {
 PartsCatalog load_parts_catalog(const char *path);
 ShipDef load_ship_def(const char *path, const PartsCatalog &catalog);
 
+/* A part's mesh file read ONCE: the bytes the fingerprint hashes and the
+   bounding box of its vertices. load_parts_catalog calls this per part and
+   feeds both halves, so a part costs one file read rather than two. */
+struct MeshGeom {
+    bool readable = false;     // false -> no file (the catalog never required one)
+    bool hasExtents = false;   // false -> no vertex line in it
+    glm::dvec3 lo = glm::dvec3(0.0);
+    glm::dvec3 hi = glm::dvec3(0.0);
+    std::string bytes;         // exact contents, hashed verbatim
+};
+MeshGeom readMeshGeom(const std::string &meshSubpath);
+
 /* FNV-1a over everything that decides a part's SHAPE: the mesh FILE's bytes,
    radius, height, and every attach node (id, pos, dir, surface). load_parts_
    catalog computes it once per part; a save records it (save.h, #456) so a
@@ -640,21 +672,6 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog);
    height/2 + 0.75*sqrt(chute_area), so retuning chute_area visibly moves the
    canopy on an already-saved ship). #389 made those catalog-only, and a saved
    pose does not depend on them. */
-uint64_t partGeomFingerprint(const PartDef &d);
-
-/* A part's mesh file read ONCE: the bytes the fingerprint hashes and the
-   bounding box of its vertices. load_parts_catalog calls this per part and
-   feeds both halves, so a part costs one file read rather than two. */
-struct MeshGeom {
-    bool readable = false;     // false -> no file (the catalog never required one)
-    bool hasExtents = false;   // false -> no vertex line in it
-    glm::dvec3 lo = glm::dvec3(0.0);
-    glm::dvec3 hi = glm::dvec3(0.0);
-    std::string bytes;         // exact contents, hashed verbatim
-};
-MeshGeom readMeshGeom(const std::string &meshSubpath);
-
-/* The same fingerprint from a mesh read already in hand. */
 uint64_t partGeomFingerprint(const PartDef &d, const MeshGeom &mg);
 
 /* The fingerprint as 16 lowercase hex digits -- what a save writes and reads

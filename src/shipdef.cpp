@@ -93,17 +93,16 @@ static const uint64_t kGeomEpoch = 1;
 
 /* A part's mesh file, read once: the bytes that go into geom_fingerprint and
    the bounding box of its vertices (#457). Both are properties of the FILE, so
-   the 20 catalog entries that share a mesh with another entry could share this
-   read too; they do not, because the whole catalog parse costs ~1 ms and a
+   the 19 catalog entries that share a mesh with another entry could share this
+   read too; they do not, because the whole catalog parse costs ~3 ms and a
    cache would be the only thing in it. */
 MeshGeom readMeshGeom(const std::string &meshSubpath) {
     MeshGeom g;
     /* A directory is readable until you try to read it, and then libstdc++
        throws out of the stream buffer rather than setting failbit -- and a
-       catalog entry with no "mesh" resolves to res/ itself. Check the file
-       before opening it. */
+       catalog entry with no "mesh" resolves to res/ itself. Check for a regular
+       file before opening it. */
     std::error_code ec;
-    if(meshSubpath.empty()) { return g; }
     const std::string full = resdir::path("res/" + meshSubpath);
     if(!std::filesystem::is_regular_file(full, ec)) { return g; }
     std::ifstream m(full, std::ios::binary);
@@ -117,13 +116,27 @@ MeshGeom readMeshGeom(const std::string &meshSubpath) {
         return g;
     }
     g.readable = true;
-    g.bytes.assign(std::istreambuf_iterator<char>(m),
-                   std::istreambuf_iterator<char>());
+    /* A read error part-way through a file throws out of the stream buffer in
+       libstdc++, and this runs while booting: an unreadable mesh has to degrade
+       to "no extents, no geometry to hash", not abort the process. */
+    try {
+        g.bytes.assign(std::istreambuf_iterator<char>(m),
+                       std::istreambuf_iterator<char>());
+    } catch(const std::ios_base::failure &) {
+        g.readable = false;
+        return g;
+    }
     /* The vertices, scanned out of the same bytes: a vertex line is 'v' at the
        start of a line plus three floats, which is how assimp reads them too, and
        the aiProcess flags mesh.cpp passes (CalcTangentSpace/Triangulate/
        JoinIdenticalVertices/SortByPType) transform nothing -- so this box is the
-       box BuildHull convex-hulls and the box drag.h projects.
+       box BuildHull convex-hulls and the box drag.h projects. Measured over the
+       shipped catalog (tmp/ext_vs_assimp.cpp): all 46 unique meshes agree with
+       what assimp loads to <1e-8 m (assimp holds vertices as float, the file has
+       doubles). The one way they could part: mesh.cpp takes scene->mMeshes[0]
+       only, so a .obj holding several objects would leave the sim with less
+       geometry than this box claims -- no such file today, and an assimp change
+       that moves the hull is what kGeomEpoch is for.
        Scanned by hand rather than with getline + an istringstream per line: that
        version cost ~5 ms over the catalog, several times the hash over the same
        bytes, for a boot-only step. An unparseable line only costs an extent, not
@@ -131,8 +144,12 @@ MeshGeom readMeshGeom(const std::string &meshSubpath) {
     char *base = g.bytes.data();
     char *end = base + g.bytes.size();
     for(char *p = base; p < end; ) {
-        if(p[0] == 'v' && p + 1 < end && (p[1] == ' ' || p[1] == '\t')) {
-            char *q = p + 2;
+        char *s = p;
+        // assimp tolerates an indent; a scan that does not would read a
+        // hand-edited .obj as a part with no vertices.
+        while(s < end && (*s == ' ' || *s == '\t')) { s++; }
+        if(s < end && s[0] == 'v' && s + 1 < end && (s[1] == ' ' || s[1] == '\t')) {
+            char *q = s + 2;
             double val[3];
             bool ok = true;
             for(int k = 0; k < 3; k++) {
@@ -189,10 +206,6 @@ uint64_t partGeomFingerprint(const PartDef &d, const MeshGeom &mg) {
         fnv::mix(h, nd.surface ? 1 : 0);
     }
     return h;
-}
-
-uint64_t partGeomFingerprint(const PartDef &d) {
-    return partGeomFingerprint(d, readMeshGeom(d.mesh));
 }
 
 std::string geomFingerprintHex(uint64_t v) {
@@ -788,36 +801,31 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                        wing's 2.0 would plant a part 2 m of air above a plate
                        0.1 m thick, hanging off a surface it claims to touch.
                        Model the cross-section as the ELLIPSE bounded by the
-                       mesh's own bounding box. That is identical to the cylinder
-                       when the parent is round -- checked, all 56 angle-shorthand
-                       edges in the shipped defs and fixtures keep their contact
-                       bit-for-bit -- exact at a plate's tip and at its face, and
-                       its normal keeps the surface-of-revolution property
-                       snapSurfaceContact already assumes. A bounding BOX would
-                       have been just as exact on the axes and jumps the contact
-                       normal 90 deg as the azimuth crosses a corner, which the
-                       10 deg snap grid and radial symmetry clones would show. */
+                       mesh's own bounding box (ellipseContact). That is identical
+                       to the cylinder when the parent is round, exact at a plate's
+                       tip and at its face, and its normal keeps the surface-of-
+                       revolution property snapSurfaceContact already assumes. A
+                       bounding BOX would have been just as exact on the axes and
+                       jumps the contact normal 90 deg as the azimuth crosses a
+                       corner, which the 10 deg snap grid and radial symmetry
+                       clones would show. Measured before writing it: none of the
+                       angle-shorthand edges in the shipped defs and fixtures (51
+                       of them, plus the local saves) moves its contact, scored
+                       with a replica of this rule; a scan written independently
+                       agrees. */
                     assert(pp.def != nullptr);   // every part resolved its def at parse
-                    const double a  = glm::radians(sp.angle);
-                    const double ca = cos(a), sa = sin(a);
-                    const double z  = pv.value("z", 0.0);
+                    const double z = pv.value("z", 0.0);
                     double hx, hy;
                     pp.def->meshHalfSpan(hx, hy);
-                    if(hx <= 0.0 || hy <= 0.0) {
-                        throw std::runtime_error(ectx + "cannot attach to parent '" + pp.id
-                                                 + "': its mesh has no cross-section to bolt onto");
+                    if(hx <= 0.0 && hy <= 0.0) {
+                        throw std::runtime_error(ectx + "cannot attach '" + sp.part
+                                                 + "' to parent '" + pp.id + "' ('" + pp.part
+                                                 + "'): its mesh has no cross-section to bolt onto"
+                                                 + " (use \"point\"/\"normal\" to place the contact)");
                     }
-                    const bool roundParent
-                        = std::fabs(hx - hy) <= 1e-9 * std::max(hx, hy);
-                    double t = hx;
-                    if(!roundParent) {
-                        const double inv = (ca * ca) / (hx * hx) + (sa * sa) / (hy * hy);
-                        t = 1.0 / std::sqrt(inv);
-                    }
-                    sp.contactPoint = glm::dvec3(t * ca, t * sa, z);
-                    sp.contactNormal = roundParent
-                        ? glm::dvec3(ca, sa, 0.0)
-                        : glm::normalize(glm::dvec3(ca / (hx * hx), sa / (hy * hy), 0.0));
+                    const EllipseContact ec = ellipseContact(hx, hy, glm::radians(sp.angle), z);
+                    sp.contactPoint  = ec.point;
+                    sp.contactNormal = ec.normal;
                     /* `z` used to be checked against nothing, so a typo'd "z"
                        quietly planted a part beside the ship instead of on it. */
                     const double hz = pp.def->meshHalfLength();
@@ -830,8 +838,10 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                     }
                 }
                 const double nl = glm::length(sp.contactNormal);
-                if(nl < 1e-9) {
-                    throw std::runtime_error(ectx + "surface \"normal\" must be non-zero");
+                if(!(nl > 1e-9)) {
+                    // NaN-safe: `nl < 1e-9` is false for a NaN normal, which
+                    // would otherwise ride into the pose solve.
+                    throw std::runtime_error(ectx + "surface contact normal must be non-zero");
                 }
                 sp.contactNormal /= nl;
                 if(sp.childNode.empty()) {
@@ -1049,6 +1059,43 @@ AttachPose attachSurface(const glm::dvec3 &parentPos, const glm::dmat3 &parentRo
     const glm::dvec3 target = -dP;      // the child's node dir opposes the normal
     return matePose(parentPos, parentRot, point, dP, childNode,
                     surfaceMatingRot(dC, target, point), rollDeg, offset);
+}
+
+EllipseContact ellipseContact(double hx, double hy, double azimuthRad, double z) {
+    const double ca = std::cos(azimuthRad), sa = std::sin(azimuthRad);
+    EllipseContact out;
+    /* A round parent is the circle this rule always used. Kept as an equality
+       test rather than falling into the general form below: that form's sqrt is
+       not bit-identical to hx*(ca, sa), and every shipped surface contact -- all
+       of them on round parents -- rides the difference. */
+    if(std::fabs(hx - hy) <= 1e-9 * std::max(hx, hy)) {
+        out.point = glm::dvec3(hx * ca, hx * sa, z);
+        out.normal = glm::dvec3(ca, sa, 0.0);
+        return out;
+    }
+    /* Where the ray at azimuth `a` meets the ellipse x^2/hx^2 + y^2/hy^2 = 1,
+       written with no division by a half-span. The obvious 1/sqrt(ca^2/hx^2 +
+       sa^2/hy^2) overflows for a thin parent -- a plate modelled with no
+       thickness has hy = 0, sa^2/hy^2 = inf, and the part lands at NaN with a
+       pose that solves and a ship that cannot be flown. The scaled form degrades
+       instead: a zero-thickness plate meets every ray on its own face. */
+    const double t = (ca == 0.0) ? hy
+                   : (sa == 0.0) ? hx
+                   : (hx * hy) / std::sqrt(ca * ca * hy * hy + sa * sa * hx * hx);
+    out.point = glm::dvec3(t * ca, t * sa, z);
+    /* The gradient of that ellipse, scaled by (hx*hy)^2 for the same reason: it
+       points off the NEAREST face of the curve rather than off the diagonal, so
+       the normal's azimuth keeps tracking the contact's azimuth -- the surface-
+       of-revolution property snapSurfaceContact's 10 deg grid and the radial
+       symmetry clones both assume. */
+    glm::dvec3 n(ca * hy * hy, sa * hx * hx, 0.0);
+    const double n2 = n.x * n.x + n.y * n.y;
+    if(n2 > 0.0) {
+        out.normal = n * (1.0 / std::sqrt(n2));
+    } else {
+        out.normal = glm::dvec3(ca, sa, 0.0);   // a mesh with no area at all
+    }
+    return out;
 }
 
 double snapAngleDeg(double deg) {
