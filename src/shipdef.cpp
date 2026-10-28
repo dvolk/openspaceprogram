@@ -3,7 +3,10 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <stdexcept>
 
@@ -88,14 +91,22 @@ static glm::dvec3 parse_vec3(const nlohmann::json &obj, const char *key,
    so in words, rather than as a pair of meaningless hex numbers. */
 static const uint64_t kGeomEpoch = 1;
 
-uint64_t partGeomFingerprint(const PartDef &d) {
-    if(d.fuel_link) { return 0; }   // a marker entry: no body, so no shape
-    uint64_t h = fnv::start();
-    fnv::mix(h, kGeomEpoch);
-    fnv::mixText(h, d.mesh);
-    fnv::mixDouble(h, d.radius);
-    fnv::mixDouble(h, d.height);
-    std::ifstream m(resdir::path("res/" + d.mesh), std::ios::binary);
+/* A part's mesh file, read once: the bytes that go into geom_fingerprint and
+   the bounding box of its vertices (#457). Both are properties of the FILE, so
+   the 20 catalog entries that share a mesh with another entry could share this
+   read too; they do not, because the whole catalog parse costs ~1 ms and a
+   cache would be the only thing in it. */
+MeshGeom readMeshGeom(const std::string &meshSubpath) {
+    MeshGeom g;
+    /* A directory is readable until you try to read it, and then libstdc++
+       throws out of the stream buffer rather than setting failbit -- and a
+       catalog entry with no "mesh" resolves to res/ itself. Check the file
+       before opening it. */
+    std::error_code ec;
+    if(meshSubpath.empty()) { return g; }
+    const std::string full = resdir::path("res/" + meshSubpath);
+    if(!std::filesystem::is_regular_file(full, ec)) { return g; }
+    std::ifstream m(full, std::ios::binary);
     if(!m.is_open()) {
         /* Unreadable folds in one stable value rather than throwing: the
            catalog has never required the file to exist (tests name "a.obj"),
@@ -103,20 +114,66 @@ uint64_t partGeomFingerprint(const PartDef &d) {
            EMPTY file hashes the same as a missing one -- both mean "no geometry
            to read here", and the mesh path mixed above keeps the two parts
            apart. */
+        return g;
+    }
+    g.readable = true;
+    g.bytes.assign(std::istreambuf_iterator<char>(m),
+                   std::istreambuf_iterator<char>());
+    /* The vertices, scanned out of the same bytes: a vertex line is 'v' at the
+       start of a line plus three floats, which is how assimp reads them too, and
+       the aiProcess flags mesh.cpp passes (CalcTangentSpace/Triangulate/
+       JoinIdenticalVertices/SortByPType) transform nothing -- so this box is the
+       box BuildHull convex-hulls and the box drag.h projects.
+       Scanned by hand rather than with getline + an istringstream per line: that
+       version cost ~5 ms over the catalog, several times the hash over the same
+       bytes, for a boot-only step. An unparseable line only costs an extent, not
+       the hash, which still covers the exact bytes. */
+    char *base = g.bytes.data();
+    char *end = base + g.bytes.size();
+    for(char *p = base; p < end; ) {
+        if(p[0] == 'v' && p + 1 < end && (p[1] == ' ' || p[1] == '\t')) {
+            char *q = p + 2;
+            double val[3];
+            bool ok = true;
+            for(int k = 0; k < 3; k++) {
+                while(q < end && (*q == ' ' || *q == '\t')) { q++; }
+                char *stop = nullptr;
+                val[k] = std::strtod(q, &stop);
+                if(stop == q) { ok = false; break; }
+                q = stop;
+            }
+            if(ok) {
+                const glm::dvec3 v(val[0], val[1], val[2]);
+                if(!g.hasExtents) {
+                    g.lo = g.hi = v;
+                    g.hasExtents = true;
+                } else {
+                    g.lo = glm::min(g.lo, v);
+                    g.hi = glm::max(g.hi, v);
+                }
+            }
+        }
+        char *nl = static_cast<char *>(std::memchr(p, '\n', (size_t)(end - p)));
+        if(nl == nullptr) { break; }
+        p = nl + 1;
+    }
+    return g;
+}
+
+uint64_t partGeomFingerprint(const PartDef &d, const MeshGeom &mg) {
+    if(d.fuel_link) { return 0; }   // a marker entry: no body, so no shape
+    uint64_t h = fnv::start();
+    fnv::mix(h, kGeomEpoch);
+    fnv::mixText(h, d.mesh);
+    fnv::mixDouble(h, d.radius);
+    fnv::mixDouble(h, d.height);
+    if(!mg.readable) {
         fnv::mix(h, 0);
     } else {
-        uint64_t total = 0;
-        char buf[4096];
-        for(;;) {
-            m.read(buf, (std::streamsize)sizeof(buf));
-            const std::streamsize got = m.gcount();
-            if(got <= 0) { break; }
-            for(std::streamsize k = 0; k < got; k++) {
-                h = (h ^ (uint64_t)(unsigned char)buf[k]) * 1099511628211ull;
-            }
-            total += (uint64_t)got;
+        for(size_t k = 0; k < mg.bytes.size(); k++) {
+            h = (h ^ (uint64_t)(unsigned char)mg.bytes[k]) * 1099511628211ull;
         }
-        fnv::mix(h, total);
+        fnv::mix(h, (uint64_t)mg.bytes.size());
     }
     /* Nodes last: they are usually synthesized from radius/height, and an
        authored set is exactly the kind of edit that moves a bolt point. */
@@ -132,6 +189,10 @@ uint64_t partGeomFingerprint(const PartDef &d) {
         fnv::mix(h, nd.surface ? 1 : 0);
     }
     return h;
+}
+
+uint64_t partGeomFingerprint(const PartDef &d) {
+    return partGeomFingerprint(d, readMeshGeom(d.mesh));
 }
 
 std::string geomFingerprintHex(uint64_t v) {
@@ -512,9 +573,18 @@ PartsCatalog load_parts_catalog(const char *path) {
             d.synthesizeNodes();   // no-op if explicit nodes were given
         }
 
-        /* Last, so it covers the synthesized nodes as well as the authored ones
-           (#456). A virtual marker skips it: no body, no shape. */
-        d.geom_fingerprint = partGeomFingerprint(d);
+        /* One read of the mesh file feeds both records. The fingerprint is
+           computed last so it covers the synthesized nodes as well as the
+           authored ones (#456); the extents are the mesh's own bounding box,
+           which is what a surface attach and an induced span ask for (#457).
+           A virtual marker skips it: no body, no shape. */
+        const MeshGeom mg = readMeshGeom(d.mesh);
+        d.geom_fingerprint = partGeomFingerprint(d, mg);
+        if(mg.hasExtents) {
+            d.mesh_min = mg.lo;
+            d.mesh_max = mg.hi;
+            d.has_mesh_extents = true;
+        }
 
         cat.parts.push_back(d);
     }
@@ -711,11 +781,53 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                     sp.contactPoint  = parse_vec3(pv, "point",  ectx);
                     sp.contactNormal = parse_vec3(pv, "normal", ectx);
                 } else {
-                    const double rP = (pp.def != nullptr) ? pp.def->radius : 1.0;
-                    const double z  = pv.value("z", 0.0);
+                    /* The "angle" shorthand is a CLOCK ANGLE about the parent's
+                       stack axis, so it needs the parent's cross-section at that
+                       azimuth -- not its authored radius (#457). radius is a
+                       CYLINDER radius, and for a plate it is half the SPAN: the
+                       wing's 2.0 would plant a part 2 m of air above a plate
+                       0.1 m thick, hanging off a surface it claims to touch.
+                       Model the cross-section as the ELLIPSE bounded by the
+                       mesh's own bounding box. That is identical to the cylinder
+                       when the parent is round -- checked, all 56 angle-shorthand
+                       edges in the shipped defs and fixtures keep their contact
+                       bit-for-bit -- exact at a plate's tip and at its face, and
+                       its normal keeps the surface-of-revolution property
+                       snapSurfaceContact already assumes. A bounding BOX would
+                       have been just as exact on the axes and jumps the contact
+                       normal 90 deg as the azimuth crosses a corner, which the
+                       10 deg snap grid and radial symmetry clones would show. */
+                    assert(pp.def != nullptr);   // every part resolved its def at parse
                     const double a  = glm::radians(sp.angle);
-                    sp.contactNormal = glm::dvec3(cos(a), sin(a), 0.0);
-                    sp.contactPoint  = glm::dvec3(rP * cos(a), rP * sin(a), z);
+                    const double ca = cos(a), sa = sin(a);
+                    const double z  = pv.value("z", 0.0);
+                    double hx, hy;
+                    pp.def->meshHalfSpan(hx, hy);
+                    if(hx <= 0.0 || hy <= 0.0) {
+                        throw std::runtime_error(ectx + "cannot attach to parent '" + pp.id
+                                                 + "': its mesh has no cross-section to bolt onto");
+                    }
+                    const bool roundParent
+                        = std::fabs(hx - hy) <= 1e-9 * std::max(hx, hy);
+                    double t = hx;
+                    if(!roundParent) {
+                        const double inv = (ca * ca) / (hx * hx) + (sa * sa) / (hy * hy);
+                        t = 1.0 / std::sqrt(inv);
+                    }
+                    sp.contactPoint = glm::dvec3(t * ca, t * sa, z);
+                    sp.contactNormal = roundParent
+                        ? glm::dvec3(ca, sa, 0.0)
+                        : glm::normalize(glm::dvec3(ca / (hx * hx), sa / (hy * hy), 0.0));
+                    /* `z` used to be checked against nothing, so a typo'd "z"
+                       quietly planted a part beside the ship instead of on it. */
+                    const double hz = pp.def->meshHalfLength();
+                    if(std::fabs(z) > hz) {
+                        throw std::runtime_error(ectx + "surface \"z\" " + std::to_string(z)
+                                                 + " is off the end of parent '" + pp.id + "': "
+                                                 + pp.part + "' spans z " + std::to_string(-hz)
+                                                 + " to " + std::to_string(hz)
+                                                 + " m (use \"point\"/\"normal\" to attach past a part)");
+                    }
                 }
                 const double nl = glm::length(sp.contactNormal);
                 if(nl < 1e-9) {

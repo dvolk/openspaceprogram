@@ -2430,11 +2430,12 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
            pays induced drag ~ CL^2 / (pi e AR) for it, along the flow. CL comes
            from the lift just computed instead of a second curve evaluation --
            same law, so the induced term follows any change to it. The span is
-           2 x the part radius: for a plate part the radius IS the half-span
-           (see inducedCd; #457 wants an honest per-part box). Applied at the
-           same offset as the lift, because it is the same wing. */
+           the mesh's own widest extent across the stack axis (#457), which is
+           the span whether the planform was authored along X or Y; for the
+           shipped wing that is the same 4 m the authored radius stated. Applied
+           at the same offset as the lift, because it is the same wing. */
         const double clPart = glm::length(flift) / (q * d->lift_area);
-        const double cdi = inducedCd(clPart, 2.0 * d->radius, d->lift_area);
+        const double cdi = inducedCd(clPart, 2.0 * d->meshSpanHalf(), d->lift_area);
         if(cdi <= 0.0) { continue; }
         /* drag_cd scales the hull's air -- form drag and induced alike --
            otherwise the knob tunes only half the law, and its documented meaning

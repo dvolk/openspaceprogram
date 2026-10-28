@@ -194,6 +194,89 @@ int main() {
         }
     }
 
+    /* Per-part extents (#457): the mesh's own bounding box, read off the mesh
+       file with it. The authored radius/height describe a CYLINDER, and for a
+       plate the cylinder is wrong across one axis -- the wing's radius 2.0 is
+       half its 4 m span while the plate is 0.1 m thick -- so anything asking
+       where a part's surface is needs the box. Pin the box for the plate that
+       motivated it, the fallback when there is no mesh to read, and the
+       agreement between the box and the authored numbers: gen_parts.py DERIVES
+       those from the mesh, so a gap between them is content drift nobody would
+       otherwise see (#458's "parts can change 4x unseen"). */
+    {
+        const PartDef *wing = cat.find("wing");
+        CHECK(wing != nullptr);
+        if(wing != nullptr) {
+            CHECK(wing->has_mesh_extents);
+            CHECK(vnear(wing->mesh_min, glm::dvec3(-2.0, -0.05, -1.0)));
+            CHECK(vnear(wing->mesh_max, glm::dvec3( 2.0,  0.05,  1.0)));
+            double hx = 0.0, hy = 0.0;
+            wing->meshHalfSpan(hx, hy);
+            CHECK(near(hx, 2.0) && near(hy, 0.05));   // half-span, then thickness
+            CHECK(near(wing->meshSpanHalf(), 2.0));   // the span induced drag wants
+            CHECK(near(wing->meshHalfLength(), 1.0));
+            /* The planform the mesh draws is the lift area the catalog authors:
+               4 m x 2 m = 8 m^2. Retouch one without the other and this is the
+               number that fails, rather than the ship quietly flying wrong. */
+            CHECK(near((wing->mesh_max.x - wing->mesh_min.x)
+                     * (wing->mesh_max.z - wing->mesh_min.z), wing->lift_area));
+        }
+        /* #458's C++ half: every plate part's declared aero area against the
+           footprint its mesh actually draws. The catalog uses two conventions --
+           lift_area equals the planform (wing: 4 m x 2 m = 8 m^2), control_area
+           is half it (fin: 4 m^2 drawn, 2 declared) -- so the check is a band
+           rather than an equality. It is still the number #458 asked for: the
+           wing going 2 m^2 -> 8 m^2 in a27bcd1 would have failed a 2x band, and
+           so does a mesh retouched without the area following it. #478 asks which
+           convention is the intended one. */
+        for(const PartDef &d : cat.parts) {
+            const double area = d.lift_area > 0.0 ? d.lift_area : d.control_area;
+            if(area <= 0.0 || !d.has_mesh_extents) { continue; }
+            // The same span the induced-drag law would take, times the chord.
+            const double planform = 2.0 * d.meshSpanHalf() * (d.mesh_max.z - d.mesh_min.z);
+            CHECK(area <= planform + 1e-9);        // no more lift than the plate holds
+            CHECK(area >= 0.5 * planform - 1e-9);  // ... and not less than half it
+        }
+        for(const PartDef &d : cat.parts) {
+            if(d.fuel_link) { CHECK(!d.has_mesh_extents); continue; }
+            CHECK(d.has_mesh_extents);   // every real part ships a readable mesh
+            double hx, hy;
+            d.meshHalfSpan(hx, hy);
+            // 1%: parts.json stores the generated 0.5625 as 0.562.
+            CHECK(std::fabs(std::max(hx, hy) - d.radius) <= 0.01 * d.radius);
+            CHECK(std::fabs(d.meshHalfLength() - d.height / 2.0) <= 0.01 * d.height);
+        }
+        /* No mesh on disk: readMeshGeom says so rather than throwing, and the
+           helpers fall back to the authored cylinder instead of reporting a
+           zero-size part (which the attach rule would then refuse). */
+        const MeshGeom gone = readMeshGeom("meshes/not_here.obj");
+        CHECK(!gone.readable);
+        CHECK(!gone.hasExtents);
+        const MeshGeom cap = readMeshGeom("meshes/capsule.obj");
+        CHECK(cap.readable);
+        CHECK(cap.hasExtents);
+        CHECK(vnear(cap.lo, glm::dvec3(-1.0, -1.0, -1.0)));
+        CHECK(vnear(cap.hi, glm::dvec3( 1.0,  1.0,  1.0)));
+        {
+            const std::string f = "/tmp/test_extents_fallback.json";
+            std::ofstream o(f);
+            o << R"({"parts":[{"name":"a","type":"engine","mesh":"meshes/not_here.obj",)"
+              << R"("texture":"textures/capsule.png","mass":10.0,"radius":1.5,"height":4.0}]})";
+            o.close();
+            const PartsCatalog c = load_parts_catalog(f.c_str());
+            CHECK(c.parts.size() == 1);
+            if(!c.parts.empty()) {
+                CHECK(!c.parts[0].has_mesh_extents);
+                double hx = 0.0, hy = 0.0;
+                c.parts[0].meshHalfSpan(hx, hy);
+                CHECK(near(hx, 1.5) && near(hy, 1.5));
+                CHECK(near(c.parts[0].meshSpanHalf(), 1.5));
+                CHECK(near(c.parts[0].meshHalfLength(), 2.0));
+            }
+            std::remove(f.c_str());
+        }
+    }
+
     // controlAxisParams: the pure axis -> (moment axis, force plane, stick,
     // target sign) selection (I1). The moment axis MUST equal the reaction
     // wheel's axis for that control, and the target sign the wheel's torque
@@ -718,6 +801,63 @@ int main() {
         CHECK(vnear(opp.contactNormal, glm::dvec3(-1, 0, 0)));
     }
     std::remove(mix);
+
+    /* The same shorthand on a PLATE parent (#457). The contact used the parent's
+       authored RADIUS, which for the wing is half its 4 m span, so a part bolted
+       to a wing "at angle 90" hung 2 m of air above a plate 0.1 m thick -- on a
+       surface it claims to touch. The contact now follows the mesh's own
+       cross-section: the face at 90, the tip at 0, and still on the plate
+       between them. The round-parent case above is the one that must NOT move,
+       which is why both are pinned. */
+    {
+        const char *plate = "/tmp/test_plate_parent.json";
+        std::ofstream f(plate);
+        f << "{ \"name\": \"plate\", \"parts\": [ "
+             " { \"part\": \"wing\", \"id\": \"wing_1\" }, "
+             " { \"part\": \"barometer\", \"id\": \"face\", \"parent\": \"wing_1\", "
+             "   \"attach\": \"surface\", \"angle\": 90 }, "
+             " { \"part\": \"barometer\", \"id\": \"tip\", \"parent\": \"wing_1\", "
+             "   \"attach\": \"surface\", \"angle\": 0 }, "
+             " { \"part\": \"barometer\", \"id\": \"diag\", \"parent\": \"wing_1\", "
+             "   \"attach\": \"surface\", \"angle\": 45 } ] }";
+        f.close();
+        ShipDef pl = load_ship_def(plate, cat);
+        CHECK(pl.parts.size() == 4);
+        const PartDef *wing = cat.find("wing");
+        CHECK(wing != nullptr);
+        if(wing != nullptr) {
+            // The plate's face: 0.05 m off the centreline, not the authored 2.0.
+            CHECK(vnear(pl.parts[1].contactPoint, glm::dvec3(0.0, 0.05, 0.0)));
+            CHECK(vnear(pl.parts[1].contactNormal, glm::dvec3(0.0, 1.0, 0.0)));
+            // The tip: here the authored radius IS the half-span.
+            CHECK(vnear(pl.parts[2].contactPoint, glm::dvec3(wing->radius, 0.0, 0.0)));
+            CHECK(vnear(pl.parts[2].contactNormal, glm::dvec3(1.0, 0.0, 0.0)));
+            /* Off-axis: the old rule reached out along the diagonal to
+               (1.414, 1.414) -- 2 m of air above nothing. The ellipse stays on
+               the plate (0.05 m off the centreline), and its normal points off
+               the FACE rather than along the diagonal, so the 10 deg snap grid
+               and radial symmetry clones never straddle a corner. */
+            CHECK(vnear(pl.parts[3].contactPoint,
+                        glm::dvec3(0.0499844, 0.0499844, 0.0)));
+            CHECK(pl.parts[3].contactNormal.y > 0.99);
+            CHECK(std::fabs(pl.parts[3].contactNormal.x) < 0.02);
+        }
+        std::remove(plate);
+    }
+    /* A surface "z" used to be checked against nothing, so a typo'd "z" planted
+       the part next to the ship rather than on it. Now it has to be on the
+       parent's mesh. */
+    {
+        const char *zf = "/tmp/test_plate_z.json";
+        std::ofstream f(zf);
+        f << "{ \"name\": \"plate\", \"parts\": [ "
+             " { \"part\": \"wing\", \"id\": \"wing_1\" }, "
+             " { \"part\": \"barometer\", \"id\": \"high\", \"parent\": \"wing_1\", "
+             "   \"attach\": \"surface\", \"angle\": 0, \"z\": 5 } ] }";
+        f.close();
+        CHECK(expect_throw_saying([&]{ load_ship_def(zf, cat); }, "is off the end of parent"));
+        std::remove(zf);
+    }
 
     // tanker (shipped def): core tank + engine below, four side pods
     // (tank_r1.5h3) around the core at 0/90/180/270

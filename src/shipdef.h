@@ -104,9 +104,54 @@ struct PartDef {
     double mass;          // kg
 
     /* Physical size [m]; the .obj is authored to match (origin centered,
-       +Z = stack axis). Defaults are the legacy 2 m cube. */
+       +Z = stack axis). Defaults are the legacy 2 m cube.
+       These describe a CYLINDER, which is what the stack ports are minted from.
+       For a plate they are not its shape: the wing's radius 2.0 is half its 4 m
+       SPAN while the plate is 0.1 m thick, so `radius` says where a bolt sits
+       and says nothing about where the surface is (#457). */
     double radius;
     double height;
+
+    /* The mesh's OWN bounding box, in the part's local frame (+Z = the stack
+       axis), read off the mesh file when the catalog is parsed. Anything that
+       asks where this part's surface is, or how wide it actually is, reads this
+       rather than the cylinder above.
+       Derived from the .obj's `v` lines: the same bytes geom_fingerprint hashes
+       and the same vertices mesh.cpp hands Bullet to convex-hull (physics.cpp
+       BuildHull), whose aiProcess flags transform nothing, so the collision
+       hull's AABB is this AABB. Missing mesh or no vertices ->
+       has_mesh_extents false, and the helpers below fall back to the authored
+       size rather than reporting a zero-size part. */
+    glm::dvec3 mesh_min = glm::dvec3(0.0);
+    glm::dvec3 mesh_max = glm::dvec3(0.0);
+    bool has_mesh_extents = false;
+
+    /* Half-extent of the mesh across the stack axis, per side. A surface attach
+       puts its contact on the ELLIPSE these two bound: identical to the authored
+       cylinder when the parent is round, and honest at a plate's tip AND its
+       face instead of half a span out in the air. */
+    void meshHalfSpan(double &hx, double &hy) const {
+        if(!has_mesh_extents) { hx = radius; hy = radius; return; }
+        hx = std::max(std::fabs(mesh_min.x), std::fabs(mesh_max.x));
+        hy = std::max(std::fabs(mesh_min.y), std::fabs(mesh_max.y));
+    }
+
+    /* Half the widest extent across the stack axis -- a wing's SPAN, whatever
+       axis its planform is authored along (drag.h inducedCd, #462). The authored
+       radius only happens to match today because every wing in this catalog is
+       authored with its span along X. */
+    double meshSpanHalf() const {
+        double hx, hy;
+        meshHalfSpan(hx, hy);
+        return std::max(hx, hy);
+    }
+
+    /* Half-extent along the stack axis: the top of the actual mesh, which is
+       where a surface contact at height `z` stops being on the part. */
+    double meshHalfLength() const {
+        if(!has_mesh_extents) { return height / 2.0; }
+        return std::max(std::fabs(mesh_min.z), std::fabs(mesh_max.z));
+    }
 
     /* Attachment nodes. Empty -> load_parts_catalog synthesizes them from the
        size above. */
@@ -596,6 +641,21 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog);
    canopy on an already-saved ship). #389 made those catalog-only, and a saved
    pose does not depend on them. */
 uint64_t partGeomFingerprint(const PartDef &d);
+
+/* A part's mesh file read ONCE: the bytes the fingerprint hashes and the
+   bounding box of its vertices. load_parts_catalog calls this per part and
+   feeds both halves, so a part costs one file read rather than two. */
+struct MeshGeom {
+    bool readable = false;     // false -> no file (the catalog never required one)
+    bool hasExtents = false;   // false -> no vertex line in it
+    glm::dvec3 lo = glm::dvec3(0.0);
+    glm::dvec3 hi = glm::dvec3(0.0);
+    std::string bytes;         // exact contents, hashed verbatim
+};
+MeshGeom readMeshGeom(const std::string &meshSubpath);
+
+/* The same fingerprint from a mesh read already in hand. */
+uint64_t partGeomFingerprint(const PartDef &d, const MeshGeom &mg);
 
 /* The fingerprint as 16 lowercase hex digits -- what a save writes and reads
    (a 64-bit value as a decimal is 20 digits nobody can eyeball in a diff). */

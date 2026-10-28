@@ -565,17 +565,17 @@ struct SilhouetteMemo {
 /* The drag that LIFT costs (#462): induced drag coefficient = CL^2 / (pi e AR),
    with AR = span^2 / planform area. Nothing charged for it before: a surface
    earned its lift free, paying only whatever blunt form drag its shape happened
-   to draw. `span` must be the SPAN, not the thickness -- for a plate part,
-   PartDef::radius is half the largest x/y extent of the mesh, which for a wing
-   IS its half-span (#457 wants an honest per-part box; until then that is the
-   only span the catalog states).
+   to draw. `span` must be the SPAN, not the thickness, so callers pass
+   PartDef::meshSpanHalf() -- the widest extent across the stack axis, read off
+   the mesh (#457). The authored radius gives the same number for every wing in
+   this catalog only because they are all authored with their span along X.
 
-   Known overcharge until #457: AR is computed PER PART, so a lifting surface
-   modelled as two half-plates (the shipped jet's wings, mounted at angle 0 and
-   180) pays two AR-2 systems instead of one 8 m AR-4 system -- twice the induced
-   drag. Half-wings are genuinely separate lifting bodies only if they are
-   separated; co-planar halves share one span. The extents #457 emits are what
-   tells those cases apart. */
+   Known overcharge: AR is computed PER PART, so a lifting surface modelled as
+   two half-plates (the shipped jet's wings, mounted at angle 0 and 180) pays two
+   AR-2 systems instead of one 8 m AR-4 system -- twice the induced drag.
+   Half-wings are genuinely separate lifting bodies only if they are separated;
+   co-planar halves share one span. Telling those apart needs the mount as well as
+   the extents, so it stayed open after #457. */
 inline double inducedCd(double cl, double span, double area, double oswald = 0.8) {
     if(!(area > 0.0) || !(span > 0.0) || !(oswald > 0.0)) { return 0.0; }
     const double ar = (span * span) / area;
