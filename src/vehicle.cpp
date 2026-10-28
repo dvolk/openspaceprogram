@@ -982,9 +982,9 @@ void Vehicle::rebuildCompound() {
     delete geomS; geomS = nullptr;    // its child shapes belong to the parts
     principal = btTransform::getIdentity();
     if(parts.empty()) {
-        // an emptied hull has no cached key; rebuildAeroHull must recompute
-        // (an empty hull for the empty geometry) rather than trust valid.
-        aeroHull.clear();
+        // An emptied hull has no cached geometry: refreshAeroGeom must re-key
+        // (and re-generation the silhouette cache) rather than trust valid.
+        aeroSilParts.clear();
         aeroGeomValid = false;
         return;
     }
@@ -1062,7 +1062,7 @@ void Vehicle::rebuildCompound() {
     }
     if(wasInWorld) { AddPhysicsBody(hull); }
 
-    rebuildAeroHull();
+    refreshAeroGeom();
 
     checkCompoundInvariants();
     assert(checkPartInvariants() && "containment invariant broken (see [part] above)");
@@ -1159,41 +1159,18 @@ static uint64_t aeroGeomFingerprint(const std::vector<Part *> &parts) {
     return h;
 }
 
-void Vehicle::rebuildAeroHull() {
-    // Gate: a compound rebuild driven by mass drift (the common burn case)
-    // must not pay for the convex hull again; only a GEOMETRY change does.
+/* The silhouette cache's lifetime (#463). There is no hull to build any more --
+   applyAeroForce projects the parts themselves and unions their polygons -- so
+   all a geometry change costs here is a generation bump: every cached node
+   reads as unfilled and refills the next time the flow needs it. Staging,
+   docking and part damage take this path; a burn (the common rebuild) does not,
+   which is what the fingerprint gate at the top is for. */
+void Vehicle::refreshAeroGeom() {
     const uint64_t key = aeroGeomFingerprint(parts);
     if(aeroGeomValid && key == aeroGeomKey) { return; }
     aeroGeomKey = key;
-    aeroGeomValid = true;  // every exit below leaves the hull right for this key
-    aeroHull.clear();
-    size_t cap = 0;
-    for(Part *p : parts) {
-        if(p->body != nullptr) { cap += p->body->hullVerts.size(); }
-    }
-    if(cap < 3) { return; }
-    // union of the parts' hull verts, in frame S
-    std::vector<glm::dvec3> u;
-    u.reserve(cap);
-    for(Part *p : parts) {
-        if(p->body == nullptr) { continue; }
-        for(const glm::dvec3 &v : p->body->hullVerts) {
-            u.push_back(p->localRot * v + p->localPos);
-        }
-    }
-    /* Reduce to the extreme points: same silhouette, fewer points for the
-       per-substep projectedArea sort. */
-    btConvexHullShape shape(reinterpret_cast<const btScalar *>(&u[0].x),
-                            (int)u.size(), 3 * sizeof(double));
-    shape.optimizeConvexHull();
-    const int n = shape.getNumVertices();
-    if(n < 3) { aeroHull.swap(u); return; }  // degenerate reduce: keep the union
-    aeroHull.reserve(n);
-    for(int i = 0; i < n; i++) {
-        btVector3 v;
-        shape.getVertex(i, v);
-        aeroHull.push_back(glm::dvec3(v.getX(), v.getY(), v.getZ()));
-    }
+    aeroGeomValid = true;
+    aeroSil.invalidate();
 }
 
 /* The containment tree under one attached part, depth-first. effectiveMass and
@@ -2207,6 +2184,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastDragArea = 0.0;
     lastDragCd = 0.0;
     lastChuteCdA = 0.0;
+    lastInducedCdA = 0.0;
     lastControlDeflections.clear();  // a no-air substep reports no steering
     // Fins swing back to neutral whenever this substep produces no steering
     // (vacuum, no-atmosphere body, below sea level, --drag-cd 0).
@@ -2278,18 +2256,60 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     glm::dvec3 lift_total(0.0);
     glm::dvec3 moment(0.0);
 
-    // DRAG: AREA = the ship's hull silhouette facing the flow (projectedArea);
+    // Node fill (#463): the union at one flow direction, projected through that
+    // direction's own plane. Separate scratch because the CURRENT direction's
+    // polygons are the exact fallback and have to survive the fill.
+    auto unionAtS = [&](const glm::dvec3 &dirS) {
+        static thread_local std::vector<std::vector<glm::dvec2>> node;
+        const FlowPlane pl = flowPlane(dirS);
+        node.clear();
+        node.reserve(parts.size());
+        for(Part *p : parts) {
+            if(p->body == nullptr || p->body->hullVerts.empty()) { continue; }
+            const glm::mat3 toLocal = glm::transpose(p->localRot);
+            node.emplace_back();
+            projectHull(p->body->hullVerts,
+                        FlowPlane{toLocal * pl.u, toLocal * pl.w, pl.valid},
+                        node.back());
+        }
+        return unionProjectedArea(node);
+    };
+    /* How many silhouette nodes one substep may compute. A node is a whole
+       project-and-union pass, so filling all four corners of a fresh cell in one
+       substep would spike the frame the first time a ship bows into a new corner
+       of its own envelope; one per substep spreads it, and a 5 deg cell is still
+       fully filled within four substeps of arriving in it. Measured on the
+       shipped jet (10 hulls, 336 hull verts): 6 s of level flight computed 9
+       nodes for 1068 aero substeps; a deliberate tumble, which sweeps the chart,
+       pays at most one extra union pass per substep -- the bound, since a miss
+       also unions the current direction. */
+    static constexpr int kSilFillNodes = 1;
+
+    // DRAG: AREA = the UNION of the parts' silhouettes facing the flow;
     // COEFFICIENT = the parts' 3-anchor cd (partCd) area-weighted. Applied at the
     // center of pressure so a banked ship weathervanes into the flow.
     {
+        /* One flow plane for the whole ship (#463): the polygons can only be
+           unioned if they share a 2-D basis, so the PLANE rotates into each part
+           rather than each part picking its own basis. Their areas drive the
+           centre of pressure and the cd mean, so this projects once per part per
+           substep, as before, and keeps the polygons for the union. */
+        const FlowPlane plS = flowPlane(vhatS);
+        aeroSilParts.clear();
+        aeroSilParts.reserve(parts.size());
         glm::dvec3 cp(0.0);      // center of pressure (area-weighted centroid)
         double cpArea = 0.0;
         double cdNum = 0.0;      // sum of (partArea x part cd) for the cd mean
         for(Part *p : parts) {
             if(p->body == nullptr || p->body->hullVerts.empty()) { continue; }
             // hullVerts are part-local: rotate the flow to the part, not the verts to the world.
-            const double a = projectedArea(p->body->hullVerts,
-                                           glm::transpose(p->localRot) * vhatS);
+            const glm::mat3 toLocal = glm::transpose(p->localRot);
+            aeroSilParts.emplace_back();
+            std::vector<glm::dvec2> &poly = aeroSilParts.back();
+            projectHull(p->body->hullVerts,
+                        FlowPlane{toLocal * plS.u, toLocal * plS.w, plS.valid},
+                        poly);
+            const double a = polygonArea2(poly);
             cp += a * partPosS(p);
             cpArea += a;
             // cd AS IT FACES THE FLOW (partCd): localRot[2] is the part's nose in S
@@ -2302,8 +2322,21 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                 if(cd > 0.0) { cdNum += a * cd; }
             }
         }
-        // The ship's silhouette from the precomputed union hull (aeroHull).
-        const double A_ship = projectedArea(aeroHull, vhatS);
+        /* The ship's silhouette: the union of those polygons, cached per flow
+           DIRECTION (speed and density multiply the force, they do not change
+           its shape). A miss falls back to the exact union of the polygons this
+           substep already projected, so the cache is never a cost to the
+           physics -- the fill budget below only decides how quickly it stops
+           being needed. */
+        double A_ship = 0.0;
+        if(!aeroSil.lookup(alpha, fr.beta, A_ship)) {
+            aeroSil.fillAround(alpha, fr.beta, kSilFillNodes,
+                               [&](double na, double nb) {
+                                   return unionAtS(glm::transpose(sRot)
+                                       * flowDirection(na, nb, right, up, nose));
+                               });
+            A_ship = unionProjectedArea(aeroSilParts);
+        }
         lastDragArea = A_ship;
         lastDragCd = (cpArea > 0.0) ? (cdNum / cpArea) : 0.0;
         if(cpArea > 0.0) { cp /= cpArea; }
@@ -2370,6 +2403,24 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         lift_total += flift;
         if(recordForceVecs) {
             lastForceVecs.push_back({ ri, flift, kForceLift });
+        }
+        /* The price of that lift (#462): a surface that turns the flow downward
+           pays induced drag ~ CL^2 / (pi e AR) for it, along the flow. CL comes
+           from the lift just computed instead of a second curve evaluation --
+           same law, so the induced term follows any change to it. The span is
+           2 x the part radius: for a plate part the radius IS the half-span
+           (see inducedCd; #457 wants an honest per-part box). Applied at the
+           same offset as the lift, because it is the same wing. */
+        const double clPart = glm::length(flift) / (q * d->lift_area);
+        const double cdi = inducedCd(clPart, 2.0 * d->radius, d->lift_area);
+        if(cdi <= 0.0) { continue; }
+        const glm::dvec3 find = -vhat * (q * d->lift_area * cdi);
+        ApplyForce(hull, ri, find);
+        moment += glm::cross(ri, find);
+        ftotal += find;
+        lastInducedCdA += d->lift_area * cdi;   // the drag log's extra CdA
+        if(recordForceVecs) {
+            lastForceVecs.push_back({ ri, find, kForceDrag });
         }
     }
 
@@ -3025,8 +3076,9 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     }
     parts.insert(parts.end(), B->parts.begin(), B->parts.end());
     B->parts.clear();
-    // the cached aero hull went with the parts (and its key with it)
-    B->aeroHull.clear();
+    // B's cached silhouette went with its parts (and its key with it)
+    B->aeroSilParts.clear();
+    B->aeroSil.reset();
     B->aeroGeomValid = false;
     fuelLinks.insert(fuelLinks.end(), B->fuelLinks.begin(), B->fuelLinks.end());
     B->fuelLinks.clear();

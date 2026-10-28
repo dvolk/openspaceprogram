@@ -23,6 +23,7 @@
 #include "btcommon.h"
 #include "body.h"
 #include "physics.h"
+#include "drag.h"     // SilhouetteMemo (the rest of the drag law: vehicle.cpp)
 #include "rcs.h"      // the RCS nozzle allocator + per-substep Scratch
 #include "shipdef.h"
 #include "part.h"
@@ -139,16 +140,23 @@ public:
        rebuild-scoped: map a hit back through this. */
     std::vector<Part *> compoundParts;
 
-    /* The union of the part collision hulls, in frame S, reduced to extreme
-       points; rebuilt when the GEOMETRY changes. applyAeroForce projects it
-       for the drag silhouette -- AREA is rotation-invariant, so only v̂
-       rotates into S. Geometry = the part set + their mounts: mass (fuel
-       burn, the usual reason refreshCompound rebuilds) does NOT change the
-       silhouette, so the rebuild is fingerprint-gated. */
-    std::vector<glm::dvec3> aeroHull;
-    uint64_t aeroGeomKey = 0;      // fingerprint aeroHull was last built from
-    bool aeroGeomValid = false;    // false = no hull computed yet
-    void rebuildAeroHull();
+    /* What the ship presents to the air (#463). AREA is rotation-invariant, so
+       the whole ship is projected through ONE flow plane in frame S;
+       `aeroSilParts` holds each part's silhouette polygon for the CURRENT flow
+       in that shared 2-D basis, reused between substeps (their areas also give
+       the centre of pressure and the cd mean, so nothing projects twice). The
+       union of those polygons -- not a convex hull drawn over the merged
+       vertices, which invents airframe between the parts -- is the drag area;
+       SilhouetteMemo caches that area per flow DIRECTION, filling nodes lazily
+       and going stale by generation counter when the geometry changes.
+       Geometry = the part set + their mounts: mass (fuel burn, the usual reason
+       refreshCompound rebuilds) does NOT change the silhouette, so the cache
+       invalidation is fingerprint-gated. */
+    std::vector<std::vector<glm::dvec2>> aeroSilParts;
+    SilhouetteMemo aeroSil;
+    uint64_t aeroGeomKey = 0;      // fingerprint the silhouette cache is keyed to
+    bool aeroGeomValid = false;    // false = no geometry cached yet
+    void refreshAeroGeom();
 
     /* In the physics world? Asked of Bullet, not a flag. */
     bool hullInWorld() const;
@@ -363,6 +371,11 @@ public:
     /* Deployed chutes' EFFECTIVE Cd·A (m^2) last substep (0 = none): nominal
        chute_area shrunk by kChuteAccelLimit at high q. NOT in lastDragArea. */
     double lastChuteCdA = 0.0;
+    /* The lifting parts' induced Cd·A (m^2) last substep (#462, 0 = no lift):
+       the drag the wings owe for the lift they just made. It rides in
+       lastAeroForce along with the rest of the drag; this is what lets the drag
+       log tell blunt form drag from the price of lift. */
+    double lastInducedCdA = 0.0;
 
     /* Last substep's control-surface deflections (--drag-log). */
     struct ControlDeflection {

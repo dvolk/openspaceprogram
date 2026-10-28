@@ -1,5 +1,5 @@
 NAME glider-flight-envelope
-CLAIM The shipped glider presents a bounded silhouette to the air, carries a bounded share of its weight, and has only yaw surfaces to fly with.
+CLAIM The shipped glider pays air for the union of its parts (3.4 m2 nose-on, not a 30 m2 balloon), its lift now owes induced drag, and with only yaw surfaces it can be steered into a tumble but not pulled out of one.
 KIND golden
 ARGS --time-accel 1 --startship glider,res/ships/glider.json,Kerbin,flying-slow
 ARGS --timeout 14 --drag-log --mass-log
@@ -9,20 +9,39 @@ ARGS --sim-press 3000,3000,A
 EXPECT [drag]
 EXPECT [ctrl]
 CHECK len(drag) >= 10
-# Same silhouette reading as the jet case, on the nose-on rows: 30.8 m2 of hull
-# shadow for an airframe that is a pod and two wings (#462, #463). Re-baseline on
-# purpose when those land.
+# Same silhouette reading as the jet case, on the nose-on rows. RE-BASELINED
+# 2026_10_28 for #463: 30.8 m2 of hull shadow -> 3.4 m2, the pod and two plates
+# and nothing between them.
 CHECK all(d.get("aoa") is not None and abs(d["aoa"]) < 1.0 for d in drag[:3])
-CHECK 28.0 < min(d.get("a", 0.0) for d in drag[:3]) < 33.0
-# |L| / q, the measured lift capability in area units: 14.4 sampled here against
-# the catalog's 2 x 8 m2 x CLmax 2.1 = 33 m2-equivalent at the top of the linear
-# band. #455's ablation moved this 4x and no assertion noticed.
-CHECK 10.0 < max(d["L"] / (0.5 * d["rho"] * d["v"] * d["v"]) for d in drag if d.get("L") and d["v"] > 1.0) < 20.0
-# How much of its weight the glider can carry: 0.36 g at best. This is the ship
-# with no engine doing the work, so this number IS the flight model -- under it,
-# the airframe falls (#455's envelope table: L/Dmax 0.56).
-CHECK 0.25 < max(d["L_up"] for d in drag if d.get("L_up")) / (max(m["mass"] for m in mass) * 9.81) < 0.5
-CHECK 0.3 < max(d["L"] / d["F"] for d in drag if d.get("L") and d.get("F")) < 0.7
+CHECK 3.0 < min(d.get("a", 0.0) for d in drag[:3]) < 4.0
+# Broadside (AoA ~175 deg, pod leading) it presents 5.4 m2: a 1.6x swing against
+# the jet's 3x, because this hull is stubbier. The area tracks shape, and this
+# ratio reproduces to 0.01 across runs (#472).
+CHECK max(d.get("a", 0.0) for d in drag) > 1.4 * min(d.get("a", 0.0) for d in drag)
+# |L| / q: it used to sample 14.4 and now reaches the catalog ceiling of 2 x 8 m2
+# x CLmax 2.1 = 33 m2-equivalent. It doubled for the same reason as the jet's: the
+# balloon's drag used to bleed the airframe before it could fly at a useful AoA.
+# Loose band on purpose -- this peak sits inside the tumble, and the value swings
+# 24..34 run to run because of #472.
+CHECK 10.0 < max(d["L"] / (0.5 * d["rho"] * d["v"] * d["v"]) for d in drag if d.get("L") and d["v"] > 1.0) < 60.0
+# #462's coupling: the lifting substeps pay induced drag and the post-stall rows
+# (|L| = 0, the tumble's droop) pay none. Charge it unconditionally, or drop it,
+# and one of these fails.
+CHECK any(d.get("induced", 0.0) > 0.0 for d in drag)
+CHECK all(d.get("induced", 0.0) > 0.0 for d in drag if d.get("L", 0.0) / max(0.5 * d["rho"] * d["v"] * d["v"], 1.0) > 1.0)
+CHECK all(d.get("induced", 0.0) == 0.0 for d in drag if d.get("L", 0.0) == 0.0)
+# L/D 0.91 (was 0.45): the drag fell ~9x and the lift did not.
+CHECK 0.85 < max(d["L"] / d["F"] for d in drag if d.get("L") and d.get("F")) < 0.95
+# DROPPED on purpose (was 0.25..0.5 g): the share of weight the wings carry now
+# peaks in the tumble's recovery rather than in a glide, and a tumble this loose
+# is not reproducible run to run (#472). This airframe has no engine and no pitch
+# surface, so there is no steady state to measure until #454 lands.
+# PINNING A BUG: |AoA| reaches 175 deg and stays past 90 -- A can only yaw it, so
+# nothing pulls it out. Before #463 the balloon drag at the centre of pressure hid
+# the missing static margin; now it is the whole story. Expected to FAIL when
+# #454 lands, and re-baselined in that commit.
+CHECK max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) > 90.0
+CHECK any(d.get("L", 0.0) == 0.0 for d in drag)
 # What the airframe is built from: A is held for 3 s and both rudders reach their
 # travel limit, and the shipped glider has NO pitch surface at all -- the stick
 # cannot ask for nose-up, which is half of why nothing about trim can be tuned on

@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <numbers>
 #include <vector>
 
@@ -83,6 +84,22 @@ inline AeroFrame aeroFrame(const glm::dvec3 &v_rel,
     return f;
 }
 
+/* The inverse of those two angles: the unit flow direction that aeroFrame()
+   would report as (alpha, beta). Exact for +-90 deg in both (the atan2 chart
+   itself reaches +-180 in alpha; SilhouetteMemo folds the back hemisphere onto
+   this chart, where the tangent parameterisation holds). Zero for a degenerate
+   frame. */
+inline glm::dvec3 flowDirection(double alpha, double beta,
+                                const glm::dvec3 &right, const glm::dvec3 &up,
+                                const glm::dvec3 &nose) {
+    if(glm::length(nose) <= 0.0) { return glm::dvec3(0.0); }
+    // Taking dot(v, nose) = 1 fixes the scale, leaving the two tangents as the
+    // other components; normalizing then undoes the choice.
+    const glm::dvec3 v = nose + right * std::tan(beta) - up * std::tan(alpha);
+    const double len = glm::length(v);
+    return (len > 0.0) ? v / len : glm::dvec3(0.0);
+}
+
 /* q = 0.5 · rho(alt) · |v_rel|² -- the factor common to the lift and drag laws.
    Zero for any degenerate input. */
 inline double dynamicPressure(const DragAtmosphere &a, double alt,
@@ -139,56 +156,345 @@ inline double cross2(const glm::dvec2 &a, const glm::dvec2 &b,
     return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 }
 
-/* The projected (silhouette) area of a body seen along `dir`, from its CONVEX HULL
-   vertices -- the hull of the projected vertices is exactly the silhouette, so
-   this stays exact for a NON-convex mesh. Symmetric in dir. */
-inline double projectedArea(const std::vector<glm::dvec3> &hullVerts,
-                            const glm::dvec3 &dir) {
+/* The plane perpendicular to a view direction, as an orthonormal 2-D basis.
+   Project a WHOLE ship through ONE of these when its parts' silhouettes are to
+   be combined: if every part picks its own basis from its own direction, the
+   polygons land in different planes and cannot be unioned (#463). */
+struct FlowPlane {
+    glm::dvec3 u{0.0}, w{0.0};
+    bool valid = false;
+};
+
+inline FlowPlane flowPlane(const glm::dvec3 &dir) {
     const double len = glm::length(dir);
-    if(len <= 0.0 || hullVerts.size() < 3) { return 0.0; }
+    if(len <= 0.0) { return FlowPlane(); }
     const glm::dvec3 d = dir / len;
-    // A 2-D basis (u, w) of the plane perpendicular to d.
     const glm::dvec3 ref = (std::fabs(d.x) < 0.9) ? glm::dvec3(1, 0, 0)
                                                   : glm::dvec3(0, 1, 0);
-    const glm::dvec3 u = glm::normalize(glm::cross(d, ref));
-    const glm::dvec3 w = glm::cross(d, u);
-    // Scratch buffers reused: this runs every physics substep, per part.
-    static thread_local std::vector<glm::dvec2> p;
-    p.resize(hullVerts.size());
-    for(size_t i = 0; i < hullVerts.size(); i++) {
-        p[i] = glm::dvec2(glm::dot(hullVerts[i], u), glm::dot(hullVerts[i], w));
+    FlowPlane pl;
+    pl.u = glm::normalize(glm::cross(d, ref));
+    pl.w = glm::cross(d, pl.u);
+    pl.valid = true;
+    return pl;
+}
+
+/* The silhouette POLYGON of a convex-hull vertex set seen edge-on: the hull of
+   the projected vertices, which IS the silhouette -- so this stays right for a
+   NON-convex mesh. Symmetric in the view direction. `out` is caller-owned
+   scratch (this runs per part per physics substep); it ends up a CCW polygon,
+   empty for a degenerate (collinear) projection. */
+inline void projectHull(const std::vector<glm::dvec3> &hullVerts,
+                        const FlowPlane &pl, std::vector<glm::dvec2> &out) {
+    out.clear();
+    if(!pl.valid || hullVerts.size() < 3) { return; }
+    out.reserve(hullVerts.size());
+    for(const glm::dvec3 &v : hullVerts) {
+        out.push_back(glm::dvec2(glm::dot(v, pl.u), glm::dot(v, pl.w)));
     }
-    // Andrew's monotone chain: convex hull of p (CCW, collinear dropped).
-    // glm::dvec2 has no operator<, hence the explicit x-then-y comparator.
-    std::sort(p.begin(), p.end(), [](const glm::dvec2 &a, const glm::dvec2 &b) {
-        return (a.x < b.x) || (a.x == b.x && a.y < b.y);
-    });
+    // Andrew's monotone chain: convex hull of the projected points (CCW,
+    // collinear dropped). glm::dvec2 has no operator<, hence the explicit
+    // x-then-y comparator.
+    std::sort(out.begin(), out.end(),
+              [](const glm::dvec2 &a, const glm::dvec2 &b) {
+                  return (a.x < b.x) || (a.x == b.x && a.y < b.y);
+              });
     static thread_local std::vector<glm::dvec2> h;
     h.clear();
-    for(size_t i = 0; i < p.size(); i++) {
+    for(size_t i = 0; i < out.size(); i++) {
         while(h.size() >= 2
-              && cross2(h[h.size() - 2], h[h.size() - 1], p[i]) <= 0.0) {
+              && cross2(h[h.size() - 2], h[h.size() - 1], out[i]) <= 0.0) {
             h.pop_back();
         }
-        h.push_back(p[i]);
+        h.push_back(out[i]);
     }
     const size_t lowerSize = h.size() + 1;
-    for(int i = (int)p.size() - 1; i >= 0; i--) {
+    for(int i = (int)out.size() - 1; i >= 0; i--) {
         while(h.size() >= lowerSize
-              && cross2(h[h.size() - 2], h[h.size() - 1], p[i]) <= 0.0) {
+              && cross2(h[h.size() - 2], h[h.size() - 1], out[i]) <= 0.0) {
             h.pop_back();
         }
-        h.push_back(p[i]);
+        h.push_back(out[i]);
     }
     h.pop_back();                              // drop the duplicated start point
-    if(h.size() < 3) { return 0.0; }           // degenerate (collinear) hull
-    // Shoelace area of the hull polygon.
+    out.swap(h);                               // out keeps the hull, h the buffer
+}
+
+/* Shoelace area of a simple polygon (either winding). Zero for a degenerate
+   (fewer than three points, or collinear) one. */
+inline double polygonArea2(const std::vector<glm::dvec2> &poly) {
+    if(poly.size() < 3) { return 0.0; }
     double a = 0.0;
-    for(size_t i = 0; i < h.size(); i++) {
-        const size_t j = (i + 1) % h.size();
-        a += h[i].x * h[j].y - h[j].x * h[i].y;
+    for(size_t i = 0; i < poly.size(); i++) {
+        const size_t j = (i + 1) % poly.size();
+        a += poly[i].x * poly[j].y - poly[j].x * poly[i].y;
     }
     return 0.5 * std::fabs(a);
+}
+
+/* The projected (silhouette) area of ONE body seen along `dir`, from its CONVEX
+   HULL vertices. */
+inline double projectedArea(const std::vector<glm::dvec3> &hullVerts,
+                            const glm::dvec3 &dir) {
+    static thread_local std::vector<glm::dvec2> poly;
+    projectHull(hullVerts, flowPlane(dir), poly);
+    return polygonArea2(poly);
+}
+
+/* The area of the UNION of a set of convex polygons -- the honest silhouette of
+   a ship made of separated solids (#463). Convex-hulling every part's vertices
+   together instead draws a skin over the gaps: on the shipped jet that turns two
+   0.4 m^2 plates into 12.2 m^2 of wing that is not there, and the tank-to-nose
+   stack into more fuselage than there is.
+
+   Exact by vertical decomposition: cut the plane at every vertex x and every
+   place two polygons' edges cross. Within one such slab the active edges are
+   fixed and no two of them cross, so each merged interval's height is linear in
+   x, which makes the merged measure linear in x too -- its value at the slab
+   midpoint times the slab width is therefore exact, not a sample.
+
+   Costs edge-pair work per direction, so it belongs at cache-node time, not in
+   the substep loop; see SilhouetteMemo. */
+inline double unionProjectedArea(const std::vector<std::vector<glm::dvec2>> &polys) {
+    struct Span { size_t poly; double lo, hi; };
+    static thread_local std::vector<Span> spans;
+    static thread_local std::vector<double> xs;
+    static thread_local std::vector<std::pair<double, double>> bands;
+    spans.clear();
+    xs.clear();
+    for(size_t i = 0; i < polys.size(); i++) {
+        if(polys[i].size() < 3) { continue; }
+        Span sp{i, polys[i][0].x, polys[i][0].x};
+        for(const glm::dvec2 &v : polys[i]) {
+            if(v.x < sp.lo) { sp.lo = v.x; }
+            if(v.x > sp.hi) { sp.hi = v.x; }
+        }
+        spans.push_back(sp);
+        for(const glm::dvec2 &v : polys[i]) { xs.push_back(v.x); }
+    }
+    if(spans.empty()) { return 0.0; }
+    // Polygon-pair edge crossings: the only places the merged measure can change
+    // curvature. The x-range tests reject most pairs of a ship's hulls cheaply.
+    for(size_t a = 0; a < spans.size(); a++) {
+        for(size_t b = a + 1; b < spans.size(); b++) {
+            const std::vector<glm::dvec2> &pa = polys[spans[a].poly];
+            const std::vector<glm::dvec2> &pb = polys[spans[b].poly];
+            const double xlo = std::max(spans[a].lo, spans[b].lo);
+            const double xhi = std::min(spans[a].hi, spans[b].hi);
+            if(!(xlo < xhi)) { continue; }
+            for(size_t i = 0; i < pa.size(); i++) {
+                const glm::dvec2 &p = pa[i], &q = pa[(i + 1) % pa.size()];
+                if(std::max(p.x, q.x) <= xlo || std::min(p.x, q.x) >= xhi) { continue; }
+                for(size_t j = 0; j < pb.size(); j++) {
+                    const glm::dvec2 &r = pb[j], &s = pb[(j + 1) % pb.size()];
+                    if(std::max(r.x, s.x) <= xlo || std::min(r.x, s.x) >= xhi) { continue; }
+                    const double d1x = q.x - p.x, d1y = q.y - p.y;
+                    const double d2x = s.x - r.x, d2y = s.y - r.y;
+                    const double den = d1x * d2y - d1y * d2x;
+                    if(den == 0.0) { continue; }      // parallel: no crossing
+                    const double t = ((r.x - p.x) * d2y - (r.y - p.y) * d2x) / den;
+                    if(t < 0.0 || t > 1.0) { continue; }
+                    const double u = ((r.x - p.x) * d1y - (r.y - p.y) * d1x) / den;
+                    if(u < 0.0 || u > 1.0) { continue; }
+                    xs.push_back(p.x + t * d1x);
+                }
+            }
+        }
+    }
+    std::sort(xs.begin(), xs.end());
+    // Unique to a relative epsilon: two breakpoints that agree but differ by a
+    // rounding hair would make a zero-width slab whose midpoint is meaningless.
+    const double extent = xs.back() - xs.front();
+    const double eps = 1e-12 * (extent > 0.0 ? extent : 1.0);
+    size_t n = 0;
+    for(size_t i = 0; i < xs.size(); i++) {
+        if(n == 0 || xs[i] - xs[n - 1] > eps) { xs[n++] = xs[i]; }
+    }
+    double area = 0.0;
+    for(size_t k = 0; k + 1 < n; k++) {
+        const double x0 = xs[k], x1 = xs[k + 1];
+        if(!(x1 > x0)) { continue; }
+        const double xm = 0.5 * (x0 + x1);
+        // Where the vertical line at xm cuts each polygon that spans it.
+        bands.clear();
+        for(const Span &sp : spans) {
+            if(xm < sp.lo || xm > sp.hi) { continue; }
+            const std::vector<glm::dvec2> &poly = polys[sp.poly];
+            double lo = 0.0, hi = 0.0;
+            bool hit = false;
+            for(size_t i = 0; i < poly.size(); i++) {
+                const glm::dvec2 &p = poly[i], &q = poly[(i + 1) % poly.size()];
+                // Half-open so a vertex shared by two edges counts once; an edge
+                // lying ON xm is kept by the equality.
+                if((p.x <= xm && q.x > xm) || (q.x <= xm && p.x > xm)
+                   || (p.x == xm && q.x == xm)) {
+                    const double t = (xm - p.x) / (q.x - p.x);
+                    const double y = p.y + t * (q.y - p.y);
+                    if(!hit) { lo = hi = y; hit = true; }
+                    else {
+                        if(y < lo) { lo = y; }
+                        if(y > hi) { hi = y; }
+                    }
+                }
+            }
+            if(hit && hi > lo) { bands.push_back({lo, hi}); }
+        }
+        if(bands.empty()) { continue; }
+        std::sort(bands.begin(), bands.end());
+        double measure = 0.0;
+        double clo = bands[0].first, chi = bands[0].second;
+        for(size_t i = 1; i < bands.size(); i++) {
+            if(bands[i].first > chi) {
+                measure += chi - clo;
+                clo = bands[i].first;
+                chi = bands[i].second;
+            } else if(bands[i].second > chi) {
+                chi = bands[i].second;
+            }
+        }
+        measure += chi - clo;
+        area += measure * (x1 - x0);
+    }
+    return area;
+}
+
+/* The silhouette area as a function of the flow DIRECTION only (#463). Speed and
+   density multiply the force, never its shape, so the union above is worth
+   computing once per direction rather than once per substep: measured on the
+   shipped jet, a union pass costs about 0.5 ms over its 13 hulls (3.3k verts),
+   and the convex-hull balloon it replaces cost 1.7 ms at the 33k-vert balloon.
+
+   The table is a grid over the two angles AeroFrame already produces -- alpha
+   (flow off the nose, pitch plane) and beta (the same, yaw plane) -- read
+   bilinear between its four surrounding nodes. Nodes are NOT computed up front:
+   they fill the first time a ship's flow enters the cell, so a parked or
+   cruising ship pays only for the handful of directions it actually flies, and
+   a direction sweep spreads across the flight instead of landing in one
+   rebuild. The whole table goes stale by bumping a generation counter; nothing
+   is cleared.
+
+   A cell whose corners are not all filled reports a MISS and the caller uses the
+   exact area for the direction it is already flying -- which the per-part
+   projections it computes anyway give for free. The cache is therefore never a
+   cost: the worst case equals the uncached law, and filling is pure saving. */
+struct SilhouetteMemo {
+    // 5 deg nodes over +-90 deg in both angles. Past +-90 the flow comes from
+    // behind, and a silhouette is symmetric in the view direction, so those
+    // directions fold onto this chart (see fold).
+    static constexpr int kSteps = 37;
+    static constexpr double kHalf = std::numbers::pi_v<double> / 2.0;
+    static constexpr double kStep = (2.0 * kHalf) / (kSteps - 1);
+
+    std::vector<float> area;       // [m^2]; node (i, j) at j * kSteps + i
+    std::vector<uint32_t> stamp;   // the generation the node was filled at
+    uint32_t gen = 0;              // bump to invalidate every node at once
+
+    void reset() {
+        area.assign(kSteps * kSteps, 0.0f);
+        stamp.assign(kSteps * kSteps, 0u);
+        gen = 1;                   // 0 means "never filled"
+    }
+    void invalidate() {
+        if(area.empty()) { reset(); }
+        else { gen++; }
+    }
+    bool empty() const { return area.empty(); }
+
+    static double alphaAt(int i) { return -kHalf + i * kStep; }
+    static double betaAt(int j) { return -kHalf + j * kStep; }
+
+    /* AeroFrame's alpha comes from atan2, so it spans +-180: seen from behind, a
+       silhouette is the silhouette seen from in front, so the back hemisphere
+       folds onto this chart by REVERSING the flow -- alpha -+ 180, beta left
+       alone. That reversal is the exact symmetry (a projected point set seen
+       from the other side is its mirror image, same area, same overlaps); note
+       it is not 180 - alpha, which would mirror the ship's left and right and
+       charge a broadside for a quartering one. Reversing also puts the nose
+       component of the flow back on the +side, which is why beta lands inside
+       +-90 on its own -- the clamps are only insurance against a hand-fed pair. */
+    static void fold(double &alpha, double &beta) {
+        if(alpha > kHalf) { alpha -= std::numbers::pi; }
+        else if(alpha < -kHalf) { alpha += std::numbers::pi; }
+        if(alpha > kHalf) { alpha = kHalf; }
+        else if(alpha < -kHalf) { alpha = -kHalf; }
+        if(beta > kHalf) { beta = kHalf; }
+        else if(beta < -kHalf) { beta = -kHalf; }
+    }
+
+    // The cell index whose lower corner is at or below `angle` (angle folded).
+    static int cellOf(double angle) {
+        int i = (int)std::floor((angle + kHalf) / kStep);
+        if(i < 0) { i = 0; }
+        if(i > kSteps - 2) { i = kSteps - 2; }
+        return i;
+    }
+    static double weight(double angle, int i0) {
+        const double f = (angle + kHalf) / kStep - i0;
+        if(f < 0.0) { return 0.0; }
+        if(f > 1.0) { return 1.0; }
+        return f;
+    }
+
+    /* A hit: all four corners of the cell were filled at this generation, so
+       bilinear between them. Anything else (no table, a NaN angle, a corner not
+       yet filled) is a MISS and leaves `out` alone. */
+    bool lookup(double alpha, double beta, double &out) const {
+        if(area.empty() || !std::isfinite(alpha) || !std::isfinite(beta)) { return false; }
+        fold(alpha, beta);
+        const size_t k00 = (size_t)cellOf(beta) * kSteps + cellOf(alpha);
+        if(stamp[k00] != gen || stamp[k00 + 1] != gen
+           || stamp[k00 + kSteps] != gen || stamp[k00 + kSteps + 1] != gen) {
+            return false;
+        }
+        const int i0 = cellOf(alpha), j0 = cellOf(beta);
+        const double wa = weight(alpha, i0), wb = weight(beta, j0);
+        const double a00 = area[k00], a10 = area[k00 + 1];
+        const double a01 = area[k00 + kSteps], a11 = area[k00 + kSteps + 1];
+        out = (a00 * (1.0 - wa) + a10 * wa) * (1.0 - wb)
+            + (a01 * (1.0 - wa) + a11 * wa) * wb;
+        return true;
+    }
+
+    /* Fill this cell's missing corners, at most `budget` of them -- the caller
+       spreads the cost over substeps. `exact(alpha, beta)` computes the area at
+       a node; the caller holds the parts, the ship frame and the union. Returns
+       how many nodes were filled. */
+    template <class ExactFn>
+    int fillAround(double alpha, double beta, int budget, ExactFn exact) {
+        if(budget <= 0 || area.empty()
+           || !std::isfinite(alpha) || !std::isfinite(beta)) {
+            return 0;
+        }
+        fold(alpha, beta);
+        const int i0 = cellOf(alpha), j0 = cellOf(beta);
+        int filled = 0;
+        for(int dj = 0; dj <= 1; dj++) {
+            for(int di = 0; di <= 1; di++) {
+                if(budget <= 0) { return filled; }
+                const int i = i0 + di, j = j0 + dj;
+                const size_t k = (size_t)j * kSteps + i;
+                if(stamp[k] == gen) { continue; }
+                area[k] = (float)exact(alphaAt(i), betaAt(j));
+                stamp[k] = gen;
+                filled++;
+                budget--;
+            }
+        }
+        return filled;
+    }
+};
+
+/* The drag that LIFT costs (#462): induced drag coefficient = CL^2 / (pi e AR),
+   with AR = span^2 / planform area. Nothing charged for it before: a surface
+   earned its lift free, paying only whatever blunt form drag its shape happened
+   to draw. `span` must be the SPAN, not the thickness -- for a plate part,
+   PartDef::radius is half the largest x/y extent of the mesh, which for a wing
+   IS its half-span (#457 wants an honest per-part box; until then that is the
+   only span the catalog states). */
+inline double inducedCd(double cl, double span, double area, double oswald = 0.8) {
+    if(!(area > 0.0) || !(span > 0.0) || !(oswald > 0.0)) { return 0.0; }
+    const double ar = (span * span) / area;
+    if(!(ar > 0.0)) { return 0.0; }
+    return (cl * cl) / (std::numbers::pi * oswald * ar);
 }
 
 /* The per-part DRAG COEFFICIENT as the part faces the flow: a blend of the three

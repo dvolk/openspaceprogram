@@ -684,6 +684,220 @@ static void test_projectedArea() {
     }
 }
 
+/* unionProjectedArea(polys): the ship's silhouette as the UNION of its parts'
+   projected polygons (#463). Pinned against hand-computed areas, including the
+   cases an overlap-subtracting approximation gets wrong (three plates meeting
+   in one place) and the case the convex-hull balloon used to inflate (two
+   plates with air between them). */
+static std::vector<glm::dvec2> rect(double x0, double y0, double x1, double y1) {
+    return { glm::dvec2(x0, y0), glm::dvec2(x1, y0),
+             glm::dvec2(x1, y1), glm::dvec2(x0, y1) };
+}
+
+static void test_unionArea() {
+    printf("== unionProjectedArea: exact union of the parts' silhouettes ==\n");
+
+    // One polygon: its own area. Two apart: the sum (the gap is air, not
+    // airframe). One inside another: just the outer one.
+    CHECK_NEAR(unionProjectedArea({ rect(-1.0, -1.0, 1.0, 1.0) }), 4.0, 1e-12,
+               "one square == its area");
+    CHECK_NEAR(unionProjectedArea({ rect(0.0, 0.0, 1.0, 1.0),
+                                    rect(3.0, 0.0, 4.0, 1.0) }), 2.0, 1e-12,
+               "two disjoint squares == the sum");
+    CHECK_NEAR(unionProjectedArea({ rect(0.0, 0.0, 4.0, 4.0),
+                                    rect(1.0, 1.0, 2.0, 2.0) }), 16.0, 1e-12,
+               "a contained square adds nothing");
+    CHECK_NEAR(unionProjectedArea({ rect(0.0, 0.0, 1.0, 1.0),
+                                    rect(0.5, 0.0, 1.5, 1.0) }), 1.5, 1e-12,
+               "half-overlap charges the overlap once");
+    // Edge-to-edge contact shares a line, not an area.
+    CHECK_NEAR(unionProjectedArea({ rect(0.0, 0.0, 1.0, 1.0),
+                                    rect(1.0, 0.0, 2.0, 1.0) }), 2.0, 1e-12,
+               "touching edge to edge == the sum");
+
+    /* Three unit squares sliding over each other: A [-0.5,0.5], C [-0.25,0.75],
+       B [0,1] along x, all 1 tall. Slab by slab: 0.25 + 0.25 + 0.5 + 0.25 +
+       0.25 = 1.5. Inclusion-exclusion agrees (3 - 1.75 + 0.25), and that is the
+       pin: subtracting the pairwise overlaps alone gives 1.25, so a fix that
+       double-charged the triple overlap would fail here. */
+    CHECK_NEAR(unionProjectedArea({ rect(-0.5, -0.5, 0.5, 0.5),
+                                    rect(-0.25, -0.5, 0.75, 0.5),
+                                    rect(0.0, -0.5, 1.0, 0.5) }), 1.5, 1e-12,
+               "triple overlap counted once (not 1.25)");
+
+    /* Two bars crossing in an X of sorts (a spar over a longeron): the eight
+       edge crossings are the only breakpoints that make this slab-exact, so it
+       pins the crossing collection. Areas: 0.4 + 0.4 - 0.04 = 0.76. */
+    CHECK_NEAR(unionProjectedArea({ rect(-1.0, -0.1, 1.0, 0.1),
+                                    rect(-0.1, -1.0, 0.1, 1.0) }), 0.76, 1e-12,
+               "crossing bars == sum minus the crossing square");
+
+    // A triangle against a square: the slab measure is linear in x only because
+    // the triangle's edges are straight, which is what the midpoint rule leans on.
+    // Triangle (0,0)(2,0)(0,2) == area 2; square [1,3]x[0,2] == 4; overlap =
+    // the triangle's slice for x in [1,2] (height 2-x -> integral 0.5) -> 5.5.
+    {
+        std::vector<std::vector<glm::dvec2>> polys;
+        polys.push_back({ glm::dvec2(0.0, 0.0), glm::dvec2(2.0, 0.0),
+                          glm::dvec2(0.0, 2.0) });
+        polys.push_back(rect(1.0, 0.0, 3.0, 2.0));
+        CHECK_NEAR(unionProjectedArea(polys), 5.5, 1e-12,
+                   "triangle + square == 5.5 (slanted edge, exact)");
+    }
+
+    // Degenerate inputs: no polygons, a line, a single point.
+    CHECK_NEAR(unionProjectedArea({}), 0.0, 0.0, "no polygons -> 0");
+    CHECK_NEAR(unionProjectedArea({ { glm::dvec2(0, 0), glm::dvec2(1, 0),
+                                      glm::dvec2(2, 0) } }), 0.0, 1e-12,
+               "collinear polygon -> 0");
+
+    /* The bug this replaces: two plates with air between them. Convex-hulling
+       their merged vertices draws a skin over the gap and doubles the area;
+       the union charges both plates and nothing between them. Built as 3-D
+       boxes so the comparison is the one the old code actually did. */
+    {
+        std::vector<glm::dvec3> merged;
+        std::vector<std::vector<glm::dvec2>> polys;
+        for(double cx : { 0.0, 3.0 }) {          // two 1 m cubes, 2 m apart
+            for(int k = 0; k < 8; k++) {
+                merged.push_back(glm::dvec3(cx + ((k & 1) ? 0.5 : -0.5),
+                                            (k & 2) ? 0.5 : -0.5,
+                                            (k & 4) ? 0.5 : -0.5));
+            }
+            polys.push_back(rect(cx - 0.5, -0.5, cx + 0.5, 0.5));
+        }
+        const double balloon = projectedArea(merged, glm::dvec3(0.0, 0.0, 1.0));
+        const double real = unionProjectedArea(polys);
+        CHECK_NEAR(real, 2.0, 1e-12, "two separated plates == 2 m2");
+        CHECK_NEAR(balloon, 4.0, 1e-12, "the balloon over them == 4 m2");
+        CHECK_TRUE(real < balloon, "the union is never the balloon");
+    }
+
+    // A stack (a rocket): parts overlap along the axis, so the union of their
+    // frontal polygons is ONE face -- the same answer the combined-vertex hull
+    // gave, which is why rockets barely move when this changes.
+    {
+        std::vector<std::vector<glm::dvec2>> stack;
+        for(int k = 0; k < 3; k++) {
+            stack.push_back(rect(-1.0, -1.0, 1.0, 1.0));  // same 2x2 face, 3 high
+        }
+        CHECK_NEAR(unionProjectedArea(stack), 4.0, 1e-12,
+                   "a stack charges one face, not three");
+    }
+}
+
+static void test_silhouetteMemo() {
+    printf("== SilhouetteMemo: lazy, generation-stamped direction table ==\n");
+
+    SilhouetteMemo memo;
+    double out = -1.0;
+    // Before reset() there is no table at all: every query is a miss (a ship
+    // that never flies never allocates one).
+    CHECK_TRUE(memo.empty(), "no table before reset");
+    CHECK_TRUE(!memo.lookup(0.3, 0.1, out), "no table -> miss");
+    memo.reset();
+    CHECK_TRUE(!memo.empty(), "reset allocates the table");
+    CHECK_TRUE(!memo.lookup(0.3, 0.1, out), "fresh table: nothing filled -> miss");
+    CHECK_TRUE(memo.fillAround(0.3, 0.1, 0, [](double, double) { return 1.0; }) == 0,
+               "a zero budget fills nothing (and costs nothing)");
+
+    /* A function LINEAR in both angles: bilinear interpolation reproduces it
+       exactly, so any disagreement is the memo's error, not the surface's. */
+    const auto exact = [](double a, double b) { return 1.0 + 0.5 * a + 0.25 * b; };
+    int calls = 0;
+    const auto counted = [&](double a, double b) { calls++; return exact(a, b); };
+    CHECK_TRUE(memo.fillAround(0.11, -0.31, 4, counted) == 4,
+               "a fresh cell fills its four corners");
+    CHECK_TRUE(calls == 4, "each node computed once");
+    CHECK_TRUE(memo.lookup(0.11, -0.31, out), "a full cell hits");
+    CHECK_NEAR(out, exact(0.11, -0.31), 1e-6, "bilinear is exact on a linear surface");
+    // Second query in the same cell: no recomputation.
+    calls = 0;
+    CHECK_TRUE(memo.lookup(0.13, -0.29, out), "still a hit");
+    CHECK_TRUE(calls == 0, "a hit computes nothing");
+    CHECK_NEAR(out, exact(0.13, -0.29), 1e-6, "hit reads the cached surface");
+
+    // The budget is a per-call cap, and it spreads the fill over substeps.
+    memo.reset();
+    calls = 0;
+    CHECK_TRUE(memo.fillAround(0.5, 0.5, 1, counted) == 1, "budget 1 fills one node");
+    CHECK_TRUE(calls == 1, "and computes exactly one");
+    CHECK_TRUE(!memo.lookup(0.5, 0.5, out), "three corners missing -> still a miss");
+    for(int i = 0; i < 3; i++) { memo.fillAround(0.5, 0.5, 1, counted); }
+    CHECK_TRUE(memo.lookup(0.5, 0.5, out), "the cell completes over four substeps");
+    CHECK_TRUE(calls == 4, "and took exactly four computations");
+
+    // Invalidating by generation: nothing is cleared, every node just reads as
+    // unfilled again -- which is what a geometry change (staging, docking) pays.
+    memo.reset();
+    calls = 0;
+    // A query near the chart's corner, where the cell index is known: (0, 0).
+    const double corner = -SilhouetteMemo::kHalf + 0.05;
+    CHECK_TRUE(memo.fillAround(corner, corner, 4, counted) == 4,
+               "the corner cell fills");
+    const float saved = memo.area[0];
+    CHECK_TRUE(saved != 0.0f, "and its (0,0) node holds a number");
+    memo.invalidate();
+    CHECK_TRUE(!memo.lookup(corner, corner, out),
+               "a generation bump invalidates every node at once");
+    CHECK_TRUE(memo.area[0] == saved, "invalidate clears nothing (no sweep on a burn)");
+    CHECK_TRUE(memo.fillAround(corner, corner, 4, counted) == 4, "and the cell refills");
+
+    // A NaN angle (a NaN axis cannot be refused by AeroFrame::valid) is a miss,
+    // not a table full of NaN.
+    CHECK_TRUE(!memo.lookup(std::nan(""), 0.0, out), "NaN alpha -> miss");
+    CHECK_TRUE(memo.fillAround(0.0, std::nan(""), 4, counted) == 0, "NaN beta fills nothing");
+
+    /* The back hemisphere: a flow from behind is the same silhouette seen from
+       the front, so alpha outside +-90 deg folds by reversing the flow. Filling
+       at alpha = 3 rad and querying at 3 - pi must land on the same nodes. */
+    memo.reset();
+    calls = 0;
+    memo.fillAround(3.0, 0.2, 4, counted);
+    CHECK_TRUE(memo.lookup(3.0 - std::numbers::pi, 0.2, out), "the fold is consistent");
+    CHECK_NEAR(out, exact(3.0 - std::numbers::pi, 0.2), 1e-6,
+               "and lands on the reversed flow, not its mirror");
+    CHECK_TRUE(!memo.lookup(std::numbers::pi - 3.0, -0.2, out),
+               "the mirror cell stays empty (180-alpha is the wrong fold)");
+}
+
+static void test_flowDirection() {
+    printf("== flowDirection: the inverse of AeroFrame's two angles ==\n");
+
+    const glm::dvec3 right(1, 0, 0), up(0, 1, 0), nose(0, 0, 1);
+    for(double a = -1.4; a <= 1.4; a += 0.35) {
+        for(double b = -1.2; b <= 1.2; b += 0.4) {
+            const glm::dvec3 v = flowDirection(a, b, right, up, nose);
+            const AeroFrame f = aeroFrame(v, right, up, nose);
+            CHECK_NEAR(f.alpha, a, 1e-9, "aeroFrame(flowDirection(a,b)) round-trips alpha");
+            CHECK_NEAR(f.beta, b, 1e-9, "and beta");
+        }
+    }
+    // The ship may hold its axes unnormalized only by luck; a zero nose refuses.
+    CHECK_NEAR(glm::length(flowDirection(0.0, 0.0, right, up, glm::dvec3(0.0))), 0.0, 0.0,
+               "degenerate frame -> zero direction");
+}
+
+static void test_inducedCd() {
+    printf("== inducedCd: the price of lift (#462) ==\n");
+
+    /* CL=1 on a span-4, area-8 wing: AR = 16/8 = 2, so CDi = 1/(pi e AR) =
+       1/(pi * 0.8 * 2). Hand-checked against the textbook formula. */
+    CHECK_NEAR(inducedCd(1.0, 4.0, 8.0), 1.0 / (std::numbers::pi * 0.8 * 2.0),
+               1e-12, "CL=1, AR=2 == 1/(pi e AR)");
+    // Grows with the SQUARE of CL: twice the lift costs four times the drag.
+    CHECK_NEAR(inducedCd(2.0, 4.0, 8.0), 4.0 * inducedCd(1.0, 4.0, 8.0), 1e-12,
+               "quadratic in CL");
+    // A longer, narrower wing of the same area lifts cheaper: AR goes up.
+    CHECK_TRUE(inducedCd(1.0, 8.0, 8.0) < inducedCd(1.0, 4.0, 8.0),
+               "a higher aspect ratio costs less induced drag");
+    // No lift, no lifting surface, no span -> nothing to pay.
+    CHECK_NEAR(inducedCd(0.0, 4.0, 8.0), 0.0, 0.0, "CL=0 -> 0");
+    CHECK_NEAR(inducedCd(1.0, 4.0, 0.0), 0.0, 0.0, "no planform -> 0");
+    CHECK_NEAR(inducedCd(1.0, 0.0, 8.0), 0.0, 0.0, "no span -> 0");
+    CHECK_NEAR(inducedCd(1.0, 4.0, 8.0, 0.0), 0.0, 0.0, "a zero Oswald efficiency -> 0");
+}
+
 static void test_partCd() {
     printf("== partCd: 3-anchor directional blend (nose / side / base) ==\n");
 
@@ -770,6 +984,14 @@ int main() {
     test_liftCurve();
     printf("\n");
     test_projectedArea();
+    printf("\n");
+    test_unionArea();
+    printf("\n");
+    test_silhouetteMemo();
+    printf("\n");
+    test_flowDirection();
+    printf("\n");
+    test_inducedCd();
     printf("\n");
     test_partCd();
     printf("\n");

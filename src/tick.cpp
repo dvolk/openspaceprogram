@@ -451,7 +451,7 @@ void tick(Game &g) {
                 printf("[drag] t=%.1fs alt=%.1f m rho=%.5g kg/m3 "
                        "|v|=%.2f m/s |F|=%.2f N |L|=%.2f N L_up=%.2f N Up=%.2f "
                        "|tau|=%.2f Nm "
-                       "Cd=%.3f A=%.2f m2 %s Chute=%.2f m2\n",
+                       "Cd=%.3f A=%.2f m2 %s Chute=%.2f m2 Induced=%.3f m2\n",
                        g.time, g.ship->lastDragAlt, g.ship->lastDragRho,
                        glm::length(v),
                        glm::length(g.ship->lastAeroForce),
@@ -460,7 +460,8 @@ void tick(Game &g) {
                        glm::length(g.ship->lastAeroTorque),
                        g.ship->lastDragCd, g.ship->lastDragArea,
                        aoa_txt,
-                       g.ship->lastChuteCdA);
+                       g.ship->lastChuteCdA,
+                       g.ship->lastInducedCdA);
                 // Control surfaces' applied deflections.
                 if(!g.ship->lastControlDeflections.empty()) {
                     printf("[ctrl]");
