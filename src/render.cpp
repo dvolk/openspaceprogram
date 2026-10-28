@@ -47,25 +47,24 @@ static void camShakeStep(Game &g, Vehicle *ship) {
     const double target = active
         ? (double)g.args.cam_shake * std::min(0.15, (a - 1.0) * 0.008)
         : 0.0;
-    const Uint32 now_ms = SDL_GetTicks();
-    // Wall-clock time constant: the rumble rate must not scale with render fps.
-    const double frame_dt = (now_ms - g.shake_last_ms) * 0.001;
-    g.shake_last_ms = now_ms;
+    // Wall-clock time constant for a player: the rumble rate must not scale with
+    // render fps. Under --sim-steps the step is the tick, which makes the draw
+    // count and these numbers tick-determined -- the camera pose, and so the
+    // terrain LOD it asks for, replays (#475).
+    const double frame_dt = g.smoothingDt(g.shake_last_ms);
     const double tau = 0.05;    // s
     const double alpha = frame_dt > 0.0 ? 1.0 - std::exp(-frame_dt / tau) : 1.0;
     const double wobble = 0.02;  // rad of basis jitter per metre of offset
     for(int i = 0; i < 3; i++) {
-        const double ro = ((double)std::rand() / RAND_MAX) * 2.0 - 1.0;
-        const double ra = ((double)std::rand() / RAND_MAX) * 2.0 - 1.0;
+        const double ro = g.shakeRand();
+        const double ra = g.shakeRand();
         g.shake_off[i] += alpha * (ro * target - g.shake_off[i]);
         g.shake_ang[i] += alpha * (ra * target * wobble - g.shake_ang[i]);
     }
     // --shake-log: felt accel + live amplitude at the --orbit-interval cadence.
-    // The gate takes the scripted clock (cadence must not depend on frame rate
-    // under --sim-steps); the smoothing above stays on the wall clock, since it
-    // is what the player feels. So only the WHEN is pinned here -- the numbers
-    // mix std::rand() with a wall-clock dt and differ run to run whatever the
-    // gate does (#475). Pin the row count, not the amplitudes.
+    // Under --sim-steps both the gate AND the numbers above follow the tick, so a
+    // scripted run replays its camera pose. In the wall-clock mode the payload
+    // still tracks frame rate: pin the row count, not the amplitudes (#475).
     if(g.args.shake_log) {
         if(g.logDue(kGateShake, g.logClockMs(), g.orbit_log_interval_ms)) {
             printf("[shakelog] t=%.3fs a=%.3f m/s2 amp=%.4f m "
@@ -246,21 +245,19 @@ static float skyGain(Game &g, Frame *rf, TerrainBody *sun, Camera *camera,
     if(localBody && localBody->frame) {
         lit = ComputeTerrainShadow(localBody, rf, lit_at, sun) > 0.5f ? 1.0 : 0.0;
     }
-    // Both inputs are hard tests, so low-pass the fade. Wall-clock seconds: a
-    // sim-time tau would race at high time accel.
+    // Both inputs are hard tests, so low-pass the fade. Wall-clock seconds for a
+    // player: a sim-time tau would race at high time accel. Under --sim-steps the
+    // tick is the step, so [skydim] replays too (#475).
     const double target = in_view * lit;
-    const Uint32 now_ms = SDL_GetTicks();
-    const double frame_dt = (now_ms - g.sky_fade_last_ms) * 0.001;
-    g.sky_fade_last_ms = now_ms;
+    const double frame_dt = g.smoothingDt(g.sky_fade_last_ms);
     const double tau = 0.4;
     const double alpha = frame_dt > 0.0 ? 1.0 - std::exp(-frame_dt / tau) : 1.0;
     g.sky_fade += alpha * (target - g.sky_fade);
     const double t = g.sky_fade;
     const float gain = (float)(1.0 + (g.sky_dim - 1.0) * t);
-    // --sky-dim-log: the fade's inputs, tunable from the command line. Gate on
-    // the scripted clock under --sim-steps; the fade itself keeps its wall-clock
-    // smoothing, so fade=/gain= vary with frame rate -- pin the cadence, not the
-    // fade (#475).
+    // --sky-dim-log: the fade's inputs, tunable from the command line. Gate AND
+    // fade follow the tick under --sim-steps, so the rows replay; in the
+    // wall-clock mode fade=/gain= still track frame rate (#475).
     if(g.args.sky_dim_log && g.logDue(kGateSkyDim, g.logClockMs(), 200)) {
         std::printf("[skydim] t=%.1fs sun_off=%.1f limb=%.1f in_view=%.2f "
                     "lit=%.2f fade=%.2f gain=%.3f\n", g.time,
@@ -384,10 +381,11 @@ void refreshWorld(Game &g) {
 
         /* --terrain-log: the local body's tree as the LOD just left it.
            deep_off is the camera-to-nearest-deepest-leaf distance; collision
-           counts leaves with a Bullet body (#24). The gate takes the scripted
-           clock, but the tree itself is what #475 is about: it is refined from a
-           shaken camera and filled by job workers, so these numbers are not
-           pinn-able in a scripted run yet. */
+           counts leaves with a Bullet body (#24). Under --sim-steps the camera
+           that drives the LOD replays, so the tree REQUESTS the same set of
+           patches; what is still machine-dependent is when the workers hand the
+           geometry and colliders back, so patch/collision COUNTS are not
+           pinn-able in a scripted run yet (#475). */
         if(g.args.terrain_log && planet == localBody && planet->ready) {
             const Uint32 now_ms = g.logClockMs();
             if(g.logDue(kGateTerrain, now_ms, g.orbit_log_interval_ms)) {
@@ -408,9 +406,10 @@ void refreshWorld(Game &g) {
     /* --cam-log: the camera as this frame left it, so a --sim-mouse drag that
        never reached the camera cannot pass silently. rmb= and cap= are the
        gates in events.cpp's mouse handlers: a right-button drag only looks when
-       rmb is armed AND imgui is not capturing the mouse. Cadence follows the
-       scripted clock; the pose itself carries the wall-clock shake, so pin which
-       rows print, not their numbers (#475). */
+       rmb is armed AND imgui is not capturing the mouse. Under --sim-steps the
+       rows AND the pose replay (the shake steps on the tick, #475); in the
+       wall-clock mode the pose still tracks frame rate, so pin which rows print
+       rather than their numbers. */
     if(g.args.cam_log) {
         const Uint32 now_ms = g.logClockMs();
         if(g.logDue(kGateCam, now_ms, g.orbit_log_interval_ms)) {

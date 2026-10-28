@@ -451,6 +451,18 @@ struct Game {
     glm::dvec3 shake_off = glm::dvec3(0.0);
     glm::dvec3 shake_ang = glm::dvec3(0.0);
     Uint32 shake_last_ms = 0;
+    /* The rumble's own random stream, fixed at boot: std::rand() is already
+       deterministic per process, so a seed buys nothing -- what made a scripted
+       run irreproducible was the NUMBER of draws (one pair per render frame) and
+       the wall-clock dt feeding the smoothing. Its own stream also keeps the
+       camera pose from drifting if anything else ever starts randomising.
+       Deterministic here matters beyond the log: focusPoint += shake_off feeds
+       the terrain LOD, which owns the ground's collision bodies (#475). */
+    uint32_t shake_rng = 0x9e3779b9u;
+    double shakeRand() {   // [-1, 1)
+        shake_rng = shake_rng * 1664525u + 1013904223u;   // LCG (numeric recipes)
+        return (double)shake_rng * (2.0 / 4294967296.0) - 1.0;
+    }
 
     /* The scene stack: back() is the live scene, never empty (see scene.h). Each
        frame carries the camera pose to hand back when it is popped. */
@@ -544,21 +556,21 @@ struct Game {
        schedules) when it is off. Off is the player's choice for good reasons: a
        sim-clock log gate goes quiet while paused and fires on every tick at warp
        (#374).
-       Scope, honestly: this makes the CADENCE of inputs and logs deterministic. It
-       does not yet make a run over TERRAIN deterministic -- the terrain LOD
-       requests are driven by the camera's wall-clock-smoothed shake, which is
-       std::rand() on a wall-clock dt (render.cpp camShakeStep), and the collision
-       bodies those patches own arrive on job continuations whenever the worker
-       finishes. A grounded ship can therefore settle differently run to run; how
-       often is a measurement question, not a guarantee either way (#475). Flights
-       that never touch the ground collision tree (the 458 envelope cases) are
-       reproducible today.
-       Related, and worth knowing before a case pins one of these: converting a log
-       gate to this clock fixes WHEN the row prints, not what the number is. The
-       [shakelog] / [camlog] / [terrain] / [skydim] values are camera state smoothed
-       on a wall-clock dt (and [porkchop] depends on job timing), so they vary with
-       frame rate whatever the gate is. --pose-jitter prints a wall-clock frame dt
-       too. Pin the cadence of those, not their payload, until #475 lands.
+       Scope, honestly: this makes the CADENCE of inputs and logs deterministic.
+       A scripted run also replays its CAMERA: the chase-cam rumble and the sky
+       fade step on the tick under --sim-steps (smoothingDt) and the rumble draws
+       from its own fixed stream (shakeRand), so focusPoint is the same number on
+       the same tick. What still differs run to run is the terrain tree's FILL --
+       the LOD requests the same patches, but the geometry and the ground
+       collision bodies arrive on job continuations whenever the worker finishes,
+       so a grounded ship can still settle differently (#475). Flights that never
+       touch the ground collision tree (the 458 envelope cases) are reproducible
+       today.
+       Pin the CADENCE of [shakelog]/[camlog]/[terrain]/[skydim] in a scripted
+       run: their payloads replay under --sim-steps now, but in the wall-clock
+       mode they follow frame rate by design. [porkchop] depends on job timing
+       rather than the camera and is not pinn-able either way. --pose-jitter
+       prints a wall-clock frame dt too.
        The scripted clock counts TICKS, not g.time: g.time can rewind (a load or a
        New Game mid-run) and stops dead while paused, and either would freeze or
        reverse a schedule. One tick always moves it dt. */
@@ -579,6 +591,19 @@ struct Game {
     Uint32 logClockMs() const {
         return (sim_steps_left >= 0) ? scriptedClockMs(sim_ticks_run, dt)
                                      : (Uint32)SDL_GetTicks();
+    }
+
+    /* dt for a low-pass filter a PLAYER must feel in real seconds (camera rumble,
+       sky fade) but a SCRIPTED run must replay: under --sim-steps the frame rate
+       is not part of the run, so the tick is its step and one draw per frame
+       becomes one draw per tick. The wall-clock branch is exactly what it always
+       was. #475. */
+    double smoothingDt(Uint32 &last_ms) const {
+        if(sim_steps_left >= 0) { return dt; }
+        const Uint32 now_ms = SDL_GetTicks();
+        const double d = (now_ms - last_ms) * 0.001;
+        last_ms = now_ms;
+        return d;
     }
 
     // True once per interval_ms, stamping the gate as it fires.
