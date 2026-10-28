@@ -456,6 +456,45 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                                      + " must be >= 0 (m)");
         }
     }
+    /* "attitude": {"pitch": deg, "yaw": deg} -- a pad-only tilt (ShipDef).
+       Checked rather than clamped: a pitch of 180 means the author meant
+       something else, and quietly tilting a ship into the ground to find that
+       out wastes a launch. Unknown keys are refused for the same reason -- a
+       typo'd "pith" would otherwise read as "no tilt asked for". */
+    if(doc.contains("attitude")) {
+        const nlohmann::json &a = doc["attitude"];
+        if(!a.is_object()) {
+            throw std::runtime_error(std::string("ship: \"attitude\" in ") + path
+                                     + " must be an object of \"pitch\"/\"yaw\" degrees");
+        }
+        for(auto it = a.begin(); it != a.end(); ++it) {
+            if(it.key() != "pitch" && it.key() != "yaw") {
+                throw std::runtime_error(std::string("ship: \"attitude\" has \"")
+                                         + it.key() + "\" in " + path
+                                         + " (known: pitch, yaw)");
+            }
+        }
+        def.has_attitude = true;
+        if(a.contains("pitch")) {
+            if(!a["pitch"].is_number()) {
+                throw std::runtime_error(std::string("ship: \"attitude\" \"pitch\" in ")
+                                         + path + " must be a number (deg)");
+            }
+            def.attitude_pitch = a["pitch"].get<double>();
+        }
+        if(a.contains("yaw")) {
+            if(!a["yaw"].is_number()) {
+                throw std::runtime_error(std::string("ship: \"attitude\" \"yaw\" in ")
+                                         + path + " must be a number (deg)");
+            }
+            def.attitude_yaw = a["yaw"].get<double>();
+        }
+        if(def.attitude_pitch < 0.0 || def.attitude_pitch > 180.0) {
+            throw std::runtime_error(std::string("ship: \"attitude\" pitch ")
+                                     + std::to_string(def.attitude_pitch)
+                                     + " in " + path + " must be 0..180 deg off the local vertical");
+        }
+    }
 
     const nlohmann::json &arr = doc["parts"];
     std::map<std::string, size_t> idToIndex;   // instance id -> part index (defined so far)
@@ -987,6 +1026,9 @@ BuildShip BuildShip::fromShipDef(const ShipDef &def) {
     BuildShip bs;
     bs.name = def.name;
     bs.hull_margin = def.hull_margin;
+    bs.has_attitude = def.has_attitude;
+    bs.attitude_pitch = def.attitude_pitch;
+    bs.attitude_yaw = def.attitude_yaw;
     if(def.controller >= 0 && (size_t)def.controller < def.parts.size()) {
         bs.controllerId = def.parts[(size_t)def.controller].id;
     }
@@ -1222,6 +1264,9 @@ ShipDef BuildShip::toShipDef() const {
     ShipDef def;
     def.name = name;
     def.hull_margin = hull_margin;
+    def.has_attitude = has_attitude;
+    def.attitude_pitch = attitude_pitch;
+    def.attitude_yaw = attitude_yaw;
     def.controller = -1;
     for(size_t i = 0; i < parts.size(); i++) {
         const BuildPart &bp = parts[i];
@@ -1401,6 +1446,10 @@ bool save_ship_def(const BuildShip &bs, const char *path) {
         doc["controller"] = def.parts[(size_t)def.controller].id;
     }
     if(def.hull_margin >= 0.0) { doc["hull_margin"] = def.hull_margin; }
+    if(def.has_attitude) {
+        doc["attitude"] = nlohmann::ordered_json{
+            {"pitch", def.attitude_pitch}, {"yaw", def.attitude_yaw}};
+    }
     nlohmann::ordered_json arr = nlohmann::ordered_json::array();
     for(size_t i = 0; i < def.parts.size(); i++) {
         const ShipPart &sp = def.parts[i];

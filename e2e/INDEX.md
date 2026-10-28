@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 264 |
+| `invariant` | a behaviour or a player route the game must keep | 265 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 36 |
 | `harness` | CLI/test-engine plumbing, not game spec | 13 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **317** |
+| | **total** | **318** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (71)
+## flight (72)
 
 | case | kind | pins |
 |---|---|---|
@@ -93,6 +93,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/451-flying-slow-starts-in-air.txt` | golden | The flying-slow bed starts wings-level with its nose along the air at a fraction of the AIR-relative circular speed, so a plane enters its altitude band moving rather than dropping. |
 | `flight/458-glider-flight-envelope.txt` | golden | The shipped glider presents a bounded silhouette to the air, carries a bounded share of its weight, and has only yaw surfaces to fly with. |
 | `flight/458-jet-flight-envelope.txt` | golden | The shipped jet presents a bounded silhouette to the air, its wings carry a bounded share of its weight, and holding pitch actually moves the elevons. |
+| `flight/461-pad-def-attitude-starts-level.txt` | invariant | A ship def can ask for its pad attitude, so a winged airframe starts with its nose on the horizon and its wings level instead of standing on its tail. |
 
 ## crew (25)
 

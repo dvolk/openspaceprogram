@@ -352,6 +352,21 @@ struct ShipDef {
        problem depends on the SHIP'S layout. */
     double hull_margin = -1.0;
 
+    /* Pad attitude (deg): how far the hull's nose is tilted off the launch site's
+       local vertical, and which way about it. A pad stands every hull on its tail
+       -- the site adds a yaw about the local vertical, nothing can tilt the
+       airframe -- so a winged def has no way to ask for a level start, and its
+       wings spend the whole vertical climb pointing sideways (#461).
+       Pitch 0 (the default, and the rocket convention) leaves the pad pose as it
+       was. With a tilt, the roll stops being faceAlong's axis pick and comes from
+       the local vertical instead: +Y as close to "up" as the nose allows, i.e.
+       wings level (#460). Yaw adds to the site's heading.
+       A PAD field: an orbital bed aims the nose along prograde by design, so a
+       non-pad spawn ignores it rather than fighting the bed. */
+    bool has_attitude = false;
+    double attitude_pitch = 0.0;
+    double attitude_yaw = 0.0;
+
     int controllerIndex() const {
         if(controller >= 0) { return controller; }
         /* Default: the first part with reaction-wheel authority (the stick
@@ -406,6 +421,12 @@ struct BuildShip {
     std::vector<FuelLink> fuelLinks;
     std::string controllerId;
     double hull_margin = -1.0;
+    /* ShipDef::attitude, carried so a def loaded into the editor survives a
+       launch and a save (save_ship_def writes it back). The editor has no
+       control for it yet: it round-trips, it is not editable. */
+    bool has_attitude = false;
+    double attitude_pitch = 0.0;
+    double attitude_yaw = 0.0;
 
     /* Re-solve every part's localPos/localRot off its parent in construction
        order (root at identity). Call after any add/remove/re-orient. */

@@ -1499,6 +1499,42 @@ int main() {
         CHECK(near(gridStepDeg(-3.0, +1.0), 0.0));
         CHECK(near(gridStepDeg(-3.0, -1.0), -10.0));
     }
+    /* Pad attitude (#461) through the editor: a def loaded into a build tree,
+       launched and saved again must not drop the request on the way, or the
+       airframe stands back on its tail with nothing left to say why. */
+    {
+        const char *src = "/tmp/test_shipload_att_rt_src.json";
+        const char *rt = "/tmp/test_shipload_att_rt_out.json";
+        std::ofstream f(src);
+        f << "{ \"name\": \"T\", \"attitude\": { \"pitch\": 90, \"yaw\": 30 }, "
+             "\"parts\": [ { \"part\": \"capsule\", \"id\": \"c1\" }, "
+             "{ \"part\": \"wing\", \"parent\": \"c1\", \"attach\": \"surface\", "
+             "\"angle\": 0 } ] }";
+        f.close();
+        BuildShip bs = BuildShip::fromShipDef(load_ship_def(src, cat));
+        CHECK(bs.has_attitude);
+        CHECK(near(bs.attitude_pitch, 90.0));
+        CHECK(near(bs.attitude_yaw, 30.0));
+        ShipDef thru = bs.toShipDef();
+        CHECK(thru.has_attitude && near(thru.attitude_pitch, 90.0)
+              && near(thru.attitude_yaw, 30.0));
+        CHECK(save_ship_def(bs, rt));
+        ShipDef rl = load_ship_def(rt, cat);
+        CHECK(rl.has_attitude && near(rl.attitude_pitch, 90.0)
+              && near(rl.attitude_yaw, 30.0));
+        std::remove(src);
+        std::remove(rt);
+    }
+    // And a build that asked for nothing writes nothing: the shipped defs keep
+    // the stand-on-the-tail pose byte for byte.
+    {
+        const char *rt = "/tmp/test_shipload_att_rt_out.json";
+        BuildShip bs = BuildShip::fromShipDef(load_ship_def("res/ships/jet.json", cat));
+        CHECK(!bs.has_attitude);
+        CHECK(save_ship_def(bs, rt));
+        CHECK(!load_ship_def(rt, cat).has_attitude);
+        std::remove(rt);
+    }
     // --- save_ship_def round trip -------------------------------------------
     {
         const char *rt = "/tmp/test_shipload_rt.json";
@@ -1894,6 +1930,92 @@ int main() {
     CHECK(resolveHullMargin(-1.0, 0.0) == 0.0);
     CHECK(resolveHullMargin(0.25, 0.0) == 0.25);
     CHECK(resolveHullMargin(-1.0, -1.0) == -1.0);
+
+    /* Pad attitude (#461): a def may ask for its nose `pitch` deg off the launch
+       site's local vertical, plus a yaw about it. The parser only RECORDS the
+       request -- turning it into a pose is place_vehicle_def's job, and
+       flight/461 pads the pose in e2e -- but the refusals are parser rules, so
+       they are pinned here. */
+    {
+        const char *pa = "/tmp/test_shipload_attitude.json";
+        std::ofstream f(pa);
+        f << "{ \"name\": \"T\", \"attitude\": { \"pitch\": 90, \"yaw\": 30 }, "
+             "\"parts\": [ { \"part\": \"capsule\" } ] }";
+        f.close();
+        ShipDef ad = load_ship_def(pa, cat);
+        CHECK(ad.has_attitude);
+        CHECK(near(ad.attitude_pitch, 90.0));
+        CHECK(near(ad.attitude_yaw, 30.0));
+        std::remove(pa);
+    }
+    {
+        const char *pa = "/tmp/test_shipload_attitude.json";
+        std::ofstream f(pa);
+        f << "{ \"name\": \"T\", \"attitude\": { \"yaw\": -45 }, "
+             "\"parts\": [ { \"part\": \"capsule\" } ] }";
+        f.close();
+        ShipDef ad = load_ship_def(pa, cat);
+        CHECK(ad.has_attitude);
+        CHECK(near(ad.attitude_pitch, 0.0));   // pitch omitted = stand on the tail
+        CHECK(near(ad.attitude_yaw, -45.0));
+        std::remove(pa);
+    }
+    {
+        const char *pa = "/tmp/test_shipload_attitude.json";
+        std::ofstream f(pa);
+        f << "{ \"name\": \"T\", \"parts\": [ { \"part\": \"capsule\" } ] }";
+        f.close();
+        ShipDef ad = load_ship_def(pa, cat);
+        CHECK(!ad.has_attitude);
+        CHECK(near(ad.attitude_pitch, 0.0));
+        CHECK(near(ad.attitude_yaw, 0.0));
+        std::remove(pa);
+    }
+    // An unknown key inside the object is refused rather than skipped: "pith": 90
+    // would otherwise read as "no tilt asked for" and the ship would launch on
+    // its tail with no clue left behind.
+    {
+        const char *pa = "/tmp/test_shipload_attitude.json";
+        std::ofstream f(pa);
+        f << "{ \"name\": \"T\", \"attitude\": { \"pith\": 90 }, "
+             "\"parts\": [ { \"part\": \"capsule\" } ] }";
+        f.close();
+        CHECK(expect_throw_saying([&](){ load_ship_def(pa, cat); },
+                                  "known: pitch, yaw"));
+        std::remove(pa);
+    }
+    // A pitch past the horizon is a misunderstanding, not something to clamp --
+    // it aims the hull through the pad deck.
+    {
+        const char *pa = "/tmp/test_shipload_attitude.json";
+        std::ofstream f(pa);
+        f << "{ \"name\": \"T\", \"attitude\": { \"pitch\": 200 }, "
+             "\"parts\": [ { \"part\": \"capsule\" } ] }";
+        f.close();
+        CHECK(expect_throw_saying([&](){ load_ship_def(pa, cat); },
+                                  "must be 0..180"));
+        std::remove(pa);
+    }
+    {
+        const char *pa = "/tmp/test_shipload_attitude.json";
+        std::ofstream f(pa);
+        f << "{ \"name\": \"T\", \"attitude\": [ 90 ], "
+             "\"parts\": [ { \"part\": \"capsule\" } ] }";
+        f.close();
+        CHECK(expect_throw_saying([&](){ load_ship_def(pa, cat); },
+                                  "must be an object"));
+        std::remove(pa);
+    }
+    {
+        const char *pa = "/tmp/test_shipload_attitude.json";
+        std::ofstream f(pa);
+        f << "{ \"name\": \"T\", \"attitude\": { \"pitch\": \"90\" }, "
+             "\"parts\": [ { \"part\": \"capsule\" } ] }";
+        f.close();
+        CHECK(expect_throw_saying([&](){ load_ship_def(pa, cat); },
+                                  "must be a number"));
+        std::remove(pa);
+    }
 
     // thruster fields must be given together (propellant without exhaust_velocity)
     {

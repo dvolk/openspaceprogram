@@ -539,6 +539,26 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
         }
         pad_dir = site->dir;
         pad_orient = buildingOrient(pad_dir, site->heading_deg * std::numbers::pi / 180.0);
+        /* A def may tilt the airframe off the local vertical (ShipDef::attitude,
+           #461): the site only ever adds a yaw, so every hull -- wings included --
+           stands on its tail and the wings lift sideways up the whole climb.
+           The tilt also settles the roll: once the nose is off the vertical, the
+           vertical can serve as faceAlong's up reference instead of its
+           three-axis pick, so the airframe starts wings level whatever the site
+           heading is (#460). Pitch 0 keeps the pad pose exactly as it was,
+           including that pick -- with the nose ON the vertical there is no roll
+           left to solve for. */
+        if(def.has_attitude) {
+            const double pitch = glm::radians(def.attitude_pitch);
+            const glm::dmat3 site_basis = buildingOrient(
+                pad_dir,
+                (site->heading_deg + def.attitude_yaw) * std::numbers::pi / 180.0);
+            pad_orient = pitch > 0.0
+                ? faceAlong(glm::normalize(site_basis
+                                          * glm::dvec3(std::sin(pitch), 0.0, std::cos(pitch))),
+                            pad_dir)
+                : site_basis;
+        }
     }
 
     /* Root part type "kerbal" builds the EVA subclass (eva.h); anything else

@@ -1,0 +1,21 @@
+NAME pad-def-attitude-starts-level
+CLAIM A ship def can ask for its pad attitude, so a winged airframe starts with its nose on the horizon and its wings level instead of standing on its tail.
+KIND invariant
+ARGS --time-accel 1 --startship leveljet,e2e/vehicles/level_jet.json,Kerbin,pad
+ARGS --timeout 6 --drag-log --orbit-interval 0.2
+EXPECT [drag]
+# Up is the airframe's own +Y against the local vertical, so it states the pose
+# outright: for a def that tilts its nose pitch deg off the vertical, Up = sin
+# pitch (90 deg here -> 1.0), because the tilt lets the vertical become
+# faceAlong's roll reference instead of its three-coordinate-axis pick (#460).
+# The same airframe with no "attitude" in its def reads Up = -0.00 on the pad --
+# nose vertical, wings sideways up the whole climb, W yawing instead of pitching
+# -- which is the player-facing half of #461 that flying-slow (#451) did not fix.
+CHECK drag[0]["up"] > 0.99
+# Parked, not flying: it settles a few degrees on the deck and stays level for
+# the whole run rather than rolling over.
+CHECK min(d["up"] for d in drag) > 0.8
+# The pose comes from the def, not from a lucky pad: the parser refuses an
+# unknown key inside "attitude" and a pitch past the horizon rather than
+# silently standing the ship back up (pinned in test_shipload).
+FORBID error:
