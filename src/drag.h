@@ -192,6 +192,33 @@ inline PartAero partAero(const glm::dmat3 &partRot, const glm::dvec3 &v_rel) {
     return pa;
 }
 
+/* THE FLOW A SURFACE STANDS IN (#483). A part bolted at offset r from the centre
+   of mass is carried through the air by the body's rotation, so the air it meets
+   is the COM-relative flow plus its own sweep w x r, and its dynamic pressure
+   follows THAT flow: a rotating airframe has no single q to take. One function so
+   the lift loop, the control loop and the chute harness cannot each re-inline the
+   composition and drift apart, and so the unit test pins production rather than a
+   copy of it.
+   vp2 is |vp|^2: a caller that needs the flow's DIRECTION (the induced term)
+   takes one sqrt here instead of paying a second magnitude on top of q's.
+   The frame of w must be the frame of vrel and of the hull body being pushed;
+   in updateAerodynamics all three are S. */
+struct LocalFlow {
+    glm::dvec3 vp;   // the flow at this surface
+    double q;        // 0.5 * rho * |vp|^2 -- this surface's dynamic pressure
+    double vp2;      // |vp|^2
+};
+
+inline LocalFlow localFlow(const glm::dvec3 &vrel, const glm::dvec3 &w,
+                           const glm::dvec3 &r, double rho) {
+    const glm::dvec3 vp = vrel + glm::cross(w, r);
+    /* glm::dot, not glm::length2: in the vendored glm, length2 is a gtx/norm.hpp
+       extra that drag.h does not (and should not) pull in. Same expression --
+       length2(x) is dot(x, x) -- so the number is unchanged. */
+    const double vp2 = glm::dot(vp, vp);
+    return { vp, 0.5 * rho * vp2, vp2 };
+}
+
 /* The 2-D cross product (z-component) of (b-a) x (c-a). */
 inline double cross2(const glm::dvec2 &a, const glm::dvec2 &b,
                      const glm::dvec2 &c) {

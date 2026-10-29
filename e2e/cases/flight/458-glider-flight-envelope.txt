@@ -1,5 +1,5 @@
 NAME glider-flight-envelope
-CLAIM The shipped glider pays air for the union of its parts AS MOUNTED (4.3 m2 nose-on, 26 m2 broadside, not a 30 m2 balloon), its lift owes induced drag, and with only yaw surfaces it can be steered past vertical -- but since #483 the rotation sweep at its surfaces damps it back onto the flow instead of leaving it tumbling.
+CLAIM The shipped glider pays air for the union of its parts AS MOUNTED (4.4 m2 nose-on, 17.7 m2 once it rolls past vertical, not a 30 m2 balloon), its lift owes induced drag, and with only yaw surfaces it can be steered past vertical -- but since #483 the rotation sweep at its surfaces damps its pitch back onto the flow instead of leaving it tumbling. In yaw it still swings.
 KIND golden
 ARGS --time-accel 1 --startship glider,res/ships/glider.json,Kerbin,flying-slow
 ARGS --sim-steps 840 --drag-log --mass-log
@@ -53,7 +53,15 @@ CHECK max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) > 90.0
 # (a symmetric section at 0 deg makes no lift in this law, so "settled" means
 # nose-on and descending, not gliding). Damping without static margin (#454) is
 # exactly this much recovery and no more.
-CHECK all(abs(d["aoa"]) < 10.0 for d in drag if d["t"] >= 7.0)
+# AND IT IS PITCH ONLY. Yaw still swings the whole run: Beta reads 38.7, 15.8,
+# -54.1, 12.1, 49.0, -28.3, -41.2, 36.5 after t=7, against the pitch series' 1.4
+# worst. That is the geometry of this term, not a fluke: at AoA ~ 0 a yaw rate
+# sweeps the wingtips ALONG the nose, which changes no angle of attack, and the only
+# yaw surfaces it has are rudders whose force is deflection-only. So the sweep damps
+# the axis with lifting area fore-or-aft of the pivot and does nothing about the
+# others -- which is the yaw half of #454/#486, and why Beta is pinned above only as
+# "it reached the back hemisphere", never as a settling number.
+CHECK all(d["aoa"] is not None and abs(d["aoa"]) < 10.0 for d in drag if d["t"] >= 7.0)
 # And the speed it keeps: the tumble used to eat 60% of it (73 m/s by t=14 against
 # a 173 m/s start). Flying nose-on costs it a third.
 CHECK min(d["v"] for d in drag if d["t"] >= 9.0) > 100.0

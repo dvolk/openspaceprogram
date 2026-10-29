@@ -451,14 +451,21 @@ static void test_local_flow_sweep() {
     const glm::dvec3 vrel(0.0, 0.0, v);         // dead along the nose: 0 AoA, 0 beta
 
     struct Surf { glm::dvec3 vp; double q; PartAero pa; glm::dvec3 F; };
-    const auto surf = [&](const glm::dvec3 &r, const glm::dvec3 &w) {
+    /* localFlow + partAero + liftForce: the same composition updateAerodynamics
+       runs, so this test pins production rather than my transcription of it. */
+    const auto surfAt = [&](const glm::dvec3 &r, const glm::dvec3 &w,
+                            const glm::dmat3 &rot) {
         Surf s;
-        s.vp = vrel + glm::cross(w, r);
-        s.q = 0.5 * rho * glm::dot(s.vp, s.vp);
-        s.pa = partAero(ship, s.vp);
+        const LocalFlow lf = localFlow(vrel, w, r, rho);
+        s.vp = lf.vp;
+        s.q = lf.q;
+        s.pa = partAero(rot, s.vp);
         s.F = s.pa.valid ? liftForce(s.q, S, cl, s.pa.alpha, s.pa.liftDir, stall)
                          : glm::dvec3(0.0);
         return s;
+    };
+    const auto surf = [&](const glm::dvec3 &r, const glm::dvec3 &w) {
+        return surfAt(r, w, ship);   // the untilted airframe
     };
 
     // A body that is not spinning is bit-identical to the pre-#483 law, not
@@ -471,6 +478,17 @@ static void test_local_flow_sweep() {
         CHECK_NEAR(s.q, 0.5 * rho * glm::dot(vrel, vrel), 0.0,
                    "and so is the change in dynamic pressure");
         CHECK_NEAR(glm::length(s.F), 0.0, 0.0, "so a 0-deg wing still lifts nothing");
+    }
+
+    // localFlow's own bookkeeping: vp2 is the magnitude q was built from, so the
+    // induced term's direction costs one sqrt rather than two magnitudes. Pinned
+    // because src/vehicle.cpp relies on sqrt(vp2) being that same magnitude.
+    {
+        const LocalFlow lf = localFlow(vrel, glm::dvec3(0.0, 0.0, 2.0),
+                                       glm::dvec3(0.0, 3.0, 0.0), rho);
+        CHECK_NEAR(std::sqrt(lf.vp2), glm::length(lf.vp), 1e-12,
+                   "sqrt(vp2) is the flow's magnitude, as glm::length computes it");
+        CHECK_NEAR(lf.q, 0.5 * rho * lf.vp2, 0.0, "and q is half rho times vp2 exactly");
     }
 
     // The bug, stated: on the COM's flow every surface of this airframe sees 0 deg,
@@ -516,6 +534,39 @@ static void test_local_flow_sweep() {
         const glm::dvec3 Mn = glm::cross(rCanard, cn.F) + glm::cross(rTail, tn.F);
         CHECK_TRUE(glm::dot(Mn, -w) < 0.0, "reversed spin is opposed too");
         CHECK_TRUE(glm::dot(M, Mn) < 0.0, "and the two moments point opposite ways");
+    }
+
+    /* INSIDE THE DEEP-STALL DROOP THE SAME TERM FLIPS SIGN -- and a shipped airframe
+       sits there. Same pair, same rate, mounts tilted 30 deg up: past the 20.1 deg
+       stall angle liftCurve's slope is NEGATIVE until twice it (40.1 deg), so the
+       surface the rotation drives DEEPER into the stall gains lift instead of losing
+       it. Subtract the omega = 0 moment -- the incidence itself makes a big static
+       couple that says nothing about damping -- and the moment the sweep ADDS lines
+       up with w: the airframe feeds its swing back in. Measured in situ on the
+       glider at |w| = 4.3 rad/s and ship AoA -29.6 deg, where this term alone is
+       +451 kW of spin-up, which is why 458-glider's AoA series decays at -65 deg and
+       not at -27. Pinned as the flip, not the size: whether a shipped part should
+       droop at all is filed as its own ticket, not settled here. */
+    {
+        const double a0 = 0.5236;               // 30 deg: past 20.1, inside 40.1
+        const glm::dmat3 inc = glm::mat3_cast(glm::angleAxis(a0, ship[0]));
+        const glm::dvec3 w(0.5, 0.0, 0.0);
+        const glm::dvec3 rCanard(0.0, 0.0, 3.0), rTail(0.0, 0.0, -2.5);
+        const Surf c0 = surfAt(rCanard, glm::dvec3(0.0), inc);
+        const Surf t0 = surfAt(rTail, glm::dvec3(0.0), inc);
+        CHECK_NEAR(std::fabs(c0.pa.alpha), a0, 1e-12,
+                   "the mount sits past the stall angle, inside the droop");
+        CHECK_TRUE(glm::length(c0.F) > 0.0 && glm::length(t0.F) > 0.0,
+                   "a tilted wing at rest still lifts -- only the SWEEP is damping");
+        const Surf c = surfAt(rCanard, w, inc), t = surfAt(rTail, w, inc);
+        const glm::dvec3 dM = glm::cross(rCanard, c.F - c0.F)
+                            + glm::cross(rTail, t.F - t0.F);
+        CHECK_TRUE(glm::dot(dM, w) > 0.0,
+                   "in the droop the sweep DRIVES the rate it would damp below stall");
+        const Surf cn = surfAt(rCanard, -w, inc), tn = surfAt(rTail, -w, inc);
+        const glm::dvec3 dn = glm::cross(rCanard, cn.F - c0.F)
+                            + glm::cross(rTail, tn.F - t0.F);
+        CHECK_TRUE(glm::dot(dn, -w) > 0.0, "and it pumps either way, not just one");
     }
 
     // Roll rate, one wing either side: the classic roll damping no control input
