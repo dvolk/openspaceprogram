@@ -80,6 +80,17 @@ struct Part {
        too (nothing runs there). Render-only -- the force uses the same number
        locally; this field exists so Vehicle::Draw can swing the mesh. */
     double controlDefl = 0.0;
+    /* TRIM (deg, #492): the standing command this control surface is held at when
+       the player's stick is free. Saved with the part (ShipPart::trim authored it,
+       the part window edits it), unlike the deflection above, which is per-substep.
+       Applied where the stick enters the law (applyAeroForce), so it inherits the
+       per-instance sign resolution (controlDeflectionSign) for free: a mirrored
+       elevator pair and a canard all take the SAME number here and still produce
+       the same torque -- which is the whole point of putting trim next to the stick
+       rather than turning it into another mount rotation like `roll`. Degrees of
+       surface, so it means the same on a 20 deg elevator and a 5 deg one; the law
+       caps stick+trim at the part's own travel. */
+    double trimDeg = 0.0;
     /* Per-nozzle thrust (N) fired THIS RCS substep, indexed by
        PartDef::rcsNozzleCount()/rcsNozzleDir() (authored order, else the
        legacy six). Transient like controlDefl: applyRcsForce zeroes it every

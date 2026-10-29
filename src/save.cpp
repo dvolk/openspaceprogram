@@ -521,6 +521,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
         sp.parent = (p->parent != nullptr) ? p->parent->uid : 0;
         sp.stage = p->stage;
         sp.chute = p->chute;
+        sp.trim = p->trimDeg;   // #492: as the pilot left it
         sp.pos = p->localPos;
         sp.rot = p->localRot;
         sp.hull_margin = p->body->hull_margin;
@@ -866,6 +867,14 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
         // whether its chute was deployed when the ship was saved.
         p->stage = sp.stage;
         p->chute = (sp.chute > 0) ? ChuteDeployed : ChuteStowed;
+        /* And the trim the pilot had it at (#492) -- the live value, so a ship
+           re-loaded from a save keeps its trimmed state even though the ship def it
+           was built from never mentioned one. Clipped, not trusted: a save is player
+           data (hand-edited, or written by a build with different parts), and the
+           worst a wild number can do is hold a surface at full travel. clampTrim also
+           drops a trim sitting on a part that cannot steer, which would otherwise be
+           invisible, uneditable, and re-saved for ever. */
+        p->trimDeg = pd->clampTrim(sp.trim);
         if(i == 0) {
             v->setRoot(p);
         } else {

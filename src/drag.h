@@ -682,6 +682,24 @@ inline double controlCl(double cl, double clControl) {
     return (clControl > 0.0) ? clControl : cl;
 }
 
+/* The CONTROL COMMAND (#492): how far a surface travels for a stick at `stick`
+   (units of FULL travel, so -1..+1; the shipped keys are binary +-1) holding a
+   standing `trim` in the same units. Trim joins the COMMAND rather than the mount,
+   which is what makes it come out right on its own: controlDeflectionSign resolves
+   the sign per instance, so a mirrored elevator pair at clock 0/180 and a canard
+   forward of the CG all take the SAME trim number and still torque the same way --
+   exactly as they do for the stick today. (A mount rotation, which is what shipdef
+   "roll" is, would need the opposite sign on each half of a mirrored pair: fine for
+   a builder who sees the mesh, wrong for a slider.)
+   The sum is clamped to +-1 because a surface cannot travel past its own stop no
+   matter how the player holds the stick and sets the trim at once. Zero command is
+   exactly zero: the caller skips the whole surface on that test, so an unset trim
+   must not shift it (0.0 + 0.0 is exact here -- and -0.0 == 0.0). */
+inline double controlCommandFrac(double stick, double trimFrac) {
+    const double c = stick + trimFrac;
+    return (c > 1.0) ? 1.0 : (c < -1.0) ? -1.0 : c;
+}
+
 /* The jet AIR GATE shared by thrust and fuel flow: available air as a fraction
    of the body's own sea level, capped at 1. The tank drains with it -- thin air
    gives less thrust AND less burn, and vacuum gives neither. */

@@ -864,6 +864,50 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                                      + ": \"stage\" must be >= 1");
         }
 
+        /* TRIM (#492), degrees of standing control-surface deflection. Rejected
+           rather than ignored when the part cannot use one: a "trim" on a wing or a
+           fuel link would otherwise load clean and do nothing, which reads as the
+           feature being broken. Rejected past the part's own travel for the same
+           reason -- the law could clamp it, but an author who wrote 90 into a 20 deg
+           surface wrote the wrong number. */
+        sp.trim = 0.0;
+        if(pv.contains("trim")) {
+            /* Read by hand rather than pv.value("trim", 0.0): a value that is not a
+               number throws nlohmann's type_error, which the top-level handlers do
+               catch but whose message names no field. Same shape as the "geom" read
+               in save.h -- refuse loudly with the field's name. */
+            if(!pv["trim"].is_number()) {
+                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
+                                         + ": \"trim\" must be a number of degrees");
+            }
+            sp.trim = pv["trim"].get<double>();
+        }
+        if(!std::isfinite(sp.trim)) {
+            // The JSON parser already refuses a literal it cannot represent as a
+            // number, so this only bites if a value starts arriving from somewhere
+            // else. Cheap, and a NaN would sail through the fabs() test below.
+            throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
+                                     + ": \"trim\" must be a finite number of degrees");
+        }
+        if(sp.trim != 0.0) {
+            if(sp.def == nullptr || !sp.def->isControlSurface()) {
+                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
+                                         + ": \"trim\" needs a control surface"
+                                         + " (a part with control_area and max_deflection)");
+            }
+            const double limit = glm::degrees(sp.def->max_deflection);
+            if(std::fabs(sp.trim) > limit) {
+                // Printed, not cast to int: the shipped surfaces travel 20.05 deg,
+                // and an author told "20" would be refused again for writing 20.1.
+                char got[32], lim[32];
+                snprintf(got, sizeof got, "%.2f", sp.trim);
+                snprintf(lim, sizeof lim, "%.2f", limit);
+                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
+                                         + ": \"trim\" " + got + " deg exceeds this part's "
+                                         + lim + " deg of travel");
+            }
+        }
+
         /* A fuel link's from/to are required, distinct, and not its own id.
            parent/attach/angle/offset/stage are ignored. */
         if(sp.isFuelLink()) {
@@ -1293,6 +1337,7 @@ BuildShip BuildShip::fromShipDef(const ShipDef &def) {
         bp.contactNormal = sp.contactNormal;
         bp.angle = sp.angle;
         bp.roll = sp.roll;
+        bp.trim = sp.trim;
         bp.offset = sp.offset;
         bp.stage = sp.stage;
         if(sp.parent >= 0) {
@@ -1525,6 +1570,7 @@ ShipDef BuildShip::toShipDef() const {
         sp.contactPoint = bp.contactPoint;
         sp.contactNormal = bp.contactNormal;
         sp.roll = bp.roll;
+        sp.trim = bp.trim;
         sp.stage = bp.stage;
         if(!controllerId.empty() && bp.id == controllerId) { def.controller = (int)i; }
         def.parts.push_back(sp);
@@ -1724,6 +1770,9 @@ bool save_ship_def(const BuildShip &bs, const char *path) {
         }
         if(sp.offset != 0.0) { pv["offset"] = sp.offset; }
         if(sp.stage != 1) { pv["stage"] = sp.stage; }
+        /* Trim, unlike roll/angle, is a signed small angle around a neutral: no
+           wrap, and omitted at neutral so a def that never trims stays as it was. */
+        if(sp.trim != 0.0) { pv["trim"] = sp.trim; }
         arr.push_back(pv);
     }
     doc["parts"] = arr;

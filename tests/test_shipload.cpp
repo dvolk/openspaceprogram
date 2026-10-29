@@ -2203,6 +2203,82 @@ int main() {
         std::remove(bad);
     }
 
+    /* TRIM (#492): authored on the part instance, and refused where it cannot act.
+       The alternative -- loading it and letting the aero pass ignore it -- makes a
+       typo on a wing look like the feature being broken. */
+    {
+        const char *bad = "/tmp/test_shipload_bad.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", \"trim\": 5 } ] }";
+        f.close();
+        CHECK(expect_throw_saying([&](){ load_ship_def(bad, cat); }, "control surface"));
+        std::remove(bad);
+    }
+    // ...and past the surface's own travel, which the law would only ever clamp.
+    {
+        const char *bad = "/tmp/test_shipload_bad.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\" }, "
+             "{ \"part\": \"elevator_r0.8h0.7\", \"id\": \"e\", \"parent\": \"c\", "
+             "\"attach\": \"surface\", \"angle\": 0, \"z\": 0.0, \"trim\": 90 } ] }";
+        f.close();
+        CHECK(expect_throw_saying([&](){ load_ship_def(bad, cat); }, "travel"));
+        std::remove(bad);
+    }
+    // A non-number is refused, and named -- not read as 0, and not left to the
+    // json library's message, which does not say which field or which part.
+    {
+        const char *bad = "/tmp/test_shipload_bad.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", \"trim\": \"up\" } ] }";
+        f.close();
+        CHECK(expect_throw_saying([&](){ load_ship_def(bad, cat); }, "\"trim\" must be a number"));
+        std::remove(bad);
+    }
+    // An explicit 0 is neutral, not a claim, so it stays legal on any part. And a
+    // real trim has to survive the editor round trip, where nothing edits it:
+    // dropping it there would silently delete an authored trim the first time a
+    // ship went back through the VAB.
+    {
+        const char *ok = "/tmp/test_shipload_trim.json";
+        std::ofstream f(ok);
+        f << "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", \"trim\": 0 }, "
+             "{ \"part\": \"elevator_r0.8h0.7\", \"id\": \"e\", \"parent\": \"c\", "
+             "\"attach\": \"surface\", \"angle\": 0, \"z\": 0.0, \"trim\": 12 } ] }";
+        f.close();
+        bool threw = false;
+        try {
+            const ShipDef d = load_ship_def(ok, cat);
+            CHECK(near(d.parts[0].trim, 0.0));
+            CHECK(near(d.parts[1].trim, 12.0));
+            const BuildShip bs = BuildShip::fromShipDef(d);
+            CHECK(near(bs.parts[1].trim, 12.0));
+            const ShipDef back = bs.toShipDef();
+            CHECK(near(back.parts[1].trim, 12.0));
+        } catch(const std::exception &) { threw = true; }
+        CHECK(!threw);
+        std::remove(ok);
+    }
+    /* One clamp rule, shared by whoever receives a trim: the ship-def loader above
+       THROWS because the author wrote the wrong number, while the save loader and
+       the part window CLIP through PartDef::clampTrim, because a save is player data
+       and a slider is one keypress from a silly value -- losing a ship or feeding the
+       law a 90 deg elevator is the worse outcome. Pinned here so the two loaders
+       cannot drift the way the "is this a control surface" test did. */
+    {
+        const PartDef *elev = cat.find("elevator_r0.8h0.7");
+        const PartDef *pod = cat.find("capsule");
+        CHECK(elev != nullptr && pod != nullptr);
+        CHECK(elev->isControlSurface());
+        CHECK(!pod->isControlSurface());
+        const double lim = glm::degrees(elev->max_deflection);
+        CHECK(near(elev->clampTrim(12.0), 12.0));        // inside the stop: untouched
+        CHECK(near(elev->clampTrim(-90.0), -lim));       // past it: to the stop
+        CHECK(near(elev->clampTrim(lim + 1e-9), lim));   // only just past
+        CHECK(near(elev->clampTrim(0.0), 0.0));
+        CHECK(near(pod->clampTrim(12.0), 0.0));          // cannot steer: dropped
+    }
+
     // a negative chute_area must be rejected at catalog load
     {
         const char *bad = "/tmp/test_shipload_badcat.json";

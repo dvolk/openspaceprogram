@@ -56,11 +56,28 @@ void tick(Game &g) {
         if(!wantRecord && s->recordForceVecs) { s->lastForceVecs.clear(); }
         s->recordForceVecs = wantRecord;
         /* #485: the per-surface alpha/q readout is asked for by the overlay (it
-           labels each surface's own arrow) and by --drag-log (its [surface] row).
-           Only those two: recording costs a neutral control surface the flow and
-           mount frame its early-out exists to skip. */
+           labels each surface's own arrow), by --drag-log (its [surface] row) and by
+           an open part window on a STEERING part (#492: the trim slider needs the
+           angle its own surface is reading, or setting trim is blind). Steering and
+           only steering: every lifting part is already measured whether or not
+           anything is watching (vehicle.cpp's lift loop), so this flag only ever
+           decides whether a NEUTRAL control surface pays for the flow and mount frame
+           its early-out exists to skip -- asking for a wing's window would buy a wing
+           row that is already free, and would quietly change what the SURFACE window
+           counts. part_sels is a handful of entries, so the scan is nothing next to
+           the aero pass. */
+        bool partWindowWants = false;
+        for(const PartSel &ps : g.part_sels) {
+            if(ps.ship != s || ps.part >= s->parts.size()) { continue; }
+            const PartDef *pd = s->parts[ps.part]->def;
+            if(pd != nullptr && pd->isControlSurface()) {
+                partWindowWants = true;
+                break;
+            }
+        }
         s->recordSurfaceAero = wantRecord
-            || (g.args.drag_log && s == g.ship && curScene(g).pilot);
+            || (g.args.drag_log && s == g.ship && curScene(g).pilot)
+            || (partWindowWants && curScene(g).pilot);
     }
 
     while (g.accumulator >= g.dt) {

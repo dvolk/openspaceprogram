@@ -1049,6 +1049,34 @@ static void test_controlCl() {
     CHECK_TRUE(controlCl(0.0, 0.0) == 0.0, "neither set -> 0");
 }
 
+/* #492: TRIM joins the COMMAND, before the sign and before the travel scale. The
+   ship-level half of this (a trimmed surface holding a force with nothing pressed,
+   the mirrored pair coming out with opposite raw deflections off one authored
+   number) is flight/492-elevator-trim's job -- it needs the call-site's sign
+   resolution. What is pinned here is the arithmetic that call site does with the
+   number, and the one claim that keeps every shipped airframe exactly where it is:
+   an unset trim leaves the command EXACTLY what the stick alone was, so the
+   surface's neutral early-out still fires and a non-trimmed surface still costs
+   nothing. */
+static void test_control_trim() {
+    printf("== trim: a standing command, capped at the surface's travel (#492) ==\n");
+    CHECK_TRUE(controlCommandFrac(0.0, 0.0) == 0.0,
+               "no stick, no trim -> exactly zero, so the neutral test still fires");
+    // -0.0 is what a slider dragged to the left of centre can hand back, and the
+    // caller's early-out compares against 0.0.
+    CHECK_TRUE(controlCommandFrac(0.0, -0.0) == 0.0, "negative zero is still neutral");
+    // The point of the field: a surface is commanded with nothing held.
+    CHECK_NEAR(controlCommandFrac(0.0, 0.5), 0.5, 0.0, "trim alone commands the surface");
+    CHECK_NEAR(controlCommandFrac(0.0, -0.25), -0.25, 0.0, "either way");
+    // A surface cannot travel past its own stop, however the two are combined...
+    CHECK_NEAR(controlCommandFrac(1.0, 0.5), 1.0, 0.0, "stick plus trim stops at full travel");
+    CHECK_NEAR(controlCommandFrac(-1.0, -0.5), -1.0, 0.0, "and the same the other way");
+    // ...but trim is not a ratchet: holding against it backs the surface off.
+    CHECK_NEAR(controlCommandFrac(-1.0, 0.5), -0.5, 0.0,
+               "stick against trim wins, reduced -- it does not latch");
+    CHECK_NEAR(controlCommandFrac(0.5, 0.25), 0.75, 0.0, "stick and trim add up");
+}
+
 // --- Projected (silhouette) area of a body, from its convex-hull vertices.
 //
 // projectedArea(hullVerts, dir) is the area of the convex hull of the
@@ -1717,6 +1745,8 @@ int main() {
     test_controlSurfaceVisualRot();
     printf("\n");
     test_controlCl();
+    printf("\n");
+    test_control_trim();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

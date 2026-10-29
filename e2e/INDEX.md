@@ -7,10 +7,10 @@ kind says how much weight the assertions carry.
 | kind | meaning | cases |
 |---|---|---|
 | `invariant` | a behaviour or a player route the game must keep | 269 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 38 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 39 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **325** |
+| | **total** | **326** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (77)
+## flight (78)
 
 | case | kind | pins |
 |---|---|---|
@@ -99,6 +99,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/472-scripted-paused-sim-says-so.txt` | harness | A scripted run whose sim never advances prints the rows AND says the run measured nothing, instead of exiting 0 on a frozen world. |
 | `flight/485-per-surface-alpha.txt` | golden | The [surface] row #485 adds quotes all eight lifting or steering parts of the skiff on every --drag-log sample -- each one's own angle of attack signed into SHIP axes plus the dynamic pressure of the flow standing at it -- so a mirrored twin pair reads alike (wing_l and wing_r within 0.3 deg while the airframe is in the flow), the tailplane's -5 deg mount incidence shows as a 4.5-5.5 deg gap between tail and wing, the fin's angle IS the sideslip it is weathervaning against (within 1.2 deg of -Beta on rows over 4 deg), and each part's q matches 0.5*rho*v^2 inside 8%. |
 | `flight/490-skiff-trim-and-weathervane.txt` | golden | A 552 kg airframe built to the #490 arithmetic -- 21.6 m2 of AR-3.33 wing 0.34 m behind the CG, a 4 m2 tailplane set to -5 deg incidence 2.0 m back, a fixed fin 2.2 m back -- holds 7000 m at 79 m/s inside 16 m with the stick released, keeps +2.6 deg of angle of attack through throttle-off AND a 1 s rudder kick, weathervanes that kick from 7.7 deg back to zero, and keeps its centre of pressure 0.69-0.81 m behind the CG the whole time. |
+| `flight/492-elevator-trim.txt` | golden | The same 552 kg airframe as skiff, with the tailplane's 5 deg of mount incidence REMOVED and 12 deg of elevator TRIM authored on the part instances instead, stays inside 6960-7120 m at 74-81 m/s while powered with the stick released, stays at +2.2..+3.1 deg of angle of attack on every row of a 50 s run, holds -12.0/+12.0 deg of elevator deflection with no key pressed, and reads the tail at the wing's own angle of attack (within 0.4 deg) -- so the download that trims this airframe now comes from deflection rather than from how the surface was bolted on. |
 
 ## crew (25)
 

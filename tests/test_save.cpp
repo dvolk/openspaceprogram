@@ -78,6 +78,7 @@ int main() {
     tank.parent = 101;       // the capsule, by uid
     tank.stage = 2;
     tank.chute = 1;          // deployed (ChuteDeployed, part.h)
+    tank.trim = -12.0;       // as the pilot left it (Part::trimDeg, #492)
     tank.pos = glm::dvec3(0.0, 0.0, -2.25);
     tank.rot = glm::dmat3(1.0);
     tank.hull_margin = 0.1;
@@ -127,6 +128,7 @@ int main() {
         CHECK(a.parent == b.parent);
         CHECK(a.stage == b.stage);
         CHECK(a.chute == b.chute);
+        CHECK(near(a.trim, b.trim));   // #492: a trimmed surface stays trimmed
         CHECK(vnear(a.pos, b.pos));
         CHECK(mnear(a.rot, b.rot));
         CHECK(near(a.hull_margin, b.hull_margin));
@@ -831,9 +833,32 @@ int main() {
     CHECK(partOut.parent == 0);       // 0 = the root
     CHECK(partOut.stage == 1);
     CHECK(partOut.chute == 0);       // absent = stowed (older saves)
+    CHECK(near(partOut.trim, 0.0));  // absent = neutral trim (#492, same shape)
     CHECK(vnear(partOut.pos, glm::dvec3(0.0)));
     CHECK(mnear(partOut.rot, glm::dmat3(1.0)));
     CHECK(near(partOut.hull_margin, -1.0));
+
+    /* TRIM (#492): the value a pilot left, per part. Read permissively like the
+       scalars around it -- a hand-edited or future-typed "trim" is ignored rather
+       than loading a garbage angle, and the law caps a wild value at the surface's
+       own travel anyway. */
+    {
+        nlohmann::json t = nlohmann::json::object();
+        t["part"] = "elevator";
+        t["id"] = "elev_l";
+        t["trim"] = -12.5;
+        CHECK(near(savePartFromJson(t).trim, -12.5));
+        t["trim"] = "left";
+        CHECK(near(savePartFromJson(t).trim, 0.0));
+        // And it round-trips out of the writer only when it is not neutral, so a
+        // ship that never trims keeps writing the same part entries it did before.
+        SavePart sp;
+        sp.part = "elevator";
+        sp.id = "elev_l";
+        CHECK(!savePartToJson(sp).contains("trim"));
+        sp.trim = 3.0;
+        CHECK(near(savePartFromJson(savePartToJson(sp)).trim, 3.0));
+    }
 
     /* A reference keyed by STRING where a uid is expected reads back as 0 --
        which is what an old-format save looks like, and why load treats 0 as a

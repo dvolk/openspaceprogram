@@ -1,0 +1,54 @@
+NAME elevator-trim
+CLAIM The same 552 kg airframe as skiff, with the tailplane's 5 deg of mount incidence REMOVED and 12 deg of elevator TRIM authored on the part instances instead, stays inside 6960-7120 m at 74-81 m/s while powered with the stick released, stays at +2.2..+3.1 deg of angle of attack on every row of a 50 s run, holds -12.0/+12.0 deg of elevator deflection with no key pressed, and reads the tail at the wing's own angle of attack (within 0.4 deg) -- so the download that trims this airframe now comes from deflection rather than from how the surface was bolted on.
+KIND golden
+ARGS --time-accel 1 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
+ARGS --sim-steps 3000 --drag-log --mass-log
+ARGS --sim-press 500,3000,R,500,20000,T,25000,1000,A
+EXPECT [ctrl]
+EXPECT [surface]
+EXPECT [mass]
+# skiff_trim.json IS skiff.json except for two things: the tailplanes lost their
+# "roll": -5/+5 (the incidence that #490 used to trim this airframe, a build choice
+# the pilot cannot reach and cannot change in flight) and the elevators gained
+# "trim": 12. Same 11 parts, same 552.33 kg, same hull.
+CHECK mass[0]["parts"] == 11
+CHECK 545.0 < mass[0]["mass"] < 560.0
+# TRIM HELPS WITH NOTHING PRESSED. R ramps the throttle at 0.5 s and T latches the
+# engine until 20.5 s; no W/S/A/D before the 25 s rudder kick. The airframe holds
+# 7006-7087 m while powered at 75.4-79.1 m/s and never left +2.4..+2.9 deg of AoA in
+# the whole 50 s -- including through the sideslip and the glide. The untrimmed,
+# unincided version of this ship (#492's repro) sits at AoA exactly 0.0 and sinks:
+# this law gives a control surface no say from its own angle, so with everything
+# symmetric alpha = 0 is the only pitch equilibrium.
+CHECK len(drag) >= 40
+CHECK all(6960.0 < d["alt"] < 7120.0 for d in drag if 5 <= d["t"] <= 20)
+CHECK all(74.0 < d["v"] < 81.0 for d in drag if 5 <= d["t"] <= 20)
+CHECK all(2.2 < d["aoa"] < 3.1 for d in drag if d["t"] >= 5)
+# WHAT THE TRIM IS DOING, READ OFF THE LOG. Every pitch surface is held at 12.0 deg
+# of travel with no key held, and the mirrored pair carries OPPOSITE signs off one
+# authored number -- controlDeflectionSign resolves it per instance exactly as it does
+# for the stick, which is why the pilot's slider needs no idea how the part is mounted.
+# The rudder row only appears during the 25 s kick (deg up to 20.1, its full travel).
+CHECK all(abs(c["deg"]) > 11.5 for c in ctrl if c["axis"] == "pitch")
+CHECK len({c["index"] for c in ctrl if c["axis"] == "pitch"}) == 2
+CHECK abs(min(c["deg"] for c in ctrl if c["axis"] == "pitch") + max(c["deg"] for c in ctrl if c["axis"] == "pitch")) < 0.2
+CHECK all(c["t"] is not None for c in ctrl)
+# And #485's per-surface rows say where the download comes from now: the tailplane
+# reads the WING's angle (0.2 deg apart at worst, because its incidence is gone) and so
+# do the elevators, yet the airframe still trims nose-up. The deflection is not an
+# angle of attack -- it is a separate term -- and this is the pair of facts that says
+# the trim went into the law rather than into the mount.
+CHECK len(surface) == 8 * len(drag)
+CHECK max(abs(a - b) for a,b in zip([s["a"] for s in surface][2::8],[s["a"] for s in surface][0::8])) < 0.4
+CHECK max(abs(a - b) for a,b in zip([s["a"] for s in surface][5::8],[s["a"] for s in surface][0::8])) < 0.4
+# FLIGHT QUALITY, unchanged from the incidence version: upright throughout, a 60 m/s
+# bottom in the throttle-off exchange with nothing below 6485 m, the hull's weathervane
+# lever still 0.69-0.89 m behind the CG, and the wings still paying induced drag on
+# their own aspect ratio (0.26-1.31 m2, the top during the sideslip).
+CHECK all(d["up"] > 0.85 for d in drag if d["t"] >= 5)
+CHECK min(d["v"] for d in drag if d["t"] >= 22) > 55.0
+CHECK all(d["alt"] > 6400.0 for d in drag)
+CHECK all(-0.95 < d["cpl"] < -0.6 for d in drag if d["cpl"] is not None)
+CHECK all(d["induced"] > 0.0 for d in drag if d["L"] > 1.0)
+CHECK max(d["induced"] for d in drag) > 1.0
+FORBID error:

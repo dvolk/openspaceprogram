@@ -1906,9 +1906,12 @@ void drawUIReadouts(Game &g) {
            show the SPREAD across them and how many were read. On a rotating
            airframe the spread is the point: a twin pair straddles the rotation
            axis, so its halves differ in SIGN mid-swing. A neutral control surface
-           is counted only while the F4 overlay or --drag-log is open (recording it
-           costs the flow+frame its neutral early-out exists to skip); every
-           lifting surface is always counted. --drag-log prints the same numbers per
+           is counted only while something wants it -- the F4 overlay, --drag-log, or
+           an open part window on that steering part (#492) -- because recording it
+           costs the flow+frame its neutral early-out exists to skip; every lifting
+           surface is always counted. So this line's SPREAD can change when you open
+           a part window; that is not a bug in the spread, it is one more surface
+           having been measured. --drag-log prints the same numbers per
            surface as [surface], and each surface's own arrow in the overlay carries
            its own angle. */
         float amin = 0.0f, amax = 0.0f;
@@ -2440,6 +2443,46 @@ void drawPartWindows(Game &g) {
                             Vehicle::resourceUnit(r),
                             def->capacity[r],
                             Vehicle::resourceUnit(r));
+            }
+            // --- control surface (this part steers) ----------------------------
+            /* TRIM (#492): the standing command this surface is held at when the
+               stick is free -- what makes an airframe fly level untouched. Until now
+               the only way to offset a surface was to bolt it at an angle in the ship
+               def ("roll"), which is a build choice a pilot cannot reach, and which
+               needs the OPPOSITE number on each half of a mirrored pair. Here the
+               number means the same thing on both halves and on a canard: the law
+               resolves the sign per instance (drag.h::controlCommandFrac).
+               The deflection and angle rows are the point of showing this at all:
+               a trim slider with no angle readout next to it is a slider into the
+               void. The angle is #485's reading for THIS surface (its own mount and
+               its own bit of flow), and tick.cpp arms that recording while a part
+               window is open on a steering part. */
+            if(def->isControlSurface()) {
+                ImGui::Separator();
+                ImGui::Text("Control surface: %s",
+                            controlAxisName(def->control_axis));
+                ImGui::Text("Defl: %+.1f deg",
+                            glm::degrees(ship->parts[part]->controlDefl));
+                if(ship->parts[part]->aeroValid) {
+                    ImGui::Text("AoA: %+.1f deg  q=%.0f Pa",
+                                ship->parts[part]->aeroAlphaDeg,
+                                ship->parts[part]->aeroQ);
+                } else {
+                    ImGui::Text("AoA: -   q:-");
+                }
+                /* The slider's range is not the clamp. Ctrl+click turns any slider
+                   into a text box and imgui leaves typed input unclamped unless
+                   AlwaysClamp is asked for (imgui.h:694); the float cast of a double
+                   travel can also sit a hair above it. Both end in the law and in the
+                   save, so the value goes through PartDef::clampTrim -- the same rule
+                   the ship-def loader enforces by throwing (shipdef.cpp) and the save
+                   loader by clipping (save.cpp). */
+                const double limit = glm::degrees(def->max_deflection);
+                float trim = (float)ship->parts[part]->trimDeg;
+                if(ImGui::SliderFloat("Trim", &trim, -(float)limit, (float)limit,
+                                      "%+.1f deg", ImGuiSliderFlags_AlwaysClamp)) {
+                    ship->parts[part]->trimDeg = def->clampTrim((double)trim);
+                }
             }
             // --- docking port ------------------------------------------------
             // Docking is intent-driven (Game::updateDocking): the active ship docks only with

@@ -92,6 +92,8 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
                                resolveHullMargin(def.hull_margin, pd.hull_margin),
                                nullptr, nullptr, physical[i].id, partsshader);
         part->stage = physical[i].stage;
+        // Authored trim (load_ship_def refused it on a part that cannot use one).
+        part->trimDeg = physical[i].trim;
 
         if(i == 0) {
             ship->setRoot(part);
@@ -2616,25 +2618,33 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         for(Part *p : parts) {
             if(p->def == nullptr) { continue; }
             const PartDef *d = p->def;
-            if(d->control_area <= 0.0 || d->max_deflection <= 0.0) { continue; }
+            if(!d->isControlSurface()) { continue; }
             // cl_control if set, else the lift slope cl
             const double clc = controlCl(d->cl, d->cl_control);
             // pure controlAxisParams (pinned in test_shipload)
             const ControlAxisParams ax = controlAxisParams(d->control_axis);
             const float sv = stick[ax.stickIndex];   // 0 when that stick is free
-            if(sv == 0.0f) {
-                /* No input, no deflection, no force: controlForce is a deflection
+            /* TRIM (#492): degrees of standing deflection the player set on THIS
+               part, converted to the stick's units so it joins the stick before the
+               sign is decided -- see drag.h::controlCommandFrac for why joining the
+               command is what makes a mirrored pair come out right. */
+            const double cmd = controlCommandFrac((double)sv,
+                                                  glm::radians(p->trimDeg)
+                                                      / d->max_deflection);
+            if(cmd == 0.0) {
+                /* No command, no deflection, no force: controlForce is a deflection
                    law, so a surface nobody touched contributes exactly nothing however
                    the airframe is swinging. Skipped BEFORE the offset, the flow and the
                    mount frame, which is most of this loop's cost and, at shipped part
                    counts, mostly paid for surfaces sitting neutral. The surface index
                    still advances so a held pair keeps its numbering (flight/453 filters
                    on it), and controlDefl stays where its per-frame reset left it.
-                   Exact compare against 0 is safe while the stick is binary -- it is
-                   only ever 0.0f/+-1.0f here -- but an analog trim would want a dead
-                   band, and this line is where that decision belongs (#492: a trim
-                   offset deflects a surface with no stick held, so the dead band and
-                   this neutral test have to be decided together). */
+                   The test is against the COMMAND, not the stick: a trimmed surface is
+                   commanded even with nothing held, and skipping it there would make
+                   trim do nothing -- which is also why there is no dead band. A stick
+                   is binary (+-1 or exactly 0) and a trim is a value the player set on
+                   purpose, so an exact compare stays safe; a dead band would swallow
+                   the small trims that make an airframe fly level. */
                 if(recordSurfaceAero) {
                     /* #485: a NEUTRAL surface's own angle is exactly what #454's
                        alpha term and #487's pump band want to see, so when a readout
@@ -2695,12 +2705,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                rather than printing and animating a full-deflection fin that pushes 0 N. */
             const double sign =
                 controlDeflectionSign(ri, forceDir, about, ax.targetSign);
-            const double deflection = pa.valid ? sign * (double)sv * d->max_deflection
+            const double deflection = pa.valid ? sign * cmd * d->max_deflection
                                                : 0.0;
             p->controlDefl = deflection;  // the mesh swing (Vehicle::Draw)
             lastControlDeflections.push_back({d, ctrlIndex++, deflection});
-            // sv != 0 here (the early-out above), so this asks about an unusable
-            // frame (deflection 0), a surface with no slope, and a zero force.
+            // cmd != 0 here (the early-out above), so deflection is 0 only on an
+            // unusable frame; the cl and force tests stay for a surface with no
+            // slope and one that makes no force anyway.
             if(clc <= 0.0 || deflection == 0.0) { continue; }
             const glm::dvec3 F = controlForce(qp, d->control_area, clc,
                                               deflection, forceDir);

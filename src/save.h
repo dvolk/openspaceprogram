@@ -64,6 +64,10 @@ struct SavePart {
     int stage = 1;
     /* ChuteState (part.h): 0 = stowed (absent on older saves), 1 = deployed. */
     int chute = 0;
+    /* Part::trimDeg (#492): the standing control-surface command in degrees, as the
+       player left it. Absent = neutral, so a pre-trim save loads untrimmed rather
+       than refused -- the same shape as `chute` above. */
+    double trim = 0.0;
     glm::dvec3 pos = glm::dvec3(0.0);
     glm::dmat3 rot = glm::dmat3(1.0);
     double hull_margin = -1.0;
@@ -383,6 +387,7 @@ inline nlohmann::json savePartToJson(const SavePart &p) {
     if(p.parent != 0) { j["parent"] = p.parent; }
     j["stage"]  = p.stage;
     if(p.chute != 0) { j["chute"] = p.chute; }
+    if(p.trim != 0.0) { j["trim"] = p.trim; }
     if(p.pos != glm::dvec3(0.0)) { j["pos"] = std::vector<double>({p.pos.x, p.pos.y, p.pos.z}); }
     if(p.rot != glm::dmat3(1.0)) { j["rot"] = mat3ToVec(p.rot); }
     if(p.hull_margin >= 0.0) { j["hull_margin"] = p.hull_margin; }
@@ -412,6 +417,7 @@ inline SavePart savePartFromJson(const nlohmann::json &j) {
     p.parent = readUid(j, "parent");
     if(j.contains("stage") && j["stage"].is_number()) { p.stage = j["stage"].get<int>(); }
     if(j.contains("chute") && j["chute"].is_number()) { p.chute = j["chute"].get<int>(); }
+    if(j.contains("trim") && j["trim"].is_number()) { p.trim = j["trim"].get<double>(); }
     if(j.contains("pos") && j["pos"].is_array()) { p.pos = vec3FromJson(j["pos"]); }
     if(j.contains("rot") && j["rot"].is_array()) { p.rot = mat3FromVec(j["rot"]); }
     if(j.contains("hull_margin") && j["hull_margin"].is_number()) { p.hull_margin = j["hull_margin"].get<double>(); }

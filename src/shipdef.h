@@ -311,6 +311,26 @@ struct PartDef {
     double cl_control;
     double max_deflection;
 
+    /* Does this part steer? Four places ask (the aero law, the ship-def loader,
+       the part window, the tick's per-surface recording arming) and they drifted
+       apart the first time I wrote them by hand, so the test lives here (#492). */
+    bool isControlSurface() const {
+        return control_area > 0.0 && max_deflection > 0.0;
+    }
+
+    /* TRIM (#492): force a requested standing deflection (deg) inside this
+       surface's travel; 0 for a part that cannot steer, so a trim left on the
+       wrong part cannot hide in a save forever. Refusing instead of clamping is
+       right at ship-def load time -- an author who wrote 90 into a 20 deg surface
+       wrote the wrong number -- but a SAVE is player data, and losing a ship over
+       a bad number is worse than clipping it. shipdef.cpp throws; save.cpp calls
+       this. */
+    double clampTrim(double trimDeg) const {
+        if(!isControlSurface()) { return 0.0; }
+        const double lim = glm::degrees(max_deflection);
+        return (trimDeg > lim) ? lim : (trimDeg < -lim) ? -lim : trimDeg;
+    }
+
     /* Parachute: the deployed canopy's effective Cd·A [m^2]; > 0 -> a chute part.
        The canopy is NOT a collision shape -- its drag is analytic, applied at the
        canopy's anchor (its offset from the COM is the weathervane moment). */
@@ -395,6 +415,12 @@ struct ShipPart {
     glm::dvec3 contactPoint;
     glm::dvec3 contactNormal;
     double roll;
+    /* TRIM (degrees, #492): the standing angle a CONTROL SURFACE of this part sits
+       at when the stick is free. Authored here, edited in flight in the part's own
+       window, saved with the ship. It is NOT incidence: `roll` bolts a surface to
+       the airframe at an angle, which is a build choice; trim is what the pilot sets
+       so the airframe flies level untouched. See Part::trimDeg for the law. */
+    double trim = 0.0;
     int stage;             // reserved for staging; 1 = single stage
     std::string from;      // fuel link only: source part id
     std::string to;        // fuel link only: destination part id
@@ -472,6 +498,11 @@ struct BuildPart {
     glm::dvec3 contactPoint, contactNormal;     // surface edge contact (parent-local)
     double angle = 0.0;   // stack edge: roll about the mating axis
     double roll  = 0.0;   // surface edge: roll about the contact normal
+    /* ShipPart::trim. The editor has no control for it yet: it round-trips, it is
+       not editable (same arrangement as BuildShip's attitude fields below, and for
+       the same reason -- dropping it here would silently delete an authored or
+       in-flight trim the moment a ship goes back through the VAB). */
+    double trim = 0.0;
     double offset = 0.0;
     int stage = 1;
     glm::dvec3 localPos;  // solved, ship-local frame S (root frame)
