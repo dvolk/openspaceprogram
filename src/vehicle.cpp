@@ -2201,8 +2201,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastInducedCdA = 0.0;
     lastControlDeflections.clear();  // a no-air substep reports no steering
     // Fins swing back to neutral whenever this substep produces no steering
-    // (vacuum, no-atmosphere body, below sea level, --drag-cd 0).
+    // (vacuum, no-atmosphere body, below sea level, --drag-cd 0). Same sweep
+    // invalidates #485's per-surface readout: a part this pass does not reach
+    // quotes nothing rather than quoting last substep's angle.
     for(Part *p : parts) {
+        p->aeroValid = false;
         if(p->def != nullptr && p->def->control_area > 0.0) { p->controlDefl = 0.0; }
     }
 
@@ -2551,6 +2554,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
            lift_area test above comes first. */
         const PartAero pa = partAero(sRot * p->localRot, vp);
         if(!pa.valid) { continue; }   // a mount with no usable axis lifts nothing
+        /* #485: what this surface's law actually read, for the F4 overlay, the
+           SURFACE window and the [surface] log. Recorded after the valid gate (an
+           edge-on or axis-less mount quotes nothing rather than a stale angle) and
+           before the zero-force test below -- a surface at alpha 0 is measured, it
+           just is not pushing. Free: both numbers are already in hand here. */
+        p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(pa, up, right);
+        p->aeroQ = (float)qp;
+        p->aeroValid = true;
         const glm::dvec3 flift = liftForce(qp, d->lift_area, d->cl, pa.alpha,
                                            pa.liftDir, d->stall_angle);
         if(glm::length2(flift) <= 0.0) { continue; }
@@ -2559,7 +2570,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         ftotal += flift;
         lift_total += flift;
         if(recordForceVecs) {
-            lastForceVecs.push_back({ ri, flift, kForceLift });
+            lastForceVecs.push_back({ ri, flift, kForceLift, p->aeroAlphaDeg, true });
         }
         /* The price of that lift (#462): a surface that turns the flow downward
            pays induced drag ~ CL^2 / (pi e AR) for it, along the flow IT feels
@@ -2621,7 +2632,21 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                    on it), and controlDefl stays where its per-frame reset left it.
                    Exact compare against 0 is safe while the stick is binary -- it is
                    only ever 0.0f/+-1.0f here -- but an analog trim would want a dead
-                   band, and this line is where that decision belongs. */
+                   band, and this line is where that decision belongs (#492: a trim
+                   offset deflects a surface with no stick held, so the dead band and
+                   this neutral test have to be decided together). */
+                if(recordSurfaceAero) {
+                    /* #485: a NEUTRAL surface's own angle is exactly what #454's
+                       alpha term and #487's pump band want to see, so when a readout
+                       is open pay for the flow and mount frame this early-out exists
+                       to skip. Only when one is open -- the hot path stays as cheap
+                       as it was. */
+                    const LocalFlow lf0 = localFlow(vrel, w, partPosS(p) - com, rho);
+                    const PartAero pa0 = partAero(sRot * p->localRot, lf0.vp);
+                    p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(pa0, up, right);
+                    p->aeroQ = (float)lf0.q;
+                    p->aeroValid = pa0.valid;
+                }
                 ++ctrlIndex;
                 continue;
             }
@@ -2655,6 +2680,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             const LocalFlow lf = localFlow(vrel, w, ri, rho);
             const double qp = lf.q;
             const PartAero pa = partAero(sRot * p->localRot, lf.vp);
+            /* #485, same as the lift loop. The law below still answers deflection
+               alone -- recording the angle makes it visible, not load-bearing. */
+            p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(pa, up, right);
+            p->aeroQ = (float)qp;
+            p->aeroValid = pa.valid;
             const glm::dvec3 forceDir = pa.liftDir;   // zero when the frame is unusable
             const glm::dvec3 about =
                 (ax.aboutAxis == 0) ? right : (ax.aboutAxis == 1) ? up : nose;
@@ -2679,7 +2709,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             ftotal += F;
             moment += glm::cross(ri, F);
             if(recordForceVecs) {
-                lastForceVecs.push_back({ ri, F, kForceCtrl });
+                lastForceVecs.push_back({ ri, F, kForceCtrl, p->aeroAlphaDeg, pa.valid });
             }
         }
     }

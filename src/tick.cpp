@@ -55,6 +55,12 @@ void tick(Game &g) {
                              && curScene(g).pilot;
         if(!wantRecord && s->recordForceVecs) { s->lastForceVecs.clear(); }
         s->recordForceVecs = wantRecord;
+        /* #485: the per-surface alpha/q readout is asked for by the overlay (it
+           labels each surface's own arrow) and by --drag-log (its [surface] row).
+           Only those two: recording costs a neutral control surface the flow and
+           mount frame its early-out exists to skip. */
+        s->recordSurfaceAero = wantRecord
+            || (g.args.drag_log && s == g.ship && curScene(g).pilot);
     }
 
     while (g.accumulator >= g.dt) {
@@ -513,6 +519,29 @@ void tick(Game &g) {
                                glm::degrees(cd.deflection));
                     }
                     printf("\n");
+                }
+                /* #485: what each lifting or steering SURFACE's law actually read on
+                   the last substep -- its own angle of attack and the dynamic pressure
+                   of the flow standing AT it (#483). The [drag] line's AoA is one
+                   attitude number for the whole ship; these are the angles the forces
+                   come from, and until now the only way to see them was a temporary
+                   probe in the aero pass. A surface the pass found unusable (no flow,
+                   an edge-on mount) is skipped rather than quoted at 0.
+                   Labelled by its def id when it has one (wing_l, tail_r) because a
+                   twin pair is exactly the case this row exists to tell apart. */
+                {
+                    bool any = false;
+                    for(const Part *p : g.ship->parts) {
+                        if(!p->aeroValid || p->def == nullptr) { continue; }
+                        if(p->def->lift_area <= 0.0 && p->def->control_area <= 0.0) {
+                            continue;
+                        }
+                        if(!any) { printf("[surface]"); any = true; }
+                        printf(" %s a=%+.1f q=%.0f",
+                               p->id.empty() ? p->def->name.c_str() : p->id.c_str(),
+                               p->aeroAlphaDeg, p->aeroQ);
+                    }
+                    if(any) { printf("\n"); }
                 }
                 /* RCS nozzle allocation (#428): which BELLS fired for the
                    commanded move -- [tag] names the bell (part-local), the

@@ -433,6 +433,91 @@ static void test_partAero() {
     }
 }
 
+/* #485: the per-surface ANGLE READOUT. alpha comes out of each surface's own mount
+   frame, so a twin pair mounted at attach angle 0 and 180 (jet.json's wing_1/wing_2,
+   the skiff's tail_l/tail_r, the glider's rudders at 90/270) carries mirrored signs:
+   +2.6 and -2.6 for two surfaces at one physical angle. That is a display bug, not a
+   law bug -- the two flips cancel in the FORCE, which is what #453 pinned -- and it is
+   worse than showing nothing, because it buries the one difference worth looking at:
+   a pair whose angles ACTUALLY differ (one half swept into the flow by a roll or a
+   yaw, #483). surfaceAlphaDegForReadout signs the number into ship axes instead. Three
+   pins: a mirrored pair reads alike; the sign is the sign of the force that surface
+   makes along that ship axis (positive = pushes up for a wing, right for a fin); and a
+   real difference still shows. None of this is legible in a flight log -- the log's
+   totals are the same whatever the readout prints -- so it lives here. */
+static void test_surface_alpha_readout() {
+    printf("== surface alpha readout: ship axes, not each mount's own (#485) ==\n");
+    const double q = 0.5 * 1.225 * 100.0 * 100.0, S = 4.0, cl = 6.0, stall = 0.35;
+    const double aoa = glm::radians(5.0);
+    const glm::dvec3 vrel(0.0, -100.0 * std::sin(aoa), 100.0 * std::cos(aoa));
+    const glm::dmat3 ship(1.0);
+    const glm::dvec3 up(0.0, 1.0, 0.0), right(1.0, 0.0, 0.0);
+
+    // A wing and its twin at attach angle 180: opposite frames, one physical angle.
+    {
+        const PartAero a = partAero(ship, vrel);
+        const PartAero b = partAero(glm::dmat3(-ship[0], -ship[1], ship[2]), vrel);
+        CHECK_NEAR(surfaceAlphaDegForReadout(a, up, right), 5.0, 1e-9,
+                   "an aligned wing reads its own AoA, in degrees");
+        CHECK_NEAR(surfaceAlphaDegForReadout(b, up, right),
+                   surfaceAlphaDegForReadout(a, up, right), 1e-9,
+                   "and its 180-deg twin reads the SAME number, not the mirror");
+        // What the sign MEANS: the sign of the force, in the same ship axis the
+        // number is signed against. Without this, "+2.6" is a coin flip per part.
+        const glm::dvec3 Fa = liftForce(q, S, cl, a.alpha, a.liftDir, stall);
+        const glm::dvec3 Fb = liftForce(q, S, cl, b.alpha, b.liftDir, stall);
+        CHECK_TRUE(glm::dot(Fa, up) > 0.0 && glm::dot(Fb, up) > 0.0,
+                   "positive readout = the surface pushes ship-up");
+    }
+
+    // A fin: the plate turned 90 deg about the ship's nose, so its span stands along
+    // ship up and its normal faces ship's left; the mirror is a fin at 270 (the
+    // glider's rudder pair). Yaw the flow 10 deg and both must read the same 10 deg,
+    // signed against ship's RIGHT -- the axis a fin moves the ship along.
+    {
+        const double psi = glm::radians(10.0);
+        const glm::dvec3 vyaw(100.0 * std::sin(psi), 0.0, 100.0 * std::cos(psi));
+        const glm::dmat3 fin(glm::dvec3(0.0, 1.0, 0.0), glm::dvec3(-1.0, 0.0, 0.0),
+                             glm::dvec3(0.0, 0.0, 1.0));
+        const glm::dmat3 fin2(glm::dvec3(0.0, -1.0, 0.0), glm::dvec3(1.0, 0.0, 0.0),
+                              glm::dvec3(0.0, 0.0, 1.0));
+        const PartAero pa = partAero(fin, vyaw), pb = partAero(fin2, vyaw);
+        CHECK_TRUE(pa.valid && pb.valid, "both fins of a 90/270 pair have frames");
+        CHECK_NEAR(std::fabs(surfaceAlphaDegForReadout(pa, up, right)), 10.0, 1e-9,
+                   "a yawed flow gives a fin its yaw angle, not the ship's AoA");
+        CHECK_NEAR(surfaceAlphaDegForReadout(pa, up, right),
+                   surfaceAlphaDegForReadout(pb, up, right), 1e-9,
+                   "and a 90/270 pair reads alike");
+        const glm::dvec3 Fa = liftForce(q, S, cl, pa.alpha, pa.liftDir, stall);
+        const double sr = glm::dot(Fa, right);
+        CHECK_TRUE(std::fabs(sr) > 0.01 * glm::length(Fa),
+                   "a fin's force runs along ship's right");
+        CHECK_TRUE(sr * surfaceAlphaDegForReadout(pa, up, right) > 0.0,
+                   "and its sign is the sign of the readout");
+    }
+
+    // A pair that genuinely differs must still DIFFER: a rolling airframe sweeps one
+    // wing up and the other down through the air (#483), which is roll damping, and
+    // the readout is how a player would SEE it. Same mount, different local flow.
+    {
+        const glm::dvec3 w(0.0, 0.0, 1.0);        // 1 rad/s about the nose
+        const glm::dvec3 v0(0.0, 0.0, 100.0);     // level flight, AoA 0
+        const LocalFlow la = localFlow(v0, w, glm::dvec3(3.0, 0.0, 0.0), 1.225);
+        const LocalFlow lb = localFlow(v0, w, glm::dvec3(-3.0, 0.0, 0.0), 1.225);
+        const double ra = surfaceAlphaDegForReadout(partAero(ship, la.vp), up, right);
+        const double rb = surfaceAlphaDegForReadout(partAero(ship, lb.vp), up, right);
+        CHECK_TRUE(std::fabs(ra - rb) > 1.0,
+                   "a rolling airframe's two wings read DIFFERENT angles");
+        CHECK_NEAR(ra + rb, 0.0, 1e-9, "equal and opposite, because the roll is");
+    }
+
+    // An unusable frame reads 0.0 out of the struct's defaults. That is NOT a claim
+    // that the surface sits at zero -- tick.cpp declines to quote such a part at all
+    // -- so callers gate on Part::aeroValid; this only pins there is nothing to sign.
+    CHECK_NEAR(surfaceAlphaDegForReadout(partAero(glm::dmat3(0.0), vrel), up, right),
+               0.0, 1e-12, "a refused frame carries no angle to sign");
+}
+
 /* #483: a surface feels the flow AT ITSELF, v_rel + w x r, not the COM's. drag.h
    knows no bodies and no angular velocity, so what is pinned here is the
    COMPOSITION applyAeroForce runs (one cross product, then partAero, then
@@ -1603,6 +1688,8 @@ int main() {
     test_wing_lifts_up();
     printf("\n");
     test_partAero();
+    printf("\n");
+    test_surface_alpha_readout();
     printf("\n");
     test_local_flow_sweep();
     printf("\n");

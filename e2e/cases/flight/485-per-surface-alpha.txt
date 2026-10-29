@@ -1,0 +1,47 @@
+NAME skiff-per-surface-alpha
+CLAIM The [surface] row #485 adds quotes all eight lifting or steering parts of the skiff on every --drag-log sample -- each one's own angle of attack signed into SHIP axes plus the dynamic pressure of the flow standing at it -- so a mirrored twin pair reads alike (wing_l and wing_r within 0.3 deg while the airframe is in the flow), the tailplane's -5 deg mount incidence shows as a 4.5-5.5 deg gap between tail and wing, the fin's angle IS the sideslip it is weathervaning against (within 1.2 deg of -Beta on rows over 4 deg), and each part's q matches 0.5*rho*v^2 inside 8%.
+KIND golden
+ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
+ARGS --sim-steps 3000 --drag-log
+ARGS --sim-press 500,3000,R,500,20000,T,25000,1000,A
+EXPECT [surface]
+# One [surface] line per [drag] line, and every line carries all eight surfaces: the
+# aero pass finds a usable frame for each of them at this attitude, so the line length
+# is fixed. That is also what lets the checks below read the parts by stride --
+# wing_l, wing_r, tail_l, tail_r, fin, elev_l, elev_r, rudder, in the shipdef's part
+# order -- instead of re-matching names.
+CHECK len(drag) >= 40
+CHECK len(surface) == 8 * len(drag)
+CHECK set(s["name"] for s in surface) == {"wing_l","wing_r","tail_l","tail_r","fin","elev_l","elev_r","rudder"}
+# THE TWIN PROBLEM #485 EXISTS FOR. partAero measures alpha in each mount's own frame,
+# and wing_l/wing_r (like tail_l/tail_r) are the same plate mounted at attach angle 0
+# and 180, so their RAW alphas are equal and opposite while their forces are identical
+# (#453). Printed raw, a healthy pair looks broken and a broken pair looks healthy.
+# Signed into ship axes the pair agrees: max wing spread 0.3 deg and max tail spread
+# 0.3 deg on every row the ship is not sideslipping (|Beta| < 0.6).
+CHECK max(abs(a-b) for a,b,g in zip([s["a"] for s in surface][0::8],[s["a"] for s in surface][1::8],[d["beta"] for d in drag]) if abs(g) < 0.6) < 0.3
+CHECK max(abs(a-b) for a,b,g in zip([s["a"] for s in surface][2::8],[s["a"] for s in surface][3::8],[d["beta"] for d in drag]) if abs(g) < 0.6) < 0.3
+# WHAT THE READOUT IS FOR: the angles the forces actually come from. The tailplane is
+# bolted at -5 deg (shipdef "roll" on its mounts) and the elevators at 0, so a quiet
+# run must show the tail 4.5-5.5 deg BELOW the wing and the elevators on the wing's
+# number -- which is #490's trim read part by part instead of one ship-wide AoA.
+CHECK all(4.5 < w - t < 5.5 for w,t,g in zip([s["a"] for s in surface][0::8],[s["a"] for s in surface][2::8],[d["beta"] for d in drag]) if abs(g) < 0.6)
+CHECK all(-0.5 < e - w < 0.4 for e,w in zip([s["a"] for s in surface][5::8],[s["a"] for s in surface][0::8]))
+# THE WEATHERVANE, MECHANISM AND NOT JUST OUTCOME. One 1 s rudder press at 25 s, never
+# held. The ship yaws away and the fin meets the flow at exactly the angle it is
+# weathervaning through, of the OPPOSITE sign: Beta -13.4 -> fin +13.7, Beta +7.7 ->
+# fin -8.4. The rudder, which nobody is touching, reads the same as the fin beside it,
+# which is how a player tells a deflecting surface from one merely carried through the
+# air.
+CHECK all(abs(f + g) < 1.2 for f,g in zip([s["a"] for s in surface][4::8],[d["beta"] for d in drag]) if abs(g) > 4.0)
+CHECK all(abs(f - r) < 0.6 for f,r in zip([s["a"] for s in surface][4::8],[s["a"] for s in surface][7::8]))
+# A sideslip is not allowed to leak into pitch: the wings stay 2.2-3.6 deg through the
+# kick, and the fin, which reads 0 when the ship points into the flow, reads 0 again
+# once it does.
+CHECK all(2.2 < a < 3.6 for a in [s["a"] for s in surface][0::8])
+CHECK max(abs(f) for f,g in zip([s["a"] for s in surface][4::8],[d["beta"] for d in drag]) if abs(g) < 0.2) < 0.3
+# q is the pressure of the flow AT the surface (#483), not one ship-wide number. It
+# tracks 0.5*rho*v^2 within 8%, the residual being each part's own sweep and the log
+# quoting the ship's speed a substep away from the one the aero pass used.
+CHECK all(0.92 < q0 / (0.5 * d["rho"] * d["v"] * d["v"]) < 1.08 for d,q0 in zip(drag,[s["q"] for s in surface][0::8]))
+FORBID error:

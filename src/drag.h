@@ -717,6 +717,30 @@ inline double controlDeflectionSign(const glm::dvec3 &ri,
     return (d >= 0.0) ? targetSign : -targetSign;
 }
 
+/* #485: a surface's angle of attack, signed into SHIP terms for a READOUT
+   (degrees). partAero measures alpha in the surface's own mount frame, and a twin
+   pair mounted at clock angles 0 and 180 has its face normal flipped, so the sign
+   convention flips with it. The law never notices -- sin(alpha) and liftDir flip
+   together, which is exactly how a mirrored fin pair pushes the same way (#453) --
+   but a readout that quotes +2.6 and -2.6 for two wings at the same physical angle
+   is worse than no readout: it hides the one thing worth seeing, a pair whose
+   angles actually DIFFER (a yawing airframe sweeps one half into the flow and the
+   other out of it, #483). So sign the angle by the SHIP axis this surface's lift
+   acts along: up for a wing or tailplane, right for a fin or rudder; a surface
+   angled between the two (a v-tail) takes the closer one, and its two halves then
+   read alike.
+   Display arithmetic, like controlDeflectionSign above decides what to SHOW the
+   player rather than what to push: nothing in the law calls this. */
+inline double surfaceAlphaDegForReadout(const PartAero &pa, const glm::dvec3 &up,
+                                        const glm::dvec3 &right) {
+    const double vu = std::fabs(glm::dot(pa.liftDir, up));
+    const double vr = std::fabs(glm::dot(pa.liftDir, right));
+    const double sgn = (vu >= vr)
+        ? ((glm::dot(pa.liftDir, up) >= 0.0) ? 1.0 : -1.0)
+        : ((glm::dot(pa.liftDir, right) >= 0.0) ? 1.0 : -1.0);
+    return sgn * glm::degrees(pa.alpha);
+}
+
 /* The VISUAL hinge of a control-surface mesh at commanded deflection defl
    (signed rad, the control law's sign; Vehicle::Draw only). ONE rule, whatever
    axis the surface steers: a surface hinges along its own SPAN. A surface mesh

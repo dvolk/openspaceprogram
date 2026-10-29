@@ -240,6 +240,11 @@ DRAG_RE = re.compile(
 # no case could assert a surface moved, which is the whole observable of #453
 # (per-part incidence) and #454 (static margin).
 CTRL_ITEM_RE = re.compile(r"([^\s\[]+)\[(\d+)\]\((\w+)\)=([-+]\d+\.\d+)deg")
+# #485's [surface] row: one group per lifting or steering part --
+# "<label> a=<deg> q=<Pa>". The angle is signed into SHIP axes (up for a wing or
+# tailplane, right for a fin), NOT each mount's own convention, so a mirrored twin
+# pair reads alike and a pair that actually differs is the signal, not the noise.
+SURFACE_ITEM_RE = re.compile(r"(\S+) a=([-+]\d+(?:\.\d+)?) q=(\d+(?:\.\d+)?)")
 SHAKE_RE = re.compile(
     r"\[shakelog\]\s+t=([\d.]+)s\s+a=([-\d.]+) m/s2\s+"
     r"amp=([-\d.]+) m\s+off=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]"
@@ -815,6 +820,25 @@ def parse_ctrl(out):
     return rows
 
 
+def parse_surface(out):
+    """#485: one row per lifting or steering part per --drag-log sample. The
+    [surface] line has no timestamp of its own either, so rows inherit the t= of
+    the [drag] line above them. It only prints when a ship's surface readout is
+    armed -- the flight model's SURFACE window, or --drag-log on the ship you are
+    piloting -- so a case that reads it must pass --drag-log."""
+    rows = []
+    t = None
+    for line in out.splitlines():
+        if line.startswith("[surface]"):
+            for name, a, q in SURFACE_ITEM_RE.findall(line):
+                rows.append({"t": t, "name": name, "a": float(a), "q": float(q)})
+        elif line.startswith("[drag]"):
+            m = DRAG_RE.match(line)
+            if m:
+                t = float(m.group(1))
+    return rows
+
+
 def parse_scene(out):
     rows = []
     for m in SCENE_RE.finditer(out):
@@ -1069,6 +1093,7 @@ def run_case(case):
     mass = parse_mass(world)
     drag = parse_drag(world)
     ctrl = parse_ctrl(world)
+    surface = parse_surface(world)
     shake = parse_shake(world)
     cam = parse_cam(world)
     terrain = parse_terrain(world)
@@ -1084,6 +1109,7 @@ def run_case(case):
         "fuel": fuel, "drainlog": drainlog, "power": power, "dv": dv, "mass": mass,
         "drag": drag, "shake": shake,
         "ctrl": ctrl,
+        "surface": surface,
         "cam": cam,
         "terrain": terrain,
         "surf": surf, "mapb": mapb, "plane": plane, "slew": slew,

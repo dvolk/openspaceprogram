@@ -1900,6 +1900,34 @@ void drawUIReadouts(Game &g) {
         } else {
             ImGui::Text("AoA: -");
         }
+        /* #485: that AoA is ONE attitude number for the whole ship. What the law
+           actually acts on is a set of angles -- each surface's own, from its own
+           mount since #453 and from the flow at its own offset since #483 -- so
+           show the SPREAD across them and how many were read. On a rotating
+           airframe the spread is the point: a twin pair straddles the rotation
+           axis, so its halves differ in SIGN mid-swing. A neutral control surface
+           is counted only while the F4 overlay or --drag-log is open (recording it
+           costs the flow+frame its neutral early-out exists to skip); every
+           lifting surface is always counted. --drag-log prints the same numbers per
+           surface as [surface], and each surface's own arrow in the overlay carries
+           its own angle. */
+        float amin = 0.0f, amax = 0.0f;
+        int nsurf = 0;
+        for(const Part *p : ship->parts) {
+            if(!p->aeroValid || p->def == nullptr) { continue; }
+            if(p->def->lift_area <= 0.0 && p->def->control_area <= 0.0) { continue; }
+            if(nsurf == 0) { amin = amax = p->aeroAlphaDeg; }
+            else {
+                amin = std::min(amin, p->aeroAlphaDeg);
+                amax = std::max(amax, p->aeroAlphaDeg);
+            }
+            ++nsurf;
+        }
+        if(nsurf > 0) {
+            ImGui::Text("Srf: %+.1f..%+.1f x%d", amin, amax, nsurf);
+        } else {
+            ImGui::Text("Srf: -");
+        }
         ImGui::Text("Acc: %.1fm/s2", ship->feltAccel());
     });
 
@@ -3465,8 +3493,19 @@ void drawForceOverlay(Game &g) {
         // Label the big forces only: a glider's wing trim otherwise stacks
         // dozens of numbers on the few pixels near their anchors.
         if(mag >= 0.08 * fmax) {
-            char buf[32];
-            snprintf(buf, sizeof buf, "%.0f N", mag);
+            char buf[48];
+            /* #485: a surface's arrow carries the angle of attack THAT SURFACE
+               read, because that is the number its force came from. The SURFACE
+               window's single AoA cannot say it: incidence, dihedral and any
+               rotation under way split a ship's surfaces by degrees, and a twin
+               pair straddles the rotation axis, so its two halves differ in SIGN
+               mid-swing (#453, #483). */
+            if(fv.alphaValid && (fv.kind == Vehicle::kForceLift
+                              || fv.kind == Vehicle::kForceCtrl)) {
+                snprintf(buf, sizeof buf, "%.0f N a%+.1f", mag, fv.alphaDeg);
+            } else {
+                snprintf(buf, sizeof buf, "%.0f N", mag);
+            }
             dl->AddText(ImVec2(B.x + 6.0f, B.y - 6.0f), col, buf);
         }
     }

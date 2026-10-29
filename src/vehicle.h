@@ -657,12 +657,26 @@ public:
         glm::dvec3 pos;  // application point, rel COM at record time
         glm::dvec3 vec;  // the force itself (N, ship Bullet-world basis)
         int kind;        // kForce* below; the drawer colors by kind
+        /* #485: the angle of attack THIS surface read on the substep that made
+           this force, degrees -- carried by value rather than by a part index
+           because a stage in the same frame can reshuffle parts between recording
+           and painting. Only meaningful for the surface kinds (lift, control). */
+        float alphaDeg = 0.0f;
+        bool alphaValid = false;
     };
     static constexpr int kForceThrust = 0, kForceRcs = 1, kForceDrag = 2,
                          kForceLift = 3, kForceChute = 4, kForceCtrl = 5;
     static constexpr int kForceKindCount = 6;
     std::vector<ForceVec> lastForceVecs;
     bool recordForceVecs = false;
+    /* #485: record each surface's own alpha/q (Part::aeroAlphaDeg, aeroQ). The
+       LIFT loop already computes them, so recording there is free; the CONTROL
+       loop's neutral early-out exists to NOT build the flow and mount frame for a
+       surface nobody touched, which at shipped part counts is most of its cost --
+       so a neutral surface's angle is looked up only while a readout is open (the
+       F4 overlay or --drag-log). Set per ship per frame in tick.cpp, same shape as
+       recordForceVecs. */
+    bool recordSurfaceAero = false;
     /* The per-substep boundary: the tick.cpp loop that runs the appliers
        opens every substep with this (named, so tests run the real thing). */
     void beginForceRecordSubstep() {

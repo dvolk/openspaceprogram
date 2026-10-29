@@ -86,6 +86,22 @@ struct Part {
        substep and rewrites the nozzles that fired; goOnRails zeroes it.
        Render-only -- the per-nozzle plumes (render.cpp). */
     double rcsFired[PartDef::kMaxRcsNozzles] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    /* What the aero law read for THIS surface on the substep that last ran
+       (#485). Not what the SURFACE window's AoA says: since #453 the angle comes
+       from this part's own mount (incidence, dihedral, a rotated fin), and since
+       #483 from the flow AT ITS OWN OFFSET, so a rotating airframe gives every
+       surface a different alpha and a different q -- up to several degrees apart
+       across a twin pair mid-swing on the shipped jet. Degrees, and the Pa of the
+       flow standing at this part.
+       Diagnostic like the two above -- nothing in the law reads them, so they
+       cannot drift into being load-bearing. applyAeroForce clears aeroValid per
+       substep: an invalid part showed no usable flow (no air, a mount with no
+       usable axis, or a surface too edge-on to make lift), and a ship that never
+       ran the pass keeps whatever it last read -- which is why every reader goes
+       through aeroValid. */
+    bool aeroValid = false;
+    float aeroAlphaDeg = 0.0f;
+    float aeroQ = 0.0f;
     /* Parachute state (ChuteState); inert for non-chute parts. Set by
        Vehicle::deployChutes on the stage press; save-persisted. */
     ChuteState chute = ChuteStowed;
