@@ -97,7 +97,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/461-pad-def-attitude-starts-level.txt` | invariant | A ship def can ask for its pad attitude, so a winged airframe starts with its nose on the horizon and its wings level instead of standing on its tail. |
 | `flight/472-scripted-cadence-across-a-load.txt` | invariant | A scripted run keeps printing its logs at an exact cadence through a quickload that rewinds the sim clock, and keeps printing them after it. |
 | `flight/472-scripted-paused-sim-says-so.txt` | harness | A scripted run whose sim never advances prints the rows AND says the run measured nothing, instead of exiting 0 on a frozen world. |
-| `flight/490-skiff-trim-and-weathervane.txt` | golden | A 552 kg airframe built to the #490 arithmetic -- 21.6 m2 of AR-3.33 wing 0.34 m behind the CG, a 4 m2 tailplane set to -5 deg incidence 2.0 m back, a fixed fin 2.2 m back -- holds +2.5 deg angle of attack with no stick and no SAS, weathervanes a 1 s rudder kick from 11.2 deg back inside 20 s, and keeps its centre of pressure 0.68-0.86 m behind the CG the whole time. |
+| `flight/490-skiff-trim-and-weathervane.txt` | golden | A 552 kg airframe built to the #490 arithmetic -- 21.6 m2 of AR-3.33 wing 0.34 m behind the CG, a 4 m2 tailplane set to -5 deg incidence 2.0 m back, a fixed fin 2.2 m back -- holds 7000 m at 79 m/s inside 16 m with the stick released, keeps +2.6 deg of angle of attack through throttle-off AND a 1 s rudder kick, weathervanes that kick from 7.7 deg back to zero, and keeps its centre of pressure 0.69-0.81 m behind the CG the whole time. |
 
 ## crew (25)
 

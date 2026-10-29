@@ -240,6 +240,14 @@ static const ScenarioDef kScenarios[] = {
        Cd 0.76, so the jet bleeds 180 -> 103 m/s and sinks ~65 m/s while the aero
        torque weathervanes it back to zero AoA, which zeroes its lift (#454/#399). */
     {"flying-slow",    true,  false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0, true, false, 0.08},
+    /* The same altitude band at an airspeed an airframe CRUISES at rather than
+       2.5x it. 0.08 of the air-relative circular speed (flying-slow) suits hulls
+       that fly at several hundred m/s; a light wing trims near 70-90 m/s, so that
+       bed spends the first 40 s of every run trading the excess for height and
+       coming back through a phugoid (skiff: 180 -> 22 m/s, 650 m of altitude).
+       This one starts at the trim point instead: 80 m/s of air on Kerbin, ~33 m/s
+       on Duna, ~120 m/s on Eve. */
+    {"flying-cruise",  true,  false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0, true, false, 0.0356},
     {"ellipse-peri",   true,  false, 0.0,  false,  0, 10e3, 1000e3, 0.0, 0.0},
     {"ellipse-apo",    true,  false, 0.0,  false,  1, 10e3, 1000e3, 0.0, 0.0},
     {"ellipse-mid",    true,  false, 0.0,  false,  2, 10e3, 1000e3, 0.0, 0.0},
