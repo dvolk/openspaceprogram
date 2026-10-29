@@ -8,6 +8,7 @@
 // frame Vehicle::airRelativeVel subtracts the co-rotation term (#60/#97).
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <numbers>
@@ -151,6 +152,98 @@ inline glm::dvec3 liftForce(double q, double S, double cl, double alpha,
     return liftDir * (q * S * liftCurve(cl, alpha, stallAngle));
 }
 
+/* THE NEUTRAL POINT (#454): where an angle-of-attack change puts the CHANGE in lift.
+   Not where the lift is -- that question is already answered per part, since #453
+   applies every surface's force at its own mount. What was missing is the derivative:
+   turn the nose one degree into the flow and every surface adds lift, and where that
+   extra lift sits says whether the airframe fights the overshoot or feeds it. That is
+   what a player means by "it flies": a released stick settles because one number here
+   is positive.
+   Feed it one surface at a time from the lift loop -- see liftSlopePerQ for the
+   increment vector, which is where the subtlety is -- then read point()/margin().
+   q is absent on purpose: it multiplies the lift change and the moment change
+   equally, so it cancels out of the lever arm and everything stays in area units
+   (m^2/rad, m^3/rad), comparable with the [drag] line's A= and Induced=.
+   Only lifting surfaces belong here. A control surface has no angle term in its law
+   at all (controlForce is pure deflection), so it contributes no margin and cannot
+   stabilise anything -- it trims, which is a different job (#492). And nothing here
+   involves the hull's FORM drag: that restores by weathervaning, which is the CpL=
+   lever, a separate source of the same judgement, and in a real airframe the two add.
+   Each surface's INDUCED drag (vehicle.cpp, right below the lift loop) also leans on
+   pitch -- it grows with CL^2 and is applied at the same mount -- and is outside this
+   sum, so near the top of the polar the true margin is a little further aft than the
+   one printed. */
+struct LiftSlopeSum {
+    double dl = 0.0;    // sum dL/dalpha . liftAxis        -- m^2/rad
+    double dlabs = 0.0; // the same surfaces, unsigned     -- m^2/rad
+    double dm = 0.0;    // sum (ri x dL/dalpha) . latAxis  -- m^3/rad
+    void add(const glm::dvec3 &dLdA, const glm::dvec3 &ri,
+             const glm::dvec3 &liftAxis, const glm::dvec3 &latAxis) {
+        // Both axes have to be unit or the metres of point()/margin() stop being
+        // metres: dl and dm would carry different scale factors and their ratio
+        // would still print as a plausible lever. Production passes frame columns
+        // and partAero's liftDir, which are.
+        assert(std::abs(glm::dot(liftAxis, liftAxis) - 1.0) < 1e-9);
+        assert(std::abs(glm::dot(latAxis, latAxis) - 1.0) < 1e-9);
+        const double c = glm::dot(dLdA, liftAxis);
+        dl += c;
+        dlabs += std::fabs(c);
+        dm += glm::dot(glm::cross(ri, dLdA), latAxis);
+    }
+    /* Quote the pair or dash it -- never quote a lever out of a sum that cancelled.
+       Two reasons to dash: nothing lifting (no lifting surface at all, or all of them
+       stalled flat or mounted edge-on, so dlabs itself is ~0), and surfaces that
+       DISAGREE (dl a small difference of large numbers, so where the average lands is
+       arithmetic noise). The second is the one that used to lie: the first version of
+       this sum weighted each surface by its own slope signed against ship-up, which
+       makes a clock-0/clock-180 twin pair cancel EXACTLY -- the lift direction flips
+       and the angle of attack flips with it -- and the log happily quoted
+       "Np=+15.87 m" for the shipped skiff, drifting to +51.74, +121.54 and -89.73 on
+       other frames of the same plane. The pair now dashes instead, and the unit pin in
+       test_drag.cpp::test_neutral_point exists because a mutant of exactly that
+       weighting left the whole rest of the suite green.
+       The 0.1 is agreement, not magnitude: at cruise the skiff is 95% agreed (its fin
+       is in dlabs and 0 in dl) and quotes +0.60 m; crossing its own stall peak it drops
+       under it (AoA 20.10: dl 8.2 of 161.8, which would otherwise print SM=+2.22 m --
+       an airframe that has just stopped resisting, reading as MORE stable) and dashes.
+       Everything drooping TOGETHER keeps the ratio and keeps quoting: that case is
+       weak, not incoherent, and slope() is the field that says so. */
+    bool usable() const {
+        return std::isfinite(dl) && std::isfinite(dm) && dlabs > 1e-9
+            && std::fabs(dl) >= 0.1 * dlabs;
+    }
+    /* How much lift an angle-of-attack change buys at all, m^2/rad (CL·A per radian,
+       so multiply by q for the force). Print it NEXT TO the margin: a stalled
+       airframe can hold a healthy-looking margin -- if every surface droops together
+       their slopes scale by the same factor and the weighted AVERAGE of their
+       positions does not move -- while its stiffness collapses towards zero and
+       nothing pushes the nose back any more. Measured on the jet at AoA 28 and -35
+       (both inside the 20.1-40.1 droop): SM stayed +0.55 m, and it is CLa that says
+       why the airframe had stopped caring. #487's band, in other words, is a
+       stiffness story, not a sign story.
+       Measured along the SHIP's up axis, so it carries a cos(alpha) dip: the skiff
+       quotes 153.42 at 0 deg and 152.55 at 6.6. That is the right number for a pitch
+       stiffness (the nose rotates about the ship), but it is why a steady-airframe
+       CLa is not a constant. */
+    double slope() const { return dl; }
+    /* Metres along the nose axis from the pivot, + = ahead of it. From the root
+       frame's right x up = nose (so nose x up = -right), a lift increment L' acting
+       at offset x·nose makes moment -x·L' about the lateral axis, hence M' = -x·L'. */
+    double point() const { return -dm / dl; }
+    /* The STATIC MARGIN: how far behind the pivot that lift change sits, so + =
+       raising the nose makes more lift BEHIND the COM, which pushes the nose back
+       down = restoring. This is the number to watch while building: the shipped
+       airframes all measure positive (skiff +0.60 m, glider +0.65, jet +0.55 -- the
+       skiff's wings are 0.34 m aft of its CG and its tailplanes 1.99 m, so the wings
+       themselves are already restoring and the tail adds the other half), and a
+       negative one is an airframe that diverges on its own -- tail ahead of the
+       wings, or a mount angle that puts a surface on the far side of its own stall.
+       It is a WEIGHTED AVERAGE of where the lift change sits, in metres, so it does
+       not compare between airframes of different size; compare it against a chord
+       when you want a figure of merit. */
+    double margin() const { return dm / dl; }
+};
+
 /* One surface's OWN view of the flow (#453): its angle of attack and its own lift
    direction, both out of the part's frame (columns = right, up, nose) instead of
    the ship's. A wing mounted with incidence, dihedral, or upside down then lifts
@@ -190,6 +283,50 @@ inline PartAero partAero(const glm::dmat3 &partRot, const glm::dvec3 &v_rel) {
     pa.alpha = fr.alpha;
     pa.valid = true;
     return pa;
+}
+
+/* THE CHANGE IN A SURFACE'S LIFT when the SHIP's angle of attack changes, per unit q
+   (so m^2/rad along its own lift axis) -- the increment #454's neutral point is made
+   of. The mount turns WITH the ship, which is the same relative wind as turning the
+   flow the other way about the ship's lateral axis, so the derivative is taken by
+   tilting the flow and asking the surface's own law. That "ask the law" choice is the
+   whole point: nothing here gets to decide which way a mount faces, because the
+   shortcuts do so and fail silently. Weighting by slope*area*dot(liftDir, up) -- which
+   is what I wrote first -- makes a twin pair at clock 0 and 180 cancel EXACTLY, since
+   its liftDir and its alpha are both flipped, and the resulting denominator of ~0 had
+   the drag log quoting Np=+15.9 m, then +121.5, then -89.7 for the same skiff. A v-tail
+   at 45 deg answers to only part of a pitch, and a fin to almost none of one; tilting
+   the flow gets both out of the laws that already make the force, stall droop included:
+   a surface inside the droop contributes NEGATIVELY, which is an airframe diverging
+   past the stall (#487's band) rather than a display glitch.
+   The sign of the tilt only sets which way the SLOPE prints -- reversing it flips dl
+   and dm together and margin() is their ratio -- so it is picked for the reader: tilting
+   the flow +eps about the ship's lateral axis makes a surface in its linear range report
+   a POSITIVE slope, which is what "more angle of attack, more lift" should look like.
+   The AXIS is not free: tilting about the ship's lift axis is yaw, and the number would
+   then quietly describe a different instability.
+   Pass the PartAero the force loop already computed rather than recomputing it: the
+   mount, flow and eps are the same, so a second sample of `here` is 44 ns per lifting
+   part per substep for nothing. Centered (+-eps/2), not forward: liftCurve's soft-stall
+   peak is a kink, and a forward difference reports only the alpha-increasing side -- at
+   the skiff's onset the printed CLa moved 5x with eps (1e-5 gave 144, 1e-3 gave 29,
+   1e-2 gave -1.2). Only the MAGNITUDE is differentiated; the lift direction swinging
+   with the flow is dropped, which is 2-4% of the slope at AoA 8-12 and none of the
+   margin (both are measured projections on the SHIP's up axis, hence the cos alpha dip).
+   An analytic slope would be ~10x cheaper -- liftCurve's derivative is closed form --
+   but then a change to the law would not show up in the derivative, and the whole point
+   of differencing is that the number keeps describing whatever the force loop does. */
+inline glm::dvec3 liftSlopePerQ(const PartAero &here, const glm::dmat3 &partRot,
+                                const glm::dvec3 &flow, double S, double cl,
+                                double stallAngle, const glm::dvec3 &latAxis,
+                                double eps = 1e-3) {
+    if(!here.valid) { return glm::dvec3(0.0); }
+    const PartAero lo = partAero(partRot, glm::angleAxis(-eps * 0.5, latAxis) * flow);
+    const PartAero hi = partAero(partRot, glm::angleAxis(eps * 0.5, latAxis) * flow);
+    if(!lo.valid || !hi.valid) { return glm::dvec3(0.0); }
+    const double dcl = (liftCurve(cl, hi.alpha, stallAngle)
+                      - liftCurve(cl, lo.alpha, stallAngle)) / eps;
+    return here.liftDir * (S * dcl);
 }
 
 /* THE FLOW A SURFACE STANDS IN (#483). A part bolted at offset r from the centre

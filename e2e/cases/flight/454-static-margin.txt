@@ -1,0 +1,66 @@
+# #454 asked for the static margin to be debuggable: "print the margin so it is
+# debuggable". This pins the two numbers the drag log gained -- CLa (what one radian of
+# angle of attack buys, CL*A per radian) and SM (where that change lands, metres BEHIND
+# the COM) -- against arithmetic done by hand on the shipped skiff. A unit pin on
+# drag.h's math cannot see the call-site composition: the work order's standing warning
+# is that a mutant in applyAeroForce's arguments left 447 test_drag checks green.
+#
+# CLa, from res/ships/skiff.json and res/data/parts.json (every lifting part is 6.0/rad):
+#   wings   2 x wing_r3h1.8  10.8 m2 -> 129.6 m2/rad
+#   tail    2 x wing_r1h1     2.0 m2 ->  24.0, of which the 5 deg of roll incidence
+#                                       leaves cos^2(5) = 23.82 on the pitch axis
+#   fin     1 x wing_r0.7h1   1.4 m2 -> 0.0 exactly: its lift runs across the ship, so
+#                                       it answers to yaw and nothing to pitch
+#   elevators: control_area only, no lift_area, and their law has no angle term at all
+#              (#492 trims, it does not stabilise) -> 0
+#   expected 153.42.
+# SM, from the arms OSP_SHIP_DUMP=1 prints (metres along the nose, from the COM):
+#   wings -0.34   tailplanes -1.99   fin -2.19   elevators -2.79
+#   dm = -((-0.34)(129.6) + (-1.99)(23.82)) = +91.5 m3/rad, over dl 153.4 -> +0.60 m
+# So the wings are ALREADY behind the CG and restoring (48% of the stiffness); the extra
+# 1.65 m of tail leverage supplies the other 52%. An earlier draft of this file claimed
+# the wings sat 0.18 m AHEAD of the CG with the tail 5 m aft -- numbers reverse-engineered
+# out of the margin being pinned. A weighted average cannot be read backwards like that,
+# which is worth remembering the next time these numbers get tuned.
+# For contrast, measured on the other shipped airframes with the same flags:
+#   jet     CLa 96.00  SM +0.55 m   (2 x wing 8 m2 x 6/rad, exactly)
+#   glider  CLa 96.00  SM +0.65 m
+#   racer   CLa 0.00   SM=-         (no lifting surface: refused, not quoted as 0)
+NAME static-margin
+CLAIM The drag log's lift-slope and static-margin readout is the area-weighted truth of the parts: the skiff quotes 153.4 m2/rad (2 x 10.8 m2 wings + 2 x 2.0 m2 tailplanes at cl 6/rad, the fin and the elevators contributing nothing to pitch) and sits +0.6 m with its lift change BEHIND the COM -- an airframe that carries its wings and a deeper-chorded tail both aft of its CG has a restoring margin, and the log can now say so.
+KIND golden
+ARGS --time-accel 1 --sim-steps 480
+ARGS --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
+ARGS --sim-press 500,3000,R,500,20000,T
+ARGS --drag-log --mass-log
+EXPECT [drag]
+EXPECT [surface]
+EXPECT [mass]
+# CLa is the arithmetic above. It is projected on the SHIP's up axis, so it carries a
+# cos(alpha) dip -- 153.42 at 0 deg, 152.55 at 6.6 -- which is why the AoA pin below is
+# 4 deg and not 8: widen that and this band has to widen with it, or the case fails on
+# the dip rather than on anything broken.
+CHECK 153.0 < min(d["cla"] for d in drag if d["t"] is not None and d["t"] >= 4.0)
+CHECK max(d["cla"] for d in drag if d["t"] is not None and d["t"] >= 4.0) < 154.2
+# SM is positive (lift change behind the COM = restoring) and about half a metre --
+# far enough to matter, not so far that the skiff is a weathervane with wings.
+CHECK all(d.get("sm") is not None and 0.4 < d["sm"] < 0.9 for d in drag if d["t"] is not None and d["t"] >= 4.0)
+# Both numbers ride the same geometry, so a steady-flight row must not wander: this is
+# a derivative of the BUILD, not of the turbulence. A run where they move by this much
+# is a run where surfaces went bad -- and then the readout should have dashed, which the
+# check above would already have caught. (A dashed field is ABSENT from the parsed row,
+# not None: parse_drag only sets a key the line actually printed, hence the .get().)
+CHECK max(d["cla"] for d in drag if d["t"] is not None and d["t"] >= 4.0) - min(d["cla"] for d in drag if d["t"] is not None and d["t"] >= 4.0) < 1.0
+CHECK len([d for d in drag if d["t"] is not None and d["t"] >= 4.0 and d.get("sm") is not None]) >= 4
+CHECK max(d["sm"] for d in drag if d["t"] is not None and d["t"] >= 4.0 and d.get("sm") is not None) - min(d["sm"] for d in drag if d["t"] is not None and d["t"] >= 4.0 and d.get("sm") is not None) < 0.05
+# It also has to be the SAME airframe the mass log says it is -- 11 parts, 552 kg --
+# because the margin is a statement about that layout, not about planes in general.
+CHECK len([m for m in mass if m["t"] is not None]) >= 4
+CHECK all(m["parts"] == 11 for m in mass if m["t"] is not None)
+CHECK all(545.0 < m["mass"] < 560.0 for m in mass if m["t"] is not None)
+# And the airframe is flying in its linear range while it says all this. The 20.05 deg
+# stall angle is where CLa starts to collapse, and #487 is the argument about what
+# should happen past it.
+CHECK all(d.get("aoa") is not None and abs(d["aoa"]) < 4.0 for d in drag if d["t"] is not None and d["t"] >= 4.0)
+FORBID error:
+LIMIT 30

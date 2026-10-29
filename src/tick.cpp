@@ -525,6 +525,33 @@ void tick(Game &g) {
                 } else {
                     printf(" CpL=-");
                 }
+                /* #454: the LIFT half of the same judgement, in two numbers that only
+                   mean anything together. CLa is how much lift an angle-of-attack
+                   change buys, CL·A in m^2/rad (times q for the force); SM is where
+                   that change lands, metres BEHIND the COM along the nose, so POSITIVE
+                   = an overshoot makes more lift behind the COM and the airframe pushes
+                   the nose back down on its own. Restoring stiffness is the product:
+                   q * CLa * SM about the pitch axis. Read SM against CpL and you know
+                   which half of the airframe is doing the weathervaning -- CLa says
+                   whether either of them is doing anything at all, because past the
+                   stall the slopes droop and CLa collapses while a symmetric ship's SM
+                   stays blandly positive. SM is dashed when nothing had a slope this
+                   pass (no lifting part, a mount edge-on, everything stalled flat) --
+                   the ratio would be 0/0, and quoting 0.00 there would claim a margin
+                   exactly at the COM, which is a different statement. SM is the only
+                   SIGNED field on this line, on purpose: its sign is the payload. Both
+                   dash together on the same test as AoA/Beta/CpL, so a winged ship in
+                   vacuum does not print the same numbers as a ship with no wings. */
+                if(g.ship->lastDragAlphaValid) {
+                    printf(" CLa=%.2f m2/rad", g.ship->lastLiftSlope);
+                    if(g.ship->lastStaticValid) {
+                        printf(" SM=%+.2f m", g.ship->lastStaticMargin);
+                    } else {
+                        printf(" SM=-");
+                    }
+                } else {
+                    printf(" CLa=- SM=-");
+                }
                 printf("\n");
                 // Control surfaces' applied deflections.
                 if(!g.ship->lastControlDeflections.empty()) {

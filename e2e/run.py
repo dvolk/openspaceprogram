@@ -230,6 +230,9 @@ DRAG_RE = re.compile(
     r"(?:\s+Chute=([-\d.]+) m2)?(?:\s+Induced=([-\d.]+) m2)?"
     r"(?:\s+(?:Beta=([-\d.e+]+) deg|Beta=-))?"
     r"(?:\s+(?:CpL=([-\d.e+]+) m|CpL=-))?"
+    # The lift pair (#454) prints as a unit -- both numbered or both dashed
+    # (src/tick.cpp) -- so it is one optional group, not two.
+    r"(?:\s+(?:CLa=([-\d.e+]+) m2/rad|CLa=-)\s+(?:SM=([-\d.e+]+) m|SM=-))?"
 )
 # --drag-log's control surfaces (src/tick.cpp): one [ctrl] line under each [drag]
 # line, one "name[index](axis)=±deg" term per surface the aero pass scored. It
@@ -851,7 +854,7 @@ def parse_drag(out):
     rows = []
     for m in DRAG_RE.finditer(out):
         (t, alt, rho, v, F, L, lup, up, tau, cd, a, aoa, chute, ind,
-         beta, cpl) = m.groups()
+         beta, cpl, cla, sm) = m.groups()
         row = {
             "t": float(t), "alt": float(alt), "rho": float(rho),
             "v": float(v), "F": float(F), "cd": float(cd),
@@ -876,6 +879,15 @@ def parse_drag(out):
             row["beta"] = float(beta)
         if cpl is not None:
             row["cpl"] = float(cpl)
+        # #454: CLa is the whole airframe's lift slope (CL·A per radian, so times q
+        # for the force) -- it collapses as the surfaces droop past the stall. SM is
+        # the static margin: metres the lift CHANGE sits behind the COM, so SM > 0 is
+        # the restoring one. SM is None when the ship had no lifting slope that pass
+        # (dashed on the line); CLa prints 0.00 there rather than dashing.
+        if cla is not None:
+            row["cla"] = float(cla)
+        if sm is not None:
+            row["sm"] = float(sm)
         rows.append(row)
     return rows
 

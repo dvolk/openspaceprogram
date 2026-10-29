@@ -383,6 +383,19 @@ public:
        diverges it with cp ahead. Printed as CpL= in the drag log because it is the
        quantity #454's static margin is made of and nothing else shows it. */
     double lastCpLever = 0.0;
+    /* #454, the LIFT half of the same judgement (drag.h::LiftSlopeSum).
+       lastLiftSlope is how much lift an angle-of-attack change buys this substep,
+       CL·A in m^2/rad (multiply by q for the force) -- it collapses towards zero as
+       the surfaces droop past the stall, which is the airframe stopping caring about
+       its angle of attack. lastStaticMargin is where that change lands: metres BEHIND
+       the COM along the nose axis, so + = an overshoot makes more lift behind the COM
+       and the airframe pushes the nose back down by itself. A ship with no lifting
+       slope at all -- stalled flat, mounted edge-on, no wings -- or whose surfaces
+       cancel each other, has no margin to quote, and the drag log dashes it the way it
+       dashes CpL. */
+    double lastLiftSlope = 0.0;
+    double lastStaticMargin = 0.0;
+    bool lastStaticValid = false;
     /* Deployed chutes' EFFECTIVE Cd·A (m^2) last substep (0 = none): nominal
        chute_area shrunk by kChuteAccelLimit at high q. NOT in lastDragArea. */
     double lastChuteCdA = 0.0;

@@ -518,6 +518,148 @@ static void test_surface_alpha_readout() {
                0.0, 1e-12, "a refused frame carries no angle to sign");
 }
 
+/* #454: the neutral point -- where an angle-of-attack change puts the CHANGE in lift.
+   The arithmetic is a weighted average, but the sign conventions are the whole risk,
+   and one of them was got wrong first: the production call site weighted each surface
+   by slope*area*dot(liftDir, up), which makes a mirrored pair CANCEL exactly (its
+   liftDir and its alpha are both flipped), leaving a denominator of ~0 and a drag log
+   quoting Np=+15.9 m, then +121.5, then -89.7 for the same skiff. liftSlopePerQ asks
+   the law instead of assuming a sign, and these are the cases that say so. */
+static void test_neutral_point() {
+    printf("== neutral point: where an AoA change puts the change in lift (#454) ==\n");
+    const double cl = 6.0, stall = 0.35;
+    const glm::dmat3 ship(1.0);       // columns: right +X, up +Y, nose +Z
+    const glm::dvec3 up(0.0, 1.0, 0.0), right(1.0, 0.0, 0.0), nose(0.0, 0.0, 1.0);
+    const glm::dvec3 vrel(0.0, 0.0, 100.0);   // dead along the nose, AoA 0
+    /* applyAeroForce hands liftSlopePerQ the PartAero its force already used
+       (vehicle.cpp), so the test samples the same thing the same way. */
+    const auto slope = [&](const glm::dmat3 &rot, const glm::dvec3 &flow, double S,
+                           const glm::dvec3 &lat) {
+        return liftSlopePerQ(partAero(rot, flow), rot, flow, S, cl, stall, lat);
+    };
+
+    // One wing AT the pivot: all the extra lift lands there, so no lever.
+    {
+        LiftSlopeSum s;
+        s.add(slope(ship, vrel, 10.0, right), glm::dvec3(0.0), up, right);
+        CHECK_NEAR(s.slope(), 60.0, 1e-6,
+                   "a 10 m2 wing at 6/rad buys 60 m2 of lift per radian");
+        CHECK_TRUE(s.usable(), "a surface in its linear range has a margin to quote");
+        CHECK_NEAR(s.margin(), 0.0, 1e-9, "bolted at the pivot, its margin is zero");
+    }
+
+    // The mirrored twin -- the shape that broke the first attempt. Both halves lift
+    // ship-up, so their slope ADDS; and offsets along SPAN make no pitch moment,
+    // because (right x up) is the nose axis, which is not the axis being measured.
+    {
+        const glm::dmat3 twin(-ship[0], -ship[1], ship[2]);
+        LiftSlopeSum s;
+        s.add(slope(ship, vrel, 10.0, right), 5.0 * right, up, right);
+        s.add(slope(twin, vrel, 10.0, right), -5.0 * right, up, right);
+        CHECK_NEAR(s.slope(), 120.0, 1e-6,
+                   "a 180-degree twin pair ADDS its slope rather than cancelling it");
+        CHECK_NEAR(s.margin(), 0.0, 1e-9, "and a pair offset along its span has no lever");
+    }
+
+    // And the SUM refuses to quote a lever when the surfaces cancel. Built here out of
+    // two contributions rather than out of mounts, because this is the arithmetic of
+    // the sum, not of any law: two surfaces with 60 m2/rad each, pushing opposite ways
+    // along ship-up. Where dl is a small difference of large numbers, where their
+    // average lands is arithmetic noise -- and the first version of this code printed
+    // exactly that as "Np=+15.87 m" for the shipped skiff.
+    {
+        LiftSlopeSum s;
+        s.add(up * 60.0, 5.0 * right, up, right);
+        s.add(-up * 60.0, -5.0 * right, up, right);
+        CHECK_NEAR(s.slope(), 0.0, 1e-12, "surfaces that disagree cancel");
+        CHECK_TRUE(!s.usable(),
+                   "and the readout dashes rather than quoting the average of a cancelled sum");
+    }
+
+    // A tail behind the pivot is what static margin IS. Wings 60 m2/rad at the pivot,
+    // a 12 m2/rad tailplane 5 m aft: dm = 12*5 = 60 m3/rad over dl = 72.
+    {
+        LiftSlopeSum s;
+        s.add(slope(ship, vrel, 10.0, right), glm::dvec3(0.0), up, right);
+        s.add(slope(ship, vrel, 2.0, right), -5.0 * nose, up, right);
+        CHECK_NEAR(s.slope(), 72.0, 1e-6, "wings plus tailplane, in area per radian");
+        CHECK_NEAR(s.margin(), 60.0 / 72.0, 1e-6,
+                   "a tailplane 5 m aft puts the lift change BEHIND the COM");
+        CHECK_NEAR(s.point(), -s.margin(), 1e-9,
+                   "point() is the same lever read ahead-positive");
+    }
+
+    // The same surfaces with the small one in FRONT -- a canard -- and the airframe
+    // diverges on its own. This is the sign the whole thing turns on.
+    {
+        LiftSlopeSum s;
+        s.add(slope(ship, vrel, 10.0, right), glm::dvec3(0.0), up, right);
+        s.add(slope(ship, vrel, 2.0, right), 5.0 * nose, up, right);
+        CHECK_NEAR(s.margin(), -60.0 / 72.0, 1e-6, "a tail AHEAD of the wings is a negative margin");
+    }
+
+    // A surface ROLLED about the nose -- every shipped tailplane carries +-5 deg of
+    // this, which is the only mount tilt in the shipped catalog, and the one the skiff's
+    // numbers turn on. Two cosines land in the pitch slope and they are two different
+    // facts: the roll tilts the surface's own lift axis off ship-up (one cos), and only
+    // the part of the flow tilt that is about the surface's OWN span axis moves its
+    // angle of attack (the other). The lever is untouched -- a rolled wing still pushes
+    // where it is bolted. Shipped check: the skiff's 2 x 2 m2 tailplanes at 5 deg report
+    // 23.82 of their 24.0 m2/rad, and that is the entire 153.6 -> 153.42 residue.
+    {
+        const glm::dmat3 rolled = glm::mat3_cast(glm::angleAxis(glm::radians(30.0), nose));
+        LiftSlopeSum s;
+        s.add(slope(rolled, vrel, 10.0, right), -5.0 * nose, up, right);
+        CHECK_NEAR(s.slope(), 45.0, 1e-6, "a wing rolled 30 deg buys cos^2 of its slope");
+        CHECK_NEAR(s.margin(), 5.0, 1e-6, "and still the same 5 m of lever");
+    }
+
+    // A fin answers to yaw, not pitch: its lift runs along ship's right, so a ship
+    // whose only surface is a fin has no pitch slope at all, and tick.cpp dashes the
+    // margin rather than claiming zero -- zero would say "lift change exactly at the
+    // COM", which is a different and wrong statement.
+    {
+        const glm::dmat3 fin(glm::dvec3(0.0, 1.0, 0.0), glm::dvec3(-1.0, 0.0, 0.0),
+                             glm::dvec3(0.0, 0.0, 1.0));
+        LiftSlopeSum s;
+        s.add(slope(fin, vrel, 4.0, right), -3.0 * nose, up, right);
+        CHECK_NEAR(s.slope(), 0.0, 1e-12, "a fin contributes no PITCH slope");
+        CHECK_TRUE(!s.usable(), "and its margin is refused, not quoted as 0");
+    }
+
+    // Stiffness, not only the lever. The lift curve peaks AT the stall angle, so past
+    // it more angle of attack means LESS lift and the slope reverses; by 2x the stall
+    // angle the law is identically zero and there is nothing to quote. A symmetric
+    // layout keeps quoting a blandly positive margin through all of it -- measured on
+    // the jet at AoA 28 and -35 (both past its 20.05 deg peak): SM stayed +0.55 m while
+    // the slope fell from 96 towards 0. That is why the log prints the slope too.
+    {
+        const auto flowAt = [](double a) {
+            return glm::dvec3(0.0, -100.0 * std::sin(a), 100.0 * std::cos(a));
+        };
+        // The slope is a projection on SHIP up, so it carries the cos(alpha) dip --
+        // 60.0 at 0 deg, 59.095 at 10. The tolerance used to be 1.0 to swallow this,
+        // which read as slop and would have broken at 11 deg for the wrong reason.
+        LiftSlopeSum linear;
+        linear.add(slope(ship, flowAt(glm::radians(10.0)), 10.0, right),
+                   glm::dvec3(0.0), up, right);
+        CHECK_NEAR(linear.slope(), 60.0 * std::cos(glm::radians(10.0)), 1e-4,
+                   "below the 20.05 deg stall angle the slope is still the linear one, projected");
+        LiftSlopeSum past;
+        past.add(slope(ship, flowAt(glm::radians(30.0)), 10.0, right),
+                 glm::dvec3(0.0), up, right);
+        CHECK_TRUE(past.slope() < 0.0,
+                   "past the stall peak, more angle of attack means LESS lift");
+        CHECK_NEAR(past.margin(), 0.0, 1e-9,
+                   "while the margin of a surface at the pivot stays put -- the lever says nothing about this");
+        LiftSlopeSum flat;
+        flat.add(slope(ship, flowAt(glm::radians(80.0)), 10.0, right),
+                 glm::dvec3(0.0), up, right);
+        CHECK_NEAR(flat.slope(), 0.0, 1e-9, "past 2x the stall angle the law is identically zero");
+        CHECK_TRUE(!flat.usable(), "and a stalled-flat airframe quotes no margin");
+    }
+}
+
 /* #483: a surface feels the flow AT ITSELF, v_rel + w x r, not the COM's. drag.h
    knows no bodies and no angular velocity, so what is pinned here is the
    COMPOSITION applyAeroForce runs (one cross product, then partAero, then
@@ -1718,6 +1860,8 @@ int main() {
     test_partAero();
     printf("\n");
     test_surface_alpha_readout();
+    printf("\n");
+    test_neutral_point();
     printf("\n");
     test_local_flow_sweep();
     printf("\n");

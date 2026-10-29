@@ -2199,6 +2199,9 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastDragArea = 0.0;
     lastDragCd = 0.0;
     lastCpLever = 0.0;
+    lastLiftSlope = 0.0;
+    lastStaticMargin = 0.0;
+    lastStaticValid = false;
     lastChuteCdA = 0.0;
     lastInducedCdA = 0.0;
     lastControlDeflections.clear();  // a no-air substep reports no steering
@@ -2508,6 +2511,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     // is mounted at is incidence, not decoration, and a wing the body is sweeping
     // down through the air meets a tilted flow that its twin on the other tip does
     // not. The moment comes from the surfaces' distribution.
+    /* #454: the derivative of that distribution -- see drag.h::LiftSlopeSum. Two
+       dots and a cross per lifting surface per substep, riding a pass that is
+       already paying for an atan2 pair and a flow composition there, and it is what
+       lets the drag log answer "is this airframe stable" instead of guessing. */
+    LiftSlopeSum npSum;
     for(Part *p : parts) {
         if(p->def == nullptr) { continue; }
         const PartDef *d = p->def;
@@ -2553,8 +2561,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         /* The mount in S: localRot is part-local, sRot carries it into the same
            frame the flow and the hull live in. One mat3 multiply plus two atan2
            per LIFTING part per substep -- not per part, which is why the
-           lift_area test above comes first. */
-        const PartAero pa = partAero(sRot * p->localRot, vp);
+           lift_area test above comes first. The neutral point below pays two more
+           tilted samples of the same thing per lifting part (drag.h::liftSlopePerQ
+           takes this `pa` instead of sampling it a third time). */
+        const glm::dmat3 mount = sRot * p->localRot;
+        const PartAero pa = partAero(mount, vp);
         if(!pa.valid) { continue; }   // a mount with no usable axis lifts nothing
         /* #485: what this surface's law actually read, for the F4 overlay, the
            SURFACE window and the [surface] log. Recorded after the valid gate (an
@@ -2564,6 +2575,19 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(pa, up, right);
         p->aeroQ = (float)qp;
         p->aeroValid = true;
+        /* #454: this surface's contribution to where an alpha change puts the change
+           in lift -- see drag.h::liftSlopePerQ for why the derivative is taken by
+           tilting the flow rather than by weighting liftDir. Accumulated BEFORE the
+           zero-force test below, on purpose: a surface at alpha 0 makes no force yet
+           but has all the slope in the world, and the neutral point of a build is
+           exactly the sum of those. A surface inside the stall droop contributes
+           negatively, so the readout turns against the airframe at the same angle the
+           airframe does (#487's band) rather than lying about it -- and where the
+           surfaces stop agreeing with each other the pair dashes rather than quoting
+           the average of a cancelled sum (drag.h::LiftSlopeSum::usable). */
+        npSum.add(liftSlopePerQ(pa, mount, vp, d->lift_area, d->cl, d->stall_angle,
+                                right),
+                  ri, up, right);
         const glm::dvec3 flift = liftForce(qp, d->lift_area, d->cl, pa.alpha,
                                            pa.liftDir, d->stall_angle);
         if(glm::length2(flift) <= 0.0) { continue; }
@@ -2729,6 +2753,17 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastLiftForce = lift_total;
     lastLiftVert = glm::dot(lift_total, com / r);
     lastAeroTorque = moment;
+    /* #454: reported before the zero-force return below, because a ship flying at
+       alpha 0 has no lift right now and still has a slope and a margin -- that is the
+       whole point of these being derivatives. */
+    lastLiftSlope = npSum.slope();
+    /* A NaN here would print CLa=nan and the e2e parser would drop the whole tail, so
+       the run would report a missing field rather than a broken one. */
+    assert(std::isfinite(lastLiftSlope) && std::isfinite(npSum.dm));
+    lastStaticValid = npSum.usable();
+    if(lastStaticValid) {
+        lastStaticMargin = npSum.margin();
+    }
     if(glm::length2(ftotal) <= 0.0) { return lastAeroForce; }
 
     // Same spurious-torque cancellation as applyThrustForce / applyGravity.

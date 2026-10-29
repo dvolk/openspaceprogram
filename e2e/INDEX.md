@@ -7,10 +7,10 @@ kind says how much weight the assertions carry.
 | kind | meaning | cases |
 |---|---|---|
 | `invariant` | a behaviour or a player route the game must keep | 270 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 39 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 40 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **327** |
+| | **total** | **328** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (78)
+## flight (79)
 
 | case | kind | pins |
 |---|---|---|
@@ -92,6 +92,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/448-drag-log-lift-readings.txt` | harness | The --drag-log's signed lift and attitude readings parse in flight and stay inside their bounds. |
 | `flight/451-flying-slow-starts-in-air.txt` | golden | The flying-slow bed starts wings-level with its nose along the air at a fraction of the AIR-relative circular speed, so a plane enters its altitude band moving rather than dropping. |
 | `flight/453-rudder-pair-adds-up.txt` | invariant | The jet's two rudders are bolted the other way round, so one stick drives them to OPPOSITE printed deflections and they still push the SAME way: a held rudder throws the airframe off the centreline instead of cancelling itself out. |
+| `flight/454-static-margin.txt` | golden | The drag log's lift-slope and static-margin readout is the area-weighted truth of the parts: the skiff quotes 153.4 m2/rad (2 x 10.8 m2 wings + 2 x 2.0 m2 tailplanes at cl 6/rad, the fin and the elevators contributing nothing to pitch) and sits +0.6 m with its lift change BEHIND the COM -- an airframe that carries its wings and a deeper-chorded tail both aft of its CG has a restoring margin, and the log can now say so. |
 | `flight/458-glider-flight-envelope.txt` | golden | The shipped glider pays air for the union of its parts AS MOUNTED (4.4 m2 nose-on, 17.7 m2 once it rolls past vertical, not a 30 m2 balloon), its lift owes induced drag, and with only yaw surfaces it can be steered past vertical -- but since #483 the rotation sweep at its surfaces damps its pitch back onto the flow instead of leaving it tumbling. In yaw it still swings. |
 | `flight/458-jet-flight-envelope.txt` | golden | The shipped jet pays air for the union of its parts AS MOUNTED (4.4 m2 nose-on, 35 m2 broadside, not a 30 m2 balloon), the lift it makes owes induced drag, and a held stick pitches it 77 deg off a flow it cannot damp out. |
 | `flight/461-pad-def-attitude-starts-level.txt` | invariant | A ship def can ask for its pad attitude, so a winged airframe starts with its nose on the horizon and its wings level instead of standing on its tail. |
