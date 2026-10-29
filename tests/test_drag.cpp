@@ -896,50 +896,81 @@ static void test_controlForce() {
     const double q = 100.0;  // dynamic pressure
     const double S = 2.0;    // control area
     const double cl = 6.0;   // deflection effectiveness (per radian)
+    const double A = 0.26;   // rad: where a deflected plate stops biting (#494)
     const glm::dvec3 dir(0.0, 1.0, 0.0);  // force direction (the up axis)
 
-    // Linear in the deflection: double the deflection -> double the force.
+    // Below the stall angle it is the old law exactly: double the deflection ->
+    // double the force.
     {
-        const glm::dvec3 f1 = controlForce(q, S, cl, 0.10, dir);
-        const glm::dvec3 f2 = controlForce(q, S, cl, 0.20, dir);
+        const glm::dvec3 f1 = controlForce(q, S, cl, 0.10, dir, A);
+        const glm::dvec3 f2 = controlForce(q, S, cl, 0.20, dir, A);
         CHECK_TRUE(glm::length(f2 - 2.0 * f1) < 1e-9, "linear in delta");
-        CHECK_TRUE(glm::length(f1) == q * S * cl * 0.10, "magnitude = q*S*cl*delta");
+        CHECK_NEAR(glm::length(f1), q * S * cl * 0.10, 1e-9, "magnitude = q*S*cl*delta");
     }
 
-    // The sign follows the deflection (symmetric, like a symmetric section).
+    /* THE DROOP (#494): authority peaks at the stall angle and is gone by twice
+       it. A surface turned past its stall angle gives the player MORE TRAVEL, not
+       more force -- which is what makes the induced bill (the other half of #494)
+       safe to charge: the old law would have billed a CL of cl*0.35 = 2.1 on a
+       plate that cannot make one. */
     {
-        const glm::dvec3 fpos = controlForce(q, S, cl, +0.10, dir);
-        const glm::dvec3 fneg = controlForce(q, S, cl, -0.10, dir);
+        CHECK_NEAR(glm::length(controlForce(q, S, cl, A, dir, A)), q * S * cl * A, 1e-9,
+                   "peaks at the stall angle");
+        // Past the peak the force falls but keeps its sign, up to 2x.
+        CHECK_TRUE(glm::length(controlForce(q, S, cl, 0.35, dir, A))
+                   < glm::length(controlForce(q, S, cl, A, dir, A)),
+                   "past the stall angle, travel buys less force");
+        CHECK_TRUE(glm::dot(controlForce(q, S, cl, 0.35, dir, A), dir) > 0.0,
+                   "still bites at the shipped travel stop");
+        CHECK_NEAR(glm::length(controlForce(q, S, cl, 2.0 * A, dir, A)), 0.0, 1e-9,
+                   "zero by twice the stall angle");
+        // Monotonic fall from the peak to the zero, so the stick never reverses.
+        double prev = glm::length(controlForce(q, S, cl, A, dir, A));
+        for(double d = A; d <= 2.0 * A; d += 0.01) {
+            const double now = glm::length(controlForce(q, S, cl, d, dir, A));
+            CHECK_TRUE(now <= prev + 1e-12, "the droop never climbs back");
+            prev = now;
+        }
+    }
+
+    // The sign follows the deflection (symmetric, like a symmetric section) --
+    // in the droop too, so a surface never pulls against its own stick.
+    {
+        const glm::dvec3 fpos = controlForce(q, S, cl, +0.10, dir, A);
+        const glm::dvec3 fneg = controlForce(q, S, cl, -0.10, dir, A);
         CHECK_TRUE(glm::length(fpos + fneg) < 1e-9, "odd in delta");
         CHECK_TRUE(glm::dot(fpos, dir) > 0.0, "positive delta -> +dir");
         CHECK_TRUE(glm::dot(fneg, dir) < 0.0, "negative delta -> -dir");
+        const glm::dvec3 spos = controlForce(q, S, cl, +0.32, dir, A);
+        CHECK_TRUE(glm::length(spos + controlForce(q, S, cl, -0.32, dir, A)) < 1e-9,
+                   "odd in delta past the stall angle too");
     }
 
     // The force is exactly along `dir` (no lateral component).
     {
-        const glm::dvec3 f = controlForce(q, S, cl, 0.15, dir);
+        const glm::dvec3 f = controlForce(q, S, cl, 0.15, dir, A);
         CHECK_TRUE(glm::length(glm::cross(f, dir)) < 1e-6 * glm::length(f),
                    "parallel to dir");
     }
 
     // Scales with q, area, and cl (each linearly).
     {
-        CHECK_TRUE(glm::length(controlForce(2.0*q, S, cl, 0.1, dir))
-                   == 2.0 * glm::length(controlForce(q, S, cl, 0.1, dir)),
+        CHECK_TRUE(glm::length(controlForce(2.0*q, S, cl, 0.1, dir, A))
+                   == 2.0 * glm::length(controlForce(q, S, cl, 0.1, dir, A)),
                    "linear in q");
-        CHECK_TRUE(glm::length(controlForce(q, 2.0*S, cl, 0.1, dir))
-                   == 2.0 * glm::length(controlForce(q, S, cl, 0.1, dir)),
+        CHECK_TRUE(glm::length(controlForce(q, 2.0*S, cl, 0.1, dir, A))
+                   == 2.0 * glm::length(controlForce(q, S, cl, 0.1, dir, A)),
                    "linear in area");
-        CHECK_TRUE(glm::length(controlForce(q, S, 2.0*cl, 0.1, dir))
-                   == 2.0 * glm::length(controlForce(q, S, cl, 0.1, dir)),
+        CHECK_TRUE(glm::length(controlForce(q, S, 2.0*cl, 0.1, dir, A))
+                   == 2.0 * glm::length(controlForce(q, S, cl, 0.1, dir, A)),
                    "linear in cl");
     }
 
     // Degenerate inputs -> zero (no air, no area, no effectiveness, no deflection).
-    CHECK_TRUE(controlForce(0.0, S, cl, 0.1, dir) == glm::dvec3(0.0), "no q -> zero");
-    CHECK_TRUE(controlForce(q, 0.0, cl, 0.1, dir) == glm::dvec3(0.0), "no area -> zero");
-    CHECK_TRUE(controlForce(q, S, 0.0, 0.1, dir) == glm::dvec3(0.0), "no cl -> zero");
-    CHECK_TRUE(controlForce(q, S, cl, 0.0, dir) == glm::dvec3(0.0), "no delta -> zero");
+    CHECK_TRUE(controlForce(0.0, S, cl, 0.1, dir, A) == glm::dvec3(0.0), "no q -> zero");
+    CHECK_TRUE(controlForce(q, 0.0, cl, 0.1, dir, A) == glm::dvec3(0.0), "no area -> zero");
+    CHECK_TRUE(controlForce(q, S, 0.0, 0.1, dir, A) == glm::dvec3(0.0), "no cl -> zero");
+    CHECK_TRUE(controlForce(q, S, cl, 0.0, dir, A) == glm::dvec3(0.0), "no delta -> zero");
 }
 
 static void test_controlDeflectionSign() {
@@ -1032,6 +1063,9 @@ static void test_control_pair_frames() {
     printf("== control pair: surface normal, ship-axis command ==\n");
     const glm::dvec3 right(1,0,0), up(0,1,0);
     const double q = 1000.0, S = 2.0, clc = 4.0, maxDefl = 0.35, stick = 1.0;
+    // The shipped deflection stall (#494). This test is about GEOMETRY, and the
+    // droop cannot change any sign here: maxDefl < 2*A, so full travel still bites.
+    const double A = 0.26;
     const glm::dvec3 vrel(0.0, 0.0, 100.0);   // dead ahead: alpha = 0
 
     /* The shipped rudder pose: the plate's span (mesh +X) lies along the ship's
@@ -1052,7 +1086,7 @@ static void test_control_pair_frames() {
         const PartAero pa = partAero(mount, vrel);
         const double sign = controlDeflectionSign(ri, pa.liftDir, aboutAxis, -1.0);
         const double defl = pa.valid ? sign * stick * maxDefl : 0.0;
-        return Surf{ defl, controlForce(q, S, clc, defl, pa.liftDir) };
+        return Surf{ defl, controlForce(q, S, clc, defl, pa.liftDir, A) };
     };
     const glm::dvec3 riUp(0, 2.0, -3.0), riDn(0, -2.0, -3.0);
 

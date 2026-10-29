@@ -42,13 +42,20 @@ CHECK len(surface) == 8 * len(drag)
 CHECK max(abs(a - b) for a,b in zip([s["a"] for s in surface][2::8],[s["a"] for s in surface][0::8])) < 0.4
 CHECK max(abs(a - b) for a,b in zip([s["a"] for s in surface][5::8],[s["a"] for s in surface][0::8])) < 0.4
 # FLIGHT QUALITY, unchanged from the incidence version: upright throughout, a 60 m/s
-# bottom in the throttle-off exchange with nothing below 6485 m, the hull's weathervane
+# bottom in the throttle-off exchange with nothing below 6497 m, the hull's weathervane
 # lever still 0.69-0.89 m behind the CG, and the wings still paying induced drag on
-# their own aspect ratio (0.26-1.31 m2, the top during the sideslip).
+# their own aspect ratio (0.26-0.73 m2, the top during the sideslip).
+# RE-BASELINED by #503 (the top was 1.31). Note what did NOT move: the TRIM is 12 deg
+# of elevator, INSIDE the surface's 15 deg deflection stall, so this airframe's trimmed
+# state reads exactly as it did before -- the two tabs still bill 2 x 0.56 m2 x 6.0 x
+# 0.2094 rad = 1.41 m2 of q*S. Only the rudder kick's sideslip got smaller, and the
+# induced peak with it. A player who trims past 15 deg is in the droop, where 5 more
+# degrees of tab buys LESS download; that is the honest end of the sizing question
+# #494 asks.
 CHECK all(d["up"] > 0.85 for d in drag if d["t"] >= 5)
 CHECK min(d["v"] for d in drag if d["t"] >= 22) > 55.0
 CHECK all(d["alt"] > 6400.0 for d in drag)
 CHECK all(-0.95 < d["cpl"] < -0.6 for d in drag if d["cpl"] is not None)
 CHECK all(d["induced"] > 0.0 for d in drag if d["L"] > 1.0)
-CHECK max(d["induced"] for d in drag) > 1.0
+CHECK max(d["induced"] for d in drag) > 0.5
 FORBID error:

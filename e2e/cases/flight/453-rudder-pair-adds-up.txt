@@ -15,13 +15,19 @@ CHECK len(drag) >= 4
 # the SHIP's commanded axis, because the stick promises a ship torque.
 CHECK any(a["deg"] < -15.0 and b["deg"] > 15.0 for a in ctrl for b in ctrl if a["t"] == b["t"] and a["axis"] == "yaw" and b["axis"] == "yaw" and a["index"] != b["index"])
 # The pair's yaw force survives the mirror. Held full rudder, the airframe is
-# 100 deg side-slipping one second later and stays off the centreline for the
-# rest of the run (Beta: -0.0, 99.9, -3.7, 37.9, 80.4). A/D mirrors it exactly
-# (Beta -0.0, -99.9, +3.7, -38.0, -80.4), so this is the stick and not the pose
-# the bed happened to start in.
-CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) > 90.0
+# 83 deg side-slipping one second later and stays off the centreline for the
+# rest of the run (Beta: -0.0, 83.0, 4.9, 26.4, 57.9). A/D mirrors it (-0.0,
+# -83.0, -4.9, -26.5, -57.9 -- the fourth row differs in the last printed digit),
+# so this is the stick and not the pose the bed happened to start in.
+# RE-BASELINED by #503: it used to read 99.9 deg one second after the stick. A
+# surface held at its travel stop (0.35 rad) is now past its own deflection stall
+# (0.26 rad), so the last third of the throw buys LESS force, not more, and the
+# same held rudder throws the airframe 17 deg less. The authority is still there --
+# three of the four rows stay past 20 deg -- it is just no longer the linear
+# 6.0/rad-to-the-stop law that made a 2 m2 fin out-push the whole airframe.
+CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) > 70.0
 # Counted, not phase-matched: three of the four later rows are still well off the
-# centreline. The row that reads 3.7 deg is the sample that happens to catch
+# centreline. The row that reads 4.9 deg is the sample that happens to catch
 # Beta crossing zero, so betting a band on where one 1 s sample lands in the
 # oscillation is a bet on tuning, not on authority (#458's case makes the same
 # point about its own swing). With no rudder input the same airframe never

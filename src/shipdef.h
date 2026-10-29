@@ -305,6 +305,11 @@ struct PartDef {
     double drag_backward; // cd with the part's BASE into the flow. Defaults to `drag`.
     double lift_area;
     double cl;
+    /* Where the surface's own curve stops being linear, and droops to nothing by 2x
+       it (drag.h::liftCurve). ONE field, TWO readings, because it is one law: on a
+       LIFTING part it is the angle of attack it stalls at; on a STEERING part
+       (#494) it is the DEFLECTION where its authority peaks, past which more travel
+       buys less force. The loader requires it on anything that steers. */
     double stall_angle;
     double control_area;
     ControlAxis control_axis;

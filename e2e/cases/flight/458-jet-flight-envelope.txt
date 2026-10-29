@@ -1,5 +1,5 @@
 NAME jet-flight-envelope
-CLAIM The shipped jet pays air for the union of its parts AS MOUNTED (4.4 m2 nose-on, 35 m2 broadside, not a 30 m2 balloon), the lift it makes owes induced drag, and a held stick pitches it 77 deg off a flow it cannot damp out.
+CLAIM The shipped jet pays air for the union of its parts AS MOUNTED (4.4 m2 nose-on, 20 m2 broadside, not a 30 m2 balloon), the lift it makes owes induced drag, and a held stick puts it 30 deg off a flow it now damps out instead of swinging to 77.
 KIND golden
 ARGS --time-accel 1 --startship jet,res/ships/jet.json,Kerbin,flying-slow
 ARGS --sim-steps 840 --drag-log --mass-log
@@ -17,11 +17,15 @@ CHECK all(d.get("aoa") is not None and abs(d["aoa"]) < 1.0 for d in drag[:3])
 # (The first cut printed 3.4 because 13 polygons piled on one origin and the
 # union charged the widest part; test_drag's projectPartHull pins the difference.)
 CHECK 4.0 < min(d.get("a", 0.0) for d in drag[:3]) < 5.0
-# Broadside the wings turn their 8 m2 planforms to the wind and the same airframe
-# presents 35 m2 -- an 8.1x swing, the same rows run after run (#472 does not
+# Broadside the wings turn their planforms to the wind and the same airframe
+# presents 19.8 m2 -- a 4.5x swing, the same rows run after run (#472 does not
 # touch it: that number is shape, not trajectory). Under the balloon law the ratio
-# was 1.1x, because a bubble barely changes size when you turn it.
-CHECK max(d.get("a", 0.0) for d in drag) > 6.0 * min(d.get("a", 0.0) for d in drag)
+# was 1.1x, because a bubble barely changes size when you turn it. RE-BASELINED by
+# #503 from 35 m2 / 8.1x: the old 35 was the row where the airframe sat 77 deg off
+# the flow, fully broadside, and #503's stalled elevon means the stick never takes
+# it that far (see the excursion block below). The shape lesson is unchanged; the
+# attitude that used to prove it is gone.
+CHECK max(d.get("a", 0.0) for d in drag) > 4.0 * min(d.get("a", 0.0) for d in drag)
 # On the clean rows (no chute, no stall, |AoA| < 1 deg) the force printed IS the
 # law printed: |F| / (q * Cd * A) = the --drag-cd knob's default, 1.2. This is the
 # pin the tuning knob answers, so --drag-cd 0.2 or 8 fails it while every shape
@@ -42,54 +46,60 @@ CHECK all(d.get("induced", 0.0) > 0.0 for d in drag if d.get("L", 0.0) / max(0.5
 CHECK all(d.get("induced", 0.0) == 0.0 for d in drag if d.get("L", 0.0) == 0.0)
 # It flies in the pitch plane: no yaw input is held, and the flow stays on the
 # centreline, so the yaw-plane angle AeroFrame reports stays small -- -0.0, -0.0,
-# -0.0, -0.1, 0.1, 0.4, -0.4, -1.0, 0.5, 1.3, -0.3, -0.6, 0.3, 0.4 (2.5 worst before
-# #486). It is NOT pinned to zero, and #483 is why: the swing carries the rudder
-# pair through the air at up to 6.39 m/s of sweep, and because the two stand either
-# side of the axis their own q moves UNEQUALLY (0.93 to 1.07 of the COM's across the
-# run), so their sideways forces no longer cancel. Before #483 the worst row read
-# 0.3 deg. The ceiling is 5.0 rather than 3.0 so the next law change gets to move it
-# without a false alarm; if it ever goes past that with nobody holding the rudder,
-# something is steering.
+# -0.0, -0.0, -0.1, 0.1, 0.1, 0.1, 0.1, -0.0, -0.1, -0.1, -0.2, -0.2 (2.5 worst
+# before #486; 1.3 after #483 and #486). It is NOT pinned to zero, and #483 is why:
+# the swing carries the rudder pair through the air at up to 6.39 m/s of sweep, and
+# because the two stand either side of the axis their own q moves UNEQUALLY (0.93 to
+# 1.07 of the COM's across the run), so their sideways forces no longer cancel.
+# Before #483 the worst row read 0.3 deg. The ceiling is 5.0 rather than 3.0 so the
+# next law change gets to move it without a false alarm; if it ever goes past that
+# with nobody holding the rudder, something is steering. #503 tightened these rows
+# to 0.2 worst: with the pitch swing capped at 30 deg the sweep is gentler, and the
+# unequal-q effect that #483 exposed is still there, just smaller.
 CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 5.0
-# PINNING A BUG, NOT CELEBRATING ONE: a held stick puts this airframe 77 deg off
-# the flow and it is still swinging when the case ends. Under --sim-steps the
-# series is fixed, run after run -- all 14 rows of the 840-tick budget, AoA
-# -0.3, 0.3, -0.1, 77.1, -4.0, 66.3, 6.9, -71.7, 10.0, 72.6, 16.3, -60.3, -52.4,
-# 23.9 (was 77.8, -5.5, 68.9, 4.5, -75.4, 13.7, 78.4, 13.0, -69.3, -54.6, 30.4 after
-# #483). #483 moved these numbers and did NOT settle this airframe, which is the
-# point of running it next to the glider (whose series stops tumbling); #486 tightened
-# the swing by 5-9 deg a row without settling it either. Not for want of the sweep --
-# at these rows the sweep has nothing to act ON at the wings. The excursion is
-# 60-77 deg, past twice the shipped wing's 20.1 deg stall angle, and past that the
-# lift curve is identically zero; measured in situ over every aero substep, the
-# moment the LIFT sweep adds at |AoA| > 70 is exactly 0.0 W, because zero lift has no
-# derivative to damp. Two reasons coincide there: the swing's turning point is also
-# where |w| is smallest (0.02-0.29 rad/s in those samples, against 2.65 mid-swing).
-# Where the wings do feel the sweep they feel little of it: their lever about the
-# pitch pivot is ~0.55 m, so at |w| up to 2.65 rad/s their sweep tops out at 1.46 m/s
-# -- against 6.39 m/s at the rudders and elevators (3.65 m lever), which carry no
-# pitch damping because an elevon's force comes from deflection alone (controlForce
-# has no alpha term). What DOES damp out here is #486's hull term: the [drag] line's
-# CpL field is the lever it acts on, -0.28 m nose-on and -1.0 m at the excursion
-# rows, and the hull's 35 m2 of broadside sits on it. #454 (a surface's own angle
-# having a say) is what brings the excursion down further; when it lands, EXPECT THE
-# LOWER CHECK TO FAIL and re-baseline it to a sane envelope in that commit.
-# It does not go over the top -- honest 35 m2 of broadside is real pitch damping,
-# and the first cut of #463 (3.4 m2 broadside, mount offsets dropped) had taken
-# that away, which is why the upper bound below is pinned as firmly as the lower
-# one.
-CHECK max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) > 60.0
-CHECK max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) < 90.0
-CHECK any(d.get("L", 0.0) == 0.0 for d in drag)
-# RESTORED (0.810 measured; 0.808 after #483, 0.817 after #486 -- the swing moved,
-# the ratio did not much). This
-# peak lives inside the swing above, and while the run stepped against wall-clock
-# frames it read 0.75, 0.90, 0.92, 1.16 in four runs -- #472, not physics. With
-# --sim-steps 840 every run of this case prints the same rows (identical to the
-# printed precision, at --frame-cap 0/30/60/120/240 and under load), so the number
-# is worth pinning again: widen it deliberately when the physics moves, not by
-# accident because a CI box was busy.
-CHECK (lambda ds: 0.75 < max(d["L"] / d["F"] for d in ds) < 0.87)([d for d in drag if d["F"] > 0.0])
+# WHAT USED TO BE A PINNED BUG (#503 closed it by accident of history). This case
+# was written to hold the airframe at 77 deg off the flow, still swinging when the
+# case ends, on purpose: AoA -0.3, 0.3, -0.1, 77.1, -4.0, 66.3, 6.9, -71.7, 10.0,
+# 72.6, 16.3, -60.3, -52.4, 23.9 -- every row past the shipped wing's 20.1 deg stall
+# angle, most of them past twice it, where the lift curve is identically zero and so
+# has no derivative left to damp (#487). #483 and #486 both moved those numbers by
+# 5-9 deg and neither settled it.
+# Now the same three key presses give a damped series: AoA -0.3, 0.3, -0.1, 29.7,
+# 6.0, 20.2, -13.6, 9.5, -6.4, 3.4, -0.6, -1.1, 1.6, -1.4. The overshoot is still
+# there and it is still a badly tuned airframe (#490), but each peak is about a third
+# smaller than the one before it (29.7, 20.2, 13.6, 9.5, 6.4, 3.4) and the last four
+# rows sit inside 2 deg of the flow.
+# The reason is the elevon, not the wing: W holds the elevons at their 0.35 rad
+# travel stop for 3 s, and under the old law that stop was worth CL 2.1 (cl_control
+# 6.0/rad, linear to the stop). A plate turned 20 deg into the flow has separated
+# long before that, so #503 puts the surface's own stall_angle on the deflection:
+# the pull peaks at 15 deg of throw and is 86% of peak at the stop. The disturbance
+# driving the pitch mode dropped by a third and the hull's broadside damping (#486,
+# 19.8 m2 on a lever that grows from -0.28 m nose-on to -0.80 m at the worst row)
+# now wins.
+# Nothing about the wing's lift law changed here, and the case still earns its keep
+# as a knob pin: put controlForce back to linear-to-the-stop and the first CHECK
+# below fails at 77 deg, which is how this case read before #503.
+CHECK 25.0 < max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) < 45.0
+CHECK all(abs(d["aoa"]) < 2.5 for d in drag if d["t"] >= 11.0)
+# Damped, not merely bounded: every row from the second half of the run is under
+# half the peak. On the old law the back half of the series was as big as the front.
+CHECK max(abs(d["aoa"]) for d in drag if d["t"] >= 9.0) < 0.5 * max(abs(d["aoa"]) for d in drag)
+# The wings never reach the post-stall band any more (max 29.7 deg against the curve
+# hitting zero at 2 x 20.1 = 40.2), so this case no longer shows |L| = 0 rows: the
+# zero-lift half of #462's coupling is pinned in test_drag instead, and the CHECK
+# here is the other way round -- every row lifts.
+CHECK all(d.get("L", 0.0) > 0.0 for d in drag)
+# RE-BASELINED by #503: 1.093 measured, against 0.810 before it (0.808 after #483,
+# 0.817 after #486). The peak moved from inside the broadside swing to the t=5 row
+# at 6 deg of AoA, and it is now ABOVE 1.0 because the lift sum is no longer
+# competing with 35 m2 of form drag -- the airframe never turns that far over. The
+# band sits on either side of the measurement for the same reason it always did:
+# while the run stepped against wall-clock frames this ratio read 0.75, 0.90, 0.92,
+# 1.16 in four runs (#472, not physics). With --sim-steps 840 every run prints the
+# same rows, so widen it deliberately when the physics moves, not by accident
+# because a CI box was busy.
+CHECK (lambda ds: 1.00 < max(d["L"] / d["F"] for d in ds) < 1.20)([d for d in drag if d["F"] > 0.0])
 # The surfaces earn their keep. W is held for 3 s and the elevons reach their
 # max_deflection (0.35 rad = 20.1 deg printed); every row carries the t= of the
 # [drag] sample it printed under. Nothing parsed [ctrl] before #458, so no case

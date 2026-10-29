@@ -42,13 +42,15 @@ CHECK all(2.3 < d["aoa"] < 3.2 for d in drag if d["t"] >= 5)
 CHECK min(d["v"] for d in drag if d["t"] >= 22) > 55.0
 CHECK all(d["alt"] > 5800.0 for d in drag)
 CHECK all(d["up"] > 0.85 for d in drag if d["t"] >= 5)
-# WEATHERVANE. One 1 s rudder press at 25 s, nothing held: Beta 7.7, -4.9, ... 1.4,
-# -2.2, 0.3, 0.1, 0.0 -- back inside 1 deg by t=40, and AoA never left the band above
-# while it happened. The shipped jet with a rudder HELD sits at 100 deg of sideslip
-# (#482), with a tenth the area here. The difference is not the rudder: this hull's
-# 1.75 m2 stands 0.69-0.81 m BEHIND the CG, so its own form drag pulls the nose back
-# into the flow, and CpL (#486's lever) grows to -0.81 m at the worst row, which makes
-# the restoring strongest exactly when it is needed.
+# WEATHERVANE. One 1 s rudder press at 25 s, nothing held: Beta -8.9, 4.8, -0.0,
+# -3.4, 4.3, -3.1, 1.2, ... -- back inside 1 deg by t=40, and AoA never left the
+# band above while it happened. The shipped jet with a rudder HELD sits at 83 deg
+# of sideslip (#482), with a tenth the area here. The difference is not the rudder:
+# this hull's 1.75 m2 stands 0.69-0.81 m BEHIND the CG, so its own form drag pulls
+# the nose back into the flow, and CpL (#486's lever) grows to -0.82 m at the worst
+# row, which makes the restoring strongest exactly when it is needed.
+# RE-BASELINED by #503: the kick used to throw it 13.4 deg, because a rudder pinned
+# at its travel stop was billed 1.6x the force the same plate makes in air.
 CHECK max(abs(d["beta"]) for d in drag if d["t"] >= 24) > 5.0
 CHECK max(abs(d["beta"]) for d in drag if d["t"] >= 40) < 1.0
 CHECK all(d["cpl"] < -0.5 for d in drag if d["cpl"] is not None)
@@ -56,8 +58,10 @@ CHECK max(abs(d["cpl"]) for d in drag if d["cpl"] is not None) > 0.75
 # #462's coupling still holds on a real airplane: every substep that lifts pays induced
 # drag, and it pays the WING'S OWN aspect ratio (2 x 3.0 m half-span per part = 6 m over
 # a 1.8 m chord = AR 3.33), not the whole ship's. It also jumps with the sideslip
-# (0.29 -> 1.35 m2 on the kick row) because the fins present their edges -- the term
-# reads the surface's own flow, #483.
+# (0.29 -> 0.76 m2 on the kick row) because the fins present their edges -- the term
+# reads the surface's own flow, #483. RE-BASELINED by #503: the kick row was 1.35;
+# the sideslip that drove it is smaller now that a full-lock rudder is a stalled
+# plate rather than a linear one (#503), and the fin's own lift went with it.
 CHECK all(d["induced"] > 0.0 for d in drag if d["L"] > 1.0)
-CHECK max(d["induced"] for d in drag) > 1.0
+CHECK max(d["induced"] for d in drag) > 0.5
 FORBID error:

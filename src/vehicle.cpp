@@ -2737,8 +2737,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             // unusable frame; the cl and force tests stay for a surface with no
             // slope and one that makes no force anyway.
             if(clc <= 0.0 || deflection == 0.0) { continue; }
+            /* The surface's own stall_angle, the same droop a wing gets (#494's first
+               half): a rudder turned 20 deg into the flow has separated, and the
+               loader will not let a steering part ship without the number. */
             const glm::dvec3 F = controlForce(qp, d->control_area, clc,
-                                              deflection, forceDir);
+                                              deflection, forceDir, d->stall_angle);
             if(glm::length2(F) <= 0.0) { continue; }
             ApplyForce(hull, ri, F);
             ftotal += F;

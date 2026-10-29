@@ -537,6 +537,30 @@ PartsCatalog load_parts_catalog(const char *path) {
         if(d.max_deflection < 0.0) {
             throw std::runtime_error(ctx + "\"max_deflection\" must be >= 0 (rad)");
         }
+        /* A part that STEERS has to say where it stops biting (#494). controlForce
+           droops through liftCurve exactly like a wing, and stall_angle is the angle
+           where its authority peaks; a control surface shipped without it would keep
+           the old linear-to-the-stop law while every wing in the catalog stalls at
+           0.35, and at full travel that is a factor of ~1.6 in authority -- exactly
+           the kind of difference a plane's tuning silently absorbs instead of
+           noticing. Required rather than defaulted, so the next steering part is
+           authored with the number instead of inheriting a fiction. */
+        if(d.isControlSurface() && d.stall_angle <= 0.0) {
+            throw std::runtime_error(ctx + "a control surface needs \"stall_angle\" "
+                                          "(rad): where a deflected surface stops biting");
+        }
+        /* ... and the travel stop has to sit inside the droop. liftCurve is zero at
+           twice the stall angle and NEGATIVE past it, so a surface that can be
+           cranked past 2x its stall angle pulls the wrong way for the last part of
+           the stick's throw. Full lock should mean maximum authority, even if it no
+           longer means MORE of it. */
+        if(d.isControlSurface() && d.max_deflection >= 2.0 * d.stall_angle) {
+            throw std::runtime_error(ctx + "\"max_deflection\" (" + std::to_string(d.max_deflection)
+                                          + " rad) must be < 2x \"stall_angle\" ("
+                                          + std::to_string(d.stall_angle)
+                                          + " rad): past twice the stall angle a surface "
+                                            "reverses, so the stick would run backwards");
+        }
         /* A chute must ship its canopy: the overlay pair is all-or-nothing
            (like shroud) and REQUIRED when chute_area > 0. */
         d.chute_area = pv.value("chute_area", 0.0);

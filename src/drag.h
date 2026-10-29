@@ -804,13 +804,21 @@ inline double partCd(double cdForward, double cdSide, double cdBackward,
 }
 
 /* The force on one DEFLECTED control surface: the lift law with the DEFLECTION
-   in place of the angle of attack (LINEAR -- no stall; travel bounds it). The
-   steering moment is NOT here: it comes from applying this force AT the surface
-   (Vehicle::applyAeroForce). */
+   in place of the angle of attack, through the SAME liftCurve a wing uses (#487's
+   shape, authored here as the surface's own stall_angle). A plate turned 20 deg into
+   the flow has separated: it makes a FRACTION of its peak side force, not the 2.1 an
+   infinite-aspect 2-D airfoil would claim (cl 6.0/rad x 0.35 rad), which is what the
+   law said while it had no stall term at all. Peak authority is at stall_angle and
+   the force is gone by 2x that, so an authored stall_angle has to sit below the
+   travel stop or the last of the stick's throw pulls the wrong way -- the loader
+   requires the number on anything that steers rather than defaulting it, because a
+   silently-linear surface is how a plane ends up with 2x the authority it was tuned
+   for. The steering moment is NOT here: it comes from applying this force AT the
+   surface (Vehicle::applyAeroForce). */
 inline glm::dvec3 controlForce(double q, double S, double cl, double delta,
-                               const glm::dvec3 &dir) {
+                               const glm::dvec3 &dir, double stallAngle = 0.0) {
     if(q <= 0.0 || S <= 0.0 || cl <= 0.0 || delta == 0.0) { return glm::dvec3(0.0); }
-    return dir * (q * S * cl * delta);
+    return dir * (q * S * liftCurve(cl, delta, stallAngle));
 }
 
 /* The control-surface DEFLECTION EFFECTIVENESS: the part's dedicated cl_control

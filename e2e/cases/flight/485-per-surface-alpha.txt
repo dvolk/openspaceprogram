@@ -37,9 +37,20 @@ CHECK all(abs(f + g) < 1.2 for f,g in zip([s["a"] for s in surface][4::8],[d["be
 CHECK all(abs(f - r) < 0.6 for f,r in zip([s["a"] for s in surface][4::8],[s["a"] for s in surface][7::8]))
 # A sideslip is not allowed to leak into pitch: the wings stay 2.2-3.6 deg through the
 # kick, and the fin, which reads 0 when the ship points into the flow, reads 0 again
-# once it does.
+# once it does -- measured on the settled rows, four seconds after the kick (worst 0.0;
+# the run's last six rows all print -0.0).
+# The filter used to be Beta, and #503 showed what that was really sampling. At t=28 the
+# ship crosses Beta = 0 mid-swing and the fin still reads +0.6 deg: its angle is not the
+# ship's. The surface stands 2.19 m aft, and the ~0.3 rad/s of yaw rate that took Beta
+# from -8.9 to +4.8 in one second drags 0.7-0.9 m/s of air sideways across it, which at
+# 79 m/s is 0.5-0.7 deg -- #483's sweep term doing its job on an airframe that is
+# pointing into the flow while still turning. #503's weaker full-lock rudder made the
+# swing quicker, so the 1 s sample now lands on that crossing; before, the same instant
+# read Beta=-0.5 and fell out of the filter. Betting a band on where one sample lands
+# inside an oscillation is a bet on phase, not on the law (453 argues the same about its
+# own swing), so the window is now time-based and the band itself stays at 0.3.
 CHECK all(2.2 < a < 3.6 for a in [s["a"] for s in surface][0::8])
-CHECK max(abs(f) for f,g in zip([s["a"] for s in surface][4::8],[d["beta"] for d in drag]) if abs(g) < 0.2) < 0.3
+CHECK max(abs(f) for f,t in zip([s["a"] for s in surface][4::8],[d["t"] for d in drag]) if t >= 44.0) < 0.3
 # q is the pressure of the flow AT the surface (#483), not one ship-wide number. It
 # tracks 0.5*rho*v^2 within 8%, the residual being each part's own sweep and the log
 # quoting the ship's speed a substep away from the one the aero pass used.

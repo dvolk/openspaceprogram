@@ -71,6 +71,12 @@ WING_STALL_ANGLE   = 0.35     # rad (~20 deg), where lift peaks + the flow stall
 RUDDER_DENSITY        = 50.0  # kg/m^3, control-surface structure (skin + spars)
 RUDDER_CL             = 6.0   # deflection effectiveness (per radian)
 RUDDER_MAX_DEFLECTION = 0.35  # rad (~20 deg), the travel limit
+# Where a DEFLECTED surface stops biting. The loader reads the same "stall_angle"
+# field for both jobs: incidence stall on a lifting part, deflection stall on a
+# steering part (#494). A plain plate hinged into the flow peaks near 15 deg.
+# It goes to nothing at 2x that, and max_deflection is below the zero, so the
+# pedal never runs backwards on us.
+CONTROL_STALL_ANGLE   = 0.26  # rad (~15 deg)
 # Fraction of a control surface's footprint that actually becomes authority.
 # Not a physical constant: it is the knob that keeps a fin's moment near the
 # ship's own wheel budget (#399 asks for that ratio to come from the sim).
@@ -565,6 +571,7 @@ def generate(name, ptype, mesh, texture):
                              "aileron": "roll"}[ptype]
         e["cl_control"] = RUDDER_CL
         e["max_deflection"] = RUDDER_MAX_DEFLECTION
+        e["stall_angle"] = CONTROL_STALL_ANGLE
     elif ptype == "kerbal":
         # mass is the DRY body, declared in EXTRA_FIELDS (mesh supplies shape only)
         e["mass"] = clean(EXTRA_FIELDS[name]["mass"])
@@ -606,9 +613,10 @@ def summary_line(e):
         return "  %-24s S=%5s  cl=%4s  A_stall=%s  mass=%7s" % (
             n, e["lift_area"], e["cl"], e["stall_angle"], e["mass"])
     if "control_area" in e:
-        return "  %-24s S=%5s  cl_c=%4s  axis=%-6s delta_max=%s  mass=%7s" % (
+        return "  %-24s S=%5s  cl_c=%4s  axis=%-6s delta_max=%s A_stall=%s  mass=%7s" % (
             n, e["control_area"], e.get("cl_control", 0),
-            e.get("control_axis", "pitch"), e["max_deflection"], e["mass"])
+            e.get("control_axis", "pitch"), e["max_deflection"],
+            e["stall_angle"], e["mass"])
     if "propellant" in e:
         rate = sum(e["propellant"].values())
         t = rate * e["exhaust_velocity"]
