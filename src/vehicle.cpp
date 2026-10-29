@@ -3882,19 +3882,41 @@ void Vehicle::moveToFrame(Frame *newFrame, double t) {
        either stasis term trips these while the epoch assert stays silent. The second
        pair checks the hull's actual transform after placeShip: the COM, not the
        S-origin, survives a switch. Untested on the frame-offset term -- every switch
-       the battery drives is same-body, so fpos is zero (#161). */
-    assert(glm::length(rootPosIn(newFrame, newCom) - p0) < 1e-6);
-    assert(glm::length(rootVelIn(newFrame, newCom, newVel) - v0) < 1e-6);
-    assert(rotDist2(att0, newFrame->root_orient * (forient * sRot)) < 1e-20);
-    {
-        glm::dvec3 pOrigin; glm::dmat3 pBasis;
-        fromBt(principal, pOrigin, pBasis);
-        glm::dvec3 hullPos; glm::dmat3 hullRot;
-        fromBt(hull->btBody->getCenterOfMassTransform(), hullPos, hullRot);
-        assert(glm::length(rootPosIn(newFrame, hullPos) - p0) < 1e-6);
-        assert(rotDist2(frame->root_orient * (sRot * pBasis),
-                        newFrame->root_orient * hullRot) < 1e-20);
+       the battery drives is same-body, so fpos is zero (#161).
+       The position and velocity tolerances SCALE, because both sides of those
+       checks are ROOT-space quantities (#489): a flat 1e-6 is a bit over one ulp
+       at the Kerbin->Kerbol distance, so out there it demanded bit-exactness and
+       aborted on one bit of round-off (measured pre-#483: comErr 0, velErr 0,
+       hullErr 1.90736318e-06 against an ulp of 1.90734863e-06). The attitude pair
+       stays absolute -- a rotation is dimensionless and its round-off floor is
+       ~1e-31, nowhere near 1e-20. */
+    const double posTol = continuityTol(glm::length(p0));
+    const double velTol = continuityTol(glm::length(v0) + glm::length(oldVel)
+                                       + glm::length(frame->root_vel)
+                                       + glm::length(newFrame->root_vel));
+    glm::dvec3 pOrigin; glm::dmat3 pBasis;
+    fromBt(principal, pOrigin, pBasis);
+    glm::dvec3 hullPos; glm::dmat3 hullRot;
+    fromBt(hull->btBody->getCenterOfMassTransform(), hullPos, hullRot);
+    const double comErr = glm::length(rootPosIn(newFrame, newCom) - p0);
+    const double hullErr = glm::length(rootPosIn(newFrame, hullPos) - p0);
+    const double velErr = glm::length(rootVelIn(newFrame, newCom, newVel) - v0);
+    if(comErr > 0.0 || hullErr > 0.0 || velErr > 0.0) {
+        /* Exactly zero is the normal answer -- these are algebraic identities --
+           so anything else is worth seeing even when the scaled tolerance lets it
+           through. It is the difference between a bisected bug and a rebuild. */
+        printf("[mvf] %s %s -> %s: comErr %.9g hullErr %.9g velErr %.9g"
+               " posTol %.3g velTol %.3g\n",
+               displayName().c_str(), frame->name.c_str(), newFrame->name.c_str(),
+               comErr, hullErr, velErr, posTol, velTol);
+        fflush(stdout);
     }
+    assert(comErr < posTol);
+    assert(velErr < velTol);
+    assert(rotDist2(att0, newFrame->root_orient * (forient * sRot)) < 1e-20);
+    assert(hullErr < posTol);
+    assert(rotDist2(frame->root_orient * (sRot * pBasis),
+                    newFrame->root_orient * hullRot) < 1e-20);
 
     /* Angular velocity is the rotational analogue of the stasis terms: the hull stores
        the spin RELATIVE to its frame, in that frame's axes, so a switch adds the OLD

@@ -648,6 +648,43 @@ int main() {
         sun->UpdateOrbitRails(0.0);
     }
 
+    // ---- #489: the frame-switch tripwires scale with what they measure ----
+    {
+        // Near home the flat epsilon is still the demand -- that is where these
+        // identities actually measure 0.0 (measured at a same-body switch: comErr,
+        // hullErr and velErr all exactly zero), so scaling must not loosen it.
+        CHECK_NEAR(continuityTol(0.0), 1e-6, 0.0, "floor is the old 1e-6");
+        CHECK_NEAR(continuityTol(1e5), 1e-6, 0.0, "1e5 m of scale buys no slack");
+        CHECK_NEAR(continuityTol(kContinuityAbs / kContinuityRel), 1e-6, 1e-12,
+                   "crossover at 1e6 m of scale");
+        CHECK_TRUE(continuityTol(-5.0) == kContinuityAbs,
+                   "never tighter than the floor");
+        CHECK_TRUE(continuityTol(1e12) > continuityTol(1e10),
+                   "looser as the scale grows");
+        CHECK_NEAR(continuityTol(1.36571076e10), 0.0136571076, 1e-12,
+                   "a Kerbol-distance switch buys 1.4 cm, not metres");
+
+        // THE BUG, pinned. At a Kerbin -> Kerbol switch the hull identity came in
+        // one ulp off and the old flat 1e-6 aborted on it (tmp/p489_r2.log). The
+        // scale is |p0|, the root distance moveToFrame compares against.
+        const double ref = 1.36571076e10;         // |p0| at that switch
+        const double hullErr = 1.90736318e-06;    // measured
+        const double ulp = std::nextafter(ref, HUGE_VAL) - ref;
+        CHECK_NEAR(ulp, 1.9073486328125e-06, 1e-18, "one ulp at 1.37e10 m");
+        CHECK_TRUE(!(hullErr < kContinuityAbs),
+                   "the old flat 1e-6 still fails a one-ulp round-off");
+        CHECK_TRUE(hullErr < continuityTol(ref), "the scaled tolerance clears it");
+        CHECK_NEAR(continuityTol(ref) / ulp, 7160.0, 1.0,
+                   "7160 ulp of margin at the Kerbol distance");
+        CHECK_TRUE(continuityTol(ref) < 1.0,
+                   "a metre-scale break still trips it at Kerbol distance");
+        // HEAD's own hullErr at a same-body Kerbin switch (1.16415322e-10, printed
+        // by the [mvf] line) stays four orders inside the flat floor: scaling has
+        // not made anything near home loose.
+        CHECK_TRUE(1.16415322e-10 < kContinuityAbs,
+                   "HEAD's same-body hullErr stays inside 1e-6");
+    }
+
     // ---- summary ----
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if (g_failures == 0) {

@@ -125,6 +125,29 @@ struct Frame {
     }
 };
 
+/* How much slack a frame-switch identity gets (#489). Both sides of the
+   Vehicle::moveToFrame checks are ROOT-space quantities, so their absolute error
+   grows with the distance from the star: at the Kerbin->Kerbol offset of
+   1.36e10 m one ulp is 1.907e-6 m, which is finer than the flat 1e-6 these checks
+   used to demand. Out there a flat epsilon is not "a micron of slack", it is
+   bit-identical-or-abort, and the hull check aborted on exactly one bit.
+   The scale handed in is |p0|, the root distance, so kContinuityAbs -- what the
+   checks always demanded -- only binds within ~1e6 m of the tree root, which in a
+   star-rooted system is nowhere a ship ever is. That is deliberate, because none
+   of these identities is exactly zero in the field (HEAD, a same-body Kerbin
+   switch: comErr 0, velErr 0, hullErr 1.16415322e-10; pre-#483, the Kerbol switch:
+   hullErr 1.90736318e-06 against an ulp of 1.90734863e-06). kContinuityRel = 1e-12
+   leaves ~4.5e3 ulp for a single rounding (7160 measured at 1.36e10 m) while a
+   Kerbol-distance switch still only buys 1.4 cm of slack -- every defect worth
+   catching (a dropped stasis term, a wrong frame or part offset, a drifted
+   root_orient) misses by metres or kilometres, never centimetres. */
+constexpr double kContinuityAbs = 1e-6;
+constexpr double kContinuityRel = 1e-12;
+inline double continuityTol(double scale) {
+    const double rel = kContinuityRel * scale;
+    return rel > kContinuityAbs ? rel : kContinuityAbs;
+}
+
 /* Which plane the UI measures Inc/LAN/LPe against (#171). The SAME choice the
    orbit map draws (Game::map.plane), so the numbers describe the picture;
    kRefOrbit is view-only, where Inc is 0 by construction and the node is
