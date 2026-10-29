@@ -1,0 +1,1160 @@
+AERO WORK ORDER -- 2026_10_28 (updated 2026_10_29 after #483 and its review pass)
+===============================================================
+Tickets: #450 #452 #453 #454 #455 #456 #457 #458 #459 #460 #461 #462 #463 #472 #473
+#474 #475 plus the ones found along the way #476 #477 #478 #479 #480 #481 #482 #483
+#484 #485 #486 #487 #488 #489, the authority cluster #399 #403 #425 and the atmosphere
+cluster #245 #340.
+
+Status legend: [ ] todo  [~] in progress  [x] done  [-] deliberately deferred
+
+PROGRESS LOG
+------------
+52b446f  #458(e2e half) #459  envelope goldens + [ctrl] parser + |v_air|
+924dcab  #461 #460(half)      def "attitude" -> a level pad start
+25c97cd  #463 #462            union silhouette + direction cache; induced drag
+8c34e15  #463 #462 (fix)      mount offsets in the union; the fold wraps beta too
+abb1e3d  review pass           honest cache claims; lazy table; no fills at a
+                               meaningless flow direction; two dead test pins fixed
+44341a1  #472                 --sim-steps: an exact tick budget, with the scripted
+                               schedules and the log gates keyed to the sim clock
+4ff88f3  #472 (fix) #475      key that clock to TICKS, not g.time (a load made it
+                               negative, a pause froze it); the log gates tick.cpp
+                               missed; frame cap + idle throttle off for scripted
+                               runs.
+de0f34e  #472 (fix 2)         review OF the fix: the never-advanced warning reads the
+                               whole run now (it was per-frame: cried wolf, missed
+                               C2); --idle-fps is opt-in rather than dead; input
+                               scheduled past the last pollable tick prints a NOTE;
+                               five claims corrected; 2 new cases + clock pins.
+96ebda5  #475 (half)          the rumble + sky fade step on the tick under
+                               --sim-steps, and the rumble gets its own stream: a
+                               scripted run replays its CAMERA pose. The LOD's
+                               FILL (job timing) is still open.
+16ee66e  #456                 a save pins each part's SHAPE: FNV-1a over the mesh
+                               FILE bytes + radius/height + every attach node + a
+                               kGeomEpoch, written per vessel part as "geom". A
+                               disagreement on a part whose pose was solved against
+                               another part REFUSES the load; a save with no key is
+                               unverifiable, not wrong, and loads with one note.
+b3be7c0  #456 (fix)           review pass: --allow-part-geom-drift (a refusal whose
+                               only fix is unreachable is a wall), notes delivered
+                               after the load commits and as TOASTS, the canonical
+                               FNV basis before a truncated one hardened into saves,
+                               kGeomEpoch for the hull assimp builds from those bytes,
+                               the WRITE side pinned (115), the parent half of the rule
+                               pinned (new fixture + case), fixture self-pin in
+                               test_shipload, resdir's ordering asserted, a toast when
+                               the save names a different parts file.
+c65a815  #457 #458(2nd half)  a part attaches to its parent's REAL shape. PartDef
+                               carries the mesh's own box (read off the .obj's v
+                               lines, on the same file read #456 already does); the
+                               surface "angle" shorthand puts its contact on the
+                               ELLIPSE that box bounds instead of radius * (cos a,
+                               sin a) -- bit-identical for a round parent, honest at
+                               a plate's tip and face; "z" outside the parent's mesh
+                               is refused; induced drag takes 2*meshSpanHalf()
+                               instead of 2*radius; the catalog's aero areas are
+                               checked against the planform its meshes draw (#458).
+3c39bbb  #457 (fix)           review OF that: the ellipse could reach NaN on a parent
+                               with no thickness (divide by hy^2 -> inf -> normalize
+                               -> NaN, and the guard was `nl < 1e-9`, false for NaN)
+                               -- the rule is now ellipseContact(), division-free,
+                               with a NaN-safe guard; a planar mesh is no longer
+                               refused (only a box with no area at all, and the
+                               message names both parts); the mesh read can no longer
+                               abort boot on a read error; an indented `v` line is
+                               tolerated; the dead 1-arg fingerprint overload and the
+                               stale "~1 ms"/hull-AABB/cylinder-shorthand comments are
+                               gone; tests that could not fail now can (a plate
+                               spanning Y, ellipseContact pinned directly, the area
+                               ratios pinned exactly, one absolute fingerprint hex).
+c4d68c8  #453                 per-surface aero frames. drag.h gains PartAero +
+                               partAero(partRot, v_rel) -> {alpha, liftDir, valid};
+                               the lift loop and the control loop both call it on
+                               sRot * p->localRot, so ControlAxisParams::forceDirKind,
+                               yawDir/yawDirRaw and the ship-wide liftDir are deleted.
+                               The control sign stays SHIP-axis (controlDeflectionSign
+                               measures the stick's axis) -- making it part-relative
+                               was measured to reverse a mirrored pair's yaw force
+                               (+51450 -> -51450 N, moment off 3.8e5 N m). Pinned that
+                               the shipped airframes see no change: 3.15e-12 N lift on
+                               the jet, 7.3e-12 N on the control pair. New e2e case
+                               flight/453-rudder-pair-adds-up (invariant: the pair
+                               makes the rudder travel antisymmetric and Beta swings
+                               past 90 deg) -- needed because mutating production to
+                               the part-axis sign leaves all 447 old test_drag checks
+                               GREEN.
+04542f0  #453 (fix)           review OF that: the visual hinge was wrong. A surface
+                               mesh is a plate -- span +X, face normal +Y, chord +Z
+                               (fin_r1h2.obj 2/0.1/2 m) -- so the hinge line is the
+                               part's SPAN, not an axis picked per control kind: the
+                               first cut hinged yaw surfaces about partRot[1], i.e.
+                               about their own faces, 28.3 deg off the pre-#453 hinge
+                               with the chord tip swinging perpendicular to the force
+                               (cos 0.000). One rule now, no selector:
+                               controlSurfaceVisualRot(defl, partRot) = angleAxis(-defl,
+                               partRot[0]); its aboutAxis parameter and Draw's
+                               controlAxisParams lookup are gone (one int meaning "ship
+                               axis" in the aero pass and "part axis" in the renderer
+                               is how this happened). Also: the control path dropped
+                               PartAero::valid, so an unusable frame printed full
+                               rudder travel with exactly zero force -- now it asks
+                               for no travel; the shipped no-op is a permanent
+                               test_shipload pin (BuildShip solves the real jet/glider
+                               poses, 3.15e-12 N / 9.1e-12 N m, twin normals
+                               anti-parallel); test_controlSurfaceVisualRot rewritten
+                               around the physical rule on four mounts (mutating the
+                               hinge axis fails 19 checks); two overclaims corrected
+                               (the pair does not "cancel" -- the sign is float noise
+                               and it REVERSES; and attachSurface cannot sweep a chord
+                               in plan view, so #453 does not make a swept wing
+                               physical); the F4 SURFACE AoA now says it is the
+                               airframe's attitude, not what a surface feels. Filed
+                               #482 #483 #484 + a note on #462.
+163fe57  #483                 a surface feels the flow where it stands. The lift loop,
+                               the induced term and the control loop now use
+                               v_rel + w x r and a per-surface q; the ship-wide q is
+                               gone (it fed exactly those three terms). Hull FORM drag
+                               keeps the COM flow on purpose and says why: its area is
+                               one union projected through one plane (#463). Measured
+                               first with a temporary print: jet mid-swing |w| up to
+                               2.0 rad/s. What it buys: the glider stops tumbling (AoA
+                               142.0, 14.8, -108.6, 75.2, ... -> 143.1, 6.7, 2.5, -1.4,
+                               -0.1, 0.0, ...) and keeps 111 m/s of 173 instead of 73;
+                               the jet barely moves (77.0 -> 77.8) because at its
+                               lifting surfaces the sweep is ~1% of the flow and past
+                               2*stall there is no lift to damp. Damping, no restoring
+                               term -- the glider settles into a nose-on dive. Filed
+                               #485 (per-surface alpha in F4) #486 (hull form drag
+                               still cannot feel a rotation), annotated #482/#454.
+5e9781e  #483 (review pass)   the adversarial pass was right about three claims and
+                               wrong about one hazard. Corrected in code and in the
+                               458 case text: the sweep is a damper ONLY where
+                               liftCurve's slope is positive -- inside the deep-stall
+                               droop it PUMPS (glider, |w| 4.313, AoA -29.6: dM.w
+                               = +451 kW; total M.w +362 kW against the COM-flow law's
+                               -89 kW), and past 2*stall it is exactly 0.0; the
+                               "7.4 m/s" figure belongs to the rudders/elevators
+                               (levers 3.65 m), not the lifting surfaces (0.55 m,
+                               0.02-1.1 m/s); the control loop's q does move (0.902 /
+                               0.866 across the rudder pair at AoA 77, unequally, which
+                               is where 458-jet's Beta 4.6 -> 4.9 came from); 458-jet's
+                               "wings sit on the pitch axis" geometry was backwards;
+                               458-glider's settle is PITCH ONLY (Beta still 54 deg
+                               after t=7 -- a yaw rate sweeps the wingtips along the
+                               nose, so this term buys zero yaw damping) and its CLAIM
+                               said 26 m2 when the worst row is 17.73. Code: localFlow
+                               in drag.h (one composition, and the unit test now pins
+                               production), one sqrt for the induced direction (glider
+                               [drag] rows byte-identical, 8bd3db7574c71149e5195c368d41
+                               51db), assert a finite angular rate (NaN w is silent:
+                               partAero calls a NaN flow valid), the dropped
+                               omega_atm x r stated, control loop skips neutral
+                               surfaces (index still advances for flight/453),
+                               lastInducedCdA documented as a CdA not a force/q. The
+                               warp-instability worry predates #483: the pre-#483 build
+                               at --time-accel 10 already reaches |v| 42 km/s and
+                               aborts on vehicle.cpp:3782's moveToFrame assert (evidence
+                               on #340). Filed #487 (the droop pump).
+281feee  #483 (measured again)  the review of my review pass caught that I had swapped
+                               some wrong numbers for other wrong ones. Probe over
+                               EVERY aero substep (inert: glider [drag] md5
+                               8bd3db7574c71149e5195c368d4151db with it in), 252 samples
+                               per airframe. Corrections: the pump mechanism is the
+                               surface pulled back TOWARD the stall peak gaining lift
+                               (deeper = less lift, that is what a droop is); dM.w runs
+                               -513 kW..+413 kW on the glider and -3885 W..+3080 W on
+                               the JET (it pumps too), with pumping samples at |AoA|
+                               27-41; "damps at -65 but not -27" is impossible -- past
+                               2*stall the term measures exactly 0.0 in every |AoA|>70
+                               sample, so broadside recovery is hull form drag (#486);
+                               jet sweep maxima 1.46 m/s lifting / 6.39 m/s control at
+                               |w| up to 2.65; actuated q/qCom 0.93-1.07 jet, 0.85-1.11
+                               glider (my "0.902/0.866 at AoA 77" was the wrong moment:
+                               at a 77 deg turning point |w| is 0.02-0.29); 458-jet's
+                               max |Beta| moved 0.3 -> 2.5, not "4.6 -> 4.9" which I
+                               invented; the co-rotation note named the wrong omega
+                               (aero runs IN the rot frame, so nothing was dropped --
+                               as written it invited subtracting Kerbin's spin twice);
+                               the NaN assert's stated route was false twice (save.cpp
+                               has no isfinite at all; a NaN cannot be parsed -- the
+                               route is divergence, i.e. #340). Also dropped the now
+                               dead `sv == 0.0f ||` clause.
+8785ab7  #489                  the frame-change tripwires SCALE. moveToFrame demanded
+                               1e-6 ABSOLUTE on root-space quantities; one ulp at the
+                               Kerbin->Kerbol offset (1.36e10 m) is 1.907e-6, so past
+                               8.59e9 m it meant bit-identical-or-abort and it aborted
+                               on ONE bit (comErr 0, velErr 0, hullErr 1.90736318e-06).
+                               continuityTol = max(1e-6, 1e-12*scale): margin is
+                               scale-free (~4.5e3 ulp for a single rounding; 7160
+                               measured at 1.36e10) while the bite stays useful -- 1.4
+                               cm at Kerbol distance, 5.9 m at Pluto (5.9e12, the
+                               widest orbit in solar_system_full.json), which is under
+                               the sim's own resolution out there (~260 m per Bullet
+                               substep at warp 10, #488). Attitude pair stays absolute:
+                               dimensionless, round-off floor ~1e-31. moveToFrame now
+                               prints [mvf] deltas when any is nonzero, and it
+                               immediately falsified a sentence I had just written --
+                               HEAD's same-body switch reads hullErr 1.16415322e-10,
+                               NOT zero. Also learned the hard way that the scale is
+                               |p0| alone: |newCom| is frame-LOCAL, and summing it made
+                               the comment lie. Falsified: pre-#483 build aborted on
+                               3 of 4 warp-10 dives, 0 of 4 with only the tolerance
+                               changed; HEAD's flight bit-identical (drag md5
+                               7cb4458f). test_frames 120 -> 132 checks, and mutating
+                               kContinuityRel tight (1e-17) or loose (1e-3) each fails
+                               3 of the new ones. The runaway itself is still #488.
+                               HEAD.
+7f02e2e #490             AUDIT OF THE SHIPPED PLANES, because the user objected
+  (audit)                      to jet/glider being the yardstick before anything was
+                               re-baselined for #486. They were right. Instrument: a
+                               getenv("OSP_SHIP_DUMP") dump inside the DRAG block
+                               (per part: mass, offset from the COM IN SHIP AXES --
+                               world axes made the first dump meaningless -- projected
+                               area, cd as it faces the flow, and the silhouette cp)
+                               plus tmp/ship_audit.py -> tmp/ship_audit.txt. At 7 km /
+                               173 m/s (q 5133 Pa), both ~2.9 t with 16 m2 of wing:
+                                 L/D 1.26 (jet) / 1.22 (glider) -> glide 1.2:1, sink
+                                 138-141 m/s. Hull CdA 4.14 m2 (four overlapping r1
+                                 circles, union 4.50) against 16 m2 of wing.
+                                 trim CL 0.36 = 3.4 deg AoA; stall CL 2.10 at 71 m/s.
+                                 cp 0.28 / 0.38 m BEHIND the COM -> hull-only yaw
+                                 restoring 86 / 116 N m/deg vs 131 kN m of rudder.
+                               Falsified on the way: (a) my "#486 will fix the glider's
+                               yaw because its cp is forward" -- CpL is NEGATIVE on
+                               both ships everywhere (-0.28..-1.35 m, growing with
+                               incidence), so the term is damping and the glider's
+                               Beta growth is a different realisation of a chaotic
+                               tumble; (b) #454's framing -- the wing sits 0.55-0.64 m
+                               AFT of the COM, i.e. it IS rocket-fin stable at 4730 /
+                               5488 N m/deg; the 458 runaway is throttle through the
+                               3.4 deg trim point into the 20 deg stall; (c) the wing
+                               pays induced drag at AR 2 while lifting at a 2D slope
+                               6.0/rad, where AR 2 says ~2.7 -- ~2.2x too much lift for
+                               the drag it charges. No FIXED tail surface exists on any
+                               shipped plane (rudder/elevator only act when deflected),
+                               which is the real root of #482. Commented on #454, #482;
+                               #490 carries the table and the fix list.
+7f02e2e #490             BUILT THE AIRPLANE THE AUDIT'S ARITHMETIC ASKS FOR, and it
+  (skiff)                      flies. The user: "if you can make a better airplane that
+                               would be great. fine to modify or add parts too". Eight
+                               new parts first, because the catalog had nothing for an
+                               airplane: no small pod (the smallest was r1, 510 kg), no
+                               wing with a plane's area and a plane's MASS (wing_r1h3 =
+                               110 kg for 8 m2), no FIXED tail surface at all -- the
+                               catalog's only horizontal surfaces are elevator/rudder,
+                               which produce nothing until deflected (vehicle.cpp:2588
+                               early-continues on sv == 0). Meshes via gen_wing.py /
+                               rescale_obj.py, rows in gen_parts.py, parts.json
+                               regenerated, check_mesh clean.
+                                 r0.5h1.5 pod 215.6 kg; r0.4h2 tank; r0.25h1 fan;
+                                 wing_r3h1.8 43.2 kg for 21.6 m2; wing_r1h1; wing_r0.7h1;
+                                 elevator_r0.8h0.7; rudder_r0.6h0.8.
+                               res/ships/skiff.json: 11 parts, 552.3 kg, hull CdA 0.75 m2
+                               (1.81 m2 of union nose-on at cd 0.42) -- a SIXTH the
+                               glider's area for a quarter of its mass; cp 0.69-0.86 m
+                               behind the CG,
+                               21.6 m2 of AR-3.33 wing 0.34 m aft, 4 m2 of tailplane
+                               2.0 m aft at -5 deg incidence, fixed fin 2.2 m aft,
+                               elevators 2.8 m aft.
+                               THE FINDING THAT MADE IT FLY: this law has no surface
+                               pitching moment and no alpha term for control surfaces,
+                               so with everything symmetric alpha = 0 is the ONLY pitch
+                               equilibrium -- the first skiff, hands off, sat at AoA
+                               exactly 0.0 and sank. A stable airframe therefore needs
+                               an aft download, and with no `trim` field the only way
+                               to ask for one is incidence: shipdef "roll" on a surface
+                               mount IS incidence, because a plate's chord is its Z axis
+                               and a surface mount keeps that Z along the parent's stack
+                               axis (the contact normal at angle 0 is the span axis).
+                               tail roll -5/+5 on the twin at 180 deg (OPPOSITE signs --
+                               the mirror flips the chord) trims it at +2.5 deg.
+                               Measured hands-off on flying-slow, no stick, no SAS:
+                               AoA 2.5 deg to one decimal for a minute, Up never under
+                               0.54, L/D ~3 at 90 m/s and ~5 near 50 (the wing's planform
+                               showing its edge at AoA is most of the drag: 1.12 of the
+                               3.12 m2 the union presents at the trim rows), phugoid
+                               period ~17 s damping over 3 cycles.
+                               1 s of rudder: Beta 11.2 -> under 5 deg by t=20, under
+                               1 by t=25, AoA never leaves the band -- the weathervane
+                               #482 says the shipped craft cannot do, with a tenth the
+                               rudder area, because the hull's 1.8 m2 now stands 0.7 m
+                               BEHIND the CG. 2 s of W from the 180 m/s bed zoom-climbs
+                               to 3 m/s at the apex, drops a wing (lift reads 0 past the
+                               20 deg cutout at AoA -160), and recovers hands-off in ~8 s.
+                               Pinned by flight/490-skiff-trim-and-weathervane.
+                               The same commit carries the adversarial pass #486 owed:
+                               the hull's local flow now calls localFlow() instead of
+                               re-inlining w x r; CpL dashes instead of printing 0.00 on
+                               rows whose pass never ran; the comments that credited the
+                               lever's SIGN with the sweep damping were wrong (the sweep
+                               opposes a rotation either way -- the sign decides the
+                               ANGLE term) and are corrected; OSP_SHIP_DUMP prints its
+                               UNION next to the SUM of the parts' areas, because
+                               multiplying the sum by the mean cd overstated the jet's
+                               hull CdA by 2.4x -- which is how the 4.14 m2 in the audit
+                               above got quoted. Follow-up filed as #491: the hull charge
+                               hangs off ONE point, so on a long lever its local flow can
+                               cancel (form drag 0 N for a substep) or reverse (it pushes
+                               the ship forward, paying with the spin's energy -- energy
+                               stays safe, the number does not), and the gates around the
+                               term still read the COM flow.
+Closed so far: #459, #461, #462, #463, #472, #456, #457, #458 (both halves: the
+e2e envelope went in at 52b446f, the C++ catalog check rode #457), #453, #483, #489.  #460 open (the
+pad roll of an UNTILTED ship: the local vertical is degenerate as faceAlong's
+up_ref there, so it needs the launch site to carry a full basis).  NEW: #473 (the
+silhouette cache blends badly where the UNION JUMPS -- ~8% worst mid-chart -- and
+its tangent spacing also blows up at the rim); #474 (the union's pair loop is
+quadratic in part count: 0.009 ms at 13 parts, 0.58 ms at 200); #478 (the catalog
+uses two area conventions: lift_area is the whole planform, control_area half);
+#479 (the inscribed ellipse buries a child in a BOX-y parent, and disagrees with
+what the VAB does); #480 (the CHILD's bolt node still comes from the authored
+radius, and a mesh modelled off the stack axis would be symmetrised wrongly);
+#481 (a def can carry inf/NaN and nothing validates it).
+
+WHAT #472 GAVE BACK
+-------------------
+A scripted flight now runs N ticks, not N wall seconds, and its --sim-press inputs
+and its --*-log rows key to a count of TICKS (4ff88f3; the first cut used g.time and
+broke on a load and on a pause -- see the entry under NEW WORK). Two runs of the 458
+jet case print the same 14 [drag] rows -- identical to the printed precision, at
+--frame-cap 0/30/60/120/240 and with three `yes` processes eating the CPU; that last
+one is the claim: machine load used to change the flight. So the bands #472 forced
+loose are pinned again -- max L/F 0.810 on the jet (band 0.75..0.87), 0.786 on the
+glider (0.74..0.84) -- plus a new upper pin on the jet's excursion (|AoA| < 90: it
+swings 77 deg off the flow but does not go over the top, which is #463's restored
+broadside damping doing real work). The AoA and Beta series are quoted in full (all
+14 rows) in the case comments now, and #454 will be measured against them.
+Scripted runs are ~4x faster than --timeout 14 as well -- both goldens went from
+~13 s to ~3.5 s once 4ff88f3 stopped the frame cap and the idle throttle pacing a
+run that only cares about tick count.
+CAVEAT, now in code (game.h) and on #475: this makes the CADENCE deterministic, not
+a run over terrain. camShakeStep() shakes the camera with std::rand() on a wall-clock
+dt, the terrain LOD refines from that camera, and those patches own the ground
+colliders. Airborne cases replay; pad-start cases do not (yet).
+NOTE: the other flight cases still use --timeout. Their pins are shape/spread, not
+trajectory peaks; convert one when you next touch it rather than re-baselining a
+dozen cases at once.
+
+WHAT STAGE 1 DID TO THE BASELINE (the old numbers, for the record)
+------------------------------------------------------------------
+Was:  silhouette 30.8 m2 on both airframes, |L|/q 13.5 (jet) / 14.4 (glider),
+      best L/D 0.42 / 0.45, wings carry 0.84 g / 0.36 g.
+Now:  silhouette 4.4 m2 nose-on (jet and glider), broadside 35.2 / 26.0 m2 -- an
+      8.0x / 6.0x shape swing, reproduced to 0.01 across runs.  |L|/q reaches the
+      catalog ceiling (25..32 m2-equivalent), and Induced CdA is 0.00 m2 at level
+      flight, 10-16 m2 inside a high-AoA swing.
+      Note what the balloon actually was: ~7x too big when the ship presents GAPS
+      to the flow (nose-on for a wing-led hull -- the skinned-over region between
+      the wings) and within ~10% of honest broadside, where everything lines up.
+      So the fix is attitude-selective, which is why rockets did not move at all.
+Rockets and chutes BARELY MOVED: the union of a stacked stack is its balloon
+(flight/49, flight/448, flight/151 all passed untouched, twice).
+What did move is the STABILITY: see "WHAT STAGE 1 REVEALED" below.
+
+WHAT STAGE 1 REVEALED (read this before choosing the next block)
+----------------------------------------------------------------
+The balloon was not only imaginary drag; applied at the area-weighted CP it was
+pitch damping the airframes leaned on. With the honest silhouette a held stick
+puts the JET 75 deg off the flow and it is still oscillating when the case ends
+(AoA 0, 0, 0, 72, 4, 51, 28, -73, -2, 76, 25, -62, -60, 24 -- two runs agreeing to
+under a degree). It does NOT loop over: the wings' own planform drag, 35 m2 when
+the ship turns, damps that much. The GLIDER, which has no pitch surface at all,
+does go past vertical and stay (|AoA| 169-170 deg, |Beta| to 165).
+So #454 (static margin / pitch damping) is still the most VISIBLE gap -- nothing
+decides where these airframes want to point, and the damping they have is blunt
+planform drag that costs 35 m2 to get and is not aimed at the flow. (My first
+claim, written on #454 before the mount-offset fix, said both airframes tumble
+end over end; that was the bug talking -- 10 m2 of broadside instead of 35 -- and
+the ticket now carries the corrected numbers.)
+Measured run-to-run spread of the post-input flight (0.28 g vs 0.96 g of
+weight carried) is #472, not physics: the sim steps against wall-clock frames
+and tick.cpp discards the leftover, so any long under-damped flight is
+unreproducible. That is what forced the two 458 goldens to keep shape pins
+(stable to 0.01 m2) and loosen or drop the peak-lift bands.
+
+WHY THIS ORDER (three things the tickets do not say out loud)
+-------------------------------------------------------------
+1. #462 and #463 are the SAME number. Both complain that two 0.4 m^2 plates add
+   12.2 m^2 of drag silhouette. #463's fix (union of the per-part 2D projections
+   instead of convex-hulling the merged vertices) removes the wingtip blob for
+   everything; #462's "keep lifting parts out of the hull" is then largely
+   redundant. The per-part projections are ALREADY computed every substep at
+   vehicle.cpp:2259 for the centre-of-pressure / Cd blend and thrown away for the
+   force, so the union reuses work already in hand.
+2. #457 is a prerequisite, not a sibling. The wing's radius is 2.0 because for a
+   plate the radius is half the SPAN while the plate is 0.1 m thick. Any span /
+   aspect ratio for #462's induced drag minted from `radius` inherits that
+   cylinder-shaped lie, and #453's wing-mounted surfaces float off. gen_parts.py
+   :298 mesh_dims already computes extents and planform and never emits them --
+   one field serves #457 (attach), #462 (AR) and #463 (silhouette). Commented on
+   #457 on 2026_10_28.
+3. #399/#403/#425 are cited as prerequisites by #452 and #454, backwards. There
+   is no trim state to tune an attitude allocator against until the airframe has
+   static margin (#454) and a real L/D (#462/#463).
+
+STAGE 0 -- instruments and a pin, before touching a law
+-------------------------------------------------------
+[x] #458(a)  envelope goldens for jet.json + glider.json (see PROGRESS LOG). The
+             area band is the one #462/#463 exist to move: re-baseline it
+             deliberately, do not widen it.
+[x] #458(b)  [ctrl] parser in e2e/run.py (CTRL_ITEM_RE + parse_ctrl). Rows carry
+             the t= of the [drag] line they printed under.
+[x] #459     spawn line prints |v_air| for atmo_frac beds. flight/451 pins it.
+[~] #460     roll from the local vertical now applies to a TILTED pad airframe
+             (and to orbital atmo beds since #451). An untilted pad ship still
+             gets faceAlong's axis pick -- unavoidable, see the ticket note.
+[x] #461     ShipDef "attitude": {pitch, yaw}, applied at the pad, round-trips
+             the VAB, refused on nonsense. e2e/vehicles/level_jet.json +
+             flight/461 + test_shipload. Shipped defs left nose-up on purpose.
+      Also noted: tmp/ablation/envelope.py is stale (lift_area 2.0 vs the
+      catalog's 8). The e2e goldens replace it -- do not revive it.
+
+STAGE 1 -- one honest shape number                    DONE + FIXED (this HEAD)
+--------------------------------------------------------------------------------
+[x] #463(a)  union of the per-part polygons (drag.h unionProjectedArea), exact by
+             vertical decomposition: breakpoints at every vertex x AND every
+             cross-polygon edge crossing, so inside a slab the merged measure is
+             linear in x and midpoint x width is exact, not sampled. Of the three
+             algorithms considered, the subtract-pairwise shortcut would have
+             failed the triple-overlap pin in test_drag (1.25 instead of 1.5).
+             The aeroHull balloon and rebuildAeroHull's hull building are GONE:
+             refreshAeroGeom() now only re-keys and bumps the cache generation.
+             aeroSilParts holds the current substep's polygons -- the same
+             projections that feed the CP and cd mean, so nothing projects twice.
+[x] #463(a') THE FIX (8c34e15). The first cut projected each part about the ship's
+             origin, dropping p->localPos: a part's own area is translation-
+             invariant, which is why the old per-part law could ignore it, but
+             unioning polygons is the first thing that cares. Two 1 m^2 plates 10 m
+             apart charged 1 m^2. Now drag.h owns it -- projectPartHull(hullVerts,
+             localRot, localPos, plane, out) -- used by BOTH the substep loop and
+             the cache node fill (a node and the exact fallback must agree), and
+             pinned by test_partMounts (separated mounts == sum, same mount twice
+             == one face, a spun mount stays put). This is why the golden moved
+             again: 4.4 m^2 nose-on, 35.2 broadside, 8.0x.
+[x] #463(b)  SilhouetteMemo: 31x31 grid (5 deg) over (alpha, beta) +-75 deg --
+             direction only, since speed/density are multipliers. The table is
+             allocated on the FIRST fill (7.7 kB each), not per ship -- a parked or
+             orbital ship that never flies a direction never pays; invalidate() is
+             just a generation bump off the existing fingerprint. A cell with an
+             unfilled corner -- or a direction outside +-75, or a substep whose flow
+             direction is meaningless (the AoA validity test gates it) -- MISSES and
+             the caller uses the exact union of the polygons it already has => the
+             cache can never be wrong. It is not free: a filling substep pays its
+             exact pass PLUS up to the node budget, and one project+union pass costs
+             0.009 ms at 13 parts but 0.58 ms at 200 (#474). Measured with counters:
+             6 s level flight fills 9 nodes and hits ~99%; a 14 s tumble fills 88
+             and answers ~10% of queries exactly. Union exactness stress-checked
+             against a brute-force grid over 40 random polygon sets: worst
+             disagreement 3.1e-5 (grid noise). Scratch: tmp/union_check.cpp.
+[x] #463(b') THE FIX (8c34e15). fold() wrapped alpha by 180 and CLAMPED beta.
+             aeroFrame's angles share atan2's denominator dot(v, nose), so a flow
+             from behind the nose is past +-90 in BOTH at once; wrapping one keyed
+             the whole back hemisphere to a different flow's area (measured 9% off on
+             a jet-shaped hull -- an earlier 42-82% figure of mine was never
+             reproduced and is corrected on #463). Now each angle wraps under its own
+             sign.
+             The original fold test fed the memo (3.0, 0.2), a pair no ship can
+             produce, so it passed over the bug; test_silhouetteMemo now drives
+             fold from aeroFrame over a grid of real directions and requires the
+             folded pair to describe the same flow line (worst error < 1e-9), and
+             the glider golden pins Beta > 90 so the case really flies there.
+             (Review pass found the last assertion there was vacuous -- it queried a
+             cell that was never filled. Now it asserts in DIRECTION space: the key
+             the old fold used names a broadside flow 0.9 away from the real one.)
+             Range narrowed +-90 -> +-75 in the same pass: the direction comes from
+             tan(alpha), tan(beta), so at the rim both are infinite and only their
+             RATIO says which broadside it is -- ambiguous, not merely coarse.
+             Blend error, corrected by the review pass on a MULTI-part hull
+             (tmp/review_20261028/probe_chart.cpp): worst 8.3%, mean 0.22%, and the
+             worst cell is mid-chart where the union kinks -- not at the rim, and 37
+             nodes over +-90 measures the same. My earlier 0.7%/5.0%/6.9% figures
+             (tmp/blend_probe2.cpp, tmp/blend90b.cpp) were single-silhouette proxies
+             that hid the real failure; #473 now says so. Outside +-75 the exact
+             union answers. An empty part list now frees the table instead of leaving
+             nodes that would report a silhouette for a ship with no hull.
+[x] #462     inducedCd(cl, span, area, oswald 0.8) = CL^2/(pi e AR), AR = span^2/
+             area, applied along -v_rel at the lift's own offset. CL comes from
+             the lift force already computed, so liftCurve is evaluated once and
+             the induced term follows the stall droop for free. Span = 2*radius
+             for now (#457 will make that honest -- commented on #457).
+             [drag] grew an "Induced=%.3f m2" field (lastInducedCdA).
+             Fixed in 8c34e15: the term now carries the --drag-cd multiplier like
+             form drag does, so the knob scales all the air rather than half of it.
+             Known overcharge, commented on #457: AR is per PART, so jet.json's two
+             half-plates (angle 0 and 180, one 8 m wing between them) pay AR 2
+             where the system is AR 4 -- about double the induced drag it should
+             cost (Induced CdA peaks ~15 m^2, an AR-4 wing gives ~7.5).
+             NOT done on purpose: a deflected control surface owes induced drag
+             too; fold it in with #453. #453 did NOT pick it up -- it changed frames,
+             not the force terms, and nothing on a control surface pays an induced
+             term today. Still open; it belongs with #454's force-term work, since
+             both are about what a surface owes beyond its own cl.
+      Rebaselined THREE times, deliberately: once for the union, once for the
+      induced field, once for the mount offsets. flight/458-jet, flight/458-glider
+      and flight/80 now carry the corrected bands; the 458 cases also gained a pin
+      the tuning knob answers -- |F| / (q * Cd * A) == the --drag-cd default on the
+      clean rows -- because the shape pins do not move when the coefficient does.
+      flight/49, 448, 151 needed NOTHING either time.
+      Both 458 cases pin the stability gap: the jet 75 deg off the flow and still
+      swinging (|AoA| > 60), the glider past vertical and staying (|AoA| > 90,
+      |Beta| > 90). Expected to FAIL, and be re-baselined, when #454 lands.
+
+STAGE 2 -- the geometry the per-part law stands on        DONE
+--------------------------------------------------------------
+[x] #457     ATTACH BY SHAPE, done. One deviation from the decision recorded below,
+             and it matters for anyone re-deriving this: the extents come from the
+             .obj's own `v` lines at CATALOG PARSE (PartDef::mesh_min/mesh_max),
+             NOT from body->hullVerts. Reason: the def/attach rules live in
+             shipdef.cpp, which has no assimp and no physics -- keeping it GL-free
+             is what makes the whole def model unit-testable. Checked rather than
+             assumed (tmp/ext_vs_assimp.cpp): over all 46 unique shipped meshes the
+             text box and the box assimp actually loads agree to <1e-8 m, and no
+             shipped .obj has a second submesh for mesh.cpp's mMeshes[0] to drop.
+             Bullet then grows the HULL by the shape's collision margin, so the
+             hull's AABB is this box + margin -- which is why the part box, not the
+             hull box, is the number the attach rule wants.
+             What landed: the surface "angle" shorthand puts its contact on the
+             ELLIPSE bounded by the parent's mesh box (ellipseContact in shipdef.h),
+             with the normal off that ellipse; a round parent takes the old circle
+             by an equality test, so all 51 shipped angle edges keep their poses
+             bit-for-bit. "z" outside the parent's mesh along its stack axis is
+             refused with a message naming the span. #462's induced span is now
+             2 * meshSpanHalf() -- axis-independent, so a wing authored along Y
+             gets its real span instead of its thickness. #458's C++ half: every
+             plate part's declared lift/control area against the planform its mesh
+             draws, and every authored radius/height against the box within 1%.
+[x] #456     A save keeps solved part positions, so a mesh change silently reshapes
+             old ships (the wing's radius went 1.0 -> 2.0 in a27bcd1). DONE: each
+             vessel part records "geom" -- FNV-1a over kGeomEpoch + mesh path + mesh
+             file bytes + radius/height + every attach node -- and a disagreement on a
+             part whose pose was solved against another part refuses the load (both
+             the in-game path and the boot preflight). Missing key = unverifiable =
+             one toast per ship. --allow-part-geom-drift loads it reshaped anyway.
+             See "WHAT #456 GAVE BACK" below. Follow-ups: #476, #477.
+
+WHAT #457 GAVE BACK (read before Stage 3)
+-----------------------------------------
+Extents are now on PartDef and cheap (mesh_min/mesh_max + three helpers), so the
+things Stage 1 left hanging on `radius` can read the shape instead:
+ - #453's hinge points and per-part frames: a control surface's hinge wants the
+   mesh's leading edge, which is mesh_min.z / mesh_max.z, not height/2.
+   WHAT #453 ACTUALLY USED: the frames, yes, and NOT the extents. The hinge turned
+   out to be a direction problem, not a position problem -- a surface plate pivots
+   about its own span (partRot[0]), and once that is right the mesh's z extents add
+   nothing. So the fins still pivot at the part centre and #427 stays open.
+ - #474's prune: the union's pair loop can reject non-overlapping parts with real
+   boxes (PartDef::mesh_min/max in part-local frame; the mount rotation still has
+   to be applied by whoever boxes them).
+ - #462's per-part aspect-ratio overcharge is NOT fixed by this and does not become
+   fixable with extents alone: two 0.4 m half-plates 0.5 m apart and the same two
+   touching at the tip have the same extents per part. Telling them apart needs the
+   MOUNT as well as the box (drag.h's inducedCd comment says so). Split-wing AR
+   stays in NEW WORK.
+ - The area convention question is now measurable and got its own ticket, #478: the
+   wing's lift_area is its whole planform (8 of 8 m^2), the fins' control_area is
+   half theirs (2 of 4 m^2). The test pins both exactly, so choosing one shows up
+   as a red test naming the parts to convert.
+The shape net (#456) did NOT have to be re-stamped: this commit moves no shipped
+contact and no shipped fingerprint (verified -- the fixture self-pins and the two
+drift fixtures still load/refuse as written), so no save written since #456 breaks.
+Cost, measured: catalog parse 1.4 ms -> 2.9 ms; the mesh read that both #456's hash
+and the extents share is 1.7 ms for 66 parts / 627 KB, boot-only. The first cut
+(getline + an istringstream per line) cost ~6 ms -- the scan is by hand now.
+The hole #456 warned about is still a hole where it should be: the extents are
+DERIVED at parse, so they are not in the fingerprint and cannot be authored out of
+step; the aero AREAS are still authored, still uncovered, and #478 is where that
+gets decided.
+
+
+WHAT #456 GAVE BACK (read before starting #457)
+-----------------------------------------------
+The net is already strung for #457: the fingerprint covers mesh BYTES plus every
+attach node, so when #457 moves a mounting point or resizes a mesh, every save
+written before it REFUSES instead of rebuilding reshaped. Expect to hit that while
+testing #457. The fixtures are self-pinned in test_shipload -- a fixture whose
+recorded fingerprint goes stale fails in make test as "fixture out of date", not as
+a confusing e2e refusal. To re-stamp by hand: tmp/geom_print.cpp prints each catalog
+part's fingerprint (it links build/*/tests/obj/shipdef.o -- rebuild that object
+first, or it cheerfully prints stale values, which is how I fooled myself once).
+kGeomEpoch (shipdef.cpp) is the manual lever for the hull ASSIMP builds FROM those
+bytes: an assimp bump or a change to the aiProcess flags means bump it -- knowing
+that bumping turns every pre-bump save into a disagreement, which is the honest
+answer, since their poses were solved against a hull we can no longer reproduce.
+Cost measured, not assumed: 0.9 ms for 67 parts at boot, 627 KB read (46 unique
+meshes across 67 parts, so 20 duplicate reads nobody memoized -- irrelevant at boot,
+worth five lines if the catalog grows a lot). Nothing in the flight path. (My first
+commit message said 1.4-1.5 ms: that was the whole catalog parse, wrong scope.)
+What it does NOT cover, which #457 makes load-bearing: authored numbers are not
+shape. The fingerprint cannot see lift/drag areas or a chute's canopy anchor
+(chuteCanopyOffset = height/2 + 0.75*sqrt(chute_area)); the list is in shipdef.h. If
+#457 DERIVES those from extents they follow the mesh and become covered; if it keeps
+them authored they stay a hole -- decide which, and say so in the header comment.
+Design residue worth keeping: a save stores NO attach edge, only solved poses, so a
+shape fingerprint is the only thing that can tell "still true" from "since moved".
+If #457 makes attaching shape-based, writing the EDGE (parent uid + node ids + angle)
+into the save would let a parts change be RE-SOLVED instead of refused -- that is the
+version of "rebuild it in the VAB" a player could actually reach (#477). Bigger
+format change; refuse-and-fingerprint pays for now.
+
+STAGE 3 -- frames, then stability          #453, #483 DONE; #454, #452 open
+---------------------------------
+[x] #453     DONE (c4d68c8 + 04542f0). Every lifting and steering part now works
+             out its OWN angle of attack and lift direction from its own mount,
+             through one helper: drag.h's partAero(sRot * p->localRot, v_rel) ->
+             {alpha, liftDir, valid}. The lift loop calls it per part and the
+             control loop uses pa.liftDir as the force direction, so
+             ControlAxisParams::forceDirKind, Vehicle's yawDir/yawDirRaw and the
+             ship-wide liftDir are all gone. What I got wrong in the plan: the
+             sign trick was NOT the thing to retire -- controlDeflectionSign stays,
+             measuring a surface's leverage about the SHIP axis the stick commands
+             (aboutAxis). Making the sign part-relative destroys authority:
+             measured on jet.json, a mirrored rudder pair pushes +51450 N one way
+             and -51450 N the other (moment error 3.8e5 N m), because both twins
+             have reversed up AND right. The visual hinge DID need fixing, and the
+             first attempt at it was a bug: a surface mesh is a plate (span +X,
+             normal +Y, chord +Z -- fin_r1h2.obj 2/0.1/2 m), so it hinges about
+             its own SPAN, controlSurfaceVisualRot(defl, partRot) = angleAxis(-defl,
+             partRot[0]), with the old aboutAxis selector deleted. The rudders
+             mount at 90/270, so my part-axis-selector version spun those four fins
+             about their own faces: 28.3 deg off the pre-#453 hinge and a chord-tip
+             swing perpendicular to the force (cos 0.000). Note the hinge points did
+             NOT end up using mesh_min.z/mesh_max.z -- the span rule replaced that
+             idea, so #427's "hinge at the part centre" is still open.
+             On shipped content the aero change is float noise, and that is now a
+             permanent pin rather than a scratch probe: test_shipload solves the
+             real jet.json/glider.json poses with BuildShip (the same solver flight
+             uses) and gets 3.15e-12 N / 9.1e-12 N m for lift, and asserts every
+             steering twin pair's plate normals are anti-parallel. The glider's
+             0/180 wing ring is physical now, but a 180 deg mount flip reverses up
+             AND right, so it is a no-op by construction -- the interesting case is
+             incidence/dihedral, which attachSurface can express. Plan-view SWEEP
+             it cannot (attachSurface keeps the child +Z along the parent's).
+[ ] #454     Static margin. Pick the model: apply total lift at the area-weighted
+             lift centre (the way drag already works at the CP) and/or a
+             pitch-rate damping term -- then print the neutral point ([drag] Np=)
+             in the same commit so it is debuggable. Needs #453 and Stage 1's L/D.
+[ ] #452     Then make flight/80's CHECK match its CLAIM (the |AoA| extrema shrink
+             over successive swings). Until then restate the CLAIM: right now a
+             flat spin passes a case called "settles".
+
+WHAT #453 GAVE BACK -- READ BEFORE TOUCHING #454
+------------------------------------------------
+- Per-surface frames exist. #454's pitch model can no longer pretend the airframe
+  has one alpha: each surface has its own, and the sum of surface lifts is what
+  needs a lever arm.
+- The application point is ALREADY per-part. Lift and drag are applied at each
+  part's own CP (partPosS), not at one ship-wide point, so "apply total lift at
+  the area-weighted lift centre" would be a change of physics, not a tidy-up.
+  #454 therefore needs a NEUTRAL-POINT measure (how the total moment about the COM
+  moves with alpha), not a centroid of areas. The Np= readout should be derived,
+  not authored.
+- The F4 SURFACE AoA readout is attitude-only now, and says so in the UI. If #454
+  prints Np, print per-surface alpha next to it, or the overlay will look like it
+  explains forces it does not (see #483, which wants the same columns).
+- Perf, deliberately deferred: partAero is ~27.6 ns/call and the frame build is
+  redundant per part -- rotating the FLOW once per substep into each part frame
+  would amortise the whole thing. Not bit-identical, so it needs a golden
+  re-baseline; fold it into #454's commit rather than shipping it alone. Also
+  queued there: skip partAero when the stick is centred (sv == 0), and drop the
+  beta atan2 the control path no longer reads.
+- The plate convention (span +X, normal +Y, chord +Z) is load-bearing now: the
+  hinge rule depends on it, so a fin mesh authored the other way round will hinge
+  wrong with no error anywhere. Worth a content check when fin meshes change (#484
+  is about the neighbouring invariant -- a part pose that is not a proper rotation).
+- The unit suite CANNOT reach the call-site composition: mutating production to
+  the part-axis sign left all 447 old test_drag checks green. Only
+  flight/453-rudder-pair-adds-up's Beta checks bite. Same lesson applies to #454:
+  a stability law needs an e2e case, a unit pin on the math is not enough.
+- Still expected from #454: the 458 envelope bands will move. Its AoA series is
+  pinned exactly right now (-0.3 0.3 -0.1 77.8 -5.5 68.9 4.5 -75.4 13.7 78.4 13.0
+  -69.3 -54.6 30.4 -- re-pinned by #483, from -0.3 0.3 -0.1 77.0 -4.1 66.3 5.9
+  -73.8 12.2 77.0 14.2 -67.8 -54.8 29.3), which is a good baseline to re-baseline
+  ONCE, deliberately.
+
+WHAT #483 GAVE BACK -- READ BEFORE TOUCHING #454 OR #487
+--------------------------------------------------------
+- The rate term has THREE regimes, measured over every aero substep of both shipped
+  airframes (dM.w = the moment this term ADDS over the old COM-flow law, dotted with
+  w; negative opposes the spin, positive feeds it):
+    below stall: DAMPS. Jet -1 .. -3885 W (peak at |w| = 2.64, 3.6 deg off the flow);
+      glider down to -513 kW.
+    inside the droop (stallAngle..2*stallAngle, 20.1-40.1 deg for the shipped wing):
+      PUMPS. Glider up to +413 kW, JET up to +3080 W -- not a glider quirk -- and the
+      pumping samples sit at |AoA| 27-41. The surface that gains lift is the one the
+      rotation pulls back TOWARD the stall peak; deeper means less lift, that is what
+      a droop is. This is #487; do not tune #454's restoring term across it.
+    past 2*stallAngle: SILENT. liftCurve is identically zero and dM.w measures exactly
+      0.0 in every sample with |AoA| > 70 on either ship. What pulls a ship back from
+      broadside is the hull's form drag (#486), not this term.
+- The magnitudes, and they are small on the jet: lifting-surface sweep tops out at
+  1.46 m/s (they sit ~0.55 m fore/aft of the pitch pivot, 3 m along the span) while
+  the rudders/elevators see 6.39 m/s (3.65 m lever), all at |w| up to 2.65 rad/s. The
+  glider tumbling at |w| up to 5.28 sees 16.2 m/s at its wings. Any future claim about
+  how big this term is must say WHICH surfaces and WHICH part of the swing: at a 77 deg
+  turning point |w| is 0.02-0.29 rad/s, so the sweep is smallest exactly where the
+  angle looks worst.
+- q is per-surface and there is no ship-wide q. The [drag] row's single q and its
+  Induced CdA no longer reconstruct a force by multiplication (said in the code). An
+  ACTUATED control surface's q ranges 0.93-1.07 of the COM's on the jet (0.85-1.11 on
+  the tumbling glider) and moves UNEQUALLY across a twin pair, so their sideways
+  forces no longer cancel: measured consequence, 458-jet's max |Beta| went 0.3 deg
+  before #483 to 2.5 after (its case comment now says this and why the ceiling is 5).
+- It buys damping on the axis that has lifting area fore-or-aft of the pivot and
+  EXACTLY ZERO on the others. At AoA ~ 0 a yaw rate sweeps the glider's wingtips along
+  the nose: no angle changes, so Beta still swings +-54 deg after t=7. Yaw damping has
+  to come from the hull (#486) or from a surface with an alpha term (#454).
+- q is now per-surface and there is no ship-wide q. That means the [drag] row's single
+  q and its Induced CdA no longer reconstruct a force by multiplication (said in the
+  code), and the two rudders of one pair read qp/q = 0.902 and 0.866 at AoA 77 --
+  unequal, so a twin pair's sideways forces no longer cancel (458-jet's Beta peak moved
+  4.6 -> 4.9 that way).
+- Hull form drag still uses COM flow, deliberately: its area is ONE union projected
+  through ONE plane (#463). #486 says the one-line way to give it a local flow without
+  breaking the union.
+- A non-spinning body is bit-identical to the old law (w x r is exactly zero), which is
+  what made this testable by row-diff: restored builds print byte-identical [drag]
+  rows, so any movement is attributable.
+- The frame's own rotation is NOT in the sweep, but the missing term is THE AIR's
+  omega expressed in S, not the frame's -- GetAngVelocity is already frame-relative,
+  and aero runs inside the body's ROTATING frame for the whole atmosphere shell, so in
+  the normal case the correction is identically zero and nothing was dropped. Kerbin's
+  2.9e-4 rad/s is only 1.5e-3 m/s of sweep at r = 5 m even where it applies. Said in
+  code, with a "do not subtract the body's omega" warning, because the first version
+  of that comment invited exactly that bug.
+- High-warp winged flight was already broken before this change: at --time-accel 10 the
+  PRE-#483 build reaches |v| ~ 42 km/s, alt -482 km and aborts on the moveToFrame
+  invariant (vehicle.cpp:3876 in the current tree; the abort printed 3782 because that
+  was the pre-#483 build). Evidence on #340, with the h = dt*time_accel/substepCount
+  criterion any new restoring term has to respect (kChuteAccelLimit is the precedent).
+  CORRECTION, measured on 281feee: HEAD does not abort on these runs -- 600/1200/1800/
+  2400/3000/4200 steps all exit 0, and so does the long variant that the PRE-#483 build
+  aborts on (--sim-steps 8400 with T held 60 s and W held 30 s): HEAD reaches the same
+  garbage but freezes instead, alt=1278915.7 m, |v| = 44,733,937.69 m/s for the last
+  1300 s of sim. That abort is a separate latent bug, #489, not something #483 fixed --
+  FIXED since at 8785ab7 (the tripwire tolerance now scales; see the 8785ab7 progress
+  row). Measured with a temporary read-only probe in moveToFrame (tmp/p489_r2.log;
+  vehicle.cpp
+  restored to 545a63700ea2c59bf5a2780605756310 and rebuilt):
+    switch Kerbin (rot) -> Kerbin (inert), |fpos| 0:          comErr 0 hullErr 0 vErr 0
+    switch Kerbin (inert) -> Kerbol (inert), |p0| 1.3657e10:  comErr 0 vErr 0,
+                                                             hullErr 1.90736318e-06
+  One ulp at that magnitude is 1.90734863e-06, so the hull check (vehicle.cpp:3894) died
+  on ONE BIT while the COM and velocity identities are exactly zero. ulp crosses the
+  1e-6 tolerance at 2^33 = 8.59e9 m and the Kerbin->Kerbol offset is 1.36e10, so out
+  there that assert means "bit-identical or abort" -- HEAD's surviving switches pass
+  with hullErr exactly 0. #483 moved which runs get near the tripwire; it did not move
+  the tripwire.
+  The outcome is also scheduling-dependent rather than build-dependent: the pre-#483
+  binary ran that same command three times to 1 landing (min alt +75.4 m, 0 frame
+  changes) and 2 dives-to-assert (min alt -594,684.6 m), while HEAD's four runs of it
+  were bit-identical to each other (drag md5 7cb4458f x4, min alt -511,384.1 m).
+  What HEAD does instead is quieter and just as bad: the jet crosses the surface between
+  t=60 (alt 642.5 m, |v| 79.29) and t=70 (alt -846.1 m, rho 0, F 0), free-falls with no
+  air (alt -11.5 km at t=100; |v| 1702 at 1200 steps; |v| 4879 at 1800; worst row
+  -511,384.1 m in the 8400-step run), and at 2400+ steps leaves Kerbin's SOI ("SOI
+  switch: 'jet' now around Kerbol (was Kerbin), warp -> 1"). Filed #488. Two holes, and
+  the second is a prerequisite for any warp-stable flight tuning, including #454:
+    - substepCount(step) (src/timestep.h) is speed-blind: warp 10 at --physics-hz 60
+      gives n=3, h=0.0556 s, i.e. 28 m of travel per Bullet substep at 500 m/s, no
+      CCD anywhere in physics.cpp, terrain margin 0.5 m.
+    - the terrain COLLIDERS are camera-gated: collision bodies exist only on quadtree
+      leaves at max_depth, and max_depth is reached by camera px_width
+      (src/terrain.cpp:167, :180, :252, :257 "no ground under the ship", :264-274
+      deletes them on collapse). Proof: same 600 steps, same keys, only --frame-cap
+      different -- 30 and 120 ground the jet (alt 102.4 m, |v| 0.00), 240 drops it
+      through the planet. This is #475's subject in its strong form: physics reads
+      geometry whose existence rendering decides.
+
+STAGE 4 -- only now the authority fight
+---------------------------------------
+[ ] #425 -> #399 / #403 (#429's wasted RCS pairs fall out of the allocator).
+
+NEW WORK FOUND ON THE WAY
+-------------------------
+[x] #472  e2e flights were not reproducible: tick.cpp threw away accumulated
+    wall-clock time when frames were slow, so two runs of one case stepped a
+    different number of times. FIXED (--sim-steps N, 44341a1 + 4ff88f3): exactly N
+    logic ticks then exit, one tick per frame. The step count was only a third of
+    the problem -- --sim-press fires on the wall clock and every --*-log gate is
+    wall-gated, so a fixed-length flight still SAMPLED different substeps. The
+    mode keys schedules and logs to a tick count (Game::schedClockMs /
+    logClockMs); off, both keep their old clocks and the player's behaviour
+    (#374's reasons) is untouched. See "WHAT #472 GAVE BACK" above.
+    THE FIX (4ff88f3, from reviewing my own 44341a1). The first cut keyed that
+    clock to g.time, which broke twice: a mid-run load/New Game rewinds g.time so
+    the clock went NEGATIVE (a negative double into Uint32 is UB, and every gate
+    downstream stopped firing), and a paused sim never moves g.time, so the clock
+    froze and a run that observed nothing still exited 0. scriptedClockMs(ticks,
+    dt) is keyed to ticks run instead: one tick always moves it dt. Same commit
+    converts the log gates tick.cpp had missed (render.cpp x5, --info-log,
+    --prox-log, --xfer-log, Game::fireHooks), and turns off --frame-cap and the
+    occluded-window idle throttle for scripted runs -- one tick per frame means the
+    frame budget IS the sim rate, and the 60 fps default alone spread an 840-step
+    case over 14 real s (the idle budget over 85 s).
+[~] #475  a scripted run over TERRAIN is still not reproducible, and the airborne
+    class above is the only one that is. HALF FIXED (96ebda5): the chase-cam rumble
+    and the sky fade now step on the TICK under --sim-steps (Game::smoothingDt) and
+    the rumble draws from its own fixed stream (Game::shakeRand) -- the seed was a
+    red herring, std::rand() is already deterministic per process; what varied was
+    the DRAW COUNT (one pair per render frame) and the wall-clock dt in the
+    smoothing. Measured at --frame-cap 0/60/240 with one 600-tick budget:
+    [shakelog]/[camlog]/[skydim] went from 20/20 differing rows to identical, and
+    [terrain]'s deep_off/cam_r now agree to the metre --
+      cap 0:  patches=82 deepest=8 deep_off=6908.76 m cam_r=606843 m
+      cap 60: patches=78 deepest=8 deep_off=6908.76 m cam_r=606843 m
+    STILL OPEN: the tree's FILL. planet->Update() (render.cpp:380) refines the patch
+    tree from the camera, and the geometry + Bullet bodies land on job
+    continuations whenever the worker finishes, so a grounded ship can still settle
+    differently run to run. Two routes, both bigger: option 2 = ask for COLLIDERS
+    from the sim (a radius/pose physics owns) and leave the camera driving the
+    geometry LOD only -- deliberately deferred, flying the free cam around
+    generating terrain is a debugging tool worth keeping; option 1.5 = hand job
+    results back on a fixed tick offset, which is much smaller and would make pad
+    runs replay sooner, at the cost of one fixed tick of latency at the pad.
+    Two pad-start repeats of the glider/pad --sim-steps 600 --mass-log repro
+    matched, so the symptom is intermittent: the review pass caught it as a golden
+    flipping between 0.000000 and -0.000000. Until it lands, pad-start cases
+    (flight/80 and the scenario beds) stay on --timeout with wide bands.
+    Payload honesty per site (measured, now commented in code): in the WALL-clock
+    mode [shakelog]/[camlog]/[terrain]/[skydim] still follow frame rate by design,
+    so pin their cadence there; [porkchop] depends on job timing either way, and
+    --pose-jitter prints a wall frame dt per row.
+[ ] #473  the silhouette cache blends badly where the UNION KINKS, not mainly at the
+    rim: worst 8.3% / mean 0.22% over a jet-shaped hull, worst cell at alpha 0,
+    beta 2 deg -- mid-chart, where a part slides into another's shadow and the true
+    area has a kink no bilinear blend follows. 37 nodes over +-90 measures the same,
+    so more nodes will not fix it. Secondary defect (still real): the angle grid is
+    spaced by tan(), which blows up near +-90 and is ambiguous exactly at it, which
+    is why the chart stops at +-75 and the exact union answers outside. Best fix per
+    the ticket: on fill, compare a node against the blend of its filled neighbours
+    and answer the cells that disagree exactly (the miss path already pays that);
+    or space the chart in direction space (cos/Chebyshev), which also drops the fold.
+[ ] CP from the wrong points (commented on #454, found by the review): the centre of
+    pressure is still the area-weighted average of each part's MOUNT, not of the
+    silhouette the substep just projected -- a plate authored at its root has its
+    silhouette centroid 4.00 m from its mount (probe_c), so the weathervane arm is
+    off by up to half a span. cpArea also sums per-part AREAS while the force uses
+    the union, so overlapping parts are double-weighted in LOCATION but not
+    magnitude. Cheap now: unionProjectedArea's slab loop already integrates the
+    merged measure at each slab midpoint, so it can return the union's 2-D centroid
+    exactly and for free. Do it with #454 -- the pitch damping you add there should
+    act about the same point, and Stage 1's whole behavioural change (the jet's
+    wing-planform damping) is about that arm.
+[ ] #474  the union is quadratic in part count: one project+union pass is 0.009 ms at
+    13 parts but 0.18 ms at 100 and 0.58 ms at 200 (the pair loop merges y-intervals
+    per slab; only an x-overlap prune). That is also what a cache node fill costs.
+    Nothing to fix at ship sizes today; the fix before big stations is a sorted
+    x-interval sweep, and #457's extents would feed real bounding boxes to the prune.
+[ ] #479  the contact rule's ellipse is INSCRIBED in the parent's mesh box, so on a
+    parent that is neither round nor plate-thin a child sinks into the real surface
+    by up to (sqrt(2)-1) * half-extent -- measured worst 62 mm on rcs_box; a
+    hypothetical hx=2, hy=1 parent buries 208 mm. No shipped def hits it (every
+    angle-shorthand parent in res/ is round or a thin plate, where the ellipse is
+    exact). It also disagrees with the editor: vab.cpp raycasts body->hullVerts, so
+    a contact PLACED in the VAB sits on the real hull while the same clock angle
+    typed into a def sits on the ellipse. Two placement paths, two surfaces. Fix
+    ideas on the ticket: ray-vs-box for the contact (exact, but the normal jumps
+    90 deg across a corner -- which is what the ellipse was chosen to avoid under
+    the 10 deg snap grid and radial symmetry clones); scale the ellipse out to the
+    box along the ray; or intersect the ray with the polygon from readMeshGeom's
+    bytes, matching the VAB. Decide together with the VAB, not in this rule.
+[ ] #480  the CHILD side of a surface attach bolts at the part's "srf" node, which
+    synthesizeNodes() still mints from the AUTHORED radius -- the parent side reads
+    the mesh, the child side reads parts.json. Agree today (worst gap: the kerbal,
+    9.6e-5 m, which is parts.json storing a generated 0.5625 as 0.562); a plate
+    authored spanning Y would put the bolt 2 m outside a 0.1 m thick part. Pinned
+    within 1 mm for every catalog part. Same family: meshHalfSpan() symmetrises the
+    box about the part origin (the origin IS the stack axis), so an off-centre mesh
+    would get the larger half-span on both sides; every shipped box is centred
+    EXACTLY (0.0 m) and is now pinned. Fix note in the ticket: nodes are inside
+    geom_fingerprint, so minting srf from the mesh restamps every save since #456 --
+    do it in one commit that says so.
+[ ] #481  parse_vec3 checks a key holds three NUMBERS and nothing else, so a def
+    with "normal": [1e400,0,0] becomes inf -> NaN after normalize, the pose solve
+    returns NaN, and Bullet builds a body from it: no refusal, no message, ship
+    gone. Same for every number a def or save carries. Not reachable from the
+    editor, so it bites hand-authored content -- exactly where a clear message is
+    worth having. The #457 review found a self-inflicted instance of the same NaN
+    (dividing by a near-zero half-span in the contact rule) and that one is fixed
+    in the rule with division-free math plus a NaN-safe guard; the input-validation
+    half is the family, not the one call: one "finite number from JSON" helper used
+    by every reader.
+[ ] #478  the catalog uses two area conventions and nothing says which the law
+    reads: lift_area is the WHOLE planform (wing: 8 of 8 m^2 drawn) while
+    control_area is HALF (rudder/elevator/aileron: 2 of 4 m^2). #457's extents made
+    this measurable, and the test now pins both ratios EXACTLY, so picking one
+    turns into a red test naming the parts to convert rather than a 2x band nobody
+    noticed. Decide with #462's AR work, since both are about what a plate part's
+    numbers mean.
+[ ] #476  a save's shape fingerprint hashes the mesh FILE bytes, so a re-export that
+    changes no geometry -- a comment line, a Blender bump, float precision, running
+    utils/rescale_obj.py twice -- restamps the part and every save that used it now
+    refuses. Escape is --allow-part-geom-drift, or bumping kGeomEpoch (which instead
+    strands every pre-bump save), so it is survivable but it is a wall in front of
+    art churn. Fix ideas on the ticket: hash the .obj line-wise skipping
+    comments/mtllib/'o NAME' and rounding numbers, or hash what we actually pose
+    against (hull AABB + vertex count -- the same numbers #457 derives, and cheaper),
+    keeping the nodes in the mix either way. The node coverage is over-strict in the
+    same place: a node's ID and its ORDER in the list count, so renaming or
+    reordering nodes refuses saves whose positions never moved. Decide alongside
+    #457, which changes that data deliberately.
+[ ] #477  a refused save can only be forced open from the command line. The Save/Load
+    sheet shows the refusal under the row but has no "Load anyway", and the advice in
+    the message ("rebuild it in the VAB") is not reachable from a load screen -- to a
+    player that reads as "your save is gone". Ticket suggests a per-row Load anyway
+    reusing the same permission, or a per-save RE-PIN that re-solves the poses against
+    the new parts file and writes the save back out (the reachable version of the
+    advice, and the one that connects to #457's attach-edge note above). Also: the
+    refusal sentence names the flag in a long clause the sheet wraps into three lines.
+[ ] Two small honesty gaps the review flagged, left as-is on purpose: --drag-cd does
+    NOT scale a deployed canopy's drag (the comment now says the dial is a hull-law
+    knob, not an atmosphere killer -- decide if that is the dial you want); and
+    refreshCompound's fast path can return before the geometry fingerprint, so
+    "a geometry change always re-keys the cache" is a convention every structural
+    mutator happens to honour, not an enforced invariant.
+[ ] #482  One second of full rudder throws the jet into a 100 deg side-slip. Filed
+    from the #453 e2e case, which is what made it visible: Beta goes -0.0 -> 99.9 in
+    the case's window and never comes back, and nothing in the law pushes the nose
+    back onto the flow. There is no yaw-plane restoring moment and no yaw damping --
+    the vertical fins make a steering force but no weathervane. Expect #483 to supply
+    most of the damping and #454's static-margin thinking to cover the restoring
+    term; the 453 case's Beta pins will move when either lands, deliberately.
+[x] #483  Every surface feels the ship's velocity at its COM, never its own. DONE at
+    163fe57 (+ 5e9781e): the lift loop, the induced term and the control loop read
+    v_rel + w x r and their own q; drag.h::localFlow is the one composition. It bought
+    the glider's tumble (AoA worst 100 -> 1.4 after t=7) and 111 m/s instead of 73, and
+    almost nothing on the jet -- see WHAT #483 GAVE BACK below. It did NOT supply the
+    yaw damping #482 hoped for (geometry, not luck), and inside the stall droop it
+    reverses into a pump: #487.
+[ ] #485  The F4 SURFACE window still prints ONE AoA for every surface. Since #483 each
+    surface also reads the flow at its own offset, so the readout is now wrong in a
+    second way on a rotating airframe: it is the airframe's attitude, not what that
+    fin feels. This is the number every aero chase since #453 has needed (#482's
+    side-slip, #454's neutral point, #487's pump band) -- showing per-surface alpha and
+    local q is what makes them debuggable by eye instead of by a temporary probe in
+    updateAerodynamics, which is how this whole pass was measured.
+[x] #486  LANDED at 626d524 (review pass folded into 7f02e2e). The hull's form
+    drag used the COM flow, so the biggest area on most ships
+    was the one term that could not damp a rotation. Endorsed on the ticket with the
+    one-liner: keep the UNION area keyed to the COM direction (#463 needs one shared
+    projection plane) and evaluate the flow and q at the centre of pressure's own
+    offset. Done: `localFlow(vrel, w, cp - com, rho)` feeds dragForce (7f02e2e put it
+    through the tested helper rather than a second copy of the composition), area stays
+    COM-keyed, and the cp lever is logged as `CpL=` on the [drag] line (printed last,
+    like Beta, so the parsers hold; dashed when the pass had no flow worth quoting).
+    Measured: the JET improves -- max|AoA| 78.4 ->
+    77.1, later swings 68.9/75.4 -> 66.3/71.7, max|Beta| 2.5 -> 1.3, L/q 25.1 -> 31.9.
+    The GLIDER's pins moved the wrong way (L/F min 0.509 -> 0.700; min v for t>=9
+    100.9 -> 97.9) -- which is NOT the term fighting us: CpL is negative on both ships
+    everywhere, so this term only ever damps, and the glider is a 1.2:1 brick in a
+    chaotic tumble (#490). The yardstick question the row used to block on got answered
+    the other way: rather than re-pin the brick's bands or leave them red, the two 458
+    cases were re-pinned WITH the reason written in the comments, and a good airframe
+    (skiff, flight/490-skiff-trim-and-weathervane) went in beside them as the reference
+    for "an aeroplane". Whether jet/glider get rebuilt as real aeroplanes is still the
+    user's call -- see the skiff entry in the PROGRESS LOG.
+[ ] #487  Past the stall angle a spinning wing feeds its own tumble instead of damping
+    it. Found and measured during #483: inside liftCurve's droop (20.1 -> 40.1 deg for
+    the shipped wing) the slope is negative, so the surface the rotation pulls back
+    TOWARD the stall peak GAINS lift and the sweep's moment aligns with w. Measured
+    over every aero substep: dM.w up to +413 kW on the glider and +3080 W on the jet,
+    pumping samples at |AoA| 27-41. Past 2*stall the term is exactly zero, so there is
+    no damping there either -- broadside recovery is hull form drag (#486). Pinned as a
+    sign flip in test_local_flow_sweep (dM.w > 0 at a 30 deg mount), deliberately not as
+    a size. Decide the direction BEFORE #454 pins a neutral point, or the tuning will
+    fight the pump; my current preference is the monotone droop (|cl| non-increasing
+    past stallAngle), which removes the pump band without needing an explicit rate term.
+[ ] #484  Nothing checks that a part's pose is a proper rotation. partAero indexes
+    partRot's columns as right/up/nose and the hinge rule trusts partRot[0]; a pose
+    that drifted (a malformed save, an arithmetic mistake in a mount) silently gives a
+    non-orthonormal frame and forces in the wrong direction with no error. Wants
+    asserts in debug and a cheap check in the save/load path, near #457's shape
+    fingerprint.
+[ ] #462 follow-up (commented on the ticket, no new ticket): inducedCd's SPAN should
+    follow the mount now. AR comes from the extents box, which is a part-local
+    measure; since #453 the mount decides which way a surface's lift actually points,
+    so a rotated fin's effective span is its span projected into the plane
+    perpendicular to its own lift direction. Relevant to #462's per-part AR overcharge
+    and to any v-tail.
+[ ] #454 is urgent but the symptom is milder than first written (corrected on the
+    ticket): the jet swings 75 deg off the flow and stays oscillating, the glider
+    goes past vertical and stays. RESOLVED ORDERING: #457 and #456 went first as
+    suggested, then -- against this row's advice -- #453 went BEFORE #454, on the
+    ground that per-surface frames are a prerequisite for any stability law and
+    measured as a no-op on shipped content (3.15e-12 N). So #454 starts from a law
+    where every surface already has its own alpha; expect its tuning to be the last
+    word, and the 458 bands to be re-baselined once.
+[ ] Split-wing aspect ratio (commented on #457): induced drag is computed per part,
+    so jet.json's two half-plates -- one 8 m wing between them -- pay AR 2 where
+    the system is AR 4, roughly doubling the induced term (15 m^2 CdA where ~7.5
+    is right). #457's extents with a span DIRECTION is what decides it; per-part AR
+    is correct for genuinely separated bodies (biplane, canard+main).
+[ ] The [drag] Cd and the centre of pressure are weighted by the SUM of the parts'
+    areas while the force uses their UNION. Not a bug -- they answer different
+    questions -- but it means Cd is a property of the PART MIX facing the flow: on
+    the glider it DIPS 0.78 -> 0.66 near |AoA| 26 as the wings' low cd takes over
+    the weighting, then climbs to 0.82. flight/80's pin now tests the spread, not a
+    direction. If a player-facing Cd ever appears, decide which quantity it shows.
+[ ] #460's remainder: the launch site should contribute a full basis (heading +
+    a stated roll), not a yaw on top of an axis pick. Moves every pad ship's
+    pose; worth doing before a game where wings matter.
+[ ] Should the shipped jet.json/glider.json carry an "attitude"? Gameplay call,
+    left undone in 924dcab. A runway launch site is the bigger answer.
+[ ] Content question raised by Stage 1: the shipped wings are 0.1 m thick plates
+    with 8 m^2 of planform and lift_area 8, so their honest AR is 2 and their
+    form drag is tiny (0.4 m^2 of silhouette each, seen nose-on). If wings are
+    meant to be flyable toys, #457's extents should also feed a real chord and
+    thickness rather than a mesh accident.
+
+DEFERRED ON PURPOSE
+-------------------
+[-] #245  no air below the sea-level datum (bites low flight over ocean)
+[-] #340  high warp steps clean over the atmosphere
+[-] #488  10x warp in atmosphere: through the ground, then no air, no limit (see the
+          note after the #483 write-up; the speed-aware substepCount belongs here)
+[-] #449  rails ship keeps showing stale Acc/AoA
+[-] #427  fin visuals share wing.obj and hinge at the part centre
+[-] #426  fin rings want computed deflections, not authored surfaces
+[-] #450  beta/sideslip: bundle the UI readout with the first yaw law, not before
+          it. (8c34e15 put Beta in the --drag-log debug line only, because the
+          silhouette cache is keyed on it and a log that hides its own second key
+          cannot explain its own area.)
+
+VERIFICATION
+------------
+make test: tests/test_drag.cpp links drag.h and nothing else, so every law
+change gets a cheap unit pin; tests/test_shipload.cpp covers the def model and,
+since #456, the shape fingerprint plus the save fixtures' self-pins.
+tests/test_save.cpp is the save format's round-trip + type-strict read; test_cli
+pins flag defaults and spellings that error messages quote at the player.
+NOTE: no test exercises applyAeroForce itself -- the 458 goldens are the only
+vehicle-level aero pins, which is why they went in first. Since #453 the
+453-rudder-pair case adds one behaviour pin over the CONTROL half of that function
+(the pair's signs and the resulting side-slip), but nothing pins the lift loop's
+per-part composition at vehicle level -- #454 will need one.
+e2e budget, 1-5 cases per ticket, not repeating:
+  Stage 0 -> flight/451, vab/57, vab/58, 458-*, 461-*   (all green)
+  Stage 1 -> flight/80, flight/448, flight/49, flight/151, flight/98 (all passed
+             untouched); 458-* re-baselined once; then flight/451 + flight/461
+             to confirm the log-line change did not disturb the readers.
+  Stage 1 fix (8c34e15) -> flight/458-jet, flight/458-glider, flight/80
+             re-baselined (the mount offsets move the areas); flight/49, flight/
+             151, flight/448 re-run once and still pass untouched.
+             Perturbation check: --drag-cd 0.2 makes |F|/(q*Cd*A) = 0.21-0.24 across
+             the first three rows (I first wrote 0.207; the review measured
+             0.220/0.244/0.210 and I reproduce that range), outside the new
+             1.15..1.25 band, while the shape pins stay put -- the pins answer the
+             law as well as the geometry. Caveat the review found: those "clean"
+             rows still carry |L| at 25-40% of |F|, so the ratio's +0.9% above 1.2
+             is LIFT, not the law drifting; tighten the row filter with L < 0.1*F if
+             the band ever needs to be narrow.
+  Review pass (HEAD) -> flight/458-jet, flight/458-glider, flight/80 re-run once
+             after the chart stopped consulting meaningless flow directions (a pad
+             row now reads A=0.00 instead of a phantom 26.44); all pass and the
+             airborne areas are unchanged (glider nose-on 4.44 m2). make test green,
+             test_drag at 416 checks.
+  #472 pair (44341a1 + 4ff88f3 + de0f34e) -> flight/458-jet, flight/458-glider
+             (the only cases moved to --sim-steps at first), plus one off-mode
+             wall-clock flight (flight/80) and one hook-dump case (ui/344) to show
+             the un-converted path is untouched. Two NEW cases from the second
+             pass: flight/472-scripted-cadence-across-a-load (the C1 regression:
+             a quickload rewinds the sim clock; the loaded world must still print
+             11 [mass] rows) and flight/472-scripted-paused-sim-says-so (a frozen
+             scripted run must print the WARNING rather than pass quietly).
+             Determinism, re-measured after every pass: the jet envelope's [drag]
+             rows are md5-identical at --frame-cap 0/30/60/120/240, same hash
+             before and after the two fix passes -- 14 rows, not 13, once the clock
+             rounds instead of truncating. Repro battery for the fixes: paused run
+             warns; quickload run keeps printing (24 rows, "sim advanced 65.00 s
+             (clock t = 5.00 s)") and does NOT warn; a run pausing on its last tick
+             does not warn; a press at 14000 ms with --sim-steps 840 prints the
+             out-of-window NOTE; --timeout 3 with --sim-steps 3000 reports 484 of
+             3000 ticks unspent; --idle-fps 10 --force-occluded 0 idles at
+             100 ms/frame (30.4 s for 300 ticks) and prints the same rows.
+             Side benefit nobody planned for: both envelope goldens went ~13 s ->
+             ~3.5 s once a scripted run stopped being paced by --frame-cap.
+  Stage 2 (#456) -> save/54 (the one-note path), save/115 (the write side: the save
+             the GAME wrote carries "geom" per part), save/456-saved-part-geometry-
+             drift-refused (a child's own part moved), save/456-saved-parent-shape-
+             drift-refused (the root moved, so the pose RELATION breaks) -- 4/4.
+             Plus direct runs rather than cases: a real quicksave of the jet loads
+             with exactly one note; boot --load on a stale fixture exits 1 with the
+             refusal, and with --allow-part-geom-drift loads and toasts; a fixture
+             where one ship is fine and a later ship is stale prints NO notes and one
+             refusal (the note-before-commit bug the review caught).
+  Stage 2 (#457) -> make test only, on purpose: the rule is bit-identical for every
+             shipped def (all 51 angle edges are on round parents, and the round
+             branch is the same expression), so no e2e could tell the difference.
+             Unit side: plate-parent attaches pinned at 0/90/45 deg, the "z" refusal,
+             the extents fallback for a missing mesh, ellipseContact pinned directly
+             (tip/face/diagonal/flat/round-at-12-angles, X-span vs Y-span mirrored),
+             the helpers on a hand-built Y-span plate, the exact area ratios, mesh
+             boxes centred, srf nodes within 1 mm of the box, one absolute
+             fingerprint hex. Mutation check: swapping X/Y in meshHalfSpan() fails 6
+             checks. Cross-layer claim checked by scratch, not by a test
+             (tmp/ext_vs_assimp.cpp: 46/46 unique meshes agree with assimp, 0 with a
+             second submesh) -- a test there would need assimp in a GL-free unit
+             binary, and kGeomEpoch is the manual lever if assimp ever moves.
+             Review pass re-ran two e2e that DO exercise the paths: flight/458-glider
+             (wings surface-mounted on a round fuselage) and
+             vab/245-load-resolves-engine-shroud (the shroud's radius-vs-hull
+             question) -- both pass, goldens untouched. Headless boot clean; parse
+             2.9 ms, mesh read 1.7 ms.
+  Stage 3 (#453) -> flight/453-rudder-pair-adds-up (NEW invariant case: the rudder
+             pair must travel antisymmetrically and Beta must swing past 90 deg). It
+             exists because the unit suite cannot reach the call-site composition --
+             mutating production's control `about` to the part's own axes leaves all
+             447 old test_drag checks GREEN -- and it is the only thing that bites:
+             it fails both Beta checks on that mutant, while its [ctrl] antisymmetry
+             check does NOT (the case comment says so). Plus flight/458-jet to hold
+             the envelope, whose exact AoA series is unchanged on the final binary
+             (-0.3 0.3 -0.1 77.0 -4.1 66.3 5.9 -73.8 12.2 77.0 14.2 -67.8 -54.8
+             29.3). Carry-over for the fix pass was measured, not assumed: the 453
+             case's [drag] AND [ctrl] rows are byte-identical pre-fix vs post-fix
+             (the hinge fix is renderer-only, and the valid gate is unreachable on
+             shipped parts -- full travel at Beta 99.9 deg either way), and the final
+             binary reproduces them byte-identically too. Then the three cases this
+             line used to only promise: flight/395-surface-aoa-readout (the
+             [surfinfo] line I edited -- aoa=- parked, -0.00067 / -0.012 / -0.021 deg
+             climbing, i.e. still the airframe's ATTITUDE), flight/451-flying-slow
+             (an independent jet golden: t=0 gives AoA=0.0, A=4.34 m2, |L|=310 N) and
+             flight/80-glider-aoa-swing (the glider's 0/180 wing ring) -- 3/3 PASS,
+             goldens untouched. make test green: test_drag at 475 checks (447 before
+             this pass's rewrites), test_shipload now prints the shipped no-op per
+             airframe. Mutation battery: hinge axis -> 19 test_drag FAILs; pre-fix
+             pair code -> the new pair pins fail; production part-axis sign -> only
+             the e2e case fails (the documented hole).
+  #483 (163fe57) + review pass (5e9781e) -> re-baselined flight/458-glider and
+             flight/458-jet (the only two cases whose physics this moves), plus
+             flight/453-rudder-pair and flight/80 re-run once and still green.
+             Glider re-baseline: L/F peak 0.786 -> 0.511, area swing 6.05x -> 4.08x
+             (worst row 26.4 -> 17.73 m2), |L|/q peak 24.8 -> 11.16, and two NEW pins
+             -- |AoA| < 10 deg for every row after t=7 and min |v| after t=9 > 100
+             m/s (111 measured). The settle pin carries an `aoa is not None` guard and
+             says out loud it is pitch only: Beta still swings +-54 after t=7.
+             Unit side: test_drag 475 -> 506 checks. test_local_flow_sweep pins the
+             DAMPING SIGN (a trajectory cannot tell us cheaply: get the sign wrong and
+             the airframe still flies, it just feeds every swing back), the bit-identity
+             at zero spin, q growing under a sideways sweep, the flow-reversal limit,
+             and -- added by the review pass -- the DROOP PUMP (dM.w > 0 at a 30 deg
+             mount, both spin directions) and localFlow's own sqrt bookkeeping. The
+             test now calls production localFlow/partAero/liftForce rather than
+             re-inlining the composition, which closes the hole the #453 pass documented
+             (a mutant in the call site left every old unit check green).
+             Falsifiability, measured: dropping the sweep from the lift loop alone fails
+             the glider's settle, speed AND L/F pins and the jet's Beta < 5 pin; the
+             control-leg-only mutant (my run at tmp/e2e/runs/20261028T232743Z) moves the
+             jet's worst Beta row 2.5 -> 2.8 and breaks the glider's speed and L/F pins,
+             which is what killed my "not the magnitude" comment. The follow-up review
+             pass ran the unit-side mutations (its numbers, not mine): making liftCurve's
+             droop monotone fails 10 test_drag checks (both pump pins among them),
+             dropping localFlow's sweep fails 15, taking q off the sweep fails 2 -- so
+             each of the three new claims has a mutation that bites it.
+             Refactor safety: the sqrt/composition changes in 5e9781e leave the glider's
+             [drag] rows byte-identical (md5 8bd3db7574c71149e5195c368d4151db before
+             and after), so the review pass moved no numbers -- only words, one assert
+             and one skipped-loop.
+             Perf: unmeasurable at shipped scale (840 ticks, 13 parts, 2.0-2.2 s either
+             way). The neutral-surface skip is the one real win and it only matters at
+             part counts we do not ship yet.
