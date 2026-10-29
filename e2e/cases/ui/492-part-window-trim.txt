@@ -1,0 +1,51 @@
+# The Trim slider in a part window is the only way a pilot sets trim in flight, so
+# this drives it through the UI and reads the result in the aero law -- the physics
+# half of #492 is pinned by flight/elevator-trim; that case has to author trim in a
+# ship file because it cannot reach the widget. It can now, because the camera can
+# be orbited with --sim-mouse: in the DEFAULT view no tail surface is clickable at
+# all (pick.cpp::aimAtPoint projects the part's MOUNT origin, buried in the
+# fuselage silhouette, and rings +/-160 px around that -- #493), which is why this
+# case drags the view with RMB before it aims. The drag is not decoration: without
+# it [uifocus] prints FAILED and the case fails, which is the point.
+#
+# The oracle is the asymmetry. Both elevators are instances of one def with the same
+# authored "trim": 12, and the law resolves the sign per instance, so at rest they
+# read -12.0 / +12.0. Clicking ONE elevator's slider moves ONE of them, and nothing
+# else does that: a slider that wrote to the wrong part index, or that never reached
+# Part::trimDeg, leaves the pair symmetric. The exact value the click lands on
+# (-3.1 deg here) depends on where imgui puts the slider's frame after the "Trim"
+# label, so the checks pin the split, not the number.
+NAME part-window-trim
+CLAIM Clicking one elevator's Trim slider moves that elevator only: the pair that sat at -12.0/+12.0 with the stick free splits, and the airframe trims to a lower angle of attack.
+KIND invariant
+ARGS --time-accel 1 --sim-steps 540 --width 1920 --height 1080
+ARGS --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
+ARGS --sim-press 500,3000,R,500,30000,T
+ARGS --drag-log
+ARGS --sim-mouse 800,0,960,540,0
+ARGS --sim-mouse 900,300,700,760,RMB
+ARGS --ui-focus 2000,skiff_trim/elev_l
+ARGS --sim-mouse 2200,0,CUR,CUR,RMB
+ARGS --ui-click 4000,"skiff_trim > Elevator (1.6m)##8/Trim"
+EXPECT [uifocus] 'skiff_trim/elev_l' ->
+EXPECT [pick] t=
+EXPECT part=8 (elevator_r0.8h0.7)
+EXPECT path="skiff_trim > Elevator (1.6m)##8/Trim"
+EXPECT [ctrl]
+# Both elevators start at the authored trim, mirrored by sign.
+CHECK all(abs(c["deg"]) > 11.5 for c in ctrl if c["t"] is not None and c["t"] < 4.0)
+CHECK len(set(c["index"] for c in ctrl if c["t"] is not None and c["t"] < 4.0)) == 2
+CHECK len(set(c["name"] for c in ctrl)) == 1
+# After the click: one instance moved inside a few degrees, the other still holds
+# +12.0 -- the window is per part, and the pair's symmetry is gone.
+CHECK any(abs(c["deg"]) < 8.0 for c in ctrl if c["t"] is not None and c["t"] > 4.5)
+CHECK all(abs(c["deg"]) > 11.5 for c in ctrl if c["t"] is not None and c["t"] > 4.5 and c["index"] == 1)
+CHECK any(c["index"] == 0 and abs(c["deg"]) < 8.0 for c in ctrl if c["t"] is not None and c["t"] > 4.5)
+# And the airframe noticed: losing one elevator's download trims the whole ship to a
+# lower AoA (2.4 deg before, 1.6 after).
+CHECK max(d["aoa"] for d in drag if d["t"] is not None and d["t"] < 4.0) > 2.2
+CHECK min(d["aoa"] for d in drag if d["t"] is not None and d["t"] >= 6.0) < 2.0
+CHECK all(d["aoa"] is not None for d in drag)
+FORBID FAILED
+FORBID error:
+LIMIT 30
