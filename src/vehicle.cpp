@@ -2235,16 +2235,23 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
        and frame-relative (see the frame-change law, which subtracts the new
        frame's omega), so vrel + w x r is the air-relative velocity of a point at
        offset r. Same convention the chute harness uses below.
-       The exact sweep is (w - frameS's own omega) x r; the atmosphere co-rotates.
-       Dropped: on Kerbin that term is 2.9e-4 rad/s, so at most 1.5e-3 m/s of sweep
-       at r = 5 m, against flows measured in tens of m/s. */
+       The exact sweep would be (w - THE AIR'S own rotation, expressed in S) x r,
+       because the atmosphere co-rotates with the body. There is nothing to drop in
+       the case that matters: aero runs inside the body's ROTATING frame for the
+       whole atmosphere shell (soiTarget puts the ship in rot_frame), where w is
+       already measured against the air and the correction is identically zero. It
+       is only non-zero if aero runs in the non-rotating SOI frame, and there
+       Kerbin's 2.9e-4 rad/s is at most 1.5e-3 m/s of sweep at r = 5 m. Do NOT
+       subtract the body's omega from w -- it is not in there. */
     const glm::dvec3 w = GetAngVelocity(hull);
     /* A non-finite rate must not reach the law: it is silent if it does. Every
        surface would read a NaN flow, partAero calls a NaN flow VALID (it only
        tests length <= 0), and the airframe keeps simulating with NaN forces.
-       Asserted rather than skipped because nothing normal gets here -- the
-       realistic route is a save whose angular velocity is NaN restored straight
-       into a SOI (save.cpp validates positions and velocities, not this). */
+       Nothing normal produces one, and nothing validates it either: save.cpp has
+       no isfinite anywhere, while a save carrying NaN cannot even be read (the
+       JSON parser refuses the literal). The realistic route is arithmetic that has
+       already diverged -- the #340 high-warp regime -- and the assert is there so
+       it announces itself here instead of a NaN ship drifting into a frame change. */
     assert(std::isfinite(w.x) && std::isfinite(w.y) && std::isfinite(w.z));
 
     // One flow frame for every part (one rigid body). Root local axes: nose +Z,
@@ -2448,28 +2455,31 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
            atan(|w x r| / along-flow) and its twin's tilts the other way. The chute
            harness above has always done this and said outright that the sweep IS its
            damping; this is that term on the lifting law.
-           What it does here is NOT one behaviour but three, and all three are real
-           -- measured in situ as the moment this term ADDS, dotted with w (negative
-           opposes the spin, positive feeds it):
+           What it does here is NOT one behaviour but three, all measured in situ on
+           both shipped airframes (every aero substep: the moment this term ADDS over
+           the old COM-flow law, dotted with w -- negative opposes the spin, positive
+           feeds it):
              Below the stall the slope is positive, so the surface the rotation drives
-             into the air loses lift and the far one gains it: the pair's moment
-             OPPOSES w. Damping. On the jet mid-swing, |w| up to 2.0 rad/s, that
-             product is -1 to -2900 W.
-             Inside the deep-stall droop -- alpha past stallAngle, under 2x it, where
-             liftCurve's slope is NEGATIVE -- the same sweep ADDS lift where it should
-             take it away, so the moment ALIGNS with w and the airframe feeds its own
-             swing back in. On the glider at |w| = 4.3 rad/s and ship AoA -29.6 deg:
-             +451 kW. That is why 458-glider's AoA series damps at -65 deg and not at
-             -27. Whether a shipped part should droop at all is a question, not a fact
-             to pin; it is filed as its own ticket with this commit.
+             toward the stall peak gains lift and the one it pulls away loses it, in
+             the direction that OPPOSES w. Damping. Jet: dM.w from -1 to -3885 W, peak
+             at |w| = 2.64 rad/s flying 3.6 deg off the flow. Glider: down to -513 kW.
+             Inside the deep-stall droop -- alpha past stallAngle, under 2x it -- the
+             slope is NEGATIVE, so the surface the rotation pulls back toward the
+             stall peak gains lift instead of losing it and the moment ALIGNS with w:
+             the airframe feeds its own swing back in. Both ships pump there (jet
+             dM.w up to +3080 W, glider up to +413 kW, and the pumping samples sit at
+             |AoA| 27-41 deg, i.e. inside 20.1-40.1). Whether a shipped part should
+             droop at all is a question, not a fact to pin; it is filed as #487.
              Past 2x stallAngle the curve is identically zero, so there is nothing to
-             damp: on the jet's 77 deg excursion the product is exactly 0.0.
-           Sizes at LIFTING surfaces only. The 7.4 m/s first measured here was at the
-           RUDDERS and ELEVATORS, whose force comes from deflection alone (controlForce
-           has no alpha term), so their sweep moves their q, not their lift. The jet's
-           wings sit 0.6 m off the pitch axis and 3 m off the roll one, so at |w| = 2
-           rad/s their sweep is 0.02 to 1.1 m/s -- small, and the reason the jet's own
-           attitude barely moved under this change.
+             damp: every sample with |AoA| > 70 on either ship measures dM.w = 0.0.
+             What recovers a ship from broadside is the hull's form drag (#486), not
+             this term.
+           Sizes, and they are small on the jet: at |w| up to 2.65 rad/s its lifting
+           surfaces see at most 1.46 m/s of sweep (they sit about 0.55 m fore/aft of
+           the pitch pivot, 3 m out along the span), while its rudders and elevators
+           see up to 6.39 m/s -- and those make no lift at all, so their sweep moves
+           their q, not their force. The glider, tumbling at |w| up to 5.28, sees
+           16.2 m/s at its lifting surfaces.
            A body that is not spinning is bit-identical to the old law: w x r is
            exactly zero, so vp and qp come out of the same arithmetic as the vrel and
            v2 this loop used. */
@@ -2549,7 +2559,10 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                    mount frame, which is most of this loop's cost and, at shipped part
                    counts, mostly paid for surfaces sitting neutral. The surface index
                    still advances so a held pair keeps its numbering (flight/453 filters
-                   on it), and controlDefl stays where its per-frame reset left it. */
+                   on it), and controlDefl stays where its per-frame reset left it.
+                   Exact compare against 0 is safe while the stick is binary -- it is
+                   only ever 0.0f/+-1.0f here -- but an analog trim would want a dead
+                   band, and this line is where that decision belongs. */
                 ++ctrlIndex;
                 continue;
             }
@@ -2565,17 +2578,20 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                deflections together. */
             /* The flow AT THE SURFACE (#483), for the same reason the lift loop pays
                it: a body turning at w drags its surfaces through the air. On this jet
-               mid-swing the sweep is 6.5-7.4 m/s at the rudders and ~6 m/s at the
-               elevators -- a big fraction of the 70-180 m/s flow when the airframe
-               sits 77 deg off it. It changes three things here, and the magnitude is
-               one of them: this surface's q moves to 0.87-0.90 of the COM's and,
-               because a twin pair stands either side of the rotation axis, it moves
-               UNEQUALLY, so the pair's sideways forces no longer cancel -- which is
-               where 458-jet's Beta peak 4.6 -> 4.9 deg comes from. It also tilts the
-               force DIRECTION (liftDir) and with it the sign of the leverage. There
-               is still no alpha term: controlForce answers deflection only, so a
-               surface the stick has not touched makes no force however it is swinging
-               (#454 is what gives a surface a say from its own angle). */
+               the rudders and elevators see up to 6.39 m/s of sweep (a 3.65 m lever,
+               against |w| up to 2.65 rad/s mid-swing). It changes three things here,
+               and the magnitude is one of them: an actuated surface's q ranges 0.93
+               to 1.07 of the COM's on the jet (0.85 to 1.11 on the tumbling glider)
+               and, because a twin pair stands either side of the rotation axis, it
+               moves UNEQUALLY -- so the pair's sideways forces no longer cancel, which
+               is part of why this ship's max |Beta| over the 458 rows went 0.3 deg
+               before #483 to 2.5 after. It also tilts the force DIRECTION (liftDir)
+               and with it the sign of the leverage. There is still no alpha term:
+               controlForce answers deflection only, so a surface the stick has not
+               touched makes no force however it is swinging (#454 is what gives a
+               surface a say from its own angle). Note when it is biggest: at the top
+               of a 77 deg excursion the rate is near zero (a turning point), so the
+               sweep is largest mid-swing, not where the angle looks worst. */
             const glm::dvec3 ri = partPosS(p) - com;
             const LocalFlow lf = localFlow(vrel, w, ri, rho);
             const double qp = lf.q;
@@ -2594,7 +2610,9 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                                                : 0.0;
             p->controlDefl = deflection;  // the mesh swing (Vehicle::Draw)
             lastControlDeflections.push_back({d, ctrlIndex++, deflection});
-            if(sv == 0.0f || clc <= 0.0 || deflection == 0.0) { continue; }
+            // sv != 0 here (the early-out above), so this asks about an unusable
+            // frame (deflection 0), a surface with no slope, and a zero force.
+            if(clc <= 0.0 || deflection == 0.0) { continue; }
             const glm::dvec3 F = controlForce(qp, d->control_area, clc,
                                               deflection, forceDir);
             if(glm::length2(F) <= 0.0) { continue; }

@@ -10,7 +10,7 @@ EXPECT [drag]
 EXPECT [ctrl]
 CHECK len(drag) >= 10
 CHECK all(d.get("aoa") is not None and abs(d["aoa"]) < 1.0 for d in drag[:3])
-# Same reading as the jet case, on the nose-on rows: 4.3 m2 = the pod disc plus
+# Same reading as the jet case, on the nose-on rows: 4.35 m2 = the pod disc plus
 # the two plates seen edge-on. RE-BASELINED 2026_10_28 twice -- #463's union, then
 # the mount offsets it first dropped (which had it at 3.4, charging one part
 # instead of a union).

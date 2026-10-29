@@ -539,14 +539,15 @@ static void test_local_flow_sweep() {
     /* INSIDE THE DEEP-STALL DROOP THE SAME TERM FLIPS SIGN -- and a shipped airframe
        sits there. Same pair, same rate, mounts tilted 30 deg up: past the 20.1 deg
        stall angle liftCurve's slope is NEGATIVE until twice it (40.1 deg), so the
-       surface the rotation drives DEEPER into the stall gains lift instead of losing
-       it. Subtract the omega = 0 moment -- the incidence itself makes a big static
-       couple that says nothing about damping -- and the moment the sweep ADDS lines
-       up with w: the airframe feeds its swing back in. Measured in situ on the
-       glider at |w| = 4.3 rad/s and ship AoA -29.6 deg, where this term alone is
-       +451 kW of spin-up, which is why 458-glider's AoA series decays at -65 deg and
-       not at -27. Pinned as the flip, not the size: whether a shipped part should
-       droop at all is filed as its own ticket, not settled here. */
+       surface the rotation pulls back TOWARD the stall peak gains lift instead of
+       losing it. Subtract the omega = 0 moment -- the incidence itself makes a big
+       static couple that says nothing about damping -- and the moment the sweep ADDS
+       lines up with w: the airframe feeds its swing back in. Measured in situ on both
+       shipped airframes, which both pump in this band (glider dM.w up to +413 kW, jet
+       up to +3080 W, with the pumping samples at |AoA| 27-41 deg). Pinned as the flip,
+       not the size: whether a shipped part should droop at all is #487, not settled
+       here. Past 2x stallAngle the curve is zero and the term does nothing at all --
+       the third regime, which the self-limiting block below pins. */
     {
         const double a0 = 0.5236;               // 30 deg: past 20.1, inside 40.1
         const glm::dmat3 inc = glm::mat3_cast(glm::angleAxis(a0, ship[0]));

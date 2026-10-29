@@ -40,8 +40,15 @@ CHECK 10.0 < max(d["L"] / (0.5 * d["rho"] * d["v"] * d["v"]) for d in drag if d.
 CHECK any(d.get("induced", 0.0) > 0.0 for d in drag)
 CHECK all(d.get("induced", 0.0) > 0.0 for d in drag if d.get("L", 0.0) / max(0.5 * d["rho"] * d["v"] * d["v"], 1.0) > 1.0)
 CHECK all(d.get("induced", 0.0) == 0.0 for d in drag if d.get("L", 0.0) == 0.0)
-# It flies in the pitch plane: A is the only thing moving and the flow stays on
-# the centreline, so the yaw-plane angle AeroFrame reports stays put.
+# It flies in the pitch plane: no yaw input is held, and the flow stays on the
+# centreline, so the yaw-plane angle AeroFrame reports stays small -- 0.0, 0.0, 0.0,
+# -0.1, 0.2, 0.5, -0.5, -1.4, 0.6, 2.5, -0.3, -1.3, 0.4, 0.3. It is NOT pinned to
+# zero, and #483 is why: the swing carries the rudder pair through the air at up to
+# 6.39 m/s of sweep, and because the two stand either side of the axis their own
+# q moves UNEQUALLY (0.93 to 1.07 of the COM's across the run), so their sideways
+# forces no longer cancel. Before #483 the worst row read 0.3 deg. The ceiling is
+# 5.0 rather than 3.0 so the next law change gets to move it without a false alarm;
+# if it ever goes past that with nobody holding the rudder, something is steering.
 CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 5.0
 # PINNING A BUG, NOT CELEBRATING ONE: a held stick puts this airframe 78 deg off
 # the flow and it is still swinging when the case ends. Under --sim-steps the
@@ -51,15 +58,17 @@ CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 5.0
 # point of running it next to the glider (whose series stops tumbling). Not for want
 # of the sweep -- at these rows the sweep has nothing to act ON. The excursion is
 # 69-78 deg, past twice the shipped wing's 20.1 deg stall angle, and past that the
-# lift curve is identically zero; measured in situ, the moment this term adds there
-# is exactly 0.0 W, because zero lift has no derivative to damp. Where the wings do
-# feel the sweep they feel little of it: their lever about the pitch pivot is 0.55 m
-# (sweep 0.02-1.1 m/s at |w| up to 2.0 rad/s), against 3.65 m at the rudders and
-# elevators (6.5-7.4 m/s) -- and those carry no pitch damping, because an elevon's
-# force comes from deflection alone (controlForce has no alpha term). #454 (a
-# surface's own angle having a say) is what brings the excursion down; when it
-# lands, EXPECT THE LOWER CHECK TO FAIL and re-baseline it to a sane envelope in
-# that commit.
+# lift curve is identically zero; measured in situ over every aero substep, the
+# moment this term adds at |AoA| > 70 is exactly 0.0 W, because zero lift has no
+# derivative to damp. Two reasons coincide there: the swing's turning point is also
+# where |w| is smallest (0.02-0.29 rad/s in those samples, against 2.65 mid-swing).
+# Where the wings do feel the sweep they feel little of it: their lever about the
+# pitch pivot is ~0.55 m, so at |w| up to 2.65 rad/s their sweep tops out at 1.46 m/s
+# -- against 6.39 m/s at the rudders and elevators (3.65 m lever), which carry no
+# pitch damping because an elevon's force comes from deflection alone (controlForce
+# has no alpha term). #454 (a surface's own angle having a say) is what brings the
+# excursion down; when it lands, EXPECT THE LOWER CHECK TO FAIL and re-baseline it to
+# a sane envelope in that commit.
 # It does not go over the top -- honest 35 m2 of broadside is real pitch damping,
 # and the first cut of #463 (3.4 m2 broadside, mount offsets dropped) had taken
 # that away, which is why the upper bound below is pinned as firmly as the lower
