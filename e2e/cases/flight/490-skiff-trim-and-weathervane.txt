@@ -1,0 +1,56 @@
+NAME skiff-trim-and-weathervane
+CLAIM A 552 kg airframe built to the #490 arithmetic -- 21.6 m2 of AR-3.33 wing 0.34 m behind the CG, a 4 m2 tailplane set to -5 deg incidence 2.0 m back, a fixed fin 2.2 m back -- holds +2.5 deg angle of attack with no stick and no SAS, weathervanes a 1 s rudder kick from 11.2 deg back inside 20 s, and keeps its centre of pressure 0.68-0.86 m behind the CG the whole time.
+KIND golden
+ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-slow
+ARGS --sim-steps 2000 --drag-log --mass-log
+ARGS --sim-press 5000,1000,A
+EXPECT [drag]
+EXPECT [mass]
+CHECK len(drag) >= 30
+# The airframe, from the [mass] row: 11 parts, 552.3 kg. That is the #490 audit's
+# prescription measured against the shipped glider's 1417 kg / 4.14 m2 of hull CdA
+# -- this hull is 0.75 m2 (Cd 0.418 x 1.81 m2 nose-on, from OSP_SHIP_DUMP), a
+# sixth of the area for a quarter of the mass, and the two lifting surfaces carry
+# the load instead of the fuselage.
+CHECK mass[0]["parts"] == 11
+CHECK 545.0 < mass[0]["mass"] < 560.0
+# TRIM, hands-off, no SAS (no A held -- the only A press is the 1 s kick below).
+# AoA series after the kick settles: 2.5 every row from t=20 to t=40, worst 4.2
+# during the sideslip transient at t=13-15. The shipped jet under the same
+# no-stick start wanders 0.3 to -1.0 and cannot hold anything (its 458 case pins
+# |AoA| swings to 77 deg WITH a stick held); this holds 2.5 deg to one decimal.
+# WHY it holds: the tail is mounted at -5 deg incidence (shipdef "roll" on a
+# surface mount -- a plate's chord is its Z axis, so rolling it about the contact
+# normal IS incidence), so the zero-moment AoA sits at +2.5 deg with the wing at
+# 0 deg. That is the #487 design note made physical: trim is a standing angle,
+# not a control input.
+CHECK all(1.5 < d["aoa"] < 6.0 for d in drag if d["t"] >= 5)
+# The mean of the settled rows is the trim point; pin it to one decimal of slack.
+CHECK (lambda ds: 2.2 < sum(d["aoa"] for d in ds) / len(ds) < 3.0)([d for d in drag if d["t"] >= 30])
+# WEATHERVANE. One 1 s rudder press at t=5: Beta 11.2, -8.3, 8.3, -7.7, 6.6,
+# -7.2, 5.8, -4.0, -3.4, 2.3, -2.0, 1.6, -0.5 -- under 5 deg from t=20, under
+# 1 deg from t=25. The shipped jet with a rudder held sits at 100 deg of sideslip
+# (#482) and a kick leaves it there; the difference is not the rudder (this fin
+# pair has a tenth the area of the jet's rudders) -- it is that the hull's 1.81
+# m2 now stands 0.7-1.1 m BEHIND the CG, so the hull's own form drag pulls the
+# nose back into the flow. CpL, #486's field, is the lever that decides it:
+CHECK max(abs(d["beta"]) for d in drag) > 8.0
+CHECK max(abs(d["beta"]) for d in drag if d["t"] >= 20) < 5.0
+CHECK all(d["cpl"] < -0.5 for d in drag if d["cpl"] is not None)
+# ...and the lever GROWS as the ship yaws off the flow: -0.69 m at trim, -0.86 m
+# at the worst row of the sideslip transient. That is what makes the restoring
+# stronger exactly when it is needed.
+CHECK max(abs(d["cpl"]) for d in drag if d["cpl"] is not None) > 0.8
+# Upright throughout, and carrying its weight by the end: the start bed
+# (flying-slow, 180 m/s air-relative) is ~2x this wing's cruise, so the ship
+# trades the excess for 650 m of height, drops to 22 m/s at t=15, and comes back
+# through a phugoid -- Up never under 0.4, and L_up at t=40 is 6.3 kN against a
+# 5.4 kN weight. The exchange is a phugoid, not a departure: AoA never leaves the
+# band above while it happens.
+CHECK all(d["up"] > 0.4 for d in drag if d["t"] >= 5)
+CHECK 0.8 * mass[-1]["mass"] * 9.81 < drag[-1]["L_up"] < 1.4 * mass[-1]["mass"] * 9.81
+# #462's coupling still holds on a real airplane: every substep that lifts pays
+# induced drag, and here it pays the WING'S OWN aspect ratio (2*3.0 m half-span
+# per part = 6 m span over 1.8 m chord = AR 3.33), not the whole ship's.
+CHECK all(d["induced"] > 0.0 for d in drag if d["L"] > 1.0)
+FORBID error:

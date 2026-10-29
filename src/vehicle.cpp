@@ -2333,9 +2333,18 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         glm::dvec3 cp(0.0);      // center of pressure (area-weighted centroid)
         double cpArea = 0.0;
         double cdNum = 0.0;      // sum of (partArea x part cd) for the cd mean
+        /* OSP_SHIP_DUMP: one design-audit dump of the whole ship as this pass sees
+           it (per-part arm, projected area, cd as it faces the flow), plus the cp
+           this pass computed. Throwaway instrumentation like AUDIO_DEBUG/PRECDBG: ONE
+           shot per process, for whichever Vehicle reaches the drag pass first, at
+           whatever attitude that happens to be -- not a per-ship readout. Columns are
+           mixed accountings on purpose and labelled: a part's mass is effectiveMass()
+           while the header is the compound body's, and SUM projA is the parts' areas
+           ADDED while the force below pays on unionA (their union), which on an
+           overlapping ship can be half of it. */
         static bool aeroDump = getenv("OSP_SHIP_DUMP") != nullptr;
         if(aeroDump) {
-            printf("[ship] mass %.1f  vrel %.1f m/s  alpha %.1f  beta %.1f  alt %.0f\n",
+            printf("[ship] compound mass %.1f  vrel %.1f m/s  alpha %.1f  beta %.1f  alt %.0f\n",
                    hull->mass, glm::length(vrel), alpha * 180 / M_PI,
                    fr.beta * 180 / M_PI, alt);
         }
@@ -2407,28 +2416,32 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         lastDragCd = (cpArea > 0.0) ? (cdNum / cpArea) : 0.0;
         if(cpArea > 0.0) { cp /= cpArea; }
         else { cp = com; }  // degenerate: no per-part area -> act through the COM
-        lastCpLever = glm::dot(cp - com, nose);   // + = cp ahead: feeds rotations
+        lastCpLever = glm::dot(cp - com, nose);   // + = cp ahead: AoA push diverges
         if(aeroDump) {
             aeroDump = false;
             const glm::dvec3 rc = cp - com;
-            printf("[ship] SUM projA %.2f  cp fwd %.2f right %.2f up %.2f  cd %.2f\n",
-                   cpArea, glm::dot(rc, nose), glm::dot(rc, right), glm::dot(rc, up),
+            printf("[ship] SUM projA %.2f  unionA %.2f  cp fwd %.2f right %.2f up %.2f  cd %.2f\n",
+                   cpArea, A_ship, glm::dot(rc, nose), glm::dot(rc, right), glm::dot(rc, up),
                    lastDragCd);
             fflush(stdout);
         }
-        /* #486: the hull answers to the flow AT ITS OWN PLACE. cp sits behind the
-           COM, so while the airframe rotates this point sweeps through the air at
-           w x (cp - com) -- and with the COM flow that sweep is invisible, which
-           leaves the largest area on most ships (35 m2 broadside on the jet) unable
-           to damp a rotation at all. Rockets, capsules and cargo sleds are ALL hull,
-           so this was the only damping they could ever have had, and they had none.
+        /* #486: the hull answers to the flow AT ITS OWN PLACE. Wherever cp sits,
+           this airframe's rotation carries it through the air at w x (cp - com),
+           and with the COM flow that sweep is invisible -- which left the largest
+           area on most ships (35 m2 broadside on the jet) unable to react to a
+           rotation at all. Rockets, capsules and cargo sleds are ALL hull, so this
+           was the only damping they could ever have had, and they had none. That
+           sweep term OPPOSES the rotation for either sign of the lever; what the
+           lever's sign decides is the other half -- hull drag at an angle of attack
+           pushes the nose back into the flow only with cp behind the COM (#454's
+           static margin).
            The AREA stays keyed to the COM flow direction: #463's union needs one
            projection plane for the whole ship, so a per-point silhouette is not
            available here. That makes this a body-shape term with a local flow, not
            a surface -- a surface gets both (see the lift and control loops). */
-        const glm::dvec3 vrelCp = vrel + glm::cross(w, cp - com);
+        const LocalFlow lfCp = localFlow(vrel, w, cp - com, rho);
         const glm::dvec3 fdrag = dragForce(da, drag_cd * lastDragCd, A_ship,
-                                           alt, vrelCp);
+                                           alt, lfCp.vp);
         if(glm::length2(fdrag) > 0.0) {
             const glm::dvec3 rcp = cp - com;
             ApplyForce(hull, rcp, fdrag);        // translation + (rcp x fdrag)

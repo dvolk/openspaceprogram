@@ -489,11 +489,19 @@ void tick(Game &g) {
                 } else {
                     printf(" Beta=-");
                 }
-                /* #486: the hull's weathervane lever, signed metres (+ = cp ahead of
-                   the COM). Hull drag answers to the flow AT cp now, so this sign
-                   decides what that term does to a rotation: negative damps a swing,
-                   positive feeds it. Printed last, like Beta, so parsers hold. */
-                printf(" CpL=%.2f m", g.ship->lastCpLever);
+                /* #486: the hull's weathervane lever, signed metres (+ = cp ahead
+                   of the COM). Hull drag answers to the flow AT cp now, and the
+                   sweep there opposes a rotation whatever the sign; the sign decides
+                   the OTHER half -- hull drag acting at an angle of attack restores
+                   the nose only with cp behind, and diverges it with cp ahead
+                   (#454). Printed last, like Beta, so parsers hold. Dashed on the
+                   same test as AoA/Beta: 0.00 is also what a cp exactly over the COM
+                   prints, and a --drag-cd 0 pass has no lever worth quoting. */
+                if(g.ship->lastDragAlphaValid) {
+                    printf(" CpL=%.2f m", g.ship->lastCpLever);
+                } else {
+                    printf(" CpL=-");
+                }
                 printf("\n");
                 // Control surfaces' applied deflections.
                 if(!g.ship->lastControlDeflections.empty()) {

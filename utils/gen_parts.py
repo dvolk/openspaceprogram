@@ -154,6 +154,10 @@ DRAG_KEYS = ("drag", "drag_forward", "drag_side", "drag_backward")
 # fuel_link is virtual (mesh/texture = None). Radial sizes 1.0 / 1.5 / 2.25 m.
 PARTS = [
     ("capsule",          "capsule",        "meshes/capsule.obj",                  "textures/capsule.png"),
+    # The light pod a small aeroplane is built around. At r1 every family member
+    # puts 3.1 m2 of disc in the flow and >1 t on the airframe, which caps the
+    # whole game's L/D near 2 no matter how much wing you add (#490).
+    ("capsule_r0.5h1.5", "capsule",        "meshes/capsule_r0.5h1.5.obj",         "textures/capsule.png"),
     ("capsule_r1.5h3",   "capsule",        "meshes/capsule_r1.5h3.obj",           "textures/capsule.png"),
     ("capsule_r2.25h4.5","capsule",        "meshes/capsule_r2.25h4.5.obj",        "textures/capsule.png"),
     ("reaction_wheel",   "reaction_wheel", "meshes/reaction_wheel_r1h0.25.obj",   "textures/reaction_wheel.png"),
@@ -173,6 +177,10 @@ PARTS = [
     ("orbital_engine_r2.25h2.25","orbital_engine","meshes/orbital_engine_r2.25h2.25.obj", "textures/engine.png"),
     ("nuclear_engine",   "nuclear_engine", "meshes/nuclear_engine.obj",             "textures/engine.png"),
     ("jet",            "jet",            "meshes/engine.obj",                   "textures/jet_engine.png"),
+    # A jet small enough for a light aeroplane: 90 kN on a 700 kg engine is a
+    # 6x thrust-to-weight on anything that flies (#490).
+    ("jet_r0.25h1",    "jet",            "meshes/engine_r0.25h1.obj",           "textures/jet_engine.png"),
+    ("jet_tank_r0.4h2",  "jet_tank",     "meshes/tank_r0.4h2.obj",              "textures/fuel_tank.png"),
     ("jet_tank_r1h1",  "jet_tank",       "meshes/tank_r1h1.obj",                "textures/fuel_tank.png"),
     ("jet_tank_r1h3",  "jet_tank",       "meshes/tank_r1h3.obj",                "textures/fuel_tank.png"),
     ("jet_tank_r1h5",  "jet_tank",       "meshes/tank_r1h5.obj",                "textures/fuel_tank.png"),
@@ -215,8 +223,16 @@ PARTS = [
     ("materials_pod",    "materials_pod",  "meshes/materials_pod.obj",           "textures/materials_pod.png"),
     ("barometer",        "barometer",      "meshes/barometer.obj",                "textures/barometer.png"),
     ("wing",             "wing",           "meshes/wing_r2h2.obj",                "textures/wing.png"),
+    # High-aspect-ratio surfaces. inducedCd charges a part at ITS OWN span/area,
+    # so the 4 m2-of-chord shipped wing pays AR 2 no matter how the pair is
+    # arranged; these give an airframe a span worth inducing.
+    ("wing_r3h1.8",      "wing",           "meshes/wing_r3h1.8.obj",              "textures/wing.png"),
+    ("wing_r1h1",        "wing",           "meshes/wing_r1h1.obj",                "textures/wing.png"),
+    ("wing_r0.7h1",      "wing",           "meshes/wing_r0.7h1.obj",              "textures/wing.png"),
     ("rudder",           "rudder",         "meshes/fin_r1h2.obj",                 "textures/rudder.png"),
+    ("rudder_r0.6h0.8",  "rudder",         "meshes/fin_r0.6h0.8.obj",             "textures/rudder.png"),
     ("elevator",         "elevator",       "meshes/fin_r1h2.obj",                 "textures/elevator.png"),
+    ("elevator_r0.8h0.7","elevator",       "meshes/fin_r0.8h0.7.obj",             "textures/elevator.png"),
     ("aileron",          "aileron",        "meshes/fin_r1h2.obj",                 "textures/aileron.png"),
     # the parachute rides the nose-cap hull; the canopy is an overlay mesh
     ("chute",            "chute",          "meshes/nose_cap.obj",                 "textures/nose_cap.png"),
@@ -244,7 +260,10 @@ EXTRA_FIELDS = {
     # the jet reuses the engine mesh, so it gets the engine's shroud too
     "jet":                   {"shroud": "meshes/engine_shroud.obj",
                               "shroud_texture": "textures/engine_shroud.png"},
+    "jet_r0.25h1":           {"shroud": "meshes/engine_r0.25h1_shroud.obj",
+                              "shroud_texture": "textures/engine_shroud.png"},
     "capsule":           {"crew_capacity": 1, "experiment_storage": "container"},
+    "capsule_r0.5h1.5":  {"crew_capacity": 1, "experiment_storage": "container"},
     "capsule_r1.5h3":    {"crew_capacity": 3, "experiment_storage": "container"},
     "capsule_r2.25h4.5": {"crew_capacity": 6, "experiment_storage": "container"},
     # kerbal: DRY mass (full-EVA-gear minus the 10 kg RCS hydrazine, a separate
