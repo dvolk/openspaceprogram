@@ -2188,6 +2188,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastDragAlphaValid = false;
     lastDragArea = 0.0;
     lastDragCd = 0.0;
+    lastCpLever = 0.0;
     lastChuteCdA = 0.0;
     lastInducedCdA = 0.0;
     lastControlDeflections.clear();  // a no-air substep reports no steering
@@ -2318,7 +2319,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
 
     // DRAG: AREA = the UNION of the parts' silhouettes facing the flow;
     // COEFFICIENT = the parts' 3-anchor cd (partCd) area-weighted. Applied at the
-    // center of pressure so a banked ship weathervanes into the flow.
+    // center of pressure, and answering to the flow THERE, so a banked ship
+    // weathervanes into the flow AND the same term damps the swing (#486).
     {
         /* One flow plane for the whole ship (#463): the polygons can only be
            unioned if they share a 2-D basis, so the PLANE rotates into each part
@@ -2331,6 +2333,12 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         glm::dvec3 cp(0.0);      // center of pressure (area-weighted centroid)
         double cpArea = 0.0;
         double cdNum = 0.0;      // sum of (partArea x part cd) for the cd mean
+        static bool aeroDump = getenv("OSP_SHIP_DUMP") != nullptr;
+        if(aeroDump) {
+            printf("[ship] mass %.1f  vrel %.1f m/s  alpha %.1f  beta %.1f  alt %.0f\n",
+                   hull->mass, glm::length(vrel), alpha * 180 / M_PI,
+                   fr.beta * 180 / M_PI, alt);
+        }
         for(Part *p : parts) {
             if(p->body == nullptr || p->body->hullVerts.empty()) { continue; }
             // hullVerts are part-local: projectPartHull carries them through the
@@ -2345,12 +2353,22 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             cpArea += a;
             // cd AS IT FACES THE FLOW (partCd): localRot[2] is the part's nose in S
             // and sRot preserves dots.
+            double cd = 0.0;
             if(p->def != nullptr) {
                 const double c = glm::dot(p->localRot[2], vhatS);
-                const double cd = partCd(p->def->drag_forward,
-                                         p->def->drag_side,
-                                         p->def->drag_backward, c);
+                cd = partCd(p->def->drag_forward,
+                            p->def->drag_side,
+                            p->def->drag_backward, c);
                 if(cd > 0.0) { cdNum += a * cd; }
+            }
+            if(aeroDump) {   // throwaway design audit: arms in SHIP axes, from the COM
+                const glm::dvec3 r = partPosS(p) - com;
+                printf("[ship] %-16s m %7.1f fwd %6.2f right %6.2f up %6.2f"
+                       " projA %5.2f cd %.2f liftA %.2f ctrlA %.2f noseDot %5.2f\n",
+                       p->def ? p->def->name.c_str() : "?", p->effectiveMass(),
+                       glm::dot(r, nose), glm::dot(r, right), glm::dot(r, up), a, cd,
+                       p->def ? p->def->lift_area : 0.0, p->def ? p->def->control_area : 0.0,
+                       p->def ? glm::dot(p->localRot[2], vhatS) : 0.0);
             }
         }
         /* The ship's silhouette: the union of those polygons, cached per flow
@@ -2389,8 +2407,28 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         lastDragCd = (cpArea > 0.0) ? (cdNum / cpArea) : 0.0;
         if(cpArea > 0.0) { cp /= cpArea; }
         else { cp = com; }  // degenerate: no per-part area -> act through the COM
+        lastCpLever = glm::dot(cp - com, nose);   // + = cp ahead: feeds rotations
+        if(aeroDump) {
+            aeroDump = false;
+            const glm::dvec3 rc = cp - com;
+            printf("[ship] SUM projA %.2f  cp fwd %.2f right %.2f up %.2f  cd %.2f\n",
+                   cpArea, glm::dot(rc, nose), glm::dot(rc, right), glm::dot(rc, up),
+                   lastDragCd);
+            fflush(stdout);
+        }
+        /* #486: the hull answers to the flow AT ITS OWN PLACE. cp sits behind the
+           COM, so while the airframe rotates this point sweeps through the air at
+           w x (cp - com) -- and with the COM flow that sweep is invisible, which
+           leaves the largest area on most ships (35 m2 broadside on the jet) unable
+           to damp a rotation at all. Rockets, capsules and cargo sleds are ALL hull,
+           so this was the only damping they could ever have had, and they had none.
+           The AREA stays keyed to the COM flow direction: #463's union needs one
+           projection plane for the whole ship, so a per-point silhouette is not
+           available here. That makes this a body-shape term with a local flow, not
+           a surface -- a surface gets both (see the lift and control loops). */
+        const glm::dvec3 vrelCp = vrel + glm::cross(w, cp - com);
         const glm::dvec3 fdrag = dragForce(da, drag_cd * lastDragCd, A_ship,
-                                           alt, vrel);
+                                           alt, vrelCp);
         if(glm::length2(fdrag) > 0.0) {
             const glm::dvec3 rcp = cp - com;
             ApplyForce(hull, rcp, fdrag);        // translation + (rcp x fdrag)

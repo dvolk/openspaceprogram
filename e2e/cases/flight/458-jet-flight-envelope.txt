@@ -28,10 +28,10 @@ CHECK max(d.get("a", 0.0) for d in drag) > 6.0 * min(d.get("a", 0.0) for d in dr
 # pin above still passes -- the pins are not decoration.
 CHECK 1.15 < max(d["F"] / (0.5 * d["rho"] * d["v"] * d["v"] * d["cd"] * d["a"]) for d in drag[:3]) < 1.25
 # |L| / q, lift capability in area units: 2 wings x 8 m2 at CLmax 2.1 = 33
-# m2-equivalent, and the 840-tick run samples 25.1. It used to sample 13.5
-# because the balloon's 9x-inflated drag bled the airframe before it could reach
-# a useful AoA. The band stays wide because where a swing happens to be sampled is
-# a physics question, not a shape one; #454 gives it a steady state to pin.
+# m2-equivalent, and the 840-tick run samples 32.0 (25.1 before #486, 13.5 before
+# #463, which the balloon's 9x-inflated drag bled before it could reach a useful
+# AoA). The band stays wide because where a swing happens to be sampled is a physics
+# question, not a shape one; #454 gives it a steady state to pin.
 CHECK 10.0 < max(d["L"] / (0.5 * d["rho"] * d["v"] * d["v"]) for d in drag if d.get("L") and d["v"] > 1.0) < 60.0
 # #462's coupling, and the pin that says the induced term is not decoration: the
 # substeps that lift (|L| / q over 1, comfortably above the 3-decimal print) pay
@@ -41,34 +41,39 @@ CHECK any(d.get("induced", 0.0) > 0.0 for d in drag)
 CHECK all(d.get("induced", 0.0) > 0.0 for d in drag if d.get("L", 0.0) / max(0.5 * d["rho"] * d["v"] * d["v"], 1.0) > 1.0)
 CHECK all(d.get("induced", 0.0) == 0.0 for d in drag if d.get("L", 0.0) == 0.0)
 # It flies in the pitch plane: no yaw input is held, and the flow stays on the
-# centreline, so the yaw-plane angle AeroFrame reports stays small -- 0.0, 0.0, 0.0,
-# -0.1, 0.2, 0.5, -0.5, -1.4, 0.6, 2.5, -0.3, -1.3, 0.4, 0.3. It is NOT pinned to
-# zero, and #483 is why: the swing carries the rudder pair through the air at up to
-# 6.39 m/s of sweep, and because the two stand either side of the axis their own
-# q moves UNEQUALLY (0.93 to 1.07 of the COM's across the run), so their sideways
-# forces no longer cancel. Before #483 the worst row read 0.3 deg. The ceiling is
-# 5.0 rather than 3.0 so the next law change gets to move it without a false alarm;
-# if it ever goes past that with nobody holding the rudder, something is steering.
+# centreline, so the yaw-plane angle AeroFrame reports stays small -- -0.0, -0.0,
+# -0.0, -0.1, 0.1, 0.4, -0.4, -1.0, 0.5, 1.3, -0.3, -0.6, 0.3, 0.4 (2.5 worst before
+# #486). It is NOT pinned to zero, and #483 is why: the swing carries the rudder
+# pair through the air at up to 6.39 m/s of sweep, and because the two stand either
+# side of the axis their own q moves UNEQUALLY (0.93 to 1.07 of the COM's across the
+# run), so their sideways forces no longer cancel. Before #483 the worst row read
+# 0.3 deg. The ceiling is 5.0 rather than 3.0 so the next law change gets to move it
+# without a false alarm; if it ever goes past that with nobody holding the rudder,
+# something is steering.
 CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 5.0
-# PINNING A BUG, NOT CELEBRATING ONE: a held stick puts this airframe 78 deg off
+# PINNING A BUG, NOT CELEBRATING ONE: a held stick puts this airframe 77 deg off
 # the flow and it is still swinging when the case ends. Under --sim-steps the
 # series is fixed, run after run -- all 14 rows of the 840-tick budget, AoA
-# -0.3, 0.3, -0.1, 77.8, -5.5, 68.9, 4.5, -75.4, 13.7, 78.4, 13.0, -69.3, -54.6,
-# 30.4. #483 moved these numbers and did NOT settle this airframe, which is the
-# point of running it next to the glider (whose series stops tumbling). Not for want
-# of the sweep -- at these rows the sweep has nothing to act ON. The excursion is
-# 69-78 deg, past twice the shipped wing's 20.1 deg stall angle, and past that the
+# -0.3, 0.3, -0.1, 77.1, -4.0, 66.3, 6.9, -71.7, 10.0, 72.6, 16.3, -60.3, -52.4,
+# 23.9 (was 77.8, -5.5, 68.9, 4.5, -75.4, 13.7, 78.4, 13.0, -69.3, -54.6, 30.4 after
+# #483). #483 moved these numbers and did NOT settle this airframe, which is the
+# point of running it next to the glider (whose series stops tumbling); #486 tightened
+# the swing by 5-9 deg a row without settling it either. Not for want of the sweep --
+# at these rows the sweep has nothing to act ON at the wings. The excursion is
+# 60-77 deg, past twice the shipped wing's 20.1 deg stall angle, and past that the
 # lift curve is identically zero; measured in situ over every aero substep, the
-# moment this term adds at |AoA| > 70 is exactly 0.0 W, because zero lift has no
+# moment the LIFT sweep adds at |AoA| > 70 is exactly 0.0 W, because zero lift has no
 # derivative to damp. Two reasons coincide there: the swing's turning point is also
 # where |w| is smallest (0.02-0.29 rad/s in those samples, against 2.65 mid-swing).
 # Where the wings do feel the sweep they feel little of it: their lever about the
 # pitch pivot is ~0.55 m, so at |w| up to 2.65 rad/s their sweep tops out at 1.46 m/s
 # -- against 6.39 m/s at the rudders and elevators (3.65 m lever), which carry no
 # pitch damping because an elevon's force comes from deflection alone (controlForce
-# has no alpha term). #454 (a surface's own angle having a say) is what brings the
-# excursion down; when it lands, EXPECT THE LOWER CHECK TO FAIL and re-baseline it to
-# a sane envelope in that commit.
+# has no alpha term). What DOES damp out here is #486's hull term: the [drag] line's
+# CpL field is the lever it acts on, -0.28 m nose-on and -1.0 m at the excursion
+# rows, and the hull's 35 m2 of broadside sits on it. #454 (a surface's own angle
+# having a say) is what brings the excursion down further; when it lands, EXPECT THE
+# LOWER CHECK TO FAIL and re-baseline it to a sane envelope in that commit.
 # It does not go over the top -- honest 35 m2 of broadside is real pitch damping,
 # and the first cut of #463 (3.4 m2 broadside, mount offsets dropped) had taken
 # that away, which is why the upper bound below is pinned as firmly as the lower
@@ -76,8 +81,8 @@ CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 5.0
 CHECK max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) > 60.0
 CHECK max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) < 90.0
 CHECK any(d.get("L", 0.0) == 0.0 for d in drag)
-# RESTORED (0.810 measured; 0.808 after #483 -- the swing moved, the ratio did not
-# much). This
+# RESTORED (0.810 measured; 0.808 after #483, 0.817 after #486 -- the swing moved,
+# the ratio did not much). This
 # peak lives inside the swing above, and while the run stepped against wall-clock
 # frames it read 0.75, 0.90, 0.92, 1.16 in four runs -- #472, not physics. With
 # --sim-steps 840 every run of this case prints the same rows (identical to the

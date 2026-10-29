@@ -489,6 +489,11 @@ void tick(Game &g) {
                 } else {
                     printf(" Beta=-");
                 }
+                /* #486: the hull's weathervane lever, signed metres (+ = cp ahead of
+                   the COM). Hull drag answers to the flow AT cp now, so this sign
+                   decides what that term does to a rotation: negative damps a swing,
+                   positive feeds it. Printed last, like Beta, so parsers hold. */
+                printf(" CpL=%.2f m", g.ship->lastCpLever);
                 printf("\n");
                 // Control surfaces' applied deflections.
                 if(!g.ship->lastControlDeflections.empty()) {

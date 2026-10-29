@@ -375,6 +375,12 @@ public:
     bool lastDragAlphaValid = false;
     double lastDragArea = 0.0;  // silhouette facing the flow (m^2)
     double lastDragCd = 0.0;  // area-weighted mean of the parts' cds
+    /* The hull's weathervane lever: (cp - com) . nose, metres; + = cp AHEAD of the
+       COM. #486 made hull drag answer to the flow AT cp, so the sign of this is the
+       whole story about what that term does to a rotation: cp behind the COM damps
+       a swing, cp ahead feeds it. Printed as CpL= in the drag log because it is the
+       quantity #454's static margin is made of and nothing else shows it. */
+    double lastCpLever = 0.0;
     /* Deployed chutes' EFFECTIVE Cd·A (m^2) last substep (0 = none): nominal
        chute_area shrunk by kChuteAccelLimit at high q. NOT in lastDragArea. */
     double lastChuteCdA = 0.0;
