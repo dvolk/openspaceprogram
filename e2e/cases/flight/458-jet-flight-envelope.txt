@@ -1,5 +1,5 @@
 NAME jet-flight-envelope
-CLAIM The shipped jet pays air for the union of its parts AS MOUNTED (4.4 m2 nose-on, 20 m2 broadside, not a 30 m2 balloon), the lift it makes owes induced drag, and a held stick puts it 30 deg off a flow it now damps out instead of swinging to 77.
+CLAIM The shipped jet pays air for the union of its parts AS MOUNTED (4.4 m2 nose-on, 15 m2 at its worst, not a 30 m2 balloon), the lift it makes owes induced drag, and since #494 the held stick owes it too -- 1.7 m2 for two elevons at the travel stop -- which puts it 19 deg off a flow it damps out instead of swinging to 77.
 KIND golden
 ARGS --time-accel 1 --startship jet,res/ships/jet.json,Kerbin,flying-slow
 ARGS --sim-steps 840 --drag-log --mass-log
@@ -18,14 +18,17 @@ CHECK all(d.get("aoa") is not None and abs(d["aoa"]) < 1.0 for d in drag[:3])
 # union charged the widest part; test_drag's projectPartHull pins the difference.)
 CHECK 4.0 < min(d.get("a", 0.0) for d in drag[:3]) < 5.0
 # Broadside the wings turn their planforms to the wind and the same airframe
-# presents 19.8 m2 -- a 4.5x swing, the same rows run after run (#472 does not
-# touch it: that number is shape, not trajectory). Under the balloon law the ratio
-# was 1.1x, because a bubble barely changes size when you turn it. RE-BASELINED by
-# #503 from 35 m2 / 8.1x: the old 35 was the row where the airframe sat 77 deg off
-# the flow, fully broadside, and #503's stalled elevon means the stick never takes
-# it that far (see the excursion block below). The shape lesson is unchanged; the
-# attitude that used to prove it is gone.
-CHECK max(d.get("a", 0.0) for d in drag) > 4.0 * min(d.get("a", 0.0) for d in drag)
+# presents 14.6 m2 at its worst row -- a 3.4x swing, the same rows run after run
+# (#472 does not touch it: that number is shape, not trajectory). Under the balloon
+# law the ratio was 1.1x, because a bubble barely changes size when you turn it.
+# RE-BASELINED twice: by #503 from 35 m2 / 8.1x (the old 35 was the row where the
+# airframe sat 77 deg off the flow, fully broadside, and a stalled elevon never takes
+# it that far), then by #494 down to 14.6 / 3.4x. The elevon pair is AR 2.0 and now
+# bills 0.85 m2 of induced CdA apiece at the travel stop, so the same three key
+# presses turn the airframe 19 deg rather than 30 and the planforms never come fully
+# into the wind. The shape lesson is unchanged; the attitudes that used to prove it
+# keep getting less extreme as the law stops handing the stick free authority.
+CHECK max(d.get("a", 0.0) for d in drag) > 3.0 * min(d.get("a", 0.0) for d in drag)
 # On the clean rows (no chute, no stall, |AoA| < 1 deg) the force printed IS the
 # law printed: |F| / (q * Cd * A) = the --drag-cd knob's default, 1.2. This is the
 # pin the tuning knob answers, so --drag-cd 0.2 or 8 fails it while every shape
@@ -39,8 +42,13 @@ CHECK 1.15 < max(d["F"] / (0.5 * d["rho"] * d["v"] * d["v"] * d["cd"] * d["a"]) 
 CHECK 10.0 < max(d["L"] / (0.5 * d["rho"] * d["v"] * d["v"]) for d in drag if d.get("L") and d["v"] > 1.0) < 60.0
 # #462's coupling, and the pin that says the induced term is not decoration: the
 # substeps that lift (|L| / q over 1, comfortably above the 3-decimal print) pay
-# induced drag; the post-stall rows print Induced=0 with their |L| = 0. Charge the
-# term unconditionally, or drop it, and one of these two fails.
+# induced drag. The pairing's other half -- |L| = 0 pays nothing -- is pinned in
+# test_drag now, because no row of this run is post-stall any more (see the excursion
+# block). Charge the term unconditionally, or drop it, and the second CHECK fails.
+# Since #494 the sum also carries the STICK's bill, so the peak row is the row where
+# W is held: Induced reads 0.01, 0.00, 0.00, 17.22, 13.28, 6.24, 1.95, 0.88, 0.41,
+# 0.17, 0.05, 0.01, 0.00, 0.00 -- the t=4 row is 17.2 m2 of CdA, of which 1.7 m2 is
+# the two AR-2 elevons at the travel stop and the rest is the wings at 19 deg.
 CHECK any(d.get("induced", 0.0) > 0.0 for d in drag)
 CHECK all(d.get("induced", 0.0) > 0.0 for d in drag if d.get("L", 0.0) / max(0.5 * d["rho"] * d["v"] * d["v"], 1.0) > 1.0)
 CHECK all(d.get("induced", 0.0) == 0.0 for d in drag if d.get("L", 0.0) == 0.0)
@@ -53,9 +61,10 @@ CHECK all(d.get("induced", 0.0) == 0.0 for d in drag if d.get("L", 0.0) == 0.0)
 # 1.07 of the COM's across the run), so their sideways forces no longer cancel.
 # Before #483 the worst row read 0.3 deg. The ceiling is 5.0 rather than 3.0 so the
 # next law change gets to move it without a false alarm; if it ever goes past that
-# with nobody holding the rudder, something is steering. #503 tightened these rows
-# to 0.2 worst: with the pitch swing capped at 30 deg the sweep is gentler, and the
-# unequal-q effect that #483 exposed is still there, just smaller.
+# with nobody holding the rudder, something is steering. #503 tightened these rows to
+# 0.2 worst and #494 to 0.0: with the pitch swing capped at 19 deg the sweep is
+# gentler still, and the unequal-q effect that #483 exposed is still there, just
+# smaller than the print's third decimal.
 CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 5.0
 # WHAT USED TO BE A PINNED BUG (#503 closed it by accident of history). This case
 # was written to hold the airframe at 77 deg off the flow, still swinging when the
@@ -64,11 +73,11 @@ CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 5.0
 # angle, most of them past twice it, where the lift curve is identically zero and so
 # has no derivative left to damp (#487). #483 and #486 both moved those numbers by
 # 5-9 deg and neither settled it.
-# Now the same three key presses give a damped series: AoA -0.3, 0.3, -0.1, 29.7,
-# 6.0, 20.2, -13.6, 9.5, -6.4, 3.4, -0.6, -1.1, 1.6, -1.4. The overshoot is still
-# there and it is still a badly tuned airframe (#490), but each peak is about a third
-# smaller than the one before it (29.7, 20.2, 13.6, 9.5, 6.4, 3.4) and the last four
-# rows sit inside 2 deg of the flow.
+# Now the same three key presses give a damped series: AoA -0.3, 0.3, -0.1, 19.3,
+# 16.5, 10.4, -6.8, 4.6, -3.1, 2.0, -1.1, 0.4, 0.0, -0.2. The overshoot is still
+# there and it is still a badly tuned airframe (#490), but each peak is about two
+# thirds of the one before it (19.3, 16.5, 10.4, 6.8, 3.1) and every row from t=9
+# sits inside 2.1 deg of the flow.
 # The reason is the elevon, not the wing: W holds the elevons at their 0.35 rad
 # travel stop for 3 s, and under the old law that stop was worth CL 2.1 (cl_control
 # 6.0/rad, linear to the stop). A plate turned 20 deg into the flow has separated
@@ -77,29 +86,38 @@ CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 5.0
 # driving the pitch mode dropped by a third and the hull's broadside damping (#486,
 # 19.8 m2 on a lever that grows from -0.28 m nose-on to -0.80 m at the worst row)
 # now wins.
+# #494 took another third off, and this is what the bill does to a HELD surface:
+# the jet's elevon declares 2.0 m2 of control area over a 2.0 m span, so it is an
+# AR-2 surface, and CL 1.34 on AR 2 is CDi 0.355 -- 0.85 m2 of induced CdA each,
+# 1.7 m2 for the pair, against a 4.4 m2 nose-on silhouette. It is charged aft of the
+# CG on the same -0.28 m lever as the command it answers, so the stick now spends a
+# third of its own authority paying for the air it turns. The worst row is 19.3 deg,
+# under the shipped wing's 20.1 deg stall: after #494 this case no longer reaches the
+# droop at all, and the max |AoA| band moved 29.7 -> 19.3 with it.
 # Nothing about the wing's lift law changed here, and the case still earns its keep
 # as a knob pin: put controlForce back to linear-to-the-stop and the first CHECK
 # below fails at 77 deg, which is how this case read before #503.
-CHECK 25.0 < max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) < 45.0
+CHECK 15.0 < max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) < 30.0
 CHECK all(abs(d["aoa"]) < 2.5 for d in drag if d["t"] >= 11.0)
 # Damped, not merely bounded: every row from the second half of the run is under
 # half the peak. On the old law the back half of the series was as big as the front.
 CHECK max(abs(d["aoa"]) for d in drag if d["t"] >= 9.0) < 0.5 * max(abs(d["aoa"]) for d in drag)
-# The wings never reach the post-stall band any more (max 29.7 deg against the curve
+# The wings never reach the post-stall band any more (max 19.3 deg against the curve
 # hitting zero at 2 x 20.1 = 40.2), so this case no longer shows |L| = 0 rows: the
 # zero-lift half of #462's coupling is pinned in test_drag instead, and the CHECK
 # here is the other way round -- every row lifts.
 CHECK all(d.get("L", 0.0) > 0.0 for d in drag)
-# RE-BASELINED by #503: 1.093 measured, against 0.810 before it (0.808 after #483,
-# 0.817 after #486). The peak moved from inside the broadside swing to the t=5 row
-# at 6 deg of AoA, and it is now ABOVE 1.0 because the lift sum is no longer
-# competing with 35 m2 of form drag -- the airframe never turns that far over. The
-# band sits on either side of the measurement for the same reason it always did:
-# while the run stepped against wall-clock frames this ratio read 0.75, 0.90, 0.92,
-# 1.16 in four runs (#472, not physics). With --sim-steps 840 every run prints the
-# same rows, so widen it deliberately when the physics moves, not by accident
-# because a CI box was busy.
-CHECK (lambda ds: 1.00 < max(d["L"] / d["F"] for d in ds) < 1.20)([d for d in drag if d["F"] > 0.0])
+# RE-BASELINED by #503 (1.093, from 0.810) and by #494 (0.935, at the t=6 row: 10.4
+# deg of AoA on 10.1 m2 of silhouette). The peak used to live inside the broadside
+# swing; #503 moved it to the t=5 row and put it above 1.0 (the lift sum stopped
+# competing with 35 m2 of form drag), and #494 pulled it back under 1.0 because the
+# elevon pair's own 1.7 m2 of induced CdA is charged to |F| and not to |L|. The band
+# sits on either side of the measurement for the same reason it always did: while the
+# run stepped against wall-clock frames this ratio read 0.75, 0.90, 0.92, 1.16 in four
+# runs (#472, not physics). With --sim-steps 840 every run prints the same rows, so
+# widen it deliberately when the physics moves, not by accident because a CI box was
+# busy.
+CHECK (lambda ds: 0.85 < max(d["L"] / d["F"] for d in ds) < 1.05)([d for d in drag if d["F"] > 0.0])
 # The surfaces earn their keep. W is held for 3 s and the elevons reach their
 # max_deflection (0.35 rad = 20.1 deg printed); every row carries the t= of the
 # [drag] sample it printed under. Nothing parsed [ctrl] before #458, so no case

@@ -399,10 +399,12 @@ public:
     /* Deployed chutes' EFFECTIVE Cd·A (m^2) last substep (0 = none): nominal
        chute_area shrunk by kChuteAccelLimit at high q. NOT in lastDragArea. */
     double lastChuteCdA = 0.0;
-    /* The lifting parts' induced Cd·A (m^2) last substep (#462, 0 = no lift):
-       the drag the wings owe for the lift they just made. It rides in
-       lastAeroForce along with the rest of the drag; this is what lets the drag
-       log tell blunt form drag from the price of lift. */
+    /* The induced Cd·A (m^2) owed for the last substep's turning of the flow
+       (#462, 0 = none): every LIFTING part's share plus, since #494, every DEFLECTED
+       control surface's share -- a steered surface lifts sideways and pays for it,
+       which is what makes a held trim cost something instead of buying altitude for
+       free. It rides in lastAeroForce along with the rest of the drag; this is what
+       lets the drag log tell blunt form drag from the price of lift. */
     double lastInducedCdA = 0.0;
 
     /* Last substep's control-surface deflections (--drag-log). */

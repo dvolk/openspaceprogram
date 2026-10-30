@@ -2749,6 +2749,40 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             if(recordForceVecs) {
                 lastForceVecs.push_back({ ri, F, kForceCtrl, p->aeroAlphaDeg, pa.valid });
             }
+            /* THE PRICE OF THAT DEFLECTION (#494). A steered surface turns the flow
+               and pays induced drag for turning it, exactly as a wing pays for turning
+               it up. Nothing billed it: until #492 a deflection was a transient a
+               player held for a second, but a trimmed airframe runs a standing 12-20
+               deg forever, and on skiff_trim the elevator pair downloads ~1.5 kN at
+               cruise for a bill of exactly 0 N.
+               CL comes from the force the law JUST made, not from (alpha + deflection):
+               the angle half of a tail's true angle of attack is already generated, and
+               already billed, by the tailplane PART hanging next to the flap (the
+               skiff's wing_r1h1, lift_area 2), so a cl*(alpha+delta)^2 bill charges the
+               same angle twice -- and reads zero bill at delta = -alpha, where the
+               surface is pushing as hard as it ever will. Recovering it from F keeps the
+               bill glued to the force: it vanishes with the command, is continuous
+               through zero, and follows for free if the control law ever grows a stall
+               or a hinge-effectiveness term (both of which would change F and thus this).
+               Area and span are the SURFACE's own (control_area, meshSpanHalf), so this
+               bills a flap's own downwash, the same interference-free per-part
+               approximation #462 uses for wings; the wing-tail interaction stays
+               unmodelled, deliberately -- folded into the tail system instead, the same
+               skiff_trim state bills 0.24 instead of 0.185 m2, ~35% more, and it would
+               need a surface->wing linkage this sum does not have. */
+            const double clCtrl = glm::length(F) / (qp * d->control_area);
+            const double cdi = inducedCd(clCtrl, 2.0 * d->meshSpanHalf(),
+                                         d->control_area);
+            if(cdi <= 0.0) { continue; }
+            const glm::dvec3 find =
+                -(lf.vp / std::sqrt(lf.vp2)) * (drag_cd * qp * d->control_area * cdi);
+            ApplyForce(hull, ri, find);
+            ftotal += find;
+            moment += glm::cross(ri, find);
+            lastInducedCdA += drag_cd * d->control_area * cdi;
+            if(recordForceVecs) {
+                lastForceVecs.push_back({ ri, find, kForceDrag });
+            }
         }
     }
 

@@ -41,21 +41,38 @@ CHECK all(c["t"] is not None for c in ctrl)
 CHECK len(surface) == 8 * len(drag)
 CHECK max(abs(a - b) for a,b in zip([s["a"] for s in surface][2::8],[s["a"] for s in surface][0::8])) < 0.4
 CHECK max(abs(a - b) for a,b in zip([s["a"] for s in surface][5::8],[s["a"] for s in surface][0::8])) < 0.4
-# FLIGHT QUALITY, unchanged from the incidence version: upright throughout, a 60 m/s
-# bottom in the throttle-off exchange with nothing below 6497 m, the hull's weathervane
-# lever still 0.69-0.89 m behind the CG, and the wings still paying induced drag on
-# their own aspect ratio (0.26-0.73 m2, the top during the sideslip).
-# RE-BASELINED by #503 (the top was 1.31). Note what did NOT move: the TRIM is 12 deg
-# of elevator, INSIDE the surface's 15 deg deflection stall, so this airframe's trimmed
-# state reads exactly as it did before -- the two tabs still bill 2 x 0.56 m2 x 6.0 x
-# 0.2094 rad = 1.41 m2 of q*S. Only the rudder kick's sideslip got smaller, and the
-# induced peak with it. A player who trims past 15 deg is in the droop, where 5 more
-# degrees of tab buys LESS download; that is the honest end of the sizing question
-# #494 asks.
+# FLIGHT QUALITY: upright throughout, a 60 m/s bottom in the throttle-off exchange with
+# nothing below 6401 m, the hull's weathervane lever still 0.69-0.89 m behind the CG,
+# and the wings still paying induced drag on their own aspect ratio.
+# RE-BASELINED by #494's bill, and this is the interesting one: the run now tops out at
+# 7036 m instead of 7097 and bottoms at 6401 instead of 6497. The trimmed tail used to
+# make its download for free, so the same throttle schedule buys ~96 m less -- the
+# honest price of a tab held at 12 deg for 20 s. The floor sits at 6350, 50 m under the
+# measurement, because that margin IS the bill: put the free lift back and the whole
+# run drifts up by ~100 m, and the induced pin below fails first anyway.
+# RE-BASELINED by #503 earlier: the TRIM is 12 deg of elevator, INSIDE the surface's
+# 15 deg deflection stall, so this airframe's trimmed state reads exactly as it did
+# before -- the two tabs still bill 2 x 0.56 m2 x 6.0 x 0.2094 rad = 1.41 m2 of q*S.
+# A player who trims past 15 deg is in the droop, where 5 more degrees of tab buys LESS
+# download; that is the honest end of the sizing question #494 asks.
 CHECK all(d["up"] > 0.85 for d in drag if d["t"] >= 5)
 CHECK min(d["v"] for d in drag if d["t"] >= 22) > 55.0
-CHECK all(d["alt"] > 6400.0 for d in drag)
+CHECK all(d["alt"] > 6350.0 for d in drag)
 CHECK all(-0.95 < d["cpl"] < -0.6 for d in drag if d["cpl"] is not None)
 CHECK all(d["induced"] > 0.0 for d in drag if d["L"] > 1.0)
 CHECK max(d["induced"] for d in drag) > 0.5
+# THE BILL ITSELF (#494), pinned on the hands-off rows where nothing but the trim is
+# moving: every one of them reads 0.447 m2, and with the deflected surfaces left out of
+# the induced sum they read 0.265. The 0.182 m2 difference is the two tabs' own
+# downwash, and it is the same arithmetic the wings use: each surface's own area and its
+# own span, cl taken from the force the control law just made. 12 deg of elevator on
+# cl_control 6.0 is cl 1.256 (inside the 15 deg stall, so the law is still linear
+# there); elevator_r0.8h0.7 spans 1.60 m over 0.56 m2 of control area, so AR 4.57 and
+# CDI = 1.257^2 / (pi x 0.8 x 4.57) = 0.137, times drag_cd 1.2 times 0.56 m2 = 0.092 per
+# tab, 0.184 for the pair -- against 0.182 measured on the rows, the gap being the
+# substep's own q. That is two thirds of what the LIFTING surfaces of this same ship
+# pay at the same q (the 0.265 above), for a surface that is 1/19th of the wings' area:
+# a short fat tab bills hard, and until #494 it paid nothing at all. Drop the sum, or
+# bill it at the ship's span instead of the surface's, and this row band moves.
+CHECK all(0.40 < d["induced"] < 0.50 for d in drag if 3.0 <= d["t"] <= 20.0)
 FORBID error:
