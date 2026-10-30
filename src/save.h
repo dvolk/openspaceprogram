@@ -43,6 +43,13 @@ struct CrewRoster;     // crew.h; only needed by reference below
    A saved uid is THIS SAVE's key, not a value to restore: on load the rebuilt
    Part keeps the fresh uid its constructor minted. */
 
+/* The marker for a saved "stage" that is not a count the game can hold; see
+   savePartFromJson. It is INT_MIN because stages run 1..kMaxStage, and the reader's
+   window test is strict at the bottom, so even a hand-typed -2147483648 arrives as
+   this marker rather than as a value that happens to look like it. */
+inline constexpr int kStageOutOfRange = std::numeric_limits<int>::min();
+static_assert(kStageOutOfRange < 1, "the stage marker must not be a legal stage");
+
 // A part instance in a saved ship. Two meanings of 0: a part's own `uid` must be
 // nonzero (0 = a save predating part identity, refused on load), while 0 in a
 // *reference* is the legitimate "absent" default. `pos`/`rot` are ship-local
@@ -58,12 +65,6 @@ struct CrewRoster;     // crew.h; only needed by reference below
    record of; mass is table data. Same call #383 made for capacities.
    No format bump: dropping a written key cannot be misread in either direction
    (save.h's rule), so a pre-existing save just stops carrying a dead field. */
-/* The marker for a saved "stage" that is not a count the game can hold; see
-   savePartFromJson. It is INT_MIN because stages run 1..kMaxStage, and the reader's
-   window test is strict at the bottom, so even a hand-typed -2147483648 arrives as
-   this marker rather than as a value that happens to look like it. */
-inline constexpr int kStageOutOfRange = std::numeric_limits<int>::min();
-static_assert(kStageOutOfRange < 1, "the stage marker must not be a legal stage");
 
 struct SavePart {
     std::string part;

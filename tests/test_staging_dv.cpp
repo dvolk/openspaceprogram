@@ -13,6 +13,8 @@
 //     THEY are empty, and the core keeps burning afterwards;
 //   * decouplers are fuel barriers (the core engine cannot drain a
 //     booster's tanks without an explicit link).
+//   * stage numbers are LABELS: the walk visits the labels the ship carries, highest
+//     first, and a gap between two labels costs nothing (#517).
 //
 // Pure math over BuildShip -- no GL, no Bullet.
 //
@@ -21,6 +23,7 @@
 
 #include "staging.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <deque>
@@ -531,6 +534,115 @@ static void test_signature() {
     }
 }
 
+/* Stage numbers are LABELS, not a count of things to walk over (#517). Numbering the
+   same ship 1 and 9000 used to cost 9000 passes over the part list -- droppedParts
+   rebuilds a child map per index -- on the way to exactly the same rows, so the pass
+   billed the SPAN between the highest and lowest label instead of the number of
+   labels. These checks hold the cheap walk to the same computation: every row matches
+   except the label, and the high label still fires FIRST even when the parts arrive in
+   the opposite order. */
+static BuildShip numbered_ship(Catalog &cat, int upper, int lower) {
+    BuildShip bs;
+    const int upTank = addPart(bs, cat.tank(50, 25, 25), "upTank", -1, upper);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "upEng", upTank, upper);
+    const int dec = addPart(bs, cat.decoupler(5), "dec", upTank, lower);
+    const int loTank = addPart(bs, cat.tank(50, 75, 75), "loTank", dec, lower);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "loEng", loTank, lower);
+    return bs;
+}
+
+/* Three groups down one spine, and BOTH separations carry a label -- so the rows
+   depend on which label the walk reaches first. The top group is added first (a
+   BuildShip needs every parent earlier), which puts the parts in DESCENDING label
+   order: a walk that is not sorted visits the bottom label first and burns the whole
+   ship before the separation that should have preceded it. */
+static BuildShip stacked_ship(Catalog &cat, int top, int bottom) {
+    BuildShip bs;
+    const int upTank = addPart(bs, cat.tank(50, 25, 25), "upTank", -1, top);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "upEng", upTank, top);
+    const int dec1 = addPart(bs, cat.decoupler(5), "dec1", upTank, top);
+    const int midTank = addPart(bs, cat.tank(50, 50, 50), "midTank", dec1, bottom);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "midEng", midTank, bottom);
+    const int dec2 = addPart(bs, cat.decoupler(5), "dec2", midTank, bottom);
+    addPart(bs, cat.tank(10, 0, 0), "payload", dec2, bottom);
+    return bs;
+}
+
+// Field-by-field except the label, which the caller checks separately.
+static void same_rows(const StageRow &a, const StageRow &b) {
+    CHECK_NEAR(a.deltaV, b.deltaV, 1e-9, "same delta-v");
+    CHECK_NEAR(a.massStart, b.massStart, 1e-9, "same mass start");
+    CHECK_NEAR(a.massEnd, b.massEnd, 1e-9, "same mass end");
+    CHECK_NEAR(a.minTWR, b.minTWR, 1e-9, "same min TWR");
+    CHECK_NEAR(a.maxTWR, b.maxTWR, 1e-9, "same max TWR");
+    CHECK_TRUE(a.drops == b.drops, "same separation");
+    CHECK_TRUE(a.engines == b.engines, "same lit engine count");
+}
+
+static void test_stage_labels_are_labels() {
+    const double g = 10.0;
+    Catalog cat;
+    BuildShip a = numbered_ship(cat, 1, 2);
+    BuildShip b = numbered_ship(cat, 1, 9000);
+
+    const std::vector<StageRow> ra = computeStaging(a, g);
+    const std::vector<StageRow> rb = computeStaging(b, g);
+    CHECK_TRUE(ra.size() == 2 && rb.size() == 2, "two rows either way");
+    if(ra.size() != 2 || rb.size() != 2) { return; }
+
+    CHECK_TRUE(ra[0].stage == 2 && rb[0].stage == 9000, "the high label fires first");
+    CHECK_TRUE(ra[1].stage == 1 && rb[1].stage == 1, "the low label fires last");
+    for(size_t i = 0; i < ra.size(); i++) { same_rows(ra[i], rb[i]); }
+
+    // Same physical ship, but the parts now arrive in DESCENDING label order, so the
+    // vector the walk is built from is unsorted-with-respect-to-labels. Both separations
+    // carry a label here, so an unsorted walk burns the lower stage first and both rows
+    // come out wrong -- which is what pins the sort.
+    BuildShip c = stacked_ship(cat, 2, 1);
+    BuildShip d = stacked_ship(cat, 9000, 1);
+    const std::vector<StageRow> rc = computeStaging(c, g);
+    const std::vector<StageRow> rd = computeStaging(d, g);
+    CHECK_TRUE(rc.size() == 2 && rd.size() == 2, "two separations, two rows");
+    if(rc.size() != 2 || rd.size() != 2) { return; }
+    CHECK_TRUE(rc[0].stage == 2 && rd[0].stage == 9000, "the top label still fires first");
+    CHECK_TRUE(rc[1].stage == 1 && rd[1].stage == 1, "and the bottom label last");
+    CHECK_TRUE(rd[0].deltaV > 0.0, "the top stage does burn something");
+    for(size_t i = 0; i < rc.size(); i++) { same_rows(rc[i], rd[i]); }
+
+    // A one-stage ship whose single label is huge: the last row is emitted even where
+    // nothing separates, and that must not depend on the label being small.
+    BuildShip s;
+    const int t = addPart(s, cat.tank(50, 50, 0), "tank", -1, 4000);
+    addPart(s, cat.engine(10, 0.5, 1000.0), "eng", t, 4000);
+    const std::vector<StageRow> rs = computeStaging(s, g);
+    CHECK_TRUE(rs.size() == 1, "a huge label still yields exactly one row");
+    if(!rs.empty()) { CHECK_TRUE(rs[0].stage == 4000, "and keeps it"); }
+}
+
+/* What the walk is allowed to COST. Rows identical is not enough to keep #517: the old
+   per-integer loop passes every check above (bit-identical rows), so nothing else in
+   the suite can see the difference. Here a 2-part ship is numbered 1 and 1000000:
+   walked sparse it takes ~0.5 us, walked per-integer it measured ~25 ms. The bound of
+   5 ms therefore sits four orders above what the work costs and five below what the
+   old shape cost -- a complexity pin, not a benchmark, so it stays binary on a loaded
+   machine. The number is deliberately beyond kMaxStage: the loaders refuse that, but
+   the pass must not care, and the margin is the point. */
+static void test_a_gap_costs_nothing() {
+    Catalog cat;
+    BuildShip bs;
+    const int t = addPart(bs, cat.tank(50, 100, 100), "tank", -1, 1000000);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "eng", t, 1);
+    computeStaging(bs, 9.81, 1.0);   // warm, so this measures the walk and not the allocator
+
+    const auto t0 = std::chrono::steady_clock::now();
+    const std::vector<StageRow> rows = computeStaging(bs, 9.81, 1.0);
+    const double us = std::chrono::duration<double, std::micro>(
+                          std::chrono::steady_clock::now() - t0).count();
+    CHECK_TRUE(rows.size() == 1 && rows[0].stage == 1, "the gap still gives one row");
+    printf("  a 1000000-label gap: %.1f us\n", us);
+    CHECK_TRUE(us < 5000.0, "a label gap must not cost work per skipped integer");
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -542,6 +654,8 @@ int main() {
     test_inert_drop();
     test_zero_g();
     test_signature();
+    test_stage_labels_are_labels();
+    test_a_gap_costs_nothing();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

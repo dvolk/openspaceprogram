@@ -2275,9 +2275,11 @@ int main() {
             { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", "
               "\"stage\": -3000000000 } ] }",
               "part 'c' in /tmp/test_shipload_numfield.json: \"stage\" is outside the range" },
-            /* And a stage number is bounded above, which is a cost ceiling rather
-               than a physics one: computeStaging visits every index from the highest
-               down and walks the part list at each (staging.cpp:521,534). */
+            /* And a stage number is bounded above (kMaxStage). Not for cost -- #517
+               made the staging walk visit the labels the ship carries -- but because a
+               label outside the ship's own sequence becomes the top of its staging
+               order: the counter starts at the highest stage any part carries
+               (vehicle.cpp:1650-1658). */
             { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", "
               "\"stage\": 1000000 } ] }",
               "part 'c' in /tmp/test_shipload_numfield.json: \"stage\" must be <= 10000" },

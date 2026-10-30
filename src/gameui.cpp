@@ -4748,8 +4748,10 @@ void drawVabUI(Game &g) {
             ImGui::SetNextItemWidth(60);
             if(ImGui::InputInt("stage##sel", &st, 1, 1)) {
                 /* Clamped at both ends, not just the floor: the box takes any integer
-                   a player types, and the staging pass walks every index up to the
-                   highest one in the ship. */
+                   a player types, and a label outside the ship's own sequence becomes
+                   the top of its staging order -- the counter starts at the highest
+                   stage any part carries (vehicle.cpp:1650-1658). #517 removed the cost
+                   reason for this ceiling, not the reason. */
                 st = std::clamp(st, 1, kMaxStage);
                 bp.stage = st;
             }

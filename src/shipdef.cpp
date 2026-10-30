@@ -1018,14 +1018,17 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
         }
 
         /* Stage numbers count down from launch, so they are small. The ceiling is a
-           cost bound, not a physics one: computeStaging visits EVERY index from the
-           highest down and walks the part list at each (staging.cpp:521,534), so it
-           costs indexes x parts -- measured ~20 ms on the 51-part heavy_asp at the
-           10000 ceiling (51 us at its real maxStage of 6), and half a second on a
-           20-part build at 1e6. The honest fix is #517 (walk only the stage numbers
-           that exist); until then this keeps a typo from freezing the Staging window.
-           The VAB stage box and validateShipParts apply the same ceiling so nothing
-           creates what this refuses. */
+           data bound, not a physics one and no longer a cost one: #517 made
+           computeStaging walk the stage numbers the ship carries instead of every
+           integer between the highest and the lowest, so a lone "stage": 9999 on a
+           six-stage ship buys no work. It is refused because that number rewrites the
+           flight sequence rather than because it is slow: the stage counter starts at
+           the highest stage any part carries (vehicle.cpp:1650-1658), so the outlier
+           fires its decoupler on the first stage press and the real stages sit
+           thousands of presses behind it. shipdef.h's kMaxStage and save.cpp's
+           validateShipParts spell the whole harm out; the VAB stage box and
+           validateShipParts apply the same ceiling so nothing creates what this
+           refuses. */
         sp.stage = optInt(pv, "stage", 1, pctx);
         if(sp.stage < 1) {
             throw std::runtime_error(pctx
@@ -1033,7 +1036,8 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
         }
         if(sp.stage > kMaxStage) {
             throw std::runtime_error(pctx + "\"stage\" must be <= " + std::to_string(kMaxStage)
-                                     + " (the staging pass walks every index up to it)");
+                                     + " (a stage number outside the ship's sequence"
+                                     + " becomes its top stage)");
         }
 
         /* TRIM (#492), degrees of standing control-surface deflection. Rejected

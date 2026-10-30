@@ -3,6 +3,7 @@
 #include "staging.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <map>
 #include <set>
@@ -518,7 +519,29 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
         }
     }
 
-    for(int s = maxStage; s >= minStage; s--) {
+    /* Walk the stage NUMBERS that exist rather than every integer between the highest
+       and the lowest (#517). An index no part carries can only produce an empty drop
+       set and no engine to light, so skipping it cannot change a row -- but visiting
+       it was not free: droppedParts rebuilds a child map and traverses the tree per
+       call, so the dense loop billed the SPAN between the highest and lowest labels
+       instead of the number of labels. Measured on a 51-part probe, best of 5: 35 us
+       with its labels in 1..6, 19.4 ms once one part carries 10000, 60.8 ms once it
+       carries 30000; walked sparse, all three cost 35-39 us. (Labels past kMaxStage are
+       unreachable through the loaders, but the pass should not care.) Stage numbers are
+       labels, so a ship numbered 1 and 9000 now costs what a ship numbered 1 and 2
+       costs. */
+    std::vector<int> walk;
+    walk.reserve(n);
+    for(size_t i = 0; i < n; i++) { walk.push_back(sim.parts[i].stage); }
+    std::sort(walk.begin(), walk.end());
+    walk.erase(std::unique(walk.begin(), walk.end()), walk.end());
+    /* The whole equivalence argument is that these are minStage/maxStage's only
+       members, visited in the same order the dense loop visited its integers. */
+    assert(walk.size() >= 1 && walk.front() == minStage && walk.back() == maxStage);
+
+    for(std::vector<int>::const_reverse_iterator it = walk.rbegin();
+        it != walk.rend(); ++it) {
+        const int s = *it;
         if(s < maxStage) {
             for(size_t ei = 0; ei < sim.engines.size(); ei++) {
                 SimEngine &e = sim.engines[ei];

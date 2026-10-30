@@ -657,14 +657,19 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
            harmless. It does NOT cost anything in the staging preview -- that pass
            runs over a BuildShip in the VAB (gameui.cpp:4946), whose stages come from
            the ship-def loader, which bounds this same number. What a save's big stage
-           does is quieter: the thrust test is `p->stage < activeStage`
-           (vehicle.cpp:1985), so a part numbered past the top of the sequence is live
-           from the frame the ship loads and no stage press can ever cut it -- an
-           upper-stage engine firing on the pad -- while the decoupler and chute tests
-           are `p->stage == stage` (vehicle.cpp:3438, 1967), so those never fire at
-           all. The part popup prints the number too (gameui.cpp:2466). Same ceiling as
-           the ship-def loader and the VAB stage box. The ship's OWN counters
-           (active_stage / total_stages) are unbounded and unvalidated, which is #518. */
+           does is quieter, and it starts with the counter: Vehicle::finalize() starts
+           activeStage_ at the HIGHEST stage any part carries (vehicle.cpp:1650-1658),
+           so an outlier label BECOMES the top of the sequence. Its decoupler or chute
+           then fires on the FIRST stage press -- those gates are `p->stage == stage`
+           (vehicle.cpp:3438, 1967) -- while the stages the ship was built with sit
+           ~999,994 presses away, since advanceStage() steps the counter down one at a
+           time (vehicle.cpp:1961). Meanwhile getThrust() skips thrusters with
+           `p->stage < as` (vehicle.cpp:1985), so the real engines make no thrust until
+           the counter grinds down to them, while an outlier ENGINE is live from the
+           frame the ship loads and can never be cut. The part popup prints the number
+           too (gameui.cpp:2466). Same ceiling as the ship-def loader and the VAB stage
+           box. The ship's OWN counters (active_stage / total_stages) are unbounded and
+           unvalidated, which is #518. */
         if(std::string why = refuseSavedStage(sp.stage, kMaxStage); !why.empty()) {
             return "load: saved ship '" + s.name + "' part '" + sp.id + "' " + why;
         }

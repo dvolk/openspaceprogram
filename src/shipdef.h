@@ -19,14 +19,16 @@
    GL-free, so the parse/validate path is unit-testable headless. Behavior is
    field-driven (optional-field presence, not the type label). */
 
-/* The largest stage number a ship file or a save may ask for. Not a physics limit:
-   computeStaging visits every stage index from the highest down and walks the part
-   list at each one (staging.cpp:521,534), so it costs indexes x parts -- measured
-   ~20 ms on the 51-part heavy_asp at this ceiling (51 us at its real maxStage of 6),
-   and half a second for a 20-part build at 1e6. The pass only runs in the VAB's
-   Staging window, so the cost lands there; #517 makes it cost what the ship has
-   instead. The VAB stage box clamps to this so the editor cannot create what the
-   loaders refuse. */
+/* The largest stage number a ship file or a save may ask for. Not a physics limit,
+   and since #517 not a cost limit either: computeStaging walks the stage NUMBERS the
+   ship carries, so a lone big number buys no work. It is an authoring bound because a
+   number outside the ship's own sequence rewrites how flight runs: the stage counter
+   starts at the highest stage any part carries (vehicle.cpp:1650-1658), so an outlier
+   becomes the top of the sequence -- its decoupler fires on the first stage press, the
+   stages the ship was built with sit thousands of presses away, and getThrust() cuts
+   every engine below the counter (vehicle.cpp:1985) until that counter grinds down to
+   them. The VAB stage box clamps to this so the editor cannot create what the loaders
+   refuse. */
 inline constexpr int kMaxStage = 10000;
 
 enum class ResourceType {
