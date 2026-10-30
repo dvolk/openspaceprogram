@@ -2291,12 +2291,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     const glm::dvec3 nose  = rootRot[2];
     const glm::dvec3 right = rootRot[0];
     const glm::dvec3 up    = rootRot[1];
-    /* The same axes in the ROOT's local frame. The readout's axis question (#485) is a
-       build fact, so it gets asked here, once per pass, in these vectors rather than in
-       the world ones: the dot products are then fixed at load. Asked in the world frame
-       the answer is mathematically the same but computed from sRot every substep, and a
-       mount near the 45-deg tie changes its mind with the ship's attitude (see
-       drag.h::readoutAxisIsUp). */
+    /* The same axes in the ROOT's local frame. The readout's build-fact questions (#485)
+       are asked here, once per pass, in these vectors rather than in the world ones, so
+       their answers are fixed at load. In world vectors the arithmetic is mathematically
+       the same but recomputed from sRot every substep, and a mount near the 45-deg tie
+       changes its mind with the ship's attitude -- see drag.h::surfaceReadoutFrame. */
     const glm::dvec3 rootLocalUp    = (root != nullptr) ? root->localRot[1] : glm::dvec3(0.0, 1.0, 0.0);
     const glm::dvec3 rootLocalRight = (root != nullptr) ? root->localRot[0] : glm::dvec3(1.0, 0.0, 0.0);
     lastUpVert = glm::dot(up, com / r);  // upright? (see lastUpVert)
@@ -2593,7 +2592,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
            before the zero-force test below -- a surface at alpha 0 is measured, it
            just is not pushing. Free: both numbers are already in hand here. */
         p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(
-            pa, readoutAxisIsUp(p->localRot[1], rootLocalUp, rootLocalRight),
+            pa, surfaceReadoutFrame(p->localRot[1], rootLocalUp, rootLocalRight),
             up, right);
         p->aeroQ = (float)qp;
         p->aeroValid = true;
@@ -2701,8 +2700,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                     const glm::dmat3 mount0 = sRot * p->localRot;
                     const PartAero pa0 = partAero(mount0, lf0.vp);
                     p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(
-                        pa0, readoutAxisIsUp(p->localRot[1], rootLocalUp,
-                                             rootLocalRight),
+                        pa0, surfaceReadoutFrame(p->localRot[1], rootLocalUp,
+                                                 rootLocalRight),
                         up, right);
                     p->aeroQ = (float)lf0.q;
                     p->aeroValid = pa0.valid;
@@ -2744,7 +2743,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             /* #485, same as the lift loop. The law below still answers deflection
                alone -- recording the angle makes it visible, not load-bearing. */
             p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(
-                pa, readoutAxisIsUp(p->localRot[1], rootLocalUp, rootLocalRight),
+                pa, surfaceReadoutFrame(p->localRot[1], rootLocalUp, rootLocalRight),
                 up, right);
             p->aeroQ = (float)qp;
             p->aeroValid = pa.valid;

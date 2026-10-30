@@ -455,18 +455,19 @@ static void test_surface_alpha_readout() {
     /* The axis question, the same helper the aero step calls. In this test the
        mounts are already in the root's frame, so up/right are both the body
        vectors and the world vectors. */
-    const auto axisOf = [&](const glm::dvec3 &push) {
-        return readoutAxisIsUp(push, up, right);
+    const auto frameOf = [&](const glm::dmat3 &m) {
+        return surfaceReadoutFrame(m[1], up, right);
     };
 
     // A wing and its twin at attach angle 180: opposite frames, one physical angle.
     {
+        const glm::dmat3 twin(-ship[0], -ship[1], ship[2]);   // the same plate at clock 180
         const PartAero a = partAero(ship, vrel);
-        const PartAero b = partAero(glm::dmat3(-ship[0], -ship[1], ship[2]), vrel);
-        CHECK_NEAR(surfaceAlphaDegForReadout(a, axisOf(ship[1]), up, right), 5.0, 1e-9,
+        const PartAero b = partAero(twin, vrel);
+        CHECK_NEAR(surfaceAlphaDegForReadout(a, frameOf(ship), up, right), 5.0, 1e-9,
                    "an aligned wing reads its own AoA, in degrees");
-        CHECK_NEAR(surfaceAlphaDegForReadout(b, axisOf(-ship[1]), up, right),
-                   surfaceAlphaDegForReadout(a, axisOf(ship[1]), up, right), 1e-9,
+        CHECK_NEAR(surfaceAlphaDegForReadout(b, frameOf(twin), up, right),
+                   surfaceAlphaDegForReadout(a, frameOf(ship), up, right), 1e-9,
                    "and its 180-deg twin reads the SAME number, not the mirror");
         // What the sign MEANS: the sign of the force, in the same ship axis the
         // number is signed against. Without this, "+2.6" is a coin flip per part.
@@ -489,16 +490,16 @@ static void test_surface_alpha_readout() {
                               glm::dvec3(0.0, 0.0, 1.0));
         const PartAero pa = partAero(fin, vyaw), pb = partAero(fin2, vyaw);
         CHECK_TRUE(pa.valid && pb.valid, "both fins of a 90/270 pair have frames");
-        CHECK_NEAR(std::fabs(surfaceAlphaDegForReadout(pa, axisOf(fin[1]), up, right)), 10.0,
+        CHECK_NEAR(std::fabs(surfaceAlphaDegForReadout(pa, frameOf(fin), up, right)), 10.0,
                    1e-9, "a yawed flow gives a fin its yaw angle, not the ship's AoA");
-        CHECK_NEAR(surfaceAlphaDegForReadout(pa, axisOf(fin[1]), up, right),
-                   surfaceAlphaDegForReadout(pb, axisOf(fin2[1]), up, right), 1e-9,
+        CHECK_NEAR(surfaceAlphaDegForReadout(pa, frameOf(fin), up, right),
+                   surfaceAlphaDegForReadout(pb, frameOf(fin2), up, right), 1e-9,
                    "and a 90/270 pair reads alike");
         const glm::dvec3 Fa = liftForce(q, S, cl, pa.alpha, pa.liftDir, stall);
         const double sr = glm::dot(Fa, right);
         CHECK_TRUE(std::fabs(sr) > 0.01 * glm::length(Fa),
                    "a fin's force runs along ship's right");
-        CHECK_TRUE(sr * surfaceAlphaDegForReadout(pa, axisOf(fin[1]), up, right) > 0.0,
+        CHECK_TRUE(sr * surfaceAlphaDegForReadout(pa, frameOf(fin), up, right) > 0.0,
                    "and its sign is the sign of the force along that axis");
     }
 
@@ -518,10 +519,10 @@ static void test_surface_alpha_readout() {
         for(double tiltDeg : {-45.0, 45.0}) {
             const glm::dmat3 vtTail =
                 glm::mat3_cast(glm::angleAxis(glm::radians(tiltDeg), nose)) * finBase;
-            const double mu = glm::dot(vtTail[1], up), mr = glm::dot(vtTail[1], right);
-            const bool useUp = readoutAxisIsUp(vtTail[1], up, right);
-            const glm::dvec3 axis = useUp ? up : right;
+            const SurfaceReadout rf = frameOf(vtTail);
+            const glm::dvec3 axis = rf.axisUp ? up : right;
             int samples = 0, flowAxisFlip = 0, rigSignBad = 0, forceBad = 0, magBad = 0;
+            int billed = 0;   // flows where the law actually makes a force to agree with
             for(int azDeg = 0; azDeg <= 178; azDeg += 2) {
                 for(int elevDeg = -60; elevDeg <= 60; elevDeg += 15) {
                     const double az = glm::radians((double)azDeg);
@@ -532,30 +533,37 @@ static void test_surface_alpha_readout() {
                     const PartAero pa = partAero(vtTail, v);
                     if(!pa.valid) { continue; }
                     ++samples;
-                    const double readout = surfaceAlphaDegForReadout(pa, useUp, up, right);
-                    // The contract, checked against the LAW's force rather than against
-                    // the helper's own projection: same sign, every flow.
+                    const double readout = surfaceAlphaDegForReadout(pa, rf, up, right);
+                    /* The contract against the force the LAW bills, not against the
+                       helper's own projection. On most of these flows the plate sits past
+                       twice its stall angle and liftCurve answers exactly zero, so there
+                       is no force to agree or disagree with -- count those separately and
+                       pin that the disagreement test has real samples behind it. */
                     const glm::dvec3 F = liftForce(q, S, cl, pa.alpha, pa.liftDir, stall);
-                    if(glm::dot(F, axis) * readout < 0.0) { ++forceBad; }
+                    if(glm::length(F) > 0.0) {
+                        ++billed;
+                        if(glm::dot(F, axis) * readout < 0.0) { ++forceBad; }
+                    }
                     if(std::fabs(std::fabs(readout) - std::fabs(glm::degrees(pa.alpha)))
                            > 1e-12) { ++magBad; }
                     // And what the two mistakes would do, counted on the same sweep.
                     if((std::fabs(glm::dot(pa.liftDir, up))
-                            >= std::fabs(glm::dot(pa.liftDir, right))) != useUp) {
+                            >= std::fabs(glm::dot(pa.liftDir, right))) != rf.axisUp) {
                         ++flowAxisFlip;
                     }
-                    if((mu >= 0.0 ? 1.0 : -1.0)
-                           * glm::degrees(pa.alpha) * glm::dot(pa.liftDir, axis) < 0.0) {
+                    if(rf.rigSign * glm::degrees(pa.alpha)
+                           * glm::dot(pa.liftDir, axis) < 0.0) {
                         ++rigSignBad;
                     }
                 }
             }
             CHECK_TRUE(samples == 810, "the sweep sampled every flow direction it claims");
+            CHECK_TRUE(billed > 100, "enough of those flows make a real force to pin");
             CHECK_TRUE(magBad == 0, "the readout's magnitude is the surface's own angle");
             CHECK_TRUE(forceBad == 0,
                        "and its sign is the sign of the force that surface actually makes");
-            CHECK_TRUE(flowAxisFlip > 100,
-                       "choosing the axis from the flow would change it constantly");
+            CHECK_TRUE(flowAxisFlip == 459,
+                       "choosing the axis from the flow would change it 459 times here");
             CHECK_TRUE(rigSignBad > 100,
                        "signing the angle from the mount would contradict the force");
         }
@@ -575,9 +583,10 @@ static void test_surface_alpha_readout() {
                                  * finBase;
         const glm::dmat3 fin90 = glm::mat3_cast(glm::angleAxis(glm::radians(90.0), nose))
                                    * finBase;
-        CHECK_TRUE(readoutAxisIsUp(vtA[1], up, right)
-                       && readoutAxisIsUp(vtB[1], up, right),
-                   "a tie mount ties to the UP axis");
+        const SurfaceReadout rfA = frameOf(vtA), rfB = frameOf(vtB);
+        CHECK_TRUE(rfA.axisUp && rfB.axisUp, "a tie mount ties to the UP axis");
+        CHECK_TRUE(rfA.rigSign * rfB.rigSign < 0.0,
+                   "and the halves' riggings push opposite ways along it (the fallback's sign)");
         CHECK_TRUE(std::fabs(std::fabs(glm::dot(vtA[1], up))
                              - std::fabs(glm::dot(vtA[1], right))) < 1e-12
                        && std::fabs(std::fabs(glm::dot(vtB[1], up))
@@ -598,8 +607,8 @@ static void test_surface_alpha_readout() {
                             >= std::fabs(glm::dot(push, sRot * right));
                     };
                     ++attitudes;
-                    if(worldChoice(vtA) != readoutAxisIsUp(vtA[1], up, right)) { ++flipTie; }
-                    if(worldChoice(fin90) != readoutAxisIsUp(fin90[1], up, right)) { ++flipSquare; }
+                    if(worldChoice(vtA) != rfA.axisUp) { ++flipTie; }
+                    if(worldChoice(fin90) != frameOf(fin90).axisUp) { ++flipSquare; }
                 }
             }
         }
@@ -615,18 +624,15 @@ static void test_surface_alpha_readout() {
            flips sign, which is why the tie-break is stated rather than left to rounding. */
         const glm::dvec3 v10(0.0, -100.0 * std::sin(glm::radians(10.0)),
                              100.0 * std::cos(glm::radians(10.0)));
-        const double ra = surfaceAlphaDegForReadout(partAero(vtA, v10),
-                                                    readoutAxisIsUp(vtA[1], up, right),
-                                                    up, right);
-        const double rb = surfaceAlphaDegForReadout(partAero(vtB, v10),
-                                                    readoutAxisIsUp(vtB[1], up, right),
-                                                    up, right);
+        const double ra = surfaceAlphaDegForReadout(partAero(vtA, v10), rfA, up, right);
+        const double rb = surfaceAlphaDegForReadout(partAero(vtB, v10), rfB, up, right);
         CHECK_NEAR(ra, rb, 1e-9, "a +-45 v-tail pair prints the SAME number");
         CHECK_TRUE(std::fabs(ra) > 1.0, "and it is a real angle, not the tie pinning zero");
         // The tie-break is a decision, not a no-op: quoting the -45 half against RIGHT
         // instead of UP flips its sign (its force projects oppositely on the two axes).
         const PartAero pa45 = partAero(vtA, v10);
-        CHECK_TRUE(surfaceAlphaDegForReadout(pa45, false, up, right) * ra < 0.0,
+        const SurfaceReadout quoteRight{false, glm::dot(vtA[1], right)};
+        CHECK_TRUE(surfaceAlphaDegForReadout(pa45, quoteRight, up, right) * ra < 0.0,
                    "the tie-break (UP) decides that half's sign");
     }
 
@@ -639,9 +645,9 @@ static void test_surface_alpha_readout() {
         const LocalFlow la = localFlow(v0, w, glm::dvec3(3.0, 0.0, 0.0), 1.225);
         const LocalFlow lb = localFlow(v0, w, glm::dvec3(-3.0, 0.0, 0.0), 1.225);
         const double ra = surfaceAlphaDegForReadout(partAero(ship, la.vp),
-                                                    axisOf(ship[1]), up, right);
+                                                    frameOf(ship), up, right);
         const double rb = surfaceAlphaDegForReadout(partAero(ship, lb.vp),
-                                                    axisOf(ship[1]), up, right);
+                                                    frameOf(ship), up, right);
         CHECK_TRUE(std::fabs(ra - rb) > 1.0,
                    "a rolling airframe's two wings read DIFFERENT angles");
         CHECK_NEAR(ra + rb, 0.0, 1e-9, "equal and opposite, because the roll is");
@@ -651,8 +657,79 @@ static void test_surface_alpha_readout() {
     // that the surface sits at zero -- tick.cpp declines to quote such a part at all
     // -- so callers gate on Part::aeroValid; this only pins there is nothing to sign.
     CHECK_NEAR(surfaceAlphaDegForReadout(partAero(glm::dmat3(0.0), vrel),
-                                         axisOf(ship[1]), up, right),
+                                         frameOf(ship), up, right),
                0.0, 1e-12, "a refused frame carries no angle to sign");
+
+    /* THE ZERO-PROJECTION FALLBACK: a plate mounted fore-aft (normal along the ship's nose
+       -- the mis-rig family #509 flags) in a flow that has no component on ship's up. Its
+       live liftDir comes out exactly perpendicular to up, so the wind offers no sign for
+       the axis being quoted. The readout keeps the ANGLE (90 deg, which is what the plate
+       actually sits at) and takes the sign from the rigging; returning 0.0 would have
+       invented an angle out of a display detail. Note that this mount projects on NEITHER
+       ship axis, so its rigSign is 0 and the fallback's sign is a convention -- a part like
+       this has no readout worth quoting, which is another reason #509 wants it flagged. */
+    {
+        const glm::dmat3 fin0(glm::dvec3(1,0,0), glm::dvec3(0,0,1), glm::dvec3(0,-1,0));
+        const glm::dvec3 v(100.0 * std::sin(glm::radians(20.0)), 0.0,
+                           100.0 * std::cos(glm::radians(20.0)));
+        const PartAero a = partAero(fin0, v);
+        const SurfaceReadout rf = frameOf(fin0);
+        CHECK_TRUE(a.valid && std::fabs(glm::degrees(a.alpha)) > 1.0,
+                   "a fore-aft fin 20 deg off the nose still has a frame and a real angle");
+        CHECK_TRUE(glm::dot(a.liftDir, rf.axisUp ? up : right) == 0.0,
+                   "and its live force has no component on the quoted axis (exact, not tiny)");
+        CHECK_NEAR(std::fabs(surfaceAlphaDegForReadout(a, rf, up, right)), 90.0, 1e-9,
+                   "the readout still quotes the 90 deg it is actually at");
+        CHECK_TRUE(rf.rigSign == 0.0,
+                   "(a nose-projecting mount answers neither axis question, as documented)");
+    }
+
+    /* A NaN flow is not a usable frame. partAero used to accept one -- `dot(l,l) <= 0` is
+       FALSE for NaN -- and handed the whole aero pass a NaN force, which vehicle.cpp's own
+       kAoAFlowFloor comment had been saying all along. */
+    {
+        const glm::dvec3 bad = glm::dvec3(std::nan(""), 100.0, 0.0);
+        CHECK_TRUE(!partAero(ship, bad).valid, "partAero refuses a NaN flow");
+        const glm::dmat3 fin(glm::dvec3(0,1,0), glm::dvec3(-1,0,0), glm::dvec3(0,0,1));
+        const PartAero paNaNFlow = partAero(fin, bad);
+        CHECK_TRUE(controlDeflection(paNaNFlow, glm::dvec3(0,0,-3.0), fin, up, -1.0,
+                                     1.0, 0.35) == 0.0,
+                   "so the control path never sees the garbage");
+        const PartAero paOk = partAero(fin, glm::dvec3(0.0, -34.2, 93.97));
+        CHECK_TRUE(paOk.valid, "the same fin in a real flow has a frame");
+        CHECK_TRUE(controlDeflection(paOk, glm::dvec3(0,0,std::nan("")), fin, up, -1.0,
+                                     1.0, 0.35) == 0.0,
+                   "and a NaN mount distance fails CLOSED rather than granting travel");
+    }
+
+    /* For a mount whose push IS a ship axis -- every shipped control surface, authored at
+       clock 0/90/180/270 -- the axis choice cannot disagree with the old live-liftDir rule
+       until the flow is far off the plate's own plane. That band is why the shipped beds
+       log byte-identical [surface] rows either way, and it is narrower than it feels: the
+       glider's held-rudder bed reaches 62.7 deg of sideslip, and the flip starts near 64. */
+    {
+        const glm::dmat3 rudder(glm::dvec3(0,1,0), glm::dvec3(-1,0,0), glm::dvec3(0,0,1));
+        const SurfaceReadout rf = frameOf(rudder);
+        CHECK_TRUE(!rf.axisUp, "a shipped rudder's readout is quoted against ship's right");
+        int inBand = 0, outBand = 0, flipIn = 0, flipOut = 0;
+        for(int beta = 0; beta <= 80; beta += 2) {
+            for(int aoa = -20; aoa <= 20; aoa += 5) {
+                const double b = glm::radians((double)beta), e = glm::radians((double)aoa);
+                const glm::dvec3 v = 100.0 * glm::dvec3(std::sin(b) * std::cos(e),
+                                                        -std::sin(e),
+                                                        std::cos(b) * std::cos(e));
+                const PartAero pa = partAero(rudder, v);
+                if(!pa.valid) { continue; }
+                const bool liveUp = std::fabs(glm::dot(pa.liftDir, up))
+                                 >= std::fabs(glm::dot(pa.liftDir, right));
+                if(beta <= 60) { ++inBand; if(liveUp != rf.axisUp) { ++flipIn; } }
+                else { ++outBand; if(liveUp != rf.axisUp) { ++flipOut; } }
+            }
+        }
+        CHECK_TRUE(inBand > 200 && outBand > 40, "the sideslip sweep sampled both bands");
+        CHECK_TRUE(flipIn == 0, "within +-60 deg of sideslip the two rules pick the same axis");
+        CHECK_TRUE(flipOut > 0, "past that the old live rule starts picking the other axis");
+    }
 }
 
 /* #454: the neutral point -- where an angle-of-attack change puts the CHANGE in lift.
@@ -1490,6 +1567,21 @@ static void test_control_rigging() {
                 CHECK_TRUE(!degenerate && std::fabs(defl) == maxDefl,
                            "a long arm with a small angle still travels fully");
             }
+        }
+        /* The same tilt on a SHORT arm, which is what separates an arm-scaled cutoff from
+           an absolute floor: 3 mm behind the CG at 1e-4 rad gives 3e-7 m of lever, ten
+           times the 3e-9 m cutoff for THAT arm, so it travels -- while a fixed 3e-6 m
+           floor (what the loop above alone would let a mutant install) gates it. */
+        {
+            const glm::dvec3 riShort(0.0, 0.0, -3e-3);
+            const glm::dmat3 mt = glm::mat3_cast(glm::angleAxis(M_PI - 1e-4, up)) * finClock0;
+            const double lev = controlRigLever(riShort, mt, up);
+            CHECK_TRUE(std::fabs(lev) > 1e-6 * glm::length(riShort)
+                           && std::fabs(lev) < 3e-6,
+                       "3e-7 m of lever: above the arm-scaled cutoff, below an absolute one");
+            CHECK_TRUE(controlDeflection(partAero(mt, flowAt(20.0)), riShort, mt, up,
+                                         -1.0, 1.0, maxDefl) != 0.0,
+                       "so a short arm with real leverage still travels");
         }
     }
 }
