@@ -900,39 +900,56 @@ inline double controlDeflectionSign(double rigLever, double targetSign = -1.0) {
     return (rigLever >= 0.0) ? targetSign : -targetSign;
 }
 
-inline double controlDeflectionSign(const glm::dvec3 &ri, const glm::dmat3 &mount,
-                                    const glm::dvec3 &aboutAxis,
-                                    double targetSign = -1.0) {
-    return controlDeflectionSign(controlRigLever(ri, mount, aboutAxis), targetSign);
-}
-
 /* HOW FAR A COMMAND TAKES one control surface, in rad, and whether it takes it at
    all. `cmdFrac` is the signed command fraction (controlCommandFrac: stick + trim,
    clamped to +-1) and `maxDefl` the part's travel stop. This is the whole decision the
-   aero step makes about travel -- frame, rigging and authority together -- so that the
+   aero step makes about travel -- frame, rig sign, degeneracy, travel -- so that the
    wiring is the thing under test rather than a call site nobody pins
    (tests/test_drag.cpp::test_control_rigging).
    An unusable flow frame (pa.valid, #469) asks for no travel: there is no force to
    point, so moving the plate only moves the ship once the frame comes back.
-   A surface rigged so its force line runs through the pivot (rig lever ~0 against its
-   own mount distance -- a fin turned to the wrong clock, or one mounted where its push
-   cannot turn the axis its stick promises) is ALSO asked for NO TRAVEL. It is not a
-   control about that axis, and actuating it anyway is worse than dead: the force is
-   still full size, so the moment it delivers is real and its direction comes from the
-   flow. Measured, a skiff with its rudder turned to clock 0: it travelled to its
-   +20.1 deg stop and the airframe peaked at |tau| = 2560 N m, MORE than the 1539 N m of
-   the same ship rigged properly. With this guard it asks for no travel and the peak
-   drops to 246 N m. The 1e-6 is a degeneracy test on the GEOMETRY (a millionth of the
-   mount distance is a fraction of a micrometre of lever), not a threshold on what counts
-   as weak -- a builder with a real lever of 0.05 m still gets full travel. Telling them
-   the surface has no authority is a load-time check: #509. */
+   A surface whose ZERO-ALPHA push line runs through the pivot (rig lever ~0 against
+   its own mount distance -- a fin turned to the wrong clock, a rudder mounted inline
+   with the flow, a steering part sitting on the COM) is ALSO asked for NO TRAVEL.
+   Being precise about why: the rig cannot decide WHICH WAY it would push that axis,
+   so a commanded travel has no meaning; actuating it anyway is worse than dead,
+   because the force is still q*S*cl*defl and its direction is whatever the flow says,
+   so the airframe pays a real moment whose sign the builder never asked for. Measured,
+   a skiff with its rudder at clock 0: the rudder sat at its +20.1 deg stop and the
+   airframe peaked at |tau| = 2560 N m, above the 1539 N m of the same ship rigged
+   properly; asked for no travel the peak is 246 N m. Note what that also means: such a
+   surface now bills NO control force and NO induced bill, so a mis-rigged airframe
+   flies cleaner than its geometry says. Dead-and-invisible beats random-and-loud, and
+   telling the builder is the load-time check #509.
+   The cutoff is a degeneracy test on the GEOMETRY, not a threshold on what counts as
+   weak: |lever|^2 <= 1e-12 * |ri|^2 means a micrometre-scale arm on a metre-scale
+   mount (shipped surfaces sit 2.6-2.8 m out, so their cutoff is ~3 um of lever), and a
+   builder with a real lever of even 1 mm still gets full travel -- which
+   test_control_rigging pins with a rig deliberately close to the line. */
 inline double controlDeflection(const PartAero &pa, const glm::dvec3 &ri,
                                 const glm::dmat3 &mount, const glm::dvec3 &aboutAxis,
                                 double targetSign, double cmdFrac, double maxDefl) {
     if(!pa.valid) { return 0.0; }
     const double lever = controlRigLever(ri, mount, aboutAxis);
-    if(std::fabs(lever) <= 1e-6 * glm::length(ri)) { return 0.0; }
+    // Squared so the hot pass does not pay a sqrt. ri == 0 (a steering part on the
+    // COM) lands on the degenerate side here, which is the answer we want.
+    if(lever * lever <= 1e-12 * glm::dot(ri, ri)) { return 0.0; }
     return controlDeflectionSign(lever, targetSign) * cmdFrac * maxDefl;
+}
+
+/* WHICH SHIP AXIS a control surface pushes along, from how it is rigged (#495 review).
+   ASK IT IN THE BODY FRAME -- the part's own mount against the root part's frame, both
+   fixed at load -- so the answer is a per-part CONSTANT. Asked in the world frame it is a
+   per-substep question: over a 6-degree grid of 9300 attitudes, a mount exactly 45 deg
+   out of vertical has no clear winner -- its two dots differ by 1e-16 of rounding --
+   and the answer changes with the ship's attitude on 1578 of those attitudes. Pinned in
+   test_surface_alpha_readout, which also shows a mount off the tie never flips. Nothing
+   else about the readout moves like that.
+   Tie-break goes to UP, the conventional pitch/roll readout. A mount dead on the tie is a
+   designer asking for an ambiguous gauge, not a case to engineer. */
+inline bool readoutAxisIsUp(const glm::dvec3 &rigPush, const glm::dvec3 &bodyUp,
+                            const glm::dvec3 &bodyRight) {
+    return std::fabs(glm::dot(rigPush, bodyUp)) >= std::fabs(glm::dot(rigPush, bodyRight));
 }
 
 /* #485: a surface's angle of attack, signed into SHIP terms for a READOUT
@@ -943,23 +960,44 @@ inline double controlDeflection(const PartAero &pa, const glm::dvec3 &ri,
    but a readout that quotes +2.6 and -2.6 for two wings at the same physical angle
    is worse than no readout: it hides the one thing worth seeing, a pair whose
    angles actually DIFFER (a yawing airframe sweeps one half into the flow and the
-   other out of it, #483). So sign the angle by the SHIP axis this surface's lift
-   acts along: up for a wing or tailplane, right for a fin or rudder; a surface
-   angled between the two (a v-tail) takes the closer one, and its two halves then
-   read alike.
-   `rigLift` is the mount's own zero-alpha lift axis (mount[1]), NOT the live
-   liftDir: a mount near 45 deg between the two ship axes sits exactly on the
-   tie-break, where the live direction decides it by float noise and the printed
-   angle can change sign mid-flight (#495's same mistake, on the display side).
+   other out of it, #483).
+   TWO DECISIONS, and they come from the two places that own them:
+   - WHICH SHIP AXIS the surface pushes along (up for a wing or tailplane, right for
+     a fin or rudder; a v-tail takes the closer one) is the MOUNT's -- readoutAxisIsUp
+     above. Ask the flow instead and the axis wanders: over an 810-direction flow sweep
+     on a mount 45 deg out of vertical, the live direction picks the other axis in 459
+     of them, and the printed angle changes SIGN mid-flight while the surface sits at
+     the same alpha.
+   - WHICH WAY ALONG that axis is the WIND's: the sign of that surface's own LIVE force
+     projected on the axis -- the same direction controlForce bills along and the F4
+     overlay draws an arrow along (#469). Sign it off the rig instead and the number
+     stops agreeing with the force at large |alpha|: past ~90 deg of its own angle a
+     surface's force has swung round while its rig has not, so the readout prints the
+     opposite sign to the arrow next to it (measured: 284 of the 810 flow directions
+     sampled on a v-tail half).
+   A mirrored pair reads alike under this rule because its alpha and its liftDir flip
+   together -- that is #453's identity -- while its mount picks the same axis for both
+   halves. Past ~45 deg of alpha the live direction swings across the surface's span, so
+   the signed force, its leverage about the pivot and this readout all swing together and
+   the number stops being an incidence; that corner is #508, not a readout bug, and the
+   overlay already flags it with the stall marker.
+   A mount EXACTLY 45 deg out of vertical ties the axis choice, where the tie-break (UP)
+   is a real decision rather than a rounding detail: for one half of a +-45 v-tail the
+   force projects oppositely on the two ship axes, so quoting it against UP rather than
+   RIGHT flips the printed sign. With the tie-break fixed in the body frame the two halves
+   print the SAME number (measured: +7.107 both), which is the outcome the readout exists
+   to give. Shipped mounts sit at 0/90/180 and never come near the tie.
    Display arithmetic; nothing in the law calls this. */
-inline double surfaceAlphaDegForReadout(const PartAero &pa, const glm::dvec3 &rigLift,
+inline double surfaceAlphaDegForReadout(const PartAero &pa, bool axisUp,
                                         const glm::dvec3 &up, const glm::dvec3 &right) {
-    const double vu = std::fabs(glm::dot(rigLift, up));
-    const double vr = std::fabs(glm::dot(rigLift, right));
-    const double sgn = (vu >= vr)
-        ? ((glm::dot(rigLift, up) >= 0.0) ? 1.0 : -1.0)
-        : ((glm::dot(rigLift, right) >= 0.0) ? 1.0 : -1.0);
-    return sgn * glm::degrees(pa.alpha);
+    const double along = glm::dot(pa.liftDir, axisUp ? up : right);
+    // along == 0 means this surface's force has no component along the axis being quoted
+    // (a plate edge-on to its own flow). Such a surface has no authority about that axis
+    // -- see controlDeflection -- so there is no direction to sign; answer 0.0 rather than
+    // code the tie to +. pa.liftDir is unit length whenever pa.valid, so a zero here is a
+    // zero component, not a zero vector.
+    if(along == 0.0) { return 0.0; }
+    return (along > 0.0 ? 1.0 : -1.0) * glm::degrees(pa.alpha);
 }
 
 /* The VISUAL hinge of a control-surface mesh at commanded deflection defl

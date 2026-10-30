@@ -1456,16 +1456,18 @@ void Vehicle::checkHullMirrorInvariants() const {
                            && "the S-frame mirror lags a part's orientation");
                 }
             }
-            /* A mount must be a ROTATION, not a reflection. The aero law asks a
-               mount which way its surface pushes (drag.h::controlRigLever reads
-               mount[1]), and that only means anything for det +1: a reflected
-               mount inverts a control surface's rigging silently, and #495's
-               authority guard would then be deciding sign from a mirrored frame.
-               Every writer here builds from quaternions, so this is a tripwire on
-               the assumption rather than a fix for a known bad path. */
-            assert(glm::dot(p->localRot[0],
-                            glm::cross(p->localRot[1], p->localRot[2])) > 0.5
-                   && "a part mount must be a proper rotation");
+            /* A mount must be a ROTATION, not a reflection and not a scale. The aero
+               law asks a mount which way its surface pushes (drag.h::controlRigLever
+               reads mount[1]) and partAero measures alpha against its columns, all of
+               which assume det +1 with unit columns: a reflected mount inverts a
+               control surface's rigging silently, and a mount whose quaternion drifted
+               off unit length (glm's mat3_cast does not normalize) skews the angle it
+               reports. sRot itself comes from Bullet and is not checked here. Every
+               writer of localRot builds from quaternions, so this is a tripwire on the
+               assumption rather than a fix for a known bad path. */
+            const double det = glm::dot(p->localRot[0],
+                                        glm::cross(p->localRot[1], p->localRot[2]));
+            assert(std::fabs(det - 1.0) < 1e-9 && "a part mount must be a rotation");
         }
     }
 
@@ -2289,6 +2291,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     const glm::dvec3 nose  = rootRot[2];
     const glm::dvec3 right = rootRot[0];
     const glm::dvec3 up    = rootRot[1];
+    /* The same axes in the ROOT's local frame. The readout's axis question (#485) is a
+       build fact, so it gets asked here, once per pass, in these vectors rather than in
+       the world ones: the dot products are then fixed at load. Asked in the world frame
+       the answer is mathematically the same but computed from sRot every substep, and a
+       mount near the 45-deg tie changes its mind with the ship's attitude (see
+       drag.h::readoutAxisIsUp). */
+    const glm::dvec3 rootLocalUp    = (root != nullptr) ? root->localRot[1] : glm::dvec3(0.0, 1.0, 0.0);
+    const glm::dvec3 rootLocalRight = (root != nullptr) ? root->localRot[0] : glm::dvec3(1.0, 0.0, 0.0);
     lastUpVert = glm::dot(up, com / r);  // upright? (see lastUpVert)
     const AeroFrame fr = aeroFrame(vrel, right, up, nose);
     const double alpha   = fr.valid ? fr.alpha   : 0.0;
@@ -2582,7 +2592,9 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
            edge-on or axis-less mount quotes nothing rather than a stale angle) and
            before the zero-force test below -- a surface at alpha 0 is measured, it
            just is not pushing. Free: both numbers are already in hand here. */
-        p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(pa, mount[1], up, right);
+        p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(
+            pa, readoutAxisIsUp(p->localRot[1], rootLocalUp, rootLocalRight),
+            up, right);
         p->aeroQ = (float)qp;
         p->aeroValid = true;
         /* #454: this surface's contribution to where an alpha change puts the change
@@ -2688,8 +2700,10 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                     const LocalFlow lf0 = localFlow(vrel, w, partPosS(p) - com, rho);
                     const glm::dmat3 mount0 = sRot * p->localRot;
                     const PartAero pa0 = partAero(mount0, lf0.vp);
-                    p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(pa0, mount0[1],
-                                                                       up, right);
+                    p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(
+                        pa0, readoutAxisIsUp(p->localRot[1], rootLocalUp,
+                                             rootLocalRight),
+                        up, right);
                     p->aeroQ = (float)lf0.q;
                     p->aeroValid = pa0.valid;
                 }
@@ -2729,56 +2743,24 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             const PartAero pa = partAero(mount, lf.vp);
             /* #485, same as the lift loop. The law below still answers deflection
                alone -- recording the angle makes it visible, not load-bearing. */
-            p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(pa, mount[1], up, right);
+            p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(
+                pa, readoutAxisIsUp(p->localRot[1], rootLocalUp, rootLocalRight),
+                up, right);
             p->aeroQ = (float)qp;
             p->aeroValid = pa.valid;
             const glm::dvec3 forceDir = pa.liftDir;   // zero when the frame is unusable
             const glm::dvec3 about =
                 (ax.aboutAxis == 0) ? right : (ax.aboutAxis == 1) ? up : nose;
-            /* THE RIGGING IS THE MOUNT'S, NOT THE WIND'S (#495). Which way a positive
-               command swings this surface, and whether it swings it at all, is decided
-               by the mount -- it is the pushrod. controlDeflection asks the question of
-               mount[1], the direction a plate pushes at zero angle of attack (the same
-               axis partAero measures alpha against and the hinge line
-               drag.h::controlSurfaceVisualRot turns). Two things follow, and the first
-               review pass found that I had only done the first:
-               - The SIGN. Handed partAero's LIVE liftDir, the deciding triple product
-                 dot(cross(ri, liftDir), about) can change sign mid-flight, and the
-                 travel flips with it -- reversing the whole force at whatever q the ship
-                 is flying. Not seen on shipped content, and worth being exact about why
-                 not: for a rectangular centreline fin that product is a cusp in the flow
-                 angle that bottoms at zero WITHOUT changing sign, so the old rule could
-                 not flip there however hard the stick was held (a reviewer sampled 8M
-                 flow directions near broadside and got no negative value; the glider with
-                 the rudder key held gets its closest approach at 0.0014 m against a
-                 2.6369 m rig, 0.05% of the lever). What does cross is a mount the shipped
-                 set does not use: the same fin 1 m off the centreline crosses near 72 deg
-                 of flow angle, on a frame partAero still accepts and #508 still bills at
-                 full strength, with clear leverage either side (+0.634 m then -0.464 m).
-               - The AUTHORITY. A surface whose rig lever is degenerate -- force line
-                 through the pivot, e.g. a fin turned to clock 0 -- used to be actuated at
-                 full travel with a sign the rig could not even decide, so the moment it
-                 delivered was real and its direction came from the flow. Measured: that
-                 skiff's rudder sat at its +20.1 deg stop and the airframe peaked at
-                 |tau| = 2560 N m, above the 1539 N m of the same ship rigged properly;
-                 asking for no travel drops that peak to 246 N m. controlDeflection now
-                 asks for no travel there: a control that cannot turn the axis its stick
-                 promises is dead, and it should feel dead rather than random. Telling the
-                 builder is a load-time check, #509.
-               Measured before either change: eight beds and ~150k actuated-surface rows
-               -- every shipped airframe plus held-rudder runs to 60 s, hard-pull
-               departures, yaw-spin attempts and scratch airframes with the fin moved off
-               the centreline -- where the live-flow rule and the rigging rule agreed on
-               100% of rows, and flight/458-jet, 458-glider, 490 and 492 log
-               byte-identical [drag], [ctrl] and [surface] rows either side. So this is
-               correctness at zero cost today, not tuning.
-               What is still NOT fixed, and is not claimed here: near 90 deg of its own
-               angle a plate's liftDir is the normalised residue of a vanishing vector, so
-               it turns through 180 deg at broadside, while controlForce still bills a
-               broadside surface its full q*S*cl*defl -- partAero accepts those frames (it
-               refuses only an exactly zero residue). An authority that fades as the flow
-               goes over the surface is the (alpha + deflection) law, which is #487's
-               family; filed as #508 with the numbers measured here. */
+            /* THE RIGGING IS THE MOUNT'S, NOT THE WIND'S (#495): which way a positive
+               command swings this surface, and whether it swings it at all, is decided by
+               mount[1] -- the direction a plate pushes at zero angle of attack, the same
+               axis partAero measures alpha against and controlSurfaceVisualRot hinges
+               about. Why the mount rather than partAero's live liftDir, and the two
+               corners where that matters (a sign that flips mid-flight on an off-centreline
+               mount; a rig whose push line runs through its pivot, now asked for NO travel
+               rather than full travel with a sign the rig cannot decide), is carried by
+               drag.h::controlDeflection -- which is where the measurements and the #508 and
+               #509 pointers live. The call below is the whole implementation. */
             const double deflection = controlDeflection(pa, ri, mount, about,
                                                         ax.targetSign, cmd,
                                                         d->max_deflection);
