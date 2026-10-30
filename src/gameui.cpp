@@ -4747,7 +4747,10 @@ void drawVabUI(Game &g) {
             int st = bp.stage;
             ImGui::SetNextItemWidth(60);
             if(ImGui::InputInt("stage##sel", &st, 1, 1)) {
-                if(st < 1) { st = 1; }
+                /* Clamped at both ends, not just the floor: the box takes any integer
+                   a player types, and the staging pass walks every index up to the
+                   highest one in the ship. */
+                st = std::clamp(st, 1, kMaxStage);
                 bp.stage = st;
             }
             // The vab ops swap the parts vector (the bp reference dies with it).

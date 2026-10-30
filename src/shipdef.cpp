@@ -49,37 +49,59 @@ static int resource_index_from_string(const std::string &s, const std::string &c
     if(s == "food") { return (int)ResourceType::Food; }
     if(s == "hydrazine") { return (int)ResourceType::Hydrazine; }
     if(s == "jetfuel") { return (int)ResourceType::JetFuel; }
-    throw std::runtime_error(ctx + ": unknown resource '" + s
+    // ctx already ends with ": " (both callers build it that way); a second colon
+    // here read as "parts: x: : unknown resource" (#496 review).
+    throw std::runtime_error(ctx + "unknown resource '" + s
                              + "' (expected: hydrogen, lox, ec, oxygen, water, food, hydrazine, jetfuel)");
 }
 
-/* An optional NUMBER, read so that the error names the file, the part and the
-   field (#496). pv.value(key, def) does the same job but answers a string with
-   nlohmann's type_error -- "type must be number, but is string" -- which is true
-   and useless to whoever typed it. `unit` says what the number measures ("" when
-   it is dimensionless), because "must be a number" is only half the fix: the
-   other half is knowing that "angle" is degrees and "z" is metres. Same shape as
-   the "trim" read below and the "geom" read in save.h. */
+/* One NUMBER, read so that the error names the file, the part and the field (#496).
+   `what` is the caller's own naming of the value -- "parts: pod in
+   res/data/parts.json: \"mass\"", or a map entry's key spelled out -- because
+   pv.value(key, def) answers a string with nlohmann's type_error ("type must be
+   number, but is string"), which is true and useless to whoever typed it. `unit`
+   says what the number measures ("" when it is dimensionless): "must be a number"
+   is only half the fix, the other half is knowing that "angle" is degrees and "z"
+   is metres. Everything that reads a number goes through this so the two loaders
+   cannot drift into different wording for the same typo. */
+static double wantNumber(const nlohmann::json &v, const std::string &what,
+                         const char *unit = "") {
+    if(!v.is_number()) {
+        // What it actually got, because "must be a number" sent people hunting for a
+        // quote they had already removed -- the usual cause is a neighbouring field.
+        throw std::runtime_error(what + " must be a number"
+                                 + (unit && *unit ? std::string(" (") + unit + ")" : "")
+                                 + ", got " + v.type_name());
+    }
+    return v.get<double>();
+}
+
+/* wantNumber for a keyed optional: absent takes the default, present-and-wrong throws. */
 static double optNumber(const nlohmann::json &pv, const char *key, double def,
                         const std::string &ctx, const char *unit = "") {
     if(!(pv.is_object() && pv.contains(key))) { return def; }
-    const nlohmann::json &v = pv.at(key);
-    if(!v.is_number()) {
-        throw std::runtime_error(ctx + std::string("\"") + key + "\" must be a number"
-                                 + (unit && *unit ? std::string(" (") + unit + ")" : ""));
-    }
-    return v.get<double>();
+    return wantNumber(pv.at(key), ctx + std::string("\"") + key + "\"", unit);
 }
 
 /* The same for a COUNT. is_number() would let 1.5 through, and a stage number is
    not a quantity to round -- a ship that stages halfway is a typo, not a fraction.
    A whole one written 2.0 is fine: JSON has one number type and authors write
-   whatever their editor produced. */
+   whatever their editor produced.
+   The int window is part of "whole": nlohmann reads an integer literal past 2^63
+   as an unsigned that wraps through get<double>(), and get<int>() on a double
+   outside int's range is UB, so an out-of-range count used to arrive as a wrapped
+   number that then passed every >= check downstream (#496 review). Measured on the
+   previous tree: "crew_capacity": 4294967296 loaded as 0 -- a typo that silently
+   deletes a seat. */
 static bool isWhole(const nlohmann::json &v) {
-    if(v.is_number_integer()) { return true; }
-    if(!v.is_number_float()) { return false; }
+    if(!v.is_number()) { return false; }
+    /* One comparison covers an integer literal as well as a float one: the window is
+       well inside the range a double holds exactly, so floor() is not an
+       approximation here. The integer fast path this replaces is what let
+       4294967296 through -- is_number_integer() is true for an unsigned too. */
     const double d = v.get<double>();
-    return std::isfinite(d) && d == std::floor(d);
+    return std::isfinite(d) && d >= -2147483648.0 && d <= 2147483647.0
+        && d == std::floor(d);
 }
 
 static int optInt(const nlohmann::json &pv, const char *key, int def,
@@ -282,7 +304,11 @@ PartsCatalog load_parts_catalog(const char *path) {
             throw std::runtime_error(std::string("parts: entry ") + std::to_string(i)
                                      + " of " + path + ": missing \"name\"");
         }
-        const std::string ctx = "parts: " + d.name + ": ";
+        /* The prefix every bad field in this entry quotes (#496). The file is in it
+           because a catalog is often split across several, and because the ship
+           loader's prefix has carried the path since the first version -- without it
+           the two loaders answered the same typo differently. */
+        const std::string ctx = "parts: " + d.name + " in " + path + ": ";
         if(cat.find(d.name) != nullptr) {
             throw std::runtime_error(ctx + "duplicate part name");
         }
@@ -398,13 +424,13 @@ PartsCatalog load_parts_catalog(const char *path) {
                                          + "\"propellant\" must be a non-empty object");
             }
             for(auto it = pv["propellant"].begin(); it != pv["propellant"].end(); ++it) {
-                if(!it.value().is_number()) {
-                    throw std::runtime_error(ctx + "\"propellant\" rate for '"
-                                             + it.key() + "' must be a number (kg/s)");
-                }
-                const double rate = it.value().get<double>();
+                const std::string what = std::string(ctx) + "\"propellant\" rate for '"
+                                         + it.key() + "'";
+                const double rate = wantNumber(it.value(), what, "kg/s");
                 if(rate < 0.0) {
-                    throw std::runtime_error(ctx + "\"propellant\" rates must be >= 0 (kg/s)");
+                    // Names the propellant: a flow block can hold several, and the
+                    // author needs to know which line has the stray minus.
+                    throw std::runtime_error(what + " must be >= 0 (kg/s)");
                 }
                 const int idx = resource_index_from_string(it.key(), ctx);
                 if(idx == (int)ResourceType::EC) {
@@ -458,12 +484,14 @@ PartsCatalog load_parts_catalog(const char *path) {
                                          + "\"capacity\" must be a non-empty object");
             }
             for(auto it = pv["capacity"].begin(); it != pv["capacity"].end(); ++it) {
-                if(!it.value().is_number()) {
-                    throw std::runtime_error(ctx + "\"capacity\" for '" + it.key()
-                                             + "' must be a number");
-                }
-                d.capacity[resource_index_from_string(it.key(), ctx)] =
-                    it.value().get<float>();
+                const std::string what = std::string(ctx) + "\"capacity\" for '"
+                                         + it.key() + "'";
+                const double kg = wantNumber(it.value(), what, "kg");
+                // A negative tank used to load: it cancels a neighbour in the
+                // total > 0 test below, then hands the flow solver a negative
+                // ceiling (#496 review).
+                if(kg < 0.0) { throw std::runtime_error(what + " must be >= 0 (kg)"); }
+                d.capacity[resource_index_from_string(it.key(), ctx)] = (float)kg;
             }
             double cap_total = 0.0;
             for(size_t r = 0; r < d.capacity.size(); r++) { cap_total += d.capacity[r]; }
@@ -473,26 +501,16 @@ PartsCatalog load_parts_catalog(const char *path) {
             }
         }
 
-        if(pv.contains("crew_capacity")) {
-            if(!isWhole(pv["crew_capacity"])) {
-                throw std::runtime_error(ctx + "\"crew_capacity\" must be a whole number");
-            }
-            d.crew_capacity = pv["crew_capacity"].get<int>();
-            if(d.crew_capacity < 0) {
-                throw std::runtime_error(std::string(ctx)
-                                         + "\"crew_capacity\" must be >= 0");
-            }
+        d.crew_capacity = optInt(pv, "crew_capacity", d.crew_capacity, ctx);
+        if(d.crew_capacity < 0) {
+            throw std::runtime_error(std::string(ctx)
+                                     + "\"crew_capacity\" must be >= 0 (seats)");
         }
 
-        if(pv.contains("inventory_capacity")) {
-            if(!isWhole(pv["inventory_capacity"])) {
-                throw std::runtime_error(ctx + "\"inventory_capacity\" must be a whole number");
-            }
-            d.inventory_capacity = pv["inventory_capacity"].get<int>();
-            if(d.inventory_capacity < 0) {
-                throw std::runtime_error(std::string(ctx)
-                                         + "\"inventory_capacity\" must be >= 0");
-            }
+        d.inventory_capacity = optInt(pv, "inventory_capacity", d.inventory_capacity, ctx);
+        if(d.inventory_capacity < 0) {
+            throw std::runtime_error(std::string(ctx)
+                                     + "\"inventory_capacity\" must be >= 0 (slots)");
         }
 
         if(pv.contains("experiment_family")) {
@@ -529,12 +547,11 @@ PartsCatalog load_parts_catalog(const char *path) {
         }
         if(d.docking_port) { d.fuel_barrier = true; }
 
-        // omitted -> -1 = the physics default
+        /* hull_margin is a distance, and its ABSENT form is the sentinel -1 ("use
+           the physics default"). So the range check stays inside the presence test:
+           -1 is the field's default, not an author's number. */
         if(pv.contains("hull_margin")) {
-            if(!pv["hull_margin"].is_number()) {
-                throw std::runtime_error(ctx + "\"hull_margin\" must be a number (m)");
-            }
-            d.hull_margin = pv["hull_margin"].get<double>();
+            d.hull_margin = optNumber(pv, "hull_margin", d.hull_margin, ctx, "m");
             if(d.hull_margin < 0.0) {
                 throw std::runtime_error(std::string(ctx)
                                          + "\"hull_margin\" must be >= 0 (m)");
@@ -567,7 +584,7 @@ PartsCatalog load_parts_catalog(const char *path) {
         }
         d.cl = optNumber(pv, "cl", 0.0, ctx, "per rad");
         if(d.cl < 0.0) {
-            throw std::runtime_error(ctx + "\"cl\" must be >= 0");
+            throw std::runtime_error(ctx + "\"cl\" must be >= 0 (per rad)");
         }
         d.stall_angle = optNumber(pv, "stall_angle", 0.0, ctx, "rad");
         if(d.stall_angle < 0.0) {
@@ -588,7 +605,7 @@ PartsCatalog load_parts_catalog(const char *path) {
         }
         d.cl_control = optNumber(pv, "cl_control", 0.0, ctx, "per rad");
         if(d.cl_control < 0.0) {
-            throw std::runtime_error(ctx + "\"cl_control\" must be >= 0");
+            throw std::runtime_error(ctx + "\"cl_control\" must be >= 0 (per rad)");
         }
         d.max_deflection = optNumber(pv, "max_deflection", 0.0, ctx, "rad");
         if(d.max_deflection < 0.0) {
@@ -726,14 +743,13 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
     def.controller = -1;
     def.hull_margin = -1.0;
     if(doc.contains("hull_margin")) {
-        if(!doc["hull_margin"].is_number()) {
-            throw std::runtime_error(std::string("ship: \"hull_margin\" in ") + path
-                                     + " must be a number (m)");
-        }
-        def.hull_margin = doc["hull_margin"].get<double>();
+        /* Ship-level fields keep the "<thing> in <file> must be" wording they have
+           always had; only the read goes through the shared helper, so a string
+           answers with its type instead of nlohmann's unnamed type_error. */
+        const std::string what = std::string("ship: \"hull_margin\" in ") + path;
+        def.hull_margin = wantNumber(doc.at("hull_margin"), what, "m");
         if(def.hull_margin < 0.0) {
-            throw std::runtime_error(std::string("ship: \"hull_margin\" in ") + path
-                                     + " must be >= 0 (m)");
+            throw std::runtime_error(what + " must be >= 0 (m)");
         }
     }
     /* "attitude": {"pitch": deg, "yaw": deg} -- a pad-only tilt (ShipDef).
@@ -807,9 +823,14 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
             n++;
             sp.id = sp.part + "_" + std::to_string(n);
         }
+        /* The prefix every field of this entry quotes (#496), named the way this
+           loader names a bad part and built once per entry. Every throw in this loop
+           below uses it: re-spelling "ship: part '...' in <file>: " at fifteen sites
+           is fifteen chances for the wording to drift; the #496 review found two
+           spellings of it inside one entry. */
+        const std::string pctx = std::string("ship: part '") + sp.id + "' in " + path + ": ";
         if(idToIndex.count(sp.id)) {
-            throw std::runtime_error(std::string("ship: duplicate part id '") + sp.id
-                                     + "' in " + path);
+            throw std::runtime_error(pctx + "duplicate part id");
         }
 
         /* The parent must already be defined: construction order is the one rule
@@ -817,14 +838,14 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
         sp.parent = (i > 0) ? (int)(i - 1) : -1;
         if(pv.contains("parent")) {
             if(!pv["parent"].is_string()) {
-                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                         + ": \"parent\" must be a part id (string)");
+                throw std::runtime_error(pctx
+                                         + "\"parent\" must be a part id (string)");
             }
             std::string pid = pv["parent"].get<std::string>();
             std::map<std::string, size_t>::iterator it = idToIndex.find(pid);
             if(it == idToIndex.end()) {
-                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                         + ": parent '" + pid + "' is not defined before it");
+                throw std::runtime_error(pctx
+                                         + "parent '" + pid + "' is not defined before it");
             }
             sp.parent = (int)it->second;
         }
@@ -844,8 +865,8 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                     ? ("parent '" + pp.id + "' is a fuel link")
                     : ("no \"parent\", so it defaults to the previous entry '" + pp.id
                        + "', which is a fuel link");
-                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                         + ": " + why
+                throw std::runtime_error(pctx
+                                         + why
                                          + " (a fuel link cannot have parts attached)");
             }
         }
@@ -853,33 +874,29 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
         sp.attach = AttachMode::Down;
         if(pv.contains("attach")) {
             if(!pv["attach"].is_string()) {
-                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                         + ": \"attach\" must be a string");
+                throw std::runtime_error(pctx
+                                         + "\"attach\" must be a string");
             }
             std::string m = pv["attach"].get<std::string>();
             if(m == "down") { sp.attach = AttachMode::Down; }
             else if(m == "up") { sp.attach = AttachMode::Up; }
             else if(m == "surface") { sp.attach = AttachMode::Surface; }
             else {
-                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                         + ": \"attach\" must be 'down', 'up', or 'surface' (got '"
+                throw std::runtime_error(pctx
+                                         + "\"attach\" must be 'down', 'up', or 'surface' (got '"
                                          + m + "')");
             }
         }
-
-        /* The prefix every number in this entry quotes (#496), named the way the
-           rest of this loader names a bad part, and built once per entry. */
-        const std::string pctx = "ship: part '" + sp.id + "' in " + path + ": ";
         sp.angle = optNumber(pv, "angle", 0.0, pctx, "deg");
         if(!std::isfinite(sp.angle)) {
-            throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                     + ": \"angle\" must be a finite number of degrees");
+            throw std::runtime_error(pctx
+                                     + "\"angle\" must be a finite number of degrees");
         }
 
         sp.offset = optNumber(pv, "offset", 0.0, pctx, "m");
         if(sp.offset < 0.0) {
-            throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                     + ": \"offset\" must be >= 0 (m)");
+            throw std::runtime_error(pctx
+                                     + "\"offset\" must be >= 0 (m)");
         }
 
         /* Node ids and contacts are validated here so a typo is a load error,
@@ -890,26 +907,24 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
         sp.contactPoint  = glm::dvec3(0.0);
         sp.contactNormal = glm::dvec3(0.0);
         if(!sp.isFuelLink() && sp.parent >= 0) {
-            const std::string ectx = std::string("ship: part '") + sp.id + "' in "
-                                     + path + ": ";
             const ShipPart &pp = def.parts[(size_t)sp.parent];
             if(sp.isStackEdge()) {
                 const bool down = (sp.attach == AttachMode::Down);
                 if(sp.parentNode.empty()) { sp.parentNode = down ? "bottom" : "top"; }
                 if(sp.childNode.empty())  { sp.childNode  = down ? "top" : "bottom"; }
                 if(pp.def && !pp.def->findNode(sp.parentNode)) {
-                    throw std::runtime_error(ectx + "parentNode '" + sp.parentNode
+                    throw std::runtime_error(pctx + "parentNode '" + sp.parentNode
                                              + "' is not a node of parent part '" + pp.part + "'");
                 }
                 if(!sp.def->findNode(sp.childNode)) {
-                    throw std::runtime_error(ectx + "childNode '" + sp.childNode
+                    throw std::runtime_error(pctx + "childNode '" + sp.childNode
                                              + "' is not a node of part '" + sp.part + "'");
                 }
             }
             else if(sp.isSurfaceEdge()) {
                 if(pv.contains("point") || pv.contains("normal")) {
-                    sp.contactPoint  = parse_vec3(pv, "point",  ectx);
-                    sp.contactNormal = parse_vec3(pv, "normal", ectx);
+                    sp.contactPoint  = parse_vec3(pv, "point",  pctx);
+                    sp.contactNormal = parse_vec3(pv, "normal", pctx);
                 } else {
                     /* The "angle" shorthand is a CLOCK ANGLE about the parent's
                        stack axis, so it needs the parent's cross-section at that
@@ -935,7 +950,7 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                     double hx, hy;
                     pp.def->meshHalfSpan(hx, hy);
                     if(hx <= 0.0 && hy <= 0.0) {
-                        throw std::runtime_error(ectx + "cannot attach '" + sp.part
+                        throw std::runtime_error(pctx + "cannot attach '" + sp.part
                                                  + "' to parent '" + pp.id + "' ('" + pp.part
                                                  + "'): its mesh has no cross-section to bolt onto"
                                                  + " (use \"point\"/\"normal\" to place the contact)");
@@ -947,7 +962,7 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                        quietly planted a part beside the ship instead of on it. */
                     const double hz = pp.def->meshHalfLength();
                     if(std::fabs(z) > hz) {
-                        throw std::runtime_error(ectx + "surface \"z\" " + std::to_string(z)
+                        throw std::runtime_error(pctx + "surface \"z\" " + std::to_string(z)
                                                  + " is off the end of parent '" + pp.id + "': "
                                                  + pp.part + "' spans z " + std::to_string(-hz)
                                                  + " to " + std::to_string(hz)
@@ -958,27 +973,38 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                 if(!(nl > 1e-9)) {
                     // NaN-safe: `nl < 1e-9` is false for a NaN normal, which
                     // would otherwise ride into the pose solve.
-                    throw std::runtime_error(ectx + "surface contact normal must be non-zero");
+                    throw std::runtime_error(pctx + "surface contact normal must be non-zero");
                 }
                 sp.contactNormal /= nl;
                 if(sp.childNode.empty()) {
                     const Node *srf = sp.def->findSurfaceNode();
                     if(srf == nullptr) {
-                        throw std::runtime_error(ectx + "part '" + sp.part
+                        throw std::runtime_error(pctx + "part '" + sp.part
                                                  + "' has no surface node to attach with");
                     }
                     sp.childNode = srf->id;
                 } else if(!sp.def->findNode(sp.childNode)) {
-                    throw std::runtime_error(ectx + "childNode '" + sp.childNode
+                    throw std::runtime_error(pctx + "childNode '" + sp.childNode
                                              + "' is not a node of part '" + sp.part + "'");
                 }
             }
         }
 
+        /* Stage numbers count down from launch, so they are small. The ceiling is a
+           cost bound, not a physics one: computeStaging walks every stage index from
+           the maximum down and scans the engine list at each (staging.cpp:521),
+           measured at ~30 ns per index -- so a million-stage typo costs 0.03 s every
+           time the Staging window recomputes, and again on every load of a save that
+           holds one (#496 review). The VAB stage box and validateShipParts apply the
+           same ceiling so nothing can create what this refuses. */
         sp.stage = optInt(pv, "stage", 1, pctx);
         if(sp.stage < 1) {
-            throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                     + ": \"stage\" must be >= 1");
+            throw std::runtime_error(pctx
+                                     + "\"stage\" must be >= 1 (stages count down from launch)");
+        }
+        if(sp.stage > kMaxStage) {
+            throw std::runtime_error(pctx + "\"stage\" must be <= " + std::to_string(kMaxStage)
+                                     + " (the staging pass walks every index up to it)");
         }
 
         /* TRIM (#492), degrees of standing control-surface deflection. Rejected
@@ -987,29 +1013,18 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
            feature being broken. Rejected past the part's own travel for the same
            reason -- the law could clamp it, but an author who wrote 90 into a 20 deg
            surface wrote the wrong number. */
-        sp.trim = 0.0;
-        if(pv.contains("trim")) {
-            /* Read by hand rather than pv.value("trim", 0.0): a value that is not a
-               number throws nlohmann's type_error, which the top-level handlers do
-               catch but whose message names no field. Same shape as the "geom" read
-               in save.h -- refuse loudly with the field's name. */
-            if(!pv["trim"].is_number()) {
-                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                         + ": \"trim\" must be a number of degrees");
-            }
-            sp.trim = pv["trim"].get<double>();
-        }
+        sp.trim = optNumber(pv, "trim", 0.0, pctx, "deg");
         if(!std::isfinite(sp.trim)) {
             // The JSON parser already refuses a literal it cannot represent as a
             // number, so this only bites if a value starts arriving from somewhere
             // else. Cheap, and a NaN would sail through the fabs() test below.
-            throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                     + ": \"trim\" must be a finite number of degrees");
+            throw std::runtime_error(pctx
+                                     + "\"trim\" must be a finite number of degrees");
         }
         if(sp.trim != 0.0) {
             if(sp.def == nullptr || !sp.def->isControlSurface()) {
-                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                         + ": \"trim\" needs a control surface"
+                throw std::runtime_error(pctx
+                                         + "\"trim\" needs a control surface"
                                          + " (a part with control_area and max_deflection)");
             }
             const double limit = glm::degrees(sp.def->max_deflection);
@@ -1019,8 +1034,8 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                 char got[32], lim[32];
                 snprintf(got, sizeof got, "%.2f", sp.trim);
                 snprintf(lim, sizeof lim, "%.2f", limit);
-                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                         + ": \"trim\" " + got + " deg exceeds this part's "
+                throw std::runtime_error(pctx
+                                         + "\"trim\" " + got + " deg exceeds this part's "
                                          + lim + " deg of travel");
             }
         }
@@ -1031,16 +1046,16 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
             sp.from = pv.value("from", std::string(""));
             sp.to = pv.value("to", std::string(""));
             if(sp.from.empty() || sp.to.empty()) {
-                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                         + ": a fuel link needs \"from\" and \"to\"");
+                throw std::runtime_error(pctx
+                                         + "a fuel link needs \"from\" and \"to\"");
             }
             if(sp.from == sp.to) {
-                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                         + ": a fuel link's \"from\" and \"to\" must differ");
+                throw std::runtime_error(pctx
+                                         + "a fuel link's \"from\" and \"to\" must differ");
             }
             if(sp.from == sp.id || sp.to == sp.id) {
-                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                         + ": a fuel link cannot reference itself");
+                throw std::runtime_error(pctx
+                                         + "a fuel link cannot reference itself");
             }
         }
 

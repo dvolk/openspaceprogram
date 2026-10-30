@@ -2246,14 +2246,36 @@ int main() {
             { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", "
               "\"angle\": \"up\" } ] }",
               "part 'c' in /tmp/test_shipload_numfield.json: \"angle\" must be a number (deg)" },
+            // The needles below quote the whole prefix on purpose. An earlier draft
+            // matched only the tail, so a message that had lost the part id or the
+            // file -- the very thing this fix is about -- still passed.
             { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\" }, "
               "{ \"part\": \"elevator_r0.8h0.7\", \"id\": \"e\", \"parent\": \"c\", "
               "\"attach\": \"surface\", \"angle\": 0, \"roll\": \"90\" } ] }",
-              "\"roll\" must be a number (deg)" },
+              "part 'e' in /tmp/test_shipload_numfield.json: \"roll\" must be a number (deg)" },
+            { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", \"trim\": \"up\" } ] }",
+              "part 'c' in /tmp/test_shipload_numfield.json: \"trim\" must be a number (deg)" },
             { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", \"stage\": \"2\" } ] }",
-              "\"stage\" must be a whole number" },
+              "part 'c' in /tmp/test_shipload_numfield.json: \"stage\" must be a whole number" },
             { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", \"stage\": 1.5 } ] }",
-              "\"stage\" must be a whole number" },
+              "part 'c' in /tmp/test_shipload_numfield.json: \"stage\" must be a whole number" },
+            /* A count that does not fit an int used to WRAP silently: nlohmann calls
+               it an integer, isWhole() agreed on the type alone, and the narrowing
+               cast handed back a value that then passed every >= test below it. The
+               int window is now part of "whole", checked before the cast. */
+            { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", "
+              "\"stage\": 4294967297 } ] }",
+              "part 'c' in /tmp/test_shipload_numfield.json: \"stage\" must be a whole number" },
+            /* And a stage number is bounded, which is a cost ceiling rather than a
+               physics one: computeStaging walks every index from the highest down and
+               scans the engine list at each (staging.cpp:521). */
+            { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", "
+              "\"stage\": 1000000 } ] }",
+              "part 'c' in /tmp/test_shipload_numfield.json: \"stage\" must be <= 10000" },
+            // A SHIP-level number keeps the wording that form has always had,
+            // "<thing> in <file> must be"; it only gained the type it actually got.
+            { "{ \"hull_margin\": \"skin\", \"parts\": [ { \"part\": \"capsule\" } ] }",
+              "ship: \"hull_margin\" in /tmp/test_shipload_numfield.json must be a number (m), got string" },
         };
         for(size_t k = 0; k < sizeof(cases) / sizeof(cases[0]); k++) {
             std::ofstream f(bad);
@@ -2262,23 +2284,72 @@ int main() {
             CHECK(expect_throw_saying([&](){ load_ship_def(bad, cat); }, cases[k].needle));
             std::remove(bad);
         }
-        // The parts catalog gets the same treatment: it names the part by name.
+        /* The parts catalog gets the same treatment: it names the part by name, and
+           now names the FILE too. The ship loader always did; a catalog is commonly
+           split across files, and the #496 review caught the two loaders answering
+           the same typo differently. */
         const struct { const char *body; const char *needle; } catcases[] = {
             { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
               "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": \"2t\" } ] }",
-              "parts: x: \"mass\" must be a number (kg)" },
+              "parts: x in /tmp/test_shipload_numfield.json: \"mass\" must be a number (kg)" },
             { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"wing\", "
               "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
               "\"lift_area\": \"4\" } ] }",
-              "parts: x: \"lift_area\" must be a number (m^2)" },
+              "parts: x in /tmp/test_shipload_numfield.json: \"lift_area\" must be a number (m^2)" },
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"wing\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"radius\": \"wide\" } ] }",
+              "parts: x in /tmp/test_shipload_numfield.json: \"radius\" must be a number (m)" },
             { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"engine\", "
               "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
               "\"propellant\": { \"jetfuel\": \"lots\" } } ] }",
-              "\"propellant\" rate for 'jetfuel' must be a number (kg/s)" },
+              "parts: x in /tmp/test_shipload_numfield.json: \"propellant\" rate for "
+              "'jetfuel' must be a number (kg/s)" },
+            // A negative flow names WHICH propellant: a flow block holds several and
+            // only one of them has the stray minus.
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"engine\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"propellant\": { \"hydrogen\": -2, \"lox\": 1 }, "
+              "\"exhaust_velocity\": 3000 } ] }",
+              "parts: x in /tmp/test_shipload_numfield.json: \"propellant\" rate for "
+              "'hydrogen' must be >= 0 (kg/s)" },
+            /* A tank used to take any number at all, including a negative one: it
+               cancelled a neighbour in the total > 0 test below it and then handed the
+               flow solver a negative ceiling. */
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"capacity\": { \"hydrogen\": \"full\" } } ] }",
+              "parts: x in /tmp/test_shipload_numfield.json: \"capacity\" for "
+              "'hydrogen' must be a number (kg)" },
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"capacity\": { \"hydrogen\": 100, \"water\": -100 } } ] }",
+              "parts: x in /tmp/test_shipload_numfield.json: \"capacity\" for "
+              "'water' must be >= 0 (kg)" },
             { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
               "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
               "\"crew_capacity\": 1.5 } ] }",
-              "\"crew_capacity\" must be a whole number" },
+              "parts: x in /tmp/test_shipload_numfield.json: \"crew_capacity\" must be a whole number" },
+            // 2^32 seats used to load as no seats at all.
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"crew_capacity\": 4294967296 } ] }",
+              "parts: x in /tmp/test_shipload_numfield.json: \"crew_capacity\" must be a whole number" },
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"inventory_capacity\": 2.5 } ] }",
+              "parts: x in /tmp/test_shipload_numfield.json: \"inventory_capacity\" must be a whole number" },
+            /* hull_margin keeps a hand-shaped read for a reason: its ABSENT form is
+               the sentinel -1 ("use the physics default"), so the >= 0 rule applies
+               only to a distance the author actually wrote. */
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"hull_margin\": \"skin\" } ] }",
+              "parts: x in /tmp/test_shipload_numfield.json: \"hull_margin\" must be a number (m)" },
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"hull_margin\": -0.5 } ] }",
+              "parts: x in /tmp/test_shipload_numfield.json: \"hull_margin\" must be >= 0 (m)" },
         };
         for(size_t k = 0; k < sizeof(catcases) / sizeof(catcases[0]); k++) {
             std::ofstream f(bad);

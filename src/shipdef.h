@@ -19,6 +19,13 @@
    GL-free, so the parse/validate path is unit-testable headless. Behavior is
    field-driven (optional-field presence, not the type label). */
 
+/* The largest stage number a ship file or a save may ask for. Not a physics limit:
+   computeStaging walks every stage index from the highest down and scans the engine
+   list at each one (staging.cpp:521), so a typo like 1e6 makes the Staging window
+   pause on every edit -- and a save holding one pauses every load. The VAB stage box
+   clamps to this so the editor cannot create what the loader refuses. */
+inline constexpr int kMaxStage = 10000;
+
 enum class ResourceType {
     Hydrogen,
     LOX,

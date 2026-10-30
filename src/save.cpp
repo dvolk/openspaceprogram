@@ -653,6 +653,14 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
             return "load: saved ship '" + s.name + "' has two parts with uid "
                    + std::to_string(sp.uid);
         }
+        /* A hand-edited stage of a million is not a design decision, it is a
+           multiplier on the staging pass (computeStaging walks every index from the
+           highest down, staging.cpp:521), and the load would succeed before anything
+           noticed. Same ceiling as the ship-def loader and the VAB stage box. */
+        if(sp.stage < 1 || sp.stage > kMaxStage) {
+            return "load: saved ship '" + s.name + "' part '" + sp.id + "' has \"stage\" "
+                   + std::to_string(sp.stage) + ", outside 1.." + std::to_string(kMaxStage);
+        }
         const PartDef *spd = cat.find(sp.part);
         if(spd == nullptr) {
             return "load: saved ship '" + s.name + "' has a part '" + sp.part
