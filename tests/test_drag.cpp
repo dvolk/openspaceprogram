@@ -14,6 +14,7 @@
 // Build & run (from repo root) -- also part of `make test`:
 //   see the test: rule in the Makefile.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -1954,6 +1955,141 @@ static void test_unionArea() {
    part's silhouette on the origin and charges a spread ship one part's worth of
    air. This lives in drag.h rather than vehicle.cpp precisely so the ship's
    projection is the one being pinned. */
+
+/* #512: cp's arm must be where the AREA is. The ship projects each part's hull
+   into one shared flow plane; the centroid of that polygon is where the part's
+   drag pushes, and its distance from the part's MOUNT is the error the law used
+   to make. These pins are the parts of that answer: the centroid helper, the
+   offset, and the two properties the call site leans on (a centred hull is
+   exactly zero, and the offset does not care where the part is bolted). */
+static void test_cp_silhouette() {
+    printf("== cp: the arm is the silhouette, not the mount (#512) ==\n");
+
+    // The centroid helper, on shapes whose centroid is known by hand.
+    {
+        glm::dvec2 c(99.0, 99.0);
+        polygonCentroid2(rect(-1.0, -1.0, 1.0, 1.0), c);
+        CHECK_TRUE(std::fabs(c.x) < 1e-15 && std::fabs(c.y) < 1e-15,
+                   "a square's centroid is its centre");
+        // Winding must not matter (polygonArea2 is symmetric in winding).
+        std::vector<glm::dvec2> cw = rect(0.0, 0.0, 2.0, 4.0);
+        std::reverse(cw.begin(), cw.end());
+        polygonCentroid2(cw, c);
+        CHECK_NEAR(c.x, 1.0, 1e-15, "a 2x4 bar's centroid x, clockwise ring");
+        CHECK_NEAR(c.y, 2.0, 1e-15, "a 2x4 bar's centroid y, clockwise ring");
+        // A triangle: the vertex mean, which no vertex-average-of-a-quad is.
+        polygonCentroid2({ glm::dvec2(0, 0), glm::dvec2(3, 0), glm::dvec2(0, 3) }, c);
+        CHECK_NEAR(c.x, 1.0, 1e-15, "a triangle's centroid is the vertex mean (x)");
+        CHECK_NEAR(c.y, 1.0, 1e-15, "a triangle's centroid is the vertex mean (y)");
+        // Degenerate rings leave the caller's value alone, so the call site can
+        // seed it with the mount and get a zero offset for free.
+        c = glm::dvec2(7.0, -3.0);
+        polygonCentroid2({ glm::dvec2(0, 0), glm::dvec2(1, 0), glm::dvec2(2, 0) }, c);
+        CHECK_TRUE(c.x == 7.0 && c.y == -3.0, "a collinear ring leaves the seed alone");
+        polygonCentroid2({ glm::dvec2(0, 0), glm::dvec2(1, 0) }, c);
+        CHECK_TRUE(c.x == 7.0 && c.y == -3.0, "and so does a two-point ring");
+    }
+
+    /* A cone seen broadside: the silhouette is a triangle whose centroid sits a
+       third of the length back from the apex, so a part whose hull is a cone (a
+       capsule, a nose cone, an engine bell) has its whole drag a third of its
+       length off the bolt that holds it. Worked out by hand: hull apex at z=+1,
+       base ring r=1 at z=-1, flow along +x. flowPlane(+x) gives u=+z, w=-y, so
+       the projected triangle is (1,0) (-1,-1) (-1,+1) with centroid (-1/3, 0). */
+    {
+        std::vector<glm::dvec3> cone;
+        cone.push_back(glm::dvec3(0.0, 0.0, 1.0));
+        for(int i = 0; i < 16; i++) {
+            const double th = 2.0 * M_PI * i / 16.0;
+            cone.push_back(glm::dvec3(std::cos(th), std::sin(th), -1.0));
+        }
+        const glm::dvec3 flow(1.0, 0.0, 0.0);
+        const FlowPlane pl = flowPlane(flow);
+        CHECK_TRUE(pl.valid, "a broadside flow has a plane");
+        CHECK_NEAR(glm::dot(pl.u, glm::dvec3(0, 0, 1)), 1.0, 1e-12, "its u runs with +z");
+        CHECK_NEAR(glm::dot(pl.w, glm::dvec3(0, -1, 0)), 1.0, 1e-12, "and its w with -y");
+        std::vector<glm::dvec2> poly;
+        projectPartHull(cone, glm::dmat3(1.0), glm::dvec3(0.0), pl, poly);
+        CHECK_TRUE(polygonArea2(poly) > 0.0, "the cone does project to an area");
+        const glm::dvec2 off = silhouetteCpOffset2(poly, glm::dvec2(0.0));
+        CHECK_NEAR(off.x, -1.0 / 3.0, 1e-12, "a cone's area sits 1/3 of its length"
+                                           " toward the base, not at the mount");
+        CHECK_TRUE(std::fabs(off.y) < 1e-15,
+                   "and does not lean across for a symmetric cone");
+        const glm::dvec3 off3 = off.x * pl.u + off.y * pl.w;
+        CHECK_TRUE(std::fabs(glm::dot(off3, flow)) < 1e-15,
+                   "the offset lies IN the flow plane: a projection cannot say where"
+                   " along its own normal the area sits, so the cp keeps the mount there");
+
+        /* Bolt the same cone 5 m along the flow and 3 m up: the offset is a free
+           vector, so it must come back identical. (Getting this wrong is what makes
+           a per-part centroid tempting to compute against the wrong origin.) */
+        std::vector<glm::dvec2> poly2;
+        projectPartHull(cone, glm::dmat3(1.0), glm::dvec3(0.0, 3.0, 5.0), pl, poly2);
+        const glm::dvec2 m2{glm::dot(glm::dvec3(0.0, 3.0, 5.0), pl.u),
+                            glm::dot(glm::dvec3(0.0, 3.0, 5.0), pl.w)};
+        const glm::dvec2 off2 = silhouetteCpOffset2(poly2, m2);
+        CHECK_NEAR(off2.x, off.x, 1e-12, "the offset does not depend on where the part is");
+        CHECK_NEAR(off2.y, off.y, 1e-12, "the offset does not depend on where the part is (y)");
+    }
+
+    /* A hull centred on its mount is EXACTLY unchanged by this fix, whichever way
+       the flow comes from -- that is why the shipped beds barely move (their wings,
+       rudders and tanks are centred), and it is the property that keeps the change
+       from being a re-tune. Counted over a direction sweep so a mutant that shifts
+       every part a little would fail. */
+    {
+        std::vector<glm::dvec3> box;
+        for(int i = 0; i < 8; i++) {
+            box.push_back(glm::dvec3((i & 1) ? 0.6 : -0.6, (i & 2) ? 2.0 : -2.0,
+                                     (i & 4) ? 1.0 : -1.0));
+        }
+        int dirs = 0, nonzero = 0;
+        for(int az = 0; az <= 178; az += 2) {
+            for(int el = -60; el <= 60; el += 15) {
+                const double a = glm::radians((double)az), e = glm::radians((double)el);
+                const glm::dvec3 v = glm::dvec3(std::sin(a) * std::cos(e), std::sin(e),
+                                                std::cos(a) * std::cos(e));
+                const FlowPlane pl = flowPlane(v);
+                std::vector<glm::dvec2> poly;
+                projectPartHull(box, glm::dmat3(1.0), glm::dvec3(0.0), pl, poly);
+                if(polygonArea2(poly) <= 0.0) { continue; }
+                ++dirs;
+                const glm::dvec2 off = silhouetteCpOffset2(poly, glm::dvec2(0.0));
+                /* Not bit-exact: the plane basis carries irrational components, so a
+                   symmetric hull's two halves cancel to ~1e-16 rather than to zero.
+                   1e-9 on a hull a metre across is eight orders below the error this
+                   fix is about. */
+                if(std::fabs(off.x) > 1e-9 || std::fabs(off.y) > 1e-9) { ++nonzero; }
+            }
+        }
+        CHECK_TRUE(dirs > 300, "the sweep really sampled the sphere");
+        CHECK_TRUE(nonzero == 0, "a hull centred on its mount moves the cp not at all,"
+                                 " in any of those directions");
+    }
+
+    /* And the shape of the bug a builder actually hits: a plate authored at its
+       ROOT (the hull running outboard from the bolt, z 0..8), so its area sits 4 m
+       from the mount. Broadside flow, so the whole span is fore-and-aft. */
+    {
+        std::vector<glm::dvec3> plate;
+        for(int i = 0; i < 8; i++) {
+            plate.push_back(glm::dvec3((i & 1) ? 0.05 : -0.05, (i & 2) ? 1.0 : -1.0,
+                                       (i & 4) ? 8.0 : 0.0));
+        }
+        const glm::dvec3 flow(1.0, 0.0, 0.0);
+        const FlowPlane pl = flowPlane(flow);
+        std::vector<glm::dvec2> poly;
+        projectPartHull(plate, glm::dmat3(1.0), glm::dvec3(0.0), pl, poly);
+        const glm::dvec2 off = silhouetteCpOffset2(poly, glm::dvec2(0.0));
+        CHECK_NEAR(glm::length(off), 4.0, 1e-12,
+                   "a plate authored at its root pushes 4 m from its mount");
+        CHECK_NEAR(glm::dot(off.x * pl.u + off.y * pl.w, glm::dvec3(0, 0, 1)), 4.0, 1e-12,
+                   "and for a broadside flow that is 4 m of weathervane arm, out toward"
+                   " where the plate actually is (z 0..8, bolt at z 0)");
+    }
+}
+
 static void test_partMounts() {
     printf("== projectPartHull: a part's mount position is part of its silhouette ==\n");
 
@@ -2360,6 +2496,8 @@ int main() {
     test_projectedArea();
     printf("\n");
     test_unionArea();
+    printf("\n");
+    test_cp_silhouette();
     printf("\n");
     test_partMounts();
     printf("\n");

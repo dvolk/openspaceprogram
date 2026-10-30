@@ -2367,6 +2367,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         aeroSilParts.reserve(parts.size());
         glm::dvec3 cp(0.0);      // center of pressure (area-weighted centroid)
         double cpArea = 0.0;
+        double cpOffsetSum = 0.0;   // area-weighted mount-to-silhouette offset (audit)
         double cdNum = 0.0;      // sum of (partArea x part cd) for the cd mean
         /* OSP_SHIP_DUMP: one design-audit dump of the whole ship as this pass sees
            it (per-part arm, projected area, cd as it faces the flow), plus the cp
@@ -2377,8 +2378,16 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
            while the header is the compound body's, and SUM projA is the parts' areas
            ADDED while the force below pays on unionA (their union), which on an
            overlapping ship can be half of it. */
-        static bool aeroDump = getenv("OSP_SHIP_DUMP") != nullptr;
-        if(aeroDump) {
+        /* OSP_SHIP_DUMP_BETA moves the dump off the first substep (which is usually
+           a straight-and-level attitude where every hull projects symmetrically and
+           the cp question is invisible) to the first pass at that much sideslip. */
+        static int aeroDump = getenv("OSP_SHIP_DUMP") != nullptr ? 1 : 0;   // 1 now, 2 pending, 0 done
+        const double dumpBeta = getenv("OSP_SHIP_DUMP_BETA")
+            ? atof(getenv("OSP_SHIP_DUMP_BETA")) : 0.0;
+        if(aeroDump == 2 && std::fabs(fr.beta * 180 / M_PI) >= dumpBeta) { aeroDump = 1; }
+        else if(aeroDump == 1 && dumpBeta > 0.0
+                && std::fabs(fr.beta * 180 / M_PI) < dumpBeta) { aeroDump = 2; }
+        if(aeroDump == 1) {
             printf("[ship] compound mass %.1f  vrel %.1f m/s  alpha %.1f  beta %.1f  alt %.0f\n",
                    hull->mass, glm::length(vrel), alpha * 180 / M_PI,
                    fr.beta * 180 / M_PI, alt);
@@ -2393,7 +2402,15 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             std::vector<glm::dvec2> &poly = aeroSilParts.back();
             projectPartHull(p->body->hullVerts, p->localRot, p->localPos, plS, poly);
             const double a = polygonArea2(poly);
-            cp += a * partPosS(p);
+            /* #512: the arm is where the AREA is, not where the part is bolted on.
+               cpSil2 is the part's own projected centroid in the ship-local flow
+               plane, mount2 the same mount projected into it; their difference is a
+               ship-local free vector, so it needs sRot to join the S-frame point. */
+            const glm::dvec2 mount2{glm::dot(p->localPos, plS.u),
+                                    glm::dot(p->localPos, plS.w)};
+            const glm::dvec2 cpSil2 = silhouetteCpOffset2(poly, mount2);
+            if(aeroDump == 1) { cpOffsetSum += a * glm::length(cpSil2); }   // sqrt: audit only
+            cp += a * (partPosS(p) + sRot * (cpSil2.x * plS.u + cpSil2.y * plS.w));
             cpArea += a;
             // cd AS IT FACES THE FLOW (partCd): localRot[2] is the part's nose in S
             // and sRot preserves dots.
@@ -2405,14 +2422,22 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                             p->def->drag_backward, c);
                 if(cd > 0.0) { cdNum += a * cd; }
             }
-            if(aeroDump) {   // throwaway design audit: arms in SHIP axes, from the COM
+            if(aeroDump == 1) {   // throwaway design audit: arms in SHIP axes, from the COM
                 const glm::dvec3 r = partPosS(p) - com;
+                /* #512: cpOff is how far this part's AREA sits from the bolt that
+                   holds it -- the cp's arm per part. Zero means the hull is centred
+                   on its mount and the mount says something; a third of a metre or
+                   more means the mount is not where the drag pushes. */
+                const glm::dvec3 offS = sRot * (cpSil2.x * plS.u + cpSil2.y * plS.w);
                 printf("[ship] %-16s m %7.1f fwd %6.2f right %6.2f up %6.2f"
-                       " projA %5.2f cd %.2f liftA %.2f ctrlA %.2f noseDot %5.2f\n",
+                       " projA %5.2f cd %.2f liftA %.2f ctrlA %.2f noseDot %5.2f"
+                       " cpOff %5.2f (f %6.2f r %6.2f u %6.2f)\n",
                        p->def ? p->def->name.c_str() : "?", p->effectiveMass(),
                        glm::dot(r, nose), glm::dot(r, right), glm::dot(r, up), a, cd,
                        p->def ? p->def->lift_area : 0.0, p->def ? p->def->control_area : 0.0,
-                       p->def ? glm::dot(p->localRot[2], vhatS) : 0.0);
+                       p->def ? glm::dot(p->localRot[2], vhatS) : 0.0,
+                       glm::length(offS),
+                       glm::dot(offS, nose), glm::dot(offS, right), glm::dot(offS, up));
             }
         }
         /* The ship's silhouette: the union of those polygons, cached per flow
@@ -2452,9 +2477,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         if(cpArea > 0.0) { cp /= cpArea; }
         else { cp = com; }  // degenerate: no per-part area -> act through the COM
         lastCpLever = glm::dot(cp - com, nose);   // + = cp ahead: AoA push diverges
-        if(aeroDump) {
-            aeroDump = false;
+        if(aeroDump == 1) {
+            aeroDump = 0;
             const glm::dvec3 rc = cp - com;
+            printf("[ship] cp mount->silhouette offset, area-weighted: %.3f m of %.2f m2\n",
+                   cpArea > 0.0 ? cpOffsetSum / cpArea : 0.0, cpArea);
             printf("[ship] SUM projA %.2f  unionA %.2f  cp fwd %.2f right %.2f up %.2f  cd %.2f\n",
                    cpArea, A_ship, glm::dot(rc, nose), glm::dot(rc, right), glm::dot(rc, up),
                    lastDragCd);

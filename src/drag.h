@@ -467,6 +467,43 @@ inline double polygonArea2(const std::vector<glm::dvec2> &poly) {
     return 0.5 * std::fabs(a);
 }
 
+/* The centroid of a simple polygon, either winding, from the same shoelace sum
+   as polygonArea2. Exact for a polygon (not a sample), and degenerate for a
+   collinear or too-few-vertex ring, where `c` is left as passed in. */
+inline void polygonCentroid2(const std::vector<glm::dvec2> &poly, glm::dvec2 &c) {
+    if(poly.size() < 3) { return; }
+    double a2 = 0.0, mx = 0.0, my = 0.0;
+    for(size_t i = 0; i < poly.size(); i++) {
+        const size_t j = (i + 1) % poly.size();
+        const double cr = poly[i].x * poly[j].y - poly[j].x * poly[i].y;
+        a2 += cr;
+        mx += (poly[i].x + poly[j].x) * cr;
+        my += (poly[i].y + poly[j].y) * cr;
+    }
+    if(a2 == 0.0) { return; }
+    c = glm::dvec2(mx, my) / (3.0 * a2);
+}
+
+/* WHERE a part's drag actually pushes, relative to its own mount: the projected
+   silhouette's centroid minus the mount's own position IN THE SAME PLANE, so the
+   answer is a free 2-D vector in the shared flow plane (#512). A part's mount
+   says nothing about where its silhouette is: a hull that is not centred on its
+   mount (a cone+cylinder capsule seen broadside, a plate authored at its root)
+   has its area a long way off the mount, and a ship built out of them gets a
+   weathervane arm that is simply wrong. Exactly zero for a hull centred on its
+   mount -- which is most shipped parts, and is why the shipped beds do not move
+   -- and zero for a degenerate polygon, where polygonCentroid2 leaves the mount
+   where it was. Multiply by the plane basis and rotate by the ship's rotation to
+   get a 3-D offset; the component along the FLOW stays with the mount, because a
+   projection cannot say where along its own normal the area sits. */
+inline glm::dvec2 silhouetteCpOffset2(const std::vector<glm::dvec2> &poly,
+                                      const glm::dvec2 &mount2) {
+    if(poly.size() < 3) { return glm::dvec2(0.0); }
+    glm::dvec2 c = mount2;
+    polygonCentroid2(poly, c);
+    return c - mount2;
+}
+
 /* The projected (silhouette) area of ONE body seen along `dir`, from its CONVEX
    HULL vertices. */
 inline double projectedArea(const std::vector<glm::dvec3> &hullVerts,
