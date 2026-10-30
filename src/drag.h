@@ -880,12 +880,23 @@ inline double jetThrust(double v, double rho, double rho_sea,
    torque is ri x F, so a tail (behind the CG) and a canard (ahead) need OPPOSITE
    deflections for the same torque; this matches the reaction wheel's convention
    either way. `targetSign` is the SIGN of the wheel's torque about that axis for a
-   positive stick (pitch/yaw = -1, roll = +1). */
+   positive stick (pitch/yaw = -1, roll = +1).
+   `pushDir` is the direction the surface would push AT ZERO ANGLE OF ATTACK -- its own
+   plate normal (partAero's liftDir with the flow along the chord), NOT its live
+   liftDir. The rigging is a build fact: a canard and a tail, or a mirrored pair, need
+   opposite travel, and the flow does not get a vote (#495). Hand it the live direction
+   and the leverage below can change sign mid-flight -- which reverses the force by
+   180 deg at whatever q the ship is flying, and keeps promising the stick a torque
+   about an axis the surface has no authority over at that instant. A plain centreline
+   fin never gets there (its leverage only touches zero at dead broadside, the one flow
+   partAero already refuses); an off-centre or swept mount crosses it with the flow
+   still attached, which is what tests/test_drag.cpp::test_control_sign_is_rigging
+   pins. */
 inline double controlDeflectionSign(const glm::dvec3 &ri,
-                                    const glm::dvec3 &forceDir,
+                                    const glm::dvec3 &pushDir,
                                     const glm::dvec3 &aboutAxis,
                                     double targetSign = -1.0) {
-    const double d = glm::dot(glm::cross(ri, forceDir), aboutAxis);
+    const double d = glm::dot(glm::cross(ri, pushDir), aboutAxis);
     return (d >= 0.0) ? targetSign : -targetSign;
 }
 

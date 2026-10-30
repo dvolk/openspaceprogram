@@ -1084,7 +1084,11 @@ static void test_control_pair_frames() {
     const auto drive = [&](const glm::dmat3 &mount, const glm::dvec3 &ri,
                            const glm::dvec3 &aboutAxis) {
         const PartAero pa = partAero(mount, vrel);
-        const double sign = controlDeflectionSign(ri, pa.liftDir, aboutAxis, -1.0);
+        /* The sign comes from the mount's own normal, not from pa.liftDir (#495):
+           the rigging is a build fact and the flow does not get a vote. At this
+           dead-ahead flow the two are the same vector, so the pins below are
+           unchanged; test_control_sign_is_rigging covers the difference. */
+        const double sign = controlDeflectionSign(ri, mount[1], aboutAxis, -1.0);
         const double defl = pa.valid ? sign * stick * maxDefl : 0.0;
         return Surf{ defl, controlForce(q, S, clc, defl, pa.liftDir, A) };
     };
@@ -1128,6 +1132,114 @@ static void test_control_pair_frames() {
     const Surf sB2 = drive(mDn, riDn, mDn[1]);
     CHECK_TRUE(sB1.F == -sB2.F, "part-axis sign: the pair CANCELS");
     CHECK_TRUE(glm::length(sB1.F + sB2.F) < 1e-12, "part-axis sign: zero yaw authority");
+}
+
+/* WHICH WAY A SURFACE IS RIGGED is a build fact, not a flow fact (#495). The
+   deflection sign used to be re-decided every substep from partAero's LIVE
+   liftDir, so the wind got a vote on the pushrod. Pin the replacement: ask the
+   same question of the mount's own normal (the direction the plate pushes at
+   zero angle of attack) and it stops moving at all.
+   The two rules agree everywhere the shipped airframes actually fly -- measured
+   over eight beds and ~150k actuated-surface rows, and their [drag] logs are
+   byte-identical either way -- so this test exists for the disagreement, which
+   is a mount the shipped set does not use: a fin off the centreline. Its yaw
+   leverage (-3*liftDir.x + liftDir.z for the mount below) crosses zero with the
+   flow still attached and the leverage clearly non-zero on both sides. There the
+   old rule reversed the sign, and with it the FULL control force, mid-maneuver
+   and at whatever q the ship was flying; the rigging rule turns the force with
+   the flow and lets the moment pass through zero on its own.
+   (Those flow angles put the plate far past its own stall, which is a separate
+   problem in the same corner -- controlForce answers deflection alone and so
+   bills a broadside surface its full q*S*cl*defl -- filed as #508.) */
+static void test_control_sign_is_rigging() {
+    printf("== control sign: the rigging, not the flow (#495) ==\n");
+    const glm::dvec3 up(0,1,0);
+    /* The shipped rudder pose: span along the ship's up, plate normal along
+       -right, chord along +nose -- a vertical fin, clock 90. */
+    const glm::dmat3 fin(glm::dvec3(0,1,0), glm::dvec3(-1,0,0), glm::dvec3(0,0,1));
+
+    const auto liveLev = [&](const glm::dvec3 &ri, const glm::dvec3 &vrel) {
+        return glm::dot(glm::cross(ri, partAero(fin, vrel).liftDir), up);
+    };
+    const auto rigLev = [&](const glm::dvec3 &ri) {
+        return glm::dot(glm::cross(ri, fin[1]), up);
+    };
+
+    // Sweep the wind over the fin, dead ahead to straight astern. The mount never
+    // moves, so neither does the answer it is asked.
+    const glm::dvec3 riC(0, 0, -3.0);   // a normal, centreline fin: 3 m behind CG
+    const double rigSign0 = controlDeflectionSign(riC, fin[1], up, -1.0);
+    CHECK_TRUE(std::fabs(rigLev(riC)) > 1.0, "rigged with real yaw authority");
+    for(int deg = 0; deg <= 180; deg += 10) {
+        const double r = glm::radians((double)deg);
+        const glm::dvec3 vrel = 100.0 * glm::dvec3(-std::sin(r), 0.0, std::cos(r));
+        CHECK_TRUE(controlDeflectionSign(riC, fin[1], up, -1.0) == rigSign0,
+                   "rigging sign is the same from every flow direction");
+        /* The live leverage, by contrast, wanders over the same sweep. For THIS
+           mount (a rectangular centreline fin) it only touches zero exactly
+           broadside, and that is the one flow partAero already refuses -- which is
+           precisely why no shipped airframe ever showed the flip. */
+        if(deg == 90) {
+            CHECK_TRUE(std::fabs(liveLev(riC, vrel)) < 1e-12,
+                       "centreline fin: the flow-decided leverage touches zero broadside");
+        } else {
+            CHECK_TRUE(std::fabs(liveLev(riC, vrel)) > 1e-3,
+                       "centreline fin: elsewhere the two rules agree");
+        }
+    }
+
+    // Exactly broadside there is no lift axis at all, so the frame is unusable and
+    // the caller asks for no travel. Still true, and now for the same reason the
+    // force itself is zero rather than because a sign had to be guessed.
+    {
+        const PartAero pa = partAero(fin, glm::dvec3(-100.0, 0.0, 0.0));
+        CHECK_TRUE(!pa.valid, "broadside plate: no usable aero frame");
+        CHECK_TRUE(glm::length(pa.liftDir) == 0.0, "broadside plate: no lift direction");
+    }
+
+    /* The mount the old rule could not keep steady: the same fin 1 m to leeward of
+       the CG (a builder reaching for lever arm). tan(phi) = 3/1 puts the crossing
+       at 71.6 deg of flow angle, with attached flow and clear leverage either
+       side -- 0.63 m then -0.46 m. */
+    const glm::dvec3 riOff(-1.0, 0.0, -3.0);
+    const auto flowAt = [](double deg) {
+        const double r = glm::radians(deg);
+        return 100.0 * glm::dvec3(-std::sin(r), 0.0, std::cos(r));
+    };
+    const double lexB = liveLev(riOff, flowAt(60.0));
+    const double lexA = liveLev(riOff, flowAt(80.0));
+    CHECK_TRUE(lexB > 0.5 && lexA < -0.4, "off-centre fin: its yaw leverage crosses zero");
+    CHECK_TRUE(controlDeflectionSign(riOff, partAero(fin, flowAt(60.0)).liftDir, up, -1.0)
+            != controlDeflectionSign(riOff, partAero(fin, flowAt(80.0)).liftDir, up, -1.0),
+               "flow-decided sign flips across that crossing (the #495 bug)");
+    const double rigSign = controlDeflectionSign(riOff, fin[1], up, -1.0);
+    CHECK_TRUE(rigSign == -1.0, "the rig answers once: this fin is rigged to yaw left");
+    /* And the consequence, not just the sign. With the rigging fixed, a held
+       command keeps its travel and the force turns with the flow, so the yaw
+       moment runs through zero as the leverage does. With the flow deciding, the
+       travel reverses at the same instant, which is why that moment never crosses
+       zero -- it keeps the sign the stick was promised, and the FORCE is what
+       jumps, by its whole magnitude, at whatever q the ship is flying. */
+    const double q = 1000.0, S = 2.0, clc = 6.0, A = 0.26, maxDefl = 0.35;
+    const auto momentRig = [&](double deg) {
+        const PartAero pa = partAero(fin, flowAt(deg));
+        const double sign = controlDeflectionSign(riOff, fin[1], up, -1.0);
+        const glm::dvec3 F = controlForce(q, S, clc, sign * maxDefl, pa.liftDir, A);
+        return glm::dot(glm::cross(riOff, F), up);
+    };
+    const auto momentLive = [&](double deg) {
+        const PartAero pa = partAero(fin, flowAt(deg));
+        const double sign = controlDeflectionSign(riOff, pa.liftDir, up, -1.0);
+        const glm::dvec3 F = controlForce(q, S, clc, sign * maxDefl, pa.liftDir, A);
+        return glm::dot(glm::cross(riOff, F), up);
+    };
+    CHECK_TRUE(momentRig(60.0) < 0.0 && momentRig(80.0) > 0.0,
+               "rigged: the moment reverses with the flow, through zero");
+    CHECK_TRUE(momentLive(60.0) < 0.0 && momentLive(80.0) < 0.0,
+               "flow-decided: the moment keeps the promised sign, never crossing zero");
+    CHECK_TRUE(momentRig(60.0) == momentLive(60.0), "before the crossing the two agree");
+    CHECK_TRUE(momentRig(80.0) == -momentLive(80.0),
+               "past it they hold opposite sides of the same leverage");
 }
 
 /* The visual hinge must tip the mesh the SAME way the surface's own force
@@ -1919,6 +2031,7 @@ int main() {
     printf("\n");
     test_controlDeflectionSign();
     test_control_pair_frames();
+    test_control_sign_is_rigging();
     printf("\n");
     test_controlSurfaceVisualRot();
     printf("\n");

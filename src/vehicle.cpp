@@ -2713,7 +2713,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             const glm::dvec3 ri = partPosS(p) - com;
             const LocalFlow lf = localFlow(vrel, w, ri, rho);
             const double qp = lf.q;
-            const PartAero pa = partAero(sRot * p->localRot, lf.vp);
+            const glm::dmat3 mount = sRot * p->localRot;
+            const PartAero pa = partAero(mount, lf.vp);
             /* #485, same as the lift loop. The law below still answers deflection
                alone -- recording the angle makes it visible, not load-bearing. */
             p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(pa, up, right);
@@ -2722,13 +2723,48 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             const glm::dvec3 forceDir = pa.liftDir;   // zero when the frame is unusable
             const glm::dvec3 about =
                 (ax.aboutAxis == 0) ? right : (ax.aboutAxis == 1) ? up : nose;
-            /* The deflection sign is POSITION-DEPENDENT: a tail and a canard need
-               opposite deflections for the same torque (controlDeflectionSign). With
-               no usable flow the surface makes no force at all, and controlDeflectionSign
-               on a zero direction is decided by float noise -- so ask for no travel
-               rather than printing and animating a full-deflection fin that pushes 0 N. */
+            /* THE SIGN IS THE RIGGING, NOT THE FLOW (#495). Which way a positive
+               command swings this surface is decided once, by the builder: it is the
+               pushrod. So ask the question in the surface's own frame -- the direction
+               it pushes at zero angle of attack, which for a plate is its own normal
+               (partAero's liftDir with the flow along the chord is exactly mount[1],
+               and the mesh hinge at drag.h::controlSurfaceVisualRot uses the same
+               frame). Feeding it the LIVE liftDir instead makes the air re-decide the
+               rigging every substep, and wherever that deciding triple product
+               dot(cross(ri, liftDir), about) CHANGES SIGN the travel flips with it --
+               and with it the FULL force, at whatever q the ship happens to be flying,
+               while the moment it was carrying passes smoothly through zero.
+               Not reproduced on shipped content, and it is worth being exact about
+               why not: for a rectangular centreline fin that product only ever TOUCHES
+               zero, at the one flow (dead broadside) where partAero already refuses the
+               frame, so the old rule could not flip there however hard the stick was
+               held. The glider with the rudder key held gets to within 1% of that touch
+               (|leverage| 0.030 m against a 2.887 m rig) at 89.4 deg across its own fin,
+               and the shipped jet sits at 83 deg of sideslip with the key held (#482)
+               -- the same neighbourhood, but a touch is not a crossing. What does cross
+               is a mount the shipped set does not use: the same fin 1 m off the
+               centreline, which crosses near 72 deg of flow angle with the flow still
+               attached and clear leverage either side. That is what
+               tests/test_drag.cpp::test_control_sign_is_rigging pins.
+               Measured before changing it: eight beds and ~150k actuated-surface rows
+               -- every shipped airframe plus deliberate high-sideslip and hard-pull
+               runs -- where the two rules agreed on 100% of rows, and the four shipped
+               beds log byte-identical [drag] rows either side of the change. So this is
+               the rigging stopping being a question the wind gets to answer, at zero
+               cost today; it is not a tuning change.
+               What this does NOT fix, and does not claim to: near 90 deg of its own
+               angle a plate's liftDir is the normalised residue of a vanishing vector,
+               so IT turns through 180 deg at broadside, and controlForce still bills a
+               broadside surface its full q*S*cl*defl. An authority that fades as the
+               flow goes over the surface is the (alpha + deflection) law, which is
+               #487's family; filed as #508 with the numbers measured here.
+               A mis-mounted surface (fin turned to clock 0, so its normal points
+               fore/aft) has ZERO rigging leverage about its axis. It now keeps a fixed
+               sign and simply contributes no moment, instead of taking a sign from flow
+               noise while still being drawn full-deflection. Telling the builder that
+               the surface has no authority is #486's job. */
             const double sign =
-                controlDeflectionSign(ri, forceDir, about, ax.targetSign);
+                controlDeflectionSign(ri, mount[1], about, ax.targetSign);
             const double deflection = pa.valid ? sign * cmd * d->max_deflection
                                                : 0.0;
             p->controlDefl = deflection;  // the mesh swing (Vehicle::Draw)
