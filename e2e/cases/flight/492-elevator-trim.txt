@@ -69,8 +69,11 @@ CHECK max(d["induced"] for d in drag) > 0.5
 # cl_control 6.0 is cl 1.256 (inside the 15 deg stall, so the law is still linear
 # there); elevator_r0.8h0.7 spans 1.60 m over 0.56 m2 of control area, so AR 4.57 and
 # CDI = 1.257^2 / (pi x 0.8 x 4.57) = 0.137, times drag_cd 1.2 times 0.56 m2 = 0.092 per
-# tab, 0.184 for the pair -- against 0.182 measured on the rows, the gap being the
-# substep's own q. That is two thirds of what the LIFTING surfaces of this same ship
+# tab, 0.184 for the pair. The measured difference is 0.182, and the 0.002 is NOT the
+# bill moving: a held deflection bills a constant of the catalog, because CL is
+# recovered as |F|/(q*S) and the q cancels. It is the two LIFT sums -- 0.265 and 0.447
+# come from different runs, and the second one's whole envelope sits 96 m lower.
+# That is two thirds of what the LIFTING surfaces of this same ship
 # pay at the same q (the 0.265 above), for a surface that is 1/19th of the wings' area:
 # a short fat tab bills hard, and until #494 it paid nothing at all. Drop the sum, or
 # bill it at the ship's span instead of the surface's, and this row band moves.

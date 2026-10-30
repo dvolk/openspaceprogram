@@ -172,7 +172,14 @@ inline glm::dvec3 liftForce(double q, double S, double cl, double alpha,
    Each surface's INDUCED drag (vehicle.cpp, right below the lift loop) also leans on
    pitch -- it grows with CL^2 and is applied at the same mount -- and is outside this
    sum, so near the top of the polar the true margin is a little further aft than the
-   one printed. */
+   one printed. #494 put a SECOND such term on the very surfaces this paragraph says
+   contribute nothing: a HELD deflection bills induced drag at its own mount, so on a
+   trimmed airframe it is the larger of the two (skiff_trim: 0.18 of 0.45 m2 of CdA, on
+   a ~2 m lever) and it grows with the trim the player sets, as delta^2. It is a force
+   along the flow, so it pitches one way from a mount behind the CG and exactly the
+   other from one ahead of it -- a canard's trim would push this sum's true margin the
+   wrong way. Neither term is in the printed SM=, which is a lift-curve margin and
+   nothing more; that is a limit of the readout, not of the law. */
 struct LiftSlopeSum {
     double dl = 0.0;    // sum dL/dalpha . liftAxis        -- m^2/rad
     double dlabs = 0.0; // the same surfaces, unsigned     -- m^2/rad
@@ -808,15 +815,17 @@ inline double partCd(double cdForward, double cdSide, double cdBackward,
    shape, authored here as the surface's own stall_angle). A plate turned 20 deg into
    the flow has separated: it makes a FRACTION of its peak side force, not the 2.1 an
    infinite-aspect 2-D airfoil would claim (cl 6.0/rad x 0.35 rad), which is what the
-   law said while it had no stall term at all. Peak authority is at stall_angle and
-   the force is gone by 2x that, so an authored stall_angle has to sit below the
-   travel stop or the last of the stick's throw pulls the wrong way -- the loader
-   requires the number on anything that steers rather than defaulting it, because a
-   silently-linear surface is how a plane ends up with 2x the authority it was tuned
-   for. The steering moment is NOT here: it comes from applying this force AT the
-   surface (Vehicle::applyAeroForce). */
+   law said while it had no stall term at all. Peak authority is at stall_angle and the
+   force is GONE by twice that, so the loader refuses a travel stop at or past 2x the
+   stall angle: past the zero the last of the stick's throw pulls the wrong way. A
+   stall_angle ABOVE the travel stop is legal and simply leaves the surface linear over
+   its whole travel -- and that is the case no loader check can catch, which is how a
+   plane ends up with 2x the authority it was tuned for. The number is required on any
+   steering part and there is deliberately NO default argument here, so a new call site
+   cannot ask for the un-stalled law by omission. The steering moment is NOT here: it
+   comes from applying this force AT the surface (Vehicle::applyAeroForce). */
 inline glm::dvec3 controlForce(double q, double S, double cl, double delta,
-                               const glm::dvec3 &dir, double stallAngle = 0.0) {
+                               const glm::dvec3 &dir, double stallAngle) {
     if(q <= 0.0 || S <= 0.0 || cl <= 0.0 || delta == 0.0) { return glm::dvec3(0.0); }
     return dir * (q * S * liftCurve(cl, delta, stallAngle));
 }

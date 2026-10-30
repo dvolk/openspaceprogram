@@ -58,10 +58,17 @@ CHECK max(abs(d["cpl"]) for d in drag if d["cpl"] is not None) > 0.75
 # #462's coupling still holds on a real airplane: every substep that lifts pays induced
 # drag, and it pays the WING'S OWN aspect ratio (2 x 3.0 m half-span per part = 6 m over
 # a 1.8 m chord = AR 3.33), not the whole ship's. It also jumps with the sideslip
-# (0.29 -> 0.76 m2 on the kick row) because the fins present their edges -- the term
-# reads the surface's own flow, #483. RE-BASELINED by #503: the kick row was 1.35;
-# the sideslip that drove it is smaller now that a full-lock rudder is a stalled
-# plate rather than a linear one (#503), and the fin's own lift went with it.
+# (0.29 -> 0.89 m2 on the kick row) because the fins present their edges -- the term
+# reads the surface's own flow, #483. RE-BASELINED by #503 (the kick row was 1.35; the
+# sideslip that drove it is smaller now that a full-lock rudder is a stalled plate
+# rather than a linear one) and by #494 (0.761 -> 0.894, the rudder's own bill being
+# 1.2 x 0.48 m2 x 1.335^2 / (pi x 0.8 x 3.0) = 0.136 m2 at the travel stop).
+# What #494 did NOT do to this ship is the point worth pinning by hand: every hands-off
+# row reads 0.289 with the bill and 0.289 without it, bit for bit. Nothing is
+# deflected, so nothing is billed -- the bill follows the command, not the lift. This
+# case's two CHECKs do NOT isolate the term (0.76 clears > 0.5 on its own); flight/492
+# pins a trimmed tab's standing 0.447 and flight/458-glider pins Induced following the
+# key.
 CHECK all(d["induced"] > 0.0 for d in drag if d["L"] > 1.0)
 CHECK max(d["induced"] for d in drag) > 0.5
 FORBID error:

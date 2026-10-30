@@ -561,6 +561,35 @@ PartsCatalog load_parts_catalog(const char *path) {
                                           + " rad): past twice the stall angle a surface "
                                             "reverses, so the stick would run backwards");
         }
+        /* Three more authoring traps in the same family, all found by trying to make
+           the two-readings stall_angle safe rather than lucky (#494's review). */
+        /* One surface, one law. lift_area makes the part a lifting surface billed on
+           its OWN angle of attack; control_area makes a second, independent system
+           billed on deflection. Authored on the same part, one stall_angle would mean
+           both things at once -- the incidence number would cap the travel stop -- and
+           the plate would be billed induced drag twice, as two systems with no
+           interaction. No shipped part does this; refuse the next one instead of
+           flying it. A flapped tail is a tailplane PART plus an elevator PART. */
+        if(d.lift_area > 0.0 && d.control_area > 0.0) {
+            throw std::runtime_error(ctx + "a part cannot carry both \"lift_area\" and "
+                                          "\"control_area\": one surface, one law");
+        }
+        /* A steering part needs its travel stop as well as its area, because
+           isControlSurface() is the pair. control_area with no max_deflection is not a
+           control surface at all: it loads, never moves, never steers, never appears in
+           [ctrl], and says nothing -- the exact typo a catalog edit makes. */
+        if((d.control_area > 0.0) != (d.max_deflection > 0.0)) {
+            throw std::runtime_error(ctx + "\"control_area\" and \"max_deflection\" come as a "
+                                          "pair: a part with one and not the other is a "
+                                          "decoration, not a control surface");
+        }
+        /* And it needs a slope to push with. cl_control falls back to cl, so a steering
+           part with neither makes 0 N at any deflection and is invisible in every log
+           (vehicle.cpp's controlCl <= 0 skip). */
+        if(d.isControlSurface() && (d.cl_control > 0.0 ? d.cl_control : d.cl) <= 0.0) {
+            throw std::runtime_error(ctx + "a control surface needs \"cl_control\" (or \"cl\") "
+                                          "> 0: with no slope it makes no force at any deflection");
+        }
         /* A chute must ship its canopy: the overlay pair is all-or-nothing
            (like shroud) and REQUIRED when chute_area > 0. */
         d.chute_area = pv.value("chute_area", 0.0);

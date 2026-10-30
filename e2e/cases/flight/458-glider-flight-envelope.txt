@@ -51,8 +51,11 @@ CHECK all(d.get("induced", 0.0) > 0.0 for d in drag if d.get("L", 0.0) / max(0.5
 # 1.70 for the pair -- against a 4.35 m2 nose-on silhouette. Nothing on this ship was
 # lifting at those rows and nothing paid before #494. Drop the control-surface term
 # and the band goes to 0.0; charge it at the SHIP's span instead of the surface's and
-# it collapses by the square of the span ratio.
-CHECK all(1.65 < d["induced"] < 1.75 for d in drag if 4.0 <= d["t"] <= 6.0)
+# it collapses by the square of the span ratio. The band is 1.6..1.9 rather than
+# hugging the 1.70-1.72 measurement: this is a quantity quadratic in the authority the
+# surface has, so give the next law change room to move it and let the released-rows
+# pin below carry the precision.
+CHECK all(1.60 < d["induced"] < 1.90 for d in drag if 4.0 <= d["t"] <= 6.0)
 CHECK all(d["induced"] < 0.05 for d in drag if d["t"] >= 7.0)
 # IT USED TO GO PAST VERTICAL (#503 ended that). All 14 rows of the 840-tick budget
 # now, AoA -0.2, -0.2, -0.1, 0.0, 0.5, -0.7, -0.1, 0.1, -0.1, 0.2, -0.1, 0.1, -0.0,

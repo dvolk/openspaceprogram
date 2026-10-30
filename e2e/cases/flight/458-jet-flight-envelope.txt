@@ -97,7 +97,14 @@ CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 5.0
 # Nothing about the wing's lift law changed here, and the case still earns its keep
 # as a knob pin: put controlForce back to linear-to-the-stop and the first CHECK
 # below fails at 77 deg, which is how this case read before #503.
-CHECK 15.0 < max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) < 30.0
+# The ceiling is 25.0 rather than 30.0 because this band is the pin for #494 in this
+# case: the run without the control-surface bill read 29.7, and 19.3 is the number
+# with it. What this case can pin is the CONSEQUENCE (a held stick buys less turn) --
+# its Induced sum is dominated by the wings, 17.2 m2 of which about 1.7 m2 is the
+# elevon pair, so a band on Induced here would not notice the term being removed. The
+# sum itself is pinned by flight/492 (a trimmed tab's standing 0.447) and by
+# flight/458-glider (Induced following the key: 1.7 on the held seconds, 0.0 after).
+CHECK 15.0 < max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) < 25.0
 CHECK all(abs(d["aoa"]) < 2.5 for d in drag if d["t"] >= 11.0)
 # Damped, not merely bounded: every row from the second half of the run is under
 # half the peak. On the old law the back half of the series was as big as the front.

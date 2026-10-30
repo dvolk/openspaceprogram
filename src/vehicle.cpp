@@ -2769,11 +2769,29 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                approximation #462 uses for wings; the wing-tail interaction stays
                unmodelled, deliberately -- folded into the tail system instead, the same
                skiff_trim state bills 0.24 instead of 0.185 m2, ~35% more, and it would
-               need a surface->wing linkage this sum does not have. */
+               need a surface->wing linkage this sum does not have. A twin pair pays the
+               same per-part AR twice, which is 2x what the two plates as one continuous
+               span would: #462's known split-part overcharge, now on the steering pair
+               as well as the shipped wings.
+               Substitute controlForce's own F and the AREA cancels out of the charge:
+                 bill = |F|^2 / (qp * pi * oswald * span^2)
+               so the only geometric knob is the surface's SPAN, and the bill is
+               QUADRATIC in the authority the surface has -- double a tab's cl_control
+               and its price quadruples. It also means #478's unresolved "control_area is
+               half the planform" convention cannot be what makes these numbers big: that
+               choice moves CL and the area multiplier in opposite directions. What it
+               does NOT do is charge the plate's SHAPE: a surface hinged 20 deg into the
+               flow still contributes its undeflected silhouette to the hull union and its
+               own partCd, so this term is quietly standing in for the form drag of a
+               turned plate too (filed against #455's family). */
             const double clCtrl = glm::length(F) / (qp * d->control_area);
             const double cdi = inducedCd(clCtrl, 2.0 * d->meshSpanHalf(),
                                          d->control_area);
-            if(cdi <= 0.0) { continue; }
+            /* The negated test is deliberate: it also skips a NaN cdi, which `cdi <= 0`
+               would let through into the force. cdi is 0 only when the mesh gave this
+               surface no span at all (inducedCd's AR 0 case); nothing shipped does, and
+               a part authored that way bills nothing rather than stopping a flight. */
+            if(!(cdi > 0.0)) { continue; }
             const glm::dvec3 find =
                 -(lf.vp / std::sqrt(lf.vp2)) * (drag_cd * qp * d->control_area * cdi);
             ApplyForce(hull, ri, find);
