@@ -1981,6 +1981,17 @@ static void test_cp_silhouette() {
         polygonCentroid2({ glm::dvec2(0, 0), glm::dvec2(3, 0), glm::dvec2(0, 3) }, c);
         CHECK_NEAR(c.x, 1.0, 1e-15, "a triangle's centroid is the vertex mean (x)");
         CHECK_NEAR(c.y, 1.0, 1e-15, "a triangle's centroid is the vertex mean (y)");
+        /* An ASYMMETRIC quad, where the two answers part company. A trapezoid (0,0)
+           (4,0) (1,1) (0,1): shoelace area 2.5, centroid (1.4, 0.4); the vertex mean
+           is (1.25, 0.5). Without this pin a helper that averages vertices passes
+           every shape above (square, bar, triangle) and would pass a symmetric
+           silhouette sweep too. */
+        polygonCentroid2({ glm::dvec2(0, 0), glm::dvec2(4, 0), glm::dvec2(1, 1),
+                           glm::dvec2(0, 1) }, c);
+        CHECK_NEAR(c.x, 1.4, 1e-12, "a trapezoid's centroid is the AREA centroid (x)");
+        CHECK_NEAR(c.y, 0.4, 1e-12, "a trapezoid's centroid is the AREA centroid (y)");
+        CHECK_TRUE(std::fabs(c.x - 1.25) > 0.1 || std::fabs(c.y - 0.5) > 0.1,
+                   "which is not its vertex mean");
         // Degenerate rings leave the caller's value alone, so the call site can
         // seed it with the mount and get a zero offset for free.
         c = glm::dvec2(7.0, -3.0);
@@ -1988,12 +1999,25 @@ static void test_cp_silhouette() {
         CHECK_TRUE(c.x == 7.0 && c.y == -3.0, "a collinear ring leaves the seed alone");
         polygonCentroid2({ glm::dvec2(0, 0), glm::dvec2(1, 0) }, c);
         CHECK_TRUE(c.x == 7.0 && c.y == -3.0, "and so does a two-point ring");
+        /* Pin the OFFSET helper on the same input, not just the helper it calls: a
+           mutant that seeds the centroid at the plane origin instead of the mount
+           turns a plate-on-edge (zero area) into an instant 4 m cp yank, and only
+           this call says so. */
+        const glm::dvec2 zoff = silhouetteCpOffset2(
+            { glm::dvec2(0, 0), glm::dvec2(1, 0), glm::dvec2(2, 0) },
+            glm::dvec2(1.5, 0.0));
+        CHECK_TRUE(zoff.x == 0.0 && zoff.y == 0.0,
+                   "a degenerate silhouette does not move the cp at all");
     }
 
     /* A cone seen broadside: the silhouette is a triangle whose centroid sits a
-       third of the length back from the apex, so a part whose hull is a cone (a
-       capsule, a nose cone, an engine bell) has its whole drag a third of its
-       length off the bolt that holds it. Worked out by hand: hull apex at z=+1,
+       third of the way from apex to base, so a part whose hull is a cone (a
+       capsule, a nose cone, an engine bell) has its whole drag well off the bolt
+       that holds it. The pinned hull below is 2 m long (apex z=+1, base z=-1) and
+       its mount is at its middle, so the offset is 1/3 m -- a sixth of the cone's
+       length, not a third of it; the shipped capsules are a metre or two across,
+       which is where the 0.2-0.4 m audit figures come from. Worked out by hand:
+       hull apex at z=+1,
        base ring r=1 at z=-1, flow along +x. flowPlane(+x) gives u=+z, w=-y, so
        the projected triangle is (1,0) (-1,-1) (-1,+1) with centroid (-1/3, 0). */
     {
@@ -2087,6 +2111,68 @@ static void test_cp_silhouette() {
         CHECK_NEAR(glm::dot(off.x * pl.u + off.y * pl.w, glm::dvec3(0, 0, 1)), 4.0, 1e-12,
                    "and for a broadside flow that is 4 m of weathervane arm, out toward"
                    " where the plate actually is (z 0..8, bolt at z 0)");
+    }
+
+    /* The frame chain the call site performs (applyAeroForce), pinned against an
+       independent route to the same point. Above, everything is identity-aligned,
+       so a wrong sRot or a dropped transpose is invisible here -- that is exactly
+       how `off.x * pl.u + off.y * pl.w` (ship-local basis, no sRot) would slip
+       through, and it would put cp metres off on a yawed ship.
+       Code route: silhouetteCpPointS (what applyAeroForce calls) composes the
+       offset with the SHIP-LOCAL plane basis and sRot.
+       Reference route: rotate the hull VERTS into the ship frame (localRot*h +
+       localPos), project those onto plS, take the area centroid -- where the area
+       actually is, with no basis-rotation trick involved.
+       The contract: the two agree exactly in the plane and differ only along the
+       flow, by the mount's own along-flow coordinate. Compared in the ship frame,
+       because plS is a ship-local basis and mixing frames in a dot product is how
+       this bug would have been written in the first place. */
+    {
+        const glm::dmat3 sRot = glm::mat3_cast(glm::angleAxis(0.7, glm::dvec3(0, 1, 0))
+                                             * glm::angleAxis(0.4, glm::dvec3(0, 0, 1)));
+        const glm::dvec3 sPos(11.0, -3.0, 6.0);
+        const glm::dmat3 localRot = glm::mat3_cast(glm::angleAxis(0.9, glm::dvec3(1, 0, 0)));
+        const glm::dvec3 localPos(0.4, 1.2, -2.0);
+        const glm::dvec3 vhatS = glm::normalize(glm::dvec3(0.3, -0.2, -0.93));
+        const FlowPlane plS = flowPlane(vhatS);
+        std::vector<glm::dvec3> hull;
+        for(int i = 0; i < 8; i++) {
+            hull.push_back(glm::dvec3((i & 1) ? 0.3 : -0.3, (i & 2) ? 0.5 : -0.5,
+                                      (i & 4) ? 2.0 : 0.0));
+        }
+        std::vector<glm::dvec2> poly;
+        projectPartHull(hull, localRot, localPos, plS, poly);
+        CHECK_TRUE(polygonArea2(poly) > 0.0, "the tilted part projects to an area");
+        const glm::dvec2 off = silhouetteCpOffset2(poly, glm::dvec2(
+            glm::dot(localPos, plS.u), glm::dot(localPos, plS.w)));
+        const glm::dvec3 cp = silhouetteCpPointS(sRot, sPos + sRot * localPos, off, plS);
+
+        // The same verts, carried into the ship frame and projected there.
+        std::vector<glm::dvec3> vertsShip;
+        for(const glm::dvec3 &h : hull) { vertsShip.push_back(localRot * h + localPos); }
+        std::vector<glm::dvec2> polyV;
+        projectHull(vertsShip, plS, polyV);
+        CHECK_NEAR(polygonArea2(polyV), polygonArea2(poly), 1e-12,
+                   "both routes see the same silhouette area, so both see the same polygon");
+        glm::dvec2 cV(0.0);
+        polygonCentroid2(polyV, cV);
+        const glm::dvec3 ref = cV.x * plS.u + cV.y * plS.w;   // ship frame, through its origin
+        // Back to the ship frame -- the sim's own frame-change law, position first
+        // (plS is a ship-local basis, so every dot below has to be asked there). A
+        // correct composition leaves only the along-flow coordinate; a wrong sRot
+        // or a basis mixed across frames leaves metres of this.
+        const glm::dvec3 d = glm::transpose(sRot) * (cp - sPos) - ref;
+        /* Absolute tolerances: CHECK_NEAR is RELATIVE (#510), and these expectations
+           are zero, so the macro would demand bit-exactness. The residuals below are
+           the rounding of a rotated basis, ~1e-16 on a hull a few metres across. */
+        CHECK_TRUE(std::fabs(glm::dot(d, plS.u)) < 1e-9,
+                   "the composed cp lands on the silhouette centroid IN THE PLANE, with a"
+                   " rotated ship, a rotated part and an off-centre hull (u)");
+        CHECK_TRUE(std::fabs(glm::dot(d, plS.w)) < 1e-9,
+                   "(and across the plane) -- sRot, localRot and the local origin all line up");
+        CHECK_NEAR(glm::dot(d, vhatS), glm::dot(localPos, vhatS), 1e-9,
+                   "and the only leftover is along the flow, which is the mount's own"
+                   " coordinate there -- the part a projection cannot see");
     }
 }
 

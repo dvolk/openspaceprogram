@@ -444,12 +444,13 @@ inline void projectHull(const std::vector<glm::dvec3> &hullVerts,
    used to be ignorable; it stops being ignorable the moment two parts' polygons
    are unioned (#463), so this is the only projection a ship should use. */
 inline void projectPartHull(const std::vector<glm::dvec3> &hullVerts,
-                            const glm::mat3 &localRot, const glm::dvec3 &localPos,
+                            const glm::dmat3 &localRot, const glm::dvec3 &localPos,
                             const FlowPlane &pl, std::vector<glm::dvec2> &out) {
     // Rotating the basis into the part costs two mat3-vec multiplies and keeps
     // the ship's basis shared; the alternative is rotating every vert (2x the
-    // parts' vert count) into the ship frame.
-    const glm::mat3 toLocal = glm::transpose(localRot);
+    // parts' vert count) into the ship frame. dmat3 throughout: Part::localRot is
+    // a dmat3, and narrowing it costs the projected coords ~1e-7 relative.
+    const glm::dmat3 toLocal = glm::transpose(localRot);
     projectHull(hullVerts, FlowPlane{toLocal * pl.u, toLocal * pl.w, pl.valid}, out);
     const glm::dvec2 off{glm::dot(localPos, pl.u), glm::dot(localPos, pl.w)};
     for(glm::dvec2 &q : out) { q += off; }
@@ -468,39 +469,70 @@ inline double polygonArea2(const std::vector<glm::dvec2> &poly) {
 }
 
 /* The centroid of a simple polygon, either winding, from the same shoelace sum
-   as polygonArea2. Exact for a polygon (not a sample), and degenerate for a
-   collinear or too-few-vertex ring, where `c` is left as passed in. */
-inline void polygonCentroid2(const std::vector<glm::dvec2> &poly, glm::dvec2 &c) {
+   as polygonArea2. Exact for a polygon (not a sample) -- NOT the vertex mean,
+   which only coincides with it for point-symmetric rings and triangles. `origin`
+   is subtracted from every vertex before the sums, which does not change the
+   answer mathematically and buys a lot of conditioning: a part's silhouette can
+   sit hundreds of metres from the plane's origin (a 200 m station, or simply a
+   hull far along the ship), where the moment sums would otherwise cancel to
+   ~1e-6 m of noise. Degenerate for a collinear or too-few-vertex ring, where `c`
+   is left as passed in. */
+inline void polygonCentroid2(const std::vector<glm::dvec2> &poly, glm::dvec2 &c,
+                             const glm::dvec2 &origin = glm::dvec2(0.0)) {
     if(poly.size() < 3) { return; }
     double a2 = 0.0, mx = 0.0, my = 0.0;
     for(size_t i = 0; i < poly.size(); i++) {
-        const size_t j = (i + 1) % poly.size();
-        const double cr = poly[i].x * poly[j].y - poly[j].x * poly[i].y;
+        const glm::dvec2 p = poly[i] - origin;
+        const glm::dvec2 q = poly[(i + 1) % poly.size()] - origin;
+        const double cr = p.x * q.y - q.x * p.y;
         a2 += cr;
-        mx += (poly[i].x + poly[j].x) * cr;
-        my += (poly[i].y + poly[j].y) * cr;
+        mx += (p.x + q.x) * cr;
+        my += (p.y + q.y) * cr;
     }
     if(a2 == 0.0) { return; }
-    c = glm::dvec2(mx, my) / (3.0 * a2);
+    c = origin + glm::dvec2(mx, my) / (3.0 * a2);
 }
 
-/* WHERE a part's drag actually pushes, relative to its own mount: the projected
-   silhouette's centroid minus the mount's own position IN THE SAME PLANE, so the
-   answer is a free 2-D vector in the shared flow plane (#512). A part's mount
-   says nothing about where its silhouette is: a hull that is not centred on its
-   mount (a cone+cylinder capsule seen broadside, a plate authored at its root)
-   has its area a long way off the mount, and a ship built out of them gets a
-   weathervane arm that is simply wrong. Exactly zero for a hull centred on its
-   mount -- which is most shipped parts, and is why the shipped beds do not move
-   -- and zero for a degenerate polygon, where polygonCentroid2 leaves the mount
-   where it was. Multiply by the plane basis and rotate by the ship's rotation to
-   get a 3-D offset; the component along the FLOW stays with the mount, because a
-   projection cannot say where along its own normal the area sits. */
+/* WHERE a part's drag actually pushes, relative to its own mount: the centroid of
+   its projected silhouette, measured IN THE SAME PLANE as the mount's own
+   projection, so the answer is a free 2-D vector (#512). A part's mount says
+   nothing about where its silhouette is: a cone+cylinder capsule seen broadside
+   has its area a third of its length from the bolt, a plate authored at its root
+   half a span away, and a ship built out of those gets a weathervane arm that is
+   simply wrong. Exactly zero for a hull that is POINT-sYMMETRIC about its mount
+   (box, cylinder, a plate centred on its bolt -- most shipped parts, which is why
+   the shipped beds barely move); a cone is not, even when its mount sits at the
+   middle of its bounding box.
+   Zero for a degenerate polygon. In production that guard is a formality -- the
+   monotone-chain projection of a collinear hull comes back with two points, so it
+   never reaches a >=3-point zero-area ring -- but the helper's contract says so
+   and the pin says so.
+   Multiply by the plane basis and rotate by the ship's rotation to get a 3-D
+   offset. The component along the FLOW stays with the mount, because a projection
+   cannot say where along its own normal the area sits. That is an approximation
+   with a known size, not a free choice: the cp's along-flow error lambda is
+   exactly inert while the force runs along vrel, but #486 charges the hull at the
+   LOCAL flow, which the ship's rotation tilts by w x (cp - com), so a moment
+   error of order |w| lambda / |v| slips in -- about 0.1% for the shipped hulls
+   (lambda under 0.4 m at a few rad/s) and about 10% for the 4 m plate at 1 rad/s.
+   Nothing recovers that coordinate from a silhouette, so it stays with the mount
+   and the size of the lie is written down. */
+/* Joining that offset to a point: off2 lives in pl's 2-D basis, which is a
+   SHIP-LOCAL plane, while partPosS is in the frame the ship pose lives in. So the
+   offset goes through pl's basis and through sRot; the plane basis is not the
+   ship's axes and sRot is not optional. Exposed as a function for exactly this
+   reason -- the whole fix is this composition, and identity-aligned unit pins
+   cannot see it. */
+inline glm::dvec3 silhouetteCpPointS(const glm::dmat3 &sRot, const glm::dvec3 &partPosS,
+                                     const glm::dvec2 &off2, const FlowPlane &pl) {
+    return partPosS + sRot * (off2.x * pl.u + off2.y * pl.w);
+}
+
 inline glm::dvec2 silhouetteCpOffset2(const std::vector<glm::dvec2> &poly,
                                       const glm::dvec2 &mount2) {
     if(poly.size() < 3) { return glm::dvec2(0.0); }
     glm::dvec2 c = mount2;
-    polygonCentroid2(poly, c);
+    polygonCentroid2(poly, c, mount2);   // relative to the mount, so no cancellation
     return c - mount2;
 }
 
