@@ -2256,19 +2256,28 @@ int main() {
             { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", \"trim\": \"up\" } ] }",
               "part 'c' in /tmp/test_shipload_numfield.json: \"trim\" must be a number (deg)" },
             { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", \"stage\": \"2\" } ] }",
-              "part 'c' in /tmp/test_shipload_numfield.json: \"stage\" must be a whole number" },
+              // optInt names the type too, like wantNumber does. Pinned, or the
+              // suffix can quietly disappear from the count rules again.
+              "part 'c' in /tmp/test_shipload_numfield.json: \"stage\" must be a whole number, got string" },
             { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", \"stage\": 1.5 } ] }",
               "part 'c' in /tmp/test_shipload_numfield.json: \"stage\" must be a whole number" },
-            /* A count that does not fit an int used to WRAP silently: nlohmann calls
-               it an integer, isWhole() agreed on the type alone, and the narrowing
-               cast handed back a value that then passed every >= test below it. The
-               int window is now part of "whole", checked before the cast. */
+            /* A count that does not fit an int used to WRAP silently. nlohmann calls
+               an UNSIGNED literal an integer, so the old type-only check waved it
+               through and the narrowing cast handed back 0 -- measured: the old tree
+               loaded "crew_capacity": 4294967296 as NO seats at all, and the wrapped
+               number then passed every >= test below it. The int window is now part
+               of what optInt accepts, and it is checked before the cast. */
             { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", "
               "\"stage\": 4294967297 } ] }",
-              "part 'c' in /tmp/test_shipload_numfield.json: \"stage\" must be a whole number" },
-            /* And a stage number is bounded, which is a cost ceiling rather than a
-               physics one: computeStaging walks every index from the highest down and
-               scans the engine list at each (staging.cpp:521). */
+              "part 'c' in /tmp/test_shipload_numfield.json: \"stage\" is outside the range" },
+            // Both ends of the window: 0 and a negative are counts too, and this one
+            // is far enough below to reach the window test rather than `>= 1`.
+            { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", "
+              "\"stage\": -3000000000 } ] }",
+              "part 'c' in /tmp/test_shipload_numfield.json: \"stage\" is outside the range" },
+            /* And a stage number is bounded above, which is a cost ceiling rather
+               than a physics one: computeStaging visits every index from the highest
+               down and walks the part list at each (staging.cpp:521,534). */
             { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", "
               "\"stage\": 1000000 } ] }",
               "part 'c' in /tmp/test_shipload_numfield.json: \"stage\" must be <= 10000" },
@@ -2291,7 +2300,10 @@ int main() {
         const struct { const char *body; const char *needle; } catcases[] = {
             { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
               "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": \"2t\" } ] }",
-              "parts: x in /tmp/test_shipload_numfield.json: \"mass\" must be a number (kg)" },
+              // The type it actually got is in the message ("got string"), because
+              // "must be a number" sent people hunting for a quote they had already
+              // removed. Pinned here so the suffix cannot silently disappear.
+              "parts: x in /tmp/test_shipload_numfield.json: \"mass\" must be a number (kg), got string" },
             { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"wing\", "
               "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
               "\"lift_area\": \"4\" } ] }",
@@ -2326,6 +2338,35 @@ int main() {
               "\"capacity\": { \"hydrogen\": 100, \"water\": -100 } } ] }",
               "parts: x in /tmp/test_shipload_numfield.json: \"capacity\" for "
               "'water' must be >= 0 (kg)" },
+            /* A resource name that does not exist used to print a doubled colon
+               ("x: : unknown resource 'gold'"), and the ordering rule -- name before
+               number -- only shows up when BOTH are wrong: with a good number, the
+               old value-first order reaches the same unknown-resource sentence.
+               So the value is broken here too, and the needle must be the resource. */
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"capacity\": { \"gold\": \"full\" } } ] }",
+              "parts: x in /tmp/test_shipload_numfield.json: unknown resource 'gold'" },
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"engine\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"propellant\": { \"loox\": -2 } } ] }",
+              "parts: x in /tmp/test_shipload_numfield.json: unknown resource 'loox'" },
+            /* EC is a resource, but not one a thruster can burn: it is watt-hours,
+               not mass. That is a rule about the KEY, so it answers before any rule
+               about the number under it -- otherwise {"ec": -3} complains about the
+               minus and sends the author to the wrong line. */
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"engine\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"propellant\": { \"ec\": -3 } } ] }",
+              "parts: x in /tmp/test_shipload_numfield.json: \"propellant\" cannot be EC" },
+            /* EC is watt-hours in the tank array, not kilograms -- Vehicle's capacity
+               print says Wh and partLoadMass skips it as massless energy -- so the
+               unit has to follow the resource, not the array. */
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"capacity\": { \"ec\": \"full\" } } ] }",
+              "parts: x in /tmp/test_shipload_numfield.json: \"capacity\" for "
+              "'ec' must be a number (Wh)" },
             { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
               "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
               "\"crew_capacity\": 1.5 } ] }",
@@ -2334,7 +2375,13 @@ int main() {
             { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
               "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
               "\"crew_capacity\": 4294967296 } ] }",
-              "parts: x in /tmp/test_shipload_numfield.json: \"crew_capacity\" must be a whole number" },
+              "parts: x in /tmp/test_shipload_numfield.json: \"crew_capacity\" is outside the range" },
+            // ...and the same from below, which is a window failure rather than a
+            // `>= 0` failure.
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"crew_capacity\": -3000000000 } ] }",
+              "parts: x in /tmp/test_shipload_numfield.json: \"crew_capacity\" is outside the range" },
             { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
               "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
               "\"inventory_capacity\": 2.5 } ] }",
@@ -2674,7 +2721,9 @@ int main() {
         std::remove(bad);
     }
 
-    // a capacity must total > 0
+    // A tank that holds nothing is a typo, not a design. The wording is pinned too:
+    // this rule has no unit to quote (the array adds kg AND Wh), so the sentence has
+    // to say what it means.
     {
         const char *bad = "/tmp/test_shipload_badcat.json";
         std::ofstream f(bad);
@@ -2682,7 +2731,8 @@ int main() {
              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
              "\"capacity\": { \"hydrogen\": 0, \"lox\": 0 } } ] }";
         f.close();
-        CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
+        CHECK(expect_throw_saying([&](){ load_parts_catalog(bad); },
+                                  "\"capacity\" must hold more than 0 of some resource"));
         std::remove(bad);
     }
 

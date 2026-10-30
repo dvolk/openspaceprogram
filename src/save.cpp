@@ -653,13 +653,20 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
             return "load: saved ship '" + s.name + "' has two parts with uid "
                    + std::to_string(sp.uid);
         }
-        /* A hand-edited stage of a million is not a design decision, it is a
-           multiplier on the staging pass (computeStaging walks every index from the
-           highest down, staging.cpp:521), and the load would succeed before anything
-           noticed. Same ceiling as the ship-def loader and the VAB stage box. */
-        if(sp.stage < 1 || sp.stage > kMaxStage) {
-            return "load: saved ship '" + s.name + "' part '" + sp.id + "' has \"stage\" "
-                   + std::to_string(sp.stage) + ", outside 1.." + std::to_string(kMaxStage);
+        /* A hand-edited stage of a million is not a design decision, and it is not
+           harmless. It does NOT cost anything in the staging preview -- that pass
+           runs over a BuildShip in the VAB (gameui.cpp:4946), whose stages come from
+           the ship-def loader, which bounds this same number. What a save's big stage
+           does is quieter: the thrust test is `p->stage < activeStage`
+           (vehicle.cpp:1985), so a part numbered past the top of the sequence is live
+           from the frame the ship loads and no stage press can ever cut it -- an
+           upper-stage engine firing on the pad -- while the decoupler and chute tests
+           are `p->stage == stage` (vehicle.cpp:3438, 1967), so those never fire at
+           all. The part popup prints the number too (gameui.cpp:2466). Same ceiling as
+           the ship-def loader and the VAB stage box. The ship's OWN counters
+           (active_stage / total_stages) are unbounded and unvalidated, which is #518. */
+        if(std::string why = refuseSavedStage(sp.stage, kMaxStage); !why.empty()) {
+            return "load: saved ship '" + s.name + "' part '" + sp.id + "' " + why;
         }
         const PartDef *spd = cat.find(sp.part);
         if(spd == nullptr) {

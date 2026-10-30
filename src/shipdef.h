@@ -20,10 +20,13 @@
    field-driven (optional-field presence, not the type label). */
 
 /* The largest stage number a ship file or a save may ask for. Not a physics limit:
-   computeStaging walks every stage index from the highest down and scans the engine
-   list at each one (staging.cpp:521), so a typo like 1e6 makes the Staging window
-   pause on every edit -- and a save holding one pauses every load. The VAB stage box
-   clamps to this so the editor cannot create what the loader refuses. */
+   computeStaging visits every stage index from the highest down and walks the part
+   list at each one (staging.cpp:521,534), so it costs indexes x parts -- measured
+   ~20 ms on the 51-part heavy_asp at this ceiling (51 us at its real maxStage of 6),
+   and half a second for a 20-part build at 1e6. The pass only runs in the VAB's
+   Staging window, so the cost lands there; #517 makes it cost what the ship has
+   instead. The VAB stage box clamps to this so the editor cannot create what the
+   loaders refuse. */
 inline constexpr int kMaxStage = 10000;
 
 enum class ResourceType {
@@ -269,7 +272,11 @@ struct PartDef {
     double power_draw;
     double power_draw_constant;
     double power_gen;
-    std::vector<float> capacity; // kg per ResourceType; > 0 -> propellant tank
+    /* Per ResourceType: kilograms for every resource EXCEPT capacity[EC], which is
+       watt-hours -- Vehicle prints `capacity=%.1fWh` and partLoadMass skips EC as
+       massless energy. Worth spelling out because the loader's error messages quoted
+       "(kg)" for a battery until #496's review noticed. > 0 -> propellant tank. */
+    std::vector<float> capacity;
 
     /* > 0 -> a capsule. The occupant's mass is DERIVED (Part::effectiveMass). */
     int crew_capacity;

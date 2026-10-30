@@ -12,12 +12,14 @@
 // (unit-testable headless); the Game-coupled capture/restore lives in save.cpp.
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -56,6 +58,13 @@ struct CrewRoster;     // crew.h; only needed by reference below
    record of; mass is table data. Same call #383 made for capacities.
    No format bump: dropping a written key cannot be misread in either direction
    (save.h's rule), so a pre-existing save just stops carrying a dead field. */
+/* The marker for a saved "stage" that is not a count the game can hold; see
+   savePartFromJson. It is INT_MIN because stages run 1..kMaxStage, and the reader's
+   window test is strict at the bottom, so even a hand-typed -2147483648 arrives as
+   this marker rather than as a value that happens to look like it. */
+inline constexpr int kStageOutOfRange = std::numeric_limits<int>::min();
+static_assert(kStageOutOfRange < 1, "the stage marker must not be a legal stage");
+
 struct SavePart {
     std::string part;
     uint64_t uid = 0;        // the key every cross-part reference uses; 0 = absent
@@ -415,7 +424,26 @@ inline SavePart savePartFromJson(const nlohmann::json &j) {
     p.uid = readUid(j, "uid");
     if(j.contains("id") && j["id"].is_string()) { p.id = j["id"].get<std::string>(); }
     p.parent = readUid(j, "parent");
-    if(j.contains("stage") && j["stage"].is_number()) { p.stage = j["stage"].get<int>(); }
+    /* Not permissive, unlike its neighbours (geom is the other one): a written
+       "stage" has to be a whole count an int can hold, and anything else becomes the
+       marker so validateShipParts refuses the ship out loud (#496 review). Two
+       different ways the old read got it wrong: is_number() is true for every JSON
+       number and get<int>() narrows whatever it is given, so a hand-edited 4294967297
+       read back as 1; and a quoted "2" was ignored, which left the part at the DEFAULT
+       stage -- also 1, and also the last one to fire. Both land a part in a stage it
+       was not authored in, which vehicle.cpp acts out without comment: thrust is gated
+       by `p->stage < activeStage`, decouplers and chutes by `p->stage == stage`. An
+       absent key stays permissive, as everywhere else in this reader. */
+    if(j.contains("stage")) {
+        const nlohmann::json &sv = j["stage"];
+        const double d = sv.is_number() ? sv.get<double>()
+                                        : (double)kStageOutOfRange;
+        p.stage = (std::isfinite(d) && d > (double)kStageOutOfRange
+                   && d <= (double)std::numeric_limits<int>::max()
+                   && d == std::floor(d))
+                      ? (int)d
+                      : kStageOutOfRange;
+    }
     if(j.contains("chute") && j["chute"].is_number()) { p.chute = j["chute"].get<int>(); }
     if(j.contains("trim") && j["trim"].is_number()) { p.trim = j["trim"].get<double>(); }
     if(j.contains("pos") && j["pos"].is_array()) { p.pos = vec3FromJson(j["pos"]); }
@@ -449,6 +477,26 @@ inline SavePart savePartFromJson(const nlohmann::json &j) {
         for(auto &&sp : j["seats"]) { if(sp.is_object()) { p.seats.push_back(savePartFromJson(sp)); } }
     }
     return p;
+}
+
+/* The stage verdict for one saved part, in words, sitting next to the marker it
+   names. validateShipParts (save.cpp) owns the catalog checks and the "load: saved
+   ship ... part ..." naming, but nothing stage-specific -- and it is static in a
+   translation unit test_save.cpp does not link, so the sentences live here where a
+   test can pin them. The ceiling is a parameter because this header does not own it
+   (shipdef.h's kMaxStage); the loader, the VAB stage box and validateShipParts all
+   pass the same one. Empty string = the stage is fine. */
+inline std::string refuseSavedStage(int stage, int maxStage) {
+    if(stage == kStageOutOfRange) {
+        // Out of window either way, a fraction, or a number in quotes. No value to
+        // quote back, which is the point: quoting it would invent one.
+        return "has a \"stage\" that is not a whole number it can store";
+    }
+    if(stage < 1 || stage > maxStage) {
+        return "has \"stage\" " + std::to_string(stage)
+             + ", outside 1.." + std::to_string(maxStage);
+    }
+    return "";
 }
 
 inline nlohmann::json savePoseToJson(const SavePose &p) {

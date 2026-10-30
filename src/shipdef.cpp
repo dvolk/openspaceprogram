@@ -7,6 +7,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <stdexcept>
 
@@ -62,8 +63,11 @@ static int resource_index_from_string(const std::string &s, const std::string &c
    number, but is string"), which is true and useless to whoever typed it. `unit`
    says what the number measures ("" when it is dimensionless): "must be a number"
    is only half the fix, the other half is knowing that "angle" is degrees and "z"
-   is metres. Everything that reads a number goes through this so the two loaders
-   cannot drift into different wording for the same typo. */
+   is metres. Keyed fields and map-valued entries (propellant rates, capacities)
+   both read through this so they cannot drift into different wording for the same
+   typo. The array-valued fields ("point"/"normal", "rcs_nozzle_dirs") and the
+   object-valued "attitude" still word their own refusals; they are shaped problems,
+   so they are not this helper's shape. */
 static double wantNumber(const nlohmann::json &v, const std::string &what,
                          const char *unit = "") {
     if(!v.is_number()) {
@@ -87,31 +91,35 @@ static double optNumber(const nlohmann::json &pv, const char *key, double def,
    not a quantity to round -- a ship that stages halfway is a typo, not a fraction.
    A whole one written 2.0 is fine: JSON has one number type and authors write
    whatever their editor produced.
-   The int window is part of "whole": nlohmann reads an integer literal past 2^63
-   as an unsigned that wraps through get<double>(), and get<int>() on a double
-   outside int's range is UB, so an out-of-range count used to arrive as a wrapped
-   number that then passed every >= check downstream (#496 review). Measured on the
-   previous tree: "crew_capacity": 4294967296 loaded as 0 -- a typo that silently
-   deletes a seat. */
-static bool isWhole(const nlohmann::json &v) {
-    if(!v.is_number()) { return false; }
-    /* One comparison covers an integer literal as well as a float one: the window is
-       well inside the range a double holds exactly, so floor() is not an
-       approximation here. The integer fast path this replaces is what let
-       4294967296 through -- is_number_integer() is true for an unsigned too. */
-    const double d = v.get<double>();
-    return std::isfinite(d) && d >= -2147483648.0 && d <= 2147483647.0
-        && d == std::floor(d);
-}
-
+   The int window is part of "whole", and it is checked BEFORE the cast. The old
+   version trusted is_number_integer(), which is true of an UNSIGNED literal, so
+   4294967296 sailed through it and get<int>() handed back 0 -- measured on the
+   previous tree, "crew_capacity": 4294967296 loaded as no seats at all, and the
+   wrapped number then passed every >= test below it. get<double>() does not wrap
+   (2^63 reads as 9.22337e18); the narrowing cast does, and on a double outside
+   int's range that cast is UB. (#496 review) */
 static int optInt(const nlohmann::json &pv, const char *key, int def,
                   const std::string &ctx) {
     if(!(pv.is_object() && pv.contains(key))) { return def; }
     const nlohmann::json &v = pv.at(key);
-    if(!isWhole(v)) {
+    if(!v.is_number()) {
+        throw std::runtime_error(ctx + std::string("\"") + key + "\" must be a whole number"
+                                 + ", got " + v.type_name());
+    }
+    /* One comparison covers an integer literal as well as a float one: the window is
+       well inside what a double holds exactly, so floor() is not an approximation
+       here. */
+    const double d = v.get<double>();
+    if(!std::isfinite(d) || d != std::floor(d)) {
         throw std::runtime_error(ctx + std::string("\"") + key + "\" must be a whole number");
     }
-    return v.get<int>();
+    if(d < (double)std::numeric_limits<int>::min()
+       || d > (double)std::numeric_limits<int>::max()) {
+        throw std::runtime_error(ctx + std::string("\"") + key
+                                 + "\" is outside the range of counts this game can store"
+                                   " (-2147483648..2147483647)");
+    }
+    return (int)d;
 }
 
 static glm::dvec3 parse_vec3(const nlohmann::json &obj, const char *key,
@@ -424,6 +432,18 @@ PartsCatalog load_parts_catalog(const char *path) {
                                          + "\"propellant\" must be a non-empty object");
             }
             for(auto it = pv["propellant"].begin(); it != pv["propellant"].end(); ++it) {
+                /* The KEY before the VALUE, in both directions of the mistake: the
+                   resource name first (on a typo'd key, "unknown resource 'loox'"
+                   explains the mistake while a complaint about its value does not),
+                   and the rules about that resource -- is it one a thruster can
+                   burn at all -- before rules about the number written under it.
+                   Otherwise {"ec": -3} answers "must be >= 0 (kg/s)" about a key
+                   that is not legal whatever its number is. */
+                const int idx = resource_index_from_string(it.key(), ctx);
+                if(idx == (int)ResourceType::EC) {
+                    throw std::runtime_error(ctx + "\"propellant\" cannot be EC "
+                                             "(energy in Wh, not a mass propellant)");
+                }
                 const std::string what = std::string(ctx) + "\"propellant\" rate for '"
                                          + it.key() + "'";
                 const double rate = wantNumber(it.value(), what, "kg/s");
@@ -431,11 +451,6 @@ PartsCatalog load_parts_catalog(const char *path) {
                     // Names the propellant: a flow block can hold several, and the
                     // author needs to know which line has the stray minus.
                     throw std::runtime_error(what + " must be >= 0 (kg/s)");
-                }
-                const int idx = resource_index_from_string(it.key(), ctx);
-                if(idx == (int)ResourceType::EC) {
-                    throw std::runtime_error(ctx + "\"propellant\" cannot be EC "
-                                             "(energy in Wh, not a mass propellant)");
                 }
                 d.propellant_rate[idx] = rate;
             }
@@ -484,20 +499,32 @@ PartsCatalog load_parts_catalog(const char *path) {
                                          + "\"capacity\" must be a non-empty object");
             }
             for(auto it = pv["capacity"].begin(); it != pv["capacity"].end(); ++it) {
+                /* Name before value, as in "propellant": an unknown resource key is
+                   the typo worth reporting first. */
+                const int idx = resource_index_from_string(it.key(), ctx);
+                /* Same array, different unit: EC is watt-hours there, not kilograms
+                   (Vehicle::getPower sums it as Wh; partLoadMass skips it as "energy,
+                   no mass"), so the message cannot say kg for it. */
+                const char *unit = (idx == (int)ResourceType::EC) ? "Wh" : "kg";
                 const std::string what = std::string(ctx) + "\"capacity\" for '"
                                          + it.key() + "'";
-                const double kg = wantNumber(it.value(), what, "kg");
+                const double amount = wantNumber(it.value(), what, unit);
                 // A negative tank used to load: it cancels a neighbour in the
                 // total > 0 test below, then hands the flow solver a negative
                 // ceiling (#496 review).
-                if(kg < 0.0) { throw std::runtime_error(what + " must be >= 0 (kg)"); }
-                d.capacity[resource_index_from_string(it.key(), ctx)] = (float)kg;
+                if(amount < 0.0) {
+                    throw std::runtime_error(what + " must be >= 0 (" + unit + ")");
+                }
+                d.capacity[idx] = (float)amount;
             }
             double cap_total = 0.0;
             for(size_t r = 0; r < d.capacity.size(); r++) { cap_total += d.capacity[r]; }
             if(cap_total <= 0.0) {
+                // No unit in the parentheses: the array adds kilograms AND
+                // watt-hours, so that total is not a physical quantity. The rule is
+                // just that a tank has to hold something.
                 throw std::runtime_error(std::string(ctx)
-                                         + "\"capacity\" must total > 0 (kg)");
+                                         + "\"capacity\" must hold more than 0 of some resource");
             }
         }
 
@@ -991,12 +1018,14 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
         }
 
         /* Stage numbers count down from launch, so they are small. The ceiling is a
-           cost bound, not a physics one: computeStaging walks every stage index from
-           the maximum down and scans the engine list at each (staging.cpp:521),
-           measured at ~30 ns per index -- so a million-stage typo costs 0.03 s every
-           time the Staging window recomputes, and again on every load of a save that
-           holds one (#496 review). The VAB stage box and validateShipParts apply the
-           same ceiling so nothing can create what this refuses. */
+           cost bound, not a physics one: computeStaging visits EVERY index from the
+           highest down and walks the part list at each (staging.cpp:521,534), so it
+           costs indexes x parts -- measured ~20 ms on the 51-part heavy_asp at the
+           10000 ceiling (51 us at its real maxStage of 6), and half a second on a
+           20-part build at 1e6. The honest fix is #517 (walk only the stage numbers
+           that exist); until then this keeps a typo from freezing the Staging window.
+           The VAB stage box and validateShipParts apply the same ceiling so nothing
+           creates what this refuses. */
         sp.stage = optInt(pv, "stage", 1, pctx);
         if(sp.stage < 1) {
             throw std::runtime_error(pctx

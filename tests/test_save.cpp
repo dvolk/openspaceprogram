@@ -253,6 +253,57 @@ int main() {
         CHECK(flogBad3.flog.events[1].body == "Kerbin");
     }
 
+    /* A hand-edited save can carry a stage the game cannot use, and the reader used
+       to narrow it into a legal one: get<int>() turned "stage": 4294967297 into 1, so
+       the ship loaded with that part's thrust impossible to cut and its decoupler
+       never firing, and nothing said so. A number that is not a whole count an int can
+       hold is now read as the marker, which validateShipParts refuses. Only the read
+       is pinned here -- the refusal lives in save.cpp, which this test does not link
+       -- so it is the marker's VALUE that has to stay distinguishable. */
+    {
+        SaveShip wide;
+        wide.name = "racer";
+        SavePart sp;
+        sp.part = "capsule";
+        sp.uid = 7;
+        sp.id = "capsule.7";
+        sp.stage = 3;
+        wide.parts.push_back(sp);
+        nlohmann::json j = saveShipToJson(wide);
+        j["parts"][0]["stage"] = 4294967297;
+        CHECK(saveShipFromJson(j).parts[0].stage == kStageOutOfRange);
+        j["parts"][0]["stage"] = 2000000000000.0;   // fits a double, not an int
+        CHECK(saveShipFromJson(j).parts[0].stage == kStageOutOfRange);
+        j["parts"][0]["stage"] = -3000000000;
+        CHECK(saveShipFromJson(j).parts[0].stage == kStageOutOfRange);
+        j["parts"][0]["stage"] = 2.7;   // a stage number is not a quantity to round
+        CHECK(saveShipFromJson(j).parts[0].stage == kStageOutOfRange);
+        // The window test is strict at the bottom, so the marker value itself cannot
+        // be produced by a number in the file.
+        j["parts"][0]["stage"] = -2147483648;
+        CHECK(saveShipFromJson(j).parts[0].stage == kStageOutOfRange);
+        j["parts"][0]["stage"] = 4;
+        CHECK(saveShipFromJson(j).parts[0].stage == 4);
+        // A quoted number used to be IGNORED, which left the part at the default
+        // stage -- 1, the last one to fire. Presence now commits: refuse the ship.
+        j["parts"][0]["stage"] = "4";
+        CHECK(saveShipFromJson(j).parts[0].stage == kStageOutOfRange);
+        // Absent stays permissive, like every other read in this file.
+        j["parts"][0].erase("stage");
+        CHECK(saveShipFromJson(j).parts[0].stage == 1);
+
+        // And the sentences the loader says, pinned here because validateShipParts is
+        // static in save.cpp. The bound is spelled out, so raising kMaxStage without
+        // thinking about the save path makes a noise.
+        CHECK(refuseSavedStage(kStageOutOfRange, kMaxStage)
+              == "has a \"stage\" that is not a whole number it can store");
+        CHECK(refuseSavedStage(0, kMaxStage) == "has \"stage\" 0, outside 1..10000");
+        CHECK(refuseSavedStage(1000000, kMaxStage)
+              == "has \"stage\" 1000000, outside 1..10000");
+        CHECK(refuseSavedStage(1, kMaxStage).empty());
+        CHECK(refuseSavedStage(10000, kMaxStage).empty());
+    }
+
     /* --- a walking kerbal (the ship fields are empty) ---------------------
        A crew entry is a kerbal on its own two feet: a SEATED person is not a
        fleet entry at all, but a `seats` element of their capsule's part entry
