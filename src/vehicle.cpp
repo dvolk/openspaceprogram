@@ -1456,6 +1456,16 @@ void Vehicle::checkHullMirrorInvariants() const {
                            && "the S-frame mirror lags a part's orientation");
                 }
             }
+            /* A mount must be a ROTATION, not a reflection. The aero law asks a
+               mount which way its surface pushes (drag.h::controlRigLever reads
+               mount[1]), and that only means anything for det +1: a reflected
+               mount inverts a control surface's rigging silently, and #495's
+               authority guard would then be deciding sign from a mirrored frame.
+               Every writer here builds from quaternions, so this is a tripwire on
+               the assumption rather than a fix for a known bad path. */
+            assert(glm::dot(p->localRot[0],
+                            glm::cross(p->localRot[1], p->localRot[2])) > 0.5
+                   && "a part mount must be a proper rotation");
         }
     }
 
@@ -2572,7 +2582,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
            edge-on or axis-less mount quotes nothing rather than a stale angle) and
            before the zero-force test below -- a surface at alpha 0 is measured, it
            just is not pushing. Free: both numbers are already in hand here. */
-        p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(pa, up, right);
+        p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(pa, mount[1], up, right);
         p->aeroQ = (float)qp;
         p->aeroValid = true;
         /* #454: this surface's contribution to where an alpha change puts the change
@@ -2676,8 +2686,10 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                        to skip. Only when one is open -- the hot path stays as cheap
                        as it was. */
                     const LocalFlow lf0 = localFlow(vrel, w, partPosS(p) - com, rho);
-                    const PartAero pa0 = partAero(sRot * p->localRot, lf0.vp);
-                    p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(pa0, up, right);
+                    const glm::dmat3 mount0 = sRot * p->localRot;
+                    const PartAero pa0 = partAero(mount0, lf0.vp);
+                    p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(pa0, mount0[1],
+                                                                       up, right);
                     p->aeroQ = (float)lf0.q;
                     p->aeroValid = pa0.valid;
                 }
@@ -2717,61 +2729,65 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             const PartAero pa = partAero(mount, lf.vp);
             /* #485, same as the lift loop. The law below still answers deflection
                alone -- recording the angle makes it visible, not load-bearing. */
-            p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(pa, up, right);
+            p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(pa, mount[1], up, right);
             p->aeroQ = (float)qp;
             p->aeroValid = pa.valid;
             const glm::dvec3 forceDir = pa.liftDir;   // zero when the frame is unusable
             const glm::dvec3 about =
                 (ax.aboutAxis == 0) ? right : (ax.aboutAxis == 1) ? up : nose;
-            /* THE SIGN IS THE RIGGING, NOT THE FLOW (#495). Which way a positive
-               command swings this surface is decided once, by the builder: it is the
-               pushrod. So ask the question in the surface's own frame -- the direction
-               it pushes at zero angle of attack, which for a plate is its own normal
-               (partAero's liftDir with the flow along the chord is exactly mount[1],
-               and the mesh hinge at drag.h::controlSurfaceVisualRot uses the same
-               frame). Feeding it the LIVE liftDir instead makes the air re-decide the
-               rigging every substep, and wherever that deciding triple product
-               dot(cross(ri, liftDir), about) CHANGES SIGN the travel flips with it --
-               and with it the FULL force, at whatever q the ship happens to be flying,
-               while the moment it was carrying passes smoothly through zero.
-               Not reproduced on shipped content, and it is worth being exact about
-               why not: for a rectangular centreline fin that product only ever TOUCHES
-               zero, at the one flow (dead broadside) where partAero already refuses the
-               frame, so the old rule could not flip there however hard the stick was
-               held. The glider with the rudder key held gets to within 1% of that touch
-               (|leverage| 0.030 m against a 2.887 m rig) at 89.4 deg across its own fin,
-               and the shipped jet sits at 83 deg of sideslip with the key held (#482)
-               -- the same neighbourhood, but a touch is not a crossing. What does cross
-               is a mount the shipped set does not use: the same fin 1 m off the
-               centreline, which crosses near 72 deg of flow angle with the flow still
-               attached and clear leverage either side. That is what
-               tests/test_drag.cpp::test_control_sign_is_rigging pins.
-               Measured before changing it: eight beds and ~150k actuated-surface rows
-               -- every shipped airframe plus deliberate high-sideslip and hard-pull
-               runs -- where the two rules agreed on 100% of rows, and the four shipped
-               beds log byte-identical [drag] rows either side of the change. So this is
-               the rigging stopping being a question the wind gets to answer, at zero
-               cost today; it is not a tuning change.
-               What this does NOT fix, and does not claim to: near 90 deg of its own
-               angle a plate's liftDir is the normalised residue of a vanishing vector,
-               so IT turns through 180 deg at broadside, and controlForce still bills a
-               broadside surface its full q*S*cl*defl. An authority that fades as the
-               flow goes over the surface is the (alpha + deflection) law, which is
-               #487's family; filed as #508 with the numbers measured here.
-               A mis-mounted surface (fin turned to clock 0, so its normal points
-               fore/aft) has ZERO rigging leverage about its axis. It now keeps a fixed
-               sign and simply contributes no moment, instead of taking a sign from flow
-               noise while still being drawn full-deflection. Telling the builder that
-               the surface has no authority is #486's job. */
-            const double sign =
-                controlDeflectionSign(ri, mount[1], about, ax.targetSign);
-            const double deflection = pa.valid ? sign * cmd * d->max_deflection
-                                               : 0.0;
+            /* THE RIGGING IS THE MOUNT'S, NOT THE WIND'S (#495). Which way a positive
+               command swings this surface, and whether it swings it at all, is decided
+               by the mount -- it is the pushrod. controlDeflection asks the question of
+               mount[1], the direction a plate pushes at zero angle of attack (the same
+               axis partAero measures alpha against and the hinge line
+               drag.h::controlSurfaceVisualRot turns). Two things follow, and the first
+               review pass found that I had only done the first:
+               - The SIGN. Handed partAero's LIVE liftDir, the deciding triple product
+                 dot(cross(ri, liftDir), about) can change sign mid-flight, and the
+                 travel flips with it -- reversing the whole force at whatever q the ship
+                 is flying. Not seen on shipped content, and worth being exact about why
+                 not: for a rectangular centreline fin that product is a cusp in the flow
+                 angle that bottoms at zero WITHOUT changing sign, so the old rule could
+                 not flip there however hard the stick was held (a reviewer sampled 8M
+                 flow directions near broadside and got no negative value; the glider with
+                 the rudder key held gets its closest approach at 0.0014 m against a
+                 2.6369 m rig, 0.05% of the lever). What does cross is a mount the shipped
+                 set does not use: the same fin 1 m off the centreline crosses near 72 deg
+                 of flow angle, on a frame partAero still accepts and #508 still bills at
+                 full strength, with clear leverage either side (+0.634 m then -0.464 m).
+               - The AUTHORITY. A surface whose rig lever is degenerate -- force line
+                 through the pivot, e.g. a fin turned to clock 0 -- used to be actuated at
+                 full travel with a sign the rig could not even decide, so the moment it
+                 delivered was real and its direction came from the flow. Measured: that
+                 skiff's rudder sat at its +20.1 deg stop and the airframe peaked at
+                 |tau| = 2560 N m, above the 1539 N m of the same ship rigged properly;
+                 asking for no travel drops that peak to 246 N m. controlDeflection now
+                 asks for no travel there: a control that cannot turn the axis its stick
+                 promises is dead, and it should feel dead rather than random. Telling the
+                 builder is a load-time check, #509.
+               Measured before either change: eight beds and ~150k actuated-surface rows
+               -- every shipped airframe plus held-rudder runs to 60 s, hard-pull
+               departures, yaw-spin attempts and scratch airframes with the fin moved off
+               the centreline -- where the live-flow rule and the rigging rule agreed on
+               100% of rows, and flight/458-jet, 458-glider, 490 and 492 log
+               byte-identical [drag], [ctrl] and [surface] rows either side. So this is
+               correctness at zero cost today, not tuning.
+               What is still NOT fixed, and is not claimed here: near 90 deg of its own
+               angle a plate's liftDir is the normalised residue of a vanishing vector, so
+               it turns through 180 deg at broadside, while controlForce still bills a
+               broadside surface its full q*S*cl*defl -- partAero accepts those frames (it
+               refuses only an exactly zero residue). An authority that fades as the flow
+               goes over the surface is the (alpha + deflection) law, which is #487's
+               family; filed as #508 with the numbers measured here. */
+            const double deflection = controlDeflection(pa, ri, mount, about,
+                                                        ax.targetSign, cmd,
+                                                        d->max_deflection);
             p->controlDefl = deflection;  // the mesh swing (Vehicle::Draw)
             lastControlDeflections.push_back({d, ctrlIndex++, deflection});
             // cmd != 0 here (the early-out above), so deflection is 0 only on an
-            // unusable frame; the cl and force tests stay for a surface with no
-            // slope and one that makes no force anyway.
+            // unusable frame or a rig with no lever about this axis (#495) -- either
+            // way there is nothing to bill, and the cl and force tests stay for a
+            // surface with no slope and one that makes no force anyway.
             if(clc <= 0.0 || deflection == 0.0) { continue; }
             /* The surface's own stall_angle, the same droop a wing gets (#494's first
                half): a rudder turned 20 deg into the flow has separated, and the

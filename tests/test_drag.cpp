@@ -457,10 +457,10 @@ static void test_surface_alpha_readout() {
     {
         const PartAero a = partAero(ship, vrel);
         const PartAero b = partAero(glm::dmat3(-ship[0], -ship[1], ship[2]), vrel);
-        CHECK_NEAR(surfaceAlphaDegForReadout(a, up, right), 5.0, 1e-9,
+        CHECK_NEAR(surfaceAlphaDegForReadout(a, ship[1], up, right), 5.0, 1e-9,
                    "an aligned wing reads its own AoA, in degrees");
-        CHECK_NEAR(surfaceAlphaDegForReadout(b, up, right),
-                   surfaceAlphaDegForReadout(a, up, right), 1e-9,
+        CHECK_NEAR(surfaceAlphaDegForReadout(b, -ship[1], up, right),
+                   surfaceAlphaDegForReadout(a, ship[1], up, right), 1e-9,
                    "and its 180-deg twin reads the SAME number, not the mirror");
         // What the sign MEANS: the sign of the force, in the same ship axis the
         // number is signed against. Without this, "+2.6" is a coin flip per part.
@@ -483,17 +483,77 @@ static void test_surface_alpha_readout() {
                               glm::dvec3(0.0, 0.0, 1.0));
         const PartAero pa = partAero(fin, vyaw), pb = partAero(fin2, vyaw);
         CHECK_TRUE(pa.valid && pb.valid, "both fins of a 90/270 pair have frames");
-        CHECK_NEAR(std::fabs(surfaceAlphaDegForReadout(pa, up, right)), 10.0, 1e-9,
-                   "a yawed flow gives a fin its yaw angle, not the ship's AoA");
-        CHECK_NEAR(surfaceAlphaDegForReadout(pa, up, right),
-                   surfaceAlphaDegForReadout(pb, up, right), 1e-9,
+        CHECK_NEAR(std::fabs(surfaceAlphaDegForReadout(pa, fin[1], up, right)), 10.0,
+                   1e-9, "a yawed flow gives a fin its yaw angle, not the ship's AoA");
+        CHECK_NEAR(surfaceAlphaDegForReadout(pa, fin[1], up, right),
+                   surfaceAlphaDegForReadout(pb, fin2[1], up, right), 1e-9,
                    "and a 90/270 pair reads alike");
         const glm::dvec3 Fa = liftForce(q, S, cl, pa.alpha, pa.liftDir, stall);
         const double sr = glm::dot(Fa, right);
         CHECK_TRUE(std::fabs(sr) > 0.01 * glm::length(Fa),
                    "a fin's force runs along ship's right");
-        CHECK_TRUE(sr * surfaceAlphaDegForReadout(pa, up, right) > 0.0,
-                   "and its sign is the sign of the readout");
+        CHECK_TRUE(sr * surfaceAlphaDegForReadout(pa, fin[1], up, right) > 0.0,
+                   "and its sign is the sign of the force along that axis");
+    }
+
+    /* A mount standing 45 deg out of vertical -- half a v-tail, the whole fin mount
+       rotated about the ship's nose -- sits exactly on the readout's tie-break. Measured:
+       |dot(m,up)| and |dot(m,right)| are 0.70710678118654757 and 0.70710678118654746, so
+       which axis answers is decided by 1.1e-16 of float noise. Take that decision from
+       the MOUNT and it is a property of the part, fixed for the flight. Take it from the
+       LIVE liftDir and it is re-derived from the flow every substep, and near broadside
+       that vector is the normalised residue of a vanishing one (#508). Measured over 819
+       flow directions on a -45 deg mount: the live rule picks the OTHER axis in 467 of
+       them, and because this mount's two axes carry opposite signs (+0.707 up against
+       -0.707 right) the printed angle changes SIGN in those flows while the surface keeps
+       measurably the same angle. Pin the tie, the mount's stability, and the flip. */
+    {
+        const glm::dmat3 finBase(glm::dvec3(0.0, 1.0, 0.0), glm::dvec3(-1.0, 0.0, 0.0),
+                                 glm::dvec3(0.0, 0.0, 1.0));
+        const glm::dvec3 nose(0.0, 0.0, 1.0);
+        for(double tiltDeg : {-45.0, 45.0}) {
+            const glm::dmat3 vtTail =
+                glm::mat3_cast(glm::angleAxis(glm::radians(tiltDeg), nose)) * finBase;
+            CHECK_NEAR(std::fabs(std::fabs(glm::dot(vtTail[1], up))
+                                 - std::fabs(glm::dot(vtTail[1], right))),
+                       0.0, 1e-12, "a 45-deg mount sits on the readout's tie-break");
+            const double mu = glm::dot(vtTail[1], up), mr = glm::dot(vtTail[1], right);
+            const double rigSgn = (std::fabs(mu) >= std::fabs(mr))
+                ? ((mu >= 0.0) ? 1.0 : -1.0) : ((mr >= 0.0) ? 1.0 : -1.0);
+            int mismatch = 0, liveDiff = 0, signFlip = 0, samples = 0;
+            for(int azDeg = 0; azDeg <= 178; azDeg += 2) {
+                for(int elevDeg = -60; elevDeg <= 60; elevDeg += 15) {
+                    const double az = glm::radians((double)azDeg);
+                    const double el = glm::radians((double)elevDeg);
+                    const glm::dvec3 v = 100.0 * glm::dvec3(std::sin(az) * std::cos(el),
+                                                            std::sin(el),
+                                                            std::cos(az) * std::cos(el));
+                    const PartAero pa = partAero(vtTail, v);
+                    if(!pa.valid) { continue; }
+                    ++samples;
+                    // The mount's answer, by construction, whatever the flow.
+                    if(surfaceAlphaDegForReadout(pa, vtTail[1], up, right)
+                           != rigSgn * glm::degrees(pa.alpha)) { ++mismatch; }
+                    // The live rule's answer, on the same flow.
+                    const double lu = glm::dot(pa.liftDir, up), lr = glm::dot(pa.liftDir, right);
+                    const bool rigUp = std::fabs(mu) >= std::fabs(mr);
+                    if((std::fabs(lu) >= std::fabs(lr)) != rigUp) { ++liveDiff; }
+                    const double liveSgn = (std::fabs(lu) >= std::fabs(lr))
+                        ? ((lu >= 0.0) ? 1.0 : -1.0) : ((lr >= 0.0) ? 1.0 : -1.0);
+                    if(liveSgn != rigSgn) { ++signFlip; }
+                }
+            }
+            CHECK_TRUE(samples > 500, "the sweep sampled a usable spread of flows");
+            CHECK_TRUE(mismatch == 0, "the mount's sign holds for every flow direction");
+            CHECK_TRUE(liveDiff > 100,
+                       "the live direction picks the other axis over much of the sweep");
+            if(std::signbit(mu) != std::signbit(mr)) {
+                // The two candidate axes disagree in sign, so an axis flip is a
+                // printed-sign flip. This is the half of a v-tail that shows it.
+                CHECK_TRUE(signFlip > 100,
+                           "signed off the live direction, the printed sign flips mid-flight");
+            }
+        }
     }
 
     // A pair that genuinely differs must still DIFFER: a rolling airframe sweeps one
@@ -504,8 +564,10 @@ static void test_surface_alpha_readout() {
         const glm::dvec3 v0(0.0, 0.0, 100.0);     // level flight, AoA 0
         const LocalFlow la = localFlow(v0, w, glm::dvec3(3.0, 0.0, 0.0), 1.225);
         const LocalFlow lb = localFlow(v0, w, glm::dvec3(-3.0, 0.0, 0.0), 1.225);
-        const double ra = surfaceAlphaDegForReadout(partAero(ship, la.vp), up, right);
-        const double rb = surfaceAlphaDegForReadout(partAero(ship, lb.vp), up, right);
+        const double ra = surfaceAlphaDegForReadout(partAero(ship, la.vp), ship[1],
+                                                    up, right);
+        const double rb = surfaceAlphaDegForReadout(partAero(ship, lb.vp), ship[1],
+                                                    up, right);
         CHECK_TRUE(std::fabs(ra - rb) > 1.0,
                    "a rolling airframe's two wings read DIFFERENT angles");
         CHECK_NEAR(ra + rb, 0.0, 1e-9, "equal and opposite, because the roll is");
@@ -514,7 +576,8 @@ static void test_surface_alpha_readout() {
     // An unusable frame reads 0.0 out of the struct's defaults. That is NOT a claim
     // that the surface sits at zero -- tick.cpp declines to quote such a part at all
     // -- so callers gate on Part::aeroValid; this only pins there is nothing to sign.
-    CHECK_NEAR(surfaceAlphaDegForReadout(partAero(glm::dmat3(0.0), vrel), up, right),
+    CHECK_NEAR(surfaceAlphaDegForReadout(partAero(glm::dmat3(0.0), vrel), ship[1],
+                                         up, right),
                0.0, 1e-12, "a refused frame carries no angle to sign");
 }
 
@@ -978,13 +1041,29 @@ static void test_controlDeflectionSign() {
     // Ship axes: nose=+Z, right=+X, up=+Y. The reaction wheel's convention:
     // W (stick[1]=+1) -> torque about -right (nose up); A/D -> about -up.
     const glm::dvec3 nose(0,0,1), right(1,0,0), up(0,1,0);
+    /* controlRigLever reads the mount's push column (mount[1], the direction the
+       plate pushes at zero angle of attack), so these cases can hold the push
+       direction fixed and vary where the part sits. Any proper rotation with that
+       column gives the same lever -- which is itself worth pinning, since a part's
+       span and chord do not get a vote on which way it steers. */
+    const auto pushMount = [](const glm::dvec3 &push) {
+        const glm::dvec3 span = (std::fabs(push.z) < 0.9) ? glm::dvec3(0,0,1)
+                                                          : glm::dvec3(1,0,0);
+        return glm::dmat3(span, push, glm::cross(span, push));
+    };
+    const auto lever = [&](const glm::dvec3 &ri, const glm::dvec3 &push,
+                           const glm::dvec3 &about) {
+        const glm::dmat3 mount = pushMount(push);
+        CHECK_NEAR(glm::determinant(mount), 1.0, 1e-12, "a mount is a proper rotation");
+        return controlRigLever(ri, mount, about);
+    };
 
     // A TAIL surface (behind the CG, ri ~ -nose) with W (stick[1]=+1) must
     // produce a -right torque (nose UP). The deflection sign makes the force
     // F = sign * stick[1] * up, and the torque is ri x F.
     {
         const glm::dvec3 ri = -nose;  // tail
-        const double sign = controlDeflectionSign(ri, up, right);  // pitch
+        const double sign = controlDeflectionSign(lever(ri, up, right));  // pitch
         const glm::dvec3 F = up * (sign * 1.0);  // W: stick[1]=+1
         const glm::dvec3 torque = glm::cross(ri, F);
         CHECK_TRUE(glm::dot(torque, right) < 0.0, "tail W -> -right torque (nose up)");
@@ -994,7 +1073,7 @@ static void test_controlDeflectionSign() {
     // produce a -right torque (nose UP) -- the deflection sign flips.
     {
         const glm::dvec3 ri = +nose;  // canard
-        const double sign = controlDeflectionSign(ri, up, right);  // pitch
+        const double sign = controlDeflectionSign(lever(ri, up, right));  // pitch
         const glm::dvec3 F = up * (sign * 1.0);  // W: stick[1]=+1
         const glm::dvec3 torque = glm::cross(ri, F);
         CHECK_TRUE(glm::dot(torque, right) < 0.0, "canard W -> -right torque (nose up)");
@@ -1002,8 +1081,8 @@ static void test_controlDeflectionSign() {
 
     // The tail and canard signs are OPPOSITE (that's the whole point).
     {
-        const double tailSign   = controlDeflectionSign(-nose, up, right);
-        const double canardSign = controlDeflectionSign(+nose, up, right);
+        const double tailSign   = controlDeflectionSign(lever(-nose, up, right));
+        const double canardSign = controlDeflectionSign(lever(+nose, up, right));
         CHECK_TRUE(tailSign == -canardSign, "tail and canard signs are opposite");
     }
 
@@ -1011,7 +1090,7 @@ static void test_controlDeflectionSign() {
     // wheel's A/D convention about -up).
     {
         const glm::dvec3 ri = -nose;  // tail
-        const double sign = controlDeflectionSign(ri, right, up);  // yaw
+        const double sign = controlDeflectionSign(lever(ri, right, up));  // yaw
         const glm::dvec3 F = right * (sign * 1.0);  // stick[2]=+1
         const glm::dvec3 torque = glm::cross(ri, F);
         CHECK_TRUE(glm::dot(torque, up) < 0.0, "tail yaw -> -up torque");
@@ -1022,8 +1101,8 @@ static void test_controlDeflectionSign() {
     // ailerons roll that way (right up / left down -- differential). The roll
     // targetSign is +1 (the wheel's roll is +nose, unlike pitch/yaw's -axis).
     {
-        const double rRight = controlDeflectionSign(right,  up, nose, +1.0);
-        const double rLeft  = controlDeflectionSign(-right, up, nose, +1.0);
+        const double rRight = controlDeflectionSign(lever(right,  up, nose), +1.0);
+        const double rLeft  = controlDeflectionSign(lever(-right, up, nose), +1.0);
         const glm::dvec3 Fright = up * (rRight * 1.0);  // stick[0]=+1
         const glm::dvec3 Fleft  = up * (rLeft  * 1.0);  // stick[0]=+1
         CHECK_TRUE(glm::dot(glm::cross(right, Fright), nose) > 0.0,
@@ -1035,13 +1114,20 @@ static void test_controlDeflectionSign() {
                    "aileron pair: net force cancels (pure roll)");
     }
 
-    // A surface exactly at the COM (zero lever) -> sign is moot; the helper
-    // returns targetSign (here -1, the default) -- defined, no crash, no
-    // zero-div.
+    // A surface exactly at the COM (zero lever) -> the rig cannot decide a sign.
+    // The bare helper still answers +-1 (defined, no crash), but controlDeflection
+    // asks it for no travel at all -- pinned in test_control_rigging.
     {
-        const double sign = controlDeflectionSign(glm::dvec3(0.0), up, right);
-        CHECK_TRUE(sign == 1.0 || sign == -1.0, "COM surface: sign is +-1 (defined)");
-        CHECK_TRUE(sign == -1.0, "COM surface: returns targetSign (-1 default)");
+        const double sign = controlDeflectionSign(lever(glm::dvec3(0.0), up, right));
+        CHECK_TRUE(sign == -1.0, "COM surface: the bare helper returns targetSign");
+    }
+
+    // The mount-taking overload is the one the aero step calls: same answer.
+    {
+        const glm::dmat3 mount = pushMount(up);
+        CHECK_TRUE(controlDeflectionSign(-nose, mount, right)
+                       == controlDeflectionSign(lever(-nose, up, right)),
+                   "the mount overload and the lever agree");
     }
 }
 
@@ -1084,12 +1170,12 @@ static void test_control_pair_frames() {
     const auto drive = [&](const glm::dmat3 &mount, const glm::dvec3 &ri,
                            const glm::dvec3 &aboutAxis) {
         const PartAero pa = partAero(mount, vrel);
-        /* The sign comes from the mount's own normal, not from pa.liftDir (#495):
-           the rigging is a build fact and the flow does not get a vote. At this
-           dead-ahead flow the two are the same vector, so the pins below are
-           unchanged; test_control_sign_is_rigging covers the difference. */
-        const double sign = controlDeflectionSign(ri, mount[1], aboutAxis, -1.0);
-        const double defl = pa.valid ? sign * stick * maxDefl : 0.0;
+        /* The aero step's own helper, so these pins hold the wiring and not a
+           paraphrase of it (#495 review). At this dead-ahead flow the mount's push
+           column and pa.liftDir are the same vector, so the numbers below are
+           unchanged; test_control_rigging covers the difference. */
+        const double defl = controlDeflection(pa, ri, mount, aboutAxis, -1.0,
+                                              stick, maxDefl);
         return Surf{ defl, controlForce(q, S, clc, defl, pa.liftDir, A) };
     };
     const glm::dvec3 riUp(0, 2.0, -3.0), riDn(0, -2.0, -3.0);
@@ -1122,37 +1208,43 @@ static void test_control_pair_frames() {
                "the chord tip swings along the force that surface makes");
 
     // Part-axis command (the tempting wrong simplification). The deciding triple
-    // product is zero by construction, so the sign is noise; here it comes out
-    // exactly and the pair cancels.
+    // product is zero by construction, so the sign used to be noise; here it comes out
+    // exactly and the pair cancels. With the authority gate the same rig is not even
+    // asked to travel: a force along an axis cannot turn that axis, whatever the sign.
     const double dShip = glm::dot(glm::cross(riUp, nUp), up);
     const double dPart = glm::dot(glm::cross(riUp, nUp), mUp[1]);
     CHECK_TRUE(std::fabs(dPart) < 1e-15, "part-axis: the sign is decided by float noise");
     CHECK_TRUE(std::fabs(dShip) > 1.0, "ship-axis: the sign is decided by the lever arm");
     const Surf sB1 = drive(mUp, riUp, mUp[1]);
     const Surf sB2 = drive(mDn, riDn, mDn[1]);
+    CHECK_TRUE(sB1.defl == 0.0 && sB2.defl == 0.0,
+               "no authority about the push axis: the plate is asked for no travel");
     CHECK_TRUE(sB1.F == -sB2.F, "part-axis sign: the pair CANCELS");
     CHECK_TRUE(glm::length(sB1.F + sB2.F) < 1e-12, "part-axis sign: zero yaw authority");
 }
 
-/* WHICH WAY A SURFACE IS RIGGED is a build fact, not a flow fact (#495). The
-   deflection sign used to be re-decided every substep from partAero's LIVE
-   liftDir, so the wind got a vote on the pushrod. Pin the replacement: ask the
-   same question of the mount's own normal (the direction the plate pushes at
-   zero angle of attack) and it stops moving at all.
-   The two rules agree everywhere the shipped airframes actually fly -- measured
-   over eight beds and ~150k actuated-surface rows, and their [drag] logs are
-   byte-identical either way -- so this test exists for the disagreement, which
-   is a mount the shipped set does not use: a fin off the centreline. Its yaw
-   leverage (-3*liftDir.x + liftDir.z for the mount below) crosses zero with the
-   flow still attached and the leverage clearly non-zero on both sides. There the
-   old rule reversed the sign, and with it the FULL control force, mid-maneuver
-   and at whatever q the ship was flying; the rigging rule turns the force with
-   the flow and lets the moment pass through zero on its own.
-   (Those flow angles put the plate far past its own stall, which is a separate
-   problem in the same corner -- controlForce answers deflection alone and so
-   bills a broadside surface its full q*S*cl*defl -- filed as #508.) */
-static void test_control_sign_is_rigging() {
-    printf("== control sign: the rigging, not the flow (#495) ==\n");
+/* WHICH WAY A SURFACE IS RIGGED is a build fact, not a flow fact (#495), and so is how
+   much authority that rig has. The deflection used to be re-decided every substep from
+   partAero's LIVE liftDir, so the wind got a vote on the pushrod. Pin the replacement
+   at the level the aero step actually calls -- drag.h::controlDeflection -- because a
+   paraphrase of the call site pins nothing.
+   The two rules agree everywhere the shipped airframes actually fly -- measured over
+   eight beds and ~150k actuated-surface rows, and their [drag], [ctrl] and [surface]
+   logs are byte-identical either way -- so most of this test exists for the two corners
+   where they do not:
+   - An off-centre fin. Its yaw leverage (for the mount below, -3*liftDir.x + liftDir.z)
+     crosses zero near 72 deg of flow angle with clear leverage either side. There the
+     old rule reversed the sign, and with it the FULL control force, mid-maneuver and at
+     whatever q the ship was flying; the rigging rule keeps the travel, turns the force
+     with the flow, and lets the moment pass through zero on its own. (Those flow angles
+     put the plate far past its own stall, which is the separate problem in the same
+     corner -- controlForce answers deflection alone and so bills a broadside surface its
+     full q*S*cl*defl -- filed as #508.)
+   - A rig with no authority at all: a plate whose force line runs through the pivot is
+     not a control about that axis, and it is now asked for no travel rather than full
+     travel with a coin-flip sign. */
+static void test_control_rigging() {
+    printf("== control rigging: the mount decides, not the flow (#495) ==\n");
     const glm::dvec3 up(0,1,0);
     /* The shipped rudder pose: span along the ship's up, plate normal along
        -right, chord along +nose -- a vertical fin, clock 90. */
@@ -1161,46 +1253,65 @@ static void test_control_sign_is_rigging() {
     const auto liveLev = [&](const glm::dvec3 &ri, const glm::dvec3 &vrel) {
         return glm::dot(glm::cross(ri, partAero(fin, vrel).liftDir), up);
     };
-    const auto rigLev = [&](const glm::dvec3 &ri) {
-        return glm::dot(glm::cross(ri, fin[1]), up);
+    // The rule as it stood before #495, kept here only to pin that the two differ.
+    // It is deliberately NOT in drag.h any more: taking a direction where only a
+    // mount will do is the mistake, not a convenience.
+    const auto oldRule = [&](const glm::dvec3 &ri, const PartAero &pa) {
+        return (glm::dot(glm::cross(ri, pa.liftDir), up) >= 0.0) ? -1.0 : 1.0;
     };
 
     // Sweep the wind over the fin, dead ahead to straight astern. The mount never
     // moves, so neither does the answer it is asked.
     const glm::dvec3 riC(0, 0, -3.0);   // a normal, centreline fin: 3 m behind CG
-    const double rigSign0 = controlDeflectionSign(riC, fin[1], up, -1.0);
-    CHECK_TRUE(std::fabs(rigLev(riC)) > 1.0, "rigged with real yaw authority");
+    CHECK_TRUE(std::fabs(controlRigLever(riC, fin, up)) > 1.0,
+               "rigged with real yaw authority");
     for(int deg = 0; deg <= 180; deg += 10) {
         const double r = glm::radians((double)deg);
         const glm::dvec3 vrel = 100.0 * glm::dvec3(-std::sin(r), 0.0, std::cos(r));
-        CHECK_TRUE(controlDeflectionSign(riC, fin[1], up, -1.0) == rigSign0,
-                   "rigging sign is the same from every flow direction");
-        /* The live leverage, by contrast, wanders over the same sweep. For THIS
-           mount (a rectangular centreline fin) it only touches zero exactly
-           broadside, and that is the one flow partAero already refuses -- which is
-           precisely why no shipped airframe ever showed the flip. */
+        const PartAero pa = partAero(fin, vrel);
+        const double rigLev = controlRigLever(riC, fin, up);
+        const double lev = liveLev(riC, vrel);
+        /* The live leverage, by contrast, wanders over the same sweep. For THIS mount
+           (a rectangular centreline fin) it only reaches zero exactly broadside, and
+           never crosses -- which is precisely why no shipped airframe ever showed the
+           flip. Everywhere else the two rules genuinely do agree, and saying so is an
+           assertion, not a tautology. */
         if(deg == 90) {
-            CHECK_TRUE(std::fabs(liveLev(riC, vrel)) < 1e-12,
+            /* The one flow where the two rules come apart for a centreline fin. The
+               live liftDir collapses onto the ship's nose axis (the normalised residue
+               of a nearly vanishing vector), so the flow-decided leverage is EXACTLY
+               zero -- a cusp that touches zero without crossing, which is why the old
+               rule never flipped here. partAero refuses only a residue that is exactly
+               zero: the sweep's cos(90 deg) leaves 6.1e-17, so the frame is accepted
+               and the force is billed at full strength either way. That is #508. */
+            CHECK_TRUE(std::fabs(lev) < 1e-12,
                        "centreline fin: the flow-decided leverage touches zero broadside");
+            CHECK_TRUE(std::fabs(rigLev) > 1.0,
+                       "centreline fin: the mount's authority does not care about the flow");
         } else {
-            CHECK_TRUE(std::fabs(liveLev(riC, vrel)) > 1e-3,
-                       "centreline fin: elsewhere the two rules agree");
+            CHECK_TRUE(std::fabs(lev) > 1e-3, "centreline fin: no touch anywhere else");
+            CHECK_TRUE((lev >= 0.0) == (rigLev >= 0.0),
+                       "centreline fin: rig sign and live sign agree");
+            CHECK_TRUE(controlDeflection(pa, riC, fin, up, -1.0, 1.0, 0.35)
+                           == oldRule(riC, pa) * 0.35,
+                       "centreline fin: the shipped answer is unchanged by #495");
         }
     }
 
     // Exactly broadside there is no lift axis at all, so the frame is unusable and
-    // the caller asks for no travel. Still true, and now for the same reason the
-    // force itself is zero rather than because a sign had to be guessed.
+    // controlDeflection asks for no travel -- for the same reason the force itself is
+    // zero, not because a sign had to be guessed.
     {
         const PartAero pa = partAero(fin, glm::dvec3(-100.0, 0.0, 0.0));
         CHECK_TRUE(!pa.valid, "broadside plate: no usable aero frame");
         CHECK_TRUE(glm::length(pa.liftDir) == 0.0, "broadside plate: no lift direction");
+        CHECK_TRUE(controlDeflection(pa, riC, fin, up, -1.0, 1.0, 0.35) == 0.0,
+                   "unusable frame: no travel asked for");
     }
 
     /* The mount the old rule could not keep steady: the same fin 1 m to leeward of
-       the CG (a builder reaching for lever arm). tan(phi) = 3/1 puts the crossing
-       at 71.6 deg of flow angle, with attached flow and clear leverage either
-       side -- 0.63 m then -0.46 m. */
+       the CG (a builder reaching for lever arm). tan(phi) = 3/1 puts the crossing at
+       71.6 deg of flow angle, with clear leverage either side -- 0.63 m then -0.46 m. */
     const glm::dvec3 riOff(-1.0, 0.0, -3.0);
     const auto flowAt = [](double deg) {
         const double r = glm::radians(deg);
@@ -1209,37 +1320,72 @@ static void test_control_sign_is_rigging() {
     const double lexB = liveLev(riOff, flowAt(60.0));
     const double lexA = liveLev(riOff, flowAt(80.0));
     CHECK_TRUE(lexB > 0.5 && lexA < -0.4, "off-centre fin: its yaw leverage crosses zero");
-    CHECK_TRUE(controlDeflectionSign(riOff, partAero(fin, flowAt(60.0)).liftDir, up, -1.0)
-            != controlDeflectionSign(riOff, partAero(fin, flowAt(80.0)).liftDir, up, -1.0),
+    const double rigLevOff = controlRigLever(riOff, fin, up);
+    CHECK_TRUE(std::fabs(rigLevOff) > 0.5,
+               "the mount keeps real authority across the whole sweep");
+    CHECK_TRUE(oldRule(riOff, partAero(fin, flowAt(60.0)))
+            != oldRule(riOff, partAero(fin, flowAt(80.0))),
                "flow-decided sign flips across that crossing (the #495 bug)");
-    const double rigSign = controlDeflectionSign(riOff, fin[1], up, -1.0);
-    CHECK_TRUE(rigSign == -1.0, "the rig answers once: this fin is rigged to yaw left");
-    /* And the consequence, not just the sign. With the rigging fixed, a held
-       command keeps its travel and the force turns with the flow, so the yaw
-       moment runs through zero as the leverage does. With the flow deciding, the
-       travel reverses at the same instant, which is why that moment never crosses
-       zero -- it keeps the sign the stick was promised, and the FORCE is what
-       jumps, by its whole magnitude, at whatever q the ship is flying. */
+    /* And the consequence, not just the sign. With the rigging fixed, a held command
+       keeps its travel and the force turns with the flow, so the yaw moment runs
+       through zero as the leverage does. With the flow deciding, the travel reverses at
+       the same instant, which is why that moment never crosses zero -- it keeps the sign
+       the stick was promised, and the FORCE is what jumps, by its whole magnitude, at
+       whatever q the ship is flying. */
     const double q = 1000.0, S = 2.0, clc = 6.0, A = 0.26, maxDefl = 0.35;
     const auto momentRig = [&](double deg) {
-        const PartAero pa = partAero(fin, flowAt(deg));
-        const double sign = controlDeflectionSign(riOff, fin[1], up, -1.0);
-        const glm::dvec3 F = controlForce(q, S, clc, sign * maxDefl, pa.liftDir, A);
+        const glm::dvec3 v = flowAt(deg);
+        const PartAero pa = partAero(fin, v);
+        const double defl = controlDeflection(pa, riOff, fin, up, -1.0, 1.0, maxDefl);
+        const glm::dvec3 F = controlForce(q, S, clc, defl, pa.liftDir, A);
         return glm::dot(glm::cross(riOff, F), up);
     };
     const auto momentLive = [&](double deg) {
-        const PartAero pa = partAero(fin, flowAt(deg));
-        const double sign = controlDeflectionSign(riOff, pa.liftDir, up, -1.0);
-        const glm::dvec3 F = controlForce(q, S, clc, sign * maxDefl, pa.liftDir, A);
+        const glm::dvec3 v = flowAt(deg);
+        const PartAero pa = partAero(fin, v);
+        const glm::dvec3 F = controlForce(q, S, clc, oldRule(riOff, pa) * maxDefl,
+                                          pa.liftDir, A);
         return glm::dot(glm::cross(riOff, F), up);
     };
-    CHECK_TRUE(momentRig(60.0) < 0.0 && momentRig(80.0) > 0.0,
+    CHECK_TRUE(std::fabs(momentRig(60.0)) > 1.0 && std::fabs(momentRig(80.0)) > 1.0,
+               "both sides of the crossing carry real authority");
+    CHECK_TRUE(momentRig(60.0) * momentRig(80.0) < 0.0,
                "rigged: the moment reverses with the flow, through zero");
-    CHECK_TRUE(momentLive(60.0) < 0.0 && momentLive(80.0) < 0.0,
+    CHECK_TRUE(momentLive(60.0) * momentLive(80.0) > 0.0,
                "flow-decided: the moment keeps the promised sign, never crossing zero");
     CHECK_TRUE(momentRig(60.0) == momentLive(60.0), "before the crossing the two agree");
     CHECK_TRUE(momentRig(80.0) == -momentLive(80.0),
                "past it they hold opposite sides of the same leverage");
+
+    /* AUTHORITY, the other half of the mount's vote. A surface rigged so its force line
+       runs through the pivot has no moment about the axis its stick promises: a yaw
+       command on a plate that pushes fore-and-aft (clock 0), or a part sitting on the
+       CG. Full travel there is not neutral -- the force is still q*S*cl*defl in the
+       wind's chosen direction, and the airframe pays for it. Measured on a skiff with
+       its rudder turned to clock 0: +20.1 deg of travel and a peak airframe
+       |tau| = 2560 N m, above the 1539 N m of the same ship rigged properly; asked for
+       no travel, that peak is 246 N m. Ask for no travel and it feels dead.
+       A WEAK rig is a different thing and still travels: this is a degeneracy test, not
+       an authority threshold (telling the builder is #509). */
+    {
+        const double cmd = 1.0;
+        const glm::dmat3 finClock0(glm::dvec3(1,0,0), glm::dvec3(0,0,1), glm::dvec3(0,-1,0));
+        const PartAero paFlat = partAero(finClock0, flowAt(20.0));
+        CHECK_TRUE(paFlat.valid, "a clock-0 fin still has a usable frame");
+        CHECK_TRUE(std::fabs(controlRigLever(riC, finClock0, up)) < 1e-12,
+                   "a clock-0 fin has no yaw leverage at all");
+        CHECK_TRUE(controlDeflection(paFlat, riC, finClock0, up, -1.0, cmd, maxDefl) == 0.0,
+                   "no authority: no travel asked for");
+        const PartAero paC = partAero(fin, flowAt(20.0));
+        CHECK_TRUE(controlDeflection(paC, glm::dvec3(0.0), fin, up, -1.0, cmd, maxDefl)
+                       == 0.0,
+                   "a steering part mounted on the CG is not a steering part");
+        const glm::dvec3 riWeak(0.0, 0.0, -0.05);   // 5 cm behind CG: weak, not degenerate
+        CHECK_TRUE(controlDeflection(paC, riWeak, fin, up, -1.0, cmd, maxDefl)
+                       == -maxDefl, "a weak rig still gets full travel");
+        CHECK_TRUE(controlDeflection(paC, riC, fin, up, -1.0, 0.0, maxDefl) == 0.0,
+                   "no command, no travel");
+    }
 }
 
 /* The visual hinge must tip the mesh the SAME way the surface's own force
@@ -2031,7 +2177,7 @@ int main() {
     printf("\n");
     test_controlDeflectionSign();
     test_control_pair_frames();
-    test_control_sign_is_rigging();
+    test_control_rigging();
     printf("\n");
     test_controlSurfaceVisualRot();
     printf("\n");

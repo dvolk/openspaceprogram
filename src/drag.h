@@ -881,23 +881,58 @@ inline double jetThrust(double v, double rho, double rho_sea,
    deflections for the same torque; this matches the reaction wheel's convention
    either way. `targetSign` is the SIGN of the wheel's torque about that axis for a
    positive stick (pitch/yaw = -1, roll = +1).
-   `pushDir` is the direction the surface would push AT ZERO ANGLE OF ATTACK -- its own
-   plate normal (partAero's liftDir with the flow along the chord), NOT its live
-   liftDir. The rigging is a build fact: a canard and a tail, or a mirrored pair, need
-   opposite travel, and the flow does not get a vote (#495). Hand it the live direction
-   and the leverage below can change sign mid-flight -- which reverses the force by
-   180 deg at whatever q the ship is flying, and keeps promising the stick a torque
-   about an axis the surface has no authority over at that instant. A plain centreline
-   fin never gets there (its leverage only touches zero at dead broadside, the one flow
-   partAero already refuses); an off-centre or swept mount crosses it with the flow
-   still attached, which is what tests/test_drag.cpp::test_control_sign_is_rigging
-   pins. */
-inline double controlDeflectionSign(const glm::dvec3 &ri,
-                                    const glm::dvec3 &pushDir,
+   The push direction is the MOUNT's own -- a plate pushes along its normal (mount[1])
+   at zero angle of attack, which is also the axis partAero's liftDir is measured
+   from and the hinge line drag.h::controlSurfaceVisualRot turns. So the rigging is a
+   build fact and the flow does not get a vote (#495). That is why this takes the mount
+   matrix rather than a direction: handed the LIVE liftDir, the leverage below can
+   change sign mid-flight, which reverses the travel -- and with it the whole force, at
+   whatever q the ship is flying -- and promises the stick a torque about an axis the
+   surface has no reliable authority over. tests/test_drag.cpp::test_control_rigging
+   pins both halves. It assumes a proper rotation (det +1), which is what every
+   localRot is built from; a reflected mount would quietly invert the rigging. */
+inline double controlRigLever(const glm::dvec3 &ri, const glm::dmat3 &mount,
+                              const glm::dvec3 &aboutAxis) {
+    return glm::dot(glm::cross(ri, mount[1]), aboutAxis);
+}
+
+inline double controlDeflectionSign(double rigLever, double targetSign = -1.0) {
+    return (rigLever >= 0.0) ? targetSign : -targetSign;
+}
+
+inline double controlDeflectionSign(const glm::dvec3 &ri, const glm::dmat3 &mount,
                                     const glm::dvec3 &aboutAxis,
                                     double targetSign = -1.0) {
-    const double d = glm::dot(glm::cross(ri, pushDir), aboutAxis);
-    return (d >= 0.0) ? targetSign : -targetSign;
+    return controlDeflectionSign(controlRigLever(ri, mount, aboutAxis), targetSign);
+}
+
+/* HOW FAR A COMMAND TAKES one control surface, in rad, and whether it takes it at
+   all. `cmdFrac` is the signed command fraction (controlCommandFrac: stick + trim,
+   clamped to +-1) and `maxDefl` the part's travel stop. This is the whole decision the
+   aero step makes about travel -- frame, rigging and authority together -- so that the
+   wiring is the thing under test rather than a call site nobody pins
+   (tests/test_drag.cpp::test_control_rigging).
+   An unusable flow frame (pa.valid, #469) asks for no travel: there is no force to
+   point, so moving the plate only moves the ship once the frame comes back.
+   A surface rigged so its force line runs through the pivot (rig lever ~0 against its
+   own mount distance -- a fin turned to the wrong clock, or one mounted where its push
+   cannot turn the axis its stick promises) is ALSO asked for NO TRAVEL. It is not a
+   control about that axis, and actuating it anyway is worse than dead: the force is
+   still full size, so the moment it delivers is real and its direction comes from the
+   flow. Measured, a skiff with its rudder turned to clock 0: it travelled to its
+   +20.1 deg stop and the airframe peaked at |tau| = 2560 N m, MORE than the 1539 N m of
+   the same ship rigged properly. With this guard it asks for no travel and the peak
+   drops to 246 N m. The 1e-6 is a degeneracy test on the GEOMETRY (a millionth of the
+   mount distance is a fraction of a micrometre of lever), not a threshold on what counts
+   as weak -- a builder with a real lever of 0.05 m still gets full travel. Telling them
+   the surface has no authority is a load-time check: #509. */
+inline double controlDeflection(const PartAero &pa, const glm::dvec3 &ri,
+                                const glm::dmat3 &mount, const glm::dvec3 &aboutAxis,
+                                double targetSign, double cmdFrac, double maxDefl) {
+    if(!pa.valid) { return 0.0; }
+    const double lever = controlRigLever(ri, mount, aboutAxis);
+    if(std::fabs(lever) <= 1e-6 * glm::length(ri)) { return 0.0; }
+    return controlDeflectionSign(lever, targetSign) * cmdFrac * maxDefl;
 }
 
 /* #485: a surface's angle of attack, signed into SHIP terms for a READOUT
@@ -912,15 +947,18 @@ inline double controlDeflectionSign(const glm::dvec3 &ri,
    acts along: up for a wing or tailplane, right for a fin or rudder; a surface
    angled between the two (a v-tail) takes the closer one, and its two halves then
    read alike.
-   Display arithmetic, like controlDeflectionSign above decides what to SHOW the
-   player rather than what to push: nothing in the law calls this. */
-inline double surfaceAlphaDegForReadout(const PartAero &pa, const glm::dvec3 &up,
-                                        const glm::dvec3 &right) {
-    const double vu = std::fabs(glm::dot(pa.liftDir, up));
-    const double vr = std::fabs(glm::dot(pa.liftDir, right));
+   `rigLift` is the mount's own zero-alpha lift axis (mount[1]), NOT the live
+   liftDir: a mount near 45 deg between the two ship axes sits exactly on the
+   tie-break, where the live direction decides it by float noise and the printed
+   angle can change sign mid-flight (#495's same mistake, on the display side).
+   Display arithmetic; nothing in the law calls this. */
+inline double surfaceAlphaDegForReadout(const PartAero &pa, const glm::dvec3 &rigLift,
+                                        const glm::dvec3 &up, const glm::dvec3 &right) {
+    const double vu = std::fabs(glm::dot(rigLift, up));
+    const double vr = std::fabs(glm::dot(rigLift, right));
     const double sgn = (vu >= vr)
-        ? ((glm::dot(pa.liftDir, up) >= 0.0) ? 1.0 : -1.0)
-        : ((glm::dot(pa.liftDir, right) >= 0.0) ? 1.0 : -1.0);
+        ? ((glm::dot(rigLift, up) >= 0.0) ? 1.0 : -1.0)
+        : ((glm::dot(rigLift, right) >= 0.0) ? 1.0 : -1.0);
     return sgn * glm::degrees(pa.alpha);
 }
 
