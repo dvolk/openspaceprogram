@@ -578,6 +578,52 @@ struct BuildShip {
    saved tree reproduces its ids, edges and poses exactly. */
 bool save_ship_def(const BuildShip &bs, const char *path);
 
+/* #499: is this BUILD aerodynamically stable, asked without a physics pass? The
+   flight answer (Vehicle::lastLiftSlope / lastStaticMargin) needs air, an
+   atmosphere and a substep, so a player in the VAB cannot see whether the airframe
+   they just assembled will diverge until they have flown it. This asks the same
+   law (drag.h::LiftSlopeSum, the same liftSlopePerQ that bills the flight force)
+   at the one flow that needs no telemetry: an airframe flying straight ahead, at
+   its design angle of attack. What it CANNOT see is the stall droop (#487's band)
+   and the rotation sweep (#483) -- an airframe that reads +0.6 m here can still
+   stop resisting mid-tumble, and only the flight number shows that.
+   Conventions, because they are the numbers a player will compare:
+   - the COM is the LAUNCH COM: PartDef::mass plus every resource but EC at full
+     capacity, which is what Vehicle::init seeds and Part::effectiveMass then
+     carries (minus what gets burned). Masses inside contents are not walked; a
+     build tree has them as ordinary parts or not at all. A filled seat costs
+     `seatOccupantMass` at the seat part's position, which is how the flight COM
+     sees it -- pass 0 to ask about an uncrewed ship.
+   - the ship axes are the ROOT's: BuildShip::recomputePoses leaves parts[0] at the
+     identity, so nose = +z, up = +y, right = +x, exactly the frame the root's own
+     axes give in flight.
+   - control surfaces (control_area, no lift_area) contribute nothing, as in flight
+     (#492 trims, it does not stabilise).
+   `valid` is LiftSlopeSum::usable(): nothing lifting, or surfaces that cancel each
+   other out, dash the pair rather than quoting the average of a cancelled sum. */
+struct BuildStability {
+    bool valid = false;
+    double slope = 0.0;     // m^2/rad: what one radian of AoA buys
+    double margin = 0.0;    // m BEHIND the COM; + = restoring, - = diverging
+    double mass = 0.0;      // kg, the launch-convention COM mass
+    glm::dvec3 com = glm::dvec3(0.0);   // ship-local (root frame)
+};
+
+/* `occupantMass` = what one seated kerbal weighs (the suit def's part mass plus
+   its non-EC capacity: 97.05 kg as shipped). It is a parameter rather than a
+   constant because the answer belongs to the loaded catalog, not to this header. */
+BuildStability buildStability(const BuildShip &bs, double occupantMass = 0.0);
+
+/* What one occupant of a seat weighs, counted the way Part::effectiveMass counts
+   a seated suit: the whole suit ship's mass plus every resource but EC. Pass the
+   def from load_suit_def (which is what makes it a suit at all). */
+double seatOccupantMass(const ShipDef &suitDef);
+
+/* A part's mass as a freshly built ship carries it: the dry def mass plus every
+   resource but EC at full capacity, which is what Vehicle::init seeds and
+   Part::effectiveMass then reports (minus whatever gets burned). */
+double partLoadMass(const PartDef &def);
+
 /* The resolved child pose for one attachment. Purely relative: parent in some
    frame, child back in that same frame. */
 struct AttachPose {

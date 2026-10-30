@@ -15,6 +15,7 @@
 
 #include "hash.h"     // partGeomFingerprint's FNV-1a mixer
 #include "resdir.h"   // the part mesh path, resolved the way part.cpp resolves it
+#include "drag.h"     // buildStability: the same LiftSlopeSum the flight lift loop bills
 
 PartDef::PartDef()
     : mass(0.0), radius(1.0), height(2.0), torque(0.0),
@@ -1898,6 +1899,77 @@ bool save_ship_def(const BuildShip &bs, const char *path) {
     f << doc.dump(2) << "\n";
     f.flush();
     return !f.fail();
+}
+
+double partLoadMass(const PartDef &def) {
+    double m = def.mass;
+    for(size_t r = 0; r < def.capacity.size(); r++) {
+        if(r == (size_t)ResourceType::EC) { continue; }   // energy, no mass
+        m += (double)def.capacity[r];
+    }
+    return m;
+}
+
+BuildStability buildStability(const BuildShip &bs, double occupantMass) {
+    BuildStability out;
+    if(bs.parts.empty()) { return out; }
+
+    /* The COM the airframe pivots about at launch: partLoadMass is the same
+       arithmetic Part::effectiveMass reports with the tanks seeded full. Contents
+       are not walked -- a build tree carries them as ordinary parts (or not at
+       all).
+       A filled seat is the second term: `spawn_crew`/`fill_seat` park a suit Part
+       in the capsule, whose mass Part::effectiveMass folds into that part's body,
+       so it counts AT THE SEAT'S POSITION (measured: the skiff's 97.05 kg kerbal
+       suit moves its COM 0.18 m forward, which is the difference between the
+       +0.60 m of margin it flies with and the +0.42 m the same parts would have
+       uncrewed). `occupantMass` is what one occupant weighs; 0 asks for a
+       ship that launches empty. */
+    glm::dvec3 com(0.0);
+    double mass = 0.0;
+    for(const BuildPart &bp : bs.parts) {
+        if(bp.def == nullptr) { continue; }
+        double m = partLoadMass(*bp.def);
+        if(occupantMass > 0.0 && bp.def->crew_capacity > 0) {
+            m += (double)bp.def->crew_capacity * occupantMass;
+        }
+        com += bp.localPos * m;
+        mass += m;
+    }
+    if(mass <= 0.0) { return out; }
+    out.mass = mass;
+    out.com = com / mass;
+
+    /* Flying straight ahead at unit speed: the only flow a build can be asked
+       about without instruments. |v| cancels in a per-unit-q slope, so the length
+       here is a direction with an honest magnitude. A wing mounted at incidence
+       reports its slope AT that incidence, which is what its mount means. */
+    const glm::dvec3 nose(0.0, 0.0, 1.0);
+    const glm::dvec3 up(0.0, 1.0, 0.0);
+    const glm::dvec3 right(1.0, 0.0, 0.0);
+    LiftSlopeSum sum;
+    for(const BuildPart &bp : bs.parts) {
+        if(bp.def == nullptr || bp.def->lift_area <= 0.0) { continue; }
+        const glm::dmat3 mount = bp.localRot;
+        const PartAero pa = partAero(mount, nose);
+        if(!pa.valid) { continue; }   // a mount with no lift axis lifts nothing
+        sum.add(liftSlopePerQ(pa, mount, nose, bp.def->lift_area, bp.def->cl,
+                              bp.def->stall_angle, right),
+                bp.localPos - out.com, up, right);
+    }
+    out.slope = sum.slope();
+    out.valid = sum.usable();
+    if(out.valid) { out.margin = sum.margin(); }
+    return out;
+}
+
+double seatOccupantMass(const ShipDef &suitDef) {
+    double m = 0.0;
+    for(const ShipPart &sp : suitDef.parts) {
+        if(sp.def == nullptr) { continue; }
+        m += partLoadMass(*sp.def);
+    }
+    return m;
 }
 
 double resolveHullMargin(double shipMargin, double partMargin) {

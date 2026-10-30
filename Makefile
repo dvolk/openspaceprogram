@@ -380,6 +380,11 @@ $(TESTDIR)/test_rotation: $(TESTDIR)/obj/test_rotation.o $(TCOMMON_OBJS)
 $(TESTDIR)/test_shipload: $(TESTDIR)/obj/test_shipload.o $(TESTDIR)/obj/shipdef.o
 	$(CXX) -o $@ $^
 
+# buildStability is shipdef.cpp's own math over a BuildShip (drag.h is headers),
+# so this needs no physics link -- same rule shape as test_shipload.
+$(TESTDIR)/test_stability: $(TESTDIR)/obj/test_stability.o $(TESTDIR)/obj/shipdef.o
+	$(CXX) -o $@ $^
+
 $(TESTDIR)/test_save: $(TESTDIR)/obj/test_save.o
 	$(CXX) -o $@ $^
 
@@ -475,7 +480,7 @@ $(TESTDIR)/test_orient: $(TESTDIR)/obj/test_orient.o $(BULLET3_OBJS)
 TESTS = test_frames test_spawn test_attitude test_slew3d test_gimbal test_rcs test_thrust test_fuel \
         test_power test_staging test_staging_dv test_dock test_contain test_inertia test_inventory \
         test_suitdef \
-        test_rotation test_shipload test_save test_crew test_roster test_calendar \
+        test_rotation test_shipload test_stability test_save test_crew test_roster test_calendar \
         test_flightlog test_science test_bodylimits \
         test_orbit test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
         test_terrain test_drag test_audio test_jet test_jobs test_orbitmap test_orbitcam \

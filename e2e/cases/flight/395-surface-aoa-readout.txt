@@ -7,8 +7,14 @@
 # Nose-up climb is the numeric half: the flow runs along the nose, so AoA sits
 # near zero. |aoa| is pinned, not aoa, so the case does not freeze the sign
 # convention against conventional aero.
+# #499 hung the SURFACE window's stability pair off the same line, and the racer
+# is the case that shows the honest way to report an airframe with nothing lifting:
+# cla prints 0.0 (the substep measured the air and found no slope), while sm DASHES.
+# Quoting "+0.00 m" there would be #454's bug all over again -- weighting by a sum
+# that cancelled had the drag log saying Np=+15.9 m, then +121.5, then -89.7 for
+# one skiff, which is why LiftSlopeSum::usable refuses rather than divides.
 NAME surface-aoa-readout
-CLAIM [surfinfo] reports the aero angle of attack while the ship has air-relative flow, and "-" when it has none.
+CLAIM [surfinfo] reports the aero angle of attack while the ship has air-relative flow and "-" when it has none, and its stability pair reports a zero slope without inventing a neutral-looking margin for an airframe that has nothing lifting.
 KIND invariant
 ARGS --time-accel 1 --timeout 6 --info-log --orbit-interval 0.5 --startship racer,res/ships/racer.json,Kerbin,pad --sim-press 1000,0,SPACE,1500,4000,T
 FORBID error:
@@ -16,3 +22,7 @@ CHECK len(surf) >= 6
 CHECK any(s["aoa"] is None for s in surf if s["t"] < 1.2)
 CHECK all(s["aoa"] is not None for s in surf if s["t"] >= 2.0)
 CHECK all(abs(s["aoa"]) < 1.0 for s in surf if s["t"] >= 2.0)
+# The racer is under an atmosphere the whole run, so cla is a number throughout
+# (0.0: no lifting surface on the ship), and sm is never a number.
+CHECK all(s["cla"] == 0.0 for s in surf)
+CHECK all(s["sm"] is None for s in surf)

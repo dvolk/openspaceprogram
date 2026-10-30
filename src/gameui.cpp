@@ -1931,6 +1931,28 @@ void drawUIReadouts(Game &g) {
         } else {
             ImGui::Text("Srf: -");
         }
+        /* #499: the two numbers that answer "will this airframe push its nose back
+           into the flow", in the window a pilot is already looking at instead of in
+           a headless --drag-log run. CLa is what one radian of angle of attack buys
+           (CL*A per radian, projected on the ship's up axis, so it dips with AoA);
+           SM is where that change sits, metres BEHIND the COM, + = restoring. Print
+           CLa with it, always: an airframe deep in the stall droop keeps a healthy
+           looking SM while its stiffness collapses, and CLa is the field that says
+           so (#487's band). Outside an atmosphere both are dash -- a vacuum substep
+           measures no aero, and "0.0" would read as "my wings fell off". The VAB
+           quotes the same law with no flight at all (shipdef.h::buildStability). */
+        if(ship->lastDragRho > 0.0) {
+            ImGui::Text("CLa: %.1f m2/rad", ship->lastLiftSlope);
+            if(ship->lastStaticValid) {
+                ImGui::Text("SM:  %+.2f m %s", ship->lastStaticMargin,
+                            ship->lastStaticMargin > 0.0
+                                ? "(restoring)" : "(diverging)");
+            } else {
+                ImGui::Text("SM:  -  (surfaces disagree)");
+            }
+        } else {
+            ImGui::Text("CLa: -   SM: -");
+        }
         ImGui::Text("Acc: %.1fm/s2", ship->feltAccel());
     });
 
@@ -1996,18 +2018,35 @@ void drawUIReadouts(Game &g) {
                            glm::degrees(ship->lastDragAlpha))
                 : snprintf(aoa_s, sizeof aoa_s, "-");
             assert(aoa_n > 0 && aoa_n < (int)sizeof aoa_s);
+            /* #499: cla/sm are the SURFACE window's stability pair (see the
+               window's own comment). Dash cla when there is no air to have a lift
+               slope in, and dash sm alone when the surfaces stopped agreeing with
+               each other -- the same rule drag.h::LiftSlopeSum::usable applies to
+               the [drag] line's SM=, and for the same reason: quoting where the
+               average of a cancelled sum landed is how #454 came to print
+               Np=+15.9 m, then +121.5, then -89.7 for one skiff. */
+            char cla_s[32], sm_s[32];
+            const int cla_n = ship->lastDragRho > 0.0
+                ? snprintf(cla_s, sizeof cla_s, "%.6g m2/rad", ship->lastLiftSlope)
+                : snprintf(cla_s, sizeof cla_s, "-");
+            const int sm_n = (ship->lastDragRho > 0.0 && ship->lastStaticValid)
+                ? snprintf(sm_s, sizeof sm_s, "%.6g m", ship->lastStaticMargin)
+                : snprintf(sm_s, sizeof sm_s, "-");
+            assert(cla_n > 0 && cla_n < (int)sizeof cla_s);
+            assert(sm_n > 0 && sm_n < (int)sizeof sm_s);
             printf("[surfinfo] t=%.1fs "
                    "alt_agl=%.6g m alt_asl=%.6g m "
                    "vs=%.6g m/s hs=%.6g m/s lat=%.8g deg lon=%.8g deg "
                    "pitch=%.6g deg roll=%.6g deg hdg=%.6g deg aoa=%s "
-                   "acc=%.6g m/s2 body=\"%s\" bme=\"%s\" sit=\"%s\"\n",
+                   "cla=%s sm=%s acc=%.6g m/s2 "
+                   "body=\"%s\" bme=\"%s\" sit=\"%s\"\n",
                    time,
                    distance - b->GetTerrainHeight(glm::normalize(pos)),
                    altAsl,
                    ver_speed, hor_speed2,
                    glm::degrees(latitude), glm::degrees(longitude),
                    glm::degrees(pitch), glm::degrees(roll), glm::degrees(yaw),
-                   aoa_s,
+                   aoa_s, cla_s, sm_s,
                    ship->feltAccel(), b->name.c_str(), bme,
                    situationName(ps.situation));
             fflush(stdout);
@@ -4657,6 +4696,36 @@ void drawVabUI(Game &g) {
     ImGui::Begin("VAB", nullptr);
     ImGui::Text("VAB -- %s (%d parts)", g.vab.build.name.c_str(),
                 (int)g.vab.build.parts.size());
+    /* #499: the stability of THIS ASSEMBLY, asked before it has ever met the air.
+       Same law the flight lift loop bills (drag.h::LiftSlopeSum), at the one flow a
+       build can be asked about without instruments: straight ahead, at each mount's
+       own incidence. It is the number the drag log prints in flight (CLa / SM=),
+       computed here off the parts on the pad rather than off a sim run, so a tail
+       mounted ahead of the wings fails at the bench instead of on the runway.
+       Crewed as the launch will be: each seat costs one suit from the pad's pool,
+       because a 97 kg kerbal in the nose is 0.18 m of the margin (that is what
+       turns the skiff's +0.42 m into the +0.60 m it flies with). No crew standing,
+       no occupant mass. What it cannot see is the stall droop or a rotation: a ship
+       that reads +0.6 here can still stop resisting mid-tumble, and only the flight
+       number (the SURFACE window) shows that. */
+    {
+        StaticBuilding *pad = homeCrewPad(g.sys);
+        const Part *suit = (pad != nullptr && !pad->crew.empty())
+                         ? pad->crew.front() : nullptr;
+        const double occupant = (suit != nullptr && suit->def != nullptr)
+                              ? partLoadMass(*suit->def) : 0.0;
+        const BuildStability stab = buildStability(g.vab.build, occupant);
+        if(stab.valid) {
+            ImGui::Text("Aero: CLa %.1f m2/rad  SM %+.2fm %s",
+                        stab.slope, stab.margin,
+                        stab.margin > 0.0 ? "restoring" : "diverging");
+        } else {
+            /* Dashed, not zeroed: LiftSlopeSum::usable refuses to quote where the
+               average of a cancelled sum landed (#454's Np=+15.9 m lie). */
+            ImGui::TextDisabled("Aero: CLa %.1f m2/rad  SM -  (surfaces disagree,"
+                                " or none lifts)", stab.slope);
+        }
+    }
     // Parts are selected by clicking them in the 3D view; the panel below acts on that
     // selection.
     if(g.vab.selected >= 0 && (size_t)g.vab.selected < g.vab.build.parts.size()) {

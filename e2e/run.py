@@ -267,12 +267,17 @@ TERRAIN_RE = re.compile(
 )
 # aoa prints "-" (no value) outside an atmosphere or at rest in air, so it gets
 # its own alternative rather than a wider character class that would eat the "-".
+# cla/sm (#499) are the SURFACE window's stability pair: cla dashes with aoa (no
+# air), sm dashes alone when the lifting surfaces stop agreeing, so each needs
+# the same two-arm treatment.
 SURF_RE = re.compile(
     r"\[surfinfo\]\s+t=([\d.]+)s\s+alt_agl=([-\d.e+]+) m\s+"
     r"alt_asl=([-\d.e+]+) m\s+vs=([-\d.e+]+) m/s\s+hs=([-\d.e+]+) m/s\s+"
     r"lat=([-\d.e+]+) deg\s+lon=([-\d.e+]+) deg\s+pitch=([-\d.e+]+) deg\s+"
     r"roll=([-\d.e+]+) deg\s+hdg=([-\d.e+]+) deg\s+"
     r"(?:aoa=([-\d.e+]+) deg|aoa=-)\s+"
+    r"(?:cla=([-\d.e+]+) m2/rad|cla=-)\s+"
+    r"(?:sm=([-\d.e+]+) m|sm=-)\s+"
     r"acc=([-\d.e+]+) m/s2\s+"
     r"body=\"([^\"]*)\"\s+bme=\"([^\"]*)\"\s+sit=\"([^\"]*)\""
 )
@@ -789,7 +794,7 @@ def parse_terrain(out):
 def parse_surf(out):
     rows = []
     for m in SURF_RE.finditer(out):
-        (t, agl, asl, vs, hs, lat, lon, pitch, roll, hdg, aoa, acc,
+        (t, agl, asl, vs, hs, lat, lon, pitch, roll, hdg, aoa, cla, sm, acc,
          body, bme, sit) = m.groups()
         rows.append({
             "t": float(t), "alt_agl": float(agl), "alt_asl": float(asl),
@@ -798,6 +803,10 @@ def parse_surf(out):
             "hdg": float(hdg),
             # None when the ship had no air-relative flow to have an angle to.
             "aoa": float(aoa) if aoa is not None else None,
+            # #499: cla is None with no air; sm is None with no air OR with the
+            # lifting surfaces disagreeing, which is when the margin is dashed.
+            "cla": float(cla) if cla is not None else None,
+            "sm": float(sm) if sm is not None else None,
             "acc": float(acc),
             "body": body, "bme": bme, "sit": sit,
         })
