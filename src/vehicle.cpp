@@ -2389,13 +2389,17 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         static int aeroDump = getenv("OSP_SHIP_DUMP") != nullptr ? 1 : 0;   // 1 now, 2 pending, 0 done
         static const double dumpBeta = getenv("OSP_SHIP_DUMP_BETA")
             ? atof(getenv("OSP_SHIP_DUMP_BETA")) : 0.0;   // static: not a getenv+atof per substep
-        if(aeroDump == 2 && std::fabs(fr.beta * 180 / M_PI) >= dumpBeta) { aeroDump = 1; }
+        // M_PI is a POSIX/MSVC extension, not standard C++; the rest of the tree
+        // uses std::numbers::pi, and so does this. constexpr: this scope runs every
+        // substep whether or not the dump is on, and 180 / M_PI used to fold.
+        constexpr double rad2deg = 180.0 / std::numbers::pi;
+        if(aeroDump == 2 && std::fabs(fr.beta * rad2deg) >= dumpBeta) { aeroDump = 1; }
         else if(aeroDump == 1 && dumpBeta > 0.0
-                && std::fabs(fr.beta * 180 / M_PI) < dumpBeta) { aeroDump = 2; }
+                && std::fabs(fr.beta * rad2deg) < dumpBeta) { aeroDump = 2; }
         if(aeroDump == 1) {
             printf("[ship] compound mass %.1f  vrel %.1f m/s  alpha %.1f  beta %.1f  alt %.0f\n",
-                   hull->mass, glm::length(vrel), alpha * 180 / M_PI,
-                   fr.beta * 180 / M_PI, alt);
+                   hull->mass, glm::length(vrel), alpha * rad2deg,
+                   fr.beta * rad2deg, alt);
         }
         for(Part *p : parts) {
             if(p->body == nullptr || p->body->hullVerts.empty()) { continue; }
