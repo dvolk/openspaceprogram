@@ -58,6 +58,7 @@
 #include "save.h"
 #include "datadir.h"
 #include "resdir.h"
+#include "console.h"
 
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
@@ -216,6 +217,10 @@ static void installHeadlessHooks(Game &game) {
 
 int main(int argc, char **argv)
 {
+    /* First, so --help/--version and the startup errors reach a shell on
+       windows (console.h). */
+    reattach_console();
+
     const auto prog_start = std::chrono::steady_clock::now();
 
     GameArgs args;

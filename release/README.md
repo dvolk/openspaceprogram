@@ -36,6 +36,14 @@ https://github.com/dvolk/openspaceprogram
 
 See Controls for all bindings
 
+## IF IT WILL NOT START
+
+osp.exe runs without a console window, so a startup failure (missing
+res/, no OpenGL) can look like the window flashing and vanishing.
+Start it from cmd or PowerShell to see what it says. To script a run
+in cmd, use `start /wait "" osp.exe ...` — cmd does not wait for it
+otherwise.
+
 ## WHERE YOUR DATA GOES
 
 Saves, screenshots, user ships and settings are (usually) in:

@@ -104,8 +104,14 @@ endif
 # 4/4 PASS. The frame that needs it is still unidentified: -Wframe-larger-than=4096
 # over our TUs is clean, so it is a VLA/alloca-sized frame or one inside the
 # cmake-built middleware (which never sees our warning flags).
+# -mwindows: PE subsystem WINDOWS, so double-clicking osp.exe does not open a
+# console window behind the game. The entry becomes WinMainCRTStartup, and its
+# __tmainCRTStartup calls plain main(argc, argv) -- the link needs no WinMain.
+# Wine hands the exe the piped std handles whatever the subsystem is, so the
+# e2e stdout capture is unchanged; the reattach in console.cpp matters on a
+# real Windows box, where a GUI-subsystem process starts with dead handles.
 ifeq ($(OS),windows)
-STATIC_LD=-static -Wl,--stack=8388608
+STATIC_LD=-static -mwindows -Wl,--stack=8388608
 else
 STATIC_LD=
 endif
@@ -624,6 +630,9 @@ artifacts: icon-check
 	@$(MAKE) --no-print-directory OS=windows all
 	@x86_64-w64-mingw32-objdump -h "$(WINDOWS_BIN)" | grep -q '\.rsrc' || \
 		{ echo "error: $(WINDOWS_BIN) has no .rsrc -- release/osp.rc did not get linked" >&2; exit 1; }
+	@LC_ALL=C x86_64-w64-mingw32-objdump -p "$(WINDOWS_BIN)" \
+		| grep -qE '^Subsystem[[:space:]]+00000002' || \
+		{ echo "error: $(WINDOWS_BIN) is a console-subsystem exe -- -mwindows is missing from the link, so players get a console window" >&2; exit 1; }
 	@VER=$$(sed -n 's/^#define VERSION "\(.*\)"/\1/p' src/version.h); \
 	if [ -z "$$VER" ]; then \
 		echo "error: no version string (src/version.h missing?)" >&2; exit 1; \
