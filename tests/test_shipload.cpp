@@ -2235,6 +2235,70 @@ int main() {
         CHECK(expect_throw_saying([&](){ load_ship_def(bad, cat); }, "\"trim\" must be a number"));
         std::remove(bad);
     }
+    /* #496: a typo in a NUMBER used to answer with the json library's own complaint
+       -- "type must be number, but is string" -- which names no file, no part and no
+       field, so the author hunts through the whole file. Both loaders now say the
+       part, the field, the file, and what the number is measured in. */
+    {
+        const char *bad = "/tmp/test_shipload_numfield.json";
+        const struct { const char *body; const char *needle; } cases[] = {
+            // the ship file: part id, field, unit
+            { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", "
+              "\"angle\": \"up\" } ] }",
+              "part 'c' in /tmp/test_shipload_numfield.json: \"angle\" must be a number (deg)" },
+            { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\" }, "
+              "{ \"part\": \"elevator_r0.8h0.7\", \"id\": \"e\", \"parent\": \"c\", "
+              "\"attach\": \"surface\", \"angle\": 0, \"roll\": \"90\" } ] }",
+              "\"roll\" must be a number (deg)" },
+            { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", \"stage\": \"2\" } ] }",
+              "\"stage\" must be a whole number" },
+            { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", \"stage\": 1.5 } ] }",
+              "\"stage\" must be a whole number" },
+        };
+        for(size_t k = 0; k < sizeof(cases) / sizeof(cases[0]); k++) {
+            std::ofstream f(bad);
+            f << cases[k].body;
+            f.close();
+            CHECK(expect_throw_saying([&](){ load_ship_def(bad, cat); }, cases[k].needle));
+            std::remove(bad);
+        }
+        // The parts catalog gets the same treatment: it names the part by name.
+        const struct { const char *body; const char *needle; } catcases[] = {
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": \"2t\" } ] }",
+              "parts: x: \"mass\" must be a number (kg)" },
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"wing\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"lift_area\": \"4\" } ] }",
+              "parts: x: \"lift_area\" must be a number (m^2)" },
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"engine\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"propellant\": { \"jetfuel\": \"lots\" } } ] }",
+              "\"propellant\" rate for 'jetfuel' must be a number (kg/s)" },
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"crew_capacity\": 1.5 } ] }",
+              "\"crew_capacity\" must be a whole number" },
+        };
+        for(size_t k = 0; k < sizeof(catcases) / sizeof(catcases[0]); k++) {
+            std::ofstream f(bad);
+            f << catcases[k].body;
+            f.close();
+            CHECK(expect_throw_saying([&](){ load_parts_catalog(bad); }, catcases[k].needle));
+            std::remove(bad);
+        }
+        // A whole number written as a float is not a typo worth refusing (JSON has
+        // one number type), and "stage": 1.0 means stage 1.
+        {
+            std::ofstream f(bad);
+            f << "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", \"stage\": 2.0 } ] }";
+            f.close();
+            ShipDef d = load_ship_def(bad, cat);
+            CHECK(d.parts.size() == 1);
+            CHECK(d.parts[0].stage == 2);
+            std::remove(bad);
+        }
+    }
     // An explicit 0 is neutral, not a claim, so it stays legal on any part. And a
     // real trim has to survive the editor round trip, where nothing edits it:
     // dropping it there would silently delete an authored trim the first time a

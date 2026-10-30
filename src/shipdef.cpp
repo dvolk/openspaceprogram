@@ -52,6 +52,45 @@ static int resource_index_from_string(const std::string &s, const std::string &c
                              + "' (expected: hydrogen, lox, ec, oxygen, water, food, hydrazine, jetfuel)");
 }
 
+/* An optional NUMBER, read so that the error names the file, the part and the
+   field (#496). pv.value(key, def) does the same job but answers a string with
+   nlohmann's type_error -- "type must be number, but is string" -- which is true
+   and useless to whoever typed it. `unit` says what the number measures ("" when
+   it is dimensionless), because "must be a number" is only half the fix: the
+   other half is knowing that "angle" is degrees and "z" is metres. Same shape as
+   the "trim" read below and the "geom" read in save.h. */
+static double optNumber(const nlohmann::json &pv, const char *key, double def,
+                        const std::string &ctx, const char *unit = "") {
+    if(!(pv.is_object() && pv.contains(key))) { return def; }
+    const nlohmann::json &v = pv.at(key);
+    if(!v.is_number()) {
+        throw std::runtime_error(ctx + std::string("\"") + key + "\" must be a number"
+                                 + (unit && *unit ? std::string(" (") + unit + ")" : ""));
+    }
+    return v.get<double>();
+}
+
+/* The same for a COUNT. is_number() would let 1.5 through, and a stage number is
+   not a quantity to round -- a ship that stages halfway is a typo, not a fraction.
+   A whole one written 2.0 is fine: JSON has one number type and authors write
+   whatever their editor produced. */
+static bool isWhole(const nlohmann::json &v) {
+    if(v.is_number_integer()) { return true; }
+    if(!v.is_number_float()) { return false; }
+    const double d = v.get<double>();
+    return std::isfinite(d) && d == std::floor(d);
+}
+
+static int optInt(const nlohmann::json &pv, const char *key, int def,
+                  const std::string &ctx) {
+    if(!(pv.is_object() && pv.contains(key))) { return def; }
+    const nlohmann::json &v = pv.at(key);
+    if(!isWhole(v)) {
+        throw std::runtime_error(ctx + std::string("\"") + key + "\" must be a whole number");
+    }
+    return v.get<int>();
+}
+
 static glm::dvec3 parse_vec3(const nlohmann::json &obj, const char *key,
                              const std::string &ctx) {
     if(!obj.contains(key) || !obj[key].is_array() || obj[key].size() != 3) {
@@ -266,14 +305,14 @@ PartsCatalog load_parts_catalog(const char *path) {
                 throw std::runtime_error(ctx
                                          + "\"shroud\" and \"shroud_texture\" must be set together");
             }
-            d.mass = pv.value("mass", -1.0);
+            d.mass = optNumber(pv, "mass", -1.0, ctx, "kg");
             if(d.mass <= 0.0) {
                 throw std::runtime_error(ctx + "\"mass\" must be > 0 (kg)");
             }
 
             /* Defaults are the legacy 2 m cube, so pre-size parts are unchanged. */
-            d.radius = pv.value("radius", 1.0);
-            d.height = pv.value("height", 2.0);
+            d.radius = optNumber(pv, "radius", 1.0, ctx, "m");
+            d.height = optNumber(pv, "height", 2.0, ctx, "m");
             if(d.radius <= 0.0) {
                 throw std::runtime_error(ctx + "\"radius\" must be > 0 (m)");
             }
@@ -282,12 +321,12 @@ PartsCatalog load_parts_catalog(const char *path) {
             }
         }
 
-        d.torque = pv.value("torque", 0.0);
+        d.torque = optNumber(pv, "torque", 0.0, ctx, "N m");
         if(d.torque < 0.0) {
             throw std::runtime_error(ctx + "\"torque\" must be >= 0 (N m)");
         }
 
-        d.rcs_thrust = pv.value("rcs_thrust", 0.0);
+        d.rcs_thrust = optNumber(pv, "rcs_thrust", 0.0, ctx, "N");
         if(d.rcs_thrust < 0.0) {
             throw std::runtime_error(ctx + "\"rcs_thrust\" must be >= 0 (N)");
         }
@@ -323,11 +362,11 @@ PartsCatalog load_parts_catalog(const char *path) {
         /* Engine gimbal (TVC): a part either cannot gimbal at all or needs a
            nonzero slew rate to reach its limit -- a limit with a dead
            actuator is authored data nobody can use. */
-        d.gimbal_max = pv.value("gimbal_max", 0.0);
+        d.gimbal_max = optNumber(pv, "gimbal_max", 0.0, ctx, "rad");
         if(d.gimbal_max < 0.0) {
             throw std::runtime_error(ctx + "\"gimbal_max\" must be >= 0 (rad)");
         }
-        d.gimbal_rate = pv.value("gimbal_rate", 0.0);
+        d.gimbal_rate = optNumber(pv, "gimbal_rate", 0.0, ctx, "rad/s");
         if(d.gimbal_rate < 0.0) {
             throw std::runtime_error(ctx + "\"gimbal_rate\" must be >= 0 (rad/s)");
         }
@@ -336,28 +375,32 @@ PartsCatalog load_parts_catalog(const char *path) {
                                           "\"gimbal_rate\" (rad/s)");
         }
 
-        d.power_draw = pv.value("power_draw", 0.0);
+        d.power_draw = optNumber(pv, "power_draw", 0.0, ctx, "W");
         if(d.power_draw < 0.0) {
             throw std::runtime_error(ctx + "\"power_draw\" must be >= 0 (W)");
         }
-        d.power_draw_constant = pv.value("power_draw_constant", 0.0);
+        d.power_draw_constant = optNumber(pv, "power_draw_constant", 0.0, ctx, "W");
         if(d.power_draw_constant < 0.0) {
             throw std::runtime_error(ctx + "\"power_draw_constant\" must be >= 0 (W)");
         }
-        d.power_gen = pv.value("power_gen", 0.0);
+        d.power_gen = optNumber(pv, "power_gen", 0.0, ctx, "W");
         if(d.power_gen < 0.0) {
             throw std::runtime_error(ctx + "\"power_gen\" must be >= 0 (W)");
         }
 
         bool has_prop = pv.contains("propellant");
         bool has_ve = pv.contains("exhaust_velocity");
-        d.exhaust_velocity = pv.value("exhaust_velocity", 0.0);
+        d.exhaust_velocity = optNumber(pv, "exhaust_velocity", 0.0, ctx, "m/s");
         if(has_prop) {
             if(!pv["propellant"].is_object() || pv["propellant"].empty()) {
                 throw std::runtime_error(std::string(ctx)
                                          + "\"propellant\" must be a non-empty object");
             }
             for(auto it = pv["propellant"].begin(); it != pv["propellant"].end(); ++it) {
+                if(!it.value().is_number()) {
+                    throw std::runtime_error(ctx + "\"propellant\" rate for '"
+                                             + it.key() + "' must be a number (kg/s)");
+                }
                 const double rate = it.value().get<double>();
                 if(rate < 0.0) {
                     throw std::runtime_error(ctx + "\"propellant\" rates must be >= 0 (kg/s)");
@@ -382,11 +425,11 @@ PartsCatalog load_parts_catalog(const char *path) {
         if(pv.contains("jet")) {
             d.jet = pv["jet"].get<bool>();
         }
-        d.jet_fan_thrust = pv.value("jet_fan_thrust", 0.0);
+        d.jet_fan_thrust = optNumber(pv, "jet_fan_thrust", 0.0, ctx, "N");
         if(d.jet_fan_thrust < 0.0) {
             throw std::runtime_error(ctx + "\"jet_fan_thrust\" must be >= 0 (N)");
         }
-        d.jet_intake_area = pv.value("jet_intake_area", 0.0);
+        d.jet_intake_area = optNumber(pv, "jet_intake_area", 0.0, ctx, "m^2");
         if(d.jet_intake_area < 0.0) {
             throw std::runtime_error(ctx + "\"jet_intake_area\" must be >= 0 (m^2)");
         }
@@ -414,6 +457,10 @@ PartsCatalog load_parts_catalog(const char *path) {
                                          + "\"capacity\" must be a non-empty object");
             }
             for(auto it = pv["capacity"].begin(); it != pv["capacity"].end(); ++it) {
+                if(!it.value().is_number()) {
+                    throw std::runtime_error(ctx + "\"capacity\" for '" + it.key()
+                                             + "' must be a number");
+                }
                 d.capacity[resource_index_from_string(it.key(), ctx)] =
                     it.value().get<float>();
             }
@@ -426,6 +473,9 @@ PartsCatalog load_parts_catalog(const char *path) {
         }
 
         if(pv.contains("crew_capacity")) {
+            if(!isWhole(pv["crew_capacity"])) {
+                throw std::runtime_error(ctx + "\"crew_capacity\" must be a whole number");
+            }
             d.crew_capacity = pv["crew_capacity"].get<int>();
             if(d.crew_capacity < 0) {
                 throw std::runtime_error(std::string(ctx)
@@ -434,6 +484,9 @@ PartsCatalog load_parts_catalog(const char *path) {
         }
 
         if(pv.contains("inventory_capacity")) {
+            if(!isWhole(pv["inventory_capacity"])) {
+                throw std::runtime_error(ctx + "\"inventory_capacity\" must be a whole number");
+            }
             d.inventory_capacity = pv["inventory_capacity"].get<int>();
             if(d.inventory_capacity < 0) {
                 throw std::runtime_error(std::string(ctx)
@@ -477,6 +530,9 @@ PartsCatalog load_parts_catalog(const char *path) {
 
         // omitted -> -1 = the physics default
         if(pv.contains("hull_margin")) {
+            if(!pv["hull_margin"].is_number()) {
+                throw std::runtime_error(ctx + "\"hull_margin\" must be a number (m)");
+            }
             d.hull_margin = pv["hull_margin"].get<double>();
             if(d.hull_margin < 0.0) {
                 throw std::runtime_error(std::string(ctx)
@@ -484,39 +540,39 @@ PartsCatalog load_parts_catalog(const char *path) {
             }
         }
 
-        d.drag = pv.value("drag", 0.0);
+        d.drag = optNumber(pv, "drag", 0.0, ctx);
         if(d.drag < 0.0) {
             throw std::runtime_error(ctx +
                 "\"drag\" must be >= 0 (dimensionless drag coefficient)");
         }
-        d.drag_forward = pv.value("drag_forward", d.drag);
+        d.drag_forward = optNumber(pv, "drag_forward", d.drag, ctx);
         if(d.drag_forward < 0.0) {
             throw std::runtime_error(ctx +
                 "\"drag_forward\" must be >= 0 (dimensionless)");
         }
-        d.drag_side = pv.value("drag_side", d.drag);
+        d.drag_side = optNumber(pv, "drag_side", d.drag, ctx);
         if(d.drag_side < 0.0) {
             throw std::runtime_error(ctx +
                 "\"drag_side\" must be >= 0 (dimensionless)");
         }
-        d.drag_backward = pv.value("drag_backward", d.drag);
+        d.drag_backward = optNumber(pv, "drag_backward", d.drag, ctx);
         if(d.drag_backward < 0.0) {
             throw std::runtime_error(ctx +
                 "\"drag_backward\" must be >= 0 (dimensionless)");
         }
-        d.lift_area = pv.value("lift_area", 0.0);
+        d.lift_area = optNumber(pv, "lift_area", 0.0, ctx, "m^2");
         if(d.lift_area < 0.0) {
             throw std::runtime_error(ctx + "\"lift_area\" must be >= 0 (m^2)");
         }
-        d.cl = pv.value("cl", 0.0);
+        d.cl = optNumber(pv, "cl", 0.0, ctx, "per rad");
         if(d.cl < 0.0) {
             throw std::runtime_error(ctx + "\"cl\" must be >= 0");
         }
-        d.stall_angle = pv.value("stall_angle", 0.0);
+        d.stall_angle = optNumber(pv, "stall_angle", 0.0, ctx, "rad");
         if(d.stall_angle < 0.0) {
             throw std::runtime_error(ctx + "\"stall_angle\" must be >= 0 (rad)");
         }
-        d.control_area = pv.value("control_area", 0.0);
+        d.control_area = optNumber(pv, "control_area", 0.0, ctx, "m^2");
         if(d.control_area < 0.0) {
             throw std::runtime_error(ctx + "\"control_area\" must be >= 0 (m^2)");
         }
@@ -529,11 +585,11 @@ PartsCatalog load_parts_catalog(const char *path) {
             throw std::runtime_error(ctx + "\"control_axis\" must be "
                                           "\"pitch\", \"yaw\" or \"roll\"");
         }
-        d.cl_control = pv.value("cl_control", 0.0);
+        d.cl_control = optNumber(pv, "cl_control", 0.0, ctx, "per rad");
         if(d.cl_control < 0.0) {
             throw std::runtime_error(ctx + "\"cl_control\" must be >= 0");
         }
-        d.max_deflection = pv.value("max_deflection", 0.0);
+        d.max_deflection = optNumber(pv, "max_deflection", 0.0, ctx, "rad");
         if(d.max_deflection < 0.0) {
             throw std::runtime_error(ctx + "\"max_deflection\" must be >= 0 (rad)");
         }
@@ -592,7 +648,7 @@ PartsCatalog load_parts_catalog(const char *path) {
         }
         /* A chute must ship its canopy: the overlay pair is all-or-nothing
            (like shroud) and REQUIRED when chute_area > 0. */
-        d.chute_area = pv.value("chute_area", 0.0);
+        d.chute_area = optNumber(pv, "chute_area", 0.0, ctx, "m^2");
         if(d.chute_area < 0.0) {
             throw std::runtime_error(ctx + "\"chute_area\" must be >= 0 (m^2)");
         }
@@ -669,6 +725,10 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
     def.controller = -1;
     def.hull_margin = -1.0;
     if(doc.contains("hull_margin")) {
+        if(!doc["hull_margin"].is_number()) {
+            throw std::runtime_error(std::string("ship: \"hull_margin\" in ") + path
+                                     + " must be a number (m)");
+        }
         def.hull_margin = doc["hull_margin"].get<double>();
         if(def.hull_margin < 0.0) {
             throw std::runtime_error(std::string("ship: \"hull_margin\" in ") + path
@@ -806,13 +866,16 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
             }
         }
 
-        sp.angle = pv.value("angle", 0.0);
+        /* The prefix every number in this entry quotes (#496), named the way the
+           rest of this loader names a bad part, and built once per entry. */
+        const std::string pctx = "ship: part '" + sp.id + "' in " + path + ": ";
+        sp.angle = optNumber(pv, "angle", 0.0, pctx, "deg");
         if(!std::isfinite(sp.angle)) {
             throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
                                      + ": \"angle\" must be a finite number of degrees");
         }
 
-        sp.offset = pv.value("offset", 0.0);
+        sp.offset = optNumber(pv, "offset", 0.0, pctx, "m");
         if(sp.offset < 0.0) {
             throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
                                      + ": \"offset\" must be >= 0 (m)");
@@ -822,7 +885,7 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
            not a null deref in build_ship. */
         sp.parentNode = pv.value("parentNode", std::string(""));
         sp.childNode  = pv.value("childNode", std::string(""));
-        sp.roll          = pv.value("roll", 0.0);
+        sp.roll          = optNumber(pv, "roll", 0.0, pctx, "deg");
         sp.contactPoint  = glm::dvec3(0.0);
         sp.contactNormal = glm::dvec3(0.0);
         if(!sp.isFuelLink() && sp.parent >= 0) {
@@ -867,7 +930,7 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                        with a replica of this rule; a scan written independently
                        agrees. */
                     assert(pp.def != nullptr);   // every part resolved its def at parse
-                    const double z = pv.value("z", 0.0);
+                    const double z = optNumber(pv, "z", 0.0, pctx, "m");
                     double hx, hy;
                     pp.def->meshHalfSpan(hx, hy);
                     if(hx <= 0.0 && hy <= 0.0) {
@@ -911,7 +974,7 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
             }
         }
 
-        sp.stage = pv.value("stage", 1);
+        sp.stage = optInt(pv, "stage", 1, pctx);
         if(sp.stage < 1) {
             throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
                                      + ": \"stage\" must be >= 1");
