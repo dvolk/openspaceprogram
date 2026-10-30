@@ -92,7 +92,13 @@ static int g_checks = 0;
     do {                                                                       \
         g_checks++;                                                            \
         double _a = (actual), _e = (expected);                                 \
-        if (!std::isfinite(_a) || std::fabs(_a - _e) > rel_tol * std::fabs(_e)) { \
+        /* Relative, except at an expectation of exactly zero (#510):              \
+           rel_tol * 0.0 would demand bit-exactness, which is not what a           \
+           caller writing 1e-12 means. 0.0 AS a tolerance stays exact, so          \
+           a bit-identical pin keeps its teeth. */                                 \
+        const double _tol = (_e == 0.0) ? rel_tol                                  \
+                                        : rel_tol * std::fabs(_e);                 \
+        if (!std::isfinite(_a) || std::fabs(_a - _e) > _tol) {                    \
             g_failures++;                                                      \
             printf("FAIL: %s (got %.9g, want %.9g)\n", msg, _a, _e);           \
         }                                                                      \

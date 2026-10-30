@@ -37,7 +37,13 @@ static int g_checks = 0;
     do {                                                                      \
         g_checks++;                                                           \
         double _a = (actual), _e = (expected);                                \
-        if (!std::isfinite(_a) || std::fabs(_a - _e) > rel_tol * std::fabs(_e)) { \
+        /* Relative, except at an expectation of exactly zero (#510):              \
+           rel_tol * 0.0 would demand bit-exactness, which is not what a           \
+           caller writing 1e-12 means. 0.0 AS a tolerance stays exact, so          \
+           a bit-identical pin keeps its teeth. */                                 \
+        const double _tol = (_e == 0.0) ? rel_tol                                  \
+                                        : rel_tol * std::fabs(_e);                 \
+        if (!std::isfinite(_a) || std::fabs(_a - _e) > _tol) {                    \
             g_failures++;                                                     \
             printf("FAIL: %s (got %.9g, want %.9g)\n", msg, _a, _e);          \
         }                                                                     \
@@ -1857,6 +1863,22 @@ static std::vector<glm::dvec2> rect(double x0, double y0, double x1, double y1) 
              glm::dvec2(x1, y1), glm::dvec2(x0, y1) };
 }
 
+static void test_zeroTolerance() {
+    printf("== the harness itself: what a zero expectation means (#510) ==\n");
+    /* CHECK_NEAR is RELATIVE, and against an expectation of exactly zero a relative
+       tolerance is void: 1e-12 x 0.0 is 0.0, so every "the tank is empty" and "the
+       two lifts cancel" pin here was demanding bit-exactness while reading like
+       slack -- and would break on any innocuous reassociation upstream. The macro
+       now falls back to an absolute tolerance when the expectation is zero, which
+       this case fails under the old definition and passes under the new one. */
+    CHECK_NEAR(1e-13, 0.0, 1e-12, "a zero expectation takes the written tolerance"
+                                  " as absolute slack");
+    /* The other half of the promise: a NONZERO expectation is still relative, so a
+       pin on a large number keeps its meaning (0.5 m of slack on a megametre, which
+       an absolute 1e-6 would have refused). */
+    CHECK_NEAR(1.0e6 + 0.5, 1.0e6, 1e-6, "a nonzero expectation stays relative");
+}
+
 static void test_unionArea() {
     printf("== unionProjectedArea: exact union of the parts' silhouettes ==\n");
 
@@ -2580,6 +2602,8 @@ int main() {
     test_liftCurve();
     printf("\n");
     test_projectedArea();
+    printf("\n");
+    test_zeroTolerance();
     printf("\n");
     test_unionArea();
     printf("\n");
