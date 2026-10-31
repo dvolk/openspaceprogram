@@ -3431,6 +3431,15 @@ void Vehicle::releaseControl() {
     clearRotCmd();
 }
 
+/* The other copy of this walk is Sim::droppedAt() in staging.cpp, which answers the same
+   question for the VAB preview before anything has actually separated. They differ where the
+   two situations differ: no liveness test here (Part has no dead flag -- a part leaves a
+   Vehicle by moving to another one, so `parts` is exactly what is aboard), seeds on
+   isDecoupler() rather than a precomputed flag, and the result is a pointer set, so the
+   returned order is address order. The caller does not depend on it: game.cpp sorts the
+   decouplers by depth before extracting anything. Both walks are iterative DFS over the same
+   parent edges, and the `dropped` test above is what keeps a malformed parent edge from
+   looping -- staging's seenEpoch does the same job. (#535) */
 std::vector<Part *> Vehicle::droppedPartsAtStage(int stage) {
     // parent -> children over Part::parent (a tree: one parent edge per non-root part).
     std::map<Part *, std::vector<Part *>> children;
@@ -3441,9 +3450,13 @@ std::vector<Part *> Vehicle::droppedPartsAtStage(int stage) {
     for(Part *p : parts) {
         if(!p->isDecoupler() || p->stage != stage) { continue; }
         dropped.insert(p);   // the decoupler flies off with its stage
-        // BFS over the decoupler's child side.
+        // Iterative DFS over the decoupler's child side. Order inside the set is address
+        // order, not this walk's order, so nothing downstream reads it as an ordering.
         std::vector<Part *> stack;
-        for(size_t i = 0; i < children[p].size(); i++) { stack.push_back(children[p][i]); }
+        auto kids = children.find(p);
+        if(kids != children.end()) {
+            for(size_t i = 0; i < kids->second.size(); i++) { stack.push_back(kids->second[i]); }
+        }
         while(!stack.empty()) {
             Part *q = stack.back(); stack.pop_back();
             if(dropped.count(q)) { continue; }
