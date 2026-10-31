@@ -508,9 +508,25 @@ test-parts:
 		echo "test-parts: SKIP parts.json drift pin -- missing python module: trimesh" >&2; \
 	fi
 
+# test_cli runs the SHIPPED binary (./osp --version, --help) and compares it with the
+# VERSION macro compiled into the test object, so the game binary must be at least as fresh
+# as the version.h those objects saw. `all` costs nothing when the tree is warm and ~55 s
+# after a commit bumps the version string -- which is precisely the case that used to go
+# red (#532), because ./osp kept the version from whenever it was last linked. ./osp is
+# `all`'s symlink except under CONFIG=prof, which deliberately leaves it alone: a prof
+# build pins ./osp elsewhere, so `make CONFIG=prof test` can still see another config's
+# binary there.
 .PHONY: test
-test: test-gen test-parts $(addprefix $(TESTDIR)/,$(TESTS))
-	@$(foreach t,$(TESTS),$(TESTDIR)/$(t) || exit 1; )
+test: test-gen test-parts all $(addprefix $(TESTDIR)/,$(TESTS))
+	@fail=""; n=0; \
+	for t in $(TESTS); do \
+	  n=`expr $$n + 1`; \
+	  $(TESTDIR)/$$t || fail="$$fail $$t"; \
+	done; \
+	if [ -n "$$fail" ]; then \
+	  echo "make test: $$n run, FAILED:$$fail" >&2; \
+	  exit 1; \
+	fi
 
 # Python data-gen self-tests: the sci_phase "mirrors system.cpp epoch state"
 # invariant, the sci_dist moon-home warning, committed science-field
