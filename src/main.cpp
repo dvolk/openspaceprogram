@@ -383,11 +383,15 @@ int main(int argc, char **argv)
     // Redraws the "loading..." label after each body's LIGHT phase, throttled:
     // each draw ends in a SwapBuffers that blocks on vsync.
     auto last_loading_draw = std::chrono::steady_clock::time_point{};
+    /* The progress callback has no cancel channel, so a quit request unwinds
+       through the loader as its own type: distinct from a data error, but safe
+       to throw (the loader already unwinds on bad data). */
+    struct LoadingQuit {};
     System sys;
     try {
         sys = load_system(args.system_file.c_str(), world.terrain, world.sun,
             [&](size_t i, size_t total, const std::string &name) {
-                if(pumpLoadingQuit()) { std::exit(1); }   // window closed mid-load
+                if(pumpLoadingQuit()) { throw LoadingQuit{}; }
                 auto now = std::chrono::steady_clock::now();
                 if(now - last_loading_draw < std::chrono::milliseconds(100)
                    && i + 1 < total) {
@@ -399,6 +403,8 @@ int main(int argc, char **argv)
                          name.c_str(), i + 1, total);
                 drawLoadingFrame(display, bigger, buf);
             });
+    } catch(const LoadingQuit &) {
+        return 1;   // window closed mid-load, not an error
     } catch(const std::exception &e) {
         // The loader throws on data bugs: report and leave rather than let the
         // throw reach std::terminate.
@@ -565,7 +571,7 @@ int main(int argc, char **argv)
                 printf("Load: no save named '%s' under %s (or ambiguous "
                        "across games)\n",
                        args.load_name.c_str(), datadir::saves().c_str());
-                exit(1);
+                return 1;
             }
             printf("Load: using saves slot '%s'\n", load_dir.c_str());
         }
@@ -573,7 +579,7 @@ int main(int argc, char **argv)
         // Earth, not Kerbin. A switch runs its own heavy phase.
         bool switched = false;
         if(!game.ensureSystemForSave(load_dir, &switched)) {
-            exit(1);   // reason already printed + toasted by ensureSystemForSave
+            return 1;   // reason already printed + toasted by ensureSystemForSave
         }
         if(!checkTitlePin()) { return 1; }   // the system is final now
         if(!switched) {
@@ -591,7 +597,7 @@ int main(int argc, char **argv)
             load_game(game, load_dir);
         } catch(const std::exception &e) {
             printf("Load failed: %s\n", e.what());
-            exit(1);
+            return 1;
         }
         first = game.ship;
         check_gl_error();
