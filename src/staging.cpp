@@ -502,10 +502,12 @@ void runBurn(Sim &sim, double g, bool drainAll,
         /* One plan, one mass: the charge is exactly the fuel this plan billed (the
            rates sum to the fed mdot, and each rate[i]*dt is one tank's own fuel), so
            what is left is every part's dry mass plus the fuel still in the tanks.
-           Note what keeps that positive: the DRY mass. A part with mass 0 -- which a
-           hand-written parts.json can still mint, because "fuel_link": true skips the
-           mass block at shipdef.cpp:330 (#530) -- leaves rounding as the only thing
-           above zero, so this assert is where such a part gets reported. */
+           Note what keeps that positive: the DRY mass. The one def with no mass is a
+           fuel_link marker ("fuel_link": true skips the mass block, shipdef.cpp:330),
+           and no loader lets one become a Part: the ship file answers `a fuel link
+           needs "from" and "to"` (shipdef.cpp:1092) and the save refuses it for parts,
+           seats and contents alike (refuseVirtualPartDef, save.cpp:121). So this is a
+           corrupt-state trap, not a report an author would ever see (#530). */
         assert(m1 > 0.0);
         acc.dv += (F / mdot) * std::log(acc.m / m1);
         acc.m = m1;

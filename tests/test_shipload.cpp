@@ -2401,6 +2401,15 @@ int main() {
               "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
               "\"propellant\": { \"loox\": -2 } } ] }",
               "parts: x in /tmp/test_shipload_numfield.json: unknown resource 'loox'" },
+            /* A capacity is per-resource, so the unit belongs in the message -- and the
+               minus has to be refused, not skipped: a negative ceiling cancels a
+               neighbour in the total > 0 test below and then rules the flow solver
+               (#496). */
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"capacity\": { \"water\": -5 } } ] }",
+              "parts: x in /tmp/test_shipload_numfield.json: \"capacity\" for 'water' "
+              "must be >= 0 (kg)" },
             /* EC is a resource, but not one a thruster can burn: it is watt-hours,
                not mass. That is a rule about the KEY, so it answers before any rule
                about the number under it -- otherwise {"ec": -3} complains about the
@@ -2460,6 +2469,27 @@ int main() {
            error names the def. The assert in fillNodeTaken is a tripwire, not a
            rule an author can rely on to see their own typo. */
         {
+            /* #530: the catalog parser is JSON, so it cannot hand us an infinity -- but a
+               legal 1e308 stored into a float IS one, and it then clears the >= 0 and
+               total > 0 gates and turns every pro-rata fuel share into nan. Pin the
+               storage width, because the value itself is merely absurd. */
+            const char *huge = "/tmp/test_shipload_huge_capacity.json";
+            {
+                std::ofstream f(huge);
+                f << "{ \"parts\": [ { \"name\": \"hugestat\", \"type\": \"command\", "
+                     "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+                     "\"capacity\": { \"water\": 1e308 } } ] }";
+                f.close();
+                PartsCatalog hc = load_parts_catalog(huge);
+                const PartDef *hd = hc.find("hugestat");
+                CHECK(hd != nullptr);
+                if(hd != nullptr) {
+                    const double cap = hd->capacity[(int)ResourceType::Water];
+                    CHECK(std::isfinite(cap));   // (float)1e308 was +inf
+                    CHECK(cap > 0.0);
+                }
+            }
+
             const char *many = "/tmp/test_shipload_too_many_nodes.json";
             std::string nodes = "[";
             for(int k = 0; k < 65; k++) {

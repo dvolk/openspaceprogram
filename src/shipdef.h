@@ -278,7 +278,12 @@ struct PartDef {
        watt-hours -- Vehicle prints `capacity=%.1fWh` and partLoadMass skips EC as
        massless energy. Worth spelling out because the loader's error messages quoted
        "(kg)" for a battery until #496's review noticed. > 0 -> propellant tank. */
-    std::vector<float> capacity;
+    /* DOUBLE, like the contents it bounds (ResourceContent::current went double in
+       #379). Keeping this float was not just a lost byte: JSON cannot carry an infinity
+       (nlohmann refuses 1e999 and the NaN/Infinity literals), but (float)1e308 IS one, so
+       a legal number narrowed into +inf at the store, loaded past the >= 0 and total > 0
+       checks, and made every pro-rata fuel share nan downstream (#530). */
+    std::vector<double> capacity;
 
     /* > 0 -> a capsule. The occupant's mass is DERIVED (Part::effectiveMass). */
     int crew_capacity;

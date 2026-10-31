@@ -515,7 +515,9 @@ PartsCatalog load_parts_catalog(const char *path) {
                 if(amount < 0.0) {
                     throw std::runtime_error(what + " must be >= 0 (" + unit + ")");
                 }
-                d.capacity[idx] = (float)amount;
+                /* No narrowing: see PartDef::capacity (#379 made the contents double,
+                   #530 made this match them). */
+                d.capacity[idx] = amount;
             }
             double cap_total = 0.0;
             for(size_t r = 0; r < d.capacity.size(); r++) { cap_total += d.capacity[r]; }
