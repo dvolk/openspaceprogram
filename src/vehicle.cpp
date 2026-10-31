@@ -3441,40 +3441,6 @@ void Vehicle::releaseControl() {
    which re-sorts and does not stop at depth. Both walks are iterative DFS over the same
    parent edges, and the `dropped` test above is what keeps a malformed parent edge from
    looping -- staging's seenEpoch does the same job. (#535) */
-/* Decouplers of this stage, in split order. Two facts make the tie matter (#540):
-   droppedPartsAtStage hands back a std::set<Part*>, so the input arrives in part
-   ADDRESS order; and decouplers at the same depth are common, not exotic -- a
-   side-mounted pair, a stack of rings (heavy_asp.json has five sharing a depth on
-   stage 2, heavy_one.json three on stage 4). Sorting on depth alone therefore
-   leaves the tied ones in address order, and that order decides which split ship
-   keeps the bare name (dedupVehicleName gives the rest " #2", " #3") and which one
-   the "next ship" handoff picks. A std::stable_sort would not fix it either: the
-   input order is already the coin flip. Build order -- index in `parts` -- is what
-   a player reasons about, so it breaks the tie. Depth still wins over build order,
-   because an outer decoupler has to separate before an inner one can be reached.
-   Re-walks the stage rather than taking the caller's `dropped`: a stage press is a
-   rare event, and a parameter here would just be a second way for the two to drift. */
-std::vector<Part *> Vehicle::stagedDecouplers(int stage) {
-    std::vector<Part *> decs;
-    for(Part *p : droppedPartsAtStage(stage)) {
-        if(p->isDecoupler()) { decs.push_back(p); }
-    }
-    auto depth = [](Part *p) {
-        int d = 0;
-        while(p->parent != nullptr) { d++; p = p->parent; }
-        return d;
-    };
-    auto buildIndex = [this](Part *p) {
-        return (int)(std::find(parts.begin(), parts.end(), p) - parts.begin());
-    };
-    std::sort(decs.begin(), decs.end(), [&](Part *x, Part *y) {
-        const int dx = depth(x), dy = depth(y);
-        if(dx != dy) { return dx < dy; }
-        return buildIndex(x) < buildIndex(y);
-    });
-    return decs;
-}
-
 std::vector<Part *> Vehicle::droppedPartsAtStage(int stage) {
     // parent -> children over Part::parent (a tree: one parent edge per non-root part).
     std::map<Part *, std::vector<Part *>> children;
@@ -3503,6 +3469,53 @@ std::vector<Part *> Vehicle::droppedPartsAtStage(int stage) {
         }
     }
     return std::vector<Part *>(dropped.begin(), dropped.end());
+}
+
+/* The decouplers of one stage, in the order their split ships get made (#540). Two
+   facts make the tie matter. droppedPartsAtStage hands back a std::set<Part*>, so
+   its order is part ADDRESS order, which changes between runs of the same save; and
+   decouplers that share a stage AND a depth are shipped, not hypothetical --
+   measured over res/ships, 4 of 29 have them: heavy_one stage 4 is a 4-ring,
+   mars_explorer_mk1 stage 4 has four at depth 12, and heavy_two has one 2-way tie
+   while heavy_asp has three (stages 4, 5 and 6). Sorting on depth alone leaves the
+   tied ones in address order, and that order decides which split ship keeps the
+   bare name (dedupVehicleName gives the rest " #2", " #3") and which one the "next
+   ship" handoff picks. std::stable_sort would not fix it: the input order is
+   already the coin flip, and stability just preserves it. Build order -- index in
+   `parts` -- breaks the tie because it is what a player reasons about. Depth still
+   outranks build order: an outer decoupler has to separate before an inner one is
+   reachable, and the inner one then extracts as no longer aboard.
+   Only the stage's OWN decouplers, which are the walk's seeds. The walk also hands
+   back decouplers of OTHER stages that merely ride along in a dropped subtree, and
+   those are not split roots for this press: they stay aboard the ship that just
+   split off and separate on their own label. Offering them is what makes a press
+   fire stages it was not asked to fire when a root split is refused (#541).
+   Re-walks the stage rather than taking the caller's `dropped`: a stage press is a
+   rare event, and passing the vector in would be a second way for the two to drift. */
+std::vector<Part *> Vehicle::stagedDecouplers(int stage) {
+    std::vector<Part *> decs;
+    for(Part *p : droppedPartsAtStage(stage)) {
+        if(p->isDecoupler() && p->stage == stage) { decs.push_back(p); }
+    }
+    auto depth = [](Part *p) {
+        int d = 0;
+        while(p->parent != nullptr) { d++; p = p->parent; }
+        return d;
+    };
+    auto buildIndex = [this](Part *p) {
+        /* Every element came from `parts` through the walk above. A miss would
+           return parts.size(), make every tie compare equivalent, and leave this
+           function answering in the address order it exists to remove. */
+        auto it = std::find(parts.begin(), parts.end(), p);
+        assert(it != parts.end());
+        return (int)(it - parts.begin());
+    };
+    std::sort(decs.begin(), decs.end(), [&](Part *x, Part *y) {
+        const int dx = depth(x), dy = depth(y);
+        if(dx != dy) { return dx < dy; }
+        return buildIndex(x) < buildIndex(y);
+    });
+    return decs;
 }
 
 void Vehicle::absorbShip(Vehicle *B, Part *portA) {

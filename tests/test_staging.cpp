@@ -221,6 +221,53 @@ static void test_staged_decouplers_tie() {
     CHECK_TRUE(got.size() == 2 && got[0]->def->name == std::string("dec_right")
             && got[1]->def->name == std::string("dec_left"),
                "same-depth decouplers split in build order, not address order");
+    /* Ask again with the build order put back. An implementation that answers in the
+       set's order gives the SAME first ship both times, whatever the allocator did
+       with the two Part addresses -- so this pair of checks cannot be passed by an
+       unlucky allocation happening to make the swap above coincide with address
+       order, which is the one way the single check above could go vacuous. */
+    std::swap(s.v->parts[1], s.v->parts[3]);
+    const std::vector<Part *> back = s.v->stagedDecouplers(1);
+    CHECK_TRUE(back.size() == 2 && back[0]->def->name == std::string("dec_left")
+            && back[1]->def->name == std::string("dec_right"),
+               "tie: with build order restored, the left booster splits first");
+    CHECK_TRUE(got.size() == 2 && back.size() == 2 && got[0] != back[0],
+               "tie: the two build orders must give different first ships");
+    destroyShip(s);
+}
+
+/* Nested decouplers on the SAME stage: outer first. The inner one is still listed
+   (it is a seed of the walk too) and game.cpp's extract then finds it already gone
+   with its parent's subtree, which is the only reason the split does not mint two
+   ships from one cut. */
+static void test_staged_decouplers_nested() {
+    Ship s; s.v = new Vehicle;
+    Part *core  = addPart(s, NULL,  3, false, "core");
+    Part *outer = addPart(s, core,  1, true,  "dec_outer");
+    Part *mid   = addPart(s, outer, 3, false, "collar");
+    Part *inner = addPart(s, mid,   1, true,  "dec_inner");
+    (void)mid; (void)inner;
+    const std::vector<Part *> got = s.v->stagedDecouplers(1);
+    CHECK_TRUE(got.size() == 2, "nested: both same-stage decouplers are listed");
+    CHECK_TRUE(got.size() == 2 && got[0]->def->name == std::string("dec_outer")
+            && got[1]->def->name == std::string("dec_inner"),
+               "nested same-stage decouplers split outer first");
+    destroyShip(s);
+}
+
+/* A decoupler of ANOTHER stage that rides along in a dropped subtree is not a split
+   root for this press: it stays aboard the ship that just split off and separates on
+   its own label. Offering it is what lets one press fire a stage nobody asked for. */
+static void test_staged_decouplers_other_stage() {
+    Ship s; s.v = new Vehicle;
+    Part *core  = addPart(s, NULL, 4, false, "core");
+    Part *outer = addPart(s, core, 1, true,  "dec_pressed");
+    Part *ride  = addPart(s, outer, 2, true, "dec_other_stage");
+    (void)ride;
+    const std::vector<Part *> got = s.v->stagedDecouplers(1);
+    CHECK_TRUE(got.size() == 1, "a stage-2 decoupler is not a root for a stage-1 press");
+    CHECK_TRUE(got.size() == 1 && got[0]->def->name == std::string("dec_pressed"),
+               "the press roots its splits at that stage's decouplers only");
     destroyShip(s);
 }
 
@@ -347,6 +394,8 @@ int main() {
     test_two_on_one_stage();
     test_staged_decouplers_tie();
     test_staged_decouplers_depth_first();
+    test_staged_decouplers_nested();
+    test_staged_decouplers_other_stage();
     test_deep_chain();
     test_child_below();
 
