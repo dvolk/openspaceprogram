@@ -120,9 +120,16 @@ void buildBuckets(int nBuckets, int nItems, const Key &key,
         if(b < 0) { continue; }
         items[(size_t)cursor[(size_t)b]++] = i;
     }
-    // The fill landed exactly where the histogram counted; a key that changed between
-    // the passes (non-pure, reading something the passes mutate) shows up here.
-    assert(cursor[(size_t)nBuckets] == start[(size_t)nBuckets]);
+    // Per bucket: its cursor ran exactly to where its count said it would. A key that
+    // answers differently in the two passes shows up here whenever that change moves
+    // an item in or out of a bucket's COUNT; a straight swap between two buckets keeps
+    // every count and cannot be caught this way (nor by anything cheaper than
+    // re-running key() over the result). Both call sites pass a pure key -- a part's
+    // group id, a clamped parent -- so this is a tripwire for a future caller rather
+    // than a check the current ones could fail.
+    for(int b = 0; b < nBuckets; b++) {
+        assert(cursor[(size_t)b] == start[(size_t)b + 1]);
+    }
 }
 
 struct Sim {

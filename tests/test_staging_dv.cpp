@@ -1024,11 +1024,13 @@ static void test_an_unlit_engine_does_not_open_a_burn() {
     const std::vector<StageRow> rows = computeStaging(bs, 10.0);
     CHECK_TRUE(rows.size() == 2, "label 2 separates nothing, so rows are 3 and 1");
     if(rows.size() != 2) { return; }
+    CHECK_TRUE(rows[0].engines == 1, "secEng is not lit at label 3");
     CHECK_NEAR(rows[0].massStart, 520.0, 1e-9, "all aboard");
     CHECK_NEAR(rows[0].massEnd, 500.0, 1e-9, "only dropTank's 20 kg burns");
     CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(520.0 / 500.0), 1e-9, "s3 dv");
     CHECK_NEAR(rows[1].massStart, 375.0, 1e-9, "linkTank leaves with its 100 kg unburnt");
-    CHECK_NEAR(rows[1].massEnd, 95.0, 1e-9, "secEng lights on the last row");
+    CHECK_NEAR(rows[1].massEnd, 95.0, 1e-9, "nothing drainable is left");
+    CHECK_TRUE(rows[1].engines == 2, "secEng lights for the last row");
     CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(375.0 / 95.0), 1e-9, "s1 dv");
 }
 
