@@ -1,0 +1,21 @@
+# A split-off booster's ROOT part is the decoupler that made it (extractSubtreeAsShip
+# re-roots the new ship at the cut). Pressing a stage on such a ship used to print
+# "Stage: nothing left to separate", which reads as "this ship is out of stages" rather
+# than "this stage cannot separate", and it spent a de-duplicated ship name on a vessel
+# that was never created (#541). The bed is the one 02 already uses: stage once to make
+# the booster, hand control to it with F6, press again.
+NAME booster-root-decoupler
+CLAIM Pressing a stage on a ship whose root part is the decoupler says which part cannot separate, instead of claiming the ship has run out of stages.
+KIND invariant
+ARGS --time-accel 1 --timeout 10 --startship stager,res/ships/stager.json,Kerbin,pad
+ARGS --sim-press 2000,0,SPACE,4000,0,F6,6000,0,SPACE
+EXPECT Stage: dropped 1 ship(s)
+EXPECT Active ship 2 of 2: stager Decoupler
+EXPECT is this ship's root part, so its side is the whole ship
+EXPECT Stage: 1 decoupler(s) on stage 2 cannot separate
+# The old generic line must NOT be what a player reads here: that is the whole point of
+# the fix. And an abort would mean game.cpp's assert on the extract result fired, i.e.
+# the tree and the subtree count disagree.
+FORBID Stage: nothing left to separate
+FORBID Assertion
+FORBID error:

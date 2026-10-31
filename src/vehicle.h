@@ -792,11 +792,20 @@ public:
        belongs to its capsule Part, which moves with the part tree. */
     void absorbShip(Vehicle *B, Part *portA);
 
+    /* Why a split of this part would be refused, so a caller can say WHICH decoupler
+       failed instead of printing a generic "nothing separated" line (#541). Ask it
+       BEFORE naming the split: a stage press de-duplicates a name per decoupler, and a
+       refused split used to leave the reserved name behind. None is not a promise the
+       split succeeds -- extractSubtreeAsShip stays the authority, and it is the one that
+       counts the subtree rather than inferring it. */
+    enum class SplitBlock { None, NotAboard, WholeShip };
+    SplitBlock splitBlockReason(Part *root) const;
+
     /* Extract the subtree rooted at `root` into a new Vehicle, rebased into a new
        frame S' = the root's old frame. The new ship inherits frame/home/sun, takes
-       the root's current world pose and the dropped side's COM velocity. nullptr
-       if `root` is the whole ship. Seams maintained like fuel links. NOT in the
-       physics world -- the caller enters it. */
+       the root's current world pose and the dropped side's COM velocity. nullptr for
+       the reasons splitBlockReason lists (and for a null root). Seams maintained like
+       fuel links. NOT in the physics world -- the caller enters it. */
     Vehicle *extractSubtreeAsShip(Part *root, const std::string &name,
                                   double t = 0.0);
 

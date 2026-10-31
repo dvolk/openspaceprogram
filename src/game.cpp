@@ -2039,13 +2039,28 @@ void Game::stage() {
        and tied depths in build order -- the order they come out of here is the order
        the split ships get named and listed, so it has to be reproducible (#540). */
     const std::vector<Part *> decs = a->stagedDecouplers(st);
-    int ships = 0, parts = 0;
+    int ships = 0, parts = 0, refused = 0;
     if(!decs.empty()) {
         /* De-dup a name against the live vehicles: first keeps the bare name,
            later get #2, #3. One rule for every ship-naming site (this one was
            a verbatim copy of it as a lambda, which is how the others drifted). */
 
         for(Part *d : decs) {
+            /* Ask why a split would be refused BEFORE spending a name on it (#541):
+               the old code called extractSubtreeAsShip and skipped a nullptr with a
+               comment naming a reason that cannot happen here (every root comes from
+               this ship's own walk) while omitting the two that can. */
+            const Vehicle::SplitBlock why = a->splitBlockReason(d);
+            if(why == Vehicle::SplitBlock::NotAboard) {
+                continue;    // ordinary: it went off inside an outer cut on this stage
+            }
+            if(why == Vehicle::SplitBlock::WholeShip) {
+                refused++;   // the decoupler IS the ship's root: its side is everything
+                printf("Stage: %s is this ship's root part, so its side is the whole "
+                       "ship -- nothing can separate there\n",
+                       d->def != nullptr ? d->def->label().c_str() : "(unnamed part)");
+                continue;
+            }
             // Name: the parent ship's name, qualified by the decoupler part.
             std::string base = a->displayName();
             const std::string qual = d->def->label();
@@ -2054,7 +2069,9 @@ void Game::stage() {
             // engine hum (a transient reads louder than a steady loop).
             const std::string nm = dedupVehicleName(vehicles, base, &roster);
             Vehicle *out = a->extractSubtreeAsShip(d, nm, time);
-            if(out == nullptr) { continue; }   // already absorbed into an outer ship
+            // Both refusals are handled above; one reaching here means the tree and
+            // the subtree count disagree, i.e. a malformed parent edge.
+            assert(out != nullptr);
             vehicles.push_back(out);           // the split subtree is its own vessel
             audio.playOnce("res/audio/qubodup-crash.wav", 0.4f);
             out->enterWorld();
@@ -2071,6 +2088,12 @@ void Game::stage() {
         printf("Stage: dropped %d ship(s) / %d part(s); now on stage %d of %d\n",
                ships, parts, a->activeStage(), a->numStages());
         toast("Staged -- dropped %d ship(s)", ships);
+    } else if(refused > 0) {
+        /* Not "out of stages": say that a stage label points at a split that cannot
+           happen, which is what a player needs to hear to go fix the design. */
+        printf("Stage: %d decoupler(s) on stage %d cannot separate; now on stage %d of %d\n",
+               refused, st, a->activeStage(), a->numStages());
+        toast("Stage %d cannot separate here", st);
     } else {
         printf("Stage: nothing left to separate\n");
     }

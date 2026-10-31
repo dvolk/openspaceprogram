@@ -290,6 +290,29 @@ static void test_staged_decouplers_depth_first() {
     destroyShip(s);
 }
 
+/* Why a split would be refused (#541), which is what lets the staging press name the
+   decoupler that cannot separate instead of printing "nothing left to separate". */
+static void test_split_block_reason() {
+    Ship s; s.v = new Vehicle;
+    Part *core = addPart(s, NULL, 2, false, "core");
+    Part *dec  = addPart(s, core, 1, true,  "decoupler");
+    Part *kid  = addPart(s, dec,  1, false, "tank");
+    (void)kid;
+    CHECK_TRUE(s.v->splitBlockReason(dec) == Vehicle::SplitBlock::None,
+               "a decoupler with a parent and a real subtree is splittable");
+    CHECK_TRUE(s.v->splitBlockReason(core) == Vehicle::SplitBlock::WholeShip,
+               "the root part's side is the whole ship");
+    /* A decoupler that already went off inside an outer cut: same stage, same press,
+       ordinary rather than an error -- and the one reason the old game.cpp comment
+       named even though it could not apply to a root from this ship's own walk. */
+    Part *gone = new Part;
+    gone->body = nullptr; gone->def = nullptr; gone->parent = nullptr;
+    CHECK_TRUE(s.v->splitBlockReason(gone) == Vehicle::SplitBlock::NotAboard,
+               "a part not aboard this ship cannot split it");
+    delete gone;
+    destroyShip(s);
+}
+
 /* A part is dropped because of WHERE it hangs, not how far down: a deep
    chain under one decoupler all goes, and a deep chain outside it all stays.
    Also pins that the result carries no duplicates (it is a set). */
@@ -396,6 +419,7 @@ int main() {
     test_staged_decouplers_depth_first();
     test_staged_decouplers_nested();
     test_staged_decouplers_other_stage();
+    test_split_block_reason();
     test_deep_chain();
     test_child_below();
 

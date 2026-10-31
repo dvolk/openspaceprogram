@@ -3431,8 +3431,14 @@ void Vehicle::releaseControl() {
     clearRotCmd();
 }
 
-/* The other copy of this walk is Sim::droppedAt() in staging.cpp, which answers the same
-   question for the VAB preview before anything has actually separated. They differ where the
+/* This walk has TWO siblings, and one stage press pays for all of them: Sim::droppedAt()
+   in staging.cpp answers the same question for the VAB preview before anything has
+   separated, and extractSubtreeAsShip below rebuilds this same parent->children table and
+   recomputes this same closure -- once per decoupler, so a press with three decouplers
+   rebuilds it 1 + 3 times (#541). Sharing one table across a press is tempting but is NOT
+   the free win it was for the preview: the preview walks per stage label every frame, which
+   is what justified #520/#533's CSR table, while this runs once per keypress.
+   Compared with Sim::droppedAt, this walk differs where the
    two situations differ: no liveness test here (Part has no dead flag -- a part leaves a
    Vehicle by moving to another one, so `parts` is exactly what is aboard), seeds on
    isDecoupler() rather than a precomputed flag, and the result is a pointer set, so the
@@ -3604,6 +3610,26 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     dropDrainWindow();
     SetVelocity(hull, (mA * vA + mB * vB) / (mA + mB));
     SetAngVelocity(hull, wA);
+}
+
+/* extractSubtreeAsShip's refusals, as a question that can be asked first (#541). A stage
+   press names every split before attempting it, so a refused one used to burn a
+   de-duplicated ship name for a vessel that never exists, and the only thing the player
+   got was "Stage: nothing left to separate" -- which reads as "I am out of stages", not
+   "this stage cannot separate".
+   NotAboard is the ordinary case, not an error: a decoupler sitting inside another
+   decoupler's subtree on the SAME stage went off with the outer cut, and stagedDecouplers
+   orders outer-first on purpose (#540's nested test). WholeShip is the tree-root test --
+   for a tree, a subtree covers every part exactly when the root has no parent. A malformed
+   parent edge could break that equivalence, so extractSubtreeAsShip keeps its own subtree
+   count as the authority; this only chooses the message. */
+Vehicle::SplitBlock Vehicle::splitBlockReason(Part *root) const {
+    assert(root != nullptr);      // a caller bug, not a game state
+    if(std::find(parts.begin(), parts.end(), root) == parts.end()) {
+        return SplitBlock::NotAboard;
+    }
+    if(root->parent == nullptr) { return SplitBlock::WholeShip; }
+    return SplitBlock::None;
 }
 
 Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, double t) {
