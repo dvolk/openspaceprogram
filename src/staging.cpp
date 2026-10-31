@@ -323,8 +323,10 @@ void runBurn(Sim &sim, double g, bool drainAll,
     acc.sampleTWR(sim.fedThrust(), acc.m, g, true);
 
     const int kMaxSteps = (int)sim.parts.size() * 8 + 32;
-    for(int step = 0; step < kMaxSteps && ready(); step++) {
-        std::vector<double> rate;
+    std::vector<double> rate;    // this plan's per-part drain rates
+    std::vector<double> ratio;   // part fuel / part rate = when that tank empties
+    int step = 0;
+    for(; step < kMaxSteps && ready(); step++) {
         sim.computeRates(rate);
         double F = 0.0, mdot = 0.0;
         for(size_t ei = 0; ei < sim.engines.size(); ei++) {
@@ -334,32 +336,66 @@ void runBurn(Sim &sim, double g, bool drainAll,
         }
         if(mdot <= 0.0 || F <= 0.0) { break; }
 
+        /* The step runs to the first tank that empties, over EVERY part this plan
+           bills -- residues included. computeRates pro-rates a fed engine's whole
+           mdot over the parts it drains (skipping only the ones holding literally
+           nothing), so a part with a rate holds fuel and is spent first. Skipping
+           near-empty ones -- what this loop used to do -- left dt set by the OTHER
+           tanks while mdot*dt still charged all of every fed engine: the mass in the
+           Tsiolkovsky sum ran ahead of the fuel that had actually left the tanks. On
+           a deep fuel-link chain (six strings is enough) that over-charge compounded
+           until the table read dv 1.8e6 m/s, and further until it read -nan (#526). */
+        ratio.resize(rate.size());
         double dt = 1e300;
         for(size_t i = 0; i < rate.size(); i++) {
             if(rate[i] <= 0.0) { continue; }
-            const double have = sim.parts[i].fuel;
-            if(have <= 1e-12) { continue; }
-            dt = std::min(dt, have / rate[i]);
+            const double t = sim.parts[i].fuel / rate[i];
+            ratio[i] = t;
+            if(t < dt) { dt = t; }
         }
         if(!(dt < 1e299) || dt <= 0.0) { break; }
 
         double m1 = acc.m - mdot * dt;
-        if(m1 < acc.m * 1e-12) {
-            m1 = acc.m * 0.5;
-            dt = acc.m * 0.5 / mdot;
-        }
+        /* One plan, one mass: the charge is exactly the fuel this plan billed (the
+           rates sum to the fed mdot, and each rate[i]*dt is one tank's own fuel), so
+           what is left is every part's dry mass plus the fuel still in the tanks.
+           Note what keeps that positive: the DRY mass. A part with mass 0 -- which a
+           hand-written parts.json can still mint, because "fuel_link": true skips the
+           mass block at shipdef.cpp:330 (#530) -- leaves rounding as the only thing
+           above zero, so this assert is where such a part gets reported. */
+        assert(m1 > 0.0);
         acc.dv += (F / mdot) * std::log(acc.m / m1);
         acc.m = m1;
         // End-of-step TWR with THIS step's thrust (an engine that flames
         // out on the emptying tank still pushed through the whole step).
         acc.sampleTWR(F, acc.m, g, false);
 
+        double drained = 0.0;
         for(size_t i = 0; i < sim.parts.size(); i++) {
             if(rate[i] <= 0.0) { continue; }
-            sim.parts[i].fuel -= rate[i] * dt;
-            if(sim.parts[i].fuel < 0.0) { sim.parts[i].fuel = 0.0; }
+            /* A tank whose emptying time IS this step comes out EXACTLY empty.
+               Pro-rata spreading ties a whole fuel layer on that instant, so
+               subtracting instead would leave every tank in it a rounding residue:
+               the layer would still read as drainable, the same engines would be fed
+               against dust, and the burn would spend steps chasing residues down
+               until they went subnormal and a step changed nothing. "IS this step"
+               means bit-equal to the ratio computed above -- the same division, so
+               the boundary tanks are exactly the argmin. A tank that misses the tie
+               by an ulp keeps an ulp of fuel and becomes the next step's boundary:
+               one extra step, not a chase. */
+            const double have = sim.parts[i].fuel;
+            const double take = (ratio[i] == dt) ? have : std::min(rate[i] * dt, have);
+            sim.parts[i].fuel = have - take;
+            drained += take;
         }
+        // The two halves of the comment above, pinned: a step spends what it bills.
+        // Only fp slack (sum(rate) against the fed mdot is a rounding sum).
+        assert(std::fabs(drained - mdot * dt) <= 1e-9 * (mdot * dt));
     }
+    /* Not a safety net: every step takes at least one tank from full-empty to
+       exactly empty and nothing refuels, so a period cannot outlive its parts. If
+       this fires, a burn is being cut short and its rows silently under-report. */
+    assert(step < kMaxSteps);
     acc.m = totalMass(sim.parts);
     if(!acc.anyTWR) {
         // Zero-length burn: still report ignition TWR once.

@@ -643,6 +643,118 @@ static void test_a_gap_costs_nothing() {
     CHECK_TRUE(us < 5000.0, "a label gap must not cost work per skipped integer");
 }
 
+/* heavy_asp's shape, scaled: a core stack (capsule, wheel, big tank, big engine)
+   plus `boosters` side strings of `stringLen` parts (decoupler, tanks, engine),
+   each string's innermost tank fuel-linked to the string inboard of it. Every
+   engine burns H2+LOX at the same exhaust velocity, and the strings share three
+   stage labels, like the shipped ship. Shipped part defs because the burn's
+   step count and its rounding both matter here (#526): this is the shape the VAB
+   produces and the numbers the player reads. */
+static BuildShip shipped_asparagus(const PartsCatalog &cat, int boosters, int stringLen) {
+    const PartDef *capsule = cat.find("capsule");
+    const PartDef *wheel = cat.find("reaction_wheel");
+    const PartDef *tankS = cat.find("tank_r1.5h3");
+    const PartDef *tankL = cat.find("tank_r2.25h5");
+    const PartDef *engS = cat.find("engine_r1.5h3");
+    const PartDef *engL = cat.find("engine_r2.25h4.5");
+    const PartDef *dec = cat.find("decoupler_r1.5");
+    CHECK_TRUE(capsule && wheel && tankS && tankL && engS && engL && dec,
+               "catalog defs for the asparagus fixture");
+    if(!capsule || !wheel || !tankS || !tankL || !engS || !engL || !dec) { return BuildShip(); }
+
+    BuildShip bs;
+    const int hiLabel = 2 + boosters;   // every engine fires on the top label
+    int core = addPart(bs, capsule, "capsule_0000", -1, 1);
+    core = addPart(bs, wheel, "reaction_wheel_0000", core, 1);
+    core = addPart(bs, tankL, "tank_core_0000", core, 1);
+    addPart(bs, engL, "engine_core_0000", core, hiLabel);
+    std::string inboard = "tank_core_0000";
+    for(int b = 0; b < boosters; b++) {
+        char id[40];
+        const int label = 2 + (b % 3);   // three separations, like heavy_asp
+        snprintf(id, sizeof(id), "dec_%04d", b);
+        int p = addPart(bs, dec, id, core, label);
+        std::string innermost;
+        for(int k = 0; k < stringLen - 1; k++) {
+            snprintf(id, sizeof(id), "tank_%04d_%02d", b, k);
+            p = addPart(bs, k == stringLen - 2 ? tankS : tankL, id, p, label);
+            innermost = id;
+        }
+        snprintf(id, sizeof(id), "engine_%04d", b);
+        addPart(bs, engS, id, p, hiLabel);
+        addLink(bs, innermost, inboard);   // this string feeds the one inboard
+        inboard = innermost;
+    }
+    return bs;
+}
+
+/* Two invariants runBurn was free to break, because it kept the tanks
+   (sim.parts[i].fuel) and the running mass in the Tsiolkovsky sum (acc.m) as two
+   separate representations with nothing forcing them together (#526):
+
+     * a row's delta-v is its exhaust velocity times ln(massStart/massEnd) -- all
+       these engines share one ve, and PartDef::fullThrust() is ve * mdot, so
+       F/mdot is ve every step and the step ratios telescope;
+     * the rows together spend the ship's whole propellant load, once -- a period
+       that stops early leaves fuel in a stage that then separates. That one is
+       shape-dependent, so the fixture keeps the shape simple: no decoupler sits on
+       the LOWEST label (#529: such a ship's walk ends at the separation and the
+       survivor's burn never gets a row) and every tank is reachable through a link
+       (res/ships/central_radial.json is the shipped counter-example -- a fuel wall
+       makes its booster's tanks unreachable, and jettisoning them full is right).
+
+   At HEAD a 6-boosters build (70 parts) read dv 1,801,269 m/s for the middle
+   stage and a 12-boosters build read -nan, and both left tens of tonnes of
+   propellant unaccounted. The step budget that used to end those burns silently
+   is now asserted against, so a cap hit fails this test in a debug build. */
+static void test_deep_chain_burn_stays_physical() {
+    const double g = 9.81;
+    const PartsCatalog pc = load_parts_catalog("res/data/parts.json");
+    const PartDef *engS = pc.find("engine_r1.5h3");
+    const PartDef *engL = pc.find("engine_r2.25h4.5");
+    if(!engS || !engL) { return; }
+    CHECK_TRUE(engS->exhaust_velocity == engL->exhaust_velocity,
+               "fixture engines share an exhaust velocity");
+    const double ve = engS->exhaust_velocity;
+
+    // What computeStaging treats as burnable: the resources its rocket engines draw.
+    bool burn[(int)ResourceType::Num] = {};
+    burn[(int)ResourceType::Hydrogen] = true;
+    burn[(int)ResourceType::LOX] = true;
+
+    /* The ladder matters. At 12 boosters the old bug -- skipping near-empty tanks
+       when picking dt -- produces rows BIT-IDENTICAL to the fix (mutation-tested:
+       tmp/n526b_a), so the small rungs only pin that the fix does not disturb a
+       working burn. It is the deep rungs where the drift becomes a row: at 16 the
+       same mutation reads dv -nan, and removing the exact-empty rule or cutting the
+       step budget shows up there too. */
+    for(int boosters : {4, 6, 12, 16, 24}) {
+        const std::string tag = std::to_string(boosters) + "-boosters: ";
+        BuildShip bs = shipped_asparagus(pc, boosters, 10);
+        CHECK_TRUE(!bs.parts.empty(), (tag + "fixture built").c_str());
+
+        double fuel = 0.0;
+        for(size_t i = 0; i < bs.parts.size(); i++) {
+            fuel += partPropellantMass(*bs.parts[i].def, burn);
+        }
+
+        const std::vector<StageRow> rows = computeStaging(bs, g);
+        CHECK_TRUE(rows.size() == 4, (tag + "four rows").c_str());
+        double spent = 0.0;
+        for(size_t i = 0; i < rows.size(); i++) {
+            const StageRow &r = rows[i];
+            CHECK_TRUE(std::isfinite(r.deltaV), (tag + "delta-v is finite").c_str());
+            CHECK_TRUE(std::isfinite(r.massStart) && std::isfinite(r.massEnd)
+                       && r.massEnd > 0.0 && r.massStart >= r.massEnd,
+                       (tag + "mass columns are finite and shrink").c_str());
+            CHECK_NEAR(r.deltaV, ve * std::log(r.massStart / r.massEnd), 1e-9,
+                       (tag + "delta-v matches ve ln(m0/m1)").c_str());
+            spent += r.massStart - r.massEnd;
+        }
+        CHECK_NEAR(spent, fuel, 1e-9, (tag + "every kg of propellant is spent once").c_str());
+    }
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -656,6 +768,7 @@ int main() {
     test_signature();
     test_stage_labels_are_labels();
     test_a_gap_costs_nothing();
+    test_deep_chain_burn_stays_physical();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
