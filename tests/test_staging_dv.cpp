@@ -101,6 +101,14 @@ struct Catalog {
         defs.back().fuel_barrier = true;
         return &defs.back();
     }
+    // A fuel wall that is NOT a decoupler: it splits fuel groups but can never be
+    // what a stage label fires, so a ship can be walled apart without separating.
+    const PartDef *barrier(double mass) {
+        defs.push_back(PartDef());
+        defs.back().mass = mass;
+        defs.back().fuel_barrier = true;
+        return &defs.back();
+    }
     const PartDef *mono(double dry, double hydrazine) {
         defs.push_back(PartDef());
         PartDef &d = defs.back();
@@ -875,8 +883,9 @@ static void test_a_sealed_drop_does_not_hold_the_burn_open() {
    question rather than a per-call one: period 2 inherits the mark buffer from period 1,
    and after period 1's kill the groups are renumbered, so a stale mark can land on a
    group id period 2 cares about. The two fuel sources in period 1's drop are sized to
-   empty in the SAME step, so that period makes exactly two reachability calls -- which is
-   what lets a leftover mark line up with period 2's epoch. And the engine-less linkedTank
+   empty in the SAME step, so that period makes three reachability calls (one at the
+   drainAll decision, one per burn step, and the one that finds the drop dry) -- the third
+   is where a leftover stamp from period 1 lines up with period 2's tick. And the engine-less linkedTank
    is reachable only across a fuel_link, so the marking has to cross revLinks (the drop's
    20 kg of linkedTank fuel is part of the burn; see
    test_a_linked_tank_in_a_drop_holds_the_burn_open for the case that pins that on its own).
@@ -971,19 +980,56 @@ static void test_a_separation_does_not_relist_an_already_dead_subtree() {
     (void)decB;
 
     const std::vector<StageRow> rows = computeStaging(bs, 10.0);
-     CHECK_TRUE(rows.size() == 2, "label 2 separates nothing, so it gets no row: 3 and 1 only");
+    CHECK_TRUE(rows.size() == 2, "label 2 separates nothing, so it gets no row: 3 and 1 only");
     if(rows.size() != 2) { return; }
     CHECK_TRUE(rows[0].stage == 3 && rows[0].drops, "label 3 separates the whole tail");
     CHECK_NEAR(rows[0].massStart, 200.0, 1e-9, "all aboard");
     /* The tail is walled off, so this drop is INERT and the row falls back to draining
-       everything reachable (the inert-drop rule, staging.cpp:706) rather than burning
-       nothing. Its own tank's 20 kg stays aboard and leaves with the tail. */
+       everything reachable (computeStaging's inert-drop fallback: drainAll when the drop
+       holds nothing drainable) rather than burning nothing. Its own tank's 20 kg stays
+       aboard and leaves with the tail. */
     CHECK_NEAR(rows[0].massEnd, 100.0, 1e-9, "the core's 100 kg burns; the tail's does not");
     CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(200.0 / 100.0), 1e-9, "s3 dv");
     CHECK_TRUE(rows[1].stage == 1, "the next row is the survivor's, not label 2's");
     CHECK_NEAR(rows[1].massStart, 60.0, 1e-9, "the tail left dry, and so did the core");
     CHECK_NEAR(rows[1].massEnd, 60.0, 1e-9, "nothing left to burn");
     CHECK_NEAR(rows[1].deltaV, 0.0, 1e-9, "s1 dv");
+}
+
+/* Reachability means "a LIT engine can draw this", not "some engine somewhere could
+   draw it". secEng is on label 2, so at label 3 it is unlit: linkTank, which feeds only
+   secTank's group, is out of reach and must not be credited to label 3's drop. Marking
+   every engine's layers regardless of `lit` instead reads s3 520->300, dv 550 -- 200 kg
+   of the survivor's own fuel billed at the wrong mass, because nothing drains linkTank
+   (its only consumer is unlit) yet the period stays open chasing it. A lit engine two
+   hops up an asparagus string already marks everything that unlit engine's group
+   reaches -- drainLayersFor() is transitive -- so the discriminator needs the unlit
+   engine's group in a DIFFERENT branch of the link graph, which is why port (a fuel
+   wall that never separates) sits between the two strings. */
+static void test_an_unlit_engine_does_not_open_a_burn() {
+    Catalog cat;
+    BuildShip bs;
+    const int core = addPart(bs, cat.tank(50, 100, 100), "coreTank", -1, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "coreEng", core, 3);
+    const int port = addPart(bs, cat.barrier(5), "port", core, 1);
+    const int st = addPart(bs, cat.tank(20, 40, 40), "secTank", port, 2);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "secEng", st, 2);   // unlit until label 2
+    const int decA = addPart(bs, cat.decoupler(5), "decA", core, 3);
+    addPart(bs, cat.tank(10, 10, 10), "dropTank", decA, 3);      // the lit core drains this
+    addPart(bs, cat.tank(10, 50, 50), "linkTank", decA, 3);      // feeds secTank ONLY
+    addLink(bs, "dropTank", "coreTank");
+    addLink(bs, "linkTank", "secTank");
+    (void)port; (void)st;
+
+    const std::vector<StageRow> rows = computeStaging(bs, 10.0);
+    CHECK_TRUE(rows.size() == 2, "label 2 separates nothing, so rows are 3 and 1");
+    if(rows.size() != 2) { return; }
+    CHECK_NEAR(rows[0].massStart, 520.0, 1e-9, "all aboard");
+    CHECK_NEAR(rows[0].massEnd, 500.0, 1e-9, "only dropTank's 20 kg burns");
+    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(520.0 / 500.0), 1e-9, "s3 dv");
+    CHECK_NEAR(rows[1].massStart, 375.0, 1e-9, "linkTank leaves with its 100 kg unburnt");
+    CHECK_NEAR(rows[1].massEnd, 95.0, 1e-9, "secEng lights on the last row");
+    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(375.0 / 95.0), 1e-9, "s1 dv");
 }
 
 int main() {
@@ -1005,6 +1051,7 @@ int main() {
     test_a_sealed_drop_does_not_hold_the_burn_open();
     test_reachability_survives_a_renumbering();
     test_a_linked_tank_in_a_drop_holds_the_burn_open();
+    test_an_unlit_engine_does_not_open_a_burn();
     test_a_separation_does_not_relist_an_already_dead_subtree();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
