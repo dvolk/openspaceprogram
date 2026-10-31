@@ -831,6 +831,46 @@ static void test_a_self_parent_walks_once() {
     CHECK_NEAR(rows[1].massEnd, 60.0, 1e-9, "the tank drains down to its dry mass");
 }
 
+/* What makes a drop "ready to leave" is the fuel a LIT ENGINE can reach inside it, not
+   the fuel it happens to carry. A tank sealed off by a fuel wall never drains, so a drop
+   holding one must not keep the period running: the burn stops when the reachable part of
+   the drop runs out, the sealed tank is jettisoned full, and the survivor still has its
+   own propellant for the next row. Nothing else in this file has a drop set holding BOTH
+   reachable and unreachable burnable fuel, which is why ignoring the reachability filter
+   passes every other case here (#536 makes that filter fast; this makes it load-bearing).
+   Shape: the core (tank + engine) and the decoupler all carry label 2, so both engines are
+   lit when label 2 is walked; the booster string's own tank is reachable, and a second
+   wall inside the drop seals 80 kg of propellant that nothing can draw. Label 1 is the
+   payload's label, so the walk has a second row to spend the survivor's fuel on. */
+static void test_a_sealed_drop_does_not_hold_the_burn_open() {
+    Catalog cat;
+    BuildShip bs;
+    const int coreTank = addPart(bs, cat.tank(50, 100, 100), "coreTank", -1, 2);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "coreEng", coreTank, 2);
+    addPart(bs, cat.tank(5, 0, 0), "payload", coreTank, 1);
+    const int dec = addPart(bs, cat.decoupler(5), "dec", coreTank, 2);
+    const int boostTank = addPart(bs, cat.tank(10, 20, 20), "boostTank", dec, 2);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "boostEng", boostTank, 2);
+    const int wall = addPart(bs, cat.decoupler(5), "wall", dec, 2);
+    addPart(bs, cat.tank(10, 40, 40), "sealed", wall, 2);
+
+    const std::vector<StageRow> rows = computeStaging(bs, 10.0);
+    CHECK_TRUE(rows.size() == 2, "two labels, two rows");
+    if(rows.size() != 2) { return; }
+
+    // Label 2 burns while the reachable part of the drop lasts: boostTank's 40 kg at
+    // 1 kg/s is 40 s, during which coreEng spends 40 kg of the core's 200 as well.
+    CHECK_TRUE(rows[0].stage == 2 && rows[0].drops, "label 2 separates");
+    CHECK_NEAR(rows[0].massStart, 425.0, 1e-9, "everything is aboard");
+    CHECK_NEAR(rows[0].massEnd, 345.0, 1e-9, "80 kg burnt, the sealed tank still aboard");
+    // The separation takes the sealed tank's 80 kg of propellant with it, full.
+    CHECK_NEAR(rows[1].massStart, 225.0, 1e-9, "the survivor kept its own 160 kg");
+    CHECK_NEAR(rows[1].massEnd, 65.0, 1e-9, "and burns it in the last row");
+    CHECK_TRUE(rows[1].deltaV > 0.0, "the survivor still has something to burn");
+    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(225.0 / 65.0), 1e-9,
+               "one engine, the fuel that is left");
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -847,6 +887,7 @@ int main() {
     test_deep_chain_burn_stays_physical();
     test_drop_walk_takes_only_the_decouplers_side();
     test_a_self_parent_walks_once();
+    test_a_sealed_drop_does_not_hold_the_burn_open();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

@@ -7,7 +7,6 @@
 #include <cmath>
 #include <cstdint>
 #include <map>
-#include <set>
 
 #include "hash.h"   // the staging cache key's FNV-1a mixer
 
@@ -149,6 +148,13 @@ struct Sim {
        live epoch, so a fresh vector starts clean. */
     std::vector<uint32_t> seenEpoch;
     uint32_t seenTick = 0;
+
+    /* The same epoch trick for drainableIn (#536): which groups a lit engine can draw
+       from, marked per call instead of rebuilt into a std::set every call -- and
+       drainableIn runs once per BURN STEP, not once per label. Sized in refreshFuel,
+       because that is where buildFuelGroups renumbers the groups. */
+    std::vector<uint32_t> reachEpoch;
+    uint32_t reachTick = 0;
 
     void buildChildren() {
         const int n = (int)parts.size();
@@ -311,7 +317,9 @@ struct Sim {
     // layers. The "ready to drop" test. Not const: layersFor fills its cache.
     double drainableIn(const std::vector<int> &list) {
         if(list.empty()) { return 0.0; }
-        std::set<int> reachable;
+        assert(reachEpoch.size() == (size_t)nGroups);   // refreshFuel() sizes this
+        ++reachTick;
+        assert(reachTick != 0);
         for(size_t ei = 0; ei < engines.size(); ei++) {
             const SimEngine &e = engines[ei];
             if(!e.lit || e.part < 0 || e.part >= (int)parts.size() || !parts[e.part].alive) {
@@ -322,7 +330,9 @@ struct Sim {
             const Bucket *lit = layersFor(g);
             for(size_t li = 0; li < lit->size(); li++) {
                 for(size_t gi = 0; gi < (*lit)[li].size(); gi++) {
-                    reachable.insert((*lit)[li][gi]);
+                    const int rg = (*lit)[li][gi];   // a GROUP, not a part
+                    assert(rg >= 0 && rg < (int)reachEpoch.size());
+                    reachEpoch[(size_t)rg] = reachTick;
                 }
             }
         }
@@ -330,7 +340,10 @@ struct Sim {
         for(size_t k = 0; k < list.size(); k++) {
             const int pi = list[k];
             if(pi < 0 || pi >= (int)parts.size() || !parts[pi].alive) { continue; }
-            if(parts[pi].group < 0 || !reachable.count(parts[pi].group)) { continue; }
+            const int pg = parts[pi].group;
+            if(pg < 0) { continue; }
+            assert(pg < (int)reachEpoch.size());
+            if(reachEpoch[(size_t)pg] != reachTick) { continue; }
             m += parts[pi].fuel;
         }
         return m;
@@ -596,6 +609,10 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
     auto refreshFuel = [&]() {
         sim.nGroups = buildFuelGroups(sim.parts);
         sim.rebuildMembers();
+        /* The group ids just changed, so the reachability marks are meaningless --
+           restart the epoch over the new group count (#536). */
+        sim.reachEpoch.assign((size_t)sim.nGroups, 0);
+        sim.reachTick = 0;
         sim.revLinks.clear();
         for(size_t k = 0; k < links.size(); k++) {
             if(!sim.parts[links[k].from].alive || !sim.parts[links[k].to].alive) { continue; }
