@@ -402,6 +402,14 @@ static void test_seam_staging() {
     A.v->init();
     A.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
 
+    /* #544: index into `parts` is the tie-break that decides which split ship keeps the
+       bare name, and it only means "build order" while `parts` keeps that order. Pin the
+       three ways the vector changes -- append here, append-across-ships at the absorb,
+       filter on both sides of the split. */
+    CHECK_TRUE(A.v->parts.size() == 3 && A.v->parts[0] == capsule &&
+               A.v->parts[1] == decop && A.v->parts[2] == portA,
+               "staging: setRoot and attachDown append, so parts is build order");
+
     Ship B; B.v = new Vehicle; B.v->name = "B";
     Part *portB = mkPart(B, "portB",   50.0, 1.0, 1.0, kPortHz, true);
     Part *tankB = mkPart(B, "tankB", 1000.0, 1.0, 1.0, kTankHz, false);
@@ -412,6 +420,19 @@ static void test_seam_staging() {
     B.v->placeShip(glm::dvec3(0.0, 0.0, -2.5), glm::dmat3(1.0));
 
     A.v->absorbShip(B.v, portA);
+    /* The path #544 worries about most: it stitches two ships' build orders into one
+       vector. Append (not insert, not sort) is what keeps both halves ordered. */
+    CHECK_TRUE(A.v->parts.size() == 5 && A.v->parts[0] == capsule &&
+               A.v->parts[1] == decop && A.v->parts[2] == portA &&
+               A.v->parts[3] == portB && A.v->parts[4] == tankB,
+               "staging: absorb keeps the host's order, then appends the donor's");
+
+    /* Hang a branch off the part that will be the cut root, and build it LAST. Every
+       other order agrees with build order in a chain -- a walk order would put this part
+       third, tree order puts it deep, build order puts it last -- so without it the pins
+       below could not tell "filter the vector" from "rebuild it in walk order". */
+    Part *sideX = mkPart(A, "sideX",   50.0, 1.0, 1.0, kTankHz, false);
+    A.v->attachMode(sideX, 1, AttachMode::Down);   // parent = decop, index 1
     CHECK_TRUE(A.v->seams.size() == 1, "staging: one seam after the dock");
     CHECK_TRUE(A.v->seams[0].port == portA, "staging: seam port is A's port");
     CHECK_TRUE(A.v->seams[0].root == portB, "staging: seam root is B's root");
@@ -429,6 +450,16 @@ static void test_seam_staging() {
         CHECK_TRUE(out->seams[0].port == portA, "staging: split-off seam's port");
         CHECK_TRUE(out->seams[0].root == portB, "staging: split-off seam's root");
     }
+
+    /* Both sides of a split come from filtering the SAME vector (vehicle.cpp builds the
+       new ship's list by walking `parts`, and the survivor's by the complement), so build
+       order survives the cut on both sides -- the split-off ship's own ties depend on it
+       the next time it stages. */
+    CHECK_TRUE(out->parts.size() == 5 && out->parts[0] == decop &&
+               out->parts[1] == portA && out->parts[2] == portB &&
+               out->parts[3] == tankB && out->parts[4] == sideX,
+               "staging: the split-off ship keeps build order, walk order would put "
+               "sideX third");
 
     /* The survivor keeps only its capsule. */
     CHECK_TRUE(A.v->parts.size() == 1, "staging: survivor keeps only the capsule");

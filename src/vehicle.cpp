@@ -3518,7 +3518,10 @@ std::vector<Part *> Vehicle::stagedDecouplers(int stage) {
     auto buildIndex = [this](Part *p) {
         /* Every element came from `parts` through the walk above. A miss would
            return parts.size(), make every tie compare equivalent, and leave this
-           function answering in the address order it exists to remove. */
+           function answering in the address order it exists to remove.
+           "Build order" is a property of `parts`, not of this line: the vector stays in
+           build order because every mutation appends or filters (see vehicle.h), which is
+           what makes an index here mean what a player built. #544. */
         auto it = std::find(parts.begin(), parts.end(), p);
         assert(it != parts.end());
         return (int)(it - parts.begin());

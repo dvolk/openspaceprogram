@@ -86,7 +86,14 @@ public:
        sees a vehicle name. */
     std::string name;
     std::string defPath; // ship def it was built from ("" = test ship)
-    std::vector<Part *> parts;   // each Part owns its Body (see part.h)
+    /* Each Part owns its Body (see part.h). BUILD-ORDER throughout: setRoot and attach
+       append, absorbShip appends a donor in its own order, and a split filters this same
+       vector on both sides -- nothing sorts it, and nothing needs to, because
+       stagedDecouplers breaks same-depth split ties by index into here. That index decides
+       which booster keeps the bare name and which becomes "Booster #2", so a refactor that
+       reshuffles `parts` reshuffles ship names with every test green (#544). The append and
+       filter paths are pinned in tests/test_dock.cpp. */
+    std::vector<Part *> parts;
 
     // SoI placement: setSoi is the one writer. Null until placed (off-map).
     // m_parent is the AUTHORITATIVE "which body": the vehicles are one flat list
