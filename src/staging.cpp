@@ -130,21 +130,33 @@ struct Sim {
 
     /* part -> its children, flat: part p owns childOf[childStart[p] ..
        childStart[p+1]). Built once from the snapshot (#520), NOT per droppedAt()
-       call: the staging walk calls it once per decoupler label, and the old
+       call: the stage walk calls it for every label the ship carries, and the old
        per-call map rebuild billed the label count times the part count for a
-       graph that never changes. Every part is listed, dead or alive -- the drop
-       walk must see the same tree that rebuild saw, and its caller filters by
-       alive. Parent links never change afterwards (kill() only flips a flag), so
-       one build per pass is enough. */
+       graph that never changes. Listed here are ALL the parts, alive or not: the
+       table is built before any kill(), and filtering by liveness now would freeze
+       build-time liveness into a structure the walk reads after parts die (the
+       group member table above is the opposite case -- it is rebuilt per refresh,
+       so it can filter). Parent links never change afterwards (kill() only flips a
+       flag), so one build per pass is enough. */
     std::vector<int> childStart;
     std::vector<int> childOf;
 
     void buildChildren() {
         const int n = (int)parts.size();
+        /* ONE predicate for "usable parent", because the histogram and the fill
+           below must reject exactly the same parts: if they disagree by one test,
+           childOf gets written past its end and nothing here notices. (Malformed
+           parents cannot reach a game -- partitionFuelGroups asserts p < n from
+           refreshFuel -- but that runs after this, so this is the first code to
+           touch them.) */
+        auto parentOf = [&](int i) {
+            const int p = parts[i].parent;
+            return (p >= 0 && p < n) ? p : -1;
+        };
         childStart.assign((size_t)n + 1, 0);
         for(int i = 0; i < n; i++) {
-            const int p = parts[i].parent;
-            if(p >= 0 && p < n) { childStart[(size_t)p + 1]++; }
+            const int p = parentOf(i);
+            if(p >= 0) { childStart[(size_t)p + 1]++; }
         }
         for(int p = 0; p + 1 < (int)childStart.size(); p++) {
             childStart[(size_t)p + 1] += childStart[(size_t)p];
@@ -152,8 +164,8 @@ struct Sim {
         childOf.assign(parts.size(), 0);
         std::vector<int> cursor = childStart;
         for(int i = 0; i < n; i++) {
-            const int p = parts[i].parent;
-            if(p < 0 || p >= n) { continue; }
+            const int p = parentOf(i);
+            if(p < 0) { continue; }
             childOf[(size_t)cursor[(size_t)p]++] = i;
         }
     }
@@ -161,7 +173,11 @@ struct Sim {
     /* Decoupler-on-stage drop: the decouplers carrying this label plus everything
        on their child side (Vehicle::droppedPartsAtStage). */
     std::set<int> droppedAt(int stage) const {
-        assert(childStart.size() == parts.size() + 1);   // buildChildren() first
+        /* Only proves the table matches the part count -- that buildChildren() ran
+           at all and nothing resized parts afterwards. A table built BEFORE the
+           snapshot has the right size and the wrong edges, so keep the call in
+           computeStaging where the snapshot loop ends. */
+        assert(childStart.size() == parts.size() + 1);
         std::set<int> dropped;
         for(size_t i = 0; i < parts.size(); i++) {
             if(!parts[i].alive || !parts[i].isDec || parts[i].stage != stage) { continue; }
