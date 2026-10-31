@@ -231,7 +231,11 @@ struct Sim {
                 stack.pop_back();
                 if(seenEpoch[(size_t)q] == seenTick) { continue; }
                 seenEpoch[(size_t)q] = seenTick;
-                dropped.push_back(q);
+                // The child table is built before any kill(), so a live seed's subtree
+                // can still list parts an earlier separation took. List only the alive
+                // ones (#537), but descend either way -- a self-parented part must not
+                // loop, and no rule says a dead part's child is dead.
+                if(parts[(size_t)q].alive) { dropped.push_back(q); }
                 for(int k = childStart[(size_t)q]; k < childStart[(size_t)q + 1]; k++) {
                     stack.push_back(childOf[k]);
                 }
@@ -712,18 +716,14 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
             }
         }
 
-        std::vector<int> drop;
-        {
-            /* Two alive checks guard the same thing and hide each other's absence:
-               droppedAt seeds only alive decouplers, and this trims the dead entries a live
-               seed's walk still lists (the child table is built before any kill()). Delete
-               either one and no row changes; delete both and a decoupler an earlier
-               separation already took reappears as a staging event -- #537. */
-            const std::vector<int> raw = sim.droppedAt(s);
-            for(size_t k = 0; k < raw.size(); k++) {
-                if(sim.parts[raw[k]].alive) { drop.push_back(raw[k]); }
-            }
-        }
+        /* ONE aliveness rule, in one place: droppedAt() seeds only ALIVE decouplers
+           (a decoupler an earlier separation took must not separate again) and lists only
+           ALIVE parts (a dead part is never dropped twice). There used to be a second
+           filter here, over the returned list, and the two hid each other: deleting
+           either changed no row anywhere, so neither was testable. Seeding is now the
+           check the suite can see -- drop the !parts[i].alive test in droppedAt and
+           test_a_separation_does_not_relist_an_already_dead_subtree fails. #537. */
+        const std::vector<int> drop = sim.droppedAt(s);
 
         // A stage that separates nothing and is not the last only lights
         // engines (the counter steps through it); no burn of its own.
