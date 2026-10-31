@@ -294,7 +294,9 @@ static void test_staged_decouplers_depth_first() {
    review: a caller-side predicate duplicated the rule and could refuse a legal split),
    so its refusals are what game.cpp reads to pick its words -- and nothing pinned them.
    Both refusals land before the extract touches a physics body (the aboard test and the
-   subtree count come first), so this is safe with no physics world. */
+   subtree count come first), so this is safe with no physics world. The other half -- a
+   legal split is NOT refused -- is not this test's: it is pinned by test_dock's
+   "staging: the split succeeded" checks, which is where an over-refusing extract dies. */
 static void test_extract_refusals() {
     Ship s; s.v = new Vehicle;
     Part *core = addPart(s, NULL, 2, false, "core");
@@ -303,6 +305,10 @@ static void test_extract_refusals() {
     (void)dec; (void)kid;
     CHECK_TRUE(s.v->extractSubtreeAsShip(core, "whole ship", 0.0) == nullptr,
                "the root part reaches every part, so there is no second side");
+    /* game.cpp explains that refusal as "this part is the ship's root part", so refusal
+       and rootness have to travel together -- nothing pinned the equivalence before. */
+    CHECK_TRUE(s.v->rootPart() == core, "the refused part is the root the caller calls it");
+    CHECK_TRUE(core->parent == nullptr, "and it has no parent, which vehicle.cpp asserts");
     Part *stray = new Part;
     stray->body = nullptr; stray->def = nullptr; stray->parent = nullptr;
     CHECK_TRUE(s.v->extractSubtreeAsShip(stray, "not aboard", 0.0) == nullptr,
@@ -311,6 +317,8 @@ static void test_extract_refusals() {
     /* A refusal is decided before anything moves: had the whole-ship case started
        cutting, this ship would no longer be in one piece. */
     CHECK_TRUE(s.v->parts.size() == 3, "a refused split leaves the ship alone");
+    CHECK_TRUE(s.v->droppedPartsAtStage(1).size() == 2,
+               "and the stage walk still sees the same two parts below the decoupler");
     destroyShip(s);
 }
 

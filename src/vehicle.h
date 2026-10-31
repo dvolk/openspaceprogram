@@ -796,8 +796,9 @@ public:
        frame S' = the root's old frame. The new ship inherits frame/home/sun, takes
        the root's current world pose and the dropped side's COM velocity. nullptr if
        `root` is null, is not aboard this ship, or reaches every part (a split needs
-       two sides). The whole-ship case is counted, not inferred from parent edges, so
-       this function is the ONLY authority on whether a split can happen (#541). Seams
+       two sides). The whole-ship case is decided by counting the subtree the walk
+       reached, not by reading one parent edge off the root, so a caller that has to
+       explain a refusal asks this function instead of answering it twice (#541). Seams
        maintained like fuel links. NOT in the physics world -- the caller enters it. */
     Vehicle *extractSubtreeAsShip(Part *root, const std::string &name,
                                   double t = 0.0);

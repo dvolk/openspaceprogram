@@ -3644,7 +3644,15 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
             dropped.push_back(q);
         }
     }
-    if(droppedSet.size() == parts.size()) { return nullptr; }  // can't split the whole ship
+    if(droppedSet.size() == parts.size()) {
+        /* A caller that has to explain this refusal says "this part is the ship's root".
+           That holds only while the parent edges form a tree -- a cycle inside one ship
+           reaches every part while the root still has a parent -- so trap the state that
+           would make the sentence a lie. Sound for a tree: a non-null parent inside
+           `parts` would be both an ancestor and a descendant of `root`. */
+        assert(root->parent == nullptr);
+        return nullptr;      // can't split the whole ship
+    }
 
     /* New frame S' = the root's old frame: x' = R_r^T (x - p_r),
        R' = R_r^T R. */

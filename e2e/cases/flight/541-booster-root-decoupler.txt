@@ -11,9 +11,13 @@ ARGS --sim-press 2000,0,SPACE,4000,0,F6,6000,0,SPACE
 EXPECT Stage: dropped 1 ship(s)
 EXPECT Active ship 2 of 2
 EXPECT cannot separate -- it is this ship's root part, so its side is the whole ship
-# The toast is the half a player actually reads, so the part has to be named there too.
-# Game::toast mirrors every toast to stdout with a "[toast] " prefix.
 EXPECT [toast] Stage 2 cannot separate
+# CLAIM says WHICH part, so a name has to be in the message. Substring EXPECTs cannot say
+# that -- the %s sits outside every one of them -- and pinning the literal label would
+# couple the case to a parts.json display_name. So: something non-empty in the subject
+# slot of the log line, and in the toast row (parse_toast rows are plain strings).
+CHECK re.search(r"Stage: \S.*? on stage \d+ cannot separate", out)
+CHECK any(re.search(r"cannot separate -- \S.*? is this ship's root part", t) for t in toast)
 # The old generic line must NOT be what a player reads here: that is the whole point of
 # the fix. ("Assertion" is already in run.py's DEFAULT_FORBID, so it needs no line.)
 FORBID Stage: nothing left to separate

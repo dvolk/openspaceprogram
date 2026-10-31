@@ -2040,9 +2040,11 @@ void Game::stage() {
        the split ships get named and listed, so it has to be reproducible (#540). */
     const std::vector<Part *> decs = a->stagedDecouplers(st);
     int ships = 0, parts = 0;
-    /* Label of a decoupler whose side turned out to be the whole ship. A ship has one
-       root part, so at most one decoupler per press can hit this: the label doubles as
-       the "was anything refused" flag. */
+    /* A decoupler whose side turned out to be the whole ship, named. A ship has one root
+       part, so at most one decoupler per press gets here. Kept as a separate flag rather
+       than testing the label for emptiness: the loader lets a part def have no name
+       (shipdef.cpp:310), and a nameless def must not erase the refusal. */
+    bool refused = false;
     std::string refusedPart;
     if(!decs.empty()) {
         /* De-dup a name against the live vehicles: first keeps the bare name,
@@ -2067,20 +2069,22 @@ void Game::stage() {
                 continue;
             }
             /* Read the refusal off the extract instead of answering the same question
-               twice. An earlier cut at this had the press ask a splitBlockReason()
-               predicate first: that duplicated the whole-ship rule behind two owners --
-               extractSubtreeAsShip COUNTS the subtree so it cannot disagree with the tree
-               it walks, while a "has no parent" guess can refuse a legal split -- and it
-               bought nothing, because dedupVehicleName only reads the roster, so a
+               twice. An earlier version of this press asked a splitBlockReason() predicate
+               first, which put the whole-ship rule behind two owners -- the extract counts
+               the subtree it walked, the predicate guessed from one parent edge -- and the
+               guess bought nothing, because dedupVehicleName only reads the roster, so a
                refused split reserves no name.
-               Membership tells the two refusals apart. The part is gone from `a` when an
-               earlier cut on this same stage carried it off with an outer decoupler:
-               ordinary, exactly what #540's outer-first order expects, so say nothing. A
-               part still aboard here has no parent, so its side is every part: the one
-               refusal a player can act on, so it gets named below. */
+               Membership is what tells the two refusals apart. Gone from `a`: an earlier
+               extract in this same press carried the part off inside an outer decoupler's
+               cut -- ordinary, exactly what #540's outer-first order expects, so say
+               nothing. Still aboard: the extract counted every part of this ship in this
+               part's subtree, so no part of this ship is outside it, which puts this part
+               at the root (vehicle.cpp asserts the parent chain is acyclic, and that is
+               what makes the step sound). This is the refusal a player can act on. */
             if(std::find(a->parts.begin(), a->parts.end(), d) == a->parts.end()) {
                 continue;
             }
+            refused = true;
             refusedPart = qual;
         }
     }
@@ -2090,11 +2094,13 @@ void Game::stage() {
     /* Not "out of stages": name the part and say what is wrong with it. The log line
        scrolls, so the toast repeats the part -- the toast is the half a player reads. */
     auto refuseNote = [&]() {
+        const std::string what = refusedPart.empty() ? std::string("(unnamed part)")
+                                                    : refusedPart;
         printf("Stage: %s on stage %d cannot separate -- it is this ship's root part, "
                "so its side is the whole ship; now on stage %d of %d\n",
-               refusedPart.c_str(), st, a->activeStage(), a->numStages());
+               what.c_str(), st, a->activeStage(), a->numStages());
         toast("Stage %d cannot separate -- %s is this ship's root part", st,
-              refusedPart.c_str());
+              what.c_str());
     };
     if(ships > 0) {
         // Part windows index parts, which just shifted: drop them.
@@ -2102,8 +2108,8 @@ void Game::stage() {
         printf("Stage: dropped %d ship(s) / %d part(s); now on stage %d of %d\n",
                ships, parts, a->activeStage(), a->numStages());
         toast("Staged -- dropped %d ship(s)", ships);
-        if(!refusedPart.empty()) { refuseNote(); }   // a partial press still says which
-    } else if(!refusedPart.empty()) {
+        if(refused) { refuseNote(); }   // a partial press still says which
+    } else if(refused) {
         refuseNote();
     } else {
         printf("Stage: nothing left to separate\n");
