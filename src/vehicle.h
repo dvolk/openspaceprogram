@@ -757,6 +757,13 @@ public:
        subtree it anchors. The decoupler itself IS dropped. */
     std::vector<Part *> droppedPartsAtStage(int stage);
 
+    /* The decouplers a stage press separates, in the order their split ships get
+       made: shallowest first, and ties in build order (index in `parts`). Not a
+       detail -- the first one keeps the bare name and the rest get " #2", " #3",
+       and ship-list order is what the next-ship handoff follows, so the tie has to
+       come from something stable. See the note on the definition (#540). */
+    std::vector<Part *> stagedDecouplers(int stage);
+
     /* --- docking ----------------------------------------------------------
 
        A dock joins two ships into ONE rigid body: this ship absorbs the other,

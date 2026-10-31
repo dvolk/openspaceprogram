@@ -1,5 +1,6 @@
 //
-// Headless test for Vehicle::droppedPartsAtStage (src/vehicle.h).
+// Headless test for Vehicle::droppedPartsAtStage and Vehicle::stagedDecouplers
+// (src/vehicle.h).
 //
 // Staging is a TREE operation: firing a decoupler drops the decoupler plus
 // its whole child-side subtree and nothing else -- in particular not a
@@ -20,6 +21,7 @@
 // Runs from the repo root:
 //   make test   (or: ./test_staging)
 
+#include <algorithm>
 #include <cstdio>
 #include <deque>
 #include <set>
@@ -198,6 +200,49 @@ static void test_two_on_one_stage() {
     destroyShip(s);
 }
 
+/* Same-depth decouplers, in split order (#540). The order decides which split ship
+   keeps the bare name and which becomes "#2", and which one the next-ship handoff
+   picks, so it must not come from pointer addresses. The parts are swapped in
+   `parts` after being added: allocation order -- which is what the std::set<Part*>
+   walk hands back -- stays left-to-right, while build order becomes right-to-left.
+   An implementation that falls through to the set's order fails here instead of
+   passing by coincidence. */
+static void test_staged_decouplers_tie() {
+    Ship s; s.v = new Vehicle;
+    Part *root  = addPart(s, NULL,  3, false, "core");
+    Part *decL  = addPart(s, root,  1, true,  "dec_left");
+    Part *tankL = addPart(s, decL,  1, false, "tank_left");
+    Part *decR  = addPart(s, root,  1, true,  "dec_right");
+    Part *tankR = addPart(s, decR,  1, false, "tank_right");
+    (void)tankL; (void)tankR;
+    std::swap(s.v->parts[1], s.v->parts[3]);   // dec_right now BUILDS before dec_left
+    const std::vector<Part *> got = s.v->stagedDecouplers(1);
+    CHECK_TRUE(got.size() == 2, "tie: two decouplers on stage 1");
+    CHECK_TRUE(got.size() == 2 && got[0]->def->name == std::string("dec_right")
+            && got[1]->def->name == std::string("dec_left"),
+               "same-depth decouplers split in build order, not address order");
+    destroyShip(s);
+}
+
+/* Depth outranks build order: a deep decoupler built FIRST still splits after a
+   shallow one built last, because the outer cut has to happen before the inner one
+   is even reachable. */
+static void test_staged_decouplers_depth_first() {
+    Ship s; s.v = new Vehicle;
+    Part *core = addPart(s, NULL, 4, false, "core");
+    Part *mid  = addPart(s, core, 4, false, "collar");
+    Part *up   = addPart(s, mid,  4, false, "upper");
+    Part *deep = addPart(s, up,   1, true,  "dec_deep");     // depth 3, built first
+    Part *low  = addPart(s, core, 1, true,  "dec_shallow");  // depth 1, built last
+    (void)deep; (void)low;
+    const std::vector<Part *> got = s.v->stagedDecouplers(1);
+    CHECK_TRUE(got.size() == 2, "depth: two decouplers on stage 1");
+    CHECK_TRUE(got.size() == 2 && got[0]->def->name == std::string("dec_shallow")
+            && got[1]->def->name == std::string("dec_deep"),
+               "a shallower decoupler splits first whatever its build order");
+    destroyShip(s);
+}
+
 /* A part is dropped because of WHERE it hangs, not how far down: a deep
    chain under one decoupler all goes, and a deep chain outside it all stays.
    Also pins that the result carries no duplicates (it is a set). */
@@ -300,6 +345,8 @@ int main() {
     test_sibling_survives();
     test_different_stages();
     test_two_on_one_stage();
+    test_staged_decouplers_tie();
+    test_staged_decouplers_depth_first();
     test_deep_chain();
     test_child_below();
 

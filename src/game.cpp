@@ -2035,19 +2035,12 @@ void Game::stage() {
         toast("Chute deployed (%d)", chutes);
     }
 
-    // The decouplers on this stage (roots of the dropped subtrees), shallowest-first.
-    std::vector<Part *> decs;
-    for(Part *p : dropped) { if(p->isDecoupler()) { decs.push_back(p); } }
+    /* The decouplers on this stage (roots of the dropped subtrees), shallowest-first
+       and tied depths in build order -- the order they come out of here is the order
+       the split ships get named and listed, so it has to be reproducible (#540). */
+    const std::vector<Part *> decs = a->stagedDecouplers(st);
     int ships = 0, parts = 0;
     if(!decs.empty()) {
-        auto depth = [&](Part *p) {
-            int d = 0;
-            while(p->parent != nullptr) { d++; p = p->parent; }
-            return d;
-        };
-        std::sort(decs.begin(), decs.end(),
-                  [&](Part *x, Part *y) { return depth(x) < depth(y); });
-
         /* De-dup a name against the live vehicles: first keeps the bare name,
            later get #2, #3. One rule for every ship-naming site (this one was
            a verbatim copy of it as a lambda, which is how the others drifted). */

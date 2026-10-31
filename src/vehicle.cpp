@@ -3436,10 +3436,45 @@ void Vehicle::releaseControl() {
    two situations differ: no liveness test here (Part has no dead flag -- a part leaves a
    Vehicle by moving to another one, so `parts` is exactly what is aboard), seeds on
    isDecoupler() rather than a precomputed flag, and the result is a pointer set, so the
-   returned order is address order. The caller does not depend on it: game.cpp sorts the
-   decouplers by depth before extracting anything. Both walks are iterative DFS over the same
+   returned order is address order, which changes between runs of the same save, so no
+   caller may read it as an ordering: game.cpp goes through stagedDecouplers below,
+   which re-sorts and does not stop at depth. Both walks are iterative DFS over the same
    parent edges, and the `dropped` test above is what keeps a malformed parent edge from
    looping -- staging's seenEpoch does the same job. (#535) */
+/* Decouplers of this stage, in split order. Two facts make the tie matter (#540):
+   droppedPartsAtStage hands back a std::set<Part*>, so the input arrives in part
+   ADDRESS order; and decouplers at the same depth are common, not exotic -- a
+   side-mounted pair, a stack of rings (heavy_asp.json has five sharing a depth on
+   stage 2, heavy_one.json three on stage 4). Sorting on depth alone therefore
+   leaves the tied ones in address order, and that order decides which split ship
+   keeps the bare name (dedupVehicleName gives the rest " #2", " #3") and which one
+   the "next ship" handoff picks. A std::stable_sort would not fix it either: the
+   input order is already the coin flip. Build order -- index in `parts` -- is what
+   a player reasons about, so it breaks the tie. Depth still wins over build order,
+   because an outer decoupler has to separate before an inner one can be reached.
+   Re-walks the stage rather than taking the caller's `dropped`: a stage press is a
+   rare event, and a parameter here would just be a second way for the two to drift. */
+std::vector<Part *> Vehicle::stagedDecouplers(int stage) {
+    std::vector<Part *> decs;
+    for(Part *p : droppedPartsAtStage(stage)) {
+        if(p->isDecoupler()) { decs.push_back(p); }
+    }
+    auto depth = [](Part *p) {
+        int d = 0;
+        while(p->parent != nullptr) { d++; p = p->parent; }
+        return d;
+    };
+    auto buildIndex = [this](Part *p) {
+        return (int)(std::find(parts.begin(), parts.end(), p) - parts.begin());
+    };
+    std::sort(decs.begin(), decs.end(), [&](Part *x, Part *y) {
+        const int dx = depth(x), dy = depth(y);
+        if(dx != dy) { return dx < dy; }
+        return buildIndex(x) < buildIndex(y);
+    });
+    return decs;
+}
+
 std::vector<Part *> Vehicle::droppedPartsAtStage(int stage) {
     // parent -> children over Part::parent (a tree: one parent edge per non-root part).
     std::map<Part *, std::vector<Part *>> children;
