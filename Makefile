@@ -242,19 +242,36 @@ $(RES_OBJ): release/osp.rc $(SRCDIR)/version.h release/openspaceprogram.ico
 	$(WINDRES) $(WINDRESFLAGS) -i $< -o $@
 endif
 
-# Embed git version in src/version.h (gameui.cpp). Phony re-check; rewrites
-# only on change (a change lands one build later). VERSION=1.0 overrides.
+# Embed git version in src/version.h. Three files include it: src/cli.cpp,
+# src/gameui.cpp, tests/test_cli.cpp. VERSION=1.0 overrides.
+#
+# The refresh runs when this makefile is READ, not as a build step. make takes
+# prerequisite timestamps when it scans the dependency graph, so a header rewritten
+# mid-run is noticed by its users only on the NEXT build -- and that one-run lag put
+# a NEW VERSION into test_cli.o and an OLD one into $(TESTDIR)/obj/cli.o, which are
+# two copies inside one test binary whose first assert compares them. The recorded
+# failing run shows it: tmp/maketest_526b.log rewrites the header at line 24, never
+# recompiles obj/cli.o, and aborts at line 414. So the suite went red after every
+# commit (#532); the recovery was "make, then re-run", which is the next scan.
+#
+# Listing src/version.h as an explicit prerequisite does NOT fix this -- obj/cli.o
+# already had one and was still stale. Hence the parse-time $(shell). It also runs
+# under -n: src/version.h is generated and gitignored, and the recompiles it forces
+# are ones the real build needs anyway.
+VERSION_REFRESH = VERSION_STRING="$(VERSION)"; \
+  [ -e "./.git" ] && GITVERSION=$$( git describe --tags --always --dirty --match "v*.*" ) && VERSION_STRING=$$GITVERSION ; \
+  [ -e "src/version.h" ] && OLDVERSION=$$(grep VERSION src/version.h|cut -d '"' -f2) ; \
+  if [ "x$$VERSION_STRING" != "x$$OLDVERSION" ]; then echo "\#define VERSION \"$$VERSION_STRING\"" > src/version.h && echo "version: $$VERSION_STRING" >&2 ; fi
+$(shell $(VERSION_REFRESH))
+
+# Kept for `make version`, and gives src/version.h a rule for the prerequisites below.
 .PHONY: version
 version:
-	@( VERSION_STRING="$(VERSION)"; \
-       [ -e "./.git" ] && GITVERSION=$$( git describe --tags --always --dirty --match "v*.*" ) && VERSION_STRING=$$GITVERSION ; \
-       [ -e "src/version.h" ] && OLDVERSION=$$(grep VERSION src/version.h|cut -d '"' -f2) ; \
-       if [ "x$$VERSION_STRING" != "x$$OLDVERSION" ]; then echo "#define VERSION \"$$VERSION_STRING\"" | tee src/version.h ; fi \
-     )
+	@$(VERSION_REFRESH)
 
 src/version.h: version
 
-$(OBJDIR)/gameui.o: src/version.h
+$(OBJDIR)/gameui.o $(OBJDIR)/cli.o: src/version.h
 
 # imgui / implot pattern rules (order-insensitive: two stems share imgui/).
 $(OBJDIR)/imgui/%.o: $(IMGUI_DIR)/%.cpp
@@ -470,8 +487,9 @@ $(TESTDIR)/test_settings: $(TESTDIR)/obj/test_settings.o $(TESTDIR)/obj/settings
 $(TESTDIR)/test_keys: $(TESTDIR)/obj/test_keys.o $(TESTDIR)/obj/keys.o
 	$(CXX) -o $@ $^
 
-# cli.o depends on generated version.h (same as gameui.o).
-$(TESTDIR)/obj/cli.o: src/version.h
+# Both VERSION copies inside the test binary need it: tests/test_cli.cpp:40 compares
+# the macro in test_cli.o against the string cli.o prints.
+$(TESTDIR)/obj/cli.o $(TESTDIR)/obj/test_cli.o: src/version.h
 $(TESTDIR)/test_cli: $(TESTDIR)/obj/test_cli.o $(TESTDIR)/obj/cli.o $(TESTDIR)/obj/siminput.o
 	$(CXX) -o $@ $^
 
@@ -508,16 +526,14 @@ test-parts:
 		echo "test-parts: SKIP parts.json drift pin -- missing python module: trimesh" >&2; \
 	fi
 
-# test_cli runs the SHIPPED binary (./osp --version, --help) and compares it with the
-# VERSION macro compiled into the test object, so the game binary must be at least as fresh
-# as the version.h those objects saw. `all` costs nothing when the tree is warm and ~55 s
-# after a commit bumps the version string -- which is precisely the case that used to go
-# red (#532), because ./osp kept the version from whenever it was last linked. ./osp is
-# `all`'s symlink except under CONFIG=prof, which deliberately leaves it alone: a prof
-# build pins ./osp elsewhere, so `make CONFIG=prof test` can still see another config's
-# binary there.
+# Runs the whole list rather than stopping at the first red test: the old
+# `$(foreach ... || exit 1; )` aborted it, so one failure near the front hid which tests
+# never ran (nine silently skipped in tmp/maketest_526b.log). The summary exists because
+# the per-test "N checks, M failures" lines scroll away over 52 tests. No dependency on
+# the game binary: no unit test spawns ./osp (they link the code they test), and e2e
+# passes --game the binary it asked for.
 .PHONY: test
-test: test-gen test-parts all $(addprefix $(TESTDIR)/,$(TESTS))
+test: test-gen test-parts $(addprefix $(TESTDIR)/,$(TESTS))
 	@fail=""; n=0; \
 	for t in $(TESTS); do \
 	  n=`expr $$n + 1`; \
