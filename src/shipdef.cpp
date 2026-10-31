@@ -736,6 +736,15 @@ PartsCatalog load_parts_catalog(const char *path) {
                     nd.dir /= len;   // nodes mate by direction; keep them unit
                     d.nodes.push_back(nd);
                 }
+                /* BuildShip::fillNodeTaken keeps a taken port as one bit of a
+                   uint64_t per part, so the bound belongs HERE: an authoring typo
+                   should name the def in a load error, not abort the game at draw
+                   time through the assert there. */
+                if(d.nodes.size() > 64) {
+                    throw std::runtime_error(ctx + "\"nodes\" holds "
+                                             + std::to_string(d.nodes.size())
+                                             + " nodes; a part def carries at most 64");
+                }
             }
             d.synthesizeNodes();   // no-op if explicit nodes were given
         }
@@ -1489,8 +1498,13 @@ void BuildShip::fillNodeTaken(std::vector<uint64_t> &out) const {
                "a part def needs <= 64 nodes for the taken mask");
         if(p.attach == AttachMode::Surface) { continue; }
         if(p.def != nullptr) {
+            /* No break: nodeOccupied matches by id, so every node carrying that id
+               must read taken. The parse refuses duplicate node ids, so today this is
+               form rather than behaviour, and it costs about +1 us/frame at 268 parts
+               on a stacked column (the compares the break used to skip) against a loop
+               that already saved 33 us there. */
             for(size_t k = 0; k < p.def->nodes.size(); k++) {
-                if(p.def->nodes[k].id == p.childNode) { out[i] |= (1ull << k); break; }
+                if(p.def->nodes[k].id == p.childNode) { out[i] |= (1ull << k); }
             }
         }
         const int pi = p.parent;
@@ -1498,7 +1512,7 @@ void BuildShip::fillNodeTaken(std::vector<uint64_t> &out) const {
         const BuildPart &par = parts[(size_t)pi];
         if(par.def == nullptr) { continue; }
         for(size_t k = 0; k < par.def->nodes.size(); k++) {
-            if(par.def->nodes[k].id == p.parentNode) { out[(size_t)pi] |= (1ull << k); break; }
+            if(par.def->nodes[k].id == p.parentNode) { out[(size_t)pi] |= (1ull << k); }
         }
     }
 }

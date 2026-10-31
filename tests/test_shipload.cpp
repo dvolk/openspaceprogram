@@ -1299,12 +1299,27 @@ int main() {
         CHECK(!mini.nodeOccupied(0, "bottom"));
         CHECK(!mini.nodeOccupied(2, "top"));      // surface-attached pod's
         CHECK(!mini.nodeOccupied(2, "bottom"));   // stack ports stay free
+        /* A stack child ON the surface pod. The pod itself arrived by a surface edge
+           and consumes nothing, yet its own top port is taken by this child -- and
+           that bit can only come from fillNodeTaken's parent half. Without this
+           shape nothing here exercises that half, and a "surface parts cannot be
+           stack parents" shortcut would pass every other case in this file: a sweep
+           of the shipped ships puts 21 of 346 taken bits on surface-attached parts,
+           because radial symmetry clones always land as surface edges and then carry
+           stack children of their own. */
+        BuildPart under; under.def = bs.parts[1].def; under.id = "under";
+        under.parent = 2; under.attach = AttachMode::Down;
+        under.parentNode = "top"; under.childNode = "bottom";
+        mini.parts.push_back(under);
+        CHECK(mini.nodeOccupied(2, "top"));       // taken by "under"
+        CHECK(!mini.nodeOccupied(2, "bottom"));   // its own edge consumed nothing
         /* #542: the fast path replaces nodeOccupied at both VAB call sites, so the
            two must answer identically for every port a caller can ask about --
            including the surface parts, whose own stack ports stay free and which
-           never consume their parent's port. */
-        auto maskAgrees = [](const BuildShip &sh) {
-            std::vector<uint64_t> m;
+           never consume their parent's port. The vector is the CALLER's, reused
+           between builds the way VabState::buildNodeTaken is reused between frames:
+           a fill that only resizes would hand back the previous ship's bits. */
+        auto maskAgrees = [](const BuildShip &sh, std::vector<uint64_t> &m) {
             sh.fillNodeTaken(m);
             CHECK(m.size() == sh.parts.size());
             for(size_t i = 0; i < sh.parts.size(); i++) {
@@ -1316,8 +1331,22 @@ int main() {
                 }
             }
         };
-        maskAgrees(bs);      // the real tanker: stack edge + surface child
-        maskAgrees(mini);    // hand-built, so the occupancy is known by construction
+        std::vector<uint64_t> scratch;
+        maskAgrees(bs, scratch);      // the real tanker: stack edge + surface child
+        maskAgrees(mini, scratch);    // hand-built, so occupancy is known by construction
+        maskAgrees(bs, scratch);      // same vector, other direction: order must not matter
+        /* And shrinking the build must free the port the removed edge consumed. A
+           stale bit hides a free port forever, and since both VAB readers share this
+           vector they would agree on the wrong answer: no dot, and the old code would
+           have let the player stack there. */
+        mini.parts.pop_back();        // "under" goes away
+        maskAgrees(mini, scratch);
+        size_t podTop = 0;
+        for(size_t k = 0; k < mini.parts[2].def->nodes.size(); k++) {
+            if(mini.parts[2].def->nodes[k].id == "top") { podTop = k; }
+        }
+        CHECK(!mini.nodeOccupied(2, "top"));
+        CHECK((scratch[2] & (1ull << podTop)) == 0);
     }
     /* #453 frozen against the shipped mounts: every lifting surface on the
        shipped airframes is bolted on as a pair 180 deg apart, so a part's OWN
@@ -2425,6 +2454,28 @@ int main() {
             f.close();
             CHECK(expect_throw_saying([&](){ load_parts_catalog(bad); }, catcases[k].needle));
             std::remove(bad);
+        }
+        /* #542: BuildShip::fillNodeTaken keeps taken ports as one bit per node of a
+           uint64_t, so a def over 64 nodes has to be refused HERE, where the load
+           error names the def. The assert in fillNodeTaken is a tripwire, not a
+           rule an author can rely on to see their own typo. */
+        {
+            const char *many = "/tmp/test_shipload_too_many_nodes.json";
+            std::string nodes = "[";
+            for(int k = 0; k < 65; k++) {
+                if(k) { nodes += ","; }
+                const std::string nn = std::to_string(k);
+                nodes += "{ \"id\": \"n" + nn + "\", \"pos\": [0,0,0], \"dir\": [0,0,1] }";
+            }
+            nodes += "]";
+            std::ofstream f(many);
+            f << "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+              << "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              << "\"nodes\": " << nodes << " } ] }";
+            f.close();
+            CHECK(expect_throw_saying([&](){ load_parts_catalog(many); },
+                                      "\"nodes\" holds 65"));
+            std::remove(many);
         }
         // A whole number written as a float is not a typo worth refusing (JSON has
         // one number type), and "stage": 1.0 means stage 1.
