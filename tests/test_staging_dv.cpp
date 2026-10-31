@@ -965,10 +965,12 @@ static void test_a_linked_tank_in_a_drop_holds_the_burn_open() {
    carries label 2 and hangs under decA (label 3), so by the time the walk reaches label 2
    decB is dead, and label 2 must separate nothing. A label that separates nothing emits no
    row at all, so the symptom is an EXTRA row: a staging event the ship can no longer
-   perform. Two alive checks keep that row away -- droppedAt seeds only live decouplers, and
-   computeStaging trims dead entries off the list. Either alone suffices: deleting one leaves
-   every check in this file passing, deleting both fails right here, and that redundancy is
-   the thing worth a look (#537). */
+   perform. What keeps the row away is droppedAt() seeding only LIVE decouplers: delete that
+   test and this fixture fails. The other half -- droppedAt() listing only live parts -- is
+   invisible here and everywhere, because a dead entry adds no mass, no fuel and no kill;
+   delete both tests and the phantom row returns. Before #537 the second test sat in
+   computeStaging over the returned vector, and that pair hid each other: deleting either
+   one read green, which is why the fix was to move the rule, not to keep both copies. */
 static void test_a_separation_does_not_relist_an_already_dead_subtree() {
     Catalog cat;
     BuildShip bs;
@@ -1064,8 +1066,11 @@ static void test_a_newly_lit_engine_outside_the_drop_reaches_inside_it() {
     (void)decA; (void)port; (void)decB; (void)st;
 
     const std::vector<StageRow> rows = computeStaging(bs, 10.0);
-    CHECK_TRUE(rows.size() == 3, "labels 3, 2, 1 each separate something");
+    CHECK_TRUE(rows.size() == 3, "rows for labels 3, 2 and the final label 1");
     if(rows.size() != 3) { return; }
+    CHECK_TRUE(rows[0].drops, "label 3 separates decA and dropTank");
+    CHECK_TRUE(rows[1].drops, "label 2 separates decB, midTank and linkTank");
+    CHECK_TRUE(!rows[2].drops, "no decoupler is left at label 1, so this is the drainAll row");
     CHECK_TRUE(rows[0].engines == 1, "only coreEng is lit at label 3");
     CHECK_NEAR(rows[0].massStart, 425.0, 1e-9, "all aboard");
     CHECK_NEAR(rows[0].massEnd, 405.0, 1e-9, "dropTank's 20 kg burn");
@@ -1077,6 +1082,53 @@ static void test_a_newly_lit_engine_outside_the_drop_reaches_inside_it() {
     CHECK_NEAR(rows[2].massStart, 265.0, 1e-9, "midTank leaves with 20 kg unburnt");
     CHECK_NEAR(rows[2].massEnd, 85.0, 1e-9, "drainAll burns the 180 kg still aboard");
     CHECK_NEAR(rows[2].deltaV, 1000.0 * std::log(265.0 / 85.0), 1e-9, "s1 dv");
+}
+
+/* A LIVE decoupler sitting above a part an EARLIER separation already killed, where that
+   dead part still holds fuel that the LIT engines can now reach. Nothing in the suite had
+   that shape (#544 review: 0 cases here, 11,751 in fuzz). Honest about what it buys: it
+   kills no mutant today. A dead part is a wall in buildFuelGroups so it carries group -1,
+   and its links leave revLinks at the next refreshFuel(), which is why deleting
+   droppedAt()'s listing test, drainableIn()'s alive skip, or BOTH still reads 292/0. It is
+   here because the fuzz says the shape is common, and because it is exactly where a future
+   per-part action on the drop list (marking, accounting, sound) would go wrong -- the dead
+   tank's 40 kg left the ship at label 3 and must not be adopted by label 2's drop.
+   Derived from the model (dry 105, fuel 260, wet 365; ve 1000, 1 kg/s per engine):
+     label 3: coreEng lit only. deadTank hangs under decA (label 3) and feeds secTank,
+       whose engine is not lit yet, so the drop {decA, deadTank} holds nothing drainable
+       -> the inert-drop fallback burns coreTank's 200 kg, 365->165.
+     label 2: secEng lights; decTop (label 2) is still alive above the now-dead decA, so
+       its drop is {decTop} alone and stays inert -> burns the 20 kg left aboard, 110->90.
+       decA and deadTank (with its 40 kg) left the ship at label 3, NOT at label 2.
+     label 1: decTop itself left at the end of label 2 (massEnd is sampled before the
+       kill), and nothing else is separate or burnable, so the last row is 85->85, dv 0. */
+static void test_a_live_decoupler_above_a_dead_tank_does_not_adopt_its_fuel() {
+    Catalog cat;
+    BuildShip bs;
+    const int core = addPart(bs, cat.tank(50, 100, 100), "coreTank", -1, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "coreEng", core, 3);
+    const int decTop = addPart(bs, cat.decoupler(5), "decTop", core, 2);
+    const int decA = addPart(bs, cat.decoupler(5), "decA", decTop, 3);
+    addPart(bs, cat.tank(10, 20, 20), "deadTank", decA, 3);   // dies at label 3, fuel intact
+    const int port = addPart(bs, cat.barrier(5), "port", core, 1);
+    const int st = addPart(bs, cat.tank(10, 10, 10), "secTank", port, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "secEng", st, 2);   // lit from label 2
+    addLink(bs, "deadTank", "secTank");   // its fuel becomes reachable only at label 2
+    (void)port; (void)st;
+
+    const std::vector<StageRow> rows = computeStaging(bs, 10.0);
+    CHECK_TRUE(rows.size() == 3, "labels 3, 2 and the final label 1");
+    if(rows.size() != 3) { return; }
+    CHECK_NEAR(rows[0].massStart, 365.0, 1e-9, "all aboard");
+    CHECK_NEAR(rows[0].massEnd, 165.0, 1e-9, "the inert drop falls back to draining coreTank");
+    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(365.0 / 165.0), 1e-9, "s3 dv");
+    CHECK_TRUE(rows[1].drops, "decTop is still alive at label 2");
+    CHECK_TRUE(rows[1].engines == 2, "secEng lights for label 2");
+    CHECK_NEAR(rows[1].massStart, 110.0, 1e-9, "decA left dry and deadTank left with its 40 kg");
+    CHECK_NEAR(rows[1].massEnd, 90.0, 1e-9, "only the 20 kg aboard is burnable");
+    CHECK_NEAR(rows[2].massStart, 85.0, 1e-9, "decTop left too, so label 1 starts 5 kg lighter");
+    CHECK_NEAR(rows[2].massEnd, 85.0, 1e-9, "and nothing drainable is left");
+    CHECK_NEAR(rows[2].deltaV, 0.0, 1e-9, "s1 dv: the burn already had it");
 }
 
 int main() {
@@ -1100,6 +1152,7 @@ int main() {
     test_a_linked_tank_in_a_drop_holds_the_burn_open();
     test_an_unlit_engine_does_not_open_a_burn();
     test_a_newly_lit_engine_outside_the_drop_reaches_inside_it();
+    test_a_live_decoupler_above_a_dead_tank_does_not_adopt_its_fuel();
     test_a_separation_does_not_relist_an_already_dead_subtree();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);

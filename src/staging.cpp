@@ -177,14 +177,14 @@ struct Sim {
     /* The same epoch trick for drainableIn (#536): which groups a LIT engine can draw
        from, stamped once per burn instead of rebuilt into a std::set per query (#538).
        Sized and cleared in refreshFuel, because that is where buildFuelGroups
-       renumbers the groups -- so a period's marks always start from the set refreshFuel
-       cleared, and the only ordering rule is "stamp after this period's lighting". */
+       renumbers the groups. markReachable() owns the ordering rule. */
     std::vector<uint32_t> reachEpoch;
     uint32_t reachTick = 0;
-    /* How many engines are lit, and how many were lit when the marks were stamped.
-       drainableIn asserts they match, which states #538's precondition outright. Only
-       three sites write engines[].lit -- the pre-loop pass, the label's lighting and
-       kill() -- and all three keep this count. */
+    /* litCount is how many engines are lit; markLitCount is what it was when the marks
+       were stamped. drainableIn asserts they match, which states #538's precondition
+       outright. The count belongs to the only three writers of engines[].lit (the
+       pre-loop pass, the label's lighting, kill()); markReachable() checks it against
+       what its own walk finds lit. */
     int litCount = 0;
     int markLitCount = -1;
 
@@ -221,10 +221,10 @@ struct Sim {
         ++seenTick;
         assert(seenTick != 0);
         std::vector<int> dropped;
+        std::vector<int> stack;   // one allocation per walk: the drain below empties it
         for(size_t i = 0; i < parts.size(); i++) {
             if(!parts[i].alive || !parts[i].isDec || parts[i].stage != stage) { continue; }
             if(seenEpoch[i] != seenTick) { seenEpoch[i] = seenTick; dropped.push_back((int)i); }
-            std::vector<int> stack;
             for(int k = childStart[i]; k < childStart[i + 1]; k++) { stack.push_back(childOf[k]); }
             while(!stack.empty()) {
                 const int q = stack.back();
@@ -233,8 +233,10 @@ struct Sim {
                 seenEpoch[(size_t)q] = seenTick;
                 // The child table is built before any kill(), so a live seed's subtree
                 // can still list parts an earlier separation took. List only the alive
-                // ones (#537), but descend either way -- a self-parented part must not
-                // loop, and no rule says a dead part's child is dead.
+                // ones (#537). Descend either way: no rule says a dead part's child is
+                // dead, and pruning dead subtrees instead was measured to cost a live
+                // part its whole burn the moment that rule is broken (tmp/n544_findings.md
+                // Q3: dv 136 vs 1435). The seen stamp above is what breaks cycles.
                 if(parts[(size_t)q].alive) { dropped.push_back(q); }
                 for(int k = childStart[(size_t)q]; k < childStart[(size_t)q + 1]; k++) {
                     stack.push_back(childOf[k]);
@@ -347,11 +349,13 @@ struct Sim {
         ++reachTick;
         assert(reachTick != 0);
         markLitCount = litCount;
+        int litSeen = 0;
         for(size_t ei = 0; ei < engines.size(); ei++) {
             const SimEngine &e = engines[ei];
             if(!e.lit || e.part < 0 || e.part >= (int)parts.size() || !parts[e.part].alive) {
                 continue;
             }
+            litSeen++;
             const int g = parts[e.part].group;
             if(g < 0) { continue; }
             const Bucket *layers = layersFor(g);
@@ -363,6 +367,10 @@ struct Sim {
                 }
             }
         }
+        /* litCount is the writers' running count, litSeen is what this loop actually
+           finds lit. They agree only if every site that flips engines[].lit stepped the
+           count exactly once -- free to check, since the loop is already here. */
+        assert(litSeen == litCount);
     }
 
     // Propellant in `list` that a lit engine can still reach via its drain
@@ -376,6 +384,11 @@ struct Sim {
         double m = 0.0;
         for(size_t k = 0; k < list.size(); k++) {
             const int pi = list[k];
+            /* A dead part cannot contribute here for three independent reasons -- it
+               carries group -1 (buildFuelGroups treats dead as a wall), its links left
+               revLinks when refreshFuel() rebuilt them, and droppedAt() no longer lists
+               it (#537). So this skip is a tripwire, and deleting it changes no row. The
+               rule that a dead tank's fuel is not drainable lives in the group split. */
             if(pi < 0 || pi >= (int)parts.size() || !parts[pi].alive) { continue; }
             const int pg = parts[pi].group;
             if(pg < 0) { continue; }
@@ -387,16 +400,25 @@ struct Sim {
     }
 
     /* Indices are in range and unique: they come from droppedAt(), whose child table
-       rejects out-of-range parents (#520) and stamps each part once per walk. That is
-       why this write is unchecked while drainableIn's read guards -- by the time a list
-       reaches drainableIn it may have been filtered, so it re-reads the parts. */
+       rejects out-of-range parents (#520) and stamps each part once per walk, so this
+       write is unchecked. drainableIn re-reads the parts for its own reasons -- see the
+       note there. */
     void kill(const std::vector<int> &list) {
         for(size_t k = 0; k < list.size(); k++) {
             parts[(size_t)list[k]].alive = false;
         }
         for(size_t ei = 0; ei < engines.size(); ei++) {
-            if(engines[ei].part >= 0 && !parts[engines[ei].part].alive) {
-                engines[ei].lit = false;
+            SimEngine &e = engines[ei];
+            /* Only a LIT engine may step litCount. Without the lit test this also steps
+               for engines that never lit -- labels go high to low, so a part under a
+               decoupler an earlier period took dies before its own label ever lights it
+               -- and it steps again for every engine an earlier kill() already stepped,
+               since this loop scans all engines rather than this drop. That drifts to
+               -18 on res/ships/heavy_asp.json while litRocketCount() reads 1, after which
+               markReachable compares a counter that stopped meaning "lit". */
+            if(e.lit && e.part >= 0 && e.part < (int)parts.size()
+               && !parts[(size_t)e.part].alive) {
+                e.lit = false;
                 litCount--;
             }
         }
@@ -716,13 +738,15 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
             }
         }
 
-        /* ONE aliveness rule, in one place: droppedAt() seeds only ALIVE decouplers
-           (a decoupler an earlier separation took must not separate again) and lists only
-           ALIVE parts (a dead part is never dropped twice). There used to be a second
-           filter here, over the returned list, and the two hid each other: deleting
-           either changed no row anywhere, so neither was testable. Seeding is now the
-           check the suite can see -- drop the !parts[i].alive test in droppedAt and
-           test_a_separation_does_not_relist_an_already_dead_subtree fails. #537. */
+        /* Aliveness of the drop list is decided in droppedAt(), not here, and its two
+           tests are not equal. Seeding on ALIVE decouplers (a decoupler an earlier
+           separation took must not start a walk) is load-bearing: delete it and
+           test_a_separation_does_not_relist_an_already_dead_subtree fails. Listing only
+           ALIVE parts states the vector's contract -- a dead part is already a wall in
+           buildFuelGroups (group -1), its links are out of revLinks, and totalMass and
+           kill skip it, so no row can tell. It stays so that everything reading `drop`
+           reads only parts the separation really takes. #537: this used to be a second
+           filter HERE, over the returned vector, and the two copies hid each other. */
         const std::vector<int> drop = sim.droppedAt(s);
 
         // A stage that separates nothing and is not the last only lights
