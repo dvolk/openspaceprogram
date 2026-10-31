@@ -4479,6 +4479,25 @@ void drawVabPartWindow(Game &g) {
     if(!open) { g.vab.partWinId.clear(); }
 }
 
+/* One place invalidates the Staging window's cache (#293). The rows and the
+   id -> index map the fuel-link overlay needs share one signature key, so they can
+   only disagree with each other if one is forgotten here. Two callers: the window
+   body, and the overlay -- which draws whether or not the window is open. A build
+   with no fuel links and the window closed still pays nothing. */
+static void ensureStagingCache(Game &g, double gLaunch) {
+    const uint64_t sig = stagingSignature(g.vab.build, gLaunch, g.args.exhaust_scale);
+    if(g.vab.stagingSig == sig) { return; }
+    g.vab.stagingSig = sig;
+    g.vab.stagingRows = computeStaging(g.vab.build, gLaunch, g.args.exhaust_scale);
+    g.vab.partIndex.clear();
+    for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
+        // Last match wins, which is what the overlay's whole-vector scan did. Part ids
+        // are unique (nextBuildId, and graftTree uniquifies on collision), so this is
+        // form rather than behaviour.
+        g.vab.partIndex[g.vab.build.parts[i].id] = (int)i;
+    }
+}
+
 void drawVabUI(Game &g) {
     /* TAB. The top bar is a registered window and drawWin already suppresses it, but the
        two panels below are raw ImGui::Begin calls -- not in the window table -- so this is
@@ -4921,12 +4940,15 @@ void drawVabUI(Game &g) {
        against the SURFACE GRAVITY OF THE BODY THIS BUILD LAUNCHES FROM (fuel links
        honoured). The gravity follows the top bar's launch-body dropdown, not home: the
        min-TWR "cannot lift off" verdict belongs to the launch body. */
+    /* The launch body, resolved outside the window: the cache refresh below needs
+       gLaunch even when the Staging window is closed, because the fuel-link overlay
+       draws either way. */
+    TerrainBody *lbody = g.sys.home;
+    if(!g.vab.bodyName.empty()) {
+        if(TerrainBody *b = g.sys.find(g.vab.bodyName)) { lbody = b; }
+    }
+    const double gLaunch = (lbody != nullptr) ? lbody->g : 9.81;
     drawWin(g, W_Staging, [&] {
-        TerrainBody *lbody = g.sys.home;
-        if(!g.vab.bodyName.empty()) {
-            if(TerrainBody *b = g.sys.find(g.vab.bodyName)) { lbody = b; }
-        }
-        const double gLaunch = (lbody != nullptr) ? lbody->g : 9.81;
         ImGui::Text("TWR on %s  (g = %.2f m/s^2)",
                     lbody != nullptr ? lbody->name.c_str() : "?",
                     gLaunch);
@@ -4942,11 +4964,7 @@ void drawVabUI(Game &g) {
            number or a link misses the cache and refreshes the rows on the
            spot, while an edit that cannot move a number (a rotate, which only
            touches angle and roll) correctly does not. */
-        const uint64_t sig = stagingSignature(g.vab.build, gLaunch, g.args.exhaust_scale);
-        if(g.vab.stagingSig != sig) {
-            g.vab.stagingSig = sig;
-            g.vab.stagingRows = computeStaging(g.vab.build, gLaunch, g.args.exhaust_scale);
-        }
+        ensureStagingCache(g, gLaunch);
         const std::vector<StageRow> &rows = g.vab.stagingRows;
         if(rows.empty()) {
             ImGui::TextDisabled("nothing to stage");
@@ -5000,14 +5018,19 @@ void drawVabUI(Game &g) {
     /* Fuel-link overlay lines (drawn last, foreground layer: always on top, no depth
        test). Flow reads from a dimmed source half, a bright destination half, an arrowhead. */
     if(g.camera != nullptr && !g.vab.build.fuelLinks.empty()) {
+        /* Cached lookups, not a scan per link (#527): resolving both ends of every
+           link against every part cost 11.8 us per frame at 268 parts and 24 links,
+           50.6 us at 500 parts and 45 -- and both arms resolve every link to the
+           same pair of parts, which is what makes the comparison mean anything. */
+        ensureStagingCache(g, gLaunch);
         ImDrawList *dl = ImGui::GetForegroundDrawList();
         for(size_t i = 0; i < g.vab.build.fuelLinks.size(); i++) {
             const BuildShip::FuelLink &fl = g.vab.build.fuelLinks[i];
             const BuildPart *from = nullptr, *to = nullptr;
-            for(size_t k = 0; k < g.vab.build.parts.size(); k++) {
-                if(g.vab.build.parts[k].id == fl.from) { from = &g.vab.build.parts[k]; }
-                if(g.vab.build.parts[k].id == fl.to)   { to = &g.vab.build.parts[k]; }
-            }
+            std::map<std::string, int>::const_iterator kf = g.vab.partIndex.find(fl.from);
+            std::map<std::string, int>::const_iterator kt = g.vab.partIndex.find(fl.to);
+            if(kf != g.vab.partIndex.end()) { from = &g.vab.build.parts[(size_t)kf->second]; }
+            if(kt != g.vab.partIndex.end()) { to = &g.vab.build.parts[(size_t)kt->second]; }
             if(from == nullptr || to == nullptr) { continue; }
             double ax = 0, ay = 0, bx = 0, by = 0;
             if(!projectPixel(g, from->localPos, ax, ay)) { continue; }
