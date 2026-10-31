@@ -8,6 +8,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <unordered_map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -263,10 +264,13 @@ struct VabState {
     /* id -> index into vab.build.parts, rebuilt with the rows above and keyed by the
        same signature (#527). The fuel-link overlay draws every frame and used to
        resolve both ends of every link by scanning every part and comparing std::string
-       ids: 11.8 us/frame at 268 parts and 24 links, now 1.3. Rebuilding costs 23.7 us
-       and only happens when the signature moves, i.e. once per edit. Indices rather
-       than pointers, because the parts vector reallocates as the player builds. */
-    std::map<std::string, int> partIndex;
+       ids: 11.8 us/frame at 268 parts and 24 links, now 1.3 (unordered_map; std::map
+       costs about twice that on both arms, and nothing iterates this). Rebuilding
+       costs 23.7 us and only happens when the signature moves, i.e. once per edit.
+       Indices rather than pointers, because the parts vector reallocates as the player
+       builds, and the frame pays one signature for both readers -- see
+       ensureStagingCache's caller in gameui.cpp. */
+    std::unordered_map<std::string, int> partIndex;
 };
 
 /* Orbital map SESSION state (Game::map), not save state: a fresh boot starts

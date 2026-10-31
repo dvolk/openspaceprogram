@@ -592,6 +592,9 @@ static void forgetBuildTargets(Game &g) {
     g.vab.partWinPlaced = false;
     g.vab.stagingSig = 0;
     g.vab.stagingRows.clear();
+    // 0 is "no cache", but it is also a legal FNV value, so make the map
+    // unconditionally empty rather than relying on the sentinel.
+    g.vab.partIndex.clear();
 }
 
 void vabSave(Game &g, const char *name) {

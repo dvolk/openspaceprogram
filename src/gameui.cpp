@@ -4481,11 +4481,12 @@ void drawVabPartWindow(Game &g) {
 
 /* One place invalidates the Staging window's cache (#293). The rows and the
    id -> index map the fuel-link overlay needs share one signature key, so they can
-   only disagree with each other if one is forgotten here. Two callers: the window
+   only disagree with each other if one is forgotten here. Two readers: the window
    body, and the overlay -- which draws whether or not the window is open. A build
-   with no fuel links and the window closed still pays nothing. */
-static void ensureStagingCache(Game &g, double gLaunch) {
-    const uint64_t sig = stagingSignature(g.vab.build, gLaunch, g.args.exhaust_scale);
+   with no fuel links and the window closed still pays nothing, because neither
+   reader asks. The signature is passed in rather than computed here: it is O(parts)
+   and both readers run in the same frame, so the caller memoises it once. */
+static void ensureStagingCache(Game &g, uint64_t sig, double gLaunch) {
     if(g.vab.stagingSig == sig) { return; }
     g.vab.stagingSig = sig;
     g.vab.stagingRows = computeStaging(g.vab.build, gLaunch, g.args.exhaust_scale);
@@ -4948,6 +4949,19 @@ void drawVabUI(Game &g) {
         if(TerrainBody *b = g.sys.find(g.vab.bodyName)) { lbody = b; }
     }
     const double gLaunch = (lbody != nullptr) ? lbody->g : 9.81;
+    /* One signature per frame, whichever reader asks first. It costs 2.5 / 5.1 /
+       11.4 / 21.3 us at 59 / 120 / 268 / 500 parts, which is the same scale as the
+       per-frame lookups it guards: computing it at both readers made the default
+       case (Staging window open, links present) slower than the scan it replaced. */
+    uint64_t frameSig = 0;
+    bool frameSigDone = false;
+    auto frameSigOnce = [&]() {
+        if(!frameSigDone) {
+            frameSigDone = true;
+            frameSig = stagingSignature(g.vab.build, gLaunch, g.args.exhaust_scale);
+        }
+        return frameSig;
+    };
     drawWin(g, W_Staging, [&] {
         ImGui::Text("TWR on %s  (g = %.2f m/s^2)",
                     lbody != nullptr ? lbody->name.c_str() : "?",
@@ -4964,7 +4978,7 @@ void drawVabUI(Game &g) {
            number or a link misses the cache and refreshes the rows on the
            spot, while an edit that cannot move a number (a rotate, which only
            touches angle and roll) correctly does not. */
-        ensureStagingCache(g, gLaunch);
+        ensureStagingCache(g, frameSigOnce(), gLaunch);
         const std::vector<StageRow> &rows = g.vab.stagingRows;
         if(rows.empty()) {
             ImGui::TextDisabled("nothing to stage");
@@ -5022,13 +5036,18 @@ void drawVabUI(Game &g) {
            link against every part cost 11.8 us per frame at 268 parts and 24 links,
            50.6 us at 500 parts and 45 -- and both arms resolve every link to the
            same pair of parts, which is what makes the comparison mean anything. */
-        ensureStagingCache(g, gLaunch);
+        ensureStagingCache(g, frameSigOnce(), gLaunch);
+        /* The frame's signature is memoised, which is only sound while nothing between
+           the two readers edits the build -- the staging window body above is a table
+           and two text lines, so nothing does today. This is the tripwire if that
+           changes: a stale key would leave indices past the end of `parts`. */
+        assert(g.vab.partIndex.size() == g.vab.build.parts.size());
         ImDrawList *dl = ImGui::GetForegroundDrawList();
         for(size_t i = 0; i < g.vab.build.fuelLinks.size(); i++) {
             const BuildShip::FuelLink &fl = g.vab.build.fuelLinks[i];
             const BuildPart *from = nullptr, *to = nullptr;
-            std::map<std::string, int>::const_iterator kf = g.vab.partIndex.find(fl.from);
-            std::map<std::string, int>::const_iterator kt = g.vab.partIndex.find(fl.to);
+            std::unordered_map<std::string, int>::const_iterator kf = g.vab.partIndex.find(fl.from);
+            std::unordered_map<std::string, int>::const_iterator kt = g.vab.partIndex.find(fl.to);
             if(kf != g.vab.partIndex.end()) { from = &g.vab.build.parts[(size_t)kf->second]; }
             if(kt != g.vab.partIndex.end()) { to = &g.vab.build.parts[(size_t)kt->second]; }
             if(from == nullptr || to == nullptr) { continue; }
