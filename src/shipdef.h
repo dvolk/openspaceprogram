@@ -552,8 +552,19 @@ struct BuildShip {
     void recomputePoses();
 
     /* True when part `partIdx`'s stack node `nodeId` is consumed by an existing
-       stack edge (a mating consumes it on BOTH parts). */
+       stack edge (a mating consumes it on BOTH parts). One answer costs a walk of
+       the whole build, so ask it once per ship with fillNodeTaken below. */
     bool nodeOccupied(int partIdx, const std::string &nodeId) const;
+
+    /* Every port's answer at once: bit k of out[i] is set when parts[i]'s node k
+       (counted in def->nodes order) is consumed by a stack edge. Same rule as
+       nodeOccupied -- the equivalence is pinned in tests/test_shipload.cpp -- for
+       one pass over parts instead of one pass per port (#542). out is resized by
+       the callee so a caller can reuse its storage. One uint64_t per part because
+       a part def carries a handful of nodes (three, synthesized, for everything
+       in the catalog today); fillNodeTaken asserts the 64 bound rather than
+       quietly dropping a port. */
+    void fillNodeTaken(std::vector<uint64_t> &out) const;
 
     /* Remove part `idx` AND its whole subtree, remap the surviving parent
        indices and re-solve the poses. The root refuses. */

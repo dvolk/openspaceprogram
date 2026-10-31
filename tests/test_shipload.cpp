@@ -1299,6 +1299,25 @@ int main() {
         CHECK(!mini.nodeOccupied(0, "bottom"));
         CHECK(!mini.nodeOccupied(2, "top"));      // surface-attached pod's
         CHECK(!mini.nodeOccupied(2, "bottom"));   // stack ports stay free
+        /* #542: the fast path replaces nodeOccupied at both VAB call sites, so the
+           two must answer identically for every port a caller can ask about --
+           including the surface parts, whose own stack ports stay free and which
+           never consume their parent's port. */
+        auto maskAgrees = [](const BuildShip &sh) {
+            std::vector<uint64_t> m;
+            sh.fillNodeTaken(m);
+            CHECK(m.size() == sh.parts.size());
+            for(size_t i = 0; i < sh.parts.size(); i++) {
+                if(sh.parts[i].def == nullptr) { continue; }
+                CHECK(sh.parts[i].def->nodes.size() <= 64);
+                for(size_t k = 0; k < sh.parts[i].def->nodes.size(); k++) {
+                    const bool bit = (bool)((m[i] >> k) & 1ull);
+                    CHECK(bit == sh.nodeOccupied((int)i, sh.parts[i].def->nodes[k].id));
+                }
+            }
+        };
+        maskAgrees(bs);      // the real tanker: stack edge + surface child
+        maskAgrees(mini);    // hand-built, so the occupancy is known by construction
     }
     /* #453 frozen against the shipped mounts: every lifting surface on the
        shipped airframes is bolted on as a pair 180 deg apart, so a part's OWN

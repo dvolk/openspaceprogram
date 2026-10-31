@@ -4512,13 +4512,18 @@ void drawVabUI(Game &g) {
        discoverable. */
     if(g.camera != nullptr) {
         ImDrawList *dl = ImGui::GetForegroundDrawList();
+        /* One pass over parts covers every port this loop asks about. Asking port
+           by port was parts x nodes x parts -- every question walked the whole
+           build comparing id strings: 69.9 us/frame at 268 parts, 232 us at 500,
+           which made it the largest per-frame cost in the VAB (#542). */
+        g.vab.build.fillNodeTaken(g.vab.nodeTaken);
         for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
             const BuildPart &bp = g.vab.build.parts[i];
             if(bp.def == nullptr) { continue; }
             for(size_t k = 0; k < bp.def->nodes.size(); k++) {
                 const Node &n = bp.def->nodes[k];
                 if(n.surface) { continue; }
-                if(g.vab.build.nodeOccupied((int)i, n.id)) { continue; }
+                if(g.vab.nodeTaken[i] & (1ull << k)) { continue; }
                 double px = 0, py = 0;
                 if(!projectPixel(g, vabNodePos(g, (int)i, (int)k), px, py)) { continue; }
                 const ImVec2 c((float)px, (float)py);

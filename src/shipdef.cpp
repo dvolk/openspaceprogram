@@ -1473,6 +1473,36 @@ bool BuildShip::nodeOccupied(int partIdx, const std::string &nodeId) const {
     return false;
 }
 
+/* nodeOccupied's two halves, applied to every part at once (#542). Each stack edge
+   contributes exactly two bits: the node it consumes on its parent, and the node it
+   consumes on itself. A surface edge consumes no stack port, which is why the whole
+   edge is skipped here and in nodeOccupied. The node id -> index lookups are short
+   scans of a def's own node list (three nodes today), so the pass is linear in parts. */
+void BuildShip::fillNodeTaken(std::vector<uint64_t> &out) const {
+    out.assign(parts.size(), 0);
+    for(size_t i = 0; i < parts.size(); i++) {
+        const BuildPart &p = parts[i];
+        /* Every def in the build, not only the ones this pass writes: a
+           surface-attached part is skipped below, yet it can still be a stack
+           PARENT, and the parent half shifts by an index into its node list. */
+        assert((p.def == nullptr || p.def->nodes.size() <= 64) &&
+               "a part def needs <= 64 nodes for the taken mask");
+        if(p.attach == AttachMode::Surface) { continue; }
+        if(p.def != nullptr) {
+            for(size_t k = 0; k < p.def->nodes.size(); k++) {
+                if(p.def->nodes[k].id == p.childNode) { out[i] |= (1ull << k); break; }
+            }
+        }
+        const int pi = p.parent;
+        if(pi < 0 || (size_t)pi >= parts.size()) { continue; }
+        const BuildPart &par = parts[(size_t)pi];
+        if(par.def == nullptr) { continue; }
+        for(size_t k = 0; k < par.def->nodes.size(); k++) {
+            if(par.def->nodes[k].id == p.parentNode) { out[(size_t)pi] |= (1ull << k); break; }
+        }
+    }
+}
+
 BuildShip BuildShip::fromShipDef(const ShipDef &def) {
     BuildShip bs;
     bs.name = def.name;

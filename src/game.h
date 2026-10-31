@@ -271,6 +271,13 @@ struct VabState {
        builds, and the frame pays one signature for both readers -- see
        ensureStagingCache's caller in gameui.cpp. */
     std::unordered_map<std::string, int> partIndex;
+    /* Bit k: parts[i]'s def node k is used by a stack edge. Filled by
+       BuildShip::fillNodeTaken at the top of each reader -- the free-port gizmos
+       and pickVabNode -- so unlike the cache above it carries no key and cannot
+       be read stale: nobody asks it a question in a frame that did not fill it.
+       Both readers share it because a green dot and the click it invites must
+       agree about which ports are free (#542). */
+    std::vector<uint64_t> nodeTaken;
 };
 
 /* Orbital map SESSION state (Game::map), not save state: a fresh boot starts

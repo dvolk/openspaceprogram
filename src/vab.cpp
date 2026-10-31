@@ -149,9 +149,13 @@ int pickVabNode(Game &g, int px, int py, int partIdx, double thresholdPx) {
     if(bp.def == nullptr) { return -1; }
     double best = thresholdPx;
     int bestI = -1;
+    /* The same mask the free-port gizmos draw with, so a dot cannot promise a port
+       this picker then refuses. Filled per call: one pass over parts against the
+       nodes x parts scan it replaces (#542). */
+    g.vab.build.fillNodeTaken(g.vab.nodeTaken);
     for(size_t i = 0; i < bp.def->nodes.size(); i++) {
         if(bp.def->nodes[i].surface) { continue; }   // stack ports only
-        if(g.vab.build.nodeOccupied(partIdx, bp.def->nodes[i].id)) { continue; }
+        if(g.vab.nodeTaken[(size_t)partIdx] & (1ull << i)) { continue; }
         double sx = 0, sy = 0;
         if(!projectPixel(g, vabNodePos(g, partIdx, (int)i), sx, sy)) { continue; }
         const double d = glm::length(glm::dvec2(sx - (double)px, sy - (double)py));
