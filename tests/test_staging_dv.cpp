@@ -1034,6 +1034,51 @@ static void test_an_unlit_engine_does_not_open_a_burn() {
     CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(375.0 / 95.0), 1e-9, "s1 dv");
 }
 
+/* The reachability marks are stamped once per burn, after that label's engines light
+   (#538). This is the second shape that constrains WHERE the stamp sits, and it fails
+   differently from test_reachability_survives_a_renumbering: the newly lit engine
+   (secEng, label 2) is outside the drop while the tank it newly reaches (linkTank) is
+   inside it, so stamping before the lighting reads drainableIn(drop) == 0 and the whole
+   period flips to drainAll -- linkTank's 40 kg burns and midTank's 20 goes with it.
+   Derived from the model: dry 125, fuel 300, wet 425; every row is ve*ln(m0/m1).
+     label 3: coreEng lit, drop {decA, dropTank}; dropTank feeds coreTank -> 425->405.
+     label 2: secEng lights; linkTank is now drainable, midTank (no link, no engine)
+       is not -> 390->310, with coreEng taking its 40 kg from coreTank.
+     label 1: no decoupler left (port is a wall, not a decoupler) -> drainAll burns the
+       160 + 20 kg still aboard -> 265->85. */
+static void test_a_newly_lit_engine_outside_the_drop_reaches_inside_it() {
+    Catalog cat;
+    BuildShip bs;
+    const int core = addPart(bs, cat.tank(50, 100, 100), "coreTank", -1, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "coreEng", core, 3);
+    const int decA = addPart(bs, cat.decoupler(5), "decA", core, 3);
+    addPart(bs, cat.tank(10, 10, 10), "dropTank", decA, 3);      // feeds coreTank
+    addLink(bs, "dropTank", "coreTank");
+    const int port = addPart(bs, cat.barrier(5), "port", core, 1);
+    const int st = addPart(bs, cat.tank(10, 10, 10), "secTank", port, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "secEng", st, 2);   // lit from label 2
+    const int decB = addPart(bs, cat.decoupler(5), "decB", core, 2);
+    addPart(bs, cat.tank(10, 10, 10), "midTank", decB, 2);       // no link, no engine
+    addPart(bs, cat.tank(10, 20, 20), "linkTank", decB, 2);      // feeds secTank
+    addLink(bs, "linkTank", "secTank");
+    (void)decA; (void)port; (void)decB; (void)st;
+
+    const std::vector<StageRow> rows = computeStaging(bs, 10.0);
+    CHECK_TRUE(rows.size() == 3, "labels 3, 2, 1 each separate something");
+    if(rows.size() != 3) { return; }
+    CHECK_TRUE(rows[0].engines == 1, "only coreEng is lit at label 3");
+    CHECK_NEAR(rows[0].massStart, 425.0, 1e-9, "all aboard");
+    CHECK_NEAR(rows[0].massEnd, 405.0, 1e-9, "dropTank's 20 kg burn");
+    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(425.0 / 405.0), 1e-9, "s3 dv");
+    CHECK_TRUE(rows[1].engines == 2, "secEng lights for label 2");
+    CHECK_NEAR(rows[1].massStart, 390.0, 1e-9, "dropTank left dry");
+    CHECK_NEAR(rows[1].massEnd, 310.0, 1e-9, "linkTank's 40 kg is drainable, midTank's is not");
+    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(390.0 / 310.0), 1e-9, "s2 dv: two engines, same ve");
+    CHECK_NEAR(rows[2].massStart, 265.0, 1e-9, "midTank leaves with 20 kg unburnt");
+    CHECK_NEAR(rows[2].massEnd, 85.0, 1e-9, "drainAll burns the 180 kg still aboard");
+    CHECK_NEAR(rows[2].deltaV, 1000.0 * std::log(265.0 / 85.0), 1e-9, "s1 dv");
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -1054,6 +1099,7 @@ int main() {
     test_reachability_survives_a_renumbering();
     test_a_linked_tank_in_a_drop_holds_the_burn_open();
     test_an_unlit_engine_does_not_open_a_burn();
+    test_a_newly_lit_engine_outside_the_drop_reaches_inside_it();
     test_a_separation_does_not_relist_an_already_dead_subtree();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);

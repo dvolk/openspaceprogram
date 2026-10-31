@@ -174,12 +174,19 @@ struct Sim {
     std::vector<uint32_t> seenEpoch;
     uint32_t seenTick = 0;
 
-    /* The same epoch trick for drainableIn (#536): which groups a lit engine can draw
-       from, marked per call instead of rebuilt into a std::set every call -- and
-       drainableIn runs once per BURN STEP, not once per label. Sized in refreshFuel,
-       because that is where buildFuelGroups renumbers the groups. */
+    /* The same epoch trick for drainableIn (#536): which groups a LIT engine can draw
+       from, stamped once per burn instead of rebuilt into a std::set per query (#538).
+       Sized and cleared in refreshFuel, because that is where buildFuelGroups
+       renumbers the groups -- so a period's marks always start from the set refreshFuel
+       cleared, and the only ordering rule is "stamp after this period's lighting". */
     std::vector<uint32_t> reachEpoch;
     uint32_t reachTick = 0;
+    /* How many engines are lit, and how many were lit when the marks were stamped.
+       drainableIn asserts they match, which states #538's precondition outright. Only
+       three sites write engines[].lit -- the pre-loop pass, the label's lighting and
+       kill() -- and all three keep this count. */
+    int litCount = 0;
+    int markLitCount = -1;
 
     void buildChildren() {
         const int n = (int)parts.size();
@@ -323,18 +330,19 @@ struct Sim {
         return false;
     }
 
-    /* Which groups a LIT engine can draw from, stamped into an epoch buffer instead of
-       rebuilt into a set per query (#536). What gets marked depends only on the lit set,
-       and the lit set cannot change inside one burn period -- engines light in the label
-       loop of computeStaging, and the only un-lighting is kill(), which runs after the
-       burn -- so this runs once per period rather than once per drainableIn call (#538).
-       The order matters: marking before that label's engines light reads the previous
-       period's lit set, and test_reachability_survives_a_renumbering reads
-       s2 m=360->140 when it happens. Not const: layersFor fills its cache. */
+    /* Which groups a LIT engine can draw from, stamped into an epoch buffer once per
+       burn instead of rebuilt into a set per query (#536, #538). What gets marked
+       depends only on the lit set, and after this point in the label iteration nothing
+       lights an engine again while the marks are read; the only un-lighting is kill(),
+       which runs after the burn. Marking BEFORE that label's lighting marks the previous
+       period's lit set instead -- test_reachability_survives_a_renumbering reads
+       s2 m=360->140 when that happens, and the markLitCount assert says so outright.
+       Not const: layersFor fills its cache. */
     void markReachable() {
         assert(reachEpoch.size() == (size_t)nGroups);   // refreshFuel() sizes this
         ++reachTick;
         assert(reachTick != 0);
+        markLitCount = litCount;
         for(size_t ei = 0; ei < engines.size(); ei++) {
             const SimEngine &e = engines[ei];
             if(!e.lit || e.part < 0 || e.part >= (int)parts.size() || !parts[e.part].alive) {
@@ -342,10 +350,10 @@ struct Sim {
             }
             const int g = parts[e.part].group;
             if(g < 0) { continue; }
-            const Bucket *lit = layersFor(g);
-            for(size_t li = 0; li < lit->size(); li++) {
-                for(size_t gi = 0; gi < (*lit)[li].size(); gi++) {
-                    const int rg = (*lit)[li][gi];   // a GROUP, not a part
+            const Bucket *layers = layersFor(g);
+            for(size_t li = 0; li < layers->size(); li++) {
+                for(size_t gi = 0; gi < (*layers)[li].size(); gi++) {
+                    const int rg = (*layers)[li][gi];   // a GROUP, not a part
                     assert(rg >= 0 && rg < (int)reachEpoch.size());
                     reachEpoch[(size_t)rg] = reachTick;
                 }
@@ -355,10 +363,12 @@ struct Sim {
 
     // Propellant in `list` that a lit engine can still reach via its drain
     // layers. The "ready to drop" test. Reads the marks markReachable() stamped,
-    // so it is only meaningful after that call within the same period.
+    // so it is only meaningful after that call within the same period -- the
+    // litCount assert is what makes "the same period" checkable.
     double drainableIn(const std::vector<int> &list) {
         if(list.empty()) { return 0.0; }
         assert(reachEpoch.size() == (size_t)nGroups);   // refreshFuel() sizes this
+        assert(markLitCount == litCount);   // the marks must describe THIS lit set
         double m = 0.0;
         for(size_t k = 0; k < list.size(); k++) {
             const int pi = list[k];
@@ -383,6 +393,7 @@ struct Sim {
         for(size_t ei = 0; ei < engines.size(); ei++) {
             if(engines[ei].part >= 0 && !parts[engines[ei].part].alive) {
                 engines[ei].lit = false;
+                litCount--;
             }
         }
     }
@@ -662,6 +673,7 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
     for(size_t ei = 0; ei < sim.engines.size(); ei++) {
         if(sim.parts[sim.engines[ei].part].stage >= maxStage) {
             sim.engines[ei].lit = true;
+            sim.litCount++;
         }
     }
 
@@ -695,18 +707,10 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
                 if(!e.lit && e.part >= 0 && sim.parts[e.part].alive
                    && sim.parts[e.part].stage == s) {
                     e.lit = true;
+                    sim.litCount++;
                 }
             }
         }
-
-        /* Reachability for the whole period, stamped once: drainableIn used to re-walk
-           every lit engine's drain layers on each call, and it is called once per BURN
-           STEP, while the set it marks cannot change until kill() at the end of this
-           iteration (#538). This has to sit below the lighting above -- marking first
-           would use the previous period's lit set and bill a not-yet-lit stage's supply
-           to this one -- and above refreshFuel's renumbering, which is why the marks are
-           reset there. */
-        sim.markReachable();
 
         std::vector<int> drop;
         {
@@ -725,6 +729,15 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
         // engines (the counter steps through it); no burn of its own.
         const bool isFinal = (s == minStage);
         if(!isFinal && drop.empty()) { continue; }
+
+        /* Reachability for the period, stamped once per burn (#538): drainableIn used to
+           re-walk every lit engine's drain layers on every call, and it is called once
+           per BURN STEP. Below the lighting above, because marking first marks the
+           previous period's lit set; below the no-drop `continue`, because a label that
+           separates nothing never calls drainableIn -- the drainAll test short-circuits
+           on !row.drops and the burn uses anyFuel(); droppedAt() (between the two) reads
+           neither the lit set nor the groups. */
+        sim.markReachable();
 
         StageRow row;
         row.stage = s;
