@@ -233,9 +233,11 @@ $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# The exe's icon/version resources (windows only). src/version.h hangs off
-# the phony `version` target, so this recompiles on every windows build --
-# cheap, and it keeps the VERSIONINFO strings in step with the binary.
+# The exe's icon/version resources (windows only). src/version.h hangs off the
+# phony `version` probe, so this re-windres whenever the describe string moves --
+# cheap, and it keeps the VERSIONINFO strings in step with the binary. Not on
+# every windows build: a phony grandparent forces the header's recipe, and an
+# unchanged string leaves this object alone.
 ifeq ($(OS),windows)
 $(RES_OBJ): release/osp.rc $(SRCDIR)/version.h release/openspaceprogram.ico
 	@mkdir -p $(dir $@)
@@ -245,31 +247,38 @@ endif
 # Embed git version in src/version.h. Three files include it: src/cli.cpp,
 # src/gameui.cpp, tests/test_cli.cpp. VERSION=1.0 overrides.
 #
-# The refresh runs when this makefile is READ, not as a build step. make takes
-# prerequisite timestamps when it scans the dependency graph, so a header rewritten
-# mid-run is noticed by its users only on the NEXT build -- and that one-run lag put
-# a NEW VERSION into test_cli.o and an OLD one into $(TESTDIR)/obj/cli.o, which are
-# two copies inside one test binary whose first assert compares them. The recorded
-# failing run shows it: tmp/maketest_526b.log rewrites the header at line 24, never
-# recompiles obj/cli.o, and aborts at line 414. So the suite went red after every
-# commit (#532); the recovery was "make, then re-run", which is the next scan.
+# `version` is a phony probe (it always runs, so the header is re-checked every
+# build), and the WRITE lives in src/version.h's own recipe. That placement is the
+# whole point (#532): when the write sits only in the phony prerequisite's recipe,
+# make has already stat'ed the header it is about to overwrite, so this run's
+# dependents compare against the old timestamp and catch up a build later. That
+# one-build skew put a new VERSION in test_cli.o and an old one in cli.o -- two
+# copies inside one test binary, and test_cli.cpp:40 compares them (it drives
+# parse_cli in-process, it does not spawn ./osp). tmp/maketest_526b.log: the header
+# rewritten at line 24, the run's only compile is tests/test_cli.cpp at 25, the
+# assert fires at 414. With the write in the header's own recipe the dependents
+# rebuild in the bump run itself, serial and under -j (both objects that hold
+# VERSION are listed below explicitly; the .d-derived ones catch up the same way).
 #
-# Listing src/version.h as an explicit prerequisite does NOT fix this -- obj/cli.o
-# already had one and was still stale. Hence the parse-time $(shell). It also runs
-# under -n: src/version.h is generated and gitignored, and the recompiles it forces
-# are ones the real build needs anyway.
+# Guards: never write an empty string over a good one (git missing, an unreadable
+# repo, or a bare `make VERSION=`), write via a temp name so a concurrent compiler
+# never sees a truncated header, and fail loudly rather than silently if there is
+# nothing to write and no header to keep.
 VERSION_REFRESH = VERSION_STRING="$(VERSION)"; \
   [ -e "./.git" ] && GITVERSION=$$( git describe --tags --always --dirty --match "v*.*" ) && VERSION_STRING=$$GITVERSION ; \
   [ -e "src/version.h" ] && OLDVERSION=$$(grep VERSION src/version.h|cut -d '"' -f2) ; \
-  if [ "x$$VERSION_STRING" != "x$$OLDVERSION" ]; then echo "\#define VERSION \"$$VERSION_STRING\"" > src/version.h && echo "version: $$VERSION_STRING" >&2 ; fi
-$(shell $(VERSION_REFRESH))
+  if [ -z "$$VERSION_STRING" ] && [ ! -e src/version.h ]; then echo "version: no git describe and no src/version.h -- pass VERSION=x.y.z" >&2 ; exit 1 ; fi ; \
+  if [ -n "$$VERSION_STRING" ] && [ "x$$VERSION_STRING" != "x$$OLDVERSION" ]; then echo "\#define VERSION \"$$VERSION_STRING\"" > src/version.h.tmp && mv -f src/version.h.tmp src/version.h && echo "version: $$VERSION_STRING" >&2 ; fi
 
-# Kept for `make version`, and gives src/version.h a rule for the prerequisites below.
 .PHONY: version
 version:
 	@$(VERSION_REFRESH)
 
+# The write lives here, not only in `version` (see above). `make version` runs the
+# body a second time; it is a no-op the second time round, and one extra
+# `git describe` (~66 ms) against a build that costs minutes.
 src/version.h: version
+	@$(VERSION_REFRESH)
 
 $(OBJDIR)/gameui.o $(OBJDIR)/cli.o: src/version.h
 
