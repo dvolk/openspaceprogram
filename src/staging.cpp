@@ -141,11 +141,14 @@ struct Sim {
        flag), so one build per pass is enough. */
     std::vector<int> childStart;
     std::vector<int> childOf;
-    /* Scratch for one drop walk (#533): a byte per part standing in for a visited SET,
+    /* Scratch for one drop walk (#533): a stamp per part standing in for a visited SET,
        because the walk only ever needs "have I seen this part" and "what did I collect".
-       Cleared by the walk itself over exactly the parts it touched, so it costs k and
-       not n. Sized with the snapshot in buildChildren(). */
-    std::vector<uint8_t> seen;
+       Stamping an epoch instead of setting and clearing bytes means there is nothing to
+       undo: no clear pass, no marks left standing if the walk throws, and no cross-call
+       invariant to remember. Sized with the snapshot in buildChildren(); 0 is never a
+       live epoch, so a fresh vector starts clean. */
+    std::vector<uint32_t> seenEpoch;
+    uint32_t seenTick = 0;
 
     void buildChildren() {
         const int n = (int)parts.size();
@@ -174,7 +177,8 @@ struct Sim {
             if(p < 0) { continue; }
             childOf[(size_t)cursor[(size_t)p]++] = i;
         }
-        seen.assign(parts.size(), 0);
+        seenEpoch.assign(parts.size(), 0);
+        seenTick = 0;   // 0 means "no walk has run", so the fresh vector starts clean
     }
 
     /* Decoupler-on-stage drop: the decouplers carrying this label plus everything
@@ -187,29 +191,29 @@ struct Sim {
            snapshot has the right size and the wrong edges, so keep the call in
            computeStaging where the snapshot loop ends. */
         assert(childStart.size() == parts.size() + 1);
-        assert(seen.size() == parts.size());
+        assert(seenEpoch.size() == parts.size());
+        /* One epoch per walk. A pass runs at most one walk per stage label, and labels
+           never outnumber parts, so the counter cannot reach its range inside a Sim --
+           buildChildren() restarts it with the snapshot. Asserted, not handled. */
+        ++seenTick;
+        assert(seenTick != 0);
         std::vector<int> dropped;
         for(size_t i = 0; i < parts.size(); i++) {
             if(!parts[i].alive || !parts[i].isDec || parts[i].stage != stage) { continue; }
-            if(!seen[i]) { seen[i] = 1; dropped.push_back((int)i); }
+            if(seenEpoch[i] != seenTick) { seenEpoch[i] = seenTick; dropped.push_back((int)i); }
             std::vector<int> stack;
             for(int k = childStart[i]; k < childStart[i + 1]; k++) { stack.push_back(childOf[k]); }
             while(!stack.empty()) {
                 const int q = stack.back();
                 stack.pop_back();
-                if(seen[(size_t)q]) { continue; }
-                seen[(size_t)q] = 1;
+                if(seenEpoch[(size_t)q] == seenTick) { continue; }
+                seenEpoch[(size_t)q] = seenTick;
                 dropped.push_back(q);
                 for(int k = childStart[(size_t)q]; k < childStart[(size_t)q + 1]; k++) {
                     stack.push_back(childOf[k]);
                 }
             }
         }
-        /* Hand the marks back. Not load-bearing today: every part this walk marks is in
-           the caller's drop list and dies at the end of the label, so a later walk can
-           only revisit dead ones -- but without it the buffer lies to the next caller,
-           and a caller that asked twice per label would silently lose subtrees. */
-        for(size_t k = 0; k < dropped.size(); k++) { seen[(size_t)dropped[k]] = 0; }
         /* Ascending, i.e. the iteration order the std::set this used to return. It is
            what drainableIn sums fuel in; the 29 ships in res/ships read identically
            either way (measured), so this is insurance for a big drop set with inexact
@@ -332,6 +336,10 @@ struct Sim {
         return m;
     }
 
+    /* Indices are in range and unique: they come from droppedAt(), whose child table
+       rejects out-of-range parents (#520) and stamps each part once per walk. That is
+       why this write is unchecked while drainableIn's read guards -- by the time a list
+       reaches drainableIn it may have been filtered, so it re-reads the parts. */
     void kill(const std::vector<int> &list) {
         for(size_t k = 0; k < list.size(); k++) {
             parts[(size_t)list[k]].alive = false;

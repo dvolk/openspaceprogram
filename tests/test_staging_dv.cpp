@@ -771,9 +771,14 @@ static void test_deep_chain_burn_stays_physical() {
    reads massStart 150 there, a histogram off by one reads 140, and a seed range one
    child short reads 120 -- all fail here and several checks elsewhere. Dropping the
    walk's visited guard instead shows up as a HANG, not a failure, which is what the
-   self-parent case below is for. One mutant is EQUIVALENT rather than missed: treating a
-   seed that is already marked as "already dropped" (skipping its subtree) changes nothing
-   here, because the outer decoupler's walk covered that subtree first. */
+   self-parent case below is for. Three mutants are NOT failures and are recorded as such:
+   deleting the sort changes no row (the 29 ships in res/ships and 20 000 fuzzed ships
+   agree bit-for-bit at full precision, so the sort is insurance rather than behaviour);
+   skipping the walk for a seed another decoupler
+   already reached changes nothing either, because that walk covered the subtree first; and
+   pushing a seed without the dedupe does put duplicate indices into the caller's list,
+   which no row notices only because a duplicated entry is always a decoupler -- a fuel
+   barrier, so drainableIn skips it and kill is idempotent. */
 static void test_drop_walk_takes_only_the_decouplers_side() {
     Catalog cat;
     BuildShip bs;
