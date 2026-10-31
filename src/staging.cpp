@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <map>
 #include <set>
 
@@ -140,6 +141,11 @@ struct Sim {
        flag), so one build per pass is enough. */
     std::vector<int> childStart;
     std::vector<int> childOf;
+    /* Scratch for one drop walk (#533): a byte per part standing in for a visited SET,
+       because the walk only ever needs "have I seen this part" and "what did I collect".
+       Cleared by the walk itself over exactly the parts it touched, so it costs k and
+       not n. Sized with the snapshot in buildChildren(). */
+    std::vector<uint8_t> seen;
 
     void buildChildren() {
         const int n = (int)parts.size();
@@ -168,32 +174,47 @@ struct Sim {
             if(p < 0) { continue; }
             childOf[(size_t)cursor[(size_t)p]++] = i;
         }
+        seen.assign(parts.size(), 0);
     }
 
     /* Decoupler-on-stage drop: the decouplers carrying this label plus everything
-       on their child side (Vehicle::droppedPartsAtStage). */
-    std::set<int> droppedAt(int stage) const {
-        /* Only proves the table matches the part count -- that buildChildren() ran
+       on their child side (Vehicle::droppedPartsAtStage). Ascending part order, which
+       is what the std::set this used to return gave: drainableIn sums fuel in iteration
+       order, so keeping the order keeps the rows bit-identical (#533). */
+    std::vector<int> droppedAt(int stage) {
+        /* Only proves the tables match the part count -- that buildChildren() ran
            at all and nothing resized parts afterwards. A table built BEFORE the
            snapshot has the right size and the wrong edges, so keep the call in
            computeStaging where the snapshot loop ends. */
         assert(childStart.size() == parts.size() + 1);
-        std::set<int> dropped;
+        assert(seen.size() == parts.size());
+        std::vector<int> dropped;
         for(size_t i = 0; i < parts.size(); i++) {
             if(!parts[i].alive || !parts[i].isDec || parts[i].stage != stage) { continue; }
-            dropped.insert((int)i);
+            if(!seen[i]) { seen[i] = 1; dropped.push_back((int)i); }
             std::vector<int> stack;
             for(int k = childStart[i]; k < childStart[i + 1]; k++) { stack.push_back(childOf[k]); }
             while(!stack.empty()) {
                 const int q = stack.back();
                 stack.pop_back();
-                if(dropped.count(q)) { continue; }
-                dropped.insert(q);
+                if(seen[(size_t)q]) { continue; }
+                seen[(size_t)q] = 1;
+                dropped.push_back(q);
                 for(int k = childStart[(size_t)q]; k < childStart[(size_t)q + 1]; k++) {
                     stack.push_back(childOf[k]);
                 }
             }
         }
+        /* Hand the marks back. Not load-bearing today: every part this walk marks is in
+           the caller's drop list and dies at the end of the label, so a later walk can
+           only revisit dead ones -- but without it the buffer lies to the next caller,
+           and a caller that asked twice per label would silently lose subtrees. */
+        for(size_t k = 0; k < dropped.size(); k++) { seen[(size_t)dropped[k]] = 0; }
+        /* Ascending, i.e. the iteration order the std::set this used to return. It is
+           what drainableIn sums fuel in; the 29 ships in res/ships read identically
+           either way (measured), so this is insurance for a big drop set with inexact
+           sums, not a live difference. */
+        std::sort(dropped.begin(), dropped.end());
         return dropped;
     }
 
@@ -282,10 +303,10 @@ struct Sim {
         return false;
     }
 
-    // Propellant in `set` that a lit engine can still reach via its drain
+    // Propellant in `list` that a lit engine can still reach via its drain
     // layers. The "ready to drop" test. Not const: layersFor fills its cache.
-    double drainableIn(const std::set<int> &set) {
-        if(set.empty()) { return 0.0; }
+    double drainableIn(const std::vector<int> &list) {
+        if(list.empty()) { return 0.0; }
         std::set<int> reachable;
         for(size_t ei = 0; ei < engines.size(); ei++) {
             const SimEngine &e = engines[ei];
@@ -302,8 +323,8 @@ struct Sim {
             }
         }
         double m = 0.0;
-        for(std::set<int>::const_iterator it = set.begin(); it != set.end(); ++it) {
-            const int pi = *it;
+        for(size_t k = 0; k < list.size(); k++) {
+            const int pi = list[k];
             if(pi < 0 || pi >= (int)parts.size() || !parts[pi].alive) { continue; }
             if(parts[pi].group < 0 || !reachable.count(parts[pi].group)) { continue; }
             m += parts[pi].fuel;
@@ -311,9 +332,9 @@ struct Sim {
         return m;
     }
 
-    void kill(const std::set<int> &set) {
-        for(std::set<int>::const_iterator it = set.begin(); it != set.end(); ++it) {
-            parts[*it].alive = false;
+    void kill(const std::vector<int> &list) {
+        for(size_t k = 0; k < list.size(); k++) {
+            parts[(size_t)list[k]].alive = false;
         }
         for(size_t ei = 0; ei < engines.size(); ei++) {
             if(engines[ei].part >= 0 && !parts[engines[ei].part].alive) {
@@ -349,7 +370,7 @@ struct BurnAcc {
 // Drain until `watch` is empty of drainable fuel, or -- when `drainAll`
 // -- until no lit engine can draw more. Events are tank-empty boundaries.
 void runBurn(Sim &sim, double g, bool drainAll,
-             const std::set<int> &watch, BurnAcc &acc) {
+             const std::vector<int> &watch, BurnAcc &acc) {
     acc.m0 = totalMass(sim.parts);
     acc.m = acc.m0;
     acc.dv = 0.0;
@@ -630,11 +651,14 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
             }
         }
 
-        std::set<int> drop;
+        std::vector<int> drop;
         {
-            const std::set<int> raw = sim.droppedAt(s);
-            for(std::set<int>::const_iterator it = raw.begin(); it != raw.end(); ++it) {
-                if(sim.parts[*it].alive) { drop.insert(*it); }
+            /* droppedAt lists dead descendants as well (the child table is built before
+               any kill()), and a separation whose whole subtree is already gone must not
+               read as a separation. */
+            const std::vector<int> raw = sim.droppedAt(s);
+            for(size_t k = 0; k < raw.size(); k++) {
+                if(sim.parts[raw[k]].alive) { drop.push_back(raw[k]); }
             }
         }
 

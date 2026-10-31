@@ -760,16 +760,20 @@ static void test_deep_chain_burn_stays_physical() {
    does not crash -- it severs or grafts a branch -- so the pin is a shape where both
    mistakes land in the mass columns: the decoupler is a SIBLING of another part under
    the same parent, so the walk has to take its subtree and leave the sibling's, and it
-   owns TWO children so both ends of its range matter. Numbers by hand (base 50; side
-   10 dry + 40 fuel; dec 5; branch 10 dry + 60 fuel; noseCone 10 dry; engines 10 dry,
-   1 kg/s, ve 1000): label 2 lights the branch engine only and drains the branch's
-   60 kg (205 -> 145; massEnd still carries the separating hardware, which the next row
-   pays for), and label 1 then starts 35 kg lighter at 110 and drains the sibling's
-   40 kg: 110 -> 70. Mutation-checked: a walk that forgets the child side reads massStart
-   140 there, a histogram off by one reads 130, and a seed range one child short reads
-   120 -- all fail here and several checks elsewhere. Dropping the walk's visited guard
-   instead shows up as a HANG, not a failure, which is what the self-parent case below is
-   for. */
+   owns TWO children so both ends of its range matter. It also carries a SECOND
+   decoupler inside that subtree on the SAME label, which is a shape a builder can make
+   and the walk has to keep its footing on. Numbers by hand (base 50; side 10 dry +
+   40 fuel; dec 5; branch 10 dry + 60 fuel; noseCone 10 dry; innerDec 5; innerTank 10
+   dry; engines 10 dry, 1 kg/s, ve 1000): label 2 lights the branch engine only and
+   drains the branch's 60 kg (220 -> 160; massEnd still carries the separating hardware,
+   which the next row pays for), and label 1 then starts 50 kg lighter at 110 and drains
+   the sibling's 40 kg: 110 -> 70. Mutation-checked: a walk that forgets the child side
+   reads massStart 150 there, a histogram off by one reads 140, and a seed range one
+   child short reads 120 -- all fail here and several checks elsewhere. Dropping the
+   walk's visited guard instead shows up as a HANG, not a failure, which is what the
+   self-parent case below is for. One mutant is EQUIVALENT rather than missed: treating a
+   seed that is already marked as "already dropped" (skipping its subtree) changes nothing
+   here, because the outer decoupler's walk covered that subtree first. */
 static void test_drop_walk_takes_only_the_decouplers_side() {
     Catalog cat;
     BuildShip bs;
@@ -777,7 +781,9 @@ static void test_drop_walk_takes_only_the_decouplers_side() {
     addPart(bs, cat.tank(10, 20, 20), "side", base, 1);
     const int dec = addPart(bs, cat.decoupler(5), "dec", base, 2);
     const int branch = addPart(bs, cat.tank(10, 30, 30), "branch", dec, 2);
-    addPart(bs, cat.tank(10, 0, 0), "noseCone", dec, 2);
+    const int noseCone = addPart(bs, cat.tank(10, 0, 0), "noseCone", dec, 2);
+    const int innerDec = addPart(bs, cat.decoupler(5), "innerDec", noseCone, 2);
+    addPart(bs, cat.tank(10, 0, 0), "innerTank", innerDec, 2);
     addPart(bs, cat.engine(10, 0.5, 1000.0), "branchEng", branch, 2);
     addPart(bs, cat.engine(10, 0.5, 1000.0), "coreEng", base, 1);
 
@@ -785,9 +791,9 @@ static void test_drop_walk_takes_only_the_decouplers_side() {
     CHECK_TRUE(rows.size() == 2, "two labels, two rows");
     if(rows.size() != 2) { return; }
     CHECK_TRUE(rows[0].stage == 2 && rows[0].drops, "the high label separates");
-    CHECK_NEAR(rows[0].massStart, 205.0, 1e-9, "everything is aboard to start");
-    CHECK_NEAR(rows[0].massEnd, 145.0, 1e-9, "the branch burned its own 60 kg");
-    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(205.0 / 145.0), 1e-9,
+    CHECK_NEAR(rows[0].massStart, 220.0, 1e-9, "everything is aboard to start");
+    CHECK_NEAR(rows[0].massEnd, 160.0, 1e-9, "the branch burned its own 60 kg");
+    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(220.0 / 160.0), 1e-9,
                "and paid for it");
     CHECK_TRUE(rows[1].stage == 1 && !rows[1].drops, "the final row separates nothing");
     CHECK_NEAR(rows[1].massStart, 110.0, 1e-9, "only the decoupler's side left");
