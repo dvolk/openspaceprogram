@@ -234,9 +234,11 @@ struct Sim {
                 // The child table is built before any kill(), so a live seed's subtree
                 // can still list parts an earlier separation took. List only the alive
                 // ones (#537). Descend either way: no rule says a dead part's child is
-                // dead, and pruning dead subtrees instead was measured to cost a live
-                // part its whole burn the moment that rule is broken (tmp/n544_findings.md
-                // Q3: dv 136 vs 1435). The seen stamp above is what breaks cycles.
+                // dead, and pruning dead subtrees costs a live part its whole burn the
+                // moment that rule breaks (dv 136 against 1435 on a shape built to force
+                // it). Cycles are not the reason either: a part has one parent, so a cycle
+                // cannot be entered from outside, and a self-parented seed is turned away
+                // by the seed's own stamp.
                 if(parts[(size_t)q].alive) { dropped.push_back(q); }
                 for(int k = childStart[(size_t)q]; k < childStart[(size_t)q + 1]; k++) {
                     stack.push_back(childOf[k]);
@@ -384,11 +386,10 @@ struct Sim {
         double m = 0.0;
         for(size_t k = 0; k < list.size(); k++) {
             const int pi = list[k];
-            /* A dead part cannot contribute here for three independent reasons -- it
-               carries group -1 (buildFuelGroups treats dead as a wall), its links left
-               revLinks when refreshFuel() rebuilt them, and droppedAt() no longer lists
-               it (#537). So this skip is a tripwire, and deleting it changes no row. The
-               rule that a dead tank's fuel is not drainable lives in the group split. */
+            /* Two things already exclude a dead part: buildFuelGroups marks dead as a
+               wall so it carries group -1, and droppedAt() stopped listing it (#537). So
+               this skip is a tripwire -- deleting it changes no row anywhere. The rule
+               that a dead tank's fuel is not drainable lives in the group split. */
             if(pi < 0 || pi >= (int)parts.size() || !parts[pi].alive) { continue; }
             const int pg = parts[pi].group;
             if(pg < 0) { continue; }
@@ -788,6 +789,10 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
             refreshFuel();
         }
     }
+
+    /* markReachable()'s assert cannot see a bookkeeping slip in the last period's kill(),
+       since no stamp follows it. This is the only place that can. */
+    assert(sim.litCount == sim.litRocketCount());
 
     return rows;
 }

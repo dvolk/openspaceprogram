@@ -1086,13 +1086,15 @@ static void test_a_newly_lit_engine_outside_the_drop_reaches_inside_it() {
 
 /* A LIVE decoupler sitting above a part an EARLIER separation already killed, where that
    dead part still holds fuel that the LIT engines can now reach. Nothing in the suite had
-   that shape (#544 review: 0 cases here, 11,751 in fuzz). Honest about what it buys: it
-   kills no mutant today. A dead part is a wall in buildFuelGroups so it carries group -1,
-   and its links leave revLinks at the next refreshFuel(), which is why deleting
-   droppedAt()'s listing test, drainableIn()'s alive skip, or BOTH still reads 292/0. It is
-   here because the fuzz says the shape is common, and because it is exactly where a future
-   per-part action on the drop list (marking, accounting, sound) would go wrong -- the dead
-   tank's 40 kg left the ship at label 3 and must not be adopted by label 2's drop.
+   that shape: this file had none, and 1,768 of 20,000 fuzzed ships do (the earlier figure
+   of 11,751 counted dead walk entries, not ships). It earns its keep on exactly one mutant:
+   let kill() unlight every LIT engine rather than only the engines of the parts it dropped,
+   and the suite reads 31 failures where every other fixture's share is 30 -- the 31st is
+   this file's "secEng lights for label 2". It does NOT catch the aliveness pair: a dead
+   part carries group -1 because buildFuelGroups makes dead a wall, so deleting
+   droppedAt()'s listing test, drainableIn()'s alive skip, or BOTH reads 292/0. Keep it for
+   the shape itself -- the dead tank's 40 kg left at label 3 and label 2 must not adopt it,
+   which is where a future per-part action on the drop list (marking, accounting) bites.
    Derived from the model (dry 105, fuel 260, wet 365; ve 1000, 1 kg/s per engine):
      label 3: coreEng lit only. deadTank hangs under decA (label 3) and feeds secTank,
        whose engine is not lit yet, so the drop {decA, deadTank} holds nothing drainable
