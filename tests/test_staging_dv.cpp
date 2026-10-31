@@ -730,12 +730,14 @@ static void test_deep_chain_burn_stays_physical() {
     burn[(int)ResourceType::Hydrogen] = true;
     burn[(int)ResourceType::LOX] = true;
 
-    /* The ladder matters. At 12 boosters the old bug -- skipping near-empty tanks
-       when picking dt -- produces rows BIT-IDENTICAL to the fix (mutation-tested:
-       tmp/n526b_a), so the small rungs only pin that the fix does not disturb a
-       working burn. It is the deep rungs where the drift becomes a row: at 16 the
-       same mutation reads dv -nan, and removing the exact-empty rule or cutting the
-       step budget shows up there too. */
+    /* Which rung covers what -- the earlier version of this note had the two bugs
+       swapped. The old bug, skipping near-empty tanks when picking dt, is caught at
+       6, 12, 16 AND 24; only the 4-booster rung is clean. At 12 it reads dv 3931.73
+       where the fix reads 3170.24, then a -nan row, and spends 884,889 kg of a
+       1,059,751 kg load. What genuinely needs the deep rungs is the OTHER one: drop
+       the exact-empty rule and 4, 6 and 12 pass it untouched -- only 16 and 24
+       report the shortfall (972,320 of 1,409,476, and 1,671,770 of 2,108,926). So a
+       rung >= 16 is the sole cover for the tie rule: do not shorten the ladder. */
     for(int boosters : {4, 6, 12, 16, 24}) {
         const std::string tag = std::to_string(boosters) + "-boosters: ";
         BuildShip bs = shipped_asparagus(pc, boosters, 10);
