@@ -87,35 +87,6 @@ Bucket drainLayersFor(const std::map<int, std::vector<int> > &rev, int group) {
     return layers;
 }
 
-// Decoupler-on-stage drop: the decoupler + its child-side subtree
-// (Vehicle::droppedPartsAtStage).
-std::set<int> droppedParts(const std::vector<SimPart> &parts, int stage) {
-    std::map<int, std::vector<int> > children;
-    for(size_t i = 0; i < parts.size(); i++) {
-        const int p = parts[i].parent;
-        if(p >= 0 && p < (int)parts.size()) { children[p].push_back((int)i); }
-    }
-    std::set<int> dropped;
-    for(size_t i = 0; i < parts.size(); i++) {
-        if(!parts[i].alive || !parts[i].isDec || parts[i].stage != stage) { continue; }
-        dropped.insert((int)i);
-        std::vector<int> stack;
-        std::map<int, std::vector<int> >::const_iterator it = children.find((int)i);
-        if(it != children.end()) { stack = it->second; }
-        while(!stack.empty()) {
-            const int q = stack.back();
-            stack.pop_back();
-            if(dropped.count(q)) { continue; }
-            dropped.insert(q);
-            std::map<int, std::vector<int> >::const_iterator ct = children.find(q);
-            if(ct != children.end()) {
-                for(size_t k = 0; k < ct->second.size(); k++) { stack.push_back(ct->second[k]); }
-            }
-        }
-    }
-    return dropped;
-}
-
 double totalMass(const std::vector<SimPart> &parts) {
     double m = 0.0;
     for(size_t i = 0; i < parts.size(); i++) {
@@ -155,6 +126,59 @@ struct Sim {
             if(g < 0) { continue; }
             memberOf[(size_t)cursor[(size_t)g]++] = (int)i;
         }
+    }
+
+    /* part -> its children, flat: part p owns childOf[childStart[p] ..
+       childStart[p+1]). Built once from the snapshot (#520), NOT per droppedAt()
+       call: the staging walk calls it once per decoupler label, and the old
+       per-call map rebuild billed the label count times the part count for a
+       graph that never changes. Every part is listed, dead or alive -- the drop
+       walk must see the same tree that rebuild saw, and its caller filters by
+       alive. Parent links never change afterwards (kill() only flips a flag), so
+       one build per pass is enough. */
+    std::vector<int> childStart;
+    std::vector<int> childOf;
+
+    void buildChildren() {
+        const int n = (int)parts.size();
+        childStart.assign((size_t)n + 1, 0);
+        for(int i = 0; i < n; i++) {
+            const int p = parts[i].parent;
+            if(p >= 0 && p < n) { childStart[(size_t)p + 1]++; }
+        }
+        for(int p = 0; p + 1 < (int)childStart.size(); p++) {
+            childStart[(size_t)p + 1] += childStart[(size_t)p];
+        }
+        childOf.assign(parts.size(), 0);
+        std::vector<int> cursor = childStart;
+        for(int i = 0; i < n; i++) {
+            const int p = parts[i].parent;
+            if(p < 0 || p >= n) { continue; }
+            childOf[(size_t)cursor[(size_t)p]++] = i;
+        }
+    }
+
+    /* Decoupler-on-stage drop: the decouplers carrying this label plus everything
+       on their child side (Vehicle::droppedPartsAtStage). */
+    std::set<int> droppedAt(int stage) const {
+        assert(childStart.size() == parts.size() + 1);   // buildChildren() first
+        std::set<int> dropped;
+        for(size_t i = 0; i < parts.size(); i++) {
+            if(!parts[i].alive || !parts[i].isDec || parts[i].stage != stage) { continue; }
+            dropped.insert((int)i);
+            std::vector<int> stack;
+            for(int k = childStart[i]; k < childStart[i + 1]; k++) { stack.push_back(childOf[k]); }
+            while(!stack.empty()) {
+                const int q = stack.back();
+                stack.pop_back();
+                if(dropped.count(q)) { continue; }
+                dropped.insert(q);
+                for(int k = childStart[(size_t)q]; k < childStart[(size_t)q + 1]; k++) {
+                    stack.push_back(childOf[k]);
+                }
+            }
+        }
+        return dropped;
     }
 
     /* Drain layers for one group, computed on first use (#293). Only a group
@@ -509,6 +533,7 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
         if(sp.stage < minStage) { minStage = sp.stage; }
         if(sp.stage > maxStage) { maxStage = sp.stage; }
     }
+    sim.buildChildren();   // the parent links are fixed by the snapshot (#520)
 
     struct LinkRef { int from, to; };
     std::vector<LinkRef> links;
@@ -558,14 +583,15 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
     /* Walk the stage NUMBERS that exist rather than every integer between the highest
        and the lowest (#517). An index no part carries can only produce an empty drop
        set and no engine to light, so skipping it cannot change a row -- but visiting
-       it was not free: droppedParts rebuilds a child map and traverses the tree per
-       call, so the dense loop billed the SPAN between the highest and lowest labels
-       instead of the number of labels. Measured on a 51-part probe, best of 5: 35 us
-       with its labels in 1..6, 19.4 ms once one part carries 10000, 60.8 ms once it
-       carries 30000; walked sparse, all three cost 35-39 us. (Labels past kMaxStage are
-       unreachable through the loaders, but the pass should not care.) Stage numbers are
-       labels, so a ship numbered 1 and 9000 now costs what a ship numbered 1 and 2
-       costs. */
+       it was not free: the drop walk scans every part looking for a decoupler on that
+       label, so the dense loop billed the SPAN between the highest and lowest labels
+       instead of the number of labels. (#520 later took the per-call child-map
+       rebuild out of that scan; the scan itself remains.) Measured on a 51-part
+       probe, best of 5: 35 us with its labels in 1..6, 19.4 ms once one part carries
+       10000, 60.8 ms once it carries 30000; walked sparse, all three cost 35-39 us.
+       (Labels past kMaxStage are unreachable through the loaders, but the pass should
+       not care.) Stage numbers are labels, so a ship numbered 1 and 9000 now costs
+       what a ship numbered 1 and 2 costs. */
     std::vector<int> walk;
     walk.reserve(n);
     for(size_t i = 0; i < n; i++) { walk.push_back(sim.parts[i].stage); }
@@ -590,7 +616,7 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
 
         std::set<int> drop;
         {
-            const std::set<int> raw = droppedParts(sim.parts, s);
+            const std::set<int> raw = sim.droppedAt(s);
             for(std::set<int>::const_iterator it = raw.begin(); it != raw.end(); ++it) {
                 if(sim.parts[*it].alive) { drop.insert(*it); }
             }

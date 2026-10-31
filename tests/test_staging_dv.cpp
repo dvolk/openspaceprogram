@@ -535,9 +535,9 @@ static void test_signature() {
 }
 
 /* Stage numbers are LABELS, not a count of things to walk over (#517). Numbering the
-   same ship 1 and 9000 used to cost 9000 passes over the part list -- droppedParts
-   rebuilds a child map per index -- on the way to exactly the same rows, so the pass
-   billed the SPAN between the highest and lowest label instead of the number of
+   same ship 1 and 9000 used to cost 9000 passes over the part list -- one drop walk
+   per index -- on the way to exactly the same rows, so the pass billed the SPAN
+   between the highest and lowest label instead of the number of
    labels. These checks hold the cheap walk to the same computation: every row matches
    except the label, and the high label still fires FIRST even when the parts arrive in
    the opposite order. */
@@ -755,6 +755,42 @@ static void test_deep_chain_burn_stays_physical() {
     }
 }
 
+/* The drop walk reads a parent -> children table, and staging now builds that table
+   once per pass (#520) instead of once per decoupler label. A wrong range in such a
+   table does not crash -- it severs or grafts a branch -- so the pin is a shape where
+   both mistakes land in the mass columns: the decoupler is a SIBLING of another part
+   under the same parent, so the walk has to take its subtree and leave the sibling's.
+   Numbers by hand (base 50; side 10 dry + 40 fuel; dec 5; branch 10 dry + 60 fuel;
+   engines 10 dry, 1 kg/s, ve 1000): label 2 lights the branch engine only, drains the
+   branch's 60 kg (195 -> 135, the separated hardware still riding in massEnd), and
+   label 1 then starts 25 kg lighter at 110 and drains the sibling's 40 kg: 110 -> 70.
+   Mutation-checked: a walk that forgets the child side reads massStart 130, and an
+   off-by-one in the table's ranges reads 120 -- both fail here and several checks
+   elsewhere. */
+static void test_drop_walk_takes_only_the_decouplers_side() {
+    Catalog cat;
+    BuildShip bs;
+    const int base = addPart(bs, cat.tank(50, 0, 0), "base", -1, 1);
+    addPart(bs, cat.tank(10, 20, 20), "side", base, 1);
+    const int dec = addPart(bs, cat.decoupler(5), "dec", base, 2);
+    const int branch = addPart(bs, cat.tank(10, 30, 30), "branch", dec, 2);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "branchEng", branch, 2);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "coreEng", base, 1);
+
+    const std::vector<StageRow> rows = computeStaging(bs, 10.0);
+    CHECK_TRUE(rows.size() == 2, "two labels, two rows");
+    if(rows.size() != 2) { return; }
+    CHECK_TRUE(rows[0].stage == 2 && rows[0].drops, "the high label separates");
+    CHECK_NEAR(rows[0].massStart, 195.0, 1e-9, "everything is aboard to start");
+    CHECK_NEAR(rows[0].massEnd, 135.0, 1e-9, "the branch burned its own 60 kg");
+    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(195.0 / 135.0), 1e-9,
+               "and paid for it");
+    CHECK_TRUE(rows[1].stage == 1 && !rows[1].drops, "the final row separates nothing");
+    CHECK_NEAR(rows[1].massStart, 110.0, 1e-9, "only the decoupler's side left");
+    CHECK_NEAR(rows[1].massEnd, 70.0, 1e-9, "the sibling's tank is still there to drain");
+    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(110.0 / 70.0), 1e-9, "and it drains");
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -769,6 +805,7 @@ int main() {
     test_stage_labels_are_labels();
     test_a_gap_costs_nothing();
     test_deep_chain_burn_stays_physical();
+    test_drop_walk_takes_only_the_decouplers_side();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
