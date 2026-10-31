@@ -450,6 +450,15 @@ Renderer::~Renderer()
        current: main never destroys it (and nothing before here does either).
        A future SDL_GL_DestroyContext on the way out has to come AFTER the
        Renderer is gone. */
+
+    /* Exclusive fullscreen changed the CRTC; X11 keeps that mode when the
+       client disconnects. Leaving fullscreen re-applies the desktop mode SDL
+       saved at startup. Only exclusive is touched: leaving desktop fullscreen
+       here can raise a background window on macOS. Don't destroy the window
+       in this body, member destructors still need its context. */
+    if(SDL_GetWindowFullscreenMode(m_window) != nullptr) {
+        SDL_SetWindowFullscreen(m_window, false);
+    }
 }
 
 void Renderer::onResize(int width, int height) {
