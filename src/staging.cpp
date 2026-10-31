@@ -678,9 +678,11 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
 
         std::vector<int> drop;
         {
-            /* droppedAt lists dead descendants as well (the child table is built before
-               any kill()), and a separation whose whole subtree is already gone must not
-               read as a separation. */
+            /* Two alive checks guard the same thing and hide each other's absence:
+               droppedAt seeds only alive decouplers, and this trims the dead entries a live
+               seed's walk still lists (the child table is built before any kill()). Delete
+               either one and no row changes; delete both and a decoupler an earlier
+               separation already took reappears as a staging event -- #537. */
             const std::vector<int> raw = sim.droppedAt(s);
             for(size_t k = 0; k < raw.size(); k++) {
                 if(sim.parts[raw[k]].alive) { drop.push_back(raw[k]); }

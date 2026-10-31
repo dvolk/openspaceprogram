@@ -871,6 +871,121 @@ static void test_a_sealed_drop_does_not_hold_the_burn_open() {
                "one engine, the fuel that is left");
 }
 
+/* Two separating periods, which is the shape that makes reachability marks a LIFETIME
+   question rather than a per-call one: period 2 inherits the mark buffer from period 1,
+   and after period 1's kill the groups are renumbered, so a stale mark can land on a
+   group id period 2 cares about. The two fuel sources in period 1's drop are sized to
+   empty in the SAME step, so that period makes exactly two reachability calls -- which is
+   what lets a leftover mark line up with period 2's epoch. And the engine-less linkedTank
+   is reachable only across a fuel_link, so the marking has to cross revLinks (the drop's
+   20 kg of linkedTank fuel is part of the burn; see
+   test_a_linked_tank_in_a_drop_holds_the_burn_open for the case that pins that on its own).
+   Every row is 1000*ln(m0/m1): one or two engines, each 1 kg/s at ve 1000, so F/mdot is
+   1000 however many are lit. The teeth here are the STALE MARKS: assign->resize, which
+   keeps period 1's stamps and lets them resurface once period 2's tick climbs back to them,
+   reads s2 m=360->140 and s1 dv=0. Note that the sizes are what make that visible -- the
+   two fuel sources in the first drop empty in the same step, so the period ends on its
+   third reachability call, and period 2's third call is where a leftover stamp collides. */
+static void test_reachability_survives_a_renumbering() {
+    Catalog cat;
+    BuildShip bs;
+    const int core = addPart(bs, cat.tank(50, 100, 100), "coreTank", -1, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "coreEng", core, 3);
+    const int decA = addPart(bs, cat.decoupler(5), "decA", core, 3);
+    const int t1 = addPart(bs, cat.tank(10, 10, 10), "boostTank", decA, 3);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "boostEng", t1, 3);
+    const int l1 = addPart(bs, cat.tank(10, 10, 10), "linkedTank", decA, 3);
+    addLink(bs, "linkedTank", "coreTank");
+    const int decB = addPart(bs, cat.decoupler(5), "decB", core, 2);
+    const int r = addPart(bs, cat.tank(10, 10, 10), "reachTank", decB, 2);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "reachEng", r, 2);
+    const int wall = addPart(bs, cat.decoupler(5), "wall", decB, 2);
+    addPart(bs, cat.tank(10, 20, 20), "sealedTank", wall, 2);
+    (void)t1; (void)l1; (void)r; (void)wall;
+
+    const std::vector<StageRow> rows = computeStaging(bs, 10.0);
+    CHECK_TRUE(rows.size() == 3, "three labels, three rows");
+    if(rows.size() != 3) { return; }
+    CHECK_TRUE(rows[0].stage == 3 && rows[0].drops, "label 3 separates");
+    CHECK_NEAR(rows[0].massStart, 435.0, 1e-9, "all aboard");
+    CHECK_NEAR(rows[0].massEnd, 395.0, 1e-9, "the drop's REACHABLE fuel burns");
+    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(435.0 / 395.0), 1e-9, "s3 dv");
+
+    CHECK_TRUE(rows[1].stage == 2 && rows[1].drops, "label 2 separates");
+    CHECK_NEAR(rows[1].massStart, 360.0, 1e-9, "period 1 left, renumbered");
+    CHECK_NEAR(rows[1].massEnd, 320.0, 1e-9, "and its reachable fuel burns, no more");
+    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(360.0 / 320.0), 1e-9, "s2 dv");
+
+    CHECK_NEAR(rows[2].massStart, 240.0, 1e-9, "the survivor, both drops gone");
+    CHECK_NEAR(rows[2].massEnd, 60.0, 1e-9, "burns everything that is left");
+    CHECK_NEAR(rows[2].deltaV, 1000.0 * std::log(240.0 / 60.0), 1e-9, "s1 dv");
+}
+
+/* An engine-less tank in a drop, fed to the core engine by a fuel link, is part of what
+   the drop can burn -- so it holds the period open. It is the biggest tank in the drop on
+   purpose (100 kg against boostTank's 20): a lit engine drains the furthest link layer
+   first, so the period runs until linkedTank is dry (120 kg) instead of stopping when
+   boostTank is (20 kg). Marking only each lit engine's OWN group instead of its drain
+   layers reads s3 415->375, dv 101 instead of 341; counting no fuel at all reads s3
+   dv=0. No ship in res/ships tells these apart -- in theirs every group inside a drop
+   carries its own engine, so the own-group shortcut is invisible there. */
+static void test_a_linked_tank_in_a_drop_holds_the_burn_open() {
+    Catalog cat;
+    BuildShip bs;
+    const int core = addPart(bs, cat.tank(50, 100, 100), "coreTank", -1, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "coreEng", core, 3);
+    const int decA = addPart(bs, cat.decoupler(5), "decA", core, 3);
+    const int t1 = addPart(bs, cat.tank(10, 10, 10), "boostTank", decA, 3);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "boostEng", t1, 3);
+    const int l1 = addPart(bs, cat.tank(10, 50, 50), "linkedTank", decA, 3);
+    addLink(bs, "linkedTank", "coreTank");
+    (void)t1; (void)l1;
+
+    const std::vector<StageRow> rows = computeStaging(bs, 10.0);
+    CHECK_TRUE(rows.size() == 2, "two labels, two rows");
+    if(rows.size() != 2) { return; }
+    CHECK_NEAR(rows[0].massStart, 415.0, 1e-9, "all aboard");
+    CHECK_NEAR(rows[0].massEnd, 295.0, 1e-9, "both drop tanks run dry, the core's does not");
+    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(415.0 / 295.0), 1e-9, "s3 dv");
+    CHECK_NEAR(rows[1].massStart, 260.0, 1e-9, "the drop leaves 35 kg of structure");
+    CHECK_NEAR(rows[1].massEnd, 60.0, 1e-9, "the core burns the rest");
+    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(260.0 / 60.0), 1e-9, "s1 dv");
+}
+
+/* A decoupler an EARLIER separation already took must not start a walk of its own. decB
+   carries label 2 and hangs under decA (label 3), so by the time the walk reaches label 2
+   decB is dead, and label 2 must separate nothing. A label that separates nothing emits no
+   row at all, so the symptom is an EXTRA row: a staging event the ship can no longer
+   perform. Two alive checks keep that row away -- droppedAt seeds only live decouplers, and
+   computeStaging trims dead entries off the list. Either alone suffices: deleting one leaves
+   every check in this file passing, deleting both fails right here, and that redundancy is
+   the thing worth a look (#537). */
+static void test_a_separation_does_not_relist_an_already_dead_subtree() {
+    Catalog cat;
+    BuildShip bs;
+    const int core = addPart(bs, cat.tank(50, 50, 50), "coreTank", -1, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "coreEng", core, 3);
+    const int decA = addPart(bs, cat.decoupler(5), "decA", core, 3);
+    const int decB = addPart(bs, cat.decoupler(5), "decB", decA, 2);
+    addPart(bs, cat.tank(10, 10, 10), "deadTank", decB, 2);
+    (void)decB;
+
+    const std::vector<StageRow> rows = computeStaging(bs, 10.0);
+     CHECK_TRUE(rows.size() == 2, "label 2 separates nothing, so it gets no row: 3 and 1 only");
+    if(rows.size() != 2) { return; }
+    CHECK_TRUE(rows[0].stage == 3 && rows[0].drops, "label 3 separates the whole tail");
+    CHECK_NEAR(rows[0].massStart, 200.0, 1e-9, "all aboard");
+    /* The tail is walled off, so this drop is INERT and the row falls back to draining
+       everything reachable (the inert-drop rule, staging.cpp:706) rather than burning
+       nothing. Its own tank's 20 kg stays aboard and leaves with the tail. */
+    CHECK_NEAR(rows[0].massEnd, 100.0, 1e-9, "the core's 100 kg burns; the tail's does not");
+    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(200.0 / 100.0), 1e-9, "s3 dv");
+    CHECK_TRUE(rows[1].stage == 1, "the next row is the survivor's, not label 2's");
+    CHECK_NEAR(rows[1].massStart, 60.0, 1e-9, "the tail left dry, and so did the core");
+    CHECK_NEAR(rows[1].massEnd, 60.0, 1e-9, "nothing left to burn");
+    CHECK_NEAR(rows[1].deltaV, 0.0, 1e-9, "s1 dv");
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -888,6 +1003,9 @@ int main() {
     test_drop_walk_takes_only_the_decouplers_side();
     test_a_self_parent_walks_once();
     test_a_sealed_drop_does_not_hold_the_burn_open();
+    test_reachability_survives_a_renumbering();
+    test_a_linked_tank_in_a_drop_holds_the_burn_open();
+    test_a_separation_does_not_relist_an_already_dead_subtree();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
