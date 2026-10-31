@@ -290,26 +290,27 @@ static void test_staged_decouplers_depth_first() {
     destroyShip(s);
 }
 
-/* Why a split would be refused (#541), which is what lets the staging press name the
-   decoupler that cannot separate instead of printing "nothing left to separate". */
-static void test_split_block_reason() {
+/* extractSubtreeAsShip is the only thing that decides whether a split can happen (#541
+   review: a caller-side predicate duplicated the rule and could refuse a legal split),
+   so its refusals are what game.cpp reads to pick its words -- and nothing pinned them.
+   Both refusals land before the extract touches a physics body (the aboard test and the
+   subtree count come first), so this is safe with no physics world. */
+static void test_extract_refusals() {
     Ship s; s.v = new Vehicle;
     Part *core = addPart(s, NULL, 2, false, "core");
     Part *dec  = addPart(s, core, 1, true,  "decoupler");
     Part *kid  = addPart(s, dec,  1, false, "tank");
-    (void)kid;
-    CHECK_TRUE(s.v->splitBlockReason(dec) == Vehicle::SplitBlock::None,
-               "a decoupler with a parent and a real subtree is splittable");
-    CHECK_TRUE(s.v->splitBlockReason(core) == Vehicle::SplitBlock::WholeShip,
-               "the root part's side is the whole ship");
-    /* A decoupler that already went off inside an outer cut: same stage, same press,
-       ordinary rather than an error -- and the one reason the old game.cpp comment
-       named even though it could not apply to a root from this ship's own walk. */
-    Part *gone = new Part;
-    gone->body = nullptr; gone->def = nullptr; gone->parent = nullptr;
-    CHECK_TRUE(s.v->splitBlockReason(gone) == Vehicle::SplitBlock::NotAboard,
-               "a part not aboard this ship cannot split it");
-    delete gone;
+    (void)dec; (void)kid;
+    CHECK_TRUE(s.v->extractSubtreeAsShip(core, "whole ship", 0.0) == nullptr,
+               "the root part reaches every part, so there is no second side");
+    Part *stray = new Part;
+    stray->body = nullptr; stray->def = nullptr; stray->parent = nullptr;
+    CHECK_TRUE(s.v->extractSubtreeAsShip(stray, "not aboard", 0.0) == nullptr,
+               "a part that is not aboard this ship cannot split it");
+    delete stray;
+    /* A refusal is decided before anything moves: had the whole-ship case started
+       cutting, this ship would no longer be in one piece. */
+    CHECK_TRUE(s.v->parts.size() == 3, "a refused split leaves the ship alone");
     destroyShip(s);
 }
 
@@ -419,7 +420,7 @@ int main() {
     test_staged_decouplers_depth_first();
     test_staged_decouplers_nested();
     test_staged_decouplers_other_stage();
-    test_split_block_reason();
+    test_extract_refusals();
     test_deep_chain();
     test_child_below();
 

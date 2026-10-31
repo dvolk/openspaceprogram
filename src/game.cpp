@@ -2039,28 +2039,17 @@ void Game::stage() {
        and tied depths in build order -- the order they come out of here is the order
        the split ships get named and listed, so it has to be reproducible (#540). */
     const std::vector<Part *> decs = a->stagedDecouplers(st);
-    int ships = 0, parts = 0, refused = 0;
+    int ships = 0, parts = 0;
+    /* Label of a decoupler whose side turned out to be the whole ship. A ship has one
+       root part, so at most one decoupler per press can hit this: the label doubles as
+       the "was anything refused" flag. */
+    std::string refusedPart;
     if(!decs.empty()) {
         /* De-dup a name against the live vehicles: first keeps the bare name,
            later get #2, #3. One rule for every ship-naming site (this one was
            a verbatim copy of it as a lambda, which is how the others drifted). */
 
         for(Part *d : decs) {
-            /* Ask why a split would be refused BEFORE spending a name on it (#541):
-               the old code called extractSubtreeAsShip and skipped a nullptr with a
-               comment naming a reason that cannot happen here (every root comes from
-               this ship's own walk) while omitting the two that can. */
-            const Vehicle::SplitBlock why = a->splitBlockReason(d);
-            if(why == Vehicle::SplitBlock::NotAboard) {
-                continue;    // ordinary: it went off inside an outer cut on this stage
-            }
-            if(why == Vehicle::SplitBlock::WholeShip) {
-                refused++;   // the decoupler IS the ship's root: its side is everything
-                printf("Stage: %s is this ship's root part, so its side is the whole "
-                       "ship -- nothing can separate there\n",
-                       d->def != nullptr ? d->def->label().c_str() : "(unnamed part)");
-                continue;
-            }
             // Name: the parent ship's name, qualified by the decoupler part.
             std::string base = a->displayName();
             const std::string qual = d->def->label();
@@ -2069,31 +2058,53 @@ void Game::stage() {
             // engine hum (a transient reads louder than a steady loop).
             const std::string nm = dedupVehicleName(vehicles, base, &roster);
             Vehicle *out = a->extractSubtreeAsShip(d, nm, time);
-            // Both refusals are handled above; one reaching here means the tree and
-            // the subtree count disagree, i.e. a malformed parent edge.
-            assert(out != nullptr);
-            vehicles.push_back(out);           // the split subtree is its own vessel
-            audio.playOnce("res/audio/qubodup-crash.wav", 0.4f);
-            out->enterWorld();
-            ships++;
-            parts += (int)out->parts.size();
+            if(out != nullptr) {
+                vehicles.push_back(out);       // the split subtree is its own vessel
+                audio.playOnce("res/audio/qubodup-crash.wav", 0.4f);
+                out->enterWorld();
+                ships++;
+                parts += (int)out->parts.size();
+                continue;
+            }
+            /* Read the refusal off the extract instead of answering the same question
+               twice. An earlier cut at this had the press ask a splitBlockReason()
+               predicate first: that duplicated the whole-ship rule behind two owners --
+               extractSubtreeAsShip COUNTS the subtree so it cannot disagree with the tree
+               it walks, while a "has no parent" guess can refuse a legal split -- and it
+               bought nothing, because dedupVehicleName only reads the roster, so a
+               refused split reserves no name.
+               Membership tells the two refusals apart. The part is gone from `a` when an
+               earlier cut on this same stage carried it off with an outer decoupler:
+               ordinary, exactly what #540's outer-first order expects, so say nothing. A
+               part still aboard here has no parent, so its side is every part: the one
+               refusal a player can act on, so it gets named below. */
+            if(std::find(a->parts.begin(), a->parts.end(), d) == a->parts.end()) {
+                continue;
+            }
+            refusedPart = qual;
         }
     }
     /* Step the counter on every press, even a decoupler-less stage: a stage
        number with no decoupler must not wedge the lower ones out of reach. */
     a->advanceStage();
+    /* Not "out of stages": name the part and say what is wrong with it. The log line
+       scrolls, so the toast repeats the part -- the toast is the half a player reads. */
+    auto refuseNote = [&]() {
+        printf("Stage: %s on stage %d cannot separate -- it is this ship's root part, "
+               "so its side is the whole ship; now on stage %d of %d\n",
+               refusedPart.c_str(), st, a->activeStage(), a->numStages());
+        toast("Stage %d cannot separate -- %s is this ship's root part", st,
+              refusedPart.c_str());
+    };
     if(ships > 0) {
         // Part windows index parts, which just shifted: drop them.
         dropPartWindowsFor(a);
         printf("Stage: dropped %d ship(s) / %d part(s); now on stage %d of %d\n",
                ships, parts, a->activeStage(), a->numStages());
         toast("Staged -- dropped %d ship(s)", ships);
-    } else if(refused > 0) {
-        /* Not "out of stages": say that a stage label points at a split that cannot
-           happen, which is what a player needs to hear to go fix the design. */
-        printf("Stage: %d decoupler(s) on stage %d cannot separate; now on stage %d of %d\n",
-               refused, st, a->activeStage(), a->numStages());
-        toast("Stage %d cannot separate here", st);
+        if(!refusedPart.empty()) { refuseNote(); }   // a partial press still says which
+    } else if(!refusedPart.empty()) {
+        refuseNote();
     } else {
         printf("Stage: nothing left to separate\n");
     }

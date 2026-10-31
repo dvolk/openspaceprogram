@@ -3503,9 +3503,16 @@ std::vector<Part *> Vehicle::stagedDecouplers(int stage) {
     for(Part *p : droppedPartsAtStage(stage)) {
         if(p->isDecoupler() && p->stage == stage) { decs.push_back(p); }
     }
-    auto depth = [](Part *p) {
+    auto depth = [this](Part *p) {
         int d = 0;
-        while(p->parent != nullptr) { d++; p = p->parent; }
+        /* droppedPartsAtStage's walk is cycle-safe because it marks visited; this one
+           follows a chain, so a malformed parent edge would spin here. It runs before
+           any assert could fire, so bound the chain: a part can only have as many
+           ancestors as the ship has parts. */
+        while(p->parent != nullptr) {
+            d++; p = p->parent;
+            assert(d <= (int)parts.size());
+        }
         return d;
     };
     auto buildIndex = [this](Part *p) {
@@ -3612,31 +3619,11 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     SetAngVelocity(hull, wA);
 }
 
-/* extractSubtreeAsShip's refusals, as a question that can be asked first (#541). A stage
-   press names every split before attempting it, so a refused one used to burn a
-   de-duplicated ship name for a vessel that never exists, and the only thing the player
-   got was "Stage: nothing left to separate" -- which reads as "I am out of stages", not
-   "this stage cannot separate".
-   NotAboard is the ordinary case, not an error: a decoupler sitting inside another
-   decoupler's subtree on the SAME stage went off with the outer cut, and stagedDecouplers
-   orders outer-first on purpose (#540's nested test). WholeShip is the tree-root test --
-   for a tree, a subtree covers every part exactly when the root has no parent. A malformed
-   parent edge could break that equivalence, so extractSubtreeAsShip keeps its own subtree
-   count as the authority; this only chooses the message. */
-Vehicle::SplitBlock Vehicle::splitBlockReason(Part *root) const {
-    assert(root != nullptr);      // a caller bug, not a game state
-    if(std::find(parts.begin(), parts.end(), root) == parts.end()) {
-        return SplitBlock::NotAboard;
-    }
-    if(root->parent == nullptr) { return SplitBlock::WholeShip; }
-    return SplitBlock::None;
-}
-
 Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, double t) {
     if(root == nullptr) { return nullptr; }
     bool found = false;
     for(Part *p : parts) { if(p == root) { found = true; break; } }
-    if(!found) { return nullptr; }
+    if(!found) { return nullptr; }   // ordinary after an outer cut on the same stage
 
     // The subtree: `root` plus its descendants (BFS over the children map).
     std::map<Part *, std::vector<Part *>> children;
