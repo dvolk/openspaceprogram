@@ -323,10 +323,15 @@ struct Sim {
         return false;
     }
 
-    // Propellant in `list` that a lit engine can still reach via its drain
-    // layers. The "ready to drop" test. Not const: layersFor fills its cache.
-    double drainableIn(const std::vector<int> &list) {
-        if(list.empty()) { return 0.0; }
+    /* Which groups a LIT engine can draw from, stamped into an epoch buffer instead of
+       rebuilt into a set per query (#536). What gets marked depends only on the lit set,
+       and the lit set cannot change inside one burn period -- engines light in the label
+       loop of computeStaging, and the only un-lighting is kill(), which runs after the
+       burn -- so this runs once per period rather than once per drainableIn call (#538).
+       The order matters: marking before that label's engines light reads the previous
+       period's lit set, and test_reachability_survives_a_renumbering reads
+       s2 m=360->140 when it happens. Not const: layersFor fills its cache. */
+    void markReachable() {
         assert(reachEpoch.size() == (size_t)nGroups);   // refreshFuel() sizes this
         ++reachTick;
         assert(reachTick != 0);
@@ -346,6 +351,14 @@ struct Sim {
                 }
             }
         }
+    }
+
+    // Propellant in `list` that a lit engine can still reach via its drain
+    // layers. The "ready to drop" test. Reads the marks markReachable() stamped,
+    // so it is only meaningful after that call within the same period.
+    double drainableIn(const std::vector<int> &list) {
+        if(list.empty()) { return 0.0; }
+        assert(reachEpoch.size() == (size_t)nGroups);   // refreshFuel() sizes this
         double m = 0.0;
         for(size_t k = 0; k < list.size(); k++) {
             const int pi = list[k];
@@ -685,6 +698,15 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
                 }
             }
         }
+
+        /* Reachability for the whole period, stamped once: drainableIn used to re-walk
+           every lit engine's drain layers on each call, and it is called once per BURN
+           STEP, while the set it marks cannot change until kill() at the end of this
+           iteration (#538). This has to sit below the lighting above -- marking first
+           would use the previous period's lit set and bill a not-yet-lit stage's supply
+           to this one -- and above refreshFuel's renumbering, which is why the marks are
+           reset there. */
+        sim.markReachable();
 
         std::vector<int> drop;
         {
