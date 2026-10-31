@@ -95,6 +95,36 @@ double totalMass(const std::vector<SimPart> &parts) {
     return m;
 }
 
+/* The one bucketed index this file needs (a CSR): bucket b owns
+   items[start[b] .. start[b+1]). `key(i)` says which bucket item i belongs to, or -1 to
+   leave it out. Both passes go through the SAME key, which is the whole point of the
+   helper: a histogram that accepts an item the fill rejects (or the reverse) writes
+   `items` past its end, and nothing else in here would notice. #534 folded the two
+   hand-rolled copies (group members, part children) into this one. */
+template <class Key>
+void buildBuckets(int nBuckets, int nItems, const Key &key,
+                  std::vector<int> &start, std::vector<int> &items) {
+    start.assign((size_t)nBuckets + 1, 0);
+    for(int i = 0; i < nItems; i++) {
+        const int b = key(i);
+        assert(b < nBuckets);            // a bucket id outside the table is a bug
+        if(b >= 0) { start[(size_t)b + 1]++; }
+    }
+    for(int b = 0; b + 1 < (int)start.size(); b++) {
+        start[(size_t)b + 1] += start[(size_t)b];
+    }
+    items.assign((size_t)nItems, 0);
+    std::vector<int> cursor = start;
+    for(int i = 0; i < nItems; i++) {
+        const int b = key(i);
+        if(b < 0) { continue; }
+        items[(size_t)cursor[(size_t)b]++] = i;
+    }
+    // The fill landed exactly where the histogram counted; a key that changed between
+    // the passes (non-pure, reading something the passes mutate) shows up here.
+    assert(cursor[(size_t)nBuckets] == start[(size_t)nBuckets]);
+}
+
 struct Sim {
     std::vector<SimPart> parts;
     std::vector<SimEngine> engines;
@@ -111,21 +141,9 @@ struct Sim {
     std::vector<int> memberOf;
 
     void rebuildMembers() {
-        memberStart.assign((size_t)nGroups + 1, 0);
-        for(size_t i = 0; i < parts.size(); i++) {
-            const int g = parts[i].group;
-            if(g >= 0) { memberStart[(size_t)g + 1]++; }
-        }
-        for(size_t g = 0; g + 1 < memberStart.size(); g++) {
-            memberStart[g + 1] += memberStart[g];
-        }
-        memberOf.assign(parts.size(), 0);
-        std::vector<int> cursor = memberStart;
-        for(size_t i = 0; i < parts.size(); i++) {
-            const int g = parts[i].group;
-            if(g < 0) { continue; }
-            memberOf[(size_t)cursor[(size_t)g]++] = (int)i;
-        }
+        buildBuckets(nGroups, (int)parts.size(),
+                     [this](int i) { return parts[(size_t)i].group; },   // -1 = not in a group
+                     memberStart, memberOf);
     }
 
     /* part -> its children, flat: part p owns childOf[childStart[p] ..
@@ -158,31 +176,16 @@ struct Sim {
 
     void buildChildren() {
         const int n = (int)parts.size();
-        /* ONE predicate for "usable parent", because the histogram and the fill
-           below must reject exactly the same parts: if they disagree by one test,
-           childOf gets written past its end and nothing here notices. (Malformed
-           parents cannot reach a game -- partitionFuelGroups asserts p < n from
-           refreshFuel -- but that runs after this, so this is the first code to
-           touch them.) */
-        auto parentOf = [&](int i) {
-            const int p = parts[i].parent;
+        /* ONE predicate for "usable parent": the two passes inside buildBuckets go
+           through it, so they cannot disagree by one test and write childOf past its
+           end. (Malformed parents cannot reach a game -- partitionFuelGroups asserts
+           p < n from refreshFuel -- but that runs after this, so this is the first
+           code to touch them.) */
+        auto parentOf = [this, n](int i) {
+            const int p = parts[(size_t)i].parent;
             return (p >= 0 && p < n) ? p : -1;
         };
-        childStart.assign((size_t)n + 1, 0);
-        for(int i = 0; i < n; i++) {
-            const int p = parentOf(i);
-            if(p >= 0) { childStart[(size_t)p + 1]++; }
-        }
-        for(int p = 0; p + 1 < (int)childStart.size(); p++) {
-            childStart[(size_t)p + 1] += childStart[(size_t)p];
-        }
-        childOf.assign(parts.size(), 0);
-        std::vector<int> cursor = childStart;
-        for(int i = 0; i < n; i++) {
-            const int p = parentOf(i);
-            if(p < 0) { continue; }
-            childOf[(size_t)cursor[(size_t)p]++] = i;
-        }
+        buildBuckets(n, n, parentOf, childStart, childOf);
         seenEpoch.assign(parts.size(), 0);
         seenTick = 0;   // 0 means "no walk has run", so the fresh vector starts clean
     }
