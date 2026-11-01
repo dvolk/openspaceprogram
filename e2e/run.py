@@ -233,6 +233,14 @@ DRAG_RE = re.compile(
     # The lift pair (#454) prints as a unit -- both numbered or both dashed
     # (src/tick.cpp) -- so it is one optional group, not two.
     r"(?:\s+(?:CLa=([-\d.e+]+) m2/rad|CLa=-)\s+(?:SM=([-\d.e+]+) m|SM=-))?"
+    # #455: the lifting/steering surfaces' OWN form-drag CdA, printed last so every
+    # older parser keeps working. Before it, that bill was inside A=/Cd= -- mixed
+    # into the hull's union at the hull's cd mean -- so a case could not tell "the
+    # body is blunt" from "the wings are being charged as plates".
+    r"(?:\s+Profile=([-\d.]+) m2)?"
+    # #455: the lever of the COMBINED form drag (hull + surfaces), signed, printed
+    # numbered or dashed -- one group, not two, because it prints as one reading.
+    r"(?:\s+(?:FormCp=([-\d.e+]+) m|FormCp=-))?"
 )
 # --drag-log's control surfaces (src/tick.cpp): one [ctrl] line under each [drag]
 # line, one "name[index](axis)=±deg" term per surface the aero pass scored. It
@@ -928,7 +936,7 @@ def parse_drag(out):
     rows = []
     for m in DRAG_RE.finditer(out):
         (t, alt, rho, v, F, L, lup, up, tau, cd, a, aoa, chute, ind,
-         beta, cpl, cla, sm) = m.groups()
+         beta, cpl, cla, sm, profile, formcp) = m.groups()
         row = {
             "t": float(t), "alt": float(alt), "rho": float(rho),
             "v": float(v), "F": float(F), "cd": float(cd),
@@ -962,6 +970,15 @@ def parse_drag(out):
             row["cla"] = float(cla)
         if sm is not None:
             row["sm"] = float(sm)
+        # #455: the surfaces' own form-drag CdA. Production always prints it (0.00
+        # for a hull with no lifting or steering parts); the regex group is optional
+        # only so a captured line from before #455 still parses.
+        if profile is not None:
+            row["profile"] = float(profile)
+        # The combined form-drag lever (#455): metres along the nose from the COM,
+        # + = ahead (diverging). None when the line dashed it for want of a flow.
+        if formcp is not None:
+            row["formcp"] = float(formcp)
         rows.append(row)
     return rows
 

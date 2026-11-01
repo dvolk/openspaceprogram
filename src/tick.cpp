@@ -552,6 +552,25 @@ void tick(Game &g) {
                 } else {
                     printf(" CLa=- SM=-");
                 }
+                /* #455: what the lifting and steering parts pay for their SHAPE, in
+                   the same CdA units as Chute= and Induced=. Before this they paid it
+                   inside A=, mixed into the hull's union at the hull's cd mean; now
+                   A=/Cd= describe the body alone and this is the rest of the bill.
+                   Read the two together: a winged airframe's total form drag is
+                   Cd*A + Profile, and its Induced= is charged on top of that, once. */
+                printf(" Profile=%.2f m2", g.ship->lastSurfCdA);
+                /* #455: the lever of that combined form drag -- hull union plus
+                   every surface's own bill, weighted by the CdA each pays. CpL above
+                   is the HULL's answer and went narrower the moment the surfaces left
+                   the union; this is the one that says whether a tail 3 m aft is
+                   holding the airframe straight. Signed like SM: + = cp ahead of the
+                   COM (an angle of attack drives the nose further in), - = behind it.
+                   Dashed with no usable flow, the same test as CpL. */
+                if(g.ship->lastDragAlphaValid) {
+                    printf(" FormCp=%+.2f m", g.ship->lastFormCpLever);
+                } else {
+                    printf(" FormCp=-");
+                }
                 printf("\n");
                 // Control surfaces' applied deflections.
                 if(!g.ship->lastControlDeflections.empty()) {

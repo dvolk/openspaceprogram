@@ -5,21 +5,21 @@
 # R then T then W, --drag-log; the log samples on wall-clock, so the exact rows
 # drift a little run to run -- pin the order, not the seconds):
 #
-#   t=5.9  AoA   0.6   |L|    103 N |tau|    68 Nm  CLa  95.99  Ind  0.02  SM +0.64
-#   t=6.9  AoA   9.6   |L|   1203 N |tau|   832 Nm  CLa  94.59  Ind  4.06  SM +0.64
-#   t=7.9  AoA  25.4   |L|   1799 N |tau|  1413 Nm  CLa -58.54  Ind 13.72  SM +0.64  <-- inside the droop
-#   t=9.0  AoA  42.9   |L|      0 N |tau|   303 Nm  CLa   0.00  Ind  0.00  SM -      <-- past 2x stall
-#   t=10.0 AoA  58.2   |L|      0 N |tau|   431 Nm  CLa   0.00  Ind  0.00  SM -
+#   t=5.9  AoA   0.6   |L|    104 N |tau|    69 Nm  CLa  95.99  Ind  0.02  Profile   0.72  SM +0.64
+#   t=6.9  AoA   9.8   |L|   1243 N |tau|   861 Nm  CLa  94.53  Ind  4.23  Profile   1.45  SM +0.64
+#   t=7.9  AoA  25.6   |L|   1813 N |tau|  1484 Nm  CLa -59.98  Ind 13.55  Profile   5.23  SM +0.64  <-- inside the droop
+#   t=9.0  AoA  42.1   |L|      0 N |tau|   499 Nm  CLa   0.00  Ind  0.00  Profile  11.33  SM -      <-- past 2x stall
+#   t=10.0 AoA  55.8   |L|      0 N |tau|   691 Nm  CLa   0.00  Ind  0.00  Profile  16.76  SM -
 #
 # Three things happen in that order and all three are pinned here:
 #  1. the swing GROWS. Every sample is further off the flow than the one before
-#     it, so the wheels are losing: |tau| peaks at 1413 N m against the shipped
+#     it, so the wheels are losing: |tau| peaks at 1484 N m against the shipped
 #     wheel's budget, which is #399/#403's whole complaint, not a settling
 #     airframe;
-#  2. CLa turns NEGATIVE at AoA 25.4, inside the droop between stall_angle (20.1
+#  2. CLa turns NEGATIVE at AoA 25.6, inside the droop between stall_angle (20.1
 #     deg) and twice it -- #487's band, where a rotating surface feeds its own
 #     swing instead of damping it;
-#  3. by AoA 42.9 the wings are past 2x stall_angle, where liftCurve is
+#  3. by AoA 42.1 the wings are past 2x stall_angle, where liftCurve is
 #     identically zero: lift is exactly 0.00 N, CLa 0.00, Induced 0.00 and SM
 #     DASHES because there is no slope to divide by. The airframe has stopped
 #     being a wing. The Induced row is #462's pairing, which #504 asked to get
@@ -42,19 +42,27 @@ CHECK any(d["F"] > 0 and d["rho"] > 0 for d in drag)
 CHECK max(abs(d.get("aoa", 0.0)) for d in drag) > 30
 # Only over rows where air actually pushed: the pad row prints A=0.00, and a
 # comparison against zero is satisfied by any shape at all (the same trap the
-# Cd check below documents).
+# Profile check below documents).
 CHECK (lambda ds: (ds and max(d["a"] for d in ds) > min(d["a"] for d in ds) * 1.05))([d for d in drag if d.get("aoa") is not None and d.get("a") is not None and d["F"] > 0.0])
-# The area-weighted Cd mean moves as the airframe turns -- but NOT monotonically,
-# which is worth pinning as loudly as the fact that it moves at all. Nose-on it is
-# 0.78; it DIPS to 0.66 near |AoA| 26 deg, where the wings (cd 0.2 nose-on) take
-# over the area weighting as their planforms come into the wind, then climbs to
-# 0.82 by 58 deg with the pod and fins leading. This check used to compare the
-# widest-AoA row against the narrowest and require a 5% rise: with #463's mount
-# fix the far end of the swing reaches 4.7%, and the row it compared against was a
-# pad row whose flow direction is meaningless (|F| = 0). So pin the spread over the
-# rows where air actually pushed: the Cd in [drag] is a property of the PART MIX
-# facing the flow, not of the shape alone.
-CHECK (lambda ds: (ds and max(d["cd"] for d in ds) > min(d["cd"] for d in ds) * 1.05))([d for d in drag if d.get("aoa") is not None and d.get("cd") is not None and d["F"] > 0.0])
+# WHAT USED TO BE THE Cd SPREAD, and where the shape story went. The area-weighted
+# Cd mean used to move 0.78 -> 0.66 -> 0.82 across this swing, because the wings
+# (cd 0.2 nose-on then) entered and left the area weighting as their planforms came
+# into the wind. #455 took the lifting and steering parts out of that mean entirely,
+# so Cd= is now the BODY's mix and it barely moves: 0.838 nose-on, 0.859 at 55.8 deg
+# -- 2.5%, from the pod and fins presenting more of themselves as the airframe turns.
+# The old CHECK (a 5% spread on Cd) stopped being a pin and became an accident, so it
+# is gone. What grows across the same swing instead is the surfaces' own bill:
+# Profile= goes 0.72 -> 16.76 m2 of CdA, a 23x climb, because the planforms turn to
+# the wind and the cd blend walks from the authored 0.03 toward the 1.0 side value.
+# That is the airframe's shape in the log -- it just no longer pretends a wing is a
+# blunt body. Filter matters: the pad row prints a Profile off a zero flow direction
+# (12.16 m2 with |F| = 0), the same trap the A check above documents.
+CHECK (lambda ds: (ds and max(d["profile"] for d in ds) > min(d["profile"] for d in ds) * 8.0))([d for d in drag if d.get("profile") is not None and d.get("aoa") is not None and d["F"] > 0.0])
+# The body's Cd mean stays inside the mix the parts catalogue implies -- pod 0.35
+# forward, tank and engine ~1.0, area-weighted to 0.84 nose-on and 0.86 broadside.
+# Nothing here should move much, and if it starts to, a part's silhouette is being
+# counted that should not be in the union at all.
+CHECK all(0.75 < d["cd"] < 0.95 for d in drag if d.get("cd") is not None and d["F"] > 0.0)
 # --- #452: what the swing actually does, in the three steps the header table
 # measures. The samples are wall-clock gated, so count rows rather than matching
 # them to seconds.

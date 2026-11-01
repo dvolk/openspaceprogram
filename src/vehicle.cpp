@@ -2235,11 +2235,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastDragArea = 0.0;
     lastDragCd = 0.0;
     lastCpLever = 0.0;
+    lastFormCpLever = 0.0;
     lastLiftSlope = 0.0;
     lastStaticMargin = 0.0;
     lastStaticValid = false;
     lastChuteCdA = 0.0;
     lastInducedCdA = 0.0;
+    lastSurfCdA = 0.0;
     lastControlDeflections.clear();  // a no-air substep reports no steering
     // Fins swing back to neutral whenever this substep produces no steering
     // (vacuum, no-atmosphere body, below sea level, --drag-cd 0). Same sweep
@@ -2348,6 +2350,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     glm::dvec3 ftotal(0.0);
     glm::dvec3 lift_total(0.0);
     glm::dvec3 moment(0.0);
+    /* #455: where the airframe's FORM drag pushes, counted over everything that
+       pays it -- the hull union below and each surface's own planform bill. Weighted
+       by CdA, because that is what the force is made of. lastCpLever keeps the hull's
+       own answer; lastFormCpLever is the one that says whether the tail is holding the
+       airframe straight. */
+    double formCdA = 0.0;
+    double formCdArm = 0.0;
 
     // Node fill (#463): the union at one flow direction, projected through that
     // direction's own plane. Separate scratch because the CURRENT direction's
@@ -2358,6 +2367,12 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         aeroSilNode.reserve(parts.size());
         for(Part *p : parts) {
             if(p->body == nullptr || p->body->hullVerts.empty()) { continue; }
+            /* #455: a lifting or steering part is not body. The chart's cells are
+               the union this law charges, so the exclusion has to apply here too --
+               a node filled WITH the wings and queried WITHOUT them would answer the
+               cache with an area the force never pays. */
+            if(p->def != nullptr
+               && isAeroSurface(p->def->lift_area, p->def->control_area)) { continue; }
             aeroSilNode.emplace_back();
             projectPartHull(p->body->hullVerts, p->localRot, p->localPos, pl,
                             aeroSilNode.back());
@@ -2427,6 +2442,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         }
         for(Part *p : parts) {
             if(p->body == nullptr || p->body->hullVerts.empty()) { continue; }
+            /* #455: surfaces are billed below, at their own place, on their own
+               planform. Excluding them here is what makes A_ship, lastDragCd and cp
+               BODY properties: the jet used to print A=4.32 with Cd=0.77, where the
+               0.77 was dragged down from ~0.9 by two wings whose 0.4 m2 of edge-on
+               mesh sat in the same average as a 3.1 m2 fuel tank. The area the two
+               conventions share is a coincidence of the same word. */
+            if(p->def != nullptr
+               && isAeroSurface(p->def->lift_area, p->def->control_area)) { continue; }
             // hullVerts are part-local: projectPartHull carries them through the
             // mount into the SHARED plane, so a wing 4 m off the centreline lands
             // 4 m off the centreline in the union. (Its own area is translation-
@@ -2519,6 +2542,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         if(cpArea > 0.0) { cp /= cpArea; }
         else { cp = com; }  // degenerate: no per-part area -> act through the COM
         lastCpLever = glm::dot(cp - com, nose);   // + = cp ahead: AoA push diverges
+        /* The hull's share of the airframe's form-drag cp (#455), weighted by the
+           CdA this substep actually charges it -- the same product the force below
+           is built from, not the sum of the parts' areas. */
+        {
+            const double hullCdA = drag_cd * lastDragCd * A_ship;
+            formCdA += hullCdA;
+            formCdArm += hullCdA * lastCpLever;
+        }
         if(aeroDump == 1) {
             aeroDump = 0;
             const glm::dvec3 rc = cp - com;
@@ -2568,6 +2599,79 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                 lastForceVecs.push_back({ rcp, fdrag, kForceDrag });
             }
         }
+    }
+
+    /* SURFACE FORM DRAG (#455): every part the hull union just refused pays here --
+       on the planform its author declared rather than on whatever silhouette the
+       mesh happens to throw at the flow, and AT ITSELF rather than at the hull's
+       center of pressure. Three things change and they are one change:
+        - the AREA is the planform (lift_area / control_area), the same number the
+          lift law below is paid on. A wing edge-on is 0.4 m2 of mesh and 8 m2 of
+          wing; the 8 is the one that means something, and charging the projection
+          instead was the double bill this issue is about.
+        - the COEFFICIENT is the same three-anchor blend (partCd) read at the flow
+          the surface itself stands in (#483): at cruise that is the authored
+          profile cd, and broadside the blend walks to cd_side and the surface pays
+          its planform as the plate it is. There is deliberately no alpha-linear
+          plate term here on top of the induced term below -- turning the flow
+          downward is charged once, as inducedCd.
+        - the PLACE is the mount, answering to w x r there. A surface the airframe
+          rotates through the air therefore damps the rotation on its own; the hull
+          term cannot do that for a surface, because it answers at one cp for the
+          whole ship (#486). On the jet that is the difference between 15 m2 of
+          stalled wing pushing on nothing and pushing 3 m off the roll axis. */
+    {
+        for(Part *p : parts) {
+            if(p->def == nullptr) { continue; }
+            const PartDef *d = p->def;
+            /* One part, one area: shipdef.cpp refuses a part with both, so this is
+               a choice between "lifting surface" and "steering surface", never a
+               sum (#551 would merge those two laws, not this test). */
+            const double ref = (d->lift_area > 0.0) ? d->lift_area : d->control_area;
+            /* The same predicate the two silhouette loops above use to SKIP this part:
+               a part is charged as a body or as a surface, never as both, and the one
+               function decides which. */
+            if(!isAeroSurface(d->lift_area, d->control_area)) { continue; }
+            const glm::dvec3 ri = partPosS(p) - com;
+            const LocalFlow lf = localFlow(vrel, w, ri, rho);
+            if(!(lf.vp2 > 0.0)) { continue; }
+            const double vpl = std::sqrt(lf.vp2);
+            /* cd at the surface's OWN incidence, not the COM's: the sweep that
+               makes this law damp a rotation also tilts the flow this part sees.
+               The rotation matters twice over here. lf.vp is an S-frame vector and
+               partCd wants the part's axes as its author declared them, which are
+               SHIP-LOCAL -- so the flow comes to them, not the other way round (the
+               hull loop above does the same with vhatS = transpose(sRot) * vhat, and
+               getting this backwards reads a ship's cd off its attitude relative to
+               the world rather than relative to its own air: measured 0.633 against
+               a true 1.000 on a jet flying dead straight down its own nose). */
+            const glm::dvec3 flowLocal = glm::transpose(sRot) * (lf.vp / vpl);
+            const double cd = partCd(d->drag_forward, d->drag_side, d->drag_backward,
+                                     glm::dot(p->localRot[2], flowLocal));
+            if(!(cd > 0.0)) { continue; }
+            const double cda = drag_cd * ref * cd;
+            const glm::dvec3 fprof = -(lf.vp / vpl) * (lf.q * cda);
+            ApplyForce(hull, ri, fprof);
+            moment += glm::cross(ri, fprof);
+            ftotal += fprof;
+            /* A CdA, like Induced= and Chute= on the [drag] line: not a force, and
+               not this surface's force divided by the ship's q either (#483 gives
+               each surface its own). */
+            lastSurfCdA += cda;
+            /* ... and it pushes HERE, which is the half the hull's cp never saw:
+               a fin 3 m aft is a stabilizer whether or not the hull's own cp is
+               anywhere near it. */
+            formCdA += cda;
+            formCdArm += cda * glm::dot(ri, nose);
+            if(recordForceVecs) {
+                lastForceVecs.push_back({ ri, fprof, kForceSurfDrag });
+            }
+        }
+        /* + = the airframe's form drag sits AHEAD of the COM (an angle of attack
+           drives the nose further in), - = behind it (the weathervane restores).
+           Hull and surfaces weighted by what each one pays, so a tail fin counts at
+           its own arm instead of being averaged into a hull silhouette (#455). */
+        lastFormCpLever = (formCdA > 0.0) ? (formCdArm / formCdA) : 0.0;
     }
 
     // CHUTE drag (PartDef.chute_area): a FIXED Cd·A per chute. The deployed canopy is

@@ -1133,9 +1133,9 @@
       "cl": 6.0,
       "stall_angle": 0.35,
       "drag": 0.1,
-      "drag_forward": 0.2,
+      "drag_forward": 0.03,
       "drag_side": 1.0,
-      "drag_backward": 0.2
+      "drag_backward": 0.03
     },
     {
       "name": "wing_r3h1.8",
@@ -1150,9 +1150,9 @@
       "cl": 6.0,
       "stall_angle": 0.35,
       "drag": 0.1,
-      "drag_forward": 0.2,
+      "drag_forward": 0.03,
       "drag_side": 1.0,
-      "drag_backward": 0.2
+      "drag_backward": 0.03
     },
     {
       "name": "wing_r1h1",
@@ -1167,9 +1167,9 @@
       "cl": 6.0,
       "stall_angle": 0.35,
       "drag": 0.1,
-      "drag_forward": 0.2,
+      "drag_forward": 0.03,
       "drag_side": 1.0,
-      "drag_backward": 0.2
+      "drag_backward": 0.03
     },
     {
       "name": "wing_r0.7h1",
@@ -1184,9 +1184,9 @@
       "cl": 6.0,
       "stall_angle": 0.35,
       "drag": 0.1,
-      "drag_forward": 0.2,
+      "drag_forward": 0.03,
       "drag_side": 1.0,
-      "drag_backward": 0.2
+      "drag_backward": 0.03
     },
     {
       "name": "rudder",
@@ -1203,9 +1203,9 @@
       "max_deflection": 0.35,
       "stall_angle": 0.26,
       "drag": 0.1,
-      "drag_forward": 0.2,
+      "drag_forward": 0.03,
       "drag_side": 1.0,
-      "drag_backward": 0.2
+      "drag_backward": 0.03
     },
     {
       "name": "rudder_r0.6h0.8",
@@ -1222,9 +1222,9 @@
       "max_deflection": 0.35,
       "stall_angle": 0.26,
       "drag": 0.1,
-      "drag_forward": 0.2,
+      "drag_forward": 0.03,
       "drag_side": 1.0,
-      "drag_backward": 0.2
+      "drag_backward": 0.03
     },
     {
       "name": "elevator",
@@ -1241,9 +1241,9 @@
       "max_deflection": 0.35,
       "stall_angle": 0.26,
       "drag": 0.1,
-      "drag_forward": 0.2,
+      "drag_forward": 0.03,
       "drag_side": 1.0,
-      "drag_backward": 0.2
+      "drag_backward": 0.03
     },
     {
       "name": "elevator_r0.8h0.7",
@@ -1260,9 +1260,9 @@
       "max_deflection": 0.35,
       "stall_angle": 0.26,
       "drag": 0.1,
-      "drag_forward": 0.2,
+      "drag_forward": 0.03,
       "drag_side": 1.0,
-      "drag_backward": 0.2
+      "drag_backward": 0.03
     },
     {
       "name": "aileron",
@@ -1279,9 +1279,9 @@
       "max_deflection": 0.35,
       "stall_angle": 0.26,
       "drag": 0.1,
-      "drag_forward": 0.2,
+      "drag_forward": 0.03,
       "drag_side": 1.0,
-      "drag_backward": 0.2
+      "drag_backward": 0.03
     },
     {
       "name": "chute",

@@ -1,5 +1,5 @@
 NAME skiff-trim-and-weathervane
-CLAIM A 552 kg airframe built to the #490 arithmetic -- 21.6 m2 of AR-3.33 wing 0.34 m behind the CG, a 4 m2 tailplane set to -5 deg incidence 2.0 m back, a fixed fin 2.2 m back -- holds 7000 m at 79 m/s inside 16 m with the stick released, keeps +2.6 deg of angle of attack through throttle-off AND a 1 s rudder kick, weathervanes that kick from 7.7 deg back to zero, and keeps its centre of pressure 0.69-0.81 m behind the CG the whole time.
+CLAIM A 552 kg airframe built to the #490 arithmetic -- 21.6 m2 of AR-3.33 wing 0.34 m behind the CG, a 4 m2 tailplane set to -5 deg incidence 2.0 m back, a fixed fin 2.2 m back -- holds +2.6 deg of angle of attack through throttle-off AND a 1 s rudder kick, weathervanes that kick from 8.6 deg back to zero, and keeps its form-drag centre 0.58-0.65 m behind the CG the whole time. Since #455 it does NOT quite hold 7000 m at 79 m/s any more: it flies 76-78 m/s and sinks 4.4 m/s at the same throttle schedule, because the wing's planform now pays 1.10 m2 of profile CdA that the old silhouette union hid inside its 0.75 m2.
 KIND golden
 ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
 ARGS --sim-steps 3000 --drag-log --mass-log
@@ -9,8 +9,18 @@ EXPECT [mass]
 CHECK len(drag) >= 40
 # The airframe, from the [mass] row: 11 parts, 552.3 kg. That is the #490 audit's
 # prescription measured against the shipped glider's 1417 kg and 4.14 m2 of hull CdA:
-# this hull is 0.75 m2 (the [drag] line's Cd 0.42 x A 1.75 m2 at AoA 0) for a quarter
+# this hull was 0.75 m2 (the [drag] line's Cd 0.42 x A 1.75 m2 at AoA 0) for a quarter
 # of the mass, so the two lifting surfaces carry the load instead of the fuselage.
+# RE-BASELINED by #455, and it is the audit's own arithmetic that moved: the BODY's
+# silhouette is now 0.80 m2 at Cd 0.660, i.e. 0.53 m2 of CdA -- taking the union out
+# from under the wings and tail dropped it from 1.75 m2 -- and the 28.6 m2 of planform
+# this ship carries pays 1.10 m2 of Profile= instead (an authored profile cd of 0.03,
+# walked to ~0.038 by the tailplane's incidence). The Cd mean climbs 0.42 -> 0.660 for
+# the same reason in reverse: those planform silhouettes used to dilute it. Total form
+# CdA at the trim angle:
+# 1.63 m2, against 0.75 m2 before. The airframe is not 2.2x draggier because the air
+# changed; it is 2.2x draggier because the bill is now itemised and the item the old
+# union left out is the wing's own.
 CHECK mass[0]["parts"] == 11
 CHECK 545.0 < mass[0]["mass"] < 560.0
 # The bed. flying-slow starts a ship at 0.08 of air-relative circular speed, 180 m/s
@@ -20,12 +30,23 @@ CHECK 545.0 < mass[0]["mass"] < 560.0
 # what the case measures is the airframe rather than the launch.
 # LEVEL FLIGHT, hands off (no W/S/A/D at any point; R is the throttle and T only latches
 # the engine, which releaseControl() starts shut). Throttle up at 0.5 s, latched from
-# 0.5 to 20.5 s: altitude stays inside 16 m of the 7000 m it spawned at, and speed
-# inside 0.6 m/s of 79. Lift 5.15-5.56 kN against a 5.42 kN weight, i.e. the wing is
-# holding the aeroplane up, not the engine.
-CHECK all(6960.0 < d["alt"] < 7040.0 for d in drag if 5 <= d["t"] <= 20)
-CHECK all(78.0 < d["v"] < 80.0 for d in drag if 5 <= d["t"] <= 20)
-CHECK all(0.90 * mass[0]["mass"] * 9.81 < d["L_up"] < 1.10 * mass[0]["mass"] * 9.81 for d in drag if 5 <= d["t"] <= 20)
+# 0.5 to 20.5 s. BEFORE #455 this block read "altitude inside 16 m of 7000 m, speed
+# inside 0.6 m/s of 79, lift 5.15-5.56 kN against a 5.42 kN weight" -- the wing holding
+# the aeroplane up. It no longer does that, and the honest statement is: 6932-6997 m,
+# 76.4-78.4 m/s, lift 4.88-5.18 kN against the same 5.42 kN weight, i.e. 90-96% of it,
+# a 4.4 m/s sink. 0.88 m2 of extra form CdA is ~0.9 kN more drag at 77 m/s in this
+# air; the lift shortfall that turns into sink is 0.5 kN, and the trim angle is fixed
+# at +2.6 deg by the mount incidence, so the airframe cannot buy the q back with more
+# angle -- it has to find it in denser air, which is why it descends. A longer throttle
+# ramp does not buy much: 8 s of R instead of 3 s adds a few metres to the top of the
+# run and leaves the sink where it is.
+# THIS IS A SHIP PROBLEM, NOT A TEST PROBLEM: under the honest bill this airframe's
+# service ceiling at its shipped engine has moved under 7000 m. The fix belongs with
+# the yardstick pass (#490's second half: re-derive the area/thrust/AR budget against
+# the itemised drag), not with loosening these bands past the measurement.
+CHECK all(6920.0 < d["alt"] < 7010.0 for d in drag if 5 <= d["t"] <= 20)
+CHECK all(76.0 < d["v"] < 79.0 for d in drag if 5 <= d["t"] <= 20)
+CHECK all(0.88 * mass[0]["mass"] * 9.81 < d["L_up"] < 1.10 * mass[0]["mass"] * 9.81 for d in drag if 5 <= d["t"] <= 20)
 # TRIM. AoA reads 2.6 deg on every row from t=1 to t=50 -- powered, gliding, and
 # through the sideslip transient, where it reaches 2.8 at worst. There is no `trim`
 # field in the ship def, and this law has no surface pitching moment and no alpha term
@@ -36,37 +57,56 @@ CHECK all(0.90 * mass[0]["mass"] * 9.81 < d["L_up"] < 1.10 * mass[0]["mass"] * 9
 # design note that trim is a standing angle, not a control input, made physical).
 CHECK all(2.3 < d["aoa"] < 3.2 for d in drag if d["t"] >= 5)
 # GLIDE. The throttle latch releases at 20.5 s and nothing else is pressed. The ship
-# slows to 62 m/s, dips, trades the height back to 79 m/s, and settles into a steady
-# ~22 m/s sink at 78-79 m/s -- 3.5:1, against the shipped pair's 1.2:1 -- still at the
+# slows to 63 m/s, dips, trades the height back to 76 m/s, and settles into a steady
+# ~27 m/s sink at 74-76 m/s -- 2.8:1, against the shipped pair's 1.2:1 -- still at the
 # same angle of attack, still upright, never below 55 m/s in the exchange.
+# RE-BASELINED by #455 from ~22 m/s / 3.5:1. The glide ratio is the same arithmetic as
+# the drag bill: 1.92 m2 of total CdA (1.63 form + 0.29 induced) against 4.9 kN of lift
+# at 76 m/s is 2.5-2.8:1, where the single-account law billed 1.03 m2 and got 4.8:1.
+# The airframe still out-glides the shipped pair by better than 2:1; it is 2.2x less
+# efficient than it was credited with, for the same reason the level-flight block above
+# says it no longer holds altitude.
 CHECK min(d["v"] for d in drag if d["t"] >= 22) > 55.0
 CHECK all(d["alt"] > 5800.0 for d in drag)
 CHECK all(d["up"] > 0.85 for d in drag if d["t"] >= 5)
-# WEATHERVANE. One 1 s rudder press at 25 s, nothing held: Beta -8.9, 4.8, -0.0,
-# -3.4, 4.3, -3.1, 1.2, ... -- back inside 1 deg by t=40, and AoA never left the
-# band above while it happened. The shipped jet with a rudder HELD sits at 83 deg
-# of sideslip (#482), with a tenth the area here. The difference is not the rudder:
-# this hull's 1.75 m2 stands 0.69-0.81 m BEHIND the CG, so its own form drag pulls
-# the nose back into the flow, and CpL (#486's lever) grows to -0.82 m at the worst
-# row, which makes the restoring strongest exactly when it is needed.
+# WEATHERVANE. One 1 s rudder press at 25 s, nothing held: Beta -8.6, 4.8, -0.6,
+# -2.3, 3.2, -2.5, 1.2, ... -- back inside 1 deg by t=40, and AoA never left the
+# band above while it happened. The shipped jet with a rudder HELD sits at 64 deg
+# of sideslip (#482, #455), with a tenth the area here. The difference is not the rudder:
+# the airframe's form drag sits BEHIND the CG, so it pulls the nose back into the
+# flow, and the lever grows exactly when the airframe needs it.
 # RE-BASELINED by #503: the kick used to throw it 13.4 deg, because a rudder pinned
 # at its travel stop was billed 1.6x the force the same plate makes in air.
+# RE-BASELINED by #455, which is where this paragraph's number went. CpL used to
+# carry the whole claim (0.69-0.81 m behind the CG, -0.82 m at the worst row) because
+# the union that produced it included the wings and the tail. CpL is now the BODY
+# alone: -0.20 m at the trim angle, -0.28 m at the worst row, on a 0.80-0.93 m2
+# silhouette -- still aft, still restoring, but only a third of the story. The other
+# two thirds is in FormCp=: the tailplane's 4 m2, the fin's 1.4 m2 and the elevators'
+# 1.12 m2 pay their profile CdA at 2 m and more behind the CG, so the airframe's
+# form-drag centre sits 0.58 m back at rest and 0.65 m back on the kick row. That is
+# where this airframe's weathervane actually lives, and it is the same fact the #490
+# audit wrote down with the wrong label on it.
 CHECK max(abs(d["beta"]) for d in drag if d["t"] >= 24) > 5.0
 CHECK max(abs(d["beta"]) for d in drag if d["t"] >= 40) < 1.0
-CHECK all(d["cpl"] < -0.5 for d in drag if d["cpl"] is not None)
-CHECK max(abs(d["cpl"]) for d in drag if d["cpl"] is not None) > 0.75
+CHECK all(d["formcp"] < -0.5 for d in drag if d.get("formcp") is not None)
+CHECK max(abs(d["formcp"]) for d in drag if d.get("formcp") is not None) > 0.6
+CHECK all(d["cpl"] < 0.0 for d in drag if d["cpl"] is not None)
 # #462's coupling still holds on a real airplane: every substep that lifts pays induced
 # drag, and it pays the WING'S OWN aspect ratio (2 x 3.0 m half-span per part = 6 m over
 # a 1.8 m chord = AR 3.33), not the whole ship's. It also jumps with the sideslip
-# (0.29 -> 0.89 m2 on the kick row) because the fins present their edges -- the term
+# (0.29 -> 0.86 m2 on the kick row) because the fins present their edges -- the term
 # reads the surface's own flow, #483. RE-BASELINED by #503 (the kick row was 1.35; the
 # sideslip that drove it is smaller now that a full-lock rudder is a stalled plate
 # rather than a linear one) and by #494 (0.761 -> 0.894, the rudder's own bill being
-# 1.2 x 0.48 m2 x 1.335^2 / (pi x 0.8 x 3.0) = 0.136 m2 at the travel stop).
+# 1.2 x 0.48 m2 x 1.335^2 / (pi x 0.8 x 3.0) = 0.136 m2 at the travel stop). #455
+# leaves it at 0.860 and the hands-off rows at 0.289: the induced term was never part
+# of the silhouette union, so taking the surfaces out of that union cannot move it
+# except by flying the airframe slightly differently.
 # What #494 did NOT do to this ship is the point worth pinning by hand: every hands-off
 # row reads 0.289 with the bill and 0.289 without it, bit for bit. Nothing is
 # deflected, so nothing is billed -- the bill follows the command, not the lift. This
-# case's two CHECKs do NOT isolate the term (0.76 clears > 0.5 on its own); flight/492
+# case's two CHECKs do NOT isolate the term (0.86 clears > 0.5 on its own); flight/492
 # pins a trimmed tab's standing 0.447 and flight/458-glider pins Induced following the
 # key.
 CHECK all(d["induced"] > 0.0 for d in drag if d["L"] > 1.0)

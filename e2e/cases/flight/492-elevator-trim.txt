@@ -1,5 +1,5 @@
 NAME elevator-trim
-CLAIM The same 552 kg airframe as skiff, with the tailplane's 5 deg of mount incidence REMOVED and 12 deg of elevator TRIM authored on the part instances instead, stays inside 6960-7120 m at 74-81 m/s while powered with the stick released, stays at +2.2..+3.1 deg of angle of attack on every row of a 50 s run, holds -12.0/+12.0 deg of elevator deflection with no key pressed, and reads the tail at the wing's own angle of attack (within 0.4 deg) -- so the download that trims this airframe now comes from deflection rather than from how the surface was bolted on.
+CLAIM The same 552 kg airframe as skiff, with the tailplane's 5 deg of mount incidence REMOVED and 12 deg of elevator TRIM authored on the part instances instead, stays inside 6941-7001 m at 73.9-76.1 m/s while powered with the stick released (since #455, 100 m lower and 3 m/s slower than it used to be), stays at +2.4..+2.6 deg of angle of attack on every row of a 50 s run, holds -12.0/+12.0 deg of elevator deflection with no key pressed, reads the tail at the wing's own angle of attack (within 0.4 deg), and keeps its form-drag centre 0.58-0.64 m behind the CG -- so the download that trims this airframe now comes from deflection rather than from how the surface was bolted on.
 KIND golden
 ARGS --time-accel 1 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
 ARGS --sim-steps 3000 --drag-log --mass-log
@@ -15,14 +15,21 @@ CHECK mass[0]["parts"] == 11
 CHECK 545.0 < mass[0]["mass"] < 560.0
 # TRIM HELPS WITH NOTHING PRESSED. R ramps the throttle at 0.5 s and T latches the
 # engine until 20.5 s; no W/S/A/D before the 25 s rudder kick. The airframe holds
-# 7006-7087 m while powered at 75.4-79.1 m/s and never left +2.4..+2.9 deg of AoA in
+# 6941-7001 m while powered at 73.9-76.1 m/s and never left +2.4..+2.6 deg of AoA in
 # the whole 50 s -- including through the sideslip and the glide. The untrimmed,
 # unincided version of this ship (#492's repro) sits at AoA exactly 0.0 and sinks:
 # this law gives a control surface no say from its own angle, so with everything
 # symmetric alpha = 0 is the only pitch equilibrium.
+# RE-BASELINED by #455 from 7006-7087 m at 75.4-79.1 m/s. The trim itself did not
+# move -- AoA is the same 2.4 deg it always was, and the deflection rows below still
+# read exactly 12.0 deg -- but 28.6 m2 of planform now pays 1.09 m2 of Profile= on top
+# of
+# the hull's 0.53 m2 of CdA, so this throttle schedule leaves the airframe 100 m lower and
+# 3 m/s slower at the same angle. The airplane part of the claim is intact; the
+# performance part is what the itemised bill costs.
 CHECK len(drag) >= 40
-CHECK all(6960.0 < d["alt"] < 7120.0 for d in drag if 5 <= d["t"] <= 20)
-CHECK all(74.0 < d["v"] < 81.0 for d in drag if 5 <= d["t"] <= 20)
+CHECK all(6920.0 < d["alt"] < 7020.0 for d in drag if 5 <= d["t"] <= 20)
+CHECK all(73.0 < d["v"] < 77.0 for d in drag if 5 <= d["t"] <= 20)
 CHECK all(2.2 < d["aoa"] < 3.1 for d in drag if d["t"] >= 5)
 # WHAT THE TRIM IS DOING, READ OFF THE LOG. Every pitch surface is held at 12.0 deg
 # of travel with no key held, and the mirrored pair carries OPPOSITE signs off one
@@ -41,8 +48,8 @@ CHECK all(c["t"] is not None for c in ctrl)
 CHECK len(surface) == 8 * len(drag)
 CHECK max(abs(a - b) for a,b in zip([s["a"] for s in surface][2::8],[s["a"] for s in surface][0::8])) < 0.4
 CHECK max(abs(a - b) for a,b in zip([s["a"] for s in surface][5::8],[s["a"] for s in surface][0::8])) < 0.4
-# FLIGHT QUALITY: upright throughout, a 60 m/s bottom in the throttle-off exchange with
-# nothing below 6401 m, the hull's weathervane lever still 0.69-0.89 m behind the CG,
+# FLIGHT QUALITY: upright throughout, a 62 m/s bottom in the throttle-off exchange with
+# nothing below 6206 m, the airframe's form-drag centre still 0.58-0.64 m behind the CG,
 # and the wings still paying induced drag on their own aspect ratio.
 # RE-BASELINED by #494's bill, and this is the interesting one: the run now tops out at
 # 7036 m instead of 7097 and bottoms at 6401 instead of 6497. The trimmed tail used to
@@ -50,6 +57,13 @@ CHECK max(abs(a - b) for a,b in zip([s["a"] for s in surface][5::8],[s["a"] for 
 # honest price of a tab held at 12 deg for 20 s. The floor sits at 6350, 50 m under the
 # measurement, because that margin IS the bill: put the free lift back and the whole
 # run drifts up by ~100 m, and the induced pin below fails first anyway.
+# RE-BASELINED again by #455: the top went 7036 -> 7001 and the bottom 6401 -> 6206,
+# because the tail's download is no longer the only thing the tabs cost. Their planform
+# (and the wings', and the fin's) now pays profile CdA at its own mount, which is
+# 1.09 m2 of standing form drag at every angle of attack, and this airframe pays for it
+# in the same currency #494 billed the downwash in -- the honest price of surfaces that
+# turn air is that they also rub it. The floor moves 6350 -> 6150 for the same reason it
+# moved before: that margin IS the bill, now a bigger one.
 # RE-BASELINED by #503 earlier: the TRIM is 12 deg of elevator, INSIDE the surface's
 # 15 deg deflection stall, so this airframe's trimmed state reads exactly as it did
 # before -- the two tabs still bill 2 x 0.56 m2 x 6.0 x 0.2094 rad = 1.41 m2 of q*S.
@@ -57,12 +71,21 @@ CHECK max(abs(a - b) for a,b in zip([s["a"] for s in surface][5::8],[s["a"] for 
 # download; that is the honest end of the sizing question #494 asks.
 CHECK all(d["up"] > 0.85 for d in drag if d["t"] >= 5)
 CHECK min(d["v"] for d in drag if d["t"] >= 22) > 55.0
-CHECK all(d["alt"] > 6350.0 for d in drag)
-CHECK all(-0.95 < d["cpl"] < -0.6 for d in drag if d["cpl"] is not None)
+CHECK all(d["alt"] > 6150.0 for d in drag)
+# The weathervane, itemised (#455). CpL is the BODY's silhouette lever now -- -0.20 m
+# at the trim angle, -0.28 m at the worst row, still aft of the CG but no longer the
+# 0.69-0.89 m this case used to quote, because the wings and tail left that union. The
+# number that carries the old claim is FormCp: the hull's CdA and every surface's
+# planform bill together, 0.58 m behind the CG at rest and 0.64 m on the sideslip row.
+CHECK all(d["cpl"] < 0.0 for d in drag if d["cpl"] is not None)
+CHECK all(-0.72 < d["formcp"] < -0.5 for d in drag if d.get("formcp") is not None)
 CHECK all(d["induced"] > 0.0 for d in drag if d["L"] > 1.0)
 CHECK max(d["induced"] for d in drag) > 0.5
 # THE BILL ITSELF (#494), pinned on the hands-off rows where nothing but the trim is
-# moving: every one of them reads 0.447 m2, and with the deflected surfaces left out of
+# moving: every one of them reads 0.45 m2 (0.447 when this was written; #455 leaves the
+# induced sum alone -- it is computed off the lift loop, never off the silhouette
+# union -- so the 0.003 that moved here is the airframe flying 3 m/s slower, not the
+# bill changing), and with the deflected surfaces left out of
 # the induced sum they read 0.265. The 0.182 m2 difference is the two tabs' own
 # downwash, and it is the same arithmetic the wings use: each surface's own area and its
 # own span, cl taken from the force the control law just made. 12 deg of elevator on

@@ -15,9 +15,10 @@ CHECK len(drag) >= 4
 # the SHIP's commanded axis, because the stick promises a ship torque.
 CHECK any(a["deg"] < -15.0 and b["deg"] > 15.0 for a in ctrl for b in ctrl if a["t"] == b["t"] and a["axis"] == "yaw" and b["axis"] == "yaw" and a["index"] != b["index"])
 # The pair's yaw force survives the mirror. Held full rudder, the airframe is
-# 83 deg side-slipping one second later and stays off the centreline for the
-# rest of the run (Beta: -0.0, 83.0, 4.9, 26.4, 57.9). A/D mirrors it (-0.0,
-# -83.0, -4.9, -26.5, -57.9 -- the fourth row differs in the last printed digit),
+# 64 deg side-slipping one second later and stays off the centreline for the
+# rest of the run (Beta: -0.0, 63.9, 3.2, 46.7, 29.6). A/D mirrors it (-0.0,
+# -63.9, -3.2, -46.7, -29.6 -- to the last printed digit now, which it did not
+# used to be: the fourth row differed by 0.1 deg before #455),
 # so this is the stick and not the pose the bed happened to start in.
 # RE-BASELINED by #503: it used to read 99.9 deg one second after the stick. A
 # surface held at its travel stop (0.35 rad) is now past its own deflection stall
@@ -25,9 +26,30 @@ CHECK any(a["deg"] < -15.0 and b["deg"] > 15.0 for a in ctrl for b in ctrl if a[
 # same held rudder throws the airframe 17 deg less. The authority is still there --
 # three of the four rows stay past 20 deg -- it is just no longer the linear
 # 6.0/rad-to-the-stop law that made a 2 m2 fin out-push the whole airframe.
-CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) > 70.0
+# RE-BASELINED again by #455: 83.0 -> 63.9. The rudders still push exactly as hard
+# as they did -- what changed is what the airframe does about it. Every surface's
+# planform is now billed where it stands, so the fins' own 2 m2 apiece and the
+# wings' 8 m2 apiece add form drag AFT of the CG, and the whole-airframe
+# form-drag centre (FormCp=) walks from -0.36 m nose-on to -1.04 m on the 64 deg
+# row -- 33.1 m2 of form CdA on a 1.04 m lever, split 9.7 m2 of BODY silhouette at
+# -0.37 m and 23.4 m2 of surface profile at longer arms. The airframe weathervanes
+# back into the flow mostly because of the surfaces it carries now. That is the yaw
+# half of
+# #454/#486 getting an honest source. The floor drops 70 -> 50 because the trend
+# across these three
+# law changes is one-directional (99.9, 83.0, 63.9) and each one has been a
+# realism win; the teeth are that a pair which cancels instead of adds reads a
+# Beta of about 0.
+CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) > 50.0
+# The lever, pinned: on the rows where the airframe is off the centreline the
+# form-drag centre is 0.99-1.04 m behind the CG, and on the rows where it is not
+# it is back to -0.36 m. A restoring arm that grows exactly when the airframe
+# needs restoring is the weathervane working; charge the surface bill at the COM
+# and both these checks fail at -0.36 flat.
+CHECK all(-0.45 < d["formcp"] < -0.3 for d in drag if d["beta"] is not None and abs(d["beta"]) < 10.0)
+CHECK min(d["formcp"] for d in drag if d["beta"] is not None and abs(d["beta"]) > 40.0) < -0.95
 # Counted, not phase-matched: three of the four later rows are still well off the
-# centreline. The row that reads 4.9 deg is the sample that happens to catch
+# centreline. The row that reads 3.2 deg is the sample that happens to catch
 # Beta crossing zero, so betting a band on where one 1 s sample lands in the
 # oscillation is a bet on tuning, not on authority (#458's case makes the same
 # point about its own swing). With no rudder input the same airframe never

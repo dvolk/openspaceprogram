@@ -868,6 +868,36 @@ inline double inducedCd(double cl, double span, double area, double oswald = 0.8
     return (cl * cl) / (std::numbers::pi * oswald * ar);
 }
 
+/* Which parts the hull's silhouette union may charge for the air it stops (#455).
+
+   A part that declares an aerodynamic AREA is a SURFACE, not body, and pays its own
+   bill at its own place. This is the line between the two area conventions that live
+   in one catalog (and #478 asks for exactly this sentence, where the next author
+   will look):
+
+     BODY part  -- the union projects the part's MESH against the flow and charges
+                   partCd on THAT projected area. The authored cd is a blunt-body
+                   coefficient (capsule 0.35, tank 1.0): "how much air does this
+                   shape stop".
+     SURFACE    -- the PLANFORM the author declared (lift_area / control_area) times
+                   the same three-anchor cd read at the surface's own incidence. Edge
+                   on, that cd is the profile cd the author declared (0.03 for every
+                   shipped wing and fin); turned broadside the blend walks to 1.0 and
+                   the surface pays its planform as the plate it is.
+
+   What the surface does NOT pay is the planform's projection against the flow. That
+   term is the momentum the surface turns downward, and this law already charges it
+   once, honestly, as inducedCd above. Charging it twice is what #455 measured: the
+   shipped jet's two wings earned 4.2 of CLmax and were billed ~15.5 m2 of flat
+   plate, so the airframe's L/D was a number nobody could quote.
+
+   A part is one or the other, never both -- shipdef.cpp refuses a part carrying both
+   lift_area and control_area. #551 wants THAT split gone (one fin, one law); it does
+   not want this one gone with it. */
+inline bool isAeroSurface(double liftArea, double controlArea) {
+    return liftArea > 0.0 || controlArea > 0.0;
+}
+
 /* The per-part DRAG COEFFICIENT as the part faces the flow: a blend of the three
    declared anchors (nose / side / base) by c = cos(nose axis, flow):
      cd(c) = drag_side·(1−c²) + drag_forward·(max(c,0)²) + drag_backward·(max(−c,0)²)

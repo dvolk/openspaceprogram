@@ -130,15 +130,21 @@ DRAG_CD = {
     "kerbal":         {"drag": 0.5, "drag_forward": 0.5, "drag_side": 0.9,
                        "drag_backward": 0.9},
     # thin plate (wing / control surfaces): chord along the part's own +Z, so
-    # the flow along its chord is the low-drag case and spanwise is blunt
-    "wing":           {"drag": 0.1, "drag_forward": 0.2, "drag_side": 1.0,
-                       "drag_backward": 0.2},
-    "rudder":         {"drag": 0.1, "drag_forward": 0.2, "drag_side": 1.0,
-                       "drag_backward": 0.2},
-    "elevator":       {"drag": 0.1, "drag_forward": 0.2, "drag_side": 1.0,
-                       "drag_backward": 0.2},
-    "aileron":        {"drag": 0.1, "drag_forward": 0.2, "drag_side": 1.0,
-                       "drag_backward": 0.2},
+    # the flow along its chord is the low-drag case and spanwise is blunt.
+    # #455: these four families are LIFTING/STEERING surfaces, so they are out of
+    # the hull silhouette union (drag.h::isAeroSurface) and pay their planform x
+    # this cd instead -- a PLANFORM-referenced profile cd, not the bluff-body Cd
+    # the rest of this table authors. A smooth section is 0.006-0.013 there; 0.03
+    # is a faceted plate, and it is what the yardstick airframe's L/D is currently
+    # paid in (#490's second half re-derives that number rather than this one).
+    "wing":           {"drag": 0.1, "drag_forward": 0.03, "drag_side": 1.0,
+                       "drag_backward": 0.03},
+    "rudder":         {"drag": 0.1, "drag_forward": 0.03, "drag_side": 1.0,
+                       "drag_backward": 0.03},
+    "elevator":       {"drag": 0.1, "drag_forward": 0.03, "drag_side": 1.0,
+                       "drag_backward": 0.03},
+    "aileron":        {"drag": 0.1, "drag_forward": 0.03, "drag_side": 1.0,
+                       "drag_backward": 0.03},
     # parachute: stowed it is the nose-cap silhouette, but the deployed canopy
     # dominates the aero pass (the Cd.A figure lives in EXTRA_FIELDS.chute_area,
     # not here), so it gets its own Cd family rather than nose_cap's.

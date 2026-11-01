@@ -1983,6 +1983,19 @@ void drawUIReadouts(Game &g) {
         } else {
             ImGui::Text("CLa: -   SM: -");
         }
+        /* #455: where the airframe's FORM drag pushes -- the hull's silhouette plus
+           every wing and fin's own planform bill, weighted by the CdA each pays.
+           SM does not cover this half of stability: the tail fins holding a ship
+           straight in a sideslip are form drag at an arm, not lift, and on a stalled
+           or flat airframe they are the only restoring thing left. Sign is the other
+           way round from SM because this one is measured AHEAD of the COM: negative =
+           behind = restoring. */
+        if(ship->lastDragAlphaValid) {
+            ImGui::Text("FormCp: %+.2f m %s", ship->lastFormCpLever,
+                        ship->lastFormCpLever < 0.0 ? "(restoring)" : "(diverging)");
+        } else {
+            ImGui::Text("FormCp: -");
+        }
         ImGui::Text("Acc: %.1fm/s2", ship->feltAccel());
     });
 
@@ -3571,6 +3584,10 @@ static ImU32 forceKindColor(int kind) {
         case Vehicle::kForceChute: return IM_COL32(240, 230, 120, 230);
         case Vehicle::kForceCtrl:  return IM_COL32(200, 140, 255, 230);
         case Vehicle::kForceInduced: return IM_COL32(170, 150, 90, 230);
+        /* Grey, deliberately not in the green/yellow drag family: this arrow is the
+           plate's own shape bill (#455) and sits at the part, so it wants to read as
+           a third thing rather than as a paler shade of the hull's drag. */
+        case Vehicle::kForceSurfDrag: return IM_COL32(190, 190, 190, 230);
         case Vehicle::kForceThrust: return IM_COL32(255, 165, 40, 235);
         default:
             assert(!"unknown force overlay kind");
@@ -3585,6 +3602,7 @@ static const char *forceKindName(int kind) {
         case Vehicle::kForceChute: return "chute";
         case Vehicle::kForceCtrl:  return "control surface";
         case Vehicle::kForceInduced: return "induced drag (at the surface)";
+        case Vehicle::kForceSurfDrag: return "surface form drag (at the surface)";
         case Vehicle::kForceThrust: return "thrust";
         default:                   return "?";
     }

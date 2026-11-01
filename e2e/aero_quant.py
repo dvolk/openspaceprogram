@@ -66,9 +66,20 @@ def flight(presses, timeout, body, ship, cd, autopilot=None):
     cmd = e2e.build_cmd(game, args)
     for p in presses:
         cmd += ["--sim-press", p]
+    # launch_env, not the inherited environment: the e2e harness runs the game with
+    # SDL_VIDEODRIVER=offscreen and DISPLAY dropped. Without it the game cannot open
+    # a window on this machine and exits before the sim starts, and this tool took
+    # that as "no rows" and printed a full report of zeros -- prograde area n/a,
+    # terminal velocity 0 m/s -- which reads like an aerodynamics result.
     proc = subprocess.run(cmd, cwd=REPO, stdout=subprocess.PIPE,
-                          stderr=subprocess.STDOUT, timeout=timeout + 30)
-    return e2e.parse_drag(proc.stdout.decode("utf-8", "replace"))
+                          stderr=subprocess.STDOUT, timeout=timeout + 30,
+                          env=e2e.launch_env(game))
+    rows = e2e.parse_drag(proc.stdout.decode("utf-8", "replace"))
+    if not rows:
+        sys.stderr.write("aero_quant: the game exited %d without one [drag] row; "
+                         "every number in this report is a gap, not a "
+                         "measurement\n" % proc.returncode)
+    return rows
 
 
 def terminal_velocity(rows):
@@ -139,15 +150,24 @@ def report(args, dry, fueled, maxr, ve, flow):
             (pro_area or 0.0) > 0 and broad_area > 2.0 * pro_area)
     else:
         broad_area, max_aoa, tumbling = 0.0, 0.0, False
+        broad_row = None
 
     swing = (broad_area / pro_area) if pro_area else 0.0
     # Terminal velocity theory: 0.5*rho*Cd*A*v^2 = m*g => v = sqrt(2*m*g/(rho*Cd*A)).
     rho0 = 1.225  # Kerbin sea-level density
     if fall:
         rho0 = min(d["rho"] for d in fall if d.get("rho")) or rho0
-    # Real coefficient is --cd (master) x cd_ship (parts' area-weighted mean).
-    vt_pro = math.sqrt(2.0 * fueled * KRB_G / (rho0 * cd * cd_pro * pro_area)) if pro_area else 0.0
-    vt_broad = math.sqrt(2.0 * fueled * KRB_G / (rho0 * cd * cd_broad * broad_area)) if broad_area else 0.0
+    # Since #455 the airframe's form drag is TWO accountings, not one: A=/Cd= are
+    # the BODY alone, and Profile= is the lifting/steering surfaces' own CdA --
+    # already carrying the --drag-cd master scale, so it ADDS rather than getting
+    # multiplied by cd again. Reading A= as the whole airframe used to be right and
+    # is now a silent underestimate of any ship with wings on it.
+    pro_cd_a = (cd * cd_pro * pro_area
+                + (pro_row.get("profile", 0.0) if pro_row else 0.0)) if pro_area else 0.0
+    broad_cd_a = (cd * cd_broad * broad_area
+                  + (broad_row.get("profile", 0.0) if broad_row else 0.0)) if broad_area else 0.0
+    vt_pro = math.sqrt(2.0 * fueled * KRB_G / (rho0 * pro_cd_a)) if pro_cd_a else 0.0
+    vt_broad = math.sqrt(2.0 * fueled * KRB_G / (rho0 * broad_cd_a)) if broad_cd_a else 0.0
     expected_pro = math.pi * maxr * maxr
 
     def line(label, value, unit=""):
@@ -161,7 +181,13 @@ def report(args, dry, fueled, maxr, ve, flow):
     print("-" * 62)
     print(line("prograde area", "%.2f m2" % pro_area if pro_area else "  n/a"))
     print(line("  expected (pi*r^2)", "%.2f m2" % expected_pro))
+    # #455: the body's silhouette and the surfaces' planform bill are separate now,
+    # so the report shows both -- a winged airframe's drag area is the sum.
+    print(line("  surface CdA", "%.2f m2" % (pro_row.get("profile", 0.0)
+                                             if pro_row else 0.0)))
     print(line("broadside area", "%.2f m2" % broad_area))
+    print(line("  surface CdA", "%.2f m2" % (broad_row.get("profile", 0.0)
+                                             if broad_row else 0.0)))
     print(line("area swing", "%.2fx" % swing))
     print("-" * 62)
     print(line("max thrust speed", "%.0f m/s" % max_speed))

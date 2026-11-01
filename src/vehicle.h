@@ -386,8 +386,11 @@ public:
        the air-relative speed clears kAoAFlowFloor. False alpha is not "flying
        straight down the flow" -- it is "there is no flow to have an angle to". */
     bool lastDragAlphaValid = false;
-    double lastDragArea = 0.0;  // silhouette facing the flow (m^2)
-    double lastDragCd = 0.0;  // area-weighted mean of the parts' cds
+    double lastDragArea = 0.0;  // BODY silhouette facing the flow (m^2) -- since
+                                // #455 the union refuses any part with lift_area or
+                                // control_area, so this is what the hull stops, not
+                                // what the airframe presents
+    double lastDragCd = 0.0;    // area-weighted mean of the BODY parts' cds
     /* The hull's weathervane lever: (cp - com) . nose, metres; + = cp AHEAD of the
        COM. #486 made hull drag answer to the flow AT cp, and two different things
        ride on that. The sweep of the flow OPPOSES a rotation whatever the sign of
@@ -396,6 +399,15 @@ public:
        diverges it with cp ahead. Printed as CpL= in the drag log because it is the
        quantity #454's static margin is made of and nothing else shows it. */
     double lastCpLever = 0.0;
+    /* #455's companion to CpL: the lever of the WHOLE airframe's form drag -- the
+       hull union AND every surface's own planform bill, weighted by the CdA each one
+       actually pays. CpL on its own went narrow the moment the surfaces left the
+       union: on the jet the hull's own cp sits 0.09 m AHEAD of the COM (destabilizing)
+       while its rudders and elevators, 3 m aft, are the biggest form-drag areas the
+       airframe has. A tuner reading CpL alone would call that airframe unstable in
+       yaw when the thing holding it straight is the tail. 0 when the pass paid no
+       form drag at all. */
+    double lastFormCpLever = 0.0;
     /* #454, the LIFT half of the same judgement (drag.h::LiftSlopeSum).
        lastLiftSlope is how much lift an angle-of-attack change buys this substep,
        CL·A in m^2/rad (multiply by q for the force) -- it collapses towards zero as
@@ -419,6 +431,12 @@ public:
        free. It rides in lastAeroForce along with the rest of the drag; this is what
        lets the drag log tell blunt form drag from the price of lift. */
     double lastInducedCdA = 0.0;
+    /* The PROFILE Cd·A (m^2) the lifting and steering surfaces owed last substep
+       (#455): planform area x the authored cd read at the surface's own incidence.
+       It is what those parts pay instead of joining the hull union above, so a wing
+       is charged once for its shape (here) and once for its lift (Induced= above),
+       never twice for the same planform. */
+    double lastSurfCdA = 0.0;
 
     /* Last substep's control-surface deflections (--drag-log). */
     struct ControlDeflection {
@@ -710,11 +728,16 @@ public:
        drag a lifting or steering surface pays for turning the flow (#462, #494)
        hangs at THAT surface instead, so it is its own kind (#505) -- sharing one
        kind made the legend call a flap's induced bill "drag (at center of
-       pressure)", which is the one place a player can ask what the arrow is. */
+       pressure)", which is the one place a player can ask what the arrow is.
+       kForceSurfDrag is the same treatment for a surface's own PROFILE bill -- the
+       shape of the plate, not the lift it earns (#455): planform x cd, at the
+       surface. Three kinds of drag on the overlay because there are three places it
+       pushes, and a legend that says "drag" for all three hides where the
+       weathervane is coming from. */
     static constexpr int kForceThrust = 0, kForceRcs = 1, kForceDrag = 2,
                          kForceLift = 3, kForceChute = 4, kForceCtrl = 5,
-                         kForceInduced = 6;
-    static constexpr int kForceKindCount = 7;
+                         kForceInduced = 6, kForceSurfDrag = 7;
+    static constexpr int kForceKindCount = 8;
     std::vector<ForceVec> lastForceVecs;
     bool recordForceVecs = false;
     /* #485: record each surface's own alpha/q (Part::aeroAlphaDeg, aeroQ). The

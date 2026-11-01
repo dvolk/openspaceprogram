@@ -319,7 +319,22 @@ struct PartDef {
     double hull_margin;
 
     /* Aerodynamics (drag.h). All optional; drag_forward/side/backward override
-       the symmetric `drag`. Lift terms: 0 = no lift. */
+       the symmetric `drag`. Lift terms: 0 = no lift.
+
+       TWO AREA CONVENTIONS, and drag.h::isAeroSurface is the line between them
+       (#455, and the sentence #478 asks for):
+         A BODY part (no lift_area, no control_area) is charged on the silhouette
+         its MESH throws at the flow, so its cd is a blunt-body coefficient:
+         capsule 0.35, tank 1.0, engine 0.9.
+         A SURFACE (lift_area or control_area > 0) is charged on the PLANFORM it
+         declares, so its cd is read at the surface's own incidence: drag_forward
+         is then the PROFILE cd -- 0.03 on every shipped wing and fin, the flat-
+         plate value -- and drag_side 1.0 is what it pays when the flow comes over
+         its edge and the plate is all there is. Authoring a blunt anchor (0.2) on
+         a surface made it pay a plate's worth of shape drag on top of the induced
+         drag its lift already bought.
+       `drag` stays the fallback for the three anchors on both kinds. Chute Cd·A is
+       its own term and reads none of these. */
     double drag;          // the part's drag COEFFICIENT (dimensionless)
     double drag_forward;  // cd with the part's NOSE into the flow. Defaults to `drag`.
     double drag_side;     // cd broadside. Defaults to `drag`.
