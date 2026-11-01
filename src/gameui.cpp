@@ -1861,6 +1861,98 @@ void drawUIReadouts(Game &g) {
                 ImGui::EndChild();
             }
         }
+        /* Aero diagnostics: moved out of the SURFACE window, which had
+           grown to a pilot readout plus a physics readout. The fields stay in the
+           same struct and the same [surfinfo] log -- only the WINDOW changed. */
+        if(ship) {
+            /* #450: Beta, the yaw-plane half of the same pair. AeroFrame has computed
+               it every substep since it was written, and until now nothing in the game
+               read it -- the sideslip that decides how a ship behaves sideways reached
+               the forces only implicitly, through the hull silhouette and each part's
+               partCd, with no instrument for it. It is also the number #463's silhouette
+               cache is keyed on next to AoA, so a readout that shows only AoA cannot
+               explain its own drag area. The [drag] line has printed it since #463; this
+               is the pilot-facing one. Dashed on exactly the AoA test: no usable flow
+               (kAoAFlowFloor), no angle. #482 (a held rudder throwing an airframe into a
+               100 deg sideslip) is what this row exists to make visible. */
+            if(ship->lastDragAlphaValid) {
+                ImGui::Text("Beta: %.2f", glm::degrees(ship->lastDragBeta));
+            } else {
+                ImGui::Text("Beta: -");
+            }
+            /* #485: that AoA is ONE attitude number for the whole ship. What the law
+               actually acts on is a set of angles -- each surface's own, from its own
+               mount since #453 and from the flow at its own offset since #483 -- so
+               show the SPREAD across them and how many were read. On a rotating
+               airframe the spread is the point: a twin pair straddles the rotation
+               axis, so its halves differ in SIGN mid-swing. A neutral control surface
+               is counted only while something wants it -- the F4 overlay, --drag-log, or
+               an open part window on that steering part (#492) -- because recording it
+               costs the flow+frame its neutral early-out exists to skip; every lifting
+               surface is always counted. So this line's SPREAD can change when you open
+               a part window; that is not a bug in the spread, it is one more surface
+               having been measured. --drag-log prints the same numbers per
+               surface as [surface], and each surface's own arrow in the overlay carries
+               its own angle. */
+            float amin = 0.0f, amax = 0.0f;
+            int nsurf = 0;
+            for(const Part *p : ship->parts) {
+                if(!p->aeroValid || p->def == nullptr) { continue; }
+                if(p->def->lift_area <= 0.0 && p->def->control_area <= 0.0) { continue; }
+                if(nsurf == 0) { amin = amax = p->aeroAlphaDeg; }
+                else {
+                    amin = std::min(amin, p->aeroAlphaDeg);
+                    amax = std::max(amax, p->aeroAlphaDeg);
+                }
+                ++nsurf;
+            }
+            if(nsurf > 0) {
+                ImGui::Text("Srf: %+.1f..%+.1f x%d", amin, amax, nsurf);
+            } else {
+                ImGui::Text("Srf: -");
+            }
+            /* #499: the two numbers that answer "will this airframe push its nose back
+               into the flow", in the window a pilot is already looking at instead of in
+               a headless --drag-log run. CLa is what one radian of angle of attack buys
+               (CL*A per radian, projected on the ship's up axis, so it dips with AoA);
+               SM is where that change sits, metres BEHIND the COM, + = restoring. Print
+               CLa with it, always: an airframe deep in the stall droop keeps a healthy
+               looking SM while its stiffness collapses, and CLa is the field that says
+               so (#487's band). Outside an atmosphere both are dash -- a vacuum substep
+               measures no aero, and "0.0" would read as "my wings fell off". The VAB
+               quotes the same law with no flight at all (shipdef.h::buildStability). */
+            if(ship->lastDragRho > 0.0) {
+                ImGui::Text("CLa: %.1f m2/rad", ship->lastLiftSlope);
+                if(ship->lastStaticValid) {
+                    ImGui::Text("SM:  %+.2f m %s", ship->lastStaticMargin,
+                                ship->lastStaticMargin > 0.0
+                                    ? "(restoring)" : "(diverging)");
+                } else {
+                    ImGui::Text("SM:  -  (surfaces disagree)");
+                }
+            } else {
+                ImGui::Text("CLa: -   SM: -");
+            }
+            /* #455: where the airframe's FORM drag pushes -- the hull's silhouette plus
+               every wing and fin's own planform bill, weighted by the CdA each pays.
+               SM does not cover this half of stability: the tail fins holding a ship
+               straight in a sideslip are form drag at an arm, not lift, and on a stalled
+               or flat airframe they are the only restoring thing left. Sign is the other
+               way round from SM because this one is measured AHEAD of the COM: negative =
+               behind = restoring. */
+            if(ship->lastDragAlphaValid) {
+                /* Exactly 0 is not a neutral verdict: it is what the pass leaves when
+                   nothing charged form drag at all, so the lever has no weight to sit
+                   on either side of. Say that rather than call it diverging. */
+                ImGui::Text("FormCp: %+.2f m %s", ship->lastFormCpLever,
+                            ship->lastFormCpLever < 0.0 ? "(restoring)"
+                            : (ship->lastFormCpLever > 0.0 ? "(diverging)" : "(nothing charged)"));
+            } else {
+                ImGui::Text("FormCp: -");
+            }
+            ImGui::Text("Acc: %.1fm/s2", ship->feltAccel());
+        }
+
     });
 
     // Labels right-padded to 3 chars, same as ORBITAL.
@@ -1915,92 +2007,6 @@ void drawUIReadouts(Game &g) {
         } else {
             ImGui::Text("AoA: -");
         }
-        /* #450: Beta, the yaw-plane half of the same pair. AeroFrame has computed
-           it every substep since it was written, and until now nothing in the game
-           read it -- the sideslip that decides how a ship behaves sideways reached
-           the forces only implicitly, through the hull silhouette and each part's
-           partCd, with no instrument for it. It is also the number #463's silhouette
-           cache is keyed on next to AoA, so a readout that shows only AoA cannot
-           explain its own drag area. The [drag] line has printed it since #463; this
-           is the pilot-facing one. Dashed on exactly the AoA test: no usable flow
-           (kAoAFlowFloor), no angle. #482 (a held rudder throwing an airframe into a
-           100 deg sideslip) is what this row exists to make visible. */
-        if(ship->lastDragAlphaValid) {
-            ImGui::Text("Beta: %.2f", glm::degrees(ship->lastDragBeta));
-        } else {
-            ImGui::Text("Beta: -");
-        }
-        /* #485: that AoA is ONE attitude number for the whole ship. What the law
-           actually acts on is a set of angles -- each surface's own, from its own
-           mount since #453 and from the flow at its own offset since #483 -- so
-           show the SPREAD across them and how many were read. On a rotating
-           airframe the spread is the point: a twin pair straddles the rotation
-           axis, so its halves differ in SIGN mid-swing. A neutral control surface
-           is counted only while something wants it -- the F4 overlay, --drag-log, or
-           an open part window on that steering part (#492) -- because recording it
-           costs the flow+frame its neutral early-out exists to skip; every lifting
-           surface is always counted. So this line's SPREAD can change when you open
-           a part window; that is not a bug in the spread, it is one more surface
-           having been measured. --drag-log prints the same numbers per
-           surface as [surface], and each surface's own arrow in the overlay carries
-           its own angle. */
-        float amin = 0.0f, amax = 0.0f;
-        int nsurf = 0;
-        for(const Part *p : ship->parts) {
-            if(!p->aeroValid || p->def == nullptr) { continue; }
-            if(p->def->lift_area <= 0.0 && p->def->control_area <= 0.0) { continue; }
-            if(nsurf == 0) { amin = amax = p->aeroAlphaDeg; }
-            else {
-                amin = std::min(amin, p->aeroAlphaDeg);
-                amax = std::max(amax, p->aeroAlphaDeg);
-            }
-            ++nsurf;
-        }
-        if(nsurf > 0) {
-            ImGui::Text("Srf: %+.1f..%+.1f x%d", amin, amax, nsurf);
-        } else {
-            ImGui::Text("Srf: -");
-        }
-        /* #499: the two numbers that answer "will this airframe push its nose back
-           into the flow", in the window a pilot is already looking at instead of in
-           a headless --drag-log run. CLa is what one radian of angle of attack buys
-           (CL*A per radian, projected on the ship's up axis, so it dips with AoA);
-           SM is where that change sits, metres BEHIND the COM, + = restoring. Print
-           CLa with it, always: an airframe deep in the stall droop keeps a healthy
-           looking SM while its stiffness collapses, and CLa is the field that says
-           so (#487's band). Outside an atmosphere both are dash -- a vacuum substep
-           measures no aero, and "0.0" would read as "my wings fell off". The VAB
-           quotes the same law with no flight at all (shipdef.h::buildStability). */
-        if(ship->lastDragRho > 0.0) {
-            ImGui::Text("CLa: %.1f m2/rad", ship->lastLiftSlope);
-            if(ship->lastStaticValid) {
-                ImGui::Text("SM:  %+.2f m %s", ship->lastStaticMargin,
-                            ship->lastStaticMargin > 0.0
-                                ? "(restoring)" : "(diverging)");
-            } else {
-                ImGui::Text("SM:  -  (surfaces disagree)");
-            }
-        } else {
-            ImGui::Text("CLa: -   SM: -");
-        }
-        /* #455: where the airframe's FORM drag pushes -- the hull's silhouette plus
-           every wing and fin's own planform bill, weighted by the CdA each pays.
-           SM does not cover this half of stability: the tail fins holding a ship
-           straight in a sideslip are form drag at an arm, not lift, and on a stalled
-           or flat airframe they are the only restoring thing left. Sign is the other
-           way round from SM because this one is measured AHEAD of the COM: negative =
-           behind = restoring. */
-        if(ship->lastDragAlphaValid) {
-            /* Exactly 0 is not a neutral verdict: it is what the pass leaves when
-               nothing charged form drag at all, so the lever has no weight to sit
-               on either side of. Say that rather than call it diverging. */
-            ImGui::Text("FormCp: %+.2f m %s", ship->lastFormCpLever,
-                        ship->lastFormCpLever < 0.0 ? "(restoring)"
-                        : (ship->lastFormCpLever > 0.0 ? "(diverging)" : "(nothing charged)"));
-        } else {
-            ImGui::Text("FormCp: -");
-        }
-        ImGui::Text("Acc: %.1fm/s2", ship->feltAccel());
     });
 
     /* --info-log: the quantities ORBITAL and SURFACE display plus the energy the
