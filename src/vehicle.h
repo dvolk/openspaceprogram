@@ -506,10 +506,11 @@ public:
     /* What a draw DID, as opposed to what it was asked for (#531). `drawn` is the kg
        that actually left resources.current; a refused draw moved nothing, so it drew 0.
        Bill `drawn`, never the request: a pro-rata layer can give up a hair less than it
-       was asked (measured: at most one ULP of the request -- tmp/n579_probe.cpp searches
-       for the shapes where it does), and #526 was exactly this habit -- charge the plan,
-       move the tanks separately -- at a scale where it produced delta-v of 1.8e6 and
-       then -nan. */
+       was asked -- a couple of ULP of the request, 2.00 ULP on the fixture pinned in
+       tests/test_fuel.cpp -- and #526 was exactly this habit, charge the plan and move
+       the tanks separately, at a scale where it produced delta-v of 1.8e6 and then
+       -nan. Every src/ caller spells `.ok`; the bool cast is so `if(!consumeResourceMass
+       (...))` keeps reading as a question at the test sites that predate the struct. */
     struct FuelDraw {
         bool   ok;      // false: the layers cannot cover the request; nothing moved
         double drawn;   // kg that left resources.current

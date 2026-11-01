@@ -3949,9 +3949,11 @@ void Vehicle::ApplyThrust(double step) {
         ? (double)m_parent->surface.atmosphere.sea_level_density : 0.0;
     /* --dv-log: the ship mass as this tick's drains proceed. getMass() walks
        every part and recurses into containment, so take it ONCE here and walk
-       it down by each engine's draw instead of once per engine. The drain
-       removes exactly what it is told from resources.current, which is what
-       effectiveMass() sums, so the cursor stays exact. */
+       it down by what each drain ACTUALLY took (FuelDraw::drawn) instead of
+       re-walking once per engine. The cursor only ever sees what this function
+       drains -- rockets and jets; RCS, the EVA suit and cargo ride in other
+       calls and are picked up by the next getMass() (that RCS/jet gap in the
+       budget itself is the known limitation noted in vehicle.h). */
     double dvMass = dv_log_enabled ? getMass() : 0.0;
     for(Part *p : parts) {
         if(!p->isThruster()) { continue; }
@@ -3967,9 +3969,15 @@ void Vehicle::ApplyThrust(double step) {
                uses, so a thin-air jet is weak AND sips fuel (no air, no burn). */
             const double flow = p->jetFuelRate() * (double)thruster_util * step
                               * jetAirGate(rho, rho_sea); /* kg this tick */
-            if(consumeResourceMass(ResourceType::JetFuel, flow, p).ok) {
+            const FuelDraw drew = consumeResourceMass(ResourceType::JetFuel, flow, p);
+            if(drew.ok) {
                 p->armedThrust = (float)(T * thruster_util * exhaust_scale);
                 m_thrust = 1.0;
+                /* No delta-v line for a jet -- but the kg it threw out the back IS
+                   mass the rockets later in parts order no longer push, so the
+                   --dv-log cursor steps down by it anyway (#531's rule: bill the
+                   tanks). propSpent_ stays rocket-only, as its name says. */
+                if(dv_log_enabled) { dvMass -= drew.drawn; }
             }
             continue;
         }
@@ -4005,7 +4013,8 @@ void Vehicle::ApplyThrust(double step) {
             assert(drew.ok && "s must cover every draw; no build sets NDEBUG");
             /* Bill the tanks, not the plan (#531): dm goes to --dv-log's rocket
                equation, so it has to be the mass the ship actually lost. `amt` is the
-               draw this tick sized, which a pro-rata layer can come an ULP under. */
+               draw this tick sized, and a pro-rata layer can come a couple of ULP
+               under it -- see the FuelDraw note in vehicle.h. */
             dm += drew.drawn;
         }
         p->armedThrust = (float)(p->thrust() * thruster_util * exhaust_scale * s);

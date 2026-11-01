@@ -498,23 +498,6 @@ void runBurn(Sim &sim, double g, bool drainAll,
         }
         if(!(dt < 1e299) || dt <= 0.0) { break; }
 
-        double m1 = acc.m - mdot * dt;
-        /* One plan, one mass: the charge is exactly the fuel this plan billed (the
-           rates sum to the fed mdot, and each rate[i]*dt is one tank's own fuel), so
-           what is left is every part's dry mass plus the fuel still in the tanks.
-           Note what keeps that positive: the DRY mass. The one def with no mass is a
-           fuel_link marker ("fuel_link": true skips the mass block, shipdef.cpp:330),
-           and no loader lets one become a Part: the ship file answers `a fuel link
-           needs "from" and "to"` (shipdef.cpp:1092) and the save refuses it for parts,
-           seats and contents alike (refuseVirtualPartDef, save.cpp:121). So this is a
-           corrupt-state trap, not a report an author would ever see (#530). */
-        assert(m1 > 0.0);
-        acc.dv += (F / mdot) * std::log(acc.m / m1);
-        acc.m = m1;
-        // End-of-step TWR with THIS step's thrust (an engine that flames
-        // out on the emptying tank still pushed through the whole step).
-        acc.sampleTWR(F, acc.m, g, false);
-
         double drained = 0.0;
         for(size_t i = 0; i < sim.parts.size(); i++) {
             if(rate[i] <= 0.0) { continue; }
@@ -533,9 +516,33 @@ void runBurn(Sim &sim, double g, bool drainAll,
             sim.parts[i].fuel = have - take;
             drained += take;
         }
-        // The two halves of the comment above, pinned: a step spends what it bills.
-        // Only fp slack (sum(rate) against the fed mdot is a rounding sum).
+        /* The two halves of the comment above, pinned: a step spends what it bills.
+           Only fp slack (sum(rate) against the fed mdot is a rounding sum) -- and
+           that slack is why the charge below reads `drained` and not `mdot * dt`. */
         assert(std::fabs(drained - mdot * dt) <= 1e-9 * (mdot * dt));
+
+        /* Bill the drain, not the plan (#531, in the preview). The rates pro-rate each
+           fed engine's mdot over the tanks it reaches, so sum(rate) is a rounding sum
+           against mdot and `mdot * dt` is a PLAN: on the suite's own fixtures 105 of
+           218 burn steps charge a mass that differs from what their tanks gave up (up
+           to 7e-11 kg, 6e-16 relative). That is fp-scale noise today -- it survived
+           precisely because it is -- but the Tsiolkovsky cursor is the same ledger
+           #531 found drifting in flight, and charging the drain makes it the parts'
+           mass by construction instead of by tolerance (runBurn's last line still
+           re-reads the parts, since summing there and summing here walk in different
+           orders). Note what keeps m1 positive: the DRY mass. The one def with no mass
+           is a fuel_link marker ("fuel_link": true skips the mass block,
+           shipdef.cpp:330), and no loader lets one become a Part: the ship file answers
+           `a fuel link needs "from" and "to"` (shipdef.cpp:1092) and the save refuses
+           it for parts, seats and contents alike (refuseVirtualPartDef, save.cpp:121).
+           So this is a corrupt-state trap, not a report an author would ever see (#530). */
+        const double m1 = acc.m - drained;
+        assert(m1 > 0.0);
+        acc.dv += (F / mdot) * std::log(acc.m / m1);
+        acc.m = m1;
+        // End-of-step TWR with THIS step's thrust (an engine that flames
+        // out on the emptying tank still pushed through the whole step).
+        acc.sampleTWR(F, acc.m, g, false);
     }
     /* Not a safety net: every step takes at least one tank from full-empty to
        exactly empty and nothing refuels, so a period cannot outlive its parts. If
