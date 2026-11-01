@@ -23,8 +23,10 @@ struct StageRow {
 
 // Simulate the staged burn of `ship` (tanks start FULL) against surface
 // gravity `g` (0 skips TWR). `exhaust_scale` scales thrust only, never the
-// fuel burn. Stage periods: the stage numbers carrying a decoupler, plus the
-// highest.
+// fuel burn. Stage periods: the stage numbers carrying a decoupler, PLUS the highest
+// and the lowest whether or not they carry one (the walk asserts it spans
+// minStage..maxStage, and a label with nothing to separate is skipped later -- which is
+// why a ship can fly N labels while the table lists fewer rows).
 std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
                                      double exhaust_scale = 1.0);
 

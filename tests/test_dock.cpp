@@ -163,21 +163,32 @@ static glm::dvec3 worldPos(Vehicle *owner, Part *p) {
    The fixture is deliberately lopsided: the TOP label belongs to the root part ALONE,
    because that is the only arrangement the old scan could miss (it started at index 1).
    A first draft of this test gave the root and its decoupler the same label and stayed
-   green with the bug reinstalled -- mutation-checked, as usual. */
+   green with the bug reinstalled -- mutation-checked, as usual. A second draft pinned
+   five of its checks against a hard-coded label instead of the live counter, so they
+   passed with the bug back in; every check below now asks activeStage() where the label
+   lives, and the ladder carries a SECOND decoupler on the LOWEST label so the bottom of
+   the sequence is a fact rather than a tautology. */
 static void test_the_root_parts_stage_is_counted() {
     printf("== finalize(): every part's stage label is counted (#519) ==\n");
     Ship s; s.v = new Vehicle; s.v->name = "toplabel";
     Part *caps = mkPart(s, "capsuleTop", 800.0, 1.0, 1.0, 1.0, false);
-    Part *dec  = mkPart(s, "dec3",        50.0, 1.0, 1.0, kPortHz, false, true);
+    Part *dec3 = mkPart(s, "dec3",        50.0, 1.0, 1.0, kPortHz, false, true);
     Part *tank = mkPart(s, "tank2",     1000.0, 1.0, 1.0, kTankHz, false);
     Part *eng  = mkPart(s, "engine1",   500.0, 1.0, 1.0, 1.0, false);
+    Part *dec1 = mkPart(s, "decLow",     50.0, 1.0, 1.0, kPortHz, false, true);
+    Part *pod  = mkPart(s, "podSmall",   300.0, 1.0, 1.0, 1.0, false);
     s.v->setRoot(caps);
-    s.v->attachDown(dec);
+    s.v->attachDown(dec3);
     s.v->attachDown(tank);
     s.v->attachDown(eng);
-    // Ladder 4 / 3 / 2 / 1, top label on the ROOT alone -- what the VAB stage box
-    // produces when the pilot selects the command pod and types a number.
-    caps->stage = 4;  dec->stage = 3;  tank->stage = 2;  eng->stage = 1;
+    // dec1 hangs off the capsule too -- the ladder's bottom rung, not inside dec3's
+    // subtree, or the label-3 drop would take it and the bottom of the sequence would
+    // never be reached.
+    s.v->attachMode(dec1, partIndex(s.v, caps), AttachMode::Down);
+    s.v->attachDown(pod);          // hangs off dec1, the part just appended
+    // 4 / 3 / 2 / 1, with the top label on the ROOT alone and a decoupler at BOTH ends.
+    caps->stage = 4;  dec3->stage = 3;  tank->stage = 2;  eng->stage = 1;
+    dec1->stage = 1;  pod->stage = 1;
     s.v->init();
 
     CHECK_TRUE(s.v->numStages() == 4, "the root's label is the top of the counter (#519)");
@@ -185,29 +196,26 @@ static void test_the_root_parts_stage_is_counted() {
     CHECK_TRUE(s.v->stagedDecouplers(s.v->activeStage()).empty(),
                "the pad lights no decoupler: the top label is the root's own");
 
-    // The flight consequence, in order. With the root's label uncounted the counter
-    // started at 3, so this same press -- the player's FIRST -- landed on the
-    // decoupler's label, and the capsule's own stage was never reachable at all.
-    s.v->advanceStage();
-    CHECK_TRUE(s.v->activeStage() == 3, "one press steps down from the root's label");
-    const std::vector<Part *> lit = s.v->stagedDecouplers(3);
-    CHECK_TRUE(lit.size() == 1 && lit[0]->def->name == std::string("dec3"),
-               "and the next press is the one that reaches the decoupler");
-    std::set<std::string> gone;
-    const std::vector<Part *> d3 = s.v->droppedPartsAtStage(3);
-    for(size_t i = 0; i < d3.size(); i++) { gone.insert(d3[i]->def->name); }
-    CHECK_TRUE(gone.size() == 3 && gone.count("dec3") && gone.count("tank2")
-               && gone.count("engine1"),
-               "the label the counter reaches is the one that separates");
-    CHECK_TRUE(s.v->droppedPartsAtStage(2).empty(),
-               "one label down, the same decoupler does not fire twice");
-
-    // And it has to reach the bottom without going past it: minStage_ is only visible
-    // through this, and the bug could leave minStage_ ABOVE activeStage_.
-    s.v->advanceStage();
-    CHECK_TRUE(s.v->activeStage() == 2, "down to the tank's label");
-    s.v->advanceStage();
-    CHECK_TRUE(s.v->activeStage() == 1, "down to the lowest label");
+    /* Walk the whole sequence by the counter, never by a literal label: with the bug
+       reinstalled the counter starts one label low, and a check written against `3`
+       still passes while one written against activeStage() cannot. */
+    struct Rung { int stage; const char *dec; size_t drop; };
+    const Rung rungs[] = {{3, "dec3", 3}, {2, NULL, 0}, {1, "decLow", 2}};
+    for(size_t k = 0; k < 3; k++) {
+        s.v->advanceStage();
+        const int as = s.v->activeStage();
+        CHECK_TRUE(as == rungs[k].stage, "the counter walks one label per press");
+        const std::vector<Part *> lit = s.v->stagedDecouplers(as);
+        if(rungs[k].dec == NULL) {
+            CHECK_TRUE(lit.empty(), "this label carries no decoupler, so nothing fires");
+        } else {
+            CHECK_TRUE(lit.size() == 1 && lit[0]->def->name == std::string(rungs[k].dec),
+                       "this label lights exactly its own decoupler");
+        }
+        const std::vector<Part *> gone = s.v->droppedPartsAtStage(as);
+        CHECK_TRUE(gone.size() == rungs[k].drop,
+                   "and the drop walk takes that label's subtree, no more and no less");
+    }
     s.v->advanceStage();
     CHECK_TRUE(s.v->activeStage() == 1, "the counter stops at minStage_");
     destroyShip(s.v);

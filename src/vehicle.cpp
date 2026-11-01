@@ -1660,9 +1660,13 @@ void Vehicle::finalize() {
        (getThrust only skips `stage < as`, and the counter only falls), its decoupler and
        chute never fired (both test `stage == stage`), the HUD's `Stage: x / y` under-read
        the part popup's own number, and minStage_ could end up above activeStage_. No
-       clamp to 1 is needed: stage is 1-based at every boundary that writes one -- the
-       ship loader (shipdef.cpp:1060), the save (refuseSavedStage, save.cpp:673) and the
-       VAB's stage box (gameui.cpp:4780). */
+       clamp to 1 is needed: every writer either BOUNDS the number (the ship loader,
+       the save's refuseSavedStage, the VAB's stage box) or leaves the default 1
+       (Part::stage's default, and the EVA suit mints copy the part they came from).
+       Cited by symbol, not line: this function moves and the numbers drift. Where the
+       shape does NOT come from is the stage box -- it is not drawn for the root part at
+       all (gameui's selected-part panel refuses index 0), so a root's own label arrives
+       from a ship FILE that authored one, which the loader accepts, or from a save. */
     totalStages_ = parts[0]->stage;
     int lowest = parts[0]->stage;
     for(size_t i = 1; i < parts.size(); i++) {
