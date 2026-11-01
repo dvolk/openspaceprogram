@@ -91,8 +91,10 @@ public:
        vector on both sides -- nothing sorts it, and nothing needs to, because
        stagedDecouplers breaks same-depth split ties by index into here. That index decides
        which booster keeps the bare name and which becomes "Booster #2", so a refactor that
-       reshuffles `parts` reshuffles ship names with every test green (#544). The append and
-       filter paths are pinned in tests/test_dock.cpp. */
+       reshuffles `parts` reshuffles ship names with every test green (#544). The appends
+       and BOTH halves of the split filter are pinned in tests/test_dock.cpp -- the
+       survivor side needs a branch of its own to have an order to lose, which is why that
+       fixture looks over-built. */
     std::vector<Part *> parts;
 
     // SoI placement: setSoi is the one writer. Null until placed (off-map).

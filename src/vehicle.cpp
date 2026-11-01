@@ -1596,6 +1596,10 @@ void Vehicle::setRoot(Part *part) {
 }
 
 void Vehicle::attach(Part *part, size_t parentIdx, const glm::dvec3 &localPos, const glm::dmat3 &localRot) {
+    /* Every caller derives this index from `parts` (the save loader resolves a uid
+       through a map it asserts first; attachMode/attachSurface check below, before
+       their own read). An out-of-range index here silently adopts the wrong parent. */
+    assert(parentIdx < parts.size());
     part->parent   = parts[parentIdx];
     part->localPos = localPos;
     part->localRot = localRot;
@@ -1605,6 +1609,7 @@ void Vehicle::attach(Part *part, size_t parentIdx, const glm::dvec3 &localPos, c
 
 void Vehicle::attachMode(Part *part, size_t parentIdx, AttachMode mode,
                          double angleDeg, double offset) {
+    assert(parentIdx < parts.size());   // read before attach() gets there (see attach)
     const Part *pp = parts[parentIdx];
     // attachPose is relative, so feeding it the parent's ship-local pose
     // returns the child's ship-local pose directly.
@@ -1620,6 +1625,7 @@ void Vehicle::attachDown(Part *part) {
 void Vehicle::attachSurface(Part *part, size_t parentIdx,
                             const glm::dvec3 &point, const glm::dvec3 &normal,
                             double rollDeg, double offset) {
+    assert(parentIdx < parts.size());   // read before attach() gets there (see attach)
     const Part *pp = parts[parentIdx];
     const Node *cn = part->def->findSurfaceNode();
     if(cn == nullptr) {

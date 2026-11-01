@@ -39,6 +39,8 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/quaternion.hpp>
 
+#include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <deque>
@@ -77,6 +79,15 @@ struct Ship {
     Vehicle *v;
     std::deque<PartDef> defs;
 };
+
+/* Where a part sits in Vehicle::parts. Attaching here is by index, and #544's pins are
+   ABOUT that index, so the fixtures must not hard-code a position that adding a part
+   shifts. */
+static size_t partIndex(Vehicle *v, Part *p) {
+    std::vector<Part *>::iterator it = std::find(v->parts.begin(), v->parts.end(), p);
+    assert(it != v->parts.end());
+    return (size_t)(it - v->parts.begin());
+}
 
 /* A box part (no rigid body of its own -- the ship is ONE body and the part
    is a child of its compound, carrying a collision shape, a mass and an
@@ -387,7 +398,13 @@ static void test_uid() {
    split-off subtree, so it must move with it -- leaving the survivor with no
    seam. Before the fix the survivor kept {P, B.root}, both now owned by the
    split-off ship; deleting that ship and then saving the survivor read a
-   freed Part (the use-after-free in the report, section 1.7b). */
+   freed Part (the use-after-free in the report, section 1.7b).
+
+   Two branches now hang off that chain -- sideX off the part that becomes the cut
+   root, sideY/sideYkid/sideY2 off the capsule -- each built after everything else.
+   They are load-bearing, not clutter: a chain has only one order worth naming, so
+   without a branch the #544 order pins below cannot tell "filter the vector" from
+   "rebuild it in some other order". */
 static void test_seam_staging() {
     printf("== seam maintenance across a stage (1.7b use-after-free) ==\n");
 
@@ -432,7 +449,27 @@ static void test_seam_staging() {
        third, tree order puts it deep, build order puts it last -- so without it the pins
        below could not tell "filter the vector" from "rebuild it in walk order". */
     Part *sideX = mkPart(A, "sideX",   50.0, 1.0, 1.0, kTankHz, false);
-    A.v->attachMode(sideX, 1, AttachMode::Down);   // parent = decop, index 1
+    A.v->attachMode(sideX, partIndex(A.v, decop), AttachMode::Down);   // parent = decop
+
+    /* The same trick on the OTHER side of the cut, because a split filters `parts`
+       twice and a one-part survivor has no order to lose. Build order here is
+       capsule, sideY, sideYkid, sideY2, while walking the survivor's own tree gives
+       capsule, sideY, sideY2, sideYkid -- and they differ only because sideYkid is a
+       grandchild whose sibling was built last, which is why two parts would not do.
+
+       A rebuild through a pointer-ordered std::set (the idiom droppedPartsAtStage uses
+       above) is NOT catchable from here: measured, the allocator hands these four parts
+       out in build order, so sorting them by address is not a permutation and no order
+       pin can see it. That rebuild is still worth worrying about on a real ship, whose
+       addresses do arrive scrambled -- it can put a child before its parent, and the
+       save format resolves parts by parent-before-child (save.cpp:899) -- but forcing
+       that through a fixture's allocation order is allocator luck, not a test. */
+    Part *sideY    = mkPart(A, "sideY",    50.0, 1.0, 1.0, kTankHz, false);
+    Part *sideYkid = mkPart(A, "sideYkid", 50.0, 1.0, 1.0, kTankHz, false);
+    Part *sideY2   = mkPart(A, "sideY2",   50.0, 1.0, 1.0, kTankHz, false);
+    A.v->attachMode(sideY, partIndex(A.v, capsule), AttachMode::Down);
+    A.v->attachMode(sideYkid, partIndex(A.v, sideY), AttachMode::Down);
+    A.v->attachMode(sideY2, partIndex(A.v, capsule), AttachMode::Down);   // LAST built
     CHECK_TRUE(A.v->seams.size() == 1, "staging: one seam after the dock");
     CHECK_TRUE(A.v->seams[0].port == portA, "staging: seam port is A's port");
     CHECK_TRUE(A.v->seams[0].root == portB, "staging: seam root is B's root");
@@ -461,9 +498,14 @@ static void test_seam_staging() {
                "staging: the split-off ship keeps build order, walk order would put "
                "sideX third");
 
-    /* The survivor keeps only its capsule. */
-    CHECK_TRUE(A.v->parts.size() == 1, "staging: survivor keeps only the capsule");
-    CHECK_TRUE(A.v->parts[0] == capsule, "staging: that part is the capsule");
+    /* The other half of the same filter: vehicle.cpp rebuilds the survivor by walking
+       `parts` and skipping the cut, exactly as it builds the new ship's list above, so
+       the cut keeps build order on BOTH sides. The pin above only reaches one side --
+       the survivor here used to be a single part, which no order can get wrong. */
+    CHECK_TRUE(A.v->parts.size() == 4 && A.v->parts[0] == capsule &&
+               A.v->parts[1] == sideY && A.v->parts[2] == sideYkid &&
+               A.v->parts[3] == sideY2,
+               "staging: the survivor keeps build order too -- walk order puts sideY2 third");
 
     /* Delete the split-off ship (the report's step 4): this frees portA and
        portB. Any seam the survivor still held would now dangle at them. */
