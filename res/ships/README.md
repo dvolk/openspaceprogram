@@ -12,12 +12,13 @@ there is no takeoff constraint: no wheels, no runway, no thrust-to-weight floor.
 | | |
 | --- | --- |
 | analogue | light utility plane (Cessna 152 class) |
-| mass | 626 kg (180 kg fuselage + 96 kg of jet fuel + crew + wings) |
+| mass | 666 kg (180 kg fuselage + 96 kg of jet fuel + crew + wings + ailerons) |
 | wing | 21.6 m2, span 12 m, AR 6.7, at 0.5 m aft of the pod's centre |
 | loading | 29 kg/m2 |
 | cruise | 76 m/s at 7 km, +3.0..3.3 deg of angle of attack |
 | L/D | 8.5 (target >= 10; the next lever is span, AR 6.7 -> 9) |
 | static margin | +0.39 m |
+| roll | aileron pair on the wing, `roll` axis (566-roll-ailerons) |
 | stall (7 km) | 26 m/s |
 | bill at cruise | body 0.11 x 0.87 m2, wing profile 0.42 m2, induced 0.17 m2 |
 

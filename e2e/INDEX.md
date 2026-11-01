@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 270 |
+| `invariant` | a behaviour or a player route the game must keep | 271 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 37 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **325** |
+| | **total** | **326** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (76)
+## flight (77)
 
 | case | kind | pins |
 |---|---|---|
@@ -98,6 +98,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/492-elevator-trim.txt` | golden | The same 626 kg skiff, with the tailplane's mount incidence removed and 12 deg of elevator trim authored on the parts instead, cruises at +3.4..+11 deg of angle of attack with the stick released: the download that trims this airframe comes from deflection, and the standing bill is real (1-2 m2 of induced CdA at the hold). |
 | `flight/498-surface-prograde.txt` | invariant | A plane cruising inside an atmosphere reads two different progrades: the air-relative one sits 2.4 deg off the nose -- the same angle the aero law calls its angle of attack -- while the conic one sits 16 deg off and drifts to 21, because the conic points where the ground is going rather than where the plane is flying. |
 | `flight/541-booster-root-decoupler.txt` | invariant | Pressing a stage on a ship whose root part is the decoupler says which part cannot separate, instead of claiming the ship has run out of stages. |
+| `flight/566-roll-ailerons.txt` | invariant | A plane rolls with its ailerons, not the reaction wheel: two ailerons on the skiff's wing answer the roll stick, and 2 s of Q banks it past 20 deg without the wheel. |
 
 ## crew (25)
 

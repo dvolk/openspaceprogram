@@ -20,7 +20,7 @@ CHECK 3.0 < max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 10.
 CHECK all(abs(d["beta"]) < 2.5 for d in drag if d["t"] >= 40.0)
 # The bill: one body at 0.11 x 0.87 m2, wings at 0.010, induced 0.17.
 CHECK 0.80 < min(d["a"] for d in drag if d.get("a")) < 1.00
-CHECK all(0.35 < d["profile"] < 0.55 for d in drag if d.get("profile") is not None)
+CHECK all(0.35 < d["profile"] < 0.65 for d in drag if d.get("profile") is not None)
 CHECK max(d["induced"] for d in drag) < 0.80
 CHECK all(-0.55 < d["formcp"] < -0.35 for d in drag if d.get("formcp") is not None)
 FORBID error:

@@ -1,0 +1,1076 @@
+AERO WORK ORDER -- trimmed 2026_10_29, refreshed 2026_10_30
+===========================================================
+The full blow-by-blow (every pass, measurement, review finding and dead end) is
+archived verbatim at reports/aero_worklog_2026_10_29.txt. Do not edit that file.
+This one carries only: what the code does now, what is still open, in what order,
+and the measurements that would be expensive to re-derive.
+
+Legend: [ ] todo  [~] partial  [x] done  [-] deliberately deferred
+Ticket bodies hold the detail: python3 utils/tea.py show N [--comments]
+
+DECISIONS FROM THE USER (2026_10_29)
+ - jet.json / glider.json and their parts may be DELETED, or refactored into
+   variants if useful. Not a priority.
+ - Trim SHOULD be a per-part setting in the flight part window (see OPEN #1).
+ - No research/VAB gating for the new airplane parts for now.
+ - New debug beds are fine (flying-cruise added, ca8aa66).
+
+THE LAW AS IT STANDS
+ - Lift: per part, in the part's own mount frame (#453), feeling v + w x r and its
+   own q at that point (#483; drag.h::localFlow is the ONE composition -- do not
+   re-inline it). Slope 6.0/rad, liftCurve zero past 2*stallAngle, droop from
+   stallAngle (20.1 deg on the shipped wing).
+ - Induced drag: per part, charged on that part's own AR from its extents box
+   (#462). A split pair pays its own AR, not the system's (see #462 follow-up).
+ - Hull drag: the UNION projected silhouette (#463, 31x31 5 deg cache over +-75)
+   times the area-weighted mean part cd, applied at the silhouette cp and feeling
+   the flow THERE via localFlow (#486). --drag-cd (1.2) scales the hull's air AND
+   both induced terms (the lifting part's #462, the deflected surface's #494 -- so
+   it is partly a steering-authority knob, noted on #502); it deliberately does not
+   scale a deployed canopy.
+ - Control surfaces: DEFLECTION ONLY, and since #494 they PAY for it. No alpha term
+   and no surface pitching moment; a surface with zero commanded deflection
+   contributes nothing (vehicle.cpp's sv == 0 early-out). Consequence, measured:
+   with everything symmetric, ALPHA = 0 IS THE ONLY PITCH EQUILIBRIUM. A stable
+   airframe needs an aft download, which means tail incidence: shipdef "roll" on a
+   surface mount IS incidence (a plate's chord is its Z axis; span +X, normal +Y),
+   and the twin at angle 180 needs the OPPOSITE sign. Per-instance TRIM exists
+   (#492): shipdef "trim" / save "trim" / the part window's slider, joined with
+   the stick inside the part's own travel (drag.h::controlCommandFrac) and signed
+   per instance by controlDeflectionSign, so a mirrored pair takes the SAME
+   authored number and still torques the same way. Two law terms now:
+   controlForce droops at the part's stall_angle (peak authority at ~15 deg, zero
+   by 2x), and the deflection bills inducedCd on its OWN area and span.
+ - Application points: lift and control at each part's own mount; hull drag at the
+   silhouette cp. Since #512 the cp's ARM is each part's own projected-silhouette
+   centroid (the component along the flow stays with the mount, because a projection
+   cannot say where along its own normal the area sits), but the WEIGHTING is still the
+   parts' summed areas while the force is charged on their union -- that is #514.
+ - A non-spinning body is bit-identical to the pre-#483 law, which is what made the
+   last several passes testable by row-diff.
+
+THE AIRFRAME REFERENCE (replaces jet/glider as the yardstick)
+ - res/ships/skiff.json: 11 parts, 552.3 kg, hull CdA 0.75 m2, 21.6 m2 of AR-3.33
+   wing 0.34 m aft of the CG, 4 m2 tailplane at -5 deg incidence 2.0 m aft, fixed
+   fin 2.2 m aft, elevators 2.8 m aft. cp sits 0.69-0.81 m BEHIND the CG.
+ - On flying-cruise (80 m/s of air, 7 km), hands off: holds 7000 m inside 16 m at
+   79.2 +- 0.3 m/s under power, lift 5.15-5.56 kN against a 5.42 kN weight; AoA
+   +2.6 deg on every row; cut the throttle and it glides at ~22 m/s sink (3.5:1)
+   at the same AoA; 1 s of rudder takes Beta to 7.7 deg and it is inside 1 deg by
+   t=40. L/D ~3 at 90 m/s, ~5 near 50. Stall ~20 m/s at 7 km.
+   Pinned by flight/490-skiff-trim-and-weathervane.
+ - The shipped jet and glider for comparison: L/D 1.26/1.22, glide 1.2:1, sink
+   138-141 m/s, 4.14 m2 of hull CdA, no fixed tail surface (#490).
+ - Parts that exist now because an airplane needed them: capsule_r0.5h1.5,
+   jet_r0.25h1, jet_tank_r0.4h2, wing_r3h1.8, wing_r1h1, wing_r0.7h1,
+   elevator_r0.8h0.7, rudder_r0.6h0.8 (gen_parts.py rows + meshes).
+
+OPEN, IN THE ORDER I WOULD DO THEM
+[x] #454 DONE (d403bdb) Static margin / neutral point. The [drag] line now carries
+    CLa= (airframe lift slope, CL*A per radian) and SM= (metres the lift CHANGE sits
+    behind the COM, + = restoring), derived -- never authored -- by tilting the FLOW
+    1e-3 rad about the ship's lateral axis and differencing each surface's own
+    partAero()/liftCurve() (drag.h::liftSlopePerQ + LiftSlopeSum), published as
+    Vehicle::lastLiftSlope/lastStaticMargin/lastStaticValid and dashing as a pair when
+    the airframe had no flow or no agreeing surfaces. Measured at flying-cruise:
+      skiff CLa 153.44 SM +0.60 | jet 96.00 +0.55 | glider 96.00 +0.64 | racer 0.00 SM=-
+    Hand arithmetic 153.6 = 2 x 10.8 m2 + 2 x 2.0 m2 at 6/rad; the fin and the elevators
+    are EXACTLY 0 to pitch; the 0.18 residue is the +-5 deg tail roll (cos^2 phi). SM
+    from the arms this file's airframe reference already quotes: dm = -((-0.34)(129.6) +
+    (-1.99)(23.82)) = +91.5, over 153.4 -> +0.60 m. The wings supply 48% of the restoring
+    and the tail the other 52%; the skiff was never an airframe with no margin, and a
+    1.5 s pitch pulse is back at its 2.6 deg trim by t~15. #454 closed.
+    Traps this cost, all pinned (test_drag::test_neutral_point, flight/454):
+      - Weighting a surface by slope*area*dot(liftDir, up) makes a clock-0/180 twin pair
+        cancel EXACTLY; the log then quoted Np=+15.9, +51.7, +121.5, -89.7 for ONE skiff.
+      - A margin alone lies: SM stays +0.55 on the jet at AoA 28/-35 while CLa falls
+        96 -> 0. Print the pair -- restoring stiffness is q * CLa * SM.
+      - usable() dashes when the surfaces disagree (|dl| < 0.1 * dlabs): at the stall
+        crossing dl passes through zero and SM would otherwise read +2.22 m for an
+        airframe that has just stopped resisting.
+      - CLa is projected on SHIP up, so it carries a cos(alpha) dip (153.42 at 0 deg,
+        152.55 at 6.6). Any band on it moves with the AoA band or the case fails on the
+        dip rather than on anything broken.
+      - Cost: 3 partAero + 3 liftCurve per lifting part per substep (~92-137 ns each;
+        the skiff has 5 lifting parts, the fin always contributing 0 and still paid for).
+        liftSlopePerQ takes the caller's PartAero rather than resampling it. An analytic
+        slope would be ~10x cheaper but would stop tracking whatever the law does.
+      - I wrote a geometry story into the e2e case ("wings 0.18 m AHEAD of the CG, tail
+        5 m aft") reverse-engineered from the margin being pinned. The dump says 0.34 and
+        1.99 -- as this file already did. A weighted average cannot be read backwards;
+        go look: OSP_SHIP_DUMP=1 prints every arm.
+    Notes that matter, still true:
+      - the application point is ALREADY per-part, so "apply total lift at the
+        area-weighted lift centre" would change the physics, not tidy it up; what is
+        wanted is dM/dAlpha about the COM.
+      - the rate term has THREE regimes (measured over every substep of both shipped
+        airframes): below stall it DAMPS (jet -1..-3885 W, glider to -513 kW); inside
+        the droop 20.1-40.1 deg it PUMPS (glider +413 kW, jet +3080 W); past 2*stall
+        it is exactly ZERO, so broadside recovery is hull form drag (#486), not this.
+        Decide #487 BEFORE pinning a neutral point across that band.
+      - it damps only the axis that has lifting area fore-or-aft of the pivot, and
+        exactly zero on the others; yaw damping comes from the hull (#486) or from a
+        surface with an alpha term (#454).
+      - the unit suite cannot reach the call-site COMPOSITION: a mutant in
+        applyAeroForce's arguments left all 447 old test_drag checks green. Since
+        #485 a flight case can see each surface's alpha and q (flight/485), so most
+        mutants in the lift loop's arguments now show up -- but a stability LAW
+        still needs its own case; a unit pin on the math is not enough.
+      - the 458 envelope bands will move once; re-baseline deliberately, once.
+[x] #499 DONE (7fc18f4) THE MARGIN IS NO LONGER LOG-ONLY. shipdef.h's BuildStability +
+    buildStability(const BuildShip&, occupantMass) asks the SAME law the flight lift loop
+    bills (drag.h::LiftSlopeSum / liftSlopePerQ) at the one flow a build can be asked
+    about: straight ahead, at each mount's own incidence, no physics pass. The VAB prints
+    "Aero: CLa 153.4 m2/rad  SM +0.60m restoring" (gameui.cpp:4719) and dashes the margin
+    with "(surfaces disagree, quoting an average)" when LiftSlopeSum::usable refuses --
+    never zero, because that is #454's Np=+15.9 m lie. The flight SURFACE window quotes the
+    live pair. It is crewed as the launch will be (one suit per seat from the pad's pool):
+    a 97 kg kerbal in the nose is 0.18 m of the margin, which is what turns the skiff's
+    authored +0.42 into the +0.60 it flies with. New pin: tests/test_stability.cpp.
+    What it still cannot see: the stall droop and any rotation (only the flight number
+    shows an airframe that stops resisting mid-tumble), the units (#500), the induced
+    terms (#507) and the aerodynamic-centre point (#513).
+[ ] #500 A margin in metres does not compare: skiff +0.60 / jet +0.55 / glider +0.64 are
+    different aircraft with different chords, and a big plane gets metres for free. Quote
+    SM over a reference length (MAC, or a tail-volume coefficient) wherever a human reads
+    it (#499), and decide what band counts as stable -- the same question #487 raises from
+    the stall side.
+[ ] #501 No yaw analogue. A fin contributes EXACTLY 0 to CLa/SM (unit-pinned), so a plane
+    with a fin and a plane without one print the same margin; CpL= is the only yaw-side
+    number and it is hull drag. Same machinery, tilt about ship UP and take the vertical
+    lever. Pairs with #450 (no yaw law for surfaces) and with #482 (100 deg sideslip from
+    one second of rudder) -- may be the measuring half of #450 rather than its own work.
+[x] #494 DONE (a2347e5 stall, fb34bb9 bill, 338f3e8 review pass). A deflected surface
+    now goes through the SAME liftCurve a wing does (one stall_angle field, two readings:
+    0.26 rad = ~15 deg authored in gen_parts.py; peak CL 1.56, 86% of peak at the 0.35
+    stop, zero at 2x) and then PAYS induced drag for it: same inducedCd as the wings, on
+    the surface's own control_area and meshSpanHalf, CL recovered from the force the law
+    just made (|F|/(q*S)) -- NOT cl*(alpha+delta), which double-bills the tailplane part
+    beside the flap and reads zero bill at delta = -alpha.
+      Measured: skiff_trim hands-off Induced 0.265 -> 0.447 m2 and its 50 s envelope
+      6497-7097 -> 6401-7036 (~96 m of free energy); skiff untrimmed bit-identical
+      (0.289 both ways -- the bill follows the command, not the lift); 458-jet's held
+      stick 29.7 -> 19.3 deg of overshoot; 458-glider Induced 0.00,0.00,0.00,1.70,1.71,
+      1.72,0.00,... following the KEY, yaw swing 72.8 -> 62.7.
+      Part geometry (printed and then removed): elevator_r0.8h0.7 0.56 m2 / 1.60 m span
+      = AR 4.57, CL 1.257, 0.092 m2 each; the catalog rudder/elevator are 2.0 m2 over a
+      2.0 m span = AR 2.0 -> 0.851 m2 each, 1.70 for a held pair.
+      THE IDENTITY, worth knowing before tuning: bill = |F|^2/(q*pi*e*span^2), so SPAN is
+      the only geometric knob, the charge is QUADRATIC in authority, and #478's
+      half-planform convention cannot move it. A twin pair over-bills 2x (#462's known
+      split-part overcharge, now on the steering pair too).
+      Loader now refuses: a part with BOTH lift_area and control_area; control_area
+      without max_deflection (or vice versa -- isControlSurface() IS the pair); a steering
+      part with no slope; stall_angle <= 0; max_deflection >= 2*stall_angle. controlForce
+      has no default stallAngle. Shipped catalog passes all of it (75 defs audited).
+      Pin integrity PROVEN by mutation (clCtrl = 0): 492's 0.40-0.50 band, 458-glider's
+      1.60-1.90 held band and 458-jet's 15-25 deg AoA band each fail on their intended
+      pin. 490 does NOT isolate the term (0.76 clears its own floor) and says so.
+      Consequence for #492's sizing worry: 12 deg of tab still buys what 5 deg of
+      incidence bought, but now costs 0.18 m2 forever, so trim no longer wants to cluster
+      at the stop. The 2-D cl_control 6.0/rad vs these AR 2-4.5 bodies stays #455/#487's.
+[x] #503 DONE (a2347e5) -- the deflection stall half of the above, filed separately
+    because it was a defect found on the way. Full-lock authority -36% and three shipped
+    airframes stop misbehaving: 453's held rudder yaws the jet 83 deg not 99.9; 490's kick
+    sideslips 8.9 not 13.4; 458-jet's held stick 77 deg (still swinging) -> 29.7 (damped:
+    29.7, 20.2, 13.6, 9.5, 6.4, 3.4), and #494 took it to 19.3; 458-glider never rolls
+    through vertical again. #483's sweep damping and #486's hull damping were fine.
+[ ] #504 No e2e case flies a hull past 90 deg any more, so AeroFrame's 180-wrap is only
+    pinned as math (test_drag's aeroFrame back-hemisphere block). Belongs with #490's
+    airframes -- bring the in-situ version back by re-tuning a ship, not by loosening the
+    law (the glider's swing is 62.7 deg now, was 94.9).
+[ ] #505 The F4 overlay labels THREE different arrows "drag (at center of pressure)":
+    the hull's at cp (true), a lifting part's induced (#462) and now a deflected
+    surface's (#494), both at the part mount (src/gameui.cpp:3472 labels every
+    kForceDrag). Give the per-surface one its own kind + label. ~6 lines, no case pins
+    the legend text.
+[ ] #506 A deflected surface pays the induced bill and NOTHING else: controlDefl never
+    reaches the union silhouette or the part's own partCd, so a plate hinged 20 deg into
+    the flow adds no form drag. The two estimates coincide at the stop by luck (0.55
+    induced vs 0.56 flat-plate for the skiff rudder) and diverge at the peak (0.74/0.43).
+    Cheapest fix is a k*sin^2(delta)*control_area form-drag term at the same mount;
+    rotating the silhouette is correct but fights #474's quadratic union.
+[ ] #507 The printed SM= is a lift-curve margin only. Both induced terms lean on pitch at
+    their mounts and neither is in LiftSlopeSum; on a trimmed airframe #494's is the
+    LARGER (skiff_trim 0.18 of 0.45 m2 on a ~2 m lever) and it grows with the player's
+    trim as delta^2, with the sign flipped for a canard. Decide before #499 puts SM= in
+    front of a builder, or the readout and the flight will disagree invisibly.
+[x] #495 DONE (87dca49 + 3fd7d85 review pass). controlDeflectionSign was asked of
+    partAero's LIVE liftDir, so the wind re-decided the pushrod every substep. Now the
+    whole travel decision lives in drag.h::controlDeflection(pa, ri, mount, about,
+    targetSign, cmdFrac, maxDefl) and is asked of the MOUNT: usable frame, rig sign,
+    authority, travel. NOT fixed by latching -- no Part::ctrlSign, no band, no state.
+    Repro hunt (temporary instrumentation in the aero pass, ~150k actuated-surface rows
+    over eight beds incl. held-rudder runs to 60 s, hard-pull departures, yaw-spin
+    attempts, scratch airframes with the fin moved off the centreline): the two rules
+    agreed on 100% of rows, and flight/458-jet, 458-glider, 490, 492 log byte-identical
+    [drag]/[ctrl] rows either side of the change (re-confirmed against a fresh HEAD build
+    in tmp/ab3_*, tmp/ab4_*). Why nothing shipped flips: for a rectangular CENTRELINE fin
+    dot(cross(ri,liftDir),about) only ever TOUCHES zero, at dead broadside (there it is
+    exactly 0, with the frame ACCEPTED -- partAero refuses only an exactly zero residue),
+    so the surface makes no useful moment anyway. The glider with the key held gets
+    |lev| 0.0014 m against a 2.6369 m rig (0.05%) at 89.4 deg across its own fin; the jet
+    sits at 83 deg sideslip held (#482). Same neighbourhood; a touch is not a crossing.
+    What DOES cross: the same fin 1 m off the centreline, near 71.6 deg of flow angle,
+    +0.634 / -0.464 m either side -- but that flow angle is ~5x the 0.26 rad deflection
+    stall, so it is NOT attached flow; it is a frame partAero accepts and #508 bills at
+    full strength. test_control_rigging pins the mount, the flip the old rule took there,
+    and what each rule does to the moment either side.
+    THE OTHER HALF, from the review: a rig whose force line runs through the pivot (fin
+    at clock 0, rudder inline, steering part on the COM) was still driven to full travel
+    with a sign the rig cannot decide, so the moment was real and its direction came from
+    the flow. Measured (tmp/mis2_*): clock-0 rudder +20.1 deg travel, peak airframe
+    |tau| 2560 N m, against 1539 N m for the same ship rigged properly; asked for no
+    travel the peak is 246 N m. Such a rig is NOT inert -- it has live authority, which is
+    where that 2560 came from -- it just cannot decide WHICH WAY. controlDeflection now
+    returns 0.0 when lever*lever <= 1e-12 * |ri|^2 (squared to keep the sqrt off the hot
+    path): a degeneracy test on the GEOMETRY -- shipped arms sit 2.6-2.8 m out, so their
+    cutoff is ~3 um of lever -- not an authority threshold. A real 0.05 m lever, and even
+    a 3 m arm tilted 1e-4 rad off the line (3e-4 m of lever), travels full. Refusing the
+    travel also drops that surface's control force and its #494 induced bill, so a
+    mis-rigged ship now flies CLEANER than its geometry says. Telling the builder is #509
+    (NOT #486, which is closed and is about hull-form drag).
+    ROUND 2 (readout): the fix in 3fd7d85 was still blending two decisions. drag.h now
+    splits them -- readoutAxisIsUp(rigPush, bodyUp, bodyRight) picks the SHIP AXIS from the
+    mount, asked in the ROOT-LOCAL frame so it is a per-part constant (hoisted once per
+    aero pass at vehicle.cpp:2296), and surfaceAlphaDegForReadout(pa, axisUp, up, right)
+    takes its SIGN from the surface's own live force along that axis, which is the
+    direction controlForce bills and the F4 overlay draws (#469).
+      - Asking the axis of the world frame instead is attitude-noisy: on a 6-degree grid of
+        9300 attitudes a mount 45 deg off vertical flipped its answer on 1578 of them; a
+        fin at 90 deg (off the tie) never flips. Both framings pinned in
+        test_surface_alpha_readout.
+      - Signing the angle off the rig instead of the force contradicts the force at large
+        |alpha|: 284 of the 810 flow directions sampled on a v-tail half.
+      - My claim that the +-45 v-tail halves print opposite numbers was WRONG. Under the
+        fixed rule both tie to UP and their pushes are mirrored, so they print the SAME
+        number (+7.107 both). The tie is still a decision (quote that half against RIGHT
+        and its sign flips), so the tie-break is stated in code.
+      - checkHullMirrorInvariants asserts |det(mount) - 1| < 1e-9: mount[1] only means
+        "which way the plate pushes" at det +1.
+    Evidence for the whole of #495 including the readout: the four shipped beds are
+    byte-identical to HEAD AND to the pre-#495 build across [drag], [ctrl] and [surface]
+    rows (tmp/ab5.sh, tmp/ab5/*).
+    GAP: shipped beds are bit-identical either way, so no e2e case fails if someone
+    reverts the call site -- the unit pins now call controlDeflection itself, so a
+    regression has to be introduced in drag.h to be invisible.
+    ROUND 3 (two more defects, found by the adversarial pass):
+      - partAero CERTIFIED A NaN FLOW as a usable frame: its refusal test was
+        `dot(liftDir, liftDir) <= 0.0`, false for NaN, so a non-finite pose/velocity
+        became a NaN lift/control/induced force -- exactly what vehicle.cpp's
+        kAoAFlowFloor comment warns about. Now asks for a POSITIVE squared length.
+        Entry point stays #481 (defs/saves still accept non-finite numbers).
+      - controlDeflection's authority gate failed OPEN on NaN (lever*lever <= k is false
+        for NaN -> full travel from a garbage rig). Test negated; pinned for a NaN flow
+        and a NaN mount distance.
+      - The zero-projection fallback no longer invents 0.0. surfaceReadoutFrame now
+        returns {axisUp, rigSign}; where the live force has exactly no component on the
+        quoted axis the readout keeps the real angle (a fore-aft fin in a dead-ahead flow
+        sits at 90 deg of its own incidence, and printed 0.0) signed by the rigging, which
+        keeps a mirrored pair agreeing. A squarely broadside plate is a DIFFERENT corner:
+        partAero refuses it a frame (exactly zero residue).
+      - Numbers in the comments were guesses and are now measured: rig-sign vs live-sign
+        disagree on 284 of 810 flows, 64 with a non-zero force (|alpha| 0.7-28.9), the
+        other 220 past 2x stall where liftCurve answers exactly zero (#508's corner);
+        shipped surfaces sit 3.31 m (glider rudder) / 3.65 m (jet's four) from the COM, so
+        their cutoff is 3.3-3.7 um of lever; there is NO stall marker in the F4 draw (my
+        earlier claim, removed here and from #508).
+      - Pins made non-vacuous: forceBad counted only where length(F) > 0 with >100 billed
+        samples; flowAxisFlip pinned at its measured 459/810; a short-arm (3 mm) case
+        separates the arm-scaled cutoff from an absolute floor; a +-60 deg sideslip band
+        pins where the body-frame and live rules agree for a shipped clock-90 rudder.
+    test_drag 703 checks 0 failures; make test exit 0; the four shipped beds re-A/B-ed
+    byte-identical after this round too.
+[x] #510 DONE (3d98ac0) CHECK_NEAR's tolerance is RELATIVE, so CHECK_NEAR(x, 0.0, tol)
+    demands bit-exact zero. Corrected count: 206 zero-expectation calls across tests/,
+    101 of them in the nine files whose macro names the parameter rel_tol (test_drag 56,
+    test_fuel 21, test_gimbal 10, test_jet 6, test_power 5, test_bodylimits 3); 16 of
+    test_drag's 56 quote a NON-zero tolerance next to a zero expectation. The other 105
+    live in files defining an ABSOLUTE macro of the same name, so the same call means
+    something different per file. Cost me a fake pin during #495.
+    Landed as the absolute floor: the relative macro falls back to an absolute tolerance
+    when the expectation is exactly zero, so 44 call sites gained the slack they already
+    claimed (16 test_drag, 21 test_fuel, 5 test_power, 2 test_gimbal), while the other 57
+    zero-expectation calls pass 0.0 as the tolerance and stay bit-exact -- "no spin: the
+    sweep is exactly zero" keeps its teeth. The harness is itself pinned now:
+    CHECK_NEAR(1e-13, 0.0, 1e-12) passes and CHECK_NEAR(1e6 + 0.5, 1e6, 1e-6) passes; the
+    first fails against the old macro (built and run: 734 checks, 1 failure), so the fix
+    cannot rot back. HALF STILL OPEN: the two macro families differ for NONZERO
+    expectations (relative in those nine, absolute elsewhere); unifying that wants
+    per-file judgement -- 1e-12 relative on an orbit radius is not the same question as
+    1e-12 metres.
+[-] #511 CLOSED ON PURPOSE, not built. The readout's axis answer (readoutAxisIsUp) looked
+    like a BUILD FACT being recomputed per surface per substep, and the win was measured as
+    nil -- two dots and two fabs next to the two atan2 calls in the same branch, with the
+    only per-pass cost already hoisted (rootLocalUp/rootLocalRight, vehicle.cpp:2299).
+    The premise was wrong: the answer compares the PART's localRot with the ROOT's, and the
+    root changes mid-flight -- parts mutates at 1595/1603 (append), 3505 (dock merge), 3617
+    (a decoupled ship gets a new list, so a new parts[0]), and localRot is rewritten at 639,
+    1593/1601, 3471, 3612. A per-part cache would have to invalidate on every one of those,
+    and the case that matters is a stage separation re-rooting under full aero load, where a
+    stale axis feeds the wrong sign into the lift sum. "Impossible rather than pinned" cuts
+    the other way: a wrong cache has no test that can catch it. If a profile ever names the
+    loop, the shape is a per-PASS array, not a per-part cache. The #495 bug class is pinned
+    either way (test_surface_alpha_readout; flight/395).
+[ ] #509 Tell the BUILDER a steering part has no authority. controlDeflection's
+    degeneracy test is the same predicate the loader wants: after the compound rebuild
+    (the COM is only known then), for each part with control_axes compute
+    controlRigLever(ri, mount, about) and warn which part/axis, in the VAB ideally.
+    Must not fire on a weak-but-real lever. See the ticket for the measured numbers.
+[ ] #508 controlForce answers DEFLECTION only, so a surface the flow has gone past still
+    bills its full q*S*cl*defl, and near 90 deg of its own angle its liftDir is the
+    normalised residue of a vanishing vector -- it turns 180 deg through broadside, and
+    partAero accepts the frame (the smallest accepted residue measured was 4.9e-12).
+    The MAGNITUDE half of the crossing #495 fixed the sign of: measured on the glider
+    with the rudder key held, 89.4 deg across its own fin at q ~2043, fin still at its
+    travel stop. Fix idea is the (alpha + deflection) curve -- #487's shape, which would
+    make #503's deflection stall and this one curve instead of two -- or, smaller, gate
+    controlForce by the lift axis that survives (the |normal out of the flow| partAero
+    already computes). Do it before anyone retunes the jet's sideslip (#482).
+[x] #512 DONE (904d724 + 4c4da1d) cp from the wrong points -- stage 1, the ARM. Its
+    weighting half is #514, and the audit-mean correction rode in 4c4da1d.
+    cp was the area-weighted mean of part MOUNTS while the force is charged on the
+    UNION of the projected silhouettes. Each part now contributes its own projected
+    silhouette centroid: cp += a * (mount + sRot * silhouetteCpOffset2(poly, mount2)),
+    where silhouetteCpOffset2 is the polygon's centroid minus the mount projected into
+    the SAME flow plane (a free 2-D vector; the component along the FLOW stays with the
+    mount, because a projection cannot say where along its own normal the area sits).
+    Measured, glider at beta -25.2: capsule's area sits 0.39 m off its bolt (0.17 fwd,
+    0.36 across), engine 0.34 m; wings/rudders/tanks 0.00 (hulls centred on the mount).
+    heavy_one at alpha 90: area-weighted offset 0.058 m, cp lever -0.19 -> -0.13.
+    Flights barely move (peak |tau| glider 75848 -> 75459, maxBeta 62.7 -> 62.5; jet,
+    skiff, trim same order) -- 100% of [drag] rows differ by the end of a 50 s bed
+    because it is chaotic, not because it is big. test_drag 723 checks (+20): the cone
+    a third of its length off the bolt, the 4 m root-authored plate, the offset being
+    mount-position-independent, and a centred hull being EXACTLY zero over 300+ flow
+    directions (that last is why shipped planes barely move).
+    OSP_SHIP_DUMP now prints a per-part cpOff column and OSP_SHIP_DUMP_BETA=<deg>
+    moves the audit off the first substep, where every hull projects symmetrically.
+    STAGE 2 -> FILED AS #514 (open): make cp the centroid of the UNION so the point and the
+    area answer the same question -- cpArea double-weights overlapping parts today
+    (glider SUM 18.24 vs union 9.55 m2; heavy_one 232.9 vs 163.6). Needs the centroid
+    cached in SilhouetteMemo per node IN THE SHIP FRAME (the nodes' plane bases differ,
+    so raw 2-D coords cannot be blended), and #473's kink caveat applies to it too.
+    SEPARATE: #513 -- the neutral point (#454's SM) quotes a lifting surface's MOUNT
+    too, and its right point is the aerodynamic centre (quarter chord), which no part
+    def records. Do it with #499/#507, not as a lone law change.
+
+[ ] #487 The droop pump: inside liftCurve's droop the slope is negative, so the
+    surface the rotation pulls back toward the stall peak GAINS lift and the sweep
+    feeds the spin. Pinned today as a SIGN flip in test_local_flow_sweep.
+    THE PREFERENCE THIS ENTRY USED TO CARRY IS VOID, and the ticket's fix idea 1 is a
+    no-op: re-read the law (drag.h:134-145) -- the cosine droop is ALREADY
+    non-increasing in |CL| past stallAngle (peak cl*A at the stall angle, 0 at
+    2*stallAngle). The pump comes from the slope being negative AT ALL, so the
+    literal clamp changes nothing. Nor is the opposite clamp (hold CL flat past the
+    peak) free, which is the trade the ticket does not state: a broadside wing would
+    keep its PEAK lift perpendicular to the flow, which is worse than losing a
+    post-stall droop -- the flat-plate picture is what the drag channel carries.
+    So the cure belongs in the INCREMENTAL half: keep the static droop, give the
+    sweep a slope source that cannot go negative (attached slope scaled by the droop
+    envelope, decaying to 0 at broadside). Scope: the drag channel cannot pump by
+    construction -- dragForce is exactly -vhat_local * q*Cd*A (drag.h:47-55) and the
+    hull call passes the flow AT the cp (vehicle.cpp:2530) -- so hull/capsule/rocket
+    form drag (#486, #491) is out of scope; only parts with a lift_area can pump.
+    Write the damping off the SAME slope source lift reads, so #543's Mach factor
+    reaches both halves at once. Decide before pinning a neutral point across the
+    band (see #454's note).
+    DECIDED 2026_10_31 (the user): idea 2 DERIVED. Keep the cosine droop in liftCurve; make the
+    sweep's increment read a non-negative slope -- attached cl scaled by the droop envelope
+    cos(t*pi/2), 0 at broadside -- instead of the local drooped slope. Still one rate term (no c*rate
+    coefficient, no double-counting question), still one slope source for #543. Expect +1 partAero
+    per lifting part per substep; test_local_flow_sweep's droop block flips from dM.w>0 to <=0; #458
+    goldens re-baseline after.
+[ ] #543 NO MACH HANDLING ANYWHERE, so every aero law in drag.h is incompressible
+    subsonic theory billed at ANY speed: a rocket ascends through the sound bar with the
+    same lift-curve slope below, at and above it, and no drag rise where the transonic
+    hump physically sits (a grep of src/ for mach|prandtl|transonic|compressib has zero
+    physics hits). A DESIGN PASS, not a fix: one flow-regime readout (Mach from the local
+    flow speed and a sound speed that belongs next to the atmosphere model) feeding lift
+    slope, cd and any rate-damping term from ONE source; Prandtl-Glauert-ish subsonic, a
+    blend through the transonic band (the partCd three-anchor blend is the in-house
+    precedent), wave drag per part supersonically; re-entry (high Mach, thin air) asks
+    whether cd stays constant at all, which is its own pass.
+    WHY LATER: a Mach factor MULTIPLIES a slope, so every subsonic law change made after
+    it re-baselines the whole Mach curve. Settle the subsonic laws first -- #487 (the
+    pump), #491 (the hull's one-point charge), #455 (2-D slope on AR 2-4.5 bodies),
+    #458's envelope goldens after #487 -- then give the atmosphere a sound speed and put
+    the regime readout next to it.
+    DO IT NOW, FREE, WHILE DOING #487: derive the rate-damping coefficient from the same
+    slope source lift reads instead of giving it its own constant. Costs nothing today
+    and is the whole reason a future Mach correction would propagate to lift and damping
+    together rather than to one of them.
+
+[x] #539 DONE (e108137) the staging preview has a label-dense shape to trip over. tests/test_staging_dv.cpp gains label_dense(strings,depth): every tank its OWN stage label, all decouplers on one -> labels ~= parts (the shape every previous probe lacked; res/ships has <=6 labels a ship, 45 in all). make test now prints both sizes: 171 parts/147 labels ~95us, 339/291 ~299us -> doubling parts costs ~3x, so the pass is ALREADY superlinear in labels (stated in the test comment, not claimed away). Ceilings 3000/9000us = ~30x headroom (23-25x clear under make test with 2 jobs: 116.2/384.9us), in test_a_gap_costs_nothing's spirit: a complexity tripwire, not a benchmark. Pinned too: labels >= 3/4 of parts, so a future edit that shares labels can't turn the guard back into the thing that hid #538. What it CANNOT do is see 35%, which is the size of 3fdbf4a -- no timing pin with a usable margin can; that needs a work counter inside the pass -> #549 filed. test_staging_dv 292->302 checks; full make test exit 0; tests-only so no e2e.  FOLLOW-UP 4d3bf2f (adversarial pass): the guard had no teeth -- gutting the fixture's links kept the
+  binary GREEN (cost fell ~40%, links= printed but never read) and zeroing every row's deltaV produced
+  62 failures elsewhere and ZERO here. Now pinned: links == strings*depth, and the rows carry the same
+  four invariants test_deep_chain_burn_stays_physical uses (finite / mass shrinks / dv==ve ln(m0/m1) /
+  whole load spent once), plus warm-vs-timed compared field by field. 302 -> 320 checks; both new pins
+  mutation-checked (tmp/n582_stagingB.cpp, tmp/n582_test_nolink.cpp). Comment honesty: the quadratic
+  clause was false -- a label walk quadratic in labels costs 107/332 us against a 95-100/284-475 us
+  spread on an idle box, both ceilings green; the comment now says ~30x absolute and names the noise
+  floor (518.7 us in-suite at 24x12 = 17x clear, not 30x). tmp/ citations dropped (gitignored; one said
+  "in the tree"), shape labelled synthetic (fleet max 7 labels/51 parts), printed line carries its
+  ceiling and a note that only 1 link/string crosses a barrier. Rejected: merging label_dense with
+  shipped_asparagus (different link topology and label mode -- the flag would hide what the pass walks).
+
+[ ] #491 The hull charge hangs off ONE point: on a long lever its local flow can
+    cancel (form drag reads 0 N for a substep) or reverse (+1.18 MW pushing a 25 m
+    stack forward at 3 rad/s -- energy stays safe, F.v + tau.w = -k|x|^2, the numbers
+    are not). Shipped levers are 0.7-1.35 m so nothing bites today; a 50 m stack gets
+    there at ~1 rad/s. Interim: cap the sweep like kChuteAccelLimit. Real fix: charge
+    hull area where it is, per part or per section. Also mismatched: the gates around
+    the term (v2 <= 0, kAoAFlowFloor 0.1 m/s) still read the COM flow, so a wreck
+    tumbling at 0.05 m/s of COM speed gets exactly none of it.
+[ ] #490 / #482 the shipped planes. Audit done (table in the archive); the user says
+    deleting or refactoring jet.json/glider.json and their parts is fine, not a
+    priority. Note the mechanism #490 established: #482's 100 deg sideslip is fixed
+    by LAYOUT (blunt hull area behind the CG + a fixed fin), not by a new law -- the
+    skiff weathervanes with a tenth the rudder area.
+[ ] #493 AIMING AT A PART AIMS AT ITS MOUNT, NOT ITS SURFACE: pick.cpp::aimAtPoint projects
+    cs->getChildTransform(part).getOrigin() -- the part's MOUNT point -- and rings +/-160 px
+    around that. The skiff's elevators mount at z -0.4, buried in the fuselage silhouette, so
+    from the default camera every probe that hits the ship returns the booster and the aim
+    fails ([uifocus] '.../elev_l' FAILED; '.../pod' lands fine). The default camera frames a
+    plane down the barrel, so nothing on the tail is clickable until the view is orbited --
+    and the orbit camera cannot be swung (CamState::camOffset has no writer). A player orbits
+    by reflex and never notices; a scripted aim has to do it explicitly. Fix order: (1) probe
+    the child shape's VISIBLE extent (AABB centre + corners, projected), which is also what a
+    "click this part" affordance needs; (2) an orbit camera that orbits, or a frame-this-part
+    key; (3) an --open-part hook only if we want cases that do not depend on framing.
+[ ] #498 A PLANE'S PROGRADE MARKER POINTS WHERE THE GROUND IS GOING. Every flight marker
+    and the conic readouts use hud.view.marker_vel -- ORBITAL velocity in the inertial frame
+    (render.cpp:783-797, view.vel_dir normalised from it at 176). Inside an atmosphere on a
+    rotating body the air co-rotates with the ground: Kerbin's rot_ang_speed 2.9158e-4 rad/s
+    is ~175 m/s at the equator, so an 80 m/s airframe's conic velocity is mostly GROUND
+    ROTATION and its prograde points where the ground is going. The aero lives in the
+    rotating frame where the air is at rest (vehicle.cpp:425-428, 459), so heading tracks
+    the air and the two never agree. Measured on skiff_trim at flying-cruise, Z held from
+    6 s: E = 0.2788 rad (16.0 deg) and it never converges -- 0.279 -> 0.272 -> 0.278 over
+    the first 12 s -- and E = 0.9193 rad (52.7 deg) by t=240 s, while Beta stays <= 0.4 deg.
+    The plane flies perfectly; the autopilot is what wobbles. Want: a SURFACE-frame
+    prograde/retrograde marker built from view.vel when rho > 0, the SURFACE window's Prg
+    line from the same vector, and slewTargetDir() aiming at air-relative prograde in air.
+    There is no surface-frame marker at all today, so a hover over the pad reads the
+    ground's motion rather than zero.
+[ ] #497 A WING'S part window shows no AoA (the row sits inside the isControlSurface()
+    block), even though #485 measures every lifting part unconditionally. Widening the row
+    is also the moment tick.cpp's steering-only recording arming becomes worth extending.
+[x] #496 DONE (8e58a49, 348ad43, 29f5b6b) A SHIP-DEF NUMBER TYPO NAMED NOTHING. pv.value
+    ("angle", 0.0) and friends threw nlohmann's type_error -- "type must be number, but is
+    string" -- with no field, part or file. One wantNumber(v, what, unit) now refuses every
+    scalar in one voice, keyed by the field and prefixed by which file and which part
+    ("ship: part 'c' in res/ships/x.json: "stage" must be a whole number, got string"), and
+    the unit follows the resource where an array is per-resource (capacity for ec is
+    WATT-HOURS, not kg -- Vehicle prints capacity=%.1fWh and partLoadMass skips EC as
+    massless). optInt splits type / wholeness / int-window into three sentences, because
+    4294967296 IS a whole number and it is the window it fails. Key-level rules answer
+    before value rules in both map loops, so {"gold": "lots"} names the resource instead of
+    sending the author to the wrong line. A SAVE's stage number also stopped being coerced:
+    a hand-edited 4294967297 used to read back as a legal stage 1 (is_number() is true for
+    every JSON number and get<int>() narrows), and a quoted "2" was dropped to the default,
+    also 1; now anything that is not a whole count an int can hold becomes save.h's
+    kStageOutOfRange (INT_MIN, window test strict at the bottom, static_assert that it is
+    not a playable stage) and validateShipParts refuses it by part name.
+    kMaxStage = 10000 STAYS, and since #517 its reason is not cost -- see the staging note
+    under ADJACENT. The two halves this did not cover are #515 (strings and bools still give
+    the library's message, and per-entry is_object() checks) and #516 (magnitudes: a stray
+    zero or 1e30 loads and breaks physics).
+    Trap for whoever does #515/#516: crew_capacity and inventory_capacity are CATALOG-only
+    keys. A test that puts one in a SHIP file and expects the ship loader to complain passes
+    for the wrong reason -- mine did, and the suite went red on it.
+
+[ ] #473 the silhouette cache blends badly where the UNION KINKS (worst 8.3%, mean
+    0.22% on a jet-shaped hull, worst cell mid-chart at alpha 0 beta 2 deg); more
+    nodes do not help. Best fix: compare a filled node against the blend of its
+    filled neighbours and answer those cells exactly; or space the chart in direction
+    space, which also drops the tan() spacing that blows up near +-90 (why the chart
+    stops at +-75).
+[ ] #478 two area conventions and nothing says which the law reads: lift_area is the
+    WHOLE planform, control_area is HALF. The test pins both ratios exactly, so
+    picking one turns into a red test naming the parts. Decide with #462's AR work.
+[ ] #462 follow-up: inducedCd's SPAN should follow the MOUNT now that the mount
+    decides where a surface's lift points (a rotated fin's effective span is its span
+    projected perpendicular to its own lift direction). Same family: a split wing's
+    per-part AR overcharge (jet.json's two half-plates pay AR 2 for an AR 4 system,
+    ~2x the induced term). Correct for genuinely separated bodies (biplane, canard).
+[ ] #474 the union is quadratic in part count: 0.009 ms at 13 parts, 0.18 ms at 100,
+    0.58 ms at 200 -- and that is also what a cache node fill costs. Fix before big
+    stations: a sorted x-interval sweep, fed by #457's extents.
+[ ] #479 / #480 attach geometry. #479: the contact ellipse is INSCRIBED in the
+    parent's mesh box, so on a parent that is neither round nor plate-thin a child
+    sinks by up to (sqrt2-1) x half-extent (worst measured 62 mm on rcs_box); the VAB
+    raycasts the real hull, so two placement paths give two surfaces. #480: the
+    CHILD side of a surface attach bolts at the "srf" node, still minted from the
+    AUTHORED radius while the parent side reads the mesh. Nodes are inside
+    geom_fingerprint, so either fix restamps every save since #456 -- do it in one
+    commit that says so.
+[ ] #481 nothing rejects a non-finite number in a def or save: "normal": [1e400,0,0]
+    becomes NaN, the pose solve returns NaN, Bullet builds a body from it, ship gone,
+    no message. One "finite number from JSON" helper for every reader.
+[ ] #484 nothing checks that a part's pose is a proper rotation. partAero indexes
+    partRot's columns and the hinge rule trusts partRot[0]; a drifted pose gives
+    forces in the wrong direction silently. Asserts in debug + a cheap check in the
+    save path. Related content warning: the plate convention (span +X, normal +Y,
+    chord +Z) is load-bearing -- a fin mesh authored the other way round hinges wrong
+    with no error anywhere.
+[ ] #476 / #477 save churn and its UX. #476: the shape fingerprint hashes mesh FILE
+    bytes, so a re-export that changes no geometry (a comment line, rescale_obj run
+    twice) refuses every save that used it; hash the .obj line-wise ignoring
+    comments/mtllib/o-NAME with rounded numbers, or hash what we pose against (AABB +
+    vertex count). Node ID and ORDER counting is over-strict too. #477: a refused
+    save can only be forced open from the command line; the Load sheet has no "Load
+    anyway" and the advice ("rebuild it in the VAB") is unreachable from a load
+    screen -- to a player that reads as "your save is gone".
+[ ] #475 [~] scripted runs over TERRAIN are still not reproducible (the airborne
+    class is): planet->Update() refines the patch tree from the camera and the
+    geometry + Bullet bodies land on job continuations, so a grounded ship can settle
+    differently. Cheaper route: hand job results back on a fixed tick offset (one
+    tick of latency at the pad). Until then pad-start cases stay on --timeout.
+[ ] #460 [~] remainder: the launch site should contribute a full basis (heading + a
+    stated roll), not a yaw on top of an axis pick. Moves every pad ship's pose.
+[ ] #425 -> #399 / #403 / #429: the authority fight. A rocket cannot hold one degree
+    of AoA (wheels lose to aero by ~20x), a tumbling rocket tumbles harder (aero
+    torque saturates any actuator limit), one place should decide how the ship turns,
+    and RCS trim pairs burn fuel that delivers no force. This is the rocket half of
+    the original work order and it has not been touched since Stage 3.
+
+ADJACENT, NOT AERO (same files, same week -- listed so this order does not hide them)
+[x] #517 DONE (d3e1409) The VAB staging preview walked EVERY integer from the highest stage
+    label down to the lowest and rebuilt a child map at each, so it billed the SPAN between
+    the labels rather than the number of labels: a 51-part probe cost 35 us at labels 1..6
+    and 19.4 ms once one part carried 10000. It now walks the distinct labels descending
+    (35-39 us either way; a 2-part ship numbered 1 and 1e6: 27.4 ms -> 0.7 us). Rows are
+    bit-identical -- 40,008 random ships / 55,314 rows compared by a review pass -- and
+    test_staging_dv went 86 -> 125 checks, with the new ones proven by mutation (no sort:
+    2 failures; no unique: 7; dense loop back in: the cost pin reports 27.4 ms). The old
+    loop also hung forever on a part labelled INT_MIN (signed overflow) -- hazard removed.
+[x] #519 DONE (8373abe) the root part's stage label is counted. finalize() seeded totalStages_ at 1 and scanned from i>=1, so parts[0]'s own label was never compared -- a ship whose ROOT carries the top label never had it counted (part live from frame 1, its decoupler/chute never firing, HUD x/y disagreeing with the part popup, minStage_ above activeStage_). Fix = one seed: totalStages_ = parts[0]->stage. No clamp: stage is 1-based at every writer (shipdef.cpp:1060, refuseSavedStage, gameui.cpp:4780) and a floor would hide a bad writer. Pinned in test_dock.cpp 84->95 (NOT test_staging.cpp: finalize() ends in rebuildCompound, which needs a shape per part -- the attempt there segfaulted; test_staging's header note now points to test_dock). MUTANT CAUGHT THE TEST: first fixture gave root+decoupler the same label so the i>=1 branch still saw it -> green with the bug back in; rebuilt lopsided (labels 4/3/2/1, top on the root ALONE) -> 6 failures in the new test, nothing else moves. Preview already seeds both ends from parts[0] and scans from 0 (checked). flight/02-staging-basic + flight/541-booster-root-decoupler PASS (no shipped ship puts a non-1 label on its root). Adjacent and still open: #518 -- save.cpp:977-978 overwrites these now-correct counters with the save's own unbounded pair.  FOLLOW-UP fd3d700 (adversarial pass): my own commit comment named a route that does not EXIST -- the
+  VAB stage box is not drawn for the root (gameui's selected-part panel: `if(sel == 0)` prints
+  "root -- cannot rotate or delete"), and no editor op re-roots a build (removePart/detachSubtree refuse
+  idx<=0, rotatePart guards the root edge, graftTree appends). The shape is still reachable: a ship FILE
+  authors root "stage": 4 (loader accepts) or a save carries it. Comment now says that, cites symbols not
+  line numbers. HALF THE NEW PINS DIDN'T BITE: five checked literal labels (3), not activeStage(), so the
+  mutant left them green -- fixture rewritten to walk every rung by activeStage() + a SECOND decoupler on
+  the LOWEST label (hung off the capsule, not inside the label-3 subtree). Mutant: 6/95 -> 10/98 failures,
+  all in-test. staging.h's doc rule was WRONG ("plus the highest"; the walk adds the lowest too -- its
+  assert spans minStage..maxStage), fixed. Cross-posted: #529 (flight walks N labels while the table lists
+  fewer rows: `if(!isFinal && drop.empty()) continue;` staging.cpp:765 -- plus a correction comment about
+  which fixture the numbers came from), #545 (partly unwedged: split-off ship now 2/2/1 not 1/1/1, so the
+  wedge becomes the #541 refusal; its analysis needs re-deriving), #518 (save.cpp copies the file's counters
+  over finalize()'s correct ones -> pre-#519 saves keep the under-count forever; user deprioritised).
+  test_dock 95->98/0; make test exit 0; the 2 staging e2e cases re-run on a post-fix binary: 2/2 PASS
+  (8373abe had cited a stale one -- caught by timestamps).
+
+[ ] #518 a save's OWN active_stage / total_stages (save.h:623-625, assigned after validation
+    at save.cpp:975) are unbounded and unvalidated, so a hand-edited save sets the flight
+    counter to anything and the parts' stages never get consulted. Wants a corrupt-save
+    harness -- which is also what would finally pin validateShipParts' call site.
+[x] #519 [closed] Vehicle::finalize() seeds `lowest` from parts[0] but only scans i >= 1 for the HIGH
+    end, so a root part carrying the sole top label vanishes from totalStages_: its
+    decoupler and chute then never fire (the counter never reaches the label) and its engine
+    can never be cut. Latent -- all 29 ships in res/ships/ put stage 1 on the root -- but the
+    VAB stage box lets a player create it, and it round-trips through a save.
+[x] #520 DONE (facf56a) droppedParts rebuilt its parent->children map once per LABEL
+    walked. The tree is invariant during the pass (only `alive` flips), so it is now a CSR
+    on Sim (childStart/childOf, the shape #293 already uses for group members), built once
+    from the snapshot. Same probe, both binaries, best of 11: heavy_asp 39.3 -> 28.0 us,
+    51-part spine 71.0 -> 41.3, 240-part spine 761.8 -> 372.8 (worst run 2214 -> 984),
+    241-part single-label spine 45.6 -> 34.3, 268-part asparagus 434.6 -> 338.1, 444-part
+    1342.5 -> 1115.7, spine scaling 200 parts 286.1 -> 150.3 and 400 parts 548.2 -> 297.9
+    (label count grows with part count -- the shape this is about). All 29 res/ships rows
+    byte-identical. test_staging_dv 206 -> 215 checks: a decoupler beside a SIBLING under
+    one parent, masses pinned by hand (195 -> 135 -> 110 -> 70); mutants read 130 (no child
+    side) and 120 (histogram off by one) and both fail, while a conditional prefix sum is
+    equivalent code, not coverage. e2e staging-basic + asparagus-drain PASS.
+    Correction to this entry's original wording: the 6.6 -> 3.8 ms / 240 parts / 241 labels
+    figure predates #517 making the walk sparse, so that shape no longer exists; the numbers
+    above are the ones that reproduce now.
+    Review pass (b803f80, tmp/n520a_findings.md): the refactor was independently proven equal
+    (40k random parent graphs + 29 ships x 6 settings, 0 mismatches), but the test added with
+    it had a hole -- the decoupler owned ONE child, so the end of its range was unread and a
+    one-child-short seed passed 215/0 while corrupting mars_explorer_mk1's rows. Now a second
+    child (205 -> 145 -> 110 -> 70) and a self-parented-part case; buildChildren uses ONE
+    clamped parent predicate (two hand-written guards agreeing by luck was a write past
+    childOf, invisible to the suite, and staging touches a malformed parent before
+    partitionFuelGroups' assert does). 206 -> 215 -> 221 checks; mutant table in #520's second
+    comment. Fallout tickets: #533 (flat drop set, -26..31% measured), #534 (the file's two
+    hand-rolled CSRs), #535 (the walk also lives in vehicle.cpp, calling its DFS a BFS).
+[x] #526 DONE (de7b854) runBurn kept the tanks and the running mass in the Tsiolkovsky sum
+    as two representations with nothing forcing them together: the step length skipped
+    tanks holding <= 1e-12 kg while the charge still billed every fed engine in full, so
+    the mass ran ahead of the fuel. Six fuel-linked strings are enough -- a 70-part chained
+    asparagus read dv 1,801,269 m/s, a 136-part one read -nan, and the CORE stage read 0
+    because a runaway period had already "spent" its propellant. dt is now the earliest
+    emptying time over every billed part, and a tank whose emptying time IS that step comes
+    out exactly empty (pro-rata spreading TIES a whole layer on that instant, so residues
+    otherwise re-feed the same engines against dust and the burn chases them into subnormal
+    scale -- that is what the first attempt at this fix hit: dt = 1.98e-323). The
+    mass-manufacturing guard is gone; a step spends what it bills is asserted instead.
+    All 29 res/ships rows bit-identical; the broken shapes are also 5x cheaper (268 parts
+    2222 -> 424 us, 444 parts 7300 -> 1259 us), which retunes the worst case quoted in #527.
+    Steps per period are 5..71 for 4..40 boosters against a 8n+32 budget (~50x headroom).
+    test_staging_dv 125 -> 206 checks, on a 4/6/12/16/24-booster ladder: 12 boosters ALONE
+    does not catch the old dt-skip bug (rows come out bit-identical to the fix -- proven by
+    mutation), the 16+ rungs are where it becomes a row. Tolerance pinned by measurement:
+    observed slack is 3e-15 relative, and 1e-10 already fails spuriously at 16 boosters, so
+    the 1e-9 in the test is the right setting, not a loose one.
+[x] #527 DONE (d5af701) the VAB fuel-link overlay resolved both ends of every link by scanning
+    every part every frame. Now an id->index map cached next to the staging rows under the same
+    signature, invalidated by one helper both readers call. Measured us/frame (probe resolves
+    both ways, 0 mismatches): 59/5 0.73->0.21, 120/11 2.74->0.53, 268/24 11.8->1.30, 500/45
+    50.6->2.74; rebuild 3.7-42.8 us once per edit. The ticket's 21.2 us at 268/24 did NOT
+    reproduce (scan arm measures 11.8). Honest cost: with the Staging window closed the overlay
+    path now pays the signature (2.5-21.3 us) -> small loss below ~300 parts, 2x win at 500;
+    W_Staging is default_open=true (uiwins.cpp:253). Declined: reusing computeStaging's internal
+    idIndex (staging.cpp:607) -- 3.7-42.8 us/edit next to a ~370 us recompute (the 710 us figure
+    did not reproduce) is not worth making a pure function return two things.
+    FOLLOW-UP (b659817): d5af701 was a regression in the DEFAULT case -- both readers computed the
+    signature (2.5-21.3 us, O(parts)), so open-window frames got slower (+60% at 59 parts). Now one
+    memoised signature per frame + unordered_map. us/frame open-window 59/120/268/500:
+    before#527 3.20/7.80/23.11/71.67, d5af701 5.12/10.65/24.10/45.44, now 2.57/5.30/11.93/22.39;
+    closed-window now 2.57/5.30/11.93/22.39 vs 0.73/2.72/11.68/50.26 before. Also cleared
+    partIndex in forgetBuildTargets (0 is a legal FNV value) and asserted the memo's invariant.
+    Next in this function: #542, now DONE (8d57ea5) -- see its entry.
+[x] #528 CLOSED NOT FIXED (measurement settles it, comment on the ticket): the flight call
+    frequency the ticket asked for is EVENT-ONLY -- build_ship (vehicle.cpp:141), finalize (1660,
+    itself only at construct/EVA/save-load/part-mint), absorbShip (3617), extractSubtreeAsShip
+    (3677/3767), plus one pass at ship parse (shipdef.cpp:1894). Nothing in a tick. VAB side is per
+    EDIT, not per frame (ensureStagingCache signature, gameui.cpp:4979-4987), and costs 1+D calls
+    (staging.cpp:698 once, 789 per dropping stage). Re-measured one call (tmp/n573_probe.cpp, best
+    of 21): 0.25 us @12, 7.9 @240, 26.9 @800, 66.9 @2000 -> per-edit bill 0.033 us x n x (1+D).
+    Biggest shipped ship = 51 parts / 7 labels (heavy_asp) = ~13 us per edit. 16 ms needs
+    n(1+D) ~ 0.5M. Reopen if the VAB ever recomputes per frame or ships reach 5-digit parts.
+    Original note kept for context: partitionFuelGroups allocates a vector per part
+    (shipdef.cpp:1773) on every call:
+    linear, allocator-bound, 0.021 -> 0.034 us/part from 12 to 800 parts, and 24% of a
+    240-part computeStaging (spread over its refreshFuel calls). Wants the CSR shape
+    staging's own Sim already uses for memberOf/memberStart (staging.cpp:145-163). CHECK
+    THE FLIGHT CALL FREQUENCY FIRST -- flight only calls it at finalize/dock/undock/stage
+    separation, so the payoff may be VAB-only.
+[ ] #529 a decoupler sitting on the ship's LOWEST stage label ends the staging walk: that
+    period burns until the DROP SET is dry, so the survivor's own burn never gets a row --
+    6800 kg of propellant with a lit engine, delta-v under-reported ~9x, and the mass
+    column agrees. Every part on label 1 is the default build. Pre-existing (#526's test
+    wording "every kg of propellant is spent once" is therefore shape-dependent: no
+    decoupler at minStage and all fuel reachable). From the #526 review pass.
+[x] #530 DONE (9dfdf2c) the inf came from STORAGE not JSON: capacity was the last float in a
+    PartDef (contents went double in #379), so (float)1e308 = +inf, clearing the >=0 and
+    cap_total>0 gates -> m=inf rows and nan layerFuel shares. nlohmann itself refuses 1e999
+    and NaN/Infinity literals (tmp/n574_probe.cpp). Fix = match the types (vector<double>,
+    cast gone); no upper bound invented. Fuel_link half: UNREACHABLE -- the ship file answers
+    'a fuel link needs "from" and "to"' (shipdef.cpp:1092) and save refuses a virtual def for
+    parts/seats/contents (refuseVirtualPartDef save.cpp:121 @288/344/680); staging.cpp's assert
+    comment corrected. Tests: capacity parse had ZERO coverage; added a negative-capacity
+    refusal (names resource + unit, pins #496) and an isfinite(1e308) pin -- teeth proven by
+    mutant F (cast restored -> FAIL at test_shipload.cpp:2488).
+    Original note kept for context: a capacity big enough to become a float infinity loads anyway (checked >= 0 only,
+    shipdef.cpp:515) and the staging table prints m=inf->inf dv=0; inf layerFuel then makes
+    every pro-rata share nan. Same pass also found: "fuel_link": true skips the mass block
+    (shipdef.cpp:330) so mass can be 0, which is what makes runBurn's assert(m1 > 0.0) fire
+    -- live in the shipped build, since nothing sets NDEBUG.
+[x] #531 DONE (e22aff7) consumeResourceMass returns FuelDraw{ok, drawn}; each layer is sized
+    from what is OWED (amt - drawn) so a clamped-short layer passes the remainder DOWN the
+    layers, and the engine loop bills drew.drawn to --dv-log. MEASURED SCALE: at most one ULP
+    of the request -- 1.82e-12 kg on a 5124.85 kg layer (3.6e-16 relative); tidy shapes
+    ({7,18}, {25,75}, 6x0.1) come out EXACT, so the fixture numbers come from a 2M-sample
+    search (tmp/n579_probe.cpp), not from a hand-picked pair.
+    THE TICKET'S OWN REASONING WAS SLIGHTLY WRONG: it said flight has only one representation
+    so nothing compounds. It does have a second one -- --dv-log's dvMass ledger
+    (`m_after = dvMass - dm; propSpent_ += dm`) is kept in step by subtracting what the caller
+    BOOKED, while the ship's real mass is read from the tanks. Billing the plan makes those
+    disagree; e2e flight/356 already watches the gap at 0.05 kg tolerance, and now they agree
+    by construction. Right conclusion, better reason.
+    TEST TRAP: measure the drop TANK BY TANK. (sum before) - (sum after) for that layer is
+    exactly the request, because one ULP of a 5125 kg sum is 9.1e-13 vs a 1.8e-12 shortfall,
+    so the naive version passes WITH the bug -- the first cut of the test failed that way
+    (tmp/n579b_probe2.cpp). Teeth: M1 (old semantics) -> 4 failures, all four new checks;
+    M2 (honest report, plan-sized layers) -> exactly the 2 state-change checks, and NO
+    pre-existing check notices, i.e. the carry-down half had zero coverage before.
+    test_fuel 146 -> 153; full make test exit 0; e2e flight/356 PASS.
+[x] #532 DONE (7f16508; ddfe3b0 fixed the right thing on a false rule of make, df523a6 was a wrong diagnosis) make test goes red after a
+    commit. NOT a stale ./osp: test_cli.cpp:20-24 calls parse_cli IN-PROCESS (rdbuf swap), so
+    the assert compares VERSION in test_cli.o with the string in cli.o -- two objects in one
+    test binary. Real cause: make takes prereq mtimes at graph-scan time, so a header the
+    `version` recipe rewrites mid-run is noticed only by the NEXT build; obj/cli.o already had
+    src/version.h as an explicit prereq and was still a build behind (tmp/maketest_526b.log:
+    header rewritten at line 24, the only TU compiled that run is tests/test_cli.cpp at 25,
+    abort at 414). Fix = refresh version.h at MAKEFILE-PARSE time ($(shell) before the scan),
+    so every VERSION holder recompiles in the bump run; also gave $(OBJDIR)/cli.o the prereq it
+    never had. Trigger is narrower than the title: needs the bump AND one VERSION TU rebuilt
+    for an unrelated reason that run (model: tmp/n552_ver/Makefile reproduces red/green).
+    Kept from df523a6: the run-every-test loop (the old `$(foreach ... || exit 1; )` hid nine
+    skipped tests); `test` does not depend on `all`. THE REAL MECHANISM (7f16508): `src/version.h:
+    version` had NO commands and the write lived in the phony prereq's recipe, so make compared
+    dependents against the header's pre-write mtime. Put the write in the header's OWN recipe and
+    explicit prereqs work (serial and -j). Guards: never write an empty string over a good one,
+    write via temp+mv, fail loudly if there is nothing to write. A parse-time $(shell) refresh
+    also works but is worse: it fires under -n/clean/recursive-make, is non-atomic (6/4000 reads
+    saw a partial header), can wipe the version on a failed git describe, and pays git describe
+    (~66 ms) per make process.
+[x] #533 DONE (7f2116c + ddb453c) the per-label drop set is a std::set: one RB node per dropped part per stage label,
+    then copied into another set. Flat vector + reused visited buffer measured -18% at 51
+    parts and -26..-31% on label-heavy spines (800 parts / 400 labels: 19.9 -> 13.7 ms), rows
+    byte-identical. Hoisting the per-decoupler `stack` alone is only -0..3%, don't bother.
+    Do NOT instead binary-search the per-label part scan: ~2% on the big case, 2.5x WORSE on
+    a 51-part ship. computeStaging runs on every signature-changing VAB edit (gameui.cpp:4945).
+    Landed as a flat ascending vector<int> plus a byte-per-part epoch stamp on Sim
+    (`seenEpoch[i] == seenTick`); ddb453c replaced the clear-pass with the epoch, which is
+    a little faster again (51-part 33.0 -> 31.8, 444-part 991.5 -> 982.6). Probe (best of 11, before #520 -> after #520 ->
+    now): heavy_asp 39.3 -> 26.9 -> 23.2 us; 51-part spine 71.0 -> 41.3 -> 33.0; 240-part
+    spine 761.8 -> 387.1 -> 282.8; 268-part asp 434.6 -> 340.1 -> 295.0; 444-part 1342.5 ->
+    1126.9 -> 991.5. All 29 res/ships rows byte-identical. Three equivalent mutants (marks
+    never cleared / seed pushed without dedupe / already-marked seed skips its subtree) are
+    recorded in the test comment as NOT coverage. Next in the family: #536.
+[x] #534 DONE (8e47bed) staging.cpp built its two CSR tables by hand -- rebuildMembers (#293)
+    and buildChildren (#520) -- same histogram/prefix/cursor, two idioms. Now one
+    buildBuckets(nBuckets, nItems, key, start, items) with the gate as a lambda; the win is
+    that both passes necessarily use the SAME key, so the count/fill agreement that decides
+    whether `items` gets written past its end cannot drift. Two asserts (per-item bucket
+    bound; final cursor==start check) cost nothing measurable (paired 635/629 vs 637/635 us,
+    444-part) and the first has teeth (tmp/n534_oob.cpp aborts). 264 checks + 29 ships
+    byte-identical. NOT covered: partitionFuelGroups' per-call vector<vector<size_t>>
+    adjacency -- different shape, that stays #528.
+    6c88904 followed up on the review of that commit: the "consistency" assert was
+    tautological (compared cursor[nBuckets] against a cursor the fill never moves) and is
+    now per-bucket cursor[b]==start[b+1]; it catches count drift, and the comment now says
+    plainly that a swap between two valid buckets is uncatchable by any count check. Also
+    found: StageRow::engines was pinned by NOTHING (row.engines = 1 passed everything) --
+    264 -> 266 checks.
+    Probe-design lesson from this family: the random-ship fuzz at its default maxParts=14
+    sees none of these staging rules (0 diffs for a mutant that changes an ordinary
+    two-stage ship's rows). maxParts=30/60 flags it. Any future corpus work should raise
+    that default or the fuzz is decoration.
+[x] #535 DONE (44af468) the drop walk's two copies: fixed the BFS-lies comment (it is an
+    iterative DFS), children[p] default-insert -> find(), and cross-referenced the copies with
+    why they differ on purpose (Part has no dead flag; isDecoupler() vs a precomputed flag; a
+    pointer-set return whose order game.cpp:2042-2049 does not read as an ordering -- verified).
+    Per-call map rebuild assessed and DECLINED: once per stage press, not per frame, and caching
+    it would go stale across extractSubtreeAsShip/absorbShip. e2e staging-basic +
+    asparagus-drain PASS (this is the live path). #529's rule still belongs to both walks.
+[x] #536 DONE (033ad0b + d68dc9c) drainableIn rebuilt a std::set of reachable GROUP ids on
+    every call, and it runs once per BURN STEP (ready() in runBurn), not once per label. Now
+    an epoch stamp per group (reachEpoch/reachTick), sized in refreshFuel where the groups
+    renumber; staging.cpp no longer includes <set>. Best of 11 (pre-#520 -> after #533 ->
+    now): heavy_asp 39.3 -> 22.5 -> 20.7 us; 268-part asp 434.6 -> 288.9 -> 216.9; 444-part
+    1342.5 -> 982.6 -> 666.6. A spine is UNCHANGED, and NOT for the reason I first wrote
+    ("drainableIn is called 0 times" -- false: 69 calls/pass on the 240-part spine, 9 on
+    heavy_one). The mark pass there is only 69 stores/pass (one lit engine, its own group)
+    against 13,436 on the 268-part and 60,447 on the 444-part shape; small mark set, small
+    win. All 29 res/ships rows byte-identical.
+    d68dc9c + bde54f8 added the tests the rule needs: 229 -> 257 -> 264 checks. Three
+    mutants had passed everything: assign->resize; marking only each lit engine's own group;
+    and marking every engine's layers whether LIT or not (that one bills a survivor's fuel
+    to the wrong period: s3 520->300 dv 550 vs 520->500 dv 39). Two mutants had passed
+    layers instead of its drain layers). The unlit one needs a peculiar shape:
+    drainLayersFor() is transitive, so the unlit engine's group must be in a DIFFERENT
+    branch of the link graph -- which needs a fuel barrier that is not a decoupler
+    (Catalog::barrier in the test file). Note for future probe design: the review's fixture did NOT kill the second one
+    on committed code -- when the linked tank and the booster tank empty in the same step,
+    the rows are identical whatever the marks say. Making the linked tank the biggest in the
+    drop (100 kg vs 20) is what exposes it: dv 341 vs 101.
+[x] #537 DONE (3dd68fc) the drop walk checked aliveness twice and each copy hid the other's
+    absence. droppedAt() now lists only alive parts and computeStaging takes its answer
+    directly. Seed check deleted: 0 failures before -> 1 failure after (the phantom label-2
+    row), so the load-bearing half is finally testable. The listing filter stays as contract
+    hygiene on the returned vector (deleting it is invisible, measured) and the comment says
+    that. drainableIn's per-entry alive skip is now provably redundant (both call sites pass
+    `drop`, which is alive-only) and stays as a tripwire; kill()'s unlight loop keeps litCount
+    honest. Deliberately NOT done: pruning descent at dead parts (needs "no live part hangs
+    under a dead one", unproven for the loaders). Timing neutral to ~1% better (dampers
+    74.0->73.1, 259.2->257.1); 29 ships byte-identical; no e2e (preview output unchanged).
+[x] #538 DONE (3fdbf4a) the mark pass was period-invariant work paid per burn step.
+    markReachable() now runs once per label, right after that label's engines light;
+    drainableIn() only reads the epoch. Paired bench vs 8e47bed, two rounds each (best of
+    N=401): 444-part 627.4/651.9 -> 563.1/544.3 us, 268-part 215.7/215.5 -> 183.1/186.2,
+    spine 271.0/269.4 -> 267.2/270.8 (flat, as predicted -- one lit engine, 69 marks/pass
+    against 60,447 on the 444-part shape). 266 checks + 29 ships byte-identical, so no e2e.
+    Eight mutants all die (tmp/n538z_*.cpp): markunlit 4, owngroup 6, resize 4, nofilter
+    12, inverted 29, offbyone 29, markfirst 4, nevermark 12.
+    CORRECTION to what this entry claimed: the hoist boundary is pinned by exactly ONE
+    fixture, not "already pinned" broadly -- markfirst's 4 failures are all in
+    test_reachability_survives_a_renumbering; the unlit-engine test does not see it.
+    Epoch lifetime is now one label iteration, so drainableIn() is only meaningful after
+    markReachable() ran this period. Lit set is fixed inside a burn (lighting at the top of
+    the label loop, unlighting in kill), so the invariant holds; a mid-burn relight would
+    break it.
+    FOLLOW-UP (f8e03e8): the landed stamp sat ABOVE `if(!isFinal && drop.empty()) continue;`
+    and ran for labels that can never read the marks, so label-dense ships got SLOWER than
+    pre-#538: damper12x12 (171) 80.1->90.9 (+13%), damper24x12 (339) 286.6->384.3 (+35%);
+    stamping below the continue gives 74.6 / 248.6 (-7% / -11% vs pre). On spine/asparagus
+    the follow-up is inside drift (mins of 5 interleaved rounds; arm order flips). Also
+    added the litCount/markLitCount assert that DOES state the ordering rule: it aborts on
+    stamp-first, one-stamp-per-preview and no-stamp; its limit is that a writer forgetting
+    its counter step is invisible (measured: dropping any one step keeps 278 checks green).
+    reachEpoch's field comment contradicted #538 and is fixed. 266 -> 278 checks (new
+    fixture: newly lit engine OUTSIDE the drop, reaches a tank INSIDE it -> drainAll flip).
+    e2e flight/02-staging-basic + flight/37-asparagus-drain PASS.
+    SECOND FOLLOW-UP (463dcaa, from tmp/n544_findings.md): the litCount pair f8e03e8 added was
+    itself broken -- kill() unlights every engine whose PART is dead, so it stepped the count for
+    engines that never lit (labels go high->low) and re-stepped engines an earlier kill() already
+    handled (the loop scans all engines, not the drop): heavy_asp drifts to litCount=-18 with
+    litRocketCount()==1. Rows never changed (nothing but the assert reads it), so the assert was
+    comparing two readings of a broken number. Fix: only a LIT engine steps it. The test that was
+    missing is free: markReachable() counts litSeen in the loop it already runs and asserts
+    litSeen == litCount -- now aborts on all four counter slips (kill as landed, kill step
+    dropped, pre-loop step dropped, label step dropped), all of which read 278/278 before.
+    Comment claims corrected too: a dead part cannot reach drainableIn anyway (group -1 wall in
+    buildFuelGroups + links out of revLinks + droppedAt's listing rule), droppedAt's LISTING test
+    is unobservable by construction (a live seed is always listed, so drop.empty() cannot flip),
+    and test_a_self_parent_walks_once does NOT pin the seenEpoch stamp position (mutant survives).
+    New fixture test_a_live_decoupler_above_a_dead_tank_does_not_adopt_its_fuel: suite had 0 such
+    shapes, 1,768 of 20,000 fuzz ships have it (11,751 was dead walk ENTRIES, not ships); it is
+    the suite's only catcher of "kill() unlights every LIT engine" (31 fails with, 30 without),
+    and catches none of the aliveness pair. 278 -> 292 checks, 29 ships byte-identical.
+    THIRD FOLLOW-UP (9746afb, from tmp/n548_findings.md): no correctness findings in 463dcaa;
+    honesty fixes + assert(sim.litCount == sim.litRocketCount()) at the end of computeStaging,
+    which catches a slip in the LAST period's kill() that no stamp can see (proven: per-period
+    assert removed + kill step dropped -> abort on racer/stager/heavy_asp; quiet when clean).
+    Perf wording withdrawn: same-binary spread is 1.3-1.8% and single-cause arms move -1.9%..+1.4%
+    with inconsistent signs, so "1-5% better" was not supportable -- only "no measurable cost".
+[x] #540 DONE (a0ec7de) jettisoning two boosters at the same height could name them differently
+    each run: the drop walk returns a set<Part*> (address order) and game.cpp sorted decouplers by
+    depth only, so same-depth ties kept address order -> dedupVehicleName's #2 suffix and the
+    next-ship handoff varied. Shipped ties: heavy_one stage 4, heavy_asp stage 2. Fixed by
+    Vehicle::stagedDecouplers(stage): (depth, index in parts), depth still first. stable_sort alone
+    would not have helped -- the input order IS the coin flip. Teeth: the tie fixture swaps the two
+    entries in `parts` so allocation order and build order disagree -- the pre-fix comparator fails
+    it (1 failure); a second check pins that depth outranks build order. e2e flight/02 and
+    flight/38 PASS.
+    Follow-up (its review pass): the comment's tie counts were WRONG -- measured properly, 4 of 29
+    shipped ships have same-stage same-depth decouplers: heavy_one stage4/depth1 = 4,
+    mars_explorer_mk1 stage4/depth12 = 4, heavy_two stage4 = 2, heavy_asp stages 4,5,6 = 2 each
+    (NOT "five on stage 2"). buildIndex now asserts membership (a miss would make every tie compare
+    equivalent and quietly restore the address-order coin flip); the helper filters to the pressed
+    stage instead of returning other-stage decouplers that ride along in a dropped subtree (they
+    would fire stages the player never pressed, on #541's refused-split path); the drifted #535
+    comment pairing was repaired. Tests 22 -> 28 checks; the tie fixture asks twice (once per build
+    order) and requires different answers, so it cannot go vacuous on an unlucky allocator.
+    Spin-off filed as #544: the (depth, index-in-parts) key depends on `parts` staying build-ordered
+    across save/load/attach/absorb/extract -- all verified to hold today, none of it asserted.
+[x] #544 DONE (282df5b) stated at the declaration + at buildIndex, and pinned in test_dock (85
+    checks, was 82): attach order, host-then-donor after absorb, build order on the split-off ship.
+    Teeth measured: N1 (absorb prepends) -> 2 failures; N2 (split rebuilds in walk order) -> 1
+    failure, visible only after adding a sideX branch to the fixture (in a chain, build/walk/
+    alphabetical orders all coincide). Not taken: a --ship-dump order line (OSP_SHIP_DUMP already
+    walks parts in order); ordering by save uid (makes the tie depend on save history).
+    Earlier note, kept for context: the (depth, index in parts) split order assumes `parts` stays build-ordered: traced save/
+    load/attach/absorb/extract and all preserve it today, nothing states or checks it, so a refactor
+    that rebuilt parts differently reshuffles which booster is "Booster" vs "Booster #2" with every
+    test green. Cheapest fix is to state it where it is used; alternative is ordering by part id.
+[x] #541 DONE (4ebec4f) the drop walk exists in THREE copies (staging Sim::droppedAt,
+    Vehicle::droppedPartsAtStage, Vehicle::extractSubtreeAsShip -- the last rebuilds the
+    parent->children map once per decoupler per press) and game.cpp's nullptr comment named a
+    reason that cannot happen there. Fixed: the comment now names all three and the 1+N cost;
+    a refused split now says WHICH part instead of printing "Stage: nothing left to separate".
+    NOT done on purpose: merging the three walks behind one children table -- the preview needed
+    caching because it walks per label every frame (#520/#533); this runs once per keypress on
+    <=51-part trees, so it would be new mutable state for no measurable win. Live proof: stage
+    `stager`, F6 to the booster (its root part IS dec_1), SPACE -> "Stage: Decoupler (2m) is this
+    ship's root part..."; pinned by new e2e flight/541-booster-root-decoupler (forbids the old
+    generic line). Note for repro: a capsule-owning ship can't reach it -- the crew lock refuses
+    first. test_staging 31 checks. Open question left on the ticket: should a stage that cannot
+    separate still advance the counter (it does today, by design)?
+    FOLLOW-UP (this commit, from tmp/n569_findings.md): the first cut shipped a
+    Vehicle::splitBlockReason() predicate, justified by a claim that a refused split burned a
+    de-duplicated ship name -- FALSE, dedupVehicleName is a pure query. Worse, the predicate
+    answered "can this split happen?" a second way (parent == nullptr) while game.cpp used it
+    to decide whether to call extractSubtreeAsShip at all, so a guess outranked the thing that
+    counts the subtree. Predicate deleted: game.cpp reads the nullptr and separates the two
+    reasons by whether the part is still in a->parts (not aboard = went off inside an outer cut,
+    silent; still aboard = the root part, named). Part label now in the TOAST too, and a partial
+    press (one split + one refusal) says both. stagedDecouplers' depth chain got a cycle bound
+    (it would spin before any assert). e2e 541 case: dropped the "stager Decoupler" display-name
+    pin and the duplicate FORBID Assertion (DEFAULT_FORBID covers it), added the toast EXPECT.
+    test_split_block_reason -> test_extract_refusals (pins the extract's own refusals + that a
+    refusal leaves the ship intact). Correction posted on #541.
+    ROUND 2 (this commit, from tmp/n570_findings.md): (a) the e2e case stopped pinning its own
+    CLAIM -- all its substring EXPECTs match output with the part label deleted; fixed with two
+    CHECK lines (non-empty subject slot in the log line + in the toast row). (b) game.cpp's
+    "still aboard => it is the root" step is unsound on a parent CYCLE and nothing trapped it
+    (std::sort skips the depth bound for 1-element decs), so extractSubtreeAsShip now asserts
+    root->parent == nullptr at the whole-ship refusal. (c) refusedPart was the branch flag: a
+    nameless def (loader defaults "name" to "", shipdef.cpp:310) silently restored "nothing left
+    to separate"; now a bool + fallback, and #546 filed for the loader gap. (d) two comments in
+    4a8c052 were wrong (vehicle.h "counted, not inferred from parent edges" -- the count IS
+    built from p->parent; game.cpp ran the inference backwards + reused "earlier cut" with two
+    senses). test_staging 34 checks. Measured: mutant M3 (over-refuse one legal split) survives
+    test_staging 31/0 but dies in test_dock ("staging: the split succeeded"); stagedDecouplers
+    costs 0.113 ms @501 parts/1 dec, 2.2 ms @250 same-stage decs -> no memoization wanted.
+[ ] #545 a decoupler that already fired stays armed on the ship it made: extractSubtreeAsShip
+    re-roots the new ship at the cut decoupler, which keeps its stage, and that stage is the
+    lowest on the new ship (lower-stage parts hang above the cut and go with the upper ship), so
+    minStage_ == activeStage_ and advanceStage() cannot move -- every press on such a booster
+    prints the refusal forever (live: 4 presses -> 4 identical refusals on stager's booster).
+    Needs a design call, do it with #529: disarm the re-rooted part at the cut, or leave the
+    decoupler on the parent side like a real one. MEASURED SCOPE (comment on #545): 6 of 27
+    decouplers in res/ships sit above a LOWER-stage part (all mars_explorer_mk1) -> those ships
+    are not wedged but open at a phantom top stage and burn a press; the other 21 wedge.
+[ ] #546 a part def can load with no name (shipdef.cpp:310 defaults it, label() falls back to
+    it) so every message naming a part prints a gap; validate at the loader like #542's node
+    ceiling. 0 empty names in the shipped catalog, so it only bites player-authored content.  FOLLOW-UP 93da940 (adversarial pass): the SAME two-ledger habit was live in the preview -- runBurn
+  charged mdot*dt (a plan; sum(rate) is a rounding sum against the fed mdot) while `drained` sat in an
+  assert 17 lines away. 105 of 218 suite burn steps billed a mass != what their tanks gave up (max
+  7.3e-11 kg). Now the drain runs first and the Tsiolkovsky step charges `drained` -> acc.m is the
+  parts' mass by construction. Also: the --dv-log cursor now walks down for JET draws too (no dv line,
+  no propSpent_ -- that gap stays #368's). Two of my claims were wrong and are corrected: the shortfall
+  is 2.00 ULP not "one ULP", and two test_fuel checks were asserting a rounding EVENT (4436 of 5040
+  orderings of the same seven amounts drain exact) -> now labelled WITNESS; the biting pins (bit-exact
+  reported kg, bit-exact two-layer total) hold in all 5040 orders and under +-1 ULP nudges, and the
+  latter alone still kills the plan-billed mutant. test_fuel 153/0, test_staging_dv 302/0, make test
+  exit 0, flight/356 PASS (whose 0.05 kg tolerance could never have seen this).
+
+[x] #542 DONE (8d57ea5 + ae60bf4) the VAB free-port gizmo loop called BuildShip::nodeOccupied for every
+    node of every part, every frame (parts x nodes x parts). Fixed with BuildShip::fillNodeTaken,
+    one pass that sets bit k of a per-part uint64_t when node k is consumed by a stack edge; both
+    readers (gizmos, pickVabNode) now share one mask, so a dot and the click agree.
+    Loop cost 67.2/35.2 -> 1.5/1.8 us at 268 parts (free-port / stacked fixtures; the ticket's
+    numbers were the free-port shape only -- a stacked column is ~2x cheaper but still quadratic
+    because a part's own side of the edge only matches when the scan reaches it), 229 -> 3.0 us
+    at 500. No cache key: the pass is cheaper than the hash would be. Mask-vs-nodeOccupied pinned
+    in tests for every (part, port) pair, and the probe reports 0 disagreements 59-500.
+    NOT done: drawVabPartWindow's id scan (gameui.cpp:4322) -- breaks at the first match, only
+    runs while a popup is open, ~0.3 us at 268 parts.
+    Follow-up ae60bf4 (its review pass): the test missed the parent-half-into-a-surface-part shape and
+    the reused-vector zeroing, so two plausible wrong edits passed green -- both now caught (1 and 8
+    failures). The 64-node bound moved into the loader (names the def; asserts are on in every config,
+    so it used to be a draw-time abort, and with them off node 64 aliases onto node 0). Both lookup
+    `break`s dropped so the mask matches by id like nodeOccupied: measured +1 us/frame at 268 parts on
+    a stacked column, still 35.6 -> 2.8 us there. nodeTaken renamed buildNodeTaken.
+[x] #539 [closed] the staging preview's speed probes only time ships with few stage labels: 3 probes
+    (spine 240, asp 24x10, asp 40x10) all have ~5 labels, so per-label work is invisible at
+    the part counts we bench. Filed with the damper12x12/24x12 numbers above; fix = copy
+    labeldamper(strings, depth) from tmp/n541_probe2.cpp into the probe set and print label
+    count beside part count.
+
+# review round on #544/#530 (report tmp/n576_findings.md, 4 commits' worth of claims).
+# Two of the nine findings were holes in what the commits THEMSELVES claimed:
+#   d4aa3d7 (#544): the split filter runs twice (new ship + survivor complement) and only the
+#     first half was pinned, while vehicle.h said both. Fixture grew sideY/sideYkid/sideY2 on
+#     the survivor side; the tree-walk mutant now fails 1 check. The pointer-ordered-std::set
+#     mutant CANNOT be caught: measured (tmp/n577_probe_dock.cpp) the allocator hands those
+#     four Parts back in build order, so sorting by address is not a permutation. Lesson kept:
+#     before calling a pin toothless, ask whether the wrong edit changes the OBSERVABLE order
+#     at all -- and never claim a pin covers both halves without testing each half.
+#   bde58ef (#530): the widening stopped one value BEING inf, but two legal values still ADD
+#     to inf and `cap_total <= 0` lets inf through -> partLoadMass inf -> Bullet NaN inertia
+#     tensor. Now refused by name, with a catcases row. Also: part.h still documented the
+#     table as float; my negative-capacity row re-pinned a needle the parent commit already
+#     had (expect_throw_saying is a substring match) -- replaced by the EC/Wh form of the >=
+#     rule; and test_power / test_staging_dv / test_fuel still cast (float) into capacity, the
+#     likeliest place for the truncation to come back.
+#   CLAIM DISCIPLINE: #530's message said "capacity had no parse coverage at all" -- it had
+#     three refusal rows plus the total rule. Check the parent commit before writing "none".
+[ ] #547 whole-ship loaded mass is never totalled anywhere in the load path, so an absurd
+    build gives inf mass -> rebuildCompound's assert(mass>0) passes (inf>0) and
+    calculatePrincipalAxisTransform returns I = [-nan nan -nan]. Per-def capacity totals are
+    now refused (bde58ef); per-ship is the door left open, and absorbShip is the runtime one.
+    Measurements in the ticket. Fix = one finite check where the parts are already walked,
+    plus a debug-build assert next to rebuildCompound's geomMasses one.
+[ ] #548 nothing pins which SPLIT SHIP keeps the bare name (game.cpp:2061 names them in
+    stagedDecouplers order = build order), and a save reload only preserves that order by
+    coincidence of both halves walking in vector order (capture save.cpp:503/533, rebuild
+    save.cpp:899-903 sorting nothing). test_save:121-129 round-trips the SaveShip STRUCT, not
+    a Vehicle, so sorting the saved array would reshuffle names with every test green. Needs
+    a Game harness (no unit test builds one -- grep build_ship/new Game in tests/) or one e2e
+    that stages, saves, reloads, stages again and compares the names. Pairs with #545/#529.
+
+DEFERRED ON PURPOSE
+[-] #245 no air below the sea-level datum (low flight over ocean)
+[-] #340 high warp steps clean over the atmosphere
+[-] #488 10x warp in atmosphere: through the ground, then no air, no limit. Players
+    are expected to exercise restraint with time warp; the speed-aware substepCount
+    belongs here if it ever gets done.
+[-] #449 rails ship keeps showing stale Acc/AoA
+[-] #427 fin visuals share wing.obj and hinge at the part centre
+[-] #426 fin rings want computed deflections, not authored surfaces
+[-] #450 beta/sideslip UI readout: bundle it with the first yaw law, not before it
+[-] #452 make flight/80's CHECK match its CLAIM (the |AoA| extrema shrink over
+    successive swings). Moot if the glider goes away.
+[-] two honesty gaps left on purpose: --drag-cd does not scale a deployed canopy;
+    refreshCompound's fast path can return before the geometry fingerprint, so
+    "a geometry change always re-keys the cache" is a convention, not an invariant.
+
+DONE (see the archive for the measurements; commits are in git log)
+[x] #458 envelope goldens for the two shipped planes + the [ctrl] parser
+[x] #459 spawn line prints |v_air| for atmo_frac beds
+[x] #461 shipdef "attitude"; #460 half (pad roll)
+[x] #463 union projected silhouette + the 5 deg cache; #462 induced drag at AR
+[x] #456 a save pins each part's shape (geom fingerprint); #457 attach by real shape
+[x] #472 --sim-steps: an exact tick budget; schedules and log gates keyed to ticks
+[x] #453 per-part incidence; #483 per-surface local flow and q; #486 hull flow at cp
+[x] #489 frame-switch tripwires scale (an absolute 1e-6 is one ulp at Kerbol)
+[x] #486's review pass + the airplane parts, skiff and flight/490-skiff (7f02e2e)
+[x] flying-cruise bed: 80 m/s of air, so an airframe's test stops being about the
+    launch (ca8aa66)
+[x] #485 per-surface alpha/q READOUT: Part::aeroAlphaDeg/aeroQ/aeroValid set in the
+    aero pass, printed per part as [surface] under every [drag] row, as a spread line
+    in the SURFACE window and as a label on each surface's own F4 arrow. The angle is
+    signed into SHIP axes (drag.h::surfaceAlphaDegForReadout) because partAero's sign
+    is each mount's own, which prints a healthy 0/180 twin pair as +2.6/-2.6. Neutral
+    control surfaces are only measured while a readout is armed (Vehicle::
+    recordSurfaceAero) -- their alpha costs the flow+frame the neutral early-out
+    exists to skip. Pinned by test_drag::test_surface_alpha_readout (the signing,
+    which no log can show) and flight/485 (the row itself).
+
+[x] #492 PER-PART TRIM, in flight. Trim joins the STICK, not the mount:
+    drag.h::controlCommandFrac(stick, radians(trimDeg)/max_deflection) clamps the SUM at
+    +-1 of the part's own travel, so controlDeflectionSign resolves the sign per instance
+    and a mirrored pair at clock 0/180 -- or a canard -- takes the SAME authored number and
+    still torques the same way. (A mount rotation, which is what shipdef "roll" is, needs
+    the OPPOSITE number on each half: right for a builder looking at the mesh, wrong for a
+    slider.) Part::trimDeg, authored as shipdef "trim" (refused on a part that cannot steer
+    or past its travel, with the field and file named), saved as SavePart "trim" (clip,
+    don't refuse -- a save is player data), round-tripped through BuildPart so a VAB save
+    cannot delete it, edited by the part window's Trim slider (AlwaysClamp + the same
+    PartDef::clampTrim the save loader uses; imgui leaves ctrl+click typed input unclamped
+    otherwise). The window also gained the axis name, the live Defl row and #485's own-
+    surface AoA+q, which is why tick.cpp arms recording for an open steering-part window.
+    Proven by flight/elevator-trim: skiff_trim.json IS skiff.json with the tailplanes'
+    roll -5/+5 REMOVED and elevators given "trim": 12 -- same 11 parts, same 552.33 kg --
+    and it holds 6960-7120 m at 74-81 m/s with the stick free, AoA +2.2..+3.1 across the
+    whole 50 s, elevators at -12.0/+12.0 with no key pressed, and the tailplane reading the
+    wing's own angle (<=0.4 deg) because its incidence is gone. The download now comes from
+    deflection, not from how the surface was bolted on. The WIDGET is pinned by
+    ui/part-window-trim: orbit the view with --sim-mouse, aim at elev_l, RMB-pick, click
+    the slider -- [ctrl] splits -12.0/+12.0 into -3.1/+12.0, one part moved and its mirror
+    did not, and the airframe's AoA drops 2.4 -> 1.6. Cost note: 12 deg of an elevator's
+    20 deg travel bought what 5 deg of tail incidence bought -- see #494.
+
+VERIFICATION -- what can actually bite a change
+ - make test: test_drag links drag.h and nothing else (cheap unit pins);
+   test_shipload covers the def model and the shape fingerprint; test_save the save
+   round-trip; test_cli flag spellings that error messages quote. NO test reaches
+   applyAeroForce -- the 458 goldens plus flight/453-rudder-pair, flight/490-skiff,
+   flight/485-per-surface-alpha and flight/elevator-trim are the only vehicle-level
+   aero pins. A law change needs an e2e case, always.
+ - e2e budget: 1-5 cases per ticket, never repeating the same ones; direct ./osp runs
+   are free. Build 'bear -- make'; run the game with SDL_VIDEODRIVER=offscreen.
+ - Scripted flights: --sim-press needs BOTH R (throttle up) and T (thrust latch)
+   before a jet makes any force -- releaseControl() starts the throttle shut.
+ - Reaching a PART WINDOW from a case (ui/492-part-window-trim is the template): orbit
+   first with an RMB drag (--sim-mouse TIME,DUR,X,Y,BTN; the delta from the previous
+   cursor position is the look, 200 px ~= 1 rad, so 960,540 -> 700,760 is yaw +1.3 /
+   pitch +0.8), then --ui-focus MS,ship/partId, then --sim-mouse MS,0,CUR,CUR,RMB to
+   pick at the cursor, then --ui-click MS,"<ship> > <Def label>##<partIdx>/<Label>".
+   --ui-list MS dumps the live window+label+rect registry to write those paths from.
+   A def's label is not its id: elevator_r0.8h0.7 is "Elevator (1.6m)".
+ - [drag] log: |F| is the RESULTANT of lift+drag, not drag alone (at AoA 0 it equals
+   q*drag_cd*cd*A; reconstruct drag along the flow as q*drag_cd*(cd*A + Induced)).
+   There is no ship-wide q: q is per surface (#483), so one row's numbers do not
+   multiply into a force. CpL is dashed when the pass had no usable flow.
+ - [surface] row (#485): printed only for the ship being piloted, only while a
+   readout is armed (the F4 overlay, --drag-log, or an open part window on a STEERING
+   part -- #492), one part per lifting/steering
+   part that had a usable frame -- a part with none is OMITTED, never quoted at 0, so
+   a short row means surfaces went bad rather than went neutral. `a` is signed in
+   SHIP axes (up for a wing/tailplane, right for a fin/rudder), not the mount's own;
+   `q` is the pressure of the flow at that part, so it differs across a pair while
+   the body rotates. run.py's `surface` list inherits `t` from the [drag] row above
+   it and keeps the print order, which is the shipdef part order.
+ - OSP_SHIP_DUMP=1: one-shot per-part dump (which vehicle/attitude is a lottery --
+   the first Vehicle to reach the drag pass). SUM projA is the parts' areas ADDED; the
+   force pays unionA. Multiplying SUM by the mean cd overstates a hull's CdA by up to
+   2.4x on overlapping ships.
+
+# note (2026-10-30, cp round 2): the old worry that 'the glider's rudder is a horizontal plate so A/D cannot yaw it' is WRONG. Holding A on glider flying-cruise takes Beta 0.0 -> -20 deg within a second and |w| 0.04 -> 0.68 rad/s; D mirrors it. The glider has plenty of yaw authority (arguably too much: Beta overshoots to -48.7 deg and comes back). Relevant to #490/#501 as a handling question, not a missing-control question.

@@ -68,7 +68,7 @@ static Fixture load_all() {
 static void test_shipped_against_flight(const Fixture &f) {
     struct Row { const char *path; double slope; double margin; };
     const Row rows[] = {
-        { "res/ships/skiff.json",  153.42, 0.395 },
+        { "res/ships/skiff.json",  153.42, 0.4474 },
     };
     for(const Row &r : rows) {
         const BuildShip bs = f.build(r.path);
@@ -84,7 +84,7 @@ static void test_shipped_against_flight(const Fixture &f) {
        the same thing on both sides. */
     const BuildStability skiff = buildStability(f.build("res/ships/skiff.json"),
                                                 f.occupant);
-    check_near("skiff launch mass", skiff.mass, 626.3, 0.5);
+    check_near("skiff launch mass", skiff.mass, 666.2600, 0.5);
 }
 
 /* A seated kerbal is part of the airframe. Measured on the skiff: its capsule sits
@@ -103,8 +103,8 @@ static void test_crew_moves_the_pivot(const Fixture &f) {
     // The fuselage seats two, so a full crew is two suits.
     CHECK(crewed.mass > empty.mass + 2.0 * 90.0);
     CHECK(crewed.mass < empty.mass + 2.0 * 105.0);
-    check_near("crewed margin", crewed.margin, 0.395, 0.03);
-    check_near("uncrewed margin", empty.margin, 0.254, 0.03);
+    check_near("crewed margin", crewed.margin, 0.4474, 0.03);
+    check_near("uncrewed margin", empty.margin, 0.3390, 0.03);
     // The lift does not change, only where it is measured from.
     check_near("slope unchanged by crew", crewed.slope, empty.slope, 1e-9);
     // The suit sits at the seat, so the COM moves toward the capsule (+z).
@@ -140,7 +140,7 @@ static void test_rig_flips_the_verdict(const Fixture &f) {
     CHECK(moved == 2);
     const BuildStability mid = buildStability(tailsFwd, f.occupant);
     CHECK(mid.valid);
-    check_near("tails forward of the wings", mid.margin, -0.016, 0.03);
+    check_near("tails forward of the wings", mid.margin, 0.0327, 0.03);
     CHECK(mid.margin < good.margin - 0.3);
 
     BuildShip wingsFwd = f.build("res/ships/skiff.json");

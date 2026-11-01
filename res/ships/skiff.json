@@ -86,6 +86,24 @@
       "angle": 90,
       "z": -0.3,
       "stage": 1
+    },
+    {
+      "part": "aileron",
+      "id": "ail_l",
+      "parent": "pod",
+      "attach": "surface",
+      "angle": 0,
+      "z": 0.55,
+      "stage": 1
+    },
+    {
+      "part": "aileron",
+      "id": "ail_r",
+      "parent": "pod",
+      "attach": "surface",
+      "angle": 180,
+      "z": 0.55,
+      "stage": 1
     }
   ]
 }
