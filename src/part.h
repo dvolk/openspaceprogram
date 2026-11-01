@@ -113,6 +113,14 @@ struct Part {
     bool aeroValid = false;
     float aeroAlphaDeg = 0.0f;
     float aeroQ = 0.0f;
+    /* Which LIFTING SYSTEM this surface belongs to (#556/#555), as an index into
+       Vehicle::aeroSystems; -1 = not a lifting or steering surface. Written by
+       Vehicle::groupLiftingSystems at every geometry rebuild (the same fingerprint
+       the silhouette cache uses), so it follows docking, staging, part damage and
+       an in-field fit-out. The lift slope and the induced bill both read it, so a
+       stale value would be a wrong force -- the reason it is rebuilt rather than
+       computed in the aero pass. */
+    int aeroSystem = -1;
     /* Parachute state (ChuteState); inert for non-chute parts. Set by
        Vehicle::deployChutes on the stage press; save-persisted. */
     ChuteState chute = ChuteStowed;

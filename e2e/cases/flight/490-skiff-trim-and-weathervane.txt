@@ -97,21 +97,22 @@ CHECK all(d["formcp"] < -0.5 for d in drag if d.get("formcp") is not None)
 CHECK max(abs(d["formcp"]) for d in drag if d.get("formcp") is not None) > 0.55
 CHECK all(d["cpl"] < 0.0 for d in drag if d["cpl"] is not None)
 # #462's coupling still holds on a real airplane: every substep that lifts pays induced
-# drag, and it pays the WING'S OWN aspect ratio (2 x 3.0 m half-span per part = 6 m over
-# a 1.8 m chord = AR 3.33), not the whole ship's. It also jumps with the sideslip
-# (0.29 -> 0.86 m2 on the kick row) because the fins present their edges -- the term
-# reads the surface's own flow, #483. RE-BASELINED by #503 (the kick row was 1.35; the
-# sideslip that drove it is smaller now that a full-lock rudder is a stalled plate
-# rather than a linear one) and by #494 (0.761 -> 0.894, the rudder's own bill being
-# 1.2 x 0.48 m2 x 1.335^2 / (pi x 0.8 x 3.0) = 0.136 m2 at the travel stop). #455
-# leaves it at 0.860 and the hands-off rows at 0.289: the induced term was never part
-# of the silhouette union, so taking the surfaces out of that union cannot move it
-# except by flying the airframe slightly differently.
+# drag, and since #556 it pays the WING SYSTEM's aspect ratio -- the two 6 m half-spans
+# bridged through the hull are one 12 m wing over 21.6 m2, so AR 6.67, not each
+# panel's 3.33. It also jumps with the sideslip (0.14 -> 0.70 m2 on the kick row)
+# because the fins present their edges -- the term reads the surface's own flow, #483.
+# RE-BASELINED by #503 (the kick row was 1.35; the sideslip that drove it is smaller
+# now that a full-lock rudder is a stalled plate rather than a linear one), by #494
+# (0.761 -> 0.894, the rudder's own bill being 1.2 x 0.48 m2 x 1.335^2 / (pi x 0.8 x
+# 3.0) = 0.136 m2 at the travel stop), by #455 (0.860 / 0.289 hands-off) and by #556
+# (0.695 / 0.137): the wing bill halved, which is the whole point of the ticket --
+# and note the kick row moved LESS than the hands-off rows, because on the kick the
+# bill is mostly the fins, which were never split.
 # What #494 did NOT do to this ship is the point worth pinning by hand: every hands-off
-# row reads 0.289 with the bill and 0.289 without it, bit for bit. Nothing is
+# row reads 0.137 with the bill and 0.137 without it, bit for bit. Nothing is
 # deflected, so nothing is billed -- the bill follows the command, not the lift. This
-# case's two CHECKs do NOT isolate the term (0.86 clears > 0.5 on its own); flight/492
-# pins a trimmed tab's standing 0.447 and flight/458-glider pins Induced following the
+# case's two CHECKs do NOT isolate the term (0.70 clears > 0.5 on its own); flight/492
+# pins a trimmed tab's standing 0.275 and flight/458-glider pins Induced following the
 # key.
 CHECK all(d["induced"] > 0.0 for d in drag if d["L"] > 1.0)
 CHECK max(d["induced"] for d in drag) > 0.5

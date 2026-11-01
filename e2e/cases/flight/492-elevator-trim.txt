@@ -1,5 +1,5 @@
 NAME elevator-trim
-CLAIM The same 552 kg airframe as skiff, with the tailplane's 5 deg of mount incidence REMOVED and 12 deg of elevator TRIM authored on the part instances instead, stays inside 6941-7001 m at 73.9-76.1 m/s while powered with the stick released (since #455, 100 m lower and 3 m/s slower than it used to be), stays at +2.4..+2.6 deg of angle of attack on every row of a 50 s run, holds -12.0/+12.0 deg of elevator deflection with no key pressed, reads the tail at the wing's own angle of attack (within 0.4 deg), and keeps its form-drag centre 0.57-0.63 m behind the CG -- so the download that trims this airframe now comes from deflection rather than from how the surface was bolted on.
+CLAIM The same 552 kg airframe as skiff, with the tailplane's 5 deg of mount incidence REMOVED and 12 deg of elevator TRIM authored on the part instances instead, stays inside 6982-7004 m at 74.8-77.9 m/s while powered with the stick released (since #556's induced bill, ~1.5 m/s faster than it was: the tail is one wing now), stays at +2.4..+2.7 deg of angle of attack on every row of a 50 s run, holds -12.0/+12.0 deg of elevator deflection with no key pressed, reads the tail at the wing's own angle of attack (within 0.4 deg), and keeps its form-drag centre 0.57-0.63 m behind the CG -- so the download that trims this airframe now comes from deflection rather than from how the surface was bolted on.
 KIND golden
 ARGS --time-accel 1 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
 ARGS --sim-steps 3000 --drag-log --mass-log
@@ -85,24 +85,22 @@ CHECK any(d.get("formcp") is not None for d in drag)
 CHECK all(-0.72 < d["formcp"] < -0.5 for d in drag if d.get("formcp") is not None)
 CHECK all(d["induced"] > 0.0 for d in drag if d["L"] > 1.0)
 CHECK max(d["induced"] for d in drag) > 0.5
-# THE BILL ITSELF (#494), pinned on the hands-off rows where nothing but the trim is
-# moving: every one of them reads 0.45 m2 (0.447 when this was written; #455 leaves the
-# induced sum alone -- it is computed off the lift loop, never off the silhouette
-# union -- so the 0.003 that moved here is the airframe flying 3 m/s slower, not the
-# bill changing), and with the deflected surfaces left out of
-# the induced sum they read 0.265. The 0.182 m2 difference is the two tabs' own
-# downwash, and it is the same arithmetic the wings use: each surface's own area and its
-# own span, cl taken from the force the control law just made. 12 deg of elevator on
-# cl_control 6.0 is cl 1.256 (inside the 15 deg stall, so the law is still linear
-# there); elevator_r0.8h0.7 spans 1.60 m over 0.56 m2 of control area, so AR 4.57 and
-# CDI = 1.257^2 / (pi x 0.8 x 4.57) = 0.137, times drag_cd 1.2 times 0.56 m2 = 0.092 per
-# tab, 0.184 for the pair. The measured difference is 0.182, and the 0.002 is NOT the
-# bill moving: a held deflection bills a constant of the catalog, because CL is
-# recovered as |F|/(q*S) and the q cancels. It is the two LIFT sums -- 0.265 and 0.447
-# come from different runs, and the second one's whole envelope sits 96 m lower.
-# That is two thirds of what the LIFTING surfaces of this same ship
-# pay at the same q (the 0.265 above), for a surface that is 1/19th of the wings' area:
-# a short fat tab bills hard, and until #494 it paid nothing at all. Drop the sum, or
-# bill it at the ship's span instead of the surface's, and this row band moves.
-CHECK all(0.40 < d["induced"] < 0.50 for d in drag if 3.0 <= d["t"] <= 20.0)
+# THE BILL ITSELF (#494, re-billed by #556), pinned on the hands-off rows where
+# nothing but the trim is moving. It reads 0.275 m2 now; it read 0.447 when #494
+# landed, because each tab was billed alone at its OWN aspect ratio (1.60 m of span
+# over 0.56 m2, so AR 4.57) and the pair paid twice for what is one vortex sheet.
+# #556 puts the tabs in one system WITH the tailplane they are hinged to: span 4.00 m,
+# area 4.00 + 1.12 = 5.12 m2, AR 3.12 -- and the system's CL is its total lift over
+# that whole planform, which is why a 12 deg deflection that used to bill 0.184 on
+# its own now bills 0.275 as part of the tail. The number went UP for the tail and
+# DOWN for the airframe's total (0.447 -> 0.275): the span is what matters, and the
+# merged system has 4 m of it against the pair's two 1.6 m pieces.
+# CAVEAT, recorded because it is a real approximation: the system's CL sums the
+# members' |L|, so the tailplane's own up-load and the tabs' down-load add instead of
+# cancelling. A signed sum would bill this trimmed tail less. Filed as its own
+# question; nothing shipped depends on it yet.
+# That this row band MOVES is the pin: a held deflection bills a constant of the
+# catalog (CL is recovered as |F|/(q*S), so the q cancels), which is why every one of
+# the 17 hands-off rows sits inside 0.26-0.30 while the airframe descends through them.
+CHECK all(0.26 < d["induced"] < 0.30 for d in drag if 3.0 <= d["t"] <= 20.0)
 FORBID error:

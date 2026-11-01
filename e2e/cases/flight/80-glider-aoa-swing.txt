@@ -5,27 +5,31 @@
 # R then T then W, --drag-log; the log samples on wall-clock, so the exact rows
 # drift a little run to run -- pin the order, not the seconds):
 #
-#   t=5.9  AoA   0.6   |L|    104 N |tau|    69 Nm  CLa  95.99  Ind  0.02  Profile   0.72  SM +0.64
-#   t=6.9  AoA   9.6   |L|   1219 N |tau|   837 Nm  CLa  94.59  Ind  4.04  Profile   1.27  SM +0.64
-#   t=7.9  AoA  25.3   |L|   1837 N |tau|  1436 Nm  CLa -57.88  Ind 13.79  Profile   4.28  SM +0.64  <-- inside the droop
-#   t=8.9  AoA  42.2   |L|      0 N |tau|   321 Nm  CLa   0.00  Ind  0.00  Profile   9.35  SM -      <-- past 2x stall
-#   t=10.0 AoA  57.2   |L|      0 N |tau|   456 Nm  CLa   0.00  Ind  0.00  Profile  14.18  SM -
+#   t=5.9  AoA   0.7   |L|    114 N |tau|    76 Nm  CLa  95.99  Ind  0.01  Profile   0.72  SM +0.64
+#   t=6.9  AoA   9.8   |L|   1245 N |tau|   839 Nm  CLa  94.53  Ind  2.12  Profile   1.30  SM +0.64
+#   t=7.9  AoA  25.8   |L|   1814 N |tau|  1307 Nm  CLa -62.15  Ind  6.65  Profile   4.41  SM +0.64  <-- inside the droop
+#   t=9.0  AoA  43.4   |L|      0 N |tau|   345 Nm  CLa   0.00  Ind  0.00  Profile   9.78  SM -      <-- past 2x stall
+#   t=10.0 AoA  59.1   |L|      0 N |tau|   489 Nm  CLa   0.00  Ind  0.00  Profile  14.74  SM -
+#
+# The Induced column halved with #556 (the two wing panels are one AR-4 system now),
+# which is why the droop row bills 6.65 where this table used to read 13.79.
 #
 # Three things happen in that order and all three are pinned here:
 #  1. the swing GROWS. Every sample is further off the flow than the one before
-#     it, so the wheels are losing: |tau| peaks at 1436 N m against the shipped
+#     it, so the wheels are losing: |tau| peaks at 1307 N m against the shipped
 #     wheel's budget, which is #399/#403's whole complaint, not a settling
 #     airframe;
-#  2. CLa turns NEGATIVE at AoA 25.3, inside the droop between stall_angle (20.1
+#  2. CLa turns NEGATIVE at AoA 25.8, inside the droop between stall_angle (20.1
 #     deg) and twice it -- #487's band, where a rotating surface feeds its own
 #     swing instead of damping it;
-#  3. by AoA 42.2 the wings are past 2x stall_angle, where liftCurve is
+#  3. by AoA 43.4 the wings are past 2x stall_angle, where liftCurve is
 #     identically zero: lift is exactly 0.00 N, CLa 0.00, Induced 0.00 and SM
 #     DASHES because there is no slope to divide by. The airframe has stopped
 #     being a wing. The Induced row is #462's pairing, which #504 asked to get
-#     back: since #503 capped a full-lock surface at its deflection stall, the
-#     shipped planes never reach a zero-lift attitude in any case, so nothing
-#     printed one. This does, and it prints Induced=0.000 with it.
+#     back: #503's capped deflection stops most beds reaching a zero-lift attitude,
+#     but this one does, and since #556 flight/458-jet does too (its first overshoot
+#     crosses the droop). This case is where the print was first seen, and it prints
+#     Induced=0.000 with it.
 # Re-baseline this case when the attitude work lands (#425's allocator, #482's
 # yaw, #487's droop) -- a settling airframe should FAIL it, deliberately.
 NAME glider-aoa-swing
@@ -52,14 +56,16 @@ CHECK (lambda ds: (ds and max(d["a"] for d in ds) > min(d["a"] for d in ds) * 1.
 # -- 2.5%, from the pod and fins presenting more of themselves as the airframe turns.
 # The old CHECK (a 5% spread on Cd) stopped being a pin and became an accident, so it
 # is gone. What grows across the same swing instead is the surfaces' own bill:
-# Profile= goes 0.72 -> 14.18 m2 of CdA, a 19.7x climb, because the planforms turn to
+# Profile= goes 0.72 -> 14.74 m2 of CdA, a 20.5x climb, because the planforms turn to
 # the wind and the bill walks from the authored 0.03 profile cd toward the 1.0 plate
-# value. #559 moved that peak (16.76 -> 14.18) and says which part of it was ever
+# value. #559 moved that peak (16.76 -> ~14.7 on this wall-clock bed) and says which
+# part of it was ever
 # real: a WING at 57 deg of incidence genuinely is a plate, the flow being out of its
 # plane, and #559 leaves that charge alone. The VERTICAL fins are not plates here --
 # in a pitch swing the flow grazes them inside their own plane, so they present 0.06 m
 # of thickness x 0.8 m of chord, not 2 m2 of face, and the one-axis blend charged them
-# as face anyway. That is the whole 2.6 m2 of difference on this bed.
+# as face anyway. That is most of the 2 m2 of difference on this bed (the rest is the
+# row landing at a slightly wider attitude -- this bed samples on wall-clock).
 # That is the airframe's shape in the log -- it just no longer pretends a wing is a
 # blunt body. Filter matters: the pad row prints no Profile at all (a dash: AeroFrame
 # has no flow direction to read, and since #559 the log says so instead of printing

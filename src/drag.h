@@ -855,18 +855,220 @@ struct SilhouetteMemo {
    the mesh (#457). The authored radius gives the same number for every wing in
    this catalog only because they are all authored with their span along X.
 
-   Known overcharge: AR is computed PER PART, so a lifting surface modelled as
-   two half-plates (the shipped jet's wings, mounted at angle 0 and 180) pays two
-   AR-2 systems instead of one 8 m AR-4 system -- twice the induced drag.
-   Half-wings are genuinely separate lifting bodies only if they are separated;
-   co-planar halves share one span. Telling those apart needs the mount as well as
-   the extents, so it stayed open after #457 -- it is #556 now, and #555's
-   finite-wing lift slope wants the same grouping, so they should land together. */
+   Callers pass the SPAN OF THE LIFTING SYSTEM, not of one panel (#556): AR is a
+   property of the whole wing, because that is the width of the vortex sheet. Two
+   co-planar panels bolted together are one 8 m AR-4 wing, not two AR-2 wings --
+   the per-part version billed double the drag for a shape whose wake is one sheet.
+   classifyLiftingSystems below is how a set of panels becomes a system. */
 inline double inducedCd(double cl, double span, double area, double oswald = 0.8) {
     if(!(area > 0.0) || !(span > 0.0) || !(oswald > 0.0)) { return 0.0; }
     const double ar = (span * span) / area;
     if(!(ar > 0.0)) { return 0.0; }
     return (cl * cl) / (std::numbers::pi * oswald * ar);
+}
+
+/* ONE LIFTING PANE (#556): a surface's planform, placed in the airframe. The axes
+   are the part's span and chord carried into ship frame (PartDef::meshSpanAxis(),
+   localRot[2]), `spanHalf`/`chordHalf` off the same mesh box #457/#559 use, and
+   `area` the planform the author declared. This is everything the grouping needs;
+   the lift law's own numbers (cl, stall_angle) stay with the part, because two
+   panels of one wing can legitimately differ. */
+struct LiftingPane {
+    glm::dvec3 spanAxis = glm::dvec3(1.0, 0.0, 0.0);
+    glm::dvec3 chordAxis = glm::dvec3(0.0, 0.0, 1.0);
+    glm::dvec3 mount = glm::dvec3(0.0);   // ship frame
+    double spanHalf = 0.0;
+    double chordHalf = 0.0;
+    double area = 0.0;
+};
+
+/* ONE LIFTING SYSTEM (#556): the wing the panes make together. `span` is the
+   projected width of their union along the airframe's lateral axis, `area` the sum
+   of their planforms. AR = span^2/area, and that is the number both the lift slope
+   and the induced bill want.
+
+   `span` is the width of the lifting MATERIAL this model knows about -- the panels
+   themselves. A gap bridged by a fuselage merges the panels into one system but is
+   not counted as span, because the fuselage's own share of the planform is not in
+   `area` either: b and S stay self-consistent. */
+struct LiftingSystem {
+    double span = 0.0;
+    double area = 0.0;
+    double oswald = 0.8;   // the shipped value; per-part e would feed min() here
+    int members = 0;
+};
+
+/* A lateral band occupied by a NON-LIFTING part -- a fuselage, a tank, a stack --
+   and therefore the place where a wing panel can continue through structure the
+   catalogue does not model as lifting. The shipped jets mount their wings on the
+   hull's sides, roots 2 m apart, and they are one wing: this is that fact, read at
+   the fuselage's own width instead of authored as a number. */
+struct LiftingBridge {
+    double lo = 0.0;
+    double hi = 0.0;
+};
+
+/* GROUP CO-PLANAR PANELS INTO WINGS (#556). Two panes are one wing when, in ship
+   frame:
+
+     1. their spans run along the airframe's LATERAL axis (within kLiftAlignCos of
+        it). That is what keeps a vertical fin out -- and it is measured on the
+        PROJECTION, so a panel with a few degrees of dihedral still groups;
+     2. their chords run fore/aft (within kLiftAlignCos of the reference axis);
+     3. their span intervals, projected on the lateral axis, overlap, come within
+        kLiftTouch of each other, OR are separated only by a `bridges` band -- a
+        non-lifting part (the fuselage) whose width carries the wing through. And
+        their chord intervals overlap or touch.
+
+   Three is what tells a wing from a tailplane: same plane, same span, different
+   chord station -> two systems, because a tail's wake is not the wing's. A plain
+   flap hinged at the trailing edge touches in chord, so it merges with the wing it
+   is part of. Touch, not "close enough": a visible gap that no structure fills is
+   two wings, and the rule the player can see is the rule the law uses.
+
+   Returns one system index per pane (empty input -> empty), and fills `systems`
+   with the aggregates in the order the systems were first met. Transitive by
+   construction (a chain of touching panels is one wing), O(n^2) on a handful of
+   surfaces, and it runs where the geometry cache is rebuilt, not per substep. */
+inline std::vector<int> classifyLiftingSystems(const std::vector<LiftingPane> &panes,
+                                               const std::vector<LiftingBridge> &bridges,
+                                               const glm::dvec3 &lateral,
+                                               const glm::dvec3 &foreAft,
+                                               std::vector<LiftingSystem> &systems) {
+    /* cos 20 deg. Wide enough for a dihedral panel or a few degrees of sweep,
+       narrow enough that a fin (90 deg off) never joins a wing. */
+    constexpr double kLiftAlignCos = 0.9396926207859084;
+    /* 1 cm: float error in a mount, or the hairline a builder leaves between two
+       panels that are meant to touch. Plus 2% of the panels' own half-extent, which
+       is what a DIHEDRAL break costs in projection: two 5-deg panels of a 2 m
+       half-span have roots 1.5 cm apart in the lateral projection while being one
+       continuous wing. So the rule is "touching, within the sagitta of the tilt we
+       already allow" -- smooth in the tilt, and a deliberately visible slot still
+       reads as two wings. */
+    constexpr double kLiftTouch = 0.01;
+    constexpr double kLiftTouchFrac = 0.02;
+
+    const size_t n = panes.size();
+    systems.clear();
+    std::vector<int> id(n, -1);
+    if(n == 0) { return id; }
+
+    std::vector<size_t> parent(n);
+    for(size_t i = 0; i < n; i++) { parent[i] = i; }
+    const auto find = [&](size_t i) {
+        while(parent[i] != i) { i = parent[i] = parent[parent[i]]; }
+        return i;
+    };
+    const auto join = [&](size_t a, size_t b) {
+        const size_t ra = find(a), rb = find(b);
+        if(ra != rb) { parent[rb] = ra; }
+    };
+    struct Interval { double lo, hi; };
+    /* Both helpers normalise the axis: PartDef rotations are unit by construction,
+       but a test (or a future caller) may hand in a scaled direction, and a span is
+       a length -- it must not scale with the vector it was measured along. */
+    const auto interval = [](const LiftingPane &p, const glm::dvec3 &axis,
+                             bool span) {
+        const double L = glm::length(axis);
+        const glm::dvec3 a = (L > 0.0) ? axis / L : glm::dvec3(0.0);
+        const glm::dvec3 dir = span ? p.spanAxis : p.chordAxis;
+        const double half = span ? p.spanHalf : p.chordHalf;
+        const double c = glm::dot(p.mount, a);
+        const double h = std::fabs(glm::dot(dir, a)) * half;
+        return Interval{c - h, c + h};
+    };
+    const auto touches = [](Interval x, Interval y, double hx, double hy) {
+        const double gap = kLiftTouch + kLiftTouchFrac * (hx + hy);
+        return !(x.hi + gap < y.lo || y.hi + gap < x.lo);
+    };
+    /* The gap between two intervals (empty when they overlap), and whether some
+       non-lifting part spans it. Min/max rather than ordering the pair: a caller
+       never promises x is inboard of y. */
+    const auto bridged = [&bridges](Interval x, Interval y) {
+        const double lo = std::min(x.hi, y.hi);
+        const double hi = std::max(x.lo, y.lo);
+        if(!(hi > lo)) { return false; }   // no gap to bridge
+        for(const LiftingBridge &b : bridges) {
+            if(b.lo <= lo + kLiftTouch && b.hi >= hi - kLiftTouch) { return true; }
+        }
+        return false;
+    };
+    const auto aligned = [](const glm::dvec3 &v, const glm::dvec3 &axis) {
+        const double L = glm::length(v) * glm::length(axis);
+        return L > 0.0 && std::fabs(glm::dot(v, axis)) / L >= kLiftAlignCos;
+    };
+
+    for(size_t i = 0; i < n; i++) {
+        const LiftingPane &a = panes[i];
+        /* A pane whose span does not run across the airframe is not part of any
+           wing -- a vertical fin, a canard mounted on its edge. It is still its own
+           system (the induced bill has to charge it), it just never merges. */
+        const bool aLateral = aligned(a.spanAxis, lateral) && aligned(a.chordAxis, foreAft);
+        for(size_t j = i + 1; j < n; j++) {
+            const LiftingPane &b = panes[j];
+            const bool bLateral = aligned(b.spanAxis, lateral) && aligned(b.chordAxis, foreAft);
+            if(!aLateral || !bLateral) { continue; }
+            const Interval spanA = interval(a, lateral, true);
+            const Interval spanB = interval(b, lateral, true);
+            if(!touches(spanA, spanB, a.spanHalf, b.spanHalf)
+               && !bridged(spanA, spanB)) {
+                continue;
+            }
+            if(!touches(interval(a, foreAft, false), interval(b, foreAft, false),
+                        a.chordHalf, b.chordHalf)) {
+                continue;
+            }
+            join(i, j);
+        }
+    }
+
+    /* Aggregate each root: area sum, and the span as the UNION of the projected
+       intervals, so a hairline gap inside a merged wing is not counted as lift.
+       The projection axis is the SYSTEM's: the airframe's lateral axis for a wing,
+       and the panel's OWN span axis for anything that never merges (a vertical fin
+       still bills its real span, it just has no neighbour to share it with -- its
+       lateral projection is zero and would wrongly cancel its induced drag). */
+    std::vector<size_t> rootToSystem(n, SIZE_MAX);
+    std::vector<glm::dvec3> sysAxis;
+    for(size_t i = 0; i < n; i++) {
+        const size_t r = find(i);
+        if(rootToSystem[r] == SIZE_MAX) {
+            rootToSystem[r] = systems.size();
+            systems.push_back(LiftingSystem{});
+            const bool isLateral = aligned(panes[i].spanAxis, lateral) &&
+                                   aligned(panes[i].chordAxis, foreAft);
+            sysAxis.push_back(isLateral ? lateral : panes[i].spanAxis);
+        }
+        const int s = (int)rootToSystem[r];
+        id[i] = s;
+        systems[s].area += panes[i].area;
+        systems[s].members++;
+    }
+    std::vector<std::vector<Interval>> spans(systems.size());
+    for(size_t i = 0; i < n; i++) {
+        spans[(size_t)id[i]].push_back(interval(panes[i], sysAxis[(size_t)id[i]], true));
+    }
+    for(size_t s = 0; s < spans.size(); s++) {
+        std::vector<Interval> &v = spans[s];
+        std::sort(v.begin(), v.end(),
+                  [](Interval x, Interval y) { return x.lo < y.lo; });
+        double total = 0.0;
+        double lo = 0.0, hi = 0.0;
+        bool open = false;
+        for(Interval iv : v) {
+            if(!open) { lo = iv.lo; hi = iv.hi; open = true; continue; }
+            if(iv.lo <= hi) {
+                hi = std::max(hi, iv.hi);
+            } else {
+                total += hi - lo;
+                lo = iv.lo;
+                hi = iv.hi;
+            }
+        }
+        if(open) { total += hi - lo; }
+        systems[s].span = total;
+    }
+    return id;
 }
 
 /* Which parts the hull's silhouette union may charge for the air it stops (#455).

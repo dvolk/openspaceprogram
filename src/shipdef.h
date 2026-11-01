@@ -196,6 +196,18 @@ struct PartDef {
         return (2.0 * std::min(hx, hy)) * (2.0 * meshHalfLength());
     }
 
+    /* Which part-frame axis a SURFACE part's planform runs along: the WIDER of the
+       two axes across the stack axis (the complement of meshNormalAxis). Every
+       shipped wing and fin authors span along X, but a plate authored along Y is
+       legal and #556's grouping must read its span where it actually is. A part
+       with no mesh is squarish, and X is as good an answer as any -- it is the
+       convention the rest of the catalogue uses. */
+    int meshSpanAxis() const {
+        double hx, hy;
+        meshHalfSpan(hx, hy);
+        return (hx >= hy) ? 0 : 1;
+    }
+
     /* Attachment nodes. Empty -> load_parts_catalog synthesizes them from the
        size above. */
     std::vector<Node> nodes;

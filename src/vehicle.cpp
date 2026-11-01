@@ -1185,6 +1185,140 @@ void Vehicle::refreshAeroGeom() {
     aeroGeomKey = key;
     aeroGeomValid = true;
     aeroSil.invalidate();
+    groupLiftingSystems();
+}
+
+/* #556: which panels are one wing. The law is drag.h::classifyLiftingSystems; this
+   is the Part/PartDef plumbing, and it runs on a geometry rebuild (the same
+   fingerprint the silhouette cache rides) rather than per substep. A part with
+   neither a lift nor a control area is hull, not a surface, and never groups --
+   isAeroSurface is the one predicate for that, as it is for the drag split (#455).
+
+   The pane's area is the planform the part declares: lift_area if it lifts, else
+   control_area. A part that declares both contributes its lift_area, because that
+   is the planform the plate IS; the control_area is a fraction of it by convention
+   (#478). Its span is the mesh's wider across-axis extent (meshSpanHalf, #457) and
+   its chord the along-axis one (#559's edge), both read where the part is bolted:
+   localRot[meshSpanAxis()] and localRot[2] are the part-frame axes carried into
+   ship frame by the mount. */
+void Vehicle::groupLiftingSystems() {
+    std::vector<LiftingPane> panes;
+    std::vector<Part *> owners;
+    std::vector<LiftingBridge> bridges;
+    for(Part *p : parts) {
+        if(p->def == nullptr) { continue; }
+        const PartDef *d = p->def;
+        p->aeroSystem = -1;
+        if(!isAeroSurface(d->lift_area, d->control_area)) {
+            /* A BODY part (hull, tank, stack, engine): its width across the airframe
+               is where a wing can continue through structure this model does not
+               lift. The shipped jets mount their wings on the hull's sides with their
+               roots 2 m apart -- one wing, carried by the fuselage -- and this is how
+               the grouping learns it without a new authored number. Project the mesh
+               box's two across-axes onto the lateral axis. */
+            double hx, hy;
+            d->meshHalfSpan(hx, hy);
+            const double half = std::fabs(p->localRot[0].x) * hx
+                              + std::fabs(p->localRot[1].x) * hy;
+            if(half > 0.0) {
+                bridges.push_back({ p->localPos.x - half, p->localPos.x + half });
+            }
+            continue;
+        }
+        const double area = (d->lift_area > 0.0) ? d->lift_area : d->control_area;
+        if(!(area > 0.0)) { continue; }
+        LiftingPane pane;
+        pane.spanAxis = p->localRot[d->meshSpanAxis()];
+        pane.chordAxis = p->localRot[2];
+        pane.mount = p->localPos;
+        pane.spanHalf = d->meshSpanHalf();
+        pane.chordHalf = d->meshHalfLength();
+        pane.area = area;
+        panes.push_back(pane);
+        owners.push_back(p);
+    }
+    /* The airframe's own axes, in ship frame: X across, Z fore/aft. A wing groups
+       with another wing when their spans run along X; the vertical fins in this
+       catalogue answer to neither test and stay single-panel systems. */
+    const std::vector<int> ids = classifyLiftingSystems(
+        panes, bridges, glm::dvec3(1.0, 0.0, 0.0), glm::dvec3(0.0, 0.0, 1.0),
+        aeroSystems);
+    if(std::getenv("OSPAEROSYS")) {
+        for(size_t i = 0; i < panes.size(); i++) {
+            const LiftingPane &q = panes[i];
+            printf("[liftsys] pane %zu: mount (%6.2f %6.2f %6.2f) spanAxis (%5.2f %5.2f %5.2f)"
+                   " chordAxis (%5.2f %5.2f %5.2f) h=(%5.2f %5.2f) area %5.2f -> sys %d\n",
+                   i, q.mount.x, q.mount.y, q.mount.z,
+                   q.spanAxis.x, q.spanAxis.y, q.spanAxis.z,
+                   q.chordAxis.x, q.chordAxis.y, q.chordAxis.z,
+                   q.spanHalf, q.chordHalf, q.area, ids[i]);
+        }
+    }
+    assert(ids.size() == owners.size());
+    for(size_t i = 0; i < owners.size(); i++) { owners[i]->aeroSystem = ids[i]; }
+    aeroSysLiftOverQ.assign(aeroSystems.size(), 0.0);
+    aeroSysCdi.assign(aeroSystems.size(), 0.0);
+    if(std::getenv("OSPAEROSYS")) {
+        printf("[liftsys] %s: %zu system(s) from %zu pane(s)\n", displayName().c_str(),
+               aeroSystems.size(), panes.size());
+        for(size_t s = 0; s < aeroSystems.size(); s++) {
+            const LiftingSystem &g = aeroSystems[s];
+            const double ar = (g.area > 0.0) ? g.span * g.span / g.area : 0.0;
+            printf("[liftsys]   span %6.2f m  area %6.2f m2  AR %5.2f  n=%d\n",
+                   g.span, g.area, ar, g.members);
+        }
+    }
+}
+
+/* #556: the price of the lift held in aeroLiftSamples, billed per SYSTEM.
+
+   CL_sys = sum(|L_i| / q_i) / sum(S_i): the area-equivalent lift each member made,
+   over the wing's whole planform. Each part's own q, because a rotating airframe
+   gives its two tips different dynamic pressures (#483). Then
+
+       CDi = CL_sys^2 / (pi e AR_sys),   AR_sys = span_sys^2 / S_sys
+
+   once for the wing, and each surface pays drag_cd * q_i * S_i * CDi along the flow
+   IT feels, at its own mount -- so the total is exactly q S CDi when the qs agree,
+   the moment story #455 established is untouched, and a two-panel wing stops paying
+   twice for one vortex sheet. A sample whose system is unknown (a part that never
+   grouped: no mesh, no area) is skipped rather than billed at AR 0. */
+void Vehicle::applyInducedDrag(Body *forceHull, double dragCd, glm::dvec3 &ftotal,
+                               glm::dvec3 &moment, bool record) {
+    if(aeroLiftSamples.empty()) { return; }
+    if(aeroSysLiftOverQ.size() != aeroSystems.size()
+       || aeroSysCdi.size() != aeroSystems.size()) {
+        aeroSysLiftOverQ.assign(aeroSystems.size(), 0.0);
+        aeroSysCdi.assign(aeroSystems.size(), 0.0);
+    }
+    std::fill(aeroSysLiftOverQ.begin(), aeroSysLiftOverQ.end(), 0.0);
+    std::fill(aeroSysCdi.begin(), aeroSysCdi.end(), 0.0);
+    for(const AeroLiftSample &s : aeroLiftSamples) {
+        if(s.system < 0 || (size_t)s.system >= aeroSystems.size()) { continue; }
+        if(s.q > 0.0) { aeroSysLiftOverQ[(size_t)s.system] += s.lift / s.q; }
+    }
+    for(size_t i = 0; i < aeroSystems.size(); i++) {
+        const LiftingSystem &sys = aeroSystems[i];
+        if(!(sys.area > 0.0) || !(sys.span > 0.0)) { continue; }
+        aeroSysCdi[i] = inducedCd(aeroSysLiftOverQ[i] / sys.area, sys.span,
+                                  sys.area, sys.oswald);
+    }
+    for(const AeroLiftSample &s : aeroLiftSamples) {
+        if(s.system < 0 || (size_t)s.system >= aeroSystems.size()) { continue; }
+        const double cdi = aeroSysCdi[(size_t)s.system];
+        /* Negated test on purpose: a NaN cdi must not reach the force. */
+        if(!(cdi > 0.0)) { continue; }
+        const double vp = std::sqrt(glm::dot(s.vp, s.vp));
+        if(!(vp > 0.0)) { continue; }
+        const glm::dvec3 find = -(s.vp / vp) * (dragCd * s.q * s.area * cdi);
+        ApplyForce(forceHull, s.r, find);
+        ftotal += find;
+        moment += glm::cross(s.r, find);
+        lastInducedCdA += dragCd * s.area * cdi;
+        if(record) {
+            lastForceVecs.push_back({ s.r, find, kForceInduced });
+        }
+    }
 }
 
 /* The containment tree under one attached part, depth-first. effectiveMass and
@@ -2242,6 +2376,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastChuteCdA = 0.0;
     lastInducedCdA = 0.0;
     lastSurfCdA = 0.0;
+    aeroLiftSamples.clear();  // #556: last substep's lift must not be re-billed
     lastControlDeflections.clear();  // a no-air substep reports no steering
     // Fins swing back to neutral whenever this substep produces no steering
     // (vacuum, no-atmosphere body, below sea level, --drag-cd 0). Same sweep
@@ -2279,6 +2414,12 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     const glm::dvec3 vrel = airRelativeVel(com);
     const double v2 = glm::length2(vrel);
     if(v2 <= 0.0) { return lastAeroForce; }  // at rest in air
+
+    // #556: the lifting systems this pass bills against. The call is fingerprint-
+    // gated and normally a no-op -- rebuildCompound has already refreshed it for any
+    // geometry change -- but the consumer asking here keeps the pair honest, so an
+    // airframe can never fly on systems built for a previous set of parts.
+    refreshAeroGeom();
 
     // Frame S read once: constant within a substep.
     glm::dvec3 sPos; glm::dmat3 sRot;
@@ -2814,39 +2955,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         if(recordForceVecs) {
             lastForceVecs.push_back({ ri, flift, kForceLift, p->aeroAlphaDeg, true });
         }
-        /* The price of that lift (#462): a surface that turns the flow downward
-           pays induced drag ~ CL^2 / (pi e AR) for it, along the flow IT feels
-           (#483), not the COM's. CL comes
-           from the lift just computed instead of a second curve evaluation --
-           same law, so the induced term follows any change to it. The span is
-           the mesh's own widest extent across the stack axis (#457), which is
-           the span whether the planform was authored along X or Y; for the
-           shipped wing that is the same 4 m the authored radius stated. Applied
-           at the same offset as the lift, because it is the same wing. */
-        const double clPart = glm::length(flift) / (qp * d->lift_area);
-        const double cdi = inducedCd(clPart, 2.0 * d->meshSpanHalf(), d->lift_area);
-        if(cdi <= 0.0) { continue; }
-        /* drag_cd scales the air's bill -- the hull's form drag, each surface's
-           own shape drag and the induced drag alike -- otherwise the knob tunes
-           only part of the law, and its documented meaning (0 = no air) would be
-           wrong. A deployed canopy is a separate term below and stays
-           unmultiplied: the dial is an air-law knob, not an atmosphere killer. */
-        /* The flow is non-zero here: flift is non-zero, so qp is, and qp is half
-           rho times this flow's magnitude squared. One sqrt off lf.vp2 rather than
-           glm::length(vp), which would recompute the magnitude q was built from. */
-        const glm::dvec3 find = -(vp / std::sqrt(lf.vp2)) * (drag_cd * qp * d->lift_area * cdi);
-        ApplyForce(hull, ri, find);
-        moment += glm::cross(ri, find);
-        ftotal += find;
-        /* The drag log's extra CdA. It is a CdA, NOT a force and not a force over
-           the logged q: the force above uses THIS surface's q while the [drag] line
-           prints one q for the ship, and since #483 the two differ whenever the
-           body rotates. Multiply it by the flow each lifting part actually stands in
-           if the number has to be reconciled. */
-        lastInducedCdA += drag_cd * d->lift_area * cdi;
-        if(recordForceVecs) {
-            lastForceVecs.push_back({ ri, find, kForceInduced });
-        }
+        /* The price of that lift (#462) is billed per SYSTEM, after every surface
+           has contributed (#556): the bill is CL_sys^2/(pi e AR_sys), and CL_sys
+           needs the whole wing's lift. Park the sample and let applyInducedDrag
+           price it -- see that function for the arithmetic. The comment used to say
+           the term "follows any change to it" of the lift law; the sample carries the
+           FORCE the law just made, so it still does. */
+        aeroLiftSamples.push_back(
+            { ri, vp, qp, d->lift_area, glm::length(flift), p->aeroSystem });
     }
 
     // Control surfaces: each steers ONE axis, driven by that axis's stick alone. The
@@ -2977,60 +3093,42 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             if(recordForceVecs) {
                 lastForceVecs.push_back({ ri, F, kForceCtrl, p->aeroAlphaDeg, pa.valid });
             }
-            /* THE PRICE OF THAT DEFLECTION (#494). A steered surface turns the flow
-               and pays induced drag for turning it, exactly as a wing pays for turning
-               it up. Nothing billed it: until #492 a deflection was a transient a
-               player held for a second, but a trimmed airframe runs a standing 12-20
-               deg forever, and on skiff_trim the elevator pair downloads ~1.5 kN at
-               cruise for a bill of exactly 0 N.
+            /* THE PRICE OF THAT DEFLECTION (#494), now billed per SYSTEM (#556). A
+               steered surface turns the flow and pays induced drag for turning it,
+               exactly as a wing pays for turning it up. Nothing billed it: until #492
+               a deflection was a transient a player held for a second, but a trimmed
+               airframe runs a standing 12-20 deg forever, and on skiff_trim the
+               elevator pair downloads ~1.5 kN at cruise for a bill of exactly 0 N.
                CL comes from the force the law JUST made, not from (alpha + deflection):
                the angle half of a tail's true angle of attack is already generated, and
                already billed, by the tailplane PART hanging next to the flap (the
-               skiff's wing_r1h1, lift_area 2), so a cl*(alpha+delta)^2 bill charges the
-               same angle twice -- and reads zero bill at delta = -alpha, where the
-               surface is pushing as hard as it ever will. Recovering it from F keeps the
-               bill glued to the force: it vanishes with the command, is continuous
-               through zero, and follows for free if the control law ever grows a stall
-               or a hinge-effectiveness term (both of which would change F and thus this).
-               Area and span are the SURFACE's own (control_area, meshSpanHalf), so this
-               bills a flap's own downwash, the same interference-free per-part
-               approximation #462 uses for wings; the wing-tail interaction stays
-               unmodelled, deliberately -- folded into the tail system instead, the same
-               skiff_trim state bills 0.24 instead of 0.185 m2, ~35% more, and it would
-               need a surface->wing linkage this sum does not have. A twin pair pays the
-               same per-part AR twice, which is 2x what the two plates as one continuous
-               span would: #462's known split-part overcharge, now on the steering pair
-               as well as the shipped wings.
-               Substitute controlForce's own F and the AREA cancels out of the charge:
-                 bill = |F|^2 / (qp * pi * oswald * span^2)
-               so the only geometric knob is the surface's SPAN, and the bill is
+               skiff's wing_r1h1, lift_area 2), so a cl*(alpha+delta)^2 bill would
+               charge the same angle twice -- and would read zero bill at
+               delta = -alpha, where the surface is pushing as hard as it ever will.
+               Recovering it from F keeps the bill glued to the force: it vanishes with
+               the command, is continuous through zero, and follows for free if the
+               control law ever grows a hinge-effectiveness term (which would change F
+               and thus this).
+               #494 had to fold the tab's own downwash in alone, and recorded the cost
+               of NOT folding it into the tail: the same skiff_trim state bills 0.24
+               instead of 0.185 m2, ~35% more. With #556's grouping that fold-in is
+               what happens -- geometry decides, not an authored linkage -- so an
+               elevator whose chord touches its tailplane's now bills the tailplane's
+               AR. Substitute controlForce's own F and the AREA cancels out of the
+               charge:
+                 bill = |F|^2 / (qp * pi * oswald * span_sys^2)
+               so the only geometric knob is the SYSTEM's span, and the bill is
                QUADRATIC in the authority the surface has -- double a tab's cl_control
-               and its price quadruples. It also means #478's unresolved "control_area is
-               half the planform" convention cannot be what makes these numbers big: that
-               choice moves CL and the area multiplier in opposite directions. What it
-               does NOT do is charge the plate's SHAPE: a surface hinged 20 deg into the
-               flow still contributes its undeflected silhouette to the hull union and its
-               own partCd, so this term is quietly standing in for the form drag of a
-               turned plate too (filed against #455's family). */
-            const double clCtrl = glm::length(F) / (qp * d->control_area);
-            const double cdi = inducedCd(clCtrl, 2.0 * d->meshSpanHalf(),
-                                         d->control_area);
-            /* The negated test is deliberate: it also skips a NaN cdi, which `cdi <= 0`
-               would let through into the force. cdi is 0 only when the mesh gave this
-               surface no span at all (inducedCd's AR 0 case); nothing shipped does, and
-               a part authored that way bills nothing rather than stopping a flight. */
-            if(!(cdi > 0.0)) { continue; }
-            const glm::dvec3 find =
-                -(lf.vp / std::sqrt(lf.vp2)) * (drag_cd * qp * d->control_area * cdi);
-            ApplyForce(hull, ri, find);
-            ftotal += find;
-            moment += glm::cross(ri, find);
-            lastInducedCdA += drag_cd * d->control_area * cdi;
-            if(recordForceVecs) {
-                lastForceVecs.push_back({ ri, find, kForceInduced });
-            }
+               and its price quadruples. */
+            aeroLiftSamples.push_back(
+                { ri, lf.vp, qp, d->control_area, glm::length(F), p->aeroSystem });
         }
     }
+
+    /* #556: every surface that made lift or deflection this substep is in
+       aeroLiftSamples; price the whole wing at once, along the flow each surface
+       stands in (#483), at its own mount. */
+    applyInducedDrag(hull, drag_cd, ftotal, moment, recordForceVecs);
 
     lastAeroForce = ftotal;
     lastLiftForce = lift_total;

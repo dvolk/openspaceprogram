@@ -2640,6 +2640,165 @@ static void test_surfaceFormCdA() {
                "c^2+n^2 > 1 -> no negative spanwise term");
 }
 
+/* #556: which panels are one wing. The shipped airframes are the test set: two
+   half-wings bolted at the centreline are ONE 8 m AR-4 wing, and the fins and the
+   tailplane next to them are not. */
+static void test_liftingSystems() {
+    printf("== classifyLiftingSystems: two panels, one wing (#556) ==\n");
+    const glm::dvec3 lat(1.0, 0.0, 0.0);
+    const glm::dvec3 fwd(0.0, 0.0, 1.0);
+    // A pane: mount (x, 0, z), planform `area`, mesh half-extents (spanHalf,
+    // chordHalf), span along `spanAxis` (default ship X), chord along ship Z.
+    const auto pane = [](double x, double spanHalf, double area,
+                         double chordHalf = 1.0, double z = 0.0,
+                         glm::dvec3 spanAxis = glm::dvec3(1.0, 0.0, 0.0)) {
+        LiftingPane p;
+        p.spanAxis = spanAxis;
+        p.chordAxis = glm::dvec3(0.0, 0.0, 1.0);
+        p.mount = glm::dvec3(x, 0.0, z);
+        p.spanHalf = spanHalf;
+        p.chordHalf = chordHalf;
+        p.area = area;
+        return p;
+    };
+    std::vector<LiftingSystem> sys;
+    const std::vector<LiftingBridge> noBridge;
+
+    // The jet/glider case: two 4 m half-wings mounted at +-2, meeting at x=0.
+    {
+        const std::vector<LiftingPane> v = { pane(-2.0, 2.0, 8.0), pane(2.0, 2.0, 8.0) };
+        const std::vector<int> id = classifyLiftingSystems(v, noBridge, lat, fwd, sys);
+        CHECK_TRUE(id.size() == 2 && id[0] == id[1], "co-planar halves -> one system");
+        CHECK_TRUE(sys.size() == 1, "one system in the list");
+        if(sys.size() == 1) {
+            CHECK_NEAR(sys[0].span, 8.0, 1e-12, "span is the union: 8 m");
+            CHECK_NEAR(sys[0].area, 16.0, 1e-12, "area is the sum: 16 m2");
+            CHECK_TRUE(sys[0].members == 2, "two members");
+            // AR 4 rather than two AR-2 systems: the same CL pays half the induced
+            // drag, which is the whole point of the ticket.
+            CHECK_NEAR(inducedCd(1.0, sys[0].span, sys[0].area),
+                       inducedCd(1.0, 8.0, 16.0), 1e-12, "AR 4, not 2 x AR 2");
+        }
+    }
+    // A hairline gap (float error, or a builder leaving 5 cm) still merges.
+    {
+        const std::vector<LiftingPane> v = { pane(-2.025, 2.0, 8.0), pane(2.025, 2.0, 8.0) };
+        const std::vector<int> id = classifyLiftingSystems(v, noBridge, lat, fwd, sys);
+        CHECK_TRUE(id[0] == id[1], "a 5 cm gap still reads as one wing");
+    }
+    // A deliberately visible slot does not: two 2% tolerances and a centimetre.
+    {
+        const std::vector<LiftingPane> v = { pane(-2.06, 2.0, 8.0), pane(2.06, 2.0, 8.0) };
+        const std::vector<int> id = classifyLiftingSystems(v, noBridge, lat, fwd, sys);
+        CHECK_TRUE(id[0] != id[1], "a 12 cm slot is two wings");
+        CHECK_TRUE(sys.size() == 2, "two systems");
+        if(sys.size() == 2) {
+            CHECK_NEAR(sys[0].span, 4.0, 1e-12, "each half bills its own 4 m span");
+        }
+    }
+    // Dihedral: mirrored 5 deg panels are still one wing, and the span is the
+    // PROJECTED one (8 cos 5). This is the skiff's small-panel geometry.
+    {
+        const double t = 5.0 * std::numbers::pi / 180.0;
+        const std::vector<LiftingPane> v = {
+            pane(-2.0, 2.0, 8.0, 1.0, 0.0, glm::dvec3(-std::cos(t), std::sin(t), 0.0)),
+            pane(2.0, 2.0, 8.0, 1.0, 0.0, glm::dvec3(std::cos(t), std::sin(t), 0.0)),
+        };
+        const std::vector<int> id = classifyLiftingSystems(v, noBridge, lat, fwd, sys);
+        CHECK_TRUE(id[0] == id[1], "5 deg dihedral still one wing");
+        if(sys.size() == 1) {
+            CHECK_NEAR(sys[0].span, 8.0 * std::cos(t), 1e-9, "span is the projection");
+        }
+    }
+    // Vertical fins: span up, so they never join a wing -- and each still bills its
+    // OWN span rather than a lateral projection of zero.
+    {
+        const std::vector<LiftingPane> v = {
+            pane(-1.0, 2.0, 8.0),
+            pane(1.0, 2.0, 8.0),
+            pane(0.0, 0.6635, 2.0, 0.4, 0.5, glm::dvec3(0.0, 1.0, 0.0)),
+        };
+        const std::vector<int> id = classifyLiftingSystems(v, noBridge, lat, fwd, sys);
+        CHECK_TRUE(id[0] == id[1] && id[2] != id[0], "a fin is not part of the wing");
+        CHECK_TRUE(sys.size() == 2, "wing + fin");
+        if(sys.size() == 2) {
+            CHECK_NEAR(sys[1].span, 2.0 * 0.6635, 1e-12,
+                       "a fin bills its vertical span");
+        }
+    }
+    // A tailplane shares the wing's span and plane but not its chord station, so it
+    // is a separate system -- the case the whole chord test exists for.
+    {
+        const std::vector<LiftingPane> v = { pane(0.0, 2.0, 8.0), pane(0.0, 2.0, 4.0, 1.0, 3.0) };
+        const std::vector<int> id = classifyLiftingSystems(v, noBridge, lat, fwd, sys);
+        CHECK_TRUE(id[0] != id[1], "a tailplane 3 m aft is not the wing");
+    }
+    // A flap hinged at the trailing edge touches in chord, so it IS part of the wing.
+    {
+        const std::vector<LiftingPane> v = { pane(0.0, 2.0, 8.0),
+                                             pane(0.0, 2.0, 2.0, 0.4, 1.4) };
+        const std::vector<int> id = classifyLiftingSystems(v, noBridge, lat, fwd, sys);
+        CHECK_TRUE(id[0] == id[1], "a flap at the trailing edge joins the wing");
+        if(sys.size() == 1) {
+            CHECK_NEAR(sys[0].area, 10.0, 1e-12, "its area joins the planform");
+        }
+    }
+    // THE SHIPPED JET, exactly: wings mounted at +-3 with 2 m half-spans, so their
+    // roots are 2 m apart, on a fuselage 2 m wide. They are one wing, carried by the
+    // hull -- and `span` stays the panels' own width, not the hull's.
+    {
+        const std::vector<LiftingPane> v = { pane(-3.0, 2.0, 8.0), pane(3.0, 2.0, 8.0) };
+        const std::vector<LiftingBridge> hull = { { -1.0, 1.0 } };
+        const std::vector<int> id = classifyLiftingSystems(v, hull, lat, fwd, sys);
+        CHECK_TRUE(id[0] == id[1], "a fuselage bridges the wing roots");
+        if(sys.size() == 1) {
+            CHECK_NEAR(sys[0].span, 8.0, 1e-12, "span is the panels', not the hull's");
+            CHECK_NEAR(sys[0].area, 16.0, 1e-12, "area is the panels'");
+        }
+    }
+    // A bridge that does not reach both roots is not a bridge.
+    {
+        const std::vector<LiftingPane> v = { pane(-3.0, 2.0, 8.0), pane(3.0, 2.0, 8.0) };
+        const std::vector<LiftingBridge> narrow = { { -0.5, 0.5 } };
+        const std::vector<int> id = classifyLiftingSystems(v, narrow, lat, fwd, sys);
+        CHECK_TRUE(id[0] != id[1], "a hull too narrow to reach the roots joins nothing");
+    }
+    // Same gap with nothing in it: two wings (so the case above cannot pass just
+    // because the gap is small).
+    {
+        const std::vector<LiftingPane> v = { pane(-3.0, 2.0, 8.0), pane(3.0, 2.0, 8.0) };
+        const std::vector<int> id = classifyLiftingSystems(v, noBridge, lat, fwd, sys);
+        CHECK_TRUE(id[0] != id[1], "a 2 m gap with nothing in it is two wings");
+    }
+    // Transitivity: a chain of touching panels is one wing even where the ends do
+    // not touch each other.
+    {
+        const std::vector<LiftingPane> v = { pane(-2.0, 1.2, 4.0), pane(0.0, 1.2, 4.0),
+                                             pane(2.0, 1.2, 4.0) };
+        const std::vector<int> id = classifyLiftingSystems(v, noBridge, lat, fwd, sys);
+        CHECK_TRUE(id[0] == id[1] && id[1] == id[2], "a chain is one system");
+        if(sys.size() == 1) {
+            CHECK_TRUE(sys[0].members == 3, "three members");
+            CHECK_NEAR(sys[0].span, 6.4, 1e-9, "union span across the chain");
+        }
+    }
+    // A plate whose chord is turned out of the fore/aft plane (say, a canard
+    // mounted on its edge) is not a wing in this sense and stays on its own.
+    {
+        LiftingPane odd = pane(0.0, 2.0, 4.0);
+        odd.chordAxis = glm::dvec3(0.0, 1.0, 0.0);
+        const std::vector<LiftingPane> v = { pane(0.0, 2.0, 8.0), odd };
+        const std::vector<int> id = classifyLiftingSystems(v, noBridge, lat, fwd, sys);
+        CHECK_TRUE(id[0] != id[1], "a plate on its edge does not join a wing");
+    }
+    // Degenerate input.
+    {
+        const std::vector<LiftingPane> v;
+        const std::vector<int> id = classifyLiftingSystems(v, noBridge, lat, fwd, sys);
+        CHECK_TRUE(id.empty() && sys.empty(), "no panes, no systems");
+    }
+}
+
 int main() {
     test_density();
     printf("\n");
@@ -2684,6 +2843,8 @@ int main() {
     test_partCd();
     printf("\n");
     test_surfaceFormCdA();
+    printf("\n");
+    test_liftingSystems();
     printf("\n");
     test_controlForce();
     printf("\n");

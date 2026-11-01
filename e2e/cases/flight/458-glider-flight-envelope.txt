@@ -70,7 +70,11 @@ CHECK any(d.get("induced", 0.0) > 0.0 for d in drag)
 CHECK all(d.get("induced", 0.0) > 0.0 for d in drag if d.get("L", 0.0) / max(0.5 * d["rho"] * d["v"] * d["v"], 1.0) > 1.0)
 # THE STICK'S OWN BILL (#494), and the cleanest statement of it in the suite: A is
 # pressed at t=3 for 3 s, and Induced follows the KEY rather than the lift --
-# 0.00, 0.00, 0.00, 1.70, 1.71, 1.72, 0.00, 0.00, 0.00, ... The glider's only lift
+# 0.00, 0.00, 0.00, 1.72, 1.72, 1.72, 0.00, 0.00, 0.00, ... (identical to three
+# decimals across the held seconds, which is what a constant of the catalogue looks
+# like; #556 cannot move it, because these rudders are VERTICAL and stand as single-
+# panel systems -- the fin's span runs up, so no wing can merge with it). The
+# glider's only lift
 # barely changes across those rows, so what is being charged here is the deflection:
 # each rudder is 2.0 m2 of control area over a 2.0 m span, so AR 2.0, and at the
 # 0.35 rad travel stop #503's droop leaves CL 1.335, giving

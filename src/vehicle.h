@@ -170,6 +170,35 @@ public:
     bool aeroGeomValid = false;    // false = no geometry cached yet
     void refreshAeroGeom();
 
+    /* #556/#555: the airframe's LIFTING SYSTEMS -- co-planar panels grouped into
+       wings by drag.h::classifyLiftingSystems -- and each lifting part's index into
+       them (`Part::aeroSystem`). Built wherever the geometry cache is rebuilt, off
+       the same fingerprint, so docking, undocking, staging, part damage and an
+       in-field fit-out re-group for free; the aero pass only reads. */
+    std::vector<LiftingSystem> aeroSystems;
+    void groupLiftingSystems();
+
+    /* Per-substep scratch for the induced bill (#556): the lift each surface made,
+       held until every surface has contributed, because the price is the SYSTEM's
+       CL^2/(pi e AR) and the system's CL needs the whole sum. One reused vector --
+       no allocation in steady state, and the sample count is the number of surfaces
+       that actually made lift this substep. */
+    struct AeroLiftSample {
+        glm::dvec3 r = glm::dvec3(0.0);   // mount offset from the COM, frame S
+        glm::dvec3 vp = glm::dvec3(0.0);  // the flow at the surface, frame S
+        double q = 0.0;                   // that flow's dynamic pressure
+        double area = 0.0;                // lift_area or control_area
+        double lift = 0.0;                // |F| the law just made, newtons
+        int system = -1;                  // index into aeroSystems
+    };
+    std::vector<AeroLiftSample> aeroLiftSamples;
+    /* Per-system scratch for that bill, sized by groupLiftingSystems (which runs on
+       a geometry change), so the per-substep pass only fills and reads. */
+    std::vector<double> aeroSysLiftOverQ;
+    std::vector<double> aeroSysCdi;
+    void applyInducedDrag(Body *forceHull, double dragCd, glm::dvec3 &ftotal,
+                          glm::dvec3 &moment, bool record);
+
     /* In the physics world? Asked of Bullet, not a flag. */
     bool hullInWorld() const;
 
