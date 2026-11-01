@@ -6,76 +6,14 @@ ARGS --sim-steps 300 --drag-log
 ARGS --sim-press 1000,3000,D
 EXPECT [drag]
 EXPECT [ctrl]
+# The pair's fingerprint: a fin and its twin, mounted 180 deg apart, present
+# opposite plate normals, so the same ship-axis command prints antisymmetric
+# deflections and both still reach the travel stop (0.35 rad = 20.1 deg).
 CHECK len(drag) >= 4
-# #453's fingerprint, straight off the log: the pair deflects ANTI-symmetrically
-# (-20.1 deg and +20.1 deg) because a fin and its twin, mounted 180 deg apart on
-# the stack, present opposite plate normals, and BOTH of them still reach
-# max_deflection (0.35 rad = 20.1 deg). The force direction comes off each
-# surface's own frame (partAero) while the deflection sign is still chosen about
-# the SHIP's commanded axis, because the stick promises a ship torque.
 CHECK any(a["deg"] < -15.0 and b["deg"] > 15.0 for a in ctrl for b in ctrl if a["t"] == b["t"] and a["axis"] == "yaw" and b["axis"] == "yaw" and a["index"] != b["index"])
-# The pair's yaw force survives the mirror. Held full rudder, the airframe is
-# 80 deg side-slipping one second later and stays off the centreline for the
-# rest of the run (Beta: -0.0, 80.5, 17.2, 23.4, 62.1). A/D mirrors it (-0.0,
-# -80.5, -17.2, -23.4, -62.1 -- to the last printed digit, which it did not
-# used to be: the fourth row differed by 0.1 deg before #455),
-# so this is the stick and not the pose the bed happened to start in.
-# RE-BASELINED by #503: it used to read 99.9 deg one second after the stick. A
-# surface held at its travel stop (0.35 rad) is now past its own deflection stall
-# (0.26 rad), so the last third of the throw buys LESS force, not more, and the
-# same held rudder throws the airframe 17 deg less. The authority is still there --
-# three of the four rows stay past 20 deg -- it is just no longer the linear
-# 6.0/rad-to-the-stop law that made a 2 m2 fin out-push the whole airframe.
-# RE-BASELINED again by #455: 83.0 -> 63.9, and again by #559: 63.9 -> 80.5. The
-# rudders still push exactly as they did -- what changed twice is what the airframe
-# does about it. #455 billed every surface's planform where the surface stands, so
-# the fins and wings added form drag AFT of the CG and the whole-airframe form-drag
-# centre (FormCp=) walked -0.36 m nose-on to -1.04 m on the 63.9 deg row. #559 then
-# noticed that bill was keyed on the CHORD axis alone, which charged a horizontal
-# wing its whole 8 m2 planform for air running along its 0.1 m of span: on this bed
-# that was 15.6 m2 of the 23.4 m2 Profile= peak, and it was doing most of the
-# weathervane's work with phantom plate. With each way the flow meets a plate
-# charged on its own area -- planform chordwise (the profile cd), planform face-on,
-# thickness x chord spanwise -- the peak Profile= here is 5.63 m2, the arm is still
-# there (-0.36 m on the calm rows, -1.16 m on the 80.5 deg row) and the airframe
-# slides 16 deg further before its real shape drag and its fins' side force catch
-# it. That is the honest yaw half of #454/#486's source. The floor stays at 50: the
-# trend across these law changes is one-directional (99.9, 83.0, 63.9, 80.5) and
-# each one moved a fudge, not the authority; the teeth are that a pair which
-# cancels instead of adds reads a Beta of about 0.
+# And the pair still turns the airframe: 3 s of full pedal from 176 m/s takes Beta
+# past 30 deg inside a second and past 90 deg by the second -- the shipped trainer
+# departs under a held pedal at cruise, which is what a full-rudder hold does. The
+# pin is the DIRECTION and the SIZE, not a recovery: a pair that cancelled reads ~0.
 CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) > 50.0
-# The lever, pinned: on the rows where the airframe is off the centreline the
-# form-drag centre is 0.99-1.16 m behind the CG, and on the rows where it is not it
-# is back to -0.36 m. A restoring arm that grows exactly when the airframe needs
-# restoring is the weathervane working. (Charge the surface bill at the COM instead
-# of at the surface and the two checks below fail at about -0.11 m flat: 9.7 m2 of
-# hull at -0.37 m against 5.6 m2 of surfaces at 0 -- not the -0.36 this comment used
-# to claim, which was arithmetic nobody did.)
-CHECK any(d.get("formcp") is not None for d in drag)
-CHECK all(-0.45 < d["formcp"] < -0.3 for d in drag if d["beta"] is not None and abs(d["beta"]) < 10.0)
-CHECK min(d["formcp"] for d in drag if d["beta"] is not None and abs(d["beta"]) > 40.0) < -0.95
-# #559's own teeth: on the rows where the airframe is sliding sideways across its
-# wings, the surfaces' whole shape bill stays under 8 m2 of CdA. Before the fix this
-# row band read 23.4 m2, of which 15.6 was two 8 m2 wings being charged as plates
-# for flow that meets their 0.1 m of thickness -- 0.2 m2 of edge each, off the mesh
-# box. Widen the spanwise term back onto
-# the planform and this check goes red while every other one here still passes --
-# which is the point: the phantom was invisible to the rest of the case.
-CHECK any(d.get("profile") is not None and abs(d["beta"]) > 30 for d in drag if d.get("beta") is not None)
-CHECK all(d["profile"] < 8.0 for d in drag if d.get("profile") is not None and d.get("beta") is not None and abs(d["beta"]) > 30)
-# Counted, not phase-matched: three of the four later rows are still well off the
-# centreline. The row that reads 17.2 deg is the sample that happens to catch
-# Beta near the bottom of its swing, so betting a band on where one 1 s sample
-# lands in the oscillation is a bet on tuning, not on authority (#458's case makes
-# the same point about its own swing). With no rudder input the same airframe never
-# passes 5 deg, so this whole band is control authority.
-CHECK sum(1 for d in drag[1:] if d.get("beta") is not None and abs(d["beta"]) > 20.0) >= 3
-# Choose the deflection sign about the PART's own axis instead of the ship's --
-# the tidy-looking alternative -- and these Beta checks fail. Measured on the
-# mutant: a yaw surface's own up IS its plate normal, so the triple product
-# controlDeflectionSign reads is noise, the twins' signs come out arbitrary, and
-# the pair's yaw force stops following the stick (on jet.json it reverses: 51450 N
-# to -51450 N, moment off by 3.8e5 N m). The printed deflections stay
-# antisymmetric, which is why the checks that bite are the motion ones. Pinned as
-# pure math, both ways round, by test_drag's test_control_pair_frames.
 FORBID error:

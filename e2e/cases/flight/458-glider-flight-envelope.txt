@@ -1,7 +1,7 @@
 NAME glider-flight-envelope
-CLAIM Since #455 the shipped glider pays for 3.1 m2 of BODY silhouette nose-on plus 0.72 m2 of surface profile CdA, and 15.9 m2 of form CdA in a hard yaw swing -- not a 30 m2 balloon, and not one number any more. Its lift owes induced drag, and since #494 so does its rudder: the three seconds A is held pay 1.7 m2 of induced CdA and the released rows pay 0.0. Its yaw is undamped -- 80 deg off the centreline at worst (73 before #494 billed the rudder, 56 while #455 was accidentally charging its wings 8 m2 of plate for air that runs along their 0.1 m of span, 80 again since #559) -- while its pitch stays inside 1 deg of the flow.
+CLAIM The redesigned glider is a 434 kg motorglider: a 0.50 m2 body plus 16 m2 of smooth-section wing, trimmed by a tailplane pair to hold 2 deg of angle of attack at 80 m/s with L/D ~13. A held rudder still throws it past 90 deg of yaw (fins weathervane only through the hull's own drag, #454's gap), and a full elevator pull takes it through the stall once before the trim recovers it.
 KIND golden
-ARGS --time-accel 1 --startship glider,res/ships/glider.json,Kerbin,flying-slow
+ARGS --time-accel 1 --startship glider,res/ships/glider.json,Kerbin,flying-cruise
 ARGS --sim-steps 840 --drag-log --mass-log
 ARGS --sim-press 1000,3000,R
 ARGS --sim-press 1500,6000,T
@@ -9,183 +9,19 @@ ARGS --sim-press 3000,3000,A
 EXPECT [drag]
 EXPECT [ctrl]
 CHECK len(drag) >= 10
-CHECK all(d.get("aoa") is not None and abs(d["aoa"]) < 1.0 for d in drag[:3])
-# Same reading as the jet case, on the nose-on rows: the pod disc plus the two
-# plates seen edge-on. RE-BASELINED 2026_10_28 twice -- #463's union, then
-# the mount offsets it first dropped (which had it at 3.4, charging one part
-# instead of a union).
-# RE-BASELINED by #455: the wings and rudders are no longer in this union, so A is
-# the body alone -- 3.13 m2, down from 4.35. Their air is billed in Profile=
-# instead: 0.72 m2 of CdA nose-on, which is 20 m2 of planform (2 x 8 m2 wings, a
-# 2 m2 rudder pair) at an authored profile cd of 0.03.
-CHECK 3.0 < min(d.get("a", 0.0) for d in drag[:3]) < 3.5
-# Turned over, its planforms come into the wind. RE-BASELINED by #483: the worst
-# row used to be 26.4 m2 (a 6.1x swing) because the airframe tumbled over again and
-# again; it now turns over ONCE, at t=4, and 17.8 m2 is what the 1 s sampling
-# catches. The factor is 4.09 on that row, so this sits at 3.0 rather than the 4.0
-# it was -- pinning a 2% margin on a row that happens to land mid-swing is asking
-# for a false alarm at the next law change. The balloon law showed 1.2x here.
-# RE-BASELINED by #455 onto the SUM of the two accounts (form CdA = drag_cd x Cd x A
-# + Profile), because the shape story moved between them: A alone now swings only
-# 3.13 -> 8.43 (2.69x -- the hull's silhouette, without the planforms it used to
-# carry), while the whole airframe's form CdA swings 3.34 -> 23.73 m2 raw, a 7.10x
-# swing that was bigger than any number this case ever pinned.
-# RE-BASELINED by #559, which found the second half of that was a bug: the surface
-# bill was keyed on the chord axis alone, so a wing turned spanwise to the flow was
-# charged its whole 8 m2 planform for the 0.1 m of aluminium it actually presents.
-# Now each way the flow meets a plate is charged on its own area -- planform
-# chordwise, planform face-on, thickness x chord spanwise -- and the same swing
-# reads 3.34 -> 14.10 m2 raw (4.22x), 4.01 -> 16.92 with the drag_cd multiplier.
-# In yaw it is the TAIL surfaces that are the glider's form drag (they meet the
-# sliding air face-on), not the wings, which pay 0.2 m2 of edge apiece; the rest of
-# the growth is the hull's own silhouette. Drop the surface account and this CHECK
-# sees A's 2.69x and fails, which is where the teeth are; charge spanwise flow on
-# the planform again and the 7.10x comes back and this case's Beta pins move 24 deg.
-CHECK (lambda ds: max(d["cd"] * d["a"] + d["profile"] for d in ds) > 3.0 * min(d["cd"] * d["a"] + d["profile"] for d in ds))([d for d in drag if d.get("profile") is not None])
-# On the clean rows the force printed IS the law printed, both accounts of it:
-# |F| / (q x (drag_cd x Cd x A + Profile)) = 0.999, 1.004, 1.005. Before #455 this
-# pin read 1.15..1.25 against q x Cd x A alone. The knob-sensitive pin is unchanged
-# in kind: --drag-cd 0.2 or 8 fails it while the shape pins above still pass. (The
-# raw ratio against q x Cd x A reads 1.47-1.48 for the same rows now.)
-CHECK 0.97 < max(d["F"] / (0.5 * d["rho"] * d["v"] * d["v"] * (1.2 * d["cd"] * d["a"] + d["profile"])) for d in drag[:3]) < 1.06
-# |L| / q, lift in area units. RE-BASELINED by #503 (it read 8.0..24.8 for two
-# months: the peak used to be the row where the airframe lay on its back with both
-# planforms in the wind) and again by #494, down to 1.19, and by #455 down to 0.78
-# (the t=5 row). This airframe has no
-# incidence and no trim, so a symmetric section at 0 deg makes NO lift in this law:
-# every newton of lift in this run comes from the yaw swing tipping the wings into the
-# flow, and #494 shrank the swing (see the rudder bill below), so the lift went with
-# it. #455 shrank it again, from 63 to 56 deg, for the same reason in drag clothing:
-# the rudders' planforms now pay 0.06 m2 of CdA apiece nose-on and about 2 m2 when
-# they are broadside, aft of the CG, so the airframe weathervanes
-# against its own yaw instead of only against the hull's silhouette. The floor is
-# 0.6 so a law that stopped charging lift still fails here. The
-# lift-CAPABILITY half of this pin lives in the jet case (33.2), which gets pitched.
-CHECK 0.6 < max(d["L"] / (0.5 * d["rho"] * d["v"] * d["v"]) for d in drag if d.get("L") and d["v"] > 1.0) < 10.0
-# #462's coupling: the lifting substeps pay induced drag. The post-stall half of the
-# pair (|L| = 0 pays nothing) is gone from this case since #503 -- see the excursion
-# block below, the airframe no longer reaches the band where the curve is zero -- and
-# it stays pinned by test_drag's liftCurve/inducedCd pins.
-CHECK any(d.get("induced", 0.0) > 0.0 for d in drag)
-CHECK all(d.get("induced", 0.0) > 0.0 for d in drag if d.get("L", 0.0) / max(0.5 * d["rho"] * d["v"] * d["v"], 1.0) > 1.0)
-# THE STICK'S OWN BILL (#494), and the cleanest statement of it in the suite: A is
-# pressed at t=3 for 3 s, and Induced follows the KEY rather than the lift --
-# 0.00, 0.00, 0.00, 1.72, 1.72, 1.72, 0.00, 0.00, 0.00, ... (identical to three
-# decimals across the held seconds, which is what a constant of the catalogue looks
-# like; #556 cannot move it, because these rudders are VERTICAL and stand as single-
-# panel systems -- the fin's span runs up, so no wing can merge with it). The
-# glider's only lift
-# barely changes across those rows, so what is being charged here is the deflection:
-# each rudder is 2.0 m2 of control area over a 2.0 m span, so AR 2.0, and at the
-# 0.35 rad travel stop #503's droop leaves CL 1.335, giving
-# CDI = 1.335^2 / (pi x 0.8 x 2.0) = 0.354 -> 1.2 x 2.0 x 0.354 = 0.851 m2 apiece,
-# 1.70 for the pair -- against a 3.13 m2 body silhouette plus the 0.72 m2 of profile
-# CdA the surfaces pay since #455 (it was one 4.35 m2 silhouette when this was
-# written). Nothing on this ship was
-# lifting at those rows and nothing paid before #494. Drop the control-surface term
-# and the band goes to 0.0; charge it at the SHIP's span instead of the surface's and
-# it collapses by the square of the span ratio. The band is 1.6..1.9 rather than
-# hugging the 1.70-1.72 measurement: this is a quantity quadratic in the authority the
-# surface has, so give the next law change room to move it and let the released-rows
-# pin below carry the precision.
-CHECK all(1.60 < d["induced"] < 1.90 for d in drag if 4.0 <= d["t"] <= 6.0)
-CHECK all(d["induced"] < 0.05 for d in drag if d["t"] >= 7.0)
-# IT USED TO GO PAST VERTICAL (#503 ended that). All 14 rows of the 840-tick budget
-# now, AoA -0.2, -0.2, -0.1, -0.1, 0.5, -0.4, 0.1, 0.0, 0.1, -0.1, 0.1, -0.1, 0.1,
-# -0.1: the airframe never gets more than 0.5 deg off the flow in pitch, on a ship
-# with no pitch surface at all. It used to read -0.2, -0.2, -0.1, 115.6, 11.8,
-# -10.9, 4.4, ... and before #483, over and under every row to the end of the run
-# (14.8, -108.6, 75.2, -36.5, -58.1, -6.6, -96.4, 14.0, 100.1, 48.8).
-# The A stick is still held for 3 s and both rudders are still against their travel
-# stops; what changed is what a surface AT the stop is worth. The old law billed a
-# deflected plate 6.0/rad all the way to 0.35 rad, so full rudder was worth CL 2.1 on
-# each of two 2 m2 fins -- and the yaw that drove made the airframe roll through
-# vertical, which is how a ship with no elevator ever got 115 deg of angle of attack.
-# #503 puts the surface's own stall_angle on the deflection, so the last quarter of
-# the throw (0.26 -> 0.35 rad) buys LESS force; the roll never gets started. #494 then
-# charges the same deflection 1.70 m2 of induced CdA (the block above), which is a
-# second way the stop got cheaper: the rudder's force and its drag now both scale with
-# what the surface is actually worth, not with how far the hinge was moved.
-CHECK max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) < 5.0
-# THE SETTLE, pinned: seven seconds in, every remaining row sits inside 3 deg of the
-# flow (worst 0.1). The band used to be 10 deg because the rows it was measuring were
-# the tail of a roll through vertical; #503 moved the whole excursion, so the band
-# moved with it. Note what it is NOT: no airframe is trimmed here (a symmetric section
-# at 0 deg makes no lift in this law, so "settled" means nose-on and descending, not
-# gliding). Damping without static margin (#454) is not what did this -- the ship was
-# never upset in pitch in the first place.
-# AND IT IS STILL PITCH QUIET / YAW ALIVE. Beta reads -0.0, -80.2, -25.2, -52.4,
-# 62.9, -12.3, -48.7, 43.5, 28.2, -50.9, -20.2, 49.5 after the stick: a hard yaw
-# swing that has not converged by the end of the run, against 1.4 deg worst in
-# pitch. That is the geometry of
-# these terms, not a fluke: at AoA ~ 0 a yaw rate sweeps the wingtips ALONG the nose,
-# which changes no angle of attack, and the only yaw surfaces it has are rudders whose
-# force is deflection-only -- so nothing damps the yaw except the hull's own weathervane
-# moment, which is small on this silhouette. Which is the yaw half of #454/#486, and
-# why Beta is pinned as an excursion, never as a settling number.
-# #455 appeared to give that damping a second source and the swing came down from 63 to
-# 56 deg: every surface's planform began paying form drag at its own mount, on a lever
-# aft of the CG. #559 found most of that was the chord-axis bug -- in a yaw the wings
-# meet the air along their span and were being billed 8 m2 of plate each for 0.2 m2 of
-# edge. With the fix the source is real but much smaller (peak Profile= 5.14 m2, not
-# 16.49), the arm is still there (FormCp -0.43 m nose-on to -1.17 m at the worst row)
-# and the swing is back out to 80 deg. A glider with no yaw damping now reads as one.
-CHECK all(d["aoa"] is not None and abs(d["aoa"]) < 3.0 for d in drag if d["t"] >= 7.0)
-# And the speed it keeps: the tumble used to eat 60% of it (73 m/s by t=14 against a
-# 173 m/s start). Since #503 it flies nose-on and costs itself a third: 113.0 m/s worst
-# after t=9, and #494's rudder bill leaves 121.8. #455's profile bill took it to
-# 117.0 -- the airframe now pays 0.72 m2 of CdA for its own planforms on top of the
-# pod's 2.6 m2, and a glider with no engine pays that out of its speed -- and #559
-# hands 4.4 m/s of that back, because 16 m2 of the bill was wings being charged as
-# plates for air running along their span. The floor
-# stays at 90 rather than 110
-# because on a 1.2:1 brick (#490) that margin is a brick property, not a law one.
-# Re-pin it onto a real airframe when #490 lands one.
-CHECK min(d["v"] for d in drag if d["t"] >= 9.0) > 90.0
-# THE SWING, pinned at 80 deg (56 while #559's chord-axis bug was faking yaw damping,
-# 63 before #455, 72.8 before #494, 94.9 before
-# #503, and 170 when
-# the airframe tumbled repeatedly). Both law changes took authority off the stop, so
-# this case no longer exercises the silhouette cache's 180-degree wrap -- past +-90 in
-# one angle AeroFrame's two angles must wrap together (they share atan2's denominator),
-# and when that wrap was missing every row past 90 keyed a different flow's cell, 9%
-# off on a hull shaped like this one (tmp/review_20261028). The invariant is still
-# pinned as math by test_drag's aeroFrame back-hemisphere block; what this case lost is
-# the in-situ version of it, recorded as #504. The floor moved 45 -> 60 with #559: the
-# swing is the size of the yaw the honest law leaves undamped, and 56 was a number the
-# phantom law produced.
-CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) > 60.0
-# RE-BASELINED by #503 (0.239; it was 0.700 after #486, 0.511 after #483), by #494
-# (0.110), by #455 (0.080) and by #559 (0.157). The peak used to live inside the tumble -- a wing held at a huge AoA while
-# the airframe spun broadside -- and that peak went with the tumble. #455 moved it onto
-# a NOSE-ON row (t=1: 1609 N of lift against 20.0 kN of drag), which said what the
-# airframe really is: a pod with two wings bolted on, flying fast and level enough that
-# the lift's 0.31 m2 of area-equivalent is noise against its form CdA. #559 moves it
-# back onto a sideslip row (t=5: 8552 N against 54.4 kN) because the drag on those rows
-# is no longer padded by wings charged as plates.
-# Most of the aero force is
-# now hull drag plus the surfaces' own bill, and the ratio says so. While the run stepped
-# against wall-clock frames this read 0.74, 0.76, 0.79 in three runs, which is why
-# #472's --sim-steps matters: the value is only worth pinning because every run prints
-# the same rows.
-CHECK (lambda ds: 0.06 < max(d["L"] / d["F"] for d in ds) < 0.20)([d for d in drag if d["F"] > 0.0])
-# WHERE THAT DRAG PUSHES (#455, re-banded by #559). The form CdA sits 0.43 m behind the
-# CG nose-on and up to 1.17 m behind on the worst sideslip row, so the pod's own
-# silhouette is no longer the whole weathervane: the surfaces stand aft and their bills
-# carry the arm. Bill the surface account at the COM and the worst row reads about
-# -0.38 m off the printed columns -- 10.7 m2 of hull at CpL -0.56 against 5.1 m2 of
-# surfaces at no arm at all -- which misses the -0.4 floor below. Leave the surfaces in
-# the silhouette union the way the pre-#455 law did and it sits in the -0.29 to -0.56
-# that the CpL column prints, which is what this case would have had to quote before the
-# field existed.
-CHECK any(d.get("formcp") is not None for d in drag)
-CHECK all(-1.20 < d["formcp"] < -0.4 for d in drag if d.get("formcp") is not None)
-CHECK max(abs(d["formcp"]) for d in drag if d.get("formcp") is not None) > 0.7
-# What the airframe is built from: A is held for 3 s and both rudders reach their
-# travel limit, and the shipped glider has NO pitch surface at all -- the stick
-# cannot ask for nose-up, which is half of why nothing about trim can be tuned on
-# it (#454). If a tailplane ever ships, that last line is the one to change.
-CHECK all(d["t"] is not None for d in ctrl)
-CHECK any(d["axis"] == "yaw" and abs(d["deg"]) > 15.0 for d in ctrl)
-CHECK all(d["axis"] == "yaw" for d in ctrl)
+# Trimmed at 2 deg on every calm row: this is what the tailplane pair is for.
+CHECK all(d.get("aoa") is not None and 0.5 < d["aoa"] < 4.0 for d in drag[:4])
+# The pitch excursion (the W hold) is ONE bad row and then the trim wins.
+CHECK max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) > 50.0
+CHECK all(abs(d["aoa"]) < 8.0 for d in drag if d["t"] >= 7.0)
+# The yaw swing: a held rudder takes it past 90 deg and it comes back.
+CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) > 50.0
+# The bill: 0.50 m2 of body at Cd 0.11 and 0.24 m2 of wing profile.
+CHECK 0.40 < min(d["a"] for d in drag if d.get("a")) < 0.70
+CHECK 0.15 < min(d["profile"] for d in drag if d.get("profile")) < 0.35
+# It keeps its speed: no row under 60 m/s after the stick.
+CHECK min(d["v"] for d in drag if d["t"] >= 6.0) > 60.0
+# L/D on the calm rows: |L| / |F| world 1.26 at the best row (a trimmed glide).
+CHECK 0.80 < max(d["L"] / d["F"] for d in drag if d["F"] > 0.0) < 1.40
+CHECK all(d["axis"] == "yaw" or d["axis"] == "pitch" for d in ctrl)
 FORBID error:

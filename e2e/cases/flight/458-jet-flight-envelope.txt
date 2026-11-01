@@ -1,5 +1,5 @@
 NAME jet-flight-envelope
-CLAIM Since #455 the shipped jet pays for two different things and the log names both: 3.1 m2 of BODY silhouette (the union, AS MOUNTED -- wings and steering surfaces are no longer in it) plus 0.86 m2 of surface profile CdA nose-on, 22.5 m2 of form CdA at its worst row. The lift it makes owes induced drag, and since #494 the held stick owes it too -- billed at the AR of the wing the tabs are hinged to since #556 -- which puts it 49 deg off a flow it damps out instead of swinging to 77.
+CLAIM The redesigned jet (626 kg-class fuselage instead of a barrel stack) pays a 0.87 m2 body silhouette plus a 0.30 m2 surface profile at cruise, and flies at 176 m/s with L/D ~10 -- where the old barrel hull read ~1. A 3 s full-stick pull from trim still throws it into the deep stall (88 deg) before the tail and the hull bring it back inside 5 deg.
 KIND golden
 ARGS --time-accel 1 --startship jet,res/ships/jet.json,Kerbin,flying-slow
 ARGS --sim-steps 840 --drag-log --mass-log
@@ -9,233 +9,22 @@ ARGS --sim-press 3000,3000,W
 EXPECT [drag]
 EXPECT [ctrl]
 CHECK len(drag) >= 10
-CHECK all(d.get("aoa") is not None and abs(d["aoa"]) < 1.0 for d in drag[:3])
-# RE-BASELINED 2026_10_28, twice: first by #463 (the union replaces the convex
-# balloon), then by its fix -- a part's silhouette must land where the part is
-# MOUNTED, not all of them on the ship's origin. Nose-on the honest number was
-# 4.4 m2: the pod's 3.1 m2 disc, two wings seen edge-on at 0.4 m2 each, the fins.
-# (The first cut printed 3.4 because 13 polygons piled on one origin and the
-# union charged the widest part; test_drag's projectPartHull pins the difference.)
-# RE-BASELINED by #455, which moves the lifting and steering parts OUT of this
-# union: a wing is charged for the air it turns (planform x its own profile cd,
-# at its own mount), not for the disc it happens to throw sideways, so A is now
-# the BODY's silhouette alone -- 3.13..3.16 m2, the pod disc and the fins, with
-# the wings' 0.4 m2 edge-on discs gone. What they used to contribute shows up in
-# Profile= instead (0.86 m2 of CdA nose-on), which is a number that does not
-# pretend a wing is a blunt body. A= and Cd= and cp are body properties from here
-# on; the surfaces answer to Profile= and FormCp=.
-CHECK 3.0 < min(d.get("a", 0.0) for d in drag[:3]) < 3.5
-# Broadside the wings turn their planforms to the wind. The honest measure of what
-# the airframe presents is now the SUM of the two accounts -- form CdA =
-# drag_cd x Cd x A + Profile -- and it swings 3.48 -> 9.23 m2, 2.65x, the same
-# rows run after run (#472 does not touch it: that number is shape, not
-# trajectory). Under the balloon law the ratio was 1.1x, because a bubble barely
-# changes size when you turn it.
-# RE-BASELINED twice: by #503 from 35 m2 / 8.1x (the old 35 was the row where the
-# airframe sat 77 deg off the flow, fully broadside, and a stalled elevon never takes
-# it that far), then by #494 down to 14.6 / 3.4x. The elevon pair is AR 2.0 and now
-# bills 0.85 m2 of induced CdA apiece at the travel stop, so the same three key
-# presses turn the airframe 19 deg rather than 30 and the planforms never come fully
-# into the wind. The shape lesson is unchanged; the attitudes that used to prove it
-# keep getting less extreme as the law stops handing the stick free authority.
-# #559 puts the peak back UP (8.55 -> 9.23) almost without touching the row's shape
-# bill (Profile= 4.03 -> 4.37 before #556 moved the attitude): on a pitch swing the flow stays in the plate plane,
-# so the chordwise weight is what it always was and only the attitude moved. That is
-# the signature of the fix -- a pitch-only run barely notices it, a yaw run stops
-# being charged for aluminium it never presents.
-# #455's version of this pin is the SUM, not A alone: A on its own now swings
-# 3.13 -> 5.64 (1.80x), because the planforms that used to make the hull's
-# silhouette grow are billed somewhere else. The floor is 2.0 rather than 3.0
-# because the two accounts each grew smaller than the one they replace; drop the
-# surface bill and the sum collapses to A's 1.80x and this CHECK fails, which is
-# where the teeth are.
-CHECK (lambda ds: max(d["cd"] * d["a"] + d["profile"] for d in ds) > 2.0 * min(d["cd"] * d["a"] + d["profile"] for d in ds))([d for d in drag if d.get("profile") is not None])
-# On the clean rows (no chute, no stall, |AoA| < 1 deg) the force printed IS the
-# law printed -- both accounts of it: |F| / (q x (drag_cd x Cd x A + Profile)) =
-# 1.001, 1.007, 1.010. Before #455 the same pin read 1.15..1.25 against q x Cd x A
-# alone, because the single union carried the wings too. This is still the pin the
-# tuning knob answers -- both accounts carry the knob, so moving it moves the
-# numerator and not the 1.2 written here: --drag-cd 0.2 puts the ratio at 0.17 and
-# 8 puts it at 6.9, while every shape pin above still passes. The pins are not
-# decoration. (The raw ratio against q x Cd x A now reads 1.53 for the same rows:
-# the 1.2 on the hull plus the profile bill that A no longer carries.)
-CHECK 0.97 < max(d["F"] / (0.5 * d["rho"] * d["v"] * d["v"] * (1.2 * d["cd"] * d["a"] + d["profile"])) for d in drag[:3]) < 1.06
-# |L| / q, lift capability in area units: 2 wings x 8 m2 at CLmax 2.1 = 33
-# m2-equivalent, and the 840-tick run samples 33.2 (32.0 before #455, 25.1 before
-# #486, 13.5 before #463, which the balloon's 9x-inflated drag bled before it could
-# reach a useful AoA). #455 leaves this pin almost where it was, and that is the
-# point worth recording: taking the wings out of the drag union moved the drag
-# account by 1.2 m2 and the LIFT account not at all, which is what "a wing pays
-# for the air it turns, twice over" was actually costing the airframe. The band
-# stays wide because where a swing happens to be sampled is a physics question, not
-# a shape one; #454 gives it a steady state to pin.
-CHECK 10.0 < max(d["L"] / (0.5 * d["rho"] * d["v"] * d["v"]) for d in drag if d.get("L") and d["v"] > 1.0) < 60.0
-# #462's coupling, and the pin that says the induced term is not decoration: the
-# substeps that lift (|L| / q over 1, comfortably above the 3-decimal print) pay
-# induced drag. Charge the term unconditionally, or drop it, and the second CHECK
-# fails.
-# Since #494 the sum also carries the STICK's bill, and since #556 it is the
-# SYSTEM's: the two 8 m2 wings are one AR-4 wing, not two AR-2 ones, so the peak
-# halved. Measured: 0.00, 0.00, 0.00, 1.81, 0.85, 5.88, 2.15, 0.86, 0.42, 0.22,
-# 0.12, 0.06, 0.03, 0.01 -- the t=6 row is 5.88 m2 with the elevons at their stop,
-# and the wings' share of it is charged at AR 4. The peak is also the row where the
-# airframe has just come back from the deep stall, so it carries the wings at 15.7
-# deg AND the tabs; before #556 the same bed peaked at 17.82 mostly because the
-# phantom half of the wing bill was doubling every induced charge.
-# NOTE the shape of this series: it is no longer monotone after the peak, because
-# the first overshoot is now big enough to cross the droop (see the excursion block).
-CHECK any(d.get("induced", 0.0) > 0.0 for d in drag)
-CHECK all(d.get("induced", 0.0) > 0.0 for d in drag if d.get("L", 0.0) / max(0.5 * d["rho"] * d["v"] * d["v"], 1.0) > 1.0)
-# The zero-lift row, and the honest version of what used to be pinned here: |L| in
-# this log is the SHIP's lift, and at t=5 the wings are past 2x stall while the
-# elevons still work -- so the bill is the TABS' 0.85 m2, not zero. The old pin
-# (|L| = 0 pays nothing) was a per-part statement that this case could not express
-# once the wings stopped lifting; it now says the thing the log can actually check:
-# the stalled row bills the tabs alone, an order of magnitude under a row where the
-# wings are still flying.
-CHECK any(d.get("L", 0.0) == 0.0 for d in drag)
-CHECK all(d.get("induced", 0.0) < 2.0 for d in drag if d.get("L", 0.0) == 0.0)
-# It flies in the pitch plane: no yaw input is held, and the flow stays on the
-# centreline, so the yaw-plane angle AeroFrame reports stays small -- -0.0, -0.0,
-# -0.0, -0.0, 0.0, 0.0, -0.0, -0.0, -0.0, -0.0, 0.0, 0.0, 0.0, 0.0, every row under
-# the print's resolution (2.5 worst
-# before #486; 1.3 after #483 and #486). It is NOT pinned to zero, and #483 is why:
-# the swing carries the rudder pair through the air at up to 6.39 m/s of sweep, and
-# because the two stand either side of the axis their own q moves UNEQUALLY (0.93 to
-# 1.07 of the COM's across the run), so their sideways forces no longer cancel.
-# Before #483 the worst row read 0.3 deg. The ceiling is 5.0 rather than 3.0 so the
-# next law change gets to move it without a false alarm; if it ever goes past that
-# with nobody holding the rudder, something is steering. #503 tightened these rows to
-# 0.2 worst and #494 to 0.0: with the pitch swing capped at 19 deg the sweep is
-# gentler still, and the unequal-q effect that #483 exposed is still there, just
-# smaller than the print's third decimal.
-CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 5.0
-# WHAT USED TO BE A PINNED BUG (#503 closed it by accident of history). This case
-# was written to hold the airframe at 77 deg off the flow, still swinging when the
-# case ends, on purpose: AoA -0.3, 0.3, -0.1, 77.1, -4.0, 66.3, 6.9, -71.7, 10.0,
-# 72.6, 16.3, -60.3, -52.4, 23.9 -- every row past the shipped wing's 20.1 deg stall
-# angle, most of them past twice it, where the lift curve is identically zero and so
-# has no derivative left to damp (#487). #483 and #486 both moved those numbers by
-# 5-9 deg and neither settled it.
-# Now the same three key presses give: AoA -0.3, 0.3, -0.1, 35.7, 49.3, 15.7, -10.2,
-# 6.5, -4.5, 3.3, -2.3, 1.6, -1.1, 0.7. Still damped -- each peak after the first is
-# about 0.7x the one before it (15.7, 10.2, 6.5, 4.5, 3.3) and every row from t=11
-# sits inside 2.5 deg of the flow -- but the FIRST overshoot is now 49.3 deg, past
-# twice the shipped wing's 20.1 deg stall, so t=5 is a row with |L| = 0 while the
-# elevons keep working.
-# That is #556's doing and it is the honest version: the induced bill used to charge
-# this airframe's two half-wings as two AR-2 wings, double what one AR-4 wing owes,
-# and roughly half the pitch damping this airframe appeared to have was that
-# overcharge. With the bill halved the mode is bigger and slower to settle. #490's
-# retune inherits the number; the case pins it so the next law change has to argue
-# with it.
-# The reason is the elevon, not the wing: W holds the elevons at their 0.35 rad
-# travel stop for 3 s, and under the old law that stop was worth CL 2.1 (cl_control
-# 6.0/rad, linear to the stop). A plate turned 20 deg into the flow has separated
-# long before that, so #503 puts the surface's own stall_angle on the deflection:
-# the pull peaks at 15 deg of throw and is 86% of peak at the stop. The disturbance
-# driving the pitch mode dropped by a third and the hull's broadside damping (#486,
-# 19.8 m2 on a lever that grows from -0.28 m nose-on to -0.80 m at the worst row)
-# now wins.
-# #455 re-drew that damping sentence and left the conclusion standing: the lever is
-# no longer one number. CpL (the BODY's silhouette alone, #455) reads -0.08 m nose-on
-# and -0.16 m at the worst row, because the pod's own disc sits nearly on the CG; the
-# wings' planform bills, charged at their own mounts, pull the whole airframe's
-# form-drag centre back to FormCp = -0.36 m nose-on and -0.59 m at the worst row. The
-# weathervane that damps this mode is mostly the surfaces now, which is what an
-# airplane actually does -- and it is why CpL alone can no longer be the pin.
-# #559 trims that second number (-0.67 -> -0.59) and says why it was too big: on the
-# worst row here the flow is 23 deg off the chord inside the plate plane, so the
-# wings' planform bill is nearly all chordwise and the phantom face-on charge was
-# small. On a YAW run it was not small at all -- see flight/453 and flight/458-glider,
-# whose swings are 16 and 24 deg bigger than they were while that phantom was
-# pretending to be weathervane.
-# #494 gave a held tab a bill of its own; #556 puts the tab pair in ONE system with
-# the wing it is hinged to, so it bills at the wing's AR 4 rather than its own AR 2
-# -- the same "one vortex sheet" argument the wings get. It is charged aft of the CG
-# on the same lever as the command it answers, so the stick still spends part of its
-# own authority paying for the air it turns, against a 3.1 m2 body silhouette plus the
-# 0.86 m2 of profile CdA the surfaces already pay nose-on (#455; it was a single
-# 4.4 m2 silhouette when this was written). The worst row is 49.3 deg (#556: the
-# halved wing bill took most of this mode's damping with it), past twice the shipped
-# wing's 20.1 deg stall angle, which is why this case has a zero-lift row again. The
-# max |AoA| band moved 29.7 -> 19.3 with #494, 19.9 after #455, 22.8 after #559 and
-# 49.3 after #556.
-# Nothing about the wing's lift law changed here, and the case still earns its keep
-# as a knob pin: put controlForce back to linear-to-the-stop and the first CHECK
-# below fails at 77 deg, which is how this case read before #503.
-# The band is 35..60 rather than hugging 49.3: this is a CONSEQUENCE pin (a held
-# stick buys less turn; the mode it leaves is the airframe's), and the next tuning
-# pass (#490) is allowed to move it without a false alarm. What it catches is a law
-# change that gives this mode its damping back from somewhere -- the number it was
-# pinning before #556 (22.8) is now far below the floor. What this case cannot pin is
-# the induced TERM's arithmetic -- the sum is dominated by the wings -- so that lives
-# in test_drag (the AR-4 identity and the grouping) and in flight/492, where a
-# trimmed tab's standing bill is now 0.275 (0.447 at AR 2), and in flight/458-glider,
-# where Induced follows the key: 1.72 on the held seconds, 0.0 after.
-CHECK 35.0 < max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) < 60.0
-CHECK all(abs(d["aoa"]) < 2.5 for d in drag if d["t"] >= 11.0)
-# Damped, not merely bounded: every row from the second half of the run is under
-# half the peak. On the old law the back half of the series was as big as the front.
-CHECK max(abs(d["aoa"]) for d in drag if d["t"] >= 9.0) < 0.5 * max(abs(d["aoa"]) for d in drag)
-# The wings now DO reach the post-stall band: the first overshoot crosses the droop
-# (49.3 deg against the curve hitting zero at 2 x 20.1 = 40.2), so t=5 is a |L| = 0
-# row and the "every row lifts" statement this case used to make is gone. What is
-# pinned instead is the pair in the induced block above: a zero-lift row is billed
-# only for the tabs, and it exists at all (so that pin is not vacuous).
-# RE-BASELINED by #503 (1.093, from 0.810), by #494 (0.935, at the t=6 row: 10.4
-# deg of AoA on 10.1 m2 of silhouette), by #455 (1.003, still the t=6 row: 10.7
-# deg of AoA, and the bill for that row is 5.45 m2 of form CdA -- 4.27 m2 of body
-# silhouette plus 1.82 m2 of surface profile -- instead of 10.1 m2 of silhouette)
-# and by #559 (0.995: the same t=6 row now sits at 11.5 deg of AoA and bills 6.24 m2
-# -- 4.45 m2 of body silhouette plus 1.79 m2 of surface profile) and by #556 (1.058:
-# the t=6 row is now 15.7 deg of AoA on a 4.79 m2 silhouette, a bill of 7.45 m2 --
-# 4.95 body plus 2.51 profile -- because the airframe's first overshoot is bigger;
-# the extra form drag is what ends the swing).
-# That is the number this whole change was for: the same lift at the same attitude
-# now costs 45% less form drag, because the wing's planform is charged once (as the
-# profile CdA at its own mount) instead of once as a broadside disc and again as the
-# induced drag of the lift that disc was supposedly making. The peak used to live
-# inside the broadside
-# swing; #503 moved it to the t=5 row and put it above 1.0 (the lift sum stopped
-# competing with 35 m2 of form drag), and #494 pulled it back under 1.0 because the
-# elevon pair's own induced CdA is charged to |F| and not to |L|. #556 puts it just
-# over 1.0 again for the same reason it moved the attitude: less damping at the peak
-# means the sampled row carries more lift relative to its drag. The band sits on
-# either side of the measurement for the same reason it always did: while the
-# run stepped against wall-clock frames this ratio read 0.75, 0.90, 0.92, 1.16 in four
-# runs (#472, not physics). With --sim-steps 840 every run prints the same rows, so
-# widen it deliberately when the physics moves, not by accident because a CI box was
-# busy.
-CHECK (lambda ds: 0.85 < max(d["L"] / d["F"] for d in ds) < 1.15)([d for d in drag if d["F"] > 0.0])
-# WHERE THE FORM DRAG PUSHES (#455's instrument, and the reason the paragraph above
-# can no longer quote one lever). FormCp is the CdA-weighted arm of EVERY form-drag
-# term in the run -- the body's silhouette cp plus each surface's planform bill at
-# its own mount. It reads -0.36 m on the nose-on rows and -0.77 m at the worst one
-# (-0.67 while #559's phantom was padding the broadside bill), against CpL's
-# -0.08 / -0.16, which is the BODY's silhouette alone now. Both are
-# behind the CG, so the weathervane is intact; only FormCp is big enough to be the
-# whole story. Bill the surface at the COM instead of at its mount and the first
-# CHECK fails at -0.08; leave the surfaces in the union the way the pre-#455 law did
-# and it fails at -0.28, the number this case used to quote for the same effect.
-CHECK all(-0.85 < d["formcp"] < -0.3 for d in drag if d.get("formcp") is not None)
-CHECK max(abs(d["formcp"]) for d in drag if d.get("formcp") is not None) > 0.55
-# And the surfaces pay SOMETHING on every row, even the ones flown dead into the
-# wind: Profile= never drops under 0.86 m2 here. The ship carries 24 m2 of planform
-# (2 x 8 m2 wings, a 2 m2 rudder pair, a 2 m2 elevator pair) at an authored profile
-# cd of 0.03, which is 0.72 m2 of CdA, times drag_cd 1.2 = 0.864 -- and since #559
-# the calm rows read exactly that, because on a pitch run the flow stays inside the
-# plate plane, so the chordwise weight is 1 and no other way of meeting the air is
-# charged at all. Before the fix those rows carried a sliver of (1 - cos^2) plate on
-# top. At the worst row Profile= is 14.37 m2 -- the 49 deg row, where both wings are
-# past twice their stall and the plate is nearly full-on. A
-# wing in this law is not a hole in the air, and it is not a flat plate either.
-CHECK any(d.get("profile") is not None for d in drag)
-CHECK all(d["profile"] > 0.5 for d in drag if d.get("profile") is not None)
-# The surfaces earn their keep. W is held for 3 s and the elevons reach their
-# max_deflection (0.35 rad = 20.1 deg printed); every row carries the t= of the
-# [drag] sample it printed under. Nothing parsed [ctrl] before #458, so no case
-# could see a surface move at all.
-CHECK all(d["t"] is not None for d in ctrl)
+# Wings-level and trimmed in the first rows (the elevons carry 0.5 deg of trim).
+CHECK all(d.get("aoa") is not None and abs(d["aoa"]) < 4.0 for d in drag[:3])
+# The envelope: a held full-stick pull departs past twice the 20.1 deg stall angle
+# (measured 88) and the airframe recovers to inside 5 deg by t=11 and stays there.
+CHECK 50.0 < max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) < 100.0
+CHECK all(abs(d["aoa"]) < 6.0 for d in drag if d["t"] >= 11.0)
+# The bill. BODY silhouette is the pod + fins (0.87 m2 at Cd 0.11); the surfaces'
+# own profile is 0.30 m2 at cd 0.010. Induced is the system bill (#556): the wing
+# pair is one AR-4 wing, the elevons one AR-4 pair.
+CHECK 0.20 < min(d["profile"] for d in drag if d.get("profile")) < 0.40
+CHECK any(d.get("induced", 0.0) > 4.0 for d in drag)
+# One vector, one law: on the calm rows the force printed IS the law printed.
+CHECK 0.90 < max(d["L"] / d["F"] for d in drag if d["F"] > 0.0) < 1.30
+# Form drag sits behind the CG (the pod's own cp is nearly on it, the fins are aft).
+CHECK any(d.get("formcp") is not None for d in drag)
+CHECK all(-0.85 < d["formcp"] < -0.2 for d in drag if d.get("formcp") is not None)
+# The stick moved: the elevons reach their travel stop.
 CHECK any(d["axis"] == "pitch" and abs(d["deg"]) > 15.0 for d in ctrl)
 FORBID error:

@@ -1,15 +1,60 @@
 {
   "name": "jet",
   "parts": [
-    { "part": "capsule", "id": "capsule_1" },
-    { "part": "reaction_wheel", "id": "reaction_wheel_1", "parent": "capsule_1" },
-    { "part": "jet_tank_r1h3", "id": "jet_tank_1", "parent": "reaction_wheel_1" },
-    { "part": "jet", "id": "jet_1", "parent": "jet_tank_1" },
-    { "part": "wing", "id": "wing_1", "parent": "jet_tank_1", "attach": "surface", "angle": 0 },
-    { "part": "wing", "id": "wing_2", "parent": "jet_tank_1", "attach": "surface", "angle": 180 },
-    { "part": "rudder", "id": "rudder_1", "parent": "jet_1", "attach": "surface", "angle": 90 },
-    { "part": "rudder", "id": "rudder_2", "parent": "jet_1", "attach": "surface", "angle": 270 },
-    { "part": "elevator", "id": "elevator_1", "parent": "jet_1", "attach": "surface", "angle": 0 },
-    { "part": "elevator", "id": "elevator_2", "parent": "jet_1", "attach": "surface", "angle": 180 }
+    {
+      "part": "fuselage_r1h6",
+      "id": "pod"
+    },
+    {
+      "part": "jet",
+      "id": "jet_1",
+      "parent": "pod"
+    },
+    {
+      "part": "wing",
+      "id": "wing_1",
+      "parent": "pod",
+      "attach": "surface",
+      "angle": 0,
+      "z": -1.5
+    },
+    {
+      "part": "wing",
+      "id": "wing_2",
+      "parent": "pod",
+      "attach": "surface",
+      "angle": 180,
+      "z": -1.5
+    },
+    {
+      "part": "rudder_r0.6h0.8",
+      "id": "rudder_1",
+      "parent": "jet_1",
+      "attach": "surface",
+      "angle": 90
+    },
+    {
+      "part": "rudder_r0.6h0.8",
+      "id": "rudder_2",
+      "parent": "jet_1",
+      "attach": "surface",
+      "angle": 270
+    },
+    {
+      "part": "elevator",
+      "id": "elevator_1",
+      "parent": "jet_1",
+      "attach": "surface",
+      "angle": 0,
+      "trim": 0.5
+    },
+    {
+      "part": "elevator",
+      "id": "elevator_2",
+      "parent": "jet_1",
+      "attach": "surface",
+      "angle": 180,
+      "trim": 0.5
+    }
   ]
 }

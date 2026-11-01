@@ -1,13 +1,62 @@
 {
   "name": "glider",
   "parts": [
-    { "part": "capsule", "id": "capsule_1" },
-    { "part": "reaction_wheel", "id": "reaction_wheel_1", "parent": "capsule_1" },
-    { "part": "fuel_tank", "id": "fuel_tank_1", "parent": "reaction_wheel_1" },
-    { "part": "engine", "id": "engine_1", "parent": "fuel_tank_1" },
-    { "part": "wing", "id": "wing_1", "parent": "fuel_tank_1", "attach": "surface", "angle": 0 },
-    { "part": "wing", "id": "wing_2", "parent": "fuel_tank_1", "attach": "surface", "angle": 180 },
-    { "part": "rudder", "id": "rudder_1", "parent": "engine_1", "attach": "surface", "angle": 90 },
-    { "part": "rudder", "id": "rudder_2", "parent": "engine_1", "attach": "surface", "angle": 270 }
+    {
+      "part": "fuselage_r0.4h4",
+      "id": "pod"
+    },
+    {
+      "part": "jet_r0.25h1",
+      "id": "engine_1",
+      "parent": "pod"
+    },
+    {
+      "part": "wing",
+      "id": "wing_1",
+      "parent": "pod",
+      "attach": "surface",
+      "angle": 0,
+      "z": -1.0
+    },
+    {
+      "part": "wing",
+      "id": "wing_2",
+      "parent": "pod",
+      "attach": "surface",
+      "angle": 180,
+      "z": -1.0
+    },
+    {
+      "part": "rudder_r0.6h0.8",
+      "id": "rudder_1",
+      "parent": "engine_1",
+      "attach": "surface",
+      "angle": 90
+    },
+    {
+      "part": "rudder_r0.6h0.8",
+      "id": "rudder_2",
+      "parent": "engine_1",
+      "attach": "surface",
+      "angle": 270
+    },
+    {
+      "part": "elevator_r0.8h0.7",
+      "id": "elev_l",
+      "parent": "engine_1",
+      "attach": "surface",
+      "angle": 0,
+      "z": -0.4,
+      "trim": 6
+    },
+    {
+      "part": "elevator_r0.8h0.7",
+      "id": "elev_r",
+      "parent": "engine_1",
+      "attach": "surface",
+      "angle": 180,
+      "z": -0.4,
+      "trim": 6
+    }
   ]
 }

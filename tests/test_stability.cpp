@@ -68,9 +68,9 @@ static Fixture load_all() {
 static void test_shipped_against_flight(const Fixture &f) {
     struct Row { const char *path; double slope; double margin; };
     const Row rows[] = {
-        { "res/ships/skiff.json",  153.42, 0.60 },
-        { "res/ships/glider.json",  96.00, 0.65 },
-        { "res/ships/jet.json",     96.00, 0.55 },
+        { "res/ships/skiff.json",  153.42, 0.395 },
+        { "res/ships/glider.json",  96.00, 0.485 },
+        { "res/ships/jet.json",     96.00, 0.204 },
     };
     for(const Row &r : rows) {
         const BuildShip bs = f.build(r.path);
@@ -81,12 +81,12 @@ static void test_shipped_against_flight(const Fixture &f) {
     }
 
     /* The COM itself, pinned against the compound mass the flight ship reports
-       (552.3 kg for the skiff at launch). Every aero number hangs off this pivot,
+       (626.3 kg for the skiff at launch, fuselage + 96 kg of jet fuel). Every aero number hangs off this pivot,
        and the two routes agree only while "tanks full, one suit per seat" means
        the same thing on both sides. */
     const BuildStability skiff = buildStability(f.build("res/ships/skiff.json"),
                                                 f.occupant);
-    check_near("skiff launch mass", skiff.mass, 552.3, 0.2);
+    check_near("skiff launch mass", skiff.mass, 626.3, 0.5);
 }
 
 /* A seated kerbal is part of the airframe. Measured on the skiff: its capsule sits
@@ -102,10 +102,11 @@ static void test_crew_moves_the_pivot(const Fixture &f) {
     CHECK(empty.valid);
     // A suit is the catalog's kerbal part plus its hydrazine, nothing else.
     check_near("occupant mass", f.occupant, 87.05 + 10.0, 1e-6);
-    CHECK(crewed.mass > empty.mass + 90.0);
-    CHECK(crewed.mass < empty.mass + 105.0);
-    check_near("crewed margin", crewed.margin, 0.60, 0.03);
-    check_near("uncrewed margin", empty.margin, 0.42, 0.03);
+    // The fuselage seats two, so a full crew is two suits.
+    CHECK(crewed.mass > empty.mass + 2.0 * 90.0);
+    CHECK(crewed.mass < empty.mass + 2.0 * 105.0);
+    check_near("crewed margin", crewed.margin, 0.395, 0.03);
+    check_near("uncrewed margin", empty.margin, 0.254, 0.03);
     // The lift does not change, only where it is measured from.
     check_near("slope unchanged by crew", crewed.slope, empty.slope, 1e-9);
     // The suit sits at the seat, so the COM moves toward the capsule (+z).
@@ -141,7 +142,7 @@ static void test_rig_flips_the_verdict(const Fixture &f) {
     CHECK(moved == 2);
     const BuildStability mid = buildStability(tailsFwd, f.occupant);
     CHECK(mid.valid);
-    check_near("tails forward of the wings", mid.margin, 0.196, 0.03);
+    check_near("tails forward of the wings", mid.margin, -0.016, 0.03);
     CHECK(mid.margin < good.margin - 0.3);
 
     BuildShip wingsFwd = f.build("res/ships/skiff.json");
@@ -156,7 +157,7 @@ static void test_rig_flips_the_verdict(const Fixture &f) {
     const BuildStability bad = buildStability(wingsFwd, f.occupant);
     CHECK(bad.valid);           // the surfaces still agree; the rig is the problem
     CHECK(bad.margin < 0.0);    // ... and the readout says which way
-    check_near("wings well ahead", bad.margin, -1.463, 0.05);
+    check_near("wings well ahead", bad.margin, -1.722, 0.05);
 
     /* All three rigs bill the same lift; only where it sits changed. A slope that
        moves under a pose edit means the sum is reading something other than the

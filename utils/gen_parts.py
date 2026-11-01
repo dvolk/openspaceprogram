@@ -43,6 +43,7 @@ JET_FUEL_DENSITY = 70.0          # kg/m^3, jet fuel (separate resource from H2/L
 
 MASS_DENSITY = {
     "capsule":        183.0,
+    "fuselage":       25.0,
     "reaction_wheel": 128.0,
     "adapter":        15.0,
     "nose_cap":       192.0,
@@ -120,10 +121,17 @@ DRAG_CD = {
                        "drag_backward": 0.9},
     "nuclear_engine": {"drag": 0.6, "drag_forward": 0.9, "drag_side": 1.0,
                        "drag_backward": 0.9},
-    "jet":            {"drag": 0.6, "drag_forward": 0.9, "drag_side": 1.0,
+    # A shrouded duct: nose-first is a nacelle's 0.15. The BACK anchor stays blunt,
+    # which is what a rocket ascent sees.
+    "jet":            {"drag": 0.6, "drag_forward": 0.15, "drag_side": 1.0,
                        "drag_backward": 0.9},
     "adapter":        {"drag": 0.2, "drag_forward": 0.9, "drag_side": 1.0,
                        "drag_backward": 0.9},
+    # AEROPLANE FUSELAGE (gen_fuselage.py): one smooth body at Cd 0.10 nose-first,
+    # replacing a capsule (0.35) + tank (1.0) + shroud (0.9) + wheel (1.1) stack
+    # whose area-weighted Cd is 0.84.
+    "fuselage":       {"drag": 0.6, "drag_forward": 0.10, "drag_side": 0.9,
+                       "drag_backward": 0.20},
     # cone (apex = +Z): tip-first sleek, flat base blunt
     "nose_cap":       {"drag": 0.6, "drag_forward": 0.35, "drag_side": 0.9,
                        "drag_backward": 1.3},
@@ -137,14 +145,17 @@ DRAG_CD = {
     # the rest of this table authors. A smooth section is 0.006-0.013 there; 0.03
     # is a faceted plate, and it is what the yardstick airframe's L/D is currently
     # paid in (#490's second half re-derives that number rather than this one).
-    "wing":           {"drag": 0.1, "drag_forward": 0.03, "drag_side": 1.0,
-                       "drag_backward": 0.03},
-    "rudder":         {"drag": 0.1, "drag_forward": 0.03, "drag_side": 1.0,
-                       "drag_backward": 0.03},
-    "elevator":       {"drag": 0.1, "drag_forward": 0.03, "drag_side": 1.0,
-                       "drag_backward": 0.03},
-    "aileron":        {"drag": 0.1, "drag_forward": 0.03, "drag_side": 1.0,
-                       "drag_backward": 0.03},
+    # A smooth section. The mesh is a flat plate (a stand-in); 0.010 is the
+    # smooth-laminate value this note has quoted since #455. 0.03 was the faceted
+    # plate, and at 21.6 m2 of planform that alone was 1.10 m2 of CdA on the skiff.
+    "wing":           {"drag": 0.1, "drag_forward": 0.010, "drag_side": 1.0,
+                       "drag_backward": 0.010},
+    "rudder":         {"drag": 0.1, "drag_forward": 0.010, "drag_side": 1.0,
+                       "drag_backward": 0.010},
+    "elevator":       {"drag": 0.1, "drag_forward": 0.010, "drag_side": 1.0,
+                       "drag_backward": 0.010},
+    "aileron":        {"drag": 0.1, "drag_forward": 0.010, "drag_side": 1.0,
+                       "drag_backward": 0.010},
     # parachute: stowed it is the nose-cap silhouette, but the deployed canopy
     # dominates the aero pass (the Cd.A figure lives in EXTRA_FIELDS.chute_area,
     # not here), so it gets its own Cd family rather than nose_cap's.
@@ -172,6 +183,9 @@ PARTS = [
     ("capsule_r0.5h1.5", "capsule",        "meshes/capsule_r0.5h1.5.obj",         "textures/capsule.png"),
     ("capsule_r1.5h3",   "capsule",        "meshes/capsule_r1.5h3.obj",           "textures/capsule.png"),
     ("capsule_r2.25h4.5","capsule",        "meshes/capsule_r2.25h4.5.obj",        "textures/capsule.png"),
+    ("fuselage_r0.4h4",  "fuselage",       "meshes/fuselage_r0.4h4.obj",          "textures/capsule.png"),
+    ("fuselage_r0.5h3.5","fuselage",       "meshes/fuselage_r0.5h3.5.obj",        "textures/capsule.png"),
+    ("fuselage_r1h6",    "fuselage",       "meshes/fuselage_r1h6.obj",            "textures/capsule.png"),
     ("reaction_wheel",   "reaction_wheel", "meshes/reaction_wheel_r1h0.25.obj",   "textures/reaction_wheel.png"),
     ("reaction_wheel_r1.5h0.375",  "reaction_wheel", "meshes/reaction_wheel_r1.5h0.375.obj",  "textures/reaction_wheel.png"),
     ("reaction_wheel_r2.25h0.5625","reaction_wheel", "meshes/reaction_wheel_r2.25h0.5625.obj","textures/reaction_wheel.png"),
@@ -278,6 +292,10 @@ EXTRA_FIELDS = {
     "capsule_r0.5h1.5":  {"crew_capacity": 1, "experiment_storage": "container"},
     "capsule_r1.5h3":    {"crew_capacity": 3, "experiment_storage": "container"},
     "capsule_r2.25h4.5": {"crew_capacity": 6, "experiment_storage": "container"},
+    "fuselage_r0.4h4":   {"crew_capacity": 1, "mass": 130.0},
+    "fuselage_r0.5h3.5": {"crew_capacity": 2, "mass": 180.0},
+    "fuselage_r1h6":     {"crew_capacity": 4, "mass": 520.0,
+                          "experiment_storage": "container"},
     # kerbal: DRY mass (full-EVA-gear minus the 10 kg RCS hydrazine, a separate
     # capacity). Suit inventory pocket; science courier (1 finding per family).
     "kerbal":            {"mass": 87.05, "capacity": {"hydrazine": 10.0},
@@ -523,7 +541,13 @@ def generate(name, ptype, mesh, texture):
         e["radius"] = radius
         e["height"] = height
         e["capacity"] = {"jetfuel": clean(capacity)}
+    elif ptype == "fuselage":
+        # The body is also the tank (a separate tank part is what this replaces).
+        e["radius"] = radius
+        e["height"] = height
+        e["capacity"] = {"jetfuel": clean(0.5 * volume * JET_FUEL_DENSITY)}
     elif ptype == "rcs":
+
         # The round pods scale with their face area; rcs_box declares its mass
         # and rating (a fixed box of nozzles does not scale).
         declared = EXTRA_FIELDS.get(name, {})

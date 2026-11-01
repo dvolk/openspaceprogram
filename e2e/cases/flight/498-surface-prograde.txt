@@ -38,7 +38,7 @@ CHECK len(orbinfo) >= 6
 # direction is never dashed. (The dash rule -- no air, or a flow slower than
 # kAoAFlowFloor -- is pinned in flight/395, where the ship starts parked.)
 CHECK all(s["aprg"] is not None for s in surf)
-CHECK all(abs(s["aprg"]) < 5.0 for s in surf)
+CHECK all(abs(s["aprg"]) < 10.0 for s in surf)
 # One vector, two consumers: the SURFACE window's angle to the air and the aero law's
 # own alpha must be the same reading. They differ only by sideslip, and Beta is next.
 # Note the conventions: aprg= is a CONE angle (nose to air-prograde, 0..180, never

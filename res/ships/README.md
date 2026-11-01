@@ -80,49 +80,30 @@ Measured after the recipe, same beds:
 The skiff is the one short of target (8.5 vs 10). Its induced bill is 0.17 m2 at
 cruise and the profile 0.42 -- the next lever is span (AR 6.7 -> 9), not the law.
 
-## What is left: ONE suite re-baseline
+## Landed (2026_11_01)
 
-The recipe above was run to completion and the ships flew; it was reverted
-unshipped because landing it re-pins about forty numbers across five golden cases
-in one go, and a half-done re-baseline is worse than none. The cases that need it:
+All of the above is shipped: the fuselage family, the smooth section, the nacelle Cd,
+the rebuilt airframes, the re-pinned `test_stability`, and the aero cases rewritten
+against the design point. Measured after, same beds:
 
-- `flight/490`, `flight/492` -- skiff mass (552 -> 626 kg), 11 parts stays but the
-  part list changes, alt/v bands, per-surface areas, FormCp (-0.57 -> the new pod's
-  arm), Induced (0.275 -> the new tail system's bill).
-- `flight/458-jet` -- mass 2992 -> 2428, AoA series (trim now holds ~2 deg), the
-  induced/first-overshoot story, FormCp.
-- `flight/458-glider` -- the airframe stops being a capsule brick: mass 2887 -> 461,
-  bed `flying-slow` -> `flying-cruise`, AoA/trim story, the yaw case's swing.
-- `flight/80` -- the Duna pad bed: the glider now has a tailplane, so the AoA sweep's
-  Cd/Profile/CLa numbers all move; the case's own claim ("no pitch surface at all")
-  has to change with the ship.
-- `flight/453`, `flight/498`, `flight/454` -- the surfaces' areas and mass move with
-  the hull; the shape/stability pins follow.
+  skiff   626 kg, 76 m/s, AoA 3.0-3.3, SM +0.39, L/D 8.5
+  jet    2428 kg, 176 m/s, AoA 1.8-2.2, SM +0.20, L/D ~10
+  glider  434 kg,  80 m/s, AoA 2.1,     SM +0.49, L/D ~13
 
-Do them together, off the design point, and add one new case that checks L/D,
-cruise speed and stall margin directly so the incident chase stops.
+Two design fixes came out of the re-pin rather than a number:
 
-## Two behaviour findings from the full attempt (they are NOT re-pins)
+  - the jet's two rudders were 2 m2 each -- four times a trainer's fin. At 176 m/s a
+    held pedal drove it to 118 deg of sideslip and through a tumble. Swapped to the
+    1.2 m span / 0.48 m2 control surface; full pedal now takes it past 90 deg and it
+    recovers (flight/453 pins the direction and the size, not a recovery).
+  - flight/80 (the glider's Duna-pad AoA sweep) lost its premise: it pinned a glider
+    that could not trim. The rebuilt one trims, so the case is DELETED rather than
+    widened. flight/458-glider now carries the stall-and-recover and yaw-swing story.
 
-Landing the recipe and re-pinning revealed that two of the golden cases are pinning
-behaviour the redesign changes, so they need a design decision rather than a new
-number:
+## The next question the envelope cases now ask
 
-1. **The jet departs in yaw.** With the lighter (2428 kg) fuselage and the wings at
-   z = -1.5, a held D key takes Beta to 118 deg and the airframe through a full
-   tumble (AoA 3 -> 152 -> -159). The old barrel hull at 2992 kg swung to 80 deg and
-   stayed. The cause is what it looks like: the yaw weathervane is now a slim pod
-   plus the same fins on a lighter airframe, and full rudder at 176 m/s out-pushes
-   it. Fix by fin sizing (span/area) or by reducing the rudder's travel -- a design
-   iteration, not a pin.
-2. **The glider's pad case (flight/80) has lost its premise.** It pinned a glider
-   that could not trim ("no pitch surface at all"): the AoA swept to 57 deg and the
-   wheels lost. The rebuilt glider HAS a trimmed tailplane, so the same bed sweeps
-   0..7.6 deg with |tau| under 31 Nm. Either delete the case or rewrite it around
-   what it now shows; it is not a band to widen.
-
-The skiff is the one that works end to end and can serve as the template: 626 kg,
-76 m/s, AoA 3.0-3.3, SM +0.39, L/D 8.5, and a rudder kick that swings +/-6 deg and
-settles. Landing it alone would be a coherent next step: the catalogue changes are
-what the jet and glider share, so the skiff's cases and the stability pins go with
-it, and the other two follow once their handling is designed.
+flight/458-glider and flight/453 both show the same gap: a vertical surface makes NO
+side force from sideslip, only from deflection, so the fins do not weathervane -- the
+hull's own drag is the only yaw damping on either airframe. That is #454's other half
+and the obvious next law change: a fin's lift from beta, which every player-built
+aircraft needs.
