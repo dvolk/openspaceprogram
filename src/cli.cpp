@@ -168,9 +168,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         ->check(CLI::Range(0.0f, 3.0f));
 
     app.add_option("--drag-cd", args.drag_cd,
-                   "The atmospheric drag coefficient (src/drag.h): F = "
-                   "-v*0.5*rho*Cd*A*v^2. Default 1.2; 0 disables drag "
-                   "entirely (a test / A-B knob)")
+                   "The drag bill multiplier (src/drag.h): scales the hull's "
+                   "form drag, F = -v*0.5*rho*Cd*A*v^2, and the induced drag "
+                   "that lift pays -- but NOT the lift itself and not a control "
+                   "surface's force. It is a drag knob, not an 'aero weaker' "
+                   "knob: lower it and an airframe glides further on the SAME "
+                   "wing, AoA, trim and tail download unchanged (#502). "
+                   "Default 1.2; 0 removes drag and induced entirely "
+                   "(a test / A-B knob), leaving lift standing.")
         ->check(CLI::NonNegativeNumber);
 
     app.add_flag("--drag-log", args.drag_log,

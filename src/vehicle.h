@@ -354,9 +354,13 @@ public:
     float thruster_util = 1.0;
     double exhaust_scale = 1.0;  // --exhaust-scale: scales ve and all jet
                                  // thrust; synced per tick
-    double drag_cd = 1.2;        // --drag-cd: drag coefficient (drag.h); 0 = no
-                                 // drag. HULL silhouette only: chute Cd·A
-                                 // (below) is a separate term.
+    double drag_cd = 1.2;        // --drag-cd: the drag BILL multiplier (drag.h).
+                                 // Scales the hull silhouette's Cd*A AND the
+                                 // induced bill every lifting and control surface
+                                 // pays (#462, #497) -- never the lift or the
+                                 // control force itself, so it decides how far an
+                                 // airframe glides, not what its wing does (#502).
+                                 // 0 = no drag. Chute Cd*A (below) is separate.
 
     /* Last substep's aero (applyAeroForce), for the --drag-log. */
     glm::dvec3 lastAeroForce = glm::dvec3(0.0);   // total (lift + drag)
