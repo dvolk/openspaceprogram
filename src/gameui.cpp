@@ -2476,7 +2476,7 @@ void drawPartWindows(Game &g) {
             ImGui::Text("Mass: %.3fkg", ship->parts[part]->effectiveMass());
             drawPartPhysique(*def);
             for(int r = 0; r < (int)ResourceType::Num; r++) {
-                if(def->capacity[(size_t)r] <= 0.0f) { continue; }
+                if(def->capacity[(size_t)r] <= 0.0) { continue; }
                 ImGui::Text("%s: %.1f%s/%.1f%s", resNames[r],
                             ship->parts[part]->resources.current[r],
                             Vehicle::resourceUnit(r),
@@ -4397,7 +4397,7 @@ void drawVabPartWindow(Game &g) {
         ImGui::Text("Mass: %.3fkg + %.3fkg at launch", def.mass, carried);
         drawPartPhysique(def);
         for(int r = 0; r < (int)ResourceType::Num; r++) {
-            if(def.capacity[r] <= 0.0f) { continue; }
+            if(def.capacity[r] <= 0.0) { continue; }
             ImGui::Text("Carries %.1f%s %s", def.capacity[r],
                         Vehicle::resourceUnit(r), resNames[r]);
         }

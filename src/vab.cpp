@@ -961,7 +961,7 @@ void vabOpenPartWindow(Game &g, int partIdx, int px, int py) {
     res[0] = '\0';
     size_t used = 0;
     for(int r = 0; r < (int)ResourceType::Num; r++) {
-        if(bp.def->capacity[r] <= 0.0f) { continue; }
+        if(bp.def->capacity[r] <= 0.0) { continue; }
         const int n = snprintf(res + used, sizeof(res) - used, "%s%.1f%s %s",
                                used ? ", " : "", bp.def->capacity[r],
                                Vehicle::resourceUnit(r), Vehicle::resourceName(r));

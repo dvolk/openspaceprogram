@@ -171,9 +171,10 @@ struct Part {
     bool isContainer() const { return def != nullptr && def->inventory_capacity > 0; }
     /* How much of that resource the part can hold, straight off the def: it is
        table data, not per-part state, so a copy here could only drift (#383).
-       The def table itself is float (PartDef::capacity), so this widens rather
-       than adds precision. Every Part is minted with a def (make_part), so a
-       missing one is a bug, not a state to survive. */
+       A straight read -- the def table went double with the contents it bounds
+       (#379, #530), so there is no widening left to warn about. Every Part is
+       minted with a def (make_part), so a missing one is a bug, not a state to
+       survive. */
     double capacityOf(int r) const { assert(def != nullptr); return def->capacity[r]; }
     /* A PERSON that is being held: a kerbal-typed Part with a container. Named
        for what it actually tests, because the predicate must NOT tighten to
@@ -232,14 +233,14 @@ struct Part {
     bool isTank() const {
         if(def == nullptr) { return false; }
         for(size_t i = 0; i < def->capacity.size(); i++) {
-            if(def->capacity[i] > 0.0f) { return true; }
+            if(def->capacity[i] > 0.0) { return true; }
         }
         return false;
     }
     /* a battery: EC storage (capacity[EC] > 0). isTank() is ALSO true for a
        battery, so the fuel system seeds + fuel-groups it like any tank. */
     bool isBattery() const {
-        return def != nullptr && def->capacity[(int)ResourceType::EC] > 0.0f;
+        return def != nullptr && def->capacity[(int)ResourceType::EC] > 0.0;
     }
     /* Top every resource up to the def's capacity. A fresh ship and a fresh
        suit both start full, and it is one rule, not two -- only the contents

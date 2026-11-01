@@ -30,7 +30,7 @@ PartDef::PartDef()
       lift_area(0.0), cl(0.0), stall_angle(0.0),
       control_area(0.0), control_axis(ControlAxis::Pitch), cl_control(0.0),
       max_deflection(0.0), chute_area(0.0) {
-    capacity.resize((int)ResourceType::Num, 0.0f);
+    capacity.resize((int)ResourceType::Num, 0.0);
     propellant_rate.resize((int)ResourceType::Num, 0.0);
 }
 
@@ -527,6 +527,22 @@ PartsCatalog load_parts_catalog(const char *path) {
                 // just that a tank has to hold something.
                 throw std::runtime_error(std::string(ctx)
                                          + "\"capacity\" must hold more than 0 of some resource");
+            }
+            /* ...and an infinity has to be refused by this gate too. #530 widened the
+               store so a legal number can no longer BE an infinity, but two legal
+               numbers still add to one: JSON refuses a single literal over DBL_MAX, so
+               the reachable route is an overflow in the sum above (measured: 1e308 +
+               1e308 -> cap_total inf, accepted). From there inf > 0 clears every test
+               the code has, partLoadMass hands Bullet an infinite mass -- whose
+               principal-axis transform returns a NaN inertia tensor and centre of mass
+               -- and a burn divides its pro-rata share by an infinite layer total
+               (staging.cpp:304). Same stance as the widening: no invented ceiling, only
+               the rule that what the game cannot represent must not load -- which is
+               already this file's answer for counts (optInt: "outside the range of
+               counts this game can store"). */
+            if(!std::isfinite(cap_total)) {
+                throw std::runtime_error(std::string(ctx)
+                                         + "\"capacity\" totals more than the game can store");
             }
         }
 

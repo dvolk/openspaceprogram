@@ -100,7 +100,7 @@ static Part *addPowerPart(Ship &s, double power_draw, double const_draw,
     d.power_draw_constant = const_draw;
     d.power_gen = power_gen;
     d.torque = torque;
-    if(ec_wh > 0.0) { d.capacity[(int)ResourceType::EC] = (float)ec_wh; }
+    if(ec_wh > 0.0) { d.capacity[(int)ResourceType::EC] = ec_wh; }
     s.defs.push_back(d);
 
     Part *p = new Part;

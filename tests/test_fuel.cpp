@@ -84,9 +84,11 @@ struct Ship {
 /* Add one part. h2/lox > 0 -> a tank; engine -> a thruster; barrier -> a
    fuel wall (decoupler); rcsThrust > 0 -> an RCS pod (hyd kg of hydrazine
    in its own capacity). Returns the new Part (index parts.size()-1). */
-static Part *addPart(Ship &s, float h2, float lox, bool engine = false,
+/* double, like the capacity these land in (#530): a float parameter would quietly
+   truncate a future fixture's value the way the loader used to. */
+static Part *addPart(Ship &s, double h2, double lox, bool engine = false,
                      bool barrier = false, double rcsThrust = 0.0,
-                     float hyd = 0.0f) {
+                     double hyd = 0.0) {
     /* DRY structure mass only. The fuel (h2/lox) is NOT baked into the body:
        init() seeds it into resources.current, and Part::effectiveMass adds it
        back (body dry + contents), so the ship's mass is 100 + h2 + lox either

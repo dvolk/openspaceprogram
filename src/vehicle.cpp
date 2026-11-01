@@ -3255,7 +3255,7 @@ void Vehicle::fuel_log(double time) {
             for(size_t i = 0; i < parts.size(); i++) {
                 Part *p = parts[i];
                 if(p->fuelGroup != g || !p->isTank()) { continue; }
-                if(p->def->capacity[r] > 0.0f) { res.push_back(r); break; }
+                if(p->def->capacity[r] > 0.0) { res.push_back(r); break; }
             }
         }
         printf(" g%d=", g);
@@ -3267,7 +3267,7 @@ void Vehicle::fuel_log(double time) {
             for(size_t i = 0; i < parts.size(); i++) {
                 Part *p = parts[i];
                 if(p->fuelGroup != g || !p->isTank()) { continue; }
-                if(p->def->capacity[r] <= 0.0f) { continue; }
+                if(p->def->capacity[r] <= 0.0) { continue; }
                 cur += p->resources.current[r];
                 cap += p->def->capacity[r];
                 tankCur.push_back(p->resources.current[r]);

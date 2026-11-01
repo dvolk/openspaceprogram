@@ -2401,15 +2401,26 @@ int main() {
               "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
               "\"propellant\": { \"loox\": -2 } } ] }",
               "parts: x in /tmp/test_shipload_numfield.json: unknown resource 'loox'" },
-            /* A capacity is per-resource, so the unit belongs in the message -- and the
-               minus has to be refused, not skipped: a negative ceiling cancels a
-               neighbour in the total > 0 test below and then rules the flow solver
-               (#496). */
+            /* ...and the unit has to follow the resource in the >= rule too, not only in
+               the "must be a number" one: EC is watt-hours wherever this array is read
+               (getPower sums it as Wh, partLoadMass skips it as massless energy), so
+               {"ec": -5} answers with Wh. The kg form of this rule is the pair above, so
+               this row adds only what was missing (#530 review). */
             { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
               "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
-              "\"capacity\": { \"water\": -5 } } ] }",
-              "parts: x in /tmp/test_shipload_numfield.json: \"capacity\" for 'water' "
-              "must be >= 0 (kg)" },
+              "\"capacity\": { \"ec\": -5 } } ] }",
+              "parts: x in /tmp/test_shipload_numfield.json: \"capacity\" for 'ec' "
+              "must be >= 0 (Wh)" },
+            /* #530 widened the store so a legal number can no longer BE an infinity, but
+               two legal ones still ADD to one: JSON refuses a single literal over
+               DBL_MAX, so the overflow happens in the total. Refuse it -- an inf ceiling
+               clears the total > 0 rule, rides partLoadMass into Bullet (NaN inertia
+               tensor), and divides the burn's pro-rata fuel share to nan. */
+            { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"capacity\": { \"water\": 1e308, \"hydrogen\": 1e308 } } ] }",
+              "parts: x in /tmp/test_shipload_numfield.json: \"capacity\" totals more "
+              "than the game can store" },
             /* EC is a resource, but not one a thruster can burn: it is watt-hours,
                not mass. That is a rule about the KEY, so it answers before any rule
                about the number under it -- otherwise {"ec": -3} complains about the
@@ -2464,32 +2475,43 @@ int main() {
             CHECK(expect_throw_saying([&](){ load_parts_catalog(bad); }, catcases[k].needle));
             std::remove(bad);
         }
+        /* #530: the catalog parser is JSON, so it cannot hand us an infinity -- but a
+           legal 1e308 stored into a float IS one, and it then clears the >= 0 and
+           total > 0 gates and turns every pro-rata fuel share into nan. Pin the storage
+           WIDTH, because the value itself is merely absurd. Two defs, because the two
+           columns are read by different code: kilograms by the flow solver, watt-hours
+           by the power maths. */
+        {
+            const char *huge = "/tmp/test_shipload_huge_capacity.json";
+            std::ofstream f(huge);
+            f << "{ \"parts\": [ { \"name\": \"hugestat\", \"type\": \"command\", "
+                 "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+                 "\"capacity\": { \"water\": 1e308 } }, "
+                 "{ \"name\": \"hugecell\", \"type\": \"command\", "
+                 "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+                 "\"capacity\": { \"ec\": 1e308 } } ] }";
+            f.close();
+            PartsCatalog hc = load_parts_catalog(huge);
+            const PartDef *hd = hc.find("hugestat");
+            CHECK(hd != nullptr);
+            if(hd != nullptr) {
+                const double cap = hd->capacity[(int)ResourceType::Water];
+                CHECK(std::isfinite(cap));   // (float)1e308 was +inf
+                CHECK(cap > 0.0);
+            }
+            const PartDef *cell = hc.find("hugecell");
+            CHECK(cell != nullptr);
+            if(cell != nullptr) {
+                CHECK(std::isfinite(cell->capacity[(int)ResourceType::EC]));
+            }
+            std::remove(huge);
+        }
+
         /* #542: BuildShip::fillNodeTaken keeps taken ports as one bit per node of a
            uint64_t, so a def over 64 nodes has to be refused HERE, where the load
            error names the def. The assert in fillNodeTaken is a tripwire, not a
            rule an author can rely on to see their own typo. */
         {
-            /* #530: the catalog parser is JSON, so it cannot hand us an infinity -- but a
-               legal 1e308 stored into a float IS one, and it then clears the >= 0 and
-               total > 0 gates and turns every pro-rata fuel share into nan. Pin the
-               storage width, because the value itself is merely absurd. */
-            const char *huge = "/tmp/test_shipload_huge_capacity.json";
-            {
-                std::ofstream f(huge);
-                f << "{ \"parts\": [ { \"name\": \"hugestat\", \"type\": \"command\", "
-                     "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
-                     "\"capacity\": { \"water\": 1e308 } } ] }";
-                f.close();
-                PartsCatalog hc = load_parts_catalog(huge);
-                const PartDef *hd = hc.find("hugestat");
-                CHECK(hd != nullptr);
-                if(hd != nullptr) {
-                    const double cap = hd->capacity[(int)ResourceType::Water];
-                    CHECK(std::isfinite(cap));   // (float)1e308 was +inf
-                    CHECK(cap > 0.0);
-                }
-            }
-
             const char *many = "/tmp/test_shipload_too_many_nodes.json";
             std::string nodes = "[";
             for(int k = 0; k < 65; k++) {

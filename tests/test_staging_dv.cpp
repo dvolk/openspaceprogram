@@ -68,8 +68,8 @@ struct Catalog {
         defs.push_back(PartDef());
         PartDef &d = defs.back();
         d.mass = dry;   // DRY: catalog mass is structure only; the fuel rides capacity
-        d.capacity[(int)ResourceType::Hydrogen] = (float)h2;
-        d.capacity[(int)ResourceType::LOX] = (float)lox;
+        d.capacity[(int)ResourceType::Hydrogen] = h2;
+        d.capacity[(int)ResourceType::LOX] = lox;
         return &d;
     }
     const PartDef *engine(double dry, double fuelRate, double ve) {
@@ -113,7 +113,7 @@ struct Catalog {
         defs.push_back(PartDef());
         PartDef &d = defs.back();
         d.mass = dry;   // DRY: the hydrazine rides capacity (inert mass in staging)
-        d.capacity[(int)ResourceType::Hydrazine] = (float)hydrazine;
+        d.capacity[(int)ResourceType::Hydrazine] = hydrazine;
         return &d;
     }
 };
