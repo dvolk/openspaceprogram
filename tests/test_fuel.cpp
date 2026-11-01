@@ -505,7 +505,8 @@ static void test_draw_bills_what_left_the_tanks() {
     /* Sum the drops TANK BY TANK. Measured difference, not (sum before) - (sum after):
        both totals are ~5125 kg, where one ULP is 9.1e-13 and the whole shortfall is
        1.8e-12, so the totals come out EXACTLY EQUAL and this check would pass with the
-       bug in place (tmp/n579b_probe2.cpp runs both ways). */
+       bug in place -- measured both ways, the whole-layer remainder equals the request
+       to the bit, while summing the drops tank by tank does not. */
     double drop = 0.0;
     for(int i = 0; i < 7; i++) { drop += was[i] - layer[i]->resources.current[H]; }
     CHECK_TRUE(d.drawn < amt,

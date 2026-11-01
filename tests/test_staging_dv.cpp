@@ -658,7 +658,13 @@ static void test_a_gap_costs_nothing() {
    every number in its own table while making a whole class of ship 13-35% slower. Here
    every tank carries its OWN label (what the stage box invites: 1..kMaxStage) and every
    decoupler sits on one shared label, so the per-label work is the same order as the part
-   count instead of a constant. tmp/n541_probe2.cpp's labeldamper, in the tree. */
+   count instead of a constant. Synthetic on purpose: the busiest of the 29 ships in
+   res/ships/ carries 7 labels over 51 parts, so nothing shipped looks like this -- it is
+   the shape the stage box (1..kMaxStage, one label per part) invites an author to build,
+   which is the population a preview cost claim has to survive. Its fuel graph is
+   heavy_asp's chain (each string feeds the one inboard) with one extra link per tank;
+   only the chain crosses a decoupler barrier, the rest are same-group and fuelDrainLayers
+   drops them, so the printed `links=` counts more edges than the pass walks. */
 static BuildShip label_dense(const PartsCatalog &cat, int strings, int depth) {
     const PartDef *capsule = cat.find("capsule");
     const PartDef *tankL = cat.find("tank_r2.25h5");
@@ -691,16 +697,24 @@ static BuildShip label_dense(const PartsCatalog &cat, int strings, int depth) {
 /* Cost, not just correctness: the shape above exists so a per-label hoist cannot merge on
    data where the label count is a constant. Two sizes, because one number cannot show a
    trend. Measured here (one warm pass each, this machine): 171 parts / 147 labels is
-   ~100 us and 339 parts / 291 labels is ~295 us -- doubling the parts costs ~3x, so the
-   pass is ALREADY superlinear in labels and this guard does not pretend otherwise. It is a
-   gross-blowup tripwire, not a 30% detector (no timing pin is): each ceiling sits ~30x
-   above what that shape costs today, so a pass that starts doing per-label-quadratic work
-   trips it while a loaded box shrugging 20% does not. The printed line is the record --
-   parts AND labels beside the microseconds, because an "N parts" caption is exactly what
-   hid the #538 regression. Best-of-N measurement stays the scratch probe
-   (tmp/n541_probe2.cpp); this is the guard that keeps it honest. */
+   ~100 us and 339 parts / 291 labels is ~290 us -- doubling the parts costs ~3x, so the
+   pass is ALREADY superlinear in labels and this guard does not pretend otherwise.
+
+   What the ceilings can see is a gross blowup, and that is all. Each sits ~30x above what
+   the shape costs today, and that margin is not caution -- it is what a wall-clock pin
+   needs on a box this noisy: three back-to-back runs of this same binary read 95-100 us at
+   12x12 and 284-475 us at 24x12, a 1.7x spread with nothing else running. Anything inside
+   it is invisible here. A label walk made quadratic in the LABEL count (mutant, measured
+   twice: 107.0/107.8 us and 332.1/332.4 us) sits inside that spread -- squarely in the
+   13-35% band this shape was built for -- and both ceilings stay green. So this is a
+   tripwire for "the pass started doing per-label-quadratic work and then WORSE", not a
+   regression detector. The pin that could see 30% counts WORK (labels stamped vs
+   drain-layer lookups) instead of seconds; that needs a counter inside the pass, so it is
+   a ticket (#549) rather than a scratch probe nobody re-runs. */
 static void test_a_label_dense_ship_is_still_cheap_to_number() {
     const PartsCatalog pc = load_parts_catalog("res/data/parts.json");
+    const PartDef *engL = pc.find("engine_r2.25h4.5");
+    if(!engL) { return; }
     const int shapes[][2] = {{12, 12}, {24, 12}};
     const double ceilings[] = {3000.0, 9000.0};
     for(size_t sh = 0; sh < 2; sh++) {
@@ -717,12 +731,47 @@ static void test_a_label_dense_ship_is_still_cheap_to_number() {
         const std::vector<StageRow> rows = computeStaging(bs, 9.81, 1.0);
         const double us = std::chrono::duration<double, std::micro>(
                               std::chrono::steady_clock::now() - t0).count();
-        printf("  label-dense %2dx%-2d: parts=%4zu labels=%4zu links=%4zu rows=%3zu  %7.1f us\n",
+        printf("  label-dense %2dx%-2d: parts=%4zu labels=%4zu links=%4zu rows=%3zu  %7.1f us (ceiling %.0f)\n",
                shapes[sh][0], shapes[sh][1], bs.parts.size(), labels.size(),
-               bs.fuelLinks.size(), rows.size(), us);
+               bs.fuelLinks.size(), rows.size(), us, ceilings[sh]);
         CHECK_TRUE(labels.size() * 4 >= bs.parts.size() * 3,
                    "the fixture really is label-dense (labels within 4:3 of parts)");
-        CHECK_TRUE(rows.size() == warm.size() && !rows.empty(), "the pass is stable");
+        CHECK_TRUE(bs.fuelLinks.size() == (size_t)(shapes[sh][0] * shapes[sh][1]),
+                   "the fixture kept its drain graph (one link per string tank)");
+
+        /* Teeth. A timing guard whose rows are never read cannot fail for the right
+           reason: with every row's deltaV zeroed and massEnd == massStart, this test was
+           the ONLY one in the file that stayed green, and gutting the fixture's links
+           dropped its cost ~40% with nothing red anywhere. So the rows are pinned with
+           the same invariants test_deep_chain_burn_stays_physical uses -- same single ve
+           here (one engine def), same reachable-through-a-link graph -- and the warm pass
+           earns its keep by matching the timed pass field by field, not just in size. */
+        CHECK_TRUE(engL->exhaust_velocity > 0.0, "the label-dense engine has an exhaust velocity");
+        bool burn[(int)ResourceType::Num] = {};
+        burn[(int)ResourceType::Hydrogen] = true;
+        burn[(int)ResourceType::LOX] = true;
+        double fuel = 0.0;
+        for(size_t i = 0; i < bs.parts.size(); i++) { fuel += partPropellantMass(*bs.parts[i].def, burn); }
+        const double ve = engL->exhaust_velocity;
+        double spent = 0.0;
+        for(size_t i = 0; i < rows.size(); i++) {
+            const StageRow &r = rows[i];
+            CHECK_TRUE(std::isfinite(r.deltaV), "label-dense delta-v is finite");
+            CHECK_TRUE(std::isfinite(r.massStart) && std::isfinite(r.massEnd)
+                       && r.massEnd > 0.0 && r.massStart >= r.massEnd,
+                       "label-dense mass columns are finite and shrink");
+            CHECK_NEAR(r.deltaV, ve * std::log(r.massStart / r.massEnd), 1e-9,
+                       "label-dense delta-v matches ve ln(m0/m1)");
+            spent += r.massStart - r.massEnd;
+        }
+        CHECK_NEAR(spent, fuel, 1e-9, "the label-dense rows spend every kg of propellant once");
+        bool same = rows.size() == warm.size() && !rows.empty();
+        for(size_t i = 0; same && i < rows.size(); i++) {
+            same = rows[i].stage == warm[i].stage && rows[i].deltaV == warm[i].deltaV
+                && rows[i].massStart == warm[i].massStart && rows[i].massEnd == warm[i].massEnd
+                && rows[i].engines == warm[i].engines && rows[i].drops == warm[i].drops;
+        }
+        CHECK_TRUE(same, "a second pass reads the same rows, not just the same count");
         CHECK_TRUE(us < ceilings[sh],
                    "the label-dense pass stayed inside its complexity guard");
     }
