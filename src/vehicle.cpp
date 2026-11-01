@@ -2727,7 +2727,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
            if the number has to be reconciled. */
         lastInducedCdA += drag_cd * d->lift_area * cdi;
         if(recordForceVecs) {
-            lastForceVecs.push_back({ ri, find, kForceDrag });
+            lastForceVecs.push_back({ ri, find, kForceInduced });
         }
     }
 
@@ -2909,7 +2909,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             moment += glm::cross(ri, find);
             lastInducedCdA += drag_cd * d->control_area * cdi;
             if(recordForceVecs) {
-                lastForceVecs.push_back({ ri, find, kForceDrag });
+                lastForceVecs.push_back({ ri, find, kForceInduced });
             }
         }
     }

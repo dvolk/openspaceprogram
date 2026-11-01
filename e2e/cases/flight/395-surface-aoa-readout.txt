@@ -13,8 +13,13 @@
 # Quoting "+0.00 m" there would be #454's bug all over again -- weighting by a sum
 # that cancelled had the drag log saying Np=+15.9 m, then +121.5, then -89.7 for
 # one skiff, which is why LiftSlopeSum::usable refuses rather than divides.
+# #450: beta= is the yaw-plane half of the same AeroFrame pair. Until it was
+# printed, the sideslip that keys the hull-silhouette cache (#463) had no
+# instrument at all -- the [drag] line printed it, [surfinfo] did not, so the two
+# dumps of the same substep disagreed about what was measured. Same dash rule as
+# aoa=: no usable flow, no angle.
 NAME surface-aoa-readout
-CLAIM [surfinfo] reports the aero angle of attack while the ship has air-relative flow and "-" when it has none, and its stability pair reports a zero slope without inventing a neutral-looking margin for an airframe that has nothing lifting.
+CLAIM [surfinfo] reports the aero angle of attack and the sideslip while the ship has air-relative flow and "-" when it has none, and its stability pair reports a zero slope without inventing a neutral-looking margin for an airframe that has nothing lifting.
 KIND invariant
 ARGS --time-accel 1 --timeout 6 --info-log --orbit-interval 0.5 --startship racer,res/ships/racer.json,Kerbin,pad --sim-press 1000,0,SPACE,1500,4000,T
 FORBID error:
@@ -22,6 +27,12 @@ CHECK len(surf) >= 6
 CHECK any(s["aoa"] is None for s in surf if s["t"] < 1.2)
 CHECK all(s["aoa"] is not None for s in surf if s["t"] >= 2.0)
 CHECK all(abs(s["aoa"]) < 1.0 for s in surf if s["t"] >= 2.0)
+# beta goes numeric and numeric-dashed on exactly the same rows as aoa: one
+# AeroFrame, one flow-floor test. Flying straight up off the pad, both angles sit
+# near zero; |beta| is pinned rather than beta, as for aoa.
+CHECK any(s["beta"] is None for s in surf if s["t"] < 1.2)
+CHECK all(s["beta"] is not None for s in surf if s["t"] >= 2.0)
+CHECK all(abs(s["beta"]) < 1.0 for s in surf if s["t"] >= 2.0)
 # The racer is under an atmosphere the whole run, so cla is a number throughout
 # (0.0: no lifting surface on the ship), and sm is never a number.
 CHECK all(s["cla"] == 0.0 for s in surf)

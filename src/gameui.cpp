@@ -1900,6 +1900,21 @@ void drawUIReadouts(Game &g) {
         } else {
             ImGui::Text("AoA: -");
         }
+        /* #450: Beta, the yaw-plane half of the same pair. AeroFrame has computed
+           it every substep since it was written, and until now nothing in the game
+           read it -- the sideslip that decides how a ship behaves sideways reached
+           the forces only implicitly, through the hull silhouette and each part's
+           partCd, with no instrument for it. It is also the number #463's silhouette
+           cache is keyed on next to AoA, so a readout that shows only AoA cannot
+           explain its own drag area. The [drag] line has printed it since #463; this
+           is the pilot-facing one. Dashed on exactly the AoA test: no usable flow
+           (kAoAFlowFloor), no angle. #482 (a held rudder throwing an airframe into a
+           100 deg sideslip) is what this row exists to make visible. */
+        if(ship->lastDragAlphaValid) {
+            ImGui::Text("Beta: %.2f", glm::degrees(ship->lastDragBeta));
+        } else {
+            ImGui::Text("Beta: -");
+        }
         /* #485: that AoA is ONE attitude number for the whole ship. What the law
            actually acts on is a set of angles -- each surface's own, from its own
            mount since #453 and from the flow at its own offset since #483 -- so
@@ -2018,6 +2033,16 @@ void drawUIReadouts(Game &g) {
                            glm::degrees(ship->lastDragAlpha))
                 : snprintf(aoa_s, sizeof aoa_s, "-");
             assert(aoa_n > 0 && aoa_n < (int)sizeof aoa_s);
+            /* #450: beta=, the yaw-plane half of the same AeroFrame pair, dashed on
+               the same test as aoa= for the same reason. It keys the hull silhouette
+               cache alongside aoa (#463), so a log that prints only aoa cannot explain
+               the area it prints next to it. */
+            char beta_s[32];
+            const int beta_n = ship->lastDragAlphaValid
+                ? snprintf(beta_s, sizeof beta_s, "%.6g deg",
+                           glm::degrees(ship->lastDragBeta))
+                : snprintf(beta_s, sizeof beta_s, "-");
+            assert(beta_n > 0 && beta_n < (int)sizeof beta_s);
             /* #499: cla/sm are the SURFACE window's stability pair (see the
                window's own comment). Dash cla when there is no air to have a lift
                slope in, and dash sm alone when the surfaces stopped agreeing with
@@ -2037,7 +2062,7 @@ void drawUIReadouts(Game &g) {
             printf("[surfinfo] t=%.1fs "
                    "alt_agl=%.6g m alt_asl=%.6g m "
                    "vs=%.6g m/s hs=%.6g m/s lat=%.8g deg lon=%.8g deg "
-                   "pitch=%.6g deg roll=%.6g deg hdg=%.6g deg aoa=%s "
+                   "pitch=%.6g deg roll=%.6g deg hdg=%.6g deg aoa=%s beta=%s "
                    "cla=%s sm=%s acc=%.6g m/s2 "
                    "body=\"%s\" bme=\"%s\" sit=\"%s\"\n",
                    time,
@@ -2046,7 +2071,7 @@ void drawUIReadouts(Game &g) {
                    ver_speed, hor_speed2,
                    glm::degrees(latitude), glm::degrees(longitude),
                    glm::degrees(pitch), glm::degrees(roll), glm::degrees(yaw),
-                   aoa_s, cla_s, sm_s,
+                   aoa_s, beta_s, cla_s, sm_s,
                    ship->feltAccel(), b->name.c_str(), bme,
                    situationName(ps.situation));
             fflush(stdout);
@@ -2483,8 +2508,18 @@ void drawPartWindows(Game &g) {
                             def->capacity[r],
                             Vehicle::resourceUnit(r));
             }
-            // --- control surface (this part steers) ----------------------------
-            /* TRIM (#492): the standing command this surface is held at when the
+            // --- aerodynamic surface (this part lifts, steers, or both) --------
+            /* #497: the angle-of-attack row belongs to EVERY surface with one, not
+               only to a steering part. #485 measures Part::aeroAlphaDeg/aeroQ for
+               each lifting part inside the lift loop itself (free there), so before
+               this the most direct way to ask "is THIS wing stalled" -- clicking the
+               wing -- answered nothing, while clicking an elevator answered it. The
+               deflection and trim rows stay steering-only: a wing has no travel.
+               Nothing here arms new measurement (tick.cpp arms the NEUTRAL control
+               surfaces, which cost a flow+frame their early-out skips); a lifting
+               part's angle is already recorded whenever there is air to measure it,
+               and dashes when there is not.
+               TRIM (#492): the standing command this surface is held at when the
                stick is free -- what makes an airframe fly level untouched. Until now
                the only way to offset a surface was to bolt it at an angle in the ship
                def ("roll"), which is a build choice a pilot cannot reach, and which
@@ -2496,12 +2531,19 @@ void drawPartWindows(Game &g) {
                void. The angle is #485's reading for THIS surface (its own mount and
                its own bit of flow), and tick.cpp arms that recording while a part
                window is open on a steering part. */
-            if(def->isControlSurface()) {
+            if(def->lift_area > 0.0 || def->isControlSurface()) {
                 ImGui::Separator();
-                ImGui::Text("Control surface: %s",
-                            controlAxisName(def->control_axis));
-                ImGui::Text("Defl: %+.1f deg",
-                            glm::degrees(ship->parts[part]->controlDefl));
+                if(def->isControlSurface()) {
+                    ImGui::Text("Control surface: %s",
+                                controlAxisName(def->control_axis));
+                    ImGui::Text("Defl: %+.1f deg",
+                                glm::degrees(ship->parts[part]->controlDefl));
+                } else {
+                    /* The area the law bills, which the catalogue's convention makes
+                       worth stating out loud (#478: a wing's is its whole planform, a
+                       fin's is half its own). */
+                    ImGui::Text("Lifting surface: %.2f m2", def->lift_area);
+                }
                 if(ship->parts[part]->aeroValid) {
                     ImGui::Text("AoA: %+.1f deg  q=%.0f Pa",
                                 ship->parts[part]->aeroAlphaDeg,
@@ -2509,18 +2551,20 @@ void drawPartWindows(Game &g) {
                 } else {
                     ImGui::Text("AoA: -   q:-");
                 }
-                /* The slider's range is not the clamp. Ctrl+click turns any slider
-                   into a text box and imgui leaves typed input unclamped unless
-                   AlwaysClamp is asked for (imgui.h:694); the float cast of a double
-                   travel can also sit a hair above it. Both end in the law and in the
-                   save, so the value goes through PartDef::clampTrim -- the same rule
-                   the ship-def loader enforces by throwing (shipdef.cpp) and the save
-                   loader by clipping (save.cpp). */
-                const double limit = glm::degrees(def->max_deflection);
-                float trim = (float)ship->parts[part]->trimDeg;
-                if(ImGui::SliderFloat("Trim", &trim, -(float)limit, (float)limit,
-                                      "%+.1f deg", ImGuiSliderFlags_AlwaysClamp)) {
-                    ship->parts[part]->trimDeg = def->clampTrim((double)trim);
+                if(def->isControlSurface()) {
+                    /* The slider's range is not the clamp. Ctrl+click turns any slider
+                       into a text box and imgui leaves typed input unclamped unless
+                       AlwaysClamp is asked for (imgui.h:694); the float cast of a double
+                       travel can also sit a hair above it. Both end up in the law and in
+                       the save, so the value goes through PartDef::clampTrim -- the same
+                       rule the ship-def loader enforces by throwing (shipdef.cpp) and the
+                       save loader by clipping (save.cpp). */
+                    const double limit = glm::degrees(def->max_deflection);
+                    float trim = (float)ship->parts[part]->trimDeg;
+                    if(ImGui::SliderFloat("Trim", &trim, -(float)limit, (float)limit,
+                                          "%+.1f deg", ImGuiSliderFlags_AlwaysClamp)) {
+                        ship->parts[part]->trimDeg = def->clampTrim((double)trim);
+                    }
                 }
             }
             // --- docking port ------------------------------------------------
@@ -3483,9 +3527,10 @@ void drawToasts(Game &g) {
 
 /* Force overlay (F4): arrows for the forces the last simulated substep
    applied to the active ship -- engine thrust, RCS pods, and the whole aero
-   law (drag at the center of pressure, chutes at their canopy anchors,
-   lift and control-surface forces at each surface). Foreground draw list,
-   like the VAB fuel-link lines: no depth test, always on top. Anchoring:
+   law (drag at the center of pressure, chutes at their canopy anchors, lift
+   and control-surface forces at each surface, and the induced drag each of
+   those surfaces pays at itself). Foreground draw list, like the VAB fuel-link
+   lines: no depth test, always on top. Anchoring:
    the recorded pos is the application point rel COM AT RECORD TIME; the
    anchor is that plus the ship's CURRENT COM, so the ship's travel between
    the recorded substep and this paint pass cancels (see Vehicle::ForceVec).
@@ -3499,6 +3544,7 @@ static ImU32 forceKindColor(int kind) {
         case Vehicle::kForceLift:  return IM_COL32(70, 210, 190, 230);
         case Vehicle::kForceChute: return IM_COL32(240, 230, 120, 230);
         case Vehicle::kForceCtrl:  return IM_COL32(200, 140, 255, 230);
+        case Vehicle::kForceInduced: return IM_COL32(170, 150, 90, 230);
         case Vehicle::kForceThrust: return IM_COL32(255, 165, 40, 235);
         default:
             assert(!"unknown force overlay kind");
@@ -3512,6 +3558,7 @@ static const char *forceKindName(int kind) {
         case Vehicle::kForceLift:  return "lift";
         case Vehicle::kForceChute: return "chute";
         case Vehicle::kForceCtrl:  return "control surface";
+        case Vehicle::kForceInduced: return "induced drag (at the surface)";
         case Vehicle::kForceThrust: return "thrust";
         default:                   return "?";
     }

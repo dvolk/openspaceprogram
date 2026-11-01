@@ -702,9 +702,15 @@ public:
         float alphaDeg = 0.0f;
         bool alphaValid = false;
     };
+    /* kForceDrag is the hull's FORM drag at the center of pressure; the induced
+       drag a lifting or steering surface pays for turning the flow (#462, #494)
+       hangs at THAT surface instead, so it is its own kind (#505) -- sharing one
+       kind made the legend call a flap's induced bill "drag (at center of
+       pressure)", which is the one place a player can ask what the arrow is. */
     static constexpr int kForceThrust = 0, kForceRcs = 1, kForceDrag = 2,
-                         kForceLift = 3, kForceChute = 4, kForceCtrl = 5;
-    static constexpr int kForceKindCount = 6;
+                         kForceLift = 3, kForceChute = 4, kForceCtrl = 5,
+                         kForceInduced = 6;
+    static constexpr int kForceKindCount = 7;
     std::vector<ForceVec> lastForceVecs;
     bool recordForceVecs = false;
     /* #485: record each surface's own alpha/q (Part::aeroAlphaDeg, aeroQ). The
