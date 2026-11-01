@@ -23,6 +23,7 @@
 
 #include "staging.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -651,6 +652,82 @@ static void test_a_gap_costs_nothing() {
     CHECK_TRUE(us < 5000.0, "a label gap must not cost work per skipped integer");
 }
 
+/* The label-dense shape the speed probes never had (#539). Every probe of the preview was
+   a spine or an asparagus bundle, and all of them carry a handful of stage labels no
+   matter how many parts they hold -- which is how 3fdbf4a (#538) merged looking faster on
+   every number in its own table while making a whole class of ship 13-35% slower. Here
+   every tank carries its OWN label (what the stage box invites: 1..kMaxStage) and every
+   decoupler sits on one shared label, so the per-label work is the same order as the part
+   count instead of a constant. tmp/n541_probe2.cpp's labeldamper, in the tree. */
+static BuildShip label_dense(const PartsCatalog &cat, int strings, int depth) {
+    const PartDef *capsule = cat.find("capsule");
+    const PartDef *tankL = cat.find("tank_r2.25h5");
+    const PartDef *engL = cat.find("engine_r2.25h4.5");
+    const PartDef *dec = cat.find("decoupler_r1.5");
+    CHECK_TRUE(capsule && tankL && engL && dec, "catalog defs for the label-dense fixture");
+    if(!capsule || !tankL || !engL || !dec) { return BuildShip(); }
+    BuildShip bs;
+    const int hiLabel = 3 + strings * depth;
+    int core = addPart(bs, capsule, "capsule_0000", -1, 1);
+    core = addPart(bs, tankL, "tank_core_0000", core, 1);
+    addPart(bs, engL, "engine_core_0000", core, hiLabel);
+    std::string prevTank = "tank_core_0000";
+    char id[40];
+    for(int s = 0; s < strings; s++) {
+        snprintf(id, sizeof(id), "dec_%04d", s);
+        int p = addPart(bs, dec, id, core, 2);                  // one separation label
+        for(int k = 0; k < depth; k++) {
+            snprintf(id, sizeof(id), "tank_%04d_%02d", s, k);
+            p = addPart(bs, tankL, id, p, 3 + s * depth + k);   // every tank its own label
+            addLink(bs, id, prevTank);
+            prevTank = id;
+        }
+        snprintf(id, sizeof(id), "engine_%04d", s);
+        addPart(bs, engL, id, p, hiLabel);
+    }
+    return bs;
+}
+
+/* Cost, not just correctness: the shape above exists so a per-label hoist cannot merge on
+   data where the label count is a constant. Two sizes, because one number cannot show a
+   trend. Measured here (one warm pass each, this machine): 171 parts / 147 labels is
+   ~100 us and 339 parts / 291 labels is ~295 us -- doubling the parts costs ~3x, so the
+   pass is ALREADY superlinear in labels and this guard does not pretend otherwise. It is a
+   gross-blowup tripwire, not a 30% detector (no timing pin is): each ceiling sits ~30x
+   above what that shape costs today, so a pass that starts doing per-label-quadratic work
+   trips it while a loaded box shrugging 20% does not. The printed line is the record --
+   parts AND labels beside the microseconds, because an "N parts" caption is exactly what
+   hid the #538 regression. Best-of-N measurement stays the scratch probe
+   (tmp/n541_probe2.cpp); this is the guard that keeps it honest. */
+static void test_a_label_dense_ship_is_still_cheap_to_number() {
+    const PartsCatalog pc = load_parts_catalog("res/data/parts.json");
+    const int shapes[][2] = {{12, 12}, {24, 12}};
+    const double ceilings[] = {3000.0, 9000.0};
+    for(size_t sh = 0; sh < 2; sh++) {
+        const BuildShip bs = label_dense(pc, shapes[sh][0], shapes[sh][1]);
+        CHECK_TRUE(!bs.parts.empty(), "label-dense fixture built");
+        const std::vector<StageRow> warm = computeStaging(bs, 9.81, 1.0);
+
+        std::vector<int> labels;
+        for(size_t i = 0; i < bs.parts.size(); i++) { labels.push_back(bs.parts[i].stage); }
+        std::sort(labels.begin(), labels.end());
+        labels.erase(std::unique(labels.begin(), labels.end()), labels.end());
+
+        const auto t0 = std::chrono::steady_clock::now();
+        const std::vector<StageRow> rows = computeStaging(bs, 9.81, 1.0);
+        const double us = std::chrono::duration<double, std::micro>(
+                              std::chrono::steady_clock::now() - t0).count();
+        printf("  label-dense %2dx%-2d: parts=%4zu labels=%4zu links=%4zu rows=%3zu  %7.1f us\n",
+               shapes[sh][0], shapes[sh][1], bs.parts.size(), labels.size(),
+               bs.fuelLinks.size(), rows.size(), us);
+        CHECK_TRUE(labels.size() * 4 >= bs.parts.size() * 3,
+                   "the fixture really is label-dense (labels within 4:3 of parts)");
+        CHECK_TRUE(rows.size() == warm.size() && !rows.empty(), "the pass is stable");
+        CHECK_TRUE(us < ceilings[sh],
+                   "the label-dense pass stayed inside its complexity guard");
+    }
+}
+
 /* heavy_asp's shape, scaled: a core stack (capsule, wheel, big tank, big engine)
    plus `boosters` side strings of `stringLen` parts (decoupler, tanks, engine),
    each string's innermost tank fuel-linked to the string inboard of it. Every
@@ -1148,6 +1225,7 @@ int main() {
     test_signature();
     test_stage_labels_are_labels();
     test_a_gap_costs_nothing();
+    test_a_label_dense_ship_is_still_cheap_to_number();
     test_deep_chain_burn_stays_physical();
     test_drop_walk_takes_only_the_decouplers_side();
     test_a_self_parent_walks_once();
