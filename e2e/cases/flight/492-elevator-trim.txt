@@ -1,5 +1,5 @@
 NAME elevator-trim
-CLAIM The same 552 kg airframe as skiff, with the tailplane's 5 deg of mount incidence REMOVED and 12 deg of elevator TRIM authored on the part instances instead, stays inside 6941-7001 m at 73.9-76.1 m/s while powered with the stick released (since #455, 100 m lower and 3 m/s slower than it used to be), stays at +2.4..+2.6 deg of angle of attack on every row of a 50 s run, holds -12.0/+12.0 deg of elevator deflection with no key pressed, reads the tail at the wing's own angle of attack (within 0.4 deg), and keeps its form-drag centre 0.58-0.64 m behind the CG -- so the download that trims this airframe now comes from deflection rather than from how the surface was bolted on.
+CLAIM The same 552 kg airframe as skiff, with the tailplane's 5 deg of mount incidence REMOVED and 12 deg of elevator TRIM authored on the part instances instead, stays inside 6941-7001 m at 73.9-76.1 m/s while powered with the stick released (since #455, 100 m lower and 3 m/s slower than it used to be), stays at +2.4..+2.6 deg of angle of attack on every row of a 50 s run, holds -12.0/+12.0 deg of elevator deflection with no key pressed, reads the tail at the wing's own angle of attack (within 0.4 deg), and keeps its form-drag centre 0.57-0.63 m behind the CG -- so the download that trims this airframe now comes from deflection rather than from how the surface was bolted on.
 KIND golden
 ARGS --time-accel 1 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
 ARGS --sim-steps 3000 --drag-log --mass-log
@@ -76,8 +76,12 @@ CHECK all(d["alt"] > 6150.0 for d in drag)
 # at the trim angle, -0.28 m at the worst row, still aft of the CG but no longer the
 # 0.69-0.89 m this case used to quote, because the wings and tail left that union. The
 # number that carries the old claim is FormCp: the hull's CdA and every surface's
-# planform bill together, 0.58 m behind the CG at rest and 0.64 m on the sideslip row.
+# planform bill together, 0.58 m behind the CG at rest and 0.64 m on the sideslip row
+# (#559 trims that to 0.57 / 0.63: the A stick still throws this airframe 8 deg of
+# sideslip, and on those rows the wings used to be charged face-on for air that runs
+# along their span).
 CHECK all(d["cpl"] < 0.0 for d in drag if d["cpl"] is not None)
+CHECK any(d.get("formcp") is not None for d in drag)
 CHECK all(-0.72 < d["formcp"] < -0.5 for d in drag if d.get("formcp") is not None)
 CHECK all(d["induced"] > 0.0 for d in drag if d["L"] > 1.0)
 CHECK max(d["induced"] for d in drag) > 0.5

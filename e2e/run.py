@@ -236,8 +236,10 @@ DRAG_RE = re.compile(
     # #455: the lifting/steering surfaces' OWN form-drag CdA, printed last so every
     # older parser keeps working. Before it, that bill was inside A=/Cd= -- mixed
     # into the hull's union at the hull's cd mean -- so a case could not tell "the
-    # body is blunt" from "the wings are being charged as plates".
-    r"(?:\s+Profile=([-\d.]+) m2)?"
+    # body is blunt" from "the wings are being charged as plates". #559 dashes it
+    # with no usable flow direction, like CpL/SM/FormCp, so the dash is a parseable
+    # reading and not a dropped tail.
+    r"(?:\s+(?:Profile=([-\d.]+) m2|Profile=-))?"
     # #455: the lever of the COMBINED form drag (hull + surfaces), signed, printed
     # numbered or dashed -- one group, not two, because it prints as one reading.
     r"(?:\s+(?:FormCp=([-\d.e+]+) m|FormCp=-))?"

@@ -2609,12 +2609,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
           lift law below is paid on. A wing edge-on is 0.4 m2 of mesh and 8 m2 of
           wing; the 8 is the one that means something, and charging the projection
           instead was the double bill this issue is about.
-        - the COEFFICIENT is the same three-anchor blend (partCd) read at the flow
-          the surface itself stands in (#483): at cruise that is the authored
-          profile cd, and broadside the blend walks to cd_side and the surface pays
-          its planform as the plate it is. There is deliberately no alpha-linear
-          plate term here on top of the induced term below -- turning the flow
-          downward is charged once, as inducedCd.
+        - the COEFFICIENT is the plate's own shape drag (drag.h::surfaceFormCdA) read
+          at the flow the surface itself stands in (#483): chordwise that is the
+          authored profile cd, out of its plane the surface pays its planform as the
+          plate it is, and spanwise it pays its edge (thickness x chord off the mesh
+          box), which is #559 fixing #455's one-axis blend. There is deliberately no
+          alpha-linear plate term here on top of the induced term below -- turning the
+          flow downward is charged once, as inducedCd.
         - the PLACE is the mount, answering to w x r there. A surface the airframe
           rotates through the air therefore damps the rotation on its own; the hull
           term cannot do that for a surface, because it answers at one cp for the
@@ -2624,14 +2625,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         for(Part *p : parts) {
             if(p->def == nullptr) { continue; }
             const PartDef *d = p->def;
-            /* One part, one area: shipdef.cpp refuses a part with both, so this is
-               a choice between "lifting surface" and "steering surface", never a
-               sum (#551 would merge those two laws, not this test). */
-            const double ref = (d->lift_area > 0.0) ? d->lift_area : d->control_area;
             /* The same predicate the two silhouette loops above use to SKIP this part:
                a part is charged as a body or as a surface, never as both, and the one
                function decides which. */
             if(!isAeroSurface(d->lift_area, d->control_area)) { continue; }
+            /* One part, one area: shipdef.cpp refuses a part with both, so this is
+               a choice between "lifting surface" and "steering surface", never a
+               sum (#551 would merge those two laws, not this test). */
+            const double ref = (d->lift_area > 0.0) ? d->lift_area : d->control_area;
             const glm::dvec3 ri = partPosS(p) - com;
             const LocalFlow lf = localFlow(vrel, w, ri, rho);
             if(!(lf.vp2 > 0.0)) { continue; }
@@ -2639,17 +2640,27 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             /* cd at the surface's OWN incidence, not the COM's: the sweep that
                makes this law damp a rotation also tilts the flow this part sees.
                The rotation matters twice over here. lf.vp is an S-frame vector and
-               partCd wants the part's axes as its author declared them, which are
+               the plate's axes are as their author declared them, which are
                SHIP-LOCAL -- so the flow comes to them, not the other way round (the
                hull loop above does the same with vhatS = transpose(sRot) * vhat, and
                getting this backwards reads a ship's cd off its attitude relative to
                the world rather than relative to its own air: measured 0.633 against
                a true 1.000 on a jet flying dead straight down its own nose). */
             const glm::dvec3 flowLocal = glm::transpose(sRot) * (lf.vp / vpl);
-            const double cd = partCd(d->drag_forward, d->drag_side, d->drag_backward,
-                                     glm::dot(p->localRot[2], flowLocal));
-            if(!(cd > 0.0)) { continue; }
-            const double cda = drag_cd * ref * cd;
+            /* A plate has three ways to meet the flow and they are three different
+               areas (#559): chordwise it pays its profile cd on the planform, out of
+               its plane it pays the planform as a flat plate, and along its SPAN it
+               pays the thickness x chord its mesh actually throws that way. Which of
+               X or Y is the normal comes off the mesh box, so a wing (normal up) and a
+               fin (normal sideways) both read honestly and a builder who authors the
+               planform the other way round still gets the right shape drag. */
+            const glm::dvec3 plateNormal = (d->meshNormalAxis() == 0) ? p->localRot[0]
+                                                                     : p->localRot[1];
+            const double cda = drag_cd * surfaceFormCdA(
+                ref, d->meshEdgeArea(),
+                d->drag_forward, d->drag_side, d->drag_backward,
+                glm::dot(p->localRot[2], flowLocal), glm::dot(plateNormal, flowLocal));
+            if(!(cda > 0.0)) { continue; }
             const glm::dvec3 fprof = -(lf.vp / vpl) * (lf.q * cda);
             ApplyForce(hull, ri, fprof);
             moment += glm::cross(ri, fprof);
@@ -2815,11 +2826,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         const double clPart = glm::length(flift) / (qp * d->lift_area);
         const double cdi = inducedCd(clPart, 2.0 * d->meshSpanHalf(), d->lift_area);
         if(cdi <= 0.0) { continue; }
-        /* drag_cd scales the hull's air -- form drag and induced alike --
-           otherwise the knob tunes only half the law, and its documented meaning
-           (0 = no air) would be wrong. A deployed canopy is a separate term below
-           and stays unmultiplied: the dial is a hull-law knob, not an atmosphere
-           killer. */
+        /* drag_cd scales the air's bill -- the hull's form drag, each surface's
+           own shape drag and the induced drag alike -- otherwise the knob tunes
+           only part of the law, and its documented meaning (0 = no air) would be
+           wrong. A deployed canopy is a separate term below and stays
+           unmultiplied: the dial is an air-law knob, not an atmosphere killer. */
         /* The flow is non-zero here: flift is non-zero, so qp is, and qp is half
            rho times this flow's magnitude squared. One sqrt off lf.vp2 rather than
            glm::length(vp), which would recompute the magnitude q was built from. */

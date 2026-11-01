@@ -65,9 +65,10 @@ struct GameArgs {
     long long sim_steps = -1;
     float exhaust_scale = 1.0f;  // difficulty: scales ve (thrust + delta-v)
     float cam_shake = 1.0f;   // camera shake at high accel (0 = off)
-    double drag_cd = 1.2;       // the drag BILL multiplier: hull form drag + the
-                                // induced drag that lift pays, never the lift
-                                // itself (#502). 0 = off
+    double drag_cd = 1.2;       // the drag BILL multiplier: the hull's form drag,
+                                // the surfaces' own shape drag (Profile=) and the
+                                // induced drag that lift pays -- never the lift
+                                // itself (#502, #455). 0 = off
     bool drag_log = false;      // the active ship's drag per tick
 
     std::vector<SimKeyPress> sim_presses;

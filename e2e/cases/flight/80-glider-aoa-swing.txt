@@ -6,20 +6,20 @@
 # drift a little run to run -- pin the order, not the seconds):
 #
 #   t=5.9  AoA   0.6   |L|    104 N |tau|    69 Nm  CLa  95.99  Ind  0.02  Profile   0.72  SM +0.64
-#   t=6.9  AoA   9.8   |L|   1243 N |tau|   861 Nm  CLa  94.53  Ind  4.23  Profile   1.45  SM +0.64
-#   t=7.9  AoA  25.6   |L|   1813 N |tau|  1484 Nm  CLa -59.98  Ind 13.55  Profile   5.23  SM +0.64  <-- inside the droop
-#   t=9.0  AoA  42.1   |L|      0 N |tau|   499 Nm  CLa   0.00  Ind  0.00  Profile  11.33  SM -      <-- past 2x stall
-#   t=10.0 AoA  55.8   |L|      0 N |tau|   691 Nm  CLa   0.00  Ind  0.00  Profile  16.76  SM -
+#   t=6.9  AoA   9.6   |L|   1219 N |tau|   837 Nm  CLa  94.59  Ind  4.04  Profile   1.27  SM +0.64
+#   t=7.9  AoA  25.3   |L|   1837 N |tau|  1436 Nm  CLa -57.88  Ind 13.79  Profile   4.28  SM +0.64  <-- inside the droop
+#   t=8.9  AoA  42.2   |L|      0 N |tau|   321 Nm  CLa   0.00  Ind  0.00  Profile   9.35  SM -      <-- past 2x stall
+#   t=10.0 AoA  57.2   |L|      0 N |tau|   456 Nm  CLa   0.00  Ind  0.00  Profile  14.18  SM -
 #
 # Three things happen in that order and all three are pinned here:
 #  1. the swing GROWS. Every sample is further off the flow than the one before
-#     it, so the wheels are losing: |tau| peaks at 1484 N m against the shipped
+#     it, so the wheels are losing: |tau| peaks at 1436 N m against the shipped
 #     wheel's budget, which is #399/#403's whole complaint, not a settling
 #     airframe;
-#  2. CLa turns NEGATIVE at AoA 25.6, inside the droop between stall_angle (20.1
+#  2. CLa turns NEGATIVE at AoA 25.3, inside the droop between stall_angle (20.1
 #     deg) and twice it -- #487's band, where a rotating surface feeds its own
 #     swing instead of damping it;
-#  3. by AoA 42.1 the wings are past 2x stall_angle, where liftCurve is
+#  3. by AoA 42.2 the wings are past 2x stall_angle, where liftCurve is
 #     identically zero: lift is exactly 0.00 N, CLa 0.00, Induced 0.00 and SM
 #     DASHES because there is no slope to divide by. The airframe has stopped
 #     being a wing. The Induced row is #462's pairing, which #504 asked to get
@@ -48,15 +48,23 @@ CHECK (lambda ds: (ds and max(d["a"] for d in ds) > min(d["a"] for d in ds) * 1.
 # Cd mean used to move 0.78 -> 0.66 -> 0.82 across this swing, because the wings
 # (cd 0.2 nose-on then) entered and left the area weighting as their planforms came
 # into the wind. #455 took the lifting and steering parts out of that mean entirely,
-# so Cd= is now the BODY's mix and it barely moves: 0.838 nose-on, 0.859 at 55.8 deg
+# so Cd= is now the BODY's mix and it barely moves: 0.838 nose-on, 0.859 at 57.2 deg
 # -- 2.5%, from the pod and fins presenting more of themselves as the airframe turns.
 # The old CHECK (a 5% spread on Cd) stopped being a pin and became an accident, so it
 # is gone. What grows across the same swing instead is the surfaces' own bill:
-# Profile= goes 0.72 -> 16.76 m2 of CdA, a 23x climb, because the planforms turn to
-# the wind and the cd blend walks from the authored 0.03 toward the 1.0 side value.
+# Profile= goes 0.72 -> 14.18 m2 of CdA, a 19.7x climb, because the planforms turn to
+# the wind and the bill walks from the authored 0.03 profile cd toward the 1.0 plate
+# value. #559 moved that peak (16.76 -> 14.18) and says which part of it was ever
+# real: a WING at 57 deg of incidence genuinely is a plate, the flow being out of its
+# plane, and #559 leaves that charge alone. The VERTICAL fins are not plates here --
+# in a pitch swing the flow grazes them inside their own plane, so they present 0.06 m
+# of thickness x 0.8 m of chord, not 2 m2 of face, and the one-axis blend charged them
+# as face anyway. That is the whole 2.6 m2 of difference on this bed.
 # That is the airframe's shape in the log -- it just no longer pretends a wing is a
-# blunt body. Filter matters: the pad row prints a Profile off a zero flow direction
-# (12.16 m2 with |F| = 0), the same trap the A check above documents.
+# blunt body. Filter matters: the pad row prints no Profile at all (a dash: AeroFrame
+# has no flow direction to read, and since #559 the log says so instead of printing
+# the number a jittered direction produced), and the rows where |F| = 0 still have to
+# be left out of the ratio below -- the same trap the A check above documents.
 CHECK (lambda ds: (ds and max(d["profile"] for d in ds) > min(d["profile"] for d in ds) * 8.0))([d for d in drag if d.get("profile") is not None and d.get("aoa") is not None and d["F"] > 0.0])
 # The body's Cd mean stays inside the mix the parts catalogue implies -- pod 0.35
 # forward, tank and engine ~1.0, area-weighted to 0.84 nose-on and 0.86 broadside.

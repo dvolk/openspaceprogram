@@ -1,5 +1,5 @@
 NAME glider-flight-envelope
-CLAIM Since #455 the shipped glider pays for 3.1 m2 of BODY silhouette nose-on plus 0.72 m2 of surface profile CdA, and 23.7 m2 of form CdA in a hard yaw swing -- not a 30 m2 balloon, and not one number any more. Its lift owes induced drag, and since #494 so does its rudder: the three seconds A is held pay 1.7 m2 of induced CdA and the released rows pay 0.0, which is why it now swings 56 deg off the centreline rather than 73 while its pitch stays inside 1 deg of the flow.
+CLAIM Since #455 the shipped glider pays for 3.1 m2 of BODY silhouette nose-on plus 0.72 m2 of surface profile CdA, and 15.9 m2 of form CdA in a hard yaw swing -- not a 30 m2 balloon, and not one number any more. Its lift owes induced drag, and since #494 so does its rudder: the three seconds A is held pay 1.7 m2 of induced CdA and the released rows pay 0.0. Its yaw is undamped -- 80 deg off the centreline at worst (73 before #494 billed the rudder, 56 while #455 was accidentally charging its wings 8 m2 of plate for air that runs along their 0.1 m of span, 80 again since #559) -- while its pitch stays inside 1 deg of the flow.
 KIND golden
 ARGS --time-accel 1 --startship glider,res/ships/glider.json,Kerbin,flying-slow
 ARGS --sim-steps 840 --drag-log --mass-log
@@ -28,10 +28,19 @@ CHECK 3.0 < min(d.get("a", 0.0) for d in drag[:3]) < 3.5
 # RE-BASELINED by #455 onto the SUM of the two accounts (form CdA = drag_cd x Cd x A
 # + Profile), because the shape story moved between them: A alone now swings only
 # 3.13 -> 8.43 (2.69x -- the hull's silhouette, without the planforms it used to
-# carry), while the whole airframe's form CdA swings 3.34 -> 23.73 m2, a 7.10x swing
-# that is bigger than any number this case ever pinned. In yaw, a glider's wings ARE
-# its form drag, and now the log says so in one field. Drop the surface bill and
-# this CHECK sees A's 2.69x and fails, which is where the teeth are.
+# carry), while the whole airframe's form CdA swings 3.34 -> 23.73 m2 raw, a 7.10x
+# swing that was bigger than any number this case ever pinned.
+# RE-BASELINED by #559, which found the second half of that was a bug: the surface
+# bill was keyed on the chord axis alone, so a wing turned spanwise to the flow was
+# charged its whole 8 m2 planform for the 0.1 m of aluminium it actually presents.
+# Now each way the flow meets a plate is charged on its own area -- planform
+# chordwise, planform face-on, thickness x chord spanwise -- and the same swing
+# reads 3.34 -> 14.10 m2 raw (4.22x), 4.01 -> 16.92 with the drag_cd multiplier.
+# In yaw it is the TAIL surfaces that are the glider's form drag (they meet the
+# sliding air face-on), not the wings, which pay 0.2 m2 of edge apiece; the rest of
+# the growth is the hull's own silhouette. Drop the surface account and this CHECK
+# sees A's 2.69x and fails, which is where the teeth are; charge spanwise flow on
+# the planform again and the 7.10x comes back and this case's Beta pins move 24 deg.
 CHECK (lambda ds: max(d["cd"] * d["a"] + d["profile"] for d in ds) > 3.0 * min(d["cd"] * d["a"] + d["profile"] for d in ds))([d for d in drag if d.get("profile") is not None])
 # On the clean rows the force printed IS the law printed, both accounts of it:
 # |F| / (q x (drag_cd x Cd x A + Profile)) = 0.999, 1.004, 1.005. Before #455 this
@@ -101,63 +110,72 @@ CHECK max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) < 5.0
 # at 0 deg makes no lift in this law, so "settled" means nose-on and descending, not
 # gliding). Damping without static margin (#454) is not what did this -- the ship was
 # never upset in pitch in the first place.
-# AND IT IS STILL PITCH QUIET / YAW ALIVE. Beta reads -55.8, -41.6, -27.7, 31.2,
-# 10.4, -34.1, -5.7, 33.1, 9.3, -28.9, -17.3 after the stick: a hard yaw
-# swing that has not converged by the end of the run, against 0.5 deg worst in
+# AND IT IS STILL PITCH QUIET / YAW ALIVE. Beta reads -0.0, -80.2, -25.2, -52.4,
+# 62.9, -12.3, -48.7, 43.5, 28.2, -50.9, -20.2, 49.5 after the stick: a hard yaw
+# swing that has not converged by the end of the run, against 1.4 deg worst in
 # pitch. That is the geometry of
 # these terms, not a fluke: at AoA ~ 0 a yaw rate sweeps the wingtips ALONG the nose,
 # which changes no angle of attack, and the only yaw surfaces it has are rudders whose
 # force is deflection-only -- so nothing damps the yaw except the hull's own weathervane
 # moment, which is small on this silhouette. Which is the yaw half of #454/#486, and
 # why Beta is pinned as an excursion, never as a settling number.
-# #455 gave that damping a second source and the swing came down from 63 to 56 deg:
-# every surface's planform is now billed at its own mount, so a yawing airframe pays
-# form drag on a lever aft of the CG (FormCp grows from -0.43 m nose-on to -0.84 m at
-# the worst row) instead of only on the pod's silhouette.
+# #455 appeared to give that damping a second source and the swing came down from 63 to
+# 56 deg: every surface's planform began paying form drag at its own mount, on a lever
+# aft of the CG. #559 found most of that was the chord-axis bug -- in a yaw the wings
+# meet the air along their span and were being billed 8 m2 of plate each for 0.2 m2 of
+# edge. With the fix the source is real but much smaller (peak Profile= 5.14 m2, not
+# 16.49), the arm is still there (FormCp -0.43 m nose-on to -1.17 m at the worst row)
+# and the swing is back out to 80 deg. A glider with no yaw damping now reads as one.
 CHECK all(d["aoa"] is not None and abs(d["aoa"]) < 3.0 for d in drag if d["t"] >= 7.0)
 # And the speed it keeps: the tumble used to eat 60% of it (73 m/s by t=14 against a
 # 173 m/s start). Since #503 it flies nose-on and costs itself a third: 113.0 m/s worst
-# after t=9, and #494's rudder bill leaves 121.8. #455's profile bill takes it to
+# after t=9, and #494's rudder bill leaves 121.8. #455's profile bill took it to
 # 117.0 -- the airframe now pays 0.72 m2 of CdA for its own planforms on top of the
-# pod's 2.6 m2, and a glider with no engine pays that out of its speed. The floor
+# pod's 2.6 m2, and a glider with no engine pays that out of its speed -- and #559
+# hands 4.4 m/s of that back, because 16 m2 of the bill was wings being charged as
+# plates for air running along their span. The floor
 # stays at 90 rather than 110
 # because on a 1.2:1 brick (#490) that margin is a brick property, not a law one.
 # Re-pin it onto a real airframe when #490 lands one.
 CHECK min(d["v"] for d in drag if d["t"] >= 9.0) > 90.0
-# THE SWING, pinned at 56 deg (63 before #455, 72.8 before #494, 94.9 before #503,
-# and 170 when
+# THE SWING, pinned at 80 deg (56 while #559's chord-axis bug was faking yaw damping,
+# 63 before #455, 72.8 before #494, 94.9 before
+# #503, and 170 when
 # the airframe tumbled repeatedly). Both law changes took authority off the stop, so
 # this case no longer exercises the silhouette cache's 180-degree wrap -- past +-90 in
 # one angle AeroFrame's two angles must wrap together (they share atan2's denominator),
 # and when that wrap was missing every row past 90 keyed a different flow's cell, 9%
 # off on a hull shaped like this one (tmp/review_20261028). The invariant is still
 # pinned as math by test_drag's aeroFrame back-hemisphere block; what this case lost is
-# the in-situ version of it, recorded as #504. The floor sits at 45 rather than 60
-# because it is the SIZE of the swing that matters here, not the last few degrees: the
-# yaw is undamped and will keep swinging wherever the authority leaves it.
-CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) > 45.0
+# the in-situ version of it, recorded as #504. The floor moved 45 -> 60 with #559: the
+# swing is the size of the yaw the honest law leaves undamped, and 56 was a number the
+# phantom law produced.
+CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) > 60.0
 # RE-BASELINED by #503 (0.239; it was 0.700 after #486, 0.511 after #483), by #494
-# (0.110) and by #455 (0.080). The peak used to live inside the tumble -- a wing held at a huge AoA while
-# the airframe spun broadside -- and that peak went with the tumble; what is left is
-# the sideslip rows, and #494 and #455 each shrink the sideslip that makes them. With
-# #455 the peak is a NOSE-ON row (t=1: 1609 N of lift against 20.0 kN of drag), which
-# says what the airframe really is: a pod with two wings bolted on, flying fast enough
-# and level enough that the lift's 0.31 m2 of area-equivalent is noise against 3.3 m2
-# of form CdA.
+# (0.110), by #455 (0.080) and by #559 (0.157). The peak used to live inside the tumble -- a wing held at a huge AoA while
+# the airframe spun broadside -- and that peak went with the tumble. #455 moved it onto
+# a NOSE-ON row (t=1: 1609 N of lift against 20.0 kN of drag), which said what the
+# airframe really is: a pod with two wings bolted on, flying fast and level enough that
+# the lift's 0.31 m2 of area-equivalent is noise against its form CdA. #559 moves it
+# back onto a sideslip row (t=5: 8552 N against 54.4 kN) because the drag on those rows
+# is no longer padded by wings charged as plates.
 # Most of the aero force is
 # now hull drag plus the surfaces' own bill, and the ratio says so. While the run stepped
 # against wall-clock frames this read 0.74, 0.76, 0.79 in three runs, which is why
 # #472's --sim-steps matters: the value is only worth pinning because every run prints
 # the same rows.
 CHECK (lambda ds: 0.06 < max(d["L"] / d["F"] for d in ds) < 0.20)([d for d in drag if d["F"] > 0.0])
-# WHERE THAT DRAG PUSHES (#455). The form CdA sits 0.43 m behind the CG nose-on and
-# 0.84 m behind at the worst row, so the pod's own 2.6 m2 is no longer the whole
-# weathervane: the planforms are most of the CdA and they stand aft. Bill the surface
-# at the COM and the band below fails at -0.29 (the body's CpL alone); leave the
-# surfaces in the silhouette union the way the pre-#455 law did and it fails at the
-# -0.28 to -0.47 the CpL column now prints, which is what this case would have had to
-# quote before the field existed.
-CHECK all(-0.95 < d["formcp"] < -0.4 for d in drag if d.get("formcp") is not None)
+# WHERE THAT DRAG PUSHES (#455, re-banded by #559). The form CdA sits 0.43 m behind the
+# CG nose-on and up to 1.17 m behind on the worst sideslip row, so the pod's own
+# silhouette is no longer the whole weathervane: the surfaces stand aft and their bills
+# carry the arm. Bill the surface account at the COM and the worst row reads about
+# -0.38 m off the printed columns -- 10.7 m2 of hull at CpL -0.56 against 5.1 m2 of
+# surfaces at no arm at all -- which misses the -0.4 floor below. Leave the surfaces in
+# the silhouette union the way the pre-#455 law did and it sits in the -0.29 to -0.56
+# that the CpL column prints, which is what this case would have had to quote before the
+# field existed.
+CHECK any(d.get("formcp") is not None for d in drag)
+CHECK all(-1.20 < d["formcp"] < -0.4 for d in drag if d.get("formcp") is not None)
 CHECK max(abs(d["formcp"]) for d in drag if d.get("formcp") is not None) > 0.7
 # What the airframe is built from: A is held for 3 s and both rudders reach their
 # travel limit, and the shipped glider has NO pitch surface at all -- the stick

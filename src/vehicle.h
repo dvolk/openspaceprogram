@@ -355,11 +355,12 @@ public:
     double exhaust_scale = 1.0;  // --exhaust-scale: scales ve and all jet
                                  // thrust; synced per tick
     double drag_cd = 1.2;        // --drag-cd: the drag BILL multiplier (drag.h).
-                                 // Scales the hull silhouette's Cd*A AND the
-                                 // induced bill every lifting and control surface
-                                 // pays (#462, #497) -- never the lift or the
-                                 // control force itself, so it decides how far an
-                                 // airframe glides, not what its wing does (#502).
+                                 // Scales the hull silhouette's Cd*A, every
+                                 // lifting/steering surface's own shape bill
+                                 // (Profile=) and the induced bill (#462, #497,
+                                 // #455) -- never the lift or the control force
+                                 // itself, so it decides how far an airframe
+                                 // glides, not what its wing does (#502).
                                  // 0 = no drag. Chute Cd*A (below) is separate.
 
     /* Last substep's aero (applyAeroForce), for the --drag-log. */

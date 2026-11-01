@@ -860,7 +860,8 @@ struct SilhouetteMemo {
    AR-2 systems instead of one 8 m AR-4 system -- twice the induced drag.
    Half-wings are genuinely separate lifting bodies only if they are separated;
    co-planar halves share one span. Telling those apart needs the mount as well as
-   the extents, so it stayed open after #457. */
+   the extents, so it stayed open after #457 -- it is #556 now, and #555's
+   finite-wing lift slope wants the same grouping, so they should land together. */
 inline double inducedCd(double cl, double span, double area, double oswald = 0.8) {
     if(!(area > 0.0) || !(span > 0.0) || !(oswald > 0.0)) { return 0.0; }
     const double ar = (span * span) / area;
@@ -880,16 +881,18 @@ inline double inducedCd(double cl, double span, double area, double oswald = 0.8
                    coefficient (capsule 0.35, tank 1.0): "how much air does this
                    shape stop".
      SURFACE    -- the PLANFORM the author declared (lift_area / control_area) times
-                   the same three-anchor cd read at the surface's own incidence. Edge
-                   on, that cd is the profile cd the author declared (0.03 for every
-                   shipped wing and fin); turned broadside the blend walks to 1.0 and
-                   the surface pays its planform as the plate it is.
+                   its own shape drag, read at the flow the surface itself stands in:
+                   chordwise that is the PROFILE cd the author declared (0.03 for
+                   every shipped wing and fin); out of the plate's plane the surface
+                   pays its planform as the plate it is; spanwise it pays its edge.
+                   surfaceFormCdA below is that split.
 
-   What the surface does NOT pay is the planform's projection against the flow. That
-   term is the momentum the surface turns downward, and this law already charges it
-   once, honestly, as inducedCd above. Charging it twice is what #455 measured: the
-   shipped jet's two wings earned 4.2 of CLmax and were billed ~15.5 m2 of flat
-   plate, so the airframe's L/D was a number nobody could quote.
+   What #455 actually removed is the COEFFICIENT the projection was billed at. In the
+   union a wing's sliver of silhouette was charged at the SHIP's area-weighted mean cd
+   (~0.77 on the jet), so a wing paid a blunt body's shape drag on top of the induced
+   drag its lift had already bought: ~15.5 m2 of flat plate for two wings earning 4.2
+   of CLmax, which is the number that made the airframe's L/D unquotable. The momentum
+   the surface turns downward is still charged exactly once, as inducedCd above.
 
    A part is one or the other, never both -- shipdef.cpp refuses a part carrying both
    lift_area and control_area. #551 wants THAT split gone (one fin, one law); it does
@@ -911,6 +914,42 @@ inline double partCd(double cdForward, double cdSide, double cdBackward,
     const double cw = (c > 0.0) ? c2 : 0.0;   // forward weight (nose-in)
     const double bw = (c < 0.0) ? c2 : 0.0;   // backward weight (base-in)
     return cdSide * (1.0 - c2) + cdForward * cw + cdBackward * bw;
+}
+
+/* The shape drag of one SURFACE part (#455, split by #559). A plate meets the flow
+   three ways and they are three different AREAS:
+
+     chordwise   -> the section's PROFILE cd on the planform (0.03 x 8 m2 = 0.24 m2)
+     out of plane-> the planform as a flat plate (1.0 x 8 m2): incidence, a tumble,
+                    a wing seen from below
+     spanwise    -> the plate's EDGE, thickness x chord (1.0 x 0.2 m2), blunt
+
+   #455 billed the last two as one term on the planform, keyed on the chord axis
+   alone, so a horizontal wing in sideslip paid 8 m2 of plate for the 0.1 m of
+   aluminium it presents there: the 453 bed billed 15.6 m2 of CdA for two 8 m2 wings
+   whose silhouette at Beta 64 deg is under 1 m2, which was most of the yaw damping
+   that case pinned. The three weights are the squared cosines of the flow against
+   the chord, the plate normal and the span, so they sum to 1 and no share of the
+   flow is charged twice (or missed). cd_forward/cd_backward keep partCd's
+   nose/base convention on the chordwise share; cd_side is the blunt coefficient for
+   both out-of-plane and edge flow, which is what it already meant. */
+inline double surfaceFormCdA(double planform, double edgeArea,
+                             double cdForward, double cdSide, double cdBackward,
+                             double cosChordFlow, double cosNormalFlow) {
+    if(!(planform > 0.0)) { return 0.0; }
+    double c = cosChordFlow;
+    double n = cosNormalFlow;
+    if(c > 1.0) { c = 1.0; } else if(c < -1.0) { c = -1.0; }
+    if(n > 1.0) { n = 1.0; } else if(n < -1.0) { n = -1.0; }
+    const double c2 = c * c;
+    const double n2 = n * n;
+    double s2 = 1.0 - c2 - n2;              // the spanwise share, by the identity
+    if(!(s2 > 0.0)) { s2 = 0.0; }
+    const double wf = (c > 0.0) ? c2 : 0.0;
+    const double wb = (c < 0.0) ? c2 : 0.0;
+    const double edge = (edgeArea > 0.0) ? edgeArea : 0.0;
+    return planform * (cdForward * wf + cdBackward * wb + cdSide * n2)
+         + edge * cdSide * s2;
 }
 
 /* The force on one DEFLECTED control surface: the lift law with the DEFLECTION

@@ -173,6 +173,29 @@ struct PartDef {
         return std::max(std::fabs(mesh_min.z), std::fabs(mesh_max.z));
     }
 
+    /* Which part-frame axis is a SURFACE part's plate NORMAL: the thinner of the two
+       axes across the stack axis. The chord is authored along +Z for every shipped
+       wing and fin (mesh Z = chord, X = span, Y = thickness), so the normal is always
+       X or Y here. A surface authored with its thickness along Z is not a plate in
+       this convention and simply reads as the pre-#559 over-charge. */
+    int meshNormalAxis() const {
+        double hx, hy;
+        meshHalfSpan(hx, hy);
+        return (hx <= hy) ? 0 : 1;
+    }
+
+    /* The plate's own EDGE area, thickness x chord, off the same mesh box: 0.1 x 2 m
+       for wing_r2h2, against the 8 m2 of PLANFORM the aero law charges it everywhere
+       else. A surface turned spanwise to the flow presents this and nothing else
+       (#559). No mesh -> the authored cylinder's box, which for a plate def equals
+       its planform: no discount, i.e. the honest fallback is the old over-charge
+       rather than an invisible zero-area plate. */
+    double meshEdgeArea() const {
+        double hx, hy;
+        meshHalfSpan(hx, hy);
+        return (2.0 * std::min(hx, hy)) * (2.0 * meshHalfLength());
+    }
+
     /* Attachment nodes. Empty -> load_parts_catalog synthesizes them from the
        size above. */
     std::vector<Node> nodes;
@@ -327,12 +350,17 @@ struct PartDef {
          its MESH throws at the flow, so its cd is a blunt-body coefficient:
          capsule 0.35, tank 1.0, engine 0.9.
          A SURFACE (lift_area or control_area > 0) is charged on the PLANFORM it
-         declares, so its cd is read at the surface's own incidence: drag_forward
-         is then the PROFILE cd -- 0.03 on every shipped wing and fin, the flat-
-         plate value -- and drag_side 1.0 is what it pays when the flow comes over
-         its edge and the plate is all there is. Authoring a blunt anchor (0.2) on
-         a surface made it pay a plate's worth of shape drag on top of the induced
-         drag its lift already bought.
+         declares, and drag.h::surfaceFormCdA splits how that planform meets the
+         flow: chordwise it pays its PROFILE cd (drag_forward = 0.03 on every
+         shipped wing and fin -- a faceted section's profile cd; a smooth one is
+         0.006-0.013, and #557's yardstick pass is where that gets settled), and
+         out of its plane it pays the planform as a flat plate at drag_side = 1.0.
+         Flow along its SPAN pays the plate's EDGE instead (thickness x chord, off
+         the mesh box -- PartDef::meshEdgeArea), which is #559: keyed on the chord
+         axis alone, #455 charged the whole planform for that too, so a wing in
+         sideslip paid 8 m2 of plate for 0.1 m of aluminium. Authoring a blunt
+         anchor (0.2) chordwise instead of a profile cd makes a surface pay a
+         plate's worth of shape drag on top of the induced drag its lift bought.
        `drag` stays the fallback for the three anchors on both kinds. Chute Cd·A is
        its own term and reads none of these. */
     double drag;          // the part's drag COEFFICIENT (dimensionless)

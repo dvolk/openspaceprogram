@@ -556,16 +556,29 @@ void tick(Game &g) {
                    the same CdA units as Chute= and Induced=. Before this they paid it
                    inside A=, mixed into the hull's union at the hull's cd mean; now
                    A=/Cd= describe the body alone and this is the rest of the bill.
-                   Read the two together: a winged airframe's total form drag is
-                   Cd*A + Profile, and its Induced= is charged on top of that, once. */
-                printf(" Profile=%.2f m2", g.ship->lastSurfCdA);
+                   Read the two together: the airframe's total form drag is
+                   drag_cd*Cd*A + Profile -- A= and Cd= are the RAW hull product, and
+                   the multiplier is applied to it in the force, exactly as it is
+                   already inside Profile= -- with Induced= charged on top, once. */
+                if(g.ship->lastDragAlphaValid) {
+                    printf(" Profile=%.2f m2", g.ship->lastSurfCdA);
+                } else {
+                    /* No usable flow direction, so this would be a sum of bills
+                       against a jitter direction (a parked glider read 12.16 m2 this
+                       way with |F| = 0). Dash it like CpL/SM; the force is still
+                       applied, because below the flow floor it is nothing. */
+                    printf(" Profile=-");
+                }
                 /* #455: the lever of that combined form drag -- hull union plus
                    every surface's own bill, weighted by the CdA each pays. CpL above
                    is the HULL's answer and went narrower the moment the surfaces left
                    the union; this is the one that says whether a tail 3 m aft is
-                   holding the airframe straight. Signed like SM: + = cp ahead of the
-                   COM (an angle of attack drives the nose further in), - = behind it.
-                   Dashed with no usable flow, the same test as CpL. */
+                   holding the airframe straight. Signed like CpL: + = the form drag
+                   pushes AHEAD of the COM (an angle of attack drives the nose further
+                   in), - = behind it -- which is the OPPOSITE reading to SM just
+                   above, positive when the neutral point is BEHIND the CG. The
+                   SURFACE window spells both out. Dashed with no usable flow, the
+                   same test as CpL. */
                 if(g.ship->lastDragAlphaValid) {
                     printf(" FormCp=%+.2f m", g.ship->lastFormCpLever);
                 } else {

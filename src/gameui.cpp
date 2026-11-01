@@ -1991,8 +1991,12 @@ void drawUIReadouts(Game &g) {
            way round from SM because this one is measured AHEAD of the COM: negative =
            behind = restoring. */
         if(ship->lastDragAlphaValid) {
+            /* Exactly 0 is not a neutral verdict: it is what the pass leaves when
+               nothing charged form drag at all, so the lever has no weight to sit
+               on either side of. Say that rather than call it diverging. */
             ImGui::Text("FormCp: %+.2f m %s", ship->lastFormCpLever,
-                        ship->lastFormCpLever < 0.0 ? "(restoring)" : "(diverging)");
+                        ship->lastFormCpLever < 0.0 ? "(restoring)"
+                        : (ship->lastFormCpLever > 0.0 ? "(diverging)" : "(nothing charged)"));
         } else {
             ImGui::Text("FormCp: -");
         }

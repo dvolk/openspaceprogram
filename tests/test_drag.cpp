@@ -2576,6 +2576,70 @@ static void test_partCd() {
     CHECK_NEAR(partCd(fwd, side, bwd, -1.5), bwd, 1e-12, "c<-1 clamps to backward");
 }
 
+static void test_surfaceFormCdA() {
+    printf("== surfaceFormCdA: a plate's three ways to meet the flow (#559) ==\n");
+
+    // wing_r2h2 exactly: 8 m2 of planform, 0.1 x 2 m of edge, profile cd 0.03,
+    // blunt 1.0. These are the catalogue's numbers, so a drift in either shows up here.
+    const double S = 8.0, edge = 0.2, fwd = 0.03, side = 1.0, bwd = 0.03;
+
+    // Chordwise: the profile cd on the planform, and no plate term at all.
+    CHECK_NEAR(surfaceFormCdA(S, edge, fwd, side, bwd,  1.0, 0.0), S * fwd, 1e-12,
+               "chordwise -> profile cd x planform");
+    CHECK_NEAR(surfaceFormCdA(S, edge, fwd, side, bwd, -1.0, 0.0), S * bwd, 1e-12,
+               "base-in -> backward anchor on the planform");
+    // Out of the plate's plane: the planform IS the silhouette, so it pays as a plate.
+    CHECK_NEAR(surfaceFormCdA(S, edge, fwd, side, bwd, 0.0, 1.0), S * side, 1e-12,
+               "face-on -> planform as a flat plate");
+    // Along the span: only the edge faces the flow. This is #559 -- #455 billed the
+    // planform here too, keyed on the chord axis alone, which made a horizontal wing
+    // in sideslip pay 8 m2 of plate for 0.1 m of aluminium (measured: 15.6 m2 of CdA
+    // for the 453 bed's two wings, whose real silhouette there is under 1 m2).
+    CHECK_NEAR(surfaceFormCdA(S, edge, fwd, side, bwd, 0.0, 0.0), edge * side, 1e-12,
+               "spanwise -> edge x cd_side");
+    CHECK_TRUE(surfaceFormCdA(S, edge, fwd, side, bwd, 0.0, 0.0) < S * side * 0.05,
+               "a wing in sideslip pays under 5% of its planform");
+
+    // The three weights are squared cosines of one unit flow against three
+    // orthonormal axes, so they sum to 1: with every cd equal and the edge the same
+    // size as the planform, EVERY direction bills the planform -- nothing lost, and
+    // nothing charged twice.
+    {
+        const double u = 1.0;
+        for(double c = -1.0; c <= 1.0 + 1e-9; c += 0.1) {
+            for(double n = 0.0; n * n <= 1.0 - c * c + 1e-9; n += 0.1) {
+                CHECK_NEAR(surfaceFormCdA(S, S, u, u, u, c, n), S, 1e-9,
+                           "unit cd everywhere -> planform, whatever the direction");
+            }
+        }
+    }
+
+    // 45 deg of incidence in the chord/normal plane (no sideslip): half profile,
+    // half plate -- the same sin^2 shape the body law uses, now on the right area.
+    {
+        const double r = 1.0 / std::sqrt(2.0);
+        CHECK_NEAR(surfaceFormCdA(S, edge, fwd, side, bwd, r, r),
+                   S * (0.5 * fwd + 0.5 * side), 1e-12,
+                   "45 deg incidence -> .5 profile + .5 plate");
+    }
+
+    // Degenerate inputs: no planform -> nothing; no edge (a mesh-less def) -> the
+    // spanwise share is simply not charged rather than an invented area.
+    CHECK_NEAR(surfaceFormCdA(0.0, edge, fwd, side, bwd, 0.0, 0.0), 0.0, 0.0,
+               "no planform -> 0");
+    CHECK_NEAR(surfaceFormCdA(S, 0.0, fwd, side, bwd, 0.0, 0.0), 0.0, 0.0,
+               "no edge area -> spanwise pays nothing");
+    CHECK_NEAR(surfaceFormCdA(S, -1.0, fwd, side, bwd, 0.0, 0.0), 0.0, 0.0,
+               "a negative edge is not a charge");
+    // Out-of-range cosines clamp (a non-unit axis): the spanwise weight never goes
+    // negative to make up for an over-unity pair, and nothing above 1 gets charged.
+    CHECK_NEAR(surfaceFormCdA(S, edge, fwd, side, bwd, 1.5, 0.0), S * fwd, 1e-12,
+               "c>1 clamps to chordwise");
+    CHECK_NEAR(surfaceFormCdA(S, edge, fwd, side, bwd, 0.8, 0.7),
+               S * (0.64 * fwd + 0.49 * side), 1e-12,
+               "c^2+n^2 > 1 -> no negative spanwise term");
+}
+
 int main() {
     test_density();
     printf("\n");
@@ -2618,6 +2682,8 @@ int main() {
     test_inducedCd();
     printf("\n");
     test_partCd();
+    printf("\n");
+    test_surfaceFormCdA();
     printf("\n");
     test_controlForce();
     printf("\n");
