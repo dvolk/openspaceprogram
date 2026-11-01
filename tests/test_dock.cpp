@@ -14,6 +14,10 @@
 //     which is what undock splits back apart.
 //   - TOPOLOGY: the absorbed ship's root now hangs off the survivor's port;
 //     the part list is the union.
+//   - STAGE COUNTERS: finalize()'s scan over the part list counts EVERY part's stage
+//     label, the root's included (#519). It lands in this file because it needs the
+//     body-backed ships (finalize() ends in rebuildCompound), which test_staging.cpp
+//     deliberately does not have.
 //   - ROUND-TRIP: absorbShip then extractSubtreeAsShip(seam.root) restores
 //     BOTH ships' parts to their original world poses -- the split is the
 //     exact inverse of the merge on geometry. This is the invariant the
@@ -94,7 +98,8 @@ static size_t partIndex(Vehicle *v, Part *p) {
    authored pose). `port` marks a docking port. Parent/local pose are set by
    setRoot/attachDown, not here. */
 static Part *mkPart(Ship &s, const char *name, double mass,
-                    double hx, double hy, double hz, bool port) {
+                    double hx, double hy, double hz, bool port,
+                    bool decoupler = false) {
     Body *b = new Body;
     // mesh/shader/texture default to null (no GL in a headless test)
     b->btBody = nullptr;                 // a part is not simulated on its own
@@ -108,6 +113,7 @@ static Part *mkPart(Ship &s, const char *name, double mass,
     d.radius       = (float)hx;
     d.height       = (float)(2.0 * hz);
     d.docking_port = port;
+    d.decoupler    = decoupler;
     d.synthesizeNodes();   // hand-built def: give it the axial stack nodes
                            // attachDown mates (a catalog part gets these from
                            // load_parts_catalog)
@@ -135,6 +141,86 @@ static glm::dvec3 worldPos(Vehicle *owner, Part *p) {
     glm::dvec3 pos; glm::dmat3 rot;
     owner->partWorldPose(p, pos, rot);
     return pos;
+}
+
+/* --- the stage counters finalize() computes (#519) -------------------------
+
+   finalize() scans every part to find the highest and lowest stage labels, and the
+   high end used to be SEEDED AT 1 while the scan started at index 1: the root part's
+   own label was never compared, so a ship whose root carries the top label never had
+   that label counted. Here that means droppedPartsAtStage(top) drops nothing, because
+   the counter never reaches it -- in flight the same split shows up as a part that is
+   live from the first frame (getThrust skips only `stage < as`, and the counter only
+   falls), a decoupler and chute that never fire (both test `stage == stage`), and an
+   HUD `Stage: x / y` that disagrees with the part popup's own number.
+
+   It lives here rather than in test_staging.cpp because finalize() ends in
+   rebuildCompound(), which needs a real collision shape per part -- test_staging.cpp
+   builds ships with body = nullptr on purpose, and segfaults on this path (measured).
+   Reachability from that file is one reason extractSubtreeAsShip (vehicle.cpp:3793)
+   calls finalize() on its new ship, which is why it needs the shapes too.
+
+   The fixture is deliberately lopsided: the TOP label belongs to the root part ALONE,
+   because that is the only arrangement the old scan could miss (it started at index 1).
+   A first draft of this test gave the root and its decoupler the same label and stayed
+   green with the bug reinstalled -- mutation-checked, as usual. */
+static void test_the_root_parts_stage_is_counted() {
+    printf("== finalize(): every part's stage label is counted (#519) ==\n");
+    Ship s; s.v = new Vehicle; s.v->name = "toplabel";
+    Part *caps = mkPart(s, "capsuleTop", 800.0, 1.0, 1.0, 1.0, false);
+    Part *dec  = mkPart(s, "dec3",        50.0, 1.0, 1.0, kPortHz, false, true);
+    Part *tank = mkPart(s, "tank2",     1000.0, 1.0, 1.0, kTankHz, false);
+    Part *eng  = mkPart(s, "engine1",   500.0, 1.0, 1.0, 1.0, false);
+    s.v->setRoot(caps);
+    s.v->attachDown(dec);
+    s.v->attachDown(tank);
+    s.v->attachDown(eng);
+    // Ladder 4 / 3 / 2 / 1, top label on the ROOT alone -- what the VAB stage box
+    // produces when the pilot selects the command pod and types a number.
+    caps->stage = 4;  dec->stage = 3;  tank->stage = 2;  eng->stage = 1;
+    s.v->init();
+
+    CHECK_TRUE(s.v->numStages() == 4, "the root's label is the top of the counter (#519)");
+    CHECK_TRUE(s.v->activeStage() == 4, "the counter starts on the highest label, the root's");
+    CHECK_TRUE(s.v->stagedDecouplers(s.v->activeStage()).empty(),
+               "the pad lights no decoupler: the top label is the root's own");
+
+    // The flight consequence, in order. With the root's label uncounted the counter
+    // started at 3, so this same press -- the player's FIRST -- landed on the
+    // decoupler's label, and the capsule's own stage was never reachable at all.
+    s.v->advanceStage();
+    CHECK_TRUE(s.v->activeStage() == 3, "one press steps down from the root's label");
+    const std::vector<Part *> lit = s.v->stagedDecouplers(3);
+    CHECK_TRUE(lit.size() == 1 && lit[0]->def->name == std::string("dec3"),
+               "and the next press is the one that reaches the decoupler");
+    std::set<std::string> gone;
+    const std::vector<Part *> d3 = s.v->droppedPartsAtStage(3);
+    for(size_t i = 0; i < d3.size(); i++) { gone.insert(d3[i]->def->name); }
+    CHECK_TRUE(gone.size() == 3 && gone.count("dec3") && gone.count("tank2")
+               && gone.count("engine1"),
+               "the label the counter reaches is the one that separates");
+    CHECK_TRUE(s.v->droppedPartsAtStage(2).empty(),
+               "one label down, the same decoupler does not fire twice");
+
+    // And it has to reach the bottom without going past it: minStage_ is only visible
+    // through this, and the bug could leave minStage_ ABOVE activeStage_.
+    s.v->advanceStage();
+    CHECK_TRUE(s.v->activeStage() == 2, "down to the tank's label");
+    s.v->advanceStage();
+    CHECK_TRUE(s.v->activeStage() == 1, "down to the lowest label");
+    s.v->advanceStage();
+    CHECK_TRUE(s.v->activeStage() == 1, "the counter stops at minStage_");
+    destroyShip(s.v);
+
+    // One part, labelled above 1: it IS the ship, so it is the whole count.
+    Ship solo; solo.v = new Vehicle; solo.v->name = "solo";
+    Part *only = mkPart(solo, "solo", 500.0, 1.0, 1.0, 1.0, false);
+    solo.v->setRoot(only);
+    only->stage = 7;
+    solo.v->init();
+    CHECK_TRUE(solo.v->numStages() == 7 && solo.v->activeStage() == 7,
+               "a one-part ship is staged to its own label, whatever it is");
+    destroyShip(solo.v);
 }
 
 /* --- absorb: rebase exactness + seam + topology -------------------------- */
@@ -739,6 +825,7 @@ int main() {
     test_roundtrip();
     test_uid();
     test_seam_staging();
+    test_the_root_parts_stage_is_counted();
     test_seam_nested_dock();
     test_seam_kept_across_stage();
     test_experiments_ride_parts();

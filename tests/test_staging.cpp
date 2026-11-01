@@ -11,7 +11,11 @@
 // droppedPartsAtStage is pure graph logic over Part::parent, Part::stage and
 // PartDef::decoupler. It reads no Bullet state, so the ships here are built
 // with body = nullptr and nothing is registered in a physics world; the
-// destructor is kept off RemoveBody with onRails = true (see destroyShip).
+// destructor is kept off RemoveBody with onRails = true (see destroyShip). Nothing
+// here calls Vehicle::finalize() either: it ends in rebuildCompound(), which wants a
+// collision shape per part. So the stage COUNTERS finalize() computes (highest and
+// lowest label, activeStage, advanceStage) are pinned in test_dock.cpp, where the ships
+// do have bodies (#519).
 //
 // The topology is Part::parent, the part tree. It used to be derived from
 // Vehicle::constraintLinks (the weld handles); it is now the authoritative

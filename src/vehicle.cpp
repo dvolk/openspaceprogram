@@ -1653,8 +1653,17 @@ void Vehicle::finalize() {
     if(parts.empty()) { return; }
     if(controller == nullptr) { controller = parts[0]; }
     /* totalStages_ = highest stage, minStage_ = lowest; activeStage_ starts at the
-       HIGHEST, so stage 1 fires last. */
-    totalStages_ = 1;
+       HIGHEST, so stage 1 fires last. Both ends seed from parts[0] and the scan covers
+       every part: seeding the high end at 1 (#519) skipped the ROOT part's own label --
+       the one part every ship has -- so a ship whose root carries the top label never
+       had that label counted. The part staged itself live from the first frame
+       (getThrust only skips `stage < as`, and the counter only falls), its decoupler and
+       chute never fired (both test `stage == stage`), the HUD's `Stage: x / y` under-read
+       the part popup's own number, and minStage_ could end up above activeStage_. No
+       clamp to 1 is needed: stage is 1-based at every boundary that writes one -- the
+       ship loader (shipdef.cpp:1060), the save (refuseSavedStage, save.cpp:673) and the
+       VAB's stage box (gameui.cpp:4780). */
+    totalStages_ = parts[0]->stage;
     int lowest = parts[0]->stage;
     for(size_t i = 1; i < parts.size(); i++) {
         if(parts[i]->stage > totalStages_) { totalStages_ = parts[i]->stage; }
