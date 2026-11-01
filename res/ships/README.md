@@ -101,3 +101,28 @@ in one go, and a half-done re-baseline is worse than none. The cases that need i
 
 Do them together, off the design point, and add one new case that checks L/D,
 cruise speed and stall margin directly so the incident chase stops.
+
+## Two behaviour findings from the full attempt (they are NOT re-pins)
+
+Landing the recipe and re-pinning revealed that two of the golden cases are pinning
+behaviour the redesign changes, so they need a design decision rather than a new
+number:
+
+1. **The jet departs in yaw.** With the lighter (2428 kg) fuselage and the wings at
+   z = -1.5, a held D key takes Beta to 118 deg and the airframe through a full
+   tumble (AoA 3 -> 152 -> -159). The old barrel hull at 2992 kg swung to 80 deg and
+   stayed. The cause is what it looks like: the yaw weathervane is now a slim pod
+   plus the same fins on a lighter airframe, and full rudder at 176 m/s out-pushes
+   it. Fix by fin sizing (span/area) or by reducing the rudder's travel -- a design
+   iteration, not a pin.
+2. **The glider's pad case (flight/80) has lost its premise.** It pinned a glider
+   that could not trim ("no pitch surface at all"): the AoA swept to 57 deg and the
+   wheels lost. The rebuilt glider HAS a trimmed tailplane, so the same bed sweeps
+   0..7.6 deg with |tau| under 31 Nm. Either delete the case or rewrite it around
+   what it now shows; it is not a band to widen.
+
+The skiff is the one that works end to end and can serve as the template: 626 kg,
+76 m/s, AoA 3.0-3.3, SM +0.39, L/D 8.5, and a rudder kick that swings +/-6 deg and
+settles. Landing it alone would be a coherent next step: the catalogue changes are
+what the jet and glider share, so the skiff's cases and the stability pins go with
+it, and the other two follow once their handling is designed.
