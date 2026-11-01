@@ -1339,6 +1339,25 @@
       "drag_backward": 0.01
     },
     {
+      "name": "aileron_r0.8h0.7",
+      "type": "aileron",
+      "display_name": "Aileron (1.6m)",
+      "mesh": "meshes/fin_r0.8h0.7.obj",
+      "texture": "textures/aileron.png",
+      "mass": 3.36,
+      "radius": 0.8,
+      "height": 0.7,
+      "control_area": 0.56,
+      "control_axis": "roll",
+      "cl_control": 6.0,
+      "max_deflection": 0.35,
+      "stall_angle": 0.26,
+      "drag": 0.1,
+      "drag_forward": 0.01,
+      "drag_side": 1.0,
+      "drag_backward": 0.01
+    },
+    {
       "name": "chute",
       "type": "chute",
       "display_name": "Parachute (2m)",

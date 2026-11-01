@@ -90,21 +90,75 @@
       "stage": 1
     },
     {
-      "part": "aileron",
+      "part": "aileron_r0.8h0.7",
       "id": "ail_l",
-      "parent": "pod",
+      "parent": "wing_l",
       "attach": "surface",
-      "angle": 0,
-      "z": 0.55,
+      "childNode": "srf",
+      "point": [
+        1.8,
+        0.02,
+        -0.75
+      ],
+      "normal": [
+        0,
+        1,
+        0
+      ],
       "stage": 1
     },
     {
-      "part": "aileron",
+      "part": "aileron_r0.8h0.7",
       "id": "ail_r",
-      "parent": "pod",
+      "parent": "wing_r",
       "attach": "surface",
-      "angle": 180,
-      "z": 0.55,
+      "childNode": "srf",
+      "point": [
+        -1.8,
+        0.02,
+        -0.75
+      ],
+      "normal": [
+        0,
+        1,
+        0
+      ],
+      "stage": 1
+    },
+    {
+      "part": "aileron_r0.8h0.7",
+      "id": "ail_l2",
+      "parent": "wing_l",
+      "attach": "surface",
+      "childNode": "srf",
+      "point": [
+        0.9,
+        0.02,
+        -0.75
+      ],
+      "normal": [
+        0,
+        1,
+        0
+      ],
+      "stage": 1
+    },
+    {
+      "part": "aileron_r0.8h0.7",
+      "id": "ail_r2",
+      "parent": "wing_r",
+      "attach": "surface",
+      "childNode": "srf",
+      "point": [
+        -0.9,
+        0.02,
+        -0.75
+      ],
+      "normal": [
+        0,
+        1,
+        0
+      ],
       "stage": 1
     }
   ]

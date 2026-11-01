@@ -260,6 +260,7 @@ PARTS = [
     ("elevator",         "elevator",       "meshes/fin_r1h2.obj",                 "textures/elevator.png"),
     ("elevator_r0.8h0.7","elevator",       "meshes/fin_r0.8h0.7.obj",             "textures/elevator.png"),
     ("aileron",          "aileron",        "meshes/fin_r1h2.obj",                 "textures/aileron.png"),
+    ("aileron_r0.8h0.7", "aileron",        "meshes/fin_r0.8h0.7.obj",            "textures/aileron.png"),
     # the parachute rides the nose-cap hull; the canopy is an overlay mesh
     ("chute",            "chute",          "meshes/nose_cap.obj",                 "textures/nose_cap.png"),
     ("fuel_link",        "fuel_link",      None,                           None),
