@@ -491,12 +491,41 @@ public:
        Engines within a hair of COM height have no useful pitch/yaw lever
        and are excluded. */
     void tvcAuthority(double &tvcMax, double &heffMag) const;
+    /* WHAT CAN TURN THIS SHIP RIGHT NOW (#425). One answer to "how hard, and
+       about which axis", for every consumer: the slew law, the kill-rot law, the
+       [slew] trace, and later the RCS and aero rows. Before this each caller
+       re-derived the budget and none of them asked about the axis.
+         wheelTorque: N m, and it is ISOTROPIC -- a wheel levers any axis, so this
+           number is the whole story about the stack axis. 0 with no wheel fitted
+           or no EC power (the wheels are electric).
+         tvcTorque:   N m, but it is a DISK in the plane perpendicular to the
+           mixer's stack axis, not a ball: see attitudeTorqueAbout.
+         heffMag:     N m per rad of the SHARED lateral deflection, Sum(T_i*|h_i|),
+           which is what turns a torque into gimbal angles (gimbal.h tvcSplit).
+       TVC scales with throttle because it is read off the ARMED thrust, so this
+       has to be asked per substep, after the engines have been armed. */
+    struct AttitudeAuthority {
+        double wheelTorque = 0.0;
+        double tvcTorque = 0.0;
+        double heffMag = 0.0;
+    };
+    AttitudeAuthority attitudeAuthority();
+    /* N m of that authority the actuators can bring to bear ABOUT `axis` (any
+       length; it is the direction that counts). Wheels contribute their full
+       rating to any axis; TVC contributes tvcTorque * sin(angle between the axis
+       and the stack axis), because a lateral nozzle deflection levers only
+       torque perpendicular to the stack. So the pair is NOT a single number:
+       about the stack axis (roll) a ship has its wheels and nothing else.
+       gimbal.h tvcSplit already routes torque that way -- it drops the stack-axis
+       component when there are no wheels -- so this is the same physics stated
+       once, on the side that decides how fast the law may aim to go. */
+    double attitudeTorqueAbout(const AttitudeAuthority &auth,
+                               const glm::dvec3 &axis) const;
     /* Send one commanded attitude torque to the actuators: roll about the
-       stack axis is wheels-only, transverse goes to TVC first up to tvcMax,
+       stack axis is wheels-only, transverse goes to TVC first up to tvcTorque,
        the remainder to the wheels (gimbal.h tvcSplit). Stashes the TVC half
        in tvcSlewLat_ for applyThrustForce this same substep. */
-    void actuateAttitude(glm::dvec3 torque, double wheelMax, double tvcMax,
-                         double heffMag);
+    void actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &auth);
     glm::dvec3 lastThrustForce{};  // debug: total thrust force applied last substep
     /* The Autopilot-window mode: persistent, unlike `slew`. */
     SlewMode slewRequest = SlewNone;

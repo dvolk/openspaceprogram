@@ -3407,12 +3407,12 @@ void Vehicle::slew_log(double time) {
     const double w_third = glm::dot(w, thirdAxis);
     const glm::dmat3 I = getInertia();
     const double Ieff = glm::dot(axis, I * axis);
-    /* Log the same authority budget the law actually has (wheels + TVC), or a
-       wheel-less ship's trace would read alpha=0 while it flies on its engines. */
-    const double wheelMax = (firstWheel() != nullptr && powered_) ? maxTorque() : 0.0;
-    double tvcMax, heffMag;
-    tvcAuthority(tvcMax, heffMag);
-    const double alpha = (Ieff > 0.0) ? (wheelMax + tvcMax) / Ieff : 0.0;
+    /* Log the authority the law actually used, about the slew axis it is using
+       it on, or a wheel-less ship's trace would read alpha=0 while it flies on
+       its engines -- and an aligned rocket's roll axis would read the full TVC
+       budget while tvcSplit delivers none of it. */
+    const double alpha = (Ieff > 0.0)
+        ? attitudeTorqueAbout(attitudeAuthority(), axis) / Ieff : 0.0;
     const double w_des = (alpha > 0.0) ? std::sqrt(2.0 * alpha * E) : 0.0;
     /* The two directions at 6 dp, not 3: e2e pairs target= with --plane-log's
        n_orb, and a 3 dp component leaves ~3e-3 of dot-product slack -- the same
@@ -4295,6 +4295,37 @@ double Vehicle::maxTorque() {
     return t;
 }
 
+/* One actuator's contribution, and the ONLY two that exist today: see
+   Vehicle::attitudeAuthority for what the pair means and why it has to be asked
+   per substep. maxTorque() stays as the raw wheel rating because the manual stick
+   path bills exactly that (applyRotationForce) and the part window quotes it. */
+Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
+    AttitudeAuthority a;
+    /* Power gate: the wheels are electric -- no EC, no wheel torque (#418 says a
+       dead-ship trace used to read as uncontrolled when the engines were fine). */
+    if(firstWheel() != nullptr && powered_) { a.wheelTorque = maxTorque(); }
+    tvcAuthority(a.tvcTorque, a.heffMag);
+    return a;
+}
+
+double Vehicle::attitudeTorqueAbout(const AttitudeAuthority &a,
+                                    const glm::dvec3 &axis) const {
+    const double ax2 = glm::dot(axis, axis);
+    if(!(ax2 > 0.0)) { return 0.0; }   // a zero or NaN axis buys nothing
+    double b = 0.0;                    // how much of `axis` TVC can lever
+    const Part *ref = rootPart();
+    if(ref != nullptr) {
+        const glm::dvec3 z = partAxis(ref, 2);
+        const double along = glm::dot(axis, z);
+        const double perp2 = ax2 - along * along;
+        /* fmax instead of a branch: with a unit axis and a unit stack axis the
+           difference is pure rounding, and clamping keeps a near-stack axis at
+           "no TVC" rather than a sqrt of +/-1e-16. */
+        b = std::sqrt(std::fmax(0.0, perp2 / ax2));
+    }
+    return a.wheelTorque + a.tvcTorque * b;
+}
+
 /* TVC attitude authority from the ARMED gimballed engines, so it scales
    with throttle (and falls to zero when the engines quit mid-slew). Small
    angle (gimbal_max ~ 5 deg): a deflection of |lat| rad off the stack axis
@@ -4354,16 +4385,16 @@ glm::dvec3 Vehicle::slewTargetDir() {
     return (slew == SlewRetrograde || slew == SlewAntiNormal) ? -dir : dir;
 }
 
-/* Route one commanded attitude torque through the available actuators.
-   wheelMax/tvcMax/heffMag come from the caller's authority budget (the
-   wheels' rating when live, the armed engines' TVC authority); tvcSplit
-   caps each actuator, so the delivered total never exceeds the budget --
-   the autopilot stays no stronger than maxed manual hardware (the
-   test_slew3d authority pin), whatever the law commanded. */
-void Vehicle::actuateAttitude(glm::dvec3 torque, double wheelMax, double tvcMax,
-                              double heffMag) {
+/* Route one commanded attitude torque through the available actuators. The
+   budget is the caller's AttitudeAuthority; tvcSplit caps each actuator, so the
+   delivered total never exceeds it -- the autopilot stays no stronger than
+   maxed manual hardware (the test_slew3d authority pin), whatever the law
+   commanded. Note the asymmetry this enforces and attitudeTorqueAbout states:
+   the stack-axis (roll) part of the command can only ever reach the wheels. */
+void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
     glm::dvec3 tauW, lat;
-    tvcSplit(torque, partAxis(rootPart(), 2), tvcMax, heffMag, wheelMax, tauW, lat);
+    tvcSplit(torque, partAxis(rootPart(), 2), a.tvcTorque, a.heffMag,
+             a.wheelTorque, tauW, lat);
     tvcSlewLat_ = lat;
     if(glm::length2(tauW) > 0.0) { ApplyTorque(hull, tauW); }
 }
@@ -4391,14 +4422,19 @@ void Vehicle::slewToward(glm::dvec3 dir, double h) {
     const glm::dmat3 I = getInertia();
     const double Ieff = glm::dot(axis, I * axis); /* kg m^2 about the slew axis */
     if(Ieff <= 0.0) { return; }
-    /* Authority budget this substep: wheels (when live) + TVC (when the
-       gimballed engines are armed), so the braking curve and the actuator
-       bound scale with throttle. Nothing available: hold position -- the law
-       does not pretend to slew (#401's lesson). */
-    const double wheelMax = (firstWheel() != nullptr && powered_) ? maxTorque() : 0.0;
-    double tvcMax, heffMag;
-    tvcAuthority(tvcMax, heffMag);
-    const double authMax = wheelMax + tvcMax;
+    /* Authority this substep, ABOUT THE AXIS THIS SLEW NEEDS: wheels (when live)
+       plus whatever TVC can lever that way, so the braking curve and the
+       actuator bound scale with throttle. Nothing available: hold position --
+       the law does not pretend to slew (#401's lesson).
+       The axis matters (#425): `axis` is perpendicular to the FACING part, which
+       is the wheel's nose when there is one and the stack axis when there is
+       not, so on an aligned rocket it is perpendicular to the stack axis and TVC
+       counts in full. Point the same actuators at a roll-axis error and TVC
+       contributes nothing -- which is not a new limit, it is the limit tvcSplit
+       has always applied when it dropped that component. Budgetting the full
+       sum there made the law aim at a rate the hardware then failed to reach. */
+    const AttitudeAuthority auth = attitudeAuthority();
+    const double authMax = attitudeTorqueAbout(auth, axis);
     if(authMax <= 0.0) { return; }
     const double alpha = authMax / Ieff; /* rad/s^2, actuator-limited */
     const double w_des = std::min(std::sqrt(2.0 * alpha * E), E / (2.0 * h));
@@ -4409,8 +4445,8 @@ void Vehicle::slewToward(glm::dvec3 dir, double h) {
     const glm::dvec3 w_transverse = w_now - facing * glm::dot(w_now, facing);
     glm::dvec3 dW = axis * w_des - w_transverse; /* desired change in rate */
     glm::dvec3 torque = I * dW / h;
-    /* authority bound: at most wheelMax + tvcMax N m, split between them */
-    actuateAttitude(torque, wheelMax, tvcMax, heffMag);
+    /* authority bound: at most authMax N m about this axis, split between them */
+    actuateAttitude(torque, auth);
 }
 
 void Vehicle::killRotStep(double h) {
@@ -4419,10 +4455,12 @@ void Vehicle::killRotStep(double h) {
     if(ref == nullptr) { return; }
     const glm::dvec3 w = partAngVel(ref);
     if(glm::length2(w) == 0.0) { return; } /* at rest: nothing to kill */
-    const double wheelMax = (firstWheel() != nullptr && powered_) ? maxTorque() : 0.0;
-    double tvcMax, heffMag;
-    tvcAuthority(tvcMax, heffMag);
-    if(wheelMax + tvcMax <= 0.0) { return; } /* no attitude authority to fight with */
+    /* Kill-rot commands I*(-w)/h, a direction it does not get to choose, so it
+       asks only "is there any authority at all" and lets the split decide how
+       much of the command survives about which axis (a wheel-less ship keeps no
+       roll, and the split drops that component instead of pretending). */
+    const AttitudeAuthority auth = attitudeAuthority();
+    if(auth.wheelTorque + auth.tvcTorque <= 0.0) { return; }  /* nothing to fight with */
     const glm::dmat3 I = getInertia();
     /* Full-tensor cancel, as in slewToward: tau = I * (-w) / h. Scaling each world axis
        by I[i][i] alone needs a world-aligned principal basis, else the under-cancel
@@ -4431,7 +4469,7 @@ void Vehicle::killRotStep(double h) {
     /* Bound + split: a wheel-less ship cannot kill its ROLL about the stack
        axis (a lateral deflection never levers that way), and the split drops
        exactly that component instead of pretending. */
-    actuateAttitude(torque, wheelMax, tvcMax, heffMag);
+    actuateAttitude(torque, auth);
 }
 
 glm::dvec3 Vehicle::GetPositionRelTo(const Part *part, Frame *relTo) {

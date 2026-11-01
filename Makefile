@@ -363,6 +363,11 @@ $(TESTDIR)/test_staging_dv: $(TESTDIR)/obj/test_staging_dv.o $(TESTDIR)/obj/stag
 $(TESTDIR)/test_dock: $(TESTDIR)/obj/test_dock.o $(TCOMMON_OBJS)
 	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
 
+# The attitude CAPABILITY model (#425 step B): attitudeAuthority() reads the hull's
+# COM, so it needs the real-Bullet TUs (init() without enterWorld, as in test_dock).
+$(TESTDIR)/test_authority: $(TESTDIR)/obj/test_authority.o $(TCOMMON_OBJS)
+	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+
 # Real load_system on res/systems/solar_system.json: the sanctioned
 # retrograde encodings (orbit via orb_incl > 90 deg, spin via axial_tilt > 90).
 $(TESTDIR)/test_retrograde: $(TESTDIR)/obj/test_retrograde.o $(TESTDIR)/obj/system.o $(TCOMMON_OBJS)
@@ -511,7 +516,7 @@ $(TESTDIR)/test_orient: $(TESTDIR)/obj/test_orient.o $(BULLET3_OBJS)
 	$(CXX) -o $@ $^ $(TLIBS)
 
 TESTS = test_frames test_spawn test_attitude test_slew3d test_gimbal test_rcs test_thrust test_fuel \
-        test_power test_staging test_staging_dv test_dock test_contain test_inertia test_inventory \
+        test_power test_staging test_staging_dv test_dock test_authority test_contain test_inertia test_inventory \
         test_suitdef \
         test_rotation test_shipload test_stability test_save test_crew test_roster test_calendar \
         test_flightlog test_science test_bodylimits \
