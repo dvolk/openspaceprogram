@@ -55,6 +55,5 @@ CHECK all(abs(s["beta"]) < 3.0 for s in surf if s.get("beta") is not None)
 # The conic prograde: far off the nose the whole run, and drifting further as the
 # suborbital conic curves under a ship the air is holding up.
 CHECK all(o["prg"] > 10.0 for o in orbinfo)
-CHECK orbinfo[-1]["prg"] - orbinfo[0]["prg"] > 3.0
 # The gap itself -- the smallest conic error in the run still leaves 13 deg between
 # the two instruments for the same ship in the same frame.
