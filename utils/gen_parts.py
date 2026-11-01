@@ -185,6 +185,7 @@ PARTS = [
     ("capsule_r2.25h4.5","capsule",        "meshes/capsule_r2.25h4.5.obj",        "textures/capsule.png"),
     ("fuselage_r0.4h4",  "fuselage",       "meshes/fuselage_r0.4h4.obj",          "textures/capsule.png"),
     ("fuselage_r0.5h3.5","fuselage",       "meshes/fuselage_r0.5h3.5.obj",        "textures/capsule.png"),
+    ("fuselage_r0.5h6",  "fuselage",       "meshes/fuselage_r0.5h6.obj",          "textures/capsule.png"),
     ("fuselage_r1h6",    "fuselage",       "meshes/fuselage_r1h6.obj",            "textures/capsule.png"),
     ("reaction_wheel",   "reaction_wheel", "meshes/reaction_wheel_r1h0.25.obj",   "textures/reaction_wheel.png"),
     ("reaction_wheel_r1.5h0.375",  "reaction_wheel", "meshes/reaction_wheel_r1.5h0.375.obj",  "textures/reaction_wheel.png"),
@@ -295,6 +296,7 @@ EXTRA_FIELDS = {
     "capsule_r2.25h4.5": {"crew_capacity": 6, "experiment_storage": "container"},
     "fuselage_r0.4h4":   {"crew_capacity": 1, "mass": 130.0},
     "fuselage_r0.5h3.5": {"crew_capacity": 2, "mass": 180.0},
+    "fuselage_r0.5h6":   {"crew_capacity": 2, "mass": 220.0},
     "fuselage_r1h6":     {"crew_capacity": 4, "mass": 520.0,
                           "experiment_storage": "container"},
     # kerbal: DRY mass (full-EVA-gear minus the 10 kg RCS hydrazine, a separate

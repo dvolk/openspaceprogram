@@ -19,7 +19,7 @@
       "parent": "pod",
       "attach": "surface",
       "angle": 0,
-      "z": -0.5,
+      "z": -1.0,
       "stage": 1
     },
     {
@@ -28,7 +28,7 @@
       "parent": "pod",
       "attach": "surface",
       "angle": 180,
-      "z": -0.5,
+      "z": -1.0,
       "stage": 1
     },
     {
@@ -112,12 +112,12 @@
       "attach": "surface",
       "childNode": "srf",
       "point": [
-        -1.2,
+        1.2,
         0.02,
         -0.75
       ],
       "normal": [
-        -1,
+        1,
         0,
         0
       ],

@@ -121,6 +121,24 @@
       "drag_backward": 0.2
     },
     {
+      "name": "fuselage_r0.5h6",
+      "type": "fuselage",
+      "display_name": "fuselage_r0.5h6 (1m)",
+      "mesh": "meshes/fuselage_r0.5h6.obj",
+      "texture": "textures/capsule.png",
+      "radius": 0.5,
+      "height": 6.0,
+      "capacity": {
+        "jetfuel": 164.93
+      },
+      "crew_capacity": 2,
+      "mass": 220.0,
+      "drag": 0.6,
+      "drag_forward": 0.1,
+      "drag_side": 0.9,
+      "drag_backward": 0.2
+    },
+    {
       "name": "fuselage_r1h6",
       "type": "fuselage",
       "display_name": "fuselage_r1h6 (2m)",
