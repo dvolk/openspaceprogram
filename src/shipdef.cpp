@@ -9,6 +9,7 @@
 #include <iterator>
 #include <limits>
 #include <map>
+#include <numbers>
 #include <stdexcept>
 
 #include <glm/gtc/quaternion.hpp>   // angleAxis / mat3_cast
@@ -400,6 +401,14 @@ PartsCatalog load_parts_catalog(const char *path) {
         d.gimbal_max = optNumber(pv, "gimbal_max", 0.0, ctx, "rad");
         if(d.gimbal_max < 0.0) {
             throw std::runtime_error(ctx + "\"gimbal_max\" must be >= 0 (rad)");
+        }
+        /* Past 180 deg the nozzle is pointing forward of the engine and sin() of
+           the limit goes NEGATIVE, which hands the attitude laws a negative
+           authority budget -- and `budget <= 0` is the "this ship cannot turn"
+           early-out, so live reaction wheels would go dead. Nothing useful is
+           authored out here, so refuse the number rather than fly it. */
+        if(d.gimbal_max > std::numbers::pi_v<double>) {
+            throw std::runtime_error(ctx + "\"gimbal_max\" must be <= pi (rad)");
         }
         d.gimbal_rate = optNumber(pv, "gimbal_rate", 0.0, ctx, "rad/s");
         if(d.gimbal_rate < 0.0) {

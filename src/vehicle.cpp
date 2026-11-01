@@ -2273,7 +2273,7 @@ void Vehicle::applyThrustForce(double h) {
             }
             if(tvcRef != nullptr) {
                 const double height = glm::dot(partPos(p) - com, shipZ);
-                // Same near-COM dead zone tvcAuthority budgets with: an
+                // Same near-COM dead zone attitudeAuthority() budgets with: an
                 // engine there has no useful lever, so no flip either.
                 if(height > 1e-6) { lat = -lat; }
             }
@@ -3390,7 +3390,15 @@ void Vehicle::slew_log(double time) {
         case SlewAntiNormal: mode = "anti-normal"; break;
         default:             mode = "slew"; break;
     }
-    if(glm::length2(target) < 0.5) { target = glm::dvec3(0.0); }
+    /* The SAME degeneracy test slewToward uses, not a looser one: at 0.5 this
+       dropped a target the law was busy steering toward, and normalizing what was
+       left (a zero vector) made E and axis NaN, so the row read alpha=0.000 next to
+       a ship actually slewing on its engines. */
+    if(glm::length2(target) < 1e-12) {
+        printf("[slew] t=%.3f mode=%s no-target\n", time, mode);
+        fflush(stdout);
+        return;
+    }
     target = glm::normalize(target);
     const double E = glm::acos(glm::clamp(glm::dot(facing, target), -1.0, 1.0));
     glm::dvec3 axis = glm::cross(facing, target);
@@ -3407,10 +3415,12 @@ void Vehicle::slew_log(double time) {
     const double w_third = glm::dot(w, thirdAxis);
     const glm::dmat3 I = getInertia();
     const double Ieff = glm::dot(axis, I * axis);
-    /* Log the authority the law actually used, about the slew axis it is using
-       it on, or a wheel-less ship's trace would read alpha=0 while it flies on
-       its engines -- and an aligned rocket's roll axis would read the full TVC
-       budget while tvcSplit delivers none of it. */
+    /* Re-derive the axis and the budget the law is using, and log both ABOUT THE
+       AXIS, or a wheel-less ship's trace would read alpha=0 while it flies on its
+       engines -- and a roll-axis error would read the full TVC budget while
+       tvcSplit delivers none of it. Note this trace only ever slews pitch and yaw
+       (the target directions are all transverse), so the roll corner it warns
+       about is not one it can reach. */
     const double alpha = (Ieff > 0.0)
         ? attitudeTorqueAbout(attitudeAuthority(), axis) / Ieff : 0.0;
     const double w_des = (alpha > 0.0) ? std::sqrt(2.0 * alpha * E) : 0.0;
@@ -4295,16 +4305,45 @@ double Vehicle::maxTorque() {
     return t;
 }
 
-/* One actuator's contribution, and the ONLY two that exist today: see
-   Vehicle::attitudeAuthority for what the pair means and why it has to be asked
-   per substep. maxTorque() stays as the raw wheel rating because the manual stick
-   path bills exactly that (applyRotationForce) and the part window quotes it. */
+/* WHAT CAN TURN THIS SHIP RIGHT NOW, in one answer: see AttitudeAuthority in
+   vehicle.h for the three rows and the axis, and why they must be read per substep.
+   There are exactly two attitude actuators in the game today, so this is the whole
+   model, not a layer over more. maxTorque() stays as the raw wheel rating because
+   the manual stick path bills exactly that (applyRotationForce); note the UI does
+   NOT quote maxTorque -- the part window prints def.torque per part and the Vessel
+   window prints GetWheelTorque(), the LARGEST wheel, while the law sums them. */
 Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
     AttitudeAuthority a;
+    const Part *ref = rootPart();
+    if(ref == nullptr) { return a; }   // no hull, no lever arm, no answer
+    /* The mixer's frame: applyThrustForce aims in it and tvcSplit splits about it,
+       so the budget and the actuator are stated in one axis by construction. */
+    a.stackAxis = partAxis(ref, 2);
     /* Power gate: the wheels are electric -- no EC, no wheel torque (#418 says a
-       dead-ship trace used to read as uncontrolled when the engines were fine). */
-    if(firstWheel() != nullptr && powered_) { a.wheelTorque = maxTorque(); }
-    tvcAuthority(a.tvcTorque, a.heffMag);
+       dead-ship trace used to read as uncontrolled when the engines were fine).
+       maxTorque() is the SUM and is 0 when no wheel is fitted, so no separate test. */
+    if(powered_) { a.wheelTorque = maxTorque(); }
+    /* TVC, read off the ARMED gimballed engines so it scales with throttle (and
+       falls to zero when the engines quit mid-slew). Small angle (gimbal_max ~ 5
+       deg): a deflection of |lat| rad off the stack axis pushes a lateral force
+       T*|lat| at lever |h|, so
+         heffMag = Sum(T_i*|h_i|)  N m / rad,  tvcTorque = heffMag*sin(gimbal_max).
+       The lever is COM height ALONG THE STACK AXIS: an engine at COM height has no
+       useful pitch/yaw lever, exactly as the mixer's sign flip is moot for it. */
+    const glm::dvec3 com = comPos();
+    for(const Part *p : parts) {
+        const double armed = p->armedThrust;
+        if(armed == 0.0 || p->def->gimbal_max <= 0.0) { continue; }
+        const double lever = std::fabs(glm::dot(partPos(p) - com, a.stackAxis));
+        if(lever < 1e-6) { continue; }
+        a.heffMag   += armed * lever;
+        a.tvcTorque += armed * std::sin(p->def->gimbal_max) * lever;
+    }
+    /* A ship file may not ask for a nozzle that swings past 180 deg (the loader now
+       refuses it), but a negative budget must never reach the laws: `authMax <= 0`
+       is the "this ship cannot turn, do not pretend" early-out, and a negative TVC
+       row could cancel a live wheel into it. */
+    if(a.tvcTorque < 0.0) { a.tvcTorque = 0.0; }
     return a;
 }
 
@@ -4312,43 +4351,14 @@ double Vehicle::attitudeTorqueAbout(const AttitudeAuthority &a,
                                     const glm::dvec3 &axis) const {
     const double ax2 = glm::dot(axis, axis);
     if(!(ax2 > 0.0)) { return 0.0; }   // a zero or NaN axis buys nothing
-    double b = 0.0;                    // how much of `axis` TVC can lever
-    const Part *ref = rootPart();
-    if(ref != nullptr) {
-        const glm::dvec3 z = partAxis(ref, 2);
-        const double along = glm::dot(axis, z);
-        const double perp2 = ax2 - along * along;
-        /* fmax instead of a branch: with a unit axis and a unit stack axis the
-           difference is pure rounding, and clamping keeps a near-stack axis at
-           "no TVC" rather than a sqrt of +/-1e-16. */
-        b = std::sqrt(std::fmax(0.0, perp2 / ax2));
-    }
+    /* sin of the angle between `axis` and the stack axis = |z x axis| / |axis| for
+       the unit z attitudeAuthority() stores. Clamped at 1 because a near-perpendicular
+       axis can round a hair over |axis|. The `> 0.0` test is also the NaN guard:
+       std::fmin would hand a NaN stack axis the FULL 1.0, i.e. grant TVC about every
+       axis at once, whereas this buys nothing. (A NaN `axis` is caught above.) */
+    const double sinToStack = glm::length(glm::cross(a.stackAxis, axis)) / std::sqrt(ax2);
+    const double b = (sinToStack > 0.0) ? std::fmin(1.0, sinToStack) : 0.0;
     return a.wheelTorque + a.tvcTorque * b;
-}
-
-/* TVC attitude authority from the ARMED gimballed engines, so it scales
-   with throttle (and falls to zero when the engines quit mid-slew). Small
-   angle (gimbal_max ~ 5 deg): a deflection of |lat| rad off the stack axis
-   pushes a lateral force T*|lat| at lever |h|, so
-     heffMag = Sum(T_i*|h_i|)   N m / rad,  tvcMax = heffMag*sin(gimbal_max).
-   The lever is the COM height along the MIXER's stack axis (the root part,
-   the frame applyThrustForce aims in); engines near COM height have no
-   useful pitch/yaw lever -- excluded, exactly as the mixer's sign flip is
-   moot for them. */
-void Vehicle::tvcAuthority(double &tvcMax, double &heffMag) const {
-    tvcMax = 0.0; heffMag = 0.0;
-    const Part *ref = rootPart();
-    if(ref == nullptr) { return; }
-    const glm::dvec3 com = comPos();
-    const glm::dvec3 shipZ = partAxis(ref, 2);
-    for(const Part *p : parts) {
-        const double armed = p->armedThrust;
-        if(armed == 0.0 || p->def->gimbal_max <= 0.0) { continue; }
-        const double lever = std::fabs(glm::dot(partPos(p) - com, shipZ));
-        if(lever < 1e-6) { continue; }
-        heffMag += armed * lever;
-        tvcMax  += armed * std::sin(p->def->gimbal_max) * lever;
-    }
 }
 
 glm::dmat3 Vehicle::getInertia() {
@@ -4387,14 +4397,14 @@ glm::dvec3 Vehicle::slewTargetDir() {
 
 /* Route one commanded attitude torque through the available actuators. The
    budget is the caller's AttitudeAuthority; tvcSplit caps each actuator, so the
-   delivered total never exceeds it -- the autopilot stays no stronger than
-   maxed manual hardware (the test_slew3d authority pin), whatever the law
-   commanded. Note the asymmetry this enforces and attitudeTorqueAbout states:
-   the stack-axis (roll) part of the command can only ever reach the wheels. */
+   delivered total never exceeds it whatever the law commanded. (tests/test_slew3d
+   pins that bound on the LAW, re-implemented in the test -- it cannot see this
+   function; tests/test_authority.cpp is what pins the budget itself.) Note the
+   asymmetry this enforces and attitudeTorqueAbout states: the stack-axis (roll)
+   part of the command can only ever reach the wheels. */
 void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
     glm::dvec3 tauW, lat;
-    tvcSplit(torque, partAxis(rootPart(), 2), a.tvcTorque, a.heffMag,
-             a.wheelTorque, tauW, lat);
+    tvcSplit(torque, a.stackAxis, a.tvcTorque, a.heffMag, a.wheelTorque, tauW, lat);
     tvcSlewLat_ = lat;
     if(glm::length2(tauW) > 0.0) { ApplyTorque(hull, tauW); }
 }

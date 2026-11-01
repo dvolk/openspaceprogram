@@ -485,29 +485,32 @@ public:
        tvcSplit) each substep, consumed by applyThrustForce's mixer. Cleared
        when nothing commands it, so a released autopilot recenters. */
     glm::dvec3 tvcSlewLat_{};
-    /* TVC attitude authority this substep, from the ARMED gimballed engines
-       (scales with throttle): max |torque| (N m) and the torque-per-rad
-       lever sum Sum(T_i*|h_i|) that maps torque to lateral deflection.
-       Engines within a hair of COM height have no useful pitch/yaw lever
-       and are excluded. */
-    void tvcAuthority(double &tvcMax, double &heffMag) const;
     /* WHAT CAN TURN THIS SHIP RIGHT NOW (#425). One answer to "how hard, and
        about which axis", for every consumer: the slew law, the kill-rot law, the
        [slew] trace, and later the RCS and aero rows. Before this each caller
-       re-derived the budget and none of them asked about the axis.
+       re-derived the budget and none of them asked about the axis. Build one by
+       asking attitudeAuthority(); the fields are a snapshot of the hull, not
+       something to author.
          wheelTorque: N m, and it is ISOTROPIC -- a wheel levers any axis, so this
            number is the whole story about the stack axis. 0 with no wheel fitted
-           or no EC power (the wheels are electric).
+           or no EC power (the wheels are electric). The SUM over wheels; the
+           Vessel window quotes the LARGEST (GetWheelTorque), which is not this.
          tvcTorque:   N m, but it is a DISK in the plane perpendicular to the
            mixer's stack axis, not a ball: see attitudeTorqueAbout.
          heffMag:     N m per rad of the SHARED lateral deflection, Sum(T_i*|h_i|),
-           which is what turns a torque into gimbal angles (gimbal.h tvcSplit).
-       TVC scales with throttle because it is read off the ARMED thrust, so this
-       has to be asked per substep, after the engines have been armed. */
+           which is what turns a torque to gimbal angles (gimbal.h tvcSplit).
+         stackAxis:   that disk's normal -- the root part's +Z, i.e. the frame
+           applyThrustForce and tvcSplit steer in. Both consumers read it here so
+           the budget and the mixer cannot end up talking about different axes.
+       TVC follows throttle because it is read off the ARMED thrust, which is a
+       per-TICK transient (ApplyThrust arms it, the tick clears it), so ask once per
+       substep: what actually moves between substeps is the power gate and the COM
+       these levers are measured from. */
     struct AttitudeAuthority {
         double wheelTorque = 0.0;
         double tvcTorque = 0.0;
         double heffMag = 0.0;
+        glm::dvec3 stackAxis = glm::dvec3(0.0);
     };
     AttitudeAuthority attitudeAuthority();
     /* N m of that authority the actuators can bring to bear ABOUT `axis` (any
@@ -515,8 +518,10 @@ public:
        rating to any axis; TVC contributes tvcTorque * sin(angle between the axis
        and the stack axis), because a lateral nozzle deflection levers only
        torque perpendicular to the stack. So the pair is NOT a single number:
-       about the stack axis (roll) a ship has its wheels and nothing else.
-       gimbal.h tvcSplit already routes torque that way -- it drops the stack-axis
+       about the stack axis (roll) the mixer delivers wheels only -- today. #419
+       would roll a cluster by circulating the gimbals, and when it does this model
+       gains that row rather than arguing with it.
+       gimbal.h tvcSplit already routes torque this way -- it drops the stack-axis
        component when there are no wheels -- so this is the same physics stated
        once, on the side that decides how fast the law may aim to go. */
     double attitudeTorqueAbout(const AttitudeAuthority &auth,

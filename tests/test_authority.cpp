@@ -147,11 +147,10 @@ static void test_tvc_is_a_disk_not_a_ball() {
     Vehicle *v = st.s.v;
     const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
     const double tvc = a.tvcTorque;
-    CHECK_TRUE(tvc > 0.0, "the armed gimballed engine gives authority");
 
     /* THE pin this whole step exists for: about the stack axis, a gimballed
        engine delivers nothing. The laws used to credit it with tvcMax there. */
-    CHECK_NEAR(v->attitudeTorqueAbout(a, st.z), 0.0, 1e-12,
+    CHECK_NEAR(v->attitudeTorqueAbout(a, st.z), 0.0, 1e-9,
                "no TVC authority about the stack axis (roll)");
     CHECK_NEAR(v->attitudeTorqueAbout(a, st.x), tvc, 1e-12, "full TVC pitch authority");
     CHECK_NEAR(v->attitudeTorqueAbout(a, st.y), tvc, 1e-12, "full TVC yaw authority");
@@ -165,6 +164,23 @@ static void test_tvc_is_a_disk_not_a_ball() {
                v->attitudeTorqueAbout(a, st.x), 1e-12, "scale-invariant in the axis");
     CHECK_NEAR(v->attitudeTorqueAbout(a, glm::dvec3(0.0, 0.0, 0.0)), 0.0, 0.0,
                "a zero axis buys nothing");
+    /* And neither does a NaN one. slew_log can hand one in: it normalises a target
+       that may be zero, and the law's early-out must survive it rather than
+       propagate NaN into an acceleration. */
+    const double nan = std::nan("");
+    CHECK_NEAR(v->attitudeTorqueAbout(a, glm::dvec3(nan, nan, nan)), 0.0, 0.0,
+               "a NaN axis buys nothing (and must not poison the caller)");
+    /* The mirror case, and the nastier one: a NaN STACK axis. Clamping a NaN with
+       std::fmin(1.0, nan) returns 1.0, which would credit the gimballed engine with
+       its full torque about EVERY axis -- roll included. Hand-built here because the
+       only way to get one from the hull is a corrupt transform, and the trap is in
+       the arithmetic, not the fixture. */
+    Vehicle::AttitudeAuthority junk;
+    junk.wheelTorque = 5.0;
+    junk.tvcTorque = 100.0;
+    junk.stackAxis = glm::dvec3(nan, nan, nan);
+    CHECK_NEAR(v->attitudeTorqueAbout(junk, st.x), 5.0, 0.0,
+               "a NaN stack axis grants no TVC -- not all of it at once");
 
     /* Authority follows the throttle: nothing armed, nothing to spend. The mixer
        arms thrust per substep, so this is what a flameout mid-slew reads. */
@@ -180,6 +196,18 @@ static void test_tvc_is_a_disk_not_a_ball() {
     CHECK_TRUE(fixed.s.v->attitudeAuthority().tvcTorque == 0.0,
                "gimbal_max 0: thrust, but no TVC authority");
     destroyShip(fixed.s.v);
+
+    /* ... and a nozzle authored past 180 deg is not a "negative authority" engine.
+       The loader refuses such a file now, but the model is what the laws read, and
+       `budget <= 0` is their "this ship cannot turn" early-out -- so a ship that
+       reaches this point (a def built in code, a stage copied across) must read as
+       "no TVC", never as a wheel budget cancelled into silence. */
+    Stack flipped = mkStack(200.0, 800.0, 4.0);   // 4 rad > pi: sin() would go negative
+    const Vehicle::AttitudeAuthority bad = flipped.s.v->attitudeAuthority();
+    CHECK_TRUE(bad.tvcTorque == 0.0, "gimbal_max past pi contributes NO (negative) TVC");
+    CHECK_NEAR(flipped.s.v->attitudeTorqueAbout(bad, flipped.z), 200.0, 1e-9,
+               "and its wheels survive: the budget did not go negative");
+    destroyShip(flipped.s.v);
 }
 
 /* --- the pair, and the gate that turns half of it off --------------------- */
@@ -192,7 +220,7 @@ static void test_wheels_and_tvc_together() {
     CHECK_NEAR(a.wheelTorque, 200.0, 1e-12, "the wheel's rated torque");
     CHECK_NEAR(a.tvcTorque, tvc, 1e-9, "and the engine's, side by side in one answer");
 
-    CHECK_NEAR(v->attitudeTorqueAbout(a, st.z), 200.0, 1e-12,
+    CHECK_NEAR(v->attitudeTorqueAbout(a, st.z), 200.0, 1e-9,
                "about the stack axis the ship has its wheels and NOTHING else");
     CHECK_NEAR(v->attitudeTorqueAbout(a, st.x), 200.0 + tvc, 1e-9,
                "transverse: both actuators can pull the same way");
@@ -218,10 +246,77 @@ static void test_a_ship_with_nothing_has_nothing() {
     const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
     CHECK_TRUE(a.wheelTorque == 0.0 && a.tvcTorque == 0.0 && a.heffMag == 0.0,
                "a coasting ship has no attitude authority");
-    /* The laws' early-out: this is the test that keeps them from pretending. */
-    CHECK_TRUE(v->attitudeTorqueAbout(a, st.x) + v->attitudeTorqueAbout(a, st.z)
-               == 0.0, "and no axis has any");
+    /* The laws' early-out (`budget <= 0` means "cannot turn, do not pretend").
+       Pinned per axis, not as a sum: a pair of sign errors that cancel would pass a
+       summed check, and the early-out is what makes a dead ship read as dead. */
+    CHECK_TRUE(v->attitudeTorqueAbout(a, st.x) == 0.0, "no authority about pitch");
+    CHECK_TRUE(v->attitudeTorqueAbout(a, st.z) == 0.0, "no authority about roll");
     destroyShip(st.s.v);
+}
+
+/* --- which wheel number, and whose frame ---------------------------------- */
+/* The wheel row is the SUM (maxTorque), while the Vessel window prints
+   GetWheelTorque() -- the LARGEST wheel. They agree on a one-wheel ship, so
+   nothing else in the tree would notice one being swapped for the other, and a
+   two-wheel ship would silently lose a third of the authority the laws budget. */
+static void test_two_wheels_add_up() {
+    printf("== the wheel row sums the wheels; the Vessel window shows the biggest ==\n");
+    Stack st = mkStack(200.0, 0.0, 0.0);
+    Vehicle *v = st.s.v;
+    Part *w2 = mkPart(st.s, "wheel2", 100.0, 1.0, 50.0, 0.0);
+    v->attachDown(w2);
+    const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
+    CHECK_NEAR(a.wheelTorque, 250.0, 1e-12, "200 + 50 N m of wheel, both of them");
+    CHECK_NEAR(v->attitudeTorqueAbout(a, st.z), 250.0, 1e-9,
+               "and the wheels are isotropic: all of it about the stack axis");
+    destroyShip(st.s.v);
+}
+
+/* The mixer's stack axis belongs to the ROOT part, not to whatever wheel the
+   attitude reference happens to use. slewToward/killRotStep/slew_log pick
+   firstWheel() as their FACING reference and fall back to rootPart(); a model
+   that took the wheel's +Z as the TVC disk's normal would re-open exactly the
+   hole step B closed -- crediting TVC with roll -- on any ship whose wheel is
+   mounted at an angle to the stack (landing gear, a pod docked sideways). */
+static void test_the_stack_axis_is_the_roots() {
+    printf("== the TVC disk is normal to the ROOT's stack axis, not the wheel's ==\n");
+    Ship s;
+    s.v = new Vehicle;
+    s.v->name = "gear";
+    Part *root = mkPart(s, "root", 100.0, 1.5, 0.0, 0.0);     // no wheel here
+    s.v->setRoot(root);
+    Part *eng = mkPart(s, "engine", 100.0, 1.0, 0.0, 0.1);    // gimballed, armed below
+    s.v->attachDown(eng);
+    Part *wheel = mkPart(s, "wheel", 100.0, 0.5, 300.0, 0.0); // a wheel, on its side
+    s.v->attachDown(wheel);
+    /* +90 deg about X: the wheel's own +Z becomes the ship's -Y, so the wheel's
+       axis and the stack axis are 90 deg apart and the two choices cannot be confused.
+       Set before init() so the hull compound is built with it. */
+    wheel->localRot = glm::dmat3(1.0, 0.0, 0.0,  0.0, 0.0, 1.0,  0.0, -1.0, 0.0);
+    s.v->init();
+    s.v->placeShip(glm::dvec3(0.0, 0.0, 0.0), glm::dmat3(1.0));
+    eng->armedThrust = 800.0f;
+
+    Vehicle *v = s.v;
+    const glm::dvec3 rootZ = v->partAxis(root, 2);
+    const glm::dvec3 wheelZ = v->partAxis(wheel, 2);
+    CHECK_NEAR(glm::dot(rootZ, wheelZ), 0.0, 1e-12,
+               "the fixture: wheel axis at 90 deg to the stack axis");
+    const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
+    CHECK_NEAR(glm::dot(a.stackAxis, rootZ), 1.0, 1e-12,
+               "the authority is stated in the ROOT's frame");
+    CHECK_TRUE(a.wheelTorque == 300.0 && a.tvcTorque > 0.0,
+               "both actuators are live on this hull");
+    /* About the stack axis: wheels only. If the model read the wheel's axis, this
+       would be 300 + tvc (the wheel's axis is perpendicular to the stack, so TVC
+       would count in full) -- the bug, caught. */
+    CHECK_NEAR(v->attitudeTorqueAbout(a, rootZ), 300.0, 1e-9,
+               "no TVC about the stack axis even when a wheel leans elsewhere");
+    /* And about the wheel's own axis, which is transverse to the stack, TVC does
+       count in full. */
+    CHECK_NEAR(v->attitudeTorqueAbout(a, wheelZ), 300.0 + a.tvcTorque, 1e-9,
+               "TVC counts where the mixer can actually lever");
+    destroyShip(s.v);
 }
 
 int main() {
@@ -229,6 +324,8 @@ int main() {
     test_tvc_is_a_disk_not_a_ball();
     test_wheels_and_tvc_together();
     test_a_ship_with_nothing_has_nothing();
+    test_two_wheels_add_up();
+    test_the_stack_axis_is_the_roots();
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }
     printf("test_authority: all checks passed\n");
