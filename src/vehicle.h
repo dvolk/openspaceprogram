@@ -503,12 +503,25 @@ public:
        drains TOGETHER (pro-rata). Cached; do not mutate the reference. */
     const std::vector<std::vector<int> > &fuelDrainLayers(Part *engine) const;
 
+    /* What a draw DID, as opposed to what it was asked for (#531). `drawn` is the kg
+       that actually left resources.current; a refused draw moved nothing, so it drew 0.
+       Bill `drawn`, never the request: a pro-rata layer can give up a hair less than it
+       was asked (measured: at most one ULP of the request -- tmp/n579_probe.cpp searches
+       for the shapes where it does), and #526 was exactly this habit -- charge the plan,
+       move the tanks separately -- at a scale where it produced delta-v of 1.8e6 and
+       then -nan. */
+    struct FuelDraw {
+        bool   ok;      // false: the layers cannot cover the request; nothing moved
+        double drawn;   // kg that left resources.current
+        explicit operator bool() const { return ok; }
+    };
+
     /* Draw `amt` kg of `type`, LAYER by LAYER and pro-rata -- first-tank-first
-       would torque the ship. False if the total cannot cover amt, so a caller
-       that sized a draw from availableResourceMass must clamp it: recomputing
-       it as desired * (avail / desired) can land an ULP above avail (#382).
-       Double like the store it draws from. */
-    bool consumeResourceMass(enum ResourceType type, double amt /* kg */, Part *engine);
+       would torque the ship. Refused (ok = false, nothing moved) if the total cannot cover
+       amt, so a caller that sized a draw from availableResourceMass must clamp it:
+       recomputing it as desired * (avail / desired) can land an ULP above avail
+       (#382). Double like the store it draws from. */
+    FuelDraw consumeResourceMass(enum ResourceType type, double amt /* kg */, Part *engine);
 
     /* Total kg of `type` available to `engine`, so a burn can be sized before
        draining. */

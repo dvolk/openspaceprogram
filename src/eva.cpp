@@ -147,7 +147,7 @@ void Kerbal::applyEva(double h) {
         if(glm::length2(rcsDir) > 0.0) {
             const double flow = kRcsFlow * h;
             // Suit tank first, then pocket inventory (not in this ship's fuel groups).
-            bool haveFuel = consumeResourceMass(ResourceType::Hydrazine, flow, parts[0]);
+            bool haveFuel = consumeResourceMass(ResourceType::Hydrazine, flow, parts[0]).ok;
             if(!haveFuel) {
                 haveFuel = inventoryDrain(parts[0], (int)ResourceType::Hydrazine, flow);
             }

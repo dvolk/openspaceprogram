@@ -1765,14 +1765,18 @@ const std::vector<std::vector<int> > &Vehicle::fuelDrainLayers(Part *engine) con
     return res.first->second;
 }
 
-bool Vehicle::consumeResourceMass(enum ResourceType type, double amt, Part *engine) {
+Vehicle::FuelDraw Vehicle::consumeResourceMass(enum ResourceType type, double amt, Part *engine) {
     const std::vector<std::vector<int> > &layers = fuelDrainLayers(engine);
-    if(layers.empty()) { return false; }
+    if(layers.empty()) { return {false, 0.0}; }
     // Drain-or-nothing: no partial burn if the layers cannot cover the request.
-    if(availableResourceMass(type, engine) < amt) { return false; }
-    /* Drain layer by layer (furthest first), pro-rata across the layer's tanks. */
-    double remaining = amt;
-    for(size_t li = 0; li < layers.size() && remaining > 0.0; li++) {
+    if(availableResourceMass(type, engine) < amt) { return {false, 0.0}; }
+    /* Drain layer by layer (furthest first), pro-rata across the layer's tanks.
+       Each layer is sized from what is still OWED (amt - drawn), not from a running
+       budget advanced by what was asked: the pro-rata shares can clamp at a tank's own
+       level and leave the layer a hair short, and that remainder belongs to the next
+       layer rather than being dropped on the floor (#531). */
+    double drawn = 0.0;
+    for(size_t li = 0; li < layers.size() && drawn < amt; li++) {
         double layerTotal = 0;
         for(size_t gi = 0; gi < layers[li].size(); gi++) {
             const int grp = layers[li][gi];
@@ -1784,7 +1788,8 @@ bool Vehicle::consumeResourceMass(enum ResourceType type, double amt, Part *engi
             }
         }
         if(layerTotal <= 0.0) { continue; }
-        const double take = remaining < layerTotal ? remaining : layerTotal;
+        const double owed = amt - drawn;
+        const double take = owed < layerTotal ? owed : layerTotal;
         for(size_t gi = 0; gi < layers[li].size(); gi++) {
             const int grp = layers[li][gi];
             for(Part *p : parts) {
@@ -1794,12 +1799,12 @@ bool Vehicle::consumeResourceMass(enum ResourceType type, double amt, Part *engi
                 double share = take * have / layerTotal;
                 if(share > have) { share = have; }
                 p->resources.current[(int)type] = have - share;
+                drawn += share;
                 /* Fuel leaves resources.current; the body mass is the DRY structure. */
             }
         }
-        remaining -= take;
     }
-    return true;
+    return {true, drawn};
 }
 
 double Vehicle::availableResourceMass(enum ResourceType type, Part *engine) const {
@@ -3072,9 +3077,10 @@ void Vehicle::applyRcsForce(double h) {
     if(fired <= 0.0) { return; }
     // flow this substep (kg) = thrust / (Isp * g0) * h
     const double flow = (fired / (kRcsIsp * 9.81)) * h;
-    if(!consumeResourceMass(ResourceType::Hydrazine, flow, firstRcsPart())) {
+    if(!consumeResourceMass(ResourceType::Hydrazine, flow, firstRcsPart()).ok) {
         return;  // no propellant, no force
     }
+    // RCS owns no delta-v line to bill, so how much left the tank is not needed here.
 
     /* Force AT THE POD (rel COM), not the COM: an off-center pod translates
        AND spins the ship. The allocator cancels spin where it can; the rest
@@ -3961,7 +3967,7 @@ void Vehicle::ApplyThrust(double step) {
                uses, so a thin-air jet is weak AND sips fuel (no air, no burn). */
             const double flow = p->jetFuelRate() * (double)thruster_util * step
                               * jetAirGate(rho, rho_sea); /* kg this tick */
-            if(consumeResourceMass(ResourceType::JetFuel, flow, p)) {
+            if(consumeResourceMass(ResourceType::JetFuel, flow, p).ok) {
                 p->armedThrust = (float)(T * thruster_util * exhaust_scale);
                 m_thrust = 1.0;
             }
@@ -3995,10 +4001,12 @@ void Vehicle::ApplyThrust(double step) {
                ordinary burn failed its own draw and tripped the assert below.
                Clamp to what the sizing loop measured. */
             if(amt > avail[r]) { amt = avail[r]; }
-            const bool drained = consumeResourceMass((ResourceType)r, amt, p);
-            assert(drained && "s must cover every draw; no build sets NDEBUG");
-            (void)drained;
-            dm += amt;
+            const FuelDraw drew = consumeResourceMass((ResourceType)r, amt, p);
+            assert(drew.ok && "s must cover every draw; no build sets NDEBUG");
+            /* Bill the tanks, not the plan (#531): dm goes to --dv-log's rocket
+               equation, so it has to be the mass the ship actually lost. `amt` is the
+               draw this tick sized, which a pro-rata layer can come an ULP under. */
+            dm += drew.drawn;
         }
         p->armedThrust = (float)(p->thrust() * thruster_util * exhaust_scale * s);
         m_thrust = 1.0;

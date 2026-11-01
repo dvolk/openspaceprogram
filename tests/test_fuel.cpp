@@ -21,7 +21,10 @@
 //   * a flow no single tank can cover still fires (the pool supplies it),
 //     and a flow above the total is refused with no partial drain;
 //   * the mass and delta-v figures keep the store's precision -- a draw under
-//     a float ULP at 200 t still moves them (#382).
+//     a float ULP at 200 t still moves them (#382);
+//   * a draw reports the kg that LEFT the tanks, not the kg it was asked for, and a
+//     layer that comes up short passes the remainder down instead of dropping it
+//     (#531).
 //
 // Links the REAL SetMass (src/physics.cpp, as test_thrust.cpp does), so the
 // part-mass shedding + Bullet inertia update is exercised too. No GL context
@@ -422,6 +425,73 @@ static void test_fuel_link_two_hop() {
    radial arms, both one hop from the central engine's group). They are ONE
    layer and drain TOGETHER, pro-rata -- NOT one arm to empty then the
    other: that serial drain split the mass distribution and spun the ship. */
+/* #531: a draw has to report the fuel that LEFT the tanks, not the fuel the caller asked
+   for. The awkward numbers come from tmp/n579_probe.cpp, a search for a pro-rata layer
+   whose clamped shares come out UNDER the request: drained as one layer, these seven
+   tanks give up 1.82e-12 kg less than a full draw of the layer asks (one ULP of it).
+   Tidy shapes like {7, 18} come out exact, so a hand-picked fixture would pin nothing. */
+static void test_draw_bills_what_left_the_tanks() {
+    printf("== A draw bills the kg that left the tanks, not the request (#531) ==\n");
+    const double awk[7] = {848.00999999999999, 947.53999999999996, 505.31999999999999,
+                           881.36000000000001, 647.63999999999999, 752.75,
+                           542.23000000000002};
+    const int H = (int)ResourceType::Hydrogen;
+
+    /* One layer, asked for its last drop: a share clamps at a tank's own level, so the
+       layer comes out a hair under the request. The report must be what left. */
+    Ship s; s.v = new Vehicle;
+    Part *eng = addPart(s, 0, 0, true);
+    std::vector<Part *> layer;
+    for(int i = 0; i < 7; i++) {
+        Part *t = addPart(s, awk[i], awk[i]);
+        link(s, eng, t);   // same fuel group as the engine, so ONE layer
+        layer.push_back(t);
+    }
+    initShip(s);
+    double before = 0.0;
+    double was[7];
+    for(int i = 0; i < 7; i++) { was[i] = layer[i]->resources.current[H]; before += was[i]; }
+    const double amt = s.v->availableResourceMass(ResourceType::Hydrogen, eng);
+    CHECK_NEAR(amt, before, 1e-9, "the engine sees every kg of its single layer");
+    const Vehicle::FuelDraw d = s.v->consumeResourceMass(ResourceType::Hydrogen, amt, eng);
+    CHECK_TRUE(d.ok, "a draw of exactly what the ship holds is not refused");
+    /* Sum the drops TANK BY TANK. Measured difference, not (sum before) - (sum after):
+       both totals are ~5125 kg, where one ULP is 9.1e-13 and the whole shortfall is
+       1.8e-12, so the totals come out EXACTLY EQUAL and this check would pass with the
+       bug in place (tmp/n579b_probe2.cpp runs both ways). */
+    double drop = 0.0;
+    for(int i = 0; i < 7; i++) { drop += was[i] - layer[i]->resources.current[H]; }
+    CHECK_TRUE(d.drawn < amt, "this shape does fall short of the request");
+    CHECK_TRUE(d.drawn == drop, "the report is the kg that left, not the kg asked for");
+    destroyShip(s);
+
+    /* The other half of the fix: that shortfall belongs to the NEXT layer and is not
+       dropped on the floor. Same awkward seven one hop out, one full tank at the
+       engine. Ask for the seven plus 50: the near tank gives up MORE than 50, and the
+       two drops add to exactly the ask. The exact sum holds because the near layer is a
+       single tank, so its share is owed * have / have = owed. */
+    Ship s2; s2.v = new Vehicle;
+    Part *eng2 = addPart(s2, 0, 0, true);
+    Part *near = addPart(s2, 100.0, 100.0);
+    link(s2, eng2, near);                       // the engine's own group (nearest layer)
+    std::vector<Part *> far;
+    for(int i = 0; i < 7; i++) { far.push_back(addPart(s2, awk[i], awk[i])); }
+    initShip(s2);
+    for(Part *t : far) { s2.v->fuelLinks.push_back(Vehicle::FuelLink{t, eng2}); }
+    double farBefore = 0.0;
+    double farWas[7];
+    for(int i = 0; i < 7; i++) { farWas[i] = far[i]->resources.current[H]; farBefore += farWas[i]; }
+    const double ask = farBefore + 50.0;
+    const Vehicle::FuelDraw e = s2.v->consumeResourceMass(ResourceType::Hydrogen, ask, eng2);
+    CHECK_TRUE(e.ok, "the two layers together cover the ask");
+    double farDrop = 0.0;
+    for(int i = 0; i < 7; i++) { farDrop += farWas[i] - far[i]->resources.current[H]; }
+    const double nearDrop = 100.0 - near->resources.current[H];
+    CHECK_TRUE(nearDrop > 50.0, "the near tank made up the awkward layer's shortfall");
+    CHECK_TRUE(farDrop + nearDrop == ask, "the two layers shed exactly what was asked");
+    destroyShip(s2);
+}
+
 static void test_fuel_link_star_symmetric() {
     printf("== Fuel link: symmetric star (same-distance arms drain together) ==\n");
     Ship s; s.v = new Vehicle;
@@ -945,6 +1015,8 @@ int main() {
     test_fuel_link_one_way();
     printf("\n");
     test_fuel_link_two_hop();
+    printf("\n");
+    test_draw_bills_what_left_the_tanks();
     printf("\n");
     test_fuel_link_star_symmetric();
     printf("\n");
