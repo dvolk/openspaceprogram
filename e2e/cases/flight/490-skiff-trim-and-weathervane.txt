@@ -1,5 +1,5 @@
 NAME skiff-trim-and-weathervane
-CLAIM A 552 kg airframe built to the #490 arithmetic -- 21.6 m2 of AR-3.33 wing 0.34 m behind the CG, a 4 m2 tailplane set to -5 deg incidence 2.0 m back, a fixed fin 2.2 m back -- holds +2.6 deg of angle of attack through throttle-off AND a 1 s rudder kick, weathervanes that kick from 8.6 deg back to zero, and keeps its form-drag centre 0.58-0.65 m behind the CG the whole time. Since #455 it does NOT quite hold 7000 m at 79 m/s any more: it flies 76-78 m/s and sinks 4.4 m/s at the same throttle schedule, because the wing's planform now pays 1.10 m2 of profile CdA that the old silhouette union hid inside its 0.75 m2.
+CLAIM A 552 kg airframe built to the #490 arithmetic -- 21.6 m2 of AR-3.33 wing 0.34 m behind the CG, a 4 m2 tailplane set to -5 deg incidence 2.0 m back, a fixed fin 2.2 m back -- holds +2.6 deg of angle of attack through throttle-off AND a 1 s rudder kick, weathervanes that kick from 8.7 deg back to zero, and keeps its form-drag centre 0.57-0.63 m behind the CG the whole time. Since #455 it does NOT quite hold 7000 m at 79 m/s any more: it flies 76-78 m/s and sinks 4.4 m/s at the same throttle schedule, because the wing's planform now pays 1.10 m2 of profile CdA that the old silhouette union hid inside its 0.75 m2.
 KIND golden
 ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
 ARGS --sim-steps 3000 --drag-log --mass-log
@@ -69,10 +69,10 @@ CHECK all(2.3 < d["aoa"] < 3.2 for d in drag if d["t"] >= 5)
 CHECK min(d["v"] for d in drag if d["t"] >= 22) > 55.0
 CHECK all(d["alt"] > 5800.0 for d in drag)
 CHECK all(d["up"] > 0.85 for d in drag if d["t"] >= 5)
-# WEATHERVANE. One 1 s rudder press at 25 s, nothing held: Beta -8.6, 4.8, -0.6,
-# -2.3, 3.2, -2.5, 1.2, ... -- back inside 1 deg by t=40, and AoA never left the
-# band above while it happened. The shipped jet with a rudder HELD sits at 64 deg
-# of sideslip (#482, #455), with a tenth the area here. The difference is not the rudder:
+# WEATHERVANE. One 1 s rudder press at 25 s, nothing held: Beta -8.7, 4.7, -0.6,
+# -2.2, 3.1, -2.6, 1.4, ... -- back inside 1 deg by t=40, and AoA never left the
+# band above while it happened. The shipped jet with a rudder HELD sits at 80 deg
+# of sideslip (#482, #455, #559), with a tenth the area here. The difference is not the rudder:
 # the airframe's form drag sits BEHIND the CG, so it pulls the nose back into the
 # flow, and the lever grows exactly when the airframe needs it.
 # RE-BASELINED by #503: the kick used to throw it 13.4 deg, because a rudder pinned
@@ -84,13 +84,17 @@ CHECK all(d["up"] > 0.85 for d in drag if d["t"] >= 5)
 # silhouette -- still aft, still restoring, but only a third of the story. The other
 # two thirds is in FormCp=: the tailplane's 4 m2, the fin's 1.4 m2 and the elevators'
 # 1.12 m2 pay their profile CdA at 2 m and more behind the CG, so the airframe's
-# form-drag centre sits 0.58 m back at rest and 0.65 m back on the kick row. That is
+# form-drag centre sits 0.57 m back at rest and 0.63 m back on the kick row (#559
+# takes 0.02 m off the kick row: at 8.7 deg of sideslip the wings' phantom plate
+# charge was already small, which is why this airframe moves so little next to
+# flight/453's 16 deg). That is
 # where this airframe's weathervane actually lives, and it is the same fact the #490
 # audit wrote down with the wrong label on it.
 CHECK max(abs(d["beta"]) for d in drag if d["t"] >= 24) > 5.0
 CHECK max(abs(d["beta"]) for d in drag if d["t"] >= 40) < 1.0
+CHECK any(d.get("formcp") is not None for d in drag)
 CHECK all(d["formcp"] < -0.5 for d in drag if d.get("formcp") is not None)
-CHECK max(abs(d["formcp"]) for d in drag if d.get("formcp") is not None) > 0.6
+CHECK max(abs(d["formcp"]) for d in drag if d.get("formcp") is not None) > 0.55
 CHECK all(d["cpl"] < 0.0 for d in drag if d["cpl"] is not None)
 # #462's coupling still holds on a real airplane: every substep that lifts pays induced
 # drag, and it pays the WING'S OWN aspect ratio (2 x 3.0 m half-span per part = 6 m over

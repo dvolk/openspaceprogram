@@ -972,9 +972,11 @@ def parse_drag(out):
             row["cla"] = float(cla)
         if sm is not None:
             row["sm"] = float(sm)
-        # #455: the surfaces' own form-drag CdA. Production always prints it (0.00
-        # for a hull with no lifting or steering parts); the regex group is optional
-        # only so a captured line from before #455 still parses.
+        # #455: the surfaces' own form-drag CdA -- 0.00 for a hull with no lifting
+        # or steering parts, and DASHED (so absent from the row) when AeroFrame had
+        # no usable flow direction, which #559 added after a parked glider printed
+        # a shape bill off integrator jitter. The regex group is optional so a
+        # captured line from before #455 still parses.
         if profile is not None:
             row["profile"] = float(profile)
         # The combined form-drag lever (#455): metres along the nose from the COM,

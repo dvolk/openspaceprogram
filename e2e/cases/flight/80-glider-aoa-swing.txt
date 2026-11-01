@@ -66,6 +66,14 @@ CHECK (lambda ds: (ds and max(d["a"] for d in ds) > min(d["a"] for d in ds) * 1.
 # the number a jittered direction produced), and the rows where |F| = 0 still have to
 # be left out of the ratio below -- the same trap the A check above documents.
 CHECK (lambda ds: (ds and max(d["profile"] for d in ds) > min(d["profile"] for d in ds) * 8.0))([d for d in drag if d.get("profile") is not None and d.get("aoa") is not None and d["F"] > 0.0])
+# #559's half of that filter, pinned: the pad row must PARSE as having no Profile,
+# not as having a small one. Pin the pad row's own signature -- the row where
+# AoA= dashes too, because it is the same guard.
+CHECK any(d.get("profile") is None and d.get("aoa") is None for d in drag)
+# And the wheels, which is what this case's header table quotes and #399/#403
+# complain about: the swing's torque peaks past a kN m while the airframe is still
+# on its landing gear. Without a CHECK the CLAIM was just prose.
+CHECK any(d.get("tau") is not None and d["tau"] > 1000.0 for d in drag)
 # The body's Cd mean stays inside the mix the parts catalogue implies -- pod 0.35
 # forward, tank and engine ~1.0, area-weighted to 0.84 nose-on and 0.86 broadside.
 # Nothing here should move much, and if it starts to, a part's silhouette is being

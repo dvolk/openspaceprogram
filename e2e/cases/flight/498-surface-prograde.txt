@@ -41,7 +41,12 @@ CHECK all(s["aprg"] is not None for s in surf)
 CHECK all(abs(s["aprg"]) < 5.0 for s in surf)
 # One vector, two consumers: the SURFACE window's angle to the air and the aero law's
 # own alpha must be the same reading. They differ only by sideslip, and Beta is next.
-CHECK all(abs(s["aprg"] - s["aoa"]) < 0.5 for s in surf if s["aoa"] is not None)
+# Note the conventions: aprg= is a CONE angle (nose to air-prograde, 0..180, never
+# signed) while aoa= is the signed pitch-plane angle the law uses. Nose-up they agree;
+# nose-down they would differ by twice the angle. So compare against |aoa| and pin the
+# sign this bed flies at, rather than letting the subtraction happen to work.
+CHECK all(s["aoa"] > 0.0 for s in surf if s["aoa"] is not None)
+CHECK all(abs(s["aprg"] - abs(s["aoa"])) < 0.5 for s in surf if s["aoa"] is not None)
 CHECK all(abs(s["beta"]) < 0.5 for s in surf)
 # The conic prograde: far off the nose the whole run, and drifting further as the
 # suborbital conic curves under a ship the air is holding up.
