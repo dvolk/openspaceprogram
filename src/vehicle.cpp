@@ -3417,10 +3417,12 @@ void Vehicle::slew_log(double time) {
     const double Ieff = glm::dot(axis, I * axis);
     /* Re-derive the axis and the budget the law is using, and log both ABOUT THE
        AXIS, or a wheel-less ship's trace would read alpha=0 while it flies on its
-       engines -- and a roll-axis error would read the full TVC budget while
-       tvcSplit delivers none of it. Note this trace only ever slews pitch and yaw
-       (the target directions are all transverse), so the roll corner it warns
-       about is not one it can reach. */
+       engines -- and a stack-axis error would read the full TVC budget while
+       tvcSplit delivers none of it. `axis` is transverse to the FACING part
+       (firstWheel() when there is one), NOT to the stack axis, so on a hull where
+       those two parts disagree the row can land on the stack axis and alpha is
+       legitimately wheels-only there. That disagreement is #571, and this trace is
+       where it would first be visible -- not somewhere it cannot happen. */
     const double alpha = (Ieff > 0.0)
         ? attitudeTorqueAbout(attitudeAuthority(), axis) / Ieff : 0.0;
     const double w_des = (alpha > 0.0) ? std::sqrt(2.0 * alpha * E) : 0.0;
@@ -4307,8 +4309,11 @@ double Vehicle::maxTorque() {
 
 /* WHAT CAN TURN THIS SHIP RIGHT NOW, in one answer: see AttitudeAuthority in
    vehicle.h for the three rows and the axis, and why they must be read per substep.
-   There are exactly two attitude actuators in the game today, so this is the whole
-   model, not a layer over more. maxTorque() stays as the raw wheel rating because
+   Two rows because two is how many actuators the ATTITUDE LAWS can spend today. The
+   aero surfaces turn the ship too (applyControlSurfaceForce answers the stick on its
+   own, and on the shipped skiff they are its ONLY roll authority), and RCS torques it
+   as a side effect of translating -- neither is law-driven yet, which is what #425's
+   allocator is for. maxTorque() stays as the raw wheel rating because
    the manual stick path bills exactly that (applyRotationForce); note the UI does
    NOT quote maxTorque -- the part window prints def.torque per part and the Vessel
    window prints GetWheelTorque(), the LARGEST wheel, while the law sums them. */
@@ -4316,8 +4321,10 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
     AttitudeAuthority a;
     const Part *ref = rootPart();
     if(ref == nullptr) { return a; }   // no hull, no lever arm, no answer
-    /* The mixer's frame: applyThrustForce aims in it and tvcSplit splits about it,
-       so the budget and the actuator are stated in one axis by construction. */
+    /* The mixer's frame: applyThrustForce aims in it and tvcSplit splits about it.
+       The budget below and actuateAttitude both read it HERE, so they cannot talk
+       past each other; applyThrustForce still resolves rootPart() for itself, and
+       #571 is the open question of whose axis this should be at all. */
     a.stackAxis = partAxis(ref, 2);
     /* Power gate: the wheels are electric -- no EC, no wheel torque (#418 says a
        dead-ship trace used to read as uncontrolled when the engines were fine).
@@ -4334,16 +4341,21 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
     for(const Part *p : parts) {
         const double armed = p->armedThrust;
         if(armed == 0.0 || p->def->gimbal_max <= 0.0) { continue; }
+        /* sin() of the limit is a capability only while the limit is under 90 deg;
+           past that the exhaust points forward of the mount and the lateral-force
+           fraction FALLS as the authored range grows, so a 120 deg nozzle would be
+           credited as weaker than a 60 deg one -- and past 180 sin() is negative,
+           which is how a live-wheeled ship ends up with `authMax <= 0`, the laws'
+           "this ship cannot turn, do not pretend" early-out. The loader refuses such
+           a part, so this is an invariant, and it is asserted rather than clamped:
+           clamping the sum would let one silly def hide in a mixed fleet's budget as
+           a positive-but-wrong number instead of a loud failure. */
+        assert(p->def->gimbal_max <= std::numbers::pi_v<double> * 0.5);
         const double lever = std::fabs(glm::dot(partPos(p) - com, a.stackAxis));
         if(lever < 1e-6) { continue; }
         a.heffMag   += armed * lever;
         a.tvcTorque += armed * std::sin(p->def->gimbal_max) * lever;
     }
-    /* A ship file may not ask for a nozzle that swings past 180 deg (the loader now
-       refuses it), but a negative budget must never reach the laws: `authMax <= 0`
-       is the "this ship cannot turn, do not pretend" early-out, and a negative TVC
-       row could cancel a live wheel into it. */
-    if(a.tvcTorque < 0.0) { a.tvcTorque = 0.0; }
     return a;
 }
 

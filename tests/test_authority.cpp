@@ -94,7 +94,10 @@ static Part *mkPart(Ship &s, const char *name, double mass, double hz,
 }
 
 static void destroyShip(Vehicle *v) {
-    v->onRails = true;   // never enterWorld'd, so delete must not RemoveBody
+    /* ~Vehicle skips RemoveBody unless hullInWorld(), which is false here because
+       init() built the compound but nothing entered it into a world (and this
+       binary has no physics global to remove it from anyway). onRails is not what
+       gates that -- the broadphase handle is. */
     delete v;
 }
 
@@ -149,8 +152,10 @@ static void test_tvc_is_a_disk_not_a_ball() {
     const double tvc = a.tvcTorque;
 
     /* THE pin this whole step exists for: about the stack axis, a gimballed
-       engine delivers nothing. The laws used to credit it with tvcMax there. */
-    CHECK_NEAR(v->attitudeTorqueAbout(a, st.z), 0.0, 1e-9,
+       engine delivers nothing. The laws used to credit it with tvcMax there.
+       Exact, not approximate: with axis == stackAxis every component of the cross
+       product has identical operands, so b is 0 in IEEE, not 0 to within rounding. */
+    CHECK_NEAR(v->attitudeTorqueAbout(a, st.z), 0.0, 1e-12,
                "no TVC authority about the stack axis (roll)");
     CHECK_NEAR(v->attitudeTorqueAbout(a, st.x), tvc, 1e-12, "full TVC pitch authority");
     CHECK_NEAR(v->attitudeTorqueAbout(a, st.y), tvc, 1e-12, "full TVC yaw authority");
@@ -164,9 +169,9 @@ static void test_tvc_is_a_disk_not_a_ball() {
                v->attitudeTorqueAbout(a, st.x), 1e-12, "scale-invariant in the axis");
     CHECK_NEAR(v->attitudeTorqueAbout(a, glm::dvec3(0.0, 0.0, 0.0)), 0.0, 0.0,
                "a zero axis buys nothing");
-    /* And neither does a NaN one. slew_log can hand one in: it normalises a target
-       that may be zero, and the law's early-out must survive it rather than
-       propagate NaN into an acceleration. */
+    /* And neither does a NaN one. slew_log used to normalise a possibly-zero target
+       into exactly that; the law's early-out must survive it rather than propagate
+       NaN into an acceleration. */
     const double nan = std::nan("");
     CHECK_NEAR(v->attitudeTorqueAbout(a, glm::dvec3(nan, nan, nan)), 0.0, 0.0,
                "a NaN axis buys nothing (and must not poison the caller)");
@@ -197,17 +202,13 @@ static void test_tvc_is_a_disk_not_a_ball() {
                "gimbal_max 0: thrust, but no TVC authority");
     destroyShip(fixed.s.v);
 
-    /* ... and a nozzle authored past 180 deg is not a "negative authority" engine.
-       The loader refuses such a file now, but the model is what the laws read, and
-       `budget <= 0` is their "this ship cannot turn" early-out -- so a ship that
-       reaches this point (a def built in code, a stage copied across) must read as
-       "no TVC", never as a wheel budget cancelled into silence. */
-    Stack flipped = mkStack(200.0, 800.0, 4.0);   // 4 rad > pi: sin() would go negative
-    const Vehicle::AttitudeAuthority bad = flipped.s.v->attitudeAuthority();
-    CHECK_TRUE(bad.tvcTorque == 0.0, "gimbal_max past pi contributes NO (negative) TVC");
-    CHECK_NEAR(flipped.s.v->attitudeTorqueAbout(bad, flipped.z), 200.0, 1e-9,
-               "and its wheels survive: the budget did not go negative");
-    destroyShip(flipped.s.v);
+    /* A nozzle authored past 90 deg used to reach this model and hand it a NEGATIVE
+       tvcTorque, which the laws read through `budget <= 0` as "this ship cannot
+       turn" -- live wheels silenced by a silly number. It is refused at the boundary
+       now (test_shipload's gimbal_max case) and asserted at the read, so there is
+       nothing left to pin from here: such a def aborts instead of mis-budgetting, and
+       the band between 90 and 180 deg, where the model used to score a wider swing as
+       LESS authority, cannot be authored at all. */
 }
 
 /* --- the pair, and the gate that turns half of it off --------------------- */

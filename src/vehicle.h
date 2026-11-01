@@ -500,8 +500,9 @@ public:
          heffMag:     N m per rad of the SHARED lateral deflection, Sum(T_i*|h_i|),
            which is what turns a torque to gimbal angles (gimbal.h tvcSplit).
          stackAxis:   that disk's normal -- the root part's +Z, i.e. the frame
-           applyThrustForce and tvcSplit steer in. Both consumers read it here so
-           the budget and the mixer cannot end up talking about different axes.
+           applyThrustForce and tvcSplit steer in. attitudeTorqueAbout and
+           actuateAttitude read it from here so they cannot talk past each other;
+           applyThrustForce still resolves rootPart() itself (#571).
        TVC follows throttle because it is read off the ARMED thrust, which is a
        per-TICK transient (ApplyThrust arms it, the tick clears it), so ask once per
        substep: what actually moves between substeps is the power gate and the COM

@@ -2550,6 +2550,30 @@ int main() {
         CHECK(expect_throw_saying([&](){ load_parts_catalog(bad); }, "gimbal_rate"));
         std::remove(bad);
     }
+    // ...and a limit past 90 deg is not a wider swing, it is a different machine:
+    // the exhaust points forward of the mount and sin() of the limit -- the
+    // lateral-force fraction the attitude laws budget with -- falls back DOWN, so
+    // a 120 deg nozzle would be credited with LESS authority than a 60 deg one.
+    {
+        const char *bad = "/tmp/test_shipload_badcat.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"name\": \"x\", \"mesh\": \"m\", \"texture\": \"t\","
+             " \"mass\": 1, \"gimbal_max\": 1.6, \"gimbal_rate\": 0.1 } ] }";
+        f.close();
+        CHECK(expect_throw_saying([&](){ load_parts_catalog(bad); }, "must be <= pi/2"));
+        std::remove(bad);
+    }
+    // Just under the bound still loads: every shipped engine is 0.0873 rad (5 deg),
+    // so the boundary is only ever hit by authored nonsense.
+    {
+        const char *ok = "/tmp/test_shipload_okcat.json";
+        std::ofstream f(ok);
+        f << "{ \"parts\": [ { \"name\": \"x\", \"mesh\": \"m\", \"texture\": \"t\","
+             " \"mass\": 1, \"gimbal_max\": 1.57, \"gimbal_rate\": 0.1 } ] }";
+        f.close();
+        CHECK(!expect_throw([&](){ load_parts_catalog(ok); }));
+        std::remove(ok);
+    }
 
     // a chute (chute_area > 0) without its canopy pair is a catalog bug
     {

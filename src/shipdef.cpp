@@ -402,13 +402,15 @@ PartsCatalog load_parts_catalog(const char *path) {
         if(d.gimbal_max < 0.0) {
             throw std::runtime_error(ctx + "\"gimbal_max\" must be >= 0 (rad)");
         }
-        /* Past 180 deg the nozzle is pointing forward of the engine and sin() of
-           the limit goes NEGATIVE, which hands the attitude laws a negative
-           authority budget -- and `budget <= 0` is the "this ship cannot turn"
-           early-out, so live reaction wheels would go dead. Nothing useful is
-           authored out here, so refuse the number rather than fly it. */
-        if(d.gimbal_max > std::numbers::pi_v<double>) {
-            throw std::runtime_error(ctx + "\"gimbal_max\" must be <= pi (rad)");
+        /* A nozzle gimbal past 90 deg is not a thing: at 90 the exhaust is sideways,
+           and swinging further points it FORWARD of the mount while sin() of the
+           limit -- the lateral-force fraction the attitude laws budget with -- falls
+           back DOWN. Accepting it means a 120 deg nozzle is scored as WEAKER than a
+           60 deg one, and a negative sin() would hand the laws a negative budget,
+           whose `<= 0` test is the "this ship cannot turn" early-out (live wheels
+           going dead). Nothing near this is authored: every shipped engine is 5 deg. */
+        if(d.gimbal_max > std::numbers::pi_v<double> * 0.5) {
+            throw std::runtime_error(ctx + "\"gimbal_max\" must be <= pi/2 (rad)");
         }
         d.gimbal_rate = optNumber(pv, "gimbal_rate", 0.0, ctx, "rad/s");
         if(d.gimbal_rate < 0.0) {
