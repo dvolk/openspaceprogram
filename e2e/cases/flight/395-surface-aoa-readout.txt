@@ -18,8 +18,14 @@
 # instrument at all -- the [drag] line printed it, [surfinfo] did not, so the two
 # dumps of the same substep disagreed about what was measured. Same dash rule as
 # aoa=: no usable flow, no angle.
+# #498: aprg= is the third reader of the same flow -- the angle from the nose to the
+# AIR-relative prograde, which is what the new yellow marker pair points at. It is
+# dashed on the same test as aoa=/beta= because it needs the same thing: air, and a
+# flow with a direction. The parked-then-climbing shape of this case is what pins
+# both halves of that rule; the flying-plane half -- the air-relative and conic
+# progrades disagreeing by 13+ deg -- lives in flight/498.
 NAME surface-aoa-readout
-CLAIM [surfinfo] reports the aero angle of attack and the sideslip while the ship has air-relative flow and "-" when it has none, and its stability pair reports a zero slope without inventing a neutral-looking margin for an airframe that has nothing lifting.
+CLAIM [surfinfo] reports the aero angle of attack, the sideslip and the air-relative prograde while the ship has air-relative flow and "-" when it has none, and its stability pair reports a zero slope without inventing a neutral-looking margin for an airframe that has nothing lifting.
 KIND invariant
 ARGS --time-accel 1 --timeout 6 --info-log --orbit-interval 0.5 --startship racer,res/ships/racer.json,Kerbin,pad --sim-press 1000,0,SPACE,1500,4000,T
 FORBID error:
@@ -33,6 +39,13 @@ CHECK all(abs(s["aoa"]) < 1.0 for s in surf if s["t"] >= 2.0)
 CHECK any(s["beta"] is None for s in surf if s["t"] < 1.2)
 CHECK all(s["beta"] is not None for s in surf if s["t"] >= 2.0)
 CHECK all(abs(s["beta"]) < 1.0 for s in surf if s["t"] >= 2.0)
+# aprg (#498) follows the same dash rule, and flying straight up off the pad the
+# nose is on the air, so it sits near zero too -- near enough to aoa that the two
+# readings being the same vector is checkable here rather than only in flight/498.
+CHECK any(s["aprg"] is None for s in surf if s["t"] < 1.2)
+CHECK all(s["aprg"] is not None for s in surf if s["t"] >= 2.0)
+CHECK all(abs(s["aprg"]) < 1.0 for s in surf if s["t"] >= 2.0)
+CHECK all(abs(s["aprg"] - s["aoa"]) < 0.5 for s in surf if s["aoa"] is not None)
 # The racer is under an atmosphere the whole run, so cla is a number throughout
 # (0.0: no lifting surface on the ship), and sm is never a number.
 CHECK all(s["cla"] == 0.0 for s in surf)

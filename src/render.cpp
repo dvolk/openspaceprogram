@@ -100,6 +100,7 @@ void updateShipView(Game &g) {
     glm::dvec3 &other = view.other;
     glm::dvec3 &facing_dir = view.facing_dir;
     glm::dvec3 &vel_dir = view.vel_dir;
+    glm::dvec3 &air_dir = view.air_dir;
     double &ver_speed = view.ver_speed;
     double &hor_speed2 = view.hor_speed2;
     double &heading = view.heading;
@@ -174,6 +175,24 @@ void updateShipView(Game &g) {
        the marker it sits beside -- and a grounded ship has one (the ground's own
        motion), where normalize(vel) would divide by a near-zero length. */
     vel_dir = glm::normalize(marker_vel);
+
+    /* Air-relative prograde (#498). Vehicle::airRelativeVel is the vector the drag
+       law itself answers to and it comes back in THIS frame, so the marker and the
+       forces cannot describe different directions -- which is the point of adding
+       it: marker_vel is the CONIC's velocity, and inside an atmosphere on a
+       rotating body that is mostly the ground's own motion (~175 m/s at Kerbin sea
+       level), so a plane flying dead on the air (Beta 0.0 the whole flight) has its
+       green prograde 16 deg off the nose and no instrument that says so.
+       airDensityAtCom is the authored shell -- 0 above the top, 0 on a body with no
+       atmosphere -- so the direction exists exactly where it means something, and
+       kAoAFlowFloor is the aero's own "this flow has a direction" test, the same
+       one the AoA readout dashes on: a parked ship's ~1e-4 m/s of jitter would
+       otherwise hand the marker a random heading. */
+    view.air_vel = ship->airRelativeVel(com);
+    const double air_v = glm::length(view.air_vel);
+    view.air_dir_valid = ship->airDensityAtCom() > 0.0
+                      && std::isfinite(air_v) && air_v >= kAoAFlowFloor;
+    air_dir = view.air_dir_valid ? view.air_vel / air_v : glm::dvec3(0.0);
 
     // heading/pitch/roll are SURFACE-relative: measured against the ground's
     // north/east in the rotating frame.
@@ -798,6 +817,22 @@ void paintWorld(Game &g) {
     g.normal_plus_indicator->Draw(camera, std::numbers::pi);
     g.normal_minus_indicator->pos = -glm::cross(pos, view.marker_vel);
     g.normal_minus_indicator->Draw(camera, std::numbers::pi);
+    /* Air-relative prograde/retrograde (#498): the direction the AIR sees the ship
+       moving, so the one the aero law -- and a pilot flying in it -- actually
+       answers to. Only while there is air and a flow with a direction, so on the
+       pad or above the shell the conic pair is all there is. Showing both at once
+       is deliberate: the green diamond is where the ORBIT is going and the yellow
+       one where the ship is pushing air out of the way, and at aircraft speeds
+       those are 16 deg apart on Kerbin. #498's complaint was that only the first
+       existed; the fix is to show the second, not to move the first -- the
+       orbital-plane overlay and the normal pair are still the conic's (see the
+       comment above and #204/#205). */
+    if(view.air_dir_valid) {
+        g.air_prograde_indicator->pos = view.air_dir;
+        g.air_prograde_indicator->Draw(camera, std::numbers::pi);
+        g.air_retrograde_indicator->pos = -view.air_dir;
+        g.air_retrograde_indicator->Draw(camera, std::numbers::pi);
+    }
     // Transfer burn direction (TARGET window, with "Compute transfer" on --
     // xfer.valid is what the planner clears when planning goes off).
     if(planner.xfer.valid && glm::length(planner.xfer.burn_dir) > 0.0) {

@@ -118,6 +118,20 @@ struct ShipView {
        motion, which tilts the markers off the plane the orbital-plane overlay
        draws. Radial needs no such lift -- pos is already this frame's. */
     glm::dvec3 marker_vel = glm::dvec3(0.0);
+    /* The ship's velocity relative to the AIR, in this same (render) frame
+       (#498). marker_vel is the CONIC's velocity, so inside an atmosphere on a
+       rotating body it is mostly the GROUND's own motion: Kerbin carries the
+       sea-level ground ~175 m/s, which swamps an 80 m/s airframe and puts the
+       green prograde 16 deg off a nose the aero says is dead on the flow
+       (Beta = 0.0 the whole flight). This vector comes from the law the forces
+       themselves use (Vehicle::airRelativeVel), so a marker and a drag force
+       cannot describe different directions. air_dir_valid is the aero's own flow
+       floor (kAoAFlowFloor) plus "there is air": a parked ship's ~1e-4 m/s of
+       integrator jitter has no direction to point at, so the marker is absent
+       rather than random -- the same dash rule as the AoA readout. */
+    glm::dvec3 air_vel = glm::dvec3(0.0);
+    glm::dvec3 air_dir = glm::dvec3(0.0);
+    bool air_dir_valid = false;
     OrbitElements o;
     // Inc/LAN/LPe measured in the plane the orbit map shows (Game::map.plane), so
     // the numbers describe the picture (#171). The plane itself is kept as well:
@@ -724,6 +738,13 @@ struct Game {
     Billboard *burn_indicator = nullptr;
     Billboard *relvel_indicator = nullptr;      // you − target (prograde icon)
     Billboard *relvel_retro_indicator = nullptr; // target − you (retrograde icon)
+    /* Air-relative prograde/retrograde (#498): the direction the AIR sees you
+       moving, so the one the aero law actually answers to. Drawn only while there
+       is air and the air-relative speed clears the flow floor, which is why a
+       plane in flight shows a second diamond well off the green one -- at these
+       speeds the green one is the ground's direction, not the plane's. */
+    Billboard *air_prograde_indicator = nullptr;
+    Billboard *air_retrograde_indicator = nullptr;
 
     // --- the draw toggles (the Settings window writes, render.cpp reads) --
     bool physics_debug_drawing = false;

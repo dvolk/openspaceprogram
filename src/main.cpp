@@ -732,6 +732,17 @@ int main(int argc, char **argv)
         mk_billboard(billboardshader, prograde_indicator_texture, 1.0, 1.0, relvelcolor);
     Billboard *relvel_retro_indicator =
         mk_billboard(billboardshader, retrograde_indicator_texture, 1.0, 1.0, relvelcolor);
+    /* Air-relative prograde/retrograde (#498). Same diamond/X glyph as the conic
+       pair -- it IS the same kind of direction, just measured against the air
+       instead of the conic -- and a distinct hue, because in an atmosphere the two
+       pairs point different ways and a player has to be able to tell which of the
+       two progrades they are flying at. Not amber (that is the transfer burn) and
+       not cyan (relative velocity). */
+    const glm::vec4 aircolor = glm::vec4(0.95f, 0.88f, 0.35f, 1.0f);
+    Billboard *air_prograde_indicator =
+        mk_billboard(billboardshader, prograde_indicator_texture, 1.0, 1.0, aircolor);
+    Billboard *air_retrograde_indicator =
+        mk_billboard(billboardshader, retrograde_indicator_texture, 1.0, 1.0, aircolor);
 
     const float camFov = (float)glm::radians(args.camFovDeg);
     // The drawable size the Renderer actually got (the WM may have clamped it).
@@ -921,6 +932,8 @@ int main(int argc, char **argv)
     game.burn_indicator = burn_indicator;
     game.relvel_indicator = relvel_indicator;
     game.relvel_retro_indicator = relvel_retro_indicator;
+    game.air_prograde_indicator = air_prograde_indicator;
+    game.air_retrograde_indicator = air_retrograde_indicator;
 
     // --timeout: wall-clock budget for the run (0 = run until closed).
     // events.cpp and the timeout check below both measure from this.
@@ -1452,6 +1465,8 @@ int main(int argc, char **argv)
     delete burn_indicator;
     delete relvel_indicator;
     delete relvel_retro_indicator;
+    delete air_prograde_indicator;
+    delete air_retrograde_indicator;
 
     game.audio.shutdown();
 

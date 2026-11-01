@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 271 |
+| `invariant` | a behaviour or a player route the game must keep | 272 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 40 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **329** |
+| | **total** | **330** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (80)
+## flight (81)
 
 | case | kind | pins |
 |---|---|---|
@@ -88,7 +88,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/376-drain-rate-warp-invariant.txt` | golden | --drain-log's kg/s figures do not depend on the warp factor, and consecutive rows account for all the sim time between them. |
 | `flight/376-drain-window-survives-a-ship-switch.txt` | golden | Switching ships does not stretch a --drain-log row's interval or corrupt its kg/s. |
 | `flight/377-power-log-balances-the-battery.txt` | golden | --power-log's charge moves at the rate its own printed watts imply. |
-| `flight/395-surface-aoa-readout.txt` | invariant | [surfinfo] reports the aero angle of attack and the sideslip while the ship has air-relative flow and "-" when it has none, and its stability pair reports a zero slope without inventing a neutral-looking margin for an airframe that has nothing lifting. |
+| `flight/395-surface-aoa-readout.txt` | invariant | [surfinfo] reports the aero angle of attack, the sideslip and the air-relative prograde while the ship has air-relative flow and "-" when it has none, and its stability pair reports a zero slope without inventing a neutral-looking margin for an airframe that has nothing lifting. |
 | `flight/448-drag-log-lift-readings.txt` | harness | The --drag-log's signed lift and attitude readings parse in flight and stay inside their bounds. |
 | `flight/451-flying-slow-starts-in-air.txt` | golden | The flying-slow bed starts wings-level with its nose along the air at a fraction of the AIR-relative circular speed, so a plane enters its altitude band moving rather than dropping. |
 | `flight/453-rudder-pair-adds-up.txt` | invariant | The jet's two rudders are bolted the other way round, so one stick drives them to OPPOSITE printed deflections and they still push the SAME way: a held rudder throws the airframe off the centreline instead of cancelling itself out. |
@@ -101,6 +101,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/485-per-surface-alpha.txt` | golden | The [surface] row #485 adds quotes all eight lifting or steering parts of the skiff on every --drag-log sample -- each one's own angle of attack signed into SHIP axes plus the dynamic pressure of the flow standing at it -- so a mirrored twin pair reads alike (wing_l and wing_r within 0.3 deg while the airframe is in the flow), the tailplane's -5 deg mount incidence shows as a 4.5-5.5 deg gap between tail and wing, the fin's angle IS the sideslip it is weathervaning against (within 1.2 deg of -Beta on rows over 4 deg), and each part's q matches 0.5*rho*v^2 inside 8%. |
 | `flight/490-skiff-trim-and-weathervane.txt` | golden | A 552 kg airframe built to the #490 arithmetic -- 21.6 m2 of AR-3.33 wing 0.34 m behind the CG, a 4 m2 tailplane set to -5 deg incidence 2.0 m back, a fixed fin 2.2 m back -- holds 7000 m at 79 m/s inside 16 m with the stick released, keeps +2.6 deg of angle of attack through throttle-off AND a 1 s rudder kick, weathervanes that kick from 7.7 deg back to zero, and keeps its centre of pressure 0.69-0.81 m behind the CG the whole time. |
 | `flight/492-elevator-trim.txt` | golden | The same 552 kg airframe as skiff, with the tailplane's 5 deg of mount incidence REMOVED and 12 deg of elevator TRIM authored on the part instances instead, stays inside 6960-7120 m at 74-81 m/s while powered with the stick released, stays at +2.2..+3.1 deg of angle of attack on every row of a 50 s run, holds -12.0/+12.0 deg of elevator deflection with no key pressed, and reads the tail at the wing's own angle of attack (within 0.4 deg) -- so the download that trims this airframe now comes from deflection rather than from how the surface was bolted on. |
+| `flight/498-surface-prograde.txt` | invariant | A plane cruising inside an atmosphere reads two different progrades: the air-relative one sits 2.4 deg off the nose -- the same angle the aero law calls its angle of attack -- while the conic one sits 16 deg off and drifts to 21, because the conic points where the ground is going rather than where the plane is flying. |
 | `flight/541-booster-root-decoupler.txt` | invariant | Pressing a stage on a ship whose root part is the decoupler says which part cannot separate, instead of claiming the ship has run out of stages. |
 
 ## crew (25)

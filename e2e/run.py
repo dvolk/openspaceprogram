@@ -269,6 +269,9 @@ TERRAIN_RE = re.compile(
 # its own alternative rather than a wider character class that would eat the "-".
 # beta (#450) dashes on exactly the same test -- the same AeroFrame pair, the same
 # flow floor -- and sits next to aoa in the line because they are one reading.
+# aprg (#498) is the SURFACE window's Prg: nose to AIR-relative prograde. It dashes
+# on the same flow floor again (no air, or a flow with no direction), and the pair
+# aprg/[orbinfo] prg is the gap between flying through the air and flying the orbit.
 # cla/sm (#499) are the SURFACE window's stability pair: cla dashes with aoa (no
 # air), sm dashes alone when the lifting surfaces stop agreeing, so each needs
 # the same two-arm treatment.
@@ -277,12 +280,34 @@ SURF_RE = re.compile(
     r"alt_asl=([-\d.e+]+) m\s+vs=([-\d.e+]+) m/s\s+hs=([-\d.e+]+) m/s\s+"
     r"lat=([-\d.e+]+) deg\s+lon=([-\d.e+]+) deg\s+pitch=([-\d.e+]+) deg\s+"
     r"roll=([-\d.e+]+) deg\s+hdg=([-\d.e+]+) deg\s+"
+    r"(?:aprg=([-\d.e+]+) deg|aprg=-)\s+"
     r"(?:aoa=([-\d.e+]+) deg|aoa=-)\s+"
     r"(?:beta=([-\d.e+]+) deg|beta=-)\s+"
     r"(?:cla=([-\d.e+]+) m2/rad|cla=-)\s+"
     r"(?:sm=([-\d.e+]+) m|sm=-)\s+"
     r"acc=([-\d.e+]+) m/s2\s+"
     r"body=\"([^\"]*)\"\s+bme=\"([^\"]*)\"\s+sit=\"([^\"]*)\""
+)
+# [orbinfo] is the ORBITAL window's own numbers. Nothing parsed it until #498
+# needed it: prg/rtg are the only place the CONIC's prograde angle is printed, and
+# #498 is precisely that it points where the ORBIT is going rather than where a
+# plane in an atmosphere is flying. apo_* print "-" for an open conic and lan/lpe
+# for a missing node line, so those get the two-arm treatment; the peri_* trio and
+# period print whatever the conic says, so they go through num() -- an inf or nan
+# from an open conic becomes None instead of raising inside a CHECK.
+ORBINFO_RE = re.compile(
+    r"\[orbinfo\]\s+t=([\d.]+)s\s+body=\"([^\"]*)\"\s+vel=([-\d.e+]+) m/s\s+"
+    r"r=([-\d.e+]+) m\s+"
+    r"(?:apo_r=([-\d.e+]+) m|apo_r=-)\s+"
+    r"(?:apo_asl=([-\d.e+]+) m|apo_asl=-)\s+"
+    r"(?:apo_t=([-\d.e+]+) s|apo_t=-)\s+"
+    r"peri_r=([-\d.e+]+) m\s+peri_asl=(\S+) m\s+peri_t=(\S+) s\s+"
+    r"period=(\S+) s\s+inc=([-\d.e+]+) deg\s+ecc=([-\d.e+]+)\s+"
+    r"sma=([-\d.e+]+) m\s+plane=(\S+)\s+"
+    r"(?:lan=([-\d.e+]+) deg|lan=-)\s+"
+    r"(?:lpe=([-\d.e+]+) deg|lpe=-)\s+"
+    r"prg=([-\d.e+]+) deg\s+rtg=([-\d.e+]+) deg\s+"
+    r"energy=([-\d.e+]+) J/kg"
 )
 # A scene CHANGE only. The two refusal lines ("already in X -- push refused",
 # "X is the floor -- pop refused") name no from/to pair, so they are not rows:
@@ -797,13 +822,16 @@ def parse_terrain(out):
 def parse_surf(out):
     rows = []
     for m in SURF_RE.finditer(out):
-        (t, agl, asl, vs, hs, lat, lon, pitch, roll, hdg, aoa, beta, cla, sm, acc,
+        (t, agl, asl, vs, hs, lat, lon, pitch, roll, hdg, aprg, aoa, beta, cla, sm, acc,
          body, bme, sit) = m.groups()
         rows.append({
             "t": float(t), "alt_agl": float(agl), "alt_asl": float(asl),
             "vs": float(vs), "hs": float(hs), "lat": float(lat),
             "lon": float(lon), "pitch": float(pitch), "roll": float(roll),
             "hdg": float(hdg),
+            # #498: aprg is nose-to-AIR-relative-prograde, None when the ship had
+            # no air (or no flow with a direction) to be pointed along.
+            "aprg": float(aprg) if aprg is not None else None,
             # None when the ship had no air-relative flow to have an angle to.
             "aoa": float(aoa) if aoa is not None else None,
             # #450: beta is the yaw-plane half of the same AeroFrame pair, so it
@@ -815,6 +843,37 @@ def parse_surf(out):
             "sm": float(sm) if sm is not None else None,
             "acc": float(acc),
             "body": body, "bme": bme, "sit": sit,
+        })
+    return rows
+
+
+def parse_orbinfo(out):
+    """One row per --info-log ORBITAL-window dump (#498). apo_* / lan / lpe print
+    "-" and become None; the peri_* pair and period print whatever the conic says,
+    and an open conic's inf/nan would make the strict number class fail to match
+    the whole line -- which drops the row silently -- so those take any token and
+    become None here instead."""
+    def num(s):
+        try:
+            return float(s)
+        except (TypeError, ValueError):
+            return None
+    rows = []
+    for m in ORBINFO_RE.finditer(out):
+        (t, body, vel, r, apo_r, apo_asl, apo_t, peri_r, peri_asl, peri_t,
+         period, inc, ecc, sma, plane, lan, lpe, prg, rtg,
+         energy) = m.groups()
+        rows.append({
+            "t": float(t), "body": body, "vel": float(vel), "r": float(r),
+            "apo_r": num(apo_r), "apo_asl": num(apo_asl), "apo_t": num(apo_t),
+            "peri_r": float(peri_r), "peri_asl": num(peri_asl),
+            "peri_t": num(peri_t), "period": num(period),
+            "inc": float(inc), "ecc": float(ecc), "sma": float(sma),
+            "plane": plane, "lan": num(lan), "lpe": num(lpe),
+            # nose to the CONIC's prograde / retrograde (marker_vel). The SURFACE
+            # window's aprg is the air-relative pair to these (#498).
+            "prg": float(prg), "rtg": float(rtg),
+            "energy": float(energy),
         })
     return rows
 
@@ -1125,6 +1184,7 @@ def run_case(case):
     cam = parse_cam(world)
     terrain = parse_terrain(world)
     surf = parse_surf(world)
+    orbinfo = parse_orbinfo(world)
     scene = parse_scene(out)
     mapb = parse_mapb(world)
     plane = parse_plane(world)
@@ -1139,7 +1199,7 @@ def run_case(case):
         "surface": surface,
         "cam": cam,
         "terrain": terrain,
-        "surf": surf, "mapb": mapb, "plane": plane, "slew": slew,
+        "surf": surf, "orbinfo": orbinfo, "mapb": mapb, "plane": plane, "slew": slew,
         "scene": scene,
         "toast": toast,
         "first": first, "last": last,

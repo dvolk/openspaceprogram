@@ -1,0 +1,52 @@
+# #498: inside an atmosphere on a rotating body the air co-rotates with the ground,
+# so the CONIC's velocity -- which is what the green prograde marker, the orbital-plane
+# overlay and the ORBITAL window's Prg have always read -- is mostly the GROUND's own
+# motion. Kerbin carries the sea-level ground ~175 m/s, so an airframe doing 230 m/s
+# through the air has its conic prograde ~16 deg off the nose while the aero law says
+# the nose is ON the flow. Measured on this build (skiff_trim, flying-cruise,
+# --info-log, --orbit-interval 2; aprg= is the new SURFACE-window key, prg= the
+# ORBITAL window's conic one):
+#
+#   t= 1.9  aprg   2.41  aoa   2.42  beta  0.0016  prg  15.88  vel 243.8 m/s
+#   t= 3.9  aprg   2.45  aoa   2.45  beta  0.0014  prg  16.10  vel 238.8
+#   t= 7.9  aprg   2.46  aoa   2.46  beta -0.0009  prg  17.43  vel 233.1
+#   t=11.9  aprg   2.44  aoa   2.44  beta -0.0002  prg  20.38  vel 232.6
+#   t=13.9  aprg   2.43  aoa   2.43  beta  0.0001  prg  21.49  vel 233.7
+#
+# Both readings are correct about what they measure; the issue was that only one of
+# them existed for a pilot. The air-relative direction (view.air_dir, built from the
+# same Vehicle::airRelativeVel the drag law uses) now has its own yellow marker pair,
+# its own SURFACE-window Prg/Rtg row, and this key. The conic pair stays where it
+# was -- #204/#205 pin it in the orbital plane, and moving it would break them.
+#
+# What is pinned, in order: both windows printed; the air-relative angle exists all
+# the way through an in-atmosphere run; it AGREES with the angle the aero law
+# measures (with Beta at zero, nose-to-air IS AoA -- one vector, two consumers, so
+# they cannot disagree); and the two progrades are 13+ deg apart and the conic one
+# drifts, which is the whole complaint. The markers themselves are only on screen:
+# e2e cannot read imgui rows or billboards (#333), so the numbers are the pin.
+NAME surface-prograde
+CLAIM A plane cruising inside an atmosphere reads two different progrades: the air-relative one sits 2.4 deg off the nose -- the same angle the aero law calls its angle of attack -- while the conic one sits 16 deg off and drifts to 21, because the conic points where the ground is going rather than where the plane is flying.
+KIND invariant
+ARGS --time-accel 1 --timeout 16 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
+ARGS --info-log --orbit-interval 2
+EXPECT [orbinfo]
+FORBID error:
+CHECK len(surf) >= 6
+CHECK len(orbinfo) >= 6
+# Air the whole run, and the ship is doing ~230 m/s through it, so the air-relative
+# direction is never dashed. (The dash rule -- no air, or a flow slower than
+# kAoAFlowFloor -- is pinned in flight/395, where the ship starts parked.)
+CHECK all(s["aprg"] is not None for s in surf)
+CHECK all(abs(s["aprg"]) < 5.0 for s in surf)
+# One vector, two consumers: the SURFACE window's angle to the air and the aero law's
+# own alpha must be the same reading. They differ only by sideslip, and Beta is next.
+CHECK all(abs(s["aprg"] - s["aoa"]) < 0.5 for s in surf if s["aoa"] is not None)
+CHECK all(abs(s["beta"]) < 0.5 for s in surf)
+# The conic prograde: far off the nose the whole run, and drifting further as the
+# suborbital conic curves under a ship the air is holding up.
+CHECK all(o["prg"] > 10.0 for o in orbinfo)
+CHECK orbinfo[-1]["prg"] - orbinfo[0]["prg"] > 3.0
+# The gap itself -- the smallest conic error in the run still leaves 13 deg between
+# the two instruments for the same ship in the same frame.
+CHECK (lambda a, p: (a and p and min(p) - max(a) > 10.0))([s["aprg"] for s in surf], [o["prg"] for o in orbinfo])

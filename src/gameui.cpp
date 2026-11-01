@@ -1885,6 +1885,21 @@ void drawUIReadouts(Game &g) {
         ImGui::Text(" Pt: %.2f", glm::degrees(pitch));
         ImGui::Text("  R: %.2f", glm::degrees(roll));
         ImGui::Text("Hdg: %.2f", glm::degrees(yaw));
+        /* Prg/Rtg: the angle from the nose to the AIR-relative prograde (#498) --
+           the direction the air is being pushed out of the way, which is the one
+           the aero law answers to and the one a pilot inside an atmosphere steers
+           at. The ORBITAL window's Prg/Rtg is the CONIC's: inside an atmosphere on
+           a rotating body that is mostly the ground's own motion (~175 m/s at
+           Kerbin sea level), so the two windows print ~16 deg apart for the same
+           plane flying dead on the air, and both are right. Dashed when there is no
+           air or no flow with a direction -- the same kAoAFlowFloor rule as AoA/Beta
+           below, because a parked ship's ~1e-4 m/s of jitter has no heading. */
+        if(view.air_dir_valid) {
+            ImGui::Text("Prg: %.2f", glm::degrees(glm::angle(facing_dir, view.air_dir)));
+            ImGui::Text("Rtg: %.2f", glm::degrees(glm::angle(facing_dir, -view.air_dir)));
+        } else {
+            ImGui::Text("Prg: -   Rtg: -");
+        }
         /* AoA: the AIRFRAME's angle of attack -- drag.h AeroFrame against the
            root's axes, air-relative flow against the nose, so there is none
            outside an atmosphere. Same number --drag-log prints. It is an
@@ -2043,6 +2058,17 @@ void drawUIReadouts(Game &g) {
                            glm::degrees(ship->lastDragBeta))
                 : snprintf(beta_s, sizeof beta_s, "-");
             assert(beta_n > 0 && beta_n < (int)sizeof beta_s);
+            /* #498: aprg= is the SURFACE window's Prg -- nose to AIR-relative
+               prograde, dashed on the same flow-floor test as aoa=/beta= for the
+               same reason. [orbinfo]'s prg= is the CONIC's, so the two keys together
+               are the gap this issue is about: a plane flying dead on the air prints
+               aprg near 0 (Beta 0.0 too) while its conic prg sits ~16 deg off. */
+            char aprg_s[32];
+            const int aprg_n = view.air_dir_valid
+                ? snprintf(aprg_s, sizeof aprg_s, "%.6g deg",
+                           glm::degrees(glm::angle(facing_dir, view.air_dir)))
+                : snprintf(aprg_s, sizeof aprg_s, "-");
+            assert(aprg_n > 0 && aprg_n < (int)sizeof aprg_s);
             /* #499: cla/sm are the SURFACE window's stability pair (see the
                window's own comment). Dash cla when there is no air to have a lift
                slope in, and dash sm alone when the surfaces stopped agreeing with
@@ -2062,7 +2088,7 @@ void drawUIReadouts(Game &g) {
             printf("[surfinfo] t=%.1fs "
                    "alt_agl=%.6g m alt_asl=%.6g m "
                    "vs=%.6g m/s hs=%.6g m/s lat=%.8g deg lon=%.8g deg "
-                   "pitch=%.6g deg roll=%.6g deg hdg=%.6g deg aoa=%s beta=%s "
+                   "pitch=%.6g deg roll=%.6g deg hdg=%.6g deg aprg=%s aoa=%s beta=%s "
                    "cla=%s sm=%s acc=%.6g m/s2 "
                    "body=\"%s\" bme=\"%s\" sit=\"%s\"\n",
                    time,
@@ -2071,7 +2097,7 @@ void drawUIReadouts(Game &g) {
                    ver_speed, hor_speed2,
                    glm::degrees(latitude), glm::degrees(longitude),
                    glm::degrees(pitch), glm::degrees(roll), glm::degrees(yaw),
-                   aoa_s, beta_s, cla_s, sm_s,
+                   aprg_s, aoa_s, beta_s, cla_s, sm_s,
                    ship->feltAccel(), b->name.c_str(), bme,
                    situationName(ps.situation));
             fflush(stdout);
