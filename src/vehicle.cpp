@@ -2482,10 +2482,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         /* The ship's silhouette: the union of those polygons, cached per flow
            DIRECTION (speed and density multiply the force, they do not change
            its shape). A miss falls back to the exact union of the polygons this
-           substep already projected, so the cache can never be wrong; it is not
-           free, though -- a filling substep pays that exact pass plus up to
-           kSilFillNodes node passes, and the budget only decides how quickly the
-           cache stops being needed.
+           substep already projected, so a MISS cannot be wrong -- a HIT is only
+           as right as the key that found it, and a mis-keyed cell that was
+           already filled is invisible from here (#504: mutating the fold in
+           drag.h leaves every flight case green; only tests/test_drag.cpp dies).
+           The fallback is not free, either -- a filling substep pays that exact
+           pass plus up to kSilFillNodes node passes, and the budget only decides
+           how quickly the cache stops being needed.
            A substep with no meaningful flow direction does not consult the chart
            at all -- the same test the AoA readout uses (lastDragAlphaValid).
            aeroFrame::valid only refuses v == 0, so a parked ship's jitter passes

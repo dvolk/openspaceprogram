@@ -52,7 +52,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/50-cam-shake.txt` | invariant | Camera shake tracks thrust, rises while burning and decays to zero. |
 | `flight/51-jet-vtol.txt` | invariant | A jet VTOL lifts off and burns jet fuel. |
 | `flight/79-dock-save-load.txt` | invariant | A docked pair survives save/load as one vessel. |
-| `flight/80-glider-aoa-swing.txt` | invariant | A glider's AoA swings toward the trimmed angle and settles. |
+| `flight/80-glider-aoa-swing.txt` | invariant | A glider held nose-up runs its angle of attack away through the stall band instead of settling: the swing grows every sample, the lift slope turns against the airframe inside the droop, and past twice the stall angle the wings make no lift at all. |
 | `flight/95-tvc-vacuum.txt` | invariant | A wheel-less ship steers in vacuum by gimballed thrust alone. |
 | `flight/96-tvc-slew-prograde.txt` | invariant | The autopilot flies a wheel-less ship on gimballed thrust: a prograde hold chases back a stick disturbance. |
 | `flight/97-nuclear-engine.txt` | golden | A nuclear engine produces its rated thrust and hydrogen rate. |

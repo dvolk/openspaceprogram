@@ -20,4 +20,27 @@ CHECK min(d["v"] for d in drag if d.get("chute", 0) > 0) > 10
 # ends sub-1 rad/s. Peak |w| is not pinned: the hull's own weathervane
 # at Mach 3.5 legitimately whips the ship tens of rad/s pre-deploy.
 CHECK last(att)["wnorm"] < 1
+# #504: this case is also the suite's only FLIGHT-level coverage of the back
+# hemisphere. AeroFrame's two angles share atan2's denominator, so a flow from
+# behind lands past +-90 in BOTH at once and the pair has to wrap by 180 together
+# (#463); #503 stopped the shipped airframes tumbling into that hemisphere, which
+# left the FLIGHT PATH unpinned. It hangs here: the canopy is above the COM, so the
+# ship flips through 90 deg and settles nose-UP (AoA -> 180), and it does it in
+# clean air at a few tens of m/s rather than in a ground-contact jitter.
+# What the agreement check pins is the invariant a projected silhouette really has:
+# it is symmetric in its view direction, so the nose-on rows before the flip and
+# the nose-up hang after it are the SAME flow line and must report the same area.
+# Report an angle but apply a different flow's area -- clamp where it should fold,
+# a sign error in the frame -- and the hang answers a broadside figure.
+# What it does NOT pin, measured rather than assumed: the pair-fold itself.
+# Mutating SilhouetteMemo::fold to clamp instead of wrap leaves this case GREEN
+# while tests/test_drag.cpp dies on it (4 checks), because a flight substep answers
+# a chart MISS with the exact union of the polygons it just projected, and a
+# mis-keyed cell only bites when that cell was already filled. The chute crosses
+# the back hemisphere in about a second, too fast to fill what it would then hit.
+# So the fold's guard stays the unit test; what this case guards is what the flight
+# path reports once the angle is past 90, which until now nothing did.
+CHECK any(d.get("aoa") is not None and abs(d["aoa"]) > 90 for d in drag)
+CHECK all(d.get("a", 0.0) > 0 for d in drag if d.get("aoa") is not None and abs(d["aoa"]) > 90)
+CHECK (lambda nose, hang: (nose and hang and abs(min(nose) - min(hang)) < 0.05 * min(nose)))([d["a"] for d in drag if d.get("aoa") is not None and d.get("a") is not None and abs(d["aoa"]) < 1.0 and d["t"] < 4.5], [d["a"] for d in drag if d.get("aoa") is not None and d.get("a") is not None and abs(d["aoa"]) > 175])
 FORBID error:

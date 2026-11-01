@@ -1,5 +1,35 @@
+# #452: this case claimed the glider's AoA "swings toward the trimmed angle and
+# settles" while every CHECK it had only proved the swing is BIG. It does not
+# settle, and pretending otherwise hid the actual finding, so the CLAIM now says
+# what happens and the checks pin it. Measured on this build (glider, Duna pad,
+# R then T then W, --drag-log; the log samples on wall-clock, so the exact rows
+# drift a little run to run -- pin the order, not the seconds):
+#
+#   t=5.9  AoA   0.6   |L|    103 N |tau|    68 Nm  CLa  95.99  Ind  0.02  SM +0.64
+#   t=6.9  AoA   9.6   |L|   1203 N |tau|   832 Nm  CLa  94.59  Ind  4.06  SM +0.64
+#   t=7.9  AoA  25.4   |L|   1799 N |tau|  1413 Nm  CLa -58.54  Ind 13.72  SM +0.64  <-- inside the droop
+#   t=9.0  AoA  42.9   |L|      0 N |tau|   303 Nm  CLa   0.00  Ind  0.00  SM -      <-- past 2x stall
+#   t=10.0 AoA  58.2   |L|      0 N |tau|   431 Nm  CLa   0.00  Ind  0.00  SM -
+#
+# Three things happen in that order and all three are pinned here:
+#  1. the swing GROWS. Every sample is further off the flow than the one before
+#     it, so the wheels are losing: |tau| peaks at 1413 N m against the shipped
+#     wheel's budget, which is #399/#403's whole complaint, not a settling
+#     airframe;
+#  2. CLa turns NEGATIVE at AoA 25.4, inside the droop between stall_angle (20.1
+#     deg) and twice it -- #487's band, where a rotating surface feeds its own
+#     swing instead of damping it;
+#  3. by AoA 42.9 the wings are past 2x stall_angle, where liftCurve is
+#     identically zero: lift is exactly 0.00 N, CLa 0.00, Induced 0.00 and SM
+#     DASHES because there is no slope to divide by. The airframe has stopped
+#     being a wing. The Induced row is #462's pairing, which #504 asked to get
+#     back: since #503 capped a full-lock surface at its deflection stall, the
+#     shipped planes never reach a zero-lift attitude in any case, so nothing
+#     printed one. This does, and it prints Induced=0.000 with it.
+# Re-baseline this case when the attitude work lands (#425's allocator, #482's
+# yaw, #487's droop) -- a settling airframe should FAIL it, deliberately.
 NAME glider-aoa-swing
-CLAIM A glider's AoA swings toward the trimmed angle and settles.
+CLAIM A glider held nose-up runs its angle of attack away through the stall band instead of settling: the swing grows every sample, the lift slope turns against the airframe inside the droop, and past twice the stall angle the wings make no lift at all.
 KIND invariant
 ARGS --time-accel 1 --startship glider,res/ships/glider.json,Duna,pad
 ARGS --timeout 10 --drag-log
@@ -10,7 +40,10 @@ EXPECT [drag]
 CHECK len(drag) >= 2
 CHECK any(d["F"] > 0 and d["rho"] > 0 for d in drag)
 CHECK max(abs(d.get("aoa", 0.0)) for d in drag) > 30
-CHECK max(d.get("a", 0.0) for d in drag) > min(d.get("a", 0.0) for d in drag) * 1.05
+# Only over rows where air actually pushed: the pad row prints A=0.00, and a
+# comparison against zero is satisfied by any shape at all (the same trap the
+# Cd check below documents).
+CHECK (lambda ds: (ds and max(d["a"] for d in ds) > min(d["a"] for d in ds) * 1.05))([d for d in drag if d.get("aoa") is not None and d.get("a") is not None and d["F"] > 0.0])
 # The area-weighted Cd mean moves as the airframe turns -- but NOT monotonically,
 # which is worth pinning as loudly as the fact that it moves at all. Nose-on it is
 # 0.78; it DIPS to 0.66 near |AoA| 26 deg, where the wings (cd 0.2 nose-on) take
@@ -22,4 +55,19 @@ CHECK max(d.get("a", 0.0) for d in drag) > min(d.get("a", 0.0) for d in drag) * 
 # rows where air actually pushed: the Cd in [drag] is a property of the PART MIX
 # facing the flow, not of the shape alone.
 CHECK (lambda ds: (ds and max(d["cd"] for d in ds) > min(d["cd"] for d in ds) * 1.05))([d for d in drag if d.get("aoa") is not None and d.get("cd") is not None and d["F"] > 0.0])
+# --- #452: what the swing actually does, in the three steps the header table
+# measures. The samples are wall-clock gated, so count rows rather than matching
+# them to seconds.
+# (1) no settling: over the rows where the stick was held, |AoA| never comes back
+# down by more than a few degrees -- each sample is at least as far off the flow
+# as the one before, all the way to the widest.
+CHECK (lambda ds: (len(ds) >= 3 and all(b["aoa"] >= a["aoa"] - 1.0 for a, b in zip(ds, ds[1:])) and ds[-1]["aoa"] - ds[0]["aoa"] > 20))([d for d in drag if d.get("aoa") is not None and d["aoa"] > 0.0])
+# (2) inside the droop the slope reverses: CLa goes negative while the airframe
+# is still making lift (the stall band, not past it).
+CHECK any(d.get("cla") is not None and d["cla"] < 0.0 and d.get("L", 0.0) > 100.0 for d in drag)
+# (3) past twice the stall angle (0.35 rad x 2 = 40.1 deg) the curve is
+# identically zero, so lift AND slope are exactly zero and the margin dashes --
+# and the induced term that is billed off that lift goes to zero with it, which
+# is #462's pairing and the row #504 said the suite had stopped printing.
+CHECK any(d.get("aoa") is not None and abs(d["aoa"]) > 41.0 and d.get("L") == 0.0 and d.get("cla") == 0.0 and d.get("induced") == 0.0 and d.get("sm") is None for d in drag)
 FORBID error:
