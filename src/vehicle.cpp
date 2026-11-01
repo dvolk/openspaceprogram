@@ -1255,7 +1255,10 @@ void Vehicle::groupLiftingSystems() {
         }
     }
     assert(ids.size() == owners.size());
-    for(size_t i = 0; i < owners.size(); i++) { owners[i]->aeroSystem = ids[i]; }
+    for(size_t i = 0; i < owners.size(); i++) {
+        owners[i]->aeroSystem = ids[i];
+        aeroSystems[(size_t)ids[i]].liftArea += owners[i]->def->lift_area;
+    }
     aeroSysLiftOverQ.assign(aeroSystems.size(), 0.0);
     aeroSysCdi.assign(aeroSystems.size(), 0.0);
     if(std::getenv("OSPAEROSYS")) {
@@ -3083,9 +3086,26 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             if(clc <= 0.0 || deflection == 0.0) { continue; }
             /* The surface's own stall_angle, the same droop a wing gets (#494's first
                half): a rudder turned 20 deg into the flow has separated, and the
-               loader will not let a steering part ship without the number. */
+               loader will not let a steering part ship without the number.
+
+               #454's other half: a control surface answers its OWN angle of attack
+               as well as the hinge. For a VERTICAL fin pa.alpha IS the sideslip
+               (partAero measures about the plate normal, and a fin's normal is
+               lateral), so a fin now weathervanes -- side force grows with beta and
+               the tail swings back into the flow. That is what every player-built
+               aircraft was missing: the fins only answered the pedal.
+
+               A FLAP is different: it sits in a system that already carries a lifting
+               planform (a wing), whose lift is billed from the same angle on that
+               area. Adding the flap's own incidence there would count the trailing
+               edge twice, so the term is gated on the system's liftArea (#556's
+               grouping is what makes "is this a freestanding fin?" answerable). */
+            const bool systemLifts =
+                p->aeroSystem >= 0 && (size_t)p->aeroSystem < aeroSystems.size()
+                && aeroSystems[(size_t)p->aeroSystem].liftArea > 0.0;
+            const double aeroAngle = deflection + (systemLifts ? 0.0 : pa.alpha);
             const glm::dvec3 F = controlForce(qp, d->control_area, clc,
-                                              deflection, forceDir, d->stall_angle);
+                                              aeroAngle, forceDir, d->stall_angle);
             if(glm::length2(F) <= 0.0) { continue; }
             ApplyForce(hull, ri, F);
             ftotal += F;

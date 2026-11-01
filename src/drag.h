@@ -893,7 +893,13 @@ struct LiftingPane {
    `area` either: b and S stay self-consistent. */
 struct LiftingSystem {
     double span = 0.0;
-    double area = 0.0;
+    double area = 0.0;      // panes' planforms: lift_area OR control_area
+    /* The part of `area` that is a LIFTING planform. 0 means the system is only
+       steering surfaces -- a freestanding fin -- which is the case that must make
+       its own side force from sideslip (#454's other half). A flap sitting on a
+       wing is in a system with liftArea > 0: the wing already lifts from that
+       angle, so the flap must not. */
+    double liftArea = 0.0;
     double oswald = 0.8;   // the shipped value; per-part e would feed min() here
     int members = 0;
 };

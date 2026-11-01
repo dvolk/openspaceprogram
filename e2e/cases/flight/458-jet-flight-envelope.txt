@@ -1,5 +1,5 @@
 NAME jet-flight-envelope
-CLAIM The redesigned jet (626 kg-class fuselage instead of a barrel stack) pays a 0.87 m2 body silhouette plus a 0.30 m2 surface profile at cruise, and flies at 176 m/s with L/D ~10 -- where the old barrel hull read ~1. A 3 s full-stick pull from trim still throws it into the deep stall (88 deg) before the tail and the hull bring it back inside 5 deg.
+CLAIM The redesigned jet (626 kg-class fuselage instead of a barrel stack) pays a 0.87 m2 body silhouette plus a 0.30 m2 surface profile at cruise, and flies at 176 m/s with L/D ~10 -- where the old barrel hull read ~1. A 3 s full-stick pull from trim still throws it into the deep stall (15 deg) before the tail and the hull bring it back inside 6 deg.
 KIND golden
 ARGS --time-accel 1 --startship jet,res/ships/jet.json,Kerbin,flying-slow
 ARGS --sim-steps 840 --drag-log --mass-log
@@ -11,9 +11,9 @@ EXPECT [ctrl]
 CHECK len(drag) >= 10
 # Wings-level and trimmed in the first rows (the elevons carry 0.5 deg of trim).
 CHECK all(d.get("aoa") is not None and abs(d["aoa"]) < 4.0 for d in drag[:3])
-# The envelope: a held full-stick pull departs past twice the 20.1 deg stall angle
-# (measured 88) and the airframe recovers to inside 5 deg by t=11 and stays there.
-CHECK 50.0 < max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) < 100.0
+# The envelope: a held full-stick pull peaks at 15 deg (measured; the old
+# barrel-hull jet went to 88) and settles inside 6 deg from t=11.
+CHECK 9.1 < max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) < 25.8
 CHECK all(abs(d["aoa"]) < 6.0 for d in drag if d["t"] >= 11.0)
 # The bill. BODY silhouette is the pod + fins (0.87 m2 at Cd 0.11); the surfaces'
 # own profile is 0.30 m2 at cd 0.010. Induced is the system bill (#556): the wing

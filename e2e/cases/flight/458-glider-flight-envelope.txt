@@ -1,5 +1,5 @@
 NAME glider-flight-envelope
-CLAIM The redesigned glider is a 434 kg motorglider: a 0.50 m2 body plus 16 m2 of smooth-section wing, trimmed by a tailplane pair to hold 2 deg of angle of attack at 80 m/s with L/D ~13. A held rudder still throws it past 90 deg of yaw (fins weathervane only through the hull's own drag, #454's gap), and a full elevator pull takes it through the stall once before the trim recovers it.
+CLAIM The redesigned glider is a 434 kg motorglider: a 0.50 m2 body plus 16 m2 of smooth-section wing, trimmed by a tailplane pair to hold 2 deg of angle of attack at 80 m/s with L/D ~13. A held rudder throws it to ~33 deg of yaw and the fins bring it back (their own sideslip now makes side force), while a full elevator pull peaks at 1.7 deg -- the airframe never leaves the linear range.
 KIND golden
 ARGS --time-accel 1 --startship glider,res/ships/glider.json,Kerbin,flying-cruise
 ARGS --sim-steps 840 --drag-log --mass-log
@@ -11,11 +11,12 @@ EXPECT [ctrl]
 CHECK len(drag) >= 10
 # Trimmed at 2 deg on every calm row: this is what the tailplane pair is for.
 CHECK all(d.get("aoa") is not None and 0.5 < d["aoa"] < 4.0 for d in drag[:4])
-# The pitch excursion (the W hold) is ONE bad row and then the trim wins.
-CHECK max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) > 50.0
-CHECK all(abs(d["aoa"]) < 8.0 for d in drag if d["t"] >= 7.0)
-# The yaw swing: a held rudder takes it past 90 deg and it comes back.
-CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) > 50.0
+# The pitch excursion (the W hold) never leaves the linear range: max 1.7 deg.
+CHECK 1.0 < max(abs(d["aoa"]) for d in drag if d["aoa"] is not None) < 2.9
+CHECK all(abs(d["aoa"]) < 4.0 for d in drag if d["t"] >= 7.0)
+# The yaw swing: a held rudder takes it to ~33 deg and the fins' own sideslip
+# force (their first real weathervane) brings it back.
+CHECK 15.0 < max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 50.0
 # The bill: 0.50 m2 of body at Cd 0.11 and 0.24 m2 of wing profile.
 CHECK 0.40 < min(d["a"] for d in drag if d.get("a")) < 0.70
 CHECK 0.15 < min(d["profile"] for d in drag if d.get("profile")) < 0.35

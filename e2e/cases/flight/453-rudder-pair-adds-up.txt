@@ -1,5 +1,5 @@
 NAME rudder-pair-adds-up
-CLAIM The jet's two rudders are bolted the other way round, so one stick drives them to OPPOSITE printed deflections and they still push the SAME way: a held rudder throws the airframe off the centreline instead of cancelling itself out.
+CLAIM The jet's two rudders are bolted the other way round, so one stick drives them to OPPOSITE printed deflections and they still push the SAME way: a held rudder throws the airframe 28 deg off the centreline instead of cancelling itself out, and the fins' own sideslip force brings it back.
 KIND invariant
 ARGS --time-accel 1 --startship jet,res/ships/jet.json,Kerbin,flying-slow
 ARGS --sim-steps 300 --drag-log
@@ -12,8 +12,10 @@ EXPECT [ctrl]
 CHECK len(drag) >= 4
 CHECK any(a["deg"] < -15.0 and b["deg"] > 15.0 for a in ctrl for b in ctrl if a["t"] == b["t"] and a["axis"] == "yaw" and b["axis"] == "yaw" and a["index"] != b["index"])
 # And the pair still turns the airframe: 3 s of full pedal from 176 m/s takes Beta
-# past 30 deg inside a second and past 90 deg by the second -- the shipped trainer
-# departs under a held pedal at cruise, which is what a full-rudder hold does. The
-# pin is the DIRECTION and the SIZE, not a recovery: a pair that cancelled reads ~0.
-CHECK max(abs(d["beta"]) for d in drag if d.get("beta") is not None) > 50.0
+# to 28 deg inside a second and then back inside 10 -- since #454's other half the
+# fins weathervane (their own sideslip makes side force), so the pedal sets the
+# angle and the tail brings it home. The pin is the SIZE and that it recovers: a
+# pair that cancelled reads ~0.
+CHECK 15.0 < max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 45.0
+CHECK max(abs(d["beta"]) for d in drag if d.get("t") >= 4.0) < 10.0
 FORBID error:
