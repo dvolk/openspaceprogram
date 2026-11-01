@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 272 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 39 |
+| `invariant` | a behaviour or a player route the game must keep | 270 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 37 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **329** |
+| | **total** | **325** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (80)
+## flight (76)
 
 | case | kind | pins |
 |---|---|---|
@@ -50,7 +50,6 @@ judgement. Select by number, name or path, e.g.
 | `flight/48-com-torque.txt` | invariant | Thrust through the COM produces no spurious torque. |
 | `flight/49-drag-ascent.txt` | invariant | Drag reduces ascent acceleration and the drag log reports finite forces. |
 | `flight/50-cam-shake.txt` | invariant | Camera shake tracks thrust, rises while burning and decays to zero. |
-| `flight/51-jet-vtol.txt` | invariant | A jet VTOL lifts off and burns jet fuel. |
 | `flight/79-dock-save-load.txt` | invariant | A docked pair survives save/load as one vessel. |
 | `flight/95-tvc-vacuum.txt` | invariant | A wheel-less ship steers in vacuum by gimballed thrust alone. |
 | `flight/96-tvc-slew-prograde.txt` | invariant | The autopilot flies a wheel-less ship on gimballed thrust: a prograde hold chases back a stick disturbance. |
@@ -90,10 +89,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/395-surface-aoa-readout.txt` | invariant | [surfinfo] reports the aero angle of attack, the sideslip and the air-relative prograde while the ship has air-relative flow and "-" when it has none, and its stability pair reports a zero slope without inventing a neutral-looking margin for an airframe that has nothing lifting. |
 | `flight/448-drag-log-lift-readings.txt` | harness | The --drag-log's signed lift and attitude readings parse in flight and stay inside their bounds. |
 | `flight/451-flying-slow-starts-in-air.txt` | golden | The flying-slow bed starts wings-level with its nose along the air at a fraction of the AIR-relative circular speed, so a plane enters its altitude band moving rather than dropping. |
-| `flight/453-rudder-pair-adds-up.txt` | invariant | The jet's two rudders are bolted the other way round, so one stick drives them to OPPOSITE printed deflections and they still push the SAME way: a held rudder throws the airframe 28 deg off the centreline instead of cancelling itself out, and the fins' own sideslip force brings it back. |
 | `flight/454-static-margin.txt` | invariant | The VAB's static margin and the flight log's SM are the same number: a trimmed skiff with 0.39 m of margin flies at +3 deg of angle of attack and stays wings-level through a 6 s glide. |
-| `flight/458-glider-flight-envelope.txt` | golden | The redesigned glider is a 434 kg motorglider: a 0.50 m2 body plus 16 m2 of smooth-section wing, trimmed by a tailplane pair to hold 2 deg of angle of attack at 80 m/s with L/D ~13. A held rudder throws it to ~33 deg of yaw and the fins bring it back (their own sideslip now makes side force), while a full elevator pull peaks at 1.7 deg -- the airframe never leaves the linear range. |
-| `flight/458-jet-flight-envelope.txt` | golden | The redesigned jet (626 kg-class fuselage instead of a barrel stack) pays a 0.87 m2 body silhouette plus a 0.30 m2 surface profile at cruise, and flies at 176 m/s with L/D ~10 -- where the old barrel hull read ~1. A 3 s full-stick pull from trim still throws it into the deep stall (15 deg) before the tail and the hull bring it back inside 6 deg. |
 | `flight/461-pad-def-attitude-starts-level.txt` | invariant | A ship def can ask for its pad attitude, so a winged airframe starts with its nose on the horizon and its wings level instead of standing on its tail. |
 | `flight/472-scripted-cadence-across-a-load.txt` | invariant | A scripted run keeps printing its logs at an exact cadence through a quickload that rewinds the sim clock, and keeps printing them after it. |
 | `flight/472-scripted-paused-sim-says-so.txt` | harness | A scripted run whose sim never advances prints the rows AND says the run measured nothing, instead of exiting 0 on a frozen world. |

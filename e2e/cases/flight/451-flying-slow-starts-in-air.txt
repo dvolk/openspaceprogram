@@ -1,7 +1,7 @@
 NAME flying-slow-starts-in-air
 CLAIM The flying-slow bed starts wings-level with its nose along the air at a fraction of the AIR-relative circular speed, so a plane enters its altitude band moving rather than dropping.
 KIND golden
-ARGS --time-accel 1 --startship jet,res/ships/jet.json,Kerbin,flying-slow
+ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-slow
 ARGS --timeout 12 --drag-log --orbit-interval 0.2
 EXPECT Spawn 'flying-slow' around Kerbin
 EXPECT frame 'Kerbin (rotational)'

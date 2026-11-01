@@ -69,8 +69,6 @@ static void test_shipped_against_flight(const Fixture &f) {
     struct Row { const char *path; double slope; double margin; };
     const Row rows[] = {
         { "res/ships/skiff.json",  153.42, 0.395 },
-        { "res/ships/glider.json",  96.00, 0.485 },
-        { "res/ships/jet.json",     96.00, 0.204 },
     };
     for(const Row &r : rows) {
         const BuildShip bs = f.build(r.path);

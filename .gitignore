@@ -63,3 +63,6 @@ compile_commands.json
 
 # lsp
 .lsp.json
+
+# clangd index cache (bear)
+.cache/

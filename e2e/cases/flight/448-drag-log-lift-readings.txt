@@ -1,7 +1,7 @@
 NAME drag-log-lift-readings
 CLAIM The --drag-log's signed lift and attitude readings parse in flight and stay inside their bounds.
 KIND harness
-ARGS --time-accel 1 --startship jet,res/ships/jet.json,Duna,pad
+ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Duna,pad
 ARGS --timeout 20 --drag-log
 ARGS --sim-press 1000,2000,R
 ARGS --sim-press 1500,4000,T

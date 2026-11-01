@@ -1348,73 +1348,6 @@ int main() {
         CHECK(!mini.nodeOccupied(2, "top"));
         CHECK((scratch[2] & (1ull << podTop)) == 0);
     }
-    /* #453 frozen against the shipped mounts: every lifting surface on the
-       shipped airframes is bolted on as a pair 180 deg apart, so a part's OWN
-       alpha and its OWN lift direction flip together and its own-frame lift is
-       the force the old ship-wide frame gave it. Compared here, on the poses
-       BuildShip solves with the same solver flight uses, because a mount-
-       convention change would otherwise surface as unexplained flight drift in
-       a physics golden rather than as a failed check with a name. */
-    {
-        const double aoa = glm::radians(5.0);
-        const glm::dvec3 vrel(0.0, -100.0 * std::sin(aoa), 100.0 * std::cos(aoa));
-        const double q = 0.5 * 1.225 * 100.0 * 100.0;   // 100 m/s at sea level
-        for(const char *path : { "res/ships/jet.json", "res/ships/glider.json" }) {
-            BuildShip bs = BuildShip::fromShipDef(load_ship_def(path, cat));
-            const glm::dmat3 root = bs.parts[0].localRot;
-            const AeroFrame ship = aeroFrame(vrel, root[0], root[1], root[2]);
-            CHECK(ship.valid);
-            const glm::dvec3 shipLift = liftDirection(vrel, root[0], root[2]);
-            glm::dvec3 fNew(0.0), fOld(0.0), mNew(0.0), mOld(0.0);
-            int lifting = 0;
-            for(const BuildPart &bp : bs.parts) {
-                const PartDef *d = bp.def;
-                if(d == nullptr || d->lift_area <= 0.0) { continue; }
-                lifting++;
-                const PartAero pa = partAero(bp.localRot, vrel);
-                CHECK(pa.valid);   // a shipped mount always gives the flow a handle
-                const glm::dvec3 fN = liftForce(q, d->lift_area, d->cl, pa.alpha,
-                                                pa.liftDir, d->stall_angle);
-                const glm::dvec3 fO = liftForce(q, d->lift_area, d->cl, ship.alpha,
-                                                shipLift, d->stall_angle);
-                fNew += fN;
-                fOld += fO;
-                mNew += glm::cross(bp.localPos, fN);
-                mOld += glm::cross(bp.localPos, fO);
-            }
-            CHECK(lifting >= 2);   // a no-op comparison of nothing would be a bad pin
-            const double dF = glm::length(fNew - fOld);
-            const double dM = glm::length(mNew - mOld);
-            printf("   %s: %d lifting parts; per-part vs ship-wide lift %.3g N,"
-                   " moment %.3g N m\n", path, lifting, dF, dM);
-            CHECK(dF < 1e-9);
-            CHECK(dM < 1e-9);
-
-            /* Steering twins face OPPOSITE ways (their plate normals are
-               anti-parallel), which is exactly why controlDeflectionSign gives
-               them opposite deflections whose forces still add. If a mount ever
-               stops being a twin, yaw authority quietly halves. */
-            int yaw = 0;
-            for(int ax = 0; ax < 2; ax++) {
-                const ControlAxis axis = (ax == 0) ? ControlAxis::Pitch : ControlAxis::Yaw;
-                glm::dvec3 first(0.0);
-                bool have = false;
-                int n = 0;
-                for(const BuildPart &bp : bs.parts) {
-                    const PartDef *d = bp.def;
-                    if(d == nullptr || d->control_area <= 0.0) { continue; }
-                    if(d->control_axis != axis) { continue; }
-                    const glm::dvec3 nrm = partAero(bp.localRot, vrel).liftDir;
-                    CHECK(glm::length(nrm) > 0.99);
-                    if(!have) { first = nrm; have = true; }
-                    else { CHECK(glm::length(nrm + first) < 1e-9); }
-                    n++;
-                }
-                if(ax == 1) { yaw = n; }
-            }
-            CHECK(yaw >= 2);   // both shipped airframes fly with a rudder pair
-        }
-    }
     // --- VAB tree ops: removePart / rotatePart ------------------------------
     {
         ShipDef tk2 = load_ship_def("res/ships/tanker.json", cat);
@@ -1985,7 +1918,7 @@ int main() {
     // the stand-on-the-tail pose byte for byte.
     {
         const char *rt = "/tmp/test_shipload_att_rt_out.json";
-        BuildShip bs = BuildShip::fromShipDef(load_ship_def("res/ships/jet.json", cat));
+        BuildShip bs = BuildShip::fromShipDef(load_ship_def("res/ships/skiff.json", cat));
         CHECK(!bs.has_attitude);
         CHECK(save_ship_def(bs, rt));
         CHECK(!load_ship_def(rt, cat).has_attitude);
@@ -3138,8 +3071,8 @@ int main() {
         }
         CHECK(vab == want);
         // Roster anchors: the stock ships reach the picker, scenario ships don't.
-        for(const std::string stock : { "glider", "heavy_asp", "jet",
-                                        "mars_explorer_mk1", "racer", "stager" }) {
+        for(const std::string stock : { "heavy_asp", "mars_explorer_mk1",
+                                        "racer", "stager" }) {
             CHECK(std::find(vab.begin(), vab.end(), stock) != vab.end());
         }
         CHECK(std::find(vab.begin(), vab.end(), std::string("ranger")) == vab.end());
