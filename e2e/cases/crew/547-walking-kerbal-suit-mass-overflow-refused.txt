@@ -1,0 +1,31 @@
+# #547's total is not only about ships. A walking kerbal is a ONE-part vehicle:
+# buildKerbalFromSave copies suit_fuel straight into that Part's resources and hangs
+# its pockets off it, so the suit's contents land in the same Body, and the same
+# Bullet principal-axis solve answers an infinite mass with a NaN inertia tensor and
+# NaN centre of mass. The kerbal-def door (#547) totals the suit and its pockets for
+# the same reason it totals a ship.
+#
+# The fixture is save_eva_yaw with the suit's Hydrogen AND LOX set to 1e308. Each is
+# legal on its own -- refuseBadContents only refuses an amount a tank cannot hold, and
+# a save's contents are never capacity-clamped before this door -- so one of them
+# leaves a finite (absurd) Body. Two of them make the total +inf, which is the case.
+NAME walking-kerbal-suit-mass-overflow-refused
+CLAIM A saved kerbal whose suit contents add up to more mass than the game can store is refused, not stood up as a NaN-inertia Body.
+KIND invariant
+ARGS --timeout 9
+# Same fixture-route plumbing as the ship case: Game Debug ticks the e2e fixture
+# root, the Save/Load sheet picks the "fixtures" game, the filter narrows the list,
+# row + Load button do the rest.
+ARGS --sim-press 500,0,F1
+ARGS --ui-click 1000,"Game Debug/Load e2e fixture saves"
+ARGS --sim-press 1500,0,F1
+ARGS --ui-click 2000,"Title Menu/Save/Load"
+ARGS --ui-click 2500,"fixtures"
+ARGS --ui-type 3000,"Save/Load/##filter",save_huge_suit
+ARGS --ui-click 3800,"save_huge_suit"
+ARGS --ui-click 4000,"Save/Load/Load##saveload"
+EXPECT load: saved kerbal 'kerbal' weighs more than the game can store (part 'kerbal' takes the running total past it)
+EXPECT [load] refused
+FORBID Loaded game from
+FORBID error:
+FORBID FAILED

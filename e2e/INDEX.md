@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 275 |
+| `invariant` | a behaviour or a player route the game must keep | 276 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 37 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **330** |
+| | **total** | **331** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -102,7 +102,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/571-stick-faces-the-root.txt` | invariant | W/S pitches about the ROOT's right axis and A/D yaws about its up axis, even when the hull's only wheel is mounted on its side. |
 | `flight/573-hud-speaks-the-hull.txt` | invariant | The SURFACE window's pitch/roll/heading describe the hull the keys turn, even though the crew sit on a wheel that is rolled 90 deg about the stack. |
 
-## crew (25)
+## crew (26)
 
 | case | kind | pins |
 |---|---|---|
@@ -131,6 +131,7 @@ judgement. Select by number, name or path, e.g.
 | `crew/226-vab-launch-kerbal-multidef.txt` | invariant | The VAB refuses to launch a multi-part kerbal with a toast. |
 | `crew/271-recover-refused-walking.txt` | invariant | Recover is offered for a walking kerbal and refuses without tearing the game down. |
 | `crew/394-spent-pool-kerbal-refused.txt` | invariant | A kerbal spawned on a spent pad pool is refused, not minted off the def. |
+| `crew/547-walking-kerbal-suit-mass-overflow-refused.txt` | invariant | A saved kerbal whose suit contents add up to more mass than the game can store is refused, not stood up as a NaN-inertia Body. |
 
 ## science (18)
 

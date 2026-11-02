@@ -610,6 +610,23 @@ static TerrainBody *resolveBody(const System &sys, const std::string &name,
     return b;
 }
 
+/* What one saved part adds to the mass of the Body it hangs off: its def's dry
+   mass plus the contents THIS file names, plus everything parked inside it. The
+   recursion is not decoration -- Part::effectiveMass (part.h) is the number the
+   physics is handed, and it walks `contents` and `seats` exactly this way, so a
+   ship's total has to cover the same tree. Sum only the attached parts and the
+   #547 door is a lower bound: a capsule with legal-looking tanks and a 1e308
+   suit in its couch still reaches the principal-axis solve as +inf. A nested
+   entry whose def is no longer in the catalog adds nothing here and is refused
+   by validateSeatArray / validateInventoryArray, which the caller runs next. */
+static double savedSubtreeMass(const PartsCatalog &cat, const SavePart &sp) {
+    double m = 0.0;
+    if(const PartDef *pd = cat.find(sp.part)) { m += partSavedMass(pd->mass, sp.fuel); }
+    for(const SavePart &seat : sp.seats) { m += savedSubtreeMass(cat, seat); }
+    for(const SavePart &item : sp.inventory) { m += savedSubtreeMass(cat, item); }
+    return m;
+}
+
 /* The save checks that need no world: a uid present, unique within the ship and
    across the whole save, every part name still in the catalog, every parent uid
    already seen (the writer emits parents before children), a scenario the table
@@ -738,8 +755,9 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
            that with a NaN inertia tensor and NaN centre of mass (measured in #547):
            the ship would fly unrotatable rather than say so. So the total gets a door
            at the level the quantity is meaningful, in the same "no invented ceiling"
-           style as that gate. */
-        shipMass += partSavedMass(spd->mass, sp.fuel);
+           style as that gate. The tree below the part counts too, because that is what
+           the Body is handed (savedSubtreeMass). */
+        shipMass += savedSubtreeMass(cat, sp);
         if(std::string why = refuseSavedShipMass(shipMass, sp.id); !why.empty()) {
             return "load: saved ship '" + s.name + "' " + why;
         }
@@ -822,6 +840,20 @@ static std::string validateKerbalDef(const SaveShip &s, const PartsCatalog &cat,
         return "load: kerbal '" + s.name + "' has def '" + s.defPath
                + "', which is a '" + parsed.parts[0].def->type
                + "' part, not a kerbal";
+    }
+    /* A person is a ONE-part vehicle, so #547's total applies here too: the suit,
+       what its tanks hold and what hangs in its pockets all land in one Body
+       (buildKerbalFromSave), and the same principal-axis solve answers +inf with a
+       NaN inertia. The pockets are rule-checked one level down by
+       validateInventoryArray, which the caller runs after this returns. */
+    double mass = partSavedMass(parsed.parts[0].def->mass, s.suit_fuel);
+    std::string tip = parsed.parts[0].def->name;
+    for(const SavePart &p : s.suit_inventory) {
+        mass += savedSubtreeMass(cat, p);
+        if(!std::isfinite(mass)) { tip = p.part; break; }
+    }
+    if(std::string why = refuseSavedShipMass(mass, tip); !why.empty()) {
+        return "load: saved kerbal '" + s.name + "' " + why;
     }
     if(def != nullptr) { *def = std::move(parsed); }
     return "";

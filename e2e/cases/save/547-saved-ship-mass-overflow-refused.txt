@@ -6,17 +6,22 @@
 # project's own double-precision Bullet). Garbage rather than a refusal: the ship
 # would load and fly unrotatable, or blow up, and nothing would say why.
 #
-# The fixture is save_racer with two parts' Hydrogen set to 1e308 -- capsule_1 and
-# fuel_tank_1, both legal alone -- and every part's "geom" fingerprint REMOVED, so
-# the load cannot refuse on geometry drift (#456) instead of on mass. Removing it
-# prints its own one-line note (unverifiable, not wrong), which is why the case
-# pins the mass sentence rather than the absence of notes.
+# The fixture is save_racer with Hydrogen 1e308 on capsule_1 AND on the kerbal_1
+# sitting in its couch. The capsule alone stays FINITE (1e308 plus its dry mass), so
+# the refusal can only come from counting the tree UNDER the part: a suit in the
+# seats is mass the physics is handed, exactly as Part::effectiveMass counts it
+# (part.h). Sum only the attached parts and this save loads -- which is how the case
+# pins the recursion rather than just the top level.
+#
+# This save predates #456's "geom" key, so the geometry check has nothing to compare
+# and can only note that it cannot verify -- and a refusal drops that note anyway, so
+# the mass sentence is the one thing this case can pin.
 #
 # Fixture mint (re-mint together with the golden part name below):
-#   cp -r e2e/fixtures/save_geom_stale e2e/fixtures/save_huge_mass
-#   then in ships/v0.json: delete every part's "geom", and set fuel[0] (Hydrogen)
-#   to 1e308 on capsule_1 and fuel_tank_1. The tipped part in the message is the
-#   SECOND one in the file's order, because the loader sums as it walks.
+#   cp -r e2e/fixtures/save_racer e2e/fixtures/save_huge_mass
+#   then in ships/v0.json set fuel[0] (Hydrogen) to 1e308 on capsule_1 and on the
+#   kerbal_1 entry inside its "seats". The part named in the message is the one whose
+#   subtree takes the running total past what a double holds.
 NAME saved-ship-mass-overflow-refused
 CLAIM A save whose parts add up to more mass than the game can store is refused, not loaded as a NaN-inertia ship.
 KIND invariant
@@ -32,6 +37,8 @@ ARGS --ui-click 2500,"fixtures"
 ARGS --ui-type 3000,"Save/Load/##filter",save_huge_mass
 ARGS --ui-click 3800,"save_huge_mass"
 ARGS --ui-click 4000,"Save/Load/Load##saveload"
-EXPECT load: saved ship 'racer' weighs more than the game can store (part 'fuel_tank_1' takes the running total past it)
+EXPECT load: saved ship 'racer' weighs more than the game can store (part 'capsule_1' takes the running total past it)
 EXPECT [load] refused
 FORBID Loaded game from
+FORBID error:
+FORBID FAILED

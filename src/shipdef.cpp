@@ -1188,16 +1188,23 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
        NaN centre of mass. Not a crash but garbage: the ship would fly with an
        unrotatable or exploding body rather than tell anybody anything. Same stance
        as that gate and as optInt's counts -- no invented ceiling, just that what
-       the game cannot represent does not load. The shipped catalog is ~300 orders
-       of magnitude away from this, so it only ever refuses a hand-written def. */
+       the game cannot represent does not load. The shipped fleet is 300 orders of
+       magnitude away from this (measured in #547: heaviest def 1.06e5 kg), so it only
+       ever refuses a hand-written file. */
     double launchMass = 0.0;
     for(const ShipPart &sp : def.parts) {
-        if(sp.isFuelLink() || sp.def == nullptr) { continue; }   // an edge, not a body
+        if(sp.isFuelLink()) { continue; }   // an edge, not a body
+        /* Every part has a def here -- an unknown name threw in the loop above -- and
+           partLoadMass is at least the dry mass, which the parser requires to be > 0,
+           so the running total only climbs and the first part that tips it is the one
+           worth naming. */
         launchMass += partLoadMass(*sp.def);
-    }
-    if(!std::isfinite(launchMass)) {
-        throw std::runtime_error("ship: " + path
-                                 + ": its parts together weigh more than the game can store");
+        if(!std::isfinite(launchMass)) {
+            throw std::runtime_error(std::string("ship: ") + path
+                                     + ": its parts together weigh more than the game"
+                                     + " can store (part '" + sp.part
+                                     + "' takes the running total past it)");
+        }
     }
     return def;
 }
