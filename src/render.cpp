@@ -727,7 +727,7 @@ void paintWorld(Game &g) {
     /* RCS plumes (#428 follow-up): one per nozzle that fired the last RCS
        substep (Part::rcsFired), hanging off the pod OPPOSITE its force dir --
        the exhaust leaves backwards, exactly like an engine's. */
-    if(ship && ship->rcsFiring) {
+    if(ship && ship->rcsBurned()) {
         const glm::dvec3 camR = glm::normalize(glm::cross(g.camera->forward, g.camera->up));
         for(Part *p : ship->parts) {
             if(!p->isRcs()) { continue; }
@@ -770,7 +770,7 @@ void paintWorld(Game &g) {
        COM along the armed ship-relative direction. The quad spans the exhaust
        direction and the camera axis LEAST aligned with it, keeping the flat
        strip screen-facing. Ships with pods draw plumes per nozzle, above. */
-    if(ship && ship->rcsFiring && glm::length2(ship->rcsDir) > 1e-12
+    if(ship && ship->rcsTranslating()
        && ship->maxRcsThrust() <= 0.0) {
         const glm::dvec3 z = ship->rcsWorldDir();  // thrust dir; the mesh extends toward -z
         const glm::dvec3 camR = glm::normalize(glm::cross(g.camera->forward, g.camera->up));

@@ -1759,10 +1759,10 @@ void drawUIReadouts(Game &g) {
         if(gen > 0.0 || constDraw > 0.0 || capacity > 0.0) {
             // Active draw: the wheels, only while commanding (same condition powerTick
             // uses).
-            bool wheelsActive = (ship->stick[0] != 0.0f ||
-                                 ship->stick[1] != 0.0f ||
-                                 ship->stick[2] != 0.0f)
-                || ship->slew != SlewNone;
+            bool wheelsActive = (ship->stickAxis(0) != 0.0f ||
+                                 ship->stickAxis(1) != 0.0f ||
+                                 ship->stickAxis(2) != 0.0f)
+                || ship->slewMode() != SlewNone;
             double activeDraw = 0.0;
             if(wheelsActive) {
                 for(Part *p : ship->parts) {
@@ -2270,7 +2270,7 @@ void drawUIReadouts(Game &g) {
         // exclusive, held until toggled) is Command's, not this window's: the Z/B
         // keys, --autopilot and an autopilot law all engage the same way (#424).
         auto toggle = [&](SlewMode m, const char *label) {
-            const bool engaged = (ship->slewRequest == m);
+            const bool engaged = (ship->slewRequestMode() == m);
             if(engaged) {
                 ImGui::PushStyleColor(ImGuiCol_Button,
                                      ImVec4(0.30f, 0.45f, 0.70f, 1.0f));
@@ -2285,7 +2285,7 @@ void drawUIReadouts(Game &g) {
                    Toast it: an engaged autopilot keeps turning the ship with no key held, so it must
                    be visible outside this window (Z/B engage the same state). */
                 g.toast("Autopilot: %s %s", label,
-                        ship->slewRequest == m ? "engaged" : "off");
+                        ship->slewRequestMode() == m ? "engaged" : "off");
             }
             if(engaged) {
                 ImGui::PopStyleColor(3);

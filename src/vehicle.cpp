@@ -1757,7 +1757,7 @@ void Vehicle::compoundCheck(double time) {
     fflush(stdout);
 }
 
-void Vehicle::setSlewRequest(SlewMode m) { slewRequest = m; }
+void Vehicle::restoreSlewRequest(SlewMode m) { slewRequest = m; }
 
 void Vehicle::setRoot(Part *part) {
     part->parent   = nullptr;

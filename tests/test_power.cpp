@@ -267,11 +267,14 @@ static void test_active_wheel_draws() {
     initShip(s);
     CHECK_NEAR(totalEC(s), 5000.0, 1e-9, "battery seeded full");
 
-    /* Stick active: 100 W (life) + 1000 W (wheel) = 1100 W for 1 h. */
-    s.v->stick[1] = 1.0f;   // pitch command -> the wheel is active
+    /* Stick active: 100 W (life) + 1000 W (wheel) = 1100 W for 1 h. The stick
+       is only reachable through Command (#575), which is also the point: the
+       wheel is made to work by a pitch command, and the same call at zero
+       releases it. */
+    s.v->Command(ShipCmd(Pitch, 1.0f), true);
     s.v->powerTick(3600.0);
     CHECK_NEAR(totalEC(s), 3900.0, 1e-6, "active wheel drains 1100 Wh");
-    s.v->stick[1] = 0.0f;
+    s.v->Command(ShipCmd(Pitch, 0.0f), true);
 
     /* Stick off: only the 100 W life support for 1 h. */
     s.v->powerTick(3600.0);

@@ -565,7 +565,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
     s.throttle = v->thruster_util;   // m_thrust is a per-tick "fired" flag
     s.active_stage = v->activeStage();
     s.total_stages = v->numStages();
-    s.slew_request = (int)v->slewRequest;
+    s.slew_request = (int)v->slewRequestMode();
 
     for(size_t k = 0; k < v->seams.size(); k++) {
         SaveDock dk;
@@ -1006,7 +1006,7 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
     v->setVelocity(s.pose.vel);
     SetAngVelocity(v->hull, s.pose.angvel);
     v->thruster_util = s.throttle;
-    v->setSlewRequest((SlewMode)s.slew_request);
+    v->restoreSlewRequest((SlewMode)s.slew_request);
 
     /* Both parts of a seam must be present: skipping an unresolvable seam
        leaves the joint physically docked with no undock record, so the ship

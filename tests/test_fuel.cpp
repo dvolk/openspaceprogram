@@ -943,7 +943,7 @@ static void test_force_overlay_recording() {
 
     s.v->ApplyThrust_TESTONLY(50.0);            // tanks plentiful -> full 200 N
     CHECK_NEAR(eng->armedThrust, 200.0, 1e-5, "engine armed at full thrust");
-    s.v->rcsDir = glm::dvec3(0.0, 0.0, 1.0);    // the pod allocates 60 N along +Z
+    s.v->armRcs(glm::dvec3(0.0, 0.0, 1.0));     // the pod allocates 60 N along +Z
     s.v->recordForceVecs = true;
     s.v->applyControlForces(1.0 / 60.0);
 
@@ -985,7 +985,7 @@ static void test_force_overlay_recording() {
        cleared between them); with one, the list is a single substep's. */
     s.v->beginForceRecordSubstep();
     s.v->ApplyThrust_TESTONLY(50.0);
-    s.v->rcsDir = glm::dvec3(0.0, 0.0, 1.0);
+    s.v->armRcs(glm::dvec3(0.0, 0.0, 1.0));
     s.v->applyControlForces(1.0 / 60.0);
     CHECK_TRUE(s.v->lastForceVecs.size() == 2, "boundary -> one substep's worth");
     s.v->applyControlForces(1.0 / 60.0);
@@ -999,7 +999,7 @@ static void test_force_overlay_recording() {
     s.v->recordForceVecs = false;
     s.v->lastForceVecs.clear();
     s.v->ApplyThrust_TESTONLY(50.0);
-    s.v->rcsDir = glm::dvec3(1.0, 0.0, 0.0);
+    s.v->armRcs(glm::dvec3(1.0, 0.0, 0.0));
     s.v->applyControlForces(1.0 / 60.0);
     CHECK_TRUE(s.v->lastForceVecs.empty(), "recording off -> nothing captured");
     CHECK_NEAR(glm::length(s.v->lastThrustForce), 200.0, 1e-9,

@@ -379,15 +379,15 @@ static void test_the_command_funnel() {
 
     /* An attitude amount is a NORMALIZED demand, kept as sent (see ShipCmd). */
     v->Command(ShipCmd(Pitch, +0.5f), true);
-    CHECK_NEAR(v->stick[1], 0.5f, 1e-12, "half a demand arms half a stick");
+    CHECK_NEAR(v->stickAxis(1), 0.5f, 1e-12, "half a demand arms half a stick");
     v->Command(ShipCmd(Yaw, -0.75f), true);
-    CHECK_NEAR(v->stick[2], -0.75f, 1e-12, "and keeps the sign of it");
+    CHECK_NEAR(v->stickAxis(2), -0.75f, 1e-12, "and keeps the sign of it");
     v->Command(ShipCmd(Roll, +1.0f), true);
-    CHECK_NEAR(v->stick[0], 1.0f, 1e-12, "full stick is still full");
+    CHECK_NEAR(v->stickAxis(0), 1.0f, 1e-12, "full stick is still full");
     /* The trap the old spelling left: sign-only meant `amount 0` == full tilt. A
        zero demand arms nothing, which is what an autopilot at equilibrium sends. */
     v->Command(ShipCmd(Pitch, 0.0f), true);
-    CHECK_NEAR(v->stick[1], 0.0f, 1e-12, "zero demand arms nothing");
+    CHECK_NEAR(v->stickAxis(1), 0.0f, 1e-12, "zero demand arms nothing");
     /* No out-of-range pin on purpose: normCmd() asserts, so a debug build aborts
        before it can check the clamp. Out of range is a sender bug, not an input. */
 
@@ -398,52 +398,52 @@ static void test_the_command_funnel() {
        that gate here would make a paused click do nothing at all. */
     v->clearRotCmd();
     v->Command(ShipCmd(Pitch, +1.0f), false);
-    CHECK_NEAR(v->stick[1], 0.0f, 1e-12, "input while paused arms nothing");
+    CHECK_NEAR(v->stickAxis(1), 0.0f, 1e-12, "input while paused arms nothing");
 
     /* Commands latch until the tick clears them -- the per-tick/per-substep split
        the autopilot has to share (see the #425 latch note). */
     v->Command(ShipCmd(Pitch, -0.25f), true);
-    CHECK_NEAR(v->stick[1], -0.25f, 1e-12, "armed for the whole tick");
+    CHECK_NEAR(v->stickAxis(1), -0.25f, 1e-12, "armed for the whole tick");
     v->clearRotCmd();
-    CHECK_TRUE(v->stick[0] == 0.0f && v->stick[1] == 0.0f && v->stick[2] == 0.0f,
+    CHECK_TRUE(v->stickAxis(0) == 0.0f && v->stickAxis(1) == 0.0f && v->stickAxis(2) == 0.0f,
                "clearRotCmd releases the stick");
 
     /* SAS: engage, and the same command again disengages. One rule, one place. */
     v->Command(ShipCmd(Sas, SlewPrograde), true);
-    CHECK_TRUE(v->slewRequest == SlewPrograde, "Sas engages the mode");
-    CHECK_TRUE(v->slew == SlewNone,
+    CHECK_TRUE(v->slewRequestMode() == SlewPrograde, "Sas engages the mode");
+    CHECK_TRUE(v->slewMode() == SlewNone,
                "engaging is a REQUEST; tick.cpp copies it into the engaged copy");
     v->Command(ShipCmd(Sas, SlewPrograde), true);
-    CHECK_TRUE(v->slewRequest == SlewNone, "the same command releases it");
+    CHECK_TRUE(v->slewRequestMode() == SlewNone, "the same command releases it");
 
     /* Mutually exclusive: a second mode replaces the first rather than stacking. */
     v->Command(ShipCmd(Sas, SlewPrograde), true);
     v->Command(ShipCmd(Sas, SlewRetrograde), true);
-    CHECK_TRUE(v->slewRequest == SlewRetrograde, "modes are mutually exclusive");
+    CHECK_TRUE(v->slewRequestMode() == SlewRetrograde, "modes are mutually exclusive");
 
     /* The latch survives the per-tick clear; the HELD override does not. Both
        spellings of kill-rot exist on purpose: X holds, the window latches. */
     v->clearRotCmd();
-    CHECK_TRUE(v->slewRequest == SlewRetrograde, "the latch survives clearRotCmd");
+    CHECK_TRUE(v->slewRequestMode() == SlewRetrograde, "the latch survives clearRotCmd");
     v->Command(ShipCmd(KillRot), true);
-    CHECK_TRUE(v->slew == SlewKillRot && v->slewRequest == SlewRetrograde,
+    CHECK_TRUE(v->slewMode() == SlewKillRot && v->slewRequestMode() == SlewRetrograde,
                "held kill-rot overrides the latch without overwriting it");
     v->clearRotCmd();
-    CHECK_TRUE(v->slew == SlewNone && v->slewRequest == SlewRetrograde,
+    CHECK_TRUE(v->slewMode() == SlewNone && v->slewRequestMode() == SlewRetrograde,
                "releasing X releases the override, not the latch");
     v->Command(ShipCmd(Sas, SlewKillRot), true);
-    CHECK_TRUE(v->slewRequest == SlewKillRot, "the window's Kill rotation latches");
+    CHECK_TRUE(v->slewRequestMode() == SlewKillRot, "the window's Kill rotation latches");
 
     /* Channels stay separate: an attitude demand never touches the latch, and a
        mode never touches the stick (#425's scope: throttle, rcsDir and staging stay
        their own channels too). */
-    v->setSlewRequest(SlewNone);
+    v->restoreSlewRequest(SlewNone);
     v->clearRotCmd();
     v->Command(ShipCmd(Pitch, +1.0f), true);
-    CHECK_TRUE(v->slewRequest == SlewNone && v->slew == SlewNone,
+    CHECK_TRUE(v->slewRequestMode() == SlewNone && v->slewMode() == SlewNone,
                "the stick does not engage SAS");
     v->Command(ShipCmd(Sas, SlewNormal), true);
-    CHECK_TRUE(v->stick[0] == 0.0f && v->stick[1] == 1.0f && v->stick[2] == 0.0f,
+    CHECK_TRUE(v->stickAxis(0) == 0.0f && v->stickAxis(1) == 1.0f && v->stickAxis(2) == 0.0f,
                "SAS does not move the stick");
     destroyShip(v);
 }

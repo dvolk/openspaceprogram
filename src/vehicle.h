@@ -489,14 +489,21 @@ public:
     };
     std::vector<ControlDeflection> lastControlDeflections;
 
-    /* Armed once per tick (Command), run per SUBSTEP -- Bullet clears the
-       accumulated torque each stepSimulation. stick: manual; slew: autopilot.
-       `slew` is the ENGAGED copy: it says what is turning the ship this tick, so
-       a held override (ShipCmd(KillRot), the X key) writes here and dies with
-       clearRotCmd(). What the player has latched on the Autopilot window lives
-       one level up in `slewRequest`; tick.cpp copies it down. */
-    float stick[3] = {0.0f, 0.0f, 0.0f};
-    SlewMode slew = SlewNone;
+    /* THE STICK AND THE AUTOPILOT (#575). Command() arms them once per tick and the
+       laws read them per SUBSTEP -- Bullet clears the accumulated torque each
+       stepSimulation. The fields live under "THE CONTROL STATE" below; these are what
+       a reader outside the class uses:
+         stickAxis(0/1/2)   manual demand, roll / pitch / yaw, normalized -1..1
+         slewMode()         what is turning the ship THIS tick -- the ENGAGED copy, so
+                            a held override (ShipCmd(KillRot), the X key) writes there
+                            and dies with clearRotCmd()
+         slewRequestMode()  what the player has latched on the Autopilot window
+         applySlewRequest() the once-per-tick copy from request to engaged, stated next
+                            to the state it copies (tick.cpp used to write it by hand) */
+    float stickAxis(int n) const { return stick[n]; }
+    SlewMode slewMode() const { return slew; }
+    SlewMode slewRequestMode() const { return slewRequest; }
+    void applySlewRequest() { slew = slewRequest; }
     /* The autopilot's TVC aim: one shared lateral deflection vector (world
        axes, rad) computed by the slew law's torque split (gimbal.h
        tvcSplit) each substep, consumed by applyThrustForce's mixer. Cleared
@@ -557,12 +564,12 @@ public:
        in tvcSlewLat_ for applyThrustForce this same substep. */
     void actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &auth);
     glm::dvec3 lastThrustForce{};  // debug: total thrust force applied last substep
-    /* The Autopilot-window mode: persistent, unlike `slew`. Input engages it
-       through Command(ShipCmd(Sas, mode)) -- the toggle/replace rule lives in
-       that case (#424). This setter is for state that is not input: loading a
-       save, where the mode being restored is a fact, not a key press. */
-    SlewMode slewRequest = SlewNone;
-    void setSlewRequest(SlewMode m);
+    /* Restoring the latched Autopilot mode when a save loads. Input never calls
+       this: a key press or a window click goes through Command(ShipCmd(Sas, mode)),
+       where the toggle/replace rule lives (#424). Naming it separately is the point
+       -- "state restore" and "input" then read differently in the code, not just in
+       a comment (#575). The field itself is under THE CONTROL STATE. */
+    void restoreSlewRequest(SlewMode m);
 
     void setRoot(Part *part);
 
@@ -767,13 +774,22 @@ public:
     void applyRotationForce(double h);
 
     /* --- RCS translation (hydrazine mono, KSP-style) --------------------
-       Field-driven (Part::isRcs). rcsDir is armed in whatever frame the control
-       law uses -- ship axes for a ship, the render frame for the EVA suit.
-       Force is allocated per NOZZLE at the pod's position (src/rcs.h, #428):
-       an off-center pod translates AND spins the ship, as reality demands. */
-    glm::dvec3 rcsDir = glm::dvec3(0.0);  // armed dir (see above); 0 = off
-    /* Burned this tick: the render pass draws the plume off this. */
-    bool rcsFiring = false;
+       Field-driven (Part::isRcs). The armed direction is stored in whatever frame
+       the control law uses -- ship axes for a ship, the render frame for the EVA
+       suit -- and lives under THE CONTROL STATE below (#575). Force is allocated
+       per NOZZLE at the pod's position (src/rcs.h, #428): an off-center pod
+       translates AND spins the ship, as reality demands.
+         armRcs()          the EVA suit's input door. A suit has no RCS parts to
+                           Command, so its key handling arms the demand directly; a
+                           SHIP arms it through Command(ShipCmd(RcsUp/RcsRight/
+                           RcsForward)) and never calls this.
+         rcsBurned()       fired this substep -- what the per-nozzle plumes draw and
+                           the [eva] trace logs.
+         rcsTranslating()  burned AND a demand with a direction in it -- what the
+                           nozzle-less COM puff (the suit) draws. */
+    void armRcs(const glm::dvec3 &bodyDir) { rcsDir = bodyDir; }
+    bool rcsBurned() const { return rcsFiring; }
+    bool rcsTranslating() const { return rcsFiring && glm::length2(rcsDir) > 1e-12; }
     /* The last airless-or-not substep's allocation, for the [rcs] log (same
        idiom as lastControlDeflections: empty = no translation requested). */
     struct RcsNozzleLog {
@@ -976,6 +992,25 @@ public:
     glm::dvec3 GetVel();
 
 protected:
+    /* THE CONTROL STATE (#575). Command() is the only thing that writes this from
+       input, and the rules it owns -- SAS engage/toggle, the normalized attitude
+       demand, the throttle ramp -- are exactly why it is the funnel. Every other
+       door has a name, so a new writer is visible instead of merely legal:
+         applySlewRequest()    tick.cpp's request -> engaged copy, once per tick
+         restoreSlewRequest()  a save loading a latched mode: a fact, not a key press
+         armRcs()              the EVA suit, which has no RCS parts to Command
+       Protected rather than private because Kerbal IS-A Vehicle and reuses the
+       rotation and RCS helpers (eva.h). Leaving this public is what cost #424: the
+       Autopilot window, the Z/B keys and --autopilot each re-implemented the toggle
+       rule because nothing said they could not. #425 step D is putting an allocator
+       in this same corner, clamping once against the capability model, and a writer
+       that bypasses it is a ship that turns harder than the player asked for. */
+    float stick[3] = {0.0f, 0.0f, 0.0f};   // manual demand: roll / pitch / yaw, -1..1
+    SlewMode slew = SlewNone;              // ENGAGED this tick -- see slewMode()
+    SlewMode slewRequest = SlewNone;       // latched on the Autopilot window
+    glm::dvec3 rcsDir = glm::dvec3(0.0);   // armed translation demand; 0 = off
+    bool rcsFiring = false;                // burned this tick (the plume draw reads it)
+
     // Forces/torques straight on the Bullet bodies, reachable only through
     // Command(). Protected: the EVA kerbal reuses the rotation-model helpers.
     void adjustThrottle(float delta);

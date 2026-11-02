@@ -242,7 +242,7 @@ static void toggleSlew(Game &g, SlewMode m, const char *name) {
     Vehicle *ship = g.ship;
     if(ship == nullptr || ship->isEva()) { return; }
     ship->Command(ShipCmd(Sas, m), true);   // latch is state; tick.cpp gates the effect
-    const bool engaged = (ship->slewRequest == m);
+    const bool engaged = (ship->slewRequestMode() == m);
     printf("Autopilot: %s %s\n", name, engaged ? "engaged" : "off");
     g.toast("Autopilot: %s %s", name, engaged ? "engaged" : "off");
 }

@@ -80,7 +80,7 @@ void evaArmCommands(Game &g, const std::function<bool(Slot)> &active) {
         w = evaOntoPlane(w, radial);   // walk along the tangent
         k->walkDir = (glm::length2(w) > 1e-9) ? glm::normalize(w)
                                               : glm::dvec3(0.0);
-        k->rcsDir = glm::dvec3(0.0);
+        k->armRcs(glm::dvec3(0.0));   // walking, not flying: no translation demand
         if(k->jumpPressed) {
             k->jumpPressed = false;
             if(k->grounded) {
@@ -96,8 +96,8 @@ void evaArmCommands(Game &g, const std::function<bool(Slot)> &active) {
         if(active(Slot::EvaLeft)) { t -= sright; }
         if(active(Slot::EvaUp)) { t += up; }
         if(active(Slot::EvaDown)) { t -= up; }
-        k->rcsDir = (glm::length2(t) > 1e-9)
-            ? glm::normalize(t) : glm::dvec3(0.0);
+        k->armRcs((glm::length2(t) > 1e-9)
+            ? glm::normalize(t) : glm::dvec3(0.0));
         k->walkDir = glm::dvec3(0.0);
         double yaw = 0.0;
         if(active(Slot::EvaYawLeft)) { yaw += 1.0; }
