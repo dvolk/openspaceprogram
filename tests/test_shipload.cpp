@@ -2973,6 +2973,31 @@ int main() {
             CHECK(swept > 0);   // a silent empty sweep would pass vacuously
         }
     }
+    /* #571's e2e fixture has to stay sideways. flight/571 measures the stick's frame
+       on res/ships/sideways_wheel.json, and every check in it passes just as well if
+       the hull's only wheel ever stops being rolled off the stack -- reading the ROOT's
+       axes is correct either way, so the case would go silent. Pin the shape the case
+       argues about, out of the solver flight itself uses (BuildShip goes through
+       solveEdge): the wheel is not the root row, its own +Z is still the ship's stack
+       axis (rolled, not tilted), and its "right" axis is the ship's UP axis -- which
+       is why reading the stick in its frame turns W/S into yaw. A mount-convention
+       change that tilts or unrolls that wheel reddens this before the case can rot. */
+    {
+        ShipDef sd = load_ship_def("res/ships/sideways_wheel.json", cat);
+        BuildShip bs = BuildShip::fromShipDef(sd);
+        CHECK(bs.parts.size() == 3);
+        CHECK(bs.parts.empty() || bs.parts[0].parent == -1);
+        int wheel = -1;
+        for(size_t i = 0; i < bs.parts.size(); i++) {
+            if(bs.parts[i].def && bs.parts[i].def->torque > 0.0) { wheel = (int)i; break; }
+        }
+        CHECK(wheel > 0);   // a wheel, and not the root part
+        if(wheel > 0) {
+            const glm::dmat3 R = bs.parts[(size_t)wheel].localRot;
+            CHECK(vnear(R[2], glm::dvec3(0.0, 0.0, 1.0)));          // nose kept
+            CHECK(std::fabs(R[0].y) > 0.99 && std::fabs(R[0].x) < 0.01);   // right -> up
+        }
+    }
 
     // list_ship_defs: keep only the .json entries, return their sorted slugs
     // (extension stripped). A temp dir gives a deterministic set so the

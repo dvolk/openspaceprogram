@@ -719,14 +719,23 @@ public:
     /* The armed control forces, per SUBSTEP. The EVA kerbal overrides (eva.h). */
     virtual void applyControlForces(double h);
 
-    /* THE FRAME THE CONTROLS AND THE ATTITUDE LAWS SPEAK (#571): the root part,
-       whose axes are pitch / yaw / roll, the TVC disk's normal and the nose the
-       autopilot aligns. Wheels are actuators, never a frame -- firstWheel() used to
-       be the attitude reference, and a surface mount keeps a part's +Z parallel to
-       its parent's while ROLLING it about the stack, so a wheel bolted to a tank's
-       side has the ship's nose and the ship's UP axis as its "right" one: W/S yaws
-       and A/D pitches (res/ships/sideways_wheel.json, e2e flight/571). This is NOT
-       the camera/HUD frame, which still follows `controller` -- see #573. */
+    /* THE FRAME THE CONTROLS, THE ATTITUDE LAWS AND THE AERO PASS SPEAK (#571):
+       the root part -- the pitch/yaw/roll axes the stick drives, the TVC disk's
+       normal, the nose the autopilot aligns, the frame AoA and beta are measured
+       in. The root, not "a part on the stack", because the ship is BUILT in the
+       root's frame: build_ship solves every part's pose from its parent's with the
+       root at the origin and its +Z as the stack axis, so the root's +Z is the
+       axis the compound itself was authored in.
+       Wheels are actuators, never a frame. A surface mount keeps a child's +Z
+       parallel to the parent's +Z projected into the contact plane -- exactly
+       parallel for a transverse contact, which is what the "angle" shorthand always
+       gives -- and rolls the part about the stack. So a wheel bolted to a tank's
+       side keeps the ship's nose and has the ship's UP axis as its "right" one:
+       read the stick in that part's frame and W/S yaws while A/D pitches
+       (res/ships/sideways_wheel.json, e2e flight/571). An authored "point"/"normal"
+       contact can tilt a part outright, which is another reason to ask for the root
+       rather than for whichever part carries the wheels.
+       This is NOT the camera/HUD frame, which still follows `controller` (#573). */
     Part *attitudeRef() const;
 
     void applyRotationForce(double h);

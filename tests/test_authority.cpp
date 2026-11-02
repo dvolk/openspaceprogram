@@ -317,10 +317,16 @@ static void test_one_frame_for_the_attitude_path() {
     const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
     CHECK_NEAR(glm::dot(a.stackAxis, rootZ), 1.0, 1e-12,
                "the authority is stated in the ROOT's frame");
-    /* #571 proper. The fixture has a wheel AND a root whose axes differ by 90 deg,
-       so "whose axes are the ship's" is decidable here: the root's, for the mixer,
-       the budget, the stick and the trace alike. Point attitudeRef() at a wheel
-       instead and all four of these go red (tmp/aero/n571_mutate.py). */
+    /* #571 proper: the fixture has a wheel AND a root whose axes differ by 90 deg,
+       so "whose axes are the ship's" is decidable here, and the answer is the root's.
+       Which checks bite against which break (tmp/aero/n571_mutate2.py): pointing the
+       accessor at the wheel reddens the stack-axis pin, the identity pin, the facing
+       pin and the actuator pin below -- the last because the TVC lever is
+       dot(partPos - com, stackAxis), so a rolled frame zeroes it -- while the two
+       attitudeTorqueAbout checks stay green, since with tvcTorque down to 0 there is
+       nothing left for the split to disagree about. What those two DO catch is a
+       stackAxis that disagrees with the lever while the lever still reads, which is
+       the subtler break and the one step B's mutation set exercised. */
     CHECK_TRUE(v->attitudeRef() == root, "the ship's frame is the ROOT part");
     CHECK_NEAR(glm::dot(v->partAxis(v->attitudeRef(), 2), rootZ), 1.0, 1e-12,
                "and the facing it hands the laws is the stack axis, not the wheel's");

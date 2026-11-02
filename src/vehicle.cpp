@@ -1662,6 +1662,7 @@ bool Vehicle::hasChildBelow(const Part *p) const {
 }
 
 void Vehicle::partWorldPose(const Part *p, glm::dvec3 &pos, glm::dmat3 &rot) const {
+    assert(p != nullptr);   // every part* the accessors take comes from `parts`
     glm::dvec3 sPos; glm::dmat3 sRot;
     frameS(sPos, sRot);
     pos = sPos + sRot * p->localPos;
@@ -2453,21 +2454,24 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
        it announces itself here instead of a NaN ship drifting into a frame change. */
     assert(std::isfinite(w.x) && std::isfinite(w.y) && std::isfinite(w.z));
 
-    // One flow frame for every part (one rigid body). Root local axes: nose +Z,
-    // right +X, up +Y.
-    const Part *root = rootPart();
-    const glm::dmat3 rootRot = (root != nullptr) ? sRot * root->localRot
-                                                 : glm::dmat3(1.0);
-    const glm::dvec3 nose  = rootRot[2];
-    const glm::dvec3 right = rootRot[0];
-    const glm::dvec3 up    = rootRot[1];
-    /* The same axes in the ROOT's local frame. The readout's build-fact questions (#485)
+    /* One flow frame for every part (one rigid body). This is THE SHIP'S FRAME,
+       asked the way every other consumer asks it (#571): attitudeRef()'s axes.
+       partRot(p) is exactly sRot * p->localRot, and sRot is already in hand, so
+       asking costs nothing that the old hand-rolled rootPart() version did not.
+       Ship-local axes: nose +Z, right +X, up +Y. */
+    const Part *ref = attitudeRef();
+    const glm::dmat3 shipRot = (ref != nullptr) ? sRot * ref->localRot
+                                                : glm::dmat3(1.0);
+    const glm::dvec3 nose  = shipRot[2];
+    const glm::dvec3 right = shipRot[0];
+    const glm::dvec3 up    = shipRot[1];
+    /* The same axes in the reference part's own local frame. The readout's build-fact questions (#485)
        are asked here, once per pass, in these vectors rather than in the world ones, so
        their answers are fixed at load. In world vectors the arithmetic is mathematically
        the same but recomputed from sRot every substep, and a mount near the 45-deg tie
        changes its mind with the ship's attitude -- see drag.h::surfaceReadoutFrame. */
-    const glm::dvec3 rootLocalUp    = (root != nullptr) ? root->localRot[1] : glm::dvec3(0.0, 1.0, 0.0);
-    const glm::dvec3 rootLocalRight = (root != nullptr) ? root->localRot[0] : glm::dvec3(1.0, 0.0, 0.0);
+    const glm::dvec3 shipLocalUp    = (ref != nullptr) ? ref->localRot[1] : glm::dvec3(0.0, 1.0, 0.0);
+    const glm::dvec3 shipLocalRight = (ref != nullptr) ? ref->localRot[0] : glm::dvec3(1.0, 0.0, 0.0);
     lastUpVert = glm::dot(up, com / r);  // upright? (see lastUpVert)
     const AeroFrame fr = aeroFrame(vrel, right, up, nose);
     const double alpha   = fr.valid ? fr.alpha   : 0.0;
@@ -2931,7 +2935,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
            before the zero-force test below -- a surface at alpha 0 is measured, it
            just is not pushing. Free: both numbers are already in hand here. */
         p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(
-            pa, surfaceReadoutFrame(p->localRot[1], rootLocalUp, rootLocalRight),
+            pa, surfaceReadoutFrame(p->localRot[1], shipLocalUp, shipLocalRight),
             up, right);
         p->aeroQ = (float)qp;
         p->aeroValid = true;
@@ -3014,8 +3018,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                     const glm::dmat3 mount0 = sRot * p->localRot;
                     const PartAero pa0 = partAero(mount0, lf0.vp);
                     p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(
-                        pa0, surfaceReadoutFrame(p->localRot[1], rootLocalUp,
-                                                 rootLocalRight),
+                        pa0, surfaceReadoutFrame(p->localRot[1], shipLocalUp,
+                                                 shipLocalRight),
                         up, right);
                     p->aeroQ = (float)lf0.q;
                     p->aeroValid = pa0.valid;
@@ -3057,7 +3061,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             /* #485, same as the lift loop. The law below still answers deflection
                alone -- recording the angle makes it visible, not load-bearing. */
             p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(
-                pa, surfaceReadoutFrame(p->localRot[1], rootLocalUp, rootLocalRight),
+                pa, surfaceReadoutFrame(p->localRot[1], shipLocalUp, shipLocalRight),
                 up, right);
             p->aeroQ = (float)qp;
             p->aeroValid = pa.valid;
@@ -3453,7 +3457,7 @@ void Vehicle::att_log(double time) {
        cannot say which of the two a rate belongs to -- which is exactly what
        flight/571 has to tell apart. One partRot, three columns, no re-solve. */
     Part *ref = attitudeRef();
-    if(ref == nullptr) { return; }
+    assert(ref != nullptr);   // rootPart() falls back to parts[0], so non-empty means non-null
     const glm::dmat3 axes = partRot(ref);
     const glm::dvec3 w = GetAngVelocity(hull);
     printf("[attlog] t=%.3fs nose=[%+.4f %+.4f %+.4f] "
@@ -4460,13 +4464,12 @@ void Vehicle::slewToward(glm::dvec3 dir, double h) {
        plus whatever TVC can lever that way, so the braking curve and the
        actuator bound scale with throttle. Nothing available: hold position --
        the law does not pretend to slew (#401's lesson).
-       The axis matters (#425): `axis` is perpendicular to the FACING part, and
-       since #571 the facing part is the root, so `axis` is perpendicular to the
-       stack axis and TVC counts in full. Point the same actuators at a roll-axis
-       error and TVC contributes nothing -- which is not a new limit, it is the
-       limit tvcSplit has always applied when it dropped that component.
-       Budgetting the full sum there made the law aim at a rate the hardware then
-       failed to reach. */
+       The axis matters (#425), and note what this law can never ask for: `axis` is
+       cross(facing, dir) with facing == attitudeRef()'s +Z, so it is perpendicular
+       to the stack axis by construction and TVC counts in full. A law aimed at a
+       roll-axis error gets nothing from TVC -- not a new limit, it is the one
+       tvcSplit has always applied when it drops that component -- and aiming at a
+       roll error is the allocator's job (#420), not this law's. */
     const AttitudeAuthority auth = attitudeAuthority();
     const double authMax = attitudeTorqueAbout(auth, axis);
     if(authMax <= 0.0) { return; }
@@ -4484,9 +4487,11 @@ void Vehicle::slewToward(glm::dvec3 dir, double h) {
 }
 
 void Vehicle::killRotStep(double h) {
-    Part *ref = attitudeRef();
-    if(ref == nullptr) { return; }
-    const glm::dvec3 w = partAngVel(ref);
+    /* No frame in this law at all: the command is the hull's own rate and its own
+       inertia, and actuateAttitude's split decides which axes the actuators can
+       deliver it about. Do not route this through partAngVel(ref): that call ignores
+       its argument (one rigid hull), so it looks like a frame choice and is not. */
+    const glm::dvec3 w = GetAngVelocity(hull);
     if(glm::length2(w) == 0.0) { return; } /* at rest: nothing to kill */
     /* Kill-rot commands I*(-w)/h, a direction it does not get to choose, so it
        asks only "is there any authority at all" and lets the split decide how

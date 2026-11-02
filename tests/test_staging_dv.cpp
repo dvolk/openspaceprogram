@@ -658,8 +658,8 @@ static void test_a_gap_costs_nothing() {
    every number in its own table while making a whole class of ship 13-35% slower. Here
    every tank carries its OWN label (what the stage box invites: 1..kMaxStage) and every
    decoupler sits on one shared label, so the per-label work is the same order as the part
-   count instead of a constant. Synthetic on purpose: the busiest of the 29 ships in
-   res/ships/ carries 7 labels over 51 parts, so nothing shipped looks like this -- it is
+   count instead of a constant. Synthetic on purpose: the busiest ship in res/ships/
+   carries 7 labels over 51 parts, so nothing shipped looks like this -- it is
    the shape the stage box (1..kMaxStage, one label per part) invites an author to build,
    which is the population a preview cost claim has to survive. Its fuel graph is
    heavy_asp's chain (each string feeds the one inboard) with one extra link per tank;

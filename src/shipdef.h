@@ -545,9 +545,11 @@ struct ShipDef {
         if(controller >= 0) { return controller; }
         /* Default: the first part with reaction-wheel authority -- the part the
            camera focuses on and the axes the HUD's heading/pitch/roll and the chase
-           basis are read from. It used to be the stick's frame too; since #571 the
-           controls and the laws read the ROOT's axes, so on a hull whose wheel is
-           rolled about the stack the readout and the stick disagree. #573. */
+           basis are read from. This is the same lookup the attitude laws used before
+           #571, which is why the readout and the controls agreed on any hull however
+           it was built. The laws and the stick now read the ROOT's axes instead, so
+           the two agree only while the wheel keeps the stack's axes -- true of every
+           shipped def so far, not true of a wheel rolled about the stack. #573. */
         for(size_t i = 0; i < parts.size(); i++) {
             if(parts[i].def && parts[i].def->torque > 0.0) { return (int)i; }
         }

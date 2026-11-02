@@ -246,7 +246,7 @@ struct Sim {
             }
         }
         /* Ascending, i.e. the iteration order the std::set this used to return. It is
-           what drainableIn sums fuel in; the 29 ships in res/ships read identically
+           what drainableIn sums fuel in; every ship in res/ships reads identically
            either way (measured), so this is insurance for a big drop set with inexact
            sums, not a live difference. */
         std::sort(dropped.begin(), dropped.end());

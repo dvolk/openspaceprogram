@@ -686,6 +686,10 @@ def parse_att(out):
         w = (float(wx), float(wy), float(wz))
         # The rate resolved on the ship's OWN frame -- the one the attitude path
         # speaks (#571) -- so a case can tell pitch from yaw.
+        # The sign follows the AXIS, not the key: the stick drives pitch about -right
+        # and yaw about -up (applyRotationForce in src/vehicle.cpp), so holding W or A
+        # reads NEGATIVE here. Pin magnitudes (the aw* forms), or pin a sign knowing it
+        # is the axis's sign, not the direction the ship turns.
         wroll = w[0]*nose[0] + w[1]*nose[1] + w[2]*nose[2]
         wpitch = w[0]*right[0] + w[1]*right[1] + w[2]*right[2]
         wyaw = w[0]*up[0] + w[1]*up[1] + w[2]*up[2]
