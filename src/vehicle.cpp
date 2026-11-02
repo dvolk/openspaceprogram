@@ -248,7 +248,13 @@ static const ScenarioDef kScenarios[] = {
        bed spends the first 40 s of every run trading the excess for height and
        coming back through a phugoid (skiff: 180 -> 22 m/s, 650 m of altitude).
        This one starts at the trim point instead: 80 m/s of air on Kerbin, ~33 m/s
-       on Duna, ~120 m/s on Eve. */
+       on Duna, ~120 m/s on Eve. Speed alone is not a trim: aimed along the air the
+       shipped skiff settles at its zero-moment AoA of 1.6 deg, which is 2.4 kN of
+       lift against 6.2 kN of weight, and dives to 130 m/s by t=20s. The trimmed
+       template (skiff_trim, 12 deg of elevator) holds 3.2 deg and 6.2 kN at 76 m/s
+       -- the design point. The bed gives the airspeed; the airframe brings the
+       angle of attack, and the launch AoA prints on the Spawn line so a bed that
+       is not trimmed is visible without a --drag-log (#569). */
     {"flying-cruise",  true,  false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0, true, false, 0.0356},
     {"ellipse-peri",   true,  false, 0.0,  false,  0, 10e3, 1000e3, 0.0, 0.0},
     {"ellipse-apo",    true,  false, 0.0,  false,  1, 10e3, 1000e3, 0.0, 0.0},
@@ -464,10 +470,18 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
        also prints the number the aero pass will actually use, from the same
        helper applyAeroForce uses and after the ship is placed and its velocity
        set -- so the two cannot drift apart. */
-    char air_txt[48] = "";
+    char air_txt[64] = "";
     if(sc.atmo_frac) {
-        snprintf(air_txt, sizeof air_txt, " |v_air| = %.1f m/s",
-                 glm::length(ship->airRelativeVel(target)));
+        /* The angle of attack too, measured the same way. A bed cannot author an
+           attitude (a stable hull rotates to its own zero-moment AoA inside a second,
+           #569), so this is the number that shows whether the AIRFRAME is trimmed for
+           the bed or about to trade height for speed. */
+        const glm::dvec3 air = ship->airRelativeVel(target);
+        snprintf(air_txt, sizeof air_txt, " |v_air| = %.1f m/s, AoA = %.1f deg",
+                 glm::length(air),
+                 glm::degrees(std::acos(std::clamp(
+                     glm::dot(ship->partAxis(ship->rootPart(), 2),
+                              glm::normalize(air)), -1.0, 1.0))));
     }
     printf("Spawn '%s' around %s: frame '%s' @ world (%.0f, %.0f, %.0f), r = %.0f m, |v| = %.1f m/s%s\n",
            sc.name, home->name.c_str(), frame->name.c_str(),

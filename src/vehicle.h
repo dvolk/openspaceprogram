@@ -1139,6 +1139,13 @@ struct ScenarioDef {
        it over is the dev's call: it is a bed, not a mission (#451). It ignores the
        ship: a bed is a position + velocity, and lift is the ship's problem. */
     double speed_frac = 0.0;
+    /* NB: there is deliberately no authored angle of attack here. A bed is a
+       position + velocity, and an airframe's attitude is not a launch condition it
+       can keep: a stable hull rotates to its own zero-moment AoA inside a second
+       (measured: spawning flying-cruise at 8 deg leaves it at 2.2 deg at t=1 and
+       1.6 deg at t=2). What decides whether a flight bed is trimmed is the
+       airframe's incidence/trim, not the bed's spawn attitude (#569). The spawn
+       line prints the launch AoA so that fact is visible without a --drag-log. */
 };
 
 /* Look up a scenario by name; throws if unknown. */
