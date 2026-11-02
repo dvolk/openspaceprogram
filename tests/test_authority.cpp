@@ -575,6 +575,19 @@ static void test_the_armed_rcs_demand_is_a_direction() {
     p.Command(ShipCmd(RcsNose, +1.0f), true);
     p.Command(ShipCmd(RcsNose, -1.0f), true);
     CHECK_NEAR(p.rcsDir.z, -1.0, 1e-12, "a key and its opposite: the last one asked wins");
+    /* Handing the ship over releases the demand as well as the stick and the
+       throttle. tick.cpp clears RCS for the ACTIVE ship only, while applyRcsForce
+       runs for every live ship off the rails, so a released ship that cannot rail
+       -- an atmosphere keeps it off rails -- would otherwise fly on its last keys
+       and empty its tanks doing it (#580's review). */
+    p.clearRcs();
+    p.Command(ShipCmd(RcsUp, +1.0f), true);
+    CHECK_NEAR(glm::length(p.rcsDir), 1.0, 1e-12, "armed before the hand-over");
+    p.releaseControl();
+    CHECK_NEAR(glm::length(p.rcsDir), 0.0, 1e-12, "a released ship keeps no demand");
+    p.Command(ShipCmd(RcsUp, +1.0f), true);
+    CHECK_NEAR(glm::length(p.rcsDir), 1.0, 1e-12,
+               "and the release did not disarm the keys for the next ship either");
 }
 
 int main() {

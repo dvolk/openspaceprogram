@@ -1066,7 +1066,9 @@ protected:
          markRcsBurned()       a thruster that actually fired (pods, the suit's jets)
          clearRotCmd()         the per-tick release of the stick and of held KillRot
          clearRcs()            the per-tick release of the translation demand
-         releaseControl()      handing the ship to another vessel
+         releaseControl()      handing the ship to another vessel: it releases the
+                               demand too, because the per-tick clearRcs() only runs
+                               for the ACTIVE ship (#580)
        Protected, not private, because Kerbal IS-A Vehicle and reuses the rotation and
        RCS laws (eva.h) -- so this stops a stranger, not a subclass, and the suit writes
        through the doors above rather than the fields. That is the honest limit of the
@@ -1081,11 +1083,13 @@ protected:
     SlewMode slewRequest = SlewNone;       // latched on the Autopilot window
     glm::dvec3 rcsDir = glm::dvec3(0.0);   // armed translation demand, unit; 0 = off
     /* The RAW request the keys describe, before it is made a direction: one axis each,
-       so holding Nose+Up+Right asks for (1,1,1). rcsDir is armRcs's answer to THIS, not
-       to the previous answer -- renormalizing the previous answer hands the LAST key
+       so holding Nose+Up+Right asks for (1,1,1). rcsDir is armRcs's answer to THIS on
+       the ship path -- renormalizing the previous answer instead hands the LAST key
        the full share and shrinks the ones armed before it, so three keys thrust along
        (.707,.5,.5) instead of the even diagonal the keys describe (#580). Same
-       request/answer split as slewRequest above. */
+       request/answer split as slewRequest above. The suit is not in this pair:
+       Kerbal::armInput arms a render-frame direction straight, because its keys are
+       screen axes and it has no RCS parts to Command (eva.cpp). */
     glm::dvec3 rcsRequest = glm::dvec3(0.0);
     bool rcsFiring = false;                // burned since this tick's clearRcs()
     void markRcsBurned() { rcsFiring = true; }

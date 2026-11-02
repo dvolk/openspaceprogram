@@ -14,8 +14,10 @@
 NAME three-rcs-keys-thrust-the-even-diagonal
 CLAIM Holding three RCS direction keys thrusts along the even diagonal, not with the last key holding the share.
 KIND invariant
+# The [rcs] row is printed under --drag-log (tick.cpp), which shares --orbit-interval's
+# logDue gate with --att-log below.
 ARGS --time-accel 1 --timeout 8 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit
-ARGS --dbg-log --att-log --orbit-log --orbit-interval 0.5 --drag-log
+ARGS --att-log --orbit-interval 0.5 --drag-log
 ARGS --sim-press 2000,3000,N,2000,3000,I,2000,3000,L
 EXPECT [rcs]
 FORBID error:

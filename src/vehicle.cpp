@@ -3798,6 +3798,12 @@ void Vehicle::releaseControl() {
     thruster_util = 0.0f;
     clearThrust();
     clearRotCmd();
+    /* The demand goes with the rest of the armed state. tick.cpp clears RCS once a
+       tick for the ACTIVE ship only, while applyRcsForce runs for every live ship
+       off the rails -- so a ship that loses its pilot and cannot rail (an atmosphere
+       keeps it off rails, and goOnRails's failure is ignored) would keep thrusting
+       on whatever keys it last held, and quietly drain its hydrazine doing it. */
+    clearRcs();
 }
 
 /* This walk has TWO siblings, and one stage press pays for all of them: Sim::droppedAt()
