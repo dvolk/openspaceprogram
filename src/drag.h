@@ -175,7 +175,7 @@ inline glm::dvec3 liftForce(double q, double S, double cl, double alpha,
    one printed. #494 put a SECOND such term on the very surfaces this paragraph says
    contribute nothing: a HELD deflection bills induced drag at its own mount, so on a
    trimmed airframe it is the larger of the two (measured on the pre-#568 skiff_trim:
-   0.18 of its 0.45 m2 of Induced=, on a ~2 m lever; the shipped stack trims to 0.49 m2
+   0.18 of its 0.45 m2 of Induced=, on a ~2 m lever; the shipped stack trims to 0.33 m2
    of Induced= with its elevators 2.8 m aft of the CG) and it grows with the trim the
    player sets, as delta^2. It is a force along the flow, so it pitches one way from a
    mount behind the CG and exactly the other from one ahead of it -- a canard's trim
@@ -212,7 +212,7 @@ struct LiftSlopeSum {
        test_drag.cpp::test_neutral_point exists because a mutant of exactly that
        weighting left the whole rest of the suite green.
        The 0.1 is agreement, not magnitude: at cruise the skiff is 95% agreed (its fin
-       is in dlabs and 0 in dl) and quotes +0.58 m; crossing its own stall peak it drops
+       is in dlabs and 0 in dl) and quotes +0.55 m; crossing its own stall peak it drops
        under it (measured on the pre-#568 hull at AoA 20.10: dl 8.2 of 161.8, which
        would otherwise print SM=+2.22 m --
        an airframe that has just stopped resisting, reading as MORE stable) and dashes.
@@ -232,9 +232,11 @@ struct LiftSlopeSum {
        why the airframe had stopped caring. #487's band, in other words, is a
        stiffness story, not a sign story.
        Measured along the SHIP's up axis, so it carries a cos(alpha) dip: the shipped
-       skiff quotes 153.60 at 0.4 deg, 153.34 at 3.5, 152.75 at 5.9 and 149.95 at 12.7 --
-       each within 0.2 of 153.6 x cos(alpha). That is the right number for a pitch
-       stiffness (the nose rotates about the ship), but it is why a steady-airframe
+       skiff quotes 167.82-167.84 across its 2.5-2.8 deg of cruise AoA, inside 0.05 of
+       168.0 x cos(alpha); on the pre-#568 hull the same reading ran 153.60 at 0.4 deg,
+       153.34 at 3.5, 152.75 at 5.9 and 149.95 at 12.7, each within 0.2 of 153.6 x
+       cos(alpha). That is the right number for a pitch stiffness (the nose rotates
+       about the ship), but it is why a steady-airframe
        CLa is not a constant. */
     double slope() const { return dl; }
     /* Metres along the nose axis from the pivot, + = ahead of it. From the root
@@ -244,7 +246,7 @@ struct LiftSlopeSum {
     /* The STATIC MARGIN: how far behind the pivot that lift change sits, so + =
        raising the nose makes more lift BEHIND the COM, which pushes the nose back
        down = restoring. This is the number to watch while building: the shipped
-       airframes all measure positive (skiff +0.58 m -- the skiff's wings are 0.32 m
+       airframes all measure positive (skiff +0.55 m -- the skiff's wings are 0.32 m
        aft of its CG and its tailplanes 1.97 m, so the wings themselves are already
        restoring and the tail adds the other half), and a
        negative one is an airframe that diverges on its own -- tail ahead of the
@@ -1277,9 +1279,9 @@ inline double controlDeflectionSign(double rigLever, double targetSign = -1.0) {
    telling the builder is the load-time check #509.
    The cutoff is a degeneracy test on the GEOMETRY, not a threshold on what counts as
    weak: |lever|^2 <= 1e-12 * |ri|^2, i.e. 1e-6 of the mount distance. The shipped
-   surfaces sit 3.19 m (skiff rudder, hung off the fin's trailing edge by #570), 2.96 m
-   (its elevators) and 5.62 m (its ailerons, out on the span) from the COM, so their
-   cutoff is 3.0-5.6 um of lever; a builder with a real lever of even 1 mm gets full
+   surfaces sit 3.18 m (skiff rudder, hung off the fin's trailing edge by #570), 2.96 m
+   (its elevators) and 6.56 m (its ailerons, out on the span) from the COM, so their
+   cutoff is 3.0-6.6 um of lever; a builder with a real lever of even 1 mm gets full
    travel.
    test_control_rigging pins the SCALING -- a 3 m arm tilted 1e-4 rad off the degenerate
    line has 3e-4 m of leverage (100x that arm's cutoff) and travels fully, the same tilt

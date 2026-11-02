@@ -1,19 +1,21 @@
 NAME static-margin
-CLAIM The VAB's static margin and the flight log's SM are the same number: a hands-off skiff with 0.58 m of margin flies at +2.6 deg of angle of attack and stays wings-level through a 15 s glide (7000 m down to 6866 m).
+CLAIM The VAB's static margin and the flight log's SM are the same number: a hands-off skiff with 0.55 m of margin flies at +2.5 deg of angle of attack and stays wings-level through a 15 s glide (7000 m down to 6893 m).
 KIND invariant
 ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
 ARGS --sim-steps 900 --drag-log
 EXPECT [drag]
 CHECK len(drag) >= 4
 CHECK all(d.get("sm") is not None for d in drag)
-# 0.58 m on every row (test_stability gets +0.578 from the parts alone). #568's
-# pod-on-tank hull reads 0.15 m less than the one-piece spindle it replaced
+# 0.55 m on every row (test_stability gets +0.552 from the parts alone). #568's
+# pod-on-tank hull reads 0.18 m less than the one-piece spindle it replaced
 # (+0.73), which is the stack's own COM walking aft -- the full tank and the engine
-# hang 1.75-3.25 m behind the pod -- not a change in the lifting rig: both hulls
-# bill the same 153 m2/rad of lift slope, and flight reads 153.41-153.44 only because
-# of the cos(alpha) dip. #570 moved the aileron pair and the rudder aft without
-# moving the wing or the tail, which is why this number only shifted 0.008 m.
-CHECK all(0.55 < d["sm"] < 0.65 for d in drag if d.get("sm") is not None)
-CHECK all(2.4 < d["aoa"] < 3.2 for d in drag if d["aoa"] is not None)
+# hang 1.75-3.25 m behind the pod -- not a change in the lifting rig. #567 then
+# grew the wing from 12 x 1.8 to 16 x 1.5 and the slope with it (153.6 -> 168.0
+# m2/rad authored, and flight reads 167.82-167.84 only because of the cos(alpha)
+# dip), which cost 0.026 m of margin: a wider wing puts its quarter-chord further
+# aft as well as making more lift. The 0.03 m band either way is what separates
+# this from the spindle's +0.73 and from a rig that has started to diverge.
+CHECK all(0.52 < d["sm"] < 0.58 for d in drag if d.get("sm") is not None)
+CHECK all(2.3 < d["aoa"] < 3.0 for d in drag if d["aoa"] is not None)
 CHECK all(d["up"] > 0.9 for d in drag)
 FORBID error:

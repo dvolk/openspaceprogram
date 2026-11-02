@@ -1228,6 +1228,23 @@
       "drag_backward": 0.01
     },
     {
+      "name": "wing_r4h1.5",
+      "type": "wing",
+      "display_name": "Wing (8m)",
+      "mesh": "meshes/wing_r4h1.5.obj",
+      "texture": "textures/wing.png",
+      "mass": 48,
+      "radius": 4.0,
+      "height": 1.5,
+      "lift_area": 12,
+      "cl": 6.0,
+      "stall_angle": 0.35,
+      "drag": 0.1,
+      "drag_forward": 0.01,
+      "drag_side": 1.0,
+      "drag_backward": 0.01
+    },
+    {
       "name": "wing_r1h1",
       "type": "wing",
       "display_name": "Wing (2m)",

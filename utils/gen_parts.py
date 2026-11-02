@@ -254,6 +254,12 @@ PARTS = [
     # so the 4 m2-of-chord shipped wing pays AR 2 no matter how the pair is
     # arranged; these give an airframe a span worth inducing.
     ("wing_r3h1.8",      "wing",           "meshes/wing_r3h1.8.obj",              "textures/wing.png"),
+    # The span a 5-600 kg airframe wants. inducedCd is priced at span^2 -- AR*S is
+    # the span squared, and CL*S is set by weight and q -- so span is the only lever on
+    # the induced bill and chord only buys lift (measured, #567: 12 m -> 16 m took the
+    # skiff from 0.488 to 0.333 m2 of Induced= and its glide from L/D 7.5 to 8.6).
+    # The 1.5 m chord also stops the wing being a third of the body again.
+    ("wing_r4h1.5",      "wing",           "meshes/wing_r4h1.5.obj",              "textures/wing.png"),
     ("wing_r1h1",        "wing",           "meshes/wing_r1h1.obj",                "textures/wing.png"),
     ("wing_r0.7h1",      "wing",           "meshes/wing_r0.7h1.obj",              "textures/wing.png"),
     ("rudder",           "rudder",         "meshes/fin_r1h2.obj",                 "textures/rudder.png"),

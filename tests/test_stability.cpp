@@ -5,13 +5,13 @@
 //
 // The claim worth pinning is the one the feature makes to a player: the number the
 // VAB prints is the number the flight log prints. Measured 2026_11_02 on the shipped
-// skiff: the bench answers CLa 153.6 m2/rad and SM +0.578 m off the parts alone, and
-// e2e flight/454 reads 153.4 and +0.58 in the air -- the two agree to the cos(alpha)
+// skiff: the bench answers CLa 168.0 m2/rad and SM +0.552 m off the parts alone, and
+// e2e flight/454 reads 167.8 and +0.55 in the air -- the two agree to the cos(alpha)
 // dip and no further, which is only true if every convention lines up: the launch COM
 // (tanks full, one suit per seat), the root's axes, and the same liftSlopePerQ the
 // lift loop bills. A unit pin on drag.h::LiftSlopeSum cannot see that composition, and
 // this one broke the first time it was written: forgetting the seated kerbal (97.05 kg
-// in the nose) moved the build from +0.58 m to +0.40 m, a third of the answer.
+// in the nose) moved the build from +0.55 m to +0.37 m, a third of the answer.
 
 #include "shipdef.h"
 
@@ -61,12 +61,12 @@ static Fixture load_all() {
 }
 
 /* The shipped airframes, against what the same parts measure in the air. The bench
-   says CLa 153.6 and SM +0.578 for the crewed hull; the air says 153.41-153.44 and
-   +0.58 at this hull's zero-moment AoA of 2.6 deg, easing to 150.0 at 12.7 -- the
-   cos(alpha) dip in drag.h::LiftSlopeSum, not a second law. Mass walks during a run
-   as well, but barely (559.05 -> 558.66 kg across flight/490's 50 s), and on this
-   hull the propellant sits AFT of the crewed COM, so burning it moves the COM forward
-   and the margin slightly UP rather than down. */
+   says CLa 168.0 and SM +0.552 for the crewed hull; the air says 167.82-167.84 and
+   +0.55 at this hull's zero-moment AoA of 2.5 deg -- the cos(alpha) dip in
+   drag.h::LiftSlopeSum, not a second law. Mass walks during a run as well, but barely
+   (568.65 -> 568.26 kg across flight/490's 50 s), and on this hull the propellant sits
+   AFT of the crewed COM, so burning it moves the COM forward and the margin slightly UP
+   rather than down. */
 static void test_shipped_against_flight(const Fixture &f) {
     /* The shipped airframe must read as STABLE. Its exact slope and margin are
        design numbers that move whenever the ship does (a 40 kg aileron pair took
@@ -115,16 +115,17 @@ static void test_crew_moves_the_pivot(const Fixture &f) {
    this is the case that has to say so before the runway.
    Measured, by moving one pair 3 m forward in the skiff (no recomputePoses: the
    pose IS the edit):
-     as shipped          SM +0.58 m  restoring
-     tailplanes +3 m     SM +0.17 m  restoring, and the number shows why
-     wings +3 m          SM -1.49 m  diverging
-   Re-measured 2026_11_02 on the shipped hull (#570 moved it 0.008 m). The shift is
-   applied to the SOLVED poses, which is why the rigs are still a repro even though
+     as shipped          SM +0.55 m  restoring
+     tailplanes +3 m     SM +0.19 m  restoring, and the number shows why
+     wings +3 m          SM -1.51 m  diverging
+   Re-measured 2026_11_02 on the shipped hull; #567's 16 x 1.5 wing moved the
+   as-shipped row by 0.026 m. The shift is applied to the SOLVED poses, which is why
+   the rigs are still a repro even though
    the loader refuses that edit as authored JSON now ("surface \"z\" ... is off the
    end of parent") -- a builder cannot get this rig by typing it, only by parking a
    surface where it does not belong.
    The middle row is the honest one and is pinned so nobody "fixes" it by expecting
-   a flip: the skiff's wings are 129.6 of its 153.6 m2/rad, so putting its tail in
+   a flip: the skiff's wings are 144 of its 168.0 m2/rad, so putting its tail in
    front of them costs two thirds of the stiffness without turning the airframe
    inside out. Moving the WINGS forward does. */
 static void test_rig_flips_the_verdict(const Fixture &f) {

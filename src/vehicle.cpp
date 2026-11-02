@@ -3191,7 +3191,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                airframe runs a standing 12-20 deg forever, and on skiff_trim the
                elevator pair downloads ~1.5 kN at cruise for a bill of exactly 0 N
                (both figures are the pre-#568 spindle hull's, whose tail stood half as
-               far behind the CG; the shipped stack's Induced= totals 0.49 m2 once its
+               far behind the CG; the shipped stack's Induced= totals 0.33 m2 once its
                phugoid damps).
                CL comes from the force the law JUST made, not from (alpha + deflection):
                the angle half of a tail's true angle of attack is already generated, and

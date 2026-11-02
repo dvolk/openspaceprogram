@@ -1,15 +1,17 @@
 NAME skiff-trim-and-weathervane
-CLAIM The skiff is the airframe the design point was written for: 559 kg on 21.6 m2 of AR-6.7 wing, a command pod stacked on a jet fuel tank, spawned at 76 m/s and 7 km and holding +2.6..+3.0 deg of angle of attack through its phugoid with 0.58 m of static margin. A one-second rudder kick swings Beta 9.7 deg and settles; the hull bill is Cd 0.57-0.63 on 0.80-0.96 m2, where the smooth spindle this replaced paid 0.11 on 0.87.
+CLAIM The skiff is the airframe the design point was written for: 569 kg on 24 m2 of AR-10.7 wing, a command pod stacked on a jet fuel tank, spawned at 73 m/s and 7 km and holding +2.5..+2.8 deg of angle of attack through its phugoid with 0.55 m of static margin. A one-second rudder kick swings Beta 7.7 deg and settles; the hull bill is Cd 0.57-0.61 on 0.80-0.91 m2, where the smooth spindle this replaced paid 0.11 on 0.87.
 KIND golden
 # #568 put the pod back on a tank: capsule_r0.5h1.5 at the root, jet_tank_r0.4h2 1.75 m
 # aft of it, the engine 3.25 m aft, wings on the TANK at 1.2 m aft of the pod's centre,
 # tail 2.85 m, elevators 3.65 m. #570 hung the rudder off the fin's trailing edge at
 # 3.95 m and the ailerons off the wings' at 2.45 m -- clear plates, not plates buried
-# in their parents. That is 559 kg (462 of parts, tanks full, plus one
-# 97 kg kerbal -- the pod seats one, where the one-piece fuselage seated two), and it
-# pays 5x the body bill the smooth spindle did. The band below on A is the silhouette
-# union of pod+tank+engine; FormCp is where that bill pushes -- -0.45..-0.58 m here,
-# against the -0.68 m the spindle's bill reported.
+# in their parents. #567 then grew that wing to 16 x 1.5 (its chord now spans 1.95..0.45
+# m, the ailerons hang off its trailing edge at 2.30 m aft of the origin, tips 8 m out)
+# and the hull to 569 kg (472 of parts, tanks full, plus one 97 kg kerbal -- the pod
+# seats one, where the one-piece fuselage seated two), still paying 5x the body bill the
+# smooth spindle did. The band below on A is the silhouette union of pod+tank+engine;
+# FormCp is where that bill pushes -- -0.44..-0.53 m here, against the -0.68 m the
+# spindle's bill reported.
 ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
 ARGS --sim-steps 3000 --drag-log --mass-log
 ARGS --sim-press 500,3000,R
@@ -19,34 +21,36 @@ EXPECT [drag]
 EXPECT [mass]
 CHECK len(drag) >= 40
 # Cruise, held: the trim is a wing station and a wing-loading, not a stick. This hull's
-# zero-moment AoA is 2.6 deg and no row of the run reads above 3.0 -- the phugoid and
-# the rudder kick carry it 0.4 deg nose-high at their extremes. The 3.2 ceiling is 0.2
-# deg over this run's peak; #570 alone moved that peak 0.1 deg, so re-measure before
-# tightening it.
-CHECK all(2.4 < d["aoa"] < 3.2 for d in drag if d["aoa"] is not None)
+# zero-moment AoA is 2.5 deg and no row of the run reads above 2.8 -- the phugoid and
+# the rudder kick carry it 0.3 deg nose-high at their extremes. The 3.0 ceiling is 0.2
+# deg over this run's peak; #567's bigger wing moved that peak 0.1 deg on its own, so
+# re-measure before tightening it.
+CHECK all(2.3 < d["aoa"] < 3.0 for d in drag if d["aoa"] is not None)
 CHECK min(d["v"] for d in drag if d["t"] <= 20.0) > 60.0
 CHECK min(d["alt"] for d in drag if d["t"] <= 20.0) > 6950.0
-# Static margin positive and steady (the VAB number, in flight).
-CHECK all(0.55 < d["sm"] < 0.65 for d in drag if d.get("sm") is not None)
-# The kick: 9.7 deg of sideslip and back inside 0.3 deg by t=40 s. #570 put the rudder
-# half a metre further aft, so the same 1 s press now buys a bigger swing than the 8.8
-# deg it used to; the ceiling is 12 so the case guards "it swings and weathervanes back"
+# Static margin positive and steady (the VAB number, in flight): 0.550 on every row,
+# +0.552 from the parts.
+CHECK all(0.52 < d["sm"] < 0.58 for d in drag if d.get("sm") is not None)
+# The kick: 7.7 deg of sideslip and back inside 0.3 deg by t=40 s. The same 1 s press
+# bought 9.7 deg before #567 and 8.8 deg before that: the wing now carries 96 kg out to
+# 8 m of tip, so the hull's yaw inertia is larger and one second of rudder swings less
+# air around. The ceiling is 12 so the case guards "it swings and weathervanes back"
 # without betting on where one press lands.
 CHECK 3.0 < max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 12.0
 CHECK all(abs(d["beta"]) < 2.5 for d in drag if d["t"] >= 40.0)
-# The bill: pod+tank+engine union 0.80..0.96 m2 at an area-weighted Cd of 0.57-0.63
+# The bill: pod+tank+engine union 0.80..0.91 m2 at an area-weighted Cd of 0.57-0.61
 # (nose-on: capsule drag_forward 0.35, tank 1.0, engine 0.15), wings at 0.010 profile,
-# induced 0.13..0.76 as the throttle pushes it through its phugoid -- the top of that
+# induced 0.10..0.56 as the throttle pushes it through its phugoid -- the top of that
 # range is where a hangar-sized induced bill would start showing up as a wall.
 CHECK 0.75 < min(d["a"] for d in drag if d.get("a")) < 1.00
 CHECK all(0.35 < d["profile"] < 0.65 for d in drag if d.get("profile") is not None)
 CHECK max(d["induced"] for d in drag) < 0.90
-# ... and it is billed AT ALL. Coldest row of this run: 0.134 m2. A ceiling with no
+# ... and it is billed AT ALL. Coldest row of this run: 0.096 m2. A ceiling with no
 # floor stays green if the law stops charging -- an AR of zero short-circuits inducedCd
 # in drag.h, and a pane that falls out of its lifting system is skipped by the bill --
 # while every other band here (aoa, sm, profile, a) still passes.
 CHECK all(d["induced"] > 0.05 for d in drag if d.get("induced") is not None)
-# -0.65 rather than -0.60: this run reads -0.45..-0.58, and the number worth keeping
+# -0.65 rather than -0.60: this run reads -0.44..-0.53, and the number worth keeping
 # apart from it is the spindle's -0.68 -- a band that swallows that is no band. #570
 # moved this floor 0.03 m on its own, so the margin against -0.68 is 0.03 m: re-measure
 # rather than widen it again.
