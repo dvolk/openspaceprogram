@@ -3283,8 +3283,11 @@ void Vehicle::applyRotationForce(double h) {
            wheel is fitted (Part::isWheel() is `torque > 0`), so there is no separate
            "has a wheel" test to make -- same rule attitudeAuthority() states.
            NB worldAxis is NOT normalized, so holding several keys asks for up to
-           sqrt(3) x that rating at once; #577 has the fix ideas, and the clamp
-           belongs to #425 step D's allocator if that lands first. */
+           sqrt(3) x that rating at once. That over-subscription stays on purpose
+           (#577 closed into #576): a genuine 3-axis cluster CAN bill its rating about
+           each axis, so the thing that is wrong is one drum being credited about all
+           three -- which #576 fixes with an axis credit, not by clamping the stick.
+           Clamping here would make a real cluster weaker than its parts say. */
         const double wheelT = wheelTorqueSum();
         if(wheelT > 0.0) { ApplyTorque(hull, wheelT * worldAxis); }
     }
