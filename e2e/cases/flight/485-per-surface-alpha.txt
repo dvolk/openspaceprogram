@@ -37,9 +37,13 @@ CHECK max(abs(a-b) for a,b,g in zip([s["a"] for s in surface][8::10],[s["a"] for
 CHECK all(4.5 < w - t < 5.5 for w,t,g in zip([s["a"] for s in surface][0::10],[s["a"] for s in surface][2::10],[d["beta"] for d in drag]) if abs(g) < 0.6)
 CHECK all(-0.5 < e - w < 0.4 for e,w in zip([s["a"] for s in surface][5::10],[s["a"] for s in surface][0::10]))
 # A tab bolted flat to a wing meets the flow at the wing's own angle: the ailerons
-# hang off the wing's trailing edge (point/normal, #566, sat clear of it by #570), and
-# they read -0.1..+0.1 deg off wing_l all the way through the run.
+# hang off the wing's trailing edge (point/normal, #566, sat clear of it by #570). Each
+# one is compared with the wing it is bolted through, NOT across the hull: mid-sideslip
+# wing_l and wing_r disagree by up to 0.5 deg, and ail_r against wing_l would sample
+# that instead of the mount. Measured all the way through the run, rudder kick
+# included: ail_l -0.1..+0.1 off wing_l, ail_r -0.2..+0.1 off wing_r.
 CHECK all(-0.5 < x - w < 0.4 for x,w in zip([s["a"] for s in surface][8::10],[s["a"] for s in surface][0::10]))
+CHECK all(-0.5 < x - w < 0.4 for x,w in zip([s["a"] for s in surface][9::10],[s["a"] for s in surface][1::10]))
 # THE WEATHERVANE, MECHANISM AND NOT JUST OUTCOME. One 1 s rudder press at 25 s, never
 # held. The ship yaws away and the fin meets the flow at exactly the angle it is
 # weathervaning through, of the OPPOSITE sign: Beta -9.7 -> fin +10.0, Beta +5.1 ->

@@ -1,5 +1,5 @@
 NAME elevator-trim
-CLAIM The same 559 kg skiff, with 12 deg of elevator trim authored on the parts and nothing else changed, cruises at +5.0..+5.7 deg of angle of attack with the stick released: the download that trims this airframe comes from deflection, and the standing bill is real (0.47-1.02 m2 of induced CdA at the hold).
+CLAIM The same 559 kg skiff, with 12 deg of elevator trim authored on the parts and nothing else changed, cruises at +5.0..+5.9 deg of angle of attack with the stick released: the download that trims this airframe comes from deflection, and the standing bill is real (0.48-0.56 m2 of induced CdA at the hold, 1.11 the instant the rudder is kicked).
 KIND golden
 ARGS --time-accel 1 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
 ARGS --sim-steps 3000 --drag-log --mass-log
@@ -9,21 +9,24 @@ ARGS --sim-press 25000,1000,A
 EXPECT [drag]
 EXPECT [mass]
 CHECK len(drag) >= 40
-# The trim holds pitch up: every row is nose-high. Measured 5.0..5.3 deg while the
-# phugoid is fast, 5.7 at its bottom (t=15 s: 29.7 m/s at 7378 m), and 5.1 from t=27 s
-# on, once the throttle has damped the exchange. #568 moved this hold 2 deg up and
-# 20 m/s down: the pod-on-tank stack carries its tailplane pair 1.65 m behind the wing
-# rather than the spindle's 0.85 m, so the same 12 deg of tab buys more download than
-# this hull wants.
+# The trim holds pitch up: every row is nose-high. Measured 5.0..5.4 deg while the
+# phugoid is fast, 5.9 at its bottom (t=14 s at 29.2 m/s, and the slowest row of the
+# run is t=15 s: 28.8 m/s at 7379 m), and 5.1..5.2 from t=27 s on, once the throttle
+# has damped the exchange. #568 moved this hold 2 deg up and 20 m/s down: the
+# pod-on-tank stack carries its tailplane pair 1.65 m behind the wing rather than the
+# spindle's 0.85 m, so the same 12 deg of tab buys more download than this hull wants.
 CHECK all(d["aoa"] > 4.5 for d in drag if d["aoa"] is not None)
-# The phugoid is real but bounded: it never decelerates past 30 m/s and it never
+# The phugoid is real but bounded: it never decelerates past 28.8 m/s and it never
 # trades more than 377 m of height in 50 s.
 CHECK min(d["v"] for d in drag) > 26.0
 CHECK max(d["alt"] for d in drag) - min(d["alt"] for d in drag) < 450.0
-# 12 deg of standing deflection, and the bill follows the command: the hands-off
-# rows bill 0.47-0.57 m2 of induced, the kicked rows up to 1.02. Pinned on the PITCH
-# axis, because this run also kicks the rudder (+20.1 deg of yaw at t=3 s) and an
-# unpinned "any surface is well off neutral" would pass on that alone.
+# 12 deg of standing deflection, and the bill follows the command: the hands-off rows
+# bill 0.476-0.56 m2 of induced, and the single row in the rudder kick (t=26 s, Beta
+# -9.5) bills 1.11 -- a steered surface pays induced drag at its own mount (#494), and
+# #570 put this rudder half a metre further aft, which is why that row read 1.02 before
+# and 1.11 now. Pinned on the PITCH axis, because this run also kicks the rudder
+# (+20.1 deg of yaw at t=3 s) and an unpinned "any surface is well off neutral" would
+# pass on that alone.
 CHECK any(c["axis"] == "pitch" for c in ctrl)
 CHECK all(11.5 < abs(c["deg"]) < 12.5 for c in ctrl if c["axis"] == "pitch")
 # The tail is one lifting system with its elevators (#556): its span is 4 m, so

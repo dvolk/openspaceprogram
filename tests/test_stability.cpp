@@ -116,12 +116,13 @@ static void test_crew_moves_the_pivot(const Fixture &f) {
    Measured, by moving one pair 3 m forward in the skiff (no recomputePoses: the
    pose IS the edit):
      as shipped          SM +0.58 m  restoring
-     tailplanes +3 m     SM +0.18 m  restoring, and the number shows why
-     wings +3 m          SM -1.48 m  diverging
-   The shipped row moves with the content (#570's half-metre of aileron and rudder
-   took it from +0.586); the other two rows are from the original #499 rig, which
-   slid a surface mount along the body with surface "z" -- a shipdef the loader
-   refuses now ("is off the end of parent"), so they are history rather than a repro.
+     tailplanes +3 m     SM +0.17 m  restoring, and the number shows why
+     wings +3 m          SM -1.49 m  diverging
+   Re-measured 2026_11_02 on the shipped hull (#570 moved it 0.008 m). The shift is
+   applied to the SOLVED poses, which is why the rigs are still a repro even though
+   the loader refuses that edit as authored JSON now ("surface \"z\" ... is off the
+   end of parent") -- a builder cannot get this rig by typing it, only by parking a
+   surface where it does not belong.
    The middle row is the honest one and is pinned so nobody "fixes" it by expecting
    a flip: the skiff's wings are 129.6 of its 153.6 m2/rad, so putting its tail in
    front of them costs two thirds of the stiffness without turning the airframe

@@ -110,15 +110,18 @@ should be built from this recipe and get its own row here.
    own zero-moment AoA inside a second whatever attitude it spawns in (#569).
 4. **Tail.** Pitch: a tailplane pair (a `wing_r1h1` pair) with elevators behind it.
    Yaw: a `rudder_r*`. Both are needed; a glider with no pitch surface cannot trim.
-   Hang every control surface off its parent's TRAILING EDGE with a surface `point`
-   plus `normal`, not with a `z` that slides it inside the parent (#570): the skiff's
-   ailerons used to sit 0.5 m of their 0.7 m chord inside the wing and its rudder half
-   its chord inside the fin. Measure before believing it matters to the air: the
-   grouping merges a flap into the surface it is bolted to either way -- four lifting
-   systems before #570 and after -- and clearing them was worth +0.04 of L/D. It is
-   worth doing because a plate inside another plate is something the player can see,
-   and because a tab whose chord is buried in its parent has no hinge the law could
-   honor if the lift model ever wanted one.
+   Hang a control surface off the TRAILING EDGE of the surface it hinges to, with a
+   surface `point` plus `normal` -- not with a `z` that slides it inside the part it is
+   bolted through (#570). The tree parent need not be that surface: the skiff's rudder
+   is a child of the ENGINE and hangs off the FIN's trailing edge at 3.95 m. The line
+   to hold is the hinge: two plates may MEET along one line (aileron and wing touch at
+   -2.10, rudder and fin at -3.55) and a tab may overlap a little (the elevators stand
+   0.05 m behind the tailplanes, 7% of their chord), but a chord that vanishes inside
+   another plate has no hinge the law could honor if the lift model ever wanted one.
+   The skiff's ailerons used to sit 0.5 m of their 0.7 m chord inside the wing and the
+   rudder half its chord inside the fin. Measure before believing the fix matters to
+   the air: the grouping merges a flap into the surface it is bolted through either way
+   -- four lifting systems before #570, four after.
 5. **Section**: profile cd 0.010 (smooth), not 0.03 (the old faceted plate).
 6. Then measure and pin: L/D, cruise speed, static margin, stall margin.
 
@@ -141,11 +144,16 @@ should be built from this recipe and get its own row here.
   fuselage parts carry no `torque`: on that hull the aero row WAS the whole attitude
   budget (`[slew] alpha=0.000`). The pod hull declares 100 N m, which is 1% of the
   8.91 kN m #566 measured from this aileron pair at full deflection -- decisive for
-  pointing a ship out of atmosphere, negligible for rolling this one in it.
-- **One lifting system pays one induced bill** (#556): two co-planar panels are one
+  pointing a ship out of atmosphere, negligible for rolling this one in it. That pair
+  has since moved 0.5 m aft (#570) and nothing in the repo re-measures the figure: the
+  roll half is priced off the spanwise station, which did not move, so read 8.91 kN m
+  as #566's pair at #566's station.
+- **One lifting system pays one induced bill** (#556): two panels side by side are one
   AR-4 wing, a bridge (the fuselage) joins roots that do not touch, and a tailplane
-  three metres aft is a different system. #570 shows the rule is about being coplanar,
-  not about being in contact: the aileron hung off its wing's trailing edge joins the
-  wing system (same plane, spanwise overlap -- one 22.7 m2 system, AR 6.34), and the
-  rudder hung off the fin's trailing edge, touching it at exactly one line, stays its
-  own system because its plate is at 90 deg to the fin's.
+  three metres aft is a different system. #570 makes the merge test explicit: a pane
+  joins a system only if its span runs across the airframe AND its chord fore-and-aft,
+  and its spanwise and chordwise intervals then touch or bridge (`drag.h`, the
+  `aLateral` guard). There is no coplanarity test -- the aileron sits 0.02 m off the
+  wing's mid-plane and merges anyway -- and a pane whose span runs vertical is never a
+  candidate, which is why the fin and the rudder are each their own system even though
+  #570 left the rudder touching the fin along exactly one line.
