@@ -795,8 +795,23 @@ public:
        (res/ships/sideways_wheel.json, e2e flight/571). An authored "point"/"normal"
        contact can tilt a part outright, which is another reason to ask for the root
        rather than for whichever part carries the wheels.
-       This is NOT the camera/HUD frame, which still follows `controller` (#573). */
+       This is NOT the seat the view sits in, which still follows `controller`. */
     Part *attitudeRef() const;
+
+    /* THE AXES A DISPLAYED ATTITUDE SPEAKS (#573). Same part as attitudeRef(), so a
+       heading/pitch/roll readout, the chase basis and the orbit camera's up describe the
+       rotation the keys and the laws actually applied. Reading them in another part's
+       axes used to be the same lookup the laws used before #571, so they agreed by
+       construction; after #571 they agree only while that part keeps the stack's axes.
+       On res/ships/sideways_wheel.json the wheel is surface-mounted at angle: 90, which
+       rolls it 90 deg about the stack: --att-log shows holding S pitching the hull while
+       a heading taken from the wheel's frame counts a yaw.
+       Columns are [right, up, nose], the same order as partAxis(ref, 0/1/2); the orbit
+       camera wants them as [back, right, up] and reorders them at the call.
+       `controller` stays the SEAT: the first-person eye sits on that part's top face, the
+       camera focuses on it, and the Vessel window's home distance measures to it. Where
+       you sit and which way the ship points are different questions. */
+    glm::dmat3 attitudeBasis() const;
 
     void applyRotationForce(double h);
 

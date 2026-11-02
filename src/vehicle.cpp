@@ -3241,6 +3241,14 @@ Part * Vehicle::attitudeRef() const {
     return rootPart();
 }
 
+glm::dmat3 Vehicle::attitudeBasis() const {
+    const Part *ref = attitudeRef();
+    /* A hull with no parts has no axes to report; the identity is the honest answer
+       and the drawers guard on it the same way they guard on a null controller. */
+    if(ref == nullptr) { return glm::dmat3(1.0); }
+    return glm::dmat3(partAxis(ref, 0), partAxis(ref, 1), partAxis(ref, 2));
+}
+
 void Vehicle::applyRotationForce(double h) {
     /* The autopilot's TVC aim is per-substep: cleared here, re-armed by the
        law below, consumed by applyThrustForce this same substep. */

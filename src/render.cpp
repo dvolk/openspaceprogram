@@ -166,9 +166,15 @@ void updateShipView(Game &g) {
     energy_series.push(g.time, o.energy);
     angmom_series.push(g.time, o.ang_momentum);
 
-    up = ship->partAxis(ship->controller, 1);
-    facing = ship->partAxis(ship->controller, 2);
-    other = ship->partAxis(ship->controller, 0);
+    /* The attitude the HUD's heading/pitch/roll and the chase basis are read in is the
+       ship's OWN axes -- attitudeRef(), the frame the stick and the slew laws turn the
+       hull in (#573). `controller` is where the crew sits: read these in a
+       surface-mounted wheel's frame and the numbers describe a rotation no key asked
+       for (res/ships/sideways_wheel.json: --att-log pitches, the HUD yaws). */
+    const glm::dmat3 shipAxes = ship->attitudeBasis();   // [right, up, nose]
+    up = shipAxes[1];
+    facing = shipAxes[2];
+    other = shipAxes[0];
 
     facing_dir = glm::normalize(facing);
     /* The ORBITAL window's Prg/Rtg is the angle to the CONIC's prograde, like
@@ -365,9 +371,10 @@ void refreshWorld(Game &g) {
             // The orbit camera expects ref as [back, right, up]; the ship's
             // axes 0/1/2 are [right, up, nose]. Feed the columns in the
             // camera's order: nose-as-up swaps the pitch/yaw responses.
-            camera->ref = glm::dmat3(ship->partAxis(ship->controller, 2),   // back = nose
-                                     ship->partAxis(ship->controller, 0),   // right
-                                     ship->partAxis(ship->controller, 1));  // up
+            const glm::dmat3 sa = ship->attitudeBasis();
+            camera->ref = glm::dmat3(sa[2],   // back = nose
+                                     sa[0],   // right
+                                     sa[1]);  // up
             }
         } else {
             TerrainBody *b = g.focusTargets[g.focusBody].body;
@@ -641,9 +648,8 @@ void paintWorld(Game &g) {
             // Attitude steps the same way, and the orbit basis comes from the
             // ship's axes, so a stepped attitude rotates the whole image.
             double dang = -1.0;
-            if(ship->controller) {
-                const glm::dvec3 nose = ship->partAxis(ship->controller, 2);
-                dang = glm::angle(nose, g.pose_jitter_prev_nose);
+            if(ship->attitudeRef() != nullptr) {
+                dang = glm::angle(ship->attitudeBasis()[2], g.pose_jitter_prev_nose);
             }
             printf("[jitter] t=%9.3f fdt=%6.2f ticks=%2d alpha=%.3f "
                    "r=%12.1f gap=%10.4f dang=%9.6f\n",
@@ -652,8 +658,8 @@ void paintWorld(Game &g) {
             fflush(stdout);
         }
         g.pose_jitter_prev = com;
-        if(ship->controller) {
-            g.pose_jitter_prev_nose = ship->partAxis(ship->controller, 2);
+        if(ship->attitudeRef() != nullptr) {
+            g.pose_jitter_prev_nose = ship->attitudeBasis()[2];
         }
         g.pose_jitter_prev_ship = ship;
         g.pose_jitter_prev_frame = ship->frame;

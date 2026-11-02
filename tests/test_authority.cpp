@@ -354,6 +354,24 @@ static void test_one_frame_for_the_attitude_path() {
        count in full. */
     CHECK_NEAR(v->attitudeTorqueAbout(a, wheelZ), 300.0 + a.tvcTorque, 1e-9,
                "TVC counts where the mixer can actually lever");
+    /* #573: the DISPLAYED attitude asks the same question as the laws. Seat the crew in
+       the rolled wheel -- which is exactly what the loader's fallback used to do, since
+       controllerIndex() took the first part with torque > 0 -- and the heading/pitch/roll
+       the HUD prints must still describe the hull the keys turned. Break this by feeding
+       render.cpp partAxis(controller, ...) again: the displayed nose and up go 90 deg off
+       while every law check above stays green, which is what made it a player-visible bug
+       rather than a physics one. */
+    const glm::dvec3 rootX = v->partAxis(root, 0);
+    const glm::dvec3 rootUp = v->partAxis(root, 1);
+    v->controller = wheel;
+    const glm::dmat3 disp = v->attitudeBasis();      // [right, up, nose]
+    CHECK_NEAR(glm::dot(disp[2], rootZ), 1.0, 1e-12, "the displayed nose is the stack axis");
+    CHECK_NEAR(glm::dot(disp[1], rootUp), 1.0, 1e-12, "and the displayed up is the ship's");
+    CHECK_NEAR(glm::dot(disp[0], rootX), 1.0, 1e-12, "and its right");
+    CHECK_NEAR(glm::dot(disp[2], v->partAxis(wheel, 2)), 0.0, 1e-12,
+               "none of them is the seat's: that part is rolled 90 deg about the stack");
+    CHECK_NEAR(glm::dot(disp[1], v->partAxis(wheel, 1)), 0.0, 1e-12,
+               "read in the seat's frame, the HUD would call a pitch a yaw");
     destroyShip(s.v);
 }
 

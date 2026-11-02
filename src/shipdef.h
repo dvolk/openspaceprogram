@@ -543,13 +543,18 @@ struct ShipDef {
 
     int controllerIndex() const {
         if(controller >= 0) { return controller; }
-        /* Default: the first part with reaction-wheel authority -- the part the
-           camera focuses on and the axes the HUD's heading/pitch/roll and the chase
-           basis are read from. This is the same lookup the attitude laws used before
-           #571, which is why the readout and the controls agreed on any hull however
-           it was built. The laws and the stick now read the ROOT's axes instead, so
-           the two agree only while the wheel keeps the stack's axes -- true of every
-           shipped def so far, not true of a wheel rolled about the stack. #573. */
+        /* Default seat: the part the first-person eye sits on, the chase camera focuses
+           on and the Vessel window's home distance measures to. The first part with
+           reaction-wheel authority is the obvious guess -- a pod is where the controls
+           are, and on shipped defs it usually IS row 0.
+           It is NOT the ship's attitude frame and must not become one: the laws, the
+           stick and every displayed heading/pitch/roll ask Vehicle::attitudeRef() (the
+           root, #571) and read it through attitudeBasis() (#573). Those two agreed with
+           this lookup by construction before #571, which is how the bug got in: a wheel
+           surface-mounted at angle: 90 is rolled 90 deg about the stack, so an attitude
+           taken from its axes describes a rotation no key asked for
+           (res/ships/sideways_wheel.json, e2e flight/571). A def that wants the view
+           somewhere else says so with "controller". */
         for(size_t i = 0; i < parts.size(); i++) {
             if(parts[i].def && parts[i].def->torque > 0.0) { return (int)i; }
         }
