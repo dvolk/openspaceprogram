@@ -510,8 +510,9 @@ public:
        something to author.
          wheelTorque: N m, and it is ISOTROPIC -- a wheel levers any axis, so this
            number is the whole story about the stack axis. 0 with no wheel fitted
-           or no EC power (the wheels are electric). The SUM over wheels; the
-           Vessel window quotes the LARGEST (GetWheelTorque), which is not this.
+           or no EC power (the wheels are electric). The SUM over wheels -- every
+           wheel turns the same body on the same axis, and the Vessel window quotes
+           this same number (#572).
          tvcTorque:   N m, but it is a DISK in the plane perpendicular to the
            mixer's stack axis, not a ball: see attitudeTorqueAbout.
          heffMag:     N m per rad of the SHARED lateral deflection, Sum(T_i*|h_i|),
@@ -897,11 +898,6 @@ public:
     /* --dv-log: the running delta-v budget (see the dvDelivered_ block). */
     void dv_log(double time);
 
-    /* The largest wheel's rated torque (N m) for the HUD; the total is
-       maxTorque() (the sum). */
-    float GetWheelTorque();
-
-
     /* Disarm the armed thrust (once per tick). */
     void clearThrust();
 
@@ -990,11 +986,6 @@ protected:
     void ApplyThrust(double step);
 
     // --- physical rotation model -------------
-    // alpha = maxTorque() / I (rad/s^2). Stick, slew and kill-rot all work
-    // within that authority.
-
-    double maxTorque();
-
     /* The inertia tensor about the COM in world axes (Bullet stores it DIAGONAL
        in the principal frame). O(1). */
     glm::dmat3 getInertia();
@@ -1008,11 +999,19 @@ protected:
     void slewToward(glm::dvec3 dir, double h);
 
     /* Kill the spin in one substep: tau = I * (-w) / h, scaled to
-       |tau| <= maxTorque(). Needs the FULL inertia tensor, not the world-axis
+       |tau| <= wheelTorqueSum(). Needs the FULL inertia tensor, not the world-axis
        diagonal. */
     void killRotStep(double h);
 
 public:
+
+    // --- physical rotation model -------------
+    /* The wheels' rating, TOTALLED: every wheel turns the same body on the same
+       axis, so the torques add. This is the number the laws bill (alpha =
+       wheelTorqueSum() / I, rad/s^2) AND the number the Vessel window prints --
+       one answer for "how hard can this ship turn", which is what #572 was about.
+       A two-wheel ship has twice it; a ship with no wheel or no charge has 0. */
+    double wheelTorqueSum();
 
     glm::dvec3 GetPositionRelTo(const Part *part, Frame *relTo);
 

@@ -2,8 +2,8 @@
 // Regression tests for the physical rotation model (2026-08-22):
 //
 //   1. Rotation authority is a physical quantity, like thrust:
-//        alpha = maxTorque() / I   (rad/s^2),  I in kg m^2 from Bullet,
-//      where maxTorque() = (number of reaction wheels) x the wheel's rated
+//        alpha = wheelTorqueSum() / I   (rad/s^2),  I in kg m^2 from Bullet,
+//      where wheelTorqueSum() = (number of reaction wheels) x the wheel's rated
 //      torque (2000 N m each, the value the ship code has always applied).
 //      The manual stick commands full rated torque; the autopilot
 //      (prograde/retrograde slew, kill-rot) is bounded by the SAME

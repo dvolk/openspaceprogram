@@ -3234,11 +3234,11 @@ void Vehicle::applyRotationForce(double h) {
           - (double)stick[1] * axes[0]           // pitch: right (W/S)
           - (double)stick[2] * axes[1];          // yaw: up    (A/D)
         /* One parts scan, and only while a key is held. It is both the gate and the
-           rating: maxTorque() is the SUM over wheels and is 0 exactly when no wheel
+           rating: wheelTorqueSum() is the SUM over wheels and is 0 exactly when no wheel
            is fitted (Part::isWheel() is `torque > 0`), so there is no separate
            "has a wheel" test to make -- same rule attitudeAuthority() states.
            Every wheel turns the same body on the same axis, hence the sum. */
-        const double wheelT = maxTorque();
+        const double wheelT = wheelTorqueSum();
         if(wheelT > 0.0) { ApplyTorque(hull, wheelT * worldAxis); }
     }
     /* Autopilot: one authority-bounded step of the slew/kill-rot law. It
@@ -3715,14 +3715,6 @@ void Vehicle::dv_log(double time) {
            dvDelivered_, dvAlong_, dvRocket_, propSpent_, dvVeLast_,
            getDeltaV());
     fflush(stdout);
-}
-
-float Vehicle::GetWheelTorque() {
-    double t = 0.0;
-    for(Part *p : parts) {
-        if(p->isWheel() && p->wheelTorque() > t) { t = p->wheelTorque(); }
-    }
-    return (float)t;
 }
 
 void Vehicle::clearThrust() {
@@ -4368,7 +4360,7 @@ void Vehicle::ApplyThrust(double step) {
     }
 }
 
-double Vehicle::maxTorque() {
+double Vehicle::wheelTorqueSum() {
     double t = 0;
     for(Part *p : parts) {
         if(p->isWheel()) { t += p->wheelTorque(); }
@@ -4382,10 +4374,10 @@ double Vehicle::maxTorque() {
    aero surfaces turn the ship too (applyControlSurfaceForce answers the stick on its
    own, and on the shipped skiff they are its ONLY roll authority), and RCS torques it
    as a side effect of translating -- neither is law-driven yet, which is what #425's
-   allocator is for. maxTorque() stays as the raw wheel rating because
-   the manual stick path bills exactly that (applyRotationForce); note the UI does
-   NOT quote maxTorque -- the part window prints def.torque per part and the Vessel
-   window prints GetWheelTorque(), the LARGEST wheel, while the law sums them. */
+   allocator is for. wheelTorqueSum() stays as the raw wheel rating because
+   the manual stick path bills exactly that (applyRotationForce), and the Vessel
+   window quotes the same sum for the same reason (#572); the part window prints
+   def.torque for the one part under the cursor. */
 Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
     AttitudeAuthority a;
     const Part *ref = attitudeRef();
@@ -4397,8 +4389,8 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
     a.stackAxis = partAxis(ref, 2);
     /* Power gate: the wheels are electric -- no EC, no wheel torque (#418 says a
        dead-ship trace used to read as uncontrolled when the engines were fine).
-       maxTorque() is the SUM and is 0 when no wheel is fitted, so no separate test. */
-    if(powered_) { a.wheelTorque = maxTorque(); }
+       wheelTorqueSum() is the SUM and is 0 when no wheel is fitted, so no separate test. */
+    if(powered_) { a.wheelTorque = wheelTorqueSum(); }
     /* TVC, read off the ARMED gimballed engines so it scales with throttle (and
        falls to zero when the engines quit mid-slew). Small angle (gimbal_max ~ 5
        deg): a deflection of |lat| rad off the stack axis pushes a lateral force

@@ -2190,7 +2190,10 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("Thrust: %.2fN", ship->getThrust());
         ImGui::Text("Current TWR: %.2f/%.2f", ship->getTWR(), ship->getFullThrustTWR());
         ImGui::Text("Max TWR: %.2f", ship->getMaxTWR());
-        ImGui::Text("Wheel torque: %.0fN m", ship->GetWheelTorque());
+        /* The SUM over wheels, because that is what the flight model bills: every
+           wheel turns the same body on the same axis. The part window carries the
+           per-part rating (#572). */
+        ImGui::Text("Wheel torque: %.0fN m", ship->wheelTorqueSum());
         ImGui::Text("Angular rate: %.2fdeg/s",
                     glm::degrees(glm::length(ship->hullAngVel())));
     });

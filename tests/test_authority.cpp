@@ -5,7 +5,7 @@
 // be reachable through (#424).
 //
 // Why this file exists: before it, three places (the slew law, the kill-rot law and
-// the [slew] trace) each re-added maxTorque() + tvcAuthority()'s tvcMax, and none of
+// the [slew] trace) each re-added wheelTorqueSum() + tvcAuthority()'s tvcMax, and none of
 // them asked which axis. That is right about an axis TVC can lever and wrong about
 // the stack axis, where a lateral nozzle deflection produces nothing at all -- which
 // gimbal.h tvcSplit has always known, since it drops that component and hands it to
@@ -258,12 +258,13 @@ static void test_a_ship_with_nothing_has_nothing() {
 }
 
 /* --- which wheel number, and whose frame ---------------------------------- */
-/* The wheel row is the SUM (maxTorque), while the Vessel window prints
-   GetWheelTorque() -- the LARGEST wheel. They agree on a one-wheel ship, so
-   nothing else in the tree would notice one being swapped for the other, and a
-   two-wheel ship would silently lose a third of the authority the laws budget. */
+/* The wheel row is the SUM over wheels (wheelTorqueSum). A one-wheel ship cannot tell
+   that from "the biggest wheel", so a fixture with one wheel would pass while the
+   laws budgeted a third of the authority they need -- hence the second wheel here.
+   The Vessel window used to print the largest instead (#572); it prints the sum
+   now, so the swap this test guards is the row itself using one wheel's rating. */
 static void test_two_wheels_add_up() {
-    printf("== the wheel row sums the wheels; the Vessel window shows the biggest ==\n");
+    printf("== the wheel row sums the wheels ==\n");
     Stack st = mkStack(200.0, 0.0, 0.0);
     Vehicle *v = st.s.v;
     Part *w2 = mkPart(st.s, "wheel2", 100.0, 1.0, 50.0, 0.0);
