@@ -43,7 +43,7 @@ void Kerbal::settleContact() {
     mode = grounded ? EVA_GROUND : EVA_SPACE;
 }
 
-void Kerbal::armInput(Game &g, const std::function<bool(Slot)> &active) {
+void Kerbal::armInput(Game &g, const SlotProbe &active) {
     const Camera *cam = g.camera;
 
     // Camera positions/directions live in the render frame (= the kerbal's frame).
@@ -78,10 +78,10 @@ void Kerbal::armInput(Game &g, const std::function<bool(Slot)> &active) {
 
     if(mode == EVA_GROUND) {
         glm::dvec3 w(0.0);
-        if(active(Slot::EvaForward)) { w += fwd; }
-        if(active(Slot::EvaBack)) { w -= fwd; }
-        if(active(Slot::EvaRight)) { w += sright; }
-        if(active(Slot::EvaLeft)) { w -= sright; }
+        if(active.held(Slot::EvaForward)) { w += fwd; }
+        if(active.held(Slot::EvaBack)) { w -= fwd; }
+        if(active.held(Slot::EvaRight)) { w += sright; }
+        if(active.held(Slot::EvaLeft)) { w -= sright; }
         w = evaOntoPlane(w, radial);   // walk along the tangent
         walkDir = (glm::length2(w) > 1e-9) ? glm::normalize(w)
                                            : glm::dvec3(0.0);
@@ -92,18 +92,18 @@ void Kerbal::armInput(Game &g, const std::function<bool(Slot)> &active) {
         }
     } else {
         glm::dvec3 t(0.0);
-        if(active(Slot::EvaForward)) { t += fwd; }
-        if(active(Slot::EvaBack)) { t -= fwd; }
-        if(active(Slot::EvaRight)) { t += sright; }
-        if(active(Slot::EvaLeft)) { t -= sright; }
-        if(active(Slot::EvaUp)) { t += up; }
-        if(active(Slot::EvaDown)) { t -= up; }
+        if(active.held(Slot::EvaForward)) { t += fwd; }
+        if(active.held(Slot::EvaBack)) { t -= fwd; }
+        if(active.held(Slot::EvaRight)) { t += sright; }
+        if(active.held(Slot::EvaLeft)) { t -= sright; }
+        if(active.held(Slot::EvaUp)) { t += up; }
+        if(active.held(Slot::EvaDown)) { t -= up; }
         armRcs((glm::length2(t) > 1e-9)
             ? glm::normalize(t) : glm::dvec3(0.0));
         walkDir = glm::dvec3(0.0);
         double yaw = 0.0;
-        if(active(Slot::EvaYawLeft)) { yaw += 1.0; }
-        if(active(Slot::EvaYawRight)) { yaw -= 1.0; }
+        if(active.held(Slot::EvaYawLeft)) { yaw += 1.0; }
+        if(active.held(Slot::EvaYawRight)) { yaw -= 1.0; }
         viewYaw += yaw * kYawRate * g.dt;
     }
 }

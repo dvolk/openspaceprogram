@@ -5,9 +5,7 @@
 // terrain height (meshes only exist at max-LOD leaves, so the analytic side
 // is also the fall-through guard).
 
-#include <functional>
-
-#include "keys.h"                // Slot (the arm signature)
+#include "keys.h"                // Slot, SlotProbe (the arm signature)
 #include "vehicle.h"             // Vehicle
 #include "evamath.h"             // the pure control-law geometry
 
@@ -69,8 +67,10 @@ protected:
 public:
     /* Arm this kerbal's controls for one tick: keys + camera basis + ground state.
        tick.cpp calls it once a tick for the active ship, and only where a pilot could
-       be holding keys -- a non-piloting scene or a paused sim arms nothing. */
-    void armInput(Game &g, const std::function<bool(Slot)> &active);
+       be holding keys -- a non-piloting scene or a paused sim arms nothing. `active`
+       is the tick's SlotProbe (keys.h), handed by reference rather than as a
+       std::function so arming the suit allocates nothing (#581). */
+    void armInput(Game &g, const SlotProbe &active);
 
     /* The jump key went down (events.cpp). The rule lives on jumpPressed above. */
     void pressJump() { jumpPressed = true; }

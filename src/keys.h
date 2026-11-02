@@ -9,6 +9,7 @@
 #include <SDL3/SDL_stdinc.h>    // Uint8, Uint16
 
 #include <array>
+#include <cstddef>   // size_t (SlotProbe's press count)
 #include <string>
 #include <vector>
 
@@ -112,6 +113,22 @@ bool slotHeld(Slot s, const bool *keyState, Uint16 mods, const KeyBindings &kb);
 
 // A synthetic key (--sim-press) has no modifier state: only plain bindings match.
 bool slotSimKey(Slot s, SDL_Scancode sc, const KeyBindings &kb);
+
+struct SimKeyPress;   // siminput.h; named through a pointer so keys.h never pulls it in
+
+/* The tick's held-path probe: real key state ORed with the --sim-press windows that
+   name the slot, because SDL_PushEvent does not update SDL_GetKeyboardState. A named
+   type rather than a std::function so handing the tick's probe to something costs
+   nothing: the closure captures more than libstdc++'s small-object buffer, so
+   type-erasing it heap-allocates once per tick (#581). */
+struct SlotProbe {
+    const bool *keyState;
+    Uint16 mods;
+    const KeyBindings *binds;
+    const std::vector<SimKeyPress> *presses;
+
+    bool held(Slot s) const;      // keys.cpp, where SimKeyPress is complete
+};
 
 // Stable identifiers for the UI + settings.json.
 const char *slotName(Slot s);

@@ -3,6 +3,8 @@
 
 #include <cstring>   // strcmp (slotFromName)
 
+#include "siminput.h"   // SimKeyPress (SlotProbe ORs the --sim-press windows in)
+
 // Default map (scancodes = physical keys). Cam/Eva up-down on R/F so
 // Shift/Ctrl stay free as pure modifiers.
 void KeyBindings::resetDefaults() {
@@ -119,6 +121,17 @@ bool slotHeld(Slot s, const bool *keyState, Uint16 mods, const KeyBindings &kb) 
 bool slotSimKey(Slot s, SDL_Scancode sc, const KeyBindings &kb) {
     for (const auto &b : kb.perSlot[(size_t)s]) {
         if (b.sc == sc && b.mods == 0) { return true; }
+    }
+    return false;
+}
+
+/* The tick's held-path probe (keys.h): the same answer slotHeld gives a real player,
+   ORed with any --sim-press window still covering this tick. */
+bool SlotProbe::held(Slot s) const {
+    if(slotHeld(s, keyState, mods, *binds)) { return true; }
+    for(size_t i = 0; i < presses->size(); i++) {
+        const SimKeyPress &p = (*presses)[i];
+        if(p.down_sent && !p.up_sent && slotSimKey(s, p.sc, *binds)) { return true; }
     }
     return false;
 }

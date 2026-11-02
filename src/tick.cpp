@@ -4,7 +4,7 @@
 #include <cassert>
 #include <cstdio>
 
-#include "keys.h"                // Slot, slotHeld, slotSimKey (the command map)
+#include "keys.h"                // Slot, SlotProbe (the command map)
 #include "eva.h"                 // Kerbal::armInput (the kerbal's controls)
 #include "orbit.h"               // OrbitElements, computeOrbitElements
 #include "physics.h"             // physics_tick()
@@ -91,35 +91,28 @@ void tick(Game &g) {
 
         const bool *key = SDL_GetKeyboardState(nullptr);
         const Uint16 modState = SDL_GetModState();
-        /* SDL_PushEvent does not update the key array, so a --sim-press
-           entry's held window is ORed into the command. */
-        auto slotActive = [&](Slot s) -> bool {
-            if(slotHeld(s, key, modState, g.binds)) { return true; }
-            for(size_t i = 0; i < g.args.sim_presses.size(); i++) {
-                if(g.args.sim_presses[i].down_sent && !g.args.sim_presses[i].up_sent
-                   && slotSimKey(s, g.args.sim_presses[i].sc, g.binds)) {
-                    return true;
-                }
-            }
-            return false;
-        };
+        /* The tick's held-path probe (keys.h): SDL's key array ORed with each
+           --sim-press entry's held window, because SDL_PushEvent does not update the
+           array. A named type rather than a closure because it is handed to
+           Kerbal::armInput, where a std::function heap-allocated it once a tick (#581). */
+        const SlotProbe slotActive{key, modState, &g.binds, &g.args.sim_presses};
 
         if (g.camera->mode == CAM_FREE) {
             /* cam_speed (the [/] ladder) and the roll step are per-TICK
                amounts: scaling by dt*60 keeps the free cam's felt speed
                independent of --physics-hz. */
             const double cam_rate = g.dt * 60.0;
-            if (slotActive(Slot::CamForward)) { g.camera->MoveForward(g.cam_speed * cam_rate); }
-            else if (slotActive(Slot::CamBack)) { g.camera->MoveForward(-g.cam_speed * cam_rate); }
+            if (slotActive.held(Slot::CamForward)) { g.camera->MoveForward(g.cam_speed * cam_rate); }
+            else if (slotActive.held(Slot::CamBack)) { g.camera->MoveForward(-g.cam_speed * cam_rate); }
 
-            if (slotActive(Slot::CamStrafeLeft)) { g.camera->MoveRight(-g.cam_speed * cam_rate); }
-            else if (slotActive(Slot::CamStrafeRight)) { g.camera->MoveRight(g.cam_speed * cam_rate); }
+            if (slotActive.held(Slot::CamStrafeLeft)) { g.camera->MoveRight(-g.cam_speed * cam_rate); }
+            else if (slotActive.held(Slot::CamStrafeRight)) { g.camera->MoveRight(g.cam_speed * cam_rate); }
 
-            if (slotActive(Slot::CamRollLeft)) { g.camera->Roll(-0.05 * cam_rate); }
-            else if (slotActive(Slot::CamRollRight)) { g.camera->Roll(0.05 * cam_rate); }
+            if (slotActive.held(Slot::CamRollLeft)) { g.camera->Roll(-0.05 * cam_rate); }
+            else if (slotActive.held(Slot::CamRollRight)) { g.camera->Roll(0.05 * cam_rate); }
 
-            if (slotActive(Slot::CamUp)) { g.camera->MoveUp(g.cam_speed * cam_rate); }
-            else if (slotActive(Slot::CamDown)) { g.camera->MoveUp(-g.cam_speed * cam_rate); }
+            if (slotActive.held(Slot::CamUp)) { g.camera->MoveUp(g.cam_speed * cam_rate); }
+            else if (slotActive.held(Slot::CamDown)) { g.camera->MoveUp(-g.cam_speed * cam_rate); }
         }
 
         // Piloting (orbit / first person). Free cam is a flier: no sticks.
@@ -129,15 +122,15 @@ void tick(Game &g) {
             // Touching the controls wakes a railed active ship (you cannot
             // maneuver on rails). A rails warp drops to 1x on the way out.
             if(g.ship->onRails && g.time_accel > 0) {
-                bool wake = slotActive(Slot::PitchUp) || slotActive(Slot::PitchDown) ||
-                            slotActive(Slot::YawLeft) || slotActive(Slot::YawRight) ||
-                            slotActive(Slot::RollLeft) || slotActive(Slot::RollRight) ||
-                            slotActive(Slot::Thrust) || slotActive(Slot::KillRot) ||
-                            slotActive(Slot::ThrottleUp) || slotActive(Slot::ThrottleDown) ||
-                            slotActive(Slot::RcsForward) || slotActive(Slot::RcsBack) ||
-                            slotActive(Slot::RcsUp) || slotActive(Slot::RcsDown) ||
-                            slotActive(Slot::RcsLeft) || slotActive(Slot::RcsRight);
-                if(g.ship->isEva()) { wake = wake || slotActive(Slot::Space); }
+                bool wake = slotActive.held(Slot::PitchUp) || slotActive.held(Slot::PitchDown) ||
+                            slotActive.held(Slot::YawLeft) || slotActive.held(Slot::YawRight) ||
+                            slotActive.held(Slot::RollLeft) || slotActive.held(Slot::RollRight) ||
+                            slotActive.held(Slot::Thrust) || slotActive.held(Slot::KillRot) ||
+                            slotActive.held(Slot::ThrottleUp) || slotActive.held(Slot::ThrottleDown) ||
+                            slotActive.held(Slot::RcsForward) || slotActive.held(Slot::RcsBack) ||
+                            slotActive.held(Slot::RcsUp) || slotActive.held(Slot::RcsDown) ||
+                            slotActive.held(Slot::RcsLeft) || slotActive.held(Slot::RcsRight);
+                if(g.ship->isEva()) { wake = wake || slotActive.held(Slot::Space); }
                 if(wake) {
                     g.ship->leaveRails();
                     if(g.time_accel >= kRailsWarp) {
@@ -172,32 +165,32 @@ void tick(Game &g) {
             const float f_yaw   = g.flip_yaw   ? -1.0f : 1.0f;
             const float f_roll  = g.flip_roll  ? -1.0f : 1.0f;
             // pitch: about the ship's right axis (PitchUp/Down, default W/S)
-            if (slotActive(Slot::PitchUp)) { g.ship->Command(ShipCmd(Pitch,  f_pitch * +1.0f), game_running); }
-            if (slotActive(Slot::PitchDown)) { g.ship->Command(ShipCmd(Pitch,  f_pitch * -1.0f), game_running); }
+            if (slotActive.held(Slot::PitchUp)) { g.ship->Command(ShipCmd(Pitch,  f_pitch * +1.0f), game_running); }
+            if (slotActive.held(Slot::PitchDown)) { g.ship->Command(ShipCmd(Pitch,  f_pitch * -1.0f), game_running); }
             // yaw: about the ship's up axis (baseline pre-flipped)
-            if (slotActive(Slot::YawLeft)) { g.ship->Command(ShipCmd(Yaw,    f_yaw   * -1.0f), game_running); }
-            if (slotActive(Slot::YawRight)) { g.ship->Command(ShipCmd(Yaw,    f_yaw   * +1.0f), game_running); }
+            if (slotActive.held(Slot::YawLeft)) { g.ship->Command(ShipCmd(Yaw,    f_yaw   * -1.0f), game_running); }
+            if (slotActive.held(Slot::YawRight)) { g.ship->Command(ShipCmd(Yaw,    f_yaw   * +1.0f), game_running); }
             // roll: about the ship's nose (baseline pre-flipped)
-            if (slotActive(Slot::RollLeft)) { g.ship->Command(ShipCmd(Roll,   f_roll  * -1.0f), game_running); }
-            if (slotActive(Slot::RollRight)) { g.ship->Command(ShipCmd(Roll,   f_roll  * +1.0f), game_running); }
+            if (slotActive.held(Slot::RollLeft)) { g.ship->Command(ShipCmd(Roll,   f_roll  * -1.0f), game_running); }
+            if (slotActive.held(Slot::RollRight)) { g.ship->Command(ShipCmd(Roll,   f_roll  * +1.0f), game_running); }
 
             // Thrust latch keeps engines lit with the key released.
-            if (slotActive(Slot::Thrust) || g.thrust_latched) { g.ship->Command(ShipCmd(Thrust), game_running, g.dt * g.time_accel); }
-            if (slotActive(Slot::KillRot)) { g.ship->Command(ShipCmd(KillRot), game_running); }
+            if (slotActive.held(Slot::Thrust) || g.thrust_latched) { g.ship->Command(ShipCmd(Thrust), game_running, g.dt * g.time_accel); }
+            if (slotActive.held(Slot::KillRot)) { g.ship->Command(ShipCmd(KillRot), game_running); }
 
             // Throttle is a control input, so it ramps on WALL time (g.dt),
             // not on the warped sim interval Thrust takes.
-            if (slotActive(Slot::ThrottleUp)) { g.ship->Command(ShipCmd(ThrottleUp), game_running, g.dt); }
-            if (slotActive(Slot::ThrottleDown)) { g.ship->Command(ShipCmd(ThrottleDown), game_running, g.dt); }
+            if (slotActive.held(Slot::ThrottleUp)) { g.ship->Command(ShipCmd(ThrottleUp), game_running, g.dt); }
+            if (slotActive.held(Slot::ThrottleDown)) { g.ship->Command(ShipCmd(ThrottleDown), game_running, g.dt); }
 
             // RCS translation (ship-relative); applyRcsForce resolves the
             // direction.
-            if (slotActive(Slot::RcsForward)) { g.ship->Command(ShipCmd(RcsNose,  +1.0f), game_running); }
-            if (slotActive(Slot::RcsBack))    { g.ship->Command(ShipCmd(RcsNose,  -1.0f), game_running); }
-            if (slotActive(Slot::RcsUp))      { g.ship->Command(ShipCmd(RcsUp,    +1.0f), game_running); }
-            if (slotActive(Slot::RcsDown))    { g.ship->Command(ShipCmd(RcsUp,    -1.0f), game_running); }
-            if (slotActive(Slot::RcsLeft))    { g.ship->Command(ShipCmd(RcsRight, -1.0f), game_running); }
-            if (slotActive(Slot::RcsRight))   { g.ship->Command(ShipCmd(RcsRight, +1.0f), game_running); }
+            if (slotActive.held(Slot::RcsForward)) { g.ship->Command(ShipCmd(RcsNose,  +1.0f), game_running); }
+            if (slotActive.held(Slot::RcsBack))    { g.ship->Command(ShipCmd(RcsNose,  -1.0f), game_running); }
+            if (slotActive.held(Slot::RcsUp))      { g.ship->Command(ShipCmd(RcsUp,    +1.0f), game_running); }
+            if (slotActive.held(Slot::RcsDown))    { g.ship->Command(ShipCmd(RcsUp,    -1.0f), game_running); }
+            if (slotActive.held(Slot::RcsLeft))    { g.ship->Command(ShipCmd(RcsRight, -1.0f), game_running); }
+            if (slotActive.held(Slot::RcsRight))   { g.ship->Command(ShipCmd(RcsRight, +1.0f), game_running); }
             }
             }
         }

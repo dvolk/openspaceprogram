@@ -308,13 +308,15 @@ TINC  = -I./src -I./middleware/glm/ -I./middleware/bullet3/src \
         -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
 TLIBS = $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB)
 # Real-Bullet tests share these TUs. part.o is here because build_ship mints
-# every part through make_part.
+# every part through make_part, and keys.o because Kerbal::armInput takes the
+# tick's SlotProbe, whose held() lives there.
 TCOMMON_OBJS = $(TESTDIR)/obj/physics.o $(TESTDIR)/obj/body.o $(TESTDIR)/obj/vehicle.o \
                $(TESTDIR)/obj/eva.o $(TESTDIR)/obj/crew.o $(TESTDIR)/obj/inventory.o \
                $(TESTDIR)/obj/part.o $(TESTDIR)/obj/shipdef.o $(TESTDIR)/obj/frame.o \
                $(TESTDIR)/obj/terrain.o \
                $(TESTDIR)/obj/shader.o $(TESTDIR)/obj/camera.o $(TESTDIR)/obj/mesh.o \
-               $(TESTDIR)/obj/texture.o $(TESTDIR)/obj/gldebug.o $(TESTDIR)/obj/buildings.o
+               $(TESTDIR)/obj/texture.o $(TESTDIR)/obj/gldebug.o $(TESTDIR)/obj/buildings.o \
+               $(TESTDIR)/obj/keys.o
 
 $(TESTDIR)/obj/%.o: src/%.cpp
 	@mkdir -p $(TESTDIR)/obj
