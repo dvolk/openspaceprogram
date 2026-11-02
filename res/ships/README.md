@@ -22,7 +22,7 @@ there is no takeoff constraint: no wheels, no runway, no thrust-to-weight floor.
 | L/D | 8.6 (target >= 10; the lever left is the hull bill -- span is banked, #567) |
 | static margin | +0.55 m |
 | roll | aileron pair on the wing, `roll` axis (563-roll-ailerons), and the pod's 100 N m wheel. 0.24 rad/s at full stick and 29-31 deg of bank: the span #567 bought cost roll authority (#588) |
-| stall (7 km) | 23 m/s |
+| stall (7 km) | 23.1 m/s |
 | bill at cruise | body 0.59 x 0.82 m2, wing profile 0.61 m2, induced 0.33 m2 |
 
 Those are `skiff_trim.json`'s numbers (`skiff.json` plus `"trim": 12` on both elevators
@@ -54,21 +54,27 @@ slope at the shipped wing's 20.1 deg stall angle, in 7 km air (rho 0.346). The 2
 this row carried until #567 is the same expression with 559 kg and 153.6 m2/rad in it.
 
 **What the swap and then the wing cost, measured on three hulls** (same `--drag-log`,
-each with `"trim": 12` on its elevators and read once its phugoid is damping;
-`git show a18b0d9^:res/ships/skiff.json` is the pod-on-tank shape this went back to,
-`012434c` the spindle it replaces):
+each with `"trim": 12` on its elevators, read only in a matched 5.0..5.5 km band once its
+phugoid is damping -- a glide bed sinks, so comparing two hulls at the same TIME compares
+them in different air; `git show 34ae422:res/ships/skiff.json` is the middle row's hull
+and `34ae422^:res/ships/skiff.json` the spindle the swap went back from, #568):
 
 | hull | mass | AoA | glide speed | sink | L/D | SM | body bill Cd x A |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | one `fuselage_r0.5h3.5` spindle | 633 kg | +3.1 | 64..70 m/s | 10.4 m/s | 7.91 | +0.73 | 0.11 x 0.87 = 0.10 m2 |
-| pod on a `jet_tank_r0.4h2`, 12 x 1.8 m wing | 559 kg | +5.1 | 47..50 m/s | 7.5 m/s | 7.49 | +0.59 | 0.59 x 0.82 = 0.48 m2 |
-| same hull, 16 x 1.5 m wing (#567, shipped) | 569 kg | +4.9 | 47..50 m/s | 6.5 m/s | 8.64 | +0.55 | 0.59 x 0.82 = 0.48 m2 |
+| pod on a `jet_tank_r0.4h2`, 12 x 1.8 m wing | 559 kg | +5.1 | 46..48 m/s | 7.3 m/s | 7.53 | +0.58 | 0.48 m2 |
+| same hull, 16 x 1.5 m wing (#567, shipped) | 569 kg | +4.9 | 45..47 m/s | 6.2 m/s | 8.64 | +0.55 | 0.48 m2 |
 
-The last two rows are one 396 s bed each at matched altitude, so their difference is the
-wing and nothing else -- except that the middle row still has #570's buried control
-surfaces in it, worth 0.04 of L/D and 0.006 m of margin. Netting that out, #567's wing
-alone bought +1.1 of L/D and 0.9 m/s of sink. The spindle row is as it was measured for
-the swap, a shorter bed.
+The last two rows are the sweep on #567 -- one 660 s bed each, the same altitude band --
+so their difference is the wing and nothing else, except that the middle row still has
+#570's buried control surfaces in it (worth 0.04 of L/D and a few mm of margin). Netting
+that out, #567's wing alone bought +1.1 of L/D and 1.0 m/s of sink. The spindle row is as
+it was measured for the swap, on that swap's bed, and is here for the silhouette
+comparison below rather than for a sink comparison.
+
+Both hulls bill the same 0.48 m2 of body (`Cd` 0.59 on a 0.82 m2 union); the sink rows
+above read 5.0..5.5 km, which is why they are 0.3 m/s kinder than the 5.5..6.1 km design
+row at the top of this file.
 
 All of that gap is coefficient, not shape: the two hulls present almost the same
 silhouette (0.82 vs 0.87 m2) and differ fivefold in what it is charged. Nose-on, the
@@ -107,13 +113,19 @@ should be built from this recipe and get its own row here.
    mass by accident; a one-piece body put it 0.7 m ahead and the airframe tumbled
    inside a second. On the skiff, tank-local `z: +0.55` puts the wing 1.2 m aft of the
    pod's centre and the COM 0.32 m ahead of the wing: SM +0.55 m.
-   **Span, not chord, is the lever on the induced bill.** `Induced=` goes as 1/span^2 --
-   `AR x S` is the span squared and `CL x S` is fixed by weight and q, so chord cannot
-   touch it -- while chord buys lift (less AoA and speed for the same weight, hence stall
-   margin) and pays profile drag and mass. #567 measured the four corners: 12 -> 16 m of
-   span took the skiff from 0.48 to 0.33 m2 of `Induced=` and from L/D 7.5 to 8.6, and
-   the 1/span^2 prediction came out 0.275 against 0.276 on the log. What span costs is
-   inertia: the same change halved the roll response (#588).
+   **Span is the lever on the induced bill; chord only buys lift.** `drag.h::inducedCd`
+   charges a lifting system `(cl x A)^2 / (pi x 0.8 x span^2)`, so the only shape term is
+   the span squared -- the bill is for the LIFT, and span is how you buy it cheap. Chord
+   buys lift too (less AoA for the same weight, hence a lower stall floor) but pays
+   profile drag and mass, and it moves the bill only by changing the speed and trim the
+   hull settles at. #567 measured the corners: 12 -> 16 m of span took the skiff from
+   0.488 to 0.333 m2 of `Induced=` and from L/D 7.5 to 8.6, while chord at a fixed span
+   moved the bill the OTHER way (0.307 -> 0.366 at 14 m, 0.276 -> 0.333 at 16 m). A bare
+   1/span^2 figure (0.488 x (12/16)^2 = 0.275) lands on the 16 x 1.2 corner inside 0.001
+   and misses the adopted 16 x 1.5 hull by 21% -- the bill is per system and per unit of
+   lift, so a hull that flies 4% slower and trims harder pays more of it at the same
+   span. What span costs outright is inertia: the same change halved the roll response
+   (#588).
 3. **Incidence and trim.** A symmetric section at AoA 0 makes no lift, so an airframe
    with neither incidence nor trim "cruises" by falling. The wing station does NOT trim
    -- it sets stability: the skiff's zero-moment AoA is 2.5 deg while its trimmed hold

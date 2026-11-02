@@ -55,7 +55,7 @@ CHECK all(-0.5 < x - w < 0.4 for x,w in zip([s["a"] for s in surface][9::10],[s[
 # one merely carried through the air (worst disagreement 0.2 deg all the way through).
 CHECK all(abs(f + g) < 1.2 for f,g in zip([s["a"] for s in surface][4::10],[d["beta"] for d in drag]) if abs(g) > 4.0)
 CHECK all(abs(f - r) < 0.6 for f,r in zip([s["a"] for s in surface][4::10],[s["a"] for s in surface][7::10]))
-# A sideslip is not allowed to leak into pitch: the wings stay 2.5-2.9 deg through the
+# A sideslip is not allowed to leak into pitch: the wings stay 2.5-2.7 deg through the
 # kick, and the fin, which reads 0 when the ship points into the flow, reads 0 again
 # once it does -- measured on the settled rows, four seconds after the kick (worst 0.2;
 # the run's last four rows all print 0.0 or -0.0).
@@ -67,15 +67,21 @@ CHECK all(abs(f - r) < 0.6 for f,r in zip([s["a"] for s in surface][4::10],[s["a
 # crossing -- 12.5 deg/s at t=27 s, off the att log -- drags 0.47 m/s of air sideways
 # across the fin and 0.67 m/s across the rudder, which at the 58 m/s this kick is flying
 # at is 0.5-0.7 deg: the 0.4 deg the fin still claims at that row. #483's sweep term
-# doing its job on an airframe that is pointing into the flow while still turning. That
-# rate is half what the 12 m wing used to show at the same press: #567 put 96 kg of wing
-# out to 8 m of tip and the hull's yaw inertia with it.
+# doing its job on an airframe that is pointing into the flow while still turning. The
+# rate is slower than the 12 m wing showed at the same instant (12.5 deg/s against
+# 18.0 at t=27 s), but the swing sits at a different phase two tickets on, so read that
+# as #567 putting 96 kg of wing out to an 8 m tip and the hull's yaw inertia with it
+# rather than as a measured ratio.
 # #503's weaker full-lock rudder made the swing quicker, so the 1 s sample now lands on
 # that crossing; before, the same instant read Beta=-0.5 and fell out of the filter.
 # Betting a band on where one sample lands inside an oscillation is a bet on phase, not
 # on the law (453 argues the same about its own swing), so the window is now time-based
 # and the band itself stays at 0.3.
-CHECK all(2.2 < a < 3.6 for a in [s["a"] for s in surface][0::10])
+# The wing band used to be 2.2..3.6, a 1.4 deg window around a signal that measured
+# 2.5..2.7 on every row of this run -- a band that could not fail for a sideslip leaking
+# into pitch. It is 2.3..3.2 now: 0.2 deg below the run and 0.5 above, and the leak this
+# pins is a fraction of that.
+CHECK all(2.3 < a < 3.2 for a in [s["a"] for s in surface][0::10])
 CHECK max(abs(f) for f,t in zip([s["a"] for s in surface][4::10],[d["t"] for d in drag]) if t >= 44.0) < 0.3
 # q is the pressure of the flow AT the surface (#483), not one ship-wide number. It
 # tracks 0.5*rho*v^2 within 8%, the residual being each part's own sweep and the log

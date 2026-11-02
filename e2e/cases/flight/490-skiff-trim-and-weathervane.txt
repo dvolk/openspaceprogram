@@ -1,12 +1,13 @@
 NAME skiff-trim-and-weathervane
-CLAIM The skiff is the airframe the design point was written for: 569 kg on 24 m2 of AR-10.7 wing, a command pod stacked on a jet fuel tank, spawned at 73 m/s and 7 km and holding +2.5..+2.8 deg of angle of attack through its phugoid with 0.55 m of static margin. A one-second rudder kick swings Beta 7.7 deg and settles; the hull bill is Cd 0.57-0.61 on 0.80-0.91 m2, where the smooth spindle this replaced paid 0.11 on 0.87.
+CLAIM The skiff is the airframe the design point was written for: 569 kg on 24 m2 of AR-10.7 wing, a command pod stacked on a jet fuel tank, spawned at 80 m/s and 7 km and holding +2.5..+2.8 deg of angle of attack through its phugoid with 0.55 m of static margin. A one-second rudder kick swings Beta 7.7 deg and settles; the hull bill is Cd 0.56-0.61 on 0.80-0.91 m2, where the smooth spindle this replaced paid 0.11 on 0.87.
 KIND golden
 # #568 put the pod back on a tank: capsule_r0.5h1.5 at the root, jet_tank_r0.4h2 1.75 m
 # aft of it, the engine 3.25 m aft, wings on the TANK at 1.2 m aft of the pod's centre,
 # tail 2.85 m, elevators 3.65 m. #570 hung the rudder off the fin's trailing edge at
 # 3.95 m and the ailerons off the wings' at 2.45 m -- clear plates, not plates buried
 # in their parents. #567 then grew that wing to 16 x 1.5 (its chord now spans 1.95..0.45
-# m, the ailerons hang off its trailing edge at 2.30 m aft of the origin, tips 8 m out)
+# m, the ailerons hang off its trailing edge at 2.30 m aft of the origin, tips 8.4 m
+# out; the model prices the pair as one 16.00 m system)
 # and the hull to 569 kg (472 of parts, tanks full, plus one 97 kg kerbal -- the pod
 # seats one, where the one-piece fuselage seated two), still paying 5x the body bill the
 # smooth spindle did. The band below on A is the silhouette union of pod+tank+engine;

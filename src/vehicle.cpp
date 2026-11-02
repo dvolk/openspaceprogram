@@ -246,13 +246,13 @@ static const ScenarioDef kScenarios[] = {
        2.5x it. 0.08 of the air-relative circular speed (flying-slow) suits hulls
        that fly at several hundred m/s; a light wing trims near 70-90 m/s, so that
        bed spends the first 40 s of every run trading the excess for height and
-       coming back through a phugoid (the shipped skiff: 134 -> 11 m/s and back, 1.9 km
-       of altitude).
+       coming back through a phugoid (the shipped skiff, 6 s samples: 110 -> 13 m/s
+       and back, 1.0 km of altitude).
        This one starts at the trim point instead: 80 m/s of air on Kerbin, ~33 m/s
        on Duna, ~120 m/s on Eve. Speed alone is not a trim: aimed along the air the
-       shipped skiff settles at its zero-moment AoA of 2.6 deg, which is 69..80 m/s
-       of flight against a 13..16 m/s sink and 5.4 kN of weight. The trimmed template
-       (skiff_trim, 12 deg of elevator) holds 5.1 deg and glides at 46..49 m/s once its
+       shipped skiff settles at its zero-moment AoA of 2.5 deg, which is 50..64 m/s
+       of flight against a 10..12 m/s sink and 5.6 kN of weight. The trimmed template
+       (skiff_trim, 12 deg of elevator) holds 4.9 deg and glides at 47..50 m/s once its
        phugoid damps -- the design
        point (#568 re-measured both on the pod-on-tank hull; the one-piece spindle
        this replaces sat at 1.6 deg hands off and dove to 130 m/s). The bed gives the

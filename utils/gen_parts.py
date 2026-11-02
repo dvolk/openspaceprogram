@@ -147,7 +147,8 @@ DRAG_CD = {
     # paid in (#490's second half re-derives that number rather than this one).
     # A smooth section. The mesh is a flat plate (a stand-in); 0.010 is the
     # smooth-laminate value this note has quoted since #455. 0.03 was the faceted
-    # plate, and at 21.6 m2 of planform that alone was 1.10 m2 of CdA on the skiff.
+    # plate, three times the bill: even smooth, the shipped skiff pays Profile= 0.61 m2
+    # of CdA at cruise, which is where the rest of its L/D is hiding (#567's bed).
     "wing":           {"drag": 0.1, "drag_forward": 0.010, "drag_side": 1.0,
                        "drag_backward": 0.010},
     "rudder":         {"drag": 0.1, "drag_forward": 0.010, "drag_side": 1.0,
@@ -251,14 +252,18 @@ PARTS = [
     ("barometer",        "barometer",      "meshes/barometer.obj",                "textures/barometer.png"),
     ("wing",             "wing",           "meshes/wing_r2h2.obj",                "textures/wing.png"),
     # High-aspect-ratio surfaces. inducedCd charges a part at ITS OWN span/area,
-    # so the 4 m2-of-chord shipped wing pays AR 2 no matter how the pair is
-    # arranged; these give an airframe a span worth inducing.
+    # so the `wing` default (4 m2 of planform on a 4 m mesh span) pays that AR no
+    # matter how a pair of them is arranged; these give an airframe a span worth
+    # inducing.
     ("wing_r3h1.8",      "wing",           "meshes/wing_r3h1.8.obj",              "textures/wing.png"),
-    # The span a 5-600 kg airframe wants. inducedCd is priced at span^2 -- AR*S is
-    # the span squared, and CL*S is set by weight and q -- so span is the only lever on
-    # the induced bill and chord only buys lift (measured, #567: 12 m -> 16 m took the
-    # skiff from 0.488 to 0.333 m2 of Induced= and its glide from L/D 7.5 to 8.6).
-    # The 1.5 m chord also stops the wing being a third of the body again.
+    # The span a 5-600 kg airframe wants. inducedCd charges (cl*A)^2 / (pi*e*span^2),
+    # so span^2 is the only shape term and span is how lift gets bought cheap. Chord
+    # buys lift too -- less AoA, a lower stall floor -- but pays profile drag and mass,
+    # and moves the bill only by changing the speed and trim the hull settles at
+    # (measured, #567: 12 m -> 16 m took the skiff from 0.488 to 0.333 m2 of Induced=
+    # and its glide from L/D 7.5 to 8.6, while chord at a fixed span moved the bill UP,
+    # 0.276 -> 0.333 at 16 m). The 1.5 m chord also stops the wing being a third of the
+    # body again.
     ("wing_r4h1.5",      "wing",           "meshes/wing_r4h1.5.obj",              "textures/wing.png"),
     ("wing_r1h1",        "wing",           "meshes/wing_r1h1.obj",                "textures/wing.png"),
     ("wing_r0.7h1",      "wing",           "meshes/wing_r0.7h1.obj",              "textures/wing.png"),

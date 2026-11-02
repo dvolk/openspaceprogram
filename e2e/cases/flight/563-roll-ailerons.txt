@@ -17,14 +17,18 @@ CHECK len(drag) >= 5
 # Beta never breaks 1.2 deg on this run: a correctly oriented aileron rolls without
 # yawing. The band is 3.0 rather than 1.2 so the case guards "it does not weathervane
 # away" without pinning this run's wiggle.
-# These two bands are 0.10 looser than the ones #563 shipped with (0.80 / 0.85) because
-# #567 moved both terms of the roll equation and not the same way: the pair's station
-# went 5.40 -> 6.40 m, so its moment is up 18%, while the 16 x 1.5 wing puts 96 kg out
-# to 8 m of tip and the hull's roll inertia with it. The hull answers the same stick at
-# about half the rate -- 0.24 rad/s about the nose at full stick, off --att-log, against
-# the 0.40 the 12 m wing gave. Rig travel is still not authority (#566/#509); buying the
-# bank back means a bigger tab, which is #566's question rather than this case's.
-CHECK min(d["up"] for d in drag if d["t"] >= 2.0) < 0.92
+# These bands are looser than the ones #563 shipped with (0.80 / 0.85) because #567
+# moved both terms of the roll equation and not the same way: the pair's station went
+# 5.40 -> 6.40 m, so its moment is up 18%, while the 16 x 1.5 wing puts 96 kg out to
+# 8 m of tip and the hull's roll inertia with it (+88%). The hull answers the same stick
+# at about half the rate -- 0.24 rad/s about the nose at full stick, off --att-log,
+# against the 0.40 the 12 m wing gave. Rig travel is still not authority (#566/#509);
+# buying the bank back means a bigger tab, which is #588 rather than this case's.
+# The first band is about the RATE, not the destination. Measured Up is 1.00 at t=1 s,
+# 0.97 at t=2 and 0.88 at t=3, so "under 0.95 from t=3 on" fails as soon as roll
+# authority drops, where a bank-only pin would still pass a hull that took eight seconds
+# to lean over.
+CHECK all(d["up"] < 0.95 for d in drag if d["t"] >= 3.0)
 CHECK all(abs(d["beta"]) < 3.0 for d in drag if d.get("beta") is not None)
 # And it comes back: release the stick at t=3 s and the airframe still shows the same
 # bank at t>=5 s -- 0.86..0.87, no self-righting and no wheel levelling it either,

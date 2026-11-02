@@ -1,5 +1,5 @@
 NAME static-margin
-CLAIM The VAB's static margin and the flight log's SM are the same number: a hands-off skiff with 0.55 m of margin flies at +2.5 deg of angle of attack and stays wings-level through a 15 s glide (7000 m down to 6893 m).
+CLAIM The VAB's static margin and the flight log's SM are the same number: a hands-off skiff with 0.55 m of margin flies at +2.5..+2.7 deg of angle of attack and stays wings-level through a 15 s glide (7000 m down to 6893 m).
 KIND invariant
 ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
 ARGS --sim-steps 900 --drag-log
@@ -12,10 +12,13 @@ CHECK all(d.get("sm") is not None for d in drag)
 # hang 1.75-3.25 m behind the pod -- not a change in the lifting rig. #567 then
 # grew the wing from 12 x 1.8 to 16 x 1.5 and the slope with it (153.6 -> 168.0
 # m2/rad authored, and flight reads 167.82-167.84 only because of the cos(alpha)
-# dip), which cost 0.026 m of margin: a wider wing puts its quarter-chord further
-# aft as well as making more lift. The 0.03 m band either way is what separates
-# this from the spindle's +0.73 and from a rig that has started to diverge.
-CHECK all(0.52 < d["sm"] < 0.58 for d in drag if d.get("sm") is not None)
+# dip), which cost 0.026 m of margin. The mechanism is the weighting, not the
+# chord: SM is the slope-weighted mean station, and the wing's slope grew at the
+# FORWARD station -- (129.6 x -0.32 + 24 x -1.97) / 153.6 = -0.578 m of neutral
+# point became (144 x -0.32 + 24 x -1.97) / 168 = -0.556 m. The 0.08 m band -- 0.03 m
+# under this run's +0.55 and 0.05 m over it -- is what separates this from the spindle's
+# +0.73 and from a rig that has started to diverge.
+CHECK all(0.52 < d["sm"] < 0.60 for d in drag if d.get("sm") is not None)
 CHECK all(2.3 < d["aoa"] < 3.0 for d in drag if d["aoa"] is not None)
 CHECK all(d["up"] > 0.9 for d in drag)
 FORBID error:

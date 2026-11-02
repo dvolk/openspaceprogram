@@ -826,7 +826,7 @@ static void test_neutral_point() {
     // the part of the flow tilt that is about the surface's OWN span axis moves its
     // angle of attack (the other). The lever is untouched -- a rolled wing still pushes
     // where it is bolted. Shipped check: the skiff's 2 x 2 m2 tailplanes at 5 deg report
-    // 23.82 of their 24.0 m2/rad, and that is the entire 153.6 -> 153.42 residue.
+    // 23.82 of their 24.0 m2/rad, and that is the entire 168.0 -> 167.82 residue.
     {
         const glm::dmat3 rolled = glm::mat3_cast(glm::angleAxis(glm::radians(30.0), nose));
         LiftSlopeSum s;
