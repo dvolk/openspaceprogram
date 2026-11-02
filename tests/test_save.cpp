@@ -304,6 +304,46 @@ int main() {
         CHECK(refuseSavedStage(10000, kMaxStage).empty());
     }
 
+    /* #547: the SHIP-total door. One part's capacity is already the catalog's
+       business (#530); what nothing added up was the ship, and an infinite
+       compound mass is not a refusal -- Bullet's principal-axis solve answers it
+       with a NaN inertia tensor and a NaN centre of mass. validateShipParts is
+       static in save.cpp, which this test does not link, so pin its two pieces:
+       what one saved part weighs, and the sentence the total gets. The summand is
+       worth pinning on its own -- it is NOT partLoadMass, because a save names its
+       own contents and an old or short list leaves the missing slots empty. */
+    {
+        const double dry = 900.0;
+        const std::vector<double> none;
+        CHECK(partSavedMass(dry, none) == 900.0);   // dry: a part with no `fuel`
+        std::vector<double> full((size_t)ResourceType::Num, 0.0);
+        full[(size_t)ResourceType::Hydrogen] = 100.0;
+        full[(size_t)ResourceType::LOX] = 50.0;
+        CHECK(partSavedMass(dry, full) == 1050.0);
+        /* EC is watt-hours, massless -- the same skip partLoadMass makes, or a
+           battery would weigh its charge. */
+        full[(size_t)ResourceType::EC] = 1e6;
+        CHECK(partSavedMass(dry, full) == 1050.0);
+        /* A hand-edited file naming slots past the enum adds nothing and cannot
+           read off the end of anything. */
+        std::vector<double> extra = full;
+        extra.push_back(1e308);
+        extra.push_back(1e308);
+        CHECK(partSavedMass(dry, extra) == 1050.0);
+
+        // The pair that matters: each part legal on its own, the ship not.
+        std::vector<double> huge((size_t)ResourceType::Num, 0.0);
+        huge[(size_t)ResourceType::Hydrogen] = 1e308;
+        const double one = partSavedMass(1.0, huge);
+        CHECK(std::isfinite(one));                   // one such tank still loads
+        CHECK(refuseSavedShipMass(one, "t1").empty());
+        const double both = one + one;               // 2e308: what the sum becomes
+        CHECK(std::isinf(both));
+        CHECK(refuseSavedShipMass(both, "t2")
+              == "weighs more than the game can store (part 't2' takes the running"
+                 " total past it)");
+    }
+
     /* --- a walking kerbal (the ship fields are empty) ---------------------
        A crew entry is a kerbal on its own two feet: a SEATED person is not a
        fleet entry at all, but a `seats` element of their capsule's part entry

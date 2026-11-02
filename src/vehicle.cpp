@@ -1058,6 +1058,14 @@ void Vehicle::rebuildCompound() {
         total += geomMasses[i];
         compoundParts.push_back(p);
     }
+    /* A ship is ONE Body, so it is the SUM that has to fit: an infinite total makes
+       calculatePrincipalAxisTransform answer with a NaN inertia tensor and a NaN
+       centre of mass (#547) -- an unrotatable ship rather than a refusal. Both
+       loaders refuse such a ship (shipDefFromJson, validateShipParts), so landing
+       here means a Part was minted past those doors -- by absorbShip, a debug
+       command, or a def that skipped a gate. Costs nothing in a release. */
+    assert(std::isfinite((double)total)
+           && "the ship's total mass overflows what the game can store");
 
     btVector3 inertiaDiag(0, 0, 0);
     geomS->calculatePrincipalAxisTransform(&geomMasses[0], principal, inertiaDiag);
@@ -1136,6 +1144,10 @@ bool Vehicle::refreshMassProps() {
         assert(geomMasses[i] > 0 && "a part in the compound weighs nothing");
         total += geomMasses[i];
     }
+    // Same door as rebuildCompound's: burning only moves mass, it must not create
+    // a total the compound cannot be solved for (#547).
+    assert(std::isfinite((double)total)
+           && "the ship's total mass overflows what the game can store");
 
     /* Frame S and the velocities are read BEFORE `principal` moves: S is
        derived from the body pose through the OLD principal. */

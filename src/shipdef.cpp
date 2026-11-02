@@ -1181,6 +1181,24 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
         }
         def.controller = (int)it->second;
     }
+    /* A ship is ONE Body, so its parts' masses ADD -- and the per-def capacity
+       gate above can only ever see one part. Measured in #547: two parts at
+       1e308 each give Bullet an infinite compound mass, and
+       calculatePrincipalAxisTransform answers that with a NaN inertia tensor and a
+       NaN centre of mass. Not a crash but garbage: the ship would fly with an
+       unrotatable or exploding body rather than tell anybody anything. Same stance
+       as that gate and as optInt's counts -- no invented ceiling, just that what
+       the game cannot represent does not load. The shipped catalog is ~300 orders
+       of magnitude away from this, so it only ever refuses a hand-written def. */
+    double launchMass = 0.0;
+    for(const ShipPart &sp : def.parts) {
+        if(sp.isFuelLink() || sp.def == nullptr) { continue; }   // an edge, not a body
+        launchMass += partLoadMass(*sp.def);
+    }
+    if(!std::isfinite(launchMass)) {
+        throw std::runtime_error("ship: " + path
+                                 + ": its parts together weigh more than the game can store");
+    }
     return def;
 }
 

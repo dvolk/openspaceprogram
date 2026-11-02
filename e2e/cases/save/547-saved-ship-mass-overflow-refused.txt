@@ -1,0 +1,37 @@
+# A save can name contents that are each legal and together unrepresentable. The
+# catalog refuses ONE part whose capacities overflow (#530), but a ship is ONE Body
+# and its parts ADD: at 1e308 kg each the running total is +inf, and Bullet's
+# calculatePrincipalAxisTransform answers an infinite compound mass with a NaN
+# inertia tensor and a NaN centre of mass (measured in the ticket against this
+# project's own double-precision Bullet). Garbage rather than a refusal: the ship
+# would load and fly unrotatable, or blow up, and nothing would say why.
+#
+# The fixture is save_racer with two parts' Hydrogen set to 1e308 -- capsule_1 and
+# fuel_tank_1, both legal alone -- and every part's "geom" fingerprint REMOVED, so
+# the load cannot refuse on geometry drift (#456) instead of on mass. Removing it
+# prints its own one-line note (unverifiable, not wrong), which is why the case
+# pins the mass sentence rather than the absence of notes.
+#
+# Fixture mint (re-mint together with the golden part name below):
+#   cp -r e2e/fixtures/save_geom_stale e2e/fixtures/save_huge_mass
+#   then in ships/v0.json: delete every part's "geom", and set fuel[0] (Hydrogen)
+#   to 1e308 on capsule_1 and fuel_tank_1. The tipped part in the message is the
+#   SECOND one in the file's order, because the loader sums as it walks.
+NAME saved-ship-mass-overflow-refused
+CLAIM A save whose parts add up to more mass than the game can store is refused, not loaded as a NaN-inertia ship.
+KIND invariant
+ARGS --timeout 9
+# Reached by the Save/Load sheet, not --load: Game Debug ticks the e2e
+# fixture root, the sheet picks the "fixtures" game, the slot filter narrows
+# the fixture list to this one row, and row + Load button do the rest.
+ARGS --sim-press 500,0,F1
+ARGS --ui-click 1000,"Game Debug/Load e2e fixture saves"
+ARGS --sim-press 1500,0,F1
+ARGS --ui-click 2000,"Title Menu/Save/Load"
+ARGS --ui-click 2500,"fixtures"
+ARGS --ui-type 3000,"Save/Load/##filter",save_huge_mass
+ARGS --ui-click 3800,"save_huge_mass"
+ARGS --ui-click 4000,"Save/Load/Load##saveload"
+EXPECT load: saved ship 'racer' weighs more than the game can store (part 'fuel_tank_1' takes the running total past it)
+EXPECT [load] refused
+FORBID Loaded game from

@@ -725,6 +725,22 @@ double seatOccupantMass(const ShipDef &suitDef);
    Part::effectiveMass then reports (minus whatever gets burned). */
 double partLoadMass(const PartDef &def);
 
+/* The same for a part a SAVE builds: dry mass plus the contents the file names.
+   A part that names fewer slots than the game has leaves the rest empty, which is
+   what make_part fills them with, so an old save weighs what it says rather than
+   what the catalog could hold. EC stays massless. Split from partLoadMass because
+   a save is player data and the two quantities differ: #547's ship-total door has
+   to sum the one the load will actually build. It takes the dry mass rather than
+   the PartDef so the rule stays testable from a header (test_save links nothing). */
+inline double partSavedMass(double dryMass, const std::vector<double> &fuel) {
+    double m = dryMass;
+    for(size_t r = 0; r < fuel.size() && r < (size_t)ResourceType::Num; r++) {
+        if(r == (size_t)ResourceType::EC) { continue; }
+        m += fuel[r];
+    }
+    return m;
+}
+
 /* The resolved child pose for one attachment. Purely relative: parent in some
    frame, child back in that same frame. */
 struct AttachPose {

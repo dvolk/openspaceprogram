@@ -2440,6 +2440,43 @@ int main() {
             std::remove(huge);
         }
 
+        /* #547: that gate can only ever see ONE part, but a ship is ONE Body and its
+           parts ADD. Two of these legal 1e308 tanks make an infinite compound mass,
+           and Bullet's calculatePrincipalAxisTransform answers that with a NaN inertia
+           tensor and a NaN centre of mass (measured on the project's own Bullet in the
+           ticket) -- a ship that flies unrotatable rather than telling anybody. So the
+           total gets its own door in the ship-def loader, same "no invented ceiling"
+           stance. One such tank must still load: refusing it would be the game
+           declaring a maximum tank size, which it deliberately does not. */
+        {
+            const char *hcat = "/tmp/test_shipload_huge_ship_cat.json";
+            std::ofstream f(hcat);
+            f << "{ \"parts\": [ { \"name\": \"hugestat\", \"type\": \"command\", "
+                 "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+                 "\"radius\": 1.0, \"capacity\": { \"water\": 1e308 } } ] }";
+            f.close();
+            PartsCatalog hsc = load_parts_catalog(hcat);
+            const char *oneShip = "/tmp/test_shipload_one_huge.json";
+            std::ofstream g(oneShip);
+            g << "{ \"name\": \"one\", \"parts\": [ "
+                 "{ \"part\": \"hugestat\", \"id\": \"t1\" } ] }";
+            g.close();
+            ShipDef oneOk = load_ship_def(oneShip, hsc);
+            CHECK(oneOk.parts.size() == 1);
+            std::remove(oneShip);
+            const char *twoShip = "/tmp/test_shipload_two_huge.json";
+            std::ofstream h(twoShip);
+            h << "{ \"name\": \"two\", \"parts\": [ "
+                 "{ \"part\": \"hugestat\", \"id\": \"t1\" }, "
+                 "{ \"part\": \"hugestat\", \"id\": \"t2\", \"parent\": \"t1\", "
+                 "\"attach\": \"surface\", \"angle\": 0 } ] }";
+            h.close();
+            CHECK(expect_throw_saying([&]{ load_ship_def(twoShip, hsc); },
+                                      "together weigh more than the game can store"));
+            std::remove(twoShip);
+            std::remove(hcat);
+        }
+
         /* #542: BuildShip::fillNodeTaken keeps taken ports as one bit per node of a
            uint64_t, so a def over 64 nodes has to be refused HERE, where the load
            error names the def. The assert in fillNodeTaken is a tripwire, not a

@@ -500,6 +500,21 @@ inline std::string refuseSavedStage(int stage, int maxStage) {
     return "";
 }
 
+/* The ship-TOTAL verdict (#547), spelled the same way for the same reason:
+   validateShipParts (save.cpp) walks the parts and keeps a running mass, and this
+   says the sentence when that total stops being a number a Body can hold. The
+   catalog already refuses one part whose capacities overflow (#530), but a ship is
+   the level where the parts ADD, and an infinite compound mass is not a refusal:
+   Bullet's calculatePrincipalAxisTransform answers it with a NaN inertia tensor and
+   a NaN centre of mass, so the ship would fly unrotatable rather than tell anybody.
+   The part named is where the running sum tipped over, not the culprit -- the
+   message says so rather than blaming one tank. Empty string = the ship still fits. */
+inline std::string refuseSavedShipMass(double total, const std::string &tipPart) {
+    if(std::isfinite(total)) { return ""; }
+    return "weighs more than the game can store (part '" + tipPart
+           + "' takes the running total past it)";
+}
+
 inline nlohmann::json savePoseToJson(const SavePose &p) {
     nlohmann::json j;
     j["body"]     = p.body;

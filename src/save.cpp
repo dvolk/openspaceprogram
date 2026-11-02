@@ -641,6 +641,8 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
     for(const SavePart &sp : s.parts) {
         if(sp.parent != 0) { parents.insert(sp.parent); }
     }
+    /* Running launch mass of the ship this is building (#547). */
+    double shipMass = 0.0;
     for(size_t i = 0; i < s.parts.size(); i++) {
         const SavePart &sp = s.parts[i];
         /* Refuse rather than guess: uid 0 is a save predating part identity,
@@ -728,6 +730,18 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
                sp.fuel, "saved ship '" + s.name + "' part '" + sp.part + "'");
            !why.empty()) {
             return why;
+        }
+        /* Every part the file names is legal on its own -- the catalog refused an
+           over-large capacity (#530), and refuseBadContents above refuses a negative
+           or NaN amount -- but a ship is ONE Body and these ADD. Two tanks at 1e308
+           give Bullet an infinite compound mass, and its principal-axis solve answers
+           that with a NaN inertia tensor and NaN centre of mass (measured in #547):
+           the ship would fly unrotatable rather than say so. So the total gets a door
+           at the level the quantity is meaningful, in the same "no invented ceiling"
+           style as that gate. */
+        shipMass += partSavedMass(spd->mass, sp.fuel);
+        if(std::string why = refuseSavedShipMass(shipMass, sp.id); !why.empty()) {
+            return "load: saved ship '" + s.name + "' " + why;
         }
         if(i > 0 && prior.count(sp.parent) == 0) {
             return "load: saved ship '" + s.name + "' part '" + sp.id
