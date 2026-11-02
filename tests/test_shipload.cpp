@@ -2612,6 +2612,29 @@ int main() {
         std::remove(ok);
     }
 
+    /* A part with no machine id has been refused since this loader was written
+       (#546 asked whether one could load: it cannot). It is worth a pin because
+       everything that names a part uses this id -- PartDef::label() is display_name
+       else name -- so an empty one would print a hole in every window and refusal. */
+    {
+        const char *bad = "/tmp/test_shipload_badcat.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"mesh\": \"m\", \"texture\": \"t\", \"mass\": 1 } ] }";
+        f.close();
+        CHECK(expect_throw_saying([&](){ load_parts_catalog(bad); }, "missing \"name\""));
+        std::remove(bad);
+    }
+    // An explicit empty string is the same hole, so it gets the same sentence.
+    {
+        const char *bad = "/tmp/test_shipload_badcat.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"name\": \"\", \"mesh\": \"m\", \"texture\": \"t\","
+             " \"mass\": 1 } ] }";
+        f.close();
+        CHECK(expect_throw_saying([&](){ load_parts_catalog(bad); }, "missing \"name\""));
+        std::remove(bad);
+    }
+
     // a chute (chute_area > 0) without its canopy pair is a catalog bug
     {
         const char *bad = "/tmp/test_shipload_badcat.json";
