@@ -832,16 +832,14 @@ public:
        per NOZZLE at the pod's position (src/rcs.h, #428): an off-center pod
        translates AND spins the ship, as reality demands.
          armRcs()          the named writer for the armed demand, and the one that keeps
-                           it a DIRECTION. The EVA suit's key handling calls it directly
-                           (a suit has no RCS parts to Command); a SHIP arms per-axis
-                           signs through Command(ShipCmd(RcsNose/RcsUp/RcsRight)) and
-                           those cases pass the triple through here too, so the field
-                           says the same thing whichever path wrote it. Arming means a
-                           DIRECTION: the demand is stored unit (or zero), because the
-                           suit multiplies its fixed thrust by this vector directly, so
-                           a magnitude-2 demand there would be twice the thrust the
-                           player asked for. rcsWorldDir() normalizes for the ship
-                           anyway; doing it here means the two paths cannot disagree.
+                           it a DIRECTION -- declared under THE CONTROL STATE below,
+                           because its callers are Command's own Rcs* cases and the EVA
+                           suit, which IS-A Vehicle (a suit has no RCS parts to Command).
+                           Arming means a DIRECTION: the demand is stored unit (or zero),
+                           because the suit multiplies its fixed thrust by this vector
+                           directly, so a magnitude-2 demand there would be twice the
+                           thrust the player asked for. rcsWorldDir() normalizes for the
+                           ship anyway; doing it here means the two paths cannot disagree.
          markRcsBurned()   a nozzle actually fired this substep. Both burn paths call
                            it -- applyRcsForce for pods, the suit's jets in eva.cpp --
                            so the flag has one setter and step D has one place to look.
@@ -850,12 +848,6 @@ public:
                            per-nozzle plumes draw and the [eva] trace log.
          rcsTranslating()  burned AND a demand with a direction in it -- what the
                            nozzle-less COM puff (the suit) draws. */
-    void armRcs(const glm::dvec3 &bodyDir) {
-        assert(std::isfinite(bodyDir.x) && std::isfinite(bodyDir.y)
-               && std::isfinite(bodyDir.z) && "RCS demand is a direction");
-        const double l = glm::length(bodyDir);
-        rcsDir = (l > 1e-9) ? bodyDir * (1.0 / l) : glm::dvec3(0.0);
-    }
     bool rcsBurned() const { return rcsFiring; }
     bool rcsTranslating() const { return rcsFiring && glm::length2(rcsDir) > 1e-12; }
     /* The last airless-or-not substep's allocation, for the [rcs] log (same
@@ -1067,9 +1059,10 @@ protected:
          applySlewRequest()    tick.cpp's latched -> engaged copy, once a tick, with its
                                "paused sim engages nothing" gate
          restoreSlewRequest()  a save loading a latched mode: a fact, not a key press
-         armRcs()              the armed translation demand, unit: the EVA suit calls it
-                               (no RCS parts to Command) and Command's own Rcs* cases
-                               route the signs they set back through it
+         armRcs()              the armed translation demand, unit: Kerbal::armInput()
+                               arms it for a suit (no RCS parts to Command) and
+                               Command's own Rcs* cases route the signs they set back
+                               through it
          markRcsBurned()       a thruster that actually fired (pods, the suit's jets)
          clearRotCmd()         the per-tick release of the stick and of held KillRot
          clearRcs()            the per-tick release of the translation demand
@@ -1091,6 +1084,12 @@ protected:
                                            // and renormalize, so the field stays unit)
     bool rcsFiring = false;                // burned since this tick's clearRcs()
     void markRcsBurned() { rcsFiring = true; }
+    void armRcs(const glm::dvec3 &bodyDir) {
+        assert(std::isfinite(bodyDir.x) && std::isfinite(bodyDir.y)
+               && std::isfinite(bodyDir.z) && "RCS demand is a direction");
+        const double l = glm::length(bodyDir);
+        rcsDir = (l > 1e-9) ? bodyDir * (1.0 / l) : glm::dvec3(0.0);
+    }
 
     // Forces/torques straight on the Bullet bodies, reachable only through
     // Command(). Protected: the EVA kerbal reuses the rotation-model helpers.

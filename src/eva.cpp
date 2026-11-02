@@ -28,7 +28,7 @@ static const double kYawRate     = 1.5;     // rad/s QE yaw about the view axis
 static const double kGroundBand  = 0.25;    // m above restAlt still "grounded"
 static const double kFloorDrop   = 0.4;     // m below restAlt -> snap back up
 
-/* The analytic half of evaArmCommands' contact test, without the Bullet query:
+/* The analytic half of armInput's contact test, without the Bullet query:
    a hull freshly added by enterWorld has no manifolds to find, and the pose
    already says everything. Terrain only -- a kerbal loaded standing on a
    structure that rises above the analytic surface reads "space" until the first
@@ -43,50 +43,52 @@ void Kerbal::settleContact() {
     mode = grounded ? EVA_GROUND : EVA_SPACE;
 }
 
-void evaArmCommands(Game &g, const std::function<bool(Slot)> &active) {
-    Kerbal *k = static_cast<Kerbal *>(g.ship);
+void Kerbal::armInput(Game &g, const std::function<bool(Slot)> &active) {
     const Camera *cam = g.camera;
 
     // Camera positions/directions live in the render frame (= the kerbal's frame).
     const glm::dvec3 fwd = glm::normalize(cam->forward);
     const glm::dvec3 up = glm::normalize(evaOntoPlane(cam->up, fwd));
     const glm::dvec3 sright = evaScreenRight(fwd, up);
-    k->camBasis = evaCamBasis(fwd, up);
+    camBasis = evaCamBasis(fwd, up);
 
-    const glm::dvec3 pos = k->get_center_of_mass();
+    const glm::dvec3 pos = get_center_of_mass();
     const glm::dvec3 radial = glm::normalize(pos);
     const double alt = glm::length(pos)
-        - (double)k->m_parent->GetTerrainHeight(glm::vec3(radial));
-    const double rest = k->restAlt();
-    k->grounded = BodyInContact(k->hull) || alt < rest + kGroundBand;
-    if(k->jumping) {
+        - (double)m_parent->GetTerrainHeight(glm::vec3(radial));
+    const double rest = restAlt();
+    grounded = BodyInContact(hull) || alt < rest + kGroundBand;
+    if(jumping) {
         /* Release once the jump's outward kick is spent. Releasing on
            contact-clear never fires for a hop that never leaves contact;
            releasing on altitude never fires when the apex is under the band.
            Either way the latch sticks and the kerbal is stuck in space mode,
            where W burns suit RCS instead of walking. Gravity spends the kick
            on any body. */
-        if(glm::dot(k->GetVel(), radial) > 0.0) { k->grounded = false; }
-        else { k->jumping = false; }
+        if(glm::dot(GetVel(), radial) > 0.0) { grounded = false; }
+        else { jumping = false; }
     }
-    k->mode = k->grounded ? EVA_GROUND : EVA_SPACE;
+    mode = grounded ? EVA_GROUND : EVA_SPACE;
+    /* Spend the jump edge whichever mode is running (#578). It used to be read only on
+       the ground branch, so a press during a spacewalk survived the tick and fired on
+       the next landing: SPACE is the staging key for every ship, so tapping it out of
+       habit while flying the suit collected an unasked 2.5 m/s hop on touchdown. */
+    const bool jumpWanted = jumpPressed;
+    jumpPressed = false;
 
-    if(k->mode == EVA_GROUND) {
+    if(mode == EVA_GROUND) {
         glm::dvec3 w(0.0);
         if(active(Slot::EvaForward)) { w += fwd; }
         if(active(Slot::EvaBack)) { w -= fwd; }
         if(active(Slot::EvaRight)) { w += sright; }
         if(active(Slot::EvaLeft)) { w -= sright; }
         w = evaOntoPlane(w, radial);   // walk along the tangent
-        k->walkDir = (glm::length2(w) > 1e-9) ? glm::normalize(w)
-                                              : glm::dvec3(0.0);
-        k->armRcs(glm::dvec3(0.0));   // walking, not flying: no translation demand
-        if(k->jumpPressed) {
-            k->jumpPressed = false;
-            if(k->grounded) {
-                k->jumpRequested = true;
-                k->jumping = true;
-            }
+        walkDir = (glm::length2(w) > 1e-9) ? glm::normalize(w)
+                                           : glm::dvec3(0.0);
+        armRcs(glm::dvec3(0.0));   // walking, not flying: no translation demand
+        if(jumpWanted) {           // EVA_GROUND means grounded (two lines above)
+            jumpRequested = true;
+            jumping = true;
         }
     } else {
         glm::dvec3 t(0.0);
@@ -96,13 +98,13 @@ void evaArmCommands(Game &g, const std::function<bool(Slot)> &active) {
         if(active(Slot::EvaLeft)) { t -= sright; }
         if(active(Slot::EvaUp)) { t += up; }
         if(active(Slot::EvaDown)) { t -= up; }
-        k->armRcs((glm::length2(t) > 1e-9)
+        armRcs((glm::length2(t) > 1e-9)
             ? glm::normalize(t) : glm::dvec3(0.0));
-        k->walkDir = glm::dvec3(0.0);
+        walkDir = glm::dvec3(0.0);
         double yaw = 0.0;
         if(active(Slot::EvaYawLeft)) { yaw += 1.0; }
         if(active(Slot::EvaYawRight)) { yaw -= 1.0; }
-        k->viewYaw += yaw * kYawRate * g.dt;
+        viewYaw += yaw * kYawRate * g.dt;
     }
 }
 

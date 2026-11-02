@@ -5,7 +5,7 @@
 #include <cstdio>
 
 #include "keys.h"                // Slot, slotHeld, slotSimKey (the command map)
-#include "eva.h"                 // evaArmCommands (the kerbal's controls)
+#include "eva.h"                 // Kerbal::armInput (the kerbal's controls)
 #include "orbit.h"               // OrbitElements, computeOrbitElements
 #include "physics.h"             // physics_tick()
 #include "timestep.h"            // substepCount()
@@ -151,7 +151,9 @@ void tick(Game &g) {
             if(g.ship->isEva()) {
                 /* EVA: arm the kerbal's controls for this tick (eva.cpp).
                    Nothing is armed while paused. */
-                if(game_running) { evaArmCommands(g, slotActive); }
+                if(game_running) {
+                    static_cast<Kerbal *>(g.ship)->armInput(g, slotActive);
+                }
             } else {
             // Autopilot slew: apply after clearRotCmd so the ship keeps
             // holding. X kill-rot below overrides while held.
@@ -677,12 +679,12 @@ void tick(Game &g) {
                        "pos=[%.1f %.1f %.1f] vel=[%.2f %.2f %.2f] "
                        "face=[%.3f %.3f %.3f] alt=%.2f m viewyaw=%.3f "
                        "rcs=%d mass=%.3fkg\n",
-                       g.time, (k->mode == EVA_GROUND) ? "ground" : "space",
-                       (int)k->grounded, p.x, p.y, p.z, v.x, v.y, v.z,
+                       g.time, (k->evaMode() == EVA_GROUND) ? "ground" : "space",
+                       (int)k->evaGrounded(), p.x, p.y, p.z, v.x, v.y, v.z,
                        face.x, face.y, face.z,
                        glm::length(p) - (double)k->m_parent->GetTerrainHeight(
                            glm::vec3(glm::normalize(p))),
-                       k->viewYaw, (int)k->rcsBurned(),
+                       k->viewYawOffset(), (int)k->rcsBurned(),
                        k->getMass());
                 fflush(stdout);
             }

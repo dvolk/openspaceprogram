@@ -4,6 +4,12 @@
 // Vehicle::Command(), the one door from input to control state that the model has to
 // be reachable through (#424).
 //
+// The CONTROL-STATE DOORS get pinned here too: #575's slew restore and the armed RCS
+// demand (Vehicle::armRcs, protected since #578) are reachable through a probe, so a
+// door that stops doing its job shows up here. The SUIT's own doors have no pin in
+// this binary -- what they do (the arm, the jump, the saved yaw offset) is covered by
+// the e2e crew/eva cases, which run the real tick loop.
+//
 // Why this file exists: before it, three places (the slew law, the kill-rot law and
 // the [slew] trace) each re-added wheelTorqueSum() + tvcAuthority()'s tvcMax, and none of
 // them asked which axis. That is right about an axis TVC can lever and wrong about
@@ -72,9 +78,11 @@ struct Ship {
 /* The armed RCS demand is protected, and on a SHIP its magnitude never surfaces --
    rcsWorldDir() normalizes on the way out -- so the only way to pin the invariant the
    ship and suit paths share is to read the field. Re-exposed through a subclass rather
-   than widening the production API, as in test_inertia.cpp. */
+   than widening the production API, as in test_inertia.cpp. armRcs came along when #578
+   made it protected too: its callers are Command and Kerbal::armInput, both inside. */
 struct RcsProbe : Vehicle {
     using Vehicle::rcsDir;
+    using Vehicle::armRcs;
 };
 
 /* A box part with the two fields this model reads: `torque` (>0 makes it a

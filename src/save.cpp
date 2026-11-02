@@ -497,7 +497,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
         /* The pose holds the ATTITUDE the space law was chasing, but that law
            steers toward camera-facing + this offset every substep: without it
            the suit slews back to camera-facing on load (see Kerbal::applyEva). */
-        s.view_yaw = k->viewYaw;
+        s.view_yaw = k->viewYawOffset();
         // part 0 is the suit; without this a partly-burned tank re-seeds full
         if(!v->parts.empty()) {
             for(int r = 0; r < (int)ResourceType::Num; r++) {
@@ -1104,7 +1104,7 @@ Kerbal *buildKerbalFromSave(Game &g, const LoadWorld &w, const SaveShip &s) {
     }
     // BEFORE either setSoi below, whose observe is then a no-op.
     k->flog = s.flog;
-    k->viewYaw = s.view_yaw;
+    k->restoreViewYaw(s.view_yaw);
     /* Walking: the saved pose is the kerbal's own. A seated person is not a
        vehicle at all -- they are a `seats` element of their capsule (part.h),
        built by buildSeatParts. */

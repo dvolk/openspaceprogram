@@ -195,9 +195,9 @@ struct SaveShip {
     std::vector<SavePart> suit_inventory;
     /* The suit's experiments. */
     std::vector<Experiment> suit_experiments;
-    /* The kerbal's QE yaw offset (Kerbal::viewYaw, eva.h): accumulated, not
-       re-derivable from the pose -- drop it and the space-mode attitude law
-       slews the suit back to camera-facing on load. */
+    /* The kerbal's QE yaw offset (Kerbal::viewYawOffset / restoreViewYaw, eva.h):
+       accumulated, not re-derivable from the pose -- drop it and the space-mode
+       attitude law slews the suit back to camera-facing on load. */
     double view_yaw = 0.0;
 };
 

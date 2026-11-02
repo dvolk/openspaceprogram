@@ -1,7 +1,8 @@
 # A space-walking kerbal's QE yaw offset must survive a save/load. The space
-# attitude law steers toward camera-facing + Kerbal::viewYaw every substep
-# (eva.cpp), and viewYaw is accumulated state the pose cannot express. SaveShip
-# captured pose, vel, angvel, suit fuel, inventory and journal but nothing from
+# attitude law steers toward camera-facing + the kerbal's yaw offset every
+# substep (Kerbal::viewYawOffset / restoreViewYaw, eva.h), and that offset is
+# accumulated state the pose cannot express. SaveShip captured pose, vel, angvel,
+# suit fuel, inventory and journal but nothing from
 # Kerbal, so a loaded kerbal slewed itself back to camera-facing: ~3.4 rad/s of
 # spin and the long axis 86 degrees from where the player left it.
 #

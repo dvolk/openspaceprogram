@@ -22,8 +22,6 @@ struct Kerbal : Vehicle {
        path, save/load rebuild included. */
     Kerbal() { hullFriction = 0.0; }
 
-    // --- per-ticked armed state (evaArmCommands writes, applyEva consumes) ---
-    EvaMode mode = EVA_GROUND;
     /* Identity is OWNED by the suit Part (part.h: Part::kerbal), not by this
        vehicle -- the walker is just the person's current location. */
     const KerbalProfile *profile() const {
@@ -33,19 +31,67 @@ struct Kerbal : Vehicle {
         const KerbalProfile *p = profile();
         return p != nullptr ? p->id : 0;
     }
+
+    /* THE CONTROL STATE (#578) -- the suit's half of what #575 made structural for
+       ships. "The control law arms the state once per tick and the laws run it per
+       substep" used to be only a comment: a TU-level free function (evaArmCommands)
+       assigned these fields from outside the class, and the jump key was a bare
+       `k->jumpPressed = true` in events.cpp. armInput() is the only PER-TICK writer
+       and applyEva() the reader; settleContact() is the loader's writer of
+       mode/grounded (a load starts paused, so it cannot wait for the first tick), and
+       the doors below are what anyone else uses.
+         mode / grounded     which regime the laws run in this tick
+         jumping             post-jump: ignore grounded until the outward kick is spent
+         jumpPressed         the jump key's down EDGE: pressJump() raises it and
+                             armInput() spends it in EITHER mode, so a press cannot
+                             outlive the tick it arms -- a paused sim arms nothing, so
+                             like every other held key it waits for the sim. It used to
+                             be read only on the ground branch, and SPACE is the staging
+                             key everywhere else in the game: a spacewalker who tapped
+                             it out of ship habit collected an unasked 2.5 m/s hop on
+                             landing.
+         jumpRequested       armed at arm; the first substep fires it (applyEva spends it)
+         walkDir             tangent walk heading, unit or 0
+         viewYaw             QE yaw about the view axis, rad (accumulated)
+         camBasis            [right, up, fwd] snapshot taken at arm
+       The RCS translation demand is the inherited Vehicle::rcsDir, armed through
+       Vehicle::armRcs() -- protected, because arming is a member of this class now. */
+protected:
+    EvaMode mode = EVA_GROUND;
     bool grounded = true;
-    bool jumping = false;        // post-jump: ignore grounded until the outward kick is spent
-    bool jumpPressed = false;    // space KEYDOWN edge (events.cpp)
-    bool jumpRequested = false;  // armed this tick; the first substep fires it
-    glm::dvec3 walkDir = glm::dvec3(0.0);  // tangent walk heading, unit or 0
-    /* The RCS translation dir (inherited Vehicle::rcsDir) is armed in the
-       RENDER frame, not ship axes: EVA thrust follows the view, which the
-       suit's own rotation lags during a slew. Hence rcsWorldDir() below is
-       the identity. */
-    double viewYaw = 0.0;        // QE yaw about the view axis, rad (accumulated)
+    bool jumping = false;
+    bool jumpPressed = false;
+    bool jumpRequested = false;
+    glm::dvec3 walkDir = glm::dvec3(0.0);
+    double viewYaw = 0.0;                  // rad, accumulated
     glm::dmat3 camBasis = glm::dmat3(1.0); // [right, up, fwd] snapshot at arm
 
-    // Already world axes.
+public:
+    /* Arm this kerbal's controls for one tick: keys + camera basis + ground state.
+       tick.cpp calls it once a tick for the active ship, and only where a pilot could
+       be holding keys -- a non-piloting scene or a paused sim arms nothing. */
+    void armInput(Game &g, const std::function<bool(Slot)> &active);
+
+    /* The jump key went down (events.cpp). The rule lives on jumpPressed above. */
+    void pressJump() { jumpPressed = true; }
+
+    /* What the regime is, for the --eva-log row (#421's e2e assertions read it). */
+    EvaMode evaMode() const { return mode; }
+    bool evaGrounded() const { return grounded; }
+
+    /* The QE yaw offset, for the save and the log. It is the difference between the
+       pose the save holds and the camera-facing attitude the space law would slew back
+       to without it (#241), so it has to round-trip. */
+    double viewYawOffset() const { return viewYaw; }
+    /* The loader's door (save.cpp). No range check: the offset is an accumulator that
+       never wraps by design, and the JSON reader already refuses a non-number, so a
+       value reaching here is an angle however large. */
+    void restoreViewYaw(double yaw) { viewYaw = yaw; }
+
+    // Already world axes. The suit's RCS demand (the inherited Vehicle::rcsDir,
+    // armed by armInput above) is in the RENDER frame, not ship axes: EVA thrust
+    // follows the view, which the suit's own rotation lags during a slew. Hence
+    // this override is the identity.
     glm::dvec3 rcsWorldDir() const override { return rcsDir; }
 
     bool isEva() const override { return true; }
@@ -92,6 +138,3 @@ private:
     // capped).
     void slewTo(const glm::dmat3 &target, double h, double authority);
 };
-
-// Arm the active kerbal's controls for this tick (keys + camera + ground state).
-void evaArmCommands(Game &g, const std::function<bool(Slot)> &active);

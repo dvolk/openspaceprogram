@@ -3,6 +3,10 @@
 // fallback), the camera / upright target bases (orthonormal, det +1, the
 // degenerate-hint guards), and the screen-axis helpers.
 //
+// The Kerbal itself is NOT here: the per-tick arm (Kerbal::armInput), the jump edge
+// and the saved yaw offset need the tick loop and a world, so that side is pinned by
+// the e2e crew/eva cases.
+//
 // Build & run (from repo root):
 //   g++ -O2 -std=c++20 -I./src -I./middleware/glm/ tests/test_eva.cpp \
 //       -o test_eva

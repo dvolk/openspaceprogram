@@ -349,9 +349,9 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         }
     }
     if(slotFired(Slot::Space, ksc, kmod, g.binds)) {
-        // EVA: space is the jump key (edge-armed; evaArmCommands consumes).
+        // EVA: space is the jump key (an edge the arm consumes; eva.h pressJump).
         if(!repeat && g.ship && g.ship->isEva()) {
-            static_cast<Kerbal *>(g.ship)->jumpPressed = true;
+            static_cast<Kerbal *>(g.ship)->pressJump();
         }
         // No staging from free cam or with time stopped.
         if(!repeat && g.ship && g.camera->mode != CAM_FREE && g.time_accel > 0
