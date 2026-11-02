@@ -546,9 +546,20 @@ static void test_the_armed_rcs_demand_is_a_direction() {
     p.Command(ShipCmd(RcsNose, +1.0f), true);
     CHECK_NEAR(glm::length(p.rcsDir), 1.0, 1e-12, "one key: a unit demand");
     p.Command(ShipCmd(RcsUp, +1.0f), true);
+    const double pair = 1.0 / std::sqrt(2.0);
+    CHECK_NEAR(p.rcsDir.z, pair, 1e-12, "two keys: the first keeps its share");
+    CHECK_NEAR(p.rcsDir.y, pair, 1e-12, "two keys: an even share");
     p.Command(ShipCmd(RcsRight, +1.0f), true);
     CHECK_NEAR(glm::length(p.rcsDir), 1.0, 1e-12,
                "three keys held together: unit, not a cube corner");
+    /* The diagonal, not merely the octant (#580). Each key used to renormalize the
+       ANSWER the previous key left rather than the whole request, so the last key
+       armed kept the full share and the earlier ones shrank to half: N+I+L came out
+       (.707,.5,.5) on rcs_box_pair, with the first key the worst treated. */
+    const double even = 1.0 / std::sqrt(3.0);
+    CHECK_NEAR(p.rcsDir.z, even, 1e-12, "three keys: the first armed keeps its share");
+    CHECK_NEAR(p.rcsDir.y, even, 1e-12, "three keys: an even diagonal");
+    CHECK_NEAR(p.rcsDir.x, even, 1e-12, "three keys: the last armed keeps its share");
     CHECK_TRUE(p.rcsDir.x > 0.0 && p.rcsDir.y > 0.0 && p.rcsDir.z > 0.0,
                "and it stays in the octant the three keys asked for");
     p.clearRcs();
@@ -558,6 +569,12 @@ static void test_the_armed_rcs_demand_is_a_direction() {
     CHECK_NEAR(glm::length(p.rcsDir), 1.0, 1e-12, "and the demand has no magnitude in it");
     p.armRcs(glm::dvec3(0.0));
     CHECK_NEAR(glm::length(p.rcsDir), 0.0, 1e-12, "arming zero is off, not a tiny burn");
+    /* A key and its opposite for the same axis: whoever asked last is what the axis
+       does, like a centred stick rather than a summed pedal pair. */
+    p.clearRcs();
+    p.Command(ShipCmd(RcsNose, +1.0f), true);
+    p.Command(ShipCmd(RcsNose, -1.0f), true);
+    CHECK_NEAR(p.rcsDir.z, -1.0, 1e-12, "a key and its opposite: the last one asked wins");
 }
 
 int main() {

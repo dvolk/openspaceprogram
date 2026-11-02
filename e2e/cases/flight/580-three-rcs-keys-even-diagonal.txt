@@ -1,0 +1,26 @@
+# RCS direction keys are per-axis signs, and the six of them are meant to aim the ship
+# anywhere in its own frame. Holding three at once used to aim it at neither the
+# diagonal nor the last key: each key rewrote one component of the demand to +-1 and
+# then RENORMALIZED THE ANSWER THE PREVIOUS KEY LEFT, so the last key armed kept the
+# whole share and the earlier ones shrank -- N+I+L thrust along (.707,.5,.5), with the
+# nose key the worst treated (measured in #580 against this same command).
+#
+# The fix arms from the tick's whole REQUEST (vehicle.h rcsRequest), so three keys ask
+# for (1,1,1) and the demand is the even diagonal. Note the log prints the WORLD-frame
+# force, so the number is the rating split three ways rather than a magic angle: rcs_
+# box_pair starts with its axes along the world's, which is what lets the case compare
+# the three printed components at all. tests/test_authority.cpp pins the same rule in
+# the body frame, where the pose cannot matter.
+NAME three-rcs-keys-thrust-the-even-diagonal
+CLAIM Holding three RCS direction keys thrusts along the even diagonal, not with the last key holding the share.
+KIND invariant
+ARGS --time-accel 1 --timeout 8 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit
+ARGS --dbg-log --att-log --orbit-log --orbit-interval 0.5 --drag-log
+ARGS --sim-press 2000,3000,N,2000,3000,I,2000,3000,L
+EXPECT [rcs]
+FORBID error:
+FORBID FAILED
+# All three printed world components equal, whatever the thruster rating adds up to.
+CHECK re.search(r"\[rcs\] cmd=\((-?\d+) \1 \1\)N", out)
+CHECK all(int(x) != 0 for x in re.search(r"\[rcs\] cmd=\((-?\d+) (-?\d+) (-?\d+)\)N", out).groups())
+CHECK max(a["wnorm"] for a in att) < 0.02

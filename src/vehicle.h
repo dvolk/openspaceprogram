@@ -1061,8 +1061,8 @@ protected:
          restoreSlewRequest()  a save loading a latched mode: a fact, not a key press
          armRcs()              the armed translation demand, unit: Kerbal::armInput()
                                arms it for a suit (no RCS parts to Command) and
-                               Command's own Rcs* cases route the signs they set back
-                               through it
+                               Command's own Rcs* cases set their signs in rcsRequest
+                               and route that whole request back through it
          markRcsBurned()       a thruster that actually fired (pods, the suit's jets)
          clearRotCmd()         the per-tick release of the stick and of held KillRot
          clearRcs()            the per-tick release of the translation demand
@@ -1080,10 +1080,17 @@ protected:
     SlewMode slew = SlewNone;              // ENGAGED this tick -- see slewMode()
     SlewMode slewRequest = SlewNone;       // latched on the Autopilot window
     glm::dvec3 rcsDir = glm::dvec3(0.0);   // armed translation demand, unit; 0 = off
-                                           // (Command's Rcs* cases arm per-axis signs
-                                           // and renormalize, so the field stays unit)
+    /* The RAW request the keys describe, before it is made a direction: one axis each,
+       so holding Nose+Up+Right asks for (1,1,1). rcsDir is armRcs's answer to THIS, not
+       to the previous answer -- renormalizing the previous answer hands the LAST key
+       the full share and shrinks the ones armed before it, so three keys thrust along
+       (.707,.5,.5) instead of the even diagonal the keys describe (#580). Same
+       request/answer split as slewRequest above. */
+    glm::dvec3 rcsRequest = glm::dvec3(0.0);
     bool rcsFiring = false;                // burned since this tick's clearRcs()
     void markRcsBurned() { rcsFiring = true; }
+    /* Arm the translation demand from the whole request: a direction, never a
+       magnitude -- the rating is the thrusters', not the keys'. */
     void armRcs(const glm::dvec3 &bodyDir) {
         assert(std::isfinite(bodyDir.x) && std::isfinite(bodyDir.y)
                && std::isfinite(bodyDir.z) && "RCS demand is a direction");

@@ -3317,7 +3317,13 @@ void Vehicle::applyRotationForce(double h) {
     }
 }
 
-void Vehicle::clearRcs() { rcsDir = glm::dvec3(0.0); rcsFiring = false; }
+/* The tick's release: no demand and no claim of having burned. The REQUEST goes
+   with it, or a key released last tick keeps asking through this one. */
+void Vehicle::clearRcs() {
+    rcsDir = glm::dvec3(0.0);
+    rcsRequest = glm::dvec3(0.0);
+    rcsFiring = false;
+}
 
 glm::dvec3 Vehicle::rcsWorldDir() const {
     if(glm::length2(rcsDir) < 1e-12) { return glm::dvec3(0.0); }
@@ -4267,29 +4273,29 @@ void Vehicle::Command(ShipCmd cmd, bool simActive, double step) {
             stick[0] = normCmd(cmd.amount);
             break;
         /* RCS translation in the ship's own axes (rcsWorldDir). Sign only: a
-           thruster group is on or off. Each key writes one component and then hands
-           the triple to armRcs(), the named writer, so the field stays a UNIT demand
-           rather than a corner of a cube. rcsWorldDir() normalizes for a SHIP, so this
-           changes nothing here; what it buys is one invariant for both paths, since the
-           suit's rcsWorldDir (eva.h) returns the field exactly as it stands.
-           Known rough edge: normalizing per key means a three-key demand is NOT the even
-           diagonal. Each key rewrites one component to +-1 and rescales the rest, so the
-           LAST key armed keeps the full share while the earlier ones shrink to half
-           (measured .71/.50/.50 holding N+I+L on rcs_box_pair, tmp/aero/n580_rcs.log).
-           Two keys are even (.707/.707). The direction is still the octant the keys asked
-           for, and tick.cpp sends them in a fixed order so a given held set gives one
-           answer every tick. #580. */
+           thruster group is on or off. Each key writes one component of the tick's
+           REQUEST and then hands the whole request to armRcs(), the named writer, so
+           the armed field stays a UNIT demand rather than a corner of a cube.
+           rcsWorldDir() normalizes for a SHIP, so the unit invariant changes nothing
+           there; what it buys is one rule for both paths, since the suit's
+           rcsWorldDir (eva.h) returns the field exactly as it stands.
+           The request is what makes three keys an even diagonal: normalizing the
+           PREVIOUS answer instead used to rewrite one component to +-1 and rescale the
+           rest, so the last key armed kept the full share and earlier ones shrank --
+           N+I+L thrust along (.707,.5,.5), not (.577,.577,.577) (measured on
+           rcs_box_pair, tmp/aero/n580_rcs.log). Holding a key and its opposite is
+           still last-writer-wins, like a centered stick. */
         case RcsNose:
-            rcsDir.z = (cmd.amount >= 0) ? +1.0 : -1.0;
-            armRcs(rcsDir);
+            rcsRequest.z = (cmd.amount >= 0) ? +1.0 : -1.0;
+            armRcs(rcsRequest);
             break;
         case RcsUp:
-            rcsDir.y = (cmd.amount >= 0) ? +1.0 : -1.0;
-            armRcs(rcsDir);
+            rcsRequest.y = (cmd.amount >= 0) ? +1.0 : -1.0;
+            armRcs(rcsRequest);
             break;
         case RcsRight:
-            rcsDir.x = (cmd.amount >= 0) ? +1.0 : -1.0;
-            armRcs(rcsDir);
+            rcsRequest.x = (cmd.amount >= 0) ? +1.0 : -1.0;
+            armRcs(rcsRequest);
             break;
         /* The latched Autopilot mode (#424): mutually exclusive, held until
            toggled again. That rule lives HERE rather than in the Autopilot
