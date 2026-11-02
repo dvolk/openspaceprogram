@@ -344,6 +344,79 @@ int main() {
                  " total past it)");
     }
 
+    /* #582: the pose door. The total above can be finite and the hull still not be
+       solvable, because calculatePrincipalAxisTransform forms two OTHER sums over the
+       same parts -- `centre += pos * mass` per child, then about that centre a tensor
+       whose point-mass term weighs a SQUARED offset (btCompoundShape.cpp:213/244).
+       Pin what each of the two bounds means and, exactly as #547's test does, that a
+       big-but-representable structure still loads: this is not a size limit, it is
+       the range of a double. The numbers below are the measured arithmetic, not the
+       ticket's guesses: 1e307 kg spaced 2e10 m apart is 1e327 of tensor. */
+    {
+        const long double kMax = (long double)std::numeric_limits<double>::max();
+
+        /* The ticket's case: two 5e306 kg tanks 2e10 m apart. The mass door lets the
+           1e307 kg total through by 18 orders of magnitude, and BOTH of the solve's
+           other sums break on it -- 5e316 of pos*mass for the centre, 1e327 of
+           tensor. */
+        SavedPoseSum far;
+        far.add(glm::dvec3(-1e10, 0.0, 0.0), 5e306);
+        far.add(glm::dvec3(1e10, 0.0, 0.0), 5e306);
+        CHECK(std::isfinite((double)far.total));
+        CHECK(refuseSavedShipMass((double)far.total, "tank_2").empty());
+        CHECK(far.moment() > kMax);
+        CHECK(far.spread() > kMax);
+        CHECK(refuseSavedPose(far, "tank_2")
+              == "spans more distance than the game can store (part 'tank_2' takes"
+                 " the running mass-times-distance sum past it)");
+
+        /* The square, on its own: 1 kg at either end of a 2e155 m spar. The centre
+           sum fits (1e155 kg m), the total is 2 kg, and `o.length2()` = 1e310 is
+           what stops being a number -- which is the half the centre bound cannot
+           see, and the reason the door needs both. */
+        SavedPoseSum spar;
+        spar.add(glm::dvec3(-1e155, 0.0, 0.0), 1.0);
+        spar.add(glm::dvec3(1e155, 0.0, 0.0), 1.0);
+        CHECK(spar.moment() < kMax);
+        CHECK(spar.spread() > kMax);
+        CHECK(!refuseSavedPose(spar, "spar_2").empty());
+
+        // The same 1e307 kg bar 2 m across. 1e307 kg m^2 of tensor fits a double, so
+        // the door says nothing -- the half that keeps it from being a size limit.
+        SavedPoseSum short_bar;
+        short_bar.add(glm::dvec3(-1.0, 0.0, 0.0), 5e306);
+        short_bar.add(glm::dvec3(1.0, 0.0, 0.0), 5e306);
+        CHECK(short_bar.spread() > 0.99e307L && short_bar.spread() < 1.01e307L);
+        CHECK(refuseSavedPose(short_bar, "tank_2").empty());
+
+        /* The centre, on its own: one 1.7e308 kg part standing 10 m off the origin.
+           There is no spread to speak of -- its centre IS its position, and the
+           parallel-axis form leaves only rounding -- but Bullet multiplies pos * mass
+           (1.7e309) before it ever subtracts the centre, so the centre comes back
+           inf and every offset taken against it after that. */
+        SavedPoseSum heavy;
+        heavy.add(glm::dvec3(10.0, 0.0, 0.0), 1.7e308);
+        CHECK(heavy.spread() < kMax);
+        CHECK(heavy.moment() > kMax);
+        CHECK(!refuseSavedPose(heavy, "engine_1").empty());
+
+        // A shipped airframe, for scale: the skiff -- 569 kg, 16.8 m of tip, ~7e3
+        // kg m^2 of tensor and ~4e2 kg m of moment against a 1e308 bound.
+        SavedPoseSum skiff;
+        skiff.add(glm::dvec3(-8.4, 0.0, -1.2), 48.0);
+        skiff.add(glm::dvec3(8.4, 0.0, -1.2), 48.0);
+        skiff.add(glm::dvec3(0.0, 0.0, 0.0), 473.0);
+        CHECK(skiff.spread() > 6e3L && skiff.spread() < 8e3L);
+        CHECK(skiff.moment() > 3e2L && skiff.moment() < 5e2L);
+        CHECK(refuseSavedPose(skiff, "wing_l").empty());
+
+        // A pose that is not a number lands in the same refusal: NaN compares false
+        // against the bound, so it cannot pass the door.
+        SavedPoseSum nan;
+        nan.add(glm::dvec3(0.0, std::numeric_limits<double>::quiet_NaN(), 0.0), 1000.0);
+        CHECK(!refuseSavedPose(nan, "bad_part").empty());
+    }
+
     /* --- a walking kerbal (the ship fields are empty) ---------------------
        A crew entry is a kerbal on its own two feet: a SEATED person is not a
        fleet entry at all, but a `seats` element of their capsule's part entry

@@ -660,6 +660,10 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
     }
     /* Running launch mass of the ship this is building (#547). */
     double shipMass = 0.0;
+    /* ... and the running pose spread of the same parts (#582), fed the masses the
+       compound is actually handed (effectiveMass counts the tree under a part, and
+       that tree rides at the part's own pose, so it belongs in this sum too). */
+    SavedPoseSum pose;
     for(size_t i = 0; i < s.parts.size(); i++) {
         const SavePart &sp = s.parts[i];
         /* Refuse rather than guess: uid 0 is a save predating part identity,
@@ -757,8 +761,18 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
            at the level the quantity is meaningful, in the same "no invented ceiling"
            style as that gate. The tree below the part counts too, because that is what
            the Body is handed (savedSubtreeMass). */
-        shipMass += savedSubtreeMass(cat, sp);
+        const double subtree = savedSubtreeMass(cat, sp);
+        shipMass += subtree;
         if(std::string why = refuseSavedShipMass(shipMass, sp.id); !why.empty()) {
+            return "load: saved ship '" + s.name + "' " + why;
+        }
+        /* The same door for the poses (#582): a finite mass at an absurd distance
+           passes the total above and still overflows what the principal-axis solve
+           forms -- the tensor weighs a SQUARED offset, and `centre += pos * mass`
+           overflows before that. SavedPoseSum spells the arithmetic; the part named
+           is where the running sum tipped, exactly as above. */
+        pose.add(sp.pos, subtree);
+        if(std::string why = refuseSavedPose(pose, sp.id); !why.empty()) {
             return "load: saved ship '" + s.name + "' " + why;
         }
         if(i > 0 && prior.count(sp.parent) == 0) {

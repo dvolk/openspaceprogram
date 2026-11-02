@@ -1,0 +1,41 @@
+# #547 refuses a save whose parts WEIGH past a double. Mass is not the only total
+# the ONE Body is built from: calculatePrincipalAxisTransform also forms `centre +=
+# pos * mass` per part and, about that centre, an inertia tensor whose point-mass
+# term weighs a SQUARED offset (btCompoundShape.cpp:213/244). This fixture keeps the
+# racer's own masses -- 2767 kg, 305 orders of magnitude under what a double holds
+# -- and moves engine_1 to z = -1e155 m. Its pos*mass is 5e157 kg m, which a double
+# holds; the square is not, so the tensor the solve forms is 5e312 kg m^2. Measured on
+# this exact shape with tmp/n582_probe.cpp: Bullet answers with inertia
+# (-nan, -nan, +inf) about a centre it places at -1.9e154 m. The ship would load
+# unrotatable rather than say so -- #547's symptom through a different door.
+#
+# The door is a range check, not a size limit: test_save.cpp pins both halves of the
+# arithmetic (the squared offset alone, the centre alone) and that a 1e307 kg bar 2 m
+# across still loads.
+#
+# Fixture mint (re-mint together with the part name below):
+#   cp -r e2e/fixtures/save_racer e2e/fixtures/save_huge_span
+#   then in ships/v0.json set engine_1's "pos" to [0.0, 0.0, -1e+155]  (line 106)
+# This save predates #456's "geom" key, so the geometry check has nothing to compare
+# and can only note that it cannot verify -- and a refusal drops that note anyway, so
+# the pose sentence is the one thing this case can pin.
+NAME saved-ship-pose-spread-refused
+CLAIM A save whose parts sit so far apart that the game cannot form their inertia is refused, not loaded as a NaN-inertia ship.
+KIND invariant
+ARGS --timeout 9
+# Reached by the Save/Load sheet, not --load: Game Debug ticks the e2e
+# fixture root, the sheet picks the "fixtures" game, the slot filter narrows
+# the fixture list to this one row, and row + Load button do the rest.
+ARGS --sim-press 500,0,F1
+ARGS --ui-click 1000,"Game Debug/Load e2e fixture saves"
+ARGS --sim-press 1500,0,F1
+ARGS --ui-click 2000,"Title Menu/Save/Load"
+ARGS --ui-click 2500,"fixtures"
+ARGS --ui-type 3000,"Save/Load/##filter",save_huge_span
+ARGS --ui-click 3800,"save_huge_span"
+ARGS --ui-click 4000,"Save/Load/Load##saveload"
+EXPECT load: saved ship 'racer' spans more distance than the game can store (part 'engine_1' takes the running mass-times-distance sum past it)
+EXPECT [load] refused
+FORBID Loaded game from
+FORBID error:
+FORBID FAILED

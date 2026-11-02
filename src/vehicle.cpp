@@ -1066,13 +1066,35 @@ void Vehicle::rebuildCompound() {
        calculatePrincipalAxisTransform answer with a NaN inertia tensor and a NaN
        centre of mass (#547) -- an unrotatable ship rather than a refusal. Both
        loaders refuse such a ship (shipDefFromJson, validateShipParts), so landing
-       here means a Part was minted past those doors -- by absorbShip, a debug
-       command, or a def that skipped a gate. Costs nothing in a release. */
+       here means a Part was minted past those doors -- by a debug command, or a def
+       that skipped a gate. The one place in play the total ADDS two ships is the
+       dock, and absorbShip refuses before it merges (#583). Costs nothing in a
+       release. */
     assert(std::isfinite((double)total)
            && "the ship's total mass overflows what the game can store");
 
     btVector3 inertiaDiag(0, 0, 0);
     geomS->calculatePrincipalAxisTransform(&geomMasses[0], principal, inertiaDiag);
+
+    /* The solve's OTHER input (#582). Mass is finite per part and in total, and it
+       is still not the only quantity this forms: btCompoundShape.cpp:213 multiplies
+       each child pose by its mass for the centre, and :244 weighs a SQUARED offset
+       for the tensor. A finite mass at an absurd distance overflows either --
+       1e307 kg spaced 1e10 m apart is 1e327 of tensor -- and diagonalize() answers
+       +inf with a NaN basis and a NaN centre, i.e. a hull that cannot be turned.
+       validateShipParts refuses such a pose at load (SavedPoseSum), so landing here
+       means a part moved past that door -- which is what absorbShip's own door
+       (#583) exists to prevent in play. Costs nothing in a release, and
+       refreshMassProps re-solves these SAME child poses, so it needs no copy. */
+    {
+        const btVector3 &po = principal.getOrigin();
+        assert((std::isfinite((double)po.x()) && std::isfinite((double)po.y())
+                && std::isfinite((double)po.z())
+                && std::isfinite((double)inertiaDiag.x())
+                && std::isfinite((double)inertiaDiag.y())
+                && std::isfinite((double)inertiaDiag.z()))
+               && "the ship's pose spread overflows what the game can store");
+    }
 
     /* Re-base the children into the COM/principal frame: left in S, the body's origin
        sits at the root part while its inertia is diagonal about the principal axes --
@@ -3914,6 +3936,23 @@ std::vector<Part *> Vehicle::stagedDecouplers(int stage) {
         return buildIndex(x) < buildIndex(y);
     });
     return decs;
+}
+
+/* #583. getMass() is the same sum rebuildCompound() hands Bullet (effectiveMass over
+   the parts, part.h), so the two totals here are exactly the two the merged Body is
+   about to add. No ceiling beyond that: the game stores mass in a double, and this
+   refuses only a pair whose sum stops being one. Reaching it means two hulls at
+   ~1e308 kg each, i.e. hand-edited saves -- but the loaded-pair case is NOT covered
+   by the save doors, which each judge ONE ship, and this is the one place in play the
+   quantity changes. The merged POSE spread gets no door here: both hulls passed
+   validateShipParts, and docking needs the ports within kDockCapture (game.h) of
+   each other, so a merged spread can only reach the bound if the ships were already
+   ~1e154 m across -- hulls broken in a hundred other ways long before the dock. */
+std::string Vehicle::refuseDockWith(Vehicle *B) {
+    assert(B != nullptr && B != this);   // the dock gate ruled these out
+    if(std::isfinite(getMass() + B->getMass())) { return ""; }
+    return "cannot dock with \"" + B->displayName()
+           + "\": the two hulls together weigh more than the game can store";
 }
 
 void Vehicle::absorbShip(Vehicle *B, Part *portA) {

@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 277 |
+| `invariant` | a behaviour or a player route the game must keep | 278 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 37 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **332** |
+| | **total** | **333** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -199,7 +199,7 @@ judgement. Select by number, name or path, e.g.
 | `vab/307-vab-clear.txt` | invariant | Clear asks first, empties the workspace, then refuses when already empty. |
 | `vab/308-vab-dev-vehicles.txt` | invariant | Dev vehicles appear in the Load picker, below the fold until scrolled. |
 
-## save (55)
+## save (56)
 
 | case | kind | pins |
 |---|---|---|
@@ -258,6 +258,7 @@ judgement. Select by number, name or path, e.g.
 | `save/456-saved-parent-shape-drift-refused.txt` | invariant | A save is also refused when the part that MOVED is the parent a pose was solved against, not the child holding the pose. |
 | `save/456-saved-part-geometry-drift-refused.txt` | invariant | A save whose recorded part geometry no longer matches the parts file is refused, not rebuilt reshaped. |
 | `save/547-saved-ship-mass-overflow-refused.txt` | invariant | A save whose parts add up to more mass than the game can store is refused, not loaded as a NaN-inertia ship. |
+| `save/582-saved-ship-pose-spread-refused.txt` | invariant | A save whose parts sit so far apart that the game cannot form their inertia is refused, not loaded as a NaN-inertia ship. |
 
 ## ui (47)
 

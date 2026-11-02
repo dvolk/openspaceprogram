@@ -515,6 +515,79 @@ inline std::string refuseSavedShipMass(double total, const std::string &tipPart)
            + "' takes the running total past it)";
 }
 
+/* Mass is not the only total the ONE Body is built from (#582).
+   calculatePrincipalAxisTransform walks the same part list twice over
+   (btCompoundShape.cpp:202): first `centre += pos * mass` per child, then about
+   that centre an inertia tensor whose point-mass term SQUARES the offset
+   (`o.length2()`) before weighing it. A ship can pass refuseSavedShipMass and
+   still overflow either sum, and both answers are the same garbage: +inf makes
+   diagonalize() hand back a NaN basis and a NaN centre, so the hull loads
+   unrotatable rather than being refused. Measured: 1e307 kg spaced 1e10 m apart
+   is a finite total and 1e327 of tensor; and a 1e308 kg part standing 10 m off
+   the origin overflows the CENTRE sum (1e309) before the tensor is reached, even
+   though its spread about that centre is nothing.
+   This keeps the three walks in long double, whose range (1e4932) cannot be left
+   by any finite double pose times any finite double mass, so the door asks "will
+   the double arithmetic Bullet does fit?" rather than guessing a size of ship.
+   A NaN or inf pose lands in the same refusal through the comparison below. */
+struct SavedPoseSum {
+    void add(const glm::dvec3 &pos, double mass) {
+        const long double px = (long double)pos.x;
+        const long double py = (long double)pos.y;
+        const long double pz = (long double)pos.z;
+        const long double m = (long double)mass;
+        total += m;
+        s[0] += m * px; s[1] += m * py; s[2] += m * pz;
+        sq += m * (px * px + py * py + pz * pz);
+        const long double ax = m * std::fabs(px);
+        const long double ay = m * std::fabs(py);
+        const long double az = m * std::fabs(pz);
+        if(ax > m1) { m1 = ax; }
+        if(ay > m1) { m1 = ay; }
+        if(az > m1) { m1 = az; }
+    }
+    /* kg m, the biggest pos*mass Bullet multiplies and the biggest running centre
+       numerator it adds -- bounded by the per-child products and their sum. */
+    long double moment() const {
+        long double r = m1;
+        for(int k = 0; k < 3; k++) {
+            const long double a = std::fabs(s[k]);
+            if(a > r) { r = a; }
+        }
+        return r;
+    }
+    /* kg m^2 about the centre of mass: an upper bound on every tensor entry and
+       on each term added to it, so if this fits, the tensor loop cannot overflow.
+       The origin-based sum minus the centre correction is exactly the parallel-axis
+       form of that spread; it can round to 0 or a hair under for a structure that
+       stands very far off the origin and is small in itself, which is the one case
+       where Bullet survives too (its offsets are taken ABOUT the centre). */
+    long double spread() const {
+        if(total <= 0.0L) { return 0.0L; }
+        const long double cx = s[0] / total;
+        const long double cy = s[1] / total;
+        const long double cz = s[2] / total;
+        return sq - total * (cx * cx + cy * cy + cz * cz);
+    }
+    long double total = 0.0L;      // kg
+    long double s[3] = {0.0L, 0.0L, 0.0L};   // kg m, centre numerator
+    long double sq = 0.0L;         // kg m^2, about the ship origin
+    long double m1 = 0.0L;         // kg m, biggest single pos*mass product
+};
+
+/* The pose half of #547's verdict, spelled the same way for the same reason: no
+   invented ceiling, just that what the game's own arithmetic cannot hold does not
+   load. #547 measured the heaviest shipped def at 1.06e5 kg; give it 30 m of span
+   and that is ~1e8 kg m^2 of tensor and ~3e6 kg m of moment, still some 300 orders
+   of magnitude under either bound, so this only ever refuses a hand-edited or
+   corrupt save. */
+inline std::string refuseSavedPose(const SavedPoseSum &pose, const std::string &tipPart) {
+    const long double limit = (long double)std::numeric_limits<double>::max();
+    if(pose.moment() <= limit && pose.spread() <= limit) { return ""; }
+    return "spans more distance than the game can store (part '" + tipPart
+           + "' takes the running mass-times-distance sum past it)";
+}
+
 inline nlohmann::json savePoseToJson(const SavePose &p) {
     nlohmann::json j;
     j["body"]     = p.body;

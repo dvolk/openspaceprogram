@@ -22,6 +22,9 @@
 //     BOTH ships' parts to their original world poses -- the split is the
 //     exact inverse of the merge on geometry. This is the invariant the
 //     future "dropped stage becomes a ship" relies on.
+//   - THE MERGED MASS (#583): Vehicle::refuseDockWith, the sentence the dock gate
+//     prints instead of folding two totals that stop being one. A range check, not a
+//     size limit: the pair that still fits has to merge.
 //   - IDENTITY: Part::uid is minted per instance and stays distinct across a
 //     merge of two ships whose Part::ids collide on EVERY part -- the case
 //     two ships built from one def produce, since absorbShip does not rename.
@@ -828,6 +831,82 @@ static void test_experiments_ride_parts() {
     destroyShip(A.v);
 }
 
+/* --- the dock's own mass door (#583) --------------------------------------
+   Both loaders refuse a ship whose parts add past a double (#547), and both judge
+   ONE ship. A dock is the one place in play where two of those totals become ONE
+   Body, and an infinite compound mass is #547's symptom, not a refusal: Bullet's
+   principal-axis solve answers it with a NaN inertia and a NaN centre, and the
+   merged hull cannot be turned. So the gate asks before absorbShip does any part
+   surgery. This is a RANGE check -- the pair that still fits must merge, or the
+   door would be an invented size limit. */
+static void test_dock_mass_door() {
+    printf("== refuseDockWith: the merged total, not each half ==\n");
+
+    Ship A; A.v = new Vehicle; A.v->name = "A";
+    Part *portA = mkPart(A, "portA", 1.7e308, 1.0, 1.0, kPortHz, true);
+    A.v->setRoot(portA);
+    A.v->controller = portA;
+    A.v->init();
+    A.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+
+    Ship B; B.v = new Vehicle; B.v->name = "B";
+    Part *portB = mkPart(B, "portB", 1.7e308, 1.0, 1.0, kPortHz, true);
+    B.v->setRoot(portB);
+    B.v->controller = portB;
+    B.v->init();
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz)), glm::dmat3(1.0));
+
+    /* Each half is a hull the game can store: 1.7e308 kg is finite, so init()
+       above -- which runs rebuildCompound, and its #547 assert -- got there
+       honestly. */
+    CHECK_TRUE(std::isfinite(A.v->getMass()) && std::isfinite(B.v->getMass()),
+               "mass door: each hull alone fits");
+    CHECK_TRUE(!std::isfinite(A.v->getMass() + B.v->getMass()),
+               "mass door: the pair does not, and that is the state the door is for");
+
+    const std::string why = A.v->refuseDockWith(B.v);
+    CHECK_TRUE(!why.empty(), "mass door: the dock is refused, not merged");
+    CHECK_TRUE(why == "cannot dock with \"B\": the two hulls together weigh more"
+                      " than the game can store",
+               "mass door: the sentence names the other hull and the reason");
+    CHECK_TRUE(A.v->parts.size() == 1 && B.v->parts.size() == 1,
+               "mass door: refused before any part surgery, both ships intact");
+    CHECK_TRUE(A.v->seams.empty(), "mass door: refused, so no seam recorded");
+    CHECK_NEAR(glm::length(portB->localPos), 0.0, 1e-12,
+               "mass door: B's root was never re-based into A's frame");
+
+    /* And the pair that DOES fit: same hulls at half the mass, so the sum is
+       8e307 kg -- finite, therefore a hull the game can hold and a dock it must
+       allow. Half is enough headroom to be a real test rather than a rounding
+       coincidence; the shipped fleet is 300 orders below either bound. */
+    Ship C; C.v = new Vehicle; C.v->name = "C";
+    Part *portC = mkPart(C, "portC", 4e307, 1.0, 1.0, kPortHz, true);
+    C.v->setRoot(portC);
+    C.v->controller = portC;
+    C.v->init();
+    C.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+
+    Ship D; D.v = new Vehicle; D.v->name = "D";
+    Part *portD = mkPart(D, "portD", 4e307, 1.0, 1.0, kPortHz, true);
+    D.v->setRoot(portD);
+    D.v->controller = portD;
+    D.v->init();
+    D.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz)), glm::dmat3(1.0));
+
+    CHECK_TRUE(C.v->refuseDockWith(D.v).empty(),
+               "mass door: a pair whose sum fits is not refused");
+    C.v->absorbShip(D.v, portC);
+    CHECK_TRUE(C.v->parts.size() == 2 && D.v->parts.empty(),
+               "mass door: and it really merged");
+    CHECK_TRUE(C.v->seams.size() == 1, "mass door: the seam is recorded as usual");
+    CHECK_NEAR(C.v->getMass(), 8e307, 1e300, "mass door: the merged total is the sum");
+
+    destroyShip(D.v);   /* the empty shell absorbShip left behind */
+    destroyShip(C.v);
+    destroyShip(B.v);
+    destroyShip(A.v);
+}
+
 int main() {
     test_absorb();
     test_roundtrip();
@@ -837,6 +916,7 @@ int main() {
     test_seam_nested_dock();
     test_seam_kept_across_stage();
     test_experiments_ride_parts();
+    test_dock_mass_door();
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }

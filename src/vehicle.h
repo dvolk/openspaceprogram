@@ -1022,6 +1022,19 @@ public:
     Part *dockTargetPort = nullptr;
     Part *dockArmPort = nullptr;   // this ship's port to mate with (mandatory)
 
+    /* The dock gate's own door (#583): "" if folding `B` into this ship gives a hull
+       the game can hold, else the sentence to say instead. A ship's mass total is
+       refused where it is built -- a def at load (#547), a save at load -- and a
+       dock is the ONE place in play that ADDS two of those totals into ONE Body.
+       Both hulls fit on their own and can still sum past a double, and the merged
+       compound then hands Bullet an infinite mass: the NaN inertia and NaN centre of
+       mass that #547 refuses a save over, reached by playing. Ask this BEFORE
+       absorbShip: the alternative is the assert in rebuildCompound, which stops a
+       debug build mid-flight and leaves a release build with an unrotatable hull.
+       `B` is another live ship (the caller's gate has already ruled out null, self
+       and a dead target). */
+    std::string refuseDockWith(Vehicle *B);
+
     /* Fold B into this ship at the mated port. B's shell is deleted by the
        caller, B's journal is dropped (#49). B's crew ride along because a seat
        belongs to its capsule Part, which moves with the part tree. */

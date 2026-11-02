@@ -1942,6 +1942,21 @@ void Game::updateDocking() {
     if(bestV > kDockMaxV) { return; }
 
     const std::string bName = b->displayName();
+    /* #583: the dock's own door, before any part surgery. Each hull passed its own
+       mass door at load; a dock is where two of those totals become ONE Body, and an
+       infinite compound mass is the #547 symptom -- a NaN inertia and a NaN centre,
+       a hull that cannot be turned. Refusing here rather than asserting later is
+       what keeps the release build honest. Drop the whole intent, not just the arm:
+       two hulls this heavy never fit, so re-arming would only toast once a tick. */
+    if(std::string why = a->refuseDockWith(b); !why.empty()) {
+        a->dockTargetShip = nullptr;
+        a->dockTargetPort = nullptr;
+        a->dockArmPort = nullptr;
+        toast("%s", why.c_str());
+        printf("[dock] t=%.3f a=\"%s\" b=\"%s\" REFUSED: %s\n",
+               time, a->displayName().c_str(), bName.c_str(), why.c_str());
+        return;
+    }
     a->absorbShip(b, bestA);
     a->dockTargetShip = nullptr;   // the intent is consumed by the dock
     a->dockTargetPort = nullptr;   // (both halves: re-arm and re-target on
