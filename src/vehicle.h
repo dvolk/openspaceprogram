@@ -21,6 +21,7 @@
 #include <glm/gtx/norm.hpp>
 
 #include "btcommon.h"
+#include "actuators.h"  // ActuatorRow (the wheel rows of AttitudeAuthority)
 #include "body.h"
 #include "physics.h"
 #include "drag.h"     // SilhouetteMemo (the rest of the drag law: vehicle.cpp)
@@ -550,15 +551,15 @@ public:
        re-derived the budget and none of them asked about the axis. Build one by
        asking attitudeAuthority(); the fields are a snapshot of the hull, not
        something to author.
-         wheelTorque: N m, the SUM over wheels, and ISOTROPIC BY MODEL rather than
-           by physics: a wheel is a rating with no axis (Part::wheelTorque() reads
-           def->torque) and attitudeTorqueAbout() credits it in full about EVERY axis
-           it is asked for, so N wheels buy N x authority about all three at once,
-           with no momentum store and nothing ever saturating. That is a deliberate
-           stand-in -- a real cluster gives about T per axis, not 3T -- and #576 asks
-           whether to keep it before the #425 allocator starts spending it. 0 with no
-           wheel fitted or no EC power (the wheels are electric, #418); the Vessel
-           window prints this same gated number (#572: one answer, not the one the
+         wheels:      one ActuatorRow per wheel that has EC power, axis = the drum's
+           own +Z and limit = its rated N m. The row shape is what #576 settled: a
+           wheel levers torque ALONG ITS AXIS, so a stack-mounted drum (every
+           shipped capsule and reaction wheel) rolls the hull and contributes
+           nothing to pitch or yaw, and N wheels on one line buy N x along that line
+           only. There is still no momentum store and nothing saturates (#579).
+           Empty with no wheel fitted or no EC power (the wheels are electric,
+           #418); the Vessel window prints what these rows buy per axis, which is
+           the same gated answer the laws spend (#572: one answer, not the one the
            largest wheel happens to give).
          tvcTorque:   N m, but it is a DISK in the plane perpendicular to the
            mixer's stack axis, not a ball: see attitudeTorqueAbout.
@@ -574,20 +575,43 @@ public:
        substep: what actually moves between substeps is the power gate and the COM
        these levers are measured from. */
     struct AttitudeAuthority {
-        double wheelTorque = 0.0;
+        /* #576: a wheel is a rating AND the line it levers. One row per powered
+           wheel, axis = that drum's own +Z (partAxis(part, 2)), limit = its rated
+           N m -- so a drum mounted along the stack rolls this hull and cannot
+           pitch or yaw it, which is what a real single-drum package does. Two
+           consequences worth having: stacking cheap wheels on one line no longer
+           buys authority about all three axes, and a hull that wants attitude
+           authority about all three has to carry drums that cover all three,
+           which is a build question the player can see answered. Momentum
+           saturation is NOT part of this model (#579).
+           The rows are empty when no wheel is fitted or there is no EC power (the
+           wheels are electric, #418), and the Vessel window prints this same
+           gated answer per axis (#572: one answer, not the one the largest wheel
+           happens to give). */
+        std::vector<ActuatorRow> wheels;
+        /* The most any ONE line of this set could carry -- the sum of the ratings,
+           an upper bound on a single axis and therefore the right scalar for
+           gimbal.h tvcSplit to cap its wheel share with, since actuatorSolve is
+           what caps it for real. */
+        double wheelCapacity() const {
+            double t = 0.0;
+            for(const ActuatorRow &w : wheels) { t += w.limit; }
+            return t;
+        }
         double tvcTorque = 0.0;
         double heffMag = 0.0;
         glm::dvec3 stackAxis = glm::dvec3(0.0);
     };
     AttitudeAuthority attitudeAuthority();
     /* N m of that authority the actuators can bring to bear ABOUT `axis` (any
-       length; it is the direction that counts). Wheels contribute their full
-       rating to any axis; TVC contributes tvcTorque * sin(angle between the axis
-       and the stack axis), because a lateral nozzle deflection levers only
-       torque perpendicular to the stack. So the pair is NOT a single number:
-       about the stack axis (roll) the mixer delivers wheels only -- today. #419
-       would roll a cluster by circulating the gimbals, and when it does this model
-       gains that row rather than arguing with it.
+       length; it is the direction that counts). Each wheel contributes its rating
+       times cos of the angle between its own drum axis and `axis` (actuators.h,
+       #576); TVC contributes tvcTorque * sin(angle between the axis and the stack
+       axis), because a lateral nozzle deflection levers only torque perpendicular
+       to the stack. So the pair is NOT a single number: about the stack axis
+       (roll) the mixer delivers wheels only -- today. #419 would roll a cluster by
+       circulating the gimbals, and when it does this model gains that row rather
+       than arguing with it.
        gimbal.h tvcSplit already routes torque this way -- it drops the stack-axis
        component when there are no wheels -- so this is the same physics stated
        once, on the side that decides how fast the law may aim to go. */
@@ -595,8 +619,11 @@ public:
                                const glm::dvec3 &axis) const;
     /* Send one commanded attitude torque to the actuators: roll about the
        stack axis is wheels-only, transverse goes to TVC first up to tvcTorque,
-       the remainder to the wheels (gimbal.h tvcSplit). Stashes the TVC half
-       in tvcSlewLat_ for applyThrustForce this same substep. */
+       the remainder to the wheels (gimbal.h tvcSplit). The wheel half then goes
+       through actuators.h::actuatorSolve, so what reaches the hull is what the
+       drums' own axes can carry: a demand about an axis no drum covers is dropped
+       there rather than billed to a wheel that cannot answer it (#576).
+       Stashes the TVC half in tvcSlewLat_ for applyThrustForce this same substep. */
     void actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &auth);
     glm::dvec3 lastThrustForce{};  // debug: total thrust force applied last substep
     /* Restoring the latched Autopilot mode when a save loads. Input never calls this:
@@ -1139,28 +1166,19 @@ protected:
     glm::dvec3 slewTargetDir();
 
     /* Slew the nose (local +Z) toward `dir`: target rate is the braking curve
-       sqrt(2*alpha*E) capped at E/(2h), rate change bounded by alpha*h. */
-    void slewToward(glm::dvec3 dir, double h);
+       sqrt(2*alpha*E) capped at E/(2h), rate change bounded by alpha*h. The
+       capability comes from the caller's AttitudeAuthority -- one answer per
+       substep is shared by the stick, both laws and the trace (#593). */
+    void slewToward(glm::dvec3 dir, double h, const AttitudeAuthority &auth);
 
-    /* Kill the spin in one substep: tau = I * (-w) / h, scaled to
-       |tau| <= wheelTorqueSum(). Needs the FULL inertia tensor, not the world-axis
+    /* Kill the spin in one substep: tau = I * (-w) / h, bounded by the caller's
+       AttitudeAuthority. Needs the FULL inertia tensor, not the world-axis
        diagonal. */
-    void killRotStep(double h);
+    void killRotStep(double h, const AttitudeAuthority &auth);
 
 public:
 
     // --- physical rotation model -------------
-    /* The wheels' ratings, TOTALLED -- the number the laws bill (alpha =
-       wheelTorqueSum() / I, rad/s^2) and the row AttitudeAuthority carries; the
-       Vessel window prints that row AFTER the power gate rather than this raw
-       rating, so there is one answer to "how hard can this ship turn" and it is
-       the one the sim acts on (#572). Totalled because the hull is one rigid body
-       and, in this model, each wheel's rating is creditable about whichever axis is
-       asked for -- AttitudeAuthority::wheelTorque says what that buys and what it
-       hides, and #576 asks whether it should stay. A two-wheel ship has twice it; a
-       ship with no wheel has 0 (the power gate lives in attitudeAuthority()). */
-    double wheelTorqueSum();
-
     glm::dvec3 GetPositionRelTo(const Part *part, Frame *relTo);
 
     /* Re-express the ship's state in newFrame and re-home it (setSoi). */

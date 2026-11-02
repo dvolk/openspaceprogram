@@ -157,7 +157,7 @@ static void test_fixture_lever_is_what_we_think() {
     CHECK_NEAR(a.heffMag, 800.0 * 1.25, 1e-9, "heffMag = T*|h| = 1000 N m/rad");
     CHECK_NEAR(a.tvcTorque, 1000.0 * std::sin(0.1), 1e-9,
                "tvcTorque = heffMag*sin(gimbal_max)");
-    CHECK_TRUE(a.wheelTorque == 0.0, "a root with no `torque` is not a wheel");
+    CHECK_TRUE(a.wheels.empty(), "a root with no `torque` is not a wheel");
     destroyShip(st.s.v);
 }
 
@@ -199,7 +199,7 @@ static void test_tvc_is_a_disk_not_a_ball() {
        only way to get one from the hull is a corrupt transform, and the trap is in
        the arithmetic, not the fixture. */
     Vehicle::AttitudeAuthority junk;
-    junk.wheelTorque = 5.0;
+    junk.wheels.push_back({ st.x, 5.0 });   // a drum ON the asked axis, so its 5 N m counts
     junk.tvcTorque = 100.0;
     junk.stackAxis = glm::dvec3(nan, nan, nan);
     CHECK_NEAR(v->attitudeTorqueAbout(junk, st.x), 5.0, 0.0,
@@ -231,29 +231,33 @@ static void test_tvc_is_a_disk_not_a_ball() {
 
 /* --- the pair, and the gate that turns half of it off --------------------- */
 static void test_wheels_and_tvc_together() {
-    printf("== wheels are isotropic, TVC is not, and the sum is per-axis ==\n");
+    printf("== a stacked drum and a TVC disk, summed per axis ==\n");
     Stack st = mkStack(200.0, 800.0, 0.1);
     Vehicle *v = st.s.v;
     const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
     const double tvc = 1000.0 * std::sin(0.1);
-    CHECK_NEAR(a.wheelTorque, 200.0, 1e-12, "the wheel's rated torque");
+    CHECK_NEAR(a.wheelCapacity(), 200.0, 1e-12, "the wheel's rated torque");
     CHECK_NEAR(a.tvcTorque, tvc, 1e-9, "and the engine's, side by side in one answer");
 
     CHECK_NEAR(v->attitudeTorqueAbout(a, st.z), 200.0, 1e-9,
                "about the stack axis the ship has its wheels and NOTHING else");
-    CHECK_NEAR(v->attitudeTorqueAbout(a, st.x), 200.0 + tvc, 1e-9,
-               "transverse: both actuators can pull the same way");
+    /* #576: the drum in this fixture is the ROOT, mounted along the stack, so it
+       levers roll and nothing else. The transverse axes belong to TVC alone -- the
+       number used to be 200 + tvc, crediting a roll-only drum with pitch. */
+    CHECK_NEAR(v->attitudeTorqueAbout(a, st.x), tvc, 1e-9,
+               "a stacked drum adds nothing to a transverse axis (#576)");
 
     /* The wheels are electric: no EC, no wheel row. Everything about the stack
        axis then goes to zero -- which is the #418 reading a player sees as a
        dead ship that will not turn, and is the truth rather than a fudge. */
     v->powered_ = false;
     const Vehicle::AttitudeAuthority dead = v->attitudeAuthority();
-    CHECK_TRUE(dead.wheelTorque == 0.0, "unpowered wheels contribute nothing");
-    /* The rating itself does not vanish -- only the row the laws and the Vessel
-       window use. That is the difference the window has to get right (#572). */
-    CHECK_NEAR(v->wheelTorqueSum(), 200.0, 1e-12,
-               "the wheels are still fitted; it is the authority row that reads dead");
+    CHECK_TRUE(dead.wheels.empty(), "unpowered wheels contribute nothing");
+    /* The parts still carry their rating -- only the rows the laws and the Vessel
+       window read go away. That is the difference the window has to get right (#572),
+       and why a flat battery reads as 0 N m in the window and in flight alike (#418). */
+    CHECK_NEAR(actuatorTorqueAbout(dead.wheels, st.z), 0.0, 0.0,
+               "and no axis gets a wheel's rating back");
     CHECK_NEAR(v->attitudeTorqueAbout(dead, st.z), 0.0, 0.0,
                "no authority at all about the stack axis");
     CHECK_NEAR(v->attitudeTorqueAbout(dead, st.x), tvc, 1e-9,
@@ -267,7 +271,7 @@ static void test_a_ship_with_nothing_has_nothing() {
     Stack st = mkStack(0.0, 0.0, 0.0);
     Vehicle *v = st.s.v;
     const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
-    CHECK_TRUE(a.wheelTorque == 0.0 && a.tvcTorque == 0.0 && a.heffMag == 0.0,
+    CHECK_TRUE(a.wheels.empty() && a.tvcTorque == 0.0 && a.heffMag == 0.0,
                "a coasting ship has no attitude authority");
     /* The laws' early-out (`budget <= 0` means "cannot turn, do not pretend").
        Pinned per axis, not as a sum: a pair of sign errors that cancel would pass a
@@ -278,11 +282,12 @@ static void test_a_ship_with_nothing_has_nothing() {
 }
 
 /* --- which wheel number, and whose frame ---------------------------------- */
-/* The wheel row is the SUM over wheels (wheelTorqueSum). A one-wheel ship cannot tell
-   that from "the biggest wheel", so a fixture with one wheel would pass while the
-   laws budgeted a third of the authority they need -- hence the second wheel here.
-   The Vessel window used to print the largest instead (#572); it prints the sum
-   now, so the swap this test guards is the row itself using one wheel's rating. */
+/* Every wheel on the hull is a ROW, not a running total: a one-wheel ship cannot
+   tell "the model kept only the biggest" from "the model summed them", so a fixture
+   with one wheel would pass while the laws budgeted a third of the authority they
+   need -- hence the second wheel here. The Vessel window used to print the largest
+   instead of the sum (#572); it prints what the rows buy per axis now, so the swap
+   this test guards is the model keeping one wheel's row and dropping the other. */
 static void test_two_wheels_add_up() {
     printf("== the wheel row sums the wheels ==\n");
     Stack st = mkStack(200.0, 0.0, 0.0);
@@ -290,16 +295,61 @@ static void test_two_wheels_add_up() {
     Part *w2 = mkPart(st.s, "wheel2", 100.0, 1.0, 50.0, 0.0);
     v->attachDown(w2);
     const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
-    CHECK_NEAR(a.wheelTorque, 250.0, 1e-12, "200 + 50 N m of wheel, both of them");
-    /* The rating asked directly, not only through the row. #572 was two answers to
-       one question -- the window quoted the LARGEST wheel while the laws spent the
-       SUM -- and a fixture with one wheel cannot tell them apart, which is why this
-       ship has two. */
-    CHECK_NEAR(v->wheelTorqueSum(), 250.0, 1e-12,
-               "the sum is the only rating there is to quote");
+    CHECK_TRUE(a.wheels.size() == 2, "both wheels are rows, not one summed number");
+    CHECK_NEAR(a.wheelCapacity(), 250.0, 1e-12, "200 + 50 N m of wheel, both of them");
     CHECK_NEAR(v->attitudeTorqueAbout(a, st.z), 250.0, 1e-9,
-               "and the wheels are isotropic: all of it about the stack axis");
+               "two drums on the stack line buy the sum about it");
+    CHECK_NEAR(v->attitudeTorqueAbout(a, st.x), 0.0, 0.0,
+               "and nothing about an axis neither drum is on (#576)");
     destroyShip(st.s.v);
+}
+
+/* A CLUSTER COVERS THE AXES ITS DRUMS POINT AT (#576's payoff, and the shape #426's
+   fin ring will have: several rows, several lines, one allocator deciding what a
+   demand can get). No shipped hull looks like this yet -- every capsule and reaction
+   wheel mounts stacked -- so a cluster has to be built by hand, with the two off-stack
+   drums rotated by hand the same way the sideways_wheel fixture does. */
+static void test_a_cluster_covers_an_axis_it_points_at() {
+    printf("== a drum only covers an axis it points at ==\n");
+    Ship s;
+    s.v = new Vehicle;
+    s.v->name = "cluster";
+    /* Three drums on three lines: 100 N m on the stack (the root's own), 50 N m
+       pointed along the ship's -Y, 20 N m pointed along the ship's +X. */
+    Part *root = mkPart(s, "root", 100.0, 1.5, 100.0, 0.0);
+    s.v->setRoot(root);
+    Part *drumY = mkPart(s, "drum_y", 100.0, 1.0, 50.0, 0.0);
+    s.v->attachDown(drumY);
+    Part *drumX = mkPart(s, "drum_x", 100.0, 1.0, 20.0, 0.0);
+    s.v->attachDown(drumX);
+    /* attachDown() solves localRot off the stack node, so the tilt goes on after it,
+       exactly as the sideways-wheel fixture below does. */
+    drumY->localRot = glm::dmat3(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0);  // +90 about X: +Z -> -Y
+    drumX->localRot = glm::dmat3(0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0);  // +90 about Y: +Z -> +X
+    s.v->init();
+    s.v->placeShip(glm::dvec3(0.0, 200.0, 0.0), glm::dmat3(1.0));
+    const Vehicle::AttitudeAuthority a = s.v->attitudeAuthority();
+    const glm::dvec3 upX = s.v->partAxis(root, 0);
+    const glm::dvec3 upY = s.v->partAxis(root, 1);
+    const glm::dvec3 upZ = s.v->partAxis(root, 2);
+    CHECK_TRUE(a.wheels.size() == 3, "three rows on three lines");
+    CHECK_NEAR(a.wheelCapacity(), 170.0, 1e-12, "the row sum is 100 + 50 + 20");
+    CHECK_NEAR(s.v->attitudeTorqueAbout(a, upZ), 100.0, 1e-9, "the stack axis only has the root's drum");
+    CHECK_NEAR(s.v->attitudeTorqueAbout(a, -upY), 50.0, 1e-9, "and the -Y drum is worth its rating about -Y");
+    CHECK_NEAR(s.v->attitudeTorqueAbout(a, upX), 20.0, 1e-9, "and the +X drum is the only thing covering the pitch axis");
+    CHECK_NEAR(s.v->attitudeTorqueAbout(a, -upX), 20.0, 1e-9, "a line is two-sided, so -pitch gets the same drum");
+    /* The number a hull-wide demand is measured against: along the body diagonal each
+       drum brings its cos, so 170/sqrt(3). This is what the old sum got WRONG by
+       claiming 170 about every axis. */
+    CHECK_NEAR(s.v->attitudeTorqueAbout(a, glm::dvec3(1.0, 1.0, 1.0)), 170.0 / std::sqrt(3.0), 1e-9,
+               "about a diagonal, every drum brings its cos");
+    /* And the delivery side, so a law's plan and the actuators' answer agree: a demand
+       along the pitch axis can only get the 20 N m drum, NOT the 170 the hull owns. */
+    std::vector<double> sp;
+    const glm::dvec3 got = actuatorSolve(a.wheels, 1000.0 * upX, sp);
+    CHECK_NEAR(glm::length(got), 20.0, 1e-9, "a demand the drum cannot follow is answered with 20 N m");
+    CHECK_NEAR(glm::dot(got, upZ), 0.0, 1e-9, "and it cannot leak into the roll axis it was not asked for");
+    destroyShip(s.v);
 }
 
 /* ONE FRAME FOR THE WHOLE ATTITUDE PATH (#571). The stack axis TVC levers belongs
@@ -359,17 +409,26 @@ static void test_one_frame_for_the_attitude_path() {
     CHECK_TRUE(v->attitudeRef() == root, "the ship's frame is the ROOT part");
     CHECK_NEAR(glm::dot(v->partAxis(v->attitudeRef(), 2), rootZ), 1.0, 1e-12,
                "and the facing it hands the laws is the stack axis, not the wheel's");
-    CHECK_TRUE(a.wheelTorque == 300.0 && a.tvcTorque > 0.0,
-               "both actuators are live on this hull");
-    /* About the stack axis: wheels only. If the model read the wheel's axis, this
-       would be 300 + tvc (the wheel's axis is perpendicular to the stack, so TVC
-       would count in full) -- the bug, caught. */
-    CHECK_NEAR(v->attitudeTorqueAbout(a, rootZ), 300.0, 1e-9,
-               "no TVC about the stack axis even when a wheel leans elsewhere");
-    /* And about the wheel's own axis, which is transverse to the stack, TVC does
-       count in full. */
+    CHECK_NEAR(a.wheelCapacity(), 300.0, 1e-12, "the drum is a row on this hull");
+    CHECK_TRUE(a.tvcTorque > 0.0, "and the gimballed engine is live");
+    /* About the stack axis: NOTHING. Two reasons, and this fixture separates them:
+       TVC cannot lever the stack axis at all (#425), and the drum on this hull is
+       rolled 90 deg off it, so it cannot lever it either (#576). Before #576 the
+       number here was the wheel's full 300, credited to a drum that physically
+       cannot push that way. */
+    CHECK_NEAR(v->attitudeTorqueAbout(a, rootZ), 0.0, 0.0,
+               "no authority about the stack axis: not TVC, and not a rolled drum");
+    /* #576's other half, on the same fixture: the drum's OWN axis is where its
+       rating lives -- and that axis is transverse to the stack, so TVC counts there
+       in full too. */
     CHECK_NEAR(v->attitudeTorqueAbout(a, wheelZ), 300.0 + a.tvcTorque, 1e-9,
-               "TVC counts where the mixer can actually lever");
+               "the rolled drum is worth its rating about its own axis");
+    /* Half-way between the drum's line and the stack: the drum is creditable to that
+       cosine and the disk to the sine of the same angle, which is the arithmetic
+       actuators.h shares with the actuator side. */
+    CHECK_NEAR(v->attitudeTorqueAbout(a, glm::normalize(wheelZ + v->partAxis(root, 2))),
+               (300.0 + a.tvcTorque) * std::sqrt(0.5), 1e-9,
+               "each row is creditable by its own cosine about a mixed axis");
     /* #573: the DISPLAYED attitude asks the same question as the laws. Seat the crew in
        the rolled wheel -- which is exactly where the loader's fallback used to put them,
        since controllerIndex() took the first part with torque > 0 -- and the axes a
@@ -596,6 +655,7 @@ int main() {
     test_wheels_and_tvc_together();
     test_a_ship_with_nothing_has_nothing();
     test_two_wheels_add_up();
+    test_a_cluster_covers_an_axis_it_points_at();
     test_one_frame_for_the_attitude_path();
     test_the_command_funnel();
     test_the_armed_rcs_demand_is_a_direction();

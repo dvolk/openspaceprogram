@@ -2181,13 +2181,21 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("Thrust: %.2fN", ship->getThrust());
         ImGui::Text("Current TWR: %.2f/%.2f", ship->getTWR(), ship->getFullThrustTWR());
         ImGui::Text("Max TWR: %.2f", ship->getMaxTWR());
-        /* The wheels' authority as the flight model bills it RIGHT NOW: the SUM over
-           wheels, gated by power exactly as applyRotationForce gates it (#418: a dead
-           ship reads dead). PER AXIS, stated so: a wheel carries a rating and no axis,
-           so each wheel levers each axis at full strength and two wheels buy 2x about
-           all three at once. The part window quotes each part's own rating (#572). */
-        ImGui::Text("Wheel torque: %.0fN m (each axis)",
-                    ship->attitudeAuthority().wheelTorque);
+        /* The wheels' authority as the flight model bills it RIGHT NOW: the wheel
+           rows of AttitudeAuthority, gated by power exactly as the laws gate them
+           (#418: a dead ship reads dead), and quoted PER SHIP AXIS because a drum
+           levers torque along its own axis and nothing else (#576). A pod on a tank
+           with one stacked wheel reads 100 / 0 / 0 -- it can roll and cannot pitch
+           or yaw, and covering the other two axes is a build decision the player can
+           now see answered here. The part window quotes each part's own rating (#572). */
+        {
+            const Vehicle::AttitudeAuthority auth = ship->attitudeAuthority();
+            const glm::dmat3 ax = ship->attitudeBasis();
+            ImGui::Text("Wheel torque (roll/pitch/yaw): %.0f / %.0f / %.0f N m",
+                        actuatorTorqueAbout(auth.wheels, ax[2]),
+                        actuatorTorqueAbout(auth.wheels, ax[0]),
+                        actuatorTorqueAbout(auth.wheels, ax[1]));
+        }
         ImGui::Text("Angular rate: %.2fdeg/s",
                     glm::degrees(glm::length(ship->hullAngVel())));
     });

@@ -3302,35 +3302,46 @@ void Vehicle::applyRotationForce(double h) {
     /* The autopilot's TVC aim is per-substep: cleared here, re-armed by the
        law below, consumed by applyThrustForce this same substep. */
     tvcSlewLat_ = glm::dvec3(0.0);
-    /* Power gate: the wheels are electric -- no power, no wheel torque.
-       powered_ comes from powerTick this substep. */
     Part *ref = attitudeRef();
-    if(ref != nullptr && powered_
+    /* ONE capability answer per substep (#593): the stick path, the slew law, the
+       kill-rot law and the [slew] trace each used to ask attitudeAuthority() for a
+       copy of its own -- a parts scan each time for the TVC levers and the drum
+       axes, when everything in it except the power gate and the COM is unchanged a
+       substep later. Everything below reads this one. */
+    const AttitudeAuthority auth = attitudeAuthority();
+    /* The power gate lives in those rows now: no EC, no wheel rows (#418). */
+    if(ref != nullptr
     && (stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f)) {
         /* Manual stick, body-relative: pitch (W/S) about the ship's right axis,
            yaw (A/D) about its up axis, roll (Q/E) about the nose -- measured on
            attitudeRef(), the root part, which is the frame applyThrustForce
            gimbal-sticks in for the same two keys (#571). Wheels are only ever
-           actuators here: a wheel mounted on a tank's side is ROLLED 90 deg about
-           the stack, and reading the stick in THAT part's frame swapped pitch and
-           yaw -- W yaws, A pitches. */
+           actuators here -- the stick's TVC share is still mixed in
+           applyThrustForce, which is the wire #425 step D removes -- and a wheel
+           mounted on a tank's side is ROLLED 90 deg about the stack, so reading the
+           stick in THAT part's frame swapped pitch and yaw: W yaws, A pitches. */
         const glm::dmat3 axes = partRot(ref);
         const glm::dvec3 worldAxis =
             (double)stick[0] * axes[2]           // roll: nose (Q/E)
           - (double)stick[1] * axes[0]           // pitch: right (W/S)
           - (double)stick[2] * axes[1];          // yaw: up    (A/D)
-        /* One parts scan, and only while a key is held. It is both the gate and the
-           rating: wheelTorqueSum() is the SUM over wheels and is 0 exactly when no
-           wheel is fitted (Part::isWheel() is `torque > 0`), so there is no separate
-           "has a wheel" test to make -- same rule attitudeAuthority() states.
-           NB worldAxis is NOT normalized, so holding several keys asks for up to
-           sqrt(3) x that rating at once. That over-subscription stays on purpose
-           (#577 closed into #576): a genuine 3-axis cluster CAN bill its rating about
-           each axis, so the thing that is wrong is one drum being credited about all
-           three -- which #576 fixes with an axis credit, not by clamping the stick.
-           Clamping here would make a real cluster weaker than its parts say. */
-        const double wheelT = wheelTorqueSum();
-        if(wheelT > 0.0) { ApplyTorque(hull, wheelT * worldAxis); }
+        /* The stick's demand is capability-scaled: about the direction the keys ask
+           for, the drums can bring actuatorTorqueAbout of it. worldAxis is still NOT
+           normalized, so a multi-key hold asks for up to sqrt(3) x that capability
+           about the combined direction -- #577 left that over-subscription alone on
+           purpose, because clamping the stick vector would make a genuine 3-axis
+           cluster weaker than its own parts say. What changed with #576 is the far
+           end: actuatorSolve bounds what the hull actually receives by the lines the
+           drums are on, so a stack-only hull stops receiving roll-only commands in
+           the pitch direction. That is the clamp #577 declined to write -- a physical
+           bound now that the credit is per-axis, not a handicap on a cluster. */
+        const double wheelT = actuatorTorqueAbout(auth.wheels, worldAxis);
+        if(wheelT > 0.0) {
+            std::vector<double> wheelSetpoints;
+            const glm::dvec3 delivered = actuatorSolve(auth.wheels, wheelT * worldAxis,
+                                                       wheelSetpoints);
+            if(glm::length2(delivered) > 0.0) { ApplyTorque(hull, delivered); }
+        }
     }
     /* Autopilot: one authority-bounded step of the slew/kill-rot law. It
        runs on ANY attitude authority -- wheels and/or TVC -- so a wheel-less
@@ -3339,10 +3350,10 @@ void Vehicle::applyRotationForce(double h) {
        silence, not fake slewing (the #401 lesson: never promise a maneuver
        the hardware cannot deliver). */
     if(slew == SlewKillRot) {
-        killRotStep(h);
+        killRotStep(h, auth);
     }
     else if(slew != SlewNone) {
-        slewToward(slewTargetDir(), h);
+        slewToward(slewTargetDir(), h, auth);
     }
 }
 
@@ -4502,28 +4513,18 @@ void Vehicle::ApplyThrust(double step) {
     }
 }
 
-double Vehicle::wheelTorqueSum() {
-    double t = 0;
-    for(Part *p : parts) {
-        if(p->isWheel()) { t += p->wheelTorque(); }
-    }
-    return t;
-}
-
 /* WHAT CAN TURN THIS SHIP RIGHT NOW, in one answer: see AttitudeAuthority in
-   vehicle.h for the three rows and the axis, and why they must be read per substep.
+   vehicle.h for the two rows and the axis, and why they must be read per substep.
    Two rows because two is how many actuators the ATTITUDE LAWS can spend today. The
    aero surfaces turn the ship too (applyControlSurfaceForce answers the stick on its
    own; until #568 the shipped skiff had no wheel at all, so in air they were its ONLY
    roll authority, and they still out-bill the pod's 100 N m wheel by two orders of
    magnitude in flight), and RCS torques it
    as a side effect of translating -- neither is law-driven yet, which is what #425's
-   allocator is for. wheelTorqueSum() stays as the raw wheel rating because
-   the manual stick path bills exactly that (applyRotationForce, under its own
-   powered_ gate); the Vessel window prints THIS row instead, so a dead battery
-   reads as 0 in the window and in flight rather than quoting a rating the ship
-   cannot spend (#572, #418). The part window prints def.torque for the one part
-   under the cursor. */
+   allocator is for. The Vessel window prints THIS answer rather than a parts-list
+   rating, so a dead battery reads as 0 in the window and in flight rather than
+   quoting a rating the ship cannot spend (#572, #418). The part window prints
+   def.torque for the one part under the cursor. */
 Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
     AttitudeAuthority a;
     const Part *ref = attitudeRef();
@@ -4533,10 +4534,22 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
        below, actuateAttitude and those callers all read the same part, so none of
        them can be stated in a frame the others do not use. */
     a.stackAxis = partAxis(ref, 2);
-    /* Power gate: the wheels are electric -- no EC, no wheel torque (#418 says a
+    /* Power gate: the wheels are electric -- no EC, no wheel rows (#418 says a
        dead-ship trace used to read as uncontrolled when the engines were fine).
-       wheelTorqueSum() is the SUM and is 0 when no wheel is fitted, so no separate test. */
-    if(powered_) { a.wheelTorque = wheelTorqueSum(); }
+       A wheel is `torque > 0` (Part::isWheel()), so an empty `wheels` is exactly
+       "nothing wheel-shaped is spending authority", with no separate has-a-wheel test.
+       THE DRUM'S OWN +Z, not the stack: #576. Every shipped capsule and reaction
+       wheel is mounted stacked, so what this buys today is a ROLL actuator and
+       nothing else -- a coasting ship with one pod cannot pitch or yaw on its
+       wheels, which is the honest version of the number and why the Vessel window
+       now quotes authority per axis. A wheel rolled or tilted off the stack (the
+       sideways_wheel fixture) is the same row pointed somewhere else. */
+    if(powered_) {
+        for(const Part *p : parts) {
+            if(!p->isWheel()) { continue; }
+            a.wheels.push_back({ partAxis(p, 2), p->wheelTorque() });
+        }
+    }
     /* TVC, read off the ARMED gimballed engines so it scales with throttle (and
        falls to zero when the engines quit mid-slew). Small angle (gimbal_max ~ 5
        deg): a deflection of |lat| rad off the stack axis pushes a lateral force
@@ -4577,7 +4590,10 @@ double Vehicle::attitudeTorqueAbout(const AttitudeAuthority &a,
        axis at once, whereas this buys nothing. (A NaN `axis` is caught above.) */
     const double sinToStack = glm::length(glm::cross(a.stackAxis, axis)) / std::sqrt(ax2);
     const double b = (sinToStack > 0.0) ? std::fmin(1.0, sinToStack) : 0.0;
-    return a.wheelTorque + a.tvcTorque * b;
+    /* The wheels' half asks actuators.h the same question actuateAttitude will
+       answer with the same rows, so the budget a law plans against and the torque
+       the drums deliver cannot disagree (#576). */
+    return actuatorTorqueAbout(a.wheels, axis) + a.tvcTorque * b;
 }
 
 glm::dmat3 Vehicle::getInertia() {
@@ -4623,12 +4639,22 @@ glm::dvec3 Vehicle::slewTargetDir() {
    part of the command can only ever reach the wheels. */
 void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
     glm::dvec3 tauW, lat;
-    tvcSplit(torque, a.stackAxis, a.tvcTorque, a.heffMag, a.wheelTorque, tauW, lat);
+    /* wheelCapacity() is the SUM of the ratings -- an upper bound on any ONE line,
+       so tvcSplit's scalar clamp stays conservative and actuatorSolve below is what
+       caps the demand for real, against the drums' own axes. */
+    tvcSplit(torque, a.stackAxis, a.tvcTorque, a.heffMag, a.wheelCapacity(), tauW, lat);
     tvcSlewLat_ = lat;
-    if(glm::length2(tauW) > 0.0) { ApplyTorque(hull, tauW); }
+    /* The wheel half travels along the drums. What the split asks for about an axis
+       no drum covers is dropped here rather than applied anyway, which is the other
+       half of #576: the budget stopped crediting that axis, and now the actuator
+       cannot deliver it either. Setpoints are not used yet -- #579's momentum store
+       is what will want them per wheel. */
+    std::vector<double> wheelSetpoints;
+    const glm::dvec3 delivered = actuatorSolve(a.wheels, tauW, wheelSetpoints);
+    if(glm::length2(delivered) > 0.0) { ApplyTorque(hull, delivered); }
 }
 
-void Vehicle::slewToward(glm::dvec3 dir, double h) {
+void Vehicle::slewToward(glm::dvec3 dir, double h, const AttitudeAuthority &auth) {
     if(glm::length2(dir) < 1e-12) { return; } /* no direction to align to */
     dir = glm::normalize(dir);
     /* The ship's frame is attitudeRef() -- not whichever wheel happens to be first
@@ -4658,7 +4684,6 @@ void Vehicle::slewToward(glm::dvec3 dir, double h) {
        roll-axis error gets nothing from TVC -- not a new limit, it is the one
        tvcSplit has always applied when it drops that component -- and aiming at a
        roll error is the allocator's job (#420), not this law's. */
-    const AttitudeAuthority auth = attitudeAuthority();
     const double authMax = attitudeTorqueAbout(auth, axis);
     if(authMax <= 0.0) { return; }
     const double alpha = authMax / Ieff; /* rad/s^2, actuator-limited */
@@ -4674,7 +4699,7 @@ void Vehicle::slewToward(glm::dvec3 dir, double h) {
     actuateAttitude(torque, auth);
 }
 
-void Vehicle::killRotStep(double h) {
+void Vehicle::killRotStep(double h, const AttitudeAuthority &auth) {
     /* No frame in this law at all: the command is the hull's own rate and its own
        inertia, and actuateAttitude's split decides which axes the actuators can
        deliver it about. */
@@ -4684,8 +4709,7 @@ void Vehicle::killRotStep(double h) {
        asks only "is there any authority at all" and lets the split decide how
        much of the command survives about which axis (a wheel-less ship keeps no
        roll, and the split drops that component instead of pretending). */
-    const AttitudeAuthority auth = attitudeAuthority();
-    if(auth.wheelTorque + auth.tvcTorque <= 0.0) { return; }  /* nothing to fight with */
+    if(auth.wheels.empty() && auth.tvcTorque <= 0.0) { return; }  /* nothing to fight with */
     const glm::dmat3 I = getInertia();
     /* Full-tensor cancel, as in slewToward: tau = I * (-w) / h. Scaling each world axis
        by I[i][i] alone needs a world-aligned principal basis, else the under-cancel
