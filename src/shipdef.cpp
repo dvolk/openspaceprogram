@@ -361,6 +361,21 @@ PartsCatalog load_parts_catalog(const char *path) {
         if(d.torque < 0.0) {
             throw std::runtime_error(ctx + "\"torque\" must be >= 0 (N m)");
         }
+        /* Drum layout inside the wheel housing (#593): 1 = a single drum along
+           the part's +Z, 3 = an orthogonal triad at `torque` each. The count is
+           the only thing the model can place -- 2 says "two of three axes"
+           without saying which, and 4 wants per-drum axes (a real pyramid) --
+           so anything else is an authoring mistake, not a layout. And a layout
+           on a part with no torque is the same kind of mistake: the author
+           thinks this part is a wheel and the flight model will say it isn't. */
+        d.wheel_axes = (int)optNumber(pv, "wheel_axes", 1.0, ctx, "");
+        if(d.wheel_axes != 1 && d.wheel_axes != 3) {
+            throw std::runtime_error(ctx + "\"wheel_axes\" must be 1 or 3 drums");
+        }
+        if(d.wheel_axes != 1 && d.torque <= 0.0) {
+            throw std::runtime_error(ctx + "\"wheel_axes\" needs \"torque\" > 0 (N m):"
+                                     + " a part with no wheel rating has no drums");
+        }
 
         d.rcs_thrust = optNumber(pv, "rcs_thrust", 0.0, ctx, "N");
         if(d.rcs_thrust < 0.0) {

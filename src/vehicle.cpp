@@ -3303,7 +3303,7 @@ void Vehicle::applyRotationForce(double h) {
        law below, consumed by applyThrustForce this same substep. */
     tvcSlewLat_ = glm::dvec3(0.0);
     Part *ref = attitudeRef();
-    /* ONE capability answer per substep (#593): the stick path, the slew law, the
+    /* ONE capability answer per substep (#594): the stick path, the slew law, the
        kill-rot law and the [slew] trace each used to ask attitudeAuthority() for a
        copy of its own -- a parts scan each time for the TVC levers and the drum
        axes, when everything in it except the power gate and the COM is unchanged a
@@ -4538,16 +4538,23 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
        dead-ship trace used to read as uncontrolled when the engines were fine).
        A wheel is `torque > 0` (Part::isWheel()), so an empty `wheels` is exactly
        "nothing wheel-shaped is spending authority", with no separate has-a-wheel test.
-       THE DRUM'S OWN +Z, not the stack: #576. Every shipped capsule and reaction
-       wheel is mounted stacked, so what this buys today is a ROLL actuator and
-       nothing else -- a coasting ship with one pod cannot pitch or yaw on its
-       wheels, which is the honest version of the number and why the Vessel window
-       now quotes authority per axis. A wheel rolled or tilted off the stack (the
-       sideways_wheel fixture) is the same row pointed somewhere else. */
+       THE DRUM'S OWN AXES, not the stack: #576. A single drum levers the line it
+       is mounted along, so a stacked one rolls the hull and does nothing else;
+       a triad housing (PartDef::wheel_axes == 3, #593) is three orthogonal drums
+       and so three rows on the part's own X/Y/Z, which is why it still covers
+       three lines when a mount rolls or tilts the box. Every shipped wheel part
+       is a triad; the single-drum half of this is what a cheap roll-only part
+       would be, and what the sideways_wheel fixture exercises. */
     if(powered_) {
         for(const Part *p : parts) {
             if(!p->isWheel()) { continue; }
-            a.wheels.push_back({ partAxis(p, 2), p->wheelTorque() });
+            const double t = p->wheelTorque();
+            if(p->def->wheel_axes >= 3) {
+                for(int k = 0; k < 3; k++) { a.wheels.push_back({ partAxis(p, k), t }); }
+            }
+            else {
+                a.wheels.push_back({ partAxis(p, 2), t });
+            }
         }
     }
     /* TVC, read off the ARMED gimballed engines so it scales with throttle (and

@@ -10,6 +10,7 @@
       "radius": 1.0,
       "height": 2.0,
       "torque": 200,
+      "wheel_axes": 3,
       "power_draw_constant": 100,
       "capacity": {
         "ec": 2000
@@ -31,6 +32,7 @@
       "radius": 0.5,
       "height": 1.5,
       "torque": 100,
+      "wheel_axes": 3,
       "power_draw_constant": 100,
       "capacity": {
         "ec": 2000
@@ -52,6 +54,7 @@
       "radius": 1.5,
       "height": 3.0,
       "torque": 300,
+      "wheel_axes": 3,
       "power_draw_constant": 300,
       "capacity": {
         "ec": 6000
@@ -73,6 +76,7 @@
       "radius": 2.25,
       "height": 4.5,
       "torque": 450,
+      "wheel_axes": 3,
       "power_draw_constant": 600,
       "capacity": {
         "ec": 12000
@@ -167,6 +171,7 @@
       "radius": 1.0,
       "height": 0.25,
       "torque": 2000,
+      "wheel_axes": 3,
       "power_draw": 1000,
       "drag": 0.6,
       "drag_forward": 1.1,
@@ -183,6 +188,7 @@
       "radius": 1.5,
       "height": 0.375,
       "torque": 3000,
+      "wheel_axes": 3,
       "power_draw": 1500,
       "drag": 0.6,
       "drag_forward": 1.1,
@@ -199,6 +205,7 @@
       "radius": 2.25,
       "height": 0.562,
       "torque": 4500,
+      "wheel_axes": 3,
       "power_draw": 2250,
       "drag": 0.6,
       "drag_forward": 1.1,

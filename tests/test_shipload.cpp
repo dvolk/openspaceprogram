@@ -431,6 +431,51 @@ int main() {
         CHECK(jt != nullptr && jt->gimbal_max == 0.0 && jt->gimbal_rate == 0.0);
     }
 
+    /* Drum layouts in the SHIPPED catalog (#593). Since #576 a wheel is a LINE
+       rather than an isotropic rating, so how many drums a housing holds is the
+       difference between a hull that can point itself and one that can only roll
+       about its stack. Every shipped wheel is a triad, and a catalog that lost the
+       field would ship a roster of roll-only capsules -- so the roster is pinned,
+       not just the parser. */
+    {
+        for(const PartDef &d : cat.parts) {
+            if(d.torque > 0.0) { CHECK(d.wheel_axes == 3); }
+            else { CHECK(d.wheel_axes == 1); }
+        }
+        const char *ok = "/tmp/test_shipload_wheelaxes.json";
+        std::ofstream o(ok);
+        o << "{ \"parts\": [ "
+             "{ \"name\": \"w1\", \"type\": \"reaction_wheel\", \"mesh\": \"a.obj\", "
+             "\"texture\": \"a.png\", \"mass\": 1.0, \"torque\": 100 }, "
+             "{ \"name\": \"w3\", \"type\": \"reaction_wheel\", \"mesh\": \"a.obj\", "
+             "\"texture\": \"a.png\", \"mass\": 1.0, \"torque\": 100, \"wheel_axes\": 3 } ] }";
+        o.close();
+        PartsCatalog wc = load_parts_catalog(ok);
+        CHECK(wc.find("w1") != nullptr && wc.find("w1")->wheel_axes == 1);  // the default
+        CHECK(wc.find("w3") != nullptr && wc.find("w3")->wheel_axes == 3);
+        std::remove(ok);
+        /* 2 drums says "two of three axes" without saying WHICH, and 4 wants
+           per-drum axes (a real pyramid); neither is a layout this model can
+           place, so it is a load error rather than a silent reinterpretation. And
+           drums on a part with no rating mean the author thinks it is a wheel. */
+        const char *two = "/tmp/test_shipload_w2.json";
+        std::ofstream t(two);
+        t << "{ \"parts\": [ { \"name\": \"w2\", \"type\": \"reaction_wheel\", "
+             "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+             "\"torque\": 100, \"wheel_axes\": 2 } ] }";
+        t.close();
+        CHECK(expect_throw_saying([&]{ load_parts_catalog(two); }, "\"wheel_axes\" must be 1 or 3"));
+        std::remove(two);
+        const char *nod = "/tmp/test_shipload_wnodrums.json";
+        std::ofstream n(nod);
+        n << "{ \"parts\": [ { \"name\": \"drumless\", \"type\": \"engine\", "
+             "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+             "\"wheel_axes\": 3 } ] }";
+        n.close();
+        CHECK(expect_throw_saying([&]{ load_parts_catalog(nod); }, "needs \"torque\""));
+        std::remove(nod);
+    }
+
     // the EVA kerbal: a crew-mass part with no ship behaviors (no wheel or
     // thruster) but a small hydrazine tank for its RCS suit -- the mass is
     // the DRY suit (the propellant rides capacity / effectiveMass, like the

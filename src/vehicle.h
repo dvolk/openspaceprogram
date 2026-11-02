@@ -551,12 +551,14 @@ public:
        re-derived the budget and none of them asked about the axis. Build one by
        asking attitudeAuthority(); the fields are a snapshot of the hull, not
        something to author.
-         wheels:      one ActuatorRow per wheel that has EC power, axis = the drum's
-           own +Z and limit = its rated N m. The row shape is what #576 settled: a
-           wheel levers torque ALONG ITS AXIS, so a stack-mounted drum (every
-           shipped capsule and reaction wheel) rolls the hull and contributes
-           nothing to pitch or yaw, and N wheels on one line buy N x along that line
-           only. There is still no momentum store and nothing saturates (#579).
+         wheels:      one ActuatorRow per powered DRUM, axis = that drum's own
+           axis and limit = its rated N m. The row shape is what #576 settled: a
+           drum levers torque ALONG ITS AXIS, so N drums on one line buy N x along
+           that line only and nothing about the axes no drum is on. PartDef::wheel_axes
+           says how many lines a housing covers (#593): a triad -- every shipped
+           wheel part -- buys three lines at its rating, a single drum buys the one
+           it is mounted along. There is still no momentum store and nothing
+           saturates (#579).
            Empty with no wheel fitted or no EC power (the wheels are electric,
            #418); the Vessel window prints what these rows buy per axis, which is
            the same gated answer the laws spend (#572: one answer, not the one the
@@ -575,14 +577,16 @@ public:
        substep: what actually moves between substeps is the power gate and the COM
        these levers are measured from. */
     struct AttitudeAuthority {
-        /* #576: a wheel is a rating AND the line it levers. One row per powered
-           wheel, axis = that drum's own +Z (partAxis(part, 2)), limit = its rated
-           N m -- so a drum mounted along the stack rolls this hull and cannot
-           pitch or yaw it, which is what a real single-drum package does. Two
-           consequences worth having: stacking cheap wheels on one line no longer
-           buys authority about all three axes, and a hull that wants attitude
-           authority about all three has to carry drums that cover all three,
-           which is a build question the player can see answered. Momentum
+        /* #576: a wheel is a rating AND the lines it levers. One row per powered
+           DRUM: a single-drum housing (PartDef::wheel_axes == 1) is one row along
+           the part's own +Z, so mounted on the stack it rolls this hull and cannot
+           pitch or yaw it -- which is what a real single-drum package does. A triad
+           (== 3, #593) is three orthogonal drums and so three rows, one per axis of
+           the part's frame, at the same rating: it covers three lines however the
+           mount rolls it. Two consequences worth having: drums stacked on one line
+           no longer buy authority about all three axes, and a hull that wants
+           attitude authority about all three has to carry drums that cover all
+           three, which is a build question the player can see answered. Momentum
            saturation is NOT part of this model (#579).
            The rows are empty when no wheel is fitted or there is no EC power (the
            wheels are electric, #418), and the Vessel window prints this same

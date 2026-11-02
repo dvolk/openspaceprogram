@@ -627,12 +627,17 @@ def generate(name, ptype, mesh, texture):
         e["height"] = height
         if ptype == "capsule":
             e["torque"] = clean(CAPSULE_TORQUE_PER_M * radius)
+            # A pod's wheel is a housing of three orthogonal drums (#593), not one
+            # stacked disc: a single drum levers the stack axis and nothing else, so
+            # a coasting capsule could roll and could not point itself.
+            e["wheel_axes"] = 3
             # constant life-support draw + small built-in battery, both ~ crew
             crew = EXTRA_FIELDS[name]["crew_capacity"]
             e["power_draw_constant"] = clean(CAPSULE_LIFE_SUPPORT_W_PER_CREW * crew)
             e["capacity"] = {"ec": clean(CAPSULE_BATTERY_WH_PER_CREW * crew)}
         elif ptype == "reaction_wheel":
             e["torque"] = clean(WHEEL_TORQUE_PER_M * radius)
+            e["wheel_axes"] = 3   # the same triad housing, one drum per axis
             e["power_draw"] = clean(WHEEL_DRAW_WATTS_PER_M * radius)
 
     e.update(EXTRA_FIELDS.get(name, {}))

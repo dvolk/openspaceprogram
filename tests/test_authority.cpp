@@ -352,6 +352,44 @@ static void test_a_cluster_covers_an_axis_it_points_at() {
     destroyShip(s.v);
 }
 
+/* A TRIAD HOUSING IS THREE DRUMS ON THREE LINES (#593). #576 made the drum count a
+   content decision rather than a fudge: one stacked drum levers the stack axis only,
+   so a hull of them cannot point itself, while a triad housing -- three orthogonal
+   drums at the same rating, which is what every shipped wheel part declares -- is
+   three rows. This is the pin that says the shipped per-axis number is UNCHANGED
+   from the old isotropic sum, and that the triad's coverage belongs to the housing
+   rather than to a mount: roll the box and its three lines roll with it, where a
+   single drum would drop out of the pitch and yaw columns. */
+static void test_a_triad_housing_covers_three_lines() {
+    printf("== a triad housing is three rows on three lines ==\n");
+    Stack st = mkStack(200.0, 0.0, 0.0);      // a wheel on the root, no TVC anywhere
+    Vehicle *v = st.s.v;
+    /* Part::def is const (the catalog owns the defs in the game); the hand-built
+       defs here live in a deque so their addresses hold. */
+    for(PartDef &d : st.s.defs) { if(d.name == std::string("root")) { d.wheel_axes = 3; } }
+    const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
+    CHECK_TRUE(a.wheels.size() == 3, "three drums, three rows");
+    CHECK_NEAR(a.wheelCapacity(), 600.0, 1e-12, "three drums at the rating each");
+    CHECK_NEAR(v->attitudeTorqueAbout(a, st.z), 200.0, 1e-9, "one drum on the stack line");
+    CHECK_NEAR(v->attitudeTorqueAbout(a, st.x), 200.0, 1e-9, "one on the pitch line");
+    CHECK_NEAR(v->attitudeTorqueAbout(a, st.y), 200.0, 1e-9, "one on the yaw line");
+    /* The same hull with the housing rolled 90 deg about the stack: the box turns,
+       so its drums move between the transverse lines and the coverage does not.
+       A single drum mounted this way reads 0 about the axis it just left. */
+    st.root->localRot = glm::dmat3(0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+    const Vehicle::AttitudeAuthority r = v->attitudeAuthority();
+    CHECK_NEAR(v->attitudeTorqueAbout(r, st.z), 200.0, 1e-9, "still one drum on the stack line");
+    CHECK_NEAR(v->attitudeTorqueAbout(r, st.x), 200.0, 1e-9, "still one on a transverse line");
+    CHECK_NEAR(v->attitudeTorqueAbout(r, st.y), 200.0, 1e-9, "still one on the third");
+    /* And delivery agrees with the budget: a demand far past one rating along one
+       line is answered with that line's drum -- not with the 600 N m the housing
+       owns, and not with two drums leaning on an axis they do not point at. */
+    std::vector<double> sp;
+    const glm::dvec3 got = actuatorSolve(r.wheels, 5000.0 * st.x, sp);
+    CHECK_NEAR(glm::length(got), 200.0, 1e-9, "one line buys its own rating");
+    destroyShip(v);
+}
+
 /* ONE FRAME FOR THE WHOLE ATTITUDE PATH (#571). The stack axis TVC levers belongs
    to the ROOT part, and since #571 every consumer asks attitudeRef() for it: the
    mixer, attitudeAuthority, the manual stick, rcsWorldDir, the two traces, and
@@ -656,6 +694,7 @@ int main() {
     test_a_ship_with_nothing_has_nothing();
     test_two_wheels_add_up();
     test_a_cluster_covers_an_axis_it_points_at();
+    test_a_triad_housing_covers_three_lines();
     test_one_frame_for_the_attitude_path();
     test_the_command_funnel();
     test_the_armed_rcs_demand_is_a_direction();

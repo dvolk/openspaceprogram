@@ -260,6 +260,17 @@ struct PartDef {
     }
 
     double torque;            // N m; > 0 -> contributes as a reaction wheel
+    /* How many drums that rating is spread over, and so how many LINES the
+       housing levers (AttitudeAuthority::wheels, actuators.h -- #576, #593):
+       1 = a single drum along the part's own +Z, which levers the line it is
+       mounted along and nothing else; 3 = an orthogonal triad, one drum per
+       axis on the part's own X/Y/Z at `torque` each, which covers three lines
+       whatever the mount rolls or tilts the box to. Every shipped wheel part is
+       a triad: with single drums only, a coasting pod can roll and cannot point
+       itself. A count other than 1 or 3 is a layout this model cannot place
+       (2 would not say WHICH two axes; a real 4-drum pyramid wants per-drum
+       axes), so the loaders refuse it. */
+    int wheel_axes = 1;
     std::vector<double> propellant_rate; // kg/s per ResourceType at full throttle;
                               // all-zero -> not a thruster
     double exhaust_velocity;  // m/s; with propellant_rate -> thruster. For a JET

@@ -2184,10 +2184,13 @@ void drawUIReadouts(Game &g) {
         /* The wheels' authority as the flight model bills it RIGHT NOW: the wheel
            rows of AttitudeAuthority, gated by power exactly as the laws gate them
            (#418: a dead ship reads dead), and quoted PER SHIP AXIS because a drum
-           levers torque along its own axis and nothing else (#576). A pod on a tank
-           with one stacked wheel reads 100 / 0 / 0 -- it can roll and cannot pitch
-           or yaw, and covering the other two axes is a build decision the player can
-           now see answered here. The part window quotes each part's own rating (#572). */
+           levers torque along its own axis and nothing else (#576). Every shipped
+           wheel part is a triad housing -- three orthogonal drums, one rating -- so
+           a pod or a wheel block reads the same number on all three (#593). A single
+           drum stacked along the stack reads e.g. 100 / 0 / 0: it can roll and cannot
+           pitch or yaw. Either way, covering the axes is a build decision the player
+           can now see answered here. The part window quotes each part's own rating
+           (#572). */
         {
             const Vehicle::AttitudeAuthority auth = ship->attitudeAuthority();
             const glm::dmat3 ax = ship->attitudeBasis();
