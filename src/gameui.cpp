@@ -2260,7 +2260,9 @@ void drawUIReadouts(Game &g) {
     });
 
     drawWin(g, W_Autopilot, [&] {
-        // Click a mode to engage, click again to release; the modes are mutually exclusive.
+        // Click a mode to engage, click again to release. The RULE (mutually
+        // exclusive, held until toggled) is Command's, not this window's: the Z/B
+        // keys, --autopilot and an autopilot law all engage the same way (#424).
         auto toggle = [&](SlewMode m, const char *label) {
             const bool engaged = (ship->slewRequest == m);
             if(engaged) {
@@ -2272,10 +2274,12 @@ void drawUIReadouts(Game &g) {
                                      ImVec4(0.40f, 0.55f, 0.80f, 1.0f));
             }
             if(ImGui::Button(label)) {
-                ship->setSlewRequest(engaged ? SlewNone : m);
-                /* Toast it: an engaged autopilot keeps turning the ship with no key held, so it must
+                ship->Command(ShipCmd(Sas, m), true);   // latch is state; tick.cpp gates the effect
+                /* Read the state back rather than assuming the toggle went my way.
+                   Toast it: an engaged autopilot keeps turning the ship with no key held, so it must
                    be visible outside this window (Z/B engage the same state). */
-                g.toast("Autopilot: %s %s", label, engaged ? "off" : "engaged");
+                g.toast("Autopilot: %s %s", label,
+                        ship->slewRequest == m ? "engaged" : "off");
             }
             if(engaged) {
                 ImGui::PopStyleColor(3);

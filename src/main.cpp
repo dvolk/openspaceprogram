@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <chrono>
 #include <ctime>
@@ -664,17 +665,20 @@ int main(int argc, char **argv)
                    first->getMass(), first->getDeltaV());
         }
         /* --autopilot: engage a slew mode (test hook for the Autopilot toggles).
-           slewRequest is held until toggled. */
+           It engages through Command, the same door a click or Z/B uses, so it gets
+           the same latch semantics rather than a private spelling (#424). The ship
+           is fresh, so a toggle engages. */
         if(!args.autopilot.empty() && first != nullptr) {
-            int m = 0;  // SlewMode (vehicle.h)
-            if(args.autopilot == "prograde")        { m = 1; }
-            else if(args.autopilot == "retrograde") { m = 2; }
-            else if(args.autopilot == "radial-out") { m = 3; }
-            else if(args.autopilot == "radial-in")  { m = 4; }
-            else if(args.autopilot == "normal")     { m = 5; }
-            else if(args.autopilot == "anti-normal"){ m = 6; }
-            else if(args.autopilot == "kill-rot")   { m = 7; }
-            first->setSlewRequest((SlewMode)m);
+            SlewMode m = SlewNone;
+            if(args.autopilot == "prograde")        { m = SlewPrograde; }
+            else if(args.autopilot == "retrograde") { m = SlewRetrograde; }
+            else if(args.autopilot == "radial-out") { m = SlewRadialOut; }
+            else if(args.autopilot == "radial-in")  { m = SlewRadialIn; }
+            else if(args.autopilot == "normal")     { m = SlewNormal; }
+            else if(args.autopilot == "anti-normal"){ m = SlewAntiNormal; }
+            else if(args.autopilot == "kill-rot")   { m = SlewKillRot; }
+            assert(m != SlewNone);   // CLI::IsMember accepts exactly these seven
+            first->Command(ShipCmd(Sas, m), true);
             printf("Autopilot: %s engaged at startup\n", args.autopilot.c_str());
         }
     }

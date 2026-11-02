@@ -1,0 +1,38 @@
+# The Autopilot WINDOW's buttons drive the sim, not just the highlight.
+# ui/174 pins the Z/B keys; nothing pinned the clickable modes, which is the path
+# #424 moved the RULE onto: Command()'s Sas case owns "mutually exclusive, held
+# until toggled", so a click engages slewRequest, a different mode replaces it, and the
+# SAME click again releases it. The window used to write that rule itself, and Command's
+# Prograde/Retrograde cases -- which latched the per-tick engaged copy instead of the
+# request -- had no callers at all, so the funnel read like it worked for SAS when it
+# did not. A button that highlights but never slews is the regression this catches, and
+# so is one that stops releasing.
+# The first click ticks the "Autopilot" row in the Windows list (the window is
+# default_open=false); --ui-click hit-tests through imgui, so a renamed button fails the
+# test instead of clicking empty space, and FORBID FAILED catches a click that missed.
+# --sim-steps makes the click timestamps logic ticks rather than wall ms, so the two
+# time pins below do not move with machine speed (as in ui/492).
+NAME autopilot-window-click
+CLAIM Clicking a mode in the Autopilot window engages the slew, another mode replaces it, and clicking it again releases it.
+KIND invariant
+ARGS --time-accel 1 --sim-steps 720
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --slew-log
+ARGS --ui-click 1500,"Windows/Autopilot"
+ARGS --ui-click 2500,"Autopilot/Prograde"
+ARGS --ui-click 5000,"Autopilot/Retrograde"
+ARGS --ui-click 6500,"Autopilot/Retrograde"
+EXPECT [toast] Autopilot: Prograde engaged
+EXPECT [toast] Autopilot: Retrograde engaged
+EXPECT [toast] Autopilot: Retrograde off
+EXPECT mode=prograde
+EXPECT mode=retrograde
+FORBID FAILED
+FORBID Autopilot: Prograde off
+CHECK len(slew) >= 5
+# The ship was not slewing before the first mode click (2.5 s)...
+CHECK min(s["t"] for s in slew) > 2.2
+# ...and it stops the moment the second click on the same mode releases the latch
+# (6.5 s), so the rows cannot reach past 6.8: a button that nudges once instead of
+# latching would fail the line above, one that never releases fails this one.
+CHECK max(s["t"] for s in slew) < 6.8

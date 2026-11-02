@@ -1,6 +1,8 @@
-// The attitude CAPABILITY model (#425 step B): Vehicle::attitudeAuthority() and
-// Vehicle::attitudeTorqueAbout() -- one answer to "what can turn this ship right
-// now, and how much of it reaches THIS axis".
+// The attitude CAPABILITY MODEL and the COMMAND FUNNEL (#425 steps B and C):
+// Vehicle::attitudeAuthority() and Vehicle::attitudeTorqueAbout() -- one answer to
+// "what can turn this ship right now, and how much of it reaches THIS axis" -- plus
+// Vehicle::Command(), the one door from input to control state that the model has to
+// be reachable through (#424).
 //
 // Why this file exists: before it, three places (the slew law, the kill-rot law and
 // the [slew] trace) each re-added maxTorque() + tvcAuthority()'s tvcMax, and none of
@@ -344,6 +346,97 @@ static void test_one_frame_for_the_attitude_path() {
     destroyShip(s.v);
 }
 
+/* THE COMMAND FUNNEL (#424, #425 design point 5): Command() is the only door from
+   input to the ship's control state, so the RULES of the channels live in it rather
+   than being re-derived at each call site. Three things were elsewhere before:
+     - the SAS engage/disengage rule (mutually exclusive, held until toggled) was
+       spelled out in the Autopilot window, in the Z/B key handler and in --autopilot,
+       while Command's Prograde/Retrograde cases latched `slew` directly and had no
+       callers at all -- dead code that read as the funnel.
+     - `amount` was thrown away: Pitch/Yaw/Roll took only its SIGN, so an amount of 0
+       meant FULL tilt and a half amount did not exist.
+     - the ship's frame (attitudeRef) -- pinned above, and the reason this funnel could
+       not be built before #571.
+   What this pins is the STATE the funnel leaves behind. That the wheel multiplies
+   `stick` by its rating is observable only with a physics world (this binary has
+   none); e2e flight/571 pins the full-travel case, and 571's fixture pin in
+   test_shipload keeps that hull honest. */
+static void test_the_command_funnel() {
+    printf("== the funnel: one door, and what latches behind it ==\n");
+    Stack st = mkStack(200.0, 800.0, 0.1);
+    Vehicle *v = st.s.v;
+
+    /* An attitude amount is a NORMALIZED demand, kept as sent (see ShipCmd). */
+    v->Command(ShipCmd(Pitch, +0.5f), true);
+    CHECK_NEAR(v->stick[1], 0.5f, 1e-12, "half a demand arms half a stick");
+    v->Command(ShipCmd(Yaw, -0.75f), true);
+    CHECK_NEAR(v->stick[2], -0.75f, 1e-12, "and keeps the sign of it");
+    v->Command(ShipCmd(Roll, +1.0f), true);
+    CHECK_NEAR(v->stick[0], 1.0f, 1e-12, "full stick is still full");
+    /* The trap the old spelling left: sign-only meant `amount 0` == full tilt. A
+       zero demand arms nothing, which is what an autopilot at equilibrium sends. */
+    v->Command(ShipCmd(Pitch, 0.0f), true);
+    CHECK_NEAR(v->stick[1], 0.0f, 1e-12, "zero demand arms nothing");
+    /* No out-of-range pin on purpose: normCmd() asserts, so a debug build aborts
+       before it can check the clamp. Out of range is a sender bug, not an input. */
+
+    /* The funnel itself refuses when the sim is not running. Note this is the
+       STICK/throttle path only: the three SAS callers (window, Z/B, --autopilot)
+       pass simActive = true on purpose, because a latched mode is state the player
+       left set -- tick.cpp:158 is what gates its EFFECT on game_running, so moving
+       that gate here would make a paused click do nothing at all. */
+    v->clearRotCmd();
+    v->Command(ShipCmd(Pitch, +1.0f), false);
+    CHECK_NEAR(v->stick[1], 0.0f, 1e-12, "input while paused arms nothing");
+
+    /* Commands latch until the tick clears them -- the per-tick/per-substep split
+       the autopilot has to share (see the #425 latch note). */
+    v->Command(ShipCmd(Pitch, -0.25f), true);
+    CHECK_NEAR(v->stick[1], -0.25f, 1e-12, "armed for the whole tick");
+    v->clearRotCmd();
+    CHECK_TRUE(v->stick[0] == 0.0f && v->stick[1] == 0.0f && v->stick[2] == 0.0f,
+               "clearRotCmd releases the stick");
+
+    /* SAS: engage, and the same command again disengages. One rule, one place. */
+    v->Command(ShipCmd(Sas, SlewPrograde), true);
+    CHECK_TRUE(v->slewRequest == SlewPrograde, "Sas engages the mode");
+    CHECK_TRUE(v->slew == SlewNone,
+               "engaging is a REQUEST; tick.cpp copies it into the engaged copy");
+    v->Command(ShipCmd(Sas, SlewPrograde), true);
+    CHECK_TRUE(v->slewRequest == SlewNone, "the same command releases it");
+
+    /* Mutually exclusive: a second mode replaces the first rather than stacking. */
+    v->Command(ShipCmd(Sas, SlewPrograde), true);
+    v->Command(ShipCmd(Sas, SlewRetrograde), true);
+    CHECK_TRUE(v->slewRequest == SlewRetrograde, "modes are mutually exclusive");
+
+    /* The latch survives the per-tick clear; the HELD override does not. Both
+       spellings of kill-rot exist on purpose: X holds, the window latches. */
+    v->clearRotCmd();
+    CHECK_TRUE(v->slewRequest == SlewRetrograde, "the latch survives clearRotCmd");
+    v->Command(ShipCmd(KillRot), true);
+    CHECK_TRUE(v->slew == SlewKillRot && v->slewRequest == SlewRetrograde,
+               "held kill-rot overrides the latch without overwriting it");
+    v->clearRotCmd();
+    CHECK_TRUE(v->slew == SlewNone && v->slewRequest == SlewRetrograde,
+               "releasing X releases the override, not the latch");
+    v->Command(ShipCmd(Sas, SlewKillRot), true);
+    CHECK_TRUE(v->slewRequest == SlewKillRot, "the window's Kill rotation latches");
+
+    /* Channels stay separate: an attitude demand never touches the latch, and a
+       mode never touches the stick (#425's scope: throttle, rcsDir and staging stay
+       their own channels too). */
+    v->setSlewRequest(SlewNone);
+    v->clearRotCmd();
+    v->Command(ShipCmd(Pitch, +1.0f), true);
+    CHECK_TRUE(v->slewRequest == SlewNone && v->slew == SlewNone,
+               "the stick does not engage SAS");
+    v->Command(ShipCmd(Sas, SlewNormal), true);
+    CHECK_TRUE(v->stick[0] == 0.0f && v->stick[1] == 1.0f && v->stick[2] == 0.0f,
+               "SAS does not move the stick");
+    destroyShip(v);
+}
+
 int main() {
     test_fixture_lever_is_what_we_think();
     test_tvc_is_a_disk_not_a_ball();
@@ -351,6 +444,7 @@ int main() {
     test_a_ship_with_nothing_has_nothing();
     test_two_wheels_add_up();
     test_one_frame_for_the_attitude_path();
+    test_the_command_funnel();
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }
     printf("test_authority: all checks passed\n");

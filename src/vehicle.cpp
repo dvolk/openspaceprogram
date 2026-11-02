@@ -3004,10 +3004,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                    on it), and controlDefl stays where its per-frame reset left it.
                    The test is against the COMMAND, not the stick: a trimmed surface is
                    commanded even with nothing held, and skipping it there would make
-                   trim do nothing -- which is also why there is no dead band. A stick
-                   is binary (+-1 or exactly 0) and a trim is a value the player set on
-                   purpose, so an exact compare stays safe; a dead band would swallow
-                   the small trims that make an airframe fly level. */
+                   trim do nothing -- which is also why there is no dead band. The keys
+                   still send the stick binary (+-1 or exactly 0), and a fractional
+                   demand (#424) only makes `cmd` non-zero by a SMALLER amount, never
+                   near-zero-but-not-zero, so an exact compare stays safe; a dead band
+                   would swallow the small trims that make an airframe fly level. */
                 if(recordSurfaceAero) {
                     /* #485: a NEUTRAL surface's own angle is exactly what #454's
                        alpha term and #487's pump band want to see, so when a readout
@@ -4140,6 +4141,19 @@ void Vehicle::Draw(const Camera* camera, Frame *renderFrame) {
     }
 }
 
+/* Attitude amounts arrive normalized to +-1 of the ship's authority (see
+   ShipCmd). Out of range is a sender bug; assert catches it -- no build here
+   defines NDEBUG, so that fires in the shipped binary too. The clamp is for what a
+   broken sender leaves behind: every consumer gates on `stick[i] != 0.0f`, which a
+   NaN PASSES, so a non-finite demand must fail CLOSED (as in drag.h's NaN rule and
+   attitudeTorqueAbout's NaN axis) rather than arm NaN torque for the whole tick. */
+static float normCmd(float a) {
+    assert(a >= -1.0f && a <= 1.0f && "attitude amount must be normalized to +-1");
+    if(a < -1.0f) { return -1.0f; }
+    if(a > 1.0f)  { return 1.0f; }
+    return std::isfinite(a) ? a : 0.0f;
+}
+
 void Vehicle::Command(ShipCmd cmd, bool simActive, double step) {
     if(not simActive)
         return;
@@ -4157,17 +4171,25 @@ void Vehicle::Command(ShipCmd cmd, bool simActive, double step) {
         case Thrust:
             ApplyThrust(step);
             break;
-        // Stick components in the camera frame (see the `stick` member).
+        /* Stick components in the ship's frame (see the `stick` member), and a
+           NORMALIZED demand rather than a key flip (see ShipCmd). The consumers
+           scale with it -- wheel torque (applyRotationForce), surface deflection
+           (the control-surface block in applyAeroForce), the TVC mixer -- so 0.5 is
+           half a demand and 0 arms nothing. Note the old spelling forced +-1 off the
+           SIGN of `amount`, so an amount of 0 meant full tilt; that reading is gone.
+           #425 spends this number across the actuators instead of giving each one the
+           full stick. */
         case Pitch:
-            stick[1] = (cmd.amount >= 0) ? +1.0f : -1.0f;
+            stick[1] = normCmd(cmd.amount);
             break;
         case Yaw:
-            stick[2] = (cmd.amount >= 0) ? +1.0f : -1.0f;
+            stick[2] = normCmd(cmd.amount);
             break;
         case Roll:
-            stick[0] = (cmd.amount >= 0) ? +1.0f : -1.0f;
+            stick[0] = normCmd(cmd.amount);
             break;
-        // RCS translation in the ship's own axes (rcsWorldDir).
+        /* RCS translation in the ship's own axes (rcsWorldDir). Sign only: a
+           thruster group is on or off. */
         case RcsNose:
             rcsDir.z = (cmd.amount >= 0) ? +1.0 : -1.0;
             break;
@@ -4177,14 +4199,26 @@ void Vehicle::Command(ShipCmd cmd, bool simActive, double step) {
         case RcsRight:
             rcsDir.x = (cmd.amount >= 0) ? +1.0 : -1.0;
             break;
+        /* The latched Autopilot mode (#424): mutually exclusive, held until
+           toggled again. That rule lives HERE rather than in the Autopilot
+           window, the Z/B key handler or --autopilot, so an autopilot that wants
+           to engage a mode asks for it the way the player does and gets the same
+           semantics. `slewRequest` is the REQUEST; tick.cpp copies it into `slew`
+           while it is non-none, which is also what leaves the rails.
+           `SlewNone` in the command is a construction bug, not a request to
+           disengage: ShipCmd's default would otherwise turn a forgotten `mode`
+           into a silent release. Releasing means sending the mode that is latched. */
+        case Sas:
+            assert(cmd.mode != SlewNone && "ShipCmd(Sas) must name a mode");
+            slewRequest = (slewRequest == cmd.mode) ? SlewNone : cmd.mode;
+            break;
+        /* Kill rotation WHILE HELD: the one slew mode that is an override rather
+           than a latch, so it writes the engaged copy and dies with clearRotCmd
+           when X comes up. The latched spelling is ShipCmd(Sas, SlewKillRot),
+           which is what the Autopilot window's "Kill rotation" button and
+           --autopilot kill-rot use. */
         case KillRot:
             slew = SlewKillRot;
-            break;
-        case Prograde:
-            slew = SlewPrograde;
-            break;
-        case Retrograde:
-            slew = SlewRetrograde;
             break;
     }
 }

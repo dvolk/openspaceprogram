@@ -31,40 +31,8 @@
 #include "frame.h"
 #include "orbit.h"
 
-// One ship-control command. Command() is the only control -> physics path.
-enum ShipCmdType {
-    ThrottleUp,
-    ThrottleDown,
-    Thrust,
-    // Ship-relative (standard aviation mapping): see applyRotationForce.
-    Pitch,    // W/S: about the ship's right axis
-    Yaw,      // A/D: about the ship's up axis
-    Roll,     // Q/E: about the ship's nose
-    KillRot,
-    Prograde,    // align nose with velocity
-    Retrograde,  // align nose against velocity
-    // RCS translation (ship-relative, KSP-style): see applyRcsForce.
-    RcsNose,   // N/H: along the ship's nose
-    RcsUp,     // I/K: along the ship's up
-    RcsRight,  // J/L: along the ship's right
-};
-
-struct ShipCmd {
-    ShipCmdType type;
-    float amount;
-    ShipCmd(ShipCmdType t, float a = 0.0f) : type(t), amount(a) { }
-};
-
-/* Why a rails tick stopped a coasting ship: the conic reached something a
-   two-body coast cannot model (drag, or the ground). */
-enum RailEnd {
-    RailEndNone = 0,
-    RailEndAtmosphere,
-    RailEndGround
-};
-
 /* Autopilot slew targets -- mutually exclusive (last one wins); the stick
-   composes with them. */
+   composes with them. Declared above ShipCmd because a ShipCmd now carries one. */
 enum SlewMode {
     SlewNone = 0,
     SlewPrograde,
@@ -74,6 +42,49 @@ enum SlewMode {
     SlewNormal,      /* align nose with the orbital-plane normal (r x v) */
     SlewAntiNormal,  /* align nose against it */
     SlewKillRot      /* kill the spin */
+};
+
+// One ship-control command. Command() is the only control -> physics path.
+enum ShipCmdType {
+    ThrottleUp,
+    ThrottleDown,
+    Thrust,
+    // Ship-relative (standard aviation mapping): see applyRotationForce.
+    Pitch,    // W/S: about the ship's right axis
+    Yaw,      // A/D: about the ship's up axis
+    Roll,     // Q/E: about the ship's nose
+    Sas,       // latch an Autopilot mode; ShipCmd::mode says which (#424)
+    KillRot,   // X: hold-to-kill-the-spin, NOT the latched mode (see Command())
+    // RCS translation (ship-relative, KSP-style): see applyRcsForce.
+    RcsNose,   // N/H: along the ship's nose
+    RcsUp,     // I/K: along the ship's up
+    RcsRight,  // J/L: along the ship's right
+};
+
+/* What the sender asks for -- `amount`/`mode`, not a key flip.
+   Pitch/Yaw/Roll: a NORMALIZED demand, -1..1 of the attitude authority the ship
+   has (AttitudeAuthority, #425). Every consumer already multiplies through it --
+   wheel torque, surface deflection, the TVC mixer -- so half an amount means half
+   a demand. It stays normalized rather than a demanded rad/s^2 because the latter
+   makes the allocator's job "deliver it no matter the hull", i.e. a 200 t stack
+   rotating like a 5 t one; mass-dependent handling is the physics we have.
+   Sas: `amount` unused, `mode` carries the SlewMode.
+   Rcs*: only the sign is used -- a thruster group is on or off (#428 adds the
+   per-pod rows that would make a magnitude mean something). */
+struct ShipCmd {
+    ShipCmdType type;
+    float amount;
+    SlewMode mode;
+    ShipCmd(ShipCmdType t, float a = 0.0f) : type(t), amount(a), mode(SlewNone) { }
+    ShipCmd(ShipCmdType t, SlewMode m) : type(t), amount(0.0f), mode(m) { }
+};
+
+/* Why a rails tick stopped a coasting ship: the conic reached something a
+   two-body coast cannot model (drag, or the ground). */
+enum RailEnd {
+    RailEndNone = 0,
+    RailEndAtmosphere,
+    RailEndGround
 };
 
 struct ScenarioDef;
@@ -477,9 +488,13 @@ public:
     std::vector<ControlDeflection> lastControlDeflections;
 
     /* Armed once per tick (Command), run per SUBSTEP -- Bullet clears the
-       accumulated torque each stepSimulation. stick: manual; slew: autopilot. */
+       accumulated torque each stepSimulation. stick: manual; slew: autopilot.
+       `slew` is the ENGAGED copy: it says what is turning the ship this tick, so
+       a held override (ShipCmd(KillRot), the X key) writes here and dies with
+       clearRotCmd(). What the player has latched on the Autopilot window lives
+       one level up in `slewRequest`; tick.cpp copies it down. */
     float stick[3] = {0.0f, 0.0f, 0.0f};
-    int slew = SlewNone;
+    SlewMode slew = SlewNone;
     /* The autopilot's TVC aim: one shared lateral deflection vector (world
        axes, rad) computed by the slew law's torque split (gimbal.h
        tvcSplit) each substep, consumed by applyThrustForce's mixer. Cleared
@@ -534,7 +549,10 @@ public:
        in tvcSlewLat_ for applyThrustForce this same substep. */
     void actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &auth);
     glm::dvec3 lastThrustForce{};  // debug: total thrust force applied last substep
-    /* The Autopilot-window mode: persistent, unlike `slew`. */
+    /* The Autopilot-window mode: persistent, unlike `slew`. Input engages it
+       through Command(ShipCmd(Sas, mode)) -- the toggle/replace rule lives in
+       that case (#424). This setter is for state that is not input: loading a
+       save, where the mode being restored is a fact, not a key press. */
     SlewMode slewRequest = SlewNone;
     void setSlewRequest(SlewMode m);
 

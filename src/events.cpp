@@ -231,17 +231,20 @@ void emit_sim_events(Game &g) {
     emit_ui_input(g);
 }
 
-/* Mutually exclusive and held until toggled again, exactly like the Autopilot
-   window's buttons. Gated on isEva() because tick.cpp applies slewRequest only
-   to ships -- a toast there would promise a slew that never happens. Free cam
-   is NOT a reason to refuse: the ship still simulates. */
+/* Engage/disengage an Autopilot mode from a key. The mutually-exclusive,
+   held-until-toggled RULE is not here -- it lives in Command()'s Sas case, so the
+   keys, the Autopilot window and an autopilot law all mean the same thing by an
+   engage (#424). This site only reads the state back to say what happened.
+   Gated on isEva() because tick.cpp applies slewRequest only to ships -- a toast
+   there would promise a slew that never happens. Free cam is NOT a reason to
+   refuse: the ship still simulates. */
 static void toggleSlew(Game &g, SlewMode m, const char *name) {
     Vehicle *ship = g.ship;
     if(ship == nullptr || ship->isEva()) { return; }
+    ship->Command(ShipCmd(Sas, m), true);   // latch is state; tick.cpp gates the effect
     const bool engaged = (ship->slewRequest == m);
-    ship->setSlewRequest(engaged ? SlewNone : m);
-    printf("Autopilot: %s %s\n", name, engaged ? "off" : "engaged");
-    g.toast("Autopilot: %s %s", name, engaged ? "off" : "engaged");
+    printf("Autopilot: %s %s\n", name, engaged ? "engaged" : "off");
+    g.toast("Autopilot: %s %s", name, engaged ? "engaged" : "off");
 }
 
 /* Time-warp slots are scene-neutral: dispatched in poll_events. */
