@@ -508,11 +508,16 @@ public:
        re-derived the budget and none of them asked about the axis. Build one by
        asking attitudeAuthority(); the fields are a snapshot of the hull, not
        something to author.
-         wheelTorque: N m, and it is ISOTROPIC -- a wheel levers any axis, so this
-           number is the whole story about the stack axis. 0 with no wheel fitted
-           or no EC power (the wheels are electric). The SUM over wheels -- every
-           wheel turns the same body on the same axis, and the Vessel window quotes
-           this same number (#572).
+         wheelTorque: N m, the SUM over wheels, and ISOTROPIC BY MODEL rather than
+           by physics: a wheel is a rating with no axis (Part::wheelTorque() reads
+           def->torque) and attitudeTorqueAbout() credits it in full about EVERY axis
+           it is asked for, so N wheels buy N x authority about all three at once,
+           with no momentum store and nothing ever saturating. That is a deliberate
+           stand-in -- a real cluster gives about T per axis, not 3T -- and #576 asks
+           whether to keep it before the #425 allocator starts spending it. 0 with no
+           wheel fitted or no EC power (the wheels are electric, #418); the Vessel
+           window prints this same gated number (#572: one answer, not the one the
+           largest wheel happens to give).
          tvcTorque:   N m, but it is a DISK in the plane perpendicular to the
            mixer's stack axis, not a ball: see attitudeTorqueAbout.
          heffMag:     N m per rad of the SHARED lateral deflection, Sum(T_i*|h_i|),
@@ -1006,11 +1011,15 @@ protected:
 public:
 
     // --- physical rotation model -------------
-    /* The wheels' rating, TOTALLED: every wheel turns the same body on the same
-       axis, so the torques add. This is the number the laws bill (alpha =
-       wheelTorqueSum() / I, rad/s^2) AND the number the Vessel window prints --
-       one answer for "how hard can this ship turn", which is what #572 was about.
-       A two-wheel ship has twice it; a ship with no wheel or no charge has 0. */
+    /* The wheels' ratings, TOTALLED -- the number the laws bill (alpha =
+       wheelTorqueSum() / I, rad/s^2) and the row AttitudeAuthority carries; the
+       Vessel window prints that row AFTER the power gate rather than this raw
+       rating, so there is one answer to "how hard can this ship turn" and it is
+       the one the sim acts on (#572). Totalled because the hull is one rigid body
+       and, in this model, each wheel's rating is creditable about whichever axis is
+       asked for -- AttitudeAuthority::wheelTorque says what that buys and what it
+       hides, and #576 asks whether it should stay. A two-wheel ship has twice it; a
+       ship with no wheel has 0 (the power gate lives in attitudeAuthority()). */
     double wheelTorqueSum();
 
     glm::dvec3 GetPositionRelTo(const Part *part, Frame *relTo);
@@ -1140,11 +1149,15 @@ struct ScenarioDef {
     double speed_frac = 0.0;
     /* NB: there is deliberately no authored angle of attack here. A bed is a
        position + velocity, and an airframe's attitude is not a launch condition it
-       can keep: a stable hull rotates to its own zero-moment AoA inside a second
-       (measured: spawning flying-cruise at 8 deg leaves it at 2.2 deg at t=1 and
-       1.6 deg at t=2). What decides whether a flight bed is trimmed is the
-       airframe's incidence/trim, not the bed's spawn attitude (#569). The spawn
-       line prints the launch AoA so that fact is visible without a --drag-log. */
+       can keep: a stable hull rotates to its own zero-moment AoA inside a second.
+       Measured on flying-cruise: tipping the launch attitude 8 deg nose-up leaves
+       1.2 deg at t=1 and merges with the untipped trace's 1.6 deg by t=2 (#569).
+       What decides whether a flight bed is trimmed is the airframe's incidence or
+       trim, not the bed's spawn attitude -- res/ships/README.md step 3 does it with
+       12 deg of elevator. The Spawn line prints the launch AoA anyway: it reads 0.0
+       BY CONSTRUCTION (spawn_vehicle points the nose along the velocity with
+       faceAlong()), so it is a canary for wind or for a bed that does author an
+       attitude, never a trim readout. */
 };
 
 /* Look up a scenario by name; throws if unknown. */

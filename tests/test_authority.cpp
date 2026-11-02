@@ -234,6 +234,10 @@ static void test_wheels_and_tvc_together() {
     v->powered_ = false;
     const Vehicle::AttitudeAuthority dead = v->attitudeAuthority();
     CHECK_TRUE(dead.wheelTorque == 0.0, "unpowered wheels contribute nothing");
+    /* The rating itself does not vanish -- only the row the laws and the Vessel
+       window use. That is the difference the window has to get right (#572). */
+    CHECK_NEAR(v->wheelTorqueSum(), 200.0, 1e-12,
+               "the wheels are still fitted; it is the authority row that reads dead");
     CHECK_NEAR(v->attitudeTorqueAbout(dead, st.z), 0.0, 0.0,
                "no authority at all about the stack axis");
     CHECK_NEAR(v->attitudeTorqueAbout(dead, st.x), tvc, 1e-9,
@@ -271,6 +275,12 @@ static void test_two_wheels_add_up() {
     v->attachDown(w2);
     const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
     CHECK_NEAR(a.wheelTorque, 250.0, 1e-12, "200 + 50 N m of wheel, both of them");
+    /* The rating asked directly, not only through the row. #572 was two answers to
+       one question -- the window quoted the LARGEST wheel while the laws spent the
+       SUM -- and a fixture with one wheel cannot tell them apart, which is why this
+       ship has two. */
+    CHECK_NEAR(v->wheelTorqueSum(), 250.0, 1e-12,
+               "the sum is the only rating there is to quote");
     CHECK_NEAR(v->attitudeTorqueAbout(a, st.z), 250.0, 1e-9,
                "and the wheels are isotropic: all of it about the stack axis");
     destroyShip(st.s.v);

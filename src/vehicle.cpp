@@ -472,16 +472,34 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
        set -- so the two cannot drift apart. */
     char air_txt[64] = "";
     if(sc.atmo_frac) {
-        /* The angle of attack too, measured the same way. A bed cannot author an
-           attitude (a stable hull rotates to its own zero-moment AoA inside a second,
-           #569), so this is the number that shows whether the AIRFRAME is trimmed for
-           the bed or about to trade height for speed. */
+        /* The launch angle of attack, from the law's own AeroFrame so a readout and
+           the law cannot drift apart. Read it for what it is: it prints 0.0 for every
+           shipped bed BY CONSTRUCTION, because spawn_vehicle points the nose along
+           the velocity with faceAlong() just above and the air sits still in a
+           rotational frame. It is a canary, not a trim diagnostic -- wind, or a bed
+           that did author an attitude, would put a real signed angle here -- and like
+           every other AoA readout it refuses to answer where the flow has no
+           direction (no air, or under kAoAFlowFloor), printing `-` rather than a 0.0
+           that would look like a trimmed hull. What decides whether a flight bed is
+           trimmed is the airframe's incidence/trim (#569, res/ships/README.md step
+           3); the per-tick AoA is in --drag-log. */
         const glm::dvec3 air = ship->airRelativeVel(target);
-        snprintf(air_txt, sizeof air_txt, " |v_air| = %.1f m/s, AoA = %.1f deg",
-                 glm::length(air),
-                 glm::degrees(std::acos(std::clamp(
-                     glm::dot(ship->partAxis(ship->rootPart(), 2),
-                              glm::normalize(air)), -1.0, 1.0))));
+        const Part *ref = ship->attitudeRef();
+        const AeroFrame fr = aeroFrame(air, ship->partAxis(ref, 0),
+                                       ship->partAxis(ref, 1), ship->partAxis(ref, 2));
+        if(ship->airDensityAtCom() > 0.0 && fr.valid && std::isfinite(fr.alpha)
+           && fr.v >= kAoAFlowFloor) {
+            double aoa = glm::degrees(fr.alpha);
+            /* Below the print's own resolution the sign is floating-point dust (the
+               nose is placed ON the flow, so this is zero plus roundoff), and a bare
+               "-0.0" invites a search for a tilt that is not there. */
+            if(std::fabs(aoa) < 0.05) { aoa = 0.0; }
+            snprintf(air_txt, sizeof air_txt, " |v_air| = %.1f m/s, AoA = %+.1f deg",
+                     glm::length(air), aoa);
+        } else {
+            snprintf(air_txt, sizeof air_txt, " |v_air| = %.1f m/s, AoA = -",
+                     glm::length(air));
+        }
     }
     printf("Spawn '%s' around %s: frame '%s' @ world (%.0f, %.0f, %.0f), r = %.0f m, |v| = %.1f m/s%s\n",
            sc.name, home->name.c_str(), frame->name.c_str(),
@@ -3234,10 +3252,12 @@ void Vehicle::applyRotationForce(double h) {
           - (double)stick[1] * axes[0]           // pitch: right (W/S)
           - (double)stick[2] * axes[1];          // yaw: up    (A/D)
         /* One parts scan, and only while a key is held. It is both the gate and the
-           rating: wheelTorqueSum() is the SUM over wheels and is 0 exactly when no wheel
-           is fitted (Part::isWheel() is `torque > 0`), so there is no separate
+           rating: wheelTorqueSum() is the SUM over wheels and is 0 exactly when no
+           wheel is fitted (Part::isWheel() is `torque > 0`), so there is no separate
            "has a wheel" test to make -- same rule attitudeAuthority() states.
-           Every wheel turns the same body on the same axis, hence the sum. */
+           NB worldAxis is NOT normalized, so holding several keys asks for up to
+           sqrt(3) x that rating at once; #577 has the fix ideas, and the clamp
+           belongs to #425 step D's allocator if that lands first. */
         const double wheelT = wheelTorqueSum();
         if(wheelT > 0.0) { ApplyTorque(hull, wheelT * worldAxis); }
     }
@@ -3476,7 +3496,7 @@ void Vehicle::att_log(double time) {
     Part *ref = attitudeRef();
     assert(ref != nullptr);   // rootPart() falls back to parts[0], so non-empty means non-null
     const glm::dmat3 axes = partRot(ref);
-    const glm::dvec3 w = GetAngVelocity(hull);
+    const glm::dvec3 w = hullAngVel();
     printf("[attlog] t=%.3fs nose=[%+.4f %+.4f %+.4f] "
            "right=[%+.4f %+.4f %+.4f] up=[%+.4f %+.4f %+.4f] "
            "w=[%+.4f %+.4f %+.4f] |w|=%.4f rad/s\n",
@@ -3509,7 +3529,7 @@ void Vehicle::tq_log(double time) {
         }
     }
     const glm::dvec3 dcom = comOffset();
-    const glm::dvec3 w = GetAngVelocity(hull);
+    const glm::dvec3 w = hullAngVel();
     printf("[tqlog] t=%.3fs |dcom|=%.3e m F=[%.4e %.4e %.4e] "
            "|F|=%.4e N |dxF|=%.3e N m |w|=%.3e rad/s\n",
            time, glm::length(dcom), F.x, F.y, F.z, glm::length(F),
@@ -4375,9 +4395,11 @@ double Vehicle::wheelTorqueSum() {
    own, and on the shipped skiff they are its ONLY roll authority), and RCS torques it
    as a side effect of translating -- neither is law-driven yet, which is what #425's
    allocator is for. wheelTorqueSum() stays as the raw wheel rating because
-   the manual stick path bills exactly that (applyRotationForce), and the Vessel
-   window quotes the same sum for the same reason (#572); the part window prints
-   def.torque for the one part under the cursor. */
+   the manual stick path bills exactly that (applyRotationForce, under its own
+   powered_ gate); the Vessel window prints THIS row instead, so a dead battery
+   reads as 0 in the window and in flight rather than quoting a rating the ship
+   cannot spend (#572, #418). The part window prints def.torque for the one part
+   under the cursor. */
 Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
     AttitudeAuthority a;
     const Part *ref = attitudeRef();
@@ -4532,7 +4554,7 @@ void Vehicle::killRotStep(double h) {
     /* No frame in this law at all: the command is the hull's own rate and its own
        inertia, and actuateAttitude's split decides which axes the actuators can
        deliver it about. */
-    const glm::dvec3 w = GetAngVelocity(hull);
+    const glm::dvec3 w = hullAngVel();
     if(glm::length2(w) == 0.0) { return; } /* at rest: nothing to kill */
     /* Kill-rot commands I*(-w)/h, a direction it does not get to choose, so it
        asks only "is there any authority at all" and lets the split decide how

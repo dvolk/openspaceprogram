@@ -434,6 +434,14 @@ static void checkCompound(Ship &s, const char *msg) {
         mt += s.mass[i];
     }
     comW /= mt;
+    /* The hull's rate is ONE vector for the whole compound, which is why
+       hullAngVel() takes no part at all (#574). Asked once, against what was set:
+       an accessor that reads a stale body, or invents a per-part rate, fails here. */
+    const glm::dvec3 gw = s.v->hullAngVel();
+    for(int c = 0; c < 3; c++) {
+        snprintf(buf, sizeof(buf), "%s: hullAngVel [%d]", msg, c);
+        CHECK_NEAR(gw[c], w0[c], 1e-12, buf);
+    }
     for(size_t i = 0; i < s.pos.size(); i++) {
         const glm::dvec3 want = v0 + glm::cross(w0, s.pos[i] - comW);
         const glm::dvec3 got = s.v->partVel(s.v->parts[i]);
@@ -441,13 +449,6 @@ static void checkCompound(Ship &s, const char *msg) {
         for(int c = 0; c < 3; c++) {
             snprintf(buf, sizeof(buf), "%s: part %zu partVel [%d]", msg, i, c);
             CHECK_NEAR(got[c], want[c], vtol, buf);
-        }
-        /* One rigid hull: every part shares its rate, which is why hullAngVel()
-           takes no part at all (#574). */
-        const glm::dvec3 gw = s.v->hullAngVel();
-        for(int c = 0; c < 3; c++) {
-            snprintf(buf, sizeof(buf), "%s: part %zu hullAngVel [%d]", msg, i, c);
-            CHECK_NEAR(gw[c], w0[c], 1e-12, buf);
         }
     }
 

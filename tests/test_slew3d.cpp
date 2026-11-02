@@ -117,7 +117,7 @@ static M3 reorthonormalize(M3 R) {
 }
 
 // ---- axisymmetric body + the two slew laws ------------------------------
-struct Body { double Ix, Iz, maxTorque; };
+struct Body { double Ix, Iz, wheelTorque; };  // the actuator rating, per axis
 
 // Euler step for the axisymmetric body: Iw dW/dt = tau - (Iz-Ix)(W.n)(W x n)
 static V3 euler_dW(const Body &b, V3 n, V3 W, V3 tau) {
@@ -146,7 +146,7 @@ struct SlewResult {
     double final_E;   // rad, nose-target angle at the end of the run
     double E_ring;    // peak-to-peak of E after the first local min (rad)
     double end_W3;    // |third-axis rate| at the end
-    double max_torque_ratio; // max |torque| / maxTorque over the run
+    double max_torque_ratio; // max |torque| / wheelTorque over the run
 };
 
 // Simulate the axisymmetric body slewing to a FIXED target, from an initial
@@ -192,7 +192,7 @@ static SlewResult run3d(const Body &b, double h, double E0, double w3_init,
             // Ieff = a . (Iw a)
             V3 Iwa = a * b.Ix + (n * dot(a, n)) * (b.Iz - b.Ix);
             double Ieff = dot(a, Iwa);
-            double alpha = b.maxTorque / Ieff;
+            double alpha = b.wheelTorque / Ieff;
             double w_des = std::min(std::sqrt(2.0 * alpha * E), E / (2.0 * h));
             if(law == 0) {
                 double w = dot(W, a);
@@ -205,10 +205,10 @@ static SlewResult run3d(const Body &b, double h, double E0, double w3_init,
                 V3 IwdW = dW * b.Ix + (n * dot(dW, n)) * (b.Iz - b.Ix);
                 tau = IwdW / h;
                 double tl = vlen(tau);
-                if(tl > b.maxTorque) tau = tau * (b.maxTorque / tl);
+                if(tl > b.wheelTorque) tau = tau * (b.wheelTorque / tl);
             }
         }
-        double ratio = vlen(tau) / b.maxTorque;
+        double ratio = vlen(tau) / b.wheelTorque;
         if(ratio > max_torque_ratio) max_torque_ratio = ratio;
 
         V3 dW = euler_dW(b, n, W, tau);
