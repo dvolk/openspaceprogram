@@ -745,6 +745,15 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
         return "load: saved ship '" + s.name + "' names a controller uid "
                + std::to_string(s.controller) + " it does not have";
     }
+    /* The latched Autopilot mode is an enum and a save is hand-editable data. The
+       loader clamps it as well (Vehicle::restoreSlewRequest), but the rule here is to
+       refuse corruption where it is found rather than quietly load a state the game
+       never wrote: a non-mode latches on wake, leaves the ship off the rails with
+       nothing to aim at, and the player loses the ability to turn it. */
+    if(s.slew_request < 0 || s.slew_request > (int)SlewKillRot) {
+        return "load: saved ship '" + s.name + "' latches autopilot mode "
+               + std::to_string(s.slew_request) + ", which is not a mode";
+    }
     for(const SaveFuelLink &fl : s.fuel_links) {
         if(prior.count(fl.from) == 0 || prior.count(fl.to) == 0) {
             return "load: saved ship '" + s.name + "' has a fuel link between uids "

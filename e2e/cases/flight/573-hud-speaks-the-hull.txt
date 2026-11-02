@@ -1,0 +1,39 @@
+# The HUD's heading/pitch/roll speak the SHIP's axes, not the seat's (#573). The seat on
+# this hull is deliberately its side-mounted reaction wheel -- the same part flight/571
+# argues the LAWS must not read -- so the two frames differ by a 90 deg roll about the
+# stack and the readouts can be told apart at all. The wheel keeps the stack's +Z
+# (surfaceMatingRot rolls rather than tilts a part; tests/test_shipload pins that shape
+# and the authored seat), so everything measured off the nose -- pitch, heading -- agrees
+# in either frame and cannot be the discriminator. What separates them is `roll`, measured
+# about the nose against the ship's own up axis: on the root's frame the hull sits level
+# in its orbit (|roll| < 0.1 deg -- tmp/aero/n573_surf.log), while the wheel's up axis IS
+# the ship's right axis, so a HUD reading the seat reports a 90 deg roll on a hull that
+# has not rolled (89.998 deg, tmp/aero/n573_surf_mut.log, from pointing syncShipView at
+# partRot(controller) instead of attitudeBasis()).
+#
+# The window stops at t=3.6 s. The wheel keeps driving after the 2-5 s press and the nose
+# passes through vertical, where the SURFACE window's roll reference flips by 180 deg --
+# a property of the roll formula, not of the frame. So the pitch check below pins the
+# RESPONSE rather than a clean value.
+NAME hud-speaks-the-hull
+CLAIM The SURFACE window's pitch/roll/heading describe the hull the keys turn, even though the crew sit on a wheel that is rolled 90 deg about the stack.
+KIND invariant
+# --sim-steps, like flight/571: the CHECK windows are keyed to the printed t, and
+# pinning the tick count makes the log clock and the windows the same clock.
+ARGS --time-accel 1 --sim-steps 720
+ARGS --startship sideways_wheel,res/ships/sideways_wheel.json,Kerbin,rot-orbit
+ARGS --info-log --orbit-interval 0.3
+ARGS --sim-press 2000,3000,S
+EXPECT [surfinfo]
+FORBID error:
+CHECK len(surf) >= 10
+# Hands-off before the press: the hull holds its attitude, so the roll pin below is not
+# merely "nothing moved".
+CHECK all(abs(s["pitch"]) < 1.0 for s in surf if s["t"] <= 2.1)
+# The S press moves the displayed pitch by tens of degrees (measured -79 deg by t=3.6).
+CHECK min(s["pitch"] for s in surf if 2.4 <= s["t"] <= 3.6) < -50.0
+# ... while the hull has not rolled at all. Against the 90 deg a seat-frame HUD prints,
+# 5 deg is a wide net: this is the check that makes the case bite.
+CHECK all(abs(s["roll"]) < 5.0 for s in surf if s["t"] <= 3.6)
+# And pitching is not turning: the heading drifts by a fifth of a degree across the window.
+CHECK max(abs(s["hdg"] - 249.2) for s in surf if s["t"] <= 3.6) < 1.0

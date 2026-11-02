@@ -749,8 +749,8 @@ int main() {
         CHECK(near(def.parts[i].offset, 0.0));
         CHECK(def.parts[i].stage == 1);
     }
-    // no "controller" in the file -> defaults to the first reaction wheel
-    // (the capsule carries a small one)
+    // no "controller" in the file -> the default seat rule: the first capsule
+    // (which on this hull is row 0, and carries a small wheel of its own)
     CHECK(def.controllerIndex() == 0);
 
     // the aggregates the Vehicle derives from the same data (field-driven,
@@ -814,11 +814,11 @@ int main() {
     ShipDef big = load_ship_def(mix, cat);
     CHECK(big.parts.size() == 3);
     CHECK(big.parts[0].def == cap && big.parts[1].def == t152 && big.parts[2].def == e225);
-    CHECK(big.controllerIndex() == 0);  // no "controller" -> first reaction wheel (capsule)
+    CHECK(big.controllerIndex() == 0);  // no "controller" -> first capsule (the seat rule)
     std::remove(mix);
 
-    // no controller + side tanks: the default must be the first reaction
-    // wheel, NOT the last part. The old default (last part) made the
+    // no controller + side tanks: the default must be the capsule at the top of the
+    // stack, NOT the last part. The old default (last part) made the
     // camera basis ride on a side tank whose local frame is rotated about
     // the nose by its attach angle, so the stick controls read swapped
     // (4 tanks, 270 deg) or mixed (3 tanks, 240 deg) on screen.
@@ -837,7 +837,7 @@ int main() {
     }
     ShipDef side = load_ship_def(mix, cat);
     CHECK(side.parts.size() == 6);
-    CHECK(side.controllerIndex() == 0);   // first wheel, not the last tank
+    CHECK(side.controllerIndex() == 0);   // the capsule at row 0, not the last tank
     std::remove(mix);
 
     {
@@ -2997,6 +2997,35 @@ int main() {
             CHECK(vnear(R[2], glm::dvec3(0.0, 0.0, 1.0)));          // nose kept
             CHECK(std::fabs(R[0].y) > 0.99 && std::fabs(R[0].x) < 0.01);   // right -> up
         }
+        /* And the SEAT on the same shipped hull (#573). The crew sit on the rolled wheel
+           HERE ON PURPOSE: the seat and the ship's frame are now different questions, and
+           a fixture where they coincide cannot tell a HUD that reads one from a HUD that
+           reads the other. e2e flight/573 is what this line keeps decidable; the default
+           rule is pinned separately below, where it does not depend on this file. */
+        CHECK(sd.controller == 2);
+        CHECK(sd.controllerIndex() == 2);
+    }
+    /* The default SEAT rule itself (#573), on a hull built for the purpose: a root that
+       carries neither crew nor wheel, a side-mounted wheel that comes first in the list,
+       and the capsule further down. The old rule named the first part with torque, i.e.
+       the wheel; the rule is "where the crew is", so it must name the capsule. Built by
+       hand rather than loaded because controllerIndex() reads only `controller` and each
+       row's `def` -- no geometry to solve and nothing a catalogue change can refuse. */
+    {
+        ShipDef rule;
+        ShipPart p0{}; p0.def = t11;    // tank_r1h1: the root, no crew, no wheel
+        ShipPart p1{}; p1.def = rw;     // a wheel: an actuator, not a seat
+        ShipPart p2{}; p2.def = cap;    // the capsule: where the crew is
+        rule.parts = {p0, p1, p2};
+        CHECK(rule.controller == -1);          // nothing authored -> the fallback runs
+        CHECK(rule.controllerIndex() == 2);    // the capsule, not the first wheel
+        /* No crew anywhere on the hull: the root is the honest guess, and it is the part
+           the laws speak in -- which is also why a kerbal (one part) cannot disagree. */
+        ShipDef bare;
+        ShipPart q0{}; q0.def = t11;
+        ShipPart q1{}; q1.def = rw;
+        bare.parts = {q0, q1};
+        CHECK(bare.controllerIndex() == 0);
     }
 
     // list_ship_defs: keep only the .json entries, return their sorted slugs

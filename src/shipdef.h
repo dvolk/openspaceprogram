@@ -519,7 +519,7 @@ struct ShipDef {
     /* Defaults so a ShipDef declared before it is filled is never read with
        indeterminate scalars: mintCrewPool and the load path both declare one and
        then assign it, and make_suit -> resolveHullMargin reads hull_margin. */
-    int controller = -1;   // part index; -1 = default (first reaction wheel)
+    int controller = -1;   // part index; -1 = default seat (first capsule)
 
     /* Hull margin (m) for EVERY part of this ship; -1 = not set -> the catalog
        value, then the physics default. Ship-level because the welded-hull overlap
@@ -543,20 +543,22 @@ struct ShipDef {
 
     int controllerIndex() const {
         if(controller >= 0) { return controller; }
-        /* Default seat: the part the first-person eye sits on, the chase camera focuses
-           on and the Vessel window's home distance measures to. The first part with
-           reaction-wheel authority is the obvious guess -- a pod is where the controls
-           are, and on shipped defs it usually IS row 0.
+        /* Default seat: the part the first-person eye sits on, the boot camera aims its
+           initial focus at, and the Vessel window's home distance measures to. So ask for
+           where the CREW is: the first capsule. It used to be the first part with
+           reaction-wheel authority -- a pod is where the controls are, and on shipped
+           defs that usually IS row 0 -- but #571 made a wheel an actuator and nothing
+           else, so as a seat it puts the eye on whatever the wheels happen to be bolted
+           to (res/ships/sideways_wheel.json: a wheel surface-mounted at angle: 90, i.e.
+           rolled 90 deg about the stack, which is now the only shipped def this fallback
+           moves -- to its root tank).
            It is NOT the ship's attitude frame and must not become one: the laws, the
            stick and every displayed heading/pitch/roll ask Vehicle::attitudeRef() (the
            root, #571) and read it through attitudeBasis() (#573). Those two agreed with
-           this lookup by construction before #571, which is how the bug got in: a wheel
-           surface-mounted at angle: 90 is rolled 90 deg about the stack, so an attitude
-           taken from its axes describes a rotation no key asked for
-           (res/ships/sideways_wheel.json, e2e flight/571). A def that wants the view
-           somewhere else says so with "controller". */
+           this lookup by construction before #571, which is how the bug got in.
+           A def that wants the view somewhere else says so with "controller". */
         for(size_t i = 0; i < parts.size(); i++) {
-            if(parts[i].def && parts[i].def->torque > 0.0) { return (int)i; }
+            if(parts[i].def && parts[i].def->crew_capacity > 0) { return (int)i; }
         }
         return 0;
     }

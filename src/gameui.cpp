@@ -1757,15 +1757,9 @@ void drawUIReadouts(Game &g) {
         double gen = 0.0, constDraw = 0.0, charge = 0.0, capacity = 0.0;
         ship->getPower(&gen, &constDraw, &charge, &capacity);
         if(gen > 0.0 || constDraw > 0.0 || capacity > 0.0) {
-            // Active draw: the wheels, only while they are actually working -- the
-            // same question powerTick asks, asked once (#575).
-            bool wheelsActive = ship->actuatorsEngaged();
-            double activeDraw = 0.0;
-            if(wheelsActive) {
-                for(Part *p : ship->parts) {
-                    if(p->isWheel()) { activeDraw += p->powerDraw(); }
-                }
-            }
+            // Active draw: the wheels, only while they are actually working. This is
+            // the sum powerTick() pays, not a re-derivation of it (#575).
+            const double activeDraw = ship->wheelDrawWatts();
             const double net = gen - constDraw - activeDraw;
 
             ImGui::Separator();

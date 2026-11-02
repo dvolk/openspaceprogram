@@ -2067,6 +2067,17 @@ double Vehicle::feltAccel() {
     return m > 0.0 ? glm::length(lastThrustForce + lastAeroForce) / m : 0.0;
 }
 
+double Vehicle::wheelDrawWatts() const {
+    /* No engagement, no draw: the wheels are electric and they only bill while the
+       stick or an autopilot mode is actually working them (actuatorsEngaged). */
+    if(not actuatorsEngaged()) { return 0.0; }
+    double w = 0.0;
+    for(Part *p : parts) {
+        if(p->isWheel()) { w += p->powerDraw(); }
+    }
+    return w;
+}
+
 void Vehicle::powerTick(double h) {
     double totalGen = 0.0, constantDraw = 0.0;
     double ecCharge = 0.0, ecCapacity = 0.0;
@@ -2083,15 +2094,9 @@ void Vehicle::powerTick(double h) {
     // life support.
     const bool hasEC = (ecCapacity > 0.0) || (totalGen > 0.0) || (constantDraw > 0.0);
     powered_ = hasEC ? ((totalGen > constantDraw) || (ecCharge > 0.0)) : true;
-    // The wheels draw only while actually working. actuatorsEngaged() is that rule,
-    // and the Vessel window's Power row reads the same one (#575).
-    double activeDraw = 0.0;
-    const bool wheelsActive = actuatorsEngaged();
-    if(wheelsActive) {
-        for(size_t i = 0; i < parts.size(); i++) {
-            if(parts[i]->isWheel()) { activeDraw += parts[i]->powerDraw(); }
-        }
-    }
+    // The wheels draw only while actually working, and the Vessel window's Power row
+    // quotes the same sum (#575).
+    const double activeDraw = wheelDrawWatts();
     const double netWh = (totalGen - constantDraw - activeDraw) * h / 3600.0;
     if(netWh < 0.0) { drainEC(-netWh); }
     else if(netWh > 0.0) { chargeEC(netWh); }
@@ -3031,7 +3036,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             const double clc = controlCl(d->cl, d->cl_control);
             // pure controlAxisParams (pinned in test_shipload)
             const ControlAxisParams ax = controlAxisParams(d->control_axis);
-            const float sv = stick[ax.stickIndex];   // 0 when that stick is free
+            const float sv = stickAxis(ax.stickIndex);   // 0 when that stick is free
             /* TRIM (#492): degrees of standing deflection the player set on THIS
                part, converted to the stick's units so it joins the stick before the
                sign is decided -- see drag.h::controlCommandFrac for why joining the
@@ -3244,9 +3249,12 @@ Part * Vehicle::attitudeRef() const {
 glm::dmat3 Vehicle::attitudeBasis() const {
     const Part *ref = attitudeRef();
     /* A hull with no parts has no axes to report; the identity is the honest answer
-       and the drawers guard on it the same way they guard on a null controller. */
+       and the drawers guard on it the same way they guard on a null controller.
+       One partRot() rather than three partAxis() calls: partAxis(p, n) IS partRot(p)[n],
+       so the axis-by-axis spelling solves the ship's frame S and composes this part's
+       local rotation three times to arrive at one basis. */
     if(ref == nullptr) { return glm::dmat3(1.0); }
-    return glm::dmat3(partAxis(ref, 0), partAxis(ref, 1), partAxis(ref, 2));
+    return partRot(ref);
 }
 
 void Vehicle::applyRotationForce(double h) {
@@ -4063,11 +4071,19 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
             }
         }
     }
-    nv->controller = nullptr;
-    for(size_t i = 0; i < nvParts.size(); i++) {
-        if(nvParts[i]->isWheel()) { nv->controller = nvParts[i]; break; }
-    }
-    if(nv->controller == nullptr) { nv->controller = root; }
+    /* Where the crew sits on a hull that has just lost its seat, or never named one.
+       A capsule first: `controller` is the SEAT -- the first-person eye, the boot
+       camera's initial focus, the Vessel window's home distance (#573) -- and the rule
+       here used to be "the first reaction wheel", which #571 left meaning nothing but
+       an actuator: the eye lands on whatever the wheels happen to be bolted to, at that
+       part's own pose. With no capsule left on either hull, the part this ship is
+       rooted at is the honest guess -- it is at least the part everything about the
+       ship is measured from (attitudeRef()). Same rule as ShipDef::controllerIndex(). */
+    auto seatOf = [](const std::vector<Part *> &ps, Part *fallback) {
+        for(Part *p : ps) { if(p->isCapsule()) { return p; } }
+        return fallback;
+    };
+    nv->controller = seatOf(nvParts, root);
 
     // fuel links: both endpoints dropped -> the new ship; both kept ->
     // this ship; crossing the cut -> dangling, dropped.
@@ -4102,7 +4118,7 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
     }
     const bool controllerDropped = (controller != nullptr && droppedSet.count(controller) > 0);
     rebuildCompound();
-    if(controllerDropped) { controller = parts[0]; }
+    if(controllerDropped) { controller = seatOf(parts, parts[0]); }
     clearThrust();
     buildFuelGroups();
     dropDrainWindow();   // the regroup just renumbered the tanks --drain-log tracks
@@ -4236,15 +4252,29 @@ void Vehicle::Command(ShipCmd cmd, bool simActive, double step) {
             stick[0] = normCmd(cmd.amount);
             break;
         /* RCS translation in the ship's own axes (rcsWorldDir). Sign only: a
-           thruster group is on or off. */
+           thruster group is on or off. Each key writes one component and then hands
+           the triple to armRcs(), the named writer, so the field stays a UNIT demand
+           rather than a corner of a cube. rcsWorldDir() normalizes for a SHIP, so this
+           changes nothing here; what it buys is one invariant for both paths, since the
+           suit's rcsWorldDir (eva.h) returns the field exactly as it stands.
+           Known rough edge: normalizing per key means a three-key demand is NOT the even
+           diagonal. Each key rewrites one component to +-1 and rescales the rest, so the
+           LAST key armed keeps the full share while the earlier ones shrink to half
+           (measured .71/.50/.50 holding N+I+L on rcs_box_pair, tmp/aero/n580_rcs.log).
+           Two keys are even (.707/.707). The direction is still the octant the keys asked
+           for, and tick.cpp sends them in a fixed order so a given held set gives one
+           answer every tick. #580. */
         case RcsNose:
             rcsDir.z = (cmd.amount >= 0) ? +1.0 : -1.0;
+            armRcs(rcsDir);
             break;
         case RcsUp:
             rcsDir.y = (cmd.amount >= 0) ? +1.0 : -1.0;
+            armRcs(rcsDir);
             break;
         case RcsRight:
             rcsDir.x = (cmd.amount >= 0) ? +1.0 : -1.0;
+            armRcs(rcsDir);
             break;
         /* The latched Autopilot mode (#424): mutually exclusive, held until
            toggled again. That rule lives HERE rather than in the Autopilot

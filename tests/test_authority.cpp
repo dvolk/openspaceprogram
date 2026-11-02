@@ -69,6 +69,14 @@ struct Ship {
     std::deque<PartDef> defs;
 };
 
+/* The armed RCS demand is protected, and on a SHIP its magnitude never surfaces --
+   rcsWorldDir() normalizes on the way out -- so the only way to pin the invariant the
+   ship and suit paths share is to read the field. Re-exposed through a subclass rather
+   than widening the production API, as in test_inertia.cpp. */
+struct RcsProbe : Vehicle {
+    using Vehicle::rcsDir;
+};
+
 /* A box part with the two fields this model reads: `torque` (>0 makes it a
    reaction wheel) and `gimbal_max` (>0 makes its thrust steerable). */
 static Part *mkPart(Ship &s, const char *name, double mass, double hz,
@@ -355,12 +363,13 @@ static void test_one_frame_for_the_attitude_path() {
     CHECK_NEAR(v->attitudeTorqueAbout(a, wheelZ), 300.0 + a.tvcTorque, 1e-9,
                "TVC counts where the mixer can actually lever");
     /* #573: the DISPLAYED attitude asks the same question as the laws. Seat the crew in
-       the rolled wheel -- which is exactly what the loader's fallback used to do, since
-       controllerIndex() took the first part with torque > 0 -- and the heading/pitch/roll
-       the HUD prints must still describe the hull the keys turned. Break this by feeding
-       render.cpp partAxis(controller, ...) again: the displayed nose and up go 90 deg off
-       while every law check above stays green, which is what made it a player-visible bug
-       rather than a physics one. */
+       the rolled wheel -- which is exactly where the loader's fallback used to put them,
+       since controllerIndex() took the first part with torque > 0 -- and the axes a
+       heading/pitch/roll readout is computed from must still describe the hull the keys
+       turned. This reddens if attitudeBasis() itself goes back to asking `controller`;
+       render.cpp's HUD, navball and chase basis follow that one accessor, so they move
+       with it -- but no check HERE reaches render.cpp, so a HUD-side break shows up in
+       e2e ([surfinfo]'s pitch/roll/hdg), not in this binary. */
     const glm::dvec3 rootX = v->partAxis(root, 0);
     const glm::dvec3 rootUp = v->partAxis(root, 1);
     v->controller = wheel;
@@ -496,7 +505,51 @@ static void test_the_command_funnel() {
                "under SAS the wheels work with a released stick");
     v->Command(ShipCmd(Sas, SlewRetrograde), true);
     v->applySlewRequest(true);
+
+    /* The save door's range check. A save is hand-editable data, and a non-mode latches
+       on wake: the ship leaves the rails while slewTargetDir() has nothing to aim at, so
+       it runs at 1x and never turns, forever. save.cpp's validator refuses such a file
+       outright; this is the belt, and it is the only thing that stops a caller of
+       restoreSlewRequest from handing the laws a value no mode owns. */
+    v->restoreSlewRequest((SlewMode)99);
+    CHECK_TRUE(v->slewRequestMode() == SlewNone, "a non-mode latches nothing");
+    v->restoreSlewRequest((SlewMode)-1);
+    CHECK_TRUE(v->slewRequestMode() == SlewNone, "nor does a negative one");
+    v->applySlewRequest(true);
+    CHECK_TRUE(v->slewMode() == SlewNone, "so nothing drives the tick");
+    v->restoreSlewRequest(SlewAntiNormal);
+    CHECK_TRUE(v->slewRequestMode() == SlewAntiNormal, "a real mode does latch");
+    v->Command(ShipCmd(Sas, SlewAntiNormal), true);   // release through the input door
+    CHECK_TRUE(v->slewRequestMode() == SlewNone, "and Command still owns the release");
     destroyShip(v);
+}
+
+/* THE ARMED RCS DEMAND IS A DIRECTION (#575). Command's Rcs* cases each write one
+   axis sign and hand the triple to armRcs(), so the stored demand is UNIT however many
+   keys are held at once. Nothing on a ship can see that -- rcsWorldDir() normalizes
+   again -- which is exactly why it needs a pin: the EVA suit's rcsWorldDir (eva.h)
+   returns the field as it stands and multiplies its rated thrust by it, so a door that
+   left the field at a cube corner would buy sqrt(3) x the thrust there. Step D is about
+   to start spending this same field as a capability, so the invariant has to be one
+   rule with a name before then. */
+static void test_the_armed_rcs_demand_is_a_direction() {
+    printf("== arming: keys held together still demand one direction ==\n");
+    RcsProbe p;
+    p.Command(ShipCmd(RcsNose, +1.0f), true);
+    CHECK_NEAR(glm::length(p.rcsDir), 1.0, 1e-12, "one key: a unit demand");
+    p.Command(ShipCmd(RcsUp, +1.0f), true);
+    p.Command(ShipCmd(RcsRight, +1.0f), true);
+    CHECK_NEAR(glm::length(p.rcsDir), 1.0, 1e-12,
+               "three keys held together: unit, not a cube corner");
+    CHECK_TRUE(p.rcsDir.x > 0.0 && p.rcsDir.y > 0.0 && p.rcsDir.z > 0.0,
+               "and it stays in the octant the three keys asked for");
+    p.clearRcs();
+    CHECK_NEAR(glm::length(p.rcsDir), 0.0, 1e-12, "the tick's release leaves no demand");
+    p.Command(ShipCmd(RcsUp, -1.0f), true);
+    CHECK_NEAR(p.rcsDir.y, -1.0, 1e-12, "a lone key arms its own axis, at full sign");
+    CHECK_NEAR(glm::length(p.rcsDir), 1.0, 1e-12, "and the demand has no magnitude in it");
+    p.armRcs(glm::dvec3(0.0));
+    CHECK_NEAR(glm::length(p.rcsDir), 0.0, 1e-12, "arming zero is off, not a tiny burn");
 }
 
 int main() {
@@ -507,6 +560,7 @@ int main() {
     test_two_wheels_add_up();
     test_one_frame_for_the_attitude_path();
     test_the_command_funnel();
+    test_the_armed_rcs_demand_is_a_direction();
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }
     printf("test_authority: all checks passed\n");

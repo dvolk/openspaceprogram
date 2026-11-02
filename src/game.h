@@ -150,7 +150,6 @@ struct ShipView {
     // attitude readouts (render frame)
     glm::dvec3 up = glm::dvec3(0.0);
     glm::dvec3 facing = glm::dvec3(0.0);
-    glm::dvec3 other = glm::dvec3(0.0);
     glm::dvec3 facing_dir = glm::dvec3(0.0);
     glm::dvec3 vel_dir = glm::dvec3(0.0);
     // surface + orientation scalars (the SURFACE window)

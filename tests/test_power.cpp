@@ -279,6 +279,19 @@ static void test_active_wheel_draws() {
     /* Stick off: only the 100 W life support for 1 h. */
     s.v->powerTick(3600.0);
     CHECK_NEAR(totalEC(s), 3800.0, 1e-6, "stick off drains only life support");
+
+    /* The same sum the Vessel window's Power row prints (#575), pinned on both gates:
+       the wheel bills its draw only while the stick is working it AND the hull has
+       power. The row used to re-derive this and dropped the power half, so an
+       unpowered hull showed a draw it was not paying. */
+    s.v->Command(ShipCmd(Pitch, +1.0f), true);
+    CHECK_NEAR(s.v->wheelDrawWatts(), 1000.0, 1e-9, "commanded: the wheel's 1000 W");
+    s.v->powered_ = false;
+    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
+               "no power: an electric actuator bills nothing, stick or no stick");
+    s.v->powered_ = true;
+    s.v->Command(ShipCmd(Pitch, 0.0f), true);
+    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9, "released stick: nothing to bill");
     destroyShip(s);
 }
 

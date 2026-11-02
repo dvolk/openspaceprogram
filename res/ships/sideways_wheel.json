@@ -1,6 +1,7 @@
 {
   "name": "sideways_wheel",
   "testship": true,
+  "controller": "wheel_side",
   "parts": [
     { "part": "tank_r1h1", "id": "tank_1", "stage": 1 },
     { "part": "engine", "id": "eng_1", "parent": "tank_1", "stage": 1 },

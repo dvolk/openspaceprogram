@@ -129,9 +129,12 @@ public:
 
     glm::dvec3 m_com;
 
-    /* The cockpit (else the first wheel): the camera basis and stick frame come
-       from its local axes. finalize() sets it, so it must start null -- the
-       camera readers use it unguarded. */
+    /* THE SEAT: where the crew sits. The first-person eye is put on this part's top
+       face (render.cpp), the boot camera aims its initial focus here (main.cpp), and
+       the Vessel window's home distance measures to it. It is NOT the attitude frame:
+       the laws, the stick and every displayed heading/pitch/roll ask attitudeRef() and
+       attitudeBasis() (#571, #573) -- the orbit camera follows the COM, not this part.
+       finalize() sets it, so it must start null. */
     Part *controller = nullptr;
     /* --- the ship as ONE rigid body (btCompoundShape) -------------------
 
@@ -499,7 +502,8 @@ public:
                             and dies with clearRotCmd(). A window asking "what mode does
                             the player have on" wants slewRequestMode(): the engaged copy
                             says KillRot every time X is held, which is not what the
-                            Autopilot window shows.
+                            Autopilot window shows. The laws read `slew` from inside the
+                            class; this is the reader for the pins and the traces.
          slewRequestMode()  what the player has latched on the Autopilot window */
     float stickAxis(int n) const {
         assert(n >= 0 && n < 3 && "stick axis is roll / pitch / yaw");
@@ -509,12 +513,13 @@ public:
     SlewMode slewRequestMode() const { return slewRequest; }
     /* The once-per-tick copy from the latched mode to the engaged one. It carries its
        own gate now: a paused sim engages nothing, and a latched SlewNone engages
-       nothing. tick.cpp used to test the gate and write the copy by hand, which left
-       the rule that decides what drives the ship outside the class that owns the state
-       (#575). After this call the engaged copy says exactly what is driving the ship,
-       rather than what was latched last tick until clearRotCmd() dropped it -- so a
-       caller cannot forget the clear. Returns whether a mode is driving this tick, which
-       is what tick.cpp's "leave the rails" test asks. The HELD override (the X key,
+       nothing. tick.cpp used to test the gate and write the copy by hand after
+       clearRotCmd() had already dropped the engaged copy, so the OLD order was not wrong
+       -- the point of moving it inside is that the rule deciding what drives the ship no
+       longer lives outside the class that owns the state (#575). Being total (it writes
+       on every call, not only when a mode is on) means a caller cannot forget the clear.
+       Returns whether a mode is driving this tick, which is what tick.cpp's "leave the
+       rails" test asks. The HELD override (the X key,
        ShipCmd(KillRot)) still comes after this in tick.cpp, so it keeps winning. */
     bool applySlewRequest(bool simActive) {
         slew = (simActive && slewRequest != SlewNone) ? slewRequest : SlewNone;
@@ -529,6 +534,11 @@ public:
         return powered_ && (stick[0] != 0.0f || stick[1] != 0.0f
                             || stick[2] != 0.0f || slew != SlewNone);
     }
+    /* W the actuators are billing right now: the wheels' draw, summed over every wheel
+       and zero when they are not engaged. powerTick() pays this and the Vessel window's
+       Power row shows it, so the row cannot disagree with the bill (#575) -- it used to
+       re-derive the sum, and dropped the power gate while doing it. */
+    double wheelDrawWatts() const;
     /* The autopilot's TVC aim: one shared lateral deflection vector (world
        axes, rad) computed by the slew law's torque split (gimbal.h
        tvcSplit) each substep, consumed by applyThrustForce's mixer. Cleared
@@ -809,9 +819,9 @@ public:
        Columns are [right, up, nose], the same order as partAxis(ref, 0/1/2); the orbit
        camera wants them as [back, right, up] and reorders them at the call.
        `controller` stays the SEAT: the first-person eye sits on that part's top face, the
-       camera focuses on it, and the Vessel window's home distance measures to it. Where
-       you sit and which way the ship points are different questions. */
-    glm::dmat3 attitudeBasis() const;
+       boot camera aims its initial focus there, and the Vessel window's home distance
+       measures to it. Where you sit and which way the ship points are different questions. */
+    glm::dmat3 attitudeBasis() const;   // == partRot(attitudeRef()), columns [right, up, nose]
 
     void applyRotationForce(double h);
 
@@ -821,10 +831,12 @@ public:
        suit -- and lives under THE CONTROL STATE below (#575). Force is allocated
        per NOZZLE at the pod's position (src/rcs.h, #428): an off-center pod
        translates AND spins the ship, as reality demands.
-         armRcs()          the EVA suit's input door. A suit has no RCS parts to
-                           Command, so its key handling arms the demand directly; a
-                           SHIP arms it through Command(ShipCmd(RcsNose/RcsUp/
-                           RcsRight)) and does not call this. Arming means a
+         armRcs()          the named writer for the armed demand, and the one that keeps
+                           it a DIRECTION. The EVA suit's key handling calls it directly
+                           (a suit has no RCS parts to Command); a SHIP arms per-axis
+                           signs through Command(ShipCmd(RcsNose/RcsUp/RcsRight)) and
+                           those cases pass the triple through here too, so the field
+                           says the same thing whichever path wrote it. Arming means a
                            DIRECTION: the demand is stored unit (or zero), because the
                            suit multiplies its fixed thrust by this vector directly, so
                            a magnitude-2 demand there would be twice the thrust the
@@ -1055,7 +1067,9 @@ protected:
          applySlewRequest()    tick.cpp's latched -> engaged copy, once a tick, with its
                                "paused sim engages nothing" gate
          restoreSlewRequest()  a save loading a latched mode: a fact, not a key press
-         armRcs()              the EVA suit, which has no RCS parts to Command
+         armRcs()              the armed translation demand, unit: the EVA suit calls it
+                               (no RCS parts to Command) and Command's own Rcs* cases
+                               route the signs they set back through it
          markRcsBurned()       a thruster that actually fired (pods, the suit's jets)
          clearRotCmd()         the per-tick release of the stick and of held KillRot
          clearRcs()            the per-tick release of the translation demand
@@ -1073,6 +1087,8 @@ protected:
     SlewMode slew = SlewNone;              // ENGAGED this tick -- see slewMode()
     SlewMode slewRequest = SlewNone;       // latched on the Autopilot window
     glm::dvec3 rcsDir = glm::dvec3(0.0);   // armed translation demand, unit; 0 = off
+                                           // (Command's Rcs* cases arm per-axis signs
+                                           // and renormalize, so the field stays unit)
     bool rcsFiring = false;                // burned since this tick's clearRcs()
     void markRcsBurned() { rcsFiring = true; }
 

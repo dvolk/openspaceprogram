@@ -65,7 +65,13 @@ int main() {
     CHECK(suit.parts[0].def->type == "kerbal");
 
     /* SIZE half: a multi-part def cannot be a person. The save writer reads a
-       walker's part 0 only, so the rest would be written by no one. */
+       walker's part 0 only, so the rest would be written by no one. It also
+       settles a frame question for free (#573): a walker's HUD reads its attitude
+       through Vehicle::attitudeBasis(), which asks attitudeRef() -- the ROOT part --
+       while a ship's seat (`controller`) is by then an unrelated choice. With exactly
+       one part the seat and the root cannot differ, so moving the readouts off the seat
+       did not change a kerbal's heading/pitch/roll. If a suit ever grows a second
+       part, that coincidence ends here and the walker's frame needs its own pin. */
     CHECK(refused_saying([&] { load_suit_def("res/ships/racer.json", cat); },
                          "is not exactly one part"));
 

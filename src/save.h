@@ -172,7 +172,7 @@ struct SaveShip {
     float throttle = 0.0f;
     int active_stage = 1;
     int total_stages = 1;
-    int slew_request = 0;     // SlewMode (vehicle.h)
+    int slew_request = 0;     // SlewMode (vehicle.h), range-checked on load
     std::vector<SaveDock> docks;
     /* The dock target is a SLUG (its own save file), its port a uid -- the
        load's uid->Part map spans every file. */

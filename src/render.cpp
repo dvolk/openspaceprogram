@@ -97,7 +97,6 @@ void updateShipView(Game &g) {
     double &speed = view.speed;
     glm::dvec3 &up = view.up;
     glm::dvec3 &facing = view.facing;
-    glm::dvec3 &other = view.other;
     glm::dvec3 &facing_dir = view.facing_dir;
     glm::dvec3 &vel_dir = view.vel_dir;
     glm::dvec3 &air_dir = view.air_dir;
@@ -174,7 +173,6 @@ void updateShipView(Game &g) {
     const glm::dmat3 shipAxes = ship->attitudeBasis();   // [right, up, nose]
     up = shipAxes[1];
     facing = shipAxes[2];
-    other = shipAxes[0];
 
     facing_dir = glm::normalize(facing);
     /* The ORBITAL window's Prg/Rtg is the angle to the CONIC's prograde, like
