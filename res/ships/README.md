@@ -22,6 +22,12 @@ there is no takeoff constraint: no wheels, no runway, no thrust-to-weight floor.
 | stall (7 km) | 26 m/s |
 | bill at cruise | body 0.11 x 0.87 m2, wing profile 0.42 m2, induced 0.17 m2 |
 
+That row describes a TRIMMED hull, and as of 2026_11_02 the file that meets it is
+`skiff_trim.json` (3.1..3.2 deg AoA, 75..85 m/s, steady altitude on `flying-cruise`),
+not `skiff.json` (1.5 deg, descending). The static margin row is stale the same way:
++0.39 was the pod-on-tank shape, the shipped spindle measures +0.73. #568 puts the pod
+back and this table gets re-stated from that measurement.
+
 The jet and the glider were deleted (2026_11_01): they were rockets with wings bolted
 on, and their envelope cases cost more to keep than they were worth. A new airframe
 should be built from this recipe and get its own row here.
@@ -36,9 +42,17 @@ should be built from this recipe and get its own row here.
 2. **Wing station is a design input.** The old barrel stacks put the wing behind the
    centre of mass by accident; a one-piece body put it 0.7 m ahead and the airframe
    tumbled inside a second. 0.5 m aft of the pod's centre gave SM +0.39.
-3. **Incidence.** A symmetric section at AoA 0 makes no lift, so an airframe with no
-   incidence and no trim "cruises" by falling. The skiff trims by wing station; the
-   jet needed 0.5 deg of elevator trim.
+3. **Incidence and trim.** A symmetric section at AoA 0 makes no lift, so an airframe
+   with neither incidence nor trim "cruises" by falling. The wing station does NOT trim
+   -- it sets stability: as shipped the skiff has SM +0.73 m and a zero-moment AoA of
+   1.6 deg, while its cruise needs 3.2 deg, so it descends on the cruise bed (6928 ->
+   6091 m in 20 s, 2.4 kN of lift against 6.2 kN of weight) even though its tailplane
+   pair is already authored at 5 deg of `roll` incidence. `skiff_trim.json` is that same
+   hull with `"trim": 12` on both elevators and nothing else changed, and it holds the
+   design point: 3.1..3.2 deg of AoA at 75..85 m/s, altitude steady. So trim is either
+   authored incidence or a held elevator setting, decided from a measurement -- never a
+   launch condition: a stable hull rotates to its own zero-moment AoA inside a second
+   whatever attitude it spawns in (#569).
 4. **Tail.** Pitch: a tailplane pair (a `wing_r1h1` pair) with elevators behind it.
    Yaw: a `rudder_r*`. Both are needed; a glider with no pitch surface cannot trim.
 5. **Section**: profile cd 0.010 (smooth), not 0.03 (the old faceted plate).
@@ -50,8 +64,17 @@ should be built from this recipe and get its own row here.
   hinge) or nothing weathervanes. With it, the jet's full-pedal departure became a
   28 deg swing that recovers, and its 88 deg stall-and-recover pull became 15 deg.
   Gated on `LiftingSystem::liftArea` so a flap on a wing does not double-count.
-- **Elevators cannot roll.** Roll is reaction-wheel only today -- a real gap, filed
-  as the top of the work order (#563): planes need ailerons and a roll axis.
+- **Elevators cannot roll.** That was the gap behind #563, now closed the other way: a
+  part declaring `control_axis: roll`, hinged on the wing's trailing edge, rolls the
+  hull -- 0.42 rad/s (24 deg/s) while the stick is held, ~44 deg of bank by t=3 s on
+  `flying-cruise` (measured 2026_11_02, `--att-log --sim-press 1000,2000,Q`; the pair
+  levers 8.91 kN m, per the probe in `tmp/aero/n589_ctrlforce.py`). Two lessons lived in
+  the mount itself. The child's `normal` is what lays the plate flat: the shipped
+  `normal: [1,0,0]` (spanwise) works, `[0,1,0]` stood it on edge and it still answered
+  with 1.33 kN m while its hinge showed full travel -- rig travel is not authority
+  (#566, #509). And the shipped skiff has NO reaction wheel at all, because fuselage
+  parts carry no `torque`: on this airframe the aero row IS the whole attitude budget
+  (`[slew] alpha=0.000`). #568's pod hull would give it a 100 N m wheel.
 - **One lifting system pays one induced bill** (#556): two co-planar panels are one
   AR-4 wing, a bridge (the fuselage) joins roots that do not touch, and a tailplane
   three metres aft is a different system.
