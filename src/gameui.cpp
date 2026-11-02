@@ -2192,7 +2192,7 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("Max TWR: %.2f", ship->getMaxTWR());
         ImGui::Text("Wheel torque: %.0fN m", ship->GetWheelTorque());
         ImGui::Text("Angular rate: %.2fdeg/s",
-                    glm::degrees(glm::length(ship->partAngVel(ship->controller))));
+                    glm::degrees(glm::length(ship->hullAngVel())));
     });
     drawWin(g, W_Controls, [&] {
         ImGui::Text("Click rebind, then press a key (or Shift/Ctrl/Alt + key) to bind it.");

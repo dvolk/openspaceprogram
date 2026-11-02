@@ -289,7 +289,7 @@ static void test_two_wheels_add_up() {
        the wheel's +Z is 90 deg off the stack. That is what makes the disk normal and
        the facing decidable here; a shipped mount can only roll a wheel, not tilt it.
      - killRotStep and the killrot trace row: NO -- they used the reference part only
-       for partAngVel, which ignores the part and returns the hull's rate.
+       to read the hull's rate, which is the same for every part (hullAngVel(), #574).
    What a model that took the wheel's +Z as the TVC disk's normal WOULD do is here and
    now pinned: it re-opens the hole step B closed, crediting TVC with roll. */
 static void test_one_frame_for_the_attitude_path() {

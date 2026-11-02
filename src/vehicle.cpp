@@ -1705,7 +1705,9 @@ glm::dvec3 Vehicle::partVel(const Part *p) const {
          + glm::cross(GetAngVelocity(hull), partPos(p) - comPos());
 }
 
-glm::dvec3 Vehicle::partAngVel(const Part *p) const { return GetAngVelocity(hull); }
+/* The compound is one rigid body: there is no per-part rate (see vehicle.h), which is
+   also why the attitude laws ask for the hull's rate directly. */
+glm::dvec3 Vehicle::hullAngVel() const { return GetAngVelocity(hull); }
 
 void Vehicle::compoundCheck(double time) {
     rebuildCompound();
@@ -3383,7 +3385,7 @@ void Vehicle::slew_log(double time) {
     if(ref == nullptr) { return; }
     const glm::dvec3 facing = partAxis(ref, 2);
     if(slew == SlewKillRot) {
-        const glm::dvec3 w = partAngVel(ref);
+        const glm::dvec3 w = hullAngVel();
         printf("[slew] t=%.3f mode=killrot |w|=%.4f rad/s "
                "w=[%+.4f %+.4f %+.4f]\n",
                time, glm::length(w), w.x, w.y, w.z);
@@ -3420,7 +3422,7 @@ void Vehicle::slew_log(double time) {
     axis = glm::normalize(axis);
     const glm::dvec3 rollAxis  = glm::normalize(facing);
     const glm::dvec3 thirdAxis = glm::cross(axis, rollAxis);
-    const glm::dvec3 w = partAngVel(ref);
+    const glm::dvec3 w = hullAngVel();
     const double w_slew  = glm::dot(w, axis);
     const double w_roll  = glm::dot(w, rollAxis);
     const double w_third = glm::dot(w, thirdAxis);
@@ -4512,7 +4514,7 @@ void Vehicle::slewToward(glm::dvec3 dir, double h) {
     /* Drive the FULL transverse angular velocity toward the braking-curve rate: damping
        only the slew-axis component leaves the third-axis spin alive, which is the
        sustained wobble about a prograde/retrograde target. Roll is left free. */
-    const glm::dvec3 w_now = partAngVel(ref);
+    const glm::dvec3 w_now = hullAngVel();
     const glm::dvec3 w_transverse = w_now - facing * glm::dot(w_now, facing);
     glm::dvec3 dW = axis * w_des - w_transverse; /* desired change in rate */
     glm::dvec3 torque = I * dW / h;
@@ -4523,8 +4525,7 @@ void Vehicle::slewToward(glm::dvec3 dir, double h) {
 void Vehicle::killRotStep(double h) {
     /* No frame in this law at all: the command is the hull's own rate and its own
        inertia, and actuateAttitude's split decides which axes the actuators can
-       deliver it about. Do not route this through partAngVel(ref): that call ignores
-       its argument (one rigid hull), so it looks like a frame choice and is not. */
+       deliver it about. */
     const glm::dvec3 w = GetAngVelocity(hull);
     if(glm::length2(w) == 0.0) { return; } /* at rest: nothing to kill */
     /* Kill-rot commands I*(-w)/h, a direction it does not get to choose, so it

@@ -308,7 +308,9 @@ public:
        exactly partAxis(p, 2). */
     glm::dvec3 partThrustDir(const Part *p) const;
     glm::dvec3 partVel(const Part *p) const;
-    glm::dvec3 partAngVel(const Part *p) const;
+    /* The compound is ONE rigid body, so there is no per-part rate to ask for: every
+       part of a ship shares the hull's angular velocity (#574). */
+    glm::dvec3 hullAngVel() const;
 
     /* --compound-check: rebuild + report the simulated body. */
     void compoundCheck(double time);

@@ -442,9 +442,11 @@ static void checkCompound(Ship &s, const char *msg) {
             snprintf(buf, sizeof(buf), "%s: part %zu partVel [%d]", msg, i, c);
             CHECK_NEAR(got[c], want[c], vtol, buf);
         }
-        const glm::dvec3 gw = s.v->partAngVel(s.v->parts[i]);
+        /* One rigid hull: every part shares its rate, which is why hullAngVel()
+           takes no part at all (#574). */
+        const glm::dvec3 gw = s.v->hullAngVel();
         for(int c = 0; c < 3; c++) {
-            snprintf(buf, sizeof(buf), "%s: part %zu partAngVel [%d]", msg, i, c);
+            snprintf(buf, sizeof(buf), "%s: part %zu hullAngVel [%d]", msg, i, c);
             CHECK_NEAR(gw[c], w0[c], 1e-12, buf);
         }
     }

@@ -169,7 +169,7 @@ void Kerbal::slewTo(const glm::dmat3 &target, double h, double authority) {
     const glm::dmat3 R = partRot(controller);
     glm::dvec3 axis;
     const double ang = evaRotAxisAngle(target * glm::transpose(R), axis);
-    const glm::dvec3 w = partAngVel(controller);
+    const glm::dvec3 w = hullAngVel();
     const glm::dmat3 I = getInertia();
     glm::dvec3 tq(0.0);
     if(ang < 1e-9) {
