@@ -5,13 +5,13 @@
 //
 // The claim worth pinning is the one the feature makes to a player: the number the
 // VAB prints is the number the flight log prints. Measured 2026_11_02 on the shipped
-// skiff: the bench answers CLa 153.6 m2/rad and SM +0.586 m off the parts alone, and
-// e2e flight/454 reads 153.4 and +0.59 in the air -- the two agree to the cos(alpha)
+// skiff: the bench answers CLa 153.6 m2/rad and SM +0.578 m off the parts alone, and
+// e2e flight/454 reads 153.4 and +0.58 in the air -- the two agree to the cos(alpha)
 // dip and no further, which is only true if every convention lines up: the launch COM
 // (tanks full, one suit per seat), the root's axes, and the same liftSlopePerQ the
 // lift loop bills. A unit pin on drag.h::LiftSlopeSum cannot see that composition, and
 // this one broke the first time it was written: forgetting the seated kerbal (97.05 kg
-// in the nose) moved the build from +0.59 m to +0.40 m, a third of the answer.
+// in the nose) moved the build from +0.58 m to +0.40 m, a third of the answer.
 
 #include "shipdef.h"
 
@@ -61,8 +61,8 @@ static Fixture load_all() {
 }
 
 /* The shipped airframes, against what the same parts measure in the air. The bench
-   says CLa 153.6 and SM +0.586 for the crewed hull; the air says 153.42-153.44 and
-   +0.59 at this hull's zero-moment AoA of 2.6 deg, easing to 149.2 at 13.6 -- the
+   says CLa 153.6 and SM +0.578 for the crewed hull; the air says 153.41-153.44 and
+   +0.58 at this hull's zero-moment AoA of 2.6 deg, easing to 150.0 at 12.7 -- the
    cos(alpha) dip in drag.h::LiftSlopeSum, not a second law. Mass walks during a run
    as well, but barely (559.05 -> 558.66 kg across flight/490's 50 s), and on this
    hull the propellant sits AFT of the crewed COM, so burning it moves the COM forward
@@ -115,9 +115,13 @@ static void test_crew_moves_the_pivot(const Fixture &f) {
    this is the case that has to say so before the runway.
    Measured, by moving one pair 3 m forward in the skiff (no recomputePoses: the
    pose IS the edit):
-     as shipped          SM +0.59 m  restoring
+     as shipped          SM +0.58 m  restoring
      tailplanes +3 m     SM +0.18 m  restoring, and the number shows why
      wings +3 m          SM -1.48 m  diverging
+   The shipped row moves with the content (#570's half-metre of aileron and rudder
+   took it from +0.586); the other two rows are from the original #499 rig, which
+   slid a surface mount along the body with surface "z" -- a shipdef the loader
+   refuses now ("is off the end of parent"), so they are history rather than a repro.
    The middle row is the honest one and is pinned so nobody "fixes" it by expecting
    a flip: the skiff's wings are 129.6 of its 153.6 m2/rad, so putting its tail in
    front of them costs two thirds of the stiffness without turning the airframe

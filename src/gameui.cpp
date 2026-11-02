@@ -4831,7 +4831,7 @@ void drawVabUI(Game &g) {
        mounted ahead of the wings fails at the bench instead of on the runway.
        Crewed as the launch will be: each seat costs one suit from the pad's pool,
        because a 97 kg kerbal in the nose is 0.18 m of the margin (that is what
-       turns the skiff's +0.40 m into the +0.59 m it flies with). No crew standing,
+       turns the skiff's +0.40 m into the +0.58 m it flies with). No crew standing,
        no occupant mass. What it cannot see is the stall droop or a rotation: a ship
        that reads +0.6 here can still stop resisting mid-tumble, and only the flight
        number (the SURFACE window) shows that. */

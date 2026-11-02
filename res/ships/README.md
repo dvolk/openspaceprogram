@@ -14,29 +14,34 @@ there is no takeoff constraint: no wheels, no runway, no thrust-to-weight floor.
 | analogue | light utility plane (Cessna 152 class) |
 | hull | `capsule_r0.5h1.5` at the root, `jet_tank_r0.4h2` stacked 1.75 m aft of it, engine 3.25 m aft |
 | mass | 559 kg (462 kg of parts with the tank full + one 97 kg kerbal; the pod seats one) |
-| wing | 21.6 m2, span 12 m, AR 6.7, bolted to the TANK, 1.2 m aft of the pod's centre |
+| wing | 21.6 m2 authored, span 12 m, AR 6.7, bolted to the TANK, 1.2 m aft of the pod's centre |
+| as the model groups it | one 22.7 m2 system at AR 6.34 (the two wings plus the ailerons hung on their trailing edge), one 5.1 m2 tail system at AR 3.12, fin and rudder each their own (`OSPAEROSYS=1`, #556/#570) |
 | loading | 26 kg/m2 |
 | cruise | 46..49 m/s at 7 km once the phugoid damps (#585), +5.1 deg of angle of attack |
 | glide | sinks 7.4 m/s unpowered at that speed |
 | L/D | 7.5 (target >= 10; the levers are span -- AR 6.7 -> 9, #567 -- and the hull bill below) |
-| static margin | +0.59 m |
+| static margin | +0.58 m |
 | roll | aileron pair on the wing, `roll` axis (563-roll-ailerons), and the pod's 100 N m wheel |
 | stall (7 km) | 24 m/s |
-| bill at cruise | body 0.59 x 0.82 m2, wing profile 0.58 m2, induced 0.48 m2 |
+| bill at cruise | body 0.59 x 0.82 m2, wing profile 0.58 m2, induced 0.49 m2 |
 
 Those are `skiff_trim.json`'s numbers (`skiff.json` plus `"trim": 12` on both elevators
 and nothing else), measured 2026_11_02 on `flying-cruise` with `--drag-log` and no
 stick: once the phugoid damps -- `t > 170 s` of a 266 s run -- it holds AoA 5.1 deg at
-46..49 m/s, sinks 7.4 m/s and bills L/D 7.48 in every row. The pinned case
+46..49 m/s, sinks 7.4 m/s and bills L/D 7.52 in every row. The pinned case
 (`flight/492-elevator-trim`: 50 s at `--time-accel 1`, throttle opened at t=25 s) is the
-same hold caught before it damps: AoA 5.0..5.7 deg, L/D 7.5, speed swinging 30..78 m/s
-against 7.0..7.4 km of height. `skiff.json` itself -- no trim -- flies this hull's
-zero-moment AoA of +2.6 deg: 69..80 m/s sinking 16 m/s, and only L/D 4.9, because at
-that speed the body bill and not the wing pays the drag. So the 12 deg of tab is not
-only a pitch offset, it is the difference between this hull's worst and best glide. What
-it leaves open is the tail (#570, #567), not the tab: the tailplane pair stands 1.65 m
-behind the wing where the spindle's stood 0.85 m, so the same 12 deg buys roughly twice
-the pitch authority -- which is why this hull sits 2 deg nose-high at the same setting.
+same hold caught before it damps: AoA 5.0..5.9 deg, L/D up to 7.6, speed swinging
+29..78 m/s against 7.0..7.4 km of height. `skiff.json` itself -- no trim -- flies this
+hull's zero-moment AoA of +2.6 deg: 69..80 m/s sinking 16 m/s, and only L/D 4.9, because
+at that speed the body bill and not the wing pays the drag. So the 12 deg of tab is not
+only a pitch offset, it is the difference between this hull's worst and best glide.
+#570 then hung the control surfaces off the trailing edges they hinge on instead of
+burying them 0.4-0.5 m inside those surfaces: worth +0.04 of L/D and -0.07 m/s of sink,
+which is not why it was worth doing -- a plate inside another plate is a thing the
+player can see and the law has no word for. What the airframe still leaves open is
+span (#567), not the tab or the tail: the tailplane pair stands 1.65 m behind the wing
+where the spindle's stood 0.85 m, so the same 12 deg buys roughly twice the pitch
+authority -- which is why this hull sits 2 deg nose-high at the same setting.
 
 The stall row is arithmetic off the same law, not a flight measurement: 5.36 kN of
 weight at 7 km (559 kg x 9.81 x (600/607)^2) against the airframe's 153.6 m2/rad of lift
@@ -51,7 +56,10 @@ slope at the shipped wing's 20.1 deg stall angle, in 7 km air (rho 0.346). The o
 | hull | mass | AoA | glide speed | sink | L/D | SM | body bill Cd x A |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | one `fuselage_r0.5h3.5` spindle | 633 kg | +3.1 | 64..70 m/s | 10.4 m/s | 7.91 | +0.73 | 0.11 x 0.87 = 0.10 m2 |
-| pod on a `jet_tank_r0.4h2` | 559 kg | +5.1 | 46..49 m/s | 7.4 m/s | 7.48 | +0.59 | 0.59 x 0.82 = 0.48 m2 |
+| pod on a `jet_tank_r0.4h2` | 559 kg | +5.1 | 46..49 m/s | 7.4 m/s | 7.52 | +0.58 | 0.59 x 0.82 = 0.48 m2 |
+
+The pod row is the shipped hull re-read after #570 (its buried control surfaces made
+this bed 7.48 / +0.586); the spindle row is as it was measured for the swap.
 
 All of that gap is coefficient, not shape: the two hulls present almost the same
 silhouette (0.82 vs 0.87 m2) and differ fivefold in what it is charged. Nose-on, the
@@ -89,7 +97,7 @@ should be built from this recipe and get its own row here.
    trailing-edge nodes (#566). The old barrel stacks put the wing behind the centre of
    mass by accident; a one-piece body put it 0.7 m ahead and the airframe tumbled
    inside a second. On the skiff, tank-local `z: +0.55` puts the wing 1.2 m aft of the
-   pod's centre and the COM 0.33 m ahead of the wing: SM +0.59 m.
+   pod's centre and the COM 0.32 m ahead of the wing: SM +0.58 m.
 3. **Incidence and trim.** A symmetric section at AoA 0 makes no lift, so an airframe
    with neither incidence nor trim "cruises" by falling. The wing station does NOT trim
    -- it sets stability: the skiff's zero-moment AoA is 2.6 deg while its trimmed hold
@@ -102,6 +110,15 @@ should be built from this recipe and get its own row here.
    own zero-moment AoA inside a second whatever attitude it spawns in (#569).
 4. **Tail.** Pitch: a tailplane pair (a `wing_r1h1` pair) with elevators behind it.
    Yaw: a `rudder_r*`. Both are needed; a glider with no pitch surface cannot trim.
+   Hang every control surface off its parent's TRAILING EDGE with a surface `point`
+   plus `normal`, not with a `z` that slides it inside the parent (#570): the skiff's
+   ailerons used to sit 0.5 m of their 0.7 m chord inside the wing and its rudder half
+   its chord inside the fin. Measure before believing it matters to the air: the
+   grouping merges a flap into the surface it is bolted to either way -- four lifting
+   systems before #570 and after -- and clearing them was worth +0.04 of L/D. It is
+   worth doing because a plate inside another plate is something the player can see,
+   and because a tab whose chord is buried in its parent has no hinge the law could
+   honor if the lift model ever wanted one.
 5. **Section**: profile cd 0.010 (smooth), not 0.03 (the old faceted plate).
 6. Then measure and pin: L/D, cruise speed, static margin, stall margin.
 
@@ -127,4 +144,8 @@ should be built from this recipe and get its own row here.
   pointing a ship out of atmosphere, negligible for rolling this one in it.
 - **One lifting system pays one induced bill** (#556): two co-planar panels are one
   AR-4 wing, a bridge (the fuselage) joins roots that do not touch, and a tailplane
-  three metres aft is a different system.
+  three metres aft is a different system. #570 shows the rule is about being coplanar,
+  not about being in contact: the aileron hung off its wing's trailing edge joins the
+  wing system (same plane, spanwise overlap -- one 22.7 m2 system, AR 6.34), and the
+  rudder hung off the fin's trailing edge, touching it at exactly one line, stays its
+  own system because its plate is at 90 deg to the fin's.

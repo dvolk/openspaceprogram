@@ -37,15 +37,15 @@ CHECK max(abs(a-b) for a,b,g in zip([s["a"] for s in surface][8::10],[s["a"] for
 CHECK all(4.5 < w - t < 5.5 for w,t,g in zip([s["a"] for s in surface][0::10],[s["a"] for s in surface][2::10],[d["beta"] for d in drag]) if abs(g) < 0.6)
 CHECK all(-0.5 < e - w < 0.4 for e,w in zip([s["a"] for s in surface][5::10],[s["a"] for s in surface][0::10]))
 # A tab bolted flat to a wing meets the flow at the wing's own angle: the ailerons
-# hang off the wing's trailing edge (point/normal, #566), and they read -0.1..+0.2 deg
-# off wing_l all the way through the run.
+# hang off the wing's trailing edge (point/normal, #566, sat clear of it by #570), and
+# they read -0.1..+0.1 deg off wing_l all the way through the run.
 CHECK all(-0.5 < x - w < 0.4 for x,w in zip([s["a"] for s in surface][8::10],[s["a"] for s in surface][0::10]))
 # THE WEATHERVANE, MECHANISM AND NOT JUST OUTCOME. One 1 s rudder press at 25 s, never
 # held. The ship yaws away and the fin meets the flow at exactly the angle it is
-# weathervaning through, of the OPPOSITE sign: Beta -8.8 -> fin +9.1, Beta +4.3 ->
-# fin -3.9. The rudder, which nobody is touching, reads the same as the fin beside it,
-# which is how a player tells a deflecting surface from one merely carried through the
-# air.
+# weathervaning through, of the OPPOSITE sign: Beta -9.7 -> fin +10.0, Beta +5.1 ->
+# fin -4.6. The rudder, which nobody is touching, reads the same as the fin behind which
+# it hangs (#570), which is how a player tells a deflecting surface from one merely
+# carried through the air.
 CHECK all(abs(f + g) < 1.2 for f,g in zip([s["a"] for s in surface][4::10],[d["beta"] for d in drag]) if abs(g) > 4.0)
 CHECK all(abs(f - r) < 0.6 for f,r in zip([s["a"] for s in surface][4::10],[s["a"] for s in surface][7::10]))
 # A sideslip is not allowed to leak into pitch: the wings stay 2.2-3.6 deg through the
@@ -53,13 +53,15 @@ CHECK all(abs(f - r) < 0.6 for f,r in zip([s["a"] for s in surface][4::10],[s["a
 # once it does -- measured on the settled rows, four seconds after the kick (worst 0.1;
 # the run's last four rows all print 0.0 or -0.0).
 # The filter used to be Beta, and #503 showed what that was really sampling. At t=27 the
-# ship crosses Beta = 0 mid-swing (Beta -8.8 at t=26, +2.0 at t=27) and the fin still
-# reads -2.6 deg: its angle is not the ship's. The fin stands 2.2 m aft of the COM and
-# the rudder 2.7 (#568's stack puts them a metre further back than the spindle did), and
-# the yaw rate that carried Beta through that crossing -- 10.8 deg in the one second
-# before it, and more at the peak -- drags 0.4-0.8 m/s of air sideways across them, which
-# at 76 m/s is 0.3-0.6 deg: the 0.6 deg the fin still claims at that row. #483's sweep
-# term doing its job on an airframe that is pointing into the flow while still turning.
+# ship crosses Beta = 0 mid-swing (Beta -9.7 at t=26, +2.0 at t=27) and the fin still
+# reads -2.7 deg: its angle is not the ship's. The fin stands 2.2 m aft of the COM and
+# the rudder 3.1 (#568's stack put them a metre further back than the spindle did, and
+# #570 hung the rudder off the fin's own trailing edge), and the yaw rate that carried
+# Beta through that crossing -- 18 deg/s at that row, off the att log -- drags 0.7 m/s of
+# air sideways across the fin and 1.0 m/s across the rudder, which at the 60 m/s this
+# kick is flying at is 0.65-0.9 deg: the 0.7 deg the fin still claims at that row. #483's
+# sweep term doing its job on an airframe that is pointing into the flow while still
+# turning.
 # #503's weaker full-lock rudder made the swing quicker, so the 1 s sample now lands on
 # that crossing; before, the same instant read Beta=-0.5 and fell out of the filter.
 # Betting a band on where one sample lands inside an oscillation is a bet on phase, not

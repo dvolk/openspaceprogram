@@ -92,8 +92,17 @@
       "id": "rudder",
       "parent": "engine",
       "attach": "surface",
-      "angle": 90,
-      "z": -0.3,
+      "childNode": "srf",
+      "point": [
+        0.0,
+        0.25,
+        -0.7
+      ],
+      "normal": [
+        0,
+        1,
+        0
+      ],
       "stage": 1
     },
     {
@@ -105,7 +114,7 @@
       "point": [
         1.2,
         0.02,
-        -0.75
+        -1.25
       ],
       "normal": [
         1,
@@ -123,7 +132,7 @@
       "point": [
         1.2,
         0.02,
-        -0.75
+        -1.25
       ],
       "normal": [
         1,
