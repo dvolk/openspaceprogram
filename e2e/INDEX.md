@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 271 |
+| `invariant` | a behaviour or a player route the game must keep | 272 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 37 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **326** |
+| | **total** | **327** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (77)
+## flight (78)
 
 | case | kind | pins |
 |---|---|---|
@@ -99,6 +99,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/498-surface-prograde.txt` | invariant | A plane cruising inside an atmosphere reads two different progrades: the air-relative one sits 2.4 deg off the nose -- the same angle the aero law calls its angle of attack -- while the conic one sits 16 deg off and drifts to 21, because the conic points where the ground is going rather than where the plane is flying. |
 | `flight/541-booster-root-decoupler.txt` | invariant | Pressing a stage on a ship whose root part is the decoupler says which part cannot separate, instead of claiming the ship has run out of stages. |
 | `flight/563-roll-ailerons.txt` | invariant | A plane rolls with its ailerons, not the reaction wheel: a pair of ailerons at the skiff's wing trailing edge answers the roll stick and banks it past 30 deg in two seconds, where only the reaction wheel could before. |
+| `flight/571-stick-faces-the-root.txt` | invariant | W/S pitches about the ROOT's right axis and A/D yaws about its up axis, even when the hull's only wheel is mounted on its side. |
 
 ## crew (25)
 

@@ -543,8 +543,11 @@ struct ShipDef {
 
     int controllerIndex() const {
         if(controller >= 0) { return controller; }
-        /* Default: the first part with reaction-wheel authority (the stick
-           frame's), so camera basis and controls agree. Falls back to the root. */
+        /* Default: the first part with reaction-wheel authority -- the part the
+           camera focuses on and the axes the HUD's heading/pitch/roll and the chase
+           basis are read from. It used to be the stick's frame too; since #571 the
+           controls and the laws read the ROOT's axes, so on a hull whose wheel is
+           rolled about the stack the readout and the stick disagree. #573. */
         for(size_t i = 0; i < parts.size(); i++) {
             if(parts[i].def && parts[i].def->torque > 0.0) { return (int)i; }
         }

@@ -167,6 +167,8 @@ TOAST_RE = re.compile(r"\[toast\] (.*)")
 ATT_RE = re.compile(
     r"\[attlog\]\s+t=([\d.]+)s\s+"
     r"nose=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+"
+    r"right=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+"
+    r"up=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+"
     r"w=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+"
     r"\|w\|=([-\d.]+) rad/s"
 )
@@ -677,17 +679,23 @@ def parse_surfmap(out):
 def parse_att(out):
     rows = []
     for m in ATT_RE.finditer(out):
-        (t, nx, ny, nz, wx, wy, wz, wnorm) = m.groups()
+        (t, nx, ny, nz, rx, ry, rz, ux, uy, uz, wx, wy, wz, wnorm) = m.groups()
         nose = (float(nx), float(ny), float(nz))
+        right = (float(rx), float(ry), float(rz))
+        up = (float(ux), float(uy), float(uz))
         w = (float(wx), float(wy), float(wz))
+        # The rate resolved on the ship's OWN frame -- the one the attitude path
+        # speaks (#571) -- so a case can tell pitch from yaw.
         wroll = w[0]*nose[0] + w[1]*nose[1] + w[2]*nose[2]
+        wpitch = w[0]*right[0] + w[1]*right[1] + w[2]*right[2]
+        wyaw = w[0]*up[0] + w[1]*up[1] + w[2]*up[2]
         rows.append({
-            "t": float(t), "nose": nose, "w": w,
+            "t": float(t), "nose": nose, "right": right, "up": up, "w": w,
             "wnorm": float(wnorm),
-            # awroll pre-computed: free vars in a CHECK generator resolve
-            # against globals, not the locals namespace.
-            "wroll": wroll,
-            "awroll": abs(wroll),
+            # Signed, and the abs_ forms pre-computed: free vars in a CHECK
+            # generator resolve against globals, not the locals namespace.
+            "wroll": wroll, "wpitch": wpitch, "wyaw": wyaw,
+            "awroll": abs(wroll), "awpitch": abs(wpitch), "awyaw": abs(wyaw),
         })
     return rows
 

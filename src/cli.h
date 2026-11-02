@@ -105,7 +105,7 @@ struct GameArgs {
     std::string transfer_target;
     bool spin_log_enabled = false;
     bool slew_log_enabled = false;  // the prograde/retrograde autopilot state
-    bool att_log = false;          // the ship's nose + angular velocity
+    bool att_log = false;          // the ship's frame axes + angular velocity
     bool shake_log = false;       // the cam-shake state per interval
     bool cam_log = false;         // the live camera pose + who ate the input
     bool audio_log = false;       // the [aud] audio-event trace

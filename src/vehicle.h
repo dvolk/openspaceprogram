@@ -501,8 +501,9 @@ public:
            which is what turns a torque to gimbal angles (gimbal.h tvcSplit).
          stackAxis:   that disk's normal -- the root part's +Z, i.e. the frame
            applyThrustForce and tvcSplit steer in. attitudeTorqueAbout and
-           actuateAttitude read it from here so they cannot talk past each other;
-           applyThrustForce still resolves rootPart() itself (#571).
+           actuateAttitude read it from here so they cannot talk past each other, and
+           since #571 the laws ask the same part for their facing (attitudeRef()), so
+           the budget, the mixer and the stick are all stated in one frame.
        TVC follows throttle because it is read off the ARMED thrust, which is a
        per-TICK transient (ApplyThrust arms it, the tick clears it), so ask once per
        substep: what actually moves between substeps is the power gate and the COM
@@ -718,8 +719,15 @@ public:
     /* The armed control forces, per SUBSTEP. The EVA kerbal overrides (eva.h). */
     virtual void applyControlForces(double h);
 
-    /* The first reaction-wheel PART (nullptr if none): the attitude reference. */
-    Part *firstWheel();
+    /* THE FRAME THE CONTROLS AND THE ATTITUDE LAWS SPEAK (#571): the root part,
+       whose axes are pitch / yaw / roll, the TVC disk's normal and the nose the
+       autopilot aligns. Wheels are actuators, never a frame -- firstWheel() used to
+       be the attitude reference, and a surface mount keeps a part's +Z parallel to
+       its parent's while ROLLING it about the stack, so a wheel bolted to a tank's
+       side has the ship's nose and the ship's UP axis as its "right" one: W/S yaws
+       and A/D pitches (res/ships/sideways_wheel.json, e2e flight/571). This is NOT
+       the camera/HUD frame, which still follows `controller` -- see #573. */
+    Part *attitudeRef() const;
 
     void applyRotationForce(double h);
 

@@ -273,14 +273,25 @@ static void test_two_wheels_add_up() {
     destroyShip(st.s.v);
 }
 
-/* The mixer's stack axis belongs to the ROOT part, not to whatever wheel the
-   attitude reference happens to use. slewToward/killRotStep/slew_log pick
-   firstWheel() as their FACING reference and fall back to rootPart(); a model
-   that took the wheel's +Z as the TVC disk's normal would re-open exactly the
-   hole step B closed -- crediting TVC with roll -- on any ship whose wheel is
-   mounted at an angle to the stack (landing gear, a pod docked sideways). */
-static void test_the_stack_axis_is_the_roots() {
-    printf("== the TVC disk is normal to the ROOT's stack axis, not the wheel's ==\n");
+/* ONE FRAME FOR THE WHOLE ATTITUDE PATH (#571). The stack axis TVC levers belongs
+   to the ROOT part, and since #571 every consumer asks attitudeRef() for it: the
+   mixer, attitudeAuthority, the manual stick, rcsWorldDir, the two traces, and
+   slewToward's facing. Before it, the laws and the stick took firstWheel() -- a
+   frame picked by parts-list order. Which half of that was observable:
+     - the stick, YES: a surface mount keeps a part's +Z parallel to its parent's
+       and ROLLS it about the stack, so a wheel on a tank's side has the ship's nose
+       and the ship's UP axis as its "right" one -- W yaws, A pitches. Measured on
+       res/ships/sideways_wheel.json (e2e flight/571), not here: this binary has no
+       physics world, so ApplyTorque is not observable.
+     - the fixture below, in a shape a def CANNOT produce: localRot is set by hand so
+       the wheel's +Z is 90 deg off the stack. That is what makes the disk normal and
+       the facing decidable here; a shipped mount can only roll a wheel, not tilt it.
+     - killRotStep and the killrot trace row: NO -- they used the reference part only
+       for partAngVel, which ignores the part and returns the hull's rate.
+   What a model that took the wheel's +Z as the TVC disk's normal WOULD do is here and
+   now pinned: it re-opens the hole step B closed, crediting TVC with roll. */
+static void test_one_frame_for_the_attitude_path() {
+    printf("== one frame: the ROOT's axes, for the disk normal and the facing ==\n");
     Ship s;
     s.v = new Vehicle;
     s.v->name = "gear";
@@ -306,6 +317,13 @@ static void test_the_stack_axis_is_the_roots() {
     const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
     CHECK_NEAR(glm::dot(a.stackAxis, rootZ), 1.0, 1e-12,
                "the authority is stated in the ROOT's frame");
+    /* #571 proper. The fixture has a wheel AND a root whose axes differ by 90 deg,
+       so "whose axes are the ship's" is decidable here: the root's, for the mixer,
+       the budget, the stick and the trace alike. Point attitudeRef() at a wheel
+       instead and all four of these go red (tmp/aero/n571_mutate.py). */
+    CHECK_TRUE(v->attitudeRef() == root, "the ship's frame is the ROOT part");
+    CHECK_NEAR(glm::dot(v->partAxis(v->attitudeRef(), 2), rootZ), 1.0, 1e-12,
+               "and the facing it hands the laws is the stack axis, not the wheel's");
     CHECK_TRUE(a.wheelTorque == 300.0 && a.tvcTorque > 0.0,
                "both actuators are live on this hull");
     /* About the stack axis: wheels only. If the model read the wheel's axis, this
@@ -326,7 +344,7 @@ int main() {
     test_wheels_and_tvc_together();
     test_a_ship_with_nothing_has_nothing();
     test_two_wheels_add_up();
-    test_the_stack_axis_is_the_roots();
+    test_one_frame_for_the_attitude_path();
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }
     printf("test_authority: all checks passed\n");

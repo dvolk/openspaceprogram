@@ -1,0 +1,50 @@
+# The ship's frame is the ROOT part's, not whichever wheel comes first in the
+# parts list (#571). A surface mount does not tilt a part -- attachSurface keeps
+# the child's +Z parallel to its parent's and rolls it about the stack -- so the
+# hull's only wheel here (bolted to the tank at angle 90) keeps the ship's nose
+# while its "right" axis is the ship's UP axis. Read the stick in that part's
+# frame and W/S yaw the ship while A/D pitch it.
+#
+# att_log prints the frame the controls speak (nose/right/up, #571) and run.py
+# resolves the angular rate onto it as wpitch/wyaw/wroll, which is what lets this
+# case separate the two at all. Measured on this fixture, --time-accel 1, all
+# components resolved on the ROOT's axes (tmp/aero/n571_table.py):
+#
+#   hold S, 2-5 s:  |w| 2.92 = right 2.92 (1.00) + up 0.0002 + nose 0.0001
+#   hold A, 6-9.5s: up rises from 0.0001 to 1.17 rad/s
+#
+# With the stick read off the wheel instead, the same S press gives right 0.91
+# (0.25) and up 3.48 (0.94) -- the ship yaws. That comparison needs care: pointing
+# attitudeRef() at the wheel also moves the axes att_log prints, so the mutant's own
+# rows label the ship's UP axis "right" (a surface mount rolls about the stack, so
+# the wheel's right is the ship's up and vice versa). tmp/aero/n571_table.py does the
+# swap; feeding the mutant's rows straight into the checks below still turns three of
+# the five red (tmp/aero/n571_e2e_mutate2.py), which is the point.
+#
+# The S press is the clean discriminator because the hull's response to a driven
+# wheel is only clean along a principal axis, and this tank's right axis is one while
+# its up axis is not (a wheel is bolted to its side). Hence the A press is pinned as
+# the GROWTH of the yaw component rather than as a clean yaw: on the root's frame A
+# takes up from ~0 to 1.17 rad/s, while in the wheel's frame A is the pitch key and
+# the ship's up component moves by only 0.12 against a right component that grows
+# 0.44. What does NOT bite is comparing yaw growth against pitch growth inside one
+# run: under the old frame both labels rotate with the frame, so that check passes
+# either way and is deliberately not here.
+NAME stick-faces-the-root
+CLAIM W/S pitches about the ROOT's right axis and A/D yaws about its up axis, even when the hull's only wheel is mounted on its side.
+KIND invariant
+ARGS --timeout 12 --time-accel 1
+ARGS --startship sideways_wheel,res/ships/sideways_wheel.json,Kerbin,rot-orbit
+ARGS --att-log --orbit-interval 0.3
+ARGS --sim-press 2000,3000,S
+ARGS --sim-press 6000,3000,A
+EXPECT [attlog]
+FORBID error:
+CHECK len(att) >= 10
+# The S press: all of it about the ship's own right axis.
+CHECK max(a["awpitch"] for a in att if 2.5 < a["t"] < 5.0) > 1.0
+CHECK max(a["awyaw"] for a in att if 2.5 < a["t"] < 5.0) < 0.05 * max(a["awpitch"] for a in att if 2.5 < a["t"] < 5.0)
+CHECK max(a["awroll"] for a in att if 2.5 < a["t"] < 5.0) < 0.05 * max(a["awpitch"] for a in att if 2.5 < a["t"] < 5.0)
+# The A press has to YAW the ship: the up component starts at ~0 and ends above
+# 0.5 rad/s (measured 1.17; the old frame reaches 0.12).
+CHECK max(a["awyaw"] for a in att if 6.5 < a["t"] < 9.5) - max(a["awyaw"] for a in att if 5.0 < a["t"] < 6.0) > 0.5

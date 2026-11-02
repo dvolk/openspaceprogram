@@ -2253,7 +2253,7 @@ void Vehicle::applyThrustForce(double h) {
        stages above COM mid-burn) must deflect OPPOSITE for their torques
        to add instead of fight. Ring symmetry is untouched: same-height
        engines share the sign. */
-    const Part *tvcRef = rootPart();
+    const Part *tvcRef = attitudeRef();
     glm::dvec3 latShip(0.0);
     if(tvcRef != nullptr && (stick[1] != 0.0f || stick[2] != 0.0f)) {
         latShip = (double)stick[2] * partAxis(tvcRef, 0)
@@ -3187,9 +3187,8 @@ void Vehicle::applyControlForces(double h) {
     applyRcsForce(h);
 }
 
-Part * Vehicle::firstWheel() {
-    for(Part *p : parts) { if(p->isWheel()) { return p; } }
-    return nullptr;
+Part * Vehicle::attitudeRef() const {
+    return rootPart();
 }
 
 void Vehicle::applyRotationForce(double h) {
@@ -3198,20 +3197,28 @@ void Vehicle::applyRotationForce(double h) {
     tvcSlewLat_ = glm::dvec3(0.0);
     /* Power gate: the wheels are electric -- no power, no wheel torque.
        powered_ comes from powerTick this substep. */
-    if(firstWheel() != nullptr && powered_
+    Part *ref = attitudeRef();
+    if(ref != nullptr && powered_
     && (stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f)) {
         /* Manual stick, body-relative: pitch (W/S) about the ship's right axis,
-           yaw (A/D) about its up axis, roll (Q/E) about the nose. */
-        Part *rw0 = firstWheel();
-        const glm::dvec3 pitchAxis = -partAxis(rw0, 0);  // right (W/S)
-        const glm::dvec3 yawAxis   = -partAxis(rw0, 1);  // up    (A/D)
-        const glm::dvec3 rollAxis  =  partAxis(rw0, 2);  // nose  (Q/E)
+           yaw (A/D) about its up axis, roll (Q/E) about the nose -- measured on
+           attitudeRef(), the root part, which is the frame applyThrustForce
+           gimbal-sticks in for the same two keys (#571). Wheels are only ever
+           actuators here: a wheel mounted on a tank's side is ROLLED 90 deg about
+           the stack, and reading the stick in THAT part's frame swapped pitch and
+           yaw -- W yaws, A pitches. */
+        const glm::dmat3 axes = partRot(ref);
         const glm::dvec3 worldAxis =
-            (double)stick[0] * rollAxis
-            + (double)stick[1] * pitchAxis
-            + (double)stick[2] * yawAxis;
-        // Every wheel turns the same body on the same axis, so their torques sum.
-        ApplyTorque(hull, maxTorque() * worldAxis);
+            (double)stick[0] * axes[2]           // roll: nose (Q/E)
+          - (double)stick[1] * axes[0]           // pitch: right (W/S)
+          - (double)stick[2] * axes[1];          // yaw: up    (A/D)
+        /* One parts scan, and only while a key is held. It is both the gate and the
+           rating: maxTorque() is the SUM over wheels and is 0 exactly when no wheel
+           is fitted (Part::isWheel() is `torque > 0`), so there is no separate
+           "has a wheel" test to make -- same rule attitudeAuthority() states.
+           Every wheel turns the same body on the same axis, hence the sum. */
+        const double wheelT = maxTorque();
+        if(wheelT > 0.0) { ApplyTorque(hull, wheelT * worldAxis); }
     }
     /* Autopilot: one authority-bounded step of the slew/kill-rot law. It
        runs on ANY attitude authority -- wheels and/or TVC -- so a wheel-less
@@ -3231,7 +3238,7 @@ void Vehicle::clearRcs() { rcsDir = glm::dvec3(0.0); rcsFiring = false; }
 
 glm::dvec3 Vehicle::rcsWorldDir() const {
     if(glm::length2(rcsDir) < 1e-12) { return glm::dvec3(0.0); }
-    const Part *ref = rootPart();
+    const Part *ref = attitudeRef();
     if(ref == nullptr) { return glm::dvec3(0.0); }
     const glm::dvec3 d = rcsDir.x * partAxis(ref, 0)
                        + rcsDir.y * partAxis(ref, 1)
@@ -3367,12 +3374,11 @@ void Vehicle::applyRcsForce(double h) {
 
 void Vehicle::slew_log(double time) {
     if(slew == SlewNone) { return; }
-    Part *wheel = firstWheel();
-    if(wheel == nullptr) { wheel = rootPart(); }
-    if(wheel == nullptr) { return; }
-    const glm::dvec3 facing = partAxis(wheel, 2);
+    Part *ref = attitudeRef();
+    if(ref == nullptr) { return; }
+    const glm::dvec3 facing = partAxis(ref, 2);
     if(slew == SlewKillRot) {
-        const glm::dvec3 w = partAngVel(wheel);
+        const glm::dvec3 w = partAngVel(ref);
         printf("[slew] t=%.3f mode=killrot |w|=%.4f rad/s "
                "w=[%+.4f %+.4f %+.4f]\n",
                time, glm::length(w), w.x, w.y, w.z);
@@ -3409,7 +3415,7 @@ void Vehicle::slew_log(double time) {
     axis = glm::normalize(axis);
     const glm::dvec3 rollAxis  = glm::normalize(facing);
     const glm::dvec3 thirdAxis = glm::cross(axis, rollAxis);
-    const glm::dvec3 w = partAngVel(wheel);
+    const glm::dvec3 w = partAngVel(ref);
     const double w_slew  = glm::dot(w, axis);
     const double w_roll  = glm::dot(w, rollAxis);
     const double w_third = glm::dot(w, thirdAxis);
@@ -3418,11 +3424,11 @@ void Vehicle::slew_log(double time) {
     /* Re-derive the axis and the budget the law is using, and log both ABOUT THE
        AXIS, or a wheel-less ship's trace would read alpha=0 while it flies on its
        engines -- and a stack-axis error would read the full TVC budget while
-       tvcSplit delivers none of it. `axis` is transverse to the FACING part
-       (firstWheel() when there is one), NOT to the stack axis, so on a hull where
-       those two parts disagree the row can land on the stack axis and alpha is
-       legitimately wheels-only there. That disagreement is #571, and this trace is
-       where it would first be visible -- not somewhere it cannot happen. */
+       tvcSplit delivers none of it. `axis` is transverse to the facing part, which
+       since #571 is the root part, so it is transverse to the stack axis the mixer
+       levers in -- the same frame AttitudeAuthority::stackAxis names. If that ever
+       comes apart again, this row is where it shows: alpha would credit TVC about an
+       axis tvcSplit hands to the wheels. */
     const double alpha = (Ieff > 0.0)
         ? attitudeTorqueAbout(attitudeAuthority(), axis) / Ieff : 0.0;
     const double w_des = (alpha > 0.0) ? std::sqrt(2.0 * alpha * E) : 0.0;
@@ -3442,11 +3448,20 @@ void Vehicle::slew_log(double time) {
 
 void Vehicle::att_log(double time) {
     if(hull == nullptr || parts.empty()) { return; }
-    const glm::dvec3 nose = partAxis(rootPart(), 2);
+    /* All three axes of the frame the controls speak (#571), not just the nose:
+       pitch is about right, yaw about up, and a row that quotes only the nose
+       cannot say which of the two a rate belongs to -- which is exactly what
+       flight/571 has to tell apart. One partRot, three columns, no re-solve. */
+    Part *ref = attitudeRef();
+    if(ref == nullptr) { return; }
+    const glm::dmat3 axes = partRot(ref);
     const glm::dvec3 w = GetAngVelocity(hull);
     printf("[attlog] t=%.3fs nose=[%+.4f %+.4f %+.4f] "
+           "right=[%+.4f %+.4f %+.4f] up=[%+.4f %+.4f %+.4f] "
            "w=[%+.4f %+.4f %+.4f] |w|=%.4f rad/s\n",
-           time, nose.x, nose.y, nose.z,
+           time, axes[2].x, axes[2].y, axes[2].z,
+           axes[0].x, axes[0].y, axes[0].z,
+           axes[1].x, axes[1].y, axes[1].z,
            w.x, w.y, w.z, glm::length(w));
     fflush(stdout);
 }
@@ -4319,12 +4334,12 @@ double Vehicle::maxTorque() {
    window prints GetWheelTorque(), the LARGEST wheel, while the law sums them. */
 Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
     AttitudeAuthority a;
-    const Part *ref = rootPart();
+    const Part *ref = attitudeRef();
     if(ref == nullptr) { return a; }   // no hull, no lever arm, no answer
-    /* The mixer's frame: applyThrustForce aims in it and tvcSplit splits about it.
-       The budget below and actuateAttitude both read it HERE, so they cannot talk
-       past each other; applyThrustForce still resolves rootPart() for itself, and
-       #571 is the open question of whose axis this should be at all. */
+    /* The mixer's frame: applyThrustForce aims in it and tvcSplit splits about it,
+       and since #571 so do the slew/kill-rot laws and the manual stick. The budget
+       below, actuateAttitude and those callers all read the same part, so none of
+       them can be stated in a frame the others do not use. */
     a.stackAxis = partAxis(ref, 2);
     /* Power gate: the wheels are electric -- no EC, no wheel torque (#418 says a
        dead-ship trace used to read as uncontrolled when the engines were fine).
@@ -4424,12 +4439,9 @@ void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
 void Vehicle::slewToward(glm::dvec3 dir, double h) {
     if(glm::length2(dir) < 1e-12) { return; } /* no direction to align to */
     dir = glm::normalize(dir);
-    /* Facing reference: the wheels' nose when there are wheels (the law's
-       long-standing frame), else the root part's stack axis -- which is the
-       frame the TVC mixer steers in, so a wheel-less ship aims consistently
-       with its engines. */
-    Part *ref = firstWheel();
-    if(ref == nullptr) { ref = rootPart(); }
+    /* The ship's frame is attitudeRef() -- not whichever wheel happens to be first
+       in the parts list (#571). */
+    Part *ref = attitudeRef();
     if(ref == nullptr) { return; }
     const glm::dvec3 facing = partAxis(ref, 2);
     const double E = glm::acos(glm::clamp(glm::dot(facing, dir), -1.0, 1.0));
@@ -4448,13 +4460,13 @@ void Vehicle::slewToward(glm::dvec3 dir, double h) {
        plus whatever TVC can lever that way, so the braking curve and the
        actuator bound scale with throttle. Nothing available: hold position --
        the law does not pretend to slew (#401's lesson).
-       The axis matters (#425): `axis` is perpendicular to the FACING part, which
-       is the wheel's nose when there is one and the stack axis when there is
-       not, so on an aligned rocket it is perpendicular to the stack axis and TVC
-       counts in full. Point the same actuators at a roll-axis error and TVC
-       contributes nothing -- which is not a new limit, it is the limit tvcSplit
-       has always applied when it dropped that component. Budgetting the full
-       sum there made the law aim at a rate the hardware then failed to reach. */
+       The axis matters (#425): `axis` is perpendicular to the FACING part, and
+       since #571 the facing part is the root, so `axis` is perpendicular to the
+       stack axis and TVC counts in full. Point the same actuators at a roll-axis
+       error and TVC contributes nothing -- which is not a new limit, it is the
+       limit tvcSplit has always applied when it dropped that component.
+       Budgetting the full sum there made the law aim at a rate the hardware then
+       failed to reach. */
     const AttitudeAuthority auth = attitudeAuthority();
     const double authMax = attitudeTorqueAbout(auth, axis);
     if(authMax <= 0.0) { return; }
@@ -4472,8 +4484,7 @@ void Vehicle::slewToward(glm::dvec3 dir, double h) {
 }
 
 void Vehicle::killRotStep(double h) {
-    Part *ref = firstWheel();
-    if(ref == nullptr) { ref = rootPart(); }
+    Part *ref = attitudeRef();
     if(ref == nullptr) { return; }
     const glm::dvec3 w = partAngVel(ref);
     if(glm::length2(w) == 0.0) { return; } /* at rest: nothing to kill */

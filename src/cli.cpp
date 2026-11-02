@@ -484,9 +484,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "prograde wobble");
 
     app.add_flag("--att-log", args.att_log,
-                 "Periodically print the ship's nose direction and the "
-                 "hull's angular velocity (world coords) to stdout; the "
-                 "instrument for the attitude-physics e2e test");
+                 "Periodically print the ship's own frame (nose, right, up) and the "
+                 "hull's angular velocity (world coords) to stdout; the instrument "
+                 "for the attitude e2e tests");
 
     app.add_flag("--shake-log", args.shake_log,
                  "Periodically print the camera shake state (the felt "
