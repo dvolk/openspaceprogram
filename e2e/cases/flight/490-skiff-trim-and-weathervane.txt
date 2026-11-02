@@ -1,6 +1,13 @@
 NAME skiff-trim-and-weathervane
-CLAIM The redesigned skiff is the airframe the design point was written for: 626 kg on 21.6 m2 of AR-6.7 wing, one smooth fuselage, holding +3.0..+3.3 deg of angle of attack at 76 m/s and 7 km with 0.39 m of static margin. A one-second rudder kick swings Beta 6 deg and settles; the wing bill is 0.17 m2 of induced drag, not 0.86.
+CLAIM The skiff is the airframe the design point was written for: 559 kg on 21.6 m2 of AR-6.7 wing, a command pod stacked on a jet fuel tank, spawned at 76 m/s and 7 km and holding +2.6..+2.9 deg of angle of attack through its phugoid with 0.59 m of static margin. A one-second rudder kick swings Beta 9 deg and settles; the hull bill is Cd 0.57-0.62 on 0.80-0.94 m2, where the smooth spindle this replaced paid 0.11 on 0.87.
 KIND golden
+# #568 put the pod back on a tank: capsule_r0.5h1.5 at the root, jet_tank_r0.4h2 1.75 m
+# aft of it, the engine 3.25 m aft, wings on the TANK at 1.2 m aft of the pod's centre,
+# tail 2.85 m, elevators 3.65 m. That is 559 kg (462 of parts, tanks full, plus one
+# 97 kg kerbal -- the pod seats one, where the one-piece fuselage seated two), and it
+# pays 5x the body bill the smooth spindle did. The band below on A is the silhouette
+# union of pod+tank+engine; FormCp is where that bill pushes -- -0.44..-0.55 m here,
+# against the -0.68 m the spindle's bill reported.
 ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
 ARGS --sim-steps 3000 --drag-log --mass-log
 ARGS --sim-press 500,3000,R
@@ -9,18 +16,22 @@ ARGS --sim-press 25000,1000,A
 EXPECT [drag]
 EXPECT [mass]
 CHECK len(drag) >= 40
-# Cruise, held: the trim is a wing station and a wing-loading, not a stick.
-CHECK all(2.5 < d["aoa"] < 4.0 for d in drag if d["aoa"] is not None)
+# Cruise, held: the trim is a wing station and a wing-loading, not a stick. This hull's
+# zero-moment AoA is 2.6 deg and no row of the run reads above 2.9 -- the phugoid and
+# the rudder kick carry it 0.3 deg nose-high at their extremes.
+CHECK all(2.4 < d["aoa"] < 3.2 for d in drag if d["aoa"] is not None)
 CHECK min(d["v"] for d in drag if d["t"] <= 20.0) > 60.0
 CHECK min(d["alt"] for d in drag if d["t"] <= 20.0) > 6950.0
 # Static margin positive and steady (the VAB number, in flight).
-CHECK all(0.30 < d["sm"] < 0.50 for d in drag if d.get("sm") is not None)
-# The kick: 6 deg of sideslip and back inside 2 deg within 10 s.
+CHECK all(0.55 < d["sm"] < 0.65 for d in drag if d.get("sm") is not None)
+# The kick: 9 deg of sideslip and back inside 2.5 deg within 10 s.
 CHECK 3.0 < max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 10.0
 CHECK all(abs(d["beta"]) < 2.5 for d in drag if d["t"] >= 40.0)
-# The bill: one body at 0.11 x 0.87 m2, wings at 0.010, induced 0.17.
-CHECK 0.80 < min(d["a"] for d in drag if d.get("a")) < 1.00
+# The bill: pod+tank+engine union 0.80..0.94 m2 at an area-weighted Cd of 0.57-0.62
+# (nose-on: capsule drag_forward 0.35, tank 1.0, engine 0.15), wings at 0.010 profile,
+# induced 0.13..0.69 as the throttle pushes it through its phugoid.
+CHECK 0.75 < min(d["a"] for d in drag if d.get("a")) < 1.00
 CHECK all(0.35 < d["profile"] < 0.65 for d in drag if d.get("profile") is not None)
 CHECK max(d["induced"] for d in drag) < 0.80
-CHECK all(-0.55 < d["formcp"] < -0.35 for d in drag if d.get("formcp") is not None)
+CHECK all(-0.60 < d["formcp"] < -0.40 for d in drag if d.get("formcp") is not None)
 FORBID error:

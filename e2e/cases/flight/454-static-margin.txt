@@ -1,12 +1,18 @@
 NAME static-margin
-CLAIM The VAB's static margin and the flight log's SM are the same number: a trimmed skiff with 0.39 m of margin flies at +3 deg of angle of attack and stays wings-level through a 6 s glide.
+CLAIM The VAB's static margin and the flight log's SM are the same number: a hands-off skiff with 0.59 m of margin flies at +2.6 deg of angle of attack and stays wings-level through a 15 s glide (7000 m down to 6859 m).
 KIND invariant
 ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
 ARGS --sim-steps 900 --drag-log
 EXPECT [drag]
 CHECK len(drag) >= 4
 CHECK all(d.get("sm") is not None for d in drag)
-CHECK all(0.30 < d["sm"] < 0.50 for d in drag if d.get("sm") is not None)
-CHECK all(2.0 < d["aoa"] < 4.0 for d in drag if d["aoa"] is not None)
+# 0.59 m on every row (test_stability gets +0.586 from the parts alone). #568's
+# pod-on-tank hull reads 0.14 m less than the one-piece spindle it replaced
+# (+0.73), which is the stack's own COM walking aft -- the full tank and the engine
+# hang 1.75-3.25 m behind the pod -- not a change in the lifting rig: both hulls
+# bill the same 153 m2/rad of lift slope, and flight reads 153.0-153.5 only because
+# of the cos(alpha) dip.
+CHECK all(0.55 < d["sm"] < 0.65 for d in drag if d.get("sm") is not None)
+CHECK all(2.4 < d["aoa"] < 3.2 for d in drag if d["aoa"] is not None)
 CHECK all(d["up"] > 0.9 for d in drag)
 FORBID error:

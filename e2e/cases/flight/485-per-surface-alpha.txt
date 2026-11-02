@@ -1,58 +1,74 @@
 NAME skiff-per-surface-alpha
-CLAIM The [surface] row #485 adds quotes all eight lifting or steering parts of the skiff on every --drag-log sample -- each one's own angle of attack signed into SHIP axes plus the dynamic pressure of the flow standing at it -- so a mirrored twin pair reads alike (wing_l and wing_r within 0.3 deg while the airframe is in the flow), the tailplane's -5 deg mount incidence shows as a 4.5-5.5 deg gap between tail and wing, the fin's angle IS the sideslip it is weathervaning against (within 1.2 deg of -Beta on rows over 4 deg), and each part's q matches 0.5*rho*v^2 inside 8%.
+CLAIM The [surface] row #485 adds quotes all ten lifting or steering parts of the skiff on every --drag-log sample -- each one's own angle of attack signed into SHIP axes plus the dynamic pressure of the flow standing at it -- so a mirrored twin pair reads alike (wing_l and wing_r within 0.3 deg while the airframe is in the flow), the tailplane's -5 deg mount incidence shows as a 4.5-5.5 deg gap between tail and wing, the fin's angle IS the sideslip it is weathervaning against (within 1.2 deg of -Beta on rows over 4 deg), and each part's q matches 0.5*rho*v^2 inside 8%.
 KIND golden
 ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
 ARGS --sim-steps 3000 --drag-log
 ARGS --sim-press 500,3000,R,500,20000,T,25000,1000,A
 EXPECT [surface]
-# One [surface] line per [drag] line, and every line carries all eight surfaces: the
+# One [surface] line per [drag] line, and every line carries all ten surfaces: the
 # aero pass finds a usable frame for each of them at this attitude, so the line length
 # is fixed. That is also what lets the checks below read the parts by stride --
-# wing_l, wing_r, tail_l, tail_r, fin, elev_l, elev_r, rudder, in the shipdef's part
-# order -- instead of re-matching names.
+# wing_l, wing_r, tail_l, tail_r, fin, elev_l, elev_r, rudder, ail_l, ail_r, in the
+# shipdef's part order -- instead of re-matching names. (Ten, not the eight this was
+# written against: the aileron pair #563/#566 hung on the wing trailing edges is a
+# steering surface too, so it prints.)
 CHECK len(drag) >= 40
-CHECK len(surface) == 8 * len(drag)
-CHECK set(s["name"] for s in surface) == {"wing_l","wing_r","tail_l","tail_r","fin","elev_l","elev_r","rudder"}
+CHECK len(surface) == 10 * len(drag)
+CHECK set(s["name"] for s in surface) == {"wing_l","wing_r","tail_l","tail_r","fin","elev_l","elev_r","rudder","ail_l","ail_r"}
+# ... and in that ORDER, position by position. Every check below reads its parts by
+# stride, so a reordering in shipdef or in the aero pass would otherwise pair a wing
+# with a rudder and still print plausible angles.
+CHECK all(s["name"] == n for s, n in zip(surface, (["wing_l","wing_r","tail_l","tail_r","fin","elev_l","elev_r","rudder","ail_l","ail_r"] * len(drag))))
 # THE TWIN PROBLEM #485 EXISTS FOR. partAero measures alpha in each mount's own frame,
 # and wing_l/wing_r (like tail_l/tail_r) are the same plate mounted at attach angle 0
 # and 180, so their RAW alphas are equal and opposite while their forces are identical
 # (#453). Printed raw, a healthy pair looks broken and a broken pair looks healthy.
 # Signed into ship axes the pair agrees: max wing spread 0.3 deg and max tail spread
 # 0.3 deg on every row the ship is not sideslipping (|Beta| < 0.6).
-CHECK max(abs(a-b) for a,b,g in zip([s["a"] for s in surface][0::8],[s["a"] for s in surface][1::8],[d["beta"] for d in drag]) if abs(g) < 0.6) < 0.3
-CHECK max(abs(a-b) for a,b,g in zip([s["a"] for s in surface][2::8],[s["a"] for s in surface][3::8],[d["beta"] for d in drag]) if abs(g) < 0.6) < 0.3
+CHECK max(abs(a-b) for a,b,g in zip([s["a"] for s in surface][0::10],[s["a"] for s in surface][1::10],[d["beta"] for d in drag]) if abs(g) < 0.6) < 0.3
+CHECK max(abs(a-b) for a,b,g in zip([s["a"] for s in surface][2::10],[s["a"] for s in surface][3::10],[d["beta"] for d in drag]) if abs(g) < 0.6) < 0.3
+# The ailerons are the same plate mounted the same mirrored way, one on each wing
+# (#566), so they have to pass the twin test too -- measured worst 0.1 deg.
+CHECK max(abs(a-b) for a,b,g in zip([s["a"] for s in surface][8::10],[s["a"] for s in surface][9::10],[d["beta"] for d in drag]) if abs(g) < 0.6) < 0.3
 # WHAT THE READOUT IS FOR: the angles the forces actually come from. The tailplane is
 # bolted at -5 deg (shipdef "roll" on its mounts) and the elevators at 0, so a quiet
 # run must show the tail 4.5-5.5 deg BELOW the wing and the elevators on the wing's
 # number -- which is #490's trim read part by part instead of one ship-wide AoA.
-CHECK all(4.5 < w - t < 5.5 for w,t,g in zip([s["a"] for s in surface][0::8],[s["a"] for s in surface][2::8],[d["beta"] for d in drag]) if abs(g) < 0.6)
-CHECK all(-0.5 < e - w < 0.4 for e,w in zip([s["a"] for s in surface][5::8],[s["a"] for s in surface][0::8]))
+CHECK all(4.5 < w - t < 5.5 for w,t,g in zip([s["a"] for s in surface][0::10],[s["a"] for s in surface][2::10],[d["beta"] for d in drag]) if abs(g) < 0.6)
+CHECK all(-0.5 < e - w < 0.4 for e,w in zip([s["a"] for s in surface][5::10],[s["a"] for s in surface][0::10]))
+# A tab bolted flat to a wing meets the flow at the wing's own angle: the ailerons
+# hang off the wing's trailing edge (point/normal, #566), and they read -0.1..+0.2 deg
+# off wing_l all the way through the run.
+CHECK all(-0.5 < x - w < 0.4 for x,w in zip([s["a"] for s in surface][8::10],[s["a"] for s in surface][0::10]))
 # THE WEATHERVANE, MECHANISM AND NOT JUST OUTCOME. One 1 s rudder press at 25 s, never
 # held. The ship yaws away and the fin meets the flow at exactly the angle it is
-# weathervaning through, of the OPPOSITE sign: Beta -13.4 -> fin +13.7, Beta +7.7 ->
-# fin -8.4. The rudder, which nobody is touching, reads the same as the fin beside it,
+# weathervaning through, of the OPPOSITE sign: Beta -8.8 -> fin +9.1, Beta +4.3 ->
+# fin -3.9. The rudder, which nobody is touching, reads the same as the fin beside it,
 # which is how a player tells a deflecting surface from one merely carried through the
 # air.
-CHECK all(abs(f + g) < 1.2 for f,g in zip([s["a"] for s in surface][4::8],[d["beta"] for d in drag]) if abs(g) > 4.0)
-CHECK all(abs(f - r) < 0.6 for f,r in zip([s["a"] for s in surface][4::8],[s["a"] for s in surface][7::8]))
+CHECK all(abs(f + g) < 1.2 for f,g in zip([s["a"] for s in surface][4::10],[d["beta"] for d in drag]) if abs(g) > 4.0)
+CHECK all(abs(f - r) < 0.6 for f,r in zip([s["a"] for s in surface][4::10],[s["a"] for s in surface][7::10]))
 # A sideslip is not allowed to leak into pitch: the wings stay 2.2-3.6 deg through the
 # kick, and the fin, which reads 0 when the ship points into the flow, reads 0 again
-# once it does -- measured on the settled rows, four seconds after the kick (worst 0.0;
-# the run's last six rows all print -0.0).
-# The filter used to be Beta, and #503 showed what that was really sampling. At t=28 the
-# ship crosses Beta = 0 mid-swing and the fin still reads +0.6 deg: its angle is not the
-# ship's. The surface stands 2.19 m aft, and the ~0.3 rad/s of yaw rate that took Beta
-# from -8.9 to +4.8 in one second drags 0.7-0.9 m/s of air sideways across it, which at
-# 79 m/s is 0.5-0.7 deg -- #483's sweep term doing its job on an airframe that is
-# pointing into the flow while still turning. #503's weaker full-lock rudder made the
-# swing quicker, so the 1 s sample now lands on that crossing; before, the same instant
-# read Beta=-0.5 and fell out of the filter. Betting a band on where one sample lands
-# inside an oscillation is a bet on phase, not on the law (453 argues the same about its
-# own swing), so the window is now time-based and the band itself stays at 0.3.
-CHECK all(2.2 < a < 3.6 for a in [s["a"] for s in surface][0::8])
-CHECK max(abs(f) for f,t in zip([s["a"] for s in surface][4::8],[d["t"] for d in drag]) if t >= 44.0) < 0.3
+# once it does -- measured on the settled rows, four seconds after the kick (worst 0.1;
+# the run's last four rows all print 0.0 or -0.0).
+# The filter used to be Beta, and #503 showed what that was really sampling. At t=27 the
+# ship crosses Beta = 0 mid-swing (Beta -8.8 at t=26, +2.0 at t=27) and the fin still
+# reads -2.6 deg: its angle is not the ship's. The fin stands 2.2 m aft of the COM and
+# the rudder 2.7 (#568's stack puts them a metre further back than the spindle did), and
+# the yaw rate that carried Beta through that crossing -- 10.8 deg in the one second
+# before it, and more at the peak -- drags 0.4-0.8 m/s of air sideways across them, which
+# at 76 m/s is 0.3-0.6 deg: the 0.6 deg the fin still claims at that row. #483's sweep
+# term doing its job on an airframe that is pointing into the flow while still turning.
+# #503's weaker full-lock rudder made the swing quicker, so the 1 s sample now lands on
+# that crossing; before, the same instant read Beta=-0.5 and fell out of the filter.
+# Betting a band on where one sample lands inside an oscillation is a bet on phase, not
+# on the law (453 argues the same about its own swing), so the window is now time-based
+# and the band itself stays at 0.3.
+CHECK all(2.2 < a < 3.6 for a in [s["a"] for s in surface][0::10])
+CHECK max(abs(f) for f,t in zip([s["a"] for s in surface][4::10],[d["t"] for d in drag]) if t >= 44.0) < 0.3
 # q is the pressure of the flow AT the surface (#483), not one ship-wide number. It
 # tracks 0.5*rho*v^2 within 8%, the residual being each part's own sweep and the log
 # quoting the ship's speed a substep away from the one the aero pass used.
-CHECK all(0.92 < q0 / (0.5 * d["rho"] * d["v"] * d["v"]) < 1.08 for d,q0 in zip(drag,[s["q"] for s in surface][0::8]))
+CHECK all(0.92 < q0 / (0.5 * d["rho"] * d["v"] * d["v"]) < 1.08 for d,q0 in zip(drag,[s["q"] for s in surface][0::10]))
 FORBID error:

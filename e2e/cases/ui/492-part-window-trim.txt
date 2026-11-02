@@ -3,10 +3,11 @@
 # half of #492 is pinned by flight/elevator-trim; that case has to author trim in a
 # ship file because it cannot reach the widget. It can now, because the camera can
 # be orbited with --sim-mouse: in the DEFAULT view no tail surface is clickable at
-# all (pick.cpp::aimAtPoint projects the part's MOUNT origin, buried in the
-# fuselage silhouette, and rings +/-160 px around that -- #493), which is why this
-# case drags the view with RMB before it aims. The drag is not decoration: without
-# it [uifocus] prints FAILED and the case fails, which is the point.
+# all (pick.cpp::aimAtPoint projects the part's MOUNT origin, buried inside the
+# pod-tank-engine stack #568 rebuilt this hull from, and rings +/-160 px around
+# that -- #493), which is why this case drags the view with RMB before it aims. The
+# drag is not decoration: without it [uifocus] prints FAILED and the case fails,
+# which is the point.
 #
 # The oracle is the asymmetry. Both elevators are instances of one def with the same
 # authored "trim": 12, and the law resolves the sign per instance, so at rest they
@@ -42,9 +43,11 @@ CHECK any(abs(c["deg"]) < 8.0 for c in ctrl if c["t"] is not None and c["t"] > 4
 CHECK all(abs(c["deg"]) > 11.5 for c in ctrl if c["t"] is not None and c["t"] > 4.5 and c["index"] == 1)
 CHECK any(c["index"] == 0 and abs(c["deg"]) < 8.0 for c in ctrl if c["t"] is not None and c["t"] > 4.5)
 # And the airframe noticed: losing one elevator's download trims the whole ship to a
-# lower AoA (2.4 deg before, 1.6 after).
-CHECK max(d["aoa"] for d in drag if d["t"] is not None and d["t"] < 4.0) > 2.2
-CHECK min(d["aoa"] for d in drag if d["t"] is not None and d["t"] >= 6.0) < 2.0
+# lower AoA. Both post-#568 runs read 5.0..5.3 deg before the click and 4.2 after, so
+# the pin is the 1.1 deg split rather than two absolute bands -- #568's pod-on-tank
+# hull sits 2 deg higher than the spindle this was written against, and a split is the
+# thing the widget actually changes.
+CHECK max(d["aoa"] for d in drag if d["t"] is not None and d["t"] < 4.0) - min(d["aoa"] for d in drag if d["t"] is not None and d["t"] >= 6.0) > 0.6
 CHECK all(d["aoa"] is not None for d in drag)
 FORBID FAILED
 FORBID error:

@@ -1,17 +1,17 @@
 # #498: inside an atmosphere on a rotating body the air co-rotates with the ground,
 # so the CONIC's velocity -- which is what the green prograde marker, the orbital-plane
 # overlay and the ORBITAL window's Prg have always read -- is mostly the GROUND's own
-# motion. Kerbin carries the sea-level ground ~175 m/s, so an airframe doing 230 m/s
-# through the air has its conic prograde ~16 deg off the nose while the aero law says
-# the nose is ON the flow. Measured on this build (skiff_trim, flying-cruise,
-# --info-log, --orbit-interval 2; aprg= is the new SURFACE-window key, prg= the
-# ORBITAL window's conic one):
+# motion. Kerbin carries the sea-level ground ~175 m/s, so an airframe doing 210-240
+# m/s through the air has its conic prograde 20 deg off the nose and walking to 28
+# while the aero law says the nose is ON the flow. Measured on this build (skiff_trim,
+# flying-cruise, --info-log, --orbit-interval 2; aprg= is the new SURFACE-window key,
+# prg= the ORBITAL window's conic one):
 #
-#   t= 1.9  aprg   2.41  aoa   2.42  beta  0.0016  prg  15.88  vel 243.8 m/s
-#   t= 3.9  aprg   2.45  aoa   2.45  beta  0.0014  prg  16.10  vel 238.8
-#   t= 7.9  aprg   2.46  aoa   2.46  beta -0.0009  prg  17.43  vel 233.1
-#   t=11.9  aprg   2.44  aoa   2.44  beta -0.0002  prg  20.38  vel 232.6
-#   t=13.9  aprg   2.43  aoa   2.43  beta  0.0001  prg  21.49  vel 233.7
+#   t= 1.9  aprg   4.98  aoa   4.98  beta  0.0013  prg  20.39  vel 241.5 m/s
+#   t= 3.9  aprg   5.05  aoa   5.05  beta -0.0013  prg  25.51  vel 230.2
+#   t= 5.9  aprg   5.13  aoa   5.13  beta -0.0044  prg  28.17  vel 220.0
+#   t= 7.9  aprg   5.26  aoa   5.26  beta -0.0054  prg  26.59  vel 212.5
+#   t=11.9  aprg   5.30  aoa   5.30  beta -0.0050  prg  19.13  vel 207.6
 #
 # Both readings are correct about what they measure; the issue was that only one of
 # them existed for a pilot. The air-relative direction (view.air_dir, built from the
@@ -26,7 +26,7 @@
 # drifts, which is the whole complaint. The markers themselves are only on screen:
 # e2e cannot read imgui rows or billboards (#333), so the numbers are the pin.
 NAME surface-prograde
-CLAIM A plane cruising inside an atmosphere reads two different progrades: the air-relative one sits 2.4 deg off the nose -- the same angle the aero law calls its angle of attack -- while the conic one sits 16 deg off and drifts to 21, because the conic points where the ground is going rather than where the plane is flying.
+CLAIM A plane cruising inside an atmosphere reads two different progrades: the air-relative one sits 5 deg off the nose -- the same angle the aero law calls its angle of attack -- while the conic one sits 20 deg off and walks to 28, because the conic points where the ground is going rather than where the plane is flying.
 KIND invariant
 ARGS --time-accel 1 --timeout 16 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
 ARGS --info-log --orbit-interval 2
@@ -34,9 +34,11 @@ EXPECT [orbinfo]
 FORBID error:
 CHECK len(surf) >= 6
 CHECK len(orbinfo) >= 6
-# Air the whole run, and the ship is doing ~230 m/s through it, so the air-relative
+# Air the whole run, and the ship is doing 207-241 m/s through it, so the air-relative
 # direction is never dashed. (The dash rule -- no air, or a flow slower than
-# kAoAFlowFloor -- is pinned in flight/395, where the ship starts parked.)
+# kAoAFlowFloor -- is pinned in flight/395, where the ship starts parked.) The 5 deg
+# here rather than the 2.4 this table used to quote is #568: the pod-on-tank stack holds
+# a higher angle of attack at the same 12 deg of elevator.
 CHECK all(s["aprg"] is not None for s in surf)
 CHECK all(abs(s["aprg"]) < 10.0 for s in surf)
 # The Prg split between the two windows is a pose property (co-rotation x speed),
@@ -56,4 +58,7 @@ CHECK all(abs(s["beta"]) < 3.0 for s in surf if s.get("beta") is not None)
 # suborbital conic curves under a ship the air is holding up.
 CHECK all(o["prg"] > 10.0 for o in orbinfo)
 # The gap itself -- the smallest conic error in the run still leaves 13 deg between
-# the two instruments for the same ship in the same frame.
+# the two instruments for the same ship in the same frame (measured: 13.8 deg at
+# t=11.9 s, up to 23.0 at t=5.9). Keyed on t= so an orbinfo row with no surfinfo twin
+# raises instead of quietly comparing against the wrong frame.
+CHECK all(o["prg"] - {s["t"]: s["aprg"] for s in surf}[o["t"]] > 13.0 for o in orbinfo)

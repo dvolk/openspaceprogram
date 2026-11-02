@@ -12,23 +12,60 @@ there is no takeoff constraint: no wheels, no runway, no thrust-to-weight floor.
 | | |
 | --- | --- |
 | analogue | light utility plane (Cessna 152 class) |
-| mass | 666 kg (180 kg fuselage + 96 kg of jet fuel + crew + wings + ailerons) |
-| wing | 21.6 m2, span 12 m, AR 6.7, at 0.5 m aft of the pod's centre |
-| loading | 29 kg/m2 |
-| cruise | 76 m/s at 7 km, +3.0..3.3 deg of angle of attack |
-| L/D | 8.5 (target >= 10; the next lever is span, AR 6.7 -> 9) |
-| static margin | +0.39 m |
-| roll | aileron pair on the wing, `roll` axis (563-roll-ailerons) |
-| stall (7 km) | 26 m/s |
-| bill at cruise | body 0.11 x 0.87 m2, wing profile 0.42 m2, induced 0.17 m2 |
+| hull | `capsule_r0.5h1.5` at the root, `jet_tank_r0.4h2` stacked 1.75 m aft of it, engine 3.25 m aft |
+| mass | 559 kg (462 kg of parts with the tank full + one 97 kg kerbal; the pod seats one) |
+| wing | 21.6 m2, span 12 m, AR 6.7, bolted to the TANK, 1.2 m aft of the pod's centre |
+| loading | 26 kg/m2 |
+| cruise | 46..49 m/s at 7 km once the phugoid damps (#585), +5.1 deg of angle of attack |
+| glide | sinks 7.4 m/s unpowered at that speed |
+| L/D | 7.5 (target >= 10; the levers are span -- AR 6.7 -> 9, #567 -- and the hull bill below) |
+| static margin | +0.59 m |
+| roll | aileron pair on the wing, `roll` axis (563-roll-ailerons), and the pod's 100 N m wheel |
+| stall (7 km) | 24 m/s |
+| bill at cruise | body 0.59 x 0.82 m2, wing profile 0.58 m2, induced 0.48 m2 |
 
-That row describes a TRIMMED hull, and as of 2026_11_02 the file that meets it is
-`skiff_trim.json` (3.1..3.2 deg AoA, 75..85 m/s, steady altitude on `flying-cruise`),
-not `skiff.json` (1.5 deg, descending). Two other rows are stale the same way: the mass
-(666 kg authored, 633 kg measured on the shipped hull, which is the 6.2 kN of weight
-quoted below) and the static margin (+0.39 m was the pod-on-tank shape; the shipped
-spindle measures +0.73 m). #568 puts the pod back and this table gets re-stated from
-that measurement.
+Those are `skiff_trim.json`'s numbers (`skiff.json` plus `"trim": 12` on both elevators
+and nothing else), measured 2026_11_02 on `flying-cruise` with `--drag-log` and no
+stick: once the phugoid damps -- `t > 170 s` of a 266 s run -- it holds AoA 5.1 deg at
+46..49 m/s, sinks 7.4 m/s and bills L/D 7.48 in every row. The pinned case
+(`flight/492-elevator-trim`: 50 s at `--time-accel 1`, throttle opened at t=25 s) is the
+same hold caught before it damps: AoA 5.0..5.7 deg, L/D 7.5, speed swinging 30..78 m/s
+against 7.0..7.4 km of height. `skiff.json` itself -- no trim -- flies this hull's
+zero-moment AoA of +2.6 deg: 69..80 m/s sinking 16 m/s, and only L/D 4.9, because at
+that speed the body bill and not the wing pays the drag. So the 12 deg of tab is not
+only a pitch offset, it is the difference between this hull's worst and best glide. What
+it leaves open is the tail (#570, #567), not the tab: the tailplane pair stands 1.65 m
+behind the wing where the spindle's stood 0.85 m, so the same 12 deg buys roughly twice
+the pitch authority -- which is why this hull sits 2 deg nose-high at the same setting.
+
+The stall row is arithmetic off the same law, not a flight measurement: 5.36 kN of
+weight at 7 km (559 kg x 9.81 x (600/607)^2) against the airframe's 153.6 m2/rad of lift
+slope at the shipped wing's 20.1 deg stall angle, in 7 km air (rho 0.346). The old row's
+26 m/s is the same expression with 633 kg in it, which is why the two agree to a m/s.
+
+**What the swap costs, measured on both hulls** (same bed, same `--drag-log`, each with
+`"trim": 12` on its elevators and read once its phugoid is damping;
+`git show a18b0d9^:res/ships/skiff.json` is the pod-on-tank shape this went back to,
+`012434c` the spindle it replaces):
+
+| hull | mass | AoA | glide speed | sink | L/D | SM | body bill Cd x A |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| one `fuselage_r0.5h3.5` spindle | 633 kg | +3.1 | 64..70 m/s | 10.4 m/s | 7.91 | +0.73 | 0.11 x 0.87 = 0.10 m2 |
+| pod on a `jet_tank_r0.4h2` | 559 kg | +5.1 | 46..49 m/s | 7.4 m/s | 7.48 | +0.59 | 0.59 x 0.82 = 0.48 m2 |
+
+All of that gap is coefficient, not shape: the two hulls present almost the same
+silhouette (0.82 vs 0.87 m2) and differ fivefold in what it is charged. Nose-on, the
+spindle's authored `drag_forward` 0.1 bills a union Cd of 0.11, while the stack's
+capsule 0.35, tank 1.0 and engine 0.15 area-weight to 0.59. The tank's 1.0 is a flat
+end charged as a flat plate, which is what #558 is about (2 m long on a 0.8 m diameter
+is not a flat plate); #514/#491 own the union area and the force point per part. This is
+NOT a reason to author a lower Cd: the stack is what a player builds, so the number it
+pays is the honest baseline. What it buys: a cockpit with a seat, 2000 Wh of charge,
+propellant in
+a part that is not also the crew compartment (staging a `fuselage_r*` away throws the
+crew out with the fuel), the pod's 100 N m reaction wheel -- fuselage parts carry no
+`torque`, so the spindle had no wheel at all -- and 74 kg less to carry, which is why
+the heavier-looking hull sinks 3 m/s SLOWER in the same air.
 
 The jet and the glider were deleted (2026_11_01): they were rockets with wings bolted
 on, and their envelope cases cost more to keep than they were worth. A new airframe
@@ -36,23 +73,31 @@ should be built from this recipe and get its own row here.
 
 ## The recipe for a new airframe (measured, so it is mechanical)
 
-1. **Body**: one `fuselage_r*` part (a smooth spindle from `utils/gen_fuselage.py`,
-   Cd 0.10 nose-first, crew, declared dry mass, half the bounding volume as jet
-   fuel). A body MAY be several parts: same-cd parts average in the area-weighted
-   mean, and the silhouette unions, so stacking fuselage segments bills correctly.
-   Segments are a content job (see the ticket), not a law one.
-2. **Wing station is a design input.** The old barrel stacks put the wing behind the
-   centre of mass by accident; a one-piece body put it 0.7 m ahead and the airframe
-   tumbled inside a second. 0.5 m aft of the pod's centre gave SM +0.39.
+1. **Body: a pod on a tank.** `capsule_r0.5h1.5` (crew, charge, a 100 N m wheel) with a
+   `jet_tank_r*` stacked on it -- `attach: "down"`, so the tank's top node mates the
+   pod's bottom one -- and the engine at the back of the tank. That is the shape a
+   player builds and the shape every other window reads: crew, charge, propellant and
+   staging all live on pods and tanks. A `fuselage_r*` (the smooth spindle from
+   `utils/gen_fuselage.py`, Cd 0.10 nose-first, crew, declared dry mass, half the
+   bounding volume as jet fuel) is the smooth ALTERNATIVE, not the default: it flies
+   better and it is a thing nobody would build. A body MAY be several parts either way:
+   same-cd parts average in the area-weighted mean, and the silhouette unions, so a
+   stack bills correctly -- it just bills more. Segments are a content job (see the
+   ticket), not a law one.
+2. **Wing station is a design input**, and the wings go on the TANK -- a wing belongs to
+   what it is bolted through (#565), and that is where the ailerons get their
+   trailing-edge nodes (#566). The old barrel stacks put the wing behind the centre of
+   mass by accident; a one-piece body put it 0.7 m ahead and the airframe tumbled
+   inside a second. On the skiff, tank-local `z: +0.55` puts the wing 1.2 m aft of the
+   pod's centre and the COM 0.33 m ahead of the wing: SM +0.59 m.
 3. **Incidence and trim.** A symmetric section at AoA 0 makes no lift, so an airframe
    with neither incidence nor trim "cruises" by falling. The wing station does NOT trim
-   -- it sets stability: as shipped the skiff has SM +0.73 m and a zero-moment AoA of
-   1.6 deg, while its cruise needs 3.2 deg, so it descends on the cruise bed (t=5 6928 m
-   -> t=20 6091 m at `--time-accel 1`, 2.4 kN of lift against 6.2 kN of weight) even
-   though its tailplane pair is already authored at 5 deg of `roll` incidence.
-   `skiff_trim.json` is that same hull with `"trim": 12` on both elevators and nothing
-   else changed, and it holds the design point: 3.1..3.2 deg of AoA at 75..85 m/s,
-   altitude steady. So trim is either authored incidence or a held elevator setting,
+   -- it sets stability: the skiff's zero-moment AoA is 2.6 deg while its trimmed hold
+   is 5.1 deg, and the tailplane pair is authored at 5 deg of `roll` incidence on top of
+   that. `skiff_trim.json` is that same hull with `"trim": 12` on both elevators and
+   nothing else changed, and once its phugoid damps it holds 5.1 deg of AoA gliding at
+   46..49 m/s, sinking 7.4 m/s; hands off, the hull flies 69..80 m/s at 2.6 deg and
+   sinks 16 m/s. So trim is either authored incidence or a held elevator setting,
    decided from a measurement -- never a launch condition: a stable hull rotates to its
    own zero-moment AoA inside a second whatever attitude it spawns in (#569).
 4. **Tail.** Pitch: a tailplane pair (a `wing_r1h1` pair) with elevators behind it.
@@ -75,9 +120,11 @@ should be built from this recipe and get its own row here.
   lessons lived in the mount itself: the child's `normal` is what lays the plate flat
   (`normal: [1,0,0]`, spanwise, works; `[0,1,0]` stood it on edge and it still answered
   with 1.33 kN m while its hinge showed full travel -- rig travel is not authority,
-  #566/#509), and the shipped skiff has NO reaction wheel at all, because fuselage
-  parts carry no `torque`: on this airframe the aero row IS the whole attitude budget
-  (`[slew] alpha=0.000`). #568's pod hull would give it a 100 N m wheel.
+  #566/#509), and until #568 the shipped skiff had NO reaction wheel at all, because
+  fuselage parts carry no `torque`: on that hull the aero row WAS the whole attitude
+  budget (`[slew] alpha=0.000`). The pod hull declares 100 N m, which is 1% of the
+  8.91 kN m #566 measured from this aileron pair at full deflection -- decisive for
+  pointing a ship out of atmosphere, negligible for rolling this one in it.
 - **One lifting system pays one induced bill** (#556): two co-planar panels are one
   AR-4 wing, a bridge (the fuselage) joins roots that do not touch, and a tailplane
   three metres aft is a different system.

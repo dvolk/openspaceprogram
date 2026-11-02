@@ -246,15 +246,19 @@ static const ScenarioDef kScenarios[] = {
        2.5x it. 0.08 of the air-relative circular speed (flying-slow) suits hulls
        that fly at several hundred m/s; a light wing trims near 70-90 m/s, so that
        bed spends the first 40 s of every run trading the excess for height and
-       coming back through a phugoid (skiff: 180 -> 22 m/s, 650 m of altitude).
+       coming back through a phugoid (the shipped skiff: 134 -> 11 m/s and back, 1.9 km
+       of altitude).
        This one starts at the trim point instead: 80 m/s of air on Kerbin, ~33 m/s
        on Duna, ~120 m/s on Eve. Speed alone is not a trim: aimed along the air the
-       shipped skiff settles at its zero-moment AoA of 1.6 deg, which is 2.4 kN of
-       lift against 6.2 kN of weight, and dives to 130 m/s by t=20s. The trimmed
-       template (skiff_trim, 12 deg of elevator) holds 3.2 deg and 6.2 kN at 76 m/s
-       -- the design point. The bed gives the airspeed; the airframe brings the
-       angle of attack, and the launch AoA prints on the Spawn line so a bed that
-       is not trimmed is visible without a --drag-log (#569). */
+       shipped skiff settles at its zero-moment AoA of 2.6 deg, which is 69..80 m/s
+       of flight against a 13..16 m/s sink and 5.4 kN of weight. The trimmed template
+       (skiff_trim, 12 deg of elevator) holds 5.1 deg and glides at 46..49 m/s once its
+       phugoid damps -- the design
+       point (#568 re-measured both on the pod-on-tank hull; the one-piece spindle
+       this replaces sat at 1.6 deg hands off and dove to 130 m/s). The bed gives the
+       airspeed; the airframe brings the angle of attack, and the launch AoA prints on
+       the Spawn line so a bed that is not trimmed is visible without a --drag-log
+       (#569). */
     {"flying-cruise",  true,  false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0, true, false, 0.0356},
     {"ellipse-peri",   true,  false, 0.0,  false,  0, 10e3, 1000e3, 0.0, 0.0},
     {"ellipse-apo",    true,  false, 0.0,  false,  1, 10e3, 1000e3, 0.0, 0.0},
@@ -3185,7 +3189,9 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                exactly as a wing pays for turning it up. Nothing billed it: until #492
                a deflection was a transient a player held for a second, but a trimmed
                airframe runs a standing 12-20 deg forever, and on skiff_trim the
-               elevator pair downloads ~1.5 kN at cruise for a bill of exactly 0 N.
+               elevator pair downloads ~1.5 kN at cruise for a bill of exactly 0 N
+               (both figures are the pre-#568 spindle hull's, whose tail stood half as
+               far behind the CG; the shipped stack's Induced= totals 0.48 m2).
                CL comes from the force the law JUST made, not from (alpha + deflection):
                the angle half of a tail's true angle of attack is already generated, and
                already billed, by the tailplane PART hanging next to the flap (the
@@ -4468,7 +4474,9 @@ double Vehicle::wheelTorqueSum() {
    vehicle.h for the three rows and the axis, and why they must be read per substep.
    Two rows because two is how many actuators the ATTITUDE LAWS can spend today. The
    aero surfaces turn the ship too (applyControlSurfaceForce answers the stick on its
-   own, and on the shipped skiff they are its ONLY roll authority), and RCS torques it
+   own; until #568 the shipped skiff had no wheel at all, so in air they were its ONLY
+   roll authority, and they still out-bill the pod's 100 N m wheel by two orders of
+   magnitude in flight), and RCS torques it
    as a side effect of translating -- neither is law-driven yet, which is what #425's
    allocator is for. wheelTorqueSum() stays as the raw wheel rating because
    the manual stick path bills exactly that (applyRotationForce, under its own

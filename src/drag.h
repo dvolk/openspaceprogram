@@ -174,10 +174,12 @@ inline glm::dvec3 liftForce(double q, double S, double cl, double alpha,
    sum, so near the top of the polar the true margin is a little further aft than the
    one printed. #494 put a SECOND such term on the very surfaces this paragraph says
    contribute nothing: a HELD deflection bills induced drag at its own mount, so on a
-   trimmed airframe it is the larger of the two (skiff_trim: 0.18 of 0.45 m2 of CdA, on
-   a ~2 m lever) and it grows with the trim the player sets, as delta^2. It is a force
-   along the flow, so it pitches one way from a mount behind the CG and exactly the
-   other from one ahead of it -- a canard's trim would push this sum's true margin the
+   trimmed airframe it is the larger of the two (measured on the pre-#568 skiff_trim:
+   0.18 of its 0.45 m2 of Induced=, on a ~2 m lever; the shipped stack trims to 0.48 m2
+   of Induced= with its elevators 2.8 m aft of the CG) and it grows with the trim the
+   player sets, as delta^2. It is a force along the flow, so it pitches one way from a
+   mount behind the CG and exactly the other from one ahead of it -- a canard's trim
+   would push this sum's true margin the
    wrong way. Neither term is in the printed SM=, which is a lift-curve margin and
    nothing more; that is a limit of the readout, not of the law. */
 struct LiftSlopeSum {
@@ -210,8 +212,9 @@ struct LiftSlopeSum {
        test_drag.cpp::test_neutral_point exists because a mutant of exactly that
        weighting left the whole rest of the suite green.
        The 0.1 is agreement, not magnitude: at cruise the skiff is 95% agreed (its fin
-       is in dlabs and 0 in dl) and quotes +0.60 m; crossing its own stall peak it drops
-       under it (AoA 20.10: dl 8.2 of 161.8, which would otherwise print SM=+2.22 m --
+       is in dlabs and 0 in dl) and quotes +0.59 m; crossing its own stall peak it drops
+       under it (measured on the pre-#568 hull at AoA 20.10: dl 8.2 of 161.8, which
+       would otherwise print SM=+2.22 m --
        an airframe that has just stopped resisting, reading as MORE stable) and dashes.
        Everything drooping TOGETHER keeps the ratio and keeps quoting: that case is
        weak, not incoherent, and slope() is the field that says so. */
@@ -228,8 +231,9 @@ struct LiftSlopeSum {
        (both inside the 20.1-40.1 droop): SM stayed +0.55 m, and it is CLa that says
        why the airframe had stopped caring. #487's band, in other words, is a
        stiffness story, not a sign story.
-       Measured along the SHIP's up axis, so it carries a cos(alpha) dip: the skiff
-       quotes 153.42 at 0 deg and 152.55 at 6.6. That is the right number for a pitch
+       Measured along the SHIP's up axis, so it carries a cos(alpha) dip: the shipped
+       skiff quotes 153.59 at 0.1 deg, 153.44 at 2.6, 152.9 at 5.7 and 149.2 at 13.6 --
+       each within 0.2 of 153.6 x cos(alpha). That is the right number for a pitch
        stiffness (the nose rotates about the ship), but it is why a steady-airframe
        CLa is not a constant. */
     double slope() const { return dl; }
@@ -240,9 +244,9 @@ struct LiftSlopeSum {
     /* The STATIC MARGIN: how far behind the pivot that lift change sits, so + =
        raising the nose makes more lift BEHIND the COM, which pushes the nose back
        down = restoring. This is the number to watch while building: the shipped
-       airframes all measure positive (skiff +0.60 m, glider +0.65, jet +0.55 -- the
-       skiff's wings are 0.34 m aft of its CG and its tailplanes 1.99 m, so the wings
-       themselves are already restoring and the tail adds the other half), and a
+       airframes all measure positive (skiff +0.59 m -- the skiff's wings are 0.33 m
+       aft of its CG and its tailplanes 1.98 m, so the wings themselves are already
+       restoring and the tail adds the other half), and a
        negative one is an airframe that diverges on its own -- tail ahead of the
        wings, or a mount angle that puts a surface on the far side of its own stall.
        It is a WEIGHTED AVERAGE of where the lift change sits, in metres, so it does

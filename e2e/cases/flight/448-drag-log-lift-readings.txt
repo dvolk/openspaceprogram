@@ -17,7 +17,13 @@ CHECK any(d["F"] > 0 and d["rho"] > 0 for d in drag)
 CHECK all(("L_up" in d and "up" in d) for d in drag)
 CHECK all(abs(d["up"]) <= 1.0 + 1e-9 for d in drag)
 CHECK all(abs(d["L_up"]) <= abs(d["L"]) + 1e-6 for d in drag)
-CHECK any(d["L"] > 1000 and abs(d["L_up"]) > 1.0 for d in drag)
+CHECK any(d["L"] > 400 and abs(d["L_up"]) > 100 for d in drag)
+# The magnitudes are what this pad departure actually makes: the biggest row is t=7.9
+# in both post-#568 runs, |L| 559-569 N and L_up -217..-219 N. The 1000 N this used to
+# ask for belonged to the heavier spindle hull #568 replaced: in Duna's 0.118 kg/m3 air
+# the pod-on-tank stack climbs to ~240 m at 11-27 m/s, so its largest lifting reading
+# lands under 600 N. What is pinned is
+# that a real component of a real force appears, not the airframe's size.
 # The SIGN law -- a wing above the flow lifts -- is NOT pinned here and cannot
 # be: aoa and L_up are both odd in alpha, so any relation between them is even
 # under a sign flip. tests/test_drag's test_wing_lifts_up pins it, in a frame
