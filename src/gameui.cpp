@@ -1757,12 +1757,9 @@ void drawUIReadouts(Game &g) {
         double gen = 0.0, constDraw = 0.0, charge = 0.0, capacity = 0.0;
         ship->getPower(&gen, &constDraw, &charge, &capacity);
         if(gen > 0.0 || constDraw > 0.0 || capacity > 0.0) {
-            // Active draw: the wheels, only while commanding (same condition powerTick
-            // uses).
-            bool wheelsActive = (ship->stickAxis(0) != 0.0f ||
-                                 ship->stickAxis(1) != 0.0f ||
-                                 ship->stickAxis(2) != 0.0f)
-                || ship->slewMode() != SlewNone;
+            // Active draw: the wheels, only while they are actually working -- the
+            // same question powerTick asks, asked once (#575).
+            bool wheelsActive = ship->actuatorsEngaged();
             double activeDraw = 0.0;
             if(wheelsActive) {
                 for(Part *p : ship->parts) {

@@ -1757,7 +1757,19 @@ void Vehicle::compoundCheck(double time) {
     fflush(stdout);
 }
 
-void Vehicle::restoreSlewRequest(SlewMode m) { slewRequest = m; }
+void Vehicle::restoreSlewRequest(SlewMode m) {
+    /* The one place the latched mode arrives without going through Command()'s
+       toggle rule, so it is also the one place a value can come from outside the sim
+       at all. An out-of-range mode passes tick.cpp's "is anything latched" test and
+       then has no target in slewTargetDir(): the ship drops out of warp and cannot be
+       turned. Nothing latched is the recoverable reading of a corrupt field. */
+    if((int)m < SlewNone || (int)m > SlewKillRot) {
+        printf("[load] '%s': autopilot mode %d is not a mode, nothing latched\n",
+               displayName().c_str(), (int)m);
+        m = SlewNone;
+    }
+    slewRequest = m;
+}
 
 void Vehicle::setRoot(Part *part) {
     part->parent   = nullptr;
@@ -2071,11 +2083,10 @@ void Vehicle::powerTick(double h) {
     // life support.
     const bool hasEC = (ecCapacity > 0.0) || (totalGen > 0.0) || (constantDraw > 0.0);
     powered_ = hasEC ? ((totalGen > constantDraw) || (ecCharge > 0.0)) : true;
-    // The wheels draw only while actually working (powered AND commanding attitude).
+    // The wheels draw only while actually working. actuatorsEngaged() is that rule,
+    // and the Vessel window's Power row reads the same one (#575).
     double activeDraw = 0.0;
-    const bool wheelsActive = powered_
-        && ((stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f)
-            || slew != SlewNone);
+    const bool wheelsActive = actuatorsEngaged();
     if(wheelsActive) {
         for(size_t i = 0; i < parts.size(); i++) {
             if(parts[i]->isWheel()) { activeDraw += parts[i]->powerDraw(); }
@@ -3403,7 +3414,7 @@ void Vehicle::applyRcsForce(double h) {
         }
     }
     lastRcsAch = Fach;
-    rcsFiring = true;
+    markRcsBurned();
     // Same spurious-torque cancellation as applyThrustForce / applyAeroForce:
     // RCS now lands at the pod, so it is genuinely off-COM (comOffset is the
     // internal hull-COM vs physical-COM gap that Bullet's rel-force arm uses).

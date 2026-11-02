@@ -155,7 +155,7 @@ void tick(Game &g) {
             } else {
             // Autopilot slew: apply after clearRotCmd so the ship keeps
             // holding. X kill-rot below overrides while held.
-            if(game_running && g.ship->slewRequestMode() != SlewNone) {
+            if(g.ship->applySlewRequest(game_running)) {
                 if(g.ship->onRails) {
                     g.ship->leaveRails();
                     if(g.time_accel >= kRailsWarp) {
@@ -163,7 +163,6 @@ void tick(Game &g) {
                         g.toast("Control input: left the rails, warp 1x");
                     }
                 }
-                g.ship->applySlewRequest();
             }
             // Baseline sticks are pre-flipped for screen-direction yaw/roll;
             // flip_* settings invert away from that default.

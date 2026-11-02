@@ -436,8 +436,9 @@ static void test_the_command_funnel() {
 
     /* Channels stay separate: an attitude demand never touches the latch, and a
        mode never touches the stick (#425's scope: throttle, rcsDir and staging stay
-       their own channels too). */
-    v->restoreSlewRequest(SlewNone);
+       their own channels too). Released through Command rather than the restore door:
+       the latch is input state, and only a save load has any business restoring it. */
+    v->Command(ShipCmd(Sas, SlewKillRot), true);
     v->clearRotCmd();
     v->Command(ShipCmd(Pitch, +1.0f), true);
     CHECK_TRUE(v->slewRequestMode() == SlewNone && v->slewMode() == SlewNone,
@@ -445,6 +446,38 @@ static void test_the_command_funnel() {
     v->Command(ShipCmd(Sas, SlewNormal), true);
     CHECK_TRUE(v->stickAxis(0) == 0.0f && v->stickAxis(1) == 1.0f && v->stickAxis(2) == 0.0f,
                "SAS does not move the stick");
+    v->Command(ShipCmd(Sas, SlewNormal), true);
+    v->clearRotCmd();
+
+    /* applySlewRequest() owns the gate that used to sit next to it in tick.cpp: a
+       paused sim engages nothing however the window is set, and the copy says what
+       drives THIS tick rather than what was latched last tick. */
+    v->Command(ShipCmd(Sas, SlewPrograde), true);
+    CHECK_TRUE(!v->applySlewRequest(false), "paused: no mode drives the tick");
+    CHECK_TRUE(v->slewMode() == SlewNone, "and the engaged copy says so");
+    CHECK_TRUE(v->applySlewRequest(true), "running: the latch drives the tick");
+    CHECK_TRUE(v->slewMode() == SlewPrograde, "so the copy is the latched mode");
+    v->Command(ShipCmd(Sas, SlewPrograde), true);
+    CHECK_TRUE(!v->applySlewRequest(true) && v->slewMode() == SlewNone,
+               "released: the copy drops in the same step");
+
+    /* What the wheels bill (actuatorsEngaged) -- both halves, because the Vessel
+       window's Power row and powerTick() share this one rule and used to spell it
+       separately. */
+    v->Command(ShipCmd(Pitch, +1.0f), true);
+    CHECK_TRUE(v->actuatorsEngaged(), "a commanded stick works the wheels");
+    v->clearRotCmd();
+    v->powered_ = false;
+    CHECK_TRUE(!v->actuatorsEngaged(),
+               "no power: the wheels are not working, stick or no stick");
+    v->powered_ = true;
+    v->Command(ShipCmd(Sas, SlewRetrograde), true);
+    CHECK_TRUE(!v->actuatorsEngaged(), "a latch that the tick has not applied yet");
+    v->applySlewRequest(true);
+    CHECK_TRUE(v->actuatorsEngaged(),
+               "under SAS the wheels work with a released stick");
+    v->Command(ShipCmd(Sas, SlewRetrograde), true);
+    v->applySlewRequest(true);
     destroyShip(v);
 }
 

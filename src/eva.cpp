@@ -154,7 +154,7 @@ void Kerbal::applyEva(double h) {
             if(haveFuel) {
                 ApplyCentralForce(b, kRcsForce * rcsWorldDir());
                 // The render pass draws the COM puff off this (render.cpp).
-                rcsFiring = true;
+                markRcsBurned();
             }
         }
         // Upright on screen, facing the camera direction, plus QE yaw.
