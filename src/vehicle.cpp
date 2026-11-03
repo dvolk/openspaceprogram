@@ -3891,6 +3891,9 @@ void Vehicle::dv_log(double time) {
 
 void Vehicle::clearThrust() {
     for(Part *p : parts) { p->armedThrust = 0.0f; }
+    /* Same per-tick intent as the armed thrust it sits next to (#400 F3): a tick
+       without the keys must not keep claiming the player is on the throttle. */
+    throttleKeyHeld_ = false;
 }
 
 void Vehicle::clearRotCmd() {
@@ -3899,7 +3902,7 @@ void Vehicle::clearRotCmd() {
 }
 
 void Vehicle::releaseControl() {
-    thruster_util = 0.0f;
+    setThrottle(0.0);
     clearThrust();
     clearRotCmd();
     /* The demand goes with the rest of the armed state. tick.cpp clears RCS once a
@@ -4374,10 +4377,20 @@ void Vehicle::Command(ShipCmd cmd, bool simActive, double step) {
             // --physics-hz.
             assert(step > 0.0 && "throttle ramp needs the tick's duration");
             adjustThrottle(0.6f * (float)step);
+            throttleKeyHeld_ = true;    // the player is on the lever THIS tick (#400)
             break;
         case ThrottleDown:
             assert(step > 0.0 && "throttle ramp needs the tick's duration");
             adjustThrottle(-0.6f * (float)step);
+            throttleKeyHeld_ = true;
+            break;
+        /* A SETPOINT, and the only channel that is not the player's (#400 F3): a law
+           plans with availableAccel(), so it wants a fraction of rated thrust, not a
+           ramp whose landing point depends on how long it has been latched. It does
+           NOT set throttleKeyHeld_ -- the flag answers "is the PLAYER on the lever",
+           which is what lets a law yield to a held key and resume when it is up. */
+        case ThrottleSet:
+            setThrottle(cmd.amount);
             break;
         case Thrust:
             ApplyThrust(step);
@@ -4450,6 +4463,17 @@ void Vehicle::Command(ShipCmd cmd, bool simActive, double step) {
 
 glm::dvec3 Vehicle::GetVel() {
     return GetVelocity(hull);
+}
+
+/* The SETPOINT twin of adjustThrottle (#400 F3). Clamped here rather than asserted
+   the way normCmd() asserts an out-of-range attitude demand: an attitude amount is
+   normalized to +-1 of the authority BY DEFINITION, whereas a throttle fraction a law
+   computes from an acceleration ratio legitimately saturates -- asking for 3 m/s^2 out
+   of an engine that can give 1 is asking for 300%, and that is a saturated ask, not a
+   sender bug. NaN fails CLOSED to 0 like every other control-state door: thruster_util
+   feeds ApplyThrust's fuel rates and comes back as s.throttle in a save file. */
+void Vehicle::setThrottle(double frac) {
+    thruster_util = (frac >= 1.0) ? 1.0f : ((frac > 0.0) ? (float)frac : 0.0f);
 }
 
 void Vehicle::adjustThrottle(float delta) {

@@ -51,6 +51,7 @@ enum SlewMode {
 enum ShipCmdType {
     ThrottleUp,
     ThrottleDown,
+    ThrottleSet,   // a SETPOINT 0..1: a throttle law's channel; the keys are the RATE
     Thrust,
     // Ship-relative (standard aviation mapping): see applyRotationForce.
     Pitch,    // W/S: about the ship's right axis
@@ -73,7 +74,11 @@ enum ShipCmdType {
    rotating like a 5 t one; mass-dependent handling is the physics we have.
    Sas: `amount` unused, `mode` carries the SlewMode.
    Rcs*: only the sign is used -- a thruster group is on or off (#428 adds the
-   per-pod rows that would make a magnitude mean something). */
+   per-pod rows that would make a magnitude mean something).
+   ThrottleSet: `amount` IS the throttle, 0..1 of rated thrust (#400 F3). A rate is
+   the wrong shape for a law: it plans with availableAccel(), so what it wants is a
+   fraction, and ramping toward it through ThrottleUp would make the law's own output
+   a function of how long it has been latched. */
 struct ShipCmd {
     ShipCmdType type;
     float amount;
@@ -414,7 +419,6 @@ public:
        composed. */
     double rail_epoch = 0.0;
 
-    float thruster_util = 1.0;
     double exhaust_scale = 1.0;  // --exhaust-scale: scales ve and all jet
                                  // thrust; synced per tick
     double drag_cd = 1.2;        // --drag-cd: the drag BILL multiplier (drag.h).
@@ -898,6 +902,18 @@ public:
     double availableThrust();
     double availableAccel();
 
+    /* THE LEVER ITSELF (#400 F3). The throttle used to be a public float, so a law
+       could only write it behind the player's back and could not tell whether the
+       throttle it read next was its own answer or the player's last key -- the same
+       invisible fight #425 D-2 solved for the stick, where a held key owns its axis.
+       So: one read, one named write, and a per-tick answer to "is the player on the
+       throttle right now", which is what lets a law stand aside and resume. A law that
+       wants it latched sends Command(ShipCmd(ThrottleSet, frac)) each tick, exactly as
+       the slew law re-states its ask every substep. */
+    float throttle() const { return thruster_util; }
+    void setThrottle(double frac);
+    bool throttleKeyHeld() const { return throttleKeyHeld_; }
+
     // current Thrust-to-weight ratio (at the current throttle)
     double getTWR();
 
@@ -1271,6 +1287,17 @@ protected:
         const double l = glm::length(bodyDir);
         rcsDir = (l > 1e-9) ? bodyDir * (1.0 / l) : glm::dvec3(0.0);
     }
+
+    /* The throttle, 0..1 (#400 F3). Written only through adjustThrottle()/
+       setThrottle(), both reachable only through Command(), plus the save loader
+       (a saved value is a legitimate writer) and releaseControl(). Nothing else:
+       a public field here is how a law's setpoint and the player's keys ended up
+       writing the same float with nobody able to tell which one won. */
+    float thruster_util = 1.0;
+    /* Did a throttle KEY fire this tick? Per-tick intent, like stick[]: cleared by
+       clearThrust() at the top of every tick and set by Command's ThrottleUp/Down.
+       Deliberately NOT set by ThrottleSet, which is the law's channel. */
+    bool throttleKeyHeld_ = false;
 
     // Forces/torques straight on the Bullet bodies, reachable only through
     // Command(). Protected: the EVA kerbal reuses the rotation-model helpers.

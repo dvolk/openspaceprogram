@@ -381,7 +381,7 @@ static void test_produced_and_available_thrust() {
 
     /* COASTING: the whole point of #400. The throttle is zero, so the read-back is zero,
        and a law that plans with it has no way to know the engine is fine. */
-    r.v->thruster_util = 0.0f;
+    r.v->setThrottle(0.0);
     CHECK_NEAR(r.v->producedThrust(), 0.0, 0.0, "nothing produced at zero throttle");
     CHECK_NEAR(r.v->availableThrust(), 20000.0, 1e-12,
                "20000 N available anyway: the stage-3 engine at full throttle, and a"
@@ -391,7 +391,7 @@ static void test_produced_and_available_thrust() {
                " while the throttle is still at zero");
 
     /* The two numbers move differently, and that is what makes them two. */
-    r.v->thruster_util = 0.5f;
+    r.v->setThrottle(0.5);
     CHECK_NEAR(r.v->producedThrust(), 10000.0, 1e-12, "half a throttle, half the"
                " production -- of the live stage only (the stage-1 engines and the jet"
                " are gated by the stage counter)");
@@ -428,7 +428,7 @@ static void test_produced_and_available_thrust() {
     CHECK_NEAR(r.v->availableThrust(), 70000.0, 1e-12, "the jet's air money is gone in"
                " vacuum: the stage-1 pair is all there is");
     CHECK_NEAR(r.v->producedThrust(), 35000.0, 1e-12, "and the same at half throttle");
-    r.v->thruster_util = 1.0f;
+    r.v->setThrottle(1.0);
     CHECK_NEAR(r.v->producedThrust(), r.v->availableThrust(), 1e-12,
                "rockets at full throttle: the two agree, because they are the same"
                " engines read with and without the throttle");
@@ -451,6 +451,101 @@ static void test_produced_and_available_thrust() {
     delete vac;
 }
 
+/* THE THROTTLE HAS A SETPOINT CHANNEL, AND IT SAID WHO IS HOLDING IT (#400 F3).
+   availableAccel() (F1) tells a law what a burn could do; this is the half that lets it
+   ASK for the burn. The throttle used to be a public float, so the only way in for a law
+   was to write it directly, and the only way the player had was a RATE (ThrottleUp/Down
+   at 0.6/s). Both worked; neither could see the other. A law that re-writes the field
+   every tick silently out-ramps a player holding R, and a law that reads the field back
+   cannot tell its own answer from the player's -- the same invisible fight D-2 settled
+   for the stick, where a held key owns its axis and the law keeps the rest.
+   Fixture: a 1000 kg pod and one 20000 N engine, in vacuum, so every thrust number is
+   20000 x the throttle and nothing else can move it. */
+static void test_the_throttle_setpoint_channel() {
+    printf("== the throttle setpoint, and who holds the lever (#400) ==\n");
+    ThrustRig r;
+    r.v = new Vehicle;
+    r.v->name = "throttlelever";
+    Part *pod = mkRigPart(r.defs, "pod", 1000.0, 0.0, 0.0, 1);
+    r.v->setRoot(pod);
+    Part *eng = mkRigPart(r.defs, "engine", 100.0, 5.0, 4000.0, 1);
+    r.v->attachMode(eng, 0, AttachMode::Down, 0.0);
+    r.v->init();
+    TerrainBody *vac = mkPressureBody(0.0);
+    r.v->m_parent = vac;
+    r.v->placeShip(glm::dvec3(0.0, 0.0, 600000.0 + 1000.0), glm::dmat3(1.0));
+    Vehicle *v = r.v;
+
+    /* The setpoint goes through the funnel, not around it (#424's door). */
+    v->setThrottle(0.4);
+    CHECK_NEAR(v->throttle(), 0.4f, 1e-9, "a named write, in the units the readouts use");
+    CHECK_NEAR(v->producedThrust(), 20000.0 * 0.4f, 1e-3,
+               "and the thrust follows: 0.4 of a 20000 N stage (0.4f, because the"
+               " throttle is a float, so the product is not exactly 8000)");
+    v->Command(ShipCmd(ThrottleSet, 0.25f), true, 1.0);
+    CHECK_NEAR(v->throttle(), 0.25f, 1e-9,
+               "a law sends it as a ShipCmd, the same door the keys use");
+    CHECK_NEAR(v->producedThrust(), 5000.0, 1e-9, "one quarter of rated thrust");
+
+    /* A law's ask saturates rather than being a sender bug: it divides an acceleration
+       it wants by availableAccel(), and wanting more than the stage can give is normal. */
+    v->setThrottle(1.7);
+    CHECK_NEAR(v->throttle(), 1.0f, 0.0, "a 300% ask lands at 100%, not 300%");
+    v->setThrottle(-0.3);
+    CHECK_NEAR(v->throttle(), 0.0f, 0.0, "and a negative one lands at zero");
+    v->setThrottle(std::nan(""));
+    CHECK_NEAR(v->throttle(), 0.0f, 0.0, "NaN fails CLOSED, like every control-state door");
+    CHECK_NEAR(v->producedThrust(), 0.0, 0.0,
+               "so a NaN cannot ride into the fuel rates or the save file as a number"
+               " the readouts would print");
+
+    /* The player's channel is unchanged: a RATE, so the ramp feels the same at any
+       --physics-hz. Two half-second presses at 0.6/s is 0.6. */
+    v->Command(ShipCmd(ThrottleUp), true, 0.5);
+    v->Command(ShipCmd(ThrottleUp), true, 0.5);
+    CHECK_NEAR(v->throttle(), 0.6f, 1e-6, "the keys still ramp, 0.6 per second");
+    CHECK_TRUE(v->throttleKeyHeld(),
+               "and the ship can say that the PLAYER is on the lever this tick");
+
+    /* The flag is per-tick intent, like stick[]: the next tick without the keys does not
+       keep claiming the player has it. */
+    v->clearThrust();
+    CHECK_TRUE(!v->throttleKeyHeld(), "clearThrust() is the tick boundary");
+    v->Command(ShipCmd(ThrottleSet, 0.9f), true, 1.0);
+    CHECK_TRUE(!v->throttleKeyHeld(),
+               "the law's own channel never claims the lever from the player");
+
+    /* PAUSED is paused for the law too: a setpoint must not fire behind a frozen clock
+       the way the keys already do not. */
+    v->Command(ShipCmd(ThrottleSet, 0.3f), false, 1.0);
+    CHECK_NEAR(v->throttle(), 0.9f, 1e-9, "simActive false: nothing written");
+
+    /* THE RULE the autopilot will use, stated as code: yield while a key is held,
+       resume when it is up. This is the behaviour F3 exists to make possible -- without
+       the flag the law has no way to know it lost, and the two writers fight. */
+    v->clearThrust();
+    v->setThrottle(0.0);                           // from a known stop
+    v->Command(ShipCmd(ThrottleUp), true, 0.5);    // the player takes 0.3
+    CHECK_NEAR(v->throttle(), 0.3f, 1e-6, "one half-second press from zero");
+    auto lawTurn = [&v]() { if(!v->throttleKeyHeld()) { v->setThrottle(1.0); } };
+    lawTurn();
+    CHECK_NEAR(v->throttle(), 0.3f, 1e-6,
+               "the law stands aside while the key is down -- the player keeps the"
+               " lever, exactly as a held stick key owns its axis");
+    v->clearThrust();                              // the key comes up
+    lawTurn();
+    CHECK_NEAR(v->throttle(), 1.0f, 0.0,
+               "and takes it back the tick the key is released, without being asked");
+
+    /* Losing the pilot cuts the throttle through the same door. */
+    v->clearThrust();
+    v->setThrottle(0.8);
+    v->releaseControl();
+    CHECK_NEAR(v->throttle(), 0.0f, 0.0, "releaseControl() cuts it");
+    delete v;
+    delete vac;
+}
+
 int main() {
     test_inertia_diag();
     printf("\n");
@@ -458,6 +553,8 @@ int main() {
     printf("\n");
     test_fuel_flow();
     test_produced_and_available_thrust();
+    printf("\n");
+    test_the_throttle_setpoint_channel();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

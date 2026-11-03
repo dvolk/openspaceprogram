@@ -1245,7 +1245,7 @@ int main(int argc, char **argv)
                 if(audDbg && firing != lastFiring) {
                     printf("[hook] firing %d -> %d (armed=%d, thrust=%.0f N, throttle=%.2f)\n",
                            (int)lastFiring, (int)firing, armedN,
-                           ship->producedThrust(), (double)ship->thruster_util);
+                           ship->producedThrust(), (double)ship->throttle());
                     fflush(stdout);
                     lastFiring = firing;
                 }
@@ -1257,7 +1257,7 @@ int main(int argc, char **argv)
                         ? "res/audio/rocket_engine.001.wav"
                         : "res/audio/rocket_engine_44k.wav";
                 }
-                game.audio.setLoop(engineFile, firing, ship->thruster_util);
+                game.audio.setLoop(engineFile, firing, ship->throttle());
             } else {
                 game.audio.setLoop("", false, 0.0f);
             }

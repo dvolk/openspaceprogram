@@ -562,7 +562,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
     s.pose.angvel = GetAngVelocity(v->hull);
 
     s.onRails = v->onRails;
-    s.throttle = v->thruster_util;   // m_thrust is a per-tick "fired" flag
+    s.throttle = v->throttle();   // m_thrust is a per-tick "fired" flag
     s.active_stage = v->activeStage();
     s.total_stages = v->numStages();
     s.slew_request = (int)v->slewRequestMode();
@@ -1075,7 +1075,7 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
     v->placeShip(s.pose.pos, s.pose.rot);
     v->setVelocity(s.pose.vel);
     SetAngVelocity(v->hull, s.pose.angvel);
-    v->thruster_util = s.throttle;
+    v->setThrottle(s.throttle);
     v->restoreSlewRequest((SlewMode)s.slew_request);
     v->wheels_enabled = s.wheels_enabled;
 
