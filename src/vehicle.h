@@ -43,6 +43,14 @@ enum SlewMode {
     SlewRadialIn,    /* align nose toward the SOI body */
     SlewNormal,      /* align nose with the orbital-plane normal (r x v) */
     SlewAntiNormal,  /* align nose against it */
+    /* Steer at a direction a LAW named, rather than one the class invented (#606).
+       The six above are names this class resolves itself; this one is resolved from
+       the aim vector that ShipCmd(Aim, dir) carries, because a guidance law can
+       MEASURE a turn through pointingTo() but until now could not ASK for one --
+       slewDemand()/slewTargetDir() are protected, so the only channels were the six
+       names plus the stick, and a pitch-program law had to re-implement the slew law
+       outside the class that owns it. */
+    SlewFree,
     SlewKillRot      /* kill the spin */
 };
 
@@ -52,6 +60,12 @@ enum ShipCmdType {
     ThrottleUp,
     ThrottleDown,
     ThrottleSet,   // a SETPOINT 0..1: a throttle law's channel; the keys are the RATE
+    /* The attitude twin of ThrottleSet (#606): `dir` IS the aim, in the same basis as
+       partAxis()/GetPos(). Like the throttle setpoint it is a STATE write, not a
+       latch -- it never engages a mode. The law latches ShipCmd(Sas, SlewFree) once
+       (Command's toggle rule, so re-sending it every tick would flicker it off) and
+       then re-states the aim here as its own target moves. */
+    Aim,
     Thrust,
     // Ship-relative (standard aviation mapping): see applyRotationForce.
     Pitch,    // W/S: about the ship's right axis
@@ -83,8 +97,10 @@ struct ShipCmd {
     ShipCmdType type;
     float amount;
     SlewMode mode;
+    glm::dvec3 dir = glm::dvec3(0.0);   // ShipCmd(Aim, dir): the free-aim vector (#606)
     ShipCmd(ShipCmdType t, float a = 0.0f) : type(t), amount(a), mode(SlewNone) { }
     ShipCmd(ShipCmdType t, SlewMode m) : type(t), amount(0.0f), mode(m) { }
+    ShipCmd(ShipCmdType t, glm::dvec3 d) : type(t), amount(0.0f), mode(SlewNone), dir(d) { }
 };
 
 /* Why a rails tick stopped a coasting ship: the conic reached something a
@@ -533,6 +549,17 @@ public:
     }
     SlewMode slewMode() const { return slew; }
     SlewMode slewRequestMode() const { return slewRequest; }
+    /* What a law last asked SlewFree to steer at (#606), in the same basis as
+       partAxis()/GetPos(). Raw: it is NOT normalized here, because a zero or NaN ask
+       is a real answer about the law's state and pointingTo()'s door already fails it
+       closed -- the [slew] trace then reads `mode=free no-target` instead of quietly
+       steering at last tick's direction. */
+    glm::dvec3 slewFreeDir() const { return slewFreeDir_; }
+    /* The save loader's path, like restoreSlewRequest(): a stored aim is a legitimate
+       writer and the sim may be paused when it runs, so it cannot come through
+       Command(). Loading SlewFree without its vector would latch a mode that steers
+       nowhere. */
+    void restoreSlewFreeDir(glm::dvec3 dir) { slewFreeDir_ = dir; }
     /* The once-per-tick copy from the latched mode to the engaged one. It carries its
        own gate now: a paused sim engages nothing, and a latched SlewNone engages
        nothing. tick.cpp used to test the gate and write the copy by hand after
@@ -1274,6 +1301,11 @@ protected:
     float stick[3] = {0.0f, 0.0f, 0.0f};   // manual demand: roll / pitch / yaw, -1..1
     SlewMode slew = SlewNone;              // ENGAGED this tick -- see slewMode()
     SlewMode slewRequest = SlewNone;       // latched on the Autopilot window
+    /* The aim a law named for SlewFree (#606). Per-STATE, not per-tick intent like
+       stick[]: it outlives the tick so a law that stops re-stating keeps the last aim,
+       exactly as a latched mode keeps running -- and it is saved with the latch, because
+       a loaded SlewFree with no vector is a mode that steers nowhere. */
+    glm::dvec3 slewFreeDir_ = glm::dvec3(0.0);
     glm::dvec3 rcsDir = glm::dvec3(0.0);   // armed translation demand, unit; 0 = off
     /* The RAW request the keys describe, before it is made a direction: one axis each,
        so holding Nose+Up+Right asks for (1,1,1). rcsDir is armRcs's answer to THIS on

@@ -1034,6 +1034,7 @@ struct FinProbe : Vehicle {
     using Vehicle::killRotDemand;  // the latched law's ask
     using Vehicle::slewDemand;     // and its braking-curve twin
     using Vehicle::getInertia;     // the tensor the laws multiply
+    using Vehicle::slewTargetDir;  // what the engaged mode steers at (#606)
 };
 
 /* A body with nothing but the fields airDensityAtCom() reads: a 600 km radius and a
@@ -1412,6 +1413,90 @@ static void test_the_aim_keeps_its_doors_shut() {
     delete body;
 }
 
+/* #606: the aim channel. Until now a law could MEASURE a turn (pointingTo) but could
+   not ASK for one, because slewDemand()/slewTargetDir() are protected and the only
+   attitude channels were the six named SlewModes plus the stick. */
+static void test_a_law_can_name_its_own_aim() {
+    printf("== Sas/SlewFree: a law names the direction it steers at (#606) ==\n");
+    TerrainBody *body = mkAirBall();
+    Rig r = mkRig(100.0, 0.0);
+    r.v->m_parent = body;
+    r.v->placeShip(glm::dvec3(0.0, 0.0, 601000.0), glm::dmat3(1.0));
+    r.v->drag_cd = 0.0;
+    const Vehicle::AttitudeAuthority au = r.v->attitudeAuthority();
+    const glm::dvec3 nose = r.v->partAxis(r.pod, 2);   // identity pose: +Z
+    const double h = 1.0 / 120.0;
+
+    /* An aim arrives through Command, like every other control (#424's one door) -- and
+       by itself it latches NOTHING, so a law that forgets ShipCmd(Sas, SlewFree) is
+       visibly inert rather than secretly flying. */
+    r.v->Command(ShipCmd(Aim, glm::dvec3(1.0, 0.0, 0.0)), true, 1.0);
+    CHECK_TRUE(r.v->slewFreeDir() == glm::dvec3(1.0, 0.0, 0.0),
+               "ShipCmd(Aim, dir) writes the aim");
+    CHECK_TRUE(r.v->slewRequestMode() == SlewNone && r.v->slewMode() == SlewNone,
+               "and aims at nothing until a mode is latched");
+
+    /* A paused tick writes nothing, setpoint channels included. */
+    r.v->Command(ShipCmd(Aim, glm::dvec3(0.0, 1.0, 0.0)), false, 1.0);
+    CHECK_TRUE(r.v->slewFreeDir() == glm::dvec3(1.0, 0.0, 0.0),
+               "a paused sim does not take a law's aim");
+
+    /* The latch is the same toggle rule as every other mode (#424): one press engages,
+       the same press again releases. A law that re-sent the Sas command every tick would
+       flicker -- which is why the aim is a separate channel. */
+    r.v->Command(ShipCmd(Sas, SlewFree), true, 1.0);
+    CHECK_TRUE(r.v->slewRequestMode() == SlewFree, "SlewFree latches like any mode");
+    CHECK_TRUE(r.v->applySlewRequest(true) && r.v->slewMode() == SlewFree,
+               "and the once-per-tick copy engages it");
+    CHECK_TRUE(r.v->slewTargetDir() == glm::dvec3(1.0, 0.0, 0.0),
+               "the engaged mode steers at the law's vector, not one the class invented");
+    r.v->Command(ShipCmd(Sas, SlewFree), true, 1.0);
+    CHECK_TRUE(r.v->slewRequestMode() == SlewNone, "and the same command releases it");
+    r.v->Command(ShipCmd(Sas, SlewFree), true, 1.0);
+
+    /* The aim is STATE, not per-tick intent: clearRotCmd() drops the stick and the
+       engaged copy, and must not forget the direction a law named. */
+    r.v->clearRotCmd();
+    CHECK_TRUE(r.v->slewFreeDir() == glm::dvec3(1.0, 0.0, 0.0),
+               "the aim outlives the tick, like the latch it belongs to");
+
+    /* An aim belongs to the mode that asked for it: while a NAMED mode is engaged,
+       the free vector must not hijack its target. */
+    r.v->Command(ShipCmd(Sas, SlewRadialOut), true, 1.0);
+    r.v->applySlewRequest(true);
+    CHECK_NEAR(glm::dot(glm::normalize(r.v->slewTargetDir()), nose), 1.0, 1e-9,
+               "radial-out still means radial-out with a stale aim lying around");
+    r.v->Command(ShipCmd(Sas, SlewRadialOut), true, 1.0);   // release
+    r.v->Command(ShipCmd(Sas, SlewFree), true, 1.0);
+    r.v->applySlewRequest(true);
+
+    /* The channel is honest about having no target: prograde of a ship sitting still is
+       not a direction, and a law must be able to say so rather than being handed last
+       tick's answer. pointingTo()'s door (#609) fails it closed and the law asks for
+       nothing -- no NaN reaches the allocator. */
+    r.v->Command(ShipCmd(Aim, glm::dvec3(0.0)), true, 1.0);
+    CHECK_TRUE(!r.v->pointingTo(r.v->slewTargetDir(), au).valid,
+               "an empty aim is not a direction");
+    CHECK_NEAR(glm::length(r.v->slewDemand(r.v->slewTargetDir(), h, au)), 0.0, 0.0,
+               "and the law asks for no torque from it");
+    r.v->Command(ShipCmd(Aim, glm::dvec3(0.0, 0.0, std::nan(""))), true, 1.0);
+    CHECK_NEAR(glm::length(r.v->slewDemand(r.v->slewTargetDir(), h, au)), 0.0, 0.0,
+               "nor from a NaN one");
+
+    /* And the whole point: what the free channel delivers is the SAME torque the law
+       would compute directly, so a guidance law adds no second physics path. */
+    const glm::dvec3 dir(1.0, 0.0, 0.0);
+    r.v->Command(ShipCmd(Aim, dir), true, 1.0);
+    const glm::dvec3 via_channel = r.v->slewDemand(r.v->slewTargetDir(), h, au);
+    const glm::dvec3 direct = r.v->slewDemand(dir, h, au);
+    CHECK_NEAR(glm::length(via_channel - direct), 0.0, 0.0,
+               "aim-through-SlewFree and a direct ask are one answer, not two laws");
+    CHECK_NEAR(glm::length(via_channel), 22365.6, 1.0,
+               "and it is the 100 N m triad's braking torque, in N m");
+    destroyShip(r.v);
+    delete body;
+}
+
 int main() {
     test_fixture_lever_is_what_we_think();
     test_tvc_is_a_disk_not_a_ball();
@@ -1430,6 +1515,7 @@ int main() {
     test_a_fin_row_is_spent_and_hands_its_ask_to_the_air();
     test_the_aim_is_measured_once();
     test_the_aim_keeps_its_doors_shut();
+    test_a_law_can_name_its_own_aim();
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }
     printf("test_authority: all checks passed\n");

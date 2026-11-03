@@ -566,6 +566,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
     s.active_stage = v->activeStage();
     s.total_stages = v->numStages();
     s.slew_request = (int)v->slewRequestMode();
+    s.slew_free_dir = v->slewFreeDir();   // the aim travels with a SlewFree latch (#606)
     s.wheels_enabled = v->wheels_enabled;
 
     for(size_t k = 0; k < v->seams.size(); k++) {
@@ -1077,6 +1078,7 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
     SetAngVelocity(v->hull, s.pose.angvel);
     v->setThrottle(s.throttle);
     v->restoreSlewRequest((SlewMode)s.slew_request);
+    v->restoreSlewFreeDir(s.slew_free_dir);   // a latched SlewFree without its aim steers nowhere
     v->wheels_enabled = s.wheels_enabled;
 
     /* Both parts of a seam must be present: skipping an unresolvable seam

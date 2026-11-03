@@ -173,6 +173,10 @@ struct SaveShip {
     int active_stage = 1;
     int total_stages = 1;
     int slew_request = 0;     // SlewMode (vehicle.h), range-checked on load
+    /* The aim a latched SlewFree steers at (#606). It travels WITH the latch: a save
+       that restored the mode without its vector would leave the ship latched onto a
+       direction it no longer has. */
+    glm::dvec3 slew_free_dir = glm::dvec3(0.0);
     /* The wheels' enable mask (#425 D-2): a vessel that has been told not to spend
        its drums keeps that choice across a save, because it is a property of the
        vessel and not a control preference like the pilot-vs-SAS rule. Absent = on. */
@@ -696,6 +700,10 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
     j["active_stage"] = s.active_stage;
     j["total_stages"] = s.total_stages;
     j["slew_request"] = s.slew_request;
+    if(s.slew_free_dir != glm::dvec3(0.0)) {
+        j["slew_free_dir"] = std::vector<double>({s.slew_free_dir.x, s.slew_free_dir.y,
+                                                  s.slew_free_dir.z});
+    }
     j["wheels_enabled"] = s.wheels_enabled;
     if(!s.docks.empty()) {
         nlohmann::json docks = nlohmann::json::array();
@@ -765,6 +773,7 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     if(j.contains("active_stage") && j["active_stage"].is_number()) { s.active_stage = j["active_stage"].get<int>(); }
     if(j.contains("total_stages") && j["total_stages"].is_number()) { s.total_stages = j["total_stages"].get<int>(); }
     if(j.contains("slew_request") && j["slew_request"].is_number()) { s.slew_request = j["slew_request"].get<int>(); }
+    if(j.contains("slew_free_dir") && j["slew_free_dir"].is_array()) { s.slew_free_dir = vec3FromJson(j["slew_free_dir"]); }
     if(j.contains("wheels_enabled") && j["wheels_enabled"].is_boolean()) { s.wheels_enabled = j["wheels_enabled"].get<bool>(); }
     if(j.contains("docks") && j["docks"].is_array()) {
         for(auto &&d : j["docks"]) {

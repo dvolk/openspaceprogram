@@ -3591,6 +3591,9 @@ void Vehicle::slew_log(double time) {
         case SlewRadialIn:   mode = "radial-in"; break;
         case SlewNormal:     mode = "normal"; break;
         case SlewAntiNormal: mode = "anti-normal"; break;
+        /* Named, not the "slew" default: an e2e CHECK on a free-aim law reads these
+           rows, and a nameless row cannot be told apart from a construction bug (#606). */
+        case SlewFree:       mode = "free"; break;
         default:             mode = "slew"; break;
     }
     /* One answer with the law (#400), the target test included -- they used to be two
@@ -4450,6 +4453,17 @@ void Vehicle::Command(ShipCmd cmd, bool simActive, double step) {
             assert(cmd.mode != SlewNone && "ShipCmd(Sas) must name a mode");
             slewRequest = (slewRequest == cmd.mode) ? SlewNone : cmd.mode;
             break;
+        /* The aim a SlewFree law steers at (#606). A STATE write like ThrottleSet, NOT a
+           latch: it never engages a mode, so a law that never sends ShipCmd(Sas,
+           SlewFree) aims at nothing and can be debugged as such. Stored RAW on purpose:
+           pointingTo()'s door (#609) fails a zero or NaN ask closed and the [slew] trace
+           prints `mode=free no-target`, which is a better record than silently steering
+           at the last good direction -- and normalizing here would erase the one state a
+           law must be able to express, "I have no target this tick" (prograde of a ship
+           sitting still on the pad is not a direction). */
+        case Aim:
+            slewFreeDir_ = cmd.dir;
+            break;
         /* Kill rotation WHILE HELD: the one slew mode that is an override rather
            than a latch, so it writes the engaged copy and dies with clearRotCmd
            when X comes up. The latched spelling is ShipCmd(Sas, SlewKillRot),
@@ -4777,6 +4791,11 @@ glm::dmat3 Vehicle::getInertia() {
 }
 
 glm::dvec3 Vehicle::slewTargetDir() {
+    /* A law named this aim (#606), so it needs no frame dance: it is handed in in the
+       same basis the rest of the attitude path uses. Empty or NaN is not filtered here
+       -- pointingTo() owns that door, and the trace shows `no-target` rather than
+       pretending the ship has a heading. */
+    if(slew == SlewFree) { return slewFreeDir_; }
     const glm::dvec3 pos = get_center_of_mass();
     // Radial is the same line in either frame: both are measured from the body's
     // centre, which the surface frame and the inertial one share.
