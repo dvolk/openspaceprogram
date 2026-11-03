@@ -3574,9 +3574,6 @@ void Vehicle::applyRcsForce(double h) {
 
 void Vehicle::slew_log(double time) {
     if(slew == SlewNone) { return; }
-    Part *ref = attitudeRef();
-    if(ref == nullptr) { return; }
-    const glm::dvec3 facing = partAxis(ref, 2);
     if(slew == SlewKillRot) {
         const glm::dvec3 w = hullAngVel();
         printf("[slew] t=%.3f mode=killrot |w|=%.4f rad/s "
@@ -3596,45 +3593,37 @@ void Vehicle::slew_log(double time) {
         case SlewAntiNormal: mode = "anti-normal"; break;
         default:             mode = "slew"; break;
     }
-    /* The SAME degeneracy test slewDemand uses, not a looser one: at 0.5 this
-       dropped a target the law was busy steering toward, and normalizing what was
-       left (a zero vector) made E and axis NaN, so the row read alpha=0.000 next to
-       a ship actually slewing on its engines. */
-    if(glm::length2(target) < 1e-12) {
-        printf("[slew] t=%.3f mode=%s no-target\n", time, mode);
+    /* One answer with the law (#400), the target test included -- they used to be two
+       copies, and the log's was looser: at 0.5 it dropped a target the law was busy
+       steering toward, and normalizing what was left (a zero vector) made E and axis
+       NaN, so the row read alpha=0.000 next to a ship actually slewing on its engines. */
+    const Pointing p = pointingTo(target);
+    if(!p.valid) {
+        printf("[slew] t=%.3f mode=%s %s\n", time, mode,
+               glm::length2(target) < 1e-12 ? "no-target" : "no-frame");
         fflush(stdout);
         return;
     }
-    target = glm::normalize(target);
-    const double E = glm::acos(glm::clamp(glm::dot(facing, target), -1.0, 1.0));
-    glm::dvec3 axis = glm::cross(facing, target);
-    if(glm::length2(axis) < 1e-12) {
-        axis = (std::fabs(facing.y) > 0.9) ? glm::dvec3(1, 0, 0) : glm::dvec3(0, 1, 0);
-        axis = glm::normalize(axis - facing * glm::dot(axis, facing));
-    }
-    axis = glm::normalize(axis);
-    const glm::dvec3 rollAxis  = glm::normalize(facing);
+    const double E = p.angle;
+    const double Ieff = p.Ieff;
+    const double alpha = p.alphaMax;
+    const glm::dvec3 axis = p.axis;
+    target = glm::normalize(target);   // the printed direction is a unit vector
+    /* The frame this rate decomposition belongs to (#421): nose, the axis the slew
+       law actually drives, and the third that completes it. A hull-level |w| cannot
+       say how much of itself is the ask and how much is an uncommanded roll.
+       alpha is quoted ABOUT THAT AXIS, which is the tripwire this row has always
+       been: a stack-axis error reads no TVC budget, exactly as tvcSplit hands that
+       component to the wheels (#576) -- if the law and the mixer ever come apart
+       again, this row shows it. What it does NOT say is what the hull was actually
+       torqued by: the budget (#599), and under SasStickOwnsAxis an axis the pilot is
+       holding shows its full authority even while the law gives it nothing (#421). */
+    const glm::dvec3 rollAxis  = p.facing;
     const glm::dvec3 thirdAxis = glm::cross(axis, rollAxis);
     const glm::dvec3 w = hullAngVel();
     const double w_slew  = glm::dot(w, axis);
     const double w_roll  = glm::dot(w, rollAxis);
     const double w_third = glm::dot(w, thirdAxis);
-    const glm::dmat3 I = getInertia();
-    const double Ieff = glm::dot(axis, I * axis);
-    /* Re-derive the axis and the budget the law is using, and log both ABOUT THE
-       AXIS, or a wheel-less ship's trace would read alpha=0 while it flies on its
-       engines -- and a stack-axis error would read the full TVC budget while
-       tvcSplit delivers none of it. `axis` is transverse to the facing part, which
-       since #571 is the root part, so it is transverse to the stack axis the mixer
-       levers in -- the same frame AttitudeAuthority::stackAxis names. If that ever
-       comes apart again, this row is where it shows: alpha would credit TVC about an
-       axis tvcSplit hands to the wheels.
-       What it does NOT say is what the hull was actually torqued by (#599), and under
-       SasStickOwnsAxis (#421) an axis the pilot is holding shows this full budget even
-       though the law contributes nothing along it -- read alpha as what the hardware
-       could do, never as what this substep did. */
-    const double alpha = (Ieff > 0.0)
-        ? attitudeTorqueAbout(attitudeAuthority(), axis) / Ieff : 0.0;
     const double w_des = (alpha > 0.0) ? std::sqrt(2.0 * alpha * E) : 0.0;
     /* The two directions at 6 dp, not 3: e2e pairs target= with --plane-log's
        n_orb, and a 3 dp component leaves ~3e-3 of dot-product slack -- the same
@@ -3646,7 +3635,7 @@ void Vehicle::slew_log(double time) {
            time, mode, E, glm::degrees(E),
            w_slew, w_roll, w_third, glm::length(w),
            alpha, Ieff, w_des,
-           facing.x, facing.y, facing.z, target.x, target.y, target.z);
+           p.facing.x, p.facing.y, p.facing.z, target.x, target.y, target.z);
     fflush(stdout);
 }
 
@@ -4852,53 +4841,77 @@ void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
     if(glm::length2(mechanical) > 0.0) { ApplyTorque(hull, mechanical); }
 }
 
+/* WHAT AIMING AT `dir` MEANS FOR THIS HULL (#400): the error, the axis that closes it,
+   the hull's inertia about that axis, and the authority-limited rate the actuators could
+   hold along it. The alignment law and --slew-log each used to compute this, about 25
+   lines apart and with their own target tests, and the log's test was the looser one: it
+   dropped a target the law was steering toward and normalized what was left of it, so E
+   and the axis came out NaN and the trace read alpha=0.000 next to a ship actually
+   slewing on its engines. One answer now, and guidance is its third reader.
+   The ship's frame is attitudeRef() -- not whichever wheel happens to be first in the
+   parts list (#571). */
+Vehicle::Pointing Vehicle::pointingTo(glm::dvec3 dir, const AttitudeAuthority &auth) {
+    Pointing p;
+    if(glm::length2(dir) < 1e-12) { return p; }  /* no direction to align to */
+    dir = glm::normalize(dir);
+    Part *ref = attitudeRef();
+    if(ref == nullptr) { return p; }
+    p.facing = partAxis(ref, 2);
+    p.angle = glm::acos(glm::clamp(glm::dot(p.facing, dir), -1.0, 1.0));
+    p.axis = glm::cross(p.facing, dir);          /* + turns the nose toward dir */
+    if(glm::length2(p.axis) < 1e-12) {
+        /* nose ~ opposite dir: any axis perpendicular to facing works */
+        p.axis = (std::fabs(p.facing.y) > 0.9) ? glm::dvec3(1, 0, 0) : glm::dvec3(0, 1, 0);
+        p.axis = glm::normalize(p.axis - p.facing * glm::dot(p.axis, p.facing));
+    } else {
+        p.axis = glm::normalize(p.axis);
+    }
+    const glm::dmat3 I = getInertia();
+    p.Ieff = glm::dot(p.axis, I * p.axis);       /* kg m^2 about the slew axis */
+    /* The rate budget ABOUT THE AXIS THIS AIM NEEDS: wheels (when live) plus whatever
+       TVC can lever that way, so a braking curve and the actuator bound scale together
+       and with throttle. Nothing available -> alphaMax 0, and the reader holds position:
+       a law does not pretend to slew (#401's lesson).
+       Note what this can never credit: `axis` is cross(facing, dir) with facing ==
+       attitudeRef()'s +Z, so it is transverse to the stack axis by construction and TVC
+       counts in full. A law aimed at a ROLL-axis error gets nothing from TVC here -- not
+       a new limit, it is the one tvcSplit has always applied when it drops that
+       component -- and aiming at a roll error is the allocator's job (#420), not the
+       reader's. */
+    p.alphaMax = (p.Ieff > 0.0)
+        ? attitudeTorqueAbout(auth, p.axis) / p.Ieff : 0.0;
+    p.valid = true;
+    return p;
+}
+
+Vehicle::Pointing Vehicle::pointingTo(glm::dvec3 dir) {
+    return pointingTo(dir, attitudeAuthority());
+}
+
 /* What the alignment law WANTS this substep, in N m: the braking-curve rate change
    through the hull's own inertia. It does not actuate -- applyRotationForce sums
    this with the stick's demand and asks the actuators once, because two trips
    through the allocator bill the drums twice (#420). */
 glm::dvec3 Vehicle::slewDemand(glm::dvec3 dir, double h, const AttitudeAuthority &auth) {
-    if(glm::length2(dir) < 1e-12) { return glm::dvec3(0.0); } /* no direction to align to */
-    dir = glm::normalize(dir);
-    /* The ship's frame is attitudeRef() -- not whichever wheel happens to be first
-       in the parts list (#571). */
-    Part *ref = attitudeRef();
-    if(ref == nullptr) { return glm::dvec3(0.0); }
-    const glm::dvec3 facing = partAxis(ref, 2);
-    const double E = glm::acos(glm::clamp(glm::dot(facing, dir), -1.0, 1.0));
-    if(E < 1e-9) { return glm::dvec3(0.0); } /* already aligned */
-    glm::dvec3 axis = glm::cross(facing, dir); /* + turns the nose toward dir */
-    if(glm::length2(axis) < 1e-12) {
-        /* nose ~ opposite dir: any axis perpendicular to facing works */
-        axis = (std::fabs(facing.y) > 0.9) ? glm::dvec3(1, 0, 0) : glm::dvec3(0, 1, 0);
-        axis = glm::normalize(axis - facing * glm::dot(axis, facing));
-    }
-    axis = glm::normalize(axis);
-    const glm::dmat3 I = getInertia();
-    const double Ieff = glm::dot(axis, I * axis); /* kg m^2 about the slew axis */
-    if(Ieff <= 0.0) { return glm::dvec3(0.0); }
-    /* Authority this substep, ABOUT THE AXIS THIS SLEW NEEDS: wheels (when live)
-       plus whatever TVC can lever that way, so the braking curve and the
-       actuator bound scale with throttle. Nothing available: hold position --
-       the law does not pretend to slew (#401's lesson).
-       The axis matters (#425), and note what this law can never ask for: `axis` is
-       cross(facing, dir) with facing == attitudeRef()'s +Z, so it is perpendicular
-       to the stack axis by construction and TVC counts in full. A law aimed at a
-       roll-axis error gets nothing from TVC -- not a new limit, it is the one
-       tvcSplit has always applied when it drops that component -- and aiming at a
-       roll error is the allocator's job (#420), not this law's. */
-    const double authMax = attitudeTorqueAbout(auth, axis);
-    if(authMax <= 0.0) { return glm::dvec3(0.0); }
-    const double alpha = authMax / Ieff; /* rad/s^2, actuator-limited */
+    const Pointing p = pointingTo(dir, auth);
+    if(!p.valid) { return glm::dvec3(0.0); }     /* nothing to aim at */
+    const double E = p.angle;
+    if(E < 1e-9) { return glm::dvec3(0.0); }     /* already aligned */
+    if(p.Ieff <= 0.0 || p.alphaMax <= 0.0) { return glm::dvec3(0.0); }
+    const double alpha = p.alphaMax;             /* rad/s^2, actuator-limited */
     const double w_des = std::min(std::sqrt(2.0 * alpha * E), E / (2.0 * h));
     /* Drive the FULL transverse angular velocity toward the braking-curve rate: damping
        only the slew-axis component leaves the third-axis spin alive, which is the
        sustained wobble about a prograde/retrograde target. Roll is left free. */
     const glm::dvec3 w_now = hullAngVel();
-    const glm::dvec3 w_transverse = w_now - facing * glm::dot(w_now, facing);
-    glm::dvec3 dW = axis * w_des - w_transverse; /* desired change in rate */
+    const glm::dvec3 w_transverse = w_now - p.facing * glm::dot(w_now, p.facing);
+    const glm::dvec3 dW = p.axis * w_des - w_transverse;   /* desired change in rate */
     /* The demand is bounded by the law's own alpha only through w_des; the actuators'
-       bound is applied once, by the allocator, to whatever this sums with (#420). */
-    return I * dW / h;
+       bound is applied once, by the allocator, to whatever this sums with (#420). The
+       tensor is read again because the demand needs the WHOLE tensor (I*dW) while the aim
+       measures one scalar off it; getInertia() is three Bullet reads and no allocation,
+       so that is cheaper than carrying a 3x3 through a measurement struct. */
+    return getInertia() * dW / h;
 }
 
 /* What kill-rot WANTS this substep, N m: a full-tensor cancel of the hull's rate.

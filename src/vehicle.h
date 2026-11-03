@@ -700,6 +700,31 @@ public:
        law may aim to go. */
     double attitudeTorqueAbout(const AttitudeAuthority &auth,
                                const glm::dvec3 &axis) const;
+    /* WHAT AIMING AT `dir` MEANS FOR THIS HULL (#400) -- one answer, so the laws, the
+       --slew-log trace and guidance cannot each derive their own and drift. (They had:
+       slewDemand() and slew_log() both computed the error, the axis, the inertia and the
+       authority-limited rate about 25 lines apart, and the log's target test was looser
+       than the law's, which is how a trace came to read alpha=0 next to a ship actually
+       slewing.)
+       It is a MEASUREMENT, not a law: the braking curve (w_des = sqrt(2*alpha*E), capped
+       by the substep) stays with whoever aims, because the cap belongs to the caller's h.
+       `valid` is false when there is nothing to aim at -- no frame, or a zero-length
+       target -- which is also the NaN door: a normalized zero vector used to poison E
+       and the axis. An aligned hull is valid with angle 0, not invalid: "already there"
+       and "no target" are different answers a guidance law has to tell apart. */
+    struct Pointing {
+        bool valid = false;
+        glm::dvec3 facing = glm::dvec3(0.0);    // the nose of attitudeRef() [unit]
+        glm::dvec3 axis = glm::dvec3(0.0);      // + turns facing toward dir [unit]
+        double angle = 0.0;                     // E [rad]; 0 == aligned
+        double Ieff = 0.0;                      // kg m^2 about axis
+        double alphaMax = 0.0;                  // rad/s^2 the actuators could hold here
+    };
+    /* The authority comes in as a parameter because the laws already hold this
+       substep's copy -- building a second one per substep is #594's churn. The
+       one-argument form is for readers outside the funnel (guidance, the log). */
+    Pointing pointingTo(glm::dvec3 dir, const AttitudeAuthority &auth);
+    Pointing pointingTo(glm::dvec3 dir);
     /* Send one commanded attitude torque to the actuators: roll about the
        stack axis is wheels-only, transverse goes to TVC first up to tvcTorque,
        the remainder to the wheels AND the control surfaces (gimbal.h tvcSplit).

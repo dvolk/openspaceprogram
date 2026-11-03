@@ -63,7 +63,12 @@ static int g_checks = 0;
     do {                                                                       \
         g_checks++;                                                            \
         double _a = (actual), _e = (expected);                                 \
-        if (!std::isfinite(_a) || std::fabs(_a - _e) > (tol)) {                \
+        /* BOTH sides. Only _a was guarded, so a pin written the other way round  \
+           -- CHECK_NEAR(1.0, computed, ...) -- silently passed on a computed     \
+           NaN, because fabs(1.0 - NaN) > tol is false. The other 13 test       \
+           files still have the one-sided guard (#604). */                       \
+        if (!std::isfinite(_a) || !std::isfinite(_e)                            \
+            || std::fabs(_a - _e) > (tol)) {                                    \
             g_failures++;                                                      \
             printf("FAIL: %s (got %.9g, want %.9g, tol %.3g)\n",               \
                    msg, _a, _e, (double)(tol));                                \
@@ -1027,6 +1032,8 @@ static void test_the_armed_rcs_demand_is_a_direction() {
 struct FinProbe : Vehicle {
     using Vehicle::stick;          // fake held keys
     using Vehicle::killRotDemand;  // the latched law's ask
+    using Vehicle::slewDemand;     // and its braking-curve twin
+    using Vehicle::getInertia;     // the tensor the laws multiply
 };
 
 /* A body with nothing but the fields airDensityAtCom() reads: a 600 km radius and a
@@ -1232,6 +1239,121 @@ static void test_a_fin_row_is_spent_and_hands_its_ask_to_the_air() {
     delete body;
 }
 
+/* THE AIM IS MEASURED, NOT RE-DERIVED (#400 stage F2). Vehicle::pointingTo() answers
+   "what does aiming at this direction mean for this hull" once: the error, the axis
+   that closes it, the inertia about that axis and the authority-limited rate. Before
+   it, the slew law and the [slew] trace each computed all four ~25 lines apart, and
+   the trace's copy of the target test was looser -- normalize(0) -> NaN -> a row that
+   read alpha=0.000 beside a ship actually slewing (src/vehicle.cpp::slew_log). Guidance
+   is the third reader, and it is the reader that cannot afford a fourth opinion.
+   The rig is the #426 one with --drag-cd 0 (no surface rows), so its whole attitude
+   authority is its 100 N m TRIAD and every number below is hand-arithmetic: about a
+   body axis the triad brings 100 N m, about a 45 deg axis in its plane 100*sqrt(2),
+   because actuators.h::actuatorTorqueAbout sums limit*|dot(row, ask)|. */
+static void test_the_aim_is_measured_once() {
+    printf("== pointingTo: one measurement, three readers ==\n");
+    TerrainBody *body = mkAirBall();
+    Rig r = mkRig(100.0, 0.0);
+    r.v->m_parent = body;
+    r.v->placeShip(glm::dvec3(0.0, 0.0, 601000.0), glm::dmat3(1.0));
+    r.v->drag_cd = 0.0;
+    const Vehicle::AttitudeAuthority au = r.v->attitudeAuthority();
+    CHECK_TRUE(au.wheels.size() == 3 && au.surfaces.empty(),
+               "a triad and nothing else: the air is out of this answer on purpose");
+    const glm::dvec3 nose = r.v->partAxis(r.pod, 2);   // identity pose: +Z
+    const glm::dmat3 I = r.v->getInertia();
+
+    /* 90 deg about a body axis: dir +X, so axis = cross(nose, dir) = +Y. */
+    const glm::dvec3 dir(1.0, 0.0, 0.0);
+    const Vehicle::Pointing p = r.v->pointingTo(dir, au);
+    CHECK_TRUE(p.valid, "a real target gives a real answer");
+    CHECK_NEAR(p.angle, glm::pi<double>() * 0.5, 1e-12, "a quarter turn is a quarter turn");
+    CHECK_NEAR(glm::length(p.facing), 1.0, 1e-12, "facing is the frame, and it is unit");
+    CHECK_NEAR(glm::length(p.axis), 1.0, 1e-12, "axis is unit -- the laws multiply it by a rate");
+    const glm::dvec3 wantAxis = glm::normalize(glm::cross(nose, dir));
+    CHECK_NEAR(glm::dot(p.axis, wantAxis), 1.0, 1e-12,
+               "axis = normalize(cross(facing, target)): the short way round");
+    CHECK_NEAR(glm::dot(p.axis, p.facing), 0.0, 1e-12,
+               "and it is transverse -- this law cannot ask for roll, which is the "
+               "allocator's job (#420), not the aim's");
+    CHECK_NEAR(glm::dot(wantAxis, I * wantAxis), p.Ieff, 1e-9,
+               "Ieff is the hull's inertia ABOUT THE AXIS THIS ASK NEEDS, not a scalar");
+    CHECK_NEAR(p.alphaMax * p.Ieff, 100.0, 1e-6,
+               "the torque the braking curve scales with is the drum's 100 N m, read "
+               "about this axis -- nothing else is left in the rig");
+
+    /* The axis matters: 90 deg the other way, aimed 45 deg between two drum axes. */
+    const glm::dvec3 dir45 = glm::normalize(glm::dvec3(1.0, 1.0, 0.0));
+    const Vehicle::Pointing q = r.v->pointingTo(dir45, au);
+    CHECK_NEAR(q.alphaMax * q.Ieff, 100.0 * std::sqrt(2.0), 1e-6,
+               "about a 45 deg axis the triad brings 100*sqrt(2), so a law that "
+               "budgetted one number for every ask would brake too hard here");
+
+    /* The three degeneracies, kept apart from each other. */
+    const Vehicle::Pointing same = r.v->pointingTo(nose, au);
+    CHECK_TRUE(same.valid && same.angle < 1e-12,
+               "an aligned hull is valid with angle 0 -- 'already there' is not "
+               "'no target', and guidance has to tell them apart");
+    const Vehicle::Pointing away = r.v->pointingTo(-nose, au);
+    CHECK_TRUE(away.valid, "a target behind the nose is still a target");
+    CHECK_NEAR(away.angle, glm::pi<double>(), 1e-9, "and it is a half turn");
+    CHECK_NEAR(glm::length(away.axis), 1.0, 1e-12,
+               "the half-turn branch still hands back a UNIT axis: cross() is ~0 here, "
+               "so normalizing it used to be the NaN door");
+    CHECK_NEAR(glm::dot(away.axis, away.facing), 0.0, 1e-12,
+               "perpendicular to the stack, which is the only kind of axis that can "
+               "close a half turn");
+    CHECK_NEAR(away.alphaMax * away.Ieff, 100.0, 1e-6,
+               "and the axis it picks is one the drums can actually drive, so a half "
+               "turn still has a braking curve -- a degenerate axis would leave this 0 "
+               "and the law would quietly hold position 180 deg out");
+    const Vehicle::Pointing none = r.v->pointingTo(glm::dvec3(0.0), au);
+    CHECK_TRUE(!none.valid, "no direction at all is not a direction");
+    CHECK_NEAR(0.0, none.Ieff, 0.0, "and it buys no numbers -- all zero, no NaN");
+    CHECK_NEAR(0.0, none.alphaMax, 0.0, "so a law reading it holds position instead of "
+               "pretending to slew");
+
+    /* One answer per reader, not one per call site: the [slew] trace asks the
+       one-argument form, which builds its own authority. */
+    const Vehicle::Pointing logged = r.v->pointingTo(dir);
+    CHECK_TRUE(logged.valid, "the log's form works off the same hull");
+    CHECK_NEAR(logged.angle, p.angle, 1e-15, "same E");
+    CHECK_NEAR(glm::dot(p.axis, logged.axis), 1.0, 1e-15, "same axis");
+    CHECK_NEAR(logged.Ieff, p.Ieff, 1e-12, "same Ieff");
+    CHECK_NEAR(logged.alphaMax, p.alphaMax, 1e-15, "same alphaMax");
+
+    /* And the LAW spends these numbers rather than its own: at rest the demand is the
+       braking-curve rate through the whole tensor, so the vector below is a hand
+       check that the axis and the rate the law aims for are the primitive's. */
+    const double h = 1.0 / 120.0;
+    const double w_des = std::sqrt(2.0 * p.alphaMax * p.angle);
+    CHECK_TRUE(w_des < p.angle / (2.0 * h),
+               "this substep is rate-limited by the actuators, not by the substep cap");
+    const glm::dvec3 tau = r.v->slewDemand(dir, h, au);
+    const glm::dvec3 want = I * (p.axis * w_des) / h;
+    printf("   slewDemand = (%.1f %.1f %.1f) N m, want (%.1f %.1f %.1f)"
+           " (alpha %.3f rad/s^2, w_des %.3f rad/s)\n",
+           tau.x, tau.y, tau.z, want.x, want.y, want.z, p.alphaMax, w_des);
+    /* All three components, not one: this rig's tensor is diagonal in world axes, so
+       its x column is zero for BOTH the aim axis (+Y) and the stack axis (+Z) and a
+       single-component check passes on a law aimed down the wrong axis. */
+    CHECK_NEAR(glm::length(tau - want), 0.0, 1e-9 * glm::length(want),
+               "the law's torque is exactly I*(axis*w_des)/h -- one axis, one rate, "
+               "no second opinion");
+    const glm::dvec3 tauAway = r.v->slewDemand(-nose, h, au);
+    const glm::dvec3 wantAway =
+        I * (away.axis * std::sqrt(2.0 * away.alphaMax * away.angle)) / h;
+    CHECK_NEAR(glm::length(tauAway - wantAway), 0.0, 1e-9 * glm::length(wantAway),
+               "a half turn is the same law on the same measurement: the axis the "
+               "primitive picks is the axis the law drives");
+    CHECK_NEAR(glm::length(r.v->slewDemand(nose, h, au)), 0.0, 0.0,
+               "aligned: the aim is valid and the law still asks for nothing");
+    CHECK_NEAR(glm::length(r.v->slewDemand(glm::dvec3(0.0), h, au)), 0.0, 0.0,
+               "and with no target the law does nothing rather than slewing on garbage");
+    destroyShip(r.v);
+    delete body;
+}
+
 int main() {
     test_fixture_lever_is_what_we_think();
     test_tvc_is_a_disk_not_a_ball();
@@ -1248,6 +1370,7 @@ int main() {
     test_the_command_funnel();
     test_the_armed_rcs_demand_is_a_direction();
     test_a_fin_row_is_spent_and_hands_its_ask_to_the_air();
+    test_the_aim_is_measured_once();
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }
     printf("test_authority: all checks passed\n");
