@@ -103,6 +103,17 @@ ORBIT_RE = re.compile(
     # lan/lpe are either a number followed by " deg" or a bare "-".
     r"(?:\s+plane=(\w+)\s+lan=(\S+)(?: deg)?\s+lpe=(\S+)(?: deg)?)?"
 )
+# --ascent-log (src/tick.cpp): the ascent law's own state, one row per log tick.
+# The phase is the law's side of the contract with the player -- "done" means the
+# orbit is the one that was asked for, "failed" means it says so out loud -- so a
+# case should read it rather than grep for it. apo_asl is -1 on an open conic
+# here (this is the law's own line; the orbit rows above drop the pair instead).
+ASCENT_RE = re.compile(
+    r"\[ascent\]\s+t=([\d.]+)s\s+phase=(\w+)\s+lever=([-\d.e+]+)\s+pitch=([-\d.e+]+) deg\s+"
+    r"peri_asl=([-\d.e+]+) m\s+apo_asl=([-\d.e+]+) m\s+inc_eq=([-\d.e+]+) deg\s+"
+    r"node_r=([-\d.e+]+) m\s+why=\"([^\"]*)\""
+)
+
 MAP_RE = re.compile(
     r"\[mapdump\]\s+t=([\d.]+)s\s+slot=(\w+)\s+"
     r"n=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+"
@@ -548,6 +559,18 @@ def parse_orbit(out):
             "E": float(E),
             # None on a line without the #171 tail.
             "plane": plane, "lan": lan, "lpe": lpe,
+        })
+    return rows
+
+
+def parse_ascent(out):
+    rows = []
+    for m in ASCENT_RE.finditer(out):
+        (t, phase, lever, pitch, peri, apo, inc_eq, node, why) = m.groups()
+        rows.append({
+            "t": float(t), "phase": phase, "lever": float(lever),
+            "pitch": float(pitch), "peri_asl": float(peri), "apo_asl": float(apo),
+            "inc_eq": float(inc_eq), "node_r": float(node), "why": why,
         })
     return rows
 
@@ -1204,6 +1227,7 @@ def run_case(case):
     porkchop = parse_porkchop(world)
     surfmap = parse_surfmap(world)
     att = parse_att(world)
+    ascent = parse_ascent(world)
     eva = parse_eva(world)
     fuel = parse_fuel(world)
     drainlog = parse_drainlog(world)
@@ -1225,7 +1249,7 @@ def run_case(case):
     toast = parse_toast(out)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
-        "porkchop": porkchop, "surfmap": surfmap, "att": att, "eva": eva,
+        "porkchop": porkchop, "surfmap": surfmap, "att": att, "ascent": ascent, "eva": eva,
         "fuel": fuel, "drainlog": drainlog, "power": power, "dv": dv, "mass": mass,
         "drag": drag, "shake": shake,
         "ctrl": ctrl,

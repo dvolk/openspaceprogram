@@ -353,6 +353,11 @@ $(TESTDIR)/test_rcs: $(TESTDIR)/obj/test_rcs.o
 $(TESTDIR)/test_thrust: $(TESTDIR)/obj/test_thrust.o $(TCOMMON_OBJS)
 	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
 
+# The ascent law is pure, but flyAscent() reaches the ship, so this links the
+# same chain the thrust tests do -- plus guidance.o itself.
+$(TESTDIR)/test_guidance: $(TESTDIR)/obj/test_guidance.o $(TESTDIR)/obj/guidance.o $(TCOMMON_OBJS)
+	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+
 $(TESTDIR)/test_fuel: $(TESTDIR)/obj/test_fuel.o $(TCOMMON_OBJS)
 	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
 
@@ -522,7 +527,7 @@ $(TESTDIR)/test_cli: $(TESTDIR)/obj/test_cli.o $(TESTDIR)/obj/cli.o $(TESTDIR)/o
 $(TESTDIR)/test_orient: $(TESTDIR)/obj/test_orient.o $(BULLET3_OBJS)
 	$(CXX) -o $@ $^ $(TLIBS)
 
-TESTS = test_frames test_spawn test_attitude test_slew3d test_gimbal test_actuators test_rcs test_thrust test_fuel \
+TESTS = test_frames test_spawn test_attitude test_slew3d test_gimbal test_actuators test_rcs test_thrust test_guidance test_fuel \
         test_power test_staging test_staging_dv test_dock test_authority test_contain test_inertia test_inventory \
         test_suitdef \
         test_rotation test_shipload test_stability test_save test_crew test_roster test_calendar \

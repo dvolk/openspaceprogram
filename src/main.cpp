@@ -681,6 +681,37 @@ int main(int argc, char **argv)
             first->Command(ShipCmd(Sas, m), true);
             printf("Autopilot: %s engaged at startup\n", args.autopilot.c_str());
         }
+
+        /* --ascent: arm the ascent autopilot on the active ship. Parsed by hand
+           rather than through CLI11's numeric machinery because "100e3,45" is a
+           mission description, and a typo should name the field it tripped on.
+           ALT is the ask for BOTH apsides (a circular orbit at that altitude);
+           INC is optional and sets the launch heading, not a plane change. */
+        if(!args.ascent.empty() && first != nullptr) {
+            AscentTarget t;
+            const std::string &as = args.ascent;
+            const size_t comma = as.find(',');
+            double alt = 0.0, inc = -1.0;
+            try {
+                alt = std::stod(comma == std::string::npos ? as : as.substr(0, comma));
+                if(comma != std::string::npos) { inc = std::stod(as.substr(comma + 1)); }
+            } catch(const std::exception &) {
+                throw std::runtime_error("--ascent wants ALTITUDE[,INCLINATION] in metres "
+                                         "and degrees, got \"" + as + "\"");
+            }
+            if(!(alt > 0.0)) {
+                throw std::runtime_error("--ascent altitude must be above the datum, got "
+                                         + std::to_string(alt) + " m");
+            }
+            t.apo_asl = t.peri_asl = alt;
+            t.inc_rad = inc < 0.0 ? -1.0 : glm::radians(inc);
+            game.ascent = AscentLaw(t);
+            const std::string inc_txt = inc < 0.0 ? std::string()
+                : " at inc " + std::to_string(inc) + " deg";
+            printf("Autopilot: ascent armed on '%s' -- %.6g m circular%s (body %s)\n",
+                   first->displayName().c_str(), alt, inc_txt.c_str(),
+                   first->m_parent ? first->m_parent->name.c_str() : "?");
+        }
     }
 
     Mesh *engine_plume_mesh = get_mesh("res/meshes/engine_plume.obj");

@@ -135,6 +135,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         ->check(CLI::IsMember({"prograde", "retrograde", "radial-out",
                                "radial-in", "normal", "anti-normal",
                                "kill-rot"}));
+    app.add_option("--ascent", args.ascent,
+                   "Fly the active ship to a circular orbit: ALTITUDE[,INCLINATION] "
+                   "in metres and degrees. An ascent autopilot -- it pitches over, "
+                   "burns to the asked apoapsis, coasts to the node and circularises "
+                   "there. Airless bodies only (it has no model of the air). A test "
+                   "hook: in-game there is no panel for it yet (default: none)");
     app.add_flag("--recover-anywhere", args.recover_anywhere,
                  "Let 'Recover Vessel' recover the active ship anywhere "
                  "(the default requires it grounded on the home body). A "
@@ -389,6 +395,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "from the same code the map windows use (test hook; "
                    "-1 = never)");
 
+    app.add_flag("--ascent-log", args.ascent_log,
+                 "Print the ascent law's phase, throttle, apsides and cutoff once "
+                 "per --orbit-interval (--ascent implies nothing here)");
     app.add_flag("--orbit-log", args.orbit_log,
                  "Periodically print the ship's orbital elements to stdout "
                  "(for measuring orbital stability)");

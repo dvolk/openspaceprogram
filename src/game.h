@@ -8,6 +8,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <string>
 #include <utility>
@@ -20,6 +21,7 @@
 #include "crew.h"     // CrewRoster (the named crew pool)
 #include "display.h"  // Renderer
 #include "flightlog.h"
+#include "guidance.h" // AscentLaw (the ascent autopilot)
 #include "job.h"      // JobRunner
 #include "orbit.h"    // OrbitElements, RefPlane, PlaneAngles
 #include "postfx.h"   // PostFX
@@ -429,7 +431,7 @@ enum LogGate { kGateOrbit, kGateDbg, kGateInfo, kGateAtt, kGateShake,
                kGateCam, kGateEva, kGateDrag, kGateTerrain, kGatePlane,
                kGateSkyDim, kGateXfer, kGateDv, kGateCompound, kGateProxSnap,
                kGateSpin, kGateMass, kGateFuel, kGateDrain, kGatePower,
-               kGateSlew, kGateCount };
+               kGateSlew, kGateAscent, kGateCount };
 
 /* A headless test hook (cli.h --atlas-dump / --map-dump): fires act() once,
    at/after ms on the schedule clock (Game::schedClockMs(): loop_start_ms normally,
@@ -786,6 +788,14 @@ struct Game {
     int rebind_capture_slot = -1;
     // Thrust latch (events.cpp toggles; tick.cpp keeps thrust on while set).
     bool thrust_latched = false;
+
+    /* The ascent autopilot (#400 -> AUTOPILOT v1): a law that flies the active
+       ship to a circular orbit. Empty until something arms it (--ascent today);
+       tick.cpp steps it after the key input and before the substeps. Held here
+       rather than in Vehicle because it is a mission, not a control surface: it
+       owns an aim and a cutoff, and it talks to the ship only through the public
+       reads and Command, like any other hand on the controls. */
+    std::optional<AscentLaw> ascent;
 
     // The Flight Summary window payload, written by recoverActive.
     struct FlightSummary {

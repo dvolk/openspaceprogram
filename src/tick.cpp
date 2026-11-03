@@ -184,6 +184,17 @@ void tick(Game &g) {
             if (slotActive.held(Slot::ThrottleUp)) { g.ship->Command(ShipCmd(ThrottleUp), game_running, g.dt); }
             if (slotActive.held(Slot::ThrottleDown)) { g.ship->Command(ShipCmd(ThrottleDown), game_running, g.dt); }
 
+            /* The ascent autopilot, after the keys and before the substeps: after,
+               so the law sees this tick's throttle claim and yields to it (#400 F3);
+               before, so its Aim/Thrust/ThrottleSet are armed for the physics that
+               follows. Gated on game_running because a paused sim runs no laws --
+               the phase machine would otherwise advance on wall ticks while nothing
+               moves. dt here is the WARPED sim interval, the same number the Thrust
+               command is given, because that is how far the burn actually reaches. */
+            if(g.ascent && game_running) {
+                flyAscent(*g.ship, *g.ascent, g.dt * g.time_accel);
+            }
+
             // RCS translation (ship-relative); applyRcsForce resolves the
             // direction.
             if (slotActive.held(Slot::RcsForward)) { g.ship->Command(ShipCmd(RcsNose,  +1.0f), game_running); }
@@ -377,6 +388,33 @@ void tick(Game &g) {
             }
         }
 
+        /* --ascent-log: the law's own state, so a case can CHECK the phase and the
+           cutoff against the same rows that drove the flight, and a failed run says
+           why in one line instead of being inferred from the orbit rows. */
+        if(g.ship && g.ascent && g.args.ascent_log) {
+            const Uint32 now_ms = g.logClockMs();
+            if(g.logDue(kGateAscent, now_ms, g.orbit_log_interval_ms)) {
+                const AscentLaw &law = *g.ascent;
+                const OrbitElements &o = law.elements();
+                double inc_spin = -1.0;   // inclination vs the body's equator
+                if(o.ang_momentum > 0.0 && g.ship->frame && g.ship->m_parent) {
+                    Frame *inertial = g.ship->frame->getNonRotFrame();
+                    const glm::dvec3 om = g.ship->frame->GetOrientRelTo(inertial)
+                                        * g.ship->frame->omega();
+                    if(glm::length2(om) > 1e-18) {
+                        const double c = glm::dot(o.h_hat, glm::normalize(om));
+                        inc_spin = glm::degrees(std::acos(std::clamp(c, -1.0, 1.0)));
+                    }
+                }
+                printf("[ascent] t=%.1fs phase=%s lever=%.2f pitch=%.1f deg "
+                       "peri_asl=%.6g m apo_asl=%.6g m inc_eq=%.2f deg node_r=%.6g m "
+                       "why=\"%s\"\n",
+                       g.time, law.phaseName(), g.ship->throttle(), law.pitch_deg(),
+                       periapsisAsl(o, g.ship->m_parent->seaLevelRadius()),
+                       (o.traj == TrajectoryClass::Elliptic ? apoapsisAsl(o, g.ship->m_parent->seaLevelRadius()) : -1.0),
+                       inc_spin, law.node_r(), law.why());
+            }
+        }
         // --orbit-log: orbital elements in the body's inertial frame.
         if(g.ship && g.args.orbit_log) {
             const Uint32 now_ms = g.logClockMs();

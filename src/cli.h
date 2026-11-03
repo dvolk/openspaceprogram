@@ -54,6 +54,10 @@ struct GameArgs {
 
     std::string radial_test;
     std::string autopilot;  // engage a slew mode at startup
+    /* Fly the active ship to a circular orbit: "ALT[,INC]", metres and degrees.
+       The ascent autopilot -- an aim, a throttle and a cutoff, all through the
+       same command door a key uses (#424). No panel for it yet. */
+    std::string ascent;
     std::string sas_policy;  // pilot-vs-SAS on one axis: "axis" | "keep" (#421)
     bool recover_anywhere = false;  // default: home body only
     bool dev_scenarios = false;  // --dev-scenarios: the VAB dropdown's dev beds
@@ -89,6 +93,7 @@ struct GameArgs {
     int map_dump_ms = -1;            // print the map's plane basis per slot
 
     bool orbit_log = false;
+    bool ascent_log = false;   // the ascent law's phase, apsides and cutoff
     bool plane_log = false;      // the drawn orbital/reference plane normals
     double orbit_interval = 1.0;
     bool dbg_log = false;

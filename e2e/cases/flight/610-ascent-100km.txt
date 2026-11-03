@@ -1,0 +1,52 @@
+# The ascent autopilot flies a real hull, not a spreadsheet: aim, throttle
+# ceiling and node cutoff all arriving through Vehicle::Command, in Moho's
+# rotating frame, with terrain under it and rails waiting at 11x warp.
+# Moho because it has no air to complicate the first version -- and because it
+# has a launch pad, which the Mun does not (#610).
+NAME ascent-100km-moho
+CLAIM The ascent law flies a pad ship into a circular 100 km orbit on an airless body.
+KIND invariant
+ARGS --startship racer,res/ships/racer.json,Moho,pad --ascent 100e3 --time-accel 10
+ARGS --ascent-log --orbit-log --orbit-interval 1
+ARGS --sim-steps 4200 --timeout 200
+# 4200 logic ticks at dt 1/60 with --time-accel 10 is 700 s of SIM time, and the
+# flight needs 600 of them. Steps, not a wall timeout, because the outcome then
+# does not depend on how fast the machine is: the first cut of this case used
+# --timeout 80 and only reached the cutoff with ~20% of wall clock to spare, which
+# is a loaded-box flake waiting to happen (#605's lesson). --timeout stays as the
+# safety net, not the stop.
+# --orbit-interval is the same gate: at 1 it lands a row every 10 s of sim here
+# (70 rows over the 700 s flight). That grain matters -- the circularisation burn
+# is only ~25 s of sim long, and the first cut's --orbit-interval 20 sampled every
+# 200 s of sim and never saw the "circ" phase at all, which made the trail check
+# fail for a reason that had nothing to do with the flight.
+LIMIT 60
+EXPECT Autopilot: ascent armed on 'racer'
+EXPECT phase=done
+FORBID phase=failed
+FORBID error:
+# The law's own verdict, and the orbit the navball would quote.
+CHECK last(ascent)["phase"] == "done"
+CHECK last(orbit)["peri_asl"] > 99e3
+CHECK abs(last(orbit)["apo_asl"] - 100e3) < 5e3
+CHECK last(orbit)["ecc"] < 0.01
+# The plane comes from the launch heading, and moho_pad sits at 0.286 deg
+# latitude: an eastward launch from there ends within a whisker of the equatorial
+# plane, so a heading that ignored the asked inclination shows up here.
+CHECK abs(last(orbit)["inc"] - 0.286) < 0.2
+# The law put the lever back to zero itself. Arming thrust every tick while the
+# throttle LEVER latched is how the first hull run burned through its own coast
+# phase and left Moho's SOI with "phase=coast" in the log: the pure law test
+# could not see it, because the law was right and the driver was ignoring it.
+CHECK last(ascent)["lever"] < 0.2
+# It flew the profile rather than falling into an orbit: the pitch-over climb, the
+# coast to the node, the circularisation burn, done -- each opening after the one
+# before it. ("pad" never appears: at 1 s of wall the first sample lands after the
+# ship has left the ground.) Each min() over an empty generator raises, so a phase
+# that stops being flown fails the case rather than vacating it.
+CHECK min(a["t"] for a in ascent if a["phase"]=="ascent") < min(a["t"] for a in ascent if a["phase"]=="coast") < min(a["t"] for a in ascent if a["phase"]=="circ") < min(a["t"] for a in ascent if a["phase"]=="done")
+# It never went under the ground on the way up. Note this is the only ground check
+# these rows offer: the transfer's PERIAPSIS is meant to be underground mid-flight
+# (-177 km at the cutoff) -- raising it is what the node burn is for -- so a
+# periapsis floor here would pin the wrong physics.
+CHECK min(o["r"] for o in orbit) > 250e3
