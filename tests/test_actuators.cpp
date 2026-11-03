@@ -228,6 +228,58 @@ static void test_effectiveness_rows() {
     CHECK_TRUE(withinLimits(pair, sp), "neither past its max_deflection");
 }
 
+/* #426's RING: four identical fins cruciform around the tail, each a row of
+   q*S*cl * (ri x normal) N m per radian, each bounded by its own travel. The rows
+   here are the numbers drag.h::surfaceTorquePerRadian produces for a ring at radius
+   1 m, 4 m behind the COM, at q*S*cl = 0.5 -- the geometry is pinned there, so what
+   this pins is what the SOLVER does with a ring: the symmetric pair's off-axis halves
+   cancel, the ring's authority is different about each axis (a build answer, not a
+   knob), and losing one fin is visible instead of silent. */
+static void test_a_fin_ring_splits_and_a_lost_fin_shows() {
+    printf("== a four-fin ring through the solver (#426) ==\n");
+    const std::vector<ActuatorRow> ring = {
+        { glm::dvec3( 2.0,  0.0, 0.5), 0.35 },   // +X fin,  normal +Y
+        { glm::dvec3(-2.0,  0.0, 0.5), 0.35 },   // -X fin,  normal -Y
+        { glm::dvec3( 0.0,  2.0, 0.5), 0.35 },   // +Y fin,  normal -X
+        { glm::dvec3( 0.0, -2.0, 0.5), 0.35 },   // -Y fin,  normal +X
+    };
+    /* What the ring is worth, per axis: every fin levers the +Z line by 0.5 N m per
+       radian and has 0.35 rad of travel, and only the two X fins lever X. So the
+       capability is asymmetric by construction -- which is the whole point of making
+       surfaces rows: the hull's authority is what the build says it is. */
+    CHECK_NEAR(actuatorTorqueAbout(ring, glm::dvec3(0, 0, 1)), 4 * 0.35 * 0.5, 1e-12,
+               "four fins x travel x their share about the roll line");
+    CHECK_NEAR(actuatorTorqueAbout(ring, glm::dvec3(1, 0, 0)), 2 * 0.35 * 2.0, 1e-12,
+               "only the two X-levered fins buy pitch");
+    std::vector<double> sp;
+    /* A demand far past the ring's reach along its covered axis: every fin goes to
+       its stop, the delivered vector is the ring's SUM (so the paired off-axis halves
+       cancel exactly), and no fin is asked to travel past max_deflection. */
+    glm::dvec3 got = actuatorSolve(ring, glm::dvec3(0, 0, 4.0), sp);
+    CHECK_NEAR(got.z, 4 * 0.35 * 0.5, 1e-9, "the ring delivers its sum and no more");
+    CHECK_NEAR(got.x, 0.0, 1e-9, "ring symmetry cancels the off-axis halves");
+    CHECK_NEAR(got.y, 0.0, 1e-9, "on both of them");
+    CHECK_TRUE(withinLimits(ring, sp), "every fin inside its own travel stop");
+    for(size_t k = 0; k < sp.size(); k++) {
+        CHECK_NEAR(sp[k], 0.35, 1e-9, "an out-of-reach demand puts each fin at its stop");
+    }
+    CHECK_NEAR(glm::length(reconstruct(ring, sp) - got), 0.0, 1e-9,
+               "and the per-fin deflections add back up to the delivered torque");
+
+    /* Lose the -X fin: the capability drops by a quarter AND the delivered torque grows
+       a sideways component the full ring cancelled. Today that asymmetry is what a
+       ring of fins does silently -- the ring's off-axis torques only cancel by
+       symmetry, and nothing in the model knows the symmetry is gone. */
+    const std::vector<ActuatorRow> broken = { ring[0], ring[2], ring[3] };
+    CHECK_NEAR(actuatorTorqueAbout(broken, glm::dvec3(0, 0, 1)), 3 * 0.35 * 0.5, 1e-12,
+               "a lost fin is a quarter less authority, not a rumour");
+    got = actuatorSolve(broken, glm::dvec3(0, 0, 4.0), sp);
+    CHECK_NEAR(got.z, 3 * 0.35 * 0.5, 1e-9, "and the solver stops at the new sum");
+    CHECK_NEAR(got.x, 0.35 * 2.0, 1e-9, "with the sideways component the lost pair used to cancel");
+    CHECK_NEAR(glm::length(reconstruct(broken, sp) - got), 0.0, 1e-9,
+               "still consistent fin by fin");
+}
+
 /* --- OBLIQUE LINES: what the descent is for -------------------------------
    Every other row set here is one line or a set of mutually orthogonal lines,
    and on those a single sweep that forgets the other lines' contribution is
@@ -281,6 +333,7 @@ int main() {
     test_lines_and_clusters();
     test_oblique_lines_split_once();
     test_effectiveness_rows();
+    test_a_fin_ring_splits_and_a_lost_fin_shows();
     printf("test_actuators: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

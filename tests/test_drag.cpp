@@ -890,6 +890,67 @@ static void test_neutral_point() {
    itself -- so "the numbers moved" is not evidence. The wiring is pinned by
    flight/458-glider, whose AoA series used to be 14.8, -108.6, 75.2, -36.5 ...
    (tumbling to the end of the run) and now decays to under a degree by t=10. */
+/* #426: a surface's EFFECTIVENESS ROW -- the torque one radian of its travel buys,
+   stated as a derivative of the same force law the aero step bills (drag.h
+   surfaceTorquePerRadian). Pure geometry: q, S, cl, the offset from the COM and the
+   mount's own push normal (#495's build fact, not the live flow). */
+static void test_surface_effectiveness() {
+    printf("== surface torque per radian of travel (#426) ==\n");
+    /* A tail fin 3 m behind the COM, plate normal to +Y: deflection pushes +Y at
+       -Z, so the moment is about +X. q=100, S=2, cl=6 -> 1200 N m of force per rad,
+       lever 3 m -> 3600 N m/rad. */
+    const glm::dvec3 tail = glm::dvec3(0.0, 0.0, -3.0);
+    const glm::dvec3 row = surfaceTorquePerRadian(100.0, 2.0, 6.0, tail,
+                                                  glm::dvec3(0.0, 1.0, 0.0));
+    CHECK_NEAR(row.x, 3600.0, 1e-9, "the moment is the push at its offset, per rad");
+    CHECK_NEAR(row.y, 0.0, 1e-9, "and nothing else");
+    CHECK_NEAR(row.z, 0.0, 1e-9, "and nothing else");
+
+    /* The mirrored twin -- a canard ahead of the COM with its plate flipped -- levers
+       the SAME torque for the SAME deflection sign. That is #495's mirrored-pair
+       identity arriving in the row, and why no per-instance sign is needed here. */
+    const glm::dvec3 twin = surfaceTorquePerRadian(100.0, 2.0, 6.0,
+                                                   glm::dvec3(0.0, 0.0, 3.0),
+                                                   glm::dvec3(0.0, -1.0, 0.0));
+    CHECK_NEAR(twin.x, row.x, 1e-9, "a mirrored pair levers the same way");
+
+    /* No air, no area, no slope: no row. The row is a q-times-geometry budget, so a
+       hull in vacuum or at rest has nothing to spend, which is the right answer
+       rather than a missing one. */
+    CHECK_TRUE(surfaceTorquePerRadian(0.0, 2.0, 6.0, tail, glm::dvec3(0.0, 1.0, 0.0))
+               == glm::dvec3(0.0), "no q: no authority");
+    CHECK_TRUE(surfaceTorquePerRadian(100.0, 0.0, 6.0, tail, glm::dvec3(0.0, 1.0, 0.0))
+               == glm::dvec3(0.0), "no area: no authority");
+    CHECK_TRUE(surfaceTorquePerRadian(100.0, 2.0, 0.0, tail, glm::dvec3(0.0, 1.0, 0.0))
+               == glm::dvec3(0.0), "no slope: no authority");
+
+    /* THE DEGENERATE RIG (#495's test, moved from the deflection to the row). A plate
+       whose push line runs through its own pivot levers nothing, and actuators.h
+       divides a line's share by the row's length, so crediting a hair-length row would
+       ask that fin for a hair-short of an infinite deflection. Same relative
+       tolerance as controlDeflection: |lever|^2 > 1e-12 * |ri|^2. */
+    const double big = 1e9;
+    CHECK_TRUE(surfaceTorquePerRadian(big, 2.0, 6.0, tail,
+                                      glm::dvec3(0.0, 0.0, -1.0))
+               == glm::dvec3(0.0), "push line through the pivot: no row at all");
+    CHECK_TRUE(surfaceTorquePerRadian(big, 2.0, 6.0, glm::dvec3(0.0, 0.0, 0.0),
+                                      glm::dvec3(0.0, 1.0, 0.0))
+               == glm::dvec3(0.0), "a steering part on the COM: no row");
+    /* A real lever, aimed almost along itself: the tolerance is on the GEOMETRY, not
+       on what counts as weak (the same pair of pins controlDeflection carries). */
+    const double t14 = 1e-4, t18 = 1e-8;
+    const glm::dvec3 near_line14(std::sin(t14), 0.0, -std::cos(t14));
+    const glm::dvec3 near_line18(std::sin(t18), 0.0, -std::cos(t18));
+    const glm::dvec3 r14 = surfaceTorquePerRadian(1.0, 1.0, 1.0, tail, near_line14);
+    const glm::dvec3 r18 = surfaceTorquePerRadian(1.0, 1.0, 1.0, tail, near_line18);
+    /* 3 m * sin(t), not 3 m * t: the tolerance is relative, and the difference
+       between sin(1e-4) and 1e-4 is 1.7e-13 -- far inside the geometry's meaning,
+       far outside a 1e-12 relative pin. */
+    CHECK_NEAR(glm::length(r14), 3.0 * std::sin(t14), 1e-12,
+               "a 3 m arm 1e-4 rad off the degenerate line still levers 3e-4 m");
+    CHECK_TRUE(r18 == glm::dvec3(0.0), "and 1e-8 rad is degenerate, as it must be");
+}
+
 static void test_local_flow_sweep() {
     printf("== local flow: w x r is damping, and its sign is the whole game ==\n");
     const double S = 4.0, cl = 6.0, stall = 0.35;
@@ -2819,6 +2880,8 @@ int main() {
     test_surface_alpha_readout();
     printf("\n");
     test_neutral_point();
+    printf("\n");
+    test_surface_effectiveness();
     printf("\n");
     test_local_flow_sweep();
     printf("\n");

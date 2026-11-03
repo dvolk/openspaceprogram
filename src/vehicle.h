@@ -641,6 +641,21 @@ public:
             for(const ActuatorRow &w : wheels) { t += w.limit; }
             return t;
         }
+        /* #426 slice 1: the control surfaces as actuator rows -- torque per radian
+           of travel along the row, travel stop as the limit (actuators.h says a row's
+           axis is SCALED by what a unit of its demand buys, so a fin's setpoint comes
+           out in radians). Built from build facts (mount normal, offset from the COM,
+           control_area, cl_control, max_deflection) times the COM's dynamic pressure,
+           so a hull in vacuum or at rest has no aero rows, which is the right answer
+           rather than a missing one.
+           NOTHING SPENDS THESE ROWS YET. actuateAttitude still solves wheels and TVC
+           and the aero step still drives each surface from its authored control_axis,
+           so today's flight is unchanged; the rows exist so the next slice can hand
+           the deflections to THIS solver rather than growing a second actuator path
+           (the ring's per-fin deflection is the same solve -- see the small-n pins in
+           tests/test_actuators.cpp), and so the Vessel window can say what a finned
+           hull can do instead of reading as unable to turn. */
+        std::vector<ActuatorRow> surfaces;
         double tvcTorque = 0.0;
         double heffMag = 0.0;
         glm::dvec3 stackAxis = glm::dvec3(0.0);

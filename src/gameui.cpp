@@ -2213,6 +2213,18 @@ void drawUIReadouts(Game &g) {
                         actuatorTorqueAbout(auth.wheels, ax[2]),
                         actuatorTorqueAbout(auth.wheels, ax[0]),
                         actuatorTorqueAbout(auth.wheels, ax[1]));
+            /* #426 slice 1: the same question of the surfaces -- what one radian of
+               travel at THIS dynamic pressure is worth about each ship axis. Only
+               shown when there is something to show, so a rocket's Power row stays as
+               it was; a finned airframe, which today reads as having no attitude
+               authority beyond its wheels, can now see what its fins are worth.
+               Measured, not spent: nothing drives the surfaces from these rows yet. */
+            if(!auth.surfaces.empty()) {
+                ImGui::Text("Surface torque (roll/pitch/yaw): %.0f / %.0f / %.0f N m",
+                            actuatorTorqueAbout(auth.surfaces, ax[2]),
+                            actuatorTorqueAbout(auth.surfaces, ax[0]),
+                            actuatorTorqueAbout(auth.surfaces, ax[1]));
+            }
         }
         ImGui::Text("Angular rate: %.2fdeg/s",
                     glm::degrees(glm::length(ship->hullAngVel())));

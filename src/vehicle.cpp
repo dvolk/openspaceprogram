@@ -4619,7 +4619,9 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
        The lever is COM height ALONG THE STACK AXIS: an engine at COM height has no
        useful pitch/yaw lever, exactly as the mixer's sign flip is moot for it. */
     const glm::dvec3 com = comPos();
+    bool anySurface = false;
     for(const Part *p : parts) {
+        if(p->def->isControlSurface()) { anySurface = true; }
         const double armed = p->armedThrust;
         if(armed == 0.0 || p->def->gimbal_max <= 0.0) { continue; }
         /* sin() of the limit is a capability only while the limit is under 90 deg;
@@ -4636,6 +4638,29 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
         if(lever < 1e-6) { continue; }
         a.heffMag   += armed * lever;
         a.tvcTorque += armed * std::sin(p->def->gimbal_max) * lever;
+    }
+    /* #426 slice 1: the SURFACE rows, measured only -- see AttitudeAuthority::surfaces
+       for what does and does not spend them yet. q is the COM's, and only worth
+       asking for when the hull actually carries a steerable surface -- the TVC loop
+       above already walks every part, so it carries that answer too and a wheel-only
+       hull pays nothing for the atmosphere here.
+       The push direction is the part's own mount normal (partAxis(p,1)), NOT the live
+       liftDir -- the rigging-is-a-build-fact rule of #495, which is also what keeps
+       this a per-build constant rather than a per-attitude question. */
+    if(anySurface) {
+        const double rho = airDensityAtCom();
+        const glm::dvec3 vrel = airRelativeVel(com);
+        const double q = 0.5 * rho * glm::dot(vrel, vrel);
+        if(q > 0.0) {
+            for(const Part *p : parts) {
+                if(p->def == nullptr || !p->def->isControlSurface()) { continue; }
+                const glm::dvec3 eff = surfaceTorquePerRadian(
+                    q, p->def->control_area, controlCl(p->def->cl, p->def->cl_control),
+                    partPos(p) - com, partAxis(p, 1));
+                if(glm::dot(eff, eff) <= 0.0) { continue; }  // degenerate rig (#495)
+                a.surfaces.push_back({ eff, p->def->max_deflection });
+            }
+        }
     }
     return a;
 }
