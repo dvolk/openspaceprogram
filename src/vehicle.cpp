@@ -2107,11 +2107,11 @@ double Vehicle::feltAccel() {
 
 double Vehicle::wheelDrawWatts() const {
     /* No engagement, no draw: the wheels are electric and they only bill while the
-       stick or an autopilot mode is actually working them (actuatorsEngaged). And a
-       switched-off drum (#425 D-2) is not working at all -- the allocator has no rows
-       for it -- so it must not bill EC either. #596 is the mirror complaint: a drum
-       that IS working bills nothing, because no capsule authors a power_draw. */
-    if(not actuatorsEngaged() || not wheels_enabled) { return 0.0; }
+       stick or an autopilot mode is actually working them AND the hull may spend them
+       (actuatorsEngaged, which is wheelsPowered() plus a live command). #596 is the
+       mirror complaint: a drum that IS working bills nothing, because no capsule
+       authors a power_draw. */
+    if(not actuatorsEngaged()) { return 0.0; }
     double w = 0.0;
     for(Part *p : parts) {
         if(p->isWheel()) { w += p->powerDraw(); }
@@ -3299,21 +3299,6 @@ glm::dmat3 Vehicle::attitudeBasis() const {
     return partRot(ref);
 }
 
-/* The pilot-vs-SAS policy names, shared by settings.json, --sas-policy and the
-   Controls window, so the three cannot spell the same choice differently. */
-const char *sasPolicyName(SasPolicy p) {
-    return (p == SasKeepsAsk) ? "keep" : "axis";
-}
-
-SasPolicy sasPolicyFromName(const std::string &n) {
-    if(n == "keep") { return SasKeepsAsk; }
-    /* Both spellers validate the string before calling: --sas-policy through
-       CLI::IsMember, settings.json as a range-checked int. Reaching here with
-       anything else means a new caller forgot to validate. */
-    assert(n == "axis" && "unknown sas policy name");
-    return SasStickOwnsAxis;
-}
-
 void Vehicle::applyRotationForce(double h) {
     /* The TVC aim is per-substep: cleared here, armed by the single allocator call
        below, consumed by applyThrustForce this same substep. */
@@ -3331,8 +3316,16 @@ void Vehicle::applyRotationForce(double h) {
        part, is also what AttitudeAuthority::stackAxis names. Key order is the
        stick's (roll, pitch, yaw); the senses match the old worldAxis sum: +nose,
        -right, -up. */
-    const glm::dmat3 axes = (ref != nullptr) ? partRot(ref) : glm::dmat3(1.0);
-    const glm::dvec3 key[3] = { axes[2], -axes[0], -axes[1] };
+    const bool stickLive = ref != nullptr
+        && (stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f);
+    glm::dvec3 key[3] = {};
+    if(stickLive) {
+        /* partRot() is two Bullet quaternion round trips and this path runs per
+           substep per hull, so the frame is only worth solving when a key is held.
+           A hull with no key and no latched law asks for nothing below. */
+        const glm::dmat3 axes = partRot(ref);
+        key[0] = axes[2]; key[1] = -axes[0]; key[2] = -axes[1];
+    }
 
     /* The pilot's demand. The stick is INTENT, not wiring (#425 step D): three keys
        become ONE demanded torque vector and actuateAttitude() is the only thing that
@@ -3350,8 +3343,7 @@ void Vehicle::applyRotationForce(double h) {
        rows when the player has switched the drums off (#425 D-2), which is what makes
        a wheels-off hull route the same keys to the gimbals instead of going mute. */
     glm::dvec3 stickDemand(0.0);
-    if(ref != nullptr
-    && (stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f)) {
+    if(stickLive) {
         for(int k = 0; k < 3; k++) {
             if(stick[k] == 0.0f) { continue; }
             stickDemand += (double)stick[k] * attitudeTorqueAbout(auth, key[k]) * key[k];
@@ -3377,17 +3369,28 @@ void Vehicle::applyRotationForce(double h) {
     else if(slew != SlewNone) {
         lawDemand = slewDemand(slewTargetDir(), h, auth);
     }
-    if(sas_policy == SasStickOwnsAxis && ref != nullptr) {
-        /* A held key owns its axis: drop the law's component along each steered key
-           axis (the key axes are unit, so this projection is exact). The law keeps the
-           axes nobody is steering, so a prograde hold still corrects pitch while the
-           pilot rolls. The reverse case -- a law whose error lies ALONG the steered
-           axis -- is paused until the key comes up, which is what "the stick owns the
-           axis" means. SasKeepsAsk skips this and lets the two sum, the pre-policy
-           behaviour, pinned as the alternate end. */
+    if(stickLive && sas_policy == SasStickOwnsAxis) {
+        /* A held key owns its axis: take the law's component along that key axis away
+           from it (the key axes are unit, so at full deflection this removes the
+           component exactly). The law keeps the axes nobody is steering, so a prograde
+           hold still corrects pitch while the pilot rolls. The reverse case -- a law
+           whose error lies ALONG the steered axis -- is paused until the key comes up,
+           which is what "the stick owns the axis" means. SasKeepsAsk skips this and
+           lets the two sum, the pre-policy behaviour, pinned as the alternate end.
+           The share is |stick| rather than all-or-nothing, so a key an inch off
+           centre fades the law out by an inch instead of silencing a kN m ask with a
+           touch. Keys only ever send +-1 today (tick.cpp), so nothing changes until
+           analog input arrives; #598 asks the same question about how the stick mixes
+           at partial deflection, and #421 still owes whether a linear crossfade is the
+           right shape at all.
+           One honesty note: this projects the law's TORQUE demand (I * dW / h), not
+           its rate error, so on a hull whose inertia tensor is not diagonal in the key
+           frame the leftover is not exactly "no ask about the unsteered axes". The
+           leak is cross-axis and small; no shipped hull is asymmetric enough to show
+           it, and #421 is where it gets settled if it ever matters. */
         for(int k = 0; k < 3; k++) {
             if(stick[k] == 0.0f) { continue; }
-            lawDemand -= glm::dot(lawDemand, key[k]) * key[k];
+            lawDemand -= (double)std::fabs(stick[k]) * glm::dot(lawDemand, key[k]) * key[k];
         }
     }
 
@@ -4589,9 +4592,10 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
        three lines when a mount rolls or tilts the box. Every shipped wheel part
        is a triad; the single-drum half of this is what a cheap roll-only part
        would be, and what the sideways_wheel fixture exercises. */
-    if(powered_ && wheels_enabled) {
+    if(wheelsPowered()) {
         /* Two reasons for an empty `wheels`, and they are deliberately the SAME door
-           (#425 D-2): no EC power (#418), or the player switched the drums off. Either
+           (Vehicle::wheelsPowered, #425 D-2): no EC power (#418), or the hull has the
+           drums switched off. Either
            way the hull's per-axis capability drops, the laws see the smaller answer,
            the Vessel window prints it, and a held key is scaled by what is left -- so a
            wheels-off rocket steers on its gimbals rather than pretending to have drums

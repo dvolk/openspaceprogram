@@ -598,11 +598,11 @@ static void test_the_pilot_and_the_law_split_by_axis() {
         v->hull->btBody->clearForces();
         return glm::dvec3(t.x(), t.y(), t.z());
     };
-    auto pitchFight = [&](SasPolicy policy) {
+    auto pitchFight = [&](SasPolicy policy, float stick = -1.0f, double wmag = 1.0) {
         v->clearRotCmd();
-        v->hull->btBody->setAngularVelocity(btVector3(1.0f, 0.0f, 0.0f));
+        v->hull->btBody->setAngularVelocity(btVector3((float)wmag, 0.0f, 0.0f));
         v->Command(ShipCmd(KillRot), true);        /* the law: thousands of N m, -X */
-        holdStick(v, Pitch, -1.0f);                /* the pilot: +X, against it */
+        holdStick(v, Pitch, stick);                /* the pilot: +X, against it */
         v->sas_policy = policy;
         v->applyRotationForce(1.0 / 120.0);
         return glm::dot(billed(), st.x);
@@ -611,6 +611,24 @@ static void test_the_pilot_and_the_law_split_by_axis() {
                "default: the held key owns its axis, so the drum turns the pilot's way");
     CHECK_NEAR(pitchFight(SasKeepsAsk), -200.0, 1e-9,
                "alternate: the law keeps its ask, and the key is inside a demand the drum cannot follow");
+
+    /* How MUCH of the law's ask a key takes away is |stick|, not all-or-nothing.
+       Keys only ever send +-1 through tick.cpp today, so this shape is unpinned by
+       anything else -- and either spelling passes every other check here. Two
+       consequences, both pinned because they are the ones a partial key would
+       silently change:
+       - against a law that is still pushing hard, HALF a key does not win the axis.
+         The mask leaves half of an ask that is already tens of times the drum, so
+         the allocator saturates the other way. A binary mask reads +200 here.
+       - with the law nearly quiescent, the law still speaks THROUGH the mask: double
+         the spin and the part of its ask the key left standing doubles too, so the
+         answer moves. A binary mask makes these two readings identical. */
+    CHECK_NEAR(pitchFight(SasStickOwnsAxis, -0.5f), -200.0, 1e-9,
+               "half a key loses an axis the law is still pushing hard on");
+    const double quiet1 = pitchFight(SasStickOwnsAxis, -0.5f, 1e-3);
+    const double quiet2 = pitchFight(SasStickOwnsAxis, -0.5f, 2e-3);
+    CHECK_TRUE(quiet2 < quiet1 - 1e-6,
+               "a partial key leaves the law a partial ask, and that ask scales with the spin");
 
     /* The rule is PER AXIS, not a switch that suspends the autopilot: an axis nobody
        is steering stays the law's under both policies, so a pilot rolling while SAS

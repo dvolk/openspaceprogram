@@ -186,6 +186,8 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
     }
     if(j.contains("sas_policy") && j["sas_policy"].is_number_integer()) {
         const int v = j["sas_policy"].get<int>();
+        /* The only two SasPolicy values (sas_policy.h). apply_settings_game clamps
+           again, so a hand-edited file cannot invent a third rule either way. */
         if(v == 0 || v == 1) { s.sas_policy = v; }   // else keep the default
     }
     if(j.contains("flip_pitch") && j["flip_pitch"].is_boolean()) {

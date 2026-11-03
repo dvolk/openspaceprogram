@@ -290,6 +290,14 @@ static void test_active_wheel_draws() {
     CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
                "no power: an electric actuator bills nothing, stick or no stick");
     s.v->powered_ = true;
+    /* The third gate (#425 D-2): a hull that has the drums switched off has no wheel
+       rows to spend, so it must not pay for them either. Wheels::wheelsPowered() is
+       the one door both halves ask through. */
+    s.v->wheels_enabled = false;
+    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
+               "switched off: a drum that is not working bills no EC");
+    s.v->wheels_enabled = true;
+    CHECK_NEAR(s.v->wheelDrawWatts(), 1000.0, 1e-9, "switched back on: billing again");
     s.v->Command(ShipCmd(Pitch, 0.0f), true);
     CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9, "released stick: nothing to bill");
     destroyShip(s);

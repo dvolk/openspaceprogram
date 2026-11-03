@@ -189,7 +189,30 @@ int main() {
     settings_read(nlohmann::json::parse(R"({"fov": 60})"), fv);
     assert(fv.camFovDeg == 60.0f);   // in range: untouched
 
-    // 8) a hand-edited terrain_px outside the CLI's 128-1024 range is clamped.
+    /* 8) sas_policy: the settings.json int is the SasPolicy value (sas_policy.h),
+       and a hand-edited file must not invent a third rule. 7 stays at the default,
+       and a word where a number belongs is skipped rather than fatal -- the same
+       shape as the toggles above. apply_settings_game clamps again; this is the
+       reader's half. */
+    {
+        SettingsData sp;
+        assert(sp.sas_policy == 0);                      // SasStickOwnsAxis
+        settings_read(nlohmann::json::parse(R"({"sas_policy": 1})"), sp);
+        assert(sp.sas_policy == 1);                      // SasKeepsAsk
+        settings_read(nlohmann::json::parse(R"({"sas_policy": 7})"), sp);
+        assert(sp.sas_policy == 1);                      // out of range: untouched
+        settings_read(nlohmann::json::parse(R"({"sas_policy": "axis"})"), sp);
+        assert(sp.sas_policy == 1);                      // wrong type: untouched
+        SettingsData one;
+        one.sas_policy = 1;
+        nlohmann::json sj;
+        settings_write(one, sj);
+        SettingsData back;
+        settings_read(nlohmann::json::parse(sj.dump()), back);
+        assert(back.sas_policy == 1);                    // the field survives a write
+    }
+
+    // 9) a hand-edited terrain_px outside the CLI's 128-1024 range is clamped.
     //    Also not cosmetic: collision meshes only exist at max_depth, and an
     //    LOD budget the single async builder cannot reach never drills the
     //    tree that far, so the ship stands on nothing. This is the path a

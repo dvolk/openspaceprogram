@@ -196,7 +196,16 @@ static void apply_settings_game(Game &g, const SettingsData &s) {
     // Push to the Audio module (no-op while it is disabled).
     g.audio.setSfxVolume(s.sfx_volume);
     g.audio.setMusicVolume(s.music_volume);
-    g.sas_policy = (s.sas_policy == SasKeepsAsk) ? SasKeepsAsk : SasStickOwnsAxis;
+    /* --sas-policy beats settings.json, and the guard lives HERE rather than in
+       main.cpp because that is where every other cli_given field is honoured: a
+       second load_settings() (a "reload settings" button is the obvious next
+       feature) must not silently drop the command line's choice. */
+    if(g.args.cli_given.sas_policy) {
+        g.sas_policy = sasPolicyFromName(g.args.sas_policy);
+    }
+    else {
+        g.sas_policy = (s.sas_policy == SasKeepsAsk) ? SasKeepsAsk : SasStickOwnsAxis;
+    }
     g.flip_pitch = s.flip_pitch;
     g.flip_yaw = s.flip_yaw;
     g.flip_roll = s.flip_roll;
@@ -226,7 +235,15 @@ bool Game::save_settings() {
 /* Startup phase 2 (main, once the Game exists): the Game + PostFX fields. */
 void Game::load_settings() {
     SettingsData s = collect_settings(*this);
-    if(!settings_load_file(s)) { return; }
+    /* The apply runs even when there is no file to read. settings_load_file only
+       touches s once the whole document has parsed, so a missing or unparseable
+       settings.json leaves s exactly as collected -- and applying a snapshot taken
+       from this same Game is a no-op for every field except the ones a cli_given
+       gate re-asserts, which is the point: --sas-policy is honoured in
+       apply_settings_game, and a fresh run has no settings.json to reach it. An
+       early return here made the flag do nothing at all, which the 421 e2e pair
+       caught the moment the gate moved out of main.cpp. */
+    settings_load_file(s);
     apply_settings_game(*this, s);
 }
 

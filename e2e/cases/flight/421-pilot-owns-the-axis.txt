@@ -5,8 +5,10 @@ KIND invariant
 # reaction_wheel's 2000 N m triad, and its prograde law asks I*w/h -- tens of kN m on a
 # pointing error -- against the pilot's 2200 N m of held key. Under SasStickOwnsAxis the
 # law's demand is dropped along any axis a key is held on, so the key is NOT
-# out-shouted: a 1.5 s S press (t=3..4.5) takes E from 0.000 out to 0.499 rad (28.6 deg)
-# and |w| to 0.32 rad/s. Release the key and the law owns the axis again, and by t=9 the
+# out-shouted: a 1.5 s S press (t=3..4.5) takes E from 0.000 out to 0.50-0.51 rad
+# (about 29 deg) at t=6.1, and |w| past 0.30 rad/s. Peak times and |w| move a few
+# hundredths between runs; the 0.35 / 0.25 / 0.05 limits below leave room for that.
+# Release the key and the law owns the axis again, and by t=9 the
 # error is back under 0.05 rad -- with no momentum store it brakes at alpha=0.22 rad/s^2,
 # which is why the recovery takes ~4 s and not one (#579 will change that, not this).
 # The sibling case 421-pilot-loses-to-sas.txt runs the SAME ship, SAME key script and
@@ -26,7 +28,12 @@ CHECK len(slew) >= 10
 # SAS holds the pointing until the key arrives.
 CHECK max(s["E"] for s in slew if 1.5 < s["t"] < 2.9) < 0.005
 # The key owns the axis: the error it makes is the key's, not a rounding error.
-CHECK max(s["E"] for s in slew if 5.5 < s["t"] < 6.6) > 0.35
+# Two forms of the same fact. The whole-run max is the one that cannot drift: these
+# cases do not use --sim-steps, so row timestamps slide with wall clock (1.100 in one
+# run, 1.083 in the next) while --sim-press windows are wall-clock. The windowed one
+# says WHEN it happens (the E > 0.35 plateau runs ~4.9-7.3 s, peak at ~6.1).
+CHECK max(s["E"] for s in slew) > 0.35
+CHECK max(s["E"] for s in slew if 5.0 < s["t"] < 7.3) > 0.35
 CHECK max(a["wnorm"] for a in att if 3.5 < a["t"] < 5.0) > 0.25
 # ...and the moment the key is up, the law has the axis back and closes it.
 CHECK max(s["E"] for s in slew if 9.5 < s["t"] < 11.9) < 0.05

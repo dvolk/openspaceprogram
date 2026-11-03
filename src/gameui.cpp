@@ -711,7 +711,8 @@ void drawUIReadouts(Game &g) {
         ImGui::Checkbox("Flip roll (Q/E)", &flip_roll);
         /* Who gets an axis when a held key and a latched autopilot law both ask for
            it (#421). The ship applies this where the two demands are still separate
-           vectors; the choice applies to every ship, like the flips above. */
+           vectors; the choice applies to every ship, like the flips above. The item
+           order IS the enum order -- sas_policy.h asserts the values. */
         int sas = (int)g.sas_policy;
         ImGui::SetNextItemWidth(240.0f);
         if(ImGui::Combo("SAS vs. steering", &sas,

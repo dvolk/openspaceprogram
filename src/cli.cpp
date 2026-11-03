@@ -2,6 +2,7 @@
 // folding. Fills GameArgs (cli.h).
 #include "cli.h"
 #include "settings.h"   // kTerrainPxMin/Max (the --terrain-px range)
+#include "sas_policy.h"  // sasPolicyName: the --sas-policy member list
 #include "version.h"   // VERSION
 
 #include <cctype>
@@ -118,8 +119,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "law both ask for it: axis (default: a held key owns its axis and "
                    "the law keeps the others) | keep (the law keeps its full demand "
                    "and the two demands simply sum). A control preference, not "
-                   "physics -- in-game this is the Controls window's combo")
-        ->check(CLI::IsMember({"axis", "keep"}));
+                   "physics -- in-game this is the Settings window's Controls row")
+        /* Built from sasPolicyName so the accepted words and the enum cannot drift
+           apart: a rename here would otherwise survive CLI parsing and only trip
+           sasPolicyFromName's assert at runtime. */
+        ->check(CLI::IsMember({sasPolicyName(SasStickOwnsAxis),
+                               sasPolicyName(SasKeepsAsk)}));
     app.add_option("--autopilot", args.autopilot,
                    "Engage a slew mode on the active ship at startup: "
                    "prograde | retrograde | radial-out | radial-in | normal | "

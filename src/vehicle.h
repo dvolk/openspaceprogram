@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "flightlog.h" // FlightLog
+#include "sas_policy.h" // SasPolicy: pilot vs. law (#421)
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
@@ -45,30 +46,6 @@ enum SlewMode {
     SlewKillRot      /* kill the spin */
 };
 
-/* WHO GETS AN AXIS when the pilot's stick and a latched law ask for the same one
-   (#425 step D-2, #421). Since #420 both arrive as demands on ONE vector per substep,
-   so the only question left is how they combine before the allocator answers -- and
-   that is a control preference, not physics. Both ends are pinned (test_authority):
-     SasStickOwnsAxis  DEFAULT. A held key takes its own axis away from the law for as
-                       long as it is held; the law keeps the axes nobody is steering.
-                       Predictable to the person holding the key, and it cannot be
-                       talked out of a maneuver by a law that is asking loudly
-                       elsewhere. A law whose error lies ALONG the steered axis is
-                       paused until the key comes up -- which is what steering means.
-     SasKeepsAsk       The law keeps its full demand and the two simply sum: what the
-                       hardware cannot follow is lost from the top of the sum, so on a
-                       transverse axis a law asking thousands of N m leaves the pilot
-                       well under 1 N m of the gimbals. This is what the game did
-                       before the policy had a name; it is kept as the alternate
-                       because it lets SAS finish a maneuver the pilot interrupts.
-   The wheels' share was already per-line after d6ee482, so an unsteered axis cannot be
-   spent by a saturated one either way; the two policies differ on the steered axis. */
-enum SasPolicy {
-    SasStickOwnsAxis = 0,
-    SasKeepsAsk = 1
-};
-const char *sasPolicyName(SasPolicy p);       // "axis" / "keep": one spelling for
-SasPolicy sasPolicyFromName(const std::string &n);   // settings.json, --sas-policy, UI
 
 // One ship-control command. Command() is the only control -> physics path.
 enum ShipCmdType {
@@ -566,14 +543,21 @@ public:
         slew = (simActive && slewRequest != SlewNone) ? slewRequest : SlewNone;
         return slew != SlewNone;
     }
+    /* May the wheels be spent at all: electrical pressure AND an enable order.
+       One call because there must not be a second spelling (#425 step D): it is the
+       door attitudeAuthority() builds its wheel rows behind, so the per-axis
+       capability, the laws, the stick's own scaling, the Vessel window's row and the
+       EC bill all say the same thing. Note that a capsule's built-in triad is a wheel
+       too (Part::isWheel() is `torque > 0`), so `wheels_enabled` switches that off as
+       well as any bought reaction_wheel part (#600). */
+    bool wheelsPowered() const { return powered_ && wheels_enabled; }
     /* Are the attitude actuators doing work THIS tick? powerTick() bills the wheels'
        active draw on exactly this, and the Vessel window's Power row asks it too: an
-       unpowered ship's wheels are not drawing even with the stick pinned, and a second
-       spelling of the rule is how those two rows drift apart again. #425 step D is
-       where engagement grows an enable mask, and it should only have one home. */
+       unpowered or switched-off hull's wheels are not drawing even with the stick
+       pinned, and a second spelling of the rule is how those two rows drift apart. */
     bool actuatorsEngaged() const {
-        return powered_ && (stick[0] != 0.0f || stick[1] != 0.0f
-                            || stick[2] != 0.0f || slew != SlewNone);
+        return wheelsPowered() && (stick[0] != 0.0f || stick[1] != 0.0f
+                                   || stick[2] != 0.0f || slew != SlewNone);
     }
     /* W the actuators are billing right now: the wheels' draw, summed over every wheel
        HOUSING and zero when they are not engaged. A triad housing (#593) bills its
