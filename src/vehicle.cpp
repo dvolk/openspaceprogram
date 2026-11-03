@@ -2334,10 +2334,11 @@ void Vehicle::applyThrustForce(double h) {
        couple around the ring. Where that direction comes from is no longer
        this mixer's business: actuateAttitude() split ONE demanded torque
        between the drums and the gimbals earlier in this same substep, so the
-       stick and the autopilot come through the same door (#425 step D), and
-       the clamp below against each engine's own stop is the only place the
-       shared demand is bounded -- which is what #420 (SAS budgeting TVC as if
-       the stick were not sitting on it) reduces to. No EC/wheel gate: a
+       stick and the autopilot come through the same door (#425 step D), and the
+       clamp below bounds the TVC half at each engine's own stop -- which is what
+       #420 (SAS budgeting TVC as if the stick were not sitting on it) reduces to.
+       The drums' half is bounded elsewhere, per line, by actuators.h actuatorSolve.
+       No EC/wheel gate: a
        mechanical gimbal works when the power is dead. No stick recenters, so a
        coasting ship settles.
        Sign per engine: a deflection of shared lateral L levers an engine at
@@ -3299,6 +3300,7 @@ void Vehicle::applyRotationForce(double h) {
     /* The TVC aim is per-substep: cleared here, armed by the single allocator call
        below, consumed by applyThrustForce this same substep. */
     tvcLat_ = glm::dvec3(0.0);
+    tvcCalls_ = 0;
     /* One DEMANDED torque per substep: the stick adds to it, a latched law adds to
        it, and actuateAttitude() answers it exactly once (#420). */
     glm::dvec3 demand(0.0);
@@ -4650,14 +4652,18 @@ glm::dvec3 Vehicle::slewTargetDir() {
    part of the command can only ever reach the wheels. */
 void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
     glm::dvec3 tauW, lat;
-    /* wheelRatingSum() is the SUM of the row ratings: for a triad housing that is
-       3x what any one of its lines carries, so it is a loose ceiling on the wheel
-       share and tvcSplit's scalar clamp stays conservative. actuatorSolve below is
-       what caps each line for real, against the drums' own axes. */
-    tvcSplit(torque, a.stackAxis, a.tvcTorque, a.heffMag, a.wheelRatingSum(), tauW, lat);
-    /* Exactly one call per substep, so this is an assignment and not a merge:
-       applyRotationForce clears the aim and answers one summed demand (#420). */
-    assert(glm::length2(tvcLat_) == 0.0);
+    /* The split does NOT cap the wheel half. A scalar cap preserves the remainder's
+       direction, so on a summed demand one saturated line spends the idle ones: with
+       a latched kill-rot eating the pitch budget, a pilot's held roll key got 2.29 N m
+       of its 200 N m drum. actuatorSolve below is the bound that knows which drums
+       cover which axis, so it caps each LINE against its own drums instead. */
+    tvcSplit(torque, a.stackAxis, a.tvcTorque, a.heffMag, tauW, lat);
+    /* Exactly one call per substep, so the aim below is an assignment and not a
+       merge: applyRotationForce clears it and answers one summed demand (#420). Count
+       the calls rather than test the aim is still zero -- a pure-roll demand arms no
+       aim, so the aim test passes for a second call that should still be illegal, and
+       it would go quietly wrong the day the fins (#426) or RCS rows (#595) arrive. */
+    assert(++tvcCalls_ <= 1);
     tvcLat_ = lat;
     /* The wheel half travels along the drums. What the split asks for about an axis
        no drum covers is dropped here rather than applied anyway, which is the other

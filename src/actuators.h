@@ -36,8 +36,8 @@
 // Worth knowing both exist before a third demand shape shows up and someone
 // merges them. It also carries no Scratch like rcs::Scratch yet: today's rows are
 // the handful of wheels on a hull, not a nozzle ring, so these vectors are the
-// whole cost, and #594's ask (one AttitudeAuthority per substep instead of one
-// per law) is what keeps that cost off the hot path.
+// whole cost, and #594 landed that ask -- ONE AttitudeAuthority per substep,
+// answered once for the stick and every latched law together (#420).
 
 #include <cmath>
 #include <vector>
@@ -93,24 +93,25 @@ inline double actuatorTorqueAbout(const std::vector<ActuatorRow> &rows,
    actuatorTorqueAbout. The solve is cyclic coordinate descent over the lines
    (each step takes that line's best contribution given the others, clamped to its
    capacity). The problem is convex and the sweep count is fixed, so this cannot
-   hang and costs a few hundred flops for a handful of rows -- it runs per substep
-   per law, not per part.
+   hang and costs a few hundred flops for a handful of rows -- it runs once per
+   substep per hull (Vehicle::actuateAttitude), not per part and not per law.
  *
    Two known properties, neither visible today and both load-bearing later. Both
    measured on two 100 N m drums whose lines are THETA apart, asked for 120 N m along
    the bisector, where the fair split is 60/60:
    - Descent converges fast when lines are orthogonal (one sweep) and not at all when
-     they are near-parallel but past the grouping tolerance: theta = 1e-4 .. 0.0175 rad
-     (0.006 .. 1 deg) all answer 100/20, and crossing the tolerance jumps the split
-     from 60/60 to 100/20 in one step. The DELIVERED vector barely notices (0.003% at
-     1e-4 rad, 0.58% at 1 deg) while the per-row answer is 100 N m on one drum and 20
-     on the other. #579 bills momentum
-     from those setpoints, so it must either split a converged line total pro-rata or
-     widen the grouping.
-   - Rows grouped into one line get that line's answer split pro-rata by rating, so a
-     row that is a fraction of a degree off the line's direction is credited along the
-     LINE. Summing setpoints back through each row's own axis then differs from the
-     returned vector by ~ q * angle: 6e-5 N m at theta = 1e-6, zero at theta = 0. */
+     they are near-parallel but past the grouping tolerance: every theta from 1e-4 to
+     0.0175 rad (0.006 .. 1 deg) answers ~100/20 -- 99.62/20.39 at 0.0175 -- and
+     crossing the tolerance jumps the split from 60/60 to 100/20 in one step. The
+     DELIVERED vector barely notices: cross-track error over |demand| is 0.0033% at
+     1e-4 rad and 0.578% at 1 deg -- while the per-row answer is 100 N m on one drum
+     and 20 on the other. #579 bills momentum from those setpoints, so it must either
+     split a converged line total pro-rata or widen the grouping.
+   - Rows grouped into one line take the FIRST row's direction as the line's, and get
+     that line's answer split pro-rata by rating, so a row a fraction of a degree off
+     the line is credited along the LINE. Summing setpoints back through each row's own
+     axis then differs from the returned vector by ~ q * angle: 6e-5 N m at
+     theta = 1e-6, zero at theta = 0 (where there is nothing to be off). */
 inline glm::dvec3 actuatorSolve(const std::vector<ActuatorRow> &rows,
                                 const glm::dvec3 &demand,
                                 std::vector<double> &setpoints) {

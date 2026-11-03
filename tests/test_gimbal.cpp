@@ -248,24 +248,30 @@ static void test_split() {
     const glm::dvec3 Z(0.0, 0.0, 1.0);       // stack axis
     const double heff = 1e5;                // Sum(T*|h|), N m/rad
     const double tvcMax = 8750.0;           // heff * sin(gimbal_max)
-    const double wheelMax = 5200.0;         // one big wheel pack
     glm::dvec3 tauW, lat;
+    /* The split bounds TVC and nothing else. What the drums can carry is
+       actuators.h actuatorSolve's business, per LINE. A scalar cap on the wheel
+       half preserves the remainder's direction, so once the demand is the SUM of
+       everything asking in a substep (#420) one saturated line spends the idle
+       ones with it -- hence the wheel half arrives WHOLE below and the wheel
+       rating never appears in this file. */
 
     // Roll about the stack axis is wheels-ONLY: a lateral deflection can
     // never lever that way, so split must hand it over untouched.
-    tvcSplit(glm::dvec3(0.0, 0.0, 3000.0), Z, tvcMax, heff, wheelMax, tauW, lat);
+    tvcSplit(glm::dvec3(0.0, 0.0, 3000.0), Z, tvcMax, heff, tauW, lat);
     checkVec(lat, glm::dvec3(0.0), 0.0, "roll command -> zero TVC aim");
     checkVec(tauW, glm::dvec3(0.0, 0.0, 3000.0), 1e-12, "roll -> wheels untouched");
 
-    // ... and clamped to the wheels when they are the only actuator for it.
-    tvcSplit(glm::dvec3(0.0, 0.0, 9000.0), Z, tvcMax, heff, wheelMax, tauW, lat);
-    CHECK_NEAR(glm::length(tauW), wheelMax, 1e-9, "roll beyond wheels -> clamped");
-    CHECK_TRUE(tauW.z > 0.0, "roll clamp keeps direction");
+    // ... and untouched however big it is; the drums' rating is not this
+    // function's business (tests/test_authority.cpp pins where it is).
+    tvcSplit(glm::dvec3(0.0, 0.0, 9000.0), Z, tvcMax, heff, tauW, lat);
+    checkVec(tauW, glm::dvec3(0.0, 0.0, 9000.0), 1e-12,
+             "roll past any drum rating -> handed over whole");
 
     // Pure transverse inside TVC reach: all of it goes to the engines, the
     // wheels get nothing. The aim magnitude is torque/lever, and it is
     // always perpendicular to the stack axis.
-    tvcSplit(glm::dvec3(2000.0, 0.0, 0.0), Z, tvcMax, heff, wheelMax, tauW, lat);
+    tvcSplit(glm::dvec3(2000.0, 0.0, 0.0), Z, tvcMax, heff, tauW, lat);
     checkVec(tauW, glm::dvec3(0.0), 1e-12, "transverse within TVC -> wheels idle");
     checkVec(lat, glm::dvec3(0.0, 2000.0 / heff, 0.0), 1e-12,
              "aim = cross(Z, tau) * tvcTake/(tp*heff)");
@@ -276,46 +282,49 @@ static void test_split() {
 
     // Bigger transverse than TVC can take: TVC fills to tvcMax, the wheels
     // absorb the shortfall; nothing is dropped, nothing doubles.
-    tvcSplit(glm::dvec3(10000.0, 0.0, 3000.0), Z, tvcMax, heff, wheelMax, tauW, lat);
+    tvcSplit(glm::dvec3(10000.0, 0.0, 3000.0), Z, tvcMax, heff, tauW, lat);
     CHECK_NEAR(glm::length(lat), tvcMax / heff, 1e-12, "TVC saturates at tvcMax");
     checkVec(tauW, glm::dvec3(10000.0 - tvcMax, 0.0, 3000.0), 1e-9,
              "wheels take the transverse shortfall AND the roll");
-    CHECK_NEAR(glm::length(tauW), std::hypot(10000.0 - tvcMax, 3000.0), 1e-9,
-               "shortfall fits under the wheel cap here");
 
-    // ... and when it does NOT fit, the wheels clamp -- the autopilot never
-    // commands more than the hardware (the test_slew3d authority pin, now
-    // against the COMBINED budget).
-    tvcSplit(glm::dvec3(10000.0, 0.0, 9000.0), Z, tvcMax, heff, wheelMax, tauW, lat);
-    CHECK_NEAR(glm::length(lat), tvcMax / heff, 1e-12, "TVC share unchanged by wheel clamp");
-    CHECK_NEAR(glm::length(tauW), wheelMax, 1e-12, "wheel remainder clamps to rating");
-    CHECK_TRUE(glm::dot(tauW, glm::dvec3(10000.0 - tvcMax, 0.0, 9000.0)) > 0.0,
-               "clamped remainder keeps its direction");
+    // The summed-demand case that #420 creates: a latched law fills the
+    // transverse line while the pilot holds roll. Scaling the whole remainder to
+    // one wheel budget shrank the roll share with it -- a 200 N m drum answered
+    // 2.29 N m -- so the saturation must stay per line and the roll arrive
+    // undiluted.
+    tvcSplit(glm::dvec3(10000.0, 0.0, 9000.0), Z, tvcMax, heff, tauW, lat);
+    CHECK_NEAR(glm::length(lat), tvcMax / heff, 1e-12, "TVC share unchanged by a big roll");
+    checkVec(tauW, glm::dvec3(10000.0 - tvcMax, 0.0, 9000.0), 1e-9,
+             "a saturated transverse line does not spend the roll line (#420)");
 
-    // No gimballed authority (the plain wheel ship): split degrades to the
-    // old wheel-only clamp, aim stays zero.
-    tvcSplit(glm::dvec3(4000.0, 0.0, 0.0), Z, 0.0, 0.0, wheelMax, tauW, lat);
+    // No gimballed authority (the plain wheel ship): the wheels take the lot,
+    // aim stays zero.
+    tvcSplit(glm::dvec3(4000.0, 0.0, 0.0), Z, 0.0, 0.0, tauW, lat);
     checkVec(lat, glm::dvec3(0.0), 0.0, "no TVC -> no aim");
     checkVec(tauW, glm::dvec3(4000.0, 0.0, 0.0), 1e-12, "no TVC -> wheels take all");
-    tvcSplit(glm::dvec3(9000.0, 0.0, 0.0), Z, 0.0, heff, wheelMax, tauW, lat);
+    tvcSplit(glm::dvec3(9000.0, 0.0, 0.0), Z, 0.0, heff, tauW, lat);
     checkVec(lat, glm::dvec3(0.0), 1e-12, "tvcMax 0 with levers present -> zero aim");
-    CHECK_NEAR(glm::length(tauW), wheelMax, 1e-12, "no TVC -> wheel clamp only");
+    checkVec(tauW, glm::dvec3(9000.0, 0.0, 0.0), 1e-12,
+             "no TVC -> the whole demand is the wheels' to bound");
 
-    // No actuator at all: zero everywhere (the law skips the slew itself;
-    // split must not invent authority from nothing).
-    tvcSplit(glm::dvec3(1000.0, 0.0, 1000.0), Z, 0.0, 0.0, 0.0, tauW, lat);
-    CHECK_NEAR(glm::length(tauW) + glm::length(lat), 0.0, 0.0, "no hardware -> no torque");
+    // No actuator at all: the split invents no TVC and only hands the wheel half
+    // over -- actuatorSolve with no rows is what applies nothing, and
+    // tests/test_authority.cpp pins that half.
+    tvcSplit(glm::dvec3(1000.0, 0.0, 1000.0), Z, 0.0, 0.0, tauW, lat);
+    CHECK_NEAR(glm::length(lat), 0.0, 0.0, "no hardware -> no TVC aim");
+    checkVec(tauW, glm::dvec3(1000.0, 0.0, 1000.0), 1e-12,
+             "no hardware -> the split still only splits");
 
     // Zero command, and the aligned-everything guards: quiet, no NaN.
-    tvcSplit(glm::dvec3(0.0), Z, tvcMax, heff, wheelMax, tauW, lat);
+    tvcSplit(glm::dvec3(0.0), Z, tvcMax, heff, tauW, lat);
     CHECK_NEAR(glm::length(tauW) + glm::length(lat), 0.0, 0.0, "zero command -> quiet");
-    tvcSplit(glm::dvec3(2000.0, 0.0, 0.0), Z, tvcMax, 0.0, wheelMax, tauW, lat);
+    tvcSplit(glm::dvec3(2000.0, 0.0, 0.0), Z, tvcMax, 0.0, tauW, lat);
     CHECK_NEAR(glm::length(lat), 0.0, 0.0, "heff 0 (engines at COM height) -> all wheels");
     checkVec(tauW, glm::dvec3(2000.0, 0.0, 0.0), 1e-12, "heff 0 -> wheels take all");
 
     // A tilted stack axis still splits along ITS roll, not world Z.
     const glm::dvec3 tilted = glm::normalize(glm::dvec3(0.0, 1.0, 1.0));
-    tvcSplit(tilted * 500.0, tilted, tvcMax, heff, wheelMax, tauW, lat);
+    tvcSplit(tilted * 500.0, tilted, tvcMax, heff, tauW, lat);
     checkVec(lat, glm::dvec3(0.0), 1e-12, "roll about a tilted stack axis -> no TVC");
     checkVec(tauW, tilted * 500.0, 1e-12, "tilted roll -> wheels");
 }

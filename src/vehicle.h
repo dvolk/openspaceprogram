@@ -545,13 +545,16 @@ public:
        while doing it. */
     double wheelDrawWatts() const;
     /* The TVC aim handed to the mixer: one shared lateral deflection vector
-       (world axes, rad) from the torque splits (gimbal.h tvcSplit) this substep,
-       consumed by applyThrustForce. applyRotationForce clears it at the top of the
-       substep and every actuateAttitude call ADDS its share -- the stick's and the
-       law's both arrive, and the mixer's per-engine clamp against gimbal_max is
-       what bounds the sum (#420). Cleared when nothing commands it, so a released
-       autopilot and a released stick both recentre. */
+       (world axes, rad) armed by gimbal.h tvcSplit and consumed by applyThrustForce.
+       applyRotationForce clears it at the top of the substep and actuateAttitude
+       ASSIGNS it exactly once -- tvcCalls_ counts the calls and asserts the bound.
+       The stick and any latched law reach the allocator as ONE summed demand (#420),
+       so there is one split per substep and no shares to merge. The mixer's per-engine
+       clamp against gimbal_max is what keeps the deflection inside the hardware.
+       Cleared when nothing commands it, so a released autopilot and a released stick
+       both recentre. */
     glm::dvec3 tvcLat_{};
+    int tvcCalls_ = 0;
     /* WHAT CAN TURN THIS SHIP RIGHT NOW (#425). One answer to "how hard, and
        about which axis", for every consumer: the slew law, the kill-rot law, the
        [slew] trace, and later the RCS and aero rows. Before this each caller
@@ -603,10 +606,12 @@ public:
         /* Sum of the row ratings, deliberately NOT called a capacity: for a triad
            housing it is 3x what any one of its lines can carry, so it answers
            "how much wheel does this hull own" and not "how much about some axis".
-           The only consumer is gimbal.h tvcSplit, which needs an upper bound on
-           the wheel share of a split and takes it loosely because actuatorSolve is
-           what caps each line for real. The axis-specific number is
-           actuatorTorqueAbout(wheels, axis). */
+           The tests use it to pin how the rows were built (#576, #593); since #420
+           nothing in the game spends it, and it must NOT become a budget again --
+           a scalar cap on the wheel share preserves the demand's direction, so one
+           saturated line spends the idle ones. The axis-specific number is
+           actuatorTorqueAbout(wheels, axis), and the bound the allocator obeys is
+           actuators.h actuatorSolve, per line. */
         double wheelRatingSum() const {
             double t = 0.0;
             for(const ActuatorRow &w : wheels) { t += w.limit; }
@@ -626,9 +631,10 @@ public:
        (roll) the mixer delivers wheels only -- today. #419 would roll a cluster by
        circulating the gimbals, and when it does this model gains that row rather
        than arguing with it.
-       gimbal.h tvcSplit already routes torque this way -- it drops the stack-axis
-       component when there are no wheels -- so this is the same physics stated
-       once, on the side that decides how fast the law may aim to go. */
+       gimbal.h tvcSplit already routes torque this way -- the stack-axis component
+       goes to the wheels, and with no wheel rows the solve applies nothing -- so
+       this is the same physics stated once, on the side that decides how fast the
+       law may aim to go. */
     double attitudeTorqueAbout(const AttitudeAuthority &auth,
                                const glm::dvec3 &axis) const;
     /* Send one commanded attitude torque to the actuators: roll about the

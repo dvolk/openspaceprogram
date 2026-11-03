@@ -74,11 +74,17 @@ inline void gimbalTargets(const glm::dmat3 &partRot, const glm::dvec3 &lateral,
      deflection vector `lat` (world axes, rad). The mixer applies it with
      each engine's torque-aware sign; `heffMag` = Sum(T_i*|h_i|) over the
      armed gimballed engines maps torque (N m) to deflection (rad).
-   - The remainder (roll + any TVC shortfall) goes to `tauWheels`, clamped
-     to `wheelAvail`. Both are zero when nothing is available -- a ship with
-     no wheels and no armed engine has no attitude authority at all. */
+   - The remainder (roll + any TVC shortfall) goes to `tauWheels` WHOLE. It is
+     deliberately NOT clamped here: the wheels own several LINES and a scalar
+     clamp shrinks the whole remainder along its own direction, so one saturated
+     line would spend the idle ones with it. Since #420 the demand arriving here
+     is the sum of everything asking in this substep, which is exactly how that
+     shows up: a latched kill-rot left a pilot's 200 N m roll drum answering
+     2.29 N m. The per-line bound is actuators.h actuatorSolve, which is what
+     every caller of this runs on the answer. `lat` is zero when there is no
+     gimballed authority at all -- a ship with no armed engine has no TVC. */
 inline void tvcSplit(const glm::dvec3 &tauCmd, const glm::dvec3 &shipZ,
-                     double tvcMax, double heffMag, double wheelAvail,
+                     double tvcMax, double heffMag,
                      glm::dvec3 &tauWheels, glm::dvec3 &lat) {
     const bool tvcLive = (tvcMax > 0.0 && heffMag > 0.0);
     const glm::dvec3 tauP = tauCmd - shipZ * glm::dot(tauCmd, shipZ);
@@ -89,9 +95,7 @@ inline void tvcSplit(const glm::dvec3 &tauCmd, const glm::dvec3 &shipZ,
     lat = (tp > 0.0 && tvcLive)
         ? glm::cross(shipZ, tauP) * (tvcTake / (tp * heffMag))
         : glm::dvec3(0.0);
-    glm::dvec3 rest = tauCmd - (tp > 0.0 ? tauP * (tvcTake / tp) : glm::dvec3(0.0));
-    const double rl = glm::length(rest);
-    tauWheels = (rl > wheelAvail && rl > 0.0) ? rest * (wheelAvail / rl) : rest;
+    tauWheels = tauCmd - (tp > 0.0 ? tauP * (tvcTake / tp) : glm::dvec3(0.0));
 }
 
 /* The attitude-authority term of a gimballed engine: the torque its thrust

@@ -499,12 +499,15 @@ static void test_the_wheels_are_billed_once() {
                "the fixture's TVC ceiling, for the pins below");
     /* What the hull was actually torqued by, along the axis the pitch key turns it
        about -- the ship's own X, the "right" axis; the -Y in the test above is where
-       the nozzles point, not where the torque acts -- and a reset for the next case. */
-    auto billedPitch = [&]() {
+       the nozzles point, not where the torque acts. Reading the accumulator CLEARS it,
+       so a substep's answer is taken once and projected. */
+    auto billed = [&]() {
         const btVector3 t = v->hull->btBody->getTotalTorque();
         v->hull->btBody->clearForces();
-        return glm::dot(glm::dvec3(t.x(), t.y(), t.z()), st.x);
+        return glm::dvec3(t.x(), t.y(), t.z());
     };
+    auto billedPitch = [&]() { return glm::dot(billed(), st.x); };
+    auto billedRoll = [&]() { return glm::dot(billed(), st.z); };
     v->hull->btBody->clearForces();
 
     /* One consumer: the stick over-asks (200 N m of drum + 99.8 N m of nozzle), so
@@ -524,20 +527,45 @@ static void test_the_wheels_are_billed_once() {
     CHECK_NEAR(billedPitch(), -200.0, 1e-9, "law + key together still bill the drum once");
     CHECK_NEAR(glm::length(v->tvcLat_), latFull, 1e-9, "and the gimbals once");
 
-    /* Neither consumer is dropped on the way to that bound. */
+    /* Neither consumer is dropped on the way to that bound. A latched law does not
+       get to own the substep: hold ROLL (an axis kill-rot has no interest in here)
+       while it runs and the drum must still answer the key. Red if the demand the
+       pilot contributed is thrown away. */
     holdStick(v, Pitch, 0.0f);
     v->applyRotationForce(1.0 / 120.0);
     CHECK_NEAR(billedPitch(), -200.0, 1e-9, "the law's demand still reaches the drum");
-    v->Command(ShipCmd(KillRot), true);          /* un-latch */
+    v->hull->btBody->setAngularVelocity(btVector3(0.001f, 0.0f, 0.0f));  /* barely turning */
+    holdStick(v, Roll, +0.5f);
+    v->applyRotationForce(1.0 / 120.0);
+    CHECK_NEAR(billedRoll(), +100.0, 1e-9,
+               "half a roll key still buys half a drum under a latched law");
+
+    v->clearRotCmd();                            /* the tick's release: slew and stick */
     v->hull->btBody->setAngularVelocity(btVector3(0.0f, 0.0f, 0.0f));
     v->applyRotationForce(1.0 / 120.0);
     CHECK_NEAR(billedPitch(), 0.0, 1e-12, "nothing asked, nothing billed");
 
+    /* One demand per substep must not let a saturated LINE spend an idle one. The
+       first version of #420 summed the demands and left tvcSplit's SCALAR wheel
+       clamp in place: it preserves the remainder's direction, so a kill-rot ask
+       thousands of N m long scaled the pilot's roll component down with it -- 2.29 N m
+       of a 200 N m drum. The bound belongs to actuatorSolve, per line, which is what
+       lets the pitch drum saturate while the roll drum still answers in full. */
+    v->hull->btBody->setAngularVelocity(btVector3(1.0f, 0.0f, 0.0f));   /* a fast tumble */
+    v->Command(ShipCmd(KillRot), true);
+    holdStick(v, Roll, +1.0f);
+    v->applyRotationForce(1.0 / 120.0);
+    const glm::dvec3 tumble = billed();
+    CHECK_NEAR(glm::dot(tumble, st.x), -200.0, 1e-9, "the tumble still bills the pitch drum");
+    CHECK_NEAR(glm::dot(tumble, st.z), +200.0, 1e-9,
+               "and the roll drum the pilot asked for, undiluted (#420)");
+    v->clearRotCmd();
+
     /* And what a PARTIAL stick buys, pinned as the split's current POLICY for the
        pilot rather than as physics. One key at fraction `a` asks for a x the hull's
        whole capability (200 N m of drum + 99.8 N m of nozzle), and tvcSplit spends
-       TVC first: below a_crit = tvcMax/cap = 1/3 the drum contributes nothing, above
-       it the nozzles are already at their stop. The total is right either way -- who
+       TVC first: below a_crit = tvcMax/cap = 0.333 the drum contributes nothing,
+       above it the nozzles are already at their stop. The total is right either way -- who
        delivers it is the question #421 decides, and this is the pin that notices. */
     const double cap = 200.0 + tvcMax;
     holdStick(v, Pitch, 0.25f);
