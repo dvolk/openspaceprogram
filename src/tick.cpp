@@ -190,8 +190,12 @@ void tick(Game &g) {
                follows. Gated on game_running because a paused sim runs no laws --
                the phase machine would otherwise advance on wall ticks while nothing
                moves. dt here is the WARPED sim interval, the same number the Thrust
-               command is given, because that is how far the burn actually reaches. */
-            if(g.ascent && game_running) {
+               command is given, because that is how far the burn actually reaches.
+               And gated on the hull it was armed on: the law has no idea which ship
+               it is talking to, so switching to another one used to hand the autopilot
+               to that ship, which then launched itself out from under the player
+               (#610 review). */
+            if(g.ascent && game_running && g.ship == g.ascent_ship) {
                 flyAscent(*g.ship, *g.ascent, g.dt * g.time_accel);
             }
 
@@ -391,28 +395,45 @@ void tick(Game &g) {
         /* --ascent-log: the law's own state, so a case can CHECK the phase and the
            cutoff against the same rows that drove the flight, and a failed run says
            why in one line instead of being inferred from the orbit rows. */
-        if(g.ship && g.ascent && g.args.ascent_log) {
+        if(g.ship && g.ascent && g.ship == g.ascent_ship && g.ship->m_parent && g.args.ascent_log) {
             const Uint32 now_ms = g.logClockMs();
             if(g.logDue(kGateAscent, now_ms, g.orbit_log_interval_ms)) {
                 const AscentLaw &law = *g.ascent;
                 const OrbitElements &o = law.elements();
-                double inc_spin = -1.0;   // inclination vs the body's equator
-                if(o.ang_momentum > 0.0 && g.ship->frame && g.ship->m_parent) {
-                    Frame *inertial = g.ship->frame->getNonRotFrame();
-                    const glm::dvec3 om = g.ship->frame->GetOrientRelTo(inertial)
-                                        * g.ship->frame->omega();
-                    if(glm::length2(om) > 1e-18) {
-                        const double c = glm::dot(o.h_hat, glm::normalize(om));
-                        inc_spin = glm::degrees(std::acos(std::clamp(c, -1.0, 1.0)));
-                    }
+                const bool conic = law.conicOk();
+                /* nan, not a number: a railed hull or a mu-less body never got a
+                   conic, and elements() still held the previous tick's -- or a
+                   default-constructed one, which printed "periapsis 0 m" as though
+                   it had been measured. The e2e harness reads nan as a float, so a
+                   CHECK against such a row fails loudly instead of agreeing with an
+                   invented number (#610 review). */
+                auto optNum = [](char *buf, size_t n, double v, bool ok) {
+                    std::snprintf(buf, n, ok ? "%.6g" : "nan", v);
+                };
+                const double sea_r = g.ship->m_parent->seaLevelRadius();
+                char peri_txt[32], apo_txt[32], inc_txt[32], node_txt[32];
+                optNum(peri_txt, sizeof peri_txt, periapsisAsl(o, sea_r), conic);
+                if(conic && o.traj == TrajectoryClass::Elliptic) {
+                    optNum(apo_txt, sizeof apo_txt, apoapsisAsl(o, sea_r), true);
+                } else {
+                    std::snprintf(apo_txt, sizeof apo_txt, "nan");
                 }
+                /* Inclination against the body's equator, from the pole (see
+                   flyAscent: omega() is zero for a body that does not spin, which
+                   used to make this field print -1.00 as a stand-in for "unknown"). */
+                double inc_spin = 0.0;
+                if(conic && o.ang_momentum > 0.0) {
+                    Frame *inertial = g.ship->frame->getNonRotFrame();
+                    if(inertial == nullptr) { inertial = g.ship->frame; }
+                    const double c = glm::dot(o.h_hat, g.ship->frame->spinAxisRelTo(inertial));
+                    inc_spin = glm::degrees(std::acos(std::clamp(c, -1.0, 1.0)));
+                }
+                optNum(inc_txt, sizeof inc_txt, inc_spin, conic && o.ang_momentum > 0.0);
+                optNum(node_txt, sizeof node_txt, law.node_r(), law.node_r() > 0.0);
                 printf("[ascent] t=%.1fs phase=%s lever=%.2f pitch=%.1f deg "
-                       "peri_asl=%.6g m apo_asl=%.6g m inc_eq=%.2f deg node_r=%.6g m "
-                       "why=\"%s\"\n",
+                       "peri_asl=%s m apo_asl=%s m inc_eq=%s deg node_r=%s m why=\"%s\"\n",
                        g.time, law.phaseName(), g.ship->throttle(), law.pitch_deg(),
-                       periapsisAsl(o, g.ship->m_parent->seaLevelRadius()),
-                       (o.traj == TrajectoryClass::Elliptic ? apoapsisAsl(o, g.ship->m_parent->seaLevelRadius()) : -1.0),
-                       inc_spin, law.node_r(), law.why());
+                       peri_txt, apo_txt, inc_txt, node_txt, law.why());
             }
         }
         // --orbit-log: orbital elements in the body's inertial frame.

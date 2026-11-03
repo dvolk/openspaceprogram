@@ -691,10 +691,11 @@ int main(int argc, char **argv)
             AscentTarget t;
             const std::string &as = args.ascent;
             const size_t comma = as.find(',');
-            double alt = 0.0, inc = -1.0;
+            const bool inc_given = comma != std::string::npos;
+            double alt = 0.0, inc = 0.0;
             try {
                 alt = std::stod(comma == std::string::npos ? as : as.substr(0, comma));
-                if(comma != std::string::npos) { inc = std::stod(as.substr(comma + 1)); }
+                if(inc_given) { inc = std::stod(as.substr(comma + 1)); }
             } catch(const std::exception &) {
                 throw std::runtime_error("--ascent wants ALTITUDE[,INCLINATION] in metres "
                                          "and degrees, got \"" + as + "\"");
@@ -703,11 +704,19 @@ int main(int argc, char **argv)
                 throw std::runtime_error("--ascent altitude must be above the datum, got "
                                          + std::to_string(alt) + " m");
             }
+            if(inc_given && !(inc >= 0.0 && inc <= 180.0)) {
+                throw std::runtime_error("--ascent inclination is 0..180 deg, got "
+                                         + std::to_string(inc));
+            }
             t.apo_asl = t.peri_asl = alt;
-            t.inc_rad = inc < 0.0 ? -1.0 : glm::radians(inc);
+            /* Whether a plane was ASKED is the comma's business, not the number's:
+               an inclination is 0..180, and reading a negative INC as the law's
+               "unset" sentinel made a due-equator ask unsayable (#610 review). */
+            t.inc_rad = inc_given ? glm::radians(inc) : -1.0;
             game.ascent = AscentLaw(t);
-            const std::string inc_txt = inc < 0.0 ? std::string()
-                : " at inc " + std::to_string(inc) + " deg";
+            game.ascent_ship = first;
+            const std::string inc_txt = inc_given
+                ? " at inc " + std::to_string(inc) + " deg" : std::string();
             printf("Autopilot: ascent armed on '%s' -- %.6g m circular%s (body %s)\n",
                    first->displayName().c_str(), alt, inc_txt.c_str(),
                    first->m_parent ? first->m_parent->name.c_str() : "?");

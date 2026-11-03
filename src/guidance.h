@@ -32,7 +32,10 @@
 struct AscentTarget {
     double apo_asl = 100e3;
     double peri_asl = 100e3;
-    double inc_rad = -1.0;   // <0: keep whatever the launch geometry gives us
+    double inc_rad = -1.0;   // <0: keep whatever the launch geometry gives us.
+                             // A sentinel, not a range: an inclination is 0..180,
+                             // so a caller that parses a field must ask whether a
+                             // value was GIVEN, not test the number for < 0.
 };
 
 enum class AscentPhase {
@@ -51,10 +54,16 @@ struct GuidanceState {
     glm::dvec3 vel = glm::dvec3(0.0);   // m/s, ORBITAL (conic) velocity
     double mu = 0.0;                    // m^3/s^2
     double sea_r = 0.0;                 // the body's sea-level radius, m
-    glm::dvec3 spin_axis = glm::dvec3(0.0);  // unit; zero if the body does not spin
+    glm::dvec3 spin_axis = glm::dvec3(0.0);  // unit pole (Frame::spinAxisRelTo). A
+                                        // body that does not still spin has a pole
+                                        // all the same, and it is what "east" and
+                                        // the asked inclination are measured from.
     double accel_max = 0.0;             // availableAccel(), m/s^2 at full throttle
-    bool has_propellant = true;         // anything left to burn. The driver MUST
-                                        // fill this: availableAccel() is a potential
+    bool has_propellant = true;         // THIS ship can still burn: the driver
+                                        // fills it from enginePropellantMask() +
+                                        // fuelMassMasked(), i.e. the resources its
+                                        // thrusters actually draw. The driver MUST
+                                        // fill it: availableAccel() is a potential
                                         // that never reads the tanks (#607), so on
                                         // its own it reads healthy at zero fuel.
     bool grounded = false;
@@ -64,7 +73,9 @@ struct GuidanceState {
 struct AscentCommand {
     glm::dvec3 aim = glm::dvec3(0.0);   // unit, same frame as GuidanceState.
                                         // Zero = "no direction to point at",
-                                        // which is an answer, not a failure.
+                                        // which is an answer, not a failure --
+                                        // and it cancels the aim only, never the
+                                        // throttle below.
     double throttle = 0.0;              // 0..1 of rated thrust, from the speed ceiling
     bool burn = false;                  // hold the engine lit this tick? The
                                         // driver MUST honour this one: the lever
@@ -75,16 +86,26 @@ class AscentLaw {
 public:
     AscentLaw(const AscentTarget &t) : target(t) {}
 
-    /* One logic tick. dt is the sim interval this tick advances; the law uses
-       it only to size the coast-to-cutoff floor, so a law ticked at 1x or at
-       10x time compression aims at the same orbit. */
-    AscentCommand step(const GuidanceState &s, double dt);
+    /* One call per logic tick. The law takes no dt: nothing it computes scales
+       with the tick length -- the node-burn lead is sized from the burn's own
+       length, not from the clock. What does depend on the tick rate is the
+       trajectory the hull integrates between calls, because the middle of the
+       profile is an unguided gravity turn. Measured on Moho against a 100 km
+       ask: apoapsis 103.2 km at a 1/120 harness step, 103.5 km at 1/60, and
+       101.3 km at the 1/6 s step a 10x-warp flight gives it. So shape_band is
+       mostly a finite-burn allowance rather than a tick-rate one -- pinned by
+       tests/test_guidance.cpp, not assumed. Widening it is #611's question. */
+    AscentCommand step(const GuidanceState &s);
 
     AscentPhase phase() const { return phase_; }
     bool active() const { return phase_ != AscentPhase::Done && phase_ != AscentPhase::Failed; }
     const char *phaseName() const;
     const char *why() const { return why_; }
     OrbitElements elements() const { return last_el_; }   // the tick's conic
+    /* Is elements() this tick's conic? step() bails before solving one when the
+       hull is railed or the body has no mu, and last_el_ would otherwise be a
+       default-constructed conic that a log would print as real numbers. */
+    bool conicOk() const { return conic_ok_; }
     glm::dvec3 launchHeading() const { return launch_h_; }  // the heading the turn follows
     double node_r() const { return circ_node_r_; }        // the node the Circ burn was sized against
     double pitch_deg() const { return pitch_; }           // the pitch schedule, degrees
@@ -93,6 +114,7 @@ private:
     AscentTarget target;
     AscentPhase phase_ = AscentPhase::Pad;
     OrbitElements last_el_ = {};
+    bool conic_ok_ = false;
     glm::dvec3 launch_h_ = glm::dvec3(0.0);  // the horizontal the turn aims along
     double circ_node_r_ = -1.0;
     double pitch_ = 90.0;
@@ -107,12 +129,28 @@ private:
 
 /* The driver. One call per logic tick, AFTER the key input (so the law sees
    this tick's throttle keys) and BEFORE the physics substeps (so the commands
-   are armed for them). Commands go through Vehicle::Command only: a latched
-   Sas/SlewFree once, ShipCmd(Aim, ...) every tick, ShipCmd(Thrust) every tick
-   (armed thrust is cleared each tick), and ShipCmd(ThrottleSet) every tick
-   EXCEPT while the player is holding a throttle key (#400 F3's yield rule).
-   Returns false if it did nothing (a railed hull, a ship that is not flying a
-   law), which is how callers know not to trust the trace. */
+   are armed for them). Commands go through Vehicle::Command only:
+     Sas/SlewFree  -- a LATCH, and Command's Sas case TOGGLES, so it is sent
+                      only while the mode is not already latched, and flyAscent
+                      releases it on the first tick it decides not to fly. Leave
+                      it latched and the ship keeps steering after the law is
+                      gone, the keys that used to be SAS now fight the autopilot,
+                      and a latched slew keeps a hull off rails forever.
+     Aim           -- a per-tick SETPOINT: restate it every tick.
+     Thrust        -- arms thrust for THIS tick only (tick.cpp clears it every
+                      tick), so it goes out only when the law says burn.
+     ThrottleSet   -- sets the LEVER, which latches separately from armed thrust.
+                      The driver zeroes it on the ticks the law says coast: a
+                      stale full lever burns through its own coast phase.
+   All throttle writes are skipped while the player holds a throttle key (#400
+   F3's yield rule).
+   The caller must keep calling it on the hull the law was armed on -- the law
+   has no idea which ship it is flying, so feed it a different one and it will
+   cheerfully launch that one instead (Game::ascent_ship is the gate).
+   Returns false when there was no aim to send -- a railed hull, a bail-out tick,
+   or the tick the law finished on. A zero aim cancels the aim only: the throttle
+   write still goes out, because the lever latches and a law that stops mid-burn
+   without putting it back has left an engine open. */
 class Vehicle;
 bool flyAscent(Vehicle &v, AscentLaw &law, double dt);
 

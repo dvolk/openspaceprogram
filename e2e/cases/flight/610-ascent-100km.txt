@@ -10,11 +10,13 @@ ARGS --startship racer,res/ships/racer.json,Moho,pad --ascent 100e3 --time-accel
 ARGS --ascent-log --orbit-log --orbit-interval 1
 ARGS --sim-steps 4200 --timeout 200
 # 4200 logic ticks at dt 1/60 with --time-accel 10 is 700 s of SIM time, and the
-# flight needs 600 of them. Steps, not a wall timeout, because the outcome then
-# does not depend on how fast the machine is: the first cut of this case used
-# --timeout 80 and only reached the cutoff with ~20% of wall clock to spare, which
-# is a loaded-box flake waiting to happen (#605's lesson). --timeout stays as the
-# safety net, not the stop.
+# flight is over inside 500 of them. Steps, not a wall timeout, because the
+# outcome then does not depend on how fast the machine is: the first cut of this
+# case used --timeout 80 and only reached the cutoff with ~20% of wall clock to
+# spare, which is a loaded-box flake waiting to happen (#605's lesson). Note the
+# runner's LIMIT is the ceiling that actually fires -- it kills the process on
+# wall clock -- so --timeout below is the game's own stop, a diagnostic floor,
+# not the safety net.
 # --orbit-interval is the same gate: at 1 it lands a row every 10 s of sim here
 # (70 rows over the 700 s flight). That grain matters -- the circularisation burn
 # is only ~25 s of sim long, and the first cut's --orbit-interval 20 sampled every
@@ -30,23 +32,34 @@ CHECK last(ascent)["phase"] == "done"
 CHECK last(orbit)["peri_asl"] > 99e3
 CHECK abs(last(orbit)["apo_asl"] - 100e3) < 5e3
 CHECK last(orbit)["ecc"] < 0.01
-# The plane comes from the launch heading, and moho_pad sits at 0.286 deg
-# latitude: an eastward launch from there ends within a whisker of the equatorial
-# plane, so a heading that ignored the asked inclination shows up here.
+# The plane comes from the launch heading. Nothing is asked here (--ascent gives
+# an altitude, not an inclination), so what this pins is the default: an eastward
+# launch from moho_pad, at 0.286 deg latitude, ends within a whisker of the
+# equatorial plane. A heading that pointed at the sky instead of along it -- the
+# degenerate-spin-axis bug -- leaves the plane undefined, and this row stops
+# matching. The asked-inclination path itself is flown by tests/test_guidance.
 CHECK abs(last(orbit)["inc"] - 0.286) < 0.2
-# The law put the lever back to zero itself. Arming thrust every tick while the
-# throttle LEVER latched is how the first hull run burned through its own coast
-# phase and left Moho's SOI with "phase=coast" in the log: the pure law test
-# could not see it, because the law was right and the driver was ignoring it.
-CHECK last(ascent)["lever"] < 0.2
+# The law put the throttle lever back to zero, on the very tick it finished. Two
+# bugs lived on this line: arming thrust every tick while the LEVER latched
+# separately (the first hull run burned through its own coast phase and left
+# Moho's SOI with "phase=coast" in the log), and returning early on the finishing
+# tick -- which answers with a zero aim -- before the throttle write, leaving the
+# lever at the 0.05 the circularisation burn had parked it at. The pure law test
+# could not see either, because the law was right and the driver was ignoring it.
+CHECK last(ascent)["lever"] == 0.0
 # It flew the profile rather than falling into an orbit: the pitch-over climb, the
 # coast to the node, the circularisation burn, done -- each opening after the one
 # before it. ("pad" never appears: at 1 s of wall the first sample lands after the
 # ship has left the ground.) Each min() over an empty generator raises, so a phase
 # that stops being flown fails the case rather than vacating it.
 CHECK min(a["t"] for a in ascent if a["phase"]=="ascent") < min(a["t"] for a in ascent if a["phase"]=="coast") < min(a["t"] for a in ascent if a["phase"]=="circ") < min(a["t"] for a in ascent if a["phase"]=="done")
-# It never went under the ground on the way up. Note this is the only ground check
-# these rows offer: the transfer's PERIAPSIS is meant to be underground mid-flight
-# (-177 km at the cutoff) -- raising it is what the node burn is for -- so a
-# periapsis floor here would pin the wrong physics.
-CHECK min(o["r"] for o in orbit) > 250e3
+# It never came back down to the ground on the way up. Note this is the only
+# ground check these rows offer: the transfer's PERIAPSIS is meant to be
+# underground mid-flight (-177 km at the cutoff) -- raising it is what the node
+# burn is for -- so a periapsis floor here would pin the wrong physics.
+# The t >= 20 filter is not decoration. moho_pad sits 911 m above the datum, so
+# the earliest row (t=10, still on the vertical climb) is the lowest radius the
+# flight ever reports; a floor over the whole flight just re-measures the launch
+# site. From 20 s the ship is some 6 km up and climbing, so the rows below 251 km
+# -- Moho's datum plus its 800 m terrain amplitude -- only happen if it fell back.
+CHECK min(o["r"] for o in orbit if o["t"] >= 20) > 251e3

@@ -394,6 +394,10 @@ void Game::dropVehicleRefs(Vehicle *v) {
        this, so nulling it here is what keeps select_vehicle from releasing control
        back to a corpse. */
     if(ship == v) { ship = nullptr; }
+    /* An armed ascent law flies exactly one hull. With that hull gone the mission
+       is over, and leaving the law armed would let a Vehicle allocated later at
+       the same address inherit a flight it was never asked for. */
+    if(ascent_ship == v) { ascent = std::nullopt; ascent_ship = nullptr; }
     /* The map's fit latch holds v too. It is only ever compared, never read,
        but a Vehicle allocated later can land on v's block and read back as
        "same ship", which silently skips the refit a focus change owes us. */

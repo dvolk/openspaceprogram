@@ -36,7 +36,9 @@ struct Flight {
     std::string why;
     double t = 0.0, peri = 0.0, apo = 0.0, fuel = 0.0, v_max = 0.0, inc_deg = 0.0;
     int phases = 0;             // bitmask of phases visited
-    double min_clear = 1e30;    // lowest ground clearance after liftoff
+    double min_clear = 1e30;    // lowest ground clearance after liftoff, negative = hit
+    double node_at_circ = 0.0;  // what the law captured as its node, entering Circ
+    double node_at_end = 0.0;   // and what it still says at the end
     std::string trail;
 };
 
@@ -45,12 +47,17 @@ struct Flight {
    The dry stage is modelled the way the game reports it: availableAccel() is a
    potential that never reads the tanks (#607), so accel_max stays healthy at
    zero fuel and it is has_propellant that goes false. Getting this backwards
-   would have the test certify a path the driver never takes. */
+   would have the test certify a path the driver never takes.
+   `start` lets a flight begin somewhere other than the equator, because the
+   launch-heading maths has a cos(lat) divisor that is exactly 1 at the equator
+   -- a test fleet that only ever lifts off from there cannot tell a correct
+   divisor from a missing one. */
 static Flight simulate(const AscentTarget &target, double dt = 1.0/120.0,
-                       int max_s = 900, bool trace = false) {
+                       int max_s = 900, bool trace = false,
+                       glm::dvec3 start = glm::dvec3(R_MOHO + 1.0, 0.0, 0.0)) {
     Flight f;
     AscentLaw law(target);
-    glm::dvec3 pos(R_MOHO + 1.0, 0.0, 0.0);      // standing on the equator, +x
+    glm::dvec3 pos = start;
     glm::dvec3 vel(0.0, 0.0, 0.0);
     double mass = M_FULL;
     bool lifted = false;
@@ -65,12 +72,13 @@ static Flight simulate(const AscentTarget &target, double dt = 1.0/120.0,
         const double r = glm::length(pos);
         s.grounded = !lifted && r - R_MOHO < 100.0 && glm::length(vel) < 3.0;
         s.railed = false;
-        const AscentCommand c = law.step(s, dt);
+        const AscentCommand c = law.step(s);
         if(c.burn) { mass -= MDOT * c.throttle * dt; f.fuel += MDOT * c.throttle * dt; }
         if(std::string(law.phaseName()) != last_phase) {
             last_phase = law.phaseName();
             f.trail += last_phase + " ";
             f.phases |= (1 << (int)law.phase());
+            if(law.phase() == AscentPhase::Circ) { f.node_at_circ = law.node_r(); }
             if(trace) {
                 const OrbitElements o = computeOrbitElements(pos, vel, MU_MOHO);
                 printf("      -> %-7s t=%6.1fs alt=%8.1f km v=%7.1f m/s pitch=%5.1f deg "
@@ -96,7 +104,10 @@ static Flight simulate(const AscentTarget &target, double dt = 1.0/120.0,
         f.v_max = std::max(f.v_max, glm::length(vel));
         const double clr = glm::length(pos) - R_MOHO;
         if(glm::length(vel) > 10.0) { lifted = true; }
-        if(lifted && clr > 0.0) { f.min_clear = std::min(f.min_clear, clr); }
+        /* Record the clearance whatever it is. The first version only kept
+           positive values, so the "never came back down through the ground" pin
+           could not fail: min_clear was positive by construction. */
+        if(lifted) { f.min_clear = std::min(f.min_clear, clr); }
         if(lifted && clr < 0.0) { f.trail += "IMPACT "; break; }
         if(!law.active()) {
             f.done = law.phase() == AscentPhase::Done;
@@ -105,8 +116,9 @@ static Flight simulate(const AscentTarget &target, double dt = 1.0/120.0,
             break;
         }
     }
+    f.node_at_end = law.node_r();
     const OrbitElements o = computeOrbitElements(pos, vel, MU_MOHO);
-  if(!f.failed && !f.done) { f.why = "ran out of sim time"; }
+    if(!f.failed && !f.done) { f.why = "ran out of sim time"; }
     f.peri = periapsisAsl(o, R_MOHO);
     f.apo = (o.traj == TrajectoryClass::Elliptic) ? apoapsisAsl(o, R_MOHO) : -1.0;
     // The plane the burn actually built, measured against the body's spin axis
@@ -154,8 +166,138 @@ static void test_it_actually_gets_to_orbit() {
     CHECK_TRUE(f.peri >= 100e3 - 2e3, "periapsis at or above the ask (the orbit is real)");
     CHECK_NEAR(f.apo, 100e3, 6e3, "apoapsis within 6 km of the ask (the SHAPE, which is "
                "what the old prototype got wrong)");
-    CHECK_TRUE(f.min_clear > 0.0, "never came back down through the ground");
+    CHECK_TRUE(f.trail.find("IMPACT") == std::string::npos, "never came back down through the ground");
+    CHECK_TRUE(f.min_clear > 0.0, "and that clearance was measured, not filtered: the "
+               "harness used to skip negative values, which made this pin unfailable");
     CHECK_TRUE(f.fuel < 840.0, "spent less than the 840 kg the tanks hold");
+    /* The node the burn is sized against is captured once, on entering Circ, and
+       does not move while the burn is raising the apsis it is chasing (the old
+       prototype read its own live apoapsis every tick and so kept moving the
+       finish line as it ran toward it: a 16.9 x 50.1 km answer to a 50 km ask).
+       Honest about its own reach: for a CIRCULAR ask the captured node and the
+       ask's own radius are the same number, so this pin cannot tell the two
+       spellings apart there -- the elliptical-ask test below is where they part. */
+    CHECK_NEAR(f.node_at_end, f.node_at_circ, 0.0, "node_r() is the same number at the end as at the node");
+    CHECK_TRUE(f.apo + R_MOHO > f.node_at_circ, "and the orbit it built is above that captured node");
+}
+
+/* apo_asl != peri_asl: an ask with two different apsides, which is what an
+   Autopilot window will offer and which nothing else here flies. The ascent
+   burns to the apoapsis ask, then the node burn stops at the LOWER of that node
+   and the periapsis ask, so a 100 x 200 km ask should come back with periapsis
+   at 100 and apoapsis near 200 -- not the 200 x 200 a rule that treated the two
+   asks as one would build. */
+static void test_an_elliptical_ask_keeps_both_apsides() {
+    printf("== two different asks: 100 km periapsis, 200 km apoapsis ==\n");
+    AscentTarget t; t.apo_asl = 200e3; t.peri_asl = 100e3; t.inc_rad = -1.0;
+    const Flight f = simulate(t, 1.0/120.0, 900);
+    printf("   [100x200] done=%d peri=%.1f km apo=%.1f km gap=%.1f km fuel=%.0f kg node=%.0f km\n",
+           (int)f.done, f.peri/1e3, f.apo/1e3, (f.apo-f.peri)/1e3, f.fuel, f.node_at_circ/1e3);
+    CHECK_TRUE(f.done, "the mixed ask is inside the profile's envelope");
+    CHECK_NEAR(f.peri, 100e3, 13e3, "periapsis at the periapsis ask, not at the apoapsis one");
+    CHECK_NEAR(f.apo, 200e3, 0.06 * 200e3 + 3e3, "apoapsis at the apoapsis ask");
+    CHECK_NEAR(f.node_at_circ, R_MOHO + 200e3, 0.06 * 200e3 + 3e3,
+               "and the node it captured is the apoapsis ask, so the cutoff really did bind on the pair");
+}
+
+/* Three ways the launch geometry degenerates, all of them reachable in the
+   shipped system file: a body with no rotation block (Kerbol -- omega() is zero
+   there, and the first version read omega() rather than the pole), a site
+   standing on a pole, and a pole that happens to point along the axis the
+   fallback seed used. The bugs those exposed were not cosmetic: a zero-length
+   fallback left a RADIAL heading (the ship climbs for ever and never builds a
+   plane), and a NaN one passed every "is this too small" gate on its way to the
+   hull, because NaN < eps is false (#610 review). */
+static void test_degenerate_geometry_still_points_somewhere_horizontal() {
+    printf("== degenerate frames: a body that does not spin, and sites on a pole ==\n");
+    struct Site { const char *name; glm::dvec3 pos; glm::dvec3 spin; };
+    const Site sites[] = {
+        {"no spin, equator",    {R_MOHO, 0.0, 0.0}, {0.0, 0.0, 0.0}},
+        {"no spin, pole at +z", {0.0, 0.0, R_MOHO}, {0.0, 0.0, 0.0}},
+        {"spin +x, site at +x", {R_MOHO, 0.0, 0.0}, {1.0, 0.0, 0.0}},
+        {"spin +z, site at +z", {0.0, 0.0, R_MOHO}, {0.0, 0.0, 1.0}},
+        {"tilted spin, pole",   {0.0, 0.0, R_MOHO}, {0.0, 1.0, 1.0}},
+    };
+    for(const Site &site : sites) {
+        for(double inc : {-1.0, 45.0}) {
+            AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = inc;
+            AscentLaw law(t);
+            GuidanceState s; s.pos = site.pos; s.vel = glm::dvec3(0.0);
+            s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = site.spin;
+            s.accel_max = 18.0; s.grounded = true;
+            const AscentCommand c = law.step(s);
+            const glm::dvec3 up = glm::normalize(site.pos);
+            const glm::dvec3 h = law.launchHeading();
+            printf("   [%-18s inc %4.0f] aim=(%5.2f,%5.2f,%5.2f) heading=(%6.3f,%6.3f,%6.3f) "
+                   "dot(h,up)=%.4f why=\"%s\"\n", site.name, inc,
+                   c.aim.x, c.aim.y, c.aim.z, h.x, h.y, h.z, glm::dot(h, up), law.why());
+            CHECK_TRUE(std::isfinite(c.aim.x) && std::isfinite(c.aim.y) && std::isfinite(c.aim.z),
+                       "a degenerate frame still gets a finite aim");
+            CHECK_NEAR(glm::length(c.aim), 1.0, 1e-9, "and it is a direction, not a zero or shrunk one");
+            CHECK_NEAR(glm::dot(h, up), 0.0, 1e-9, "the heading the turn follows is horizontal, never straight up");
+        }
+    }
+}
+
+/* East, not west; 60 deg, not 45. Two mutants the equator-only fleet could not
+   see: a heading that mirrors around north builds the SAME inclination (cos i is
+   even in the azimuth), and a missing cos(lat) divisor changes nothing at lat 0,
+   where that divisor is exactly 1. */
+static void test_the_heading_has_a_sense_and_a_working_cos_lat() {
+    printf("== the heading: due east, and a site that is not on the equator ==\n");
+    AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
+    AscentLaw law(t);
+    GuidanceState s; s.pos = glm::dvec3(R_MOHO, 0.0, 0.0); s.vel = glm::dvec3(0.0);
+    s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
+    s.accel_max = 18.0; s.grounded = true;
+    law.step(s);
+    const glm::dvec3 east = glm::normalize(glm::cross(s.spin_axis, glm::normalize(s.pos)));
+    printf("   [equator, no ask] heading=(%.3f,%.3f,%.3f), east=(%.3f,%.3f,%.3f), dot=%.3f\n",
+           law.launchHeading().x, law.launchHeading().y, law.launchHeading().z,
+           east.x, east.y, east.z, glm::dot(law.launchHeading(), east));
+    CHECK_TRUE(glm::dot(law.launchHeading(), east) > 0.99,
+               "with no inclination asked the ship launches due EAST, the way the body turns");
+
+    /* 45 deg north, asking 60: the heading must sit 45 deg off east, because
+       cos(az) = cos(i)/cos(lat) = 0.5/0.707. Drop the divisor and az becomes 60
+       deg, which lands the orbit at 45 -- the ask and the site swap places. */
+    const double lat = glm::radians(45.0);
+    const glm::dvec3 start(R_MOHO * std::cos(lat), 0.0, R_MOHO * std::sin(lat));
+    AscentTarget ask; ask.apo_asl = ask.peri_asl = 100e3; ask.inc_rad = glm::radians(60.0);
+    AscentLaw law45(ask);
+    GuidanceState s45; s45.pos = start; s45.vel = glm::dvec3(0.0);
+    s45.mu = MU_MOHO; s45.sea_r = R_MOHO; s45.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
+    s45.accel_max = 18.0; s45.grounded = true;
+    law45.step(s45);
+    const glm::dvec3 up45 = glm::normalize(start);
+    const glm::dvec3 east45 = glm::normalize(glm::cross(s45.spin_axis, up45));
+    const double az = glm::degrees(std::acos(std::clamp(glm::dot(law45.launchHeading(), east45), -1.0, 1.0)));
+    printf("   [45N ask 60] azimuth from east = %.2f deg (want 45.00)\n", az);
+    CHECK_NEAR(az, 45.0, 0.01, "the cos(lat) divisor is in the heading maths");
+
+    const Flight f = simulate(ask, 1.0/120.0, 900, false, start);
+    printf("   [45N ask 60, flown] done=%d inc=%.2f deg peri=%.1f km apo=%.1f km fuel=%.0f kg\n",
+           (int)f.done, f.inc_deg, f.peri/1e3, f.apo/1e3, f.fuel);
+    CHECK_TRUE(f.done, "a launch from 45 deg north still gets to orbit");
+    CHECK_NEAR(f.inc_deg, 60.0, 1.0, "and it ends in the asked plane, not the site's own latitude");
+}
+
+/* The game hands the law dt * time_accel, so a 10x flight gives it 1/6 s per
+   tick -- 20x the finest rate here. The node lead and the cutoff floor scale
+   with dt; the unguided gravity turn in the middle of the profile does not, so
+   the shape the law lands moves with the tick rate. Measuring that drift beats
+   treating shape_band as purely a finite-burn allowance (#611). */
+static void test_the_shape_at_the_tick_rates_the_game_uses() {
+    printf("== tick rate: one 100 km ask at 1/120, 1/60 and warped 1/6 ==\n");
+    for(double dt : {1.0/120.0, 1.0/60.0, 10.0/60.0}) {
+        AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
+        const Flight f = simulate(t, dt, 900);
+        printf("   [dt %.5fs] done=%d failed=%d peri=%.1f km apo=%.1f km fuel=%.0f kg t=%.1fs why=\"%s\"\n",
+               dt, (int)f.done, (int)f.failed, f.peri/1e3, f.apo/1e3, f.fuel, f.t, f.why.c_str());
+        CHECK_TRUE(f.done, "the ask is still reached at this tick rate");
+        CHECK_NEAR(f.peri, 100e3, 13e3, "periapsis still at the ask");
+        CHECK_NEAR(f.apo, 100e3, 13e3, "apoapsis still at the ask (the drift is real but small)");
+    }
 }
 
 static void test_the_shape_holds_at_other_altitudes() {
@@ -194,7 +336,7 @@ static void test_the_launch_heading_buys_the_inclination() {
     GuidanceState s; s.pos = glm::dvec3(R_MOHO, 0.0, 0.0); s.vel = glm::dvec3(0.0);
     s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
     s.accel_max = 18.0; s.grounded = true;
-    law.step(s, 1.0/60.0);
+    law.step(s);
     const glm::dvec3 east(0.0, 1.0, 0.0);
     const double az = glm::degrees(std::acos(std::clamp(glm::dot(law.launchHeading(), east), -1.0, 1.0)));
     CHECK_NEAR(az, 45.0, 0.01, "the pad heading is 45 deg from due east");
@@ -208,14 +350,17 @@ static void test_the_law_fails_loudly_not_silently() {
     s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
     s.accel_max = 18.0;
     s.railed = true;
-    const AscentCommand railed = law.step(s, 1.0/60.0);
+    const AscentCommand railed = law.step(s);
     CHECK_NEAR(glm::length(railed.aim), 0.0, 0.0,
                "a railed hull gets no commands (its thrust would be silently dropped)");
     CHECK_TRUE(std::string(law.why()).size() > 0, "and the reason is recorded");
+    /* elements() would otherwise be a default-constructed conic, which the
+       --ascent-log row printed as "peri_asl=0 m" as if it had been measured. */
+    CHECK_TRUE(!law.conicOk(), "and the law reports it has no conic for that tick");
 
     s.railed = false;
     s.accel_max = 0.0;                       // the stage cannot push
-    const AscentCommand dead = law.step(s, 1.0/60.0);
+    const AscentCommand dead = law.step(s);
     CHECK_NEAR(glm::length(dead.aim), 0.0, 0.0, "a dead stage buys no aim");
     CHECK_TRUE(law.phase() == AscentPhase::Failed, "and the law says failed");
     CHECK_TRUE(std::string(law.why()).find("thrust") != std::string::npos, "with the reason");
@@ -225,7 +370,7 @@ static void test_the_law_fails_loudly_not_silently() {
        the law would aim and arm a burn that does nothing, for ever. */
     AscentLaw law_dry(t);
     s.accel_max = 18.0; s.has_propellant = false;
-    const AscentCommand dry = law_dry.step(s, 1.0/60.0);
+    const AscentCommand dry = law_dry.step(s);
     CHECK_NEAR(glm::length(dry.aim), 0.0, 0.0, "a dry stage buys no aim");
     CHECK_TRUE(law_dry.phase() == AscentPhase::Failed, "and the law says failed, not still flying");
     CHECK_TRUE(std::string(law_dry.why()).find("dry") != std::string::npos,
@@ -233,7 +378,7 @@ static void test_the_law_fails_loudly_not_silently() {
 
     AscentLaw law2(t);
     s.accel_max = 18.0; s.has_propellant = true; s.mu = 0.0;
-    law2.step(s, 1.0/60.0);
+    law2.step(s);
     CHECK_TRUE(law2.phase() == AscentPhase::Failed, "no mu, no mission");
 }
 
@@ -247,7 +392,7 @@ static void test_done_is_a_periapsis_not_a_speed() {
     // Moho's escape speed at 350 km is sqrt(2) x 694 = 981 m/s, so 1100 is a
     // departure, not an orbit: no apoapsis at all.
     s.vel = glm::dvec3(0.0, 1100.0, 0.0);
-    law.step(s, 1.0/60.0);
+    law.step(s);
     const OrbitElements o = law.elements();
     CHECK_TRUE(o.traj != TrajectoryClass::Elliptic, "that state is an escape, not an orbit");
     CHECK_TRUE(law.phase() != AscentPhase::Done, "so it is not Done, however fast it is");
@@ -257,7 +402,7 @@ static void test_done_is_a_periapsis_not_a_speed() {
     // this mission accomplished.
     AscentLaw law3(t);
     s.vel = glm::dvec3(0.0, 900.0, 0.0);
-    law3.step(s, 1.0/60.0);
+    law3.step(s);
     printf("   [900 m/s at the ask] peri=%.1f km apo=%.1f km phase=%s\n",
            periapsisAsl(law3.elements(), R_MOHO)/1e3, apoapsisAsl(law3.elements(), R_MOHO)/1e3,
            law3.phaseName());
@@ -270,7 +415,7 @@ static void test_done_is_a_periapsis_not_a_speed() {
     const double v_circ = std::sqrt(MU_MOHO / (R_MOHO + 100e3));
     s.pos = glm::dvec3(R_MOHO + 100e3, 0.0, 0.0);
     s.vel = glm::dvec3(0.0, v_circ, 0.0);   // a made orbit at the ask
-    law2.step(s, 1.0/60.0);
+    law2.step(s);
     CHECK_NEAR(v_circ, 693.7, 0.5, "Moho's 100 km circular speed (the budget this law must beat)");
     CHECK_TRUE(law2.phase() == AscentPhase::Done, "an orbit at the ask reads Done");
 }
@@ -282,7 +427,7 @@ static void test_a_pad_ship_aims_at_the_sky_and_never_at_nan() {
     GuidanceState s; s.pos = glm::dvec3(R_MOHO, 0.0, 0.0); s.vel = glm::dvec3(0.0);
     s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
     s.accel_max = 18.0; s.grounded = true;
-    const AscentCommand c = law.step(s, 1.0/60.0);
+    const AscentCommand c = law.step(s);
     CHECK_TRUE(std::isfinite(c.aim.x) && std::isfinite(c.aim.y) && std::isfinite(c.aim.z),
                "a standing still ship gets a finite aim");
     CHECK_NEAR(glm::dot(glm::normalize(c.aim), glm::normalize(s.pos)), 1.0, 1e-9,
@@ -295,9 +440,13 @@ int main() {
     test_a_pad_ship_aims_at_the_sky_and_never_at_nan();
     test_done_is_a_periapsis_not_a_speed();
     test_the_law_fails_loudly_not_silently();
+    test_degenerate_geometry_still_points_somewhere_horizontal();
+    test_the_heading_has_a_sense_and_a_working_cos_lat();
     test_the_launch_heading_buys_the_inclination();
     test_it_actually_gets_to_orbit();
+    test_an_elliptical_ask_keeps_both_apsides();
     test_the_shape_holds_at_other_altitudes();
+    test_the_shape_at_the_tick_rates_the_game_uses();
     test_asks_it_cannot_land_say_so();
     printf("%d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;

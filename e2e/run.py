@@ -106,12 +106,16 @@ ORBIT_RE = re.compile(
 # --ascent-log (src/tick.cpp): the ascent law's own state, one row per log tick.
 # The phase is the law's side of the contract with the player -- "done" means the
 # orbit is the one that was asked for, "failed" means it says so out loud -- so a
-# case should read it rather than grep for it. apo_asl is -1 on an open conic
-# here (this is the law's own line; the orbit rows above drop the pair instead).
+# case should read it rather than grep for it. peri_asl/apo_asl/inc_eq/node_r are
+# "nan" when the law has no such number for that tick: a railed hull solves no
+# conic, an open trajectory has no apoapsis, a coast before the node has no node.
+# float("nan") parses and every comparison with it is false, so a CHECK that
+# wanted a real number fails loudly rather than agreeing with a placeholder that
+# used to read like a measurement (-1 m apoapsis, -1.00 deg inclination).
 ASCENT_RE = re.compile(
     r"\[ascent\]\s+t=([\d.]+)s\s+phase=(\w+)\s+lever=([-\d.e+]+)\s+pitch=([-\d.e+]+) deg\s+"
-    r"peri_asl=([-\d.e+]+) m\s+apo_asl=([-\d.e+]+) m\s+inc_eq=([-\d.e+]+) deg\s+"
-    r"node_r=([-\d.e+]+) m\s+why=\"([^\"]*)\""
+    r"peri_asl=([-\d.e+]+|nan) m\s+apo_asl=([-\d.e+]+|nan) m\s+inc_eq=([-\d.e+]+|nan) deg\s+"
+    r"node_r=([-\d.e+]+|nan) m\s+why=\"([^\"]*)\""
 )
 
 MAP_RE = re.compile(

@@ -789,13 +789,20 @@ struct Game {
     // Thrust latch (events.cpp toggles; tick.cpp keeps thrust on while set).
     bool thrust_latched = false;
 
-    /* The ascent autopilot (#400 -> AUTOPILOT v1): a law that flies the active
-       ship to a circular orbit. Empty until something arms it (--ascent today);
-       tick.cpp steps it after the key input and before the substeps. Held here
-       rather than in Vehicle because it is a mission, not a control surface: it
-       owns an aim and a cutoff, and it talks to the ship only through the public
-       reads and Command, like any other hand on the controls. */
+    /* The ascent autopilot (#400 -> AUTOPILOT v1): a law that flies a ship to a
+       circular orbit. Empty until something arms it (--ascent today); tick.cpp
+       steps it after the key input and before the substeps. Held here rather
+       than in Vehicle because it is a mission, not a control surface: it owns an
+       aim and a cutoff, and it talks to the ship only through the public reads
+       and Command, like any other hand on the controls.
+       The law itself is not bound to anything -- it takes a state and returns an
+       aim -- so the hull it was armed on lives next to it. Without this,
+       switching ships mid-flight handed the autopilot to the new one, which
+       launched itself out from under the player (#610 review). dropVehicleRefs
+       drops both together: a law with no ship is not a mission, it is a landmine
+       at a recycled address. */
     std::optional<AscentLaw> ascent;
+    Vehicle *ascent_ship = nullptr;
 
     // The Flight Summary window payload, written by recoverActive.
     struct FlightSummary {

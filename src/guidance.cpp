@@ -2,9 +2,15 @@
 #include "vehicle.h"
 #include "frame.h"
 #include "terrain.h"
+#include <cassert>
 #include <cmath>
 #include <map>
 #include <algorithm>
+
+// glm::length2 lives in gtx/norm; the experimental opt-in must precede the
+// include. This file only compiled before because vehicle.h opens it first.
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/norm.hpp>
 
 /* Tuning constants, hoisted so the flight test can be re-flown against a
    different value with a one-line diff. Every number here is what the closed
@@ -49,17 +55,33 @@ static double speedCap(double mu, double r, double ask_r) {
     return std::sqrt(std::max(0.0, v2));
 }
 
+/* A unit vector perpendicular to `up` that does not need the body to spin: seed
+   with the coordinate least aligned with up, then remove the radial part. The
+   seed can never be parallel to up, so the difference can never be the zero
+   vector. The first cut seeded +x unconditionally, which at a pole whose x
+   happens to be 1 leaves nothing to normalize -- and NaN then sailed through
+   every gate below, because NaN < eps is false. */
+static glm::dvec3 tangent(glm::dvec3 up) {
+    const glm::dvec3 seed = (std::fabs(up.x) < 0.9) ? glm::dvec3(1.0, 0.0, 0.0)
+                                                    : glm::dvec3(0.0, 0.0, 1.0);
+    return glm::normalize(seed - up * glm::dot(seed, up));
+}
+
 void AscentLaw::setLaunchHeading(const GuidanceState &s) {
     const glm::dvec3 up = glm::normalize(s.pos);
-    /* east: the direction a spin at this point carries you. If the body does
-       not spin (or we are standing on its pole), cross degenerates and the
-       azimuth is meaningless -- pick anything perpendicular and say so. */
+    /* east: the direction the body's pole-line carries a point at this latitude.
+       The axis is the body's POLE, not its angular velocity: a body that does not
+       rotate still has a pole (Frame::spinAxisRelTo), and that is the plane the
+       asked inclination is measured from. Reading omega() instead made this cross
+       product zero for a non-spinning body, and the fallback below then handed
+       back a RADIAL heading -- straight up, for the whole flight, with the ship
+       climbing for ever and never building a plane (#610 review). */
     glm::dvec3 e1 = glm::cross(s.spin_axis, up);
-    if(glm::length2(e1) < 1e-9) {
-        e1 = up - s.spin_axis * glm::dot(up, s.spin_axis);
-        if(glm::length2(e1) < 1e-9) { e1 = glm::dvec3(1.0, 0.0, 0.0) - up * up.x; }
-        launch_h_ = glm::normalize(e1);
-        why_ = "no spin axis at this site: inclination left to the launch heading";
+    if(!(glm::length2(e1) > 1e-12)) {
+        /* Standing on the pole, or no usable axis: azimuth is meaningless there.
+           Take any HORIZONTAL direction and say so. */
+        launch_h_ = tangent(up);
+        why_ = "no launch azimuth at this site: inclination left to the launch heading";
         return;
     }
     e1 = glm::normalize(e1);
@@ -72,7 +94,15 @@ void AscentLaw::setLaunchHeading(const GuidanceState &s) {
        Measured from east rather than from north because e1 falls out of the
        cross product above; the textbook "azimuth from north" is 90 deg off it. */
     const double cos_lat = std::abs(glm::dot(e2, s.spin_axis));
-    double poleward = std::cos(target.inc_rad) / std::max(1e-6, cos_lat);
+    if(!(cos_lat > 1e-6)) {
+        /* The pole itself: cos(lat) is 0 there, so the division below has no
+           answer. Any heading from a pole gives the same inclination (90 deg),
+           so take one and say what happened. */
+        launch_h_ = tangent(up);
+        why_ = "asked inclination unreachable from a pole: flew a meridian instead";
+        return;
+    }
+    const double poleward = std::cos(target.inc_rad) / cos_lat;
     if(std::abs(poleward) > 1.0) {
         /* Unreachable from this latitude: an inclination flatter than the site's
            own latitude cannot be had by any heading. Go due east, which is the
@@ -85,8 +115,10 @@ void AscentLaw::setLaunchHeading(const GuidanceState &s) {
     launch_h_ = glm::normalize(std::cos(az) * e1 + std::sin(az) * e2);
 }
 
-AscentCommand AscentLaw::step(const GuidanceState &s, double dt) {
+AscentCommand AscentLaw::step(const GuidanceState &s) {
     AscentCommand c;
+    assert(s.sea_r >= 0.0);   // a datum below the centre would make altitudes lie
+    conic_ok_ = false;
     if(!active()) { return c; }
     if(s.railed) {
         /* Bullet is not stepping this hull, so an armed thrust here is a silent
@@ -95,12 +127,13 @@ AscentCommand AscentLaw::step(const GuidanceState &s, double dt) {
         why_ = "ship is on rails: no commands sent";
         return c;
     }
-    if(glm::length2(s.pos) < 1.0 || !std::isfinite(s.mu) || s.mu <= 0.0) {
+    if(!(glm::length2(s.pos) > 1.0) || !std::isfinite(s.mu) || s.mu <= 0.0) {
         phase_ = AscentPhase::Failed; why_ = "no usable conic around this body"; return c;
     }
 
     const OrbitElements o = computeOrbitElements(s.pos, s.vel, s.mu);
     last_el_ = o;
+    conic_ok_ = true;
     const glm::dvec3 up = glm::normalize(s.pos);
     const double r = glm::length(s.pos);
     const double speed = glm::length(s.vel);
@@ -108,7 +141,14 @@ AscentCommand AscentLaw::step(const GuidanceState &s, double dt) {
     const double apo_asl = elliptic ? apoapsisAsl(o, s.sea_r) : -1.0;
     const double peri_asl = periapsisAsl(o, s.sea_r);
 
-    if(phase_ == AscentPhase::Pad && launch_h_ == glm::dvec3(0.0)) { setLaunchHeading(s); }
+    if(phase_ == AscentPhase::Pad && launch_h_ == glm::dvec3(0.0)) {
+        setLaunchHeading(s);
+        /* The turn follows this vector for the whole flight, so a bad one is not
+           a local bug: a non-horizontal heading climbs for ever and a NaN one
+           poisons every command after it. */
+        assert(std::isfinite(launch_h_.x) && std::isfinite(launch_h_.y) && std::isfinite(launch_h_.z));
+        assert(std::fabs(glm::dot(launch_h_, up)) < 1e-6);
+    }
 
     /* A stage that cannot push is not a stage to fly, and the two ways a stage
        cannot push are different answers: no engine pointing the way, or nothing
@@ -163,8 +203,15 @@ AscentCommand AscentLaw::step(const GuidanceState &s, double dt) {
         const double v_node = (elliptic && o.semi_major > 0.0)
             ? std::sqrt(std::max(0.0, s.mu * (2.0/r_node - 1.0/o.semi_major))) : 0.0;
         const double dv_need = std::sqrt(s.mu / r_node) - v_node;   // what the burn owes
-        const double burn_len = can_thrust ? dv_need / s.accel_max : 0.0;
-        const double lead = std::max(2.0 * dt, burn_len * kLeadFrac);
+        assert(can_thrust);   // the gate above has already Failed a stage that cannot push
+        const double burn_len = dv_need / s.accel_max;
+        /* The lead is sized from the burn, never from the tick. Every in-envelope
+           ask owes hundreds of m/s at its node, so half a burn-length is seconds
+           to tens of seconds and no tick rate makes it vanish: adding a 2*dt floor
+           here changed no flown case, so it left (#610 review). And sleeping past
+           the time test is not a failure mode -- the radial_vel term below catches
+           an approach that has already passed the node. */
+        const double lead = burn_len * kLeadFrac;
         const bool at_node = (o.time_to_apo >= 0.0 && o.time_to_apo <= lead) || o.radial_vel <= 0.0;
         if(at_node) {
             phase_ = AscentPhase::Circ;
@@ -219,7 +266,7 @@ AscentCommand AscentLaw::step(const GuidanceState &s, double dt) {
         const glm::dvec3 horiz_v = s.vel - up * glm::dot(s.vel, up);
         const glm::dvec3 hdir = (glm::length(horiz_v) > 20.0) ? glm::normalize(horiz_v) : launch_h_;
         glm::dvec3 aim = std::sin(gamma) * up + std::cos(gamma) * hdir;
-        if(glm::length2(aim) < 1e-12) { aim = up; }
+        if(!(glm::length2(aim) > 1e-12)) { aim = up; }   // NaN must fall back too
         c.aim = glm::normalize(aim);
         c.burn = can_thrust;
     }
@@ -244,7 +291,16 @@ const char *AscentLaw::phaseName() const {
 }
 
 bool flyAscent(Vehicle &v, AscentLaw &law, double dt) {
-    if(!law.active()) { return false; }
+    if(!law.active()) {
+        /* Let go of the ship. SlewFree is a latch the player's SAS keys toggle,
+           and a latched slew keeps a hull awake (off rails) forever, so leaving
+           it set after the law is Done would hand the ship to a guidance law that
+           has already stopped thinking. Command's Sas case toggles, so sending
+           the mode that IS latched releases it -- and the next tick sees
+           SlewNone and sends nothing, which makes this idempotent. */
+        if(v.slewRequestMode() == SlewFree) { v.Command(ShipCmd(Sas, SlewFree), true); }
+        return false;
+    }
     if(v.m_parent == nullptr || v.frame == nullptr) { return false; }
 
     /* One frame dance per tick, then the law never sees a frame. The rotating
@@ -259,27 +315,43 @@ bool flyAscent(Vehicle &v, AscentLaw &law, double dt) {
     s.grounded = v.isGrounded();
     s.railed = v.onRails;
     s.accel_max = v.availableAccel();
-    /* The tanks, not the potential: see the can_thrust gate in step(). A map of
-       a handful of fuel groups per logic tick is nothing beside the substeps. */
-    double fuel_kg = 0.0;
-    for(const std::map<int, double>::value_type &g : v.groupFuelMasses()) { fuel_kg += g.second; }
-    s.has_propellant = fuel_kg > 0.0;
-    const glm::dvec3 om = v.frame->GetOrientRelTo(inertial) * v.frame->omega();
-    s.spin_axis = glm::length2(om) > 1e-18 ? glm::normalize(om) : glm::dvec3(0.0);
+    /* The tanks, not the potential: see the can_thrust gate in step(). And the
+       resources THIS ship's thrusters actually draw, not "any mass in any tank"
+       -- a stage carrying unburnt ore or a colleague's monoprop is not a stage
+       that can fly (#610 review). Same pair getDeltaV() uses. */
+    bool burn_res[(int)ResourceType::Num];
+    v.enginePropellantMask(burn_res, /*includeJets=*/false);
+    s.has_propellant = v.fuelMassMasked(burn_res) > 0.0;
+    /* The body's pole, from the frame that owns it -- not omega(), which is zero
+       for a body that does not spin and therefore left the launch heading
+       degenerate. spinAxisRelTo is the one spelling the game already uses for
+       the pole (frame.cpp:27). */
+    s.spin_axis = v.frame->spinAxisRelTo(inertial);
 
-    const AscentCommand c = law.step(s, dt);
-    if(glm::length2(c.aim) < 1e-12) { return false; }
-
-    /* Back into the hull's basis: pointingTo() and ShipCmd(Aim) both speak the
-       frame the hull lives in, exactly as slewTargetDir() does when it resolves
-       prograde from the conic. */
-    const glm::dvec3 aim_hull = glm::transpose(v.frame->GetOrientRelTo(inertial)) * c.aim;
-
-    /* The latch, not the toggle: Command's Sas case releases a mode that is
-       already latched, so it is only ever sent when the mode is NOT latched. A
-       law that re-sent it every tick would flicker itself off. */
-    if(v.slewRequestMode() != SlewFree) { v.Command(ShipCmd(Sas, SlewFree), true); }
-    v.Command(ShipCmd(Aim, aim_hull), true);
+    const AscentCommand c = law.step(s);
+    /* A NaN aim means something upstream is broken: ShipCmd(Aim) would leave the
+       hull holding its last good setpoint, so refuse the whole tick rather than
+       send it (pointingTo() fails closed on the same thing, #609). */
+    if(!(std::isfinite(c.aim.x) && std::isfinite(c.aim.y) && std::isfinite(c.aim.z))) { return false; }
+    /* A ZERO aim is a different answer -- "there is no direction to point at" --
+       and it is what the Done and Failed ticks return. It cancels the aim, not
+       the rest of the command: an early return here left the throttle lever
+       wherever the circularisation burn had parked it (the 610 case's
+       phase=done rows read lever=0.05), so the mission ended with a partly open
+       engine still in the law's hand. */
+    const bool aimed = glm::length2(c.aim) > 1e-12;
+    if(aimed) {
+        /* Back into the hull's basis: pointingTo() and ShipCmd(Aim) both speak
+           the frame the hull lives in, exactly as slewTargetDir() does when it
+           resolves prograde from the conic. */
+        const glm::dvec3 aim_hull = glm::transpose(v.frame->GetOrientRelTo(inertial)) * c.aim;
+        /* The latch, not the toggle: Command's Sas case releases a mode that is
+           already latched, so it is only ever sent when the mode is NOT latched.
+           A law that re-sent it every tick would flicker itself off. */
+        if(v.slewRequestMode() != SlewFree) { v.Command(ShipCmd(Sas, SlewFree), true); }
+        v.Command(ShipCmd(Aim, aim_hull), true);
+    }
+    assert(!c.burn || aimed);   // burning along no direction is a contradiction, not a coast
 
     /* burn is not decoration. Armed thrust is cleared every tick (tick.cpp), so
        ShipCmd(Thrust) is what lights the engine -- and the throttle LEVER is a
@@ -297,5 +369,5 @@ bool flyAscent(Vehicle &v, AscentLaw &law, double dt) {
            lever, and the law takes it back the tick the key is up. */
         v.Command(ShipCmd(ThrottleSet, (float)(c.burn ? c.throttle : 0.0)), true);
     }
-    return true;
+    return aimed;
 }
