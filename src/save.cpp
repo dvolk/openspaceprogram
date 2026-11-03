@@ -687,7 +687,7 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
            then fires on the FIRST stage press -- those gates are `p->stage == stage`
            (vehicle.cpp:3438, 1967) -- while the stages the ship was built with sit
            ~999,994 presses away, since advanceStage() steps the counter down one at a
-           time (vehicle.cpp:1961). Meanwhile getThrust() skips thrusters with
+           time (vehicle.cpp:1961). Meanwhile producedThrust() skips thrusters with
            `p->stage < as` (vehicle.cpp:1985), so the real engines make no thrust until
            the counter grinds down to them, while an outlier ENGINE is live from the
            frame the ship loads and can never be cut. The part popup prints the number

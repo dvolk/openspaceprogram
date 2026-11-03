@@ -1232,7 +1232,7 @@ int main(int argc, char **argv)
         {
             const SceneDef &sc = curScene(game);
             if(sc.pilot && ship != nullptr) {
-                // Firing = an engine armed THIS tick. getThrust() is the
+                // Firing = an engine armed THIS tick. producedThrust() is the
                 // POTENTIAL at the current throttle, so it would hum at the
                 // default 100% with the thrust key never touched.
                 bool firing = false;
@@ -1245,7 +1245,7 @@ int main(int argc, char **argv)
                 if(audDbg && firing != lastFiring) {
                     printf("[hook] firing %d -> %d (armed=%d, thrust=%.0f N, throttle=%.2f)\n",
                            (int)lastFiring, (int)firing, armedN,
-                           ship->getThrust(), (double)ship->thruster_util);
+                           ship->producedThrust(), (double)ship->thruster_util);
                     fflush(stdout);
                     lastFiring = firing;
                 }

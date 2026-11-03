@@ -855,9 +855,25 @@ public:
 
     int numStages();
 
-    double getThrust();
+    /* THE TWO THRUST NUMBERS, and why both exist (#400).
+       producedThrust() is what the engines are doing RIGHT NOW: rated thrust times the
+       current throttle times the air state. Anything that COMMANDS the throttle and
+       then reads this back reads its own zero -- the prototype in
+       reports/autopilots2026_10_24 computed a_max from it while coasting, got 0.00 every
+       tick, took its own "coast" branch and never reignited (silent: a burn that never
+       happens, not a crash).
+       availableThrust() is what the ignited stage COULD do at full throttle, and
+       availableAccel() is that over the CURRENT mass: the a_max a throttle law, a
+       gravity turn or a landing predictor needs. It does not move with the throttle, so
+       a law can plan with it and act on the throttle without a feedback loop through its
+       own output. It does include the current air state and the stage gate, so "available"
+       means available to THIS stage HERE -- a jet in vacuum says zero, and a jettisoned
+       stage is not available at all. */
+    double producedThrust();
+    double availableThrust();
+    double availableAccel();
 
-    // current Thrust-to-weight ratio
+    // current Thrust-to-weight ratio (at the current throttle)
     double getTWR();
 
     // full throttle TWR
@@ -1234,10 +1250,6 @@ protected:
     // Forces/torques straight on the Bullet bodies, reachable only through
     // Command(). Protected: the EVA kerbal reuses the rotation-model helpers.
     void adjustThrottle(float delta);
-
-    /* Full-throttle thrust RIGHT NOW (N): every ignited engine, jets at
-       sea-level peak. */
-    double GetActiveThrust();
 
     /* Once per tick: consumes the fuel and arms the per-thruster thrust
        (applyThrustForce applies it per substep). A thruster that can't consume

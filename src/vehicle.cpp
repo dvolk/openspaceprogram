@@ -1879,7 +1879,7 @@ void Vehicle::finalize() {
        every part: seeding the high end at 1 (#519) skipped the ROOT part's own label --
        the one part every ship has -- so a ship whose root carries the top label never
        had that label counted. The part staged itself live from the first frame
-       (getThrust only skips `stage < as`, and the counter only falls), its decoupler and
+       (producedThrust only skips `stage < as`, and the counter only falls), its decoupler and
        chute never fired (both test `stage == stage`), the HUD's `Stage: x / y` under-read
        the part popup's own number, and minStage_ could end up above activeStage_. No
        clamp to 1 is needed: every writer either BOUNDS the number (the ship loader,
@@ -2226,7 +2226,7 @@ int Vehicle::deployChutes(int stage) {
 
 int Vehicle::numStages() { return totalStages_; }
 
-double Vehicle::getThrust() {
+double Vehicle::producedThrust() {
     /* Actual thrust at the current throttle and air state (jets via jetThrust, drag.h). */
     const int as = activeStage();
     const double v_air = glm::length(airRelativeVel(get_center_of_mass()));
@@ -2248,11 +2248,11 @@ double Vehicle::getThrust() {
 }
 
 double Vehicle::getTWR() {
-    return getThrust() / (getMass() * m_parent->g);
+    return producedThrust() / (getMass() * m_parent->g);
 }
 
 double Vehicle::getFullThrustTWR() {
-    return GetActiveThrust() / (getMass() * m_parent->g);
+    return availableThrust() / (getMass() * m_parent->g);
 }
 
 double Vehicle::getMaxTWR() {
@@ -2260,7 +2260,7 @@ double Vehicle::getMaxTWR() {
     bool burn[(int)ResourceType::Num];
     enginePropellantMask(burn, /*includeJets=*/true);
     const double remaining_fuel = fuelMassMasked(burn); /* kg */
-    return GetActiveThrust() / ((getMass() - remaining_fuel) * m_parent->g);
+    return availableThrust() / ((getMass() - remaining_fuel) * m_parent->g);
 }
 
 void Vehicle::setVelocity(glm::dvec3 vel) {
@@ -4469,17 +4469,25 @@ void Vehicle::adjustThrottle(float delta) {
     if(thruster_util < 0) { thruster_util = 0; }
 }
 
-double Vehicle::GetActiveThrust() {
-    /* FULL-THROTTLE thrust of the ignited engines: rockets at their rated value, jets
-       at their sea-level peak (v = v_e/2), so a jet is dead in vacuum. */
+double Vehicle::availableThrust() {
+    /* FULL-THROTTLE thrust of the ignited engines: rockets at their rated value, jets at
+       their PEAK speed (v = v_e/2, where drag.h's ram term tops out) in the air they
+       actually have. The air has to be the LOCAL density and not the authored sea level:
+       a jet at 15 km cannot produce its sea-level number, and since #400 this is the
+       number a throttle law sizes a burn with, so sea level here would make a
+       high-altitude jet look several times stronger than it is. rho_sea stays the
+       denominator because drag.h's air gate is relative to the body's own sea level, and
+       the peak speed is the honest CEILING -- the ship's own speed only ever lowers the
+       ram term from it, which is what producedThrust() reports. */
     const int as = activeStage();
+    const double rho = airDensityAtCom();
     const double rho_sea = (m_parent != nullptr)
         ? (double)m_parent->surface.atmosphere.sea_level_density : 0.0;
     double t = 0;
     for(Part *p : parts) {
         if(!p->isThruster() || p->stage < as) { continue; }
         if(p->isJet()) {
-            t += jetThrust(p->def->exhaust_velocity * 0.5, rho_sea, rho_sea,
+            t += jetThrust(p->def->exhaust_velocity * 0.5, rho, rho_sea,
                            p->def->jet_fan_thrust, p->jetFuelRate(),
                            p->def->exhaust_velocity, p->def->jet_intake_area);
         } else {
@@ -4487,6 +4495,14 @@ double Vehicle::GetActiveThrust() {
         }
     }
     return t * exhaust_scale;
+}
+
+double Vehicle::availableAccel() {
+    /* m/s^2 at full throttle at the CURRENT mass. A burn plan wants this and not the
+       thrust: what a stage can do to this hull HERE, so a throttle law can size a burn
+       without reading back the throttle it is writing (#400). Draining propellant makes
+       it a pessimistic bound -- getMaxTWR() is the optimistic end of that range. */
+    return availableThrust() / getMass();
 }
 
 void Vehicle::ApplyThrust(double step) {

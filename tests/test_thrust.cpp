@@ -53,6 +53,11 @@
 #include "physics.h"
 #include "timestep.h"  // substepCount() -- the tick loop's substep plan
 
+#include <deque>
+
+#include "vehicle.h"  // #400: Vehicle::producedThrust / availableThrust / availableAccel
+#include "terrain.h"  // and the body whose air a jet breathes
+
 static int g_failures = 0;
 static int g_checks = 0;
 
@@ -276,12 +281,183 @@ static void test_fuel_flow() {
     }
 }
 
+/*
+ * 4. THE TWO THRUST NUMBERS (#400). producedThrust() is the engine command read back
+ *    (rated x throttle x the air as it is); availableThrust() is what the ignited stage
+ *    COULD do at full throttle in the air it actually has; availableAccel() is that over
+ *    the current mass. Guidance needs the last two: the prototype in
+ *    reports/autopilots2026_10_24 sized a circularization burn with a_max =
+ *    getThrust()/mass while coasting, read its own zero throttle every tick, took its own
+ *    "coast" branch and never reignited -- a burn that silently never happened.
+ *
+ * Hand-built so every number is hand-checkable. Pod 1000 kg; a 20000 N engine (5 kg/s x
+ * 4000 m/s) at STAGE 3; a 50000 N engine (10 x 5000) at stage 1; a jet at stage 1 (fan
+ * 100 N, 1 kg/s at ve 1000, intake 0.04 m^2). Total 1250 kg. The ship sits 1000 m above
+ * the body's sea level and is not moving, so rho = E = exp(-1000/8000) of sea level and
+ * the jet's ram term is zero; no tank is modelled because these reads are POTENTIALS --
+ * they never consult the fuel.
+ *   stage 3 is the first live stage, so only the 20000 N engine is available at first,
+ *   and that number does not care about air at all;
+ *   the jet at rest in that air is E*(fan + mdot*ve) = 1100E, and at its best speed
+ *   (v = ve/2, where drag.h's ram term tops out) it is E*1100 + rho*A*(ve/2)^2 =
+ *   1100E + 10000E = 11100E; in vacuum, neither -- air is what it breathes.
+ */
+struct ThrustRig {
+    std::deque<PartDef> defs;
+    Vehicle *v = nullptr;
+};
+
+/* A part for this rig: `rate` x `ve` is the rated thrust, and rate 0 (the pod) simply
+   means it is not a thruster. `jet` makes it air-breathing instead. */
+static Part *mkRigPart(std::deque<PartDef> &defs, const char *name, double mass,
+                       double rate, double ve, int stage, bool jet = false) {
+    Body *b = new Body;
+    b->btBody = nullptr;
+    b->shape = new btBoxShape(btVector3(0.5f, 0.5f, 0.5f));
+    b->mass = mass;
+    defs.push_back(PartDef());
+    PartDef &d = defs.back();
+    d.name = name;
+    d.mass = (float)mass;
+    d.exhaust_velocity = ve;
+    if(jet) {
+        d.jet = true;
+        d.setPropellantRate(ResourceType::JetFuel, rate);
+        d.jet_fan_thrust = 100.0;
+        d.jet_intake_area = 0.04;
+    } else {
+        d.setPropellantRate(ResourceType::Hydrogen, rate * 0.5);
+        d.setPropellantRate(ResourceType::LOX, rate * 0.5);
+    }
+    d.synthesizeNodes();
+    Part *p = new Part;
+    p->body = b;
+    p->def = &d;
+    p->stage = stage;
+    return p;
+}
+
+/* A body whose sea level is its own surface, so a ship at `radius` + 1000 sits in 1000 m
+   of air -- or in nothing, if rho_sea is 0. */
+static TerrainBody *mkPressureBody(double rho_sea) {
+    TerrainBody *body = new TerrainBody;
+    body->name = "thrustball";
+    body->radius = 600000.0f;
+    body->g = 9.81;
+    body->surface.sea_level = 0.0f;
+    body->surface.atmosphere.sea_level_density = (float)rho_sea;
+    body->surface.atmosphere.scale_height = 8000.0;
+    return body;
+}
+
+static void test_produced_and_available_thrust() {
+    printf("== producedThrust / availableThrust / availableAccel (#400) ==\n");
+    const double ALT = 1000.0;
+    double E = 0.0;    // rho/rho_sea where the ship actually sits; set after placing
+    TerrainBody *body = mkPressureBody(1.0);
+    ThrustRig r;
+    r.v = new Vehicle;
+    r.v->name = "twothrusts";
+    Part *pod = mkRigPart(r.defs, "pod", 1000.0, 0.0, 0.0, 1);
+    r.v->setRoot(pod);
+    Part *eng3 = mkRigPart(r.defs, "engine3", 100.0, 5.0, 4000.0, 3);
+    r.v->attachMode(eng3, 0, AttachMode::Down, 0.0);
+    Part *eng1 = mkRigPart(r.defs, "engine1", 100.0, 10.0, 5000.0, 1);
+    r.v->attachMode(eng1, 0, AttachMode::Down, 0.0);
+    Part *jet = mkRigPart(r.defs, "jet", 50.0, 1.0, 1000.0, 1, /*jet=*/true);
+    r.v->attachMode(jet, 0, AttachMode::Down, 0.0);
+    r.v->init();
+    CHECK_TRUE(r.v->numStages() >= 3, "the rig spans three stages");
+    CHECK_TRUE(r.v->activeStage() == 3, "and the counter starts at the top, so stage 3"
+               " is what is live to begin with");
+
+    r.v->m_parent = body;
+    r.v->placeShip(glm::dvec3(0.0, 0.0, 600000.0 + ALT), glm::dmat3(1.0));
+    /* The air the model reads is the air at the COM, and a compound's COM is not its
+       transform origin (the engines hang below it), so the altitude -- and therefore the
+       air fraction E every jet number below uses -- is MEASURED here rather than assumed
+       to be ALT. The COM's own geometry is test_inertia's business. */
+    E = std::exp(-(glm::length(r.v->get_center_of_mass()) - 600000.0) / 8000.0);
+
+    /* COASTING: the whole point of #400. The throttle is zero, so the read-back is zero,
+       and a law that plans with it has no way to know the engine is fine. */
+    r.v->thruster_util = 0.0f;
+    CHECK_NEAR(r.v->producedThrust(), 0.0, 0.0, "nothing produced at zero throttle");
+    CHECK_NEAR(r.v->availableThrust(), 20000.0, 1e-12,
+               "20000 N available anyway: the stage-3 engine at full throttle, and a"
+               " rocket does not care that there is air here");
+    CHECK_NEAR(r.v->availableAccel(), 16.0, 1e-12,
+               "over 1250 kg that is 16 m/s^2 of a_max -- the number a burn plan needs"
+               " while the throttle is still at zero");
+
+    /* The two numbers move differently, and that is what makes them two. */
+    r.v->thruster_util = 0.5f;
+    CHECK_NEAR(r.v->producedThrust(), 10000.0, 1e-12, "half a throttle, half the"
+               " production -- of the live stage only (the stage-1 engines and the jet"
+               " are gated by the stage counter)");
+    CHECK_NEAR(r.v->availableThrust(), 20000.0, 1e-12, "available does not move with"
+               " the throttle");
+    CHECK_NEAR(r.v->availableAccel(), 16.0, 1e-12, "so a_max is stable while the law"
+               " writes the throttle -- no feedback through its own output (#400's"
+               " flip-flop)");
+    CHECK_NEAR(r.v->getFullThrustTWR() / r.v->getTWR(), 2.0, 1e-12,
+               "the Vessel window's current-over-full TWR pair is produced-over-"
+               "available, not two spellings of one number");
+
+    /* Stage down: the rest becomes available, the jet included. */
+    r.v->advanceStage();
+    r.v->advanceStage();
+    CHECK_TRUE(r.v->activeStage() == 1, "the counter grinds down one press at a time");
+    CHECK_NEAR(r.v->availableThrust(), 70000.0 + 11100.0 * E, 1e-9,
+               "20000 + 50000 + the jet at ITS BEST SPEED in THIS air: E*(100 + 1*1000)"
+               " + rho*0.04*500*500, with rho = E");
+    CHECK_NEAR(r.v->producedThrust(), 0.5 * (70000.0 + 1100.0 * E), 1e-9,
+               "at half throttle the jet is asked for what it gives standing still"
+               " (fan + mdot*ve, gated by the air), because producedThrust uses the"
+               " speed the ship actually has");
+    CHECK_NEAR(r.v->availableAccel(), (70000.0 + 11100.0 * E) / 1250.0, 1e-9,
+               "and the a_max that stage-down just bought, at the same mass");
+    CHECK_TRUE(r.v->availableThrust() > r.v->producedThrust(),
+               "at half throttle available still leads produced");
+
+    /* Air is a fuel, not a decoration: in vacuum the jet contributes nothing to either
+       number, and the rockets do not notice. */
+    TerrainBody *vac = mkPressureBody(0.0);
+    r.v->m_parent = vac;
+    r.v->placeShip(glm::dvec3(0.0, 0.0, 600000.0 + ALT), glm::dmat3(1.0));
+    CHECK_NEAR(r.v->availableThrust(), 70000.0, 1e-12, "the jet's air money is gone in"
+               " vacuum: the stage-1 pair is all there is");
+    CHECK_NEAR(r.v->producedThrust(), 35000.0, 1e-12, "and the same at half throttle");
+    r.v->thruster_util = 1.0f;
+    CHECK_NEAR(r.v->producedThrust(), r.v->availableThrust(), 1e-12,
+               "rockets at full throttle: the two agree, because they are the same"
+               " engines read with and without the throttle");
+    r.v->m_parent = body;
+    r.v->placeShip(glm::dvec3(0.0, 0.0, 600000.0 + ALT), glm::dmat3(1.0));
+    CHECK_TRUE(r.v->availableThrust() > r.v->producedThrust(),
+               "with air back under it, and the ship standing still, available is the"
+               " CEILING: the ram term it counts is the one a ship flying at ve/2 would"
+               " get, which this one is not. That is the right answer for sizing a burn"
+               " and the wrong one for a landing predictor -- hence two numbers.");
+
+    /* The stage gate is the other half of "available": a part below the counter is not
+       available at all -- the same rule producedThrust has always applied, and why an
+       out-of-sequence stage number makes an engine unreachable (#299's authoring
+       bound). */
+    r.v->advanceStage();   /* minStage_ is 1, so this does nothing */
+    CHECK_TRUE(r.v->activeStage() == 1, "the counter stops at the lowest stage");
+    delete r.v;
+    delete body;
+    delete vac;
+}
+
 int main() {
     test_inertia_diag();
     printf("\n");
     test_substep_delivery();
     printf("\n");
     test_fuel_flow();
+    test_produced_and_available_thrust();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

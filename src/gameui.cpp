@@ -2193,7 +2193,11 @@ void drawUIReadouts(Game &g) {
         /* "Throttle", not "Thrust Util": the engine command value R/F ramp (0..1), not a
            utilisation ratio. */
         ImGui::Text("Throttle: %.0f%%", ship->thruster_util * 100);
-        ImGui::Text("Thrust: %.2fN", ship->getThrust());
+        /* Produced / available, the same current-over-full shape as the TWR row
+           below it (#400): a coasting ship reads 0.00 here and 49984.00 there, which
+           is what tells a builder the engine is fine and the throttle is not. */
+        ImGui::Text("Thrust: %.2f/%.2fN", ship->producedThrust(),
+                    ship->availableThrust());
         ImGui::Text("Current TWR: %.2f/%.2f", ship->getTWR(), ship->getFullThrustTWR());
         ImGui::Text("Max TWR: %.2f", ship->getMaxTWR());
         /* The wheels' authority as the flight model bills it RIGHT NOW: the wheel

@@ -25,7 +25,8 @@
    number outside the ship's own sequence rewrites how flight runs: the stage counter
    starts at the highest stage any part carries (vehicle.cpp:1650-1658), so an outlier
    becomes the top of the sequence -- its decoupler fires on the first stage press, the
-   stages the ship was built with sit thousands of presses away, and getThrust() cuts
+   stages the ship was built with sit thousands of presses away, and producedThrust()
+   cuts
    every engine below the counter (vehicle.cpp:1985) until that counter grinds down to
    them. The VAB stage box clamps to this so the editor cannot create what the loaders
    refuse. */

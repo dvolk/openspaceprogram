@@ -153,7 +153,7 @@ static glm::dvec3 worldPos(Vehicle *owner, Part *p) {
    own label was never compared, so a ship whose root carries the top label never had
    that label counted. Here that means droppedPartsAtStage(top) drops nothing, because
    the counter never reaches it -- in flight the same split shows up as a part that is
-   live from the first frame (getThrust skips only `stage < as`, and the counter only
+   live from the first frame (producedThrust skips only `stage < as`, and the counter only
    falls), a decoupler and chute that never fire (both test `stage == stage`), and an
    HUD `Stage: x / y` that disagrees with the part popup's own number.
 
