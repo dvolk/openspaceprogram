@@ -3,6 +3,7 @@
 #include "frame.h"
 #include "terrain.h"
 #include <cmath>
+#include <map>
 #include <algorithm>
 
 /* Tuning constants, hoisted so the flight test can be re-flown against a
@@ -109,13 +110,19 @@ AscentCommand AscentLaw::step(const GuidanceState &s, double dt) {
 
     if(phase_ == AscentPhase::Pad && launch_h_ == glm::dvec3(0.0)) { setLaunchHeading(s); }
 
-    /* A stage that cannot push is not a stage to fly. availableAccel() is a
-       potential (it never reads the fuel), so this catches the dead stage only
-       through what the ship can actually do right now. */
-    const bool can_thrust = s.accel_max > 0.0;
+    /* A stage that cannot push is not a stage to fly, and the two ways a stage
+       cannot push are different answers: no engine pointing the way, or nothing
+       left to burn. availableAccel() alone cannot tell them apart -- it is a
+       potential that never reads the tanks (#607) -- so it reads healthy at zero
+       fuel and, without the driver's has_propellant, the law would fly a dry
+       hull for ever: aiming, arming a burn that produces nothing, and never
+       reaching Done or Failed. */
+    const bool can_thrust = s.accel_max > 0.0 && s.has_propellant;
     if(!can_thrust && (phase_ == AscentPhase::Pad || phase_ == AscentPhase::Ascent
                        || phase_ == AscentPhase::Coast || phase_ == AscentPhase::Circ)) {
-        phase_ = AscentPhase::Failed; why_ = "no thrust available"; return c;
+        phase_ = AscentPhase::Failed;
+        why_ = s.accel_max > 0.0 ? "the tanks are dry" : "no thrust available";
+        return c;
     }
 
     /* Done is a pair of apsides, never a speed, and the pair is a FLOOR and a
@@ -252,6 +259,11 @@ bool flyAscent(Vehicle &v, AscentLaw &law, double dt) {
     s.grounded = v.isGrounded();
     s.railed = v.onRails;
     s.accel_max = v.availableAccel();
+    /* The tanks, not the potential: see the can_thrust gate in step(). A map of
+       a handful of fuel groups per logic tick is nothing beside the substeps. */
+    double fuel_kg = 0.0;
+    for(const std::map<int, double>::value_type &g : v.groupFuelMasses()) { fuel_kg += g.second; }
+    s.has_propellant = fuel_kg > 0.0;
     const glm::dvec3 om = v.frame->GetOrientRelTo(inertial) * v.frame->omega();
     s.spin_axis = glm::length2(om) > 1e-18 ? glm::normalize(om) : glm::dvec3(0.0);
 

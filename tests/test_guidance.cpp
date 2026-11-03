@@ -42,8 +42,10 @@ struct Flight {
 
 /* One closed-loop run: the law's aim becomes an acceleration, gravity is the
    only other force (Moho has no air), and mass falls away as the engine eats.
-   `accel_cap` clamps what the stage can put out, so a case can model a weak
-   stage without changing anything else. */
+   The dry stage is modelled the way the game reports it: availableAccel() is a
+   potential that never reads the tanks (#607), so accel_max stays healthy at
+   zero fuel and it is has_propellant that goes false. Getting this backwards
+   would have the test certify a path the driver never takes. */
 static Flight simulate(const AscentTarget &target, double dt = 1.0/120.0,
                        int max_s = 900, bool trace = false) {
     Flight f;
@@ -58,7 +60,8 @@ static Flight simulate(const AscentTarget &target, double dt = 1.0/120.0,
         s.pos = pos; s.vel = vel;
         s.mu = MU_MOHO; s.sea_r = R_MOHO;
         s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
-        s.accel_max = mass > M_FULL - PROPPANT ? THRUST / mass : 0.0;
+        s.accel_max = THRUST / mass;     // a potential: fuel-blind, as in the game
+        s.has_propellant = mass > M_FULL - PROPPANT + 1e-9;
         const double r = glm::length(pos);
         s.grounded = !lifted && r - R_MOHO < 100.0 && glm::length(vel) < 3.0;
         s.railed = false;
@@ -217,8 +220,19 @@ static void test_the_law_fails_loudly_not_silently() {
     CHECK_TRUE(law.phase() == AscentPhase::Failed, "and the law says failed");
     CHECK_TRUE(std::string(law.why()).find("thrust") != std::string::npos, "with the reason");
 
+    /* The hole the potential read leaves: engines rated 18 m/s^2 and nothing to
+       burn. availableAccel() says healthy, so without the driver's tanks check
+       the law would aim and arm a burn that does nothing, for ever. */
+    AscentLaw law_dry(t);
+    s.accel_max = 18.0; s.has_propellant = false;
+    const AscentCommand dry = law_dry.step(s, 1.0/60.0);
+    CHECK_NEAR(glm::length(dry.aim), 0.0, 0.0, "a dry stage buys no aim");
+    CHECK_TRUE(law_dry.phase() == AscentPhase::Failed, "and the law says failed, not still flying");
+    CHECK_TRUE(std::string(law_dry.why()).find("dry") != std::string::npos,
+               "naming the tanks rather than the engines");
+
     AscentLaw law2(t);
-    s.accel_max = 18.0; s.mu = 0.0;
+    s.accel_max = 18.0; s.has_propellant = true; s.mu = 0.0;
     law2.step(s, 1.0/60.0);
     CHECK_TRUE(law2.phase() == AscentPhase::Failed, "no mu, no mission");
 }

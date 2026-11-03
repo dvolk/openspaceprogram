@@ -53,6 +53,10 @@ struct GuidanceState {
     double sea_r = 0.0;                 // the body's sea-level radius, m
     glm::dvec3 spin_axis = glm::dvec3(0.0);  // unit; zero if the body does not spin
     double accel_max = 0.0;             // availableAccel(), m/s^2 at full throttle
+    bool has_propellant = true;         // anything left to burn. The driver MUST
+                                        // fill this: availableAccel() is a potential
+                                        // that never reads the tanks (#607), so on
+                                        // its own it reads healthy at zero fuel.
     bool grounded = false;
     bool railed = false;                // Bullet is not stepping this hull
 };
