@@ -327,6 +327,45 @@ static void test_oblique_lines_split_once() {
                1e-6, "about an oblique axis, each drum brings its own cos");
 }
 
+/* A DRUM AND A FIN COVERING THE SAME LINE (#426 slice 2). This is the shape the one
+   combined actuatorSolve has to get right, and the reason it is combined: act the
+   demand on the two of them separately and a line two actuators both cover gets spent
+   twice (#420's bug, in a new costume). The ratings are three orders apart, which is
+   what a real airframe looks like in cruise -- 0.35 rad of a 3600 N m/rad fin is
+   1260 N m against a pod's 100 N m drum -- so the split is pro-rata and the drum is
+   nearly a rounding error. That is the honest ratio between the air and a drivetrain,
+   not a preference.
+   The reconstruction pin at the end is the identity actuateAttitude leans on: it
+   subtracts the SURFACE rows' share from the delivered vector and hands those
+   setpoints to the air, so the per-row share has to add back to the delivered total
+   or the hull would be over- or under-torqued by exactly the difference. */
+static void test_a_drum_and_a_fin_on_one_line_share_it() {
+    printf("== a drum and a fin on one line (#426) ==\n");
+    const std::vector<ActuatorRow> rows = {
+        { glm::dvec3(0.0, 0.0, -3600.0), 0.35 },  // the fin: N m per rad, 0.35 rad stop
+        { glm::dvec3(0.0, 0.0, -1.0), 100.0 },    // the drum: N m along its own axis
+    };
+    const double line = 3600.0 * 0.35 + 100.0;   // 1360 N m, both senses free
+    CHECK_NEAR(actuatorTorqueAbout(rows, glm::dvec3(0, 0, 1)), line, 1e-9,
+               "the line is worth both ratings, whoever is standing on it");
+    std::vector<double> sp;
+    const glm::dvec3 got = actuatorSolve(rows, glm::dvec3(0.0, 0.0, -1360.0), sp);
+    CHECK_NEAR(glm::length(got), 1360.0, 1e-9, "asked for exactly the line: it lands");
+    CHECK_NEAR(std::fabs(sp[0]), 0.35, 1e-12, "the fin goes to its stop");
+    CHECK_NEAR(std::fabs(sp[1]), 100.0, 1e-12, "and the drum tops up the rest");
+    glm::dvec3 recon(0.0);
+    for(size_t k = 0; k < rows.size(); k++) { recon += sp[k] * rows[k].axis; }
+    CHECK_NEAR(glm::length(recon - got), 0.0, 1e-9,
+               "each row's share adds back to the delivered vector, which is what lets"
+               " one actuator be billed by the solver and the other by the air");
+    /* Past the line both stop, and the DIRECTION survives: the shortfall is along
+       the line, not sideways. */
+    const glm::dvec3 over = actuatorSolve(rows, glm::dvec3(0.0, 0.0, -2000.0), sp);
+    CHECK_NEAR(glm::length(over), line, 1e-9, "asked past the line: it takes the line");
+    CHECK_NEAR(std::fabs(sp[0]), 0.35, 1e-12, "fin at its stop");
+    CHECK_NEAR(std::fabs(sp[1]), 100.0, 1e-12, "drum at its rating");
+}
+
 int main() {
     test_capability_is_about_an_axis();
     test_one_line();
@@ -334,6 +373,7 @@ int main() {
     test_oblique_lines_split_once();
     test_effectiveness_rows();
     test_a_fin_ring_splits_and_a_lost_fin_shows();
+    test_a_drum_and_a_fin_on_one_line_share_it();
     printf("test_actuators: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

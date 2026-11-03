@@ -1192,32 +1192,6 @@ inline double controlCl(double cl, double clControl) {
     return (clControl > 0.0) ? clControl : cl;
 }
 
-/* #426: how much torque ONE RADIAN of this surface's deflection buys, in N m/rad.
-   controlForce pushes along the plate's own zero-alpha normal (`pushDir`, the mount
-   fact #495 chose over the live flow), and the steering moment is that force AT the
-   surface, so the row is ri x pushDir scaled by q*S*cl -- the same arithmetic the
-   force law bills, stated as a derivative instead of a force.
-   Two deliberate simplifications, both budget-not-delivery and both named:
-   - the LINEAR slope. Past stall_angle the force law droops (#494), so a surface
-     worked near or past its stall delivers LESS than this says; the delivered number
-     is what actuators.h actuatorSolve's caller bills, as in #599 for the wheels.
-   - the COM's q, not the surface's local flow. A turning hull sweeps its surfaces
-     (#483: 0.93-1.07 of the COM's q on the jet), which is exactly what makes a ring's
-     two halves unequal -- a difference this budget does not see and the force law does.
-   A rig whose push line runs through its pivot levers nothing, so it buys a ZERO row:
-   same degeneracy test and the same relative tolerance as controlDeflection's (#495),
-   moved from the deflection to the row. It matters here for a second reason --
-   actuators.h divides a line's share by the row's length, so a near-zero row would be
-   asked for a near-infinite deflection. */
-inline glm::dvec3 surfaceTorquePerRadian(double q, double S, double cl,
-                                         const glm::dvec3 &ri,
-                                         const glm::dvec3 &pushDir) {
-    if(q <= 0.0 || S <= 0.0 || cl <= 0.0) { return glm::dvec3(0.0); }
-    const glm::dvec3 lever = glm::cross(ri, pushDir);
-    if(!(glm::dot(lever, lever) > 1e-12 * glm::dot(ri, ri))) { return glm::dvec3(0.0); }
-    return lever * (q * S * cl);
-}
-
 /* The CONTROL COMMAND (#492): how far a surface travels for a stick at `stick`
    (units of FULL travel, so -1..+1; the shipped keys are binary +-1) holding a
    standing `trim` in the same units. Trim joins the COMMAND rather than the mount,
@@ -1324,6 +1298,45 @@ inline double controlDeflection(const PartAero &pa, const glm::dvec3 &ri,
        the COM) lands on the degenerate side either way, which is the answer we want. */
     if(!(lever * lever > 1e-12 * glm::dot(ri, ri))) { return 0.0; }
     return controlDeflectionSign(lever, targetSign) * cmdFrac * maxDefl;
+}
+
+/* #426: the surface as an ACTUATOR ROW (actuators.h) -- the torque one radian of
+   this surface's COMMAND buys, N m/rad, pointed the way a POSITIVE command pushes and
+   limited by its own travel. controlForce pushes along the plate's own zero-alpha
+   normal (`pushDir`, the mount fact #495 chose over the live flow) and the steering
+   moment is that force AT the surface, so the row is ri x pushDir scaled by q*S*cl --
+   the same arithmetic the force law bills, stated as a derivative instead of a force.
+   It is the SAME SIGN and the SAME degeneracy test Vehicle::applyAeroForce applies to
+   the travel (controlRigLever / controlDeflectionSign just above), and that is the
+   whole point of putting them next to each other: a surface the aero step will refuse
+   to move buys no authority in the budget either, and a positive setpoint means a
+   positive COMMAND whichever way the plate is bolted. So the degeneracy test is on the
+   lever PROJECTED ON THE AUTHORED CONTROL AXIS (`aboutAxis`), not on the raw cross
+   product: the raw one may well lever some other axis, and the mix credits that (see
+   the returned VECTOR below), but a rig whose push decides nothing about the axis it is
+   rigged for cannot be commanded at all -- which is #495's rule, unchanged.
+   The returned vector is the raw cross product, NOT projected: this row levers whatever
+   it physically levers, so a plate at 45 deg clock levers pitch and yaw at once and
+   actuatorSolve can spend it either way. Only the SENSE is the authored axis's.
+   Two deliberate simplifications, both budget-not-delivery and both named:
+   - the LINEAR slope. Past stall_angle the force law droops (#494), so a surface
+     worked near or past its stall delivers LESS than this says; the delivered number
+     is what the caller bills, as in #599 for the wheels.
+   - the COM's q, not the surface's local flow. A turning hull sweeps its surfaces
+     (#483: 0.93-1.07 of the COM's q on the jet), which is exactly what makes a ring's
+     two halves unequal -- a difference this budget does not see and the force law does.
+   A zero row also keeps actuators.h honest: it divides a line's share by the row's
+   length, so a hair-length row would be asked for a near-infinite deflection. */
+inline glm::dvec3 surfaceTorquePerRadian(double q, double S, double cl,
+                                         const glm::dvec3 &ri,
+                                         const glm::dvec3 &pushDir,
+                                         const glm::dvec3 &aboutAxis,
+                                         double targetSign = -1.0) {
+    if(q <= 0.0 || S <= 0.0 || cl <= 0.0) { return glm::dvec3(0.0); }
+    const double lever = glm::dot(glm::cross(ri, pushDir), aboutAxis);
+    if(!(lever * lever > 1e-12 * glm::dot(ri, ri))) { return glm::dvec3(0.0); }
+    return controlDeflectionSign(lever, targetSign) * glm::cross(ri, pushDir)
+         * (q * S * cl);
 }
 
 /* WHICH SHIP AXIS a control-surface readout is quoted against, and which way that

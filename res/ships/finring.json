@@ -1,0 +1,17 @@
+{
+  "name": "finring",
+  "testship": true,
+  "parts": [
+    { "part": "capsule_r0.5h1.5", "id": "pod", "stage": 1 },
+    { "part": "jet_tank_r0.4h2", "id": "tank", "parent": "pod", "attach": "down", "stage": 1 },
+    { "part": "jet_r0.25h1", "id": "engine", "parent": "tank", "attach": "down", "stage": 1 },
+    { "part": "wing_r4h1.5", "id": "wing_l", "parent": "tank", "attach": "surface", "angle": 0, "z": 0.55, "stage": 1 },
+    { "part": "wing_r4h1.5", "id": "wing_r", "parent": "tank", "attach": "surface", "angle": 180, "z": 0.55, "stage": 1 },
+    { "part": "wing_r1h1", "id": "tail_l", "parent": "engine", "attach": "surface", "angle": 0, "z": 0.4, "roll": -5, "stage": 1 },
+    { "part": "wing_r1h1", "id": "tail_r", "parent": "engine", "attach": "surface", "angle": 180, "z": 0.4, "roll": 5, "stage": 1 },
+    { "part": "elevator_r0.8h0.7", "id": "ring_0", "parent": "engine", "attach": "surface", "angle": 45, "z": -0.4, "stage": 1 },
+    { "part": "elevator_r0.8h0.7", "id": "ring_1", "parent": "engine", "attach": "surface", "angle": 135, "z": -0.4, "stage": 1 },
+    { "part": "elevator_r0.8h0.7", "id": "ring_2", "parent": "engine", "attach": "surface", "angle": 225, "z": -0.4, "stage": 1 },
+    { "part": "elevator_r0.8h0.7", "id": "ring_3", "parent": "engine", "attach": "surface", "angle": 315, "z": -0.4, "stage": 1 }
+  ]
+}

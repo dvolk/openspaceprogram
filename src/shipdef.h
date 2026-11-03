@@ -63,24 +63,25 @@ struct ResourceContent {
 enum class ControlAxis { Pitch, Yaw, Roll };
 
 /* Per-axis steering parameters. Pure (no glm) so tests can pin the mapping.
-   aboutAxis is a SHIP axis only: the one the stick promises to turn, and the one
-   controlDeflectionSign measures a surface's leverage about. The force itself
-   follows the surface's own normal and its mesh hinges on its own span (#453),
-   so there is no per-axis force direction or hinge axis here. */
+   aboutAxis is a SHIP axis only, and since #426 it is NOT a promise about which key
+   turns the hull: the solver spends a surface on whatever its rig levers. What this
+   axis decides is the COMMAND SENSE -- controlDeflectionSign measures the surface's
+   leverage about it, and a surface that levers nothing about its own authored axis is
+   uncommandable and buys no authority either (#495). There used to be a stickIndex
+   beside it, wiring one key to one part; that wire is what #426 removed, so the field
+   went with it rather than waiting to be re-wired into a second actuator path.
+   The force itself follows the surface's own normal and its mesh hinges on its own
+   span (#453), so there is no per-axis force direction or hinge axis here. */
 struct ControlAxisParams {
     int aboutAxis = -1;
-    int stickIndex = -1;
     double targetSign = -1.0;
 };
 inline ControlAxisParams controlAxisParams(ControlAxis axis) {
     ControlAxisParams p;
     switch(axis) {
-        case ControlAxis::Pitch:
-            p.aboutAxis = 0; p.stickIndex = 1; p.targetSign = -1.0; break;
-        case ControlAxis::Yaw:
-            p.aboutAxis = 1; p.stickIndex = 2; p.targetSign = -1.0; break;
-        case ControlAxis::Roll:
-            p.aboutAxis = 2; p.stickIndex = 0; p.targetSign = +1.0; break;
+        case ControlAxis::Pitch: p.aboutAxis = 0; p.targetSign = -1.0; break;
+        case ControlAxis::Yaw:   p.aboutAxis = 1; p.targetSign = -1.0; break;
+        case ControlAxis::Roll:  p.aboutAxis = 2; p.targetSign = +1.0; break;
     }
     return p;
 }

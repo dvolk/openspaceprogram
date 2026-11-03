@@ -3075,12 +3075,33 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             const double clc = controlCl(d->cl, d->cl_control);
             // pure controlAxisParams (pinned in test_shipload)
             const ControlAxisParams ax = controlAxisParams(d->control_axis);
-            const float sv = stickAxis(ax.stickIndex);   // 0 when that stick is free
-            /* TRIM (#492): degrees of standing deflection the player set on THIS
-               part, converted to the stick's units so it joins the stick before the
-               sign is decided -- see drag.h::controlCommandFrac for why joining the
-               command is what makes a mirrored pair come out right. */
-            const double cmd = controlCommandFrac((double)sv,
+            /* #426: THE ASK IS THE SOLVER'S, NOT THE STICK'S. The stick stopped
+               wiring straight to a surface: three keys become one demanded torque
+               (#425 D), actuateAttitude splits it over drums AND surfaces in one
+               actuatorSolve call, and what comes back for this part is radians of
+               COMMAND -- already in the authored sense, because the row it came from was
+               built with controlDeflectionSign (#495), so it joins the trim and goes
+               through controlDeflection below exactly as the stick used to. Two things
+               this buys and one it costs, all deliberate:
+               - any demand can reach any surface whose rig levers part of it, which is
+                 the mix (#426). control_axis stays the label for WHICH KEY asks and
+                 which axis decides the rig sign, not a wall on what the plate is for.
+               - the same solve bounds what the plates can promise, so a law and a key
+                 can no longer both ask a surface for its full travel (#420's shape).
+               - and the plates answer nothing when the solver has no rows: no air, or
+                 no q, or a rig the solver was right to skip. A hull sitting on the pad
+                 used to throw its surfaces at nothing. "No air, no throw" is the
+                 honest answer; if a builder wants a rig check, that is a display
+                 feature, not a second physics wire.
+            TRIM (#492) still joins the COMMAND, in the same units (fractions of this
+            part's travel), which is what makes a mirrored pair and a canard take the
+            same trim number and still torque the same way -- see drag.h::
+            controlCommandFrac. */
+            double ask = 0.0;
+            for(const std::pair<const Part *, double> &sl : surfaceLat_) {
+                if(sl.first == p) { ask = sl.second / d->max_deflection; break; }
+            }
+            const double cmd = controlCommandFrac(ask,
                                                   glm::radians(p->trimDeg)
                                                       / d->max_deflection);
             if(cmd == 0.0) {
@@ -3093,11 +3114,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                    on it), and controlDefl stays where its per-frame reset left it.
                    The test is against the COMMAND, not the stick: a trimmed surface is
                    commanded even with nothing held, and skipping it there would make
-                   trim do nothing -- which is also why there is no dead band. The keys
-                   still send the stick binary (+-1 or exactly 0), and a fractional
-                   demand (#424) only makes `cmd` non-zero by a SMALLER amount, never
-                   near-zero-but-not-zero, so an exact compare stays safe; a dead band
-                   would swallow the small trims that make an airframe fly level. */
+                   trim do nothing -- which is also why there is no dead band. Since
+                   #426 `cmd` comes out of actuatorSolve rather than a key, and the
+                   solve's answer for a surface it did not touch is exactly 0.0 (its
+                   setpoint vector starts at zero and only a non-zero line share moves
+                   it), so an exact compare stays safe. A dead band would swallow the
+                   small trims that make an airframe fly level -- and now it would also
+                   swallow a solver's small corrections, which is what a law near
+                   attitude relies on. */
                 if(recordSurfaceAero) {
                     /* #485: a NEUTRAL surface's own angle is exactly what #454's
                        alpha term and #487's pump band want to see, so when a readout
@@ -3304,6 +3328,10 @@ void Vehicle::applyRotationForce(double h) {
        below, consumed by applyThrustForce this same substep. */
     tvcLat_ = glm::dvec3(0.0);
     tvcCalls_ = 0;
+    /* Same clear-and-assign discipline for the fin setpoints (#426): whoever asks
+       gets an ask, whoever does not gets the plates back to neutral. actuateAttitude
+       is not called at all when the demand is zero, so this is where the reset lives. */
+    surfaceLat_.clear();
     Part *ref = attitudeRef();
     /* ONE capability answer per substep (#594): the stick path, the slew law, the
        kill-rot law and the [slew] trace each used to ask attitudeAuthority() for a
@@ -4639,26 +4667,41 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
         a.heffMag   += armed * lever;
         a.tvcTorque += armed * std::sin(p->def->gimbal_max) * lever;
     }
-    /* #426 slice 1: the SURFACE rows, measured only -- see AttitudeAuthority::surfaces
-       for what does and does not spend them yet. q is the COM's, and only worth
-       asking for when the hull actually carries a steerable surface -- the TVC loop
-       above already walks every part, so it carries that answer too and a wheel-only
-       hull pays nothing for the atmosphere here.
+    /* #426: the SURFACE rows, spent by actuateAttitude -- see AttitudeAuthority::
+       surfaces for what the mix does and what a setpoint means. q is the COM's, and
+       only worth asking for when the hull actually carries a steerable surface -- the
+       TVC loop above already walks every part, so it carries that answer too and a
+       wheel-only hull pays nothing for the atmosphere here.
        The push direction is the part's own mount normal (partAxis(p,1)), NOT the live
        liftDir -- the rigging-is-a-build-fact rule of #495, which is also what keeps
-       this a per-build constant rather than a per-attitude question. */
+       this a per-build constant rather than a per-attitude question. The `about` axis
+       and targetSign are the part's authored steering axis, so the row's SENSE is the
+       command's sense; that is what lets applyAeroForce feed the setpoint straight back
+       into controlDeflection without a second sign decision, and it is what kills a
+       surface whose push decides nothing about the axis it is rigged for (#495).
+       The frame is attitudeRef()'s basis, the same one the stick, the laws and the
+       mixer speak (#571); one partRot for the whole set. */
     if(anySurface) {
         const double rho = airDensityAtCom();
         const glm::dvec3 vrel = airRelativeVel(com);
         const double q = 0.5 * rho * glm::dot(vrel, vrel);
         if(q > 0.0) {
+            const glm::dmat3 basis = partRot(ref);   // [0] right, [1] up, [2] nose
             for(const Part *p : parts) {
                 if(p->def == nullptr || !p->def->isControlSurface()) { continue; }
+                const ControlAxisParams ax = controlAxisParams(p->def->control_axis);
+                /* Every PartDef carries a ControlAxis (the loader rejects anything else
+                   and the default is pitch), so the index below cannot go out of range --
+                   asserted rather than clamped, because a surface with no steering axis
+                   would have no command sense and so no row at all. */
+                assert(ax.aboutAxis >= 0 && ax.aboutAxis < 3);
                 const glm::dvec3 eff = surfaceTorquePerRadian(
                     q, p->def->control_area, controlCl(p->def->cl, p->def->cl_control),
-                    partPos(p) - com, partAxis(p, 1));
+                    partPos(p) - com, partAxis(p, 1),
+                    basis[(size_t)ax.aboutAxis], ax.targetSign);
                 if(glm::dot(eff, eff) <= 0.0) { continue; }  // degenerate rig (#495)
                 a.surfaces.push_back({ eff, p->def->max_deflection });
+                a.surfaceParts.push_back(p);
             }
         }
     }
@@ -4676,10 +4719,13 @@ double Vehicle::attitudeTorqueAbout(const AttitudeAuthority &a,
        axis at once, whereas this buys nothing. (A NaN `axis` is caught above.) */
     const double sinToStack = glm::length(glm::cross(a.stackAxis, axis)) / std::sqrt(ax2);
     const double b = (sinToStack > 0.0) ? std::fmin(1.0, sinToStack) : 0.0;
-    /* The wheels' half asks actuators.h the same question actuateAttitude will
-       answer with the same rows, so the budget a law plans against and the torque
-       the drums deliver cannot disagree (#576). */
-    return actuatorTorqueAbout(a.wheels, axis) + a.tvcTorque * b;
+    /* The wheels' and the surfaces' halves ask actuators.h the same question
+       actuateAttitude will answer with the same rows, so the budget a law plans
+       against and the torque the actuators deliver cannot disagree (#576, #426).
+       The surface term is why a hull with no wheel at all has attitude authority in
+       air (it had none to name before #426) and why a latched law can fly a plane. */
+    return actuatorTorqueAbout(a.wheels, axis)
+         + actuatorTorqueAbout(a.surfaces, axis) + a.tvcTorque * b;
 }
 
 glm::dmat3 Vehicle::getInertia() {
@@ -4739,14 +4785,46 @@ void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
        it would go quietly wrong the day the fins (#426) or RCS rows (#595) arrive. */
     assert(++tvcCalls_ <= 1);
     tvcLat_ = lat;
-    /* The wheel half travels along the drums. What the split asks for about an axis
-       no drum covers is dropped here rather than applied anyway, which is the other
-       half of #576: the budget stopped crediting that axis, and now the actuator
-       cannot deliver it either. Setpoints are not used yet -- #579's momentum store
-       is what will want them per wheel. */
-    std::vector<double> wheelSetpoints;
-    const glm::dvec3 delivered = actuatorSolve(a.wheels, tauW, wheelSetpoints);
-    if(glm::length2(delivered) > 0.0) { ApplyTorque(hull, delivered); }
+    /* ONE solve over every row the hull can spend this substep: the drums, then the
+       control surfaces (#426). They share one vector on purpose. Two solves would
+       double-spend a line a drum and a fin both cover -- which is the shape #420's
+       double-bill lived in -- and the mix is not a mode you can switch a hull into:
+       a plate at 45 deg clock levers pitch and yaw whatever the hull also carries.
+       A wheel and a fin on one line split it pro-rata by rating, so in cruise (a fin
+       row is kN m per rad) a 100 N m drum is a rounding error on the same line, which
+       is the honest ratio between what the air and the drivetrain can do.
+       The wheel rows come first so the setpoint indices below are stable. */
+    std::vector<ActuatorRow> rows;
+    rows.reserve(a.wheels.size() + a.surfaces.size());
+    rows.insert(rows.end(), a.wheels.begin(), a.wheels.end());
+    rows.insert(rows.end(), a.surfaces.begin(), a.surfaces.end());
+    std::vector<double> setpoints;
+    const glm::dvec3 delivered = actuatorSolve(rows, tauW, setpoints);
+    /* A FIN'S SHARE NEVER TRAVELS THROUGH THIS CALL. actuatorSolve answers with a
+       torque, and for a drum that is what actually happens to the hull -- but a
+       surface steers by pushing on the AIR, and applyAeroForce bills that force from
+       the deflection it is about to be handed below. Applying the abstract torque as
+       well would charge the hull twice for one fin: once because the solver said it
+       could, once because the air agrees. So subtract the surface rows' contribution
+       and hand their setpoints to the air instead (surfaceLat_, read this same
+       substep -- the tick runs control before aero for exactly this reason).
+       With no surface rows the subtraction is zero, so a wheel-only hull gets the
+       same bits it got before #426. */
+    assert(a.surfaceParts.size() == a.surfaces.size());
+    glm::dvec3 aeroShare(0.0);
+    for(size_t k = 0; k < a.surfaces.size(); k++) {
+        const double rad = setpoints[a.wheels.size() + k];
+        /* The solver bounds each row by its own limit; the slack is the divide by the
+           row's length. A setpoint past max_deflection would be clamped away silently
+           in applyAeroForce, so say so here where it is the solver's fault. */
+        assert(std::fabs(rad) <= a.surfaces[k].limit * (1.0 + 1e-9));
+        aeroShare += rad * a.surfaces[k].axis;
+        if(rad != 0.0) { surfaceLat_.push_back({a.surfaceParts[k], rad}); }
+    }
+    /* The wheel rows' setpoints are still unused -- #579's momentum store is what
+       will want them per wheel. */
+    const glm::dvec3 mechanical = delivered - aeroShare;
+    if(glm::length2(mechanical) > 0.0) { ApplyTorque(hull, mechanical); }
 }
 
 /* What the alignment law WANTS this substep, in N m: the braking-curve rate change

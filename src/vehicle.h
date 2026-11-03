@@ -579,6 +579,17 @@ public:
        both recentre. */
     glm::dvec3 tvcLat_{};
     int tvcCalls_ = 0;
+    /* #426: the deflection the ONE actuatorSolve asked each control surface for, in
+       radians of COMMAND (so the sign convention is the authored one: +this means the
+       travel controlDeflection would take for a +command, whichever way the plate is
+       bolted). actuateAttitude fills it from the solve's per-row setpoints;
+       Vehicle::applyAeroForce is the only consumer and turns each entry into travel for
+       THIS substep -- which is why the tick runs control before aero (see tick.cpp).
+       Same clear-and-assign discipline as tvcLat_: applyRotationForce clears it, the
+       solve refills it, so a released key and a quiet law both recentre the plates.
+       A surface with no entry is commanded to nothing, which is what a hull at rest or
+       in vacuum gets: no q, no rows, no travel to show. */
+    std::vector<std::pair<const Part *, double>> surfaceLat_;
     /* WHAT CAN TURN THIS SHIP RIGHT NOW (#425). One answer to "how hard, and
        about which axis", for every consumer: the slew law, the kill-rot law, the
        [slew] trace, and later the RCS and aero rows. Before this each caller
@@ -641,21 +652,31 @@ public:
             for(const ActuatorRow &w : wheels) { t += w.limit; }
             return t;
         }
-        /* #426 slice 1: the control surfaces as actuator rows -- torque per radian
-           of travel along the row, travel stop as the limit (actuators.h says a row's
-           axis is SCALED by what a unit of its demand buys, so a fin's setpoint comes
-           out in radians). Built from build facts (mount normal, offset from the COM,
-           control_area, cl_control, max_deflection) times the COM's dynamic pressure,
-           so a hull in vacuum or at rest has no aero rows, which is the right answer
-           rather than a missing one.
-           NOTHING SPENDS THESE ROWS YET. actuateAttitude still solves wheels and TVC
-           and the aero step still drives each surface from its authored control_axis,
-           so today's flight is unchanged; the rows exist so the next slice can hand
-           the deflections to THIS solver rather than growing a second actuator path
-           (the ring's per-fin deflection is the same solve -- see the small-n pins in
-           tests/test_actuators.cpp), and so the Vessel window can say what a finned
-           hull can do instead of reading as unable to turn. */
+        /* #426: the control surfaces as actuator rows -- torque per radian of the
+           COMMAND along the row, travel stop as the limit (actuators.h says a row's axis
+           is SCALED by what a unit of its demand buys, so a fin's setpoint comes out in
+           RADIANS). Built from build facts (mount normal, not the live liftDir -- #495's
+           rule -- offset from the COM, control_area, cl_control, max_deflection) times
+           the COM's dynamic pressure, so a hull in vacuum or at rest has no aero rows,
+           which is the right answer rather than a missing one.
+           SPENT, since slice 2: actuateAttitude solves these in the SAME actuatorSolve
+           call as the wheels, and what it asks each one for reaches the part through
+           surfaceLat_ and thence applyAeroForce. That is #426's mix -- one demand can
+           reach any surface whose rig levers part of it -- and two things follow that
+           neither the row nor the solver says on its own:
+           - PartDef::control_axis is a COMMAND label (which key asks for this surface,
+             and which axis decides its rig sign), not a wall on what it may be spent
+             for: a plate at 45 deg clock levers pitch and yaw at once. A plate whose
+             push decides nothing ABOUT ITS OWN AUTHORED AXIS is dead in the rig and in
+             the budget alike (#495).
+           - a surface's share of the solved vector is NOT applied as torque here. It
+             arrives next door as an aero FORCE; applying both would bill the air twice.
+           One row per surface, in `surfaceParts` order: actuatorSolve's setpoints come
+           back indexed by row, so the rows have to be able to name the part they came
+           from (and the Vessel window reads the same rows, which is why #599's
+           budget-not-delivery caveat applies to fins as much as to drums). */
         std::vector<ActuatorRow> surfaces;
+        std::vector<const Part *> surfaceParts;
         double tvcTorque = 0.0;
         double heffMag = 0.0;
         glm::dvec3 stackAxis = glm::dvec3(0.0);
@@ -664,7 +685,10 @@ public:
     /* N m of that authority the actuators can bring to bear ABOUT `axis` (any
        length; it is the direction that counts). Each wheel contributes its rating
        times cos of the angle between its own drum axis and `axis` (actuators.h,
-       #576); TVC contributes tvcTorque * sin(angle between the axis and the stack
+       #576); each control surface its row's cosine (#426 -- in cruise a fin out-bills a
+       pod's drum by two orders of magnitude, so this is the term that gives a hull with
+       no wheel any attitude authority at all, and the reason a latched law flies a
+       plane); TVC contributes tvcTorque * sin(angle between the axis and the stack
        axis), because a lateral nozzle deflection levers only torque perpendicular
        to the stack. So the pair is NOT a single number: about the stack axis
        (roll) the mixer delivers wheels only -- today. #419 would roll a cluster by
@@ -678,10 +702,14 @@ public:
                                const glm::dvec3 &axis) const;
     /* Send one commanded attitude torque to the actuators: roll about the
        stack axis is wheels-only, transverse goes to TVC first up to tvcTorque,
-       the remainder to the wheels (gimbal.h tvcSplit). The wheel half then goes
-       through actuators.h::actuatorSolve, so what reaches the hull is what the
-       drums' own axes can carry: a demand about an axis no drum covers is dropped
-       there rather than billed to a wheel that cannot answer it (#576).
+       the remainder to the wheels AND the control surfaces (gimbal.h tvcSplit).
+       Both of those go through ONE actuators.h::actuatorSolve call over the wheel
+       rows then the surface rows (#426), so what reaches the hull is what the
+       actuators' own axes can carry: a demand about an axis nothing covers is
+       dropped there rather than billed to a drum that cannot answer it (#576).
+       The surface rows' share is deliberately NOT applied as torque -- their
+       setpoints go to the air (surfaceLat_) and the force law bills them there;
+       applying the abstract torque too would charge the hull twice for one fin.
        Stashes the TVC half in tvcLat_ for applyThrustForce this same substep.
        applyRotationForce answers ONE summed demand and calls this once, so that aim
        is the whole answer rather than one consumer's share of it (#420). */

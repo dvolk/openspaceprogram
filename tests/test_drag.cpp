@@ -890,65 +890,100 @@ static void test_neutral_point() {
    itself -- so "the numbers moved" is not evidence. The wiring is pinned by
    flight/458-glider, whose AoA series used to be 14.8, -108.6, 75.2, -36.5 ...
    (tumbling to the end of the run) and now decays to under a degree by t=10. */
-/* #426: a surface's EFFECTIVENESS ROW -- the torque one radian of its travel buys,
+/* #426: a surface's EFFECTIVENESS ROW -- the torque one radian of its COMMAND buys,
    stated as a derivative of the same force law the aero step bills (drag.h
-   surfaceTorquePerRadian). Pure geometry: q, S, cl, the offset from the COM and the
-   mount's own push normal (#495's build fact, not the live flow). */
+   surfaceTorquePerRadian). Pure geometry: q, S, cl, the offset from the COM, the
+   mount's own push normal (#495's build fact, not the live flow) and the authored
+   steering axis, which decides only the SENSE -- see the mix pins at the end. */
 static void test_surface_effectiveness() {
-    printf("== surface torque per radian of travel (#426) ==\n");
-    /* A tail fin 3 m behind the COM, plate normal to +Y: deflection pushes +Y at
-       -Z, so the moment is about +X. q=100, S=2, cl=6 -> 1200 N m of force per rad,
-       lever 3 m -> 3600 N m/rad. */
+    printf("== the surface as an actuator row (#426) ==\n");
+    /* A tail surface 3 m behind the COM, plate normal +Y, rigged PITCH (aboutAxis 0,
+       targetSign -1 -- what controlAxisParams says for an elevator): the push is +Y at
+       -Z, so the raw moment is about +X, and a POSITIVE command is the negative of it.
+       q=100, S=2, cl=6 -> 1200 N m of force per rad, lever 3 m -> 3600 N m/rad. */
     const glm::dvec3 tail = glm::dvec3(0.0, 0.0, -3.0);
-    const glm::dvec3 row = surfaceTorquePerRadian(100.0, 2.0, 6.0, tail,
-                                                  glm::dvec3(0.0, 1.0, 0.0));
-    CHECK_NEAR(row.x, 3600.0, 1e-9, "the moment is the push at its offset, per rad");
+    const glm::dvec3 up(0.0, 1.0, 0.0), right(1.0, 0.0, 0.0), nose(0.0, 0.0, 1.0);
+    const glm::dvec3 row = surfaceTorquePerRadian(100.0, 2.0, 6.0, tail, up, right);
+    CHECK_NEAR(row.x, -3600.0, 1e-9, "the moment is the push at its offset, per rad");
     CHECK_NEAR(row.y, 0.0, 1e-9, "and nothing else");
     CHECK_NEAR(row.z, 0.0, 1e-9, "and nothing else");
+    CHECK_NEAR(row.x, -surfaceTorquePerRadian(100.0, 2.0, 6.0, tail, up, right, +1.0).x,
+               1e-9, "targetSign is the authored axis's, exactly as controlDeflection's");
 
     /* The mirrored twin -- a canard ahead of the COM with its plate flipped -- levers
-       the SAME torque for the SAME deflection sign. That is #495's mirrored-pair
-       identity arriving in the row, and why no per-instance sign is needed here. */
+       the SAME torque for the SAME command. That is #495's mirrored-pair identity
+       arriving in the row, and why the setpoint can go straight back into
+       controlDeflection without a per-instance sign surviving anywhere else. */
     const glm::dvec3 twin = surfaceTorquePerRadian(100.0, 2.0, 6.0,
                                                    glm::dvec3(0.0, 0.0, 3.0),
-                                                   glm::dvec3(0.0, -1.0, 0.0));
+                                                   glm::dvec3(0.0, -1.0, 0.0), right);
     CHECK_NEAR(twin.x, row.x, 1e-9, "a mirrored pair levers the same way");
 
     /* No air, no area, no slope: no row. The row is a q-times-geometry budget, so a
        hull in vacuum or at rest has nothing to spend, which is the right answer
        rather than a missing one. */
-    CHECK_TRUE(surfaceTorquePerRadian(0.0, 2.0, 6.0, tail, glm::dvec3(0.0, 1.0, 0.0))
+    CHECK_TRUE(surfaceTorquePerRadian(0.0, 2.0, 6.0, tail, up, right)
                == glm::dvec3(0.0), "no q: no authority");
-    CHECK_TRUE(surfaceTorquePerRadian(100.0, 0.0, 6.0, tail, glm::dvec3(0.0, 1.0, 0.0))
+    CHECK_TRUE(surfaceTorquePerRadian(100.0, 0.0, 6.0, tail, up, right)
                == glm::dvec3(0.0), "no area: no authority");
-    CHECK_TRUE(surfaceTorquePerRadian(100.0, 2.0, 0.0, tail, glm::dvec3(0.0, 1.0, 0.0))
+    CHECK_TRUE(surfaceTorquePerRadian(100.0, 2.0, 0.0, tail, up, right)
                == glm::dvec3(0.0), "no slope: no authority");
 
-    /* THE DEGENERATE RIG (#495's test, moved from the deflection to the row). A plate
-       whose push line runs through its own pivot levers nothing, and actuators.h
-       divides a line's share by the row's length, so crediting a hair-length row would
-       ask that fin for a hair-short of an infinite deflection. Same relative
-       tolerance as controlDeflection: |lever|^2 > 1e-12 * |ri|^2. */
+    /* THE DEGENERATE RIG (#495's test, on the row). A plate whose push line runs
+       through its own pivot levers nothing, and actuators.h divides a line's share by
+       the row's length, so crediting a hair-length row would ask that fin for a hair
+       short of an infinite deflection. Same form and same RELATIVE tolerance as
+       controlDeflection -- it has to be the same test, or the budget credits a surface
+       the aero step then refuses to move. */
     const double big = 1e9;
-    CHECK_TRUE(surfaceTorquePerRadian(big, 2.0, 6.0, tail,
-                                      glm::dvec3(0.0, 0.0, -1.0))
+    CHECK_TRUE(surfaceTorquePerRadian(big, 2.0, 6.0, tail, nose, right)
                == glm::dvec3(0.0), "push line through the pivot: no row at all");
     CHECK_TRUE(surfaceTorquePerRadian(big, 2.0, 6.0, glm::dvec3(0.0, 0.0, 0.0),
-                                      glm::dvec3(0.0, 1.0, 0.0))
+                                      up, right)
                == glm::dvec3(0.0), "a steering part on the COM: no row");
     /* A real lever, aimed almost along itself: the tolerance is on the GEOMETRY, not
        on what counts as weak (the same pair of pins controlDeflection carries). */
     const double t14 = 1e-4, t18 = 1e-8;
     const glm::dvec3 near_line14(std::sin(t14), 0.0, -std::cos(t14));
     const glm::dvec3 near_line18(std::sin(t18), 0.0, -std::cos(t18));
-    const glm::dvec3 r14 = surfaceTorquePerRadian(1.0, 1.0, 1.0, tail, near_line14);
-    const glm::dvec3 r18 = surfaceTorquePerRadian(1.0, 1.0, 1.0, tail, near_line18);
+    /* A push nearly ALONG the stack levers about UP, so `up` is the axis these rigs
+       are asked about: the gate is on the projected lever, and asking it about `right`
+       would be a genuinely dead rig rather than an almost-alive one (which is the
+       other pin, below). */
+    const glm::dvec3 r14 = surfaceTorquePerRadian(1.0, 1.0, 1.0, tail, near_line14, up);
+    const glm::dvec3 r18 = surfaceTorquePerRadian(1.0, 1.0, 1.0, tail, near_line18, up);
     /* 3 m * sin(t), not 3 m * t: the tolerance is relative, and the difference
        between sin(1e-4) and 1e-4 is 1.7e-13 -- far inside the geometry's meaning,
        far outside a 1e-12 relative pin. */
     CHECK_NEAR(glm::length(r14), 3.0 * std::sin(t14), 1e-12,
                "a 3 m arm 1e-4 rad off the degenerate line still levers 3e-4 m");
     CHECK_TRUE(r18 == glm::dvec3(0.0), "and 1e-8 rad is degenerate, as it must be");
+
+    /* THE MIX, and where the label stops mattering (#426). A plate pushed 45 deg
+       between the ship's up and right levers BOTH pitch and yaw: the raw cross product
+       is 3 m long either way, at 3*cos45 about each axis. The row keeps that whole
+       vector -- the solver is what decides which way to spend it -- while the SENSE
+       comes from the authored axis alone. Hand arithmetic: cross((0,0,-3),
+       (cos45,sin45,0)) = (3cos45, -3cos45, 0), so at q=100,S=2,cl=6 each component is
+       1200 * 3 * sqrt(0.5) = 2545.58 N m/rad. */
+    const double c45 = std::sqrt(0.5);
+    const glm::dvec3 push45(c45, c45, 0.0);
+    const double comp = 1200.0 * 3.0 * c45;
+    const glm::dvec3 asPitch = surfaceTorquePerRadian(100.0, 2.0, 6.0, tail, push45, right);
+    const glm::dvec3 asYaw = surfaceTorquePerRadian(100.0, 2.0, 6.0, tail, push45, up);
+    CHECK_NEAR(glm::length(asPitch), 3600.0, 1e-9,
+               "the reach is the geometry's, not the label's");
+    CHECK_NEAR(asPitch.x, -comp, 1e-6, "labeled pitch: its own axis is what it buys");
+    CHECK_NEAR(asPitch.y, +comp, 1e-6, "and it buys the other axis too");
+    CHECK_NEAR(asYaw.x, -asPitch.x, 1e-6, "labeled yaw: same plate, opposite sense");
+    CHECK_NEAR(asYaw.y, -asPitch.y, 1e-6, "because only the SENSE is the label's");
+
+    /* ...and the label is still a WALL where #495 says it is one. This plate levers
+       nothing about the axis it is rigged for, so its command sign is undecidable and
+       the aero step would refuse to move it: it buys NO row, mix or no mix. */
+    CHECK_TRUE(surfaceTorquePerRadian(big, 2.0, 6.0, tail, up, up)
+               == glm::dvec3(0.0),
+               "a plate that levers only the OTHER axis is dead, rig and budget alike");
 }
 
 static void test_local_flow_sweep() {

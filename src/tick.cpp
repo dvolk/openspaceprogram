@@ -272,10 +272,19 @@ void tick(Game &g) {
                     // below, whichever order they run in.
                     s->beginForceRecordSubstep();
                     s->processGravity();
-                    s->applyAeroForce(h);
                     // Power before control forces so the gate is current.
                     s->powerTick(h);
+                    /* #426: control BEFORE aero, so the deflection the one actuator
+                       solve asked each control surface for is the deflection the air
+                       feels in the SAME substep. Nothing above moves pos/vel/w --
+                       physics_tick below is what integrates -- so aero loses no
+                       freshness of q or of the flow at the surface by going second, and
+                       applyControlForces already orders rotation before thrust for the
+                       same "same substep, no lag" reason. The other order delays every
+                       plate by a whole substep, i.e. puts an actuator lag inside a
+                       deadbeat attitude law, where it rings. */
                     s->applyControlForces(h);
+                    s->applyAeroForce(h);
                 }
                 physics_tick(h);
                 if(g.args.debug_accel) {

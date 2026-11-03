@@ -1,0 +1,35 @@
+NAME fin-ring-mixes-axes
+CLAIM A cruciform ring of ELEVATORS yaws a hull that owns no yaw-rigged surface: one demanded torque reaches whichever plates lever part of it, while the roll key -- which no plate in that ring levers at all -- still only gets the pod's drum.
+KIND invariant
+# #426 slice 2: the control surfaces are actuator rows in the ONE actuatorSolve call,
+# so PartDef::control_axis is a label for WHICH KEY asks and which axis decides the rig
+# sign, not a wall on what the plate can be spent for.
+# finring.json is the skiff's airframe with the rudder and ailerons gone and its two
+# elevators replaced by four at 45/135/225/315 deg clock -- an X. A plate at 45 deg
+# levers pitch and yaw equally (its row is cross(ri, normal) * q*S*cl, and with the
+# normal rotated 45 deg about the stack the pitch and yaw components come out equal and
+# the roll component r*cos(2*45) is EXACTLY zero). So:
+#   - the yaw ask has four plates to answer it, every one of them authored "pitch";
+#   - the roll ask has NONE, and falls back on the capsule's 100 N m triad.
+# Measured on this run (and --sim-steps puts the [attlog] rows on whole seconds, so the
+# windows below are whole seconds too): A (yaw, t=1..2.5) takes the rate about the
+# ship's up from 0.0000 to 0.64 rad/s; E (roll, t=3.5..5) never gets past 0.083 rad/s
+# about the nose. That roll number is roughly the drum's own answer -- 100 N m over a
+# hull whose inertia here is a couple of thousand kg m^2, so a couple of hundredths of a
+# rad/s per second -- which is also why the yaw pin sits at 0.5 rather than a hair over
+# the measured value: eight times what no-fin hardware can do on that axis.
+# The 0.05 "before" limit says the hull was not already turning when the key arrived, so
+# 0.64 cannot be read as inherited tumbling. The 0.20 roll limit is this same run's
+# control: if the mix ever turns into a mode switch, or these rows grow a roll
+# component, that one moves.
+ARGS --time-accel 1 --startship finring,res/ships/finring.json,Kerbin,flying-cruise
+ARGS --att-log --sim-steps 480
+ARGS --sim-press 1000,1500,A
+ARGS --sim-press 3500,1500,E
+LIMIT 90
+EXPECT [attlog]
+CHECK len(att) >= 6
+CHECK max(a["awyaw"] for a in att if a["t"] <= 1.0) < 0.05
+CHECK max(a["awyaw"] for a in att if 1.2 < a["t"] < 2.8) > 0.5
+CHECK max(a["awroll"] for a in att if 3.5 < a["t"] < 5.5) < 0.20
+FORBID error:
