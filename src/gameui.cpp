@@ -2213,12 +2213,14 @@ void drawUIReadouts(Game &g) {
                         actuatorTorqueAbout(auth.wheels, ax[2]),
                         actuatorTorqueAbout(auth.wheels, ax[0]),
                         actuatorTorqueAbout(auth.wheels, ax[1]));
-            /* #426 slice 1: the same question of the surfaces -- what one radian of
-               travel at THIS dynamic pressure is worth about each ship axis. Only
-               shown when there is something to show, so a rocket's Power row stays as
-               it was; a finned airframe, which today reads as having no attitude
-               authority beyond its wheels, can now see what its fins are worth.
-               Measured, not spent: nothing drives the surfaces from these rows yet. */
+            /* #426: the same question of the surfaces -- what one radian of command
+               at THIS dynamic pressure is worth about each ship axis. Only shown when
+               there is something to show, so a rocket's readout stays as it was; a
+               finned airframe can now see what its fins are worth, which is what tells
+               a player that a hull with no drum still steers in air.
+               Budget, not delivery (#599): past stall_angle the force law droops
+               (#494) and a turning hull sweeps its surfaces (#483), so this is what the
+               plates are worth, not what they just did. */
             if(!auth.surfaces.empty()) {
                 ImGui::Text("Surface torque (roll/pitch/yaw): %.0f / %.0f / %.0f N m",
                             actuatorTorqueAbout(auth.surfaces, ax[2]),

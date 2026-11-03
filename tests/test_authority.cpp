@@ -45,6 +45,8 @@
 
 #include "vehicle.h"   // Vehicle + Part (inline); pulls in Bullet (btcommon.h)
 
+#include "terrain.h"   // #426 handover test: a body with an atmosphere under it
+
 static int g_failures = 0;
 static int g_checks = 0;
 
@@ -85,23 +87,37 @@ struct RcsProbe : Vehicle {
     using Vehicle::armRcs;
 };
 
-/* A box part with the two fields this model reads: `torque` (>0 makes it a
-   reaction wheel) and `gimbal_max` (>0 makes its thrust steerable). */
-static Part *mkPart(Ship &s, const char *name, double mass, double hz,
-                    double torque, double gimbalMax) {
+/* A box part with the fields this model reads: `torque` (>0 makes it a reaction
+   wheel, `wheelAxes` says how many drums it holds -- 3 for a triad, which is what
+   levers the ship's side and up lines too), `gimbal_max` (>0 makes its thrust
+   steerable) and `ctlArea` (>0 makes it a control surface, with the travel and slope
+   the aero step reads). The defs come in as the deque rather than a Stack so a
+   fixture that is not a stack can share the builder. */
+static Part *mkPart(std::deque<PartDef> &defs, const char *name, double mass, double hz,
+                    double torque, double gimbalMax, int wheelAxes = 1,
+                    double ctlArea = 0.0) {
     Body *b = new Body;
     b->btBody = nullptr;                 // a part is not simulated on its own
     b->shape  = new btBoxShape(btVector3(0.5f, 0.5f, (float)hz));
     b->mass   = mass;
 
-    s.defs.push_back(PartDef());
-    PartDef &d = s.defs.back();
+    defs.push_back(PartDef());
+    PartDef &d = defs.back();
     d.name   = name;
     d.mass   = (float)mass;
     d.radius = 0.5f;
     d.height = (float)(2.0 * hz);
     d.torque = torque;
+    d.wheel_axes = wheelAxes;
     d.gimbal_max = gimbalMax;
+    if(ctlArea > 0.0) {
+        d.control_area = ctlArea;
+        d.max_deflection = 0.35;
+        d.cl = 5.0;
+        d.cl_control = 5.0;
+        d.stall_angle = 0.5;
+        d.control_axis = ControlAxis::Pitch;
+    }
     d.synthesizeNodes();
 
     Part *p = new Part;
@@ -133,9 +149,9 @@ static Stack mkStack(double rootTorque, double engThrust, double gimbalMax) {
     Stack st;
     st.s.v = new Vehicle;
     st.s.v->name = "authority";
-    st.root = mkPart(st.s, "root", 100.0, 1.5, rootTorque, 0.0);
+    st.root = mkPart(st.s.defs, "root", 100.0, 1.5, rootTorque, 0.0);
     st.s.v->setRoot(st.root);
-    st.eng = mkPart(st.s, "engine", 100.0, 1.0, 0.0, gimbalMax);
+    st.eng = mkPart(st.s.defs, "engine", 100.0, 1.0, 0.0, gimbalMax);
     st.s.v->attachDown(st.eng);
     st.s.v->init();
     st.s.v->placeShip(glm::dvec3(0.0, 0.0, 0.0), glm::dmat3(1.0));
@@ -292,7 +308,7 @@ static void test_two_wheels_add_up() {
     printf("== the wheel row sums the wheels ==\n");
     Stack st = mkStack(200.0, 0.0, 0.0);
     Vehicle *v = st.s.v;
-    Part *w2 = mkPart(st.s, "wheel2", 100.0, 1.0, 50.0, 0.0);
+    Part *w2 = mkPart(st.s.defs, "wheel2", 100.0, 1.0, 50.0, 0.0);
     v->attachDown(w2);
     const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
     CHECK_TRUE(a.wheels.size() == 2, "both wheels are rows, not one summed number");
@@ -316,11 +332,11 @@ static void test_a_cluster_covers_an_axis_it_points_at() {
     s.v->name = "cluster";
     /* Three drums on three lines: 100 N m on the stack (the root's own), 50 N m
        pointed along the ship's -Y, 20 N m pointed along the ship's +X. */
-    Part *root = mkPart(s, "root", 100.0, 1.5, 100.0, 0.0);
+    Part *root = mkPart(s.defs, "root", 100.0, 1.5, 100.0, 0.0);
     s.v->setRoot(root);
-    Part *drumY = mkPart(s, "drum_y", 100.0, 1.0, 50.0, 0.0);
+    Part *drumY = mkPart(s.defs, "drum_y", 100.0, 1.0, 50.0, 0.0);
     s.v->attachDown(drumY);
-    Part *drumX = mkPart(s, "drum_x", 100.0, 1.0, 20.0, 0.0);
+    Part *drumX = mkPart(s.defs, "drum_x", 100.0, 1.0, 20.0, 0.0);
     s.v->attachDown(drumX);
     /* attachDown() solves localRot off the stack node, so the tilt goes on after it,
        exactly as the sideways-wheel fixture below does. */
@@ -724,11 +740,11 @@ static void test_one_frame_for_the_attitude_path() {
     Ship s;
     s.v = new Vehicle;
     s.v->name = "gear";
-    Part *root = mkPart(s, "root", 100.0, 1.5, 0.0, 0.0);     // no wheel here
+    Part *root = mkPart(s.defs, "root", 100.0, 1.5, 0.0, 0.0);     // no wheel here
     s.v->setRoot(root);
-    Part *eng = mkPart(s, "engine", 100.0, 1.0, 0.0, 0.1);    // gimballed, armed below
+    Part *eng = mkPart(s.defs, "engine", 100.0, 1.0, 0.0, 0.1);    // gimballed, armed below
     s.v->attachDown(eng);
-    Part *wheel = mkPart(s, "wheel", 100.0, 0.5, 300.0, 0.0); // a wheel, on its side
+    Part *wheel = mkPart(s.defs, "wheel", 100.0, 0.5, 300.0, 0.0); // a wheel, on its side
     s.v->attachDown(wheel);
     /* +90 deg about X: the wheel's own +Z becomes the ship's -Y, so the wheel's
        axis and the stack axis are 90 deg apart and the two choices cannot be confused.
@@ -999,6 +1015,223 @@ static void test_the_armed_rcs_demand_is_a_direction() {
                "and the release did not disarm the keys for the next ship either");
 }
 
+/* #426 slice 2 at the VEHICLE level: surface rows that get SPENT, and a setpoint that
+   has to reach the part that earned it. Everything else in this file asks a pure
+   function, and no test anywhere gave a Vehicle an atmosphere to sit on, so the halves
+   of the handover that only exist together were unpinned: the fin's share of a solve
+   that must NOT also arrive as hull torque (a plate pushes on the air, so applying the
+   solver's answer twice charges the hull twice for one fin), the ask that has to land
+   in the same substep as the aero step that spends it, and the two early-outs -- no
+   airspeed, aero switched off with --drag-cd 0 -- that have to agree with what the
+   capability model promises. */
+struct FinProbe : Vehicle {
+    using Vehicle::stick;          // fake held keys
+    using Vehicle::killRotDemand;  // the latched law's ask
+};
+
+/* A body with nothing but the fields airDensityAtCom() reads: a 600 km radius and a
+   sea-level atmosphere, so a ship at 601 km sits in 1000 m of air. */
+static TerrainBody *mkAirBall() {
+    TerrainBody *body = new TerrainBody;
+    body->name = "airball";
+    body->radius = 600000.0f;
+    body->surface.sea_level = 0.0f;
+    body->surface.atmosphere.sea_level_density = 1.225;
+    body->surface.atmosphere.scale_height = 8000.0;
+    return body;
+}
+
+/* Pod + elevator, 1000 m up, flying +X at 100 m/s. The pod is a 100 N m TRIAD (a
+   single drum would lever the stack axis only, and this asks about pitch); the 2 m^2
+   elevator hangs off the stack -- 1.7 m below the pod's centre, so 1.55 m off the COM.
+   Off the COM on purpose: a part AT the COM has a degenerate rig by construction
+   (#495) and could only ever show zero. At 1000 m rho is 1.08 kg/m^3, so q is 5.4e3
+   N/m^2 and the row is worth ~8e4 N m per radian against the pod's 100 N m. */
+struct Rig {
+    FinProbe *v;
+    std::deque<PartDef> defs;
+    Part *pod;
+    Part *fin;
+};
+
+static Rig mkRig(double drumTorque, double finRollDeg) {
+    Rig r;
+    r.v = new FinProbe;
+    r.v->name = "finhandover";
+    r.pod = mkPart(r.defs, "pod", 100.0, 1.5, drumTorque, 0.0, 3);
+    r.v->setRoot(r.pod);
+    r.fin = mkPart(r.defs, "elevator", 10.0, 0.2, 0.0, 0.0, 1, 2.0);
+    /* The stack edge's angle is a roll about the mating axis, so 180 deg bolts the
+       same plate with the other face to the air: the mount column that
+       drag.h::controlRigLever reads as its push direction flips. */
+    r.v->attachMode(r.fin, 0, AttachMode::Down, finRollDeg);
+    r.v->init();
+    return r;
+}
+
+static void test_a_fin_row_is_spent_and_hands_its_ask_to_the_air() {
+    printf("== a fin row: spent by the solve, handed to the air ==\n");
+    TerrainBody *body = mkAirBall();
+    Rig a = mkRig(100.0, 0.0);
+    a.v->m_parent = body;
+    a.v->placeShip(glm::dvec3(0.0, 0.0, 601000.0), glm::dmat3(1.0));
+    SetVelocity(a.v->hull, glm::dvec3(100.0, 0.0, 0.0));
+
+    /* No airspeed, no rows. Player-visible half of slice 2: on a held key at rest or in
+       vacuum, plates used to throw themselves at nothing. */
+    SetVelocity(a.v->hull, glm::dvec3(0.0, 0.0, 0.0));
+    CHECK_TRUE(a.v->attitudeAuthority().surfaces.empty(),
+               "no airspeed, no surface rows");
+    SetVelocity(a.v->hull, glm::dvec3(100.0, 0.0, 0.0));
+
+    const glm::dvec3 side = a.v->partAxis(a.pod, 0);   // the pitch line
+    const glm::dvec3 up = a.v->partAxis(a.pod, 1);     // the yaw line
+    const Vehicle::AttitudeAuthority au = a.v->attitudeAuthority();
+    CHECK_TRUE(au.wheels.size() == 3, "the triad pod is three rows, one per ship line "
+               "(#576's levers, #593's drum count)");
+    CHECK_TRUE(au.surfaces.size() == 1, "and the plate is one row of its own");
+    CHECK_TRUE(au.surfaceParts.size() == au.surfaces.size(),
+               "one part per row -- that is how a setpoint finds its way back to the "
+               "part that earned it");
+    CHECK_NEAR(0.35, au.surfaces[0].limit, 1e-12,
+               "a surface row's limit is travel in radians, not a torque");
+    const glm::dvec3 row = au.surfaces[0].axis;
+    printf("   row = (%.0f, %.0f, %.0f) N m per rad of command\n",
+           row.x, row.y, row.z);
+    CHECK_TRUE(glm::length(row) > 100.0 * 100.0,
+               "in air the plate outsells the pod's drum by a hundredfold, so every "
+               "number below says which of the two is doing the work");
+    CHECK_NEAR(0.0, glm::dot(row, a.v->partAxis(a.pod, 2)), 1e-6 * glm::length(row),
+               "and a plate on the stack levers nothing about the stack");
+    const double pitchAsk = a.v->attitudeTorqueAbout(au, side);
+    printf("   authority about pitch = %.0f N m; about yaw = %.0f N m\n",
+           pitchAsk, a.v->attitudeTorqueAbout(au, up));
+    CHECK_NEAR(0.35 * std::fabs(glm::dot(row, side)) + 100.0, pitchAsk,
+               1e-9 * pitchAsk,
+               "the promise is the plate at its stop plus the drum that shares its "
+               "line -- nothing else, and a hundred times the drum is the reader's "
+               "cue for which of the two is doing the work below");
+
+    /* THE HULL IS TORQUED BY THE DRUM ONLY. One demand along pitch, drum and plate on
+       the same line: the solve spends the line, then actuateAttitude subtracts the
+       plate's share (setpoint * axis) and hands that setpoint to the air instead. Drop
+       the subtraction and the hull is charged twice for one plate -- this number jumps
+       from the drum's 100 N m to thousands. Pointing at the wrong setpoint index does
+       the same, since the subtraction then misses. */
+    a.v->stick[1] = 1.0f;   // the pitch key
+    a.v->hull->btBody->clearForces();
+    a.v->applyRotationForce(1.0 / 120.0);
+    const btVector3 tau = a.v->hull->btBody->getTotalTorque();
+    const double mech = std::fabs(glm::dot(glm::dvec3(tau.x(), tau.y(), tau.z()), side));
+    printf("   hull torque about pitch = %.1f N m (demanded %.0f, drum 100)\n",
+           mech, pitchAsk);
+    CHECK_NEAR(100.0, mech, 1.0,
+               "the drum's rating is all the hull gets from a solve that promised "
+               "thousands: the rest is the air's bill (#426)");
+
+    /* THE SAME SUBSTEP. applyRotationForce only stashes the ask; applyAeroForce spends
+       it. That is what let the tick move control ahead of aero -- a latched law's
+       demand and the plate that answers it have to share one substep or every fin has
+       an actuator lag inside a deadbeat law. */
+    CHECK_TRUE(a.fin->controlDefl == 0.0,
+               "until the aero step runs, the part has not moved");
+    a.v->applyAeroForce(1.0 / 120.0);
+    const double deflA = a.fin->controlDefl;
+    printf("   elevator after the aero step = %+.4f rad (stop 0.35)\n", deflA);
+    CHECK_NEAR(0.35, std::fabs(deflA), 1e-6,
+               "the solver's setpoint arrived as travel, and the demand was big enough "
+               "to pin it at the stop");
+
+    /* A released key recentres the plate: surfaceLat_ is cleared every substep rather
+       than left over from the last one that asked. */
+    a.v->stick[1] = 0.0f;
+    a.v->hull->btBody->clearForces();
+    a.v->applyRotationForce(1.0 / 120.0);
+    a.v->applyAeroForce(1.0 / 120.0);
+    CHECK_NEAR(0.0, a.fin->controlDefl, 1e-12, "no ask, no travel");
+
+    /* --drag-cd 0 is the master aero switch: applyAeroForce returns before its surface
+       block, while airDensityAtCom() answers the authored shell and never consults
+       drag_cd. Budgeting the rows anyway spends a line on plates that can never move
+       and takes the drum's share with them -- the hull gets less than it was promised,
+       for a reason no readout says. Same lesson as #418's power gate. */
+    a.v->drag_cd = 0.0;
+    CHECK_TRUE(a.v->attitudeAuthority().surfaces.empty(),
+               "with aero switched off, a control surface has no authority at all");
+    a.v->stick[1] = 1.0f;
+    a.v->hull->btBody->clearForces();
+    a.v->applyRotationForce(1.0 / 120.0);
+    {
+        const btVector3 t2 = a.v->hull->btBody->getTotalTorque();
+        const double mechOff = std::fabs(glm::dot(glm::dvec3(t2.x(), t2.y(), t2.z()), side));
+        printf("   hull torque about pitch, --drag-cd 0 = %.1f N m\n", mechOff);
+        CHECK_NEAR(100.0, mechOff, 1.0, "and the drum keeps its whole line");
+    }
+    destroyShip(a.v);
+
+    /* A plate mounted the other way: the label is the same, the rig is not. The row must
+       keep its direction (a positive COMMAND still pitches the same way) while the
+       travel it takes to get there flips. This is #495's inversion guard, at the level
+       where the row is built. */
+    Rig b = mkRig(100.0, 180.0);
+    b.v->m_parent = body;
+    b.v->placeShip(glm::dvec3(0.0, 0.0, 601000.0), glm::dmat3(1.0));
+    SetVelocity(b.v->hull, glm::dvec3(100.0, 0.0, 0.0));
+    const Vehicle::AttitudeAuthority bu = b.v->attitudeAuthority();
+    CHECK_TRUE(bu.surfaces.size() == 1, "the flipped plate is still a row");
+    CHECK_TRUE(glm::dot(row, bu.surfaces[0].axis) > 0.0,
+               "and its row points the same way: the rig sign, not the mount, decides "
+               "what a positive command does");
+    b.v->stick[1] = 1.0f;
+    b.v->hull->btBody->clearForces();
+    b.v->applyRotationForce(1.0 / 120.0);
+    b.v->applyAeroForce(1.0 / 120.0);
+    printf("   flipped plate: %+.4f rad against %+.4f rad\n",
+           b.fin->controlDefl, deflA);
+    CHECK_NEAR(-deflA, b.fin->controlDefl, 1e-6,
+               "while the travel it needs to get there is the other way round");
+    destroyShip(b.v);
+
+    /* NOTHING MECHANICAL: a hull whose only actuator is a fin. The capability model
+       says it can turn, so a latched law has to ask it for something. killRotDemand's
+       early-out predates surface rows and tested wheels and gimbals only, so a fin-only
+       hull got a silent zero -- the law off, while the readout quotes tens of kN m.
+       slewDemand asks the question through attitudeTorqueAbout and never had the hole. */
+    Rig g = mkRig(0.0, 0.0);
+    g.v->m_parent = body;
+    g.v->placeShip(glm::dvec3(0.0, 0.0, 601000.0), glm::dmat3(1.0));
+    SetVelocity(g.v->hull, glm::dvec3(100.0, 0.0, 0.0));
+    SetAngVelocity(g.v->hull, glm::dvec3(0.0, 0.0, 0.5));
+    {
+        const Vehicle::AttitudeAuthority gu = g.v->attitudeAuthority();
+        CHECK_TRUE(gu.wheels.empty() && gu.tvcTorque == 0.0 && !gu.surfaces.empty(),
+                   "no drum and no gimbal, but a plate in the air");
+        CHECK_TRUE(g.v->attitudeTorqueAbout(gu, side) > 0.0,
+                   "and the capability model says it can pitch");
+        const glm::dvec3 kr = g.v->killRotDemand(1.0 / 120.0, gu);
+        printf("   killRotDemand on a fin-only hull = %.1f N m\n",
+               glm::length(kr));
+        CHECK_TRUE(glm::length2(kr) > 0.0,
+                   "so kill-rot asks it for something: 'no authority at all' has to "
+                   "mean no ROWS, and since #426 the surfaces are rows");
+        g.v->drag_cd = 0.0;
+        CHECK_NEAR(0.0, g.v->attitudeTorqueAbout(g.v->attitudeAuthority(), side), 0.0,
+                   "and with aero switched off it has no attitude authority at all");
+        g.v->stick[1] = 1.0f;
+        g.v->hull->btBody->clearForces();
+        g.v->applyRotationForce(1.0 / 120.0);
+        const btVector3 t3 = g.v->hull->btBody->getTotalTorque();
+        const double mechG = glm::length(glm::dvec3(t3.x(), t3.y(), t3.z()));
+        printf("   fin-only hull, held key, --drag-cd 0: hull torque %.4f N m\n",
+               mechG);
+        CHECK_NEAR(0.0, mechG, 0.0,
+                   "nothing promised, nothing spent -- the rows must not exist, which "
+                   "is what the check above is for");
+    }
+    destroyShip(g.v);
+    delete body;
+}
+
 int main() {
     test_fixture_lever_is_what_we_think();
     test_tvc_is_a_disk_not_a_ball();
@@ -1014,6 +1247,7 @@ int main() {
     test_one_frame_for_the_attitude_path();
     test_the_command_funnel();
     test_the_armed_rcs_demand_is_a_direction();
+    test_a_fin_row_is_spent_and_hands_its_ask_to_the_air();
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }
     printf("test_authority: all checks passed\n");

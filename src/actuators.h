@@ -26,18 +26,25 @@
 // What the shared row set buys is that the law and the actuators cannot disagree
 // about WHICH lines exist and how far each reaches.
 //
-// #426's fin ring is the same row with a different effect vector -- a surface's
-// torque-per-unit-deflection and its max_deflection as the limit -- so the wheel
-// case is that solver's small-n test bed before the ring exists.
+// #426's control surfaces are the same row with a different effect vector -- a
+// surface's torque-per-radian-of-command and its max_deflection as the limit -- so
+// Vehicle::actuateAttitude now feeds this solver wheels AND surfaces in one call and a
+// setpoint comes back in radians for the aero step to spend. The wheel fixtures here
+// stay the small-n bed: a ring is the same arithmetic with more rows.
 //
 // Not the same problem as rcs.h's nozzle allocator, which solves force AND
 // torque over ONE-WAY nozzles (nnls, c in [0,1]). This one is torque-only and
 // two-sided -- a drum winds either way -- so its bound is a box, not a sign.
 // Worth knowing both exist before a third demand shape shows up and someone
-// merges them. It also carries no Scratch like rcs::Scratch yet: today's rows are
-// the handful of wheels on a hull, not a nozzle ring, so these vectors are the
-// whole cost, and #594 landed that ask -- ONE AttitudeAuthority per substep,
-// answered once for the stick and every latched law together (#420).
+// merges them. It also carries no Scratch like rcs::Scratch yet: today's rows are a
+// hull's wheels plus its control surfaces -- still a handful -- so these vectors are
+// the whole cost. That cost is eleven allocations per hull per substep for a hull that
+// has actuators: three in attitudeAuthority (wheels, surfaces, surfaceParts), two in
+// actuateAttitude (the concatenated rows, the setpoints) and six in actuatorSolve
+// (lines, lineOf, sense, share, mag, q) -- and the Vessel window calls
+// attitudeAuthority() once per FRAME on top. So a Scratch is worth doing before the
+// row counts grow. #594 landed the other half of that ask: ONE AttitudeAuthority per
+// substep, answered once for the stick and every latched law together (#420).
 
 #include <cmath>
 #include <vector>
@@ -49,9 +56,10 @@
    spin axis and the demand is N m; for #426's surface it is the mount-derived
    torque direction at N m per radian and the demand is radians of deflection.
    `limit` bounds that demand either way (a wheel winds either sense, so the
-   direction is a line, not a sense). A non-finite or zero-length axis or a
-   non-positive limit contributes nothing -- which is also the NaN guard, since a
-   NaN axis must never be creditable. */
+   direction is a line, not a sense). A zero-length or NaN axis buys nothing, and the
+   negated compare is what makes that true -- it is the guard for a poisoned row, since
+   a NaN axis must never be creditable. An infinite one does get through, and nothing
+   authored can produce one, so there is no guard pretending to. */
 struct ActuatorRow {
     glm::dvec3 axis = glm::dvec3(0.0);
     double limit = 0.0;

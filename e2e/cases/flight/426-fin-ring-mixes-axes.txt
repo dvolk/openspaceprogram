@@ -31,5 +31,12 @@ EXPECT [attlog]
 CHECK len(att) >= 6
 CHECK max(a["awyaw"] for a in att if a["t"] <= 1.0) < 0.05
 CHECK max(a["awyaw"] for a in att if 1.2 < a["t"] < 2.8) > 0.5
+# The CEILING on that same window. Without it the yaw pin is one-sided and this run
+# still passes if a fin's share starts travelling through actuateAttitude as well as
+# through the air -- the double bill #426 exists to avoid, which nearly doubles the yaw
+# rate (~1.28 rad/s measured with the subtraction removed, against 0.64 here).
+# tests/test_authority.cpp pins the same thing to four significant figures; this is the
+# flight-level guard.
+CHECK max(a["awyaw"] for a in att if 1.2 < a["t"] < 2.8) < 1.0
 CHECK max(a["awroll"] for a in att if 3.5 < a["t"] < 5.5) < 0.20
 FORBID error:

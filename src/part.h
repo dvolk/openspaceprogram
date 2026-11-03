@@ -81,15 +81,17 @@ struct Part {
        locally; this field exists so Vehicle::Draw can swing the mesh. */
     double controlDefl = 0.0;
     /* TRIM (deg, #492): the standing command this control surface is held at when
-       the player's stick is free. Saved with the part (ShipPart::trim authored it,
-       the part window edits it), unlike the deflection above, which is per-substep.
-       Applied where the stick enters the law (applyAeroForce), so it inherits the
-       per-instance sign resolution (controlDeflectionSign) for free: a mirrored
-       elevator pair and a canard all take the SAME number here and still produce
-       the same torque -- which is the whole point of putting trim next to the stick
-       rather than turning it into another mount rotation like `roll`. Degrees of
-       surface, so it means the same on a 20 deg elevator and a 5 deg one; the law
-       caps stick+trim at the part's own travel. */
+       nothing is asking it for travel. Saved with the part (ShipPart::trim authored
+       it, the part window edits it), unlike the deflection above, which is
+       per-substep. Applied in applyAeroForce, where it joins the solver's setpoint
+       (#426) in the same units -- fractions of this part's travel -- before
+       controlDeflection resolves the sign per instance, so a mirrored elevator pair
+       and a canard all take the SAME number here and still produce the same torque.
+       That is the whole point of putting trim next to the COMMAND rather than making
+       it another mount rotation like `roll`. Degrees of surface, so it means the same
+       on a 20 deg elevator and a 5 deg one; the sum of setpoint and trim is capped at
+       the part's own travel -- which since #426 means a plate already driven to its
+       stop by the solver has no travel left for trim (#603, filed not fixed). */
     double trimDeg = 0.0;
     /* Per-nozzle thrust (N) fired THIS RCS substep, indexed by
        PartDef::rcsNozzleCount()/rcsNozzleDir() (authored order, else the

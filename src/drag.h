@@ -1308,13 +1308,18 @@ inline double controlDeflection(const PartAero &pa, const glm::dvec3 &ri,
    the same arithmetic the force law bills, stated as a derivative instead of a force.
    It is the SAME SIGN and the SAME degeneracy test Vehicle::applyAeroForce applies to
    the travel (controlRigLever / controlDeflectionSign just above), and that is the
-   whole point of putting them next to each other: a surface the aero step will refuse
-   to move buys no authority in the budget either, and a positive setpoint means a
-   positive COMMAND whichever way the plate is bolted. So the degeneracy test is on the
-   lever PROJECTED ON THE AUTHORED CONTROL AXIS (`aboutAxis`), not on the raw cross
-   product: the raw one may well lever some other axis, and the mix credits that (see
-   the returned VECTOR below), but a rig whose push decides nothing about the axis it is
-   rigged for cannot be commanded at all -- which is #495's rule, unchanged.
+   whole point of putting them next to each other: a rig that cannot be commanded buys
+   no authority in the budget either, and a positive setpoint means a positive COMMAND
+   whichever way the plate is bolted. So the degeneracy test is on the lever PROJECTED
+   ON THE AUTHORED CONTROL AXIS (`aboutAxis`), not on the raw cross product: the raw one
+   may well lever some other axis, and the mix credits that (see the returned VECTOR
+   below), but a rig whose push decides nothing about the axis it is rigged for cannot
+   be commanded at all -- which is #495's rule, unchanged.
+   What they cannot share is the FLOW. controlDeflection also refuses when partAero
+   finds no usable frame at the part (a plate flying at exactly zero alpha has no lift
+   axis), and a row built from the mount alone cannot see that; it sees the airspeed the
+   caller measured, which is why the caller has to do the seeing (q > 0, and --drag-cd,
+   which airDensityAtCom() ignores).
    The returned vector is the raw cross product, NOT projected: this row levers whatever
    it physically levers, so a plate at 45 deg clock levers pitch and yaw at once and
    actuatorSolve can spend it either way. Only the SENSE is the authored axis's.

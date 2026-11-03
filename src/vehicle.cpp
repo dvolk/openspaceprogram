@@ -4395,8 +4395,8 @@ void Vehicle::Command(ShipCmd cmd, bool simActive, double step) {
             break;
         /* Stick components in the ship's frame (see the `stick` member), and a
            NORMALIZED demand rather than a key flip (see ShipCmd). The consumers
-           scale with it -- wheel torque (applyRotationForce), surface deflection
-           (the control-surface block in applyAeroForce), the TVC mixer -- so 0.5 is
+           scale with it -- wheel torque and surface deflection (both through the one
+           demanded torque in applyRotationForce, #426) and the TVC mixer -- so 0.5 is
            half a demand and 0 arms nothing. Note the old spelling forced +-1 off the
            SIGN of `amount`, so an amount of 0 meant full tilt; that reading is gone.
            #425 spends this number across the actuators instead of giving each one the
@@ -4589,13 +4589,14 @@ void Vehicle::ApplyThrust(double step) {
 }
 
 /* WHAT CAN TURN THIS SHIP RIGHT NOW, in one answer: see AttitudeAuthority in
-   vehicle.h for the two rows and the axis, and why they must be read per substep.
-   Two rows because two is how many actuators the ATTITUDE LAWS can spend today. The
-   aero surfaces turn the ship too (applyControlSurfaceForce answers the stick on its
-   own; until #568 the shipped skiff had no wheel at all, so in air they were its ONLY
-   roll authority, and they still out-bill a pod's 100 N m drum by two orders of
-   magnitude in flight), and RCS nozzles are never asked to turn it at all (#595) --
-   neither is law-driven yet, which is what #425's allocator is for. The Vessel
+   vehicle.h for the rows and the axis, and why they must be read per substep.
+   Three sets of rows today -- drums, control surfaces (#426) and the gimbals' disk --
+   and the attitude laws spend all three through the ONE actuatorSolve call in
+   actuateAttitude. The surfaces used to be outside the model: the aero step answered
+   the stick directly, so until #568 the shipped skiff had no wheel at all and in air
+   its fins were its only authority while the laws saw none of it -- and they out-bill
+   a pod's 100 N m drum by two orders of magnitude in flight. RCS nozzles are still
+   never asked to turn the hull (#595). The Vessel
    window prints THIS answer rather than a parts-list rating, so a dead battery reads
    as 0 in the window and in flight rather than quoting a rating the ship cannot spend
    (#572, #418). The part window prints the part's own per-drum rating and its drum
@@ -4681,7 +4682,15 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
        surface whose push decides nothing about the axis it is rigged for (#495).
        The frame is attitudeRef()'s basis, the same one the stick, the laws and the
        mixer speak (#571); one partRot for the whole set. */
-    if(anySurface) {
+    /* drag_cd is the aero master switch (--drag-cd 0), and applyAeroForce returns
+       before its control-surface block when it is off. airDensityAtCom() answers the
+       AUTHORED shell and does not know about the switch, so asking it is not enough:
+       without this the budget quotes kN m of fin, actuateAttitude hands the plates
+       their setpoints and subtracts their share from what it applies, and no force
+       ever arrives -- the hull then gets less than it was promised for a reason no
+       readout says. Same lesson as #418's power gate: the budget must answer what the
+       actuators will really be able to spend. */
+    if(anySurface && drag_cd > 0.0) {
         const double rho = airDensityAtCom();
         const glm::dvec3 vrel = airRelativeVel(com);
         const double q = 0.5 * rho * glm::dot(vrel, vrel);
@@ -4887,8 +4896,15 @@ glm::dvec3 Vehicle::killRotDemand(double h, const AttitudeAuthority &auth) {
     /* Kill-rot commands I*(-w)/h, a direction it does not get to choose, so it
        asks only "is there any authority at all" and lets the split decide how
        much of the command survives about which axis (a wheel-less ship keeps no
-       roll, and the split drops that component instead of pretending). */
-    if(auth.wheels.empty() && auth.tvcTorque <= 0.0) { return glm::dvec3(0.0); }  /* nothing to fight with */
+       roll, and the split drops that component instead of pretending).
+       "Any authority at all" means no ROWS at all, and since #426 the surfaces are
+       rows: a glider with no drum and no nozzle has kill-rot, and the same solver
+       that gives it a slew law gives it this one. Omitting `surfaces` here (as this
+       line did when wheels+TVC were the whole set) silences the law completely while
+       the capability model quotes tens of kN m -- slewDemand asks the question
+       through attitudeTorqueAbout and never had that hole. */
+    if(auth.wheels.empty() && auth.surfaces.empty()
+       && auth.tvcTorque <= 0.0) { return glm::dvec3(0.0); }  /* nothing to fight with */
     const glm::dmat3 I = getInertia();
     /* Full-tensor cancel, as in slewDemand: tau = I * (-w) / h. Scaling each world axis
        by I[i][i] alone needs a world-aligned principal basis, else the under-cancel
