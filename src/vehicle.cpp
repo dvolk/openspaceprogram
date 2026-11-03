@@ -3272,9 +3272,9 @@ void Vehicle::applyControlForces(double h) {
     /* The force overlay's per-substep clear lives in the tick.cpp substep
        loop (it feeds the aero + control appliers together); this override
        chain cannot skip it. */
-    /* Rotation runs BEFORE thrust so the slew law's TVC aim (tvcSlewLat_) is
-       aimed before applyThrustForce steps the actuators and pushes along
-       them -- same-substep, no lag. */
+    /* Rotation runs BEFORE thrust so the substep's TVC aim (tvcLat_, armed by the
+       one allocator call) is set before applyThrustForce steps the actuators and
+       pushes along them -- same-substep, no lag. */
     applyRotationForce(h);
     applyThrustForce(h);
     applyRcsForce(h);
@@ -3296,10 +3296,12 @@ glm::dmat3 Vehicle::attitudeBasis() const {
 }
 
 void Vehicle::applyRotationForce(double h) {
-    /* The TVC aim is per-substep: cleared here, re-armed below by the stick's
-       allocator call and/or the law's, consumed by applyThrustForce this same
-       substep. */
+    /* The TVC aim is per-substep: cleared here, armed by the single allocator call
+       below, consumed by applyThrustForce this same substep. */
     tvcLat_ = glm::dvec3(0.0);
+    /* One DEMANDED torque per substep: the stick adds to it, a latched law adds to
+       it, and actuateAttitude() answers it exactly once (#420). */
+    glm::dvec3 demand(0.0);
     Part *ref = attitudeRef();
     /* ONE capability answer per substep (#594): the stick path, the slew law, the
        kill-rot law and the [slew] trace each used to ask attitudeAuthority() for a
@@ -3331,25 +3333,31 @@ void Vehicle::applyRotationForce(double h) {
            over-subscribe a line, which is what #577 left alone on purpose -- the
            allocator, not the stick, is the physical bound. */
         const glm::dvec3 key[3] = { axes[2], -axes[0], -axes[1] };
-        glm::dvec3 demand(0.0);
         for(int k = 0; k < 3; k++) {
             if(stick[k] == 0.0f) { continue; }
             demand += (double)stick[k] * attitudeTorqueAbout(auth, key[k]) * key[k];
         }
-        actuateAttitude(demand, auth);
     }
     /* Autopilot: one authority-bounded step of the slew/kill-rot law. It
        runs on ANY attitude authority -- wheels and/or TVC -- so a wheel-less
        ship (rcs_test, tvc_test) or an unpowered one still flies on its
        gimballed engines while they burn, and a ship with neither gets
        silence, not fake slewing (the #401 lesson: never promise a maneuver
-       the hardware cannot deliver). */
+       the hardware cannot deliver).
+       The law contributes its demand to the SAME vector rather than taking its
+       own trip through the allocator. Two trips double-bill the drums: each call
+       only hands the wheels its own share of what it was shown, so a latched
+       kill-rot plus a held key on a 200 N m triad pushed -400 N m through drums
+       rated 200. Summing demands is what makes one demand per substep real
+       (#420), and it is the one place #421's pilot-vs-SAS policy can decide what
+       the stick and the law each get. */
     if(slew == SlewKillRot) {
-        killRotStep(h, auth);
+        demand += killRotDemand(h, auth);
     }
     else if(slew != SlewNone) {
-        slewToward(slewTargetDir(), h, auth);
+        demand += slewDemand(slewTargetDir(), h, auth);
     }
+    if(glm::length2(demand) > 0.0) { actuateAttitude(demand, auth); }
 }
 
 /* The tick's release: no demand and no claim of having burned. The REQUEST goes
@@ -3520,7 +3528,7 @@ void Vehicle::slew_log(double time) {
         case SlewAntiNormal: mode = "anti-normal"; break;
         default:             mode = "slew"; break;
     }
-    /* The SAME degeneracy test slewToward uses, not a looser one: at 0.5 this
+    /* The SAME degeneracy test slewDemand uses, not a looser one: at 0.5 this
        dropped a target the law was busy steering toward, and normalizing what was
        left (a zero vector) made E and axis NaN, so the row read alpha=0.000 next to
        a ship actually slewing on its engines. */
@@ -4621,7 +4629,7 @@ glm::dvec3 Vehicle::slewTargetDir() {
        non-rotating node: inside the rotating surface frame GetVel() is the
        ground-relative velocity, which for a ship flying slowly points nowhere
        near its orbit's prograde, and the cross product of that pair is not the
-       orbit's normal. Then back into this frame -- slewToward steers in it.
+       orbit's normal. Then back into this frame -- slewDemand steers in it.
        Matches the drawn markers (render.cpp), so what SAS aims at is what the
        prograde icon shows. */
     Frame *inertial = frame->getNonRotFrame();
@@ -4647,10 +4655,10 @@ void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
        share and tvcSplit's scalar clamp stays conservative. actuatorSolve below is
        what caps each line for real, against the drums' own axes. */
     tvcSplit(torque, a.stackAxis, a.tvcTorque, a.heffMag, a.wheelRatingSum(), tauW, lat);
-    /* ADD rather than assign: this substep may call the allocator more than once
-       (the stick and a law), and the mixer's per-engine clamp against gimbal_max
-       is what bounds the total (#420 -- one demand per consumer, one bound). */
-    tvcLat_ += lat;
+    /* Exactly one call per substep, so this is an assignment and not a merge:
+       applyRotationForce clears the aim and answers one summed demand (#420). */
+    assert(glm::length2(tvcLat_) == 0.0);
+    tvcLat_ = lat;
     /* The wheel half travels along the drums. What the split asks for about an axis
        no drum covers is dropped here rather than applied anyway, which is the other
        half of #576: the budget stopped crediting that axis, and now the actuator
@@ -4661,16 +4669,20 @@ void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
     if(glm::length2(delivered) > 0.0) { ApplyTorque(hull, delivered); }
 }
 
-void Vehicle::slewToward(glm::dvec3 dir, double h, const AttitudeAuthority &auth) {
-    if(glm::length2(dir) < 1e-12) { return; } /* no direction to align to */
+/* What the alignment law WANTS this substep, in N m: the braking-curve rate change
+   through the hull's own inertia. It does not actuate -- applyRotationForce sums
+   this with the stick's demand and asks the actuators once, because two trips
+   through the allocator bill the drums twice (#420). */
+glm::dvec3 Vehicle::slewDemand(glm::dvec3 dir, double h, const AttitudeAuthority &auth) {
+    if(glm::length2(dir) < 1e-12) { return glm::dvec3(0.0); } /* no direction to align to */
     dir = glm::normalize(dir);
     /* The ship's frame is attitudeRef() -- not whichever wheel happens to be first
        in the parts list (#571). */
     Part *ref = attitudeRef();
-    if(ref == nullptr) { return; }
+    if(ref == nullptr) { return glm::dvec3(0.0); }
     const glm::dvec3 facing = partAxis(ref, 2);
     const double E = glm::acos(glm::clamp(glm::dot(facing, dir), -1.0, 1.0));
-    if(E < 1e-9) { return; } /* already aligned */
+    if(E < 1e-9) { return glm::dvec3(0.0); } /* already aligned */
     glm::dvec3 axis = glm::cross(facing, dir); /* + turns the nose toward dir */
     if(glm::length2(axis) < 1e-12) {
         /* nose ~ opposite dir: any axis perpendicular to facing works */
@@ -4680,7 +4692,7 @@ void Vehicle::slewToward(glm::dvec3 dir, double h, const AttitudeAuthority &auth
     axis = glm::normalize(axis);
     const glm::dmat3 I = getInertia();
     const double Ieff = glm::dot(axis, I * axis); /* kg m^2 about the slew axis */
-    if(Ieff <= 0.0) { return; }
+    if(Ieff <= 0.0) { return glm::dvec3(0.0); }
     /* Authority this substep, ABOUT THE AXIS THIS SLEW NEEDS: wheels (when live)
        plus whatever TVC can lever that way, so the braking curve and the
        actuator bound scale with throttle. Nothing available: hold position --
@@ -4692,7 +4704,7 @@ void Vehicle::slewToward(glm::dvec3 dir, double h, const AttitudeAuthority &auth
        tvcSplit has always applied when it drops that component -- and aiming at a
        roll error is the allocator's job (#420), not this law's. */
     const double authMax = attitudeTorqueAbout(auth, axis);
-    if(authMax <= 0.0) { return; }
+    if(authMax <= 0.0) { return glm::dvec3(0.0); }
     const double alpha = authMax / Ieff; /* rad/s^2, actuator-limited */
     const double w_des = std::min(std::sqrt(2.0 * alpha * E), E / (2.0 * h));
     /* Drive the FULL transverse angular velocity toward the braking-curve rate: damping
@@ -4701,31 +4713,29 @@ void Vehicle::slewToward(glm::dvec3 dir, double h, const AttitudeAuthority &auth
     const glm::dvec3 w_now = hullAngVel();
     const glm::dvec3 w_transverse = w_now - facing * glm::dot(w_now, facing);
     glm::dvec3 dW = axis * w_des - w_transverse; /* desired change in rate */
-    glm::dvec3 torque = I * dW / h;
-    /* authority bound: at most authMax N m about this axis, split between them */
-    actuateAttitude(torque, auth);
+    /* The demand is bounded by the law's own alpha only through w_des; the actuators'
+       bound is applied once, by the allocator, to whatever this sums with (#420). */
+    return I * dW / h;
 }
 
-void Vehicle::killRotStep(double h, const AttitudeAuthority &auth) {
+/* What kill-rot WANTS this substep, N m: a full-tensor cancel of the hull's rate.
+   Same contract as slewDemand -- it does not actuate. */
+glm::dvec3 Vehicle::killRotDemand(double h, const AttitudeAuthority &auth) {
     /* No frame in this law at all: the command is the hull's own rate and its own
-       inertia, and actuateAttitude's split decides which axes the actuators can
+       inertia, and the allocator's split decides which axes the actuators can
        deliver it about. */
     const glm::dvec3 w = hullAngVel();
-    if(glm::length2(w) == 0.0) { return; } /* at rest: nothing to kill */
+    if(glm::length2(w) == 0.0) { return glm::dvec3(0.0); } /* at rest: nothing to kill */
     /* Kill-rot commands I*(-w)/h, a direction it does not get to choose, so it
        asks only "is there any authority at all" and lets the split decide how
        much of the command survives about which axis (a wheel-less ship keeps no
        roll, and the split drops that component instead of pretending). */
-    if(auth.wheels.empty() && auth.tvcTorque <= 0.0) { return; }  /* nothing to fight with */
+    if(auth.wheels.empty() && auth.tvcTorque <= 0.0) { return glm::dvec3(0.0); }  /* nothing to fight with */
     const glm::dmat3 I = getInertia();
-    /* Full-tensor cancel, as in slewToward: tau = I * (-w) / h. Scaling each world axis
+    /* Full-tensor cancel, as in slewDemand: tau = I * (-w) / h. Scaling each world axis
        by I[i][i] alone needs a world-aligned principal basis, else the under-cancel
        couples axes into a period-2 limit cycle. */
-    glm::dvec3 torque = I * (-w) / h;
-    /* Bound + split: a wheel-less ship cannot kill its ROLL about the stack
-       axis (a lateral deflection never levers that way), and the split drops
-       exactly that component instead of pretending. */
-    actuateAttitude(torque, auth);
+    return I * (-w) / h;
 }
 
 glm::dvec3 Vehicle::GetPositionRelTo(const Part *part, Frame *relTo) {

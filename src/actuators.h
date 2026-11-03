@@ -96,18 +96,21 @@ inline double actuatorTorqueAbout(const std::vector<ActuatorRow> &rows,
    hang and costs a few hundred flops for a handful of rows -- it runs per substep
    per law, not per part.
  *
-   Two known properties, neither visible today and both load-bearing later:
-   - Descent converges fast when lines are orthogonal (one sweep) and slowly when
-     they are near-parallel but past the grouping tolerance, so the split between
-     two such lines is not yet the optimum. The DELIVERED vector barely notices
-     (0.65% at 0.6 deg apart); the per-row setpoints notice a lot (5x). #579 bills
-     momentum from those setpoints, so it must either split a converged line total
-     pro-rata or widen the grouping.
-   - Rows grouped into one line get that line's answer split pro-rata by rating,
-     so a row that is a fraction of a degree off the line's direction is credited
-     along the LINE. Summing setpoints back through each row's own axis then differs
-     from the returned vector by ~ q * angle -- under the tolerance that is
-     rounding; near it, not zero. */
+   Two known properties, neither visible today and both load-bearing later. Both
+   measured on two 100 N m drums whose lines are THETA apart, asked for 120 N m along
+   the bisector, where the fair split is 60/60:
+   - Descent converges fast when lines are orthogonal (one sweep) and not at all when
+     they are near-parallel but past the grouping tolerance: theta = 1e-4 .. 0.0175 rad
+     (0.006 .. 1 deg) all answer 100/20, and crossing the tolerance jumps the split
+     from 60/60 to 100/20 in one step. The DELIVERED vector barely notices (0.003% at
+     1e-4 rad, 0.58% at 1 deg) while the per-row answer is 100 N m on one drum and 20
+     on the other. #579 bills momentum
+     from those setpoints, so it must either split a converged line total pro-rata or
+     widen the grouping.
+   - Rows grouped into one line get that line's answer split pro-rata by rating, so a
+     row that is a fraction of a degree off the line's direction is credited along the
+     LINE. Summing setpoints back through each row's own axis then differs from the
+     returned vector by ~ q * angle: 6e-5 N m at theta = 1e-6, zero at theta = 0. */
 inline glm::dvec3 actuatorSolve(const std::vector<ActuatorRow> &rows,
                                 const glm::dvec3 &demand,
                                 std::vector<double> &setpoints) {

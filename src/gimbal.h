@@ -12,13 +12,14 @@
 // a whole ship come from ONE lateral direction in the ship's root frame
 // (gimbalTargets), so a ring of surface-mounted engines ADDS authority rather
 // than rolling the ship, and engines keep steering the way the pilot commands
-// even when mounted rolled. That shared lateral answers the stick the same way
-// the reaction-wheel torque in Vehicle::applyRotationForce does -- for the
+// even when mounted rolled. That shared lateral is the gimbal half of ONE demanded
+// torque: Vehicle::applyRotationForce sums the stick and any latched law, and
+// Vehicle::actuateAttitude splits it between this and the drums -- for the
 // ordinary case of engines levers BELOW the COM. An engine on the far side of
 // the COM (reversed engines in a docked pair, COM travel mid-burn) pushes the
 // nose the other way; Vehicle::applyThrustForce flips its deflection so the
-// torques add -- for the stick path AND the autopilot's (case
-// 109-tvc-feel-top-engine pins that wheel-feel parity).
+// torques add -- whoever asked for the torque (case 109-tvc-feel-top-engine pins
+// that wheel-feel parity).
 
 #include <cmath>
 

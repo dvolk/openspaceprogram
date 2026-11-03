@@ -1,6 +1,6 @@
 //
-// Regression test for the attitude controllers (Vehicle::slewToward /
-// killRotStep in src/main.cpp) and the Δv budget formula
+// Regression test for the attitude controllers (Vehicle::slewDemand /
+// killRotDemand in src/vehicle.cpp) and the Δv budget formula
 // (Vehicle::getDeltaV).
 //
 // The controllers slew the ship's nose (local +Z) toward a target
@@ -86,7 +86,7 @@ struct RunResult {
     bool bad;      // NaN/Inf
 };
 
-// The NEW law, per SUBSTEP (mirrors src/vehicle.cpp Vehicle::slewToward +
+// The NEW law, per SUBSTEP (mirrors src/vehicle.cpp Vehicle::slewDemand +
 // Bullet's semi-implicit step): A = per-tick |domega| authority
 // (rad/s per tick), step = tick duration (s), x = signed error angle,
 // v = angular velocity (x increases with v). v_des points toward the

@@ -12,7 +12,7 @@
 //      authority -- no command can be more forceful than a maxed manual
 //      stick. (The thrust analogue: T = mdot x ve N.)
 //
-//   2. Slew law, per SUBSTEP (src/vehicle.cpp Vehicle::slewToward):
+//   2. Slew law, per SUBSTEP (src/vehicle.cpp Vehicle::slewDemand):
 //         w_des = min(sqrt(2*alpha*E), E/(2h))      (the braking curve,
 //                                                     capped so a substep
 //                                                     at w_des cannot
@@ -188,7 +188,7 @@ static RunResult run_slew(double A, double step, double x0, double v0,
     return RunResult{false, crossings, false, max_ratio};
 }
 
-// KillRot's per-substep law (src/main.cpp killRotStep), 1-D:
+// KillRot's per-substep law (src/vehicle.cpp killRotDemand), 1-D:
 //   dw = -v * min(1, alpha*h/|v|)  ->  |v| drops by min(|v|, alpha*h)
 // Monotonic, no sign flip, reaches exactly 0.
 static bool killrot_converges(double A, double step, double v0, int budget) {

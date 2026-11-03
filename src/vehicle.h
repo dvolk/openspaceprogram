@@ -637,7 +637,9 @@ public:
        through actuators.h::actuatorSolve, so what reaches the hull is what the
        drums' own axes can carry: a demand about an axis no drum covers is dropped
        there rather than billed to a wheel that cannot answer it (#576).
-       Stashes the TVC half in tvcSlewLat_ for applyThrustForce this same substep. */
+       Stashes the TVC half in tvcLat_ for applyThrustForce this same substep.
+       applyRotationForce answers ONE summed demand and calls this once, so that aim
+       is the whole answer rather than one consumer's share of it (#420). */
     void actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &auth);
     glm::dvec3 lastThrustForce{};  // debug: total thrust force applied last substep
     /* Restoring the latched Autopilot mode when a save loads. Input never calls this:
@@ -1179,17 +1181,20 @@ protected:
        / normal reference the SOI body. */
     glm::dvec3 slewTargetDir();
 
-    /* Slew the nose (local +Z) toward `dir`: target rate is the braking curve
-       sqrt(2*alpha*E) capped at E/(2h), rate change bounded by alpha*h. The
+    /* What the slew law DEMANDS, N m, for one substep of aligning the nose (local
+       +Z) with `dir`: target rate is the braking curve sqrt(2*alpha*E) capped at
+       E/(2h), rate change bounded by alpha*h. It does not actuate:
+       applyRotationForce sums this with the stick's demand and runs the allocator
+       ONCE, because a second trip through it bills the wheels twice (#420). The
        capability comes from the caller's AttitudeAuthority -- one answer per
        substep, shared by the stick and both laws (#594's first half; the [slew]
        trace still builds its own, which is the half still open). */
-    void slewToward(glm::dvec3 dir, double h, const AttitudeAuthority &auth);
+    glm::dvec3 slewDemand(glm::dvec3 dir, double h, const AttitudeAuthority &auth);
 
-    /* Kill the spin in one substep: tau = I * (-w) / h, bounded by the caller's
-       AttitudeAuthority. Needs the FULL inertia tensor, not the world-axis
-       diagonal. */
-    void killRotStep(double h, const AttitudeAuthority &auth);
+    /* What kill-rot demands for one substep, N m: tau = I * (-w) / h, which the
+       allocator bounds against the caller's AttitudeAuthority. Needs the FULL
+       inertia tensor, not the world-axis diagonal. */
+    glm::dvec3 killRotDemand(double h, const AttitudeAuthority &auth);
 
 public:
 

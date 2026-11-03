@@ -1,6 +1,6 @@
 //
 // Regression test for the prograde/retrograde slew law in 3 DOF
-// (Vehicle::slewToward, src/vehicle.h). Pure C++ -- no Bullet/GL -- so it
+// (Vehicle::slewDemand, src/vehicle.h). Pure C++ -- no Bullet/GL -- so it
 // runs anywhere `make test` does.
 //
 // THE BUG this pins (fixed 2026-08-30):

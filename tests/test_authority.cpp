@@ -399,15 +399,25 @@ static void test_a_triad_housing_covers_three_lines() {
     destroyShip(v);
 }
 
+/* Command arms ONE key and leaves the others standing, exactly as the keyboard does
+   (tick.cpp clears the stick at the tick top), so a case that wants exactly one key
+   held has to release the other two first. */
+static void holdStick(Vehicle *v, ShipCmdType key, float amount) {
+    v->Command(ShipCmd(Roll, 0.0f), true);
+    v->Command(ShipCmd(Pitch, 0.0f), true);
+    v->Command(ShipCmd(Yaw, 0.0f), true);
+    if(amount != 0.0f) { v->Command(ShipCmd(key, amount), true); }
+}
+
 /* THE STICK IS INTENT, NOT WIRING (#425 step D, and the structural close of #420).
    The pitch and yaw keys used to drive the drums directly in applyRotationForce AND
    be mixed by hand into the gimbals in applyThrustForce (`gimbal_max * latShip +
    the autopilot's aim`), so each actuator took the stick at full rate and only a
    per-engine clamp sorted out the excess -- which is exactly the double-bill #420
    complained about. Now the keys become ONE demanded torque and actuateAttitude
-   splits it. This binary has no physics world, so the wheel share (ApplyTorque) is
-   not observable here; the allocator's TVC share is, and that is the number #420 was
-   about. The stick is armed through Command(), the player's own door (#424). */
+   splits it. This test pins the TVC half of that answer; the next pins the wheel
+   half, which needs a fixture whose drums cover the demanded axis. The stick is
+   armed through Command(), the player's own door (#424). */
 static void test_the_stick_demands_one_torque() {
     printf("== the stick is one demand through one allocator (#425 D) ==\n");
     Stack st = mkStack(200.0, 800.0, 0.1);   // a stacked drum AND a gimballed engine
@@ -416,20 +426,11 @@ static void test_the_stick_demands_one_torque() {
     const double latFull = std::sin(0.1);    // the stop, as the split converts it to rad
     CHECK_NEAR(a.tvcTorque, 1000.0 * latFull, 1e-9, "the engine's authority, for the pins below");
 
-    /* Command arms ONE key and leaves the others standing, exactly as the keyboard
-       does (tick.cpp clears the stick at the tick top), so a case that wants one key
-       held has to release the other two first. */
-    auto holdKey = [&](ShipCmdType key, float amount) {
-        v->Command(ShipCmd(Roll, 0.0f), true);
-        v->Command(ShipCmd(Pitch, 0.0f), true);
-        v->Command(ShipCmd(Yaw, 0.0f), true);
-        v->Command(ShipCmd(key, amount), true);
-    };
-
     /* Pitch held: the mixer used to aim at exactly gimbal_max along -Y. The split
        reaches the stop from the demanded torque instead, so the deflection is
-       sin(gimbal_max) -- 0.17% off at 5 deg -- and the direction is the same. */
-    holdKey(Pitch, +1.0f);
+       sin(gimbal_max) -- 0.17% off for this fixture's 0.1 rad stop, 0.127% off the
+       shipped part's 0.0873 -- and the direction is the same. */
+    holdStick(v, Pitch, +1.0f);
     v->applyRotationForce(0.02);
     CHECK_NEAR(glm::length(v->tvcLat_), latFull, 1e-9,
                "a held key drives the gimbals to their stop, by way of the split");
@@ -439,13 +440,15 @@ static void test_the_stick_demands_one_torque() {
 
     /* Roll is wheels-only: a lateral deflection can never lever the stack axis, so
        the allocator aims the gimbals nowhere however hard the key is held. */
-    holdKey(Roll, +1.0f);
+    holdStick(v, Roll, +1.0f);
     v->applyRotationForce(0.02);
     CHECK_NEAR(glm::length(v->tvcLat_), 0.0, 1e-12, "a roll demand buys no gimbal deflection");
 
     /* Two keys, one bound: the demand is the sum of the two axes' capabilities, so
-       the transverse part is past the TVC stop and the aim SATURATES at it instead
-       of the 2x the two hand-wired paths used to ask for. */
+       the transverse part is past the TVC stop and the aim SATURATES at it. (The old
+       mixer normalized latShip too, so this is not a change in what a two-key hold
+       buys; it is the new path being bound where the old one was bound.) */
+    v->Command(ShipCmd(Roll, 0.0f), true);
     v->Command(ShipCmd(Pitch, +1.0f), true);
     v->Command(ShipCmd(Yaw, +1.0f), true);
     v->applyRotationForce(0.02);
@@ -474,10 +477,86 @@ static void test_the_stick_demands_one_torque() {
     destroyShip(v);
 }
 
+/* THE WHEELS ARE BILLED ONCE A SUBSTEP, WHOEVER ASKS (#420's structural claim).
+   The check above can only see the gimbals: with a single drum on the stack axis, a
+   pitch demand buys no wheel torque at all, so the wheel half of the demand was
+   invisible -- which is how the double-bill survived the first pass at this. The
+   wheel half IS visible here: no world steps, but Bullet accumulates the torques
+   applied to the hull body, so getTotalTorque() reads the allocator's answer.
+   The fixture is therefore a TRIAD housing (three orthogonal 200 N m drums), where a
+   pitch demand costs 200 N m of drum and 99.8 N m of nozzle. Two consumers in one
+   substep used to mean two trips through actuateAttitude, each solving its own wheel
+   share out of a FULL command: latched kill-rot plus a held key asked a 200 N m drum
+   for -400 N m. Now the demands sum and the drums are asked once. */
+static void test_the_wheels_are_billed_once() {
+    printf("== the wheels are billed once a substep, whoever asks (#420) ==\n");
+    Stack st = mkStack(200.0, 800.0, 0.1);
+    for(PartDef &d : st.s.defs) { if(d.name == std::string("root")) d.wheel_axes = 3; }
+    Vehicle *v = st.s.v;
+    const double latFull = std::sin(0.1);
+    const double tvcMax = 1000.0 * latFull;      // the fixture's TVC ceiling
+    CHECK_NEAR(v->attitudeAuthority().tvcTorque, tvcMax, 1e-9,
+               "the fixture's TVC ceiling, for the pins below");
+    /* What the hull was actually torqued by, along the axis the pitch key turns it
+       about -- the ship's own X, the "right" axis; the -Y in the test above is where
+       the nozzles point, not where the torque acts -- and a reset for the next case. */
+    auto billedPitch = [&]() {
+        const btVector3 t = v->hull->btBody->getTotalTorque();
+        v->hull->btBody->clearForces();
+        return glm::dot(glm::dvec3(t.x(), t.y(), t.z()), st.x);
+    };
+    v->hull->btBody->clearForces();
+
+    /* One consumer: the stick over-asks (200 N m of drum + 99.8 N m of nozzle), so
+       the drum pays its rating and the gimbals go to the stop. */
+    holdStick(v, Pitch, +1.0f);
+    v->applyRotationForce(1.0 / 120.0);
+    CHECK_NEAR(billedPitch(), -200.0, 1e-9, "the drum pays its rating and no more");
+    CHECK_NEAR(glm::length(v->tvcLat_), latFull, 1e-9, "the gimbals take the rest, one stop");
+
+    /* Two consumers, one substep: kill-rot on a spinning hull demands I*w/h, which is
+       thousands of N m, and the stick asks on top of that. The demands sum BEFORE the
+       split, so the bill is unchanged from the stick asking alone. Red if a law gets
+       its own trip through the allocator. */
+    v->hull->btBody->setAngularVelocity(btVector3(1.0f, 0.0f, 0.0f));
+    v->Command(ShipCmd(KillRot), true);
+    v->applyRotationForce(1.0 / 120.0);
+    CHECK_NEAR(billedPitch(), -200.0, 1e-9, "law + key together still bill the drum once");
+    CHECK_NEAR(glm::length(v->tvcLat_), latFull, 1e-9, "and the gimbals once");
+
+    /* Neither consumer is dropped on the way to that bound. */
+    holdStick(v, Pitch, 0.0f);
+    v->applyRotationForce(1.0 / 120.0);
+    CHECK_NEAR(billedPitch(), -200.0, 1e-9, "the law's demand still reaches the drum");
+    v->Command(ShipCmd(KillRot), true);          /* un-latch */
+    v->hull->btBody->setAngularVelocity(btVector3(0.0f, 0.0f, 0.0f));
+    v->applyRotationForce(1.0 / 120.0);
+    CHECK_NEAR(billedPitch(), 0.0, 1e-12, "nothing asked, nothing billed");
+
+    /* And what a PARTIAL stick buys, pinned as the split's current POLICY for the
+       pilot rather than as physics. One key at fraction `a` asks for a x the hull's
+       whole capability (200 N m of drum + 99.8 N m of nozzle), and tvcSplit spends
+       TVC first: below a_crit = tvcMax/cap = 1/3 the drum contributes nothing, above
+       it the nozzles are already at their stop. The total is right either way -- who
+       delivers it is the question #421 decides, and this is the pin that notices. */
+    const double cap = 200.0 + tvcMax;
+    holdStick(v, Pitch, 0.25f);
+    v->applyRotationForce(1.0 / 120.0);
+    CHECK_NEAR(billedPitch(), 0.0, 1e-9, "a quarter stick leaves the drum idle");
+    CHECK_NEAR(glm::length(v->tvcLat_), 0.25 * cap / 1000.0, 1e-9,
+               "and the nozzle carries all of it, part-way to the stop");
+    holdStick(v, Pitch, 0.5f);
+    v->applyRotationForce(1.0 / 120.0);
+    CHECK_NEAR(billedPitch(), -(0.5 * cap - tvcMax), 1e-9,
+               "half stick: the drum only tops up what the nozzle cannot reach");
+    CHECK_NEAR(glm::length(v->tvcLat_), latFull, 1e-9, "with the nozzle already at its stop");
+    destroyShip(v);
+}
+
 /* ONE FRAME FOR THE WHOLE ATTITUDE PATH (#571). The stack axis TVC levers belongs
    to the ROOT part, and since #571 every consumer asks attitudeRef() for it: the
    mixer, attitudeAuthority, the manual stick, rcsWorldDir, the two traces, and
-   slewToward's facing. Before it, the laws and the stick took firstWheel() -- a
+   slewDemand's facing. Before it, the laws and the stick took firstWheel() -- a
    frame picked by parts-list order. Which half of that was observable:
      - the stick, YES: a surface mount keeps a part's +Z parallel to its parent's
        and ROLLS it about the stack, so a wheel on a tank's side has the ship's nose
@@ -487,7 +566,7 @@ static void test_the_stick_demands_one_torque() {
      - the fixture below, in a shape a def CANNOT produce: localRot is set by hand so
        the wheel's +Z is 90 deg off the stack. That is what makes the disk normal and
        the facing decidable here; a shipped mount can only roll a wheel, not tilt it.
-     - killRotStep and the killrot trace row: NO -- they used the reference part only
+     - killRotDemand and the killrot trace row: NO -- they used the reference part only
        to read the hull's rate, which is the same for every part (hullAngVel(), #574).
    What a model that took the wheel's +Z as the TVC disk's normal WOULD do is here and
    now pinned: it re-opens the hole step B closed, crediting TVC with roll. */
@@ -780,6 +859,7 @@ int main() {
     test_a_cluster_covers_an_axis_it_points_at();
     test_a_triad_housing_covers_three_lines();
     test_the_stick_demands_one_torque();
+    test_the_wheels_are_billed_once();
     test_one_frame_for_the_attitude_path();
     test_the_command_funnel();
     test_the_armed_rcs_demand_is_a_direction();
