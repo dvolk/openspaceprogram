@@ -536,15 +536,22 @@ public:
                             || stick[2] != 0.0f || slew != SlewNone);
     }
     /* W the actuators are billing right now: the wheels' draw, summed over every wheel
-       and zero when they are not engaged. powerTick() pays this and the Vessel window's
-       Power row shows it, so the row cannot disagree with the bill (#575) -- it used to
-       re-derive the sum, and dropped the power gate while doing it. */
+       HOUSING and zero when they are not engaged. A triad housing (#593) bills its
+       one `power_draw`, not three: the watt figure is the package's, while `torque`
+       is per drum -- deliberately, since rating the drums individually would triple
+       every shipped wheel's power bill with no author asking for it. powerTick() pays
+       this and the Vessel window's Power row shows it, so the row cannot disagree with
+       the bill (#575) -- it used to re-derive the sum, and dropped the power gate
+       while doing it. */
     double wheelDrawWatts() const;
-    /* The autopilot's TVC aim: one shared lateral deflection vector (world
-       axes, rad) computed by the slew law's torque split (gimbal.h
-       tvcSplit) each substep, consumed by applyThrustForce's mixer. Cleared
-       when nothing commands it, so a released autopilot recenters. */
-    glm::dvec3 tvcSlewLat_{};
+    /* The TVC aim handed to the mixer: one shared lateral deflection vector
+       (world axes, rad) from the torque splits (gimbal.h tvcSplit) this substep,
+       consumed by applyThrustForce. applyRotationForce clears it at the top of the
+       substep and every actuateAttitude call ADDS its share -- the stick's and the
+       law's both arrive, and the mixer's per-engine clamp against gimbal_max is
+       what bounds the sum (#420). Cleared when nothing commands it, so a released
+       autopilot and a released stick both recentre. */
+    glm::dvec3 tvcLat_{};
     /* WHAT CAN TURN THIS SHIP RIGHT NOW (#425). One answer to "how hard, and
        about which axis", for every consumer: the slew law, the kill-rot law, the
        [slew] trace, and later the RCS and aero rows. Before this each caller
@@ -593,11 +600,14 @@ public:
            gated answer per axis (#572: one answer, not the one the largest wheel
            happens to give). */
         std::vector<ActuatorRow> wheels;
-        /* The most any ONE line of this set could carry -- the sum of the ratings,
-           an upper bound on a single axis and therefore the right scalar for
-           gimbal.h tvcSplit to cap its wheel share with, since actuatorSolve is
-           what caps it for real. */
-        double wheelCapacity() const {
+        /* Sum of the row ratings, deliberately NOT called a capacity: for a triad
+           housing it is 3x what any one of its lines can carry, so it answers
+           "how much wheel does this hull own" and not "how much about some axis".
+           The only consumer is gimbal.h tvcSplit, which needs an upper bound on
+           the wheel share of a split and takes it loosely because actuatorSolve is
+           what caps each line for real. The axis-specific number is
+           actuatorTorqueAbout(wheels, axis). */
+        double wheelRatingSum() const {
             double t = 0.0;
             for(const ActuatorRow &w : wheels) { t += w.limit; }
             return t;
@@ -1172,7 +1182,8 @@ protected:
     /* Slew the nose (local +Z) toward `dir`: target rate is the braking curve
        sqrt(2*alpha*E) capped at E/(2h), rate change bounded by alpha*h. The
        capability comes from the caller's AttitudeAuthority -- one answer per
-       substep is shared by the stick, both laws and the trace (#593). */
+       substep, shared by the stick and both laws (#594's first half; the [slew]
+       trace still builds its own, which is the half still open). */
     void slewToward(glm::dvec3 dir, double h, const AttitudeAuthority &auth);
 
     /* Kill the spin in one substep: tau = I * (-w) / h, bounded by the caller's

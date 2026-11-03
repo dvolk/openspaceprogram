@@ -5,9 +5,11 @@
 //
 // The controllers slew the ship's nose (local +Z) toward a target
 // direction using the reaction wheel, within the wheel's torque authority
-// (alpha = wheelTorqueSum()/I, I the ship's real moment of inertia). The law
-// below is integrated per substep (h = step/n, n = the main loop's
-// substeps), exactly as src/main.cpp does.
+// (alpha = the N m available about the asked axis / I, I the ship's real moment of
+// inertia -- src/ derives that number from the actuator rows in actuators.h; this
+// file's law is written with one scalar authority, as a hull of orthogonal drums
+// answers it). The law below is integrated per substep (h = step/n, n = the main
+// loop's substeps), exactly as the game's force pass does.
 //
 // History of the laws this test has pinned:
 //   OLD-OLD (the original game code): torque = normalize(cross(dir, facing)) / 10
@@ -200,8 +202,9 @@ static double getDeltaV_formula(double ve, double dry, double fuel) {
 int main() {
     printf("== Slew: authority-bounded braking law ==\n");
     // a = A*step/x0: the per-tick authority relative to the initial error
-    // (a = alpha*step^2/x0 with alpha = wheelTorqueSum()/I). The standard ship
-    // (I ~ 8444 kg m^2, one 2000 N m wheel, alpha ~ 0.24 rad/s^2) sits at
+    // (a = alpha*step^2/x0 with alpha = (the N m about the asked axis)/I). The standard
+    // ship this sweep imagines (I ~ 8444 kg m^2, 2000 N m of drum on the asked axis,
+    // alpha ~ 0.24 rad/s^2) sits at
     // a ~ 6e-5..1.1e-3 at 1x warp and a ~ 0.11 at 10x warp (5 deg error);
     // at 100x+ warp it is above the top of this sweep -- so the a = 0.5
     // row is the stiff regime the per-tick form limit-cycles in (15 of

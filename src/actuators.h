@@ -6,16 +6,25 @@
 //
 // #576 is why this exists. A reaction wheel used to be a rating with no
 // direction: the capability model credited the summed wheel rating in full about
-// whichever axis it was asked for, so a hull whose only drum sits along the stack
-// -- which is every shipped hull, capsules and reaction wheels are both mounted
-// stacked -- bought full pitch and yaw from a wheel that can only roll it. The
-// honest answer asks two questions over ONE set of rows, so the budget a law
-// plans against and the torque the actuators answer with cannot drift apart:
+// whichever axis it was asked for, so a drum mounted along the stack -- which is
+// how every capsule and every reaction wheel is bolted on -- bought the hull full
+// pitch and yaw from a wheel that can only roll it. The honest answer asks two
+// questions over ONE set of rows, so a law cannot plan against one model and be
+// delivered by another:
 //
 //   actuatorTorqueAbout()  what these actuators can bring to bear ABOUT an axis
 //                          (the capability the slew law's alpha budgets with);
 //   actuatorSolve()        what they actually deliver against a demanded vector,
 //                          and what each one's share of it is.
+//
+// The two answer different questions over the same rows: the first is the most
+// torque they can produce ALONG a direction (each actuator free to allocate
+// itself), the second is how they split one specific demanded vector. The first
+// is therefore an upper bound on the second, never a promise that the second
+// reaches it -- the stick's multi-key demand (#577) is the everyday case where it
+// does not, because a demand can lean harder on one line than that line's rating.
+// What the shared row set buys is that the law and the actuators cannot disagree
+// about WHICH lines exist and how far each reaches.
 //
 // #426's fin ring is the same row with a different effect vector -- a surface's
 // torque-per-unit-deflection and its max_deflection as the limit -- so the wheel
@@ -27,7 +36,7 @@
 // Worth knowing both exist before a third demand shape shows up and someone
 // merges them. It also carries no Scratch like rcs::Scratch yet: today's rows are
 // the handful of wheels on a hull, not a nozzle ring, so these vectors are the
-// whole cost, and #593's ask (one AttitudeAuthority per substep instead of one
+// whole cost, and #594's ask (one AttitudeAuthority per substep instead of one
 // per law) is what keeps that cost off the hot path.
 
 #include <cmath>
@@ -52,7 +61,12 @@ struct ActuatorRow {
    direction is what counts, and a zero or NaN direction buys nothing). A drum
     leaning 90 deg off the asked axis contributes nothing about it, which is the
     whole content of #576, and two drums on one line buy that line's capacity
-    once -- the same arithmetic actuatorSolve distributes over. */
+    once. This is the most they can produce along `dir` with each free to spend
+    itself: actuatorSolve's answer about that direction can only ever be shorter.
+    A triad housing (#593) is creditable in more than one direction at once, so
+    its number about an oblique axis is the sum of three drums' cosines -- up to
+    sqrt(3) x its rating -- which is what three orthogonal drums genuinely can do,
+    and also why the old single isotropic number understated an oblique axis. */
 inline double actuatorTorqueAbout(const std::vector<ActuatorRow> &rows,
                                  const glm::dvec3 &dir) {
     const double d2 = glm::dot(dir, dir);
@@ -80,7 +94,20 @@ inline double actuatorTorqueAbout(const std::vector<ActuatorRow> &rows,
    (each step takes that line's best contribution given the others, clamped to its
    capacity). The problem is convex and the sweep count is fixed, so this cannot
    hang and costs a few hundred flops for a handful of rows -- it runs per substep
-   per law, not per part. */
+   per law, not per part.
+ *
+   Two known properties, neither visible today and both load-bearing later:
+   - Descent converges fast when lines are orthogonal (one sweep) and slowly when
+     they are near-parallel but past the grouping tolerance, so the split between
+     two such lines is not yet the optimum. The DELIVERED vector barely notices
+     (0.65% at 0.6 deg apart); the per-row setpoints notice a lot (5x). #579 bills
+     momentum from those setpoints, so it must either split a converged line total
+     pro-rata or widen the grouping.
+   - Rows grouped into one line get that line's answer split pro-rata by rating,
+     so a row that is a fraction of a degree off the line's direction is credited
+     along the LINE. Summing setpoints back through each row's own axis then differs
+     from the returned vector by ~ q * angle -- under the tolerance that is
+     rounding; near it, not zero. */
 inline glm::dvec3 actuatorSolve(const std::vector<ActuatorRow> &rows,
                                 const glm::dvec3 &demand,
                                 std::vector<double> &setpoints) {

@@ -1,5 +1,5 @@
 //
-// Attuator allocation (src/actuators.h, header-only pure math): the capability
+// Actuator allocation (src/actuators.h, header-only pure math): the capability
 // row #576 gives a reaction wheel (a rating AND the line it levers), and the
 // solver that turns a demanded attitude torque into per-actuator setpoints
 // bounded by their ratings. Pinned without Bullet/GL so the arithmetic stands on
@@ -15,6 +15,10 @@
 //                uncovered axis buys nothing instead of a pretend torque, the
 //                per-row setpoints reconstruct the delivered vector and stay
 //                inside their limits, and dead rows are asked to do nothing.
+//                OBLIQUE lines (two drums 30 deg apart) are pinned separately:
+//                that is the only shape where the coordinate descent does real
+//                work, and where a solver that skipped the residual would bill
+//                the same demand to both drums.
 //
 // Build & run (from repo root) -- also part of `make test`:
 //   see the test: rule in the Makefile.
@@ -224,10 +228,58 @@ static void test_effectiveness_rows() {
     CHECK_TRUE(withinLimits(pair, sp), "neither past its max_deflection");
 }
 
+/* --- OBLIQUE LINES: what the descent is for -------------------------------
+   Every other row set here is one line or a set of mutually orthogonal lines,
+   and on those a single sweep that forgets the other lines' contribution is
+   already exact. This is the shape where it is not: two drums 30 deg apart, so
+   each line's own projection of the demand OVERLAPS the other's. A solver that
+   took dot(demand, lineDir) per line instead of the residual would answer 100 N m
+   along X with (175, 43.3) -- 75% over the demand, and a sideways torque nobody
+   asked for. #426's fin ring is oblique by construction, so this is the ring's
+   arithmetic pinned before the ring exists. */
+static void test_oblique_lines_split_once() {
+    printf("== two lines 30 deg apart: no double-credit, no sideways leak ==\n");
+    const double c30 = std::cos(std::acos(-1.0) / 6.0), s30 = 0.5;
+    const std::vector<ActuatorRow> pair = { { glm::dvec3(1, 0, 0), 100.0 },
+                                           { glm::dvec3(c30, s30, 0), 100.0 } };
+    std::vector<double> sp;
+    /* Along one drum's own axis, inside its rating: that drum answers, the other
+       is not asked to lean on it. The exact answer, so 0 tolerance. */
+    glm::dvec3 got = actuatorSolve(pair, glm::dvec3(100, 0, 0), sp);
+    CHECK_NEAR(glm::length(got - glm::dvec3(100, 0, 0)), 0.0, 1e-12,
+               "an oblique neighbour adds nothing to a demand one line already covers");
+    CHECK_NEAR(sp[1], 0.0, 1e-9, "and the neighbour is asked to do nothing");
+    CHECK_NEAR(glm::length(reconstruct(pair, sp) - got), 0.0, 1e-9,
+               "the setpoints still add up to the delivered vector");
+
+    /* Past both ratings along X: both lines go to their limits (the exact
+       constrained optimum), the delivered vector is shorter than the demand, and
+       it never exceeds what the two ratings can carry. */
+    got = actuatorSolve(pair, glm::dvec3(250, 0, 0), sp);
+    CHECK_NEAR(got.x, 100.0 + 100.0 * c30, 1e-6, "both lines at their limit, along X");
+    CHECK_NEAR(got.y, 100.0 * s30, 1e-6, "and the sideways component a leaning drum buys");
+    CHECK_NEAR(sp[0], 100.0, 1e-6, "line 1 at its rating");
+    CHECK_NEAR(sp[1], 100.0, 1e-6, "line 2 at its rating");
+    CHECK_TRUE(withinLimits(pair, sp), "neither over-billed");
+    CHECK_TRUE(glm::length(got) <= 250.0 + 1e-9, "delivered never exceeds the demand");
+    CHECK_NEAR(actuatorTorqueAbout(pair, glm::dvec3(1, 0, 0)), 100.0 + 100.0 * c30, 1e-6,
+               "the budget about X is the same two cosines the solve spent");
+
+    /* The same pair about 15 deg off X: the budget is the sum of cosines, which
+     * is the ceiling -- and the solve, asked for more than that, lands on the
+     * same pair of limits. */
+    const double a15 = std::acos(-1.0) / 12.0;
+    const glm::dvec3 dir15(std::cos(a15), std::sin(a15), 0.0);
+    CHECK_NEAR(actuatorTorqueAbout(pair, dir15),
+               100.0 * std::cos(a15) + 100.0 * std::cos(std::acos(-1.0) / 6.0 - a15),
+               1e-6, "about an oblique axis, each drum brings its own cos");
+}
+
 int main() {
     test_capability_is_about_an_axis();
     test_one_line();
     test_lines_and_clusters();
+    test_oblique_lines_split_once();
     test_effectiveness_rows();
     printf("test_actuators: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

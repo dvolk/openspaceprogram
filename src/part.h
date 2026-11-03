@@ -287,7 +287,7 @@ struct Part {
     /* --- derived behavior values (read straight off the def) --- */
     double thrust() const { return def->fullThrust(); }  // rocket rated thrust (N); jets use jetThrust
     double jetFuelRate() const { return def->propellant_rate[(int)ResourceType::JetFuel]; }
-    double wheelTorque() const { return def->torque; }    // N m, rated
+    double wheelTorque() const { return def->torque; }    // N m, rated PER DRUM
     double rcsThrust() const { return def->rcs_thrust; }  // N, rated translation authority
     double exhaustVelocity() const { return def->exhaust_velocity; }
     double powerDraw() const { return def->power_draw; }          // W, only while active

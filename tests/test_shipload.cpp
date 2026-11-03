@@ -466,6 +466,18 @@ int main() {
         t.close();
         CHECK(expect_throw_saying([&]{ load_parts_catalog(two); }, "\"wheel_axes\" must be 1 or 3"));
         std::remove(two);
+        /* A drum count is a COUNT, not a quantity to round. It used to be read as a
+           double and C-cast, so 1.5 loaded as ONE drum -- a roll-only part the author
+           never wrote, reached silently. optInt's own #496 rule. */
+        const char *half = "/tmp/test_shipload_whalf.json";
+        std::ofstream h(half);
+        h << "{ \"parts\": [ { \"name\": \"whalf\", \"type\": \"reaction_wheel\", "
+             "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+             "\"torque\": 100, \"wheel_axes\": 1.5 } ] }";
+        h.close();
+        CHECK(expect_throw_saying([&]{ load_parts_catalog(half); },
+                                  "\"wheel_axes\" must be a whole number"));
+        std::remove(half);
         const char *nod = "/tmp/test_shipload_wnodrums.json";
         std::ofstream n(nod);
         n << "{ \"parts\": [ { \"name\": \"drumless\", \"type\": \"engine\", "

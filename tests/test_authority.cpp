@@ -236,7 +236,7 @@ static void test_wheels_and_tvc_together() {
     Vehicle *v = st.s.v;
     const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
     const double tvc = 1000.0 * std::sin(0.1);
-    CHECK_NEAR(a.wheelCapacity(), 200.0, 1e-12, "the wheel's rated torque");
+    CHECK_NEAR(a.wheelRatingSum(), 200.0, 1e-12, "the wheel's rated torque");
     CHECK_NEAR(a.tvcTorque, tvc, 1e-9, "and the engine's, side by side in one answer");
 
     CHECK_NEAR(v->attitudeTorqueAbout(a, st.z), 200.0, 1e-9,
@@ -296,7 +296,7 @@ static void test_two_wheels_add_up() {
     v->attachDown(w2);
     const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
     CHECK_TRUE(a.wheels.size() == 2, "both wheels are rows, not one summed number");
-    CHECK_NEAR(a.wheelCapacity(), 250.0, 1e-12, "200 + 50 N m of wheel, both of them");
+    CHECK_NEAR(a.wheelRatingSum(), 250.0, 1e-12, "200 + 50 N m of wheel, both of them");
     CHECK_NEAR(v->attitudeTorqueAbout(a, st.z), 250.0, 1e-9,
                "two drums on the stack line buy the sum about it");
     CHECK_NEAR(v->attitudeTorqueAbout(a, st.x), 0.0, 0.0,
@@ -333,7 +333,7 @@ static void test_a_cluster_covers_an_axis_it_points_at() {
     const glm::dvec3 upY = s.v->partAxis(root, 1);
     const glm::dvec3 upZ = s.v->partAxis(root, 2);
     CHECK_TRUE(a.wheels.size() == 3, "three rows on three lines");
-    CHECK_NEAR(a.wheelCapacity(), 170.0, 1e-12, "the row sum is 100 + 50 + 20");
+    CHECK_NEAR(a.wheelRatingSum(), 170.0, 1e-12, "the row sum is 100 + 50 + 20");
     CHECK_NEAR(s.v->attitudeTorqueAbout(a, upZ), 100.0, 1e-9, "the stack axis only has the root's drum");
     CHECK_NEAR(s.v->attitudeTorqueAbout(a, -upY), 50.0, 1e-9, "and the -Y drum is worth its rating about -Y");
     CHECK_NEAR(s.v->attitudeTorqueAbout(a, upX), 20.0, 1e-9, "and the +X drum is the only thing covering the pitch axis");
@@ -369,24 +369,108 @@ static void test_a_triad_housing_covers_three_lines() {
     for(PartDef &d : st.s.defs) { if(d.name == std::string("root")) { d.wheel_axes = 3; } }
     const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
     CHECK_TRUE(a.wheels.size() == 3, "three drums, three rows");
-    CHECK_NEAR(a.wheelCapacity(), 600.0, 1e-12, "three drums at the rating each");
+    CHECK_NEAR(a.wheelRatingSum(), 600.0, 1e-12, "three drums at the rating each");
     CHECK_NEAR(v->attitudeTorqueAbout(a, st.z), 200.0, 1e-9, "one drum on the stack line");
     CHECK_NEAR(v->attitudeTorqueAbout(a, st.x), 200.0, 1e-9, "one on the pitch line");
     CHECK_NEAR(v->attitudeTorqueAbout(a, st.y), 200.0, 1e-9, "one on the yaw line");
-    /* The same hull with the housing rolled 90 deg about the stack: the box turns,
-       so its drums move between the transverse lines and the coverage does not.
-       A single drum mounted this way reads 0 about the axis it just left. */
-    st.root->localRot = glm::dmat3(0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+    /* Now the housing is TILTED 45 deg about a transverse axis -- not rolled about
+       the stack. A roll permutes a triad onto the same three hull lines, so every
+       check above would also pass for an implementation that used the HULL basis
+       instead of the part's own axes; a tilt separates them, and the numbers below
+       are what only part-mounted drums produce (a hull-basis model reads 200 about
+       every axis here). A def cannot do this to a stacked part -- only an authored
+       point/normal contact can -- which is why the fixture hand-sets localRot, the
+       same way the cluster fixture above does. */
+    const double k = std::sqrt(0.5);
+    st.root->localRot = glm::dmat3(1.0, 0.0, 0.0,  0.0, k, k,  0.0, -k, k);
     const Vehicle::AttitudeAuthority r = v->attitudeAuthority();
-    CHECK_NEAR(v->attitudeTorqueAbout(r, st.z), 200.0, 1e-9, "still one drum on the stack line");
-    CHECK_NEAR(v->attitudeTorqueAbout(r, st.x), 200.0, 1e-9, "still one on a transverse line");
-    CHECK_NEAR(v->attitudeTorqueAbout(r, st.y), 200.0, 1e-9, "still one on the third");
+    CHECK_NEAR(v->attitudeTorqueAbout(r, st.x), 200.0, 1e-9,
+               "the drum that stays on the tilt axis still buys its rating");
+    CHECK_NEAR(v->attitudeTorqueAbout(r, st.y), 200.0 * std::sqrt(2.0), 1e-9,
+               "a tilted housing leans on the axes it swung toward (#593)");
+    CHECK_NEAR(v->attitudeTorqueAbout(r, st.z), 200.0 * std::sqrt(2.0), 1e-9,
+               "and the same about the third");
     /* And delivery agrees with the budget: a demand far past one rating along one
        line is answered with that line's drum -- not with the 600 N m the housing
        owns, and not with two drums leaning on an axis they do not point at. */
     std::vector<double> sp;
     const glm::dvec3 got = actuatorSolve(r.wheels, 5000.0 * st.x, sp);
     CHECK_NEAR(glm::length(got), 200.0, 1e-9, "one line buys its own rating");
+    destroyShip(v);
+}
+
+/* THE STICK IS INTENT, NOT WIRING (#425 step D, and the structural close of #420).
+   The pitch and yaw keys used to drive the drums directly in applyRotationForce AND
+   be mixed by hand into the gimbals in applyThrustForce (`gimbal_max * latShip +
+   the autopilot's aim`), so each actuator took the stick at full rate and only a
+   per-engine clamp sorted out the excess -- which is exactly the double-bill #420
+   complained about. Now the keys become ONE demanded torque and actuateAttitude
+   splits it. This binary has no physics world, so the wheel share (ApplyTorque) is
+   not observable here; the allocator's TVC share is, and that is the number #420 was
+   about. The stick is armed through Command(), the player's own door (#424). */
+static void test_the_stick_demands_one_torque() {
+    printf("== the stick is one demand through one allocator (#425 D) ==\n");
+    Stack st = mkStack(200.0, 800.0, 0.1);   // a stacked drum AND a gimballed engine
+    Vehicle *v = st.s.v;
+    const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
+    const double latFull = std::sin(0.1);    // the stop, as the split converts it to rad
+    CHECK_NEAR(a.tvcTorque, 1000.0 * latFull, 1e-9, "the engine's authority, for the pins below");
+
+    /* Command arms ONE key and leaves the others standing, exactly as the keyboard
+       does (tick.cpp clears the stick at the tick top), so a case that wants one key
+       held has to release the other two first. */
+    auto holdKey = [&](ShipCmdType key, float amount) {
+        v->Command(ShipCmd(Roll, 0.0f), true);
+        v->Command(ShipCmd(Pitch, 0.0f), true);
+        v->Command(ShipCmd(Yaw, 0.0f), true);
+        v->Command(ShipCmd(key, amount), true);
+    };
+
+    /* Pitch held: the mixer used to aim at exactly gimbal_max along -Y. The split
+       reaches the stop from the demanded torque instead, so the deflection is
+       sin(gimbal_max) -- 0.17% off at 5 deg -- and the direction is the same. */
+    holdKey(Pitch, +1.0f);
+    v->applyRotationForce(0.02);
+    CHECK_NEAR(glm::length(v->tvcLat_), latFull, 1e-9,
+               "a held key drives the gimbals to their stop, by way of the split");
+    CHECK_NEAR(glm::dot(v->tvcLat_, st.y), -latFull, 1e-9, "and the same way as before (#571)");
+    CHECK_NEAR(glm::dot(v->tvcLat_, st.x), 0.0, 1e-9, "no cross-axis aim");
+    CHECK_NEAR(glm::dot(v->tvcLat_, st.z), 0.0, 1e-9, "and no aim along the stack");
+
+    /* Roll is wheels-only: a lateral deflection can never lever the stack axis, so
+       the allocator aims the gimbals nowhere however hard the key is held. */
+    holdKey(Roll, +1.0f);
+    v->applyRotationForce(0.02);
+    CHECK_NEAR(glm::length(v->tvcLat_), 0.0, 1e-12, "a roll demand buys no gimbal deflection");
+
+    /* Two keys, one bound: the demand is the sum of the two axes' capabilities, so
+       the transverse part is past the TVC stop and the aim SATURATES at it instead
+       of the 2x the two hand-wired paths used to ask for. */
+    v->Command(ShipCmd(Pitch, +1.0f), true);
+    v->Command(ShipCmd(Yaw, +1.0f), true);
+    v->applyRotationForce(0.02);
+    CHECK_NEAR(glm::length(v->tvcLat_), latFull, 1e-9,
+               "two keys still buy one stop, not two");
+    /* Pitch alone aims -Y and yaw alone aims +X (a deflection torques about the axis
+       90 deg from it), so a both-keys demand aims the gimbals between them. */
+    CHECK_NEAR(glm::dot(v->tvcLat_, st.x - st.y) / std::sqrt(2.0), latFull, 1e-9,
+               "and the aim points where the demand pointed");
+
+    /* Power gates the drums, never the gimbals: a dead ship still steers while it
+       burns (#418), which it could only do before because the mixer read the stick
+       itself -- the gate now lives in the demand's wheel term. */
+    v->powered_ = false;
+    v->applyRotationForce(0.02);
+    CHECK_NEAR(glm::length(v->tvcLat_), latFull, 1e-9,
+               "an unpowered hull still aims its gimbals from the stick");
+
+    /* Nothing held, nothing aimed: applyRotationForce clears the aim every substep,
+       so a released stick recentres the gimbals. */
+    v->powered_ = true;
+    v->Command(ShipCmd(Pitch, 0.0f), true);
+    v->Command(ShipCmd(Yaw, 0.0f), true);
+    v->applyRotationForce(0.02);
+    CHECK_NEAR(glm::length(v->tvcLat_), 0.0, 1e-12, "a released stick leaves no aim");
     destroyShip(v);
 }
 
@@ -447,7 +531,7 @@ static void test_one_frame_for_the_attitude_path() {
     CHECK_TRUE(v->attitudeRef() == root, "the ship's frame is the ROOT part");
     CHECK_NEAR(glm::dot(v->partAxis(v->attitudeRef(), 2), rootZ), 1.0, 1e-12,
                "and the facing it hands the laws is the stack axis, not the wheel's");
-    CHECK_NEAR(a.wheelCapacity(), 300.0, 1e-12, "the drum is a row on this hull");
+    CHECK_NEAR(a.wheelRatingSum(), 300.0, 1e-12, "the drum is a row on this hull");
     CHECK_TRUE(a.tvcTorque > 0.0, "and the gimballed engine is live");
     /* About the stack axis: NOTHING. Two reasons, and this fixture separates them:
        TVC cannot lever the stack axis at all (#425), and the drum on this hull is
@@ -695,6 +779,7 @@ int main() {
     test_two_wheels_add_up();
     test_a_cluster_covers_an_axis_it_points_at();
     test_a_triad_housing_covers_three_lines();
+    test_the_stick_demands_one_torque();
     test_one_frame_for_the_attitude_path();
     test_the_command_funnel();
     test_the_armed_rcs_demand_is_a_direction();

@@ -82,7 +82,12 @@ static const char *resNames[(int)ResourceType::Num] = {
 static void drawPartPhysique(const PartDef &def) {
     ImGui::Text("Size: %.1fm dia x %.1fm", def.radius * 2.0, def.height);
     if(def.torque > 0.0) {
-        ImGui::Text("Torque: %.0fN m (reaction wheel)", def.torque);
+        /* The rating is PER DRUM and the housing says how many it holds (#593).
+           Quoting one number would make a triad and a future roll-only drum look
+           identical in the same window where the Vessel page shows them differing
+           per axis. */
+        ImGui::Text("Torque: %.0fN m%s (reaction wheel)", def.torque,
+                    def.wheel_axes == 3 ? " per drum x3" : "");
     }
     if(def.jet) {
         ImGui::Text("Jet: %.0fN static at sea level, air-breathing (%.2fkg/s jet fuel "

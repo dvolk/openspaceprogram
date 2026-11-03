@@ -12,4 +12,12 @@ CHECK len(att) >= 10
 CHECK max(a["wnorm"] for a in att) > 0.02
 CHECK max(a["wnorm"] for a in att if 4.5 < a["t"] < 5.5) > 0.5 * max(a["wnorm"] for a in att if 2.5 < a["t"] < 4.0)
 CHECK max(a["awroll"] for a in att if 7.0 < a["t"] < 8.0) > max(a["awroll"] for a in att if 4.5 < a["t"] < 5.5) + 0.03
+# The axis, not just the rate. The S press (1-4 s) is PITCH: on the racer every wheel
+# is a triad housing (#593), so 2200 N m is available about the pitch line and the
+# held key must actually spin the hull about its own right axis -- measured 0.61
+# rad/s there, with 0.00016 about the nose. Without the triad a stacked drum levers
+# the stack only, the S press does nothing, and the |w| checks above would still be
+# green off the E press's roll spikes: that is how this case read while #593 was open.
+CHECK max(a["awpitch"] for a in att if 2.5 < a["t"] < 4.0) > 0.5
+CHECK max(a["awroll"] for a in att if 2.5 < a["t"] < 4.0) < 0.01
 CHECK all(a["wnorm"] == a["wnorm"] and a["wnorm"] < 1e6 for a in att)

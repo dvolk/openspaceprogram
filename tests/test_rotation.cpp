@@ -2,11 +2,13 @@
 // Regression tests for the physical rotation model (2026-08-22):
 //
 //   1. Rotation authority is a physical quantity, like thrust:
-//        alpha = wheelTorqueSum() / I   (rad/s^2),  I in kg m^2 from Bullet,
-//      where wheelTorqueSum() = (number of reaction wheels) x the wheel's rated
-//      torque (2000 N m each, the value the ship code has always applied).
-//      The manual stick commands full rated torque; the autopilot
-//      (prograde/retrograde slew, kill-rot) is bounded by the SAME
+//        alpha = (the N m the actuators bring to bear about the asked axis) / I
+//      (rad/s^2), I in kg m^2 from Bullet. This file re-implements the law with a
+//      single scalar authority, which is what a hull of mutually orthogonal drums
+//      answers with; src/ is one step richer -- actuators.h credits each row by its
+//      own cos and tests/test_authority.cpp pins that arithmetic. What stays true in
+//      both is the point of the item: the manual stick commands full rated torque and
+//      the autopilot (prograde/retrograde slew, kill-rot) is bounded by the SAME
 //      authority -- no command can be more forceful than a maxed manual
 //      stick. (The thrust analogue: T = mdot x ve N.)
 //

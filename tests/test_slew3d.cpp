@@ -25,8 +25,12 @@
 //   1. THE FIX: the NEW law damps the third-axis spin (end rate well below its
 //      initial value) in EVERY configuration, and converges to the target.
 //      That damping is the core observable difference from the OLD law.
-//   2. Authority bound: the NEW law's torque never exceeds the wheel rating,
-//      so the autopilot is never more forceful than a maxed manual stick.
+//   2. Authority bound: the NEW law's torque never exceeds the actuator rating it
+//      is given, so the autopilot is never more forceful than a maxed manual stick.
+//      This file models that bound as a BALL of `wheelTorque` -- a single scalar
+//      authority -- because that is the model this harness re-implements. src/ holds
+//      the richer answer now: rows per drum line, each clamped to its own rating
+//      (actuators.h actuatorSolve), which tests/test_authority.cpp pins.
 //   3. Settling: in the realistic spin range (w3 <= 0.30, well under a hard
 //      roll) the NEW law settles to a small E-ring -- no sustained wobble.
 //      (The extreme w3=0.50, a 28 deg/s roll, may overshoot before converging;
@@ -239,8 +243,11 @@ static SlewResult run3d(const Body &b, double h, double E0, double w3_init,
 }
 
 int main() {
-    // The racer, approx axisymmetric: Ix ~ 9400, Iz ~ 1300 kg m^2, one
-    // 2000 N m wheel.
+    // The racer, approx axisymmetric: Ix ~ 9400, Iz ~ 1300 kg m^2, and ONE scalar
+    // authority of 2000 N m -- this harness asks about one axis at a time, so it
+    // needs no rows. The shipped racer answers the same 2000 N m on all three of its
+    // lines because its drums come in triad housings (#593): a 200 N m pod plus a
+    // 2000 N m wheel block.
     Body b{9400.0, 1300.0, 2000.0};
     const double E0 = 0.30; // ~17 deg off prograde at engagement
     // The tick rate the game actually runs (--physics-hz default), so the

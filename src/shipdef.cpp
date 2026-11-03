@@ -368,7 +368,7 @@ PartsCatalog load_parts_catalog(const char *path) {
            so anything else is an authoring mistake, not a layout. And a layout
            on a part with no torque is the same kind of mistake: the author
            thinks this part is a wheel and the flight model will say it isn't. */
-        d.wheel_axes = (int)optNumber(pv, "wheel_axes", 1.0, ctx, "");
+        d.wheel_axes = optInt(pv, "wheel_axes", 1, ctx);
         if(d.wheel_axes != 1 && d.wheel_axes != 3) {
             throw std::runtime_error(ctx + "\"wheel_axes\" must be 1 or 3 drums");
         }
