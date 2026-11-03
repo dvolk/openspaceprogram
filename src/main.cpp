@@ -511,6 +511,9 @@ int main(int argc, char **argv)
 
     // settings.json phase 2: the Game + PostFX state, before apply_ui_style.
     game.load_settings();
+    if(args.cli_given.sas_policy) {   // --sas-policy beats settings.json (#421)
+        game.sas_policy = sasPolicyFromName(args.sas_policy);
+    }
     game.apply_ui_style();
 
     // --start-time: must happen before the ships spawn -- the orbit scenarios

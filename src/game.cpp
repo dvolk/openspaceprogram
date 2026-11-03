@@ -143,6 +143,7 @@ static SettingsData collect_settings(Game &g) {
     s.camFovDeg = g.args.camFovDeg;
     s.terrain_px = g.args.terrain_px;
     s.cam_shake = g.args.cam_shake;
+    s.sas_policy = (int)g.sas_policy;
     s.flip_pitch = g.flip_pitch;
     s.flip_yaw = g.flip_yaw;
     s.flip_roll = g.flip_roll;
@@ -195,6 +196,7 @@ static void apply_settings_game(Game &g, const SettingsData &s) {
     // Push to the Audio module (no-op while it is disabled).
     g.audio.setSfxVolume(s.sfx_volume);
     g.audio.setMusicVolume(s.music_volume);
+    g.sas_policy = (s.sas_policy == SasKeepsAsk) ? SasKeepsAsk : SasStickOwnsAxis;
     g.flip_pitch = s.flip_pitch;
     g.flip_yaw = s.flip_yaw;
     g.flip_roll = s.flip_roll;

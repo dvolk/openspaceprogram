@@ -1,0 +1,27 @@
+NAME pilot-loses-to-sas
+CLAIM With --sas-policy keep, the same held pitch key against a latched prograde hold moves the nose by nothing at all: the law keeps its full demand and out-shouts the pilot on the steered axis.
+KIND invariant
+# #421 / #425 step D-2, the ALTERNATE end -- the pre-policy behaviour, now named so it
+# can be chosen and pinned. Same ship, same key script, same log window as
+# 421-pilot-owns-the-axis.txt; only --sas-policy differs. There the identical 1.5 s S
+# press took the pointing error out to 0.499 rad; here E reads 0.0000 rad on every row
+# and |w| never leaves the 0.003 rad/s it settled at, because the law's I*w/h ask swamps
+# the pilot's 2200 N m of key on that axis.
+# The pair is the point: the difference is the policy, not the ship, the keys or the
+# window, and neither end is pinned anywhere else in the battery.
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sas-policy keep
+ARGS --att-log --slew-log --orbit-interval 0.3
+ARGS --sim-press 1000,0,Z
+ARGS --sim-press 3000,1500,S
+ARGS --timeout 12
+LIMIT 90
+EXPECT [attlog]
+EXPECT [slew]
+FORBID error:
+CHECK len(slew) >= 10
+CHECK max(s["E"] for s in slew if 1.5 < s["t"] < 2.9) < 0.005
+CHECK max(s["E"] for s in slew if 3.5 < s["t"] < 6.6) < 0.005
+CHECK max(a["wnorm"] for a in att if 3.5 < a["t"] < 6.6) < 0.02
+CHECK last(slew)["E"] < 0.005
+CHECK all(a["wnorm"] == a["wnorm"] and a["wnorm"] < 1e4 for a in att)

@@ -51,6 +51,7 @@ void settings_write(const SettingsData &s, nlohmann::json &j) {
     j["terrain_px"] = s.terrain_px;
     j["cam_shake"] = s.cam_shake;
     j["flip_pitch"] = s.flip_pitch;
+    j["sas_policy"] = s.sas_policy;
     j["flip_yaw"] = s.flip_yaw;
     j["flip_roll"] = s.flip_roll;
     // keybinds: every slot is written (cleared slots as empty lists) so
@@ -182,6 +183,10 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
         s.cam_shake = j["cam_shake"].get<float>();
         if(s.cam_shake < 0.0f) { s.cam_shake = 0.0f; }
         if(s.cam_shake > 3.0f) { s.cam_shake = 3.0f; }
+    }
+    if(j.contains("sas_policy") && j["sas_policy"].is_number_integer()) {
+        const int v = j["sas_policy"].get<int>();
+        if(v == 0 || v == 1) { s.sas_policy = v; }   // else keep the default
     }
     if(j.contains("flip_pitch") && j["flip_pitch"].is_boolean()) {
         s.flip_pitch = j["flip_pitch"].get<bool>();

@@ -54,6 +54,9 @@ struct SettingsData {
     bool flip_pitch = false;
     bool flip_yaw = false;
     bool flip_roll = false;
+    // pilot-vs-SAS on one axis: the SasPolicy index (vehicle.h). Range-checked:
+    // a hand-edited file cannot invent a third rule.
+    int sas_policy = 0;
     KeyBindings keybinds;
 };
 

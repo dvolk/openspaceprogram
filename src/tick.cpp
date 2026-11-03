@@ -45,6 +45,7 @@ void tick(Game &g) {
         s->exhaust_scale = g.args.exhaust_scale;
         s->drag_cd = g.args.drag_cd;
         s->dv_log_enabled = g.args.dv_log;
+        s->sas_policy = g.sas_policy;   // the pilot-vs-SAS rule, per tick (#421)
         // The F4 force overlay records on the active ship only (the only
         // one drawn), and only in a piloting scene (a VAB/studio ship's
         // world coords through that scene's camera are meaningless). Off

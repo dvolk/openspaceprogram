@@ -106,6 +106,7 @@ int main() {
     ship.active_stage = 2;
     ship.total_stages = 3;
     ship.slew_request = 1;   // SlewMode SlewPrograde (vehicle.h); the int is what saves
+    ship.wheels_enabled = false;   // the wheels' enable mask travels with the vessel (#425 D-2)
     ship.docks.push_back(SaveDock{ 101, 101, "station" });   // a seam LABEL, not a key
     ship.dock_target_ship = "v1";   // a SAVE SLUG, not a display name (#266)
     ship.dock_target_port = 103;   // a part uid on the TARGET ship
@@ -154,6 +155,7 @@ int main() {
     CHECK(out.active_stage == ship.active_stage);
     CHECK(out.total_stages == ship.total_stages);
     CHECK(out.slew_request == ship.slew_request);
+    CHECK(out.wheels_enabled == false);
     CHECK(out.docks.size() == ship.docks.size());
     if(out.docks.size() == 1 && ship.docks.size() == 1) {
         CHECK(out.docks[0].port == ship.docks[0].port);
@@ -969,14 +971,17 @@ int main() {
     CHECK(emptyShip.is_crew == false);
     CHECK(emptyShip.parts.empty());
     CHECK(emptyShip.active_stage == 1);      // the default stage bookkeeping
+    CHECK(emptyShip.wheels_enabled == true);  // an absent mask means the drums are on
 
     // a ship that mentions a key with the wrong type keeps the default
     nlohmann::json bad = nlohmann::json::object();
     bad["active_stage"] = "one";   // a string where a number is expected
     bad["throttle"] = true;  // a bool where a number is expected
+    bad["wheels_enabled"] = "off";   // a string where a bool is expected
     SaveShip badShip = saveShipFromJson(bad);
     CHECK(badShip.active_stage == 1);
     CHECK(badShip.throttle == 0.0f);
+    CHECK(badShip.wheels_enabled == true);
 
     // "slot" is retired (nothing reads a loaded ship's slot: placement
     // recomputes it), but saves written before it went away still carry it --

@@ -31,6 +31,7 @@ struct GameArgs {
         bool sky_dim_cone = false;
         bool frame_cap = false;    // --sim-steps uncaps the frame unless asked
         bool idle_fps = false;     // ...and skips the occluded-window throttle
+        bool sas_policy = false;   // --sas-policy beats settings.json
     } cli_given;
 
     std::string system_file = "res/systems/ksp_system.json";
@@ -53,6 +54,7 @@ struct GameArgs {
 
     std::string radial_test;
     std::string autopilot;  // engage a slew mode at startup
+    std::string sas_policy;  // pilot-vs-SAS on one axis: "axis" | "keep" (#421)
     bool recover_anywhere = false;  // default: home body only
     bool dev_scenarios = false;  // --dev-scenarios: the VAB dropdown's dev beds
     std::string dock_test;

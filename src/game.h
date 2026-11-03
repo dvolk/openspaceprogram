@@ -771,6 +771,13 @@ struct Game {
     bool flip_yaw = false;
     bool flip_roll = false;
 
+    /* PILOT vs SAS on one axis (#421, #425 D-2): the Controls window writes it,
+       tick.cpp mirrors it onto every ship each tick, and applyRotationForce applies
+       it where the pilot's demand and the law's demand are still separate vectors.
+       It lives here rather than on the Vehicle because it is one control preference
+       the player owns, not a property of a build. */
+    SasPolicy sas_policy = SasStickOwnsAxis;
+
     // --- the key map (keys.h) --------------------------------------------
     KeyBindings binds;
     // Slot the Controls window is rebinding; -1 = not capturing.

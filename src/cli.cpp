@@ -113,6 +113,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "parallel | stacked | stacks | parstacks")
         ->check(CLI::IsMember({"parallel", "stacked", "stacks",
                                "parstacks"}));
+    app.add_option("--sas-policy", args.sas_policy,
+                   "Who gets an axis when the pilot's stick and a latched autopilot "
+                   "law both ask for it: axis (default: a held key owns its axis and "
+                   "the law keeps the others) | keep (the law keeps its full demand "
+                   "and the two demands simply sum). A control preference, not "
+                   "physics -- in-game this is the Controls window's combo")
+        ->check(CLI::IsMember({"axis", "keep"}));
     app.add_option("--autopilot", args.autopilot,
                    "Engage a slew mode on the active ship at startup: "
                    "prograde | retrograde | radial-out | radial-in | normal | "
@@ -1246,6 +1253,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         app.get_option("--sky-dim-cone")->count() > 0;
     args.cli_given.frame_cap =
         app.get_option("--frame-cap")->count() > 0;
+    args.cli_given.sas_policy = app.get_option("--sas-policy")->count() > 0;
     args.cli_given.idle_fps =
         app.get_option("--idle-fps")->count() > 0;
 

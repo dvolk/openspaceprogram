@@ -2107,8 +2107,11 @@ double Vehicle::feltAccel() {
 
 double Vehicle::wheelDrawWatts() const {
     /* No engagement, no draw: the wheels are electric and they only bill while the
-       stick or an autopilot mode is actually working them (actuatorsEngaged). */
-    if(not actuatorsEngaged()) { return 0.0; }
+       stick or an autopilot mode is actually working them (actuatorsEngaged). And a
+       switched-off drum (#425 D-2) is not working at all -- the allocator has no rows
+       for it -- so it must not bill EC either. #596 is the mirror complaint: a drum
+       that IS working bills nothing, because no capsule authors a power_draw. */
+    if(not actuatorsEngaged() || not wheels_enabled) { return 0.0; }
     double w = 0.0;
     for(Part *p : parts) {
         if(p->isWheel()) { w += p->powerDraw(); }
@@ -3296,14 +3299,26 @@ glm::dmat3 Vehicle::attitudeBasis() const {
     return partRot(ref);
 }
 
+/* The pilot-vs-SAS policy names, shared by settings.json, --sas-policy and the
+   Controls window, so the three cannot spell the same choice differently. */
+const char *sasPolicyName(SasPolicy p) {
+    return (p == SasKeepsAsk) ? "keep" : "axis";
+}
+
+SasPolicy sasPolicyFromName(const std::string &n) {
+    if(n == "keep") { return SasKeepsAsk; }
+    /* Both spellers validate the string before calling: --sas-policy through
+       CLI::IsMember, settings.json as a range-checked int. Reaching here with
+       anything else means a new caller forgot to validate. */
+    assert(n == "axis" && "unknown sas policy name");
+    return SasStickOwnsAxis;
+}
+
 void Vehicle::applyRotationForce(double h) {
     /* The TVC aim is per-substep: cleared here, armed by the single allocator call
        below, consumed by applyThrustForce this same substep. */
     tvcLat_ = glm::dvec3(0.0);
     tvcCalls_ = 0;
-    /* One DEMANDED torque per substep: the stick adds to it, a latched law adds to
-       it, and actuateAttitude() answers it exactly once (#420). */
-    glm::dvec3 demand(0.0);
     Part *ref = attitudeRef();
     /* ONE capability answer per substep (#594): the stick path, the slew law, the
        kill-rot law and the [slew] trace each used to ask attitudeAuthority() for a
@@ -3311,54 +3326,74 @@ void Vehicle::applyRotationForce(double h) {
        axes, when everything in it except the power gate and the COM is unchanged a
        substep later. Everything below reads this one. */
     const AttitudeAuthority auth = attitudeAuthority();
-    /* The power gate lives in those rows now: no EC, no wheel rows (#418). */
+    /* The frame the stick speaks, the frame the mixer aims in and the frame the
+       pilot-vs-SAS policy masks in are ONE frame (#571): attitudeRef(), the root
+       part, is also what AttitudeAuthority::stackAxis names. Key order is the
+       stick's (roll, pitch, yaw); the senses match the old worldAxis sum: +nose,
+       -right, -up. */
+    const glm::dmat3 axes = (ref != nullptr) ? partRot(ref) : glm::dmat3(1.0);
+    const glm::dvec3 key[3] = { axes[2], -axes[0], -axes[1] };
+
+    /* The pilot's demand. The stick is INTENT, not wiring (#425 step D): three keys
+       become ONE demanded torque vector and actuateAttitude() is the only thing that
+       decides who answers -- wheels, TVC, or both. It used to be two wires: this
+       block drove the drums directly and applyThrustForce mixed the stick into the
+       gimbals by hand, so the two actuators each took the stick at full rate and only
+       a per-engine clamp sorted out the excess (#420). A wheel mounted on a tank's
+       side is ROLLED 90 deg about the stack, so reading the stick in THAT part's frame
+       swapped pitch and yaw: W yaws, A pitches.
+       Each key is scaled by what the hull can actually bring to bear ABOUT its own
+       axis, so a held key asks for full authority and no more. A multi-key hold is
+       NOT normalized: it can over-subscribe a line, which is what #577 left alone on
+       purpose -- the allocator, not the stick, is the physical bound.
+       The power gate lives in those rows now: no EC, no wheel rows (#418) -- and no
+       rows when the player has switched the drums off (#425 D-2), which is what makes
+       a wheels-off hull route the same keys to the gimbals instead of going mute. */
+    glm::dvec3 stickDemand(0.0);
     if(ref != nullptr
     && (stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f)) {
-        /* Manual stick, body-relative: pitch (W/S) about the ship's right axis,
-           yaw (A/D) about its up axis, roll (Q/E) about the nose -- measured on
-           attitudeRef(), the root part, which is the frame applyThrustForce
-           gimbal-sticks in for the same two keys (#571).
-           The stick is INTENT, not wiring (#425 step D): three keys become ONE
-           demanded torque vector and actuateAttitude() is the only thing that
-           decides who answers -- wheels, TVC, or both. It used to be two wires:
-           this block drove the drums directly and applyThrustForce mixed the
-           stick into the gimbals by hand, so the two actuators each took the
-           stick at full rate and only a per-engine clamp sorted out the excess
-           (#420). A wheel mounted on a tank's side is ROLLED 90 deg about the
-           stack, so reading the stick in THAT part's frame swapped pitch and yaw:
-           W yaws, A pitches. */
-        const glm::dmat3 axes = partRot(ref);
-        /* Key order is the stick's (roll, pitch, yaw); the senses match the old
-           worldAxis sum: +nose, -right, -up. Each key is scaled by what the hull
-           can actually bring to bear ABOUT its own axis, so a held key asks for
-           full authority and no more. A multi-key hold is NOT normalized: it can
-           over-subscribe a line, which is what #577 left alone on purpose -- the
-           allocator, not the stick, is the physical bound. */
-        const glm::dvec3 key[3] = { axes[2], -axes[0], -axes[1] };
         for(int k = 0; k < 3; k++) {
             if(stick[k] == 0.0f) { continue; }
-            demand += (double)stick[k] * attitudeTorqueAbout(auth, key[k]) * key[k];
+            stickDemand += (double)stick[k] * attitudeTorqueAbout(auth, key[k]) * key[k];
         }
     }
-    /* Autopilot: one authority-bounded step of the slew/kill-rot law. It
-       runs on ANY attitude authority -- wheels and/or TVC -- so a wheel-less
-       ship (rcs_test, tvc_test) or an unpowered one still flies on its
-       gimballed engines while they burn, and a ship with neither gets
-       silence, not fake slewing (the #401 lesson: never promise a maneuver
-       the hardware cannot deliver).
-       The law contributes its demand to the SAME vector rather than taking its
-       own trip through the allocator. Two trips double-bill the drums: each call
-       only hands the wheels its own share of what it was shown, so a latched
-       kill-rot plus a held key on a 200 N m triad pushed -400 N m through drums
-       rated 200. Summing demands is what makes one demand per substep real
-       (#420), and it is the one place #421's pilot-vs-SAS policy can decide what
-       the stick and the law each get. */
+
+    /* The law's demand, kept SEPARATE from the pilot's because the conflict policy
+       (#421) decides per axis who gets it -- once they are one vector that question
+       cannot be asked any more.
+       Autopilot: one authority-bounded step of the slew/kill-rot law. It runs on ANY
+       attitude authority -- wheels and/or TVC -- so a wheel-less ship (rcs_test,
+       tvc_test) or an unpowered one still flies on its gimballed engines while they
+       burn, and a ship with neither gets silence, not fake slewing (the #401 lesson:
+       never promise a maneuver the hardware cannot deliver).
+       The law STATES a demand rather than taking its own trip through the allocator:
+       two trips double-bill the drums, because each call only hands the wheels its own
+       share of what it was shown, so a latched kill-rot plus a held key on a 200 N m
+       triad pushed -400 N m through drums rated 200 (#420). */
+    glm::dvec3 lawDemand(0.0);
     if(slew == SlewKillRot) {
-        demand += killRotDemand(h, auth);
+        lawDemand = killRotDemand(h, auth);
     }
     else if(slew != SlewNone) {
-        demand += slewDemand(slewTargetDir(), h, auth);
+        lawDemand = slewDemand(slewTargetDir(), h, auth);
     }
+    if(sas_policy == SasStickOwnsAxis && ref != nullptr) {
+        /* A held key owns its axis: drop the law's component along each steered key
+           axis (the key axes are unit, so this projection is exact). The law keeps the
+           axes nobody is steering, so a prograde hold still corrects pitch while the
+           pilot rolls. The reverse case -- a law whose error lies ALONG the steered
+           axis -- is paused until the key comes up, which is what "the stick owns the
+           axis" means. SasKeepsAsk skips this and lets the two sum, the pre-policy
+           behaviour, pinned as the alternate end. */
+        for(int k = 0; k < 3; k++) {
+            if(stick[k] == 0.0f) { continue; }
+            lawDemand -= glm::dot(lawDemand, key[k]) * key[k];
+        }
+    }
+
+    /* One DEMANDED torque per substep: whoever is asking adds to it, and
+       actuateAttitude() answers it exactly once (#420). */
+    const glm::dvec3 demand = stickDemand + lawDemand;
     if(glm::length2(demand) > 0.0) { actuateAttitude(demand, auth); }
 }
 
@@ -3562,7 +3597,11 @@ void Vehicle::slew_log(double time) {
        since #571 is the root part, so it is transverse to the stack axis the mixer
        levers in -- the same frame AttitudeAuthority::stackAxis names. If that ever
        comes apart again, this row is where it shows: alpha would credit TVC about an
-       axis tvcSplit hands to the wheels. */
+       axis tvcSplit hands to the wheels.
+       What it does NOT say is what the hull was actually torqued by (#599), and under
+       SasStickOwnsAxis (#421) an axis the pilot is holding shows this full budget even
+       though the law contributes nothing along it -- read alpha as what the hardware
+       could do, never as what this substep did. */
     const double alpha = (Ieff > 0.0)
         ? attitudeTorqueAbout(attitudeAuthority(), axis) / Ieff : 0.0;
     const double w_des = (alpha > 0.0) ? std::sqrt(2.0 * alpha * E) : 0.0;
@@ -4550,7 +4589,13 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
        three lines when a mount rolls or tilts the box. Every shipped wheel part
        is a triad; the single-drum half of this is what a cheap roll-only part
        would be, and what the sideways_wheel fixture exercises. */
-    if(powered_) {
+    if(powered_ && wheels_enabled) {
+        /* Two reasons for an empty `wheels`, and they are deliberately the SAME door
+           (#425 D-2): no EC power (#418), or the player switched the drums off. Either
+           way the hull's per-axis capability drops, the laws see the smaller answer,
+           the Vessel window prints it, and a held key is scaled by what is left -- so a
+           wheels-off rocket steers on its gimbals rather than pretending to have drums
+           it declined to spend. */
         for(const Part *p : parts) {
             if(!p->isWheel()) { continue; }
             const double t = p->wheelTorque();

@@ -173,6 +173,10 @@ struct SaveShip {
     int active_stage = 1;
     int total_stages = 1;
     int slew_request = 0;     // SlewMode (vehicle.h), range-checked on load
+    /* The wheels' enable mask (#425 D-2): a vessel that has been told not to spend
+       its drums keeps that choice across a save, because it is a property of the
+       vessel and not a control preference like the pilot-vs-SAS rule. Absent = on. */
+    bool wheels_enabled = true;
     std::vector<SaveDock> docks;
     /* The dock target is a SLUG (its own save file), its port a uid -- the
        load's uid->Part map spans every file. */
@@ -692,6 +696,7 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
     j["active_stage"] = s.active_stage;
     j["total_stages"] = s.total_stages;
     j["slew_request"] = s.slew_request;
+    j["wheels_enabled"] = s.wheels_enabled;
     if(!s.docks.empty()) {
         nlohmann::json docks = nlohmann::json::array();
         for(auto &&d : s.docks) {
@@ -760,6 +765,7 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     if(j.contains("active_stage") && j["active_stage"].is_number()) { s.active_stage = j["active_stage"].get<int>(); }
     if(j.contains("total_stages") && j["total_stages"].is_number()) { s.total_stages = j["total_stages"].get<int>(); }
     if(j.contains("slew_request") && j["slew_request"].is_number()) { s.slew_request = j["slew_request"].get<int>(); }
+    if(j.contains("wheels_enabled") && j["wheels_enabled"].is_boolean()) { s.wheels_enabled = j["wheels_enabled"].get<bool>(); }
     if(j.contains("docks") && j["docks"].is_array()) {
         for(auto &&d : j["docks"]) {
             if(!d.is_object()) { continue; }

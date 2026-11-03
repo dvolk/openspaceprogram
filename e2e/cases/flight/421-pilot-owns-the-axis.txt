@@ -1,0 +1,33 @@
+NAME pilot-owns-the-axis
+CLAIM With the default pilot-vs-SAS policy, a held pitch key takes its own axis away from a latched prograde hold: the nose swings away while the key is down and SAS closes the error again when it comes up.
+KIND invariant
+# #421 / #425 step D-2, the DEFAULT end. Racer carries a capsule's 200 N m triad and a
+# reaction_wheel's 2000 N m triad, and its prograde law asks I*w/h -- tens of kN m on a
+# pointing error -- against the pilot's 2200 N m of held key. Under SasStickOwnsAxis the
+# law's demand is dropped along any axis a key is held on, so the key is NOT
+# out-shouted: a 1.5 s S press (t=3..4.5) takes E from 0.000 out to 0.499 rad (28.6 deg)
+# and |w| to 0.32 rad/s. Release the key and the law owns the axis again, and by t=9 the
+# error is back under 0.05 rad -- with no momentum store it brakes at alpha=0.22 rad/s^2,
+# which is why the recovery takes ~4 s and not one (#579 will change that, not this).
+# The sibling case 421-pilot-loses-to-sas.txt runs the SAME ship, SAME key script and
+# SAME log window under --sas-policy keep, where the identical press moves E by 0.000.
+# Two files on purpose: nobody can change the shipped default without one of them going
+# red. (Yes, that is a number naming two cases -- see the note in #421's D-2 comment.)
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --att-log --slew-log --orbit-interval 0.3
+ARGS --sim-press 1000,0,Z
+ARGS --sim-press 3000,1500,S
+ARGS --timeout 12
+LIMIT 90
+EXPECT [attlog]
+EXPECT [slew]
+FORBID error:
+CHECK len(slew) >= 10
+# SAS holds the pointing until the key arrives.
+CHECK max(s["E"] for s in slew if 1.5 < s["t"] < 2.9) < 0.005
+# The key owns the axis: the error it makes is the key's, not a rounding error.
+CHECK max(s["E"] for s in slew if 5.5 < s["t"] < 6.6) > 0.35
+CHECK max(a["wnorm"] for a in att if 3.5 < a["t"] < 5.0) > 0.25
+# ...and the moment the key is up, the law has the axis back and closes it.
+CHECK max(s["E"] for s in slew if 9.5 < s["t"] < 11.9) < 0.05
+CHECK all(a["wnorm"] == a["wnorm"] and a["wnorm"] < 1e4 for a in att)

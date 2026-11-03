@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 278 |
+| `invariant` | a behaviour or a player route the game must keep | 280 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 37 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **333** |
+| | **total** | **335** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (80)
+## flight (82)
 
 | case | kind | pins |
 |---|---|---|
@@ -87,6 +87,8 @@ judgement. Select by number, name or path, e.g.
 | `flight/376-drain-window-survives-a-ship-switch.txt` | golden | Switching ships does not stretch a --drain-log row's interval or corrupt its kg/s. |
 | `flight/377-power-log-balances-the-battery.txt` | golden | --power-log's charge moves at the rate its own printed watts imply. |
 | `flight/395-surface-aoa-readout.txt` | invariant | [surfinfo] reports the aero angle of attack, the sideslip and the air-relative prograde while the ship has air-relative flow and "-" when it has none, and its stability pair reports a zero slope without inventing a neutral-looking margin for an airframe that has nothing lifting. |
+| `flight/421-pilot-loses-to-sas.txt` | invariant | With --sas-policy keep, the same held pitch key against a latched prograde hold moves the nose by nothing at all: the law keeps its full demand and out-shouts the pilot on the steered axis. |
+| `flight/421-pilot-owns-the-axis.txt` | invariant | With the default pilot-vs-SAS policy, a held pitch key takes its own axis away from a latched prograde hold: the nose swings away while the key is down and SAS closes the error again when it comes up. |
 | `flight/448-drag-log-lift-readings.txt` | harness | The --drag-log's signed lift and attitude readings parse in flight and stay inside their bounds. |
 | `flight/451-flying-slow-starts-in-air.txt` | golden | The flying-slow bed starts wings-level with its nose along the air at a fraction of the AIR-relative circular speed, so a plane enters its altitude band moving rather than dropping. |
 | `flight/454-static-margin.txt` | invariant | The VAB's static margin and the flight log's SM are the same number: a hands-off skiff with 0.55 m of margin flies at +2.5..+2.7 deg of angle of attack and stays wings-level through a 15 s glide (7000 m down to 6893 m). |

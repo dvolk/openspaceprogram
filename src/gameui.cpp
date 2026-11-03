@@ -709,6 +709,15 @@ void drawUIReadouts(Game &g) {
         ImGui::Checkbox("Flip pitch (W/S)", &flip_pitch);
         ImGui::Checkbox("Flip yaw (A/D)", &flip_yaw);
         ImGui::Checkbox("Flip roll (Q/E)", &flip_roll);
+        /* Who gets an axis when a held key and a latched autopilot law both ask for
+           it (#421). The ship applies this where the two demands are still separate
+           vectors; the choice applies to every ship, like the flips above. */
+        int sas = (int)g.sas_policy;
+        ImGui::SetNextItemWidth(240.0f);
+        if(ImGui::Combo("SAS vs. steering", &sas,
+                        "Steering owns the axis\0SAS keeps its ask\0")) {
+            g.sas_policy = (sas == SasKeepsAsk) ? SasKeepsAsk : SasStickOwnsAxis;
+        }
         ImGui::Spacing();
         if(ImGui::Button("Save settings", ImVec2(240.0f, 0.0f))) {
             if(g.save_settings()) {

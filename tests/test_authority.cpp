@@ -581,6 +581,109 @@ static void test_the_wheels_are_billed_once() {
     destroyShip(v);
 }
 
+/* PILOT vs SAS ON ONE AXIS (#421, #425 step D-2). Since #420 the pilot's demand and a
+   latched law's ride on ONE vector, so the only thing left to decide is who gets an
+   axis -- and that is a control preference, not physics, so BOTH ends get pinned.
+   The fixture tumbles about its own X (the pitch key's axis) with kill-rot latched:
+   the law asks I*w/h, which is thousands of N m. Pitch +1 also asks -X, so a +1 key
+   and the law agree and the reading cannot tell them apart -- hold the key the OTHER
+   way (-1 -> +X) and they fight for the line. */
+static void test_the_pilot_and_the_law_split_by_axis() {
+    printf("== pilot vs SAS: a held key owns its axis (#421) ==\n");
+    Stack st = mkStack(200.0, 800.0, 0.1);
+    for(PartDef &d : st.s.defs) { if(d.name == std::string("root")) d.wheel_axes = 3; }
+    Vehicle *v = st.s.v;
+    auto billed = [&]() {
+        const btVector3 t = v->hull->btBody->getTotalTorque();
+        v->hull->btBody->clearForces();
+        return glm::dvec3(t.x(), t.y(), t.z());
+    };
+    auto pitchFight = [&](SasPolicy policy) {
+        v->clearRotCmd();
+        v->hull->btBody->setAngularVelocity(btVector3(1.0f, 0.0f, 0.0f));
+        v->Command(ShipCmd(KillRot), true);        /* the law: thousands of N m, -X */
+        holdStick(v, Pitch, -1.0f);                /* the pilot: +X, against it */
+        v->sas_policy = policy;
+        v->applyRotationForce(1.0 / 120.0);
+        return glm::dot(billed(), st.x);
+    };
+    CHECK_NEAR(pitchFight(SasStickOwnsAxis), +200.0, 1e-9,
+               "default: the held key owns its axis, so the drum turns the pilot's way");
+    CHECK_NEAR(pitchFight(SasKeepsAsk), -200.0, 1e-9,
+               "alternate: the law keeps its ask, and the key is inside a demand the drum cannot follow");
+
+    /* The rule is PER AXIS, not a switch that suspends the autopilot: an axis nobody
+       is steering stays the law's under both policies, so a pilot rolling while SAS
+       holds attitude still gets the roll AND still gets the law's correction. */
+    auto rollUnderLaw = [&](SasPolicy policy) {
+        v->clearRotCmd();
+        v->hull->btBody->setAngularVelocity(btVector3(1.0f, 0.0f, 0.0f));
+        v->Command(ShipCmd(KillRot), true);
+        holdStick(v, Roll, +1.0f);                 /* an axis the law has no use for */
+        v->sas_policy = policy;
+        v->applyRotationForce(1.0 / 120.0);
+        return billed();
+    };
+    const glm::dvec3 axis = rollUnderLaw(SasStickOwnsAxis);
+    CHECK_NEAR(glm::dot(axis, st.z), +200.0, 1e-9, "the pilot keeps the steered axis");
+    CHECK_NEAR(glm::dot(axis, st.x), -200.0, 1e-9, "and the law keeps the one nobody holds");
+    const glm::dvec3 summed = rollUnderLaw(SasKeepsAsk);
+    CHECK_NEAR(glm::dot(summed, st.z), +200.0, 1e-9, "the alternate gives the same roll");
+    CHECK_NEAR(glm::dot(summed, st.x), -200.0, 1e-9, "and the same law correction");
+    v->clearRotCmd();
+    destroyShip(v);
+}
+
+/* A SWITCHED-OFF DRUM IS NOT A ROW (#425 step D-2). The wheels' ENABLE mask goes
+   through the same door as the power gate (#418), so the capability model, the laws,
+   the stick's own scaling and the Vessel window all lose the drums at once -- there is
+   no second bookkeeping place where a disabled drum is still creditable. What a
+   wheels-off hull keeps is its gimbals; what it loses is roll, which no lateral
+   deflection can lever (#419). */
+static void test_a_switched_off_drum_is_not_a_row() {
+    printf("== the wheels' enable mask: no rows, no promise (#425 D-2) ==\n");
+    Stack st = mkStack(200.0, 800.0, 0.1);
+    for(PartDef &d : st.s.defs) { if(d.name == std::string("root")) d.wheel_axes = 3; }
+    Vehicle *v = st.s.v;
+    const double latFull = std::sin(0.1);
+    const double tvcMax = 1000.0 * latFull;
+    auto billed = [&]() {
+        const btVector3 t = v->hull->btBody->getTotalTorque();
+        v->hull->btBody->clearForces();
+        return glm::dvec3(t.x(), t.y(), t.z());
+    };
+
+    CHECK_TRUE(v->wheels_enabled, "a ship starts with its drums on");
+    CHECK_NEAR(v->attitudeAuthority().wheelRatingSum(), 600.0, 1e-9,
+               "on, the fixture is three 200 N m rows");
+
+    v->wheels_enabled = false;
+    const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
+    CHECK_TRUE(a.wheels.empty(), "switched off: not a row left to spend");
+    CHECK_NEAR(actuatorTorqueAbout(a.wheels, st.z), 0.0, 0.0, "no wheel authority about any axis");
+    CHECK_NEAR(v->attitudeTorqueAbout(a, st.x), tvcMax, 1e-9,
+               "what the hull can bring to pitch is the nozzles only");
+    CHECK_NEAR(v->attitudeTorqueAbout(a, st.z), 0.0, 0.0,
+               "and about roll, nothing at all: exact, not rounded (#419)");
+
+    holdStick(v, Pitch, +1.0f);
+    v->applyRotationForce(1.0 / 120.0);
+    CHECK_NEAR(glm::dot(billed(), st.x), 0.0, 1e-12, "the switched-off drums bill nothing");
+    CHECK_NEAR(glm::length(v->tvcLat_), latFull, 1e-9,
+               "and the whole ask routes to the gimbals, at their stop");
+
+    holdStick(v, Roll, +1.0f);
+    v->applyRotationForce(1.0 / 120.0);
+    CHECK_NEAR(glm::length(v->tvcLat_), 0.0, 1e-12, "a roll key buys no aim either");
+    CHECK_NEAR(glm::length(billed()), 0.0, 1e-12, "nor any torque: this hull cannot roll");
+
+    v->wheels_enabled = true;
+    holdStick(v, Roll, +1.0f);
+    v->applyRotationForce(1.0 / 120.0);
+    CHECK_NEAR(glm::dot(billed(), st.z), 200.0, 1e-9, "switched back on, roll answers again");
+    destroyShip(v);
+}
+
 /* ONE FRAME FOR THE WHOLE ATTITUDE PATH (#571). The stack axis TVC levers belongs
    to the ROOT part, and since #571 every consumer asks attitudeRef() for it: the
    mixer, attitudeAuthority, the manual stick, rcsWorldDir, the two traces, and
@@ -888,6 +991,8 @@ int main() {
     test_a_triad_housing_covers_three_lines();
     test_the_stick_demands_one_torque();
     test_the_wheels_are_billed_once();
+    test_the_pilot_and_the_law_split_by_axis();
+    test_a_switched_off_drum_is_not_a_row();
     test_one_frame_for_the_attitude_path();
     test_the_command_funnel();
     test_the_armed_rcs_demand_is_a_direction();
