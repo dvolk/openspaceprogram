@@ -715,7 +715,14 @@ public:
        `valid` is false when there is nothing to aim at -- no frame, or a zero-length
        target -- which is also the NaN door: a normalized zero vector used to poison E
        and the axis. An aligned hull is valid with angle 0, not invalid: "already there"
-       and "no target" are different answers a guidance law has to tell apart. */
+       and "no target" are different answers a guidance law has to tell apart.
+       FRAME: `dir`, `facing` and `axis` are all in the hull's Bullet-world basis --
+       the same one partAxis() and GetPos() use -- not an inertial one. Prograde and
+       the orbit normal belong to the CONIC, so slewTargetDir() reads them from the
+       non-rotating frame and rotates them back. That is not ceremony: inside a
+       rotating surface frame GetVel() is the ground-relative velocity, which for a
+       ship flying slowly points nowhere near its orbit's prograde. A reader outside
+       the funnel owes itself the same conversion. */
     struct Pointing {
         bool valid = false;
         glm::dvec3 facing = glm::dvec3(0.0);    // the nose of attitudeRef() [unit]
@@ -1288,11 +1295,15 @@ protected:
         rcsDir = (l > 1e-9) ? bodyDir * (1.0 / l) : glm::dvec3(0.0);
     }
 
-    /* The throttle, 0..1 (#400 F3). Written only through adjustThrottle()/
-       setThrottle(), both reachable only through Command(), plus the save loader
-       (a saved value is a legitimate writer) and releaseControl(). Nothing else:
-       a public field here is how a law's setpoint and the player's keys ended up
-       writing the same float with nobody able to tell which one won. */
+    /* The throttle, 0..1 (#400 F3). The FIELD has no other writer: the only writes go
+       through adjustThrottle() (Command's ThrottleUp/Down -- the player's rate) and
+       setThrottle(). The setter is public because two honest writers live outside the
+       class -- the save loader (a saved value is a legitimate value) and
+       releaseControl() (a handover leaves the lever at zero) -- but a per-tick writer
+       should send ShipCmd(ThrottleSet), because Command's door is also where a paused
+       tick writes nothing. Nothing else, which is the point: a public field here is how
+       a law's setpoint and the player's keys ended up writing the same float with
+       nobody able to tell which one won. */
     float thruster_util = 1.0;
     /* Did a throttle KEY fire this tick? Per-tick intent, like stick[]: cleared by
        clearThrust() at the top of every tick and set by Command's ThrottleUp/Down.

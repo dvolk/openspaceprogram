@@ -4876,7 +4876,15 @@ void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
    parts list (#571). */
 Vehicle::Pointing Vehicle::pointingTo(glm::dvec3 dir, const AttitudeAuthority &auth) {
     Pointing p;
-    if(glm::length2(dir) < 1e-12) { return p; }  /* no direction to align to */
+    /* `valid` has to mean what the struct says it means, because guidance is this
+       function's third reader and a false `valid` is a NaN travelling into a law's
+       arithmetic (#609). The old test only caught a SHORT vector: a NaN dir failed
+       `length2 < 1e-12` (NaN compares false) and came back valid with a NaN angle and
+       axis; a 1e300 dir OVERFLOWED length2 to inf, normalized to ~0, and read as 90 deg
+       off the nose -- wrong rather than NaN, which is worse to notice. Bounded both
+       ways, so the normalize below cannot under- or overflow either. */
+    const double l2 = glm::length2(dir);
+    if(!(l2 > 1e-12) || !(l2 < 1e24)) { return p; }
     dir = glm::normalize(dir);
     Part *ref = attitudeRef();
     if(ref == nullptr) { return p; }

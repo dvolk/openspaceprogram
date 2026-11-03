@@ -1354,6 +1354,64 @@ static void test_the_aim_is_measured_once() {
     delete body;
 }
 
+/* The #400 review pass. Every pin here is a mutation that survived the whole suite:
+   a NaN ask, an overflowing ask, the antipodal threshold, and the one rate the slew
+   law deliberately does NOT damp. */
+static void test_the_aim_keeps_its_doors_shut() {
+    printf("== the aim's doors, and the roll the law leaves alone (#400 review) ==\n");
+    TerrainBody *body = mkAirBall();
+    Rig r = mkRig(100.0, 0.0);
+    r.v->m_parent = body;
+    r.v->placeShip(glm::dvec3(0.0, 0.0, 601000.0), glm::dmat3(1.0));
+    r.v->drag_cd = 0.0;
+    const Vehicle::AttitudeAuthority au = r.v->attitudeAuthority();
+    const glm::dvec3 nose = r.v->partAxis(r.pod, 2);   // identity pose: +Z
+    const double h = 1.0 / 120.0;
+
+    /* A NaN direction used to come back valid with a NaN angle and axis; 1e300
+       overflowed length2 to inf, normalized to ~0, and read as 90 deg OFF the nose --
+       wrong rather than NaN, which is worse to notice. Both fail closed now (#609),
+       because Pointing is public and guidance is told to read it. */
+    const Vehicle::Pointing bad = r.v->pointingTo(glm::dvec3(0.0, 0.0, std::nan("")), au);
+    CHECK_TRUE(!bad.valid, "a NaN direction is not a direction");
+    CHECK_NEAR(bad.angle, 0.0, 0.0, "and it reports no error rather than a NaN one");
+    const Vehicle::Pointing blow = r.v->pointingTo(glm::dvec3(1e300, 0.0, 0.0), au);
+    CHECK_TRUE(!blow.valid, "an overflowing direction is not a direction either");
+    CHECK_NEAR(blow.angle, 0.0, 0.0, "it does not get to read as a quarter turn");
+
+    /* Almost astern is a normal ask and must still use the REAL cross product. Widening
+       the antipodal threshold from 1e-12 to 1e-2 -- so every ask within 8.6 deg of a
+       half turn takes the fallback -- left the suite green, because nothing here asked.
+       Which axis the exactly-astern case picks is arbitrary and belongs to #609; that it
+       is unit and transverse is not up for grabs. */
+    const double a = 0.5 * glm::pi<double>() / 180.0;
+    const glm::dvec3 hair = glm::normalize(glm::dvec3(0.0, std::sin(a), -std::cos(a)));
+    const Vehicle::Pointing close = r.v->pointingTo(hair, au);
+    CHECK_TRUE(close.valid, "half a degree off astern is an ask like any other");
+    CHECK_NEAR(close.angle, glm::pi<double>() - a, 1e-9, "and reads half a degree off pi");
+    CHECK_NEAR(glm::dot(close.axis, glm::normalize(glm::cross(nose, hair))), 1.0, 1e-9,
+               "so it turns the short way about the real axis, not the fallback");
+    const Vehicle::Pointing astern = r.v->pointingTo(-nose, au);
+    CHECK_NEAR(glm::length(astern.axis), 1.0, 1e-12, "the exactly-astern fallback is unit");
+    CHECK_NEAR(glm::dot(astern.axis, nose), 0.0, 1e-12, "and transverse like any other axis");
+
+    /* The law damps the TRANSVERSE rate only: roll is the wheels' line and the player's,
+       not the aim's (#576). Handing the law the whole rate instead passed 202 checks --
+       and a demand that fought roll would hold the roll hostage to the aim. */
+    r.v->hull->btBody->setAngularVelocity(btVector3(0.0f, 0.0f, 2.0f));  // roll about +Z
+    const glm::dvec3 dir(1.0, 0.0, 0.0);
+    const Vehicle::Pointing p = r.v->pointingTo(dir, au);
+    const glm::dvec3 tau = r.v->slewDemand(dir, h, au);
+    CHECK_NEAR(glm::dot(tau, nose), 0.0, 1e-9,
+               "a rolling hull gets no torque ABOUT ITS NOSE from an aim ask");
+    CHECK_NEAR(glm::dot(tau, p.axis), glm::length(tau), 1e-9,
+               "and all of what it does get is along the aim axis");
+    CHECK_NEAR(glm::length(r.v->slewDemand(glm::dvec3(0.0), h, au)), 0.0, 0.0,
+               "no target buys nothing even while spinning: the law is not a kill-rot");
+    destroyShip(r.v);
+    delete body;
+}
+
 int main() {
     test_fixture_lever_is_what_we_think();
     test_tvc_is_a_disk_not_a_ball();
@@ -1371,6 +1429,7 @@ int main() {
     test_the_armed_rcs_demand_is_a_direction();
     test_a_fin_row_is_spent_and_hands_its_ask_to_the_air();
     test_the_aim_is_measured_once();
+    test_the_aim_keeps_its_doors_shut();
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }
     printf("test_authority: all checks passed\n");

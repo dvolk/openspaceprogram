@@ -537,6 +537,29 @@ static void test_the_throttle_setpoint_channel() {
     CHECK_NEAR(v->throttle(), 1.0f, 0.0,
                "and takes it back the tick the key is released, without being asked");
 
+    /* The lever is LATCHED, not per-tick intent: only the who-holds-it claim resets at
+       the tick boundary. A refactor that zeroed the throttle beside that flag -- the
+       natural place to reach for, since they sit together -- would cut a latched burn
+       every tick, and the flag pins above read the same line so they would not notice. */
+    v->setThrottle(0.6);
+    v->clearThrust();
+    v->clearThrust();
+    CHECK_NEAR(v->throttle(), 0.6f, 0.0,
+               "the setpoint survives the tick boundary; only the key claim resets");
+
+    /* Coast is the most ordinary thing a law asks for -- and ShipCmd's default amount is
+       0.0f, so a forgotten argument means coast too. Neither the zero ask nor the rate
+       channel's ceiling was ever reached here. */
+    v->setThrottle(0.7);
+    v->Command(ShipCmd(ThrottleSet), true, 1.0);
+    CHECK_NEAR(v->throttle(), 0.0f, 0.0, "ThrottleSet with the default amount is coast");
+    v->setThrottle(0.7);
+    v->Command(ShipCmd(ThrottleSet, 0.0f), true, 1.0);
+    CHECK_NEAR(v->throttle(), 0.0f, 0.0, "and an explicit 0 lands the same way");
+    v->setThrottle(0.8f);
+    for(int i = 0; i < 5; i++) { v->Command(ShipCmd(ThrottleUp), true, 0.5); }
+    CHECK_NEAR(v->throttle(), 1.0f, 0.0, "the keys ramp to 1.0 and no further");
+
     /* Losing the pilot cuts the throttle through the same door. */
     v->clearThrust();
     v->setThrottle(0.8);
