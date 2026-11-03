@@ -23,12 +23,16 @@
 #ifndef GUIDANCE_H
 #define GUIDANCE_H
 
+#include <cassert>
 #include <glm/glm.hpp>
 #include "orbit.h"
 
 /* What the mission wants. Altitudes are metres ABOVE SEA LEVEL (the body's
    datum), because that is what periapsisAsl()/apoapsisAsl() return and what a
-   player would read off the navball -- not radii (#404). */
+   player would read off the navball -- not radii (#404).
+   peri_asl is the FLOOR and apo_asl the CEILING, so peri <= apo: the phase
+   machine stops its climb at apo and stops its node burn when peri is caught,
+   and an ask with them swapped has no stopping point (asserted in the ctor). */
 struct AscentTarget {
     double apo_asl = 100e3;
     double peri_asl = 100e3;
@@ -36,6 +40,29 @@ struct AscentTarget {
                              // A sentinel, not a range: an inclination is 0..180,
                              // so a caller that parses a field must ask whether a
                              // value was GIVEN, not test the number for < 0.
+};
+
+/* The fields a player types into the Guidance window, held apart from the law
+   they arm (#612). These outlive a mission -- the loop is read the readout,
+   tweak a field, re-fly -- while an AscentLaw is thrown away and rebuilt from
+   them, phase machine and all. */
+struct AscentAsk {
+    double peri_asl = 100e3;
+    double apo_asl = 100e3;
+    /* Whether a plane was ASKED is its own flag, not a magic number: an
+       inclination is 0..180 deg, so no value is free to mean "none" -- reading
+       a negative field as the law's sentinel made a due-equator ask unsayable
+       (#610 review). Off: fly the plane this pad already gives us. */
+    bool ask_inc = false;
+    double inc_deg = 0.0;
+
+    AscentTarget target() const {
+        AscentTarget t;
+        t.peri_asl = peri_asl;
+        t.apo_asl = apo_asl;
+        t.inc_rad = ask_inc ? glm::radians(inc_deg) : -1.0;   // the law's "not asked"
+        return t;
+    }
 };
 
 enum class AscentPhase {
@@ -84,7 +111,14 @@ struct AscentCommand {
 
 class AscentLaw {
 public:
-    AscentLaw(const AscentTarget &t) : target(t) {}
+    AscentLaw(const AscentTarget &t) : target(t) {
+        /* The two apsides are a floor and a ceiling. Swapped, the climb ends at
+           once (apoapsis is past the ask before it starts) and the node burn has
+           no periapsis it can catch, so the law coasts for ever looking for a
+           verdict that cannot arrive. The Guidance window refuses the pair at
+           the field; this is the contract for every other caller. */
+        assert(t.peri_asl <= t.apo_asl);
+    }
 
     /* One call per logic tick. The law takes no dt: nothing it computes scales
        with the tick length -- the node-burn lead is sized from the burn's own
@@ -147,12 +181,25 @@ private:
    The caller must keep calling it on the hull the law was armed on -- the law
    has no idea which ship it is flying, so feed it a different one and it will
    cheerfully launch that one instead (Game::ascent_ship is the gate).
+   One law per hull, and one hull per law: ascent, descent and transfer all
+   steer the same two channels -- the aim setpoint and the throttle lever -- so
+   a second mission armed on the same hull would fight the first for both. With
+   only this law existing there is nothing to arbitrate yet, so the Guidance
+   window enforces the rule by refusing a second Go (#612); the arbiter lands
+   with the second law.
    Returns false when there was no aim to send -- a railed hull, a bail-out tick,
    or the tick the law finished on. A zero aim cancels the aim only: the throttle
    write still goes out, because the lever latches and a law that stops mid-burn
    without putting it back has left an engine open. */
 class Vehicle;
 bool flyAscent(Vehicle &v, AscentLaw &law, double dt);
+
+/* Let go of a hull, once: releases the SlewFree latch and closes the throttle
+   lever (unless a throttle key is down -- #400 F3's yield rule, and the player's
+   key wins over a Cancel too). A Cancel can land in the middle of a burn, where
+   no verdict tick is coming to write the lever back, so the caller cannot rely
+   on flyAscent's going-away pass, which releases the latch only. */
+void releaseAscent(Vehicle &v);
 
 /* What v1 does NOT do, stated here so the next phase is a decision and not a
    discovery: no atmosphere (drag/pressure are not even in GuidanceState), no

@@ -404,6 +404,31 @@ void Game::dropVehicleRefs(Vehicle *v) {
     if(map.fit_ship == v) { map.fit_ship = nullptr; }
 }
 
+/* The one door from the Guidance window's fields to a flying mission: a Go click
+   and --ascent both come through here, so the CLI and the window cannot drift
+   into two different arming paths (#612). */
+void Game::armAscent(Vehicle *v) {
+    assert(v != nullptr);
+    /* One mission at a time, and one hull per law: both would write the same aim
+       setpoint and the same throttle lever, and the loser would own a hull it is
+       no longer driving. The Guidance window enforces this at Go; this is the
+       same rule stated for the next caller, and the descent law (#612) is the
+       one that will forget it. */
+    assert(!(ascent && ascent->active()));
+    ascent = AscentLaw(ascent_ask.target());
+    ascent_ship = v;
+}
+
+void Game::cancelAscent() {
+    /* Let go of the hull first, while it is still here to be told. Clearing the
+       law alone is not a Cancel: tick.cpp's gate then stops calling flyAscent,
+       so the release pass that hands SAS back and closes the throttle lever
+       never runs, and the ship keeps steering with no law behind it. */
+    if(ascent && ascent_ship != nullptr) { releaseAscent(*ascent_ship); }
+    ascent = std::nullopt;
+    ascent_ship = nullptr;
+}
+
 /* The one way a live Vehicle dies (#297).
 
    This used to be three calls at five sites -- erase, drop refs, delete -- in an
@@ -1210,6 +1235,16 @@ void Game::clearEphemeralState() {
        clearing: ui_remove_vehicle hands control to a successor, which must not
        inherit the latch, so it clears its own (game.cpp). */
     thrust_latched = false;
+    /* A mission is a hand on one hull, and this is the route that deletes hulls
+       WITHOUT dropVehicleRefs -- the bulk `delete v` in resetWorld below. So the
+       law and the hull it was armed on both go here: a stale ascent_ship is the
+       landmine the #610 review named, since the next Vehicle can take the freed
+       block and tick.cpp's `g.ship == g.ascent_ship` gate would then hand a
+       player who never pressed Go their new ship's aim and throttle. No
+       releaseAscent(): the hull is leaving the world and needs no commands. The
+       ask (ascent_ask) is the player's fields, not the world's, and survives. */
+    ascent = std::nullopt;
+    ascent_ship = nullptr;
     /* Both world-stamped caches are REPLACED rather than picked over: nearly
        every field names a body, a Vehicle, or an orbit in the world that is
        going away, so a new field resets by default instead of leaking into the

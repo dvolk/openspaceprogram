@@ -290,15 +290,33 @@ const char *AscentLaw::phaseName() const {
     return "?";
 }
 
+/* The SlewFree latch, and only the latch. Idempotent: Command's Sas case TOGGLES,
+   so sending the mode that IS latched releases it and the next call finds
+   SlewNone and sends nothing. flyAscent runs this on every tick it does not fly
+   and Game::cancelAscent runs it once, so it must be safe either way. */
+static void releaseAscentSas(Vehicle &v) {
+    if(v.slewRequestMode() == SlewFree) { v.Command(ShipCmd(Sas, SlewFree), true); }
+}
+
+void releaseAscent(Vehicle &v) {
+    releaseAscentSas(v);
+    if(!v.throttleKeyHeld()) {
+        v.Command(ShipCmd(ThrottleSet, 0.0f), true);
+    }
+}
+
 bool flyAscent(Vehicle &v, AscentLaw &law, double dt) {
     if(!law.active()) {
         /* Let go of the ship. SlewFree is a latch the player's SAS keys toggle,
            and a latched slew keeps a hull awake (off rails) forever, so leaving
            it set after the law is Done would hand the ship to a guidance law that
-           has already stopped thinking. Command's Sas case toggles, so sending
-           the mode that IS latched releases it -- and the next tick sees
-           SlewNone and sends nothing, which makes this idempotent. */
-        if(v.slewRequestMode() == SlewFree) { v.Command(ShipCmd(Sas, SlewFree), true); }
+           has already stopped thinking. The LEVER is not touched here: the tick
+           the verdict arrived on already wrote it (a Done/Failed step answers with
+           a zero aim, and a zero aim cancels the aim only -- see below), and
+           writing it every tick afterwards would hold the player's own throttle
+           key down for them. A Cancel mid-burn has no such verdict tick, so it
+           calls releaseAscent() to close both. */
+        releaseAscentSas(v);
         return false;
     }
     if(v.m_parent == nullptr || v.frame == nullptr) { return false; }

@@ -1,0 +1,61 @@
+# The GUIDANCE WINDOW arms a mission a real hull then flies (#612). Until now
+# the only door to the ascent law was the --ascent flag, so case 610 and the
+# 96-check law suite both pinned a door only a developer walks through. This
+# case walks the player's door: the Autopilot window's checkbox opens the
+# Guidance window, a typed apoapsis replaces the field's default, Go arms, and
+# the hull flies the two-field ask -- 100 x 150 km -- that only the pure-law
+# test flew on paper.
+# --sim-steps makes the click timestamps logic ticks rather than wall ms (as in
+# ui/424), so the arming order below does not move with machine speed. The
+# LIMIT is the ceiling that actually fires; --timeout is a diagnostic floor.
+NAME guidance-window-ascent
+CLAIM The Guidance window's fields and Go button arm an ascent the ship then flies.
+KIND invariant
+ARGS --startship racer,res/ships/racer.json,Moho,pad --time-accel 10
+ARGS --ascent-log --orbit-log --orbit-interval 1
+ARGS --sim-steps 6000 --timeout 200
+ARGS --ui-click 800,"Windows/Autopilot"
+ARGS --ui-click 1200,"Autopilot/Guidance"
+ARGS --ui-type 1600,"Guidance/ApA (m)",150000
+ARGS --ui-click 2200,"Guidance/Go"
+ARGS --ui-click 2600,"Guidance/Go"
+ARGS --ui-click 3000,"Autopilot/Guidance"
+LIMIT 90
+EXPECT [toast] Guidance: ascent armed on 'racer'
+EXPECT phase=done
+# The second Go click lands while the mission is flying, where the button is
+# greyed out: one mission per hull, because a second law would steer the same
+# aim setpoint and the same throttle lever (#612). --ui-click refuses a disabled
+# widget rather than clicking empty space, so its refusal line IS the assertion
+# -- which is why this case cannot also FORBID FAILED.
+EXPECT path="Guidance/Go" FAILED disabled
+FORBID phase=failed
+FORBID ascent cancelled
+CHECK last(ascent)["phase"] == "done"
+# Exactly one arming: the greyed-out Go did not arm a second mission behind the
+# first, and no other click armed one either.
+CHECK sum(1 for t in toast if "ascent armed" in t) == 1
+# The typed field reached the law: the ask was 150 km and the hull ends at
+# 151-152 km. The field opens at 100 km, so this cannot pass on the default.
+CHECK abs(last(orbit)["apo_asl"] - 150e3) < 5e3
+# ...and it reached it as ONE field: Periapsis kept the default 100 km, which is
+# also what pins --ui-type's select-all from having landed in the wrong box.
+CHECK abs(last(orbit)["peri_asl"] - 100e3) < 5e3
+# The same fact from the shape: a 100 x 150 km ask is e = 0.067, a 150 x 150
+# circular answer is e ~ 0, and the 610 case's 100 x 100 is e < 0.01.
+CHECK last(orbit)["ecc"] > 0.05
+# The lever went back to zero on the verdict tick, as 610 pins from the other
+# side: the window's Go and --ascent arm through the same Game::armAscent, so
+# they share the driver's going-away rules too.
+CHECK last(ascent)["lever"] == 0.0
+# The refused second Go did not restart the flight: once the node burn has
+# begun, the climb phase never comes back.
+CHECK max(a["t"] for a in ascent if a["phase"]=="ascent") < min(a["t"] for a in ascent if a["phase"]=="circ")
+# The Autopilot window's checkbox closed this window at 30 s of sim time and the
+# mission flew on to its verdict some 670 s later: a mission is a state of the
+# ship, not of the window (unlike the Target window's "Compute transfer").
+CHECK min(a["t"] for a in ascent if a["phase"]=="done") > 60
+# ...and that one FAILED line is the whole list: this case cannot FORBID FAILED,
+# so count instead. A second refusal means some other click hit a renamed or
+# hidden widget, and every CHECK above could then be passing for the wrong ship.
+CHECK out.count("FAILED") == 1

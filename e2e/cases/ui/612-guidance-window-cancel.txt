@@ -1,0 +1,39 @@
+# Cancel takes the hull back (#612). Clearing Game::ascent is only a complete
+# Cancel because someone lets go of the two channels the law was holding: the
+# SlewFree latch, which the player's SAS keys toggle and which keeps a hull off
+# rails while set, and the throttle lever, which latches separately from armed
+# thrust and was at full when this Cancel landed mid-climb. flyAscent's
+# going-away pass cannot do it here -- tick.cpp stops calling it the moment the
+# law is gone -- so Game::cancelAscent calls releaseAscent() itself.
+# What this case can see is the latch: --slew-log prints a row only while a slew
+# is latched, and the rows stop at the Cancel tick. The lever half has no
+# observable effect on a hull whose engine is not armed (armed thrust is cleared
+# at the top of every tick, tick.cpp), and --ascent-log is gated on Game::ascent,
+# which Cancel clears, so the lever is pinned in tests/test_guidance.cpp instead.
+NAME guidance-window-cancel
+CLAIM Cancel stops an ascent mission steering the hull and hands SAS back.
+KIND invariant
+ARGS --startship racer,res/ships/racer.json,Moho,pad --time-accel 10
+ARGS --ascent-log --slew-log --orbit-log --orbit-interval 1
+ARGS --sim-steps 1000 --timeout 120
+ARGS --ui-click 800,"Windows/Autopilot"
+ARGS --ui-click 1200,"Autopilot/Guidance"
+ARGS --ui-click 1800,"Guidance/Go"
+ARGS --ui-click 3000,"Guidance/Cancel"
+LIMIT 60
+EXPECT [toast] Guidance: ascent armed on 'racer'
+EXPECT [toast] Guidance: ascent cancelled
+FORBID FAILED
+FORBID phase=done
+FORBID phase=circ
+# The mission flew for a while before the Cancel (Go at 1.8 s of loop time =
+# 18 s of sim, Cancel at 3.0 s = 30 s), and its own log stops there: the
+# --ascent-log gate reads Game::ascent, which Cancel cleared.
+CHECK len(ascent) >= 2
+CHECK max(a["t"] for a in ascent) < 40
+# --slew-log prints a row only while a slew is latched, so these rows are the
+# law's hand on the ship: nothing before Go, nothing after the Cancel. A latch
+# left set would keep steering, keep the SAS keys from working, and keep the
+# hull awake off rails for ever (#610 review).
+CHECK min(s["t"] for s in slew) > 12
+CHECK max(s["t"] for s in slew) < 40

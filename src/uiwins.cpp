@@ -141,6 +141,20 @@ const WinDef kWins[W_Count] = {
                   .default_open = false },
         .role = WinRole::Persistent, .inList = true,
     },
+    [W_Guidance] = {
+        // The mission side of the autopilot: what to ask for, Go/Cancel, and what
+        // the flying mission is doing about it (#612). Named Guidance rather
+        // than Autopilot because that word already means the slew holds above.
+        .name = "Guidance", .label = "Guidance",
+        // Anchored left of the Autopilot window that owns it, and content-fit on
+        // first layout: the readout rows come and go with the mission, and a
+        // pinned height would fold the fields under a scrollbar.
+        .opts = { .slot = ui::Slot::Center, .left_of = "Autopilot",
+                  .closable = true, .default_open = false },
+        // No Windows-panel row: the Autopilot window's checkbox is the route in,
+        // as the Target window's is for Porkchop.
+        .role = WinRole::Persistent, .inList = false,
+    },
     [W_Target] = {
         // Named for what it selects, not for what it computes: a target is
         // also just something to look at (its orbit on the map, its plane as
@@ -266,7 +280,8 @@ const WinDef kWins[W_Count] = {
 
 static const Win kFlightWinIds[] = {
     W_Hud, W_Windows, W_Orbital, W_Surface, W_Resources, W_OrbitalMap,
-    W_SurfaceMap, W_VesselInfo, W_ShipList, W_Autopilot, W_Target, W_Porkchop,
+    W_SurfaceMap, W_VesselInfo, W_ShipList, W_Autopilot, W_Guidance, W_Target,
+    W_Porkchop,
     W_Settings, W_Controls, W_Debug, W_Telemetry, W_SaveLoad,
 };
 // The set, not a guard in each window's body, is what hides the flight

@@ -686,9 +686,12 @@ int main(int argc, char **argv)
            rather than through CLI11's numeric machinery because "100e3,45" is a
            mission description, and a typo should name the field it tripped on.
            ALT is the ask for BOTH apsides (a circular orbit at that altitude);
-           INC is optional and sets the launch heading, not a plane change. */
+           INC is optional and sets the launch heading, not a plane change.
+           It fills the same fields the Guidance window edits and arms through
+           the same Game::armAscent, so a Go click and this flag cannot become
+           two different missions (#612) -- and an e2e case can arm through the
+           window instead of the flag. */
         if(!args.ascent.empty() && first != nullptr) {
-            AscentTarget t;
             const std::string &as = args.ascent;
             const size_t comma = as.find(',');
             const bool inc_given = comma != std::string::npos;
@@ -708,13 +711,14 @@ int main(int argc, char **argv)
                 throw std::runtime_error("--ascent inclination is 0..180 deg, got "
                                          + std::to_string(inc));
             }
-            t.apo_asl = t.peri_asl = alt;
+            AscentAsk &ask = game.ascent_ask;
+            ask.peri_asl = ask.apo_asl = alt;
             /* Whether a plane was ASKED is the comma's business, not the number's:
                an inclination is 0..180, and reading a negative INC as the law's
                "unset" sentinel made a due-equator ask unsayable (#610 review). */
-            t.inc_rad = inc_given ? glm::radians(inc) : -1.0;
-            game.ascent = AscentLaw(t);
-            game.ascent_ship = first;
+            ask.ask_inc = inc_given;
+            if(inc_given) { ask.inc_deg = inc; }
+            game.armAscent(first);
             const std::string inc_txt = inc_given
                 ? " at inc " + std::to_string(inc) + " deg" : std::string();
             printf("Autopilot: ascent armed on '%s' -- %.6g m circular%s (body %s)\n",

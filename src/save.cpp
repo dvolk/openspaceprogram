@@ -1077,8 +1077,19 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
     v->setVelocity(s.pose.vel);
     SetAngVelocity(v->hull, s.pose.angvel);
     v->setThrottle(s.throttle);
-    v->restoreSlewRequest((SlewMode)s.slew_request);
-    v->restoreSlewFreeDir(s.slew_free_dir);   // a latched SlewFree without its aim steers nowhere
+    /* A SlewFree latch belongs to a mission law, and no law survives a load --
+       Game::clearEphemeralState drops it (#612) -- so restoring the latch would
+       give the hull a steering target with nothing behind it: it turns forever
+       along the heading the mission last asked for, the SAS keys toggle a mode
+       the player never set (nothing else latches SlewFree: the Autopilot window
+       offers seven modes and --autopilot's member list excludes this one), and a
+       latched slew keeps a hull off rails for ever. Every other latch is the
+       player's and travels. When an armed mission becomes saveable (#612 stage
+       4), this is the line that changes -- and it must travel with the aim. */
+    const SlewMode latched = (SlewMode)s.slew_request;
+    v->restoreSlewRequest(latched == SlewFree ? SlewNone : latched);
+    v->restoreSlewFreeDir(latched == SlewFree ? glm::dvec3(0.0)
+                                              : s.slew_free_dir);   // #606
     v->wheels_enabled = s.wheels_enabled;
 
     /* Both parts of a seam must be present: skipping an unresolvable seam

@@ -790,11 +790,11 @@ struct Game {
     bool thrust_latched = false;
 
     /* The ascent autopilot (#400 -> AUTOPILOT v1): a law that flies a ship to a
-       circular orbit. Empty until something arms it (--ascent today); tick.cpp
-       steps it after the key input and before the substeps. Held here rather
-       than in Vehicle because it is a mission, not a control surface: it owns an
-       aim and a cutoff, and it talks to the ship only through the public reads
-       and Command, like any other hand on the controls.
+       circular orbit. Empty until the Guidance window's Go (or --ascent) arms
+       it; tick.cpp steps it after the key input and before the substeps. Held
+       here rather than in Vehicle because it is a mission, not a control
+       surface: it owns an aim and a cutoff, and it talks to the ship only
+       through the public reads and Command, like any other hand on the controls.
        The law itself is not bound to anything -- it takes a state and returns an
        aim -- so the hull it was armed on lives next to it. Without this,
        switching ships mid-flight handed the autopilot to the new one, which
@@ -803,6 +803,28 @@ struct Game {
        at a recycled address. */
     std::optional<AscentLaw> ascent;
     Vehicle *ascent_ship = nullptr;
+    /* The Guidance window's fields, kept out of the law on purpose (#612): a
+       mission ends and the player wants to see what they had asked for, tweak
+       it and re-fly. armAscent() is the one door from these to a flying law, so
+       --ascent and a Go click arm the same way. */
+    AscentAsk ascent_ask;
+    /* Arm the ascent law from ascent_ask on this hull. Nothing may be flying
+       when this is called: a second law would steer the same aim setpoint and
+       the same throttle lever as the first, and arming one over the other would
+       leave the first owning a hull nobody is driving any more. The Guidance
+       window enforces that at Go; the assert in armAscent is the contract for
+       the next caller, which is the descent law (#612's arbiter). The caller has
+       also decided the ask is worth flying -- the window's guards, --ascent's
+       parse -- because this is the action, not the judgement. */
+    void armAscent(Vehicle *v);
+    /* Put the hull back in the player's hands: let go of both channels the law
+       was holding (releaseAscent -- the SlewFree latch and the throttle lever),
+       then drop the law. The order matters and so does the first half: tick.cpp
+       stops calling flyAscent the moment Game::ascent is empty, so its
+       going-away pass never runs for a Cancel, and a mission cancelled in the
+       middle of a burn would leave the hull steering at a dead law's aim with
+       the SAS keys toggling a mode the player never set (#610 review). */
+    void cancelAscent();
 
     // The Flight Summary window payload, written by recoverActive.
     struct FlightSummary {

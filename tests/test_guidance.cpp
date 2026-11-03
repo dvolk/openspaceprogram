@@ -11,6 +11,7 @@
    numbers, not the phase names, are the load-bearing checks here. */
 #include "guidance.h"
 #include "orbit.h"
+#include "vehicle.h"   // a bare Vehicle for the releaseAscent() pin (TCOMMON_OBJS links it)
 #include <cstdio>
 #include <cmath>
 #include <algorithm>
@@ -436,8 +437,68 @@ static void test_a_pad_ship_aims_at_the_sky_and_never_at_nan() {
     CHECK_TRUE(c.burn, "and the engine is lit");
 }
 
+/* What the Guidance window's fields and --ascent share (Game::armAscent, #612):
+   the mapping from "a player typed these numbers" to "what the law steers at".
+   Nothing else reads it, so nothing else can break it -- and the plane flag is
+   exactly where the CLI once lost a due-equator ask by treating the sentinel as
+   a range (#610 review). */
+static void test_the_fields_become_a_mission() {
+    printf("== the ask: fields to target ==\n");
+    AscentAsk ask;
+    ask.peri_asl = 100e3;
+    ask.apo_asl = 150e3;
+    ask.ask_inc = false;
+    ask.inc_deg = 60.0;   // typed, but the box that asks for it is unticked
+
+    AscentTarget t = ask.target();
+    CHECK_NEAR(t.peri_asl, 100e3, 0.0, "periapsis field to the law's floor");
+    CHECK_NEAR(t.apo_asl, 150e3, 0.0, "apoapsis field to the law's ceiling");
+    CHECK_TRUE(t.inc_rad < 0.0,
+               "an unticked inclination box asks no plane, whatever the field says");
+
+    ask.ask_inc = true;
+    t = ask.target();
+    CHECK_NEAR(t.inc_rad, glm::radians(60.0), 1e-12, "a ticked box asks its inclination");
+    ask.inc_deg = 0.0;
+    t = ask.target();
+    CHECK_NEAR(t.inc_rad, 0.0, 0.0, "and 0 deg is sayable -- the sentinel is not a range");
+
+    /* The window opens on these defaults and Go arms them straight into a law
+       that asserts peri <= apo, so a default that trips its own assert is an
+       abort on the first click. */
+    const AscentAsk dflt;
+    CHECK_TRUE(dflt.peri_asl > 0.0 && dflt.peri_asl <= dflt.apo_asl,
+               "the defaults satisfy the law's floor and ceiling");
+}
+
+/* releaseAscent() is the Cancel half of the driver (Game::cancelAscent, #612).
+   The e2e case can only watch one of its two writes: armed thrust is cleared at
+   the top of every tick, so a stale lever moves nothing until the player arms
+   the engine, and --ascent-log is gated on Game::ascent, which Cancel clears.
+   So the lever half gets pinned here, against a hull with no parts -- both
+   writes are plain state, and Command is the door the law uses. */
+static void test_letting_go_closes_both_channels() {
+    printf("== the handback: latch and lever ==\n");
+    Vehicle *v = new Vehicle;
+    v->Command(ShipCmd(Sas, SlewFree), true);      // what the law does to aim
+    v->Command(ShipCmd(ThrottleSet, 0.7f), true);  // and what it does to the lever
+    CHECK_TRUE(v->slewRequestMode() == SlewFree, "the law holds the attitude channel");
+    CHECK_NEAR(v->throttle(), 0.7, 1e-6, "and the lever sits where it put it");
+
+    releaseAscent(*v);
+    CHECK_TRUE(v->slewRequestMode() == SlewNone, "letting go releases the latch");
+    CHECK_NEAR(v->throttle(), 0.0, 1e-6, "letting go closes the lever");
+
+    /* flyAscent calls the latch half on every tick it does not fly, and
+       Command's Sas case TOGGLES, so a second call must not latch it back on. */
+    releaseAscent(*v);
+    CHECK_TRUE(v->slewRequestMode() == SlewNone, "and calling it twice keeps it off");
+}
+
 int main() {
     test_a_pad_ship_aims_at_the_sky_and_never_at_nan();
+    test_the_fields_become_a_mission();
+    test_letting_go_closes_both_channels();
     test_done_is_a_periapsis_not_a_speed();
     test_the_law_fails_loudly_not_silently();
     test_degenerate_geometry_still_points_somewhere_horizontal();
