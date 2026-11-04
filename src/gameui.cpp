@@ -17,6 +17,9 @@
 #include "calendar.h"    // CalTime
 #include "constants.h"   // kSurfaceModeAlt (the HUD's surface/orbital flip), map zoom bounds
 #include "drag.h"        // airTemperature/airPressure/airSoundSpeed (the world-info air rows)
+#include "vehicle.h"     // dragAtm: the same AtmosphereParams -> DragAtmosphere seam the
+                         // flight model uses. It reached here through gameui.h -> game.h;
+                         // say it out loud, or a header shuffle breaks the atlas rows.
 #include "angmath.h"     // acosUnit: the one acos(clamp) spelling (#622)
 #include "version.h"     // VERSION
 #include "physics.h"     // GetAngVelocity

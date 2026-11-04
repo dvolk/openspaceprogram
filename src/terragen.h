@@ -92,12 +92,13 @@ struct AtmosphereParams {
     double height = 0.0;  // hard top [m above sea level]; authored, 0 = top() derives
     /* What the air is made of, for the thermodynamics src/drag.h derives from the
        two numbers above (#552 A2). SI -- kg/mol, not g/mol: air 0.028964, CO2
-       0.044, H2 0.0022. Read the derivation before authoring this: it moves the
-       TEMPERATURE line and nothing else, because pressure and sound speed come out
-       as rho0·g·H and sqrt(gamma·g·H) with molar mass cancelling (#552).
-       gamma is cp/cv, only the sound speed uses it, 1.4 for diatomic air. */
-    double molar_mass = 0.028964;
-    double gamma = 1.4;
+       0.044, H2 0.0022. Author it wherever the gas is NOT dry air, because the
+       temperature is LINEAR in it: Jool's H2 air left at the dry-air default reads
+       547 K instead of 41 K. Pressure and sound speed do not contain it at all.
+       gamma is cp/cv -- only the sound speed uses it; 1.4 diatomic (N2, O2, H2),
+       1.3 CO2. Defaults: constants.h kAirMolarMass / kAirGamma. */
+    double molar_mass = kAirMolarMass;
+    double gamma = kAirGamma;
 
     /* Authored height, else scale_height * kAtmoScaleHeights. One home so drag and
        "is this in space?" cannot disagree. */

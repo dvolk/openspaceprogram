@@ -29,11 +29,13 @@ struct DragAtmosphere {
     double height = 0.0;
     /* What the thermodynamics below needs (terragen.h:AtmosphereParams has the
        authored halves; vehicle.cpp:dragAtm is the one place they are copied).
-       A hand-built atmosphere gets Earth's air, so a test cannot forget these and
-       be quietly told 0 K. */
-    double gravity = 9.81;        // [m/s^2] at the body's surface
-    double molar_mass = 0.028964; // [kg/mol]
-    double gamma = 1.4;           // cp/cv
+       gravity has NO default world: an atmosphere that does not say what planet it
+       is on reads 0 K / 0 Pa / 0 m/s, which is the LOUD answer -- inheriting Earth's
+       9.81 would be the plausible wrong one on Eve or Jool. The gas defaults are a
+       different matter: they say what the air is made of, not where it is. */
+    double gravity = 0.0;              // [m/s^2] at the body's surface
+    double molar_mass = kAirMolarMass; // [kg/mol]
+    double gamma = kAirGamma;          // cp/cv
     DragAtmosphere() {}
     DragAtmosphere(double rho0, double H, double top = 0.0)
         : sea_level_density(rho0), scale_height(H), height(top) {}
@@ -58,7 +60,7 @@ struct DragAtmosphere {
    hull under the sea of a has_sea body arguably wants WATER rather than denser air
    (the game has none: no buoyancy, no splashdown, no drag law for it). */
 inline double airDensity(const DragAtmosphere &a, double alt) {
-    if(a.sea_level_density <= 0.0 || a.scale_height <= 0.0) { return 0.0; }
+    if(!(a.sea_level_density > 0.0) || !(a.scale_height > 0.0)) { return 0.0; }
     if(alt <= 0.0) { return a.sea_level_density; }
     if(a.height > 0.0 && alt >= a.height) { return 0.0; }
     return a.sea_level_density * std::exp(-alt / a.scale_height);
@@ -66,51 +68,59 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
 
 /* THE AIR'S THERMODYNAMICS (#552 A2). One exponential IS an isothermal
    atmosphere -- H = R T / (M g) -- so the authored rho0 / scale_height plus the
-   body's g already ASSERT a temperature, a pressure and a sound speed. Nothing
-   new has to be authored to get them; molar_mass only decides what the
-   temperature LINE reads, because it cancels out of the other two:
+   body's g already ASSERT a temperature, a pressure and a sound speed:
        T = g H M / R                   [K]   constant with altitude
        p = rho R T / M = rho g H       [Pa]  M cancels
        a = sqrt(gamma R T / M) = sqrt(gamma g H)  [m/s]   M cancels
-   Read that as content, not trivia: Kerbin (H 5500, g 9.81, rho0 1.225) means
+   Pressure and sound speed need NOTHING authored -- the scale height alone sets
+   them, which is why molar_mass is a composition question only for the TEMPERATURE
+   line. Read that as content, not trivia: Kerbin (H 5500, g 9.81, rho0 1.225) means
    188.0 K, 66.1 kPa, 274.8 m/s, so a hull at 300 m/s at sea level is already
    Mach 1.09 there; solar_system.json's Earth (H 8500) means 290.8 K, 102.3 kPa,
    341.8 m/s -- within ~1% of USSA-1976, with no temperature authored anywhere.
+   COMPOSITION IS NOT FREE EITHER, and it is authored per body now: T is linear in M,
+   so a hydrogen giant left at dry air's 28.964 g/mol reads absurd -- Jool with M
+   unauthored reads 547 K where its H2 air (0.0022) reads 41 K. p and a do not care,
+   so this is a readout-truth question, not a flight-model one. The "isothermal"
+   label on the readouts warns about the missing lapse rate; it does NOT excuse a
+   wrong gas.
    THE THREE ARE LOCKED: rho0, p0 and H cannot all be Earth's numbers on ONE
-   exponential. rho0 1.225 with p0 101.3 kPa wants T0 288 K, which wants H 8.43 km
-   -- an air ~1.5x thicker at 5 km and ~2.7x at 20 km than the H = 5.5 km Kerbin
-   ships. Having both is a LAPSE RATE (a layer table), which is A4; until it lands
-   these numbers are the honest isothermal read of the authored scale height, and
-   the readouts should say so rather than dress them up as measured weather.
+   exponential. rho0 1.225 with p0 101.3 kPa wants T0 288 K, which wants H 8.43 km:
+   against the H = 5.5 km Kerbin ships, that exponential is 1.37x thicker at 5 km and
+   3.54x at 20 km -- and the REAL atmosphere is 1.5x / 2.7x thicker there, because a
+   lapse rate makes density fall faster than pressure. Having both is a LAPSE RATE
+   (a layer table, A4); until it lands these are the honest isothermal reads of the
+   authored scale height, and the readouts say so rather than dress up as weather.
    Below the datum airDensity() is FLAT (#245), so p is flat too: the column under
    the datum is not in hydrostatic equilibrium. Deliberate -- under a has_sea body
    the game gives thick air, not water, and has no buoyancy, splashdown or water
    drag anywhere (#618, closed as designed) -- and integrating the column downward
    would invent a pressure no law uses.
-   Fail CLOSED: no air (rho0 or H not > 0) or no gravity reads 0.0. A Mach number
-   is a ratio to airSoundSpeed(), so a NaN or a divide-by-zero here would be a
-   silent law change several steps downstream (#604's lesson). */
+   Guards fail CLOSED in the !(x > 0.0) shape (src/angmath.h: every relational test
+   against NaN is false, so `x <= 0.0` lets a NaN walk straight into the multiply and
+   out the other side, and a NaN sound speed becomes a NaN Mach several steps later).
+   Same shape as airDensity above. A g-less or H-less atmosphere therefore reads 0.0
+   for all three, never a negative pressure or a NaN. `alt` is NOT guarded: it comes
+   from a live position, and a NaN there is a broken hull, not a bad def. */
 inline double airTemperature(const DragAtmosphere &a) {
-    if(a.sea_level_density <= 0.0 || a.scale_height <= 0.0 || a.gravity <= 0.0) {
-        return 0.0;
-    }
+    if(!(a.sea_level_density > 0.0) || !(a.scale_height > 0.0)
+       || !(a.gravity > 0.0)) { return 0.0; }
     assert(a.molar_mass > 0.0);
     return a.gravity * a.scale_height * a.molar_mass / kGasR;
 }
 
 /* [Pa], alt in m above the sea-level DATUM -- the same alt airDensity takes. */
 inline double airPressure(const DragAtmosphere &a, double alt) {
-    if(a.gravity <= 0.0 || a.scale_height <= 0.0) { return 0.0; }
+    if(!(a.gravity > 0.0) || !(a.scale_height > 0.0)) { return 0.0; }
     return airDensity(a, alt) * a.gravity * a.scale_height;
 }
 
 /* [m/s] -- the speed the Mach number is a ratio to. Constant with altitude, which
    is what isothermal MEANS; a layer table (A4) is what makes it vary. */
 inline double airSoundSpeed(const DragAtmosphere &a) {
-    if(a.sea_level_density <= 0.0 || a.scale_height <= 0.0 || a.gravity <= 0.0) {
-        return 0.0;
-    }
-    assert(a.gamma >= 0.0);
+    if(!(a.sea_level_density > 0.0) || !(a.scale_height > 0.0)
+       || !(a.gravity > 0.0)) { return 0.0; }
+    assert(a.gamma >= 1.0);  // system.cpp refuses an authored gamma below 1
     return std::sqrt(a.gamma * a.gravity * a.scale_height);
 }
 

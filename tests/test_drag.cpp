@@ -150,16 +150,28 @@ static void test_densityTop() {
                "drag below the top");
 }
 
+/* The atmosphere the way the game builds it. drag.h's ctor stops at (rho0, H, top)
+   and gravity has NO world default there: an atmosphere that does not say what
+   planet it is on reads 0 K / 0 Pa / 0 m/s, which is the loud answer, rather than
+   quietly inheriting Earth's 9.81 on Eve or Jool. So every thermodynamic rig here
+   names its g. */
+static DragAtmosphere makeAir(double rho0, double H, double top, double g,
+                              double molar = kAirMolarMass, double gam = kAirGamma) {
+    DragAtmosphere a { rho0, H, top };
+    a.gravity = g;
+    a.molar_mass = molar;
+    a.gamma = gam;
+    return a;
+}
+
 static void test_air_thermodynamics() {
     printf("== the air's thermodynamics: what the authored scale height implies (#552 A2) ==\n");
 
     /* Every expectation below is a literal typed in from an independent
        calculation, not the formula re-run in place: these pins exist so that a
        future edit to ONE of the three spellings (T = g H M / R, p = rho g H,
-       a = sqrt(gamma g H)) shows up as a disagreement instead of being agreed with.
-       The 3-arg atmosphere leaves gravity/molar/gamma at Earth's air (9.81 /
-       0.028964 / 1.4), so a test cannot forget them and be quietly told 0 K. */
-    const DragAtmosphere kerbin { 1.225, 5500.0, 70000.0 };  // the shipped triple
+       a = sqrt(gamma g H)) shows up as a disagreement instead of being agreed with. */
+    const DragAtmosphere kerbin = makeAir(1.225, 5500.0, 70000.0, 9.81);
     CHECK_NEAR(airTemperature(kerbin), 187.95593796005446, 1e-12,
                "Kerbin's isothermal temperature: g H M / R");
     CHECK_NEAR(airSoundSpeed(kerbin), 274.83995342744475, 1e-12,
@@ -167,9 +179,20 @@ static void test_air_thermodynamics() {
     CHECK_NEAR(airPressure(kerbin, 0.0), 66094.875, 1e-12,
                "Kerbin's sea-level pressure: rho0 g H");
 
+    /* An atmosphere that does not name its planet gets no thermodynamics -- it is
+       not quietly Earth. This is the pin that reddens a world default put back into
+       drag.h's member initialiser. */
+    const DragAtmosphere noworld { 1.225, 5500.0, 70000.0 };
+    CHECK_NEAR(airTemperature(noworld), 0.0, 0.0,
+               "no gravity named -> 0 K, not Earth's 9.81");
+    CHECK_NEAR(airSoundSpeed(noworld), 0.0, 0.0, "no gravity named -> 0 m/s");
+    CHECK_NEAR(airPressure(noworld, 0.0), 0.0, 0.0, "no gravity named -> 0 Pa");
+    CHECK_NEAR(airDensity(noworld, 1000.0), 1.225 * std::exp(-1000.0 / 5500.0), 1e-12,
+               "... and it still drags: g is not in rho");
+
     /* The ideal-gas tie spelled the OTHER way: if someone gives p its own formula
        while T keeps the old H, the two stop agreeing. */
-    const double rspec = kGasR / 0.028964;
+    const double rspec = kGasR / kAirMolarMass;
     CHECK_NEAR(airPressure(kerbin, 0.0),
                1.225 * rspec * airTemperature(kerbin), 1e-12,
                "p == rho R T / M, spelled through the gas constant");
@@ -177,8 +200,7 @@ static void test_air_thermodynamics() {
     /* The model is not a fudge: solar_system.json's Earth authors H 8500 and g 9.82
        and lands within ~1% of the real sea level, with no temperature authored
        anywhere. Tolerance 1.5% -- the point is "close", not "USSA". */
-    DragAtmosphere earth { 1.225, 8500.0 };
-    earth.gravity = 9.82;
+    const DragAtmosphere earth = makeAir(1.225, 8500.0, 0.0, 9.82);
     CHECK_NEAR(airTemperature(earth), 290.773461987318, 1e-12,
                "Earth's authored H 8500 reads 290.8 K");
     CHECK_NEAR(airTemperature(earth), 288.15, 0.015, "within 1.5% of USSA 288.15 K");
@@ -189,10 +211,10 @@ static void test_air_thermodynamics() {
                "within 1.5% of USSA 101.325 kPa");
 
     /* What molar mass does and does not move: ONLY the temperature line. M cancels
-       out of p and a, so these two are bit-identical -- a barometric or layer model
-       that started using M in the density profile would go red here. */
-    DragAtmosphere co2 = kerbin;
-    co2.molar_mass = 0.044;
+       out of p and a, so those two are bit-identical -- a barometric or layer model
+       that started using M in the density profile would go red here. The CO2 numbers
+       are what the shipped defs now author for Venus / Mars / Duna / Eve. */
+    const DragAtmosphere co2 = makeAir(1.225, 5500.0, 70000.0, 9.81, 0.044);
     CHECK_NEAR(airTemperature(co2), 285.5289763237949, 1e-12,
                "CO2 air (M 0.044) reads 285.5 K");
     CHECK_NEAR(airSoundSpeed(co2), airSoundSpeed(kerbin), 0.0,
@@ -200,9 +222,14 @@ static void test_air_thermodynamics() {
     CHECK_NEAR(airPressure(co2, 12000.0), airPressure(kerbin, 12000.0), 0.0,
                "molar mass cancels out of the pressure too");
 
-    /* And gamma moves only the sound speed: it is cp/cv, and nothing else reads it. */
-    DragAtmosphere mono = kerbin;
-    mono.gamma = 1.0;
+    /* And gamma moves only the sound speed: it is cp/cv, and nothing else reads it.
+       1.3 is what the CO2 bodies author; 1.0 is the monatomic limit. */
+    const DragAtmosphere co2gam = makeAir(1.225, 5500.0, 70000.0, 9.81, 0.044, 1.3);
+    const DragAtmosphere mono = makeAir(1.225, 5500.0, 70000.0, 9.81, kAirMolarMass, 1.0);
+    CHECK_NEAR(airSoundSpeed(co2gam), 264.842405970041, 1e-12,
+               "CO2's gamma 1.3: sqrt(1.3 g H)");
+    CHECK_NEAR(airTemperature(co2gam), airTemperature(co2), 0.0,
+               "gamma does not move the temperature");
     CHECK_NEAR(airSoundSpeed(mono), 232.28215600859227, 1e-12,
                "monatomic gas: sqrt(1.0 g H)");
     CHECK_NEAR(airTemperature(mono), airTemperature(kerbin), 0.0,
@@ -213,8 +240,7 @@ static void test_air_thermodynamics() {
     /* THE A2 PROMISE: adding the thermodynamics cannot move a drag number. rho is
        g-free, so a body's gravity rides the seam and touches nothing the flight
        model bills. */
-    DragAtmosphere duna = kerbin;
-    duna.gravity = 2.94;
+    const DragAtmosphere duna = makeAir(1.225, 5500.0, 70000.0, 2.94);
     CHECK_NEAR(airDensity(duna, 0.0), airDensity(kerbin, 0.0), 0.0,
                "rho at the datum does not depend on gravity");
     CHECK_NEAR(airDensity(duna, 12000.0), airDensity(kerbin, 12000.0), 0.0,
@@ -243,23 +269,40 @@ static void test_air_thermodynamics() {
     CHECK_NEAR(airPressure(kerbin, 70000.0), 0.0, 0.0, "no air, no pressure at the top");
     CHECK_NEAR(airPressure(kerbin, 120000.0), 0.0, 0.0, "... nor above it");
 
-    /* Fail CLOSED: no air or no gravity reads 0, never a NaN that a Mach number
-       would carry downstream (#604). rho still ignores gravity here. */
+    /* Fail CLOSED on a degenerate or hostile atmosphere. Guards are in the
+       !(x > 0.0) shape (src/angmath.h) rather than `x <= 0.0`, and the pins here are
+       the ones that can tell: a ZERO g or H reads 0 from the arithmetic anyway, so
+       only the negative and NaN cases prove the guard is doing anything. A negative
+       g unguarded would bill a negative pressure and a NaN sqrt; a NaN would walk
+       through `x <= 0.0` (every relational test against NaN is false) and come out
+       the other side as a NaN Mach number (#604). */
     const DragAtmosphere none0 { 0.0, 5500.0 };
-    const DragAtmosphere noneH { 1.225, 0.0 };
-    DragAtmosphere nog = kerbin;
-    nog.gravity = 0.0;
+    const DragAtmosphere negg = makeAir(1.225, 5500.0, 70000.0, -9.81);
+    const DragAtmosphere negH = makeAir(1.225, -5500.0, 70000.0, 9.81);
+    const double nan = std::nan("");
+    const DragAtmosphere badRho = makeAir(nan, 5500.0, 70000.0, 9.81);
+    const DragAtmosphere badH = makeAir(1.225, nan, 70000.0, 9.81);
+    const DragAtmosphere badG = makeAir(1.225, 5500.0, 70000.0, nan);
     CHECK_NEAR(airTemperature(none0), 0.0, 0.0, "no density -> no temperature");
-    CHECK_NEAR(airTemperature(noneH), 0.0, 0.0, "no scale height -> no temperature");
-    CHECK_NEAR(airTemperature(nog), 0.0, 0.0, "no gravity -> no temperature");
-    CHECK_NEAR(airPressure(nog, 0.0), 0.0, 0.0, "no gravity -> no pressure");
     CHECK_NEAR(airSoundSpeed(none0), 0.0, 0.0, "no density -> no sound speed");
-    CHECK_NEAR(airSoundSpeed(nog), 0.0, 0.0, "no gravity -> no sound speed");
-    CHECK_TRUE(std::isfinite(airTemperature(nog)) && std::isfinite(airSoundSpeed(nog))
-               && std::isfinite(airPressure(nog, 100.0)),
-               "the closed reads are 0.0, not NaN");
-    CHECK_NEAR(airDensity(nog, 1000.0), 1.225 * std::exp(-1000.0 / 5500.0), 1e-12,
-               "a gravity-less air still drags: g is not in rho");
+    CHECK_NEAR(airTemperature(negg), 0.0, 0.0, "negative gravity -> 0 K, not a negative T");
+    CHECK_NEAR(airPressure(negg, 0.0), 0.0, 0.0, "negative gravity -> 0 Pa, not a negative p");
+    CHECK_NEAR(airSoundSpeed(negg), 0.0, 0.0, "negative gravity -> 0 m/s, not a NaN sqrt");
+    CHECK_NEAR(airTemperature(negH), 0.0, 0.0, "negative scale height -> 0 K");
+    CHECK_NEAR(airSoundSpeed(negH), 0.0, 0.0, "negative scale height -> 0 m/s");
+    CHECK_NEAR(airDensity(negH, 1000.0), 0.0, 0.0, "... and no density either");
+    CHECK_NEAR(airTemperature(badRho), 0.0, 0.0, "NaN density reads 0 K, not NaN");
+    CHECK_NEAR(airTemperature(badH), 0.0, 0.0, "NaN scale height reads 0 K");
+    CHECK_NEAR(airTemperature(badG), 0.0, 0.0, "NaN gravity reads 0 K");
+    CHECK_NEAR(airPressure(badH, 1000.0), 0.0, 0.0, "NaN scale height -> 0 Pa");
+    CHECK_NEAR(airSoundSpeed(badG), 0.0, 0.0, "NaN gravity -> 0 m/s, never a NaN Mach");
+    CHECK_NEAR(airDensity(badRho, 1000.0), 0.0, 0.0, "NaN density -> no drag at all");
+    CHECK_NEAR(airDensity(badH, 1000.0), 0.0, 0.0, "NaN scale height -> no drag");
+    CHECK_NEAR(airDensity(badG, 1000.0), 1.225 * std::exp(-1000.0 / 5500.0), 1e-12,
+               "NaN gravity does not poison rho");
+    CHECK_TRUE(std::isfinite(airTemperature(badG)) && std::isfinite(airSoundSpeed(badG))
+               && std::isfinite(airPressure(badH, 100.0)) && std::isfinite(airDensity(badRho, 1.0)),
+               "every closed read lands on a finite 0.0");
 }
 
 static void test_force() {

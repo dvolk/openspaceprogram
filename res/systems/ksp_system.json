@@ -183,6 +183,8 @@
           "intensity": 0.75,
           "sea_level_density": 1.7,
           "scale_height": 7000,
+          "molar_mass": 0.044,
+          "gamma": 1.3,
           "height": 90000
         }
       },
@@ -539,6 +541,8 @@
           "intensity": 0.55,
           "sea_level_density": 0.12,
           "scale_height": 4000,
+          "molar_mass": 0.044,
+          "gamma": 1.3,
           "height": 50000
         }
       },
@@ -696,6 +700,7 @@
           "intensity": 0.6,
           "sea_level_density": 2.0,
           "scale_height": 20000,
+          "molar_mass": 0.0022,
           "height": 200000
         }
       },

@@ -61,6 +61,16 @@ inline constexpr double kAtmoScaleHeights = 10.0;
    Where: airTemperature / airPressure / airSoundSpeed (drag.h). */
 inline constexpr double kGasR = 8.314462618;
 
+/* What "air" means when a body does not say: dry air, 28.964 g/mol and cp/cv 1.4.
+   The ONE spelling -- AtmosphereParams (terragen.h), DragAtmosphere (drag.h) and the
+   system loader (system.cpp) all default to these, so changing the default cannot
+   half-apply. Composition is authored per body where the gas is different: CO2
+   0.044 (Venus, Mars, Duna, Eve), H2 0.0022 (Jool, Jupiter, Saturn).
+   Changes: the temperature a body reports when its def says nothing; never rho.
+   Where: AtmosphereParams, DragAtmosphere, load_system. */
+inline constexpr double kAirMolarMass = 0.028964;  // [kg/mol]
+inline constexpr double kAirGamma = 1.4;           // cp/cv, diatomic
+
 /* Aero skip floor [kg/m^3]: below this density the per-part silhouette
    pass is not worth computing. A PERFORMANCE floor, not a physical one
    (the physical top is the atmosphere height).

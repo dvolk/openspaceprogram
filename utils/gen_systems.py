@@ -215,6 +215,7 @@ SURFACES = {
         "atmosphere": {"color": [0.80, 0.85, 0.35], "thickness": 25000,
                        "power": 4.0, "intensity": 0.75,
                        "sea_level_density": 1.7, "scale_height": 7000,
+                       "molar_mass": 0.044, "gamma": 1.3,   # CO2-heavy air
                        "height": 90000},
     },
     "Gilly": {
@@ -269,6 +270,7 @@ SURFACES = {
         "atmosphere": {"color": [0.80, 0.48, 0.30], "thickness": 8000,
                        "power": 4.0, "intensity": 0.55,
                        "sea_level_density": 0.12, "scale_height": 4000,
+                       "molar_mass": 0.044, "gamma": 1.3,   # thin CO2
                        "height": 50000},
     },
     "Ike": {
@@ -289,6 +291,7 @@ SURFACES = {
         "atmosphere": {"color": [0.75, 0.85, 0.85], "thickness": 90000,
                        "power": 3.0, "intensity": 0.6,
                        "sea_level_density": 2.0, "scale_height": 20000,
+                       "molar_mass": 0.0022,          # H2; gamma 1.4 is the default
                        "height": 200000},
     },
     "Laythe": {

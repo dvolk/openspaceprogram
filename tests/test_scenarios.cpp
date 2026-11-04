@@ -21,8 +21,12 @@
 //
 // It also gates one loader invariant that every shipped file shares: the
 // rotating frame's SoI is the mean-sea datum plus the derived shell
-// (check_system). Only a real system file can catch a body measured off some
+// (check_datum). Only a real system file can catch a body measured off some
 // other radius, and the science tiers are read off that difference.
+//
+// And it gates the air's thermodynamic plumbing (check_air): the T/p/a that drag.h
+// derives must come from each body's OWN gravity and authored composition, which
+// only a real system file can show -- test_drag pins the math, not the copy.
 
 #include "system.h"
 #include "vehicle.h"
@@ -88,6 +92,58 @@ static int check_datum(const char *path, const System &sys) {
     }
     printf("  %s: %d/%d bodies' rot SoI sits on the mean-sea datum\n",
            path, (int)sys.bodies.size() - bad, (int)sys.bodies.size());
+    return bad;
+}
+
+/* The air's thermodynamic reads (#552 A2) reach the player through dragAtm(), the
+   ONE place authored atmosphere params become the drag law's view. test_drag owns
+   that math; this owns the PLUMBING over the shipped defs, which no other test can
+   see: if vehicle.cpp:dragAtm stops copying a body's g or its authored composition,
+   every body quietly reports Earth's air -- and Jool, whose H2 air authors 0.0022
+   kg/mol, prints dry air's 547 K instead of 41.5 K in the atlas. The literals are
+   hand-computed off the shipped numbers; T is LINEAR in molar mass while p and a do
+   not contain it at all, so Jool's sound speed is the same either way and only its
+   temperature moves. */
+static int check_air(const char *path, const System &sys) {
+    struct Want { const char *name; double T; double a; };
+    static const Want want[] = {
+        {"Kerbin", 187.95593796005446, 274.83995342744475},  // dry air: the default
+        {"Jool",     41.53148746527926, 468.76859963099065}, // authored H2, g 7.848
+        {"Eve",     617.7808760460290,  389.5647571328803},  // authored CO2, gamma 1.3, g 16.677
+    };
+    int bad = 0, n = 0;
+    for(TerrainBody *b : sys.bodies) {
+        const AtmosphereParams &a = b->surface.atmosphere;
+        if(!(a.sea_level_density > 0.0)) { continue; }  // no physical air to ask
+        n++;
+        const DragAtmosphere da = dragAtm(a, b->g);
+        if(!(da.gravity == b->g) || !(da.molar_mass == a.molar_mass)
+           || !(da.gamma == a.gamma)) {
+            printf("  %s: %s dragAtm lost its world: g %.4g vs %.4g, M %.4g vs %.4g,"
+                   " gamma %.4g vs %.4g\n", path, b->name.c_str(), da.gravity, b->g,
+                   da.molar_mass, a.molar_mass, da.gamma, a.gamma);
+            bad++;
+            continue;
+        }
+        const double T = airTemperature(da);
+        const double p = airPressure(da, 0.0);
+        const double s = airSoundSpeed(da);
+        if(!(T > 0.0) || !(p > 0.0) || !(s > 0.0)) {
+            printf("  %s: %s has air but answers T %.4g K, p %.4g Pa, a %.4g m/s\n",
+                   path, b->name.c_str(), T, p, s);
+            bad++;
+        }
+        for(const Want &w : want) {
+            if(lower(b->name) != lower(w.name)) { continue; }
+            if(std::fabs(T - w.T) > 1e-9 * w.T || std::fabs(s - w.a) > 1e-9 * w.a) {
+                printf("  %s: %s air T %.4f K (want %.4f), sound speed %.4f m/s"
+                       " (want %.4f) -- did a molar_mass/gamma edit go half-way?\n",
+                       path, w.name, T, w.T, s, w.a);
+                bad++;
+            }
+        }
+    }
+    printf("  %s: %d air bodies' thermodynamics come from their own world\n", path, n);
     return bad;
 }
 
@@ -367,6 +423,13 @@ int main() {
                           "res/systems/old_system.json" }) {
         System sys = load_system(p, nullptr, nullptr);
         if(check_datum(p, sys)) failures++;
+        if(check_air(p, sys)) failures++;
+    }
+    // ...and the air bodies whose composition is authored (H2 giants, CO2 worlds) live
+    // in the solar files, so the air check runs there too.
+    for(const char *p : { "res/systems/solar_system.json" }) {
+        System sys = load_system(p, nullptr, nullptr);
+        if(check_air(p, sys)) failures++;
     }
     check_raised_sea();
     if(failures) {

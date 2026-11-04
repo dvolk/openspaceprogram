@@ -37,7 +37,11 @@
    the aero pass and any readout that wants the T/p/a the scale height implies
    (#552 A2). `g` is the body's surface gravity: rho(alt) and top() do not use it,
    the thermodynamics do, so passing a different g moves a readout and never a
-   drag number. */
+   drag number.
+   It copies fields; it does not transform any of them. Two readers still go
+   straight to AtmosphereParams -- jetAirGate's rho_sea and the atlas's density row
+   -- and that is only harmless while the seam stays a pure copy. If it ever
+   normalises or derives anything, those two become real drift. */
 DragAtmosphere dragAtm(const AtmosphereParams &a, double g);
 
 /* Autopilot slew targets -- mutually exclusive (last one wins); the stick

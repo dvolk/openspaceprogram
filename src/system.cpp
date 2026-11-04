@@ -16,6 +16,7 @@
 #include <glm/gtx/transform.hpp>  // glm::rotate (updateChain)
 
 #include "equirect.h"  // equirectLonLat (subsolar surface longitude)
+#include "constants.h"  // kAirMolarMass / kAirGamma (the atmosphere defaults)
 #include "orbit.h"  // railStateFromElements
 #include "resdir.h"
 #include "bodylimits.h"  // the derived shell + SOI laws + the ordering asserts
@@ -388,9 +389,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 s.atmosphere.height = av.value("height", 0.0);
                 // What the air is made of, for the T/p/a that drag.h derives from
                 // scale_height and the body's g (#552 A2). SI -- kg/mol (air
-                // 0.028964, CO2 0.044). Only meaningful when there IS air.
-                s.atmosphere.molar_mass = av.value("molar_mass", 0.028964);
-                s.atmosphere.gamma = av.value("gamma", 1.4);
+                // 0.028964, CO2 0.044, H2 0.0022). Only meaningful when there IS air.
+                s.atmosphere.molar_mass = av.value("molar_mass", kAirMolarMass);
+                s.atmosphere.gamma = av.value("gamma", kAirGamma);
                 // Air needs both density halves, or neither (render-only rim).
                 if((s.atmosphere.sea_level_density > 0.0)
                    != (s.atmosphere.scale_height > 0.0)) {
@@ -398,16 +399,21 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                         "system: " + body->name + ": atmosphere needs both "
                         "sea_level_density and scale_height (or neither)");
                 }
-                /* The two composition numbers feed a division and a sqrt, so a bad
-                   one is a load error rather than a 0 K or a NaN air: every
-                   relational test against NaN is false, hence the !(x >= y) shape
-                   (src/angmath.h). gamma < 1 is not a gas. */
+                /* The composition numbers feed a divide and a sqrt, and g feeds all
+                   three thermodynamic reads, so a bad one is a LOAD error rather than
+                   a 0 K, a negative pressure or a NaN air reaching a Mach number
+                   several steps later. The !(a && b) shape is NaN-closed the way
+                   src/angmath.h requires. molar_mass < 1 kg/mol is the g/mol typo
+                   guard: 28.964 typed where 0.028964 was meant would otherwise load
+                   and print 188,000 K for Kerbin. gamma outside [1, 2] is not a gas. */
                 if(s.atmosphere.sea_level_density > 0.0) {
-                    if(!(s.atmosphere.molar_mass > 0.0)
-                       || !(s.atmosphere.gamma >= 1.0)) {
+                    if(!(s.atmosphere.molar_mass > 0.0
+                         && s.atmosphere.molar_mass < 1.0)
+                       || !(s.atmosphere.gamma >= 1.0 && s.atmosphere.gamma <= 2.0)
+                       || !(body->g > 0.0)) {
                         throw std::runtime_error(
-                            "system: " + body->name + ": atmosphere needs "
-                            "molar_mass > 0 (kg/mol) and gamma >= 1");
+                            "system: " + body->name + ": atmosphere needs molar_mass"
+                            " in (0, 1) kg/mol, gamma in [1, 2], and g > 0");
                     }
                 }
             }
