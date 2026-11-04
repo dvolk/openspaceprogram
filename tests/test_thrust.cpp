@@ -422,6 +422,16 @@ static void test_produced_and_available_thrust() {
                " speed the ship actually has");
     CHECK_NEAR(r.v->availableAccel(), (70000.0 + 11100.0 * E) / 1250.0, 1e-9,
                "and the a_max that stage-down just bought, at the same mass");
+    /* #607: an ask up the stack costs nothing, and it must cost nothing for THIS rig
+       too -- three engines, one of them air-fed, in real air. availableAccelAlong is
+       the same loop as availableThrust, so if the directional read scored the jet off,
+       forgot --exhaust-scale or divided by anything but the current mass, this pin is
+       the one that says so. */
+    CHECK_NEAR(r.v->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)), r.v->availableAccel(),
+               1e-12, "up the stack with the jet and the air in the sum: the two reads"
+               " still agree");
+    CHECK_NEAR(r.v->availableAccelAlong(glm::dvec3(0.0, 0.0, -1.0)), -r.v->availableAccel(),
+               1e-12, "and agree backwards");
     CHECK_TRUE(r.v->availableThrust() > r.v->producedThrust(),
                "at half throttle available still leads produced");
 
@@ -465,7 +475,8 @@ static void test_produced_and_available_thrust() {
  *     is what guidance.cpp has today -- can only dodge that by aiming up the stack.
  *     Rig: the smallest ship that has a directed ceiling, a 1900 kg pod and one 20000 N
  *     engine at the live stage, so every answer is 10 m/s^2 times a share you can do in
- *     your head. The stage-3 gate and the air of the rig above are noise here.
+ *     your head. The stage gate and the air are noise HERE -- 4c below is the rig that
+ *     can see them.
  */
 static Vehicle *mkOneEngineRig(std::deque<PartDef> &defs, double cone_deg,
                                double gimbal_deg = 0.0) {
@@ -518,9 +529,18 @@ static void test_available_accel_along() {
     CHECK_NEAR(v->availableAccelAlong(glm::dvec3(1e-320, 0.0, 0.0)), 0.0, 0.0,
                "an ask so small its length underflows to zero is the same case, and"
                " length() > 0.0 catches it with the other two");
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(INFINITY, 0.0, 0.0)), 0.0, 0.0,
+               "an infinite component is the nastiest of them: length is inf, which is"
+               "> 0, and normalize gives inf*(1/inf) = NaN, so it takes the SAME road"
+               " to full authority. The isfinite term is what stops it");
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(1e308, 0.0, 0.0)), 0.0, 0.0,
+               "a huge but finite ask overflows length() and reads 0 too: it has a"
+               " perfectly good direction, and failing closed is cheaper here than a"
+               " scale-safe normalize for a number this game does not produce");
 
-    /* The same engine with a 30 deg gimbal cone: the cone is the nozzles' reachable
-       set, so an ask inside it costs nothing and one 90 deg off keeps cos(90-30). */
+    /* The same engine with a 30 deg gimbal cone: the cone is where the nozzle may
+       swing from its mount, so an ask inside it costs nothing and one 90 deg off
+       keeps cos(90-30). */
     Vehicle *tv = mkOneEngineRig(defs, 30.0);
     const glm::dvec3 thirty_off(0.0, -std::sin(glm::radians(30.0)),
                                 std::cos(glm::radians(30.0)));
@@ -529,19 +549,110 @@ static void test_available_accel_along() {
                " the cone costs nothing");
     CHECK_NEAR(tv->availableAccelAlong(glm::dvec3(0.0, -1.0, 0.0)), 0.5 * a_full, 1e-12,
                "sideways with a 30 deg cone: 90 - 30, so cos 60");
-    /* And the read is about the mount, not about where the steering happens to have the
-       nozzle this tick -- reading the live deflection would let a law size its burn with
-       the player's stick, and would deny authority the hardware plainly still has. */
-    Vehicle *sv = mkOneEngineRig(defs, 30.0, 20.0);  // nozzles already swung 20 deg
-    CHECK_NEAR(sv->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)),
-               tv->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)), 0.0,
-               "a swung nozzle reads the same up the stack");
-    CHECK_NEAR(sv->availableAccelAlong(glm::dvec3(0.0, -1.0, 0.0)),
-               tv->availableAccelAlong(glm::dvec3(0.0, -1.0, 0.0)), 0.0,
-               "and the same sideways -- the gimbal state is not part of the ceiling");
+    /* And the cone hangs off the MOUNT, not off wherever the steering happens to have
+       the nozzle this tick. The engine below is swung +20 deg, so a live-deflection
+       read would score the two sideways asks 7.66 and 1.74 -- the read is about the
+       hardware's mounting, and a ceiling that moved with the stick would let a law
+       size its burn with the player's WASD. */
+    Vehicle *sv = mkOneEngineRig(defs, 30.0, 20.0);
+    CHECK_NEAR(sv->availableAccelAlong(glm::dvec3(0.0, -1.0, 0.0)), 0.5 * a_full, 1e-12,
+               "a swung nozzle still reads its mount: 90 deg off the MOUNT is cos 60"
+               " even with the gimbals already 20 deg off centre");
+    CHECK_NEAR(sv->availableAccelAlong(glm::dvec3(0.0, 1.0, 0.0)), 0.5 * a_full, 1e-12,
+               "and the other side is the same number -- the deflection does not lean"
+               " the ceiling one way");
     CHECK_NEAR(sv->availableAccelAlong(glm::dvec3(0.0, 0.0, -1.0)), -a_full
                * std::cos(glm::radians(30.0)), 1e-12,
                "retrograde with a 30 deg cone: 180 - 30 off, and still negative");
+    delete sv->m_parent;
+    delete sv;
+    delete tv->m_parent;
+    delete tv;
+    delete v->m_parent;
+    delete v;
+}
+
+/*
+ * 4c. TWO ENGINES, TWO MOUNTS, TWO STAGES. One coaxial engine cannot see the stage
+ *     gate, the sum, or the per-engine mount: an implementation that scored every
+ *     engine against the ROOT's axis, took the max instead of summing, stopped at the
+ *     first thruster, or ignored the stage counter passes all of 4b. A 20000 N engine
+ *     up the stack at stage 3 and a 5000 N one along the hull's +X at stage 1, over a
+ *     2000 kg pod, so the numbers stay in your head: 10 and 2.5 m/s^2.
+ */
+static void test_available_accel_along_two_mounts() {
+    printf("== availableAccelAlong: the sum, the gate and the mount (#607) ==\n");
+    std::deque<PartDef> defs;
+    Vehicle *v = new Vehicle;
+    v->name = "twomount";
+    Part *pod = mkRigPart(defs, "pod", 1900.0, 0.0, 0.0, 1);
+    v->setRoot(pod);
+    Part *ax = mkRigPart(defs, "engine3", 50.0, 5.0, 4000.0, 3);
+    v->attachMode(ax, 0, AttachMode::Down, 0.0);
+    Part *lat = mkRigPart(defs, "engine1", 50.0, 1.0, 5000.0, 1);
+    /* Raw attach() because no stack mode expresses this pose: the part's own +Z along
+       the hull's +X. dmat3(columns) takes local X, Y, Z in ship-local axes, and these
+       three are orthonormal the right way round. */
+    v->attach(lat, 0, glm::dvec3(0.0, 2.0, 0.0),
+              glm::dmat3(glm::dvec3(0.0, 1.0, 0.0), glm::dvec3(0.0, 0.0, 1.0),
+                         glm::dvec3(1.0, 0.0, 0.0)));
+    v->init();
+    v->m_parent = mkPressureBody(1.0);
+    v->placeShip(glm::dvec3(0.0, 0.0, 600000.0), glm::dmat3(1.0));
+    CHECK_TRUE(v->activeStage() == 3, "and it starts with only the stack engine lit");
+
+    /* The stage gate is half of "available": the lateral engine is not available yet,
+       in any direction. */
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)), 10.0, 1e-12,
+               "up the stack: the 20000 N engine, over 2000 kg");
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(1.0, 0.0, 0.0)), 0.0, 1e-12,
+               "along the lateral engine's own mount: still nothing, because the stage"
+               " counter has not reached it");
+
+    v->advanceStage();
+    v->advanceStage();
+    CHECK_TRUE(v->activeStage() == 1, "both lit now");
+    CHECK_NEAR(v->availableAccel(), 12.5, 1e-12, "25000 N over 2000 kg");
+    /* Each engine against its OWN mount, and the two added rather than maxed or taken
+       in order. */
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)), 10.0, 1e-12,
+               "up the stack: the axial engine at full share and the lateral one at"
+               " nothing -- so 10, not 12.5 (every engine on the root's axis) and not"
+               " the max");
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(1.0, 0.0, 0.0)), 2.5, 1e-12,
+               "along the lateral mount: the 5000 N engine is what is available there"
+               " -- not 0 (first thruster only), not 10 (max)");
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(-1.0, 0.0, 0.0)), -2.5, 1e-12,
+               "and signed the other way");
+
+    /* The difficulty scale lands on both reads by the same route. */
+    v->exhaust_scale = 0.5;
+    CHECK_NEAR(v->availableAccel(), 6.25, 1e-12, "--exhaust-scale 0.5 halves the"
+               " direction-free number");
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(1.0, 0.0, 0.0)), 1.25, 1e-12,
+               "and the directional one, because it is the same sum divided by the same"
+               " mass");
+    v->exhaust_scale = 1.0;
+
+    /* And the ask is in frame S -- the same axes partAxis()/GetPos() speak -- not in
+       the hull's own axes. Yaw the hull 90 deg about world X: the stack engine now
+       points along world Y, the lateral one still along X. A read that compared the
+       ask against the ship-local mount would keep answering as if the hull were still
+       upright, which is how a law that thinks in a non-rotating frame ends up dividing
+       by the wrong ceiling (guidance.cpp rotates its aim for exactly this reason). */
+    v->placeShip(glm::dvec3(0.0, 0.0, 600000.0),
+                 glm::dmat3(glm::angleAxis(glm::radians(90.0), glm::dvec3(1.0, 0.0, 0.0))));
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0, -1.0, 0.0)), 10.0, 1e-12,
+               "the world axis the stack mount swung onto (+90 deg about X tips +Z"
+               " toward -Y, the same convention test_gimbal pins): full authority");
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0, 1.0, 0.0)), -10.0, 1e-12,
+               "and the same number with the wrong sign on the other side of it");
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)), 0.0, 1e-12,
+               "and nothing along the axis it used to point along");
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(1.0, 0.0, 0.0)), 2.5, 1e-12,
+               "the lateral mount did not move under a rotation about its own axis");
+    delete v->m_parent;
+    delete v;
 }
 
 /* THE THROTTLE HAS A SETPOINT CHANNEL, AND IT SAID WHO IS HOLDING IT (#400 F3).
@@ -671,6 +782,8 @@ int main() {
     test_produced_and_available_thrust();
     printf("\n");
     test_available_accel_along();
+    printf("\n");
+    test_available_accel_along_two_mounts();
     printf("\n");
     test_the_throttle_setpoint_channel();
 

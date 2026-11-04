@@ -4502,7 +4502,7 @@ void Vehicle::adjustThrottle(float delta) {
     if(thruster_util < 0) { thruster_util = 0; }
 }
 
-/* FULL-THROTTLE thrust of one ignited engine: rockets at their rated value, jets at
+/* One ignited engine's FULL-THROTTLE push (N): rockets at their rated value, jets at
    their PEAK speed (v = v_e/2, where drag.h's ram term tops out) in the air they
    actually have. The air has to be the LOCAL density and not the authored sea level:
    a jet at 15 km cannot produce its sea-level number, and since #400 this is the
@@ -4510,9 +4510,7 @@ void Vehicle::adjustThrottle(float delta) {
    high-altitude jet look several times stronger than it is. rho_sea stays the
    denominator because drag.h's air gate is relative to the body's own sea level, and
    the peak speed is the honest CEILING -- the ship's own speed only ever lowers the
-   ram term from it, which is what producedThrust() reports. One engine, one answer:
-   availableThrust() and availableAccelAlong() both sum this, so the ceiling a plan
-   sizes a burn with and the ceiling it steers against cannot drift apart (#607). */
+   ram term from it, which is what producedThrust() reports. */
 static double partThrustCeiling(const Part *p, double rho, double rho_sea) {
     if(p->isJet()) {
         return jetThrust(p->def->exhaust_velocity * 0.5, rho, rho_sea,
@@ -4522,17 +4520,52 @@ static double partThrustCeiling(const Part *p, double rho, double rho_sea) {
     return p->thrust();
 }
 
-double Vehicle::availableThrust() {
+double Vehicle::ceilingSum(const glm::dvec3 *want) {
     const int as = activeStage();
     const double rho = airDensityAtCom();
     const double rho_sea = (m_parent != nullptr)
         ? (double)m_parent->surface.atmosphere.sea_level_density : 0.0;
+    /* Frame S once. partAxis() re-solves it per part, and a law asks this every tick of
+       a 51-part hull; the rest of this file reads it once per substep for the same
+       reason (see "Frame S read once" in the aero pass). Only the directional caller
+       needs it at all. */
+    glm::dvec3 sPos;
+    glm::dmat3 sRot(1.0);
+    if(want != nullptr) { frameS(sPos, sRot); }
     double t = 0;
     for(Part *p : parts) {
         if(!p->isThruster() || p->stage < as) { continue; }
-        t += partThrustCeiling(p, rho, rho_sea);
+        double share = 1.0;
+        if(want != nullptr) {
+            /* How much of this engine's ceiling can be brought to bear along the ask.
+               Measured from the MOUNT (localRot[2] = the authored +Z, rotated into
+               frame S: exactly partAxis(p, 2)), not from partThrustDir(): the nozzle
+               may swing anywhere inside its gimbal cone around that mount, while where
+               it points this tick is whatever the steering asked for. Reading the live
+               deflection would make a law size its burn with the player's stick and
+               would DENY a gimballed engine authority it plainly still has. (The two
+               rings together reach a little past the authored +/-gimbal_max stop --
+               test_gimbal pins the swing -- so this cone is the shared-lateral clamp
+               the gimbals are driven by, not a measured envelope.)
+               cos(angle - cone) is the share at the best aim inside the cone: 1
+               whenever the ask is reachable, negative past cone + 90 deg. Signed,
+               because a thruster that can only push the wrong way is a fact a law
+               should see rather than a floor at 0 -- and one lever (thruster_util)
+               arms every ignited engine, so the push along dir really is the signed
+               sum: an up-firing and a down-firing engine cancel for the rest of this
+               burn. What this does NOT price is that swinging every nozzle at the ask
+               spends the TVC the same gimbals provide for steering (#608). */
+            const double off = std::acos(glm::clamp(glm::dot(sRot * p->localRot[2], *want),
+                                                    -1.0, 1.0));
+            share = std::cos(std::max(0.0, off - p->def->gimbal_max));
+        }
+        t += share * partThrustCeiling(p, rho, rho_sea);
     }
     return t * exhaust_scale;
+}
+
+double Vehicle::availableThrust() {
+    return ceilingSum(nullptr);
 }
 
 double Vehicle::availableAccel() {
@@ -4544,44 +4577,20 @@ double Vehicle::availableAccel() {
 }
 
 double Vehicle::availableAccelAlong(const glm::dvec3 &dir) {
-    /* Fail CLOSED on a bad ask, because "bad" is worse than NaN here: glm::normalize of
-       a zero vector is NaN, glm::clamp does not rescue a NaN, and std::max(0.0, NaN) is
-       0.0 -- so the share below comes out cos(0) = 1. A zero or NaN aim would read as
-       FULL authority along nothing, which for a throttle law is a full-throttle burn in
-       a direction nobody asked for. Delete this guard and the "no aim" pin goes red at
-       10.0, not at NaN. One comparison covers the whole bad-ask family: length() is NaN
-       for a NaN component and underflows to 0 for a subnormal ask, and an inf ask
-       normalizes to zero and lands at 0.0 down the arithmetic anyway. The clamp-then-max
-       shape is not local to this function: #622. */
-    if(!(glm::length(dir) > 0.0)) { return 0.0; }
-    const glm::dvec3 want = glm::normalize(dir);
-    const int as = activeStage();
-    const double rho = airDensityAtCom();
-    const double rho_sea = (m_parent != nullptr)
-        ? (double)m_parent->surface.atmosphere.sea_level_density : 0.0;
-    double t = 0;
-    for(Part *p : parts) {
-        if(!p->isThruster() || p->stage < as) { continue; }
-        /* How much of this engine's ceiling can be brought to bear along the ask.
-           Measured from the AUTHORED axis (partAxis 2 = the mounted +Z), not from
-           partThrustDir(): the nozzle may swing anywhere inside +/-gimbal_max of the
-           mount, so that cone is the hardware's reachable set, while where it points
-           this tick is whatever the steering asked for. Reading the live deflection
-           would make a law size its burn with the player's stick, and would report
-           authority this engine plainly still has. cos(angle - cone) is the share at
-           the best aim inside the cone, so it is 1 whenever the ask is reachable and
-           goes negative past cone + 90 deg -- signed, because a thruster that can only
-           push the wrong way is a fact a law should see rather than a floor at 0.
-           What this does NOT price is that swinging every nozzle at the ask spends the
-           TVC the same gimbals provide for steering: the hull has to be aimed by
-           whatever is left (#608).
-           The throttle is ship-wide, so a law cannot pick which engines fire: hence a
-           plain sum, even though it lets an up-firing and a down-firing engine cancel
-           to 0 while the ship can still accelerate either way. */
-        const double off = std::acos(glm::clamp(glm::dot(partAxis(p, 2), want), -1.0, 1.0));
-        t += partThrustCeiling(p, rho, rho_sea) * std::cos(std::max(0.0, off - p->def->gimbal_max));
-    }
-    return t * exhaust_scale / getMass();
+    /* Fail CLOSED on a bad ask, because "bad" is worse than NaN here: glm's own
+       normalize of a zero vector is NaN, glm::clamp does not rescue a NaN, and
+       std::max(0.0, NaN) is 0.0 -- so the share would come out cos(0) = 1. A bad aim
+       would read as FULL authority along nothing, which for a throttle law is a
+       full-throttle burn in a direction nobody asked for. Delete this guard and the
+       bad-ask pins go red at 10.0, not at NaN. The length covers the whole family:
+       NaN for a NaN component, 0 for a subnormal ask whose length underflows, and inf
+       for an infinite or overflowingly large one (an inf component normalizes to NaN
+       and takes the same road to 1.0, so it must be stopped here too). The
+       clamp-then-max shape is not local to this function: #622. */
+    const double L = glm::length(dir);
+    if(!(L > 0.0) || !std::isfinite(L)) { return 0.0; }
+    const glm::dvec3 want = dir * (1.0 / L);   // unit; also skips a second length()
+    return ceilingSum(&want) / getMass();
 }
 
 void Vehicle::ApplyThrust(double step) {

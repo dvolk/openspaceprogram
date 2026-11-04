@@ -925,7 +925,7 @@ public:
 
     int numStages();
 
-    /* THE TWO THRUST NUMBERS, and why both exist (#400).
+    /* THE THRUST NUMBERS, and why there is more than one (#400, #607).
        producedThrust() is what the engines are doing RIGHT NOW: rated thrust times the
        current throttle times the air state. Anything that COMMANDS the throttle and
        then reads this back reads its own zero -- the prototype in
@@ -938,21 +938,32 @@ public:
        a law can plan with it and act on the throttle without a feedback loop through its
        own output. It does include the current air state and the stage gate, so "available"
        means available to THIS stage HERE -- a jet in vacuum says zero, and a jettisoned
-       stage is not available at all. */
+       stage is not available at all. Neither of them has a direction, which is what
+       availableAccelAlong() below is for. */
     double producedThrust();
     double availableThrust();
     double availableAccel();
     /* How hard this ship can accelerate ALONG dir (m/s^2) at full throttle: the
-       same sum as availableAccel(), with each engine weighted by how far its mount
-       and gimbal cone let it push along dir at all (#607). dir is a direction, not
-       a magnitude: a zero-length or NaN ask reads 0.0 -- fail CLOSED, because the
-       NaN road through acos and std::max ends at "100% of your thrust" -- and the
-       answer is signed: an engine that can only push the wrong way counts negative,
-       not 0. It assumes the hull may be aimed and the nozzles swung to the edge of
-       their cones, so it says what the AUTHORING allows, not what the steering is
-       doing this tick; what it cannot see is that aiming every nozzle at dir spends
-       the TVC those same gimbals provide, nor whether there is any propellant left
-       to spend. */
+       availableAccel() sum again, each engine weighted by how far its MOUNT and gimbal
+       cone let it push along dir at all (#607).
+       * dir is in frame S, the same axes partAxis()/GetPos()/attitudeBasis() speak. A
+         law that thinks in a non-rotating frame must rotate its ask first, exactly as
+         guidance.cpp does for its aim; pass the unrotated one and the answer is wrong
+         by the body's rotation, silently.
+       * A zero-length, NaN or infinite ask reads 0.0 -- fail CLOSED, because the NaN
+         road through acos and std::max ends at "100% of your thrust".
+       * The answer is SIGNED: an engine that can only push the wrong way counts
+         negative, not 0. One lever (thruster_util) arms every ignited engine, so the
+         push along dir really is the signed sum -- up-firing and down-firing engines
+         cancel for the rest of that burn, and saying so is the honest number.
+       * It moves with the hull's POSE (the mount axes are live) while ignoring the
+         throttle and the gimbal deflection. That is not a "cannot thrust" verdict: a
+         ship that simply has not turned yet reads 0 or negative along an ask it could
+         reach in a second. A law that gates on it (can_thrust, dv/a) must gate on
+         availableAccel() and use this for the direction cost, not the reverse.
+       * Only thrusters count. An RCS-pods-only hull reads 0.0 in every direction even
+         though rcs.h can translate it (#623), and no propellant is consulted, so a dry
+         stage still reads healthy (#607 part 2). */
     double availableAccelAlong(const glm::dvec3 &dir);
 
     /* THE LEVER ITSELF (#400 F3). The throttle used to be a public float, so a law
@@ -1460,6 +1471,14 @@ public:
     void moveToRailFrame(Frame *newFrame, double t);
 
 private:
+    /* One loop behind the two ceiling reads: the ignited stages' full-throttle push
+       in newtons, exhaust_scale applied. `want == nullptr` counts every engine at full
+       weight (what availableThrust() wants); a unit `want` counts each engine only as
+       far as its mount and gimbal cone reach toward it (availableAccelAlong). Shared so
+       the ceiling a plan sizes a burn with and the ceiling it steers against cannot
+       drift apart (#607). */
+    double ceilingSum(const glm::dvec3 *want);
+
     /* The rail state in universe-root axes, for the continuity asserts. */
     void railRootState(glm::dvec3 &p, glm::dvec3 &v) const;
 
