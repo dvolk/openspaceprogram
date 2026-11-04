@@ -57,20 +57,30 @@ static void test_density() {
     const DragAtmosphere a { 1.225, 5500.0 };  // a Kerbin-ish atmosphere
 
     /* At / below the datum the air is the sea-level density, FLAT (#245). It used
-       to read as vacuum here, which is what stripped drag, q and jet thrust from a
-       hull under the datum -- and with no shipped body authoring a sea_level, the
-       datum was the bare radius, so only a body that DOES author one (or a hull
-       under the sea surface) could ever reach it. e2e/fixtures/systems/
-       412-moho-sea.json is the world that finally can. */
+       to read as vacuum there, which is what stripped drag, lift and jet thrust off
+       a hull together. Reaching the datum needs no authoring at all: relief is
+       SIGNED about the radius (terragen.h:terrainRelief) and only a Flat-sea body
+       clamps its floor, so Kerbin's sea beds and Eve's dry valleys already sat under
+       a datum that was just the bare radius. e2e/fixtures/systems/245-kerbin-sea.json
+       is the case where a PAD sits under one. */
     CHECK_NEAR(airDensity(a, 0.0), 1.225, 0.0, "alt=0 -> rho0, not vacuum");
     CHECK_NEAR(airDensity(a, -100.0), 1.225, 0.0, "alt<0 -> rho0, not vacuum");
-    // Flat, not the exponential continued down: that would make the deepest sea in
-    // the game the densest air in the game, and it grows without bound.
+    // Flat, not the exponential continued down: that would make the deepest sea the
+    // densest air in the game, and it grows without bound (115 kg/m3 by -25 km).
     CHECK_NEAR(airDensity(a, -25000.0), 1.225, 0.0, "a deep sea floor is still rho0");
-    CHECK_TRUE(airDensity(a, -25000.0) <= airDensity(a, 0.0),
-               "below the datum the profile never gets denser than sea level");
+    // Monotone ACROSS the datum, which the two exact pins above cannot see: a bump
+    // sitting at the meeting point would still read rho0 at both of them.
+    CHECK_TRUE(airDensity(a, -5000.0) >= airDensity(a, 5000.0),
+               "rho does not fall as a hull descends through the datum");
     // And no cliff where the model meets the datum.
     CHECK_NEAR(airDensity(a, 1e-6), 1.225, 1e-9, "the profile meets rho0 at the datum");
+    /* The clamp is THIS body's sea level, not a constant. Every atmosphere in this
+       file is 1.225, so a hard-coded 1.225 passes them all; Eve (1.7 kg/m3 at
+       H 7000, its valley floors down near -amp/3 = -1.7 km) is the one that says
+       sea_level_density. */
+    const DragAtmosphere eve { 1.7, 7000.0 };
+    CHECK_NEAR(airDensity(eve, 0.0), 1.7, 0.0, "Eve at its datum -> its own rho0");
+    CHECK_NEAR(airDensity(eve, -1667.0), 1.7, 0.0, "an Eve valley floor -> Eve's rho0");
 
     // Just above the surface, the density is (essentially) sea level.
     CHECK_NEAR(airDensity(a, 1.0), 1.225 * std::exp(-1.0 / 5500.0), 1e-12,
@@ -88,11 +98,16 @@ static void test_density() {
     CHECK_TRUE(airDensity(a, 8 * 5500.0) < 0.01 * 1.225,
                "rho(8H) < 1% of sea level");
 
-    // A degenerate atmosphere (no density or no scale height) reads as none.
+    /* A degenerate atmosphere (no density or no scale height) reads as none --
+       BELOW the datum too. The clamp is the interesting branch now, so a refactor
+       that hoists it above these guards would start billing a body that authors no
+       scale height 1.225 kg/m3 of drag down there. */
     const DragAtmosphere none0 { 0.0, 5500.0 };
     const DragAtmosphere noneH { 1.225, 0.0 };
     CHECK_NEAR(airDensity(none0, 100.0), 0.0, 0.0, "no density -> 0");
     CHECK_NEAR(airDensity(noneH, 100.0), 0.0, 0.0, "no scale height -> 0");
+    CHECK_NEAR(airDensity(none0, -100.0), 0.0, 0.0, "no density -> 0 below the datum");
+    CHECK_NEAR(airDensity(noneH, -100.0), 0.0, 0.0, "no scale height -> 0 below it");
 }
 
 static void test_densityTop() {
@@ -172,6 +187,16 @@ static void test_force() {
     const DragAtmosphere none { 0.0, 5500.0 };
     CHECK_TRUE(dragForce(none, cd, A, alt, vup) == glm::dvec3(0.0),
                "no atmosphere -> zero force");
+
+    /* And the bill below the datum is the sea-level one (#245). The density pins in
+       test_density cannot catch this on their own: the shipped bug had a SECOND
+       early-out in applyAeroForce that refused the force while rho printed fine, so
+       the force law needs a sub-datum pin of its own. */
+    const glm::dvec3 f_sea = dragForce(a, cd, A, 0.0, vup);
+    const glm::dvec3 f_sub = dragForce(a, cd, A, -1667.0, vup);
+    CHECK_NEAR(glm::length(f_sub), glm::length(f_sea), 1e-12,
+               "drag at -1667 m == drag at the datum");
+    CHECK_TRUE(glm::length(f_sub) > 0.0, "sub-datum air pushes");
 }
 
 static void test_aeroFrame() {

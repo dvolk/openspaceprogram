@@ -37,12 +37,19 @@ struct DragAtmosphere {
    sea_level -- not the surface, and not the bare radius: #412's fixture is what
    distinguishes them). At or above `height` the air stops dead.
    At or below the datum the air is sea_level_density, FLAT. The exponential's base
-   IS the datum, so a sub-datum point -- a hull skimming the sea, a pad under a
-   sea_level that is above the body's relief -- used to read as vacuum and lose
-   drag, q and jet thrust together (#245). Not the exponential continued downward:
-   that grows without bound and would make the deepest ocean the densest air in the
-   game. What the air really does down there is a profile question, and #552 is
-   where a profile gets answered. */
+   IS the datum, so a sub-datum point -- a hull skimming the sea, a dry basin below
+   a sea_level that sits above the body's relief -- used to read as vacuum and lose
+   drag, q and jet thrust together (#245). Sub-datum terrain is not exotic: relief is
+   SIGNED about the radius (terragen.h:terrainRelief) and only a Flat-sea body clamps
+   its floor, so Kerbin's sea beds sit under its datum and so do the valleys of dry
+   air bodies -- Eve (amplitude 5000, 1.7 kg/m3), Mars, Titan. The noise's own floor
+   is -amplitude/3 (the continents term bottoms at -0.7, the mountain term is >= 0,
+   and the pair scales by amplitude/2.1), i.e. -1.7 km on Eve, -17 km on Titan.
+   Not the exponential continued downward: 1.30 kg/m3 at -336 m already, and
+   115 kg/m3 at -25 km -- the deepest sea would be the densest air in the game,
+   without bound. What the air really does down there is a profile question, and a
+   hull under the sea of a has_sea body arguably wants WATER rather than denser air
+   (the game has none: no buoyancy, no splashdown, no drag law for it). */
 inline double airDensity(const DragAtmosphere &a, double alt) {
     if(a.sea_level_density <= 0.0 || a.scale_height <= 0.0) { return 0.0; }
     if(alt <= 0.0) { return a.sea_level_density; }
@@ -108,15 +115,6 @@ inline glm::dvec3 flowDirection(double alpha, double beta,
     const glm::dvec3 v = nose + right * std::tan(beta) - up * std::tan(alpha);
     const double len = glm::length(v);
     return (len > 0.0) ? v / len : glm::dvec3(0.0);
-}
-
-/* q = 0.5 · rho(alt) · |v_rel|² -- the factor common to the lift and drag laws.
-   Zero for any degenerate input. */
-inline double dynamicPressure(const DragAtmosphere &a, double alt,
-                              const glm::dvec3 &v_rel) {
-    const double rho = airDensity(a, alt);
-    if(rho <= 0.0) { return 0.0; }
-    return 0.5 * rho * glm::dot(v_rel, v_rel);
 }
 
 /* Lift direction: the ship's up axis with its flow component removed

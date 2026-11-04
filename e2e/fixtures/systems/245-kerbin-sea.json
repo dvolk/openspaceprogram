@@ -1,23 +1,11 @@
 {
-  "note": "e2e fixture for #245: the shipped ksp_system Kerbol and Kerbin, verbatim, with ONE thing added -- surface.sea_level 600 on Kerbin. No shipped system sets a non-zero sea_level (see the 412-moho-sea note), so the datum is the bare radius in every world the game ships. This is the same one-number diff on a body that HAS a physical atmosphere (rho0 1.225, H 5500, top 70 km): with the sea level 600 m above the reference sphere, Kerbin's space port -- which parks at alt_asl 264 m on the shipped system -- sits 336 m UNDER the datum, and every hull near the ground on this world is near the ground under the sea shell. That is where airDensity() used to answer vacuum, taking drag, dynamic pressure, lift and jet thrust with it. Pinned by e2e/cases/flight/245-air-below-datum.txt. Keep every other field identical to ksp_system.json: the point is a one-number diff, not a new world.",
+  "note": "e2e fixture for #245: the shipped ksp_system bodies Kerbol, Kerbin, Moho and Duna verbatim, with ONE field added -- surface.sea_level 600 on Kerbin. No shipped system sets a non-zero sea_level (see the 412-moho-sea note), so the datum is the bare radius in every world the game ships. This is that one-number diff on a body that HAS a physical atmosphere (rho0 1.225, H 5500, top 70 km): with the sea level 600 m above the reference sphere, Kerbin's space port -- which parks at alt_asl 264.0 m on the shipped system -- sits 336 m UNDER the datum, and every hull near the ground on this world is near the ground under the sea shell. That is where airDensity() used to answer vacuum, taking drag, lift and jet thrust with it. Pinned by e2e/cases/flight/245-air-below-datum.txt. Keep every body block identical to ksp_system.json apart from that sea_level: the point is a one-number diff, not a new world. world_buildings_files is the shipped res/data/ksp_launch_sites.json rather than a copy of the pad entry, because the pad's lat/lon/height are what make alt_asl -336.2 true here; Moho and Duna are here only so that fragment's other sites resolve (its loader refuses a building naming an absent body).",
   "home": "Kerbin",
   "soi_law": "patched_conic",
   "epoch_year": 1,
   "skybox": "res/skybox/v1",
-  "world_buildings": [
-    {
-      "id": "main_space_port",
-      "type": "space_port",
-      "display_name": "Main space port",
-      "body": "Kerbin",
-      "lat_deg": 0.286473,
-      "lon_deg": 270.286477,
-      "height_m": 5.0,
-      "heading_deg": 0.0,
-      "flags": [
-        "VAB_LAUNCH_PAD"
-      ]
-    }
+  "world_buildings_files": [
+    "res/data/ksp_launch_sites.json"
   ],
   "bodies": [
     {
@@ -148,6 +136,130 @@
       },
       "transfer_dv": 0.0,
       "science_mult": 1.0
+    },
+    {
+      "name": "Moho",
+      "type": "planet",
+      "orbits": "Kerbol",
+      "radius": 250000,
+      "mass": 2.526e+21,
+      "g": 2.698,
+      "seed": 1,
+      "has_sea": false,
+      "power_scaler": 3,
+      "surface": {
+        "amplitude": 800,
+        "palette": [
+          [
+            0.0,
+            [
+              0.35,
+              0.22,
+              0.2
+            ]
+          ],
+          [
+            0.6,
+            [
+              0.5,
+              0.32,
+              0.3
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.65,
+              0.45,
+              0.42
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "orb_ang_speed": 2.8356872230308897e-06,
+        "arg_peri": 0.2617993877991494,
+        "true_anomaly0": 3.140508989974855,
+        "orb_incl": 0.12217304763960307,
+        "lon_asc_node": 1.2217304763960306,
+        "ecc": 0.2
+      },
+      "rotating": {
+        "rot_ang_speed": 5.1927151299004845e-06,
+        "spin_phase0": 0.34041004981157125,
+        "axial_tilt": 0.0005235987755982988,
+        "tilt_azimuth": 3.405444219766777
+      },
+      "transfer_dv": 5346.3,
+      "science_mult": 2.3
+    },
+    {
+      "name": "Duna",
+      "type": "planet",
+      "orbits": "Kerbol",
+      "radius": 320000,
+      "mass": 4.515e+21,
+      "g": 2.943,
+      "seed": 7,
+      "has_sea": false,
+      "power_scaler": 3,
+      "surface": {
+        "palette": [
+          [
+            0.0,
+            [
+              0.55,
+              0.22,
+              0.08
+            ]
+          ],
+          [
+            0.6,
+            [
+              0.7,
+              0.35,
+              0.15
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.85,
+              0.6,
+              0.4
+            ]
+          ]
+        ],
+        "atmosphere": {
+          "color": [
+            0.8,
+            0.48,
+            0.3
+          ],
+          "thickness": 8000,
+          "power": 4.0,
+          "intensity": 0.55,
+          "sea_level_density": 0.12,
+          "scale_height": 4000,
+          "height": 50000
+        }
+      },
+      "inertial": {
+        "orb_ang_speed": 3.628668876941674e-07,
+        "arg_peri": 0.0,
+        "true_anomaly0": 3.140152693772359,
+        "orb_incl": 0.0010471975511965976,
+        "lon_asc_node": 2.3649211364523164,
+        "ecc": 0.051
+      },
+      "rotating": {
+        "rot_ang_speed": 9.590013900271049e-05,
+        "spin_phase0": 2.803056015704051,
+        "axial_tilt": 0.4396484385773716,
+        "tilt_azimuth": 1.69332390337188
+      },
+      "transfer_dv": 1744.5,
+      "science_mult": 1.4
     }
   ]
 }

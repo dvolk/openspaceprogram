@@ -2496,9 +2496,12 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     const double alt = r - m_parent->seaLevelRadius();
     lastDragAlt = alt;
     /* No floor at the datum. The exponential's base IS the datum (drag.h), so a
-       hull below it -- skimming the sea, or a pad under a sea_level that sits above
-       this body's relief -- is in the densest air the model has, not in vacuum
-       (#245). The rho floor a few lines down is the ONE place "no air" is decided. */
+       hull below it -- skimming the sea, or a valley under a sea_level that sits
+       above this body's relief -- is in the densest air the model has, not in
+       vacuum (#245). The rho floor a few lines down is the one place THIS PASS
+       decides "no air"; inAtmosphere() (the rails gate), the biome rule and the
+       science bands still decide it by altitude against atm.top() alone, and that
+       split is deliberate (#309, #310). */
 
     const DragAtmosphere da = dragAtm(atm);
     const double rho = airDensity(da, alt);

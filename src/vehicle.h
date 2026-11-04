@@ -459,6 +459,13 @@ public:
        hold the ship up" while this is positive. */
     double lastUpVert = 0.0;
     glm::dvec3 lastAeroTorque = glm::dvec3(0.0);  // moment about the COM
+    /* The aero pass's own read, last substep. lastDragAlt is metres above the
+       sea-level DATUM (r - seaLevelRadius()), NOT above the ground and not above
+       the bare radius, so it goes negative exactly where lastDragRho is at its
+       maximum (#245). The F4 overlay and --drag-log print this pair; [surfinfo]'s
+       alt_agl/alt_asl is the pair that says where the hull is. applyAeroForce
+       zeroes the pair before its early-outs, so "no air", "no atmosphere" and
+       "--drag-cd 0" all read 0/0 rather than last substep's value. */
     double lastDragAlt = 0.0;
     double lastDragRho = 0.0;
     double lastDragAlpha = 0.0;  // AoA (rad); + = nose above the flow (drag.h)

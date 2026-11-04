@@ -544,9 +544,15 @@ void tick(Game &g) {
             }
         }
 
-        /* --drag-log: the active ship's aero (last substep). rho>0 with
-           Cd/A/|F| all 0 is the density floor reporting vacuum, not broken
-           geometry. AoA prints '-' with no value when there is no usable flow
+        /* --drag-log: the active ship's aero (last substep). alt= is above the
+           sea-level DATUM, so it reads NEGATIVE exactly where rho is at its
+           maximum (#245); [surfinfo]'s alt_agl/alt_asl pair is the readout that
+           says where the hull actually is. rho>0 with |F| 0 means the pass found
+           nothing to bill: the density floor (kRhoFloor, i.e. above the
+           atmosphere's top) or a hull sitting still in its own air -- the A=
+           figure then reads 0 because no flow direction was usable, while Cd
+           still prints the hull's shape. Neither is broken geometry.
+           AoA prints '-' with no value when there is no usable flow
            (kAoAFlowFloor), like [flight] and [surfinfo] do: a parked ship's
            ~1e-4 m/s jitter reads as a full +/-90 deg swing, and a number in a
            log gets treated as a measurement. */
