@@ -34,7 +34,8 @@ static int g_checks = 0;
            a bit-identical pin keeps its teeth. */                                 \
         const double _tol = (_e == 0.0) ? rel_tol                                  \
                                         : rel_tol * std::fabs(_e);                 \
-        if (!std::isfinite(_a) || std::fabs(_a - _e) > _tol) {                    \
+        if (!std::isfinite(_a) || !std::isfinite(_e)                              \
+            || std::fabs(_a - _e) > _tol) {                                       \
             g_failures++;                                                     \
             printf("FAIL: %s (got %.9g, want %.9g)\n", msg, _a, _e);          \
         }                                                                     \

@@ -253,13 +253,13 @@ int main() {
         const double got = cam.projection[0][0];
         printf("4/3 then setFov: x-scale %.6f (want %.6f, a stale 16/9 gives %.6f)\n",
                got, want, boot);
-        if (std::fabs(got - want) > 1e-4) {
+        if (!std::isfinite(got) || !std::isfinite(want) || std::fabs(got - want) > 1e-4) {
             printf("FAIL: setFov rebuilt the projection with a stale aspect\n");
             bad = true;
         }
         // And the cull's horizontal half-angle follows the current aspect.
         const double want_hx = std::atan(std::tan(30.0 * deg) * (4.0 / 3.0));
-        if (std::fabs(cam.frustumSinX - std::sin(want_hx)) > 1e-6) {
+        if (!std::isfinite(cam.frustumSinX) || std::fabs(cam.frustumSinX - std::sin(want_hx)) > 1e-6) {
             printf("FAIL: frustumSinX does not follow the current aspect\n");
             bad = true;
         }

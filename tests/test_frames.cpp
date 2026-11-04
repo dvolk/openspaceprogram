@@ -25,7 +25,8 @@ static int g_checks = 0;
     do {                                                                       \
         g_checks++;                                                            \
         double _a = (a), _b = (b);                                             \
-        if (std::fabs(_a - _b) > (eps)) {                                      \
+        if (!std::isfinite(_a) || !std::isfinite(_b)                           \
+            || std::fabs(_a - _b) > (eps)) {                                   \
             g_failures++;                                                      \
             printf("FAIL: %s  (got %.9g, want %.9g)\n", msg, _a, _b);          \
         }                                                                      \
@@ -47,7 +48,8 @@ static bool dvec_close(glm::dvec3 a, glm::dvec3 b, double eps) {
 static bool mat_close(glm::dmat3 a, glm::dmat3 b, double eps) {
     for (int c = 0; c < 3; c++)
         for (int r = 0; r < 3; r++)
-            if (std::fabs(a[c][r] - b[c][r]) > eps) return false;
+            if (!std::isfinite(a[c][r]) || !std::isfinite(b[c][r])
+                || std::fabs(a[c][r] - b[c][r]) > eps) return false;
     return true;
 }
 

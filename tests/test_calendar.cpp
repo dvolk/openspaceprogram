@@ -28,7 +28,7 @@ static int failures = 0;
 
 #define CHECK_NEAR(a, b, tol) do { \
         double _a = (a), _b = (b), _t = (tol); \
-        if(std::fabs(_a - _b) > _t) { \
+        if(!std::isfinite(_a) || !std::isfinite(_b) || std::fabs(_a - _b) > _t) { \
             printf("FAIL %s:%d: %s = %g, want %g +- %g\n", \
                    __FILE__, __LINE__, #a, _a, _b, _t); \
             failures++; \

@@ -403,7 +403,8 @@ int main() {
                                 - w.lon_deg;
                 if(rlon_deg > 180.0) { rlon_deg -= 360.0; }
                 if(rlon_deg < -180.0) { rlon_deg += 360.0; }
-                if(std::fabs(rlat_deg - w.lat_deg) > 1e-9
+                if(!std::isfinite(rlat_deg) || !std::isfinite(rlon_deg)
+                   || std::fabs(rlat_deg - w.lat_deg) > 1e-9
                    || std::fabs(rlon_deg) > 1e-9) {
                     printf("FAIL %s: pad '%s' projects to lat %.10f lon "
                            "%.10f but is authored %.10f/%.10f\n",

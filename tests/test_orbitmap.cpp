@@ -14,7 +14,7 @@
 static int g_failures = 0;
 
 static void expect_near(double got, double want, const char *what) {
-    if(std::fabs(got - want) > 1e-9) {
+    if(!std::isfinite(got) || !std::isfinite(want) || std::fabs(got - want) > 1e-9) {
         std::printf("FAIL %s: got %g, want %g\n", what, got, want);
         ++g_failures;
     }
@@ -23,7 +23,7 @@ static void expect_near(double got, double want, const char *what) {
 // For expectations copied from shipped-system geometry: the inputs are only
 // quoted to ~6 digits, so the derived basis can't be pinned to 1e-9.
 static void expect_close(double got, double want, double tol, const char *what) {
-    if(std::fabs(got - want) > tol) {
+    if(!std::isfinite(got) || !std::isfinite(want) || std::fabs(got - want) > tol) {
         std::printf("FAIL %s: got %g, want %g (tol %g)\n", what, got, want, tol);
         ++g_failures;
     }

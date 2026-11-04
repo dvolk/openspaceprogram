@@ -55,7 +55,8 @@ static int g_checks = 0;
     do {                                                                       \
         g_checks++;                                                            \
         double _a = (actual), _e = (expected);                                 \
-        if (!std::isfinite(_a) || std::fabs(_a - _e) > (tol)) {                \
+        if (!std::isfinite(_a) || !std::isfinite(_e)                           \
+            || std::fabs(_a - _e) > (tol)) {                                   \
             g_failures++;                                                      \
             printf("FAIL: %s (got %.9g, want %.9g, tol %.3g)\n",               \
                    msg, _a, _e, (double)(tol));                                \

@@ -178,7 +178,7 @@ int main() {
         check(mx > r_cap * 0.99, "open: max radius ~= r_cap (truncated)");
         bool in_plane = true;
         for(const glm::dvec3 &q : pts) {
-            if(std::fabs(q.z) > 1e-6 * rp) { in_plane = false; break; }
+            if(!std::isfinite(q.z) || std::fabs(q.z) > 1e-6 * rp) { in_plane = false; break; }
         }
         check(in_plane, "open: points lie in the orbital plane");
         // Symmetric about the periapsis direction (+X): each point (x, y) has
@@ -255,7 +255,7 @@ int main() {
         for(int i = 0; i <= N; i++) {
             const double r_exp = a * (1.0 - e * std::cos(M_PI * i / N));
             const double r_act = glm::length(pts[i]);
-            if(std::fabs(r_act - r_exp) > 1e-3 * r_exp) { even = false; break; }
+            if(!std::isfinite(r_act) || std::fabs(r_act - r_exp) > 1e-3 * r_exp) { even = false; break; }
         }
         check(even, "xfer-ell: even-in-anomaly radii");
     }
@@ -282,7 +282,7 @@ int main() {
         for(int i = 0; i <= N; i++) {
             const double r_exp = a * (1.0 - e * std::cos(M_PI * i / N));
             const double r_act = glm::length(pts[i]);
-            if(std::fabs(r_act - r_exp) > 1e-3 * r_exp) { even = false; break; }
+            if(!std::isfinite(r_act) || std::fabs(r_act - r_exp) > 1e-3 * r_exp) { even = false; break; }
         }
         check(even, "xfer-he: even-in-anomaly radii");
     }
@@ -310,7 +310,7 @@ int main() {
         for(int i = 0; i <= N; i++) {
             const double r_exp = a_abs * (e * std::cosh(H2 * i / N) - 1.0);
             const double r_act = glm::length(pts[i]);
-            if(std::fabs(r_act - r_exp) > 1e-3 * r_exp) { even = false; break; }
+            if(!std::isfinite(r_act) || std::fabs(r_act - r_exp) > 1e-3 * r_exp) { even = false; break; }
         }
         check(even, "xfer-hyp: even-in-H radii");
     }
@@ -332,7 +332,7 @@ int main() {
               "xfer-circ: arc spans > 0");
         bool on_circle = true;
         for(const glm::dvec3 &p : pts) {
-            if(std::fabs(glm::length(p) - r) > 1e-3 * r) { on_circle = false; break; }
+            if(!std::isfinite(glm::length(p)) || std::fabs(glm::length(p) - r) > 1e-3 * r) { on_circle = false; break; }
         }
         check(on_circle, "xfer-circ: points at radius");
     }

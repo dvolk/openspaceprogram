@@ -65,8 +65,12 @@ static int g_checks = 0;
         double _a = (actual), _e = (expected);                                 \
         /* BOTH sides. Only _a was guarded, so a pin written the other way round  \
            -- CHECK_NEAR(1.0, computed, ...) -- silently passed on a computed     \
-           NaN, because fabs(1.0 - NaN) > tol is false. The other 13 test       \
-           files still have the one-sided guard (#604). */                       \
+           NaN, because fabs(1.0 - NaN) > tol is false. That is the SPELLING     \
+           that fails open: a "diff > tol" test cannot see a NaN, while          \
+           "!(diff <= tol)" can. #604 put this guard in every test binary's      \
+           CHECK_NEAR, so a new test file wants it from its first line -- a       \
+           mutation battery that reports green on checks that never ran is the   \
+           cost of forgetting it. */                                             \
         if (!std::isfinite(_a) || !std::isfinite(_e)                            \
             || std::fabs(_a - _e) > (tol)) {                                    \
             g_failures++;                                                      \

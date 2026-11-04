@@ -30,7 +30,7 @@ static int failures = 0;
 
 #define CHECK_NEAR(what, got, want, tol) do { \
         double _g = (got), _w = (want), _t = (tol); \
-        if(std::fabs(_g - _w) > _t) { \
+        if(!std::isfinite(_g) || !std::isfinite(_w) || std::fabs(_g - _w) > _t) { \
             printf("FAIL %s:%d: %s = %.9g, want %.9g +- %g\n", \
                    __FILE__, __LINE__, what, _g, _w, _t); \
             failures++; \
