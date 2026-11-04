@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 290 |
+| `invariant` | a behaviour or a player route the game must keep | 291 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 37 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **345** |
+| | **total** | **346** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (87)
+## flight (88)
 
 | case | kind | pins |
 |---|---|---|
@@ -109,6 +109,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/573-hud-speaks-the-hull.txt` | invariant | The SURFACE window's pitch/roll/heading describe the hull the keys turn, even though the crew sit on a wheel that is rolled 90 deg about the stack. |
 | `flight/580-three-rcs-keys-even-diagonal.txt` | invariant | Holding three RCS direction keys thrusts along the even diagonal, not with the last key holding the share. |
 | `flight/610-ascent-100km.txt` | invariant | The ascent law flies a pad ship into a circular 100 km orbit on an airless body. |
+| `flight/631-earth-air-in-flight.txt` | invariant | A hull flying through a body that authors atmosphere.layers gets that profile -- T, p and a change with altitude, stay mutually consistent, and bill drag. |
 
 ## crew (26)
 
