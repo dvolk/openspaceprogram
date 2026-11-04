@@ -148,7 +148,9 @@ const WinDef kWins[W_Count] = {
         .name = "Guidance", .label = "Guidance",
         // Anchored left of the Autopilot window that owns it, and content-fit on
         // first layout: the readout rows come and go with the mission, and a
-        // pinned height would fold the fields under a scrollbar.
+        // pinned height would fold the fields under a scrollbar. The type
+        // sections are padded to one height so switching type is not a layout
+        // event (gameui.cpp, #612).
         .opts = { .slot = ui::Slot::Center, .left_of = "Autopilot",
                   .closable = true, .default_open = false },
         // No Windows-panel row: the Autopilot window's checkbox is the route in,

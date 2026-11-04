@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 284 |
+| `invariant` | a behaviour or a player route the game must keep | 285 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 37 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **339** |
+| | **total** | **340** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -264,7 +264,7 @@ judgement. Select by number, name or path, e.g.
 | `save/547-saved-ship-mass-overflow-refused.txt` | invariant | A save whose parts add up to more mass than the game can store is refused, not loaded as a NaN-inertia ship. |
 | `save/582-saved-ship-pose-spread-refused.txt` | invariant | A save whose parts sit so far apart that the game cannot form their inertia is refused, not loaded as a NaN-inertia ship. |
 
-## ui (49)
+## ui (50)
 
 | case | kind | pins |
 |---|---|---|
@@ -317,6 +317,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/492-part-window-trim.txt` | invariant | Clicking one elevator's Trim slider moves that elevator only: the pair that sat at -12.0/+12.0 with the stick free splits, and the airframe trims to a lower angle of attack. |
 | `ui/612-guidance-window-ascent.txt` | invariant | The Guidance window's fields and Go button arm an ascent the ship then flies. |
 | `ui/612-guidance-window-cancel.txt` | invariant | Cancel stops an ascent mission steering the hull and hands SAS back. |
+| `ui/612-guidance-window-types.txt` | invariant | The type combo gates Go per law, and the shared Cancel still stops a mission seen from another type. |
 
 ## render (56)
 

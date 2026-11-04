@@ -396,63 +396,40 @@ static double ascentDvNeed(const TerrainBody &b, double apo_asl) {
    margin is what stands in for everything the measurement leaves out. */
 static constexpr double kGuidanceTerrainMargin = 500.0;
 
-/* The Guidance window (#612): what to ask the ascent law for, Go/Cancel, and
-   what a flying mission is doing about the ask. Drawn just after the Autopilot
-   window that owns its checkbox, because its layout anchors on that one.
-   The fields edit Game::ascent_ask, which is NOT what a flying law is using --
-   the law holds its own copy -- so typing here never disturbs the mission in the
-   air. It is the next mission's settings, and the readout below is what this
-   ship is actually doing. */
+/* What the Guidance window can arm, in the order its "type" combo lists them
+   (#612). Only Ascent has a law; the others are here so the vocabulary and the
+   layout are settled before their laws do, and so Go can say WHY it is grey
+   instead of simply not being there. Keep the enum and the combo's item list in
+   the same order -- imgui hands back an index into that string. */
+enum GuidanceType { kGuideAscent, kGuideDescent, kGuideTransfer };
+static const char *kGuidanceTypeItems = "Ascent\0Descent\0Transfer\0";
+
+/* Body height every section reserves. The window content-fits its frame, so a
+   section that is one sentence would shrink the window on selection and grow it
+   back on the way out -- the playtest's complaint about the frame moving under
+   the player (#612). Sized to the Ascent section, the tallest one; a section
+   taller than this simply grows it. */
+static constexpr float kGuidanceSectionH = 96.0f;
+
+/* The Guidance window (#612): which law to ask for, what to ask it for, Go or
+   Cancel, and what a flying mission is doing about the ask. Drawn just after the
+   Autopilot window that owns its checkbox, because its layout anchors on that
+   one.
+   The type is a choice about what to arm NEXT, not a property of a mission: one
+   mission at a time (game.h), and the flying law knows its own kind -- so the
+   combo never snaps to the mission, and Cancel does not depend on the combo.
+   The fields edit Game::ascent_ask, which is NOT what a flying law is using (the
+   law holds its own copy), so typing here never disturbs the mission in the air;
+   it is the next mission's settings, and the readout is this ship's current one. */
 static void drawGuidanceWindow(Game &g) {
     drawWin(g, W_Guidance, [&] {
         AscentAsk &ask = g.ascent_ask;
         Vehicle *ship = g.ship;
         TerrainBody *b = ship->m_parent;
 
-        ImGui::TextUnformatted("Ascent");
-        /* The fields are in km because that is the scale a player thinks at;
-           AscentAsk stays in metres, which is the unit the law and --ascent both
-           speak, so the widget reads a local and writes it back when the widget
-           says it changed.
-           The format string is load-bearing, not cosmetic: InputScalar with no
-           step buttons applies its BUFFER on any deactivation, edited or not
-           (imgui_widgets.cpp:3855, and it scans with "%lf" whatever the display
-           format says), so whatever the box shows becomes the ask the moment
-           focus leaves it. "%.0f" would therefore replace the ask --ascent 100500
-           produced with 100 km, silently, on a click into the box and out of it.
-           One decimal keeps every ask the flag can produce on display.
-           The inc field is always drawn, greyed when no plane is asked for: the
-           window sizes itself to its content on opening, so swapping a row in and
-           out moves the frame (#612 playtest notes). */
-        double peri_km = ask.peri_asl / 1000.0;
-        double apo_km = ask.apo_asl / 1000.0;
-        ImGui::PushItemWidth(96.0f);
-        if(ImGui::InputDouble("PeA (km)", &peri_km, 0.0, 0.0, "%.1f")) {
-            ask.peri_asl = peri_km * 1000.0;
-        }
-        ImGui::SameLine();
-        if(ImGui::InputDouble("ApA (km)", &apo_km, 0.0, 0.0, "%.1f")) {
-            ask.apo_asl = apo_km * 1000.0;
-        }
-        /* Whether a plane was asked is its own checkbox, not a magic number in
-           the field: an inclination is 0..180 deg, so no value is free to mean
-           "none" (#610 review). Off keeps the launch heading the pad gives us,
-           which is what --ascent ALT alone asks for. */
-        ImGui::SameLine();
-        ImGui::Checkbox("plane", &ask.ask_inc);
-        ImGui::SameLine();
-        ImGui::BeginDisabled(!ask.ask_inc);
-        ImGui::InputDouble("Inc (deg)", &ask.inc_deg, 0.0, 0.0, "%.1f");
-        ImGui::EndDisabled();
-        ImGui::PopItemWidth();
-        // InputDouble has no range of its own, and --ascent refuses an
-        // inclination outside this one: the window must not say otherwise. glm
-        // passes a NaN straight through, so the range refusal below still bites.
-        ask.inc_deg = glm::clamp(ask.inc_deg, 0.0, 180.0);
+        static int type = kGuideAscent;
+        uiCombo("type", &type, kGuidanceTypeItems);
 
-        /* Why Go is refused, if it is. Judged here at the field rather than
-           inside the law: an ask this ship cannot fly is a conversation with the
-           player, not a phase for the machine (#614, #615). */
         bool blocked = false;
         char v[32], w[32];
         const bool flying = g.ascent && g.ascent->active();
@@ -460,26 +437,123 @@ static void drawGuidanceWindow(Game &g) {
             if(!bad) { return; }
             blocked = true;
             /* Counted always, printed only when there is an ask to judge. While a
-               mission holds the hull these fields are the NEXT mission's settings
-               (the law holds its own copy of the target, game.h), and a red line
-               about them reads as a verdict on the flight: mid-burn it said "not
-               enough delta-v" about a plan that was affordable at Go, because the
-               comparison is the whole climb from the pad against the tank that is
-               left (playtest note). */
+               mission holds the hull these fields are the NEXT mission's settings,
+               and a red line about them reads as a verdict on the flight: mid-burn
+               it said "not enough delta-v" about a plan that was affordable at Go,
+               because the comparison is the whole climb from the pad against the
+               tank that is left (playtest note). */
             if(!flying) { ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", why.c_str()); }
         };
-        const bool in_sky = b != nullptr && b->frame != nullptr;
-        const double dv = ship->getDeltaV();
-        const double need = in_sky ? ascentDvNeed(*b, ask.apo_asl) : 0.0;
-        if(in_sky) {
-            snprintf(v, sizeof v, "%.0f", dv);
-            snprintf(w, sizeof w, "%.0f", need);
-            if(flying) {
-                ImGui::TextDisabled("for the next ask: %s m/s left, needs ~%s m/s", v, w);
-            } else {
-                ImGui::Text("delta-v: %s m/s   ask needs ~%s m/s", v, w);
+        /* One section at a time, each padded to the same height (#612). */
+        auto section = [&](auto &&body) {
+            const float top = ImGui::GetCursorPosY();
+            body();
+            const float h = ImGui::GetCursorPosY() - top;
+            if(h < kGuidanceSectionH) { ImGui::Dummy(ImVec2(0.0f, kGuidanceSectionH - h)); }
+        };
+
+        section([&] {
+            if(type != kGuideAscent) {
+                /* A section with no law yet greys Go and says so, rather than
+                   showing fields that would do nothing (#612). */
+                blocked = true;
+                ImGui::TextDisabled(type == kGuideDescent
+                    ? "no descent law yet: nothing lands from here"
+                    : "the Target window plans transfers (Porkchop)");
+                return;
             }
-        }
+            /* The fields are in km because that is the scale a player thinks at;
+               AscentAsk stays in metres, which is the unit the law and --ascent
+               both speak, so the widget reads a local and writes it back when it
+               reports a change. The apsides share a row and the plane shares
+               another -- one row per pair, because four widgets on one line made
+               the window ~570 px wide (playtest note).
+               The format string is load-bearing, not cosmetic: InputScalar with no
+               step buttons applies its BUFFER on any deactivation, edited or not
+               (imgui_widgets.cpp:3855, and it scans with "%lf" whatever the
+               display format says), so whatever the box shows becomes the ask the
+               moment focus leaves it. "%.0f" would therefore replace the ask
+               --ascent 100500 produced with 100 km, silently, on a click into the
+               box and out of it. One decimal keeps every ask the flag can produce
+               expressible in the box that shows it. */
+            double peri_km = ask.peri_asl / 1000.0;
+            double apo_km = ask.apo_asl / 1000.0;
+            ImGui::PushItemWidth(96.0f);
+            if(ImGui::InputDouble("PeA (km)", &peri_km, 0.0, 0.0, "%.1f")) {
+                ask.peri_asl = peri_km * 1000.0;
+            }
+            ImGui::SameLine();
+            if(ImGui::InputDouble("ApA (km)", &apo_km, 0.0, 0.0, "%.1f")) {
+                ask.apo_asl = apo_km * 1000.0;
+            }
+            /* Whether a plane was asked is its own checkbox, not a magic number in
+               the field: an inclination is 0..180 deg, so no value is free to mean
+               "none" (#610 review). Off keeps the launch heading the pad gives us,
+               which is what --ascent ALT alone asks for. The field stays drawn
+               greyed when off so the frame does not change size. */
+            ImGui::Checkbox("plane", &ask.ask_inc);
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!ask.ask_inc);
+            ImGui::InputDouble("Inc (deg)", &ask.inc_deg, 0.0, 0.0, "%.1f");
+            ImGui::EndDisabled();
+            ImGui::PopItemWidth();
+            // InputDouble has no range of its own, and --ascent refuses an
+            // inclination outside this one: the window must not say otherwise. glm
+            // passes a NaN straight through, so the range refusal below still bites.
+            ask.inc_deg = glm::clamp(ask.inc_deg, 0.0, 180.0);
+
+            const bool in_sky = b != nullptr && b->frame != nullptr;
+            const double dv = ship->getDeltaV();
+            const double need = in_sky ? ascentDvNeed(*b, ask.apo_asl) : 0.0;
+            if(in_sky) {
+                snprintf(v, sizeof v, "%.0f", dv);
+                snprintf(w, sizeof w, "%.0f", need);
+                if(flying) {
+                    ImGui::TextDisabled("for the next ask: %s m/s left, needs ~%s m/s", v, w);
+                } else {
+                    ImGui::Text("delta-v: %s m/s   ask needs ~%s m/s", v, w);
+                }
+            }
+            /* The ask guards run whatever the state, printing under the rule in
+               refuse(). That is not redundancy: they are what stands between a
+               typed value and AscentLaw's ordering assert, which is an abort in
+               every build -- the Makefile defines no NDEBUG. An InputDouble with
+               no step buttons filters no characters at all (imgui's InputScalar
+               hands the caller's flags straight to InputText and adds only
+               AutoSelectAll, imgui_widgets.cpp:3819) and the buffer is scanned
+               with %lf, which parses "nan" and "inf", so a typed word is a
+               reachable state and a greyed Go must not be the only thing holding
+               it back. */
+            if(!in_sky) {
+                refuse(true, "this ship is not inside a body's sky to fly from");
+            } else {
+                /* Every comparison here is written so a NaN fails CLOSED, and the
+                   inclination field is range-tested as well as clamped. */
+                refuse(!(ask.peri_asl > 0.0), "periapsis must be above the datum");
+                refuse(!(ask.apo_asl >= ask.peri_asl),
+                       "apoapsis must be at or above periapsis: the climb needs a ceiling");
+                /* The one ceiling the delta-v line above can never supply: that
+                   estimate gets CHEAPER as the ask grows, so an absurd ask would
+                   read as affordable and then fail at the tanks. Past the SoI there
+                   is no mission to fly anyway -- the law steers inside one body's
+                   frame (flyAscent solves its conic in it). */
+                const double soi_asl = b->frame->soi - b->seaLevelRadius();
+                refuse(!(ask.apo_asl < soi_asl),
+                       "apoapsis is past this body's sky (SoI "
+                       + std::string(fmt_dist(b->frame->soi, v, sizeof v))
+                       + " from the centre)");
+                const double floor_asl = (double)b->surface.max_height
+                                       + kGuidanceTerrainMargin;
+                refuse(ask.peri_asl < floor_asl,
+                       "periapsis is in the terrain: highest terrain here is "
+                       + std::string(fmt_dist((double)b->surface.max_height, v, sizeof v))
+                       + ", so ask above " + std::string(fmt_dist(floor_asl, w, sizeof w)));
+                refuse(dv < need, "not enough delta-v for this ask");
+            }
+            refuse(ask.ask_inc && !(ask.inc_deg >= 0.0 && ask.inc_deg <= 180.0),
+                   "inclination is 0..180 deg");
+        });
+
         if(flying) {
             /* One mission at a time: ascent, descent and transfer all steer the
                aim and the throttle, so a second Go would fight the first for both
@@ -490,48 +564,23 @@ static void drawGuidanceWindow(Game &g) {
             blocked = true;
             ImGui::TextDisabled("one mission at a time -- Cancel it first");
         }
-        /* The ask guards run whatever the state, printing under the rule above.
-           That is not redundancy: they are the only thing between a typed value
-           and AscentLaw's ordering assert, which is an abort in every build --
-           the Makefile defines no NDEBUG. An InputDouble with no step buttons
-           filters no characters at all (imgui's InputScalar hands the caller's
-           flags straight to InputText and adds only AutoSelectAll,
-           imgui_widgets.cpp:3819) and the buffer is scanned with %lf, which
-           parses "nan" and "inf", so a typed word is a reachable state and the
-           greyed Go must not be the only thing holding it back. */
-        if(!in_sky) {
-            refuse(true, "this ship is not inside a body's sky to fly from");
-        } else {
-            /* Every comparison here is written so a NaN fails CLOSED, and the
-               inclination field is range-tested as well as clamped. */
-            refuse(!(ask.peri_asl > 0.0), "periapsis must be above the datum");
-            refuse(!(ask.apo_asl >= ask.peri_asl),
-                   "apoapsis must be at or above periapsis: the climb needs a ceiling");
-            /* The one ceiling the delta-v line above can never supply: that
-               estimate gets CHEAPER as the ask grows, so an absurd ask would
-               read as affordable and then fail at the tanks. Past the SoI there
-               is no mission to fly anyway -- the law steers inside one body's
-               frame (flyAscent solves its conic in it). */
-            const double soi_asl = b->frame->soi - b->seaLevelRadius();
-            refuse(!(ask.apo_asl < soi_asl),
-                   "apoapsis is past this body's sky (SoI "
-                   + std::string(fmt_dist(b->frame->soi, v, sizeof v))
-                   + " from the centre)");
-            const double floor_asl = (double)b->surface.max_height
-                                   + kGuidanceTerrainMargin;
-            refuse(ask.peri_asl < floor_asl,
-                   "periapsis is in the terrain: highest terrain here is "
-                   + std::string(fmt_dist((double)b->surface.max_height, v, sizeof v))
-                   + ", so ask above " + std::string(fmt_dist(floor_asl, w, sizeof w)));
-            refuse(dv < need, "not enough delta-v for this ask");
-        }
-        refuse(ask.ask_inc && !(ask.inc_deg >= 0.0 && ask.inc_deg <= 180.0),
-               "inclination is 0..180 deg");
 
+        /* One pair of buttons for every type: they act on the mission, not on the
+           selection, which is why switching type cannot strand a flying mission
+           without a way to stop it. */
         ImGui::BeginDisabled(blocked);
         if(ImGui::Button("Go")) {
-            g.armAscent(ship);
-            g.toast("Guidance: ascent armed on '%s'", ship->displayName().c_str());
+            switch(type) {
+                case kGuideAscent:
+                    g.armAscent(ship);
+                    g.toast("Guidance: ascent armed on '%s'", ship->displayName().c_str());
+                    break;
+                default:
+                    /* Go is greyed for every type without a law, so reaching here
+                       means the grey-out and this switch have fallen out of step. */
+                    assert(false);
+                    break;
+            }
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
@@ -577,16 +626,6 @@ static void drawGuidanceWindow(Game &g) {
         ImGui::Text("pitch: %s   node: %s",
                     here ? num(v, sizeof v, "%.1f", law->pitch_deg()) : "-",
                     (here && law->node_r() > 0.0) ? fmt_dist(law->node_r(), w, sizeof w) : "-");
-
-        /* Placeholders, so the layout and the vocabulary are settled before the
-           laws exist (#612). No Go buttons: a button that arms nothing is worse
-           than a section that says it does not fly yet. */
-        ImGui::Separator();
-        ImGui::TextUnformatted("Descent");
-        ImGui::TextDisabled("no descent law yet: nothing lands from here");
-        ImGui::Separator();
-        ImGui::TextUnformatted("Transfer");
-        ImGui::TextDisabled("the Target window plans transfers (Porkchop)");
     });
 }
 
