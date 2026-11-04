@@ -4972,9 +4972,15 @@ Vehicle::Pointing Vehicle::pointingTo(glm::dvec3 dir, const AttitudeAuthority &a
     p.angle = glm::acos(glm::clamp(glm::dot(p.facing, dir), -1.0, 1.0));
     p.axis = glm::cross(p.facing, dir);          /* + turns the nose toward dir */
     if(glm::length2(p.axis) < 1e-12) {
-        /* nose ~ opposite dir: any axis perpendicular to facing works */
-        p.axis = (std::fabs(p.facing.y) > 0.9) ? glm::dvec3(1, 0, 0) : glm::dvec3(0, 1, 0);
-        p.axis = glm::normalize(p.axis - p.facing * glm::dot(p.axis, p.facing));
+        /* nose ~ opposite dir: any transverse axis closes the error, so take the
+           hull's own "right" (columns are [right, up, nose], so it is exactly
+           perpendicular to facing and needs no re-orthogonalising). The world-axis
+           selector this replaces -- fabs(facing.y) > 0.9 -- answered the same ask on
+           the same hull about a different line as the hull rolled across |y| = 0.9,
+           and 1e-6 rad of dither at antipodes alternated it between +Y and -Y on
+           consecutive substeps, spending the same torque each time (#609). Pitching
+           over about the hull's right is also what a pilot means by "point retrograde". */
+        p.axis = partAxis(ref, 0);
     } else {
         p.axis = glm::normalize(p.axis);
     }

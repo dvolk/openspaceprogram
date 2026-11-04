@@ -1387,7 +1387,7 @@ static void test_the_aim_keeps_its_doors_shut() {
     /* Almost astern is a normal ask and must still use the REAL cross product. Widening
        the antipodal threshold from 1e-12 to 1e-2 -- so every ask within 8.6 deg of a
        half turn takes the fallback -- left the suite green, because nothing here asked.
-       Which axis the exactly-astern case picks is arbitrary and belongs to #609; that it
+       Which axis the exactly-astern case picks is decided below (#609 part 2); that it
        is unit and transverse is not up for grabs. */
     const double a = 0.5 * glm::pi<double>() / 180.0;
     const glm::dvec3 hair = glm::normalize(glm::dvec3(0.0, std::sin(a), -std::cos(a)));
@@ -1399,6 +1399,25 @@ static void test_the_aim_keeps_its_doors_shut() {
     const Vehicle::Pointing astern = r.v->pointingTo(-nose, au);
     CHECK_NEAR(glm::length(astern.axis), 1.0, 1e-12, "the exactly-astern fallback is unit");
     CHECK_NEAR(glm::dot(astern.axis, nose), 0.0, 1e-12, "and transverse like any other axis");
+    /* WHICH line the fallback picks is no longer a coin flip (#609 part 2). It used to
+       choose a WORLD axis by where the nose happened to sit -- fabs(facing.y) > 0.9 --
+       so the same ask on the same hull turned about a different line as the hull rolled
+       across |y| = 0.9, and a microradian of dither at antipodes alternated +Y with -Y
+       on consecutive substeps, each time spending the same torque about another line.
+       It is the hull's own right now: pitch over, which is what "point retrograde"
+       means to a pilot, and the same answer in hull terms at any world orientation. */
+    CHECK_NEAR(glm::dot(astern.axis, r.v->partAxis(r.pod, 0)), 1.0, 1e-12,
+               "exactly astern turns about the hull's own right");
+    r.v->placeShip(glm::dvec3(0.0, 0.0, 601000.0),
+                   glm::dmat3(glm::angleAxis(glm::radians(90.0), glm::dvec3(0.0, 1.0, 0.0))));
+    const glm::dvec3 noseY = r.v->partAxis(r.pod, 2);   // now world +X, so facing.y = 0
+    const Vehicle::Pointing astY = r.v->pointingTo(-noseY, r.v->attitudeAuthority());
+    CHECK_NEAR(astY.angle, glm::pi<double>(), 1e-9, "yawed 90 deg, the ask is still astern");
+    CHECK_NEAR(glm::dot(astY.axis, r.v->partAxis(r.pod, 0)), 1.0, 1e-12,
+               "and the fallback follows the hull: its own right, now world -Z");
+    CHECK_NEAR(glm::dot(astY.axis, glm::dvec3(0.0, 1.0, 0.0)), 0.0, 1e-12,
+               "not the world +Y the old selector would have answered with");
+    r.v->placeShip(glm::dvec3(0.0, 0.0, 601000.0), glm::dmat3(1.0));
 
     /* The law damps the TRANSVERSE rate only: roll is the wheels' line and the player's,
        not the aim's (#576). Handing the law the whole rate instead passed 202 checks --
