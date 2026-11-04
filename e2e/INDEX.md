@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 285 |
+| `invariant` | a behaviour or a player route the game must keep | 286 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 37 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **340** |
+| | **total** | **341** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (84)
+## flight (85)
 
 | case | kind | pins |
 |---|---|---|
@@ -87,6 +87,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/376-drain-window-survives-a-ship-switch.txt` | golden | Switching ships does not stretch a --drain-log row's interval or corrupt its kg/s. |
 | `flight/377-power-log-balances-the-battery.txt` | golden | --power-log's charge moves at the rate its own printed watts imply. |
 | `flight/395-surface-aoa-readout.txt` | invariant | [surfinfo] reports the aero angle of attack, the sideslip and the air-relative prograde while the ship has air-relative flow and "-" when it has none, and its stability pair reports a zero slope without inventing a neutral-looking margin for an airframe that has nothing lifting. |
+| `flight/412-sea-level-datum.txt` | invariant | A body's authored sea_level is part of its altitude datum: the centre-relative keys carry it and the above-sea-level keys do not. |
 | `flight/421-pilot-loses-to-sas.txt` | invariant | With --sas-policy keep, the same held pitch key against a latched prograde hold moves the nose by nothing at all: the law keeps its full demand and out-shouts the pilot on the steered axis. |
 | `flight/421-pilot-owns-the-axis.txt` | invariant | With the default pilot-vs-SAS policy, a held pitch key takes its own axis away from a latched prograde hold: the nose swings away while the key is down and SAS closes the error again when it comes up. |
 | `flight/426-fin-ring-mixes-axes.txt` | invariant | A cruciform ring of ELEVATORS yaws a hull that owns no yaw-rigged surface: one demanded torque reaches whichever plates lever part of it, while the roll key -- which no plate in that ring levers at all -- still only gets the pod's drum. |

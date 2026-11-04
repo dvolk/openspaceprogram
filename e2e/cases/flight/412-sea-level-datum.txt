@@ -1,0 +1,49 @@
+# No shipped body authors a sea level, so the game's whole altitude datum is
+# untested: seaLevelRadius() == radius everywhere the game runs, and #404/#405's
+# _asl keys behave exactly as if they subtracted the bare radius (#412). This case
+# is the missing world -- e2e/fixtures/systems/412-moho-sea.json is the shipped
+# Moho with ONE field added, "sea_level": 100 -- flown on the bed #412 names.
+# The datum should live in the CENTRE-relative keys and nowhere else: peri_r and
+# apo_r (radii from the body centre) must carry the extra 100 m, while peri_asl
+# and apo_asl keep the numbers the bed authored. Measure the same bed on the
+# shipped system and peri_r is 260000 against 260100 here -- 100 m that only exists
+# because a datum was authored, and it is exactly the difference between
+# subtracting radius and subtracting seaLevelRadius().
+# alt_agl is the other half of the pair: it is the SURFACE-relative readout, so it
+# must NOT carry the datum (its numbers are in tmp/aero/n412_pad_base.log and
+# n412_pad_fix.log: 8.89346 m both worlds, while alt_asl moves 129.753 -> 29.753).
+# The biome flips to "ocean" for the ground point under the ship, which is the
+# datum reaching terragen.h's splashdown rule -- the reason a real sea_level is
+# worth having at all, and impossible to see on a shipped body.
+NAME sea-level-datum
+CLAIM A body's authored sea_level is part of its altitude datum: the centre-relative keys carry it and the above-sea-level keys do not.
+KIND invariant
+ARGS --system e2e/fixtures/systems/412-moho-sea.json
+ARGS --startship racer,res/ships/racer.json,Moho,ellipse-apo
+ARGS --orbit-log --info-log --orbit-interval 1
+ARGS --sim-steps 180 --timeout 6
+LIMIT 60
+EXPECT [orbitlog]
+CHECK len(orbit) >= 3
+CHECK len(surf) >= 3
+# Moho's radius 250000 + the fixture's sea_level 100. On the shipped system the
+# same subtraction gives 250000, which is the number a datum bug would print HERE.
+CHECK all(abs((o["peri_r"] - o["peri_asl"]) - 250100.0) < 1.0 for o in orbit)
+CHECK all(abs((o["apo_r"] - o["apo_asl"]) - 250100.0) < 1.0 for o in orbit)
+# ... and the _asl keys still say what the ellipse-apo bed asked for, so the datum
+# did not leak into the readouts that are already above sea level.
+CHECK all(abs(o["peri_asl"] - 10000.0) < 1.0 for o in orbit)
+CHECK all(abs(o["apo_asl"] - 1e6) < 1.0 for o in orbit)
+# The bed starts at apoapsis, so the first surface row reads that same 1e6 -- the
+# Surface window is on the same datum as the conic, not a third one of its own.
+CHECK abs(surf[0]["alt_asl"] - 1e6) < 2.0
+# The datum reaches the biome rule (terragen.h: has_sea and alt <= 0 reads as
+# Ocean), which no shipped body can show.
+CHECK any(s["bme"] == "ocean" for s in surf)
+# MUTATION: seaLevelRadius() -> radius (tmp/aero/n412_mut_run.log) reddens exactly
+# the two centre-relative checks. Note what it does NOT redden: alt_asl still reads
+# 1e6, because the bed authors its apsides ASL and builds the conic from them, so a
+# wrong datum is internally consistent in every above-sea-level readout. That is why
+# this case pins the _r keys against the _asl keys rather than quoting a height the
+# HUD would print either way -- the gap between the two key families is the one
+# thing a datum bug cannot hide behind.
