@@ -4,7 +4,9 @@
 # case walks the player's door: the Autopilot window's checkbox opens the
 # Guidance window, a typed apoapsis replaces the field's default, Go arms, and
 # the hull flies the two-field ask -- 100 x 150 km -- that only the pure-law
-# test flew on paper.
+# test flew on paper. The fields are in km, which is the scale the player thinks
+# at; AscentAsk and --ascent stay in metres, so "150" in the box is the law's
+# 150000.
 # --sim-steps makes the click timestamps logic ticks rather than wall ms (as in
 # ui/424), so the arming order below does not move with machine speed. The
 # LIMIT is the ceiling that actually fires; --timeout is a diagnostic floor.
@@ -16,12 +18,13 @@ ARGS --ascent-log --orbit-log --orbit-interval 1
 ARGS --sim-steps 6000 --timeout 200
 ARGS --ui-click 800,"Windows/Autopilot"
 ARGS --ui-click 1200,"Autopilot/Guidance"
-ARGS --ui-type 1600,"Guidance/ApA (m)",150000
+ARGS --ui-type 1600,"Guidance/ApA (km)",150
 ARGS --ui-click 2200,"Guidance/Go"
 ARGS --ui-click 2600,"Guidance/Go"
 ARGS --ui-click 3000,"Autopilot/Guidance"
 LIMIT 90
 EXPECT [toast] Guidance: ascent armed on 'racer'
+EXPECT [toast] Ascent done: warp 1x
 EXPECT phase=done
 # The second Go click lands while the mission is flying, where the button is
 # greyed out: one mission per hull, because a second law would steer the same
@@ -48,6 +51,13 @@ CHECK last(orbit)["ecc"] > 0.05
 # side: the window's Go and --ascent arm through the same Game::armAscent, so
 # they share the driver's going-away rules too.
 CHECK last(ascent)["lever"] == 0.0
+# The clock came back with the verdict, not just the hull. Orbit rows are logged
+# every 1000 ms of LOOP time, so the gap between them in SIM time IS the warp:
+# 10 s apart while the mission flies at 10x, 1 s apart once the verdict has
+# dropped it. Both halves matter -- the first says the run really was warped, so
+# the second cannot pass for want of a warp to drop.
+CHECK orbit[1]["t"] - orbit[0]["t"] > 5
+CHECK last(orbit)["t"] - orbit[-2]["t"] < 2
 # The refused second Go did not restart the flight: once the node burn has
 # begun, the climb phase never comes back.
 CHECK max(a["t"] for a in ascent if a["phase"]=="ascent") < min(a["t"] for a in ascent if a["phase"]=="circ")

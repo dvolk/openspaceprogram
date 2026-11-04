@@ -9,19 +9,24 @@ KIND invariant
 ARGS --startship racer,res/ships/racer.json,Moho,pad --ascent 100e3 --time-accel 10
 ARGS --ascent-log --orbit-log --orbit-interval 1
 ARGS --sim-steps 4200 --timeout 200
-# 4200 logic ticks at dt 1/60 with --time-accel 10 is 700 s of SIM time, and the
-# flight is over inside 500 of them. Steps, not a wall timeout, because the
+# 4200 logic ticks at dt 1/60 is 70 s of sim at warp 1, and the flight ends at
+# ~500 s of sim, so the climb buys its sim time at warp 10 -- until the verdict,
+# which hands the clock back to 1x (tick.cpp, #612). The last ~1200 ticks of this
+# budget therefore run at 1x and cover ~20 s of sim after the burn rather than
+# ~200 s; that is fine for the checks below, all of which read orbital elements
+# that hold anywhere in the orbit. Steps, not a wall timeout, because the
 # outcome then does not depend on how fast the machine is: the first cut of this
 # case used --timeout 80 and only reached the cutoff with ~20% of wall clock to
 # spare, which is a loaded-box flake waiting to happen (#605's lesson). Note the
 # runner's LIMIT is the ceiling that actually fires -- it kills the process on
 # wall clock -- so --timeout below is the game's own stop, a diagnostic floor,
 # not the safety net.
-# --orbit-interval is the same gate: at 1 it lands a row every 10 s of sim here
-# (70 rows over the 700 s flight). That grain matters -- the circularisation burn
-# is only ~25 s of sim long, and the first cut's --orbit-interval 20 sampled every
-# 200 s of sim and never saw the "circ" phase at all, which made the trail check
-# fail for a reason that had nothing to do with the flight.
+# --orbit-interval is the same gate: at 1 it lands a row every 10 s of sim while
+# the flight runs at warp 10 and every 1 s of sim afterwards. That grain matters
+# -- the circularisation burn is only ~25 s of sim long, and the first cut's
+# --orbit-interval 20 sampled every 200 s of sim and never saw the "circ" phase
+# at all, which made the trail check fail for a reason that had nothing to do
+# with the flight.
 LIMIT 60
 EXPECT Autopilot: ascent armed on 'racer'
 EXPECT phase=done

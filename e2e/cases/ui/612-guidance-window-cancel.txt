@@ -37,3 +37,12 @@ CHECK max(a["t"] for a in ascent) < 40
 # hull awake off rails for ever (#610 review).
 CHECK min(s["t"] for s in slew) > 12
 CHECK max(s["t"] for s in slew) < 40
+# The clock goes back with the hull: a Cancel means "hand-flown from here", and
+# the player was at warp 10 because the law was flying, not because they wanted
+# to be at 10x while flying it themselves. Orbit rows are logged every 1000 ms of
+# LOOP time, so the gap between them in SIM time is the warp: the two rows before
+# the Cancel are 10 s apart, the tail after it is 1 s apart. Both halves matter --
+# the first says the run really was warped, so the second cannot pass because
+# nothing ever sped up.
+CHECK orbit[1]["t"] - orbit[0]["t"] > 5
+CHECK last(orbit)["t"] - orbit[-2]["t"] < 2

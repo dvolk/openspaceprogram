@@ -196,7 +196,17 @@ void tick(Game &g) {
                to that ship, which then launched itself out from under the player
                (#610 review). */
             if(g.ascent && game_running && g.ship == g.ascent_ship) {
+                const bool was_flying = g.ascent->active();
                 flyAscent(*g.ship, *g.ascent, g.dt * g.time_accel);
+                /* The verdict hands the clock back with the hull. A mission only
+                   exists to fly the burn; once it has answered, leaving warp
+                   wherever the burn left it leaves the player coasting at 10x
+                   through an orbit they are no longer being flown. Always 1x, not
+                   just out of rails warp as the other hand-backs do (#612). */
+                if(was_flying && !g.ascent->active() && g.time_accel > 1) {
+                    g.time_accel = 1;
+                    g.toast("Ascent %s: warp 1x", g.ascent->phaseName());
+                }
             }
 
             // RCS translation (ship-relative); applyRcsForce resolves the

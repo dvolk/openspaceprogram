@@ -427,6 +427,11 @@ void Game::cancelAscent() {
     if(ascent && ascent_ship != nullptr) { releaseAscent(*ascent_ship); }
     ascent = std::nullopt;
     ascent_ship = nullptr;
+    /* The clock goes back with the hull. A Cancel means "hand-flown from here",
+       and a player who was at 10x while the law flew did not ask for 10x while
+       they fly it themselves. Never UPWARD: time_accel 0 is the pause, and a
+       Cancel must not unpause the game it was clicked in. */
+    if(time_accel > 1) { time_accel = 1; }
 }
 
 /* The one way a live Vehicle dies (#297).
