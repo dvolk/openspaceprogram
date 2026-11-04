@@ -57,6 +57,7 @@
 
 #include "vehicle.h"  // #400: Vehicle::producedThrust / availableThrust / availableAccel
 #include "terrain.h"  // and the body whose air a jet breathes
+#include <glm/gtc/constants.hpp>  // glm::radians, for an engine with a gimbal cone
 
 static int g_failures = 0;
 static int g_checks = 0;
@@ -309,9 +310,11 @@ struct ThrustRig {
 };
 
 /* A part for this rig: `rate` x `ve` is the rated thrust, and rate 0 (the pod) simply
-   means it is not a thruster. `jet` makes it air-breathing instead. */
+   means it is not a thruster. `jet` makes it air-breathing instead, and `gimbal_max`
+   (rad) is how far its nozzle may swing off the mount -- 0 means locked. */
 static Part *mkRigPart(std::deque<PartDef> &defs, const char *name, double mass,
-                       double rate, double ve, int stage, bool jet = false) {
+                       double rate, double ve, int stage, bool jet = false,
+                       double gimbal_max = 0.0) {
     Body *b = new Body;
     b->btBody = nullptr;
     b->shape = new btBoxShape(btVector3(0.5f, 0.5f, 0.5f));
@@ -321,6 +324,7 @@ static Part *mkRigPart(std::deque<PartDef> &defs, const char *name, double mass,
     d.name = name;
     d.mass = (float)mass;
     d.exhaust_velocity = ve;
+    d.gimbal_max = gimbal_max;
     if(jet) {
         d.jet = true;
         d.setPropellantRate(ResourceType::JetFuel, rate);
@@ -452,6 +456,94 @@ static void test_produced_and_available_thrust() {
     delete vac;
 }
 
+/*
+ * 4b. THE SAME CEILING, POINTED SOMEWHERE (#607). availableAccelAlong(dir) is the
+ *     availableAccel() sum again, with each engine weighted by how far its MOUNT and
+ *     gimbal cone let it push along dir at all. It exists because availableAccel() has
+ *     no direction: a law that asks for sideways or retrograde delta-v reads the full
+ *     number and under-runs the burn, and a law with no propellant read at all -- which
+ *     is what guidance.cpp has today -- can only dodge that by aiming up the stack.
+ *     Rig: the smallest ship that has a directed ceiling, a 1900 kg pod and one 20000 N
+ *     engine at the live stage, so every answer is 10 m/s^2 times a share you can do in
+ *     your head. The stage-3 gate and the air of the rig above are noise here.
+ */
+static Vehicle *mkOneEngineRig(std::deque<PartDef> &defs, double cone_deg,
+                               double gimbal_deg = 0.0) {
+    Vehicle *v = new Vehicle;
+    v->name = "along";
+    Part *pod = mkRigPart(defs, "pod", 1900.0, 0.0, 0.0, 1);
+    v->setRoot(pod);
+    Part *eng = mkRigPart(defs, "engine3", 100.0, 5.0, 4000.0, 3, false, glm::radians(cone_deg));
+    eng->gimbal[0] = glm::radians(gimbal_deg);
+    v->attachMode(eng, 0, AttachMode::Down, 0.0);
+    v->init();
+    v->m_parent = mkPressureBody(1.0);
+    v->placeShip(glm::dvec3(0.0, 0.0, 600000.0), glm::dmat3(1.0));
+    return v;
+}
+
+static void test_available_accel_along() {
+    printf("== availableAccelAlong: the ceiling with a direction on it (#607) ==\n");
+    std::deque<PartDef> defs;
+    Vehicle *v = mkOneEngineRig(defs, 0.0);
+    CHECK_TRUE(v->activeStage() == 3, "the 20000 N engine is the live stage");
+    const double a_full = 10.0;  // 20000 N over 2000 kg, by hand
+    CHECK_NEAR(v->availableAccel(), a_full, 1e-12, "10 m/s^2 straight up the stack");
+
+    /* Straight up the stack is the one ask the two reads MUST agree on: they sum the
+       same per-engine ceiling, which is why that ceiling is one function. */
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)), v->availableAccel(),
+               1e-12, "an engine pointed at the ask: availableAccelAlong =="
+               " availableAccel -- one per-engine ceiling, two sums");
+    /* With no cone the share is a plain cosine, so sideways is nothing and backwards
+       is NEGATIVE rather than 0 -- a law that read 0 here would plan a retrograde burn
+       as a coast. */
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(1.0, 0.0, 0.0)), 0.0, 1e-12,
+               "90 deg off an ungimballed engine: nothing");
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0, 0.0, -1.0)), -a_full, 1e-12,
+               "180 deg off: the same authority with the wrong sign");
+    /* dir is a direction, not a magnitude: its length must not leak into the answer. */
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0, -300.0, 400.0)), 0.8 * a_full,
+               1e-12, "an un-normalised 3-4-5 ask still gets cos(theta) = 0.8");
+    /* A zero ask is a real state, not a caller bug: a law's aim is zero until it aims.
+       It has to be answered at the door rather than left to the math, because the math
+       does not stay NaN on the way out: normalize(0) is NaN, glm::clamp does not rescue
+       it, std::max(0.0, NaN) is 0.0, so cos(acos(NaN)) is 1 -- the read would hand the
+       law its FULL ceiling along a direction nobody asked for. */
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0)), 0.0, 0.0,
+               "no aim asks for no acceleration");
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(std::nan(""), 0.0, 1.0)), 0.0, 0.0,
+               "and neither does a NaN aim: the same door the throttle's own NaN guard"
+               " uses, because a NaN component takes the same road to 1.0");
+    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(1e-320, 0.0, 0.0)), 0.0, 0.0,
+               "an ask so small its length underflows to zero is the same case, and"
+               " length() > 0.0 catches it with the other two");
+
+    /* The same engine with a 30 deg gimbal cone: the cone is the nozzles' reachable
+       set, so an ask inside it costs nothing and one 90 deg off keeps cos(90-30). */
+    Vehicle *tv = mkOneEngineRig(defs, 30.0);
+    const glm::dvec3 thirty_off(0.0, -std::sin(glm::radians(30.0)),
+                                std::cos(glm::radians(30.0)));
+    CHECK_NEAR(tv->availableAccelAlong(thirty_off), a_full, 1e-12,
+               "an ask exactly gimbal_max off the mount is reachable: the boundary of"
+               " the cone costs nothing");
+    CHECK_NEAR(tv->availableAccelAlong(glm::dvec3(0.0, -1.0, 0.0)), 0.5 * a_full, 1e-12,
+               "sideways with a 30 deg cone: 90 - 30, so cos 60");
+    /* And the read is about the mount, not about where the steering happens to have the
+       nozzle this tick -- reading the live deflection would let a law size its burn with
+       the player's stick, and would deny authority the hardware plainly still has. */
+    Vehicle *sv = mkOneEngineRig(defs, 30.0, 20.0);  // nozzles already swung 20 deg
+    CHECK_NEAR(sv->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)),
+               tv->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)), 0.0,
+               "a swung nozzle reads the same up the stack");
+    CHECK_NEAR(sv->availableAccelAlong(glm::dvec3(0.0, -1.0, 0.0)),
+               tv->availableAccelAlong(glm::dvec3(0.0, -1.0, 0.0)), 0.0,
+               "and the same sideways -- the gimbal state is not part of the ceiling");
+    CHECK_NEAR(sv->availableAccelAlong(glm::dvec3(0.0, 0.0, -1.0)), -a_full
+               * std::cos(glm::radians(30.0)), 1e-12,
+               "retrograde with a 30 deg cone: 180 - 30 off, and still negative");
+}
+
 /* THE THROTTLE HAS A SETPOINT CHANNEL, AND IT SAID WHO IS HOLDING IT (#400 F3).
    availableAccel() (F1) tells a law what a burn could do; this is the half that lets it
    ASK for the burn. The throttle used to be a public float, so the only way in for a law
@@ -577,6 +669,8 @@ int main() {
     printf("\n");
     test_fuel_flow();
     test_produced_and_available_thrust();
+    printf("\n");
+    test_available_accel_along();
     printf("\n");
     test_the_throttle_setpoint_channel();
 

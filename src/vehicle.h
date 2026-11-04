@@ -942,6 +942,18 @@ public:
     double producedThrust();
     double availableThrust();
     double availableAccel();
+    /* How hard this ship can accelerate ALONG dir (m/s^2) at full throttle: the
+       same sum as availableAccel(), with each engine weighted by how far its mount
+       and gimbal cone let it push along dir at all (#607). dir is a direction, not
+       a magnitude: a zero-length or NaN ask reads 0.0 -- fail CLOSED, because the
+       NaN road through acos and std::max ends at "100% of your thrust" -- and the
+       answer is signed: an engine that can only push the wrong way counts negative,
+       not 0. It assumes the hull may be aimed and the nozzles swung to the edge of
+       their cones, so it says what the AUTHORING allows, not what the steering is
+       doing this tick; what it cannot see is that aiming every nozzle at dir spends
+       the TVC those same gimbals provide, nor whether there is any propellant left
+       to spend. */
+    double availableAccelAlong(const glm::dvec3 &dir);
 
     /* THE LEVER ITSELF (#400 F3). The throttle used to be a public float, so a law
        could only write it behind the player's back and could not tell whether the
