@@ -1,0 +1,55 @@
+# A hull parked in thick air has no flow to bill, and until #560 was measured the log
+# disagreed with itself about what that means. The same row dashes its own AoA -- AeroFrame
+# found no usable direction -- while charging a SWING of INDUCED DRAG against a 0.00 N
+# force, from this case's own pre-fix run:
+#   t=5.0s  |v|=0.02 m/s |F|=0.04 N ... AoA=- Chute=0.00 m2 Induced=1.442 m2
+#   t=6.0s  |v|=0.00 m/s |F|=0.00 N ... AoA=- Chute=0.00 m2 Induced=0.000 m2
+#   t=21.0s |v|=0.00 m/s              ... AoA=- Chute=0.00 m2 Induced=0.473 m2
+# The culprit is not the direction, it is a DIVISION. Vehicle::applyInducedDrag scores a
+# lifting system by CL_sys = sum(L_i/q_i) / sum(S_i) and then inducedCd(CL_sys, span, ...)
+# -- L_i and q_i BOTH vanish with the flow, so their ratio survives the jitter at whatever
+# value the wobble happens to hand it, and the CdA the log prints is area x that
+# coefficient, with no q left in it to shrink it back. The force is fine (it re-multiplies
+# by q, hence 0.00 N); the READOUT was inventing drag out of an at-rest hull.
+# So Induced= now dashes with the direction-derived fields. What stays printed on those
+# rows is what does not need a flow to be true: the density, the air's own T/p/a, the
+# hull's Mach (a magnitude -- at rest it reads 0.000, and 0.000 is the answer, not a
+# failure to measure) and the canopy area (0.00, because no canopy is out).
+# The skiff on the Kerbin pad never leaves that state: rho ~1.17, |v| 0.00-0.02 m/s.
+# --sim-steps, not --timeout: the settle is chaotic, and a wall-clock log gate samples it
+# at a different phase each run. Logic-tick gating puts the rows at t=1..N identically.
+NAME parked-hull-bills-nothing
+CLAIM A hull at rest in air bills nothing: every reading that needs a flow direction dashes, and the air it sits in still prints.
+KIND invariant
+ARGS --startship skiff,res/ships/skiff.json,Kerbin,pad
+ARGS --drag-log
+ARGS --sim-steps 1500
+LIMIT 60
+EXPECT [drag]
+EXPECT Induced=-
+CHECK len(drag) >= 10
+# THE STATE: rows with no usable flow direction. The pad row at t=1 still has one (the
+# hull is bouncing as it settles, |v| ~0.6 m/s), so this asks for the settled majority
+# rather than all rows, and then never mixes the two kinds of row again.
+CHECK len([d for d in drag if d.get("aoa") is None]) >= 5
+# THE FIX: on those rows the q-normalised bill dashes too, beside the direction fields
+# that already did. Against the pre-fix binary this is the CHECK that reddens -- that
+# run printed 1.442, 0.000, 0.000, 0.234, 0.273, 0.473 m2 down its dashed rows, so the
+# value was present AND swinging second to second, which is also why a flat 0.000 could
+# not be left standing in its place (an unloaded wing prints 0.000 honestly).
+CHECK all(d.get("induced") is None for d in drag if d.get("aoa") is None)
+CHECK all(d.get("profile") is None for d in drag if d.get("aoa") is None)
+CHECK all(d.get("formcp") is None for d in drag if d.get("aoa") is None)
+CHECK all(d.get("beta") is None and d.get("cpl") is None for d in drag if d.get("aoa") is None)
+# NOTHING IS BILLED: the forces these fields claim to explain are ~nil. 20 N is the
+# whole hull at 6 m/s in this air; the settled rows sit two orders under it.
+CHECK max(d["F"] for d in drag if d.get("aoa") is None) < 20.0
+# WHAT STILL PRINTS, and why: rho, the body's air and the Mach number are not read off a
+# direction. This is the #560 distinction made visible in one row -- AoA dashed, air
+# numbered. Mach is under 0.02 (|v| <= 5 m/s over Kerbin's implied 274.8 m/s), so the
+# 0.000 that prints is a measurement of a hull at rest, not a gap.
+CHECK all(d["rho"] > 1.10 for d in drag if d.get("aoa") is None)
+CHECK all(d["chute"] == 0.0 for d in drag if d.get("aoa") is None)
+CHECK all(abs(d["airT"] - 188.0) < 0.05 for d in drag if d.get("aoa") is None)
+CHECK all(abs(d["airA"] - 274.8) < 0.05 for d in drag if d.get("aoa") is None)
+CHECK all(d["mach"] < 0.02 for d in drag if d.get("aoa") is None)

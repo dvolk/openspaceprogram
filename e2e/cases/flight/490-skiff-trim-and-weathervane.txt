@@ -45,7 +45,11 @@ CHECK all(abs(d["beta"]) < 2.5 for d in drag if d["t"] >= 40.0)
 # range is where a hangar-sized induced bill would start showing up as a wall.
 CHECK 0.75 < min(d["a"] for d in drag if d.get("a")) < 1.00
 CHECK all(0.35 < d["profile"] < 0.65 for d in drag if d.get("profile") is not None)
-CHECK max(d["induced"] for d in drag) < 0.90
+# None-guarded because #560 made Induced= dashable: every row of this run has a usable
+# flow, so all 40 print a number, but max() over a dict comprehension that can yield None
+# is a TypeError waiting for the first row that does not. The floor check below was
+# already guarded for the same reason.
+CHECK max(d["induced"] for d in drag if d.get("induced") is not None) < 0.90
 # ... and it is billed AT ALL. Coldest row of this run: 0.096 m2. A ceiling with no
 # floor stays green if the law stops charging -- an AR of zero short-circuits inducedCd
 # in drag.h, and a pane that falls out of its lifting system is skipped by the bill --

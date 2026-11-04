@@ -244,7 +244,14 @@ DRAG_RE = re.compile(
     r"(?:\s+\|tau\|=([-\d.]+) Nm)?"
     r"\s+Cd=([-\d.]+)"
     r"(?:\s+A=([-\d.]+) m2)?(?:\s+(?:AoA=([-\d.e+]+) deg|AoA=-))?"
-    r"(?:\s+Chute=([-\d.]+) m2)?(?:\s+Induced=([-\d.]+) m2)?"
+    r"(?:\s+Chute=([-\d.]+) m2)?"
+    # #560: Induced= dashes with the flow fields now, and the case that proves why is
+    # flight/560-parked-hull-bills-nothing (a parked skiff billed 0.000..1.442 m2 of
+    # induced drag, row to row, against a 0.00 N force -- applyInducedDrag's coefficient
+    # is q-normalised, so a jitter flow cancels its own q out of it). Like the other
+    # dashed-with-units fields, the dash carries no unit, so it needs its own branch:
+    # [-\d.]+ would eat the '-' and float() would throw.
+    r"(?:\s+(?:Induced=([-\d.]+) m2|Induced=-))?"
     r"(?:\s+(?:Beta=([-\d.e+]+) deg|Beta=-))?"
     r"(?:\s+(?:CpL=([-\d.e+]+) m|CpL=-))?"
     # The lift pair (#454) prints as a unit -- both numbered or both dashed
@@ -1002,8 +1009,10 @@ def parse_drag(out):
         row = {
             # alt_asl: metres above the body's sea-level DATUM, which is NOT the
             # ground and goes negative exactly where rho peaks (#245). Renamed from
-            # bare "alt" in #552 A3 so it reads the way [surfinfo] and [orbinfo]
-            # already name their datums.
+            # bare "alt" in #552 A3 to join the names the other logs already use for
+            # that datum -- [surfinfo]'s alt_agl/alt_asl pair, [orbitlog]'s peri_asl,
+            # [ascent]'s peri_asl/apo_asl. ([dbg] and [evalog] still print a bare
+            # alt= that means ABOVE TERRAIN, which is the confusion #626 is about.)
             "t": float(t), "alt_asl": float(alt), "rho": float(rho),
             "v": float(v), "F": float(F), "cd": float(cd),
         }
@@ -1021,6 +1030,12 @@ def parse_drag(out):
             row["aoa"] = float(aoa)
         if chute is not None:
             row["chute"] = float(chute)
+        # #560: Induced= now dashes with the flow fields, because its CdA is
+        # q-NORMALISED (vehicle.cpp:applyInducedDrag bills CL_sys = sum(L_i/q_i) /
+        # sum(S_i) and then inducedCd(CL_sys, ...)): a parked hull's jitter flow
+        # cancels its own q out of the coefficient and charged 0.000..1.442 m2, row to
+        # row, against a 0.00 N force. So None means "there was no flow to bill", which
+        # is NOT the same reading as 0.000 = "the wings are unloaded".
         if ind is not None:
             row["induced"] = float(ind)
         if beta is not None:

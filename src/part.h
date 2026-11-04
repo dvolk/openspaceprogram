@@ -106,8 +106,9 @@ struct Part {
        surface a different alpha and a different q -- up to several degrees apart
        across a twin pair mid-swing on the shipped jet. Degrees, and the Pa of the
        flow standing at this part.
-       Diagnostic like the two above -- nothing in the law reads them, so they
-       cannot drift into being load-bearing. applyAeroForce clears aeroValid per
+       Diagnostic as shipped -- nothing in the law reads them TODAY, so they cannot
+       drift into being load-bearing. The field below is the first one written the
+       other way round. applyAeroForce clears aeroValid per
        substep: an invalid part showed no usable flow (no air, a mount with no
        usable axis, or a surface too edge-on to make lift), and a ship that never
        ran the pass keeps whatever it last read -- which is why every reader goes
@@ -116,9 +117,14 @@ struct Part {
     float aeroAlphaDeg = 0.0f;
     float aeroQ = 0.0f;
     /* Mach AT THIS SURFACE (#552 A3): the flow speed localFlow already measured,
-       over the sound speed the body's air implies. A diagnostic today -- printed on
-       the [surface] row beside a=/q= -- and the number #543's flow-regime law wants
-       to read rather than re-derive, so it is the same value in both places. */
+       over the sound speed the body's air implies. Printed on the [surface] row
+       beside a=/q= today, and unlike the two above it is written to be READ:
+       #543's flow-regime law and #487's damping are meant to take this number
+       rather than re-derive a speed the pass already has, so the log and the law
+       cannot drift into disagreeing about what Mach an airframe is flying. Same
+       lifetime caveat, same reason: a part this pass skipped keeps last substep's
+       value with aeroValid false, so a reader that wants it for a FORCE goes
+       through aeroValid too. */
     float aeroMach = 0.0f;
     /* Which LIFTING SYSTEM this surface belongs to (#556/#555), as an index into
        Vehicle::aeroSystems; -1 = not a lifting or steering surface. Written by

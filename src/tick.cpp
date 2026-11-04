@@ -549,25 +549,39 @@ void tick(Game &g) {
            sea-level DATUM, so it reads NEGATIVE exactly where rho is at its maximum
            (#245); it is named like [surfinfo]'s alt_asl because that pair -- not this
            line -- is the readout that says where the hull actually is (alt_agl beside
-           it). Every other log names its datum (alt_agl / alt_asl); this one used to
-           say bare `alt=`, and once the line carries the air at that height -- T=, p=,
-           a=, Mach= at the end -- a bare altitude is exactly the thing a reader will
-           mix up (#552 A3). rho>0 with |F| 0 means the pass found
-           nothing to bill: the density floor (kRhoFloor, i.e. above the
-           atmosphere's top) or a hull sitting still in its own air -- the A=
+           it). It used to say bare `alt=`: [surfinfo] already names its datum with an
+           alt_agl/alt_asl pair, while [dbg] and [evalog] print a bare alt= that means
+           ABOVE TERRAIN (#626), so three logs spelled one name two ways -- and once
+           this line carries the air at that height (T=, p=, a=, Mach= at the end), a
+           bare altitude is exactly what a reader mixes up (#552 A3). rho>0 with |F| 0
+           means the pass found nothing to bill: the density floor (kRhoFloor, i.e.
+           above the atmosphere's top) or a hull sitting still in its own air -- the A=
            figure then reads 0 because no flow direction was usable, while Cd
            still prints the hull's shape. Neither is broken geometry.
            AoA prints '-' with no value when there is no usable flow
            (kAoAFlowFloor), like [flight] and [surfinfo] do: a parked ship's
            ~1e-4 m/s jitter reads as a full +/-90 deg swing, and a number in a
            log gets treated as a measurement.
-           Chute= and Induced= are the two fields on this line NOT dashed behind
-           lastDragAlphaValid, deliberately (#560). Both are a CdA summed off FORCES,
-           never read off a flow direction, so the jitter that makes AoA=/Profile=
-           junk cannot put a number in them: a parked glider on a Duna pad reads
-           Induced=0.000 because with no lift there is nothing to bill, and Chute= is
-           the area of a canopy that IS deployed whether or not the air is moving.
-           Gating them would hide a fact to match a flag. */
+           WHAT DASHES AND WHY (#560). The rule is where a number comes from, not
+           whether the pass felt confident:
+             * Read off a DIRECTION, so a jitter flow invents them: AoA, Beta, CpL,
+               CLa, SM, Profile, FormCp -- all dashed behind lastDragAlphaValid.
+             * Induced= joins them, and it earned it on measurement rather than by
+               symmetry. Its CdA is q-NORMALISED (vehicle.cpp:applyInducedDrag bills
+               CL_sys = sum(L_i/q_i) / sum(S_i), then inducedCd(CL_sys, ...)), so the
+               tiny q of a parked hull cancels out of the coefficient and leaves a
+               whole wing area charged against a force of 0.00 N. Measured on the
+               Kerbin pad, skiff at rest, every row of a 25 s run dashes its AoA and
+               Induced printed 1.442 m2 at t=5, 0.000 at t=6, then 0.234, 0.273 and
+               0.473 m2 at t=11, 13 and 21 of the same run.
+               e2e/cases/flight/560-parked-hull-bills-nothing.txt pins it.
+             * Summed off FORCES or solved from the BODY, so a jitter flow cannot
+               fill them: Cd=, A=, Chute= (the EFFECTIVE area of a canopy that IS
+               deployed, capped by kChuteAccelLimit x mass / q -- a fact about the rig
+               that dashing would hide) and the four air fields at the end of the line.
+             * Mach= is a special case of the last group: it is a MAGNITUDE, not a
+               direction, so the unusable flow that dashes AoA puts 0.000 there, which
+               is what it is -- a hull at rest in its own air. */
         if(g.ship && g.args.drag_log) {
             const Uint32 now_ms = g.logClockMs();
             if(g.logDue(kGateDrag, now_ms, g.orbit_log_interval_ms)) {
@@ -579,10 +593,24 @@ void tick(Game &g) {
                 } else {
                     snprintf(aoa_txt, sizeof aoa_txt, "AoA=-");
                 }
+                /* #560: the induced bill dashes with the flow fields. Its coefficient
+                   is q-normalised (vehicle.cpp:applyInducedDrag), so the same jitter
+                   that makes AoA junk inflates this CdA while the FORCE it stands for
+                   is 0.00 N -- a parked skiff charged 1.442 m2 of induced drag on a row
+                   that dashes its own AoA, and 0.000 on the row after it. Dashed rather
+                   than zeroed for exactly that reason: 0.000 is also what a genuinely
+                   unloaded wing prints, so 0.000 cannot tell the two apart. */
+                char ind_txt[48];
+                if(g.ship->lastDragAlphaValid) {
+                    snprintf(ind_txt, sizeof ind_txt, "Induced=%.3f m2",
+                             g.ship->lastInducedCdA);
+                } else {
+                    snprintf(ind_txt, sizeof ind_txt, "Induced=-");
+                }
                 printf("[drag] t=%.1fs alt_asl=%.1f m rho=%.5g kg/m3 "
                        "|v|=%.2f m/s |F|=%.2f N |L|=%.2f N L_up=%.2f N Up=%.2f "
                        "|tau|=%.2f Nm "
-                       "Cd=%.3f A=%.2f m2 %s Chute=%.2f m2 Induced=%.3f m2",
+                       "Cd=%.3f A=%.2f m2 %s Chute=%.2f m2 %s",
                        g.time, g.ship->lastDragAlt, g.ship->lastDragRho,
                        glm::length(v),
                        glm::length(g.ship->lastAeroForce),
@@ -592,7 +620,7 @@ void tick(Game &g) {
                        g.ship->lastDragCd, g.ship->lastDragArea,
                        aoa_txt,
                        g.ship->lastChuteCdA,
-                       g.ship->lastInducedCdA);
+                       ind_txt);
                 /* The flow's yaw-plane angle, printed last so the existing
                    parsers keep working. A silhouette is cached per DIRECTION, and
                    a direction needs both angles: a log that prints only AoA
@@ -685,8 +713,17 @@ void tick(Game &g) {
                    Mach is over the AIR-relative speed at the COM -- NOT the |v|= this
                    line prints. On a spinning body the air itself moves (#97), so the
                    two differ, and the flow regime the ratio describes is the one the
-                   air sees. Dashed with no air at all (an airless body, or above the
-                   atmosphere's top), which is exactly where the pass refuses to bill.
+                   air sees. They differ by more than that, so do not divide one by the
+                   other to check this field: |v|= is live GetVel() at print time, while
+                   the air numbers are what the aero pass left behind (this line prints
+                   on a 1 s gate, the pass runs every substep). flight/245 at t=10:
+                   |v|=62.84 against Mach 0.228 x a 274.8 = 62.65 m/s. A reader who
+                   wants the flow itself should read the per-surface mach= on the
+                   [surface] line, which is the same quantity where it is paid for.
+                   Dashed when this body has no air at all -- an airless body, or above
+                   the shell top, where drag.h:airDensity answers 0. That is a DIFFERENT
+                   question from "the pass refused to bill": a hull sitting still in
+                   thick air bills nothing and still prints the air around it.
                    Appended last, like every other field here, so the existing
                    parsers keep working. */
                 if(g.ship->lastDragRho > 0.0) {

@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 288 |
+| `invariant` | a behaviour or a player route the game must keep | 289 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 37 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **343** |
+| | **total** | **344** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (86)
+## flight (87)
 
 | case | kind | pins |
 |---|---|---|
@@ -103,6 +103,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/492-elevator-trim.txt` | golden | The same 569 kg skiff, with 12 deg of elevator trim authored on the parts and nothing else changed, cruises at +4.8..+6.2 deg of angle of attack with the stick released: the download that trims this airframe comes from deflection, and the standing bill is real (0.32-0.47 m2 of induced CdA while the hull is pointing into the flow, 0.85 the instant the rudder is kicked). |
 | `flight/498-surface-prograde.txt` | invariant | A plane cruising inside an atmosphere reads two different progrades: the air-relative one sits 5 deg off the nose -- the same angle the aero law calls its angle of attack -- while the conic one sits 20 deg off and walks to 28, because the conic points where the ground is going rather than where the plane is flying. |
 | `flight/541-booster-root-decoupler.txt` | invariant | Pressing a stage on a ship whose root part is the decoupler says which part cannot separate, instead of claiming the ship has run out of stages. |
+| `flight/560-parked-hull-bills-nothing.txt` | invariant | A hull at rest in air bills nothing: every reading that needs a flow direction dashes, and the air it sits in still prints. |
 | `flight/563-roll-ailerons.txt` | invariant | A plane rolls with its ailerons: a pair of ailerons at the skiff's wing trailing edge answers the roll stick and banks the hull past 28 deg by t=3 s of a stick held from t=1 s, where before #563 nothing on this airframe could roll it at all. |
 | `flight/571-stick-faces-the-root.txt` | invariant | W/S pitches about the ROOT's right axis and A/D yaws about its up axis, even when the hull's only wheel is mounted on its side. |
 | `flight/573-hud-speaks-the-hull.txt` | invariant | The SURFACE window's pitch/roll/heading describe the hull the keys turn, even though the crew sit on a wheel that is rolled 90 deg about the stack. |

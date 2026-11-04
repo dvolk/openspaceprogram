@@ -202,9 +202,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         ->check(CLI::NonNegativeNumber);
 
     app.add_flag("--drag-log", args.drag_log,
-                 "Log the active ship's drag per tick (altitude, density, "
-                 "speed, force, signed lift L_up and attitude Up readings) -- "
-                 "the 'is drag acting?' instrument");
+                 "Log the active ship's drag per tick (altitude above the datum, "
+                 "density, speed, force, signed lift L_up and attitude Up, the "
+                 "air's own T/p/a and the hull's Mach, plus one [surface] line "
+                 "per lifting part: its angle, its q and its Mach) -- the 'is "
+                 "drag acting?' instrument");
 
     app.add_option("--timeout", args.timeout_seconds,
                    "Auto-exit the main loop after this many wall-clock "

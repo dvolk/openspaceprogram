@@ -481,12 +481,17 @@ public:
     double lastDragRho = 0.0;
     /* The air the pass stood in, last substep (#552 A2/A3): what the authored
        scale height IMPLIES at this hull's altitude -- the isothermal temperature
-       [K], the pressure [Pa] and the sound speed [m/s] the Mach number is a ratio
-       to -- plus lastAirV, the AIR-relative speed at the COM that every q= on the
-       line is billed from (the [drag] line's |v|= is the frame speed, which on a
-       spinning body is not the same number). applyAeroForce zeroes all four with
-       the pair above, so a ship in vacuum or on an airless body reads 0 and the
-       log dashes the fields rather than quoting a stale air. */
+       [K], the pressure [Pa] and the sound speed [m/s] that a Mach number is a
+       ratio to -- plus lastAirV, the AIR-relative velocity's speed AT THE COM (the
+       [drag] line's |v|= is the FRAME speed, which on a spinning body is not the
+       same number, #97). It is the base vector every surface's flow is built from,
+       not the flow itself: a surface's own q= and mach= divide localFlow's speed,
+       which adds that part's omega x r. applyAeroForce zeroes all four with the
+       pair above, before its early-outs, so "no air", "no atmosphere" and
+       "--drag-cd 0" read 0 rather than last substep's value -- on the substeps this
+       pass runs. A hull on the rails never runs it (tick.cpp skips the physics for
+       a railed ship), so these four and the pair above hold their last pre-rails
+       values while --drag-log keeps printing its 1 s rows (#627). */
     double lastAirT = 0.0;
     double lastAirP = 0.0;
     double lastAirA = 0.0;
