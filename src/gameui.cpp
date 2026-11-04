@@ -6299,7 +6299,9 @@ void dumpAtlas(Game &g) {
                r.rawName.c_str(), r.valueWord.c_str(), r.dv, r.discovered);
         for(const AtlasFact &fa : r.facts) {
             if(fa.header) { printf("[atlas]   [%s]\n", fa.label.c_str()); }
-            else { printf("[atlas]   %-20s %s\n", fa.label.c_str(),
+            // 22 wide: "air temp (isothermal)" is 21 chars, and a label that overflows
+            // its column pushes only its own value out of line.
+            else { printf("[atlas]   %-22s %s\n", fa.label.c_str(),
                                             fa.value.c_str()); }
         }
     }
