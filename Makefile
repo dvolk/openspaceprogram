@@ -346,6 +346,11 @@ $(TESTDIR)/test_gimbal: $(TESTDIR)/obj/test_gimbal.o
 $(TESTDIR)/test_actuators: $(TESTDIR)/obj/test_actuators.o
 	$(CXX) -o $@ $^
 
+# angmath.h: the one acos(clamp) spelling, and the NaN law that makes a shared
+# spelling worth having (#622). Pure math again -- no Bullet, no GL.
+$(TESTDIR)/test_angmath: $(TESTDIR)/obj/test_angmath.o
+	$(CXX) -o $@ $^
+
 $(TESTDIR)/test_rcs: $(TESTDIR)/obj/test_rcs.o
 	$(CXX) -o $@ $^
 
@@ -527,7 +532,7 @@ $(TESTDIR)/test_cli: $(TESTDIR)/obj/test_cli.o $(TESTDIR)/obj/cli.o $(TESTDIR)/o
 $(TESTDIR)/test_orient: $(TESTDIR)/obj/test_orient.o $(BULLET3_OBJS)
 	$(CXX) -o $@ $^ $(TLIBS)
 
-TESTS = test_frames test_spawn test_attitude test_slew3d test_gimbal test_actuators test_rcs test_thrust test_guidance test_fuel \
+TESTS = test_frames test_spawn test_attitude test_slew3d test_gimbal test_actuators test_angmath test_rcs test_thrust test_guidance test_fuel \
         test_power test_staging test_staging_dv test_dock test_authority test_contain test_inertia test_inventory \
         test_suitdef \
         test_rotation test_shipload test_stability test_save test_crew test_roster test_calendar \

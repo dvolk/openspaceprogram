@@ -106,7 +106,12 @@ void AscentLaw::setLaunchHeading(const GuidanceState &s) {
     if(std::abs(poleward) > 1.0) {
         /* Unreachable from this latitude: an inclination flatter than the site's
            own latitude cannot be had by any heading. Go due east, which is the
-           closest the geometry allows, and say so rather than pretending. */
+           closest the geometry allows, and say so rather than pretending.
+           This is a RANGE gate, not a NaN gate -- std::abs(NaN) > 1.0 is false, so
+           it would wave a NaN into the acos below (#622). Nothing gets here with a
+           NaN inclination: the Guidance window's arm door refuses one (the
+           !(inc_deg >= 0 && <= 180) refuse in gameui.cpp) and --ascent
+           range-checks its argument, and step() asserts the heading finite. */
         launch_h_ = e1;
         why_ = "asked inclination unreachable from this site: flew due east instead";
         return;

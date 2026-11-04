@@ -5,6 +5,7 @@
 #include <cstdio>
 
 #include "keys.h"                // Slot, SlotProbe (the command map)
+#include "angmath.h"             // acosUnit: the one acos(clamp) spelling (#622)
 #include "eva.h"                 // Kerbal::armInput (the kerbal's controls)
 #include "orbit.h"               // OrbitElements, computeOrbitElements
 #include "physics.h"             // physics_tick()
@@ -436,7 +437,7 @@ void tick(Game &g) {
                     Frame *inertial = g.ship->frame->getNonRotFrame();
                     if(inertial == nullptr) { inertial = g.ship->frame; }
                     const double c = glm::dot(o.h_hat, g.ship->frame->spinAxisRelTo(inertial));
-                    inc_spin = glm::degrees(std::acos(std::clamp(c, -1.0, 1.0)));
+                    inc_spin = glm::degrees(acosUnit(c));
                 }
                 optNum(inc_txt, sizeof inc_txt, inc_spin, conic && o.ang_momentum > 0.0);
                 optNum(node_txt, sizeof node_txt, law.node_r(), law.node_r() > 0.0);

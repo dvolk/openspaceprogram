@@ -9,6 +9,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtx/norm.hpp>
 
+#include "angmath.h"
+
 /* Rotation of `ang` radians about the unit axis `a` (Rodrigues). */
 static inline glm::dmat3 rotAbout(const glm::dvec3 &a, double ang) {
     const double c = cos(ang), s = sin(ang), t = 1.0 - c;
@@ -76,7 +78,7 @@ static inline glm::dmat3 evaSpaceTarget(const glm::dmat3 &camBasis) {
    part. */
 static inline double evaRotAxisAngle(const glm::dmat3 &R, glm::dvec3 &axis) {
     const double tr = R[0][0] + R[1][1] + R[2][2];
-    const double ang = glm::acos(glm::clamp((tr - 1.0) * 0.5, -1.0, 1.0));
+    const double ang = acosUnit((tr - 1.0) * 0.5);
     if(ang < 1e-9) { axis = glm::dvec3(0.0); return ang; }
     const glm::dvec3 v(R[1][2] - R[2][1],
                        R[2][0] - R[0][2],

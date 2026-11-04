@@ -44,7 +44,7 @@ inline void sampleOpenTrajectoryInto(const glm::dvec3 &pos, const glm::dvec3 &ve
     const double e = o.ecc;
     const double p = h_len * h_len / mu;   // semi-latus rectum, always > 0
     // Truncate where r(nu) reaches r_cap; clamp guards the e ~ 1 edge.
-    const double nu_cap = std::acos(glm::clamp((p / r_cap - 1.0) / e, -1.0, 1.0));
+    const double nu_cap = acosUnit((p / r_cap - 1.0) / e);
     const glm::dvec3 hhat = h / h_len;
     const glm::dvec3 evec = glm::cross(vel, h) / mu - pos / r0;
     const double e_len = glm::length(evec);

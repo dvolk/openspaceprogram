@@ -16,6 +16,7 @@
 
 #include "calendar.h"    // CalTime
 #include "constants.h"   // kSurfaceModeAlt (the HUD's surface/orbital flip), map zoom bounds
+#include "angmath.h"     // acosUnit: the one acos(clamp) spelling (#622)
 #include "version.h"     // VERSION
 #include "physics.h"     // GetAngVelocity
 #include "siminput.h"    // the --sim-press / --sim-mouse queues
@@ -5974,9 +5975,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
         // The pole IS the spin frame's +Y, and initial_orient carries the authored tilt
         // (tilt_azimuth turns the lean's direction, leaving its angle, so col1.y alone
         // gives the tilt).
-        const double pole = glm::clamp(b.rot_frame->initial_orient[1].y,
-                                       -1.0, 1.0);
-        line("axial tilt", fmt_deg(std::acos(pole), v, sizeof v));
+        line("axial tilt", fmt_deg(acosUnit(b.rot_frame->initial_orient[1].y), v, sizeof v));
         line("surface shell", fmt_dist(b.rot_frame->soi, v, sizeof v));
     }
     if(b.frame != nullptr) {
@@ -6070,13 +6069,12 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
        view measure in. (parent) is what "incl_ref": "orbit" authors against; (eq.) is the
        parent's EQUATOR. */
     const glm::dvec3 nrm = fr->orient * glm::dvec3(0.0, 1.0, 0.0);   // parent axes
-    const double tilt_parent =
-        std::acos(glm::clamp(fr->orient[1].y, -1.0, 1.0));
+    const double tilt_parent = acosUnit(fr->orient[1].y);
     // root_orient carries the whole parent chain, so this is the same normal in the system
     // frame -- and rails never spin their own frame, so it is constant in time.
     const glm::dvec3 nrm_root =
         glm::normalize(fr->root_orient * glm::dvec3(0.0, 1.0, 0.0));
-    const double tilt_ecl = std::acos(glm::clamp(nrm_root.y, -1.0, 1.0));
+    const double tilt_ecl = acosUnit(nrm_root.y);
     line("plane tilt (ecl)", fmt_deg(tilt_ecl, v, sizeof v));
     if(std::fabs(tilt_parent - tilt_ecl) > 1e-4) {
         line("plane tilt (parent)", fmt_deg(tilt_parent, v, sizeof v));
@@ -6084,8 +6082,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
     if(par->rot_frame != nullptr) {
         const glm::dvec3 paxis = glm::normalize(
             par->rot_frame->initial_orient * glm::dvec3(0.0, 1.0, 0.0));
-        const double tilt_eq =
-            std::acos(glm::clamp(glm::dot(paxis, nrm), -1.0, 1.0));
+        const double tilt_eq = acosUnit(glm::dot(paxis, nrm));
         if(std::fabs(tilt_eq - tilt_ecl) > 1e-4) {
             line("plane tilt (eq.)", fmt_deg(tilt_eq, v, sizeof v));
         }

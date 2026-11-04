@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <GL/glew.h>   // glBlendFunc / glLineWidth / the GL enums
 
+#include "angmath.h"  // acosUnit: the one acos(clamp) spelling (#622)
 #include "billboard.h"
 #include "constants.h"  // kNodeAnRgb/kNodeDnRgb (the plane overlay's node ticks)
 #include "gimbal.h"     // gimbalRot (the plume swings with the gimballed thrust)
@@ -252,9 +253,7 @@ static float skyGain(Game &g, Frame *rf, TerrainBody *sun, Camera *camera,
     };
     // Angle to the sun's NEAR limb: a wide sun is "in view" before its centre
     // reaches the cone.
-    const double axl = std::acos(std::clamp(glm::dot(sun_dir,
-                                                    glm::normalize(camera->GetForward())),
-                                            -1.0, 1.0));
+    const double axl = acosUnit(glm::dot(sun_dir, glm::normalize(camera->GetForward())));
     const double limb = axl - std::asin(std::clamp(sun->radius / sun_d, 0.0, 1.0));
     // Game stores the cone in degrees (the CLI and Settings units).
     const double cone = glm::radians((double)g.sky_dim_cone);
@@ -524,8 +523,7 @@ static void drawOrbitPlane(Game &g, const glm::dmat4 &VP) {
     if(g.args.plane_log) {
         const Uint32 now_ms = g.logClockMs();
         if(g.logDue(kGatePlane, now_ms, g.orbit_log_interval_ms)) {
-            const double inc = std::acos(glm::clamp(glm::dot(n_orb, n_ref),
-                                                    -1.0, 1.0));
+            const double inc = acosUnit(glm::dot(n_orb, n_ref));
             /* The flight markers as paintWorld places them, so a marker that
                drifts off the plane it belongs on is visible here rather than
                only on screen: prg must be IN the plane and nrm must BE the

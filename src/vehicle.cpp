@@ -14,6 +14,7 @@
 #include <stdexcept>
 
 #include "buildings.h" // find_launch_site, buildingOrient (a pad's own axes)
+#include "angmath.h"   // acosUnit: the one acos(clamp) spelling (#622)
 #include "crew.h"      // CrewRoster (the names a vehicle may not take)
 #include "eva.h"       // Kerbal (a kerbal-rooted def builds this subclass)
 #include "game.h"      // Game (the parts catalog, the part shader, the star)
@@ -4555,8 +4556,7 @@ double Vehicle::ceilingSum(const glm::dvec3 *want) {
                sum: an up-firing and a down-firing engine cancel for the rest of this
                burn. What this does NOT price is that swinging every nozzle at the ask
                spends the TVC the same gimbals provide for steering (#608). */
-            const double off = std::acos(glm::clamp(glm::dot(sRot * p->localRot[2], *want),
-                                                    -1.0, 1.0));
+            const double off = acosUnit(glm::dot(sRot * p->localRot[2], *want));
             share = std::cos(std::max(0.0, off - p->def->gimbal_max));
         }
         t += share * partThrustCeiling(p, rho, rho_sea);
@@ -4969,7 +4969,7 @@ Vehicle::Pointing Vehicle::pointingTo(glm::dvec3 dir, const AttitudeAuthority &a
     Part *ref = attitudeRef();
     if(ref == nullptr) { return p; }
     p.facing = partAxis(ref, 2);
-    p.angle = glm::acos(glm::clamp(glm::dot(p.facing, dir), -1.0, 1.0));
+    p.angle = acosUnit(glm::dot(p.facing, dir));
     p.axis = glm::cross(p.facing, dir);          /* + turns the nose toward dir */
     if(glm::length2(p.axis) < 1e-12) {
         /* nose ~ opposite dir: any transverse axis closes the error, so take the

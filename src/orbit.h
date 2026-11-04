@@ -15,6 +15,8 @@
 #include <numbers>
 #include <glm/glm.hpp>
 
+#include "angmath.h"
+
 /* Which conic the state lies on. Gate on THIS, never on apoapsis_r: an open
    trajectory has no apoapsis, and the field's -1 sentinel makes a gate like
    `apoapsis_r < target_alt` read TRUE at once for a ship that is escaping
@@ -192,7 +194,7 @@ struct PlaneAngles {
 inline PlaneAngles orbitPlaneAngles(const OrbitElements &o, const RefPlane &ref) {
     PlaneAngles p;
     if(glm::dot(o.h_hat, o.h_hat) < 0.5) { return p; }   // radial / degenerate state
-    p.inc = acos(glm::clamp(glm::dot(o.h_hat, ref.n_hat), -1.0, 1.0));
+    p.inc = acosUnit(glm::dot(o.h_hat, ref.n_hat));   // both unit by construction
     /* Same convention as the angles below: n_hat x h_hat is the ASCENDING node.
        Computed before the has_zero gate because the node line belongs to the
        pair of planes, not to the longitude measured along it. */
