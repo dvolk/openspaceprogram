@@ -757,9 +757,9 @@ void tick(Game &g) {
                    mach= (#552 A3) is that surface's OWN flow speed over the sound
                    speed its air implies -- the ship-level Mach on the [drag] line is
                    the COM's, and #483's whole point is that a rotating airframe gives
-                   each surface a different flow. It is what #543's flow-regime law
-                   will read, so the number in the log and the number in the law are
-                   one number.
+                   each surface a different flow. Since #543 A5 it is also the number
+                   that surface's lift slope is corrected with, so the number in the
+                   log and the number in the law are one number.
                    Labelled by its def id when it has one (wing_l, tail_r) because a
                    twin pair is exactly the case this row exists to tell apart. */
                 {

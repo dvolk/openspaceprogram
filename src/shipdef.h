@@ -701,6 +701,14 @@ bool save_ship_def(const BuildShip &bs, const char *path);
    its design angle of attack. What it CANNOT see is the stall droop (#487's band)
    and the rotation sweep (#483) -- an airframe that reads +0.6 m here can still
    stop resisting mid-tumble, and only the flight number shows that.
+   #543 A5 put a Mach correction on the flight slope, and this screen cannot have
+   one: a design has no air and no speed, so there is no sound speed to divide by.
+   The number below is therefore the Mach-0 LIMIT of the flight one -- the same
+   answer at rest, BELOW the flight number while the air is still subsonic (a skiff
+   at Mach 0.3 flies 1.05x it) and ABOVE it once the section is supersonic (0.52x at
+   Mach 1.6). The static margin, a ratio of two slopes, does not move with Mach at
+   all while one airframe stands at one Mach, which is why this screen is still
+   worth showing.
    Conventions, because they are the numbers a player will compare:
    - the COM is the LAUNCH COM: PartDef::mass plus every resource but EC at full
      capacity, which is what Vehicle::init seeds and Part::effectiveMass then

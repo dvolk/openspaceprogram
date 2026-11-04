@@ -302,9 +302,73 @@ inline glm::dvec3 liftDirection(const glm::dvec3 &v_rel,
     return l / len;
 }
 
+/* THE SLOPE BELONGS TO THE AIR, NOT THE PART (#543 A5). Until now every surface
+   flew the same CL(α) at Mach 0.01 and Mach 2: a skiff at 85 m/s (M 0.31 on Kerbin)
+   and a rocket at M 3 paid the same slope per radian. Compressibility is the biggest
+   single omission in the flight model -- it is why a real airframe's wing "goes soft"
+   approaching M 1 and why a rocket's fins bite far less at M 3 than at rollout.
+   THREE REGIMES, one continuous function:
+     M <= kTransonicMach   Prandtl-Glauert: cl / sqrt(1 - M^2). Applied from M = 0,
+                           where it is exactly 1 -- no threshold to choose, and at the
+                           game's cruise Mach (0.3) it is a 4.8% answer, not noise.
+                           Textbook validity runs to ~0.7-0.8; past that the sqrt is
+                           extrapolation, which is where the band starts.
+     M >= kSupersonicMach  thin-airfoil supersonic slope: 4 / sqrt(M^2 - 1) per radian
+                           for a FLAT 2-D SECTION. NOTE what this says: above the band
+                           the AUTHORED cl stops mattering at all. Read that as the
+                           limit of the theory it comes from, not as a fact about any
+                           part: the game's cl is a section slope applied to a planform
+                           with no lifting-line correction, so 4/sqrt(M^2-1) is the
+                           right absolute slope for a section whose incompressible slope
+                           is near 2 pi -- which is what every shipped part authors (6.0)
+                           -- and a windfall for one that is not: a cl 1 body is 5.3x its
+                           own slope by M 1.25 and still 2x at M 2.2. If that ever needs
+                           fixing, the fix is a second authored number, not a min() here.
+     between               the two theories do not meet (PG(0.75) = 1.512 cl, thin-air
+                           at 1.25 = 5.33 absolute), so the band joins them with a
+                           straight line in ABSOLUTE slope, continuous at both edges.
+                           At M 1 the join sits halfway between the edges -- 0.756 cl +
+                           2.667, which is 7.20 (1.200 cl) for a cl 6 section. Finite at
+                           M 1, and for a section above cl 3.53 it is on its way DOWN
+                           through the band -- the qualitative fact the old law got
+                           backwards. Below that crossover the join still RISES to its
+                           high edge, so the curve's peak sits on the band's low edge
+                           only for the steep sections the game actually ships.
+   A5b (wave drag, the cd rise in the same band) is still open; these two edges are the
+   band it should reuse. Call sites correct the slope ONCE per surface and pass the
+   result as `cl` to the laws below, so #487's rate damping cannot carry its own
+   constant -- liftCurve(), liftForce(), liftSlopePerQ(), controlForce() and
+   surfaceTorquePerRadian() all read the same corrected number. */
+inline constexpr double kTransonicMach = 0.75;
+inline constexpr double kSupersonicMach = 1.25;
+
+inline double liftSlopeMach(double cl, double mach) {
+    if(!(cl > 0.0) || !(mach > 0.0)) { return cl; }   // no lift, no air, no correction
+    if(mach <= kTransonicMach) { return cl / std::sqrt(1.0 - mach * mach); }
+    const double subSlope = cl / std::sqrt(1.0 - kTransonicMach * kTransonicMach);
+    const double supSlope = 4.0 / std::sqrt(kSupersonicMach * kSupersonicMach - 1.0);
+    if(mach < kSupersonicMach) {
+        // Weights, not `sub + (sup - sub) * t`: with a non-finite authored cl the
+        // difference form answers NaN out of inf - inf, where this one stays inf.
+        const double t = (mach - kTransonicMach) / (kSupersonicMach - kTransonicMach);
+        return subSlope * (1.0 - t) + supSlope * t;
+    }
+    return 4.0 / std::sqrt(mach * mach - 1.0);
+}
+
 /* CL(α) of a symmetric section, soft stall: linear to the stall angle, then a
    cosine droop to zero by 2·stallAngle. A = 0 disables the stall. CL stays
-   continuous (no force jump). */
+   continuous (no force jump).
+   `cl` is the slope PER RADIAN AT THE FLOW'S MACH -- get it from liftSlopeMach().
+   The droop and the peak scale with that slope, which means the section keeps ONE
+   authored stall angle at every Mach and its CL_max climbs 51% by Mach 0.75. Both of
+   those are the wrong shape near the sound bar: a real section stalls at a LOWER angle
+   as a shock walks onto the wing and its CL_max COLLAPSES toward M 1.2-1.4 while its
+   linear slope is still rising. That is the one part of the curve A5 did NOT make
+   compressible -- tracked as #633, and pinned as a deliberate simplification in
+   tests/test_drag.cpp::test_lift_slope_mach until it lands. Do not "fix" it here with a
+   cap on the peak: the droop is a cosine of the same slope, so a cap would break the
+   continuity the curve has today. */
 inline double liftCurve(double cl, double alpha, double stallAngle) {
     if(cl <= 0.0) { return 0.0; }
     const double a = std::fabs(alpha);
@@ -506,7 +570,11 @@ inline PartAero partAero(const glm::dmat3 &partRot, const glm::dvec3 &v_rel) {
    margin (both are measured projections on the SHIP's up axis, hence the cos alpha dip).
    An analytic slope would be ~10x cheaper -- liftCurve's derivative is closed form --
    but then a change to the law would not show up in the derivative, and the whole point
-   of differencing is that the number keeps describing whatever the force loop does. */
+   of differencing is that the number keeps describing whatever the force loop does.
+   `cl` is the slope AT THE FLOW'S MACH (drag.h::liftSlopeMach), not the authored one.
+   The tilt is a ROTATION of `flow`, so |flow| -- and with it the Mach -- is identical
+   at lo and hi, which is what lets the correction ride through this difference as the
+   constant it is, rather than being re-derived per sample. */
 inline glm::dvec3 liftSlopePerQ(const PartAero &here, const glm::dmat3 &partRot,
                                 const glm::dvec3 &flow, double S, double cl,
                                 double stallAngle, const glm::dvec3 &latAxis,
@@ -1352,8 +1420,11 @@ inline double surfaceFormCdA(double planform, double edgeArea,
    its whole travel -- and that is the case no loader check can catch, which is how a
    plane ends up with 2x the authority it was tuned for. The number is required on any
    steering part and there is deliberately NO default argument here, so a new call site
-   cannot ask for the un-stalled law by omission. The steering moment is NOT here: it
-   comes from applying this force AT the surface (Vehicle::applyAeroForce). */
+   cannot ask for the un-stalled law by omission. `cl` is the slope at the flow's MACH
+   (liftSlopeMach), same as a wing's: a fin's authority moves with the air exactly as
+   its lift does, which is why the flight loop corrects it once per surface rather than
+   carrying a second Mach rule here. The steering moment is NOT here: it comes from
+   applying this force AT the surface (Vehicle::applyAeroForce). */
 inline glm::dvec3 controlForce(double q, double S, double cl, double delta,
                                const glm::dvec3 &dir, double stallAngle) {
     if(q <= 0.0 || S <= 0.0 || cl <= 0.0 || delta == 0.0) { return glm::dvec3(0.0); }
@@ -1480,6 +1551,9 @@ inline double controlDeflection(const PartAero &pa, const glm::dvec3 &ri,
    normal (`pushDir`, the mount fact #495 chose over the live flow) and the steering
    moment is that force AT the surface, so the row is ri x pushDir scaled by q*S*cl --
    the same arithmetic the force law bills, stated as a derivative instead of a force.
+   `cl` therefore means the same number it means there: the authored slope corrected to
+   the flow's Mach (liftSlopeMach), which is how #487's rate damping inherits
+   compressibility instead of carrying its own constant (#543 A5).
    It is the SAME SIGN and the SAME degeneracy test Vehicle::applyAeroForce applies to
    the travel (controlRigLever / controlDeflectionSign just above), and that is the
    whole point of putting them next to each other: a rig that cannot be commanded buys

@@ -23,6 +23,13 @@
 //                and gravity. Earth ships this; the pins are the 1976 standard
 //                atmosphere's own published column, and the load invariants are
 //                refused rather than carried.
+//   liftSlopeMach (#543 A5): the slope belongs to the AIR, not the part. Prandtl-
+//                Glauert cl/sqrt(1-M^2) to kTransonicMach, thin-airfoil 4/sqrt(M^2-1)
+//                from kSupersonicMach, and a straight join in ABSOLUTE slope between
+//                -- continuous at both edges, finite at M 1, no threshold at the low
+//                end. One number per surface, which liftCurve, liftForce,
+//                liftSlopePerQ, controlForce and surfaceTorquePerRadian all spend, so
+//                #487's rate damping inherits compressibility instead of carrying it.
 //   dragForce:   opposite the motion; |F| = 0.5 * rho * cd * A * v^2;
 //                scales as v^2; zero on any degenerate input.
 //
@@ -32,6 +39,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <string>
 
 #include "drag.h"
@@ -1637,6 +1645,144 @@ static void test_liftCurve() {
     // Degenerate: no slope -> no lift.
     CHECK_NEAR(liftCurve(0.0, 0.1, A), 0.0, 0.0, "cl = 0 -> 0");
     CHECK_NEAR(liftCurve(-1.0, 0.1, A), 0.0, 0.0, "cl < 0 -> 0");
+}
+
+/* #543 A5. Every number below is what drag.h::liftSlopeMach answers for a cl 6
+   section -- cl 6.0 is the shipped value on all five lifting parts in res/, so this
+   is the airframe's own table, not a synthetic one. The subsonic and supersonic
+   anchors are the closed forms (Prandtl-Glauert and thin-airfoil 4/sqrt(M^2-1));
+   the ones inside the band are decimals, because there the law IS its own answer
+   -- a straight join between two theories that do not meet. */
+static void test_lift_slope_mach() {
+    printf("== liftSlopeMach: the slope belongs to the air, not the part (#543 A5) ==\n");
+    const double cl = 6.0;   // per radian, as every shipped lifting part authors it
+
+    // INCOMPRESSIBLE IDENTITY. Mach 0 answers the authored slope exactly -- and
+    // Prandtl-Glauert is not switched on at a threshold, it is 1 there by arithmetic.
+    CHECK_NEAR(liftSlopeMach(cl, 0.0), cl, 0.0, "M 0: the authored slope");
+    CHECK_NEAR(liftSlopeMach(cl, -1.0), cl, 0.0, "M < 0 (no flow): authored slope");
+    CHECK_NEAR(liftSlopeMach(cl, 0.01), 6.000300022502, 1e-9, "M 0.01: 1.00005 x cl");
+
+    // SUBSONIC, Prandtl-Glauert: cl / sqrt(1 - M^2). The cruise end of the game's
+    // envelope: the skiff's 85 m/s is M 0.31 on Kerbin's 274.8 m/s, worth +5.2%.
+    CHECK_NEAR(liftSlopeMach(cl, 0.3), 6.289709020332, 1e-9, "M 0.3: 1.0483 x cl");
+    CHECK_NEAR(liftSlopeMach(cl, 0.5), cl / std::sqrt(0.75), 1e-12, "M 0.5");
+    CHECK_NEAR(liftSlopeMach(cl, 0.7), 8.401680504168, 1e-9, "M 0.7: 1.4003 x cl");
+    // The whole point of the correction: it is monotone UP all the way to the band.
+    CHECK_TRUE(liftSlopeMach(cl, 0.3) > cl && liftSlopeMach(cl, 0.7) > liftSlopeMach(cl, 0.3),
+               "subsonic: rising with Mach");
+
+    // THE BAND. PG is extrapolation past ~0.75 and the sqrt would run to infinity at
+    // M 1, so the band joins PG(0.75) to the thin-airfoil value at 1.25 in a straight
+    // line of ABSOLUTE slope. Continuous at both edges -- pinned from either side:
+    CHECK_NEAR(liftSlopeMach(cl, 0.749999), 9.071131801733, 1e-6, "just under the band");
+    CHECK_NEAR(liftSlopeMach(cl, kTransonicMach), 9.071147352221, 1e-9, "band low edge");
+    CHECK_NEAR(liftSlopeMach(cl, 0.750001), 9.071139876593, 1e-6, "just over the edge");
+    CHECK_NEAR(liftSlopeMach(cl, 1.249999), 5.333340808961, 1e-6, "just under the top edge");
+    CHECK_NEAR(liftSlopeMach(cl, kSupersonicMach), 4.0 / std::sqrt(0.5625), 1e-12,
+               "band high edge = thin airfoil at 1.25");
+    CHECK_NEAR(liftSlopeMach(cl, 1.250001), 5.333321481516, 1e-6, "just over the top edge");
+    // What the band BUYS: raw PG at M 0.99 answers 42.5 -- seven times the authored
+    // slope, on a section that in reality has a shock on it and is losing lift. The
+    // same query through the band answers 7.28, and M 1 is finite for any cl.
+    CHECK_NEAR(liftSlopeMach(cl, 0.8), 8.697365950333, 1e-9, "M 0.8: falling");
+    CHECK_NEAR(liftSlopeMach(cl, 0.9), 7.949803146555, 1e-9, "M 0.9");
+    CHECK_NEAR(liftSlopeMach(cl, 0.99), 7.276996623155, 1e-9, "M 0.99");
+    CHECK_NEAR(liftSlopeMach(cl, 1.0), 7.202240342777, 1e-9, "M 1: finite, falling");
+    CHECK_NEAR(liftSlopeMach(cl, 1.1), 6.454677539000, 1e-9, "M 1.1");
+    CHECK_TRUE(std::isfinite(liftSlopeMach(cl, 1.0)), "M 1 is finite");
+    // For a section this steep (any cl above 3.53 -- every shipped part authors 6.0) the
+    // curve's peak is the band's low edge, 1.512 cl, and it is falling through M 1.
+    // Below that crossover the join keeps rising to its high edge instead; the game has
+    // no such part, so the peak stays where the transonic effect actually peaks.
+    CHECK_TRUE(liftSlopeMach(cl, 0.74) < liftSlopeMach(cl, kTransonicMach)
+               && liftSlopeMach(cl, kSupersonicMach) < liftSlopeMach(cl, kTransonicMach),
+               "the curve peaks at the band's low edge");
+
+    // SUPERSONIC, thin airfoil: 4 / sqrt(M^2 - 1) per radian, for ANY cl. Read that
+    // again: above the band the authored slope stops mattering -- that is what the
+    // theory says (drag.h spells out the consequence and where the real fix is).
+    CHECK_NEAR(liftSlopeMach(cl, 1.5), 3.577708764000, 1e-9, "M 1.5");
+    CHECK_NEAR(liftSlopeMach(cl, 1.62), 3.138437619572, 1e-9, "M 1.62 (flight/631's entry)");
+    CHECK_NEAR(liftSlopeMach(cl, 2.0), 4.0 / std::sqrt(3.0), 1e-12, "M 2");
+    CHECK_NEAR(liftSlopeMach(cl, 3.0), std::sqrt(2.0), 1e-12, "M 3: sqrt 2");
+    CHECK_NEAR(liftSlopeMach(1.0, 3.0), liftSlopeMach(cl, 3.0), 0.0,
+               "supersonic: cl drops out");
+    CHECK_TRUE(liftSlopeMach(cl, 3.0) < liftSlopeMach(cl, 1.3), "supersonic: falling");
+
+    // ONE SWEEP, 0 to M 4: no jump and no NaN anywhere. The largest step over a 0.001
+    // Mach stride is 0.0155 (the curve has a KINK at the band edge -- PG arrives
+    // rising, the join leaves falling -- which costs no force, only a derivative).
+    double prev = liftSlopeMach(cl, 0.0);
+    bool sweepOk = true;
+    for(int i = 1; i <= 4000; ++i) {
+        const double m = i * 0.001;
+        const double v = liftSlopeMach(cl, m);
+        if(!std::isfinite(v) || v <= 0.0 || std::fabs(v - prev) > 0.02) { sweepOk = false; }
+        prev = v;
+    }
+    CHECK_TRUE(sweepOk, "sweep M 0..4: finite, positive, no step over 0.02");
+    // Absurd Mach: 4/sqrt(M^2-1) -> 0, and it must not overflow on the way there.
+    CHECK_TRUE(liftSlopeMach(cl, 1e300) == 0.0, "M 1e300: 0, not NaN");
+    CHECK_NEAR(liftSlopeMach(cl, std::numeric_limits<double>::quiet_NaN()), cl, 0.0,
+               "NaN Mach quotes the authored slope rather than poisoning the force");
+    // No slope to correct.
+    CHECK_NEAR(liftSlopeMach(0.0, 2.0), 0.0, 0.0, "cl 0 -> 0");
+    // A part file that authors a non-finite slope stays non-finite through the band's
+    // interpolation rather than becoming NaN through inf - inf. It is not VALID -- the
+    // aero pass asserts a finite slope (vehicle.cpp) and a dossier that reads inf prints
+    // inf -- but the law's own arithmetic does not invent a second failure mode.
+    CHECK_TRUE(std::isinf(liftSlopeMach(std::numeric_limits<double>::infinity(), 1.0)),
+               "inf cl stays inf");
+    CHECK_TRUE(std::isnan(liftSlopeMach(std::numeric_limits<double>::quiet_NaN(), 1.0)),
+               "NaN cl quotes NaN rather than the band");
+
+    /* INHERITANCE, which is what the ticket is actually about: the correction is a
+       number the call site takes once, so the curve, the control law, the neutral-point
+       derivative and #487's authority all move by the SAME factor. Read these as
+       HOMOGENEITY pins, not as proof of the wiring: every law here is handed an already
+       corrected slope, so a call site that forgets to correct is invisible at this level
+       -- that failure only shows where a real hull flies, and e2e/cases/
+       flight/631-earth-air-in-flight.txt is where it is pinned (its CLa column misses by
+       91% on the pre-A5 binary). What reddens here is a law that grows its OWN Mach rule
+       or quietly cancels the correction, which is the split #543's "ONE source" line is
+       about. */
+    const double A = 0.35;   // the shipped wing stall_angle
+    const double f05 = 1.0 / std::sqrt(1.0 - 0.25);   // PG at M 0.5
+    CHECK_NEAR(liftCurve(liftSlopeMach(cl, 0.5), 0.1, A),
+               liftCurve(cl, 0.1, A) * f05, 1e-12, "liftCurve: scales by the factor");
+    // The peak CL and the whole droop scale with it -- documented simplification:
+    // the section stalls at the same ANGLE at every Mach.
+    CHECK_NEAR(liftCurve(liftSlopeMach(cl, 0.5), A, A), liftCurve(cl, A, A) * f05,
+               1e-12, "the stall peak scales too");
+    CHECK_NEAR(liftCurve(liftSlopeMach(cl, 0.5), 1.5 * A, A),
+               liftCurve(cl, 1.5 * A, A) * f05, 1e-12, "and the droop");
+    // A deflected surface is the same curve with the deflection in the angle seat.
+    const glm::dvec3 dir(0.0, 1.0, 0.0);
+    CHECK_NEAR(glm::length(controlForce(100.0, 2.0, liftSlopeMach(cl, 1.62), 0.1, dir, A)),
+               glm::length(controlForce(100.0, 2.0, cl, 0.1, dir, A))
+               * (liftSlopeMach(cl, 1.62) / cl), 1e-9,
+               "controlForce: a fin's authority moves with the air");
+    // And the derivative the neutral point sums: liftSlopePerQ tilts the flow, which
+    // is a ROTATION, so |flow| -- the Mach -- is the same at both samples.
+    const glm::dmat3 rot(1.0);
+    const glm::dvec3 flow(0.0, 0.0, 100.0);   // dead along the nose, AoA 0
+    const glm::dvec3 lat(1.0, 0.0, 0.0);
+    const PartAero pa = partAero(rot, flow);
+    const double s0 = glm::length(liftSlopePerQ(pa, rot, flow, 4.0, cl, A, lat));
+    const double sM = glm::length(liftSlopePerQ(pa, rot, flow, 4.0,
+                                                liftSlopeMach(cl, 0.5), A, lat));
+    CHECK_NEAR(s0, 4.0 * cl, 1e-6, "a 4 m2 wing at 6/rad: the slope is not vacuous");
+    CHECK_NEAR(sM, s0 * f05, 1e-9, "liftSlopePerQ: the same factor, one read");
+    // The authority budget's row (#487's damping source) is q*S*cl by construction.
+    const glm::dvec3 ri(0.0, 0.0, -3.0), push(0.0, 1.0, 0.0), about(1.0, 0.0, 0.0);
+    CHECK_NEAR(glm::length(surfaceTorquePerRadian(100.0, 2.0, cl, ri, push, about)),
+               600.0 * cl, 1e-9, "a 3 m lever: the row is not vacuous");
+    CHECK_NEAR(glm::length(surfaceTorquePerRadian(100.0, 2.0, liftSlopeMach(cl, 2.0),
+                                                  ri, push, about)),
+               glm::length(surfaceTorquePerRadian(100.0, 2.0, cl, ri, push, about))
+               * (liftSlopeMach(cl, 2.0) / cl), 1e-12,
+               "surfaceTorquePerRadian: inherits, does not carry");
 }
 
 static void test_controlForce() {
@@ -3356,6 +3502,8 @@ int main() {
     test_local_flow_sweep();
     printf("\n");
     test_liftCurve();
+    printf("\n");
+    test_lift_slope_mach();
     printf("\n");
     test_projectedArea();
     printf("\n");

@@ -41,8 +41,11 @@ CHECK 3.0 < max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 12.
 CHECK all(abs(d["beta"]) < 2.5 for d in drag if d["t"] >= 40.0)
 # The bill: pod+tank+engine union 0.80..0.91 m2 at an area-weighted Cd of 0.57-0.61
 # (nose-on: capsule drag_forward 0.35, tank 1.0, engine 0.15), wings at 0.010 profile,
-# induced 0.10..0.56 as the throttle pushes it through its phugoid -- the top of that
-# range is where a hangar-sized induced bill would start showing up as a wall.
+# induced 0.10..0.59 as the throttle pushes it through its phugoid -- the top of that
+# range is where a hangar-sized induced bill would start showing up as a wall. #543 A5
+# took the top from 0.56 to 0.59, and the case's own log says why: at the fast end of the
+# arc (83.8 m/s, Mach 0.305 in Kerbin's 274.8 m/s air) the printed CLa is 176.22 against
+# the 168.0 the parts author, and inducedCd squares a slope correction.
 CHECK 0.75 < min(d["a"] for d in drag if d.get("a")) < 1.00
 CHECK all(0.35 < d["profile"] < 0.65 for d in drag if d.get("profile") is not None)
 # None-guarded because #560 made Induced= dashable: every row of this run has a usable

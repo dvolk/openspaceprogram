@@ -2433,18 +2433,31 @@ DragAtmosphere dragAtm(const AtmosphereParams &a, double g) {
     return da;
 }
 
-double Vehicle::airDensityAtCom() const {
-    if(m_parent == nullptr) { return 0.0; }
-    const AtmosphereParams &atm = m_parent->surface.atmosphere;
-    if(!atm.physical()) {
-        return 0.0;   // no physical atmosphere (a limb rim alone does not count)
+/* One profile read at a hull's COM, for callers that need more than one number out of
+   the same air (#487's budget wants density AND the sound speed; #543 A5 is why the
+   second question exists). Fills `alt` -- height above the datum, the same convention
+   applyAeroForce uses per surface -- and `atm`, the body's own profile, so a layer
+   table and a single scale height read identically here. */
+static bool comAirProfile(const TerrainBody *body, const glm::dvec3 &com,
+                          DragAtmosphere &atm, double &alt) {
+    if(body == nullptr) { return false; }
+    const AtmosphereParams &surfaceAtm = body->surface.atmosphere;
+    if(!surfaceAtm.physical()) {
+        return false;   // no physical atmosphere (a limb rim alone does not count)
     }
-    const glm::dvec3 com = comPos();
     const double r = glm::length(com);
-    if(r <= 0.0) { return 0.0; }
-    // Altitude above SEA LEVEL (the fixed reference radius), like
-    // applyAeroForce: the atmosphere is a spherically-symmetric shell.
-    return airDensity(dragAtm(atm, m_parent->g), r - m_parent->seaLevelRadius());
+    if(r <= 0.0) { return false; }
+    // Altitude above SEA LEVEL (the fixed reference radius), like applyAeroForce: the
+    // atmosphere is a spherically-symmetric shell.
+    alt = r - body->seaLevelRadius();
+    atm = dragAtm(surfaceAtm, body->g);
+    return true;
+}
+
+double Vehicle::airDensityAtCom() const {
+    DragAtmosphere atm; double alt = 0.0;
+    if(!comAirProfile(m_parent, comPos(), atm, alt)) { return 0.0; }
+    return airDensity(atm, alt);
 }
 
 /* The ship's velocity relative to the AIR (#60/#97). The air is at rest in the body's
@@ -3071,8 +3084,16 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             pa, surfaceReadoutFrame(p->localRot[1], shipLocalUp, shipLocalRight),
             up, right);
         p->aeroQ = (float)qp;
-        p->aeroMach = (float)(std::sqrt(lf.vp2) * invAirA);
+        const double mach = std::sqrt(lf.vp2) * invAirA;
+        p->aeroMach = (float)mach;
         p->aeroValid = true;
+        /* #543 A5: THE ONE COMPRESSIBILITY READ. This surface's Mach, corrected
+           slope, once. Everything downstream -- the neutral-point slope below, the
+           lift force, and (in the control loop) the hinge force and #487's rate
+           damping -- spends this number rather than the authored d->cl, so the
+           regimes cannot disagree with each other the way three separate Mach
+           constants would. drag.h::liftSlopeMach owns the shape and the band edges. */
+        const double clq = liftSlopeMach(d->cl, mach);
         /* #454: this surface's contribution to where an alpha change puts the change
            in lift -- see drag.h::liftSlopePerQ for why the derivative is taken by
            tilting the flow rather than by weighting liftDir. Accumulated BEFORE the
@@ -3083,10 +3104,10 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
            airframe does (#487's band) rather than lying about it -- and where the
            surfaces stop agreeing with each other the pair dashes rather than quoting
            the average of a cancelled sum (drag.h::LiftSlopeSum::usable). */
-        npSum.add(liftSlopePerQ(pa, mount, vp, d->lift_area, d->cl, d->stall_angle,
+        npSum.add(liftSlopePerQ(pa, mount, vp, d->lift_area, clq, d->stall_angle,
                                 right),
                   ri, up, right);
-        const glm::dvec3 flift = liftForce(qp, d->lift_area, d->cl, pa.alpha,
+        const glm::dvec3 flift = liftForce(qp, d->lift_area, clq, pa.alpha,
                                            pa.liftDir, d->stall_angle);
         if(glm::length2(flift) <= 0.0) { continue; }
         ApplyForce(hull, ri, flift);             // translation + (ri x flift)
@@ -3224,7 +3245,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                 pa, surfaceReadoutFrame(p->localRot[1], shipLocalUp, shipLocalRight),
                 up, right);
             p->aeroQ = (float)qp;
-            p->aeroMach = (float)(std::sqrt(lf.vp2) * invAirA);
+            const double mach = std::sqrt(lf.vp2) * invAirA;
+            p->aeroMach = (float)mach;
             p->aeroValid = pa.valid;
             const glm::dvec3 forceDir = pa.liftDir;   // zero when the frame is unusable
             const glm::dvec3 about =
@@ -3269,7 +3291,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                 p->aeroSystem >= 0 && (size_t)p->aeroSystem < aeroSystems.size()
                 && aeroSystems[(size_t)p->aeroSystem].liftArea > 0.0;
             const double aeroAngle = deflection + (systemLifts ? 0.0 : pa.alpha);
-            const glm::dvec3 F = controlForce(qp, d->control_area, clc,
+            const glm::dvec3 F = controlForce(qp, d->control_area,
+                                              liftSlopeMach(clc, mach),
                                               aeroAngle, forceDir, d->stall_angle);
             if(glm::length2(F) <= 0.0) { continue; }
             ApplyForce(hull, ri, F);
@@ -4835,10 +4858,24 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
        readout says. Same lesson as #418's power gate: the budget must answer what the
        actuators will really be able to spend. */
     if(anySurface && drag_cd > 0.0) {
-        const double rho = airDensityAtCom();
+        DragAtmosphere atm; double alt = 0.0;
         const glm::dvec3 vrel = airRelativeVel(com);
-        const double q = 0.5 * rho * glm::dot(vrel, vrel);
+        const double v2 = glm::dot(vrel, vrel);
+        const double rho = comAirProfile(m_parent, com, atm, alt)
+                         ? airDensity(atm, alt) : 0.0;
+        const double q = 0.5 * rho * v2;
         if(q > 0.0) {
+            /* #543 A5: the authority a fin has is the AUTHORED slope corrected for
+               the Mach it is actually living at -- the same liftSlopeMach() the lift
+               and hinge forces spend, so a hull's aerodynamic rate damping cannot
+               disagree with the force those same plates produce mid-flight. Same
+               profile read as the density above, so the two cannot straddle a level
+               boundary. airA > 0 wherever rho > 0: the loader gates g, gamma and every
+               layer's T above zero (atmo.h's invariants), and #632's airless and
+               above-the-top reads are the rho 0 branch. */
+            const double airA = airSoundSpeed(atm, alt);
+            assert(airA > 0.0);
+            const double mach = std::sqrt(v2) / airA;
             const glm::dmat3 basis = partRot(ref);   // [0] right, [1] up, [2] nose
             for(const Part *p : parts) {
                 if(p->def == nullptr || !p->def->isControlSurface()) { continue; }
@@ -4849,7 +4886,8 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
                    would have no command sense and so no row at all. */
                 assert(ax.aboutAxis >= 0 && ax.aboutAxis < 3);
                 const glm::dvec3 eff = surfaceTorquePerRadian(
-                    q, p->def->control_area, controlCl(p->def->cl, p->def->cl_control),
+                    q, p->def->control_area,
+                    liftSlopeMach(controlCl(p->def->cl, p->def->cl_control), mach),
                     partPos(p) - com, partAxis(p, 1),
                     basis[(size_t)ax.aboutAxis], ax.targetSign);
                 if(glm::dot(eff, eff) <= 0.0) { continue; }  // degenerate rig (#495)

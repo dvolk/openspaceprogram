@@ -1,5 +1,5 @@
 NAME elevator-trim
-CLAIM The same 569 kg skiff, with 12 deg of elevator trim authored on the parts and nothing else changed, cruises at +4.8..+6.2 deg of angle of attack with the stick released: the download that trims this airframe comes from deflection, and the standing bill is real (0.32-0.47 m2 of induced CdA while the hull is pointing into the flow, 0.85 the instant the rudder is kicked).
+CLAIM The same 569 kg skiff, with 12 deg of elevator trim authored on the parts and nothing else changed, cruises at +4.8..+6.7 deg of angle of attack with the stick released: the download that trims this airframe comes from deflection, and the standing bill is real (0.34-0.54 m2 of induced CdA while the hull is pointing into the flow, 0.94 the instant the rudder is kicked).
 KIND golden
 ARGS --time-accel 1 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
 ARGS --sim-steps 3000 --drag-log --mass-log
@@ -9,9 +9,9 @@ ARGS --sim-press 25000,1000,A
 EXPECT [drag]
 EXPECT [mass]
 CHECK len(drag) >= 40
-# The trim holds pitch up: every row is nose-high. Measured 4.8..5.1 deg while the
-# phugoid is fast, 6.2 at its bottom (t=14 s at 24.0 m/s, and the slowest row of the
-# run is t=15 s: 23.4 m/s at 7402 m), and 4.8..5.0 from t=27 s on, once the throttle
+# The trim holds pitch up: every row is nose-high. Measured 4.8..5.0 deg while the
+# phugoid is fast, 6.7 at its bottom (t=14 s at 21.7 m/s, which is also the slowest row
+# of the run: 7397 m), and 4.8..5.0 from t=27 s on, once the throttle
 # has damped the exchange. #568 moved this hold 2 deg up and 20 m/s down: the
 # pod-on-tank stack carries its tailplane pair 1.65 m behind the wing rather than the
 # spindle's 0.85 m, so the same 12 deg of tab buys more download than this hull wants.
@@ -19,24 +19,45 @@ CHECK len(drag) >= 40
 # lower and its top 0.3 deg higher, and the bottom of the exchange is 5.4 m/s slower
 # (28.8 -> 23.4 m/s), because the trim download now has 24 m2 of AR-10.7 wing to answer
 # it.
+# #543 A5 (compressibility) widened it again rather than shifting the hold. The slope
+# the hull flies is now the AIR'S: at the fast end of this phugoid (78.1 m/s, Mach 0.284
+# in Kerbin's 274.8 m/s air) the printed CLa reads 174.54 against the 168.0 the parts
+# author, and at the top of the arc (21.7 m/s, Mach 0.079) it reads 167.51 -- a 4.2%
+# difference the old law could not make. The hold at speed is where it was (4.8..5.0),
+# because a wing and a tail standing at the same Mach gain slope TOGETHER and the trim
+# is a ratio. What moved is the bottom of the exchange: 6.2 -> 6.7 deg and 23.4 ->
+# 21.7 m/s, because the stiffer fast end pushes harder at the bottom of the dive, so
+# the arc swings deeper before the same download answers it.
 CHECK all(d["aoa"] > 4.5 for d in drag if d["aoa"] is not None)
-# The phugoid is real but bounded: it never decelerates past 23.4 m/s and it never
-# trades more than 398 m of height in 50 s. The speed floor is worth pinning next to
-# the stall row: 23.1 m/s is what the law says this hull can hold at 7 km (the stall
-# arithmetic in res/ships/README.md), and the phugoid's bottom lands 0.3 m/s above it.
-# A wing change that cut the lift slope would show up here as the exchange punching
-# through the stall, so the floor sits 0.4 m/s under this run's slowest row and above
-# the stall speed rather than a comfortable 22.
-CHECK min(d["v"] for d in drag) > 23.0
+# The phugoid is real but bounded: it never decelerates past 21.7 m/s and it never
+# trades more than 398 m of height in 50 s. This floor is NOT a stall floor any more,
+# and that is worth saying out loud: res/ships/README.md's 23.1 m/s is arithmetic at
+# low Mach (5.45 kN of weight over the authored slope at the wing's 20.1 deg stall
+# angle, in 7 km air at rho 0.346), and the top of this arc lives at Mach 0.079, where
+# A5's correction is 1.003x -- so the stall line has not moved and this run crosses
+# under it. It may, because the slow rows are not equilibrium flight: at 21.7 m/s and
+# 6.7 deg the law bills |L| = 1230 N against a 5578 N weight, which is a hull trading
+# speed for height rather than one holding it. What the floor guards is the arc
+# punching clean through the bottom of the exchange -- a wing whose slope DROPPED would
+# fly a shallower one, and this row would rise -- so it sits 0.7 m/s under the slowest
+# measured row rather than being tuned to it.
+CHECK min(d["v"] for d in drag) > 21.0
 CHECK max(d["alt_asl"] for d in drag) - min(d["alt_asl"] for d in drag) < 450.0
 # 12 deg of standing deflection, and the bill follows the command: the rows that point
-# into the flow bill 0.32-0.47 m2 of induced, and the single row in the rudder kick
-# (t=26 s, Beta -8.4) bills 0.852 -- a steered surface pays induced drag at its own
+# into the flow bill 0.34-0.54 m2 of induced, and the single row in the rudder kick
+# (t=26 s, Beta -8.5, Mach 0.248) bills 0.936 -- a steered surface pays induced drag at its own
 # mount (#494). #567 took 0.13 m2 off the hold and 0.26 off that kick: inducedCd charges
 # a lifting system (cl x A)^2 / (pi x 0.8 x span^2), and this went 12 m -> 16 m of span.
-# Pinned on the PITCH axis, because this run also kicks the rudder (Beta swings 8.4 deg)
+# #543 A5 put 0.02-0.07 m2 back on the hold and 0.08 on the kick: the bill is priced
+# off the CL the law just made, so it SQUARES the slope correction. That accounts for
+# most of it, not all: the kick row (Mach 0.248) prints CLa 172.74 where the parts author
+# 168.0, so the slope is 1.028x and the bill 1.057x of what an uncorrected slope would
+# price -- +5.7%, against the +9.9% the kick actually moved (0.852 -> 0.936). The rest is
+# the arc, not the law: A5 also left this hull standing at a different AoA and q at that
+# instant, and inducedCd prices those too.
+# Pinned on the PITCH axis, because this run also kicks the rudder (Beta swings 8.5 deg)
 # and an unpinned "any surface is well off neutral" would pass on that alone.
-CHECK all(0.28 < d["induced"] < 0.52 for d in drag if d.get("induced") is not None and d.get("beta") is not None and abs(d["beta"]) < 4.0)
+CHECK all(0.30 < d["induced"] < 0.60 for d in drag if d.get("induced") is not None and d.get("beta") is not None and abs(d["beta"]) < 4.0)
 CHECK max(d["induced"] for d in drag if d.get("induced") is not None) > 0.75
 CHECK any(c["axis"] == "pitch" for c in ctrl)
 CHECK all(11.5 < abs(c["deg"]) < 12.5 for c in ctrl if c["axis"] == "pitch")

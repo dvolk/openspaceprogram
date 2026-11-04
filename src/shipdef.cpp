@@ -2104,7 +2104,12 @@ BuildStability buildStability(const BuildShip &bs, double occupantMass) {
     /* Flying straight ahead at unit speed: the only flow a build can be asked
        about without instruments. |v| cancels in a per-unit-q slope, so the length
        here is a direction with an honest magnitude. A wing mounted at incidence
-       reports its slope AT that incidence, which is what its mount means. */
+       reports its slope AT that incidence, which is what its mount means.
+       `def->cl` uncorrected, deliberately: the dossier quotes the INCOMPRESSIBLE
+       slope, because there is no air and no speed here to make a Mach number
+       (#543 A5's correction is a property of the flow, and a build screen has
+       none). A hull trimmed on this number flies the same until its surfaces
+       reach kTransonicMach, where the airframe's own slope moves with them. */
     const glm::dvec3 nose(0.0, 0.0, 1.0);
     const glm::dvec3 up(0.0, 1.0, 0.0);
     const glm::dvec3 right(1.0, 0.0, 0.0);
