@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 286 |
+| `invariant` | a behaviour or a player route the game must keep | 287 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 37 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **341** |
+| | **total** | **342** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (85)
+## flight (86)
 
 | case | kind | pins |
 |---|---|---|
@@ -72,6 +72,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/160-pad-rest-settle.txt` | golden | A pad ship spawns at its resting height and does not free-fall on the first ticks. |
 | `flight/176-mouse-drag-camera.txt` | invariant | A zero-length RMB press must not open a part window and truncate the next drag. |
 | `flight/193-porkchop-range.txt` | golden | The porkchop sliders scale their range with the target's own period. |
+| `flight/245-air-below-datum.txt` | invariant | At or below a body's sea-level datum the air is its sea-level density, flat: a hull under the datum gets rho0, its drag, its lift and its jet thrust. |
 | `flight/255-tof-past-the-slider-band.txt` | golden | The ToF slider accepts a value past its old hard-coded band and the plan uses it. |
 | `flight/309-rails-atmosphere-refused.txt` | invariant | Rails warp refuses a ship flying in air: the gate is the air, not periapsis. |
 | `flight/310-rails-atmosphere-drop.txt` | invariant | Rails warp drops to 1x when a coasting conic reaches the atmosphere. |

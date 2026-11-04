@@ -4,10 +4,12 @@
 // law is independent of the render/physics chain (like test_surfmap,
 // test_orbit).
 //
-//   airDensity:  rho(alt) = rho0 * exp(-alt/H); below-surface -> 0; a
-//                degenerate atmosphere -> 0; rho(H) = rho0/e; monotone down;
-//                vacuum at and above the hard top (height), and no cutoff at
-//                all when height is 0.
+//   airDensity:  rho(alt) = rho0 * exp(-alt/H) above the sea-level DATUM; at or
+//                below the datum the density is rho0, FLAT -- it used to be vacuum,
+//                which stripped drag, q and jet thrust from anything under the
+//                datum (#245); a degenerate atmosphere -> 0; rho(H) = rho0/e;
+//                monotone down; vacuum at and above the hard top (height), and no
+//                cutoff at all when height is 0.
 //   dragForce:   opposite the motion; |F| = 0.5 * rho * cd * A * v^2;
 //                scales as v^2; zero on any degenerate input.
 //
@@ -54,9 +56,21 @@ static void test_density() {
 
     const DragAtmosphere a { 1.225, 5500.0 };  // a Kerbin-ish atmosphere
 
-    // Below / at the surface there is no air.
-    CHECK_NEAR(airDensity(a, 0.0), 0.0, 0.0, "alt=0 -> 0");
-    CHECK_NEAR(airDensity(a, -100.0), 0.0, 0.0, "alt<0 -> 0");
+    /* At / below the datum the air is the sea-level density, FLAT (#245). It used
+       to read as vacuum here, which is what stripped drag, q and jet thrust from a
+       hull under the datum -- and with no shipped body authoring a sea_level, the
+       datum was the bare radius, so only a body that DOES author one (or a hull
+       under the sea surface) could ever reach it. e2e/fixtures/systems/
+       412-moho-sea.json is the world that finally can. */
+    CHECK_NEAR(airDensity(a, 0.0), 1.225, 0.0, "alt=0 -> rho0, not vacuum");
+    CHECK_NEAR(airDensity(a, -100.0), 1.225, 0.0, "alt<0 -> rho0, not vacuum");
+    // Flat, not the exponential continued down: that would make the deepest sea in
+    // the game the densest air in the game, and it grows without bound.
+    CHECK_NEAR(airDensity(a, -25000.0), 1.225, 0.0, "a deep sea floor is still rho0");
+    CHECK_TRUE(airDensity(a, -25000.0) <= airDensity(a, 0.0),
+               "below the datum the profile never gets denser than sea level");
+    // And no cliff where the model meets the datum.
+    CHECK_NEAR(airDensity(a, 1e-6), 1.225, 1e-9, "the profile meets rho0 at the datum");
 
     // Just above the surface, the density is (essentially) sea level.
     CHECK_NEAR(airDensity(a, 1.0), 1.225 * std::exp(-1.0 / 5500.0), 1e-12,

@@ -2472,7 +2472,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     aeroLiftSamples.clear();  // #556: last substep's lift must not be re-billed
     lastControlDeflections.clear();  // a no-air substep reports no steering
     // Fins swing back to neutral whenever this substep produces no steering
-    // (vacuum, no-atmosphere body, below sea level, --drag-cd 0). Same sweep
+    // (vacuum, no-atmosphere body, above the atmosphere top, --drag-cd 0). Same sweep
     // invalidates #485's per-surface readout: a part this pass does not reach
     // quotes nothing rather than quoting last substep's angle.
     for(Part *p : parts) {
@@ -2495,7 +2495,10 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     if(r <= 0.0) { return lastAeroForce; }
     const double alt = r - m_parent->seaLevelRadius();
     lastDragAlt = alt;
-    if(alt <= 0.0) { return lastAeroForce; }  // at / below sea level (in the sea)
+    /* No floor at the datum. The exponential's base IS the datum (drag.h), so a
+       hull below it -- skimming the sea, or a pad under a sea_level that sits above
+       this body's relief -- is in the densest air the model has, not in vacuum
+       (#245). The rho floor a few lines down is the ONE place "no air" is decided. */
 
     const DragAtmosphere da = dragAtm(atm);
     const double rho = airDensity(da, alt);

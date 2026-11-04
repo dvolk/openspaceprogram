@@ -33,11 +33,19 @@ struct DragAtmosphere {
 };
 
 /* rho(alt) = sea_level_density · exp(−alt / scale_height), [kg/m^3], alt in m above
-   the sea-level datum. At or above `height` the air stops dead; at or below 0 it is
-   vacuum. */
+   the sea-level DATUM (terrain.h:seaLevelRadius(), i.e. radius + the authored
+   sea_level -- not the surface, and not the bare radius: #412's fixture is what
+   distinguishes them). At or above `height` the air stops dead.
+   At or below the datum the air is sea_level_density, FLAT. The exponential's base
+   IS the datum, so a sub-datum point -- a hull skimming the sea, a pad under a
+   sea_level that is above the body's relief -- used to read as vacuum and lose
+   drag, q and jet thrust together (#245). Not the exponential continued downward:
+   that grows without bound and would make the deepest ocean the densest air in the
+   game. What the air really does down there is a profile question, and #552 is
+   where a profile gets answered. */
 inline double airDensity(const DragAtmosphere &a, double alt) {
     if(a.sea_level_density <= 0.0 || a.scale_height <= 0.0) { return 0.0; }
-    if(alt <= 0.0) { return 0.0; }
+    if(alt <= 0.0) { return a.sea_level_density; }
     if(a.height > 0.0 && alt >= a.height) { return 0.0; }
     return a.sea_level_density * std::exp(-alt / a.scale_height);
 }
