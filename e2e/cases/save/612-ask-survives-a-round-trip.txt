@@ -13,6 +13,12 @@
 # AND the save WROTE it back, since the writer omits a default ask entirely.
 # Dropping either save.cpp line -- the capture beside meta.recovered or the
 # apply beside science.setFrom -- leaves out/save.json without the key.
+# The reason ONE case covers both directions is that the writer omits a default
+# ask entirely, so all four fixture values (80e3, 150e3, true, 28) have to differ
+# from AscentAsk()'s defaults (100e3, 100e3, false, 0) -- if a future default
+# equals a fixture field, the case stops discriminating on that field.
+# The substrings are tied to dump(2)'s '": "' and to nlohmann's shortest round
+# trip spelling ("80000.0"), so a writer that ever emits km breaks this loudly.
 NAME ask-survives-a-round-trip
 CLAIM A saved Guidance ask loads back into the game and is written out again.
 KIND invariant

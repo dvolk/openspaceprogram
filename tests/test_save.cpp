@@ -792,6 +792,19 @@ int main() {
     /* The ask is four fields, and the defaulted == is how the save decides whether
        to write them, so == is also the honest round-trip claim (#612 stage 2). */
     CHECK(metaOut.ascent_ask == meta.ascent_ask);
+    /* Pin the FILE contract too, not just the struct: the hand-authored e2e
+       fixture (e2e/fixtures/save_racer_ask) spells these four key names, and the
+       aggregate literal above is easy to swap by eye -- AscentTarget next door
+       declares apo_asl BEFORE peri_asl (guidance.h), AscentAsk the other way. */
+    {
+        const nlohmann::json touched = saveMetaToJson(meta);
+        const nlohmann::json &aj = touched["ascent_ask"];
+        CHECK(aj.size() == 4);
+        CHECK(near(aj["peri_asl"].get<double>(), 80e3));
+        CHECK(near(aj["apo_asl"].get<double>(), 150e3));
+        CHECK(aj["ask_inc"].get<bool>() == true);
+        CHECK(near(aj["inc_deg"].get<double>(), 28.0));
+    }
     CHECK(metaOut.recovered.size() == 3);   // the log round-trips as 3 entries
     for(const Experiment &x : metaOut.recovered) {
         CHECK(x == e3);                     // key-only ==
@@ -997,9 +1010,38 @@ int main() {
         SaveMeta hi = saveMetaFromJson(wildInc);
         CHECK(hi.ascent_ask.ask_inc == true);
         CHECK(near(hi.ascent_ask.peri_asl, 200e3));
+        CHECK(near(hi.ascent_ask.apo_asl, 200e3));
         CHECK(near(hi.ascent_ask.inc_deg, 180.0));
         wildInc["ascent_ask"]["inc_deg"] = -20.0;
         CHECK(near(saveMetaFromJson(wildInc).ascent_ask.inc_deg, 0.0));
+
+        /* ...and the apsides pass through, absurd values and all. Pinned because
+           that is a decision, not an oversight: the arm-time guards refuse them at
+           Go, and a "safety" clamp here would silently rewrite a player's ask into
+           a different mission. */
+        nlohmann::json silly = nlohmann::json::object();
+        silly["ascent_ask"] = {{"peri_asl", -5.0}, {"apo_asl", 1e300}};
+        SaveMeta passthru = saveMetaFromJson(silly);
+        CHECK(near(passthru.ascent_ask.peri_asl, -5.0));
+        CHECK(near(passthru.ascent_ask.apo_asl, 1e300));
+    }
+
+    /* A non-finite ask is not saved at all (#612 review). json::dump writes null
+       for a NaN rather than throwing, and null reads back as this struct's
+       default -- which does not drop the garbage, it RESTATES the ask: ask_inc
+       true beside a null inc_deg is a due-equator ask nobody typed, and a null
+       peri_asl is 100 km. Typing "nan" into a Guidance field is reachable
+       (gameui.cpp: an InputDouble with no step buttons filters no characters). */
+    {
+        SaveMeta dirty;
+        dirty.ascent_ask = AscentAsk{ std::nan(""), 150e3, true, 28.0 };
+        const nlohmann::json j = saveMetaToJson(dirty);
+        CHECK(!j.contains("ascent_ask"));
+        // ...and the file it writes carries no null either, so the reader's
+        // type-guarded defaults are never reached by the game's own bytes.
+        CHECK(j.dump().find("null") == std::string::npos);
+        dirty.ascent_ask = AscentAsk{ 80e3, 150e3, true, std::nan("") };
+        CHECK(!saveMetaToJson(dirty).contains("ascent_ask"));
     }
 
     SaveShip emptyShip = saveShipFromJson(nlohmann::json::object());

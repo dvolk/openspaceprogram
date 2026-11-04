@@ -89,7 +89,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_option("--load", args.load_name,
                    "Load the game from this saved directory at startup "
-                   "instead of building the start ships (--startship/--startships are ignored). "
+                   "instead of building the start ships (--startship/--startships, "
+                   "--autopilot and --ascent are then ignored: the save owns the "
+                   "ships, their state and the Guidance ask). "
                    "A bare name resolves to the data dir's saves/<name> "
                    "(legacy flat) or the unique saves/<game>/<name>; a path "
                    "is used as-is. In-game saving and loading go through the "
@@ -139,8 +141,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Fly the active ship to a circular orbit: ALTITUDE[,INCLINATION] "
                    "in metres and degrees. An ascent autopilot -- it pitches over, "
                    "burns to the asked apoapsis, coasts to the node and circularises "
-                   "there. Airless bodies only (it has no model of the air). A test "
-                   "hook: in-game there is no panel for it yet (default: none)");
+                   "there. Airless bodies only (it has no model of the air). Fills the "
+                   "same fields and arms through the same door as the Guidance "
+                   "window's Go button (clickable headless with --ui-click); ignored "
+                   "with --load, which carries the ask (default: none)");
     app.add_flag("--recover-anywhere", args.recover_anywhere,
                  "Let 'Recover Vessel' recover the active ship anywhere "
                  "(the default requires it grounded on the home body). A "

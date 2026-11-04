@@ -725,6 +725,13 @@ int main(int argc, char **argv)
                    first->displayName().c_str(), alt, inc_txt.c_str(),
                    first->m_parent ? first->m_parent->name.c_str() : "?");
         }
+    } else if(!args.ascent.empty() || !args.autopilot.empty()) {
+        /* The whole block above -- the start ships, --autopilot and --ascent --
+           only runs for a freshly built world, because a load owns the ships,
+           their state and the saved ask. That is right, but it is invisible:
+           "--load X --ascent Y" reads like a way to replay a saved approach at a
+           different altitude and used to do nothing at all, quietly, exit 0. */
+        printf("[cli] --ascent/--autopilot ignored: --load owns the ships and the ask\n");
     }
 
     Mesh *engine_plume_mesh = get_mesh("res/meshes/engine_plume.obj");
