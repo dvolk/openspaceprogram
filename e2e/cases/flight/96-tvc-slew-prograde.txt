@@ -12,6 +12,27 @@ KIND invariant
 # authority -- drops to zero, and E must drift: the law never pretends to
 # steer a ship with no actuators (#401's lesson), and that drift is what
 # tells engine-off from engine-on in this log.
+#
+# The numbers here are SHAPE, not magnitude, because this hull's phase is not
+# repeatable. It spawns at 85.0 km -- Kerbin's air top -- and the whole run is
+# vacuum (rho 0, Mach dashed, |L| 0 in every [drag] row), so nothing in the air
+# law can move it; what moves is where a bang-bang TVC limit cycle happens to be
+# when the 8 s throttle ends. --time-accel 1 paces the sim on the wall clock, so
+# the run ends at t=12.050-12.167 s (97 or 98 rows) and the residual rate carried
+# past cutoff came out -0.1543 rad/s in ten repeats of one binary and -0.0876
+# rad/s in a battery run that had 87 other cases for company. Twelve logs of the
+# same ARGS (those ten plus both battery runs): tap peak 0.3039-0.3723 rad,
+# hold-window mean 0.0219-0.0264, hold-window peak 0.0444-0.0800, E at the last
+# row 0.2814-0.4848. The two pins that used to sit INSIDE that spread -- a 0.06
+# hold ceiling and a 0.3 final-angle floor -- went
+# red on one battery run and green on the next (#605 is this case; #138 is the
+# open root cause, the --sim-press windows above are wall-clock timed, so when
+# the 8 s throttle really ends moves with the frame cadence -- #472 already fixed
+# the other half of it, the tick clamp). So the hold is now pinned by its
+# mean plus a ceiling that a hull which never recovered would blow by 3.5x (it
+# would still be near the 0.35 rad the tap put there), and the drift is pinned by
+# its SHAPE: every post-cutoff row larger than the last, and the total past the
+# cutoff at least 0.15 rad -- measured 0.2228-0.4124 in the 9.4 s window.
 ARGS --time-accel 1 --startship tvc_test,res/ships/tvc_test.json,Kerbin,rot-orbit
 ARGS --att-log --slew-log --orbit-interval 0.3
 ARGS --sim-press 1000,8000,T
@@ -25,6 +46,16 @@ FORBID error:
 CHECK len(att) >= 10
 CHECK len(slew) >= 10
 CHECK max(s["E"] for s in slew if 4.3 < s["t"] < 5.5) > 0.02
-CHECK max(s["E"] for s in slew if 6.0 < s["t"] < 8.8) < 0.06
-CHECK last(slew)["E"] > 0.3
+# THE HOLD: SAS pulls the nose back and keeps it there. Measured mean 0.0230-0.0264
+# rad and peak 0.0463-0.0800 over the ten runs above, so the mean is the tight pin
+# and the peak is the loose one -- a hull that never recovered would still be near
+# the 0.35 rad the tap put there, 3.5x over this ceiling.
+CHECK max(s["E"] for s in slew if 6.0 < s["t"] < 8.8) < 0.10
+CHECK sum(s["E"] for s in slew if 6.0 < s["t"] < 8.8) / len([s for s in slew if 6.0 < s["t"] < 8.8]) < 0.04
+# ENGINE OFF, NO STEERING: from 9.4 s (clear of the hold's last swing) every row is
+# bigger than the last -- the law does not arrest a wheel-less hull with no armed
+# engine -- and the total past the cutoff is 0.2228-0.4124 rad in those runs. The
+# old pin here was the final angle alone (> 0.3), which the spread straddles.
+CHECK all(a["E"] < b["E"] for a in slew for b in slew if 9.4 < a["t"] < b["t"])
+CHECK last(slew)["E"] - min(s["E"] for s in slew if s["t"] > 9.4) > 0.15
 CHECK all(a["wnorm"] == a["wnorm"] and a["wnorm"] < 1e4 for a in att)
