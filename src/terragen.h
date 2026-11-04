@@ -90,6 +90,14 @@ struct AtmosphereParams {
     double sea_level_density = 0.0;  // kg/m^3 AT THE DATUM, not at the ground
     double scale_height = 0.0;       // [m]; the density /e-fold altitude
     double height = 0.0;  // hard top [m above sea level]; authored, 0 = top() derives
+    /* What the air is made of, for the thermodynamics src/drag.h derives from the
+       two numbers above (#552 A2). SI -- kg/mol, not g/mol: air 0.028964, CO2
+       0.044, H2 0.0022. Read the derivation before authoring this: it moves the
+       TEMPERATURE line and nothing else, because pressure and sound speed come out
+       as rho0·g·H and sqrt(gamma·g·H) with molar mass cancelling (#552).
+       gamma is cp/cv, only the sound speed uses it, 1.4 for diatomic air. */
+    double molar_mass = 0.028964;
+    double gamma = 1.4;
 
     /* Authored height, else scale_height * kAtmoScaleHeights. One home so drag and
        "is this in space?" cannot disagree. */

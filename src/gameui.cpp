@@ -16,6 +16,7 @@
 
 #include "calendar.h"    // CalTime
 #include "constants.h"   // kSurfaceModeAlt (the HUD's surface/orbital flip), map zoom bounds
+#include "drag.h"        // airTemperature/airPressure/airSoundSpeed (the world-info air rows)
 #include "angmath.h"     // acosUnit: the one acos(clamp) spelling (#622)
 #include "version.h"     // VERSION
 #include "physics.h"     // GetAngVelocity
@@ -6022,6 +6023,20 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
         if(at.sea_level_density > 0.0) {
             snprintf(v, sizeof v, "%.3f kg/m3", at.sea_level_density);
             line("air density", v);
+            /* What the authored scale height IMPLIES rather than measures (#552
+               A2): one exponential IS an isothermal atmosphere, so T, p and the
+               sound speed follow from H and g with nothing extra authored. The
+               word "isothermal" is on the line on purpose -- Kerbin reads 188 K /
+               66 kPa / 275 m/s this way, where an Earth-like 288 K at rho0 1.225
+               wants an 8.4 km scale height (and an air 2.7x thicker at 20 km).
+               Reconciling them is a lapse rate, i.e. a layer table, not a fudge. */
+            const DragAtmosphere da = dragAtm(at, b.g);
+            snprintf(v, sizeof v, "%.1f K", airTemperature(da));
+            line("air temp (isothermal)", v);
+            snprintf(v, sizeof v, "%.1f kPa", airPressure(da, 0.0) / 1000.0);
+            line("air pressure", v);
+            snprintf(v, sizeof v, "%.1f m/s", airSoundSpeed(da));
+            line("sound speed", v);
         } else {
             line("air density", "none (rim only)");
         }

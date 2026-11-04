@@ -53,6 +53,14 @@ inline constexpr double kInertialOrbitFrac = 1.25;
    Where: AtmosphereParams::top (terragen.h). */
 inline constexpr double kAtmoScaleHeights = 10.0;
 
+/* The molar gas constant R [J/(mol K)]. One exponential IS an isothermal
+   atmosphere, so the air's temperature, pressure and sound speed are derived
+   from the authored scale_height plus the body's g with this and molar_mass
+   [kg/mol] -- nothing else needs authoring (#552 A2).
+   Changes: the derived readouts only; rho and top() do not contain it.
+   Where: airTemperature / airPressure / airSoundSpeed (drag.h). */
+inline constexpr double kGasR = 8.314462618;
+
 /* Aero skip floor [kg/m^3]: below this density the per-part silhouette
    pass is not worth computing. A PERFORMANCE floor, not a physical one
    (the physical top is the atmosphere height).

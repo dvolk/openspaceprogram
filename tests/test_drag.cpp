@@ -10,6 +10,12 @@
 //                datum (#245); a degenerate atmosphere -> 0; rho(H) = rho0/e;
 //                monotone down; vacuum at and above the hard top (height), and no
 //                cutoff at all when height is 0.
+//   airTemperature / airPressure / airSoundSpeed: what one exponential IMPLIES
+//                (#552 A2). T = g H M / R, p = rho g H, a = sqrt(gamma g H); molar
+//                mass moves ONLY the temperature and gamma ONLY the sound speed;
+//                rho never sees gravity, so the seam cannot move a drag number; p
+//                rides rho's own scale height (hydrostatic) above the datum and is
+//                flat under it; no air or no gravity reads 0.0, never a NaN.
 //   dragForce:   opposite the motion; |F| = 0.5 * rho * cd * A * v^2;
 //                scales as v^2; zero on any degenerate input.
 //
@@ -142,6 +148,118 @@ static void test_densityTop() {
                "no drag above the top");
     CHECK_TRUE(glm::length(dragForce(kerbin, 1.0, 10.0, 30000.0, v)) > 0.0,
                "drag below the top");
+}
+
+static void test_air_thermodynamics() {
+    printf("== the air's thermodynamics: what the authored scale height implies (#552 A2) ==\n");
+
+    /* Every expectation below is a literal typed in from an independent
+       calculation, not the formula re-run in place: these pins exist so that a
+       future edit to ONE of the three spellings (T = g H M / R, p = rho g H,
+       a = sqrt(gamma g H)) shows up as a disagreement instead of being agreed with.
+       The 3-arg atmosphere leaves gravity/molar/gamma at Earth's air (9.81 /
+       0.028964 / 1.4), so a test cannot forget them and be quietly told 0 K. */
+    const DragAtmosphere kerbin { 1.225, 5500.0, 70000.0 };  // the shipped triple
+    CHECK_NEAR(airTemperature(kerbin), 187.95593796005446, 1e-12,
+               "Kerbin's isothermal temperature: g H M / R");
+    CHECK_NEAR(airSoundSpeed(kerbin), 274.83995342744475, 1e-12,
+               "Kerbin's sound speed: sqrt(gamma g H)");
+    CHECK_NEAR(airPressure(kerbin, 0.0), 66094.875, 1e-12,
+               "Kerbin's sea-level pressure: rho0 g H");
+
+    /* The ideal-gas tie spelled the OTHER way: if someone gives p its own formula
+       while T keeps the old H, the two stop agreeing. */
+    const double rspec = kGasR / 0.028964;
+    CHECK_NEAR(airPressure(kerbin, 0.0),
+               1.225 * rspec * airTemperature(kerbin), 1e-12,
+               "p == rho R T / M, spelled through the gas constant");
+
+    /* The model is not a fudge: solar_system.json's Earth authors H 8500 and g 9.82
+       and lands within ~1% of the real sea level, with no temperature authored
+       anywhere. Tolerance 1.5% -- the point is "close", not "USSA". */
+    DragAtmosphere earth { 1.225, 8500.0 };
+    earth.gravity = 9.82;
+    CHECK_NEAR(airTemperature(earth), 290.773461987318, 1e-12,
+               "Earth's authored H 8500 reads 290.8 K");
+    CHECK_NEAR(airTemperature(earth), 288.15, 0.015, "within 1.5% of USSA 288.15 K");
+    CHECK_NEAR(airSoundSpeed(earth), 341.8449941128289, 1e-12,
+               "Earth's sound speed sqrt(gamma g H)");
+    CHECK_NEAR(airSoundSpeed(earth), 340.3, 0.015, "within 1.5% of USSA 340.3 m/s");
+    CHECK_NEAR(airPressure(earth, 0.0), 101325.0, 0.015,
+               "within 1.5% of USSA 101.325 kPa");
+
+    /* What molar mass does and does not move: ONLY the temperature line. M cancels
+       out of p and a, so these two are bit-identical -- a barometric or layer model
+       that started using M in the density profile would go red here. */
+    DragAtmosphere co2 = kerbin;
+    co2.molar_mass = 0.044;
+    CHECK_NEAR(airTemperature(co2), 285.5289763237949, 1e-12,
+               "CO2 air (M 0.044) reads 285.5 K");
+    CHECK_NEAR(airSoundSpeed(co2), airSoundSpeed(kerbin), 0.0,
+               "molar mass cancels out of the sound speed");
+    CHECK_NEAR(airPressure(co2, 12000.0), airPressure(kerbin, 12000.0), 0.0,
+               "molar mass cancels out of the pressure too");
+
+    /* And gamma moves only the sound speed: it is cp/cv, and nothing else reads it. */
+    DragAtmosphere mono = kerbin;
+    mono.gamma = 1.0;
+    CHECK_NEAR(airSoundSpeed(mono), 232.28215600859227, 1e-12,
+               "monatomic gas: sqrt(1.0 g H)");
+    CHECK_NEAR(airTemperature(mono), airTemperature(kerbin), 0.0,
+               "gamma does not move the temperature");
+    CHECK_NEAR(airPressure(mono, 3000.0), airPressure(kerbin, 3000.0), 0.0,
+               "gamma does not move the pressure");
+
+    /* THE A2 PROMISE: adding the thermodynamics cannot move a drag number. rho is
+       g-free, so a body's gravity rides the seam and touches nothing the flight
+       model bills. */
+    DragAtmosphere duna = kerbin;
+    duna.gravity = 2.94;
+    CHECK_NEAR(airDensity(duna, 0.0), airDensity(kerbin, 0.0), 0.0,
+               "rho at the datum does not depend on gravity");
+    CHECK_NEAR(airDensity(duna, 12000.0), airDensity(kerbin, 12000.0), 0.0,
+               "rho aloft does not depend on gravity");
+    CHECK_NEAR(airDensity(duna, -500.0), airDensity(kerbin, -500.0), 0.0,
+               "nor does the flat floor under the datum");
+    CHECK_NEAR(airSoundSpeed(duna), 274.83995342744475 * std::sqrt(2.94 / 9.81), 1e-12,
+               "the sound speed does: it scales as sqrt(g)");
+
+    /* p rides rho's OWN scale height -- the same exponential, so the pressure
+       gradient balances the weight of the air (hydrostatic) everywhere above the
+       datum. Central difference: the truncation error is ~(dh/H)^2/6, hence 1e-4. */
+    CHECK_NEAR(airPressure(kerbin, 5500.0), 66094.875 / std::exp(1.0), 1e-12,
+               "p(H) == p0/e: pressure falls as fast as density");
+    const double h = 10000.0, dh = 100.0;
+    const double grad = (airPressure(kerbin, h - dh) - airPressure(kerbin, h + dh)) / (2.0 * dh);
+    CHECK_NEAR(grad, airDensity(kerbin, h) * 9.81, 1e-4,
+               "-dp/dh == rho g above the datum");
+
+    /* Below the datum BOTH are flat (#245), which is deliberately not hydrostatic:
+       under a has_sea body the game has thick air, not water, and no law integrates
+       a water column (#618, closed as designed). Pinned so nobody "fixes" it by
+       inventing a sub-datum pressure nothing bills. */
+    CHECK_NEAR(airPressure(kerbin, -1000.0), airPressure(kerbin, 0.0), 0.0,
+               "p is flat below the datum, like rho");
+    CHECK_NEAR(airPressure(kerbin, 70000.0), 0.0, 0.0, "no air, no pressure at the top");
+    CHECK_NEAR(airPressure(kerbin, 120000.0), 0.0, 0.0, "... nor above it");
+
+    /* Fail CLOSED: no air or no gravity reads 0, never a NaN that a Mach number
+       would carry downstream (#604). rho still ignores gravity here. */
+    const DragAtmosphere none0 { 0.0, 5500.0 };
+    const DragAtmosphere noneH { 1.225, 0.0 };
+    DragAtmosphere nog = kerbin;
+    nog.gravity = 0.0;
+    CHECK_NEAR(airTemperature(none0), 0.0, 0.0, "no density -> no temperature");
+    CHECK_NEAR(airTemperature(noneH), 0.0, 0.0, "no scale height -> no temperature");
+    CHECK_NEAR(airTemperature(nog), 0.0, 0.0, "no gravity -> no temperature");
+    CHECK_NEAR(airPressure(nog, 0.0), 0.0, 0.0, "no gravity -> no pressure");
+    CHECK_NEAR(airSoundSpeed(none0), 0.0, 0.0, "no density -> no sound speed");
+    CHECK_NEAR(airSoundSpeed(nog), 0.0, 0.0, "no gravity -> no sound speed");
+    CHECK_TRUE(std::isfinite(airTemperature(nog)) && std::isfinite(airSoundSpeed(nog))
+               && std::isfinite(airPressure(nog, 100.0)),
+               "the closed reads are 0.0, not NaN");
+    CHECK_NEAR(airDensity(nog, 1000.0), 1.225 * std::exp(-1000.0 / 5500.0), 1e-12,
+               "a gravity-less air still drags: g is not in rho");
 }
 
 static void test_force() {
@@ -2939,6 +3057,8 @@ int main() {
     test_density();
     printf("\n");
     test_densityTop();
+    printf("\n");
+    test_air_thermodynamics();
     printf("\n");
     test_force();
     printf("\n");

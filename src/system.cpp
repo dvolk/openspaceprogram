@@ -386,12 +386,29 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 // The hard top (above it: vacuum). 0 => top() derives
                 // scale_height * 10.
                 s.atmosphere.height = av.value("height", 0.0);
+                // What the air is made of, for the T/p/a that drag.h derives from
+                // scale_height and the body's g (#552 A2). SI -- kg/mol (air
+                // 0.028964, CO2 0.044). Only meaningful when there IS air.
+                s.atmosphere.molar_mass = av.value("molar_mass", 0.028964);
+                s.atmosphere.gamma = av.value("gamma", 1.4);
                 // Air needs both density halves, or neither (render-only rim).
                 if((s.atmosphere.sea_level_density > 0.0)
                    != (s.atmosphere.scale_height > 0.0)) {
                     throw std::runtime_error(
                         "system: " + body->name + ": atmosphere needs both "
                         "sea_level_density and scale_height (or neither)");
+                }
+                /* The two composition numbers feed a division and a sqrt, so a bad
+                   one is a load error rather than a 0 K or a NaN air: every
+                   relational test against NaN is false, hence the !(x >= y) shape
+                   (src/angmath.h). gamma < 1 is not a gas. */
+                if(s.atmosphere.sea_level_density > 0.0) {
+                    if(!(s.atmosphere.molar_mass > 0.0)
+                       || !(s.atmosphere.gamma >= 1.0)) {
+                        throw std::runtime_error(
+                            "system: " + body->name + ": atmosphere needs "
+                            "molar_mass > 0 (kg/mol) and gamma >= 1");
+                    }
                 }
             }
             if(sv.contains("clouds") && sv["clouds"].is_object()) {

@@ -33,6 +33,13 @@
 #include "frame.h"
 #include "orbit.h"
 
+/* The authored atmosphere as drag.h's view of it -- the ONE conversion, shared by
+   the aero pass and any readout that wants the T/p/a the scale height implies
+   (#552 A2). `g` is the body's surface gravity: rho(alt) and top() do not use it,
+   the thermodynamics do, so passing a different g moves a readout and never a
+   drag number. */
+DragAtmosphere dragAtm(const AtmosphereParams &a, double g);
+
 /* Autopilot slew targets -- mutually exclusive (last one wins); the stick
    composes with them. Declared above ShipCmd because a ShipCmd now carries one. */
 enum SlewMode {

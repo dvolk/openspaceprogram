@@ -2415,9 +2415,15 @@ void Vehicle::applyThrustForce(double h) {
     }
 }
 
-// The authored atmosphere as drag.h sees it.
-static DragAtmosphere dragAtm(const AtmosphereParams &a) {
-    return DragAtmosphere { a.sea_level_density, a.scale_height, a.top() };
+// The authored atmosphere as drag.h sees it (declared in vehicle.h). The body's g
+// rides along because the thermodynamic reads (T/p/a, #552 A2) are derived from H
+// AND g; rho and top() are not, so a different g cannot move a drag number.
+DragAtmosphere dragAtm(const AtmosphereParams &a, double g) {
+    DragAtmosphere da { a.sea_level_density, a.scale_height, a.top() };
+    da.gravity = g;
+    da.molar_mass = a.molar_mass;
+    da.gamma = a.gamma;
+    return da;
 }
 
 double Vehicle::airDensityAtCom() const {
@@ -2431,7 +2437,7 @@ double Vehicle::airDensityAtCom() const {
     if(r <= 0.0) { return 0.0; }
     // Altitude above SEA LEVEL (the fixed reference radius), like
     // applyAeroForce: the atmosphere is a spherically-symmetric shell.
-    return airDensity(dragAtm(atm), r - m_parent->seaLevelRadius());
+    return airDensity(dragAtm(atm, m_parent->g), r - m_parent->seaLevelRadius());
 }
 
 /* The ship's velocity relative to the AIR (#60/#97). The air is at rest in the body's
@@ -2504,7 +2510,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
        science bands still decide it by altitude against atm.top() alone, and that
        split is deliberate (#309, #310). */
 
-    const DragAtmosphere da = dragAtm(atm);
+    const DragAtmosphere da = dragAtm(atm, m_parent->g);
     const double rho = airDensity(da, alt);
     lastDragRho = rho;
     // Above the atmosphere top rho is 0; below kRhoFloor the force is unmeasurable.
