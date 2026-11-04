@@ -317,7 +317,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/492-part-window-trim.txt` | invariant | Clicking one elevator's Trim slider moves that elevator only: the pair that sat at -12.0/+12.0 with the stick free splits, and the airframe trims to a lower angle of attack. |
 | `ui/612-guidance-window-ascent.txt` | invariant | The Guidance window's fields and Go button arm an ascent the ship then flies. |
 | `ui/612-guidance-window-cancel.txt` | invariant | Cancel stops an ascent mission steering the hull and hands SAS back. |
-| `ui/612-guidance-window-types.txt` | invariant | The type combo gates Go per law, and the shared Cancel still stops a mission seen from another type. |
+| `ui/612-guidance-window-types.txt` | invariant | The type combo gates Go per law and swaps its section out, and the shared Cancel still stops a mission seen from another type. |
 
 ## render (56)
 

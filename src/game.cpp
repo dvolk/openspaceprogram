@@ -1250,6 +1250,13 @@ void Game::clearEphemeralState() {
        ask (ascent_ask) is the player's fields, not the world's, and survives. */
     ascent = std::nullopt;
     ascent_ship = nullptr;
+    /* The combo's selection is NOT the player's fields, though: it names which
+       law family the window offers to arm NEXT, and every law family it can name
+       is a mission that just went away with this world. So it resets where the
+       ask above does not -- a new game opening Guidance on "Transfer" shows no
+       apsides fields and a greyed Go, which reads as a broken window rather than
+       as a choice made in an earlier game. */
+    guidance_type = 0;   // kGuideAscent (gameui.cpp): the only type with a section
     /* Both world-stamped caches are REPLACED rather than picked over: nearly
        every field names a body, a Vehicle, or an orbit in the world that is
        going away, so a new field resets by default instead of leaking into the

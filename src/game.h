@@ -808,6 +808,14 @@ struct Game {
        it and re-fly. armAscent() is the one door from these to a flying law, so
        --ascent and a Go click arm the same way. */
     AscentAsk ascent_ask;
+    /* Which law the Guidance window is offering to arm next: the index into its
+       "type" combo (GuidanceType / kGuidanceTypeItems in gameui.cpp), like the
+       Telemetry cells' series indices in HudState. Game-owned rather than a
+       static in the window body, so clearEphemeralState can put it back with the
+       world it was chosen against: a stale "Transfer" selection opens the window
+       with no apsides fields and a greyed Go, which reads as a broken window
+       rather than as a choice made in some earlier game (#612 review). */
+    int guidance_type = 0;
     /* Arm the ascent law from ascent_ask on this hull. Nothing may be flying
        when this is called: a second law would steer the same aim setpoint and
        the same throttle lever as the first, and arming one over the other would

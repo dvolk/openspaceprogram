@@ -2,14 +2,20 @@
 # used to show Ascent, Descent and Transfer stacked, each with its own prose; now
 # one combo selects a section and there is one Go and one Cancel for all of them.
 # What that buys, and what it must not break, is the whole case: a type with no
-# law greys Go and says why instead of offering fields that would do nothing;
-# switching type while a mission flies must still leave a way to stop it, because
-# the Cancel button is shared and the mission is not per-tab.
+# law greys Go and shows no ask fields of its own instead of offering inputs that
+# would do nothing; switching type while a mission flies must still leave a way to
+# stop it, because the Cancel button is shared and the mission is not per-tab.
 # --sim-steps makes the click timestamps logic ticks rather than wall ms (as in
 # ui/424), so the arming order below does not move with machine speed. The combo's
-# popup is imgui's own window, ##Combo_00, and its rows are the item labels.
+# popup is imgui's own window, ##Combo_00, whose rows carry the item labels; it is
+# named by popup DEPTH and imgui resets that counter each NewFrame, so the path
+# does not drift with how many combos were drawn before it.
+# --ui-list 2100 dumps the live widgets while Transfer is the selected type. A
+# section's prose is drawn, not printed, so the row list is the only place its
+# shape is visible -- and this is the one moment between picking Transfer (1800)
+# and opening the combo again (2200).
 NAME guidance-window-types
-CLAIM The type combo gates Go per law, and the shared Cancel still stops a mission seen from another type.
+CLAIM The type combo gates Go per law and swaps its section out, and the shared Cancel still stops a mission seen from another type.
 KIND invariant
 ARGS --startship racer,res/ships/racer.json,Moho,pad --time-accel 10
 ARGS --ascent-log --timeout 120
@@ -18,6 +24,7 @@ ARGS --ui-click 800,"Windows/Autopilot"
 ARGS --ui-click 1200,"Autopilot/Guidance"
 ARGS --ui-click 1600,"Guidance/type"
 ARGS --ui-click 1800,"##Combo_00/Transfer"
+ARGS --ui-list 2100
 ARGS --ui-click 2000,"Guidance/Go"
 ARGS --ui-click 2200,"Guidance/type"
 ARGS --ui-click 2400,"##Combo_00/Descent"
@@ -41,4 +48,10 @@ CHECK out.count("FAILED") == 2
 # Exactly one arming, from the Ascent section. Transfer and Descent armed
 # nothing even though the buttons are the same buttons.
 CHECK sum(1 for t in toast if "ascent armed" in t) == 1
-CHECK len(ascent) >= 1
+# What the Transfer section draws, from the dump above: it keeps the buttons that
+# are shared with every type and offers no ask fields of its own. Matched on
+# labels, not rects, so a font or layout change cannot break it -- the claim here
+# is which widgets exist, not where they sit.
+CHECK 'window="Guidance" label="Go"' in out
+CHECK 'window="Guidance" label="Cancel"' in out
+CHECK 'label="PeA (km)"' not in out

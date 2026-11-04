@@ -403,13 +403,24 @@ static constexpr double kGuidanceTerrainMargin = 500.0;
    the same order -- imgui hands back an index into that string. */
 enum GuidanceType { kGuideAscent, kGuideDescent, kGuideTransfer };
 static const char *kGuidanceTypeItems = "Ascent\0Descent\0Transfer\0";
+/* Adding a law is a three-place edit -- this enum, the item list, and a Go
+   branch -- and only the last one fails to compile by itself. This catches the
+   first two: a new enumerator stops the build rather than joining the combo with
+   no section and whatever prose the type test below happens to fall through to. */
+static_assert(kGuideTransfer == 2, "add the new GuidanceType to kGuidanceTypeItems");
 
-/* Body height every section reserves. The window content-fits its frame, so a
-   section that is one sentence would shrink the window on selection and grow it
-   back on the way out -- the playtest's complaint about the frame moving under
-   the player (#612). Sized to the Ascent section, the tallest one; a section
-   taller than this simply grows it. */
-static constexpr float kGuidanceSectionH = 96.0f;
+/* Rows every section reserves, counted in framed rows rather than pixels. The
+   window content-fits its frame, so a section that is one sentence would shrink
+   the window on selection and grow it back on the way out -- the playtest's
+   complaint about the frame moving under the player (#612). Four rows: the two
+   ask rows, the delta-v line, and the "one mission at a time" line a flying
+   mission adds, so neither switching type nor pressing Go moves the buttons.
+   A section taller than the reserve simply grows it, which is what a refusal or
+   two does. Counted in rows rather than measured in pixels because the pad sits
+   among rows that ui_scale and DPI both grow: a pixel reserve stops applying on
+   a scaled display and the sections stop agreeing -- the same reason the surface
+   map derives its height from the row metrics (uiwins.cpp). */
+static constexpr float kGuidanceSectionRows = 4.0f;
 
 /* The Guidance window (#612): which law to ask for, what to ask it for, Go or
    Cancel, and what a flying mission is doing about the ask. Drawn just after the
@@ -427,7 +438,7 @@ static void drawGuidanceWindow(Game &g) {
         Vehicle *ship = g.ship;
         TerrainBody *b = ship->m_parent;
 
-        static int type = kGuideAscent;
+        int &type = g.guidance_type;
         uiCombo("type", &type, kGuidanceTypeItems);
 
         bool blocked = false;
@@ -444,12 +455,27 @@ static void drawGuidanceWindow(Game &g) {
                tank that is left (playtest note). */
             if(!flying) { ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", why.c_str()); }
         };
-        /* One section at a time, each padded to the same height (#612). */
+        /* One mission at a time: ascent, descent and transfer all steer the aim
+           and the throttle, so a second Go would fight the first for both
+           (guidance.h). The arbiter waits for the second law; the rule is
+           enforceable now, so it is enforced here -- and it gates Go only, never
+           Cancel: the first probe of this window greyed the whole button row out
+           while a mission flew, which left no way to stop one. It is drawn INSIDE
+           the padded section, whatever type is showing, so arming a mission does
+           not move the buttons either (#612 review). */
+        auto oneMission = [&] {
+            if(!flying) { return; }
+            blocked = true;
+            ImGui::TextDisabled("one mission at a time -- Cancel it first");
+        };
+        /* One section at a time, each padded to the same row budget (#612). */
         auto section = [&](auto &&body) {
+            const float want = kGuidanceSectionRows
+                             * (ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y);
             const float top = ImGui::GetCursorPosY();
             body();
             const float h = ImGui::GetCursorPosY() - top;
-            if(h < kGuidanceSectionH) { ImGui::Dummy(ImVec2(0.0f, kGuidanceSectionH - h)); }
+            if(h < want) { ImGui::Dummy(ImVec2(0.0f, want - h)); }
         };
 
         section([&] {
@@ -460,6 +486,7 @@ static void drawGuidanceWindow(Game &g) {
                 ImGui::TextDisabled(type == kGuideDescent
                     ? "no descent law yet: nothing lands from here"
                     : "the Target window plans transfers (Porkchop)");
+                oneMission();   // still says so under a type with no law: Cancel is shared
                 return;
             }
             /* The fields are in km because that is the scale a player thinks at;
@@ -552,18 +579,8 @@ static void drawGuidanceWindow(Game &g) {
             }
             refuse(ask.ask_inc && !(ask.inc_deg >= 0.0 && ask.inc_deg <= 180.0),
                    "inclination is 0..180 deg");
+            oneMission();
         });
-
-        if(flying) {
-            /* One mission at a time: ascent, descent and transfer all steer the
-               aim and the throttle, so a second Go would fight the first for both
-               (guidance.h). The arbiter waits for the second law; the rule is
-               enforceable now, so it is enforced here -- and it gates Go only,
-               never Cancel: the first probe of this window greyed the whole button
-               row out while a mission flew, which left no way to stop one. */
-            blocked = true;
-            ImGui::TextDisabled("one mission at a time -- Cancel it first");
-        }
 
         /* One pair of buttons for every type: they act on the mission, not on the
            selection, which is why switching type cannot strand a flying mission
@@ -972,8 +989,11 @@ void drawUIReadouts(Game &g) {
            order IS the enum order -- sas_policy.h asserts the values. */
         int sas = (int)g.sas_policy;
         ImGui::SetNextItemWidth(240.0f);
-        if(ImGui::Combo("SAS vs. steering", &sas,
-                        "Steering owns the axis\0SAS keeps its ask\0")) {
+        // uiCombo, not ImGui::Combo: imgui never reports a combo's label to the
+        // test-engine hooks, so a raw one has no name in the click registry and
+        // --ui-click cannot reach it (uiinput.cpp).
+        if(uiCombo("SAS vs. steering", &sas,
+                   "Steering owns the axis\0SAS keeps its ask\0")) {
             g.sas_policy = (sas == SasKeepsAsk) ? SasKeepsAsk : SasStickOwnsAxis;
         }
         ImGui::Spacing();
