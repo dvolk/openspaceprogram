@@ -1,10 +1,15 @@
 //
-// src/angmath.h (header-only pure math): the one acos(clamp) spelling, pinned so
-// its job stays narrow and the NaN law stays written down (#622).
+// src/angmath.h (header-only pure math): the one bounded-ratio spelling --
+// acosUnit/asinUnit -- pinned so its job stays narrow and the NaN law stays
+// written down (#622).
 //
 //   acosUnit clamps for FP DRIFT and nothing else: acosUnit of a cosine that landed
 //   one ulp past 1 is 0 deg, not NaN, and one past -1 is 180 deg, not NaN. An
 //   unclamped acos at those inputs poisons a window ("-nan deg") or a rotation.
+//
+//   asinUnit is the same law on the other inverse (the navball's pitch, the sun's
+//   limb, equirect's latitude), and the two are pinned against each other: they are
+//   complements, so one being the wrong inverse cannot hide behind the other.
 //
 //   It is NOT a guard, and this pins that too: a NaN cosine comes back NaN -- never
 //   0, never pi, never the confident end of acos' range. glm::clamp is
@@ -89,6 +94,27 @@ static void test_the_angle_itself() {
     CHECK_TRUE(acosUnit(-0.1) < acosUnit(-0.9), "and keeps rising into the negatives");
 }
 
+/* --- the sine twin, same law -------------------------------------------------- */
+static void test_the_sine_twin() {
+    printf("== asinUnit: the same law, the other inverse ==\n");
+    const double pi = std::numbers::pi;
+    CHECK_NEAR(asinUnit(std::nextafter(1.0, 2.0)), pi / 2.0, 1e-12,
+               "one ulp past 1 reads 90 deg, not NaN (render.cpp's navball pitch)");
+    CHECK_NEAR(asinUnit(std::nextafter(-1.0, -2.0)), -pi / 2.0, 1e-12, "and -90 on the mirror");
+    CHECK_NEAR(asinUnit(0.0), 0.0, 0.0, "sin 0 -> 0");
+    CHECK_NEAR(asinUnit(0.5), pi / 6.0, 1e-12, "sin 0.5 -> 30 deg");
+    CHECK_NEAR(asinUnit(-0.5), -pi / 6.0, 1e-12, "sin -0.5 -> -30 deg");
+    for(const double x : {0.3, -0.7, 0.999999}) {
+        /* Complements: catches one of the two being the wrong inverse while the
+           other still looks right. */
+        CHECK_NEAR(acosUnit(x) + asinUnit(x), pi / 2.0, 1e-12,
+                   "acosUnit(x) and asinUnit(x) make a right angle");
+    }
+    CHECK_TRUE(asinUnit(-0.9) < asinUnit(0.1), "asin rises with its argument as acos falls");
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    CHECK_TRUE(std::isnan(asinUnit(nan)), "and the NaN law is the same one");
+}
+
 /* --- what the clamp is NOT: a guard ----------------------------------------- */
 static void test_a_nan_walks_through() {
     printf("== the clamp cannot see a NaN ==\n");
@@ -123,6 +149,7 @@ static void test_the_laundering_step() {
 int main() {
     test_drift_and_range();
     test_the_angle_itself();
+    test_the_sine_twin();
     test_a_nan_walks_through();
     test_the_laundering_step();
     printf("test_angmath: %d checks, %d failures\n", g_checks, g_failures);

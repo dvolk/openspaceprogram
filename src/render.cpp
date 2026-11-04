@@ -222,7 +222,10 @@ void updateShipView(Game &g) {
     const double hedEast = glm::dot(groundHed, surf_east);
     heading = wrapAngleToPositive(atan2(hedEast, hedNorth));
 
-    pitch = asin(glm::dot(surf_up, surf_facing));
+    /* asin of a dot of two unit vectors, so the fp-drift case is real: the dot can
+       land at 1 + 1 ulp and asin of that is a NaN straight into the navball's
+       pitch. Unclamped, this was the same defect angmath.h describes (#622). */
+    pitch = asinUnit(glm::dot(surf_up, surf_facing));
     roll =
         glm::orientedAngle(glm::normalize(projectVecOntoPlane(-surf_pos, glm::normalize(surf_facing))),
                            glm::normalize(-surf_up_axis),
@@ -254,7 +257,9 @@ static float skyGain(Game &g, Frame *rf, TerrainBody *sun, Camera *camera,
     // Angle to the sun's NEAR limb: a wide sun is "in view" before its centre
     // reaches the cone.
     const double axl = acosUnit(glm::dot(sun_dir, glm::normalize(camera->GetForward())));
-    const double limb = axl - std::asin(std::clamp(sun->radius / sun_d, 0.0, 1.0));
+    /* Not the drift case: inside the sun radius/sun_d is genuinely > 1 and the
+       clamp is saying "the whole sky is the sun", which is what asinUnit does too. */
+    const double limb = axl - asinUnit(sun->radius / sun_d);
     // Game stores the cone in degrees (the CLI and Settings units).
     const double cone = glm::radians((double)g.sky_dim_cone);
     const double in_view = fade(cone, cone * 2.5, limb);

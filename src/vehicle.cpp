@@ -4968,19 +4968,32 @@ Vehicle::Pointing Vehicle::pointingTo(glm::dvec3 dir, const AttitudeAuthority &a
     dir = glm::normalize(dir);
     Part *ref = attitudeRef();
     if(ref == nullptr) { return p; }
-    p.facing = partAxis(ref, 2);
+    /* ONE basis solve for both columns. partAxis() re-runs frameS on every call and
+       this function runs per hull per substep. */
+    const glm::dmat3 basis = partRot(ref);
+    p.facing = basis[2];
     p.angle = acosUnit(glm::dot(p.facing, dir));
     p.axis = glm::cross(p.facing, dir);          /* + turns the nose toward dir */
     if(glm::length2(p.axis) < 1e-12) {
-        /* nose ~ opposite dir: any transverse axis closes the error, so take the
-           hull's own "right" (columns are [right, up, nose], so it is exactly
-           perpendicular to facing and needs no re-orthogonalising). The world-axis
-           selector this replaces -- fabs(facing.y) > 0.9 -- answered the same ask on
-           the same hull about a different line as the hull rolled across |y| = 0.9,
-           and 1e-6 rad of dither at antipodes alternated it between +Y and -Y on
-           consecutive substeps, spending the same torque each time (#609). Pitching
-           over about the hull's right is also what a pilot means by "point retrograde". */
-        p.axis = partAxis(ref, 0);
+        /* nose ~ opposite dir: the axis is FREE, and the convention is the hull's own
+           right -- a column of the same orthonormal basis facing came from, so it is
+           perpendicular to facing to fp and needs no re-orthogonalising, and the answer
+           stops depending on where the hull sits in the world. The world selector this
+           replaces -- fabs(facing.y) > 0.9 -- answered the same ask on the same hull
+           about a different line as the hull rolled across |y| = 0.9, and 1e-6 rad of
+           dither at antipodes alternated it between +Y and -Y on consecutive substeps,
+           spending the same torque each time (#609). Pitching over about the hull's
+           right is also what "point retrograde" means to a pilot.
+           What a FREE choice must not do is land on a line nothing levers:
+           attitudeTorqueAbout() is directional (#576), so a hull whose only transverse
+           row is along its own up (one drum, or a yaw rudder) buys nothing about its
+           right -- alphaMax 0, and slewDemand holds position for ever without saying
+           so. So: right if it buys anything, otherwise up. Deliberately one-sided
+           rather than "whichever buys more", which would alternate the two lines as
+           the wheel budget moves. */
+        p.axis = basis[0];
+        if(attitudeTorqueAbout(auth, p.axis) <= 0.0) { p.axis = basis[1]; }
+        assert(std::fabs(glm::dot(p.axis, p.facing)) < 1e-12);
     } else {
         p.axis = glm::normalize(p.axis);
     }

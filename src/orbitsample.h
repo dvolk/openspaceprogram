@@ -3,12 +3,14 @@
 // Header-only pure math. Points are in the focus body's INERTIAL frame.
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <numbers>
 #include <vector>
 
 #include <glm/glm.hpp>
 
+#include "angmath.h"
 #include "orbit.h"
 
 // Relative-tolerant equality: coasting re-propagates leave last-bit noise on
@@ -26,9 +28,10 @@ inline bool orbitKeyEqDir(const glm::dvec3 &u, const glm::dvec3 &v) {
 
 // Sample an OPEN trajectory as a finite arc in TRUE ANOMALY, truncated at
 // r_cap, symmetric about periapsis. Nothing to cache (no period). r_cap must
-// be >= the ship's current radius so the ship lies on the arc. Empty for a
-// closed orbit or degenerate state. Into appends nothing: pts is cleared and
-// (when N fits) reuses its capacity.
+// be >= the ship's current radius so the ship lies on the arc -- which implies
+// the real precondition, r_cap >= the periapsis radius, since no point of the
+// conic is inside periapsis. Empty for a closed orbit or degenerate state.
+// Into appends nothing: pts is cleared and (when N fits) reuses its capacity.
 inline void sampleOpenTrajectoryInto(const glm::dvec3 &pos, const glm::dvec3 &vel,
                                      double mu, int N, double r_cap,
                                      std::vector<glm::dvec3> &pts) {
@@ -43,7 +46,13 @@ inline void sampleOpenTrajectoryInto(const glm::dvec3 &pos, const glm::dvec3 &ve
     if(!(o.ecc >= 1.0)) { return; }  // closed orbit, not an open arc
     const double e = o.ecc;
     const double p = h_len * h_len / mu;   // semi-latus rectum, always > 0
-    // Truncate where r(nu) reaches r_cap; clamp guards the e ~ 1 edge.
+    /* Truncate where r(nu) reaches r_cap. (p/r_cap - 1)/e is > 1 exactly when
+       r_cap < periapsis -- there is no arc to sample then -- so that is an
+       invariant on the caller, not something the clamp gets to paper over: below
+       periapsis acosUnit returns 0 and the loop emits N copies of the periapsis
+       point, a polyline on top of itself rather than an empty map arc. Every
+       caller passes the view extent floored at several periapsis radii. */
+    assert(r_cap >= o.periapsis_r * (1.0 - 1e-12));
     const double nu_cap = acosUnit((p / r_cap - 1.0) / e);
     const glm::dvec3 hhat = h / h_len;
     const glm::dvec3 evec = glm::cross(vel, h) / mu - pos / r0;

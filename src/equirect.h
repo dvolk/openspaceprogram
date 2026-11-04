@@ -29,6 +29,8 @@
 
 #include <glm/glm.hpp>
 
+#include "angmath.h"   // asinUnit: the bounded-ratio spelling (#622)
+
 // (lon, lat) -> unit direction. lon 0 = +X, +pi/2 = -Z, north = +Y.
 inline glm::dvec3 equirectDir(double lon, double lat) {
     const double cl = std::cos(lat);
@@ -42,7 +44,7 @@ inline glm::vec3 equirectDir(float lon, float lat) {
 
 // Unit direction -> (lon, lat), lon unwrapped to [0, 2pi).
 inline void equirectLonLat(const glm::dvec3 &d, double &lon, double &lat) {
-    lat = std::asin(glm::clamp(d.y, -1.0, 1.0));
+    lat = asinUnit(d.y);
     lon = std::atan2(-d.z, d.x);
     if(lon < 0.0) { lon += 2.0 * std::numbers::pi; }
 }

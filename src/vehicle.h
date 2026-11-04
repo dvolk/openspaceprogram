@@ -760,7 +760,11 @@ public:
     struct Pointing {
         bool valid = false;
         glm::dvec3 facing = glm::dvec3(0.0);    // the nose of attitudeRef() [unit]
-        glm::dvec3 axis = glm::dvec3(0.0);      // + turns facing toward dir [unit]
+        /* + turns facing toward dir [unit]. At E == pi the cross product vanishes and
+           the axis becomes a CONVENTION -- the hull's own right, or its up if nothing
+           levers the right -- rather than a measurement, so a reader must not compare
+           or blend axes across ticks near antipodes (#609). */
+        glm::dvec3 axis = glm::dvec3(0.0);
         double angle = 0.0;                     // E [rad]; 0 == aligned
         double Ieff = 0.0;                      // kg m^2 about axis
         double alphaMax = 0.0;                  // rad/s^2 the actuators could hold here

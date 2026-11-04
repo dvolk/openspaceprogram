@@ -1412,11 +1412,13 @@ static void test_the_aim_keeps_its_doors_shut() {
                    glm::dmat3(glm::angleAxis(glm::radians(90.0), glm::dvec3(0.0, 1.0, 0.0))));
     const glm::dvec3 noseY = r.v->partAxis(r.pod, 2);   // now world +X, so facing.y = 0
     const Vehicle::Pointing astY = r.v->pointingTo(-noseY, r.v->attitudeAuthority());
-    CHECK_NEAR(astY.angle, glm::pi<double>(), 1e-9, "yawed 90 deg, the ask is still astern");
+    CHECK_NEAR(astY.angle, glm::pi<double>(), 1e-9,
+               "fixture guard: after the yaw the ask really is exactly antipodal");
     CHECK_NEAR(glm::dot(astY.axis, r.v->partAxis(r.pod, 0)), 1.0, 1e-12,
                "and the fallback follows the hull: its own right, now world -Z");
     CHECK_NEAR(glm::dot(astY.axis, glm::dvec3(0.0, 1.0, 0.0)), 0.0, 1e-12,
-               "not the world +Y the old selector would have answered with");
+               "so it is not the world +Y the old selector answered with (the pin above "
+               "already fixes the line; this one only names the world axis that moved)");
     r.v->placeShip(glm::dvec3(0.0, 0.0, 601000.0), glm::dmat3(1.0));
 
     /* The law damps the TRANSVERSE rate only: roll is the wheels' line and the player's,
@@ -1434,6 +1436,77 @@ static void test_the_aim_keeps_its_doors_shut() {
                "no target buys nothing even while spinning: the law is not a kill-rot");
     destroyShip(r.v);
     delete body;
+}
+
+/* THE OTHER HALF OF #609 PART 2, which the review pass caught. At antipodes the axis
+   is FREE, and a free choice can land on a line nothing levers: attitudeTorqueAbout()
+   is directional (#576), so about an uncovered line alphaMax is 0 and slewDemand
+   holds position for ever without ever saying so. The hull's own right stays the
+   convention -- the pin above proves that when the right line IS covered -- and steps
+   aside only when it buys nothing. */
+static void test_an_antipodal_ask_steps_off_a_dead_line() {
+    printf("== at antipodes, a line nothing levers is not an option ==\n");
+    FinProbe *v = new FinProbe;     // slewDemand is protected; the probe opens it
+    v->name = "deadline";
+    std::deque<PartDef> defs;
+    Part *root = mkPart(defs, "root", 100.0, 1.5, 0.0, 0.0);      // no torque: not a wheel
+    v->setRoot(root);
+    Part *drum = mkPart(defs, "drum", 100.0, 1.0, 50.0, 0.0);     // ONE drum, one line
+    v->attachDown(drum);
+    drum->localRot = glm::dmat3(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0);  // +Z -> -Y
+    v->init();
+    v->placeShip(glm::dvec3(0.0, 0.0, 0.0), glm::dmat3(1.0));
+    const Vehicle::AttitudeAuthority au = v->attitudeAuthority();
+    const glm::dvec3 right = v->partAxis(root, 0);
+    const glm::dvec3 up = v->partAxis(root, 1);
+    const glm::dvec3 nose = v->partAxis(root, 2);
+    CHECK_TRUE(!root->isWheel(), "the root is not a drum, so it covers no line itself");
+    CHECK_NEAR(v->attitudeTorqueAbout(au, right), 0.0, 1e-12,
+               "the fixture: the one drum lies along up, so hull right is dead");
+    CHECK_NEAR(v->attitudeTorqueAbout(au, up), 50.0, 1e-9,
+               "and hull up is worth that drum's full rating");
+    const Vehicle::Pointing p = v->pointingTo(-nose, au);
+    CHECK_TRUE(p.valid, "astern is an ask like any other");
+    CHECK_NEAR(glm::dot(p.axis, up), 1.0, 1e-12,
+               "so the free choice at antipodes takes the hull's UP, not its right");
+    CHECK_NEAR(glm::dot(p.axis, right), 0.0, 1e-12, "and leaves the dead line alone");
+    CHECK_NEAR(p.alphaMax * p.Ieff, 50.0, 1e-9,
+               "the rate budget is that drum over the inertia about the axis it chose");
+    CHECK_TRUE(glm::length(v->slewDemand(-nose, 1.0 / 120.0, au)) > 0.0,
+               "and the law asks for torque: a dead axis used to mean silence");
+    destroyShip(v);
+}
+
+/* ... but it steps aside ONLY when the right buys nothing. With both lines covered,
+   the answer stays the hull's right even when the up line is worth MORE: "whichever
+   buys more" would flip the invented axis as the wheel budget moved (wheels off, a
+   dead drum, EC sag), which is the per-substep alternation #609 was about. */
+static void test_the_fallback_convention_does_not_chase_the_bigger_number() {
+    printf("== the antipodal convention is the hull's right, not the biggest drum ==\n");
+    Ship s;
+    s.v = new Vehicle;
+    s.v->name = "twodrums";
+    Part *root = mkPart(s.defs, "root", 100.0, 1.5, 0.0, 0.0);
+    s.v->setRoot(root);
+    Part *drumUp = mkPart(s.defs, "drum_up", 100.0, 1.0, 50.0, 0.0);
+    s.v->attachDown(drumUp);
+    drumUp->localRot = glm::dmat3(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0);  // +Z -> -Y
+    Part *drumRight = mkPart(s.defs, "drum_right", 20.0, 1.0, 20.0, 0.0);
+    s.v->attachDown(drumRight);
+    drumRight->localRot = glm::dmat3(0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0);  // +Z -> +X
+    s.v->init();
+    s.v->placeShip(glm::dvec3(0.0, 0.0, 0.0), glm::dmat3(1.0));
+    const Vehicle::AttitudeAuthority au = s.v->attitudeAuthority();
+    const glm::dvec3 right = s.v->partAxis(root, 0);
+    const glm::dvec3 up = s.v->partAxis(root, 1);
+    const glm::dvec3 nose = s.v->partAxis(root, 2);
+    CHECK_NEAR(s.v->attitudeTorqueAbout(au, right), 20.0, 1e-9, "the right line is covered, thinly");
+    CHECK_NEAR(s.v->attitudeTorqueAbout(au, up), 50.0, 1e-9, "and the up line is worth more");
+    const Vehicle::Pointing p = s.v->pointingTo(-nose, au);
+    CHECK_NEAR(glm::dot(p.axis, right), 1.0, 1e-12,
+               "so the fallback stays the hull's right -- a convention that chased the "
+               "bigger number would alternate lines as the drum budget moved");
+    destroyShip(s.v);
 }
 
 /* #606: the aim channel. Until now a law could MEASURE a turn (pointingTo) but could
@@ -1538,6 +1611,8 @@ int main() {
     test_a_fin_row_is_spent_and_hands_its_ask_to_the_air();
     test_the_aim_is_measured_once();
     test_the_aim_keeps_its_doors_shut();
+    test_an_antipodal_ask_steps_off_a_dead_line();
+    test_the_fallback_convention_does_not_chase_the_bigger_number();
     test_a_law_can_name_its_own_aim();
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }
