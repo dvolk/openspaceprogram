@@ -20,12 +20,12 @@
 # the ground the hull pushes off is built by the camera and handed back by worker threads
 # at machine-dependent times (#475): when that ground arrives decides when the hull breaks
 # loose, and a 1 s log grid then samples the same chaotic tumble at a different point on it.
-# Measured over 16 runs of one binary with one ARGS list: max |F| anywhere from 1497.51 N to
+# Measured over 18 runs of one binary with one ARGS list: max |F| anywhere from 1497.51 N to
 # 19168.82 N, the deepest row from -345.0 m to -424.3 m, max |v| from 22.13 to 78.64 m/s.
 # One run's rows are the previous run's shifted by about a second (t=7 reads 1497.51 N in
 # both; one keeps accelerating to 19.2 kN, the other settles to 0.00 N and lands at t=8).
 # Every TRAJECTORY band below is therefore set from the MILDEST flight seen with a wide
-# margin. The AIR bands (rho, T, p, a) are world facts and hold on all 16 flights, which is
+# margin. The AIR bands (rho, T, p, a) are world facts and hold on all 18 flights, which is
 # what this case is actually about.
 NAME air-below-datum
 CLAIM At or below a body's sea-level datum the air is its sea-level density, flat: a hull under the datum gets rho0, its drag, its lift and its jet thrust.
@@ -43,7 +43,7 @@ CHECK len(drainlog) >= 15
 CHECK len(surf) == 15
 # THE WORLD: the space port sits under the datum on this fixture (it parks at alt_asl
 # 264.0 on the shipped Kerbin, whose datum is the bare radius). No row of this run gets
-# near the datum where the two laws nearly agree -- the highest altitude measured in 16
+# near the datum where the two laws nearly agree -- the highest altitude measured in 18
 # runs is -299.3 m, still 300 m under it -- so the band says < -100 rather than the -300
 # that one of those runs stepped over. These two are the only rows that describe the
 # WORLD rather than the air, and they are the two the pre-fix binary still passes.
