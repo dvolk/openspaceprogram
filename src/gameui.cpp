@@ -6031,10 +6031,19 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                sound speed follow from H and g with nothing extra authored. The
                word "isothermal" is on the line on purpose -- Kerbin reads 188 K /
                66 kPa / 275 m/s this way, where an Earth-like 288 K at rho0 1.225
-               wants an 8.4 km scale height (and an air 2.7x thicker at 20 km).
-               Reconciling them is a lapse rate, i.e. a layer table, not a fudge. */
+               wants an 8.4 km scale height (which would put 3.5x more air over you
+               at 20 km; real air puts 2.7x, the gap being the lapse rate the single
+               exponential has not got). Reconciling them is a layer table, not a
+               fudge.
+               Kelvin first and Celsius as a gloss: the rest of this block is SI
+               (Pa, m/s, kg/m3), the law is linear in the ABSOLUTE scale, and 188 K
+               is the number the tests and --atlas-dump pin. Celsius is there because
+               "would I freeze" is the question a player actually asks. --drag-log
+               prints plain K -- a log line gets parsed, and a second unit in a
+               field is a parser's bad day. */
             const DragAtmosphere da = dragAtm(at, b.g);
-            snprintf(v, sizeof v, "%.1f K", airTemperature(da));
+            const double airK = airTemperature(da);
+            snprintf(v, sizeof v, "%.1f K (%.1f C)", airK, airK - 273.15);
             line("air temp (isothermal)", v);
             snprintf(v, sizeof v, "%.1f kPa", airPressure(da, 0.0) / 1000.0);
             line("air pressure", v);
