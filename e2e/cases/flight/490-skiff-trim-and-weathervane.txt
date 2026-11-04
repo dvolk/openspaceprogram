@@ -28,7 +28,7 @@ CHECK len(drag) >= 40
 # re-measure before tightening it.
 CHECK all(2.3 < d["aoa"] < 3.0 for d in drag if d["aoa"] is not None)
 CHECK min(d["v"] for d in drag if d["t"] <= 20.0) > 60.0
-CHECK min(d["alt"] for d in drag if d["t"] <= 20.0) > 6950.0
+CHECK min(d["alt_asl"] for d in drag if d["t"] <= 20.0) > 6950.0
 # Static margin positive and steady (the VAB number, in flight): 0.550 on every row,
 # +0.552 from the parts.
 CHECK all(0.52 < d["sm"] < 0.58 for d in drag if d.get("sm") is not None)

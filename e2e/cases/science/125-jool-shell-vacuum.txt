@@ -5,7 +5,10 @@ ARGS --time-accel 1 --timeout 3 --drag-log --orbit-interval 0.25
 ARGS --startship racer,res/ships/racer.json,Jool,inertial-orbit
 EXPECT [drag]
 CHECK len(drag) >= 2
-CHECK all(d["alt"] > 200000.0 for d in drag)
+CHECK all(d["alt_asl"] > 200000.0 for d in drag)
 CHECK all(d["rho"] == 0.0 for d in drag)
 CHECK all(d["F"] == 0.0 for d in drag)
+# #552 A3: outside the air there is no air to report, so the four fields the game
+# derives from a scale height (T/p/a/Mach) DASH rather than quoting 0 K of vacuum.
+CHECK all("airT" not in d and "mach" not in d for d in drag)
 FORBID error:

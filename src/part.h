@@ -115,6 +115,11 @@ struct Part {
     bool aeroValid = false;
     float aeroAlphaDeg = 0.0f;
     float aeroQ = 0.0f;
+    /* Mach AT THIS SURFACE (#552 A3): the flow speed localFlow already measured,
+       over the sound speed the body's air implies. A diagnostic today -- printed on
+       the [surface] row beside a=/q= -- and the number #543's flow-regime law wants
+       to read rather than re-derive, so it is the same value in both places. */
+    float aeroMach = 0.0f;
     /* Which LIFTING SYSTEM this surface belongs to (#556/#555), as an index into
        Vehicle::aeroSystems; -1 = not a lifting or steering surface. Written by
        Vehicle::groupLiftingSystems at every geometry rebuild (the same fingerprint

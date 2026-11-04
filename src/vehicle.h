@@ -479,6 +479,18 @@ public:
        "--drag-cd 0" all read 0/0 rather than last substep's value. */
     double lastDragAlt = 0.0;
     double lastDragRho = 0.0;
+    /* The air the pass stood in, last substep (#552 A2/A3): what the authored
+       scale height IMPLIES at this hull's altitude -- the isothermal temperature
+       [K], the pressure [Pa] and the sound speed [m/s] the Mach number is a ratio
+       to -- plus lastAirV, the AIR-relative speed at the COM that every q= on the
+       line is billed from (the [drag] line's |v|= is the frame speed, which on a
+       spinning body is not the same number). applyAeroForce zeroes all four with
+       the pair above, so a ship in vacuum or on an airless body reads 0 and the
+       log dashes the fields rather than quoting a stale air. */
+    double lastAirT = 0.0;
+    double lastAirP = 0.0;
+    double lastAirA = 0.0;
+    double lastAirV = 0.0;
     double lastDragAlpha = 0.0;  // AoA (rad); + = nose above the flow (drag.h)
     /* The flow's angle off the nose in the YAW plane (rad), AeroFrame's other
        angle. Not a control readout (#450 wants it bundled with a yaw law) -- it

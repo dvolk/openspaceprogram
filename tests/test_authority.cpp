@@ -1041,13 +1041,19 @@ struct FinProbe : Vehicle {
     using Vehicle::slewTargetDir;  // what the engaged mode steers at (#606)
 };
 
-/* A body with nothing but the fields airDensityAtCom() reads: a 600 km radius and a
-   sea-level atmosphere, so a ship at 601 km sits in 1000 m of air. */
+/* A body with nothing but the fields airDensityAtCom() reads: a 600 km radius, a
+   sea-level atmosphere, and the gravity that atmosphere comes with, so a ship at
+   601 km sits in 1000 m of air. The gravity is not decoration (#552 A2): the air law
+   solves T/p/a from g x H, and the loader refuses to load a body that has air without
+   g > 0 -- so an air fixture without it is a world the game cannot make, and
+   applyAeroForce asserts as much. Nothing here quotes T, p or a, and rho/q/forces are
+   g-free, so the value only has to be plausible: 9.81, the Kerbin the rig copies. */
 static TerrainBody *mkAirBall() {
     TerrainBody *body = new TerrainBody;
     body->name = "airball";
     body->radius = 600000.0f;
     body->surface.sea_level = 0.0f;
+    body->g = 9.81;
     body->surface.atmosphere.sea_level_density = 1.225;
     body->surface.atmosphere.scale_height = 8000.0;
     return body;

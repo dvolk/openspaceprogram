@@ -57,6 +57,23 @@ CHECK min(s["alt_asl"] for s in surf) < -400.0
 # The r0.25h1 fan is rated 5625 N at full gate; at -336 m it runs at full gate (max
 # 6.6 kN with the ram term in).
 CHECK max(r["thrust"] for r in drainlog) > 5000.0
+# IT IS THE SAME AIR THE ATLAS PRINTS (#552 A3): --drag-log now carries the T/p/a the
+# body's authored scale height IMPLIES, through the same dragAtm seam the dossier uses,
+# so the two cannot mean different airs. Under this datum p is FLAT (the #618 call), so
+# every row reads rho0 g H = 1.225 x 9.81 x 5500 = 66094.9 Pa beside 188.0 K and
+# 274.8 m/s. Mach divides the AIR-relative speed at the COM -- the flow every q= on the
+# [surface] rows is billed from, not necessarily the |v|= on the line, which is the
+# frame speed (#97). This hull never leaves Kerbin's rot frame, where the air is at
+# rest, so here the two are the same number and the per-surface mach= agrees with the
+# hull Mach= to the digit (t=8: |v|=37.06, Mach=0.135, wing_l mach=0.134). The pad row
+# reads 0.002; the post-ignition tumble peaks at 0.286, so this hull nowhere approaches
+# compressible flow. Before A3 none of this was measurable from the harness at all: the
+# only way to check it was to read the source.
+CHECK all(abs(d["airT"] - 188.0) < 0.05 for d in drag)
+CHECK all(abs(d["airP"] - 66095.0) < 1.0 for d in drag)
+CHECK all(abs(d["airA"] - 274.8) < 0.05 for d in drag)
+CHECK all(0.0 <= d["mach"] < 0.6 for d in drag)
+CHECK max(d["mach"] for d in drag) > 0.2
 # MUTATION: airDensity() back to `alt <= 0.0 -> 0.0` (the #245 law, with this fix's
 # vehicle.cpp early-out already gone, so drag.h is the whole question). Six checks go
 # red together -- rho, max |F|, sum |F|, |L|, thrust, and the depth, because with no
@@ -64,3 +81,10 @@ CHECK max(r["thrust"] for r in drainlog) > 5000.0
 # green: the datum, the biome and the pad's altitude never moved, only the air's answer
 # did. That is the shape this case is built to have.
 # tmp/aero/n245b_e2e_mut.log (mutant binary tmp/aero/osp_mut1).
+# That mutant predates the five A3 checks, so they are not in that count. Read off the
+# code rather than re-run: all five go red too, but not because the law moved the air
+# numbers -- with rho answering 0 the line takes its DASHED branch (the gate is
+# lastDragRho > 0), so the four keys are simply absent from the row. T/p/a themselves
+# are set above the density floor and would print unchanged if the row printed them at
+# all; max Mach goes red for the same indirect reason thrust does, because a hull whose
+# fan never lights never leaves the pad.

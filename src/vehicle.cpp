@@ -2463,6 +2463,10 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastAeroTorque = glm::dvec3(0.0);
     lastDragAlt = 0.0;
     lastDragRho = 0.0;
+    lastAirT = 0.0;
+    lastAirP = 0.0;
+    lastAirA = 0.0;
+    lastAirV = 0.0;
     lastDragAlpha = 0.0;
     lastDragBeta = 0.0;
     lastDragAlphaValid = false;
@@ -2513,12 +2517,28 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     const DragAtmosphere da = dragAtm(atm, m_parent->g);
     const double rho = airDensity(da, alt);
     lastDragRho = rho;
-    // Above the atmosphere top rho is 0; below kRhoFloor the force is unmeasurable.
-    if(rho < kRhoFloor) { return lastAeroForce; }
-
-    // GetVel() minus the air's co-rotation when outside the body's rot frame (#97).
+    /* The air's own numbers ride the same seam (#552 A2/A3) so the log and the
+       atlas cannot disagree about what this body's scale height means. Set BEFORE
+       the density floor: thin air is still air -- it just bills nothing -- and a
+       readout that vanished at kRhoFloor would be a cliff a player cannot see.
+       airPressure re-walks the exponential; it is one exp beside a pass that
+       silhouettes the whole hull, so it is not a hot-path question. */
+    lastAirT = airTemperature(da);
+    lastAirP = airPressure(da, alt);
+    lastAirA = airSoundSpeed(da);
+    /* GetVel() minus the air's co-rotation when outside the body's rot frame (#97).
+       Read before the density floor, not after it: lastAirV is what the Mach readout
+       divides, and a hull at 120 km moving 800 m/s in air too thin to bill still has a
+       Mach number -- zeroing it here would print 0.000 as a measurement. */
     const glm::dvec3 vrel = airRelativeVel(com);
     const double v2 = glm::length2(vrel);
+    lastAirV = std::sqrt(v2);  // the speed every q= below is billed from
+    // Above the atmosphere top rho is 0; below kRhoFloor the force is unmeasurable.
+    if(rho < kRhoFloor) { return lastAeroForce; }
+    /* rho > 0 means the loader's air checks already passed (molar_mass, gamma and
+       g > 0, system.cpp), so the sound speed is real. The per-surface Mach divides
+       by it, so say the invariant here rather than defending the division. */
+    assert(lastAirA > 0.0);
     if(v2 <= 0.0) { return lastAeroForce; }  // at rest in air
 
     // #556: the lifting systems this pass bills against. The call is fingerprint-
@@ -3035,11 +3055,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
            SURFACE window and the [surface] log. Recorded after the valid gate (an
            edge-on or axis-less mount quotes nothing rather than a stale angle) and
            before the zero-force test below -- a surface at alpha 0 is measured, it
-           just is not pushing. Free: both numbers are already in hand here. */
+           just is not pushing. Free: the angle and q are already in hand here, and
+           Mach is one sqrt on a square the flow already computed. */
         p->aeroAlphaDeg = (float)surfaceAlphaDegForReadout(
             pa, surfaceReadoutFrame(p->localRot[1], shipLocalUp, shipLocalRight),
             up, right);
         p->aeroQ = (float)qp;
+        p->aeroMach = (float)(std::sqrt(lf.vp2) / lastAirA);
         p->aeroValid = true;
         /* #454: this surface's contribution to where an alpha change puts the change
            in lift -- see drag.h::liftSlopePerQ for why the derivative is taken by
@@ -3149,6 +3171,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                                                  shipLocalRight),
                         up, right);
                     p->aeroQ = (float)lf0.q;
+                    p->aeroMach = (float)(std::sqrt(lf0.vp2) / lastAirA);
                     p->aeroValid = pa0.valid;
                 }
                 ++ctrlIndex;
@@ -3191,6 +3214,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                 pa, surfaceReadoutFrame(p->localRot[1], shipLocalUp, shipLocalRight),
                 up, right);
             p->aeroQ = (float)qp;
+            p->aeroMach = (float)(std::sqrt(lf.vp2) / lastAirA);
             p->aeroValid = pa.valid;
             const glm::dvec3 forceDir = pa.liftDir;   // zero when the frame is unusable
             const glm::dvec3 about =

@@ -86,7 +86,7 @@ def terminal_velocity(rows):
     """Free-fall terminal speed = max airspeed after the apex."""
     if not rows:
         return 0.0
-    apex_t = max(rows, key=lambda d: d["alt"])["t"]
+    apex_t = max(rows, key=lambda d: d["alt_asl"])["t"]
     descent = [d for d in rows if d["t"] > apex_t]
     return max((d["v"] for d in descent), default=0.0)
 
@@ -99,7 +99,7 @@ def boost_budget(args, dry, fueled, maxr, ve, flow):
                   args.cd, autopilot="radial-out")
     if not rows:
         return None
-    apex = max(rows, key=lambda d: d["alt"])
+    apex = max(rows, key=lambda d: d["alt_asl"])
     apex_t = apex["t"]
     t_burn = (fueled - dry) / flow if flow > 0 else 0.0
     g_loss = KRB_G * t_burn
@@ -114,7 +114,7 @@ def boost_budget(args, dry, fueled, maxr, ve, flow):
         drag_dv += climb[i]["F"] * dt / m_avg
     dv_total = ve * math.log(fueled / dry) if dry > 0 else 0.0
     return {
-        "apex_alt": apex["alt"], "apex_speed": apex["v"],
+        "apex_alt": apex["alt_asl"], "apex_speed": apex["v"],
         "dv_total": dv_total, "t_burn": t_burn,
         "g_loss": g_loss, "drag_dv": drag_dv,
     }
@@ -137,7 +137,7 @@ def report(args, dry, fueled, maxr, ve, flow):
     vt = terminal_velocity(fall)
     cd_broad = cd
     if fall:
-        apex_t = max(fall, key=lambda d: d["alt"])["t"]
+        apex_t = max(fall, key=lambda d: d["alt_asl"])["t"]
         desc = [d for d in fall if d["t"] > apex_t]
         broad_row = max((d for d in desc if d.get("a")), key=lambda d: d["a"],
                         default=None)

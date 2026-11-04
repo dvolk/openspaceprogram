@@ -28,7 +28,7 @@ CHECK all(d["aoa"] > 4.5 for d in drag if d["aoa"] is not None)
 # through the stall, so the floor sits 0.4 m/s under this run's slowest row and above
 # the stall speed rather than a comfortable 22.
 CHECK min(d["v"] for d in drag) > 23.0
-CHECK max(d["alt"] for d in drag) - min(d["alt"] for d in drag) < 450.0
+CHECK max(d["alt_asl"] for d in drag) - min(d["alt_asl"] for d in drag) < 450.0
 # 12 deg of standing deflection, and the bill follows the command: the rows that point
 # into the flow bill 0.32-0.47 m2 of induced, and the single row in the rudder kick
 # (t=26 s, Beta -8.4) bills 0.852 -- a steered surface pays induced drag at its own

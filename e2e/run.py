@@ -238,7 +238,7 @@ MASS_RE = re.compile(
     r"mass=([-\d.]+)\s*kg(?:\s+hullmass=([-\d.]+)\s*kg)?\s+railed=(\d)"
 )
 DRAG_RE = re.compile(
-    r"\[drag\]\s+t=([\d.]+)s\s+alt=([-\d.]+) m\s+rho=([-\d.e+]+) kg/m3\s+"
+    r"\[drag\]\s+t=([\d.]+)s\s+alt_asl=([-\d.]+) m\s+rho=([-\d.e+]+) kg/m3\s+"
     r"\|v\|=([-\d.]+) m/s\s+\|F\|=([-\d.]+) N"
     r"(?:\s+\|L\|=([-\d.]+) N)?(?:\s+L_up=([-\d.]+) N)?(?:\s+Up=([-\d.]+))?"
     r"(?:\s+\|tau\|=([-\d.]+) Nm)?"
@@ -260,6 +260,19 @@ DRAG_RE = re.compile(
     # #455: the lever of the COMBINED form drag (hull + surfaces), signed, printed
     # numbered or dashed -- one group, not two, because it prints as one reading.
     r"(?:\s+(?:FormCp=([-\d.e+]+) m|FormCp=-))?"
+    # #552 A3: the AIR at the altitude this line names -- the isothermal read of the
+    # body's authored scale height (src/drag.h through vehicle.h:dragAtm), plus the
+    # Mach number of the air-relative flow. One group, not four: the game prints all
+    # four together or dashes all four (no air at all). Plain units, one scale per
+    # field -- K, Pa, m/s, dimensionless -- because the window's "188.0 K (-85.2 C)"
+    # gloss is for a human and a parsed field is not.
+    # These four need a DIGIT-anchored pattern, unlike the [-\d.]+ used above: those
+    # fields carry a trailing unit (" deg", " m"), so a dashed "AoA=-" cannot match the
+    # numeric branch by accident. These have no unit, and a bare "-" does match
+    # [-\d.]+ -- so the dashed row parsed as T=- and float() threw.
+    r"(?:\s+(?:T=(-?\d+(?:\.\d+)?) p=(-?\d+(?:\.\d+)?) a=(-?\d+(?:\.\d+)?)"
+    r" Mach=(-?\d+(?:\.\d+)?)"
+    r"|T=- p=- a=- Mach=-))?"
 )
 # --drag-log's control surfaces (src/tick.cpp): one [ctrl] line under each [drag]
 # line, one "name[index](axis)=±deg" term per surface the aero pass scored. It
@@ -271,10 +284,15 @@ DRAG_RE = re.compile(
 # (per-part incidence) and #454 (static margin).
 CTRL_ITEM_RE = re.compile(r"([^\s\[]+)\[(\d+)\]\((\w+)\)=([-+]\d+\.\d+)deg")
 # #485's [surface] row: one group per lifting or steering part --
-# "<label> a=<deg> q=<Pa>". The angle is signed into SHIP axes (up for a wing or
-# tailplane, right for a fin), NOT each mount's own convention, so a mirrored twin
-# pair reads alike and a pair that actually differs is the signal, not the noise.
-SURFACE_ITEM_RE = re.compile(r"(\S+) a=([-+]\d+(?:\.\d+)?) q=(\d+(?:\.\d+)?)")
+# "<label> a=<deg> q=<Pa>[ mach=<n>]". The angle is signed into SHIP axes (up for a
+# wing or tailplane, right for a fin), NOT each mount's own convention, so a mirrored
+# twin pair reads alike and a pair that actually differs is the signal, not the noise.
+SURFACE_ITEM_RE = re.compile(
+    r"(\S+) a=([-+]\d+(?:\.\d+)?) q=(\d+(?:\.\d+)?)"
+    # #552 A3: this surface's OWN Mach number (its flow speed over the sound speed
+    # its air implies). Optional so a run captured before the field still parses.
+    r"(?: mach=(\d+(?:\.\d+)?))?"
+)
 SHAKE_RE = re.compile(
     r"\[shakelog\]\s+t=([\d.]+)s\s+a=([-\d.]+) m/s2\s+"
     r"amp=([-\d.]+) m\s+off=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]"
@@ -956,8 +974,11 @@ def parse_surface(out):
     t = None
     for line in out.splitlines():
         if line.startswith("[surface]"):
-            for name, a, q in SURFACE_ITEM_RE.findall(line):
-                rows.append({"t": t, "name": name, "a": float(a), "q": float(q)})
+            for name, a, q, mach in SURFACE_ITEM_RE.findall(line):
+                # findall hands back "" (not None) for a group that did not
+                # participate, so the optional mach= tests truthy.
+                rows.append({"t": t, "name": name, "a": float(a), "q": float(q),
+                             "mach": float(mach) if mach else None})
         elif line.startswith("[drag]"):
             m = DRAG_RE.match(line)
             if m:
@@ -977,9 +998,13 @@ def parse_drag(out):
     rows = []
     for m in DRAG_RE.finditer(out):
         (t, alt, rho, v, F, L, lup, up, tau, cd, a, aoa, chute, ind,
-         beta, cpl, cla, sm, profile, formcp) = m.groups()
+         beta, cpl, cla, sm, profile, formcp, airT, airP, airA, mach) = m.groups()
         row = {
-            "t": float(t), "alt": float(alt), "rho": float(rho),
+            # alt_asl: metres above the body's sea-level DATUM, which is NOT the
+            # ground and goes negative exactly where rho peaks (#245). Renamed from
+            # bare "alt" in #552 A3 so it reads the way [surfinfo] and [orbinfo]
+            # already name their datums.
+            "t": float(t), "alt_asl": float(alt), "rho": float(rho),
             "v": float(v), "F": float(F), "cd": float(cd),
         }
         if L is not None:
@@ -1022,6 +1047,17 @@ def parse_drag(out):
         # + = ahead (diverging). None when the line dashed it for want of a flow.
         if formcp is not None:
             row["formcp"] = float(formcp)
+        # #552 A3: the air this row stood in. airT [K] / airP [Pa] / airA [m/s] are
+        # what the body's authored scale height IMPLIES at alt_asl -- the same seam
+        # the atlas dossier reads -- and mach is the air-relative speed over airA,
+        # NOT row["v"] over airA: on a spinning body the air moves (#97). All four
+        # are absent when the line dashed them, which is how a case tells "no air"
+        # from "air this thin".
+        if airT is not None:
+            row["airT"] = float(airT)
+            row["airP"] = float(airP)
+            row["airA"] = float(airA)
+            row["mach"] = float(mach)
         rows.append(row)
     return rows
 

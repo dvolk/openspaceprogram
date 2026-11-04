@@ -545,10 +545,14 @@ void tick(Game &g) {
             }
         }
 
-        /* --drag-log: the active ship's aero (last substep). alt= is above the
-           sea-level DATUM, so it reads NEGATIVE exactly where rho is at its
-           maximum (#245); [surfinfo]'s alt_agl/alt_asl pair is the readout that
-           says where the hull actually is. rho>0 with |F| 0 means the pass found
+        /* --drag-log: the active ship's aero (last substep). alt_asl= is above the
+           sea-level DATUM, so it reads NEGATIVE exactly where rho is at its maximum
+           (#245); it is named like [surfinfo]'s alt_asl because that pair -- not this
+           line -- is the readout that says where the hull actually is (alt_agl beside
+           it). Every other log names its datum (alt_agl / alt_asl); this one used to
+           say bare `alt=`, and once the line carries the air at that height -- T=, p=,
+           a=, Mach= at the end -- a bare altitude is exactly the thing a reader will
+           mix up (#552 A3). rho>0 with |F| 0 means the pass found
            nothing to bill: the density floor (kRhoFloor, i.e. above the
            atmosphere's top) or a hull sitting still in its own air -- the A=
            figure then reads 0 because no flow direction was usable, while Cd
@@ -556,7 +560,14 @@ void tick(Game &g) {
            AoA prints '-' with no value when there is no usable flow
            (kAoAFlowFloor), like [flight] and [surfinfo] do: a parked ship's
            ~1e-4 m/s jitter reads as a full +/-90 deg swing, and a number in a
-           log gets treated as a measurement. */
+           log gets treated as a measurement.
+           Chute= and Induced= are the two fields on this line NOT dashed behind
+           lastDragAlphaValid, deliberately (#560). Both are a CdA summed off FORCES,
+           never read off a flow direction, so the jitter that makes AoA=/Profile=
+           junk cannot put a number in them: a parked glider on a Duna pad reads
+           Induced=0.000 because with no lift there is nothing to bill, and Chute= is
+           the area of a canopy that IS deployed whether or not the air is moving.
+           Gating them would hide a fact to match a flag. */
         if(g.ship && g.args.drag_log) {
             const Uint32 now_ms = g.logClockMs();
             if(g.logDue(kGateDrag, now_ms, g.orbit_log_interval_ms)) {
@@ -568,7 +579,7 @@ void tick(Game &g) {
                 } else {
                     snprintf(aoa_txt, sizeof aoa_txt, "AoA=-");
                 }
-                printf("[drag] t=%.1fs alt=%.1f m rho=%.5g kg/m3 "
+                printf("[drag] t=%.1fs alt_asl=%.1f m rho=%.5g kg/m3 "
                        "|v|=%.2f m/s |F|=%.2f N |L|=%.2f N L_up=%.2f N Up=%.2f "
                        "|tau|=%.2f Nm "
                        "Cd=%.3f A=%.2f m2 %s Chute=%.2f m2 Induced=%.3f m2",
@@ -664,6 +675,27 @@ void tick(Game &g) {
                 } else {
                     printf(" FormCp=-");
                 }
+                /* THE AIR ITSELF (#552 A2/A3): what this body's authored scale
+                   height IMPLIES at the altitude on this line -- the same seam the
+                   atlas dossier reads (vehicle.h:dragAtm), so the log and the
+                   dossier cannot mean different airs. Units K / Pa / m/s, one number
+                   per field: the window's "188.0 K (-85.2 C)" gloss is for the human,
+                   and a parsed field takes one scale. Kelvin because that is the
+                   scale T = g H M / R is linear in.
+                   Mach is over the AIR-relative speed at the COM -- NOT the |v|= this
+                   line prints. On a spinning body the air itself moves (#97), so the
+                   two differ, and the flow regime the ratio describes is the one the
+                   air sees. Dashed with no air at all (an airless body, or above the
+                   atmosphere's top), which is exactly where the pass refuses to bill.
+                   Appended last, like every other field here, so the existing
+                   parsers keep working. */
+                if(g.ship->lastDragRho > 0.0) {
+                    printf(" T=%.1f p=%.0f a=%.1f Mach=%.3f",
+                           g.ship->lastAirT, g.ship->lastAirP, g.ship->lastAirA,
+                           g.ship->lastAirV / g.ship->lastAirA);
+                } else {
+                    printf(" T=- p=- a=- Mach=-");
+                }
                 printf("\n");
                 // Control surfaces' applied deflections.
                 if(!g.ship->lastControlDeflections.empty()) {
@@ -683,6 +715,12 @@ void tick(Game &g) {
                    come from, and until now the only way to see them was a temporary
                    probe in the aero pass. A surface the pass found unusable (no flow,
                    an edge-on mount) is skipped rather than quoted at 0.
+                   mach= (#552 A3) is that surface's OWN flow speed over the sound
+                   speed its air implies -- the ship-level Mach on the [drag] line is
+                   the COM's, and #483's whole point is that a rotating airframe gives
+                   each surface a different flow. It is what #543's flow-regime law
+                   will read, so the number in the log and the number in the law are
+                   one number.
                    Labelled by its def id when it has one (wing_l, tail_r) because a
                    twin pair is exactly the case this row exists to tell apart. */
                 {
@@ -693,9 +731,9 @@ void tick(Game &g) {
                             continue;
                         }
                         if(!any) { printf("[surface]"); any = true; }
-                        printf(" %s a=%+.1f q=%.0f",
+                        printf(" %s a=%+.1f q=%.0f mach=%.3f",
                                p->id.empty() ? p->def->name.c_str() : p->id.c_str(),
-                               p->aeroAlphaDeg, p->aeroQ);
+                               p->aeroAlphaDeg, p->aeroQ, p->aeroMach);
                     }
                     if(any) { printf("\n"); }
                 }
