@@ -9,25 +9,26 @@
 # The skiff starts in the `flying-slow` bed, which spawns at 0.1 of the body's air top at
 # 0.08 of the air-relative circular speed. On Earth that is 8.5 km and ~630 m/s, so the
 # hull enters supersonic, bleeds speed in the upper troposphere, trades it for ~1000 m of
-# height and comes back down through it -- a 980 m tour through the level that lapses at
-# -6.5 K/km, which is exactly the thing an exponential cannot do.
+# height and comes back down through it -- a 994 m tour (8567-9561 m over the run) through
+# the level that lapses at -6.5 K/km, which is exactly the thing an exponential cannot do.
 #
 # Since #543 A5 this is also the only case in the battery that carries a hull THROUGH the
 # sound bar with lifting surfaces on it, so the airframe's own slope runs the whole law on
-# the printed CLa column. Over five runs of one binary that column spans 85.11-87.15
-# m2/rad on the supersonic entry rows and 251.21-252.22 near the band's low edge, against
-# the 168.0 its parts author (454-static-margin) -- 0.51x and 1.50x of the authored number.
-# The check is not a band around those two numbers: it recomputes the law from each row's
-# OWN printed Mach and compares it against the slope that row prints, which makes it a
-# wiring pin -- a call site that forgot to correct, or corrected twice, breaks it at the
-# rows where the correction is big. Five runs agree with the arithmetic to 0.19% (the
-# residue is printed-Mach rounding and the per-surface cos alpha dip). On the pre-A5
-# binary the same comparison misses by 91%, and the column reads 167.84-167.85 at every
-# row of the same arc, which is what the ticket meant by "one slope for every Mach".
+# the printed CLa column. Over seven runs of one binary (84 rows) that column bottoms at
+# 85.11-87.15 m2/rad on the supersonic entry rows and tops at 251.21-252.42 near the
+# band's low edge, against the 168.0 its parts author (454-static-margin) -- 0.51x and
+# 1.50x of the authored number. The check is not a band around those two numbers: it
+# recomputes the law from each row's OWN printed Mach and compares it against the slope
+# that row prints, which makes it a wiring pin -- a call site that forgot to correct, or
+# corrected twice, breaks it at the rows where the correction is big. All 84 rows agree
+# with the arithmetic to 0.19% (the residue is printed-Mach rounding and the per-surface
+# cos alpha dip). On the pre-A5 binary the same comparison misses by 91%, and the column
+# reads 167.84-167.85 at every row of the same arc, which is what the ticket meant by "one
+# slope for every Mach".
 #
-# Repeatable, to within the supersonic entry: five runs of one binary print 12 rows whose
+# Repeatable, to within the supersonic entry: those seven runs print 12 rows each whose
 # air columns agree to 0.1 K and 0.1 kPa, and whose hull columns agree to ~13 m of
-# altitude and ~8 m/s of entry speed (8566.8-8579.5 m at t=0.8s, 496.7-504.2 m/s). A
+# altitude and ~8 m/s of entry speed (8566.8-8579.5 m at t=0.7-0.8s, 496.7-504.2 m/s). A
 # flying spawn never touches the ground, so #475's collider-set fork does not apply here;
 # the spread is the arc itself, and every band below has more room than it. The bands are
 # law bands, not trajectory goldens: the air facts hold whatever the hull does.
@@ -46,7 +47,7 @@ CHECK all("airT" in d and "airP" in d and "airA" in d for d in drag)
 # THE PROFILE, typed from what Earth's file says (level 0: 288.15 K at the datum, lapse
 # -0.0065 K/m to 11 km) and not from the law. Every row of this run sits between 8.58 and
 # 9.56 km, inside that level. An exponential body reads ONE temperature for its whole sky:
-# Earth's old H 8500 implied 290.8 K, which is 58-65 K off the 226.0-232.4 K measured
+# Earth's old H 8500 implied 290.8 K, which is 58-65 K off the 226.0-232.5 K measured
 # here -- so this is the check the pre-A4 body fails by arithmetic, not by tuning.
 CHECK all(abs(d["airT"] - (288.15 - 0.0065 * d["alt_asl"])) < 0.2 for d in drag)
 # ONE COLUMN OF AIR, not three numbers that agree by luck: rho = p / (Rs T), with
@@ -54,29 +55,30 @@ CHECK all(abs(d["airT"] - (288.15 - 0.0065 * d["alt_asl"])) < 0.2 for d in drag)
 # This is the invariant base_p is derived rather than authored to protect (atmo.h): a
 # level whose base_p came from another body, or a T seam, breaks it at a boundary while
 # each column still looks plausible alone. The band is 2e-4 because these are the PRINTED
-# columns, rounded to 4-6 significant digits -- the worst residual over the 36 rows of the
-# three runs above is 1.1e-4, and the log's own rounding is what puts it there, not the law.
+# columns, rounded to 4-6 significant digits -- the worst residual over the 84 rows of
+# the seven runs above is 1.1e-4, and the log's own rounding is what puts it there, not
+# the law.
 CHECK all(abs(d["rho"] - d["airP"] / (287.062 * d["airT"])) < 2e-4 for d in drag)
 # HYDROSTATIC, and not because anything authored p: any row lower in the sky has a higher
-# pressure than any row higher up. Over this 980 m the column reads 28.2 - 32.7 kPa.
+# pressure than any row higher up. Over this 994 m the column reads 28.2 - 32.7 kPa.
 CHECK all(a["airP"] > b["airP"] for a in drag for b in drag if a["alt_asl"] < b["alt_asl"])
 # THE SOUND BAR MOVES -- the whole reason airSoundSpeed() takes an alt, and the number
-# #543 divides airspeed by. Measured 301.4 - 305.6 m/s across the run; an exponential
+# #543 divides airspeed by. Measured 301.4 - 305.7 m/s across the runs; an exponential
 # prints one constant (Earth's old H 8500: 341.8 m/s everywhere), so its spread is 0.0.
 CHECK max(d["airA"] for d in drag) - min(d["airA"] for d in drag) > 2.0
 # ... and it moves the way a temperature profile says, anchored on the 340.3 m/s the
 # dossier pins at Earth's datum: a goes as sqrt(T) for one gas.
 CHECK all(abs(d["airA"] / 340.3 - (d["airT"] / 288.15) ** 0.5) < 0.01 for d in drag)
-# IT BILLS: 174.4 kN of form drag on the entry row (t=0.8 s: 496.7 m/s at 8579 m, Mach
-# 1.627) against the 568.65 kg the [mass] line prints for this hull -- 307 m/s2, a 31 g
-# start, which is what the flying-slow bed is known to do (#451). The slowest row of the
-# arc still bills 31.4 kN. The floor sits far under the peak so
+# IT BILLS: 174.4-176.4 kN of form drag on the entry row (t=0.7-0.8 s: 496.7-504.2 m/s at
+# 8567-8580 m, Mach 1.63-1.65) against the 568.65 kg the [mass] line prints for this hull
+# -- 307-310 m/s2, a 31 g start, which is what the flying-slow bed is known to do (#451).
+# The slowest row of the arc still bills 31.0-32.2 kN. The floor sits far under the peak so
 # a lighter entry still proves the air is being paid for rather than merely printed.
 CHECK max(d["F"] for d in drag) > 100000.0
 CHECK all(d["F"] > 10000.0 for d in drag)
-# ONE HULL, THROUGH MACH 1: entry Mach 1.63 easing to 0.49. At Mach 1.6 Earth's air reads
-# 232.4 K / 32.7 kPa / 305.6 m/s, so the sound bar this hull crosses is a real altitude's
-# sound bar, and since #543 A5 the aero law notices it.
+# ONE HULL, THROUGH MACH 1: entry Mach 1.63-1.65 easing to 0.49. At Mach 1.65 Earth's air
+# reads 232.5 K / 32.7 kPa / 305.7 m/s, so the sound bar this hull crosses is a real
+# altitude's sound bar, and since #543 A5 the aero law notices it.
 CHECK max(d["mach"] for d in drag) > 1.3
 CHECK min(d["mach"] for d in drag) < 0.7
 # THE PRINTED SLOPE IS THE LAW AT THE PRINTED MACH, row by row. Above Mach 1.25
@@ -86,9 +88,9 @@ CHECK min(d["mach"] for d in drag) < 0.7
 # 0.75 it is Prandtl-Glauert: the M 0.491 row prints 192.69 against 168.0/sqrt(1-0.491^2)
 # = 192.8. The M 0.757 row sits just INSIDE the band, where neither textbook formula
 # answers -- the join gives 1.503 x 168 = 252.5 and the row prints 252.22, whereas raw PG
-# would have said 1.531 x 168 = 257.2. Five runs of one binary agree with the arithmetic
-# to 0.19% at the worst row (the residue is printed-Mach rounding: the join moves this
-# hull's number by 0.21 m2/rad per 0.001 Mach at the 0.75 edge).
+# would have said 1.531 x 168 = 257.2. All 84 rows of the seven runs agree with the
+# arithmetic to 0.19% at the worst one (the residue is printed-Mach rounding: the join
+# moves this hull's number by 0.21 m2/rad per 0.001 Mach at the 0.75 edge).
 # On the pre-A5 binary this check is red at every row of the arc: that build printed
 # 167.84-167.85 m2/rad from Mach 0.505 through Mach 1.618, because the slope was one
 # authored number whatever the air was doing.
@@ -104,15 +106,14 @@ CHECK max(d["cla"] for d in drag if d.get("cla") is not None) > 235.0
 CHECK all(0.40 < d["rho"] < 0.52 for d in drag)
 CHECK all(28000.0 < d["airP"] < 34000.0 for d in drag)
 # MUTATION, measured rather than asserted: Earth back to its pre-A4 def -- same file,
-# layers and height dropped, scale_height 8500 put back (tmp/aero/631-exp-earth.json, same
-# binary, same ARGS, re-run after #543 A5). FIVE of the fifteen checks go red: the lapse
-# law (T is one constant 290.8 K against the 226.0-232.4 K this run needs), the sound-bar
-# spread (a is one constant 341.8 m/s, so max-min is 0.0 against a 2.0 floor), both world
-# bands (rho 0.399-0.446, p 33.3-37.3 kPa), and the supersonic slope floor -- that last
-# one for a trajectory reason rather than a law reason: the thicker exponential air bleeds
-# the entry to Mach 1.48, where the law still answers 102.5 m2/rad, 2.5 over the floor.
-# TEN stay green, and that is mostly the right split: the gas-law tie, the hydrostatic
-# ordering, the sqrt(T) shape of a anchored on the datum, the force floors, the Mach range
-# and the subsonic slope ceiling (248.8, green) are profile-SHAPE independent -- an
-# exponential obeys them too. What the layer table buys is the altitude dependence, and
-# that is what reddens.
+# layers and height dropped, scale_height 8500 put back (tmp/aero/631-exp-earth.json; the
+# driver is tmp/aero/mut_eval_631.py, which runs the same ARGS against that system and
+# evaluates THIS file's CHECK lines, so the two cannot drift). FOUR of the fifteen checks
+# go red: the lapse law (T is one constant 290.8 K against the 226.0-232.5 K this run
+# needs), the sound-bar spread (a is one constant 341.8 m/s, so max-min is 0.0 against a
+# 2.0 floor) and both world bands (rho 0.399-0.446, p 33.3-37.2 kPa). ELEVEN stay green,
+# and that is the right split: the gas-law tie, the hydrostatic ordering, the sqrt(T)
+# shape of a anchored on the datum, the force floors, the Mach range and both slope pins
+# (the entry row bleeds to Mach 1.475 and prints 103.2, which the law predicts to 0.2%)
+# are profile-SHAPE independent -- an exponential obeys them too. What the layer table
+# buys is the altitude dependence, and that is exactly what reddens.
