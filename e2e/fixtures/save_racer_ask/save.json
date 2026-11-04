@@ -1,0 +1,27 @@
+{
+  "active_ship": "v0",
+  "ascent_ask": {
+    "apo_asl": 150000.0,
+    "ask_inc": true,
+    "inc_deg": 28.0,
+    "peri_asl": 80000.0
+  },
+  "format": 4,
+  "parts": "res/data/parts.json",
+  "roster": [
+    {
+      "engineering": 3,
+      "id": 1,
+      "name": "kerbal",
+      "piloting": 3,
+      "science": 3
+    }
+  ],
+  "saved_at": "2026-09-20T01:25:18",
+  "ships": [
+    "v0"
+  ],
+  "system": "res/systems/ksp_system.json",
+  "time": 3.0800000000000023,
+  "time_accel": 1
+}

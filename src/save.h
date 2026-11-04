@@ -29,6 +29,7 @@
 
 #include "crew.h"      // NumSkills (SaveKerbal mirrors a roster entry, see below)
 #include "flightlog.h"   // FlightLog / FlightEvent (pure containers, no game types)
+#include "guidance.h"    // AscentAsk (the Guidance window's fields, #612 stage 2)
 #include "science.h"     // Experiment (science data on parts + the recover score)
 
 struct Game;   // save_game / load_game take one; keeps game.h out of this header
@@ -278,6 +279,12 @@ struct SaveMeta {
        that predates science). */
     int science_score = 0;
     std::vector<Experiment> recovered;
+    /* The Guidance window's ask (#612 stage 2): the fields the player typed for the
+       NEXT mission, not a mission in flight. Game::clearEphemeralState already keeps
+       these across a world change (game.cpp) because they are the player's, not the
+       world's -- this is the same argument across a session. What is NOT saved is an
+       ARMED law: the phase machine, the hull it holds and its latches are stage 4. */
+    AscentAsk ascent_ask;
     /* The crew roster as the save knew it (empty = a save predating the
        roster, which loads the --kerbals file instead). */
     std::vector<SaveKerbal> roster;
@@ -846,6 +853,17 @@ inline nlohmann::json saveMetaToJson(const SaveMeta &m) {
     j["exhaust_scale"] = m.exhaust_scale;
     if(m.science_score != 0) { j["science_score"] = m.science_score; }
     if(!m.recovered.empty()) { j["recovered"] = recoveredListToJson(m.recovered); }
+    /* Only when the player has touched it: an absent key means the default ask
+       (100 km / 100 km / no plane), which is what a save from a game that never
+       opened the Guidance window should load as. ADDITIVE key, so no format bump --
+       see the note above saveMetaToJson. ask_inc gets its own key rather than a
+       sentinel in inc_deg: no inclination value is free to mean "none" (#610). */
+    if(!(m.ascent_ask == AscentAsk())) {
+        j["ascent_ask"] = {{"peri_asl", m.ascent_ask.peri_asl},
+                           {"apo_asl",  m.ascent_ask.apo_asl},
+                           {"ask_inc",  m.ascent_ask.ask_inc},
+                           {"inc_deg",  m.ascent_ask.inc_deg}};
+    }
     if(!m.roster.empty()) {
         nlohmann::json r = nlohmann::json::array();
         for(auto &&k : m.roster) { r.push_back(saveKerbalToJson(k)); }
@@ -919,6 +937,30 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     if(j.contains("science_score") && j["science_score"].is_number()) {
         m.science_score = j["science_score"].get<int>();
         if(m.science_score < 0) { m.science_score = 0; }   // a negative score is nonsense
+    }
+    if(j.contains("ascent_ask") && j["ascent_ask"].is_object()) {
+        /* Permissive like every other additive read: a wrong type keeps the default
+           rather than refusing the load. The apsides are NOT range-checked here -- an
+           ask is inert until Go arms it, and the arm-time guards (gameui.cpp) already
+           refuse periapsis <= 0, apoapsis below periapsis and an ask past the SoI,
+           each written so a NaN fails closed. The inclination IS clamped, because the
+           window clamps it every frame and --ascent range-checks it: a hand-edited
+           500 deg would otherwise reach the law through a player who never opens the
+           window (guidance.h: the ask's inc is radians(inc_deg) straight through). */
+        const nlohmann::json &a = j["ascent_ask"];
+        if(a.contains("peri_asl") && a["peri_asl"].is_number()) {
+            m.ascent_ask.peri_asl = a["peri_asl"].get<double>();
+        }
+        if(a.contains("apo_asl") && a["apo_asl"].is_number()) {
+            m.ascent_ask.apo_asl = a["apo_asl"].get<double>();
+        }
+        if(a.contains("ask_inc") && a["ask_inc"].is_boolean()) {
+            m.ascent_ask.ask_inc = a["ask_inc"].get<bool>();
+        }
+        if(a.contains("inc_deg") && a["inc_deg"].is_number()) {
+            m.ascent_ask.inc_deg = a["inc_deg"].get<double>();
+        }
+        m.ascent_ask.inc_deg = glm::clamp(m.ascent_ask.inc_deg, 0.0, 180.0);
     }
     if(j.contains("recovered")) {
         m.recovered = recoveredListFromJson(j["recovered"]);

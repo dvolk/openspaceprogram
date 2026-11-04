@@ -56,6 +56,11 @@ struct AscentAsk {
     bool ask_inc = false;
     double inc_deg = 0.0;
 
+    /* "Did the player touch these fields at all?" is then one comparison: the save
+       writes the ask only when it differs from the default (#612 stage 2), and a
+       test can ask the same question without spelling four fields. */
+    bool operator==(const AscentAsk &) const = default;
+
     AscentTarget target() const {
         AscentTarget t;
         t.peri_asl = peri_asl;

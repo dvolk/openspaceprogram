@@ -1,0 +1,35 @@
+# What the Guidance window's fields do across a session (#612 stage 2): they are
+# the player's, not the world's, so a save carries them and a load hands them
+# back. What still does NOT travel is an ARMED mission law -- the phase machine,
+# the hull it holds and its SlewFree latch stay with the run (stage 4; see the
+# restoreSlewRequest note in save.cpp).
+#
+# The fixture is save_racer plus one ascent_ask key, reached with
+#   cp -r e2e/fixtures/save_racer e2e/fixtures/save_racer_ask
+# and the four fields added to save.json -- what a game whose player typed
+# 80 x 150 km would have written. The run loads that slot and writes it back out
+# through the Save/Load sheet, so the checked bytes are the game's own, not the
+# fixture's: the key reappears only if the load READ it into Game::ascent_ask
+# AND the save WROTE it back, since the writer omits a default ask entirely.
+# Dropping either save.cpp line -- the capture beside meta.recovered or the
+# apply beside science.setFrom -- leaves out/save.json without the key.
+NAME ask-survives-a-round-trip
+CLAIM A saved Guidance ask loads back into the game and is written out again.
+KIND invariant
+SEED e2e/fixtures/save_racer_ask saves/20260101_000000-gameA/in
+ARGS --timeout 6 --time-accel 1
+ARGS --load in
+ARGS --sim-press 1200,0,ESCAPE
+ARGS --ui-click 1500,"Game Menu/Save/Load"
+ARGS --ui-type 2100,"Save/Load/##newslot",out
+ARGS --ui-click 2700,"Save/Load/Save##saveload"
+EXPECT Load: using saves slot
+EXPECT saves/20260101_000000-gameA/in (active: racer)
+EXPECT Saved 1 ship(s) to
+FILE saves/20260101_000000-gameA/out/save.json '"ascent_ask"' '"peri_asl": 80000.0' '"apo_asl": 150000.0' '"ask_inc": true' '"inc_deg": 28.0'
+FORBID Save failed
+FORBID Load failed
+FORBID [load] refused
+FORBID FAILED
+FORBID error:
+LIMIT 60

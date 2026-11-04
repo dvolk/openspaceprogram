@@ -762,6 +762,8 @@ int main() {
     meta.active_ship = "v0";   // a SAVE SLUG, not a display name (#266)
     meta.exhaust_scale = 2.5f;
     meta.science_score = 7;
+    // A touched Guidance ask: non-default in every field, so it must be written.
+    meta.ascent_ask = AscentAsk{ 80e3, 150e3, true, 28.0 };
     // Three banks of the same key (the append-only log), each with provenance.
     Experiment e3;
     e3.body = "Mun";
@@ -787,6 +789,9 @@ int main() {
     CHECK(metaOut.active_ship_recorded == true);   // this build always records
     CHECK(near(metaOut.exhaust_scale, meta.exhaust_scale));
     CHECK(metaOut.science_score == 7);
+    /* The ask is four fields, and the defaulted == is how the save decides whether
+       to write them, so == is also the honest round-trip claim (#612 stage 2). */
+    CHECK(metaOut.ascent_ask == meta.ascent_ask);
     CHECK(metaOut.recovered.size() == 3);   // the log round-trips as 3 entries
     for(const Experiment &x : metaOut.recovered) {
         CHECK(x == e3);                     // key-only ==
@@ -855,6 +860,10 @@ int main() {
     CHECK(near(emptyMeta.exhaust_scale, 1.0));  // missing -> the 1.0 default
     CHECK(emptyMeta.science_score == 0);
     CHECK(emptyMeta.recovered.empty());
+    // a save that predates the Guidance window loads the default ask
+    CHECK(emptyMeta.ascent_ask == AscentAsk());
+    // ...and an untouched ask writes no key at all, so the file stays small
+    CHECK(!saveMetaToJson(SaveMeta()).contains("ascent_ask"));
 
     /* ...except "format": a save from ANOTHER format is refused, not
        half-parsed into defaults. Every other read defaults silently, so a
@@ -965,6 +974,33 @@ int main() {
     nlohmann::json negScore = nlohmann::json::object();
     negScore["science_score"] = -50;
     CHECK(saveMetaFromJson(negScore).science_score == 0);
+
+    /* The ask: wrong types keep the defaults, and an out-of-range inclination
+       clamps. The inclination is the one field clamped here because a player
+       who never opens the window still feeds it straight to the law; the
+       apsides are left alone -- the Guidance window's arm-time guards own them
+       (peri > 0, apo >= peri, ask inside the SoI), each written so NaN fails
+       closed (#612 stage 2). */
+    {
+        nlohmann::json junk = nlohmann::json::object();
+        junk["ascent_ask"] = 5;   // not an object at all
+        CHECK(saveMetaFromJson(junk).ascent_ask == AscentAsk());
+
+        nlohmann::json wrong = nlohmann::json::object();
+        wrong["ascent_ask"] = {{"peri_asl", "high"}, {"apo_asl", nullptr},
+                               {"ask_inc", "yes"},   {"inc_deg", nlohmann::json::array()}};
+        CHECK(saveMetaFromJson(wrong).ascent_ask == AscentAsk());
+
+        nlohmann::json wildInc = nlohmann::json::object();
+        wildInc["ascent_ask"] = {{"peri_asl", 200e3}, {"apo_asl", 200e3},
+                                 {"ask_inc", true},   {"inc_deg", 500.0}};
+        SaveMeta hi = saveMetaFromJson(wildInc);
+        CHECK(hi.ascent_ask.ask_inc == true);
+        CHECK(near(hi.ascent_ask.peri_asl, 200e3));
+        CHECK(near(hi.ascent_ask.inc_deg, 180.0));
+        wildInc["ascent_ask"]["inc_deg"] = -20.0;
+        CHECK(near(saveMetaFromJson(wildInc).ascent_ask.inc_deg, 0.0));
+    }
 
     SaveShip emptyShip = saveShipFromJson(nlohmann::json::object());
     CHECK(emptyShip.name.empty());

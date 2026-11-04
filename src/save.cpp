@@ -1316,6 +1316,7 @@ void save_game(Game &g, const std::string &dir) {
     meta.exhaust_scale = g.args.exhaust_scale;
     meta.science_score = g.science.score;
     meta.recovered = g.science.recovered;
+    meta.ascent_ask = g.ascent_ask;   // the Guidance window's fields, not a mission (#612 stage 2)
     meta.saved_at = nowString();
 
     /* The save's ships in slug order: every VEHICLE. A seated person is not in
@@ -1701,6 +1702,14 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
     // Success path only: a refused load must not clobber the running career
     // score / recovered log.
     g.science.setFrom(meta.science_score, meta.recovered);
+    /* The Guidance window's ask travels with the career for the same reason the
+       score does: it is the player's, not the world's, which is why
+       clearEphemeralState already lets it survive a world change (game.cpp).
+       A save that predates the key restores the default ask, exactly as an old
+       save restores exhaust_scale. What does NOT travel is an ARMED law -- the
+       phase machine and the hull it holds are stage 4, and the hull's SlewFree
+       latch is dropped on load for that reason (see restoreSlewRequest above). */
+    g.ascent_ask = meta.ascent_ask;
 
     /* Game identity comes from the save's location, adopted here so a REFUSED
        load leaves the running identity untouched. Only a game dir under a
