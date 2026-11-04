@@ -396,7 +396,12 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    base_p is NOT authorable -- resolveAtmoLevels integrates each level
                    from the sea-level anchor below it, so a file cannot state a
                    pressure that contradicts its own density (atmo.h). */
-                if(av.contains("layers") && av["layers"].is_array()) {
+                if(av.contains("layers")) {
+                    if(!av["layers"].is_array()) {
+                        throw std::runtime_error(
+                            "system: " + body->name + ": atmosphere.layers must be"
+                            " an array of { alt, T, lapse } objects");
+                    }
                     for(const nlohmann::json &lv : av["layers"]) {
                         if(!lv.is_object()) {
                             throw std::runtime_error(
@@ -417,16 +422,34 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                        would ask which one rho() follows. It also needs an authored top:
                        top()'s scale_height * kAtmoScaleHeights default is meaningless
                        for a profile, and the last level's ceiling -- which
-                       resolveAtmoLevels must keep above 0 K -- IS that top. */
+                       resolveAtmoLevels must keep above 0 K -- IS that top. != rather
+                       than > because a NEGATIVE scale_height beside a table is not "no
+                       scale height": it is a dead number in the file that nothing reads
+                       and nobody would ever notice. */
                     if(!(s.atmosphere.sea_level_density > 0.0)
                        || !(s.atmosphere.height > 0.0)
-                       || s.atmosphere.scale_height > 0.0) {
+                       || s.atmosphere.scale_height != 0.0) {
                         throw std::runtime_error(
                             "system: " + body->name + ": atmosphere.layers needs"
                             " sea_level_density and height, and no scale_height");
                     }
-                } else if((s.atmosphere.sea_level_density > 0.0)
-                          != (s.atmosphere.scale_height > 0.0)) {
+                    /* atmoLevel() scans the table linearly, once per aero sample per
+                       hull (drag.h), and no real profile is anywhere near this long --
+                       the 1976 standard atmosphere uses seven levels to 85 km. A table
+                       past the cap is a generator bug, and refusing it beats making
+                       every aero sample on that body a thousand-compare loop. */
+                    if(s.atmosphere.layers.size() > 64) {
+                        throw std::runtime_error(
+                            "system: " + body->name + ": atmosphere.layers has too"
+                            " many levels (64 max)");
+                    }
+                } else if(s.atmosphere.sea_level_density < 0.0
+                          || s.atmosphere.scale_height < 0.0
+                          || (s.atmosphere.sea_level_density > 0.0)
+                             != (s.atmosphere.scale_height > 0.0)) {
+                    /* Both or neither -- and neither may be negative. A -4000 in a
+                       vacuum body reads as "no air" either way, which is precisely why
+                       it would otherwise survive a decade of nobody looking. */
                     throw std::runtime_error(
                         "system: " + body->name + ": atmosphere needs "
                         "sea_level_density and scale_height (or neither)");
@@ -461,7 +484,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                          s.atmosphere.top())) {
                     throw std::runtime_error(
                         "system: " + body->name + ": atmosphere.layers must start at"
-                        " alt 0, rise strictly, and hold T above 0 K up to height");
+                        " alt 0, rise strictly to below height, keep T continuous"
+                        " across each level seam and above 0 K, and stay stably"
+                        " stratified (atmo.h:resolveAtmoLevels)");
                 }
             }
             if(sv.contains("clouds") && sv["clouds"].is_object()) {

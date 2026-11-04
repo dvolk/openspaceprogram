@@ -53,12 +53,16 @@ inline constexpr double kInertialOrbitFrac = 1.25;
    Where: AtmosphereParams::top (terragen.h). */
 inline constexpr double kAtmoScaleHeights = 10.0;
 
-/* The molar gas constant R [J/(mol K)]. One exponential IS an isothermal
-   atmosphere, so the air's temperature, pressure and sound speed are derived
-   from the authored scale_height plus the body's g with this and molar_mass
-   [kg/mol] -- nothing else needs authoring (#552 A2).
-   Changes: the derived readouts only; rho and top() do not contain it.
-   Where: airTemperature / airPressure / airSoundSpeed (drag.h). */
+/* The molar gas constant R [J/(mol K)]. On an EXPONENTIAL body one scale height IS
+   an isothermal atmosphere, so the authored rho0 / scale_height plus the body's g
+   already imply a temperature, a pressure and a sound speed through this and
+   molar_mass [kg/mol] -- nothing else needs authoring (#552 A2). On a LAYER body
+   (#552 A4) R is still the bridge, the other way round: the temperature is authored
+   and R/M is the specific gas constant the column is integrated with
+   (atmo.h:levelPressure), which is why p0 = rho0 (R/M) T0 needs no authored pressure.
+   Changes: the derived readouts and the layered column; rho and top() do not contain
+   it on an exponential body.
+   Where: airTemperature / airPressure / airSoundSpeed (drag.h), resolveAtmoLevels (atmo.h). */
 inline constexpr double kGasR = 8.314462618;
 
 /* What "air" means when a body does not say: dry air, 28.964 g/mol and cp/cv 1.4.

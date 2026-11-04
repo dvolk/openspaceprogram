@@ -34,10 +34,17 @@
 #include "orbit.h"
 
 /* The authored atmosphere as drag.h's view of it -- the ONE conversion, shared by
-   the aero pass and any readout that wants the T/p/a the scale height implies
-   (#552 A2). `g` is the body's surface gravity: rho(alt) and top() do not use it,
-   the thermodynamics do, so passing a different g moves a readout and never a
-   drag number.
+   the aero pass and any readout that wants the air's T/p/a (#552 A2). `g` is the
+   body's surface gravity: on an EXPONENTIAL body rho(alt) and top() do not use it,
+   so passing a different g moves a readout and never a drag number. A LAYER body
+   qualifies that (#552 A4) -- its column is weighed rather than authored, so its rho
+   aloft does follow g (pinned in tests/test_drag.cpp: same sea-level air, half the
+   gravity, thicker air at 20 km).
+   The layer table is BORROWED, not copied: DragAtmosphere::layers points into a's own
+   vector, so `a` must outlive whatever this returns. It does everywhere -- the levels
+   are resolved once by the loader and live in System::bodies for the whole world, and
+   no caller stores a DragAtmosphere (the aero pass builds one per hull per substep).
+   Caching one across a system reload would be a dangling read, not a stale copy.
    It copies fields; it does not transform any of them. Two readers still go
    straight to AtmosphereParams -- jetAirGate's rho_sea and the atlas's density row
    -- and that is only harmless while the seam stays a pure copy. If it ever
@@ -479,10 +486,13 @@ public:
        "--drag-cd 0" all read 0/0 rather than last substep's value. */
     double lastDragAlt = 0.0;
     double lastDragRho = 0.0;
-    /* The air the pass stood in, last substep (#552 A2/A3): what the authored
-       scale height IMPLIES at this hull's altitude -- the isothermal temperature
-       [K], the pressure [Pa] and the sound speed [m/s] that a Mach number is a
-       ratio to -- plus lastAirV, the AIR-relative velocity's speed AT THE COM (the
+    /* The air the pass stood in, last substep (#552 A2/A3): what the body's profile
+       says at this hull's altitude -- the temperature [K], the pressure [Pa] and the
+       sound speed [m/s] that a Mach number is a ratio to. On an exponential body
+       those are IMPLIED by its scale height and constant with altitude; on a layer
+       body they are the profile (#552 A4) and all four go 0 at/above the air top,
+       where there is no air to have a temperature in (#632). Plus lastAirV, the
+       AIR-relative velocity's speed AT THE COM (the
        [drag] line's |v|= is the FRAME speed, which on a spinning body is not the
        same number, #97). It is the base vector every surface's flow is built from,
        not the flow itself: a surface's own q= and mach= divide localFlow's speed,

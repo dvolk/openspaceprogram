@@ -703,13 +703,15 @@ void tick(Game &g) {
                 } else {
                     printf(" FormCp=-");
                 }
-                /* THE AIR ITSELF (#552 A2/A3): what this body's authored scale
-                   height IMPLIES at the altitude on this line -- the same seam the
-                   atlas dossier reads (vehicle.h:dragAtm), so the log and the
-                   dossier cannot mean different airs. Units K / Pa / m/s, one number
-                   per field: the window's "188.0 K (-85.2 C)" gloss is for the human,
-                   and a parsed field takes one scale. Kelvin because that is the
-                   scale T = g H M / R is linear in.
+                /* THE AIR ITSELF (#552 A2/A3): what this body's air profile says at
+                   the altitude on this line -- the same seam the atlas dossier reads
+                   (vehicle.h:dragAtm), so the log and the dossier cannot mean
+                   different airs. On a scale-height body that is one number for the
+                   whole sky, implied by H; on a layer table (#552 A4) it varies with
+                   altitude, which is the whole point of that row. Units K / Pa / m/s,
+                   one number per field: the window's "188.0 K (-85.2 C)" gloss is for
+                   the human, and a parsed field takes one scale. Kelvin because that
+                   is the scale the thermodynamics are linear in.
                    Mach is over the AIR-relative speed at the COM -- NOT the |v|= this
                    line prints. On a spinning body the air itself moves (#97), so the
                    two differ, and the flow regime the ratio describes is the one the

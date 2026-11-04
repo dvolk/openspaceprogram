@@ -123,7 +123,7 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
    them, which is why molar_mass is a composition question only for the TEMPERATURE
    line. Read that as content, not trivia: Kerbin (H 5500, g 9.81, rho0 1.225) means
    188.0 K, 66.1 kPa, 274.8 m/s, so a hull at 300 m/s at sea level is already
-   Mach 1.09 there; solar_system.json's Earth (H 8500) means 290.8 K, 102.3 kPa,
+   Mach 1.09 there; an Earth-shaped exponential (H 8500) means 290.8 K, 102.3 kPa,
    341.8 m/s -- within ~1% of USSA-1976, with no temperature authored anywhere.
    COMPOSITION IS NOT FREE EITHER, and it is authored per body now: T is linear in M,
    so a hydrogen giant left at dry air's 28.964 g/mol reads absurd -- Jool with M
@@ -144,7 +144,14 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
    "(isothermal)" rather than dressing it up as weather. Earth is the one body that
    authors the real table, both because it is the only one with published numbers to
    copy and because it is the fixture that keeps the profile honest (test_drag pins it
-   within 1% of the standard atmosphere from 0 to 85 km).
+   within 1% of the standard atmosphere from 0 to 85 km) -- so the Earth row above is
+   the EXERCISE, not the shipped body: Earth now reads 288.1 K / 101.3 kPa / 340.3 m/s
+   at its datum because it says so, not because H 8500 implies it.
+   ALL THREE STOP AT `height`, layered or not. Above the authored air top the air is
+   vacuum: rho and p have always said so, and so must T and a -- a hull at 120 km over
+   Kerbin has no air to have a temperature IN, and a nonzero sound speed there is a
+   Mach number divided by nothing (#543). An exponential with no authored `height`
+   (height 0) has no such cutoff, which is what "the tail runs down to kRhoFloor" means.
    Below the datum airDensity() is FLAT (#245), so p is flat too: the column under
    the datum is not in hydrostatic equilibrium. Deliberate -- under a has_sea body
    the game gives thick air, not water, and has no buoyancy, splashdown or water
@@ -172,6 +179,7 @@ inline double airTemperature(const DragAtmosphere &a, double alt) {
         return levelTemperature(a.layers[i], alt);
     }
     if(!(a.scale_height > 0.0)) { return 0.0; }
+    if(a.height > 0.0 && alt >= a.height) { return 0.0; }   // vacuum, layered or not
     return a.gravity * a.scale_height * a.molar_mass / kGasR;
 }
 
@@ -201,7 +209,8 @@ inline double airPressure(const DragAtmosphere &a, double alt) {
    An isothermal body's value is CONSTANT with altitude -- that is what isothermal
    means -- and a layer table is what makes it vary: on Earth it falls from 340.3 m/s
    at the datum to 295.1 m/s at 11 km, so the same 300 m/s airspeed is Mach 0.88 at
-   sea level and Mach 1.02 up there. */
+   sea level and Mach 1.02 up there. Above `height` it is 0 on either profile: there is
+   no air left to carry sound, so a Mach number up there has nothing to be a ratio to. */
 inline double airSoundSpeed(const DragAtmosphere &a, double alt) {
     if(!(a.sea_level_density > 0.0) || !(a.gravity > 0.0)) { return 0.0; }
     assert(a.gamma >= 1.0);  // system.cpp refuses an authored gamma below 1
@@ -212,6 +221,7 @@ inline double airSoundSpeed(const DragAtmosphere &a, double alt) {
         return std::sqrt(a.gamma * (kGasR / a.molar_mass) * T);
     }
     if(!(a.scale_height > 0.0)) { return 0.0; }
+    if(a.height > 0.0 && alt >= a.height) { return 0.0; }   // vacuum, layered or not
     return std::sqrt(a.gamma * a.gravity * a.scale_height);
 }
 

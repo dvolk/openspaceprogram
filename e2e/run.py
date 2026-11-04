@@ -267,8 +267,9 @@ DRAG_RE = re.compile(
     # #455: the lever of the COMBINED form drag (hull + surfaces), signed, printed
     # numbered or dashed -- one group, not two, because it prints as one reading.
     r"(?:\s+(?:FormCp=([-\d.e+]+) m|FormCp=-))?"
-    # #552 A3: the AIR at the altitude this line names -- the isothermal read of the
-    # body's authored scale height (src/drag.h through vehicle.h:dragAtm), plus the
+    # #552 A3: the AIR at the altitude this line names -- what the body's profile says
+    # there (src/drag.h through vehicle.h:dragAtm): one constant read for a scale
+    # height, a different one per level for a layer table (#552 A4) -- plus the
     # Mach number of the air-relative flow. One group, not four: the game prints all
     # four together or dashes all four (no air at all). Plain units, one scale per
     # field -- K, Pa, m/s, dimensionless -- because the window's "188.0 K (-85.2 C)"
@@ -1063,7 +1064,8 @@ def parse_drag(out):
         if formcp is not None:
             row["formcp"] = float(formcp)
         # #552 A3: the air this row stood in. airT [K] / airP [Pa] / airA [m/s] are
-        # what the body's authored scale height IMPLIES at alt_asl -- the same seam
+        # what the body's profile says at alt_asl -- one constant read for a scale
+        # height, per-level for a layer table (#552 A4) -- the same seam
         # the atlas dossier reads -- and mach is the air-relative speed over airA,
         # NOT row["v"] over airA: on a spinning body the air moves (#97). All four
         # are absent when the line dashed them, which is how a case tells "no air"

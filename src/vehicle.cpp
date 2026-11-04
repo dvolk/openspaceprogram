@@ -2415,9 +2415,11 @@ void Vehicle::applyThrustForce(double h) {
     }
 }
 
-// The authored atmosphere as drag.h sees it (declared in vehicle.h). The body's g
-// rides along because the thermodynamic reads (T/p/a, #552 A2) are derived from H
-// AND g; rho and top() are not, so a different g cannot move a drag number.
+// The authored atmosphere as drag.h sees it (declared in vehicle.h -- including the
+// borrow contract on the layer pointer and what g does and does not move). The body's
+// g rides along because the thermodynamic reads (T/p/a, #552 A2) are derived from H
+// AND g; on an exponential body rho and top() are not, on a layer body the weighed
+// column is (#552 A4).
 // The layer table (#552 A4) rides as a POINTER into a's own vector: this copy runs
 // per hull per substep, and the AtmosphereParams it borrows from outlives every one
 // of them -- the loader resolved the levels once, when the system file loaded.

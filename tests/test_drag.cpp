@@ -278,6 +278,21 @@ static void test_air_thermodynamics() {
     CHECK_NEAR(airPressure(kerbin, 70000.0), 0.0, 0.0, "no air, no pressure at the top");
     CHECK_NEAR(airPressure(kerbin, 120000.0), 0.0, 0.0, "... nor above it");
 
+    /* T and a stop at the top too, on BOTH profiles (#632). rho and p have always gone
+       to zero there, so a Kerbin hull at 120 km used to read 188.0 K of air and a 274.8
+       m/s sound speed in vacuum -- which is a Mach number divided by nothing (#543),
+       and a different answer from what a layered body gives at its own top. */
+    CHECK_NEAR(airTemperature(kerbin, 70000.0), 0.0, 0.0, "no air, no air temperature at the top");
+    CHECK_NEAR(airSoundSpeed(kerbin, 70000.0), 0.0, 0.0, "no air, no sound speed at the top");
+    CHECK_NEAR(airTemperature(kerbin, 120000.0), 0.0, 0.0, "... nor above it");
+    CHECK_NEAR(airSoundSpeed(kerbin, 120000.0), 0.0, 0.0, "... nor above it");
+    /* No authored top means no cutoff, which is what the exponential tail means. */
+    const DragAtmosphere notop = makeAir(1.225, 5500.0, 0.0, 9.81);
+    CHECK_NEAR(airTemperature(notop, 120000.0), airTemperature(kerbin, 0.0), 0.0,
+               "height 0: the tail still implies its temperature");
+    CHECK_NEAR(airSoundSpeed(notop, 120000.0), airSoundSpeed(kerbin, 0.0), 0.0,
+               "... and its sound speed");
+
     /* Fail CLOSED on a degenerate or hostile atmosphere. Guards are in the
        !(x > 0.0) shape (src/angmath.h) rather than `x <= 0.0`, and the pins here are
        the ones that can tell: a ZERO g or H reads 0 from the arithmetic anyway, so
@@ -388,9 +403,13 @@ static void test_layered_atmosphere() {
     CHECK_NEAR(airTemperature(air, 85000.0), 0.0, 0.0, "no temperature at the top");
     CHECK_NEAR(airSoundSpeed(air, 200000.0), 0.0, 0.0, "no sound speed above it");
 
-    /* A level boundary must not step the air: base_p is filled in by integrating the
-       level above to this level's base_alt, which is exactly where the reader switches
-       levels. p0 of level N+1 is the top of level N by construction. */
+    /* A level boundary must not step the air. p side: base_p is filled in by
+       integrating the level above to this level's base_alt, which is exactly where the
+       reader switches levels, so level N+1's base_p is the top of level N by
+       construction. T side: NOT automatic -- base_T is authored -- which is why
+       resolveAtmoLevels refuses a seam wider than kAtmoSeamTol rather than trusting
+       the author (see the refusals below; a 100 K seam is a 38% step in rho with p
+       identical to 13 digits). */
     CHECK_NEAR(airDensity(air, 11000.0 - 1e-6), airDensity(air, 11000.0 + 1e-6), 1e-9,
                "no density cliff at a level boundary");
     CHECK_NEAR(airPressure(air, 20000.0 - 1e-6), airPressure(air, 20000.0 + 1e-6), 1e-9,
@@ -406,6 +425,21 @@ static void test_layered_atmosphere() {
     CHECK_NEAR((airPressure(air, 15000.0 - dh) - airPressure(air, 15000.0 + dh)) / (2.0 * dh),
                airDensity(air, 15000.0) * 9.82, 1e-4, "-dp/dh == rho g inside an isothermal level");
 
+    /* THE FORCE, on this path -- not just the density that feeds it. #245's real bug
+       was a SECOND early-out in applyAeroForce that let rho print fine while the force
+       stayed zero, so every profile shape needs the sub-datum force pin of its own. */
+    const double cd = 1.2, area = 4.0;
+    const glm::dvec3 vup(0.0, 300.0, 0.0);
+    const glm::dvec3 f10k = dragForce(air, cd, area, 10000.0, vup);
+    CHECK_NEAR(glm::length(f10k), 0.5 * airDensity(air, 10000.0) * cd * area * 90000.0,
+               1e-9, "|F| == 0.5 rho cd A v^2 on a layered body");
+    CHECK_TRUE(f10k.y < 0.0, "and it pushes against the motion at 10 km");
+    CHECK_NEAR(glm::length(dragForce(air, cd, area, -1667.0, vup)),
+               glm::length(dragForce(air, cd, area, 0.0, vup)), 1e-12,
+               "#245's floor drags on the layered path too");
+    CHECK_TRUE(dragForce(air, cd, area, 85000.0, vup) == glm::dvec3(0.0),
+               "and stops at the authored top");
+
     /* THE POINT OF THE TABLE, as a number: density falls faster than pressure when
        the air has a lapse rate. At 20 km the layered profile puts 2.7x the air over
        you that Kerbin's single H = 5500 does (the 2.7x in drag.h's "THE THREE ARE
@@ -417,6 +451,19 @@ static void test_layered_atmosphere() {
                "a lapse rate is what puts real air at 20 km over a scale-height body");
     CHECK_TRUE(airDensity(air, 20000.0) < airDensity(earth_exp, 20000.0),
                "lapse air thins faster than isothermal air of the same rho0");
+
+    /* AND WHAT EARTH'S PLAYERS FEEL, since H 8500 is what Earth's file used to carry:
+       the table is thicker air up to ~13 km and thinner above, so drag, q and the jet
+       gate move on the way through the sky. This is the only place that delta is a
+       number rather than a hope -- no e2e case flies a layered body yet (#631). */
+    CHECK_NEAR(airDensity(air, 5000.0) / airDensity(earth_exp, 5000.0), 1.081, 0.005,
+               "5 km: 8% thicker than the exponential Earth shipped with");
+    CHECK_NEAR(airDensity(air, 10000.0) / airDensity(earth_exp, 10000.0), 1.091, 0.005,
+               "10 km: 9% -- the peak");
+    CHECK_NEAR(airDensity(air, 30000.0) / airDensity(earth_exp, 30000.0), 0.499, 0.01,
+               "30 km: half of it");
+    CHECK_NEAR(airDensity(air, 50000.0) / airDensity(earth_exp, 50000.0), 0.284, 0.01,
+               "50 km: under a third");
 
     /* A layered profile weighs its column, so gravity DOES move its density: rho is
        p / (Rs T) and p comes from g. That is the one way A4 qualifies #552 A2's
@@ -449,6 +496,26 @@ static void test_layered_atmosphere() {
     std::vector<AtmoLayer> cold = { {0.0, 288.15, -0.0065, 0.0}, {50000.0, 216.65, 0.0, 0.0} };
     CHECK_TRUE(!resolveAtmoLevels(cold, 1.225, kAirMolarMass, 9.82, 85000.0),
                "refused: a lapse must not walk T through 0 K inside the air");
+    /* The seam. Both of these are two-level tables that integrate happily -- the
+       pressure column is smooth through the boundary either way -- so nothing else
+       catches them: rho steps because T is what rho divides by. */
+    std::vector<AtmoLayer> seam = { {0.0, 288.15, -0.0065, 0.0}, {11000.0, 156.65, 0.0, 0.0} };
+    CHECK_TRUE(!resolveAtmoLevels(seam, 1.225, kAirMolarMass, 9.82, 85000.0),
+               "refused: a level must start where the one below leaves off (60 K gap)");
+    std::vector<AtmoLayer> rounded = { {0.0, 288.15, -0.0065, 0.0}, {11000.0, 216.4, 0.0, 0.0} };
+    CHECK_TRUE(resolveAtmoLevels(rounded, 1.225, kAirMolarMass, 9.82, 85000.0),
+               "0.25 K off is rounding, not a mistake: kAtmoSeamTol accepts it");
+    /* d(rho)/dh flips sign at lapse -g/Rs = -0.0342 K/m for this gas at this g. Air
+       overturns long before that in reality; a table past it is a typo. */
+    std::vector<AtmoLayer> upside = { {0.0, 288.15, -0.05, 0.0}, {3000.0, 138.15, 0.0, 0.0} };
+    CHECK_TRUE(!resolveAtmoLevels(upside, 1.225, kAirMolarMass, 9.82, 5000.0),
+               "refused: -0.05 K/m is past -g/Rs, so the air gets denser as you climb");
+    /* A level above the air top is a level nothing can reach: drag.h cuts the air to
+       vacuum at `height`, so it is dead weight that also decides the ceiling its own
+       lapse is checked against. */
+    std::vector<AtmoLayer> dead = L;
+    CHECK_TRUE(!resolveAtmoLevels(dead, 1.225, kAirMolarMass, 9.82, 20000.0),
+               "refused: a level based above height sits in declared vacuum");
     std::vector<AtmoLayer> one = { {0.0, 288.15, -0.0065, 0.0} };
     CHECK_TRUE(!resolveAtmoLevels(one, 0.0, kAirMolarMass, 9.82, 85000.0),
                "refused: nothing to anchor the column on");
