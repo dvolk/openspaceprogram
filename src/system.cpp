@@ -392,11 +392,43 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 // 0.028964, CO2 0.044, H2 0.0022). Only meaningful when there IS air.
                 s.atmosphere.molar_mass = av.value("molar_mass", kAirMolarMass);
                 s.atmosphere.gamma = av.value("gamma", kAirGamma);
-                // Air needs both density halves, or neither (render-only rim).
-                if((s.atmosphere.sea_level_density > 0.0)
-                   != (s.atmosphere.scale_height > 0.0)) {
+                /* The altitude/temperature LEVELS (#552 A4): [{alt, T, lapse}, ...].
+                   base_p is NOT authorable -- resolveAtmoLevels integrates each level
+                   from the sea-level anchor below it, so a file cannot state a
+                   pressure that contradicts its own density (atmo.h). */
+                if(av.contains("layers") && av["layers"].is_array()) {
+                    for(const nlohmann::json &lv : av["layers"]) {
+                        if(!lv.is_object()) {
+                            throw std::runtime_error(
+                                "system: " + body->name + ": atmosphere.layers"
+                                " entries must be objects");
+                        }
+                        AtmoLayer L;
+                        L.base_alt = lv.value("alt", 0.0);
+                        L.base_T = lv.value("T", 0.0);
+                        L.lapse = lv.value("lapse", 0.0);
+                        s.atmosphere.layers.push_back(L);
+                    }
+                }
+                // Air needs a profile: one exponential or a level table, and not both
+                // (render-only rim = neither). A rim can exist without either.
+                if(!s.atmosphere.layers.empty()) {
+                    /* A layer table IS the density profile, so a scale_height beside it
+                       would ask which one rho() follows. It also needs an authored top:
+                       top()'s scale_height * kAtmoScaleHeights default is meaningless
+                       for a profile, and the last level's ceiling -- which
+                       resolveAtmoLevels must keep above 0 K -- IS that top. */
+                    if(!(s.atmosphere.sea_level_density > 0.0)
+                       || !(s.atmosphere.height > 0.0)
+                       || s.atmosphere.scale_height > 0.0) {
+                        throw std::runtime_error(
+                            "system: " + body->name + ": atmosphere.layers needs"
+                            " sea_level_density and height, and no scale_height");
+                    }
+                } else if((s.atmosphere.sea_level_density > 0.0)
+                          != (s.atmosphere.scale_height > 0.0)) {
                     throw std::runtime_error(
-                        "system: " + body->name + ": atmosphere needs both "
+                        "system: " + body->name + ": atmosphere needs "
                         "sea_level_density and scale_height (or neither)");
                 }
                 /* The composition numbers feed a divide and a sqrt, and g feeds all
@@ -415,6 +447,21 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                             "system: " + body->name + ": atmosphere needs molar_mass"
                             " in (0, 1) kg/mol, gamma in [1, 2], and g > 0");
                     }
+                }
+                /* Now the level table can be integrated: it needs the gas (Rs), the
+                   body's g, an anchored first level and a top, and it must stay above
+                   0 K all the way up (atmo.h's invariants). Filling base_p here -- and
+                   nowhere else -- is what keeps rho, p and T one column of air: the
+                   density at the datum comes out EXACTLY the authored
+                   sea_level_density, because p0 is derived from it. */
+                if(!s.atmosphere.layers.empty()
+                   && !resolveAtmoLevels(s.atmosphere.layers,
+                                         s.atmosphere.sea_level_density,
+                                         s.atmosphere.molar_mass, body->g,
+                                         s.atmosphere.top())) {
+                    throw std::runtime_error(
+                        "system: " + body->name + ": atmosphere.layers must start at"
+                        " alt 0, rise strictly, and hold T above 0 K up to height");
                 }
             }
             if(sv.contains("clouds") && sv["clouds"].is_object()) {

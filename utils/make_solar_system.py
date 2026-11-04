@@ -677,9 +677,32 @@ def build_base():
                       [0.60, [0.45, 0.40, 0.30]],
                       [0.82, [0.60, 0.58, 0.55]],
                       [1.0, [0.95, 0.95, 0.97]]],
+          # Earth is the one body that authors a LAYER TABLE instead of a scale height
+          # (#552 A4): the 1976 standard atmosphere's altitude/temperature levels, with
+          # the lapse rate in K/m (the standard states K/km). Pressure and each level's
+          # base pressure are NOT authored -- the loader integrates them hydrostatically
+          # from sea_level_density (atmo.h:resolveAtmoLevels), which is why the profile
+          # lands on 101,328 Pa at the datum rather than an authored 101,325.
+          # Troposphere to 11 km, isothermal tropopause to 20, stratosphere to 47,
+          # isothermal stratopause to 51, mesosphere to the top. The standard's 85 km row
+          # (186.87 K) needs no level of its own: it is where the -2.0 K/m lapse lands
+          # (186.65 K here), and this body's air stops there. height keeps the top at
+          # 85 km, exactly what the old scale_height 8500 derived (x10), so no science
+          # band or rotating frame moves. molar_mass is written rather than defaulted
+          # because these numbers ARE dry air's -- the profile's pressures are only right
+          # for the gas they were measured in.
           'atmosphere': {'color': [0.30, 0.50, 1.00], 'thickness': 15000,
                          'power': 4.0, 'intensity': 0.7,
-                         'sea_level_density': 1.225, 'scale_height': 8500},
+                         'sea_level_density': 1.225, 'height': 85000,
+                         'molar_mass': 0.028964, 'gamma': 1.4,
+                         'layers': [
+                             {'alt': 0,     'T': 288.15, 'lapse': -0.0065},
+                             {'alt': 11000, 'T': 216.65, 'lapse': 0.0},
+                             {'alt': 20000, 'T': 216.65, 'lapse': 0.001},
+                             {'alt': 32000, 'T': 228.65, 'lapse': 0.0028},
+                             {'alt': 47000, 'T': 270.65, 'lapse': 0.0},
+                             {'alt': 51000, 'T': 270.65, 'lapse': -0.0028},
+                             {'alt': 71000, 'T': 214.65, 'lapse': -0.002}]},
           'clouds': {'color': [1.0, 1.0, 1.0], 'height': 2500,
                      'coverage': 0.55, 'freq': 10.0}}, True),
         ('marsfact.html', 'Mars', 4.0,

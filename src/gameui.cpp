@@ -6018,7 +6018,16 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
     const AtmosphereParams &at = b.surface.atmosphere;
     if(at.enabled) {
         line("atmosphere top", fmt_dist(at.top(), v, sizeof v));
-        if(at.scale_height > 0.0) {
+        if(!at.layers.empty()) {
+            /* A layer table (#552 A4) REPLACES the exponential, so there is no one
+               scale height to quote -- and the T/p/a below stop being implications of
+               H and start being the authored profile. The row says where the LEVELS
+               sit; the air itself reaches to the "atmosphere top" row above, which a
+               layered body must author (top() has no H to multiply). */
+            snprintf(v, sizeof v, "%d levels to %s", (int)at.layers.size(),
+                     fmt_dist(at.layers.back().base_alt, w, sizeof w));
+            line("air profile", v);
+        } else if(at.scale_height > 0.0) {
             line("scale height", fmt_dist(at.scale_height, v, sizeof v));
         }
         // The block can exist for the drawn rim alone, with no drag air behind it (the two
@@ -6034,7 +6043,9 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                wants an 8.4 km scale height (which would put 3.5x more air over you
                at 20 km; real air puts 2.7x, the gap being the lapse rate the single
                exponential has not got). Reconciling them is a layer table, not a
-               fudge.
+               fudge -- and a body that HAS one (#552 A4) has these three read from
+               the levels at the datum, which is why its label says "sea level" and
+               not "isothermal".
                Kelvin first and Celsius as a gloss: the rest of this block is SI
                (Pa, m/s, kg/m3), the law is linear in the ABSOLUTE scale, and 188 K
                is the number the tests and --atlas-dump pin. Celsius is there because
@@ -6042,12 +6053,12 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                prints plain K -- a log line gets parsed, and a second unit in a
                field is a parser's bad day. */
             const DragAtmosphere da = dragAtm(at, b.g);
-            const double airK = airTemperature(da);
+            const double airK = airTemperature(da, 0.0);
             snprintf(v, sizeof v, "%.1f K (%.1f C)", airK, airK - 273.15);
-            line("air temp (isothermal)", v);
+            line(at.layers.empty() ? "air temp (isothermal)" : "air temp (sea level)", v);
             snprintf(v, sizeof v, "%.1f kPa", airPressure(da, 0.0) / 1000.0);
             line("air pressure", v);
-            snprintf(v, sizeof v, "%.1f m/s", airSoundSpeed(da));
+            snprintf(v, sizeof v, "%.1f m/s", airSoundSpeed(da, 0.0));
             line("sound speed", v);
         } else {
             line("air density", "none (rim only)");

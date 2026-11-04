@@ -1,0 +1,35 @@
+# An atmosphere can now author altitude/temperature LEVELS instead of one scale
+# height (#552 A4). The loader integrates the column hydrostatically from the authored
+# sea_level_density (atmo.h:resolveAtmoLevels), so the dossier's air rows stop being
+# IMPLIED by H and start being the profile the body states. Earth wears the 1976
+# standard atmosphere because it is the only body with published numbers to copy.
+#
+# tests/test_drag.cpp pins the law and tests/test_scenarios.cpp pins the shipped file's
+# numbers (288.1 K / 101.3 kPa / 340.3 m/s at Earth's datum). This pins the last inch,
+# which no unit test can see: WHICH LABEL the dossier picks. "(isothermal)" is a warning
+# that a body has no lapse rate, so it must not sit beside a body that authored one, and
+# it must still sit beside the ones that did not -- Venus, Mars, Titan and the rest of
+# this file still author a single scale height.
+#
+# Earth's "atmosphere top" row is pinned too: a layer table has no H for top() to
+# multiply by 10, so it must author `height`, and 85 km is what its old H 8500 already
+# derived. Author it any other way and the rotating-frame shell and the science
+# Flying/LowOrbit bands move with it (#625).
+NAME earth-air-levels
+CLAIM A body that authors a layer table reports that profile in its dossier instead of a temperature implied by a scale height.
+KIND invariant
+ARGS --system res/systems/solar_system.json --timeout 6 --atlas-dump 4000
+FORBID error:
+CHECK re.search(r"\[atlas\] Earth weight=.*?atmosphere top\s+85\.0 km", out, re.S)
+CHECK re.search(r"\[atlas\] Earth weight=.*?air profile\s+7 levels to 71\.0 km", out, re.S)
+CHECK re.search(r"\[atlas\] Earth weight=.*?air temp \(sea level\)\s+288\.1 K \(15\.0 C\)", out, re.S)
+CHECK re.search(r"\[atlas\] Earth weight=.*?air pressure\s+101\.3 kPa", out, re.S)
+CHECK re.search(r"\[atlas\] Earth weight=.*?sound speed\s+340\.3 m/s", out, re.S)
+# The negative needs the block, not a span: a lazy .*? would run past Earth into the
+# next body's rows and a later "scale height" would prove nothing.
+CHECK "scale height" not in out.split("[atlas] Earth weight=")[1].split("[atlas] ")[0]
+CHECK "air temp (isothermal)" not in out.split("[atlas] Earth weight=")[1].split("[atlas] ")[0]
+# And the label still rides with the bodies that DO owe the warning. Mars is in this
+# file (rho0 0.02, H 11500, CO2 0.044, g 3.73), so its row keeps saying isothermal --
+# and 3.73 x 11500 / (R/0.044) is 227.0 K, which is within 15 K of the real Mars.
+CHECK re.search(r"\[atlas\] Mars weight=.*?air temp \(isothermal\)\s+227\.0 K", out, re.S)

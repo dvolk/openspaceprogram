@@ -105,11 +105,21 @@ static int check_datum(const char *path, const System &sys) {
    not contain it at all, so Jool's sound speed is the same either way and only its
    temperature moves. */
 static int check_air(const char *path, const System &sys) {
-    struct Want { const char *name; double T; double a; };
+    struct Want { const char *name; double T; double a; double p; double tol; };
     static const Want want[] = {
-        {"Kerbin", 187.95593796005446, 274.83995342744475},  // dry air: the default
-        {"Jool",     41.53148746527926, 468.76859963099065}, // authored H2, g 7.848
-        {"Eve",     617.7808760460290,  389.5647571328803},  // authored CO2, gamma 1.3, g 16.677
+        // dry air: the default
+        {"Kerbin", 187.95593796005446, 274.83995342744475, 66094.875, 1e-9},
+        // authored H2, g 7.848
+        {"Jool",     41.53148746527926, 468.76859963099065,  313920.0, 1e-9},
+        // authored CO2, gamma 1.3, g 16.677
+        {"Eve",     617.7808760460290,  389.5647571328803,  198456.3,  1e-9},
+        /* Earth authors a LAYER TABLE (#552 A4), so these are the shipped file's
+           proof all the way through: the JSON parses, resolveAtmoLevels integrates
+           the column at load, dragAtm carries the pointer, and the four reads answer
+           from the levels. The literals are the 1976 standard's own sea-level row,
+           and the tolerance is 1e-4 rather than 1e-9 because Earth authors g 9.82
+           where the standard uses 9.80665 -- a third of a percent at the datum. */
+        {"Earth",               288.15,               340.3,    101325.0, 1e-4},
     };
     int bad = 0, n = 0;
     for(TerrainBody *b : sys.bodies) {
@@ -118,27 +128,45 @@ static int check_air(const char *path, const System &sys) {
         n++;
         const DragAtmosphere da = dragAtm(a, b->g);
         if(!(da.gravity == b->g) || !(da.molar_mass == a.molar_mass)
-           || !(da.gamma == a.gamma)) {
+           || !(da.gamma == a.gamma)
+           || da.layer_count != (int)a.layers.size()) {
             printf("  %s: %s dragAtm lost its world: g %.4g vs %.4g, M %.4g vs %.4g,"
-                   " gamma %.4g vs %.4g\n", path, b->name.c_str(), da.gravity, b->g,
-                   da.molar_mass, a.molar_mass, da.gamma, a.gamma);
+                   " gamma %.4g vs %.4g, %d levels vs %d\n", path, b->name.c_str(),
+                   da.gravity, b->g, da.molar_mass, a.molar_mass, da.gamma, a.gamma,
+                   da.layer_count, (int)a.layers.size());
             bad++;
             continue;
         }
-        const double T = airTemperature(da);
+        const double T = airTemperature(da, 0.0);
         const double p = airPressure(da, 0.0);
-        const double s = airSoundSpeed(da);
+        const double s = airSoundSpeed(da, 0.0);
         if(!(T > 0.0) || !(p > 0.0) || !(s > 0.0)) {
             printf("  %s: %s has air but answers T %.4g K, p %.4g Pa, a %.4g m/s\n",
                    path, b->name.c_str(), T, p, s);
             bad++;
         }
+        /* #625: print what each body's profile ASSERTS beside the numbers that
+           assert it. A guessed scale height is invisible in the atlas, which prints
+           its temperature as fact, and obvious here -- Uranus (H 20000, M 0.023)
+           reads 498 K for an ice giant. */
+        char prof[32];
+        if(a.layers.empty()) {
+            snprintf(prof, sizeof prof, "H %6.0f m", a.scale_height);
+        } else {
+            snprintf(prof, sizeof prof, "%d levels", (int)a.layers.size());
+        }
+        printf("  %s: g %6.3f %s rho0 %-6.3g M %.5f gamma %.2f -> T %7.1f K,"
+               " p %9.1f kPa, a %6.1f m/s\n",
+               b->name.c_str(), b->g, prof, a.sea_level_density, a.molar_mass,
+               a.gamma, T, p / 1000.0, s);
         for(const Want &w : want) {
             if(lower(b->name) != lower(w.name)) { continue; }
-            if(std::fabs(T - w.T) > 1e-9 * w.T || std::fabs(s - w.a) > 1e-9 * w.a) {
+            if(std::fabs(T - w.T) > w.tol * w.T || std::fabs(s - w.a) > w.tol * w.a
+               || std::fabs(p - w.p) > w.tol * w.p) {
                 printf("  %s: %s air T %.4f K (want %.4f), sound speed %.4f m/s"
-                       " (want %.4f) -- did a molar_mass/gamma edit go half-way?\n",
-                       path, w.name, T, w.T, s, w.a);
+                       " (want %.4f), p %.1f Pa (want %.1f) -- did a molar_mass/gamma"
+                       " edit go half-way?\n",
+                       path, w.name, T, w.T, s, w.a, p, w.p);
                 bad++;
             }
         }

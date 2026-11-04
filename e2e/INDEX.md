@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 289 |
+| `invariant` | a behaviour or a player route the game must keep | 290 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 37 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **344** |
+| | **total** | **345** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -323,7 +323,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/612-guidance-window-cancel.txt` | invariant | Cancel stops an ascent mission steering the hull and hands SAS back. |
 | `ui/612-guidance-window-types.txt` | invariant | The type combo gates Go per law and swaps its section out, and the shared Cancel still stops a mission seen from another type. |
 
-## render (56)
+## render (57)
 
 | case | kind | pins |
 |---|---|---|
@@ -383,6 +383,7 @@ judgement. Select by number, name or path, e.g.
 | `render/353-map-fit-landed-body-floor.txt` | invariant | A landed ship opens framed on the body's disk. |
 | `render/354-map-fit-open-conic.txt` | invariant | An escaping ship's map opens framed on its current radius. |
 | `render/355-map-fit-switch-same-body.txt` | invariant | Switching ships around the same body refits the map to the new orbit. |
+| `render/552-earth-air-levels.txt` | invariant | A body that authors a layer table reports that profile in its dossier instead of a temperature implied by a scale height. |
 
 ## harness (13)
 

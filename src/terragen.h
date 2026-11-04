@@ -27,6 +27,7 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/noise.hpp>
 
+#include "atmo.h"       // AtmoLayer: the authored altitude/temperature levels
 #include "constants.h"  // kAtmoScaleHeights
 #include "equirect.h"   // equirectLonLat / equirectPixel
 
@@ -99,6 +100,25 @@ struct AtmosphereParams {
        1.3 CO2. Defaults: constants.h kAirMolarMass / kAirGamma. */
     double molar_mass = kAirMolarMass;
     double gamma = kAirGamma;
+
+    /* The altitude/temperature LEVELS (#552 A4), optional: "atmosphere.layers" as
+       [{alt, T, lapse}, ...]. When this is non-empty it REPLACES the one-
+       exponential scale_height profile -- rho, p and T all come from the levels,
+       integrated hydrostatically (atmo.h:AtmoLayer, drag.h:airDensity) -- and it is
+       the only way a body can state a sea-level density AND a sea-level temperature,
+       which one exponential cannot do (drag.h's "THE THREE ARE LOCKED" block).
+       base_p is filled in by system.cpp when the file loads, not authored.
+       A layered body must author `height` (its air top): scale_height * 10 is not a
+       meaningful top for a profile, so system.cpp refuses one without it. */
+    std::vector<AtmoLayer> layers;
+
+    /* "Is there a PHYSICAL atmosphere here at all?" -- the question the aero pass,
+       the rails gate and the readout all ask, in ONE place so they cannot answer it
+       differently. A render rim alone does not count; either profile half does. */
+    bool physical() const {
+        return sea_level_density > 0.0
+            && (scale_height > 0.0 || !layers.empty());
+    }
 
     /* Authored height, else scale_height * kAtmoScaleHeights. One home so drag and
        "is this in space?" cannot disagree. */

@@ -2418,18 +2418,23 @@ void Vehicle::applyThrustForce(double h) {
 // The authored atmosphere as drag.h sees it (declared in vehicle.h). The body's g
 // rides along because the thermodynamic reads (T/p/a, #552 A2) are derived from H
 // AND g; rho and top() are not, so a different g cannot move a drag number.
+// The layer table (#552 A4) rides as a POINTER into a's own vector: this copy runs
+// per hull per substep, and the AtmosphereParams it borrows from outlives every one
+// of them -- the loader resolved the levels once, when the system file loaded.
 DragAtmosphere dragAtm(const AtmosphereParams &a, double g) {
     DragAtmosphere da { a.sea_level_density, a.scale_height, a.top() };
     da.gravity = g;
     da.molar_mass = a.molar_mass;
     da.gamma = a.gamma;
+    da.layers = a.layers.empty() ? nullptr : a.layers.data();
+    da.layer_count = (int)a.layers.size();
     return da;
 }
 
 double Vehicle::airDensityAtCom() const {
     if(m_parent == nullptr) { return 0.0; }
     const AtmosphereParams &atm = m_parent->surface.atmosphere;
-    if(atm.sea_level_density <= 0.0 || atm.scale_height <= 0.0) {
+    if(!atm.physical()) {
         return 0.0;   // no physical atmosphere (a limb rim alone does not count)
     }
     const glm::dvec3 com = comPos();
@@ -2497,7 +2502,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     // Only a body with a PHYSICAL atmosphere (a density model) produces aero.
     if(m_parent == nullptr) { return lastAeroForce; }
     const AtmosphereParams &atm = m_parent->surface.atmosphere;
-    if(atm.sea_level_density <= 0.0 || atm.scale_height <= 0.0) {
+    if(!atm.physical()) {
         return lastAeroForce;
     }
 
@@ -2518,14 +2523,16 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     const double rho = airDensity(da, alt);
     lastDragRho = rho;
     /* The air's own numbers ride the same seam (#552 A2/A3) so the log and the
-       atlas cannot disagree about what this body's scale height means. Set BEFORE
+       atlas cannot disagree about what this body's profile means. Set BEFORE
        the density floor: thin air is still air -- it just bills nothing -- and a
        readout that vanished at kRhoFloor would be a cliff a player cannot see.
-       airPressure re-walks the exponential; it is one exp beside a pass that
-       silhouettes the whole hull, so it is not a hot-path question. */
-    lastAirT = airTemperature(da);
+       All three take `alt`: on an exponential body they are constant with it (that
+       is what one scale height means), and on a LAYERED body they are not -- Earth's
+       sound speed is 340 m/s at the datum and 295 m/s at 11 km, and the Mach number
+       this feeds is the one the flight model divides by (#543). */
+    lastAirT = airTemperature(da, alt);
     lastAirP = airPressure(da, alt);
-    lastAirA = airSoundSpeed(da);
+    lastAirA = airSoundSpeed(da, alt);
     /* GetVel() minus the air's co-rotation when outside the body's rot frame (#97).
        Read before the density floor, not after it: lastAirV is what the Mach readout
        divides, and a hull at 120 km moving 800 m/s in air too thin to bill still has a
@@ -5328,7 +5335,7 @@ bool Vehicle::inTerrainBand() {
 bool Vehicle::inAtmosphere() {
     if(m_parent == nullptr) { return false; }
     const AtmosphereParams &atm = m_parent->surface.atmosphere;
-    if(atm.sea_level_density <= 0.0 || atm.scale_height <= 0.0) {
+    if(!atm.physical()) {
         return false;   // a visual-only rim is not a drag regime
     }
     return glm::length(comPos()) - m_parent->seaLevelRadius() < atm.top();
@@ -5463,7 +5470,7 @@ RailEnd Vehicle::railsTick(double t, const double step) {
     const double r = glm::length(rail_pos);
     const double ref = m_parent->seaLevelRadius();
     const AtmosphereParams &atm = m_parent->surface.atmosphere;
-    const bool has_air = atm.sea_level_density > 0.0 && atm.scale_height > 0.0;
+    const bool has_air = atm.physical();
     if(has_air && r - ref < atm.top()) { end = RailEndAtmosphere; }
     /* max_height is the highest relief above sea level: a cheap sphere that
        contains every peak, so the terrain noise runs only for a ship that

@@ -17,6 +17,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>  // controlSurfaceVisualRot
 
+#include "atmo.h"       // AtmoLayer: a body's authored altitude/temperature levels
 #include "constants.h"  // kRhoFloor
 
 /* The physical half of a body's atmosphere (render half: AtmosphereParams,
@@ -36,10 +37,36 @@ struct DragAtmosphere {
     double gravity = 0.0;              // [m/s^2] at the body's surface
     double molar_mass = kAirMolarMass; // [kg/mol]
     double gamma = kAirGamma;          // cp/cv
+    /* The layer table (#552 A4), when the body has one: a pointer INTO the body's
+       own AtmosphereParams, so this stays a cheap copy -- the aero pass builds one
+       of these per hull per substep and a vector here would allocate on every one.
+       Non-null means the profile IS the levels and not scale_height: the loader
+       resolves each level's base pressure and refuses a body that authors both. */
+    const AtmoLayer *layers = nullptr;
+    int layer_count = 0;
     DragAtmosphere() {}
     DragAtmosphere(double rho0, double H, double top = 0.0)
         : sea_level_density(rho0), scale_height(H), height(top) {}
 };
+
+/* Which level `alt` falls in: the last one whose base_alt is at or below it, or -1
+   for at/below the datum, where the profile stays FLAT (#245's floor, which the
+   level form keeps rather than replaces -- the datum is level 0's base_alt by the
+   loader's rule). A LINEAR scan on purpose: a layer table is a handful of levels
+   (the real 1976 standard atmosphere uses seven to 85 km), the profile is read once
+   per hull per substep (applyAeroForce samples it at the COM, not per part), and a
+   binary search over seven entries cannot pay for its own branches. */
+inline int atmoLevel(const DragAtmosphere &a, double alt) {
+    if(a.layers == nullptr || a.layer_count <= 0) { return -1; }
+    if(alt <= a.layers[0].base_alt) { return -1; }
+    int i = 0;
+    for(int k = 1; k < a.layer_count; ++k) {
+        if(a.layers[k].base_alt > alt) { break; }
+        i = k;
+    }
+    return i;
+}
+
 
 /* rho(alt) = sea_level_density · exp(−alt / scale_height), [kg/m^3], alt in m above
    the sea-level DATUM (terrain.h:seaLevelRadius(), i.e. radius + the authored
@@ -58,9 +85,29 @@ struct DragAtmosphere {
    115 kg/m3 at -25 km -- the deepest sea would be the densest air in the game,
    without bound. What the air really does down there is a profile question, and a
    hull under the sea of a has_sea body arguably wants WATER rather than denser air
-   (the game has none: no buoyancy, no splashdown, no drag law for it). */
+   (the game has none: no buoyancy, no splashdown, no drag law for it).
+   A body with a LAYER TABLE (#552 A4, `layers`) answers this from the levels
+   instead: T comes from the level it is in and rho from p / (Rs T) with p
+   integrated hydrostatically. That is the profile a lapse rate makes, and it is
+   what lets a body state a temperature AND its sea-level density at once -- one
+   exponential cannot (see "THE THREE ARE LOCKED" below). The flat floor below the
+   datum is the SAME law there, not an exception bolted on: below level 0's
+   base_alt the game still hands out thick air rather than water (#618). */
 inline double airDensity(const DragAtmosphere &a, double alt) {
-    if(!(a.sea_level_density > 0.0) || !(a.scale_height > 0.0)) { return 0.0; }
+    if(!(a.sea_level_density > 0.0)) { return 0.0; }
+    if(a.layers != nullptr) {
+        if(!(a.gravity > 0.0) || a.layer_count <= 0) { return 0.0; }
+        if(a.height > 0.0 && alt >= a.height) { return 0.0; }
+        const int i = atmoLevel(a, alt);
+        if(i < 0) { return a.sea_level_density; }   // flat at/below the datum
+        assert(a.molar_mass > 0.0);  // system.cpp refuses air with a bad molar mass
+        const double Rs = kGasR / a.molar_mass;
+        const double T = levelTemperature(a.layers[i], alt);
+        if(!(T > 0.0)) { return 0.0; }
+        const double p = levelPressure(a.layers[i], alt, a.gravity, Rs);
+        return p / (Rs * T);
+    }
+    if(!(a.scale_height > 0.0)) { return 0.0; }
     if(alt <= 0.0) { return a.sea_level_density; }
     if(a.height > 0.0 && alt >= a.height) { return 0.0; }
     return a.sea_level_density * std::exp(-alt / a.scale_height);
@@ -84,13 +131,20 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
    so this is a readout-truth question, not a flight-model one. The "isothermal"
    label on the readouts warns about the missing lapse rate; it does NOT excuse a
    wrong gas.
-   THE THREE ARE LOCKED: rho0, p0 and H cannot all be Earth's numbers on ONE
-   exponential. rho0 1.225 with p0 101.3 kPa wants T0 288 K, which wants H 8.43 km:
+   THE THREE ARE LOCKED on ONE exponential: rho0, p0 and H cannot all be Earth's
+   numbers at once. rho0 1.225 with p0 101.3 kPa wants T0 288 K, which wants H 8.43 km:
    against the H = 5.5 km Kerbin ships, that exponential is 1.37x thicker at 5 km and
    3.54x at 20 km -- and the REAL atmosphere is 1.5x / 2.7x thicker there, because a
-   lapse rate makes density fall faster than pressure. Having both is a LAPSE RATE
-   (a layer table, A4); until it lands these are the honest isothermal reads of the
-   authored scale height, and the readouts say so rather than dress up as weather.
+   lapse rate makes density fall faster than pressure. Having both means a LAPSE RATE,
+   and that is what a LAYER TABLE is (#552 A4): a body that authors one gets a
+   temperature that varies with altitude, a pressure integrated hydrostatically and a
+   density that follows from the gas law, all three consistent with its authored
+   sea_level_density. A body that does not (every KSP-derived world so far) still gets
+   the isothermal read of its authored scale height, and the atlas labels it
+   "(isothermal)" rather than dressing it up as weather. Earth is the one body that
+   authors the real table, both because it is the only one with published numbers to
+   copy and because it is the fixture that keeps the profile honest (test_drag pins it
+   within 1% of the standard atmosphere from 0 to 85 km).
    Below the datum airDensity() is FLAT (#245), so p is flat too: the column under
    the datum is not in hydrostatic equilibrium. Deliberate -- under a has_sea body
    the game gives thick air, not water, and has no buoyancy, splashdown or water
@@ -102,25 +156,62 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
    Same shape as airDensity above. A g-less or H-less atmosphere therefore reads 0.0
    for all three, never a negative pressure or a NaN. `alt` is NOT guarded: it comes
    from a live position, and a NaN there is a broken hull, not a bad def. */
-inline double airTemperature(const DragAtmosphere &a) {
-    if(!(a.sea_level_density > 0.0) || !(a.scale_height > 0.0)
-       || !(a.gravity > 0.0)) { return 0.0; }
+inline double airTemperature(const DragAtmosphere &a, double alt) {
+    if(!(a.sea_level_density > 0.0) || !(a.gravity > 0.0)) { return 0.0; }
     assert(a.molar_mass > 0.0);
+    if(a.layers != nullptr) {
+        if(a.layer_count <= 0) { return 0.0; }
+        if(a.height > 0.0 && alt >= a.height) { return 0.0; }
+        const int i = atmoLevel(a, alt);
+        // At/below the datum the profile is FLAT at the datum's own values, exactly
+        // as airDensity() is flat at sea_level_density (#245). Extrapolating level 0's
+        // lapse downward instead would make p = rho Rs T false at the boundary the
+        // two functions share, and would put the densest air in the game under the
+        // sea floor.
+        if(i < 0) { return a.layers[0].base_T; }
+        return levelTemperature(a.layers[i], alt);
+    }
+    if(!(a.scale_height > 0.0)) { return 0.0; }
     return a.gravity * a.scale_height * a.molar_mass / kGasR;
 }
 
 /* [Pa], alt in m above the sea-level DATUM -- the same alt airDensity takes. */
 inline double airPressure(const DragAtmosphere &a, double alt) {
-    if(!(a.gravity > 0.0) || !(a.scale_height > 0.0)) { return 0.0; }
+    if(!(a.gravity > 0.0)) { return 0.0; }
+    if(a.layers != nullptr) {
+        /* p and rho come out of the SAME integration here (this is the branch where
+           the law is p-first: p = hydrostatics, rho = p / (Rs T)), so the two
+           cannot drift into describing different columns of air. */
+        if(!(a.sea_level_density > 0.0) || a.layer_count <= 0) { return 0.0; }
+        if(a.height > 0.0 && alt >= a.height) { return 0.0; }
+        const int i = atmoLevel(a, alt);
+        assert(a.molar_mass > 0.0);
+        // Flat at the datum's own pressure at/below it, the same floor airDensity()
+        // hands out. p0 is resolved at load to rho0 Rs T0, so rho Rs T == p holds
+        // exactly across that boundary rather than only above it.
+        if(i < 0) { return a.layers[0].base_p; }
+        return levelPressure(a.layers[i], alt, a.gravity, kGasR / a.molar_mass);
+    }
+    if(!(a.scale_height > 0.0) || !(a.sea_level_density > 0.0)) { return 0.0; }
     return airDensity(a, alt) * a.gravity * a.scale_height;
 }
 
-/* [m/s] -- the speed the Mach number is a ratio to. Constant with altitude, which
-   is what isothermal MEANS; a layer table (A4) is what makes it vary. */
-inline double airSoundSpeed(const DragAtmosphere &a) {
-    if(!(a.sea_level_density > 0.0) || !(a.scale_height > 0.0)
-       || !(a.gravity > 0.0)) { return 0.0; }
+/* [m/s] -- the speed the Mach number is a ratio to, at `alt` (#543 divides by this,
+   which is why it is asked for at the altitude it applies to and not once per body).
+   An isothermal body's value is CONSTANT with altitude -- that is what isothermal
+   means -- and a layer table is what makes it vary: on Earth it falls from 340.3 m/s
+   at the datum to 295.1 m/s at 11 km, so the same 300 m/s airspeed is Mach 0.88 at
+   sea level and Mach 1.02 up there. */
+inline double airSoundSpeed(const DragAtmosphere &a, double alt) {
+    if(!(a.sea_level_density > 0.0) || !(a.gravity > 0.0)) { return 0.0; }
     assert(a.gamma >= 1.0);  // system.cpp refuses an authored gamma below 1
+    if(a.layers != nullptr) {
+        const double T = airTemperature(a, alt);
+        if(!(T > 0.0)) { return 0.0; }
+        assert(a.molar_mass > 0.0);
+        return std::sqrt(a.gamma * (kGasR / a.molar_mass) * T);
+    }
+    if(!(a.scale_height > 0.0)) { return 0.0; }
     return std::sqrt(a.gamma * a.gravity * a.scale_height);
 }
 

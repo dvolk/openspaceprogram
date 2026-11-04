@@ -1,8 +1,7 @@
 //
-// Atmospheric drag law (src/drag.h, header-only pure math): the exponential
-// density model and the quadratic force. Pinned here without Bullet/GL so the
-// law is independent of the render/physics chain (like test_surfmap,
-// test_orbit).
+// Atmospheric drag law (src/drag.h, header-only pure math): the two atmosphere
+// profiles and the quadratic force. Pinned here without Bullet/GL so the law is
+// independent of the render/physics chain (like test_surfmap, test_orbit).
 //
 //   airDensity:  rho(alt) = rho0 * exp(-alt/H) above the sea-level DATUM; at or
 //                below the datum the density is rho0, FLAT -- it used to be vacuum,
@@ -13,9 +12,17 @@
 //   airTemperature / airPressure / airSoundSpeed: what one exponential IMPLIES
 //                (#552 A2). T = g H M / R, p = rho g H, a = sqrt(gamma g H); molar
 //                mass moves ONLY the temperature and gamma ONLY the sound speed;
-//                rho never sees gravity, so the seam cannot move a drag number; p
-//                rides rho's own scale height (hydrostatic) above the datum and is
-//                flat under it; no air or no gravity reads 0.0, never a NaN.
+//                rho never sees gravity on this profile, so the seam cannot move a
+//                drag number; p rides rho's own scale height (hydrostatic) above the
+//                datum and is flat under it; no air or no gravity reads 0.0, never
+//                a NaN.
+//   the layer table (src/atmo.h, #552 A4): a body that authors {alt, T, lapse}
+//                levels instead of a scale height. base_p is resolved at load by
+//                integrating hydrostatics from the authored rho0, then rho = p/(Rs T)
+//                and T follows the lapse -- so T, a and even rho vary with altitude
+//                and gravity. Earth ships this; the pins are the 1976 standard
+//                atmosphere's own published column, and the load invariants are
+//                refused rather than carried.
 //   dragForce:   opposite the motion; |F| = 0.5 * rho * cd * A * v^2;
 //                scales as v^2; zero on any degenerate input.
 //
@@ -172,9 +179,9 @@ static void test_air_thermodynamics() {
        future edit to ONE of the three spellings (T = g H M / R, p = rho g H,
        a = sqrt(gamma g H)) shows up as a disagreement instead of being agreed with. */
     const DragAtmosphere kerbin = makeAir(1.225, 5500.0, 70000.0, 9.81);
-    CHECK_NEAR(airTemperature(kerbin), 187.95593796005446, 1e-12,
+    CHECK_NEAR(airTemperature(kerbin, 0.0), 187.95593796005446, 1e-12,
                "Kerbin's isothermal temperature: g H M / R");
-    CHECK_NEAR(airSoundSpeed(kerbin), 274.83995342744475, 1e-12,
+    CHECK_NEAR(airSoundSpeed(kerbin, 0.0), 274.83995342744475, 1e-12,
                "Kerbin's sound speed: sqrt(gamma g H)");
     CHECK_NEAR(airPressure(kerbin, 0.0), 66094.875, 1e-12,
                "Kerbin's sea-level pressure: rho0 g H");
@@ -183,9 +190,9 @@ static void test_air_thermodynamics() {
        not quietly Earth. This is the pin that reddens a world default put back into
        drag.h's member initialiser. */
     const DragAtmosphere noworld { 1.225, 5500.0, 70000.0 };
-    CHECK_NEAR(airTemperature(noworld), 0.0, 0.0,
+    CHECK_NEAR(airTemperature(noworld, 0.0), 0.0, 0.0,
                "no gravity named -> 0 K, not Earth's 9.81");
-    CHECK_NEAR(airSoundSpeed(noworld), 0.0, 0.0, "no gravity named -> 0 m/s");
+    CHECK_NEAR(airSoundSpeed(noworld, 0.0), 0.0, 0.0, "no gravity named -> 0 m/s");
     CHECK_NEAR(airPressure(noworld, 0.0), 0.0, 0.0, "no gravity named -> 0 Pa");
     CHECK_NEAR(airDensity(noworld, 1000.0), 1.225 * std::exp(-1000.0 / 5500.0), 1e-12,
                "... and it still drags: g is not in rho");
@@ -194,19 +201,21 @@ static void test_air_thermodynamics() {
        while T keeps the old H, the two stop agreeing. */
     const double rspec = kGasR / kAirMolarMass;
     CHECK_NEAR(airPressure(kerbin, 0.0),
-               1.225 * rspec * airTemperature(kerbin), 1e-12,
+               1.225 * rspec * airTemperature(kerbin, 0.0), 1e-12,
                "p == rho R T / M, spelled through the gas constant");
 
-    /* The model is not a fudge: solar_system.json's Earth authors H 8500 and g 9.82
-       and lands within ~1% of the real sea level, with no temperature authored
-       anywhere. Tolerance 1.5% -- the point is "close", not "USSA". */
+    /* What a single exponential CAN do: an Earth-shaped body at H 8500 and g 9.82
+       lands within ~1.5% of the real sea level with no temperature authored
+       anywhere. Earth itself now authors a layer table instead (#552 A4, see
+       test_layered_atmosphere); this fixture is the profile every other shipped body
+       still uses, and the tolerance says "close", not "USSA". */
     const DragAtmosphere earth = makeAir(1.225, 8500.0, 0.0, 9.82);
-    CHECK_NEAR(airTemperature(earth), 290.773461987318, 1e-12,
-               "Earth's authored H 8500 reads 290.8 K");
-    CHECK_NEAR(airTemperature(earth), 288.15, 0.015, "within 1.5% of USSA 288.15 K");
-    CHECK_NEAR(airSoundSpeed(earth), 341.8449941128289, 1e-12,
+    CHECK_NEAR(airTemperature(earth, 0.0), 290.773461987318, 1e-12,
+               "H 8500 reads 290.8 K");
+    CHECK_NEAR(airTemperature(earth, 0.0), 288.15, 0.015, "within 1.5% of USSA 288.15 K");
+    CHECK_NEAR(airSoundSpeed(earth, 0.0), 341.8449941128289, 1e-12,
                "Earth's sound speed sqrt(gamma g H)");
-    CHECK_NEAR(airSoundSpeed(earth), 340.3, 0.015, "within 1.5% of USSA 340.3 m/s");
+    CHECK_NEAR(airSoundSpeed(earth, 0.0), 340.3, 0.015, "within 1.5% of USSA 340.3 m/s");
     CHECK_NEAR(airPressure(earth, 0.0), 101325.0, 0.015,
                "within 1.5% of USSA 101.325 kPa");
 
@@ -215,9 +224,9 @@ static void test_air_thermodynamics() {
        that started using M in the density profile would go red here. The CO2 numbers
        are what the shipped defs now author for Venus / Mars / Duna / Eve. */
     const DragAtmosphere co2 = makeAir(1.225, 5500.0, 70000.0, 9.81, 0.044);
-    CHECK_NEAR(airTemperature(co2), 285.5289763237949, 1e-12,
+    CHECK_NEAR(airTemperature(co2, 0.0), 285.5289763237949, 1e-12,
                "CO2 air (M 0.044) reads 285.5 K");
-    CHECK_NEAR(airSoundSpeed(co2), airSoundSpeed(kerbin), 0.0,
+    CHECK_NEAR(airSoundSpeed(co2, 0.0), airSoundSpeed(kerbin, 0.0), 0.0,
                "molar mass cancels out of the sound speed");
     CHECK_NEAR(airPressure(co2, 12000.0), airPressure(kerbin, 12000.0), 0.0,
                "molar mass cancels out of the pressure too");
@@ -226,13 +235,13 @@ static void test_air_thermodynamics() {
        1.3 is what the CO2 bodies author; 1.0 is the monatomic limit. */
     const DragAtmosphere co2gam = makeAir(1.225, 5500.0, 70000.0, 9.81, 0.044, 1.3);
     const DragAtmosphere mono = makeAir(1.225, 5500.0, 70000.0, 9.81, kAirMolarMass, 1.0);
-    CHECK_NEAR(airSoundSpeed(co2gam), 264.842405970041, 1e-12,
+    CHECK_NEAR(airSoundSpeed(co2gam, 0.0), 264.842405970041, 1e-12,
                "CO2's gamma 1.3: sqrt(1.3 g H)");
-    CHECK_NEAR(airTemperature(co2gam), airTemperature(co2), 0.0,
+    CHECK_NEAR(airTemperature(co2gam, 0.0), airTemperature(co2, 0.0), 0.0,
                "gamma does not move the temperature");
-    CHECK_NEAR(airSoundSpeed(mono), 232.28215600859227, 1e-12,
+    CHECK_NEAR(airSoundSpeed(mono, 0.0), 232.28215600859227, 1e-12,
                "monatomic gas: sqrt(1.0 g H)");
-    CHECK_NEAR(airTemperature(mono), airTemperature(kerbin), 0.0,
+    CHECK_NEAR(airTemperature(mono, 0.0), airTemperature(kerbin, 0.0), 0.0,
                "gamma does not move the temperature");
     CHECK_NEAR(airPressure(mono, 3000.0), airPressure(kerbin, 3000.0), 0.0,
                "gamma does not move the pressure");
@@ -247,7 +256,7 @@ static void test_air_thermodynamics() {
                "rho aloft does not depend on gravity");
     CHECK_NEAR(airDensity(duna, -500.0), airDensity(kerbin, -500.0), 0.0,
                "nor does the flat floor under the datum");
-    CHECK_NEAR(airSoundSpeed(duna), 274.83995342744475 * std::sqrt(2.94 / 9.81), 1e-12,
+    CHECK_NEAR(airSoundSpeed(duna, 0.0), 274.83995342744475 * std::sqrt(2.94 / 9.81), 1e-12,
                "the sound speed does: it scales as sqrt(g)");
 
     /* p rides rho's OWN scale height -- the same exponential, so the pressure
@@ -283,26 +292,180 @@ static void test_air_thermodynamics() {
     const DragAtmosphere badRho = makeAir(nan, 5500.0, 70000.0, 9.81);
     const DragAtmosphere badH = makeAir(1.225, nan, 70000.0, 9.81);
     const DragAtmosphere badG = makeAir(1.225, 5500.0, 70000.0, nan);
-    CHECK_NEAR(airTemperature(none0), 0.0, 0.0, "no density -> no temperature");
-    CHECK_NEAR(airSoundSpeed(none0), 0.0, 0.0, "no density -> no sound speed");
-    CHECK_NEAR(airTemperature(negg), 0.0, 0.0, "negative gravity -> 0 K, not a negative T");
+    CHECK_NEAR(airTemperature(none0, 0.0), 0.0, 0.0, "no density -> no temperature");
+    CHECK_NEAR(airSoundSpeed(none0, 0.0), 0.0, 0.0, "no density -> no sound speed");
+    CHECK_NEAR(airTemperature(negg, 0.0), 0.0, 0.0, "negative gravity -> 0 K, not a negative T");
     CHECK_NEAR(airPressure(negg, 0.0), 0.0, 0.0, "negative gravity -> 0 Pa, not a negative p");
-    CHECK_NEAR(airSoundSpeed(negg), 0.0, 0.0, "negative gravity -> 0 m/s, not a NaN sqrt");
-    CHECK_NEAR(airTemperature(negH), 0.0, 0.0, "negative scale height -> 0 K");
-    CHECK_NEAR(airSoundSpeed(negH), 0.0, 0.0, "negative scale height -> 0 m/s");
+    CHECK_NEAR(airSoundSpeed(negg, 0.0), 0.0, 0.0, "negative gravity -> 0 m/s, not a NaN sqrt");
+    CHECK_NEAR(airTemperature(negH, 0.0), 0.0, 0.0, "negative scale height -> 0 K");
+    CHECK_NEAR(airSoundSpeed(negH, 0.0), 0.0, 0.0, "negative scale height -> 0 m/s");
     CHECK_NEAR(airDensity(negH, 1000.0), 0.0, 0.0, "... and no density either");
-    CHECK_NEAR(airTemperature(badRho), 0.0, 0.0, "NaN density reads 0 K, not NaN");
-    CHECK_NEAR(airTemperature(badH), 0.0, 0.0, "NaN scale height reads 0 K");
-    CHECK_NEAR(airTemperature(badG), 0.0, 0.0, "NaN gravity reads 0 K");
+    CHECK_NEAR(airTemperature(badRho, 0.0), 0.0, 0.0, "NaN density reads 0 K, not NaN");
+    CHECK_NEAR(airTemperature(badH, 0.0), 0.0, 0.0, "NaN scale height reads 0 K");
+    CHECK_NEAR(airTemperature(badG, 0.0), 0.0, 0.0, "NaN gravity reads 0 K");
     CHECK_NEAR(airPressure(badH, 1000.0), 0.0, 0.0, "NaN scale height -> 0 Pa");
-    CHECK_NEAR(airSoundSpeed(badG), 0.0, 0.0, "NaN gravity -> 0 m/s, never a NaN Mach");
+    CHECK_NEAR(airSoundSpeed(badG, 0.0), 0.0, 0.0, "NaN gravity -> 0 m/s, never a NaN Mach");
     CHECK_NEAR(airDensity(badRho, 1000.0), 0.0, 0.0, "NaN density -> no drag at all");
     CHECK_NEAR(airDensity(badH, 1000.0), 0.0, 0.0, "NaN scale height -> no drag");
     CHECK_NEAR(airDensity(badG, 1000.0), 1.225 * std::exp(-1000.0 / 5500.0), 1e-12,
                "NaN gravity does not poison rho");
-    CHECK_TRUE(std::isfinite(airTemperature(badG)) && std::isfinite(airSoundSpeed(badG))
+    CHECK_TRUE(std::isfinite(airTemperature(badG, 0.0)) && std::isfinite(airSoundSpeed(badG, 0.0))
                && std::isfinite(airPressure(badH, 100.0)) && std::isfinite(airDensity(badRho, 1.0)),
                "every closed read lands on a finite 0.0");
+}
+
+static void test_layered_atmosphere() {
+    printf("== the layer table: a body that authors T(alt), not a scale height (#552 A4) ==\n");
+
+    /* Earth's authored table (utils/make_solar_system.py): the 1976 standard
+       atmosphere. The numbers checked against below are that standard's OWN published
+       table, typed in rather than computed here, so a wrong exponent sign or a wrong
+       anchor reads as a disagreement instead of agreeing with itself. Earth authors
+       g 9.82 where the standard uses 9.80665, and M is rounded to the shipped
+       0.028964 kg/mol; together those drift the profile by ~1% up at the stratopause,
+       which is what the looser bands there are for. */
+    std::vector<AtmoLayer> L = {
+        {0.0,     288.15, -0.0065, 0.0},
+        {11000.0, 216.65,  0.0,    0.0},
+        {20000.0, 216.65,  0.001,  0.0},
+        {32000.0, 228.65,  0.0028, 0.0},
+        {47000.0, 270.65,  0.0,    0.0},
+        {51000.0, 270.65, -0.0028, 0.0},
+        {71000.0, 214.65, -0.002,  0.0},
+    };
+    CHECK_TRUE(resolveAtmoLevels(L, 1.225, kAirMolarMass, 9.82, 85000.0),
+               "Earth's table resolves");
+    DragAtmosphere air { 1.225, 0.0, 85000.0 };   // no scale height: the table IS the profile
+    air.gravity = 9.82;
+    air.layers = L.data();
+    air.layer_count = (int)L.size();
+
+    /* The anchor. sea_level_density survives at the datum EXACTLY (it is authored);
+       the pressure there is derived from it and lands on the standard's 101,325 Pa
+       without anyone writing that number in the system file. */
+    CHECK_NEAR(airDensity(air, 0.0), 1.225, 0.0, "the datum keeps the authored density");
+    CHECK_NEAR(airPressure(air, 0.0), 101325.0, 1e-4, "p0 comes out of rho0 and T0: 101.3 kPa");
+    CHECK_NEAR(airTemperature(air, 0.0), 288.15, 0.0, "T at the datum is level 0's, authored");
+    CHECK_NEAR(airSoundSpeed(air, 0.0), 340.3, 1e-4, "a at the datum: 340.3 m/s");
+
+    /* The standard's pressure column, 0 to 51 km. */
+    CHECK_NEAR(airPressure(air, 11000.0), 22632.0, 0.01, "p at 11 km (tropopause)");
+    CHECK_NEAR(airPressure(air, 20000.0), 5474.9, 0.01, "p at 20 km");
+    CHECK_NEAR(airPressure(air, 32000.0), 868.02, 0.01, "p at 32 km");
+    CHECK_NEAR(airPressure(air, 47000.0), 110.91, 0.02, "p at 47 km (stratopause)");
+    CHECK_NEAR(airPressure(air, 51000.0), 66.94, 0.02, "p at 51 km");
+    CHECK_NEAR(airDensity(air, 11000.0), 0.36393, 0.01, "rho at 11 km");
+    CHECK_NEAR(airDensity(air, 20000.0), 0.088035, 0.01, "rho at 20 km");
+
+    /* Each level's base temperature, bit for bit -- and the standard's 85 km row
+       needs no level of its own, because it is where the -2.0 K/km mesospheric lapse
+       lands (186.65 K here against its 186.87 K). */
+    CHECK_NEAR(airTemperature(air, 11000.0), 216.65, 0.0, "T at 11 km");
+    CHECK_NEAR(airTemperature(air, 20000.0), 216.65, 0.0, "isothermal from 11 to 20 km");
+    CHECK_NEAR(airTemperature(air, 32000.0), 228.65, 0.0, "warming 20 to 32 km");
+    CHECK_NEAR(airTemperature(air, 47000.0), 270.65, 0.0, "warming 32 to 47 km");
+    CHECK_NEAR(airTemperature(air, 71000.0), 214.65, 0.0, "cooling 51 to 71 km");
+    CHECK_NEAR(airTemperature(air, 84999.0), 186.87, 0.005, "T near the top, where the lapse lands");
+
+    /* WHAT THE LAPSE BUYS: the sound speed is no longer one number for the whole
+       body, so the Mach number #543 divides by becomes an altitude question. */
+    CHECK_NEAR(airSoundSpeed(air, 11000.0), 295.05, 0.01, "a at 11 km: 295.1 m/s");
+    CHECK_TRUE(airSoundSpeed(air, 11000.0) < airSoundSpeed(air, 0.0) - 40.0,
+               "the sound bar moves 45 m/s by the tropopause");
+    CHECK_NEAR(300.0 / airSoundSpeed(air, 0.0), 0.8815, 0.01, "300 m/s at the datum: Mach 0.88");
+    CHECK_NEAR(300.0 / airSoundSpeed(air, 11000.0), 1.0167, 0.01, "the same 300 m/s at 11 km: Mach 1.02");
+
+    /* #245's flat floor is the SAME law under a layered body, not an exception that
+       only exists on the exponential path: nothing gets denser under the sea floor. */
+    CHECK_NEAR(airDensity(air, -500.0), 1.225, 0.0, "rho flat under the datum");
+    CHECK_NEAR(airPressure(air, -500.0), airPressure(air, 0.0), 0.0, "p flat under it too");
+    CHECK_NEAR(airTemperature(air, -500.0), 288.15, 0.0, "T flat under it too");
+
+    /* And the air stops at the authored top -- height, because a layer table has no
+       scale height for top() to multiply. */
+    CHECK_NEAR(airDensity(air, 85000.0), 0.0, 0.0, "vacuum at the top");
+    CHECK_NEAR(airPressure(air, 85000.0), 0.0, 0.0, "no pressure at the top");
+    CHECK_NEAR(airTemperature(air, 85000.0), 0.0, 0.0, "no temperature at the top");
+    CHECK_NEAR(airSoundSpeed(air, 200000.0), 0.0, 0.0, "no sound speed above it");
+
+    /* A level boundary must not step the air: base_p is filled in by integrating the
+       level above to this level's base_alt, which is exactly where the reader switches
+       levels. p0 of level N+1 is the top of level N by construction. */
+    CHECK_NEAR(airDensity(air, 11000.0 - 1e-6), airDensity(air, 11000.0 + 1e-6), 1e-9,
+               "no density cliff at a level boundary");
+    CHECK_NEAR(airPressure(air, 20000.0 - 1e-6), airPressure(air, 20000.0 + 1e-6), 1e-9,
+               "... nor where the lapse changes sign");
+    CHECK_NEAR(airTemperature(air, 32000.0 - 1e-6), airTemperature(air, 32000.0 + 1e-6), 1e-9,
+               "... nor mid-warming");
+
+    /* Hydrostatic inside both spellings (the central difference costs ~(dh/H)^2/6,
+       and H = Rs T / g is ~6.3 km in the tropopause, hence 1e-4). */
+    const double dh = 100.0;
+    CHECK_NEAR((airPressure(air, 20000.0 - dh) - airPressure(air, 20000.0 + dh)) / (2.0 * dh),
+               airDensity(air, 20000.0) * 9.82, 1e-4, "-dp/dh == rho g inside a lapse level");
+    CHECK_NEAR((airPressure(air, 15000.0 - dh) - airPressure(air, 15000.0 + dh)) / (2.0 * dh),
+               airDensity(air, 15000.0) * 9.82, 1e-4, "-dp/dh == rho g inside an isothermal level");
+
+    /* THE POINT OF THE TABLE, as a number: density falls faster than pressure when
+       the air has a lapse rate. At 20 km the layered profile puts 2.7x the air over
+       you that Kerbin's single H = 5500 does (the 2.7x in drag.h's "THE THREE ARE
+       LOCKED" block, measured rather than asserted), and LESS air than an isothermal
+       column of the same sea-level density would. */
+    const DragAtmosphere kerbin_exp = makeAir(1.225, 5500.0, 70000.0, 9.81);
+    const DragAtmosphere earth_exp = makeAir(1.225, 8500.0, 0.0, 9.82);
+    CHECK_NEAR(airDensity(air, 20000.0) / airDensity(kerbin_exp, 20000.0), 2.7, 0.01,
+               "a lapse rate is what puts real air at 20 km over a scale-height body");
+    CHECK_TRUE(airDensity(air, 20000.0) < airDensity(earth_exp, 20000.0),
+               "lapse air thins faster than isothermal air of the same rho0");
+
+    /* A layered profile weighs its column, so gravity DOES move its density: rho is
+       p / (Rs T) and p comes from g. That is the one way A4 qualifies #552 A2's
+       promise that gravity cannot move a drag number, and the direction is the honest
+       one -- a scale height is authored, a column of air is weighed. Weigh it LESS
+       and the column puffs out: the same sea-level density, thicker air aloft. */
+    std::vector<AtmoLayer> Lhalf = L;
+    CHECK_TRUE(resolveAtmoLevels(Lhalf, 1.225, kAirMolarMass, 4.91, 85000.0),
+               "the same table resolves on a half-g body");
+    DragAtmosphere halfg = air;
+    halfg.gravity = 4.91;
+    halfg.layers = Lhalf.data();
+    halfg.layer_count = (int)Lhalf.size();
+    CHECK_NEAR(airDensity(halfg, 0.0), 1.225, 0.0, "the datum is the same air either way");
+    CHECK_TRUE(airDensity(halfg, 20000.0) > airDensity(air, 20000.0),
+               "half the gravity: a lighter column, so a taller one -- thicker air aloft");
+
+    /* The load invariants (atmo.h), refused rather than carried: each of these is a
+       divide by zero or a negative temperature several steps later, and system.cpp
+       turns a false into a message that names the body. */
+    std::vector<AtmoLayer> off = { {1000.0, 288.15, -0.0065, 0.0},
+                                   {11000.0, 216.65, 0.0, 0.0} };
+    CHECK_TRUE(!resolveAtmoLevels(off, 1.225, kAirMolarMass, 9.82, 85000.0),
+               "refused: level 0 must sit at the datum");
+    std::vector<AtmoLayer> unsorted = { {0.0, 288.15, -0.0065, 0.0},
+                                        {5000.0, 255.65, 0.0, 0.0},
+                                        {4000.0, 260.0, 0.0, 0.0} };
+    CHECK_TRUE(!resolveAtmoLevels(unsorted, 1.225, kAirMolarMass, 9.82, 85000.0),
+               "refused: level altitudes must strictly rise");
+    std::vector<AtmoLayer> cold = { {0.0, 288.15, -0.0065, 0.0}, {50000.0, 216.65, 0.0, 0.0} };
+    CHECK_TRUE(!resolveAtmoLevels(cold, 1.225, kAirMolarMass, 9.82, 85000.0),
+               "refused: a lapse must not walk T through 0 K inside the air");
+    std::vector<AtmoLayer> one = { {0.0, 288.15, -0.0065, 0.0} };
+    CHECK_TRUE(!resolveAtmoLevels(one, 0.0, kAirMolarMass, 9.82, 85000.0),
+               "refused: nothing to anchor the column on");
+    CHECK_TRUE(!resolveAtmoLevels(one, 1.225, kAirMolarMass, 0.0, 85000.0),
+               "refused: no gravity named");
+    CHECK_TRUE(!resolveAtmoLevels(one, 1.225, kAirMolarMass, 9.82, 0.0),
+               "refused: no air top, so no ceiling to keep T above 0 K");
+    std::vector<AtmoLayer> empty;
+    CHECK_TRUE(!resolveAtmoLevels(empty, 1.225, kAirMolarMass, 9.82, 85000.0),
+               "refused: an empty table is not a profile");
+
+    /* A layered body with no g named fails CLOSED rather than integrating at 0. */
+    DragAtmosphere nog { 1.225, 0.0, 85000.0 };
+    nog.layers = L.data();
+    nog.layer_count = (int)L.size();
+    CHECK_NEAR(airDensity(nog, 5000.0), 0.0, 0.0, "layered but no gravity -> no air");
+    CHECK_NEAR(airPressure(nog, 5000.0), 0.0, 0.0, "... and no pressure");
 }
 
 static void test_force() {
@@ -3102,6 +3265,8 @@ int main() {
     test_densityTop();
     printf("\n");
     test_air_thermodynamics();
+    printf("\n");
+    test_layered_atmosphere();
     printf("\n");
     test_force();
     printf("\n");
