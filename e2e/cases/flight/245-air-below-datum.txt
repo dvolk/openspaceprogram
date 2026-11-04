@@ -18,15 +18,15 @@
 # at t=1..15 s identically, run to run.
 # Tick gating fixes the SAMPLING PHASE, not the TRAJECTORY. This is a pad-start run, so
 # the ground the hull pushes off is built by the camera and handed back by worker threads
-# at machine-dependent times (#475), and the whole tumble scales with when that ground
-# arrives. Same binary, same ARGS, three runs on a quiet machine: bit-identical (max |F|
-# 19.2 kN, 85.9 kN summed, deepest -424.3 m, |v| up to 78.6 m/s). Run in a batch of four
-# while the machine was busy: max |F| 1.5 kN, 4.2 kN summed, deepest -345.0 m, |v| up to
-# 22.1 m/s -- the hull lifts off, tumbles a fifth as far and lands at t=8 s. A second
-# batch on an idle machine reproduced the quiet numbers, so it is CPU pressure that moves
-# it, not running cases together. Every TRAJECTORY band below is therefore set from the
-# mild run, with room; the AIR bands (rho, T, p, a) are world facts and hold either way,
-# which is what this case is actually about.
+# at machine-dependent times (#475): when that ground arrives decides when the hull breaks
+# loose, and a 1 s log grid then samples the same chaotic tumble at a different point on it.
+# Measured over 16 runs of one binary with one ARGS list: max |F| anywhere from 1497.51 N to
+# 19168.82 N, the deepest row from -345.0 m to -424.3 m, max |v| from 22.13 to 78.64 m/s.
+# One run's rows are the previous run's shifted by about a second (t=7 reads 1497.51 N in
+# both; one keeps accelerating to 19.2 kN, the other settles to 0.00 N and lands at t=8).
+# Every TRAJECTORY band below is therefore set from the MILDEST flight seen with a wide
+# margin. The AIR bands (rho, T, p, a) are world facts and hold on all 16 flights, which is
+# what this case is actually about.
 NAME air-below-datum
 CLAIM At or below a body's sea-level datum the air is its sea-level density, flat: a hull under the datum gets rho0, its drag, its lift and its jet thrust.
 KIND invariant
@@ -42,11 +42,12 @@ CHECK len(drag) == 15
 CHECK len(drainlog) >= 15
 CHECK len(surf) == 15
 # THE WORLD: the space port sits under the datum on this fixture (it parks at alt_asl
-# 264.0 on the shipped Kerbin, whose datum is the bare radius). Nothing in this run
-# leaves sub-datum air, and no row of it is near the datum where the two laws nearly
-# agree. These two are the only rows that describe the WORLD rather than the air, and
-# they are the two the pre-fix binary still passes.
-CHECK all(s["alt_asl"] < -300.0 for s in surf)
+# 264.0 on the shipped Kerbin, whose datum is the bare radius). No row of this run gets
+# near the datum where the two laws nearly agree -- the highest altitude measured in 16
+# runs is -299.3 m, still 300 m under it -- so the band says < -100 rather than the -300
+# that one of those runs stepped over. These two are the only rows that describe the
+# WORLD rather than the air, and they are the two the pre-fix binary still passes.
+CHECK all(s["alt_asl"] < -100.0 for s in surf)
 CHECK all(s["bme"] == "ocean" for s in surf)
 # THE LAW: rho == the authored sea_level_density on every row, and never ABOVE it.
 # Flat, not the exponential continued downward -- that reads 1.302 kg/m3 at this
@@ -57,10 +58,10 @@ CHECK all(abs(d["rho"] - 1.225) < 1e-3 for d in drag)
 CHECK all(d["rho"] <= 1.225 + 1e-9 for d in drag)
 # IT PUSHES: 5.6 kN of fan thrust drives the hull through that air, and the bill
 # follows. The pre-fix law reads 0.00 N on every row, so these three floors are 0.00 vs
-# 1.5 kN+ measured, not 5 kN vs 19 kN: on a loaded runner the collider set arrives late
-# and this tumble shrinks to a fifth (#475, numbers in the header). The travel claim is
-# relative to the run's own first row for the same reason -- 8.8 m deep loaded, 88 m
-# solo -- and it still goes red under the pre-fix law, because a hull whose fan never
+# 1.5 kN+ measured, not 5 kN vs 19 kN: the phase a run samples moves max |F| over a 13x
+# range and sum |F| over 28x (#475, numbers in the header). The travel claim is relative to
+# the run's own first row for the same reason -- 8.8 m deep at the mildest flight, 88 m at
+# the wildest -- and it still goes red under the pre-fix law, because a hull whose fan never
 # lights never leaves the pad at all.
 CHECK max(d["F"] for d in drag) > 500.0
 CHECK sum(d["F"] for d in drag) > 1000.0
