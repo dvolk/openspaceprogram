@@ -889,6 +889,120 @@ static void test_can_burn() {
     }
 }
 
+/*
+ * 4e. A JET BURNS ITS LAST GRAMS (#638). consumeResourceMass is drain-or-nothing: it
+ *     refuses a draw the pools cannot cover. The rocket branch has always sized its draw
+ *     first (s = available/desired, then draw desired*s), so a rocket throttles its own
+ *     final tick. The jet branch used to draw the whole tick's flow, get refused, and --
+ *     because armedThrust is only written on a successful draw -- go quiet for ever with
+ *     fuel still in the Vessel window. Both branches now ask Vehicle::burnShare().
+ *     The expectations are RATIOS measured off the hull itself: the COM is not the
+ *     transform origin, so the air -- and with it the flow and the thrust -- is whatever
+ *     this hull actually sits in, and that cancels out of a half-tick comparison.
+ */
+static void test_jet_last_grams() {
+    printf("== a jet burns its last grams (#638) ==\n");
+    {
+        std::deque<PartDef> defs;
+        Vehicle *v = new Vehicle;
+        v->name = "jetlast";
+        Part *pod = mkRigPart(defs, "pod", 400.0, 0.0, 0.0, 1);
+        v->setRoot(pod);
+        Part *jet = mkRigPart(defs, "jet", 50.0, 1.0, 1000.0, 1, /*jet=*/true);
+        v->attachMode(jet, 0, AttachMode::Down, 0.0);
+        Part *tank = mkRigTank(defs, "tank", 50.0, 0.0, 0.0, 500.0);
+        v->attachMode(tank, 0, AttachMode::Down, 0.0);
+        v->init();
+        TerrainBody *air = mkPressureBody(1.225);
+        v->m_parent = air;
+        v->placeShip(glm::dvec3(0.0, 0.0, 600000.0), glm::dmat3(1.0));
+        v->setThrottle(1.0);
+        double *jf = &tank->resources.current[(int)ResourceType::JetFuel];
+
+        v->ApplyThrust_TESTONLY(1.0 / 60.0);
+        const double flow = 500.0 - *jf;          /* one full tick's draw, as measured */
+        const float full = jet->armedThrust;
+        CHECK_TRUE(flow > 0.0, "a full tank funds the whole tick");
+        /* What the draw SHOULD be, from the law and not from itself. The first version
+           of this pin compared *jf with 500.0 - flow after defining flow as
+           500.0 - *jf -- an identity that passes any draw. The COM is not the
+           transform origin, so the density the hull sees is measured; the gate is what
+           that density earns (drag.h), and a funded tank means the fuel share is 1. */
+        const double gate = jetAirGate(v->airDensityAtCom(),
+                                       air->surface.atmosphere.oxidizer_share);
+        CHECK_NEAR(gate, 1.0, 1e-3, "sea-level air opens the gate");
+        CHECK_NEAR(flow, jet->jetFuelRate() * (1.0 / 60.0) * gate, 1e-12,
+                   "and a funded jet draws its rated flow through that gate -- the gate"
+                   " once, and no fuel share on a tank that covers the tick");
+        CHECK_TRUE(full > 0.0, "so the engine arms at full thrust");
+
+        /* Half a tick left. Before #638 this tick was refused outright. */
+        *jf = 0.5 * flow;
+        v->ApplyThrust_TESTONLY(1.0 / 60.0);
+        CHECK_NEAR(jet->armedThrust, 0.5 * full, 1e-3,
+                   "the sliver tick burns at the share it can pay for, not at full"
+                   " thrust and not at zero: momentum the fuel did not buy is the same"
+                   " debt #630 closed on the ram term");
+        CHECK_NEAR(*jf, 0.0, 0.0,
+                   "and the tank is EMPTY -- the last grams are reachable now, where they"
+                   " used to sit unreachable under one tick of flow for ever");
+        CHECK_TRUE(!v->canBurn(),
+                   "and the read agrees: an empty jet canBurn() no more than it thrusts");
+
+        /* The tick after that: nothing to draw, so nothing armed. clearThrust() is what
+           the real loop does before thrusting (tick.cpp); without it the part keeps last
+           tick's armedThrust and the pin passes on a stale value. */
+        v->clearThrust();
+        v->ApplyThrust_TESTONLY(1.0 / 60.0);
+        CHECK_NEAR(jet->armedThrust, 0.0, 0.0, "a dry jet arms nothing, quietly");
+        CHECK_NEAR(*jf, 0.0, 0.0, "and a dry tick takes nothing from an empty tank");
+        delete v->m_parent;
+        delete v;
+    }
+    {
+        /* THIN AIR, same hull, 0.3 x the rating condition. Two scalars live in this
+           branch and only one of them belongs on the flow: the AIR GATE sizes the tick
+           (an intake moves a volume), the FUEL SHARE sizes what of that tick the tanks
+           can pay for. A second gate hidden in the draw would read as a thrifty engine
+           that still flies at full thrust. */
+        std::deque<PartDef> defs;
+        Vehicle *v = new Vehicle;
+        v->name = "jethigh";
+        Part *pod = mkRigPart(defs, "pod", 400.0, 0.0, 0.0, 1);
+        v->setRoot(pod);
+        Part *jet = mkRigPart(defs, "jet", 50.0, 1.0, 1000.0, 1, /*jet=*/true);
+        v->attachMode(jet, 0, AttachMode::Down, 0.0);
+        Part *tank = mkRigTank(defs, "tank", 50.0, 0.0, 0.0, 500.0);
+        v->attachMode(tank, 0, AttachMode::Down, 0.0);
+        v->init();
+        TerrainBody *thin = mkPressureBody(0.3675);
+        v->m_parent = thin;
+        v->placeShip(glm::dvec3(0.0, 0.0, 600000.0), glm::dmat3(1.0));
+        v->setThrottle(1.0);
+        double *jf = &tank->resources.current[(int)ResourceType::JetFuel];
+
+        const double gate = jetAirGate(v->airDensityAtCom(),
+                                       thin->surface.atmosphere.oxidizer_share);
+        CHECK_NEAR(gate, 0.3, 0.01,
+                   "thin air gates the jet without closing it (0 < gate < 1)");
+        v->ApplyThrust_TESTONLY(1.0 / 60.0);
+        CHECK_NEAR(500.0 - *jf, jet->jetFuelRate() * (1.0 / 60.0) * gate, 1e-12,
+                   "the draw carries the air gate exactly once -- the fuel share is 1"
+                   " with a full tank, so anything else here is a double penalty");
+        CHECK_TRUE(jet->armedThrust > 0.0, "and it still flies");
+        delete v->m_parent;
+        delete v;
+    }
+    /* The sizing itself, the shape both branches now share. */
+    CHECK_NEAR(Vehicle::burnShare(10.0, 4.0), 1.0, 0.0, "pools cover the tick -> full");
+    CHECK_NEAR(Vehicle::burnShare(2.0, 4.0), 0.5, 0.0, "half a tick -> half");
+    CHECK_NEAR(Vehicle::burnShare(0.0, 4.0), 0.0, 0.0, "nothing to draw -> no burn");
+    CHECK_NEAR(Vehicle::burnShare(10.0, 0.0), 0.0, 0.0,
+               "a zero-length tick is no burn, the way the rocket branch always read it");
+    CHECK_NEAR(Vehicle::burnShare(std::nan(""), 4.0), 0.0, 0.0,
+               "a NaN availability fails CLOSED -- (x < 1.0) would answer fully covered");
+}
+
 /* THE THROTTLE HAS A SETPOINT CHANNEL, AND IT SAID WHO IS HOLDING IT (#400 F3).
    availableAccel() (F1) tells a law what a burn could do; this is the half that lets it
    ASK for the burn. The throttle used to be a public float, so the only way in for a law
@@ -1020,6 +1134,8 @@ int main() {
     test_available_accel_along_two_mounts();
     printf("\n");
     test_can_burn();
+    printf("\n");
+    test_jet_last_grams();
     printf("\n");
     test_the_throttle_setpoint_channel();
 

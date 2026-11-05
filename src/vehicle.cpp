@@ -2056,6 +2056,16 @@ double Vehicle::availableResourceMass(enum ResourceType type, Part *engine) cons
     return total;
 }
 
+double Vehicle::burnShare(double available, double desired) {
+    /* Fail CLOSED on a non-number availability: the (x < 1.0) shape below would answer
+       "fully covered" to a NaN share, and a NaN in resources.current is a bug elsewhere
+       that this should not launder into a burn. */
+    if(!(desired > 0.0)) { return 0.0; }
+    if(!(available > 0.0)) { return 0.0; }
+    const double s = available / desired;
+    return (s < 1.0) ? s : 1.0;
+}
+
 // Fill burn[ResourceType::Num] with the resources the ship's engines draw.
 // includeJets: also count jet fuel (jets shed mass but produce no vacuum dv).
 void Vehicle::enginePropellantMask(bool *burn, bool includeJets) const {
@@ -4671,9 +4681,9 @@ bool Vehicle::canBurn() {
     /* The same predicate ApplyThrust sizes each engine's draw with -- s = min over
        propellants of (available / desired), and s <= 0 means no burn -- asked as a
        yes/no rather than a fraction. A fraction would be the wrong shape for the ceiling
-       beside it: a rocket scales its last tick by s, so ANY propellant at all can still
-       produce rated thrust for a slice of a second. (A jet cannot -- its draw is
-       drain-or-nothing, so its last sliver is unreachable. #638.) Availability is asked
+       beside it: an engine sizes its last tick by that share (burnShare), so ANY
+       propellant at all can still produce thrust for a slice of a second -- rockets have
+       always done this and jets do since #638. Availability is asked
        per engine, because availableResourceMass walks THAT engine's fuel groups: a live
        engine walled off by a fuel barrier has no drain layers at all (fuelDrainLayers,
        group -1) and reads false while the stacks are full. */
@@ -4722,16 +4732,28 @@ void Vehicle::ApplyThrust(double step) {
                thin-air jet is weak AND sips fuel (no usable air, no burn). */
             const double flow = p->jetFuelRate() * (double)thruster_util * step
                               * jetAirGate(rho, ox_share); /* kg this tick */
-            const FuelDraw drew = consumeResourceMass(ResourceType::JetFuel, flow, p);
-            if(drew.ok) {
-                p->armedThrust = (float)(T * thruster_util * exhaust_scale);
-                m_thrust = 1.0;
-                /* No delta-v line for a jet -- but the kg it threw out the back IS
-                   mass the rockets later in parts order no longer push, so the
-                   --dv-log cursor steps down by it anyway (#531's rule: bill the
-                   tanks). propSpent_ stays rocket-only, as its name says. */
-                if(dv_log_enabled) { dvMass -= drew.drawn; }
-            }
+            /* Size the draw the way the rocket branch does (#638). consumeResourceMass is
+               drain-or-nothing, so a jet holding less than one tick of flow used to be
+               refused EVERY tick: quiet, with fuel still in the Vessel window, for ever.
+               s pays for the thrust too -- an unscaled T would bill momentum the fuel
+               never paid for, the same debt #630's ram gate closed. */
+            const double avail = availableResourceMass(ResourceType::JetFuel, p);
+            const double s = burnShare(avail, flow);
+            if(s <= 0.0) { continue; }
+            double amt = flow * s;
+            if(amt > avail) { amt = avail; }   // see the ULP note on consumeResourceMass
+            const FuelDraw drew = consumeResourceMass(ResourceType::JetFuel, amt, p);
+            /* Sized first and clamped to what the sizing measured, so this cannot
+               refuse -- the same invariant the rocket branch asserts below. Before #638
+               the refusal was the bug: quietly, forever, with fuel in the window. */
+            assert(drew.ok && "s must cover the jet draw too; no build sets NDEBUG");
+            p->armedThrust = (float)(T * thruster_util * exhaust_scale * s);
+            m_thrust = 1.0;
+            /* No delta-v line for a jet -- but the kg it threw out the back IS
+               mass the rockets later in parts order no longer push, so the
+               --dv-log cursor steps down by it anyway (#531's rule: bill the
+               tanks). propSpent_ stays rocket-only, as its name says. */
+            if(dv_log_enabled) { dvMass -= drew.drawn; }
             continue;
         }
         /* Size the whole burn by s = min over propellants of (available / desired), so
@@ -4746,10 +4768,9 @@ void Vehicle::ApplyThrust(double step) {
             const double desired = rate_r * (double)thruster_util * step;
             avail[r] = availableResourceMass((ResourceType)r, p);
             // desired <= 0: a zero-length tick
-            const double si = (desired > 0.0) ? (avail[r] / desired) : 0.0;
+            const double si = burnShare(avail[r], desired);
             if(si < s) { s = si; }
         }
-        if(s > 1.0) { s = 1.0; }
         if(s <= 0.0) { continue; }
         double dm = 0.0;   // kg this engine actually took, for --dv-log
         for(int r = 0; r < (int)ResourceType::Num; r++) {

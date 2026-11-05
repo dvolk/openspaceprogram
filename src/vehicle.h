@@ -917,6 +917,15 @@ public:
        draining. */
     double availableResourceMass(enum ResourceType type, Part *engine) const;
 
+    /* How much of ONE TICK's draw the pools can cover -- the share both ApplyThrust
+       branches size their burn with (#638). 0 means no burn this tick: nothing available,
+       or a zero-length/zero-desired tick (which is what the rocket branch has always
+       treated as no burn). 1 means the pools cover it, and in between is the last sliver:
+       an engine throttles its own final tick instead of being refused outright, which a
+       drain-or-nothing consumeResourceMass needs its caller to do. NaN fails CLOSED --
+       an availability that is not a number is not a burn. */
+    static double burnShare(double available, double desired);
+
     /* includeJets counts jet fuel too. */
     void enginePropellantMask(bool *burn, bool includeJets) const;
 
@@ -1037,9 +1046,9 @@ public:
          magnitude wants gating too.
        * Jets are engines here (they burn, they thrust, and availableAccel() already
          bills their ceiling), but this read never asks about the AIR -- a jet on Jool can
-         "burn" and produce exactly nothing, which is the ceiling's zero for saying. And
-         it asks about the RESOURCE, not about the draw one tick can make: a jet holding
-         less than one tick of flow cannot light at all (#638). */
+         "burn" and produce exactly nothing, which is the ceiling's zero for saying. It
+         asks about the RESOURCE and the reach; whether one tick can be FUNDED is
+         burnShare()'s question, asked where the draw happens. */
     bool canBurn();
 
     /* THE LEVER ITSELF (#400 F3). The throttle used to be a public float, so a law
