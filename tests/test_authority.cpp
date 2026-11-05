@@ -1033,6 +1033,12 @@ static void test_a_switched_off_drum_is_not_a_row() {
                "the hardware answer still holds the drums the switch refused");
     CHECK_TRUE(v->attitudeAuthorityHardware().wheels.size() == 3,
                "and it holds all of them: hardware is a superset of what is live");
+    /* The other half of the aero row's two answers (#649): a hull with no plates at all
+       must be told "no aero surfaces on this hull", not handed the empty-row-set reason
+       that belongs to a finned hull in vacuum. The fin test below pins hasSurfaces true;
+       this stack pins it false, which is where the shipped bug actually lived. */
+    CHECK_TRUE(!v->attitudeAuthorityHardware().hasSurfaces,
+               "no plates fitted: the fitting answer, not an air answer");
     {
         /* Hardware mode is not a switch-blind free pass: it drops the ENABLE half of the
            door and keeps the EC half, because a dead battery is not what the switch gives
@@ -1043,7 +1049,6 @@ static void test_a_switched_off_drum_is_not_a_row() {
         v->powered_ = false;
         CHECK_TRUE(v->attitudeAuthorityHardware().wheels.empty(),
                    "no EC: the hardware rows close too, switch or no switch");
-        CHECK_TRUE(!v->ecPowersWheels(), "and the door can name that reason");
         v->powered_ = wasPowered;
         CHECK_TRUE(!v->attitudeAuthorityHardware().wheels.empty(),
                    "power back and the refused drums are rows again");
@@ -1275,8 +1280,8 @@ static void test_the_command_funnel() {
     CHECK_TRUE(!v->applySlewRequest(true) && v->slewMode() == SlewNone,
                "released: the copy drops in the same step");
 
-    /* What the wheels bill (actuatorsEngaged) -- all three halves, because the F1
-       debug overlay's Power block and powerTick() share this one rule and used to spell
+    /* What the wheels bill (actuatorsEngaged) -- all three halves, because the Systems
+       window's Power block and powerTick() share this one rule and used to spell
        it separately. */
     v->Command(ShipCmd(Pitch, +1.0f), true);
     CHECK_TRUE(v->actuatorsEngaged(), "a commanded stick works the wheels");

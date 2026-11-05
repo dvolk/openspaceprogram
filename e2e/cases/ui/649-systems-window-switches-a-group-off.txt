@@ -64,3 +64,9 @@ FORBID error:
 CHECK [len([l for l in d.split("\n") if l.rstrip().endswith(" text") and 'window="Systems"' in l]) for d in out.split("[uilist] loop=")[1:]] == [8, 8]
 # And the same for the Vessel window's capability rows, so the pair is pinned per side.
 CHECK [len([l for l in d.split("\n") if l.rstrip().endswith(" text") and 'window="Vessel Info"' in l]) for d in out.split("[uilist] loop=")[1:]] == [4, 4]
+# Two dumps, and two DIFFERENT moments. A --ui-list time fires on the first frame at or
+# after it, so two times inside one frame gap would print the same picture twice and the
+# [8,8] above would prove nothing. The stamps are printed; pin them apart, with a margin
+# wider than a frame (16ms) but far inside the 1.6s between the click and the second dump.
+CHECK len(re.findall(r'^\[uilist\] loop=([0-9.]+)s', out, re.M)) == 2
+CHECK float(re.findall(r'^\[uilist\] loop=([0-9.]+)s', out, re.M)[1]) - float(re.findall(r'^\[uilist\] loop=([0-9.]+)s', out, re.M)[0]) > 0.5

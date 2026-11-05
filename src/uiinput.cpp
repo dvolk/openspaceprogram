@@ -452,8 +452,9 @@ void emit_ui_input(Game &g) {
 
     /* Armed only while work remains: the registry allocates per item per
        frame, and a finished test should not pay it. Every --ui-list time is
-       spent once it fires, so the hook disarms between a case's last dump and
-       its last click. */
+       spent once it fires, so once the last dump and the last click are done
+       imgui stops collecting items for us. (The hook itself stays installed --
+       what stops is the item collection it reads, not the callback.) */
     bool pending = false;
     for(const int ms : g.args.ui_list_ms) {
         if(ms >= 0) { pending = true; break; }

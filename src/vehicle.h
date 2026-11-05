@@ -712,7 +712,7 @@ public:
        `power_draw` when its busiest drum is at full demand, not three times it, because
        the catalog's watt figure is the package's while `torque` is per drum -- pricing
        the drums individually would triple every shipped wheel with no author asking.
-       powerTick() pays this and the Game Debug overlay's Active row shows it, so the row
+       powerTick() pays this and the Systems window's Active row shows it, so the row
        cannot disagree with the bill (#575) -- it used to re-derive the sum, and dropped
        the power gate while doing it. */
     double wheelDrawWatts() const;
@@ -1178,7 +1178,7 @@ public:
     void getPower(double *gen, double *constDraw, double *charge, double *capacity);
 
     /* Does this hull have an electrical SYSTEM, as opposed to an EC bar that happens to
-       read zero? One spelling because four places ask it: powerTick() leaves the wheels
+       read zero? One spelling because three places ask it: powerTick() leaves the wheels
        ungated when the answer is no (#418), the Systems window says "nothing to pay,
        nothing to cut" rather than printing a column of zeroes that reads like a fault
        (#649), and the VAB prices an assembly before launch (#644). The caller hands over

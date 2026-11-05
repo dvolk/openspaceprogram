@@ -2203,7 +2203,7 @@ void Vehicle::powerTick(double h) {
     /* The wheels draw only while actually working: gated by the verdict, by a live
        command, and by there being a control pass to work them -- a hull coasting on
        rails has none, so it pays for breathing and generation but not for drums it is
-       not turning (#647). The power block on the Game Debug overlay and --power-log's
+       not turning (#647). The Systems window and --power-log's
        active= column quote the same predicate (#575, and ui/601 reads it off the
        screen).
        What it pays is the DELIVERED figure, not `cost`: the last actuated substep's
@@ -4251,6 +4251,13 @@ std::string Vehicle::refuseDockWith(Vehicle *B) {
 void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     if(B == nullptr || B == this || B->parts.empty()) { return; }
     if(portA == nullptr || !portA->isDockingPort()) { return; }
+    /* THE ORDERS DO NOT CROSS A DOCK. The merged hull is flown from A, so A's enable
+       switches (#425 D-2, #649) are the ones the laws consult; B stops being a hull and
+       its switches die with it. That is a decision, not an oversight, and it has a
+       consequence the pilot can trip over: dock a drums-off probe to a drums-on station,
+       undock, and the probe's drums are on again -- the split copies the FLYING hull's
+       orders (extractSubtreeAsShip), not the ones that probe once had. Per-vessel orders
+       that survive a merge is the open question (#657), not something to half-fix here. */
     /* Before any part surgery: displayName() reads parts[0] for a kerbal. */
     const std::string bName = B->displayName();
 
@@ -4409,7 +4416,10 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
        off across a staging event or an undock. Left out, the constructor's defaults
        quietly re-open a door the player shut, and the readouts then quote authority the
        pilot declined to spend. Latent since #425 D-2 because nothing could write either
-       mask until #649 put a handle on them. */
+       mask until #649 put a handle on them. Note the other half of this: what crosses is
+       the FLYING hull's orders, so a vessel that lost its own at a dock gets the
+       survivor's back -- absorbShip above states that law, and #657 asks whether it
+       should hold. */
     nv->wheels_enabled = wheels_enabled;
     nv->surfaces_enabled = surfaces_enabled;
 

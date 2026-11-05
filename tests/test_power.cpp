@@ -575,7 +575,7 @@ static void test_active_wheel_draws() {
     s.v->powerTick(3600.0);
     CHECK_NEAR(totalEC(s), 3800.0, 1e-6, "stick off drains only life support");
 
-    /* The same sum the power block on the Game Debug overlay prints (#575), pinned on
+    /* The same sum the Systems window's Active row prints (#575), pinned on
        both gates: the wheel bills its draw only while the stick is working it AND the
        hull has power. The row used to re-derive this and dropped the power half, so an
        unpowered hull showed a draw it was not paying. */

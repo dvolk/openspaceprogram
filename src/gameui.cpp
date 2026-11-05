@@ -2571,9 +2571,12 @@ void drawUIReadouts(Game &g) {
        balance moved here from the bottom of the Game Debug overlay, which is #646's fix:
        the rows were there for a player who already knew to press F1, while everyone else
        saw only the EC bar in Resources draining, and no word about why.
-       The boundary with Vessel Info above stays deliberate: that window answers what the
-       HARDWARE could do, this one answers what the hull is ALLOWED to do and what it pays
-       for the privilege. Two windows that both answer "could it" is how readouts drift. */
+       The boundary with Vessel Info above stays deliberate, and both windows speak the
+       LIVE answer: Vessel Info prints what the hull can spend right now -- power, air and
+       the switches all applied -- and this one prints the balance, the switches, and what
+       flipping one would give up. That last question is the only place
+       attitudeAuthorityHardware() is asked, and it is a different question rather than a
+       different window on the same one. */
     drawWin(g, W_Systems, [&] {
         double gen = 0.0, constDraw = 0.0, charge = 0.0, capacity = 0.0;
         ship->getPower(&gen, &constDraw, &charge, &capacity);
@@ -2628,6 +2631,11 @@ void drawUIReadouts(Game &g) {
            surfaces_enabled) rather than adding a case to the mixer: the group emits no
            rows, so there is no authority, no bill and no setpoint, and the laws, the slew
            budget and Vessel Info all see the same smaller answer (#425 D-2).
+           What the aero door cuts is the STEERING command, not the plate: a trimmed plate
+           keeps flying the hull with the switch off, because the trim walk reads parts
+           rather than rows (vehicle.cpp, and Vehicle::surfaces_enabled says so too). The
+           row does not yet say that -- #657/#658 hold the question of how per-vessel
+           orders and a half-cut surface group should read.
            The figure beside a switch is what the group is worth if the door were OPEN --
            attitudeAuthorityHardware(), one row builder with the switches ignored, not a
            second arithmetic (#649). It has to be: a closed door makes the live answer
@@ -2666,11 +2674,14 @@ void drawUIReadouts(Game &g) {
                fleet: a hull with no plates at all (power_test, most rockets) was told it
                had "no air for them to push" while sitting in full air. hw.hasSurfaces is
                the fitting, recorded by the row builder whatever its gate decided (#649).
-               Empty WITH plates means no air at this altitude, no airspeed to make q, or
-               --drag-cd 0 -- all three are "nothing to push against", which is also why
-               the row does not blame the switch: the hardware question ignores it. */
+               Empty WITH plates is the summary row for everything that makes a plate
+               worth nothing this substep -- no air at this altitude, no airspeed to make
+               q, --drag-cd 0, or a rig whose push decides nothing about its axis (#495).
+               It deliberately does NOT blame the switch: the hardware question ignores it.
+               Naming the four apart would want a fourth readout in a window that already
+               has eight rows, and none of them changes what the pilot does next. */
             uiText("  %s -- %s", ship->surfaces_enabled ? "on" : "off",
-                   hw.hasSurfaces ? "no air to push them"
+                   hw.hasSurfaces ? "nothing to push against"
                                   : "no aero surfaces on this hull");
         } else {
             uiText("  %s -- %.0f / %.0f / %.0f N m at stake (roll/pitch/yaw)",

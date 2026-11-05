@@ -131,10 +131,11 @@ const WinDef kWins[W_Count] = {
     },
     [W_Systems] = {
         .name = "Systems", .label = "Systems",
-        // #649: state and switches (what is on, what it costs, what is refusing).
-        // Vessel Info keeps rated capability (what the hardware could do), so the two
-        // windows answer different questions instead of duplicating. Open by default:
-        // this is #646's fix -- the electrical balance used to live on the Game Debug
+        // #649: state and switches -- what is on, what it costs, what is refusing, and
+        // what flipping a switch would give up. Vessel Info keeps the per-axis authority
+        // the hull can spend RIGHT NOW, so the two windows answer different questions
+        // instead of duplicating. Open by default: this is #646's fix -- the electrical
+        // balance used to live on the Game Debug
         // overlay, where a player who never pressed F1 saw only the EC bar draining.
         .opts = { .slot = ui::Slot::BottomRight, .left_of = "Vessel Info",
                   .closable = true },
