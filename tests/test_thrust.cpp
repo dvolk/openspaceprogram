@@ -319,10 +319,15 @@ struct ThrustRig {
 
 /* A part for this rig: `rate` x `ve` is the rated thrust, and rate 0 (the pod) simply
    means it is not a thruster. `jet` makes it air-breathing instead, and `gimbal_max`
-   (rad) is how far its nozzle may swing off the mount -- 0 means locked. */
+   (rad) is how far its nozzle may swing off the mount -- 0 means locked. `h2_only`
+   makes a rocket burn hydrogen alone (same rated thrust, one propellant instead of
+   two), which is how the canBurn cases below build an engine a tank can half-feed.
+   `barrier` walls the part off from the fuel graph (Part::isFuelBarrier -> no fuel
+   group, so no drain layers at all). */
 static Part *mkRigPart(std::deque<PartDef> &defs, const char *name, double mass,
                        double rate, double ve, int stage, bool jet = false,
-                       double gimbal_max = 0.0) {
+                       double gimbal_max = 0.0, bool h2_only = false,
+                       bool barrier = false) {
     Body *b = new Body;
     b->btBody = nullptr;
     b->shape = new btBoxShape(btVector3(0.5f, 0.5f, 0.5f));
@@ -333,11 +338,14 @@ static Part *mkRigPart(std::deque<PartDef> &defs, const char *name, double mass,
     d.mass = (float)mass;
     d.exhaust_velocity = ve;
     d.gimbal_max = gimbal_max;
+    d.fuel_barrier = barrier;
     if(jet) {
         d.jet = true;
         d.setPropellantRate(ResourceType::JetFuel, rate);
         d.jet_fan_thrust = 100.0;
         d.jet_intake_area = 0.04;
+    } else if(h2_only) {
+        d.setPropellantRate(ResourceType::Hydrogen, rate);
     } else {
         d.setPropellantRate(ResourceType::Hydrogen, rate * 0.5);
         d.setPropellantRate(ResourceType::LOX, rate * 0.5);
@@ -666,6 +674,221 @@ static void test_available_accel_along_two_mounts() {
     delete v;
 }
 
+/*
+ * 4d. CAN THIS STAGE ACTUALLY BURN (#607 part 2). The three reads above are POTENTIALS:
+ *     they rate the ignited stage whatever the tanks say, and that is what a burn plan
+ *     and the VAB's rating rows want (test_shipload pins getMaxTWR() staying a rating
+ *     with the oxidizer missing). The bug was the missing OTHER answer: a dry rig rates
+ *     20000 N and 10 m/s^2 below while ApplyThrust's own sizing
+ *     (s = min over propellants of available/desired) sends it to zero, so a throttle law
+ *     divides its ask by a number the hull will never deliver and has no way to notice.
+ *     canBurn() is that answer, asked per ignited engine over the resources THAT engine
+ *     drains -- which is a tighter question than the mask pair guidance.cpp used to keep
+ *     for itself, and the last-but-one case below is the difference: a live engine
+ *     missing one of two propellants, with a fed engine still staged below it.
+ *     These hulls have no body at all: the air is not what is in question here.
+ */
+
+/* A tank for these rigs. Capacity lives in the DEF, so init() tops it up, and the fuel
+   has mass (Part::effectiveMass counts contents) -- which is why every case below names
+   its own hull instead of adding a tank to one that already ran init(). Draining and
+   pro-rata layering are test_fuel's business; the only question here is whether a burn
+   is possible at all. */
+static Part *mkRigTank(std::deque<PartDef> &defs, const char *name, double dry,
+                       double h2, double lox, double jet_fuel = 0.0) {
+    Body *b = new Body;
+    b->btBody = nullptr;
+    b->shape = new btBoxShape(btVector3(0.5f, 0.5f, 0.5f));
+    b->mass = dry;
+    defs.push_back(PartDef());
+    PartDef &d = defs.back();
+    d.name = name;
+    d.mass = (float)dry;
+    d.capacity[(int)ResourceType::Hydrogen] = h2;
+    d.capacity[(int)ResourceType::LOX] = lox;
+    d.capacity[(int)ResourceType::JetFuel] = jet_fuel;
+    d.synthesizeNodes();
+    Part *p = new Part;
+    p->body = b;
+    p->def = &d;
+    p->stage = 1;
+    return p;
+}
+
+static void test_can_burn() {
+    printf("== canBurn: the gated twin of the ceiling reads (#607) ==\n");
+    {   /* The ticket's probe, made permanent: no tank anywhere on the hull. */
+        std::deque<PartDef> defs;
+        Vehicle *v = new Vehicle;
+        v->name = "dryprobe";
+        Part *pod = mkRigPart(defs, "pod", 1900.0, 0.0, 0.0, 1);
+        v->setRoot(pod);
+        Part *eng = mkRigPart(defs, "engine", 100.0, 5.0, 4000.0, 1);
+        v->attachMode(eng, 0, AttachMode::Down, 0.0);
+        v->init();
+        CHECK_NEAR(v->availableThrust(), 20000.0, 1e-12,
+                   "the potential still rates the engine: it is a RATING, and a plan is"
+                   " allowed to ask what this stage could do");
+        CHECK_NEAR(v->availableAccel(), 10.0, 1e-12, "20000 N over 2000 kg");
+        CHECK_TRUE(!v->canBurn(), "and nothing can burn: there is no propellant on the"
+                   " ship. A law that sizes its throttle with the number above divides"
+                   " by a promise the hull will never keep");
+        /* The other side of the gap, at the reachable half of it. ApplyThrust is
+           protected (the tests here model its flow rather than call it), but its rule
+           is one line: size s = available/desired and skip the engine at s <= 0, so the
+           draw is refused before anything is armed. consumeResourceMass is the same
+           question asked of the pools, and a dry hull answers no. */
+        CHECK_TRUE(!v->consumeResourceMass(ResourceType::Hydrogen, 0.001, eng).ok,
+                   "the draw a tick would ask for is refused outright, which is the s = 0"
+                   " that leaves armedThrust untouched: 20000 N rated, 0 N delivered, and"
+                   " nothing above says so. That gap is why canBurn() exists");
+        delete v;
+    }
+    {   /* Same hull, one tank of both propellants in its fuel group. */
+        std::deque<PartDef> defs;
+        Vehicle *v = new Vehicle;
+        v->name = "fueled";
+        Part *pod = mkRigPart(defs, "pod", 1900.0, 0.0, 0.0, 1);
+        v->setRoot(pod);
+        Part *eng = mkRigPart(defs, "engine", 100.0, 5.0, 4000.0, 1);
+        v->attachMode(eng, 0, AttachMode::Down, 0.0);
+        Part *tank = mkRigTank(defs, "tank", 100.0, 100.0, 100.0);
+        v->attachMode(tank, 0, AttachMode::Down, 0.0);
+        v->init();
+        CHECK_TRUE(v->canBurn(), "hydrogen AND LOX, in a group the engine can drain");
+        CHECK_NEAR(v->availableThrust(), 20000.0, 1e-12,
+                   "and the rating did not move: fuel is not part of a rating");
+        delete v;
+    }
+    {   /* Half a mix. ApplyThrust sizes a burn by the SCARCEST propellant (s = min over
+           the resources this engine drains), so an engine with fuel and no oxidizer is a
+           hole, not a weak engine. */
+        std::deque<PartDef> defs;
+        Vehicle *v = new Vehicle;
+        v->name = "nolox";
+        Part *pod = mkRigPart(defs, "pod", 1900.0, 0.0, 0.0, 1);
+        v->setRoot(pod);
+        Part *eng = mkRigPart(defs, "engine", 100.0, 5.0, 4000.0, 1);
+        v->attachMode(eng, 0, AttachMode::Down, 0.0);
+        Part *tank = mkRigTank(defs, "tank", 100.0, 100.0, 0.0);
+        v->attachMode(tank, 0, AttachMode::Down, 0.0);
+        v->init();
+        CHECK_TRUE(!v->canBurn(), "100 kg of hydrogen and no oxidizer: nothing lights."
+                   " The union mask guidance.cpp used to keep summed the ship's fuel by"
+                   " RESOURCE and read this as propellant");
+        delete v;
+    }
+    {   /* Reach, not amount. This engine is its own fuel barrier, so it has no drain
+           layers (fuelDrainLayers, group -1) and can reach nothing -- while the hull
+           carries enough of BOTH propellants for the old read to say yes. */
+        std::deque<PartDef> defs;
+        Vehicle *v = new Vehicle;
+        v->name = "barrier";
+        Part *pod = mkRigPart(defs, "pod", 1900.0, 0.0, 0.0, 1);
+        v->setRoot(pod);
+        Part *eng = mkRigPart(defs, "engine", 100.0, 5.0, 4000.0, 1, /*jet=*/false,
+                              /*gimbal_max=*/0.0, /*h2_only=*/false, /*barrier=*/true);
+        v->attachMode(eng, 0, AttachMode::Down, 0.0);
+        Part *tank = mkRigTank(defs, "tank", 100.0, 100.0, 100.0);
+        v->attachMode(tank, 0, AttachMode::Down, 0.0);
+        v->init();
+        CHECK_NEAR(v->availableThrust(), 20000.0, 1e-12, "rated, and it would fly --");
+        CHECK_TRUE(!v->canBurn(), "-- if it could be fed. Full tanks of both propellants"
+                   " sit on the hull and this engine is walled off from every one of"
+                   " them; a ship-wide pool cannot see that, per-engine reach can");
+        delete v;
+    }
+    {   /* The stage gate. The live stage (3) is an H2/LOX engine; below it sits a
+           hydrogen-only engine fed by a hydrogen-only tank. At stage 3 neither answer is
+           available from a ship-wide pool: the live engine lacks its oxidizer, and the
+           engine that COULD burn is not ignited yet. */
+        std::deque<PartDef> defs;
+        Vehicle *v = new Vehicle;
+        v->name = "stagegate";
+        Part *pod = mkRigPart(defs, "pod", 1900.0, 0.0, 0.0, 1);
+        v->setRoot(pod);
+        Part *eng3 = mkRigPart(defs, "engine3", 100.0, 5.0, 4000.0, 3);
+        v->attachMode(eng3, 0, AttachMode::Down, 0.0);
+        Part *eng1 = mkRigPart(defs, "engine1", 100.0, 1.0, 4000.0, 1,
+                               /*jet=*/false, /*gimbal_max=*/0.0, /*h2_only=*/true);
+        v->attachMode(eng1, 0, AttachMode::Down, 0.0);
+        Part *tank = mkRigTank(defs, "tank", 100.0, 100.0, 0.0);
+        v->attachMode(tank, 0, AttachMode::Down, 0.0);
+        v->init();
+        CHECK_TRUE(v->activeStage() == 3, "the counter starts at the top stage, and a"
+                   " part is live at stage >= the counter");
+        CHECK_NEAR(v->availableThrust(), 20000.0, 1e-12,
+                   "the live engine is the 20000 N one, and it rates healthy");
+        CHECK_TRUE(!v->canBurn(), "but the live engine has no LOX, and the engine that"
+                   " could run on hydrogen alone is not ignited -- a full tank below the"
+                   " stage line cannot vote");
+        v->advanceStage();   // the counter walks DOWN through every stage, and stage 2
+                             // has no engine on this hull
+        CHECK_TRUE(!v->canBurn(), "one stage down is not yet the engine that can burn");
+        v->advanceStage();
+        CHECK_TRUE(v->activeStage() == 1, "and now the hydrogen-only engine is ignited");
+        CHECK_TRUE(v->canBurn(), "the same 100 kg of hydrogen, one stage lower, is a"
+                   " burn: this is the read a law needs after a stage quit mid-burn");
+        delete v;
+    }
+    {   /* EXISTS, not ALL -- and what that leaves uneven (#639). Two engines on the SAME
+           live stage: a 20000 N H2/LOX one and a 4000 N hydrogen-only one, over a tank
+           with hydrogen and no LOX. The hydrogen engine can burn; the big one cannot.
+           canBurn() is true (one dry engine does not veto a stage that can fly) while
+           the ceiling sums BOTH, so a law gating on this read and sizing with that one
+           plans with 24000 N of which 4000 N will ever appear. Pinned as the pair works
+           today, not as anyone wants it to work. */
+        std::deque<PartDef> defs;
+        Vehicle *v = new Vehicle;
+        v->name = "mixedset";
+        Part *pod = mkRigPart(defs, "pod", 1900.0, 0.0, 0.0, 1);
+        v->setRoot(pod);
+        Part *engA = mkRigPart(defs, "engineA", 100.0, 5.0, 4000.0, 1);
+        v->attachMode(engA, 0, AttachMode::Down, 0.0);
+        Part *engB = mkRigPart(defs, "engineB", 100.0, 1.0, 4000.0, 1, /*jet=*/false,
+                               /*gimbal_max=*/0.0, /*h2_only=*/true);
+        v->attachMode(engB, 0, AttachMode::Down, 0.0);
+        Part *tank = mkRigTank(defs, "tank", 100.0, 100.0, 0.0);
+        v->attachMode(tank, 0, AttachMode::Down, 0.0);
+        v->init();
+        CHECK_TRUE(v->canBurn(), "the hydrogen-only engine has what it needs");
+        CHECK_NEAR(v->availableThrust(), 24000.0, 1e-12,
+                   "while the ceiling is a sum over every ignited engine, fed or not:"
+                   " it bills the unfed 20000 N one too (#639)");
+        delete v;
+    }
+    {   /* Jets are engines, and availability is per ENGINE. This hull carries 200 kg of
+           rocket propellant, which no part of it can burn: the only engine is a jet. */
+        std::deque<PartDef> defs;
+        Vehicle *v = new Vehicle;
+        v->name = "jethull";
+        Part *pod = mkRigPart(defs, "pod", 400.0, 0.0, 0.0, 1);
+        v->setRoot(pod);
+        Part *jet = mkRigPart(defs, "jet", 50.0, 1.0, 1000.0, 1, /*jet=*/true);
+        v->attachMode(jet, 0, AttachMode::Down, 0.0);
+        Part *tank = mkRigTank(defs, "tank", 100.0, 100.0, 100.0);
+        v->attachMode(tank, 0, AttachMode::Down, 0.0);
+        v->init();
+        CHECK_TRUE(!v->canBurn(), "200 kg of hydrogen and LOX on board and not one gram"
+                   " of the fuel this engine burns");
+        delete v;
+        std::deque<PartDef> d2;
+        Vehicle *fv = new Vehicle;
+        fv->name = "jethullfueled";
+        Part *pod2 = mkRigPart(d2, "pod", 400.0, 0.0, 0.0, 1);
+        fv->setRoot(pod2);
+        Part *jet2 = mkRigPart(d2, "jet", 50.0, 1.0, 1000.0, 1, /*jet=*/true);
+        fv->attachMode(jet2, 0, AttachMode::Down, 0.0);
+        Part *jt = mkRigTank(d2, "tank", 50.0, 0.0, 0.0, 500.0);
+        fv->attachMode(jt, 0, AttachMode::Down, 0.0);
+        fv->init();
+        CHECK_TRUE(fv->canBurn(), "500 kg of jet fuel: this read asks about the FUEL and"
+                   " the reach, never about the air -- the air is the ceiling's zero, and"
+                   " a jet that cannot breathe still answers true here");
+        delete fv;
+    }
+}
+
 /* THE THROTTLE HAS A SETPOINT CHANNEL, AND IT SAID WHO IS HOLDING IT (#400 F3).
    availableAccel() (F1) tells a law what a burn could do; this is the half that lets it
    ASK for the burn. The throttle used to be a public float, so the only way in for a law
@@ -795,6 +1018,8 @@ int main() {
     test_available_accel_along();
     printf("\n");
     test_available_accel_along_two_mounts();
+    printf("\n");
+    test_can_burn();
     printf("\n");
     test_the_throttle_setpoint_channel();
 

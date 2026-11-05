@@ -1008,8 +1008,39 @@ public:
          availableAccel() and use this for the direction cost, not the reverse.
        * Only thrusters count. An RCS-pods-only hull reads 0.0 in every direction even
          though rcs.h can translate it (#623), and no propellant is consulted, so a dry
-         stage still reads healthy (#607 part 2). */
+         stage still reads healthy -- that is what canBurn() below is for. */
     double availableAccelAlong(const glm::dvec3 &dir);
+
+    /* CAN THIS STAGE ACTUALLY BURN, right now, in the tanks it actually has? The gated
+       twin of the three reads above, kept SEPARATE because they answer different
+       questions and a read's name is the only thing telling a caller which (#607). The
+       thrust family is POTENTIALS on purpose: tests/test_thrust.cpp section 4 builds its
+       rig with no tank at all and says why in the comment ("these reads are POTENTIALS
+       -- they never consult the fuel"), and the Vessel window prints them as ratings
+       (gameui.cpp:2483-2485, "Thrust: produced/available" and "Max TWR") -- that block's
+       own comment calls the pair what tells a builder the engine is fine and the throttle
+       is not, which is a question about the hardware, not about this tick's tanks.
+       A law dividing its wanted accel by availableAccel() wants the other question: a dry
+       stage's potential is a number you must never divide by, and until now the only code
+       that knew the gated answer was guidance.cpp's own mask pair, for itself.
+       Per ENGINE, the way ApplyThrust sizes its draw: an ignited thruster counts only if
+       EVERY resource it drains is available to it through ITS fuel groups
+       (availableResourceMass). So a rocket with fuel and no oxidizer burns nothing, an
+       engine walled off by a fuel barrier reads false with the stacks full, and fuel
+       parked inside a cargo bay is invisible here exactly as it is to the draw (contents
+       are not in `parts`, though getMass() counts them). The stage gate applies.
+       Two edges that belong to the PAIR rather than to this read:
+       * EXISTS, not ALL: one fed engine answers true, which is the right shape for a
+         yes/no -- a dry engine should not veto a stage that can fly. The ceiling above
+         is a SUM over every ignited engine, so on a stage with one fed and one unfed
+         engine the law gates on this and sizes the burn with that; #639 asks whether the
+         magnitude wants gating too.
+       * Jets are engines here (they burn, they thrust, and availableAccel() already
+         bills their ceiling), but this read never asks about the AIR -- a jet on Jool can
+         "burn" and produce exactly nothing, which is the ceiling's zero for saying. And
+         it asks about the RESOURCE, not about the draw one tick can make: a jet holding
+         less than one tick of flow cannot light at all (#638). */
+    bool canBurn();
 
     /* THE LEVER ITSELF (#400 F3). The throttle used to be a public float, so a law
        could only write it behind the player's back and could not tell whether the

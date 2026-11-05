@@ -91,13 +91,13 @@ struct GuidanceState {
                                         // all the same, and it is what "east" and
                                         // the asked inclination are measured from.
     double accel_max = 0.0;             // availableAccel(), m/s^2 at full throttle
-    bool has_propellant = true;         // THIS ship can still burn: the driver
-                                        // fills it from enginePropellantMask() +
-                                        // fuelMassMasked(), i.e. the resources its
-                                        // thrusters actually draw. The driver MUST
-                                        // fill it: availableAccel() is a potential
-                                        // that never reads the tanks (#607), so on
-                                        // its own it reads healthy at zero fuel.
+    bool has_propellant = true;         // THIS stage can actually burn: the driver
+                                        // fills it from Vehicle::canBurn(), which asks
+                                        // per ignited engine whether every resource it
+                                        // draws is available to it (#607). The driver
+                                        // MUST fill it: availableAccel() is a potential
+                                        // that never reads the tanks, so on its own it
+                                        // reads healthy at zero fuel.
     bool grounded = false;
     bool railed = false;                // Bullet is not stepping this hull
 };

@@ -4667,6 +4667,29 @@ double Vehicle::availableAccelAlong(const glm::dvec3 &dir) {
     return ceilingSum(&want) / getMass();
 }
 
+bool Vehicle::canBurn() {
+    /* The same predicate ApplyThrust sizes each engine's draw with -- s = min over
+       propellants of (available / desired), and s <= 0 means no burn -- asked as a
+       yes/no rather than a fraction. A fraction would be the wrong shape for the ceiling
+       beside it: a rocket scales its last tick by s, so ANY propellant at all can still
+       produce rated thrust for a slice of a second. (A jet cannot -- its draw is
+       drain-or-nothing, so its last sliver is unreachable. #638.) Availability is asked
+       per engine, because availableResourceMass walks THAT engine's fuel groups: a live
+       engine walled off by a fuel barrier has no drain layers at all (fuelDrainLayers,
+       group -1) and reads false while the stacks are full. */
+    const int as = activeStage();
+    for(Part *p : parts) {
+        if(!p->isThruster() || p->stage < as) { continue; }
+        bool has_every = true;
+        for(int r = 0; r < (int)ResourceType::Num; r++) {
+            if(p->def->propellant_rate[r] <= 0.0) { continue; }
+            if(availableResourceMass((ResourceType)r, p) <= 0.0) { has_every = false; break; }
+        }
+        if(has_every) { return true; }   // isThruster() already means one rate > 0
+    }
+    return false;
+}
+
 void Vehicle::ApplyThrust(double step) {
     if(thruster_util == 0.0f) { return; } /* zero throttle: no burn, no plume */
     const int as = activeStage();

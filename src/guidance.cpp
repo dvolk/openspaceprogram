@@ -338,13 +338,15 @@ bool flyAscent(Vehicle &v, AscentLaw &law, double dt) {
     s.grounded = v.isGrounded();
     s.railed = v.onRails;
     s.accel_max = v.availableAccel();
-    /* The tanks, not the potential: see the can_thrust gate in step(). And the
-       resources THIS ship's thrusters actually draw, not "any mass in any tank"
-       -- a stage carrying unburnt ore or a colleague's monoprop is not a stage
-       that can fly (#610 review). Same pair getDeltaV() uses. */
-    bool burn_res[(int)ResourceType::Num];
-    v.enginePropellantMask(burn_res, /*includeJets=*/false);
-    s.has_propellant = v.fuelMassMasked(burn_res) > 0.0;
+    /* The tanks, not the potential: see the can_thrust gate in step(). Vehicle::canBurn()
+       is the gated twin of the reads above (#607): per IGNITED engine, over the resources
+       THAT engine actually draws and the fuel groups it can reach -- so a stage carrying
+       unburnt ore or a colleague's monoprop is still not a stage that can fly (#610
+       review), and neither is a dry live stage with a full upper stage. The pair this
+       replaces was getDeltaV()'s ship-wide union mask, a looser question than the law
+       needs: it walked every thruster regardless of stage and never asked whether an
+       engine missing one of two propellants could light. */
+    s.has_propellant = v.canBurn();
     /* The body's pole, from the frame that owns it -- not omega(), which is zero
        for a body that does not spin and therefore left the launch heading
        degenerate. spinAxisRelTo is the one spelling the game already uses for
