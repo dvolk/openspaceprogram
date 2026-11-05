@@ -17,7 +17,12 @@
 // These tests pin:
 //   * the gate: no EC -> ungated; empty battery + no gen -> gated; a charged
 //     battery or an RTG covering the draw -> ungated; life support drains
-//     the battery and, once it is empty, the ship becomes uncontrolled;
+//     the battery and, once it is empty, the ship becomes uncontrolled; the
+//     gate asks what the drums COST (the enable mask, keyed or not), so an RTG
+//     that beats life support but not the drums cannot steer on an empty pool
+//     (#642); the cut latches until the pool banks a maneuver -- or half a
+//     store, for a pool too small to bank one -- instead of chattering at
+//     substep rate;
 //   * the balance: an RTG charges the pool, life support drains it, and an
 //     active stick adds the wheels' draw; charging/drain clamp to the pool
 //     (never below 0, never above capacity);
@@ -187,16 +192,143 @@ static void test_gate_full_battery() {
 }
 
 /* An RTG that generates (even with no battery) keeps the ship powered: the
-   wheel runs off the generation. */
+   wheel runs off the generation. The RTG has to outrun the WHEELS too, not just
+   the constant draw (#642): a hull with no store cannot bank anything, so with a
+   flat bill it either can afford its drums or cannot run them at all. That is
+   binary in a way a player will feel -- a 300 W rtg and a 1000 W block used to
+   steer for free -- and #648 is what makes the middle ground exist. */
 static void test_gate_rtg_covers() {
     printf("== Gate: an RTG covering the draw -> ungated ==\n");
     Ship s; s.v = new Vehicle;
     addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0);   // a wheel
-    addPowerPart(s, 0.0, 0.0, 300.0, 0.0, 0.0);       // an RTG
+    addPowerPart(s, 0.0, 0.0, 1500.0, 0.0, 0.0);      // an RTG that pays for the drums
     initShip(s);
 
     s.v->powerTick(1.0);
     CHECK_TRUE(s.v->powered_, "RTG generation -> ungated");
+    destroyShip(s);
+}
+
+/* The other side of the same pairing: a store-less hull whose RTG is smaller than
+   its drums gets no wheel authority at all, keyed or not. Before #642 this hull
+   steered forever off a 300 W generator running 1000 W of drums. */
+static void test_gate_rtg_too_small_no_store() {
+    printf("== Gate: an RTG smaller than the drums, no store -> gated ==\n");
+    Ship s; s.v = new Vehicle;
+    addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0);   // a wheel
+    addPowerPart(s, 0.0, 0.0, 300.0, 0.0, 0.0);       // an RTG that cannot pay for it
+    initShip(s);
+
+    s.v->powerTick(1.0);
+    CHECK_TRUE(not s.v->powered_, "no store and no surplus: the drums cannot run");
+    destroyShip(s);
+}
+
+/* The gate used to ask only whether generation beat LIFE SUPPORT, so any hull
+   whose RTG outran its capsule steered forever: the pool reached 0 Wh, drainEC()
+   had nothing to take, and the shortfall was dropped on the floor while the drums
+   kept working (#642, #418's other half). It asks what the drums COST now, so an
+   RTG that pays for breathing but not for turning cannot turn. */
+static void test_gate_pays_the_wheels_demand() {
+    printf("== Gate: an RTG that covers life support but not the wheels -> gated ==\n");
+    Ship s; s.v = new Vehicle;
+    addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0);   // a wheel: 1000 W
+    addPowerPart(s, 0.0, 100.0, 200.0, 0.0, 0.0);     // 100 W life support + a 200 W RTG
+    initShip(s);
+
+    /* The gate asks the COST, not the bill: with an empty pool these drums are
+       unaffordable whether or not anyone is holding a key, so the hull is gated
+       before the first command. A verdict that moved with the stick would let the
+       Power row promise authority the next keypress refuses. */
+    s.v->powerTick(1.0);
+    CHECK_TRUE(not s.v->powered_, "drums the hull cannot afford gate it, stick or no stick");
+    s.v->Command(ShipCmd(Pitch, 1.0f), true);
+    s.v->powerTick(1.0);
+    CHECK_TRUE(not s.v->powered_, "200 W pays 100 W of air but not 1000 W of drums");
+    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
+               "a gated drum bills nothing, ask held");
+    /* What the gate asks is not the billed figure: the billed figure is the gate's
+       own verdict, so reading it back would let the wheels re-arm the substep after
+       cutting them. */
+    CHECK_NEAR(s.v->wheelDemandWatts(), 1000.0, 1e-9,
+               "the cost survives the gate that refused it");
+    /* Letting go of the stick is not a power fix: the same hull stays gated. */
+    s.v->Command(ShipCmd(Pitch, 0.0f), true);
+    s.v->powerTick(1.0);
+    CHECK_TRUE(not s.v->powered_, "releasing the ask is not a power fix (#642)");
+    CHECK_TRUE(s.v->wheels_brown_out_, "and the cut stays latched, not waiting for a key");
+    destroyShip(s);
+}
+
+/* The boundary #642 warns about: cut the wheels and the unspent surplus starts
+   recharging the pool, which re-arms them, which drains it again. One threshold
+   makes that a relaxation oscillator at the SUBSTEP rate -- a shuddering hull and
+   a duty cycle set by how finely the sim happens to step. So the cut latches: the
+   drums stay off until the pool banks kWheelsRecoverS of commanding. */
+static void test_brown_out_latches_then_rearms() {
+    printf("== Gate: a dry pool latches the wheels off, then a banked pool re-arms ==\n");
+    Ship s; s.v = new Vehicle;
+    addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0);    // wheel: 1000 W
+    addPowerPart(s, 0.0, 100.0, 500.0, 20.0, 0.0);     // 100 W air, 500 W RTG, 20 Wh
+    initShip(s);
+    s.v->Command(ShipCmd(Pitch, 1.0f), true);
+
+    /* 20 Wh against a 600 W shortfall (100 air + 1000 drums - 500 RTG) is 120 s of
+       commanding, i.e. 15000 substeps at the sim's own h. */
+    const double h = 1.0 / 125.0;
+    int ticks = 0;
+    while(s.v->powered_ && ticks < 20000) { s.v->powerTick(h); ticks++; }
+    CHECK_TRUE(not s.v->powered_, "the pool runs out mid-maneuver -> wheels cut");
+    CHECK_TRUE(ticks > 14500 && ticks < 15500,
+               "20 Wh lasts about 120 s of commanding, not 0 and not forever");
+
+    /* Held off while the surplus rebuilds the pool: it re-arms only at a banked
+       maneuver, so the cut spans many substeps rather than one. The cut lasts
+       2.78 Wh / (400 W surplus) = 25 s -- a decision the player can watch, where a
+       single threshold would have chattered at 125 Hz. The store is deliberately
+       20 Wh: half of it (10 Wh) sits ABOVE the bank, so the bank is what decides. */
+    const double recover_wh = Vehicle::kWheelsRecoverS * 1000.0 / 3600.0;  // 2.78 Wh
+    CHECK_NEAR(Vehicle::kWheelsRecoverS, 10.0, 0.0,
+               "the hysteresis window is 10 s of commanding");
+    CHECK_TRUE(recover_wh * 3600.0 > 100.0 * 1000.0 * h,
+               "the bank is 100x the cut threshold, so the cycle is the power "
+               "balance's, not the substep rate's");
+    int cut = 0;
+    while(not s.v->powered_ && cut < 20000) { s.v->powerTick(h); cut++; }
+    CHECK_TRUE(s.v->powered_, "a banked pool brings the wheels back");
+    CHECK_NEAR(totalEC(s), recover_wh, 0.05,
+               "it re-arms at the recovery margin, not at the first Wh back");
+    CHECK_NEAR(cut * h, recover_wh * 3600.0 / 400.0, 0.02,
+               "the cut is one ~25 s drop, not a substep-rate flicker");
+    s.v->Command(ShipCmd(Pitch, 0.0f), true);
+    destroyShip(s);
+}
+
+/* The other re-arm clause: a store too small to ever bank a whole maneuver. A 1 kW
+   block wants 2.78 Wh back; a 3 Wh pool cannot hold a margin that size and still be
+   worth anything, so half a store re-arms it instead. Without that clause the bank
+   would be unreachable and the hull permanently browned out -- no shipped part
+   combination reaches it today (the smallest store is 2000 Wh), which is exactly why
+   it needs a pin rather than a footnote. */
+static void test_brown_out_rearm_backstop() {
+    printf("== Gate: a store too small to bank re-arms at half full ==\n");
+    Ship s; s.v = new Vehicle;
+    addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0);    // wheel: 1000 W
+    addPowerPart(s, 0.0, 100.0, 500.0, 3.0, 0.0);      // 100 W air, 500 W RTG, 3 Wh
+    initShip(s);
+    s.v->Command(ShipCmd(Pitch, 1.0f), true);
+
+    const double h = 1.0 / 125.0;
+    int ticks = 0;
+    while(s.v->powered_ && ticks < 20000) { s.v->powerTick(h); ticks++; }
+    CHECK_TRUE(not s.v->powered_, "a 3 Wh pool runs out after ~18 s of commanding");
+    int cut = 0;
+    while(not s.v->powered_ && cut < 20000) { s.v->powerTick(h); cut++; }
+    CHECK_TRUE(s.v->powered_, "and it re-arms rather than staying cut forever");
+    CHECK_NEAR(totalEC(s), 0.5 * 3.0, 0.05, "re-armed at half the store");
+    CHECK_TRUE(totalEC(s) < Vehicle::kWheelsRecoverS * 1000.0 / 3600.0,
+               "half a store bound the bank, as it must on a small pool");
+    s.v->Command(ShipCmd(Pitch, 0.0f), true);
     destroyShip(s);
 }
 
@@ -426,6 +558,14 @@ int main() {
     test_gate_full_battery();
     printf("\n");
     test_gate_rtg_covers();
+    printf("\n");
+    test_gate_rtg_too_small_no_store();
+    printf("\n");
+    test_gate_pays_the_wheels_demand();
+    printf("\n");
+    test_brown_out_latches_then_rearms();
+    printf("\n");
+    test_brown_out_rearm_backstop();
     printf("\n");
     test_life_support_drains_then_gates();
     printf("\n");

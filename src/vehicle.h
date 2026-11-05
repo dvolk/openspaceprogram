@@ -434,6 +434,20 @@ public:
 
     /* EC gate for the wheels (powerTick). Default true: no EC system = ungated. */
     bool powered_ = true;
+    /* The brown-out latch (#642). A hull whose generator cannot pay the wheels' bill
+       drains its pool, the wheels cut, the unspent surplus recharges the pool, and
+       they re-arm -- free-running, that is a relaxation oscillator at the SUBSTEP rate,
+       whose duty cycle depends on how finely the sim happens to step rather than on
+       anything in the game. So the cut LATCHES: once the pool cannot pay even the
+       current substep the drums stay cut until it banks enough Wh to command for
+       kWheelsRecoverS -- or, on a store too small to ever bank a whole maneuver, until
+       it is half full, so the margin can never strand a hull. The cycle's period is
+       then the power balance's, not the timestep's: on the probe hull (a 1007 W rtg
+       against 600 W of air and 2475 W of drums) that is about 12 s of steering per
+       minute of waiting, which reads as "this generator cannot sustain it" -- the
+       honest answer, and one the player can answer by letting go. */
+    bool wheels_brown_out_ = false;
+    static constexpr double kWheelsRecoverS = 10.0;   // s of commanding banked before re-arm
 
     /* Rails: an idle ship coasts on its two-body conic instead of being
        integrated -- its body is parked out of the Bullet world, its pose
@@ -635,8 +649,14 @@ public:
        unpowered or switched-off hull's wheels are not drawing even with the stick
        pinned, and a second spelling of the rule is how those two rows drift apart. */
     bool actuatorsEngaged() const {
-        return wheelsPowered() && (stick[0] != 0.0f || stick[1] != 0.0f
-                                   || stick[2] != 0.0f || slew != SlewNone);
+        return wheelsPowered() && rotCommanded();
+    }
+    /* Is a rotation command live this tick: the stick or a latched mode. One
+       spelling because the bill and the gate both have to ask it, and a second
+       spelling is how they drift. */
+    bool rotCommanded() const {
+        return stick[0] != 0.0f || stick[1] != 0.0f
+            || stick[2] != 0.0f || slew != SlewNone;
     }
     /* W the actuators are billing right now: the wheels' draw, summed over every wheel
        HOUSING and zero when they are not engaged. A triad housing (#593) bills its
@@ -647,6 +667,15 @@ public:
        the bill (#575) -- it used to re-derive the sum, and dropped the power gate
        while doing it. */
     double wheelDrawWatts() const;
+    /* What the wheels COST this hull: the same rating sum behind the enable mask only,
+       whether or not anyone is steering (#642). powerTick's gate asks THIS and never
+       wheelDrawWatts(), because that figure is the gate's own verdict: a shut gate bills
+       0, so a gate reading the billed sum re-arms the substep after cutting the wheels.
+       The live command stays out of the GATE for the same kind of reason -- a hull that
+       cannot afford its drums is short of power whether or not anyone is holding the
+       stick, and a verdict that moves with the stick is how the Power row starts
+       promising authority that the next keypress refuses. */
+    double wheelDemandWatts() const;
     /* The TVC aim handed to the mixer: one shared lateral deflection vector
        (world axes, rad) armed by gimbal.h tvcSplit and consumed by applyThrustForce.
        applyRotationForce clears it at the top of the substep and actuateAttitude

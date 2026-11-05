@@ -214,13 +214,15 @@ DRAINLOG_RE = re.compile(
 # gen/const_draw are watts (the RTGs and life support); charge/capacity are
 # watt-hours pooled across the ship's battery parts; powered= is the gate the
 # reaction wheels live behind -- they are electric, so no power means no
-# attitude control. charge is the only one of the four that MOVES, and it
-# should move by (gen - const_draw - wheels-while-commanding) x dt: a ship
-# whose charge sits still is a ship whose battery is decorative (#379).
+# attitude control. charge is the only one of the four that MOVES, and it moves
+# by (gen - const_draw - active) x dt, so active= is that third term printed
+# rather than inferred (#643): it is wheelDrawWatts(), so it is what the hull is
+# BILLING this substep (0 while coasting), not the drums' rating. A ship whose
+# charge sits still is a ship whose battery is decorative (#379).
 POWER_RE = re.compile(
     r"\[powerlog\]\s+t=([\d.]+)s\s+ship=\"([^\"]*)\"\s+powered=(\d+)\s+"
     r"gen=([-\d.]+)W\s+const_draw=([-\d.]+)W\s+charge=([-\d.]+)Wh\s+"
-    r"capacity=([-\d.]+)Wh"
+    r"capacity=([-\d.]+)Wh\s+active=([-\d.]+)W"
 )
 # --dv-log (vehicle.cpp dv_log): the running delta-v budget, cumulative since
 # the ship existed. dv_del integrates the force the integrator was handed,
@@ -833,11 +835,12 @@ def parse_drainlog(out):
 def parse_power(out):
     rows = []
     for m in POWER_RE.finditer(out):
-        (t, ship, powered, gen, const_draw, charge, capacity) = m.groups()
+        (t, ship, powered, gen, const_draw, charge, capacity, active) = m.groups()
         rows.append({
             "t": float(t), "ship": ship, "powered": int(powered),
             "gen": float(gen), "const_draw": float(const_draw),
             "charge": float(charge), "capacity": float(capacity),
+            "active": float(active),
         })
     return rows
 

@@ -2116,21 +2116,36 @@ double Vehicle::feltAccel() {
     return m > 0.0 ? glm::length(lastThrustForce + lastAeroForce) / m : 0.0;
 }
 
-double Vehicle::wheelDrawWatts() const {
-    /* No engagement, no draw: the wheels are electric and they only bill while the
-       stick or an autopilot mode is actually working them AND the hull may spend them
-       (actuatorsEngaged, which is wheelsPowered() plus a live command). isWheel() asks
-       the torque rating, not the part type, so a command pod's built-in drums are billed
-       here exactly like a wheel block's: the bill follows the authority the hull spends
-       rather than the cosmetic choice of part (#596). What the catalog charges per N m
-       of rating -- one constant, WHEEL_DRAW_WATTS_PER_NM in utils/gen_parts.py -- and
-       why it charges per housing rather than per drum (#593) is said there, not here. */
-    if(not actuatorsEngaged()) { return 0.0; }
+double Vehicle::wheelDemandWatts() const {
+    /* What the wheels COST the hull: the rating sum behind the enable mask, commanded
+       or not. powerTick's gate asks this and never wheelDrawWatts(), because the billed
+       figure is that gate's own verdict -- asking it is what let the wheels re-arm the
+       substep after cutting them (#642). The stick stays out of it for the same reason
+       one layer down: a hull whose generator cannot pay its drums is short of power
+       whether or not anyone is steering, and a verdict that moves with the stick makes
+       the Power row promise authority that the next keypress refuses.
+       wheels_enabled is in here because a hull that has switched its drums off has no
+       unaffordable demand to brown out over (#425 D-2). isWheel() asks the torque rating,
+       not the part type, so a command pod's built-in drums are billed exactly like a
+       wheel block's: the bill follows the authority the hull spends rather than the
+       cosmetic choice of part (#596). What the catalog charges per N m of rating -- one
+       constant, WHEEL_DRAW_WATTS_PER_NM in utils/gen_parts.py -- and why it charges per
+       housing rather than per drum (#593) is said there, not here. */
+    if(not wheels_enabled) { return 0.0; }
     double w = 0.0;
     for(Part *p : parts) {
         if(p->isWheel()) { w += p->powerDraw(); }
     }
     return w;
+}
+
+double Vehicle::wheelDrawWatts() const {
+    /* What the wheels are BILLING this substep: the cost above, and only while a command
+       is live and the EC gate is open. The power block on the Game Debug overlay and
+       --power-log's active= column quote this, so the readout cannot disagree with the
+       bill (#575) -- it used to re-derive the sum, and dropped the power gate while doing
+       it. */
+    return actuatorsEngaged() ? wheelDemandWatts() : 0.0;
 }
 
 void Vehicle::powerTick(double h) {
@@ -2145,13 +2160,39 @@ void Vehicle::powerTick(double h) {
             ecCapacity += p->capacityOf((int)ResourceType::EC);
         }
     }
-    // No EC system -> ungated. Otherwise the wheels need power left over after
-    // life support.
+    // No EC system -> ungated. Otherwise the wheels' bill has to be payable.
     const bool hasEC = (ecCapacity > 0.0) || (totalGen > 0.0) || (constantDraw > 0.0);
-    powered_ = hasEC ? ((totalGen > constantDraw) || (ecCharge > 0.0)) : true;
+    /* The gate pays the WHEELS, not only life support (#642). It used to read
+       (gen > life support) || (charge > 0), so a capsule + rtg hull (298 W over
+       100 W) steered forever once its pool was empty: drainEC() has nothing to take
+       from a dry pool and the gate never noticed -- #418's other half, and the reason
+       #596's pod bill changed nothing on exactly the hulls with power to spare.
+       `cost` is what the drums COST, commanded or not (wheelDemandWatts): the billed
+       figure is this gate's own verdict, so a gate that reads it cuts the wheels and
+       then finds nothing to pay for, which re-arms them the very next substep.
+       Two thresholds, not one, so the boundary is a decision rather than a shudder:
+       the wheels drop when the pool cannot even pay THIS substep, and they come back
+       once it banks kWheelsRecoverS of commanding -- or is half full, the backstop for
+       a store too small to ever bank a whole maneuver. One threshold would make the
+       cut and the recharge fight at the substep rate, with a duty cycle set by how
+       finely the sim happens to step. The latch only speaks for hulls that have an EC
+       system at all, so it stays false on the ungated hulls that a later readout
+       (#649) would otherwise have to explain. */
+    const double cost = wheelDemandWatts();
+    const bool genCovers = (totalGen > constantDraw + cost);
+    if(hasEC) {
+        if(wheels_brown_out_) {
+            if(ecCharge * 3600.0 >= cost * kWheelsRecoverS
+               || ecCharge >= 0.5 * ecCapacity) { wheels_brown_out_ = false; }
+        } else if(cost > 0.0 && not genCovers
+                  && ecCharge <= cost * h / 3600.0) {
+            wheels_brown_out_ = true;   // not even this substep's Wh is in the pool
+        }
+    }
+    powered_ = hasEC ? (genCovers || (ecCharge > 0.0 && not wheels_brown_out_)) : true;
     // The wheels draw only while actually working, and the power block on the Game
     // Debug overlay quotes the same sum (#575, and ui/601 reads it off the screen).
-    const double activeDraw = wheelDrawWatts();
+    const double activeDraw = (powered_ && rotCommanded()) ? cost : 0.0;
     const double netWh = (totalGen - constantDraw - activeDraw) * h / 3600.0;
     if(netWh < 0.0) { drainEC(-netWh); }
     else if(netWh > 0.0) { chargeEC(netWh); }
@@ -2217,9 +2258,15 @@ void Vehicle::getPower(double *gen, double *constDraw, double *charge, double *c
 void Vehicle::power_log(double time) {
     double gen, constDraw, charge, capacity;
     getPower(&gen, &constDraw, &charge, &capacity);
+    /* active is the term charge already moves by (powerTick's netWh), so a test can
+       pin the identity instead of inferring a slope from columns that omit it (#643).
+       It is wheelDrawWatts(), so it reads 0 unless the actuators are engaged: what
+       this hull is BILLING, not what its drums are rated at (#599's same split). */
+    const double active = wheelDrawWatts();
     printf("[powerlog] t=%.1fs ship=\"%s\" powered=%d gen=%.1fW "
-           "const_draw=%.1fW charge=%.1fWh capacity=%.1fWh\n",
-           time, displayName().c_str(), (int)powered_, gen, constDraw, charge, capacity);
+           "const_draw=%.1fW charge=%.1fWh capacity=%.1fWh active=%.1fW\n",
+           time, displayName().c_str(), (int)powered_, gen, constDraw, charge,
+           capacity, active);
     fflush(stdout);
 }
 
