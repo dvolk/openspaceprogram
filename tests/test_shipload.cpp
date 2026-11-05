@@ -548,6 +548,69 @@ int main() {
         CHECK(lo >= 0.25 && hi <= 1.0);
     }
 
+    /* What an assembly costs the pool, asked AT THE BENCH (#644). The VAB's new EC rows and
+       the flight balance are drawn by different code and read by different players, so this
+       pins them to the same arithmetic: buildPower() sums PartDef's own terms -- the very
+       accessors powerTick() and wheelDemandWatts() sum -- over power_test, the electrical
+       fixture that flight/377 and ui/601 already fly and print (2475.0 W of rated drum
+       draw, 600.0 W of life support, 298.45 W of RTG, a 12 kWh capsule pool). If the catalog
+       moves, all four move together; if only the build screen moves, this goes red.
+       The first checks are the accessor's own rules, which no shipped part happens to
+       violate: the wheel GATE is the torque, so a watt figure authored on a part with no
+       drum is not a steering bill (the other half of #596's rule), and one housing pays its
+       package figure ONCE whatever the drum count (#593). */
+    {
+        PartDef solo;                       // a power_draw on a part that is not a wheel
+        solo.power_draw = 500.0;
+        CHECK(solo.powerActiveW() == 0.0);
+        CHECK(solo.batteryWh() == 0.0);
+        PartDef trio;
+        trio.torque = 1000.0; trio.power_draw = 1000.0;
+        CHECK(near(trio.powerActiveW(), 1000.0));   // one package, not three drums
+
+        /* The gate where a regression would actually live: in the SUM. Every shipped part
+           authors power_draw only on a drum, so power_test alone would still pass if
+           buildPower() summed the raw field and ignored the gate. A hand-made assembly
+           prices each column on its own: a stray draw on a part that is not a drum, a
+           battery that carries watts without making or spending them, a generator, and a
+           BuildPart whose catalog entry never resolved -- which buildPower() must skip the
+           way buildStability() above does, not trip over. */
+        PartDef stray; stray.power_draw = 900.0;                  // torque 0: not a drum
+        PartDef cell;  cell.capacity[(int)ResourceType::EC] = 500.0;
+        PartDef maker; maker.power_gen = 100.0;
+        BuildShip bs;
+        for(const PartDef *d : {&stray, &cell, &maker}) {
+            BuildPart bp;
+            bp.def = d;
+            bs.parts.push_back(bp);
+        }
+        bs.parts.push_back(BuildPart());
+        const BuildPower stray_pw = buildPower(bs);
+        CHECK(stray_pw.wheelRatingW == 0.0);   // 900 W authored on no drum bills nothing
+        CHECK(near(stray_pw.genW, 100.0));
+        CHECK(near(stray_pw.storeWh, 500.0));
+        CHECK(stray_pw.constW == 0.0);
+
+        ShipDef pt = load_ship_def("res/ships/power_test.json", cat);
+        const BuildPower pw = buildPower(BuildShip::fromShipDef(pt));
+        printf("power_test EC: gen %.2f W  const %.1f W  wheels %.1f W (rated)  store %.0f Wh\n",
+               pw.genW, pw.constW, pw.wheelRatingW, pw.storeWh);
+        CHECK(near(pw.genW, 298.45));
+        CHECK(near(pw.constW, 600.0));
+        CHECK(near(pw.wheelRatingW, 2475.0));   // ui/601's Active row, at full demand
+        CHECK(near(pw.storeWh, 12000.0));
+        /* The VAB's at-rest row prints this pair, at whole watts (302 W, 40 h), and
+           flight/377's coast slope is the same 301.55 W in Wh/s. Banded rather than exact
+           because the row rounds; the band is what the row prints. */
+        CHECK(near(pw.constW - pw.genW, 301.55));
+        const double hours = pw.storeWh / (pw.constW - pw.genW);
+        CHECK(hours > 39.0 && hours < 40.0);    // "40 h aboard": the point of asking
+        /* powerTick's gate at the worst the drums can ask: 298 W covers neither the life
+           support nor the rated drums, so this hull steers on its store -- which is what
+           the VAB's second verdict row now says out loud (#642). */
+        CHECK(pw.genW < pw.constW + pw.wheelRatingW);
+    }
+
     // the EVA kerbal: a crew-mass part with no ship behaviors (no wheel or
     // thruster) but a small hydrazine tank for its RCS suit -- the mass is
     // the DRY suit (the propellant rides capacity / effectiveMass, like the

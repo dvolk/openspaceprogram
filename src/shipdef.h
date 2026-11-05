@@ -343,6 +343,22 @@ struct PartDef {
     double power_draw;
     double power_draw_constant;
     double power_gen;
+    /* The TERMS of a hull's electrical balance, defined once here (#644). The VAB sums
+       these over the assembly on the buildPower() row and Vehicle::powerTick() sums the
+       same ones over the live parts, so what a part costs or makes has one spelling
+       (#575's one-owner rule: two spellings of a term is how a readout starts lying).
+       Which parts are on the hull, the EC gate and what the drums actually bill stay
+       the sim's.
+       The ACTIVE term carries the gate the bill uses rather than the raw field: a housing
+       bills when it IS a wheel (`torque > 0`, the same test Part::isWheel() asks), not
+       whenever someone happened to author a watt figure. That is what makes a command
+       pod's built-in drums count exactly like a bought wheel block (#596), and what keeps
+       a part with a stray power_draw on no drum off the bill. */
+    double powerGenW() const { return power_gen; }
+    double powerConstW() const { return power_draw_constant; }
+    double powerActiveW() const { return torque > 0.0 ? power_draw : 0.0; }
+    /* capacity[EC] is watt-hours, not kilograms (see the capacity note below). */
+    double batteryWh() const { return capacity[(int)ResourceType::EC]; }
     /* Per ResourceType: kilograms for every resource EXCEPT capacity[EC], which is
        watt-hours -- Vehicle prints `capacity=%.1fWh` and partLoadMass skips EC as
        massless energy. Worth spelling out because the loader's error messages quoted
@@ -762,6 +778,28 @@ struct BuildStability {
    its non-EC capacity: 97.05 kg as shipped). It is a parameter rather than a
    constant because the answer belongs to the loaded catalog, not to this header. */
 BuildStability buildStability(const BuildShip &bs, double occupantMass = 0.0);
+
+/* WHAT THIS ASSEMBLY COSTS THE POOL (#644) -- the electrical counterpart of
+   buildStability(): the same four terms the flight balance prints (the F1 Power block and
+   --power-log, #643), asked of the parts on the pad with no sim at all. That is what the
+   VAB cannot currently answer: mass, fuel, thrust and drag are on the build screen, and
+   the watt figures that decide whether a hull can keep its instruments and its steering
+   are not.
+   `wheelRatingW` is the drums' RATED draw -- the number the EC gate weighs (#642) -- not
+   what they will bill. Since #648 a hull bills what its wheels DELIVER, which no build
+   screen can know: it depends on what the pilot asks. So this row answers the build
+   question ("could this hull ever work these drums, and can it afford to keep trying"),
+   which is exactly the question a player is asking while building.
+   `storeWh` is the sum of the battery capacities, i.e. how much of the balance is banked
+   rather than generated: a hull with gen < const draw survives on that number alone, and
+   #652's silent black-out is what happens when it runs out mid-warp. */
+struct BuildPower {
+    double genW = 0.0;         // W, constant sources (RTGs)
+    double constW = 0.0;       // W, always-on draws (life support)
+    double wheelRatingW = 0.0; // W, the wheel housings' rated draw (#642's gate figure)
+    double storeWh = 0.0;      // Wh of battery on board
+};
+BuildPower buildPower(const BuildShip &bs);
 
 /* What one occupant of a seat weighs, counted the way Part::effectiveMass counts
    a seated suit: the whole suit ship's mass plus every resource but EC. Pass the

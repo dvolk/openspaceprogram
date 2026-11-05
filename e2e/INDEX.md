@@ -7,10 +7,10 @@ kind says how much weight the assertions carry.
 | kind | meaning | cases |
 |---|---|---|
 | `invariant` | a behaviour or a player route the game must keep | 294 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 38 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 40 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **350** |
+| | **total** | **352** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -271,7 +271,7 @@ judgement. Select by number, name or path, e.g.
 | `save/582-saved-ship-pose-spread-refused.txt` | invariant | A save whose parts sit so far apart that the game cannot form their inertia is refused, not loaded as a NaN-inertia ship. |
 | `save/612-ask-survives-a-round-trip.txt` | invariant | A saved Guidance ask loads back into the game and is written out again. |
 
-## ui (51)
+## ui (53)
 
 | case | kind | pins |
 |---|---|---|
@@ -326,6 +326,8 @@ judgement. Select by number, name or path, e.g.
 | `ui/612-guidance-window-ascent.txt` | invariant | The Guidance window's fields and Go button arm an ascent the ship then flies. |
 | `ui/612-guidance-window-cancel.txt` | invariant | Cancel stops an ascent mission steering the hull and hands SAS back. |
 | `ui/612-guidance-window-types.txt` | invariant | The type combo gates Go per law and swaps its section out, and the shared Cancel still stops a mission seen from another type. |
+| `ui/644-part-card-shows-what-a-part-costs-the-pool.txt` | golden | A part's own flight window prints its electrical terms: the pod's 225 W commanding and 600 W constant, the RTG's +298 W generated -- three rows, no others. |
+| `ui/644-vab-prints-what-the-assembly-costs-the-pool.txt` | golden | The VAB prints the assembly's electrical balance -- 298 W generated, 600 W constant, 12000 Wh stored, 2475 W of rated drum draw -- says it drains at rest and that its drums outrun its generator, and puts 2250 W on the big wheel block's own card. |
 
 ## render (58)
 

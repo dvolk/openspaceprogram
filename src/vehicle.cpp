@@ -2134,7 +2134,11 @@ double Vehicle::wheelDemandWatts() const {
     if(not wheels_enabled) { return 0.0; }
     double w = 0.0;
     for(Part *p : parts) {
-        if(p->isWheel()) { w += p->powerDraw(); }
+        /* powerActiveW() is the gate AND the figure in one call, and it is the same
+           accessor buildPower() sums over an assembly on the VAB pad (#644), so the
+           build screen prices the drums off this number rather than a second sum of
+           its own. */
+        w += p->powerActiveW();
     }
     return w;
 }
@@ -5319,7 +5323,7 @@ void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
             if(u > peak) { peak = u; }
             m++;
         }
-        spend += owner->powerDraw() * peak;
+        spend += owner->powerPackageW() * peak;
         runs++;
         k = m;
     }

@@ -2129,6 +2129,25 @@ BuildStability buildStability(const BuildShip &bs, double occupantMass) {
     return out;
 }
 
+/* The four electrical terms of an assembly, over the PART DEFS on the pad. Nothing here
+   is a second spelling of a term: every term is PartDef's own accessor, which is what
+   powerTick() sums over the live parts (#575's rule). The pad is not the flown hull --
+   staging drops parts, wheels_enabled can switch the drums off, and what the drums bill
+   is what they deliver (#648) -- so this answers the build question, not the flight one.
+   A BuildShip can hold a null def (a catalog entry that failed to resolve); skipping it
+   matches buildStability above. */
+BuildPower buildPower(const BuildShip &bs) {
+    BuildPower out;
+    for(const BuildPart &bp : bs.parts) {
+        if(bp.def == nullptr) { continue; }
+        out.genW += bp.def->powerGenW();
+        out.constW += bp.def->powerConstW();
+        out.wheelRatingW += bp.def->powerActiveW();
+        out.storeWh += bp.def->batteryWh();
+    }
+    return out;
+}
+
 double seatOccupantMass(const ShipDef &suitDef) {
     double m = 0.0;
     for(const ShipPart &sp : suitDef.parts) {

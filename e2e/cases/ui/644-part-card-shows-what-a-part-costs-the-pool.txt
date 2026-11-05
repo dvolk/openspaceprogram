@@ -1,0 +1,46 @@
+# What a part costs the pool is printed on the part's own card (#644). The watts were
+# readable before on dev surfaces only -- the Game Debug overlay's Power block and
+# --power-log -- so mass, fuel, thrust and drag were on the card a part is chosen with
+# while the watts that decide whether a hull can keep its instruments and its steering
+# were not. #596 moved a pod's draw from 100 W to 225 W and #593 gave every wheel block a
+# package figure, and nothing on any part card changed, because nothing there printed a watt.
+#
+# The rows live in drawPartPhysique, which is where part specs already live for BOTH
+# surfaces: the flight part window and the VAB's part card. They read PartDef's own terms
+# (part.h), the same accessors powerTick() and wheelDemandWatts() sum, so the card and the
+# flight balance print one set of terms rather than two sums (#575's rule). uiText, not
+# ImGui::Text, so the harness reads what the player is shown (#601).
+#
+# power_test is the electrical fixture flight/377 and ui/601 already use. Two of its cards
+# are clickable from a flight orbit, and between them they print all three terms: the pod
+# (225 W commanding -- it has internal drums, 450 N m x3 -- plus 600 W of life support) and
+# the RTG (+298 W generated). The wheel block's card, whose row is the package figure #593
+# introduced, is pinned in the VAB instead (ui/644-vab-prints-what-the-assembly-costs-the-pool)
+# because its housing sits between pod and tank and the orbit raycast hits its occluder.
+# The figures are pinned numerically in test_shipload; the balance they add up to is pinned
+# on screen by ui/601.
+NAME part-card-shows-what-a-part-costs-the-pool
+CLAIM A part's own flight window prints its electrical terms: the pod's 225 W commanding and 600 W constant, the RTG's +298 W generated -- three rows, no others.
+KIND golden
+ARGS --width 1920 --height 1080 --timeout 9 --frame-cap 30
+ARGS --startship power_test,res/ships/power_test.json,Kerbin,rot-orbit
+ARGS --ui-focus 2000,power_test/capsule_1
+ARGS --sim-mouse 2030,0,CUR,CUR,RMB
+ARGS --ui-focus 2600,power_test/rtg_1
+ARGS --sim-mouse 2630,0,CUR,CUR,RMB
+ARGS --ui-list 4000
+EXPECT [uifocus] 'power_test/capsule_1' ->
+EXPECT [uifocus] 'power_test/rtg_1' ->
+# The ## suffix on a flight part window is the part's INDEX in ship->parts, not its id
+# (gameui.cpp names it from `part`), so reordering res/ships/power_test.json moves these
+# literals -- a file flight/377, flight/647 and ui/601 also lean on.
+EXPECT [uilist] window="power_test > Capsule (4.5m)##0" label="Power: 225 W while commanding (one drum at full demand)"
+EXPECT [uilist] window="power_test > Capsule (4.5m)##0" label="Power: 600 W constant (life support)"
+EXPECT [uilist] window="power_test > RTG (2m)##2" label="Power: +298 W generated"
+FORBID error:
+FORBID FAILED
+# Exactly three power rows in the whole dump: one per term, on the card that term belongs
+# to. A row printed for the wrong term, a generator given a draw, a pod that pays nothing
+# because the rule keyed on part type instead of torque (#596), or a package figure
+# tripled per drum (#593) all break this count as well as the EXPECTs above.
+CHECK len([l for l in out.split("\n") if 'label="Power:' in l]) == 3

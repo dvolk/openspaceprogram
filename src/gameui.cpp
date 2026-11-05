@@ -104,6 +104,25 @@ static void drawPartPhysique(const PartDef &def) {
         ImGui::Text("Thrust: %.0fN (%.1fkg/s @ %.0fm/s)",
                     def.fullThrust(), def.totalPropellantRate(), def.exhaust_velocity);
     }
+    /* Electrical (#644): what this part costs the pool, in the terms the flight balance
+       already prints. The figures existed before only for the sim and for the Game Debug
+       overlay, so mass, fuel, thrust and drag were on the card a part is chosen with
+       while the watts that decide whether a hull keeps its instruments and its steering
+       were not -- a hull that cannot pay for itself was a surprise you got in flight.
+       The wheel row is the HOUSING's package figure (#593), stated as the peak it is:
+       since #648 the housing bills what its drums DELIVER, so this is the most it bills
+       (one drum working to its limit), not a standing charge. A command pod shows it too,
+       because the rule is the torque and not the part type (#596).
+       uiText, so the harness can pin what the player is shown (#601). */
+    if(const double act = def.powerActiveW(); act > 0.0) {
+        uiText("Power: %.0f W while commanding (one drum at full demand)", act);
+    }
+    if(const double always = def.powerConstW(); always > 0.0) {
+        uiText("Power: %.0f W constant (life support)", always);
+    }
+    if(const double gen = def.powerGenW(); gen > 0.0) {
+        uiText("Power: +%.0f W generated", gen);
+    }
 }
 
 // Cached orbit samplings keyed on the object's pointer; valid only
@@ -5281,6 +5300,50 @@ void drawVabUI(Game &g) {
                average of a cancelled sum landed (#454's Np=+15.9 m lie). */
             ImGui::TextDisabled("Aero: CLa %.1f m2/rad  SM -  (surfaces disagree,"
                                 " or none lifts)", stab.slope);
+        }
+    }
+    /* #644: the electrical counterpart of the Aero row above -- the terms the flight
+       balance prints, asked of the parts on the pad with no sim running. buildPower() sums
+       PartDef's own accessors, the same ones powerTick() sums over a live hull (#575), so a
+       term is never stated two ways. The pad is not the flown hull: staging drops parts,
+       wheels_enabled can switch the drums off, and what they bill is what they deliver
+       (#648). What THIS screen can answer is the build question -- can the hull pay for
+       what it carries, and can it ever work its drums.
+       Rows stay near the Aero row's length: the VAB window opens 340px wide and imgui
+       clips rather than wraps, so a long row is cut off mid-value.
+       The presence test mirrors powerTick's hasEC (vehicle.cpp): a hull with no generator,
+       no constant draw and no store has no EC system, so the sim leaves it ungated and this
+       screen must not invent a drum bill it will never charge. */
+    {
+        const BuildPower pw = buildPower(g.vab.build);
+        if(pw.genW > 0.0 || pw.constW > 0.0 || pw.storeWh > 0.0) {
+            /* Whole watts: this is a build-time estimate, and quoting the debug block's
+               decimals would only invite reading the two printings as one. */
+            uiText("EC: gen %.0f W  const %.0f W  store %.0f Wh",
+                   pw.genW, pw.constW, pw.storeWh);
+            /* Rated, and saying so: #642's gate weighs the rating, while the bill is
+               whatever the drums deliver, which no build screen can know. */
+            uiText("EC: wheels %.0f W rated", pw.wheelRatingW);
+            /* The verdicts, only when they are bad. The first is the at-rest balance --
+               gen minus const, since a hull that commands nothing bills no drums (#647).
+               Such a hull lives on its store, and #652 is what happens when it empties
+               mid-warp with nobody watching. Guarded at 1 W because the row prints whole
+               watts: a sub-watt drain would read "drains 0 W", which looks like no drain. */
+            if(const double burn = pw.constW - pw.genW; burn >= 1.0) {
+                uiText("EC: at rest drains %.0f W, %.0f h aboard", burn, pw.storeWh / burn);
+            }
+            /* The second is powerTick's own gate -- gen must cover const plus the drums'
+               rated demand -- asked at the worst the drums can ever ask. Over that line a
+               hull still steers, on its store, until the brown-out latch closes it (#642,
+               #654), so the row names which of the two pays rather than calling the build
+               impossible. With no store aboard there is nothing to run them on. */
+            if(const double need = pw.constW + pw.wheelRatingW; pw.genW < need) {
+                if(pw.storeWh > 0.0) {
+                    uiText("EC: full drums need %.0f W, store runs them", need);
+                } else {
+                    uiText("EC: full drums need %.0f W, nothing stored", need);
+                }
+            }
         }
     }
     // Parts are selected by clicking them in the 3D view; the panel below acts on that

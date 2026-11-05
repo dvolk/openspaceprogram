@@ -259,9 +259,12 @@ struct Part {
         return false;
     }
     /* a battery: EC storage (capacity[EC] > 0). isTank() is ALSO true for a
-       battery, so the fuel system seeds + fuel-groups it like any tank. */
+       battery, so the fuel system seeds + fuel-groups it like any tank. The test
+       goes through PartDef::batteryWh() (#644), which is the same number the VAB's
+       `store` term sums -- which parts count as the pool and what the pool holds
+       must not be two spellings. */
     bool isBattery() const {
-        return def != nullptr && def->capacity[(int)ResourceType::EC] > 0.0;
+        return def != nullptr && def->batteryWh() > 0.0;
     }
     /* Top every resource up to the def's capacity. A fresh ship and a fresh
        suit both start full, and it is one rule, not two -- only the contents
@@ -303,9 +306,24 @@ struct Part {
     double wheelTorque() const { return def->torque; }    // N m, rated PER DRUM
     double rcsThrust() const { return def->rcs_thrust; }  // N, rated translation authority
     double exhaustVelocity() const { return def->exhaust_velocity; }
-    double powerDraw() const { return def->power_draw; }          // W, only while active
-    double powerDrawConstant() const { return def->power_draw_constant; }  // W, all the time
-    double powerGen() const { return def->power_gen; }            // W, constant source
+    /* Every electrical term comes from the PartDef accessor that owns it (#644), so a
+       live hull and the VAB's buildPower() row sum identical arithmetic: what a part
+       costs or makes is stated once, and the build screen and the flight log are two
+       printings of it rather than two sums. (Which PARTS are on the hull, the EC gate
+       and what the drums actually bill stay the sim's -- powerTick.) */
+    /* The housing's package figure, ungated: what one wheel block asks for when its
+       busiest drum works to its limit. Named apart from powerActiveW() below because
+       the #648 bill scales THIS figure by utilisation, while the gate below prices a
+       part only if it is a drum at all -- the two are easy to confuse and one of them
+       charges the pool wrongly. */
+    double powerPackageW() const { return def->power_draw; }
+    /* The same figure with the wheel gate inside it -- what a hull OWES the pool for its
+       drums, which is how a pod's built-in triad ends up billed like a bought block (#596).
+       Null-guarded like isWheel(), whose posture this replaced in wheelDemandWatts(): a
+       part with no def owes nothing rather than taking the sim down. */
+    double powerActiveW() const { return def == nullptr ? 0.0 : def->powerActiveW(); }
+    double powerDrawConstant() const { return def->powerConstW(); }  // W, all the time
+    double powerGen() const { return def->powerGenW(); }             // W, constant source
 
     /* Mass INCLUDING propellant contents and whatever is parked inside (items
        and seats, recursively). Body mass is DRY structure only; EC is excluded

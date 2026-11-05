@@ -1,0 +1,63 @@
+# The VAB now prints what the assembly costs the electrical pool (#644), the build-time
+# half of the same gap: a player chooses parts here and finds out about watts in flight,
+# from a falling battery bar or from the wheels cutting out (#418). #596's rebalance and
+# #593's "watts per housing, torque per drum" were both invisible where they were decided.
+#
+# Two term rows, the four terms the flight balance already prints -- generated, always-on
+# draw, stored Wh, and the wheel housings' rated draw. buildPower() sums PartDef's own
+# accessors, the same ones powerTick() and wheelDemandWatts() sum over a live hull (#575's
+# one-owner rule), and test_shipload pins these four figures against the fixture, so the
+# build screen and the flight balance cannot state a term two ways. What they still differ
+# on is deliberate: the pad is not the flown hull (staging, wheels_enabled) and the bill is
+# what the drums deliver (#648), which no build screen can know.
+#
+# Then the two verdicts, printed only on a hull that earns one. The first is at rest:
+# power_test generates 298 W against 600 W of life support, so it burns 302 W out of a
+# 12000 Wh pool -- 40 hours of existing, and the reason #652's silent mid-warp black-out is
+# reachable by playing normally. The second is powerTick's own gate (#642): the drums are
+# worth 2475 W and the hull makes 298, so steering runs on the store rather than the
+# generator -- and a hull with a big RTG and no battery says so too, which the old
+# gen-against-life-support reading of this balance could not see.
+#
+# The picker dance is the established route into a loaded build (render/159, crew/226): F1
+# reveals the dev/test ships, the filter finds this one, Load puts it on the pad. Then
+# --ui-focus + right-click opens the wheel block's own card in the same dump, because the
+# VAB camera aims at the build: the same part is NOT clickable from a flight orbit (its
+# housing sits between the pod and the tank and the raycast hits its occluder), so this is
+# where the per-part watt row gets pinned -- and ui/644-part-card is where the flight card is.
+# Everything the case reads has happened by 8s, which is why --timeout is 14 and not 30.
+NAME vab-prints-what-the-assembly-costs-the-pool
+CLAIM The VAB prints the assembly's electrical balance -- 298 W generated, 600 W constant, 12000 Wh stored, 2475 W of rated drum draw -- says it drains at rest and that its drums outrun its generator, and puts 2250 W on the big wheel block's own card.
+KIND golden
+ARGS --width 1600 --height 900 --timeout 14
+ARGS --startship power_test,res/ships/power_test.json,Kerbin,rot-orbit
+ARGS --sim-press 1000,0,4
+ARGS --sim-press 1500,0,F1
+ARGS --ui-click 2000,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 2500,0,F1
+ARGS --ui-type 3000,"VAB TopBar/##vehfilter",power_test
+ARGS --ui-click 3600,"VAB TopBar/##vabload"
+ARGS --ui-click 4200,"power_test"
+ARGS --ui-click 4800,"VAB TopBar/Load"
+ARGS --ui-focus 6000,wheel_1
+ARGS --sim-mouse 6500,0,CUR,CUR,RMB
+ARGS --ui-list 8000
+EXPECT [scene] flight -> vab (push)
+EXPECT [uifocus] 'wheel_1' ->
+EXPECT [uilist] window="VAB" label="EC: gen 298 W  const 600 W  store 12000 Wh"
+EXPECT [uilist] window="VAB" label="EC: wheels 2475 W rated"
+EXPECT [uilist] window="VAB" label="EC: at rest drains 302 W, 40 h aboard"
+EXPECT [uilist] window="VAB" label="EC: full drums need 3075 W, store runs them"
+EXPECT [uilist] window="Reaction Wheel (4.5m)##wheel_1" label="Power: 2250 W while commanding (one drum at full demand)"
+FORBID error:
+FORBID FAILED
+# Four rows and not three or five: the two terms, the rated drum figure, and the two
+# verdicts this hull earns. A verdict that printed on a hull that does not need one, or a
+# term that moved into a second row, changes this count (#650/#653: count what was drawn).
+CHECK len([l for l in out.split("\n") if 'window="VAB"' in l and l.rstrip().endswith(" text")]) == 4
+# The verdicts are the same arithmetic the sim runs (powerTick), read off the screen rather
+# than restated here: the at-rest drain is gen taken off const, and the demand the gate
+# weighs is const plus the rated drum figure. Bands, not equality: every figure in the dump
+# is printed at whole watts, so each can sit 0.5 off and a sum of them sits up to 1.5 off.
+CHECK abs(float(re.search('EC: at rest drains ([0-9]+) W', out).group(1)) - (float(re.search('EC: gen [0-9]+ W  const ([0-9]+) W', out).group(1)) - float(re.search('EC: gen ([0-9]+) W', out).group(1)))) < 1.0
+CHECK abs(float(re.search('EC: full drums need ([0-9]+) W', out).group(1)) - (float(re.search('EC: gen [0-9]+ W  const ([0-9]+) W', out).group(1)) + float(re.search('EC: wheels ([0-9]+) W rated', out).group(1)))) < 1.5
