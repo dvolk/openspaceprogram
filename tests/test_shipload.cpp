@@ -538,7 +538,7 @@ int main() {
             if(d.torque <= 0.0) { continue; }
             rated++;
             const double r = d.power_draw / d.torque;
-            printf("wheel %-28s %6.0f N m x %d drums, %6.0f W while commanding (%.2f W per N m)\n",
+            printf("wheel %-28s %6.0f N m x %d drums, %6.0f W at one drum's full demand (%.2f W per N m)\n",
                    d.name.c_str(), d.torque, d.wheel_axes, d.power_draw, r);
             CHECK(d.power_draw > 0.0);
             if(rated == 1 || r < lo) { lo = r; }

@@ -1,0 +1,69 @@
+# The wheels used to bill their RATING whenever a command was live, so the EC pool could
+# not tell two situations apart: a hull pinning its drums to their limits, and a hull
+# whose actuators were doing nothing at all (#648). The second one is not exotic -- it is
+# where every autopilot ends up. On this ship, holding the kill-rotation key after the
+# spin had stopped billed 2475.0 W until the key came up, so the pool fell at 0.77 Wh per
+# second of sim -- nine times the 0.084 Wh/s the same rows imply for simply existing out
+# here.
+#
+# The bill is what the mixer DELIVERED now: each wheel housing pays its one package figure
+# (#593) scaled by how hard its busiest drum was asked to work, out of the same per-row
+# answer actuators.h has always returned and nobody billed. So the active column traces
+# the ask: full while W winds the hull up, full while X fights the spin that press built,
+# and back to the coast rate the moment the spin is dead -- with X still held down.
+#
+# A held key still pays the full figure, and that is not an accident to fix: the stick is
+# INTENT, scaled by the hull's whole capability about the pressed axis (#425), so a key at
+# full deflection saturates the lines it covers and delivery IS the rating. That is why
+# ui/601's `Active: 2475.0 W` and flight/377's active window come through this change
+# unchanged. The exact fractions -- half an ask is half a bill, a line no drum covers is
+# nothing at all -- are pinned in test_power, where the deflection is not stuck at the ends.
+#
+# Windows are read off a measured run (tmp/aero/t648_kill3.log): W pays 3.4-9.2 s, X pays
+# 11.3-16.6 s, and 1.1-1.2 W from 17.1 s to the end of the log. How much margin each
+# CHECK leaves: the quiet window's 25.0 W absolute is ~20x that measured 1.1 W, and its
+# ratio band (2% of the kill window's own floor) is ~2000x; the charge-slope band is 30%,
+# because the log prints charge to only 0.1 Wh. The 2000 W and 25.0 W absolutes are not
+# physics constants -- they ride the catalog's WHEEL_DRAW_WATTS_PER_NM and this ship's
+# wheel rating, and are there so a flat or empty active column fails rather than passing
+# vacuously. Retune them with the catalog, not with the sim.
+NAME killing-the-spin-stops-costing-power
+CLAIM Wheels bill what they deliver: this hull pays its full wheel rating while its drums carry the ask, and stops paying once an autopilot has arrived -- with its key still held down.
+KIND invariant
+ARGS --timeout 34 --startship power_test,res/ships/power_test.json,Kerbin,rot-orbit
+ARGS --power-log --sim-press 3000,6000,W --sim-press 11000,30000,X
+EXPECT [powerlog]
+FORBID error:
+FORBID FAILED
+# W (pitch) from 3 s for 6 s, then X (kill-rotation) from 11 s until past the end of the
+# run, so the quiet window has no key-release in it at all. The first press
+# exists to give the second something to do: this hull starts nearly stopped, so kill-rot
+# alone would ask for ~nothing and the case would show a flat active column for the wrong
+# reason. Every CHECK below guards its own window's size first -- all() over an empty
+# filter is vacuously true (#653).
+CHECK len(power) >= 30
+CHECK all(r["powered"] == 1 for r in power)
+CHECK all(0.0 <= r["charge"] <= r["capacity"] for r in power)
+# The baseline that makes the rest readable: a held key pays both housings in full -- the
+# wheel block AND the capsule's built-in drums (#596) -- because a held key saturates the
+# lines it covers.
+CHECK len([r for r in power if 4.0 < r["t"] < 7.5]) >= 5
+CHECK all(r["active"] > 2000.0 for r in power if 4.0 < r["t"] < 7.5)
+# Kill-rot pays too, while there IS a spin to kill: the law sizes its ask off the rate
+# error (I*dw/h), which is orders of magnitude over a 4500 N m drum here.
+CHECK len([r for r in power if 12.0 < r["t"] < 15.0]) >= 4
+CHECK all(r["active"] > 2000.0 for r in power if 12.0 < r["t"] < 15.0)
+# THE POINT. X is still down -- mode engaged, gate open, drums powered -- and the spin is
+# gone, so the law asks for nothing and the bill follows it: ~1 W of residual where the
+# rating sum is 2475 W.
+CHECK len([r for r in power if r["t"] > 18.0]) >= 6
+CHECK all(r["active"] < 25.0 for r in power if r["t"] > 18.0)
+CHECK max(r["active"] for r in power if r["t"] > 18.0) < 0.02 * min(r["active"] for r in power if 12.0 < r["t"] < 15.0)
+# And the pool agrees with the column rather than with the rating: from here the charge
+# falls at the same Wh/s those same rows' generation and life support imply -- flight/377's
+# coast identity, on a hull whose autopilot is still latched on. A long baseline because
+# charge prints to only 0.1 Wh.
+CHECK abs((first([r for r in power if r["t"] > 18.0])["charge"] - last([r for r in power if r["t"] > 18.0])["charge"]) / (last([r for r in power if r["t"] > 18.0])["t"] - first([r for r in power if r["t"] > 18.0])["t"]) - (power[0]["const_draw"] - power[0]["gen"]) / 3600.0) < 0.3 * (power[0]["const_draw"] - power[0]["gen"]) / 3600.0
+# The steering really was the expensive part: the kill window spends several times the
+# coast rate, so the CHECK above is not a flat-charge artefact.
+CHECK (first([r for r in power if 12.0 < r["t"] < 15.0])["charge"] - last([r for r in power if 12.0 < r["t"] < 15.0])["charge"]) / (last([r for r in power if 12.0 < r["t"] < 15.0])["t"] - first([r for r in power if 12.0 < r["t"] < 15.0])["t"]) > 4.0 * (power[0]["const_draw"] - power[0]["gen"]) / 3600.0

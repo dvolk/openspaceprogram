@@ -2055,10 +2055,12 @@ void drawUIReadouts(Game &g) {
         double gen = 0.0, constDraw = 0.0, charge = 0.0, capacity = 0.0;
         ship->getPower(&gen, &constDraw, &charge, &capacity);
         if(gen > 0.0 || constDraw > 0.0 || capacity > 0.0) {
-            // Active draw: the attitude actuators, only while they are actually
-            // working. This is the sum powerTick() pays, not a re-derivation of it
-            // (#575). It says "actuators" and not "wheels" because the bill follows
-            // the rating, not the part: a pod's built-in drums appear here too (#596).
+            // Active draw: the attitude actuators, only while a command is live.
+            // This is the sum powerTick() pays, not a re-derivation of it (#575), and
+            // since #648 that sum is what the drums DELIVERED rather than what they are
+            // rated. It says "actuators" and not "wheels" because the bill follows the
+            // authority the hull spends, not the part: a pod's built-in drums appear
+            // here too (#596).
             const double activeDraw = ship->wheelDrawWatts();
             const double net = gen - constDraw - activeDraw;
 

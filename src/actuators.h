@@ -38,9 +38,9 @@
 // Worth knowing both exist before a third demand shape shows up and someone
 // merges them. It also carries no Scratch like rcs::Scratch yet: today's rows are a
 // hull's wheels plus its control surfaces -- still a handful -- so these vectors are
-// the whole cost. That cost is eleven allocations per hull per substep for a hull that
-// has actuators: three in attitudeAuthority (wheels, surfaces, surfaceParts), two in
-// actuateAttitude (the concatenated rows, the setpoints) and six in actuatorSolve
+// the whole cost. That cost is twelve allocations per hull per substep for a hull that
+// has actuators: four in attitudeAuthority (wheels, wheelParts, surfaces, surfaceParts),
+// two in actuateAttitude (the concatenated rows, the setpoints) and six in actuatorSolve
 // (lines, lineOf, sense, share, mag, q) -- and the Vessel window calls
 // attitudeAuthority() once per FRAME on top. So a Scratch is worth doing before the
 // row counts grow. #594 landed the other half of that ask: ONE AttitudeAuthority per

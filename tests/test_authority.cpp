@@ -573,6 +573,46 @@ static void test_the_substep_remembers_what_the_actuators_spent() {
     destroyShip(st.s.v);
 }
 
+/* THE EC BILL IS THE OTHER HALF OF THAT RECORD (#648). The per-row answer that fills the
+   wheels channel is the same number the battery pays, and this is the fixture where two
+   actuator families split one demand: a drum along the stack and a 20 kN nozzle 1.25 m
+   below the COM. So the pin is the SPLIT, not the sum. Roll is the one line only the drum
+   levers, so the drum pays its whole figure; pitch is the one the nozzle outsells
+   twelvefold, so the drum pays nothing -- and a rating-based bill could not tell those two
+   apart, and never did: a hull stationkeeping on its gimbals ate its pool at the drum's
+   full figure while its drums delivered zero N m. (The watt figure is set on the def here
+   rather than in mkPart because this is the only test in this binary that asks what the
+   EC costs; test_power owns the rest of that story.) */
+static void test_the_wheels_pay_for_the_share_they_answer() {
+    printf("== the EC bill follows the split, not the rating ==\n");
+    Stack st = mkStack(200.0, 20000.0, 0.1, 1.5708, 4000.0);
+    for(PartDef &d : st.s.defs) {
+        if(d.name == std::string("root")) { d.power_draw = 1000.0; }
+    }
+    Vehicle *v = st.s.v;
+    CHECK_NEAR(v->wheelDemandWatts(), 1000.0, 1e-9,
+               "the drum is a 1000 W cost to the gate whichever way the demand goes");
+    CHECK_NEAR(v->wheelDrawWatts(), 0.0, 0.0, "a hull nobody has asked yet pays nothing");
+
+    const double h = 1.0 / 120.0;
+    v->Command(ShipCmd(Roll, 1.0f), true);
+    v->applyRotationForce(h);
+    CHECK_NEAR(std::fabs(glm::dot(v->attitudeDelivery().wheels, st.z)), 200.0, 1e-6,
+               "roll: the drum carries the whole ask, at its limit");
+    CHECK_NEAR(v->wheelDrawWatts(), 1000.0, 1e-9,
+               "and it pays its whole package figure for a line it saturates");
+
+    v->Command(ShipCmd(Roll, 0.0f), true);
+    v->Command(ShipCmd(Pitch, 1.0f), true);
+    v->applyRotationForce(h);
+    CHECK_TRUE(glm::length(v->attitudeDelivery().wheels) < 1e-9,
+               "pitch: the mixer answers it with the nozzle, so no N m went through drums");
+    CHECK_NEAR(v->wheelDrawWatts(), 0.0, 1e-9,
+               "so the drums pay nothing for the turn (#648) -- the gate still weighs "
+               "their 1000 W, which is what wheelDemandWatts above is for");
+    destroyShip(st.s.v);
+}
+
 /* --- what the model is for ------------------------------------------------ */
 static void test_a_ship_with_nothing_has_nothing() {
     printf("== no wheel, no armed engine: the answer is zero, not a fudge ==\n");
@@ -1975,6 +2015,7 @@ int main() {
     test_wheels_and_tvc_together();
     test_the_turn_authority_has_a_throttle_free_twin();
     test_the_substep_remembers_what_the_actuators_spent();
+    test_the_wheels_pay_for_the_share_they_answer();
     test_a_ship_with_nothing_has_nothing();
     test_two_wheels_add_up();
     test_a_cluster_covers_an_axis_it_points_at();

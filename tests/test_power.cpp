@@ -27,7 +27,20 @@
 //     active stick adds the wheels' draw; charging/drain clamp to the pool
 //     (never below 0, never above capacity);
 //   * who pays: a drum bills its power_draw wherever it lives, including a
-//     command pod that is also life support and the battery (#596);
+//     command pod that is also life support and the battery (#596); and pays
+//     what the mixer DELIVERED rather than its rating (#648) -- a quarter ask
+//     is a quarter of the figure, an ask about a line no drum covers is
+//     nothing, and a latched law that has arrived stops paying while its key
+//     stays held. The figure comes out of actuators.h actuatorSolve, so these
+//     pins run applyControlForces to get a real setpoint rather than handing
+//     Vehicle a number of its own making;
+//   * the gate still weighs the whole rating behind the enable mask, keyed or
+//     not, delivering or not (#642) -- the bill moved, the gate did not;
+//   * NOT pinned: the one substep of lag between the solve and the bill (#648).
+//     powerTick runs before applyControlForces so the gate is current (#647), so the
+//     Wh paid this substep are what the previous one delivered. Only tick.cpp's
+//     ordering can show that, and #647 already pins the ordering; pinning the lag
+//     here would be a second copy of the same rule, free to drift.
 //   * the rails path: a hull coasting on its conic is billed once per WARP HOP,
 //     by railsTick itself (#647) -- the air bills and the RTG credits, the drums
 //     do not, because there is no control pass out there; the bill runs even when
@@ -41,7 +54,11 @@
 //
 // The ships here are built by hand (parts, no links needed -- the EC pool is
 // ship-global, not fuel-group-based), and powerTick/drainEC/chargeEC are
-// called directly, so the test stays headless (no Bullet world, no GL).
+// called directly, so the test stays headless (no Bullet world, no GL). The
+// #648 pins also call applyControlForces, which is what solves the drums'
+// setpoints; like every other test binary here it never calls enterWorld, so
+// nothing is simulated -- the control pass reads the hull's parts and frame,
+// which init() has already built (as in test_fuel).
 //
 // Runs from the repo root:
 //   make test   (or: ./test_power)
@@ -53,6 +70,8 @@
 #include <deque>
 #include <utility>
 #include <vector>
+
+#include <glm/glm.hpp>   // length2, on the #599 delivery record's vectors
 
 #include "vehicle.h"   // Vehicle + PartDef + ResourceContent (inline)
 #include "timestep.h"  // kMaxSubStep, which kWheelsCutS deliberately equals
@@ -97,9 +116,14 @@ struct Ship {
 
 /* Add one power part. Any of the EC fields may be 0 (a wheel has torque +
    power_draw, an RTG has power_gen, a capsule has power_draw_constant +
-   capacity[EC], a battery has only capacity[EC]). Returns the new Part. */
+   capacity[EC], a battery has only capacity[EC]). `wheelAxes` is PartDef::wheel_axes:
+   3 for a triad, which is every shipped wheel housing (#593), 1 for a single drum --
+   and a single drum mounted on the stack levers roll only (#576), so a fixture whose
+   pins are about what the drums DELIVER has to pick its axes on purpose. Returns the
+   new Part. */
 static Part *addPowerPart(Ship &s, double power_draw, double const_draw,
-                          double power_gen, double ec_wh, double torque) {
+                          double power_gen, double ec_wh, double torque,
+                          int wheelAxes = 1) {
     const double m = 100.0;   /* dry mass (EC carries no mass) */
     btBoxShape *shape = new btBoxShape(btVector3(1.0, 1.0, 1.0));
     btVector3 I;
@@ -115,6 +139,7 @@ static Part *addPowerPart(Ship &s, double power_draw, double const_draw,
     d.power_draw_constant = const_draw;
     d.power_gen = power_gen;
     d.torque = torque;
+    d.wheel_axes = wheelAxes;
     if(ec_wh > 0.0) { d.capacity[(int)ResourceType::EC] = ec_wh; }
     s.defs.push_back(d);
 
@@ -132,6 +157,18 @@ static Part *addPowerPart(Ship &s, double power_draw, double const_draw,
 static void initShip(Ship &s) {
     s.v->controller = s.v->parts[0];
     s.v->init();
+}
+
+/* One substep's control pass. Command() only arms the stick; applyControlForces is what
+   turns the stick into a demanded torque and that torque into the drums' setpoints, and
+   the setpoints are what #648 bills. So a fixture that means to pay for its drums runs
+   this pass exactly as tick.cpp does -- and so does one that means to prove they pay
+   NOTHING, because "there was no setpoint" is now a fact about the mixer rather than
+   about the EC gate. kMaxSubStep is the sim's own bound on h; for a stick-only ask h
+   changes nothing (the laws are the ones whose demand is step-scaled). */
+static void steer(Ship &s, float pitch) {
+    s.v->Command(ShipCmd(Pitch, pitch), true);
+    s.v->applyControlForces(kMaxSubStep);
 }
 
 static void destroyShip(Ship &s) {
@@ -249,11 +286,18 @@ static void test_gate_pays_the_wheels_demand() {
        Power row promise authority the next keypress refuses. */
     s.v->powerTick(1.0);
     CHECK_TRUE(not s.v->powered_, "drums the hull cannot afford gate it, stick or no stick");
-    s.v->Command(ShipCmd(Pitch, 1.0f), true);
+    steer(s, 1.0f);
     s.v->powerTick(1.0);
     CHECK_TRUE(not s.v->powered_, "200 W pays 100 W of air but not 1000 W of drums");
+    /* With the gate closed there are no wheel rows (#418 puts the gate in the rows), so
+       the stick's demand scales to zero torque and actuateAttitude is not reached at all:
+       the mixer never ran. The 0 below is therefore applyRotationForce's clear, not a
+       mixer that looked for work and found none -- and wheelDrawWatts() has its own
+       power gate, so an unpowered hull bills 0 whatever the record holds. */
     CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
-               "a gated drum bills nothing, ask held");
+               "a gated drum bills nothing: no rows, no demand, no bill (#642, #648)");
+    CHECK_TRUE(glm::length2(s.v->attitudeDelivery().asked) == 0.0,
+               "and the #599 record agrees that the mixer saw no ask");
     /* What the gate asks is not the billed figure: the billed figure is the gate's
        own verdict, so reading it back would let the wheels re-arm the substep after
        cutting them. */
@@ -275,16 +319,24 @@ static void test_gate_pays_the_wheels_demand() {
 static void test_brown_out_latches_then_rearms() {
     printf("== Gate: a dry pool latches the wheels off, then a banked pool re-arms ==\n");
     Ship s; s.v = new Vehicle;
-    addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0);    // wheel: 1000 W
+    addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0, 3);  // a 1000 W triad
     addPowerPart(s, 0.0, 100.0, 500.0, 20.0, 0.0);     // 100 W air, 500 W RTG, 20 Wh
     initShip(s);
     s.v->Command(ShipCmd(Pitch, 1.0f), true);
 
     /* 20 Wh against a 600 W shortfall (100 air + 1000 drums - 500 RTG) is 120 s of
-       commanding, i.e. 15000 substeps at the sim's own h. */
+       commanding, i.e. 15000 substeps at the sim's own h. The drums pay their 1000 W
+       here because a held key asks the hull's whole capability about its own axis, so
+       the solve leaves them at their limits and #648's delivered bill IS the rating;
+       the control pass rides in the loop because the bill is what the last substep
+       delivered, in the tick's own order (power, then control). */
     const double h = 1.0 / 125.0;
     int ticks = 0;
-    while(s.v->powered_ && ticks < 20000) { s.v->powerTick(h); ticks++; }
+    while(s.v->powered_ && ticks < 20000) {
+        s.v->powerTick(h);
+        s.v->applyControlForces(h);
+        ticks++;
+    }
     CHECK_TRUE(not s.v->powered_, "the pool runs out mid-maneuver -> wheels cut");
     CHECK_TRUE(ticks > 14500 && ticks < 15500,
                "20 Wh lasts about 120 s of commanding, not 0 and not forever");
@@ -301,7 +353,11 @@ static void test_brown_out_latches_then_rearms() {
                "the re-arm bank is 100x the burst the cut asks for, so the cycle is "
                "the power balance's rather than the step rate's");
     int cut = 0;
-    while(not s.v->powered_ && cut < 20000) { s.v->powerTick(h); cut++; }
+    while(not s.v->powered_ && cut < 20000) {
+        s.v->powerTick(h);
+        s.v->applyControlForces(h);   // the key stays held; the gate says no
+        cut++;
+    }
     CHECK_TRUE(s.v->powered_, "a banked pool brings the wheels back");
     CHECK_NEAR(totalEC(s), recover_wh, 0.05,
                "it re-arms at the recovery margin, not at the first Wh back");
@@ -402,17 +458,25 @@ static void test_rails_park_bills_per_hop() {
 static void test_brown_out_rearm_backstop() {
     printf("== Gate: a store too small to bank re-arms at half full ==\n");
     Ship s; s.v = new Vehicle;
-    addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0);    // wheel: 1000 W
+    addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0, 3); // a 1000 W triad
     addPowerPart(s, 0.0, 100.0, 500.0, 3.0, 0.0);      // 100 W air, 500 W RTG, 3 Wh
     initShip(s);
     s.v->Command(ShipCmd(Pitch, 1.0f), true);
 
     const double h = 1.0 / 125.0;
     int ticks = 0;
-    while(s.v->powered_ && ticks < 20000) { s.v->powerTick(h); ticks++; }
+    while(s.v->powered_ && ticks < 20000) {
+        s.v->powerTick(h);
+        s.v->applyControlForces(h);   // the drums pay what they delivered, and they
+        ticks++;                      // are at their limits while the key is held
+    }
     CHECK_TRUE(not s.v->powered_, "a 3 Wh pool runs out after ~18 s of commanding");
     int cut = 0;
-    while(not s.v->powered_ && cut < 20000) { s.v->powerTick(h); cut++; }
+    while(not s.v->powered_ && cut < 20000) {
+        s.v->powerTick(h);
+        s.v->applyControlForces(h);   // the key stays held; the gate says no
+        cut++;
+    }
     CHECK_TRUE(s.v->powered_, "and it re-arms rather than staying cut forever");
     CHECK_NEAR(totalEC(s), 0.5 * 3.0, 0.05, "re-armed at half the store");
     CHECK_TRUE(totalEC(s) < Vehicle::kWheelsRecoverS * 1000.0 / 3600.0,
@@ -486,7 +550,7 @@ static void test_life_support_drains_pool() {
 static void test_active_wheel_draws() {
     printf("== Balance: an active stick adds the wheels' draw ==\n");
     Ship s; s.v = new Vehicle;
-    addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0);   // a wheel (1000 W)
+    addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0, 3);  // a 1000 W triad
     addPowerPart(s, 0.0, 100.0, 0.0, 5000.0, 0.0);    // a capsule (100 W + 5000 Wh)
     initShip(s);
     CHECK_NEAR(totalEC(s), 5000.0, 1e-9, "battery seeded full");
@@ -494,13 +558,20 @@ static void test_active_wheel_draws() {
     /* Stick active: 100 W (life) + 1000 W (wheel) = 1100 W for 1 h. The stick
        is only reachable through Command (#575), which is also the point: the
        wheel is made to work by a pitch command, and the same call at zero
-       releases it. */
-    s.v->Command(ShipCmd(Pitch, 1.0f), true);
+       releases it. It works at full tilt here -- a held key asks this hull's whole
+       capability about its own axis, so the solve pins the drum to its limit and
+       #648's delivered bill is the authored 1000 W exactly: not a third of it (the
+       figure is per package, #593) and not a fraction of it. */
+    steer(s, 1.0f);
     s.v->powerTick(3600.0);
     CHECK_NEAR(totalEC(s), 3900.0, 1e-6, "active wheel drains 1100 Wh");
-    s.v->Command(ShipCmd(Pitch, 0.0f), true);
+    steer(s, 0.0f);
 
-    /* Stick off: only the 100 W life support for 1 h. */
+    /* Stick off: only the 100 W life support for 1 h. Two things make the wheels' term
+       0 here and both are wanted: releasing the key closes rotCommanded(), and the pass at
+       zero deflection clears the record with tvcLat_ and surfaceLat_ (#648). The clear is
+       the half that needs its own pin, since the gate alone would print 0 anyway -- that
+       is test_a_drum_that_delivers_nothing_bills_nothing, where the key stays down. */
     s.v->powerTick(3600.0);
     CHECK_NEAR(totalEC(s), 3800.0, 1e-6, "stick off drains only life support");
 
@@ -508,22 +579,27 @@ static void test_active_wheel_draws() {
        both gates: the wheel bills its draw only while the stick is working it AND the
        hull has power. The row used to re-derive this and dropped the power half, so an
        unpowered hull showed a draw it was not paying. */
-    s.v->Command(ShipCmd(Pitch, +1.0f), true);
+    steer(s, 1.0f);
     CHECK_NEAR(s.v->wheelDrawWatts(), 1000.0, 1e-9, "commanded: the wheel's 1000 W");
     s.v->powered_ = false;
     CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
                "no power: an electric actuator bills nothing, stick or no stick");
     s.v->powered_ = true;
     /* The third gate (#425 D-2): a hull that has the drums switched off has no wheel
-       rows to spend, so it must not pay for them either. Wheels::wheelsPowered() is
-       the one door both halves ask through. */
+       rows to spend, so it must not pay for them either. Vehicle::wheelsPowered() is the
+       one door both halves ask through, and this check reads the bill side of that door.
+       The rows side follows for the same reason as in test_gate_pays_the_wheels_demand:
+       no rows means the stick's demand scales to nothing, so there is no bill to fill. */
     s.v->wheels_enabled = false;
+    steer(s, 1.0f);
     CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
                "switched off: a drum that is not working bills no EC");
     s.v->wheels_enabled = true;
+    steer(s, 1.0f);
     CHECK_NEAR(s.v->wheelDrawWatts(), 1000.0, 1e-9, "switched back on: billing again");
-    s.v->Command(ShipCmd(Pitch, 0.0f), true);
-    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9, "released stick: nothing to bill");
+    steer(s, 0.0f);
+    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
+               "released stick: actuatorsEngaged() is off, so nothing bills");
     destroyShip(s);
 }
 
@@ -540,18 +616,19 @@ static void test_a_pods_own_drums_pay() {
     printf("== Balance: a pod's built-in drums bill their own power ==\n");
     Ship s; s.v = new Vehicle;
     /* One part doing three jobs, like every capsule in the catalog: 100 W of life
-       support, the ship's only 2000 Wh battery, and 200 N m of built-in drums. */
+       support, the ship's only 2000 Wh battery, and 200 N m of built-in drums -- three
+       of them, as every shipped capsule carries (#593). */
     addPowerPart(s, /*draw=*/100.0, /*const=*/100.0, /*gen=*/0.0,
-                 /*ec=*/2000.0, /*torque=*/200.0);
+                 /*ec=*/2000.0, /*torque=*/200.0, /*axes=*/3);
     initShip(s);
     CHECK_NEAR(totalEC(s), 2000.0, 1e-9, "pod battery seeded full");
 
-    s.v->Command(ShipCmd(Pitch, 1.0f), true);
+    steer(s, 1.0f);
     CHECK_NEAR(s.v->wheelDrawWatts(), 100.0, 1e-9,
                "on a wheel-less hull the pod's own drums are the Active row");
     s.v->powerTick(3600.0);
     CHECK_NEAR(totalEC(s), 1800.0, 1e-6, "commanding a pod drains life support AND drums");
-    s.v->Command(ShipCmd(Pitch, 0.0f), true);
+    steer(s, 0.0f);
     s.v->powerTick(3600.0);
     CHECK_NEAR(totalEC(s), 1700.0, 1e-6, "coasting drains life support alone");
 
@@ -561,9 +638,99 @@ static void test_a_pods_own_drums_pay() {
     s.v->drainEC(totalEC(s));
     s.v->powerTick(1.0);
     CHECK_TRUE(not s.v->powered_, "an empty pod pool gates its own drums");
-    s.v->Command(ShipCmd(Pitch, 1.0f), true);
+    steer(s, 1.0f);
     CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
                "a gated drum bills nothing even with the stick held");
+    destroyShip(s);
+}
+
+/* THE BILL IS THE SETPOINT, NOT THE RATING (#648). Every other attitude number in this
+   project is a rating -- the Vessel window's per-axis rows, the slew law's budget, the
+   Active row used to be one more -- and those answer the build question "is this drum
+   enough". The EC balance was the one place a rating got SPENT: a hull asking 4 N m of a
+   4500 N m drum paid exactly what one pinning it to its limit paid. So an autopilot that
+   had already arrived ate the pool at full rate for as long as its mode stayed on, and so
+   did a demand about a line no drum covers.
+   What the mixer answers instead is per row, and the bill is per HOUSING scaled by its
+   busiest drum: PartDef::power_draw is one package figure (#593), so a triad at full
+   demand on ONE line pays the whole figure rather than a third of it. That is what keeps
+   the everyday case exact -- a held key asks the hull's whole capability about its own
+   axis (applyRotationForce), so the drums on that line sit at their limits -- and it is
+   the choice, not a fact: a triad pulling three lines at once would pay the same as one
+   pulling one. Per-drum pricing would need every shipped wheel's figure re-authored. */
+static void test_the_bill_is_the_delivered_setpoint() {
+    printf("== Balance: the wheels pay what they delivered, not their rating ==\n");
+    Ship s; s.v = new Vehicle;
+    addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0, 3);  // 1000 W triad, 2000 N m a drum
+    addPowerPart(s, 0.0, 0.0, 0.0, 5000.0, 0.0);        // a battery, no air, no RTG
+    initShip(s);
+
+    /* The stick is a normalized demand (#425), so the ask scales with the deflection
+       and the line is never over-subscribed here: the setpoint IS the fraction. */
+    steer(s, 1.0f);
+    CHECK_NEAR(s.v->wheelDrawWatts(), 1000.0, 1e-6, "a full ask pays the whole figure");
+    steer(s, 0.5f);
+    CHECK_NEAR(s.v->wheelDrawWatts(), 500.0, 1e-6, "half the deflection, half the bill");
+    steer(s, 0.25f);
+    CHECK_NEAR(s.v->wheelDrawWatts(), 250.0, 1e-6,
+               "a quarter ask on the same drum is a quarter of the figure (#648)");
+    CHECK_NEAR(s.v->wheelDemandWatts(), 1000.0, 1e-9,
+               "the gate still weighs the whole rating: affordability is not a demand "
+               "question (#642), and a gate that tracked the ask would re-arm its own "
+               "brown-out");
+
+    /* And the bill lands on the pool, not only on the readout: this rig has no air and
+       no generation, so the hour costs the quarter ask and nothing else. */
+    const double before = totalEC(s);
+    steer(s, 0.25f);
+    s.v->powerTick(3600.0);
+    CHECK_NEAR(before - totalEC(s), 250.0, 1e-6, "an hour of a quarter ask costs 250 Wh");
+    destroyShip(s);
+}
+
+/* The two shapes the rating bill could never tell apart. A drum that levers nothing and
+   a law that has finished asking both deliver zero N m, and both used to pay the full
+   figure (#576's lesson applied to power: a single drum on the stack cannot pitch a hull,
+   so charging it to pitch the hull was wrong twice over). */
+static void test_a_drum_that_delivers_nothing_bills_nothing() {
+    printf("== Balance: drums that deliver nothing pay nothing (#648) ==\n");
+    Ship s; s.v = new Vehicle;
+    addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0, 1);  // one drum, along the stack
+    addPowerPart(s, 500.0, 0.0, 0.0, 0.0, 2000.0, 3);   // a 500 W triad
+    addPowerPart(s, 0.0, 0.0, 0.0, 5000.0, 0.0);        // a battery
+    initShip(s);
+    CHECK_NEAR(s.v->wheelDemandWatts(), 1500.0, 1e-9,
+               "both housings are still a cost to the gate, delivering or not");
+
+    steer(s, 1.0f);   // pitch: only the triad levers it
+    CHECK_NEAR(s.v->wheelDrawWatts(), 500.0, 1e-6,
+               "the axial drum delivers nothing about pitch, so it pays nothing");
+
+    /* Roll, on the other hand, is the one line both housings cover, and a held key
+       saturates it: each pays its own package figure. Pitch comes up first -- two keys
+       would sum into one demand, which is #577's over-subscription and a different
+       question. */
+    s.v->Command(ShipCmd(Pitch, 0.0f), true);
+    s.v->Command(ShipCmd(Roll, 1.0f), true);
+    s.v->applyControlForces(kMaxSubStep);
+    CHECK_NEAR(s.v->wheelDrawWatts(), 1500.0, 1e-6,
+               "about the stack both housings are at their limits, and each pays its own");
+
+    /* THE ARRIVED LAW. Kill-rot is latched and the hull is not spinning, so the law asks
+       for nothing and actuateAttitude is never called -- while the mode is still engaged,
+       so actuatorsEngaged() is true and the gate is open. Before #648 this read the full
+       1500 W for as long as the key stayed down; the clear in applyRotationForce is what
+       makes it 0. */
+    s.v->Command(ShipCmd(Roll, 0.0f), true);
+    s.v->Command(ShipCmd(KillRot), true);
+    s.v->applyControlForces(kMaxSubStep);
+    CHECK_TRUE(s.v->actuatorsEngaged(),
+               "powered, off rails, a mode engaged: the gate is open, so this 0 is the "
+               "mixer's answer rather than a shut door");
+    CHECK_TRUE(glm::length2(s.v->attitudeDelivery().asked) == 0.0,
+               "the law had nothing to ask, which is why the mixer never ran (#599)");
+    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
+               "an autopilot that has arrived stops eating the pool (#648)");
     destroyShip(s);
 }
 
@@ -671,6 +838,10 @@ int main() {
     test_active_wheel_draws();
     printf("\n");
     test_a_pods_own_drums_pay();
+    printf("\n");
+    test_the_bill_is_the_delivered_setpoint();
+    printf("\n");
+    test_a_drum_that_delivers_nothing_bills_nothing();
     printf("\n");
     test_drain_prorata_across_batteries();
     printf("\n");

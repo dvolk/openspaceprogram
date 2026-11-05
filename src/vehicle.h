@@ -453,7 +453,12 @@ public:
        power balance's, not the timestep's: on the probe hull (a 1007 W rtg against 600 W
        of air and 2475 W of drums) that is about 12 s of steering per minute of waiting,
        which reads as "this generator cannot sustain it" -- the honest answer, and one
-       the player can answer by letting go. */
+       the player can answer by letting go.
+       Both figures above are the SATURATED case, and #648 made that worth saying: the
+       drums now bill what they deliver, so a latched law that has arrived spends ~1 W
+       while this latch still weighs the whole 2475 W rating. That is deliberate -- the
+       gate is a build question and must not read the bill (#642) -- but it does mean a
+       small-pool hull can be cut off steering it could easily afford. Filed as #654. */
     bool wheels_brown_out_ = false;
     static constexpr double kWheelsRecoverS = 10.0;   // s of commanding banked before re-arm
     static constexpr double kWheelsCutS = 0.1;        // s of commanding the pool must cover
@@ -653,8 +658,11 @@ public:
        too (Part::isWheel() is `torque > 0`), so `wheels_enabled` switches that off as
        well as any bought reaction_wheel part (#600). */
     bool wheelsPowered() const { return powered_ && wheels_enabled; }
-    /* Are the attitude actuators doing work THIS tick? powerTick() bills the wheels'
-       active draw on exactly this, and the F1 debug overlay's Power block prints it too
+    /* Is anyone ASKING for attitude authority this tick? Note what this does NOT
+       answer: since #648 the wheels' EC bill is what the mixer DELIVERED, so this says
+       a command is live, not that a command costs anything -- a converged law with the
+       key still down is engaged and spends ~nothing. powerTick() gates its bill on
+       exactly this, and the F1 debug overlay's Power block prints it too
        (#646: the balance lives there, other windows only show the EC bar). An unpowered
        or switched-off hull's wheels are not drawing even with the stick pinned, and a
        second spelling of the rule is how those two drift apart. `mixerRuns()` is in it
@@ -680,23 +688,30 @@ public:
         return stick[0] != 0.0f || stick[1] != 0.0f
             || stick[2] != 0.0f || slew != SlewNone;
     }
-    /* W the actuators are billing right now: the wheels' draw, summed over every wheel
-       HOUSING and zero when they are not engaged. A triad housing (#593) bills its
-       one `power_draw`, not three: the watt figure is the package's, while `torque`
-       is per drum -- deliberately, since rating the drums individually would triple
-       every shipped wheel's power bill with no author asking for it. powerTick() pays
-       this and the Vessel window's Power row shows it, so the row cannot disagree with
-       the bill (#575) -- it used to re-derive the sum, and dropped the power gate
-       while doing it. */
+    /* W the actuators are billing right now: what the wheel housings DELIVERED, and
+       zero when they are not engaged. Not their rating (#648) -- a drum asked for 4 N m
+       of its 4500 N m pays 4/4500 of its package figure, so the EC cost tracks the
+       turning rather than the keypress. An autopilot that has arrived, a demand about a
+       line no drum covers, a hold the gimbals are doing: all of those used to eat the
+       pool at full rating. The figure is per HOUSING still: a triad (#593) pays its one
+       `power_draw` when its busiest drum is at full demand, not three times it, because
+       the catalog's watt figure is the package's while `torque` is per drum -- pricing
+       the drums individually would triple every shipped wheel with no author asking.
+       powerTick() pays this and the Game Debug overlay's Active row shows it, so the row
+       cannot disagree with the bill (#575) -- it used to re-derive the sum, and dropped
+       the power gate while doing it. */
     double wheelDrawWatts() const;
     /* What the wheels COST this hull: the same rating sum behind the enable mask only,
-       whether or not anyone is steering (#642). powerTick's gate asks THIS and never
-       wheelDrawWatts(), because that figure is the gate's own verdict: a shut gate bills
-       0, so a gate reading the billed sum re-arms the substep after cutting the wheels.
-       The live command stays out of the GATE for the same kind of reason -- a hull that
-       cannot afford its drums is short of power whether or not anyone is holding the
-       stick, and a verdict that moves with the stick is how the Power row starts
-       promising authority that the next keypress refuses. */
+       whether or not anyone is steering (#642), and whether or not anyone can PAY for
+       that much at once. powerTick's gate asks THIS and never wheelDrawWatts(), because
+       that figure is the gate's own verdict: a shut gate bills 0, so a gate reading the
+       billed sum re-arms the substep after cutting the wheels. The live command stays
+       out of the GATE for the same kind of reason -- a hull that cannot afford its drums
+       is short of power whether or not anyone is holding the stick, and a verdict that
+       moves with the stick is how the Power row starts promising authority that the next
+       keypress refuses. #648 moved the DELIVERED figure onto the bill, not onto the
+       gate: the gate answers the build question "could this hull ever work these drums",
+       the bill answers "what did this substep cost". */
     double wheelDemandWatts() const;
     /* The TVC aim handed to the mixer: one shared lateral deflection vector
        (world axes, rad) armed by gimbal.h tvcSplit and consumed by applyThrustForce.
@@ -762,6 +777,15 @@ public:
 
 private:
     AttitudeDelivery attDel_;
+    /* W the wheel housings are billing for the LAST ACTUATED SUBSTEP (#648): each
+       housing's package `power_draw` times how hard its busiest drum was asked to work.
+       actuateAttitude fills it from the same solve that produced the setpoints;
+       applyRotationForce clears it with tvcLat_, surfaceLat_ and attDel_, so a substep
+       nobody asked for pays for nothing. powerTick reads it one substep LATE -- the tick
+       bills power before control forces so the EC gate is current (#647), so the Wh paid
+       this substep are what the previous one delivered. At kMaxSubStep that lag is 0.1 s
+       of sim, and it is the same "last actuated substep" reading the #599 record uses. */
+    double wheelSpendWatts_ = 0.0;
 
 public:
     /* WHAT CAN TURN THIS SHIP RIGHT NOW (#425). One answer to "how hard, and
@@ -819,6 +843,18 @@ public:
            gated answer per axis (#572: one answer, not the one the largest wheel
            happens to give). */
         std::vector<ActuatorRow> wheels;
+        /* The housing each wheel row came from, in `wheels` order. Same reason the
+           surfaces carry surfaceParts: actuatorSolve's setpoints come back indexed by
+           row, and #648 bills a HOUSING -- PartDef::power_draw is one package figure
+           for a housing's drums, not a per-drum figure (#593) -- so paying the delivered
+           setpoint needs to know which rows share one figure. A hull that bought two
+           wheel blocks has two groups, and they bill separately because they are two
+           packages. #579's momentum store wants this row->part link per drum too. */
+        std::vector<const Part *> wheelParts;
+        /* How many HOUSINGS those rows came from, counted where they are counted as
+           rows. actuateAttitude groups `wheels` into runs of one owner and asserts this
+           equals the run count, so the grouping is checked rather than trusted (#648). */
+        int wheelHousings = 0;
         /* Sum of the row ratings, deliberately NOT called a capacity: for a triad
            housing it is 3x what any one of its lines can carry, so it answers
            "how much wheel does this hull own" and not "how much about some axis".
@@ -958,6 +994,10 @@ public:
        setpoints go to the air (surfaceLat_) and the force law bills them there;
        applying the abstract torque too would charge the hull twice for one fin.
        Stashes the TVC half in tvcLat_ for applyThrustForce this same substep.
+       It also owns two records that outlive the call: the #599 spend record (the
+       wheels channel) and the wheels' EC bill for this substep (#648) -- powerTick
+       pays that figure, so this function moves the battery even though it looks like
+       a pure actuator call. Both are reasons it stays the ONE call per substep.
        applyRotationForce answers ONE summed demand and calls this once, so that aim
        is the whole answer rather than one consumer's share of it (#420). */
     void actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &auth);
@@ -1081,6 +1121,10 @@ public:
        A shared pool across the batteries. powerTick runs per substep, BEFORE
        applyControlForces: gates the wheels, balances RTG generation against the
        life-support and wheel draws. Units: W and Wh. EC has no mass.
+       The order is not free and is deliberate: the gate's verdict is what
+       applyControlForces spends this substep, so it has to be current -- and the
+       price is that the wheels' term is the PREVIOUS substep's delivery (#648 pays
+       what actuateAttitude solved, not a rating), i.e. at most kMaxSubStep stale.
 
        It is called twice a frame in spirit, once per path: per substep for a hull under
        physics, and once per warp hop from railsTick for a hull coasting on its conic

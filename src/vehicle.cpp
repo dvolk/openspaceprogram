@@ -2140,12 +2140,16 @@ double Vehicle::wheelDemandWatts() const {
 }
 
 double Vehicle::wheelDrawWatts() const {
-    /* What the wheels are BILLING this substep: the cost above, and only while a command
-       is live and the EC gate is open. The power block on the Game Debug overlay and
-       --power-log's active= column quote this, so the readout cannot disagree with the
-       bill (#575) -- it used to re-derive the sum, and dropped the power gate while doing
-       it. */
-    return actuatorsEngaged() ? wheelDemandWatts() : 0.0;
+    /* What the wheels are BILLING this substep: what they DELIVERED last time the mixer
+       ran (#648), and only while a command is live and the EC gate is open. The power
+       block on the Game Debug overlay and --power-log's active= column quote this, so
+       the readout cannot disagree with the bill (#575) -- it used to re-derive the sum,
+       and dropped the power gate while doing it.
+       The figure is a substep behind by construction: actuateAttitude fills it and the
+       tick bills power before control forces so the gate is current (#647), so powerTick
+       pays what the previous substep delivered. At the sim's own step that is 0.1 s of
+       sim -- a fifth of one row of a 0.5 s power log. */
+    return actuatorsEngaged() ? wheelSpendWatts_ : 0.0;
 }
 
 void Vehicle::powerTick(double h) {
@@ -2197,8 +2201,12 @@ void Vehicle::powerTick(double h) {
        rails has none, so it pays for breathing and generation but not for drums it is
        not turning (#647). The power block on the Game Debug overlay and --power-log's
        active= column quote the same predicate (#575, and ui/601 reads it off the
-       screen). */
-    const double activeDraw = actuatorsEngaged() ? cost : 0.0;
+       screen).
+       What it pays is the DELIVERED figure, not `cost`: the last actuated substep's
+       scaled package sum, which is what wheelDrawWatts() reads (#648). `cost` stays on
+       the gate above and nowhere near the balance -- paying the rating is how a hull
+       that asked 4 N m of a 4500 N m drum ate the pool at 2250 W. */
+    const double activeDraw = wheelDrawWatts();
     const double netWh = (totalGen - constantDraw - activeDraw) * h / 3600.0;
     if(netWh < 0.0) { drainEC(-netWh); }
     else if(netWh > 0.0) { chargeEC(netWh); }
@@ -3495,8 +3503,13 @@ void Vehicle::applyRotationForce(double h) {
        is not called at all when the demand is zero, so this is where the reset lives. */
     surfaceLat_.clear();
     /* And for the delivery record (#599): a substep nobody asked for shows 0 N m, not
-       the last substep that was. */
+       the last substep that was. The #648 EC bill clears here for the same reason, and
+       it matters rather than being tidy: actuateAttitude is not called at all when the
+       demand is zero, so a latched law that has ARRIVED (kill-rot on a hull that has
+       stopped, a slew that has aligned) would otherwise keep paying the last substep that
+       had an ask, for as long as the mode stays latched. */
     attDel_ = Vehicle::AttitudeDelivery{};
+    wheelSpendWatts_ = 0.0;
     Part *ref = attitudeRef();
     /* ONE capability answer per substep (#594): the stick path, the slew law, the
        kill-rot law and the [slew] trace each used to ask attitudeAuthority() for a
@@ -4971,12 +4984,19 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
         for(const Part *p : parts) {
             if(!p->isWheel()) { continue; }
             const double t = p->wheelTorque();
+            /* wheelParts is the row->housing link (#648): the setpoints come back per
+               row, and the watt figure to scale them against is per package. */
             if(p->def->wheel_axes == 3) {
-                for(int k = 0; k < 3; k++) { a.wheels.push_back({ partAxis(p, k), t }); }
+                for(int k = 0; k < 3; k++) {
+                    a.wheels.push_back({ partAxis(p, k), t });
+                    a.wheelParts.push_back(p);
+                }
             }
             else {
                 a.wheels.push_back({ partAxis(p, 2), t });
+                a.wheelParts.push_back(p);
             }
+            a.wheelHousings++;
         }
     }
     /* TVC, read off the ARMED gimballed engines so it scales with throttle (and
@@ -5249,8 +5269,62 @@ void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
         aeroShare += rad * a.surfaces[k].axis;
         if(rad != 0.0) { surfaceLat_.push_back({a.surfaceParts[k], rad}); }
     }
-    /* The wheel rows' setpoints are still unused -- #579's momentum store is what
-       will want them per wheel. */
+    /* WHAT THE DRUMS COST FOR THIS SUBSTEP (#648): each housing's package figure scaled
+       by how hard its busiest drum was asked to work, read off the setpoints the solve
+       just produced. A drum asked for 4 N m of its 4500 N m pays 4/4500 of the figure.
+       That is the same split #599 made for torque -- the rating answers what the hull
+       OWNS, the bill answers what it SPENT -- and three things fall out of it: an
+       autopilot that has arrived (kill-rot on a hull that has stopped spinning, a slew
+       that has aligned) stops eating the pool while its key stays held; a demand about a
+       line no drum covers costs nothing, because drums that deliver nothing never
+       worked; and a hold the gimbals are doing bills the nozzles' propellant, not the
+       wheels' EC. What it does NOT move is the EC GATE, which still weighs the whole
+       rating (wheelDemandWatts, #642): "could this hull ever work these drums" is a
+       build question, and a verdict that tracked the demand would be the stick re-arming
+       its own brown-out.
+       Per HOUSING, and by its PEAK drum rather than their mean: #593 authored one
+       `power_draw` per package exactly so a triad would not be billed as three drums, so
+       the only honest denominator for that one figure is one drum at full demand. The
+       everyday case stays exact: a held key asks the hull's whole capability about its own
+       axis (applyRotationForce), so the drums on that line sit at their limits and the
+       bill is the authored figure to the watt. The price of the choice, stated: a triad
+       pulling three lines at once bills the same as one pulling one, so the oblique
+       sqrt(3) advantage actuators.h documents arrives at no extra EC. Per-drum pricing
+       would buy that, and would triple every shipped wheel's figure -- a catalog pass,
+       not a solver change.
+       These setpoints are also what #579's momentum store will want per wheel. Until that
+       store exists there is no wheel speed to multiply, so torque is the best
+       proportionality this model can state; tau*omega belongs with #579. */
+    assert(a.wheelParts.size() == a.wheels.size());
+    double spend = 0.0;
+    int runs = 0;
+    for(size_t k = 0; k < a.wheels.size(); ) {
+        /* The rows are built housing by housing (attitudeAuthority), so today one
+           housing's drums are one run of consecutive rows and the grouping needs no map.
+           That is a fact about the builder, not about this loop, so it is asserted rather
+           than trusted: a reorder or a split would otherwise silently bill one housing
+           once per run. */
+        const Part *owner = a.wheelParts[k];
+        double peak = 0.0;
+        size_t m = k;
+        while(m < a.wheels.size() && a.wheelParts[m] == owner) {
+            /* A wheel row's setpoint is N m along its own line and its limit is its
+               rated N m, so the ratio is that drum's utilisation. The solver bounds each
+               row by its own limit; clamp it rather than silently over-bill a housing
+               past its authored figure, and clamp per row so a row that is not a number
+               fails closed (charges nothing) instead of reaching the total. */
+            double u = std::fabs(setpoints[m]) / a.wheels[m].limit;
+            assert(u <= 1.0 + 1e-9);
+            if(u > 1.0) { u = 1.0; }
+            if(u > peak) { peak = u; }
+            m++;
+        }
+        spend += owner->powerDraw() * peak;
+        runs++;
+        k = m;
+    }
+    assert(runs == a.wheelHousings);
+    wheelSpendWatts_ = spend;
     const glm::dvec3 mechanical = delivered - aeroShare;
     if(glm::length2(mechanical) > 0.0) { ApplyTorque(hull, mechanical); }
     /* The one channel this function can state as fact: whatever lands here is on the
@@ -5696,8 +5770,12 @@ bool Vehicle::goOnRails() {
     lastForceVecs.clear();   // and the force overlay: no substeps, no arrows
     /* And the #599 spend record: applyRotationForce, which clears it every substep,
        never runs on rails, so the Vessel window would keep quoting the last live
-       hull-substep's steering for as long as the conic runs. */
+       hull-substep's steering for as long as the conic runs. The #648 bill rides along
+       for the same reason -- the overlay's Active row reads it, and on rails there is no
+       substep that spent anything. (wheelDrawWatts() would answer 0 for a railed hull
+       anyway through actuatorsEngaged(); this is the readout that has no gate.) */
     attDel_ = AttitudeDelivery{};
+    wheelSpendWatts_ = 0.0;
 
     // out of the world: the one body
     if(hullInWorld()) { RemoveBody(hull); }

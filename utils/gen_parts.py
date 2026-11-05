@@ -61,6 +61,13 @@ WHEEL_TORQUE_PER_M = 2000.0
 # 1000 W) and a capsule's built-in drums (r1: 200 N m -> 100 W) with one rule. The
 # figure is per HOUSING, not per drum -- a #593 triad bills once (#593 left that
 # convention alone; changing it would triple every shipped wheel's bill).
+# What that figure MEANS, now that #648 bills by the delivered setpoint rather than by
+# the switch being on: it is the housing's PEAK -- what the package costs with its
+# busiest drum at full demand. So a triad steering one line at full throttle costs the
+# figure above, one asking a quarter of its rating costs a quarter, and one idle costs
+# nothing. Read it as per-drum instead and every shipped wheel's cost triples at full
+# three-axis use, which is the choice #593 declined to make; the ambiguity was implicit
+# there and is explicit here.
 WHEEL_DRAW_WATTS_PER_NM = 0.5
 RTG_WATTS_PER_M3       = 380.0    # W per m^3 (r1 -> ~300 W)
 RTG_DENSITY            = 150.0    # kg/m^3, fuel + thermoelectrics + housing
