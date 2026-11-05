@@ -77,6 +77,25 @@ def load_wiki_orbits(csv_path):
 
 WIKI_ORBITS = load_wiki_orbits(os.path.join(HERE, "ksp_bodies.csv"))
 
+# WHAT THE AIR IS MADE OF (#552 A4b, #630), by MOLE. A body authors its mix and the
+# loader resolves molar mass, gamma and the oxidizer share the jet gate reads from it
+# (src/atmo.h:resolveMix), so "molar_mass"/"gamma" are no longer authorable keys.
+# Species names must exist in the game's gas table (atmo.h:gasSpecies).
+DRY_AIR = [{"gas": "N2", "fraction": 0.78084},
+           {"gas": "O2", "fraction": 0.20946},
+           {"gas": "Ar", "fraction": 0.00934},
+           {"gas": "CO2", "fraction": 0.00033}]
+CO2_HEAVY = [{"gas": "CO2", "fraction": 0.9532},
+             {"gas": "N2", "fraction": 0.027},
+             {"gas": "Ar", "fraction": 0.016},
+             {"gas": "O2", "fraction": 0.0013}]
+# Named for what is in it: utils/make_solar_system.py has a different H2_HE (no CH4),
+# and two constants with one name and different skies is how a mix drifts.
+H2_HE_CH4 = [{"gas": "H2", "fraction": 0.855},
+             {"gas": "He", "fraction": 0.14},
+             {"gas": "CH4", "fraction": 0.005}]
+
+
 # Eerbon: legacy home + moon. Values from the pre-refactor setup_frames();
 # seed 0 keeps the original unseeded terrain. Deliberately authored WITHOUT
 # spin_phase0/tilt_azimuth (#141): a frozen legacy fixture, not a showcase
@@ -215,7 +234,10 @@ SURFACES = {
         "atmosphere": {"color": [0.80, 0.85, 0.35], "thickness": 25000,
                        "power": 4.0, "intensity": 0.75,
                        "sea_level_density": 1.7, "scale_height": 7000,
-                       "molar_mass": 0.044, "gamma": 1.3,   # CO2-heavy air
+                       # Denser sea-level air than Kerbin's, and not one gram of it
+                       # will burn: a jet on Eve has plenty to swallow and nothing to
+                       # swallow it with (#630).
+                       "composition": CO2_HEAVY,
                        "height": 90000},
     },
     "Gilly": {
@@ -236,6 +258,10 @@ SURFACES = {
         "atmosphere": {"color": [0.30, 0.50, 1.00], "thickness": 15000,
                        "power": 4.0, "intensity": 0.7,
                        "sea_level_density": 1.225, "scale_height": 5500,
+                       # Written out rather than left to the dry-air default: the
+                       # atlas names the air, and "breathable" is a fact about this
+                       # world that a player should be able to read off it.
+                       "composition": DRY_AIR,
                        "height": 70000},
         "clouds": {"height": 2500, "coverage": 0.6, "freq": 10,
                    "drift": 0.00001},
@@ -259,6 +285,7 @@ SURFACES = {
         "atmosphere": {"color": [0.40, 0.65, 0.70], "thickness": 22000,
                        "power": 4.0, "intensity": 0.7,
                        "sea_level_density": 1.225, "scale_height": 6000,
+                       "composition": DRY_AIR,
                        "height": 60000},
         "clouds": {"height": 3000, "coverage": 0.5, "freq": 10,
                    "drift": 0.00001},
@@ -270,7 +297,9 @@ SURFACES = {
         "atmosphere": {"color": [0.80, 0.48, 0.30], "thickness": 8000,
                        "power": 4.0, "intensity": 0.55,
                        "sea_level_density": 0.12, "scale_height": 4000,
-                       "molar_mass": 0.044, "gamma": 1.3,   # thin CO2
+                       # Thin CO2 with a 0.13% oxygen trace: enough to measure, not
+                       # enough to run a turbine on.
+                       "composition": CO2_HEAVY,
                        "height": 50000},
     },
     "Ike": {
@@ -291,7 +320,10 @@ SURFACES = {
         "atmosphere": {"color": [0.75, 0.85, 0.85], "thickness": 90000,
                        "power": 3.0, "intensity": 0.6,
                        "sea_level_density": 2.0, "scale_height": 20000,
-                       "molar_mass": 0.0022,          # H2; gamma 1.4 is the default
+                       # H2 with helium and a methane crown. The densest air in this
+                       # system and 0% oxidizer: Jool is a fuel store, not a sky a
+                       # jet can cross.
+                       "composition": H2_HE_CH4,
                        "height": 200000},
     },
     "Laythe": {
@@ -306,6 +338,7 @@ SURFACES = {
         "atmosphere": {"color": [0.30, 0.55, 0.90], "thickness": 12000,
                        "power": 4.0, "intensity": 0.7,
                        "sea_level_density": 1.225, "scale_height": 5500,
+                       "composition": DRY_AIR,
                        "height": 50000},
         "clouds": {"height": 2000, "coverage": 0.55, "freq": 10,
                    "drift": 0.00001},

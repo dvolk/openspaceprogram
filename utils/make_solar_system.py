@@ -599,10 +599,36 @@ MOON_COLORS = {
     'Charon':    ([0.50, 0.50, 0.50], [0.70, 0.70, 0.72]),
 }
 
+# WHAT THE AIR IS MADE OF (#552 A4b, #630), by MOLE. A body authors its mix and the
+# loader resolves molar mass, gamma and the oxidizer share a jet gate reads from it
+# (src/atmo.h:resolveMix), so 'molar_mass'/'gamma' are no longer authorable keys --
+# the mix is the fact and those two are its consequences. Fractions need not sum to 1;
+# they are normalized by their own total. The species names must exist in the game's
+# gas table (atmo.h:gasSpecies): N2, O2, CO2, H2, He, CH4, H2O, Ar.
+DRY_AIR = [{'gas': 'N2', 'fraction': 0.78084},
+           {'gas': 'O2', 'fraction': 0.20946},
+           {'gas': 'Ar', 'fraction': 0.00934},
+           {'gas': 'CO2', 'fraction': 0.00033}]
+CO2_HEAVY = [{'gas': 'CO2', 'fraction': 0.9532},
+             {'gas': 'N2', 'fraction': 0.027},
+             {'gas': 'Ar', 'fraction': 0.016},
+             {'gas': 'O2', 'fraction': 0.0013}]
+H2_HE = [{'gas': 'H2', 'fraction': 0.898},
+         {'gas': 'He', 'fraction': 0.102}]
+H2_HE_CH4 = [{'gas': 'H2', 'fraction': 0.825},
+             {'gas': 'He', 'fraction': 0.152},
+             {'gas': 'CH4', 'fraction': 0.023}]
+N2_METHANE = [{'gas': 'N2', 'fraction': 0.984},
+              {'gas': 'CH4', 'fraction': 0.014},
+              {'gas': 'H2', 'fraction': 0.002}]
+
 MOON_ATMOS = {
     'Titan':  {'color': [0.85, 0.60, 0.25], 'thickness': 40000,
                'power': 3.0, 'intensity': 0.8,
-               'sea_level_density': 5.3, 'scale_height': 20000},
+               'sea_level_density': 5.3, 'scale_height': 20000,
+               # Titan's air is the densest in the catalogue and still cannot burn:
+               # nitrogen, methane, a trace of hydrogen, no free oxygen at all.
+               'composition': N2_METHANE},
     'Triton': {'color': [0.60, 0.70, 0.85], 'thickness': 5000,
                'power': 5.0, 'intensity': 0.3},
     'Io':     {'color': [0.85, 0.75, 0.40], 'thickness': 4000,
@@ -654,7 +680,11 @@ def build_base():
           'atmosphere': {'color': [0.90, 0.75, 0.45], 'thickness': 30000,
                          'power': 3.0, 'intensity': 0.8,
                          'sea_level_density': 92.0, 'scale_height': 16000,
-                         'molar_mass': 0.044, 'gamma': 1.3},   # near-pure CO2
+                         # Near-pure CO2 with nitrogen on top. Venus has the densest
+                         # air a jet could swallow in this catalogue and no oxidizer
+                         # in any of it (#630).
+                         'composition': [{'gas': 'CO2', 'fraction': 0.965},
+                                         {'gas': 'N2', 'fraction': 0.035}]},
           'clouds': {'color': [0.92, 0.82, 0.55], 'height': 5000,
                      'coverage': 0.9, 'freq': 8.0}}, False),
         ('earthfact.html', 'Earth', 3.0,
@@ -682,19 +712,21 @@ def build_base():
           # the lapse rate in K/m (the standard states K/km). Pressure and each level's
           # base pressure are NOT authored -- the loader integrates them hydrostatically
           # from sea_level_density (atmo.h:resolveAtmoLevels), which is why the profile
-          # lands on 101,328 Pa at the datum rather than an authored 101,325.
+          # lands on 101,324.9 Pa at the datum rather than an authored 101,325.
           # Troposphere to 11 km, isothermal tropopause to 20, stratosphere to 47,
           # isothermal stratopause to 51, mesosphere to the top. The standard's 85 km row
           # (186.87 K) needs no level of its own: it is where the -2.0 K/m lapse lands
           # (186.65 K here), and this body's air stops there. height keeps the top at
           # 85 km, exactly what the old scale_height 8500 derived (x10), so no science
-          # band or rotating frame moves. molar_mass is written rather than defaulted
-          # because these numbers ARE dry air's -- the profile's pressures are only right
-          # for the gas they were measured in.
+          # band or rotating frame moves. The composition is written rather than
+          # defaulted because the profile's pressures are only right for the gas they
+          # were measured in, and DRY_AIR is that gas: it resolves to 0.0289650
+          # kg/mol, which puts the datum at 101,324.9 Pa -- 0.1 Pa off the standard's
+          # own 101,325, because that figure IS dry air at 1.225 kg/m3 and 288.15 K.
           'atmosphere': {'color': [0.30, 0.50, 1.00], 'thickness': 15000,
                          'power': 4.0, 'intensity': 0.7,
                          'sea_level_density': 1.225, 'height': 85000,
-                         'molar_mass': 0.028964, 'gamma': 1.4,
+                         'composition': DRY_AIR,
                          'layers': [
                              {'alt': 0,     'T': 288.15, 'lapse': -0.0065},
                              {'alt': 11000, 'T': 216.65, 'lapse': 0.0},
@@ -712,20 +744,25 @@ def build_base():
           'atmosphere': {'color': [0.85, 0.55, 0.35], 'thickness': 12000,
                          'power': 4.0, 'intensity': 0.5,
                          'sea_level_density': 0.020, 'scale_height': 11500,
-                         'molar_mass': 0.044, 'gamma': 1.3}},   # thin CO2
+                         # Thin CO2 with a 0.13% oxygen trace -- enough to measure,
+                         # not enough to run a turbine on.
+                         'composition': CO2_HEAVY}},
          False),
         # gas giants: band ramp dark (pole/edge) -> light (equator/centre)
         # Their air is authored by what it is made of: H2/He for the giants, and the
-        # ice giants read heavier (0.023 kg/mol) because methane and ammonia ride with
-        # the H2/He. A body with no molar_mass key means dry air (0.028964) -- fine for
-        # Earth and Titan, wrong for every one of these. See #625 for the scale heights.
+        # ice giants the same mix with a methane crown. Note what that corrects: these
+        # bodies used to type molar_mass 0.023 for the ice giants, which is not what
+        # H2/He/CH4 means -- 2.3% methane by MOLE barely moves a 0.0026 kg/mol
+        # mixture, and 0.023 implied an air 9x heavier than an ice giant has. The
+        # derived temperature is linear in that number, so Uranus read 498 K in the
+        # atlas (#625's complaint) and now reads 57 K. See #625 for the scale heights.
         ('jupiterfact.html', 'Jupiter', 5.0,
          {'bands': True, 'band_count': 11,
           'palette': [[0.0, [0.50, 0.40, 0.32]], [1.0, [0.85, 0.78, 0.65]]],
           'atmosphere': {'color': [0.85, 0.78, 0.65], 'thickness': 90000,
                          'power': 3.0, 'intensity': 0.6,
                          'sea_level_density': 0.16, 'scale_height': 27000,
-                         'molar_mass': 0.0022}},
+                         'composition': H2_HE}},
          False),
         ('saturnfact.html', 'Saturn', 6.0,
          {'bands': True, 'band_count': 9,
@@ -733,7 +770,11 @@ def build_base():
           'atmosphere': {'color': [0.90, 0.82, 0.65], 'thickness': 90000,
                          'power': 3.0, 'intensity': 0.6,
                          'sea_level_density': 0.10, 'scale_height': 60000,
-                         'molar_mass': 0.0022}},
+                         # Saturn's envelope is the most H2-rich of them (0.963), but
+                         # H2 with no oxidizer is a fuel store, not a jet air.
+                         'composition': [{'gas': 'H2', 'fraction': 0.963},
+                                         {'gas': 'He', 'fraction': 0.032},
+                                         {'gas': 'CH4', 'fraction': 0.005}]}},
          False),
         ('uranusfact.html', 'Uranus', 7.0,
          {'bands': True, 'band_count': 7,
@@ -741,7 +782,7 @@ def build_base():
           'atmosphere': {'color': [0.70, 0.85, 0.88], 'thickness': 90000,
                          'power': 3.0, 'intensity': 0.6,
                          'sea_level_density': 0.60, 'scale_height': 20000,
-                         'molar_mass': 0.023}},
+                         'composition': H2_HE_CH4}},
          False),
         ('neptunefact.html', 'Neptune', 8.0,
          {'bands': True, 'band_count': 7,
@@ -749,7 +790,9 @@ def build_base():
           'atmosphere': {'color': [0.50, 0.65, 0.90], 'thickness': 90000,
                          'power': 3.0, 'intensity': 0.6,
                          'sea_level_density': 0.90, 'scale_height': 20000,
-                         'molar_mass': 0.023}},
+                         'composition': [{'gas': 'H2', 'fraction': 0.80},
+                                         {'gas': 'He', 'fraction': 0.19},
+                                         {'gas': 'CH4', 'fraction': 0.015}]}},
          False),
         ('plutofact.html', 'Pluto', 9.0,
          {'amplitude': 2000, 'palette': [[0.0, [0.55, 0.45, 0.38]],

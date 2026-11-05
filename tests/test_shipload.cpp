@@ -702,7 +702,8 @@ int main() {
     CHECK(jet != nullptr && jtank != nullptr);
     CHECK(jet->jet && jet->totalPropellantRate() > 0.0 && jet->exhaust_velocity > 0.0);
     CHECK(jet->jet_fan_thrust > 0.0 && jet->jet_intake_area > 0.0);
-    // a jet draws JET FUEL only (air is the free oxidizer -- no LOX)
+    // a jet draws JET FUEL only (the air carries its oxidizer -- no LOX). Since #630
+    // that oxidizer is conditional on the body's mix, which is why the gate exists.
     CHECK(jet->propellant_rate[(int)ResourceType::JetFuel] > 0.0);
     CHECK(jet->propellant_rate[(int)ResourceType::Hydrogen] == 0.0);
     CHECK(jet->propellant_rate[(int)ResourceType::LOX] == 0.0);
@@ -2939,7 +2940,8 @@ int main() {
         std::remove(bad);
     }
 
-    // a jet burns jet fuel only (air is the free oxidizer); a jet authored
+    // a jet burns jet fuel only (the air carries its oxidizer, gated by the body's
+    // mix since #630); a jet authored
     // with another propellant would thrust while burning nothing
     {
         const char *bad = "/tmp/test_shipload_badcat.json";

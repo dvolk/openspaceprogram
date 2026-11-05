@@ -1,7 +1,7 @@
 NAME drag-log-lift-readings
 CLAIM The --drag-log's signed lift and attitude readings parse in flight and stay inside their bounds.
 KIND harness
-ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Duna,pad
+ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
 ARGS --timeout 20 --drag-log
 ARGS --sim-press 1000,2000,R
 ARGS --sim-press 1500,4000,T
@@ -18,9 +18,21 @@ CHECK all(("L_up" in d and "up" in d) for d in drag)
 CHECK all(abs(d["up"]) <= 1.0 + 1e-9 for d in drag)
 CHECK all(abs(d["L_up"]) <= abs(d["L"]) + 1e-6 for d in drag)
 CHECK any(d["L"] > 400 and abs(d["L_up"]) > 100 for d in drag)
-# The magnitudes are what this pad departure actually makes: on the shipped 16 x 1.5
-# hull the biggest row is t=8.0 s -- |L| 585 N with L_up +155 N -- on a stack that climbs
-# from 69 m to ~245 m at 5-27 m/s in Duna's 0.118 kg/m3 air. The 1000 N this used to ask
+# This hull has a jet and no rocket, so it has to fly on air it can BURN, which since
+# #630 means air with an oxidizer in it: the case used to spawn on Duna, whose 0.118
+# kg/m3 is 95% CO2 with a 0.13% oxygen trace, and the skiff's fan is now worth 0.04% of
+# its rating there -- it never leaves the pad, so no lift row reaches the bound and the
+# whole case goes red on a hull that is behaving correctly. Kerbin has dry air, so its
+# jet works there; nothing about what this case asks changed. It also starts FLYING
+# rather than on a pad, because the same hull is 569 kg on Kerbin's 9.81 m/s2 and its
+# 5625 N fan cannot lift it off the ground -- the pad departure was only ever possible
+# on a low-g body, which is what flight/490's Kerbin cruise spawn has been using all
+# along.
+#
+# The magnitudes are what this departure actually makes: on the shipped 16 x 1.5 hull
+# cruising at 7 km in 0.34 kg/m3 air, all 20 rows clear both bounds, the biggest is
+# t=6.9 s -- |L| 16282 N with L_up +15877 N at 74 m/s -- and the hull holds
+# 7000-7119 m at 51-80 m/s. The 1000 N this used to ask
 # for belonged to the heavier spindle hull #568 replaced; the 559-569 N with L_up
 # -217..-219 N was the 12 x 1.8 wing, and #567 moved the peak by a few tens of N without
 # moving what the bound means. What is pinned is that a real component of a real force

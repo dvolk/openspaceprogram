@@ -2232,13 +2232,13 @@ double Vehicle::producedThrust() {
     const int as = activeStage();
     const double v_air = glm::length(airRelativeVel(get_center_of_mass()));
     const double rho = airDensityAtCom();
-    const double rho_sea = (m_parent != nullptr)
-        ? (double)m_parent->surface.atmosphere.sea_level_density : 0.0;
+    const double ox_share = (m_parent != nullptr)
+        ? m_parent->surface.atmosphere.oxidizer_share : 0.0;
     double t = 0;
     for(Part *p : parts) {
         if(!p->isThruster() || p->stage < as) { continue; }
         if(p->isJet()) {
-            t += jetThrust(v_air, rho, rho_sea, p->def->jet_fan_thrust,
+            t += jetThrust(v_air, rho, ox_share, p->def->jet_fan_thrust,
                            p->jetFuelRate(), p->def->exhaust_velocity,
                            p->def->jet_intake_area);
         } else {
@@ -4578,13 +4578,17 @@ void Vehicle::adjustThrottle(float delta) {
    actually have. The air has to be the LOCAL density and not the authored sea level:
    a jet at 15 km cannot produce its sea-level number, and since #400 this is the
    number a throttle law sizes a burn with, so sea level here would make a
-   high-altitude jet look several times stronger than it is. rho_sea stays the
-   denominator because drag.h's air gate is relative to the body's own sea level, and
-   the peak speed is the honest CEILING -- the ship's own speed only ever lowers the
-   ram term from it, which is what producedThrust() reports. */
-static double partThrustCeiling(const Part *p, double rho, double rho_sea) {
+   high-altitude jet look several times stronger than it is. Since #630 the gate is
+   absolute (the machine's rating intake, constants.h:kAirSeaLevelDensity) and reads
+   the body's oxidizer share, so this ceiling is the honest one on a thin or
+   oxygen-free world: a jet's ceiling is EXACTLY 0 on Jool, 0.6 % of its rating on
+   Eve and 0.007 % on Mars -- the air is there, its oxidizer is not -- and a law that
+   sizes a burn with it says so. The peak speed is the honest CEILING -- the ship's
+   own speed only ever lowers the ram term from it, which is what producedThrust()
+   reports. */
+static double partThrustCeiling(const Part *p, double rho, double ox_share) {
     if(p->isJet()) {
-        return jetThrust(p->def->exhaust_velocity * 0.5, rho, rho_sea,
+        return jetThrust(p->def->exhaust_velocity * 0.5, rho, ox_share,
                          p->def->jet_fan_thrust, p->jetFuelRate(),
                          p->def->exhaust_velocity, p->def->jet_intake_area);
     }
@@ -4594,8 +4598,8 @@ static double partThrustCeiling(const Part *p, double rho, double rho_sea) {
 double Vehicle::ceilingSum(const glm::dvec3 *want) {
     const int as = activeStage();
     const double rho = airDensityAtCom();
-    const double rho_sea = (m_parent != nullptr)
-        ? (double)m_parent->surface.atmosphere.sea_level_density : 0.0;
+    const double ox_share = (m_parent != nullptr)
+        ? m_parent->surface.atmosphere.oxidizer_share : 0.0;
     /* Frame S once. partAxis() re-solves it per part, and a law asks this every tick of
        a 51-part hull; the rest of this file reads it once per substep for the same
        reason (see "Frame S read once" in the aero pass). Only the directional caller
@@ -4629,7 +4633,7 @@ double Vehicle::ceilingSum(const glm::dvec3 *want) {
             const double off = acosUnit(glm::dot(sRot * p->localRot[2], *want));
             share = std::cos(std::max(0.0, off - p->def->gimbal_max));
         }
-        t += share * partThrustCeiling(p, rho, rho_sea);
+        t += share * partThrustCeiling(p, rho, ox_share);
     }
     return t * exhaust_scale;
 }
@@ -4666,11 +4670,12 @@ double Vehicle::availableAccelAlong(const glm::dvec3 &dir) {
 void Vehicle::ApplyThrust(double step) {
     if(thruster_util == 0.0f) { return; } /* zero throttle: no burn, no plume */
     const int as = activeStage();
-    // Jet state shared by all jet parts this tick: air-relative speed, COM density.
+    // Jet state shared by all jet parts this tick: air-relative speed, COM density,
+    // and what share of this body's air a turbine can burn against (#630).
     const double v_air = glm::length(airRelativeVel(get_center_of_mass()));
     const double rho = airDensityAtCom();
-    const double rho_sea = (m_parent != nullptr)
-        ? (double)m_parent->surface.atmosphere.sea_level_density : 0.0;
+    const double ox_share = (m_parent != nullptr)
+        ? m_parent->surface.atmosphere.oxidizer_share : 0.0;
     /* --dv-log: the ship mass as this tick's drains proceed. getMass() walks
        every part and recurses into containment, so take it ONCE here and walk
        it down by what each drain ACTUALLY took (FuelDraw::drawn) instead of
@@ -4683,16 +4688,17 @@ void Vehicle::ApplyThrust(double step) {
         if(!p->isThruster()) { continue; }
         if(p->stage < as) { continue; } /* not ignited yet */
         if(p->isJet()) {
-            /* Air-breathing: momentum balance (drag.h jetThrust). Vacuum rho = 0 -> no
-               thrust AND no burn. Draws JET FUEL only. */
+            /* Air-breathing: momentum balance (drag.h jetThrust). No usable air --
+               vacuum, or an air with no oxidizer in it (#630) -- means no thrust AND
+               no burn. Draws JET FUEL only. */
             const double T = jetThrust(
-                v_air, rho, rho_sea, p->def->jet_fan_thrust, p->jetFuelRate(),
+                v_air, rho, ox_share, p->def->jet_fan_thrust, p->jetFuelRate(),
                 p->def->exhaust_velocity, p->def->jet_intake_area);
             if(T <= 0.0) { continue; }
-            /* Burn with the air, not against it: the same density gate jetThrust
-               uses, so a thin-air jet is weak AND sips fuel (no air, no burn). */
+            /* Burn with the air, not against it: the same gate jetThrust uses, so a
+               thin-air jet is weak AND sips fuel (no usable air, no burn). */
             const double flow = p->jetFuelRate() * (double)thruster_util * step
-                              * jetAirGate(rho, rho_sea); /* kg this tick */
+                              * jetAirGate(rho, ox_share); /* kg this tick */
             const FuelDraw drew = consumeResourceMass(ResourceType::JetFuel, flow, p);
             if(drew.ok) {
                 p->armedThrust = (float)(T * thruster_util * exhaust_scale);

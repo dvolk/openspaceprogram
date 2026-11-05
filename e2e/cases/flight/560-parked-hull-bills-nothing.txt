@@ -51,5 +51,7 @@ CHECK max(d["F"] for d in drag if d.get("aoa") is None) < 20.0
 CHECK all(d["rho"] > 1.10 for d in drag if d.get("aoa") is None)
 CHECK all(d["chute"] == 0.0 for d in drag if d.get("aoa") is None)
 CHECK all(abs(d["airT"] - 188.0) < 0.05 for d in drag if d.get("aoa") is None)
-CHECK all(abs(d["airA"] - 274.8) < 0.05 for d in drag if d.get("aoa") is None)
+# 275.0: #630 resolves Kerbin's gamma off its authored dry-air mix (1.40146) instead of a
+# typed 1.4, and sound speed is sqrt(gamma g H). Same reason as flight/245's row.
+CHECK all(abs(d["airA"] - 275.0) < 0.05 for d in drag if d.get("aoa") is None)
 CHECK all(d["mach"] < 0.02 for d in drag if d.get("aoa") is None)

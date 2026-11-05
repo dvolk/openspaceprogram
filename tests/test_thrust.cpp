@@ -303,6 +303,14 @@ static void test_fuel_flow() {
  *   the jet at rest in that air is E*(fan + mdot*ve) = 1100E, and at its best speed
  *   (v = ve/2, where drag.h's ram term tops out) it is E*1100 + rho*A*(ve/2)^2 =
  *   1100E + 10000E = 11100E; in vacuum, neither -- air is what it breathes.
+ * Since #630 those two terms are NOT billed by the same share of the air. The fan and
+ * the fuel follow jetAirGate, which divides by the machine's RATING intake (1.225 kg/m3,
+ * constants.h) rather than by this body's own sea level: this rig's 1.0 kg/m3 datum is
+ * 0.816 of a rated intake, so the fan term is 1100E/1.225 = 898E. The ram term is the
+ * air the intake actually captures -- raw rho, which here is E kg/m3 -- and it is paid
+ * for by jetOxGate, 1.0 for a body that authors no composition (dry air). Both halves
+ * are hand-checkable in the same way; they just no longer move together, which is what
+ * a CO2 world looks like (test_jet.cpp pins that case).
  */
 struct ThrustRig {
     std::deque<PartDef> defs;
@@ -413,14 +421,17 @@ static void test_produced_and_available_thrust() {
     r.v->advanceStage();
     r.v->advanceStage();
     CHECK_TRUE(r.v->activeStage() == 1, "the counter grinds down one press at a time");
-    CHECK_NEAR(r.v->availableThrust(), 70000.0 + 11100.0 * E, 1e-9,
-               "20000 + 50000 + the jet at ITS BEST SPEED in THIS air: E*(100 + 1*1000)"
-               " + rho*0.04*500*500, with rho = E");
-    CHECK_NEAR(r.v->producedThrust(), 0.5 * (70000.0 + 1100.0 * E), 1e-9,
+    CHECK_NEAR(r.v->availableThrust(),
+               70000.0 + 1100.0 * E / kAirSeaLevelDensity + 10000.0 * E, 1e-9,
+               "20000 + 50000 + the jet at ITS BEST SPEED in THIS air: (100 + 1*1000)"
+               " x E/1.225 (the rating intake, #630) + rho*0.04*500*500, with rho = E");
+    CHECK_NEAR(r.v->producedThrust(),
+               0.5 * (70000.0 + 1100.0 * E / kAirSeaLevelDensity), 1e-9,
                "at half throttle the jet is asked for what it gives standing still"
-               " (fan + mdot*ve, gated by the air), because producedThrust uses the"
-               " speed the ship actually has");
-    CHECK_NEAR(r.v->availableAccel(), (70000.0 + 11100.0 * E) / 1250.0, 1e-9,
+               " (fan + mdot*ve, gated by the air against its 1.225 kg/m3 rating), because"
+               " producedThrust uses the speed the ship actually has");
+    CHECK_NEAR(r.v->availableAccel(),
+               (70000.0 + 1100.0 * E / kAirSeaLevelDensity + 10000.0 * E) / 1250.0, 1e-9,
                "and the a_max that stage-down just bought, at the same mass");
     /* #607: an ask up the stack costs nothing, and it must cost nothing for THIS rig
        too -- three engines, one of them air-fed, in real air. availableAccelAlong is

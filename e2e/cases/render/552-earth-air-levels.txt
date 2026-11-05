@@ -5,7 +5,7 @@
 # standard atmosphere because it is the only body with published numbers to copy.
 #
 # tests/test_drag.cpp pins the law and tests/test_scenarios.cpp pins the shipped file's
-# numbers (288.1 K / 101.3 kPa / 340.3 m/s at Earth's datum). This pins the last inch,
+# numbers (288.1 K / 101.3 kPa / 340.5 m/s at Earth's datum). This pins the last inch,
 # which no unit test can see: WHICH LABEL the dossier picks. "(isothermal)" is a warning
 # that a body has no lapse rate, so it must not sit beside a body that authored one, and
 # it must still sit beside the ones that did not -- Venus, Mars, Titan and the rest of
@@ -25,7 +25,11 @@ CHECK re.search(r"\[atlas\] Earth weight=.*?air profile\s+7 levels to 71\.0 km",
 CHECK re.search(r"\[atlas\] Earth weight=.*?air density\s+1\.225 kg/m3", out, re.S)
 CHECK re.search(r"\[atlas\] Earth weight=.*?air temp \(sea level\)\s+288\.1 K \(15\.0 C\)", out, re.S)
 CHECK re.search(r"\[atlas\] Earth weight=.*?air pressure\s+101\.3 kPa", out, re.S)
-CHECK re.search(r"\[atlas\] Earth weight=.*?sound speed\s+340\.3 m/s", out, re.S)
+# 340.5 rather than the 340.3 this case pinned until #630: Earth's gamma is no longer a
+# typed 1.4 but what its authored dry-air mix resolves to (1.4015, because a CO2 molecule
+# lifts the heat capacity), and sound speed goes as sqrt(gamma). Same for the Mars row
+# below: its molar mass is now a CO2-heavy mix's 0.0435, not a typed 0.044.
+CHECK re.search(r"\[atlas\] Earth weight=.*?sound speed\s+340\.5 m/s", out, re.S)
 # The two negatives have to bound the WHOLE Earth block. Every fact row is its own
 # "[atlas]   " line, so the obvious out.split("[atlas] Earth weight=")[1].split("[atlas]
 # ")[0] is only the rest of the HEADER line -- measured, it covers "routine approach_dv=0
@@ -35,6 +39,6 @@ CHECK re.search(r"\[atlas\] Earth weight=.*?sound speed\s+340\.3 m/s", out, re.S
 CHECK "scale height" not in re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)
 CHECK "isothermal" not in re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)
 # And the label still rides with the bodies that DO owe the warning. Mars is in this
-# file (rho0 0.02, H 11500, CO2 0.044, g 3.73), so its row keeps saying isothermal --
-# and 3.73 x 11500 / (R/0.044) is 227.0 K, which is within 15 K of the real Mars.
-CHECK re.search(r"air temp \(isothermal\)\s+227\.0 K", re.search(r"\[atlas\] Mars weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# file (rho0 0.02, H 11500, CO2-heavy mix, g 3.73), so its row keeps saying isothermal --
+# and 3.73 x 11500 / (R/0.04350) is 224.4 K, which is within 15 K of the real Mars.
+CHECK re.search(r"air temp \(isothermal\)\s+224\.4 K", re.search(r"\[atlas\] Mars weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))

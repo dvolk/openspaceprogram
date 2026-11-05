@@ -1,8 +1,10 @@
-// atmo.h -- an atmosphere's altitude/temperature PROFILE: the one type a layered
-// atmosphere is made of, plus the level-local math that type implies. Read by the
-// authored half (terragen.h:AtmosphereParams, parsed from a system file), the
-// loader that resolves it (system.cpp) and the aero law that samples it
-// (drag.h:airDensity/airPressure/airTemperature/airSoundSpeed).
+// atmo.h -- an atmosphere's own two facts: what its air is MADE of (gasSpecies,
+// resolveMix) and how it STACKS with altitude (AtmoLayer, levelPressure). Both are
+// pure data plus the arithmetic that turns authored numbers into the ones the law
+// reads, so no caller re-derives them. Read by the authored half
+// (terragen.h:AtmosphereParams, parsed from a system file), the loader that
+// resolves it (system.cpp) and the aero law that samples it
+// (drag.h:airDensity/airPressure/airTemperature/airSoundSpeed/jetAirGate).
 //
 // It lives in its own header because all three need the exact same struct and
 // none of them may include another as a peer: terragen.h is the terrain generator,
@@ -15,6 +17,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <vector>
 
 #include "constants.h"  // kGasR, for the hydrostatic integration below
@@ -159,4 +162,137 @@ inline bool resolveAtmoLevels(std::vector<AtmoLayer> &L, double sea_level_densit
         }
     }
     return true;
+}
+
+/* WHAT THE AIR IS MADE OF (#552 A4b, #630).
+
+   A body used to state two hand-typed scalars -- molar_mass and gamma -- and those
+   two were the whole statement about chemistry. They are not independent numbers:
+   they are what a MIX resolves to, and a mix is the thing a player could act on
+   ("this world has no free oxygen" is a fact about a world, and today nothing in the
+   game can say it). So a system file authors the mix and the loader derives the
+   scalars from it, exactly like resolveAtmoLevels derives base_p from an authored
+   temperature profile: one authored statement, its consequences filled in at load,
+   and no second number that can contradict it.
+
+   M [kg/mol] and gamma = cp/cv are the values each gas reaches at the temperatures
+   OUR air sits at: CO2 1.30 rather than the 1.29-1.33 it moves through, H2/He at
+   their room-temperature values. A gas's gamma is temperature-dependent well before
+   any body in the game crosses the temperature where that matters (Jool's air is 44.6 K
+   in the atlas), so pinning one number per gas is the same honesty level as one mean
+   molar mass below the homopause -- and it is ONE number per gas, in one place,
+   rather than one per body per editor session. */
+struct GasSpecies {
+    const char *name;    // what a system file types, and what the atlas prints
+    double molar_mass;   // [kg/mol]
+    double gamma;        // cp/cv
+    bool oxidizer;       // can a turbine burn against this gas? (O2, today)
+};
+
+inline const GasSpecies *gasSpecies(const std::string &name) {
+    static const GasSpecies table[] = {
+        {"N2",  0.0280134, 1.40,  false},
+        {"O2",  0.0319988, 1.40,  true },
+        {"CO2", 0.0440095, 1.30,  false},
+        {"H2",  0.00201588, 1.40, false},   // a fuel, not an oxidizer
+        {"He",  0.0040026, 1.667, false},
+        {"CH4", 0.0160425, 1.32,  false},
+        {"H2O", 0.0180153, 1.33,  false},
+        {"Ar",  0.039948,  1.667, false},
+    };
+    for(const GasSpecies &g : table) {
+        if(name == g.name) { return &g; }
+    }
+    return nullptr;
+}
+
+/* One line of a body's authored mix: a gas and how much of the air is that gas, by
+   MOLE (`fraction`). The pointer is into gasSpecies()'s static table, so a mix is
+   cheap to carry and cannot name a gas the table does not know -- system.cpp turns
+   the file's strings into this, and refuses a name the table does not have. */
+struct MixFraction {
+    const GasSpecies *gas = nullptr;
+    double fraction = 0.0;   // mole fraction as authored; need not sum to 1
+};
+
+/* The air a body gets when its file says nothing: dry Earth air, oxygen and all.
+   This is the mix behind constants.h's kAirMolarMass / kAirGamma defaults -- the
+   numbers there are this mix's consequences, kept because hand-written test systems
+   state a scale height and nothing else. */
+inline const MixFraction *dryAirMix(int &count) {
+    static const MixFraction air[] = {
+        {gasSpecies("N2"),  0.78084},
+        {gasSpecies("O2"),  0.20946},
+        {gasSpecies("Ar"),  0.00934},
+        {gasSpecies("CO2"), 0.00033},
+    };
+    count = (int)(sizeof air / sizeof air[0]);
+    return air;
+}
+
+/* Resolve a mix into the three numbers the rest of the game reads:
+     molar_mass [kg/mol]   = sum(x_i M_i)             -- linear in mole fraction
+     gamma                 -- from the MOLE-WEIGHTED molar heat capacity, NOT a
+                              weighted average of the gammas: cp_i = R g_i/(g_i-1)
+                              per mole, cp_mix = sum(x_i cp_i), then
+                              gamma_mix = cp_mix / (cp_mix - R). Heat capacities add;
+                              ratios do not, so a mole-weighted AVERAGE of the gammas
+                              is a different number -- Jool's H2/He/CH4 air averages to
+                              1.437 where this gives 1.423. Only 0.5% on its sound
+                              speed, but it is wrong in kind, and it is the arithmetic
+                              a reader would otherwise re-invent here.
+     oxidizer_share        = the MASS fraction of the air that is oxidizer gas,
+                              sum(x_i M_i) over oxidizers / molar_mass. It is a mass
+                              fraction because an intake swallows a VOLUME of air and
+                              pays for it in kilograms (drag.h:jetAirGate), while the
+                              composition is authored in MOLE fractions.
+   Fractions need not sum to 1: they are normalized by their own total, so a body can
+   author "the rest is N2" as 1.0 or as 0.027. Returns false with the reason for a
+   mix that cannot be resolved -- empty, an unknown gas, a negative fraction, or a
+   total of zero -- so the loader names the body instead of loading air with no gas
+   in it (a divide by a zero molar mass, several steps later). */
+inline bool resolveMix(const std::vector<MixFraction> &mix, double &molar_mass,
+                       double &gamma, double &oxidizer_share, std::string &why) {
+    if(mix.empty()) { why = "the mix is empty"; return false; }
+    double total = 0.0;
+    for(const MixFraction &m : mix) {
+        if(m.gas == nullptr) { why = "a gas name is not in the species table"; return false; }
+        // !(x >= 0) catches a negative fraction AND a NaN. A JSON file cannot hand
+        // us +inf -- its reader refuses an out-of-range literal outright ("number
+        // overflow parsing '1e400'", pinned in test_scenarios) -- but a mix built in
+        // code can, and a huge-but-finite set of them can overflow the total to inf,
+        // which lands on the zero-molar-mass refusal below.
+        if(!(m.fraction >= 0.0)) { why = "a fraction is negative or NaN"; return false; }
+        total += m.fraction;
+    }
+    if(!(total > 0.0)) { why = "every fraction is zero"; return false; }
+    double cp = 0.0, oxMolar = 0.0;
+    molar_mass = 0.0;
+    for(const MixFraction &m : mix) {
+        const double x = m.fraction / total;
+        molar_mass += x * m.gas->molar_mass;
+        cp += x * (kGasR * m.gas->gamma / (m.gas->gamma - 1.0));
+        if(m.gas->oxidizer) { oxMolar += x * m.gas->molar_mass; }
+    }
+    if(!(molar_mass > 0.0)) { why = "the resolved molar mass is zero"; return false; }
+    // cp > R for any gas (cp - cv = R, and cv > 0), so this divide is safe once
+    // every fraction and gamma in [1, 2] has passed the checks above.
+    gamma = cp / (cp - kGasR);
+    oxidizer_share = oxMolar / molar_mass;
+    return true;
+}
+
+/* The same mix resolved from the default dry air, so the reference an intake is
+   rated against comes from the ONE table rather than from a typed constant that has
+   to be re-derived whenever the table moves (drag.h:jetAirGate). */
+inline double dryAirOxidizerShare() {
+    static const double share = [] {
+        int n = 0;
+        const MixFraction *air = dryAirMix(n);
+        std::vector<MixFraction> v(air, air + n);
+        double m = 0.0, g = 0.0, ox = 0.0;
+        std::string why;
+        return resolveMix(v, m, g, ox, why) ? ox : 0.0;
+    }();
+    return share;
 }

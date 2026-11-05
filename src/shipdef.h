@@ -299,7 +299,9 @@ struct PartDef {
     /* Air-breathing modifier on a thruster (drag.h jetThrust): burns jet fuel
        against FREE air. Ignored unless also a thruster. */
     bool jet;
-    double jet_fan_thrust;    // N; static (fan) thrust at sea level -- the VTOL floor
+    double jet_fan_thrust;    // N; static (fan) thrust at the RATED INTAKE (1.225
+                              // kg/m3, constants.h) -- the VTOL floor. Not "sea level":
+                              // a body's own sea level is not the rating (#630).
     double jet_intake_area;   // m^2; effective intake/capture area (the ram term)
     double rcs_thrust;        // N; > 0 -> RCS translation authority (hydrazine mono).
                               // Rated thrust PER ACTUATOR (per nozzle; for a

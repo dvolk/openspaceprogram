@@ -99,27 +99,46 @@ static int check_datum(const char *path, const System &sys) {
    ONE place authored atmosphere params become the drag law's view. test_drag owns
    that math; this owns the PLUMBING over the shipped defs, which no other test can
    see: if vehicle.cpp:dragAtm stops copying a body's g or its authored composition,
-   every body quietly reports Earth's air -- and Jool, whose H2 air authors 0.0022
-   kg/mol, prints dry air's 547 K instead of 41.5 K in the atlas. The literals are
-   hand-computed off the shipped numbers; T is LINEAR in molar mass while p and a do
-   not contain it at all, so Jool's sound speed is the same either way and only its
-   temperature moves. */
+   every body quietly reports Earth's air -- and Jool, whose H2/He/CH4 sky resolves to
+   0.00236 kg/mol, prints dry air's 547 K instead of its own 44.6 K in the atlas. The
+   literals are hand-computed off the shipped numbers; T is LINEAR in molar mass while
+   p and a do not contain it at all, so Jool's sound speed moves only through its
+   gamma and its temperature moves through its M.
+   Since #630 the shipped files author a MIX rather than these two scalars, so the
+   literals are hand-computed in two steps: resolve the mix by hand (M = sum(x M),
+   gamma from the mole-weighted molar heat capacity), then apply the air laws. The
+   oxidizer column is the third thing the mix resolves to and the only one a player
+   can act on -- it is what drag.h:jetAirGate bills a jet on -- so it is pinned here
+   rather than only in the pure-math test: a body whose mix never reaches the gate is
+   a jet running on full throttle in a CO2 sky. */
 static int check_air(const char *path, const System &sys) {
-    struct Want { const char *name; double T; double a; double p; double tol; };
+    struct Want { const char *name; double T; double a; double p; double ox;
+                  double tol; };
     static const Want want[] = {
-        // dry air: the default
-        {"Kerbin", 187.95593796005446, 274.83995342744475, 66094.875, 1e-9},
-        // authored H2, g 7.848
-        {"Jool",     41.53148746527926, 468.76859963099065,  313920.0, 1e-9},
-        // authored CO2, gamma 1.3, g 16.677
-        {"Eve",     617.7808760460290,  389.5647571328803,  198456.3,  1e-9},
-        /* Earth authors a LAYER TABLE (#552 A4), so these are the shipped file's
-           proof all the way through: the JSON parses, resolveAtmoLevels integrates
-           the column at load, dragAtm carries the pointer, and the four reads answer
-           from the levels. The literals are the 1976 standard's own sea-level row,
-           and the tolerance is 1e-4 rather than 1e-9 because Earth authors g 9.82
-           where the standard uses 9.80665 -- a third of a percent at the datum. */
-        {"Earth",               288.15,               340.3,    101325.0, 1e-4},
+        /* dry air's mix, authored now rather than defaulted: N2 78.084, O2 20.946,
+           Ar 0.934, CO2 0.033 %, which resolves to M 0.028965 kg/mol and gamma
+           1.40146 (a CO2 molecule lifts the heat capacity, so a real air's gamma is
+           a hair over diatomic 1.4). g 9.81, H 5500. */
+        {"Kerbin", 187.96215670165995, 274.98291650985726, 66094.875,
+                                                  0.23140616, 1e-9},
+        // H2 85.5, He 14, CH4 0.5 %: M 0.00236415, gamma 1.42319. g 7.848, H 20000.
+        // Jool is the densest air in this system and its oxidizer share is exactly
+        // zero -- hydrogen is the fuel, and there is no oxidizer to burn it with.
+        {"Jool",   44.630376392655037, 472.63460894186682, 313920.0, 0.0, 1e-9},
+        // CO2 95.32, N2 2.7, Ar 1.6, O2 0.13 %: M 0.0434957, gamma 1.30485.
+        {"Eve",    610.70058697001423, 390.2911824640027, 198456.3,
+                                                   0.00095878, 1e-9},
+        /* Earth authors a LAYER TABLE (#552 A4) AND a mix (#630), so these are the
+           shipped file's proof all the way through: the JSON parses, resolveAtmoLevels
+           integrates the column at the Rs that mix implies, dragAtm carries the
+           pointer, and the four reads answer from the levels. The literals are the
+           1976 standard's own sea-level row; dry air's mix resolves to
+           0.02896496 kg/mol, which puts the datum at 101,324.9 Pa -- 0.1 Pa from the
+           standard's stated 101,325, because that number IS dry air at 1.225 kg/m3
+           and 288.15 K. The tolerance is 1e-4 rather than 1e-9 because Earth authors
+           g 9.82 where the standard uses 9.80665 -- a third of a percent aloft. */
+        {"Earth",               288.15,  340.47075676386669, 101324.85477637536,
+                                                  0.23140616, 1e-4},
     };
     int bad = 0, n = 0;
     for(TerrainBody *b : sys.bodies) {
@@ -148,31 +167,215 @@ static int check_air(const char *path, const System &sys) {
         /* #625: print what each body's profile ASSERTS beside the numbers that
            assert it. A guessed scale height is invisible in the atlas, which prints
            its temperature as fact, and obvious here -- Uranus (H 20000, M 0.023)
-           reads 498 K for an ice giant. */
+           reads 498 K for an ice giant -- which was a typed molar_mass, and is now
+           what an H2/He/CH4 sky resolves to: 57 K (#630). */
         char prof[32];
         if(a.layers.empty()) {
             snprintf(prof, sizeof prof, "H %6.0f m", a.scale_height);
         } else {
             snprintf(prof, sizeof prof, "%d levels", (int)a.layers.size());
         }
-        printf("  %s: g %6.3f %s rho0 %-6.3g M %.5f gamma %.2f -> T %7.1f K,"
+        printf("  %s: g %6.3f %s rho0 %-6.3g M %.5f gamma %.3f ox %8.6f -> T %7.1f K,"
                " p %9.1f kPa, a %6.1f m/s\n",
                b->name.c_str(), b->g, prof, a.sea_level_density, a.molar_mass,
-               a.gamma, T, p / 1000.0, s);
+               a.gamma, a.oxidizer_share, T, p / 1000.0, s);
         for(const Want &w : want) {
             if(lower(b->name) != lower(w.name)) { continue; }
+            // The oxidizer share has an absolute tolerance rather than a relative
+            // one: Eve's is 0.00096 and the point of that number is that it is not
+            // zero, so a relative band around it would be a rounding band.
+            const double ox_tol = (w.ox == 0.0) ? 0.0 : 1e-8;
             if(std::fabs(T - w.T) > w.tol * w.T || std::fabs(s - w.a) > w.tol * w.a
-               || std::fabs(p - w.p) > w.tol * w.p) {
+               || std::fabs(p - w.p) > w.tol * w.p
+               || !(std::fabs(a.oxidizer_share - w.ox) <= ox_tol)) {
                 printf("  %s: %s air T %.4f K (want %.4f), sound speed %.4f m/s"
-                       " (want %.4f), p %.1f Pa (want %.1f) -- did a molar_mass/gamma"
-                       " edit go half-way?\n",
-                       path, w.name, T, w.T, s, w.a, p, w.p);
+                       " (want %.4f), p %.1f Pa (want %.1f), oxidizer %.8f"
+                       " (want %.8f) -- did a composition edit or a copy go"
+                       " half-way?\n",
+                       path, w.name, T, w.T, s, w.a, p, w.p,
+                       a.oxidizer_share, w.ox);
                 bad++;
             }
         }
     }
     printf("  %s: %d air bodies' thermodynamics come from their own world\n", path, n);
     return bad;
+}
+
+/* What the loader makes of a MIX (#630): what it refuses, and what it fills in when
+   a body says nothing. Refusals matter because the mix is now the only way to state
+   a gas -- a file that types molar_mass beside it, or names a gas the species table
+   does not have, or writes a fraction that is not a number, would otherwise load and
+   then divide the whole body's air by it. Mutated copies go under tmp/ the way
+   check_raised_sea does, so the shipped files stay the input. */
+static void expect_refuses(const char *label, const std::string &text,
+                           const char *want_sub) {
+    const std::string path = std::string("tmp/test_scenarios_mix_") + label + ".json";
+    {
+        std::ofstream o(path);
+        o << text;
+    }
+    try {
+        load_system(path.c_str(), nullptr, nullptr);
+        printf("  %s: a body with a %s mix LOADED -- this is a load error, not a"
+               " flight hazard\n", path.c_str(), label);
+        failures++;
+    } catch(const std::exception &e) {
+        const std::string what = e.what();
+        if(want_sub != nullptr && what.find(want_sub) == std::string::npos) {
+            printf("  %s: refused, but not with the reason the test names (%s):"
+                   " %s\n", path.c_str(), want_sub, what.c_str());
+            failures++;
+        }
+    }
+}
+
+static void check_composition() {
+    const char *src = "res/systems/ksp_system.json";
+    std::ifstream f(src);
+    if(!f.is_open()) {
+        printf("  cannot open %s (run from the repo root)\n", src);
+        failures++;
+        return;
+    }
+    const nlohmann::json base = nlohmann::json::parse(f);
+    std::filesystem::create_directories("tmp");
+
+    // A helper that hands back the base file with one atmosphere edit applied.
+    auto patched = [&](const char *name, auto &&fn) {
+        nlohmann::json j = base;
+        for(auto &bv : j["bodies"]) {
+            if(bv.value("name", std::string()) != name) { continue; }
+            fn(bv["surface"]["atmosphere"]);
+        }
+        return j;
+    };
+
+    // Two statements of one fact: the scalars are derived, so typing them is a
+    // contradiction rather than a redundancy.
+    expect_refuses("typed_scalars", patched("Kerbin", [](nlohmann::json &a) {
+                       a["molar_mass"] = 0.044;
+                   }).dump(), "composition");
+    expect_refuses("typed_gamma", patched("Kerbin", [](nlohmann::json &a) {
+                       a["gamma"] = 1.3;
+                   }).dump(), "composition");
+
+    // A gas the species table does not have -- named in the message, because
+    // "unknown gas" without the name is the useless half of the error.
+    expect_refuses("unknown_gas", patched("Kerbin", [](nlohmann::json &a) {
+                       a["composition"] = nlohmann::json::array(
+                           { {{"gas", "SO2"}, {"fraction", 1.0}} });
+                   }).dump(), "SO2");
+
+    // A mix that names no gas at all, and one whose fractions are all zero, both
+    // resolve to a divide by zero molar mass.
+    expect_refuses("empty_mix", patched("Kerbin", [](nlohmann::json &a) {
+                       a["composition"] = nlohmann::json::array();
+                   }).dump(), nullptr);
+    expect_refuses("zero_mix", patched("Kerbin", [](nlohmann::json &a) {
+                       a["composition"] = nlohmann::json::array(
+                           { {{"gas", "N2"}, {"fraction", 0.0}} });
+                   }).dump(), nullptr);
+
+    /* The two likeliest author typos, in the two shapes that used to escape: read with
+       .value(), a number where a name goes and a string where a number goes both threw
+       nlohmann's type_error out of load_system, and that message names neither the body
+       nor the key. Both must now come back naming the entry. */
+    expect_refuses("gas_not_a_string", patched("Kerbin", [](nlohmann::json &a) {
+                       a["composition"] = nlohmann::json::array(
+                           { {{"gas", 5}, {"fraction", 1.0}} });
+                   }).dump(), "entry 1 needs a gas name");
+    expect_refuses("fraction_not_a_number",
+                   patched("Kerbin", [](nlohmann::json &a) {
+                       a["composition"] = nlohmann::json::array(
+                           { {{"gas", "N2"}, {"fraction", "0.5"}} });
+                   }).dump(), "N2 needs a numeric fraction");
+    // An entry that names a gas and forgets the fraction used to contribute 0
+    // silently -- and a one-entry mix like that reads back as "every fraction is
+    // zero", which names the wrong line.
+    expect_refuses("no_fraction", patched("Kerbin", [](nlohmann::json &a) {
+                       a["composition"] = nlohmann::json::array(
+                           { {{"gas", "O2"}} });
+                   }).dump(), "O2 needs a numeric fraction");
+
+    // A fraction too large to be a number. The literal goes in as FILE text, because
+    // a C++ 1e400 is already +inf at compile time and nlohmann would write it back
+    // out as null. What the file gets is the READER's own refusal -- JSON has no
+    // infinity, so out_of_range.406 fires before the mix is ever resolved. That is
+    // worth pinning: it says the loader cannot be handed an inf fraction through a
+    // number literal, which is why resolveMix only has to care about negatives.
+    {
+        std::string txt = patched("Kerbin", [](nlohmann::json &a) {
+            a["composition"] = nlohmann::json::array(
+                { {{"gas", "N2"}, {"fraction", 1.0}} });
+        }).dump();
+        const size_t at = txt.find("\"fraction\":");   // dump() puts no space after the colon
+        if(at == std::string::npos) {
+            printf("  huge_fraction: the mutated file lost its fraction\n");
+            failures++;
+        } else {
+            size_t v = at + 11;   // past "fraction":
+            size_t end = v;
+            while(end < txt.size() && txt[end] != ',' && txt[end] != '}') { end++; }
+            txt.replace(v, end - v, "1e400");
+            expect_refuses("huge_fraction", txt, "number overflow");
+        }
+    }
+
+    // And what a body that says NOTHING gets: dry air, oxidizer included. Eve loses
+    // its mix here, so it stops being a CO2 world and reads the default -- the same
+    // default a hand-written two-line system gets.
+    const std::string dflt = "tmp/test_scenarios_mix_default.json";
+    {
+        std::ofstream o(dflt);
+        o << patched("Eve", [](nlohmann::json &a) {
+               a.erase("composition");
+           }).dump();
+    }
+    System sys;
+    try {
+        sys = load_system(dflt.c_str(), nullptr, nullptr);
+    } catch(const std::exception &e) {
+        printf("  %s: a body with no composition failed to load: %s\n",
+               dflt.c_str(), e.what());
+        failures++;
+        return;
+    }
+    TerrainBody *eve = find_body(sys, "Eve");
+    if(eve == nullptr) {
+        printf("  %s: Eve vanished from the mutated system\n", dflt.c_str());
+        failures++;
+        return;
+    }
+    const AtmosphereParams &a = eve->surface.atmosphere;
+    if(!(std::fabs(a.oxidizer_share - dryAirOxidizerShare()) <= 0.0)) {
+        printf("  %s: Eve with no mix reads oxidizer %.8f, not the dry-air default"
+               " %.8f\n", dflt.c_str(), a.oxidizer_share, dryAirOxidizerShare());
+        failures++;
+    }
+    // 0.0289649583: dry air's mix resolved by hand, NOT constants.h's 0.028964 --
+    // the loader derives the scalars from the mix even when the mix is the default,
+    // so there is one arithmetic and not two.
+    if(!(std::fabs(a.molar_mass - 0.0289649583) <= 1e-10)) {
+        printf("  %s: the default mix resolved to %.10f kg/mol, want 0.0289649583"
+               " (hand-computed from N2 78.084 / O2 20.946 / Ar 0.934 / CO2 0.033"
+               " %% by mole)\n", dflt.c_str(), a.molar_mass);
+        failures++;
+    }
+    /* gamma is the assertion that PROVES the loader ran the arithmetic. AtmosphereParams
+       starts life at constants.h's typed 1.4 and dryAirOxidizerShare() -- so the
+       oxidizer check above passes identically whether or not the loader touched the
+       body, and only a resolved gamma of 1.4014569 (the CO2 and Ar lift the molar heat
+       capacity) rather than the typed 1.4 says the default mix was really resolved. */
+    if(!(std::fabs(a.gamma - 1.4014568506) <= 1e-9)) {
+        printf("  %s: the default mix resolved to gamma %.10f, want 1.4014568506"
+               " (mole-weighted heat capacity, not a typed 1.4)\n",
+               dflt.c_str(), a.gamma);
+        failures++;
+    }
+    printf("  %s: a body with no composition gets dry air -- M %.7f kg/mol,"
+           " gamma %.7f, oxidizer %.6f\n", dflt.c_str(), a.molar_mass, a.gamma,
+           a.oxidizer_share);
 }
 
 /* Every shipped file has sea_level 0 or absent (#412), so the line above cannot
@@ -459,6 +662,7 @@ int main() {
         System sys = load_system(p, nullptr, nullptr);
         if(check_air(p, sys)) failures++;
     }
+    check_composition();
     check_raised_sea();
     if(failures) {
         printf("test_scenarios: %d FAILED\n", failures);

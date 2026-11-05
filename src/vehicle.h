@@ -45,10 +45,13 @@
    are resolved once by the loader and live in System::bodies for the whole world, and
    no caller stores a DragAtmosphere (the aero pass builds one per hull per substep).
    Caching one across a system reload would be a dangling read, not a stale copy.
-   It copies fields; it does not transform any of them. Two readers still go
-   straight to AtmosphereParams -- jetAirGate's rho_sea and the atlas's density row
-   -- and that is only harmless while the seam stays a pure copy. If it ever
-   normalises or derives anything, those two become real drift. */
+   It copies fields; it does not transform any of them. The jet readers still go
+   straight to AtmosphereParams -- the body's own sea_level_density and its
+   oxidizer_share, which drag.h:jetAirGate takes as arguments rather than as part of
+   this type -- and the atlas reads its density row off `a` too. That is only harmless
+   while the seam stays a pure copy. If it ever normalises or derives anything, those
+   become real drift; folding oxidizer_share into DragAtmosphere is the fix if the
+   list grows again (#630). */
 DragAtmosphere dragAtm(const AtmosphereParams &a, double g);
 
 /* Autopilot slew targets -- mutually exclusive (last one wins); the stick
@@ -1058,7 +1061,8 @@ public:
     glm::dvec3 applyAeroForce(double h);
 
     /* Air density (kg/m^3) at the COM. Deliberately NO kRhoFloor gate:
-       jetThrust scales by rho/rho_sea, so sub-floor reads vacuum. */
+       jetAirGate's density half divides by the engine's rating intake
+       (constants.h:kAirSeaLevelDensity), so a sub-floor read is vacuum either way. */
     double airDensityAtCom() const;
 
     /* Velocity relative to the AIR at `com`: GetVel() minus the air's

@@ -5,6 +5,7 @@
 #include <cassert>
 #include <climits>
 #include <cmath>
+#include <cstring>
 #include <numbers>
 #include <cstdio>
 #include <filesystem>
@@ -95,8 +96,8 @@ static void drawPartPhysique(const PartDef &def) {
                     def.wheel_axes == 3 ? " per drum x3" : "");
     }
     if(def.jet) {
-        ImGui::Text("Jet: %.0fN static at sea level, air-breathing (%.2fkg/s jet fuel "
-                    "at sea level, intake %.2fm^2, %.0fm/s exhaust)",
+        ImGui::Text("Jet: %.0fN static in 1.225 kg/m3 air, air-breathing"
+                    " (%.2fkg/s jet fuel there, intake %.2fm^2, %.0fm/s exhaust)",
                     def.jet_fan_thrust, def.propellant_rate[(int)ResourceType::JetFuel],
                     def.jet_intake_area, def.exhaust_velocity);
     } else if(def.totalPropellantRate() > 0.0 && def.exhaust_velocity > 0.0) {
@@ -5952,6 +5953,44 @@ size_t atlasTotalSlots() {
     return (total > 0) ? total : 1;   // a missing table must not divide by 0
 }
 
+/* The air's mix as one dossier row: "N2 78.08%, O2 20.95%, Ar 0.934%, CO2 0.033%",
+   biggest gas first, and " +2 more" if the list does not fit the column rather than a row cut
+   off mid-gas (a truncated name reads like a data error, not like a long list). The
+   percentages are normalized by the mix's own total, exactly like atmo.h:resolveMix,
+   so they sum to 100 whether or not the authored fractions do. A body that authored
+   no mix shows the dry-air default it actually flies. */
+static void fmt_mix(const AtmosphereParams &a, char *out, size_t n) {
+    std::vector<MixFraction> m = a.composition;
+    if(m.empty()) {
+        int k = 0;
+        const MixFraction *air = dryAirMix(k);
+        m.assign(air, air + k);
+    }
+    double total = 0.0;
+    for(const MixFraction &x : m) { total += x.fraction; }
+    if(!(total > 0.0)) { out[0] = '\0'; return; }
+    std::sort(m.begin(), m.end(), [](const MixFraction &p, const MixFraction &q) {
+        return p.fraction > q.fraction;
+    });
+    out[0] = '\0';
+    size_t used = 0, shown = 0;
+    for(const MixFraction &x : m) {
+        char one[32];
+        // fraction / total FIRST: the same grouping resolveMix uses, and it cannot
+        // overflow on a generator-written file the way fraction * 100 would.
+        snprintf(one, sizeof one, "%s%s %.4g%%", shown ? ", " : "",
+                 x.gas ? x.gas->name : "?", 100.0 * (x.fraction / total));
+        // Leave room for the " +N more" tail before committing another gas.
+        if(used + strlen(one) + 12 >= n) { break; }
+        snprintf(out + used, n - used, "%s", one);
+        used += strlen(one);
+        shown++;
+    }
+    if(shown < m.size()) {
+        snprintf(out + used, n - used, " +%d more", (int)m.size() - (int)shown);
+    }
+}
+
 /* The dossier: the system JSON read back in friendly units, so the lab can
    sanity-check the flight readouts -- a line disagreeing with what the game flies means
    the DERIVATION is wrong. The orbit is inverted from orb_ang_speed (Kepler III)
@@ -6067,6 +6106,41 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             line("air pressure", v);
             snprintf(v, sizeof v, "%.1f m/s", airSoundSpeed(da, 0.0));
             line("sound speed", v);
+            /* WHAT the air is, not only how much of it (#552 A4b, #630). The mix is
+               what a body authors; molar mass and gamma are what it resolves to, so
+               this row is the source and the three rows above are its consequences.
+               The oxidizer row is the one a player would act on: it is the share of
+               this air a turbine can burn against, and 0 here is why Eve's 1.7 kg/m3
+               of sea-level air -- denser than Kerbin's -- is a dead jet. */
+            fmt_mix(at, v, sizeof v);
+            line("air composition", v);
+            /* The share is the fact; what it does to a jet is the action, so both go
+               on the row. The share alone is NOT the number the law bills: an intake
+               is rated at standard sea-level air (constants.h:kAirSeaLevelDensity), so
+               Mars's 0.1 %-by-mass oxidizer is 0.0068 % of one machine's air. Print the
+               gate
+               rather than a verdict -- any word ("thin", "dead") hides a threshold
+               nobody authored, while this is the same min() the throttle reads. */
+            if(at.oxidizer_share > 0.0) {
+                const double gate = jetAirGate(at.sea_level_density,
+                                               at.oxidizer_share);
+                // "by mass" because the composition row above it is by MOLE: Earth
+                // is 20.95% O2 by molecules and 23.1% by mass, and side by side with
+                // no unit that reads like a rounding bug.
+                if(gate >= 0.995) {
+                    snprintf(v, sizeof v, "%.1f%% of the air by mass (a jet runs"
+                             " on it)", 100.0 * at.oxidizer_share);
+                } else {
+                    // %.3g, not %.1f: Mars's gate is 0.0068 % of a rated intake, and
+                    // "0.0%" reads as a display bug rather than as a cold fact.
+                    snprintf(v, sizeof v, "%.1f%% of the air by mass (a jet gets"
+                             " %.3g%% of its rated air)", 100.0 * at.oxidizer_share,
+                             100.0 * gate);
+                }
+            } else {
+                snprintf(v, sizeof v, "none (a jet cannot run here)");
+            }
+            line("air oxidizer", v);
         } else {
             line("air density", "none (rim only)");
         }

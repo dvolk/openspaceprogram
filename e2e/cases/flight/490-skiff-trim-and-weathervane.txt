@@ -44,7 +44,7 @@ CHECK all(abs(d["beta"]) < 2.5 for d in drag if d["t"] >= 40.0)
 # induced 0.10..0.59 as the throttle pushes it through its phugoid -- the top of that
 # range is where a hangar-sized induced bill would start showing up as a wall. #543 A5
 # took the top from 0.56 to 0.59, and the case's own log says why: at the fast end of the
-# arc (83.8 m/s, Mach 0.305 in Kerbin's 274.8 m/s air) the printed CLa is 176.22 against
+# arc (83.8 m/s, Mach 0.305 in Kerbin's 275.0 m/s air) the printed CLa is 176.22 against
 # the 168.0 the parts author, and inducedCd squares a slope correction.
 CHECK 0.75 < min(d["a"] for d in drag if d.get("a")) < 1.00
 CHECK all(0.35 < d["profile"] < 0.65 for d in drag if d.get("profile") is not None)

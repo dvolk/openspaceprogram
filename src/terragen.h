@@ -91,15 +91,29 @@ struct AtmosphereParams {
     double sea_level_density = 0.0;  // kg/m^3 AT THE DATUM, not at the ground
     double scale_height = 0.0;       // [m]; the density /e-fold altitude
     double height = 0.0;  // hard top [m above sea level]; authored, 0 = top() derives
-    /* What the air is made of, for the thermodynamics src/drag.h derives from the
-       two numbers above (#552 A2). SI -- kg/mol, not g/mol: air 0.028964, CO2
-       0.044, H2 0.0022. Author it wherever the gas is NOT dry air, because the
-       temperature is LINEAR in it: Jool's H2 air left at the dry-air default reads
-       547 K instead of 41 K. Pressure and sound speed do not contain it at all.
-       gamma is cp/cv -- only the sound speed uses it; 1.4 diatomic (N2, O2, H2),
-       1.3 CO2. Defaults: constants.h kAirMolarMass / kAirGamma. */
-    double molar_mass = kAirMolarMass;
-    double gamma = kAirGamma;
+    /* What the air is made of. A body states the MIX (#552 A4b, #630), and the three
+       scalars below are what that mix RESOLVES to: system.cpp fills them in with
+       atmo.h:resolveMix, exactly like it fills in each level's base_p further down.
+       molar_mass and gamma are therefore NOT authorable any more -- typed beside a
+       composition they are two statements of one fact, and the loader refuses the
+       pair rather than quietly pick one. A body that authors no composition gets
+       atmo.h:dryAirMix (dry Earth air, oxygen and all), which is what constants.h's
+       kAirMolarMass / kAirGamma already spell for hand-written systems.
+
+       Why the mix instead of the scalars: those two were the WHOLE statement about
+       chemistry a file could make, they were typed by hand, and they cannot say the
+       one thing a player would act on -- that a world has no free oxygen. That fact
+       is oxidizer_share, and drag.h:jetAirGate bills every air-breathing engine on
+       it. molar_mass is kg/mol, not g/mol; the derived temperature is LINEAR in it
+       (Jool's H2 air left at the dry-air default reads 547 K instead of 41 K), while
+       pressure and sound speed do not contain it at all. gamma is cp/cv, and only
+       the sound speed uses it. */
+    std::vector<MixFraction> composition;
+    double molar_mass = kAirMolarMass;   // RESOLVED at load, not authored
+    double gamma = kAirGamma;            // RESOLVED at load, not authored
+    /* Kilograms of burnable oxidizer per kilogram of this air [0..1]: 0.231 for dry
+       air, 0 for a CO2 or H2 world. RESOLVED at load, like the two above. */
+    double oxidizer_share = dryAirOxidizerShare();
 
     /* The altitude/temperature LEVELS (#552 A4), optional: "atmosphere.layers" as
        [{alt, T, lapse}, ...]. When this is non-empty it REPLACES the one-

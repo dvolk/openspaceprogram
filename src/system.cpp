@@ -387,11 +387,105 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 // The hard top (above it: vacuum). 0 => top() derives
                 // scale_height * 10.
                 s.atmosphere.height = av.value("height", 0.0);
-                // What the air is made of, for the T/p/a that drag.h derives from
-                // scale_height and the body's g (#552 A2). SI -- kg/mol (air
-                // 0.028964, CO2 0.044, H2 0.0022). Only meaningful when there IS air.
-                s.atmosphere.molar_mass = av.value("molar_mass", kAirMolarMass);
-                s.atmosphere.gamma = av.value("gamma", kAirGamma);
+                /* What the air is made of (#552 A4b, #630): "composition" as
+                   [{"gas": "CO2", "fraction": 0.9532}, ...], by MOLE. The three
+                   scalars the law reads -- molar_mass, gamma and oxidizer_share --
+                   are what that mix RESOLVES to (atmo.h:resolveMix), so they are not
+                   authorable any more: typing molar_mass beside the mix states one
+                   fact twice, and the two then drift apart exactly like an authored
+                   base_p would beside a temperature profile (atmo.h). A body with no
+                   composition keeps dry Earth air, the default constants.h spells. */
+                if(av.contains("molar_mass") || av.contains("gamma")) {
+                    throw std::runtime_error(
+                        "system: " + body->name + ": atmosphere.molar_mass /"
+                        " atmosphere.gamma are derived from"
+                        " atmosphere.composition -- a list of { gas, fraction }"
+                        " (N2, O2, CO2, H2, He, CH4, H2O, Ar). Author the mix.");
+                }
+                if(av.contains("composition")) {
+                    if(!av["composition"].is_array()) {
+                        throw std::runtime_error(
+                            "system: " + body->name + ": atmosphere.composition must"
+                            " be an array of { gas, fraction } objects");
+                    }
+                    /* The whole sky is a handful of gases (Earth's dry air is four,
+                       Titan's three), so a long list is a generator bug rather than
+                       an atmosphere -- and it is the one cap that keeps a mix cheap
+                       to read at load. */
+                    if(av["composition"].size() > 16) {
+                        throw std::runtime_error(
+                            "system: " + body->name + ": atmosphere.composition has"
+                            " too many gases (16 max)");
+                    }
+                    int gi = 0;
+                    for(const nlohmann::json &gm : av["composition"]) {
+                        ++gi;
+                        if(!gm.is_object()) {
+                            throw std::runtime_error(
+                                "system: " + body->name + ": atmosphere.composition"
+                                " entry " + std::to_string(gi) + " must be an object"
+                                " of { gas, fraction }");
+                        }
+                        /* Checked rather than read with .value(): a mistyped entry
+                           ({"gas": 5}, {"fraction": "0.5"}) would otherwise throw
+                           nlohmann's type_error out of load_system with a message that
+                           names neither the body nor the key -- the two things an
+                           author needs to find the line. */
+                        if(!gm.contains("gas") || !gm["gas"].is_string()) {
+                            throw std::runtime_error(
+                                "system: " + body->name + ": atmosphere.composition"
+                                " entry " + std::to_string(gi) + " needs a gas name"
+                                " (N2, O2, CO2, H2, He, CH4, H2O, Ar)");
+                        }
+                        const std::string gname = gm["gas"].get<std::string>();
+                        const GasSpecies *gs = gasSpecies(gname);
+                        if(gs == nullptr) {
+                            throw std::runtime_error(
+                                "system: " + body->name + ": atmosphere.composition"
+                                " entry " + std::to_string(gi) + " names an unknown"
+                                " gas '" + gname + "' (expected: N2, O2, CO2, H2,"
+                                " He, CH4, H2O, Ar)");
+                        }
+                        if(!gm.contains("fraction") || !gm["fraction"].is_number()) {
+                            throw std::runtime_error(
+                                "system: " + body->name + ": atmosphere.composition "
+                                + gname + " needs a numeric fraction (by mole; the"
+                                " list need not sum to 1)");
+                        }
+                        MixFraction mf;
+                        mf.gas = gs;
+                        mf.fraction = gm["fraction"].get<double>();
+                        s.atmosphere.composition.push_back(mf);
+                    }
+                    /* An authored-but-empty list is not the same as omitting the
+                       key: omitting it says "dry air, the default", while "[]" says
+                       "this body's air is made of nothing" and would otherwise be
+                       indistinguishable from the first. */
+                    if(s.atmosphere.composition.empty()) {
+                        throw std::runtime_error(
+                            "system: " + body->name + ": atmosphere.composition names"
+                            " no gas (leave the key out for the dry-air default)");
+                    }
+                }
+                /* Resolve the mix into the scalars, defaulting to dry air's mix.
+                   Doing it HERE is what keeps the three reads (T, p, a) and the jet
+                   gate on one statement of the gas: the level table below is then
+                   integrated with the same Rs the mix implies. */
+                {
+                    std::vector<MixFraction> mix = s.atmosphere.composition;
+                    if(mix.empty()) {
+                        int n = 0;
+                        const MixFraction *air = dryAirMix(n);
+                        mix.assign(air, air + n);
+                    }
+                    std::string why;
+                    if(!resolveMix(mix, s.atmosphere.molar_mass, s.atmosphere.gamma,
+                                   s.atmosphere.oxidizer_share, why)) {
+                        throw std::runtime_error(
+                            "system: " + body->name + ": atmosphere.composition --"
+                            " " + why);
+                    }
+                }
                 /* The altitude/temperature LEVELS (#552 A4): [{alt, T, lapse}, ...].
                    base_p is NOT authorable -- resolveAtmoLevels integrates each level
                    from the sea-level anchor below it, so a file cannot state a
@@ -454,21 +548,29 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                         "system: " + body->name + ": atmosphere needs "
                         "sea_level_density and scale_height (or neither)");
                 }
-                /* The composition numbers feed a divide and a sqrt, and g feeds all
-                   three thermodynamic reads, so a bad one is a LOAD error rather than
-                   a 0 K, a negative pressure or a NaN air reaching a Mach number
-                   several steps later. The !(a && b) shape is NaN-closed the way
-                   src/angmath.h requires. molar_mass < 1 kg/mol is the g/mol typo
-                   guard: 28.964 typed where 0.028964 was meant would otherwise load
-                   and print 188,000 K for Kerbin. gamma outside [1, 2] is not a gas. */
+                /* The resolved gas feeds a divide and a sqrt, and g feeds all three
+                   thermodynamic reads, so a bad one is a LOAD error rather than a 0 K,
+                   a negative pressure or a NaN air reaching a Mach number several steps
+                   later. The !(a && b) shape is NaN-closed the way src/angmath.h
+                   requires. Since #630 the two gas numbers are not authored, so this is
+                   no longer advice an author could follow -- it is the species table's
+                   own invariant: every gas has a real molar mass (M < 1 kg/mol is the
+                   g/mol typo guard: 28.964 typed where 0.028964 was meant prints 188,000
+                   K for Kerbin) and a gamma inside [1, 2], and a mix of them cannot
+                   leave those bounds. If it ever trips, the fix is in atmo.h:gasSpecies,
+                   and naming the body is what points a reader there. */
                 if(s.atmosphere.sea_level_density > 0.0) {
+                    if(!(body->g > 0.0)) {
+                        throw std::runtime_error(
+                            "system: " + body->name + ": a body with air needs g > 0");
+                    }
                     if(!(s.atmosphere.molar_mass > 0.0
                          && s.atmosphere.molar_mass < 1.0)
-                       || !(s.atmosphere.gamma >= 1.0 && s.atmosphere.gamma <= 2.0)
-                       || !(body->g > 0.0)) {
+                       || !(s.atmosphere.gamma >= 1.0 && s.atmosphere.gamma <= 2.0)) {
                         throw std::runtime_error(
-                            "system: " + body->name + ": atmosphere needs molar_mass"
-                            " in (0, 1) kg/mol, gamma in [1, 2], and g > 0");
+                            "system: " + body->name + ": atmosphere.composition"
+                            " resolves to a molar mass or gamma no gas in the"
+                            " species table gives (atmo.h:gasSpecies)");
                     }
                 }
                 /* Now the level table can be integrated: it needs the gas (Rs), the

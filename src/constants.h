@@ -66,14 +66,32 @@ inline constexpr double kAtmoScaleHeights = 10.0;
 inline constexpr double kGasR = 8.314462618;
 
 /* What "air" means when a body does not say: dry air, 28.964 g/mol and cp/cv 1.4.
-   The ONE spelling -- AtmosphereParams (terragen.h), DragAtmosphere (drag.h) and the
-   system loader (system.cpp) all default to these, so changing the default cannot
-   half-apply. Composition is authored per body where the gas is different: CO2
-   0.044 (Venus, Mars, Duna, Eve), H2 0.0022 (Jool, Jupiter, Saturn).
+   These are the hand-written spelling for a DragAtmosphere built outside a system
+   file (test_drag's fixtures, drag.h's own member defaults). A body that DOES come
+   from a file gets its gas from the mix it authors, and a body that authors no mix
+   gets atmo.h:dryAirMix -- which resolves to 0.0289650 kg/mol and gamma 1.40146, not
+   to these two, because the loader runs one arithmetic and not two (#630). The two
+   spellings differ by 0.003%: dry air's argon and CO2 are what the extra accounts for.
    Changes: the temperature a body reports when its def says nothing; never rho.
-   Where: AtmosphereParams, DragAtmosphere, load_system. */
+   Where: AtmosphereParams, DragAtmosphere. */
 inline constexpr double kAirMolarMass = 0.028964;  // [kg/mol]
 inline constexpr double kAirGamma = 1.4;           // cp/cv, diatomic
+
+/* The intake an air-breathing engine is RATED at [kg/m^3]: standard sea-level air.
+   A part's authored jet_fan_thrust and fuel rate are one machine's numbers at one
+   intake density, so that is what the jet gate divides by (#630). It used to divide
+   by the BODY's own sea-level density, which rates the engine against whatever planet
+   it happens to be standing on: a jet at Mars's datum ran its full authored fan
+   thrust on 0.02 kg/m3 of CO2 because that is 1.0 of Mars's own sea level.
+   Every air-breathing body in the shipped catalogue already authors this density
+   (Kerbin, Earth, Laythe, Shay: 1.225), so on the worlds with living jets the number
+   is the one already in the file -- it is not a new constant, it is the one the
+   bodies were given.
+   Changes: jet thrust and fuel burn on any body whose sea-level density is NOT
+   1.225 (Eve 1.7, Jool 2.0, Titan 5.3: capped either way; Duna 0.12, Mars 0.02:
+   both are CO2, so the oxidizer half of the gate already ends them).
+   Where: drag.h:jetAirGate. */
+inline constexpr double kAirSeaLevelDensity = 1.225;  // [kg/m^3]
 
 /* Aero skip floor [kg/m^3]: below this density the per-part silhouette
    pass is not worth computing. A PERFORMANCE floor, not a physical one

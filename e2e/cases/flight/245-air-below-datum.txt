@@ -70,8 +70,11 @@ CHECK max(d["F"] for d in drag) > 500.0
 CHECK sum(d["F"] for d in drag) > 1000.0
 CHECK max(d.get("L", 0.0) for d in drag) > 500.0
 CHECK abs(min(s["alt_asl"] for s in surf) - surf[0]["alt_asl"]) > 1.0
-# IT BREATHES: jetAirGate reads rho/rho_sea, so the same answer starved the engine.
-# The r0.25h1 fan is rated 5625 N at full gate; at -336 m it runs at full gate. The
+# IT BREATHES: jetAirGate reads the air against the engine's rating intake
+# (constants.h:kAirSeaLevelDensity = 1.225 kg/m3), so the same answer starved the
+# engine. This fixture authors exactly that datum, and authors no composition so it gets
+# dry air's oxidizer: both halves of the gate are 1.0 here. The
+# r0.25h1 fan is rated 5625 N at full gate; at -336 m it runs at full gate. The
 # ram term is what makes the peak move with the flight -- 6571.6 N on the wild one,
 # 5946.7 N on the mild one -- so the floor sits under BOTH with room rather than
 # brushing the top of the rating.
@@ -80,21 +83,27 @@ CHECK max(r["thrust"] for r in drainlog) > 4000.0
 # body's authored scale height IMPLIES, through the same dragAtm seam the dossier uses,
 # so the two cannot mean different airs. Under this datum p is FLAT (the #618 call), so
 # every row reads rho0 g H = 1.225 x 9.81 x 5500 = 66094.9 Pa beside 188.0 K and
-# 274.8 m/s. Mach divides the AIR-relative speed at the COM, NOT the |v|= this line
+# 275.0 m/s. Mach divides the AIR-relative speed at the COM, NOT the |v|= this line
 # prints -- that one is the FRAME speed, and on a spinning body the air itself moves
 # (#97). This hull never leaves Kerbin's rot frame, where the air is at rest, so on this
 # run the two are the same speed; they still read a little apart because |v|= is live at
 # print time while the air numbers are what the last aero pass left behind (t=1: |v|=0.64
-# against Mach 0.002 x 274.8 = 0.55 m/s). A surface's mach= is that ratio at its own
+# against Mach 0.002 x 275.0 = 0.55 m/s). A surface's mach= is that ratio at its own
 # mount, so it lands within 0.001 of the hull's rather than equal to it -- t=8: hull
 # 0.135, wing_l 0.134, wing_r 0.135, and that spread is the omega x r of a tumbling
-# hull. The pad row reads 0.002; the post-ignition peak depends on which flight the run
+# hull. (t=1: |v|=0.64 against Mach 0.002 x 275.0 = 0.55 m/s.) The pad row reads 0.002; the post-ignition peak depends on which flight the run
 # gets (0.286 on one that flies, 0.080 on one that settles), and either way this hull
 # nowhere approaches compressible flow. Before A3 none of this was measurable from the
 # harness at all: the only way to check it was to read the source.
 CHECK all(abs(d["airT"] - 188.0) < 0.05 for d in drag)
 CHECK all(abs(d["airP"] - 66095.0) < 1.0 for d in drag)
-CHECK all(abs(d["airA"] - 274.8) < 0.05 for d in drag)
+# 275.0, not the 274.8 this case pinned until #630: sound speed is sqrt(gamma g H), and
+# Kerbin's gamma is no longer a typed 1.4 but what its authored dry-air mix resolves to
+# (1.40146 -- a CO2 molecule lifts the heat capacity). The air TEMP moved too, by 6 mK:
+# 187.956 -> 187.962 K, which is why the 188.0 +- 0.05 row above has only 12 mK of
+# margin. tests/test_drag.cpp still pins 274.84 for a HAND-built atmosphere, because
+# DragAtmosphere's own member default is still the typed kAirGamma (constants.h).
+CHECK all(abs(d["airA"] - 275.0) < 0.05 for d in drag)
 CHECK all(0.0 <= d["mach"] < 0.6 for d in drag)
 # Mach x a is the AIR-relative speed, so on a hull that never leaves its body's rot frame
 # it has to track the |v|= column on the same rows whatever the trajectory does: fastest

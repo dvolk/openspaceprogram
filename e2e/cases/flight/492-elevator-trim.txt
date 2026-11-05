@@ -21,7 +21,7 @@ CHECK len(drag) >= 40
 # it.
 # #543 A5 (compressibility) widened it again rather than shifting the hold. The slope
 # the hull flies is now the AIR'S: at the fast end of this phugoid (78.1 m/s, Mach 0.284
-# in Kerbin's 274.8 m/s air) the printed CLa reads 174.54 against the 168.0 the parts
+# in Kerbin's 275.0 m/s air) the printed CLa reads 174.54 against the 168.0 the parts
 # author, and at the top of the arc (21.7 m/s, Mach 0.079) it reads 167.51 -- a 4.2%
 # difference the old law could not make. The hold at speed is where it was (4.8..5.0),
 # because a wing and a tail standing at the same Mach gain slope TOGETHER and the trim

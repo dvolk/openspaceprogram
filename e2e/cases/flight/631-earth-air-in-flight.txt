@@ -54,7 +54,8 @@ CHECK all("airT" in d and "airP" in d and "airA" in d for d in drag)
 # here -- so this is the check the pre-A4 body fails by arithmetic, not by tuning.
 CHECK all(abs(d["airT"] - (288.15 - 0.0065 * d["alt_asl"])) < 0.2 for d in drag)
 # ONE COLUMN OF AIR, not three numbers that agree by luck: rho = p / (Rs T), with
-# Rs = R/M = 8.314462618 / 0.028964 = 287.062 J/(kg K) from Earth's authored molar mass.
+# Rs = R/M = 8.314462618 / 0.0289650 = 287.052 J/(kg K) -- M resolved from Earth's
+# authored dry-air mix (#630), not a typed scalar.
 # This is the invariant base_p is derived rather than authored to protect (atmo.h): a
 # level whose base_p came from another body, or a T seam, breaks it at a boundary while
 # each column still looks plausible alone. The band is 2e-4 because these are the PRINTED

@@ -122,12 +122,16 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
    Pressure and sound speed need NOTHING authored -- the scale height alone sets
    them, which is why molar_mass is a composition question only for the TEMPERATURE
    line. Read that as content, not trivia: Kerbin (H 5500, g 9.81, rho0 1.225) means
-   188.0 K, 66.1 kPa, 274.8 m/s, so a hull at 300 m/s at sea level is already
+   188.0 K, 66.1 kPa, 275.0 m/s, so a hull at 300 m/s at sea level is already
    Mach 1.09 there; an Earth-shaped exponential (H 8500) means 290.8 K, 102.3 kPa,
-   341.8 m/s -- within ~1% of USSA-1976, with no temperature authored anywhere.
-   COMPOSITION IS NOT FREE EITHER, and it is authored per body now: T is linear in M,
-   so a hydrogen giant left at dry air's 28.964 g/mol reads absurd -- Jool with M
-   unauthored reads 547 K where its H2 air (0.0022) reads 41 K. p and a do not care,
+   341.9 m/s -- within ~1% of USSA-1976, with no temperature authored anywhere.
+   (Both use dry air's resolved gamma 1.4015 rather than the typed 1.4; the shipped
+   bodies' gammas come off their authored mixes, #630, and a hand-built DragAtmosphere
+   still defaults to constants.h's 1.4. Sound speed goes as sqrt(gamma), so it is 0.05%.)
+   COMPOSITION IS NOT FREE EITHER, and since #630 it is a MIX authored per body: T is
+   linear in M, so a hydrogen giant left at dry air's mix reads absurd -- Jool reads
+   547 K on dry air where its authored H2/He/CH4 mix (M 0.002364) reads 44.6 K.
+   p and a do not care,
    so this is a readout-truth question, not a flight-model one. The "isothermal"
    label on the readouts warns about the missing lapse rate; it does NOT excuse a
    wrong gas.
@@ -145,7 +149,7 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
    authors the real table, both because it is the only one with published numbers to
    copy and because it is the fixture that keeps the profile honest (test_drag pins it
    within 1% of the standard atmosphere from 0 to 85 km) -- so the Earth row above is
-   the EXERCISE, not the shipped body: Earth now reads 288.1 K / 101.3 kPa / 340.3 m/s
+   the EXERCISE, not the shipped body: Earth now reads 288.1 K / 101.3 kPa / 340.5 m/s
    at its datum because it says so, not because H 8500 implies it.
    ALL THREE STOP AT `height`, layered or not. Above the authored air top the air is
    vacuum: rho and p have always said so, and so must T and a -- a hull at 120 km over
@@ -207,7 +211,7 @@ inline double airPressure(const DragAtmosphere &a, double alt) {
 /* [m/s] -- the speed the Mach number is a ratio to, at `alt` (#543 divides by this,
    which is why it is asked for at the altitude it applies to and not once per body).
    An isothermal body's value is CONSTANT with altitude -- that is what isothermal
-   means -- and a layer table is what makes it vary: on Earth it falls from 340.3 m/s
+   means -- and a layer table is what makes it vary: on Earth it falls from 340.5 m/s
    at the datum to 295.1 m/s at 11 km, so the same 300 m/s airspeed is Mach 0.88 at
    sea level and Mach 1.02 up there. Above `height` it is 0 on either profile: there is
    no air left to carry sound, so a Mach number up there has nothing to be a ratio to. */
@@ -1519,25 +1523,78 @@ inline double controlCommandFrac(double stick, double trimFrac) {
     return (c > 1.0) ? 1.0 : (c < -1.0) ? -1.0 : c;
 }
 
-/* The jet AIR GATE shared by thrust and fuel flow: available air as a fraction
-   of the body's own sea level, capped at 1. The tank drains with it -- thin air
-   gives less thrust AND less burn, and vacuum gives neither. */
-inline double jetAirGate(double rho, double rho_sea) {
-    if(!(rho > 0.0) || !(rho_sea > 0.0)) { return 0.0; }  // NaN fails closed
-    const double d = rho / rho_sea;
-    return (d >= 1.0) ? 1.0 : d;
+/* The OXIDIZER half of the jet gate, on its own: how much of a rated intake's oxidizer
+   MASS this air can feed a burner, in [0, 1], whatever the density. A turbine does not
+   burn "air", it burns fuel against the oxidizer dissolved in it, so a world can be at
+   full sea-level density and still be a dead engine: Eve's 1.7 kg/m3 and Duna's 0.12
+   are CO2, Jool's 2.0 is H2 and He -- H2 is the fuel, and there is nothing here to burn
+   it with. oxidizer_share (kilograms of oxidizer per kilogram of air) comes off the
+   body's authored composition via atmo.h:resolveMix, which is the only reason the game
+   can say so. Richer-than-dry-air gets 1, not more: extra oxygen does not make a fan
+   push harder. Fails CLOSED on NaN or a share of 0. */
+inline double jetOxGate(double oxidizer_share) {
+    const double rated = dryAirOxidizerShare();
+    if(!(oxidizer_share > 0.0) || !(rated > 0.0)) { return 0.0; }  // NaN fails closed
+    const double g = oxidizer_share / rated;
+    return (g > 1.0) ? 1.0 : g;
+}
+
+/* The jet AIR GATE shared by thrust and fuel flow: the share of its intake an
+   air-breathing engine can actually use, in [0, 1]. Two limits, and the engine is
+   whichever of them runs out FIRST -- min, not a product, because on an oxygen-world
+   they fall together and multiplying them would bill thin air twice:
+
+     the air itself:  rho / kAirSeaLevelDensity, capped at 1. An intake swallows a
+       VOLUME per second, so the kilograms it moves -- and therefore the fan thrust
+       and the fuel it can inject with them -- are set by absolute intake density.
+       The reference is the machine's rating condition (constants.h), not the body's
+       own sea level: until #630 this divided by rho_sea, so a jet standing on Mars
+       (0.02 kg/m3 of CO2) ran its FULL authored fan thrust, because 0.02 is 1.0 of
+       Mars. That is the bug the second limit below makes impossible to miss.
+
+     the oxidizer:  rho x oxidizer_share, against the same rating density times dry
+       air's oxidizer share (0.231 kg of O2 per kg of air). A turbine does not burn
+       "air", it burns fuel against the oxidizer IN the air, so a world can be at
+       full sea-level density and still be a dead engine: Eve's 1.7 kg/m3 and Duna's
+       0.12 are CO2, Jool's 2.0 is H2 and He -- H2 is the fuel, and there is nothing
+       here to burn it with. oxidizer_share comes off the body's authored composition
+       (atmo.h:resolveMix, terragen.h), which is the only reason the game can say so.
+
+   Both halves fail CLOSED on NaN or a non-positive input: no air, no oxidizer, no
+   thrust and no burn. A jet is the only engine in the game whose thrust depends on
+   the world it is standing on, so this is where that dependence lives. */
+inline double jetAirGate(double rho, double oxidizer_share) {
+    const double oxg = jetOxGate(oxidizer_share);
+    if(oxg <= 0.0) { return 0.0; }              // no oxidizer to burn against
+    if(!(rho > 0.0)) { return 0.0; }            // NaN or vacuum fails closed
+    const double air = (rho >= kAirSeaLevelDensity) ? 1.0
+                                                    : rho / kAirSeaLevelDensity;
+    const double ox = (rho / kAirSeaLevelDensity) * oxg;
+    return (ox < air) ? ox : air;
 }
 
 /* JET ENGINE (air-breathing) thrust, newtons:
-     T(v, rho) = T_fan·d  +  ṁ_f·v_e·d  +  rho·A·v·(v_e − v)   d = jetAirGate(rho, rho_sea)
-   d gates the fan + fuel terms on available air; rho = 0 kills every term. The net
-   is clamped at 0 (a jet never reverses). */
-inline double jetThrust(double v, double rho, double rho_sea,
+     T(v, rho) = T_fan·d  +  ṁ_f·v_e·d  +  jetOxGate·rho·A·v·(v_e − v)
+                                            d = jetAirGate(rho, oxidizer_share)
+   d gates the fan + fuel terms on the usable intake. The ram term is the air the
+   intake captures (rho·A·v) thrown out the back at v_e, so it scales with the raw
+   density the hull is moving through -- NOT with d, which would bill thin air twice
+   and quietly halve Kerbin cruise thrust at altitude.
+   It is still NOT free: the momentum has to come from somewhere, and the only source
+   is fuel burned against this air's oxidizer, so jetOxGate -- the oxidizer half of the
+   gate on its own, without the density term the rho already carries -- pays for it.
+   Without that the law contradicts itself on a CO2 world: Mars (0.02 kg/m3, 0.1 % of
+   its air is O2) would bill the fan 6 N and hand back 530 N of ram for a fuel flow the
+   gate has already cut to 8e-5 kg/s, and Eve's 1.7 kg/m3 of CO2 would be a full-power
+   engine at the exact moment its fan goes dead. An intake that cannot burn is a hole,
+   not an engine. */
+inline double jetThrust(double v, double rho, double oxidizer_share,
                         double T_fan, double m_f, double v_e, double A) {
-    const double d = jetAirGate(rho, rho_sea);
-    if(d <= 0.0) { return 0.0; }   /* no air -> no thrust */
+    const double d = jetAirGate(rho, oxidizer_share);
+    if(d <= 0.0) { return 0.0; }   /* no usable air -> no thrust */
     const double speed = (v < 0.0) ? 0.0 : v;
-    const double T = T_fan * d + m_f * v_e * d + rho * A * speed * (v_e - speed);
+    const double T = T_fan * d + m_f * v_e * d
+                     + jetOxGate(oxidizer_share) * rho * A * speed * (v_e - speed);
     return (T < 0.0) ? 0.0 : T;
 }
 

@@ -1,0 +1,52 @@
+# A body used to state its air as two typed scalars -- molar_mass and gamma -- which is a
+# statement about arithmetic, not about a world. It now authors a gas MIX
+# (atmo.h:gasSpecies -> system.cpp -> AtmosphereParams::composition) and the loader
+# resolves molar mass, gamma and the oxidizer share from it, the same way the altitude
+# table's level pressures are resolved rather than authored (#552 A4). This case pins the
+# two dossier rows the mix is the source of: "air composition" and "air oxidizer".
+#
+# tests/test_scenarios.cpp already pins the resolved numbers of every shipped file and
+# tests/test_jet.cpp pins the gate. What only an e2e sees is the player-facing row: the
+# composition is authored in files 240 bodies share, and the one fact about a world that
+# changes what a player builds is whether a jet runs there. Eve and Venus have sea-level
+# air denser than Kerbin's and Earth's -- 1.7 and 92 kg/m3 -- and both are a dead engine,
+# because a turbine burns against oxygen and there is barely any in a CO2 sky. Before
+# this change nothing in the game could say that.
+NAME air-composition-dossier
+CLAIM A body's dossier names the gases its air is made of and says how much of that air a jet can burn.
+KIND invariant
+ARGS --system res/systems/solar_system.json --timeout 6 --atlas-dump 4000
+FORBID error:
+# Earth authors dry air (utils/make_solar_system.py's DRY_AIR): N2 78.084, O2 20.946, Ar
+# 0.934, CO2 0.033 %, which the loader normalizes by its own 0.99997 total -- hence the
+# 78.09 %. The order is biggest gas first so a one-line read still names the world.
+CHECK re.search(r"air composition\s+N2 78\.09%, O2 20\.95%, Ar 0\.934%, CO2 0\.033%", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# 23.1 % of dry air's MASS is O2 (20.95 % by MOLE two rows up -- a mole of O2 weighs more
+# than a mole of N2, which is why the row says "by mass"), and that is the whole of what an
+# intake is rated on, so the gate is 1.0.
+CHECK re.search(r"air oxidizer\s+23\.1% of the air by mass \(a jet runs on it\)", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# Venus: 96.5 % CO2, 3.5 % N2, and no free oxygen at all -- 92 kg/m3 of air at the surface,
+# 13 MPa, and a jet that produces nothing. The "none" wording is the mix's, not a fudge:
+# gasSpecies("CO2").oxidizer is false.
+CHECK re.search(r"air composition\s+CO2 96\.5%, N2 3\.5%", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"air oxidizer\s+none \(a jet cannot run here\)", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# Mars is the interesting one: it has oxygen (0.13 % of the molecules) so the row must not
+# read "none", and 0.0068 % of a rated intake so the row must not read "jets run". The
+# gate is printed instead of a verdict because any verdict hides a threshold nobody
+# authored. Both numbers are the mix's: 0.1 % of the mass, and the min() drag.h:jetAirGate
+# takes against constants.h:kAirSeaLevelDensity.
+CHECK re.search(r"air oxidizer\s+0\.1% of the air by mass \(a jet gets 0\.00676% of its rated air\)", re.search(r"\[atlas\] Mars weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# Jupiter: an H2/He sky. Hydrogen is the fuel, not the oxidizer, so the densest air in the
+# system after Titan buys a jet nothing. Its molar mass is 0.0022 kg/mol -- a factor 13
+# under dry air, and every temperature and sound-speed row in this dossier follows it.
+CHECK re.search(r"air composition\s+H2 89\.8%, He 10\.2%", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"air oxidizer\s+none \(a jet cannot run here\)", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# Every row above searches a BOUNDED block -- (?=\[atlas\] \w+ weight=|\Z) stops at the next
+# body -- rather than "Earth weight=.*?air oxidizer", because the unbounded form can reach
+# into a later body's rows and still go green if Earth's own row disappears. render/552
+# learned this the hard way: splitting on "[atlas] " alone covers only the header line.
+#
+# And the rows belong to bodies that HAVE air: Mercury's dossier says "atmosphere none" and
+# owes neither row.
+CHECK "air oxidizer" not in re.search(r"\[atlas\] Mercury weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)
+CHECK "air composition" not in re.search(r"\[atlas\] Mercury weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)
