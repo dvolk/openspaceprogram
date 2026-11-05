@@ -78,4 +78,37 @@ CHECK any(s["alpha"] > 1.0 for s in slew if 6.0 < s["t"] < 8.8)
 # since 1 s -- the two columns are the same number (2.230/2.230 at the same row). The
 # rating is not a second model of the gimbal; it is this one with the lever pushed in.
 CHECK all(abs(s["alpha"] - s["alpha_full"]) < 0.05 for s in slew if 6.0 < s["t"] < 8.8)
+# WHAT THE ASK BOUGHT (#599). alpha= is a rating; tau_ask/tau_spent are what the last
+# actuated substep COST -- the demand the law summed, and the torque measured off the
+# deflected nozzles (this hull has no wheels and no air, so tau_spent IS the gimbals).
+# The law sizes its demand off the RATE error (I*dW/h), so at the tap it asks up to 393 kN
+# m of an engine that can lever ~3 kN m: 131x on one row, 14 rows over 50x. That is what a
+# hull that reads capable on screen looks like once there is a spent number at all.
+CHECK any(s["tau_ask"] > 50 * s["tau_spent"] for s in slew if 4.3 < s["t"] < 5.5)
+# Never more than the disk, stated as the rating rather than as a magic threshold:
+# alpha*Ieff is the N m the armed thrust could lever about the steered axis THIS tick
+# (2950-2993 in the tap window, 2794-2919 in the hold -- the lever grows as the fuel comes
+# down), and the measured spend stays inside it, worst live ratio 0.999 over two runs.
+CHECK all(s["tau_spent"] <= 1.05 * s["alpha"] * s["Ieff"] + 1 for s in slew if s["t"] > 1.0)
+# And it is not idling: wherever there is authority there is a measured torque (min 298 N
+# m across both runs).
+CHECK all(s["tau_spent"] > 0 for s in slew if s["alpha"] > 1.0)
+# THE PART A RATING CANNOT SHOW: the spend is a FRACTION of its own rating on some rows,
+# because a ring of nozzles has to TRAVEL to its aim at gimbal_rate and swings back
+# through centre on every reversal of the limit cycle. Worst live ratio 0.101 in both runs
+# (the first rows of the burn, the ring still centred) and 0.201 inside the hold window.
+# A routed share of the TVC budget would have read the rating every one of those rows.
+CHECK any(s["tau_spent"] < 0.5 * s["alpha"] * s["Ieff"] for s in slew if 1.0 < s["t"] < 8.9 and s["alpha"] > 1.0)
+# There is deliberately no tau_spent <= tau_ask pin, even though the allocator itself
+# never over-delivers on a line: a gimbal KEEPS its aim between substeps, so a hull that
+# has come round -- the law asking almost nothing -- is still being turned by the nozzle
+# the last substep left deflected. Measured 2.95x the ask on two rows.
+# And with the throttle shut the LAW goes quiet too: alpha 0 makes slewDemand ask for
+# nothing AND takes away the thrust the nozzles push with, so BOTH columns read zero. That
+# is why the drift above is a hull with nothing to spend rather than a law fighting and
+# losing.
+CHECK all(s["tau_ask"] == 0 and s["tau_spent"] == 0 for s in slew if s["t"] > 9.6)
+# SLEW_RE drops a row whose columns it cannot match ([-\d.]+ will not take a nan), which
+# would weaken every pin above in silence. The row count is the tripwire.
+CHECK out.count("[slew] t=") == len(slew)
 CHECK all(a["wnorm"] == a["wnorm"] and a["wnorm"] < 1e4 for a in att)

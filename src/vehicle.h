@@ -669,6 +669,50 @@ public:
        A surface with no entry is commanded to nothing, which is what a hull at rest or
        in vacuum gets: no q, no rows, no travel to show. */
     std::vector<std::pair<const Part *, double>> surfaceLat_;
+    /* WHAT THE STEERING ACTUALLY SPENT THIS SUBSTEP (#599). Every attitude number the
+       player could read is a RATING -- the wheel rows, the fin rows, #608's gimbal
+       pair -- which answers the build question, "is this drum enough?". The question
+       that reads the same rows is "what is turning the hull right now". The N m is in
+       world axes throughout, so the channels sum and each projects onto a ship axis:
+         asked:    what the stick and the latched laws summed before the split. Not what
+                   a law WOULD like: killRotDemand/slewDemand answer 0 when the hull has
+                   no authority at all, and a law's demand is sized off the RATE error
+                   (I*dw/h), so it is warp- and substep-scaled, not a hardware wish.
+         wheels:   the N m ApplyTorque got.
+         tvc:      the torque the gimballed engines' thrust produced about the COM,
+                   summed in applyThrustForce off the same force it bills. Measured, so
+                   it follows the throttle, the gimbal RATE (a ring a held key has only
+                   just started to swing reads low) and a mount's own tilt.
+         surfaces: the torque applyAeroForce's commanded plates returned, from THE AIR:
+                   0 in vacuum, drooped past stall, swept by the hull's own turn (#426's
+                   budget-not-delivery caveat), and including whatever trim is holding.
+       asked minus the sum of the three is the torque the HARDWARE refused: #577's
+       over-subscribed multi-key hold, a demand about a line no drum covers, a law
+       driving a saturated actuator. It is not a guaranteed positive, and that is a fact
+       about the actuators rather than a bug in the record: a gimbal KEEPS its aim between
+       substeps, so a hull that has come round (a law asking almost nothing) is still
+       being turned by the nozzle the last substep left deflected -- flight/96 measures
+       2.95x the ask on two such rows. The channels come from three different passes of
+       one substep (control, thrust, aero), so a pass that did not run leaves ITS channel
+       at zero, which is the honest answer -- a hull at drag_cd 0 spent nothing on fins.
+       Cleared by applyRotationForce with tvcLat_ and surfaceLat_ and by goOnRails beside
+       the F4 overlay's clears: a railed hull runs no substeps, so it shows nothing spent
+       rather than the last live hull's numbers. A PAUSED sim runs no clear either, so the
+       Vessel window keeps the last simulated substep -- the edge tick.cpp documents. */
+    struct AttitudeDelivery {
+        glm::dvec3 asked = glm::dvec3(0.0);
+        glm::dvec3 wheels = glm::dvec3(0.0);
+        glm::dvec3 tvc = glm::dvec3(0.0);
+        glm::dvec3 surfaces = glm::dvec3(0.0);
+    };
+    /* The last actuated substep's record. Read it, do not write it: actuateAttitude,
+       applyThrustForce and applyAeroForce own the numbers, applyRotationForce the clear. */
+    const AttitudeDelivery &attitudeDelivery() const { return attDel_; }
+
+private:
+    AttitudeDelivery attDel_;
+
+public:
     /* WHAT CAN TURN THIS SHIP RIGHT NOW (#425). One answer to "how hard, and
        about which axis", for every consumer: the slew law, the kill-rot law, the
        [slew] trace, and later the RCS and aero rows. Before this each caller

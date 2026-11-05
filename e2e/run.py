@@ -173,9 +173,16 @@ SURFMAP_RE = re.compile(
 # lever THIS tick (TVC rides the armed thrust, so a coasting TVC-only hull reads 0),
 # and what the ignited stage could lever at full throttle. Both are needed to tell
 # "this hull cannot turn" from "this hull is not burning".
+# tau_ask/tau_spent are #599's pair on the TORQUE side: the N m the stick and the latched
+# laws summed for the last actuated substep, and what the wheels, the gimballed nozzles
+# and the control surfaces actually delivered -- measured off the forces those passes
+# bill, not off the allocator's routing. tau_ask far above tau_spent is the hardware
+# refusing; tau_spent above tau_ask is a gimbal holding its aim from the last substep.
+# ask == 0 with E > 0 is a law that has been handed no authority at all.
 SLEW_RE = re.compile(
     r"\[slew\]\s+t=([\d.]+)\s+mode=(\S+)\s+E=([-\d.]+)\s+rad\s+.*?"
     r"alpha=([-\d.]+)\s+alpha_full=([-\d.]+)\s+Ieff=([-\d.]+)\s+.*?"
+    r"tau_ask=([-\d.]+)\s+tau_spent=([-\d.]+)\s+.*?"
     r"nose=\[([-\d.+]+) ([-\d.+]+) ([-\d.+]+)\]\s+"
     r"target=\[([-\d.+]+) ([-\d.+]+) ([-\d.+]+)\]"
 )
@@ -668,12 +675,13 @@ def parse_dbg(out):
 def parse_slew(out):
     rows = []
     for m in SLEW_RE.finditer(out):
-        (t, mode, e, alpha, alpha_full, ieff,
+        (t, mode, e, alpha, alpha_full, ieff, tau_ask, tau_spent,
          nx, ny, nz, tx, ty, tz) = m.groups()
         rows.append({
             "t": float(t), "mode": mode, "E": float(e),
             "alpha": float(alpha), "alpha_full": float(alpha_full),
             "Ieff": float(ieff),
+            "tau_ask": float(tau_ask), "tau_spent": float(tau_spent),
             "nose": (float(nx), float(ny), float(nz)),
             "target": (float(tx), float(ty), float(tz)),
         })

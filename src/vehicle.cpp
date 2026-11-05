@@ -2389,13 +2389,24 @@ void Vehicle::applyThrustForce(double h) {
         if(p->armedThrust == 0.0f) { continue; }
         // Along the (possibly gimballed) engine axis, applied AT the engine:
         // an off-axis or tilted engine torques the ship directly.
+        const glm::dvec3 arm = partPos(p) - com;
         const glm::dvec3 ft = partThrustDir(p) * (double)p->armedThrust;
-        ApplyForce(hull, partPos(p) - com, ft);
+        ApplyForce(hull, arm, ft);
         ftotal += ft;
+        if(p->def->gimbal_max > 0.0) {
+            /* #599: the N m this nozzle actually turned the hull with, off the same
+               force Bullet just got. An engine that is not armed, has not finished
+               swinging on its gimbal RATE, or is levershort of the budget shows up
+               here short, which is the point: the split's share would have read the
+               rating instead. Ungimballed engines are left out -- their thrust is not
+               steering however much it torques. See AttitudeAuthority's neighbour
+               AttitudeDelivery in vehicle.h. */
+            attDel_.tvc += glm::cross(arm, ft);
+        }
         if(recordForceVecs) {
             // Same arm Bullet got; the drawer anchors it at the CURRENT COM
             // (see the ForceVec doc in vehicle.h).
-            lastForceVecs.push_back({ partPos(p) - com, ft, kForceThrust });
+            lastForceVecs.push_back({ arm, ft, kForceThrust });
         }
     }
     lastThrustForce = ftotal;
@@ -3315,6 +3326,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             ApplyForce(hull, ri, F);
             ftotal += F;
             moment += glm::cross(ri, F);
+            /* #599: the plate's ACTUAL say, from the same force Bullet just got, so
+               the readout cannot quote a promise the air refused: it is 0 in vacuum and
+               where a plate has no q, droops past stall_angle or sweeps through its own
+               turn (#483, #494). Trim is part of the command, so a trimmed airframe
+               spends here too -- which is what a player watching "what is turning me"
+               wants. Only the CONTROLLED surfaces count; a fixed plate's lift is not
+               steering. */
+            attDel_.surfaces += glm::cross(ri, F);
             if(recordForceVecs) {
                 lastForceVecs.push_back({ ri, F, kForceCtrl, p->aeroAlphaDeg, pa.valid });
             }
@@ -3419,6 +3438,9 @@ void Vehicle::applyRotationForce(double h) {
        gets an ask, whoever does not gets the plates back to neutral. actuateAttitude
        is not called at all when the demand is zero, so this is where the reset lives. */
     surfaceLat_.clear();
+    /* And for the delivery record (#599): a substep nobody asked for shows 0 N m, not
+       the last substep that was. */
+    attDel_ = Vehicle::AttitudeDelivery{};
     Part *ref = attitudeRef();
     /* ONE capability answer per substep (#594): the stick path, the slew law, the
        kill-rot law and the [slew] trace each used to ask attitudeAuthority() for a
@@ -3661,11 +3683,23 @@ void Vehicle::applyRcsForce(double h) {
 
 void Vehicle::slew_log(double time) {
     if(slew == SlewNone) { return; }
+    /* THE SPEND (#599), read the same way for every mode this row prints. The demand
+       and the channels come from the last ACTUATED substep -- applyRotationForce clears
+       the record every substep, so a law that asked for nothing reads 0/0 rather than
+       the last substep that did. tau_ask well above tau_spent is the hardware refusing: a
+       demand about a line no drum covers, a saturated actuator, #577's over-subscribed
+       multi-key hold. tau_spent above tau_ask is the other way round and normal -- a
+       gimbal keeps its aim between substeps (AttitudeDelivery in vehicle.h). Both columns
+       are the whole vector's length, so they do not decompose: a channel that levers
+       pitch and one that levers yaw sum into one magnitude. */
+    const AttitudeDelivery del = attitudeDelivery();
+    const double tau_ask = glm::length(del.asked);
+    const double tau_spent = glm::length(del.wheels + del.tvc + del.surfaces);
     if(slew == SlewKillRot) {
         const glm::dvec3 w = hullAngVel();
         printf("[slew] t=%.3f mode=killrot |w|=%.4f rad/s "
-               "w=[%+.4f %+.4f %+.4f]\n",
-               time, glm::length(w), w.x, w.y, w.z);
+               "w=[%+.4f %+.4f %+.4f] tau_ask=%.0f tau_spent=%.0f\n",
+               time, glm::length(w), w.x, w.y, w.z, tau_ask, tau_spent);
         fflush(stdout);
         return;
     }
@@ -3709,6 +3743,10 @@ void Vehicle::slew_log(double time) {
        apart from "this hull is not burning" -- which the 96 case's engine-off drift
        has always depended on, and which a reader could not see before. */
     const double alpha_full = (Ieff > 0.0) ? availableTurnTorque(auth, axis) / Ieff : 0.0;
+    /* alpha and alpha_full are RATINGS; the tau_ columns at the end of the row are what
+       the last actuated substep cost, and tau_ask 0 next to a nonzero E is the story
+       flight/96 used to have to tell through its drift alone: a law that has been handed
+       no authority asks nothing, so the hull coasts with SAS lit and nothing spent. */
     target = glm::normalize(target);   // the printed direction is a unit vector
     /* The frame this rate decomposition belongs to (#421): nose, the axis the slew
        law actually drives, and the third that completes it. A hull-level |w| cannot
@@ -3716,9 +3754,11 @@ void Vehicle::slew_log(double time) {
        alpha is quoted ABOUT THAT AXIS, which is the tripwire this row has always
        been: a stack-axis error reads no TVC budget, exactly as tvcSplit hands that
        component to the wheels (#576) -- if the law and the mixer ever come apart
-       again, this row shows it. What it does NOT say is what the hull was actually
-       torqued by: the budget (#599), and under SasStickOwnsAxis an axis the pilot is
-       holding shows its full authority even while the law gives it nothing (#421). */
+       again, this row shows it. alpha and alpha_full stay BUDGETS: under
+       SasStickOwnsAxis an axis the pilot is holding shows its full authority even
+       while the law gives it nothing (#421). The tau_ columns are the delivery --
+       about no particular axis, since a channel that levers pitch and one that
+       levers yaw sum into one magnitude. */
     const glm::dvec3 rollAxis  = p.facing;
     const glm::dvec3 thirdAxis = glm::cross(axis, rollAxis);
     const glm::dvec3 w = hullAngVel();
@@ -3732,10 +3772,11 @@ void Vehicle::slew_log(double time) {
     printf("[slew] t=%.3f mode=%s E=%.4f rad (%.2f deg) "
            "w_slew=%+.4f w_roll=%+.4f w_third=%+.4f |w|=%.4f "
            "alpha=%.3f alpha_full=%.3f Ieff=%.0f w_des=%+.4f "
+           "tau_ask=%.0f tau_spent=%.0f "
            "nose=[%+.6f %+.6f %+.6f] target=[%+.6f %+.6f %+.6f]\n",
            time, mode, E, glm::degrees(E),
            w_slew, w_roll, w_third, glm::length(w),
-           alpha, alpha_full, Ieff, w_des,
+           alpha, alpha_full, Ieff, w_des, tau_ask, tau_spent,
            p.facing.x, p.facing.y, p.facing.z, target.x, target.y, target.z);
     fflush(stdout);
 }
@@ -5110,6 +5151,12 @@ void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
        it would go quietly wrong the day the fins (#426) or RCS rows (#595) arrive. */
     assert(++tvcCalls_ <= 1);
     tvcLat_ = lat;
+    /* The demand half of the #599 record. What each CHANNEL spent is recorded where it
+       is spent -- ApplyTorque below, applyThrustForce and applyAeroForce -- not here,
+       because the split and the solve only ROUTE a share: the mixer's per-engine clamp,
+       the gimbal rate and the air can all land short of what this function asked for,
+       and a readout that quotes the routing says the rating over again (#608). */
+    attDel_.asked = torque;
     /* ONE solve over every row the hull can spend this substep: the drums, then the
        control surfaces (#426). They share one vector on purpose. Two solves would
        double-spend a line a drum and a fin both cover -- which is the shape #420's
@@ -5150,6 +5197,11 @@ void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
        will want them per wheel. */
     const glm::dvec3 mechanical = delivered - aeroShare;
     if(glm::length2(mechanical) > 0.0) { ApplyTorque(hull, mechanical); }
+    /* The one channel this function can state as fact: whatever lands here is on the
+       hull by the end of the substep. The fins' and nozzles' shares are NOT recorded
+       here -- they are billed by the air and by the thrust pass, which is where the
+       #599 record reads them. */
+    attDel_.wheels = mechanical;
 }
 
 /* WHAT AIMING AT `dir` MEANS FOR THIS HULL (#400): the error, the axis that closes it,
@@ -5586,6 +5638,10 @@ bool Vehicle::goOnRails() {
     }
     lastRcsNozzles.clear();  // likewise the [rcs] log: no substeps, no nozzles
     lastForceVecs.clear();   // and the force overlay: no substeps, no arrows
+    /* And the #599 spend record: applyRotationForce, which clears it every substep,
+       never runs on rails, so the Vessel window would keep quoting the last live
+       hull-substep's steering for as long as the conic runs. */
+    attDel_ = AttitudeDelivery{};
 
     // out of the world: the one body
     if(hullInWorld()) { RemoveBody(hull); }

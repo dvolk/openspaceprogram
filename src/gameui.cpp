@@ -2496,23 +2496,44 @@ void drawUIReadouts(Game &g) {
         {
             const Vehicle::AttitudeAuthority auth = ship->attitudeAuthority();
             const glm::dmat3 ax = ship->attitudeBasis();
-            ImGui::Text("Wheel torque (roll/pitch/yaw): %.0f / %.0f / %.0f N m",
+            /* WHAT EACH ACTUATOR SPENT (#599), projected onto the same three ship axes
+               as every rating row here. A rating answers "is this drum enough?"; the
+               spend answers "what is turning the hull right now", and the gap between
+               them on one axis is the torque the HARDWARE refused there -- #577's
+               over-subscribed multi-key hold, a saturated actuator, a demand about a line
+               no drum covers. Vehicle::AttitudeDelivery in vehicle.h is the ONE place
+               that says what each channel measures, what it can come short of, and why
+               the gap is not always positive. The rows are magnitudes because the rating
+               beside them is one; a signed spend would invite reading a direction that is
+               not there. A PAUSED sim keeps showing the last simulated substep, the edge
+               tick.cpp documents for the F4 overlay. */
+            const Vehicle::AttitudeDelivery del = ship->attitudeDelivery();
+            auto about = [&](const glm::dvec3 &tau) {
+                return std::array<double, 3>{ std::fabs(glm::dot(tau, ax[2])),
+                                              std::fabs(glm::dot(tau, ax[0])),
+                                              std::fabs(glm::dot(tau, ax[1])) };
+            };
+            const std::array<double, 3> wh = about(del.wheels);
+            ImGui::Text("Wheel torque (roll/pitch/yaw): %.0f / %.0f / %.0f N m, spent %.0f / %.0f / %.0f",
                         actuatorTorqueAbout(auth.wheels, ax[2]),
                         actuatorTorqueAbout(auth.wheels, ax[0]),
-                        actuatorTorqueAbout(auth.wheels, ax[1]));
+                        actuatorTorqueAbout(auth.wheels, ax[1]),
+                        wh[0], wh[1], wh[2]);
             /* #426: the same question of the surfaces -- what one radian of command
                at THIS dynamic pressure is worth about each ship axis. Only shown when
                there is something to show, so a rocket's readout stays as it was; a
                finned airframe can now see what its fins are worth, which is what tells
                a player that a hull with no drum still steers in air.
-               Budget, not delivery (#599): past stall_angle the force law droops
-               (#494) and a turning hull sweeps its surfaces (#483), so this is what the
-               plates are worth, not what they just did. */
+               The rating is a budget, not a delivery; the SPEND beside it is the air's
+               answer, so it reads 0 in vacuum and droops past stall_angle (#494) or
+               under a swept plate (#483) -- the difference the #426 caveat is about. */
             if(!auth.surfaces.empty()) {
-                ImGui::Text("Surface torque (roll/pitch/yaw): %.0f / %.0f / %.0f N m",
+                const std::array<double, 3> sh = about(del.surfaces);
+                ImGui::Text("Surface torque (roll/pitch/yaw): %.0f / %.0f / %.0f N m, spent %.0f / %.0f / %.0f",
                             actuatorTorqueAbout(auth.surfaces, ax[2]),
                             actuatorTorqueAbout(auth.surfaces, ax[0]),
-                            actuatorTorqueAbout(auth.surfaces, ax[1]));
+                            actuatorTorqueAbout(auth.surfaces, ax[1]),
+                            sh[0], sh[1], sh[2]);
             }
             /* #608: on a hull whose only steering is the gimbals, the steering IS in
                the throttle -- tvcTorque rides the thrust the last ApplyThrust armed, so
@@ -2524,11 +2545,22 @@ void drawUIReadouts(Game &g) {
                was. It is a disk, not a ball (#425), so the number is pitch and yaw --
                the stack axis (roll) gets nothing from a nozzle. And "full throttle"
                carries the same caveat as the available-thrust row: a jet's rating is
-               its ceiling in THIS air at its best speed, not its sea-level brochure. */
+               its ceiling in THIS air at its best speed, not its sea-level brochure.
+               The spend is measured off the deflected nozzles, so it can sit under the
+               rating for a reason the rating cannot see: the gimbal RATE has not
+               finished swinging the ring, or a cluster's mixer clamped one engine. */
             if(auth.tvcTorqueAvailable > 0.0) {
-                ImGui::Text("Gimbal torque, pitch/yaw (this tick / full throttle): %.0f / %.0f N m",
-                            auth.tvcTorque, auth.tvcTorqueAvailable);
+                const std::array<double, 3> tv = about(del.tvc);
+                ImGui::Text("Gimbal torque, pitch/yaw (this tick / full throttle): %.0f / %.0f N m, spent %.0f / %.0f",
+                            auth.tvcTorque, auth.tvcTorqueAvailable, tv[1], tv[2]);
             }
+            /* THE ASK (#599), on the row the spends sit under. Shown even at zero,
+               because zero is the answer flight/96's post-cutoff drift and #640 had to
+               infer from behaviour: SAS lit, throttle shut, a law handed no authority
+               asks nothing, so nothing is spent and the hull drifts. */
+            const std::array<double, 3> ak = about(del.asked);
+            ImGui::Text("Steering asked (roll/pitch/yaw): %.0f / %.0f / %.0f N m",
+                        ak[0], ak[1], ak[2]);
         }
         ImGui::Text("Angular rate: %.2fdeg/s",
                     glm::degrees(glm::length(ship->hullAngVel())));

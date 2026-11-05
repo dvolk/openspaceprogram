@@ -462,6 +462,117 @@ static void test_the_turn_authority_has_a_throttle_free_twin() {
     }
 }
 
+/* WHAT THE SUBSTEP ACTUALLY SPENT (#599). Every rating in this model answers "could
+   this build turn?". The question a player reads off the same row is "is it turning?",
+   and until now that answer was thrown away at the end of the substep that computed it.
+   It is stashed now -- the N m asked, and what each CHANNEL spent -- and the interesting
+   part is the gap: the torque the HARDWARE refused, which is what a saturated or
+   badly-covered build looks like from the inside (#577's over-subscribed keys, a demand
+   about a line no drum is on). The channels are MEASURED where they are billed
+   (ApplyTorque, applyThrustForce, applyAeroForce), not read off the allocator's routing:
+   a routed share of the TVC budget is the #608 rating wearing a different hat. The rig is
+   chosen so the two channels cover DIFFERENT lines: a single 200 N m drum along the stack
+   and a 20 kN gimballed engine 1.25 m below the COM, which levers the transverse plane
+   only (#425's disk). */
+static void test_the_substep_remembers_what_the_actuators_spent() {
+    printf("== the ask, the spend, and the refusal between them ==\n");
+    Stack st = mkStack(200.0, 20000.0, 0.1, 5.0, 4000.0);
+    /* The shipped nozzle speed: mkPart leaves gimbal_rate alone, and the realised TVC
+       figure is a measured force off a nozzle that has to TRAVEL to its aim, so a rig
+       with no rate cannot answer the question this pins. */
+    for(PartDef &d : st.s.defs) {
+        if(d.name == std::string("engine")) { d.gimbal_rate = 1.5708; }
+    }
+    Vehicle *v = st.s.v;
+    const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
+    const double tvcMax = a.tvcTorque;
+    CHECK_TRUE(tvcMax > 10.0 * 200.0, "the fixture: the nozzle outsells the drum twelvefold");
+    CHECK_NEAR(v->attitudeTorqueAbout(a, st.z), 200.0, 1e-9,
+               "about the stack the drum is the whole answer, and the nozzle is none of it");
+    CHECK_NEAR(glm::length(v->attitudeDelivery().asked), 0.0, 0.0,
+               "a hull nobody has asked for anything has spent nothing");
+
+    /* actuateAttitude asserts one call per substep (tvcCalls_), so each direct call
+       below re-arms the counter exactly as applyRotationForce does. */
+    v->tvcCalls_ = 0;
+    v->actuateAttitude(st.z * 500.0, a);
+    Vehicle::AttitudeDelivery d = v->attitudeDelivery();
+    CHECK_NEAR(glm::length(d.asked), 500.0, 1e-9,
+               "the ask is recorded as SUMMED, not as what survived the solve");
+    CHECK_NEAR(glm::length(d.wheels), 200.0, 1e-9,
+               "the drum's rating is everything the hull got about the stack");
+    CHECK_NEAR(glm::length(d.asked - d.wheels - d.tvc - d.surfaces), 300.0, 1e-9,
+               "300 N m refused -- the number no readout used to be able to show");
+
+    /* THE NOZZLES' FIGURE IS A MEASUREMENT. Nothing in this substep has called
+       applyThrustForce, so the record says the nozzles gave the hull nothing -- and it
+       would say that even for a demand the split HAD routed to them, as the next block
+       shows. An earlier draft of this feature recorded the routed share instead and read
+       2496 N m on a hull no nozzle had yet pushed. */
+    CHECK_NEAR(glm::length(d.tvc), 0.0, 0.0, "no thrust pass ran, so no nozzle spent anything");
+    CHECK_NEAR(glm::length(d.surfaces), 0.0, 0.0, "and no air pass ran");
+
+    v->tvcCalls_ = 0;
+    v->actuateAttitude(st.x * tvcMax, a);
+    CHECK_NEAR(glm::length(v->tvcLat_), std::sin(0.1), 1e-9,
+               "the whole ask aims the ring at its stop, in the split's sin() units (#471)");
+    /* ONE SUBSTEP of applyThrustForce: the nozzle starts centred and travels at
+       gimbal_rate (1.5708 rad/s), so after 1/120 s it is 0.0131 rad off centre -- 13 %
+       of its stop. The routing would have booked the full 2496 N m on the first substep
+       of a held key; the measured figure is what the ship actually felt. */
+    v->applyThrustForce(1.0 / 120.0);
+    d = v->attitudeDelivery();
+    CHECK_TRUE(glm::length(d.tvc) > 0.0, "the ring pushed, so the channel is not zero");
+    CHECK_NEAR(std::fabs(glm::dot(d.tvc, st.x)), 20000.0 * std::sin(0.0131) * 1.25, 150.0,
+               "off a nozzle 1/120 s into its travel, at the fixture's 1.25 m lever");
+    CHECK_TRUE(std::fabs(glm::dot(d.tvc, st.x)) < 0.5 * tvcMax,
+               "the first substep of a held key buys a fraction of the rating -- the point of measuring");
+    /* And it ramps. Each pass below is a whole mini-substep in the tick's own order --
+       applyRotationForce clears the record and re-arms the one allocator call, then the
+       thrust pass measures -- because the channels ACCUMULATE within a substep, which is
+       what lets the nozzles and the air add in. Skipping the clear adds nine substeps of
+       nozzle force onto one row. */
+    for(int i = 0; i < 8; i++) {
+        v->applyRotationForce(1.0 / 120.0);
+        v->actuateAttitude(st.x * tvcMax, a);
+        v->applyThrustForce(1.0 / 120.0);
+    }
+    d = v->attitudeDelivery();
+    CHECK_NEAR(std::fabs(glm::dot(d.tvc, st.x)), tvcMax, 0.01 * tvcMax,
+               "with the ring at its stop the measured spend is the rating, to the 0.17%"
+               " the split's sin()-units aim costs (#471)");
+    CHECK_NEAR(std::fabs(glm::dot(d.tvc, st.y)), 0.0, 1e-6, "and it levers the asked axis only");
+
+    /* IT IS THE LAWS THAT SATURATE, not just a test's round number: kill-rot on a hull
+       tumbling about the stack asks I*omega/h, which is tens of kN m here against a
+       200 N m drum. The ask goes in as asked and the spend comes back capped -- which is
+       the pair the Vessel window and the [slew] trace now print. */
+    v->hull->btBody->setAngularVelocity(btVector3(0.0f, 0.0f, 2.0f));
+    v->Command(ShipCmd(KillRot), true);
+    v->applyRotationForce(1.0 / 120.0);
+    const Vehicle::AttitudeDelivery kr = v->attitudeDelivery();
+    CHECK_TRUE(glm::length(kr.asked) > 10.0 * 200.0,
+               "kill-rot asks an order of magnitude more than this drum can pay");
+    CHECK_NEAR(glm::length(kr.wheels), 200.0, 1e-6,
+               "the drum line saturates at its rating while the ask does not");
+    CHECK_NEAR(glm::length(kr.tvc), 0.0, 0.0,
+               "a demand about the stack has no nozzle in it, so the mixer aims none (#425)");
+
+    /* THE CLEAR. applyRotationForce owns it: a substep nobody asked for shows nothing
+       spent rather than the last substep that was -- the same discipline as tvcLat_ and
+       surfaceLat_, and the one a stale readout would otherwise break. Kill-rot is still
+       latched; the hull is simply at rest, so the law asks for nothing and
+       actuateAttitude is not called at all. */
+    v->hull->btBody->setAngularVelocity(btVector3(0.0f, 0.0f, 0.0f));
+    v->applyRotationForce(1.0 / 120.0);
+    const Vehicle::AttitudeDelivery q = v->attitudeDelivery();
+    CHECK_NEAR(glm::length(q.asked), 0.0, 0.0,
+               "no ask, no spend, and no leftover from the substep that had both");
+    CHECK_NEAR(glm::length(q.tvc), 0.0, 0.0,
+               "not even the nozzle force the previous substep measured, which is what a railed hull needs");
+    destroyShip(st.s.v);
+}
+
 /* --- what the model is for ------------------------------------------------ */
 static void test_a_ship_with_nothing_has_nothing() {
     printf("== no wheel, no armed engine: the answer is zero, not a fudge ==\n");
@@ -1361,6 +1472,24 @@ static void test_a_fin_row_is_spent_and_hands_its_ask_to_the_air() {
                "the drum's rating is all the hull gets from a solve that promised "
                "thousands: the rest is the air's bill (#426)");
 
+    /* THE SAME SUBSTEP, AS THE RECORD THE READOUTS PRINT (#599). Two of the three
+       channels are measured in a LATER pass than the one that asked for them, so before
+       the aero step runs the plate's share is not in the record at all: the drum's 100 N
+       m is there because ApplyTorque put it on the hull, and `surfaces` is empty because
+       the air has not answered yet. An earlier draft took the solve's ASSIGNMENT for the
+       plate's spend and printed thousands of N m the hull never felt. */
+    {
+        const Vehicle::AttitudeDelivery del = a.v->attitudeDelivery();
+        CHECK_NEAR(glm::length(del.asked), pitchAsk, 1e-9 * pitchAsk,
+                   "the ask is recorded before the split, as the stick summed it");
+        CHECK_NEAR(glm::length(del.wheels), 100.0, 1e-9,
+                   "the wheels' share, which is the torque the hull measured above");
+        CHECK_NEAR(glm::length(del.surfaces), 0.0, 0.0,
+                   "the plate has not pushed yet, so it has spent nothing -- which is what"
+                   " the same row says in vacuum, where it never will");
+        CHECK_NEAR(glm::length(del.tvc), 0.0, 0.0, "no nozzle on this rig");
+    }
+
     /* THE SAME SUBSTEP. applyRotationForce only stashes the ask; applyAeroForce spends
        it. That is what let the tick move control ahead of aero -- a latched law's
        demand and the plate that answers it have to share one substep or every fin has
@@ -1373,6 +1502,29 @@ static void test_a_fin_row_is_spent_and_hands_its_ask_to_the_air() {
     CHECK_NEAR(0.35, std::fabs(deflA), 1e-6,
                "the solver's setpoint arrived as travel, and the demand was big enough "
                "to pin it at the stop");
+
+    /* AND NOW THE AIR HAS ANSWERED (#599). The same record, refilled by applyAeroForce
+       off the force it bills, so the figure is the plate's ACTUAL say at this dynamic
+       pressure rather than the row's promise per radian. They agree here to the last bit
+       because this rig is the mildest case there is: unstalled (0.35 rad of travel against
+       a 0.5 rad stop), aligned with the flow, not spinning, and the row is built from the
+       same q and the same slope law the force uses. Every one of those is where they can
+       part company -- q at the plate rather than at the COM (#483's sweep), the droop past
+       stall_angle (#494), an unusable mount frame that bills nothing at all -- and a budget
+       row cannot see any of them, which is the point of measuring the spend. */
+    {
+        const Vehicle::AttitudeDelivery del = a.v->attitudeDelivery();
+        const double promise = 0.35 * std::fabs(glm::dot(row, side));
+        const double spent = std::fabs(glm::dot(del.surfaces, side));
+        printf("   the air returned %.0f N m about pitch against a %.0f N m promise\n",
+               spent, promise);
+        CHECK_NEAR(spent, promise, 0.01 * promise,
+                   "the air's answer, in this rig, is the row's worth at the stop -- and it"
+                   " is the AIR's number, which is what lets it read 0 in vacuum");
+        CHECK_NEAR(glm::length(del.wheels), 100.0, 1e-9,
+                   "and the drum's figure survived the aero pass, since the channels"
+                   " are added, not replaced");
+    }
 
     /* A released key recentres the plate: surfaceLat_ is cleared every substep rather
        than left over from the last one that asked. */
@@ -1818,6 +1970,7 @@ int main() {
     test_tvc_is_a_disk_not_a_ball();
     test_wheels_and_tvc_together();
     test_the_turn_authority_has_a_throttle_free_twin();
+    test_the_substep_remembers_what_the_actuators_spent();
     test_a_ship_with_nothing_has_nothing();
     test_two_wheels_add_up();
     test_a_cluster_covers_an_axis_it_points_at();
