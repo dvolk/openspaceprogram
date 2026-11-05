@@ -573,9 +573,20 @@ static void test_seam_staging() {
     CHECK_TRUE(A.v->seams[0].root == portB, "staging: seam root is B's root");
 
     /* Stage the decoupler: the decoupler, the port, and all of B come off. */
+    /* The pilot's ORDERS ride along with the hull they were given for (#649). An enable
+       switch is not a stage's property, so a hull that had its drums or plates off stages
+       with them still off; left out, the new Vehicle's constructor defaults silently
+       re-open a door the player shut. Nothing could write either mask until #649 put a
+       handle on them, which is how this stayed invisible since #425 D-2. */
+    A.v->wheels_enabled = false;
+    A.v->surfaces_enabled = false;
     Vehicle *out = A.v->extractSubtreeAsShip(decop, "staged");
     CHECK_TRUE(out != nullptr, "staging: the split succeeded");
     if(out == nullptr) { destroyShip(B.v); destroyShip(A.v); return; }
+    CHECK_TRUE(!out->wheels_enabled && !out->surfaces_enabled,
+               "staging: the split-off ship keeps both switches as the pilot left them");
+    CHECK_TRUE(!A.v->wheels_enabled && !A.v->surfaces_enabled,
+               "and so does the survivor: the cut splits parts, not orders");
 
     /* The fix: both ends of the seam are in the split-off subtree, so the
        seam moved WITH it and the survivor is left with none. */

@@ -86,7 +86,7 @@ struct GameArgs {
 
     std::vector<UiClick> ui_clicks;  // imgui clicks by "Window/Label"
     std::vector<UiScroll> ui_scrolls;  // imgui wheel scrolls by window
-    int ui_list_ms = -1;             // dump the clickable items
+    std::vector<int> ui_list_ms;     // dump the clickable items, at each time given
     int atlas_dump_ms = -1;          // print the System Atlas rows + dossiers
     int staff_dump_ms = -1;          // print the Staff Lounge roster + locations
     int map_plane = -1;              // the orbit map's plane combo (0 equ, 1 ecl, 2 orb, 3 tgt)

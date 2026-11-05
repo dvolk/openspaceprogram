@@ -241,9 +241,14 @@ void uiInputFrame(ImGuiContext *ctx, ImGuiContextHook *hook) {
 
     const Uint32 now = g.schedClockMs();  // sim ms under --sim-steps (#472)
 
-    if(g.args.ui_list_ms >= 0 && now >= (Uint32)g.args.ui_list_ms) {
-        dumpUiItems(now);
-        g.args.ui_list_ms = -1;
+    /* One dump per --ui-list time, each firing exactly once. Two times that
+       fall inside the same frame gap both dump here: a case then counts its
+       dumps instead of guessing the frame cadence. */
+    for(int &ms : g.args.ui_list_ms) {
+        if(ms >= 0 && now >= (Uint32)ms) {
+            dumpUiItems(now);
+            ms = -1;
+        }
     }
 
     /* Park the cursor a frame AFTER a release, never on the release frame
@@ -445,9 +450,14 @@ void emit_ui_input(Game &g) {
     ImGuiContext *ctx = ImGui::GetCurrentContext();
     if(ctx == nullptr) { return; }
 
-    // Armed only while work remains: the registry allocates per item per
-    // frame, and a finished test should not pay it.
-    bool pending = g.args.ui_list_ms >= 0;
+    /* Armed only while work remains: the registry allocates per item per
+       frame, and a finished test should not pay it. Every --ui-list time is
+       spent once it fires, so the hook disarms between a case's last dump and
+       its last click. */
+    bool pending = false;
+    for(const int ms : g.args.ui_list_ms) {
+        if(ms >= 0) { pending = true; break; }
+    }
     for(const UiClick &c : g.args.ui_clicks) {
         if(!c.done) { pending = true; break; }
     }

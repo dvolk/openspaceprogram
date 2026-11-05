@@ -329,8 +329,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_option("--ui-list", args.ui_list_ms,
                    "Dump every clickable imgui item (window, label, rect) at "
-                   "this loop time in ms, for writing --ui-click paths and "
-                   "--ui-scroll targets (test hook; -1 = never)");
+                   "each time given, for writing --ui-click paths and "
+                   "--ui-scroll targets (test hook). Repeat the flag for more "
+                   "than one dump: a case that toggles a switch needs one "
+                   "dump either side of the click.")
+        ->expected(-1);
 
     std::vector<std::string> ui_scroll;
     app.add_option("--ui-scroll", ui_scroll,
@@ -1237,6 +1240,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                      [](const UiScroll &a, const UiScroll &b) {
                          return a.at_ms < b.at_ms;
                      });
+    /* --ui-list times likewise: the hook walks the list in order, so two times
+       that fall in the same frame gap dump in the order asked for. */
+    std::stable_sort(args.ui_list_ms.begin(), args.ui_list_ms.end());
 
     // Any of the --free-cam-* options opts in to starting in free-cam mode.
     args.use_free_cam = !args.free_cam_pos.empty() || !args.free_cam_fwd.empty()

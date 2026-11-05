@@ -178,19 +178,24 @@ int main() {
 
     // 3c) --ui-click: one value per click, split at the FIRST comma so the
     //     path keeps its own commas (and its spaces, which the shell / the
-    //     e2e ARGS line quote away). --ui-list is the one-shot dump time.
+    //     e2e ARGS line quote away). --ui-list takes one time per flag and is
+    //     sorted like the click queue, so a case may write its dumps in any
+    //     order and still get them in time order.
     {
         GameArgs args;
         const char *argv[] = {"osp",
                               "--ui-click", "1500,Title Menu/New Game",
                               "--ui-click", "3000,Game Menu/Tracking Station",
                               "--ui-click", "2500,Save/Load,slot 1",
+                              "--ui-list", "5000",
                               "--ui-list", "1200"};
         bool ok = false;
         int code = -1;
-        run(9, (char **)argv, args, ok, code);
+        run(11, (char **)argv, args, ok, code);
         assert(ok);
-        assert(args.ui_list_ms == 1200);
+        assert(args.ui_list_ms.size() == 2);
+        assert(args.ui_list_ms[0] == 1200);
+        assert(args.ui_list_ms[1] == 5000);
         assert(args.ui_clicks.size() == 3);
         // Given out of time order on purpose: the queue is served in order and
         // an entry whose widget is not drawn yet is skipped rather than waited

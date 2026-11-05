@@ -108,7 +108,9 @@ Discover the address first. `--ui-list MS` prints every clickable item as
 `window="..." label="..." rect=... [disabled]`, and `--ui-click MS,"Window/Label"`
 matches that pair exactly, imgui's `##` disambiguator included. A path that
 guesses at a label fails with `not found`; a path that matches two items fails
-as `ambiguous`. `--ui-list` is the source of truth, not the source code.
+as `ambiguous`. `--ui-list` is the source of truth, not the source code. Repeat
+the flag for a dump at each time given: a case that toggles something wants one
+dump on each side of the click, or it is only proving the after picture (#649).
 
 Readout rows drawn with `uiText()` (src/uiinput.h) print too, marked ` text`: their
 label is the line as the player reads it, value included, so a case can assert what is

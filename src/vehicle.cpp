@@ -2145,8 +2145,8 @@ double Vehicle::wheelDemandWatts() const {
 
 double Vehicle::wheelDrawWatts() const {
     /* What the wheels are BILLING this substep: what they DELIVERED last time the mixer
-       ran (#648), and only while a command is live and the EC gate is open. The power
-       block on the Game Debug overlay and --power-log's active= column quote this, so
+       ran (#648), and only while a command is live and the EC gate is open. The Systems
+       window's Active row and --power-log's active= column quote this, so
        the readout cannot disagree with the bill (#575) -- it used to re-derive the sum,
        and dropped the power gate while doing it.
        The figure is a substep behind by construction: actuateAttitude fills it and the
@@ -2169,7 +2169,7 @@ void Vehicle::powerTick(double h) {
         }
     }
     // No EC system -> ungated. Otherwise the wheels' bill has to be payable.
-    const bool hasEC = (ecCapacity > 0.0) || (totalGen > 0.0) || (constantDraw > 0.0);
+    const bool hasEC = ecSystemPresent(totalGen, constantDraw, ecCapacity);
     /* The gate pays the WHEELS, not only life support (#642). It used to read
        (gen > life support) || (charge > 0), so a capsule + rtg hull (298 W over
        100 W) steered forever once its pool was empty: drainEC() has nothing to take
@@ -4404,6 +4404,14 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
     // A split survivor is the same vessel: keep the original's grip (a plain Vehicle
     // here would lose a subclass's setting).
     nv->hullFriction = hullFriction;
+    /* ...and its ORDERS. The enable switches are the pilot's, not the stage's
+       (#425 D-2, #649): a hull that had its drums or its plates switched off keeps them
+       off across a staging event or an undock. Left out, the constructor's defaults
+       quietly re-open a door the player shut, and the readouts then quote authority the
+       pilot declined to spend. Latent since #425 D-2 because nothing could write either
+       mask until #649 put a handle on them. */
+    nv->wheels_enabled = wheels_enabled;
+    nv->surfaces_enabled = surfaces_enabled;
 
     /* Keep the original order (parent before child): the save format resolves parents
        by reference. Rebase the poses into S'. */
@@ -4944,6 +4952,23 @@ void Vehicle::ApplyThrust(double step) {
     }
 }
 
+/* The two questions the readouts and the mixer ask of one row builder (#649).
+   `switchesApply` is ONLY the player's enable switches: hardware mode still honours the
+   EC gate and the air, because a dead battery or a vacuum is not what a switch gives up.
+   A frame with both the Vessel window and the Systems window open builds these rows twice
+   on purpose. Do not "fix" that with a per-frame cache: the rows answer for THIS substep
+   -- q, the armed thrust, the ignited stage and the EC verdict all move inside a tick --
+   and every consumer reads them mid-substep, so a cached copy would be a stale substep
+   wearing the current one's clothes (#649's review pass). If the walk ever gets worth
+   optimising, the answer is cheaper rows, not a later read. */
+Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
+    return attitudeAuthorityRows(true);
+}
+
+Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityHardware() {
+    return attitudeAuthorityRows(false);
+}
+
 /* WHAT CAN TURN THIS SHIP RIGHT NOW, in one answer: see AttitudeAuthority in
    vehicle.h for the rows and the axis, and why they must be read per substep.
    Three sets of rows today -- drums, control surfaces (#426) and the gimbals' disk --
@@ -4957,7 +4982,7 @@ void Vehicle::ApplyThrust(double step) {
    as 0 in the window and in flight rather than quoting a rating the ship cannot spend
    (#572, #418). The part window prints the part's own per-drum rating and its drum
    count. */
-Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
+Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
     AttitudeAuthority a;
     const Part *ref = attitudeRef();
     if(ref == nullptr) { return a; }   // no hull, no lever arm, no answer
@@ -4977,10 +5002,14 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
        three lines when a mount rolls or tilts the box. Every shipped wheel part
        is a triad; the single-drum half of this is what a cheap roll-only part
        would be, and what the sideways_wheel fixture exercises. */
-    if(wheelsPowered()) {
+    /* Hardware mode (#649) drops the ENABLE half of that door and keeps the power half:
+       the Systems window has to quote what a switch gives up, and a dead battery is not
+       something a switch gives up. */
+    if(switchesApply ? wheelsPowered() : ecPowersWheels()) {
         /* Two reasons for an empty `wheels`, and they are deliberately the SAME door
            (Vehicle::wheelsPowered, #425 D-2): no EC power (#418), or the hull has the
-           drums switched off. Either
+           drums switched off -- hardware mode (#649) leaves only the first, which is why
+           the Systems row behind it can name the reason by asking ecPowersWheels(). Either
            way the hull's per-axis capability drops, the laws see the smaller answer,
            the Vessel window prints it, and a held key is scaled by what is left -- so a
            wheels-off rocket steers on its gimbals rather than pretending to have drums
@@ -5092,7 +5121,11 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
        ever arrives -- the hull then gets less than it was promised for a reason no
        readout says. Same lesson as #418's power gate: the budget must answer what the
        actuators will really be able to spend. */
-    if(anySurface && drag_cd > 0.0) {
+    /* Recorded whatever the gate below decides (#649): a readout has to tell a player
+       "this hull carries no plates" from "the plates have no air to push", and an empty
+       row set answers neither. Counted in this walk so the two cannot drift apart. */
+    a.hasSurfaces = anySurface;
+    if((!switchesApply || surfaces_enabled) && anySurface && drag_cd > 0.0) {
         const glm::dvec3 vrel = airRelativeVel(com);
         const double v2 = glm::dot(vrel, vrel);
         const double rho = airRho();   // the same profile the jet ceilings above asked for

@@ -780,11 +780,11 @@ struct BuildStability {
 BuildStability buildStability(const BuildShip &bs, double occupantMass = 0.0);
 
 /* WHAT THIS ASSEMBLY COSTS THE POOL (#644) -- the electrical counterpart of
-   buildStability(): the same four terms the flight balance prints (the F1 Power block and
-   --power-log, #643), asked of the parts on the pad with no sim at all. That is what the
-   VAB cannot currently answer: mass, fuel, thrust and drag are on the build screen, and
-   the watt figures that decide whether a hull can keep its instruments and its steering
-   are not.
+   buildStability(): the same four terms the flight balance prints (the Systems window's
+   Power block and --power-log, #643/#649), asked of the parts on the pad with no sim at
+   all. That is what the VAB cannot currently answer: mass, fuel, thrust and drag are on
+   the build screen, and the watt figures that decide whether a hull can keep its
+   instruments and its steering are not.
    `wheelRatingW` is the drums' RATED draw -- the number the EC gate weighs (#642) -- not
    what they will bill. Since #648 a hull bills what its wheels DELIVER, which no build
    screen can know: it depends on what the pilot asks. So this row answers the build

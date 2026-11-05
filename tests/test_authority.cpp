@@ -1026,6 +1026,28 @@ static void test_a_switched_off_drum_is_not_a_row() {
     v->wheels_enabled = false;
     const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
     CHECK_TRUE(a.wheels.empty(), "switched off: not a row left to spend");
+    /* The other half of the same door (#649): a readout that has to say what a switch
+       gives up asks the row builder with the switches ignored, so the rows are still
+       there to count -- while the power gate still applies to it. */
+    CHECK_TRUE(!v->attitudeAuthorityHardware().wheels.empty(),
+               "the hardware answer still holds the drums the switch refused");
+    CHECK_TRUE(v->attitudeAuthorityHardware().wheels.size() == 3,
+               "and it holds all of them: hardware is a superset of what is live");
+    {
+        /* Hardware mode is not a switch-blind free pass: it drops the ENABLE half of the
+           door and keeps the EC half, because a dead battery is not what the switch gives
+           up. This is the pin that keeps the Systems row's "no EC power to spend" honest
+           -- the figure beside a switch has to be the hardware answer, and the hardware
+           answer is still zero watts of drum with no power to pay for one. */
+        const bool wasPowered = v->powered_;
+        v->powered_ = false;
+        CHECK_TRUE(v->attitudeAuthorityHardware().wheels.empty(),
+                   "no EC: the hardware rows close too, switch or no switch");
+        CHECK_TRUE(!v->ecPowersWheels(), "and the door can name that reason");
+        v->powered_ = wasPowered;
+        CHECK_TRUE(!v->attitudeAuthorityHardware().wheels.empty(),
+                   "power back and the refused drums are rows again");
+    }
     CHECK_NEAR(actuatorTorqueAbout(a.wheels, st.z), 0.0, 0.0, "no wheel authority about any axis");
     CHECK_NEAR(v->attitudeTorqueAbout(a, st.x), tvcMax, 1e-9,
                "what the hull can bring to pitch is the nozzles only");
@@ -1469,6 +1491,15 @@ static void test_a_fin_row_is_spent_and_hands_its_ask_to_the_air() {
     SetVelocity(a.v->hull, glm::dvec3(0.0, 0.0, 0.0));
     CHECK_TRUE(a.v->attitudeAuthority().surfaces.empty(),
                "no airspeed, no surface rows");
+    /* #649: the hardware answer closes for the same reason -- the sky is not something a
+       switch gives up -- while hasSurfaces keeps reporting the FITTING. That pair is what
+       lets the Systems row distinguish "no air to push them" from "no aero surfaces on
+       this hull": before the row builder recorded the fitting, an empty set printed the
+       first of those for every finless hull in the game. */
+    CHECK_TRUE(a.v->attitudeAuthorityHardware().surfaces.empty(),
+               "no airspeed, and the hardware rows close too");
+    CHECK_TRUE(a.v->attitudeAuthorityHardware().hasSurfaces,
+               "no air does not unbolt the plate: the hardware says it is still fitted");
     SetVelocity(a.v->hull, glm::dvec3(100.0, 0.0, 0.0));
 
     const glm::dvec3 side = a.v->partAxis(a.pod, 0);   // the pitch line
@@ -1482,6 +1513,19 @@ static void test_a_fin_row_is_spent_and_hands_its_ask_to_the_air() {
                "part that earned it");
     CHECK_NEAR(0.35, au.surfaces[0].limit, 1e-12,
                "a surface row's limit is travel in radians, not a torque");
+    /* #649's aero door, the same shape as the wheels': switched off, the plate emits no
+       row, so the solve hands it no setpoint and the air is asked to push nothing. The
+       drums next to it are unaffected -- one switch, one group. */
+    a.v->surfaces_enabled = false;
+    const Vehicle::AttitudeAuthority off = a.v->attitudeAuthority();
+    CHECK_TRUE(off.surfaces.empty(), "switched off: the plate emits no row to spend");
+    CHECK_TRUE(off.wheels.size() == 3, "an aero switch says nothing about the drums");
+    CHECK_TRUE(a.v->attitudeAuthorityHardware().surfaces.size() == au.surfaces.size(),
+               "and the hardware answer keeps the row, which is what the switch row quotes");
+    CHECK_TRUE(off.hasSurfaces,
+               "the switch does not unbolt the plate, so the readout can still tell a "
+               "refused group from an unbuilt one");
+    a.v->surfaces_enabled = true;
     const glm::dvec3 row = au.surfaces[0].axis;
     printf("   row = (%.0f, %.0f, %.0f) N m per rad of command\n",
            row.x, row.y, row.z);

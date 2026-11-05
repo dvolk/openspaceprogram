@@ -1,0 +1,66 @@
+# Flight gets a Systems window (#649), and with it the two things the electrical system
+# never had: a home for the power breakdown that is not the Game Debug overlay, and a
+# handle for doors the sim has been honouring for tickets now.
+#
+# The rows themselves are not new -- #601 made them readable and #642/#643/#648 decided
+# what they mean. What is new is where they live: they used to sit at the bottom of the
+# F1 overlay, so a player who never pressed F1 watched the EC bar in Resources drain with
+# no word about why, and #646 filed that as a bug in its own right. Systems is a
+# Persistent window listed in the Windows panel, so the two clicks below (close it, open
+# it again) are the case proving the listing rather than trusting the WinDef table.
+#
+# The switch is the other half. Vehicle::wheels_enabled has been load-bearing since #425
+# D-2 -- wheelsPowered() is the one predicate the row builder, the slew laws, the Vessel
+# rows and the EC bill all consult -- but NOTHING in the game ever wrote it, so the door
+# had no handle. Flipping it takes the drums out of the capability model exactly as a dead
+# battery does (test_authority pins the sim half: no rows, no torque billed, the ask
+# rerouted to the gimbals). What this case pins is the readout half, and the pair of rows
+# that have to be true at once -- on either side of the click, which is why --ui-list is
+# now repeatable (#649): one dump could only show the after picture, so the case asserted
+# the door closed and trusted the door had been open.
+#
+#   before: Vessel Info  Wheel torque ...: 4950 / 4950 / 4950 N m   <- what it may spend
+#           Systems        on -- 4950 / 4950 / 4950 N m at stake
+#   after:  Vessel Info  Wheel torque ...: 0 / 0 / 0 N m
+#           Systems        off -- 4950 / 4950 / 4950 N m at stake   <- what it gave up
+#
+# The last row is why attitudeAuthorityHardware() exists (#649): asked of the live
+# model, a closed door answers 0, so a switch quoting "what this costs you" would print
+# nothing. The hardware figure comes from the same row builder with the switches ignored --
+# not a second arithmetic, which is the rule #575 exists to keep.
+#
+# The aero switch's row is pinned too, and pinned to the RIGHT reason. power_test carries
+# no fins at all, so its aero row is "no aero surfaces on this hull"; the first printing
+# of this window said "no air for them to push" for every hull with an empty surface set,
+# which told a rocket sitting in full air that its sky was the problem (#649's review
+# pass). Empty-with-fins and never-any-fins are different news, and the row builder now
+# records which hull it is.
+#
+# RCS has no switch here, deliberately: RCS nozzles are still never asked to turn the hull
+# (#595), so there is no authority figure to print beside one, and the ticket's own rule is
+# to quote a figure rather than invent a third one.
+NAME systems-window-switches-a-group-off
+CLAIM The Systems window is listed in the Windows panel and prints the EC balance, and its Reaction wheels checkbox drops the live authority from 4950 N m to 0 while still quoting the 4950 N m the switch gives up.
+KIND golden
+ARGS --width 1600 --height 900 --timeout 12
+ARGS --startship power_test,res/ships/power_test.json,Kerbin,rot-orbit
+ARGS --ui-click 2000,"Windows/Systems"
+ARGS --ui-click 2600,"Windows/Systems"
+ARGS --ui-list 3400
+ARGS --ui-click 4000,"Systems/Reaction wheels"
+ARGS --ui-list 5000
+EXPECT [uilist] window="Systems" label="Const draw: 600.0 W   (life support)"
+EXPECT [uilist] window="Systems" label="  on -- 4950 / 4950 / 4950 N m at stake (roll/pitch/yaw)"
+EXPECT [uilist] window="Systems" label="  off -- 4950 / 4950 / 4950 N m at stake (roll/pitch/yaw)"
+EXPECT [uilist] window="Systems" label="  on -- no aero surfaces on this hull"
+EXPECT [uilist] window="Vessel Info" label="Wheel torque (roll/pitch/yaw): 4950 / 4950 / 4950 N m, spent 0 / 0 / 0"
+EXPECT [uilist] window="Vessel Info" label="Wheel torque (roll/pitch/yaw): 0 / 0 / 0 N m, spent 0 / 0 / 0"
+FORBID FAILED
+FORBID error:
+# Per dump, not per run: two --ui-list times means two dumps, and each has to carry the
+# whole window -- Status, five power rows and one row per switch group. A row that vanished
+# with the door closed, which is the mistake this window's design is about, shows up here
+# as 8 then 7 rather than as a 15 that still looks plausible.
+CHECK [len([l for l in d.split("\n") if l.rstrip().endswith(" text") and 'window="Systems"' in l]) for d in out.split("[uilist] loop=")[1:]] == [8, 8]
+# And the same for the Vessel window's capability rows, so the pair is pinned per side.
+CHECK [len([l for l in d.split("\n") if l.rstrip().endswith(" text") and 'window="Vessel Info"' in l]) for d in out.split("[uilist] loop=")[1:]] == [4, 4]

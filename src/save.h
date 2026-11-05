@@ -182,6 +182,9 @@ struct SaveShip {
        its drums keeps that choice across a save, because it is a property of the
        vessel and not a control preference like the pilot-vs-SAS rule. Absent = on. */
     bool wheels_enabled = true;
+    /* The control surfaces' same mask (#649), for the same reason: a vessel whose fins
+       are switched off keeps that choice across a save. Absent = on. */
+    bool surfaces_enabled = true;
     std::vector<SaveDock> docks;
     /* The dock target is a SLUG (its own save file), its port a uid -- the
        load's uid->Part map spans every file. */
@@ -716,6 +719,7 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
                                                   s.slew_free_dir.z});
     }
     j["wheels_enabled"] = s.wheels_enabled;
+    j["surfaces_enabled"] = s.surfaces_enabled;
     if(!s.docks.empty()) {
         nlohmann::json docks = nlohmann::json::array();
         for(auto &&d : s.docks) {
@@ -786,6 +790,7 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     if(j.contains("slew_request") && j["slew_request"].is_number()) { s.slew_request = j["slew_request"].get<int>(); }
     if(j.contains("slew_free_dir") && j["slew_free_dir"].is_array()) { s.slew_free_dir = vec3FromJson(j["slew_free_dir"]); }
     if(j.contains("wheels_enabled") && j["wheels_enabled"].is_boolean()) { s.wheels_enabled = j["wheels_enabled"].get<bool>(); }
+    if(j.contains("surfaces_enabled") && j["surfaces_enabled"].is_boolean()) { s.surfaces_enabled = j["surfaces_enabled"].get<bool>(); }
     if(j.contains("docks") && j["docks"].is_array()) {
         for(auto &&d : j["docks"]) {
             if(!d.is_object()) { continue; }

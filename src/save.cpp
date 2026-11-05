@@ -568,6 +568,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
     s.slew_request = (int)v->slewRequestMode();
     s.slew_free_dir = v->slewFreeDir();   // the aim travels with a SlewFree latch (#606)
     s.wheels_enabled = v->wheels_enabled;
+    s.surfaces_enabled = v->surfaces_enabled;
 
     for(size_t k = 0; k < v->seams.size(); k++) {
         SaveDock dk;
@@ -1091,6 +1092,7 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
     v->restoreSlewFreeDir(latched == SlewFree ? glm::dvec3(0.0)
                                               : s.slew_free_dir);   // #606
     v->wheels_enabled = s.wheels_enabled;
+    v->surfaces_enabled = s.surfaces_enabled;   // #649's second door
 
     /* Both parts of a seam must be present: skipping an unresolvable seam
        leaves the joint physically docked with no undock record, so the ship

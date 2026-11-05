@@ -7,9 +7,10 @@
 #
 # uiText() (src/uiinput.h) draws the string and hands the registry the bytes it drew,
 # tagged `text`, so --ui-list prints the row WITH its value and an EXPECT can read the
-# number off the screen. Ten call sites converted: the power block and the attitude
-# block. The power block has always lived on the Game Debug overlay, so the case presses
-# F1 -- that the balance is dev-only is its own issue, filed from #601.
+# number off the screen. The converted sites are the power block, the attitude block and
+# the VAB's part and build cards. The power block has since moved off the Game Debug
+# overlay into the Systems window (#649 closing #646), so this case presses nothing to see
+# it -- which was the point: the balance used to be a reward for already knowing F1 exists.
 #
 # power_test is flight/377's electrical fixture: a capsule_r2.25 (450 N m of built-in
 # drums, 225 W of that bill, 600 W of life support), a wheel block r2.25 (4500 N m,
@@ -22,26 +23,30 @@ CLAIM --ui-list dumps the readout rows with the values they print.
 KIND golden
 ARGS --width 1600 --height 900 --sim-steps 900
 ARGS --startship power_test,res/ships/power_test.json,Kerbin,rot-orbit
-ARGS --sim-press 3000,0,F1
 ARGS --sim-press 3000,5000,W
 ARGS --ui-list 5000
-ARGS --ui-click 7000,"Game Debug/  Const draw:  600.0 W   (life support)"
-EXPECT [uilist] window="Game Debug" label="  Active:      2475.0 W   (actuators, while commanding)"
-EXPECT [uilist] window="Game Debug" label="  Const draw:  600.0 W   (life support)"
+ARGS --ui-click 7000,"Systems/Const draw: 600.0 W   (life support)"
+EXPECT [uilist] window="Systems" label="Status:     POWERED"
+EXPECT [uilist] window="Systems" label="Active:     2475.0 W   (actuators, while commanding)"
+EXPECT [uilist] window="Systems" label="Const draw: 600.0 W   (life support)"
 EXPECT [uilist] window="Vessel Info" label="Wheel torque (roll/pitch/yaw): 4950 / 4950 / 4950 N m
 EXPECT [uilist] window="Vessel Info" label="Steering asked (roll/pitch/yaw): 0 / 4950 / 0 N m
 FORBID error:
-# How many rows the channel carries here: five power, four attitude. The Surface torque
-# row is one of the ten converted sites that a finless hull does not draw, so this counts
-# what was drawn rather than trusting the call-site list.
-CHECK len([l for l in out.split("\n") if l.rstrip().endswith(" text") and 'window="Game Debug"' in l]) == 5
+# How many rows the channel carries here: the Status verdict, five power rows and two
+# switch rows in Systems (#649's), four attitude in Vessel Info. The Surface torque row is
+# one of the converted sites a hull without fins does not draw, so this counts what was
+# drawn rather than trusting the call-site list -- and power_test carries no fins at all,
+# which is why its aero switch row is the "no aero surfaces on this hull" variant rather
+# than the "no air" one (#649's review pass caught the two being printed as one). One row
+# either way, so the count does not move.
+CHECK len([l for l in out.split("\n") if l.rstrip().endswith(" text") and 'window="Systems"' in l]) == 8
 CHECK len([l for l in out.split("\n") if l.rstrip().endswith(" text") and 'window="Vessel Info"' in l]) == 4
 # The row prints the sum the sim pays (#575), read off the screen: Net is what the other
 # three rows of the same dump add up to. An identity and not a figure, so a parts
 # rebalance moves the numbers without moving this assertion. The 0.2 band covers four
 # one-decimal printings, each of which can sit 0.05 off.
-CHECK abs(float(re.search('label="  Net: +([-+]?[0-9.]+) W', out).group(1)) - (float(re.search('label="  Generation: +([0-9.]+) W', out).group(1)) - float(re.search('label="  Const draw: +([0-9.]+) W', out).group(1)) - float(re.search('label="  Active: +([0-9.]+) W', out).group(1)))) < 0.2
+CHECK abs(float(re.search('label="Net: +([-+]?[0-9.]+) W', out).group(1)) - (float(re.search('label="Generation: +([0-9.]+) W', out).group(1)) - float(re.search('label="Const draw: +([0-9.]+) W', out).group(1)) - float(re.search('label="Active: +([0-9.]+) W', out).group(1)))) < 0.2
 # #601's other half, and the failure shape it asks to keep: a readout is in the registry
 # to be READ. findMatches() skips text rows, so a click aimed at one reports the same miss
 # a renamed button reports instead of pressing on a caption.
-CHECK any('path="Game Debug/  Const draw:  600.0 W   (life support)" FAILED not found' in l for l in out.split("\n"))
+CHECK any('path="Systems/Const draw: 600.0 W   (life support)" FAILED not found' in l for l in out.split("\n"))

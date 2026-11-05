@@ -421,10 +421,18 @@ public:
     /* The wheels' ENABLE mask (#425 D-2): switched-off drums are absent from the
        capability model exactly as unpowered ones are (#418), so no law, readout or
        actuator row can promise a maneuver they will not do. Saved with the ship
-       (save.h) because it is a property of THIS vessel, unlike sas_policy. There is no
-       player-facing switch yet -- that is the next slice; today the mask exists so the
-       allocator is honest and a toggle has somewhere to land. */
+       (save.h) because it is a property of THIS vessel, unlike sas_policy. The handle is
+       the Systems window's checkbox (#649); the mask existed first so that the allocator
+       would be honest and the toggle would have somewhere to land. */
     bool wheels_enabled = true;
+    /* The same door for the control surfaces (#649): switched-off fins are absent from
+       the capability model exactly as an unpowered drum is, so the laws, the slew budget
+       and the Vessel rows all see the smaller answer instead of a plan whose setpoints
+       go nowhere. It does NOT deflect the plates by force: a closed door emits no rows,
+       so `surfaceLat_` carries nothing for applyAeroForce to spend. Trim still applies
+       (a trimmed plate is a build fact, not a steering command).
+       Saved with the ship for the same reason as wheels_enabled. */
+    bool surfaces_enabled = true;
 
     double dvDelivered_ = 0.0;
     double dvAlong_ = 0.0;
@@ -657,13 +665,20 @@ public:
        EC bill all say the same thing. Note that a capsule's built-in triad is a wheel
        too (Part::isWheel() is `torque > 0`), so `wheels_enabled` switches that off as
        well as any bought reaction_wheel part (#600). */
-    bool wheelsPowered() const { return powered_ && wheels_enabled; }
+    bool wheelsPowered() const { return ecPowersWheels() && wheels_enabled; }
+    /* The ELECTRICAL half of that door on its own (#649). The row builder asks the two
+       halves separately: the live model asks this plus the enable order, the hardware
+       model the Systems window quotes asks ONLY this -- a dead battery is not something
+       a switch gives up, so it has to still close the hardware rows. Named rather than
+       written as `powered_` at the call site so the power half keeps one spelling even
+       where the handle does not apply. */
+    bool ecPowersWheels() const { return powered_; }
     /* Is anyone ASKING for attitude authority this tick? Note what this does NOT
        answer: since #648 the wheels' EC bill is what the mixer DELIVERED, so this says
        a command is live, not that a command costs anything -- a converged law with the
        key still down is engaged and spends ~nothing. powerTick() gates its bill on
-       exactly this, and the F1 debug overlay's Power block prints it too
-       (#646: the balance lives there, other windows only show the EC bar). An unpowered
+       exactly this, and the Systems window's Active row prints it too (#649 took the
+       balance out of the Game Debug overlay, which is how #646 got fixed). An unpowered
        or switched-off hull's wheels are not drawing even with the stick pinned, and a
        second spelling of the rule is how those two drift apart. `mixerRuns()` is in it
        because a hull coasting on rails has no mixer pass at all (#647): tick.cpp's
@@ -894,6 +909,13 @@ public:
            budget-not-delivery caveat applies to fins as much as to drums). */
         std::vector<ActuatorRow> surfaces;
         std::vector<const Part *> surfaceParts;
+        /* Whether the hull CARRIES a steerable surface at all, whatever the sky, the
+           airspeed or the aero master switch are doing (#649). An empty `surfaces` has
+           two different reasons and a player needs the difference: no plates fitted is a
+           build fact, no air is a flight fact. The row set alone cannot say which -- it is
+           empty either way -- so the row builder records the fitting while it walks the
+           parts, rather than a readout walking them a second time. */
+        bool hasSurfaces = false;
         /* N m the ARMED gimballed engines can lever this substep. */
         double tvcTorque = 0.0;
         /* N m the IGNITED gimballed stage could lever at FULL throttle (#608): the same
@@ -912,6 +934,20 @@ public:
         glm::dvec3 stackAxis = glm::dvec3(0.0);
     };
     AttitudeAuthority attitudeAuthority();
+    /* The same rows asked of the HARDWARE rather than of what is currently allowed
+       (#649): the player's enable switches are ignored, everything else -- EC power,
+       air, the aero master switch -- still applies. A switch row has to say what
+       flipping it gives up, and attitudeAuthority()'s own answer is already zero once
+       the door is shut, so it cannot quote itself. One row builder behind both
+       (attitudeAuthorityRows), so the two answers cannot drift apart. Callers want one
+       of these two wrappers, not the parameter. */
+    AttitudeAuthority attitudeAuthorityHardware();
+    /* One row builder behind both wrappers above, and private on purpose: the boolean is
+       a mode, and a caller that picks it by eye is how the two answers start meaning
+       the same thing in one place and something else in another (#575). */
+private:
+    AttitudeAuthority attitudeAuthorityRows(bool switchesApply);
+public:
     /* N m of that authority the actuators can bring to bear ABOUT `axis` (any
        length; it is the direction that counts). Each wheel contributes its rating
        times cos of the angle between its own drum axis and `axis` (actuators.h,
@@ -1140,6 +1176,17 @@ public:
     void chargeEC(double wh);
 
     void getPower(double *gen, double *constDraw, double *charge, double *capacity);
+
+    /* Does this hull have an electrical SYSTEM, as opposed to an EC bar that happens to
+       read zero? One spelling because four places ask it: powerTick() leaves the wheels
+       ungated when the answer is no (#418), the Systems window says "nothing to pay,
+       nothing to cut" rather than printing a column of zeroes that reads like a fault
+       (#649), and the VAB prices an assembly before launch (#644). The caller hands over
+       the figures it has ALREADY summed -- getPower() for a live hull, buildPower() for a
+       build on the pad -- so the rule has one home without adding a part walk. */
+    static bool ecSystemPresent(double gen, double constDraw, double capacity) {
+        return capacity > 0.0 || gen > 0.0 || constDraw > 0.0;
+    }
 
     /* --power-log. */
     void power_log(double time);

@@ -105,9 +105,10 @@ static void drawPartPhysique(const PartDef &def) {
                     def.fullThrust(), def.totalPropellantRate(), def.exhaust_velocity);
     }
     /* Electrical (#644): what this part costs the pool, in the terms the flight balance
-       already prints. The figures existed before only for the sim and for the Game Debug
-       overlay, so mass, fuel, thrust and drag were on the card a part is chosen with
-       while the watts that decide whether a hull keeps its instruments and its steering
+       already prints. The figures existed before only for the sim and for the debug
+       overlay (the Systems window since #649), so mass, fuel, thrust and drag were on the
+       card a part is chosen with while the watts that decide whether a hull keeps its
+       instruments and its steering
        were not -- a hull that cannot pay for itself was a surprise you got in flight.
        The wheel row is the HOUSING's package figure (#593), stated as the peak it is:
        since #648 the housing bills what its drums DELIVER, so this is the most it bills
@@ -2070,40 +2071,10 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("Orb energy (%s): %.6g J/kg", ship->m_parent->name.c_str(),
                     o.energy);
 
-        // --- power balance (the electrical system) -------------------------
-        double gen = 0.0, constDraw = 0.0, charge = 0.0, capacity = 0.0;
-        ship->getPower(&gen, &constDraw, &charge, &capacity);
-        if(gen > 0.0 || constDraw > 0.0 || capacity > 0.0) {
-            // Active draw: the attitude actuators, only while a command is live.
-            // This is the sum powerTick() pays, not a re-derivation of it (#575), and
-            // since #648 that sum is what the drums DELIVERED rather than what they are
-            // rated. It says "actuators" and not "wheels" because the bill follows the
-            // authority the hull spends, not the part: a pod's built-in drums appear
-            // here too (#596).
-            const double activeDraw = ship->wheelDrawWatts();
-            const double net = gen - constDraw - activeDraw;
-
-            ImGui::Separator();
-            ImGui::Text("Power");
-            if(ship->powered_) {
-                ImGui::TextColored(ImVec4(0.30f, 0.85f, 0.30f, 1.0f),
-                                  "  Status:    POWERED");
-            } else {
-                ImGui::TextColored(ImVec4(0.90f, 0.30f, 0.30f, 1.0f),
-                                  "  Status:    NO POWER (uncontrolled)");
-            }
-            /* uiText, not ImGui::Text, so ui/601 can read these figures off the screen
-               (#601). The block lives on the Game Debug overlay, F1, as it always has:
-               a player who never presses it sees the EC bar in Resources and none of
-               this balance -- which is its own issue (#646). */
-            uiText("  Net:       %+.1f W   (%s)",
-                   net, net >= 0.0 ? "charging" : "draining");
-            uiText("  Charge:    %.1f / %.1f Wh", charge, capacity);
-            uiText("  Generation:  %.1f W", gen);
-            uiText("  Const draw:  %.1f W   (life support)", constDraw);
-            uiText("  Active:      %.1f W   (actuators, while commanding)",
-                   activeDraw);
-        }
+        /* The power balance is no longer here (#649, closing #646): the EC rows are a
+           readout a player needs, not a dev overlay's reward for knowing F1 exists. They
+           live in the Systems window, listed in the Windows panel. What stays on this
+           overlay is what only a test or a developer wants. */
     });
 
     // Labels abbreviated to <= 3 chars and right-padded so values line up.
@@ -2595,6 +2566,119 @@ void drawUIReadouts(Game &g) {
         }
         uiText("Angular rate: %.2fdeg/s",
                glm::degrees(glm::length(ship->hullAngVel())));
+    });
+    /* #649: SYSTEMS -- what is on, what it costs, what is refusing. The electrical
+       balance moved here from the bottom of the Game Debug overlay, which is #646's fix:
+       the rows were there for a player who already knew to press F1, while everyone else
+       saw only the EC bar in Resources draining, and no word about why.
+       The boundary with Vessel Info above stays deliberate: that window answers what the
+       HARDWARE could do, this one answers what the hull is ALLOWED to do and what it pays
+       for the privilege. Two windows that both answer "could it" is how readouts drift. */
+    drawWin(g, W_Systems, [&] {
+        double gen = 0.0, constDraw = 0.0, charge = 0.0, capacity = 0.0;
+        ship->getPower(&gen, &constDraw, &charge, &capacity);
+        ImGui::Text("Power");
+        /* The test powerTick itself runs (Vehicle::ecSystemPresent, mirrored for the build
+           screen in #644): a hull with no generator, no constant draw and no store has no
+           electrical system at all, so the sim leaves it ungated. Say that instead of
+           printing a column of zeroes that reads like a fault. */
+        if(!Vehicle::ecSystemPresent(gen, constDraw, capacity)) {
+            uiText("No EC system -- nothing to pay, nothing to cut");
+        } else {
+            // Active draw: the attitude actuators, only while a command is live.
+            // This is the sum powerTick() pays, not a re-derivation of it (#575), and
+            // since #648 that sum is what the drums DELIVERED rather than what they are
+            // rated. It says "actuators" and not "wheels" because the bill follows the
+            // authority the hull spends, not the part: a pod's built-in drums appear
+            // here too (#596).
+            const double activeDraw = ship->wheelDrawWatts();
+            const double net = gen - constDraw - activeDraw;
+            /* Every row below is uiText, not ImGui::Text, so the harness can read the
+               figures off the screen (#601) -- which is what lets ui/601 assert the
+               identity between them rather than a screenshot-sized hope. That includes
+               the Status row, which pays for the channel with a style-stack push instead
+               of TextColored. */
+            /* Status names the door that closed instead of offering a diagnosis.
+               ecPowersWheels() is the EC half of the WHEELS door, so "uncontrolled" is a
+               claim this row cannot make: a hull with no EC still turns on its gimbals and
+               its fins, and saying otherwise talks a pilot out of an airplane that is
+               flying fine. */
+            if(ship->ecPowersWheels()) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.30f, 0.85f, 0.30f, 1.0f));
+                uiText("Status:     POWERED");
+            } else {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.90f, 0.30f, 0.30f, 1.0f));
+                uiText("Status:     NO EC -- wheels cut");
+            }
+            ImGui::PopStyleColor();
+            uiText("Net:        %+.1f W   (%s)",
+                   net, net >= 0.0 ? "charging" : "draining");
+            uiText("Charge:     %.1f / %.1f Wh", charge, capacity);
+            uiText("Generation: %.1f W", gen);
+            uiText("Const draw: %.1f W   (life support)", constDraw);
+            uiText("Active:     %.1f W   (actuators, while commanding)",
+                   activeDraw);
+        }
+
+        ImGui::Separator();
+        ImGui::Text("Control");
+        /* The switches are ORDERS, not forces, so flipping one while the sim is paused or
+           the hull is on rails is fine -- nothing about it is a per-substep torque. Each
+           closes a DOOR in the capability model (Vehicle::wheels_enabled /
+           surfaces_enabled) rather than adding a case to the mixer: the group emits no
+           rows, so there is no authority, no bill and no setpoint, and the laws, the slew
+           budget and Vessel Info all see the same smaller answer (#425 D-2).
+           The figure beside a switch is what the group is worth if the door were OPEN --
+           attitudeAuthorityHardware(), one row builder with the switches ignored, not a
+           second arithmetic (#649). It has to be: a closed door makes the live answer
+           zero, so a switch asked to quote what it gives up would print 0 N m.
+           RCS has no row here yet, and that is not an oversight: RCS nozzles are still
+           never asked to turn the hull (#595), so there is no authority figure to put
+           beside its switch, and the ticket's rule is to quote one rather than invent it.
+           This window asks the row builder a SECOND time per frame -- Vessel Info above
+           asks the live model, this one asks the hardware model, and both windows open by
+           default. That is deliberate (vehicle.cpp's wrappers say why a frame cache is not
+           the answer) and it is on the ticket list as a perf question, not an accident. */
+        const Vehicle::AttitudeAuthority hw = ship->attitudeAuthorityHardware();
+        const glm::dmat3 ax = ship->attitudeBasis();
+        bool wheels = ship->wheels_enabled;
+        if(ImGui::Checkbox("Reaction wheels", &wheels)) { ship->wheels_enabled = wheels; }
+        if(hw.wheels.empty()) {
+            /* Hardware mode left only one reason an empty wheel set can mean (the row
+               builder drops the enable half of the door, never the power half), so asking
+               the door itself names it. The nouns match the checkbox above: a player
+               reading "no drums on this hull" next to "Reaction wheels" has to be sure
+               they are the same thing. */
+            uiText("  %s -- %s", ship->wheels_enabled ? "on" : "off",
+                   ship->ecPowersWheels() ? "no reaction wheels on this hull"
+                                          : "no EC power to spend");
+        } else {
+            uiText("  %s -- %.0f / %.0f / %.0f N m at stake (roll/pitch/yaw)",
+                   ship->wheels_enabled ? "on" : "off",
+                   actuatorTorqueAbout(hw.wheels, ax[2]),
+                   actuatorTorqueAbout(hw.wheels, ax[0]),
+                   actuatorTorqueAbout(hw.wheels, ax[1]));
+        }
+        bool fins = ship->surfaces_enabled;
+        if(ImGui::Checkbox("Aero surfaces", &fins)) { ship->surfaces_enabled = fins; }
+        if(hw.surfaces.empty()) {
+            /* Two empty answers, and the old row printed the wrong one for half the
+               fleet: a hull with no plates at all (power_test, most rockets) was told it
+               had "no air for them to push" while sitting in full air. hw.hasSurfaces is
+               the fitting, recorded by the row builder whatever its gate decided (#649).
+               Empty WITH plates means no air at this altitude, no airspeed to make q, or
+               --drag-cd 0 -- all three are "nothing to push against", which is also why
+               the row does not blame the switch: the hardware question ignores it. */
+            uiText("  %s -- %s", ship->surfaces_enabled ? "on" : "off",
+                   hw.hasSurfaces ? "no air to push them"
+                                  : "no aero surfaces on this hull");
+        } else {
+            uiText("  %s -- %.0f / %.0f / %.0f N m at stake (roll/pitch/yaw)",
+                   ship->surfaces_enabled ? "on" : "off",
+                   actuatorTorqueAbout(hw.surfaces, ax[2]),
+                   actuatorTorqueAbout(hw.surfaces, ax[0]),
+                   actuatorTorqueAbout(hw.surfaces, ax[1]));
+        }
     });
     drawWin(g, W_Controls, [&] {
         ImGui::Text("Click rebind, then press a key (or Shift/Ctrl/Alt + key) to bind it.");
@@ -5311,12 +5395,12 @@ void drawVabUI(Game &g) {
        what it carries, and can it ever work its drums.
        Rows stay near the Aero row's length: the VAB window opens 340px wide and imgui
        clips rather than wraps, so a long row is cut off mid-value.
-       The presence test mirrors powerTick's hasEC (vehicle.cpp): a hull with no generator,
-       no constant draw and no store has no EC system, so the sim leaves it ungated and this
-       screen must not invent a drum bill it will never charge. */
+       The presence test is the test powerTick runs (Vehicle::ecSystemPresent): a hull with
+       no generator, no constant draw and no store has no EC system, so the sim leaves it
+       ungated and this screen must not invent a drum bill it will never charge. */
     {
         const BuildPower pw = buildPower(g.vab.build);
-        if(pw.genW > 0.0 || pw.constW > 0.0 || pw.storeWh > 0.0) {
+        if(Vehicle::ecSystemPresent(pw.genW, pw.constW, pw.storeWh)) {
             /* Whole watts: this is a build-time estimate, and quoting the debug block's
                decimals would only invite reading the two printings as one. */
             uiText("EC: gen %.0f W  const %.0f W  store %.0f Wh",

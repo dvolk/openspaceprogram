@@ -129,6 +129,17 @@ const WinDef kWins[W_Count] = {
         .opts = { .slot = ui::Slot::BottomRight, .closable = true },
         .role = WinRole::Persistent, .inList = true,
     },
+    [W_Systems] = {
+        .name = "Systems", .label = "Systems",
+        // #649: state and switches (what is on, what it costs, what is refusing).
+        // Vessel Info keeps rated capability (what the hardware could do), so the two
+        // windows answer different questions instead of duplicating. Open by default:
+        // this is #646's fix -- the electrical balance used to live on the Game Debug
+        // overlay, where a player who never pressed F1 saw only the EC bar draining.
+        .opts = { .slot = ui::Slot::BottomRight, .left_of = "Vessel Info",
+                  .closable = true },
+        .role = WinRole::Persistent, .inList = true,
+    },
     [W_ShipList] = {
         .name = "Ship List", .label = "Ship List",
         .opts = { .slot = ui::Slot::TopCenter, .closable = true,
@@ -282,7 +293,8 @@ const WinDef kWins[W_Count] = {
 
 static const Win kFlightWinIds[] = {
     W_Hud, W_Windows, W_Orbital, W_Surface, W_Resources, W_OrbitalMap,
-    W_SurfaceMap, W_VesselInfo, W_ShipList, W_Autopilot, W_Guidance, W_Target,
+    W_SurfaceMap, W_VesselInfo, W_Systems, W_ShipList, W_Autopilot, W_Guidance,
+    W_Target,
     W_Porkchop,
     W_Settings, W_Controls, W_Debug, W_Telemetry, W_SaveLoad,
 };
