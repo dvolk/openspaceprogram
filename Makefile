@@ -605,6 +605,10 @@ test-gen:
 # -- instead of waiting for someone to spend an e2e run on it (#360). The index
 # must match the cases anyway, so this costs one more pure-stdlib pass.
 	python3 e2e/index.py --check
+# The runner's own pins. No e2e case can assert about run.py itself, and the rule
+# worth pinning is that a CHECK spelled `cond, "note"` parses to a tuple -- always
+# true, so the assertion is dead rather than failing (#650).
+	python3 e2e/run.py --self-test
 
 # Which of the optional modules are MISSING (empty = all present).
 PY_MISSING = $(shell python3 -c "import importlib.util as u; print(' '.join(m for m in ('trimesh','numpy','PIL') if u.find_spec(m) is None))" 2>/dev/null)
