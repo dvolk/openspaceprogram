@@ -2171,13 +2171,15 @@ void Vehicle::powerTick(double h) {
        figure is this gate's own verdict, so a gate that reads it cuts the wheels and
        then finds nothing to pay for, which re-arms them the very next substep.
        Two thresholds, not one, so the boundary is a decision rather than a shudder:
-       the wheels drop when the pool cannot even pay THIS substep, and they come back
-       once it banks kWheelsRecoverS of commanding -- or is half full, the backstop for
-       a store too small to ever bank a whole maneuver. One threshold would make the
-       cut and the recharge fight at the substep rate, with a duty cycle set by how
-       finely the sim happens to step. The latch only speaks for hulls that have an EC
-       system at all, so it stays false on the ungated hulls that a later readout
-       (#649) would otherwise have to explain. */
+       the wheels drop once the pool cannot cover kWheelsCutS of commanding, and come
+       back once it banks kWheelsRecoverS of commanding -- or is half full, the backstop
+       for a store too small to ever bank a whole maneuver. Both are DURATIONS rather
+       than the caller's `h` because powerTick also runs for railed hulls (#647), where
+       `h` is a whole warp hop: a step-scaled threshold would be a duty cycle set by how
+       finely the sim happens to step, which is the thing this latch exists to prevent.
+       The latch only speaks for hulls that have an EC system at all, so it stays false
+       on the ungated hulls that a later readout (#649) would otherwise have to
+       explain. */
     const double cost = wheelDemandWatts();
     const bool genCovers = (totalGen > constantDraw + cost);
     if(hasEC) {
@@ -2185,14 +2187,18 @@ void Vehicle::powerTick(double h) {
             if(ecCharge * 3600.0 >= cost * kWheelsRecoverS
                || ecCharge >= 0.5 * ecCapacity) { wheels_brown_out_ = false; }
         } else if(cost > 0.0 && not genCovers
-                  && ecCharge <= cost * h / 3600.0) {
-            wheels_brown_out_ = true;   // not even this substep's Wh is in the pool
+                  && ecCharge * 3600.0 <= cost * kWheelsCutS) {
+            wheels_brown_out_ = true;   // not even a short burst of commanding is in the pool
         }
     }
     powered_ = hasEC ? (genCovers || (ecCharge > 0.0 && not wheels_brown_out_)) : true;
-    // The wheels draw only while actually working, and the power block on the Game
-    // Debug overlay quotes the same sum (#575, and ui/601 reads it off the screen).
-    const double activeDraw = (powered_ && rotCommanded()) ? cost : 0.0;
+    /* The wheels draw only while actually working: gated by the verdict, by a live
+       command, and by there being a control pass to work them -- a hull coasting on
+       rails has none, so it pays for breathing and generation but not for drums it is
+       not turning (#647). The power block on the Game Debug overlay and --power-log's
+       active= column quote the same predicate (#575, and ui/601 reads it off the
+       screen). */
+    const double activeDraw = actuatorsEngaged() ? cost : 0.0;
     const double netWh = (totalGen - constantDraw - activeDraw) * h / 3600.0;
     if(netWh < 0.0) { drainEC(-netWh); }
     else if(netWh > 0.0) { chargeEC(netWh); }
@@ -5721,8 +5727,9 @@ void Vehicle::leaveRails() {
            displayName().c_str(), frame->body->name.c_str());
 }
 
-RailEnd Vehicle::railsTick(double t, const double step) {
-    if(!onRails || railFrozen) { return RailEndNone; }
+RailEnd Vehicle::railAdvance(double t, const double step) {
+    if(!onRails) { return RailEndNone; }
+    if(railFrozen) { return RailEndNone; }
     assert(frame->body != nullptr);
     // The caller must hand us the instant the frame tree was last snapshotted at: the
     // conic advances by `step` but its RESULT composes with those transforms. Exact
@@ -5795,6 +5802,31 @@ RailEnd Vehicle::railsTick(double t, const double step) {
     }
     writeRailPose();
     return RailEndNone;
+}
+
+/* The EC half of a rail hop (#647). A railed hull is off tick.cpp's substep loop, the
+   only other caller of powerTick, so nothing else bills it: a warped transfer used to
+   bill NOTHING at all. Measured on `power_test` (298 W of rtg against 600 W of air) --
+   charge pinned at 12000.0 Wh for the whole warp, then falling at the printed 301.6 W
+   the moment the hull was back under physics. One hop per call: `step` is this tick's
+   sim advance, so the Wh is what the substep loop would have spent.
+   Bill AFTER the advance, and only while the hull is STILL on rails: a hop that ends on
+   air calls leaveRails(), and the substep loop bills the same step for the hull it just
+   took on, so billing here as well would charge a re-entry twice. A step of 0 is
+   Game::recoverActive re-homing a hull from the UI -- no time passed, so the gate is
+   not re-decided by a UI action.
+   The wheels' term drops out inside powerTick: `actuatorsEngaged()` asks `mixerRuns()`,
+   and there is no control pass out here, so a hull is not charged for drums it never
+   turned even with a slew still engaged from before the warp. The GATE still weighs
+   their cost, because that is a property of the hull rather than of this step: a plant
+   that cannot pay for its drums reads UNPOWERED on rails like anywhere else, and the
+   brown-out latch keeps running across the warp instead of freezing mid-cut.
+   One honest limit: the gate's verdict is the charge at the hop's START, so at extreme
+   warp the readout can call a hull POWERED for one hop after its pool went dry mid-hop. */
+RailEnd Vehicle::railsTick(double t, const double step) {
+    const RailEnd e = railAdvance(t, step);
+    if(onRails && step > 0.0) { powerTick(step); }
+    return e;
 }
 
 void Vehicle::railRootState(glm::dvec3 &p, glm::dvec3 &v) const {

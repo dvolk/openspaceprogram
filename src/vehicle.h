@@ -438,16 +438,25 @@ public:
        drains its pool, the wheels cut, the unspent surplus recharges the pool, and
        they re-arm -- free-running, that is a relaxation oscillator at the SUBSTEP rate,
        whose duty cycle depends on how finely the sim happens to step rather than on
-       anything in the game. So the cut LATCHES: once the pool cannot pay even the
-       current substep the drums stay cut until it banks enough Wh to command for
+       anything in the game. So the cut LATCHES: once the pool cannot pay a short burst
+       of commanding the drums stay cut until it banks enough Wh to command for
        kWheelsRecoverS -- or, on a store too small to ever bank a whole maneuver, until
-       it is half full, so the margin can never strand a hull. The cycle's period is
-       then the power balance's, not the timestep's: on the probe hull (a 1007 W rtg
-       against 600 W of air and 2475 W of drums) that is about 12 s of steering per
-       minute of waiting, which reads as "this generator cannot sustain it" -- the
-       honest answer, and one the player can answer by letting go. */
+       it is half full, so the margin can never strand a hull. Both thresholds are
+       durations, never the caller's step: off rails the step is bounded by kMaxSubStep
+       so a step-scaled threshold looks harmless, but a railed hull is billed one hop at
+       a time (#647) -- a minute-long hop at this rating is ~41 Wh, a max-warp hop is
+       ~46 h and ~100 kWh -- so a step-scaled cut would brown out every warped hull the
+       moment it left Kerbin. kWheelsCutS is exactly that old bound, kMaxSubStep: the rule
+       is now stated instead of inherited from the timestep, and it moved the off-rails
+       cut point 1.8x earlier at the largest legal substep (18x at the 1x default), which
+       in Wh is 0.069 rather than 0.004 for 2475 W of drums. The cycle's period is the
+       power balance's, not the timestep's: on the probe hull (a 1007 W rtg against 600 W
+       of air and 2475 W of drums) that is about 12 s of steering per minute of waiting,
+       which reads as "this generator cannot sustain it" -- the honest answer, and one
+       the player can answer by letting go. */
     bool wheels_brown_out_ = false;
     static constexpr double kWheelsRecoverS = 10.0;   // s of commanding banked before re-arm
+    static constexpr double kWheelsCutS = 0.1;        // s of commanding the pool must cover
 
     /* Rails: an idle ship coasts on its two-body conic instead of being
        integrated -- its body is parked out of the Bullet world, its pose
@@ -645,12 +654,25 @@ public:
        well as any bought reaction_wheel part (#600). */
     bool wheelsPowered() const { return powered_ && wheels_enabled; }
     /* Are the attitude actuators doing work THIS tick? powerTick() bills the wheels'
-       active draw on exactly this, and the Vessel window's Power row asks it too: an
-       unpowered or switched-off hull's wheels are not drawing even with the stick
-       pinned, and a second spelling of the rule is how those two rows drift apart. */
+       active draw on exactly this, and the F1 debug overlay's Power block prints it too
+       (#646: the balance lives there, other windows only show the EC bar). An unpowered
+       or switched-off hull's wheels are not drawing even with the stick pinned, and a
+       second spelling of the rule is how those two drift apart. `mixerRuns()` is in it
+       because a hull coasting on rails has no mixer pass at all (#647): tick.cpp's
+       substep loop skips railed hulls, so their wheels turn nothing however hard the
+       stick is held. That is not merely defensive either -- Game::updateProximity parks a
+       distant hull without releasing its control state, so a railed hull really can be
+       carrying a live slew. The bill and `--power-log active=` have to say the same
+       thing the physics did. */
     bool actuatorsEngaged() const {
-        return wheelsPowered() && rotCommanded();
+        return wheelsPowered() && mixerRuns() && rotCommanded();
     }
+    /* Is there a control pass this step? Exactly "not coasting on rails" -- the rails
+       path advances a conic and applies no forces, so nothing that spends authority
+       runs. Its own name because the EC bill has to ask it too, and a `!onRails`
+       written inline there is how a railed hull ends up charged for drums that never
+       turned. */
+    bool mixerRuns() const { return !onRails; }
     /* Is a rotation command live this tick: the stick or a latched mode. One
        spelling because the bill and the gate both have to ask it, and a second
        spelling is how they drift. */
@@ -1058,7 +1080,14 @@ public:
     /* --- electrical (KSP-style EC) ---------------------------------------
        A shared pool across the batteries. powerTick runs per substep, BEFORE
        applyControlForces: gates the wheels, balances RTG generation against the
-       life-support and wheel draws. Units: W and Wh. EC has no mass. */
+       life-support and wheel draws. Units: W and Wh. EC has no mass.
+
+       It is called twice a frame in spirit, once per path: per substep for a hull under
+       physics, and once per warp hop from railsTick for a hull coasting on its conic
+       (#647 -- before that, a warped transfer billed nothing at all). Nothing here
+       needs to know which: the wheels' term is 0 on rails because `actuatorsEngaged()`
+       knows the mixer is not running out there, while the GATE still weighs the drums'
+       cost, because that is a property of the hull and not of the step. */
     void powerTick(double h);
 
     /* Drain / charge up to `wh` of EC, pro-rata across the batteries. */
@@ -1659,6 +1688,12 @@ public:
        only sees the endpoint, so a long step can fly past a whole sphere.
        A coast that reaches the air or the ground leaves the rails here, so the
        caller owns the warp drop. */
+    RailEnd railAdvance(double t, const double step);
+
+    /* railAdvance plus the hop's EC bill (#647): a railed hull is off the substep
+       loop that bills everything else, so this is the only door through which a warp
+       spends electricity. Only a hull still on rails when the hop ends is billed --
+       the one that handed off to physics is billed by the loop that took it. */
     RailEnd railsTick(double t, const double step);
 
     /* Re-anchor the rail state on another frame and re-home it (setSoi). Asserts

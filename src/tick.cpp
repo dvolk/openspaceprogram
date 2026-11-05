@@ -298,7 +298,10 @@ void tick(Game &g) {
                     // below, whichever order they run in.
                     s->beginForceRecordSubstep();
                     s->processGravity();
-                    // Power before control forces so the gate is current.
+                    /* Power before control forces so the gate is current. This is not
+                       the only door: railed hulls bill their EC per warp hop inside
+                       railsTick (#647). That bill is skipped for a hop that reaches the
+                       air, so the hull arriving here is billed exactly once -- here. */
                     s->powerTick(h);
                     /* #426: control BEFORE aero, so the deflection the one actuator
                        solve asked each control surface for is the deflection the air

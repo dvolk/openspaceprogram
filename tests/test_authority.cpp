@@ -1213,11 +1213,15 @@ static void test_the_command_funnel() {
     CHECK_TRUE(!v->applySlewRequest(true) && v->slewMode() == SlewNone,
                "released: the copy drops in the same step");
 
-    /* What the wheels bill (actuatorsEngaged) -- both halves, because the Vessel
-       window's Power row and powerTick() share this one rule and used to spell it
-       separately. */
+    /* What the wheels bill (actuatorsEngaged) -- all three halves, because the F1
+       debug overlay's Power block and powerTick() share this one rule and used to spell
+       it separately. */
     v->Command(ShipCmd(Pitch, +1.0f), true);
     CHECK_TRUE(v->actuatorsEngaged(), "a commanded stick works the wheels");
+    v->onRails = true;
+    CHECK_TRUE(!v->actuatorsEngaged(),
+               "on rails: no mixer pass, so the drums do no work (#647)");
+    v->onRails = false;
     v->clearRotCmd();
     v->powered_ = false;
     CHECK_TRUE(!v->actuatorsEngaged(),

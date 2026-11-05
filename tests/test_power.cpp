@@ -28,6 +28,12 @@
 //     (never below 0, never above capacity);
 //   * who pays: a drum bills its power_draw wherever it lives, including a
 //     command pod that is also life support and the battery (#596);
+//   * the rails path: a hull coasting on its conic is billed once per WARP HOP,
+//     by railsTick itself (#647) -- the air bills and the RTG credits, the drums
+//     do not, because there is no control pass out there; the bill runs even when
+//     the park is frozen, and not at all for a step of 0 or a hull under physics;
+//     the brown-out latch keeps running across the warp, and both of its
+//     thresholds are durations, so a minute-long hop cannot raise the cut;
 //   * EC has NO mass: draining/charging never touches a part's mass
 //     (unlike propellant);
 //   * the store's precision: a substep's worth of Wh still moves a big
@@ -49,6 +55,7 @@
 #include <vector>
 
 #include "vehicle.h"   // Vehicle + PartDef + ResourceContent (inline)
+#include "timestep.h"  // kMaxSubStep, which kWheelsCutS deliberately equals
 
 static int g_failures = 0;
 static int g_checks = 0;
@@ -290,9 +297,9 @@ static void test_brown_out_latches_then_rearms() {
     const double recover_wh = Vehicle::kWheelsRecoverS * 1000.0 / 3600.0;  // 2.78 Wh
     CHECK_NEAR(Vehicle::kWheelsRecoverS, 10.0, 0.0,
                "the hysteresis window is 10 s of commanding");
-    CHECK_TRUE(recover_wh * 3600.0 > 100.0 * 1000.0 * h,
-               "the bank is 100x the cut threshold, so the cycle is the power "
-               "balance's, not the substep rate's");
+    CHECK_NEAR(Vehicle::kWheelsRecoverS / Vehicle::kWheelsCutS, 100.0, 1.0,
+               "the re-arm bank is 100x the burst the cut asks for, so the cycle is "
+               "the power balance's rather than the step rate's");
     int cut = 0;
     while(not s.v->powered_ && cut < 20000) { s.v->powerTick(h); cut++; }
     CHECK_TRUE(s.v->powered_, "a banked pool brings the wheels back");
@@ -301,6 +308,88 @@ static void test_brown_out_latches_then_rearms() {
     CHECK_NEAR(cut * h, recover_wh * 3600.0 / 400.0, 0.02,
                "the cut is one ~25 s drop, not a substep-rate flicker");
     s.v->Command(ShipCmd(Pitch, 0.0f), true);
+    destroyShip(s);
+}
+
+/* A hull coasting on rails is billed once per WARP HOP, from railsTick (#647) -- the
+   substep loop that bills everything else skips railed hulls, so before this a warped
+   transfer spent nothing at all. Two things have to be true out there: the air and the
+   generation still bill, and the drums do not, because there is no control pass to turn
+   them even if the stick is still held from before the warp. */
+static void test_rails_hop_bills_air_not_drums() {
+    printf("== Rails: a warp hop bills the air, never the drums ==\n");
+    Ship s; s.v = new Vehicle;
+    addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0);     // a wheel: 1000 W
+    addPowerPart(s, 0.0, 100.0, 0.0, 1000.0, 0.0);      // 100 W air + a 1000 Wh store
+    initShip(s);
+    s.v->Command(ShipCmd(Pitch, 1.0f), true);           // held into the warp
+    s.v->onRails = true;
+
+    s.v->powerTick(3600.0);   // one hour in a single hop
+    CHECK_NEAR(totalEC(s), 900.0, 0.5,
+               "an hour of rails costs the 100 Wh of air, not the 1100 Wh of air plus drums");
+    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
+               "a railed hull's drums are not engaged, so the readout bills nothing either");
+    CHECK_NEAR(s.v->wheelDemandWatts(), 1000.0, 1e-9,
+               "while the gate still weighs what those drums would cost");
+    CHECK_TRUE(s.v->powered_, "900 Wh left and a 100 W bill is not a brown-out");
+
+    /* The latch runs across the warp. It used to be frozen there (nothing called
+       powerTick), so a hull could leave the rails uncontrolled with a full pool, or
+       stay controlled with an empty one. */
+    for(int i = 0; i < 12; i++) { s.v->powerTick(3600.0); }
+    CHECK_NEAR(totalEC(s), 0.0, 1e-9, "the pool runs out on the rails");
+    CHECK_TRUE(s.v->wheels_brown_out_, "and the latch fires there rather than freezing");
+    CHECK_TRUE(not s.v->powered_, "so the hull comes off the rails uncontrolled");
+    destroyShip(s);
+}
+
+/* The other rails hazard: the cut threshold must be a DURATION, not the caller's step.
+   Off rails the step is bounded by kMaxSubStep, so scaling by it is invisible; a warp
+   hop is minutes, and a step-scaled threshold would demand 16.7 Wh here -- more than
+   the whole store -- and brown out every hull that warped. */
+static void test_rails_step_does_not_move_the_cut() {
+    printf("== Rails: a minute-long hop does not raise the cut threshold ==\n");
+    Ship s; s.v = new Vehicle;
+    addPowerPart(s, 1000.0, 0.0, 0.0, 5.0, 2000.0);     // 1000 W drums + a 5 Wh store
+    initShip(s);
+    s.v->Command(ShipCmd(Pitch, 1.0f), true);
+    s.v->onRails = true;
+
+    s.v->powerTick(60.0);   // a minute of warp in one hop
+    CHECK_TRUE(s.v->powered_,
+               "the cut asks for kWheelsCutS of commanding, not for this hop's Wh");
+    CHECK_NEAR(Vehicle::kWheelsCutS, kMaxSubStep, 0.0,
+               "the burst the pool must cover is one max substep -- stated, not inherited");
+    destroyShip(s);
+}
+
+/* And the wiring itself: railsTick(), not powerTick() called by hand. railsTick is the
+   only thing that bills a railed hull, and two of its clauses have no other cover. The
+   bill runs BEFORE the railFrozen return, so a hull a warp parked on the ground still
+   spends the air -- it is off the substep loop like every other railed hull. It does not
+   run for a step of 0, which is Game::recoverActive re-homing a hull from the UI with no
+   time passed, nor for a hull that is not on rails, which the substep loop bills: billing
+   that one here too is how a hop that reached the air mid-tick paid for itself twice. */
+static void test_rails_park_bills_per_hop() {
+    printf("== Rails: railsTick bills the hop, frozen park included ==\n");
+    Ship s; s.v = new Vehicle;
+    addPowerPart(s, 0.0, 100.0, 0.0, 1000.0, 0.0);   // 100 W air + a 1000 Wh store
+    initShip(s);
+    s.v->onRails = true;
+    s.v->railFrozen = true;                         // parked by a warp landing
+
+    s.v->railsTick(0.0, 3600.0);
+    CHECK_NEAR(totalEC(s), 900.0, 0.5,
+               "a frozen park still spends the air, one hop at a time");
+    s.v->railsTick(0.0, 0.0);
+    CHECK_NEAR(totalEC(s), 900.0, 1e-9,
+               "a UI re-home passes step 0: no time passed, so nothing to bill");
+    s.v->onRails = false;
+    s.v->railsTick(0.0, 3600.0);
+    CHECK_NEAR(totalEC(s), 900.0, 1e-9,
+               "a hull under physics is billed by the substep loop, never twice");
+    CHECK_TRUE(s.v->powered_, "900 of 1000 Wh is no reason to cut the wheels");
     destroyShip(s);
 }
 
@@ -566,6 +655,12 @@ int main() {
     test_brown_out_latches_then_rearms();
     printf("\n");
     test_brown_out_rearm_backstop();
+    printf("\n");
+    test_rails_hop_bills_air_not_drums();
+    printf("\n");
+    test_rails_step_does_not_move_the_cut();
+    printf("\n");
+    test_rails_park_bills_per_hop();
     printf("\n");
     test_life_support_drains_then_gates();
     printf("\n");

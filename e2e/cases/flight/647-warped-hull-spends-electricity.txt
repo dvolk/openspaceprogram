@@ -1,0 +1,64 @@
+# A hull coasting on rails is not under physics. tick.cpp's substep loop -- the only
+# caller of powerTick -- skips railed hulls, so a warped transfer billed nothing at all:
+# power_test (298 W of rtg against 600 W of life support) held `Charge: 12000.0 /
+# 12000.0 Wh` through a whole warp and only started falling at the printed 301.6 W the
+# moment it was back under physics (#647).
+#
+# railsTick now bills a railed hull one warp hop at a time, and the identity flight/377
+# uses at 1x holds out here: the charge's slope equals the watts the same rows print. The
+# window below spans ~128,000 sim-seconds and ~10.7 kWh, so the log's 0.1 Wh print is
+# noise -- the band is 2% and the measured error is under 0.01%. A flat charge, which is
+# what the bug looks like, still fails it by 50x.
+#
+# Warp 10000x rather than 100000x, deliberately. The pool empties after ~143,000 sim
+# seconds: at 100000x that is 1.4 s of wall and only ~2 rows still holding a pool, so the
+# identity's baseline would ride on where a 500 ms wall-clock log tick happened to land
+# against boot time. At 10000x the same window is ~14 s of wall and ~29 rows.
+#
+# This is also the first case that runs a pool dry while the hull is out of reach of
+# physics: it comes off the rails UNPOWERED with the brown-out latch fired, which is what
+# made #642's gate visible in play rather than only in tests.
+#
+# No W press: control input leaves the rails and drops warp to 1x, so a commanded window
+# and a warped window cannot overlap today. `active=0` therefore holds for the whole run,
+# but nothing here commands a railed hull, so that CHECK alone does not pin the mixer
+# term -- test_power's test_rails_hop_bills_air_not_drums does, with a hull on rails and
+# Pitch held.
+NAME warped-hull-spends-electricity
+CLAIM A hull coasting on rails bills its generation and life support, can run its pool dry while warped, and bills no wheel draw because no control pass runs out there.
+KIND invariant
+ARGS --timeout 20 --startship power_test,res/ships/power_test.json,Kerbin,rot-orbit
+ARGS --power-log --sim-press 1000,0,PERIOD --sim-press 1200,0,PERIOD
+ARGS --sim-press 1400,0,PERIOD --sim-press 1600,0,PERIOD
+EXPECT [powerlog]
+FORBID error:
+FORBID FAILED
+# The premise of every CHECK below is that the hull was on rails, and rails begin at
+# kRailsWarp (11x). Sim time is what shows it: a 20 s wall run cannot reach t=100000 s
+# unless it warped, and any warp that high is rails by definition.
+CHECK max(r["t"] for r in power) > 100000.0
+# Before the warp presses: the usual picture -- a full pool, generation under life
+# support, the wheels online because there is charge.
+CHECK len(power) >= 10
+CHECK power[0]["charge"] == 12000.0 and power[0]["powered"] == 1
+CHECK all(0.0 <= r["charge"] <= r["capacity"] for r in power)
+# 298.4 W of rtg against 600 W of air: on rails or off, the pool can only ever fall. A
+# rising charge would mean the balance was computed somewhere other than where the watts
+# are printed.
+CHECK all(b["charge"] <= a["charge"] for a, b in zip(power, power[1:]))
+# The identity, over one long baseline rather than pair by pair: `band` (bound once by a
+# walrus, since a CHECK is one expression) is the warped rows still holding a pool --
+# rows at an empty charge are clamped, which is the honest answer but not a slope. The
+# slope across the whole span must match the watts the first row prints: the same rule
+# flight/377 pins at 1x, and a whole baseline rather than one hop is what keeps it from
+# depending on where a log row landed.
+CHECK (band := [r for r in power if r["t"] > 2000.0 and r["charge"] > 1000.0]) and len(band) >= 5 and abs((band[0]["charge"] - band[-1]["charge"]) / (band[-1]["t"] - band[0]["t"]) - (power[0]["const_draw"] - power[0]["gen"]) / 3600.0) < 0.02 * (power[0]["const_draw"] - power[0]["gen"]) / 3600.0
+# The pool runs out ON THE RAILS and the gate answers: no charge, no wheel authority
+# (#642). Before #647 this whole run read 12000.0 Wh and powered=1, so the hull arrived
+# at its destination looking controllable with an empty battery.
+CHECK len([r for r in power if r["t"] > 3000.0 and r["charge"] == 0.0]) >= 2
+CHECK any(r["powered"] == 0 and r["charge"] == 0.0 for r in power)
+CHECK last(power)["powered"] == 0
+# And nothing bills drums that never turned: the rating sum (2475 W on this hull) appears
+# nowhere in a warped run. See the header for what this CHECK does and does not pin.
+CHECK all(r["active"] == 0.0 for r in power)
