@@ -2,17 +2,20 @@
 """E2E runner: run selected e2e/cases/<subject>/*.txt against the game binary.
 
 Usage: python3 e2e/run.py <selectors> [--jobs N] [--game PATH] [--limit S]
-[--show-cmd] [--kind K]. No selectors runs the whole battery -- that is what
-`make release` does. Nothing caps or paces a run: how much e2e is worth running
-is the caller's judgement, not the runner's policy. --limit overrides
+[--show-cmd] [--kind K] [--self-test]. No selectors runs the whole battery --
+that is what `make release` does. Nothing caps or paces a run: how much e2e is
+worth running is the caller's judgement, not the runner's policy. --limit
+overrides
 every case's LIMIT (a slow box, or a case you want to drive by hand);
 --show-cmd prints the exact command + env so a failure re-runs under a
 debugger; --kind runs one kind of case (repeatable). Case keys: NAME CLAIM
 KIND NOGLCHECK ARGS EXPECT FORBID
 CHECK LIMIT WRITE SEED FILE NOFILE EXIT. CLAIM is one sentence: what the case
-pins. A CHECK is ONE expression: a trailing comma makes it a tuple, and a
-non-empty tuple is always true, so the parser refuses that shape (#650). KIND
-says what sort of evidence it is -- invariant (behaviour or a
+pins. A CHECK is ONE expression: a trailing comma makes it a tuple and a bare
+list/set/dict literal is truthy whatever it holds, so both are refused at parse
+time -- as is a CHECK that does not parse -- rather than passing quietly, which
+is how an assertion goes silently dead (#650). KIND says what sort of
+evidence it is -- invariant (behaviour or a
 player route), golden (tuned numbers or content tables: update deliberately),
 harness (CLI/test plumbing, not game spec) or canary (proves it boots). Both
 are required; `python3 e2e/index.py` turns them into e2e/INDEX.md. Every
@@ -453,24 +456,43 @@ def check_fixture_paths(pairs, case_path, allowed):
 
 
 def check_check_shapes(exprs, case_path):
-    """A CHECK is ONE expression. `CHECK cond, "and why"` parses to a tuple, and a
-    non-empty tuple is ALWAYS true, so the assertion passes whatever the game did
-    (#650). Refuse it where the case is parsed -- every commit reaches this through
-    e2e/index.py --check -- rather than at eval time, after the game has been booted
-    for it. Deliberately narrow: it does NOT demand a bool, because 58 shipped CHECKs
-    are `re.search(...)`, which hands back a Match and means the right answer anyway.
-    A tuple that only appears at run time (`CHECK first(pairs)`) is caught by
-    check_verdict below."""
+    """A CHECK is ONE expression. `CHECK cond, "and why"` parses to a tuple,
+    and a non-empty tuple is always true, so the assertion passes whatever the
+    game did (#650). Refuse it where the case is parsed -- every commit reaches
+    this through e2e/index.py --check -- rather than at eval time, after the
+    game has been booted for it. Its sibling shapes go with it, because they
+    are the same dead assertion one keystroke away: a bare list/set/dict
+    literal (true whenever it is not empty), and a tuple parked inside an
+    `and`/`or`. Comprehensions stay legal -- `CHECK {r["t"] for r in rows if
+    r["x"]}` really does mean "some rows matched". Deliberately narrow
+    otherwise: it does NOT demand a bool, because 58 shipped CHECKs are
+    `re.search(...)`, which hands back a Match and means the right answer
+    anyway. A tuple that only appears at run time (`CHECK first(pairs)`) is
+    caught by check_verdict below."""
+    def dead_container(node):
+        if isinstance(node, ast.Tuple):
+            return "a tuple (a trailing comma makes one)"
+        if isinstance(node, (ast.List, ast.Set, ast.Dict)):
+            return "a container literal"
+        return None
+
+    name = os.path.basename(case_path)
     for expr in exprs:
         try:
             tree = ast.parse(expr, mode="eval")
         except SyntaxError as e:
             raise ValueError("%s: CHECK does not parse: %s (%s)"
-                             % (os.path.basename(case_path), e.msg, expr[:60]))
-        if isinstance(tree.body, ast.Tuple):
-            raise ValueError("%s: CHECK is a tuple -- a trailing comma makes one, "
-                             "and a non-empty tuple is ALWAYS true: %s"
-                             % (os.path.basename(case_path), expr[:60]))
+                             % (name, e.msg, expr[:60]))
+        why = dead_container(tree.body)
+        if why is None and isinstance(tree.body, ast.BoolOp):
+            for val in tree.body.values:      # (a, b) and "a note"
+                why = dead_container(val)
+                if why is not None:
+                    break
+        if why is not None:
+            raise ValueError("%s: CHECK is %s, not one assertion -- a "
+                             "non-empty container is ALWAYS true: %s"
+                             % (name, why, expr[:60]))
 
 
 def parse_cases(path):
@@ -1192,21 +1214,25 @@ def launch_env(game):
 
 
 def check_verdict(expr, check_globals):
-    """One CHECK: None when it passes, else the failure line to report. The tuple
-    test is the #650 backstop for a tuple the case file does not spell out (a helper
-    that hands back a row, `CHECK first(pairs)`): non-empty tuples are always true,
-    and a dead assertion is worse than a failing one. Everything else keeps today's
-    truthiness, because `re.search(...)` -- a Match, not a bool -- is the shipped
-    idiom in 58 CHECK lines."""
+    """One CHECK: None when it passes, else the failure line to report. The
+    tuple test is the #650 backstop for a tuple the case file does not spell
+    out -- a helper that hands back a row, `CHECK first(pairs)`: a non-empty
+    tuple is always true, and a dead assertion is worse than a failing one. An
+    EMPTY tuple is left to truthiness: it is always false, and "CHECK failed"
+    is the honest line for it. Everything else keeps today's truthiness,
+    because `re.search(...)` -- a Match, not a bool -- is the shipped idiom in
+    58 CHECK lines. The truthiness test stays inside the try: a value whose
+    __bool__ raises was reported as `CHECK raised` before, and still is."""
     try:
         val = eval(expr, check_globals)  # noqa: S307 - trusted case files
+        if isinstance(val, tuple) and val:
+            return ("CHECK evaluated to a tuple, which is always true -- a "
+                    "trailing comma, or a helper that returns one (#650): %s"
+                    % expr)
+        if not val:
+            return "CHECK failed: %s" % expr
     except Exception as e:
         return "CHECK raised: %r (%s)" % (expr, e)
-    if isinstance(val, tuple):
-        return ("CHECK evaluated to a tuple, which is always true -- a trailing "
-                "comma makes one (#650): %s" % expr)
-    if not val:
-        return "CHECK failed: %s" % expr
     return None
 
 
@@ -1442,7 +1468,11 @@ def select_cases(case_files, selectors):
         rel = os.path.splitext(os.path.relpath(path, CASES_DIR))[0].lower()
         try:
             name = parse_cases(path)["name"].lower()
-        except ValueError:
+        except ValueError as e:
+            # Like case_kind(): a case that does not parse must not vanish from
+            # a name selection as if it never existed -- and this one is worse,
+            # since a missed NAME match prints "no case matches".
+            warn("warning: %s" % e)
             name = ""
         if any(s in name or s in base or s in rel for s in sel):
             out.append(path)
@@ -1640,15 +1670,17 @@ def write_run_artifacts(results, meta):
 
 
 def self_test():
-    """The runner's own pins, run by `make test` (test-gen). No e2e case can pin
-    these: a case file asserts about the GAME, not about run.py. Uses the real parser
-    on a temp file rather than a copy of its rules."""
+    """The runner's own pins, run by `make test` (test-gen). No e2e case can
+    pin these: a case file asserts about the GAME, not about run.py. Uses the
+    real parser on a temp file rather than a copy of its rules."""
     import tempfile
 
     base = ["NAME selftest", "CLAIM pins the runner's own assertion rules",
             "KIND harness", "ARGS --timeout 1"]
 
     def parse_with(check_lines):
+        # The real parser, so a CHECK text here that LOOKS like a fixture path
+        # (an `e2e/...` or `res/...` token) is fixture-checked like any case's.
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "1-selftest.txt")
             with open(p, "w", encoding="utf-8") as f:
@@ -1656,38 +1688,50 @@ def self_test():
             return parse_cases(p)
 
     fails = []
-    # The #650 trap, both spellings: a trailing comma makes a tuple, and a non-empty
-    # tuple is always true, so the case would pass without testing anything.
-    for bad in ('CHECK 1 == 2, "and the note says why"',
-                'CHECK (1 == 2), "parenthesised the same way"'):
+    # The #650 trap and its siblings: a trailing comma makes a tuple, and a
+    # bare container is truthy whatever it holds, so the case passes without
+    # testing anything.
+    traps = ['CHECK 1 == 2, "and the note says why"',
+             'CHECK (1 == 2), "parenthesised the same way"',
+             'CHECK [1 == 2, 3 == 4]',
+             'CHECK {1 == 2}',
+             'CHECK (1 == 2, 3 == 4) and "a note"']
+    for bad in traps:
         try:
             parse_with([bad])
-            fails.append("accepted a tuple CHECK: %s" % bad)
+            fails.append("accepted a dead-shape CHECK: %s" % bad)
         except ValueError as e:
-            if "tuple" not in str(e):
-                fails.append("refused a tuple CHECK for the wrong reason: %s" % e)
+            if "ALWAYS true" not in str(e):
+                fails.append("dead-shape CHECK refused wrongly: %s" % e)
     try:
         parse_with(["CHECK 1 == ="])
         fails.append("accepted a CHECK that does not parse")
     except ValueError as e:
         if "does not parse" not in str(e):
-            fails.append("refused an unparseable CHECK for the wrong reason: %s" % e)
-    # The shipped idioms must stay parseable. re.search() answers with a Match, not a
-    # bool, so "a CHECK must evaluate to a bool" -- this ticket's own fix idea --
-    # would have failed 58 existing cases instead of fixing one.
+            fails.append("bad CHECK refused for the wrong reason: %s" % e)
+    # The shipped idioms must stay parseable. re.search() answers with a Match,
+    # not a bool, so "a CHECK must evaluate to a bool" -- this ticket's own fix
+    # idea -- would have failed 58 existing cases instead of fixing one.
+    # Comprehensions stay legal too: a bare `{...}`/`[...]` comprehension means
+    # "some rows matched", which is truthiness doing the right thing, unlike a
+    # literal of the same shape.
     try:
         parse_with(['CHECK re.search("x", out)',
                     "CHECK (band := [1, 2]) and len(band) >= 2",
-                    'CHECK all(r["t"] > 0 for r in power)'])
+                    'CHECK all(r["t"] > 0 for r in power)',
+                    'CHECK {r["t"] for r in power if r["t"] > 0}'])
     except ValueError as e:
         fails.append("refused a legitimate CHECK: %s" % e)
 
     ns = {"re": re, "len": len, "all": all, "__builtins__": {}}
     for expr, want in (("1 == 1", None),
                        ("1 == 2", "CHECK failed"),
+                       ("1/0", "CHECK raised"),
                        ('re.search("x", "bxb")', None),
                        ('re.search("q", "bab")', "CHECK failed"),
                        ("(1, 2)", "tuple"),
+                       ("(1,)", "tuple"),
+                       ("()", "CHECK failed"),
                        ("[1, 2]", None),
                        ("[]", "CHECK failed")):
         got = check_verdict(expr, dict(ns))
@@ -1699,8 +1743,9 @@ def self_test():
         for f in fails:
             print("SELF-TEST FAIL: %s" % f)
         return 1
-    print("e2e runner self-test ok: tuple CHECKs refused at parse and at eval; "
-          "re.search and walrus CHECKs still accepted")
+    print("e2e runner self-test ok: dead-shape CHECKs (tuple, container) "
+          "refused at parse and eval; re.search, walrus and comprehension "
+          "CHECKs accepted; CHECK failed/raised wording intact")
     return 0
 
 
@@ -1731,11 +1776,15 @@ def main():
                         help="run only cases of this KIND (repeatable): "
                              "invariant, golden, harness or canary")
     parser.add_argument("--self-test", action="store_true",
-                        help="run the runner's own pins and exit: the rules about "
-                             "CHECK lines themselves, which no e2e case can assert "
-                             "about (make test runs this)")
+                        help="run the runner's own pins and exit: the rules "
+                             "about CHECK lines themselves, which no e2e case "
+                             "can assert about (make test runs this)")
     args = parser.parse_args()
     if args.self_test:
+        # Run no cases, so say so rather than exiting 0 on a selection the user
+        # clearly meant to run.
+        if args.selectors or args.kind:
+            parser.error("--self-test runs no cases; drop the selectors")
         return self_test()
     if args.jobs < 1:
         parser.error("--jobs must be >= 1")

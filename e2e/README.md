@@ -83,6 +83,15 @@ line -- the only case that needs it. `python3 e2e/index.py --check` parses every
 case file, and `make test` runs it, so a stale path fails on the commit that
 introduces it rather than days later when someone spends a run on it.
 
+A `CHECK` is ONE expression. `CHECK cond, "why"` parses to a tuple, and a
+non-empty tuple is always true, so the assertion would pass without testing
+anything; run.py refuses that shape, along with a bare list/set/dict literal
+and a CHECK that does not parse, when it parses the case file rather than
+after booting the game for it (#650). `python3 e2e/run.py --self-test` pins
+those rules and `make test` runs it. Truthiness itself is unchanged -- `CHECK
+re.search(...)` answers with a Match, not a bool, and 58 shipped CHECKs rely
+on that, so "a CHECK must evaluate to a bool" is not the rule here.
+
 GL errors and crash strings (`Segmentation`, `Assertion`, `terminate called`,
 shader compile/link failures) are forbidden in every case, so do not repeat
 them in `FORBID`. `error:` is not default: a clean boot refusal prints it on

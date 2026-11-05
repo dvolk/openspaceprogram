@@ -97,7 +97,16 @@ def main():
     ap.add_argument("--stdout", action="store_true",
                     help="print instead of writing")
     args = ap.parse_args()
-    text = render(collect())
+    try:
+        rows = collect()
+    except ValueError as e:
+        # This is the gate `make test` runs on every commit, and run.py's case
+        # parser raises for a malformed case (a CHECK spelled as a tuple,
+        # #650). Report it as the case bug it is instead of a stack trace, so
+        # the fix is one file name rather than a traceback to decode.
+        print("e2e: %s" % e)
+        return 1
+    text = render(rows)
     if args.stdout:
         sys.stdout.write(text)
         return 0
@@ -114,7 +123,7 @@ def main():
     with open(INDEX, "w") as f:
         f.write(text)
     print("wrote %s (%d cases)" % (os.path.relpath(INDEX, run.REPO_ROOT),
-                                   len(collect())))
+                                   len(rows)))
     return 0
 
 
