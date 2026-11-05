@@ -699,7 +699,14 @@ public:
        TVC follows throttle because it is read off the ARMED thrust, which is a
        per-TICK transient (ApplyThrust arms it, the tick clears it), so ask once per
        substep: what actually moves between substeps is the power gate and the COM
-       these levers are measured from. */
+       these levers are measured from.
+       That makes tvcTorque the SPENDABLE half of the answer, and it has a twin:
+       tvcTorqueAvailable is the same disk with the ignited stage at full throttle
+       (#608). A law that sizes a turn with the spendable number finds it shrinking
+       under its own throttle law -- 2 % of the lever on a TVC-only hull is 2 % of the
+       steering, and before a burn's first ApplyThrust it is flat zero -- which is real
+       behaviour, but is not the question "could this hull turn at all". Both numbers
+       are in this one snapshot so the pair cannot be derived twice (#400's rule). */
     struct AttitudeAuthority {
         /* #576: a wheel is a rating AND the lines it levers. One row per powered
            DRUM: a single-drum housing (PartDef::wheel_axes == 1) is one row along
@@ -756,7 +763,20 @@ public:
            budget-not-delivery caveat applies to fins as much as to drums). */
         std::vector<ActuatorRow> surfaces;
         std::vector<const Part *> surfaceParts;
+        /* N m the ARMED gimballed engines can lever this substep. */
         double tvcTorque = 0.0;
+        /* N m the IGNITED gimballed stage could lever at FULL throttle (#608): the same
+           levers and the same sin(gimbal_max), rated thrust (partThrustCeiling, so a jet
+           is air-gated) instead of what the last ApplyThrust armed. A RATING in the
+           available* family: it does not consult the tanks (#607) and it does not follow
+           the lever. It is also a SUM over the ignited engines, so it inherits #639's
+           open question: a stage with one fed and one unfed engine is rated as if both
+           could hold the lever open.
+           Wheels and control surfaces need no twin -- neither is throttled. What has no
+           twin is heffMag, the N m / rad that turns a torque into gimbal angles: a plan
+           can ask what a turn is WORTH at full throttle but not yet what it COSTS in
+           degrees of deflection, which is the cone-availability question #419 owns. */
+        double tvcTorqueAvailable = 0.0;
         double heffMag = 0.0;
         glm::dvec3 stackAxis = glm::dvec3(0.0);
     };
@@ -778,6 +798,17 @@ public:
        this is the same physics stated once, on the side that decides how fast the
        law may aim to go. */
     double attitudeTorqueAbout(const AttitudeAuthority &auth,
+                               const glm::dvec3 &axis) const;
+    /* The same sum with tvcTorqueAvailable in place of tvcTorque (#608): N m this hull
+       could bring about `axis` with the IGNITED stage at full throttle. It is the rating
+       a plan would size a turn with, beside the availableAccel() it sizes a burn with --
+       a law that trims the lever to keep q down otherwise finds most of its steering
+       trimmed with it, and finds it gone outright before a burn's first ApplyThrust arms
+       anything. No law plans a turn rate yet, so today its readers are the [slew] trace,
+       the Vessel window, and pointingTo()'s free-axis choice (which line the hull owns is
+       a build question, not a this-tick one). It is NOT spendable -- actuateAttitude
+       answers to tvcTorque, because a nozzle that is not pushing levers nothing. */
+    double availableTurnTorque(const AttitudeAuthority &auth,
                                const glm::dvec3 &axis) const;
     /* WHAT AIMING AT `dir` MEANS FOR THIS HULL (#400) -- one answer, so the laws, the
        --slew-log trace and guidance cannot each derive their own and drift. (They had:
@@ -808,7 +839,13 @@ public:
         glm::dvec3 axis = glm::dvec3(0.0);
         double angle = 0.0;                     // E [rad]; 0 == aligned
         double Ieff = 0.0;                      // kg m^2 about axis
-        double alphaMax = 0.0;                  // rad/s^2 the actuators could hold here
+        /* rad/s^2 the actuators can hold about `axis` THIS TICK: the TVC term rides the
+           thrust the last ApplyThrust armed, so it is 0 on a coasting TVC-only hull and
+           it shrinks with the lever (#608). The laws brake against exactly that, on
+           purpose -- a nozzle that is not pushing levers nothing. Ask
+           Vehicle::availableTurnTorque for the hull's turn authority rather than this
+           tick's. */
+        double alphaMax = 0.0;
     };
     /* The authority comes in as a parameter because the laws already hold this
        substep's copy -- building a second one per substep is #594's churn. The

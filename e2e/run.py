@@ -169,8 +169,13 @@ SURFMAP_RE = re.compile(
 # toward, in the ship's own frame. Pairs with --plane-log's n_orb: a prograde
 # hold that aims at the ground's motion instead of the orbit's shows up as a
 # target sitting off the plane.
+# alpha/alpha_full are the two pointing authorities of #608: what the actuators can
+# lever THIS tick (TVC rides the armed thrust, so a coasting TVC-only hull reads 0),
+# and what the ignited stage could lever at full throttle. Both are needed to tell
+# "this hull cannot turn" from "this hull is not burning".
 SLEW_RE = re.compile(
     r"\[slew\]\s+t=([\d.]+)\s+mode=(\S+)\s+E=([-\d.]+)\s+rad\s+.*?"
+    r"alpha=([-\d.]+)\s+alpha_full=([-\d.]+)\s+Ieff=([-\d.]+)\s+.*?"
     r"nose=\[([-\d.+]+) ([-\d.+]+) ([-\d.+]+)\]\s+"
     r"target=\[([-\d.+]+) ([-\d.+]+) ([-\d.+]+)\]"
 )
@@ -663,9 +668,12 @@ def parse_dbg(out):
 def parse_slew(out):
     rows = []
     for m in SLEW_RE.finditer(out):
-        (t, mode, e, nx, ny, nz, tx, ty, tz) = m.groups()
+        (t, mode, e, alpha, alpha_full, ieff,
+         nx, ny, nz, tx, ty, tz) = m.groups()
         rows.append({
             "t": float(t), "mode": mode, "E": float(e),
+            "alpha": float(alpha), "alpha_full": float(alpha_full),
+            "Ieff": float(ieff),
             "nose": (float(nx), float(ny), float(nz)),
             "target": (float(tx), float(ty), float(tz)),
         })

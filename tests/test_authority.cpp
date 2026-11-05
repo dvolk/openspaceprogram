@@ -34,6 +34,7 @@
 #include "btcommon.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <deque>
@@ -104,7 +105,8 @@ struct RcsProbe : Vehicle {
    fixture that is not a stack can share the builder. */
 static Part *mkPart(std::deque<PartDef> &defs, const char *name, double mass, double hz,
                     double torque, double gimbalMax, int wheelAxes = 1,
-                    double ctlArea = 0.0) {
+                    double ctlArea = 0.0, double rate = 0.0, double ve = 0.0,
+                    bool jet = false) {
     Body *b = new Body;
     b->btBody = nullptr;                 // a part is not simulated on its own
     b->shape  = new btBoxShape(btVector3(0.5f, 0.5f, (float)hz));
@@ -119,6 +121,23 @@ static Part *mkPart(std::deque<PartDef> &defs, const char *name, double mass, do
     d.torque = torque;
     d.wheel_axes = wheelAxes;
     d.gimbal_max = gimbalMax;
+    if(ve > 0.0 || rate > 0.0) {
+        /* A real engine rather than an armed one: Part::isThruster() wants a
+           propellant rate AND an exhaust velocity, which is what the full-throttle
+           rating of #608 walks. Fixtures that only fake armedThrust leave both at 0
+           and keep their old meaning. Asking for one without the other would be a
+           fixture that looks like an engine and is not one, so it is loud. */
+        assert(ve > 0.0 && rate > 0.0 && "an engine def needs a rate AND an exhaust velocity");
+        d.exhaust_velocity = ve;
+        if(jet) {
+            d.jet = true;
+            d.setPropellantRate(ResourceType::JetFuel, rate);
+            d.jet_fan_thrust = 100.0;
+            d.jet_intake_area = 0.04;
+        } else {
+            d.setPropellantRate(ResourceType::Hydrogen, rate);
+        }
+    }
     if(ctlArea > 0.0) {
         d.control_area = ctlArea;
         d.max_deflection = 0.35;
@@ -154,13 +173,14 @@ struct Stack {
     glm::dvec3 x, y, z;
 };
 
-static Stack mkStack(double rootTorque, double engThrust, double gimbalMax) {
+static Stack mkStack(double rootTorque, double engThrust, double gimbalMax,
+                     double engRate = 0.0, double engVe = 0.0) {
     Stack st;
     st.s.v = new Vehicle;
     st.s.v->name = "authority";
     st.root = mkPart(st.s.defs, "root", 100.0, 1.5, rootTorque, 0.0);
     st.s.v->setRoot(st.root);
-    st.eng = mkPart(st.s.defs, "engine", 100.0, 1.0, 0.0, gimbalMax);
+    st.eng = mkPart(st.s.defs, "engine", 100.0, 1.0, 0.0, gimbalMax, 1, 0.0, engRate, engVe);
     st.s.v->attachDown(st.eng);
     st.s.v->init();
     st.s.v->placeShip(glm::dvec3(0.0, 0.0, 0.0), glm::dmat3(1.0));
@@ -288,6 +308,158 @@ static void test_wheels_and_tvc_together() {
     CHECK_NEAR(v->attitudeTorqueAbout(dead, st.x), tvc, 1e-9,
                "the engines still turn it while they burn");
     destroyShip(st.s.v);
+}
+
+/* THE THROTTLE-FREE TWIN OF THE TVC AUTHORITY (#608). tvcTorque rides the thrust the
+   last ApplyThrust armed, so a TVC-only hull reads 0 while it coasts and a slice of
+   itself at a trimmed lever. Both are honest about THIS substep -- a nozzle that is not
+   pushing levers nothing -- and neither answers "could this hull turn at all", which is
+   what a plan needs beside the availableAccel() it sizes a burn with. The twin walks the
+   same levers over the IGNITED stage at rated thrust: one model, lever pushed in, so the
+   disk shape (roll gets nothing from TVC) is shared rather than restated. */
+static void test_the_turn_authority_has_a_throttle_free_twin() {
+    printf("== a coasting stage still owns turn authority to plan with (#608) ==\n");
+    /* The ticket's probe, as a rig: 20000 N (5 kg/s x 4000 m/s) on 200 kg is the
+       "availableAccel 8.33 m/s^2, alphaMax 0.0000 rad/s^2" coasting row, 0.1 rad of
+       gimbal and 1.25 m of lever. */
+    Stack st = mkStack(0.0, 0.0, 0.1, /*engRate=*/5.0, /*engVe=*/4000.0);
+    Vehicle *v = st.s.v;
+    const double tvcFull = 20000.0 * 1.25 * std::sin(0.1);
+    {
+        const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
+        CHECK_NEAR(a.tvcTorque, 0.0, 0.0, "nothing armed, so nothing spendable");
+        CHECK_TRUE(v->attitudeTorqueAbout(a, st.x) == 0.0,
+                   "and the law reads a hull that cannot turn at all");
+        CHECK_NEAR(a.tvcTorqueAvailable, tvcFull, 1e-9,
+                   "the same lever at full throttle: T*|h|*sin(gimbal_max)");
+        CHECK_NEAR(v->availableTurnTorque(a, st.x), tvcFull, 1e-9, "pitch: the full disk");
+        CHECK_NEAR(v->availableTurnTorque(a, st.z), 0.0, 1e-12,
+                   "the twin is the same DISK, not a ball: no TVC about the stack axis");
+        CHECK_NEAR(v->availableTurnTorque(a, st.x * 7.0),
+                   v->availableTurnTorque(a, st.x), 1e-12, "scale-invariant in the axis");
+        CHECK_NEAR(v->availableTurnTorque(a, glm::dvec3(0.0, 0.0, 0.0)), 0.0, 0.0,
+                   "a zero axis buys nothing here either");
+    }
+    /* Throttled to 2 %: the spendable number tracks the lever, the rating does not move.
+       This is "a soft burn costs the turn with it", now readable as a pair instead of a
+       law that quietly stops steering mid-burn. */
+    st.eng->armedThrust = (float)(0.02 * 20000.0);
+    {
+        const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
+        CHECK_NEAR(a.tvcTorque, 0.02 * tvcFull, 1e-9, "2% of the lever: 2% of the steering");
+        CHECK_NEAR(v->availableTurnTorque(a, st.x), tvcFull, 1e-9,
+                   "and the rating does not follow the lever");
+    }
+    /* Full throttle and the two readings are ONE number. */
+    st.eng->armedThrust = 20000.0f;
+    {
+        const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
+        CHECK_NEAR(a.tvcTorque, a.tvcTorqueAvailable, 1e-9,
+                   "at full throttle the pair coincide -- one model, not two");
+    }
+    /* A part that cannot burn is not an engine to rate. Most fixtures in this file arm
+       thrust on a part with no propellant at all: that levers THIS substep (the mixer
+       splits what is armed), but the hull cannot hold that throttle open, so the rating
+       must be zero where the spendable number is not. */
+    {
+        Stack fake = mkStack(0.0, 800.0, 0.1);
+        const Vehicle::AttitudeAuthority a = fake.s.v->attitudeAuthority();
+        CHECK_NEAR(a.tvcTorque, 800.0 * 1.25 * std::sin(0.1), 1e-9, "armed thrust still levers");
+        CHECK_NEAR(a.tvcTorqueAvailable, 0.0, 0.0,
+                   "a part with no propellant has no full-throttle authority");
+        destroyShip(fake.s.v);
+    }
+    destroyShip(st.s.v);
+
+    /* THE GATE IS THE STAGE, NOT THE HULL. An engine the stage counter has not reached
+       is not a lever this ship owns yet -- the same blind spot #607 found in guidance's
+       stand-in for the thrust reads, pinned here on the turn side. The two arms are
+       hand-computed from the fixture, not measured off the code under test: attachDown
+       puts each child 2.5 m / 4.5 m below the root's centre, 100 kg there and 50 kg at
+       each, so the COM sits 1.75 m down and the arms are 0.75 m and 2.75 m. */
+    {
+        Ship s;
+        s.v = new Vehicle;
+        s.v->name = "twostage";
+        Part *root = mkPart(s.defs, "root", 100.0, 1.5, 0.0, 0.0);
+        s.v->setRoot(root);
+        Part *upper = mkPart(s.defs, "upper", 50.0, 1.0, 0.0, 0.1, 1, 0.0, 2.0, 3000.0);
+        upper->stage = 2;
+        s.v->attachDown(upper);
+        Part *lower = mkPart(s.defs, "lower", 50.0, 1.0, 0.0, 0.1, 1, 0.0, 5.0, 4000.0);
+        lower->stage = 1;
+        s.v->attachDown(lower);
+        s.v->init();
+        s.v->placeShip(glm::dvec3(0.0, 0.0, 0.0), glm::dmat3(1.0));
+        const glm::dvec3 z = s.v->partAxis(root, 2);
+        const glm::dvec3 com = s.v->comPos();
+        const double hUp = std::fabs(glm::dot(s.v->partPos(upper) - com, z));
+        const double hLo = std::fabs(glm::dot(s.v->partPos(lower) - com, z));
+        CHECK_NEAR(hUp, 0.75, 1e-9, "the upper engine levers 0.75 m off this COM");
+        CHECK_NEAR(hLo, 2.75, 1e-9, "and the lower one reaches 2.75 m");
+        const double upRate = 6000.0 * 0.75 * std::sin(0.1);    // 2 kg/s x 3000 m/s
+        const double loRate = 20000.0 * 2.75 * std::sin(0.1);   // 5 kg/s x 4000 m/s
+        CHECK_TRUE(s.v->activeStage() == 2, "the top stage is lit first");
+        const Vehicle::AttitudeAuthority top = s.v->attitudeAuthority();
+        CHECK_NEAR(top.tvcTorqueAvailable, upRate, 1e-9,
+                   "only the ignited stage is rated -- the parked one is not owned yet,"
+                   " and it is worth two thirds of the pair, so this is not rounding");
+        s.v->advanceStage();
+        CHECK_TRUE(s.v->activeStage() == 1, "one stage down");
+        const Vehicle::AttitudeAuthority both = s.v->attitudeAuthority();
+        CHECK_NEAR(both.tvcTorqueAvailable, upRate + loRate, 1e-9,
+                   "and after staging, the lower engine's lever joins the rating");
+        destroyShip(s.v);
+    }
+    /* THE TWIN IS THE WHOLE SUM, NOT A TVC-ONLY SHADOW: the wheels and the surface rows
+       come through the same helper. About the stack axis the drum is the entire answer
+       and the engine contributes nothing to EITHER reading -- the check that would go
+       red if availableTurnTorque were written as tvcTorqueAvailable * sin(toStack). */
+    {
+        Stack both = mkStack(200.0, 0.0, 0.1, 5.0, 4000.0);
+        const Vehicle::AttitudeAuthority a = both.s.v->attitudeAuthority();
+        CHECK_NEAR(a.tvcTorque, 0.0, 0.0, "coasting, so nothing is spendable");
+        CHECK_NEAR(a.tvcTorqueAvailable, tvcFull, 1e-9, "while the stage is rated");
+        CHECK_NEAR(both.s.v->attitudeTorqueAbout(a, both.z), 200.0, 1e-9,
+                   "the drum's roll line, from the spendable read");
+        CHECK_NEAR(both.s.v->availableTurnTorque(a, both.z), 200.0, 1e-9,
+                   "and the same 200 N m from the rating: a TVC-only twin would read 0");
+        CHECK_NEAR(both.s.v->availableTurnTorque(a, both.x), tvcFull, 1e-9,
+                   "transverse it is the engine alone, drum included, as #576 draws it");
+        /* THE DIFFICULTY SCALAR. The rating is built from partThrustCeiling(), so it
+           carries --exhaust-scale like every other thrust read. The armed number does
+           NOT: ApplyThrust has already paid the scale on its way in, and a coasting
+           hull's is 0 whatever the flag says. If the rating forgot the scalar, a hull
+           at half scale would claim a turn it cannot make. */
+        both.s.v->exhaust_scale = 0.5;
+        const Vehicle::AttitudeAuthority half = both.s.v->attitudeAuthority();
+        CHECK_NEAR(half.tvcTorque, 0.0, 0.0, "still coasting");
+        CHECK_NEAR(half.tvcTorqueAvailable, 0.5 * tvcFull, 1e-9,
+                   "the rating follows --exhaust-scale");
+        destroyShip(both.s.v);
+    }
+    /* THE FREE AXIS AT ANTIPODES DOES NOT FLIP WITH THE LEVER (#608). pointingTo()
+       invents an axis when the ask is exactly astern, and asks which lines the hull
+       owns before settling on the convention. Asked of the ARMED authority, a TVC-only
+       hull's invented line alternates as the throttle does -- #609's dither, arriving
+       through the lever instead of the world selector. */
+    {
+        Stack st2 = mkStack(0.0, 0.0, 0.1, 5.0, 4000.0);
+        Vehicle *w = st2.s.v;
+        const glm::dvec3 nose = w->partAxis(st2.root, 2);
+        const Vehicle::AttitudeAuthority cold = w->attitudeAuthority();
+        const Vehicle::Pointing coast = w->pointingTo(-nose, cold);
+        CHECK_NEAR(coast.alphaMax, 0.0, 0.0, "coasting: nothing to brake with");
+        CHECK_NEAR(coast.angle, std::acos(-1.0), 1e-9, "and the ask is dead astern");
+        st2.eng->armedThrust = 20000.0f;
+        const Vehicle::AttitudeAuthority hot = w->attitudeAuthority();
+        const Vehicle::Pointing burn = w->pointingTo(-nose, hot);
+        CHECK_TRUE(burn.alphaMax > 0.0, "armed, and the same ask has authority");
+        CHECK_NEAR(glm::dot(coast.axis, burn.axis), 1.0, 1e-12,
+                   "the same invented axis either way -- a convention that tracked the"
+                   " lever would alternate lines as the law trimmed the throttle");
+        destroyShip(w);
+    }
 }
 
 /* --- what the model is for ------------------------------------------------ */
@@ -1087,6 +1259,48 @@ static Rig mkRig(double drumTorque, double finRollDeg) {
     return r;
 }
 
+/* A JET ENGINE'S GIMBAL RATING IS THE SKY'S, NOT THE PUMP'S (#608). The rating is the
+   thrust family's own ceiling through the lever, so it owes #630's air gate the same
+   loyalty the throttle does: the same hull, the same lever, thin air. The dry rating and
+   the wet one differ by ~150x here, so a walk that reached for the authored nameplate
+   instead of the gate could not hide behind rounding. */
+static void test_a_jet_engine_earns_its_gimbal_rating_only_in_air() {
+    printf("== a jet gimbal is rated by the air it can breathe ==\n");
+    Ship s;
+    s.v = new Vehicle;
+    s.v->name = "jetrig";
+    Part *root = mkPart(s.defs, "pod", 100.0, 1.5, 0.0, 0.0);
+    s.v->setRoot(root);
+    Part *jet = mkPart(s.defs, "jet", 100.0, 1.0, 0.0, 0.1, 1, 0.0,
+                       /*rate=*/5.0, /*ve=*/1000.0, /*jet=*/true);
+    s.v->attachDown(jet);
+    s.v->init();
+    s.v->m_parent = mkAirBall();
+    s.v->placeShip(glm::dvec3(0.0, 0.0, 600000.0), glm::dmat3(1.0));
+    const Vehicle::AttitudeAuthority sea = s.v->attitudeAuthority();
+    CHECK_TRUE(sea.tvcTorqueAvailable > 0.0, "a gimballed jet in air is worth steering with");
+    CHECK_NEAR(sea.tvcTorqueAvailable, s.v->availableThrust() * 1.25 * std::sin(0.1), 1e-9,
+               "the rating is the throttle family's ceiling through the lever -- one"
+               " ceiling, not one for the throttle and one for the pointing math");
+    CHECK_NEAR(sea.tvcTorque, 0.0, 0.0, "and it is still a rating: the lever is coasting");
+    /* 40 km up: rho is exp(-5) of the surface's, so the gate -- and the rating -- follow
+       it down. A nameplate rating would not move at all. */
+    s.v->placeShip(glm::dvec3(0.0, 0.0, 640000.0), glm::dmat3(1.0));
+    const Vehicle::AttitudeAuthority high = s.v->attitudeAuthority();
+    CHECK_TRUE(high.tvcTorqueAvailable > 0.0, "there is still a little air up there");
+    CHECK_TRUE(high.tvcTorqueAvailable < 0.05 * sea.tvcTorqueAvailable,
+               "and the rating knows the sky is thin");
+    CHECK_NEAR(high.tvcTorqueAvailable, s.v->availableThrust() * 1.25 * std::sin(0.1), 1e-9,
+               "tracking the same gate the throttle uses, at either altitude");
+    delete s.v->m_parent;
+    s.v->m_parent = nullptr;
+    const Vehicle::AttitudeAuthority vac = s.v->attitudeAuthority();
+    CHECK_NEAR(vac.tvcTorqueAvailable, 0.0, 0.0,
+               "no air, no jet, no gimbal rating: the walk must not credit a turn the"
+               " sky refuses");
+    destroyShip(s.v);
+}
+
 static void test_a_fin_row_is_spent_and_hands_its_ask_to_the_air() {
     printf("== a fin row: spent by the solve, handed to the air ==\n");
     TerrainBody *body = mkAirBall();
@@ -1603,6 +1817,7 @@ int main() {
     test_fixture_lever_is_what_we_think();
     test_tvc_is_a_disk_not_a_ball();
     test_wheels_and_tvc_together();
+    test_the_turn_authority_has_a_throttle_free_twin();
     test_a_ship_with_nothing_has_nothing();
     test_two_wheels_add_up();
     test_a_cluster_covers_an_axis_it_points_at();
@@ -1614,6 +1829,7 @@ int main() {
     test_one_frame_for_the_attitude_path();
     test_the_command_funnel();
     test_the_armed_rcs_demand_is_a_direction();
+    test_a_jet_engine_earns_its_gimbal_rating_only_in_air();
     test_a_fin_row_is_spent_and_hands_its_ask_to_the_air();
     test_the_aim_is_measured_once();
     test_the_aim_keeps_its_doors_shut();

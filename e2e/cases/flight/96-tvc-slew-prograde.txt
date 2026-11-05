@@ -20,10 +20,11 @@ KIND invariant
 # when the 8 s throttle ends. --time-accel 1 paces the sim on the wall clock, so
 # the run ends at t=12.050-12.167 s (97 or 98 rows) and the residual rate carried
 # past cutoff came out -0.1543 rad/s in ten repeats of one binary and -0.0876
-# rad/s in a battery run that had 87 other cases for company. Twelve logs of the
-# same ARGS (those ten plus both battery runs): tap peak 0.3039-0.3723 rad,
-# hold-window mean 0.0219-0.0264, hold-window peak 0.0444-0.0800, E at the last
-# row 0.2814-0.4848. The two pins that used to sit INSIDE that spread -- a 0.06
+# rad/s in a battery run that had 87 other cases for company. Fourteen logs of the
+# same ARGS (those ten, both battery runs, and two more after #608): tap peak
+# 0.2993-0.4030 rad, hold-window mean 0.0219-0.0264, hold-window peak
+# 0.0444-0.0853, E at the last row 0.2814-0.4848. The two pins that used to sit
+# INSIDE that spread -- a 0.06
 # hold ceiling and a 0.3 final-angle floor -- went
 # red on one battery run and green on the next (#605 is this case; #138 is the
 # open root cause, the --sim-press windows above are wall-clock timed, so when
@@ -58,4 +59,23 @@ CHECK sum(s["E"] for s in slew if 6.0 < s["t"] < 8.8) / len([s for s in slew if 
 # old pin here was the final angle alone (> 0.3), which the spread straddles.
 CHECK all(a["E"] < b["E"] for a in slew for b in slew if 9.4 < a["t"] < b["t"])
 CHECK last(slew)["E"] - min(s["E"] for s in slew if s["t"] > 9.4) > 0.15
+# NO THRUST, BUT NOT NO ACTUATORS either. alpha= is what the armed engines can lever
+# THIS TICK, so a released throttle takes it to zero -- and alpha_full= (#608) is the
+# same axis with the ignited stage at FULL throttle, which does not follow the lever:
+# 2.230-2.284 rad/s^2 while the burn runs (the mass and the COM both move under it) and
+# flat 2.227 once the throttle is shut. That pair is the distinction this case's drift
+# has always leaned on and could not state: the hull went quiet because it stopped
+# burning, not because it has no steering. The 1.0 floor is a little under half the
+# measured rating and would fail on a hull with gimbal_max 0 or no engine lit.
+# The window is the drift pins' 9.4 pushed 0.2 s later, which is the only slack this
+# case can promise: the press releases T at wall-clock 9 s, and in three logs the last
+# live row came at 9.000-9.067 and the first zero row at 9.100-9.183 -- so 9.6 leaves
+# ~0.4 s, and every pin above already assumes cutoff before 9.4.
+CHECK all(s["alpha"] < 1e-3 for s in slew if s["t"] > 9.6)
+CHECK all(s["alpha_full"] > 1.0 for s in slew if s["t"] > 9.6)
+CHECK any(s["alpha"] > 1.0 for s in slew if 6.0 < s["t"] < 8.8)
+# And while the lever is FULL -- which it is through the hold window, T having been held
+# since 1 s -- the two columns are the same number (2.230/2.230 at the same row). The
+# rating is not a second model of the gimbal; it is this one with the lever pushed in.
+CHECK all(abs(s["alpha"] - s["alpha_full"]) < 0.05 for s in slew if 6.0 < s["t"] < 8.8)
 CHECK all(a["wnorm"] == a["wnorm"] and a["wnorm"] < 1e4 for a in att)

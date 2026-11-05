@@ -2514,6 +2514,21 @@ void drawUIReadouts(Game &g) {
                             actuatorTorqueAbout(auth.surfaces, ax[0]),
                             actuatorTorqueAbout(auth.surfaces, ax[1]));
             }
+            /* #608: on a hull whose only steering is the gimbals, the steering IS in
+               the throttle -- tvcTorque rides the thrust the last ApplyThrust armed, so
+               it reads 0 while the ship coasts and a slice of itself at a trimmed
+               lever. Quoted current/possible, the same shape as the "Thrust:
+               produced/available" row above: what the gimbals can spend this tick, and
+               what the ignited stage could spend at full throttle. Shown only when the
+               hull has gimballed engines to rate, so a wheel-only readout stays as it
+               was. It is a disk, not a ball (#425), so the number is pitch and yaw --
+               the stack axis (roll) gets nothing from a nozzle. And "full throttle"
+               carries the same caveat as the available-thrust row: a jet's rating is
+               its ceiling in THIS air at its best speed, not its sea-level brochure. */
+            if(auth.tvcTorqueAvailable > 0.0) {
+                ImGui::Text("Gimbal torque, pitch/yaw (this tick / full throttle): %.0f / %.0f N m",
+                            auth.tvcTorque, auth.tvcTorqueAvailable);
+            }
         }
         ImGui::Text("Angular rate: %.2fdeg/s",
                     glm::degrees(glm::length(ship->hullAngVel())));

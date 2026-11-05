@@ -3686,8 +3686,12 @@ void Vehicle::slew_log(double time) {
     /* One answer with the law (#400), the target test included -- they used to be two
        copies, and the log's was looser: at 0.5 it dropped a target the law was busy
        steering toward, and normalizing what was left (a zero vector) made E and axis
-       NaN, so the row read alpha=0.000 next to a ship actually slewing on its engines. */
-    const Pointing p = pointingTo(target);
+       NaN, so the row read alpha=0.000 next to a ship actually slewing on its engines.
+       The authority comes from ONE build here: the row quotes two of its numbers, and
+       asking for the second one separately would rebuild the budget again for one row
+       (#594). */
+    const AttitudeAuthority auth = attitudeAuthority();
+    const Pointing p = pointingTo(target, auth);
     if(!p.valid) {
         printf("[slew] t=%.3f mode=%s %s\n", time, mode,
                glm::length2(target) < 1e-12 ? "no-target" : "no-frame");
@@ -3698,6 +3702,13 @@ void Vehicle::slew_log(double time) {
     const double Ieff = p.Ieff;
     const double alpha = p.alphaMax;
     const glm::dvec3 axis = p.axis;
+    /* alpha is what the actuators can spend THIS TICK: its TVC term rides the thrust
+       the last ApplyThrust armed, so a TVC-only hull reads alpha=0 while it coasts and
+       reads a fraction of itself while its law trims the lever. alpha_full is the same
+       axis at full throttle (#608). The pair is what tells "this hull cannot turn"
+       apart from "this hull is not burning" -- which the 96 case's engine-off drift
+       has always depended on, and which a reader could not see before. */
+    const double alpha_full = (Ieff > 0.0) ? availableTurnTorque(auth, axis) / Ieff : 0.0;
     target = glm::normalize(target);   // the printed direction is a unit vector
     /* The frame this rate decomposition belongs to (#421): nose, the axis the slew
        law actually drives, and the third that completes it. A hull-level |w| cannot
@@ -3720,11 +3731,11 @@ void Vehicle::slew_log(double time) {
        size as the error it is there to catch. */
     printf("[slew] t=%.3f mode=%s E=%.4f rad (%.2f deg) "
            "w_slew=%+.4f w_roll=%+.4f w_third=%+.4f |w|=%.4f "
-           "alpha=%.3f Ieff=%.0f w_des=%+.4f "
+           "alpha=%.3f alpha_full=%.3f Ieff=%.0f w_des=%+.4f "
            "nose=[%+.6f %+.6f %+.6f] target=[%+.6f %+.6f %+.6f]\n",
            time, mode, E, glm::degrees(E),
            w_slew, w_roll, w_third, glm::length(w),
-           alpha, Ieff, w_des,
+           alpha, alpha_full, Ieff, w_des,
            p.facing.x, p.facing.y, p.facing.z, target.x, target.y, target.z);
     fflush(stdout);
 }
@@ -4639,7 +4650,14 @@ double Vehicle::ceilingSum(const glm::dvec3 *want) {
                arms every ignited engine, so the push along dir really is the signed
                sum: an up-firing and a down-firing engine cancel for the rest of this
                burn. What this does NOT price is that swinging every nozzle at the ask
-               spends the TVC the same gimbals provide for steering (#608). */
+               spends the gimbal range the TVC steers with. #608 landed the other side
+               of that bill (AttitudeAuthority::tvcTorqueAvailable, and
+               availableTurnTorque about an axis), but the two reads are NOT additive:
+               an aim that spends the cone along `want` and a turn that budgets the full
+               sin(gimbal_max) double-count one lever. Nothing in the model adds them
+               today -- tvcSplit only rotates the vector, which does price the axial cost
+               of the deflection -- and pricing the CONE's availability is #419's work
+               (circulating the gimbals to roll a cluster), not a sum to bolt on here. */
             const double off = acosUnit(glm::dot(sRot * p->localRot[2], *want));
             share = std::cos(std::max(0.0, off - p->def->gimbal_max));
         }
@@ -4870,13 +4888,40 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
        T*|lat| at lever |h|, so
          heffMag = Sum(T_i*|h_i|)  N m / rad,  tvcTorque = heffMag*sin(gimbal_max).
        The lever is COM height ALONG THE STACK AXIS: an engine at COM height has no
-       useful pitch/yaw lever, exactly as the mixer's sign flip is moot for it. */
+       useful pitch/yaw lever, exactly as the mixer's sign flip is moot for it.
+       The same levers are walked a second way into tvcTorqueAvailable (#608): rated
+       thrust over the IGNITED stage instead of what the last ApplyThrust armed, so a
+       plan can ask whether this hull could turn at all rather than watching its
+       steering shrink with its own throttle law -- and read flat zero for the tick
+       before a burn arms anything. Air is asked only if an ignited gimballed engine
+       is in the loop at all (a jet's ceiling is air-gated, a rocket's is not). */
     const glm::dvec3 com = comPos();
+    const int as = activeStage();
+    /* ONE atmosphere read for this whole walk, because this function runs every
+       substep and both halves below ask the sky: the jet ceilings in the TVC loop
+       (partThrustCeiling is air-gated, #630) and the surface rows after it (q, Mach).
+       airDensityAtCom() would pay for the profile twice; here the profile -- atm/alt,
+       not just the density, because the fin rows need the speed of sound too -- is
+       asked at most once and shared. (#594 is the ticket that stops the walk itself
+       from running several times a substep.) */
+    DragAtmosphere atm; double alt = 0.0;
+    bool airAsked = false, airOk = false;
+    const auto airProfile = [&]() {
+        if(!airAsked) { airAsked = true; airOk = comAirProfile(m_parent, com, atm, alt); }
+        return airOk;
+    };
+    const auto airRho = [&]() {
+        return airProfile() ? airDensity(atm, alt) : 0.0;
+    };
+    const double oxShare = (m_parent != nullptr)
+                         ? m_parent->surface.atmosphere.oxidizer_share : 0.0;
     bool anySurface = false;
     for(const Part *p : parts) {
         if(p->def->isControlSurface()) { anySurface = true; }
+        if(p->def->gimbal_max <= 0.0) { continue; }
         const double armed = p->armedThrust;
-        if(armed == 0.0 || p->def->gimbal_max <= 0.0) { continue; }
+        const bool lit = p->isThruster() && p->stage >= as;
+        if(armed == 0.0 && !lit) { continue; }
         /* sin() of the limit is a capability only while the limit is under 90 deg;
            past that the exhaust points forward of the mount and the lateral-force
            fraction FALLS as the authored range grows, so a 120 deg nozzle would be
@@ -4889,8 +4934,20 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
         assert(p->def->gimbal_max <= std::numbers::pi_v<double> * 0.5);
         const double lever = std::fabs(glm::dot(partPos(p) - com, a.stackAxis));
         if(lever < 1e-6) { continue; }
-        a.heffMag   += armed * lever;
-        a.tvcTorque += armed * std::sin(p->def->gimbal_max) * lever;
+        const double s = std::sin(p->def->gimbal_max);
+        if(armed != 0.0) {
+            a.heffMag   += armed * lever;
+            a.tvcTorque += armed * s * lever;
+        }
+        if(lit) {
+            /* Air is asked for only when a JET is in the loop: a rocket's ceiling does
+               not read the sky, and this walk runs every substep (#594). */
+            const double rho = p->isJet() ? airRho() : 0.0;
+            /* The same per-engine ceiling availableThrust() sums, so the pair cannot
+               drift: tvcTorqueAvailable is that number seen through the gimbal lever. */
+            a.tvcTorqueAvailable += partThrustCeiling(p, rho, oxShare)
+                                  * exhaust_scale * s * lever;
+        }
     }
     /* #426: the SURFACE rows, spent by actuateAttitude -- see AttitudeAuthority::
        surfaces for what the mix does and what a setpoint means. q is the COM's, and
@@ -4907,7 +4964,7 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
        The frame is attitudeRef()'s basis, the same one the stick, the laws and the
        mixer speak (#571); one partRot for the whole set. */
     /* drag_cd is the aero master switch (--drag-cd 0), and applyAeroForce returns
-       before its control-surface block when it is off. airDensityAtCom() answers the
+       before its control-surface block when it is off. The profile read answers the
        AUTHORED shell and does not know about the switch, so asking it is not enough:
        without this the budget quotes kN m of fin, actuateAttitude hands the plates
        their setpoints and subtracts their share from what it applies, and no force
@@ -4915,11 +4972,9 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
        readout says. Same lesson as #418's power gate: the budget must answer what the
        actuators will really be able to spend. */
     if(anySurface && drag_cd > 0.0) {
-        DragAtmosphere atm; double alt = 0.0;
         const glm::dvec3 vrel = airRelativeVel(com);
         const double v2 = glm::dot(vrel, vrel);
-        const double rho = comAirProfile(m_parent, com, atm, alt)
-                         ? airDensity(atm, alt) : 0.0;
+        const double rho = airRho();   // the same profile the jet ceilings above asked for
         const double q = 0.5 * rho * v2;
         if(q > 0.0) {
             /* #543 A5: the authority a fin has is the AUTHORED slope corrected for
@@ -4956,8 +5011,16 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthority() {
     return a;
 }
 
-double Vehicle::attitudeTorqueAbout(const AttitudeAuthority &a,
-                                    const glm::dvec3 &axis) const {
+/* The one directional sum both authority reads share: actuator rows per line
+   (actuators.h) plus the TVC disk projected on the ask. `tvc` is the only thing that
+   differs between them -- what the ARMED engines lever this substep, or what the
+   IGNITED stage could lever at full throttle (#608). Keeping one copy is what stops
+   the budget a law plans against and the torque the actuators deliver from
+   disagreeing (#576, #426). */
+static double torqueAboutRows(const std::vector<ActuatorRow> &wheels,
+                              const std::vector<ActuatorRow> &surfaces,
+                              const glm::dvec3 &stackAxis, double tvc,
+                              const glm::dvec3 &axis) {
     const double ax2 = glm::dot(axis, axis);
     if(!(ax2 > 0.0)) { return 0.0; }   // a zero or NaN axis buys nothing
     /* sin of the angle between `axis` and the stack axis = |z x axis| / |axis| for
@@ -4965,15 +5028,24 @@ double Vehicle::attitudeTorqueAbout(const AttitudeAuthority &a,
        axis can round a hair over |axis|. The `> 0.0` test is also the NaN guard:
        std::fmin would hand a NaN stack axis the FULL 1.0, i.e. grant TVC about every
        axis at once, whereas this buys nothing. (A NaN `axis` is caught above.) */
-    const double sinToStack = glm::length(glm::cross(a.stackAxis, axis)) / std::sqrt(ax2);
+    const double sinToStack = glm::length(glm::cross(stackAxis, axis)) / std::sqrt(ax2);
     const double b = (sinToStack > 0.0) ? std::fmin(1.0, sinToStack) : 0.0;
     /* The wheels' and the surfaces' halves ask actuators.h the same question
-       actuateAttitude will answer with the same rows, so the budget a law plans
-       against and the torque the actuators deliver cannot disagree (#576, #426).
-       The surface term is why a hull with no wheel at all has attitude authority in
-       air (it had none to name before #426) and why a latched law can fly a plane. */
-    return actuatorTorqueAbout(a.wheels, axis)
-         + actuatorTorqueAbout(a.surfaces, axis) + a.tvcTorque * b;
+       actuateAttitude will answer with the same rows, so a hull with no wheel at all
+       still has attitude authority in air (it had none to name before #426), and a
+       latched law can fly a plane. */
+    return actuatorTorqueAbout(wheels, axis)
+         + actuatorTorqueAbout(surfaces, axis) + tvc * b;
+}
+
+double Vehicle::attitudeTorqueAbout(const AttitudeAuthority &a,
+                                    const glm::dvec3 &axis) const {
+    return torqueAboutRows(a.wheels, a.surfaces, a.stackAxis, a.tvcTorque, axis);
+}
+
+double Vehicle::availableTurnTorque(const AttitudeAuthority &a,
+                                    const glm::dvec3 &axis) const {
+    return torqueAboutRows(a.wheels, a.surfaces, a.stackAxis, a.tvcTorqueAvailable, axis);
 }
 
 glm::dmat3 Vehicle::getInertia() {
@@ -5125,9 +5197,14 @@ Vehicle::Pointing Vehicle::pointingTo(glm::dvec3 dir, const AttitudeAuthority &a
            right -- alphaMax 0, and slewDemand holds position for ever without saying
            so. So: right if it buys anything, otherwise up. Deliberately one-sided
            rather than "whichever buys more", which would alternate the two lines as
-           the wheel budget moves. */
+           the wheel budget moves.
+           The question here is WHICH LINE the hull owns, not what this substep can
+           pay for, so it asks the throttle-free rating (#608). Asked of the armed
+           authority, a TVC-only hull's invented axis would flip between right and up
+           as its throttle opened and closed -- the same per-tick alternation #609
+           closed, arriving through the lever instead of through the world selector. */
         p.axis = basis[0];
-        if(attitudeTorqueAbout(auth, p.axis) <= 0.0) { p.axis = basis[1]; }
+        if(availableTurnTorque(auth, p.axis) <= 0.0) { p.axis = basis[1]; }
         assert(std::fabs(glm::dot(p.axis, p.facing)) < 1e-12);
     } else {
         p.axis = glm::normalize(p.axis);
