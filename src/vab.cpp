@@ -931,9 +931,9 @@ std::string vabSeatProblem(const Game &g) {
    Delete) act on g.vab.selected, so a right-click that opens a part window moves
    the edit target too: otherwise the screen shows one part's identity card while
    the buttons edit another. Printing the pick is what makes a 3D pick assertable
-   -- the panel's "selected: <id> (<label>)" line is plain imgui Text, which
-   --ui-list cannot show (the registry skips id==0), so a case aiming a pick at a
-   part could not otherwise tell whether it hit the part it meant (#311). */
+   -- the panel's "selected: <id> (<label>)" line is plain imgui Text, which reaches
+   --ui-list only through uiText (#601), so a case aiming a pick at a part could not
+   otherwise tell whether it hit the part it meant (#311). */
 static void vabSelect(Game &g, int idx) {
     g.vab.selected = idx;
     g.vab.linkSel = -1;   // the two selections are exclusive
@@ -954,7 +954,8 @@ void vabOpenPartWindow(Game &g, int partIdx, int px, int py) {
     g.vab.partWinMy = py;
     g.vab.partWinPlaced = false;   // place it next to the click on the first draw
     /* The stat rows are plain imgui Text, so --ui-list cannot see them and a
-       case has nothing to pin. This line is the testable face of the dossier:
+       case has nothing to pin -- they are the ones #644 would put through
+       uiText (#601). This line is the testable face of the dossier:
        what the window decided the part carries. Log-style short names, as
        Vehicle::resourceName uses everywhere else stdout is the reader. */
     char res[200];

@@ -2071,13 +2071,17 @@ void drawUIReadouts(Game &g) {
                 ImGui::TextColored(ImVec4(0.90f, 0.30f, 0.30f, 1.0f),
                                   "  Status:    NO POWER (uncontrolled)");
             }
-            ImGui::Text("  Net:       %+.1f W   (%s)",
-                        net, net >= 0.0 ? "charging" : "draining");
-            ImGui::Text("  Charge:    %.1f / %.1f Wh", charge, capacity);
-            ImGui::Text("  Generation:  %.1f W", gen);
-            ImGui::Text("  Const draw:  %.1f W   (life support)", constDraw);
-            ImGui::Text("  Active:      %.1f W   (actuators, while commanding)",
-                        activeDraw);
+            /* uiText, not ImGui::Text, so ui/601 can read these figures off the screen
+               (#601). The block lives on the Game Debug overlay, F1, as it always has:
+               a player who never presses it sees the EC bar in Resources and none of
+               this balance -- which is its own issue (#646). */
+            uiText("  Net:       %+.1f W   (%s)",
+                   net, net >= 0.0 ? "charging" : "draining");
+            uiText("  Charge:    %.1f / %.1f Wh", charge, capacity);
+            uiText("  Generation:  %.1f W", gen);
+            uiText("  Const draw:  %.1f W   (life support)", constDraw);
+            uiText("  Active:      %.1f W   (actuators, while commanding)",
+                   activeDraw);
         }
     });
 
@@ -2516,11 +2520,15 @@ void drawUIReadouts(Game &g) {
                                               std::fabs(glm::dot(tau, ax[1])) };
             };
             const std::array<double, 3> wh = about(del.wheels);
-            ImGui::Text("Wheel torque (roll/pitch/yaw): %.0f / %.0f / %.0f N m, spent %.0f / %.0f / %.0f",
-                        actuatorTorqueAbout(auth.wheels, ax[2]),
-                        actuatorTorqueAbout(auth.wheels, ax[0]),
-                        actuatorTorqueAbout(auth.wheels, ax[1]),
-                        wh[0], wh[1], wh[2]);
+            /* These rows, and the Angular rate row below the block, go through
+               uiText: they are the #572/#599/#608 figures a test should be able to
+               read, and until now they were pinned only in unit tests and in what the
+               hull does -- never as a claim about what the player is shown (#601). */
+            uiText("Wheel torque (roll/pitch/yaw): %.0f / %.0f / %.0f N m, spent %.0f / %.0f / %.0f",
+                   actuatorTorqueAbout(auth.wheels, ax[2]),
+                   actuatorTorqueAbout(auth.wheels, ax[0]),
+                   actuatorTorqueAbout(auth.wheels, ax[1]),
+                   wh[0], wh[1], wh[2]);
             /* #426: the same question of the surfaces -- what one radian of command
                at THIS dynamic pressure is worth about each ship axis. Only shown when
                there is something to show, so a rocket's readout stays as it was; a
@@ -2531,11 +2539,11 @@ void drawUIReadouts(Game &g) {
                under a swept plate (#483) -- the difference the #426 caveat is about. */
             if(!auth.surfaces.empty()) {
                 const std::array<double, 3> sh = about(del.surfaces);
-                ImGui::Text("Surface torque (roll/pitch/yaw): %.0f / %.0f / %.0f N m, spent %.0f / %.0f / %.0f",
-                            actuatorTorqueAbout(auth.surfaces, ax[2]),
-                            actuatorTorqueAbout(auth.surfaces, ax[0]),
-                            actuatorTorqueAbout(auth.surfaces, ax[1]),
-                            sh[0], sh[1], sh[2]);
+                uiText("Surface torque (roll/pitch/yaw): %.0f / %.0f / %.0f N m, spent %.0f / %.0f / %.0f",
+                       actuatorTorqueAbout(auth.surfaces, ax[2]),
+                       actuatorTorqueAbout(auth.surfaces, ax[0]),
+                       actuatorTorqueAbout(auth.surfaces, ax[1]),
+                       sh[0], sh[1], sh[2]);
             }
             /* #608: on a hull whose only steering is the gimbals, the steering IS in
                the throttle -- tvcTorque rides the thrust the last ApplyThrust armed, so
@@ -2553,19 +2561,19 @@ void drawUIReadouts(Game &g) {
                finished swinging the ring, or a cluster's mixer clamped one engine. */
             if(auth.tvcTorqueAvailable > 0.0) {
                 const std::array<double, 3> tv = about(del.tvc);
-                ImGui::Text("Gimbal torque, pitch/yaw (this tick / full throttle): %.0f / %.0f N m, spent %.0f / %.0f",
-                            auth.tvcTorque, auth.tvcTorqueAvailable, tv[1], tv[2]);
+                uiText("Gimbal torque, pitch/yaw (this tick / full throttle): %.0f / %.0f N m, spent %.0f / %.0f",
+                       auth.tvcTorque, auth.tvcTorqueAvailable, tv[1], tv[2]);
             }
             /* THE ASK (#599), on the row the spends sit under. Shown even at zero,
                because zero is the answer flight/96's post-cutoff drift and #640 had to
                infer from behaviour: SAS lit, throttle shut, a law handed no authority
                asks nothing, so nothing is spent and the hull drifts. */
             const std::array<double, 3> ak = about(del.asked);
-            ImGui::Text("Steering asked (roll/pitch/yaw): %.0f / %.0f / %.0f N m",
-                        ak[0], ak[1], ak[2]);
+            uiText("Steering asked (roll/pitch/yaw): %.0f / %.0f / %.0f N m",
+                   ak[0], ak[1], ak[2]);
         }
-        ImGui::Text("Angular rate: %.2fdeg/s",
-                    glm::degrees(glm::length(ship->hullAngVel())));
+        uiText("Angular rate: %.2fdeg/s",
+               glm::degrees(glm::length(ship->hullAngVel())));
     });
     drawWin(g, W_Controls, [&] {
         ImGui::Text("Click rebind, then press a key (or Shift/Ctrl/Alt + key) to bind it.");

@@ -637,10 +637,11 @@ def generate(name, ptype, mesh, texture):
             # a coasting capsule could roll and could not point itself.
             e["wheel_axes"] = 3
             # The pod's drums bill like any other wheel's (#596). Before this no
-            # capsule had a power_draw, so a pod-only hull slewed while paying nothing
-            # for it: the Vessel window's Active row read 0.0 W, and the pod's own
-            # battery fell at life-support rate no matter how hard the stick worked --
-            # the same authority through a wheel block ate the pool that much faster.
+            # capsule had a power_draw, so commanding a pod-only hull added nothing to
+            # its drain: the power block's Active row (Game Debug, F1) read 0.0 W, and
+            # the pod's own battery fell at life-support rate no matter how hard the
+            # stick worked -- the same authority through a wheel block ate the pool
+            # that much faster.
             # The two lines below are separate and ride the CREW: life support is
             # always on, and the built-in battery is storage, not a draw.
             e["power_draw"] = clean(WHEEL_DRAW_WATTS_PER_NM * e["torque"])

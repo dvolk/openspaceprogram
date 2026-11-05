@@ -1,0 +1,47 @@
+# The readout rows are readable by the harness, not only by the player. imgui 1.92 draws
+# a text row with ItemAdd(bb, 0) -- no item id, and no label reaches the test-engine
+# hooks -- so --ui-list used to dump only buttons and checkboxes: the numbers this
+# project ships (#572's per-axis wheel rows, #596's Active row, #599's spent columns,
+# #608's rating pair) were pinned in unit tests and in what the hull DOES, never as a
+# claim about what the player is shown (#601).
+#
+# uiText() (src/uiinput.h) draws the string and hands the registry the bytes it drew,
+# tagged `text`, so --ui-list prints the row WITH its value and an EXPECT can read the
+# number off the screen. Ten call sites converted: the power block and the attitude
+# block. The power block has always lived on the Game Debug overlay, so the case presses
+# F1 -- that the balance is dev-only is its own issue, filed from #601.
+#
+# power_test is flight/377's electrical fixture: a capsule_r2.25 (450 N m of built-in
+# drums, 225 W of that bill, 600 W of life support), a wheel block r2.25 (4500 N m,
+# 2250 W) and an RTG. W is the stick, held 3000..8000, so the dump at 5000 lands while
+# the hull commands its drums. Active then reads 2475.0 W -- the two housings billed
+# together, which is #596's rule visible on screen -- and the wheel rating row reads
+# 4950 N m about each axis, the pod's 450 plus the block's 4500.
+NAME readout-rows-are-readable
+CLAIM --ui-list dumps the readout rows with the values they print.
+KIND golden
+ARGS --width 1600 --height 900 --sim-steps 900
+ARGS --startship power_test,res/ships/power_test.json,Kerbin,rot-orbit
+ARGS --sim-press 3000,0,F1
+ARGS --sim-press 3000,5000,W
+ARGS --ui-list 5000
+ARGS --ui-click 7000,"Game Debug/  Const draw:  600.0 W   (life support)"
+EXPECT [uilist] window="Game Debug" label="  Active:      2475.0 W   (actuators, while commanding)"
+EXPECT [uilist] window="Game Debug" label="  Const draw:  600.0 W   (life support)"
+EXPECT [uilist] window="Vessel Info" label="Wheel torque (roll/pitch/yaw): 4950 / 4950 / 4950 N m
+EXPECT [uilist] window="Vessel Info" label="Steering asked (roll/pitch/yaw): 0 / 4950 / 0 N m
+FORBID error:
+# How many rows the channel carries here: five power, four attitude. The Surface torque
+# row is one of the ten converted sites that a finless hull does not draw, so this counts
+# what was drawn rather than trusting the call-site list.
+CHECK len([l for l in out.split("\n") if l.rstrip().endswith(" text") and 'window="Game Debug"' in l]) == 5
+CHECK len([l for l in out.split("\n") if l.rstrip().endswith(" text") and 'window="Vessel Info"' in l]) == 4
+# The row prints the sum the sim pays (#575), read off the screen: Net is what the other
+# three rows of the same dump add up to. An identity and not a figure, so a parts
+# rebalance moves the numbers without moving this assertion. The 0.2 band covers four
+# one-decimal printings, each of which can sit 0.05 off.
+CHECK abs(float(re.search('label="  Net: +([-+]?[0-9.]+) W', out).group(1)) - (float(re.search('label="  Generation: +([0-9.]+) W', out).group(1)) - float(re.search('label="  Const draw: +([0-9.]+) W', out).group(1)) - float(re.search('label="  Active: +([0-9.]+) W', out).group(1)))) < 0.2
+# #601's other half, and the failure shape it asks to keep: a readout is in the registry
+# to be READ. findMatches() skips text rows, so a click aimed at one reports the same miss
+# a renamed button reports instead of pressing on a caption.
+CHECK any('path="Game Debug/  Const draw:  600.0 W   (life support)" FAILED not found' in l for l in out.split("\n"))

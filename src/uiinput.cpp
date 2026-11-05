@@ -13,7 +13,9 @@
 
 #include <SDL3/SDL.h>
 
+#include <cassert>
 #include <cfloat>
+#include <cstdarg>
 #include <cstdio>
 #include <string>
 #include <string_view>
@@ -35,6 +37,10 @@ struct UiItem {
        return false but still set HoveredId"). So a click aimed at it looks clean
        and activates nothing. Record it and refuse. */
     bool disabled = false;
+    /* A readout row drawn by uiText(). imgui gives Text no item id, so there is
+       nothing to hover and nothing to press: these rows are here to be READ, and
+       findMatches() and labelOf() skip them (#601). */
+    bool text = false;
 };
 
 // The items of the imgui pass that just finished, and of the one in flight;
@@ -83,7 +89,10 @@ bool exactEq(std::string_view a, std::string_view b) {
 /* The items matching `path`. A qualified "Window/Label" is tried at every '/'
    in the path, rightmost first -- window names and labels both contain
    slashes, so no single split rule works. Otherwise the whole path is the
-   label, in any window. */
+   label, in any window.
+   Readout rows (#601) are skipped: they exist to be dumped, not aimed at. A
+   --ui-click that names one reports "not found" exactly as it does for a
+   renamed button, which is the failure shape #601 asks to keep. */
 void findMatches(const std::string &path, std::vector<const UiItem *> &out) {
     out.clear();
     for(size_t slash = path.size(); slash-- > 0; ) {
@@ -91,6 +100,7 @@ void findMatches(const std::string &path, std::vector<const UiItem *> &out) {
         const std::string_view win(path.data(), slash);
         const std::string_view lab(path.data() + slash + 1, path.size() - slash - 1);
         for(const UiItem &it : g_done) {
+            if(it.text) { continue; }
             if(exactEq(it.window, win) && exactEq(it.label, lab)) {
                 out.push_back(&it);
             }
@@ -98,15 +108,35 @@ void findMatches(const std::string &path, std::vector<const UiItem *> &out) {
         if(!out.empty()) { return; }
     }
     for(const UiItem &it : g_done) {
+        if(it.text) { continue; }
         if(exactEq(it.label, path)) { out.push_back(&it); }
     }
 }
 
 const char *labelOf(ImGuiID id) {
     for(const UiItem &it : g_done) {
+        /* A readout row has no id of its own, so it must never answer an id lookup:
+           when a click missed everything, HoveredId is 0, and naming some text row as
+           "what was hovered" would be an invented reason (#601). */
+        if(it.text) { continue; }
         if(it.id == id && !it.label.empty()) { return it.label.c_str(); }
     }
     return nullptr;
+}
+
+/* The dump is one line per item and every consumer reads it by line -- an e2e
+   EXPECT, or a case counting rows. Readout rows (#601) carry game text, so escape
+   the two bytes that would break that contract: a quote closes the label="..."
+   field, a newline starts a second line. */
+std::string dumpField(const std::string &s) {
+    std::string out;
+    out.reserve(s.size());
+    for(const char c : s) {
+        if(c == '"') { out += "\\\""; }
+        else if(c == '\n') { out += "\\n"; }
+        else { out += c; }
+    }
+    return out;
 }
 
 // The live registry, for --ui-list: what can I click here, and what is it
@@ -119,10 +149,14 @@ void dumpUiItems(Uint32 now_ms) {
         // --ui-click refuse a rect the dump advertised as live.
         const bool clipped = it.visible.Min.x > it.visible.Max.x
                           || it.visible.Min.y > it.visible.Max.y;
-        printf("[uilist] window=\"%s\" label=\"%s\" rect=%.0f,%.0f-%.0f,%.0f%s%s\n",
-               it.window.c_str(), it.label.c_str(),
+        /* A readout row prints the text it drew, so a case can pin the number the
+           player reads -- and a row whose value moves is a row whose EXPECT moves.
+           ` text` marks it as not clickable (#601). */
+        printf("[uilist] window=\"%s\" label=\"%s\" rect=%.0f,%.0f-%.0f,%.0f%s%s%s\n",
+               dumpField(it.window).c_str(), dumpField(it.label).c_str(),
                it.rect.Min.x, it.rect.Min.y, it.rect.Max.x, it.rect.Max.y,
-               clipped ? " clipped" : "", it.disabled ? " disabled" : "");
+               clipped ? " clipped" : "", it.disabled ? " disabled" : "",
+               it.text ? " text" : "");
     }
     fflush(stdout);
 }
@@ -520,4 +554,43 @@ bool uiBeginCombo(const char *label, const char *preview_value,
     // still the newest one for this id.
     labelComboItem(id, label);
     return open;
+}
+
+/* Give the registry a row imgui never reported -- the one place that says why the
+   combo trick of #251 cannot work here. Text is submitted with ItemAdd(bb, 0): no
+   item id, and no IMGUI_TEST_ENGINE_ITEM_INFO anywhere in TextEx
+   (imgui_widgets.cpp:161), so there is no label to backfill after the fact. The
+   string that was drawn IS the label, and the rect is the one imgui just closed.
+   The id stays 0 and text is set, so the row dumps and is never aimed at. */
+static void registerTextRow(const char *beg, const char *end) {
+    ImGuiContext *ctx = ImGui::GetCurrentContext();
+    if(ctx == nullptr || !ctx->TestEngineHookItems) { return; }
+    ImGuiWindow *w = ImGui::GetCurrentWindow();
+    if(w == nullptr || w->SkipItems) { return; }   // nothing was drawn
+    /* The invariant the rect is borrowed on: TextEx closed that item, so it is the
+       one imgui holds. If a future wrapper ever registers after some other widget's
+       ItemAdd, this says so instead of labelling someone else's rect. */
+    assert(ctx->LastItemData.ID == 0);
+    UiItem it;
+    it.id = 0;
+    it.rect = ctx->LastItemData.Rect;
+    it.visible = it.rect;
+    it.visible.ClipWith(w->ClipRect);
+    it.window = w->Name ? w->Name : "";
+    it.label.assign(beg, end);
+    it.text = true;
+    g_filling.push_back(std::move(it));
+}
+
+void uiText(const char *fmt, ...) {
+    /* Format into imgui's own temp buffer exactly as TextV does, then draw those
+       bytes: the row on screen and the registered label are the same text, and
+       neither pays for a copy nor inherits a length cap of our own. */
+    va_list args;
+    va_start(args, fmt);
+    const char *beg, *end;
+    ImFormatStringToTempBufferV(&beg, &end, fmt, args);
+    va_end(args);
+    ImGui::TextEx(beg, end);
+    registerTextRow(beg, end);
 }

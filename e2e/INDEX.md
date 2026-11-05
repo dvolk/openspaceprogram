@@ -7,10 +7,10 @@ kind says how much weight the assertions carry.
 | kind | meaning | cases |
 |---|---|---|
 | `invariant` | a behaviour or a player route the game must keep | 292 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 37 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 38 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **347** |
+| | **total** | **348** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -269,7 +269,7 @@ judgement. Select by number, name or path, e.g.
 | `save/582-saved-ship-pose-spread-refused.txt` | invariant | A save whose parts sit so far apart that the game cannot form their inertia is refused, not loaded as a NaN-inertia ship. |
 | `save/612-ask-survives-a-round-trip.txt` | invariant | A saved Guidance ask loads back into the game and is written out again. |
 
-## ui (50)
+## ui (51)
 
 | case | kind | pins |
 |---|---|---|
@@ -320,6 +320,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/345-quit-title-stops-warp.txt` | invariant | Quitting to the title drops the flight's warp, so the title screen is not simulating. |
 | `ui/424-autopilot-window-click.txt` | invariant | Clicking a mode in the Autopilot window engages the slew, another mode replaces it, and clicking it again releases it. |
 | `ui/492-part-window-trim.txt` | invariant | Clicking one elevator's Trim slider moves that elevator only: the pair that sat at -12.0/+12.0 with the stick free splits, and the airframe trims to a lower angle of attack. |
+| `ui/601-readout-rows-are-readable.txt` | golden | --ui-list dumps the readout rows with the values they print. |
 | `ui/612-guidance-window-ascent.txt` | invariant | The Guidance window's fields and Go button arm an ascent the ship then flies. |
 | `ui/612-guidance-window-cancel.txt` | invariant | Cancel stops an ascent mission steering the hull and hands SAS back. |
 | `ui/612-guidance-window-types.txt` | invariant | The type combo gates Go per law and swaps its section out, and the shared Cancel still stops a mission seen from another type. |

@@ -2149,8 +2149,8 @@ void Vehicle::powerTick(double h) {
     // life support.
     const bool hasEC = (ecCapacity > 0.0) || (totalGen > 0.0) || (constantDraw > 0.0);
     powered_ = hasEC ? ((totalGen > constantDraw) || (ecCharge > 0.0)) : true;
-    // The wheels draw only while actually working, and the Vessel window's Power row
-    // quotes the same sum (#575).
+    // The wheels draw only while actually working, and the power block on the Game
+    // Debug overlay quotes the same sum (#575, and ui/601 reads it off the screen).
     const double activeDraw = wheelDrawWatts();
     const double netWh = (totalGen - constantDraw - activeDraw) * h / 3600.0;
     if(netWh < 0.0) { drainEC(-netWh); }

@@ -101,6 +101,13 @@ matches that pair exactly, imgui's `##` disambiguator included. A path that
 guesses at a label fails with `not found`; a path that matches two items fails
 as `ambiguous`. `--ui-list` is the source of truth, not the source code.
 
+Readout rows drawn with `uiText()` (src/uiinput.h) print too, marked ` text`: their
+label is the line as the player reads it, value included, so a case can assert what is
+ON screen and not only what a log printed (#601). A ` text` row is never a click or
+scroll target -- aiming at one reports `not found`, the same miss a renamed button
+gets. Plain `ImGui::Text` rows reach neither, which is why the text dumps
+(`--atlas-dump`, `--staff-dump`) still exist.
+
 A click presses in one frame and releases in the next, so a click can never be
 same-frame with a hook phase. That is the only reason a hook still exists in a
 UI-driven case: 244 needs a detach and a launch in one frame, 243 needs a scan

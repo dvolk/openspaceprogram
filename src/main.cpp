@@ -195,7 +195,8 @@ static void installHeadlessHooks(Game &game) {
 
     /* --atlas-dump: the System Atlas as text; reads the system, not the
        window, so it works from any scene. The e2e cover for the dossier
-       (imgui Text rows are not clickable, so --ui-list cannot see them). */
+       (its rows are plain imgui Text, which --ui-list reaches only through
+       uiText -- #601). */
     if(args.atlas_dump_ms >= 0) {
         game.addHook(kHookPreScene, args.atlas_dump_ms, nullptr,
                      [](Game &g) { dumpAtlas(g); });
