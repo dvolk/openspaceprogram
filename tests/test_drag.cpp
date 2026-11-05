@@ -1785,6 +1785,131 @@ static void test_lift_slope_mach() {
                "surfaceTorquePerRadian: inherits, does not carry");
 }
 
+static void test_wave_cd() {
+    printf("== waveCd: the same band bills thickness (#543 A5b) ==\n");
+    const double tc = 0.05;    // the shipped wing: 0.1 m thick on a 2 m chord
+    const double ack = 4.0 * tc * tc;   // Ackeret's numerator, = 0.01 at t/c 0.05
+
+    // BELOW THE BAND: zero, by the branch and not by luck. A5's slope correction is
+    // already live at M 0.3 (1.048x); this one is exactly nothing there.
+    CHECK_NEAR(waveCd(tc, 0.0), 0.0, 0.0, "no flow, no wave drag");
+    CHECK_NEAR(waveCd(tc, 0.3), 0.0, 0.0, "a cruise Mach pays no wave drag");
+    CHECK_NEAR(waveCd(tc, 0.749999), 0.0, 0.0, "nothing before the band opens");
+    // The band's low edge is continuous with that zero...
+    CHECK_TRUE(waveCd(tc, 0.75) == 0.0, "the edge itself is the zero");
+    CHECK_TRUE(waveCd(tc, 0.750001) < 1e-7, "and the band opens from zero");
+    // ... and the high edge IS the Ackeret value, probed from both sides.
+    const double edge = ack / std::sqrt(kSupersonicMach * kSupersonicMach - 1.0);
+    CHECK_NEAR(waveCd(tc, kSupersonicMach), edge, 1e-12, "M 1.25 = Ackeret at 1.25");
+    // Probed a whole 1e-6 Mach off the edge, so the expected miss IS the band's own
+    // slope (2 ppm), not a seam: the two branches agree to that much at the meeting.
+    CHECK_NEAR(waveCd(tc, 1.249999), edge, 1e-5, "the join reaches it");
+    CHECK_NEAR(waveCd(tc, 1.250001), edge, 1e-5, "and Ackeret starts there");
+
+    // ABOVE: 4 (t/c)^2 / sqrt(M^2-1), decaying with speed.
+    CHECK_NEAR(waveCd(tc, 1.25), 0.013333333333333334, 1e-15, "the peak of the curve");
+    CHECK_NEAR(waveCd(tc, 1.65), ack / std::sqrt(1.65 * 1.65 - 1.0), 1e-15,
+               "flight/631's entry Mach");
+    CHECK_NEAR(waveCd(tc, 3.0), ack / std::sqrt(8.0), 1e-15, "and it thins as 1/M");
+    CHECK_NEAR(waveCd(tc, 10.0), ack / std::sqrt(99.0), 1e-15, "hypersonic tail");
+
+    // The join is a straight line in ABSOLUTE cd, so the middle of the band is the
+    // average of the edges -- 0 at 0.75, the Ackeret value at 1.25.
+    CHECK_NEAR(waveCd(tc, 1.0), 0.5 * edge, 1e-15, "half way up the band");
+    CHECK_TRUE(waveCd(tc, 0.9) < waveCd(tc, 1.0) && waveCd(tc, 1.0) < waveCd(tc, 1.1),
+               "rises through the band");
+    CHECK_TRUE(waveCd(tc, 1.25) > waveCd(tc, 1.3), "then falls -- M 1.25 is the peak");
+
+    // Quadratic in thickness, which is what a SECTION law is: twice as thick is four
+    // times the bill, so the mesh box's thickness is not a cosmetic input.
+    CHECK_NEAR(waveCd(2.0 * tc, 2.0), 4.0 * waveCd(tc, 2.0), 1e-15,
+               "cd_wave goes as (t/c)^2");
+
+    // GUARDS. A dry or malformed part reads zero rather than a NaN cd that would
+    // propagate into q*S*CdA; a NaN Mach is not a flow either.
+    CHECK_NEAR(waveCd(0.0, 2.0), 0.0, 0.0, "a plate of no thickness pays nothing");
+    CHECK_NEAR(waveCd(-0.05, 2.0), 0.0, 0.0, "a negative thickness is not a bill");
+    CHECK_TRUE(waveCd(std::numeric_limits<double>::quiet_NaN(), 2.0) == 0.0,
+               "NaN thickness answers 0, not NaN");
+    CHECK_TRUE(waveCd(tc, std::numeric_limits<double>::quiet_NaN()) == 0.0,
+               "NaN Mach answers 0, not NaN");
+    CHECK_NEAR(waveCd(tc, -1.5), 0.0, 0.0, "a negative Mach is no flow");
+    // The cap: linear theory wants a thin section, and PartDef::meshThicknessToChord
+    // answers 2 x radius / height for a def with NO mesh -- >= 1 for the plate defs
+    // that fallback exists for. Cap the bill rather than trusting 4 (t/c)^2 there.
+    CHECK_NEAR(waveCd(1.0, kSupersonicMach), waveCd(kWaveThicknessLimit, kSupersonicMach),
+               1e-15, "a no-mesh def pays the cap, not 4.0");
+    CHECK_NEAR(waveCd(std::numeric_limits<double>::infinity(), kSupersonicMach),
+               waveCd(kWaveThicknessLimit, kSupersonicMach), 1e-15,
+               "inf thickness pays the cap too");
+    CHECK_NEAR(waveCd(kWaveThicknessLimit, kSupersonicMach), 4.0 * 0.09 / 0.75, 1e-15,
+               "and the cap is a 30% thick section");
+
+    // One continuous function over the whole speed range, with no jump anywhere.
+    {
+        double prev = 0.0;
+        double peak = 0.0;
+        double peakMach = -1.0;
+        for(double m = 0.0; m <= 6.0; m += 0.001) {
+            const double w = waveCd(tc, m);
+            CHECK_TRUE(std::isfinite(w) && w >= 0.0, "finite and never a thrust");
+            if(m > 0.0) {
+                // Both directions: a downward jump is exactly what this sweep exists
+                // to catch (a branch that zeroes at high M, a join that drops). The
+                // biggest natural step in the sweep is 3e-5, so 1e-4 has room.
+                CHECK_TRUE(std::fabs(w - prev) < 1e-4, "no step either way in the sweep");
+            }
+            if(w > peak) { peak = w; peakMach = m; }
+            prev = w;
+        }
+        CHECK_NEAR(peakMach, kSupersonicMach, 0.0011, "the peak sits on the band edge");
+        CHECK_NEAR(peak, edge, 1e-6, "and is the Ackeret value there");
+    }
+
+    // THE CORPUS, measured off the shipped partdefs (tests/test_shipload.cpp pins the
+    // thickness ratios): every shipped surface is a 0.044-0.086 plate and every one of
+    // them authors 0.01 for its chordwise cd. So the wave bill is not a footnote to the
+    // profile cd -- at the corpus's own Mach it is the same order.
+    {
+        // Typed to 10 digits, hence the 1e-6: these are magnitude pins for the parts
+        // the game actually ships, not bit-exactness claims.
+        CHECK_NEAR(waveCd(0.044, 1.65), 0.0059004581, 1e-6, "thin wing at 631's Mach");
+        CHECK_NEAR(waveCd(0.086, 1.65), 0.0225412128, 1e-6, "thick fin at 631's Mach");
+        CHECK_TRUE(waveCd(0.044, 0.65) == 0.0 && waveCd(0.086, 0.65) == 0.0,
+                   "flight/451 at Mach 0.655 pays nothing");
+        CHECK_TRUE(waveCd(0.05, 0.31) == 0.0, "the skiff at Mach 0.31 pays nothing");
+        CHECK_NEAR(waveCd(0.05, 1.25), 0.0133333333, 1e-6,
+                   "a wing at the band edge pays more than its whole profile cd");
+    }
+
+    // THE CALL-SITE CONTRACT, spelled out: surfaceFormCdA() knows no Mach, so the site
+    // adds the wave to the two CHORDWISE anchors only. Broadside and edge shares must
+    // not move -- a plate seen from the edge is not a section.
+    {
+        const double planform = 8.0, edgeArea = 0.2;
+        const double cdF = 0.01, cdS = 0.9, cdB = 0.01;
+        const double w = waveCd(0.05, 1.65);
+        // Dead chordwise: full exposure on the profile, none on the normal.
+        const double clean = surfaceFormCdA(planform, edgeArea, cdF, cdS, cdB, 1.0, 0.0);
+        const double corr = surfaceFormCdA(planform, edgeArea, cdF + w, cdS, cdB + w,
+                                           1.0, 0.0);
+        CHECK_NEAR(clean, planform * cdF, 1e-12, "chordwise = planform x cd");
+        CHECK_NEAR(corr - clean, planform * w, 1e-12, "the wave bills the planform once");
+        // Broadside: same planform, no chordwise exposure -> no wave either.
+        const double sideClean = surfaceFormCdA(planform, edgeArea, cdF, cdS, cdB, 0.0, 1.0);
+        const double sideCorr = surfaceFormCdA(planform, edgeArea, cdF + w, cdS, cdB + w,
+                                               0.0, 1.0);
+        CHECK_NEAR(sideClean, planform * cdS, 1e-12, "broadside pays the plate cd");
+        CHECK_NEAR(sideCorr, sideClean, 1e-15, "and nothing wave-shaped");
+        // And along the span it pays the edge area, untouched by the law.
+        const double spanClean = surfaceFormCdA(planform, edgeArea, cdF, cdS, cdB, 0.0, 0.0);
+        const double spanCorr = surfaceFormCdA(planform, edgeArea, cdF + w, cdS, cdB + w,
+                                               0.0, 0.0);
+        CHECK_NEAR(spanClean, edgeArea * cdS, 1e-12, "span pays thickness x chord");
+        CHECK_NEAR(spanCorr, spanClean, 1e-15, "and no wave");
+    }
+}
+
 static void test_controlForce() {
     printf("== controlForce: the deflection-driven steering force ==\n");
     const double q = 100.0;  // dynamic pressure
@@ -3504,6 +3629,8 @@ int main() {
     test_liftCurve();
     printf("\n");
     test_lift_slope_mach();
+    printf("\n");
+    test_wave_cd();
     printf("\n");
     test_projectedArea();
     printf("\n");

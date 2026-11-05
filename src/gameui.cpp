@@ -2958,11 +2958,18 @@ void drawPartWindows(Game &g) {
                     ImGui::Text("Lifting surface: %.2f m2", def->lift_area);
                 }
                 if(ship->parts[part]->aeroValid) {
-                    ImGui::Text("AoA: %+.1f deg  q=%.0f Pa",
+                    /* Mach here is THIS surface's own (#483's flow at its mount), not
+                       the ship's: a rotating airframe puts its two wings in different
+                       regimes. It is load-bearing since #543 A5 -- the same number
+                       corrects this surface's slope -- and since A5b it is also what
+                       bills the wave drag, so when a surface's bill jumps this is the
+                       row that says why. */
+                    ImGui::Text("AoA: %+.1f deg  q=%.0f Pa  Mach %.2f",
                                 ship->parts[part]->aeroAlphaDeg,
-                                ship->parts[part]->aeroQ);
+                                ship->parts[part]->aeroQ,
+                                ship->parts[part]->aeroMach);
                 } else {
-                    ImGui::Text("AoA: -   q:-");
+                    ImGui::Text("AoA: -   q:-   Mach -");
                 }
                 if(def->isControlSurface()) {
                     /* The slider's range is not the clamp. Ctrl+click turns any slider

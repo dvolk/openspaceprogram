@@ -244,6 +244,42 @@ int main() {
                 CHECK(near(d.control_area, 0.5 * planform));
             }
         }
+        /* THE WAVE LAW SPENDS THE MESH BOX (#543 A5b): drag.h::waveCd prices a
+           section's THICKNESS and reads it off the same box #559's edge area reads
+           (PartDef::meshThicknessToChord). Every shipped surface is a plate between
+           4.4% and 8.6% of its own chord -- which is what makes the wave bill the same
+           ORDER as the 0.01 profile cd these parts author rather than a rounding
+           footnote, and what keeps it inside the cap linear theory is trusted to.
+           flight/631's wave pin uses THESE two numbers as the window a hull's summed
+           bill must land in, so widening a mesh quietly widens what that case will
+           accept: keep the band as tight as the corpus and re-measure the case if a
+           fattened part pushes a surface out of it. */
+        for(const PartDef &d : cat.parts) {
+            if(d.lift_area <= 0.0 && d.control_area <= 0.0) { continue; }
+            const double tc = d.meshThicknessToChord();
+            /* Measured extremes: 0.044444 (wing_r3h1.8) and 0.085714
+               (elevator_r0.8h0.7, aileron_r0.8h0.7). flight/631's wave window is
+               written with THESE two bounds, so name the part when one moves -- a
+               red here means a mesh got fatter, not that the law changed. */
+            if(!(tc > 0.044 && tc < 0.086)) {
+                printf("  t/c outside the shipped band: %s = %.6f\n",
+                       d.name.c_str(), tc);
+            }
+            CHECK(tc > 0.044 && tc < 0.086);
+        }
+        {
+            const PartDef *wing = nullptr, *fin = nullptr;
+            for(const PartDef &d : cat.parts) {
+                if(d.name == "wing") { wing = &d; }
+                if(d.name == "elevator_r0.8h0.7") { fin = &d; }
+            }
+            CHECK(wing != nullptr && fin != nullptr);
+            CHECK(near(wing->meshThickness(), 0.1));            // 0.1 m of aluminium
+            CHECK(near(2.0 * wing->meshHalfLength(), 2.0));     // 2 m of chord
+            CHECK(near(wing->meshEdgeArea(), 0.2));             // what #559 bills spanwise
+            CHECK(near(wing->meshThicknessToChord(), 0.05));    // what A5b bills chordwise
+            CHECK(near(fin->meshThicknessToChord(), 0.0857142857));   // 0.06 on 0.7 m
+        }
         for(const PartDef &d : cat.parts) {
             if(d.fuel_link) { CHECK(!d.has_mesh_extents); continue; }
             CHECK(d.has_mesh_extents);   // every real part ships a readable mesh

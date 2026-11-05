@@ -678,9 +678,16 @@ void tick(Game &g) {
                    Read the two together: the airframe's total form drag is
                    drag_cd*Cd*A + Profile -- A= and Cd= are the RAW hull product, and
                    the multiplier is applied to it in the force, exactly as it is
-                   already inside Profile= -- with Induced= charged on top, once. */
+                   already inside Profile= -- with Induced= charged on top, once.
+                   Since #543 A5b this column also moves with speed: each surface's
+                   chordwise cd carries the wave bill drag.h::waveCd answers for its own
+                   thickness at its own Mach, so a wing's shape bill climbs through the
+                   sound bar and thins again above Mach 1.25. Printed to three decimals
+                   because the bill just inside the band is smaller than two: 0.0004 of
+                   cd on this airframe is 0.0005 m2, and 0.45 -> 0.45 tells a reader the
+                   law is doing nothing when it is. */
                 if(g.ship->lastDragAlphaValid) {
-                    printf(" Profile=%.2f m2", g.ship->lastSurfCdA);
+                    printf(" Profile=%.3f m2", g.ship->lastSurfCdA);
                 } else {
                     /* No usable flow direction, so this would be a sum of bills
                        against a jitter direction (a parked glider read 12.16 m2 this
@@ -758,8 +765,9 @@ void tick(Game &g) {
                    speed its air implies -- the ship-level Mach on the [drag] line is
                    the COM's, and #483's whole point is that a rotating airframe gives
                    each surface a different flow. Since #543 A5 it is also the number
-                   that surface's lift slope is corrected with, so the number in the
-                   log and the number in the law are one number.
+                   that surface's lift slope is corrected with, and since A5b the number
+                   that bills its wave drag, so the number in the log and the number in
+                   the law are one number.
                    Labelled by its def id when it has one (wing_l, tail_r) because a
                    twin pair is exactly the case this row exists to tell apart. */
                 {

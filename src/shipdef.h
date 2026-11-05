@@ -193,9 +193,28 @@ struct PartDef {
        its planform: no discount, i.e. the honest fallback is the old over-charge
        rather than an invisible zero-area plate. */
     double meshEdgeArea() const {
+        return meshThickness() * (2.0 * meshHalfLength());
+    }
+
+    /* The plate's THICKNESS off the same box: the thinner of the two axes across the
+       stack axis. chord x thickness is the edge area above; this is the half of it a
+       2-D SECTION law needs (drag.h::waveCd, #543 A5b). */
+    double meshThickness() const {
         double hx, hy;
         meshHalfSpan(hx, hy);
-        return (2.0 * std::min(hx, hy)) * (2.0 * meshHalfLength());
+        return 2.0 * std::min(hx, hy);
+    }
+
+    /* The section's thickness-to-chord ratio, the number Ackeret wave drag wants.
+       Every shipped surface is 0.044 (wing_r3h1.8) to 0.086 (elevator_r0.8h0.7) --
+       these parts are plates, which is why the wave bill lands beside the profile cd
+       they author rather than under it. A def with NO mesh falls back to the authored
+       cylinder's box, so its ratio is 2 x radius / height -- >= 1 for the plate defs
+       that fallback exists for, not 1: wing_r3h1.8 would read 3.33. drag.h caps that
+       rather than trusting linear theory with it. */
+    double meshThicknessToChord() const {
+        const double chord = 2.0 * meshHalfLength();
+        return (chord > 0.0) ? meshThickness() / chord : 0.0;
     }
 
     /* Which part-frame axis a SURFACE part's planform runs along: the WIDER of the
@@ -376,7 +395,7 @@ struct PartDef {
          capsule 0.35, tank 1.0, engine 0.9.
          A SURFACE (lift_area or control_area > 0) is charged on the PLANFORM it
          declares, and drag.h::surfaceFormCdA splits how that planform meets the
-         flow: chordwise it pays its PROFILE cd (drag_forward = 0.03 on every
+         flow: chordwise it pays its PROFILE cd (drag_forward = 0.01 on every
          shipped wing and fin -- a faceted section's profile cd; a smooth one is
          0.006-0.013, and #557's yardstick pass is where that gets settled), and
          out of its plane it pays the planform as a flat plate at drag_side = 1.0.
@@ -386,6 +405,12 @@ struct PartDef {
          sideslip paid 8 m2 of plate for 0.1 m of aluminium. Authoring a blunt
          anchor (0.2) chordwise instead of a profile cd makes a surface pay a
          plate's worth of shape drag on top of the induced drag its lift bought.
+       The chordwise anchors are not the last word on them: past the sound bar
+       drag.h::waveCd adds an absolute cd to BOTH of them, from the section's own
+       thickness-to-chord ratio off the same mesh box (meshThicknessToChord -- the
+       shipped parts are 0.044-0.086 plates), so a supersonic wing pays for being
+       thick as well as for being there (#543 A5b). Nothing to author: a part that
+       is thin pays less. The broadside and edge anchors read none of it.
        `drag` stays the fallback for the three anchors on both kinds. Chute Cd·A is
        its own term and reads none of these. */
     double drag;          // the part's drag COEFFICIENT (dimensionless)

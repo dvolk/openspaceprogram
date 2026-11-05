@@ -109,7 +109,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/573-hud-speaks-the-hull.txt` | invariant | The SURFACE window's pitch/roll/heading describe the hull the keys turn, even though the crew sit on a wheel that is rolled 90 deg about the stack. |
 | `flight/580-three-rcs-keys-even-diagonal.txt` | invariant | Holding three RCS direction keys thrusts along the even diagonal, not with the last key holding the share. |
 | `flight/610-ascent-100km.txt` | invariant | The ascent law flies a pad ship into a circular 100 km orbit on an airless body. |
-| `flight/631-earth-air-in-flight.txt` | invariant | A hull flying through a body that authors atmosphere.layers gets that profile -- T, p and a change with altitude, stay mutually consistent, bill drag, and move the hull's own lift slope across Mach 1. |
+| `flight/631-earth-air-in-flight.txt` | invariant | A hull flying through a body that authors atmosphere.layers gets that profile -- T, p and a change with altitude, stay mutually consistent, bill drag, and move both the hull's own lift slope and its airframe's profile CdA across Mach 1. |
 
 ## crew (26)
 

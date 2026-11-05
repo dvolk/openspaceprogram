@@ -2949,9 +2949,16 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                planform the other way round still gets the right shape drag. */
             const glm::dvec3 plateNormal = (d->meshNormalAxis() == 0) ? p->localRot[0]
                                                                      : p->localRot[1];
+            /* #543 A5b: the same one-read-per-surface rule A5 used for the slope. This
+               surface's Mach, its thickness ratio, and the wave cd that follows, spent
+               ONCE on the two chordwise anchors below -- never on the broadside or edge
+               share, because those are not a section meeting the flow chordwise. A
+               subsonic surface pays nothing (waveCd is 0 under kTransonicMach), so
+               every Kerbin golden in the battery is untouched by this line. */
+            const double wave = waveCd(d->meshThicknessToChord(), flowMach(lf, invAirA));
             const double cda = drag_cd * surfaceFormCdA(
                 ref, d->meshEdgeArea(),
-                d->drag_forward, d->drag_side, d->drag_backward,
+                d->drag_forward + wave, d->drag_side, d->drag_backward + wave,
                 glm::dot(p->localRot[2], flowLocal), glm::dot(plateNormal, flowLocal));
             if(!(cda > 0.0)) { continue; }
             const glm::dvec3 fprof = -(lf.vp / vpl) * (lf.q * cda);
@@ -3084,7 +3091,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             pa, surfaceReadoutFrame(p->localRot[1], shipLocalUp, shipLocalRight),
             up, right);
         p->aeroQ = (float)qp;
-        const double mach = std::sqrt(lf.vp2) * invAirA;
+        const double mach = flowMach(lf, invAirA);
         p->aeroMach = (float)mach;
         p->aeroValid = true;
         /* #543 A5: THE ONE COMPRESSIBILITY READ. This surface's Mach, corrected
@@ -3202,7 +3209,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                                                  shipLocalRight),
                         up, right);
                     p->aeroQ = (float)lf0.q;
-                    p->aeroMach = (float)(std::sqrt(lf0.vp2) * invAirA);
+                    p->aeroMach = (float)flowMach(lf0, invAirA);
                     p->aeroValid = pa0.valid;
                 }
                 ++ctrlIndex;
@@ -3245,7 +3252,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                 pa, surfaceReadoutFrame(p->localRot[1], shipLocalUp, shipLocalRight),
                 up, right);
             p->aeroQ = (float)qp;
-            const double mach = std::sqrt(lf.vp2) * invAirA;
+            const double mach = flowMach(lf, invAirA);
             p->aeroMach = (float)mach;
             p->aeroValid = pa.valid;
             const glm::dvec3 forceDir = pa.liftDir;   // zero when the frame is unusable

@@ -334,11 +334,11 @@ inline glm::dvec3 liftDirection(const glm::dvec3 &v_rel,
                            backwards. Below that crossover the join still RISES to its
                            high edge, so the curve's peak sits on the band's low edge
                            only for the steep sections the game actually ships.
-   A5b (wave drag, the cd rise in the same band) is still open; these two edges are the
-   band it should reuse. Call sites correct the slope ONCE per surface and pass the
-   result as `cl` to the laws below, so #487's rate damping cannot carry its own
-   constant -- liftCurve(), liftForce(), liftSlopePerQ(), controlForce() and
-   surfaceTorquePerRadian() all read the same corrected number. */
+   A5b (wave drag, the cd rise in the same band) reuses these two edges -- see waveCd
+   below. Call sites correct the slope ONCE per surface and pass the result as `cl` to
+   the laws below, so #487's rate damping cannot carry its own constant -- liftCurve(),
+   liftForce(), liftSlopePerQ(), controlForce() and surfaceTorquePerRadian() all read
+   the same corrected number. */
 inline constexpr double kTransonicMach = 0.75;
 inline constexpr double kSupersonicMach = 1.25;
 
@@ -354,6 +354,62 @@ inline double liftSlopeMach(double cl, double mach) {
         return subSlope * (1.0 - t) + supSlope * t;
     }
     return 4.0 / std::sqrt(mach * mach - 1.0);
+}
+
+/* THE SAME BAND BILLS WAVE DRAG (#543 A5b). A5 corrected what a section LENDS the air;
+   this is what the air charges for the section's THICKNESS, and it lives between the
+   same two edges so the two halves of the law cannot disagree about where the regime
+   starts. Linear (Ackeret) supersonic theory, zero lift, a thin 2-D SECTION:
+       cd_wave = 4 (t/c)^2 / sqrt(M^2 - 1)
+   which is the same 1/sqrt(M^2-1) the slope branch above carries -- and it is not a
+   multiplier on anything: it is an absolute cd added to the part's own profile cd.
+   THREE REGIMES, same shape as liftSlopeMach:
+     M <= kTransonicMach   zero. There is no wave drag to linearise subsonically; the
+                           term would be pure invention, and PG has none in it.
+     M >= kSupersonicMach  Ackeret above, which DECAYS with speed: a 5% section pays
+                           0.0133 at M 1.25, 0.0076 at M 1.65, 0.0035 at M 3.
+     between               straight join in ABSOLUTE cd, 0 at 0.75 to the Ackeret value
+                           at 1.25. Linear theory says nothing here, and the join is the
+                           same device A5 used, with the same known cost: the real curve
+                           HUMPS just past M 1 (a shock walks onto the wing and the bill
+                           peaks ABOVE the far-supersonic value), which a join to zero
+                           cannot do. It is a shortfall in the middle of the band, not a
+                           wrong sign, and the band is 0.5 Mach wide.
+   WHAT THIS DOES NOT TOUCH: a blunt body's cd. The hull's form drag comes from
+   surfaceFormCdA / partCd on projected silhouette, which has no chord and no thickness
+   ratio to put into the formula. The deeper reason not to extrapolate is that the
+   blunt-body curve is not this curve: a pod's cd barely moves from subsonic to
+   hypersonic, and a blunt nose can even bill LESS once a shock stands off it, so any
+   multiplier on the body anchors would be a guess dressed as a law. Nothing in the
+   game can measure that today -- partCd reads no Mach at all, so a hull prints one Cd
+   at M 0.2 and the same at M 4.4, and flight/151's flat column is the omission, not
+   evidence about pods. Getting it right means authored supersonic anchors per body
+   part (real numbers, not a multiplier) -- filed as #635 rather than guessed at here.
+   t/c comes off the mesh box the edge-area law already reads (PartDef::meshThickness-
+   ToChord): every shipped surface is 0.044-0.086, so at the game's wing chord cd_wave
+   lands beside the 0.01 profile cd those parts author -- at M 1.65 it is 0.0076, i.e.
+   a 76% rise in what a wing's own shape costs. A section thicker than kWaveThickness-
+   Limit is outside linear theory (a part with NO mesh reads 2 x radius / height, which
+   is >= 1 for the plate defs that fallback exists for); cap it there so a malformed
+   def bills a lot rather than absurdly.
+   Call sites correct ONCE and pass the result as the existing cd argument, exactly as
+   A5 did with cl: surfaceFormCdA() takes cd_forward + wave and cd_backward + wave and
+   knows nothing about Mach. The edge and broadside shares of a plate's shape drag get
+   nothing -- they are not sections meeting the flow chordwise. Neither does the LIFT
+   half of Ackeret: a deflected section's extra wave drag is priced by inducedCd off the
+   force the slope law just made, so it stays charged once rather than twice. */
+inline constexpr double kWaveThicknessLimit = 0.3;
+
+inline double waveCd(double thicknessToChord, double mach) {
+    if(!(thicknessToChord > 0.0) || !(mach > kTransonicMach)) { return 0.0; }
+    const double tc = (thicknessToChord < kWaveThicknessLimit)
+                    ? thicknessToChord : kWaveThicknessLimit;
+    // The join's high edge IS the M 1.25 Ackeret value, so the two branches meet.
+    const double supEdge = 4.0 * tc * tc / std::sqrt(kSupersonicMach * kSupersonicMach - 1.0);
+    if(mach < kSupersonicMach) {
+        return supEdge * (mach - kTransonicMach) / (kSupersonicMach - kTransonicMach);
+    }
+    return 4.0 * tc * tc / std::sqrt(mach * mach - 1.0);
 }
 
 /* CL(α) of a symmetric section, soft stall: linear to the stall angle, then a
@@ -613,6 +669,14 @@ inline LocalFlow localFlow(const glm::dvec3 &vrel, const glm::dvec3 &w,
        length2(x) is dot(x, x) -- so the number is unchanged. */
     const double vp2 = glm::dot(vp, vp);
     return { vp, 0.5 * rho * vp2, vp2 };
+}
+
+/* The Mach the flow at one point stands in. One spelling so a call site cannot divide
+   by a different sound speed than its neighbour did: `invAirA` is 1 / a at the hull's
+   COM (vehicle.cpp), and a LocalFlow carries |v|^2 AT THE SURFACE (#483), which is the
+   speed that surface's slope correction (#543 A5) and its wave drag (A5b) use. */
+inline double flowMach(const LocalFlow &lf, double invAirA) {
+    return std::sqrt(lf.vp2) * invAirA;
 }
 
 /* The 2-D cross product (z-component) of (b-a) x (c-a). */
