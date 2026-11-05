@@ -522,6 +522,32 @@ int main() {
         std::remove(nod);
     }
 
+    /* A drum pays for its own electricity (#596). "torque" > 0 makes a part a wheel
+       (Part::isWheel asks the rating, not the type), and Vehicle::wheelDrawWatts()
+       bills power_draw over exactly those parts -- so a rating with no power_draw is
+       attitude that costs nothing to command. All four capsules were in that state
+       while every reaction_wheel block paid its share, which made the power system read
+       as a cosmetic choice of part rather than a measure of authority: a pod's own pool
+       fell at life-support rate however hard its stick worked. The band is deliberately
+       wide: what must not rot again is that the catalog PAYS, not the balance figure it
+       currently happens to pick. */
+    {
+        double lo = 0.0, hi = 0.0;
+        int rated = 0;
+        for(const PartDef &d : cat.parts) {
+            if(d.torque <= 0.0) { continue; }
+            rated++;
+            const double r = d.power_draw / d.torque;
+            printf("wheel %-28s %6.0f N m x %d drums, %6.0f W while commanding (%.2f W per N m)\n",
+                   d.name.c_str(), d.torque, d.wheel_axes, d.power_draw, r);
+            CHECK(d.power_draw > 0.0);
+            if(rated == 1 || r < lo) { lo = r; }
+            if(rated == 1 || r > hi) { hi = r; }
+        }
+        CHECK(rated >= 7);            // four pods and three wheel blocks, at minimum
+        CHECK(lo >= 0.25 && hi <= 1.0);
+    }
+
     // the EVA kerbal: a crew-mass part with no ship behaviors (no wheel or
     // thruster) but a small hydrazine tank for its RCS suit -- the mass is
     // the DRY suit (the propellant rides capacity / effectiveMass, like the
@@ -624,11 +650,13 @@ int main() {
     CHECK(cap->torque > 0.0);   // the capsule carries an attitude wheel
     CHECK(cap->totalPropellantRate() == 0.0 && cap->exhaust_velocity == 0.0);
     // the capsule is a crew module: a CONSTANT life-support draw (on all the
-    // time, unlike a wheel's active power_draw) plus a small built-in battery
-    // (EC capacity) as the reserve. It is not an active draw and not a source.
+    // time) plus a small built-in battery (EC capacity) as the reserve. It also
+    // carries drums (the torque rating above), so it has an ACTIVE draw like any
+    // other wheel housing (#596) -- this row used to pin the opposite, which is
+    // how a pod-only hull ended up with attitude that cost nothing. Not a source.
     CHECK(cap->power_draw_constant > 0.0);            // life support, always on
     CHECK(cap->capacity[(int)ResourceType::EC] > 0.0f); // built-in battery
-    CHECK(cap->power_draw == 0.0);                    // not an active draw
+    CHECK(cap->power_draw > 0.0);                     // its own drums, while commanding
     CHECK(cap->power_gen == 0.0);                     // not a source
 
     CHECK(rw->type == "reaction_wheel");

@@ -21,6 +21,8 @@
 //   * the balance: an RTG charges the pool, life support drains it, and an
 //     active stick adds the wheels' draw; charging/drain clamp to the pool
 //     (never below 0, never above capacity);
+//   * who pays: a drum bills its power_draw wherever it lives, including a
+//     command pod that is also life support and the battery (#596);
 //   * EC has NO mass: draining/charging never touches a part's mass
 //     (unlike propellant);
 //   * the store's precision: a substep's worth of Wh still moves a big
@@ -304,6 +306,46 @@ static void test_active_wheel_draws() {
     destroyShip(s);
 }
 
+/* A pod's own drums pay (#596). Every shipped capsule carries a torque rating, so
+   Part::isWheel() -- which asks the rating, not the part type -- counts the pod as a
+   wheel and wheelDrawWatts() bills it like any other housing. No capsule used to author
+   a power_draw, so commanding a pod-only hull added nothing to its drain: the Vessel
+   window's Active row read 0.0 W and its pool fell at life-support rate however hard the
+   stick worked, while the same authority through a wheel block ate the pool that much
+   faster. The housing does not set the bill -- the rating does. (That the gate closes
+   over a pod at all is life support's doing and test_life_support_drains_then_gates
+   already pins it; what is pinned here is that the drums belong on the bill.) */
+static void test_a_pods_own_drums_pay() {
+    printf("== Balance: a pod's built-in drums bill their own power ==\n");
+    Ship s; s.v = new Vehicle;
+    /* One part doing three jobs, like every capsule in the catalog: 100 W of life
+       support, the ship's only 2000 Wh battery, and 200 N m of built-in drums. */
+    addPowerPart(s, /*draw=*/100.0, /*const=*/100.0, /*gen=*/0.0,
+                 /*ec=*/2000.0, /*torque=*/200.0);
+    initShip(s);
+    CHECK_NEAR(totalEC(s), 2000.0, 1e-9, "pod battery seeded full");
+
+    s.v->Command(ShipCmd(Pitch, 1.0f), true);
+    CHECK_NEAR(s.v->wheelDrawWatts(), 100.0, 1e-9,
+               "on a wheel-less hull the pod's own drums are the Active row");
+    s.v->powerTick(3600.0);
+    CHECK_NEAR(totalEC(s), 1800.0, 1e-6, "commanding a pod drains life support AND drums");
+    s.v->Command(ShipCmd(Pitch, 0.0f), true);
+    s.v->powerTick(3600.0);
+    CHECK_NEAR(totalEC(s), 1700.0, 1e-6, "coasting drains life support alone");
+
+    /* With the pool empty the gate closes and the pod's own drums are dead. Life support
+       empties a pod either way (#418); what this rig adds is that the drums are part of
+       what drains it, and that a gated drum bills nothing even with the stick held. */
+    s.v->drainEC(totalEC(s));
+    s.v->powerTick(1.0);
+    CHECK_TRUE(not s.v->powered_, "an empty pod pool gates its own drums");
+    s.v->Command(ShipCmd(Pitch, 1.0f), true);
+    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
+               "a gated drum bills nothing even with the stick held");
+    destroyShip(s);
+}
+
 /* The pool drains pro-rata across batteries (the shares are proportional to
    each battery's charge), and never below zero. Two equal batteries each
    give up half. */
@@ -392,6 +434,8 @@ int main() {
     test_life_support_drains_pool();
     printf("\n");
     test_active_wheel_draws();
+    printf("\n");
+    test_a_pods_own_drums_pay();
     printf("\n");
     test_drain_prorata_across_batteries();
     printf("\n");

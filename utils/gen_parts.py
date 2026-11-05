@@ -56,7 +56,12 @@ CAPSULE_TORQUE_PER_M = 200.0
 WHEEL_TORQUE_PER_M = 2000.0
 
 # electrical (KSP-style EC): watts / watt-hours
-WHEEL_DRAW_WATTS_PER_M = 1000.0   # W per m of radius (r1 -> 1000 W)
+# An electric actuator bills by the authority it can bring about, not by the housing
+# it came in (#596): 0.5 W per N m of "torque" covers a wheel block (r1: 2000 N m ->
+# 1000 W) and a capsule's built-in drums (r1: 200 N m -> 100 W) with one rule. The
+# figure is per HOUSING, not per drum -- a #593 triad bills once (#593 left that
+# convention alone; changing it would triple every shipped wheel's bill).
+WHEEL_DRAW_WATTS_PER_NM = 0.5
 RTG_WATTS_PER_M3       = 380.0    # W per m^3 (r1 -> ~300 W)
 RTG_DENSITY            = 150.0    # kg/m^3, fuel + thermoelectrics + housing
 BATTERY_ACTIVE_DENSITY = 1000.0   # kg/m^3, Li-ion pack bulk density
@@ -631,6 +636,14 @@ def generate(name, ptype, mesh, texture):
             # stacked disc: a single drum levers the stack axis and nothing else, so
             # a coasting capsule could roll and could not point itself.
             e["wheel_axes"] = 3
+            # The pod's drums bill like any other wheel's (#596). Before this no
+            # capsule had a power_draw, so a pod-only hull slewed while paying nothing
+            # for it: the Vessel window's Active row read 0.0 W, and the pod's own
+            # battery fell at life-support rate no matter how hard the stick worked --
+            # the same authority through a wheel block ate the pool that much faster.
+            # The two lines below are separate and ride the CREW: life support is
+            # always on, and the built-in battery is storage, not a draw.
+            e["power_draw"] = clean(WHEEL_DRAW_WATTS_PER_NM * e["torque"])
             # constant life-support draw + small built-in battery, both ~ crew
             crew = EXTRA_FIELDS[name]["crew_capacity"]
             e["power_draw_constant"] = clean(CAPSULE_LIFE_SUPPORT_W_PER_CREW * crew)
@@ -638,7 +651,7 @@ def generate(name, ptype, mesh, texture):
         elif ptype == "reaction_wheel":
             e["torque"] = clean(WHEEL_TORQUE_PER_M * radius)
             e["wheel_axes"] = 3   # the same triad housing, one drum per axis
-            e["power_draw"] = clean(WHEEL_DRAW_WATTS_PER_M * radius)
+            e["power_draw"] = clean(WHEEL_DRAW_WATTS_PER_NM * e["torque"])
 
     e.update(EXTRA_FIELDS.get(name, {}))
     d = dict(DRAG_CD.get(ptype) or {})
@@ -685,8 +698,12 @@ def summary_line(e):
         return "  %-24s RCS=%7.1fkN  mass=%7s" % (n, e["rcs_thrust"] / 1e3, e["mass"])
     if "power_draw_constant" in e:
         tor = "  torque=%s" % e["torque"] if "torque" in e else ""
+        # A pod now has BOTH electrical figures (#596): the constant life-support
+        # draw and its drums' active draw. Hiding the second here is how a balance
+        # rule the catalog owns stops being visible where it is set.
+        dr = "  draw=%dW" % e["power_draw"] if "power_draw" in e else ""
         ec = "  EC=%dWh" % e["capacity"]["ec"] if "capacity" in e and "ec" in e["capacity"] else ""
-        return "  %-24s mass=%7s%s  const=%dW%s" % (n, e["mass"], tor, e["power_draw_constant"], ec)
+        return "  %-24s mass=%7s%s%s  const=%dW%s" % (n, e["mass"], tor, dr, e["power_draw_constant"], ec)
     if "capacity" in e and "ec" in e["capacity"]:
         return "  %-24s EC=%6dWh  mass=%7s" % (n, e["capacity"]["ec"], e["mass"])
     if "power_gen" in e:

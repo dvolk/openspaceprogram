@@ -2055,8 +2055,10 @@ void drawUIReadouts(Game &g) {
         double gen = 0.0, constDraw = 0.0, charge = 0.0, capacity = 0.0;
         ship->getPower(&gen, &constDraw, &charge, &capacity);
         if(gen > 0.0 || constDraw > 0.0 || capacity > 0.0) {
-            // Active draw: the wheels, only while they are actually working. This is
-            // the sum powerTick() pays, not a re-derivation of it (#575).
+            // Active draw: the attitude actuators, only while they are actually
+            // working. This is the sum powerTick() pays, not a re-derivation of it
+            // (#575). It says "actuators" and not "wheels" because the bill follows
+            // the rating, not the part: a pod's built-in drums appear here too (#596).
             const double activeDraw = ship->wheelDrawWatts();
             const double net = gen - constDraw - activeDraw;
 
@@ -2074,7 +2076,7 @@ void drawUIReadouts(Game &g) {
             ImGui::Text("  Charge:    %.1f / %.1f Wh", charge, capacity);
             ImGui::Text("  Generation:  %.1f W", gen);
             ImGui::Text("  Const draw:  %.1f W   (life support)", constDraw);
-            ImGui::Text("  Active:      %.1f W   (wheels, while commanding)",
+            ImGui::Text("  Active:      %.1f W   (actuators, while commanding)",
                         activeDraw);
         }
     });

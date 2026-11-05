@@ -11,6 +11,7 @@
       "height": 2.0,
       "torque": 200,
       "wheel_axes": 3,
+      "power_draw": 100,
       "power_draw_constant": 100,
       "capacity": {
         "ec": 2000
@@ -33,6 +34,7 @@
       "height": 1.5,
       "torque": 100,
       "wheel_axes": 3,
+      "power_draw": 50,
       "power_draw_constant": 100,
       "capacity": {
         "ec": 2000
@@ -55,6 +57,7 @@
       "height": 3.0,
       "torque": 300,
       "wheel_axes": 3,
+      "power_draw": 150,
       "power_draw_constant": 300,
       "capacity": {
         "ec": 6000
@@ -77,6 +80,7 @@
       "height": 4.5,
       "torque": 450,
       "wheel_axes": 3,
+      "power_draw": 225,
       "power_draw_constant": 600,
       "capacity": {
         "ec": 12000

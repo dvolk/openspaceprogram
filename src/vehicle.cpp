@@ -2119,9 +2119,12 @@ double Vehicle::feltAccel() {
 double Vehicle::wheelDrawWatts() const {
     /* No engagement, no draw: the wheels are electric and they only bill while the
        stick or an autopilot mode is actually working them AND the hull may spend them
-       (actuatorsEngaged, which is wheelsPowered() plus a live command). #596 is the
-       mirror complaint: a drum that IS working bills nothing, because no capsule
-       authors a power_draw. */
+       (actuatorsEngaged, which is wheelsPowered() plus a live command). isWheel() asks
+       the torque rating, not the part type, so a command pod's built-in drums are billed
+       here exactly like a wheel block's: the bill follows the authority the hull spends
+       rather than the cosmetic choice of part (#596). What the catalog charges per N m
+       of rating -- one constant, WHEEL_DRAW_WATTS_PER_NM in utils/gen_parts.py -- and
+       why it charges per housing rather than per drum (#593) is said there, not here. */
     if(not actuatorsEngaged()) { return 0.0; }
     double w = 0.0;
     for(Part *p : parts) {
