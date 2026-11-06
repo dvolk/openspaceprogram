@@ -670,9 +670,14 @@ def build_base():
          {'amplitude': 2000, 'palette': [[0.0, [0.80, 0.65, 0.40]],
                                          [1.0, [0.90, 0.80, 0.55]]],
           # the whole planet sits under a thick sulfuric-acid haze
+          # The density, not the pressure: a file cannot author a pressure, so
+          # p0 = rho0 g H falls out of this number (9.22 MPa here, Venus's real
+          # 92 atm). 92 -- its surface pressure in BAR -- sat here for a while and
+          # made Venus read 129 atm, because the pair was two statements of one
+          # column (#684). H 16 km and the CO2 mix already give the right 742 K.
           'atmosphere': {'color': [0.90, 0.75, 0.45], 'thickness': 30000,
                          'power': 3.0, 'intensity': 0.8,
-                         'sea_level_density': 92.0, 'scale_height': 16000,
+                         'sea_level_density': 65.0, 'scale_height': 16000,
                          # Near-pure CO2 with nitrogen on top. Venus has the densest
                          # air a jet could swallow in this catalogue and no oxidizer
                          # in any of it (#630).

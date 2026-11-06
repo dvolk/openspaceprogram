@@ -16,7 +16,7 @@
 # are one per species now, biggest first, and the oxidizer row states the share and stops;
 # the jet half still exists, it just lives where it is paid -- drag.h:jetAirGate bills
 # thrust and burn every tick (vehicle.cpp), so a thin sky shows up as a weak engine rather
-# than as a sentence. Eve and Venus have sea-level air denser than Kerbin's -- 1.7 and 92
+# than as a sentence. Eve and Venus have sea-level air denser than Kerbin's -- 1.7 and 65
 # kg/m3 -- and both are a dead engine, because a turbine burns against oxygen and there is
 # barely any in a CO2 sky. The mix rows are what lets the game say so at all.
 NAME air-composition-dossier
@@ -34,11 +34,17 @@ CHECK re.search(r"air gas N2\s+78\.09%\s*\n\s*\[atlas\]   air gas O2\s+20\.95%\s
 # O2 weighs more than a mole of N2, which is why the unit is on the value. The verdict that
 # used to follow it is gone on purpose, so this pins that the row stops at the number.
 CHECK re.search(r"air oxidizer\s+23\.14% by mass\s*\n", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-# Venus: 96.5 % CO2, 3.5 % N2, and no free oxygen at all -- 92 kg/m3 of air at the surface,
-# 13 MPa, and a jet that produces nothing. The "none" is the mix's own answer:
+# Venus: 96.5 % CO2, 3.5 % N2, and no free oxygen at all -- 65 kg/m3 of air at the surface,
+# 9.2 MPa, and a jet that produces nothing. The "none" is the mix's own answer:
 # gasSpecies("CO2").oxidizer is false.
 CHECK re.search(r"air gas CO2\s+96\.5%\s*\n\s*\[atlas\]   air gas N2\s+3\.5%", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 CHECK re.search(r"air oxidizer\s+none\s*\n", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# The datum PRESSURE, because a file cannot author one: p0 = rho0 g H, so the density is
+# the pressure knob and a wrong density is a wrong world. Venus used to carry 92 kg/m3 --
+# its SURFACE PRESSURE in bar, typed into the density field, which made the dossier read
+# 129 atm (#684). 65 kg/m3 is the datum density, and the row lands on Venus's real 92 atm.
+# The tolerance is the print's: "%.1f kPa" off rho0 g H with g 8.87, H 16 km.
+CHECK re.search(r"air pressure\s+9224\.8 kPa\s*\n", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # Mars is the interesting one: it HAS oxygen (0.13 % of the molecules, 0.1 % of the mass),
 # so its row must not read "none" even though a jet there gets 0.0068 % of a rated intake.
 # Before the split that distinction needed the gate printed beside the share; now it needs

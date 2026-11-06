@@ -167,7 +167,7 @@
           "thickness": 30000,
           "power": 3.0,
           "intensity": 0.8,
-          "sea_level_density": 92.0,
+          "sea_level_density": 65.0,
           "scale_height": 16000,
           "composition": [
             {
