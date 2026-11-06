@@ -297,7 +297,8 @@ $(OBJDIR)/implot/%.o: $(IMPLLOT_DIR)/%.cpp
 
 # Unit tests: per-binary file targets (parallel, skip-fresh); `test` runs all.
 # $(TESTDIR)/obj/ is machine-code (never mix with the game's LTO objects);
-# heavy tests link with $(LTO). src/ pattern rule must precede tests/.
+# heavy tests link the prelinked tier (TBASE) rather than the archives. src/
+# pattern rule must precede tests/.
 # After deleting a test source, `make clean` (stale .o is otherwise reused).
 
 # TCC carries the imgui define: src TUs compiled here include
@@ -307,6 +308,19 @@ TINC  = -I./src -I./middleware/glm/ -I./middleware/bullet3/src \
         -I./middleware/imgui/ -I./middleware/ -I$(MWROOT)/assimp/include/ -I./middleware/assimp/include/ \
         -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
 TLIBS = $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB)
+# The middleware archives are LTO-IRC -- bootstrap.sh builds them with -flto, so
+# their members are GIMPLE, not code: assimp 7.6k, SDL3 10.9k, BulletDynamics
+# 3.2k .gnu.lto_* sections. Any link that resolves a symbol out of them runs the
+# whole LTO codegen pass, and it does so whether or not we ask for $(LTO) (the
+# flag changes nothing -- measured 45 s with it, 43 s without). Nineteen test
+# binaries each paid ~45 s for the same bytecode, which is most of what a header
+# edit costs in `make test` (#663).
+# TARCH is those archives split out so they can be codegen'd ONCE into TBASE,
+# and TSYS is the rest of TLIBS -- the system libraries the final link still
+# needs. -lGL only on linux: GL_LIBS spells it there, while windows gets
+# -lopengl32 inside SDL3_SYS.
+TARCH = $(BULLET3_OBJS) $(SDLIMG_A) $(SDLMIXER_A) $(SDL3_A) $(GLEW_A) $(PNG_A) $(ZLIB_A) $(ASSIMP_A)
+TSYS  = $(if $(filter windows,$(OS)),,-lGL) $(SDL3_SYS)
 # Real-Bullet tests share these TUs. part.o is here because build_ship mints
 # every part through make_part, and keys.o because Kerbal::armInput takes the
 # tick's SlotProbe, whose held() lives there.
@@ -317,6 +331,18 @@ TCOMMON_OBJS = $(TESTDIR)/obj/physics.o $(TESTDIR)/obj/body.o $(TESTDIR)/obj/veh
                $(TESTDIR)/obj/shader.o $(TESTDIR)/obj/camera.o $(TESTDIR)/obj/mesh.o \
                $(TESTDIR)/obj/texture.o $(TESTDIR)/obj/gldebug.o $(TESTDIR)/obj/buildings.o \
                $(TESTDIR)/obj/keys.o
+
+# The shared tier, codegen'd once: -r keeps the result relocatable so every test
+# binary can link it, and --whole-archive is what makes it COMPLETE -- a test TU
+# that calls btBoxShape directly must find it even though nothing in TCOMMON does
+# (without --whole-archive the archives contribute only what TCOMMON references,
+# and the test links fail). Measured on this box: 33 s for the tier, 0.5 s per
+# test link, and -ffunction-sections here plus --gc-sections there keeps the
+# binaries the size they were (5.8 MB), instead of inheriting all 18 MB of tier.
+TBASE = $(TESTDIR)/obj/tbase.o
+$(TBASE): $(TCOMMON_OBJS) $(TARCH)
+	@mkdir -p $(TESTDIR)/obj
+	$(CXX) -O2 $(LTO) -ffunction-sections -fdata-sections -r -o $@ $(TCOMMON_OBJS) -Wl,--whole-archive $(TARCH) -Wl,--no-whole-archive
 
 $(TESTDIR)/obj/%.o: src/%.cpp
 	@mkdir -p $(TESTDIR)/obj
@@ -355,80 +381,80 @@ $(TESTDIR)/test_rcs: $(TESTDIR)/obj/test_rcs.o
 	$(CXX) -o $@ $^
 
 # Links the real physics chain (Bullet + GL).
-$(TESTDIR)/test_thrust: $(TESTDIR)/obj/test_thrust.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_thrust: $(TESTDIR)/obj/test_thrust.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
 # The ascent law is pure, but flyAscent() reaches the ship, so this links the
 # same chain the thrust tests do -- plus guidance.o itself.
-$(TESTDIR)/test_guidance: $(TESTDIR)/obj/test_guidance.o $(TESTDIR)/obj/guidance.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_guidance: $(TESTDIR)/obj/test_guidance.o $(TESTDIR)/obj/guidance.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
-$(TESTDIR)/test_fuel: $(TESTDIR)/obj/test_fuel.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_fuel: $(TESTDIR)/obj/test_fuel.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
-$(TESTDIR)/test_power: $(TESTDIR)/obj/test_power.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_power: $(TESTDIR)/obj/test_power.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
 # Pure graph logic; links TCOMMON only for ~Vehicle teardown symbols.
-$(TESTDIR)/test_staging: $(TESTDIR)/obj/test_staging.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_staging: $(TESTDIR)/obj/test_staging.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
 $(TESTDIR)/test_staging_dv: $(TESTDIR)/obj/test_staging_dv.o $(TESTDIR)/obj/staging.o $(TESTDIR)/obj/shipdef.o
 	$(CXX) -o $@ $^
 
 # Headless (init() rebuilds the compound, never enterWorld).
-$(TESTDIR)/test_dock: $(TESTDIR)/obj/test_dock.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_dock: $(TESTDIR)/obj/test_dock.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
 # The attitude CAPABILITY model (#425 step B): attitudeAuthority() reads the hull's
 # COM, so it needs the real-Bullet TUs (init() without enterWorld, as in test_dock).
-$(TESTDIR)/test_authority: $(TESTDIR)/obj/test_authority.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_authority: $(TESTDIR)/obj/test_authority.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
 # Real load_system on res/systems/solar_system.json: the sanctioned
 # retrograde encodings (orbit via orb_incl > 90 deg, spin via axial_tilt > 90).
-$(TESTDIR)/test_retrograde: $(TESTDIR)/obj/test_retrograde.o $(TESTDIR)/obj/system.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_retrograde: $(TESTDIR)/obj/test_retrograde.o $(TESTDIR)/obj/system.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
 # Real load_system on res/systems/*.json: the "skybox" field (the star field
 # is system data now, not a src/skybox.cpp hard-code).
-$(TESTDIR)/test_skybox: $(TESTDIR)/obj/test_skybox.o $(TESTDIR)/obj/system.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_skybox: $(TESTDIR)/obj/test_skybox.o $(TESTDIR)/obj/system.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
 # The root "belts" array: annulus data for the orbital maps (src/system.cpp).
-$(TESTDIR)/test_belts: $(TESTDIR)/obj/test_belts.o $(TESTDIR)/obj/system.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_belts: $(TESTDIR)/obj/test_belts.o $(TESTDIR)/obj/system.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
 # Authored orb_incl/lon_asc_node must survive the round trip through the rail
 # state and the plane-angle routine (issue #171).
-$(TESTDIR)/test_railangles: $(TESTDIR)/obj/test_railangles.o $(TESTDIR)/obj/system.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_railangles: $(TESTDIR)/obj/test_railangles.o $(TESTDIR)/obj/system.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
 # The abs_r scenario beds (heli-*) must still match the rails of the system
 # files their radii were read off.
-$(TESTDIR)/test_scenarios: $(TESTDIR)/obj/test_scenarios.o $(TESTDIR)/obj/system.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_scenarios: $(TESTDIR)/obj/test_scenarios.o $(TESTDIR)/obj/system.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
 # Building catalog + system world_buildings (src/buildings.cpp).
-$(TESTDIR)/test_buildings: $(TESTDIR)/obj/test_buildings.o $(TESTDIR)/obj/system.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_buildings: $(TESTDIR)/obj/test_buildings.o $(TESTDIR)/obj/system.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
 # Local TestCrew : Vehicle stands in for Kerbal (eva.cpp is too heavy).
-$(TESTDIR)/test_contain: $(TESTDIR)/obj/test_contain.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_contain: $(TESTDIR)/obj/test_contain.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
-$(TESTDIR)/test_inertia: $(TESTDIR)/obj/test_inertia.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_inertia: $(TESTDIR)/obj/test_inertia.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
-$(TESTDIR)/test_inventory: $(TESTDIR)/obj/test_inventory.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_inventory: $(TESTDIR)/obj/test_inventory.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
 # The crew pool's suit-def gate (src/part.cpp). Needs res/ and the part mint.
-$(TESTDIR)/test_suitdef: $(TESTDIR)/obj/test_suitdef.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_suitdef: $(TESTDIR)/obj/test_suitdef.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
-$(TESTDIR)/test_rotation: $(TESTDIR)/obj/test_rotation.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_rotation: $(TESTDIR)/obj/test_rotation.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
 # Needs res/ (run from the repo root).
 $(TESTDIR)/test_shipload: $(TESTDIR)/obj/test_shipload.o $(TESTDIR)/obj/shipdef.o
@@ -509,8 +535,8 @@ $(TESTDIR)/test_orbitcam: $(TESTDIR)/obj/test_orbitcam.o $(TESTDIR)/obj/camera.o
 	$(CXX) -o $@ $^
 
 # pick.cpp needs the full vehicle/physics chain (compound hull cast).
-$(TESTDIR)/test_pick: $(TESTDIR)/obj/test_pick.o $(TESTDIR)/obj/pick.o $(TCOMMON_OBJS)
-	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+$(TESTDIR)/test_pick: $(TESTDIR)/obj/test_pick.o $(TESTDIR)/obj/pick.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
 $(TESTDIR)/test_settings: $(TESTDIR)/obj/test_settings.o $(TESTDIR)/obj/settings.o $(TESTDIR)/obj/keys.o
 	$(CXX) -o $@ $^
