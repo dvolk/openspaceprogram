@@ -1,11 +1,13 @@
 # #498: inside an atmosphere on a rotating body the air co-rotates with the ground,
 # so the CONIC's velocity -- which is what the green prograde marker, the orbital-plane
-# overlay and the ORBITAL window's Prg have always read -- is mostly the GROUND's own
+# overlay and [orbinfo]'s prg= have always read -- is mostly the GROUND's own
 # motion. Kerbin carries the sea-level ground ~175 m/s, so an airframe doing 210-240
 # m/s through the air has its conic prograde 20 deg off the nose and walking to 28
 # while the aero law says the nose is ON the flow. Measured on this build (skiff_trim,
-# flying-cruise, --info-log, --orbit-interval 2; aprg= is the new SURFACE-window key,
-# prg= the ORBITAL window's conic one):
+# flying-cruise, --info-log, --orbit-interval 2; aprg= is the air-relative key -- the
+# same number the Game Debug window's Prg (air) row prints -- and prg= the conic one
+# (that pair's Orbital-window row went away on 2026_11_06, so this log is where it
+# lives):
 #
 #   t= 1.9  aprg   4.98  aoa   4.98  beta  0.0013  prg  20.39  vel 241.5 m/s
 #   t= 3.9  aprg   5.05  aoa   5.05  beta -0.0013  prg  25.51  vel 230.2
@@ -15,9 +17,9 @@
 #
 # Both readings are correct about what they measure; the issue was that only one of
 # them existed for a pilot. The air-relative direction (view.air_dir, built from the
-# same Vehicle::airRelativeVel the drag law uses) now has its own yellow marker pair,
-# its own SURFACE-window Prg/Rtg row, and this key. The conic pair stays where it
-# was -- #204/#205 pin it in the orbital plane, and moving it would break them.
+# same Vehicle::airRelativeVel the drag law uses) now has its own yellow marker pair
+# and this key. The conic pair stays where it was -- #204/#205 pin it in the orbital
+# plane, and moving it would break them.
 #
 # What is pinned, in order: both windows printed; the air-relative angle exists all
 # the way through an in-atmosphere run; it AGREES with the angle the aero law
@@ -41,10 +43,11 @@ CHECK len(orbinfo) >= 6
 # a higher angle of attack at the same 12 deg of elevator.
 CHECK all(s["aprg"] is not None for s in surf)
 CHECK all(abs(s["aprg"]) < 10.0 for s in surf)
-# The Prg split between the two windows is a pose property (co-rotation x speed),
-# not a plumbing one; it was pinned here and moved with every airframe. Dropped.
-# One vector, two consumers: the SURFACE window's angle to the air and the aero law's
-# own alpha must be the same reading. They differ only by sideslip, and Beta is next.
+# The split between the two progrades is a pose property (co-rotation x speed),
+# not a plumbing one; it was pinned in the UI here and moved with every airframe.
+# Dropped.
+# One vector, two consumers: the nose's angle to the air and the aero law's own
+# alpha must be the same reading. They differ only by sideslip, and Beta is next.
 # Note the conventions: aprg= is a CONE angle (nose to air-prograde, 0..180, never
 # signed) while aoa= is the signed pitch-plane angle the law uses. Nose-up they agree;
 # nose-down they would differ by twice the angle. So compare against |aoa| and pin the

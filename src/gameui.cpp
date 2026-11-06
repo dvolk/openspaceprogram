@@ -2149,14 +2149,16 @@ void drawUIReadouts(Game &g) {
             const std::array<double, 3> ak = torqueRpY(del.asked, ax);
             uiText("Steering asked (R/P/Y): %.0f / %.0f / %.0f N m",
                    ak[0], ak[1], ak[2]);
-            /* The air-relative pair (#498), moved here from Surface Info in the same pass.
-               ORBITAL's Prg/Rtg is the CONIC's; inside an atmosphere on a rotating body
-               that is mostly the ground's own motion (~175 m/s at Kerbin sea level), so
-               the two pairs print ~16 deg apart for the same plane flying dead on the air,
-               and both are right -- which is exactly why the pair is a reference-frame
-               diagnostic and not a flight readout. Dashed when there is no air or no flow
-               with a direction: the same kAoAFlowFloor rule as AoA and Beta, because a
-               parked hull's ~1e-4 m/s of jitter has no heading. */
+            /* The air-relative pair (#498), moved here from Surface Info in the same
+               pass. The CONIC pair it used to sit beside is gone from the Orbital
+               window (2026_11_06): that direction stays a HUD billboard (render.cpp:809-
+               816) and [orbinfo]'s prg=. Inside an atmosphere on a rotating body the
+               conic prograde is mostly the ground's own motion (~175 m/s at Kerbin sea
+               level), so the two differ by ~16 deg for the same plane flying dead on the
+               air and both are right -- which is exactly why this row is a
+               reference-frame diagnostic and not a flight readout. Dashed when there is
+               no air or no flow with a direction: the same kAoAFlowFloor rule as AoA and
+               Beta, because a parked hull's ~1e-4 m/s of jitter has no heading. */
             if(view.air_dir_valid) {
                 uiText("Prg (air): %.2f", glm::degrees(glm::angle(facing_dir, view.air_dir)));
                 uiText("Rtg (air): %.2f", glm::degrees(glm::angle(facing_dir, -view.air_dir)));
@@ -2211,10 +2213,11 @@ void drawUIReadouts(Game &g) {
         else { ImGui::Text("LAN: -"); }
         if(view.plane.lpe_ok) { ImGui::Text("LPe: %.2f", glm::degrees(view.plane.lpe)); }
         else { ImGui::Text("LPe: -"); }
-        double prograde_angle = glm::angle(facing_dir, vel_dir);
-        double retrograde_angle = glm::angle(facing_dir, - vel_dir);
-        ImGui::Text("Prg: %.2f", glm::degrees(prograde_angle));
-        ImGui::Text("Rtg: %.2f", glm::degrees(retrograde_angle));
+        /* Prg/Rtg used to end this window. The CONIC pair is gone as of the
+           2026_11_06 trim: the same direction is already projected into the scene as
+           a billboard (render.cpp:809-816) and prints as [orbinfo]'s prg=, so a
+           degree off a text row decides nothing the marker does not already show.
+           The AIR-relative pair of #498 stays, in the Game Debug window. */
     });
 
     // Initial size comes from o_telemetry.initial_size: content-fit would clip a 2x2 grid.
@@ -2353,12 +2356,10 @@ void drawUIReadouts(Game &g) {
         ImGui::Text(" Pt: %.2f", glm::degrees(pitch));
         ImGui::Text("  R: %.2f", glm::degrees(roll));
         ImGui::Text("Hdg: %.2f", glm::degrees(yaw));
-        /* The nose's angle to the AIR-relative prograde (#498) used to sit here as a
-           second Prg/Rtg pair, one label apart from ORBITAL's conic pair and ~16 deg
-           off for a plane flying dead on the air. It is a reference-frame question --
-           which direction the aero law answers to -- not a ground readout, so it moved
-           to the Game Debug window with the rest of that family (2026_11_05 UI pass).
-           [surfinfo]'s aprg= is still that row's number and prints whether the window
+        /* No Prg/Rtg here: the nose's angle to the AIR-relative prograde (#498) is a
+           reference-frame question -- which direction the aero law answers to -- not a
+           ground readout, so it prints in the Game Debug window as Prg (air) /
+           Rtg (air). [surfinfo]'s aprg= is that number and prints whether the window
            is open or not. */
         /* AoA: the AIRFRAME's angle of attack -- drag.h AeroFrame against the
            root's axes, air-relative flow against the nose, so there is none
@@ -2449,11 +2450,12 @@ void drawUIReadouts(Game &g) {
                            glm::degrees(ship->lastDragBeta))
                 : snprintf(beta_s, sizeof beta_s, "-");
             assert(beta_n > 0 && beta_n < (int)sizeof beta_s);
-            /* #498: aprg= is the SURFACE window's Prg -- nose to AIR-relative
-               prograde, dashed on the same flow-floor test as aoa=/beta= for the
-               same reason. [orbinfo]'s prg= is the CONIC's, so the two keys together
-               are the gap this issue is about: a plane flying dead on the air prints
-               aprg near 0 (Beta 0.0 too) while its conic prg sits ~16 deg off. */
+            /* #498: aprg= is the Game Debug window's Prg (air) -- nose to AIR-relative
+               prograde, dashed on the same flow-floor test as aoa=/beta= for the same
+               reason. [orbinfo]'s prg= is the CONIC's (that window's own Prg/Rtg row
+               is gone, 2026_11_06), so the two keys together are the gap this issue is
+               about: a plane flying dead on the air prints aprg near 0 (Beta 0.0 too)
+               while its conic prg sits ~16 deg off. */
             char aprg_s[32];
             const int aprg_n = view.air_dir_valid
                 ? snprintf(aprg_s, sizeof aprg_s, "%.6g deg",

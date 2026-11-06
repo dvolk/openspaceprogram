@@ -342,9 +342,10 @@ TERRAIN_RE = re.compile(
 # its own alternative rather than a wider character class that would eat the "-".
 # beta (#450) dashes on exactly the same test -- the same AeroFrame pair, the same
 # flow floor -- and sits next to aoa in the line because they are one reading.
-# aprg (#498) is the SURFACE window's Prg: nose to AIR-relative prograde. It dashes
-# on the same flow floor again (no air, or a flow with no direction), and the pair
-# aprg/[orbinfo] prg is the gap between flying through the air and flying the orbit.
+# aprg (#498) is the Game Debug window's Prg (air): nose to AIR-relative prograde. It
+# dashes on the same flow floor again (no air, or a flow with no direction), and the
+# pair aprg/[orbinfo] prg is the gap between flying through the air and flying the
+# orbit.
 # cla/sm (#499) are the SURFACE window's stability pair: cla dashes with aoa (no
 # air), sm dashes alone when the lifting surfaces stop agreeing, so each needs
 # the same two-arm treatment.
@@ -362,12 +363,13 @@ SURF_RE = re.compile(
     r"body=\"([^\"]*)\"\s+bme=\"([^\"]*)\"\s+sit=\"([^\"]*)\""
 )
 # [orbinfo] is the ORBITAL window's own numbers. Nothing parsed it until #498
-# needed it: prg/rtg are the only place the CONIC's prograde angle is printed, and
-# #498 is precisely that it points where the ORBIT is going rather than where a
-# plane in an atmosphere is flying. apo_* print "-" for an open conic and lan/lpe
-# for a missing node line, so those get the two-arm treatment; the peri_* trio and
-# period print whatever the conic says, so they go through num() -- an inf or nan
-# from an open conic becomes None instead of raising inside a CHECK.
+# needed it: prg/rtg are now the ONLY place the CONIC's prograde angle prints -- the
+# window dropped its own Prg/Rtg rows on 2026_11_06, leaving the HUD marker and these
+# keys. #498 is precisely that the conic points where the ORBIT is going rather than
+# where a plane in an atmosphere is flying. apo_* print "-" for an open conic and
+# lan/lpe for a missing node line, so those get the two-arm treatment; the peri_*
+# trio and period print whatever the conic says, so they go through num() -- an inf or
+# nan from an open conic becomes None instead of raising inside a CHECK.
 ORBINFO_RE = re.compile(
     r"\[orbinfo\]\s+t=([\d.]+)s\s+body=\"([^\"]*)\"\s+vel=([-\d.e+]+) m/s\s+"
     r"r=([-\d.e+]+) m\s+"

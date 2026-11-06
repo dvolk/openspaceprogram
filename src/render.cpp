@@ -176,8 +176,10 @@ void updateShipView(Game &g) {
     facing = shipAxes[2];
 
     facing_dir = glm::normalize(facing);
-    /* The ORBITAL window's Prg/Rtg is the angle to the CONIC's prograde, like
-       the marker it sits beside -- and a grounded ship has one (the ground's own
+    /* vel_dir is the CONIC's prograde: the direction the HUD's prograde marker
+       points at (render.cpp:809-816) and what --plane-log prints as prg=. It has
+       been the number behind the ORBITAL window's Prg/Rtg rows too, until those
+       rows went away on 2026_11_06. A grounded ship has one (the ground's own
        motion), where normalize(vel) would divide by a near-zero length. */
     vel_dir = glm::normalize(marker_vel);
 

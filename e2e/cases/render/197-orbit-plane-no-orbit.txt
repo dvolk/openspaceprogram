@@ -12,8 +12,10 @@
 #
 # The second half is the same ship's prograde. A landed ship has no plane to
 # draw, but it does have an orbital velocity -- the ground's own motion -- so the
-# ORBITAL window's Prg/Rtg must be a number. They used to normalize the ship's
-# own velocity, which on the pad is a zero vector, and printed nan beside Inc.
+# conic prograde must be a number: [orbinfo]'s prg/rtg, which is where the pair
+# prints now that the ORBITAL window dropped its own Prg/Rtg rows (2026_11_06).
+# They used to normalize the ship's own velocity, which on the pad is a zero
+# vector, and printed nan beside Inc.
 NAME orbit-plane-no-orbit
 CLAIM A grounded ship gets no plane overlay.
 KIND invariant
