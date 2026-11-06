@@ -17,6 +17,12 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from sci_dist import stamp_system, phase0
+# #636: the named gas mixes live in ONE module that BOTH system generators import.
+# Each generator only ever compares a file against its OWN output, so a mix kept here
+# as well as in make_solar_system.py can drift while both --check passes stay green --
+# which is how DRY_AIR and CO2_HEAVY ended up typed twice. Names are not swappable:
+# the suffix says which system measured it.
+from gas_mixes import DRY_AIR, CO2_HEAVY, H2_HE_CH4_KSP
 
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
@@ -80,20 +86,9 @@ WIKI_ORBITS = load_wiki_orbits(os.path.join(HERE, "ksp_bodies.csv"))
 # WHAT THE AIR IS MADE OF (#552 A4b, #630), by MOLE. A body authors its mix and the
 # loader resolves molar mass, gamma and the oxidizer share the jet gate reads from it
 # (src/atmo.h:resolveMix), so "molar_mass"/"gamma" are no longer authorable keys.
-# Species names must exist in the game's gas table (atmo.h:gasSpecies).
-DRY_AIR = [{"gas": "N2", "fraction": 0.78084},
-           {"gas": "O2", "fraction": 0.20946},
-           {"gas": "Ar", "fraction": 0.00934},
-           {"gas": "CO2", "fraction": 0.00033}]
-CO2_HEAVY = [{"gas": "CO2", "fraction": 0.9532},
-             {"gas": "N2", "fraction": 0.027},
-             {"gas": "Ar", "fraction": 0.016},
-             {"gas": "O2", "fraction": 0.0013}]
-# Named for what is in it: utils/make_solar_system.py has a different H2_HE (no CH4),
-# and two constants with one name and different skies is how a mix drifts.
-H2_HE_CH4 = [{"gas": "H2", "fraction": 0.855},
-             {"gas": "He", "fraction": 0.14},
-             {"gas": "CH4", "fraction": 0.005}]
+# Species names must exist in the game's gas table (atmo.h:gasSpecies). The named mixes
+# are imported, not typed here: a mix two generators could each invent has to exist
+# once, since each one only ever validates its own output (#636).
 
 
 # Eerbon: legacy home + moon. Values from the pre-refactor setup_frames();
@@ -322,8 +317,9 @@ SURFACES = {
                        "sea_level_density": 2.0, "scale_height": 20000,
                        # H2 with helium and a methane crown. The densest air in this
                        # system and 0% oxidizer: Jool is a fuel store, not a sky a
-                       # jet can cross.
-                       "composition": H2_HE_CH4,
+                       # jet can cross. KSP's Jool, not the solar system's Uranus:
+                       # same three gases, different sky (#636).
+                       "composition": H2_HE_CH4_KSP,
                        "height": 200000},
     },
     "Laythe": {

@@ -605,19 +605,12 @@ MOON_COLORS = {
 # the mix is the fact and those two are its consequences. Fractions need not sum to 1;
 # they are normalized by their own total. The species names must exist in the game's
 # gas table (atmo.h:gasSpecies): N2, O2, CO2, H2, He, CH4, H2O, Ar.
-DRY_AIR = [{'gas': 'N2', 'fraction': 0.78084},
-           {'gas': 'O2', 'fraction': 0.20946},
-           {'gas': 'Ar', 'fraction': 0.00934},
-           {'gas': 'CO2', 'fraction': 0.00033}]
-CO2_HEAVY = [{'gas': 'CO2', 'fraction': 0.9532},
-             {'gas': 'N2', 'fraction': 0.027},
-             {'gas': 'Ar', 'fraction': 0.016},
-             {'gas': 'O2', 'fraction': 0.0013}]
-H2_HE = [{'gas': 'H2', 'fraction': 0.898},
-         {'gas': 'He', 'fraction': 0.102}]
-H2_HE_CH4 = [{'gas': 'H2', 'fraction': 0.825},
-             {'gas': 'He', 'fraction': 0.152},
-             {'gas': 'CH4', 'fraction': 0.023}]
+# A named mix that the OTHER system generator could also invent is imported from
+# utils/gas_mixes.py, so there is one of each (#636); a mix only this catalogue
+# measures stays here. Suffixes are load-bearing: the solar system's Uranus and
+# gen_systems' Jool are both H2/He/CH4 skies with different fractions, so they are
+# two names, not one name twice.
+from gas_mixes import DRY_AIR, CO2_HEAVY, H2_HE, H2_HE_CH4_SOLAR
 N2_METHANE = [{'gas': 'N2', 'fraction': 0.984},
               {'gas': 'CH4', 'fraction': 0.014},
               {'gas': 'H2', 'fraction': 0.002}]
@@ -782,7 +775,9 @@ def build_base():
           'atmosphere': {'color': [0.70, 0.85, 0.88], 'thickness': 90000,
                          'power': 3.0, 'intensity': 0.6,
                          'sea_level_density': 0.60, 'scale_height': 20000,
-                         'composition': H2_HE_CH4}},
+                         # Uranus's own H2/He/CH4 proportions, not gen_systems' Jool
+                         # (#636: same three gases, a different sky).
+                         'composition': H2_HE_CH4_SOLAR}},
          False),
         ('neptunefact.html', 'Neptune', 8.0,
          {'bands': True, 'band_count': 7,
