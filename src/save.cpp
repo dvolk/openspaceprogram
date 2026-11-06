@@ -570,6 +570,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
     s.wheels_enabled = v->wheels_enabled;
     s.surfaces_enabled = v->surfaces_enabled;
     s.rcs_attitude_enabled = v->rcs_attitude_enabled;   // #595
+    s.sas_turn_rate = v->sas_turn_rate;                 // #678
 
     for(size_t k = 0; k < v->seams.size(); k++) {
         SaveDock dk;
@@ -803,6 +804,16 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
     if(s.slew_request < 0 || s.slew_request > (int)SlewKillRot) {
         return "load: saved ship '" + s.name + "' latches autopilot mode "
                + std::to_string(s.slew_request) + ", which is not a mode";
+    }
+    /* #678's dial, from the same hand-editable source. `!(x >= 0.0)` is the NaN test as
+       well as the negative one: a negative ceiling would clamp every law to a negative
+       rate, i.e. command a reversal of its own aim forever, and a NaN would poison the
+       comparison and let the law through uncapped while every readout printed NaN.
+       There is no upper bound to refuse: a ceiling above what the hardware can lever
+       simply never binds, which is the same state as unlimited. */
+    if(!(s.sas_turn_rate >= 0.0)) {
+        return "load: saved ship '" + s.name + "' has SAS turn rate "
+               + std::to_string(s.sas_turn_rate) + ", which is not a rate";
     }
     for(const SaveFuelLink &fl : s.fuel_links) {
         if(prior.count(fl.from) == 0 || prior.count(fl.to) == 0) {
@@ -1095,6 +1106,7 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
     v->wheels_enabled = s.wheels_enabled;
     v->surfaces_enabled = s.surfaces_enabled;   // #649's second door
     v->rcs_attitude_enabled = s.rcs_attitude_enabled;   // #595's third
+    v->sas_turn_rate = s.sas_turn_rate;                 // #678's dial
 
     /* Both parts of a seam must be present: skipping an unresolvable seam
        leaves the joint physically docked with no undock record, so the ship

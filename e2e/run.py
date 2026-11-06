@@ -196,7 +196,8 @@ SURFMAP_RE = re.compile(
 SLEW_RE = re.compile(
     r"\[slew\]\s+t=([\d.]+)\s+mode=(\S+)\s+E=([-\d.]+)\s+rad\s+\([-\d.]+ deg\)\s+"
     r"w_slew=([-\d+.]+)\s+w_roll=([-\d+.]+)\s+w_third=([-\d+.]+)\s+\|w\|=([-\d+.]+)\s+"
-    r"alpha=([-\d.]+)\s+alpha_full=([-\d.]+)\s+Ieff=([-\d.]+)\s+.*?"
+    r"alpha=([-\d.]+)\s+alpha_full=([-\d.]+)\s+Ieff=([-\d.]+)\s+"
+    r"w_des=([-\d+.]+)\s+w_cap=(\S+)\s+.*?"
     r"tau_ask=([-\d.]+)\s+tau_spent=([-\d.]+)\s+.*?"
     r"nose=\[([-\d.+]+) ([-\d.+]+) ([-\d.+]+)\]\s+"
     r"target=\[([-\d.+]+) ([-\d.+]+) ([-\d.+]+)\]"
@@ -758,13 +759,18 @@ def parse_slew(out):
     rows = []
     for m in SLEW_RE.finditer(out):
         (t, mode, e, w_slew, w_roll, w_third, wmag, alpha, alpha_full, ieff,
-         tau_ask, tau_spent, nx, ny, nz, tx, ty, tz) = m.groups()
+         w_des, w_cap, tau_ask, tau_spent, nx, ny, nz, tx, ty, tz) = m.groups()
         rows.append({
             "t": float(t), "mode": mode, "E": float(e),
             "w_slew": float(w_slew), "w_roll": float(w_roll),
             "w_third": float(w_third), "wnorm": float(wmag),
             "alpha": float(alpha), "alpha_full": float(alpha_full),
             "Ieff": float(ieff),
+            # What the law wants and the ceiling on it (#678). w_cap prints "-" when
+            # unlimited: a 0 there would read as a law forbidden to move, so it parses
+            # to None rather than to 0.0.
+            "w_des": float(w_des),
+            "w_cap": None if w_cap == "-" else float(w_cap),
             "tau_ask": float(tau_ask), "tau_spent": float(tau_spent),
             "nose": (float(nx), float(ny), float(nz)),
             "target": (float(tx), float(ty), float(tz)),
@@ -776,7 +782,8 @@ def parse_slew(out):
             "t": float(t), "mode": "killrot", "E": None,
             "w_slew": None, "w_roll": None, "w_third": None,
             "wnorm": float(wmag), "alpha": None, "alpha_full": None,
-            "Ieff": None, "tau_ask": float(tau_ask),
+            "Ieff": None, "w_des": None, "w_cap": None,
+            "tau_ask": float(tau_ask),
             "tau_spent": float(tau_spent),
             "nose": None, "target": None,
             "wxyz": tuple(float(v) for v in wxyz.split()),

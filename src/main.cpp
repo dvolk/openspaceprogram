@@ -682,6 +682,14 @@ int main(int argc, char **argv)
             first->Command(ShipCmd(Sas, m), true);
             printf("Autopilot: %s engaged at startup\n", args.autopilot.c_str());
         }
+        /* --sas-rate: #678's dial, set on the hull the same way the Systems window
+           slider sets it, so a scripted run and a click cannot become two different
+           controls. Stored in rad/s, with 0 = unlimited; deg/s is the human unit here,
+           and the printf is what lets an e2e case pin the unit it was given. */
+        if(args.sas_rate > 0.0 && first != nullptr) {
+            first->sas_turn_rate = glm::radians(args.sas_rate);
+            printf("SAS: turn rate capped at %.2f deg/s\n", args.sas_rate);
+        }
 
         /* --ascent: arm the ascent autopilot on the active ship. Parsed by hand
            rather than through CLI11's numeric machinery because "100e3,45" is a

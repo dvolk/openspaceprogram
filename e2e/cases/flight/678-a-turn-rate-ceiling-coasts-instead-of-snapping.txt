@@ -1,0 +1,57 @@
+# The attitude autopilot has always turned a hull as hard as the hardware allows and
+# braked at the last instant, with no way to ask for a crawl. #678 adds a per-hull
+# ceiling on what the LAW may want -- sas_turn_rate, clamped on slewDemand's w_des and
+# nowhere else, so alpha/alpha_full keep quoting what the actuators can lever (#572,
+# #608) and the stick keeps saturating its own axes (#425). The ceiling goes in the
+# Systems window; --sas-rate is its command-line spelling, and both write the same field.
+#
+# Measured on this hull (skiff, inertial-orbit, latched NORMAL = a 90.0 deg turn from
+# the spawn heading), at --time-accel 1:
+#
+#   uncapped: w_des 0.29 rad/s (17 deg/s), the hull crawls up to 0.279, blows straight
+#             through the target at t=10.0 (E bottoms at 0.09 rad, w_slew flips to
+#             -0.11), and only settles at t=27.8 s.
+#   at 6 deg/s: w_des pinned at +0.1047 for the whole middle of the turn, the hull
+#             rides it (w_slew +0.1048), and arrives at t=16.8 s.
+#
+# The shape is accelerate / coast / brake, and the coast is the part the player is
+# buying: at the ceiling the law asks for nothing, so tau_spent falls from 141 N m
+# during the wind-up to 20-35 N m across the coast (what it takes to hold the rate
+# against the air) and back up to ~140 to brake. Skiff steers on its wings, so those
+# newtons cost nothing to actuate -- the number that matters here is the SHAPE, and the
+# delivered impulse (integral of tau_spent, ~1150 N m s capped vs ~4000 uncapped) is
+# what a drum or a ring would actually be billed for.
+NAME a-turn-rate-ceiling-coasts-instead-of-snapping
+CLAIM A latched 90 degree turn with SAS turn rate 6 deg/s asks for no more than that rate, cruises at it, and still arrives.
+KIND invariant
+ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,inertial-orbit
+ARGS --autopilot normal --sas-rate 6 --slew-log --no-paint
+ARGS --timeout 22
+LIMIT 40
+EXPECT [slew]
+FORBID error:
+FORBID FAILED
+# One law the whole run: the latch is the only thing steering this hull.
+CHECK len(slew) >= 100
+CHECK all(s["mode"] == "normal" for s in slew)
+# THE FLAG LANDED, IN THE UNIT IT CLAIMS. 6 deg/s is 0.10472 rad/s, and w_cap is that
+# stored figure: a flag that fed degrees to a rad-sized field would print +6.0000 here
+# and the turn would never be capped at all.
+CHECK all(s["w_cap"] is not None and abs(s["w_cap"] - 0.10472) < 2e-3 for s in slew)
+# THE CEILING HOLDS on what the law asks, every substep the log samples.
+CHECK all(s["w_des"] <= 0.10472 + 2e-4 for s in slew)
+# AND IT BINDS: at 90 degrees of error the law's own braking curve wants sqrt(2*alpha*E)
+# = 0.29 rad/s, nearly 3x the ceiling. Without the clamp these rows would ask for it.
+CHECK any(s["E"] > 1.5 and (2.0 * s["alpha"] * s["E"]) ** 0.5 > 2.0 * s["w_cap"] for s in slew)
+# THE COAST IS REAL, and it is the hull riding the ceiling, not merely the ask pinned
+# there: mid-turn (20-70 degrees to go) the achieved rate matches the ask to 0.01 rad/s.
+CHECK all(abs(s["w_slew"] - s["w_cap"]) < 0.01 for s in slew if 0.3 < s["E"] < 1.2 and s["t"] > 5.0)
+# HOLDING THE RATE IS CHEAP, winding it up is not: the mid-turn spend is well under the
+# wind-up spend. This is the fuel/EC argument in one row -- the actuators let go.
+CHECK max(s["tau_spent"] for s in slew if 5.0 < s["t"] < 12.0 and s["E"] > 0.5) < 60.0
+CHECK max(s["tau_spent"] for s in slew if s["t"] < 2.0) > 120.0
+# AND IT STILL ARRIVES, in the window the profile predicts: ~3 s to wind up to 6 deg/s,
+# ~14 s of coast at it across 90 degrees, ~3 s to brake. Measured 16.8 s.
+CHECK min(s["E"] for s in slew) < 0.02
+CHECK 12.0 < min(s["t"] for s in slew if s["E"] < 0.02) < 22.0
+CHECK last(slew)["E"] < 0.02

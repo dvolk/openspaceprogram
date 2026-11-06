@@ -2725,6 +2725,30 @@ void drawUIReadouts(Game &g) {
             uiText("  %-3s  %.0f / %.0f / %.0f N m (R/P/Y)",
                    ship->rcs_attitude_enabled ? "on" : "off", hwv[0], hwv[1], hwv[2]);
         }
+        /* How fast an attitude LAW may swing this hull (#678). The rows above say what
+           the actuators can lever; this says what the autopilot is allowed to ask of
+           them, which is the difference between a snap and a crawl -- and on a
+           hydrazine ring, between one bill and a smaller one (angular impulse is
+           2*I*w_cap: linear in the ceiling, so halving it halves the bill and doubles
+           the clock). Two facts live here rather than in the sim:
+           * the top slot means UNLIMITED and stores 0, not 10. A top that stored its
+             own number would cap every hull at 10 deg/s -- both measured uncapped peaks
+             are above it (skiff 23, rcs_test 53) -- and the off state would be
+             indistinguishable from a cap.
+           * the floor is 0.5 deg/s. Prograde/normal are moving aims: the target itself
+             drifts at ~0.17 deg/s in Kerbin LKO, so a law allowed less than that follows
+             it with a permanent LAG the player reads as the autopilot being broken. The
+             floor keeps the dial out of that regime instead of warning about it.
+           It reaches the laws, not the stick (#425) and not kill-rot (self-limiting). */
+        static constexpr double kSasRateMin = 0.5;   // deg/s: see the drift above
+        static constexpr double kSasRateMax = 10.0;  // deg/s == no ceiling
+        float rate = ship->sas_turn_rate > 0.0
+            ? (float)std::min(std::max(glm::degrees(ship->sas_turn_rate), kSasRateMin), kSasRateMax)
+            : (float)kSasRateMax;
+        if(ImGui::SliderFloat("SAS turn rate", &rate, (float)kSasRateMin, (float)kSasRateMax,
+                              rate >= (float)kSasRateMax ? "unlimited" : "%.1f deg/s")) {
+            ship->sas_turn_rate = rate >= (float)kSasRateMax ? 0.0 : glm::radians((double)rate);
+        }
     });
     drawWin(g, W_Controls, [&] {
         ImGui::Text("Click rebind, then press a key (or Shift/Ctrl/Alt + key) to bind it.");

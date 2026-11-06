@@ -4015,18 +4015,28 @@ void Vehicle::slew_log(double time) {
     const double w_slew  = glm::dot(w, axis);
     const double w_roll  = glm::dot(w, rollAxis);
     const double w_third = glm::dot(w, thirdAxis);
-    const double w_des = (alpha > 0.0) ? std::sqrt(2.0 * alpha * E) : 0.0;
+    const double w_uncapped = (alpha > 0.0) ? std::sqrt(2.0 * alpha * E) : 0.0;
+    const double w_des = (sas_turn_rate > 0.0 && w_uncapped > sas_turn_rate)
+                       ? sas_turn_rate : w_uncapped;
+    /* The ceiling gets its own column rather than hiding inside w_des, because the pair
+       is the story: w_des pinned at w_cap with w_uncapped above it is the coast, and a
+       reader who sees only the capped number cannot tell a dialled hull from a saturated
+       one. Unlimited prints `-`, not 0 -- a 0 in a log gets read as a measurement (#235),
+       and here it would read as a law forbidden to move at all. */
+    char w_cap[24];
+    if(sas_turn_rate > 0.0) { snprintf(w_cap, sizeof w_cap, "%+.4f", sas_turn_rate); }
+    else { snprintf(w_cap, sizeof w_cap, "-"); }
     /* The two directions at 6 dp, not 3: e2e pairs target= with --plane-log's
        n_orb, and a 3 dp component leaves ~3e-3 of dot-product slack -- the same
        size as the error it is there to catch. */
     printf("[slew] t=%.3f mode=%s E=%.4f rad (%.2f deg) "
            "w_slew=%+.4f w_roll=%+.4f w_third=%+.4f |w|=%.4f "
-           "alpha=%.3f alpha_full=%.3f Ieff=%.0f w_des=%+.4f "
+           "alpha=%.3f alpha_full=%.3f Ieff=%.0f w_des=%+.4f w_cap=%s "
            "tau_ask=%.0f tau_spent=%.0f "
            "nose=[%+.6f %+.6f %+.6f] target=[%+.6f %+.6f %+.6f]\n",
            time, mode, E, glm::degrees(E),
            w_slew, w_roll, w_third, glm::length(w),
-           alpha, alpha_full, Ieff, w_des, tau_ask, tau_spent,
+           alpha, alpha_full, Ieff, w_des, w_cap, tau_ask, tau_spent,
            p.facing.x, p.facing.y, p.facing.z, target.x, target.y, target.z);
     fflush(stdout);
 }
@@ -4600,6 +4610,7 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
     nv->wheels_enabled = wheels_enabled;
     nv->surfaces_enabled = surfaces_enabled;
     nv->rcs_attitude_enabled = rcs_attitude_enabled;   // #595's door travels too
+    nv->sas_turn_rate = sas_turn_rate;                 // #678's dial travels too
 
     /* Keep the original order (parent before child): the save format resolves parents
        by reference. Rebase the poses into S'. */
@@ -5788,7 +5799,18 @@ glm::dvec3 Vehicle::slewDemand(glm::dvec3 dir, double h, const AttitudeAuthority
     if(E < 1e-9) { return glm::dvec3(0.0); }     /* already aligned */
     if(p.Ieff <= 0.0 || p.alphaMax <= 0.0) { return glm::dvec3(0.0); }
     const double alpha = p.alphaMax;             /* rad/s^2, actuator-limited */
-    const double w_des = std::min(std::sqrt(2.0 * alpha * E), E / (2.0 * h));
+    double w_des = std::min(std::sqrt(2.0 * alpha * E), E / (2.0 * h));
+    /* #678: the player's ceiling on how fast a law may swing this hull. It clamps the
+       WANT, here and nowhere else: p.alphaMax stays what the hardware can lever, so the
+       Game Debug and Systems readouts keep telling the truth about the hull (#572, #608),
+       and the stick keeps saturating the lines it covers (#425). With the ceiling under
+       sqrt(2*alpha*E) the profile becomes accelerate / coast / brake: the coast is the
+       free part, because w_des is then the ceiling, the hull is AT it, and dW is ~0.
+       The brake still comes from the live alpha -- sqrt(2*alpha*E) falling under the
+       ceiling IS the brake point -- so a hull that loses authority mid-turn (saturated
+       drums, thinning air, a closed throttle, #595 spending the bells on a translation
+       key) starts braking earlier rather than overshooting. */
+    if(sas_turn_rate > 0.0 && w_des > sas_turn_rate) { w_des = sas_turn_rate; }
     /* Drive the FULL transverse angular velocity toward the braking-curve rate: damping
        only the slew-axis component leaves the third-axis spin alive, which is the
        sustained wobble about a prograde/retrograde target. Roll is left free. */

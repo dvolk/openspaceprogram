@@ -2179,6 +2179,123 @@ static void test_a_law_can_name_its_own_aim() {
     delete body;
 }
 
+/* THE TURN-RATE CEILING LANDS ON THE LAW'S WANT, NOT ON THE ROWS (#678). A player who
+   asks a hull to crawl is buying a profile -- accelerate, coast, brake -- not a nerf.
+   sas_turn_rate clamps slewDemand's w_des and nothing else, so alpha still quotes what
+   the actuators can lever (the HUD's capability figure, #572, #608) and a held key still
+   saturates its own axes (#425). The rig is the #426 one with --drag-cd 0, so the whole
+   attitude authority is the 100 N m TRIAD and every figure below is hand-arithmetic. */
+static void test_a_turn_rate_ceiling_clamps_the_law_and_not_the_hardware() {
+    printf("== sas_turn_rate: a ceiling on what the law wants, not on the hull ==\n");
+    TerrainBody *body = mkAirBall();
+    Rig r = mkRig(100.0, 0.0);
+    r.v->m_parent = body;
+    r.v->placeShip(glm::dvec3(0.0, 0.0, 601000.0), glm::dmat3(1.0));
+    r.v->drag_cd = 0.0;
+    const Vehicle::AttitudeAuthority au = r.v->attitudeAuthority();
+    const glm::dmat3 I = r.v->getInertia();
+    const glm::dvec3 nose = r.v->partAxis(r.pod, 2);   // identity pose: +Z
+    const glm::dvec3 dir(1.0, 0.0, 0.0);               // 90 deg off, so axis = +Y
+    const double h = 1.0 / 120.0;
+    CHECK_NEAR(0.0, r.v->sas_turn_rate, 0.0,
+               "a fresh hull has no ceiling: 0 means UNLIMITED, not the smallest setting "
+               "the slider offers");
+
+    const Vehicle::Pointing p = r.v->pointingTo(dir, au);
+    const double w_free = std::sqrt(2.0 * p.alphaMax * p.angle);
+    CHECK_TRUE(w_free > 1.0,
+               "100 N m about ~110 kg m^2 wants over a rad/s for a quarter turn, so any "
+               "ceiling a player could pick binds on this ask");
+    const double rowFree = r.v->attitudeTorqueAbout(au, p.axis);
+    CHECK_NEAR(rowFree, 100.0, 1e-6, "the row's ceiling, which none of this may move");
+    const glm::dvec3 freeAsk = r.v->slewDemand(dir, h, au);
+    CHECK_NEAR(glm::length(freeAsk), glm::length(I * (p.axis * w_free) / h), 1e-9 * glm::length(freeAsk),
+               "uncapped, the law is the braking curve it has always been");
+
+    const double w_cap = 0.5;   /* rad/s, ~29 deg/s: the kind of crawl a docking ask picks */
+    r.v->sas_turn_rate = w_cap;
+    const glm::dvec3 capped = r.v->slewDemand(dir, h, au);
+    const glm::dvec3 want = I * (p.axis * w_cap) / h;
+    printf("   90 deg ask: free %.1f N m (w_des %.3f), capped %.1f N m (w_des %.3f)\n",
+           glm::length(freeAsk), w_free, glm::length(capped), w_cap);
+    CHECK_NEAR(glm::length(capped - want), 0.0, 1e-9 * glm::length(want),
+               "the ask is I*(axis*w_cap)/h: the ceiling replaces w_des and the tensor "
+               "still does the rest -- one axis, one rate, no second opinion");
+    CHECK_NEAR(glm::length(capped) / glm::length(freeAsk), w_cap / w_free, 1e-9,
+               "and it scales the ask outright, because the ceiling is a RATE: the wind-up "
+               "to get there is the cost the player is now paying for");
+    CHECK_NEAR(glm::dot(glm::normalize(capped), glm::normalize(freeAsk)), 1.0, 1e-12,
+               "same axis, same sign -- a slower ask is not a different turn");
+
+    /* The rows keep their worth. #678 clamps the want, so the numbers the sim quotes and
+       the allocator spends are still the honest capability answer. */
+    const Vehicle::Pointing again = r.v->pointingTo(dir, au);
+    CHECK_NEAR(again.alphaMax, p.alphaMax, 0.0, "alpha did not move: it answers what the actuators can lever (#572, #608)");
+    CHECK_NEAR(again.Ieff, p.Ieff, 0.0, "nor the inertia the braking curve solves through");
+    CHECK_NEAR(r.v->attitudeTorqueAbout(au, p.axis), rowFree, 0.0,
+               "nor the row's ceiling -- a dial does not lower the hardware, and the HUD "
+               "must not start lying about a hull that could still turn faster");
+
+    /* A ceiling is a ceiling, not a setpoint. */
+    r.v->sas_turn_rate = 10.0 * w_free;
+    CHECK_NEAR(glm::length(r.v->slewDemand(dir, h, au) - freeAsk), 0.0, 1e-9 * glm::length(freeAsk),
+               "above the braking curve the dial changes nothing");
+    r.v->sas_turn_rate = 0.0;
+    CHECK_NEAR(glm::length(r.v->slewDemand(dir, h, au) - freeAsk), 0.0, 0.0,
+               "and 0 opens it back up exactly");
+
+    /* NEAR THE TARGET THE LAW'S OWN CURVE RULES AGAIN, which is where the profile turns
+       around: the ceiling never becomes a floor, so the brake point stays the authority's
+       (#595 taking bells for a translation key still moves it). The direction is exact by
+       construction -- a unit nose rotated 0.05 rad about the ask axis. */
+    const glm::dvec3 nearDir = nose * std::cos(0.05) + p.axis * std::sin(0.05);
+    const Vehicle::Pointing pn = r.v->pointingTo(nearDir, au);
+    CHECK_NEAR(pn.angle, 0.05, 1e-12, "five hundredths of a radian off the nose");
+    const double w_near = std::sqrt(2.0 * pn.alphaMax * pn.angle);
+    CHECK_TRUE(w_near < w_cap, "and at that error the braking curve is already under the ceiling");
+    r.v->sas_turn_rate = w_cap;
+    const glm::dvec3 almost = r.v->slewDemand(nearDir, h, au);
+    CHECK_NEAR(glm::length(almost - I * (pn.axis * w_near) / h), 0.0, 1e-9 * glm::length(almost),
+               "so the ask is the curve's own, unclamped: a crawl in the middle is not a "
+               "crawl at the end, and the hull still brakes on what it can actually deliver");
+    r.v->sas_turn_rate = 0.01;
+    CHECK_NEAR(glm::length(r.v->slewDemand(nearDir, h, au) - I * (pn.axis * 0.01) / h), 0.0,
+               1e-9 * glm::length(almost),
+               "the same dial binds again near the target when the curve climbs past it");
+
+    /* TWO CHANNELS ARE OUT OF REACH ON PURPOSE. Kill-rot has no w_des to clamp -- it
+       pushes as hard as the rate it is killing, so it is already self-limiting (#677). */
+    SetAngVelocity(r.v->hull, glm::dvec3(0.0, 0.0, 0.5));
+    const glm::dvec3 krFree = r.v->killRotDemand(h, au);
+    CHECK_TRUE(glm::length2(krFree) > 0.0, "a tumbling triad hull gets a kill-rot ask");
+    r.v->sas_turn_rate = 0.01;
+    CHECK_NEAR(glm::length(r.v->killRotDemand(h, au) - krFree), 0.0, 0.0,
+               "and a ceiling near zero does not soften it: kill-rot is not a slew law "
+               "and does not become one");
+
+    /* The stick is the player's hands (#595's precedent): it keeps the whole authority. */
+    SetAngVelocity(r.v->hull, glm::dvec3(0.0, 0.0, 0.0));
+    auto held = [&](double rate) {
+        r.v->sas_turn_rate = rate;
+        r.v->stick[1] = 1.0f;
+        r.v->hull->btBody->clearForces();
+        r.v->applyRotationForce(h);
+        const btVector3 t3 = r.v->hull->btBody->getTotalTorque();
+        r.v->stick[1] = 0.0f;
+        return glm::length(glm::dvec3(t3.x(), t3.y(), t3.z()));
+    };
+    const double stickOpen = held(0.0);
+    const double stickCapped = held(0.01);
+    printf("   held pitch key: %.1f N m uncapped, %.1f N m at a 0.01 rad/s ceiling\n",
+           stickOpen, stickCapped);
+    CHECK_NEAR(stickCapped, stickOpen, 1e-9 * stickOpen,
+               "a held key delivers the same torque whatever the dial says (#425): the "
+               "ceiling belongs to latched laws, not to the pilot");
+    r.v->sas_turn_rate = 0.0;
+    destroyShip(r.v);
+    delete body;
+}
+
 int main() {
     test_fixture_lever_is_what_we_think();
     test_tvc_is_a_disk_not_a_ball();
@@ -2205,6 +2322,7 @@ int main() {
     test_an_antipodal_ask_steps_off_a_dead_line();
     test_the_fallback_convention_does_not_chase_the_bigger_number();
     test_a_law_can_name_its_own_aim();
+    test_a_turn_rate_ceiling_clamps_the_law_and_not_the_hardware();
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }
     printf("test_authority: all checks passed\n");

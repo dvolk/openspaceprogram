@@ -446,6 +446,23 @@ public:
        Saved with the ship, like the other two. */
     bool rcs_attitude_enabled = true;
 
+    /* How fast an attitude LAW may swing this hull, rad/s; 0 = no ceiling (#678).
+       It clamps what the law WANTS -- slewDemand's w_des -- and never the actuator
+       rows, because alpha/alpha_full are the honest capability answer (#572, #608)
+       and the stick stays full-authority by #425. Clamping the want is what buys the
+       coast: once the hull is at the ceiling the law asks for nothing, so the
+       actuators let go and only the wind-up and the brake burn cost anything. The
+       brake point stays the law's own (sqrt(2*alpha*E) falling under the ceiling), so
+       it moves whenever the authority moves under it -- wheels saturating, air thinning,
+       the throttle closing, #595 taking the bells for a translation key.
+       Out of reach on purpose: kill-rot (no w_des there -- it pushes as hard as the
+       rate it is killing, so it is already self-limiting) and the translation keys
+       (the player's own hands, #595's precedent).
+       Saved with the ship like the other doors. 0 means UNLIMITED, not "the smallest
+       setting"; the floor and the top of the range belong to the slider
+       (gameui.cpp), not to this field -- the sim takes any non-negative figure. */
+    double sas_turn_rate = 0.0;
+
     double dvDelivered_ = 0.0;
     double dvAlong_ = 0.0;
     double dvRocket_ = 0.0;

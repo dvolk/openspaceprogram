@@ -59,6 +59,10 @@ struct GameArgs {
        same command door a key uses (#424). No panel for it yet. */
     std::string ascent;
     std::string sas_policy;  // pilot-vs-SAS on one axis: "axis" | "keep" (#421)
+    /* #678's dial from the command line, deg/s: the ceiling on how fast an attitude
+       LAW may swing the active hull. 0 = unlimited (the default). It sets the same
+       field the Systems window's slider writes, so a case and a click cannot disagree. */
+    double sas_rate = 0.0;
     bool recover_anywhere = false;  // default: home body only
     bool dev_scenarios = false;  // --dev-scenarios: the VAB dropdown's dev beds
     std::string dock_test;

@@ -137,6 +137,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         ->check(CLI::IsMember({"prograde", "retrograde", "radial-out",
                                "radial-in", "normal", "anti-normal",
                                "kill-rot"}));
+    app.add_option("--sas-rate", args.sas_rate,
+                   "Ceiling on how fast an attitude AUTOPILOT may swing the active "
+                   "ship, deg/s (0 = unlimited, as fast as the hardware levers). The "
+                   "command-line spelling of the Systems window's SAS turn-rate slider "
+                   "(#678): it clamps what the law asks for, never what the actuators "
+                   "can deliver, and it does not touch the stick or kill-rot. The "
+                   "slider's own floor of 0.5 deg/s is not enforced here -- a smaller "
+                   "figure works, it just lags a moving aim")
+        ->check(CLI::NonNegativeNumber);
     app.add_option("--ascent", args.ascent,
                    "Fly the active ship to a circular orbit: ALTITUDE[,INCLINATION] "
                    "in metres and degrees. An ascent autopilot -- it pitches over, "
