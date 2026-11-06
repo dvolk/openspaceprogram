@@ -2785,8 +2785,15 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     // polygons are the exact fallback and have to survive the fill.
     auto unionAtS = [&](const glm::dvec3 &dirS) {
         const FlowPlane pl = flowPlane(dirS);
-        aeroSilNode.clear();
-        aeroSilNode.reserve(parts.size());
+        /* The slots stay alive between nodes and between substeps; only their CONTENTS
+           are reset. projectHull finishes by swapping its polygon into the caller's
+           slot, so a fresh slot means the hull buffer it replaces is freed: clearing the
+           outer vector here paid one malloc per part per projection (heaptrack
+           2026_11_06: +10,836 allocations per 20 s of atmospheric flight, on top of the
+           ~1 ms a filling substep already spends). RESIZE to the projected count at the
+           end, so a part-set change drops the tail but everything that survives keeps
+           its buffer. */
+        size_t n = 0;
         for(Part *p : parts) {
             if(p->body == nullptr || p->body->hullVerts.empty()) { continue; }
             /* #455: a lifting or steering part is not body. The chart's cells are
@@ -2795,10 +2802,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                cache with an area the force never pays. */
             if(p->def != nullptr
                && isAeroSurface(p->def->lift_area, p->def->control_area)) { continue; }
-            aeroSilNode.emplace_back();
-            projectPartHull(p->body->hullVerts, p->localRot, p->localPos, pl,
-                            aeroSilNode.back());
+            if(n == aeroSilNode.size()) { aeroSilNode.emplace_back(); }
+            // projectHull clears and refills the slot; keeping the slot is what
+            // keeps its buffer, which is the whole point of the reuse above.
+            std::vector<glm::dvec2> &poly = aeroSilNode[n++];
+            projectPartHull(p->body->hullVerts, p->localRot, p->localPos, pl, poly);
         }
+        aeroSilNode.resize(n);
         return unionProjectedArea(aeroSilNode);
     };
     /* How many silhouette nodes one substep may compute. A node is a whole
@@ -2824,8 +2834,10 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
            centre of pressure and the cd mean, so this projects once per part per
            substep, as before, and keeps the polygons for the union. */
         const FlowPlane plS = flowPlane(vhatS);
-        aeroSilParts.clear();
-        aeroSilParts.reserve(parts.size());
+        /* Same reuse as unionAtS above: the slots keep their hull buffers, so
+           projectPartHull reserves into memory that is already there. The count is the
+           live view, not the vector's size -- see the resize after this block's loop. */
+        size_t silParts = 0;
         glm::dvec3 cp(0.0);      // center of pressure (area-weighted centroid)
         double cpArea = 0.0;
         glm::dvec3 cpOffsetSum(0.0); // area-weighted cp MOVE from #512, as a vector (audit)
@@ -2876,8 +2888,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             // mount into the SHARED plane, so a wing 4 m off the centreline lands
             // 4 m off the centreline in the union. (Its own area is translation-
             // invariant, which is why the mount position used to be ignorable.)
-            aeroSilParts.emplace_back();
-            std::vector<glm::dvec2> &poly = aeroSilParts.back();
+            if(silParts == aeroSilParts.size()) { aeroSilParts.emplace_back(); }
+            std::vector<glm::dvec2> &poly = aeroSilParts[silParts++];
             projectPartHull(p->body->hullVerts, p->localRot, p->localPos, plS, poly);
             const double a = polygonArea2(poly);
             /* #512: the arm is where the AREA is, not where the part is bolted on.
@@ -2924,6 +2936,9 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                        glm::dot(offS, nose), glm::dot(offS, right), glm::dot(offS, up));
             }
         }
+        /* The live silhouette is exactly the polygons this substep projected; the vector
+           may still hold capacity (and a longer tail) from a bigger part set. */
+        aeroSilParts.resize(silParts);
         /* The ship's silhouette: the union of those polygons, cached per flow
            DIRECTION (speed and density multiply the force, they do not change
            its shape). A miss falls back to the exact union of the polygons this
@@ -5064,6 +5079,22 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
            the Vessel window prints it, and a held key is scaled by what is left -- so a
            wheels-off rocket steers on its gimbals rather than pretending to have drums
            it declined to spend. */
+        /* ONE allocation per vector instead of a doubling chain. This walk runs every
+           actuation substep and again for every open window that quotes authority, and
+           heaptrack (2026_11_06) measured it as the flight frame's single biggest
+           allocator: +85,386 allocations per 20 s of atmospheric flight, 65% of that
+           run's whole steady-state total. It is all vector growth -- a triad housing is
+           three rows, so `wheels` crosses two or three capacities before it settles and
+           `wheelParts` does the same alongside it. Counting rows first costs pointer
+           chasing only (no geometry, no profile read), and a shut gate reserves nothing,
+           so the answer to "rebuild per substep" stays cheaper rows rather than a later
+           read -- which is the law above this function, not a suggestion. */
+        size_t wheelRows = 0;
+        for(const Part *p : parts) {
+            if(p->isWheel()) { wheelRows += (p->def->wheel_axes == 3 ? 3 : 1); }
+        }
+        a.wheels.reserve(wheelRows);
+        a.wheelParts.reserve(wheelRows);
         for(const Part *p : parts) {
             if(!p->isWheel()) { continue; }
             const double t = p->wheelTorque();
@@ -5115,9 +5146,12 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
     };
     const double oxShare = (m_parent != nullptr)
                          ? m_parent->surface.atmosphere.oxidizer_share : 0.0;
-    bool anySurface = false;
+    /* Counted, not just flagged: the same number sizes the row vectors below, so the
+       reserve that keeps this walk from malloc-per-push costs nothing extra (the
+       heaptrack count quoted above the wheel rows). */
+    size_t surfaceParts = 0;
     for(const Part *p : parts) {
-        if(p->def->isControlSurface()) { anySurface = true; }
+        if(p->def->isControlSurface()) { surfaceParts++; }
         if(p->def->gimbal_max <= 0.0) { continue; }
         const double armed = p->armedThrust;
         const bool lit = p->isThruster() && p->stage >= as;
@@ -5174,8 +5208,8 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
     /* Recorded whatever the gate below decides (#649): a readout has to tell a player
        "this hull carries no plates" from "the plates have no air to push", and an empty
        row set answers neither. Counted in this walk so the two cannot drift apart. */
-    a.hasSurfaces = anySurface;
-    if((!switchesApply || surfaces_enabled) && anySurface && drag_cd > 0.0) {
+    a.hasSurfaces = surfaceParts > 0;
+    if((!switchesApply || surfaces_enabled) && surfaceParts > 0 && drag_cd > 0.0) {
         const glm::dvec3 vrel = airRelativeVel(com);
         const double v2 = glm::dot(vrel, vrel);
         const double rho = airRho();   // the same profile the jet ceilings above asked for
@@ -5193,6 +5227,12 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
             assert(airA > 0.0);
             const double mach = std::sqrt(v2) / airA;
             const glm::dmat3 basis = partRot(ref);   // [0] right, [1] up, [2] nose
+            /* Upper bound, and deliberately so: a degenerate rig (#495) gets no row, so
+               the vectors can end up shorter than this. Inside the q test on purpose --
+               plates with no air to push reserve nothing (#632). See the wheel reserve
+               above for the measurement this is answering. */
+            a.surfaces.reserve(surfaceParts);
+            a.surfaceParts.reserve(surfaceParts);
             for(const Part *p : parts) {
                 if(p->def == nullptr || !p->def->isControlSurface()) { continue; }
                 const ControlAxisParams ax = controlAxisParams(p->def->control_axis);
