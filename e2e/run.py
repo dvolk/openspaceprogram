@@ -384,10 +384,19 @@ ORBINFO_RE = re.compile(
     r"prg=([-\d.e+]+) deg\s+rtg=([-\d.e+]+) deg\s+"
     r"energy=([-\d.e+]+) J/kg"
 )
+# What a --timeout run says about its own sim clock (#402): "the sim advanced X s
+# in Y s of wall clock", and the WARNING that follows it when the 10-tick catch-up
+# cap threw some of the remaining wall time away. Before that line existed a
+# wall-clock run reported only its wall cutoff, so `--timeout 180 --time-accel 4`
+# read as 720 s of flight and could quietly have been 437 s of it -- a factor that
+# depends on the machine and on how many other runs share it.
+SIM_ADVANCED_RE = re.compile(r"the sim advanced ([\d.]+) s in ([\d.]+) s of wall")
+SIM_DROPPED_RE = re.compile(r"catch-up cap \([^\)]*\) discarded another ([\d.]+) s")
 # A scene CHANGE only. The two refusal lines ("already in X -- push refused",
 # "X is the floor -- pop refused") name no from/to pair, so they are not rows:
 # a refused transition must not anchor anything.
 SCENE_RE = re.compile(r"\[scene\]\s+(\w+) -> (\w+)\s+\((\w+)\)\s+t=([\d.]+)s")
+
 DRAINLOG_RATE_RE = re.compile(r"g(\d+)=([-\d.]+)")
 FUEL_RE = re.compile(
     r"\[fuel\]\s+t=([\d.]+)s\s+ship=\"([^\"]*)\"\s+(.*)"
@@ -1013,12 +1022,27 @@ def parse_orbinfo(out):
             "peri_t": num(peri_t), "period": num(period),
             "inc": float(inc), "ecc": float(ecc), "sma": float(sma),
             "plane": plane, "lan": num(lan), "lpe": num(lpe),
-            # nose to the CONIC's prograde / retrograde (marker_vel). The SURFACE
-            # window's aprg is the air-relative pair to these (#498).
+            # nose to the CONIC's prograde / retrograde (marker_vel) -- the pair the
+            # ORBITAL window used to print as rows of its own (2026_11_06). The Game
+            # Debug window's Prg (air) is the air-relative pair to these (#498).
             "prg": float(prg), "rtg": float(rtg),
             "energy": float(energy),
         })
     return rows
+
+
+def parse_sim_report(out):
+    """The run-level accounting line a --timeout run prints (#402), or None when
+    there is none -- a scripted run exits on its step budget and prints a different
+    line, and a run the harness killed never printed one. `dropped` is 0.0 when the
+    catch-up cap never bit, which is the normal case on a box with a render node;
+    what it costs on one without (or with eight runs sharing it) is the point."""
+    adv = SIM_ADVANCED_RE.search(out)
+    if not adv:
+        return None
+    drop = SIM_DROPPED_RE.search(out)
+    return {"advanced": float(adv.group(1)), "wall": float(adv.group(2)),
+            "dropped": float(drop.group(1)) if drop else 0.0}
 
 
 def parse_ctrl(out):
@@ -1395,6 +1419,7 @@ def run_case(case):
     plane = parse_plane(world)
     slew = parse_slew(world)
     toast = parse_toast(out)
+    simreport = parse_sim_report(out)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "att": att, "ascent": ascent, "eva": eva,
@@ -1407,6 +1432,8 @@ def run_case(case):
         "surf": surf, "orbinfo": orbinfo, "mapb": mapb, "plane": plane, "slew": slew,
         "scene": scene,
         "toast": toast,
+        # None unless the run printed its --timeout accounting (#402).
+        "simreport": simreport,
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,
         "max": max, "min": min, "float": float, "int": int, "zip": zip,

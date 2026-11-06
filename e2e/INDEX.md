@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 294 |
+| `invariant` | a behaviour or a player route the game must keep | 295 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 41 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **353** |
+| | **total** | **354** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -393,7 +393,7 @@ judgement. Select by number, name or path, e.g.
 | `render/552-earth-air-levels.txt` | invariant | A body that authors a layer table reports that profile in its dossier instead of a temperature implied by a scale height. |
 | `render/630-air-says-what-it-is-made-of.txt` | invariant | A body's dossier names the gases its air is made of, biggest first, and prints the share of that air a turbine can burn. |
 
-## harness (13)
+## harness (14)
 
 | case | kind | pins |
 |---|---|---|
@@ -410,3 +410,4 @@ judgement. Select by number, name or path, e.g.
 | `harness/282-ui-focus-unknown-part.txt` | harness | --ui-focus says an unknown part is unknown rather than clicking empty space. |
 | `harness/343-screenshot.txt` | harness | F12 writes a PNG under the data dir's screenshots/ and toasts the outcome. |
 | `harness/379-periodic-log-warp-rate.txt` | harness | A periodic log samples at a wall-clock rate whatever the warp. |
+| `harness/402-timeout-run-says-what-it-simulated.txt` | invariant | A wall-clock run prints how much sim time it simulated, and that figure agrees with the sim clock its own log rows sampled. |

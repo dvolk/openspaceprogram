@@ -1,0 +1,42 @@
+# #402: a --timeout run used to report only its wall cutoff, so `--timeout 180
+# --time-accel 4` read as 720 s of flight even when tick.cpp's 10-tick catch-up cap
+# had thrown the rest away -- measured at 437 s of 720 under xvfb, in a run that
+# looked like it had simply failed to circularize in time. How much is lost depends
+# on how fast this box draws frames and on how many runs share it, so it is not a
+# constant anyone can multiply out by hand. Measured on this box (transporter on the
+# pad, 20 s of wall at 20x, sim clock from [orbinfo]):
+#
+#   alone                     397.3 s of 400 asked   (99.3%)
+#   8 such runs at once       381.0-398.0 s          (95-99%)
+#   20 s at 1000x            19850.0 s of 20000      (99.25%)
+#
+# So the game now prices what the cap discards -- Game::sim_seconds_dropped, valued
+# at the warp of the frame that dropped it -- and prints the accounting at the
+# cutoff:
+#
+#   Timeout reached (40.0 s); exiting main loop.
+#     the sim advanced 159.7 s in 40.0 s of wall clock.
+#     WARNING: the 10-tick catch-up cap (167 ms/frame at 60 Hz) discarded another
+#     46.4 s of sim time, so this run fell short of its --timeout x --time-accel.
+#
+# What is pinned here is the SELF-CONSISTENCY: the advanced figure must match the
+# sim clock the [orbinfo] rows sampled. That holds on a saturated box and an idle
+# one alike, which is the point -- a case can read how far its run actually got
+# instead of assuming. The WARNING is deliberately NOT pinned: whether it fires
+# depends on the machine, and a case that fails only on slow hardware is worse than
+# no case at all.
+NAME timeout-run-says-what-it-simulated
+CLAIM A wall-clock run prints how much sim time it simulated, and that figure agrees with the sim clock its own log rows sampled.
+KIND invariant
+ARGS --time-accel 4 --timeout 6 --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --info-log --orbit-interval 1
+EXPECT the sim advanced
+FORBID error:
+CHECK simreport is not None
+CHECK len(orbinfo) >= 4
+# One sim clock, two readers: the accounting line and the rows it was computed
+# from. Not exact to the last tick -- a row samples whatever tick it landed on --
+# so 1.5 s of slop, which is 90 ticks at 60 Hz.
+CHECK abs(simreport["advanced"] - orbinfo[-1]["t"]) < 1.5
+CHECK simreport["advanced"] > 0.0
+CHECK simreport["wall"] >= 5.5

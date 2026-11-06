@@ -13,6 +13,14 @@
 constexpr double kMaxSubStep = 0.1;
 constexpr int kMaxSubSteps = 2000;
 
+/* How many logic ticks one frame may catch up (tick.cpp's spiral-of-death cap):
+   kMaxCatchUpTicks / physics_hz seconds of hitch tolerance before the leftover
+   wall time is discarded rather than simulated. A player wants this finite -- a
+   game that came back from a stall should not spend ten seconds simulating the
+   stall. A --timeout-driven run must know what it cost, hence Game::
+   sim_seconds_dropped (#402) and main.cpp's report. */
+constexpr int kMaxCatchUpTicks = 10;
+
 inline int substepCount(double step) {
     int n = (int)(step / kMaxSubStep + 0.5);
     if (n < 3) { n = 3; }

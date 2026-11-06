@@ -1232,7 +1232,8 @@ int main(int argc, char **argv)
                     // --physics-hz.
                     printf("[idle] window hidden: %d ms/frame budget "
                            "(sim ceiling %.0f Hz at 10 ticks/frame)\n",
-                           iter_cap_ms, 10000.0 / (double)iter_cap_ms);
+                           iter_cap_ms,
+                           1000.0 * kMaxCatchUpTicks / (double)iter_cap_ms);
                 }
             } else {
                 printf("[idle] window visible: drawing every frame\n");
@@ -1248,6 +1249,26 @@ int main(int argc, char **argv)
                     // The NOTE at boot said this could happen; say what it cost.
                     printf("  %lld of %lld scripted ticks never ran: --timeout is "
                            "wall clock.\n", game.sim_steps_left, args.sim_steps);
+                } else {
+                    /* #402: a wall-clock run at warp N asks for N x timeout of sim
+                       time and gets less whenever frames run slower than the
+                       catch-up cap allows -- by a factor that depends on this
+                       machine and on whatever else is running on it (measured: 99%
+                       delivered alone, 61% under xvfb, and worse again with eight
+                       such runs sharing a box). Without this line the run reports a
+                       plausible wall timeout and the reader multiplies it out in
+                       their head, so a case that pins "sim seconds" measures a
+                       flight that never happened. */
+                    printf("  the sim advanced %.1f s in %.1f s of wall clock.\n",
+                           game.sim_seconds_ran, elapsed_s);
+                    if(game.sim_seconds_dropped > 0.5) {
+                        printf("  WARNING: the %d-tick catch-up cap (%.0f ms/frame at "
+                               "%.0f Hz) discarded another %.1f s of sim time, so this "
+                               "run fell short of its --timeout x --time-accel. Pin ticks "
+                               "with --sim-steps if the case measures sim seconds (#402).\n",
+                               kMaxCatchUpTicks, 1000.0 * kMaxCatchUpTicks * game.dt,
+                               1.0 / game.dt, game.sim_seconds_dropped);
+                    }
                 }
                 fflush(stdout);
                 running = false;

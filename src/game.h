@@ -613,6 +613,13 @@ struct Game {
     long long sim_steps_left = -1;     // < 0: off. Else ticks still owed.
     long long sim_ticks_run = 0;       // spent so far: the scripted clock's base
     double sim_seconds_ran = 0.0;      // sum of dt*time_accel: what the run simulated
+    /* #402: the sim time tick.cpp's 10-tick catch-up cap threw away, valued at the
+       warp of the frame that dropped it. Wall-clock stepping only -- a scripted run
+       cannot lose ticks. Non-zero means this run is shorter than its
+       --timeout x --time-accel asks for, by an amount that depends on how fast this
+       machine drew frames, which is exactly what makes a "sim seconds" assertion
+       lie on one box and hold on another. */
+    double sim_seconds_dropped = 0.0;
 
     /* The clock --sim-press / --sim-mouse / --sim-mode / --ui-* schedules are
        keyed to. Always run-relative ms (t=0 when the main loop starts), so a case

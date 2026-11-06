@@ -213,7 +213,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "seconds (0 = run until closed; default: 0). A --sim-steps "
                    "run exits on its step budget instead, but this cutoff still "
                    "applies, so don't pair them unless the timeout is a stray "
-                   "guard rail.")
+                   "guard rail. Note that this is a WALL cutoff: at --time-accel "
+                   "N the run asks for N x this many seconds of sim time and gets "
+                   "less whenever frames run slower than the 10-tick catch-up cap "
+                   "allows, by an amount that depends on the machine and on what "
+                   "else shares it (#402). The exit line reports what the sim "
+                   "actually advanced, and warns when the cap discarded more than "
+                   "half a second of it.")
         ->check(CLI::NonNegativeNumber);
 
     app.add_option("--sim-steps", args.sim_steps,

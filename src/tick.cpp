@@ -27,9 +27,16 @@ void tick(Game &g) {
 
         /* Spiral-of-death clamp: at most 10 ticks of catch-up, i.e. 10/physics_hz
            seconds of wall-clock hitch tolerance. A frame slower than that
-           silently drops sim time. */
-        if(g.accumulator > 10 * g.dt) {
-            g.accumulator = 10 * g.dt;
+           silently drops sim time -- so price what it drops (#402): at the warp this
+           frame ran at, the leftover was worth this much simulated time. Nothing
+           warns the PLAYER here; a game hitched in a menu losing catch-up time is
+           exactly what the cap is for. main.cpp reports the total when a run was
+           driven by --timeout, where the loss quietly shortens whatever the run
+           measured. */
+        if(g.accumulator > kMaxCatchUpTicks * g.dt) {
+            g.sim_seconds_dropped += (g.accumulator - kMaxCatchUpTicks * g.dt)
+                                   * g.time_accel;
+            g.accumulator = kMaxCatchUpTicks * g.dt;
         }
     }
     const long long ticks_before = g.logic_ticks;
