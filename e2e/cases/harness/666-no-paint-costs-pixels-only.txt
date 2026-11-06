@@ -1,0 +1,29 @@
+# --no-paint exists because a scripted frame spends 94% of its time in the render
+# phase and 3% in the logic it exists to measure (#666). What it must cost is
+# pixels and nothing else: the tick, the 3D state pass (camera re-pose, terrain LOD
+# and its collision bodies, g.hud.view) and the imgui pass all still run every
+# frame. Measured on flight/490: 50 [drag] rows byte for byte either way, a frame
+# of 3.08 ms painted and 0.12 ms unpainted, and an F12 shot still full of world
+# (499 KB of PNG, not a few KB of black) because a shot frame forces a paint.
+NAME no-paint-costs-pixels-only
+CLAIM --no-paint flies the same cruise, keeps the HUD readouts live and still paints a frame F12 asks for.
+KIND harness
+ARGS --time-accel 1 --width 1920 --height 1080 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
+ARGS --sim-steps 900 --drag-log --no-paint
+ARGS --sim-press 500,3000,R
+ARGS --sim-press 500,20000,T
+ARGS --ui-list 1000
+ARGS --sim-press 3000,0,F12
+EXPECT paint: off (--no-paint
+EXPECT [drag]
+EXPECT Screenshot saved
+# Still the same cruise: the AoA band is flight/490's, and the hull is still at
+# 7 km doing 80 m/s.
+CHECK len(drag) >= 15
+CHECK all(2.3 < d["aoa"] < 3.0 for d in drag if d["aoa"] is not None)
+CHECK min(d["v"] for d in drag if d["t"] <= 10.0) > 60.0
+CHECK min(d["alt_asl"] for d in drag if d["t"] <= 10.0) > 6950.0
+# And the UI is live: a readout row from the state pass that --no-paint keeps.
+CHECK re.search(r'window="Vessel Info" label="Angular rate: [0-9.]+deg/s"', out)
+FILE screenshots/*.png
+FORBID error:

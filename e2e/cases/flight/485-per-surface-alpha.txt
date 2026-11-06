@@ -2,7 +2,9 @@ NAME skiff-per-surface-alpha
 CLAIM The [surface] row #485 adds quotes all ten lifting or steering parts of the skiff on every --drag-log sample -- each one's own angle of attack signed into SHIP axes plus the dynamic pressure of the flow standing at it -- so a mirrored twin pair reads alike (wing_l and wing_r within 0.3 deg while the airframe is in the flow), the tailplane's -5 deg mount incidence shows as a 4.5-5.5 deg gap between tail and wing, the fin's angle IS the sideslip it is weathervaning against (within 1.2 deg of -Beta on rows over 4 deg), and each part's q matches 0.5*rho*v^2 inside 8%.
 KIND golden
 ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
-ARGS --sim-steps 3000 --drag-log
+# --no-paint: every assertion here parses [drag]/[surface] rows, so the 3D pass
+# buys nothing and costs 95% of the frame (#666).
+ARGS --sim-steps 3000 --drag-log --no-paint
 ARGS --sim-press 500,3000,R,500,20000,T,25000,1000,A
 EXPECT [surface]
 # One [surface] line per [drag] line, and every line carries all ten surfaces: the

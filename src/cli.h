@@ -162,6 +162,10 @@ struct GameArgs {
     std::string font_path = "res/fonts/DejaVuSansMono.ttf";
     float font_size = 14.0f;
     int frame_cap = 60;
+    /* Skip the 3D paint pass (#212's paint half): the state pass, the logic
+       tick and the UI still run, so only pixels go away. For runs that read
+       logs, not the window (#666: a scripted frame is ~95% render). */
+    bool no_paint = false;
     // Render rate while the window is occluded/minimized (0 = never idle).
     int idle_fps = 10;
     // Pretend the window is hidden from MS on (-1 = off).

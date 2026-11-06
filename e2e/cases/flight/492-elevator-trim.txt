@@ -2,7 +2,9 @@ NAME elevator-trim
 CLAIM The same 569 kg skiff, with 12 deg of elevator trim authored on the parts and nothing else changed, cruises at +4.8..+6.7 deg of angle of attack with the stick released: the download that trims this airframe comes from deflection, and the standing bill is real (0.34-0.54 m2 of induced CdA while the hull is pointing into the flow, 0.94 the instant the rudder is kicked).
 KIND golden
 ARGS --time-accel 1 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
-ARGS --sim-steps 3000 --drag-log --mass-log
+# --no-paint: every assertion here parses [drag]/[mass] rows, so the 3D pass buys
+# nothing and costs 95% of a scripted frame (#666).
+ARGS --sim-steps 3000 --drag-log --mass-log --no-paint
 ARGS --sim-press 500,3000,R
 ARGS --sim-press 500,20000,T
 ARGS --sim-press 25000,1000,A

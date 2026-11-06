@@ -14,7 +14,10 @@ KIND golden
 # FormCp is where that bill pushes -- -0.44..-0.53 m here, against the -0.68 m the
 # spindle's bill reported.
 ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
-ARGS --sim-steps 3000 --drag-log --mass-log
+# --no-paint: this case reads [drag] rows, never pixels, and a scripted frame
+# without the 3D pass costs 0.12 ms rather than 3.08 (#666). The rows are the
+# same either way; the run is 5x cheaper.
+ARGS --sim-steps 3000 --drag-log --mass-log --no-paint
 ARGS --sim-press 500,3000,R
 ARGS --sim-press 500,20000,T
 ARGS --sim-press 25000,1000,A

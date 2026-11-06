@@ -1039,6 +1039,12 @@ int main(int argc, char **argv)
         printf("frame cap: off (uncapped%s)\n",
                scripted ? " -- scripted: one tick per frame" : "");
     }
+    if(args.no_paint) {
+        // Say it in the log: a run that draws nothing looks like a run that
+        // drew black.
+        printf("paint: off (--no-paint: no 3D pass; a screenshot frame "
+               "paints anyway)\n");
+    }
     printf("logic tick: %.0f Hz (%.1f ms)\n",
            args.physics_hz, 1000.0 / args.physics_hz);
 
@@ -1124,6 +1130,16 @@ int main(int argc, char **argv)
     // perf_ms() UB.
     std::chrono::steady_clock::time_point pf_iter{}, pf_a{}, pf_b{}, pf_c{},
                                         pf_refresh{}, pf_swap{}, pf_d{};
+    /* render's halves, summary only (#666): a scripted frame is ~95% render, so
+       "the draw is expensive" is only actionable if it says WHICH draw. Paint =
+       the 3D pass into the MSAA scene target; composite = postfx resolving it to
+       the window; ui = the imgui widget pass (CPU: submission + ImDrawData);
+       imgui-gl = uploading and drawing that; tail = shot handling and the rest.
+       They sum to render. */
+    std::chrono::steady_clock::time_point pf_paint0{}, pf_paint1{}, pf_comp{},
+                                        pf_ui{}, pf_glui{};
+    double p_paint = 0.0, p_composite = 0.0, p_ui = 0.0, p_glui = 0.0,
+           p_tail = 0.0;
     const std::chrono::steady_clock::time_point perf_loop_start =
         std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point perf_w_start = perf_loop_start;
@@ -1172,6 +1188,23 @@ int main(int argc, char **argv)
             // those frames.
             printf("  idled   %lld of those frames (window "
                    "occluded/minimized)\n", p_idled);
+        }
+        /* render is one phase, and on a scripted run it is nearly the whole
+           frame (#666), so the summary breaks it down: which draw to go after.
+           "tail" is the render interval minus the four named ones (imgui
+           NewFrame, glError checks, the screenshot block). Read it as where GL
+           BLOCKED, not what each pass costs: command submission is async, so
+           the 3D pass is often charged to the imgui upload that follows it.
+           Measured: a flight frame reports paint 0.22 ms and imgui-gl 2.50 ms,
+           while --no-paint takes the whole render phase from 2.90 ms to
+           0.079 ms. */
+        if(p_render > 0.0) {
+            const char *sn[5] = {"paint", "composite", "ui", "imgui-gl", "tail"};
+            const double sv[5] = {p_paint, p_composite, p_ui, p_glui, p_tail};
+            for(int i = 0; i < 5; i++) {
+                printf("    %-9s avg %9.4f ms  (%5.1f%% of render)\n", sn[i],
+                       sv[i] / (double)p_frames, sv[i] * 100.0 / p_render);
+            }
         }
         printf("  (refresh = the 3D state pass: camera re-pose, terrain LOD,\n"
                "   g.hud.view; render = issuing GL draw commands; present =\n"
@@ -1369,33 +1402,52 @@ int main(int argc, char **argv)
             ImGui::NewFrame();
             check_gl_error();
 
-            if(poly_mode == true) {
-                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-                check_gl_error();
-            }
+            /* --no-paint (#666): the 3D half only, and only when nothing is
+               going to photograph it. The state pass above still ran (camera
+               re-pose, terrain LOD and its collision bodies, g.hud.view) and
+               the imgui pass below still runs, so the tick, the world and every
+               --ui-* / --pick-at tool behave exactly as painted -- only the
+               pixels go away. A shot forces the paint, which is the caveat the
+               noPaint scenes already carry (see above). */
+            const bool paint = !args.no_paint || screenshot_requested;
+            if(paint) {
+                if(poly_mode == true) {
+                    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                    check_gl_error();
+                }
 
-            /* The 3D pass always has its own float-depth target (#263); the
-               window only ever receives the composite and the UI. The clear
-               must land inside the pair or it would wipe the window instead. */
-            display.BeginScene();
-            // The VAB gets a studio backdrop (no skybox there); flight clears
-            // to black.
-            if(sc.backdrop == Backdrop::Studio) {
-                display.Clear(0.55f, 0.62f, 0.68f, 1.0f);
+                /* The 3D pass always has its own float-depth target (#263); the
+                   window only ever receives the composite and the UI. The clear
+                   must land inside the pair or it would wipe the window
+                   instead. */
+                pf_paint0 = std::chrono::steady_clock::now();
+                display.BeginScene();
+                // The VAB gets a studio backdrop (no skybox there); flight
+                // clears to black.
+                if(sc.backdrop == Backdrop::Studio) {
+                    display.Clear(0.55f, 0.62f, 0.68f, 1.0f);
+                } else {
+                    display.Clear(0, 0, 0, 1);
+                }
+                sc.paint(game);
+                display.EndScene();   // resolve MSAA -> the scene texture
+                /* Wireframe is a view of the 3D pass, so it ends with that
+                   pass: the composite is 2D, and in GL_LINE its quad would be
+                   drawn as two edges and the window would keep the previous
+                   frame. */
+                if(poly_mode == true) {
+                    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                }
+                pf_paint1 = std::chrono::steady_clock::now();
+                // Always covers the window: the effect chain, or a copy of the
+                // scene when no effect is on.
+                postfx->Composite(display.sceneTexture());
+                pf_comp = std::chrono::steady_clock::now();
             } else {
-                display.Clear(0, 0, 0, 1);
+                // No 3D pass: hold the sub-phase marks together so --perf's
+                // split reads 0 rather than a stale interval.
+                pf_paint0 = pf_paint1 = pf_comp = std::chrono::steady_clock::now();
             }
-            sc.paint(game);
-            display.EndScene();   // resolve MSAA -> the scene texture
-            /* Wireframe is a view of the 3D pass, so it ends with that pass:
-               the composite is 2D, and in GL_LINE its quad would be drawn as
-               two edges and the window would keep the previous frame. */
-            if(poly_mode == true) {
-                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-            }
-            // Always covers the window: the effect chain, or a copy of the
-            // scene when no effect is on.
-            postfx->Composite(display.sceneTexture());
 
             /*
               ImGui stuff below
@@ -1424,7 +1476,9 @@ int main(int argc, char **argv)
                a click that imgui took cannot also place a part. See
                vabClickAfterUI. */
             if(sceneIs(game, SceneId::Vab)) { vabClickAfterUI(game); }
+            pf_ui = std::chrono::steady_clock::now();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            pf_glui = std::chrono::steady_clock::now();
 
             if(screenshot_requested == true) {
                 // A user feature, so shots live under the data dir. UTC stamp +
@@ -1487,6 +1541,11 @@ int main(int argc, char **argv)
             p_events += f_events; p_logic += f_logic; p_jobs += f_jobs;
             p_refresh += f_refresh; p_render += f_render; p_present += f_present;
             p_total += perf_ms(pf_iter, pf_d);
+            p_paint += perf_ms(pf_paint0, pf_paint1);
+            p_composite += perf_ms(pf_paint1, pf_comp);
+            p_ui += perf_ms(pf_comp, pf_ui);
+            p_glui += perf_ms(pf_ui, pf_glui);
+            p_tail += f_render - perf_ms(pf_paint0, pf_glui);   // NewFrame, shots
             p_frames++; p_steps += game.logic_ticks;
             if(idling) { p_idled++; }
             w_events += f_events; w_logic += f_logic; w_jobs += f_jobs;

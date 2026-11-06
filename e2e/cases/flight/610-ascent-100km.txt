@@ -8,7 +8,9 @@ CLAIM The ascent law flies a pad ship into a circular 100 km orbit on an airless
 KIND invariant
 ARGS --startship racer,res/ships/racer.json,Moho,pad --ascent 100e3 --time-accel 10
 ARGS --ascent-log --orbit-log --orbit-interval 1
-ARGS --sim-steps 4200 --timeout 200
+# --no-paint: this case pins the climb with [ascent]/[orbit] rows, and 4200
+# frames of 3D pass is what makes a flight this long cost anything at all (#666).
+ARGS --sim-steps 4200 --timeout 200 --no-paint
 # 4200 logic ticks at dt 1/60 is 70 s of sim at warp 1, and the flight ends at
 # ~500 s of sim, so the climb buys its sim time at warp 10 -- until the verdict,
 # which hands the clock back to 1x (tick.cpp, #612). The last ~1200 ticks of this

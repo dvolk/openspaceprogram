@@ -719,6 +719,21 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "idling a CPU core at 100% even while paused")
         ->check(CLI::NonNegativeNumber);
 
+    app.add_flag("--no-paint", args.no_paint,
+                 "Skip the 3D paint pass (#212): no skybox, terrain, ocean, "
+                 "ships or postfx composite, so the window keeps whatever the "
+                 "last painted frame left, under the UI. Everything else runs "
+                 "every frame as before -- the logic tick, the 3D state pass "
+                 "(camera re-pose, terrain LOD and its collision bodies, "
+                 "g.hud.view) and the imgui pass -- so the simulation, the HUD "
+                 "and the --ui-* / --pick-at tools are untouched; only pixels "
+                 "go away. A frame that asks for a screenshot paints anyway, so "
+                 "F12 stays honest. For runs that read logs instead of the "
+                 "window: with --sim-steps the 3D pass is most of a frame whose "
+                 "logic is ~3% of it (#666), which is the difference between a "
+                 "long deterministic flight case costing seconds and costing a "
+                 "minute");
+
     app.add_option("--idle-fps", args.idle_fps,
                    "Render frames per second while the window is occluded or "
                    "minimized (default 10; 0 = never idle). The compositor "

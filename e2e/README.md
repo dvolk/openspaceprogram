@@ -124,6 +124,27 @@ same-frame with a hook phase. That is the only reason a hook still exists in a
 UI-driven case: 244 needs a detach and a launch in one frame, 243 needs a scan
 between two passes, 237 needs a plan the UI refuses to build.
 
+## A long scripted flight does not need pixels
+
+`--sim-steps` runs one logic tick per frame, so a case asking for 3000 steps
+draws 3000 frames. Measured (`--perf`, flight/490): a frame costs 3.08 ms, of
+which the logic is 0.097 ms and the render phase 2.90 ms. So the measurement is
+3% of the work and the picture nobody looks at is 94%.
+
+`--no-paint` skips the 3D paint pass and nothing else: the tick, the state pass
+(camera re-pose, the terrain LOD that owns the ground's collision bodies, the
+`g.hud.view` snapshot the UI reads) and the imgui pass still run every frame.
+The frame drops to 0.12 ms and the `[drag]` rows come out byte for byte what a
+painted run writes -- the same 3000 steps cost 1.9 s of wall clock instead of
+9.7 s. A frame that asks for a screenshot paints anyway, so F12 still
+photographs the world.
+
+Add it to a case whose assertions parse logs (`--drag-log`, `--orbit-log`,
+`--ascent-log`) or read `--ui-list` rows. Leave it off anything whose subject is
+the picture, the frame cadence (`--perf`, `--pose-jitter`) or a shot;
+`harness/343-screenshot` and `harness/666-no-paint-costs-pixels-only` are the
+two sides of that line.
+
 For a 3D pick, `--ui-focus MS,PART_ID` parks the cursor on a pixel whose real
 raycast lands on that part, and `--sim-mouse MS,0,CUR,CUR,BTN` clicks there. A
 fixed pixel on a multi-part build picks whatever is under it, which is how 233

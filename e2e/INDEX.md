@@ -8,9 +8,9 @@ kind says how much weight the assertions carry.
 |---|---|---|
 | `invariant` | a behaviour or a player route the game must keep | 298 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 41 |
-| `harness` | CLI/test-engine plumbing, not game spec | 14 |
+| `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **357** |
+| | **total** | **358** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -396,7 +396,7 @@ judgement. Select by number, name or path, e.g.
 | `render/552-earth-air-levels.txt` | invariant | A body that authors a layer table reports that profile in its dossier instead of a temperature implied by a scale height. |
 | `render/630-air-says-what-it-is-made-of.txt` | invariant | A body's dossier names the gases its air is made of, biggest first, and prints the share of that air a turbine can burn. |
 
-## harness (14)
+## harness (15)
 
 | case | kind | pins |
 |---|---|---|
@@ -414,3 +414,4 @@ judgement. Select by number, name or path, e.g.
 | `harness/343-screenshot.txt` | harness | F12 writes a PNG under the data dir's screenshots/ and toasts the outcome. |
 | `harness/379-periodic-log-warp-rate.txt` | harness | A periodic log samples at a wall-clock rate whatever the warp. |
 | `harness/402-timeout-run-says-what-it-simulated.txt` | invariant | A wall-clock run prints how much sim time it simulated, and that figure agrees with the sim clock its own log rows sampled. |
+| `harness/666-no-paint-costs-pixels-only.txt` | harness | --no-paint flies the same cruise, keeps the HUD readouts live and still paints a frame F12 asks for. |
