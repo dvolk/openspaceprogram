@@ -1125,13 +1125,23 @@ int main(int argc, char **argv)
     // Per-frame phase timing. Pushed into Game::hud.perf_* EVERY frame; --perf
     // only gates the console output.
     const bool perf_on = args.perf;
+    /* #676: the window a [perf] row reports. Run WALL seconds, not the log
+       clock: a perf row is a frame reading, so the window it averages has to be
+       measured on the same clock as what it averages. That makes these rows the
+       one log family whose cadence deliberately follows the frame rate even
+       under --sim-steps (game.h lists the pinn-able families; this is not one),
+       which is why what an e2e case asserts is the SHAPE of a row -- phases
+       summing to the frame, which holds on any machine -- and never a budget. */
+    const double perf_gate_s = gateIntervalMs(args.perf_interval) / 1000.0;
     double p_events = 0.0, p_logic = 0.0, p_jobs = 0.0, p_refresh = 0.0,
            p_render = 0.0, p_present = 0.0, p_total = 0.0;                     // cumulative ms
     long long p_frames = 0, p_steps = 0;                                       // cumulative counts
-    long long p_idled = 0;                                    // frames run hidden
+    long long p_idled = 0;                                    // cumulative frames run hidden
     double w_events = 0.0, w_logic = 0.0, w_jobs = 0.0, w_refresh = 0.0,
-           w_render = 0.0, w_present = 0.0;                                    // rolling-window ms
-    long long w_frames = 0, w_steps = 0;                                       // rolling-window counts
+           w_render = 0.0, w_present = 0.0, w_total = 0.0;                     // rolling-window ms
+    double w_paint = 0.0, w_composite = 0.0, w_ui = 0.0, w_glui = 0.0,
+           w_tail = 0.0;                                    // rolling-window render halves
+    long long w_frames = 0, w_steps = 0, w_idled = 0;                          // rolling-window counts
     // This frame's marks: "refresh" = the 3D state pass (camera re-pose, terrain
     // LOD, g.hud.view), "render" = issuing GL draw commands, "present" = SwapBuffers
     // (blocks on vsync). Value-init: an indeterminate time_point makes
@@ -1156,21 +1166,43 @@ int main(int argc, char **argv)
                             std::chrono::steady_clock::time_point b) {
         return std::chrono::duration<double, std::milli>(b - a).count();
     };
+    /* One [perf] row per gate (#676). Every number is a PER-FRAME average over
+       the window, and the window's own extent is in the row (`win=`) because a
+       wall-gated row does not get equal-length windows when the frame rate
+       moves. Phases sum to `work` by construction -- the marks are contiguous --
+       and render's five halves sum to `render`, which is the whole point of
+       printing them: on a scripted frame render is nearly the frame, so "the
+       draw is expensive" is only actionable if it says WHICH draw. `work`
+       EXCLUDES the --frame-cap sleep, same law as the exit summary. */
     const auto perf_roll = [&]() {
         const auto now = std::chrono::steady_clock::now();
         const double dt = std::chrono::duration<double>(now - perf_w_start).count();
-        if(dt < 1.0 || w_frames == 0) { return; }
-        printf("perf  logic=%7.3fms  refresh=%7.3fms  render=%7.3fms"
-               "  events=%6.3fms  jobs=%6.3fms  present=%7.3fms"
-               "   %6.1ffps   %d logic ticks (%.3fms/tick)\n",
-               w_logic / (double)w_frames, w_refresh / (double)w_frames,
-               w_render / (double)w_frames,
-               w_events / (double)w_frames, w_jobs / (double)w_frames,
-               w_present / (double)w_frames,
-               (double)w_frames / dt, (int)w_steps,
-               (w_steps > 0) ? (w_logic / (double)w_steps) : 0.0);
+        if(dt < perf_gate_s || w_frames == 0) { return; }
+        const double nf = (double)w_frames;
+        /* A rate over zero ticks is not a number: a paused window prints "-", not
+           0.0000 ms/tick, which would read as free logic. Same spelling as #678's
+           w_cap, and run.py parses it as None rather than as 0.0. */
+        char tick_rate[24];
+        if(w_steps > 0) {
+            snprintf(tick_rate, sizeof tick_rate, "%.4f", w_logic / (double)w_steps);
+        } else {
+            snprintf(tick_rate, sizeof tick_rate, "-");
+        }
+        printf("[perf] t=%.3fs win=%.3fs frames=%lld fps=%.1f work=%.4fms"
+               " events=%.4fms logic=%.4fms jobs=%.4fms refresh=%.4fms"
+               " render=%.4fms present=%.4fms paint=%.4fms composite=%.4fms"
+               " ui=%.4fms imgui-gl=%.4fms tail=%.4fms"
+               " ticks=%lld ms/tick=%s idled=%lld\n",
+               std::chrono::duration<double>(now - perf_loop_start).count(),
+               dt, w_frames, nf / dt, w_total / nf,
+               w_events / nf, w_logic / nf, w_jobs / nf, w_refresh / nf,
+               w_render / nf, w_present / nf,
+               w_paint / nf, w_composite / nf, w_ui / nf, w_glui / nf, w_tail / nf,
+               w_steps, tick_rate,
+               w_idled);
         w_events = w_logic = w_jobs = w_refresh = w_render = w_present = 0.0;
-        w_frames = 0; w_steps = 0;
+        w_total = w_paint = w_composite = w_ui = w_glui = w_tail = 0.0;
+        w_frames = 0; w_steps = 0; w_idled = 0;
         perf_w_start = now;
     };
     const auto perf_summary = [&]() {
@@ -1546,19 +1578,31 @@ int main(int argc, char **argv)
         game.hud.perf_render.push(perf_t, f_render);
         game.hud.perf_present.push(perf_t, f_present);
         if(perf_on) {
+            // One reading per phase, then into both totals: the run's (for the
+            // exit summary) and the window's (for the [perf] row).
+            const double f_work = perf_ms(pf_iter, pf_d);
+            const double f_paint = perf_ms(pf_paint0, pf_paint1);
+            const double f_comp = perf_ms(pf_paint1, pf_comp);
+            const double f_ui = perf_ms(pf_comp, pf_ui);
+            const double f_glui = perf_ms(pf_ui, pf_glui);
+            const double f_tail = f_render - perf_ms(pf_paint0, pf_glui); // NewFrame, shots
             p_events += f_events; p_logic += f_logic; p_jobs += f_jobs;
             p_refresh += f_refresh; p_render += f_render; p_present += f_present;
-            p_total += perf_ms(pf_iter, pf_d);
-            p_paint += perf_ms(pf_paint0, pf_paint1);
-            p_composite += perf_ms(pf_paint1, pf_comp);
-            p_ui += perf_ms(pf_comp, pf_ui);
-            p_glui += perf_ms(pf_ui, pf_glui);
-            p_tail += f_render - perf_ms(pf_paint0, pf_glui);   // NewFrame, shots
+            p_total += f_work;
+            p_paint += f_paint;
+            p_composite += f_comp;
+            p_ui += f_ui;
+            p_glui += f_glui;
+            p_tail += f_tail;
             p_frames++; p_steps += game.logic_ticks;
             if(idling) { p_idled++; }
             w_events += f_events; w_logic += f_logic; w_jobs += f_jobs;
             w_refresh += f_refresh; w_render += f_render; w_present += f_present;
+            w_total += f_work;
+            w_paint += f_paint; w_composite += f_comp; w_ui += f_ui;
+            w_glui += f_glui; w_tail += f_tail;
             w_frames++; w_steps += game.logic_ticks;
+            if(idling) { w_idled++; }
             perf_roll();
         }
         game.logic_ticks = 0;   // tick() re-arms it next frame

@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 301 |
+| `invariant` | a behaviour or a player route the game must keep | 303 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 41 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **361** |
+| | **total** | **363** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -335,7 +335,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/644-vab-prints-what-the-assembly-costs-the-pool.txt` | golden | The VAB prints the assembly's electrical balance -- 298 W generated, 600 W constant, 12000 Wh stored, 2475 W of rated drum draw -- says it drains at rest and that its drums outrun its generator, and puts 2250 W on the big wheel block's own card. |
 | `ui/649-systems-window-switches-a-group-off.txt` | golden | The Systems window is listed in the Windows panel and prints the EC balance, and its Reaction wheels checkbox drops the live authority in --steering-log from 4950 N m to 0 while the row still quotes the 4950 N m the switch gives up. |
 
-## render (58)
+## render (60)
 
 | case | kind | pins |
 |---|---|---|
@@ -397,6 +397,8 @@ judgement. Select by number, name or path, e.g.
 | `render/355-map-fit-switch-same-body.txt` | invariant | Switching ships around the same body refits the map to the new orbit. |
 | `render/552-earth-air-levels.txt` | invariant | A body that authors a layer table reports that profile in its dossier instead of a temperature implied by a scale height. |
 | `render/630-air-says-what-it-is-made-of.txt` | invariant | A body's dossier names the gases its air is made of, biggest first, and prints the share of that air a turbine can burn. |
+| `render/676-perf-rows-add-up.txt` | invariant | --perf prints one [perf] row per window, each row's phases add up to the frame it measured, and it names WHICH draw. |
+| `render/676-perf-rows-no-paint.txt` | invariant | A --no-paint run says so in its [perf] rows: the 3D pass reads 0 while the passes that still ran do not. |
 
 ## harness (16)
 

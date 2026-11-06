@@ -833,9 +833,18 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_flag("--perf", args.perf,
                  "Print a per-frame phase timing breakdown (events / logic / "
                  "jobs / refresh (the 3D state pass) / render (the paint pass) "
-                 "+ fps + logic ticks): a rolling line "
-                 "every second and a summary at exit. Off by default; the "
-                 "timing overhead is negligible when off");
+                 "+ fps + logic ticks): one [perf] row every "
+                 "--perf-interval seconds and a summary at exit (#676). Off by "
+                 "default; the timing overhead is negligible when off");
+
+    app.add_option("--perf-interval", args.perf_interval,
+                   "Seconds of RUN time between [perf] rows (default: 1). A perf "
+                   "row is a frame reading, so this window is wall clock in every "
+                   "mode, --sim-steps included, and it may be shorter than one "
+                   "physics tick -- unlike a log that samples the sim. Never "
+                   "longer than 3600s: past that the gate's millisecond count "
+                   "wraps instead of getting quieter")
+        ->check(CLI::NonNegativeNumber);
 
     app.add_flag("--pose-jitter", args.pose_jitter,
                  "Print one line per RENDER frame: the sim time (t) and wall "
@@ -943,6 +952,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             {"--drag-cd", args.drag_cd},
             {"--orbit-interval", args.orbit_interval},
             {"--record-interval", args.record_interval},
+            {"--perf-interval", args.perf_interval},
             {"--prox-fly-on", args.prox_fly_on},
             {"--prox-fly-off", args.prox_fly_off},
             {"--prox-ground-on", args.prox_ground_on},
@@ -1014,6 +1024,18 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             printf("error: --record-interval %g s is longer than the %g s a log gate "
                    "can wait; past that the millisecond count wraps instead of "
                    "getting quieter\n", args.record_interval, kIntervalCeilingS);
+            *exit_code = 1;
+            return false;
+        }
+        /* A [perf] window is the same kind of wait measured the same way (#676),
+           so it answers to the same ceiling -- and to none of the tick-floor law
+           above, because it samples frames rather than ticks and is allowed to
+           close faster than the sim steps. Same unused-knob rule as #662: the
+           ceiling belongs to the rows, so without --perf the value parses. */
+        if(args.perf && args.perf_interval > kIntervalCeilingS) {
+            printf("error: --perf-interval %g s is longer than the %g s a periodic "
+                   "row can wait; past that the millisecond count wraps instead of "
+                   "getting quieter\n", args.perf_interval, kIntervalCeilingS);
             *exit_code = 1;
             return false;
         }

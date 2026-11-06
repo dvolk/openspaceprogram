@@ -1,0 +1,25 @@
+NAME    perf-rows
+CLAIM   --perf prints one [perf] row per window, each row's phases add up to the frame it measured, and it names WHICH draw.
+KIND    invariant
+NOGLCHECK
+ARGS --timeout 2 --perf --perf-interval 0.5
+# #676: the point of the row is that a build can be diffed against a build, so
+# what this case pins is the ARITHMETIC and the CADENCE -- both true on any
+# machine -- and never a cost. A wall-clock budget CHECK here would be flaky on a
+# shared box and would teach people to ignore a failing case.
+CHECK 2 <= len(perf) <= 6
+# The six phases are contiguous marks on the frame, so they sum to `work`. The
+# tolerance is the %.4f rounding in the row, not sloppiness about the law.
+CHECK all(abs(r["events"] + r["logic"] + r["jobs"] + r["refresh"] + r["render"] + r["present"] - r["work"]) <= 0.02 * r["work"] + 0.001 for r in perf)
+# render's five halves are render, which is the whole reason the row prints them:
+# on a scripted frame render is nearly the frame, so "the draw is expensive" is
+# only actionable if it says which draw.
+CHECK all(abs(r["paint"] + r["composite"] + r["ui"] + r["imgui_gl"] + r["tail"] - r["render"]) <= 0.02 * r["render"] + 0.001 for r in perf)
+# And the 3D pass is actually MEASURED here, not left at zero because nobody read
+# the marks: a painting run reports a paint.
+CHECK any(r["paint"] + r["composite"] > 0.0 for r in perf)
+# The gate honoured --perf-interval. `win=` is the window's own extent, which
+# overshoots by up to a frame because a wall-gated row cannot close mid-frame.
+CHECK all(0.4 <= r["win"] <= 0.9 for r in perf)
+CHECK all(r["frames"] > 0 and r["fps"] > 0.0 for r in perf)
+FORBID error:

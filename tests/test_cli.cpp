@@ -170,9 +170,39 @@ int main() {
         run(3, (char **)argv, args, ok, code);
         assert(ok);
     }
-    // --help states the ceiling for both knobs, in the number cli.h holds. The
-    // same drift rule as the state-log cadences in 2b: the help and the law are
-    // written twice, so this is what makes them move together.
+    // A [perf] window (#676) is a frame reading gated the same way, so it takes
+    // the same ceiling -- and the same "unused knob" pass. It is NOT held to the
+    // tick floor above: a window may close faster than the sim steps, which is
+    // the whole use of a 0.05 s window on a 60 Hz frame rate.
+    {
+        const char *argv[] = {"osp", "--perf", "--perf-interval", "1e12"};
+        GameArgs args;
+        bool ok = true;
+        int code = -1;
+        run(4, (char **)argv, args, ok, code);
+        assert(!ok);
+        assert(code == 1);
+    }
+    {
+        const char *argv[] = {"osp", "--perf-interval", "1e12"};
+        GameArgs args;
+        bool ok = false;
+        int code = -1;
+        run(3, (char **)argv, args, ok, code);
+        assert(ok);
+    }
+    {
+        const char *argv[] = {"osp", "--perf", "--perf-interval", "0.05"};
+        GameArgs args;
+        bool ok = false;
+        int code = -1;
+        run(4, (char **)argv, args, ok, code);
+        assert(ok);
+        assert(args.perf_interval == 0.05);
+    }
+    // --help states the ceiling for all three knobs, in the number cli.h holds.
+    // The same drift rule as the state-log cadences in 2b: the help and the law
+    // are written twice, so this is what makes them move together.
     {
         const char *argv[] = {"osp", "--help"};
         GameArgs args;
@@ -183,7 +213,10 @@ int main() {
         snprintf(ceil_s, sizeof ceil_s, "%.0fs", kIntervalCeilingS);
         size_t hits = 0;
         for(size_t p = out.find(ceil_s); p != std::string::npos; p = out.find(ceil_s, p + 1)) { hits++; }
-        assert(hits == 2);
+        // One mention per interval knob: --orbit-interval, --record-interval and
+        // --perf-interval (#676). A new cadence knob without the sentence in its
+        // help lands here.
+        assert(hits == 3);
     }
     // 2e) The conversion itself: one law for every interval knob (#673), so the
     //     saturation is pinned at the end that used to be UB, and the 0 that the

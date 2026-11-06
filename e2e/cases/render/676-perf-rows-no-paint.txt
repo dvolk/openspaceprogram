@@ -1,0 +1,16 @@
+NAME    perf-rows-no-paint
+CLAIM   A --no-paint run says so in its [perf] rows: the 3D pass reads 0 while the passes that still ran do not.
+KIND    invariant
+NOGLCHECK
+ARGS --timeout 2 --perf --perf-interval 0.5 --no-paint
+# #666's caveat, now per-row instead of per-run: a run that skips the picture
+# still has a render phase -- imgui is drawn through it -- so its render numbers
+# are only readable if the row says which pass went away. Together with
+# perf-rows-add-up (a painting run reports a paint) this is what keeps the halves
+# from being a field that is always zero and therefore proves nothing.
+CHECK 2 <= len(perf) <= 6
+CHECK all(r["paint"] == 0.0 and r["composite"] == 0.0 for r in perf)
+CHECK all(r["ui"] + r["imgui_gl"] > 0.0 for r in perf)
+CHECK all(abs(r["events"] + r["logic"] + r["jobs"] + r["refresh"] + r["render"] + r["present"] - r["work"]) <= 0.02 * r["work"] + 0.001 for r in perf)
+CHECK all(abs(r["paint"] + r["composite"] + r["ui"] + r["imgui_gl"] + r["tail"] - r["render"]) <= 0.02 * r["render"] + 0.001 for r in perf)
+FORBID error:

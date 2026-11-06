@@ -165,6 +165,14 @@ the picture, the frame cadence (`--perf`, `--pose-jitter`) or a shot;
 `harness/343-screenshot` and `harness/666-no-paint-costs-pixels-only` are the
 two sides of that line.
 
+`--perf` prints one `[perf]` row per window (`--perf-interval`, default 1 s) and
+a summary at exit (#676). The rows are parsed into `perf` so a build can be
+diffed against a build, but they are wall-clock readings off whatever box is
+free, so a case may assert their SHAPE -- the six phases sum to `work`, render's
+five halves sum to `render`, `paint` is 0 when `--no-paint` asked for no 3D pass
+-- and never a cost. A timing CHECK would be flaky and would teach people to
+ignore failing cases.
+
 ## A trace is a file, so the harness reads it
 
 `--record` writes one flight recorder trace per run: `#rec v1 channels=<list>`,

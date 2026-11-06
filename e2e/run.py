@@ -215,6 +215,27 @@ KILLROT_RE = re.compile(
     r"\[slew\]\s+t=([\d.]+)\s+mode=killrot\s+\|w\|=([-\d.]+)\s+rad/s\s+"
     r"w=\[([-+\d. ]+)\]\s+tau_ask=([-\d.]+)\s+tau_spent=([-\d.]+)"
 )
+# --perf's frame-cost record (#676): one row per window, every number a per-frame
+# average. Parsed so a build can be DIFFED against a build instead of read as
+# prose at exit. `win=` is in the row because the window is gated on wall seconds
+# and cannot close mid-frame, so windows are not equal length when the frame rate
+# moves. What a case may assert is the SHAPE -- the six phases sum to `work`, and
+# render's five halves sum to `render`, both true by construction on any machine.
+# Absolute costs are NOT assertable: these are wall-clock readings off a shared
+# box, and a timing CHECK would be flaky and would teach people to ignore failing
+# cases (the ticket's own warning).
+PERF_KEYS = ("t", "win", "frames", "fps", "work", "events", "logic", "jobs",
+             "refresh", "render", "present", "paint", "composite", "ui",
+             "imgui_gl", "tail", "ticks", "ms_per_tick", "idled")
+PERF_INT_KEYS = ("frames", "ticks", "idled")
+PERF_RE = re.compile(
+    r"\[perf\]\s+t=([\d.]+)s\s+win=([\d.]+)s\s+frames=(\d+)\s+fps=([-\d.]+)\s+"
+    r"work=([-\d.]+)ms\s+events=([-\d.]+)ms\s+logic=([-\d.]+)ms\s+"
+    r"jobs=([-\d.]+)ms\s+refresh=([-\d.]+)ms\s+render=([-\d.]+)ms\s+"
+    r"present=([-\d.]+)ms\s+paint=([-\d.]+)ms\s+composite=([-\d.]+)ms\s+"
+    r"ui=([-\d.]+)ms\s+imgui-gl=([-\d.]+)ms\s+tail=([-\d.]+)ms\s+"
+    r"ticks=(-?\d+)\s+ms/tick=([0-9.]+|-)\s+idled=(\d+)"
+)
 # Game::toast mirrors every on-screen message to stdout ("the on-screen toast is
 # transient, the log is not"), so a hotkey that only changes a flag still leaves
 # an observable line. Parsed as plain strings: what a case wants is which
@@ -788,6 +809,23 @@ def parse_slew(out):
             "nose": None, "target": None,
             "wxyz": tuple(float(v) for v in wxyz.split()),
         })
+    rows.sort(key=lambda r: r["t"])
+    return rows
+
+
+def parse_perf(out):
+    rows = []
+    for m in PERF_RE.finditer(out):
+        r = dict(zip(PERF_KEYS, m.groups()))
+        for k in PERF_KEYS:
+            if k == "ms_per_tick":
+                continue
+            r[k] = int(r[k]) if k in PERF_INT_KEYS else float(r[k])
+        # ms/tick prints "-" when the window ran no ticks (a paused run): a rate
+        # over zero ticks is not a number, so it parses to None and not to 0.0 --
+        # the same spelling and the same reason as w_cap in parse_slew (#678).
+        r["ms_per_tick"] = None if r["ms_per_tick"] == "-" else float(r["ms_per_tick"])
+        rows.append(r)
     rows.sort(key=lambda r: r["t"])
     return rows
 
@@ -1501,6 +1539,7 @@ def run_case(case):
     mapb = parse_mapb(world)
     plane = parse_plane(world)
     slew = parse_slew(world)
+    perf = parse_perf(out)
     toast = parse_toast(out)
     simreport = parse_sim_report(out)
     # The recorder's trace is a FILE, not stdout (#662), and a CHECK cannot open
@@ -1521,6 +1560,7 @@ def run_case(case):
         "cam": cam,
         "terrain": terrain,
         "surf": surf, "orbinfo": orbinfo, "mapb": mapb, "plane": plane, "slew": slew,
+        "perf": perf,
         "scene": scene,
         "toast": toast,
         # None unless the run printed its --timeout accounting (#402).

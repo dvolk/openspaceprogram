@@ -182,6 +182,12 @@ struct GameArgs {
     int vsync = 1;           // 0 = off, 1 = one refresh per swap
     double physics_hz = 60.0;  // the fixed logic tick rate
     bool perf = false;   // print a per-frame phase timing breakdown
+    /* Seconds of run time between [perf] rows (#676). The rolling window was
+       prose on a hard-coded 1 s: easy to read, impossible to diff. A tagged row
+       per gate is what makes "did this build make the frame cheaper" a question
+       with an answer, and unlike the prose line it carries render's halves, which
+       until now only the exit summary broke down. */
+    double perf_interval = 1.0;
     bool pose_jitter = false;  // the drawn pose per render frame
     float camFovDeg = 60.0f;
     // terrain LOD: a patch subdivides while it projects wider than this [px].
