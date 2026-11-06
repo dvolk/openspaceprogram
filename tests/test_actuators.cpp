@@ -116,7 +116,10 @@ static void test_capability_is_about_an_axis() {
                                             { glm::dvec3(0, 0, 1), -5.0 } };
     CHECK_TRUE(actuatorTorqueAbout(junk, glm::dvec3(0, 0, 1)) == 0.0,
                "a NaN axis, a zero axis and a non-positive limit all buy nothing");
-    CHECK_TRUE(actuatorTorqueAbout({}, glm::dvec3(0, 0, 1)) == 0.0,
+    /* The empty row set has to be named now: actuators.h takes any row container
+       (std::vector here, AttitudeAuthority's InlineVec in the game, #668), and a
+       template cannot deduce a container from `{}`. Same question, same answer. */
+    CHECK_TRUE(actuatorTorqueAbout(std::vector<ActuatorRow>{}, glm::dvec3(0, 0, 1)) == 0.0,
                "no actuator, no authority");
     CHECK_TRUE(actuatorTorqueAbout(cluster, glm::dvec3(0, 0, 0)) == 0.0,
                "a zero asked axis asks for nothing");

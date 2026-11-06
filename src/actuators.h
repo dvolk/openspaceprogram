@@ -38,16 +38,22 @@
 // Worth knowing both exist before a third demand shape shows up and someone
 // merges them. It also carries no Scratch like rcs::Scratch yet: today's rows are a
 // hull's wheels plus its control surfaces -- still a handful -- so these vectors are
-// the whole cost. That cost is twelve allocations per hull per substep for a hull that
-// has actuators: four in attitudeAuthority (wheels, wheelParts, surfaces, surfaceParts),
-// two in actuateAttitude (the concatenated rows, the setpoints) and six in actuatorSolve
-// (lines, lineOf, sense, share, mag, q) -- and the UI calls attitudeAuthority() once
-// per FRAME (Game Debug's steering rows ask the live answer, Systems asks the hardware
-// one), plus two more per --steering-log line. Closed windows draw no body at all (ui.h),
-// so the default flight layout pays none of this. So a
-// Scratch is worth doing before the
-// row counts grow. #594 landed the other half of that ask: ONE AttitudeAuthority per
-// substep, answered once for the stick and every latched law together (#420).
+// the whole cost. #668 took the four biggest away: the AttitudeAuthority row sets
+// (wheels, wheelParts, surfaces, surfaceParts) are InlineVec now, so the walk that
+// runs every actuation substep AND once per frame per open window allocates NOTHING
+// (heaptrack 2026_11_06: 85,386 allocations per 20 s of atmospheric flight, 65% of
+// that run's steady-state total, and 24,216 of them survived the reserve() pass).
+// What still allocates is eight per substep for a hull with a live demand: two in
+// actuateAttitude (the concatenated rows, the setpoints) and six in actuatorSolve
+// (lines, lineOf, sense, share, mag, q) -- that is the Scratch's remaining job, and
+// the reason this file takes its row argument as a CONTAINER TEMPLATE rather than a
+// std::vector: an interface fixed on std::vector would put the authority rows back
+// through the heap. The UI calls attitudeAuthority() once per FRAME (Game Debug's
+// steering rows ask the live answer, Systems asks the hardware one), plus two more
+// per --steering-log line. Closed windows draw no body at all (ui.h), so the default
+// flight layout pays none of this. #594 landed the other half of the old ask: ONE
+// AttitudeAuthority per substep, answered once for the stick and every latched law
+// together (#420).
 
 #include <array>
 #include <cmath>
@@ -79,8 +85,13 @@ struct ActuatorRow {
     its number about an oblique axis is the sum of three drums' cosines -- up to
     sqrt(3) x its rating -- which is what three orthogonal drums genuinely can do,
     and also why the old single isotropic number understated an oblique axis. */
-inline double actuatorTorqueAbout(const std::vector<ActuatorRow> &rows,
+template<class Rows>
+inline double actuatorTorqueAbout(const Rows &rows,
                                  const glm::dvec3 &dir) {
+    /* Templated on the row CONTAINER (std::vector or InlineVec, #668) because all
+       it needs is size() and a walk: the authority rows live in an InlineVec now,
+       and an interface that forced them into a std::vector would put the four
+       allocations right back where heaptrack found them. */
     const double d2 = glm::dot(dir, dir);
     if(!(d2 > 0.0)) { return 0.0; }
     const glm::dvec3 u = dir / std::sqrt(d2);
@@ -102,7 +113,8 @@ inline std::array<double, 3> torqueRpY(const glm::dvec3 &tau, const glm::dmat3 &
              std::fabs(glm::dot(tau, ax[1])) };
 }
 
-inline std::array<double, 3> actuatorRpY(const std::vector<ActuatorRow> &rows,
+template<class Rows>
+inline std::array<double, 3> actuatorRpY(const Rows &rows,
                                          const glm::dmat3 &ax) {
     return { actuatorTorqueAbout(rows, ax[2]), actuatorTorqueAbout(rows, ax[0]),
              actuatorTorqueAbout(rows, ax[1]) };
@@ -140,7 +152,8 @@ inline std::array<double, 3> actuatorRpY(const std::vector<ActuatorRow> &rows,
      the line is credited along the LINE. Summing setpoints back through each row's own
      axis then differs from the returned vector by ~ q * angle: 6e-5 N m at
      theta = 1e-6, zero at theta = 0 (where there is nothing to be off). */
-inline glm::dvec3 actuatorSolve(const std::vector<ActuatorRow> &rows,
+template<class Rows>
+inline glm::dvec3 actuatorSolve(const Rows &rows,
                                 const glm::dvec3 &demand,
                                 std::vector<double> &setpoints) {
     setpoints.assign(rows.size(), 0.0);

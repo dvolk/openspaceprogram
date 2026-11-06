@@ -5079,16 +5079,17 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
            the Vessel window prints it, and a held key is scaled by what is left -- so a
            wheels-off rocket steers on its gimbals rather than pretending to have drums
            it declined to spend. */
-        /* ONE allocation per vector instead of a doubling chain. This walk runs every
-           actuation substep and again for every open window that quotes authority, and
-           heaptrack (2026_11_06) measured it as the flight frame's single biggest
-           allocator: +85,386 allocations per 20 s of atmospheric flight, 65% of that
-           run's whole steady-state total. It is all vector growth -- a triad housing is
-           three rows, so `wheels` crosses two or three capacities before it settles and
-           `wheelParts` does the same alongside it. Counting rows first costs pointer
-           chasing only (no geometry, no profile read), and a shut gate reserves nothing,
-           so the answer to "rebuild per substep" stays cheaper rows rather than a later
-           read -- which is the law above this function, not a suggestion. */
+        /* Count the rows, then reserve once. The row sets are InlineVec now (#668), so
+           a shipped hull never leaves its inline room and this costs nothing: what the
+           count buys is that a hull which DOES overflow pays one allocation rather than
+           a doubling chain. Before both fixes this walk was the flight frame's single
+           biggest allocator -- +85,386 allocations per 20 s of atmospheric flight, 65%
+           of that run's whole steady-state total -- because a triad housing is three
+           rows at once and a fresh local AttitudeAuthority grew every buffer from zero,
+           on a walk that runs every actuation substep AND for every open window that
+           quotes authority. Counting is pointer chasing only (no geometry, no profile
+           read), and rebuilding the rows per substep stays the law rather than a later
+           read -- see above this function. */
         size_t wheelRows = 0;
         for(const Part *p : parts) {
             if(p->isWheel()) { wheelRows += (p->def->wheel_axes == 3 ? 3 : 1); }
@@ -5233,9 +5234,10 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
             const double mach = std::sqrt(v2) / airA;
             const glm::dmat3 basis = partRot(ref);   // [0] right, [1] up, [2] nose
             /* Upper bound, and deliberately so: a degenerate rig (#495) gets no row, so
-               the vectors can end up shorter than this. Inside the q test on purpose --
-               plates with no air to push reserve nothing (#632). See the wheel reserve
-               above for the measurement this is answering. */
+               the row set can end up shorter than this. Inside the q test on purpose --
+               plates with no air to push ask for nothing (#632). The reserve is free
+               while the hull fits the inline room (#668); it exists for a hull with more
+               plates than that, which pays one allocation instead of a chain. */
             a.surfaces.reserve(surfaceParts);
             a.surfaceParts.reserve(surfaceParts);
             for(const Part *p : parts) {
@@ -5266,8 +5268,9 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
    IGNITED stage could lever at full throttle (#608). Keeping one copy is what stops
    the budget a law plans against and the torque the actuators deliver from
    disagreeing (#576, #426). */
-static double torqueAboutRows(const std::vector<ActuatorRow> &wheels,
-                              const std::vector<ActuatorRow> &surfaces,
+template<class Rows>
+static double torqueAboutRows(const Rows &wheels,
+                              const Rows &surfaces,
                               const glm::dvec3 &stackAxis, double tvc,
                               const glm::dvec3 &axis) {
     const double ax2 = glm::dot(axis, axis);

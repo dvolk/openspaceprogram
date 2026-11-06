@@ -23,6 +23,7 @@
 
 #include "btcommon.h"
 #include "actuators.h"  // ActuatorRow (the wheel rows of AttitudeAuthority)
+#include "inlinevec.h"  // InlineVec: the storage the authority rows live in (#668)
 #include "body.h"
 #include "physics.h"
 #include "drag.h"     // SilhouetteMemo (the rest of the drag law: vehicle.cpp)
@@ -857,7 +858,18 @@ public:
            wheels are electric, #418), and the Game Debug window prints this same
            gated answer per axis (#572: one answer, not the one the largest wheel
            happens to give). */
-        std::vector<ActuatorRow> wheels;
+        /* The row sets are small-buffer vectors (#668), not std::vector, because this
+           struct is a VALUE: attitudeAuthorityRows() rebuilds it every actuation
+           substep and again once per frame per open window, and a heap buffer owned by
+           a value dies with every one of those calls. heaptrack 2026_11_06 counted
+           85,386 such allocations per 20 s of atmospheric flight -- 65% of that run's
+           whole steady-state total, and still 24,216 once they were pre-sized with
+           reserve(). kInlineRows is the room a shipped hull fits in, so the common
+           rebuild allocates nothing at all; past it the set moves to the heap and keeps
+           growing, so a hull with 30 fins gets the same physics for one malloc per
+           rebuild rather than a truncated row set. */
+        static constexpr size_t kInlineRows = 12;
+        InlineVec<ActuatorRow, kInlineRows> wheels;
         /* The housing each wheel row came from, in `wheels` order. Same reason the
            surfaces carry surfaceParts: actuatorSolve's setpoints come back indexed by
            row, and #648 bills a HOUSING -- PartDef::power_draw is one package figure
@@ -865,7 +877,7 @@ public:
            setpoint needs to know which rows share one figure. A hull that bought two
            wheel blocks has two groups, and they bill separately because they are two
            packages. #579's momentum store wants this row->part link per drum too. */
-        std::vector<const Part *> wheelParts;
+        InlineVec<const Part *, kInlineRows> wheelParts;
         /* How many HOUSINGS those rows came from, counted where they are counted as
            rows. actuateAttitude groups `wheels` into runs of one owner and asserts this
            equals the run count, so the grouping is checked rather than trusted (#648). */
@@ -907,8 +919,8 @@ public:
            back indexed by row, so the rows have to be able to name the part they came
            from (and the Game Debug window reads the same rows, which is why #599's
            budget-not-delivery caveat applies to fins as much as to drums). */
-        std::vector<ActuatorRow> surfaces;
-        std::vector<const Part *> surfaceParts;
+        InlineVec<ActuatorRow, kInlineRows> surfaces;
+        InlineVec<const Part *, kInlineRows> surfaceParts;
         /* Whether the hull CARRIES a steerable surface at all, whatever the sky, the
            airspeed or the aero master switch are doing (#649). An empty `surfaces` has
            two different reasons and a player needs the difference: no plates fitted is a
