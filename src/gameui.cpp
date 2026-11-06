@@ -2142,6 +2142,19 @@ void drawUIReadouts(Game &g) {
                 uiText("Surface torque (R/P/Y): %.0f / %.0f / %.0f N m, spent %.0f / %.0f / %.0f",
                        sr[0], sr[1], sr[2], sh[0], sh[1], sh[2]);
             }
+            /* The ring (#595) -- the fourth channel, and the one that answers "this
+               hull has no wheels and no burn; can it still point". The rating is what
+               the bells have LEFT: a held translation key owns them first (rcsPlan runs
+               before the capability walk), so this row shrinks while the player is
+               strafing, which is the priority being visible rather than a bug. The
+               spend is the ATTITUDE share of the firing only -- the force a key asked
+               for belongs to the [rcs] row, not to this record. */
+            if(!auth.rcs.empty()) {
+                const std::array<double, 3> rh = torqueRpY(del.rcs, ax);
+                const std::array<double, 3> rr = actuatorRpY(auth.rcs, ax);
+                uiText("RCS torque (R/P/Y): %.0f / %.0f / %.0f N m, spent %.0f / %.0f / %.0f",
+                       rr[0], rr[1], rr[2], rh[0], rh[1], rh[2]);
+            }
             /* THE ASK (#599). Shown even at zero, because zero is the answer flight/96's
                post-cutoff drift and #640 had to infer from behaviour: SAS lit, throttle
                shut, a law handed no authority asks nothing, so nothing is spent and the
@@ -2645,9 +2658,10 @@ void drawUIReadouts(Game &g) {
            attitudeAuthorityHardware(), one row builder with the switches ignored, not a
            second arithmetic (#649). It has to be: a closed door makes the live answer
            zero, so a switch asked to quote what it gives up would print 0 N m.
-           RCS has no row here yet, and that is not an oversight: RCS nozzles are still
-           never asked to turn the hull (#595), so there is no authority figure to put
-           beside its switch, and the ticket's rule is to quote one rather than invent it.
+           The third switch is the RCS ring's ATTITUDE half (#595), which is the row
+           #649 could not build until there was an authority figure to put beside it.
+           It buys pointing, never translation: the keys still fire the ring with the
+           switch off, because that is the maneuver the player pressed for.
            This window asks the row builder a SECOND time per frame -- Vessel Info above
            asks the live model, this one asks the hardware model, and both windows open by
            default. That is deliberate (vehicle.cpp's wrappers say why a frame cache is not
@@ -2685,7 +2699,7 @@ void drawUIReadouts(Game &g) {
                q, --drag-cd 0, or a rig whose push decides nothing about its axis (#495).
                It deliberately does NOT blame the switch: the hardware question ignores it.
                Naming the four apart would want a fourth readout in a window that already
-               has eight rows, and none of them changes what the pilot does next. */
+               has nine rows, and none of them changes what the pilot does next. */
             uiText("  %-3s  %s", ship->surfaces_enabled ? "on" : "off",
                    hw.hasSurfaces ? "nothing to push against"
                                   : "no aero surfaces on this hull");
@@ -2693,6 +2707,23 @@ void drawUIReadouts(Game &g) {
             const std::array<double, 3> hwv = actuatorRpY(hw.surfaces, ax);
             uiText("  %-3s  %.0f / %.0f / %.0f N m (R/P/Y)",
                    ship->surfaces_enabled ? "on" : "off", hwv[0], hwv[1], hwv[2]);
+        }
+        bool ring = ship->rcs_attitude_enabled;
+        if(ImGui::Checkbox("RCS thrusters", &ring)) { ship->rcs_attitude_enabled = ring; }
+        if(hw.rcs.empty()) {
+            /* The same two empties as the fins above, one level up: no pods fitted is
+               a build fact (hasRcs, recorded by the row builder whatever its gate
+               decided), pods with nothing to burn is a flight fact. Hardware mode asks
+               for the whole ring, so this row never blames the switch -- and unlike the
+               other two, an empty ring here can ALSO mean every bell levers nothing
+               (one through the COM), which the figure would print as 0 N m anyway. */
+            uiText("  %-3s  %s", ship->rcs_attitude_enabled ? "on" : "off",
+                   hw.hasRcs ? "no hydrazine for them to burn"
+                             : "no thruster pods on this hull");
+        } else {
+            const std::array<double, 3> hwv = actuatorRpY(hw.rcs, ax);
+            uiText("  %-3s  %.0f / %.0f / %.0f N m (R/P/Y)",
+                   ship->rcs_attitude_enabled ? "on" : "off", hwv[0], hwv[1], hwv[2]);
         }
     });
     drawWin(g, W_Controls, [&] {

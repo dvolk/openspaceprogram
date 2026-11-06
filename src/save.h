@@ -185,6 +185,10 @@ struct SaveShip {
     /* The control surfaces' same mask (#649), for the same reason: a vessel whose fins
        are switched off keeps that choice across a save. Absent = on. */
     bool surfaces_enabled = true;
+    /* And the RCS ring's attitude door (#595): pointing the hull on hydrazine is the
+       pilot's order, not the stage's, so it survives a save like the other two.
+       Absent = on -- including for every save written before this row existed. */
+    bool rcs_attitude_enabled = true;
     std::vector<SaveDock> docks;
     /* The dock target is a SLUG (its own save file), its port a uid -- the
        load's uid->Part map spans every file. */
@@ -720,6 +724,7 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
     }
     j["wheels_enabled"] = s.wheels_enabled;
     j["surfaces_enabled"] = s.surfaces_enabled;
+    j["rcs_attitude_enabled"] = s.rcs_attitude_enabled;   // #595
     if(!s.docks.empty()) {
         nlohmann::json docks = nlohmann::json::array();
         for(auto &&d : s.docks) {
@@ -791,6 +796,7 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     if(j.contains("slew_free_dir") && j["slew_free_dir"].is_array()) { s.slew_free_dir = vec3FromJson(j["slew_free_dir"]); }
     if(j.contains("wheels_enabled") && j["wheels_enabled"].is_boolean()) { s.wheels_enabled = j["wheels_enabled"].get<bool>(); }
     if(j.contains("surfaces_enabled") && j["surfaces_enabled"].is_boolean()) { s.surfaces_enabled = j["surfaces_enabled"].get<bool>(); }
+    if(j.contains("rcs_attitude_enabled") && j["rcs_attitude_enabled"].is_boolean()) { s.rcs_attitude_enabled = j["rcs_attitude_enabled"].get<bool>(); }
     if(j.contains("docks") && j["docks"].is_array()) {
         for(auto &&d : j["docks"]) {
             if(!d.is_object()) { continue; }

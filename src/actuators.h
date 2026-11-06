@@ -33,8 +33,14 @@
 // stay the small-n bed: a ring is the same arithmetic with more rows.
 //
 // Not the same problem as rcs.h's nozzle allocator, which solves force AND
-// torque over ONE-WAY nozzles (nnls, c in [0,1]). This one is torque-only and
-// two-sided -- a drum winds either way -- so its bound is a box, not a sign.
+// torque over ONE-WAY nozzles (nnls, c in [0,1]). This one is torque-only: since
+// #595 it can carry one-way lines (a thruster bell winds up a turn and cannot
+// brake one the other way), but it never gains a FORCE row. The two allocators stay
+// separate on purpose and the priority between them lives in Vehicle, not in a
+// merged solve: the player's translation keys get first claim on the bells
+// (rcs.h), and the attitude rows Vehicle builds from that same ring carry only the
+// capacity the translation solve left. Merging the two into one weighted solve is
+// how a ship ends up refusing to translate because it is busy turning.
 // Worth knowing both exist before a third demand shape shows up and someone
 // merges them. It also carries no Scratch like rcs::Scratch yet: today's rows are a
 // hull's wheels plus its control surfaces -- still a handful -- so these vectors are
@@ -66,13 +72,16 @@
    spin axis and the demand is N m; for #426's surface it is the mount-derived
    torque direction at N m per radian and the demand is radians of deflection.
    `limit` bounds that demand either way (a wheel winds either sense, so the
-   direction is a line, not a sense). A zero-length or NaN axis buys nothing, and the
-   negated compare is what makes that true -- it is the guard for a poisoned row, since
-   a NaN axis must never be creditable. An infinite one does get through, and nothing
-   authored can produce one, so there is no guard pretending to. */
+   direction is a line, not a sense) -- unless `one_way`, which makes the row a bell
+   rather than a drum: it can only push ALONG +axis, because thruster gas goes out
+   one way (#595). A zero-length or NaN axis buys nothing, and the negated compare
+   is what makes that true -- it is the guard for a poisoned row, since a NaN axis
+   must never be creditable. An infinite one does get through, and nothing authored
+   can produce one, so there is no guard pretending to. */
 struct ActuatorRow {
     glm::dvec3 axis = glm::dvec3(0.0);
     double limit = 0.0;
+    bool one_way = false;
 };
 
 /* The N m these actuators can bring to bear ABOUT `dir` (any length; the
@@ -84,7 +93,12 @@ struct ActuatorRow {
     A triad housing (#593) is creditable in more than one direction at once, so
     its number about an oblique axis is the sum of three drums' cosines -- up to
     sqrt(3) x its rating -- which is what three orthogonal drums genuinely can do,
-    and also why the old single isotropic number understated an oblique axis. */
+    and also why the old single isotropic number understated an oblique axis.
+    A ONE-WAY row is credited only where it can actually push: a bell 91 deg off the
+    asked axis buys nothing about it, where a drum on the same line would be credited
+    as if it could wind the other way. That asymmetry is #595's capability half, and
+    it is what stops a ring fitted the wrong way round from making a hull look
+    steerable. */
 template<class Rows>
 inline double actuatorTorqueAbout(const Rows &rows,
                                  const glm::dvec3 &dir) {
@@ -98,7 +112,8 @@ inline double actuatorTorqueAbout(const Rows &rows,
     double t = 0.0;
     for(const ActuatorRow &r : rows) {
         if(!(glm::dot(r.axis, r.axis) > 0.0) || !(r.limit > 0.0)) { continue; }
-        t += r.limit * std::fabs(glm::dot(r.axis, u));
+        const double c = glm::dot(r.axis, u);
+        t += r.limit * (r.one_way ? (c > 0.0 ? c : 0.0) : std::fabs(c));
     }
     return t;
 }
@@ -165,6 +180,7 @@ inline glm::dvec3 actuatorSolve(const Rows &rows,
     struct Line {
         glm::dvec3 dir = glm::dvec3(0.0);
         double capacity = 0.0;
+        bool one_way = false;   // the line carries +q only (a bell, not a drum: #595)
     };
     std::vector<Line> lines;
     /* Per row: which line it fell on, whether it points along or against that
@@ -177,15 +193,22 @@ inline glm::dvec3 actuatorSolve(const Rows &rows,
         const double m = std::sqrt(m2);
         const glm::dvec3 dir = rows[k].axis / m;
         int hit = -1;
+        /* A one-way row's line is a SENSE, not a line: two bells that push the hull
+           the same way about the same axis share one line's capacity, and two that
+           oppose are two lines, because cancelling one with the other costs propellant
+           on both. Two-sided rows keep the old fabs() grouping -- two drums mounted
+           head to tail are one actuator line with twice the rating. A one-way row
+           never joins a two-sided line and vice versa, so a line's clamp is unambiguous
+           (the tolerance is for axes that agree to within rounding, not for "nearly
+           parallel", which is a real geometry with two nearly-independent lines). */
+        const double tol = 1.0 - 1e-9;
         for(size_t j = 0; j < lines.size(); j++) {
-            /* Same LINE either way, hence the fabs: two drums mounted head to tail
-               are one actuator line with twice the rating. The tolerance is for
-               axes that agree to within rounding, not for "nearly parallel", which
-               is a real geometry with two nearly-independent lines. */
-            if(std::fabs(glm::dot(dir, lines[j].dir)) > 1.0 - 1e-9) { hit = (int)j; break; }
+            if(lines[j].one_way != rows[k].one_way) { continue; }
+            const double d = glm::dot(dir, lines[j].dir);
+            if(rows[k].one_way ? d > tol : std::fabs(d) > tol) { hit = (int)j; break; }
         }
         if(hit < 0) {
-            lines.push_back({ dir, 0.0 });
+            lines.push_back({ dir, 0.0, rows[k].one_way });
             hit = (int)lines.size() - 1;
         }
         const double w = rows[k].limit * m;
@@ -203,14 +226,16 @@ inline glm::dvec3 actuatorSolve(const Rows &rows,
         for(size_t j = 0; j < lines.size(); j++) {
             /* This line's best contribution given every OTHER line's: the residual
                it is free to answer, projected on its own direction, clamped to its
-               capacity. */
+               capacity -- and to its SENSE, which for a bell is [0, capacity]: it can
+               wind up the turn, never brake one the other way (#595). */
             glm::dvec3 rest(0.0);
             for(size_t i = 0; i < lines.size(); i++) {
                 if(i != j) { rest += q[i] * lines[i].dir; }
             }
             const double want = glm::dot(demand - rest, lines[j].dir);
-            const double take = (std::fabs(want) <= lines[j].capacity)
-                              ? want : (want > 0.0 ? lines[j].capacity : -lines[j].capacity);
+            const double hi = lines[j].capacity;
+            const double lo = lines[j].one_way ? 0.0 : -hi;
+            const double take = (want > hi) ? hi : (want < lo ? lo : want);
             moved = std::fmax(moved, std::fabs(take - q[j]));
             q[j] = take;
         }

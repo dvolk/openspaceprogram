@@ -1709,6 +1709,127 @@ static void test_a_fin_row_is_spent_and_hands_its_ask_to_the_air() {
     delete body;
 }
 
+/* A BELL IS AN ACTUATOR ROW TOO (#595). The ring has levers, so it belongs in the same
+   allocator as the drums, the gimbals and the fins. Before this the hull below had NO
+   attitude row at all: the #428 ring spends itself against lastRcsCmd at the mixer's
+   top and can never answer a turn, which is why SAS on an RCS-only skiff reported
+   "no authority at all" and held alpha 0.000 forever (the ticket's repro).
+   The fixture is the ticket's shape shrunk to hand arithmetic: a pod with a 100 N yaw
+   pair and a dry ballast block 2.0 m below it. The masses are arguments because the
+   ARM is what prices a bell, and the pod carries its own 1 kg of hydrazine (as a real
+   thruster pod does; propellant has mass, so a tank below the COM would move the arm
+   and make the arithmetic a number nobody can do in their head). So pod 99 kg dry +
+   1 kg fuel over 100 kg of ballast puts the COM 1.0 m under the pod, and 299 + 1 over
+   100 puts it 0.5 m under. A +/-X bell pair levers 100 N m about Y in the first hull
+   and 50 N m in the second -- and the second hull is the pin the first cannot give,
+   because an arm of exactly 1.0 m makes thrust and thrust x arm the same number. (The
+   first build of #595 normalized the lever and priced a bell at its thrust: measured
+   on rcs_test as 11x the torque the ring could actually deliver, and it limit-cycled
+   the SAS loop into a tumble.) */
+struct Ring {
+    RcsProbe *v;
+    Part *pod;
+    Part *tank;
+};
+
+static Ring mkRing(std::deque<PartDef> &defs, double podMass, double tankMass,
+                   double hydrazine = 1.0) {
+    Ring t;
+    t.v = new RcsProbe;                         // rcsPlan() is the seam the rows read
+    t.v->name = "ring";
+    t.pod = mkPart(defs, "pod", podMass, 1.0, 0.0, 0.0);   // no wheel, no gimbal, no fin
+    PartDef &podDef = defs.back();              // Part::def is const; the def lives here
+    podDef.rcs_thrust = 100.0;
+    podDef.rcs_nozzles = { glm::dvec3(1.0, 0.0, 0.0), glm::dvec3(-1.0, 0.0, 0.0) };
+    /* The pod carries its own hydrazine, as a real thruster pod does, and the part
+       below it is dry ballast. That is not just tidy: propellant has mass, so a tank
+       below the COM would move the COM and make the arm a number nobody can do in
+       their head. With the fuel above and the ballast below, the arm is exactly
+       tankMass x 2.0 / (podMass + tankMass) metres. */
+    podDef.capacity[(int)ResourceType::Hydrazine] = hydrazine;
+    t.v->setRoot(t.pod);
+    t.tank = mkPart(defs, "ballast", tankMass, 1.0, 0.0, 0.0);
+    t.v->attachDown(t.tank);
+    t.v->init();
+    t.v->placeShip(glm::dvec3(0.0, 0.0, 0.0), glm::dmat3(1.0));
+    return t;
+}
+
+static void test_a_ring_of_bells_is_a_row_of_actuators() {
+    printf("== #595: the RCS ring is a row of attitude actuators ==\n");
+    std::deque<PartDef> defs;
+    const Ring ring = mkRing(defs, 99.0, 100.0);   // 100 kg wet over 100 kg: 1.0 m arm
+    Part *pod = ring.pod;                          // the pod is the tank
+    RcsProbe *v = ring.v;
+
+    const glm::dvec3 x(1.0, 0.0, 0.0), y(0.0, 1.0, 0.0), z(0.0, 0.0, 1.0);
+    const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
+    CHECK_TRUE(a.wheels.empty() && a.tvcTorque == 0.0 && !a.hasSurfaces,
+               "nothing else on this hull could turn it");
+    CHECK_TRUE(a.hasRcs && a.rcs.size() == 2, "the ring is two rows, one per bell");
+    CHECK_NEAR(0.0, v->attitudeTorqueAbout(a, x), 0.0, "a yaw pair buys nothing about X");
+    CHECK_NEAR(100.0, v->attitudeTorqueAbout(a, y), 1e-9,
+               "one bell at 100 N on a 1.0 m arm is the whole authority about +Y");
+    CHECK_NEAR(100.0, v->attitudeTorqueAbout(a, -y), 1e-9,
+               "the opposed bell covers -Y -- one-way rows still cover both senses in a pair");
+    CHECK_NEAR(0.0, v->attitudeTorqueAbout(a, z), 0.0, "and nothing about Z");
+
+    /* THE ARM PRICES THE BELL, not its thrust. Same ring, same 2.0 m spacing, a pod
+       three times the tank's mass: the COM moves to 0.5 m under the pod, so every bell
+       levers half as much. */
+    std::deque<PartDef> defs2;
+    const Ring shortArm = mkRing(defs2, 299.0, 100.0);   // 300 kg wet over 100 kg: 0.5 m
+    const Vehicle::AttitudeAuthority half = shortArm.v->attitudeAuthority();
+    CHECK_NEAR(50.0, shortArm.v->attitudeTorqueAbout(half, y), 1e-9,
+               "a 0.5 m arm levers 50 N m, not the 100 N the bell pushes with");
+    destroyShip(shortArm.v);
+
+    /* The switch (#425 D-2's pattern, per-vessel and saved). Off means the rows are
+       gone from the live view; the hardware view still quotes them, because that is
+       what the Systems row promises before the player flips it. */
+    v->rcs_attitude_enabled = false;
+    const Vehicle::AttitudeAuthority off = v->attitudeAuthority();
+    CHECK_TRUE(off.hasRcs, "the hull still HAS the ring -- the switch is about using it");
+    CHECK_TRUE(off.rcs.empty(), "switched off, no rows");
+    CHECK_NEAR(0.0, v->attitudeTorqueAbout(off, y), 0.0, "so it cannot turn the hull");
+    const Vehicle::AttitudeAuthority hw = v->attitudeAuthorityHardware();
+    CHECK_TRUE(hw.rcs.size() == 2, "the hardware view still counts the bells");
+    CHECK_NEAR(100.0, v->attitudeTorqueAbout(hw, y), 1e-9,
+               "at the full rating, not what translation left (#649's switch row quotes this)");
+    v->rcs_attitude_enabled = true;
+
+    /* A dry tank means no rows: the budget and the laws must not promise a turn the
+       propellant cannot pay for. */
+    pod->resources.current[(int)ResourceType::Hydrazine] = 0.0;
+    const Vehicle::AttitudeAuthority dry = v->attitudeAuthority();
+    CHECK_TRUE(dry.hasRcs, "a dry hull still has thrusters");
+    CHECK_TRUE(dry.rcs.empty() && v->attitudeTorqueAbout(dry, y) == 0.0,
+               "but they are not actuators while the tank is empty");
+    pod->resources.current[(int)ResourceType::Hydrazine] = 1.0;
+
+    /* THE PRIORITY, which is the whole design: translation spends the bells first and
+       the rows carry what is LEFT. Arm a +X push and plan -- the ring's full-authority
+       demand is 200 N along X, which only the -X bell can serve, so that one is spent
+       and the other stays available for turning. */
+    v->armRcs(x);
+    v->rcsPlan();
+    const Vehicle::AttitudeAuthority spent = v->attitudeAuthority();
+    CHECK_TRUE(spent.rcs.size() == 2, "both rows are still there to be read");
+    CHECK_TRUE(spent.rcs[0].one_way, "a bell is a one-way row: it pushes along its axis");
+    double left = 0.0;
+    for(size_t i = 0; i < spent.rcs.size(); i++) {
+        printf("   bell %zu: %.9f of its rating left for attitude\n", i, spent.rcs[i].limit);
+        left += spent.rcs[i].limit;
+    }
+    /* The allocator's c is a solved column, so this is 1 +- the solver's own slack --
+       what the pin is for is that a spent bell leaves ~0 and a free one leaves ~1. */
+    CHECK_NEAR(1.0, left, 1e-6,
+               "one bell spent pushing the hull +X leaves the other one for attitude");
+    CHECK_NEAR(100.0, v->attitudeTorqueAbout(spent, -y), 1e-9,
+               "and the unspent bell still levers a whole turn -- the ring does both, in order");
+    destroyShip(v);
+}
+
 /* THE AIM IS MEASURED, NOT RE-DERIVED (#400 stage F2). Vehicle::pointingTo() answers
    "what does aiming at this direction mean for this hull" once: the error, the axis
    that closes it, the inertia about that axis and the authority-limited rate. Before
@@ -2078,6 +2199,7 @@ int main() {
     test_the_armed_rcs_demand_is_a_direction();
     test_a_jet_engine_earns_its_gimbal_rating_only_in_air();
     test_a_fin_row_is_spent_and_hands_its_ask_to_the_air();
+    test_a_ring_of_bells_is_a_row_of_actuators();
     test_the_aim_is_measured_once();
     test_the_aim_keeps_its_doors_shut();
     test_an_antipodal_ask_steps_off_a_dead_line();

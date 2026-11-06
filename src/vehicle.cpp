@@ -1006,6 +1006,12 @@ void Vehicle::placeShipAtCom(const glm::dvec3 &com, const glm::dmat3 &sRot) {
 }
 
 void Vehicle::rebuildCompound() {
+    /* The bell list is geometry (#595): a decoupler that leaves a pod behind, an
+       undock, a part added in the VAB -- any of them makes the cached enumeration
+       wrong, and a stale list would price pointing with bells that are no longer on
+       this hull. rcsPlan() rebuilds it every substep anyway; this is the door for the
+       frames in between, when a window asks a railed hull what it is worth. */
+    rcsNozFresh_ = false;
     /* `principal` moves when the masses do, and the body's transform IS the COM
        transform: leaving it alone across a rebuild shifts the ship and leaves it
        spinning about the wrong point. */
@@ -2296,8 +2302,13 @@ void Vehicle::steering_log(double time) {
        enable switches ignored), which is the only way a switch can say what flipping
        it gives up. surfaces carries the same distinction (#658: a trimmed plate
        still flying the hull is what the live column hides).
+       rcs/rcs_hw carries it a third time since #595, and the live column is the one
+       that tells a diagnosis apart: rcs_hw says what the fitted ring could lever,
+       rcs= says what it can lever NOW -- 0 with the switch shut, 0 with the tank dry,
+       and reduced while the translation keys are spending the same bells (the priority
+       is stored in the row's limit, so it shows here rather than hiding in the mixer).
        asked/spent_all are the last actuated substep's record (#599). spent_all is
-       the VECTOR SUM of the three channels before it is split, so a per-axis zero
+       the VECTOR SUM of the four channels before it is split, so a per-axis zero
        can be two channels cancelling rather than nothing spent -- the windows print
        each channel on its own row and do not have this ambiguity; the column is
        named _all to say so. The flags carry the rest of the diagnosis: a 0/0/0 with
@@ -2312,17 +2323,21 @@ void Vehicle::steering_log(double time) {
     const std::array<double, 3> sh = actuatorRpY(hw.surfaces, ax);
     const AttitudeDelivery &del = attDel_;
     const std::array<double, 3> asked = torqueRpY(del.asked, ax);
-    const std::array<double, 3> spent = torqueRpY(del.wheels + del.tvc + del.surfaces, ax);
+    const std::array<double, 3> spent = torqueRpY(del.wheels + del.tvc + del.surfaces + del.rcs, ax);
+    const std::array<double, 3> r = actuatorRpY(live.rcs, ax);
+    const std::array<double, 3> rh = actuatorRpY(hw.rcs, ax);
     printf("[steerlog] t=%.1fs ship=\"%s\" powered=%d wheels_on=%d fins_on=%d "
            "fins_fitted=%d "
            "wheels=%.0f/%.0f/%.0f wheels_hw=%.0f/%.0f/%.0f "
            "surfaces=%.0f/%.0f/%.0f surfaces_hw=%.0f/%.0f/%.0f "
+           "rcs=%.0f/%.0f/%.0f rcs_hw=%.0f/%.0f/%.0f rcs_on=%d "
            "tvc_rating=%.0f tvc_rating_full=%.0f asked=%.0f/%.0f/%.0f "
            "spent_all=%.0f/%.0f/%.0f\n",
            time, displayName().c_str(), (int)powered_, (int)wheels_enabled,
            (int)surfaces_enabled, (int)hw.hasSurfaces,
            w[0], w[1], w[2], wh[0], wh[1], wh[2],
            s[0], s[1], s[2], sh[0], sh[1], sh[2],
+           r[0], r[1], r[2], rh[0], rh[1], rh[2], (int)rcs_attitude_enabled,
            live.tvcTorque, live.tvcTorqueAvailable,
            asked[0], asked[1], asked[2], spent[0], spent[1], spent[2]);
     fflush(stdout);
@@ -3529,6 +3544,11 @@ void Vehicle::applyControlForces(double h) {
     /* The force overlay's per-substep clear lives in the tick.cpp substep
        loop (it feeds the aero + control appliers together); this override
        chain cannot skip it. */
+    /* The RCS ring plans FIRST (#595): the translation the keys asked for owns the
+       bells, and the capability walk in applyRotationForce prices pointing with
+       whatever that left. Same reason rotation runs before thrust -- the per-substep
+       order of these calls IS the priority order, not an accident of history. */
+    rcsPlan();
     /* Rotation runs BEFORE thrust so the substep's TVC aim (tvcLat_, armed by the
        one allocator call) is set before applyThrustForce steps the actuators and
        pushes along them -- same-substep, no lag. */
@@ -3561,6 +3581,12 @@ void Vehicle::applyRotationForce(double h) {
        gets an ask, whoever does not gets the plates back to neutral. actuateAttitude
        is not called at all when the demand is zero, so this is where the reset lives. */
     surfaceLat_.clear();
+    /* And the ring's attitude ask, same clear-and-assign discipline (#595): whoever
+       asks gets an ask, whoever does not gets no bell fired for pointing. Cleared
+       here rather than in applyRcsForce because a substep with no attitude demand
+       never reaches actuateAttitude at all, and an ask left over from the substep
+       that did would drink hydrazine to hold a turn nobody is asking for. */
+    rcsAttFrac.clear();
     /* And for the delivery record (#599): a substep nobody asked for shows 0 N m, not
        the last substep that was. The #648 EC bill clears here for the same reason, and
        it matters rather than being tidy: actuateAttitude is not called at all when the
@@ -3706,23 +3732,11 @@ static std::string nozzleTag(const glm::dvec3 &d) {
     return std::string(comp[ax] >= 0.0 ? "+" : "-") + letters[ax];
 }
 
-void Vehicle::applyRcsForce(double h) {
-    // Reset the log: a substep with no translation demand reports none.
-    lastRcsNozzles.clear();
-    lastRcsCmd = glm::dvec3(0.0);
-    lastRcsAch = glm::dvec3(0.0);
-    // Likewise the plume slots: only nozzles FIRING this substep stay lit.
-    for(Part *p : parts) {
-        if(!p->isRcs()) { continue; }
-        for(double &f : p->rcsFired) { f = 0.0; }
-    }
-    if(glm::length2(rcsDir) < 1e-12) { return; }
-    const double Fmax = maxRcsThrust();
-    const glm::dvec3 dirW = rcsWorldDir();
-    if(Fmax <= 0.0 || glm::length2(dirW) < 1e-12) { return; }
-    const glm::dvec3 Fdem = dirW * Fmax;  // full authority on the key, as before
-    lastRcsCmd = Fdem;
-
+/* THE BELL LIST, from the live geometry (#428's model, unchanged by #595). Split out
+   because two demands now need it in one substep and it must be walked once: the
+   translation solve (rcsPlan) and the capability walk (attitudeAuthorityRows, which
+   reuses what is already fresh -- see rcsNozFresh_). */
+void Vehicle::enumerateRcsNozzles() {
     /* Nozzle model (#428): authored dirs are the pods' BELL directions
        (exhaust rays, facing out of the exposed faces) in the part's LOCAL
        frame; the ship is pushed OPPOSITE a bell. A pod without dirs is the
@@ -3758,15 +3772,77 @@ void Vehicle::applyRcsForce(double h) {
             addNozzle(p->def->rcsNozzleDir(ni), ni);
         }
     }
-    if(noz.empty()) { return; }
+    rcsNozFresh_ = true;
+}
 
-    rcsAllocateInto(noz, Fdem, rcsScratch);
+/* THE RING, PART ONE: spend the bells on the TRANSLATION the keys asked for, and
+   record how much of each bell that took (#595). This runs BEFORE the attitude walk
+   on purpose -- that order IS the priority the ticket asks for: the player's
+   translation demand owns the ring, and AttitudeAuthority::rcs rows are built from
+   the capacity this left, so pointing the hull can never cost the player a maneuver
+   they asked for with their hands. rcsScratch.c is per-nozzle usage as a fraction of
+   rating, and it stays live until applyRcsForce spends it in the same substep. */
+void Vehicle::rcsPlan() {
+    // Reset the demand column: a substep with no translation key demands none.
+    lastRcsCmd = glm::dvec3(0.0);
+    enumerateRcsNozzles();
+    const size_t N = rcsNoz.size();
+    if(N == 0) { return; }
+    if(glm::length2(rcsDir) < 1e-12) { rcsScratch.c.assign(N, 0.0); return; }
+    const glm::dvec3 dirW = rcsWorldDir();
+    const double Fmax = maxRcsThrust();
+    if(Fmax <= 0.0 || glm::length2(dirW) < 1e-12) { rcsScratch.c.assign(N, 0.0); return; }
+    const glm::dvec3 Fdem = dirW * Fmax;  // full authority on the key, as before
+    lastRcsCmd = Fdem;
+    rcsAllocateInto(rcsNoz, Fdem, rcsScratch);
+}
+
+/* THE RING, PART TWO: fire what BOTH demands asked for -- the translation fraction
+   rcsPlan settled and the attitude fraction actuateAttitude asked for (#595) -- in
+   ONE fuel draw and ONE force pass. Summing here rather than solving both demands
+   together is what keeps translation first: an attitude ask can never buy back a
+   bell the keys are already using, because the rows it came from were priced with
+   that bell already spent. */
+void Vehicle::applyRcsForce(double h) {
+    // Reset the log: a substep with no translation demand reports none.
+    lastRcsNozzles.clear();
+    lastRcsAch = glm::dvec3(0.0);
+    // Likewise the plume slots: only nozzles FIRING this substep stay lit.
+    for(Part *p : parts) {
+        if(!p->isRcs()) { continue; }
+        for(double &f : p->rcsFired) { f = 0.0; }
+    }
+    std::vector<RcsNozzle> &noz = rcsNoz;
+    if(noz.empty()) { return; }
+    /* Asked again here rather than reused from the enumeration: the COM is what Bullet
+       arms every force with, and this is the half that applies them. */
+    const glm::dvec3 com = comPos();
+    /* Same substep as rcsPlan, which sized c to the bells it just enumerated (#595).
+       If this ever fires, a caller moved the applier off the plan and the ring would
+       spend last substep's fractions -- which is a bug, not a fallback. */
+    assert(rcsScratch.c.size() == noz.size());
     const std::vector<double> &c = rcsScratch.c;
 
+    /* The attitude ask gets what the translation LEFT, never more (#595). The rows it
+       came from were priced with that bell already spent, so this is a no-op today;
+       clamping rather than trusting it is what catches a solver that overruns a limit,
+       which is #641's open question stated in the other direction. A clamped ask is an
+       honest shortfall -- the hull turns less than the law asked -- never free torque. */
+    if(rcsAttFrac.size() != noz.size()) { rcsAttFrac.resize(noz.size(), 0.0); }
+    for(size_t i = 0; i < noz.size(); i++) {
+        if(!(rcsAttFrac[i] > 0.0)) { rcsAttFrac[i] = 0.0; continue; }
+        const double room = 1.0 - c[i];
+        if(rcsAttFrac[i] > room) {
+            assert(rcsAttFrac[i] <= room + 1e-9);
+            rcsAttFrac[i] = (room > 0.0) ? room : 0.0;
+        }
+    }
+
     /* Fuel: hydrazine mono, flow from the FIRING thrust (drain-or-nothing,
-       as the engines do it). */
+       as the engines do it). BOTH demands pay into one draw: a bell that is
+       pushing and turning at once drinks once (#595). */
     double fired = 0.0;
-    for(size_t i = 0; i < noz.size(); i++) { fired += c[i] * noz[i].thrust; }
+    for(size_t i = 0; i < noz.size(); i++) { fired += (c[i] + rcsAttFrac[i]) * noz[i].thrust; }
     if(fired <= 0.0) { return; }
     // flow this substep (kg) = thrust / (Isp * g0) * h
     const double flow = (fired / (kRcsIsp * 9.81)) * h;
@@ -3777,16 +3853,34 @@ void Vehicle::applyRcsForce(double h) {
 
     /* Force AT THE POD (rel COM), not the COM: an off-center pod translates
        AND spins the ship. The allocator cancels spin where it can; the rest
-       is the honest physics #428 exists to deliver. */
+       is the honest physics #428 exists to deliver.
+       And since #595 the ATTITUDE ask arrives here as a force too, which is the
+       right door: a bell fired to turn the hull also pushes it, and that side
+       force is not a modelling leak but what a single bell does. Rings that want
+       a clean couple put the opposing bell on the other face, and the ring's
+       geometry -- not a subtraction in the mixer -- is what cancels the pair. */
     std::vector<glm::dvec3> &fpart = rcsFpart;  // member: reused, see rcsNoz above
+    const std::vector<size_t> &nozPart = rcsNozPart;   // nozzle -> parts index
+    const std::vector<size_t> &nozLocal = rcsNozLocal; // nozzle -> plume slot
     fpart.assign(parts.size(), glm::dvec3(0.0));
+    glm::dvec3 rcsTurn(0.0);   // the ATTITUDE share of what these bells just did
     for(size_t i = 0; i < noz.size(); i++) {
-        if(c[i] <= 0.0) { continue; }
-        const double N = c[i] * noz[i].thrust;
+        const double frac = c[i] + rcsAttFrac[i];
+        if(frac <= 0.0) { continue; }
+        const double N = frac * noz[i].thrust;
         fpart[nozPart[i]] += noz[i].dir * N;
         parts[nozPart[i]]->rcsFired[nozLocal[i]] = N;  // the plume (render.cpp)
         lastRcsNozzles.push_back({ parts[nozPart[i]]->id, noz[i].tag, N });
+        if(rcsAttFrac[i] > 0.0) {
+            /* #599's record, billed where the torque is actually spent: this bell's
+               share of its own firing, through its own arm. The translation share is
+               NOT recorded here -- lastRcsAch says what the keys bought, and a demand
+               the player never made should not be blamed for the spin an off-centre
+               pod costs them. */
+            rcsTurn += glm::cross(noz[i].arm, noz[i].dir) * (rcsAttFrac[i] * noz[i].thrust);
+        }
     }
+    if(glm::length2(rcsTurn) > 0.0) { attDel_.rcs = rcsTurn; }
     glm::dvec3 Fach(0.0);
     for(size_t pi = 0; pi < parts.size(); pi++) {
         if(glm::length2(fpart[pi]) <= 0.0) { continue; }
@@ -3822,7 +3916,10 @@ void Vehicle::slew_log(double time) {
        pitch and one that levers yaw sum into one magnitude. */
     const AttitudeDelivery del = attitudeDelivery();
     const double tau_ask = glm::length(del.asked);
-    const double tau_spent = glm::length(del.wheels + del.tvc + del.surfaces);
+    /* Four channels now, since #595 grew the ring an attitude row: a law pointing a
+       coasting pod on thrusters spends hydrazine and shows up here as tau_spent with
+       tau_ask behind it. Before it, the same hull read as spending nothing forever. */
+    const double tau_spent = glm::length(del.wheels + del.tvc + del.surfaces + del.rcs);
     if(slew == SlewKillRot) {
         const glm::dvec3 w = hullAngVel();
         printf("[slew] t=%.3f mode=killrot |w|=%.4f rad/s "
@@ -4477,6 +4574,7 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
        should hold. */
     nv->wheels_enabled = wheels_enabled;
     nv->surfaces_enabled = surfaces_enabled;
+    nv->rcs_attitude_enabled = rcs_attitude_enabled;   // #595's door travels too
 
     /* Keep the original order (parent before child): the save format resolves parents
        by reference. Rebase the poses into S'. */
@@ -5156,8 +5254,10 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
        reserve that keeps this walk from malloc-per-push costs nothing extra (the
        heaptrack count quoted above the wheel rows). */
     size_t surfaceParts = 0;
+    size_t rcsPods = 0;
     for(const Part *p : parts) {
         if(p->def->isControlSurface()) { surfaceParts++; }
+        if(p->isRcs()) { rcsPods++; }
         if(p->def->gimbal_max <= 0.0) { continue; }
         const double armed = p->armedThrust;
         const bool lit = p->isThruster() && p->stage >= as;
@@ -5259,6 +5359,61 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
             }
         }
     }
+    /* #595: THE RING AS ACTUATOR ROWS -- the fourth actuator and the only one that
+       works in vacuum with no burn. One row per BELL, index-parallel to rcsNoz so the
+       setpoint actuateAttitude gets back can find its nozzle again (vehicle.h explains
+       why a dead bell keeps its slot instead of being dropped: the index IS the link).
+       A row's axis is that bell's own torque direction, arm x dir, SCALED by its
+       rating, so the setpoint comes back as a FRACTION of that bell -- the same trick
+       a fin row uses to make its setpoint radians. The rows are ONE-WAY: a bell winds
+       a turn up and cannot brake one the other way, which is why a ring fitted
+       opposite the ask credits nothing about it (actuators.h).
+       `limit` is the fraction of the bell the TRANSLATION solve left unspent, because
+       rcsPlan() already spent it: that is #595's "a PRIORITY not a sum" stored as
+       data rather than argued in the mixer. Hardware mode takes the whole rating --
+       a switch row has to say what the ring is WORTH, not what the key held this
+       substep happened to leave (the same reason tvcTorqueAvailable ignores throttle).
+       The doors are the same shape as the other actuators' (#418's lesson, #649's
+       switches): no hydrazine in reach of the pod, no rows, because a law that plans
+       against an empty tank plans a maneuver no bell will do -- and the player reads
+       alpha=0.000 beside a ship that looked steerable. */
+    a.hasRcs = rcsPods > 0;   // the fitting, whatever the tank and the switch decide
+    if((!switchesApply || rcs_attitude_enabled) && rcsPods > 0) {
+        if(!rcsNozFresh_) { enumerateRcsNozzles(); }
+        Part *pod = firstRcsPart();
+        if(pod != nullptr && availableResourceMass(ResourceType::Hydrazine, pod) > 0.0) {
+            a.rcs.reserve(rcsNoz.size());
+            for(size_t i = 0; i < rcsNoz.size(); i++) {
+                const RcsNozzle &nz = rcsNoz[i];
+                /* arm x dir, and dir is a UNIT vector, so |lever| is the PERPENDICULAR
+                   arm in metres: times the bell's thrust that is the N m a full bell
+                   actually levers. Do NOT normalize this and re-scale by thrust -- that
+                   prices a bell at its thrust and throws the arm away, which is what the
+                   first run of #595 measured on rcs_test: a 0.185 m pod arm gave
+                   alpha_full 5.9 rad/s where the ring delivers 1.1, and the slew law
+                   planned a maneuver the bells could not do, so SAS limit-cycled the hull
+                   out to 2.6 rad of error and drank 2.7 kg of hydrazine doing it. The
+                   row and applyRcsForce's delivery record now share one expression
+                   (cross(arm,dir) * thrust), which is what keeps the budget and the
+                   spend from being two numbers again (#599's lesson). */
+                const glm::dvec3 lever = glm::cross(nz.arm, nz.dir) * nz.thrust;
+                /* A bell through the COM levers nothing, and a poisoned geometry
+                   (NaN arm or dir) fails the same way: !(x > 0.0) is the guard that
+                   makes a NaN buy no authority rather than all of it. */
+                if(!(glm::length2(lever) > 0.0) || !(nz.thrust > 0.0)) {
+                    a.rcs.push_back({ glm::dvec3(0.0), 0.0, true });
+                    continue;
+                }
+                const double left = switchesApply
+                    ? 1.0 - (i < rcsScratch.c.size() ? rcsScratch.c[i] : 0.0) : 1.0;
+                if(!(left > 0.0)) {
+                    a.rcs.push_back({ glm::dvec3(0.0), 0.0, true });
+                    continue;
+                }
+                a.rcs.push_back({ lever, left, true });
+            }
+        }
+    }
     return a;
 }
 
@@ -5267,10 +5422,15 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
    differs between them -- what the ARMED engines lever this substep, or what the
    IGNITED stage could lever at full throttle (#608). Keeping one copy is what stops
    the budget a law plans against and the torque the actuators deliver from
-   disagreeing (#576, #426). */
+   disagreeing (#576, #426).
+   The RCS rows (#595) ride the same sum, and their ONE-WAY-ness is what makes that
+   safe rather than generous: actuatorTorqueAbout credits a bell only where it can
+   actually push, so a ring cannot be credited with a turn it would have to blow the
+   wrong way to make. */
 template<class Rows>
 static double torqueAboutRows(const Rows &wheels,
                               const Rows &surfaces,
+                              const Rows &rcs,
                               const glm::dvec3 &stackAxis, double tvc,
                               const glm::dvec3 &axis) {
     const double ax2 = glm::dot(axis, axis);
@@ -5285,19 +5445,24 @@ static double torqueAboutRows(const Rows &wheels,
     /* The wheels' and the surfaces' halves ask actuators.h the same question
        actuateAttitude will answer with the same rows, so a hull with no wheel at all
        still has attitude authority in air (it had none to name before #426), and a
-       latched law can fly a plane. */
+       latched law can fly a plane. The ring's half is the same promise for a hull with
+       no wheel and no burn (#595) -- and note the ORDER differs: the budget credits
+       what the ring can do, while actuateAttitude only spends it on what the drums and
+       plates left undone. A budget is an upper bound, never a routing (actuators.h). */
     return actuatorTorqueAbout(wheels, axis)
-         + actuatorTorqueAbout(surfaces, axis) + tvc * b;
+         + actuatorTorqueAbout(surfaces, axis)
+         + actuatorTorqueAbout(rcs, axis) + tvc * b;
 }
 
 double Vehicle::attitudeTorqueAbout(const AttitudeAuthority &a,
                                     const glm::dvec3 &axis) const {
-    return torqueAboutRows(a.wheels, a.surfaces, a.stackAxis, a.tvcTorque, axis);
+    return torqueAboutRows(a.wheels, a.surfaces, a.rcs, a.stackAxis, a.tvcTorque, axis);
 }
 
 double Vehicle::availableTurnTorque(const AttitudeAuthority &a,
                                     const glm::dvec3 &axis) const {
-    return torqueAboutRows(a.wheels, a.surfaces, a.stackAxis, a.tvcTorqueAvailable, axis);
+    return torqueAboutRows(a.wheels, a.surfaces, a.rcs, a.stackAxis,
+                           a.tvcTorqueAvailable, axis);
 }
 
 glm::dmat3 Vehicle::getInertia() {
@@ -5467,6 +5632,45 @@ void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
        here -- they are billed by the air and by the thrust pass, which is where the
        #599 record reads them. */
     attDel_.wheels = mechanical;
+    /* RCS LAST, deliberately (#595). The gimbals had the transverse demand first
+       (tvcSplit above), the drums and the plates got what they could carry (the one
+       solve), and the ring spends the SHORTFALL -- so a hull that can turn for free
+       turns for free, and hydrazine pays only for a line nothing else covers. That is
+       the ticket's "a PRIORITY not a sum", and it is the same shape as tvcSplit
+       handing its remainder to the wheels: a demand is passed DOWN the chain, never
+       split three ways by preference, and never solved twice against the same row
+       (#420's double-bill). A second actuatorSolve is safe here precisely because the
+       row sets are DISJOINT: this one sees bells only.
+       No ApplyTorque: a bell's torque reaches the hull as the force that bell throws
+       at its own pod (applyRcsForce, same substep), exactly as a fin's share reaches
+       it through the air. So the side force a single bell costs the hull travels with
+       it, honestly -- a ring that wants a clean couple puts the opposing bell on the
+       other face, and the geometry cancels the pair rather than a subtraction here.
+       The rows are one-way, so a shortfall the ring cannot answer buys nothing rather
+       than a pretend torque, and the law feels the difference next substep. */
+    if(!a.rcs.empty()) {
+        const glm::dvec3 shortfall = tauW - delivered;
+        /* Only worth a solve when there IS a shortfall. actuatorSolve's fixed sweep
+           count leaves a hair of cross-track error (#641 says how much), and without
+           this gate a law that has already ARRIVED would dribble hydrazine forever
+           chasing the solver's own residue. */
+        if(glm::length2(shortfall) > 1e-12 * (glm::length2(tauW) + 1.0)) {
+            std::vector<double> rset;
+            const glm::dvec3 turn = actuatorSolve(a.rcs, shortfall, rset);
+            if(glm::length2(turn) > 0.0) {
+                rcsAttFrac.assign(a.rcs.size(), 0.0);
+                for(size_t i = 0; i < a.rcs.size() && i < rset.size(); i++) {
+                    /* The setpoint is a FRACTION of that bell's rating, because the
+                       row's axis carries the rating (see AttitudeAuthority::rcs). The
+                       solver bounds it by the row's limit -- the fraction the
+                       translation solve left -- so applyRcsForce adds it to that
+                       fraction and stays inside the bell. */
+                    assert(rset[i] <= a.rcs[i].limit * (1.0 + 1e-9));
+                    rcsAttFrac[i] = rset[i];
+                }
+            }
+        }
+    }
 }
 
 /* WHAT AIMING AT `dir` MEANS FOR THIS HULL (#400): the error, the axis that closes it,

@@ -22,6 +22,11 @@
 //                that is the only shape where the coordinate descent does real
 //                work, and where a solver that skipped the residual would bill
 //                the same demand to both drums.
+//                ONE-WAY rows (a thruster bell, #595) are a line WITH A SENSE:
+//                credited only where they can push, clamped to [0, capacity] by
+//                the descent, never grouped with an opposed or two-sided row, and
+//                never handed a negative setpoint -- an over-demand the wrong way
+//                delivers nothing rather than burning the bell against itself.
 //
 // Build & run (from repo root) -- also part of `make test`:
 //   see the test: rule in the Makefile.
@@ -405,6 +410,94 @@ static void test_a_drum_and_a_fin_on_one_line_share_it() {
     CHECK_NEAR(std::fabs(sp[1]), 100.0, 1e-12, "drum at its rating");
 }
 
+/* A BELL IS A LINE WITH A SENSE (#595). A reaction wheel winds either way, so its
+   row's limit bounds a demand in both senses; a thruster bell blows gas out one
+   direction and cannot suck, so the same row shape has to carry a SENSE. The
+   numbers below are the row shape Vehicle builds for a nozzle: axis = the bell's own
+   torque direction (arm x dir) scaled by its rating, limit = the fraction of that
+   rating still unspent, so a setpoint is a fraction of the bell (#595's "one-way
+   torque rows cross(arm, dir) per bell").
+   What this pins that a two-sided row cannot: an opposed pair of bells is worth ONE
+   bell about either axis (a drum pair would be worth two), a demand the wrong way
+   delivers NOTHING rather than a negative firing, and a bell is never asked to burn
+   propellant against itself -- which is #429's wasted trim, in row shape. */
+static void test_a_bell_is_a_line_with_a_sense() {
+    printf("== a bell levers one way (#595) ==\n");
+    const std::vector<ActuatorRow> bell = { { glm::dvec3(0.0, 0.0, 100.0), 1.0, true } };
+    CHECK_NEAR(actuatorTorqueAbout(bell, glm::dvec3(0, 0, 1)), 100.0, 1e-9,
+               "a bell is worth its rating about the axis it levers");
+    CHECK_NEAR(actuatorTorqueAbout(bell, glm::dvec3(0, 0, -1)), 0.0, 1e-12,
+               "...and nothing about the opposed axis: it cannot blow the other way");
+    const double c45 = std::sqrt(0.5);
+    CHECK_NEAR(actuatorTorqueAbout(bell, glm::dvec3(0.0, 1.0, 1.0)), 100.0 * c45, 1e-9,
+               "oblique, it brings its own cos -- and only where that cos is positive");
+    CHECK_NEAR(actuatorTorqueAbout(bell, glm::dvec3(0.0, -1.0, -1.0)), 0.0, 1e-12,
+               "past 90 deg off, a bell buys nothing (a drum on that line would buy 71)");
+    std::vector<double> sp;
+    const glm::dvec3 up = actuatorSolve(bell, glm::dvec3(0.0, 0.0, 60.0), sp);
+    CHECK_NEAR(glm::length(up), 60.0, 1e-9, "a demand the bell can answer arrives");
+    CHECK_NEAR(sp[0], 0.6, 1e-12, "at 60% of that bell's rating");
+    const glm::dvec3 down = actuatorSolve(bell, glm::dvec3(0.0, 0.0, -60.0), sp);
+    CHECK_NEAR(glm::length(down), 0.0, 1e-12,
+               "the same bell asked the other way delivers nothing, not a backwards firing");
+    CHECK_NEAR(sp[0], 0.0, 1e-12, "and the setpoint never goes negative");
+    CHECK_TRUE(withinLimits(bell, sp), "a one-way setpoint stays inside its limit");
+
+    /* Two bells on opposed faces: the couple a player actually fits. They are TWO
+       lines, not one line of twice the rating -- grouping them by |cos| would let the
+       descent answer a +Z demand by firing BOTH, which spends hydrazine to cancel
+       spin nobody asked for (#429's shape, arriving through the solver instead of
+       through rcs.h's trim weights). */
+    const std::vector<ActuatorRow> couple = {
+        { glm::dvec3(0.0, 0.0, 100.0), 1.0, true },    // bell A levers +Z
+        { glm::dvec3(0.0, 0.0, -100.0), 1.0, true },   // bell B levers -Z
+    };
+    CHECK_NEAR(actuatorTorqueAbout(couple, glm::dvec3(0, 0, 1)), 100.0, 1e-9,
+               "an opposed pair is worth one bell about either axis, not two");
+    CHECK_NEAR(actuatorTorqueAbout(couple, glm::dvec3(0, 0, -1)), 100.0, 1e-9,
+               "...and the same one bell the other way, from the OTHER bell");
+    const glm::dvec3 got = actuatorSolve(couple, glm::dvec3(0.0, 0.0, -40.0), sp);
+    CHECK_NEAR(glm::length(got), 40.0, 1e-9, "the couple answers a -Z demand");
+    CHECK_NEAR(sp[0], 0.0, 1e-12, "the bell that would fight it stays SHUT");
+    CHECK_NEAR(sp[1], 0.4, 1e-12, "and the one that answers it fires at 40%");
+    CHECK_NEAR(glm::length(reconstruct(couple, sp) - got), 0.0, 1e-9,
+               "the per-bell fractions add back to the delivered torque");
+
+    /* Two bells the SAME way share one line's capacity pro-rata -- the pair is worth
+       twice, and neither goes past its own rating. */
+    const std::vector<ActuatorRow> sameWay = {
+        { glm::dvec3(0.0, 0.0, 100.0), 1.0, true },
+        { glm::dvec3(0.0, 0.0, 100.0), 1.0, true },
+    };
+    CHECK_NEAR(actuatorTorqueAbout(sameWay, glm::dvec3(0, 0, 1)), 200.0, 1e-9,
+               "two bells the same way buy the line once each, like two drums");
+    const glm::dvec3 half = actuatorSolve(sameWay, glm::dvec3(0.0, 0.0, 100.0), sp);
+    CHECK_NEAR(glm::length(half), 100.0, 1e-9, "the pair answers half its own line");
+    CHECK_NEAR(sp[0], 0.5, 1e-12, "sharing it pro-rata");
+    CHECK_NEAR(sp[1], 0.5, 1e-12, "both at 50% of rating");
+
+    /* A bell and a drum on one line stay on DIFFERENT lines, because their clamps
+     * differ: about +Z the pair is worth both, about -Z only the drum. Which of them
+     * gets a +Z demand is the descent's to choose (the open #641 question), so the
+     * split is not pinned -- what is pinned is that the bell never runs backwards and
+     * that the pair can still reach the line's whole +Z capacity. */
+    const std::vector<ActuatorRow> mixed = {
+        { glm::dvec3(0.0, 0.0, 100.0), 1.0, true },   // bell: +Z only
+        { glm::dvec3(0.0, 0.0, 1.0), 100.0 },         // drum: either sense, 100 N m
+    };
+    CHECK_NEAR(actuatorTorqueAbout(mixed, glm::dvec3(0, 0, 1)), 200.0, 1e-9,
+               "about the way a bell can push, drum and bell both count");
+    CHECK_NEAR(actuatorTorqueAbout(mixed, glm::dvec3(0, 0, -1)), 100.0, 1e-9,
+               "about the opposed axis, only the drum does");
+    const glm::dvec3 neg = actuatorSolve(mixed, glm::dvec3(0.0, 0.0, -100.0), sp);
+    CHECK_NEAR(glm::length(neg), 100.0, 1e-9, "the drum takes a -Z demand alone");
+    CHECK_NEAR(sp[0], 0.0, 1e-12, "the bell stays shut rather than sucking");
+    CHECK_NEAR(sp[1], -100.0, 1e-12, "the drum winds it at full rating");
+    const glm::dvec3 big = actuatorSolve(mixed, glm::dvec3(0.0, 0.0, 150.0), sp);
+    CHECK_NEAR(glm::length(big), 150.0, 1e-9, "a +Z demand past either one's rating still lands");
+    CHECK_TRUE(withinLimits(mixed, sp), "and neither row goes past its own limit to get there");
+}
+
 int main() {
     test_capability_is_about_an_axis();
     test_the_rpY_split();
@@ -414,6 +507,7 @@ int main() {
     test_effectiveness_rows();
     test_a_fin_ring_splits_and_a_lost_fin_shows();
     test_a_drum_and_a_fin_on_one_line_share_it();
+    test_a_bell_is_a_line_with_a_sense();
     printf("test_actuators: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

@@ -434,6 +434,17 @@ public:
        (a trimmed plate is a build fact, not a steering command).
        Saved with the ship for the same reason as wheels_enabled. */
     bool surfaces_enabled = true;
+    /* The same door on the RCS ring's ATTITUDE half (#595, and the switch #649 could
+       not build until there was an authority figure to print beside it): with it shut
+       the bells are absent from the capability model, so SAS and the stick point the
+       hull on wheels and gimbals only and never drink hydrazine to turn it.
+       It gates ATTITUDE only -- the translation keys still fire the ring whatever this
+       says, because they are what the player pressed and #595 is not allowed to
+       switch off the maneuver they asked for. The rows carry the difference rather
+       than a scattering of ifs: no rows means no law, no readout and no setpoint can
+       promise a turn the player has declined to pay for (#418's lesson, again).
+       Saved with the ship, like the other two. */
+    bool rcs_attitude_enabled = true;
 
     double dvDelivered_ = 0.0;
     double dvAlong_ = 0.0;
@@ -786,9 +797,14 @@ public:
         glm::dvec3 wheels = glm::dvec3(0.0);
         glm::dvec3 tvc = glm::dvec3(0.0);
         glm::dvec3 surfaces = glm::dvec3(0.0);
+        /* The RCS ring's share, since #595. Billed in applyRcsForce off the ATTITUDE
+           fraction of each bell's firing -- the translation fraction a key asked for is
+           lastRcsAch's business, not this record's. */
+        glm::dvec3 rcs = glm::dvec3(0.0);
     };
     /* The last actuated substep's record. Read it, do not write it: actuateAttitude,
-       applyThrustForce and applyAeroForce own the numbers, applyRotationForce the clear. */
+       applyThrustForce, applyAeroForce and (since #595) applyRcsForce own the numbers,
+       applyRotationForce the clear. */
     const AttitudeDelivery &attitudeDelivery() const { return attDel_; }
 
 private:
@@ -928,6 +944,40 @@ public:
            empty either way -- so the row builder records the fitting while it walks the
            parts, rather than a readout walking them a second time. */
         bool hasSurfaces = false;
+        /* #595: the RCS ring as actuator rows -- the fourth actuator, and the only one
+           that works everywhere: vacuum, no wheels, no burn. Until now a bell could
+           only ever push the hull sideways, and the ring's torque rows in rcs.h entered
+           at torqueWeight 0.05 with no demand behind them -- trim, "fire and try not to
+           spin" -- so a wheel-less pod coasting past its own prograde was credited with
+           no turning authority at all while its thrusters fired on the same ship.
+           ONE ROW PER NOZZLE, at the same index as the enumeration buffers (rcsNoz,
+           rcsNozPart, rcsNozLocal), because the setpoint that comes back has to find
+           its bell again: actuateAttitude writes a per-nozzle firing fraction, and
+           applyRcsForce spends it. A nozzle whose arm x dir is degenerate keeps its
+           slot with a zero axis -- the solver skips a zero-axis row, and the index
+           stays honest -- which is why there is no parallel `rcsParts` vector here.
+           The rows are ONE-WAY (actuators.h): a bell winds a turn up and cannot brake
+           one the other way, so its limit is a fraction of ITS OWN rating and the
+           credit is cosine-clamped.
+           THE PRIORITY, which is the part a merged solve would get wrong (#595 fix
+           idea 2): the player's translation keys own the bells FIRST -- rcsPlan() runs
+           before the attitude walk and spends them -- and a row's `limit` here is the
+           fraction the translation solve LEFT, not the ring's full rating. So pointing
+           the hull can never cost the player a translation they asked for, in the same
+           spirit as tvcSplit handing TVC's transverse remainder to the wheels. In
+           hardware mode (the Systems switch row) the limit is the whole rating: the
+           question there is what the ring is WORTH, not what the held key left over.
+           A nozzle is credited only when the hull could actually fire it: propellant in
+           the tank, the switch open, and -- unlike wheels and gimbals -- it is asked
+           LAST, after the wheels and plates have had their share, so a hull that can
+           turn for free turns for free and hydrazine pays only for what they cannot do
+           (actuateAttitude). */
+        InlineVec<ActuatorRow, kInlineRows> rcs;
+        /* Whether the hull CARRIES an RCS pod at all, whatever the tank or the switch
+           say (#649's lesson, one level up from hasSurfaces): "no ring fitted" and "the
+           ring is empty" are different sentences to a player, and an empty row set
+           answers neither. */
+        bool hasRcs = false;
         /* N m the ARMED gimballed engines can lever this substep. */
         double tvcTorque = 0.0;
         /* N m the IGNITED gimballed stage could lever at FULL throttle (#608): the same
@@ -1443,15 +1493,37 @@ public:
     virtual glm::dvec3 rcsWorldDir() const;
     Part *firstRcsPart();
     double maxRcsThrust();
+    /* The ring's substep is two halves now (#595), and the order is the priority:
+       rcsPlan() enumerates the bells and spends them against the player's TRANSLATION
+       demand, the attitude walk then builds its rows from whatever capacity that left,
+       and applyRcsForce() fires the sum -- one fuel draw and one force application for
+       both demands, so an attitude ask can never buy back a translation the keys asked
+       for, and never drains hydrazine twice. */
+    void rcsPlan();
+    /* Fill rcsNoz / rcsNozPart / rcsNozLocal from the live part geometry. Called by
+       rcsPlan every substep, and by attitudeAuthorityRows when nothing fresher is
+       standing (a window asking a railed hull, a test building an authority answer by
+       hand). rcsNozFresh_ is invalidated wherever the part set or its shape changes
+       (rebuildCompound), because a stale enumeration would silently price pointing with
+       bells a decoupler just left behind. */
+    void enumerateRcsNozzles();
     void applyRcsForce(double h);
-    /* Reused solve + enumeration buffers: applyRcsForce runs EVERY sim
-       substep, so these persist (capacity only grows) and the hot path
-       allocates nothing after warmup. Only applyRcsForce touches them. */
+    /* Reused solve + enumeration buffers: this path runs EVERY sim substep, so these
+       persist (capacity only grows) and the hot path allocates nothing after warmup.
+       Only rcsPlan / applyRcsForce / attitudeAuthorityRows touch them, and all three
+       run inside one substep, so a caller must not hold a row index across substeps. */
     rcs::Scratch rcsScratch;
     std::vector<RcsNozzle> rcsNoz;        // this substep's nozzles
     std::vector<size_t> rcsNozPart;      // nozzle -> index into parts
     std::vector<size_t> rcsNozLocal;     // nozzle -> slot on that part (Part::rcsFired)
     std::vector<glm::dvec3> rcsFpart;    // per-part summed force, parts-sized
+    /* The ATTITUDE ask per nozzle, as a fraction of its rating (#595): actuateAttitude
+       fills it from the same actuatorSolve that fills surfaceLat_, applyRotationForce
+       clears it with the other per-substep asks, and applyRcsForce adds it to the
+       translation fraction rcsScratch.c already holds. Index-parallel to rcsNoz, which
+       is what AttitudeAuthority::rcs rows are indexed against. */
+    std::vector<double> rcsAttFrac;
+    bool rcsNozFresh_ = false;
     /* s, hydrazine efficiency -- the EVA suit's value. */
     static constexpr double kRcsIsp = 220.0;
 

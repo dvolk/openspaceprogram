@@ -184,9 +184,16 @@ SURFMAP_RE = re.compile(
 # and the control surfaces actually delivered -- measured off the forces those passes
 # bill, not off the allocator's routing. tau_ask far above tau_spent is the hardware
 # refusing; tau_spent above tau_ask is a gimbal holding its aim from the last substep.
-# ask == 0 with E > 0 is a law that has been handed no authority at all.
+# ask == 0 with E > 0 is a law that has been handed no authority at all. Since #595 the
+# thruster ring is one of the channels behind tau_spent, so a coasting pod-only hull
+# spends here rather than reading 0 forever.
+# w_slew/w_roll/w_third are the hull's rate split on the frame the law drives (#421): the
+# axis that closes the error, the nose axis (an uncommanded roll), and the third that
+# completes it. Parsed because a case that wants "the actuators MOVED the hull" cannot ask
+# it of E alone -- E also rises when nothing acts and the target merely drifts.
 SLEW_RE = re.compile(
-    r"\[slew\]\s+t=([\d.]+)\s+mode=(\S+)\s+E=([-\d.]+)\s+rad\s+.*?"
+    r"\[slew\]\s+t=([\d.]+)\s+mode=(\S+)\s+E=([-\d.]+)\s+rad\s+\([-\d.]+ deg\)\s+"
+    r"w_slew=([-\d+.]+)\s+w_roll=([-\d+.]+)\s+w_third=([-\d+.]+)\s+\|w\|=([-\d+.]+)\s+"
     r"alpha=([-\d.]+)\s+alpha_full=([-\d.]+)\s+Ieff=([-\d.]+)\s+.*?"
     r"tau_ask=([-\d.]+)\s+tau_spent=([-\d.]+)\s+.*?"
     r"nose=\[([-\d.+]+) ([-\d.+]+) ([-\d.+]+)\]\s+"
@@ -735,10 +742,12 @@ def parse_dbg(out):
 def parse_slew(out):
     rows = []
     for m in SLEW_RE.finditer(out):
-        (t, mode, e, alpha, alpha_full, ieff, tau_ask, tau_spent,
-         nx, ny, nz, tx, ty, tz) = m.groups()
+        (t, mode, e, w_slew, w_roll, w_third, wmag, alpha, alpha_full, ieff,
+         tau_ask, tau_spent, nx, ny, nz, tx, ty, tz) = m.groups()
         rows.append({
             "t": float(t), "mode": mode, "E": float(e),
+            "w_slew": float(w_slew), "w_roll": float(w_roll),
+            "w_third": float(w_third), "wnorm": float(wmag),
             "alpha": float(alpha), "alpha_full": float(alpha_full),
             "Ieff": float(ieff),
             "tau_ask": float(tau_ask), "tau_spent": float(tau_spent),

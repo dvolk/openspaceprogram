@@ -1,0 +1,58 @@
+# A ring of thrusters pushes a ship sideways and has always been able to. What it could
+# not do is TURN one: #428 spends the ring against the translation keys at the top of the
+# mixer and never hands any of it to the attitude path, so a hull with no wheels and no
+# armed engine has alpha 0.000 -- no turning authority at all -- while a pod full of bells
+# fires on the same ship (the ticket's repro, one RCS pod and a mono tank on a prograde
+# hold: E crept up 0.0188 rad in 6.8 s and nothing in the game could close it).
+#
+# #595 makes each bell an actuator row in the same allocator as the drums, the gimbals and
+# the fins, priced at arm x thrust (a bell's LEVERAGE, not its newtons) and one-way (gas
+# goes out one way, so a ring fitted the wrong way round credits nothing about that axis).
+# Translation still eats first: rcsPlan() runs before the mixer, and the rows carry only
+# the fraction the keys left. That order is the ticket's "a PRIORITY, not a sum", and
+# tests/test_authority.cpp pins it in the body frame; this case is the same fact flying.
+#
+# rcs_test's arm is short -- its pod sits 0.185 m above the COM, so the ring is worth
+# 0/37/37 N m (R/P/Y) and alpha 0.540 rad/s^2, and it has NO roll authority, because this
+# model puts every bell at its pod's centre. Those are the numbers the row below prints;
+# a pod ring is a weak actuator and the case says so rather than dressing it up.
+NAME rcs-turns-a-wheel-less-hull
+CLAIM With no wheels and no engine, a thruster ring holds prograde: it has authority, spends hydrazine to use it, and closes a stick disturbance.
+KIND invariant
+# The S tap (600 ms) is the disturbance; prograde hold is on from the start. Before #595
+# the tap did nothing at all -- no rows, no torque, and w_slew stayed at its 0.003 rad/s
+# floor -- so the two middle pins are the whole claim: the nose MOVES, and then the ring
+# BRAKES it and closes the error again. Measured over three runs of these ARGS: tap-window
+# w_slew -0.28..-0.31 rad/s, E peak 0.194-0.215 rad at t=4.3-4.4, error back under 0.01 rad
+# by t=5.5-5.6, and hydrazine down 0.4-0.5 kg with no translation key ever pressed.
+ARGS --time-accel 1 --startship rcs_test,res/ships/rcs_test.json,Kerbin,inertial-orbit
+ARGS --autopilot prograde --slew-log --fuel-log --orbit-interval 0.5
+ARGS --sim-press 3000,600,S
+ARGS --timeout 12
+LIMIT 40
+EXPECT [slew]
+FORBID error:
+FORBID FAILED
+CHECK len(slew) >= 40
+# THE AUTHORITY EXISTS. alpha is the pointing budget the laws steer against, and it used to
+# read 0.000 on this hull for as long as it coasted. It is now 0.540 rad/s^2 in every row,
+# whether or not anything is being asked for -- a rating, not a spend.
+CHECK all(s["alpha_full"] > 0.4 for s in slew)
+CHECK all(s["alpha"] > 0.4 for s in slew)
+# THE RING MOVES THE HULL: during the hold the only thing acting is thruster gas, and the
+# rate it buys is what the rows say it can (37 N m on Ieff 69 is 0.54 rad/s^2, so 600 ms
+# of full bells is ~0.3 rad/s).
+CHECK min(s["w_slew"] for s in slew if 3.0 < s["t"] < 3.7) < -0.2
+CHECK max(s["tau_spent"] for s in slew if 3.0 < s["t"] < 3.7) > 20
+# AND THE SAME RING PUTS IT BACK: the error peaks near 0.2 rad and is gone by the end. A
+# hull that could not turn would still be sitting at its tap angle, so the tail window is
+# the pin that a runaway cannot pass.
+CHECK max(s["E"] for s in slew) > 0.10
+CHECK max(s["E"] for s in slew if s["t"] > 7.0) < 0.01
+CHECK last(slew)["E"] < 0.005
+# HYDRAZINE PAYS, and only for the turn: no N/I/L/J/K/U key is pressed in this case, so
+# every gram that left the tank went into pointing. The rate is the honest one -- flow is
+# sized off the FIRING thrust at Isp 220 -- so a hull that faked its own authority would
+# show up here as a drain with nothing spent, or the reverse.
+CHECK first(fuel)["groups"][0]["N2H4"][0] - last(fuel)["groups"][0]["N2H4"][0] > 0.1
+CHECK first(fuel)["groups"][0]["N2H4"][0] - last(fuel)["groups"][0]["N2H4"][0] < 1.5
