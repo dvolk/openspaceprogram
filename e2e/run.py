@@ -29,7 +29,9 @@ refusals; NOGLCHECK opts out of the GL drains for timing-sensitive cases.
 CHECK sees out and
 the parsed logs (orbit/dbg/att/eva/fuel/drainlog/power/dv/mass/drag/shake/cam/
 terrain/surf/xfer/porkchop/surfmap/mapb/plane/slew/toast/scene) plus
-first/last/re. The row lists parse stdout from the LAST "Loaded game from"
+first/last/re. `rec` is the exception to "parse stdout": the flight recorder's
+trace is a FILE, so the harness reads it from the case's scratch --data-dir
+(flights/*.log, #662). The row lists parse stdout from the LAST "Loaded game from"
 line: a successful load
 starts a new world, and rows the previous world printed are not evidence about
 the one under test (toast/scene stay whole-run -- they describe the run).
@@ -1180,6 +1182,42 @@ def parse_drag(out):
     return rows
 
 
+def parse_rec_file(path):
+    """--record (#662): the flight recorder's trace, read from the FILE it writes
+    under the case's scratch data dir rather than from stdout. Rows are `key=value`
+    pairs named by the file's own `#rec v<n> channels=<list>` header, so this parser
+    is deliberately generic: a new channel needs no parser change, which is the whole
+    reason the trace carries its channel list. A dashed column ('-') reads as None,
+    exactly as an absent optional --drag-log field does."""
+    rows = []
+    with open(path, "r", errors="replace") as f:
+        for line in f:
+            if not line.startswith("[rec] "):
+                continue          # the #rec / #ship header lines, and anything else
+            row = {}
+            for tok in line[len("[rec] "):].split():
+                key, sep, val = tok.partition("=")
+                if not sep:
+                    continue
+                row[key] = None if val == "-" else float(val)
+            if "t" in row:
+                rows.append(row)
+    return rows
+
+
+def rec_header(path):
+    """The trace's header line: the channel list it promises, or '' when the file
+    has none (a recorder without a header is unreadable after it is gone)."""
+    try:
+        with open(path, "r", errors="replace") as f:
+            for line in f:
+                if line.startswith("#rec "):
+                    return line.split("channels=", 1)[1].strip() if "channels=" in line else ""
+    except OSError:
+        pass
+    return ""
+
+
 def first(seq):
     return seq[0]
 
@@ -1299,6 +1337,9 @@ def run_case(case):
         pass
     shutil.rmtree(os.path.join(data_dir, "saves"), ignore_errors=True)
     shutil.rmtree(os.path.join(data_dir, "ships"), ignore_errors=True)
+    # The flight recorder writes traces here (#662), so the same rule as the save
+    # slots: an old case's trace would answer this case's assertions.
+    shutil.rmtree(os.path.join(data_dir, "flights"), ignore_errors=True)
 
     # WRITE staging (after cleanup so a fixture is live for exactly this
     # case). settings.json goes in the scratch data dir (datadir.h).
@@ -1429,11 +1470,19 @@ def run_case(case):
     slew = parse_slew(world)
     toast = parse_toast(out)
     simreport = parse_sim_report(out)
+    # The recorder's trace is a FILE, not stdout (#662), and a CHECK cannot open
+    # files (empty __builtins__, below) -- so the harness reads the traces this run
+    # wrote into its scratch data dir. The dir is swept before each case and one
+    # run writes one trace, so the glob is enough to find it.
+    rec = []
+    for trace in sorted(glob.glob(os.path.join(data_dir, "flights", "*.log"))):
+        rec.extend(parse_rec_file(trace))
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "att": att, "ascent": ascent, "eva": eva,
         "fuel": fuel, "drainlog": drainlog, "power": power, "dv": dv, "mass": mass,
         "drag": drag, "shake": shake,
+        "rec": rec,
         "ctrl": ctrl,
         "surface": surface,
         "cam": cam,

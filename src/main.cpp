@@ -1570,6 +1570,19 @@ int main(int argc, char **argv)
         }
     }
 
+    /* --record (#662): the trace closes with the run. One file per RUN, not per
+       flight: the recorder's identity lives on Game (staging and #297's retired
+       halves would otherwise cut a file mid-flight), and a run that goes back to
+       the title and starts again keeps writing the same trace. The row count is
+       the run's own report of what it captured, and fclose is what makes the file
+       readable the moment the process exits. */
+    if(game.rec.f != nullptr) {
+        std::fclose(game.rec.f);
+        game.rec.f = nullptr;
+        printf("record: %ld rows -> %s\n", game.rec.rows, game.rec.path.c_str());
+        fflush(stdout);
+    }
+
     if(perf_on) { perf_summary(); }
 
     // Stop the worker BEFORE the bodies it may still hold (a job captures a

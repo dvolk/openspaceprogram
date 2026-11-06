@@ -124,6 +124,26 @@ same-frame with a hook phase. That is the only reason a hook still exists in a
 UI-driven case: 244 needs a detach and a launch in one frame, 243 needs a scan
 between two passes, 237 needs a plan the UI refuses to build.
 
+For a 3D pick, `--ui-focus MS,PART_ID` parks the cursor on a pixel whose real
+raycast lands on that part, and `--sim-mouse MS,0,CUR,CUR,BTN` clicks there. A
+fixed pixel on a multi-part build picks whatever is under it, which is how 233
+used to fail. The aim prints `[uifocus] ... -> x,y` or `FAILED <why>`, so every
+such case carries `FORBID FAILED`. In the VAB, RMB there opens the part window,
+whose title is the catalog label with the build id as its suffix --
+`Capsule (3m)##capsule_r1.5h3_1/Seat 1##s0`, not a name you can invent.
+
+A greyed-out row is an assertion, not a mistake. `--ui-click` refuses a disabled
+widget, and the refusal line is what the case EXPECTs (236, 237). Pin WHICH
+refusal: there is one at aim time and one at release (`FAILED disabled at
+release`, uiinput.cpp:185), and the release wording contains the aim-time
+substring, so forbid the other one.
+
+An open combo owns the mouse. A refused row does not close the dropdown, so the
+next click hits the popup's scrim and reports `MISMATCH nothing was hovered at
+release`. Picking a row is the only way out -- click `##Combo_00/Empty` (236,
+237). Nothing else closes it: the game binds Escape to a scene action and imgui's
+keyboard nav is never enabled.
+
 ## A long scripted flight does not need pixels
 
 `--sim-steps` runs one logic tick per frame, so a case asking for 3000 steps
@@ -145,22 +165,17 @@ the picture, the frame cadence (`--perf`, `--pose-jitter`) or a shot;
 `harness/343-screenshot` and `harness/666-no-paint-costs-pixels-only` are the
 two sides of that line.
 
-For a 3D pick, `--ui-focus MS,PART_ID` parks the cursor on a pixel whose real
-raycast lands on that part, and `--sim-mouse MS,0,CUR,CUR,BTN` clicks there. A
-fixed pixel on a multi-part build picks whatever is under it, which is how 233
-used to fail. The aim prints `[uifocus] ... -> x,y` or `FAILED <why>`, so every
-such case carries `FORBID FAILED`. In the VAB, RMB there opens the part window,
-whose title is the catalog label with the build id as its suffix --
-`Capsule (3m)##capsule_r1.5h3_1/Seat 1##s0`, not a name you can invent.
+## A trace is a file, so the harness reads it
 
-A greyed-out row is an assertion, not a mistake. `--ui-click` refuses a disabled
-widget, and the refusal line is what the case EXPECTs (236, 237). Pin WHICH
-refusal: there is one at aim time and one at release (`FAILED disabled at
-release`, uiinput.cpp:185), and the release wording contains the aim-time
-substring, so forbid the other one.
+`--record` writes one flight recorder trace per run: `#rec v1 channels=<list>`,
+then one `[rec] t=… key=value …` row per `--record-interval` (#662). A CHECK's
+`__builtins__` are empty, so a case cannot open that file -- the harness parses
+every `flights/*.log` in the case's scratch `--data-dir` into `rec`, one dict per
+row with dashed columns as None, and sweeps that directory before each case for
+the same reason it sweeps `saves/`: last run's rows are not this run's evidence.
 
-An open combo owns the mouse. A refused row does not close the dropdown, so the
-next click hits the popup's scrim and reports `MISMATCH nothing was hovered at
-release`. Picking a row is the only way out -- click `##Combo_00/Empty` (236,
-237). Nothing else closes it: the game binds Escape to a scene action and imgui's
-keyboard nav is never enabled.
+Because the parse is generic (a row's keys are the header's channel list), a new
+channel needs no harness change. That is also what makes the assertion worth
+having: `harness/662-record-trace-agrees-with-the-log` compares the trace against
+the `[drag]` rows tick for tick, so "the recorder computes nothing" is a tested
+claim rather than a promise.

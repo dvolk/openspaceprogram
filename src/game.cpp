@@ -3,9 +3,11 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <cstdarg>
 #include <cmath>
 #include <cstdio>
+#include <ctime>
 #include <fstream>
 #include <map>
 #include <random>
@@ -967,6 +969,61 @@ std::string Game::ensureGameDir() {
         return "";
     }
     return datadir::saves() + "/" + gameId;
+}
+
+/* The flight recorder's file (#662). Opened from the tick, at the first sample
+   that is due, by which time a run that is going to claim a game dir has: a run
+   with a save slot writes its trace beside its saves, one without (--startship,
+   every scripted run) writes under the data dir's flights/ -- so the artifact has
+   one obvious home either way, and an e2e case knows where to FILE it. A run that
+   never flies opens nothing.
+   The name carries a UTC stamp: two runs in the same local minute stay distinct,
+   and the listing sorts in the order the flights happened. A row's t= counts the
+   LOG clock (run time), not g.time: a load moves the mission clock backwards
+   (#304), and a trace whose rows land out of order in the middle of a file is not
+   a trace. The header's t0= is the mission clock at trace start, which is how a
+   reader gets from one to the other. */
+bool Game::openRecorder() {
+    assert(rec.f == nullptr && !rec.failed);
+    const std::string dir = gameId.empty() ? datadir::flights()
+                                           : (datadir::saves() + "/" + gameId);
+    datadir::make_dir(dir);
+
+    const std::time_t now = std::time(nullptr);
+    std::tm tm {};
+    gmtime_r(&now, &tm);
+    char stamp[32];
+    std::strftime(stamp, sizeof stamp, "%Y%m%d_%H%M%S", &tm);
+
+    /* The vessel's DISPLAY name: a file a player reads should name the ship the
+       way the windows do. Staging hands control to another vessel, but the trace
+       keeps this name: it is the name of the flight's start, like a flight
+       number, not of whatever hull is flying at the end. */
+    std::string who = (ship != nullptr) ? ship->displayName() : gameName;
+    for(char &c : who) {
+        if(!std::isalnum((unsigned char)c) && c != '_' && c != '-' && c != '.') { c = '_'; }
+    }
+    if(who.empty()) { who = "game"; }
+
+    rec.path = dir + "/flight-" + who + "-" + stamp + ".log";
+    rec.f = std::fopen(rec.path.c_str(), "w");
+    if(rec.f == nullptr) {
+        printf("record: FAILED to open %s\n", rec.path.c_str());
+        fflush(stdout);
+        rec.failed = true;   // one line, not one per sample
+        return false;
+    }
+    /* t0= is the mission clock at trace start, and started_ms the run clock the
+       rows count from -- two different things, and the trace needs both. */
+    rec.started_ms = logClockMs();
+    rec.rows = 0;
+    fprintf(rec.f, "#rec v%d channels=%s\n", kRecVersion, recChannels());
+    fprintf(rec.f, "#ship=\"%s\" interval_ms=%u t0=%.3f\n",
+            who.c_str(), record_interval_ms, time);
+    fflush(rec.f);
+    printf("record: %s (one row per %u ms)\n", rec.path.c_str(), record_interval_ms);
+    fflush(stdout);
+    return true;
 }
 
 /* System owns no destructor -- it is a bag of borrowed-looking pointers -- so

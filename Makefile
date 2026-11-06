@@ -384,6 +384,12 @@ $(TESTDIR)/test_angmath: $(TESTDIR)/obj/test_angmath.o
 $(TESTDIR)/test_inlinevec: $(TESTDIR)/obj/test_inlinevec.o
 	$(CXX) -o $@ $^
 
+# recorder.h: the flight trace's row grammar (#662). The header's channel list
+# and the rows' keys are one list in one order, and the dash rules are
+# --drag-log's. Pure formatting -- no Bullet, no GL.
+$(TESTDIR)/test_recorder: $(TESTDIR)/obj/test_recorder.o
+	$(CXX) -o $@ $^
+
 $(TESTDIR)/test_rcs: $(TESTDIR)/obj/test_rcs.o
 	$(CXX) -o $@ $^
 
@@ -572,7 +578,7 @@ TESTS = test_frames test_spawn test_attitude test_slew3d test_gimbal test_actuat
         test_flightlog test_science test_bodylimits \
         test_orbit test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
         test_terrain test_drag test_audio test_jet test_jobs test_orbitmap test_orbitcam \
-        test_pick test_settings test_keys test_cli test_fmt test_retrograde test_skybox \
+        test_pick test_settings test_keys test_cli test_fmt test_recorder test_retrograde test_skybox \
         test_belts test_railangles test_scenarios test_buildings test_orient test_hooks
 
 # Short-name aliases: `make test_fuel` builds + runs one test (from the repo

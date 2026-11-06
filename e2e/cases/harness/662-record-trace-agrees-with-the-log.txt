@@ -1,0 +1,38 @@
+# The recorder computes nothing: a row is the reading the physics already published
+# for the tick it was sampled in, in the flight logs' own grammar (#665's one-seam
+# law, applied to the trace). That is the whole claim, so this case never trusts the
+# file on its own -- it checks the trace row for row against what --drag-log printed
+# at the same instants, and pins the cadence that puts four samples between each pair
+# of logged ones (--record-interval 0.25 against --orbit-interval 1).
+NAME record-trace-agrees-with-the-log
+CLAIM --record writes a trace whose rows are the readings --drag-log printed at the same ticks, and four of them land per log row.
+KIND invariant
+ARGS --time-accel 1 --width 1920 --height 1080 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
+# --no-paint: this case reads logs and a file, never the window (#666).
+ARGS --sim-steps 900 --drag-log --record --record-interval 0.25 --no-paint
+ARGS --sim-press 500,3000,R
+ARGS --sim-press 500,20000,T
+EXPECT record:
+EXPECT (one row per 250 ms)
+EXPECT 60 rows ->
+# The cadence: --orbit-interval gates [drag] at 1 s, --record-interval the trace at
+# 0.25 s, both on the same scripted clock and both armed at tick 0.
+CHECK len(drag) >= 10
+CHECK len(rec) == 4 * len(drag)
+# Row for row: the drag row at tick 60(n+1) is the trace row at tick 15(4n+4), so
+# rec[3::4] is the trace's copy of the [drag] list. The names differ where the
+# parsers renamed them ([drag]'s cd/a/induced/airT/airP/airA), and the trace's A= is
+# the silhouette while its a= is the speed of sound, exactly as the [drag] line
+# spells them.
+CHECK all(d["alt_asl"] == r["alt_asl"] and d["rho"] == r["rho"] and d["v"] == r["v"] for d, r in zip(drag, rec[3::4]))
+CHECK all(d["F"] == r["F"] and d["cd"] == r["Cd"] and d["a"] == r["A"] for d, r in zip(drag, rec[3::4]))
+CHECK all(d["aoa"] == r["aoa"] and d["beta"] == r["beta"] and d["cpl"] == r["cpl"] and d["induced"] == r["ind"] for d, r in zip(drag, rec[3::4]))
+CHECK all(d["airT"] == r["T"] and d["airP"] == r["p"] and d["airA"] == r["a"] and d["mach"] == r["mach"] for d, r in zip(drag, rec[3::4]))
+# And the two clocks map onto each other: the trace's t= counts the run clock, which
+# under --sim-steps is the same clock the [drag] rows' t= comes from -- less one
+# interval, because the trace starts at its first sample rather than at tick 0.
+CHECK all(abs(d["t"] - r["t"] - 0.25) < 1e-9 for d, r in zip(drag, rec[3::4]))
+# What the recorder says it captured, in its own words on stdout.
+FILE flights/*.log "#rec v1 channels=t alt_asl v rho F L Cd A aoa beta cpl ind chute T p a mach mass thr stg" "#ship=\"skiff\" interval_ms=250" "[rec] t=0.00 "
+FORBID error:
+FORBID record: FAILED

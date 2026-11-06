@@ -824,6 +824,63 @@ void tick(Game &g) {
             }
         }
 
+        /* --record: the flight recorder (#662). Same published numbers the
+           [drag] line above prints -- the recorder computes nothing, so a
+           recorded value and a logged value cannot disagree (#665's seam). It
+           is gated on its own clock (--record-interval) because the log rate
+           and the trace rate want different things: a trace at 1 s rows is
+           useless next to a burn, and one per tick is a 3 MB file.
+           t= counts the LOG clock (run time), not g.time: a load moves the
+           mission clock backwards (#304) and would otherwise drop rows out of
+           order in the middle of the file. The header's t0= is g.time at the
+           first sample, which maps one onto the other. */
+        if(g.args.record && g.ship != nullptr) {
+            const Uint32 now_ms = g.logClockMs();
+            /* The first due sample opens the file (Game::openRecorder): by then
+               the run has claimed a game dir if it was going to, and a run that
+               never flies leaves no empty trace behind. A failed open says so once
+               and the recorder stays off. */
+            if(g.logDue(kGateRec, now_ms, g.record_interval_ms) &&
+               (g.rec.f != nullptr || (!g.rec.failed && g.openRecorder()))) {
+                Vehicle *v = g.ship;
+                RecSample s;
+                s.t = (now_ms - g.rec.started_ms) / 1000.0;
+                s.alt_asl = v->lastDragAlt;
+                s.v = glm::length(v->GetVel());
+                s.rho = v->lastDragRho;
+                s.F = glm::length(v->lastAeroForce);
+                s.L = glm::length(v->lastLiftForce);
+                s.Cd = v->lastDragCd;
+                s.A = v->lastDragArea;
+                s.chute = v->lastChuteCdA;
+                if(v->lastDragAlphaValid) {
+                    s.aoa = glm::degrees(v->lastDragAlpha);
+                    s.beta = glm::degrees(v->lastDragBeta);
+                    s.cpl = v->lastCpLever;
+                    s.ind = v->lastInducedCdA;
+                } else {
+                    s.aoa = s.beta = s.cpl = s.ind = NAN;
+                }
+                if(v->lastDragRho > 0.0) {
+                    s.T = v->lastAirT;
+                    s.p = v->lastAirP;
+                    s.a = v->lastAirA;
+                    s.mach = v->lastAirV / v->lastAirA;
+                } else {
+                    s.T = s.p = s.a = s.mach = NAN;
+                }
+                s.mass = v->getMass();
+                s.thr = v->throttle();
+                s.stg = v->activeStage();
+                char row[512];
+                const int wrote = recRow(s, row, sizeof row);
+                if(wrote > 0) {   // -1 = the row did not fit, so none was written
+                    fprintf(g.rec.f, "[rec] %s\n", row);
+                    g.rec.rows++;
+                }
+            }
+        }
+
         // --att-log: the ship's nose + angular velocity (attitude-physics e2e)
         if(g.ship && g.args.att_log) {
             const Uint32 now_ms = g.logClockMs();

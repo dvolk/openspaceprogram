@@ -435,6 +435,31 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "each flag's help")
         ->check(CLI::PositiveNumber);
 
+    app.add_flag("--record", args.record,
+                 "Write a flight recorder trace (#662): one file per run, named "
+                 "for the hull it traces, beside the save slots when the game has "
+                 "claimed a game dir and under the data dir's flights/ when it "
+                 "has not. Each sample is one [rec] line in the flight logs' "
+                 "grammar -- t= counts run time since the trace began (the "
+                 "header's t0= is the mission clock it started at), then "
+                 "the channels the physics already publishes for that tick "
+                 "(alt_asl, v, rho, F, L, Cd, A, aoa, beta, cpl, ind, chute, T, "
+                 "p, a, mach, mass, thr, stg) -- and the file's first two lines "
+                 "carry the version, the channel names and the interval. The "
+                 "recorder computes nothing: it reads the same fields --drag-log "
+                 "prints, so a recorded number cannot disagree with a logged "
+                 "one. The trace follows the stack through staging because it "
+                 "belongs to the game, not to the vessel.");
+
+    app.add_option("--record-interval", args.record_interval,
+                   "Run time between recorded rows, in seconds (default 0.25). "
+                   "The same clock every periodic log gates on, so it is sim time "
+                   "under --sim-steps and wall time live: at warp the rows are "
+                   "further apart in mission time. Never shorter than one "
+                   "--physics-hz tick: a recorder cannot sample faster than the "
+                   "sim steps")
+        ->check(CLI::PositiveNumber);
+
     app.add_flag("--dbg-log", args.dbg_log,
                  "Periodically print ship position/altitude/velocity "
                  "(surface-level companion to --orbit-log)");
@@ -902,6 +927,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             {"--cam-shake", args.cam_shake},
             {"--drag-cd", args.drag_cd},
             {"--orbit-interval", args.orbit_interval},
+            {"--record-interval", args.record_interval},
             {"--prox-fly-on", args.prox_fly_on},
             {"--prox-fly-off", args.prox_fly_off},
             {"--prox-ground-on", args.prox_ground_on},
@@ -944,6 +970,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             printf("error: --orbit-interval %g s is shorter than one physics "
                    "tick (1/%g Hz = %g s); no log can sample faster than the "
                    "sim steps\n", args.orbit_interval, args.physics_hz, tick_s);
+            *exit_code = 1;
+            return false;
+        }
+        /* The recorder's own cadence answers to the same law (#662). Only when
+           it is asked for: an unused knob is not worth refusing. */
+        if(args.record && args.record_interval < tick_s) {
+            printf("error: --record-interval %g s is shorter than one physics "
+                   "tick (1/%g Hz = %g s); a recorder cannot sample faster than "
+                   "the sim steps\n", args.record_interval, args.physics_hz, tick_s);
             *exit_code = 1;
             return false;
         }

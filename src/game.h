@@ -25,6 +25,7 @@
 #include "job.h"      // JobRunner
 #include "orbit.h"    // OrbitElements, RefPlane, PlaneAngles
 #include "postfx.h"   // PostFX
+#include "recorder.h"  // RecSample / recRow (the flight recorder's row grammar)
 #include "scene.h"    // SceneId, SceneFrame, Backdrop
 #include "science.h"  // Experiment
 #include "shipdef.h"  // PartsCatalog (the part types the world is built from)
@@ -431,7 +432,7 @@ enum LogGate { kGateOrbit, kGateDbg, kGateInfo, kGateAtt, kGateShake,
                kGateCam, kGateEva, kGateDrag, kGateTerrain, kGatePlane,
                kGateSkyDim, kGateXfer, kGateDv, kGateCompound, kGateProxSnap,
                kGateSpin, kGateMass, kGateFuel, kGateDrain, kGatePower,
-               kGateSteer, kGateSlew, kGateAscent, kGateCount };
+               kGateSteer, kGateSlew, kGateAscent, kGateRec, kGateCount };
 
 /* A headless test hook (cli.h --atlas-dump / --map-dump): fires act() once,
    at/after ms on the schedule clock (Game::schedClockMs(): loop_start_ms normally,
@@ -582,6 +583,31 @@ struct Game {
     // --- the wall-clock log gates (--orbit-interval; tick.cpp + xfer-log) --
     // Each log needs its own "last fired" clock, or only the first one fires.
     const Uint32 orbit_log_interval_ms = (Uint32)(args.orbit_interval * 1000.0);
+    // The recorder's cadence is its own knob (--record-interval, #662): a trace
+    // at the log rate would be a 3 MB file for one ascent, and at the tick rate
+    // it is one for a cruise.
+    const Uint32 record_interval_ms = (Uint32)(args.record_interval * 1000.0);
+
+    /* --- flight recorder (#662) -------------------------------------------
+       A trace's identity sits HERE, not on a Vehicle: staging hands control to a
+       different Vehicle and #297 retires the half that was dropped, so a
+       recorder hung on the vessel would close its own file mid-flight. The
+       per-vessel journal (Vehicle::flog, flightlog.h) starts again for each stage
+       for the same reason. A row's t= counts the log clock (see logClockMs),
+       which never runs backwards: g.time does, on a load (#304). */
+    struct Recorder {
+        std::FILE *f = nullptr;    // null = not recording
+        bool failed = false;       // the open failed: say it once, then stay quiet
+        std::string path;
+        Uint32 started_ms = 0;     // the log clock when the trace opened
+        long rows = 0;
+    };
+    Recorder rec;
+    /* Open the trace (game.cpp): called from the tick, the first time a row is
+       due, so the game dir it lands in is whatever the run has claimed by then.
+       False = the file could not be opened, which is printed once and then left:
+       a recorder that cannot write must not spam the log every sample. */
+    bool openRecorder();
 
     /* --sim-steps (cli.cpp) makes a scripted run reproducible (#472): exactly one
        tick per frame and a fixed number of ticks. The step count alone is not

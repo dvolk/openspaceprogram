@@ -96,6 +96,11 @@ struct GameArgs {
     bool ascent_log = false;   // the ascent law's phase, apsides and cutoff
     bool plane_log = false;      // the drawn orbital/reference plane normals
     double orbit_interval = 1.0;
+    /* The flight recorder (#662): one file per run, beside the save slots when
+       the game has claimed a game dir and under the data dir's flights/ when it
+       has not. Rows land on the recorder's own gate, not --orbit-interval's. */
+    bool record = false;
+    double record_interval = 0.25;   // seconds of sim between recorded rows
     bool dbg_log = false;
     bool info_log = false;       // dump Orbit/Surface Info to stdout
     bool debug_accel = false;   // per-substep thrust/velocity dump
