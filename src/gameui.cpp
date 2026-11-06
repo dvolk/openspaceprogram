@@ -3461,9 +3461,18 @@ void drawPartWindows(Game &g) {
                     // a case asserts what the player reads rather than a log's echo.
                     if(fam->measures == "pressure") {
                         uiText("Air pressure: %.1f kPa", read.press / 1000.0);
-                    } else {
+                    } else if(read.temp > 0.0) {
                         uiText("Air temp: %.1f K (%.1f C)", read.temp,
                                read.temp - 273.15);
+                    } else {
+                        /* No air here, so there is no air temperature to read. The
+                           dash is --drag-log's own spelling for this (T=-, when
+                           airDensity says there is nothing), not a value: 0 K is what
+                           drag.h answers for "no air", and a window that prints it as
+                           a measurement claims the coldest number in the game.
+                           A barometer has no such problem -- 0 kPa IS what a
+                           barometer reads in a vacuum. */
+                        uiText("Air temp: -");
                     }
                 }
                 /* The first seat on this ship (part.h): a seated kerbal is a suit

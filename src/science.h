@@ -192,7 +192,12 @@ inline void formatMeasurement(const Experiment &e, char *buf, size_t n) {
     const std::string what = (d != nullptr) ? d->measures : std::string();
     if(what == "pressure") {
         snprintf(buf, n, "%.1f kPa", e.meas.pressure / 1000.0);
-    } else if(what == "temperature") {
+    } else if(what == "temperature" && e.meas.temperature > 0.0) {
+        /* 0 K is not a reading: drag.h:airTemperature answers 0.0 wherever the
+           profile says there is no air at all, so the run recorded "no air here",
+           not the coldest number in the game. Print nothing instead -- the same
+           distinction --drag-log makes by dashing T= (--drag-log's T=- row).
+           A barometer keeps printing 0.0 kPa in vacuum: that IS its reading. */
         snprintf(buf, n, "%.1f K", e.meas.temperature);
     }
 }

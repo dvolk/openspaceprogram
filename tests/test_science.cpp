@@ -529,6 +529,17 @@ int main() {
         CHECK(buf[0] == '\0');
         CHECK(measured(plain).empty());
         CHECK(measured(p) == "  12.0 kPa");
+        /* Vacuum reads, asymmetrically on purpose: 0 Pa IS what a barometer reads
+           where there is no air, while 0 K is what drag.h answers for "there is no
+           air here" -- so a thermometer says nothing rather than claim the coldest
+           number in the game. Same distinction --drag-log makes by dashing T=. */
+        Experiment zeroBaro = p;   zeroBaro.meas.pressure = 0.0;
+        formatMeasurement(zeroBaro, buf, sizeof buf);
+        CHECK(std::string(buf) == "0.0 kPa");
+        Experiment zeroTherm = p;  zeroTherm.type = "thermometer";
+        zeroTherm.meas.pressure = 0.0;  zeroTherm.meas.temperature = 0.0;
+        formatMeasurement(zeroTherm, buf, sizeof buf);
+        CHECK(buf[0] == '\0');
 
         // A banked row carries the reading -- which is the point of storing it at
         // all: it can be read at recovery and reviewed in the Lab months later.
