@@ -204,3 +204,23 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code);
    these; --help states them; tests/test_cli.cpp fails if the two drift apart. */
 inline constexpr int kStateLogMs = 500;
 inline constexpr int kSlewLogMs = 100;
+
+/* The longest wait a cadence knob may ask for, in seconds of run time (#673).
+   Every periodic log counts its interval in Uint32 MILLISECONDS, so a wait past
+   ~49.7 days is UB and lands on an arbitrary rate. Measured on this box with the
+   cast the code used to do inline: 4294968 s (49.7 days) became 704 ms, and 1e18 s
+   became 0 ms -- every throttled log firing on every poll. An hour between rows is
+   already a strange request, so the law sits two orders of magnitude under the
+   wrap. parse_cli refuses past it; the clamp below is the belt for a caller that
+   did not come through the CLI. */
+inline constexpr double kIntervalCeilingS = 3600.0;
+
+/* Seconds of run time -> the ms a log gate waits. One helper for every interval
+   knob, so none of them re-derives the cast and its range (#673). A non-positive
+   or NaN interval is 0 ms, which is what the gates already treat as "no throttle";
+   an infinite one saturates at the ceiling rather than wrapping. */
+inline unsigned gateIntervalMs(double seconds) {
+    if(!(seconds > 0.0)) { return 0u; }
+    if(seconds > kIntervalCeilingS) { seconds = kIntervalCeilingS; }
+    return (unsigned)(seconds * 1000.0);
+}

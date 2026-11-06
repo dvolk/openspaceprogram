@@ -590,11 +590,14 @@ struct Game {
 
     // --- the wall-clock log gates (--orbit-interval; tick.cpp + xfer-log) --
     // Each log needs its own "last fired" clock, or only the first one fires.
-    const Uint32 orbit_log_interval_ms = (Uint32)(args.orbit_interval * 1000.0);
+    // Both conversions go through gateIntervalMs (cli.h) rather than casting
+    // here: the gates count Uint32 ms, so the range is the law and belongs with
+    // the flag that fills the field (#673).
+    const Uint32 orbit_log_interval_ms = gateIntervalMs(args.orbit_interval);
     // The recorder's cadence is its own knob (--record-interval, #662): a trace
     // at the log rate would be a 3 MB file for one ascent, and at the tick rate
     // it is one for a cruise.
-    const Uint32 record_interval_ms = (Uint32)(args.record_interval * 1000.0);
+    const Uint32 record_interval_ms = gateIntervalMs(args.record_interval);
 
     /* --- flight recorder (#662) -------------------------------------------
        A trace's identity sits HERE, not on a Vehicle: staging hands control to a

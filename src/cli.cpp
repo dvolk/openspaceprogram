@@ -438,7 +438,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Seconds of the run's clock between --orbit-log / --plane-log "
                    "lines (wall clock, or logic ticks under --sim-steps; "
                    "default: 1). Never shorter than one --physics-hz tick: no "
-                   "log can sample faster than the sim steps. The state logs "
+                   "log can sample faster than the sim steps; never longer than "
+                   "3600s: past that the gate's millisecond count wraps instead "
+                   "of getting quieter. The state logs "
                    "(--mass-log, --fuel-log, --drain-log, --power-log, "
                    "--spin-log, --slew-log) keep their own cadence, stated in "
                    "each flag's help")
@@ -469,7 +471,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "under --sim-steps and wall time live: at warp the rows are "
                    "further apart in mission time. Never shorter than one "
                    "--physics-hz tick: a recorder cannot sample faster than the "
-                   "sim steps")
+                   "sim steps; never longer than 3600s: past that the gate's "
+                   "millisecond count wraps instead of getting quieter")
         ->check(CLI::PositiveNumber);
 
     app.add_flag("--dbg-log", args.dbg_log,
@@ -991,6 +994,26 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             printf("error: --record-interval %g s is shorter than one physics "
                    "tick (1/%g Hz = %g s); a recorder cannot sample faster than "
                    "the sim steps\n", args.record_interval, args.physics_hz, tick_s);
+            *exit_code = 1;
+            return false;
+        }
+        /* The top end has a law too (#673). Every gate counts the interval in
+           Uint32 MILLISECONDS, so a wait past ~49.7 days is not a quieter log --
+           the conversion is UB and lands on an arbitrary rate, which turns a
+           request for silence into one for spam. Refuse at the ceiling the
+           shared helper (cli.h gateIntervalMs) saturates at, so the player reads
+           the law rather than the wrap. */
+        if(args.orbit_interval > kIntervalCeilingS) {
+            printf("error: --orbit-interval %g s is longer than the %g s a log gate "
+                   "can wait; past that the millisecond count wraps instead of "
+                   "getting quieter\n", args.orbit_interval, kIntervalCeilingS);
+            *exit_code = 1;
+            return false;
+        }
+        if(args.record && args.record_interval > kIntervalCeilingS) {
+            printf("error: --record-interval %g s is longer than the %g s a log gate "
+                   "can wait; past that the millisecond count wraps instead of "
+                   "getting quieter\n", args.record_interval, kIntervalCeilingS);
             *exit_code = 1;
             return false;
         }

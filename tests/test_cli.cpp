@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -135,6 +136,66 @@ int main() {
         assert(!ok);
         assert(code == 1);
     }
+
+    // 2d) The log gate's CEILING (#673). Every periodic log counts its interval
+    //     in Uint32 MILLISECONDS, so a wait past ~49.7 days is UB and lands on an
+    //     arbitrary rate: 1e12 s asks for a quieter log and gets a spammy one.
+    //     Refuse at the ceiling rather than wrap.
+    {
+        const char *argv[] = {"osp", "--orbit-interval", "1e12"};
+        GameArgs args;
+        bool ok = true;
+        int code = -1;
+        run(3, (char **)argv, args, ok, code);
+        assert(!ok);
+        assert(code == 1);
+    }
+    {
+        const char *argv[] = {"osp", "--record", "--record-interval", "1e12"};
+        GameArgs args;
+        bool ok = true;
+        int code = -1;
+        run(4, (char **)argv, args, ok, code);
+        assert(!ok);
+        assert(code == 1);
+    }
+    // An unused knob is not worth refusing, same as the floor's rule (#662): the
+    // ceiling belongs to the recorder, so without --record the value parses. The
+    // helper below is what keeps even that case out of UB.
+    {
+        const char *argv[] = {"osp", "--record-interval", "1e12"};
+        GameArgs args;
+        bool ok = false;
+        int code = -1;
+        run(3, (char **)argv, args, ok, code);
+        assert(ok);
+    }
+    // --help states the ceiling for both knobs, in the number cli.h holds. The
+    // same drift rule as the state-log cadences in 2b: the help and the law are
+    // written twice, so this is what makes them move together.
+    {
+        const char *argv[] = {"osp", "--help"};
+        GameArgs args;
+        bool ok = true;
+        int code = -1;
+        std::string out = run(2, (char **)argv, args, ok, code);
+        char ceil_s[16];
+        snprintf(ceil_s, sizeof ceil_s, "%.0fs", kIntervalCeilingS);
+        size_t hits = 0;
+        for(size_t p = out.find(ceil_s); p != std::string::npos; p = out.find(ceil_s, p + 1)) { hits++; }
+        assert(hits == 2);
+    }
+    // 2e) The conversion itself: one law for every interval knob (#673), so the
+    //     saturation is pinned at the end that used to be UB, and the 0 that the
+    //     gates read as "no throttle" at the other.
+    assert(gateIntervalMs(1.0) == 1000u);
+    assert(gateIntervalMs(0.25) == 250u);
+    assert(gateIntervalMs(kIntervalCeilingS) == 3600000u);
+    assert(gateIntervalMs(1e12) == 3600000u);
+    assert(gateIntervalMs(std::numeric_limits<double>::infinity()) == 3600000u);
+    assert(gateIntervalMs(0.0) == 0u);
+    assert(gateIntervalMs(-5.0) == 0u);
+    assert(gateIntervalMs(std::numeric_limits<double>::quiet_NaN()) == 0u);
 
     // 3) a valid flag set parses (true), filling the field.
     {
