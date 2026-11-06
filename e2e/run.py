@@ -201,6 +201,19 @@ SLEW_RE = re.compile(
     r"nose=\[([-\d.+]+) ([-\d.+]+) ([-\d.+]+)\]\s+"
     r"target=\[([-\d.+]+) ([-\d.+]+) ([-\d.+]+)\]"
 )
+# The SAME --slew-log prints a different row while kill-rot is the latched mode
+# (vehicle.cpp:3948): the law has no target, so there is no error E, no alpha and no
+# nose/target pair to quote -- only the rate it is fighting and the torque pair. It is
+# parsed into the same list (mode="killrot") because the question a kill-rot case asks
+# is the one #595's case asks: did a latched law ASK, did the hardware SPEND, and did
+# the hull RESPOND. #677 was invisible to the harness until now -- kill-rot rows were
+# not parsed at all, so a case could not tell "asked for nothing forever" from "no
+# rows". Keys the row does not print are None: a case that mixes modes has to name the
+# mode it means.
+KILLROT_RE = re.compile(
+    r"\[slew\]\s+t=([\d.]+)\s+mode=killrot\s+\|w\|=([-\d.]+)\s+rad/s\s+"
+    r"w=\[([-+\d. ]+)\]\s+tau_ask=([-\d.]+)\s+tau_spent=([-\d.]+)"
+)
 # Game::toast mirrors every on-screen message to stdout ("the on-screen toast is
 # transient, the log is not"), so a hotkey that only changes a flag still leaves
 # an observable line. Parsed as plain strings: what a case wants is which
@@ -756,6 +769,19 @@ def parse_slew(out):
             "nose": (float(nx), float(ny), float(nz)),
             "target": (float(tx), float(ty), float(tz)),
         })
+    # Kill-rot rows, same list, keys the row does not print set to None.
+    for m in KILLROT_RE.finditer(out):
+        t, wmag, wxyz, tau_ask, tau_spent = m.groups()
+        rows.append({
+            "t": float(t), "mode": "killrot", "E": None,
+            "w_slew": None, "w_roll": None, "w_third": None,
+            "wnorm": float(wmag), "alpha": None, "alpha_full": None,
+            "Ieff": None, "tau_ask": float(tau_ask),
+            "tau_spent": float(tau_spent),
+            "nose": None, "target": None,
+            "wxyz": tuple(float(v) for v in wxyz.split()),
+        })
+    rows.sort(key=lambda r: r["t"])
     return rows
 
 

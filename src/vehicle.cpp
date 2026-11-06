@@ -5820,8 +5820,15 @@ glm::dvec3 Vehicle::killRotDemand(double h, const AttitudeAuthority &auth) {
        that gives it a slew law gives it this one. Omitting `surfaces` here (as this
        line did when wheels+TVC were the whole set) silences the law completely while
        the capability model quotes tens of kN m -- slewDemand asks the question
-       through attitudeTorqueAbout and never had that hole. */
-    if(auth.wheels.empty() && auth.surfaces.empty()
+       through attitudeTorqueAbout and never had that hole.
+       #677 is the same line going stale a second time: #595 made each bell an
+       actuator row and this guard was not told, so a ring-only hull (no drum, no
+       air, no armed engine) asked for nothing and coasted at whatever rate a stick
+       tap left it, while the SAME ring turned it on a prograde hold and spent 37 N m
+       answering the stick one row earlier in the same substep. A latched law that
+       prints mode=killrot and asks for 0 N m is the readout lying, so the ring is
+       in the question. */
+    if(auth.wheels.empty() && auth.surfaces.empty() && auth.rcs.empty()
        && auth.tvcTorque <= 0.0) { return glm::dvec3(0.0); }  /* nothing to fight with */
     const glm::dmat3 I = getInertia();
     /* Full-tensor cancel, as in slewDemand: tau = I * (-w) / h. Scaling each world axis

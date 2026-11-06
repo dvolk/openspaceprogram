@@ -1,0 +1,60 @@
+# A thruster ring has always pushed a hull sideways, and since #595 it can TURN one:
+# each bell is an actuator row in the same allocator as the drums, the gimbals and the
+# fins. What #677 found is that one of the laws never got told. Vehicle::killRotDemand
+# asks "is there any authority at all?" before stating its demand, and it asked over
+# three actuators -- wheels, surfaces, gimbals -- so a hull with nothing but pods and a
+# tank failed the test, asked for 0 N m, and coasted at whatever rate a stick tap left
+# it. The mode was latched, the Autopilot window said Kill rotation, [slew] printed
+# mode=killrot, and the hull spun forever:
+#
+#   [slew] t=4.050 mode=killrot |w|=0.3148 rad/s  tau_ask=0   tau_spent=0
+#   ...    t=11.567 mode=killrot |w|=0.3148 rad/s  tau_ask=0   tau_spent=0
+#
+# while the SAME ring spent 37 N m answering the stick one row earlier in the same
+# substep, and flight/595-rcs-turns-a-wheel-less-hull holds prograde on the very same
+# hull -- slewDemand asks per axis through attitudeTorqueAbout, which has included the
+# ring all along.
+#
+# The S tap (600 ms) is the disturbance and X is HELD from 6.0 s, which is what the
+# player does -- X is an override, not a latch, and the [slew] rows only exist while it
+# is held, so their count is the hold. --no-paint because nothing here is a picture and
+# #666 proved the numbers do not move when the paint pass goes away.
+NAME kill-rot-stops-a-ring-only-hull
+CLAIM Holding kill-rot on a hull whose only steering is its thruster ring asks for torque, spends hydrazine, and puts the spin down.
+KIND invariant
+ARGS --time-accel 1 --startship rcs_test,res/ships/rcs_test.json,Kerbin,inertial-orbit
+ARGS --slew-log --fuel-log --no-paint
+ARGS --sim-press 3000,600,S,6000,3000,X
+ARGS --timeout 12
+LIMIT 40
+EXPECT [slew]
+FORBID error:
+FORBID FAILED
+# The hold is 3 s of kill-rot and nothing else is latched, so every row is this law.
+CHECK len(slew) >= 15
+CHECK all(s["mode"] == "killrot" for s in slew)
+# THE LAW ASKS. tau_ask is the summed demand for the last actuated substep: I*(-w)/h
+# on a 0.31 rad/s spin is thousands of N m, which is the hull saying "stop", not a
+# number anyone should read as a thrust. Before #677's fix this is 0 in every row, so
+# the pin below is the ticket.
+CHECK max(s["tau_ask"] for s in slew) > 1000
+# THE HARDWARE ANSWERS, at the ring's own ceiling: rcs_test's pod sits 0.185 m off the
+# COM, so its pitch/yaw authority is 37 N m and its roll authority is none (#595 says so
+# out loud). tau_spent pinned at that rating while tau_ask towers above it is the
+# allocator spending a weak actuator as hard as it can.
+CHECK max(s["tau_spent"] for s in slew) > 30
+CHECK all(s["tau_spent"] <= 45.0 for s in slew)
+# AND THE SPIN GOES AWAY. The tap leaves 0.315 rad/s (the same tap reaches 0.315 on the
+# mute build too -- that is how it stayed visible); ~0.7 s of hold takes it to nothing,
+# at 37 N m on Ieff 69 kg m^2 = 0.54 rad/s^2, which is the rate the 595 case measures.
+CHECK max(s["wnorm"] for s in slew) > 0.25
+CHECK min(s["wnorm"] for s in slew) < 0.01
+CHECK last(slew)["wnorm"] < 0.01
+# It STAYS down after the key comes up: in this vacuum drift bed nothing else damps a
+# spin, so a hull that had merely been nudged rather than stopped would still be turning
+# in the tail rows.
+CHECK all(s["wnorm"] < 0.02 for s in slew if s["t"] > 8.0)
+# HYDRAZINE PAYS for the stop. No translation key (N/I/L/J/K/U) is ever pressed, so
+# every gram that left the tank went into turning: measured 78.5 -> 78.1 kg.
+CHECK first(fuel)["groups"][0]["N2H4"][0] - last(fuel)["groups"][0]["N2H4"][0] > 0.1
+CHECK first(fuel)["groups"][0]["N2H4"][0] - last(fuel)["groups"][0]["N2H4"][0] < 1.5
