@@ -147,11 +147,13 @@ static int check_air(const char *path, const System &sys) {
         n++;
         const DragAtmosphere da = dragAtm(a, b->g);
         if(!(da.gravity == b->g) || !(da.molar_mass == a.molar_mass)
-           || !(da.gamma == a.gamma)
+           || !(da.gamma == a.gamma) || !(da.oxidizer_share == a.oxidizer_share)
            || da.layer_count != (int)a.layers.size()) {
             printf("  %s: %s dragAtm lost its world: g %.4g vs %.4g, M %.4g vs %.4g,"
-                   " gamma %.4g vs %.4g, %d levels vs %d\n", path, b->name.c_str(),
+                   " gamma %.4g vs %.4g, ox %.6g vs %.6g, %d levels vs %d\n", path,
+                   b->name.c_str(),
                    da.gravity, b->g, da.molar_mass, a.molar_mass, da.gamma, a.gamma,
+                   da.oxidizer_share, a.oxidizer_share,
                    da.layer_count, (int)a.layers.size());
             bad++;
             continue;

@@ -2364,14 +2364,13 @@ double Vehicle::producedThrust() {
     /* Actual thrust at the current throttle and air state (jets via jetThrust, drag.h). */
     const int as = activeStage();
     const double v_air = glm::length(airRelativeVel(get_center_of_mass()));
-    const double rho = airDensityAtCom();
-    const double ox_share = (m_parent != nullptr)
-        ? m_parent->surface.atmosphere.oxidizer_share : 0.0;
+    DragAtmosphere atm; double alt = 0.0;
+    const double rho = airProfileAtCom(atm, alt) ? airDensity(atm, alt) : 0.0;
     double t = 0;
     for(Part *p : parts) {
         if(!p->isThruster() || p->stage < as) { continue; }
         if(p->isJet()) {
-            t += jetThrust(v_air, rho, ox_share, p->def->jet_fan_thrust,
+            t += jetThrust(v_air, rho, atm, p->def->jet_fan_thrust,
                            p->jetFuelRate(), p->def->exhaust_velocity,
                            p->def->jet_intake_area);
         } else {
@@ -2572,6 +2571,7 @@ DragAtmosphere dragAtm(const AtmosphereParams &a, double g) {
     da.gravity = g;
     da.molar_mass = a.molar_mass;
     da.gamma = a.gamma;
+    da.oxidizer_share = a.oxidizer_share;   // #637: the jet gate reads it from HERE
     da.layers = a.layers.empty() ? nullptr : a.layers.data();
     da.layer_count = (int)a.layers.size();
     return da;
@@ -2598,9 +2598,16 @@ static bool comAirProfile(const TerrainBody *body, const glm::dvec3 &com,
     return true;
 }
 
+/* See vehicle.h. One profile read at the COM, handed over WHOLE: the density under a
+   hull and the composition of the air that density belongs to are one question, and
+   the jet gate needs both (#637). */
+bool Vehicle::airProfileAtCom(DragAtmosphere &atm, double &alt) const {
+    return comAirProfile(m_parent, comPos(), atm, alt);
+}
+
 double Vehicle::airDensityAtCom() const {
     DragAtmosphere atm; double alt = 0.0;
-    if(!comAirProfile(m_parent, comPos(), atm, alt)) { return 0.0; }
+    if(!airProfileAtCom(atm, alt)) { return 0.0; }
     return airDensity(atm, alt);
 }
 
@@ -4928,9 +4935,9 @@ void Vehicle::adjustThrottle(float delta) {
    sizes a burn with it says so. The peak speed is the honest CEILING -- the ship's
    own speed only ever lowers the ram term from it, which is what producedThrust()
    reports. */
-static double partThrustCeiling(const Part *p, double rho, double ox_share) {
+static double partThrustCeiling(const Part *p, double rho, const DragAtmosphere &atm) {
     if(p->isJet()) {
-        return jetThrust(p->def->exhaust_velocity * 0.5, rho, ox_share,
+        return jetThrust(p->def->exhaust_velocity * 0.5, rho, atm,
                          p->def->jet_fan_thrust, p->jetFuelRate(),
                          p->def->exhaust_velocity, p->def->jet_intake_area);
     }
@@ -4939,9 +4946,8 @@ static double partThrustCeiling(const Part *p, double rho, double ox_share) {
 
 double Vehicle::ceilingSum(const glm::dvec3 *want) {
     const int as = activeStage();
-    const double rho = airDensityAtCom();
-    const double ox_share = (m_parent != nullptr)
-        ? m_parent->surface.atmosphere.oxidizer_share : 0.0;
+    DragAtmosphere atm; double alt = 0.0;
+    const double rho = airProfileAtCom(atm, alt) ? airDensity(atm, alt) : 0.0;
     /* Frame S once. partAxis() re-solves it per part, and a law asks this every tick of
        a 51-part hull; the rest of this file reads it once per substep for the same
        reason (see "Frame S read once" in the aero pass). Only the directional caller
@@ -4982,7 +4988,7 @@ double Vehicle::ceilingSum(const glm::dvec3 *want) {
             const double off = acosUnit(glm::dot(sRot * p->localRot[2], *want));
             share = std::cos(std::max(0.0, off - p->def->gimbal_max));
         }
-        t += share * partThrustCeiling(p, rho, ox_share);
+        t += share * partThrustCeiling(p, rho, atm);
     }
     return t * exhaust_scale;
 }
@@ -5042,12 +5048,12 @@ bool Vehicle::canBurn() {
 void Vehicle::ApplyThrust(double step) {
     if(thruster_util == 0.0f) { return; } /* zero throttle: no burn, no plume */
     const int as = activeStage();
-    // Jet state shared by all jet parts this tick: air-relative speed, COM density,
-    // and what share of this body's air a turbine can burn against (#630).
+    // Jet state shared by all jet parts this tick: air-relative speed, and the air
+    // under the COM -- its density AND the composition the jet gate burns against
+    // (#630's gate, #637's pairing: one profile, not a density plus a hand-fetch).
     const double v_air = glm::length(airRelativeVel(get_center_of_mass()));
-    const double rho = airDensityAtCom();
-    const double ox_share = (m_parent != nullptr)
-        ? m_parent->surface.atmosphere.oxidizer_share : 0.0;
+    DragAtmosphere atm; double alt = 0.0;
+    const double rho = airProfileAtCom(atm, alt) ? airDensity(atm, alt) : 0.0;
     /* --dv-log: the ship mass as this tick's drains proceed. getMass() walks
        every part and recurses into containment, so take it ONCE here and walk
        it down by what each drain ACTUALLY took (FuelDraw::drawn) instead of
@@ -5064,13 +5070,13 @@ void Vehicle::ApplyThrust(double step) {
                vacuum, or an air with no oxidizer in it (#630) -- means no thrust AND
                no burn. Draws JET FUEL only. */
             const double T = jetThrust(
-                v_air, rho, ox_share, p->def->jet_fan_thrust, p->jetFuelRate(),
+                v_air, rho, atm, p->def->jet_fan_thrust, p->jetFuelRate(),
                 p->def->exhaust_velocity, p->def->jet_intake_area);
             if(T <= 0.0) { continue; }
             /* Burn with the air, not against it: the same gate jetThrust uses, so a
                thin-air jet is weak AND sips fuel (no usable air, no burn). */
             const double flow = p->jetFuelRate() * (double)thruster_util * step
-                              * jetAirGate(rho, ox_share); /* kg this tick */
+                              * jetAirGate(atm, rho); /* kg this tick */
             /* Size the draw the way the rocket branch does (#638). consumeResourceMass is
                drain-or-nothing, so a jet holding less than one tick of flow used to be
                refused EVERY tick: quiet, with fuel still in the Vessel window, for ever.
@@ -5284,8 +5290,10 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
     const auto airRho = [&]() {
         return airProfile() ? airDensity(atm, alt) : 0.0;
     };
-    const double oxShare = (m_parent != nullptr)
-                         ? m_parent->surface.atmosphere.oxidizer_share : 0.0;
+    /* The jet ceilings below read the oxidizer share off `atm`, the same profile their
+       density came from (#637). Where there is no air the lambda leaves `atm` at its
+       dry-air default and airRho() answers 0, and a 0 density ends the gate whatever
+       the composition says, so the default can never reach a number. */
     /* Counted, not just flagged: the same number sizes the row vectors below, so the
        reserve that keeps this walk from malloc-per-push costs nothing extra (the
        heaptrack count quoted above the wheel rows). */
@@ -5321,7 +5329,7 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
             const double rho = p->isJet() ? airRho() : 0.0;
             /* The same per-engine ceiling availableThrust() sums, so the pair cannot
                drift: tvcTorqueAvailable is that number seen through the gimbal lever. */
-            a.tvcTorqueAvailable += partThrustCeiling(p, rho, oxShare)
+            a.tvcTorqueAvailable += partThrustCeiling(p, rho, atm)
                                   * exhaust_scale * s * lever;
         }
     }

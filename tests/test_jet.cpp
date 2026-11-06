@@ -260,6 +260,47 @@ static void test_oxidizer() {
                "a CO2 trace sky is under 1% of what the same thin air does with oxygen");
 }
 
+/* THE AIR HANDS THE GATE ITS OWN COMPOSITION (#637). Every production caller holds the
+   DragAtmosphere its density came from, so the gate takes that rather than a share
+   fetched separately off the body -- two fetches can name two different worlds, and
+   nothing in the type used to notice. The two-argument form above stays the law; these
+   pins are about the door, not about re-deriving the arithmetic. */
+static void test_the_air_carries_its_own_composition() {
+    printf("== the profile carries the oxidizer share the gate needs (#637) ==\n");
+
+    DragAtmosphere kerbin { RHO_SEA, 5500.0, 70000.0 };
+    CHECK_NEAR(kerbin.oxidizer_share, OX_AIR, 0.0,
+               "a hand-built profile defaults to dry air, exactly as its molar_mass and "
+               "gamma do: a fixture must not be a silently dead engine");
+
+    const double mars_rho = 0.02, mars_ox = 0.000959;
+    DragAtmosphere mars { mars_rho, 20000.0, 80000.0 };
+    mars.oxidizer_share = mars_ox;
+
+    /* The door is the same law, bit for bit -- a second arithmetic here would be the
+       drift this refactor exists to prevent. */
+    CHECK_NEAR(jetAirGate(kerbin, RHO_SEA), jetAirGate(RHO_SEA, kerbin.oxidizer_share),
+               0.0, "jetAirGate(profile, rho) IS jetAirGate(rho, profile.share)");
+    CHECK_NEAR(jetAirGate(mars, mars_rho), jetAirGate(mars_rho, mars_ox), 0.0,
+               "on a Mars-shaped sky too");
+    CHECK_NEAR(jetThrust(V_E / 2.0, mars_rho, mars, T_FAN, M_F, V_E, A),
+               jetThrust(V_E / 2.0, mars_rho, mars_ox, T_FAN, M_F, V_E, A), 0.0,
+               "and the engine's door is the same engine");
+
+    /* It reads the FIELD, not a constant: one density, two skies. */
+    CHECK_TRUE(jetAirGate(kerbin, mars_rho) > 200.0 * jetAirGate(mars, mars_rho),
+               "the same 0.02 kg/m3 gates two ways once the composition travels with the "
+               "air -- a door that ignored the share would read dry air everywhere");
+
+    /* A sky with nothing to burn against stays dead through the door, thrust AND burn. */
+    DragAtmosphere eve { 1.7, 7000.0, 90000.0 };
+    eve.oxidizer_share = 0.0;
+    CHECK_NEAR(jetAirGate(eve, 1.7), 0.0, 0.0,
+               "1.7 kg/m3 with no oxidizer is a hole in the hull, not an engine");
+    CHECK_NEAR(jetThrust(V_E / 2.0, 1.7, eve, T_FAN, M_F, V_E, A), 0.0, 0.0,
+               "and it hands back no thrust either");
+}
+
 int main() {
     test_static();
     printf("\n");
@@ -276,6 +317,8 @@ int main() {
     test_degenerate();
     printf("\n");
     test_oxidizer();
+    printf("\n");
+    test_the_air_carries_its_own_composition();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

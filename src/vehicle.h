@@ -46,13 +46,11 @@
    are resolved once by the loader and live in System::bodies for the whole world, and
    no caller stores a DragAtmosphere (the aero pass builds one per hull per substep).
    Caching one across a system reload would be a dangling read, not a stale copy.
-   It copies fields; it does not transform any of them. The jet readers still go
-   straight to AtmosphereParams -- the body's own sea_level_density and its
-   oxidizer_share, which drag.h:jetAirGate takes as arguments rather than as part of
-   this type -- and the atlas reads its density row off `a` too. That is only harmless
-   while the seam stays a pure copy. If it ever normalises or derives anything, those
-   become real drift; folding oxidizer_share into DragAtmosphere is the fix if the
-   list grows again (#630). */
+   It copies fields; it does not transform any of them -- including the composition
+   the loader resolved (molar_mass, gamma, oxidizer_share), so the jet gate reads them
+   off the profile the density came from instead of going back to AtmosphereParams for
+   half the pair. That fold is #637, and tests/test_scenarios.cpp refuses a body whose
+   dragAtm lost one of those three. */
 DragAtmosphere dragAtm(const AtmosphereParams &a, double g);
 
 /* Autopilot slew targets -- mutually exclusive (last one wins); the stick
@@ -1423,6 +1421,15 @@ public:
        jetAirGate's density half divides by the engine's rating intake
        (constants.h:kAirSeaLevelDensity), so a sub-floor read is vacuum either way. */
     double airDensityAtCom() const;
+
+    /* The same read, handed over WHOLE: the body's air profile at the COM plus the
+       altitude it was sampled at. A caller that needs the density AND anything about
+       what the air IS (the jet gate's oxidizer share) takes this instead of
+       airDensityAtCom() plus a hand-fetch off TerrainBody -- the two halves of that
+       pair come from one profile, and splitting them is how a fourth call site could
+       gate one body's air on another body's composition (#637). False = no physical
+       air, in which case airDensity(atm, alt) would be 0 anyway. */
+    bool airProfileAtCom(DragAtmosphere &atm, double &alt) const;
 
     /* ONE body-frame read at one part (`p` null = the hull's own COM): where it
        sits over the near body and what the air there is (#665, #667). The part

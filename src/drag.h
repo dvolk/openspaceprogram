@@ -37,6 +37,15 @@ struct DragAtmosphere {
     double gravity = 0.0;              // [m/s^2] at the body's surface
     double molar_mass = kAirMolarMass; // [kg/mol]
     double gamma = kAirGamma;          // cp/cv
+    /* Kilograms of oxidizer per kilogram of air, off the body's authored composition
+       (atmo.h:resolveMix, #630). It sits here rather than beside the gate as a loose
+       argument because it is a fact about THIS air, the same fact molar_mass and gamma
+       are: a caller that reads the density under a hull already holds the profile it
+       came from, and fetching the share off TerrainBody by hand lets the two halves
+       describe different worlds (#637). Defaults to dry air for the same reason the
+       two gas constants above do -- it says what the air is made of, not where it is;
+       a body loaded from a file gets whatever its mix resolves to. */
+    double oxidizer_share = dryAirOxidizerShare();
     /* The layer table (#552 A4), when the body has one: a pointer INTO the body's
        own AtmosphereParams, so this stays a cheap copy -- the aero pass builds one
        of these per hull per substep and a vector here would allocate on every one.
@@ -1573,6 +1582,16 @@ inline double jetAirGate(double rho, double oxidizer_share) {
     return (ox < air) ? ox : air;
 }
 
+/* The same gate from the AIR ITSELF: the profile carries the oxidizer share, so a
+   caller that has read the density under a hull passes the thing that density came
+   from and cannot pair one body's rho with another body's composition (#637). The
+   two-argument form above stays the law -- it is pure math, it is what test_jet drives
+   by sweeping density and share, and a DragAtmosphere cannot express a NaN share or a
+   negative one as neatly. This is the door the sim calls through. */
+inline double jetAirGate(const DragAtmosphere &a, double rho) {
+    return jetAirGate(rho, a.oxidizer_share);
+}
+
 /* JET ENGINE (air-breathing) thrust, newtons:
      T(v, rho) = T_fan·d  +  ṁ_f·v_e·d  +  jetOxGate·rho·A·v·(v_e − v)
                                             d = jetAirGate(rho, oxidizer_share)
@@ -1596,6 +1615,14 @@ inline double jetThrust(double v, double rho, double oxidizer_share,
     const double T = T_fan * d + m_f * v_e * d
                      + jetOxGate(oxidizer_share) * rho * A * speed * (v_e - speed);
     return (T < 0.0) ? 0.0 : T;
+}
+
+/* The same engine under the same air, asked through the profile (#637): the share of
+   this air a turbine can burn against comes from the profile the density came from,
+   so thrust and fuel flow cannot be gated on two different worlds. */
+inline double jetThrust(double v, double rho, const DragAtmosphere &a,
+                        double T_fan, double m_f, double v_e, double A) {
+    return jetThrust(v, rho, a.oxidizer_share, T_fan, m_f, v_e, A);
 }
 
 /* The control-surface DEFLECTION SIGN for a surface at `ri` (rel. to the COM). The
