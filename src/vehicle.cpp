@@ -5112,6 +5112,11 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
             }
             a.wheelHousings++;
         }
+        /* Every row needs its housing (#648): the setpoints come back per row and are
+           scaled per package, so these two vectors cannot ever disagree about how many
+           rows exist. The row count is now counted separately from the pushes, which is
+           exactly the kind of change that would drift. */
+        assert(a.wheels.size() == a.wheelParts.size());
     }
     /* TVC, read off the ARMED gimballed engines so it scales with throttle (and
        falls to zero when the engines quit mid-slew). Small angle (gimbal_max ~ 5
