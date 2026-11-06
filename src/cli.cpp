@@ -592,6 +592,16 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "for 'is the ship losing power?' (life support + the active "
                  "wheels drain the battery; an RTG charges it)");
 
+    app.add_flag("--steering-log", args.steer_log,
+                 "Print the ship's attitude bill to stdout every 0.5s of wall "
+                 "time, paused or not -- the N m it may spend about roll/pitch/yaw "
+                 "(live, and again with the enable switches ignored so a switch's "
+                 "price shows), the same pair for its aero surfaces, the gimbals, "
+                 "and what the last actuated substep asked against what it spent. "
+                 "The instrument for 'why didn't that turn?': a shut switch, a dead "
+                 "battery and a line no drum covers all answer 0, and the flags say "
+                 "which of the three it was");
+
     app.add_flag("--prox-log", args.prox_log,
                  "Print proximity engage/release events, the active-ship "
                  "wake, the warp cap, and a per-ship distance snapshot "

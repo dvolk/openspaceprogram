@@ -398,6 +398,16 @@ void tick(Game &g) {
             }
         }
 
+        /* --steering-log: the attitude bill. Same 0.5s state gate as --power-log
+           because it answers the same kind of question ("can it, and what is it
+           paying?") about the same wall-clock cadence, and the row re-derives the
+           row set rather than riding on the sim's -- so it must not run per substep. */
+        if(g.ship && g.args.steer_log) {
+            if(g.logDue(kGateSteer, g.logClockMs(), kStateLogMs)) {
+                g.ship->steering_log(g.time);
+            }
+        }
+
         /* --slew-log: autopilot state. 10Hz, not 2Hz: a slew is a turn being
            steered, and at 2Hz the error curve is undersampled. */
         if(g.ship && g.args.slew_log_enabled) {

@@ -70,7 +70,9 @@ const WinDef kWins[W_Count] = {
     },
     [W_SaveLoad] = {
         .name = "Save/Load", .label = "Save / Load",
-        .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(380.0f, 360.0f),
+        // 380 -> 646 (2026_11_05 UI pass): the sheet's first row is the one sentence
+        // that says what the window does, and at 380 px it wrapped into three.
+        .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(646.0f, 360.0f),
                   .closable = true, .default_open = false },
         .role = WinRole::Transient, .inList = false,
     },
@@ -132,13 +134,19 @@ const WinDef kWins[W_Count] = {
     [W_Systems] = {
         .name = "Systems", .label = "Systems",
         // #649: state and switches -- what is on, what it costs, what is refusing, and
-        // what flipping a switch would give up. Vessel Info keeps the per-axis authority
-        // the hull can spend RIGHT NOW, so the two windows answer different questions
-        // instead of duplicating. Open by default: this is #646's fix -- the electrical
-        // balance used to live on the Game Debug
-        // overlay, where a player who never pressed F1 saw only the EC bar draining.
+        // what flipping a switch would give up. The per-axis actuator figures the hull can
+        // spend RIGHT NOW live in the Game Debug window (2026_11_05 UI pass), so the three
+        // flight windows answer different questions instead of duplicating: Vessel Info
+        // says whether the hull is turning, Game Debug says what each channel is worth and
+        // what it spent, this one says what is on and what it bills. Closed by default: it
+        // is a panel you consult, not an instrument you scan, and it will only grow (RCS,
+        // and the EC story #652 wants to tell). It was open by default for #646's sake --
+        // the electrical balance used to live only on the Game Debug overlay, where a
+        // player who never pressed F1 saw nothing but the EC bar in Resources draining. If
+        // #652 ends up being told through these rows, that default is worth revisiting
+        // against that ticket rather than against the general rule.
         .opts = { .slot = ui::Slot::BottomRight, .left_of = "Vessel Info",
-                  .closable = true },
+                  .closable = true, .default_open = false },
         .role = WinRole::Persistent, .inList = true,
     },
     [W_ShipList] = {
@@ -204,8 +212,10 @@ const WinDef kWins[W_Count] = {
     },
     [W_Readme] = {
         .name = "Readme", .label = "Readme",
+        // 520 -> 620 (2026_11_05 UI pass): the title screen opens this one, and at
+        // 520 the bottom of the text sat under the fold on a 900 px screen.
         .opts = { .slot = ui::Slot::Center, .left_of = "Title Menu",
-                  .initial_size = ImVec2(470.0f, 520.0f),
+                  .initial_size = ImVec2(470.0f, 620.0f),
                   .closable = true, .default_open = true },
         .role = WinRole::Persistent, .inList = false,
     },

@@ -328,7 +328,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/612-guidance-window-types.txt` | invariant | The type combo gates Go per law and swaps its section out, and the shared Cancel still stops a mission seen from another type. |
 | `ui/644-part-card-shows-what-a-part-costs-the-pool.txt` | golden | A part's own flight window prints its electrical terms: the pod's 225 W commanding and 600 W constant, the RTG's +298 W generated -- three rows, no others. |
 | `ui/644-vab-prints-what-the-assembly-costs-the-pool.txt` | golden | The VAB prints the assembly's electrical balance -- 298 W generated, 600 W constant, 12000 Wh stored, 2475 W of rated drum draw -- says it drains at rest and that its drums outrun its generator, and puts 2250 W on the big wheel block's own card. |
-| `ui/649-systems-window-switches-a-group-off.txt` | golden | The Systems window is listed in the Windows panel and prints the EC balance, and its Reaction wheels checkbox drops the live authority from 4950 N m to 0 while still quoting the 4950 N m the switch gives up. |
+| `ui/649-systems-window-switches-a-group-off.txt` | golden | The Systems window is listed in the Windows panel and prints the EC balance, and its Reaction wheels checkbox drops the live authority in --steering-log from 4950 N m to 0 while the row still quotes the 4950 N m the switch gives up. |
 
 ## render (58)
 
@@ -391,7 +391,7 @@ judgement. Select by number, name or path, e.g.
 | `render/354-map-fit-open-conic.txt` | invariant | An escaping ship's map opens framed on its current radius. |
 | `render/355-map-fit-switch-same-body.txt` | invariant | Switching ships around the same body refits the map to the new orbit. |
 | `render/552-earth-air-levels.txt` | invariant | A body that authors a layer table reports that profile in its dossier instead of a temperature implied by a scale height. |
-| `render/630-air-says-what-it-is-made-of.txt` | invariant | A body's dossier names the gases its air is made of and says how much of that air a jet can burn. |
+| `render/630-air-says-what-it-is-made-of.txt` | invariant | A body's dossier names the gases its air is made of, biggest first, and prints the share of that air a turbine can burn. |
 
 ## harness (13)
 

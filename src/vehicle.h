@@ -818,8 +818,8 @@ public:
            it is mounted along. There is still no momentum store and nothing
            saturates (#579).
            Empty with no wheel fitted or no EC power (the wheels are electric,
-           #418); the Vessel window prints what these rows buy per axis, which is
-           the same gated answer the laws spend (#572: one answer, not the one the
+           #418); the Game Debug window prints what these rows buy per axis, which
+           is the same gated answer the laws spend (#572: one answer, not the one the
            largest wheel happens to give).
          tvcTorque:   N m, but it is a DISK in the plane perpendicular to the
            mixer's stack axis, not a ball: see attitudeTorqueAbout.
@@ -854,7 +854,7 @@ public:
            three, which is a build question the player can see answered. Momentum
            saturation is NOT part of this model (#579).
            The rows are empty when no wheel is fitted or there is no EC power (the
-           wheels are electric, #418), and the Vessel window prints this same
+           wheels are electric, #418), and the Game Debug window prints this same
            gated answer per axis (#572: one answer, not the one the largest wheel
            happens to give). */
         std::vector<ActuatorRow> wheels;
@@ -905,7 +905,7 @@ public:
              arrives next door as an aero FORCE; applying both would bill the air twice.
            One row per surface, in `surfaceParts` order: actuatorSolve's setpoints come
            back indexed by row, so the rows have to be able to name the part they came
-           from (and the Vessel window reads the same rows, which is why #599's
+           from (and the Game Debug window reads the same rows, which is why #599's
            budget-not-delivery caveat applies to fins as much as to drums). */
         std::vector<ActuatorRow> surfaces;
         std::vector<const Part *> surfaceParts;
@@ -1190,6 +1190,16 @@ public:
 
     /* --power-log. */
     void power_log(double time);
+
+    /* --steering-log: the attitude bill as numbers, not as a window. The flight
+       windows print these same figures for the player; this is the channel for a
+       test or a bug report, so a case does not have to read a UI row to know what
+       the hull may spend (2026_11_05 e2e policy). R/P/Y about the attitude basis,
+       and every column comes from the same answers the windows ask:
+       attitudeAuthority() (live: power, switches, air), attitudeAuthorityHardware()
+       (enable switches ignored -- what a switch gives up) and attitudeDelivery()
+       (what the last actuated substep asked and actually spent). */
+    void steering_log(double time);
 
     /* Staging. `activeStage_` is a monotonic COUNTER (the stage about to fire):
        it starts at the HIGHEST stage and steps down one per press. An engine

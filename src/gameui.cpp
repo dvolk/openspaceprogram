@@ -408,7 +408,10 @@ static void syncShipView(Game &g) {
    not a ceiling -- it SHRINKS as the ask grows, so the SoI guard in the window
    is what stops an absurd ask reading as affordable. A ship over the line can
    still miss the shape (#611); one under it cannot get there at all, and today
-   it finds that out only by coasting for ever (#615). */
+   it finds that out only by coasting for ever (#615). It is a veto, not a
+   readout: since the 2026_11_05 UI pass the window prints the hull's delta-v and
+   says nothing about the price, because this figure is priced from the PAD and
+   reads as a lie over an orbit the hull already owns (#661). */
 static double ascentDvNeed(const TerrainBody &b, double apo_asl) {
     return 1.7 * std::sqrt(b.mu / (b.seaLevelRadius() + std::max(apo_asl, 0.0)));
 }
@@ -559,13 +562,16 @@ static void drawGuidanceWindow(Game &g) {
             const double dv = ship->getDeltaV();
             const double need = in_sky ? ascentDvNeed(*b, ask.apo_asl) : 0.0;
             if(in_sky) {
+                // The row is the readout; the estimate is not on it (2026_11_05 UI
+                // pass). The estimate prices a climb from the PAD -- a body-radius
+                // budget that says a 100 x 100 ask costs ~3800 m/s whether the hull is
+                // standing on the pad or already coasting at 125 x 125, where the real
+                // bill is a circularisation burn. Printed mid-flight it read as a bill
+                // and was wrong; #661 asks what the row should say when the hull is
+                // already above what it is asking for. The estimate still does its
+                // other job, which is refusing: see the ask guards below.
                 snprintf(v, sizeof v, "%.0f", dv);
-                snprintf(w, sizeof w, "%.0f", need);
-                if(flying) {
-                    ImGui::TextDisabled("for the next ask: %s m/s left, needs ~%s m/s", v, w);
-                } else {
-                    ImGui::Text("delta-v: %s m/s   ask needs ~%s m/s", v, w);
-                }
+                ImGui::Text("delta-v: %s m/s", v);
             }
             /* The ask guards run whatever the state, printing under the rule in
                refuse(). That is not redundancy: they are what stands between a
@@ -1005,23 +1011,29 @@ void drawUIReadouts(Game &g) {
                            0.0f, 3.0f, "%.1fx");
         // Controls: invert a manual attitude axis away from the default (see tick.cpp).
         ImGui::Separator();
-        ImGui::Text("Controls (W/S pitch, A/D yaw, Q/E roll)");
-        ImGui::Checkbox("Flip pitch (W/S)", &flip_pitch);
-        ImGui::Checkbox("Flip yaw (A/D)", &flip_yaw);
-        ImGui::Checkbox("Flip roll (Q/E)", &flip_roll);
+        ImGui::Text("Controls");
         /* Who gets an axis when a held key and a latched autopilot law both ask for
            it (#421). The ship applies this where the two demands are still separate
-           vectors; the choice applies to every ship, like the flips above. The item
-           order IS the enum order -- sas_policy.h asserts the values. */
+           vectors; the choice applies to every ship, like the flips under it. The item
+           order IS the enum order -- sas_policy.h asserts the values.
+           First row of the section, and no SetNextItemWidth (2026_11_05 UI pass): it is
+           the one choice here that changes how the hull answers the stick, and pinning it
+           to 240 px made it narrower than every slider and combo in the window, which all
+           take imgui's default fraction of the content width. (The buttons below still
+           size themselves in px; they are buttons, not the column.) The key names left the labels as well -- the Controls
+           window prints every binding, so a parenthetical here is a second place to
+           keep true. */
         int sas = (int)g.sas_policy;
-        ImGui::SetNextItemWidth(240.0f);
         // uiCombo, not ImGui::Combo: imgui never reports a combo's label to the
         // test-engine hooks, so a raw one has no name in the click registry and
         // --ui-click cannot reach it (uiinput.cpp).
-        if(uiCombo("SAS vs. steering", &sas,
+        if(uiCombo("SAS mode", &sas,
                    "Steering owns the axis\0SAS keeps its ask\0")) {
             g.sas_policy = (sas == SasKeepsAsk) ? SasKeepsAsk : SasStickOwnsAxis;
         }
+        ImGui::Checkbox("Flip pitch", &flip_pitch);
+        ImGui::Checkbox("Flip yaw", &flip_yaw);
+        ImGui::Checkbox("Flip roll", &flip_roll);
         ImGui::Spacing();
         if(ImGui::Button("Save settings", ImVec2(240.0f, 0.0f))) {
             if(g.save_settings()) {
@@ -2071,10 +2083,87 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("Orb energy (%s): %.6g J/kg", ship->m_parent->name.c_str(),
                     o.energy);
 
-        /* The power balance is no longer here (#649, closing #646): the EC rows are a
-           readout a player needs, not a dev overlay's reward for knowing F1 exists. They
-           live in the Systems window, listed in the Windows panel. What stays on this
-           overlay is what only a test or a developer wants. */
+        /* The power balance is no longer here (#649, closing #646): the EC VERDICT -- is
+           this ship paying for its systems, and what is refusing -- is a readout a player
+           needs, not a dev overlay's reward for knowing F1 exists. It lives in the Systems
+           window, listed in the Windows panel. What stays on this overlay is the anatomy
+           behind that verdict: which channel is worth what, and what the hull asked of it.
+           That is a deliberate line, not #646's rule with an exception -- a pilot flies on
+           the verdict and the Angular rate row; the per-channel figures answer "why", and
+           #646 never asked for those to be on the flight screen. */
+
+        /* THE STEERING DETAIL, off Vessel Info and in here (2026_11_05 UI pass): the
+           player's window was carrying six rows about actuators when what a pilot reads
+           flying is whether the hull is turning -- which is the Angular rate row, still in
+           Vessel Info. What each channel is WORTH, what it SPENT and what was ASKED of it
+           stay answerable -- just not on the flight screen. Vehicle::AttitudeDelivery in
+           vehicle.h is still the one place that says what each channel measures and why
+           the gap is not always positive, and these rows are still uiText, so a test can
+           read them off the screen (#601). --steering-log prints the same set as numbers
+           for a run that has no window open at all. */
+        ImGui::Separator();
+        ImGui::Text("Steering");
+        {
+            const Vehicle::AttitudeAuthority auth = ship->attitudeAuthority();
+            const glm::dmat3 ax = ship->attitudeBasis();
+            const Vehicle::AttitudeDelivery del = ship->attitudeDelivery();
+            /* The wheels' authority as the flight model bills it RIGHT NOW: the wheel
+               rows of AttitudeAuthority, gated by power exactly as the laws gate them
+               (#418: a dead ship reads dead), and quoted PER SHIP AXIS because a drum
+               levers torque along its own axis and nothing else (#576). Every shipped
+               wheel part is a triad housing (#593); a single drum stacked along the
+               stack reads e.g. 100 / 0 / 0. The part window quotes each part's own
+               rating (#572). The spend beside it (#599) is what turned the hull last
+               substep, so the gap on one axis is what the hardware refused there. */
+            const std::array<double, 3> wh = torqueRpY(del.wheels, ax);
+            const std::array<double, 3> wr = actuatorRpY(auth.wheels, ax);
+            uiText("Wheel torque (R/P/Y): %.0f / %.0f / %.0f N m, spent %.0f / %.0f / %.0f",
+                   wr[0], wr[1], wr[2], wh[0], wh[1], wh[2]);
+            /* #608: on a hull whose only steering is the gimbals, the steering IS in the
+               throttle -- tvcTorque rides the thrust the last ApplyThrust armed, so it
+               reads 0 while the ship coasts. Quoted current/possible like the thrust row;
+               it is a disk, not a ball (#425), so pitch and yaw only -- a nozzle levers
+               nothing about the stack. Only when the hull has gimballed engines to rate. */
+            if(auth.tvcTorqueAvailable > 0.0) {
+                const std::array<double, 3> tv = torqueRpY(del.tvc, ax);
+                uiText("Gimbal torque, pitch/yaw (this tick / full throttle): %.0f / %.0f N m, spent %.0f / %.0f",
+                       auth.tvcTorque, auth.tvcTorqueAvailable, tv[1], tv[2]);
+            }
+            /* What the hull's fins are WORTH (#426), per ship axis -- the third actuator
+               channel, and the one that answers "my wheels are dead, does this hull still
+               steer" on an airframe. It moved out of Vessel Info in the same pass as the
+               other two (2026_11_05): three per-axis rating-and-spend rows is anatomy,
+               whatever the part list decides to show. The spend beside the rating is the
+               air's answer, so it reads 0 in vacuum and droops past stall_angle (#494) or
+               under a swept plate (#483). */
+            if(!auth.surfaces.empty()) {
+                const std::array<double, 3> sh = torqueRpY(del.surfaces, ax);
+                const std::array<double, 3> sr = actuatorRpY(auth.surfaces, ax);
+                uiText("Surface torque (R/P/Y): %.0f / %.0f / %.0f N m, spent %.0f / %.0f / %.0f",
+                       sr[0], sr[1], sr[2], sh[0], sh[1], sh[2]);
+            }
+            /* THE ASK (#599). Shown even at zero, because zero is the answer flight/96's
+               post-cutoff drift and #640 had to infer from behaviour: SAS lit, throttle
+               shut, a law handed no authority asks nothing, so nothing is spent and the
+               hull drifts. */
+            const std::array<double, 3> ak = torqueRpY(del.asked, ax);
+            uiText("Steering asked (R/P/Y): %.0f / %.0f / %.0f N m",
+                   ak[0], ak[1], ak[2]);
+            /* The air-relative pair (#498), moved here from Surface Info in the same pass.
+               ORBITAL's Prg/Rtg is the CONIC's; inside an atmosphere on a rotating body
+               that is mostly the ground's own motion (~175 m/s at Kerbin sea level), so
+               the two pairs print ~16 deg apart for the same plane flying dead on the air,
+               and both are right -- which is exactly why the pair is a reference-frame
+               diagnostic and not a flight readout. Dashed when there is no air or no flow
+               with a direction: the same kAoAFlowFloor rule as AoA and Beta, because a
+               parked hull's ~1e-4 m/s of jitter has no heading. */
+            if(view.air_dir_valid) {
+                uiText("Prg (air): %.2f", glm::degrees(glm::angle(facing_dir, view.air_dir)));
+                uiText("Rtg (air): %.2f", glm::degrees(glm::angle(facing_dir, -view.air_dir)));
+            } else {
+                uiText("Prg (air): -");
+            }
+        }
     });
 
     // Labels abbreviated to <= 3 chars and right-padded so values line up.
@@ -2264,21 +2353,13 @@ void drawUIReadouts(Game &g) {
         ImGui::Text(" Pt: %.2f", glm::degrees(pitch));
         ImGui::Text("  R: %.2f", glm::degrees(roll));
         ImGui::Text("Hdg: %.2f", glm::degrees(yaw));
-        /* Prg/Rtg: the angle from the nose to the AIR-relative prograde (#498) --
-           the direction the air is being pushed out of the way, which is the one
-           the aero law answers to and the one a pilot inside an atmosphere steers
-           at. The ORBITAL window's Prg/Rtg is the CONIC's: inside an atmosphere on
-           a rotating body that is mostly the ground's own motion (~175 m/s at
-           Kerbin sea level), so the two windows print ~16 deg apart for the same
-           plane flying dead on the air, and both are right. Dashed when there is no
-           air or no flow with a direction -- the same kAoAFlowFloor rule as AoA/Beta
-           below, because a parked ship's ~1e-4 m/s of jitter has no heading. */
-        if(view.air_dir_valid) {
-            ImGui::Text("Prg: %.2f", glm::degrees(glm::angle(facing_dir, view.air_dir)));
-            ImGui::Text("Rtg: %.2f", glm::degrees(glm::angle(facing_dir, -view.air_dir)));
-        } else {
-            ImGui::Text("Prg: -   Rtg: -");
-        }
+        /* The nose's angle to the AIR-relative prograde (#498) used to sit here as a
+           second Prg/Rtg pair, one label apart from ORBITAL's conic pair and ~16 deg
+           off for a plane flying dead on the air. It is a reference-frame question --
+           which direction the aero law answers to -- not a ground readout, so it moved
+           to the Game Debug window with the rest of that family (2026_11_05 UI pass).
+           [surfinfo]'s aprg= is still that row's number and prints whether the window
+           is open or not. */
         /* AoA: the AIRFRAME's angle of attack -- drag.h AeroFrame against the
            root's axes, air-relative flow against the nose, so there is none
            outside an atmosphere. Same number --drag-log prints. It is an
@@ -2467,7 +2548,7 @@ void drawUIReadouts(Game &g) {
 
     drawWin(g, W_VesselInfo, [&] {
         ImGui::Text("Ship: %s", ship->displayName().c_str());
-        ImGui::Text("Stage: %d / %d  (SPACE to drop)",
+        ImGui::Text("Stage: %d / %d",
                     ship->activeStage(), ship->numStages());
         ImGui::Text("Mass: %.3fkg", ship->getMass());
         ImGui::Text("Delta-v: %.1fm/s", ship->getDeltaV());
@@ -2481,89 +2562,10 @@ void drawUIReadouts(Game &g) {
                     ship->availableThrust());
         ImGui::Text("Current TWR: %.2f/%.2f", ship->getTWR(), ship->getFullThrustTWR());
         ImGui::Text("Max TWR: %.2f", ship->getMaxTWR());
-        /* The wheels' authority as the flight model bills it RIGHT NOW: the wheel
-           rows of AttitudeAuthority, gated by power exactly as the laws gate them
-           (#418: a dead ship reads dead), and quoted PER SHIP AXIS because a drum
-           levers torque along its own axis and nothing else (#576). Every shipped
-           wheel part is a triad housing -- three orthogonal drums, one rating -- so
-           a pod or a wheel block reads the same number on all three (#593). A single
-           drum stacked along the stack reads e.g. 100 / 0 / 0: it can roll and cannot
-           pitch or yaw. Either way, covering the axes is a build decision the player
-           can now see answered here. The part window quotes each part's own rating
-           (#572). */
-        {
-            const Vehicle::AttitudeAuthority auth = ship->attitudeAuthority();
-            const glm::dmat3 ax = ship->attitudeBasis();
-            /* WHAT EACH ACTUATOR SPENT (#599), projected onto the same three ship axes
-               as every rating row here. A rating answers "is this drum enough?"; the
-               spend answers "what is turning the hull right now", and the gap between
-               them on one axis is the torque the HARDWARE refused there -- #577's
-               over-subscribed multi-key hold, a saturated actuator, a demand about a line
-               no drum covers. Vehicle::AttitudeDelivery in vehicle.h is the ONE place
-               that says what each channel measures, what it can come short of, and why
-               the gap is not always positive. The rows are magnitudes because the rating
-               beside them is one; a signed spend would invite reading a direction that is
-               not there. A PAUSED sim keeps showing the last simulated substep, the edge
-               tick.cpp documents for the F4 overlay. */
-            const Vehicle::AttitudeDelivery del = ship->attitudeDelivery();
-            auto about = [&](const glm::dvec3 &tau) {
-                return std::array<double, 3>{ std::fabs(glm::dot(tau, ax[2])),
-                                              std::fabs(glm::dot(tau, ax[0])),
-                                              std::fabs(glm::dot(tau, ax[1])) };
-            };
-            const std::array<double, 3> wh = about(del.wheels);
-            /* These rows, and the Angular rate row below the block, go through
-               uiText: they are the #572/#599/#608 figures a test should be able to
-               read, and until now they were pinned only in unit tests and in what the
-               hull does -- never as a claim about what the player is shown (#601). */
-            uiText("Wheel torque (roll/pitch/yaw): %.0f / %.0f / %.0f N m, spent %.0f / %.0f / %.0f",
-                   actuatorTorqueAbout(auth.wheels, ax[2]),
-                   actuatorTorqueAbout(auth.wheels, ax[0]),
-                   actuatorTorqueAbout(auth.wheels, ax[1]),
-                   wh[0], wh[1], wh[2]);
-            /* #426: the same question of the surfaces -- what one radian of command
-               at THIS dynamic pressure is worth about each ship axis. Only shown when
-               there is something to show, so a rocket's readout stays as it was; a
-               finned airframe can now see what its fins are worth, which is what tells
-               a player that a hull with no drum still steers in air.
-               The rating is a budget, not a delivery; the SPEND beside it is the air's
-               answer, so it reads 0 in vacuum and droops past stall_angle (#494) or
-               under a swept plate (#483) -- the difference the #426 caveat is about. */
-            if(!auth.surfaces.empty()) {
-                const std::array<double, 3> sh = about(del.surfaces);
-                uiText("Surface torque (roll/pitch/yaw): %.0f / %.0f / %.0f N m, spent %.0f / %.0f / %.0f",
-                       actuatorTorqueAbout(auth.surfaces, ax[2]),
-                       actuatorTorqueAbout(auth.surfaces, ax[0]),
-                       actuatorTorqueAbout(auth.surfaces, ax[1]),
-                       sh[0], sh[1], sh[2]);
-            }
-            /* #608: on a hull whose only steering is the gimbals, the steering IS in
-               the throttle -- tvcTorque rides the thrust the last ApplyThrust armed, so
-               it reads 0 while the ship coasts and a slice of itself at a trimmed
-               lever. Quoted current/possible, the same shape as the "Thrust:
-               produced/available" row above: what the gimbals can spend this tick, and
-               what the ignited stage could spend at full throttle. Shown only when the
-               hull has gimballed engines to rate, so a wheel-only readout stays as it
-               was. It is a disk, not a ball (#425), so the number is pitch and yaw --
-               the stack axis (roll) gets nothing from a nozzle. And "full throttle"
-               carries the same caveat as the available-thrust row: a jet's rating is
-               its ceiling in THIS air at its best speed, not its sea-level brochure.
-               The spend is measured off the deflected nozzles, so it can sit under the
-               rating for a reason the rating cannot see: the gimbal RATE has not
-               finished swinging the ring, or a cluster's mixer clamped one engine. */
-            if(auth.tvcTorqueAvailable > 0.0) {
-                const std::array<double, 3> tv = about(del.tvc);
-                uiText("Gimbal torque, pitch/yaw (this tick / full throttle): %.0f / %.0f N m, spent %.0f / %.0f",
-                       auth.tvcTorque, auth.tvcTorqueAvailable, tv[1], tv[2]);
-            }
-            /* THE ASK (#599), on the row the spends sit under. Shown even at zero,
-               because zero is the answer flight/96's post-cutoff drift and #640 had to
-               infer from behaviour: SAS lit, throttle shut, a law handed no authority
-               asks nothing, so nothing is spent and the hull drifts. */
-            const std::array<double, 3> ak = about(del.asked);
-            uiText("Steering asked (roll/pitch/yaw): %.0f / %.0f / %.0f N m",
-                   ak[0], ak[1], ak[2]);
-        }
+        /* The per-axis actuator rows -- wheels, gimbals, fins (#426, #572, #599) -- all
+           live in the Game Debug window now (2026_11_05 UI pass): three rating-and-spend
+           rows is anatomy, and what a pilot reads flying is whether the hull turns, which
+           is the one row left here. */
         uiText("Angular rate: %.2fdeg/s",
                glm::degrees(glm::length(ship->hullAngVel())));
     });
@@ -2571,10 +2573,11 @@ void drawUIReadouts(Game &g) {
        balance moved here from the bottom of the Game Debug overlay, which is #646's fix:
        the rows were there for a player who already knew to press F1, while everyone else
        saw only the EC bar in Resources draining, and no word about why.
-       The boundary with Vessel Info above stays deliberate, and both windows speak the
-       LIVE answer: Vessel Info prints what the hull can spend right now -- power, air and
-       the switches all applied -- and this one prints the balance, the switches, and what
-       flipping one would give up. That last question is the only place
+       The boundary with the other two stays deliberate, and each answers one question:
+       Vessel Info says whether the hull is turning (Angular rate), Game Debug says what
+       each channel is WORTH and what it SPENT right now -- power, air and the switches
+       applied -- and this window says what is on, what it bills, and what flipping a
+       switch would give up. That last question is the only place
        attitudeAuthorityHardware() is asked, and it is a different question rather than a
        different window on the same one. */
     drawWin(g, W_Systems, [&] {
@@ -2657,15 +2660,16 @@ void drawUIReadouts(Game &g) {
                the door itself names it. The nouns match the checkbox above: a player
                reading "no drums on this hull" next to "Reaction wheels" has to be sure
                they are the same thing. */
-            uiText("  %s -- %s", ship->wheels_enabled ? "on" : "off",
+            uiText("  %-3s  %s", ship->wheels_enabled ? "on" : "off",
                    ship->ecPowersWheels() ? "no reaction wheels on this hull"
                                           : "no EC power to spend");
         } else {
-            uiText("  %s -- %.0f / %.0f / %.0f N m at stake (roll/pitch/yaw)",
-                   ship->wheels_enabled ? "on" : "off",
-                   actuatorTorqueAbout(hw.wheels, ax[2]),
-                   actuatorTorqueAbout(hw.wheels, ax[0]),
-                   actuatorTorqueAbout(hw.wheels, ax[1]));
+            // The state, then what the group is worth (2026_11_05 UI pass drops the
+            // "at stake" gloss: the figure is the value, and where it is spent -- live,
+            // per axis, in Vessel Info and Game Debug -- is the manual's sentence).
+            const std::array<double, 3> hwv = actuatorRpY(hw.wheels, ax);
+            uiText("  %-3s  %.0f / %.0f / %.0f N m (R/P/Y)",
+                   ship->wheels_enabled ? "on" : "off", hwv[0], hwv[1], hwv[2]);
         }
         bool fins = ship->surfaces_enabled;
         if(ImGui::Checkbox("Aero surfaces", &fins)) { ship->surfaces_enabled = fins; }
@@ -2680,15 +2684,13 @@ void drawUIReadouts(Game &g) {
                It deliberately does NOT blame the switch: the hardware question ignores it.
                Naming the four apart would want a fourth readout in a window that already
                has eight rows, and none of them changes what the pilot does next. */
-            uiText("  %s -- %s", ship->surfaces_enabled ? "on" : "off",
+            uiText("  %-3s  %s", ship->surfaces_enabled ? "on" : "off",
                    hw.hasSurfaces ? "nothing to push against"
                                   : "no aero surfaces on this hull");
         } else {
-            uiText("  %s -- %.0f / %.0f / %.0f N m at stake (roll/pitch/yaw)",
-                   ship->surfaces_enabled ? "on" : "off",
-                   actuatorTorqueAbout(hw.surfaces, ax[2]),
-                   actuatorTorqueAbout(hw.surfaces, ax[0]),
-                   actuatorTorqueAbout(hw.surfaces, ax[1]));
+            const std::array<double, 3> hwv = actuatorRpY(hw.surfaces, ax);
+            uiText("  %-3s  %.0f / %.0f / %.0f N m (R/P/Y)",
+                   ship->surfaces_enabled ? "on" : "off", hwv[0], hwv[1], hwv[2]);
         }
     });
     drawWin(g, W_Controls, [&] {
@@ -5365,7 +5367,7 @@ void drawVabUI(Game &g) {
     // Resizable: default size at creation, then the user owns the size.
     ImGui::SetNextWindowSize(ImVec2(340, 410), ImGuiCond_FirstUseEver);
     ImGui::Begin("VAB", nullptr);
-    ImGui::Text("VAB -- %s (%d parts)", g.vab.build.name.c_str(),
+    ImGui::Text("Vehicle: %s (%d parts)", g.vab.build.name.c_str(),
                 (int)g.vab.build.parts.size());
     /* #499: the stability of THIS ASSEMBLY, asked before it has ever met the air.
        Same law the flight lift loop bills (drag.h::LiftSlopeSum), at the one flow a
@@ -5392,9 +5394,9 @@ void drawVabUI(Game &g) {
                         stab.margin > 0.0 ? "restoring" : "diverging");
         } else {
             /* Dashed, not zeroed: LiftSlopeSum::usable refuses to quote where the
-               average of a cancelled sum landed (#454's Np=+15.9 m lie). */
-            ImGui::TextDisabled("Aero: CLa %.1f m2/rad  SM -  (surfaces disagree,"
-                                " or none lifts)", stab.slope);
+               average of a cancelled sum landed (#454's Np=+15.9 m lie). The reason
+               stays off the row -- an instrument reads "-", the manual says why. */
+            ImGui::TextDisabled("Aero: CLa %.1f m2/rad  SM -", stab.slope);
         }
     }
     /* #644: the electrical counterpart of the Aero row above -- the terms the flight
@@ -6170,13 +6172,21 @@ size_t atlasTotalSlots() {
     return (total > 0) ? total : 1;   // a missing table must not divide by 0
 }
 
-/* The air's mix as one dossier row: "N2 78.08%, O2 20.95%, Ar 0.934%, CO2 0.033%",
-   biggest gas first, and " +2 more" if the list does not fit the column rather than a row cut
-   off mid-gas (a truncated name reads like a data error, not like a long list). The
-   percentages are normalized by the mix's own total, exactly like atmo.h:resolveMix,
-   so they sum to 100 whether or not the authored fractions do. A body that authored
-   no mix shows the dry-air default it actually flies. */
-static void fmt_mix(const AtmosphereParams &a, char *out, size_t n) {
+/* The air's mix as SHARES (0..1), biggest gas first (#552 A4b, #630). The dossier
+   prints one row per gas: the whole mix used to be one string, and a four-gas world
+   overran the dossier column, so the row ended in a "+2 more" tail that read like a
+   data error (2026_11_05 UI pass). A body that authored no mix shows the dry-air
+   default it actually flies, which is what the loader resolved its molar mass and
+   gamma from.
+   Normalizing here rather than at the print keeps the rule in one place: divide by the
+   mix's own total, exactly the grouping atmo.h:resolveMix uses, so the printed shares
+   sum to 100 whether or not the authored fractions do. stable_sort because the dossier
+   claims the ORDER is information, and two gases at the same fraction should stay in
+   the order the file authored them rather than shuffle between builds. The loader
+   rejects an unknown gas, a negative or NaN fraction, and a mix that resolves to
+   nothing (system.cpp), so the asserts state what it guarantees rather than
+   negotiating with a state that cannot arrive. */
+static std::vector<MixFraction> atlasMix(const AtmosphereParams &a) {
     std::vector<MixFraction> m = a.composition;
     if(m.empty()) {
         int k = 0;
@@ -6185,27 +6195,13 @@ static void fmt_mix(const AtmosphereParams &a, char *out, size_t n) {
     }
     double total = 0.0;
     for(const MixFraction &x : m) { total += x.fraction; }
-    if(!(total > 0.0)) { out[0] = '\0'; return; }
-    std::sort(m.begin(), m.end(), [](const MixFraction &p, const MixFraction &q) {
+    assert(total > 0.0);
+    for(MixFraction &x : m) { x.fraction /= total; }
+    std::stable_sort(m.begin(), m.end(),
+                     [](const MixFraction &p, const MixFraction &q) {
         return p.fraction > q.fraction;
     });
-    out[0] = '\0';
-    size_t used = 0, shown = 0;
-    for(const MixFraction &x : m) {
-        char one[32];
-        // fraction / total FIRST: the same grouping resolveMix uses, and it cannot
-        // overflow on a generator-written file the way fraction * 100 would.
-        snprintf(one, sizeof one, "%s%s %.4g%%", shown ? ", " : "",
-                 x.gas ? x.gas->name : "?", 100.0 * (x.fraction / total));
-        // Leave room for the " +N more" tail before committing another gas.
-        if(used + strlen(one) + 12 >= n) { break; }
-        snprintf(out + used, n - used, "%s", one);
-        used += strlen(one);
-        shown++;
-    }
-    if(shown < m.size()) {
-        snprintf(out + used, n - used, " +%d more", (int)m.size() - (int)shown);
-    }
+    return m;
 }
 
 /* The dossier: the system JSON read back in friendly units, so the lab can
@@ -6325,37 +6321,37 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             line("sound speed", v);
             /* WHAT the air is, not only how much of it (#552 A4b, #630). The mix is
                what a body authors; molar mass and gamma are what it resolves to, so
-               this row is the source and the three rows above are its consequences.
-               The oxidizer row is the one a player would act on: it is the share of
-               this air a turbine can burn against, and 0 here is why Eve's 1.7 kg/m3
-               of sea-level air -- denser than Kerbin's -- is a dead jet. */
-            fmt_mix(at, v, sizeof v);
-            line("air composition", v);
-            /* The share is the fact; what it does to a jet is the action, so both go
-               on the row. The share alone is NOT the number the law bills: an intake
-               is rated at standard sea-level air (constants.h:kAirSeaLevelDensity), so
-               Mars's 0.1 %-by-mass oxidizer is 0.0068 % of one machine's air. Print the
-               gate
-               rather than a verdict -- any word ("thin", "dead") hides a threshold
-               nobody authored, while this is the same min() the throttle reads. */
-            if(at.oxidizer_share > 0.0) {
-                const double gate = jetAirGate(at.sea_level_density,
-                                               at.oxidizer_share);
-                // "by mass" because the composition row above it is by MOLE: Earth
-                // is 20.95% O2 by molecules and 23.1% by mass, and side by side with
-                // no unit that reads like a rounding bug.
-                if(gate >= 0.995) {
-                    snprintf(v, sizeof v, "%.1f%% of the air by mass (a jet runs"
-                             " on it)", 100.0 * at.oxidizer_share);
-                } else {
-                    // %.3g, not %.1f: Mars's gate is 0.0068 % of a rated intake, and
-                    // "0.0%" reads as a display bug rather than as a cold fact.
-                    snprintf(v, sizeof v, "%.1f%% of the air by mass (a jet gets"
-                             " %.3g%% of its rated air)", 100.0 * at.oxidizer_share,
-                             100.0 * gate);
+               these rows are the source and the three rows above are its consequences.
+               One row per gas, biggest first -- the shares are the values, and the
+               gas name sits in the label column so the rows align. A gas authored at
+               zero is not news, so it is skipped rather than printed as "0%". */
+            {
+                const std::vector<MixFraction> mix = atlasMix(at);
+                char lab[32];
+                for(const MixFraction &x : mix) {
+                    assert(x.gas != nullptr);   // the loader names every gas it accepts
+                    if(!(x.fraction > 0.0)) { continue; }
+                    snprintf(lab, sizeof lab, "air gas %s", x.gas->name);
+                    snprintf(v, sizeof v, "%.4g%%", 100.0 * x.fraction);
+                    line(lab, v);
                 }
+            }
+            /* The share is the fact and the row is only the fact (2026_11_05 UI
+               pass): the row used to add whether a jet runs here and, for a thin sky,
+               what fraction of a rated intake the air delivers. That verdict is not
+               the dossier's to print -- a turbine burns against oxygen, so the share
+               plus the density rows above it already say what a CO2 sky means, and the
+               engine itself answers for the rest: drag.h:jetAirGate bills thrust and
+               burn in flight (vehicle.cpp), which is where a pilot would rather learn
+               it. "by mass" stays because the gas rows above are by MOLE: Earth is
+               20.95% O2 by molecules and 23.1% by mass, and side by side with no unit
+               that reads like a rounding bug. %.4g, not %.1f, for the same reason the
+               gas rows use it: a trace atmosphere's oxidizer is a real number and
+               "0.0%" reads as a display bug rather than as a cold fact. */
+            if(at.oxidizer_share > 0.0) {
+                snprintf(v, sizeof v, "%.4g%% by mass", 100.0 * at.oxidizer_share);
             } else {
-                snprintf(v, sizeof v, "none (a jet cannot run here)");
+                snprintf(v, sizeof v, "none");
             }
             line("air oxidizer", v);
         } else {

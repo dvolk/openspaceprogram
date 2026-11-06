@@ -10,6 +10,9 @@
 //                wheel 90 deg off an axis buys NOTHING about it; two drums on one
 //                line buy the sum; a NaN or zero axis / a non-positive limit buys
 //                nothing; the asked axis's length is irrelevant.
+//   torqueRpY / actuatorRpY: the R/P/Y split every flight readout prints -- roll
+//                about the basis' nose column, pitch about its right, yaw about
+//                its up, always unsigned.
 //   actuatorSolve: parallel rows (either sense) share one line's capacity, the
 //                delivered vector never exceeds what the lines can carry, an
 //                uncovered axis buys nothing instead of a pretend torque, the
@@ -23,6 +26,7 @@
 // Build & run (from repo root) -- also part of `make test`:
 //   see the test: rule in the Makefile.
 
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -118,6 +122,38 @@ static void test_capability_is_about_an_axis() {
                "a zero asked axis asks for nothing");
     CHECK_TRUE(!(actuatorTorqueAbout(cluster, glm::dvec3(nan, 0, 0)) > 0.0),
                "a NaN asked axis asks for nothing");
+}
+
+/* --- the R/P/Y split the readouts print ----------------------------------- */
+static void test_the_rpY_split() {
+    printf("== R/P/Y: which column of the attitude basis is which ==\n");
+    /* attitudeBasis()'s columns are [right, up, nose], so roll is about the nose
+       (col 2), pitch about the right wing (col 0) and yaw about the up axis
+       (col 1). Pinned on the identity basis because every flight readout's
+       "R/P/Y" label promises this order (actuators.h), and the Systems rows and
+       --steering-log both print through it. */
+    const glm::dmat3 ax(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);
+    const std::vector<ActuatorRow> one = { { glm::dvec3(0, 0, 1), 300.0 } };
+    const std::array<double, 3> wr = actuatorRpY(one, ax);
+    CHECK_NEAR(wr[0], 300.0, 1e-12, "a drum along the nose levers ROLL");
+    CHECK_NEAR(wr[1], 0.0, 1e-12, "and nothing about pitch");
+    CHECK_NEAR(wr[2], 0.0, 1e-12, "or yaw");
+
+    const std::array<double, 3> t = torqueRpY(glm::dvec3(0.0, -50.0, 0.0), ax);
+    CHECK_NEAR(t[0], 0.0, 1e-12, "a torque about the up axis is not roll");
+    CHECK_NEAR(t[1], 0.0, 1e-12, "and not pitch");
+    CHECK_NEAR(t[2], 50.0, 1e-12, "the sign is dropped: the readout sizes the channel");
+
+    /* A rotated basis follows the hull, not the world: with the nose along +Y and
+       the right wing along +Z, a drum still pointing at world +Z lies along this
+       hull's right wing, so its 300 N m is pitch and not roll. */
+    const glm::dmat3 turned(0.0, 0.0, 1.0,   // col0 = right = +Z
+                            1.0, 0.0, 0.0,   // col1 = up    = +X
+                            0.0, 1.0, 0.0);  // col2 = nose  = +Y
+    const std::array<double, 3> tr = actuatorRpY(one, turned);
+    CHECK_NEAR(tr[0], 0.0, 1e-12, "the drum is no longer along the turned hull's nose");
+    CHECK_NEAR(tr[1], 300.0, 1e-12, "it lies along its right wing, so it levers pitch");
+    CHECK_NEAR(tr[2], 0.0, 1e-12, "and buys no yaw");
 }
 
 /* --- the solver: one line, and an axis the hull has no drum for ------------ */
@@ -368,6 +404,7 @@ static void test_a_drum_and_a_fin_on_one_line_share_it() {
 
 int main() {
     test_capability_is_about_an_axis();
+    test_the_rpY_split();
     test_one_line();
     test_lines_and_clusters();
     test_oblique_lines_split_once();

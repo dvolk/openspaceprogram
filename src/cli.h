@@ -123,6 +123,7 @@ struct GameArgs {
     bool dv_log = false;         // the ship's delta-v budget (spent vs delivered)
     bool mass_log = false;       // every vehicle's mass, active or not
     bool power_log = false;      // power balance (gen/draw/pool/gate)
+    bool steer_log = false;      // attitude bill: what it may spend, asked, spent
     bool prox_log = false;       // proximity engage/release + distances
     double prox_fly_on = 2000.0;    // engage radius while the active ship flies (m)
     double prox_fly_off = 10000.0;  // release radius while flying (m)

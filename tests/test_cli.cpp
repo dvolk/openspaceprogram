@@ -94,7 +94,7 @@ int main() {
             return b;
         };
         for(const char *flag : {"--spin-log", "--mass-log", "--fuel-log",
-                                "--drain-log", "--power-log"}) {
+                                "--drain-log", "--power-log", "--steering-log"}) {
             assert(block(flag).find(state_s) != std::string::npos);
         }
         assert(block("--slew-log").find(slew_s) != std::string::npos);

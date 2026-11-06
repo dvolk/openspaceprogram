@@ -2288,6 +2288,46 @@ void Vehicle::power_log(double time) {
     fflush(stdout);
 }
 
+void Vehicle::steering_log(double time) {
+    /* R/P/Y in the attitude basis, from actuators.h's split so this row and the
+       flight windows cannot disagree about which column is which.
+       wheels/wheels_hw is the pair the Systems switch rows print: the live rating
+       (a dead battery or a shut switch answers 0) beside the hardware rating (the
+       enable switches ignored), which is the only way a switch can say what flipping
+       it gives up. surfaces carries the same distinction (#658: a trimmed plate
+       still flying the hull is what the live column hides).
+       asked/spent_all are the last actuated substep's record (#599). spent_all is
+       the VECTOR SUM of the three channels before it is split, so a per-axis zero
+       can be two channels cancelling rather than nothing spent -- the windows print
+       each channel on its own row and do not have this ambiguity; the column is
+       named _all to say so. The flags carry the rest of the diagnosis: a 0/0/0 with
+       wheels_on=1 and powered=1 is a hull with no drum on that line (#576), and one
+       with fins_fitted=0 has no fins to blame at all. */
+    const AttitudeAuthority live = attitudeAuthority();
+    const AttitudeAuthority hw = attitudeAuthorityHardware();
+    const glm::dmat3 ax = attitudeBasis();
+    const std::array<double, 3> w = actuatorRpY(live.wheels, ax);
+    const std::array<double, 3> wh = actuatorRpY(hw.wheels, ax);
+    const std::array<double, 3> s = actuatorRpY(live.surfaces, ax);
+    const std::array<double, 3> sh = actuatorRpY(hw.surfaces, ax);
+    const AttitudeDelivery &del = attDel_;
+    const std::array<double, 3> asked = torqueRpY(del.asked, ax);
+    const std::array<double, 3> spent = torqueRpY(del.wheels + del.tvc + del.surfaces, ax);
+    printf("[steerlog] t=%.1fs ship=\"%s\" powered=%d wheels_on=%d fins_on=%d "
+           "fins_fitted=%d "
+           "wheels=%.0f/%.0f/%.0f wheels_hw=%.0f/%.0f/%.0f "
+           "surfaces=%.0f/%.0f/%.0f surfaces_hw=%.0f/%.0f/%.0f "
+           "tvc_rating=%.0f tvc_rating_full=%.0f asked=%.0f/%.0f/%.0f "
+           "spent_all=%.0f/%.0f/%.0f\n",
+           time, displayName().c_str(), (int)powered_, (int)wheels_enabled,
+           (int)surfaces_enabled, (int)hw.hasSurfaces,
+           w[0], w[1], w[2], wh[0], wh[1], wh[2],
+           s[0], s[1], s[2], sh[0], sh[1], sh[2],
+           live.tvcTorque, live.tvcTorqueAvailable,
+           asked[0], asked[1], asked[2], spent[0], spent[1], spent[2]);
+    fflush(stdout);
+}
+
 int Vehicle::activeStage() { return activeStage_; }
 
 void Vehicle::advanceStage() { if(activeStage_ > minStage_) { activeStage_--; } }
@@ -4965,8 +5005,8 @@ void Vehicle::ApplyThrust(double step) {
 /* The two questions the readouts and the mixer ask of one row builder (#649).
    `switchesApply` is ONLY the player's enable switches: hardware mode still honours the
    EC gate and the air, because a dead battery or a vacuum is not what a switch gives up.
-   A frame with both the Vessel window and the Systems window open builds these rows twice
-   on purpose. Do not "fix" that with a per-frame cache: the rows answer for THIS substep
+   A frame with the Game Debug, Systems and Vessel Info windows open builds these rows once
+   apiece on purpose (--steering-log asks for two more, at its own 0.5s gate). Do not "fix" that with a per-frame cache: the rows answer for THIS substep
    -- q, the armed thrust, the ignited stage and the EC verdict all move inside a tick --
    and every consumer reads them mid-substep, so a cached copy would be a stale substep
    wearing the current one's clothes (#649's review pass). If the walk ever gets worth

@@ -8,43 +8,65 @@
 # uiText() (src/uiinput.h) draws the string and hands the registry the bytes it drew,
 # tagged `text`, so --ui-list prints the row WITH its value and an EXPECT can read the
 # number off the screen. The converted sites are the power block, the attitude block and
-# the VAB's part and build cards. The power block has since moved off the Game Debug
-# overlay into the Systems window (#649 closing #646), so this case presses nothing to see
-# it -- which was the point: the balance used to be a reward for already knowing F1 exists.
+# the VAB's part and build cards.
+#
+# This is the one case where pinning UI text IS the point, and it stays narrow on purpose
+# (2026_11_05 e2e policy: a value belongs in a log, a window's wording belongs to whoever
+# is polishing the window). The numbers this run could read from a log -- the wheel
+# rating and the ask, now [steerlog]'s -- are not asserted here; what is asserted is that
+# the channel exists, that it carries the whole window, and that the rows it carries agree
+# with each other. So the case opens one window, Systems, rather than every window that
+# happens to hold a number: pinning rows in more windows multiplies the churn every layout
+# pass costs without proving anything the first window did not.
+#
+# Where each row lives is not fixed -- the same UI pass moved the EC balance out of the F1
+# overlay into Systems (#649, closing #646) and moved the steering DETAIL the other way,
+# out of Vessel Info into Game Debug, because the flight screen had grown into an actuator
+# manual. That is the cost of pinning a row where the player reads it: when a row moves,
+# its EXPECT moves with it. The counts below are the tripwire that says a row moved
+# without anyone noticing.
 #
 # power_test is flight/377's electrical fixture: a capsule_r2.25 (450 N m of built-in
 # drums, 225 W of that bill, 600 W of life support), a wheel block r2.25 (4500 N m,
 # 2250 W) and an RTG. W is the stick, held 3000..8000, so the dump at 5000 lands while
 # the hull commands its drums. Active then reads 2475.0 W -- the two housings billed
-# together, which is #596's rule visible on screen -- and the wheel rating row reads
-# 4950 N m about each axis, the pod's 450 plus the block's 4500.
+# together, which is #596's rule visible on screen.
 NAME readout-rows-are-readable
 CLAIM --ui-list dumps the readout rows with the values they print.
 KIND golden
-ARGS --width 1600 --height 900 --sim-steps 900
+ARGS --width 1600 --height 900 --sim-steps 900 --steering-log
 ARGS --startship power_test,res/ships/power_test.json,Kerbin,rot-orbit
+ARGS --ui-click 2000,"Windows/Systems"
 ARGS --sim-press 3000,5000,W
 ARGS --ui-list 5000
 ARGS --ui-click 7000,"Systems/Const draw: 600.0 W   (life support)"
 EXPECT [uilist] window="Systems" label="Status:     POWERED"
 EXPECT [uilist] window="Systems" label="Active:     2475.0 W   (actuators, while commanding)"
 EXPECT [uilist] window="Systems" label="Const draw: 600.0 W   (life support)"
-EXPECT [uilist] window="Vessel Info" label="Wheel torque (roll/pitch/yaw): 4950 / 4950 / 4950 N m
-EXPECT [uilist] window="Vessel Info" label="Steering asked (roll/pitch/yaw): 0 / 4950 / 0 N m
 FORBID error:
-# How many rows the channel carries here: the Status verdict, five power rows and two
-# switch rows in Systems (#649's), four attitude in Vessel Info. The Surface torque row is
-# one of the converted sites a hull without fins does not draw, so this counts what was
-# drawn rather than trusting the call-site list -- and power_test carries no fins at all,
-# which is why its aero switch row is the "no aero surfaces on this hull" variant rather
-# than the "nothing to push against" one (#649's review pass caught the two being printed
-# as one). One row either way, so the count does not move.
+# How many rows the channel carries, per window: the Status verdict, five power rows and
+# two switch rows in Systems (#649's); one in Vessel Info. Which rows a window carries is a
+# UI decision that keeps moving, so these count what was DRAWN rather than trusting the
+# call-site list. power_test carries no fins at all, which is why Systems' aero switch row
+# is the "no aero surfaces on this hull" variant rather than the "nothing to push against"
+# one (#649's review pass caught the two being printed as one), and why Vessel Info shows
+# no Surface torque row. Game Debug stays closed here: F1 is not pressed, and its steering
+# rows are the ones [steerlog] covers now.
 CHECK len([l for l in out.split("\n") if l.rstrip().endswith(" text") and 'window="Systems"' in l]) == 8
-CHECK len([l for l in out.split("\n") if l.rstrip().endswith(" text") and 'window="Vessel Info"' in l]) == 4
+CHECK len([l for l in out.split("\n") if l.rstrip().endswith(" text") and 'window="Vessel Info"' in l]) == 1
+# The steering rows this case used to read off Game Debug are [steerlog]'s now, so the
+# window stays shut here -- and the asked/spent pair, which the 2026_11_05 pass took off
+# the flight screen, is pinned where the policy says a value belongs: W is held across the
+# dump, so the hull commands its drums and the row asks 4950 N m about pitch while the
+# window's Active row bills 2475 W for it. spent_all= is the vector sum of the three
+# channels (vehicle.cpp), which on this hull is the wheels alone.
+CHECK re.search(r'\[steerlog\][^\n]*asked=0/4950/0 [^\n]*spent_all=0/49[0-9]{2}/0', out)
 # The row prints the sum the sim pays (#575), read off the screen: Net is what the other
 # three rows of the same dump add up to. An identity and not a figure, so a parts
 # rebalance moves the numbers without moving this assertion. The 0.2 band covers four
-# one-decimal printings, each of which can sit 0.05 off.
+# one-decimal printings, each of which can sit 0.05 off. This stays a UI check even though
+# --power-log prints the same terms, because what it pins is that the player's four rows
+# are one arithmetic and not four independent guesses.
 CHECK abs(float(re.search('label="Net: +([-+]?[0-9.]+) W', out).group(1)) - (float(re.search('label="Generation: +([0-9.]+) W', out).group(1)) - float(re.search('label="Const draw: +([0-9.]+) W', out).group(1)) - float(re.search('label="Active: +([0-9.]+) W', out).group(1)))) < 0.2
 # #601's other half, and the failure shape it asks to keep: a readout is in the registry
 # to be READ. findMatches() skips text rows, so a click aimed at one reports the same miss

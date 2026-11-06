@@ -41,11 +41,15 @@
 // the whole cost. That cost is twelve allocations per hull per substep for a hull that
 // has actuators: four in attitudeAuthority (wheels, wheelParts, surfaces, surfaceParts),
 // two in actuateAttitude (the concatenated rows, the setpoints) and six in actuatorSolve
-// (lines, lineOf, sense, share, mag, q) -- and the Vessel window calls
-// attitudeAuthority() once per FRAME on top. So a Scratch is worth doing before the
+// (lines, lineOf, sense, share, mag, q) -- and the UI calls attitudeAuthority() once
+// per FRAME (Game Debug's steering rows ask the live answer, Systems asks the hardware
+// one), plus two more per --steering-log line. Closed windows draw no body at all (ui.h),
+// so the default flight layout pays none of this. So a
+// Scratch is worth doing before the
 // row counts grow. #594 landed the other half of that ask: ONE AttitudeAuthority per
 // substep, answered once for the stick and every latched law together (#420).
 
+#include <array>
 #include <cmath>
 #include <vector>
 
@@ -86,6 +90,22 @@ inline double actuatorTorqueAbout(const std::vector<ActuatorRow> &rows,
         t += r.limit * std::fabs(glm::dot(r.axis, u));
     }
     return t;
+}
+
+/* The R/P/Y split of a torque or an actuator set, stated in a hull's attitude
+   basis (Vehicle::attitudeBasis(), whose columns are [right, up, nose]). Roll is
+   about the nose, pitch about the right wing, yaw about the up axis -- the order
+   the flight windows print and the order every readout's "R/P/Y" label promises,
+   so it lives here once rather than in each call site's dot products. */
+inline std::array<double, 3> torqueRpY(const glm::dvec3 &tau, const glm::dmat3 &ax) {
+    return { std::fabs(glm::dot(tau, ax[2])), std::fabs(glm::dot(tau, ax[0])),
+             std::fabs(glm::dot(tau, ax[1])) };
+}
+
+inline std::array<double, 3> actuatorRpY(const std::vector<ActuatorRow> &rows,
+                                         const glm::dmat3 &ax) {
+    return { actuatorTorqueAbout(rows, ax[2]), actuatorTorqueAbout(rows, ax[0]),
+             actuatorTorqueAbout(rows, ax[1]) };
 }
 
 /* Fit `demand` (N m) into what the rows can deliver: one scalar per row, inside
