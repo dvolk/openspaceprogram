@@ -2604,6 +2604,31 @@ double Vehicle::airDensityAtCom() const {
     return airDensity(atm, alt);
 }
 
+/* See vehicle.h. The rot-frame conversion is the one Game::situationExperiment
+   has always used (the biome and the surface map both live in that frame), so
+   the gauge and the finding's key are measured over the same ground. The air
+   profile is dragAtm(), the same seam applyAeroForce reads, so a barometer and
+   the flight model cannot describe two different atmospheres. */
+bool Vehicle::airReadingAt(const Part *p, AirReading &out) {
+    out = AirReading{};
+    if(m_parent == nullptr || m_parent->frame == nullptr || frame == nullptr) {
+        return false;
+    }
+    const glm::dvec3 local = (p != nullptr) ? partPos(p) : comPos();
+    Frame *rot = m_parent->frame->getRotFrame();
+    out.posRot = frame->GetOrientRelTo(rot) * local + frame->GetPositionRelTo(rot);
+    out.r = glm::length(out.posRot);
+    if(!(out.r > 1e-9)) { return false; }   // a hull AT the centre is a broken hull
+    out.altAsl = out.r - m_parent->seaLevelRadius();
+    const AtmosphereParams &atm = m_parent->surface.atmosphere;
+    if(atm.physical()) {
+        const DragAtmosphere da = dragAtm(atm, m_parent->g);
+        out.press = airPressure(da, out.altAsl);
+        out.temp = airTemperature(da, out.altAsl);
+    }
+    return true;
+}
+
 /* The ship's velocity relative to the AIR (#60/#97). The air is at rest in the body's
    ROT frame, so there GetVel() is already air-relative; outside it, subtract the
    co-rotation cross(omega, pos), omega rotated into this frame's axes. */

@@ -1,0 +1,31 @@
+NAME barometer-records-its-reading
+CLAIM A barometer run carries the pressure it read: on the part window, in the run log and again at recovery.
+KIND invariant
+# #665. Three readers, one number: the part window's gauge row (a uiText row, so
+# --ui-list dumps it as the player reads it), the [science] line the run prints, and
+# the [science] new: line the recovery prints. The air the FLIGHT MODEL stands in
+# (--drag-log's p= column, at the hull's COM) is the third opinion: the barometer is
+# bolted a metre or two off the COM, so it may differ in the last digit but not by
+# more than that column's rounding. That is the point of Vehicle::airReadingAt --
+# gauge, record and flight model read one atmosphere, and a case that lets them
+# drift apart has no way to notice a barometer inventing its own weather.
+ARGS --time-accel 1 --timeout 8 --width 1920 --height 1080 --drag-log
+ARGS --startship baropod,res/ships/baropod.json,Kerbin,flying-low
+ARGS --ui-focus 800,baropod/barometer_1
+ARGS --sim-mouse 900,0,CUR,CUR,RMB
+ARGS --ui-list 1000
+ARGS --ui-click 1200,"baropod > Barometer##1/Run Experiment##pod_run"
+ARGS --recover-anywhere
+ARGS --sim-press 3400,0,ESCAPE
+ARGS --ui-click 3500,"Game Menu/Recover Vessel"
+EXPECT [science] t=
+EXPECT recorded 'Flying low barometer of
+EXPECT [science]   new: Flying low barometer of
+EXPECT [science] recovered +11
+EXPECT [recover] t=
+FORBID FAILED
+FORBID error:
+CHECK re.search(r'label="Air pressure: \d+\.\d kPa"', out)
+CHECK any(abs(float(kpa) * 1000.0 - r["airP"]) < 250.0 for kpa in re.findall(r'label="Air pressure: ([\d.]+) kPa"', out) for r in drag if "airP" in r)
+CHECK any(abs(float(kpa) * 1000.0 - r["airP"]) < 250.0 for kpa in re.findall(r"recorded '[^']*'  ([\d.]+) kPa \(pod\)", out) for r in drag if "airP" in r)
+CHECK re.findall(r"recorded '[^']*'  ([\d.]+) kPa \(pod\)", out) == re.findall(r"\[science\]   new: [^\n]*  ([\d.]+) kPa", out)

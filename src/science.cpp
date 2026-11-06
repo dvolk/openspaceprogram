@@ -123,6 +123,24 @@ void loadExperimentDefs(const char *path) {
             }
         }
 
+        /* "measures" is optional and says what the instrument reads (#665). It is
+           a closed set rather than free text because the reader is a formatter,
+           not a switch on an author's wording: a typo would silently print a
+           finding with no number beside it, which is the one failure mode a data
+           file should not be able to reach. */
+        if(ev.contains("measures")) {
+            const nlohmann::json &mv = ev["measures"];
+            if(!mv.is_string()) {
+                throw std::runtime_error(ctx + "\"measures\" must be a string"
+                                         " (\"pressure\" or \"temperature\")");
+            }
+            d.measures = mv.get<std::string>();
+            if(d.measures != "pressure" && d.measures != "temperature") {
+                throw std::runtime_error(ctx + "\"measures\" must be \"pressure\" or"
+                                         " \"temperature\", not \"" + d.measures + "\"");
+            }
+        }
+
         defs.push_back(std::move(d));
     }
     experimentDefs() = std::move(defs);

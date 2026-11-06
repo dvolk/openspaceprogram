@@ -549,6 +549,65 @@ int main() {
         CHECK(pOut.experiments.size() == 1);
         if(pOut.experiments.size() == 1) { CHECK(pOut.experiments[0] == e1); }
         CHECK(savePartFromJson(savePartToJson(SavePart{})).experiments.empty());
+
+        /* The reading an instrument took (#665). == cannot see it (the reading is
+           not part of the key), so the checks above are blind to it: check the
+           fields themselves, plus the ways a save says "no reading" -- an absent
+           key (a pre-#665 save) and an unreadable array. */
+        Experiment baro;
+        baro.type = "barometer";
+        baro.body = "Kerbin";
+        baro.situation = SciSituation::FlyingLow;
+        baro.biome = "lowlands";
+        baro.meas.has = true;
+        baro.meas.pressure = 12345.5;
+        baro.meas.temperature = 251.4;
+        baro.meas.alt_asl = -5.0;
+        baro.meas.lon = 6.0;
+        baro.meas.lat = -1.5;
+        SavePart bp;
+        bp.part = "barometer";
+        bp.uid = 302;
+        bp.id = "barometer_1";
+        bp.experiments.push_back(baro);
+        SavePart bpOut = savePartFromJson(savePartToJson(bp));
+        CHECK(bpOut.experiments.size() == 1);
+        if(bpOut.experiments.size() == 1) {
+            const Measurement &m = bpOut.experiments[0].meas;
+            CHECK(m.has);
+            CHECK(m.pressure == 12345.5);
+            CHECK(m.temperature == 251.4);
+            CHECK(m.alt_asl == -5.0);
+            CHECK(m.lon == 6.0);
+            CHECK(m.lat == -1.5);
+            CHECK(bpOut.experiments[0] == baro);
+        }
+        // Vacuum is a reading of zero, never an absence of one.
+        Experiment vacuum = baro;
+        vacuum.meas.pressure = 0.0;
+        vacuum.meas.temperature = 0.0;
+        bp.experiments[0] = vacuum;
+        SavePart vOut = savePartFromJson(savePartToJson(bp));
+        CHECK(vOut.experiments.size() == 1);
+        CHECK(vOut.experiments.size() == 1 && vOut.experiments[0].meas.has);
+        CHECK(vOut.experiments.size() == 1 && vOut.experiments[0].meas.lon == 6.0);
+        // A finding with no reading writes no key and reads back as none.
+        bp.experiments[0] = e1;
+        SavePart bare = savePartFromJson(savePartToJson(bp));
+        CHECK(bare.experiments.size() == 1);
+        CHECK(bare.experiments.size() == 1 && !bare.experiments[0].meas.has);
+        // Half a measurement is not a measurement: short or non-numeric arrays
+        // read as "no reading" rather than a partly-filled one.
+        nlohmann::json shortj = savePartToJson(bp);
+        shortj["experiments"][0]["meas"] = nlohmann::json::array({1.0, 2.0});
+        SavePart shortOut = savePartFromJson(shortj);
+        CHECK(shortOut.experiments.size() == 1
+              && !shortOut.experiments[0].meas.has);
+        nlohmann::json junkj = savePartToJson(bp);
+        junkj["experiments"][0]["meas"] =
+            nlohmann::json::array({1.0, 2.0, 3.0, 4.0, "x"});
+        SavePart junkOut = savePartFromJson(junkj);
+        CHECK(junkOut.experiments.size() == 1 && !junkOut.experiments[0].meas.has);
     }
 
     // phase 4.6: nested inventory round-trip (a container holding items,

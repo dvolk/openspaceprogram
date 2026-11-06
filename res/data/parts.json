@@ -1205,6 +1205,22 @@
       "drag_backward": 1.1
     },
     {
+      "name": "thermometer",
+      "type": "thermometer",
+      "display_name": "Thermometer",
+      "mesh": "meshes/barometer.obj",
+      "texture": "textures/barometer.png",
+      "mass": 10,
+      "radius": 0.05,
+      "height": 0.5,
+      "experiment_family": "thermometer",
+      "experiment_storage": "instrument",
+      "drag": 0.6,
+      "drag_forward": 1.1,
+      "drag_side": 0.2,
+      "drag_backward": 1.1
+    },
+    {
       "name": "wing",
       "type": "wing",
       "display_name": "Wing (4m)",

@@ -24,6 +24,7 @@
 #include "shader.h"   // get_shader
 #include "skybox.h"   // Skybox::load
 #include "terragen.h" // biomeAt / biomeName
+#include "equirect.h" // equirectLonLat (where a measurement was taken, #665)
 #include "uiwins.h"   // setWinOpen (W_FlightSummary)
 #include "calendar.h" // fmt_cal_duration
 
@@ -508,7 +509,10 @@ void Game::mintCrewPool() {
    COM on poseVehicle (null = the vehicle's own COM) in the body's rotating
    frame. Stars and banded gas giants have no biome. `runnerName` is who ran it
    and `shipName` what they were in ("" = free EVA): a seat occupant has no
-   Kerbal object, so provenance travels as names, not pointers. */
+   Kerbal object, so provenance travels as names, not pointers.
+   A family the table says MEASURES something records what its instrument read
+   at that instant (#665): the numbers come from Vehicle::airReadingAt at the
+   same part, so the part window's gauge and the finding cannot disagree. */
 bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
                                Part *localPart, const std::string &type,
                                const std::string &runnerName,
@@ -517,21 +521,18 @@ bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
         toast("No experiment: nothing to observe here");
         return false;
     }
-    /* A seat occupant has no body of its own: read the live capsule it sits in. */
-    const glm::dvec3 localCom = (localPart != nullptr)
-        ? poseVehicle->partPos(localPart)
-        : poseVehicle->get_center_of_mass();
-    Frame *rot = body->frame->getRotFrame();
-    const glm::dvec3 sp = poseVehicle->frame->GetOrientRelTo(rot) * localCom
-                        + poseVehicle->frame->GetPositionRelTo(rot);
-    const double r = glm::length(sp);
-    if(r < 1e-9) {
+    /* A seat occupant has no body of its own: read the live capsule it sits in.
+       Vehicle::airReadingAt reads poseVehicle's OWN near body, so the body this
+       finding is keyed to and the body the gauge is bolted to must be one body. */
+    assert(body == poseVehicle->m_parent);
+    Vehicle::AirReading read;
+    if(!poseVehicle->airReadingAt(localPart, read)) {
         toast("No experiment: bad position");
         return false;
     }
-    const glm::vec3 dir = glm::vec3(sp / r);
+    const glm::vec3 dir = glm::vec3(read.posRot / read.r);
     // ASL: above sea level -- same datum as the aero altitude and atmo top.
-    const double altAsl = r - body->seaLevelRadius();
+    const double altAsl = read.altAsl;
     // Biome + situation: the two halves of the finding's key.
     const PoseSituation ps = poseSituation(body, dir, altAsl, poseVehicle->isGrounded());
     // A surface body's biome needs measured terrain (max_height).
@@ -545,10 +546,11 @@ bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
     out.situation = ps.situation;
     out.biome = (ps.biome != Biome::None) ? biomeName(ps.biome) : "";
     // Availability (ExperimentDef.valid_in): refuse with where it DOES work.
+    const ExperimentDef *def = defFor(type);
     if(!experimentValidIn(type, out.situation)) {
         std::string where;
-        if(const ExperimentDef *d = defFor(type)) {
-            for(SciSituation s : d->valid_in) {
+        if(def != nullptr) {
+            for(SciSituation s : def->valid_in) {
                 if(!where.empty()) { where += ", "; }
                 where += situationName(s);
             }
@@ -561,6 +563,18 @@ bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
     out.ran_at = time;                                    // when the runner ran it
     out.kerbal = runnerName;
     out.ship = shipName;                                  // "" = free EVA
+    /* The reading (#665). Only a family the table says MEASURES something carries
+       a number: a kerbal's "observation" happens in the air, but nobody in it read
+       a gauge, so it stays numberless rather than inventing one. The place goes
+       with the number -- a reading nobody could return to is an anecdote -- and
+       lon/lat are equirect.h's azimuth, the same one the surface map plots. */
+    if(def != nullptr && !def->measures.empty()) {
+        out.meas.has = true;
+        out.meas.pressure = read.press;
+        out.meas.temperature = read.temp;
+        out.meas.alt_asl = read.altAsl;
+        equirectLonLat(read.posRot / read.r, out.meas.lon, out.meas.lat);
+    }
     return true;
 }
 
@@ -590,8 +604,9 @@ void Game::runSuitExperiment(Part *suit, Vehicle *poseVehicle, Part *localPart,
     toast(repeat ? "Experiment (repeat): %s -- scores less"
                  : "Experiment: %s",
           experimentName(e).c_str());
-    printf("[science] t=%.1f '%s' recorded%s '%s'\n", time, runner.c_str(),
-           repeat ? " REPEAT" : "", experimentName(e).c_str());
+    printf("[science] t=%.1f '%s' recorded%s '%s'%s\n", time, runner.c_str(),
+           repeat ? " REPEAT" : "", experimentName(e).c_str(),
+           measured(e).c_str());
     fflush(stdout);
 }
 
@@ -645,8 +660,9 @@ void Game::runPodExperiment(Part *pod, const std::string &runner) {
     toast(repeat ? "Experiment (repeat): %s -- scores less"
                  : "Experiment: %s",
           experimentName(e).c_str());
-    printf("[science] t=%.1f '%s' recorded%s '%s' (pod)\n", time,
-           runner.c_str(), repeat ? " REPEAT" : "", experimentName(e).c_str());
+    printf("[science] t=%.1f '%s' recorded%s '%s'%s (pod)\n", time,
+           runner.c_str(), repeat ? " REPEAT" : "", experimentName(e).c_str(),
+           measured(e).c_str());
     fflush(stdout);
 }
 
@@ -2364,7 +2380,10 @@ void Game::recoverActive() {
                flightSummary.newExperiments.size(),
                flightSummary.repeatScience);
         for(const Experiment &e : flightSummary.newExperiments) {
-            printf("[science]   new: %s\n", experimentName(e).c_str());
+            // The reading comes back with the finding (#665), the same spelling
+            // the run printed and the part window shows.
+            printf("[science]   new: %s%s\n", experimentName(e).c_str(),
+                   measured(e).c_str());
         }
     }
     {

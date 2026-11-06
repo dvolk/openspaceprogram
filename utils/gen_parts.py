@@ -108,6 +108,9 @@ DRAG_CD = {
                        "drag_backward": 1.1},
     "barometer":      {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
                        "drag_backward": 1.1},
+    # Same stick, same shape -- the thermometer reuses the barometer's mesh.
+    "thermometer":    {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
+                       "drag_backward": 1.1},
     "battery":        {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
                        "drag_backward": 1.1},
     "rtg":            {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
@@ -262,6 +265,9 @@ PARTS = [
     ("cargo",            "cargo",          "meshes/fuel_tank.obj",                "textures/fuel_tank.png"),
     ("materials_pod",    "materials_pod",  "meshes/materials_pod.obj",           "textures/materials_pod.png"),
     ("barometer",        "barometer",      "meshes/barometer.obj",                "textures/barometer.png"),
+    # #667: the other end of the air. Same stick, same art -- an instrument's
+    # identity is its family + what it measures, not its mesh.
+    ("thermometer",      "thermometer",    "meshes/barometer.obj",                "textures/barometer.png"),
     ("wing",             "wing",           "meshes/wing_r2h2.obj",                "textures/wing.png"),
     # High-aspect-ratio surfaces. inducedCd charges a part at ITS OWN span/area,
     # so the `wing` default (4 m2 of planform on a 4 m mesh span) pays that AR no
@@ -339,6 +345,9 @@ EXTRA_FIELDS = {
     # barometer: tiny stick instrument, mass declared (mesh supplies shape only);
     # scores biome-specific science only on the surface (res/data/experiments.json).
     "barometer":         {"mass": 10, "experiment_family": "barometer",
+                          "experiment_storage": "instrument"},
+    # thermometer: the same stick measuring the other half of the air (#667).
+    "thermometer":       {"mass": 10, "experiment_family": "thermometer",
                           "experiment_storage": "instrument"},
     "decoupler_r1":      {"mass": 50, "decoupler": True, "fuel_barrier": True},
     "decoupler_r1.5":    {"mass": 75, "decoupler": True, "fuel_barrier": True},
@@ -460,6 +469,7 @@ DISPLAY_BASE = {
     "cargo":          "Cargo Crate",
     "materials_pod":  "Materials Pod",
     "barometer":      "Barometer",
+    "thermometer":    "Thermometer",
     "wing":           "Wing",
     "rudder":         "Rudder",
     "elevator":       "Elevator",
@@ -470,7 +480,7 @@ DISPLAY_BASE = {
 
 def display_name_for(name, ptype, radius, height):
     base = DISPLAY_BASE.get(ptype, name)
-    if ptype in ("kerbal", "fuel_link", "barometer"):
+    if ptype in ("kerbal", "fuel_link", "barometer", "thermometer"):
         return base
     if name == "decoupler_radial":
         return "Radial Decoupler"
@@ -582,7 +592,7 @@ def generate(name, ptype, mesh, texture):
         e["height"] = height
         e["rcs_thrust"] = clean(declared.get("rcs_thrust",
                                              RCS_THRUST_PER_M2 * radius * radius))
-    elif ptype in ("decoupler", "docking_port", "barometer", "chute"):
+    elif ptype in ("decoupler", "docking_port", "barometer", "thermometer", "chute"):
         # mass is declared in EXTRA_FIELDS; radius/height follow the mesh
         e["mass"] = clean(EXTRA_FIELDS[name]["mass"])
         e["radius"] = radius

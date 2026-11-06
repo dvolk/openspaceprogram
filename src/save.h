@@ -360,6 +360,15 @@ inline nlohmann::json experimentToJson(const Experiment &e) {
     j["recovered_at"] = e.recovered_at;
     j["kerbal"]       = e.kerbal;
     j["ship"]         = e.ship;
+    /* What the instrument read (#665), in Measurement's own order:
+       [Pa, K, m ASL, lon rad, lat rad] -- one array like "pos", because these
+       are one reading at one instant and splitting them into five keys invites
+       reading one of them alone. Written ONLY when there is a reading: `has` is
+       the whole question, and 0 Pa (vacuum) is a value, never a sentinel. */
+    if(e.meas.has) {
+        j["meas"] = std::vector<double>({e.meas.pressure, e.meas.temperature,
+                                         e.meas.alt_asl, e.meas.lon, e.meas.lat});
+    }
     return j;
 }
 
@@ -375,6 +384,27 @@ inline Experiment experimentFromJson(const nlohmann::json &j) {
     if(j.contains("recovered_at") && j["recovered_at"].is_number()) { e.recovered_at = j["recovered_at"].get<double>(); }
     if(j.contains("kerbal") && j["kerbal"].is_string()) { e.kerbal = j["kerbal"].get<std::string>(); }
     if(j.contains("ship") && j["ship"].is_string()) { e.ship = j["ship"].get<std::string>(); }
+    /* The reading (see experimentToJson). Absent = no reading, which is BOTH a
+       pre-#665 save and a family no instrument ran; either way the finding prints
+       its name alone. A short or non-numeric array is treated the same way rather
+       than half-read: a part of a measurement is not a measurement. */
+    if(j.contains("meas") && j["meas"].is_array() && j["meas"].size() >= 5) {
+        const nlohmann::json &mj = j["meas"];
+        double v[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
+        bool ok = true;
+        for(size_t i = 0; i < 5; i++) {
+            if(!mj[i].is_number()) { ok = false; break; }
+            v[i] = mj[i].get<double>();
+        }
+        if(ok) {
+            e.meas.has = true;
+            e.meas.pressure = v[0];
+            e.meas.temperature = v[1];
+            e.meas.alt_asl = v[2];
+            e.meas.lon = v[3];
+            e.meas.lat = v[4];
+        }
+    }
     return e;
 }
 

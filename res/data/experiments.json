@@ -46,7 +46,24 @@
       "biome_specific_in": [
         "landed",
         "flying_low"
-      ]
+      ],
+      "measures": "pressure"
+    },
+    {
+      "type": "thermometer",
+      "base_value": 10,
+      "valid_in": [
+        "landed",
+        "flying_low",
+        "flying_high",
+        "low_orbit",
+        "high_orbit"
+      ],
+      "biome_specific_in": [
+        "landed",
+        "flying_low"
+      ],
+      "measures": "temperature"
     }
   ]
 }

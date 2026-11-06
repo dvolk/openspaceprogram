@@ -1,0 +1,30 @@
+NAME thermometer-instrument
+CLAIM A thermometer part shows the air temperature in its window and records it with its finding.
+KIND invariant
+# #667: the other half of the air. Same stick as the barometer, same worth, the
+# family table saying "temperature" instead of "pressure" -- which is what decides
+# the row its window shows and the unit its finding prints, so the part JSON and the
+# family JSON are the whole feature and no code knows the part's name.
+# The number is cross-checked against --drag-log's T= column (the air the flight
+# model stands in, at the hull's COM). On an isothermal body like Kerbin the two
+# have one possible value, so an agreement to 0.1 K is a real pin.
+ARGS --time-accel 1 --timeout 8 --width 1920 --height 1080 --drag-log
+ARGS --startship thermopod,res/ships/thermopod.json,Kerbin,flying-low
+ARGS --ui-focus 800,thermopod/thermometer_1
+ARGS --sim-mouse 900,0,CUR,CUR,RMB
+ARGS --ui-list 1000
+ARGS --ui-click 1200,"thermopod > Thermometer##1/Run Experiment##pod_run"
+ARGS --recover-anywhere
+ARGS --sim-press 3400,0,ESCAPE
+ARGS --ui-click 3500,"Game Menu/Recover Vessel"
+EXPECT [science] t=
+EXPECT recorded 'Flying low thermometer of
+EXPECT [science]   new: Flying low thermometer of
+EXPECT [science] recovered +11
+EXPECT [recover] t=
+FORBID FAILED
+FORBID error:
+CHECK re.search(r'label="Air temp: \d+\.\d K \(-\d+\.\d C\)"', out)
+CHECK any(abs(float(k) - r["airT"]) < 0.11 for k in re.findall(r'label="Air temp: ([\d.]+) K', out) for r in drag if "airT" in r)
+CHECK any(abs(float(k) - r["airT"]) < 0.11 for k in re.findall(r"recorded '[^']*'  ([\d.]+) K \(pod\)", out) for r in drag if "airT" in r)
+CHECK re.findall(r"recorded '[^']*'  ([\d.]+) K \(pod\)", out) == re.findall(r"\[science\]   new: [^\n]*  ([\d.]+) K", out)

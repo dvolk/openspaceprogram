@@ -1407,6 +1407,26 @@ public:
        (constants.h:kAirSeaLevelDensity), so a sub-floor read is vacuum either way. */
     double airDensityAtCom() const;
 
+    /* ONE body-frame read at one part (`p` null = the hull's own COM): where it
+       sits over the near body and what the air there is (#665, #667). The part
+       window's live gauge and a science run's recorded measurement both come
+       through here, so a barometer cannot show one pressure while the finding it
+       just wrote says another.
+       posRot is the near body's ROTATING frame -- the map/terrain frame, so
+       equirect.h turns it into the lon/lat a map wants. press [Pa] and temp [K]
+       are 0 wherever the profile says there is no air (a body without one, or
+       above its top): that is what a gauge reads up there, not a shrug -- the
+       same law airPressure/airTemperature already keep for --drag-log.
+       Not const: the frame conversions are not (frame.h). False = no near body. */
+    struct AirReading {
+        glm::dvec3 posRot;      // m, in the near body's rotating frame
+        double r = 0.0;         // m from the body centre
+        double altAsl = 0.0;    // m above the body's sea-level datum
+        double press = 0.0;     // Pa at altAsl
+        double temp = 0.0;      // K at altAsl
+    };
+    bool airReadingAt(const Part *p, AirReading &out);
+
     /* Velocity relative to the AIR at `com`: GetVel() minus the air's
        co-rotation outside the body's rotating frame (#60/#97). */
     glm::dvec3 airRelativeVel(const glm::dvec3 &com);

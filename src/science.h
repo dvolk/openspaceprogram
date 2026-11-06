@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstdio>    // snprintf (formatMeasurement, #665)
 #include <map>
 #include <string>
 #include <vector>
@@ -35,6 +36,12 @@ struct ExperimentDef {
     int base_value = 10;                      // the base of scoreOf
     std::vector<SciSituation> valid_in;         // situations it can RUN in
     std::vector<SciSituation> biome_specific_in; // where the biome is part of the identity
+    /* What the family MEASURES, "" when nothing does (#665). A family is a
+       measurement only when an instrument part is behind it: a kerbal's
+       "observation" happens in the air but nobody in it read a gauge, so the
+       run carries no number. Data, so adding an instrument stays a res/ edit;
+       the loader rejects anything but the two names below. */
+    std::string measures;                     // "" | "pressure" | "temperature"
     bool validIn(SciSituation s) const {
         return std::find(valid_in.begin(), valid_in.end(), s) != valid_in.end();
     }
@@ -76,6 +83,28 @@ inline bool experimentValidIn(const std::string &type, SciSituation s) {
     return (d == nullptr) || d->validIn(s);
 }
 
+/* What an instrument part read at the moment of the run (#665). PROVENANCE, not
+   identity: == ignores it, so a barometer run at 12 kPa and one at 20 kPa are
+   still the same finding and still dedup to one bank. If a measured number ever
+   wants to be worth something, the family table is where that gets said (a
+   spread on base_value), not here.
+   `has` is not the same question as `pressure == 0.0`: vacuum IS 0 Pa, and a
+   family that measures nothing (a kerbal observation) has no reading at all.
+   ALL of it is stored together even though a barometer prints only its half --
+   the air state is one measurement at one instant, and a reading with no place
+   attached is not repeatable. lon/lat are the near body's ROTATING-frame
+   azimuth (equirect.h, the same convention the surface map uses), so a bank log
+   can be plotted. A hull in orbit moves, which is why the pair is ran_at +
+   lon/lat rather than lon/lat alone. */
+struct Measurement {
+    bool has = false;
+    double pressure = 0.0;      // Pa, at the part's own altitude
+    double temperature = 0.0;   // K
+    double alt_asl = 0.0;       // m above the body's sea-level datum
+    double lon = 0.0;           // rad in [0, 2pi) -- equirect.h
+    double lat = 0.0;           // rad in [-pi/2, pi/2]
+};
+
 struct Experiment {
     // identity -- the uniqueness key; == compares ONLY these
     std::string type = "observation";
@@ -87,6 +116,7 @@ struct Experiment {
     double recovered_at = 0.0; // 0 = not yet banked
     std::string kerbal;
     std::string ship;          // "" = free EVA
+    Measurement meas;          // what the instrument read, if any (#665)
 
     // == is key-only on purpose: two runs of the same observation dedup to
     // one bank. Biome is in the key only where the family is biome-specific.
@@ -146,6 +176,35 @@ inline std::string experimentName(const Experiment &e) {
     }
     n += " on " + e.body;
     return n;
+}
+
+/* The recorded number, as ONE spelling every reader prints: the part window's
+   finding rows, the Lab's provenance line, the Flight Summary and the [science]
+   log. SI only (kPa, K) because a log line gets parsed and a second unit in a
+   field is a parser's bad day -- the same rule --drag-log's air columns follow.
+   A window that wants a Celsius gloss adds its own. Answers an empty string for
+   a family that measures nothing, so a caller prints the finding name alone. */
+inline void formatMeasurement(const Experiment &e, char *buf, size_t n) {
+    if(buf == nullptr || n == 0) { return; }
+    buf[0] = '\0';
+    if(!e.meas.has) { return; }
+    const ExperimentDef *d = defFor(e.type);
+    const std::string what = (d != nullptr) ? d->measures : std::string();
+    if(what == "pressure") {
+        snprintf(buf, n, "%.1f kPa", e.meas.pressure / 1000.0);
+    } else if(what == "temperature") {
+        snprintf(buf, n, "%.1f K", e.meas.temperature);
+    }
+}
+
+/* The same reading with a gap in front of it, for a line that already ends in the
+   finding's name ("... on Kerbin  89.3 kPa"), and "" when the family measured
+   nothing -- so every reader (the [science] log, the part window, the Lab, the
+   Flight Summary) appends ONE string and none of them can drift. */
+inline std::string measured(const Experiment &e) {
+    char buf[64];
+    formatMeasurement(e, buf, sizeof buf);
+    return buf[0] != '\0' ? std::string("  ") + buf : std::string();
 }
 
 // How a part stores findings (PartDef.experiment_storage). Capacity is per
@@ -359,6 +418,9 @@ inline std::vector<LabEntry> labEntries(const std::vector<Experiment> &recovered
             r.line1 += "  ";
         }
         r.line1 += experimentName(e);
+        // What the instrument read, when the family had one (#665). It rides the
+        // name line because a Lab full of findings is a table you scan for numbers.
+        r.line1 += measured(e);
         if(e.ran_at > 0.0 &&
            fmt_cal_compact(cal, e.ran_at, stamp, sizeof stamp)) {
             r.line2 = "ran ";

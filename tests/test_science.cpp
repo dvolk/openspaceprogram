@@ -4,12 +4,14 @@
 //
 // Pure logic: the uniqueness key, suit-level dedup, display names, the value
 // model (base x situation x body, diminishing returns), the Career accounting
-// (score + the append-only log, one structure that cannot desync), and the
-// Landed / altitude-band situation classifier.
+// (score + the append-only log, one structure that cannot desync), the Landed /
+// altitude-band situation classifier, and what an instrument measured (#665).
 #include "science.h"
 
 #include <cstdio>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <map>
 #include <string>
 #include <vector>
@@ -482,6 +484,65 @@ int main() {
         }
     }
 
+    // --- what an instrument measured (#665, #667) ---------------------------
+    // The family TABLE says what a family reads; the reading rides the finding as
+    // provenance; formatMeasurement is the one spelling every reader prints.
+    {
+        const ExperimentDef *baro = defFor("barometer");
+        const ExperimentDef *therm = defFor("thermometer");
+        CHECK(baro != nullptr && baro->measures == "pressure");
+        CHECK(therm != nullptr && therm->measures == "temperature");
+        if(baro != nullptr && therm != nullptr) {
+            // #667 asked for the thermometer as the barometer's twin: same worth,
+            // same situations, the other half of the air.
+            CHECK(therm->base_value == baro->base_value);
+            CHECK(therm->valid_in == baro->valid_in);
+            CHECK(therm->biome_specific_in == baro->biome_specific_in);
+        }
+        // Nobody bolted a gauge to a kerbal's observation, so it reads nothing.
+        CHECK(defFor("observation") != nullptr
+              && defFor("observation")->measures.empty());
+        CHECK(defFor("materials study") != nullptr
+              && defFor("materials study")->measures.empty());
+
+        Experiment p;  p.type = "barometer"; p.body = "Kerbin";
+        p.situation = SciSituation::FlyingLow;  p.biome = "lowlands";
+        p.meas.has = true;
+        p.meas.pressure = 12000.0;  p.meas.temperature = 251.4;
+        p.meas.alt_asl = 5000.0;    p.meas.lon = 1.0;  p.meas.lat = -0.5;
+        Experiment p2 = p;  p2.meas.pressure = 20000.0;
+        // The reading is NOT the key: two readings of one finding bank once.
+        CHECK(p == p2);
+        // Vacuum is a reading, not an absence of one -- 0 Pa still keys the same.
+        Experiment vac = p;  vac.meas.pressure = 0.0;  vac.meas.temperature = 0.0;
+        CHECK(p == vac);
+
+        char buf[64];
+        formatMeasurement(p, buf, sizeof buf);
+        CHECK(std::string(buf) == "12.0 kPa");
+        Experiment t = p;  t.type = "thermometer";
+        formatMeasurement(t, buf, sizeof buf);
+        CHECK(std::string(buf) == "251.4 K");
+        // A family that measures nothing prints its name alone.
+        Experiment plain = obs("Kerbin", SciSituation::Landed, "lowlands");
+        formatMeasurement(plain, buf, sizeof buf);
+        CHECK(buf[0] == '\0');
+        CHECK(measured(plain).empty());
+        CHECK(measured(p) == "  12.0 kPa");
+
+        // A banked row carries the reading -- which is the point of storing it at
+        // all: it can be read at recovery and reviewed in the Lab months later.
+        t.ran_at = 25.0;  t.recovered_at = 125.0;
+        t.kerbal = "Jebediah";  t.ship = "baropod";
+        const Calendar cal = Calendar::make(100.0, 0.0, 1);
+        auto rows = labEntries({ t }, cal);
+        CHECK(rows.size() == 1);
+        if(rows.size() == 1) {
+            CHECK(rows[0].line1 ==
+                  "Day 2  06:00  Flying low thermometer of Lowlands on Kerbin  251.4 K");
+        }
+    }
+
     // --- situation ids round-trip (incl. landed + flying) ---
     {
         CHECK(std::string(situationId(SciSituation::Landed)) == "landed");
@@ -530,6 +591,50 @@ int main() {
         CHECK(situationFor(false, 0.0, 0.0, cut) == SciSituation::LowOrbit);
         CHECK(situationFor(false, 109999.0, 0.0, cut) == SciSituation::LowOrbit);
         CHECK(situationFor(false, 110000.0, 0.0, cut) == SciSituation::HighOrbit);
+    }
+
+    // --- the loader's "measures" is a closed set, not free text (#665) ------
+    // A typo in res/data would otherwise print a finding with no number beside it
+    // -- the one failure mode a data file must not be able to reach. These swap
+    // the global table, so they run last and put the shipped file back.
+    {
+        std::filesystem::create_directories("tmp");
+        auto reject = [](const char *doc, const char *tag, const char *needle) {
+            const std::string path = std::string("tmp/test_science_") + tag + ".json";
+            std::ofstream o(path);
+            o << doc;
+            o.close();
+            bool threw = false;
+            std::string what;   // copy it out: e.what() dies with the exception
+            try {
+                loadExperimentDefs(path.c_str());
+            } catch(const std::exception &e) {
+                threw = true;
+                what = e.what();
+            }
+            CHECK(threw && what.find(needle) != std::string::npos);
+            std::remove(path.c_str());
+        };
+        reject("{\"experiments\":[{\"type\":\"barometer\",\"base_value\":10,"
+               "\"valid_in\":[\"landed\"],\"measures\":\"humidity\"}]}",
+               "measures_bogus", "\"measures\"");
+        reject("{\"experiments\":[{\"type\":\"barometer\",\"base_value\":10,"
+               "\"valid_in\":[\"landed\"],\"measures\":5}]}",
+               "measures_number", "\"measures\"");
+        // Case matters: "Pressure" is a typo, not a synonym.
+        reject("{\"experiments\":[{\"type\":\"barometer\",\"base_value\":10,"
+               "\"valid_in\":[\"landed\"],\"measures\":\"pressure\"},"
+               "{\"type\":\"x\",\"base_value\":10,\"valid_in\":[\"landed\"],"
+               "\"measures\":\"Pressure\"}]}",
+               "measures_case", "\"measures\"");
+        try {
+            loadExperimentDefs("res/data/experiments.json");
+        } catch(const std::exception &e) {
+            printf("FAIL restore: %s\n", e.what());
+            failures++;
+        }
+        CHECK(defFor("barometer") != nullptr);
+        CHECK(defFor("thermometer") != nullptr);
     }
 
     if(failures == 0) {

@@ -3287,8 +3287,9 @@ void drawPartWindows(Game &g) {
                         for(const Experiment &he : suit->experiments) {
                             const bool repeat =
                                 holdsExperiment(g.science.recovered, he);
-                            ImGui::TextDisabled("  %s%s",
+                            ImGui::TextDisabled("  %s%s%s",
                                                 experimentName(he).c_str(),
+                                                measured(he).c_str(),
                                                 repeat ? "  (repeat)" : "");
                         }
                         ImGui::Unindent();
@@ -3387,8 +3388,9 @@ void drawPartWindows(Game &g) {
                             for(const Experiment &he : held) {
                                 const bool repeat =
                                     holdsExperiment(g.science.recovered, he);
-                                ImGui::TextDisabled("  %s%s",
+                                ImGui::TextDisabled("  %s%s%s",
                                                     experimentName(he).c_str(),
+                                                    measured(he).c_str(),
                                                     repeat ? "  (repeat)" : "");
                             }
                             ImGui::Unindent();
@@ -3435,13 +3437,35 @@ void drawPartWindows(Game &g) {
                 }
                 ImGui::Text("Experiments: %d", (int)suit->experiments.size());
                 for(const Experiment &e : suit->experiments) {
-                    ImGui::Text("  %s", experimentName(e).c_str());
+                    ImGui::Text("  %s%s", experimentName(e).c_str(),
+                                measured(e).c_str());
                 }
             }
             // --- science instrument (this part runs + holds an experiment) ------
             if(!def->experiment_family.empty()) {
                 Part *pod = ship->parts[part];
                 ImGui::Separator();
+                /* THE GAUGE (#665, #667): what this part reads where it is bolted,
+                   whether or not anyone has run an experiment with it. WHICH half of
+                   the air it reads is the family's business (experiments.json
+                   "measures"), so the row follows the part rather than the code.
+                   Vehicle::airReadingAt is the same read a run records, so the number
+                   on screen and the number on the finding this part writes cannot
+                   disagree. Kelvin first with Celsius as a gloss -- the System Atlas
+                   air rows' spelling; the SI-only version lives in formatMeasurement. */
+                const ExperimentDef *fam = defFor(def->experiment_family);
+                Vehicle::AirReading read;
+                if(fam != nullptr && !fam->measures.empty()
+                   && ship->airReadingAt(pod, read)) {
+                    // uiText, not ImGui::Text: this row IS the part's observable, so
+                    // a case asserts what the player reads rather than a log's echo.
+                    if(fam->measures == "pressure") {
+                        uiText("Air pressure: %.1f kPa", read.press / 1000.0);
+                    } else {
+                        uiText("Air temp: %.1f K (%.1f C)", read.temp,
+                               read.temp - 273.15);
+                    }
+                }
                 /* The first seat on this ship (part.h): a seated kerbal is a suit
                    Part parked in a capsule, and the provenance a pod records is a
                    NAME, not a pointer. firstVehicleSeat, not vehicleSeats: this
@@ -3461,8 +3485,9 @@ void drawPartWindows(Game &g) {
                 ImGui::Text("Experiments: %d", (int)pod->experiments.size());
                 for(const Experiment &e : pod->experiments) {
                     const bool repeat = holdsExperiment(g.science.recovered, e);
-                    ImGui::Text("  %s%s", experimentName(e).c_str(),
-                                repeat ? "  (repeat)" : "");
+                    // The recorded reading sits beside the name it came with.
+                    ImGui::Text("  %s%s%s", experimentName(e).c_str(),
+                                measured(e).c_str(), repeat ? "  (repeat)" : "");
                 }
                 // Take: a WALKING kerbal in reach moves the pod's finding onto their suit (the
                 // courier), to then store into a capsule. A seated one can't reach out.
@@ -4675,7 +4700,8 @@ void drawFlightSummary(Game &g) {
             if(!fs.newExperiments.empty()) {
                 ImGui::Indent();
                 for(const Experiment &e : fs.newExperiments) {
-                    ImGui::Text("new:   %s", experimentName(e).c_str());
+                    ImGui::Text("new:   %s%s", experimentName(e).c_str(),
+                                measured(e).c_str());
                 }
                 ImGui::Unindent();
             }

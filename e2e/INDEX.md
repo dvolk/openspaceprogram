@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 296 |
+| `invariant` | a behaviour or a player route the game must keep | 298 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 41 |
 | `harness` | CLI/test-engine plumbing, not game spec | 14 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **355** |
+| | **total** | **357** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -145,7 +145,7 @@ judgement. Select by number, name or path, e.g.
 | `crew/394-spent-pool-kerbal-refused.txt` | invariant | A kerbal spawned on a spent pad pool is refused, not minted off the def. |
 | `crew/547-walking-kerbal-suit-mass-overflow-refused.txt` | invariant | A saved kerbal whose suit contents add up to more mass than the game can store is refused, not stood up as a NaN-inertia Body. |
 
-## science (18)
+## science (20)
 
 | case | kind | pins |
 |---|---|---|
@@ -167,6 +167,8 @@ judgement. Select by number, name or path, e.g.
 | `science/273-courier-pairs-across-the-fleet.txt` | golden | A courier pairs with the instrument beside it, not the fleet's first. |
 | `science/284-seat-experiment-names-the-sitter.txt` | invariant | A per-seat Experiment button names the crew member who ran it. |
 | `science/285-suit-experiment-from-the-walker.txt` | invariant | A walking kerbal's suit window runs its own experiment. |
+| `science/665-barometer-records-its-reading.txt` | invariant | A barometer run carries the pressure it read: on the part window, in the run log and again at recovery. |
+| `science/667-thermometer-instrument.txt` | invariant | A thermometer part shows the air temperature in its window and records it with its finding. |
 
 ## vab (37)
 
