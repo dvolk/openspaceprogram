@@ -605,9 +605,10 @@ struct Game {
     Recorder rec;
     /* Open the trace (game.cpp): called from the tick, the first time a row is
        due, so the game dir it lands in is whatever the run has claimed by then.
-       False = the file could not be opened, which is printed once and then left:
-       a recorder that cannot write must not spam the log every sample. */
-    bool openRecorder();
+       now_ms is that tick's logClockMs reading -- the rows count from it, so the
+       first one reads t=0. False = the file could not be opened, which is printed
+       once and then left: a recorder that cannot write must not spam the log. */
+    bool openRecorder(Uint32 now_ms);
 
     /* --sim-steps (cli.cpp) makes a scripted run reproducible (#472): exactly one
        tick per frame and a fixed number of ticks. The step count alone is not

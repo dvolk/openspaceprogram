@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdio>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <random>
@@ -983,7 +984,7 @@ std::string Game::ensureGameDir() {
    (#304), and a trace whose rows land out of order in the middle of a file is not
    a trace. The header's t0= is the mission clock at trace start, which is how a
    reader gets from one to the other. */
-bool Game::openRecorder() {
+bool Game::openRecorder(Uint32 now_ms) {
     assert(rec.f == nullptr && !rec.failed);
     const std::string dir = gameId.empty() ? datadir::flights()
                                            : (datadir::saves() + "/" + gameId);
@@ -1005,17 +1006,30 @@ bool Game::openRecorder() {
     }
     if(who.empty()) { who = "game"; }
 
-    rec.path = dir + "/flight-" + who + "-" + stamp + ".log";
-    rec.f = std::fopen(rec.path.c_str(), "w");
+    /* Never clobber: a trace is the only record of a flight, and two runs can
+       start in the same second. The save side refuses that collision
+       (mintGameDir); a trace has nothing to refuse into, so the name takes a
+       suffix. exists() rather than fopen's "x": this tree also cross-builds for
+       mingw, where the mode modifier is not something to trust. */
+    for(int attempt = 1; attempt <= 20; attempt++) {
+        rec.path = dir + "/flight-" + who + "-" + stamp
+                 + (attempt == 1 ? std::string() : "-" + std::to_string(attempt))
+                 + ".log";
+        if(std::filesystem::exists(rec.path)) { continue; }   // taken: next suffix
+        rec.f = std::fopen(rec.path.c_str(), "w");
+        break;   // opened, or a real failure: no point renaming past it
+    }
     if(rec.f == nullptr) {
         printf("record: FAILED to open %s\n", rec.path.c_str());
         fflush(stdout);
         rec.failed = true;   // one line, not one per sample
         return false;
     }
-    /* t0= is the mission clock at trace start, and started_ms the run clock the
-       rows count from -- two different things, and the trace needs both. */
-    rec.started_ms = logClockMs();
+    /* started_ms is the TICK's reading, not a fresh one: the row about to be
+       written is timed against it, and in the wall-clock branch a re-read can
+       land a millisecond later -- unsigned arithmetic would then print the first
+       row at 4,294,967 s. t0= is the mission clock, a different thing entirely. */
+    rec.started_ms = now_ms;
     rec.rows = 0;
     fprintf(rec.f, "#rec v%d channels=%s\n", kRecVersion, recChannels());
     fprintf(rec.f, "#ship=\"%s\" interval_ms=%u t0=%.3f\n",

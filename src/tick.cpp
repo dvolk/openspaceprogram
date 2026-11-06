@@ -841,7 +841,7 @@ void tick(Game &g) {
                never flies leaves no empty trace behind. A failed open says so once
                and the recorder stays off. */
             if(g.logDue(kGateRec, now_ms, g.record_interval_ms) &&
-               (g.rec.f != nullptr || (!g.rec.failed && g.openRecorder()))) {
+               (g.rec.f != nullptr || (!g.rec.failed && g.openRecorder(now_ms)))) {
                 Vehicle *v = g.ship;
                 RecSample s;
                 s.t = (now_ms - g.rec.started_ms) / 1000.0;
