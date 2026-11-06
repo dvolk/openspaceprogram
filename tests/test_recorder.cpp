@@ -1,4 +1,4 @@
-// test_recorder: the flight recorder's row grammar (src/recorder.h, #662).
+// test_recorder: the flight recorder's row grammar (src/recorder.h, #662, #674).
 // Runs from the repo root:
 //   make test   (or: g++ -O2 -std=c++20 -I./src tests/test_recorder.cpp -o test_recorder && ./test_recorder)
 //
@@ -15,6 +15,11 @@
 //   that has no value prints `-`. Dashing a zero is forbidden -- zero is a
 //   reading (no lift, no chute, no airspeed), and an instrument that blinks
 //   zeros loses the difference between "off" and "absent".
+//
+//   v2 (#674) added the frame group: the ten columns the SURFACE and ORBITAL
+//   windows show. They dash as a GROUP, on one test, because they come from one
+//   snapshot -- and an unfilled snapshot reads zeros (#235), which is exactly the
+//   0-that-isn't-a-reading the law above exists to refuse.
 //
 //   A row that does not fit its buffer is refused (returns -1) rather than
 //   written short: a half-written row is a parse error in someone else's script.
@@ -47,29 +52,51 @@ static RecSample cruise() {
     s.chute = 0.00;
     s.T = 288.15; s.p = 101325.0; s.a = 340.292; s.mach = 0.100;
     s.mass = 6000.0; s.thr = 0.75; s.stg = 2;
+    // The windows' group: the three speeds differ because they are three
+    // different frames, not three opinions of one number.
+    s.alt_agl = 698.5; s.v_surf = 77.75; s.v_orb = 252.75;
+    s.vs = -0.25; s.hs = 77.75;
+    s.lat = -0.0943; s.lon = 30.5;
+    s.pitch = 2.5; s.roll = -0.5; s.hdg = 91.5;
+    s.dv = 1450.5; s.acc = 3.75;
     return s;
 }
 
 int main() {
     // --- a full reading, exactly as printed -------------------------------
-    // The precisions are --drag-log's (tick.cpp's [drag] row), so the same
-    // reading looks the same in the trace and in the log.
+    // The precisions are the logs' (--drag-log for the aero group, the SURFACE
+    // window's rows for the frame group), so the same reading looks the same in
+    // the trace, in the log and in the window.
     CHECK_ROW(cruise(),
-              "t=12.50 alt_asl=700.0 v=78.00 rho=1.225 F=210.50 L=12.00 Cd=0.950 "
+              "t=12.50 alt_asl=700.0 alt_agl=698.5 v=78.00 v_surf=77.75 "
+              "v_orb=252.75 vs=-0.25 hs=77.75 lat=-0.094300 lon=30.500000 "
+              "pitch=2.5 roll=-0.5 hdg=91.5 dv=1450.5 acc=3.75 "
+              "rho=1.225 F=210.50 L=12.00 Cd=0.950 "
               "A=3.20 aoa=2.3 beta=-1.0 cpl=0.25 ind=0.020 chute=0.00 "
               "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2");
 
     // --- on the ground: no air, so no flow group either -------------------
     // The air-relative readings are meaningless with rho = 0, and the flow
     // geometry needs a flow to be measured against. Everything else keeps its
-    // zero: mass, throttle, stage, altitude, speed.
+    // zero: mass, throttle, stage, altitude, speed. Note the frame group keeps
+    // printing v_orb while v and v_surf read 0: a hull parked on a rotating body
+    // IS moving at 175 m/s over the ground's own frame, and a recorder that
+    // called that "not a reading" would hide the difference between the two.
     RecSample pad = cruise();
     pad.t = 0.0; pad.alt_asl = 0.0; pad.v = 0.0; pad.rho = 0.0;
     pad.F = 0.0; pad.L = 0.0; pad.aoa = pad.beta = pad.cpl = pad.ind = NAN;
     pad.T = pad.p = pad.a = pad.mach = NAN;
     pad.thr = 0.0; pad.stg = 0;
+    pad.alt_agl = 0.0; pad.v_surf = 0.0; pad.v_orb = 175.0;
+    pad.vs = 0.0; pad.hs = 0.0;
+    pad.lat = 0.0; pad.lon = 0.0;
+    pad.pitch = 0.0; pad.roll = 0.0; pad.hdg = 0.0;
+    pad.acc = 0.0;
     CHECK_ROW(pad,
-              "t=0.00 alt_asl=0.0 v=0.00 rho=0 F=0.00 L=0.00 Cd=0.950 A=3.20 "
+              "t=0.00 alt_asl=0.0 alt_agl=0.0 v=0.00 v_surf=0.00 "
+              "v_orb=175.00 vs=0.00 hs=0.00 lat=0.000000 lon=0.000000 "
+              "pitch=0.0 roll=0.0 hdg=0.0 dv=1450.5 acc=0.00 "
+              "rho=0 F=0.00 L=0.00 Cd=0.950 A=3.20 "
               "aoa=- beta=- cpl=- ind=- chute=0.00 T=- p=- a=- mach=- "
               "mass=6000.0 thr=0.00 stg=0");
 
@@ -78,7 +105,10 @@ int main() {
     ball.aoa = ball.beta = ball.cpl = ball.ind = NAN;
     ball.L = 0.0;
     CHECK_ROW(ball,
-              "t=12.50 alt_asl=700.0 v=78.00 rho=1.225 F=210.50 L=0.00 Cd=0.950 "
+              "t=12.50 alt_asl=700.0 alt_agl=698.5 v=78.00 v_surf=77.75 "
+              "v_orb=252.75 vs=-0.25 hs=77.75 lat=-0.094300 lon=30.500000 "
+              "pitch=2.5 roll=-0.5 hdg=91.5 dv=1450.5 acc=3.75 "
+              "rho=1.225 F=210.50 L=0.00 Cd=0.950 "
               "A=3.20 aoa=- beta=- cpl=- ind=- chute=0.00 "
               "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2");
 
@@ -86,8 +116,26 @@ int main() {
     RecSample nosurf = cruise();
     nosurf.L = 0.0; nosurf.ind = 0.0; nosurf.beta = 0.0;
     CHECK_ROW(nosurf,
-              "t=12.50 alt_asl=700.0 v=78.00 rho=1.225 F=210.50 L=0.00 Cd=0.950 "
+              "t=12.50 alt_asl=700.0 alt_agl=698.5 v=78.00 v_surf=77.75 "
+              "v_orb=252.75 vs=-0.25 hs=77.75 lat=-0.094300 lon=30.500000 "
+              "pitch=2.5 roll=-0.5 hdg=91.5 dv=1450.5 acc=3.75 "
+              "rho=1.225 F=210.50 L=0.00 Cd=0.950 "
               "A=3.20 aoa=2.3 beta=0.0 cpl=0.25 ind=0.000 chute=0.00 "
+              "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2");
+
+    // --- no snapshot for this hull: the frame group dashes, together ------
+    // The physics group is untouched: lastDrag* belongs to the hull whatever the
+    // render pass has been doing. This is the row a recorder writes in the tick
+    // before the first refresh, or the one for a hull the view never described.
+    RecSample stale = cruise();
+    stale.alt_agl = stale.v_surf = stale.v_orb = stale.vs = stale.hs = NAN;
+    stale.lat = stale.lon = stale.pitch = stale.roll = stale.hdg = NAN;
+    CHECK_ROW(stale,
+              "t=12.50 alt_asl=700.0 alt_agl=- v=78.00 v_surf=- "
+              "v_orb=- vs=- hs=- lat=- lon=- pitch=- roll=- hdg=- "
+              "dv=1450.5 acc=3.75 "
+              "rho=1.225 F=210.50 L=12.00 Cd=0.950 "
+              "A=3.20 aoa=2.3 beta=-1.0 cpl=0.25 ind=0.020 chute=0.00 "
               "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2");
 
     // --- the header's channel list and the row's keys are the same list ----

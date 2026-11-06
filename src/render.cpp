@@ -101,6 +101,8 @@ void updateShipView(Game &g) {
     glm::dvec3 &facing_dir = view.facing_dir;
     glm::dvec3 &vel_dir = view.vel_dir;
     glm::dvec3 &air_dir = view.air_dir;
+    double &alt_asl = view.alt_asl;
+    double &alt_agl = view.alt_agl;
     double &ver_speed = view.ver_speed;
     double &hor_speed2 = view.hor_speed2;
     double &heading = view.heading;
@@ -160,6 +162,18 @@ void updateShipView(Game &g) {
     plane = orbitPlaneAngles(o, view.ref_plane);
     distance = o.distance;
     speed = o.speed;
+    /* The altitude pair, off the same conic radius the ORBITAL window prints
+       (a rotation preserves length, so the radius needs no frame care). The
+       DIRECTION does: GetTerrainHeight and SurfaceColor answer for a point on the
+       body, so they want the rotating frame (terrain.h:194) -- which is surf_pos,
+       the same direction the lat/lon below is taken from. It used to be pos, and
+       for a hull in the INERTIAL frame (railed, or high enough to be) those two
+       differ by however far the body has turned: Kerbin carries the ground ~175
+       m/s, so a minute of coasting is 100 km of ground the height is read from.
+       The pair is also computed once now, for the SURFACE window, [surfinfo] and
+       the recorder (#674), instead of each reader doing its own arithmetic. */
+    alt_asl = distance - ship->m_parent->seaLevelRadius();
+    alt_agl = distance - ship->m_parent->GetTerrainHeight(glm::normalize(surf_pos));
 
     // Telemetry: conserved 2-body constants (drift = integrator error,
     // steps = burns/staging).

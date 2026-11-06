@@ -441,15 +441,18 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "claimed a game dir and under the data dir's flights/ when it "
                  "has not. Each sample is one [rec] line in the flight logs' "
                  "grammar -- t= counts run time since the trace began (the "
-                 "header's t0= is the mission clock it started at), then "
-                 "the channels the physics already publishes for that tick "
-                 "(alt_asl, v, rho, F, L, Cd, A, aoa, beta, cpl, ind, chute, T, "
-                 "p, a, mach, mass, thr, stg) -- and the file's first two lines "
-                 "carry the version, the channel names and the interval. The "
-                 "recorder computes nothing: it reads the same fields --drag-log "
-                 "prints, so a recorded number cannot disagree with a logged "
-                 "one. The trace follows the stack through staging because it "
-                 "belongs to the game, not to the vessel.");
+                 "header's t0= is the mission clock it started at), then the "
+                 "channels the game already publishes for that tick: the physics "
+                 "pass's own readings (alt_asl, v, rho, F, L, Cd, A, aoa, beta, "
+                 "cpl, ind, chute, T, p, a, mach, mass, thr, stg) and the frame "
+                 "readouts the SURFACE and ORBITAL windows show (alt_agl, v_surf, "
+                 "v_orb, vs, hs, lat, lon, pitch, roll, hdg, dv, acc). The file's "
+                 "first two lines carry the version, the channel names and the "
+                 "interval. The recorder computes nothing: it reads the same "
+                 "fields --drag-log and --info-log print, so a recorded number "
+                 "cannot disagree with a logged one. The trace follows the stack "
+                 "through staging because it belongs to the game, not to the "
+                 "vessel.");
 
     app.add_option("--record-interval", args.record_interval,
                    "Run time between recorded rows, in seconds (default 0.25). "

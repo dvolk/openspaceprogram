@@ -5,7 +5,7 @@
 # at the same instants, and pins the cadence that puts four samples between each pair
 # of logged ones (--record-interval 0.25 against --orbit-interval 1).
 NAME record-trace-agrees-with-the-log
-CLAIM --record writes a trace whose rows are the readings --drag-log printed at the same ticks, and four of them land per log row.
+CLAIM --record writes a trace whose rows are the readings --drag-log printed at the same ticks plus the numbers the SURFACE and ORBITAL windows show, and four of them land per log row.
 KIND invariant
 ARGS --time-accel 1 --width 1920 --height 1080 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
 # --no-paint: this case reads logs and a file, never the window (#666).
@@ -32,7 +32,15 @@ CHECK all(d["airT"] == r["T"] and d["airP"] == r["p"] and d["airA"] == r["a"] an
 # under --sim-steps is the same clock the [drag] rows' t= comes from -- less one
 # interval, because the trace starts at its first sample rather than at tick 0.
 CHECK all(abs(d["t"] - r["t"] - 0.25) < 1e-9 for d, r in zip(drag, rec[3::4]))
+# The frame group (#674) is live even in a run that paints nothing: sc.refresh fills
+# the snapshot the SURFACE and ORBITAL windows would show, and the trace reads that
+# same snapshot rather than a second opinion. So the columns that need a body, a
+# ground and a horizon are all numbers here, and the altitude pair differs only by
+# how high the ground is (alt_asl is over the datum, alt_agl over the terrain).
+CHECK all(r["alt_agl"] is not None and r["v_surf"] is not None and r["v_orb"] is not None and r["pitch"] is not None and r["hdg"] is not None and r["dv"] is not None for r in rec)
+CHECK all(abs(r["alt_asl"] - r["alt_agl"]) < 2000.0 for r in rec)
+CHECK all(-90.0 <= r["pitch"] <= 90.0 and 0.0 <= r["hdg"] < 360.0 and -90.0 <= r["lat"] <= 90.0 for r in rec)
 # What the recorder says it captured, in its own words on stdout.
-FILE flights/*.log "#rec v1 channels=t alt_asl v rho F L Cd A aoa beta cpl ind chute T p a mach mass thr stg" "#ship=\"skiff\" interval_ms=250" "[rec] t=0.00 "
+FILE flights/*.log "#rec v2 channels=t alt_asl alt_agl v v_surf v_orb vs hs lat lon pitch roll hdg dv acc rho F L Cd A aoa beta cpl ind chute T p a mach mass thr stg" "#ship=\"skiff\" interval_ms=250" "[rec] t=0.00 "
 FORBID error:
 FORBID record: FAILED

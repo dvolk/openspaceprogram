@@ -156,6 +156,14 @@ struct ShipView {
     glm::dvec3 facing_dir = glm::dvec3(0.0);
     glm::dvec3 vel_dir = glm::dvec3(0.0);
     // surface + orientation scalars (the SURFACE window)
+    /* The altitude PAIR, computed once for every reader instead of at each one: the
+       SURFACE window, [surfinfo] and the flight recorder (#674) all quote it, and the
+       pair is the only honest way to print a height -- #626 is the mess that happens
+       when logs spell one name two datums. alt_asl is above the body's sea-level
+       datum and reads NEGATIVE exactly where the air is thickest (#245); alt_agl is
+       above the ground actually under the hull. */
+    double alt_asl = 0;
+    double alt_agl = 0;
     double ver_speed = 0;
     double hor_speed2 = 0;
     double latitude = 0;

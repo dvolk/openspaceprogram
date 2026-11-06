@@ -2351,7 +2351,7 @@ void drawUIReadouts(Game &g) {
     drawWin(g, W_Surface, [&] {
         char dist_s[32];
         const TerrainBody *b = ship->m_parent;
-        const double altAsl = distance - b->seaLevelRadius();
+        const double altAsl = view.alt_asl;
         // Bme/Sit: the science identity of this pose (game.h poseSituation). "-" when there
         // is no biome to name.
         const PoseSituation ps = poseSituation(
@@ -2360,7 +2360,7 @@ void drawUIReadouts(Game &g) {
                                    ? capitalizeFirst(biomeName(ps.biome)).c_str()
                                    : "-");
         ImGui::Text("Sit: %s", capitalizeFirst(situationName(ps.situation)).c_str());
-        ImGui::Text("Alt: %s", fmt_dist(distance - b->GetTerrainHeight(glm::normalize(pos)), dist_s, sizeof dist_s));
+        ImGui::Text("Alt: %s", fmt_dist(view.alt_agl, dist_s, sizeof dist_s));
         ImGui::Text("ASL: %s", fmt_dist(altAsl, dist_s, sizeof dist_s));
         ImGui::Text(" Vs: %.2fm/s", ver_speed);
         ImGui::Text(" Hs: %.2fm/s", hor_speed2);
@@ -2398,7 +2398,7 @@ void drawUIReadouts(Game &g) {
         const Uint32 now_ms = g.logClockMs();
         if(g.logDue(kGateInfo, now_ms, g.orbit_log_interval_ms)) {
             const TerrainBody *b = ship->m_parent;
-            const double altAsl = distance - b->seaLevelRadius();
+            const double altAsl = view.alt_asl;
             const PoseSituation ps = poseSituation(
                 b, glm::normalize(glm::vec3(view.surf_pos)), altAsl,
                 ship->isGrounded());
@@ -2498,7 +2498,7 @@ void drawUIReadouts(Game &g) {
                    "cla=%s sm=%s acc=%.6g m/s2 "
                    "body=\"%s\" bme=\"%s\" sit=\"%s\"\n",
                    time,
-                   distance - b->GetTerrainHeight(glm::normalize(pos)),
+                   view.alt_agl,
                    altAsl,
                    ver_speed, hor_speed2,
                    glm::degrees(latitude), glm::degrees(longitude),

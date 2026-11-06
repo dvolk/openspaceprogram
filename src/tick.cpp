@@ -824,16 +824,22 @@ void tick(Game &g) {
             }
         }
 
-        /* --record: the flight recorder (#662). Same published numbers the
-           [drag] line above prints -- the recorder computes nothing, so a
-           recorded value and a logged value cannot disagree (#665's seam). It
-           is gated on its own clock (--record-interval) because the log rate
-           and the trace rate want different things: a trace at 1 s rows is
-           useless next to a burn, and one per tick is a 3 MB file.
-           t= counts the LOG clock (run time), not g.time: a load moves the
-           mission clock backwards (#304) and would otherwise drop rows out of
-           order in the middle of the file. The header's t0= is g.time at the
-           first sample, which maps one onto the other. */
+        /* --record: the flight recorder (#662, #674). Every channel is a number the
+           game already publishes for the tick it is sampled in -- the physics pass's
+           readouts and the ShipView snapshot the SURFACE and ORBITAL windows draw --
+           so a recorded value and a logged value cannot disagree (#665's seam). It
+           is gated on its own clock (--record-interval) because the log rate and the
+           trace rate want different things: a trace at 1 s rows is useless next to a
+           burn, and one per tick is a 3 MB file.
+           Two cadences share a row, on purpose. The aero block's fields are the last
+           SUBSTEP's; the frame group is the last REFRESH's (sc.refresh fills hud.view
+           after the logic phase, main.cpp:1392), so those ten columns lag the physics
+           by part of a frame. That is not sloppiness: they are what the pilot's own
+           windows were showing at that instant, and the lag is centimetres at 4 Hz.
+           t= counts the LOG clock (run time), not g.time: a load moves the mission
+           clock backwards (#304) and would otherwise drop rows out of order in the
+           middle of the file. The header's t0= is g.time at the first sample, which
+           maps one onto the other. */
         if(g.args.record && g.ship != nullptr) {
             const Uint32 now_ms = g.logClockMs();
             /* The first due sample opens the file (Game::openRecorder): by then
@@ -843,10 +849,32 @@ void tick(Game &g) {
             if(g.logDue(kGateRec, now_ms, g.record_interval_ms) &&
                (g.rec.f != nullptr || (!g.rec.failed && g.openRecorder(now_ms)))) {
                 Vehicle *v = g.ship;
+                const ShipView &view = g.hud.view;
                 RecSample s;
                 s.t = (now_ms - g.rec.started_ms) / 1000.0;
                 s.alt_asl = v->lastDragAlt;
                 s.v = glm::length(v->GetVel());
+                s.dv = v->getDeltaV();
+                s.acc = v->feltAccel();
+                /* The windows' own numbers. A snapshot taken for some other hull --
+                   or never taken at all, since an unfilled ShipView reads zeros
+                   (#235) -- quotes nothing: the group dashes together on one test,
+                   because a 0 in a log gets read as a measurement. */
+                if(view.ship == v) {
+                    s.alt_agl = view.alt_agl;
+                    s.v_surf = glm::length(view.surf_vel);
+                    s.v_orb = view.speed;
+                    s.vs = view.ver_speed;
+                    s.hs = view.hor_speed2;
+                    s.lat = glm::degrees(view.latitude);
+                    s.lon = glm::degrees(view.longitude);
+                    s.pitch = glm::degrees(view.pitch);
+                    s.roll = glm::degrees(view.roll);
+                    s.hdg = glm::degrees(view.heading);
+                } else {
+                    s.alt_agl = s.v_surf = s.v_orb = s.vs = s.hs = NAN;
+                    s.lat = s.lon = s.pitch = s.roll = s.hdg = NAN;
+                }
                 s.rho = v->lastDragRho;
                 s.F = glm::length(v->lastAeroForce);
                 s.L = glm::length(v->lastLiftForce);
@@ -872,7 +900,7 @@ void tick(Game &g) {
                 s.mass = v->getMass();
                 s.thr = v->throttle();
                 s.stg = v->activeStage();
-                char row[512];
+                char row[768];
                 const int wrote = recRow(s, row, sizeof row);
                 if(wrote > 0) {   // -1 = the row did not fit, so none was written
                     fprintf(g.rec.f, "[rec] %s\n", row);

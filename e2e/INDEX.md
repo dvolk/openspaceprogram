@@ -414,5 +414,5 @@ judgement. Select by number, name or path, e.g.
 | `harness/343-screenshot.txt` | harness | F12 writes a PNG under the data dir's screenshots/ and toasts the outcome. |
 | `harness/379-periodic-log-warp-rate.txt` | harness | A periodic log samples at a wall-clock rate whatever the warp. |
 | `harness/402-timeout-run-says-what-it-simulated.txt` | invariant | A wall-clock run prints how much sim time it simulated, and that figure agrees with the sim clock its own log rows sampled. |
-| `harness/662-record-trace-agrees-with-the-log.txt` | invariant | --record writes a trace whose rows are the readings --drag-log printed at the same ticks, and four of them land per log row. |
+| `harness/662-record-trace-agrees-with-the-log.txt` | invariant | --record writes a trace whose rows are the readings --drag-log printed at the same ticks plus the numbers the SURFACE and ORBITAL windows show, and four of them land per log row. |
 | `harness/666-no-paint-costs-pixels-only.txt` | harness | --no-paint flies the same cruise, keeps the HUD readouts live and still paints a frame F12 asks for. |
