@@ -74,8 +74,11 @@ static void test_shell_edge() {
     // Tall atmospheres get top + 20%: the shell contains its own air and
     // LowOrbit is a real band above it.
     CHECK_NEAR(shellEdge(85e3), 102e3, 1e-12, "Earth / Kerbin (85 km) -> 102 km");
-    CHECK_NEAR(shellEdge(200e3), 240e3, 1e-12, "Jool (200 km) -> 240 km");
-    CHECK_NEAR(shellEdge(600e3), 720e3, 1e-12, "Saturn (600 km) -> 720 km");
+    // The examples are the shipped giants' authored ceilings: #682 step 3 moved Jool
+    // 200 -> 275 km and Saturn 600 -> 800 km to where a circular orbit still feels
+    // 10..1000 Pa of q, so a giant's frame is now sized by its air rather than by 10 H.
+    CHECK_NEAR(shellEdge(275e3), 330e3, 1e-12, "Jool (275 km) -> 330 km");
+    CHECK_NEAR(shellEdge(800e3), 960e3, 1e-12, "Saturn (800 km) -> 960 km");
 
     // The invariant the #97 fix rests on: the shell always covers the air
     // plus the frame-switch hysteresis, for EVERY top.
@@ -138,8 +141,10 @@ static void test_lift() {
     // contains the 136 km inertial-orbit bed.
     CHECK_NEAR(inertialSoi(7256.0, 111167.0, 100000.0), 146167.0, 1e-12,
                "Phobos lifted to rotSoi + 35 km");
-    // A tall-atmo shell: the bed floor scales with it (Jool: 0.25*240+10 =
-    // 70 km over the rot SOI, above the 20 km hysteresis floor).
+    // A tall-atmo shell: the bed floor scales with it (a Jool-sized 240 km shell
+    // gives 0.25*240+10 = 70 km over the rot SOI, above the 20 km hysteresis
+    // floor). Fixture values, not shipped ones: #682 step 3 authored Jool's air top
+    // at 275 km, so its shell now derives 330 km and this floor 92.5 km.
     CHECK_NEAR(inertialSoi(2.456e9, 6.24e6, 240e3), 2.456e9, 1e-12,
                "Jool law value wins");
     CHECK_NEAR(inertialSoi(0.0, 6.24e6, 240e3), 6.31e6, 1e-12,

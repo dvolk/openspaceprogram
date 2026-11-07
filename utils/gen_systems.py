@@ -419,7 +419,22 @@ SURFACES = {
                        # jet can cross. KSP's Jool, not the solar system's Uranus:
                        # same three gases, different sky (#636).
                        "composition": H2_HE_CH4_KSP,
-                       "height": 200000},
+                       # #682 step 3: authored, where this used to be the derived 10 H.
+                       # The band asks where a decaying orbit first feels 10..1000 Pa of
+                       # q, and 10 H = 200 km leaves 2,856 Pa at the ceiling -- 29x
+                       # Kerbin's own edge (97.8 Pa), behind only Venus (99.8 kPa) and
+                       # Jupiter (6.8 kPa) in the catalogue. 275 km is where a circular
+                       # orbit here feels 87.8 Pa, beside Kerbin 97.8 / Duna 110 /
+                       # Laythe 106. Collateral: shellEdge 240 -> 330 km, spawn bed 20 ->
+                       # 27.5 km, Flying/FlyingLow split 40 -> 55 km. It does NOT move
+                       # the rendered rim (terrain max height + `thickness`, #56) or the
+                       # 2.0 kg/m3 datum, which is what the H 20 km is for. The ceiling
+                       # is 4.6% of Jool's radius either way, so this is not a claim
+                       # that a giant's air ENDS there -- it is where the game draws its
+                       # one hard zero, and #701 is the ticket for the gradient below it.
+                       # The KSP sheet calls it 200 km; that is a rendering limit, so
+                       # #702 wants it printed as drift rather than obeyed.
+                       "height": 275000},
     },
     "Laythe": {
         "amplitude": 5000,

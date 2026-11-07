@@ -295,8 +295,10 @@ static int check_air(const char *path, const System &sys) {
         /* #625: print what each body's profile ASSERTS beside the numbers that
            assert it. A guessed scale height is invisible in the atlas, which prints
            its temperature as fact, and obvious here -- Uranus (H 20000, M 0.023)
-           reads 498 K for an ice giant -- which was a typed molar_mass, and is now
-           what an H2/He/CH4 sky resolves to: 57 K (#630). */
+           reads 498 K for an ice giant -- which was a typed molar_mass, and #630's
+           H2/He/CH4 mix took it to 57 K. #695 took the sheet's own 27.7 km and its
+           0.42 kg/m^3, which land 79.2 K at a 1.048 bar datum: what the sheet's own
+           M 2.64 g/mol and H imply at the level its gravity row names. */
         char prof[32];
         if(a.layers.empty()) {
             snprintf(prof, sizeof prof, "H %6.0f m", a.scale_height);

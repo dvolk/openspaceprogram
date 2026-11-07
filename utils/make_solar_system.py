@@ -417,33 +417,18 @@ FACT_AIR_BANDS = {'density': 0.30, 'p0': 0.40, 'scale_height': 0.10,
 # more than WAIVER_TOL and the guard refuses again, with a message saying the waiver
 # predates it. That matters most where a body has few guarded numbers -- a giant's
 # sheet states a scale height, a 1-bar density and a molecular weight but no surface
-# pressure, so Uranus has exactly two figures this guard can read, and both are
-# waived to the same decision.
+# pressure, so such a world can have exactly two figures this guard can read.
 WAIVER_TOL = 0.02
-FACT_AIR_KNOWN = {
-    ('Uranus', 'scale_height'): (
-        20000.0,
-        "sheet says 27.7 km, we author 20 km. The sheet is self-consistent: its "
-        "mean molecular weight 2.64 is what our H2/He/CH4 mix resolves to, and 27.7 "
-        "km with that M on our g 9.007 is a 79 K 1-bar level. We read 57 K, which "
-        "is a tropopause temperature, not a datum one; this H is what was left "
-        "beside the typed molar_mass 0.023 that #630 removed. NOT fixed here "
-        "because it moves the air top (10 H) 200 -> 277 km and with it the "
-        "rotating-frame switch, every spawn bed and the sky rim of a whole world -- "
-        "a world change, filed as #695 rather than made at 11 pm."),
-    # The same world's density, and the reason these two cannot land apart. The
-    # sheet's 0.42 kg/m^3 is right only at the sheet's own 27.7 km scale height:
-    # 0.42 x 9.007 x 27.7e3 = 104.8 kPa, i.e. a 1-bar datum, which is the level
-    # these giants' gravity rows name. Against the H we still author (20 km) the
-    # sheet's density would put this datum at 0.75 bar -- so "fix the density,
-    # leave the scale height" makes the row WORSE, and both moves belong with the
-    # giants' air-top decision (#700 step 3), which is what #695 is waiting on.
-    ('Uranus', 'density'): (
-        0.60,
-        "sheet says 0.42 kg/m^3 at its 1-bar level, we author 0.60. Lands with the "
-        "scale-height waiver above: rho and H trade off against the same datum "
-        "pressure, and only the pair (0.42, 27.7 km) reads 1 bar."),
-}
+# Empty, and it was not always. The only two waivers here were Uranus's scale height
+# and its 1-bar density, and both were written against one unmade decision -- what a
+# giant's air top IS (#682). They said "a world change, filed as #695 rather than made
+# at 11 pm"; #695 is that change, taken once the top was authored beside it, so this
+# row now agrees with its sheet instead of arguing with it. Note what made the pair
+# landable together: authoring `height` decouples the top from H, so H 20 -> 27.7 km
+# no longer drags the rot frame, the spawn beds and the atlas disk behind it.
+# Anything new that needs a waiver names the authored number it argues about, in the
+# same breath as the number.
+FACT_AIR_KNOWN = {}
 
 AIR_PRESSURE_UNITS = {'bar': 1e5, 'bars': 1e5, 'mb': 1e2, 'millibar': 1e2,
                       'millibars': 1e2, 'microbar': 0.1, 'microbars': 0.1,
@@ -1109,6 +1094,19 @@ def build_base(verbose_air=False):
           'atmosphere': {'color': [0.85, 0.78, 0.65], 'thickness': 90000,
                          'power': 3.0, 'intensity': 0.6,
                          'sea_level_density': 0.16, 'scale_height': 27000,
+                         # #682 step 3: authored, where this used to be the derived
+                         # 10 H = 270 km. At that ceiling a circular orbit feels 6.8 kPa
+                         # of q -- 70x Kerbin's own edge (97.8 Pa) and the worst in the
+                         # catalogue but Venus. 390 km is where it reads 83.3 Pa, inside
+                         # the 10..1000 Pa band Kerbin's ceiling sits in. Collateral:
+                         # shellEdge 324 -> 468 km, spawn bed 27 -> 39 km, Flying/FlyingLow
+                         # split 54 -> 78 km; every moon stays far outside (Io orbits at
+                         # 421,700 km from the centre). The ceiling is 0.56% of the radius
+                         # either way, so this is not a claim that Jupiter's air ENDS --
+                         # a giant has no ground, its datum is the 1-bar level, and this
+                         # is only where the game draws its one hard zero. The shape
+                         # underneath it is #701.
+                         'height': 390000,
                          # Jupiter keeps its sheet's 0.16 even though the trio lock
                          # wants 0.143 at the 1-bar level (H 27 km, the sheet's own
                          # "Gravity (mean, 1 bar)" 25.92, which is our g to four
@@ -1124,6 +1122,16 @@ def build_base(verbose_air=False):
           'atmosphere': {'color': [0.90, 0.82, 0.65], 'thickness': 90000,
                          'power': 3.0, 'intensity': 0.6,
                          'sea_level_density': 0.15, 'scale_height': 60000,
+                         # #682 step 3: authored, not the derived 10 H = 600 km, which
+                         # leaves 2,431 Pa of orbital q at the ceiling -- 25x Kerbin's
+                         # 97.8 Pa. 800 km reads 93.5 Pa. This is the least violent of
+                         # the five: Saturn's H 60 km is already the longest column in
+                         # the catalogue, so its 10 H was only 2.4x over the band rather
+                         # than 7x. Collateral: shellEdge 720 -> 960 km, spawn bed 60 ->
+                         # 80 km, Flying/FlyingLow split 120 -> 160 km. 1.4% of the
+                         # radius, and the same caveat as Jupiter: this is where the
+                         # game's hard zero sits, not where a giant's envelope ends.
+                         'height': 800000,
                          # Saturn's envelope is the most H2-rich of them (0.963), but
                          # H2 with no oxidizer is a fuel store, not a jet air.
                          # 0.15, not the sheet's 0.19: this file's datum IS the 1-bar
@@ -1146,7 +1154,27 @@ def build_base(verbose_air=False):
           'palette': [[0.0, [0.40, 0.65, 0.70]], [1.0, [0.70, 0.85, 0.88]]],
           'atmosphere': {'color': [0.70, 0.85, 0.88], 'thickness': 90000,
                          'power': 3.0, 'intensity': 0.6,
-                         'sea_level_density': 0.60, 'scale_height': 20000,
+                         # #695, landing with the giants' air tops: the sheet's own PAIR,
+                         # 0.42 kg/m^3 at its 1-bar level and 27.7 km. Those two are one
+                         # statement, not two -- rho g H = 0.42 x 9.007 x 27.7e3 =
+                         # 104.8 kPa, i.e. a 1.048 bar datum, which is the level this
+                         # file's datum IS. The old 0.60 / 20 km was what was left beside
+                         # the typed molar_mass 0.023 that #630 removed; it read a 57 K
+                         # datum where the sheet's own M 2.64 and H 27.7 km say 79 K.
+                         # It could not land before the top decision, because on a body
+                         # with no authored height the scale height IS the top: H 27.7 km
+                         # moves 10 H from 200 to 277 km and with it the rot frame, every
+                         # spawn bed and the atlas disk. Both FACT_AIR_KNOWN waivers named
+                         # that one decision, so both are gone now.
+                         'sea_level_density': 0.42, 'scale_height': 27700,
+                         # #682 step 3: authored, not the derived 10 H -- which on the
+                         # new column would leave 2,400 Pa of orbital q at 277 km, 25x
+                         # Kerbin's 97.8. 370 km reads 90.6 Pa. Collateral: shellEdge 240
+                         # -> 444 km, spawn bed 20 -> 37 km, Flying/FlyingLow split 40 ->
+                         # 74 km. 1.5% of the radius, and the same caveat as the other
+                         # giants: where the game's hard zero sits, not where an ice
+                         # giant's envelope ends (#701).
+                         'height': 370000,
                          # Uranus's own H2/He/CH4 proportions, not gen_systems' Jool
                          # (#636: same three gases, a different sky).
                          'composition': H2_HE_CH4_SOLAR}},
@@ -1157,6 +1185,13 @@ def build_base(verbose_air=False):
           'atmosphere': {'color': [0.50, 0.65, 0.90], 'thickness': 90000,
                          'power': 3.0, 'intensity': 0.6,
                          'sea_level_density': 0.45, 'scale_height': 20000,
+                         # #682 step 3: authored, not the derived 10 H = 200 km, which
+                         # leaves 3,049 Pa of orbital q at the ceiling -- 31x Kerbin's
+                         # 97.8 Pa. 270 km reads 98.1 Pa, the closest of the five to
+                         # Kerbin's own edge. Collateral: shellEdge 240 -> 324 km, spawn
+                         # bed 20 -> 27 km, Flying/FlyingLow split 40 -> 54 km. 1.1% of
+                         # the radius; same caveat as the other giants (#701).
+                         'height': 270000,
                          # Neptune's sheet states 0.45 kg/m^3 at its 1-bar level and
                          # that IS what its own H 19.1-20.3 km implies at our g
                          # (1e5 / (11.274 x 20000) = 0.443), so this row needed no

@@ -160,13 +160,18 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
    is the geopotential depth Z(alt), not alt. At the datum the read is unchanged -- H is
    defined there -- and only the aloft numbers move: on Earth by 0.3% at 11 km, at
    Kerbin's 85 km top by 4.6x (2.26 Pa of column weighed, 0.50 Pa uniform), across the
-   shipped catalogue 1.04x (Jupiter's top) to 9.3x (Laythe's 105 km ceiling, where
+   shipped catalogue 1.08x (Jupiter's top -- 390 km since #682 step 3, where its old
+   270 km column gained 1.04x) to 9.3x (Laythe's 105 km ceiling, where
    #700 replaced a 2.3x 50 km column top; Shay's table pays 6.7x). Eve's 4.3x is now
    the largest among the scale-height bodies and Duna's fell from 5.4x to 2.2x when
    #700 gave it a 13.6 km scale height -- the gain is big in two opposite ways, on a
    SHORT column (a symptom of the air being wrong, not of the field) and on air that
    reaches far out in body radii (which is what a warm tall table does: 21 % of
-   Laythe's radius at the ceiling against Kerbin's 14 %).
+   Laythe's radius at the ceiling against Kerbin's 14 %). Moving a ceiling OUT raises
+   its gain rather than lowering it, so authoring the giants' tops bought Jool
+   1.38 -> 1.83x, Uranus 1.08 -> 1.21x, Saturn 1.11 -> 1.20x, Neptune and Jupiter
+   ~0.08x each: the ends of this table are unchanged, because the giants' ceilings
+   reach 0.6-4.6 % of their radii and the extremes are set by small warm worlds.
    What stays GEOMETRIC on purpose is everything the rest of the game
    measures altitude in: the `alt >= height` vacuum check above, the science bands, the
    shell (bodylimits.h), the spawn beds and the atlas disk. Z is arithmetic inside the

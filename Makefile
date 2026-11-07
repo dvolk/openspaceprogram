@@ -640,6 +640,15 @@ test-gen:
 	python3 utils/sci_dist.py --check res/systems/*.json
 	python3 utils/gen_systems.py --check
 	python3 utils/make_solar_system.py --check
+# #682's band as a refusal rather than a report. A top sets shellEdge = max(100 km,
+# 1.2 top), so it moves the rot frame, the LowOrbit/HighOrbit cuts, every spawn bed and
+# the atlas disk -- and drag.h bills nothing above it, so it is also where a decaying
+# orbit stops feeling air. Six of fourteen air bodies sat out of band when this gate was
+# written. It IMPORTS atmo_profile, the second quadrature spelling of atmo.h, so it can
+# catch the law drifting and not only a mistyped authoring number; columns repeated
+# across the generated system variants are weighed once.
+	python3 utils/check_atmo_band.py --self-test
+	python3 utils/check_atmo_band.py res/systems/*.json
 # Parses EVERY case file, so a stale fixture path fails here -- on every commit
 # -- instead of waiting for someone to spend an e2e run on it (#360). The index
 # must match the cases anyway, so this costs one more pure-stdlib pass.

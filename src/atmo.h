@@ -106,7 +106,13 @@ inline double levelTemperature(const AtmoLayer &L, double alt) {
    table ran 1.04x on Jupiter to 4.3x on Eve; #700's warm tables on small worlds went
    past all of it -- 9.3x at Laythe's 105 km ceiling and 6.7x at Shay's 95 km, because
    a warm column on a 500 km body reaches 21 % of the radius. Duna's 5.4x went the
-   other way, to 2.2x, once #700 fixed its scale height).
+   other way, to 2.2x, once #700 fixed its scale height. #682 step 3 then moved the
+   five giants' ceilings OUT to where the band says orbiting air still pushes, and
+   every gain there went UP, not down -- a ceiling further out always weighs more
+   against uniform g: Jupiter 1.04 -> 1.08, Neptune 1.08 -> 1.16, Saturn 1.11 -> 1.20,
+   Uranus 1.08 -> 1.21, Jool 1.38 -> 1.83. That table's ends are still Laythe 9.3x and
+   Jupiter 1.08x, which is the point: the gain tracks how far a ceiling reaches in
+   body radii, and the giants' ceilings reach 0.6-4.6 %).
    radius <= 0 asks for the UNIFORM field instead, which is what a hand-built
    DragAtmosphere with no world gets; a body loaded from a system file always
    carries its seaLevelRadius. */

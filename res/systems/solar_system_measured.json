@@ -503,6 +503,7 @@
           "intensity": 0.6,
           "sea_level_density": 0.16,
           "scale_height": 27000,
+          "height": 390000,
           "composition": [
             {
               "gas": "H2",
@@ -608,6 +609,7 @@
           "intensity": 0.6,
           "sea_level_density": 0.15,
           "scale_height": 60000,
+          "height": 800000,
           "composition": [
             {
               "gas": "H2",
@@ -707,8 +709,9 @@
           "thickness": 90000,
           "power": 3.0,
           "intensity": 0.6,
-          "sea_level_density": 0.6,
-          "scale_height": 20000,
+          "sea_level_density": 0.42,
+          "scale_height": 27700,
+          "height": 370000,
           "composition": [
             {
               "gas": "H2",
@@ -784,6 +787,7 @@
           "intensity": 0.6,
           "sea_level_density": 0.45,
           "scale_height": 20000,
+          "height": 270000,
           "composition": [
             {
               "gas": "H2",

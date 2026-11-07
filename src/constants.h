@@ -49,6 +49,12 @@ inline constexpr double kInertialOrbitFrac = 1.25;
    sea_level_density + scale_height but no height gets top() = this * H,
    i.e. ~e^-10 of sea-level density -- a sane hard top for a body with no
    authored one.
+   It is a FALLBACK, not the law: #682's band says a ceiling should sit where a
+   circular orbit still feels 10..1000 Pa of q, and for 12 of the 14 shipped air
+   bodies that is an authored `height`. Only two still ride this default -- Venus
+   (160 km, where the band's 1.0 kPa lip would sit at 238 km) and Titan (200 km at
+   800 Pa, on the lip) -- and utils/check_atmo_band.py refuses any other body that
+   lands out of band, with Venus waived BY VALUE and the reason beside it.
    Changes: where the air stops for drag AND where the science Flying*
    bands end, on every body without an authored top.
    Where: AtmosphereParams::top (terragen.h). */
