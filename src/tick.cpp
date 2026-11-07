@@ -581,9 +581,13 @@ void tick(Game &g) {
            |L| is every lifting surface PLUS every deflected control surface (#699): a
            tab's force is perpendicular to its own flow and pays induced drag like any
            lift, so a column that leaves it out is a lift LAW's sum, not the lift the air
-           applies. On a trimmed hull that omission is 13 % of the force holding it up,
-           and the tell is |L| > |F| -- a part outweighing the whole it came from, which
-           47 of flight/492's 50 rows used to print. That bound is now a CHECK there.
+           applies. On a trimmed hull that omission is 13 % of the force holding it up.
+           The tell was |L| > |F| -- a part outweighing the whole it came from, which 47 of
+           flight/492's 50 rows used to print and which flight/492 now CHECKs. It is a
+           tell, not a law: every surface stands in its OWN flow (#483), so on a hull
+           pitching hard enough for w x r to matter, "lift" leaks along the flow and
+           "drag" leaks across it. Where the surfaces do agree, the ratio sits near
+           1 - 1/(2 Ld^2) -- measured 0.988..0.991 on the yardstick skiff at Ld 7.17.
            AoA prints '-' with no value when there is no usable flow
            (kAoAFlowFloor), like [flight] and [surfinfo] do: a parked ship's
            ~1e-4 m/s jitter reads as a full +/-90 deg swing, and a number in a
@@ -773,16 +777,17 @@ void tick(Game &g) {
                    textbook pair (vehicle.h:lastFlowLift / lastFlowDrag), and the ratio a
                    glide ratio equals. In the settled 200 s glide it prints 7.19 while the
                    hull's own track says 41.20 m over 5.66 m of sink, 7.28; the 1.3 % left
-                   over is a glide that has not quite settled. It is NOT |L|= divided by
-                   anything, and the distance from the two readings res/ships/README.md
-                   could mean is fully accounted for: |L| over the printed RAW bills x q
-                   reads 8.65 there (README's 8.6), and 6 % of that is simply --drag-cd --
-                   A=/Cd= print the raw hull product while the force charges 1.2 x them, as
-                   the block above this one says. Charge the bills and they add up: 745.0 N
-                   against the 744.0 N this row's lastFlowDrag measures, leaving 8.12 of
-                   |L| over the drag. The last step, 8.12 -> 7.19, is the numerator: the
-                   lift law's sum leaves a control surface's deflection force out, and on a
-                   hull trimmed by a 12 deg tab that is 12.9 % of what holds it up (#699).
+                   over is a glide that has not quite settled. Since #699 this field also
+                   agrees with the row's own numbers: |L| over the CHARGED bills -- q x
+                   (1.2 CdA + Induced + Profile) -- reads 6.67..7.27 on flight/492's hold,
+                   median 7.17, which is this field's median to the digit. Over the RAW
+                   printed bills it reads 7.14..7.76 (median 7.66), and that 6 % is
+                   --drag-cd and nothing else: A=/Cd= print the raw hull product while the
+                   force charges 1.2 x them, as the block above this one says; charge them
+                   and they add up (745.0 N against the 744.0 N this row's lastFlowDrag
+                   measures). res/ships/README.md's skiff L/D of 8.6 was built off the raw
+                   bills AND off the pre-#699 lift sum, so it is stale on both counts;
+                   which ratio it should lead with is still #694's open call.
                    Dashed on the same test as AoA/Beta/CpL, whenever the air is PUSHING the
                    hull rather than holding it back (a negative denominator makes the ratio
                    meaningless, not large), and whenever the along-flow half is under a

@@ -17,6 +17,12 @@ CHECK any(d["F"] > 0 and d["rho"] > 0 for d in drag)
 CHECK all(("L_up" in d and "up" in d) for d in drag)
 CHECK all(abs(d["up"]) <= 1.0 + 1e-9 for d in drag)
 CHECK all(abs(d["L_up"]) <= abs(d["L"]) + 1e-6 for d in drag)
+# And the lift part never outweighs the whole aero force it came from. A tell rather than
+# a law -- each surface stands in its OWN flow (#483), so a hull that pitches hard enough
+# for w x r to matter leaks across the split -- but on this hull the ratio never got above
+# 0.988, and before #699 put the control loop's deflection force into the sum it ran over
+# 1.0 on hulls trimmed enough to need a tab (flight/492 pins the trimmed case).
+CHECK all(d["L"] <= d["F"] for d in drag)
 CHECK any(d["L"] > 400 and abs(d["L_up"]) > 100 for d in drag)
 # This hull has a jet and no rocket, so it has to fly on air it can BURN, which since
 # #630 means air with an oxidizer in it: the case used to spawn on Duna, whose 0.118
@@ -35,7 +41,10 @@ CHECK any(d["L"] > 400 and abs(d["L_up"]) > 100 for d in drag)
 # 0.496 kg/m3 rather than 0.34; #699 put the control loop's deflection force into |L|,
 # which on this untrimmed hull means the rudder's side force joins the sum. The 20 rows
 # this run prints sit at 8502-8759 m over 25.1-77.1 m/s; all of them clear both bounds and
-# the biggest is t=6.9 s -- |L| 14395 N with L_up +11999 N at 64.34 m/s. The 1000 N this used to ask
+# the biggest is t=6.9 s -- |L| 14395 N with L_up +11999 N at 64.34 m/s. Those figures are
+# one wall-clock-gated run, not a pin: --timeout 20 means a slower box prints fewer rows and
+# a faster one more, and a repeat run moved the peak row by ~0.4 %. The CHECKs are bounds,
+# not numbers. The 1000 N this used to ask
 # for belonged to the heavier spindle hull #568 replaced; the 559-569 N with L_up
 # -217..-219 N was the 12 x 1.8 wing, and #567 moved the peak by a few tens of N without
 # moving what the bound means. What is pinned is that a real component of a real force

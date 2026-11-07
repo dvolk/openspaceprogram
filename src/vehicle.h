@@ -548,7 +548,11 @@ public:
        the control loop saw it). NOT a component of lastAeroForce: each surface feels its
        own flow (#483), so the two agree only as far as the hull's surfaces agree with
        each other -- on the yardstick skiff they now land 0.02 N apart. */
-    glm::dvec3 lastLiftForce = glm::dvec3(0.0);   // the lift part
+    glm::dvec3 lastLiftForce = glm::dvec3(0.0);   // slope force + deflection, vector sum
+    /* The sum is DELIBERATELY a vector sum, where the induced bill below it is a scalar
+       one (applyInducedDrag adds |L_i|/q_i, so a wing's upload and a tab's download add
+       instead of cancelling -- that inconsistency is open as #562). For "how much is the
+       air holding this hull up", cancelling is the right arithmetic. */
     /* The aero force SPLIT ABOUT THE AIR-RELATIVE FLOW -- L and D in the textbook
        sense, halves of lastAeroForce. lastFlowDrag is -(ftotal . flowHat), N (+ = the
        air is holding the hull back; it goes negative when a co-rotating frame or a
@@ -585,13 +589,16 @@ public:
         ld = lastFlowLift / lastFlowDrag;
         return true;
     }
-    /* lastLiftForce . local vertical (away from the body centre): + = the wings
-       are holding the airframe UP. Signed so the --drag-log can pin the lift
-       DIRECTION, not just its magnitude -- a flipped AoA sign hid exactly that
-       (#448), and |L| alone cannot see it. */
+    /* lastLiftForce . local vertical (away from the body centre): + = the airframe's
+       lifting SURFACES are holding it UP -- wings and deflected tabs together since #699,
+       so a hull trimmed by a heavy download reads its NET lift here, which is the honest
+       figure and can in principle go negative on an airframe the tail is pushing down.
+       Signed so the --drag-log can pin the lift DIRECTION, not just its magnitude -- a
+       flipped AoA sign hid exactly that (#448), and |L| alone cannot see it. That test
+       survives the fold-in: 0 of flight/492's 50 rows change sign, they only shrink. */
     double lastLiftVert = 0.0;
     /* The airframe's own up axis . local vertical: +1 upright, 0 on its side,
-       -1 inverted. The --drag-log's guard rail -- L_up only means "the wings
+       -1 inverted. The --drag-log's guard rail -- L_up only means "the surfaces
        hold the ship up" while this is positive. */
     double lastUpVert = 0.0;
     glm::dvec3 lastAeroTorque = glm::dvec3(0.0);  // moment about the COM

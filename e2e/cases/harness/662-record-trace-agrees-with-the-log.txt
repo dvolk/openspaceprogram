@@ -26,6 +26,12 @@ CHECK len(rec) == 4 * len(drag)
 # spells them.
 CHECK all(d["alt_asl"] == r["alt_asl"] and d["rho"] == r["rho"] and d["v"] == r["v"] for d, r in zip(drag, rec[3::4]))
 CHECK all(d["F"] == r["F"] and d["cd"] == r["Cd"] and d["a"] == r["A"] for d, r in zip(drag, rec[3::4]))
+# L joins on purpose (#699): it is the channel on this line whose DEFINITION changed --
+# the lift sum grew a control surface's deflection force -- and the two sides print the
+# same lastLiftForce, the [drag] row at tick.cpp's printf and the trace at its recorder
+# sample. Compared here, a future second spelling of the lift sum (one for the plot, one
+# for the log) goes red instead of quietly disagreeing.
+CHECK all(d["L"] == r["L"] for d, r in zip(drag, rec[3::4]))
 CHECK all(d["aoa"] == r["aoa"] and d["beta"] == r["beta"] and d["cpl"] == r["cpl"] and d["induced"] == r["ind"] for d, r in zip(drag, rec[3::4]))
 CHECK all(d["airT"] == r["T"] and d["airP"] == r["p"] and d["airA"] == r["a"] and d["mach"] == r["mach"] for d, r in zip(drag, rec[3::4]))
 # And the two clocks map onto each other: the trace's t= counts the run clock, which

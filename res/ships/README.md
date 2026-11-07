@@ -19,7 +19,7 @@ there is no takeoff constraint: no wheels, no runway, no thrust-to-weight floor.
 | loading | 23.7 kg/m2 |
 | cruise | 40..42 m/s at 6.4..7.7 km once the phugoid damps (#585), +4.9 deg of angle of attack -- 47..50 m/s at 5.5..6.1 km in the pre-#686 air |
 | glide | sinks 5.4..5.8 m/s unpowered at that speed (6.5 m/s in the old air; sink goes as 1/sqrt(rho) too) |
-| L/D | 8.6 (target >= 10; the lever left is the hull bill -- span is banked, #567) |
+| L/D | 8.6 as this row was measured -- see the note under the glide table below: #699 moved the lift sum, and the same recipe re-derives to 7.66 today (7.17 if you charge the hull bill the `--drag-cd` 1.2 the force actually applies). Target >= 10 either way; the lever left is the hull bill -- span is banked, #567 |
 | static margin | +0.55 m |
 | roll | aileron pair on the wing, `roll` axis (563-roll-ailerons), and the pod's 100 N m wheel. 0.24 rad/s at full stick and 29-31 deg of bank: the span #567 bought cost roll authority (#588) |
 | stall (7 km) | 17.7 m/s (23.1 m/s in the pre-#686 air, which is the row #567/#543 quoted) |
@@ -80,6 +80,16 @@ and `34ae422^:res/ships/skiff.json` the spindle the swap went back from, #568):
 | one `fuselage_r0.5h3.5` spindle | 633 kg | +3.1 | 64..70 m/s | 10.4 m/s | 7.91 | +0.73 | 0.11 x 0.87 = 0.10 m2 |
 | pod on a `jet_tank_r0.4h2`, 12 x 1.8 m wing | 559 kg | +5.1 | 46..48 m/s | 7.3 m/s | 7.53 | +0.58 | 0.48 m2 |
 | same hull, 16 x 1.5 m wing (#567, shipped) | 569 kg | +4.9 | 45..47 m/s | 6.2 m/s | 8.64 | +0.55 | 0.48 m2 |
+
+This L/D column is `|L|` over the drag bills the aero pass prints, NOT glide speed over
+sink, and the two only agree when the row IS a settled glide and the bills are charged what
+the force applies: the shipped row's own speed and sink say 7.4, its column says 8.64. Two
+things were between them, both now measured -- `--drag-cd` 1.2 is missing from the column's
+`Cd x A` (6 %), and #699 found the bigger half: the lift sum left a control surface's
+deflection force out, which on a hull trimmed by a 12 deg tab is 13 % of the force holding
+it up. Since that fix the same recipe re-derives to 7.66 raw, 7.17 charged. The rows are
+left as they were measured so the sweep still compares like with like; which ratio gets
+re-measured into this column is #694's open call.
 
 The last two rows are the sweep on #567 -- one 660 s bed each, the same altitude band --
 so their difference is the wing and nothing else, except that the middle row still has

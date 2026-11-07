@@ -41,21 +41,24 @@ CHECK all(3.8 < d["aoa"] < 5.0 for d in drag if d["aoa"] is not None and d["t"] 
 # number was written against. The same arithmetic in #686's air prints 17.7 m/s back at
 # 7 km (rho 0.594, which is the row README carries now) and near 19 m/s up HERE, at the
 # 8.5 km bed in rho 0.502 -- the two differ by 1/sqrt(rho), not by a law. The
-# slow rows are not equilibrium flight anyway: at 30.2 m/s the law bills |L| = 2.4 kN
+# slow rows are not equilibrium flight anyway: at 30.2 m/s the hull bills |L| = 2.06 kN
 # against a 5.6 kN weight, which is a hull trading speed for height rather than one
-# holding it. What the floor guards is the arc punching clean through the bottom of the
-# exchange -- a wing whose slope DROPPED would fly a shallower one, and this row would
+# holding it. (Every |L| quoted in this file is post-#699 and says HULL, not WING: the
+# column now carries the tab's download too, so the same rows used to read 2.4 kN here,
+# 28.98 kN at the fast end and 43 N in the fall below.) What the floor guards is the arc
+# punching clean through the bottom of the exchange -- a wing whose slope DROPPED would
+# fly a shallower one, and this row would
 # rise -- so it sits 1.2 m/s under the slowest pre-kick row rather than being tuned to it.
 CHECK min(d["v"] for d in drag if d["t"] < 25.0) > 29.0
 CHECK max(d["alt_asl"] for d in drag) - min(d["alt_asl"] for d in drag) < 450.0
 # THE DEPARTURE, pinned as a fact and not smuggled through as a pass. The bed's 80 m/s
 # spawn used to be 1.6x this hull's trimmed glide (47..50 m/s in 7 km air); at 0.50 kg/m3
-# the glide is near 41 m/s, so the same spawn is 1.9x, the wing bills 28.98 kN of lift at
-# the fast end (95.9 m/s, t=20) against a 5.58 kN weight -- 5.2x, where the old air's
+# the glide is near 41 m/s, so the same spawn is 1.9x, the hull bills 25.55 kN of lift at
+# the fast end (95.9 m/s, t=20) against a 5.58 kN weight -- 4.6x, where the old air's
 # shallower arc peaked near 2.5x -- and the zoom climb
 # that answers it eats the speed down. The A press at 25 s lands at 38.7 m/s on the way
 # down; four seconds later the hull is at 5.75 m/s, 40.6 deg nose-down, then -54.9 with
-# Beta -14.6 at t=31, billing 43 N of lift against a 5.58 kN weight (115 N one row
+# Beta -14.6 at t=31, billing 48 N of lift against a 5.58 kN weight (123 N one row
 # earlier, at the 5.75 m/s bottom) -- a fall, not a glide.
 # Nothing here is tuned to that state; it is what the shipped airframe does in the shipped
 # air, so it is recorded, and the friction belongs upstream (#693: flying-cruise's spawn
@@ -115,7 +118,18 @@ CHECK max(d["induced"] for d in drag if d.get("induced") is not None) > 0.75
 #     because it skips that multiplier.
 # So README's 8.6 is stale twice over now: it predates #699 and it reads the raw bills. Which
 # of these it should lead with is still #694's open call, not this case's.
-CHECK all(d["L"] <= d["F"] for d in drag if d.get("beta") is not None and abs(d["beta"]) < 4.0 and d["t"] < 25.0)
+# The bound that would have caught #699: over EVERY row of this run -- hold, kick, fall
+# and recovery -- the lift part never outweighs the whole aero force it came from.
+# Pre-#699, 47 of these 50 rows broke it, by up to 22 %. Treat it as a tell rather than a
+# law: each surface stands in its OWN flow (#483), so a hull pitching hard enough for
+# w x r to matter leaks across the split, and this airframe's margin is only ~1 % at
+# Ld 7.17 (worst row here 0.9912). A hull with a much better L/D could reach |L| == |F|
+# at two decimals -- if that happens, do NOT widen this band; compare the logged force
+# VECTORS (lastForceVecs' kForceLift / kForceCtrl) instead of a sum of magnitudes.
+CHECK all(d["L"] <= d["F"] for d in drag)
+# Not vacuous: |L| is an optional column in the parser, so a row that stopped printing it
+# would make the CHECK above agree with nothing (#653).
+CHECK len([d for d in drag if d.get("L") is not None and d.get("F") is not None]) == len(drag)
 CHECK all(6.5 < d["ld"] < 7.5 for d in drag if d.get("ld") is not None and d.get("beta") is not None and abs(d["beta"]) < 4.0 and d["t"] < 25.0)
 # Not vacuous: every row in this run prints a numbered Ld, because the air and the flow
 # are there the whole time (the dash means no flow to score, or the air PUSHING the hull).

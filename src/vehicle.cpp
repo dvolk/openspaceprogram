@@ -3519,6 +3519,9 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                flow, charged on a control_area, and #494 below already bills it induced
                drag as if that were true -- so leaving it out of lift_total made the
                [drag] row's |L| a lift LAW's sum rather than the lift the air applies.
+               (That bill adds the force's MAGNITUDE into a scalar system sum, which is
+               its own inconsistency about a tab pulling against its wing -- #562. The
+               vector sum here is the stricter of the two accountings.)
                Measured on a settled engines-off skiff glide: |L| 6042 N against 5350 N
                actually perpendicular to the flow, and the missing 691 N (12.9 %) is the
                12 deg elevator tab pulling DOWN -- the very thing trimming this hull.

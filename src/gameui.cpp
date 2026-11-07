@@ -2346,10 +2346,11 @@ void drawUIReadouts(Game &g) {
                the air's force SPLIT ABOUT THE FLOW, its component perpendicular to the
                air-relative flow over its component along it. A settled engines-off glide
                covers v/sink = that number, so a designer can read this row, put the hull
-               in the air, and check it against the ground track. It is NOT |L| over the
-               drag bills (see the pair's own comment in vehicle.h for why that is a
-               different, higher number), and it is not a stability margin: SM and FormCp
-               above say whether the hull holds a direction, this says what direction costs.
+               in the air, and check it against the ground track. |L| over the bills the
+               log charges gives the same figure; over the raw Cd x A product it reads ~6 %
+               high, which is --drag-cd and nothing else (see the pair's comment in
+               vehicle.h). And this is not a stability margin: SM and FormCp above say
+               whether the hull holds a direction, this says what direction costs.
                Gate shared with --drag-log's Ld= so the two cannot drift. */
             double ld = 0.0;
             if(ship->flowLd(ld)) {
@@ -2357,6 +2358,11 @@ void drawUIReadouts(Game &g) {
             } else {
                 ImGui::Text("Ld:  -  (no flow to score)");
             }
+            /* #699: what the air is holding the hull up with, wings and control surfaces
+               together -- so comparing this against what the hull weighs is comparing the
+               right sum. The --drag-log's |L| and L_up are these same two numbers. */
+            ImGui::Text("L:   %.0f N (%.0f N up)", glm::length(ship->lastLiftForce),
+                        ship->lastLiftVert);
             ImGui::Text("Acc: %.1fm/s2", ship->feltAccel());
         }
 

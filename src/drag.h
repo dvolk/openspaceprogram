@@ -501,11 +501,15 @@ inline glm::dvec3 liftForce(double q, double S, double cl, double alpha,
    q is absent on purpose: it multiplies the lift change and the moment change
    equally, so it cancels out of the lever arm and everything stays in area units
    (m^2/rad, m^3/rad), comparable with the [drag] line's A= and Induced=.
-   Only lifting surfaces belong here. A control surface has no angle term in its law
-   at all (controlForce is pure deflection), so it contributes no margin and cannot
-   stabilise anything -- it trims, which is a different job (#492). And nothing here
-   involves the hull's FORM drag: that restores by weathervaning, which is the CpL=
-   lever, a separate source of the same judgement, and in a real airframe the two add.
+   Only lifting surfaces belong here. A CONTROL surface is absent from this sum on
+   purpose: its force is a deflection term, not a d(alpha) term, so it moves no margin in
+   THIS lever. That is not the same as saying it cannot stabilise anything -- #454's other
+   half gave a control surface in a non-lifting system its OWN angle of attack
+   (vehicle.cpp: aeroAngle = deflection + pa.alpha), so a tail fin weathervanes the hull
+   into a sideslip while CLa= and SM= never see it. Read this lever and CpL= together
+   before calling an airframe stable. And nothing here involves the hull's FORM drag:
+   that restores by weathervaning, which is the CpL= lever -- a separate source of the
+   same judgement, and in a real airframe the two add.
    Each surface's INDUCED drag (vehicle.cpp, right below the lift loop) also leans on
    pitch -- it grows with CL^2 and is applied at the same mount -- and is outside this
    sum, so near the top of the polar the true margin is a little further aft than the

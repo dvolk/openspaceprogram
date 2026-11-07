@@ -347,13 +347,14 @@ DRAG_RE = re.compile(
     r"|T=- p=- a=- Mach=-))?"
     # #694: Ld= -- the air's force split about the air-relative flow, L over D, which is
     # the ratio a glide ratio equals (vehicle.h:lastFlowLift / lastFlowDrag: 7.19 in a
-    # settled glide, where the hull's own track says 7.28). It is NOT |L| over the CdA bills
-    # above -- that bookkeeping reads 8.65 on the shipped skiff, 21 % high, because it uses
-    # the RAW A=/Cd= product and the lift law's sum (see the [drag] legend and #699), and
-    # that is what res/ships/README.md's 8.6 quotes. The field is unitless, so a bare "-"
-    # would match the wider character class used above and throw in float(); the numeric
-    # branch is digit-anchored, and the dashed alternative is spelled out so a reader sees
-    # the row that carries no value.
+    # settled glide, where the hull's own track says 7.28). Since #699 it is also what
+    # |L| over the CHARGED bills gives -- q x (1.2 CdA + Induced + Profile), median 7.17
+    # both on flight/492's hold. Over the RAW A=/Cd= product the same recipe reads 7.66:
+    # the 6 % is --drag-cd, which the line prints un-multiplied (see the [drag] legend).
+    # res/ships/README.md's 8.6 reads the raw product AND predates #699, so it is stale
+    # twice over. The field is unitless, so a bare "-" would match the wider character
+    # class used above and throw in float(); the numeric branch is digit-anchored, and the
+    # dashed alternative is spelled out so a reader sees the row that carries no value.
     r"(?:\s+(?:Ld=(-?\d+(?:\.\d+)?)|Ld=-))?"
 )
 # --drag-log's control surfaces (src/tick.cpp): one [ctrl] line under each [drag]
