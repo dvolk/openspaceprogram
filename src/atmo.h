@@ -103,7 +103,8 @@ inline double levelTemperature(const AtmoLayer &L, double alt) {
    it: Kerbin's air top sits at 14.2 % of the body's radius since #686, where the
    field is already 23 % weaker, and a uniform-g column thins the top of that air
    by 4.6x -- 2.26 Pa at the 85 km edge weighed, 0.50 Pa uniform (#683's per-body
-   table: 1.04x on Jupiter to 5.4x on Duna).
+   table: 1.04x on Jupiter to 4.3x on Eve, the biggest remaining; Duna's 5.4x went
+   to 2.2x when #700 fixed its scale height).
    radius <= 0 asks for the UNIFORM field instead, which is what a hand-built
    DragAtmosphere with no world gets; a body loaded from a system file always
    carries its seaLevelRadius. */

@@ -83,14 +83,15 @@ inline constexpr double kAirGamma = 1.4;           // cp/cv, diatomic
    intake density, so that is what the jet gate divides by (#630). It used to divide
    by the BODY's own sea-level density, which rates the engine against whatever planet
    it happens to be standing on: a jet at Mars's datum ran its full authored fan
-   thrust on 0.02 kg/m3 of CO2 because that is 1.0 of Mars's own sea level.
+   thrust on 0.016 kg/m3 of CO2 because that is 1.0 of Mars's own sea level.
    Every air-breathing body in the shipped catalogue already authors this density
    (Kerbin, Earth, Laythe, Shay: 1.225), so on the worlds with living jets the number
    is the one already in the file -- it is not a new constant, it is the one the
    bodies were given.
    Changes: jet thrust and fuel burn on any body whose sea-level density is NOT
-   1.225 (Eve 1.7, Jool 2.0, Titan 5.3: capped either way; Duna 0.12, Mars 0.02:
-   both are CO2, so the oxidizer half of the gate already ends them).
+   1.225 (Eve 1.7, Jool 2.0, Titan 5.3: capped either way; Duna 0.015, Mars 0.016:
+   both are CO2, so the oxidizer half of the gate already ends them -- #700 made
+   Duna's column 8x thinner at the ground and it is still a dead engine there).
    Where: drag.h:jetAirGate. */
 inline constexpr double kAirSeaLevelDensity = 1.225;  // [kg/m^3]
 

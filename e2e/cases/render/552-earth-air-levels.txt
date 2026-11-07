@@ -49,6 +49,8 @@ CHECK re.search(r"\[atlas\] Earth weight=.*?sound speed\s+340\.5 m/s", out, re.S
 CHECK "scale height" not in re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)
 CHECK "isothermal" not in re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)
 # And the label still rides with the bodies that DO owe the warning. Mars is in this
-# file (rho0 0.02, H 11500, CO2-heavy mix, g 3.73), so its row keeps saying isothermal --
-# and 3.73 x 11500 / (R/0.04350) is 224.4 K, which is within 15 K of the real Mars.
-CHECK re.search(r"air temp \(isothermal\)\s+224\.4 K", re.search(r"\[atlas\] Mars weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# file (rho0 0.016, H 11000, CO2-heavy mix, g 3.73), so its row keeps saying isothermal
+# -- and 3.73 x 11000 / (R/0.043496) is 214.6 K, which #698 chose precisely because it
+# is Mars's own mean to within a few K. Before that row this CHECK read 224.4 K off an
+# authored pair that weighed the air a third too heavy.
+CHECK re.search(r"air temp \(isothermal\)\s+214\.6 K", re.search(r"\[atlas\] Mars weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))

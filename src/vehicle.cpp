@@ -242,9 +242,17 @@ static const ScenarioDef kScenarios[] = {
        that used to be there (0.502 kg/m3 where the 5500 m exponential left 0.267);
        a stall speed goes as 1/sqrt(rho), so the 71 m/s of the old 7 km air is 59 m/s
        here.
-       75 m/s on Duna (under
-       its 122 m/s stall there, so the bed glides) and 267 m/s on Eve (3.4x stall in
-       thick air: a hard start) (#451). What the bed does not fix is what it
+       74.6 m/s on Duna and 267 m/s on Eve (3.4x stall in thick air: a hard start)
+       (#451). Duna is the body this cut both ways on: the bed's airspeed is a
+       fraction of circular speed, so it barely moved when #700 lifted the top 50 ->
+       65 km (spawn line: 74.6 m/s of air at 6499 m), but the AIR at it went from
+       0.035 to 0.0094 kg/m3 and a stall goes as 1/sqrt(rho). That hull's 122 m/s of
+       Duna stall is ~235 m/s now, so this bed spawns it at 0.32x stall instead of
+       0.61x -- a born drop rather than a glide -- while the skiff's own stall at that
+       density, ~78 m/s by the README's arithmetic, is essentially the bed's speed.
+       #451's per-body multiples want re-measuring; #693 is the fix that stops them
+       mattering, by keying a bed to the airframe's trimmed glide rather than to the
+       body's column. What the bed does not fix is what it
        exposes: at these speeds the shipped hulls drag as ~31 m^2 of bluff body at
        Cd 0.76, so the jet bleeds 180 -> 103 m/s and sinks ~65 m/s while the aero
        torque weathervanes it back to zero AoA, which zeroes its lift (#454/#399;

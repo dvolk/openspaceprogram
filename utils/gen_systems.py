@@ -331,11 +331,29 @@ SURFACES = {
                     [1.0, [0.85, 0.60, 0.40]]],
         "atmosphere": {"color": [0.80, 0.48, 0.30], "thickness": 8000,
                        "power": 4.0, "intensity": 0.55,
-                       "sea_level_density": 0.12, "scale_height": 4000,
+                       "sea_level_density": 0.015, "scale_height": 13600,
+                       # Duna wears Mars's air at Duna's gravity (#700 step 1, and
+                       # the same argument as #698). What it used to author -- 0.12
+                       # kg/m^3 on a 4 km scale height -- is not a world: the trio
+                       # lock (#686) says H IS a surface temperature, so this body
+                       # read T0 61.6 K, and CO2 at its own 1.41 kPa precipitates as
+                       # dry ice below ~148 K. The air on that sheet is a rock.
+                       # H 13.6 km at g 2.943 and this mix reads T0 209.4 K, which
+                       # is Mars's mean; rho0 0.015 puts the datum at 600 Pa, again
+                       # Mars's. It is thinner than Mars only because the column is
+                       # shorter, not because the ground is bare.
+                       # A world at 209 K cannot keep CO2 ice caps at its surface,
+                       # so any polar-cap story here is a #687 question -- nothing
+                       # in src/ has a ground temperature to freeze.
                        # Thin CO2 with a 0.13% oxygen trace: enough to measure, not
                        # enough to run a turbine on.
                        "composition": CO2_HEAVY,
-                       "height": 50000},
+                       # Authored, not defaulted, for the same reason as Mars's: at
+                       # 65 km a circular orbit (902 m/s) feels 111 Pa of q, next to
+                       # Kerbin's 97.8 Pa at its own edge and inside #682's band. The
+                       # old 50 km sat where the old column left 1 Pa -- the top was
+                       # drawn far outside any air that could push on a hull.
+                       "height": 65000},
     },
     "Ike": {
         "amplitude": 1000,

@@ -275,9 +275,9 @@
           "thickness": 8000,
           "power": 4.0,
           "intensity": 0.55,
-          "sea_level_density": 0.12,
-          "scale_height": 4000,
-          "height": 50000
+          "sea_level_density": 0.015,
+          "scale_height": 13600,
+          "height": 65000
         }
       },
       "inertial": {

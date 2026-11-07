@@ -157,7 +157,10 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
    is the geopotential depth Z(alt), not alt. At the datum the read is unchanged -- H is
    defined there -- and only the aloft numbers move: on Earth by 0.3% at 11 km, at
    Kerbin's 85 km top by 4.6x (2.26 Pa of column weighed, 0.50 Pa uniform), across the
-   shipped catalogue 1.04x (Jupiter's top) to 5.4x (Duna's). What stays GEOMETRIC on purpose is everything the rest of the game
+   shipped catalogue 1.04x (Jupiter's top) to 4.3x (Eve's; Duna fell from 5.4x to 2.2x
+   when #700 gave it a 13.6 km scale height -- the gain is biggest on a small world
+   with a SHORT column, which is a symptom of the air being wrong, not of the field).
+   What stays GEOMETRIC on purpose is everything the rest of the game
    measures altitude in: the `alt >= height` vacuum check above, the science bands, the
    shell (bodylimits.h), the spawn beds and the atlas disk. Z is arithmetic inside the
    column, not a unit the game speaks.
@@ -1569,7 +1572,7 @@ inline double controlCommandFrac(double stick, double trimFrac) {
 /* The OXIDIZER half of the jet gate, on its own: how much of a rated intake's oxidizer
    MASS this air can feed a burner, in [0, 1], whatever the density. A turbine does not
    burn "air", it burns fuel against the oxidizer dissolved in it, so a world can be at
-   full sea-level density and still be a dead engine: Eve's 1.7 kg/m3 and Duna's 0.12
+   full sea-level density and still be a dead engine: Eve's 1.7 kg/m3 and Duna's 0.015
    are CO2, Jool's 2.0 is H2 and He -- H2 is the fuel, and there is nothing here to burn
    it with. oxidizer_share (kilograms of oxidizer per kilogram of air) comes off the
    body's authored composition via atmo.h:resolveMix, which is the only reason the game
@@ -1592,14 +1595,14 @@ inline double jetOxGate(double oxidizer_share) {
        and the fuel it can inject with them -- are set by absolute intake density.
        The reference is the machine's rating condition (constants.h), not the body's
        own sea level: until #630 this divided by rho_sea, so a jet standing on Mars
-       (0.02 kg/m3 of CO2) ran its FULL authored fan thrust, because 0.02 is 1.0 of
+       (0.016 kg/m3 of CO2) ran its FULL authored fan thrust, because 0.016 is 1.0 of
        Mars. That is the bug the second limit below makes impossible to miss.
 
      the oxidizer:  rho x oxidizer_share, against the same rating density times dry
        air's oxidizer share (0.231 kg of O2 per kg of air). A turbine does not burn
        "air", it burns fuel against the oxidizer IN the air, so a world can be at
        full sea-level density and still be a dead engine: Eve's 1.7 kg/m3 and Duna's
-       0.12 are CO2, Jool's 2.0 is H2 and He -- H2 is the fuel, and there is nothing
+       0.015 are CO2, Jool's 2.0 is H2 and He -- H2 is the fuel, and there is nothing
        here to burn it with. oxidizer_share comes off the body's authored composition
        (atmo.h:resolveMix, terragen.h), which is the only reason the game can say so.
 

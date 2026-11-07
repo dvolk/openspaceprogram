@@ -392,6 +392,10 @@ def parse_planet(page):
 #   base temp 10% a layered table's first row against the sheet's "Average
 #                 temperature", which is a global mean rather than a sea-level
 #                 datum. Earth reads +0.1%.
+#   mass 30%     the sheet's "Total mass of atmosphere" row against 4 pi R^2 p0 / g
+#                 -- the same column weighed from a second direction, which is the
+#                 only way this guard can see p0, radius and g disagree rather than
+#                 merely disagree with one number. Mars sits +33% here (#698).
 #
 # Skipped, with the reason kept beside the code so a future widening is a
 # decision rather than a drift:
@@ -401,9 +405,12 @@ def parse_planet(page):
 #   any body that authors no density (Mercury, the Moon) -- nothing to contradict;
 #   any body with no *fact.html (Titan comes from the giant-planet satellite
 #   tables, which carry no air rows);
+#   a layered body's mass row (Earth) -- this guard derives p0 from rho0 x g x H,
+#   and a layer table authors no H; its datum is pinned in tests/test_scenarios;
 #   and every world in gen_systems.py, whose air is a design with no sheet to
 #   disagree with it.
-FACT_AIR_BANDS = {'density': 0.30, 'p0': 0.40, 'scale_height': 0.10, 'base_T': 0.10}
+FACT_AIR_BANDS = {'density': 0.30, 'p0': 0.40, 'scale_height': 0.10,
+                  'base_T': 0.10, 'mass': 0.30}
 
 # (body, quantity) -> (the authored value this waiver was written against, why).
 # A waiver covers THAT number, not that body forever: change the authored value by
@@ -474,6 +481,10 @@ def sheet_quantity(text, want):
     if re.search(r'>>|<<|<~|~<', text):
         return None
     t = text.replace('~', ' ').replace('+/-', ' ')
+    # A thousands separator is not a decimal point: "25,000 kg" must not read as
+    # 25 and 0. Only reachable today on bodies this guard skips, but a guard that
+    # prints a number 1000x off is worse than one that prints none.
+    t = re.sub(r'(?<=\d),(?=\d\d\d\b)', '', t)
     # '3 x 10^-15' first, or the exponent is swept up as a value of its own.
     sci = re.search(r'\d+(?:\.\d+)?\s*x\s*10\s*\^?\s*-?\d+', t)
     if sci:
@@ -484,7 +495,7 @@ def sheet_quantity(text, want):
         vals = [float(v) for v in re.findall(r'\d+\.?\d*|\.\d+', t)]
     if not vals:
         return None
-    unit = re.search(r'kg/m\^?3|bars?|millibars?|microbars?|mb|torr|K\b|C\b|km\b|m\b', t)
+    unit = re.search(r'kg/m\^?3|kg|bars?|millibars?|microbars?|mb|torr|K\b|C\b|km\b|m\b', t)
     if unit is None:
         return None
     u = unit.group(0)
@@ -494,6 +505,8 @@ def sheet_quantity(text, want):
         f = 1e3 if u == 'km' else (1.0 if u == 'm' else None)
     elif want == 'kg/m^3':
         f = 1.0 if u.startswith('kg/m') else None
+    elif want == 'kg':
+        f = 1.0 if u == 'kg' else None
     else:
         f = 1.0 if u == 'K' else None
     if f is None:
@@ -532,7 +545,12 @@ def fact_air(page):
                                'kg/m^3'),
                               ('p0', ('Surface pressure',), 'Pa'),
                               ('scale_height', ('Scale height:',), 'm'),
-                              ('base_T', ('Average temperature:',), 'K')):
+                              ('base_T', ('Average temperature:',), 'K'),
+                              # The weight of the whole column stated in kg instead
+                              # of Pa. Five sheets say it, three of them on bodies
+                              # that have air here. See check_fact_air for why this
+                              # is the row worth adding (#698).
+                              ('mass', ('Total mass of atmosphere:',), 'kg')):
         for label in labels:
             q = sheet_quantity(sheet_line(h, label), want)
             if q is not None:
@@ -570,7 +588,24 @@ def check_fact_air(planets, parsed, verbose=True):
             if g is None and body.get('mass_kg') and body.get('radius_m'):
                 g = G * body['mass_kg'] / (body['radius_m'] * body['radius_m'])
             if rho0 is not None and g:
-                authored['p0'] = rho0 * g * H
+                p0 = rho0 * g * H
+                authored['p0'] = p0
+                # The sheet's "Total mass of atmosphere" row is the SAME statement
+                # as its pressure row -- the weight of the column per unit area IS
+                # the surface pressure -- written in kg and spread over the whole
+                # body. So it is the only published air number that ties our three
+                # independent quantities together: p0 (from rho0 and H), the radius
+                # and g. Mars is what it catches: its density row is 25% and its
+                # pressure row 35% off, and its mass row says +33% -- three sheet
+                # rows, one authored number, all three disagreeing the same way
+                # (#698). Venus's three statements land inside 0.3% of each other,
+                # which is what a healthy row looks like. Earth's mass row is out of
+                # this guard's reach: it authors a layer table, so there is no
+                # authored scale height to derive p0 from and its datum pressure is
+                # pinned in tests/test_scenarios.cpp instead.
+                if body.get('radius_m'):
+                    authored['mass'] = (4.0 * math.pi * body['radius_m'] ** 2
+                                        * p0 / g)
         layers = atmo.get('layers')
         if layers:
             authored['base_T'] = layers[0]['T']
@@ -586,7 +621,7 @@ def check_fact_air(planets, parsed, verbose=True):
                         % (name, says or 'nothing'))
             continue
         cells = []
-        for key in ('density', 'p0', 'scale_height', 'base_T'):
+        for key in ('density', 'p0', 'scale_height', 'base_T', 'mass'):
             if key not in authored:
                 continue
             got = sheet.get(key)
@@ -1038,7 +1073,24 @@ def build_base(verbose_air=False):
                                          [1.0, [0.80, 0.55, 0.40]]],
           'atmosphere': {'color': [0.85, 0.55, 0.35], 'thickness': 12000,
                          'power': 4.0, 'intensity': 0.5,
-                         'sea_level_density': 0.020, 'scale_height': 11500,
+                         'sea_level_density': 0.016, 'scale_height': 11000,
+                         'height': 80000,
+                         # #698, and the first row the mass check decided. This file
+                         # used to author 0.020 kg/m^3 on an 11.5 km scale height:
+                         # datum 858 Pa, and the air weighed 3.32e16 kg. The sheet
+                         # says 0.016 +/- 0.006 (its own seasonal spread), 11.0 km,
+                         # 6.1-6.3 mb and ~2.5e16 kg, and three of those four rows
+                         # agree with each other and with this pair: datum 656 Pa,
+                         # 2.54e16 kg (+1.6%), T0 214.6 K. The old pair was 25% heavy
+                         # on density, 35% heavy on pressure and 33% heavy on mass --
+                         # one authored number, three published statements, all three
+                         # saying the same thing.
+                         # The top is now authored rather than defaulted: at 80 km a
+                         # circular orbit feels 81 Pa of q, which is where Kerbin's
+                         # edge sits (97.8 Pa at 85 km) and inside #682's 10..1000 Pa
+                         # band. The 10 H default put the ceiling at 110 km with 6 Pa
+                         # there -- a cliff drawn in vacuum, which costs a rotating
+                         # frame out to 132 km for air nothing meets.
                          # Thin CO2 with a 0.13% oxygen trace -- enough to measure,
                          # not enough to run a turbine on.
                          'composition': CO2_HEAVY}},

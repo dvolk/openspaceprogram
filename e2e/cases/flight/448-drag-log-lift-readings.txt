@@ -25,9 +25,11 @@ CHECK all(abs(d["L_up"]) <= abs(d["L"]) + 1e-6 for d in drag)
 CHECK all(d["L"] <= d["F"] for d in drag)
 CHECK any(d["L"] > 400 and abs(d["L_up"]) > 100 for d in drag)
 # This hull has a jet and no rocket, so it has to fly on air it can BURN, which since
-# #630 means air with an oxidizer in it: the case used to spawn on Duna, whose 0.118
-# kg/m3 is 95% CO2 with a 0.13% oxygen trace, and the skiff's fan is now worth 0.04% of
-# its rating there -- it never leaves the pad, so no lift row reaches the bound and the
+# #630 means air with an oxidizer in it: the case used to spawn on Duna, whose air is
+# 95% CO2 with a 0.13% oxygen trace, so the skiff's fan is worth a rounding error of
+# its rating there -- the gate's oxidizer half ends it (#637), and #700 made that
+# column another 8x thinner at the ground, 0.118 kg/m3 at the old bed becoming 0.0094
+# at the new one -- it never leaves the pad, so no lift row reaches the bound and the
 # whole case goes red on a hull that is behaving correctly. Kerbin has dry air, so its
 # jet works there; nothing about what this case asks changed. It also starts FLYING
 # rather than on a pad, because the same hull is 569 kg on Kerbin's 9.81 m/s2 and its

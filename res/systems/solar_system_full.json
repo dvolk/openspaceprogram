@@ -421,8 +421,9 @@
           "thickness": 12000,
           "power": 4.0,
           "intensity": 0.5,
-          "sea_level_density": 0.02,
-          "scale_height": 11500,
+          "sea_level_density": 0.016,
+          "scale_height": 11000,
+          "height": 80000,
           "composition": [
             {
               "gas": "CO2",
