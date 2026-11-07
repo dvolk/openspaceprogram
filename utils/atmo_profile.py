@@ -3,13 +3,15 @@
 
 A body's air top is not a rendering decision: top() sets shellEdge = max(100 km,
 1.2 top), so one number moves the rotating frame, the LowOrbit/HighOrbit bands and
-every spawn bed with it. (What it does NOT move is the rendered sky rim: terrain.h
-draws that from sea-level radius + terrain max height + a thickness, never from this
-key -- #56. A top moves the atlas disk, not the horizon.) The top is also where a
-satellite starts to decay, so the thing worth QUOTING about it is the dynamic pressure
-a hull meets there. Until now that number was derived by hand, in gitignored scratch,
-per decision -- which is how #682 shipped on a pre-#683 number and turned out to put
-2.7x more drag at Kerbin's edge than its own rationale claimed.
+every orbit/flying spawn bed with it -- though not the pad bed (`kScenarios` alt_frac
+0) or an `abs_r` bed, which bypass the bed formula entirely (vehicle.cpp). What it does
+NOT move is the rendered sky rim either: terrain.h draws that from sea-level radius +
+terrain max height + a thickness, never from this key (#56). A top moves the atlas
+disk, not the horizon. The top is also where a satellite starts to decay, so the
+thing worth QUOTING about it is the dynamic pressure a hull meets there. Until now
+that number was derived by hand, in gitignored scratch, per decision -- which is how
+#682 shipped on a pre-#683 number and turned out to put 2.7x more drag at Kerbin's
+edge than its own rationale claimed.
 
 This is a SECOND implementation of atmo.h's law, on purpose: T piecewise linear in
 GEOMETRIC altitude, p by QUADRATURE of -dp/dz = rho g(z) with g(z) = g R^2/(R+z)^2.
@@ -33,8 +35,10 @@ Usage:  python3 utils/atmo_profile.py [system.json ...]
 """
 import json, math, sys, os
 
-# src/constants.h and src/atmo.h. A guard that checks a field with a different
-# constant approves a world the loader then builds differently.
+# The loader's constants, copied deliberately -- this file must not import the loader's
+# arithmetic. kGasR has a home (src/constants.h:73). G does not: src/system.cpp:162 plus
+# three function locals in vehicle.cpp, and five more copies across utils/ (#707). A
+# second spelling that drifts approves a world the loader then builds differently.
 G = 6.674e-11
 K_GAS_R = 8.314462618
 
@@ -90,12 +94,16 @@ class Profile:
         self.name = body['name']
         mean_r = float(body.get('radius', 600000.0))
         self.radius = mean_r + float(su.get('sea_level', 0.0))
-        # Air needs a gravity row and a mass row (the column and the orbit through it).
-        # The Profile now feeds a build gate as well as a report, so name the body
-        # instead of letting a bare KeyError read as a bug in this file.
-        for key in ('g', 'mass'):
+        # A Profile IS a column, so it needs gravity and a mass (every caller filters
+        # for air before building one). The loader DEFAULTS both silently -- mass 5e22
+        # and g 9.81, system.cpp:276,279 -- which for an air body builds a world nobody
+        # authored; that is #708, not something to paper over here.
+        # Name the body and the default it would have inherited, rather than raising a
+        # bare KeyError that reads as a bug in this file.
+        for key, invented in (('g', '9.81'), ('mass', '5e22')):
             if key not in body:
-                raise ValueError('%s: atmosphere needs a %s row' % (self.name, key))
+                raise ValueError('%s: no %s row, and the loader would silently use %s'
+                                 % (self.name, key, invented))
         self.g = float(body['g'])
         # atmo.h:datumGravity (#697). A file types g the way an atlas publishes it --
         # at the MEAN radius -- and the column is stacked on the datum sphere, so the
@@ -107,7 +115,12 @@ class Profile:
         self.rho0 = float(at['sea_level_density'])
         self.M, self.gamma = mix(at.get('composition'))
         self.Rs = K_GAS_R / self.M
-        self.levels = at.get('layers') or []
+        # system.cpp:521-523 DEFAULTS a level's alt/T/lapse to 0.0, so a row may write
+        # only what it cares about. Normalise once, to the loader's defaults, so neither
+        # T() nor the gate's dedupe key KeyErrors on a file the loader accepts.
+        self.levels = [{'alt': float(l.get('alt', 0.0)), 'T': float(l.get('T', 0.0)),
+                        'lapse': float(l.get('lapse', 0.0))}
+                       for l in (at.get('layers') or [])]
         # atmo.h:top() -- an authored `height`, else 10 scale heights
         # (atmo.h:kAtmoScaleHeights, duplicated here on purpose). The loader's test is
         # `height > 0.0`, not "the key is present" (terragen.h:top()), so `"height": 0`

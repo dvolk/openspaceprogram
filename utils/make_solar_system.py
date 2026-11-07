@@ -639,12 +639,13 @@ def check_fact_air(planets, parsed, verbose=True):
             known = FACT_AIR_KNOWN.get((name, key))
             # A waiver covers the value it was written against, not the pair
             # forever. Move the authored number past WAIVER_TOL and the waiver is
-            # stale: refuse, and name the value it pinned. The giants' altitude is
-            # the only air number their sheets guard, so it has to stay guarded --
-            # an argument filed against 20 km must not shelter a future 200 km
-            # typo. FACT_AIR_KNOWN has been empty since #695 closed the only two
-            # waivers, which is the goal rather than the default: an empty table
-            # only means something because of this rule.
+            # stale: refuse, and name the value it pinned. A giant's sheet guards a
+            # scale height and, since #700, a 1-bar density; the scale height is the
+            # one that decides where their air ends, so it stays guarded -- an
+            # argument filed against 20 km must not shelter a future 200 km typo.
+            # FACT_AIR_KNOWN has been empty since #695 closed the only two waivers,
+            # which is the goal rather than the default: an empty table only means
+            # something because of this rule.
             if known is not None and abs(v - known[0]) <= WAIVER_TOL * known[0]:
                 cells[-1] += ' (waived)'
                 waived.append('%s %s: %s' % (name, key, known[1]))

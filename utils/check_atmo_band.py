@@ -32,20 +32,24 @@ old argument.
 THE FRAME, because it is not the one the sim bills. The band is INERTIAL circular q,
 1/2 rho v_circ^2, and the verdict is that number for every body -- Kerbin's 97.8 Pa
 anchor is measured the same way. What the aero path charges is AIR-RELATIVE q in the
-rotating frame (vehicle.cpp co-rotates the flow; bodylimits.h keeps the shell inside
-the rot frame, which is what makes that assumption hold), and on a ~10 h rotator the
-two differ by up to 2.6x: Jupiter's 390 km ceiling reads 83.3 Pa inertial, 41.8 Pa
-for a prograde hull, 138.8 Pa retrograde -- retrograde is NOT inertial + prograde,
-the co-rotating ground adds to v, not to q. Both print per row so nobody quotes the
-wrong one, and every shipped body lands in band in BOTH frames: the largest shift in
-the catalogue is Saturn prograde at 35.8 Pa, still 3.6x above the lower lip. Kerbin's
-6 h day moves its own edge 97.8 -> 81.4 Pa, so this is not a giants-only caveat --
-the giants are just where it is biggest.
+rotating frame: vehicle.cpp co-rotates the flow, and bodylimits.h is what licenses
+that -- its floor and 1.2x fraction keep the AIR inside the shell, and the shell is
+the rot frame's edge. On a ~10 h rotator the two numbers differ a lot: Saturn reads
+93.5 Pa inertial against 35.8 for a prograde hull (2.6x, the largest shift in the
+catalogue), Jupiter 83.3 against 41.8 (2.0x), and 138.8 retrograde -- retrograde is
+NOT inertial + prograde, since the co-rotating ground adds to v, not to q. Both air
+columns print per row, at the equatorial co-rotation speed: any other heading lands
+between them. They are ADVISORY, not gated. The verdict stays inertial on purpose --
+#682's band asks where an orbit meets air, not which way a hull points, and a
+near-co-rotating sky is a world rather than a bug. As it happens every shipped body
+is inside the band in all three columns: the lowest air-relative reading is Saturn's
+35.8 Pa, 3.6x above the lower lip. Kerbin's own 6 h day moves its edge 97.8 ->
+81.4 Pa, so this is not a giants-only caveat.
 
 Usage:  python3 utils/check_atmo_band.py [system.json ...]
         python3 utils/check_atmo_band.py --self-test
 """
-import os, sys
+import contextlib, io, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import atmo_profile as ap
@@ -85,13 +89,14 @@ def q_at(pr, z, steps=6000):
     return 0.5 * (pr.p(z, steps=steps) / (pr.Rs * pr.T(z))) * pr.vcirc(z) ** 2
 
 
-def air_q(pr, omega, z=None):
-    """q of a PROGRADE circular orbit measured against the air, which is what the
-    aero path charges (the flow co-rotates). The band verdict uses the inertial
-    number; this is printed beside it so a ~10 h rotator's row is not misread."""
+def air_q(pr, omega, z=None, retro=False):
+    """q of a circular orbit measured against the AIR, which is what the aero path
+    charges (the flow co-rotates). `retro` mirrors the heading. Both print beside the
+    inertial number, so a ~10 h rotator's row is not misread; neither decides the
+    verdict, and the two do not add: the co-rotating ground adds to v, not to q."""
     z = pr.top if z is None else z
     rho = pr.p(z) / (pr.Rs * pr.T(z))
-    v = pr.vcirc(z) - omega * (pr.radius + z)
+    v = pr.vcirc(z) - (omega if not retro else -omega) * (pr.radius + z)
     return 0.5 * rho * v * v
 
 
@@ -146,6 +151,7 @@ def check_docs(docs, known=KNOWN, verbose=True):
     -- with a document no shipped file contains."""
     bad = 0
     weighed = 0
+    waived = 0
     seen = set()
     for label, bodies in docs:
         for b in bodies:
@@ -169,18 +175,26 @@ def check_docs(docs, known=KNOWN, verbose=True):
             omega = float(((b.get('rotating') or {}).get('rot_ang_speed')) or 0.0)
             ok, tag, msg = decide(pr.name, pr.top, q, known,
                                   lambda target: in_band_q(pr, target))
+            if tag == 'WAIVED':
+                waived += 1
             if verbose:
                 shape = 'table' if pr.levels else ('H %6.0f m' % pr.H)
-                print('  %-9s top %8.0f m  %-12s q %10.1f Pa  air %9.1f Pa  %s'
-                      % (pr.name, pr.top, shape, q, air_q(pr, omega), tag))
+                # air is prograde/retrograde q against the co-rotating flow: advisory
+                # columns, and they bracket any other heading (THE FRAME, above).
+                print('  %-9s top %8.0f m  %-12s q %10.1f Pa  air %8.1f/%-8.1f  %s'
+                      % (pr.name, pr.top, shape, q, air_q(pr, omega),
+                         air_q(pr, omega, retro=True), tag))
                 if tag == 'WAIVED':
-                    # The argument, not just the fact that one was filed.
+                    # The argument, not just the fact that one was filed. --self-test
+                    # pins that decide() and this line agree about the newline.
                     print('    ' + msg.split('\n', 1)[1])
             if not ok:
                 if verbose:
-                    print('  REFUSE %s' % msg)
+                    # Name the document: several system files can hold the same body
+                    # differently, and a refusal has to say which one it is holding.
+                    print('  REFUSE [%s] %s' % (label, msg))
                 bad += 1
-    return bad, weighed
+    return bad, weighed, waived
 
 
 def check(paths, known=KNOWN, verbose=True):
@@ -212,8 +226,9 @@ def self_test():
     expect(True, decide('Edge', 275000.0, 1000.0, {})[0], 'the upper lip is in band')
     # The gate end to end, on documents no shipped file contains: decide() being right
     # is not enough, because the lines that weigh a column and the line that counts a
-    # refusal together decide a build. One layered and one exponential body, so a filter
-    # that quietly started skipping a family would show up as the wrong count.
+    # refusal together decide a build. Two SCALES on purpose -- a Kerbin-sized pair and
+    # a giant-sized one -- because a filter that quietly started skipping bodies by size
+    # would otherwise pass, and the giants are the family this gate exists for.
     fat = {'name': 'Fatty', 'radius': 600000.0, 'mass': 5.29e22, 'g': 9.81,
            'surface': {'atmosphere': {
                'sea_level_density': 1.225, 'height': 1000.0,
@@ -221,9 +236,45 @@ def self_test():
     thin = {'name': 'Thinny', 'radius': 600000.0, 'mass': 5.29e22, 'g': 9.81,
             'surface': {'atmosphere': {'sea_level_density': 1e-6,
                                        'scale_height': 20000.0, 'height': 400000.0}}}
-    bad, weighed = check_docs([('selftest', [fat, thin])], known={}, verbose=False)
-    expect(2, weighed, 'both air families reach the scale')
-    expect(2, bad, 'both refusals reach the count')
+    giant = {'name': 'Biggy', 'radius': 7.0e7, 'mass': 1.9e27, 'g': 24.79,
+             'surface': {'atmosphere': {'sea_level_density': 0.16,
+                                        'scale_height': 27000.0, 'height': 390000.0}}}
+    # The dedupe key is a list of fields, so it gets a list of tests: for each field, a
+    # TWIN that differs in nothing else. Drop that field from the key and the twin
+    # collapses into its original -- which is the silence the key exists to prevent,
+    # since shipped system files repeat columns and a real disagreement must get through.
+    # `name` is in the key to LABEL a row, not to tell columns apart (same physics under
+    # two names is one column), so it deliberately gets no twin.
+    def twin(field, value, base=None):
+        base = base or thin
+        if field in ('mass', 'g', 'radius'):
+            return dict(base, **{field: value})
+        return dict(base, surface={'atmosphere': dict(
+            base['surface']['atmosphere'], **{field: value})})
+    twins = [twin('mass', 1.06e23), twin('g', 4.0), twin('radius', 8.0e5),
+             twin('height', 500000.0), twin('scale_height', 30000.0),
+             twin('sea_level_density', 2e-6),
+             # M comes from the mix, and the level rows are the last key field; both
+             # need a layered base, since an exponential body has no rows to differ in.
+             twin('composition', [{'gas': 'CO2', 'fraction': 1.0}], base=fat),
+             twin('layers', [{'alt': 0.0, 'T': 300.0, 'lapse': -0.0065}], base=fat)]
+    bad, weighed, waived = check_docs(
+        [('selftest', [fat, thin, giant] + twins)], known={}, verbose=False)
+    expect(3 + len(twins), weighed, 'every scale, and every column the key can tell apart')
+    expect(0, waived, 'nothing is waived when no waiver is filed')
+    expect(2 + len(twins), bad, 'every out-of-band body reaches the count')
+    # And a waiver run end to end, VERBOSE, so the line that prints a waiver's ARGUMENT
+    # executes: it splits decide()'s message on a newline the two sides must agree
+    # about, and nothing else here would notice them drifting apart.
+    waivy = dict(fat, name='Waivy')
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        bad2, weighed2, waived2 = check_docs(
+            [('waived', [waivy])],
+            known={'Waivy': (1000.0, 'a column, not a cut')}, verbose=True)
+    expect(0, bad2, 'a value waiver shelters its own number end to end')
+    expect(1, waived2, 'a waiver is counted, not just skipped')
+    expect(True, 'a column, not a cut' in out.getvalue(), 'the waiver argument is printed')
     print('check_atmo_band: %s' % ('OK' if fails == 0 else '%d SELF-TEST FAILURES' % fails))
     return 1 if fails else 0
 
@@ -238,16 +289,18 @@ def main(argv):
     paths = [p for p in args if not p.startswith('-')] or DEFAULTS
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     paths = [p if os.path.isabs(p) else os.path.join(root, p) for p in paths]
-    bad, weighed = check(paths)
+    bad, weighed, waived = check(paths)
     if bad:
-        print('check_atmo_band: %d body/ bodies out of #682\'s %g..%g Pa band. A top is '
-              'a decision (shellEdge, spawn beds, the atlas disk); author one where the '
-              'air still pushes, or waive it BY VALUE with the reason in KNOWN.'
-              % (bad, Q_LO, Q_HI))
+        # Say how many were weighed too: a gate that goes quiet about its own coverage
+        # is how a body stops being checked without anything looking red.
+        print('check_atmo_band: %d of %d air columns out of #682\'s %g..%g Pa band (%d '
+              'waived). A top is a decision (shellEdge, spawn beds, the atlas disk); '
+              'author one where the air still pushes, or waive it BY VALUE with the '
+              'reason in KNOWN.' % (bad, weighed, Q_LO, Q_HI, waived))
         return 1
-    print('check_atmo_band: %d air columns weighed, every one inside %g..%g Pa of '
-          'orbital q at its own ceiling (%d waiver/s filed)'
-          % (weighed, Q_LO, Q_HI, len(KNOWN)))
+    print('check_atmo_band: %d air columns weighed -- %d inside %g..%g Pa of orbital q '
+          'at their own ceiling, %d waived, 0 out'
+          % (weighed, weighed - waived, Q_LO, Q_HI, waived))
     return 0
 
 
