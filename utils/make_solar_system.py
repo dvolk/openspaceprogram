@@ -376,9 +376,12 @@ def parse_planet(page):
 # in PROSE rather than a table, so section_values() never sees it.
 #
 # Bands, and what makes them that wide:
-#   density 30%   only three sheets state a surface density at all (Venus ~65.,
-#                 Earth 1.217, Mars ~0.016 +/- 0.006 -- the sheet's own error bar
-#                 is +/-37%), and the slip this catches measured +42%.
+#   density 30%   three sheets state a SURFACE density (Venus ~65., Earth 1.217,
+#                 Mars ~0.016 +/- 0.006 -- the sheet's own error bar is +/-37%)
+#                 and four more state a density at their 1-bar level, which is
+#                 these giants' datum (fact_air reads whichever the sheet has).
+#                 The slip this catches measured +42%; before the 1-bar row was
+#                 parsed, Saturn and Neptune sat -47% and +100% invisible (#700).
 #   pressure 40%  p0 here is DERIVED (rho0 g H), so it carries two authored
 #                 numbers. Mars sits +35%, and its sheet states its pressure as
 #                 "variable from 4.0 to 8.7 mb depending on season" -- a 37%
@@ -393,7 +396,7 @@ def parse_planet(page):
 # Skipped, with the reason kept beside the code so a future widening is a
 # decision rather than a drift:
 #   the giants' surface pressure -- their sheets say ">>1000 bars" while our
-#   datum is the 1-bar level (Jupiter's column reads 107 kPa, ~1.06 bar).
+#   datum is the 1-bar level (Jupiter's column reads 112 kPa, ~1.12 bar).
 #   Comparing those compares two different definitions of "surface";
 #   any body that authors no density (Mercury, the Moon) -- nothing to contradict;
 #   any body with no *fact.html (Titan comes from the giant-planet satellite
@@ -405,10 +408,10 @@ FACT_AIR_BANDS = {'density': 0.30, 'p0': 0.40, 'scale_height': 0.10, 'base_T': 0
 # (body, quantity) -> (the authored value this waiver was written against, why).
 # A waiver covers THAT number, not that body forever: change the authored value by
 # more than WAIVER_TOL and the guard refuses again, with a message saying the waiver
-# predates it. That matters most where a body has only one guarded number -- the
-# giants' sheets state a scale height and a molecular weight but no surface density
-# or pressure, so Uranus's altitude IS its whole guard. The guard's reach is what the
-# sheets state, no further.
+# predates it. That matters most where a body has few guarded numbers -- a giant's
+# sheet states a scale height, a 1-bar density and a molecular weight but no surface
+# pressure, so Uranus has exactly two figures this guard can read, and both are
+# waived to the same decision.
 WAIVER_TOL = 0.02
 FACT_AIR_KNOWN = {
     ('Uranus', 'scale_height'): (
@@ -421,6 +424,18 @@ FACT_AIR_KNOWN = {
         "because it moves the air top (10 H) 200 -> 277 km and with it the "
         "rotating-frame switch, every spawn bed and the sky rim of a whole world -- "
         "a world change, filed as #695 rather than made at 11 pm."),
+    # The same world's density, and the reason these two cannot land apart. The
+    # sheet's 0.42 kg/m^3 is right only at the sheet's own 27.7 km scale height:
+    # 0.42 x 9.007 x 27.7e3 = 104.8 kPa, i.e. a 1-bar datum, which is the level
+    # these giants' gravity rows name. Against the H we still author (20 km) the
+    # sheet's density would put this datum at 0.75 bar -- so "fix the density,
+    # leave the scale height" makes the row WORSE, and both moves belong with the
+    # giants' air-top decision (#700 step 3), which is what #695 is waiting on.
+    ('Uranus', 'density'): (
+        0.60,
+        "sheet says 0.42 kg/m^3 at its 1-bar level, we author 0.60. Lands with the "
+        "scale-height waiver above: rho and H trade off against the same datum "
+        "pressure, and only the pair (0.42, 27.7 km) reads 1 bar."),
 }
 
 AIR_PRESSURE_UNITS = {'bar': 1e5, 'bars': 1e5, 'mb': 1e2, 'millibar': 1e2,
@@ -500,16 +515,29 @@ def sheet_quantity(text, want):
 
 def fact_air(page):
     """What a fact sheet states about the air, in SI: {density, p0, scale_height,
-    base_T} -> (lo, hi) or absent."""
+    base_T} -> (lo, hi) or absent.
+    A body with no "Surface density" row may still state the density AT ITS 1-BAR
+    LEVEL, and for the giants that IS our datum -- these sheets head their gravity
+    column "Gravity (mean, 1 bar)" for the same reason, and check_fact_air already
+    falls back on G*M/R^2 for them. So read that row as the density statement, in
+    this order, and never both: the giants' sheets state no surface density because
+    they have no surface. Their p0 comparison stays skipped either way -- their
+    "Surface pressure" row says ">>1000 bars", which is a different definition of
+    surface, not a number we are 1000x off. (#685, and the gap #700 found: Saturn
+    and Neptune were authored -47 % and +100 % against these rows with nothing
+    printing it, because the parser only looked for the terrestrial label.)"""
     h = read(page)
     out = {}
-    for key, label, want in (('density', 'Surface density:', 'kg/m^3'),
-                             ('p0', 'Surface pressure', 'Pa'),
-                             ('scale_height', 'Scale height:', 'm'),
-                             ('base_T', 'Average temperature:', 'K')):
-        q = sheet_quantity(sheet_line(h, label), want)
-        if q is not None:
-            out[key] = q
+    for key, labels, want in (('density', ('Surface density:', 'Density at 1 bar:'),
+                               'kg/m^3'),
+                              ('p0', ('Surface pressure',), 'Pa'),
+                              ('scale_height', ('Scale height:',), 'm'),
+                              ('base_T', ('Average temperature:',), 'K')):
+        for label in labels:
+            q = sheet_quantity(sheet_line(h, label), want)
+            if q is not None:
+                out[key] = q
+                break
     return out
 
 def check_fact_air(planets, parsed, verbose=True):
@@ -1029,6 +1057,13 @@ def build_base(verbose_air=False):
           'atmosphere': {'color': [0.85, 0.78, 0.65], 'thickness': 90000,
                          'power': 3.0, 'intensity': 0.6,
                          'sea_level_density': 0.16, 'scale_height': 27000,
+                         # Jupiter keeps its sheet's 0.16 even though the trio lock
+                         # wants 0.143 at the 1-bar level (H 27 km, the sheet's own
+                         # "Gravity (mean, 1 bar)" 25.92, which is our g to four
+                         # digits). That leaves the datum barometer at 1.12 bar, a 12%
+                         # miss where Saturn's sheet disagreed with itself by 28% and
+                         # we chose the column there: inside the guard's 30% band, so
+                         # source fidelity wins and --check prints the difference.
                          'composition': H2_HE}},
          False),
         ('saturnfact.html', 'Saturn', 6.0,
@@ -1036,9 +1071,20 @@ def build_base(verbose_air=False):
           'palette': [[0.0, [0.62, 0.52, 0.38]], [1.0, [0.90, 0.82, 0.65]]],
           'atmosphere': {'color': [0.90, 0.82, 0.65], 'thickness': 90000,
                          'power': 3.0, 'intensity': 0.6,
-                         'sea_level_density': 0.10, 'scale_height': 60000,
+                         'sea_level_density': 0.15, 'scale_height': 60000,
                          # Saturn's envelope is the most H2-rich of them (0.963), but
                          # H2 with no oxidizer is a fuel store, not a jet air.
+                         # 0.15, not the sheet's 0.19: this file's datum IS the 1-bar
+                         # level (the same convention its gravity row states -- "mean,
+                         # 1 bar" -- and that #689's gravity fallback assumes), and the
+                         # trio lock says rho at 1 bar is p0/(g H) = 0.149 here. The
+                         # sheet's own density row disagrees with its own H 60 km,
+                         # T 173.5 K and M 2.15 g/mol by 28%, which is #685's measured
+                         # finding that the giants' sheets are 4-19% self-inconsistent;
+                         # of its three statements we honour the two that fix the
+                         # column, so the barometer at this datum reads 1.007 bar.
+                         # check_fact_air still prints the -21% against the density row
+                         # (inside its 30% band) rather than hiding it. (#700)
                          'composition': [{'gas': 'H2', 'fraction': 0.963},
                                          {'gas': 'He', 'fraction': 0.032},
                                          {'gas': 'CH4', 'fraction': 0.005}]}},
@@ -1058,7 +1104,14 @@ def build_base(verbose_air=False):
           'palette': [[0.0, [0.18, 0.35, 0.75]], [1.0, [0.50, 0.65, 0.90]]],
           'atmosphere': {'color': [0.50, 0.65, 0.90], 'thickness': 90000,
                          'power': 3.0, 'intensity': 0.6,
-                         'sea_level_density': 0.90, 'scale_height': 20000,
+                         'sea_level_density': 0.45, 'scale_height': 20000,
+                         # Neptune's sheet states 0.45 kg/m^3 at its 1-bar level and
+                         # that IS what its own H 19.1-20.3 km implies at our g
+                         # (1e5 / (11.274 x 20000) = 0.443), so this row needed no
+                         # judgement -- the old 0.90 was simply wrong, and #700 could
+                         # only name it by hand because check_fact_air had no eyes for
+                         # a "Density at 1 bar" row. It now reads +1.4% and the datum
+                         # barometer says 1.015 bar.
                          'composition': [{'gas': 'H2', 'fraction': 0.80},
                                          {'gas': 'He', 'fraction': 0.19},
                                          {'gas': 'CH4', 'fraction': 0.015}]}},
