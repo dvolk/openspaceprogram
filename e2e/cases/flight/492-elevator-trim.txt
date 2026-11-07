@@ -93,6 +93,25 @@ CHECK all(0.25 < d["induced"] < 0.40 for d in drag if d.get("induced") is not No
 # trim download the tab has been paying all along still the one paying it.
 CHECK all(0.30 < d["induced"] < 0.42 for d in drag if d.get("induced") is not None and d.get("beta") is not None and abs(d["beta"]) < 4.0 and d["t"] >= 40.0)
 CHECK max(d["induced"] for d in drag if d.get("induced") is not None) > 0.75
+# Ld= (#694): the air's force SPLIT ABOUT THE FLOW -- its component perpendicular to the
+# air-relative flow over its component along it -- which is the ratio a glide ratio equals.
+# Through the hold it reads 6.64..7.28. That is NOT the number res/ships/README.md's skiff row
+# leads with, and neither is any reading off |L|=: |L| over the bills this line prints
+# (Cd*A + Induced + Profile, x q) is 8.24..8.80 (median 8.68 -- README's 8.6), and |L| over the
+# along-flow drag is 7.65..8.25. Both put the lift LAW's sum in the numerator, and on a trimmed
+# hull that sum is not the force holding the hull up: the control loop's deflection force never
+# reaches lift_total (#699). And a CdA bill is a charge sheet, not a force -- at t=1 the bills
+# total 1.407 m2, which at q 1490 Pa charges 2096 N while the air actually holds the hull back
+# by 2236 N, 6.4..7.7 % more row to row. |L|/|F| is no glide ratio either: it reads 1.12 here,
+# because the total aero force is mostly lift. This row is the flight rather than the
+# bookkeeping: the same hull in a settled 200 s engines-off glide prints Ld 7.19 against the
+# 7.28 its own ground track measures (41.20 m/s over 5.66 m/s of sink). Pinned on the hold,
+# where the rows point into the flow; the departure rows sit outside it on purpose -- by t=29 the
+# hull is falling at 0.8 and the ratio has stopped meaning much.
+CHECK all(6.5 < d["ld"] < 7.5 for d in drag if d.get("ld") is not None and d.get("beta") is not None and abs(d["beta"]) < 4.0 and d["t"] < 25.0)
+# Not vacuous: every row in this run prints a numbered Ld, because the air and the flow
+# are there the whole time (the dash means no flow to score, or the air PUSHING the hull).
+CHECK len([d for d in drag if d.get("ld") is not None]) == len(drag)
 CHECK any(c["axis"] == "pitch" for c in ctrl)
 CHECK all(11.5 < abs(c["deg"]) < 12.5 for c in ctrl if c["axis"] == "pitch")
 # The tail is one lifting system with its elevators (#556): its span is 4 m, so

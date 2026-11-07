@@ -540,6 +540,22 @@ public:
     /* Last substep's aero (applyAeroForce), for the --drag-log. */
     glm::dvec3 lastAeroForce = glm::dvec3(0.0);   // total (lift + drag)
     glm::dvec3 lastLiftForce = glm::dvec3(0.0);   // the lift part
+    /* The aero force SPLIT ABOUT THE AIR-RELATIVE FLOW -- L and D in the textbook
+       sense, and halves of lastAeroForce rather than of the lift law. lastFlowDrag is
+       -(ftotal . flowHat), N (+ = the air is holding the hull back; it goes negative
+       when a co-rotating frame or a parachute jink makes the air PUSH, which makes a
+       ratio out of it meaningless rather than large), and lastFlowLift is the
+       perpendicular remainder. The --drag-log's Ld= is lastFlowLift / lastFlowDrag
+       (#694) because that is the ratio a glide ratio equals: in the shipped skiff's
+       settled 200 s glide it prints 7.19 while the hull's own ground track says
+       41.2 m over 5.66 m of sink -- 7.28. Neither of the two bookkeeping ratios comes
+       out of this pair: |lastLiftForce| over lastFlowDrag reads 8.12, and |lastLiftForce|
+       over the printed (CdA + Induced + Profile) x q -- res/ships/README.md's 8.6 --
+       reads 8.68. They differ because the lift LAW leaves a control surface's
+       deflection force out of lastLiftForce (691 N of trim download on this hull, 13 %
+       of what holds it up) and because a CdA bill is a charge sheet, not a force. */
+    double lastFlowDrag = 0.0;
+    double lastFlowLift = 0.0;
     /* lastLiftForce . local vertical (away from the body centre): + = the wings
        are holding the airframe UP. Signed so the --drag-log can pin the lift
        DIRECTION, not just its magnitude -- a flipped AoA sign hid exactly that

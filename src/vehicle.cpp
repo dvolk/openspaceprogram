@@ -2672,6 +2672,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     // Reset so a substep with no air reports zero.
     lastAeroForce = glm::dvec3(0.0);
     lastLiftForce = glm::dvec3(0.0);
+    lastFlowDrag = 0.0;
+    lastFlowLift = 0.0;
     lastLiftVert = 0.0;
     lastUpVert = 0.0;
     lastAeroTorque = glm::dvec3(0.0);
@@ -3566,6 +3568,17 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     applyInducedDrag(hull, drag_cd, ftotal, moment, recordForceVecs);
 
     lastAeroForce = ftotal;
+    /* #694: split that force about the air-relative flow -- L and D in the sense a
+       glide ratio means, the perpendicular and along components of what the air ACTUALLY
+       applies. NOT a split of lift_total: a control surface's deflection force goes into
+       ftotal and not into lift_total (see the control loop above), so on this hull |L|=
+       is 13 % above the component that holds the hull up -- 691 N of trim download the
+       lift law never counts. vrel is the same flow AoA and Beta are measured in, and
+       lastAirV > 0 here (the pass returned early at rest in air), so the division is safe. */
+    const glm::dvec3 flowHat = vrel / lastAirV;
+    const double alongFlow = glm::dot(ftotal, flowHat);
+    lastFlowDrag = -alongFlow;
+    lastFlowLift = glm::length(ftotal - alongFlow * flowHat);
     lastLiftForce = lift_total;
     lastLiftVert = glm::dot(lift_total, com / r);
     lastAeroTorque = moment;

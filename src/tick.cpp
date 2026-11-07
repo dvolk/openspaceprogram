@@ -585,7 +585,7 @@ void tick(Game &g) {
            WHAT DASHES AND WHY (#560). The rule is where a number comes from, not
            whether the pass felt confident:
              * Read off a DIRECTION, so a jitter flow invents them: AoA, Beta, CpL,
-               CLa, SM, Profile, FormCp -- all dashed behind lastDragAlphaValid.
+               CLa, SM, Profile, FormCp, Ld (#694) -- all dashed behind lastDragAlphaValid.
              * Induced= joins them, and it earned it on measurement rather than by
                symmetry. Its CdA is q-NORMALISED (vehicle.cpp:applyInducedDrag bills
                CL_sys = sum(L_i/q_i) / sum(S_i), then inducedCd(CL_sys, ...)), so the
@@ -761,6 +761,24 @@ void tick(Game &g) {
                            g.ship->lastAirV / g.ship->lastAirA);
                 } else {
                     printf(" T=- p=- a=- Mach=-");
+                }
+                /* #694: L and D of the air's force about the air-relative FLOW -- the
+                   textbook pair (vehicle.h:lastFlowLift / lastFlowDrag), and the ratio a
+                   glide ratio equals. In the settled 200 s glide it prints 7.19 while the
+                   hull's own track says 41.2 m over 5.66 m of sink, 7.28; the 1.3 % left
+                   over is a glide that has not quite settled. It is NOT |L|= divided by
+                   anything: the lift law's sum leaves a control surface's deflection
+                   force out, and that is 691 N of trim download on this hull, so |L| over
+                   the along-flow drag reads 8.12 and |L| over the printed CdA bills --
+                   which is res/ships/README.md's 8.6 -- reads 8.68. Both are the airframe's
+                   bookkeeping; this one is its flight. Dashed on the same test as
+                   AoA/Beta/CpL, and whenever the air is PUSHING the hull rather than
+                   holding it back (a negative denominator makes the ratio meaningless,
+                   not large). */
+                if(g.ship->lastDragAlphaValid && g.ship->lastFlowDrag > 1e-6) {
+                    printf(" Ld=%.2f", g.ship->lastFlowLift / g.ship->lastFlowDrag);
+                } else {
+                    printf(" Ld=-");
                 }
                 printf("\n");
                 // Control surfaces' applied deflections.

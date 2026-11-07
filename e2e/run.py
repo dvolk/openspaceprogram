@@ -345,6 +345,13 @@ DRAG_RE = re.compile(
     r"(?:\s+(?:T=(-?\d+(?:\.\d+)?) p=(-?\d+(?:\.\d+)?) a=(-?\d+(?:\.\d+)?)"
     r" Mach=(-?\d+(?:\.\d+)?)"
     r"|T=- p=- a=- Mach=-))?"
+    # #694: Ld= -- the air's force split about the air-relative flow, L over D, which is
+    # the ratio a glide ratio equals (vehicle.h:lastLiftFlow / lastDragFlow: 7.19 in a
+    # settled glide, where the hull's own track says 7.28). It is NOT |L| over the CdA
+    # bills above -- that bookkeeping reads 8.68 on the shipped skiff and is what
+    # res/ships/README.md's 8.6 quotes. Unitless, so the dash needs its own digit-anchored
+    # branch exactly like T=/p=/a= above.
+    r"(?:\s+(?:Ld=(-?\d+(?:\.\d+)?)|Ld=-))?"
 )
 # --drag-log's control surfaces (src/tick.cpp): one [ctrl] line under each [drag]
 # line, one "name[index](axis)=±deg" term per surface the aero pass scored. It
@@ -1180,7 +1187,7 @@ def parse_drag(out):
     rows = []
     for m in DRAG_RE.finditer(out):
         (t, alt, rho, v, F, L, lup, up, tau, cd, a, aoa, chute, ind,
-         beta, cpl, cla, sm, profile, formcp, airT, airP, airA, mach) = m.groups()
+         beta, cpl, cla, sm, profile, formcp, airT, airP, airA, mach, ld) = m.groups()
         row = {
             # alt_asl: metres above the body's sea-level DATUM, which is NOT the
             # ground and goes negative exactly where rho peaks (#245). Renamed from
@@ -1249,6 +1256,13 @@ def parse_drag(out):
             row["airP"] = float(airP)
             row["airA"] = float(airA)
             row["mach"] = float(mach)
+        # #694: the lift over the drag the air applies ALONG the flow -- the ratio a
+        # glide ratio is meant to match, and the one res/ships/README.md's L/D table
+        # should be quoting. Absent (None) when the line dashed it: no usable flow, or
+        # the air pushing the hull instead of holding it back. A CHECK that reads this
+        # must skip None rows, since a filter over absent keys passes vacuously (#653).
+        if ld is not None:
+            row["ld"] = float(ld)
         rows.append(row)
     return rows
 
