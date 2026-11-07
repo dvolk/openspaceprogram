@@ -613,6 +613,14 @@ So it can be trusted as a snapshot, and so a future reader knows what is *not* v
 - **No multiplier from our profile to a real one may be quoted without naming its
   source.** Recorded on #625 after an earlier draft of mine reached ~20× at 50 km on
   Venus from a figure an agent admitted it was recalling.
+- **The fact sheets are treated as the authority and are never checked themselves.** They
+  are the only second statement about the real worlds in this repo, so every comparison here
+  is "us vs the sheet". §3b shows the sheets are not internally consistent for the giants,
+  which is a limit on the sheets, not a defence of our numbers: where we disagree with a
+  sheet by 100 % (Neptune's density), the sheet is the better bet, but nothing here *proves*
+  that.
+- **Titan's air cannot be checked at all** — no vendored source states its atmosphere.
+  Pluto's is the reverse: a complete sheet, no authored density.
 - The fictional system (Kerbin etc.) has **no external reference at all**. Its fidelity is
   form and plausibility only. Any claim of "accuracy" on Kerbin is a claim about design
   intent.
