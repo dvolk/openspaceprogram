@@ -402,6 +402,21 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                         " atmosphere.composition -- a list of { gas, fraction }"
                         " (N2, O2, CO2, H2, He, CH4, H2O, Ar). Author the mix.");
                 }
+                /* A published standard atmosphere states its rows at GEOPOTENTIAL
+                   heights; that unit is converted where such a table is written
+                   (utils/make_solar_system.py:resolve_layer_heights) and the marker it
+                   travels with is dropped, because a system file speaks GEOMETRIC metres
+                   like every other altitude in it (#690). A file still carrying the key
+                   is claiming a unit this loader will not apply, and reading it
+                   geometric silently is exactly the mistake the marker was meant to
+                   prevent -- so refuse rather than ignore. */
+                if(av.contains("heights")) {
+                    throw std::runtime_error(
+                        "system: " + body->name + ": atmosphere.heights is a generator"
+                        " marker, not a system-file key -- convert the table to GEOMETRIC"
+                        " metres (z = R Z / (R - Z), each lapse by dZ/dz across its span)"
+                        " and drop the key (#690)");
+                }
                 if(av.contains("composition")) {
                     if(!av["composition"].is_array()) {
                         throw std::runtime_error(

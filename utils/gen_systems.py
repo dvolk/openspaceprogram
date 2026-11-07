@@ -23,6 +23,12 @@ from sci_dist import stamp_system, phase0
 # which is how DRY_AIR and CO2_HEAVY ended up typed twice. Names are not swappable:
 # the suffix says which system measured it.
 from gas_mixes import DRY_AIR, CO2_HEAVY, H2_HE_CH4_KSP
+# #690: same single-spelling rule as the gas mixes -- a layer table copied from a published
+# standard is stated per GEOPOTENTIAL metre, and this is the only place that unit gets
+# converted (a table that carries no marker is read as GEOMETRIC metres, which is what every
+# altitude in a system file means). Both generators call the same function, because each
+# --check only compares its own output and would not notice the two drifting.
+from atmo_units import resolve_layer_heights
 
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
@@ -380,7 +386,9 @@ def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s
     b["has_sea"] = has_sea
     b["power_scaler"] = ps
     if name in SURFACES:
-        b["surface"] = SURFACES[name]
+        # #690: honour the unit marker if a surface table carries one, against the datum
+        # radius this body's altitudes will be measured from.
+        b["surface"] = resolve_layer_heights(SURFACES[name], radius)
 
     if typ == "star":
         b["inertial"] = {"soi": STAR_SOI, "pos": [0, 0, 0], "orb_ang_speed": 0.0}

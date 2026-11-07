@@ -15,13 +15,23 @@
 # multiply by 10, so it must author `height`, and 85 km is what its old H 8500 already
 # derived. Author it any other way and the rotating-frame shell and the science
 # Flying/LowOrbit bands move with it (#625).
+#
+# The "to 71.8 km" is the topmost level's base in GEOMETRIC metres, which is what a system
+# file speaks (#690). The 1976 standard states that row at a GEOPOTENTIAL height of 71 km,
+# and the generator converts every row -- altitude and lapse rate, since a lapse is K per
+# that same height coordinate -- against Earth's radius on the way out, so the row that used
+# to print 71.0 now prints 71.8: 11 km is 11,019 m, 51 km is 51,411.6 m. A file that kept
+# the standard's numbers would still resolve and still print a plausible dossier, and this is
+# the ONE atlas row the mistake moves: air density, sea-level T, pressure and "atmosphere
+# top" all come from fields the conversion leaves alone. tests/test_scenarios.cpp is the
+# guard; this row is where the same mistake is visible to a human.
 NAME earth-air-levels
 CLAIM A body that authors a layer table reports that profile in its dossier instead of a temperature implied by a scale height.
 KIND invariant
 ARGS --system res/systems/solar_system.json --timeout 6 --atlas-dump 4000
 FORBID error:
 CHECK re.search(r"\[atlas\] Earth weight=.*?atmosphere top\s+85\.0 km", out, re.S)
-CHECK re.search(r"\[atlas\] Earth weight=.*?air profile\s+7 levels to 71\.0 km", out, re.S)
+CHECK re.search(r"\[atlas\] Earth weight=.*?air profile\s+7 levels to 71\.8 km", out, re.S)
 CHECK re.search(r"\[atlas\] Earth weight=.*?air density\s+1\.225 kg/m3", out, re.S)
 CHECK re.search(r"\[atlas\] Earth weight=.*?air temp \(sea level\)\s+288\.1 K \(15\.0 C\)", out, re.S)
 CHECK re.search(r"\[atlas\] Earth weight=.*?air pressure\s+101\.3 kPa", out, re.S)

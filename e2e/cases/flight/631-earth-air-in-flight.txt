@@ -48,11 +48,17 @@ CHECK len(drag) == 12
 # (science/125 pins the other side of that seam -- a hull over Jool's shell top gets none).
 CHECK all("airT" in d and "airP" in d and "airA" in d for d in drag)
 # THE PROFILE, typed from what Earth's file says (level 0: 288.15 K at the datum, lapse
-# -0.0065 K/m to 11 km) and not from the law. Every row of this run sits between 8.56 and
-# 9.39 km, inside that level. An exponential body reads ONE temperature for its whole sky:
+# -0.00648878 K/m to 11 km) and not from the law. That gradient is not the standard's
+# -0.0065: the 1976 rows are per GEOPOTENTIAL metre and the file speaks geometric ones, so the
+# generator converts level 0's lapse as a chord too (#690). The 0.2 K band below is unchanged
+# and would still swallow a file carrying -0.0065 (0.105 K of it at the run's 9394 m ceiling),
+# so what quoting the file buys is a pin whose residual is 0 instead of half its own band --
+# the case is not the guard, tests/test_scenarios.cpp's level pins are.
+# Every row of this run sits between 8.56 and 9.39 km, inside that level. An exponential body
+# reads ONE temperature for its whole sky:
 # Earth's old H 8500 implied 290.8 K, which is 58-64 K off the 227.1-232.5 K measured
 # here -- so this is the check the pre-A4 body fails by arithmetic, not by tuning.
-CHECK all(abs(d["airT"] - (288.15 - 0.0065 * d["alt_asl"])) < 0.2 for d in drag)
+CHECK all(abs(d["airT"] - (288.15 - 0.00648878 * d["alt_asl"])) < 0.2 for d in drag)
 # ONE COLUMN OF AIR, not three numbers that agree by luck: rho = p / (Rs T), with
 # Rs = R/M = 8.314462618 / 0.0289650 = 287.052 J/(kg K) -- M resolved from Earth's
 # authored dry-air mix (#630), not a typed scalar.

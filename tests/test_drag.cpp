@@ -358,8 +358,16 @@ static void test_layered_atmosphere() {
        those and 6.0% low at the last, and only looked right when read at the round
        geopotential number the standard itself prints (0.2% and 1.0% there): two
        errors cancelling. Weighed in Earth's own field it is within 0.6% of every
-       row here. */
+       row here.
+       The SHIPPED table keeps the standard's rows converted to geometric metres
+       (11,019 / 51,411.6 m ...), gradient and all, because a system file speaks geometric
+       like everything else (#690); the fixture below keeps the standard's own numbers --
+       levels based at 11000/51000 and published lapse rates -- which is what makes it a
+       comparison against the published column rather than a copy of the json.
+       tests/test_scenarios.cpp is what pins the shipped file's converted numbers. */
     const double rE = 6.371e6;                          // Earth's sea-level radius
+    // The same map the generator applies to the shipped table
+    // (utils/make_solar_system.py:geo_to_geom), here on the fixture's own radius.
     auto us76Geom = [rE](double Z) { return rE * Z / (rE - Z); };
     auto gAt = [rE](double z) { return 9.82 * rE * rE / ((rE + z) * (rE + z)); };
     std::vector<AtmoLayer> L = {

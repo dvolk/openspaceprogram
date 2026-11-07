@@ -127,6 +127,26 @@ static int check_air(const char *path, const System &sys) {
     static const Aloft aloft[] = {
         {"Kerbin", 69999.0, 1.375001e-5},
     };
+    /* Where each authored level sits and how fast it lapses, in the GEOMETRIC metres a
+       system file speaks (#690). The 1976 standard this table was copied from states both
+       numbers per GEOPOTENTIAL height, so the generator converts them: 11 km -> 11,019 m and
+       51 km -> 51,411.6 m, each lapse scaled by the chord dZ/dz across the span that level
+       lapses through. Nothing else catches the file getting that wrong: make_solar_system.py
+       --check only says the json matches the script, and test_drag's US76 pins read at
+       converted altitudes, so they pass against either spelling. Keeping a published lapse
+       beside converted bases is the near miss the loader does see -- Earth's column then
+       arrives 1.09 K off its own 71.8 km row, past kAtmoSeamTol, and the table is refused.
+       Level 0 is pinned for its gradient only: its base is 0 by the anchor rule, and it is
+       the level every player actually flies in, so it is the one a regression would quietly
+       drop -- the chord factor at the datum is 1, so what it must still say is the published
+       number TIMES the standard's own row spacing (0.99828 of -0.0065). */
+    struct Level { const char *name; int level; double alt; double lapse; };
+    static const Level levels[] = {
+        {"Earth", 0, 0.0, -0.00648878},    {"Earth", 1, 11019.0, 0.0},
+        {"Earth", 2, 20063.0, 0.00099185}, {"Earth", 3, 32161.5, 0.00276538},
+        {"Earth", 4, 47349.3, 0.0},        {"Earth", 5, 51411.6, -0.00274663},
+        {"Earth", 6, 71800.2, -0.00195167},
+    };
     static const Want want[] = {
         /* dry air's mix, authored now rather than defaulted: N2 78.084, O2 20.946,
            Ar 0.934, CO2 0.033 %, which resolves to M 0.028965 kg/mol and gamma
@@ -223,6 +243,24 @@ static int check_air(const char *path, const System &sys) {
                 bad++;
             }
         }
+        for(const Level &w : levels) {
+            if(lower(b->name) != lower(w.name)) { continue; }
+            const bool present = w.level >= 0 && w.level < (int)a.layers.size();
+            const AtmoLayer none;
+            const AtmoLayer &L = present ? a.layers[w.level] : none;
+            if(!present || std::fabs(L.base_alt - w.alt) > 0.1
+                        || std::fabs(L.lapse - w.lapse) > 1e-12) {
+                printf("  %s: %s level %d sits at %.1f m lapsing %.8f K/m, want %.1f m"
+                       " lapsing %.8f K/m (%d levels in the file). A table copied from a"
+                       " published standard is stated per GEOPOTENTIAL height; the file has to"
+                       " carry the converted GEOMETRIC altitude AND gradient the rest of the game"
+                       " measures (#690)\n",
+                       path, w.name, w.level,
+                       present ? L.base_alt : -1.0, present ? L.lapse : 0.0, w.alt, w.lapse,
+                       (int)a.layers.size());
+                bad++;
+            }
+        }
         for(const Aloft &w : aloft) {
             if(lower(b->name) != lower(w.name)) { continue; }
             const double r = airDensity(da, w.alt);
@@ -297,6 +335,16 @@ static void check_composition() {
     expect_refuses("typed_gamma", patched("Kerbin", [](nlohmann::json &a) {
                        a["gamma"] = 1.3;
                    }).dump(), "composition");
+
+    /* The unit marker (#690). A table copied from a published standard states its rows per
+       GEOPOTENTIAL metre; that convention is converted where the table is WRITTEN
+       (utils/make_solar_system.py) and its marker dropped, so a system file carrying
+       heights: "geopotential" is claiming a unit the loader does not apply -- and applying
+       geometric metres to it silently is precisely the bug. It has to be an error, not an
+       unknown key. */
+    expect_refuses("unit_marker", patched("Kerbin", [](nlohmann::json &a) {
+                       a["heights"] = "geopotential";
+                   }).dump(), "GEOMETRIC");
 
     // A gas the species table does not have -- named in the message, because
     // "unknown gas" without the name is the useless half of the error.

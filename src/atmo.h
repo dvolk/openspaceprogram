@@ -61,7 +61,23 @@
    needs the body's sea-level radius, which is why resolveAtmoLevels and
    levelPressure both take it and why DragAtmosphere carries it. */
 struct AtmoLayer {
-    double base_alt = 0.0;   // [m above the sea-level datum]
+    /* [m above the sea-level datum], GEOMETRIC -- like every other altitude in a system
+       file (the vacuum cut, the science bands, the shell). Published standards state their
+       rows at GEOPOTENTIAL heights, so a table copied from one has to be converted before it
+       is written: z = R Z / (R - Z), the inverse of geopotentialDepth below. That happens in
+       utils/make_solar_system.py, which marks such a source heights: "geopotential" and emits
+       geometric metres; tests/test_scenarios.cpp pins the numbers it produced (#690). Earth's
+       "51 km" row lands at 51,411.6 m here -- the same row pasted onto a 600 km world would sit
+       at 55.7 km, so this is not a rounding question for a KSP-sized body.
+       A `lapse` is K per unit of that SAME height coordinate, so it converts with its row --
+       as a CHORD, the published gradient times dZ/dz ACROSS THE SPAN the level lapses
+       through: (Z_next - Z) / (z_next - z), with the last level's span running to the body's
+       air top. That lands every base_T back on the published temperature. The tempting
+       shortcuts are the published gradient beside converted bases -- Earth's column then
+       arrives 1.09 K off its own 71.8 km row -- and the tangent (R / (R + base_alt))^2 read
+       AT the row, which drifts 0.18 K on Earth and 1.34 K over a 600 km world's troposphere.
+       The seam rule below refuses the first outright and the second on a small body. */
+    double base_alt = 0.0;
     double base_T = 0.0;     // [K] at base_alt
     double lapse = 0.0;      // [K/m]; 0 = isothermal level
     double base_p = 0.0;     // [Pa] at base_alt; RESOLVED at load, not authored

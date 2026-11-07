@@ -6,6 +6,10 @@ except the Sun's authored universe bound."""
 import re, math, json, os, sys, html as htmllib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sci_dist import stamp_science_mults, stamp_transfer_dv, phase0
+# #690: the geopotential/geometric conversion for layer tables lives in ONE module that
+# both system generators import -- each --check only compares a file against its own
+# output, so a second spelling of the law would drift in silence (the #636 lesson).
+from atmo_units import resolve_layer_heights
 
 G      = 6.674e-11      # m^3 / kg / s^2  (matches the loader's G)
 AU     = 1.496e11       # m
@@ -500,7 +504,7 @@ def make_body(name, type_, parent, data, *, surface=None, seed=0.0,
     body['has_sea'] = has_sea
     body['power_scaler'] = 1        # unused by the loader; kept for parity
     if surface is not None:
-        body['surface'] = surface
+        body['surface'] = resolve_layer_heights(surface, radius_m)
 
     # SOIs are derived by the loader (bodylimits.h); only the root authors
     # one (its universe bound).
@@ -715,18 +719,31 @@ def build_base():
           # lands on 101,324.9 Pa at the datum rather than an authored 101,325.
           # Troposphere to 11 km, isothermal tropopause to 20, stratosphere to 47,
           # isothermal stratopause to 51, mesosphere to the top. The standard's 85 km row
-          # (186.87 K) needs no level of its own: it is where the -2.0 K/m lapse lands
-          # (186.65 K here), and this body's air stops there. height keeps the top at
-          # 85 km, exactly what the old scale_height 8500 derived (x10), so no science
-          # band or rotating frame moves. The composition is written rather than
+          # (186.87 K) needs no level of its own: that row is 85 km of GEOPOTENTIAL, which
+          # on this body is 86,149 m geometric -- above the top the body states. Its air
+          # stops at 85 km GEOMETRIC = 83,881 m of geopotential, and the last level lands
+          # there on 188.888 K, which is what the standard says at that same height. height
+          # keeps the top at 85 km, exactly what the old scale_height 8500 derived (x10), so
+          # no science band or rotating frame moves. The composition is written rather than
           # defaulted because the profile's pressures are only right for the gas they
           # were measured in, and DRY_AIR is that gas: it resolves to 0.0289650
           # kg/mol, which puts the datum at 101,324.9 Pa -- 0.1 Pa off the standard's
           # own 101,325, because that figure IS dry air at 1.225 kg/m3 and 288.15 K.
+          # #690: the alts AND lapse rates below are the standard's OWN numbers, and both are
+          # stated per GEOPOTENTIAL height, while a system file's altitudes are geometric metres
+          # -- so the table says 'heights': 'geopotential' and resolve_layer_heights() converts
+          # them at emit time, against this body's radius. The written file therefore speaks one
+          # unit: 11 km becomes 11,019.0 m, 51 km becomes 51,411.6 m, and the 20 km level's
+          # 0.001 K/m becomes 0.00099185 K/m (0.99185 of it, as a chord across the span that
+          # level lapses through). On Earth the altitudes move a few hundred metres; the same
+          # rows on a 600 km world would move by kilometres, which is why the conversion is here
+          # and not left to whoever pastes a table in. base_T stays the published temperature
+          # either way, so the dossier rows and the test pins keep reading standard numbers.
           'atmosphere': {'color': [0.30, 0.50, 1.00], 'thickness': 15000,
                          'power': 4.0, 'intensity': 0.7,
                          'sea_level_density': 1.225, 'height': 85000,
                          'composition': DRY_AIR,
+                         'heights': 'geopotential',
                          'layers': [
                              {'alt': 0,     'T': 288.15, 'lapse': -0.0065},
                              {'alt': 11000, 'T': 216.65, 'lapse': 0.0},
