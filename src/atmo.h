@@ -16,6 +16,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>   // assert() is used below; the header must be includable first
 #include <cmath>
 #include <string>
 #include <vector>
