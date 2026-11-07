@@ -6410,11 +6410,15 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             /* What the authored scale height IMPLIES rather than measures (#552
                A2): one exponential IS an isothermal atmosphere, so T, p and the
                sound speed follow from H and g with nothing extra authored. The
-               word "isothermal" is on the line on purpose -- Laythe reads 150 K /
-               53 kPa / 246 m/s this way, where an Earth-like 288 K at rho0 1.225
-               wants an 8.4 km scale height (which would put 3.5x more air over you
-               at 20 km; real air puts 2.7x, the gap being the lapse rate the single
-               exponential has not got). Reconciling them is a layer table, not a
+               word "isothermal" is on the line on purpose -- Duna reads 209 K /
+               600 Pa / 229 m/s this way, and until #700 so did Laythe at 150 K /
+               53 kPa, a temperature no field in that world's file ever chose. A
+               warm datum is not a dial to turn on one exponential: rho0 1.225 at
+               288.15 K wants an 8.4 km scale height, which is 1.37x the air at
+               5 km that Laythe's 5.5 km column held and 3.37x at 20 km, while the
+               layer table that world wears now puts 1.68x and 4.69x -- the gap
+               being the lapse rate a single exponential has not got. Reconciling
+               them is a layer table, not a
                fudge -- and a body that HAS one (#552 A4) has these three read from
                the levels at the datum, which is why its label says "sea level" and
                not "isothermal".

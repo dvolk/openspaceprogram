@@ -145,13 +145,16 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
        a = sqrt(gamma R T / M) = sqrt(gamma g H)  [m/s]   M cancels
    Pressure and sound speed need NOTHING authored -- the scale height alone sets
    them, which is why molar_mass is a composition question only for the TEMPERATURE
-   line. Read that as content, not trivia: Laythe (H 5500, g 7.848, rho0 1.225) means
-   150.4 K, 52.9 kPa, 246.0 m/s, so a hull at 300 m/s at sea level is already
-   Mach 1.22 there; an Earth-shaped exponential (H 8500) means 290.8 K, 102.3 kPa,
-   341.9 m/s -- within ~1% of USSA-1976, with no temperature authored anywhere.
-   (Both use dry air's resolved gamma 1.4015 rather than the typed 1.4; the shipped
-   bodies' gammas come off their authored mixes, #630, and a hand-built DragAtmosphere
-   still defaults to constants.h's 1.4. Sound speed goes as sqrt(gamma), so it is 0.05%.)
+   line. Read that as content, not trivia: Duna (H 13600, g 2.943, rho0 0.015 on its
+   CO2 mix) means 209.4 K, 600 Pa, 228.5 m/s, so a hull at 250 m/s at its datum is
+   already Mach 1.1 there; an Earth-shaped exponential (H 8500) means 290.8 K,
+   102.3 kPa, 341.9 m/s -- within ~1% of USSA-1976, with no temperature authored
+   anywhere.
+   (The Earth-shaped pair uses dry air's resolved gamma 1.4015 rather than the typed
+   1.4 -- Duna's comes off its own CO2 mix, 1.30485; the shipped bodies' gammas all
+   come off their authored mixes (#630), and only a hand-built DragAtmosphere still
+   defaults to constants.h's 1.4. Sound speed goes as sqrt(gamma), so the typed
+   default is 0.05% off.)
    THE COLUMN IS WEIGHED IN THE BODY'S OWN FIELD (#683), which is the one input these
    formulas do not show: the hull is pulled by g radius^2/(radius+z)^2, so the exponent
    is the geopotential depth Z(alt), not alt. At the datum the read is unchanged -- H is
@@ -173,14 +176,18 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
    wrong gas.
    THE THREE ARE LOCKED on ONE exponential: rho0, p0 and H cannot all be Earth's
    numbers at once. rho0 1.225 with p0 101.3 kPa wants T0 288 K, which wants H 8.43 km:
-   against the H = 5.5 km Laythe ships, that exponential is 1.37x thicker at 5 km and
-   3.54x at 20 km -- and the REAL atmosphere is 1.5x / 2.7x thicker there, because a
-   lapse rate makes density fall faster than pressure. Having both means a LAPSE RATE,
+   against the H = 5.5 km exponential Laythe wore until #700, that column is 1.37x
+   thicker at 5 km and 3.37x at 20 km, weighed in Laythe's own 1/r^2 field. The layer
+   table that world wears instead puts 1.68x and 4.69x there -- 0.498 -> 0.837 and
+   0.037 -> 0.174 kg/m3 -- which is the ratio no single H can have, because a lapse
+   rate makes density fall faster than pressure. Having both means a LAPSE RATE,
    and that is what a LAYER TABLE is (#552 A4): a body that authors one gets a
    temperature that varies with altitude, a pressure integrated hydrostatically and a
    density that follows from the gas law, all three consistent with its authored
-   sea_level_density. A body that does not (every KSP-derived world except Kerbin,
-   which #686 gave the same table Earth wears) still gets the isothermal read of its
+   sea_level_density. A body that does not -- every KSP-derived world except Kerbin,
+   which #686 gave the same table Earth wears, and except Shay and Laythe, which #700
+   gave it for the same reason: both have `has_sea` and both wore a datum below the
+   freezing point of the water on their surfaces -- still gets the isothermal read of its
    authored scale height, and the atlas labels it
    "(isothermal)" rather than dressing it up as weather. Earth is the body that
    authors the real table, both because it is the only one with published numbers to

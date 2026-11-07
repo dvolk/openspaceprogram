@@ -319,9 +319,45 @@ SURFACES = {
         "frequency": 1.1,
         "atmosphere": {"color": [0.40, 0.65, 0.70], "thickness": 22000,
                        "power": 4.0, "intensity": 0.7,
-                       "sea_level_density": 1.225, "scale_height": 6000,
+                       "sea_level_density": 1.225,
+                       # #700 step 2, Shay's half. It has a sea (has_sea) and wore an
+                       # air whose datum read 188.0 K: one exponential IS isothermal,
+                       # so the trio lock (#686) had already turned the authored
+                       # H 6000 into a surface temperature, and 188 K at 66.1 kPa is
+                       # a world whose sea is a rock. Nothing in src/ has a ground
+                       # temperature to freeze yet (#687), but the atlas prints that
+                       # 188 K as the air's fact and every Mach number pays it.
+                       # Same medicine Kerbin took in #686: wear the 1976 rows, which
+                       # keep the warm datum and spend it back aloft, instead of one
+                       # warm exponential that puts ~x100 more air at the ceiling.
+                       # Shay is Kerbin's L4 trojan -- same orbit, same sunlight --
+                       # so a 288.15 K datum is not a guess about its climate, it is
+                       # the same distance from Kerbol. p0 = rho0 (R/M) T0 carries no
+                       # g, so at rho0 1.225 Shay's datum lands on 101.3 kPa like
+                       # Earth's and Kerbin's: three worlds, one sea-level pressure,
+                       # differing only in how high that air reaches.
                        "composition": DRY_AIR,
-                       "height": 60000},
+                       # Forced first, then chosen. The 71 km row resolves to
+                       # 81,524.0 m geometric on a 550 km world and atmo.h refuses a
+                       # table whose last level sits at or above `height`, so the old
+                       # 60000 cannot carry this profile. What it becomes is #682's
+                       # call, answered the way Kerbin's 85 km was: 95 km is where a
+                       # circular orbit feels 75 Pa of q -- Kerbin's edge is 97.8 Pa
+                       # and Duna's is 110.5, all three inside the 10..1000 Pa band.
+                       # It moves shellEdge off the 100 km floor to 114 km, the
+                       # flying-slow bed 6.0 -> 9.5 km, and the sky rim with it.
+                       "height": 95000,
+                       # Same authored rows as Kerbin and Earth (#690 converts bases
+                       # and lapse against THIS radius, per geopotential metre).
+                       "heights": "geopotential",
+                       "layers": [
+                           {'alt': 0,     'T': 288.15, 'lapse': -0.0065},
+                           {'alt': 11000, 'T': 216.65, 'lapse': 0.0},
+                           {'alt': 20000, 'T': 216.65, 'lapse': 0.001},
+                           {'alt': 32000, 'T': 228.65, 'lapse': 0.0028},
+                           {'alt': 47000, 'T': 270.65, 'lapse': 0.0},
+                           {'alt': 51000, 'T': 270.65, 'lapse': -0.0028},
+                           {'alt': 71000, 'T': 214.65, 'lapse': -0.002}]},
         "clouds": {"height": 3000, "coverage": 0.5, "freq": 10,
                    "drift": 0.00001},
     },
@@ -391,9 +427,43 @@ SURFACES = {
                     [1.0, [1.00, 1.00, 1.00]]],
         "atmosphere": {"color": [0.30, 0.55, 0.90], "thickness": 12000,
                        "power": 4.0, "intensity": 0.7,
-                       "sea_level_density": 1.225, "scale_height": 5500,
+                       "sea_level_density": 1.225,
+                       # #700 step 2, Laythe's half. This is the world whose whole
+                       # pitch is a sea, and its air read 150.4 K / 52.9 kPa -- the
+                       # number that made src/drag.h open the trio lock with it. An
+                       # ocean under a 150 K sky is a contradiction the file itself
+                       # was asserting, so it now wears the same 1976 rows Kerbin and
+                       # Earth wear, converted against its own 500 km radius, and the
+                       # datum reads 288.15 K at 101.3 kPa. Water is the point of
+                       # this world, so the datum has to be above 273 K.
+                       # What this does NOT buy: nothing here says why a moon of Jool
+                       # is 288 K. The KSP catalogue carries no orbital radius for
+                       # Laythe, so no authored number contradicts it, and #687 is
+                       # where insolation and a ground temperature arrive and will
+                       # have to answer for it -- a world this far out wants either a
+                       # greenhouse or a colder, wetter air.
                        "composition": DRY_AIR,
-                       "height": 50000},
+                       # Forced, then chosen, exactly as on Shay: the 71 km row lands
+                       # at 82,750.6 m geometric on a 500 km world, so the old 50 km
+                       # top refuses this table. Above that floor the number is
+                       # #682's rule, not a round figure: at 105 km a circular orbit
+                       # meets 106.0 Pa, against Kerbin's 97.8 at its own edge. (90 km
+                       # would also be in band at 430 Pa, but a top is where orbit
+                       # stops being orbit, and 4.4x Kerbin's edge reads as a wall.)
+                       # shellEdge goes from the 100 km floor to 126 km; the flying
+                       # beds go 5.0 -> 10.5 km. Laythe's column reaches further than
+                       # Kerbin's or Shay's because its g is lower and the same air is
+                       # therefore puffier -- the datum is identical on all three.
+                       "height": 105000,
+                       "heights": "geopotential",
+                       "layers": [
+                           {'alt': 0,     'T': 288.15, 'lapse': -0.0065},
+                           {'alt': 11000, 'T': 216.65, 'lapse': 0.0},
+                           {'alt': 20000, 'T': 216.65, 'lapse': 0.001},
+                           {'alt': 32000, 'T': 228.65, 'lapse': 0.0028},
+                           {'alt': 47000, 'T': 270.65, 'lapse': 0.0},
+                           {'alt': 51000, 'T': 270.65, 'lapse': -0.0028},
+                           {'alt': 71000, 'T': 214.65, 'lapse': -0.002}]},
         "clouds": {"height": 2000, "coverage": 0.55, "freq": 10,
                    "drift": 0.00001},
     },

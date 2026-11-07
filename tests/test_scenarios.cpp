@@ -140,6 +140,21 @@ static int check_air(const char *path, const System &sys) {
            space-port hillside; both are level 0, weighed in the body's own 1/r^2 field. */
         {"Kerbin", 5000.0, 0.7386735114},
         {"Kerbin", 8500.0, 0.5019472257},
+        /* The two other worlds that wear the table, one row at their spawn bed (0.1 x
+           their own air top, so 9.5 km on Shay and 10.5 km on Laythe) and one just
+           under the 71 km row. These are the rows that say the column was weighed in
+           the body's field and not Kerbin's: at the same 69,999 m the three worlds
+           answer 2.03e-4 kg/m3 (Kerbin, g 9.81), 4.56e-4 (Shay, 8.9933) and 1.37e-3
+           (Laythe, 7.848) -- Laythe holds 6.75x the air there, because the exponent
+           goes as 1/g and its column is weighed 1.28x more gently over these 70 km.
+           A conversion that lost a radius, or a table that quietly fell back to one
+           exponential, lands between these and fails. utils/atmo_profile.py
+           integrates this column a second time (python, by quadrature, sharing no code
+           with atmo.h) and is what printed them. */
+        {"Shay",   9500.0,  0.4964330},
+        {"Shay",   69999.0, 4.561912e-4},
+        {"Laythe", 10500.0, 0.5259753},
+        {"Laythe", 69999.0, 1.369243e-3},
     };
     /* Where each authored level sits and how fast it lapses, in the GEOMETRIC metres a
        system file speaks (#690). The 1976 standard this table was copied from states both
@@ -170,6 +185,17 @@ static int check_air(const char *path, const System &sys) {
         {"Kerbin", 2, 20689.7, 0.00091511}, {"Kerbin", 3, 33802.8, 0.00244303},
         {"Kerbin", 4, 50994.6, 0.0},        {"Kerbin", 5, 55737.7, -0.00225883},
         {"Kerbin", 6, 80529.3, -0.00154453},
+        /* #700 gave the same authored table to Shay (550 km) and Laythe (500 km), so
+           the conversion now has four radii to be wrong on. Two rows each, chosen for
+           what each one can break: level 0's gradient is the chord across the
+           troposphere the game actually flies in, and level 6's BASE is the number
+           that gates the air top -- atmo.h refuses a table whose last level sits at
+           or above `height`, so 81,524.0 m is why Shay's top could not stay at 60 km
+           and 82,750.6 m is why Laythe's could not stay at 50 km. Their lapses are
+           the same 1976 row scaled by each body's own chord, which is where a
+           hard-coded radius would show up first. */
+        {"Shay",   0, 0.0, -0.00637},       {"Shay",   6, 81524.0, -0.00148527},
+        {"Laythe", 0, 0.0, -0.006357},      {"Laythe", 6, 82750.6, -0.00141818},
     };
     static const Want want[] = {
         /* dry air's mix, authored now rather than defaulted: N2 78.084, O2 20.946,
@@ -186,17 +212,23 @@ static int check_air(const char *path, const System &sys) {
            datum does not read g at all; unlike Earth's, these are not the standard's g. */
         {"Kerbin", 288.15, 340.47075676386669, 101324.85477637536,
                                                   0.23140616, 1e-9},
-        /* Laythe is now the body that wears the sentence src/drag.h opens this law
-           with -- rho0 1.225 on a 5500 m exponential -- at g 7.848 rather than
-           Kerbin's 9.81, so the trio lock reads a colder, softer world than the one
-           #686 just retired. Pinned so that comment cannot go stale the way
-           Kerbin's did without someone noticing. The tolerance is 1e-6 rather than
-           the 1e-9 the Kerbin row carries: these literals come from the trio formulas
-           with the mix's M and gamma rounded off, not off the loader's doubles, and
-           1e-6 of 150 K is 0.15 mK -- still five orders under anything a g, H or
-           composition edit could do. */
-        {"Laythe", 150.3697341465394, 245.95220192468292, 52875.900000000009,
-                                                  0.23140616, 1e-6},
+        /* #700 put Shay and Laythe into the same table Kerbin and Earth wear, so
+           their datums are now BIT-identical to Kerbin's above -- p0 = rho0 (R/M) T0
+           and a = sqrt(gamma (R/M) T0) contain no g and no radius, and all four
+           worlds author rho0 1.225 with dry air at a 288.15 K datum. That is the
+           point, not a coincidence: an ocean world's air used to answer 150.4 K
+           (Laythe, H 5500) and 188.0 K (Shay, H 6000) because one exponential IS
+           isothermal and the trio lock had already spent their scale heights as
+           surface temperatures. Neither world has a sea that can hold water under
+           an air that cold, and `has_sea` says both have one.
+           So the datum rows below prove only one thing -- that a table reached these
+           two worlds at all. What tells them apart is aloft, where g weighs the
+           column: see their `levels` and `aloft` rows. Tolerance 1e-9 like Kerbin's,
+           because none of these four numbers reads g. */
+        {"Shay",              288.15,  340.47075676386669, 101324.85477637536,
+                                                  0.23140616, 1e-9},
+        {"Laythe",            288.15,  340.47075676386669, 101324.85477637536,
+                                                  0.23140616, 1e-9},
         // H2 85.5, He 14, CH4 0.5 %: M 0.00236415, gamma 1.42319. g 7.848, H 20000.
         // Jool is the densest air in this system and its oxidizer share is exactly
         // zero -- hydrogen is the fuel, and there is no oxidizer to burn it with.

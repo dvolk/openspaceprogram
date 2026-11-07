@@ -6,8 +6,9 @@ KIND invariant
 # the row its window shows and the unit its finding prints, so the part JSON and the
 # family JSON are the whole feature and no code knows the part's name.
 # The number is cross-checked against --drag-log's T= column (the air the flight
-# model stands in, at the hull's COM). On an isothermal body like Kerbin the two
-# have one possible value, so an agreement to 0.1 K is a real pin.
+# model stands in, at the hull's COM). Kerbin wears a layer table (#686), so both
+# reads are at THIS hull's altitude and neither is a constant of the world -- which
+# is why the pin is an agreement to 0.11 K rather than a literal temperature.
 ARGS --time-accel 1 --timeout 8 --width 1920 --height 1080 --drag-log
 ARGS --startship thermopod,res/ships/thermopod.json,Kerbin,flying-low
 ARGS --ui-focus 800,thermopod/thermometer_1
