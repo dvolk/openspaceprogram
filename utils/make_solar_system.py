@@ -362,6 +362,213 @@ def parse_planet(page):
                 w=w)
 
 # ---------------------------------------------------------------------------
+# the air a fact sheet states in PROSE (#685)
+# ---------------------------------------------------------------------------
+# A scale-height column hangs on ONE authored number: sea_level_density. The
+# loader derives the rest of it -- p0 = rho0 g H, and through H = R T/(M g) the
+# datum temperature, the sound speed and every density aloft -- so a mistyped
+# datum is invisible to every refusal we have: all those numbers agree with the
+# wrong one perfectly. That is how #684 shipped, with Venus's sea_level_density
+# typed 92 -- its surface PRESSURE in bar -- which made the whole column 42% too
+# fat and its dossier read 129 atm. A guard has to compare two statements, and
+# the second one is already on disk: the same fact sheets this generator scrapes
+# for mass, radius and gravity state the air a few lines below the bulk table,
+# in PROSE rather than a table, so section_values() never sees it.
+#
+# Bands, and what makes them that wide:
+#   density 30%   only three sheets state a surface density at all (Venus ~65.,
+#                 Earth 1.217, Mars ~0.016 +/- 0.006 -- the sheet's own error bar
+#                 is +/-37%), and the slip this catches measured +42%.
+#   pressure 40%  p0 here is DERIVED (rho0 g H), so it carries two authored
+#                 numbers. Mars sits +35%, and its sheet states its pressure as
+#                 "variable from 4.0 to 8.7 mb depending on season" -- a 37%
+#                 spread on the sheet's own side.
+#   scale height 10%  a directly published figure, authored here in metres. This
+#                 is the tight one; one body sits outside it knowingly, see
+#                 FACT_AIR_KNOWN.
+#   base temp 10% a layered table's first row against the sheet's "Average
+#                 temperature", which is a global mean rather than a sea-level
+#                 datum. Earth reads +0.1%.
+#
+# Skipped, with the reason kept beside the code so a future widening is a
+# decision rather than a drift:
+#   the giants' surface pressure -- their sheets say ">>1000 bars" while our
+#   datum is the 1-bar level (Jupiter's column reads 107 kPa, ~1.06 bar).
+#   Comparing those compares two different definitions of "surface";
+#   any body that authors no density (Mercury, the Moon) -- nothing to contradict;
+#   any body with no *fact.html (Titan comes from the giant-planet satellite
+#   tables, which carry no air rows);
+#   and every world in gen_systems.py, whose air is a design with no sheet to
+#   disagree with it.
+FACT_AIR_BANDS = {'density': 0.30, 'p0': 0.40, 'scale_height': 0.10, 'base_T': 0.10}
+
+# (body, quantity) -> why this comparison is waived. Narrow on purpose: a waiver
+# says "this figure, for this body", never "this body". Note what that does NOT
+# buy for the giants: their sheets state a scale height and a molecular weight but
+# no surface density or pressure, so Uranus's only guarded air number IS its
+# altitude. The guard's reach is what the sheets state, no further.
+FACT_AIR_KNOWN = {
+    ('Uranus', 'scale_height'):
+        "sheet says 27.7 km, we author 20 km. The sheet is self-consistent: its "
+        "mean molecular weight 2.64 is what our H2/He/CH4 mix resolves to, and 27.7 "
+        "km with that M on our g 9.007 is a 79 K 1-bar level. We read 57 K, which "
+        "is a tropopause temperature, not a datum one; this H is what was left "
+        "beside the typed molar_mass 0.023 that #630 removed. NOT fixed here "
+        "because it moves the air top (10 H) 200 -> 277 km and with it the "
+        "rotating-frame switch, every spawn bed and the sky rim of a whole world -- "
+        "a world change, filed as #695 rather than made at 11 pm.",
+}
+
+AIR_PRESSURE_UNITS = {'bar': 1e5, 'bars': 1e5, 'mb': 1e2, 'millibar': 1e2,
+                      'millibars': 1e2, 'microbar': 0.1, 'microbars': 0.1,
+                      'torr': 133.322, 'pa': 1.0, 'pascal': 1.0, 'pascals': 1.0}
+
+def sheet_text(raw):
+    """One fact-sheet line with the markup folded the way the prose means it:
+    <sup>3</sup> becomes ^3 (kg/m^3, 10^-15), <sub> is dropped (N2), tags become
+    spaces and entities resolve. strip_tags() is not enough here: it turns
+    'kg/m<sup>3</sup>' into 'kg/m 3', which reads as two numbers."""
+    s = re.sub(r'<sup>(.*?)</sup>', r'^\1', raw, flags=re.S)
+    s = re.sub(r'<sub>(.*?)</sub>', '', s, flags=re.S)
+    s = re.sub(r'<[^>]+>', ' ', s)
+    s = htmllib.unescape(s)
+    s = re.sub(r'\s+', ' ', s).strip()
+    # 'kg/m<span><sup>3</sup></span>' leaves 'kg/m ^3'; the caret belongs to what
+    # precedes it, or the unit reads as two numbers.
+    return re.sub(r'\s+\^', '^', s)
+
+def sheet_line(h, label):
+    """The text after `label` on the line that starts with it (case-insensitive).
+    None if the sheet does not say."""
+    for raw in h.split('\n'):
+        s = sheet_text(raw)
+        if s.lower().startswith(label.lower()):
+            return s[len(label):].strip()
+    return None
+
+def sheet_quantity(text, want):
+    """'~65. kg/m^3' -> (65.0, 65.0) in kg/m^3; '19.1 - 20.3 km' -> a pair in m;
+    '>>1000 bars' and '<~5 x 10^-15 bar' -> None: the sheet declines to state it,
+    which is not the same as stating zero."""
+    if text is None:
+        return None
+    if re.search(r'>>|<<|<~|~<', text):
+        return None
+    t = text.replace('~', ' ').replace('+/-', ' ')
+    # '3 x 10^-15' first, or the exponent is swept up as a value of its own.
+    sci = re.search(r'\d+(?:\.\d+)?\s*x\s*10\s*\^?\s*-?\d+', t)
+    if sci:
+        m = re.match(r'(\d+(?:\.\d+)?)\s*x\s*10\s*\^?\s*(-?\d+)', sci.group(0))
+        vals = [float(m.group(1)) * 10.0 ** int(m.group(2))]
+        t = t[:sci.start()] + t[sci.end():]
+    else:
+        vals = [float(v) for v in re.findall(r'\d+\.?\d*|\.\d+', t)]
+    if not vals:
+        return None
+    unit = re.search(r'kg/m\^?3|bars?|millibars?|microbars?|mb|torr|K\b|C\b|km\b|m\b', t)
+    if unit is None:
+        return None
+    u = unit.group(0)
+    if want == 'Pa':
+        f = AIR_PRESSURE_UNITS.get(u.lower())
+    elif want == 'm':
+        f = 1e3 if u == 'km' else (1.0 if u == 'm' else None)
+    elif want == 'kg/m^3':
+        f = 1.0 if u.startswith('kg/m') else None
+    else:
+        f = 1.0 if u == 'K' else None
+    if f is None:
+        return None
+    # '19.1 - 20.3' is a stated range; anything else is one number (the
+    # temperature lines carry a second value in Celsius, which the unit test
+    # above has already sent home).
+    pair = re.search(r'\d\s*-\s*\d', t)
+    lo = vals[0]
+    hi = vals[1] if pair and len(vals) > 1 else vals[0]
+    return lo * f, hi * f
+
+def fact_air(page):
+    """What a fact sheet states about the air, in SI: {density, p0, scale_height,
+    base_T} -> (lo, hi) or absent."""
+    h = read(page)
+    out = {}
+    for key, label, want in (('density', 'Surface density:', 'kg/m^3'),
+                             ('p0', 'Surface pressure', 'Pa'),
+                             ('scale_height', 'Scale height:', 'm'),
+                             ('base_T', 'Average temperature:', 'K')):
+        q = sheet_quantity(sheet_line(h, label), want)
+        if q is not None:
+            out[key] = q
+    return out
+
+def check_fact_air(planets, parsed, verbose=True):
+    """Compare each authored datum against the sheet it came from. Returns the
+    list of disagreements; empty means the catalogue and the sheets agree inside
+    the bands above. `verbose` prints the table -- a guard that prints nothing is
+    indistinguishable from a guard that checked nothing, so --check prints it."""
+    rows, bad = [], []
+    for page, name, _seed, surface, _sea in planets:
+        atmo = (surface or {}).get('atmosphere')
+        if not atmo:
+            continue
+        sheet = fact_air(page)
+        authored = {}
+        rho0 = atmo.get('sea_level_density')
+        H = atmo.get('scale_height')
+        if rho0 is not None:
+            authored['density'] = rho0
+        if H is not None:
+            authored['scale_height'] = H
+            # p0 is what the loader would derive from these two (atmo.h), on the
+            # same gravity this generator scraped for the body itself.
+            g = (parsed.get(name) or {}).get('g')
+            if rho0 is not None and g:
+                authored['p0'] = rho0 * g * H
+        layers = atmo.get('layers')
+        if layers:
+            authored['base_T'] = layers[0]['T']
+        if not authored:
+            # A rim and nothing else: the file draws an atmosphere shell but
+            # authors no density and no height, so there is no column here for the
+            # sheet to disagree with. Pluto is the case -- its sheet states 1.3 Pa
+            # and a ~18 km scale height, and this catalogue ignores both. Print it
+            # rather than dropping the row: an ignored air is a decision, and it
+            # should look like one in the table.
+            says = ', '.join('%s %.3g' % (k, v[0]) for k, v in sorted(sheet.items()))
+            rows.append('%-9s no column authored; sheet states %s'
+                        % (name, says or 'nothing'))
+            continue
+        cells = []
+        for key in ('density', 'p0', 'scale_height', 'base_T'):
+            if key not in authored:
+                continue
+            got = sheet.get(key)
+            if got is None:
+                cells.append('%s -' % key)
+                continue
+            lo, hi = got
+            band = FACT_AIR_BANDS[key]
+            v = authored[key]
+            off = (v - lo) / lo
+            inside = (v >= lo * (1.0 - band) and v <= hi * (1.0 + band))
+            known = (name, key) in FACT_AIR_KNOWN
+            cells.append('%s %+.1f%%' % (key, 100.0 * off))
+            if not inside and not known:
+                bad.append('%s: authors %s %s, %s fact sheet states %.4g%s (%+.1f%%, band %d%%)'
+                           % (name, key, '%.4g' % v, page, lo,
+                              '' if hi == lo else '-%.4g' % hi,
+                              100.0 * off, round(100 * band)))
+            elif not inside:
+                cells[-1] += ' (known)'
+        rows.append('%-9s %s' % (name, '  '.join(cells)))
+    if verbose:
+        for r in rows:
+            print('  fact air  %s' % r)
+        for (name, key), why in FACT_AIR_KNOWN.items():
+            print('  waived    %s %s: %s' % (name, key, why))
+    return bad
+
+# ---------------------------------------------------------------------------
 # moons
 # ---------------------------------------------------------------------------
 def parse_sat_table_all(page):
@@ -652,7 +859,7 @@ SAT_RINGS = [
     ring('A-ring', 122000, 137000, 200, 0.55, 0.70),
 ]
 
-def build_base():
+def build_base(verbose_air=False):
     """Sun + 9 planets, identical across every scope file."""
     bodies = []
     parsed = {}
@@ -827,6 +1034,14 @@ def build_base():
         bodies.append(make_body(name, 'planet', 'Sun', data,
                                 surface=surface, seed=seed, has_sea=has_sea,
                                 rings=rings_by_name.get(name)))
+    # The air each of those pages states in prose, against the air this script
+    # authors beside it (#685). Refuses before any file is written.
+    bad = check_fact_air(planets, parsed, verbose=verbose_air)
+    if bad:
+        for m in bad:
+            print('DRIFT   fact air: ' + m)
+        raise SystemExit('%d authored air datum(s) disagree with the fact sheet '
+                         'that states them (bands: FACT_AIR_BANDS)' % len(bad))
     # transfer_dv for a planet needs home (the heliocentric hop); stamp now
     # that every base body exists.
     home = next(b for b in bodies if b['name'] == 'Earth')
@@ -960,7 +1175,7 @@ def main():
                          "writing anything; exit non-zero on any drift")
     args = ap.parse_args()
 
-    base_bodies, parsed = build_base()
+    base_bodies, parsed = build_base(verbose_air=args.check)
 
     moons = []
     def add(*ms):
