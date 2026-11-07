@@ -29,14 +29,19 @@ CHECK any(d["L"] > 400 and abs(d["L_up"]) > 100 for d in drag)
 # on a low-g body, which is what flight/490's Kerbin cruise spawn has been using all
 # along.
 #
-# The magnitudes are what this departure actually makes: on the shipped 16 x 1.5 hull
-# cruising at 7 km in 0.34 kg/m3 air, all 20 rows clear both bounds, the biggest is
-# t=6.9 s -- |L| 16282 N with L_up +15877 N at 74 m/s -- and the hull holds
-# 7000-7119 m at 51-80 m/s. The 1000 N this used to ask
+# The magnitudes are what this departure actually makes -- and both of this window's
+# changes moved them, so this row of prose is a measurement, not a memory. #686 moved the
+# flying-cruise bed from 7 km to 8.5 km (0.1 x the 85 km top), so the hull now flies in
+# 0.496 kg/m3 rather than 0.34; #699 put the control loop's deflection force into |L|,
+# which on this untrimmed hull means the rudder's side force joins the sum. The 20 rows
+# this run prints sit at 8502-8759 m over 25.1-77.1 m/s; all of them clear both bounds and
+# the biggest is t=6.9 s -- |L| 14395 N with L_up +11999 N at 64.34 m/s. The 1000 N this used to ask
 # for belonged to the heavier spindle hull #568 replaced; the 559-569 N with L_up
 # -217..-219 N was the 12 x 1.8 wing, and #567 moved the peak by a few tens of N without
 # moving what the bound means. What is pinned is that a real component of a real force
-# appears, not the airframe's size.
+# appears, not the airframe's size -- and since #699, that the lift part never outweighs
+# the whole aero force it came from (flight/492 pins that on a trimmed hull, where it is a
+# 13 % question rather than a rounding one).
 # The SIGN law -- a wing above the flow lifts -- is NOT pinned here and cannot
 # be: aoa and L_up are both odd in alpha, so any relation between them is even
 # under a sign flip. tests/test_drag's test_wing_lifts_up pins it, in a frame

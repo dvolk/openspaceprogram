@@ -3515,6 +3515,16 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             if(glm::length2(F) <= 0.0) { continue; }
             ApplyForce(hull, ri, F);
             ftotal += F;
+            /* #699: and this force is LIFT. It is perpendicular to this surface's own
+               flow, charged on a control_area, and #494 below already bills it induced
+               drag as if that were true -- so leaving it out of lift_total made the
+               [drag] row's |L| a lift LAW's sum rather than the lift the air applies.
+               Measured on a settled engines-off skiff glide: |L| 6042 N against 5350 N
+               actually perpendicular to the flow, and the missing 691 N (12.9 %) is the
+               12 deg elevator tab pulling DOWN -- the very thing trimming this hull.
+               Every L/D read off |L| was that much high on exactly the rows where the
+               airframe was flying well, and worse the more trim it needed. */
+            lift_total += F;
             moment += glm::cross(ri, F);
             /* #599: the plate's ACTUAL say, from the same force Bullet just got, so
                the readout cannot quote a promise the air refused: it is 0 in vacuum and
@@ -3570,12 +3580,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastAeroForce = ftotal;
     /* #694: split that force about the air-relative flow -- L and D in the sense a
        glide ratio means, the perpendicular and along components of what the air ACTUALLY
-       applies. NOT a split of lift_total: ftotal also carries the hull, profile, chute and
-       induced terms (all along the flow, so they land in lastFlowDrag) and, unlike
-       lift_total, a control surface's DEFLECTION force (see the control loop above) --
-       which is why |lift_total| and this perpendicular component differ by 12.9 % on the
-       12 deg-tabbed skiff (#699). vrel is the same flow AoA and Beta are measured in, and
-       lastAirV > 0 here (the pass returned early at rest in air), so the division is safe. */
+       applies. The along half also carries the hull, profile, chute and induced terms
+       (all along the flow, so they land in lastFlowDrag), and since #699 the control
+       loop's deflection force reaches lift_total too, so on a hull whose surfaces agree
+       about the flow this perpendicular half and |lift_total| ARE the same number:
+       5350.2 N and 5350.18 N on the yardstick skiff's settled glide. They part company
+       when the surfaces do not agree -- a fast pitch rate puts each part in its own flow
+       (#483). vrel is the same flow AoA and Beta are measured in, and lastAirV > 0 here
+       (the pass returned early at rest in air), so the division is safe. */
     const glm::dvec3 flowHat = vrel / lastAirV;
     const double alongFlow = glm::dot(ftotal, flowHat);
     lastFlowDrag = -alongFlow;

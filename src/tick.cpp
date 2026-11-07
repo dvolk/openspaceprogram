@@ -578,6 +578,12 @@ void tick(Game &g) {
            above the atmosphere's top) or a hull sitting still in its own air -- the A=
            figure then reads 0 because no flow direction was usable, while Cd
            still prints the hull's shape. Neither is broken geometry.
+           |L| is every lifting surface PLUS every deflected control surface (#699): a
+           tab's force is perpendicular to its own flow and pays induced drag like any
+           lift, so a column that leaves it out is a lift LAW's sum, not the lift the air
+           applies. On a trimmed hull that omission is 13 % of the force holding it up,
+           and the tell is |L| > |F| -- a part outweighing the whole it came from, which
+           47 of flight/492's 50 rows used to print. That bound is now a CHECK there.
            AoA prints '-' with no value when there is no usable flow
            (kAoAFlowFloor), like [flight] and [surfinfo] do: a parked ship's
            ~1e-4 m/s jitter reads as a full +/-90 deg swing, and a number in a

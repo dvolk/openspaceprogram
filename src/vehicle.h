@@ -539,28 +539,37 @@ public:
 
     /* Last substep's aero (applyAeroForce), for the --drag-log. */
     glm::dvec3 lastAeroForce = glm::dvec3(0.0);   // total (lift + drag)
+    /* The lifting-surface forces: every lifting surface's slope force AND every control
+       surface's DEFLECTION force (#699 -- a deflection is perpendicular to its own
+       surface's flow and #494 bills it induced drag like any lift, so leaving it out made
+       this the lift LAW's sum rather than the lift the air applies. A settled skiff glide
+       used to print |L| 6042 N against a total aero force of 5402 N: more lift than the
+       air's entire force, because the 12 deg tab trimming that hull pulls DOWN and only
+       the control loop saw it). NOT a component of lastAeroForce: each surface feels its
+       own flow (#483), so the two agree only as far as the hull's surfaces agree with
+       each other -- on the yardstick skiff they now land 0.02 N apart. */
     glm::dvec3 lastLiftForce = glm::dvec3(0.0);   // the lift part
     /* The aero force SPLIT ABOUT THE AIR-RELATIVE FLOW -- L and D in the textbook
-       sense, and halves of lastAeroForce rather than of the lift law. lastFlowDrag is
-       -(ftotal . flowHat), N (+ = the air is holding the hull back; it goes negative
-       when a co-rotating frame or a parachute jink makes the air PUSH, which makes a
-       ratio out of it meaningless rather than large), and lastFlowLift is the
-       perpendicular remainder -- the FULL remainder, so with sideslip a fin's side
-       force sits in it too: this is the flow-plane split of the force, not the wing's
-       lift. The --drag-log's Ld= is lastFlowLift / lastFlowDrag (#694) because that is
-       the ratio a glide ratio equals: in the shipped skiff's settled 200 s glide it
-       prints 7.19 while the hull's own ground track says 41.20 m over 5.66 m of sink,
-       7.28. The two bookkeeping ratios res/ships/README.md could be quoting are higher
-       by two named amounts, and both close on measurement:
-         * |lastLiftForce| over lastFlowDrag reads 8.12, and over the printed RAW bills
-           (Cd x A + Induced + Profile) x q reads 8.65 -- README's 8.6. The 6 % between
-           them is the --drag-cd multiplier: A= and Cd= print the raw hull product while
-           the force charges drag_cd x them (1.2 by default), exactly as tick.cpp:699
-           already says. Charge the bills and they DO add up: q x (1.2 CdA + Induced +
-           Profile) = 745.0 N against the 744.0 N this row's lastFlowDrag measures.
-         * 8.12 -> 7.19 is the numerator: the lift LAW's sum leaves a control surface's
-           deflection force out of lastLiftForce, and on this hull trimmed by a 12 deg
-           tab that is 12.9 % of the force holding it up (#699). */
+       sense, halves of lastAeroForce. lastFlowDrag is -(ftotal . flowHat), N (+ = the
+       air is holding the hull back; it goes negative when a co-rotating frame or a
+       parachute jink makes the air PUSH, which makes a ratio out of it meaningless
+       rather than large), and lastFlowLift is the perpendicular remainder -- the FULL
+       remainder, so with sideslip a fin's side force sits in it too: this is the
+       flow-plane split of the force, not the wing's lift. The --drag-log's Ld= is
+       lastFlowLift / lastFlowDrag (#694) because that is the ratio a glide ratio
+       equals: in the shipped skiff's settled 200 s glide it prints 7.19 while the
+       hull's own ground track says 41.20 m over 5.66 m of sink, 7.28.
+       It also agrees with the row's other ways of saying the same thing, which is what
+       #699 was for. On that glide: lastFlowLift 5350.2 N, |lastLiftForce| 5350.18 N,
+       and q x (1.2 CdA + Induced + Profile) 745.0 N against this row's 744.0 N of
+       lastFlowDrag. On flight/492's held trim, |lastLiftForce| over the CHARGED bills
+       reads 7.17 median -- this row's Ld, median 7.17. The word charged matters: A= and
+       Cd= print the RAW hull product while the force charges drag_cd x them (1.2 by
+       default, as tick.cpp's legend says; Induced= and Profile= already carry it), so a
+       ratio built from the printed numbers without that multiplier sits ~6 % high
+       (7.66 median there). res/ships/README.md's skiff L/D of 8.6 was built that way
+       AND on the pre-#699 lift sum -- stale, and which ratio it should lead with is
+       still #694's open call. */
     double lastFlowDrag = 0.0;
     double lastFlowLift = 0.0;
     /* One gate for both readouts of the flow split (#694): --drag-log's Ld= and the F4
