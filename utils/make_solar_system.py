@@ -383,19 +383,24 @@ def parse_planet(page):
 #                 The slip this catches measured +42%; before the 1-bar row was
 #                 parsed, Saturn and Neptune sat -47% and +100% invisible (#700).
 #   pressure 40%  p0 here is DERIVED (rho0 g H), so it carries two authored
-#                 numbers. Mars sits +35%, and its sheet states its pressure as
+#                 numbers. Mars sat +35% here until #698 fixed its column; the row
+#                 reads +3.2% now. Mars's sheet also states its pressure as
 #                 "variable from 4.0 to 8.7 mb depending on season" -- a 37%
 #                 spread on the sheet's own side.
 #   scale height 10%  a directly published figure, authored here in metres. This
-#                 is the tight one; one body sits outside it knowingly, see
-#                 FACT_AIR_KNOWN.
+#                 is the tight one: every shipped body is inside it, the widest
+#                 reading being Saturn +0.8%. FACT_AIR_KNOWN, which used to hold
+#                 two waivers, is empty. Quote the printed rows, not this comment
+#                 -- they move when an authored number moves, and this line is a
+#                 snapshot of one run.
 #   base temp 10% a layered table's first row against the sheet's "Average
 #                 temperature", which is a global mean rather than a sea-level
 #                 datum. Earth reads +0.1%.
 #   mass 30%     the sheet's "Total mass of atmosphere" row against 4 pi R^2 p0 / g
 #                 -- the same column weighed from a second direction, which is the
 #                 only way this guard can see p0, radius and g disagree rather than
-#                 merely disagree with one number. Mars sits +33% here (#698).
+#                 merely disagree with one number. Mars sat +33% here, which is what
+#                 filed #698; that row reads +1.6% since the column was fixed.
 #
 # Skipped, with the reason kept beside the code so a future widening is a
 # decision rather than a drift:
@@ -636,7 +641,10 @@ def check_fact_air(planets, parsed, verbose=True):
             # forever. Move the authored number past WAIVER_TOL and the waiver is
             # stale: refuse, and name the value it pinned. The giants' altitude is
             # the only air number their sheets guard, so it has to stay guarded --
-            # a filed 20 km argument must not shelter a future 200 km typo.
+            # an argument filed against 20 km must not shelter a future 200 km
+            # typo. FACT_AIR_KNOWN has been empty since #695 closed the only two
+            # waivers, which is the goal rather than the default: an empty table
+            # only means something because of this rule.
             if known is not None and abs(v - known[0]) <= WAIVER_TOL * known[0]:
                 cells[-1] += ' (waived)'
                 waived.append('%s %s: %s' % (name, key, known[1]))

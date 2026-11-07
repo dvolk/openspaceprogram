@@ -12,7 +12,10 @@ EXPECT [drag]
 # to a case: no keys, not keys holding zero.
 EXPECT T=- p=- a=- Mach=-
 CHECK len(drag) >= 2
-CHECK all(d["alt_asl"] > 200000.0 for d in drag)
+# Jool's air ends at an authored 275 km since #682 step 3, so its shell is 330 km and an
+# inertial bed is 1.25x that = 412.5 km. The old bound was the then-ceiling, 200 km; left
+# alone it would now sit 75 km UNDER the air and pass a hull that was scraping it.
+CHECK all(d["alt_asl"] > 300000.0 for d in drag)
 CHECK all(d["rho"] == 0.0 for d in drag)
 CHECK all(d["F"] == 0.0 for d in drag)
 CHECK all("airT" not in d and "mach" not in d for d in drag)

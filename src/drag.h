@@ -169,9 +169,10 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
    reaches far out in body radii (which is what a warm tall table does: 21 % of
    Laythe's radius at the ceiling against Kerbin's 14 %). Moving a ceiling OUT raises
    its gain rather than lowering it, so authoring the giants' tops bought Jool
-   1.38 -> 1.83x, Uranus 1.08 -> 1.21x, Saturn 1.11 -> 1.20x, Neptune and Jupiter
-   ~0.08x each: the ends of this table are unchanged, because the giants' ceilings
-   reach 0.6-4.6 % of their radii and the extremes are set by small warm worlds.
+   1.38 -> 1.83x, Uranus 1.08 -> 1.21x, Saturn 1.11 -> 1.20x and Neptune 1.08 ->
+   1.16x (Jupiter's pair is two lines up): the ends of this table are unchanged,
+   because the giants' ceilings reach 0.6-4.6 % of their radii and the extremes are
+   set by small warm worlds.
    What stays GEOMETRIC on purpose is everything the rest of the game
    measures altitude in: the `alt >= height` vacuum check above, the science bands, the
    shell (bodylimits.h), the spawn beds and the atlas disk. Z is arithmetic inside the

@@ -2,12 +2,14 @@
 """What a shipped atmosphere actually DOES aloft -- printed, with a band (#682, #685).
 
 A body's air top is not a rendering decision: top() sets shellEdge = max(100 km,
-1.2 top), so one number moves the rotating frame, the LowOrbit/HighOrbit bands, every
-spawn bed and the sky rim with it. And the top is where a satellite starts to decay, so
-the thing worth QUOTING about a top is the dynamic pressure a hull meets there. Until
-now that number was derived by hand, in gitignored scratch, per decision -- which is how
-#682 shipped on a pre-#683 number and turned out to put 2.7x more drag at Kerbin's edge
-than its own rationale claimed.
+1.2 top), so one number moves the rotating frame, the LowOrbit/HighOrbit bands and
+every spawn bed with it. (What it does NOT move is the rendered sky rim: terrain.h
+draws that from sea-level radius + terrain max height + a thickness, never from this
+key -- #56. A top moves the atlas disk, not the horizon.) The top is also where a
+satellite starts to decay, so the thing worth QUOTING about it is the dynamic pressure
+a hull meets there. Until now that number was derived by hand, in gitignored scratch,
+per decision -- which is how #682 shipped on a pre-#683 number and turned out to put
+2.7x more drag at Kerbin's edge than its own rationale claimed.
 
 This is a SECOND implementation of atmo.h's law, on purpose: T piecewise linear in
 GEOMETRIC altitude, p by QUADRATURE of -dp/dz = rho g(z) with g(z) = g R^2/(R+z)^2.
@@ -88,6 +90,12 @@ class Profile:
         self.name = body['name']
         mean_r = float(body.get('radius', 600000.0))
         self.radius = mean_r + float(su.get('sea_level', 0.0))
+        # Air needs a gravity row and a mass row (the column and the orbit through it).
+        # The Profile now feeds a build gate as well as a report, so name the body
+        # instead of letting a bare KeyError read as a bug in this file.
+        for key in ('g', 'mass'):
+            if key not in body:
+                raise ValueError('%s: atmosphere needs a %s row' % (self.name, key))
         self.g = float(body['g'])
         # atmo.h:datumGravity (#697). A file types g the way an atlas publishes it --
         # at the MEAN radius -- and the column is stacked on the datum sphere, so the
@@ -101,12 +109,15 @@ class Profile:
         self.Rs = K_GAS_R / self.M
         self.levels = at.get('layers') or []
         # atmo.h:top() -- an authored `height`, else 10 scale heights
-        # (atmo.h:kAtmoScaleHeights, duplicated here on purpose). A body with neither is
-        # a file the loader would refuse anyway, so say which one this is rather than
-        # raise a bare KeyError halfway through a report.
-        if 'height' in at:
+        # (atmo.h:kAtmoScaleHeights, duplicated here on purpose). The loader's test is
+        # `height > 0.0`, not "the key is present" (terragen.h:top()), so `"height": 0`
+        # must take the fallback here too -- a present-but-zero row is exactly what a
+        # typo writes, and a second spelling that disagrees only there is worthless.
+        # A body with neither is a file the loader refuses anyway, so name it rather
+        # than raise a bare KeyError halfway through a report.
+        if at.get('height', 0.0) > 0.0:
             self.top = float(at['height'])
-        elif 'scale_height' in at:
+        elif at.get('scale_height', 0.0) > 0.0:
             self.top = 10.0 * float(at['scale_height'])
         else:
             raise ValueError('%s: atmosphere has neither height nor scale_height' % self.name)

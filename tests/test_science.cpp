@@ -576,7 +576,9 @@ int main() {
         CHECK(orbitCutAlt(702000.0, 600000.0) == 112000.0);    // Kerbin: 1.2 x 85km + 10km
         // Under 83 1/3 km of air the floor decides instead, and the cut is 110 km.
         CHECK(orbitCutAlt(700000.0, 600000.0) == 110000.0);    // 100km shell + 10km
-        CHECK(orbitCutAlt(6240000.0, 6000000.0) == 250000.0);  // Jool: derived 240km shell
+        // A Jool-shaped fixture, not shipped Jool: since #682 step 3 authored air of
+        // 275 km gives it a 330 km shell, so its real cut is 340 km, not this 250 km.
+        CHECK(orbitCutAlt(6240000.0, 6000000.0) == 250000.0);  // 240km shell + 10km
         // A raised sea moves the datum AND the shell that sits on it, so the
         // cut over mean sea is unchanged: that is what two args guarantee.
         CHECK(orbitCutAlt(710000.0, 610000.0) == 110000.0);
