@@ -45,14 +45,17 @@ EXPECT [uilist] window="Systems" label="Active:     2475.0 W   (actuators, while
 EXPECT [uilist] window="Systems" label="Const draw: 600.0 W   (life support)"
 FORBID error:
 # How many rows the channel carries, per window: the Status verdict, five power rows and
-# two switch rows in Systems (#649's); one in Vessel Info. Which rows a window carries is a
+# three switch rows in Systems; one in Vessel Info. Which rows a window carries is a
 # UI decision that keeps moving, so these count what was DRAWN rather than trusting the
 # call-site list. power_test carries no fins at all, which is why Systems' aero switch row
 # is the "no aero surfaces on this hull" variant rather than the "nothing to push against"
 # one (#649's review pass caught the two being printed as one), and why Vessel Info shows
 # no Surface torque row. Game Debug stays closed here: F1 is not pressed, and its steering
 # rows are the ones [steerlog] covers now.
-CHECK len([l for l in out.split("\n") if l.rstrip().endswith(" text") and 'window="Systems"' in l]) == 8
+# The third switch row is the thruster-pod one ("no thruster pods on this hull"), which
+# c9735bc (#595) added beside the aero row and left this count at 8 for two days -- which is
+# precisely what the count is for, so it earned its keep rather than being tuned.
+CHECK len([l for l in out.split("\n") if l.rstrip().endswith(" text") and 'window="Systems"' in l]) == 9
 CHECK len([l for l in out.split("\n") if l.rstrip().endswith(" text") and 'window="Vessel Info"' in l]) == 1
 # The steering rows this case used to read off Game Debug are [steerlog]'s now, so the
 # window stays shut here -- and the asked/spent pair, which the 2026_11_05 pass took off

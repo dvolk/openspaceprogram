@@ -8,5 +8,8 @@ EXPECT idle: 100 ms/frame while the window is occluded/minimized
 # ever does, every e2e run silently drops to 10 fps and the render/present
 # columns of --perf stop meaning anything.
 FORBID [idle]
-FORBID idled
+# Same near-miss as render/154: `idled` alone now matches the `idled=0` counter every
+# [perf] window row prints (#676). The thing that must never appear under an offscreen
+# driver is the exit accounting for hidden frames.
+CHECK not re.search(r"idled\s+\d+ of those frames", out)
 FORBID error:

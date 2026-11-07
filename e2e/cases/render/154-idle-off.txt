@@ -8,5 +8,9 @@ EXPECT idle: off (--idle-fps 0)
 # line nor the counter may appear (a counter that counts hidden frames while
 # not idling would print "at 0 ms" and lie).
 FORBID [idle]
-FORBID idled
+# NOT `FORBID idled`: every [perf] window row carries an `idled=` counter since #676, so a
+# bare substring forbid matches `idled=0` and reddens a run that never idled -- which is how
+# this case went red on its own. What must not appear is the exit accounting for frames that
+# ran hidden, spelled exactly as render/153 pins its presence.
+CHECK not re.search(r"idled\s+\d+ of those frames", out)
 FORBID error:
