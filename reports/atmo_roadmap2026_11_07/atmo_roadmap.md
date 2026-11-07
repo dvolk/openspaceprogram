@@ -300,7 +300,14 @@ non-inverting profiles — an inversion goes below it, at the cost above.)
 > authoring decision. Kerbin's frame does not move (top 70 km, and
 > `bodylimits.h:shellEdge = max(100 km, 1.2 × top)` is already on its 100 km floor).
 >
-> **But what Kerbin's surface temperature *is* is a design decision, not a derivation.**
+> **But it is not free, and it is not a separate decision from the air top.** An Earth-like
+> datum puts 20× more air at 70 km (q 9.6 → 195 Pa), which cuts a Kerbin low orbit's decay
+> time constant from ~137 orbits to ~7 — §7 measures it. The top cannot pay for that, and
+> #683 changes the edge density again (3.78× on Kerbin). So #686 and #682 are one column,
+> and #683 should land before either is chosen.
+>
+> **And what Kerbin's surface temperature *is* remains a design decision, not a
+> derivation.**
 > 188 K may be what Kerbin is. If it is, the world is cold, thin-pressured and its seas
 > are ice, and the code should say so somewhere a player can read. What is not
 > acceptable is 188 K because 5500 was typed in 2024.
@@ -431,6 +438,64 @@ spawn beds and the atlas disk together. Kerbin's frame is already free to hold 7
 `shellEdge` is on its 100 km floor (`bodylimits.h:34`). The render sky rim is independent of
 all of it (`terrain.h:302`, `datum + max_height + thickness`, repeated for the cloud deck at
 `:317`) — moving the air does not move the sky.
+
+**The top is not a drag knob, and this is where "make the top bigger" and "fix the datum"
+collide.** Moving `height` changes only *where the air ends*; it changes nothing about the
+density below it. So an Earth-like Kerbin datum cannot be paid for by moving the top. What
+each candidate actually costs a 2 m capsule (1150 kg, ~3.1 m² broadside, `drag_forward` 0.35)
+in a circular Kerbin orbit:
+
+| Kerbin at | rho | q at circular | decel (Cd 0.35) | decay time constant |
+|---|---|---|---|---|
+| 70 km, today (H 5500, 188 K) | 3.6e-6 | 9.6 Pa | 0.009 m/s² | **137 orbits** |
+| 70 km, Earth's six levels at 288 K | 7.4e-5 | 195 Pa | 0.19 m/s² | **6.7 orbits** |
+| 85 km, same table, `height` 85 km | 6.7e-6 | 17 Pa | 0.017 m/s² | 73 orbits |
+| 88 km, same table, `height` 88 km | 3.9e-6 | 9.9 Pa | 0.010 m/s² | **125 orbits** |
+
+`τ = v / (q·Cd·A/m)` sampled at a fixed altitude — the e-folding of speed, a way to count
+orbits, not a reentry prediction (it ignores the orbit lowering through the density gradient,
+so the real numbers are shorter). What it is good for is *ratios*: the datum fix costs a
+factor of ~20 at every altitude below the top, and no top choice changes that.
+
+Read that as: **a warm Kerbin datum and a boost-free *low* orbit are the same knob.** The
+edge of the air can be put back where it is today by raising `height` to ~88 km — that
+lands q at the top on 9.9 Pa against today's 9.6 Pa — but 70 km stops being a parking
+orbit either way, because the column beneath the top is what sets the drag. At a fixed
+gravity the surface pressure and the edge density are **one column**: scaling the same
+288 K table down until it holds today's 3.6e-6 kg/m³ at 70 km lands on `rho0` 0.060, a
+**4,981 Pa surface — 4.9 % of Earth's**. A warm Kerbin with today's low-orbit drag budget
+is a near-vacuum world. There is no combination of Earth-like pressure, Earth-like
+temperatures aloft, and today's 70 km envelope at Kerbin's 600 km radius. Pick two.
+
+What that *buys* is worth naming, because it is the gameplay claim the user made: Kerbin's
+hard top means **anything above ~90 km is vacuum and never needs boosting.** Earth has no
+such shortcut — the ISS at 400 km reboosts. Kerbin's air is 11.7 % of its radius, so "get
+above the air" is a cheap, legible design; a real Earth-sized world cannot offer it. That
+is a simplification to keep and state, not to apologise for.
+
+Two hard constraints on how far a top can go, both new:
+
+- **A layer table bounds its own `height`.** `atmo.h:141-143` requires T > 0 at every
+  level's ceiling, so a cooling last level caps the top at `base_alt + base_T / |lapse|`
+  no matter what the file types. Earth's 1976 table tops out at **178.3 km**; the
+  six-level Kerbin option at **147.7 km**. The user's "100–200 km for Earth" is reachable
+  at the low end and *refused at load* above 178 km — and the reason the real atmosphere
+  stays thick up there is the thermosphere, which runs hot and rising, i.e. exactly the
+  drag we are choosing not to simulate.
+- **#683 moves the top's density by 1.01–5.4×** (§7 above), which on Kerbin is 3.78× —
+  worth about **7 km of top height** at q's logarithmic sensitivity. So choosing a top
+  before #683 lands means choosing it twice, which is the ordering claim.
+
+And on "should the top be computed rather than authored": today's computed rule
+(`top = 10 × H`) is a **ratio** rule — it always puts the edge at `rho/rho0 = e^-10`,
+4.5e-5 of the datum — while drag cares about the **absolute** number. Measured across the
+catalogue, that one rule produces edge densities from 4.5e-7 to 3.0e-3 kg/m³ and edge q
+from **0.2 Pa on Duna to 77 kPa on Venus** (Titan 389 Pa, Jool 2.1 kPa, Neptune 5.6 kPa,
+Jupiter 6.6 kPa). Seven orders of magnitude is not a rule, it is an accident of `rho0`.
+So: **keep the top authored, and compute the consequence** — have #685's harness print q at
+each body's top against a band, so "Venus's edge is a wall of air" is a number the build
+reports instead of a discovery in play. Authoring the target and checking the derived edge
+is the same discipline as everywhere else in this file.
 
 **Other simplifications to keep, and to name so nobody re-files them:** one gamma per gas
 rather than temperature-dependent; composition uniform with altitude (no homopause, no
@@ -564,22 +629,26 @@ red.**
 
 Not a commitment — the reason-order, given the couplings above.
 
-1. **#686 — Kerbin's datum (§4).** A decision, not a derivation: what is Kerbin's surface
-   temperature and pressure? If Earth-like, give it a 7-level table (option C, measured
-   above) rather than a bigger scale height (option B, which 84×'s the air at the home
-   world's air top). Highest credibility per unit work in this document, and it is
-   blocking the expert test on the world players actually fly. **Needs your answer about
-   what Kerbin *is* — it is not derivable.** Shay, Laythe and Duna ride the same decision.
-2. **#683 geopotential height.** Exact, cheap arithmetic, and it must precede the air-top
-   decision because it makes the residual air at a top denser by **1.01–5.4×** depending on
-   the body — 3.8× on Kerbin, 5.4× on Duna, 1.04× on Jupiter (§7).
-3. **#682 where the air ends** — decided as a *pair*: the height and the falloff. Make
-   Earth and Kerbin's choices in the same breath as their profile shapes.
-4. **#685 + the profile harness (§8)** — and the first thing the harness will find is that
-   **Saturn, Uranus and Neptune's densities are −47 %, +43 % and +100 % off their own fact
-   sheets, and Uranus's scale height is −28 % off** (§3b). Fixing those four numbers is
-   data authoring, needs no decision from anyone, and is the cheapest accuracy win
-   available. Pluto wants authoring from its sheet; Titan has no sheet.
+1. **#685 + the profile harness (§8), and the four authoring fixes it will immediately
+   find.** The harness is the measuring stick for everything below, and its first output is
+   free accuracy: **Saturn, Uranus and Neptune's densities are −47 %, +43 % and +100 % off
+   their own fact sheets, and Uranus's scale height is −28 % off** (§3b). Fixing those four
+   numbers is data authoring — no decision from anyone, no new code beyond the guard. Pluto
+   wants authoring from its sheet; Titan wants a sheet vendored first.
+2. **#683 geopotential height.** Exact, cheap arithmetic, and it must precede any air-top or
+   datum decision because it changes the density at every top by **1.01–5.4×** depending on
+   the body — 3.8× on Kerbin, 5.4× on Duna, 1.04× on Jupiter (§7). Deciding a top first means
+   deciding it twice.
+3. **The Kerbin decision — datum, level table and top, taken as one thing (#686 + #682
+   together).** §4 and §7 measure why they are one column: an Earth-like datum costs 20× the
+   air at 70 km (a low orbit's decay time constant falls from ~137 orbits to ~7), and no
+   choice of `height` pays that back. If Earth-like, six levels (Earth's 71 km row makes the
+   load refuse the table on a 70 km body), not a bigger scale height. **Needs your answer
+   about what Kerbin *is* — it is not derivable.** Shay, Laythe and Duna ride the same
+   decision.
+4. **#682's remaining half — the tops on the other bodies**, decided as *pairs* (the height
+   and how fast it dies), and bounded by what a level table can reach: Earth's 1976 levels
+   cap `height` at 178.3 km before the loader refuses them (§7).
 5. **#625 the remaining bodies' profiles** — with §4's lesson written into the ticket: a
    scale height is a surface temperature, so a height is never a drive-by. §3b adds the
    other half: the giants want tables because their data cannot be one column at all.

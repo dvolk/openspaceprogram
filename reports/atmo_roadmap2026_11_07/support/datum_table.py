@@ -97,6 +97,8 @@ class Column:
             hi = self.L[i + 1]["alt"] if i + 1 < len(self.L) else self.top
             if alt < hi:
                 T = l["T"] + l["lapse"] * (alt - l["alt"])
+                if not (T > 0.0):
+                    return 0.0, 0.0, 0.0   # drag.h:117 -- a lapse that walked T through 0 is vacuum
                 p = level_pressure(l, alt, self.bases[i], self.g, self.Rs)
                 return T, p, p / (self.Rs * T)
         return 0.0, 0.0, 0.0
@@ -329,6 +331,137 @@ def main():
     print("  (height 70 km) is refused at load -- atmo.h:131 needs L.back().base_alt < top,")
     print("  and Earth's last level is based at 71 km. C above is Earth's first SIX levels;")
     print("  the 71 km row never governs below 70 km, so dropping it changes nothing.")
+
+    print()
+    print("=" * 100)
+    print("6. what a 288 K Kerbin costs the player, and where its top has to sit to stay")
+    print("   boost-free at the edge (the #686 x #682 coupling)")
+    print("=" * 100)
+    R = radii[("ksp_s", "Kerbin")]
+
+    def vcirc(z):
+        return math.sqrt(g * R * R / (R + z))   # mu = g R^2
+
+    def qcol(c, z):
+        _, p, r = c.at(z)
+        return r, 0.5 * r * vcirc(z) ** 2, p
+
+    print("  Density and circular-orbit q at the altitude players actually use. Baseline is")
+    print("  what ships today (option A: H 5500, top 70 km).")
+    print("  %-9s %14s %14s %14s" % ("alt m", "A rho / q", "C top 70 km", "C top 100 km"))
+    C70 = Column(g, rho0, dry, EARTHL[:6], 70000.0, None)
+    C100 = Column(g, rho0, dry, EARTHL[:6], 100000.0, None)
+    for z in (20000, 40000, 60000, 70000 - 1, 85000 - 1, 100000 - 1):
+        ra, qa, _ = qcol(A, z)
+        rc, qc, _ = qcol(C70, z)
+        rd, qd, _ = qcol(C100, z)
+        print("  %-9d %8.2e %5.1fPa %8.2e %5.1fPa %8.2e %5.1fPa"
+              % (z, ra, qa, rc, qc, rd, qd))
+    print("\n  Where option C's edge drag EQUALS today's edge drag (q 9.6 Pa at circular):")
+    lo, hi = 70000.0, 400000.0
+    for _ in range(60):
+        mid = 0.5 * (lo + hi)
+        c = Column(g, rho0, dry, EARTHL[:6], mid, None)
+        _, qq, _ = qcol(c, mid - 1)
+        if qq > 9.6:
+            lo = mid
+        else:
+            hi = mid
+    print("    top = %.0f km puts the edge at q %.1f Pa, rho %.2e (= rho0 x %.1e)"
+          % (lo / 1000, qcol(Column(g, rho0, dry, EARTHL[:6], lo, None), lo - 1)[1],
+             qcol(Column(g, rho0, dry, EARTHL[:6], lo, None), lo - 1)[0],
+             qcol(Column(g, rho0, dry, EARTHL[:6], lo, None), lo - 1)[0] / rho0))
+    print("    T there: %.1f K.  Ten datum scale heights would be %.0f km, so the layered"
+          % (Column(g, rho0, dry, EARTHL[:6], lo, None).at(lo - 1)[0], 10 * C70.eff_H() / 1000))
+    print("    tail needs slightly MORE than 10H to thin to the same q as today.")
+
+    print("\n  What a 'computed top' really means, per body: top = 10 x H (today's rule when")
+    print("  no height is authored) always puts the edge at rho/rho0 = e^-10 = 4.5e-5. The")
+    print("  number drag actually cares about is the ABSOLUTE edge density and the q it gives")
+    print("  at that body's circular speed -- and those differ by seven orders of magnitude.")
+    print("  %-6s %-8s %9s %10s %12s %12s %11s" %
+          ("sys", "body", "top km", "edge rho", "q at circ", "rho/rho0", "10H km"))
+    for key, c in sorted(cols.items(), key=lambda kv: -qcol(kv[1], kv[1].top - 1)[1]):
+        Rb = radii[key]
+        r, q, _ = qcol(c, c.top - 1.0)
+        vc = math.sqrt(c.g * Rb * Rb / (Rb + c.top))
+        print("  %-6s %-8s %9.0f %10.2e %12.1f %12.2e %11.0f"
+              % (key[0], key[1], c.top / 1000, r, 0.5 * r * vc * vc, r / c.rho0,
+                 10.0 * c.eff_H() / 1000))
+
+    print("\n  Earth's authored 1976 levels put a hard ceiling on their own `height`, and it is")
+    print("  a LOAD refusal rather than a silent vacuum: resolveAtmoLevels (atmo.h:141-145)")
+    print("  demands T > 0 at every level's ceiling, so a cooling last level bounds the top at")
+    print("  base_alt + base_T / |lapse| no matter what the file types.")
+    E = cols[("solar", "Earth")]
+    Re = radii[("solar", "Earth")]
+    drym = [{"gas": "N2", "fraction": 0.78084}, {"gas": "O2", "fraction": 0.20946},
+            {"gas": "Ar", "fraction": 0.00934}, {"gas": "CO2", "fraction": 0.00033}]
+
+    def loads(layers, top):
+        """atmo.h:141-145, the ceiling check: every level must still be above 0 K at its own
+        ceiling (the next base or the top)."""
+        for i, l in enumerate(layers):
+            ceil = min(layers[i + 1]["alt"] if i + 1 < len(layers) else top, top)
+            if ceil > l["alt"] and not (l["T"] + l["lapse"] * (ceil - l["alt"]) > 0.0):
+                return False
+        return True
+
+    for topk in (85000.0, 100000.0, 120000.0, 150000.0, 179000.0, 200000.0):
+        c = Column(E.g, E.rho0, drym, E.L, topk, None)
+        T, p, r = c.at(topk - 1)
+        vc = math.sqrt(E.g * Re * Re / (Re + topk))
+        print("    top %3.0f km: %-8s T %7.1f K  rho %9.2e  q at circular %9.1f Pa  shell %5.0f km"
+              % (topk / 1000, "loads" if loads(E.L, topk) else "REFUSED",
+                 T, r, 0.5 * r * vc * vc, max(100e3, 1.2 * topk) / 1000))
+    print("    -> Earth's 7 levels top out at %.1f km (the 71 km level: 214.65 K / 0.002 K/m)."
+          % ((71000 + 214.65 / 0.002) / 1000))
+    print("       Kerbin's six-level option tops out at %.1f km (the 51 km level: 270.65 K,"
+          % ((51000 + 270.65 / 0.0028) / 1000))
+    print("       lapse -0.0028). A 200 km Earth needs a NEW level, and the real thermosphere")
+    print("       up there is HOT and rising -- i.e. thicker air, which is exactly the drag we")
+    print("       are choosing not to simulate.")
+
+    print("\n  Kerbin, the same six-level table, edge numbers per candidate top:")
+    for topk in (70000.0, 80000.0, 85000.0, 88000.0, 100000.0, 120000.0, 150000.0):
+        c = Column(g, rho0, dry, EARTHL[:6], topk, None)
+        r, q, _ = qcol(c, topk - 1)
+        print("    top %3.0f km: %-8s q at circular %7.1f Pa  rho %9.2e  shell %5.0f km"
+              % (topk / 1000, "loads" if loads(EARTHL[:6], topk) else "REFUSED",
+                 q, r, max(100e3, 1.2 * topk) / 1000))
+
+    print("\n  ... and the same table with its DENSITY scaled, to ask whether a warm Kerbin")
+    print("  could keep today's edge density at all. Today rho(70 km) = 3.64e-06.")
+    _, _, edge_today = A.at(70000 - 1)
+    _, _, edge_C = C70.at(70000 - 1)
+    for scale in (1.0, 0.5, 0.1, edge_today / edge_C):
+        c = Column(g, rho0 * scale, dry, EARTHL[:6], 70000.0, None)
+        rr, qq, _ = qcol(c, 70000 - 1)
+        print("    rho0 %7.4f -> p0 %9.0f Pa (%4.1f %% of Earth), rho(70 km) %9.2e, q %7.1f Pa"
+              % (rho0 * scale, c.p0, 100.0 * c.p0 / 101325.0, rr, qq))
+    print("    -> holding today's edge density at a 288 K datum needs rho0 %.4f, i.e. a"
+          % (rho0 * edge_today / edge_C))
+    print("       %.0f Pa surface (%.1f %% of Earth): a warm Kerbin with today's low-orbit"
+          % (rho0 * edge_today / edge_C * g * C70.eff_H(),
+             100 * rho0 * edge_today / edge_C * g * C70.eff_H() / 101325.0))
+    print("       drag budget is a near-vacuum world. The datum and the flight envelope are")
+    print("       one column, not two knobs.")
+
+    print("\n  Orbital decay, for scale: a 2 m capsule (capsule in res/data/parts.json:")
+    print("  mass 1149.82 kg, radius 1.0 m -> ~3.14 m^2 broadside, drag_forward 0.35).")
+    for z, rr in ((70000 - 1, 3.638e-06), (70000 - 1, 7.40e-05), (85000 - 1, 6.68e-06),
+                  (88000 - 1, 3.86e-06)):
+        vc = math.sqrt(g * R * R / (R + z))
+        qq = 0.5 * rr * vc * vc
+        per = 2 * math.pi * (R + z) / vc
+        a = qq * 0.35 * math.pi / 1149.82
+        print("    %6.1f km  q %7.1f Pa  a %6.4f m/s^2  tau %8.0f s = %5.1f orbits"
+              % (z / 1000, qq, a, vc / a, (vc / a) / per))
+
+    print("\n  Frame cost of moving a top (bodylimits.h:34, shellEdge = max(100 km, 1.2 x top)):")
+    for topk in (70000.0, 85000.0, 100000.0, 120000.0):
+        print("    top %3.0f km -> shellEdge %5.0f km, LowOrbit band %.0f km wide"
+              % (topk / 1000, max(100e3, 1.2 * topk) / 1000, 0.2 * topk / 1000))
 
     print("\nshellEdge law (bodylimits.h): max(100 km, 1.2 x top) -> %.0f km for a 70 km top"
           % (max(100e3, 1.2 * top) / 1000))

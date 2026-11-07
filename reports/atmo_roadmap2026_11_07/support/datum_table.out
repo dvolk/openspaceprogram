@@ -142,4 +142,92 @@ residual air at the top, and q at Kerbin circular orbit:
   and Earth's last level is based at 71 km. C above is Earth's first SIX levels;
   the 71 km row never governs below 70 km, so dropping it changes nothing.
 
+====================================================================================================
+6. what a 288 K Kerbin costs the player, and where its top has to sit to stay
+   boost-free at the edge (the #686 x #682 coupling)
+====================================================================================================
+  Density and circular-orbit q at the altitude players actually use. Baseline is
+  what ships today (option A: H 5500, top 70 km).
+  alt m          A rho / q    C top 70 km   C top 100 km
+  20000     3.23e-02 91924.9Pa 8.79e-02 250477.6Pa 8.79e-02 250477.6Pa
+  40000     8.50e-04 2346.3Pa 3.84e-03 10603.6Pa 3.84e-03 10603.6Pa
+  60000     2.24e-05  59.9Pa 2.87e-04 769.1Pa 2.87e-04 769.1Pa
+  69999     3.64e-06   9.6Pa 7.40e-05 195.0Pa 7.40e-05 195.0Pa
+  84999     0.00e+00   0.0Pa 0.00e+00   0.0Pa 6.68e-06  17.2Pa
+  99999     0.00e+00   0.0Pa 0.00e+00   0.0Pa 3.11e-07   0.8Pa
+
+  Where option C's edge drag EQUALS today's edge drag (q 9.6 Pa at circular):
+    top = 88 km puts the edge at q 9.6 Pa, rho 3.74e-06 (= rho0 x 3.1e-06)
+    T there: 166.6 K.  Ten datum scale heights would be 84 km, so the layered
+    tail needs slightly MORE than 10H to thin to the same q as today.
+
+  What a 'computed top' really means, per body: top = 10 x H (today's rule when
+  no height is authored) always puts the edge at rho/rho0 = e^-10 = 4.5e-5. The
+  number drag actually cares about is the ABSOLUTE edge density and the q it gives
+  at that body's circular speed -- and those differ by seven orders of magnitude.
+  sys    body        top km   edge rho    q at circ     rho/rho0      10H km
+  solar  Venus          160   2.95e-03      77168.7     4.54e-05         160
+  solar  Titan          200   2.41e-04        389.3     4.54e-05         200
+  ksp_s  Laythe          50   1.38e-04        246.3     1.13e-04          55
+  ksp_s  Jool           200   9.08e-05       2068.9     4.54e-05         200
+  ksp_s  Shay            60   5.56e-05        124.0     4.54e-05          60
+  solar  Neptune        200   4.09e-05       5625.7     4.54e-05         200
+  solar  Uranus         200   2.72e-05       3087.2     4.54e-05         200
+  solar  Earth           85   6.67e-06        205.9     5.44e-06          84
+  solar  Jupiter        270   7.26e-06       6556.2     4.54e-05         270
+  ksp_s  Eve             90   4.43e-06         22.9     2.61e-06          70
+  ksp_s  Kerbin          70   3.64e-06          9.6     2.97e-06          55
+  solar  Saturn         600   4.54e-06       1463.5     4.54e-05         600
+  solar  Mars           115   9.08e-07          5.6     4.54e-05         115
+  ksp_s  Duna            50   4.47e-07          0.2     3.73e-06          40
+
+  Earth's authored 1976 levels put a hard ceiling on their own `height`, and it is
+  a LOAD refusal rather than a silent vacuum: resolveAtmoLevels (atmo.h:141-145)
+  demands T > 0 at every level's ceiling, so a cooling last level bounds the top at
+  base_alt + base_T / |lapse| no matter what the file types.
+    top  85 km: loads    T   186.7 K  rho  6.67e-06  q at circular     205.9 Pa  shell   102 km
+    top 100 km: loads    T   156.7 K  rho  3.97e-07  q at circular      12.2 Pa  shell   120 km
+    top 120 km: loads    T   116.7 K  rho  3.44e-09  q at circular       0.1 Pa  shell   144 km
+    top 150 km: loads    T    56.7 K  rho  3.05e-14  q at circular       0.0 Pa  shell   180 km
+    top 179 km: REFUSED  T     0.0 K  rho  0.00e+00  q at circular       0.0 Pa  shell   215 km
+    top 200 km: REFUSED  T     0.0 K  rho  0.00e+00  q at circular       0.0 Pa  shell   240 km
+    -> Earth's 7 levels top out at 178.3 km (the 71 km level: 214.65 K / 0.002 K/m).
+       Kerbin's six-level option tops out at 147.7 km (the 51 km level: 270.65 K,
+       lapse -0.0028). A 200 km Earth needs a NEW level, and the real thermosphere
+       up there is HOT and rising -- i.e. thicker air, which is exactly the drag we
+       are choosing not to simulate.
+
+  Kerbin, the same six-level table, edge numbers per candidate top:
+    top  70 km: loads    q at circular   195.0 Pa  rho  7.40e-05  shell   100 km
+    top  80 km: loads    q at circular    41.0 Pa  rho  1.58e-05  shell   100 km
+    top  85 km: loads    q at circular    17.2 Pa  rho  6.68e-06  shell   102 km
+    top  88 km: loads    q at circular     9.9 Pa  rho  3.86e-06  shell   106 km
+    top 100 km: loads    q at circular     0.8 Pa  rho  3.11e-07  shell   120 km
+    top 120 km: loads    q at circular     0.0 Pa  rho  7.01e-10  shell   144 km
+    top 150 km: REFUSED  q at circular     0.0 Pa  rho  0.00e+00  shell   180 km
+
+  ... and the same table with its DENSITY scaled, to ask whether a warm Kerbin
+  could keep today's edge density at all. Today rho(70 km) = 3.64e-06.
+    rho0  1.2250 -> p0    101325 Pa (100.0 % of Earth), rho(70 km)  7.40e-05, q   195.0 Pa
+    rho0  0.6125 -> p0     50662 Pa (50.0 % of Earth), rho(70 km)  3.70e-05, q    97.5 Pa
+    rho0  0.1225 -> p0     10132 Pa (10.0 % of Earth), rho(70 km)  7.40e-06, q    19.5 Pa
+    rho0  0.0602 -> p0      4981 Pa ( 4.9 % of Earth), rho(70 km)  3.64e-06, q     9.6 Pa
+    -> holding today's edge density at a 288 K datum needs rho0 0.0602, i.e. a
+       4981 Pa surface (4.9 % of Earth): a warm Kerbin with today's low-orbit
+       drag budget is a near-vacuum world. The datum and the flight envelope are
+       one column, not two knobs.
+
+  Orbital decay, for scale: a 2 m capsule (capsule in res/data/parts.json:
+  mass 1149.82 kg, radius 1.0 m -> ~3.14 m^2 broadside, drag_forward 0.35).
+      70.0 km  q     9.6 Pa  a 0.0092 m/s^2  tau   250398 s = 136.6 orbits
+      70.0 km  q   195.0 Pa  a 0.1865 m/s^2  tau    12310 s =   6.7 orbits
+      85.0 km  q    17.2 Pa  a 0.0165 m/s^2  tau   137887 s =  72.7 orbits
+      88.0 km  q     9.9 Pa  a 0.0095 m/s^2  tau   239146 s = 125.3 orbits
+
+  Frame cost of moving a top (bodylimits.h:34, shellEdge = max(100 km, 1.2 x top)):
+    top  70 km -> shellEdge   100 km, LowOrbit band 14 km wide
+    top  85 km -> shellEdge   102 km, LowOrbit band 17 km wide
+    top 100 km -> shellEdge   120 km, LowOrbit band 20 km wide
+    top 120 km -> shellEdge   144 km, LowOrbit band 24 km wide
+
 shellEdge law (bodylimits.h): max(100 km, 1.2 x top) -> 100 km for a 70 km top
