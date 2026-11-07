@@ -76,10 +76,14 @@ CHECK all(0.78 < d["a"] < 0.90 for d in drag if d.get("a"))
 CHECK all(0.55 < d["cd"] < 0.62 for d in drag)
 CHECK all(0.35 < d["profile"] < 0.65 for d in drag if d.get("profile") is not None)
 # None-guarded because #560 made Induced= dashable: every row of this run has a usable
-# flow, so all 40 print a number, but max() over a dict comprehension that can yield None
+# flow, so all 50 print a number, but max() over a dict comprehension that can yield None
 # is a TypeError waiting for the first row that does not. The floor check below was
 # already guarded for the same reason.
-CHECK max(d["induced"] for d in drag if d.get("induced") is not None) < 0.90
+# The ceiling comes down with the run: 0.90 defended the OLD air's top, where #543 A5's
+# compressibility correction priced 0.59. #686's arc reaches Mach 0.26 rather than 0.305,
+# that correction is smaller, and the top of this run is 0.513 -- so a ceiling 1.75x the
+# maximum it guards stopped being a wall. 0.60 is 0.09 of slack over the measured row.
+CHECK max(d["induced"] for d in drag if d.get("induced") is not None) < 0.60
 # ... and it is billed AT ALL. Smallest bill of this run: 0.100 m2, on the fast row
 # where the wing is nearly unloaded. A ceiling with no floor stays green if the law stops
 # charging -- an AR of zero short-circuits inducedCd in drag.h, and a pane that falls out

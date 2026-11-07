@@ -308,8 +308,8 @@ static int check_air(const char *path, const System &sys) {
             if(std::fabs(r - w.rho) > 1e-4 * w.rho) {
                 printf("  %s: %s air at %.0f m reads %.6e kg/m3, want %.6e (x%.3f)."
                        " The column is weighed in the body's own 1/r^2 field, so a"
-                       " profile that lost its radius still reads plausible -- 3.8x"
-                       " too thin at Kerbin's top (#683)\n",
+                       " profile that lost its radius still reads plausible -- x2.8"
+                       " too thin at Kerbin's 70 km row, x4.6 at its 85 km top (#683)\n",
                        path, w.name, w.alt, r, w.rho, r / w.rho);
                 bad++;
             }

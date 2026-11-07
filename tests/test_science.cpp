@@ -573,6 +573,8 @@ int main() {
     {
         // 112 km is Kerbin as shipped since #682: its 85 km air makes shellEdge take
         // the 1.2x top (102 km) rather than the kMinShell floor, + the 10 km margin.
+        CHECK(orbitCutAlt(702000.0, 600000.0) == 112000.0);    // Kerbin: 1.2 x 85km + 10km
+        // Under 83 1/3 km of air the floor decides instead, and the cut is 110 km.
         CHECK(orbitCutAlt(700000.0, 600000.0) == 110000.0);    // 100km shell + 10km
         CHECK(orbitCutAlt(6240000.0, 6000000.0) == 250000.0);  // Jool: derived 240km shell
         // A raised sea moves the datum AND the shell that sits on it, so the

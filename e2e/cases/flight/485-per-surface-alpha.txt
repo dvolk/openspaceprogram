@@ -107,11 +107,14 @@ CHECK all(abs(f - r) < 0.6 for f,r in zip([s["a"] for s in surface][4::10],[s["a
 CHECK all(2.3 < a < 3.2 for a in [s["a"] for s in surface][0::10])
 CHECK max(abs(f) for f,t in zip([s["a"] for s in surface][4::10],[d["t"] for d in drag]) if t >= 44.0) < 0.3
 # q is the pressure of the flow AT the surface (#483), not one ship-wide number, and the
-# log shows it: the widest row of this run splits 52 Pa between the two wingtips (744 on
-# wing_l, 779 on wing_r at t=29 s) and the split FLIPS SIGN with the yaw -- t=27 reads
-# wing_l 578 over wing_r 544, t=29 the other way -- which is omega x r across a 16 m
-# span, a metre or so per second of sideways flow at the tip while the hull is turning
-# through its kick. A quiet row prints all ten parts within 1 Pa of each other.
+# log shows it: the widest wing-tip split of this run is 35 Pa (744 on wing_l, 779 on
+# wing_r at t=29 s) and the split FLIPS SIGN with the yaw -- t=27 reads wing_l 578 over
+# wing_r 544, t=29 the other way -- which is omega x r across a 16 m span, a metre or
+# so per second of sideways flow at the tip while the hull is turning
+# through its kick. The same row spans 52 Pa across all ten parts (736..788): the two
+# outermost plates pay the sweep and the ones near the rotation axis do not, so the row
+# spread is always at least the tip split. A quiet row prints all ten parts within 1 Pa
+# of each other.
 # Sampled on every part of every row rather than one survivor: the shared band against
 # the hull's own 0.5*rho*v^2 is 0.955..1.046 across all 500 values, the residual being
 # the substep between the aero pass and the log line plus that per-part spread.
@@ -119,5 +122,7 @@ CHECK max(abs(f) for f,t in zip([s["a"] for s in surface][4::10],[d["t"] for d i
 # parts onto one row, and the CHECK sandbox has no range().)
 CHECK all(0.92 < sp["q"] / (0.5 * d["rho"] * d["v"] * d["v"]) < 1.08 for d, sp in zip([r for r in drag for _ in surface[0:10]], surface))
 # ... and the twins disagree where they should: the wing pair's q is not one number.
+# This one reads the mirrored wing pair only -- 35 Pa measured against a 30 Pa floor, so
+# it reddens if a per-part flow stops being per-part.
 CHECK max(abs(l["q"] - r["q"]) for l, r in zip(surface[0::10], surface[1::10])) > 30.0
 FORBID error:

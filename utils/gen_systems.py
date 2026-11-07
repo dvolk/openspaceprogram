@@ -261,10 +261,13 @@ SURFACES = {
         # as T0 187.96 K at 66.1 kPa with a 275 m/s sound speed, which is pinned at
         # tests/test_scenarios.cpp and is what every Mach number and barometer on the home world
         # has been paying. Warm and thin cannot both come from one exponential: isothermal at
-        # 288.15 K wants H 8432 m, which puts 84x more air at the top than 5500 does. A LAYER
-        # TABLE is the shape that pays both -- Earth's profile, thinned aloft by its own
-        # inversions -- so Kerbin now wears the same 1976 rows Earth does, and the generator
-        # converts them against a 600 km radius instead of a 6371 km one. That conversion is not
+        # 288.15 K wants H 8432 m, which would put x111 more air at an 85 km top than 5500 does
+        # -- weighed in the body's own 1/r^2 field the way the loader weighs it (#683; the
+        # uniform column says x84 at 70 km, which is the number this note used to quote). A
+        # LAYER TABLE is the shape that pays both: it keeps the warm datum and spends most of
+        # that back aloft, landing x23 at the top rather than x111 -- so Kerbin now wears the
+        # same 1976 rows Earth does, and the generator converts them against a 600 km radius
+        # instead of a 6371 km one. That conversion is not
         # cosmetic here: the 11 km row moves 19 m on Earth and 205.4 m here, and the 51 km row
         # 412 m vs 4,737.7 m (#690, utils/atmo_units.py).
         #

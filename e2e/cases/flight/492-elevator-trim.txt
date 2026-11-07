@@ -38,7 +38,9 @@ CHECK all(3.8 < d["aoa"] < 5.0 for d in drag if d["aoa"] is not None and d["t"] 
 # worth saying out loud:
 # res/ships/README.md's 23.1 m/s is arithmetic at low Mach (5.45 kN of weight over the
 # authored slope at the wing's 20.1 deg stall angle) in the 7 km air at rho 0.346 that
-# number was written against; in #686's air the same arithmetic lands near 19 m/s. The
+# number was written against. The same arithmetic in #686's air prints 17.7 m/s back at
+# 7 km (rho 0.594, which is the row README carries now) and near 19 m/s up HERE, at the
+# 8.5 km bed in rho 0.502 -- the two differ by 1/sqrt(rho), not by a law. The
 # slow rows are not equilibrium flight anyway: at 30.2 m/s the law bills |L| = 2.4 kN
 # against a 5.6 kN weight, which is a hull trading speed for height rather than one
 # holding it. What the floor guards is the arc punching clean through the bottom of the
@@ -82,6 +84,14 @@ CHECK min(d["v"] for d in drag if d["t"] >= 34.0) > 25.0
 # Pinned on the PITCH axis, because this run also kicks the rudder (Beta swings 14.6 deg)
 # and an unpinned "any surface is well off neutral" would pass on that alone.
 CHECK all(0.25 < d["induced"] < 0.40 for d in drag if d.get("induced") is not None and d.get("beta") is not None and abs(d["beta"]) < 4.0 and d["t"] < 25.0)
+# ... and on the OTHER side of the departure. The `t < 25.0` cutoff above stops at the
+# kick, which is also what would hide a drift in the half this run reaches after recovery:
+# the pre-kick band says nothing once the airframe has come back, and its rows would still
+# pass at 0.39. So read the settled tail too: from t=40 s on the tab bills 0.333..0.390 m2
+# (11 rows, |Beta| < 4), the same standing bill it carried INTO the excursion. "It
+# recovers" is pinned above on AoA and speed; this says it recovers TRIMMED, with the
+# trim download the tab has been paying all along still the one paying it.
+CHECK all(0.30 < d["induced"] < 0.42 for d in drag if d.get("induced") is not None and d.get("beta") is not None and abs(d["beta"]) < 4.0 and d["t"] >= 40.0)
 CHECK max(d["induced"] for d in drag if d.get("induced") is not None) > 0.75
 CHECK any(c["axis"] == "pitch" for c in ctrl)
 CHECK all(11.5 < abs(c["deg"]) < 12.5 for c in ctrl if c["axis"] == "pitch")
