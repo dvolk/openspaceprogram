@@ -216,6 +216,25 @@ inline constexpr double kAtmoPoleTol = 1.0;
    digit (shipped Daphnis sits 10 % off its own implied field, harmlessly). */
 inline constexpr double kAtmoGravityTol = 0.02;
 
+/* The field a body's air is weighed IN, at the sphere that air STARTS on (#697).
+   A system file types `g` the way an atlas publishes it -- at the body's MEAN
+   radius -- while a profile is stacked on the sea-level DATUM sphere
+   (terrain.h:seaLevelRadius(): radius + sea_level), and levelPressure's falloff
+   g radius^2/(radius+z)^2 counts z from THAT sphere. Hand it the typed number and
+   the file has just claimed its datum sits at the mean radius: every kg of air is
+   then weighed in a field too strong by (sea-level radius / mean radius)^2 -- 4.0 %
+   on a 12 km sea, and 0.19 % on the 600 m one the 245 fixture ships, which is under
+   notice but is the same error. Every shipped body has sea_level 0, so this returns
+   the typed g unchanged: the rule costs nothing today and it is what makes a raised
+   sea a world rather than a 4 % barometer bug. The kAtmoGravityTol guard above
+   checks the typed g at the MEAN radius, which is where the atlas types it; this is
+   the walk down (or up) to where the air is. */
+inline double datumGravity(double g, double mean_radius, double sea_level_radius) {
+    if(!(mean_radius > 0.0) || !(sea_level_radius > 0.0)) { return g; }
+    const double k = mean_radius / sea_level_radius;
+    return g * k * k;
+}
+
 /* Fill in each level's base_p [Pa] by integrating the level ABOVE it down to this
    level's base_alt, starting from the sea-level anchor the authored numbers imply:
        p0 = sea_level_density * (R / M) * base_T(0)      (ideal gas, at the datum)

@@ -615,11 +615,15 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    sea_level_density, because p0 is derived from it.
                    The sea-level radius rides along (#683): this column is weighed in
                    the body's own 1/r^2 field, and it must be the SAME sphere the aero
-                   pass reads through dragAtm(), or the air steps at every level seam. */
+                   pass reads through dragAtm(), or the air steps at every level seam.
+                   The g rides along on that same sphere (#697): the file types it at
+                   the MEAN radius, the way an atlas publishes it. */
+                const double air_g = datumGravity(body->g, body->radius,
+                                                  body->seaLevelRadius());
                 if(!s.atmosphere.layers.empty()
                    && !resolveAtmoLevels(s.atmosphere.layers,
                                          s.atmosphere.sea_level_density,
-                                         s.atmosphere.molar_mass, body->g,
+                                         s.atmosphere.molar_mass, air_g,
                                          s.atmosphere.top(), body->seaLevelRadius())) {
                     throw std::runtime_error(
                         "system: " + body->name + ": atmosphere.layers must start at"

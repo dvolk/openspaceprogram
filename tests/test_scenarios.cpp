@@ -231,14 +231,18 @@ static int check_air(const char *path, const System &sys) {
         if(!(a.sea_level_density > 0.0)) { continue; }  // no physical air to ask
         n++;
         const DragAtmosphere da = dragAtm(a, *b);
-        if(!(da.gravity == b->g) || !(da.radius == b->seaLevelRadius())
+        // The g a body's air is weighed in is the typed one WALKED to the datum
+        // sphere (#697), not the typed one: identical for every shipped world
+        // (sea_level 0), 3.9 % apart on a 12 km sea.
+        const double want_g = datumGravity(b->g, b->radius, b->seaLevelRadius());
+        if(!(da.gravity == want_g) || !(da.radius == b->seaLevelRadius())
            || !(da.molar_mass == a.molar_mass)
            || !(da.gamma == a.gamma) || !(da.oxidizer_share == a.oxidizer_share)
            || da.layer_count != (int)a.layers.size()) {
             printf("  %s: %s dragAtm lost its world: g %.4g vs %.4g, R %.4g vs %.4g,"
                    " M %.4g vs %.4g, gamma %.4g vs %.4g, ox %.6g vs %.6g, %d levels"
                    " vs %d\n", path, b->name.c_str(),
-                   da.gravity, b->g, da.radius, b->seaLevelRadius(),
+                   da.gravity, want_g, da.radius, b->seaLevelRadius(),
                    da.molar_mass, a.molar_mass, da.gamma, a.gamma,
                    da.oxidizer_share, a.oxidizer_share,
                    da.layer_count, (int)a.layers.size());
@@ -509,8 +513,9 @@ static void check_composition() {
 
 /* Every shipped file has sea_level 0 or absent (#412), so the line above cannot
    tell a datum from a radius. Load a MUTATED copy with Kerbin's sea 12 km up:
-   the shell must ride with the datum, and the low/high orbit cut -- which is
-   what a player's science tier turns on -- must not move. */
+   the shell must ride with the datum, the low/high orbit cut -- which is what a
+   player's science tier turns on -- must not move, and the air must be weighed in
+   the field that raised sphere actually sits in (#697). */
 static void check_raised_sea() {
     const char *src = "res/systems/ksp_system.json";
     std::ifstream f(src);
@@ -585,6 +590,23 @@ static void check_raised_sea() {
                wet_cut - dry_cut, dry_cut, wet_cut);
         failures++;
     }
+    // The air must be weighed in the field AT the sphere it starts on (#697). This
+    // datum sits 12 km further out than any shipped world's, so the field its air is
+    // weighed in is (600000/612000)^2 weaker than the typed one -- 4.0 % on g -- and
+    // the column MULTIPLIES that: 6.5 % on the density 12 km up, 52 % at the 85 km
+    // top (q there 142 Pa rather than 94).
+    // Leaving the typed 9.81 in place is the mutation; the literal below is what
+    // utils/atmo_profile.py integrates by quadrature, sharing no code with atmo.h.
+    const DragAtmosphere wda = dragAtm(b->surface.atmosphere, *b);
+    const double rho12 = airDensity(wda, 12000.0);
+    if(!(std::fabs(rho12 / 0.3435505 - 1.0) < 1e-6)) {
+        printf("  Kerbin's air 12 km above a 12 km sea is %.7f kg/m3, expected"
+               " 0.3435505: the column was weighed in the typed g at the MEAN radius"
+               " instead of the field at the datum (atmo.h:datumGravity, #697)\n", rho12);
+        failures++;
+    }
+    printf("  %s: its air is weighed in g %.4f at the datum, not the typed %.4f\n",
+           tmp.c_str(), wda.gravity, b->g);
     if(check_datum(tmp.c_str(), wet)) { failures++; }
     printf("  %s: a 12 km sea lifts Kerbin's shell with the datum and holds the "
            "orbit cut at %.0f m\n", tmp.c_str(), dry_cut);

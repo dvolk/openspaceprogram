@@ -86,8 +86,15 @@ class Profile:
         su = body.get('surface') or {}
         at = su.get('atmosphere') or {}
         self.name = body['name']
-        self.radius = float(body.get('radius', 600000.0)) + float(su.get('sea_level', 0.0))
+        mean_r = float(body.get('radius', 600000.0))
+        self.radius = mean_r + float(su.get('sea_level', 0.0))
         self.g = float(body['g'])
+        # atmo.h:datumGravity (#697). A file types g the way an atlas publishes it --
+        # at the MEAN radius -- and the column is stacked on the datum sphere, so the
+        # field that weighs it is the typed one walked to that sphere. Every shipped
+        # body has sea_level 0 and this multiplies by 1.
+        if mean_r > 0.0 and self.radius > 0.0:
+            self.g *= (mean_r / self.radius) ** 2
         self.mu = G * float(body['mass'])
         self.rho0 = float(at['sea_level_density'])
         self.M, self.gamma = mix(at.get('composition'))
