@@ -9,7 +9,7 @@ from sci_dist import stamp_science_mults, stamp_transfer_dv, phase0
 # #690: the geopotential/geometric conversion for layer tables lives in ONE module that
 # both system generators import -- each --check only compares a file against its own
 # output, so a second spelling of the law would drift in silence (the #636 lesson).
-from atmo_units import resolve_layer_heights
+from atmo_units import resolve_layer_heights, check_body_gravity
 
 G      = 6.674e-11      # m^3 / kg / s^2  (matches the loader's G)
 AU     = 1.496e11       # m
@@ -1085,6 +1085,15 @@ def build_base(verbose_air=False):
             print('DRIFT   fact air: ' + m)
         raise SystemExit('%d authored air datum(s) disagree with the fact sheet '
                          'that states them (bands: FACT_AIR_BANDS)' % len(bad))
+    # ... and the field that air sits in, stated twice in the same file: a typed `g`
+    # beside a mass (#689). The loader refuses the same disagreement
+    # (atmo.h:kAtmoGravityTol); catching it here names the scrape that produced it.
+    bad = check_body_gravity(bodies, verbose=verbose_air)
+    if bad:
+        for m in bad:
+            print('DRIFT   body gravity: ' + m)
+        raise SystemExit('%d bodies author a g that their own mass and radius deny'
+                         % len(bad))
     # transfer_dv for a planet needs home (the heliocentric hop); stamp now
     # that every base body exists.
     home = next(b for b in bodies if b['name'] == 'Earth')
@@ -1159,6 +1168,15 @@ def emit(base_bodies, moons, pred, out_path, label, dry=False):
         bodies.append(build_moon(m, parent_body=by[m['parent']], home_body=home))
         by[m['name']] = bodies[-1]
         n += 1
+    # The base planets were checked with their rows printed; the moons get the same
+    # rule quietly (#689), because Titan is the one air in the catalogue with no fact
+    # sheet behind it and its g/mass pair is the only statement it makes.
+    bad = check_body_gravity(bodies, verbose=False)
+    if bad:
+        for m in bad:
+            print('DRIFT   body gravity: ' + m)
+        raise SystemExit('%d emitted bodies author a g that their own mass and radius '
+                         'deny (atmo.h:kAtmoGravityTol)' % len(bad))
     # epoch_year 2000: the fact-sheet elements (and our derived orbital
     # phases) are J2000-referenced, so the calendar clock matches the sky.
     # epoch_utc (#202): proleptic-Gregorian civil clock. t=0 is already

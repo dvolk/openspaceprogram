@@ -28,7 +28,7 @@ from gas_mixes import DRY_AIR, CO2_HEAVY, H2_HE_CH4_KSP
 # converted (a table that carries no marker is read as GEOMETRIC metres, which is what every
 # altitude in a system file means). Both generators call the same function, because each
 # --check only compares its own output and would not notice the two drifting.
-from atmo_units import resolve_layer_heights
+from atmo_units import resolve_layer_heights, check_body_gravity
 
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
@@ -641,6 +641,20 @@ def main():
         (eerbon, os.path.join(ROOT, "res", "systems", "old_system.json")),
         (ksp, os.path.join(ROOT, "res", "systems", "ksp_system.json")),
     ]
+    # These bodies are hand-typed: radius, mass and g come from three wiki figures on
+    # three different pages. A body with air states its gravity twice (g weighs the
+    # air's own column, mass is what an orbit answers to), and the two only part
+    # company aloft -- so nothing but this check ever sees the disagreement. The loader
+    # refuses the same thing at load (atmo.h:kAtmoGravityTol, #689); refusing here
+    # names the typo at the keyboard instead of at boot.
+    bad = []
+    for obj, _path in targets:
+        bad += check_body_gravity(obj["bodies"], verbose=True)
+    if bad:
+        for m in bad:
+            print('DRIFT   body gravity: ' + m)
+        raise SystemExit('%d bodies author a g that their own mass and radius deny'
+                         % len(bad))
     if args.check:
         ok = True
         for obj, path in targets:

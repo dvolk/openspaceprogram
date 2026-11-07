@@ -79,3 +79,43 @@ def resolve_layer_heights(surface, radius_m):
     at['layers'] = layers
     out['atmosphere'] = at
     return out
+
+
+# The loader's G (src/system.cpp). A guard that checks a field with a DIFFERENT
+# constant is a guard that approves a file the loader then refuses.
+G = 6.674e-11
+
+# src/atmo.h:kAtmoGravityTol. Keep the two in step: this is the same rule stated on
+# the authoring side, and a generator that is looser than the loader has already lost.
+GRAVITY_TOL = 0.02
+
+
+def check_body_gravity(bodies, verbose=True):
+    """Refuse a body whose typed `g` is not the field its own mass and radius imply
+    (#689), because a body with air states that field TWICE and the loader then uses
+    both: g weighs the air's column (atmo.h:resolveAtmoLevels, #683) while mass is
+    what every arc about the body answers to. Equal at the surface by construction,
+    they part company aloft, where the column multiplies the gap -- ln p spans 10.7
+    scale heights across Kerbin's air, so a 5 % g is 41 % off on the density at its
+    85 km edge. A barometer and a ballistic arc then disagree about one sky and the
+    file never says which one to believe.
+    Air bodies only, exactly as the loader's check does: on an airless rock the typed
+    g is a readout, and the small moons' published figures carry one significant
+    digit (the shipped catalogue's worst is Daphnis, 10 % off its own implied field,
+    harmlessly). Prints a row per air body whether or not it agrees -- a guard that
+    prints nothing is indistinguishable from one that checked nothing (#685)."""
+    bad = []
+    for b in bodies:
+        atmo = (b.get('surface') or {}).get('atmosphere')
+        g, mass, radius = b.get('g'), b.get('mass'), b.get('radius')
+        if not atmo or not g or not mass or not radius:
+            continue
+        implied = G * mass / (radius * radius)
+        drift = (g - implied) / implied
+        if verbose:
+            print('  gravity   %-9s g %10.5f  G*m/r^2 %10.5f  %+.2f%%'
+                  % (b['name'], g, implied, 100.0 * drift))
+        if abs(drift) > GRAVITY_TOL:
+            bad.append('%s: authored g %.6g, G*mass/radius^2 = %.6g (%+.1f%%, tol %.0f%%)'
+                       % (b['name'], g, implied, 100.0 * drift, 100.0 * GRAVITY_TOL))
+    return bad

@@ -579,6 +579,25 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                         throw std::runtime_error(
                             "system: " + body->name + ": a body with air needs g > 0");
                     }
+                    /* #689: g and mass are two published statements of ONE field, and
+                       the air reads both -- g weighs the air's own column (#683), mass is
+                       what every arc about this body answers to. Nothing else compares
+                       them, they are pinned equal at the surface by construction, and the
+                       mismatch then MULTIPLIES with altitude, so it arrives in play as a
+                       barometer that disagrees with a ballistic arc. The tolerance and
+                       why it is 2 %: atmo.h:kAtmoGravityTol. */
+                    const double implied_g = body->mu / (radius * radius);
+                    char gbuf[32], ibuf[32];
+                    std::snprintf(gbuf, sizeof gbuf, "%g", body->g);
+                    std::snprintf(ibuf, sizeof ibuf, "%g", implied_g);
+                    if(!(implied_g > 0.0)
+                       || !(std::fabs(body->g / implied_g - 1.0) <= kAtmoGravityTol)) {
+                        throw std::runtime_error(
+                            "system: " + body->name + ": authored g " + gbuf
+                            + " disagrees with G*mass/radius^2 = " + ibuf
+                            + " by more than 2%: the air's column and the field an orbit"
+                            " feels have to be one field (atmo.h:kAtmoGravityTol)");
+                    }
                     if(!(s.atmosphere.molar_mass > 0.0
                          && s.atmosphere.molar_mass < 1.0)
                        || !(s.atmosphere.gamma >= 1.0 && s.atmosphere.gamma <= 2.0)) {

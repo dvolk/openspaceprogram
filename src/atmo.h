@@ -200,6 +200,22 @@ inline constexpr double kAtmoSeamTol = 0.5;
    its density against a quadrature number; it refuses |C| = 0.5 K. */
 inline constexpr double kAtmoPoleTol = 1.0;
 
+/* How far a body's TYPED surface gravity may sit from the field its own mass and
+   radius imply [fraction]. Not physics -- a data-acceptance rule (#689). The column
+   is weighed in g radius^2 / (radius + z)^2 (#683) while a hull falls in
+   G mass / (radius + z)^2, so a g that is not that field at the datum leaves air
+   that is NOT in hydrostatic equilibrium with the pull an orbit answers to. The two
+   are pinned equal at the surface by construction, which is what makes this class of
+   typo invisible: the disagreement only shows aloft, where the column MULTIPLIES it
+   (ln p spans 10.7 scale heights across Kerbin's air, so a 5 % g is 41 % off on the
+   density at its 85 km edge). Shipped worlds agree to
+   0.62 % worst -- Pluto, where both figures are three significant digits -- and every
+   air body to 0.06 %, so 2 % refuses a mistake (a g typed for a different world, a
+   mass a digit off) and not a rounding. Only bodies with air are checked: on an
+   airless rock the typed g is a readout, and its small moons publish one significant
+   digit (shipped Daphnis sits 10 % off its own implied field, harmlessly). */
+inline constexpr double kAtmoGravityTol = 0.02;
+
 /* Fill in each level's base_p [Pa] by integrating the level ABOVE it down to this
    level's base_alt, starting from the sea-level anchor the authored numbers imply:
        p0 = sea_level_density * (R / M) * base_T(0)      (ideal gas, at the datum)

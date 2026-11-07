@@ -588,6 +588,61 @@ static void check_raised_sea() {
            "orbit cut at %.0f m\n", tmp.c_str(), dry_cut);
 }
 
+/* A body's gravity, stated twice (#689). The typed `g` weighs that body's air column
+   (#683); its mass is the pull every arc about it answers to. The loader compares the
+   two for a body with air and refuses past atmo.h:kAtmoGravityTol, because a file
+   cannot author a pressure: g goes into p0 = rho0 g H and into the 1/r^2 shape of the
+   whole column, while the hull falling through that air is pulled by G m / r^2. Equal
+   at the datum by construction, the two only part company aloft, where the column
+   multiplies the gap -- ln p spans 10.7 scale heights across Kerbin's air, so a 5 %
+   typed g is 41 % off on the density at its 85 km edge.
+   Both edges pinned: 5 % refuses and NAMES the constant; 1 % loads. The second half is
+   not padding -- the shipped worlds sit 0.01-0.03 % apart and Pluto 0.62 %, because both
+   of its published figures carry three significant digits. A rule that refused those is
+   a rule the catalogue would work around. */
+static void check_gravity_pair() {
+    std::ifstream f("res/systems/ksp_system.json");
+    if(!f.is_open()) {
+        printf("  cannot open res/systems/ksp_system.json (run from the repo root)\n");
+        failures++;
+        return;
+    }
+    const nlohmann::json base = nlohmann::json::parse(f);
+    std::filesystem::create_directories("tmp");
+    auto kerbin_g = [&](double mult) {
+        nlohmann::json j = base;
+        for(auto &bv : j["bodies"]) {
+            if(bv.value("name", std::string()) != "Kerbin") { continue; }
+            bv["g"] = bv["g"].get<double>() * mult;
+        }
+        return j.dump();
+    };
+    expect_refuses("gravity_off_5pc", kerbin_g(1.05), "kAtmoGravityTol");
+
+    const std::string path = "tmp/test_scenarios_gravity_1pc.json";
+    {
+        std::ofstream o(path);
+        o << kerbin_g(1.01);
+    }
+    System sys;
+    try {
+        sys = load_system(path.c_str(), nullptr, nullptr);
+    } catch(const std::exception &e) {
+        printf("  %s: Kerbin typed 1%% off its own implied field failed to load: %s\n",
+               path.c_str(), e.what());
+        failures++;
+        return;
+    }
+    const TerrainBody *ker = find_body(sys, "Kerbin");
+    if(ker == nullptr || !(ker->surface.atmosphere.sea_level_density > 0.0)) {
+        printf("  %s: Kerbin loaded without its air\n", path.c_str());
+        failures++;
+        return;
+    }
+    printf("  %s: a body typed 1%% off G*mass/radius^2 loads with its air; 5%% refuses\n",
+           path.c_str());
+}
+
 /* A fixture whose note says "the shipped bodies, verbatim, plus ONE field" is a copy, and
    a copy drifts silently. It did: between #683 and #686, 245-kerbin-sea.json still carried
    Kerbin's old 5500 m scale height and 70 km top while the shipped world moved to a level
@@ -876,6 +931,7 @@ int main() {
         if(check_air(p, sys)) failures++;
     }
     check_composition();
+    check_gravity_pair();
     check_raised_sea();
     check_fixture_air();
     if(failures) {
