@@ -128,6 +128,15 @@ static int check_air(const char *path, const System &sys) {
         // CO2 95.32, N2 2.7, Ar 1.6, O2 0.13 %: M 0.0434957, gamma 1.30485.
         {"Eve",    610.70058697001423, 390.2911824640027, 198456.3,
                                                    0.00095878, 1e-9},
+        /* CO2 96.5, N2 3.5 %: M 0.043450, gamma 1.30265. g 8.87, H 16 km.
+           The p column is the whole reason Venus joined this table (#684): a file
+           cannot author a pressure, so the authored rho0 IS the pressure knob, and
+           Venus carried 92 kg/m3 -- its surface pressure in BAR, typed into the
+           density field -- which put the datum at 13.1 MPa, 129 atm, with nothing
+           in the file to contradict it. 65 kg/m3 (utils/rss/html/venusfact.html:
+           "Surface density: ~65. kg/m^3") gives 9.22 MPa, which is Venus's real
+           92 bar to 0.3 %. T and a contain no rho0 and were already right. */
+        {"Venus",  741.6441320850256, 429.9672411932908, 9224800.0, 0.0, 1e-9},
         /* Earth authors a LAYER TABLE (#552 A4) AND a mix (#630), so these are the
            shipped file's proof all the way through: the JSON parses, resolveAtmoLevels
            integrates the column at the Rs that mix implies, dragAtm carries the
