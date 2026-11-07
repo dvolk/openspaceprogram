@@ -223,11 +223,12 @@ inline constexpr double kAtmoGravityTol = 0.02;
    (terrain.h:seaLevelRadius(): radius + sea_level), and levelPressure's falloff
    g radius^2/(radius+z)^2 counts z from THAT sphere. Hand it the typed number and
    the file has just claimed its datum sits at the mean radius: every kg of air is
-   then weighed in a field too strong by (sea-level radius / mean radius)^2 -- 4.0 %
-   on a 12 km sea, and 0.19 % on the 600 m one the 245 fixture ships, which is under
-   notice but is the same error. Every shipped body has sea_level 0, so this returns
-   the typed g unchanged: the rule costs nothing today and it is what makes a raised
-   sea a world rather than a 4 % barometer bug. The kAtmoGravityTol guard above
+   then weighed in a field too strong by (sea-level radius / mean radius)^2 -- 4.07 %
+   on a 12 km sea, where the correction is x0.9612, and 0.19 % on the 600 m one the 245
+   fixture ships, which is under notice but is the same error. Every shipped body has
+   sea_level 0, so this returns the typed g unchanged: the rule costs nothing today and
+   it is what makes a raised sea a world rather than a 4 % barometer bug. The
+   kAtmoGravityTol guard above
    checks the typed g at the MEAN radius, which is where the atlas types it; this is
    the walk down (or up) to where the air is. */
 inline double datumGravity(double g, double mean_radius, double sea_level_radius) {

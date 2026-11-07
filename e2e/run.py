@@ -346,11 +346,14 @@ DRAG_RE = re.compile(
     r" Mach=(-?\d+(?:\.\d+)?)"
     r"|T=- p=- a=- Mach=-))?"
     # #694: Ld= -- the air's force split about the air-relative flow, L over D, which is
-    # the ratio a glide ratio equals (vehicle.h:lastLiftFlow / lastDragFlow: 7.19 in a
-    # settled glide, where the hull's own track says 7.28). It is NOT |L| over the CdA
-    # bills above -- that bookkeeping reads 8.68 on the shipped skiff and is what
-    # res/ships/README.md's 8.6 quotes. Unitless, so the dash needs its own digit-anchored
-    # branch exactly like T=/p=/a= above.
+    # the ratio a glide ratio equals (vehicle.h:lastFlowLift / lastFlowDrag: 7.19 in a
+    # settled glide, where the hull's own track says 7.28). It is NOT |L| over the CdA bills
+    # above -- that bookkeeping reads 8.65 on the shipped skiff, 21 % high, because it uses
+    # the RAW A=/Cd= product and the lift law's sum (see the [drag] legend and #699), and
+    # that is what res/ships/README.md's 8.6 quotes. The field is unitless, so a bare "-"
+    # would match the wider character class used above and throw in float(); the numeric
+    # branch is digit-anchored, and the dashed alternative is spelled out so a reader sees
+    # the row that carries no value.
     r"(?:\s+(?:Ld=(-?\d+(?:\.\d+)?)|Ld=-))?"
 )
 # --drag-log's control surfaces (src/tick.cpp): one [ctrl] line under each [drag]

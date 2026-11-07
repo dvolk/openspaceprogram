@@ -213,10 +213,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_flag("--drag-log", args.drag_log,
                  "Log the active ship's drag per tick (altitude above the datum, "
                  "density, speed, force, signed lift L_up and attitude Up, the "
-                 "air's own T/p/a and the hull's Mach, and Ld= -- lift over the "
-                 "drag the air applies ALONG the flow, which is the ratio a "
-                 "glide ratio is supposed to match (#694); plus one [surface] "
-                 "line per lifting part: its angle, its q and its Mach) -- the "
+                 "air's own T/p/a and the hull's Mach, and Ld= -- the air's force "
+                 "split about the flow: its component perpendicular to the air-"
+                 "relative flow over its component along it, which is the ratio a "
+                 "glide ratio equals (#694); plus one [surface] line per lifting "
+                 "part: its angle, its q and its Mach) -- the "
                  "'is drag acting?' instrument");
 
     app.add_option("--timeout", args.timeout_seconds,

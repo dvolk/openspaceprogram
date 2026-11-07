@@ -545,17 +545,37 @@ public:
        -(ftotal . flowHat), N (+ = the air is holding the hull back; it goes negative
        when a co-rotating frame or a parachute jink makes the air PUSH, which makes a
        ratio out of it meaningless rather than large), and lastFlowLift is the
-       perpendicular remainder. The --drag-log's Ld= is lastFlowLift / lastFlowDrag
-       (#694) because that is the ratio a glide ratio equals: in the shipped skiff's
-       settled 200 s glide it prints 7.19 while the hull's own ground track says
-       41.2 m over 5.66 m of sink -- 7.28. Neither of the two bookkeeping ratios comes
-       out of this pair: |lastLiftForce| over lastFlowDrag reads 8.12, and |lastLiftForce|
-       over the printed (CdA + Induced + Profile) x q -- res/ships/README.md's 8.6 --
-       reads 8.68. They differ because the lift LAW leaves a control surface's
-       deflection force out of lastLiftForce (691 N of trim download on this hull, 13 %
-       of what holds it up) and because a CdA bill is a charge sheet, not a force. */
+       perpendicular remainder -- the FULL remainder, so with sideslip a fin's side
+       force sits in it too: this is the flow-plane split of the force, not the wing's
+       lift. The --drag-log's Ld= is lastFlowLift / lastFlowDrag (#694) because that is
+       the ratio a glide ratio equals: in the shipped skiff's settled 200 s glide it
+       prints 7.19 while the hull's own ground track says 41.20 m over 5.66 m of sink,
+       7.28. The two bookkeeping ratios res/ships/README.md could be quoting are higher
+       by two named amounts, and both close on measurement:
+         * |lastLiftForce| over lastFlowDrag reads 8.12, and over the printed RAW bills
+           (Cd x A + Induced + Profile) x q reads 8.65 -- README's 8.6. The 6 % between
+           them is the --drag-cd multiplier: A= and Cd= print the raw hull product while
+           the force charges drag_cd x them (1.2 by default), exactly as tick.cpp:699
+           already says. Charge the bills and they DO add up: q x (1.2 CdA + Induced +
+           Profile) = 745.0 N against the 744.0 N this row's lastFlowDrag measures.
+         * 8.12 -> 7.19 is the numerator: the lift LAW's sum leaves a control surface's
+           deflection force out of lastLiftForce, and on this hull trimmed by a 12 deg
+           tab that is 12.9 % of the force holding it up (#699). */
     double lastFlowDrag = 0.0;
     double lastFlowLift = 0.0;
+    /* One gate for both readouts of the flow split (#694): --drag-log's Ld= and the F4
+       aero window. False means dash, and it dashes on three counts -- no usable flow
+       last pass, no along-flow force to divide by, and an along-flow force under a
+       thousandth of the total (which makes the quotient meaningless rather than large).
+       The pair alone is NOT safe to divide: applyAeroForce skips its AoA measurement
+       below kAoAFlowFloor but still applies and records the force, so only this gate's
+       lastDragAlphaValid term keeps the quotient off a hull with no flow to score. */
+    bool flowLd(double &ld) const {
+        if(!lastDragAlphaValid || lastFlowDrag <= 1e-6) return false;
+        if(lastFlowDrag * 1000.0 <= glm::length(lastAeroForce)) return false;
+        ld = lastFlowLift / lastFlowDrag;
+        return true;
+    }
     /* lastLiftForce . local vertical (away from the body centre): + = the wings
        are holding the airframe UP. Signed so the --drag-log can pin the lift
        DIRECTION, not just its magnitude -- a flipped AoA sign hid exactly that

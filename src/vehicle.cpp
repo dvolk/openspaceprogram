@@ -3570,10 +3570,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastAeroForce = ftotal;
     /* #694: split that force about the air-relative flow -- L and D in the sense a
        glide ratio means, the perpendicular and along components of what the air ACTUALLY
-       applies. NOT a split of lift_total: a control surface's deflection force goes into
-       ftotal and not into lift_total (see the control loop above), so on this hull |L|=
-       is 13 % above the component that holds the hull up -- 691 N of trim download the
-       lift law never counts. vrel is the same flow AoA and Beta are measured in, and
+       applies. NOT a split of lift_total: ftotal also carries the hull, profile, chute and
+       induced terms (all along the flow, so they land in lastFlowDrag) and, unlike
+       lift_total, a control surface's DEFLECTION force (see the control loop above) --
+       which is why |lift_total| and this perpendicular component differ by 12.9 % on the
+       12 deg-tabbed skiff (#699). vrel is the same flow AoA and Beta are measured in, and
        lastAirV > 0 here (the pass returned early at rest in air), so the division is safe. */
     const glm::dvec3 flowHat = vrel / lastAirV;
     const double alongFlow = glm::dot(ftotal, flowHat);

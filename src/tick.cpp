@@ -585,7 +585,8 @@ void tick(Game &g) {
            WHAT DASHES AND WHY (#560). The rule is where a number comes from, not
            whether the pass felt confident:
              * Read off a DIRECTION, so a jitter flow invents them: AoA, Beta, CpL,
-               CLa, SM, Profile, FormCp, Ld (#694) -- all dashed behind lastDragAlphaValid.
+               CLa, SM, Profile, FormCp, Ld (#694) -- all dashed behind lastDragAlphaValid
+               (Ld also dashes on its own denominator: no along-flow drag to divide by).
              * Induced= joins them, and it earned it on measurement rather than by
                symmetry. Its CdA is q-NORMALISED (vehicle.cpp:applyInducedDrag bills
                CL_sys = sum(L_i/q_i) / sum(S_i), then inducedCd(CL_sys, ...)), so the
@@ -765,17 +766,24 @@ void tick(Game &g) {
                 /* #694: L and D of the air's force about the air-relative FLOW -- the
                    textbook pair (vehicle.h:lastFlowLift / lastFlowDrag), and the ratio a
                    glide ratio equals. In the settled 200 s glide it prints 7.19 while the
-                   hull's own track says 41.2 m over 5.66 m of sink, 7.28; the 1.3 % left
+                   hull's own track says 41.20 m over 5.66 m of sink, 7.28; the 1.3 % left
                    over is a glide that has not quite settled. It is NOT |L|= divided by
-                   anything: the lift law's sum leaves a control surface's deflection
-                   force out, and that is 691 N of trim download on this hull, so |L| over
-                   the along-flow drag reads 8.12 and |L| over the printed CdA bills --
-                   which is res/ships/README.md's 8.6 -- reads 8.68. Both are the airframe's
-                   bookkeeping; this one is its flight. Dashed on the same test as
-                   AoA/Beta/CpL, and whenever the air is PUSHING the hull rather than
-                   holding it back (a negative denominator makes the ratio meaningless,
-                   not large). */
-                if(g.ship->lastDragAlphaValid && g.ship->lastFlowDrag > 1e-6) {
+                   anything, and the distance from the two readings res/ships/README.md
+                   could mean is fully accounted for: |L| over the printed RAW bills x q
+                   reads 8.65 there (README's 8.6), and 6 % of that is simply --drag-cd --
+                   A=/Cd= print the raw hull product while the force charges 1.2 x them, as
+                   the block above this one says. Charge the bills and they add up: 745.0 N
+                   against the 744.0 N this row's lastFlowDrag measures, leaving 8.12 of
+                   |L| over the drag. The last step, 8.12 -> 7.19, is the numerator: the
+                   lift law's sum leaves a control surface's deflection force out, and on a
+                   hull trimmed by a 12 deg tab that is 12.9 % of what holds it up (#699).
+                   Dashed on the same test as AoA/Beta/CpL, whenever the air is PUSHING the
+                   hull rather than holding it back (a negative denominator makes the ratio
+                   meaningless, not large), and whenever the along-flow half is under a
+                   thousandth of the force -- a ratio there is four digits, and that is not
+                   a glider, it is a row with no drag in it to compare against. */
+                if(g.ship->lastDragAlphaValid && g.ship->lastFlowDrag > 1e-6
+                   && g.ship->lastFlowDrag * 1000.0 > glm::length(g.ship->lastAeroForce)) {
                     printf(" Ld=%.2f", g.ship->lastFlowLift / g.ship->lastFlowDrag);
                 } else {
                     printf(" Ld=-");

@@ -2342,6 +2342,21 @@ void drawUIReadouts(Game &g) {
             } else {
                 ImGui::Text("FormCp: -");
             }
+            /* #694: how well this hull flies, in the one sense a glide ratio answers --
+               the air's force SPLIT ABOUT THE FLOW, its component perpendicular to the
+               air-relative flow over its component along it. A settled engines-off glide
+               covers v/sink = that number, so a designer can read this row, put the hull
+               in the air, and check it against the ground track. It is NOT |L| over the
+               drag bills (see the pair's own comment in vehicle.h for why that is a
+               different, higher number), and it is not a stability margin: SM and FormCp
+               above say whether the hull holds a direction, this says what direction costs.
+               Gate shared with --drag-log's Ld= so the two cannot drift. */
+            double ld = 0.0;
+            if(ship->flowLd(ld)) {
+                ImGui::Text("Ld:  %.2f", ld);
+            } else {
+                ImGui::Text("Ld:  -  (no flow to score)");
+            }
             ImGui::Text("Acc: %.1fm/s2", ship->feltAccel());
         }
 

@@ -41,6 +41,10 @@ CHECK all(d.get("induced") is None for d in drag if d.get("aoa") is None)
 CHECK all(d.get("profile") is None for d in drag if d.get("aoa") is None)
 CHECK all(d.get("formcp") is None for d in drag if d.get("aoa") is None)
 CHECK all(d.get("beta") is None and d.get("cpl") is None for d in drag if d.get("aoa") is None)
+# Ld= (#694) is read off the same direction, so it dashes here too -- 21 of this run's 25
+# rows. Pinned because a CHECK over a key the parser never learned passes without testing
+# anything (#653): this is the arm that keeps run.py's dashed-Ld branch honest.
+CHECK all(d.get("ld") is None for d in drag if d.get("aoa") is None)
 # NOTHING IS BILLED: the forces these fields claim to explain are ~nil. 20 N is the
 # whole hull at 6 m/s in this air; the settled rows sit two orders under it.
 CHECK max(d["F"] for d in drag if d.get("aoa") is None) < 20.0

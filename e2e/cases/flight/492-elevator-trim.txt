@@ -95,19 +95,23 @@ CHECK all(0.30 < d["induced"] < 0.42 for d in drag if d.get("induced") is not No
 CHECK max(d["induced"] for d in drag if d.get("induced") is not None) > 0.75
 # Ld= (#694): the air's force SPLIT ABOUT THE FLOW -- its component perpendicular to the
 # air-relative flow over its component along it -- which is the ratio a glide ratio equals.
-# Through the hold it reads 6.64..7.28. That is NOT the number res/ships/README.md's skiff row
-# leads with, and neither is any reading off |L|=: |L| over the bills this line prints
-# (Cd*A + Induced + Profile, x q) is 8.24..8.80 (median 8.68 -- README's 8.6), and |L| over the
-# along-flow drag is 7.65..8.25. Both put the lift LAW's sum in the numerator, and on a trimmed
-# hull that sum is not the force holding the hull up: the control loop's deflection force never
-# reaches lift_total (#699). And a CdA bill is a charge sheet, not a force -- at t=1 the bills
-# total 1.407 m2, which at q 1490 Pa charges 2096 N while the air actually holds the hull back
-# by 2236 N, 6.4..7.7 % more row to row. |L|/|F| is no glide ratio either: it reads 1.12 here,
-# because the total aero force is mostly lift. This row is the flight rather than the
-# bookkeeping: the same hull in a settled 200 s engines-off glide prints Ld 7.19 against the
-# 7.28 its own ground track measures (41.20 m/s over 5.66 m/s of sink). Pinned on the hold,
-# where the rows point into the flow; the departure rows sit outside it on purpose -- by t=29 the
-# hull is falling at 0.8 and the ratio has stopped meaning much.
+# Through the hold it reads 6.64..7.28. The number res/ships/README.md's skiff row leads with
+# is |L| over the bills this line prints, (Cd*A + Induced + Profile) x q: 8.24..8.80 here,
+# median 8.68. That ratio is 21 % above this one for two named reasons, and both close:
+#   * 6 % of it is --drag-cd. A= and Cd= print the RAW hull product while the force charges
+#     drag_cd x them, 1.2 by default (the [drag] legend says so; Induced= and Profile= already
+#     carry the multiplier). At t=1 the raw bills charge 2096 N and the charged ones 2239 N,
+#     which is what the air actually applies along the flow: 2236 N, 0.1 % away. Run the same
+#     hull --drag-cd 1 and raw bills and force agree to the watt (1898 N both), and this band
+#     moves to 8.6 -- so the band below is a statement about the shipped 1.2, not a law.
+#   * The other 13 % is the numerator: |L| is the lift LAW's sum, and a control surface's
+#     deflection force reaches ftotal without ever reaching lift_total -- the 12 deg tab that
+#     trims this hull (#699). |L| over the along-flow drag reads 8.12 against Ld's 7.17.
+# |L|/|F| is no glide ratio either: it reads 1.12 here, the total aero force being mostly
+# lift. And this row is not the glide itself: the same hull in a settled 200 s engines-off
+# glide prints Ld 7.19 against the 7.28 its own ground track measures (41.20 m/s over 5.66 m/s
+# of sink). Pinned on the hold, where the rows point into the flow; the departure rows sit
+# outside it on purpose -- by t=29 the hull is falling at 0.8 and the ratio means little.
 CHECK all(6.5 < d["ld"] < 7.5 for d in drag if d.get("ld") is not None and d.get("beta") is not None and abs(d["beta"]) < 4.0 and d["t"] < 25.0)
 # Not vacuous: every row in this run prints a numbered Ld, because the air and the flow
 # are there the whole time (the dash means no flow to score, or the air PUSHING the hull).

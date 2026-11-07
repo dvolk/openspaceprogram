@@ -4,6 +4,8 @@
 #include <SDL3/SDL.h>   // Uint32
 
 #include <array>
+#include <cassert>     // assert() is used below; the header states what it uses (#691
+                       // found atmo.h failing the same way -- SDL3 includes it today)
 #include <chrono>
 #include <functional>
 #include <map>

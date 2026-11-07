@@ -100,7 +100,16 @@ class Profile:
         self.M, self.gamma = mix(at.get('composition'))
         self.Rs = K_GAS_R / self.M
         self.levels = at.get('layers') or []
-        self.top = float(at['height']) if 'height' in at else 10.0 * float(at['scale_height'])
+        # atmo.h:top() -- an authored `height`, else 10 scale heights
+        # (atmo.h:kAtmoScaleHeights, duplicated here on purpose). A body with neither is
+        # a file the loader would refuse anyway, so say which one this is rather than
+        # raise a bare KeyError halfway through a report.
+        if 'height' in at:
+            self.top = float(at['height'])
+        elif 'scale_height' in at:
+            self.top = 10.0 * float(at['scale_height'])
+        else:
+            raise ValueError('%s: atmosphere has neither height nor scale_height' % self.name)
         self.H = at.get('scale_height')
 
     def T(self, z):
@@ -156,15 +165,25 @@ def report(path):
               % (pr.T(0.0), pr.rho0 * pr.Rs * pr.T(0.0),
                  math.sqrt(pr.gamma * pr.Rs * pr.T(0.0)), pr.M, pr.gamma))
         for z, T, p, rho, q in pr.rows(HEIGHTS):
-            print('    %9.0f m: T %7.2f K  p %12.4f Pa  rho %.6e  q %11.3f Pa' % (z, T, p, rho, q))
+            # q is the dynamic pressure of a CIRCULAR ORBIT at that height, 1/2 rho v_c^2
+            # -- what a hull would feel if it flew there on the circular speed, not what a
+            # launched hull actually meets. Only the top row is the number #682 decides on.
+            print('    %9.0f m: T %7.2f K  p %12.4f Pa  rho %.6e  q_circ %11.3f Pa'
+                  % (z, T, p, rho, q))
+        # The limit from BELOW the top. The game bills nothing at or above `height`
+        # (drag.h returns 0 there), so this is the q a decaying orbit is last subject to,
+        # not one it is charged at the top itself -- and the cliff from here to zero is the
+        # thing #682 is about.
         ptop = pr.p(pr.top)
         rtop = ptop / (pr.Rs * pr.T(pr.top))
         qt = 0.5 * rtop * pr.vcirc(pr.top) ** 2
         lo, hi = Q_BAND
         flag = '' if lo <= qt <= hi else '   <-- OUT OF BAND (%g..%g Pa)' % (lo, hi)
-        # #682's title IS this ratio. On an exponential body the ceiling is 10 H by
-        # construction, so the denser the surface air, the more air is still there
-        # where the sky is drawn. Meaningless on a layered one: its top is authored.
+        # #682's title IS this ratio. Where the ceiling sits in scale heights says how much
+        # air is left there: a body that leaves `height` out gets 10 H by default
+        # (atmo.h:kAtmoScaleHeights), but an authored top need not sit at 10 H at all -- Eve
+        # ships 90 km at H 7 km, which is 12.9 H. On a layered table the ratio is meaningless
+        # and prints nothing: its top is authored metres, not H.
         nH = '' if (pr.levels or not pr.H) else '  = %.1f H' % (pr.top / pr.H)
         print('    top %8.0f m%s: p %10.4f Pa  rho %.4e  vcirc %8.1f m/s  q %11.3f Pa%s'
               % (pr.top, nH, ptop, rtop, pr.vcirc(pr.top), qt, flag))
@@ -175,6 +194,9 @@ def main(argv):
     if '--heights' in args:
         i = args.index('--heights')
         global HEIGHTS
+        if i + 1 >= len(args) or args[i + 1].startswith('-'):
+            print('atmo_profile: --heights wants a comma list, e.g. --heights 0,5000,8500')
+            return 2
         HEIGHTS = [float(x) for x in args[i + 1].split(',')]
         del args[i:i + 2]
     if '--help' in args:
