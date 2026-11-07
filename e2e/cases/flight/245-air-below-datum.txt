@@ -7,7 +7,7 @@
 # the DRY air bodies: Eve (amplitude 5000, rho0 1.7), Mars, Titan. Sub-datum flight was
 # never a future-authoring problem, and no test could see it.
 # e2e/fixtures/systems/245-kerbin-sea.json raises Kerbin's sea_level to 600 m, which
-# puts the space port itself 336 m UNDER the datum: alt_asl 264.0 -> -336.2 while
+# puts the space port itself 336 m UNDER the datum: alt_asl 263.8 -> -336.2 while
 # alt_agl stays 8.6, and bme flips to "ocean" (terragen.h: has_sea and alt <= 0 reads
 # as Ocean). This case parks the skiff there and asks what the air is. Before the fix
 # every [drag] row read rho=0.0, |F|=0.00 N, |L|=0.00 N and the jet printed
@@ -53,10 +53,13 @@ CHECK len(surf) == 15
 CHECK all(s["alt_asl"] < -100.0 for s in surf)
 CHECK all(s["bme"] == "ocean" for s in surf)
 # THE LAW: rho == the authored sea_level_density on every row, and never ABOVE it.
-# Flat, not the exponential continued downward -- that reads 1.302 kg/m3 at this
-# hull's -336 m and 1.321 at its -424 m (against 1.225 measured), and 115 kg/m3 at the
-# -25 km the unit test pins. The 1e-3 band is a 6-8% rejection here, thin on purpose
-# relative to tests/test_drag.cpp, which owns the deep case.
+# Flat, not the profile continued downward. Since #686 Kerbin wears a level table, so the
+# thing being refused is level 0's lapse continued down: 1.265 kg/m3 at this hull's -336 m
+# and 1.276 at its -424 m (against 1.225 measured). On the pre-#686 exponential the same
+# extrapolation read 1.302 and 1.321, and 115 kg/m3 at the -25 km the unit test pins --
+# that part of the argument is the same whichever profile a body wears. The 1e-3 band is a
+# 0.08% tolerance, which rejects that 3% error here (thin on purpose relative to
+# tests/test_drag.cpp, which owns the deep case).
 CHECK all(abs(d["rho"] - 1.225) < 1e-3 for d in drag)
 CHECK all(d["rho"] <= 1.225 + 1e-9 for d in drag)
 # IT PUSHES: 5.6 kN of fan thrust drives the hull through that air, and the bill
@@ -80,30 +83,31 @@ CHECK abs(min(s["alt_asl"] for s in surf) - surf[0]["alt_asl"]) > 1.0
 # brushing the top of the rating.
 CHECK max(r["thrust"] for r in drainlog) > 4000.0
 # IT IS THE SAME AIR THE ATLAS PRINTS (#552 A3): --drag-log now carries the T/p/a the
-# body's authored scale height IMPLIES, through the same dragAtm seam the dossier uses,
-# so the two cannot mean different airs. Under this datum p is FLAT (the #618 call), so
-# every row reads rho0 g H = 1.225 x 9.81 x 5500 = 66094.9 Pa beside 188.0 K and
-# 275.0 m/s. Mach divides the AIR-relative speed at the COM, NOT the |v|= this line
-# prints -- that one is the FRAME speed, and on a spinning body the air itself moves
-# (#97). This hull never leaves Kerbin's rot frame, where the air is at rest, so on this
-# run the two are the same speed; they still read a little apart because |v|= is live at
-# print time while the air numbers are what the last aero pass left behind (t=1: |v|=0.64
-# against Mach 0.002 x 275.0 = 0.55 m/s). A surface's mach= is that ratio at its own
-# mount, so it lands within 0.001 of the hull's rather than equal to it -- t=8: hull
-# 0.135, wing_l 0.134, wing_r 0.135, and that spread is the omega x r of a tumbling
-# hull. (t=1: |v|=0.64 against Mach 0.002 x 275.0 = 0.55 m/s.) The pad row reads 0.002; the post-ignition peak depends on which flight the run
-# gets (0.286 on one that flies, 0.080 on one that settles), and either way this hull
+# body's authored profile states, through the same dragAtm seam the dossier uses, so the
+# two cannot mean different airs. Under this datum p is FLAT (the #618 call), so every
+# row reads the datum's own p0 beside T0 and the sound speed those two imply. Kerbin has
+# worn a level table since #686, so p0 is no longer rho0 g H -- a layer table authors T0
+# and the loader integrates the column, which leaves p0 = rho0 (R/M) T0 = 101324.9 Pa at
+# a 288.15 K datum with dry air's M. The printed row carries one decimal (T=288.1,
+# a=340.5), so the bands below are pinned to the PRINT: they redden if the datum moves,
+# not if the rounding does. Mach divides the AIR-relative speed at the COM, NOT the |v|=
+# this line prints -- that one is the FRAME speed, and on a spinning body the air itself
+# moves (#97). This hull never leaves Kerbin's rot frame, where the air is at rest, so on
+# this run the two are the same speed; they still read a little apart because |v|= is live
+# at print time while the air numbers are what the last aero pass left behind (t=1: |v|=0.64
+# against Mach 0.002 x 340.5 = 0.68 m/s). A surface's mach= is that ratio at its own
+# mount, so it lands within 0.001 of the hull's rather than equal to it -- and that spread
+# is the omega x r of a tumbling hull. The pad row reads 0.002; the post-ignition peak
+# depends on which flight the run gets (0.23 on this one), and either way this hull
 # nowhere approaches compressible flow. Before A3 none of this was measurable from the
 # harness at all: the only way to check it was to read the source.
-CHECK all(abs(d["airT"] - 188.0) < 0.05 for d in drag)
-CHECK all(abs(d["airP"] - 66095.0) < 1.0 for d in drag)
-# 275.0, not the 274.8 this case pinned until #630: sound speed is sqrt(gamma g H), and
-# Kerbin's gamma is no longer a typed 1.4 but what its authored dry-air mix resolves to
-# (1.40146 -- a CO2 molecule lifts the heat capacity). The air TEMP moved too, by 6 mK:
-# 187.956 -> 187.962 K, which is why the 188.0 +- 0.05 row above has only 12 mK of
-# margin. tests/test_drag.cpp still pins 274.84 for a HAND-built atmosphere, because
-# DragAtmosphere's own member default is still the typed kAirGamma (constants.h).
-CHECK all(abs(d["airA"] - 275.0) < 0.05 for d in drag)
+# Until #686 these three read 188.0 K / 66095 Pa / 275.0 m/s, because this fixture copied
+# the then-shipped Kerbin's one 5500 m scale height and the trio lock turns that into a
+# temperature. That is the trap in a fixture like this one: the fixture stayed green for
+# two days after #683 while the world it claims to copy moved under it.
+CHECK all(abs(d["airT"] - 288.1) < 0.05 for d in drag)
+CHECK all(abs(d["airP"] - 101325.0) < 1.0 for d in drag)
+CHECK all(abs(d["airA"] - 340.5) < 0.05 for d in drag)
 CHECK all(0.0 <= d["mach"] < 0.6 for d in drag)
 # Mach x a is the AIR-relative speed, so on a hull that never leaves its body's rot frame
 # it has to track the |v|= column on the same rows whatever the trajectory does: fastest

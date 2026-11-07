@@ -235,13 +235,21 @@ static const ScenarioDef kScenarios[] = {
     /* flying-low's altitude, but SUBORBITAL: its circular speed (2.4 km/s inertial,
        2.2 km/s of AIR on Kerbin) puts ~700 g of drag on the shipped jet at the
        instant it spawns, which is a chute-entry rig, not an airframe test. 0.08 of
-       the air-relative circular speed starts level at 180 m/s on Kerbin -- 2.5x the
-       71 m/s stall speed of a 3 t two-wing hull at 7 km -- 75 m/s on Duna (under
+       the air-relative circular speed starts level at 180 m/s on Kerbin -- 3.0x the
+       59 m/s stall speed of a 3 t two-wing hull at this bed's 8.5 km. That multiple
+       went UP when the air changed: the bed sits at 0.1 of the air top, so #682's
+       85 km sky lifted it from 7 km, and #686's warmer column put 1.9x the air there
+       that used to be there (0.502 kg/m3 where the 5500 m exponential left 0.267);
+       a stall speed goes as 1/sqrt(rho), so the 71 m/s of the old 7 km air is 59 m/s
+       here.
+       75 m/s on Duna (under
        its 122 m/s stall there, so the bed glides) and 267 m/s on Eve (3.4x stall in
        thick air: a hard start) (#451). What the bed does not fix is what it
        exposes: at these speeds the shipped hulls drag as ~31 m^2 of bluff body at
        Cd 0.76, so the jet bleeds 180 -> 103 m/s and sinks ~65 m/s while the aero
-       torque weathervanes it back to zero AoA, which zeroes its lift (#454/#399). */
+       torque weathervanes it back to zero AoA, which zeroes its lift (#454/#399;
+       those two are pre-#686 measurements in 7 km air, so the denser column should
+       shorten both). */
     {"flying-slow",    true,  false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0, true, false, 0.08},
     /* The same altitude band at an airspeed an airframe CRUISES at rather than
        2.5x it. 0.08 of the air-relative circular speed (flying-slow) suits hulls
@@ -249,17 +257,23 @@ static const ScenarioDef kScenarios[] = {
        bed spends the first 40 s of every run trading the excess for height and
        coming back through a phugoid (the shipped skiff, 6 s samples: 110 -> 13 m/s
        and back, 1.0 km of altitude).
-       This one starts at the trim point instead: 80 m/s of air on Kerbin, ~33 m/s
+       This one starts near the trim point instead: 80 m/s of air on Kerbin, ~33 m/s
        on Duna, ~120 m/s on Eve. Speed alone is not a trim: aimed along the air the
-       shipped skiff settles at its zero-moment AoA of 2.5 deg, which is 50..64 m/s
+       shipped skiff settles at its zero-moment AoA of 2.5 deg, which was 50..64 m/s
        of flight against a 10..12 m/s sink and 5.6 kN of weight. The trimmed template
-       (skiff_trim, 12 deg of elevator) holds 4.9 deg and glides at 47..50 m/s once its
+       (skiff_trim, 12 deg of elevator) held 4.9 deg and glided at 47..50 m/s once its
        phugoid damps -- the design
        point (#568 re-measured both on the pod-on-tank hull; the one-piece spindle
        this replaces sat at 1.6 deg hands off and dove to 130 m/s). The bed gives the
        airspeed; the airframe brings the angle of attack, and the launch AoA prints on
        the Spawn line so a bed that is not trimmed is visible without a --drag-log
-       (#569). */
+       (#569).
+       CAVEAT, since #686: the 47..50 m/s glide was measured in 7 km air at rho 0.346.
+       This bed now spawns in 8.5 km air at rho 0.502, where skiff_trim glides at
+       ~41 m/s (e2e 490), so the 0.0356 factor that was chosen to BE the trim point
+       is now 1.9x it and every flying-cruise run opens with a deeper zoom-climb than
+       the one those numbers describe (#693). The factor is gravity-keyed, not
+       air-keyed -- which is what #693 is about. */
     {"flying-cruise",  true,  false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0, true, false, 0.0356},
     {"ellipse-peri",   true,  false, 0.0,  false,  0, 10e3, 1000e3, 0.0, 0.0},
     {"ellipse-apo",    true,  false, 0.0,  false,  1, 10e3, 1000e3, 0.0, 0.0},

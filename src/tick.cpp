@@ -736,7 +736,7 @@ void tick(Game &g) {
                    different airs. On a scale-height body that is one number for the
                    whole sky, implied by H; on a layer table (#552 A4) it varies with
                    altitude, which is the whole point of that row. Units K / Pa / m/s,
-                   one number per field: the window's "188.0 K (-85.2 C)" gloss is for
+                   one number per field: the window's "150.4 K (-122.8 C)" gloss is for
                    the human, and a parsed field takes one scale. Kelvin because that
                    is the scale the thermodynamics are linear in.
                    Mach is over the AIR-relative speed at the COM -- NOT the |v|= this

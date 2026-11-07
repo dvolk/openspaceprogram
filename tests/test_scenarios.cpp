@@ -119,13 +119,25 @@ static int check_air(const char *path, const System &sys) {
                   double tol; };
     /* One number read ALOFT, because every Want literal above sits at the datum,
        where the column has not been walked yet (#683). Kerbin's edge density is
-       what orbital drag is made of: rho0 * exp(-Z / H) with Z the geopotential
-       depth R z/(R+z) = 62,685.8 m at 69,999 m geometric, on the authored
-       1.225 kg/m3 / 5500 m / 600 km / 9.81. The literal is that arithmetic by
-       hand; the uniform-g column #683 replaced gave 3.6e-6 at the same altitude. */
+       what orbital drag is made of, and since #686 it comes from a level table, not
+       from rho0 * exp(-Z / H): the 71 km level sits at 80,529.3 m geometric here and
+       lapses -0.00154453 K/m, so the air at 69,999 m is what integrating that column
+       in the body's own 1/r^2 field weighs. The old exponential put 1.375e-5 kg/m3 at
+       the same altitude -- 14.7x thinner -- because its 188 K datum had been making
+       Kerbin's air cold and thin all the way up. tmp/aero/kerbin686.py integrates the
+       same column by quadrature and agrees; it is also where the q at the top was
+       measured for the 85 km decision. */
     struct Aloft { const char *name; double alt; double rho; };
     static const Aloft aloft[] = {
-        {"Kerbin", 69999.0, 1.375001e-5},
+        {"Kerbin", 69999.0, 2.0277803e-4},
+        /* The two rows in between are the air the game actually flies in, and until #686
+           nothing pinned it: the datum read and the 70 km edge were pinned and the cruise
+           regime was left to the golden flight bands (485/490/492), which notice a profile
+           change only by going red for reasons a reader cannot see. 8500 m is the
+           flying-cruise spawn bed (0.1 x Kerbin's 85 km top, #682) and 5000 m is the
+           space-port hillside; both are level 0, weighed in the body's own 1/r^2 field. */
+        {"Kerbin", 5000.0, 0.7386735114},
+        {"Kerbin", 8500.0, 0.5019472257},
     };
     /* Where each authored level sits and how fast it lapses, in the GEOMETRIC metres a
        system file speaks (#690). The 1976 standard this table was copied from states both
@@ -139,21 +151,50 @@ static int check_air(const char *path, const System &sys) {
        Level 0 is pinned for its gradient only: its base is 0 by the anchor rule, and it is
        the level every player actually flies in, so it is the one a regression would quietly
        drop -- the chord factor at the datum is 1, so what it must still say is the published
-       number TIMES the standard's own row spacing (0.99828 of -0.0065). */
+       number TIMES the standard's own row spacing (0.99828 of -0.0065).
+       Kerbin's seven rows are pinned because they are the SAME authored table converted
+       against a different radius: 600 km instead of 6371 km. Earth's pins alone would stay
+       green if the conversion hard-coded a radius or skipped a body, and Kerbin is where the
+       map stops being rounding -- its 51 km row moves 4,737.7 m and its troposphere's gradient
+       loses 1.8% of itself. #686 put that table in, and gen_systems.py --check cannot see it
+       either. */
     struct Level { const char *name; int level; double alt; double lapse; };
     static const Level levels[] = {
         {"Earth", 0, 0.0, -0.00648878},    {"Earth", 1, 11019.0, 0.0},
         {"Earth", 2, 20063.0, 0.00099185}, {"Earth", 3, 32161.5, 0.00276538},
         {"Earth", 4, 47349.3, 0.0},        {"Earth", 5, 51411.6, -0.00274663},
         {"Earth", 6, 71800.2, -0.00195167},
+        {"Kerbin", 0, 0.0, -0.00638083},    {"Kerbin", 1, 11205.4, 0.0},
+        {"Kerbin", 2, 20689.7, 0.00091511}, {"Kerbin", 3, 33802.8, 0.00244303},
+        {"Kerbin", 4, 50994.6, 0.0},        {"Kerbin", 5, 55737.7, -0.00225883},
+        {"Kerbin", 6, 80529.3, -0.00154453},
     };
     static const Want want[] = {
         /* dry air's mix, authored now rather than defaulted: N2 78.084, O2 20.946,
            Ar 0.934, CO2 0.033 %, which resolves to M 0.028965 kg/mol and gamma
            1.40146 (a CO2 molecule lifts the heat capacity, so a real air's gamma is
-           a hair over diatomic 1.4). g 9.81, H 5500. */
-        {"Kerbin", 187.96215670165995, 274.98291650985726, 66094.875,
+           a hair over diatomic 1.4).
+           #686: Kerbin wears Earth's 1976 table, so its datum reads the standard's own
+           sea-level row -- bit-identical to Earth's literals below, because p0 =
+           rho0 (R/M) T0 and a = sqrt(gamma (R/M) T0) contain no g and no scale height.
+           Before this diff the authored H 5500 fixed the datum instead: T = g H M / R =
+           187.96 K, p0 66.1 kPa, a 275 m/s. Nothing about Kerbin's SURFACE said 188 K --
+           the trio lock said it, silently, and every Mach number and barometer on the home
+           world paid ~24%. The tolerance stays 1e-9 because Kerbin authors g 9.81 and the
+           datum does not read g at all; unlike Earth's, these are not the standard's g. */
+        {"Kerbin", 288.15, 340.47075676386669, 101324.85477637536,
                                                   0.23140616, 1e-9},
+        /* Laythe is now the body that wears the sentence src/drag.h opens this law
+           with -- rho0 1.225 on a 5500 m exponential -- at g 7.848 rather than
+           Kerbin's 9.81, so the trio lock reads a colder, softer world than the one
+           #686 just retired. Pinned so that comment cannot go stale the way
+           Kerbin's did without someone noticing. The tolerance is 1e-6 rather than
+           the 1e-9 the Kerbin row carries: these literals come from the trio formulas
+           with the mix's M and gamma rounded off, not off the loader's doubles, and
+           1e-6 of 150 K is 0.15 mK -- still five orders under anything a g, H or
+           composition edit could do. */
+        {"Laythe", 150.3697341465394, 245.95220192468292, 52875.900000000009,
+                                                  0.23140616, 1e-6},
         // H2 85.5, He 14, CH4 0.5 %: M 0.00236415, gamma 1.42319. g 7.848, H 20000.
         // Jool is the densest air in this system and its oxidizer share is exactly
         // zero -- hydrogen is the fuel, and there is no oxidizer to burn it with.
@@ -547,6 +588,92 @@ static void check_raised_sea() {
            "orbit cut at %.0f m\n", tmp.c_str(), dry_cut);
 }
 
+/* A fixture whose note says "the shipped bodies, verbatim, plus ONE field" is a copy, and
+   a copy drifts silently. It did: between #683 and #686, 245-kerbin-sea.json still carried
+   Kerbin's old 5500 m scale height and 70 km top while the shipped world moved to a level
+   table, and e2e/cases/flight/245 stayed GREEN -- because it was testing an 188 K Kerbin
+   that no longer exists, with air pins (188.0 K / 66095 Pa / 275.0 m/s) that matched the
+   stale copy rather than the game. The case could not see it; only a pin against the real
+   file can. Compare the air profile of every body such a fixture carries. */
+static void check_fixture_air() {
+    static const char *fixtures[] = {
+        "e2e/fixtures/systems/245-kerbin-sea.json",   // Kerbol, Kerbin, Moho, Duna
+        "e2e/fixtures/systems/412-moho-sea.json",     // Kerbol, Moho
+    };
+    for(const char *path : fixtures) {
+        std::ifstream fa(path), fs("res/systems/ksp_system.json");
+        if(!fa.is_open() || !fs.is_open()) {
+            printf("  cannot open %s or res/systems/ksp_system.json (run from the repo root)\n",
+                   path);
+            failures++;
+            continue;
+        }
+        const nlohmann::json fix = nlohmann::json::parse(fa);
+        const nlohmann::json shipped = nlohmann::json::parse(fs);
+        int drift = 0;
+        for(const nlohmann::json &fb : fix["bodies"]) {
+            const std::string name = fb.value("name", std::string());
+            const nlohmann::json *sb = nullptr;
+            for(const nlohmann::json &b : shipped["bodies"]) {
+                if(b.value("name", std::string()) == name) { sb = &b; break; }
+            }
+            if(sb == nullptr) {
+                printf("  %s: %s is not a shipped body -- the note claims verbatim copies\n",
+                       path, name.c_str());
+                drift++;
+                continue;
+            }
+            const bool fx_air = fb.contains("surface") && fb["surface"].contains("atmosphere");
+            const bool sh_air = sb->contains("surface") && (*sb)["surface"].contains("atmosphere");
+            if(fx_air != sh_air) {
+                printf("  %s: %s has %s atmosphere block, the shipped body has %s\n",
+                       path, name.c_str(), fx_air ? "an" : "no", sh_air ? "an" : "no");
+                drift++;
+                continue;
+            }
+            if(!fx_air) { continue; }
+            const nlohmann::json &fxa = fb["surface"]["atmosphere"];
+            const nlohmann::json &sha = (*sb)["surface"]["atmosphere"];
+            for(const char *key : {"sea_level_density", "height", "scale_height"}) {
+                if(fxa.value(key, -1.0) != sha.value(key, -1.0)) {
+                    printf("  %s: %s atmosphere %s is %s, shipped is %s\n", path, name.c_str(),
+                           key, fxa.contains(key) ? fxa[key].dump().c_str() : "absent",
+                           sha.contains(key) ? sha[key].dump().c_str() : "absent");
+                    drift++;
+                }
+            }
+            // composition is the one thing these fixtures may legitimately leave out: an
+            // omitted mix resolves to dry air, which is what the shipped Kerbin authors.
+            const bool fx_layers = fxa.contains("layers"), sh_layers = sha.contains("layers");
+            if(fx_layers != sh_layers
+               || (fx_layers && fxa["layers"].size() != sha["layers"].size())) {
+                printf("  %s: %s authors %d air levels, shipped %d\n", path, name.c_str(),
+                       (int)(fx_layers ? fxa["layers"].size() : 0),
+                       (int)(sh_layers ? sha["layers"].size() : 0));
+                drift++;
+                continue;
+            }
+            if(!fx_layers) { continue; }
+            for(size_t i = 0; i < fxa["layers"].size(); ++i) {
+                const nlohmann::json &x = fxa["layers"][i], &y = sha["layers"][i];
+                if(x != y) {
+                    printf("  %s: %s level %zu is %s, shipped %s\n", path, name.c_str(), i,
+                           x.dump().c_str(), y.dump().c_str());
+                    drift++;
+                }
+            }
+        }
+        if(drift) {
+            printf("  %s: %d field(s) drifted from res/systems/ksp_system.json. The note "
+                   "promises the shipped bodies plus one sea_level; a fixture testing a world "
+                   "the game no longer ships tests nothing.\n", path, drift);
+            failures++;
+        } else {
+            printf("  %s: air profile matches the shipped bodies it copies\n", path);
+        }
+    }
+}
+
 static void check_system(const char *path) {
     System sys = load_system(path, nullptr, nullptr);
     int checked = 0;
@@ -750,6 +877,7 @@ int main() {
     }
     check_composition();
     check_raised_sea();
+    check_fixture_air();
     if(failures) {
         printf("test_scenarios: %d FAILED\n", failures);
         return 1;

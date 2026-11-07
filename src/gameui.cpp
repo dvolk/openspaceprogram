@@ -6389,8 +6389,8 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             /* What the authored scale height IMPLIES rather than measures (#552
                A2): one exponential IS an isothermal atmosphere, so T, p and the
                sound speed follow from H and g with nothing extra authored. The
-               word "isothermal" is on the line on purpose -- Kerbin reads 188 K /
-               66 kPa / 275 m/s this way, where an Earth-like 288 K at rho0 1.225
+               word "isothermal" is on the line on purpose -- Laythe reads 150 K /
+               53 kPa / 246 m/s this way, where an Earth-like 288 K at rho0 1.225
                wants an 8.4 km scale height (which would put 3.5x more air over you
                at 20 km; real air puts 2.7x, the gap being the lapse rate the single
                exponential has not got). Reconciling them is a layer table, not a
@@ -6398,8 +6398,8 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                the levels at the datum, which is why its label says "sea level" and
                not "isothermal".
                Kelvin first and Celsius as a gloss: the rest of this block is SI
-               (Pa, m/s, kg/m3), the law is linear in the ABSOLUTE scale, and 188 K
-               is the number the tests and --atlas-dump pin. Celsius is there because
+               (Pa, m/s, kg/m3), the law is linear in the ABSOLUTE scale, and the
+               Kelvin figure is what the tests and --atlas-dump pin. Celsius is there because
                "would I freeze" is the question a player actually asks. --drag-log
                prints plain K -- a log line gets parsed, and a second unit in a
                field is a parser's bad day. */

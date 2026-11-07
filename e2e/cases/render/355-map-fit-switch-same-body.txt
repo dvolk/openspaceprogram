@@ -2,6 +2,14 @@
 # the same Kerbin have different orbits, so F6 from one to the other must
 # refit: a body-only latch would keep the first ship's framing and push the
 # second ship's apoapsis off the window.
+#
+# Both beds are multiples of Kerbin's shell, so #682's air top (85 km -> shellEdge
+# 102 km, off the 100 km floor) moves both rows: 600000 + 1.25 x 102000 =
+# 727500 for inertial-orbit and 600000 + 5.0 x 102000 = 1110000 for high-orbit. The SHELL
+# moved 2% and each fit inherits it at its own multiple of body + shell, so the two rows
+# do not move by the same percentage -- +0.34% here, +0.91% there, because the 600 km of
+# radius is the part they share. A bed anchored to the surface would not have moved at
+# all, and that is the point.
 NAME map-fit-switch-same-body
 CLAIM Switching ships around the same body refits the map to the new orbit.
 KIND invariant
@@ -10,8 +18,8 @@ ARGS --startship probe,res/ships/racer.json,Kerbin,high-orbit
 ARGS --sim-press 2500,50,F6
 EXPECT Active ship 2 of 2: probe
 FORBID error:
-CHECK re.search(r"\[mapfit\] Kerbin: body 600000 m, fit 725000 m -> 7250\.0 m/px", out)
-CHECK re.search(r"\[mapfit\] Kerbin: body 600000 m, fit 1100000 m -> 11000\.0 m/px", out)
+CHECK re.search(r"\[mapfit\] Kerbin: body 600000 m, fit 727500 m -> 7275\.0 m/px", out)
+CHECK re.search(r"\[mapfit\] Kerbin: body 600000 m, fit 1110000 m -> 11100\.0 m/px", out)
 # Exactly the two fits: the opening one and the switch. A latch that re-fires
 # every draw would fit the same ship hundreds of times here.
 CHECK len(re.findall(r"\[mapfit\]", out)) == 2

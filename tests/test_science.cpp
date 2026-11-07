@@ -571,7 +571,9 @@ int main() {
 
     // --- the orbit cut: shell edge (soi - seaLevelRadius) + margin ---------
     {
-        CHECK(orbitCutAlt(700000.0, 600000.0) == 110000.0);    // Kerbin: 100km shell + 10km
+        // 112 km is Kerbin as shipped since #682: its 85 km air makes shellEdge take
+        // the 1.2x top (102 km) rather than the kMinShell floor, + the 10 km margin.
+        CHECK(orbitCutAlt(700000.0, 600000.0) == 110000.0);    // 100km shell + 10km
         CHECK(orbitCutAlt(6240000.0, 6000000.0) == 250000.0);  // Jool: derived 240km shell
         // A raised sea moves the datum AND the shell that sits on it, so the
         // cut over mean sea is unchanged: that is what two args guarantee.
@@ -583,25 +585,27 @@ int main() {
 
     // --- situationFor: the five situations from grounded + altitude --------
     {
-        const double atmoTop = 70000.0;    // Kerbin's atmosphere
-        const double cut = 110000.0;      // SoI edge (100km) + 10km margin
+        // Kerbin as authored since #686: an 85 km air top, so shellEdge lifts off the
+        // 100 km floor to 1.2 * 85 km and the orbit cut follows it.
+        const double atmoTop = 85000.0;
+        const double cut = 112000.0;      // SoI edge (102km) + 10km margin
         // grounded wins regardless of altitude (the #75 fix)
         CHECK(situationFor(true, 0.0, atmoTop, cut) == SciSituation::Landed);
-        CHECK(situationFor(true, 69999.0, atmoTop, cut) == SciSituation::Landed);
+        CHECK(situationFor(true, 84999.0, atmoTop, cut) == SciSituation::Landed);
         // airborne in the atmosphere -> flying; the bottom 20% is flying-low
         CHECK(situationFor(false, 0.0, atmoTop, cut) == SciSituation::FlyingLow);
-        CHECK(situationFor(false, 13999.0, atmoTop, cut) == SciSituation::FlyingLow);
-        CHECK(situationFor(false, 14000.0, atmoTop, cut) == SciSituation::FlyingHigh);
-        CHECK(situationFor(false, 69999.0, atmoTop, cut) == SciSituation::FlyingHigh);
+        CHECK(situationFor(false, 16999.0, atmoTop, cut) == SciSituation::FlyingLow);
+        CHECK(situationFor(false, 17000.0, atmoTop, cut) == SciSituation::FlyingHigh);
+        CHECK(situationFor(false, 84999.0, atmoTop, cut) == SciSituation::FlyingHigh);
         // above the atmosphere -> the orbit band, split at the cut
-        CHECK(situationFor(false, 70000.0, atmoTop, cut) == SciSituation::LowOrbit);
-        CHECK(situationFor(false, 109999.0, atmoTop, cut) == SciSituation::LowOrbit);
-        CHECK(situationFor(false, 110000.0, atmoTop, cut) == SciSituation::HighOrbit);
+        CHECK(situationFor(false, 85000.0, atmoTop, cut) == SciSituation::LowOrbit);
+        CHECK(situationFor(false, 111999.0, atmoTop, cut) == SciSituation::LowOrbit);
+        CHECK(situationFor(false, 112000.0, atmoTop, cut) == SciSituation::HighOrbit);
         CHECK(situationFor(false, 500000.0, atmoTop, cut) == SciSituation::HighOrbit);
         // airless body: no flying band; the altitude band straight off the cut
         CHECK(situationFor(false, 0.0, 0.0, cut) == SciSituation::LowOrbit);
-        CHECK(situationFor(false, 109999.0, 0.0, cut) == SciSituation::LowOrbit);
-        CHECK(situationFor(false, 110000.0, 0.0, cut) == SciSituation::HighOrbit);
+        CHECK(situationFor(false, 111999.0, 0.0, cut) == SciSituation::LowOrbit);
+        CHECK(situationFor(false, 112000.0, 0.0, cut) == SciSituation::HighOrbit);
     }
 
     // --- the loader's "measures" is a closed set, not free text (#665) ------

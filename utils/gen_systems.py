@@ -256,14 +256,45 @@ SURFACES = {
                     [0.45, [0.45, 0.55, 0.20]],
                     [0.8, [0.55, 0.45, 0.35]],
                     [1.0, [1.00, 1.00, 1.00]]],
+        # #686: Kerbin stops being a 188 K world. A scale height IS a surface temperature --
+        # the trio lock (p0 = rho0 g H, T = g H M / R) makes the old `scale_height: 5500` read
+        # as T0 187.96 K at 66.1 kPa with a 275 m/s sound speed, which is pinned at
+        # tests/test_scenarios.cpp and is what every Mach number and barometer on the home world
+        # has been paying. Warm and thin cannot both come from one exponential: isothermal at
+        # 288.15 K wants H 8432 m, which puts 84x more air at the top than 5500 does. A LAYER
+        # TABLE is the shape that pays both -- Earth's profile, thinned aloft by its own
+        # inversions -- so Kerbin now wears the same 1976 rows Earth does, and the generator
+        # converts them against a 600 km radius instead of a 6371 km one. That conversion is not
+        # cosmetic here: the 11 km row moves 19 m on Earth and 205.4 m here, and the 51 km row
+        # 412 m vs 4,737.7 m (#690, utils/atmo_units.py).
+        #
+        # `height` 70000 -> 85000 is #682's half of the same diff, and it is a decision, not a
+        # side effect: the top is where satellites start feeling drag, and shellEdge is
+        # max(100 km, 1.2 top), so this moves the rotating frame, the LowOrbit/HighOrbit bands,
+        # the flying-slow spawn bed (0.1 top: 7.0 -> 8.5 km) and the atlas disk together. Seven
+        # levels need it: the 71 km row resolves to 80,529.3 m geometric here, so a 70 km body
+        # refuses it (atmo.h: the last level must sit below `height`).
         "atmosphere": {"color": [0.30, 0.50, 1.00], "thickness": 15000,
                        "power": 4.0, "intensity": 0.7,
-                       "sea_level_density": 1.225, "scale_height": 5500,
+                       "sea_level_density": 1.225,
                        # Written out rather than left to the dry-air default: the
                        # atlas names the air, and "breathable" is a fact about this
                        # world that a player should be able to read off it.
                        "composition": DRY_AIR,
-                       "height": 70000},
+                       "height": 85000,
+                       # #690: these are the standard's OWN numbers, per GEOPOTENTIAL metre.
+                       # resolve_layer_heights() converts altitude and lapse rate against this
+                       # body's radius and drops the marker, so the emitted file speaks the one
+                       # unit every other altitude in it speaks.
+                       "heights": "geopotential",
+                       "layers": [
+                           {'alt': 0,     'T': 288.15, 'lapse': -0.0065},
+                           {'alt': 11000, 'T': 216.65, 'lapse': 0.0},
+                           {'alt': 20000, 'T': 216.65, 'lapse': 0.001},
+                           {'alt': 32000, 'T': 228.65, 'lapse': 0.0028},
+                           {'alt': 47000, 'T': 270.65, 'lapse': 0.0},
+                           {'alt': 51000, 'T': 270.65, 'lapse': -0.0028},
+                           {'alt': 71000, 'T': 214.65, 'lapse': -0.002}]},
         "clouds": {"height": 2500, "coverage": 0.6, "freq": 10,
                    "drift": 0.00001},
     },

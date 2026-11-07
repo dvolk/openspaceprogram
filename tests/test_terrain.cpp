@@ -740,10 +740,10 @@ int main() {
     {
         AtmosphereParams a;
         a.sea_level_density = 1.225;
-        a.scale_height = 5500.0;              // Kerbin's, height unauthored
+        a.scale_height = 5500.0;              // an exponential body, height unauthored
         check(a.top() == 5500.0 * kAtmoScaleHeights,
               "atmo: an unauthored height derives scale_height * 10");
-        a.height = 70000.0;                   // Kerbin's authored top
+        a.height = 70000.0;                   // an authored top (Kerbin's number until #686)
         check(a.top() == 70000.0,
               "atmo: an authored height wins over the derivation");
         AtmosphereParams none;                // no drag model at all

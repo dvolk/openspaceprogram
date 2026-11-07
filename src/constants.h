@@ -16,8 +16,9 @@
 inline constexpr double kSoiMargin = 10e3;
 
 /* Floor [m] for the near-body (rotating-frame) shell above sea level, for
-   bodies whose atmosphere is shorter (or absent). 100 km is the shell every
-   shipped body was authored with, so shipped extents do not move.
+   bodies whose atmosphere is shorter (or absent). It is the shell every
+   airless shipped body gets, and was every body's until #686 gave Kerbin 85 km
+   of air, whose 1.2x shell (102 km) is the first to exceed this floor.
    Changes: the surface-frame extent, the science HighOrbit boundary and the
    orbit-scenario spawn radii on small or airless bodies.
    Where: shellEdge (bodylimits.h). */

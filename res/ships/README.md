@@ -17,25 +17,39 @@ there is no takeoff constraint: no wheels, no runway, no thrust-to-weight floor.
 | wing | 24.0 m2 authored, span 16 m, AR 10.7, bolted to the TANK, 1.2 m aft of the pod's centre |
 | as the model groups it | one 25.1 m2 system at AR 10.19 (the two wings plus the ailerons hung on their trailing edge), one 5.1 m2 tail system at AR 3.12, fin (1.4 m2, AR 1.40) and rudder (0.48 m2, AR 3.00) each their own (`OSPAEROSYS=1`, #556/#570) |
 | loading | 23.7 kg/m2 |
-| cruise | 47..50 m/s at 5.5..6.1 km once the phugoid damps (#585), +4.9 deg of angle of attack |
-| glide | sinks 6.5 m/s unpowered at that speed |
+| cruise | 40..42 m/s at 6.4..7.7 km once the phugoid damps (#585), +4.9 deg of angle of attack -- 47..50 m/s at 5.5..6.1 km in the pre-#686 air |
+| glide | sinks 5.4..5.8 m/s unpowered at that speed (6.5 m/s in the old air; sink goes as 1/sqrt(rho) too) |
 | L/D | 8.6 (target >= 10; the lever left is the hull bill -- span is banked, #567) |
 | static margin | +0.55 m |
 | roll | aileron pair on the wing, `roll` axis (563-roll-ailerons), and the pod's 100 N m wheel. 0.24 rad/s at full stick and 29-31 deg of bank: the span #567 bought cost roll authority (#588) |
-| stall (7 km) | 23.1 m/s |
-| bill at cruise | body 0.59 x 0.82 m2, wing profile 0.61 m2, induced 0.33 m2 |
+| stall (7 km) | 17.7 m/s (23.1 m/s in the pre-#686 air, which is the row #567/#543 quoted) |
+| bill at cruise | body 0.59 x 0.82 m2, wing profile 0.61 m2, induced 0.34 m2 |
 
 Those are `skiff_trim.json`'s numbers (`skiff.json` plus `"trim": 12` on both elevators
-and nothing else), measured 2026_11_02 on `flying-cruise` with `--drag-log` and no
+and nothing else), measured 2026_11_07 on `flying-cruise` with `--drag-log` and no
 stick, `--sim-steps 4000 --time-accel 6` (396 s of flight): once the phugoid damps --
-`t > 150 s` -- it holds AoA 4.9 deg at 47..50 m/s, sinks 6.5 m/s and bills L/D 8.64 in
-every row. A glide bed always has an altitude in its answer, because it is sinking:
-those rows are 5.5..6.1 km and the same hull reads 43..47 m/s / 6.0 m/s of sink down at
-4.6..5.4 km, in denser air and the same L/D (#585 is why it has not settled yet). The
-pinned case (`flight/492-elevator-trim`: 50 s at `--time-accel 1`, throttle opened at
-t=25 s) is the same hold caught before it damps: AoA 4.8..6.2 deg, L/D up to 9.0, speed
-swinging 23..78 m/s against 7.0..7.4 km of height. `skiff.json` itself -- no trim --
-flies this hull's zero-moment AoA of +2.5 deg: 50..64 m/s sinking 10-12 m/s, and only
+`t > 150 s` -- it holds AoA 4.9 deg at 40..42 m/s, sinks 5.4..5.8 m/s and bills 0.82 m2
+of body plus 0.61 m2 of wing profile and 0.34 m2 of induced in every row. A glide bed
+always has an altitude in its answer, because it is sinking: those rows are 6.4..7.7 km,
+and the same hull reads slower still the lower it gets (#585 is why it has not settled
+yet). The row that did NOT move is L/D: 8.64 is a property of the airframe at 4.9 deg,
+and #686 changed the air, not the hull. Worth saying plainly that `--drag-log` does not
+print it -- the ratio these rows do imply, speed over sink, is 7.3 now and 7.4 then, and
+the whole-hull figure sits under the 8.64 because the hull bill is in it. The 8.64 came
+from an analysis pass rather than from the log, so the row is quoted on trust and is
+filed as #694 to pin it to something measurable.
+The same command measured 47..50 m/s / 6.5 m/s / 5.5..6.1 km on 2026_11_02, in the air
+Kerbin wore then (one 5500 m scale height, rho 0.346 at 7 km). Both sets are in this file
+because a law change is judged against the design, and #686 was a world change: the
+speed and the sink moved by about 1/sqrt(rho) -- 0.346 -> 0.502 kg/m3 at the bed, which
+is a factor of 0.83 -- and the angle of attack, the trim, the bill and the margin did
+not move at all. That is the check this file is for.
+The pinned case (`flight/492-elevator-trim`: 50 s at `--time-accel 1`, throttle opened at
+t=25 s) is the same hold caught before it damps: AoA 3.9..4.7 deg, speed swinging
+30..96 m/s against 8.5 km of height -- #682's taller sky put the bed there, and #693 is
+open on the bed spawning 1.9x this hull's trim rather than the 1.6x it was written for.
+`skiff.json` itself -- no trim -- flies this hull's zero-moment AoA of +2.5 deg: 50..64
+m/s sinking 10-12 m/s in the old air, and only
 L/D 5.3, because at that speed the body bill and not the wing pays the drag. So the
 12 deg of tab is not only a pitch offset, it is the difference between this hull's worst
 and best glide.
@@ -50,7 +64,9 @@ pitch authority -- which is why this hull sits 2 deg nose-high at the same setti
 
 The stall row is arithmetic off the same law, not a flight measurement: 5.45 kN of
 weight at 7 km (569 kg x 9.81 x (600/607)^2) against the airframe's 168.0 m2/rad of lift
-slope at the shipped wing's 20.1 deg stall angle, in 7 km air (rho 0.346). The 24 m/s
+slope at the shipped wing's 20.1 deg stall angle, in 7 km air -- which since #686 means
+rho 0.594 rather than the 0.346 the same height wore in the isothermal column, so the
+answer is 17.7 m/s where that expression used to print 23.1. The 24 m/s
 this row carried until #567 is the same expression with 559 kg and 153.6 m2/rad in it.
 
 **What the swap and then the wing cost, measured on three hulls** (same `--drag-log`,
@@ -73,8 +89,11 @@ it was measured for the swap, on that swap's bed, and is here for the silhouette
 comparison below rather than for a sink comparison.
 
 Both hulls bill the same 0.48 m2 of body (`Cd` 0.59 on a 0.82 m2 union); the sink rows
-above read 5.0..5.5 km, which is why they are 0.3 m/s kinder than the 5.5..6.1 km design
-row at the top of this file.
+above read 5.0..5.5 km, which is why they are 0.3 m/s kinder than the design row at the
+top of this file -- though note the vintage: that table is a matched-band comparison
+measured in the pre-#686 air and has not been re-run since Kerbin changed, and the design
+row above it now reads 6.4..7.7 km. Comparing a #567-era sink row against a #686 one is
+comparing two airs, which is the trap this file keeps warning about.
 
 All of that gap is coefficient, not shape: the two hulls present almost the same
 silhouette (0.82 vs 0.87 m2) and differ fivefold in what it is charged. Nose-on, the

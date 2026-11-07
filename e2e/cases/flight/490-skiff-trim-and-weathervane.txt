@@ -1,5 +1,5 @@
 NAME skiff-trim-and-weathervane
-CLAIM The skiff is the airframe the design point was written for: 569 kg on 24 m2 of AR-10.7 wing, a command pod stacked on a jet fuel tank, spawned at 80 m/s and 7 km and holding +2.5..+2.8 deg of angle of attack through its phugoid with 0.55 m of static margin. A one-second rudder kick swings Beta 7.7 deg and settles; the hull bill is Cd 0.56-0.61 on 0.80-0.91 m2, where the smooth spindle this replaced paid 0.11 on 0.87.
+CLAIM The skiff is the airframe the design point was written for: 569 kg on 24 m2 of AR-10.7 wing, a command pod stacked on a jet fuel tank, spawned at 80 m/s and 8.5 km and holding +2.4..+2.8 deg of angle of attack through its phugoid with 0.55 m of static margin. A one-second rudder kick swings Beta 6.2 deg and settles; the hull bill is Cd 0.57-0.60 on 0.80-0.88 m2, where the smooth spindle this replaced paid 0.11 on 0.87.
 KIND golden
 # #568 put the pod back on a tank: capsule_r0.5h1.5 at the root, jet_tank_r0.4h2 1.75 m
 # aft of it, the engine 3.25 m aft, wings on the TANK at 1.2 m aft of the pod's centre,
@@ -11,7 +11,7 @@ KIND golden
 # and the hull to 569 kg (472 of parts, tanks full, plus one 97 kg kerbal -- the pod
 # seats one, where the one-piece fuselage seated two), still paying 5x the body bill the
 # smooth spindle did. The band below on A is the silhouette union of pod+tank+engine;
-# FormCp is where that bill pushes -- -0.44..-0.53 m here, against the -0.68 m the
+# FormCp is where that bill pushes -- -0.44..-0.50 m here, against the -0.68 m the
 # spindle's bill reported.
 ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
 # --no-paint: this case reads [drag] rows, never pixels, and a scripted frame
@@ -30,38 +30,63 @@ CHECK len(drag) >= 40
 # deg over this run's peak; #567's bigger wing moved that peak 0.1 deg on its own, so
 # re-measure before tightening it.
 CHECK all(2.3 < d["aoa"] < 3.0 for d in drag if d["aoa"] is not None)
-CHECK min(d["v"] for d in drag if d["t"] <= 20.0) > 60.0
-CHECK min(d["alt_asl"] for d in drag if d["t"] <= 20.0) > 6950.0
+# The first, uncoupled exchange: the bed gives 80 m/s of air and this hull trims near
+# 41 m/s in #686's air (47..50 in the air this case was written against, because the
+# bed's rho went 0.348 -> 0.502 kg/m3 and trim speed goes as 1/sqrt(rho)). So the arc
+# bottoms at 40.7 m/s at t=19 s. The old floor of 60 sat above the OLD bottom and says
+# nothing about this one; 35 keeps the claim that the hull trades speed for height and
+# gets it back, with 5 m/s of slack, and still reddens if the exchange runs away.
+CHECK min(d["v"] for d in drag if d["t"] <= 20.0) > 35.0
+# The bed, not the airframe: flying-cruise spawns at 0.1 x the body's air top, and #682
+# moved that top 70 -> 85 km, so the spawn row is 8502 m ASL where it used to read 7005.
+# This floor is the spawn altitude less the 50 m the hull may fall before its wings
+# answer -- it tracks the bed, so it moves whenever the air top does. It is not a sink
+# measurement: the lowest row of the first 20 s IS the spawn row (8502 m), because this
+# bed spawns above trim and climbs rather than falling. What it catches is the bed moving
+# (a 70 km top puts the spawn at 7002 and reddens this) and a hull that falls 50 m before
+# its wings answer.
+CHECK min(d["alt_asl"] for d in drag if d["t"] <= 20.0) > 8450.0
 # Static margin positive and steady (the VAB number, in flight): 0.550 on every row,
 # +0.552 from the parts.
 CHECK all(0.52 < d["sm"] < 0.58 for d in drag if d.get("sm") is not None)
-# The kick: 7.7 deg of sideslip and back inside 0.3 deg by t=40 s. The same 1 s press
+# The kick: 6.2 deg of sideslip and back inside 0.1 deg by t=40 s. The same 1 s press
 # bought 9.7 deg before #567 and 8.8 deg before that: the wing now carries 96 kg out to
 # 8 m of tip, so the hull's yaw inertia is larger and one second of rudder swings less
-# air around. The ceiling is 12 so the case guards "it swings and weathervanes back"
-# without betting on where one press lands.
+# air around. #686 takes it a step further for the opposite reason -- the rudder's own
+# torque is q x area, but the press now lands just past the bottom of the phugoid, where
+# this hull is doing 45 m/s rather than the 58 m/s the old bed's phase put it. The
+# ceiling is 12 so the case guards "it swings and weathervanes back" without betting on
+# where one press lands.
 CHECK 3.0 < max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 12.0
 CHECK all(abs(d["beta"]) < 2.5 for d in drag if d["t"] >= 40.0)
-# The bill: pod+tank+engine union 0.80..0.91 m2 at an area-weighted Cd of 0.57-0.61
+# The bill: pod+tank+engine union 0.80..0.88 m2 at an area-weighted Cd of 0.57-0.60
 # (nose-on: capsule drag_forward 0.35, tank 1.0, engine 0.15), wings at 0.010 profile,
-# induced 0.10..0.59 as the throttle pushes it through its phugoid -- the top of that
+# induced 0.10..0.51 as the throttle pushes it through its phugoid -- the top of that
 # range is where a hangar-sized induced bill would start showing up as a wall. #543 A5
-# took the top from 0.56 to 0.59, and the case's own log says why: at the fast end of the
-# arc (83.8 m/s, Mach 0.305 in Kerbin's 275.0 m/s air) the printed CLa is 176.22 against
-# the 168.0 the parts author, and inducedCd squares a slope correction.
-CHECK 0.75 < min(d["a"] for d in drag if d.get("a")) < 1.00
+# took the top from 0.56 to 0.59 in the old air and #686 shrank the correction that
+# priced it: at the fast end of the arc (79.8 m/s) the printed CLa is 173.82 against the
+# 168.0 the parts author -- 3.5% of slope where it used to be 4.9% -- because that
+# 79.8 m/s is Mach 0.260 in Kerbin's new 306.7 m/s air instead of Mach 0.305 in the old
+# 275.0. The air got warmer, not thinner: 230..234 K at this bed, against the 188.0 K
+# one scale height used to imply everywhere.
+CHECK all(0.78 < d["a"] < 0.90 for d in drag if d.get("a"))
+# The CLAIM's Cd pair is pinned beside the area it weights: 0.565..0.601 across the whole
+# run, measured. A bill is Cd x A, so pinning one without the other leaves half the claim
+# untestable -- which is how this row stayed green through a 1.44x change in the air.
+CHECK all(0.55 < d["cd"] < 0.62 for d in drag)
 CHECK all(0.35 < d["profile"] < 0.65 for d in drag if d.get("profile") is not None)
 # None-guarded because #560 made Induced= dashable: every row of this run has a usable
 # flow, so all 40 print a number, but max() over a dict comprehension that can yield None
 # is a TypeError waiting for the first row that does not. The floor check below was
 # already guarded for the same reason.
 CHECK max(d["induced"] for d in drag if d.get("induced") is not None) < 0.90
-# ... and it is billed AT ALL. Coldest row of this run: 0.096 m2. A ceiling with no
-# floor stays green if the law stops charging -- an AR of zero short-circuits inducedCd
-# in drag.h, and a pane that falls out of its lifting system is skipped by the bill --
-# while every other band here (aoa, sm, profile, a) still passes.
+# ... and it is billed AT ALL. Smallest bill of this run: 0.100 m2, on the fast row
+# where the wing is nearly unloaded. A ceiling with no floor stays green if the law stops
+# charging -- an AR of zero short-circuits inducedCd in drag.h, and a pane that falls out
+# of its lifting system is skipped by the bill -- while every other band here (aoa, sm,
+# profile, a) still passes.
 CHECK all(d["induced"] > 0.05 for d in drag if d.get("induced") is not None)
-# -0.65 rather than -0.60: this run reads -0.44..-0.53, and the number worth keeping
+# -0.65 rather than -0.60: this run reads -0.44..-0.50, and the number worth keeping
 # apart from it is the spindle's -0.68 -- a band that swallows that is no band. #570
 # moved this floor 0.03 m on its own, so the margin against -0.68 is 0.03 m: re-measure
 # rather than widen it again.

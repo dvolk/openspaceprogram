@@ -99,9 +99,10 @@ inline double levelTemperature(const AtmoLayer &L, double alt) {
        geopotentialDepth(radius, z) = radius z / (radius + z)
    -- geopotential height, the substitution every standard-atmosphere table and
    Orbiter's layer models open with. It is the whole reason a KSP-sized world needs
-   it: Kerbin's air top sits at 11.7 % of the body's radius, where the field is
-   already 20 % weaker, and a uniform-g column thins the top of that air by 3.8x
-   (#683's per-body table: 1.04x on Jupiter to 5.4x on Duna).
+   it: Kerbin's air top sits at 14.2 % of the body's radius since #686, where the
+   field is already 23 % weaker, and a uniform-g column thins the top of that air
+   by 4.6x -- 2.26 Pa at the 85 km edge weighed, 0.50 Pa uniform (#683's per-body
+   table: 1.04x on Jupiter to 5.4x on Duna).
    radius <= 0 asks for the UNIFORM field instead, which is what a hand-built
    DragAtmosphere with no world gets; a body loaded from a system file always
    carries its seaLevelRadius. */

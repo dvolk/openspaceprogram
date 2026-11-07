@@ -145,9 +145,9 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
        a = sqrt(gamma R T / M) = sqrt(gamma g H)  [m/s]   M cancels
    Pressure and sound speed need NOTHING authored -- the scale height alone sets
    them, which is why molar_mass is a composition question only for the TEMPERATURE
-   line. Read that as content, not trivia: Kerbin (H 5500, g 9.81, rho0 1.225) means
-   188.0 K, 66.1 kPa, 275.0 m/s, so a hull at 300 m/s at sea level is already
-   Mach 1.09 there; an Earth-shaped exponential (H 8500) means 290.8 K, 102.3 kPa,
+   line. Read that as content, not trivia: Laythe (H 5500, g 7.848, rho0 1.225) means
+   150.4 K, 52.9 kPa, 246.0 m/s, so a hull at 300 m/s at sea level is already
+   Mach 1.22 there; an Earth-shaped exponential (H 8500) means 290.8 K, 102.3 kPa,
    341.9 m/s -- within ~1% of USSA-1976, with no temperature authored anywhere.
    (Both use dry air's resolved gamma 1.4015 rather than the typed 1.4; the shipped
    bodies' gammas come off their authored mixes, #630, and a hand-built DragAtmosphere
@@ -156,8 +156,8 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
    formulas do not show: the hull is pulled by g radius^2/(radius+z)^2, so the exponent
    is the geopotential depth Z(alt), not alt. At the datum the read is unchanged -- H is
    defined there -- and only the aloft numbers move: on Earth by 0.3% at 11 km, at
-   Kerbin's 70 km top by 3.8x, across the shipped catalogue 1.04x (Jupiter's top) to
-   5.4x (Duna's). What stays GEOMETRIC on purpose is everything the rest of the game
+   Kerbin's 85 km top by 4.6x (2.26 Pa of column weighed, 0.50 Pa uniform), across the
+   shipped catalogue 1.04x (Jupiter's top) to 5.4x (Duna's). What stays GEOMETRIC on purpose is everything the rest of the game
    measures altitude in: the `alt >= height` vacuum check above, the science bands, the
    shell (bodylimits.h), the spawn beds and the atlas disk. Z is arithmetic inside the
    column, not a unit the game speaks.
@@ -170,18 +170,20 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
    wrong gas.
    THE THREE ARE LOCKED on ONE exponential: rho0, p0 and H cannot all be Earth's
    numbers at once. rho0 1.225 with p0 101.3 kPa wants T0 288 K, which wants H 8.43 km:
-   against the H = 5.5 km Kerbin ships, that exponential is 1.37x thicker at 5 km and
+   against the H = 5.5 km Laythe ships, that exponential is 1.37x thicker at 5 km and
    3.54x at 20 km -- and the REAL atmosphere is 1.5x / 2.7x thicker there, because a
    lapse rate makes density fall faster than pressure. Having both means a LAPSE RATE,
    and that is what a LAYER TABLE is (#552 A4): a body that authors one gets a
    temperature that varies with altitude, a pressure integrated hydrostatically and a
    density that follows from the gas law, all three consistent with its authored
-   sea_level_density. A body that does not (every KSP-derived world so far) still gets
-   the isothermal read of its authored scale height, and the atlas labels it
-   "(isothermal)" rather than dressing it up as weather. Earth is the one body that
+   sea_level_density. A body that does not (every KSP-derived world except Kerbin,
+   which #686 gave the same table Earth wears) still gets the isothermal read of its
+   authored scale height, and the atlas labels it
+   "(isothermal)" rather than dressing it up as weather. Earth is the body that
    authors the real table, both because it is the only one with published numbers to
    copy and because it is the fixture that keeps the profile honest (test_drag pins it
-   within 1% of the standard atmosphere from 0 to 85 km) -- so the Earth row above is
+   within 1% of the standard atmosphere from 0 to 85 km), and Kerbin has worn a
+   converted copy of it since #686 -- so the Earth row above is
    the EXERCISE, not the shipped body: Earth now reads 288.1 K / 101.3 kPa / 340.5 m/s
    at its datum because it says so, not because H 8500 implies it.
    ALL THREE STOP AT `height`, layered or not. Above the authored air top the air is

@@ -268,8 +268,10 @@ static void test_oxidizer() {
 static void test_the_air_carries_its_own_composition() {
     printf("== the profile carries the oxidizer share the gate needs (#637) ==\n");
 
-    DragAtmosphere kerbin { RHO_SEA, 5500.0, 70000.0 };
-    CHECK_NEAR(kerbin.oxidizer_share, OX_AIR, 0.0,
+    /* An air-shaped fixture: what matters here is the share that travels with it, not
+       the profile (Kerbin's own air became a level table in #686). */
+    DragAtmosphere air { RHO_SEA, 5500.0, 70000.0 };
+    CHECK_NEAR(air.oxidizer_share, OX_AIR, 0.0,
                "a hand-built profile defaults to dry air, exactly as its molar_mass and "
                "gamma do: a fixture must not be a silently dead engine");
 
@@ -279,7 +281,7 @@ static void test_the_air_carries_its_own_composition() {
 
     /* The door is the same law, bit for bit -- a second arithmetic here would be the
        drift this refactor exists to prevent. */
-    CHECK_NEAR(jetAirGate(kerbin, RHO_SEA), jetAirGate(RHO_SEA, kerbin.oxidizer_share),
+    CHECK_NEAR(jetAirGate(air, RHO_SEA), jetAirGate(RHO_SEA, air.oxidizer_share),
                0.0, "jetAirGate(profile, rho) IS jetAirGate(rho, profile.share)");
     CHECK_NEAR(jetAirGate(mars, mars_rho), jetAirGate(mars_rho, mars_ox), 0.0,
                "on a Mars-shaped sky too");
@@ -288,7 +290,7 @@ static void test_the_air_carries_its_own_composition() {
                "and the engine's door is the same engine");
 
     /* It reads the FIELD, not a constant: one density, two skies. */
-    CHECK_TRUE(jetAirGate(kerbin, mars_rho) > 200.0 * jetAirGate(mars, mars_rho),
+    CHECK_TRUE(jetAirGate(air, mars_rho) > 200.0 * jetAirGate(mars, mars_rho),
                "the same 0.02 kg/m3 gates two ways once the composition travels with the "
                "air -- a door that ignored the share would read dry air everywhere");
 

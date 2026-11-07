@@ -139,7 +139,8 @@ static void test_densityTop() {
     printf("== airDensity: the hard atmosphere top ==\n");
 
     const DragAtmosphere a { 1.225, 5500.0 };          // no cutoff
-    const DragAtmosphere kerbin { 1.225, 5500.0, 70000.0 };  // Kerbin's authored top
+    // An authored top -- 70 km was Kerbin's until #686 made it 85 km and a level table.
+    const DragAtmosphere kerbin { 1.225, 5500.0, 70000.0 };
 
     // At and above the top the air is vacuum.
     CHECK_NEAR(airDensity(kerbin, 70000.0), 0.0, 0.0, "rho(top) == 0");
@@ -188,7 +189,11 @@ static void test_air_thermodynamics() {
     /* Every expectation below is a literal typed in from an independent
        calculation, not the formula re-run in place: these pins exist so that a
        future edit to ONE of the three spellings (T = g H M / R, p = rho g H,
-       a = sqrt(gamma g H)) shows up as a disagreement instead of being agreed with. */
+       a = sqrt(gamma g H)) shows up as a disagreement instead of being agreed with.
+       The fixture is the air Kerbin shipped until #686, which is exactly why the
+       trio lock is worth pinning: H 5500 silently decided Kerbin was a 188 K world
+       at 66 kPa, and nothing but these three numbers said so. The shipped Kerbin
+       wears a level table now -- tests/test_scenarios.cpp pins what it reads. */
     const DragAtmosphere kerbin = makeAir(1.225, 5500.0, 70000.0, 9.81);
     CHECK_NEAR(airTemperature(kerbin, 0.0), 187.95593796005446, 1e-12,
                "Kerbin's isothermal temperature: g H M / R");

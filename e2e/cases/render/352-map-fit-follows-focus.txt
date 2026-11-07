@@ -2,6 +2,12 @@
 # then opens framed on its own orbit instead of keeping Kerbin's framing. Both
 # numbers are that ship's apoapsis at 100 px, so bodies of different sizes with
 # different orbits each get their own view.
+#
+# Kerbin's number rides its SHELL, not its surface: the inertial-orbit bed sits at
+# 1.25 x shellEdge, so #682 moving Kerbin's air top to 85 km moved the shell off the
+# 100 km floor (max(100 km, 1.2 x 85 km) = 102 km) and this row with it: 600000 +
+# 1.25 x 102000 = 727500. Mun authors no air, so its shell is still the floor and its
+# row is unchanged -- the pair shows which of the two numbers the air decision owns.
 NAME map-fit-follows-focus
 CLAIM A focus change refits the map to the new ship's orbit.
 KIND invariant
@@ -10,5 +16,5 @@ ARGS --startship probe,res/ships/racer.json,Mun,inertial-orbit
 ARGS --sim-press 2500,50,F6
 EXPECT Active ship 2 of 2: probe
 FORBID error:
-CHECK re.search(r"\[mapfit\] Kerbin: body 600000 m, fit 725000 m -> 7250\.0 m/px", out)
+CHECK re.search(r"\[mapfit\] Kerbin: body 600000 m, fit 727500 m -> 7275\.0 m/px", out)
 CHECK re.search(r"\[mapfit\] Mun: body 200000 m, fit 325000 m -> 3250\.0 m/px", out)

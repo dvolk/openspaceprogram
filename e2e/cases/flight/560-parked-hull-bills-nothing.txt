@@ -15,7 +15,7 @@
 # rows is what does not need a flow to be true: the density, the air's own T/p/a, the
 # hull's Mach (a magnitude -- at rest it reads 0.000, and 0.000 is the answer, not a
 # failure to measure) and the canopy area (0.00, because no canopy is out).
-# The skiff on the Kerbin pad never leaves that state: rho ~1.17, |v| 0.00-0.02 m/s.
+# The skiff on the Kerbin pad never leaves that state: rho ~1.19, |v| 0.00-0.02 m/s.
 # --sim-steps, not --timeout: the settle is chaotic, and a wall-clock log gate samples it
 # at a different phase each run. Logic-tick gating puts the rows at t=1..N identically.
 NAME parked-hull-bills-nothing
@@ -46,12 +46,15 @@ CHECK all(d.get("beta") is None and d.get("cpl") is None for d in drag if d.get(
 CHECK max(d["F"] for d in drag if d.get("aoa") is None) < 20.0
 # WHAT STILL PRINTS, and why: rho, the body's air and the Mach number are not read off a
 # direction. This is the #560 distinction made visible in one row -- AoA dashed, air
-# numbered. Mach is under 0.02 (|v| <= 5 m/s over Kerbin's implied 274.8 m/s), so the
+# numbered. Mach is under 0.02 (|v| <= 5 m/s over Kerbin's 339.5 m/s air), so the
 # 0.000 that prints is a measurement of a hull at rest, not a gap.
 CHECK all(d["rho"] > 1.10 for d in drag if d.get("aoa") is None)
 CHECK all(d["chute"] == 0.0 for d in drag if d.get("aoa") is None)
-CHECK all(abs(d["airT"] - 188.0) < 0.05 for d in drag if d.get("aoa") is None)
-# 275.0: #630 resolves Kerbin's gamma off its authored dry-air mix (1.40146) instead of a
-# typed 1.4, and sound speed is sqrt(gamma g H). Same reason as flight/245's row.
-CHECK all(abs(d["airA"] - 275.0) < 0.05 for d in drag if d.get("aoa") is None)
+CHECK all(abs(d["airT"] - 286.5) < 0.05 for d in drag if d.get("aoa") is None)
+# 339.5 m/s at the pad, not the datum's 340.5: #686 gave Kerbin a lapse rate, so the
+# thermometer now reads the 260.8 m the pad sits above sea level -- 1.7 K down, level 0
+# lapsing 6.4 K/km, a step an isothermal body could never show. gamma comes from the
+# authored dry-air mix (1.40146, #630) as ever. Before #686 this row was Kerbin's implied
+# 274.8 m/s at 188.0 K.
+CHECK all(abs(d["airA"] - 339.5) < 0.05 for d in drag if d.get("aoa") is None)
 CHECK all(d["mach"] < 0.02 for d in drag if d.get("aoa") is None)

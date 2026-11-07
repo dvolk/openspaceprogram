@@ -65,14 +65,15 @@ static void test_shell_edge() {
     printf("== shellEdge: max(kMinShell, 1.2 * top) ==\n");
 
     // Airless bodies and short atmospheres keep the historical flat 100 km
-    // shell -- Kerbin (top 70 km) is EXACTLY preserved, so daily-driver
-    // spawn radii and science cuts do not move.
+    // shell. #686 moved Kerbin off that line: its air now tops out at 85 km, so
+    // the home world's rotating frame, LowOrbit band and spawn beds lift with it
+    // -- the first time this floor has not been deciding the daily driver.
     CHECK_NEAR(shellEdge(0.0), 100e3, 1e-12, "airless -> kMinShell");
-    CHECK_NEAR(shellEdge(70e3), 100e3, 1e-12, "Kerbin (70 km) -> 100 km");
+    CHECK_NEAR(shellEdge(70e3), 100e3, 1e-12, "a 70 km top -> kMinShell");
 
     // Tall atmospheres get top + 20%: the shell contains its own air and
     // LowOrbit is a real band above it.
-    CHECK_NEAR(shellEdge(85e3), 102e3, 1e-12, "Earth (85 km) -> 102 km");
+    CHECK_NEAR(shellEdge(85e3), 102e3, 1e-12, "Earth / Kerbin (85 km) -> 102 km");
     CHECK_NEAR(shellEdge(200e3), 240e3, 1e-12, "Jool (200 km) -> 240 km");
     CHECK_NEAR(shellEdge(600e3), 720e3, 1e-12, "Saturn (600 km) -> 720 km");
 
@@ -149,8 +150,10 @@ static void test_validate() {
     printf("== validateBodyLimits: the ordering asserts ==\n");
 
     // Kerbin as derived: fine (sea-level datum, atmo top, rot SoI, inert SoI).
-    CHECK_NOTHROW(validateBodyLimits("Kerbin", 600e3, 70e3,
-                                     700e3, 84159290.0), "Kerbin passes");
+    // #686 lifted its air top to 85 km, which moves the shell that sits on the
+    // datum from the 100 km floor to 1.2 * 85 km.
+    CHECK_NOTHROW(validateBodyLimits("Kerbin", 600e3, 85e3,
+                                     702e3, 84159290.0), "Kerbin passes");
     // A star (dummy shell, authored universe-bound SOI): fine.
     CHECK_NOTHROW(validateBodyLimits("Kerbol", 261600000.0, 0.0,
                                      261700000.0, 1e18), "star passes");

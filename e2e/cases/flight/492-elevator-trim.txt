@@ -1,5 +1,5 @@
 NAME elevator-trim
-CLAIM The same 569 kg skiff, with 12 deg of elevator trim authored on the parts and nothing else changed, cruises at +4.8..+6.7 deg of angle of attack with the stick released: the download that trims this airframe comes from deflection, and the standing bill is real (0.34-0.54 m2 of induced CdA while the hull is pointing into the flow, 0.94 the instant the rudder is kicked).
+CLAIM The same 569 kg skiff, with 12 deg of elevator trim authored on the parts and nothing else changed, holds +3.9..+4.7 deg of angle of attack through its phugoid with the stick released: the download that trims this airframe comes from deflection, and the standing bill is real (0.27-0.35 m2 of induced CdA while the hull is pointing into the flow, 0.80 the instant the rudder is kicked and 2.09 at the bottom of the departure that kick starts). A kick that lands at the bottom of that exchange departs the envelope -- 5.75 m/s, -54.9 deg of AoA -- and the airframe recovers on its own inside ten seconds.
 KIND golden
 ARGS --time-accel 1 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
 # --no-paint: every assertion here parses [drag]/[mass] rows, so the 3D pass buys
@@ -11,55 +11,77 @@ ARGS --sim-press 25000,1000,A
 EXPECT [drag]
 EXPECT [mass]
 CHECK len(drag) >= 40
-# The trim holds pitch up: every row is nose-high. Measured 4.8..5.0 deg while the
-# phugoid is fast, 6.7 at its bottom (t=14 s at 21.7 m/s, which is also the slowest row
-# of the run: 7397 m), and 4.8..5.0 from t=27 s on, once the throttle
-# has damped the exchange. #568 moved this hold 2 deg up and 20 m/s down: the
-# pod-on-tank stack carries its tailplane pair 1.65 m behind the wing rather than the
-# spindle's 0.85 m, so the same 12 deg of tab buys more download than this hull wants.
-# #567 widened the exchange instead of shifting it: the floor of the hold is 0.2 deg
-# lower and its top 0.3 deg higher, and the bottom of the exchange is 5.4 m/s slower
-# (28.8 -> 23.4 m/s), because the trim download now has 24 m2 of AR-10.7 wing to answer
-# it.
-# #543 A5 (compressibility) widened it again rather than shifting the hold. The slope
-# the hull flies is now the AIR'S: at the fast end of this phugoid (78.1 m/s, Mach 0.284
-# in Kerbin's 275.0 m/s air) the printed CLa reads 174.54 against the 168.0 the parts
-# author, and at the top of the arc (21.7 m/s, Mach 0.079) it reads 167.51 -- a 4.2%
-# difference the old law could not make. The hold at speed is where it was (4.8..5.0),
-# because a wing and a tail standing at the same Mach gain slope TOGETHER and the trim
-# is a ratio. What moved is the bottom of the exchange: 6.2 -> 6.7 deg and 23.4 ->
-# 21.7 m/s, because the stiffer fast end pushes harder at the bottom of the dive, so
-# the arc swings deeper before the same download answers it.
-CHECK all(d["aoa"] > 4.5 for d in drag if d["aoa"] is not None)
-# The phugoid is real but bounded: it never decelerates past 21.7 m/s and it never
-# trades more than 398 m of height in 50 s. This floor is NOT a stall floor any more,
-# and that is worth saying out loud: res/ships/README.md's 23.1 m/s is arithmetic at
-# low Mach (5.45 kN of weight over the authored slope at the wing's 20.1 deg stall
-# angle, in 7 km air at rho 0.346), and the top of this arc lives at Mach 0.079, where
-# A5's correction is 1.003x -- so the stall line has not moved and this run crosses
-# under it. It may, because the slow rows are not equilibrium flight: at 21.7 m/s and
-# 6.7 deg the law bills |L| = 1230 N against a 5578 N weight, which is a hull trading
-# speed for height rather than one holding it. What the floor guards is the arc
-# punching clean through the bottom of the exchange -- a wing whose slope DROPPED would
-# fly a shallower one, and this row would rise -- so it sits 0.7 m/s under the slowest
-# measured row rather than being tuned to it.
-CHECK min(d["v"] for d in drag) > 21.0
+# THE HOLD, up to the kick (t < 25 s): 3.9..4.7 deg, every row nose-high, bought by a tab
+# and not by a stick.
+# What this case carried into #686, kept because it is the reason the tab is where it is:
+# #568 moved the hold 2 deg up and 20 m/s down -- the pod-on-tank stack carries its
+# tailplane pair 1.65 m behind the wing rather than the spindle's 0.85 m, so the same 12
+# deg of tab buys more download than this hull wants. #567 widened the exchange rather
+# than shifting it (floor 0.2 deg lower, top 0.3 higher, the bottom of the exchange 5.4
+# m/s slower, 28.8 -> 23.4), because the trim download now has 24 m2 of AR-10.7 wing to
+# answer it. #543 A5 (compressibility) widened it again: at the fast end of that phugoid
+# (78.1 m/s, Mach 0.284 in Kerbin's 275.0 m/s air) the printed CLa read 174.54 against
+# the 168.0 the parts author, and at the top of the arc (21.7 m/s, Mach 0.079) 167.51 --
+# a 4.2% difference the old law could not make, and it pushed the bottom of the exchange
+# from 6.2 to 6.7 deg because the stiffer fast end answers harder there.
+# #686 moved the air, and the hold came down and flattened with it. The bed sits at 8.5 km
+# now (0.1 x an 85 km top, #682) in a troposphere instead of one isothermal 188 K column:
+# rho 0.480-0.503 kg/m3, T 231-234 K, a 305-307 m/s. Fast end of the arc: 95.9 m/s at Mach
+# 0.313, CLa 176.26. Slow end: 30.2 m/s at Mach 0.099, CLa 168.33. So the AoA now peaks
+# at the FAST end and sags to 3.9 at the top of the climb -- the opposite of the record
+# above, where A5's stiffening deepened the slow end. This case pins that a 12 deg tab
+# still buys ONE band across a 65 m/s exchange; why the band tilts the way it does is
+# #543 A5's slope law reading a different air, and is not re-litigated here.
+CHECK all(3.8 < d["aoa"] < 5.0 for d in drag if d["aoa"] is not None and d["t"] < 25.0)
+# The exchange, pre-kick: 30.2..95.9 m/s inside 390 m of height; the whole 50 s run,
+# departure included, stays inside 415 m. This floor is NOT a stall floor, and that is
+# worth saying out loud:
+# res/ships/README.md's 23.1 m/s is arithmetic at low Mach (5.45 kN of weight over the
+# authored slope at the wing's 20.1 deg stall angle) in the 7 km air at rho 0.346 that
+# number was written against; in #686's air the same arithmetic lands near 19 m/s. The
+# slow rows are not equilibrium flight anyway: at 30.2 m/s the law bills |L| = 2.4 kN
+# against a 5.6 kN weight, which is a hull trading speed for height rather than one
+# holding it. What the floor guards is the arc punching clean through the bottom of the
+# exchange -- a wing whose slope DROPPED would fly a shallower one, and this row would
+# rise -- so it sits 1.2 m/s under the slowest pre-kick row rather than being tuned to it.
+CHECK min(d["v"] for d in drag if d["t"] < 25.0) > 29.0
 CHECK max(d["alt_asl"] for d in drag) - min(d["alt_asl"] for d in drag) < 450.0
+# THE DEPARTURE, pinned as a fact and not smuggled through as a pass. The bed's 80 m/s
+# spawn used to be 1.6x this hull's trimmed glide (47..50 m/s in 7 km air); at 0.50 kg/m3
+# the glide is near 41 m/s, so the same spawn is 1.9x, the wing bills 28.98 kN of lift at
+# the fast end (95.9 m/s, t=20) against a 5.58 kN weight -- 5.2x, where the old air's
+# shallower arc peaked near 2.5x -- and the zoom climb
+# that answers it eats the speed down. The A press at 25 s lands at 38.7 m/s on the way
+# down; four seconds later the hull is at 5.75 m/s, 40.6 deg nose-down, then -54.9 with
+# Beta -14.6 at t=31, billing 43 N of lift against a 5.58 kN weight (115 N one row
+# earlier, at the 5.75 m/s bottom) -- a fall, not a glide.
+# Nothing here is tuned to that state; it is what the shipped airframe does in the shipped
+# air, so it is recorded, and the friction belongs upstream (#693: flying-cruise's spawn
+# speed is keyed to the body at 0.0356 x circular and never to the body's air, so every
+# change to Kerbin's air moves how far off-trim the bed spawns a hull).
+CHECK min(d["v"] for d in drag) < 10.0
+CHECK min(d["aoa"] for d in drag) < -40.0
+# AND IT COMES BACK, with no pilot in the loop: from t=34 s on every row is nose-high
+# again (4.7..5.9 deg) inside a 28.9..67.2 m/s exchange. Without the two rows above this
+# pair is vacuous -- "it recovers" is only worth pinning next to "it left".
+CHECK all(d["aoa"] > 4.5 for d in drag if d["aoa"] is not None and d["t"] >= 34.0)
+CHECK min(d["v"] for d in drag if d["t"] >= 34.0) > 25.0
 # 12 deg of standing deflection, and the bill follows the command: the rows that point
-# into the flow bill 0.34-0.54 m2 of induced, and the single row in the rudder kick
-# (t=26 s, Beta -8.5, Mach 0.248) bills 0.936 -- a steered surface pays induced drag at its own
-# mount (#494). #567 took 0.13 m2 off the hold and 0.26 off that kick: inducedCd charges
-# a lifting system (cl x A)^2 / (pi x 0.8 x span^2), and this went 12 m -> 16 m of span.
-# #543 A5 put 0.02-0.07 m2 back on the hold and 0.08 on the kick: the bill is priced
-# off the CL the law just made, so it SQUARES the slope correction. That accounts for
-# most of it, not all: the kick row (Mach 0.248) prints CLa 172.74 where the parts author
-# 168.0, so the slope is 1.028x and the bill 1.057x of what an uncorrected slope would
-# price -- +5.7%, against the +9.9% the kick actually moved (0.852 -> 0.936). The rest is
-# the arc, not the law: A5 also left this hull standing at a different AoA and q at that
-# instant, and inducedCd prices those too.
-# Pinned on the PITCH axis, because this run also kicks the rudder (Beta swings 8.5 deg)
+# into the flow before the kick bill 0.27-0.35 m2 of induced. The history of that number
+# is the history of the airframe: #567 took 0.13 m2 off the hold and 0.26 off the kick row
+# when the span went 12 m -> 16 m, because inducedCd charges a lifting system
+# (cl x A)^2 / (pi x 0.8 x span^2); #543 A5 put 0.02-0.07 m2 back on the hold by pricing
+# the CL its slope law had just made. #686 took the hold from 0.34-0.54 to 0.27-0.35 --
+# the arc asks less of the wing at the top of its swing than the old one did -- and the
+# kick row from 0.94 to 0.80 (t=26, Beta -7.1). The 2.09 the CLAIM quotes is not the kick
+# row; it is the t=32 row of the departure the kick started.
+# The kick rows (|Beta| >= 4) sit outside the band on purpose: they run 0.52-2.09, the top
+# being the t=32 row of the departure (18.8 m/s, 5.0 deg, rudder still off neutral). A
+# steered surface pays induced drag at its own mount (#494), which is what the max row
+# below is for; it no longer has to be a clean row to prove it.
+# Pinned on the PITCH axis, because this run also kicks the rudder (Beta swings 14.6 deg)
 # and an unpinned "any surface is well off neutral" would pass on that alone.
-CHECK all(0.30 < d["induced"] < 0.60 for d in drag if d.get("induced") is not None and d.get("beta") is not None and abs(d["beta"]) < 4.0)
+CHECK all(0.25 < d["induced"] < 0.40 for d in drag if d.get("induced") is not None and d.get("beta") is not None and abs(d["beta"]) < 4.0 and d["t"] < 25.0)
 CHECK max(d["induced"] for d in drag if d.get("induced") is not None) > 0.75
 CHECK any(c["axis"] == "pitch" for c in ctrl)
 CHECK all(11.5 < abs(c["deg"]) < 12.5 for c in ctrl if c["axis"] == "pitch")

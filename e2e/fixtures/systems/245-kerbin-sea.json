@@ -1,5 +1,5 @@
 {
-  "note": "e2e fixture for #245: the shipped ksp_system bodies Kerbol, Kerbin, Moho and Duna verbatim, with ONE field added -- surface.sea_level 600 on Kerbin. No shipped system sets a non-zero sea_level (see the 412-moho-sea note), so the datum is the bare radius in every world the game ships. This is that one-number diff on a body that HAS a physical atmosphere (rho0 1.225, H 5500, top 70 km): with the sea level 600 m above the reference sphere, Kerbin's space port -- which parks at alt_asl 264.0 m on the shipped system -- sits 336 m UNDER the datum, and every hull near the ground on this world is near the ground under the sea shell. That is where airDensity() used to answer vacuum, taking drag, lift and jet thrust with it. Pinned by e2e/cases/flight/245-air-below-datum.txt. Keep every body block identical to ksp_system.json apart from that sea_level: the point is a one-number diff, not a new world. world_buildings_files is the shipped res/data/ksp_launch_sites.json rather than a copy of the pad entry, because the pad's lat/lon/height are what make alt_asl -336.2 true here; Moho and Duna are here only so that fragment's other sites resolve (its loader refuses a building naming an absent body).",
+  "note": "e2e fixture for #245: the shipped ksp_system bodies Kerbol, Kerbin, Moho and Duna verbatim, with ONE field added -- surface.sea_level 600 on Kerbin. No shipped system sets a non-zero sea_level (see the 412-moho-sea note), so the datum is the bare radius in every world the game ships. This is that one-number diff on a body that HAS a physical atmosphere (rho0 1.225 wearing the same seven 1976 levels Earth does, top 85 km since #686): with the sea level 600 m above the reference sphere, Kerbin's space port -- which parks at alt_asl 263.8 m on the shipped system -- sits 336 m UNDER the datum, and every hull near the ground on this world is near the ground under the sea shell. That is where airDensity() used to answer vacuum, taking drag, lift and jet thrust with it. Pinned by e2e/cases/flight/245-air-below-datum.txt. Keep every body block identical to ksp_system.json apart from that sea_level and the omitted composition (which resolves to the same dry air the shipped Kerbin authors): the point is a one-number diff, not a new world, and a Kerbin whose AIR has drifted from the shipped one stops testing the world the player flies in -- which is exactly what it did for the two days between #683 and #686 fixing it. world_buildings_files is the shipped res/data/ksp_launch_sites.json rather than a copy of the pad entry, because the pad's lat/lon/height are what make alt_asl -336.2 true here; Moho and Duna are here only so that fragment's other sites resolve (its loader refuses a building naming an absent body).",
   "home": "Kerbin",
   "soi_law": "patched_conic",
   "epoch_year": 1,
@@ -113,8 +113,44 @@
           "power": 4.0,
           "intensity": 0.7,
           "sea_level_density": 1.225,
-          "scale_height": 5500,
-          "height": 70000
+          "height": 85000,
+          "layers": [
+            {
+              "alt": 0,
+              "T": 288.15,
+              "lapse": -0.00638083
+            },
+            {
+              "alt": 11205.4,
+              "T": 216.65,
+              "lapse": 0.0
+            },
+            {
+              "alt": 20689.7,
+              "T": 216.65,
+              "lapse": 0.00091511
+            },
+            {
+              "alt": 33802.8,
+              "T": 228.65,
+              "lapse": 0.00244303
+            },
+            {
+              "alt": 50994.6,
+              "T": 270.65,
+              "lapse": 0.0
+            },
+            {
+              "alt": 55737.7,
+              "T": 270.65,
+              "lapse": -0.00225883
+            },
+            {
+              "alt": 80529.3,
+              "T": 214.65,
+              "lapse": -0.00154453
+            }
+          ]
         },
         "clouds": {
           "height": 2500,

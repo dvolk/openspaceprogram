@@ -404,7 +404,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 }
                 /* A published standard atmosphere states its rows at GEOPOTENTIAL
                    heights; that unit is converted where such a table is written
-                   (utils/make_solar_system.py:resolve_layer_heights) and the marker it
+                   (utils/atmo_units.py, called by both generators) and the marker it
                    travels with is dropped, because a system file speaks GEOMETRIC metres
                    like every other altitude in it (#690). A file still carrying the key
                    is claiming a unit this loader will not apply, and reading it
