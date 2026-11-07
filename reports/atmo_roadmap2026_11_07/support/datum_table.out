@@ -1,0 +1,107 @@
+====================================================================================================
+1. what each shipped air body asserts at its own datum
+====================================================================================================
+sys    body     form            g     rho0      H m  M g/mol   gamma     T0 K       p0 Pa   a m/s   top km   H_eff m
+solar  Venus    exp          8.87     65.0    16000 43.4496365 1.3026481715006306 741.6441320850256   9224800.0 429.96724119329076    160.0 16000.000000000002
+solar  Earth    layers7      9.82    1.225        - 28.964958307749235 1.401456850565603   288.15 101324.85477637534 340.4707567638667     85.0 8423.031279469249
+solar  Mars     exp          3.73     0.02    11500 43.49572294736842 1.3048527665060474 224.3980304617888       857.9 236.58330334002207    115.0   11500.0
+solar  Jupiter  exp       25.9192     0.16    27000 2.2185254399999996 1.4170274756707921 186.73063974320414 111970.94399999999 995.8222234816677    270.0   27000.0
+solar  Saturn   exp       11.1855      0.1    60000 2.1495881399999996 1.4046779128600133 173.51128445451138     67113.0 970.93845719373    600.0 59999.99999999999
+solar  Uranus   exp        9.0073      0.6    20000 2.6404737 1.423323238153038 57.2100443545707    108087.6 506.3654688664278    200.0   20000.0
+solar  Neptune  exp        11.274      0.9    20000 2.600831343283582 1.4310099761897586 70.53197280772018    202932.0 568.0353241051711    200.0   20000.0
+solar  Titan    exp        1.3543      5.3    20000 27.79381236 1.3986048829098157 90.54381938685626    143555.8 194.63455977419648    200.0   20000.0
+ksp_s  Eve      exp        16.677      1.7     7000 43.49572294736842 1.3048527665060474 610.7005869700143    198456.3 390.29118246400276     90.0 7000.000000000001
+ksp_s  Kerbin   exp          9.81    1.225     5500 28.964958307749235 1.401456850565603 187.96215670165995   66094.875 274.9829165098572     70.0    5500.0
+ksp_s  Shay     exp        8.9933    1.225     6000 28.964958307749235 1.401456850565603 187.9788783836573   66100.755 274.9951478938307     60.0    6000.0
+ksp_s  Duna     exp         2.943     0.12     4000 43.49572294736842 1.3048527665060474 61.58325246756446 1412.6399999999999 123.93839908321064     50.0    4000.0
+ksp_s  Jool     exp         7.848      2.0    20000 2.3641539 1.423187267900302 44.63037639265504    313920.0 472.6346089418669    200.0 20000.000000000004
+ksp_s  Laythe   exp         7.848    1.225     5500 28.964958307749235 1.401456850565603 150.36972536132797 52875.90000000001 245.952197586876     50.0    5500.0
+
+====================================================================================================
+2. real-world datums vs the vendored fact sheet (scraped, not typed)
+====================================================================================================
+Venus: scraped ['H', 'M', 'T', 'p_pa', 'rho', 'wind']
+   T0        741.64 K     vs 737.00 K    +0.6 %
+   p0        9224800 Pa    vs 9200000 Pa   +0.3 %
+   rho0      65     vs 65    +0.0 %
+   M         43.450     vs 43.450    -0.0 %
+   H_eff     16000 m     vs 15900 m    +0.6 %
+   wind         0.3-1.0 m/s -- the game has no wind; anemometer reads ship velocity only
+
+Earth: scraped ['H', 'M', 'T', 'diurnal', 'p_pa', 'rho', 'wind']
+   T0        288.15 K     vs 288.00 K    +0.1 %
+   p0        101325 Pa    vs 101400 Pa   -0.1 %
+   rho0      1.225     vs 1.217    +0.7 %
+   M         28.965     vs 28.970    -0.0 %
+   H_eff     8423 m     vs 8500 m    -0.9 %
+   diurnal      283-293 K -- the game has no diurnal term, so it is off by the whole range
+   wind         0.0-100.0 m/s -- the game has no wind; anemometer reads ship velocity only
+
+Mars: scraped ['H', 'M', 'T', 'diurnal', 'p_pa', 'rho']
+   T0        224.40 K     vs 214.00 K    +4.9 %
+   p0        858 Pa    vs 636 Pa   +34.9 %
+   rho0      0.02     vs 0.016    +25.0 %
+   M         43.496     vs 43.490    +0.0 %
+   H_eff     11500 m     vs 11000 m    +4.5 %
+   diurnal      184-242 K -- the game has no diurnal term, so it is off by the whole range
+
+====================================================================================================
+3. Kerbin's datum, three ways (section 4). g 9.81, dry air, rho0 1.225, top 70 km
+====================================================================================================
+a 288.15 K datum needs scale height 8432 m (today: 5500 m)
+alt m          A T K      A rho |      B T K      B rho |      C T K      C rho
+0             187.96      1.225 |     288.15      1.225 |     288.15      1.225
+2000          187.96     0.8516 |     288.15     0.9663 |     275.15      1.006
+5000          187.96     0.4935 |     288.15      0.677 |     255.65      0.736
+11000         187.96     0.1658 |     288.15     0.3323 |     216.65     0.3637
+20000         187.96    0.03228 |     288.15     0.1143 |     216.65    0.08795
+40000         187.96  0.0008504 |     288.15    0.01066 |     251.05   0.003843
+60000         187.96  2.241e-05 |     288.15  0.0009946 |     245.45  0.0002875
+69999         187.96  3.638e-06 |     288.15  0.0003038 |     217.45    7.4e-05
+
+residual air at the top, and q at Kerbin circular orbit:
+  Kerbin radius 600 km -> circular speed at the 70 km top: 2296 m/s
+  A H 5500       rho  3.638e-06  p     0.1963 Pa  q       9.6 Pa
+  B H 8432       rho  0.0003038  p      25.13 Pa  q     800.8 Pa
+  C Earth table  rho    7.4e-05  p      4.619 Pa  q     195.0 Pa
+
+====================================================================================================
+4. section 3b: is each fact sheet internally one hydrostatic isothermal column,
+   and how do the giants' 1-bar datums compare to ours?
+====================================================================================================
+  the sheet's stated gravity vs the g we author (the giants' is stated at 1 bar;
+  make_body()'s G*mass/radius^2 fallback reproduces it -- checked, not assumed)
+  body        sheet g      our g      off
+  Venus          8.87       8.87   +0.00 %
+  Earth          9.82       9.82   +0.00 %
+  Mars           3.73       3.73   +0.00 %
+  Jupiter       25.92      25.92   -0.00 %
+  Saturn        11.19      11.19   -0.04 %
+  Uranus         9.01      9.007   -0.03 %
+  Neptune       11.27      11.27   +0.04 %
+
+  is the sheet self-consistent?  H implied by its own M, T, g  vs  the H it states
+  body      M g/mol     T K   g m/s2    H implied   H stated    agree
+  Venus      43.450   737.0    8.870        15900      15900    -0.0 %
+  Earth      28.970   288.0    9.820         8417       8500    -1.0 %
+  Mars       43.490   214.0    3.730        10969      11000    -0.3 %
+  Jupiter     2.220   165.0   25.920        23841      27000   -11.7 %
+  Saturn      2.070   134.0   11.190        48099      59500   -19.2 %
+  Uranus      2.640    76.0    9.010        26566      27700    -4.1 %
+  Neptune     2.530    72.0   11.270        20995      19100    +9.9 %
+
+  (Neptune states ranges -- H 19.1-20.3 km, M 2.53-2.69 -- and the row uses the
+   low end of each; with M at 2.69 its own H and T agree inside its own range.)
+
+  our authored giant datums vs the sheet's values AT 1 BAR (our datum for a giant)
+  body       rho 1 bar      ours      off |   H sheet      ours      off |  T 1 bar    our T0      off
+  Jupiter         0.16      0.16    +0.0 % |   27000.0     27000    +0.0 % |    165.0     186.7   +13.2 %
+  Saturn          0.19       0.1   -47.4 % |   59500.0     60000    +0.8 % |    134.0     173.5   +29.5 %
+  Uranus          0.42       0.6   +42.9 % |   27700.0     20000   -27.8 % |     76.0      57.2   -24.7 %
+  Neptune         0.45       0.9  +100.0 % |   19100.0     20000    +4.7 % |     72.0      70.5    -2.0 %
+
+  bodies the guard must NOT skip for the wrong reason: Pluto states 13 microbar,
+  surface T 24-38 K, H ~18 km (50 km above 30 km), M ~28, N2 99/CH4 0.5 -- and we
+  author no sea_level_density for it at all; Titan has no *fact.html to author from.
+
+shellEdge law (bodylimits.h): max(100 km, 1.2 x top) -> 100 km for a 70 km top
