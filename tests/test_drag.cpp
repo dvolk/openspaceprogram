@@ -3,10 +3,13 @@
 // profiles and the quadratic force. Pinned here without Bullet/GL so the law is
 // independent of the render/physics chain (like test_surfmap, test_orbit).
 //
-//   airDensity:  rho(alt) = rho0 * exp(-alt/H) above the sea-level DATUM; at or
-//                below the datum the density is rho0, FLAT -- it used to be vacuum,
-//                which stripped drag, q and jet thrust from anything under the
-//                datum (#245); a degenerate atmosphere -> 0; rho(H) = rho0/e;
+//   airDensity:  rho(alt) = rho0 * exp(-Z(alt)/H) above the sea-level DATUM, Z the
+//                geopotential depth in the body's own field (#683 -- every fixture
+//                below this line carries no radius unless it says so, so there Z is
+//                just alt); at or below the datum the density is rho0, FLAT -- it
+//                used to be vacuum, which stripped drag, q and jet thrust from
+//                anything under the datum (#245); a degenerate atmosphere -> 0;
+//                rho(H) = rho0/e;
 //                monotone down; vacuum at and above the hard top (height), and no
 //                cutoff at all when height is 0.
 //   airTemperature / airPressure / airSoundSpeed: what one exponential IMPLIES
@@ -346,7 +349,19 @@ static void test_layered_atmosphere() {
        anchor reads as a disagreement instead of agreeing with itself. Earth authors
        g 9.82 where the standard uses 9.80665, and M is rounded to the shipped
        0.028964 kg/mol; together those drift the profile by ~1% up at the stratopause,
-       which is what the looser bands there are for. */
+       which is what the looser bands there are for.
+       US76's rows are at GEOPOTENTIAL heights and our altitudes are geometric metres
+       (like every other altitude in a system file), so a pin against that table has
+       to say which one it means: us76Geom() turns a standard's row into the geometric
+       altitude it sits at on Earth's radius -- 11.019 km for the "11 km" row, 51.412
+       for "51 km". Before #683 the uniform-g column was 0.5% low at the first of
+       those and 6.0% low at the last, and only looked right when read at the round
+       geopotential number the standard itself prints (0.2% and 1.0% there): two
+       errors cancelling. Weighed in Earth's own field it is within 0.6% of every
+       row here. */
+    const double rE = 6.371e6;                          // Earth's sea-level radius
+    auto us76Geom = [rE](double Z) { return rE * Z / (rE - Z); };
+    auto gAt = [rE](double z) { return 9.82 * rE * rE / ((rE + z) * (rE + z)); };
     std::vector<AtmoLayer> L = {
         {0.0,     288.15, -0.0065, 0.0},
         {11000.0, 216.65,  0.0,    0.0},
@@ -356,10 +371,11 @@ static void test_layered_atmosphere() {
         {51000.0, 270.65, -0.0028, 0.0},
         {71000.0, 214.65, -0.002,  0.0},
     };
-    CHECK_TRUE(resolveAtmoLevels(L, 1.225, kAirMolarMass, 9.82, 85000.0),
+    CHECK_TRUE(resolveAtmoLevels(L, 1.225, kAirMolarMass, 9.82, 85000.0, rE),
                "Earth's table resolves");
     DragAtmosphere air { 1.225, 0.0, 85000.0 };   // no scale height: the table IS the profile
     air.gravity = 9.82;
+    air.radius = rE;
     air.layers = L.data();
     air.layer_count = (int)L.size();
 
@@ -371,14 +387,18 @@ static void test_layered_atmosphere() {
     CHECK_NEAR(airTemperature(air, 0.0), 288.15, 0.0, "T at the datum is level 0's, authored");
     CHECK_NEAR(airSoundSpeed(air, 0.0), 340.3, 1e-4, "a at the datum: 340.3 m/s");
 
-    /* The standard's pressure column, 0 to 51 km. */
-    CHECK_NEAR(airPressure(air, 11000.0), 22632.0, 0.01, "p at 11 km (tropopause)");
-    CHECK_NEAR(airPressure(air, 20000.0), 5474.9, 0.01, "p at 20 km");
-    CHECK_NEAR(airPressure(air, 32000.0), 868.02, 0.01, "p at 32 km");
-    CHECK_NEAR(airPressure(air, 47000.0), 110.91, 0.02, "p at 47 km (stratopause)");
-    CHECK_NEAR(airPressure(air, 51000.0), 66.94, 0.02, "p at 51 km");
-    CHECK_NEAR(airDensity(air, 11000.0), 0.36393, 0.01, "rho at 11 km");
-    CHECK_NEAR(airDensity(air, 20000.0), 0.088035, 0.01, "rho at 20 km");
+    /* The standard's pressure column, 0 to 51 km -- read at the geometric altitude
+       each published row sits at (us76Geom), which is the only honest comparison:
+       every row lands inside 0.6%, where the uniform-g column sat 0.5-6.0% below. */
+    CHECK_NEAR(airPressure(air, us76Geom(11000.0)), 22632.0, 0.01,
+               "p at US76's 11 km row (11.019 km geometric here)");
+    CHECK_NEAR(airPressure(air, us76Geom(20000.0)), 5474.9, 0.01, "p at its 20 km row");
+    CHECK_NEAR(airPressure(air, us76Geom(32000.0)), 868.02, 0.01, "p at its 32 km row");
+    CHECK_NEAR(airPressure(air, us76Geom(47000.0)), 110.91, 0.01,
+               "p at its 47 km row (stratopause)");
+    CHECK_NEAR(airPressure(air, us76Geom(51000.0)), 66.94, 0.01, "p at its 51 km row");
+    CHECK_NEAR(airDensity(air, us76Geom(11000.0)), 0.36393, 0.01, "rho at its 11 km row");
+    CHECK_NEAR(airDensity(air, us76Geom(20000.0)), 0.088035, 0.01, "rho at its 20 km row");
 
     /* Each level's base temperature, bit for bit -- and the standard's 85 km row
        needs no level of its own, because it is where the -2.0 K/km mesospheric lapse
@@ -426,12 +446,17 @@ static void test_layered_atmosphere() {
                "... nor mid-warming");
 
     /* Hydrostatic inside both spellings (the central difference costs ~(dh/H)^2/6,
-       and H = Rs T / g is ~6.3 km in the tropopause, hence 1e-4). */
+       and H = Rs T / g is ~6.3 km in the tropopause, hence 1e-4) -- and against the
+       field AT that altitude, not the datum's. That is what #683 is for: the air is
+       in equilibrium in the field the hull actually falls in, so at 20 km over Earth
+       the weight per m^3 is 0.6% less than rho * 9.82 and the column agrees. */
     const double dh = 100.0;
     CHECK_NEAR((airPressure(air, 20000.0 - dh) - airPressure(air, 20000.0 + dh)) / (2.0 * dh),
-               airDensity(air, 20000.0) * 9.82, 1e-4, "-dp/dh == rho g inside a lapse level");
+               airDensity(air, 20000.0) * gAt(20000.0), 1e-4,
+               "-dp/dh == rho g(z) inside a lapse level");
     CHECK_NEAR((airPressure(air, 15000.0 - dh) - airPressure(air, 15000.0 + dh)) / (2.0 * dh),
-               airDensity(air, 15000.0) * 9.82, 1e-4, "-dp/dh == rho g inside an isothermal level");
+               airDensity(air, 15000.0) * gAt(15000.0), 1e-4,
+               "-dp/dh == rho g(z) inside an isothermal level");
 
     /* THE FORCE, on this path -- not just the density that feeds it. #245's real bug
        was a SECOND early-out in applyAeroForce that let rho print fine while the force
@@ -450,12 +475,14 @@ static void test_layered_atmosphere() {
 
     /* THE POINT OF THE TABLE, as a number: density falls faster than pressure when
        the air has a lapse rate. At 20 km the layered profile puts 2.7x the air over
-       you that Kerbin's single H = 5500 does (the 2.7x in drag.h's "THE THREE ARE
-       LOCKED" block, measured rather than asserted), and LESS air than an isothermal
-       column of the same sea-level density would. */
+       you that a single H = 5500 does (the 2.7x in drag.h's "THE THREE ARE LOCKED"
+       block, measured rather than asserted), and LESS air than an isothermal column
+       of the same sea-level density would. Both comparison fixtures here are BARE
+       exponentials with no radius, i.e. the uniform column a scale height implies --
+       the claim is about one profile shape against another, not about a world. */
     const DragAtmosphere kerbin_exp = makeAir(1.225, 5500.0, 70000.0, 9.81);
     const DragAtmosphere earth_exp = makeAir(1.225, 8500.0, 0.0, 9.82);
-    CHECK_NEAR(airDensity(air, 20000.0) / airDensity(kerbin_exp, 20000.0), 2.7, 0.01,
+    CHECK_NEAR(airDensity(air, 20000.0) / airDensity(kerbin_exp, 20000.0), 2.743, 0.005,
                "a lapse rate is what puts real air at 20 km over a scale-height body");
     CHECK_TRUE(airDensity(air, 20000.0) < airDensity(earth_exp, 20000.0),
                "lapse air thins faster than isothermal air of the same rho0");
@@ -464,13 +491,13 @@ static void test_layered_atmosphere() {
        the table is thicker air up to ~13 km and thinner above, so drag, q and the jet
        gate move on the way through the sky. This is the only place that delta is a
        number rather than a hope -- no e2e case flies a layered body yet (#631). */
-    CHECK_NEAR(airDensity(air, 5000.0) / airDensity(earth_exp, 5000.0), 1.081, 0.005,
+    CHECK_NEAR(airDensity(air, 5000.0) / airDensity(earth_exp, 5000.0), 1.082, 0.005,
                "5 km: 8% thicker than the exponential Earth shipped with");
-    CHECK_NEAR(airDensity(air, 10000.0) / airDensity(earth_exp, 10000.0), 1.091, 0.005,
+    CHECK_NEAR(airDensity(air, 10000.0) / airDensity(earth_exp, 10000.0), 1.093, 0.005,
                "10 km: 9% -- the peak");
-    CHECK_NEAR(airDensity(air, 30000.0) / airDensity(earth_exp, 30000.0), 0.499, 0.01,
+    CHECK_NEAR(airDensity(air, 30000.0) / airDensity(earth_exp, 30000.0), 0.509, 0.01,
                "30 km: half of it");
-    CHECK_NEAR(airDensity(air, 50000.0) / airDensity(earth_exp, 50000.0), 0.284, 0.01,
+    CHECK_NEAR(airDensity(air, 50000.0) / airDensity(earth_exp, 50000.0), 0.300, 0.01,
                "50 km: under a third");
 
     /* A layered profile weighs its column, so gravity DOES move its density: rho is
@@ -479,7 +506,7 @@ static void test_layered_atmosphere() {
        one -- a scale height is authored, a column of air is weighed. Weigh it LESS
        and the column puffs out: the same sea-level density, thicker air aloft. */
     std::vector<AtmoLayer> Lhalf = L;
-    CHECK_TRUE(resolveAtmoLevels(Lhalf, 1.225, kAirMolarMass, 4.91, 85000.0),
+    CHECK_TRUE(resolveAtmoLevels(Lhalf, 1.225, kAirMolarMass, 4.91, 85000.0, rE),
                "the same table resolves on a half-g body");
     DragAtmosphere halfg = air;
     halfg.gravity = 4.91;
@@ -491,49 +518,86 @@ static void test_layered_atmosphere() {
 
     /* The load invariants (atmo.h), refused rather than carried: each of these is a
        divide by zero or a negative temperature several steps later, and system.cpp
-       turns a false into a message that names the body. */
+       turns a false into a message that names the body. These fixtures are about a
+       TABLE rather than a world, so they integrate the uniform column (radius 0);
+       test_gravity_falloff() below is where a body's radius is in the picture. */
     std::vector<AtmoLayer> off = { {1000.0, 288.15, -0.0065, 0.0},
                                    {11000.0, 216.65, 0.0, 0.0} };
-    CHECK_TRUE(!resolveAtmoLevels(off, 1.225, kAirMolarMass, 9.82, 85000.0),
+    CHECK_TRUE(!resolveAtmoLevels(off, 1.225, kAirMolarMass, 9.82, 85000.0, 0.0),
                "refused: level 0 must sit at the datum");
     std::vector<AtmoLayer> unsorted = { {0.0, 288.15, -0.0065, 0.0},
                                         {5000.0, 255.65, 0.0, 0.0},
                                         {4000.0, 260.0, 0.0, 0.0} };
-    CHECK_TRUE(!resolveAtmoLevels(unsorted, 1.225, kAirMolarMass, 9.82, 85000.0),
+    CHECK_TRUE(!resolveAtmoLevels(unsorted, 1.225, kAirMolarMass, 9.82, 85000.0, 0.0),
                "refused: level altitudes must strictly rise");
     std::vector<AtmoLayer> cold = { {0.0, 288.15, -0.0065, 0.0}, {50000.0, 216.65, 0.0, 0.0} };
-    CHECK_TRUE(!resolveAtmoLevels(cold, 1.225, kAirMolarMass, 9.82, 85000.0),
+    CHECK_TRUE(!resolveAtmoLevels(cold, 1.225, kAirMolarMass, 9.82, 85000.0, 0.0),
                "refused: a lapse must not walk T through 0 K inside the air");
     /* The seam. Both of these are two-level tables that integrate happily -- the
        pressure column is smooth through the boundary either way -- so nothing else
        catches them: rho steps because T is what rho divides by. */
     std::vector<AtmoLayer> seam = { {0.0, 288.15, -0.0065, 0.0}, {11000.0, 156.65, 0.0, 0.0} };
-    CHECK_TRUE(!resolveAtmoLevels(seam, 1.225, kAirMolarMass, 9.82, 85000.0),
+    CHECK_TRUE(!resolveAtmoLevels(seam, 1.225, kAirMolarMass, 9.82, 85000.0, 0.0),
                "refused: a level must start where the one below leaves off (60 K gap)");
     std::vector<AtmoLayer> rounded = { {0.0, 288.15, -0.0065, 0.0}, {11000.0, 216.4, 0.0, 0.0} };
-    CHECK_TRUE(resolveAtmoLevels(rounded, 1.225, kAirMolarMass, 9.82, 85000.0),
+    CHECK_TRUE(resolveAtmoLevels(rounded, 1.225, kAirMolarMass, 9.82, 85000.0, 0.0),
                "0.25 K off is rounding, not a mistake: kAtmoSeamTol accepts it");
     /* d(rho)/dh flips sign at lapse -g/Rs = -0.0342 K/m for this gas at this g. Air
        overturns long before that in reality; a table past it is a typo. */
     std::vector<AtmoLayer> upside = { {0.0, 288.15, -0.05, 0.0}, {3000.0, 138.15, 0.0, 0.0} };
-    CHECK_TRUE(!resolveAtmoLevels(upside, 1.225, kAirMolarMass, 9.82, 5000.0),
+    CHECK_TRUE(!resolveAtmoLevels(upside, 1.225, kAirMolarMass, 9.82, 5000.0, 0.0),
                "refused: -0.05 K/m is past -g/Rs, so the air gets denser as you climb");
     /* A level above the air top is a level nothing can reach: drag.h cuts the air to
        vacuum at `height`, so it is dead weight that also decides the ceiling its own
        lapse is checked against. */
     std::vector<AtmoLayer> dead = L;
-    CHECK_TRUE(!resolveAtmoLevels(dead, 1.225, kAirMolarMass, 9.82, 20000.0),
+    CHECK_TRUE(!resolveAtmoLevels(dead, 1.225, kAirMolarMass, 9.82, 20000.0, 0.0),
                "refused: a level based above height sits in declared vacuum");
     std::vector<AtmoLayer> one = { {0.0, 288.15, -0.0065, 0.0} };
-    CHECK_TRUE(!resolveAtmoLevels(one, 0.0, kAirMolarMass, 9.82, 85000.0),
+    CHECK_TRUE(!resolveAtmoLevels(one, 0.0, kAirMolarMass, 9.82, 85000.0, 0.0),
                "refused: nothing to anchor the column on");
-    CHECK_TRUE(!resolveAtmoLevels(one, 1.225, kAirMolarMass, 0.0, 85000.0),
+    CHECK_TRUE(!resolveAtmoLevels(one, 1.225, kAirMolarMass, 0.0, 85000.0, 0.0),
                "refused: no gravity named");
-    CHECK_TRUE(!resolveAtmoLevels(one, 1.225, kAirMolarMass, 9.82, 0.0),
+    CHECK_TRUE(!resolveAtmoLevels(one, 1.225, kAirMolarMass, 9.82, 0.0, 0.0),
                "refused: no air top, so no ceiling to keep T above 0 K");
     std::vector<AtmoLayer> empty;
-    CHECK_TRUE(!resolveAtmoLevels(empty, 1.225, kAirMolarMass, 9.82, 85000.0),
+    CHECK_TRUE(!resolveAtmoLevels(empty, 1.225, kAirMolarMass, 9.82, 85000.0, 0.0),
                "refused: an empty table is not a profile");
+    /* And the one table that cannot be integrated because of the FIELD rather than
+       the table: a warming level whose lapse equals T/(radius+alt) puts the planet's
+       centre and this level's 0 K crossing at the same place, and the column's
+       antiderivative divides by that distance (kAtmoPoleTol). On this 600 km body the
+       degenerate lapse at 20 km is +0.000349435 K/m -- a real profile authors
+       0.001 or 0.0028, nowhere near, so refusing the band costs nothing and the law
+       stays one spelling. */
+    const double rkerbin = 6.0e5;
+    const double lsurf = -(288.15 - 216.65) / 20000.0;       // cools INTO level 1's T
+    const double lpole = 216.65 / (rkerbin + 20000.0);       // C == 0, exactly
+    auto poleTable = [lsurf, lpole](double lapse) {
+        return std::vector<AtmoLayer>{ {0.0, 288.15, lsurf, 0.0},
+                                       {20000.0, 216.65, lapse, 0.0},
+                                       {40000.0, 216.65 + lapse * 20000.0, 0.0, 0.0} };
+    };
+    std::vector<AtmoLayer> pole
+        = poleTable(lpole - 0.5 / (rkerbin + 20000.0));       // |C| = 0.5 K
+    CHECK_TRUE(!resolveAtmoLevels(pole, 1.225, kAirMolarMass, 9.81, 60000.0, rkerbin),
+               "refused: a lapse aimed at the field's own falloff divides by zero");
+    std::vector<AtmoLayer> near_pole
+        = poleTable(lpole - 1.1 / (rkerbin + 20000.0));       // |C| = 1.1 K
+    CHECK_TRUE(resolveAtmoLevels(near_pole, 1.225, kAirMolarMass, 9.81, 60000.0, rkerbin),
+               "1.1 K clear of the pole is a level like any other");
+    /* And what it answers there: the same table's density at 30 km from QUADRATURE of
+       the real field, not from the closed form, so kAtmoPoleTol's REASON is pinned
+       rather than asserted. At |C| = 1.1 K the closed form is 4.5e-9 off that
+       integral, comfortably inside this band; by |C| = 0.1 K it is 1e-4 off, which
+       is the drift the refusal exists to keep out of the game. */
+    DragAtmosphere edge { 1.225, 0.0, 60000.0 };
+    edge.gravity = 9.81;
+    edge.radius = rkerbin;
+    edge.layers = near_pole.data();
+    edge.layer_count = (int)near_pole.size();
+    CHECK_NEAR(airDensity(edge, 30000.0), 2.7206636e-2, 1e-7,
+               "a level 1.1 K off the pole still answers the integral");
 
     /* A layered body with no g named fails CLOSED rather than integrating at 0. */
     DragAtmosphere nog { 1.225, 0.0, 85000.0 };
@@ -541,6 +605,140 @@ static void test_layered_atmosphere() {
     nog.layer_count = (int)L.size();
     CHECK_NEAR(airDensity(nog, 5000.0), 0.0, 0.0, "layered but no gravity -> no air");
     CHECK_NEAR(airPressure(nog, 5000.0), 0.0, 0.0, "... and no pressure");
+}
+
+/* #683 -- the column is weighed in the field the hull actually falls in.
+ *
+ * Every number below was computed independently of this implementation -- closed
+ * form cross-checked against quadrature of dp/dh = -rho g R^2/(R+z)^2/(Rs T), and
+ * the published standard's own rows -- so a pin that agreed with both models would
+ * be testing nothing: the point of the fixture is that a uniform-g
+ * column and a 1/r^2 one DISAGREE.
+ * The disagreement scales with top/radius, which is why the fixtures are small bodies:
+ * Earth's air top is 1.3 % of its radius and Kerbin's is 11.7 %. */
+static void test_gravity_falloff() {
+    printf("== #683: the air's column is weighed in the body's own 1/r^2 field ==\n");
+
+    /* One exponential on a 600 km world. Same authored rho0, H, top and g as the
+       uniform fixtures above, one extra number -- the radius -- and the top of the
+       air is nearly four times thicker. */
+    const double rker = 6.0e5;
+    // Same authored air and the same gravity, minus the radius: this is the pre-#683
+    // model, and it needs its g or its T/p reads come out 0 rather than comparable.
+    DragAtmosphere flat { 1.225, 5500.0, 70000.0 };
+    flat.gravity = 9.81;
+    DragAtmosphere ker = flat;
+    ker.radius = rker;
+    CHECK_NEAR(geopotentialDepth(rker, 69999.0), 62685.765, 1e-7,
+               "69,999 m geometric is 62.7 km of column at Kerbin's radius");
+    CHECK_NEAR(geopotentialDepth(0.0, 69999.0), 69999.0, 0.0,
+               "no world named, no falloff: the depth is the altitude");
+    CHECK_NEAR(airDensity(ker, 5000.0), 0.4972627, 1e-5, "5 km: 0.75% thicker");
+    CHECK_NEAR(airDensity(ker, 35000.0), 2.997598e-3, 1e-5, "35 km: 42% thicker");
+    CHECK_NEAR(airDensity(ker, 69999.0), 1.375001e-5, 1e-5, "just under the top");
+    CHECK_NEAR(airDensity(ker, 69999.0) / airDensity(flat, 69999.0), 3.7798, 1e-3,
+               "the #683 gain at Kerbin's top: 3.78x, not a rounding error");
+    CHECK_NEAR(airDensity(ker, 5000.0) / airDensity(flat, 5000.0), 1.0075, 1e-3,
+               "... and single-digit where a plane flies");
+
+    /* What the field does NOT touch: the datum's air, the temperature and sound speed
+       a scale height implies (neither contains the column), the equation of state
+       aloft, #245's flat floor, and the geometric `height` the rest of the game cuts
+       vacuum on. All of that has to stay put or the fix has moved further than #683
+       asked (it is a column question, not a units question -- the atlas, the shells,
+       the science bands and the spawn beds all still speak geometric metres). */
+    CHECK_NEAR(airDensity(ker, 0.0), 1.225, 0.0, "the datum is the same air either way");
+    CHECK_NEAR(airPressure(ker, 0.0), airPressure(flat, 0.0), 0.0, "p0 = rho0 g H, both ways");
+    CHECK_NEAR(airTemperature(ker, 35000.0), airTemperature(flat, 35000.0), 0.0,
+               "T does not contain the column");
+    CHECK_NEAR(airSoundSpeed(ker, 35000.0), airSoundSpeed(flat, 35000.0), 0.0,
+               "... nor does the sound speed");
+    CHECK_NEAR(airPressure(ker, 35000.0), airDensity(ker, 35000.0) * 9.81 * 5500.0, 1e-9,
+               "aloft, p is still rho Rs T of the same implied T");
+    CHECK_NEAR(airDensity(ker, 70000.0), 0.0, 0.0, "`height` stays geometric: vacuum at the top");
+    CHECK_NEAR(airDensity(ker, -3000.0), 1.225, 0.0, "#245's floor is unchanged");
+
+    /* Hydrostatic in the real field, on the exponential branch too: at 35 km over a
+       600 km body the field is 11 % weaker than at the datum, and dp/dh follows it. */
+    const double gz35 = 9.81 * rker * rker / ((rker + 35000.0) * (rker + 35000.0));
+    CHECK_NEAR((airPressure(ker, 35000.0 - 100.0) - airPressure(ker, 35000.0 + 100.0)) / 200.0,
+               airDensity(ker, 35000.0) * gz35, 1e-4,
+               "-dp/dh == rho g(z) on a single exponential too");
+
+    /* An ISOTHERMAL level table and a single exponential are the same air, radius and
+       all: H is not authored here, it is the one the level's T implies. If the two
+       branches of airDensity() ever disagree about the field, this is where it shows. */
+    const double Hiso = (kGasR / kAirMolarMass) * 216.65 / 9.81;   // 6339.7 m
+    std::vector<AtmoLayer> iso = { {0.0, 216.65, 0.0, 0.0}, {20000.0, 216.65, 0.0, 0.0} };
+    CHECK_TRUE(resolveAtmoLevels(iso, 1.225, kAirMolarMass, 9.81, 40000.0, rker),
+               "a two-level isothermal table resolves");
+    DragAtmosphere tableAir { 1.225, 0.0, 40000.0 };
+    tableAir.gravity = 9.81;
+    tableAir.radius = rker;
+    tableAir.layers = iso.data();
+    tableAir.layer_count = (int)iso.size();
+    DragAtmosphere expAir = makeAir(1.225, Hiso, 40000.0, 9.81);
+    expAir.radius = rker;
+    const double ze = 25000.0;   // above the second level's base, so a different lookup
+    CHECK_NEAR(airPressure(tableAir, ze), airPressure(expAir, ze), 1e-9,
+               "isothermal levels == one exponential, with a radius on both");
+    CHECK_NEAR(airDensity(tableAir, 7000.0), airDensity(expAir, 7000.0), 1e-9,
+               "... below the seam too");
+
+    /* A LAPSE level on a 300 km body, at absolute numbers. The textbook
+       (base_T/T)^(g/(lapse Rs)) form is only the uniform-field antiderivative; this
+       is what the same table gives when the field is allowed to weaken. */
+    const double r300 = 3.0e5;
+    std::vector<AtmoLayer> two = { {0.0, 240.0, -0.005, 0.0}, {10000.0, 190.0, 0.002, 0.0} };
+    CHECK_TRUE(resolveAtmoLevels(two, 0.8, kAirMolarMass, 3.71, 50000.0, r300),
+               "a two-level table on a 300 km body resolves");
+    DragAtmosphere small { 0.8, 0.0, 50000.0 };
+    small.gravity = 3.71;
+    small.radius = r300;
+    small.layers = two.data();
+    small.layer_count = (int)two.size();
+    CHECK_NEAR(airPressure(small, 10000.0), 30747.617, 1e-5, "at the seam (T 190 K)");
+    CHECK_NEAR(airDensity(small, 20000.0), 0.2835661, 1e-5, "20 km (T 210 K)");
+    CHECK_NEAR(airPressure(small, 49999.0), 4612.979, 1e-5, "just under its 50 km top");
+    CHECK_NEAR(airDensity(small, 49999.0), 5.951758e-2, 1e-5, "... and its density");
+    /* A warming level is where the closed form's log lives, so it gets a sign pin of
+       its own: this level warms 2 K/km and the air still thins, by the SAME amount
+       the uniform spelling gives plus the field's own slack (1.483x at the top). The
+       twin is the whole model moved back to a uniform field -- its table resolved at
+       radius 0 too, not just read that way -- because the falloff sets the pressure at
+       every level's BASE as well, and a half-moved twin differs from the comparison
+       the ticket asks for by the seam step (1.453x instead of 1.483x). */
+    std::vector<AtmoLayer> two_flat = two;
+    CHECK_TRUE(resolveAtmoLevels(two_flat, 0.8, kAirMolarMass, 3.71, 50000.0, 0.0),
+               "the same table resolves with no world to weigh it against");
+    DragAtmosphere small_flat = small;
+    small_flat.radius = 0.0;
+    small_flat.layers = two_flat.data();
+    small_flat.layer_count = (int)two_flat.size();
+    CHECK_NEAR(airPressure(small, 49999.0) / airPressure(small_flat, 49999.0), 1.4829, 1e-3,
+               "the falloff at a lapse level's ceiling");
+    /* The spelling this file exists to refuse: geopotentialise `alt` BEFORE the level
+       maths, the way Orbiter's models do, because theirs are authored in geopotential
+       metres and ours are not (atmo.h:levelPressure's warning). Same table, same
+       resolved base pressure, lapse spent per geopotential metre instead of per
+       geometric one: 3.8% thin at this level's ceiling, 0.23% at 20 km into it. The
+       hand arithmetic here is the textbook uniform-field form applied to dZ, computed
+       independently of levelPressure's closed form. */
+    const double Rs3 = kGasR / kAirMolarMass;
+    const AtmoLayer &warm = two[1];
+    const double dZw = geopotentialDepth(r300, 49999.0)
+                     - geopotentialDepth(r300, warm.base_alt);
+    const double p_geozw = warm.base_p
+        * std::exp(-(small.gravity / (warm.lapse * Rs3))
+                   * std::log1p(warm.lapse * dZw / warm.base_T));
+    CHECK_NEAR(p_geozw / airPressure(small, 49999.0), 0.96198, 1e-4,
+               "geopotentialising before the level maths is 3.8% thin, not a rounding");
+    CHECK_NEAR(airDensity(small, 49999.0 - 1e-6), airDensity(small, 49999.0), 1e-9,
+               "no step at the top of a warming level");
+    const double gz20 = 3.71 * r300 * r300 / ((r300 + 20000.0) * (r300 + 20000.0));
+    CHECK_NEAR((airPressure(small, 20000.0 - 100.0) - airPressure(small, 20000.0 + 100.0)) / 200.0,
+               airDensity(small, 20000.0) * gz20, 1e-4,
+               "-dp/dh == rho g(z) inside a warming level");
 }
 
 static void test_force() {
@@ -3605,6 +3803,8 @@ int main() {
     test_air_thermodynamics();
     printf("\n");
     test_layered_atmosphere();
+    printf("\n");
+    test_gravity_falloff();
     printf("\n");
     test_force();
     printf("\n");

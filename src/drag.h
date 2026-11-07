@@ -34,7 +34,18 @@ struct DragAtmosphere {
        is on reads 0 K / 0 Pa / 0 m/s, which is the LOUD answer -- inheriting Earth's
        9.81 would be the plausible wrong one on Eve or Jool. The gas defaults are a
        different matter: they say what the air is made of, not where it is. */
-    double gravity = 0.0;              // [m/s^2] at the body's surface
+    double gravity = 0.0;              // [m/s^2] at the body's sea-level DATUM
+    /* The sea-level DATUM radius [m] this air sits on -- terrain.h:seaLevelRadius(),
+       the same sphere airDensity's `alt` is measured from. It is not decoration:
+       the column is weighed in the field the hull actually falls in,
+       g(z) = gravity radius^2/(radius+z)^2, and on a KSP-sized world that is the
+       difference between 3.6e-6 and 1.4e-5 kg/m^3 at Kerbin's air top (#683).
+       0 = integrate a UNIFORM field: the honest reading of a hand-built atmosphere
+       that does not say what planet it is on, and what every pre-#683 fixture in
+       tests/ asks for. A body loaded from a system file always carries it, and
+       test_scenarios checks that dragAtm() copies it for exactly the same reason it
+       checks g and the composition -- a lost copy reads plausible, not broken. */
+    double radius = 0.0;
     double molar_mass = kAirMolarMass; // [kg/mol]
     double gamma = kAirGamma;          // cp/cv
     /* Kilograms of oxidizer per kilogram of air, off the body's authored composition
@@ -77,10 +88,13 @@ inline int atmoLevel(const DragAtmosphere &a, double alt) {
 }
 
 
-/* rho(alt) = sea_level_density · exp(−alt / scale_height), [kg/m^3], alt in m above
+/* rho(alt) = sea_level_density · exp(−Z(alt) / scale_height), [kg/m^3], alt in m above
    the sea-level DATUM (terrain.h:seaLevelRadius(), i.e. radius + the authored
    sea_level -- not the surface, and not the bare radius: #412's fixture is what
-   distinguishes them). At or above `height` the air stops dead.
+   distinguishes them), where Z is the geopotential depth of that altitude in the
+   body's own field (atmo.h:geopotentialDepth, #683) -- with no radius on the
+   atmosphere, Z is just alt and this is the single exponential it always was.
+   At or above `height` the air stops dead.
    At or below the datum the air is sea_level_density, FLAT. The exponential's base
    IS the datum, so a sub-datum point -- a hull skimming the sea, a dry basin below
    a sea_level that sits above the body's relief -- used to read as vacuum and lose
@@ -113,13 +127,14 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
         const double Rs = kGasR / a.molar_mass;
         const double T = levelTemperature(a.layers[i], alt);
         if(!(T > 0.0)) { return 0.0; }
-        const double p = levelPressure(a.layers[i], alt, a.gravity, Rs);
+        const double p = levelPressure(a.layers[i], alt, a.gravity, Rs, a.radius);
         return p / (Rs * T);
     }
     if(!(a.scale_height > 0.0)) { return 0.0; }
     if(alt <= 0.0) { return a.sea_level_density; }
     if(a.height > 0.0 && alt >= a.height) { return 0.0; }
-    return a.sea_level_density * std::exp(-alt / a.scale_height);
+    return a.sea_level_density * std::exp(-geopotentialDepth(a.radius, alt)
+                                          / a.scale_height);
 }
 
 /* THE AIR'S THERMODYNAMICS (#552 A2). One exponential IS an isothermal
@@ -137,6 +152,15 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
    (Both use dry air's resolved gamma 1.4015 rather than the typed 1.4; the shipped
    bodies' gammas come off their authored mixes, #630, and a hand-built DragAtmosphere
    still defaults to constants.h's 1.4. Sound speed goes as sqrt(gamma), so it is 0.05%.)
+   THE COLUMN IS WEIGHED IN THE BODY'S OWN FIELD (#683), which is the one input these
+   formulas do not show: the hull is pulled by g radius^2/(radius+z)^2, so the exponent
+   is the geopotential depth Z(alt), not alt. At the datum the read is unchanged -- H is
+   defined there -- and only the aloft numbers move: on Earth by 0.3% at 11 km, at
+   Kerbin's 70 km top by 3.8x, across the shipped catalogue 1.04x (Jupiter's top) to
+   5.4x (Duna's). What stays GEOMETRIC on purpose is everything the rest of the game
+   measures altitude in: the `alt >= height` vacuum check above, the science bands, the
+   shell (bodylimits.h), the spawn beds and the atlas disk. Z is arithmetic inside the
+   column, not a unit the game speaks.
    COMPOSITION IS NOT FREE EITHER, and since #630 it is a MIX authored per body: T is
    linear in M, so a hydrogen giant left at dry air's mix reads absurd -- Jool reads
    547 K on dry air where its authored H2/He/CH4 mix (M 0.002364) reads 44.6 K.
@@ -211,9 +235,13 @@ inline double airPressure(const DragAtmosphere &a, double alt) {
         // hands out. p0 is resolved at load to rho0 Rs T0, so rho Rs T == p holds
         // exactly across that boundary rather than only above it.
         if(i < 0) { return a.layers[0].base_p; }
-        return levelPressure(a.layers[i], alt, a.gravity, kGasR / a.molar_mass);
+        return levelPressure(a.layers[i], alt, a.gravity, kGasR / a.molar_mass,
+                             a.radius);
     }
     if(!(a.scale_height > 0.0) || !(a.sea_level_density > 0.0)) { return 0.0; }
+    /* Not the column -- the equation of state. p = rho Rs T with the T this profile
+       implies (the line above), so it holds at every altitude whether the field is
+       uniform or falling off: the falloff moves rho, and rho carries it (#683). */
     return airDensity(a, alt) * a.gravity * a.scale_height;
 }
 

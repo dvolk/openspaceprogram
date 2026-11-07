@@ -578,17 +578,21 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    0 K all the way up (atmo.h's invariants). Filling base_p here -- and
                    nowhere else -- is what keeps rho, p and T one column of air: the
                    density at the datum comes out EXACTLY the authored
-                   sea_level_density, because p0 is derived from it. */
+                   sea_level_density, because p0 is derived from it.
+                   The sea-level radius rides along (#683): this column is weighed in
+                   the body's own 1/r^2 field, and it must be the SAME sphere the aero
+                   pass reads through dragAtm(), or the air steps at every level seam. */
                 if(!s.atmosphere.layers.empty()
                    && !resolveAtmoLevels(s.atmosphere.layers,
                                          s.atmosphere.sea_level_density,
                                          s.atmosphere.molar_mass, body->g,
-                                         s.atmosphere.top())) {
+                                         s.atmosphere.top(), body->seaLevelRadius())) {
                     throw std::runtime_error(
                         "system: " + body->name + ": atmosphere.layers must start at"
                         " alt 0, rise strictly to below height, keep T continuous"
-                        " across each level seam and above 0 K, and stay stably"
-                        " stratified (atmo.h:resolveAtmoLevels)");
+                        " across each level seam and above 0 K, stay stably"
+                        " stratified, and keep no warming level's lapse aimed at the"
+                        " body's own gravity falloff (atmo.h:resolveAtmoLevels)");
                 }
             }
             if(sv.contains("clouds") && sv["clouds"].is_object()) {

@@ -26,7 +26,9 @@
 //
 // And it gates the air's thermodynamic plumbing (check_air): the T/p/a that drag.h
 // derives must come from each body's OWN gravity and authored composition, which
-// only a real system file can show -- test_drag pins the math, not the copy.
+// only a real system file can show -- test_drag pins the math, not the copy. It
+// also gates the sphere each column is weighed against, because a profile resolved
+// against one body and read against another steps the air at every level seam.
 
 #include "system.h"
 #include "vehicle.h"
@@ -98,12 +100,13 @@ static int check_datum(const char *path, const System &sys) {
 /* The air's thermodynamic reads (#552 A2) reach the player through dragAtm(), the
    ONE place authored atmosphere params become the drag law's view. test_drag owns
    that math; this owns the PLUMBING over the shipped defs, which no other test can
-   see: if vehicle.cpp:dragAtm stops copying a body's g or its authored composition,
-   every body quietly reports Earth's air -- and Jool, whose H2/He/CH4 sky resolves to
-   0.00236 kg/mol, prints dry air's 547 K instead of its own 44.6 K in the atlas. The
-   literals are hand-computed off the shipped numbers; T is LINEAR in molar mass while
-   p and a do not contain it at all, so Jool's sound speed moves only through its
-   gamma and its temperature moves through its M.
+   see: if vehicle.cpp:dragAtm stops copying a body's g, the sphere its air is weighed
+   against, or its authored composition, every body quietly reports Earth's air -- and
+   Jool, whose H2/He/CH4 sky resolves to 0.00236 kg/mol, prints dry air's 547 K
+   instead of its own 44.6 K in the atlas. The literals are hand-computed off the
+   shipped numbers; T is LINEAR in molar mass while p and a do not contain it at all,
+   so Jool's sound speed moves only through its gamma and its temperature moves
+   through its M.
    Since #630 the shipped files author a MIX rather than these two scalars, so the
    literals are hand-computed in two steps: resolve the mix by hand (M = sum(x M),
    gamma from the mole-weighted molar heat capacity), then apply the air laws. The
@@ -114,6 +117,16 @@ static int check_datum(const char *path, const System &sys) {
 static int check_air(const char *path, const System &sys) {
     struct Want { const char *name; double T; double a; double p; double ox;
                   double tol; };
+    /* One number read ALOFT, because every Want literal above sits at the datum,
+       where the column has not been walked yet (#683). Kerbin's edge density is
+       what orbital drag is made of: rho0 * exp(-Z / H) with Z the geopotential
+       depth R z/(R+z) = 62,685.8 m at 69,999 m geometric, on the authored
+       1.225 kg/m3 / 5500 m / 600 km / 9.81. The literal is that arithmetic by
+       hand; the uniform-g column #683 replaced gave 3.6e-6 at the same altitude. */
+    struct Aloft { const char *name; double alt; double rho; };
+    static const Aloft aloft[] = {
+        {"Kerbin", 69999.0, 1.375001e-5},
+    };
     static const Want want[] = {
         /* dry air's mix, authored now rather than defaulted: N2 78.084, O2 20.946,
            Ar 0.934, CO2 0.033 %, which resolves to M 0.028965 kg/mol and gamma
@@ -154,14 +167,16 @@ static int check_air(const char *path, const System &sys) {
         const AtmosphereParams &a = b->surface.atmosphere;
         if(!(a.sea_level_density > 0.0)) { continue; }  // no physical air to ask
         n++;
-        const DragAtmosphere da = dragAtm(a, b->g);
-        if(!(da.gravity == b->g) || !(da.molar_mass == a.molar_mass)
+        const DragAtmosphere da = dragAtm(a, *b);
+        if(!(da.gravity == b->g) || !(da.radius == b->seaLevelRadius())
+           || !(da.molar_mass == a.molar_mass)
            || !(da.gamma == a.gamma) || !(da.oxidizer_share == a.oxidizer_share)
            || da.layer_count != (int)a.layers.size()) {
-            printf("  %s: %s dragAtm lost its world: g %.4g vs %.4g, M %.4g vs %.4g,"
-                   " gamma %.4g vs %.4g, ox %.6g vs %.6g, %d levels vs %d\n", path,
-                   b->name.c_str(),
-                   da.gravity, b->g, da.molar_mass, a.molar_mass, da.gamma, a.gamma,
+            printf("  %s: %s dragAtm lost its world: g %.4g vs %.4g, R %.4g vs %.4g,"
+                   " M %.4g vs %.4g, gamma %.4g vs %.4g, ox %.6g vs %.6g, %d levels"
+                   " vs %d\n", path, b->name.c_str(),
+                   da.gravity, b->g, da.radius, b->seaLevelRadius(),
+                   da.molar_mass, a.molar_mass, da.gamma, a.gamma,
                    da.oxidizer_share, a.oxidizer_share,
                    da.layer_count, (int)a.layers.size());
             bad++;
@@ -205,6 +220,18 @@ static int check_air(const char *path, const System &sys) {
                        " half-way?\n",
                        path, w.name, T, w.T, s, w.a, p, w.p,
                        a.oxidizer_share, w.ox);
+                bad++;
+            }
+        }
+        for(const Aloft &w : aloft) {
+            if(lower(b->name) != lower(w.name)) { continue; }
+            const double r = airDensity(da, w.alt);
+            if(std::fabs(r - w.rho) > 1e-4 * w.rho) {
+                printf("  %s: %s air at %.0f m reads %.6e kg/m3, want %.6e (x%.3f)."
+                       " The column is weighed in the body's own 1/r^2 field, so a"
+                       " profile that lost its radius still reads plausible -- 3.8x"
+                       " too thin at Kerbin's top (#683)\n",
+                       path, w.name, w.alt, r, w.rho, r / w.rho);
                 bad++;
             }
         }

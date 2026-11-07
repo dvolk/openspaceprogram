@@ -1465,8 +1465,9 @@ static void test_a_jet_engine_earns_its_gimbal_rating_only_in_air() {
                "the rating is the throttle family's ceiling through the lever -- one"
                " ceiling, not one for the throttle and one for the pointing math");
     CHECK_NEAR(sea.tvcTorque, 0.0, 0.0, "and it is still a rating: the lever is coasting");
-    /* 40 km up: rho is exp(-5) of the surface's, so the gate -- and the rating -- follow
-       it down. A nameplate rating would not move at all. */
+    /* 40 km up: 37.5 km of column in this body's own field (#683), so rho is
+       exp(-4.69) of the surface's, and the gate -- and the rating -- follow it down. A
+       nameplate rating would not move at all. */
     s.v->placeShip(glm::dvec3(0.0, 0.0, 640000.0), glm::dmat3(1.0));
     const Vehicle::AttitudeAuthority high = s.v->attitudeAuthority();
     CHECK_TRUE(high.tvcTorqueAvailable > 0.0, "there is still a little air up there");

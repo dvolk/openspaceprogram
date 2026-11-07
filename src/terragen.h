@@ -81,8 +81,11 @@ struct AtmosphereParams {
     float power = 3.0f;       // Fresnel falloff (higher = tighter rim)
     float intensity = 1.0f;   // overall alpha scale
     /* The physical half (src/drag.h): rho(alt) = sea_level_density *
-       exp(-alt / scale_height) above the sea-level datum, and that density FLAT
-       at or below it (#245); cut to zero at top(). 0 density = no drag.
+       exp(-Z(alt) / scale_height) above the sea-level datum, where Z is that
+       altitude's geopotential depth in the body's own 1/r^2 field
+       (atmo.h:geopotentialDepth, #683 -- Z is just alt for a hand-built atmosphere
+       with no radius), and that density FLAT at or below it (#245); cut to zero at
+       top(). 0 density = no drag.
        alt is measured from the DATUM (radius + surface.sea_level), so what
        sea_level authors is how much of this world sits in the flat floor: relief
        is SIGNED about radius (terrainRelief) and only ocean_mode "flat" clamps

@@ -53,7 +53,13 @@
        walk the temperature through zero inside the air;
      - base_T continuous: the temperature a level starts at is the one the level
        above leaves off at, within kAtmoSeamTol;
-     - lapse above -g / Rs, the point past which the air gets DENSER as you climb. */
+     - lapse above -g / Rs, the point past which the air gets DENSER as you climb;
+     - no warming level whose lapse coincides with the body's own gravity falloff
+       (kAtmoPoleTol), which is where the column integral divides by zero.
+   The column is weighed in the body's 1/r^2 field, not a uniform one: `g` is the
+   field at the datum and the hull is pulled by less as it climbs (#683). That
+   needs the body's sea-level radius, which is why resolveAtmoLevels and
+   levelPressure both take it and why DragAtmosphere carries it. */
 struct AtmoLayer {
     double base_alt = 0.0;   // [m above the sea-level datum]
     double base_T = 0.0;     // [K] at base_alt
@@ -68,36 +74,87 @@ inline double levelTemperature(const AtmoLayer &L, double alt) {
     return (T > 0.0) ? T : 0.0;
 }
 
+/* The weight of a column in the field the hull actually falls in (#683).
+   `g` is the field at the DATUM, but the hull is pulled by
+       g(z) = g radius^2 / (radius + z)^2
+   (Vehicle::applyGravity: G m parent_mass / r^2 per part), and the integral of that
+   field, measured in metres of the datum's g, is
+       int_0^z g(z') dz' = g · geopotentialDepth(radius, z),
+       geopotentialDepth(radius, z) = radius z / (radius + z)
+   -- geopotential height, the substitution every standard-atmosphere table and
+   Orbiter's layer models open with. It is the whole reason a KSP-sized world needs
+   it: Kerbin's air top sits at 11.7 % of the body's radius, where the field is
+   already 20 % weaker, and a uniform-g column thins the top of that air by 3.8x
+   (#683's per-body table: 1.04x on Jupiter to 5.4x on Duna).
+   radius <= 0 asks for the UNIFORM field instead, which is what a hand-built
+   DragAtmosphere with no world gets; a body loaded from a system file always
+   carries its seaLevelRadius. */
+inline double geopotentialDepth(double radius, double z) {
+    if(!(radius > 0.0)) { return z; }
+    assert(radius + z > 0.0);   // callers floor at the datum; they do not divide by it
+    return radius * z / (radius + z);
+}
+
 /* p [Pa] at alt inside level L, from hydrostatics (dp/dh = -rho g) and the ideal
    gas law (rho = p / (Rs T), Rs = R/M) with T linear in h. Eliminating h:
-       dp/p = -(g / Rs) dh / T   and   dh = dT / lapse
-       =>  ln(p / base_p) = (g / (Rs lapse)) · ln(base_T / T)
-   which gives the two textbook forms:
-       lapse != 0:  p = base_p * (base_T / T) ^ (g / (lapse Rs))
-       lapse  == 0: p = base_p * exp(-g (alt - base_alt) / (Rs base_T))
+       dp/p = -(g / Rs) dh / T
    The SIGN is the part to re-check rather than trust: on a cooling level (a
-   negative lapse, the troposphere) the ratio base_T / T is ABOVE 1 and the
-   exponent is NEGATIVE, so p falls. Flipping either one makes the air get denser
-   as you climb, and nothing downstream notices -- the density is derived from p,
-   so a wrong sign never contradicts itself, it just describes Venus on Earth.
-   The isothermal form IS the lapse form's limit as lapse goes to zero, and is
-   spelled separately rather than near-factored: the exponent becomes a 0/0-shaped
-   ratio. The lapse form is written with log1p rather than pow(base, exponent) so
-   it KEEPS that limit: pow's base is a 1+-epsilon quotient, and at a 1e-16 lapse
-   the author gets 1.5% off the answer its own table implies, in a branch whose
-   whole job is to approach the isothermal case. log1p(lapse dh / base_T) IS
-   log(T / base_T) by definition, so the two spellings agree to 7e-12 Pa on
-   Earth's levels -- and a limit worth having is a limit that holds. */
-inline double levelPressure(const AtmoLayer &L, double alt, double g, double Rs) {
+   negative lapse, the troposphere) the temperature ratio runs the other way and
+   the exponent stays negative, so p falls. Flipping either one makes the air get
+   denser as you climb, and nothing downstream notices -- the density is derived
+   from p, so a wrong sign never contradicts itself, it just describes Venus on
+   Earth.
+   ISOTHERMAL LEVEL (lapse == 0). T leaves the integral, and with the field above
+       ln(p / base_p) = -(g / (Rs base_T)) [geopotentialDepth(z) - geopotentialDepth(base_alt)]
+   For radius <= 0 the depths are just altitudes and this is the textbook
+   p = base_p exp(-g dh / (Rs base_T)).
+   LAPSE LEVEL. Here the textbook form
+       p = base_p * (base_T / T) ^ (g / (lapse Rs))
+   is ONLY right for a uniform field: T is authored per GEOMETRIC metre while the
+   weight is 1/(radius+z)^2, and the two do not share an antiderivative. With
+   u = radius + z, so T = lapse·u + C and C = base_T - lapse·(radius + base_alt):
+       int du / (u^2 (lapse·u + C)) = -1/(C u) + (lapse/C^2) · ln((lapse·u + C)/u)
+   evaluated at u and at the level's own base (where lapse·u_b + C IS base_T, so
+   the log's second term is taken there rather than subtracted, which is where the
+   cancellation would otherwise happen).
+   Do NOT "fix" this by converting alt to geopotential height before the level
+   maths, as Orbiter does: that makes the authored lapse per geopotential metre
+   instead of per geometric one, and the error then grows with the lapse level's
+   own depth -- 0.4 % at the top of Earth's 6371 km-radius mesosphere, 20 % at the
+   same level on a 600 km body, 3.8 % at the ceiling of the 300 km two-level
+   fixture pinned in tests/test_drag.cpp:test_gravity_falloff. The closed form
+   above is the exact integral (it matches quadrature to ~1e-9; the geopotential-
+   everywhere spelling does not).
+   The uniform-field lapse form is kept as its own branch, and it is written with
+   log1p rather than pow(base, exponent) so it KEEPS the isothermal limit: pow's
+   base is a 1+-epsilon quotient, and at a 1e-16 lapse the author gets 1.5% off
+   the answer its own table implies, in a branch whose whole job is to approach
+   the isothermal case. log1p(lapse dh / base_T) IS log(T / base_T) by definition,
+   so the two spellings agree to 7e-12 Pa on Earth's levels -- and a limit worth
+   having is a limit that holds. */
+inline double levelPressure(const AtmoLayer &L, double alt, double g, double Rs,
+                            double radius) {
     const double dh = alt - L.base_alt;
     if(L.lapse == 0.0) {
-        return L.base_p * std::exp(-g * dh / (Rs * L.base_T));
+        const double depth = geopotentialDepth(radius, alt)
+                           - geopotentialDepth(radius, L.base_alt);
+        return L.base_p * std::exp(-g * depth / (Rs * L.base_T));
     }
-    // T > 0 is what makes log1p's argument > -1; a lapse steep enough to walk T
-    // through zero (which the loader refuses) would produce a NaN here instead.
+    // T > 0 is what makes log1p's argument > -1 and the log below's argument > 0;
+    // a lapse steep enough to walk T through zero (which the loader refuses) would
+    // produce a NaN here instead.
     if(!(levelTemperature(L, alt) > 0.0)) { return 0.0; }
-    return L.base_p * std::exp(-(g / (L.lapse * Rs))
-                               * std::log1p(L.lapse * dh / L.base_T));
+    if(!(radius > 0.0)) {   // uniform field -- the textbook form
+        return L.base_p * std::exp(-(g / (L.lapse * Rs))
+                                   * std::log1p(L.lapse * dh / L.base_T));
+    }
+    const double u = radius + alt, u_b = radius + L.base_alt;
+    const double C = L.base_T - L.lapse * u_b;
+    const double k = g * radius * radius / Rs;
+    const double F_u = -1.0 / (C * u)
+                     + (L.lapse / (C * C)) * std::log(levelTemperature(L, alt) / u);
+    const double F_b = -1.0 / (C * u_b) + (L.lapse / (C * C)) * std::log(L.base_T / u_b);
+    return L.base_p * std::exp(-k * (F_u - F_b));
 }
 
 /* How far a level's authored base_T may sit from the temperature the level above
@@ -108,6 +165,24 @@ inline double levelPressure(const AtmoLayer &L, double alt, double g, double Rs)
    table is continuous to the last digit, so this only ever catches the errors. */
 inline constexpr double kAtmoSeamTol = 0.5;
 
+/* How close to degenerate a level's lapse may come to the field's own falloff [K].
+   See resolveAtmoLevels: C = base_T - lapse(radius + base_alt) is the distance
+   between the two poles of the column integral -- the planet's CENTRE and the
+   altitude where this level's T would hit 0 K -- and when C is 0 they coincide and
+   levelPressure divides by it. A WARMING level on a small body can aim at that;
+   reaching it takes a lapse tuned to within 1.6e-6 K/m of T/(radius+alt) on a
+   Kerbin-sized world, and by |C| = 1 K the closed form has already given up four
+   digits (against quadrature: 4.5e-9 relative at |C| = 1.1, 1e-4 at 0.1, 4e-3 at
+   1e-3, garbage at 0). So the loader refuses the band instead of the law carrying
+   a second spelling of itself for a case no authored table lands in.
+   The band is ABSOLUTE in kelvin, so in lapse terms it is 1 K / (radius + base_alt)
+   -- 1.6e-6 K/m on Kerbin, 3e-4 K/m on a 3 km air moon. That wider window is still
+   200x narrower than the degenerate lapse there (T / (radius + alt) ~ 0.07 K/m,
+   against the 1e-3..1e-2 K/m of any level anyone would author), which is the
+   judgement behind the constant. tests/test_drag.cpp accepts |C| = 1.1 K and pins
+   its density against a quadrature number; it refuses |C| = 0.5 K. */
+inline constexpr double kAtmoPoleTol = 1.0;
+
 /* Fill in each level's base_p [Pa] by integrating the level ABOVE it down to this
    level's base_alt, starting from the sea-level anchor the authored numbers imply:
        p0 = sea_level_density * (R / M) * base_T(0)      (ideal gas, at the datum)
@@ -116,15 +191,22 @@ inline constexpr double kAtmoSeamTol = 0.5;
    (drag.h reads p and rho out of ONE integration, so a def that broke hydrostatics
    at a boundary would show up as a density jump nothing explains).
 
+   `radius` is the body's SEA-LEVEL radius [m], the sphere this profile's altitudes
+   are measured from; it is what makes the column weigh the 1/r^2 field the hull
+   falls in rather than a uniform one (#683, atmo.h:geopotentialDepth). Pass it
+   from the same TerrainBody the g came from: a level table resolved with one radius
+   and read with another steps the air at every seam. 0 integrates the uniform field.
+
    Returns false when the table cannot be integrated, so the loader can name the body
    rather than load a profile that divides by zero or walks T through 0 K mid-air.
    The checks are: level 0 based at the datum; altitudes strictly rising and the last
    level starting below the body's air `top`; a positive temperature at every base and
    at every ceiling (a ceiling is the next level's base or the air top, whichever comes
-   first); a temperature CONTINUOUS across every seam; and no level whose air gets
-   denser as you climb. */
+   first); a temperature CONTINUOUS across every seam; no level whose air gets denser
+   as you climb; and no warming level aimed at the degenerate lapse above. */
 inline bool resolveAtmoLevels(std::vector<AtmoLayer> &L, double sea_level_density,
-                              double molar_mass, double g, double top) {
+                              double molar_mass, double g, double top,
+                              double radius) {
     if(L.empty() || !(sea_level_density > 0.0) || !(molar_mass > 0.0)
        || !(g > 0.0) || !(top > 0.0)) { return false; }
     if(!(L[0].base_alt == 0.0)) { return false; }    // the profile is anchored at the datum
@@ -154,10 +236,18 @@ inline bool resolveAtmoLevels(std::vector<AtmoLayer> &L, double sea_level_densit
               > kAtmoSeamTol) {
             return false;
         }
+        // The other divide-by-zero in the column (kAtmoPoleTol's note above). Only a
+        // WARMING level can hit it: a cooling one has C = base_T + |lapse| u_b, which
+        // is at least base_T away from zero.
+        if(L[i].lapse > 0.0 && radius > 0.0
+           && std::fabs(L[i].base_T - L[i].lapse * (radius + L[i].base_alt))
+              < kAtmoPoleTol) {
+            return false;
+        }
         if(i == 0) {
             L[0].base_p = sea_level_density * Rs * L[0].base_T;
         } else {
-            L[i].base_p = levelPressure(L[i - 1], L[i].base_alt, g, Rs);
+            L[i].base_p = levelPressure(L[i - 1], L[i].base_alt, g, Rs, radius);
             if(!(L[i].base_p > 0.0)) { return false; }
         }
     }

@@ -2559,16 +2559,16 @@ void Vehicle::applyThrustForce(double h) {
 }
 
 // The authored atmosphere as drag.h sees it (declared in vehicle.h -- including the
-// borrow contract on the layer pointer and what g does and does not move). The body's
-// g rides along because the thermodynamic reads (T/p/a, #552 A2) are derived from H
-// AND g; on an exponential body rho and top() are not, on a layer body the weighed
-// column is (#552 A4).
+// borrow contract on the layer pointer and why the BODY rather than a gravity comes
+// in: the thermodynamic reads (T/p/a, #552 A2) need g, and the column needs the
+// radius g belongs to (#683), both off the same sphere the altitudes measure from).
 // The layer table (#552 A4) rides as a POINTER into a's own vector: this copy runs
 // per hull per substep, and the AtmosphereParams it borrows from outlives every one
 // of them -- the loader resolved the levels once, when the system file loaded.
-DragAtmosphere dragAtm(const AtmosphereParams &a, double g) {
+DragAtmosphere dragAtm(const AtmosphereParams &a, const TerrainBody &body) {
     DragAtmosphere da { a.sea_level_density, a.scale_height, a.top() };
-    da.gravity = g;
+    da.gravity = body.g;
+    da.radius = body.seaLevelRadius();   // #683: the field the hull falls in, not g alone
     da.molar_mass = a.molar_mass;
     da.gamma = a.gamma;
     da.oxidizer_share = a.oxidizer_share;   // #637: the jet gate reads it from HERE
@@ -2594,7 +2594,7 @@ static bool comAirProfile(const TerrainBody *body, const glm::dvec3 &com,
     // Altitude above SEA LEVEL (the fixed reference radius), like applyAeroForce: the
     // atmosphere is a spherically-symmetric shell.
     alt = r - body->seaLevelRadius();
-    atm = dragAtm(surfaceAtm, body->g);
+    atm = dragAtm(surfaceAtm, *body);
     return true;
 }
 
@@ -2629,7 +2629,7 @@ bool Vehicle::airReadingAt(const Part *p, AirReading &out) {
     out.altAsl = out.r - m_parent->seaLevelRadius();
     const AtmosphereParams &atm = m_parent->surface.atmosphere;
     if(atm.physical()) {
-        const DragAtmosphere da = dragAtm(atm, m_parent->g);
+        const DragAtmosphere da = dragAtm(atm, *m_parent);
         out.press = airPressure(da, out.altAsl);
         out.temp = airTemperature(da, out.altAsl);
     }
@@ -2710,7 +2710,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
        science bands still decide it by altitude against atm.top() alone, and that
        split is deliberate (#309, #310). */
 
-    const DragAtmosphere da = dragAtm(atm, m_parent->g);
+    const DragAtmosphere da = dragAtm(atm, *m_parent);
     const double rho = airDensity(da, alt);
     lastDragRho = rho;
     /* The air's own numbers ride the same seam (#552 A2/A3) so the log and the

@@ -295,9 +295,10 @@ static void test_fuel_flow() {
  * Hand-built so every number is hand-checkable. Pod 1000 kg; a 20000 N engine (5 kg/s x
  * 4000 m/s) at STAGE 3; a 50000 N engine (10 x 5000) at stage 1; a jet at stage 1 (fan
  * 100 N, 1 kg/s at ve 1000, intake 0.04 m^2). Total 1250 kg. The ship sits 1000 m above
- * the body's sea level and is not moving, so rho = E = exp(-1000/8000) of sea level and
- * the jet's ram term is zero; no tank is modelled because these reads are POTENTIALS --
- * they never consult the fuel.
+ * the body's sea level and is not moving, so rho = E = exp(-Z/8000) of sea level, where
+ * Z is that altitude's geopotential depth in this 600 km body's own field -- 998.3 m,
+ * not 1000 m (#683). The jet's ram term is zero; no tank is modelled because these
+ * reads are POTENTIALS -- they never consult the fuel.
  *   stage 3 is the first live stage, so only the 20000 N engine is available at first,
  *   and that number does not care about air at all;
  *   the jet at rest in that air is E*(fan + mdot*ve) = 1100E, and at its best speed
@@ -397,8 +398,12 @@ static void test_produced_and_available_thrust() {
     /* The air the model reads is the air at the COM, and a compound's COM is not its
        transform origin (the engines hang below it), so the altitude -- and therefore the
        air fraction E every jet number below uses -- is MEASURED here rather than assumed
-       to be ALT. The COM's own geometry is test_inertia's business. */
-    E = std::exp(-(glm::length(r.v->get_center_of_mass()) - 600000.0) / 8000.0);
+       to be ALT. The COM's own geometry is test_inertia's business.
+       The column is weighed in THIS body's 1/r^2 field (#683), so E decays with the
+       geopotential depth R z/(R+z): 998.34 m of column at 1000 m up a 600 km ball,
+       which makes the air 0.021 % thicker than the old uniform-g reading. */
+    const double zc = glm::length(r.v->get_center_of_mass()) - 600000.0;
+    E = std::exp(-(600000.0 * zc / (600000.0 + zc)) / 8000.0);
 
     /* COASTING: the whole point of #400. The throttle is zero, so the read-back is zero,
        and a law that plans with it has no way to know the engine is fine. */

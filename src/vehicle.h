@@ -35,12 +35,19 @@
 #include "orbit.h"
 
 /* The authored atmosphere as drag.h's view of it -- the ONE conversion, shared by
-   the aero pass and any readout that wants the air's T/p/a (#552 A2). `g` is the
-   body's surface gravity: on an EXPONENTIAL body rho(alt) and top() do not use it,
-   so passing a different g moves a readout and never a drag number. A LAYER body
-   qualifies that (#552 A4) -- its column is weighed rather than authored, so its rho
-   aloft does follow g (pinned in tests/test_drag.cpp: same sea-level air, half the
-   gravity, thicker air at 20 km).
+   the aero pass and any readout that wants the air's T/p/a (#552 A2). It takes the
+   BODY, not a gravity, because the air needs two facts about where it sits: the
+   field at its datum (`g`) and the radius that datum sits at
+   (seaLevelRadius(), which is what the column is weighed in -- #683). Handing them
+   over separately is how you get a profile resolved against one planet and read
+   against another, and the pair has no legal mixed spelling: the column's altitude
+   is measured from the same sphere its g belongs to.
+   On an EXPONENTIAL body rho(alt) and top() do not use g, so passing a different g
+   moves a readout and never a drag number -- but with #683 both bodies' rho aloft DO
+   follow the radius, since the column thins more slowly the closer its top sits to
+   the surface. A LAYER body weighs its column rather than authoring it (#552 A4), so
+   its rho aloft follows g too (pinned in tests/test_drag.cpp: same sea-level air,
+   half the gravity, thicker air at 20 km).
    The layer table is BORROWED, not copied: DragAtmosphere::layers points into a's own
    vector, so `a` must outlive whatever this returns. It does everywhere -- the levels
    are resolved once by the loader and live in System::bodies for the whole world, and
@@ -50,8 +57,8 @@
    the loader resolved (molar_mass, gamma, oxidizer_share), so the jet gate reads them
    off the profile the density came from instead of going back to AtmosphereParams for
    half the pair. That fold is #637, and tests/test_scenarios.cpp refuses a body whose
-   dragAtm lost one of those three. */
-DragAtmosphere dragAtm(const AtmosphereParams &a, double g);
+   dragAtm lost one of those four. */
+DragAtmosphere dragAtm(const AtmosphereParams &a, const TerrainBody &body);
 
 /* Autopilot slew targets -- mutually exclusive (last one wins); the stick
    composes with them. Declared above ShipCmd because a ShipCmd now carries one. */

@@ -6403,7 +6403,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                "would I freeze" is the question a player actually asks. --drag-log
                prints plain K -- a log line gets parsed, and a second unit in a
                field is a parser's bad day. */
-            const DragAtmosphere da = dragAtm(at, b.g);
+            const DragAtmosphere da = dragAtm(at, b);
             const double airK = airTemperature(da, 0.0);
             snprintf(v, sizeof v, "%.1f K (%.1f C)", airK, airK - 273.15);
             line(at.layers.empty() ? "air temp (isothermal)" : "air temp (sea level)", v);
