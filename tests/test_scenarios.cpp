@@ -147,10 +147,12 @@ static int check_air(const char *path, const System &sys) {
            answer 2.03e-4 kg/m3 (Kerbin, g 9.81), 4.56e-4 (Shay, 8.9933) and 1.37e-3
            (Laythe, 7.848) -- Laythe holds 6.75x the air there, because the exponent
            goes as 1/g and its column is weighed 1.28x more gently over these 70 km.
-           A conversion that lost a radius, or a table that quietly fell back to one
-           exponential, lands between these and fails. utils/atmo_profile.py
-           integrates this column a second time (python, by quadrature, sharing no code
-           with atmo.h) and is what printed them. */
+           A conversion that lost a radius lands outside this spread, and so does a
+           table that quietly fell back to one exponential: Shay wearing its old
+           H 6000 would read 3.9e-5 at the same height (11.6x thinner than its own
+           pinned row) and a warmed H 9197 would read 1.43e-3 (3.1x thicker).
+           utils/atmo_profile.py integrates this column a second time (python, by
+           quadrature, sharing no code with atmo.h) and is what printed them. */
         {"Shay",   9500.0,  0.4964330},
         {"Shay",   69999.0, 4.561912e-4},
         {"Laythe", 10500.0, 0.5259753},
@@ -191,9 +193,10 @@ static int check_air(const char *path, const System &sys) {
            troposphere the game actually flies in, and level 6's BASE is the number
            that gates the air top -- atmo.h refuses a table whose last level sits at
            or above `height`, so 81,524.0 m is why Shay's top could not stay at 60 km
-           and 82,750.6 m is why Laythe's could not stay at 50 km. Their lapses are
-           the same 1976 row scaled by each body's own chord, which is where a
-           hard-coded radius would show up first. */
+           once these seven rows arrived, and 82,750.6 m is why Laythe's could not
+           stay at 50. gen_systems --check only says the committed file matches the
+           script; these rows say what the rows have to BE, which is the statement
+           that survives someone regenerating the file. */
         {"Shay",   0, 0.0, -0.00637},       {"Shay",   6, 81524.0, -0.00148527},
         {"Laythe", 0, 0.0, -0.006357},      {"Laythe", 6, 82750.6, -0.00141818},
     };

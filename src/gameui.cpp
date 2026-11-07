@@ -6413,11 +6413,12 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                word "isothermal" is on the line on purpose -- Duna reads 209 K /
                600 Pa / 229 m/s this way, and until #700 so did Laythe at 150 K /
                53 kPa, a temperature no field in that world's file ever chose. A
-               warm datum is not a dial to turn on one exponential: rho0 1.225 at
-               288.15 K wants an 8.4 km scale height, which is 1.37x the air at
-               5 km that Laythe's 5.5 km column held and 3.37x at 20 km, while the
-               layer table that world wears now puts 1.68x and 4.69x -- the gap
-               being the lapse rate a single exponential has not got. Reconciling
+               warm datum is not a dial to turn on one exponential either, and the
+               H it wants belongs to the body (H = Rs T0 / g): Laythe's 288.15 K
+               datum wants 10.5 km THERE, and an isothermal column that tall leaves
+               5.0x more air at the world's 105 km ceiling than the layer table it
+               wears now does -- 3.3e-4 vs 6.5e-5 kg/m3, which is 528 Pa of q on a
+               circular orbit there instead of 106 Pa. Reconciling
                them is a layer table, not a
                fudge -- and a body that HAS one (#552 A4) has these three read from
                the levels at the datum, which is why its label says "sea level" and

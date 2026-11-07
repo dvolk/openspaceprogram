@@ -160,9 +160,13 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
    is the geopotential depth Z(alt), not alt. At the datum the read is unchanged -- H is
    defined there -- and only the aloft numbers move: on Earth by 0.3% at 11 km, at
    Kerbin's 85 km top by 4.6x (2.26 Pa of column weighed, 0.50 Pa uniform), across the
-   shipped catalogue 1.04x (Jupiter's top) to 4.3x (Eve's; Duna fell from 5.4x to 2.2x
-   when #700 gave it a 13.6 km scale height -- the gain is biggest on a small world
-   with a SHORT column, which is a symptom of the air being wrong, not of the field).
+   shipped catalogue 1.04x (Jupiter's top) to 9.3x (Laythe's 105 km ceiling, where
+   #700 replaced a 2.3x 50 km column top; Shay's table pays 6.7x). Eve's 4.3x is now
+   the largest among the scale-height bodies and Duna's fell from 5.4x to 2.2x when
+   #700 gave it a 13.6 km scale height -- the gain is big in two opposite ways, on a
+   SHORT column (a symptom of the air being wrong, not of the field) and on air that
+   reaches far out in body radii (which is what a warm tall table does: 21 % of
+   Laythe's radius at the ceiling against Kerbin's 14 %).
    What stays GEOMETRIC on purpose is everything the rest of the game
    measures altitude in: the `alt >= height` vacuum check above, the science bands, the
    shell (bodylimits.h), the spawn beds and the atlas disk. Z is arithmetic inside the
@@ -175,13 +179,17 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
    label on the readouts warns about the missing lapse rate; it does NOT excuse a
    wrong gas.
    THE THREE ARE LOCKED on ONE exponential: rho0, p0 and H cannot all be Earth's
-   numbers at once. rho0 1.225 with p0 101.3 kPa wants T0 288 K, which wants H 8.43 km:
-   against the H = 5.5 km exponential Laythe wore until #700, that column is 1.37x
-   thicker at 5 km and 3.37x at 20 km, weighed in Laythe's own 1/r^2 field. The layer
-   table that world wears instead puts 1.68x and 4.69x there -- 0.498 -> 0.837 and
-   0.037 -> 0.174 kg/m3 -- which is the ratio no single H can have, because a lapse
-   rate makes density fall faster than pressure. Having both means a LAPSE RATE,
-   and that is what a LAYER TABLE is (#552 A4): a body that authors one gets a
+   numbers at once -- and H is Rs T0 / g, so the H a datum wants BELONGS to a body and
+   does not travel. Laythe (g 7.848) wore H = 5500 until #700, which reads T0 150.4 K
+   over a world with a sea on it. Its warm datum -- rho0 1.225 with p0 101.3 kPa, so
+   T0 288.15 K -- wants H 10,539 m THERE (Kerbin's answer to the same datum is
+   8,432 m, and planting that one on Laythe would be a 230 K world): 1.54x the air at
+   5 km that the H 5500 held, and 5.32x at 20 km. The LAYER TABLE the world wears
+   instead puts 1.68x and 4.69x -- 0.498 -> 0.837 and 0.037 -> 0.174 kg/m3. So the
+   table is THICKER than the warm exponential near the ground and THINNER up where the
+   top is, and no single H does both: an H that pays the table's 1.68x at 5 km pays
+   7.52x at 20 km. That is what a LAPSE RATE buys, and it is what a LAYER TABLE is
+   (#552 A4): a body that authors one gets a
    temperature that varies with altitude, a pressure integrated hydrostatically and a
    density that follows from the gas law, all three consistent with its authored
    sea_level_density. A body that does not -- every KSP-derived world except Kerbin,

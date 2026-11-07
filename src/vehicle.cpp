@@ -250,6 +250,13 @@ static const ScenarioDef kScenarios[] = {
        Duna stall is ~235 m/s now, so this bed spawns it at 0.32x stall instead of
        0.61x -- a born drop rather than a glide -- while the skiff's own stall at that
        density, ~78 m/s by the README's arithmetic, is essentially the bed's speed.
+       Shay and Laythe went the other way when #700 warmed them: their beds moved out
+       to 9.5 and 10.5 km and their airspeeds barely moved with them (163.4 and
+       152.0 m/s of air), because 0.08 of circular speed does not read the column.
+       What moved under them is the SOUND speed at the bed -- 302.5 and 298.4 m/s
+       where 275.0 and 246.0 used to be -- so those two beds open at Mach 0.54 and
+       0.51 instead of 0.60 and 0.62: no born drop, but the flow regime changed
+       anyway, and no test was watching.
        #451's per-body multiples want re-measuring; #693 is the fix that stops them
        mattering, by keying a bed to the airframe's trimmed glide rather than to the
        body's column. What the bed does not fix is what it

@@ -329,7 +329,10 @@ SURFACES = {
                        # 188 K as the air's fact and every Mach number pays it.
                        # Same medicine Kerbin took in #686: wear the 1976 rows, which
                        # keep the warm datum and spend it back aloft, instead of one
-                       # warm exponential that puts ~x100 more air at the ceiling.
+                       # warm exponential. Warmed to a 288 K datum at Shay's own g an
+                       # exponential wants H 9.2 km, which leaves 109x the air at a
+                       # 95 km ceiling that the cold H 6000 left -- the table leaves a
+                       # fifth of even that (1.8e-4 vs 3.6e-5 kg/m3).
                        # Shay is Kerbin's L4 trojan -- same orbit, same sunlight --
                        # so a 288.15 K datum is not a guess about its climate, it is
                        # the same distance from Kerbol. p0 = rho0 (R/M) T0 carries no
@@ -344,8 +347,10 @@ SURFACES = {
                        # call, answered the way Kerbin's 85 km was: 95 km is where a
                        # circular orbit feels 75 Pa of q -- Kerbin's edge is 97.8 Pa
                        # and Duna's is 110.5, all three inside the 10..1000 Pa band.
-                       # It moves shellEdge off the 100 km floor to 114 km, the
-                       # flying-slow bed 6.0 -> 9.5 km, and the sky rim with it.
+                       # It moves shellEdge off the 100 km floor to 114 km and the
+                       # flying-slow bed 6.0 -> 9.5 km. It does NOT move the rendered
+                       # sky rim, which is terrain max height + `thickness` above the
+                       # datum and not derived from `height` at all (#56).
                        "height": 95000,
                        # Same authored rows as Kerbin and Earth (#690 converts bases
                        # and lapse against THIS radius, per geopotential metre).
@@ -447,13 +452,20 @@ SURFACES = {
                        # at 82,750.6 m geometric on a 500 km world, so the old 50 km
                        # top refuses this table. Above that floor the number is
                        # #682's rule, not a round figure: at 105 km a circular orbit
-                       # meets 106.0 Pa, against Kerbin's 97.8 at its own edge. (90 km
+                       # meets 106.1 Pa, against Kerbin's 97.8 at its own edge. (90 km
                        # would also be in band at 430 Pa, but a top is where orbit
                        # stops being orbit, and 4.4x Kerbin's edge reads as a wall.)
                        # shellEdge goes from the 100 km floor to 126 km; the flying
                        # beds go 5.0 -> 10.5 km. Laythe's column reaches further than
                        # Kerbin's or Shay's because its g is lower and the same air is
                        # therefore puffier -- the datum is identical on all three.
+                       # The band only speaks AT the ceiling, and this is the world
+                       # where that is not the whole story: at 70 km a circular orbit
+                       # already feels 2.36 kPa of q on Laythe, against Shay's 1.00 kPa
+                       # and Kerbin's 0.53 -- a drag-heavy low sky long before the
+                       # edge, which is what #553/#554 will have to price. And the
+                       # 71 km row's own lapse runs on up to the ceiling, so the top
+                       # sits in 183 K air (214.65 - 0.00141818 x 22.2 km).
                        "height": 105000,
                        "heights": "geopotential",
                        "layers": [
