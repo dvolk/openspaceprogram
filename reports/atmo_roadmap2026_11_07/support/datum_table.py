@@ -1,17 +1,31 @@
 #!/usr/bin/env python3
 """Reproduce every number in ../atmo_roadmap.md. Read-only.
 
-Three tables:
+Five tables:
   1. what every air body in both shipped systems asserts at its datum, resolved
      through the loader's own arithmetic;
   2. those datums against the NASA fact sheets already vendored in utils/rss/html/
      (scraped, not transcribed -- the values in the report are this script's output);
   3. the three Kerbin datum options from section 4, and the dynamic pressure each
-     leaves at the body's air top.
+     leaves at the body's air top;
+  4. whether each fact sheet is internally one hydrostatic isothermal column, and how
+     the giants' 1-bar values compare with what we author;
+  5. how much denser a body's air top gets under the real gravity fall-off (#683), and
+     what a layered tail does at Earth's edge.
 
 CAVEAT worth stating rather than hiding: the gas table and the hydrostatic
 integration below are MIRRORED from src/atmo.h, not read from it. If atmo.h moves
 and this does not, this script's numbers go stale in the same way the report's do.
+It also diverges from the game BELOW the datum: drag.h holds rho, p and T FLAT at
+and below alt 0 (drag.h:111, 186-190, 210-214), while this column keeps integrating
+level 0 downward. Nothing in the report samples below the datum, but a reader who
+does should not trust this script for it.
+
+What datum_table.out covers: sections 1-5 below -- the per-body datum table, the
+terrestrial and giant sheet comparisons, the Kerbin options, the sheet
+self-consistency audit, the #683 gravity-falloff factors and the layered-vs-
+exponential tail ratio. It does NOT cover the fact-sheet wind speeds or the Pluto
+row quoted in section 3b: read those from utils/rss/html/ directly.
 """
 import json, math, os, re, html
 
@@ -188,7 +202,13 @@ def main():
     print("a 288.15 K datum needs scale height %.0f m (today: 5500 m)" % H288)
     A = Column(g, rho0, dry, None, top, 5500)
     B = Column(g, rho0, dry, None, top, H288)
-    C = Column(g, rho0, dry, EARTHL, top, None)
+    # Earth's table TRUNCATED to its first six levels, not copied verbatim: atmo.h:131
+    # refuses a table whose last level is based at or above the body's top, and Earth's
+    # seventh level is based at 71 km > Kerbin's 70 km. The row never governs below
+    # 70 km anyway, so the numbers below are the same either way -- the point is that
+    # the obvious authoring (paste Earth's table) does not load.
+    C = Column(g, rho0, dry, EARTHL[:6], top, None)
+    print("C uses Earth's first %d levels (71 km row dropped -- see atmo.h:131)" % len(EARTHL[:6]))
     print("%-9s %10s %10s | %10s %10s | %10s %10s" %
           ("alt m", "A T K", "A rho", "B T K", "B rho", "C T K", "C rho"))
     for alt in (0, 2000, 5000, 11000, 20000, 40000, 60000, top - 1):
@@ -265,6 +285,51 @@ def main():
     print("\n  bodies the guard must NOT skip for the wrong reason: Pluto states 13 microbar,")
     print("  surface T 24-38 K, H ~18 km (50 km above 30 km), M ~28, N2 99/CH4 0.5 -- and we")
     print("  author no sea_level_density for it at all; Titan has no *fact.html to author from.")
+    print("\n  (the Pluto row above is quoted from utils/rss/html/plutofact.html by hand; this")
+    print("   script's scraper does not parse that block.)")
+
+    print()
+    print("=" * 100)
+    print("5. #683: how much denser the air at a top gets once the column reads the real")
+    print("   gravity fall-off; and what a layered tail does to Earth's edge")
+    print("=" * 100)
+    print("  An isothermal column under g(z) = g R^2/(R+z)^2 integrates to")
+    print("  p = p0 exp[-(R/H) z/(R+z)], so the flat model's density at altitude z is")
+    print("  light by exp[(z/H) z/(R+z)] -- H at the datum, z just under the top. Small")
+    print("  for a big world, enormous for a small one.")
+    print("  %-6s %-8s %8s %9s %8s %11s" % ("sys", "body", "R km", "H_eff m", "top km", "gain"))
+    gains = []
+    radii = {}
+    for f in SYSS:
+        for b in json.load(open(os.path.join(REPO, f)))["bodies"]:
+            radii[(f.split("/")[-1][:5], b["name"])] = b["radius"]
+    for key, c in cols.items():
+        R = radii[key]
+        z = c.top - 1.0
+        gain = math.exp((z / c.eff_H()) * z / (R + z))
+        gains.append((gain, key[0], key[1], R, c.eff_H(), c.top))
+    for gain, sysn, nm, R, Heff, top in sorted(gains):
+        print("  %-6s %-8s %8.0f %9.0f %8.0f %10.2fx" % (sysn, nm, R / 1000, Heff,
+                                                         top / 1000, gain))
+    print("\n  Earth's authored 7-level table vs an exponential with the SAME datum and")
+    print("  the SAME 85 km top, at 84,999 m:")
+    E = cols[("solar", "Earth")]
+    flat = Column(E.g, E.rho0, [{"gas": "N2", "fraction": 0.78084},
+                                {"gas": "O2", "fraction": 0.20946},
+                                {"gas": "Ar", "fraction": 0.00934},
+                                {"gas": "CO2", "fraction": 0.00033}],
+                  None, 85000.0, E.eff_H())
+    _, p_layer, r_layer = E.at(84999.0)
+    _, p_flat, r_flat = flat.at(84999.0)
+    print("    layered   p %10.4g Pa  rho %10.4g" % (p_layer, r_layer))
+    print("    exp H %.0f p %10.4g Pa  rho %10.4g   -> layered is %.1fx thinner in p,"
+          " %.1fx in rho" % (E.eff_H(), p_flat, r_flat, p_flat / p_layer,
+                             r_flat / r_layer))
+    print("\n  And the Kerbin option C warning: Earth's table copied VERBATIM onto Kerbin")
+    print("  (height 70 km) is refused at load -- atmo.h:131 needs L.back().base_alt < top,")
+    print("  and Earth's last level is based at 71 km. C above is Earth's first SIX levels;")
+    print("  the 71 km row never governs below 70 km, so dropping it changes nothing.")
+
     print("\nshellEdge law (bodylimits.h): max(100 km, 1.2 x top) -> %.0f km for a 70 km top"
           % (max(100e3, 1.2 * top) / 1000))
 

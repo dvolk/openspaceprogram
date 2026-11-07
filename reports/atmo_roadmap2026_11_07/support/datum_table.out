@@ -49,6 +49,7 @@ Mars: scraped ['H', 'M', 'T', 'diurnal', 'p_pa', 'rho']
 3. Kerbin's datum, three ways (section 4). g 9.81, dry air, rho0 1.225, top 70 km
 ====================================================================================================
 a 288.15 K datum needs scale height 8432 m (today: 5500 m)
+C uses Earth's first 6 levels (71 km row dropped -- see atmo.h:131)
 alt m          A T K      A rho |      B T K      B rho |      C T K      C rho
 0             187.96      1.225 |     288.15      1.225 |     288.15      1.225
 2000          187.96     0.8516 |     288.15     0.9663 |     275.15      1.006
@@ -103,5 +104,42 @@ residual air at the top, and q at Kerbin circular orbit:
   bodies the guard must NOT skip for the wrong reason: Pluto states 13 microbar,
   surface T 24-38 K, H ~18 km (50 km above 30 km), M ~28, N2 99/CH4 0.5 -- and we
   author no sea_level_density for it at all; Titan has no *fact.html to author from.
+
+  (the Pluto row above is quoted from utils/rss/html/plutofact.html by hand; this
+   script's scraper does not parse that block.)
+
+====================================================================================================
+5. #683: how much denser the air at a top gets once the column reads the real
+   gravity fall-off; and what a layered tail does to Earth's edge
+====================================================================================================
+  An isothermal column under g(z) = g R^2/(R+z)^2 integrates to
+  p = p0 exp[-(R/H) z/(R+z)], so the flat model's density at altitude z is
+  light by exp[(z/H) z/(R+z)] -- H at the datum, z just under the top. Small
+  for a big world, enormous for a small one.
+  sys    body         R km   H_eff m   top km        gain
+  solar  Jupiter     69911     27000      270       1.04x
+  solar  Uranus      25362     20000      200       1.08x
+  solar  Neptune     24622     20000      200       1.08x
+  solar  Saturn      58232     60000      600       1.11x
+  solar  Earth        6371      8423       85       1.14x
+  solar  Venus        6052     16000      160       1.29x
+  ksp_s  Jool         6000     20000      200       1.38x
+  solar  Mars         3390     11500      115       1.39x
+  solar  Titan        2575     20000      200       2.06x
+  ksp_s  Laythe        500      5500       50       2.29x
+  ksp_s  Shay          550      6000       60       2.67x
+  ksp_s  Kerbin        600      5500       70       3.78x
+  ksp_s  Eve           700      7000       90       4.33x
+  ksp_s  Duna          320      4000       50       5.41x
+
+  Earth's authored 7-level table vs an exponential with the SAME datum and
+  the SAME 85 km top, at 84,999 m:
+    layered   p     0.3573 Pa  rho  6.669e-06
+    exp H 8423 p      4.199 Pa  rho  5.076e-05   -> layered is 11.8x thinner in p, 7.6x in rho
+
+  And the Kerbin option C warning: Earth's table copied VERBATIM onto Kerbin
+  (height 70 km) is refused at load -- atmo.h:131 needs L.back().base_alt < top,
+  and Earth's last level is based at 71 km. C above is Earth's first SIX levels;
+  the 71 km row never governs below 70 km, so dropping it changes nothing.
 
 shellEdge law (bodylimits.h): max(100 km, 1.2 x top) -> 100 km for a 70 km top

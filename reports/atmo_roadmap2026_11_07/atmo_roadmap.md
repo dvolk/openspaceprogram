@@ -6,8 +6,15 @@ A statement of position, not a work order. The question it answers: **if a plane
 atmosphere scientist or a spaceflight engineer booted this game and read its
 instruments, what would they say — and what would we have to build to stop them saying
 the bad things?** Written for future reference, so it states numbers as they measured on
-2026_11_07 and says where each came from. Every number here is reproducible from
-`support/datum_table.py` in this directory; nothing is quoted from memory.
+2026_11_07 and says where each came from. `support/datum_table.py` in this directory
+resolves both shipped systems through `atmo.h`'s arithmetic and scrapes the fact sheets,
+and its output is committed beside it as `datum_table.out`: **every datum, delta and
+per-body multiplier in §3, §3b and §4 is that output.** What the script does *not* produce
+is stated where it appears — the wind and diurnal figures §3 quotes are read from the
+sheet prose by hand (the script scrapes them for Venus/Earth/Mars only), the "~24 % high
+Mach" and "84×" ratios are one-line derivations from numbers it does print, and the option
+B/C comparison in §4 is a separate calculation in the script's section 3. Nothing is
+quoted from memory.
 
 Companion snapshots: `reports/atmo_references2026_11_06/` (what Orbiter and Pioneer
 author, and our three findings #682/#683/#684 against them).
@@ -51,10 +58,14 @@ gas law, with a loader that refuses profiles that contradict themselves. It is
 **internally consistent to the point of being airtight** — that is the trio lock, the
 seam check, the overturn refusal, the composition resolution. It has **no horizontal
 structure and no time dependence at all**: the air at Kerbin's equator at noon is the
-same air as at its pole at midnight, and always has been. Its datums for the **real**
-worlds are within a percent or two of published values; its datums for the **fictional**
-worlds were chosen as scale heights and have never been read back as surface
-temperatures — and one of them, Kerbin's, implies a world at 188 K.
+same air as at its pole at midnight, and always has been. Its datums for the **real
+terrestrial** worlds (Venus, Earth, Mars) are within 0.0–4.9 % of published values on
+temperature, 0.0–4.5 % on scale height and under 0.1 % on molecular weight, and its Mars
+pressure and density sit inside the range the source itself publishes — but its **giant**
+densities are off by −47 %, +43 % and +100 % against their own fact sheets (§3b), so "the
+real worlds" is not one verdict. Its datums for the **fictional** worlds were chosen as
+scale heights and have never been read back as surface temperatures — and one of them,
+Kerbin's, implies a world at 188 K.
 
 ---
 
@@ -83,8 +94,14 @@ breathe.
 | ksp | Laythe | exponential | 7.848 | 1.225 | 5.5 km | 28.965 | 1.4015 | **150.4** | 52.9 kPa | 246.0 | 50 km |
 
 **Against the source we already ship.** `utils/rss/html/<body>fact.html` is in the repo,
-`utils/make_solar_system.py:parse_planet()` already scrapes its *Bulk parameters* /
-atmosphere block for mass, radius and gravity, and the same text carries the air:
+and `utils/make_solar_system.py:parse_planet()` already scrapes its **Bulk parameters**
+section for mass, radius and gravity (`section_values(h, 'Bulk parameters')` at line 318,
+alongside `Orbital parameters` and `Mean Orbital Elements`). **It does not scrape the air
+— not yet.** Every `sea_level_density`, `scale_height` and `composition` in the shipped
+systems is a hardcoded literal in the generator's own planet table (lines 621, 682, 728,
+746, 764, 772, 784, 794), so #685 is asking for a *second* scrape of a section already
+being read, not for a comparison of two things already in hand. The same sheet text does
+carry the air:
 
 | body | our T0 | sheet | off | our p0 | sheet | off | our M | sheet | our rho0 | sheet |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -92,11 +109,12 @@ atmosphere block for mass, radius and gravity, and the same text carries the air
 | Earth | 288.15 | 288 K | **+0.1 %** | 101,325 Pa | 1014 mb | **−0.1 %** | 28.965 | 28.97 | 1.225 | 1.217 |
 | Mars | 224.4 | ~214 K | **+4.9 %** | 858 Pa | 6.36 mb | **+35 %** | 43.496 | 43.49 | 0.02 | ~0.016 ± 0.006 |
 
-So: **on the real worlds, axis B is essentially finished** at the datum — one
-percent-class except Mars, and Mars's +35 % pressure sits inside the range the sheet
-itself publishes ("variable from 4.0 to 8.7 mb depending on season" = 400–870 Pa; our
-858 Pa is *in* the real world's own seasonal swing, and its density is inside the sheet's
-own ±0.006 error bar).
+So: **on the terrestrial worlds, axis B is essentially finished** at the datum —
+0.0–4.9 % on temperature, under 0.1 % on molecular weight, and Mars's +35 % pressure sits
+inside the range the sheet itself publishes ("variable from 4.0 to 8.7 mb depending on
+season" = 400–870 Pa; our 858 Pa is *in* the real world's own seasonal swing, and its
+density is inside the sheet's own ±0.006 error bar). **§3b shows the giants are a separate
+and much worse story**, and they are the same scrape away from being fixed.
 
 **And the same block gives us targets we have never used.** The sheets state, in prose we
 do not parse: scale height (Venus 15.9 km — ours 16 km; Mars 11.0 — ours 11.5; Earth 8.5 —
@@ -108,11 +126,15 @@ in a dust storm; and on the giants Jupiter up to 150 m/s, Saturn up to 400, Nept
 nowhere to put them). Those last are the published size of the two phenomena we do not
 simulate.
 
-### 3b. Why the real worlds land within a percent — and why the giants cannot
+### 3b. Why the terrestrial worlds land within a percent — and why the giants cannot
 
 Ask each fact sheet whether **its own** numbers form one hydrostatic isothermal column:
 take the M, T and gravity it states, compute the scale height they imply
-(`H = Rs T / g`), and compare against the scale height the same sheet states.
+(`H = Rs T / g`), and compare against the scale height the same sheet states. Note the
+**T column changes what it reads per family**: the rocky sheets state an "Average
+temperature", the giant sheets state no such row, so for the giants this is their
+"Temperature at 1 bar" — which is the right comparison anyway, since a giant's datum *is*
+its 1-bar level.
 
 | body | M g/mol | T K | g | H implied by its own M, T, g | H stated | agree |
 |---|---|---|---|---|---|---|
@@ -122,10 +144,11 @@ take the M, T and gravity it states, compute the scale height they imply
 | Jupiter | 2.220 | 165 | 25.920 | 23,841 m | 27 km | **−11.7 %** |
 | Saturn | 2.070 | 134 | 11.190 | 48,099 m | 59.5 km | **−19.2 %** |
 | Uranus | 2.640 | 76 | 9.010 | 26,566 m | 27.7 km | **−4.1 %** |
-| Neptune | 2.530 | 72 | 11.270 | 20,995 m | 19.1 km (states 19.1–20.3) | **+9.9 %** at its low end; inside the range at M = 2.69 |
+| Neptune | 2.530 | 72 | 11.274 | 20,995 m | 19.1 km (states 19.1–20.3) | **+9.9 %** at its low end; inside the range at M = 2.69 |
 
 That table is the answer to the obvious question — *why are our terrestrial datums within a
-percent while our giant temperatures are 13–29 % off?*
+few percent while three of our four giant temperatures are 13–30 % off (Neptune, the
+fourth, is −2 %)?*
 
 > **The terrestrial sheets publish a self-consistent isothermal column at their datum. The
 > giant sheets do not** — a giant is not isothermal over the depth a quoted scale height
@@ -160,11 +183,16 @@ claimed). Comparing density-at-1-bar against our `sea_level_density`:
 | Uranus | 0.42 | 0.6 | **+43 %** | 27.7 km | 20 km | **−28 %** |
 | Neptune | 0.45 | 0.9 | **+100 %** | 19.1–20.3 km | 20 km | inside its range (+4.7 % off the low end) |
 
-Someone read the sheet for Jupiter and not for the other three. Also: **Pluto** publishes a
-complete atmosphere in its sheet (13 microbar, surface T 24–38 K, H ~18 km lower / ~50 km
-above 30 km, M ~28, N2 99 % / CH4 0.5 %) and we author **no density for it at all**, while
-**Titan** has no fact sheet to author from. Both are skip cases a guard must distinguish —
-"no sheet" is different from "sheet is odd" is different from "number is missing".
+Jupiter's density (0.16), scale height (27 km) and M (2.219 vs 2.22) matching their sheet
+exactly cannot be coincidence, while Saturn 0.10, Uranus 0.60 and Neptune 0.90 match
+nothing in theirs and the generator carries no source comment for those three literals
+(`make_solar_system.py:772`, `:784`, `:794`) — so Jupiter was authored from the sheet and
+the other three from somewhere else, which is as far as the evidence goes. Also: **Pluto**
+publishes a complete atmosphere in its sheet (13 microbar, surface T 24–38 K, H ~18 km
+lower / ~50 km above 30 km, M ~28, N2 99 % / CH4 0.5 %) and we author **no density for it
+at all**, while **Titan** has no fact sheet to author from. Both are skip cases a guard
+must distinguish — "no sheet" is different from "sheet is odd" is different from "number
+is missing".
 
 ---
 
@@ -188,8 +216,10 @@ has been picking it on purpose. Read back:
   611 K (defensible — Eve is a furnace, and it is the one where a hot datum looks
   intentional).
 - These are **pinned goldens**: `tests/test_scenarios.cpp:122` holds Kerbin at T 187.96 K,
-  a 274.98 m/s, p 66,094.875 Pa to 1e-9. The comment explains the arithmetic beautifully
-  and never once asks whether the world is right.
+  a 274.98 m/s, p 66,094.875 Pa with tol 1e-9 — a **relative** band, scaled by each
+  expected value at `tests/test_scenarios.cpp:197-200`, so it is as tight as doubles allow.
+  The comment explains the arithmetic beautifully and never once asks whether the world is
+  right.
 
 This is the #684 meta-law in its purest form: *a derived quantity has one authored number
 behind it, so no internal consistency check can ever see it go wrong.* Kerbin is
@@ -207,14 +237,28 @@ damping. Fixing the datum is a *Mach-law* change, so the flight goldens will mov
 **Two ways to fix it, measured.** Kerbin's air is dry air (M 28.965) at g 9.81, so a
 288.15 K datum wants H = 8,432 m.
 
-| at altitude | A: today (H 5.5 km) | B: H 8,432 m | C: Earth's 7-level table, top 70 km |
+| at altitude | A: today (H 5.5 km) | B: H 8,432 m | C: Earth's 1976 levels, top 70 km |
 |---|---|---|---|
 | 0 | 188 K, 1.225 | **288.2 K**, 1.225 | **288.2 K**, 1.225 |
 | 11 km | 188 K, 0.166 | 288 K, 0.332 | 216.7 K, 0.364 |
 | 20 km | 188 K, 0.0323 | 288 K, 0.114 | 216.7 K, 0.0880 |
 | 40 km | 188 K, 8.5e-4 | 288 K, 0.0107 | 251 K, 0.00384 |
-| rho at the 70 km top | 3.6e-6 | 3.0e-4 | 7.4e-5 |
-| **q at the top, circular (2.30 km/s at Kerbin's 600 km radius)** | **9.6 Pa** | **801 Pa** | **195 Pa** |
+| rho at 69,999 m | 3.6e-6 | 3.0e-4 | 7.4e-5 |
+| **q at 69,999 m, circular (2.30 km/s at Kerbin's 600 km radius)** | **9.6 Pa** | **801 Pa** | **195 Pa** |
+
+(All three are sampled at 69,999 m, not at 70 km: at exactly `height` the model is vacuum,
+`src/drag.h:107`.)
+
+**Copy Earth's table verbatim and the game will not load.** Earth's last level is based at
+71 km, and `atmo.h:131` refuses any table whose last level is not based *below* the body's
+`height` — with Kerbin's `height: 70000` that is a hard `return false`, which
+`src/system.cpp:583-592` turns into a thrown `"atmosphere.layers must start at alt 0, rise
+strictly to below height, ..."` at load. So option C means **Earth's first six levels**
+(the 51 km level, lapse −0.0028, then lapses through to 70 km), which was checked to
+satisfy every other invariant: last base 51 km < 70 km, T still 217.5 K at the ceiling,
+lapse −0.0028 well above the overturn limit −g/Rs = −0.0342. The measured column is
+unchanged by dropping the 71 km row because the 51 km level is what governs at 69,999 m.
+That the obvious authoring is a crash is itself the argument for the harness in §8.
 
 Option B is one number and it fixes the datum — and it puts 84× more air at the edge of
 the home world's atmosphere, so a Kerbin low orbit that today sees 10 Pa of dynamic
@@ -294,15 +338,16 @@ same-day change.
 **The seasons surprise.** The geometry a seasonal cycle needs is already built and
 already evaluated. Every body authors `rotating.axial_tilt`, `tilt_azimuth` and
 `spin_phase0` (Earth 0.4091 rad = 23.44°, Mars 0.4396 = 25.2°, Venus 3.096 = 177.3°
-i.e. retrograde — all right), `src/system.cpp:766` loads them and `src/frame.h` composes
-them into the body's orientation, and `surfmap.cpp:sunDirRot()` already computes the
+i.e. retrograde — all right), `src/system.cpp:766` loads them and `src/system.cpp:776-787`
+composes them into the body's `initial_orient` / `equator_orient` (`src/frame.h:56-57`
+documents what that split means), and `surfmap.cpp:18 sunDirRot()` already computes the
 direction **toward the star in the body's rotating frame** for shading the surface map.
-Subsolar latitude and hour angle are therefore one dot product from a lat/lon. What is
-missing is not geometry, it is a *flux*: **there is no insolation quantity anywhere in
-`src/`.** (Related oddity found on the way: every body in every generated system file
-authors `power_scaler` — 1, 3, ... — and **nothing in `src/` reads it.** An authored
-per-body stellar scalar with no reader is the closest thing we have to the thing
-§9 needs.)
+Subsolar latitude and hour angle are therefore one dot product from a lat/lon —
+`surfmap.h:15` already evaluates `dot(n, sun)` per terrain pixel. What is missing is not
+geometry, it is a *flux*: **no code in `src/` turns that angle into W·m⁻².** (Related
+oddity found on the way: every body in every generated system file authors
+`power_scaler` — 1, 3, ... — and **nothing in `src/` reads it.** An authored per-body
+stellar scalar with no reader is the closest thing we have to the thing §9 needs.)
 
 **Water is the deep one, and it should wait.** Humidity is not a function of altitude
 alone, so it breaks the "profile" data model itself: it needs a surface source, a
@@ -325,10 +370,11 @@ The user's instinct about the air top is right, and the right way to hold it is 
 publish it as a choice with a number attached.
 
 **Where the air ends (#682).** Today: `top = authored height, else 10 × scale height`,
-flat below the datum, **hard zero** at and above it (pinned, `tests/test_drag.cpp`
-"vacuum at the top"). Gameplay claim: *we want a top high enough that satellites and
-aerobrakes feel something, and a density there low enough that no one has to boost.*
-Those are two decisions and we currently make one. The pair is:
+flat below the datum, **hard zero** at and above it (pinned by
+`tests/test_drag.cpp:10`, "vacuum at and above the hard top (height)"). Gameplay claim:
+*we want a top high enough that satellites and aerobrakes feel something, and a density
+there low enough that no one has to boost.* Those are two decisions and we currently make
+one. The pair is:
 
 - **where** — the user's 100–200 km for Earth is reasonable and matches where real drag
   stops mattering over mission timescales; our Earth is 85 km, our Kerbin 70 km, our
@@ -337,14 +383,28 @@ Those are two decisions and we currently make one. The pair is:
   and it is set by the *shape* (§4: a layer table gave 4× less residual air than an
   exponential at the same datum).
 
-The coupling that orders the work: `#683` (geopotential height) makes residual air at any
-top **2–5× denser**; a cold layered tail made Earth's edge ~8× thinner. They pull
-opposite ways, so **#683 must be settled before the tops are chosen**, or the tops get
-re-litigated. Frame note: raising a top moves the rotating-frame shell
-(`shellEdge = max(100 km, 1.2 × top)`, `validateBodyLimits` keeps `shell ≥ top + 10 km`),
-the LowOrbit band, the HighOrbit cut, spawn beds and the atlas disk together. The render
-sky rim is independent of all of it (`terrain.h:303`, `datum + max_height + thickness`) —
-moving the air does not move the sky.
+The coupling that orders the work. **#683 makes the air at a body's top denser**, because
+gravity falls with altitude and the flat model pretends it does not. #683's own table
+measures it per body against the real profile — **Kerbin 3.8×, Eve 4.3×, Duna 5.4×,
+Laythe 2.3×, Earth 1.01×** — and for a single isothermal column there is a closed form:
+`g(z) = g R²/(R+z)²` integrates to `p = p0 exp[−(R/H)·z/(R+z)]`, so the flat model is
+light at altitude z by `exp[(z/H)·z/(R+z)]`. Running that on every shipped body's datum
+H_eff gives Jupiter 1.04×, Uranus/Neptune 1.08×, Saturn 1.11×, Earth 1.14×, Venus 1.29×,
+Jool 1.38×, Mars 1.39×, Titan 2.06×, Laythe 2.29×, Shay 2.67×, Kerbin 3.78×, Eve 4.33×,
+Duna 5.41×. The isothermal form over-corrects Earth (1.14× vs the layered profile's 1.01×)
+because a warm stratosphere raises the scale height up there; it is a good estimate for the
+small bodies, which are exactly the ones where the effect is large. "2–5×" flattens a range
+that is really 1.01–5.4, and the bodies where it bites hardest are the tiny home worlds
+players actually live on. The opposite lever is the profile shape: at Earth's 85 km top the
+authored layered column is **7.6× thinner in density** (11.8× in pressure) than an
+exponential with the same datum and the same top. They pull opposite ways, so **#683 must
+be settled before the tops are chosen**, or the tops get re-litigated. Frame note: raising a
+top moves the rotating-frame shell (`shellEdge = max(100 km, 1.2 × top)`,
+`validateBodyLimits` keeps `shell ≥ top + 10 km`), the LowOrbit band, the HighOrbit cut,
+spawn beds and the atlas disk together. Kerbin's frame is already free to hold 70 km —
+`shellEdge` is on its 100 km floor (`bodylimits.h:34`). The render sky rim is independent of
+all of it (`terrain.h:302`, `datum + max_height + thickness`, repeated for the cloud deck at
+`:317`) — moving the air does not move the sky.
 
 **Other simplifications to keep, and to name so nobody re-files them:** one gamma per gas
 rather than temperature-dependent; composition uniform with altitude (no homopause, no
@@ -411,16 +471,23 @@ no consequences, and #553 becomes "now this number can break things" instead of 
 
 - *air static temperature* — have it (`drag.h:airTemperature`).
 - *aerodynamic heating* — the standard quantity is the **recovery/stagnation temperature**
-  `T_aw = T · (1 + r·(γ−1)/2·M²)` with recovery factor r ≈ 0.9, plus a heat flux ∝ ρ·v³.
-  We already compute per-surface `rho`, `v`, and Mach from ONE read per surface per pass
-  (`flowMach`), so the inputs are there and cheap.
-- *solar heating* — **does not exist.** No insolation, no flux vs 1/r², no sun angle on a
-  part. The geometry half exists (`sunDirRot`, `SunlightDir` in `terrain.h`) but only for
-  shading. This is the new code.
-- *radiative cooling* `εσT⁴` and convective exchange ∝ ρ·v·(T_skin − T_air) — new, and
-  needs two authored numbers per part (emissivity, heat capacity or mass×cp). Note we
-  already derive molar cp per gas in `atmo.h`; solids need their own number, ideally one
-  per material class rather than per part.
+  `T_aw = T · (1 + r·(γ−1)/2·M²)` with recovery factor r ≈ 0.9. We already compute
+  per-surface `rho`, `v`, and Mach from ONE read per surface per pass (`flowMach`), so the
+  inputs are there and cheap. The flux that goes with it is the next bullet's problem.
+- *solar heating* — **does not exist.** No insolation value, no flux vs 1/r², no sun angle
+  on a part. The geometry half exists and is better than it looks: `sunDirRot`
+  (`surfmap.cpp:18`) gives the star direction in the body's **rotating** frame and
+  `surfmap.h:15` already evaluates `dot(n, sun)` per terrain pixel — but only for shading.
+  The missing piece is a W·m⁻². This is the new code.
+- *radiative cooling* `εσT⁴` and convective exchange — new. Pick the local law
+  deliberately rather than inheriting the aero one: a crude forced-convection estimate is
+  `∝ ρ·v·(T_skin − T_air)`, but the standard stagnation-point heating rate is
+  **Sutton–Graves**, `∝ √ρ_n · v³ / √r_n` — it reads the nose radius, which is the part
+  geometry we already project for silhouette. The `q` the aero path computes is *not* that
+  law and should not be reused as a heating proxy without saying so. Needs two authored
+  numbers per part (emissivity, heat capacity or mass×cp). Note we already derive molar cp
+  per gas in `atmo.h`; solids need their own number, ideally one per material class rather
+  than per part.
 - *surface area* — the silhouette machinery already projects every part and has mesh
   bounding boxes; a wetted-area estimate is close at hand.
 
@@ -431,11 +498,11 @@ prerequisite; it forces the insolation quantity that §6 shows seasons also need
 quantity, three buyers.
 
 **The instrument lesson hidden in it:** a thermometer at speed does not read static air
-temperature. On today's Kerbin (188 K, gamma 1.4015) at M 2 with r = 0.9,
-`T_aw = 188 × 1.72 = 324 K` — a skin probe reads 51 °C in air that is −85 °C. Static and
-stagnation are two different instruments with two different answers, and an expert will
-ask which one the widget is. Get that distinction right in the naming now and the whole
-heat system reads as competent.
+temperature. On today's Kerbin (187.96 K, gamma 1.4015) at M 2 with r = 0.9 the factor is
+`1 + 0.9 × 0.40146/2 × 4 = 1.7227`, so `T_aw = 323.9 K` — a skin probe reads 51 °C in air
+that is −85 °C. Static and stagnation are two different instruments with two different
+answers, and an expert will ask which one the widget is. Get that distinction right in the
+naming now and the whole heat system reads as competent.
 
 ---
 
@@ -459,10 +526,11 @@ it**, which is also why wind (§6) beats humidity: it makes an instrument honest
 vector's worth of work.
 
 Our developer-side mirror already exists and should be extended rather than reinvented:
-`check_air` (what each profile asserts, pinned), `--atlas-dump` (the same in-game),
-`--sci-dump`, and the readout rule in `src/tick.cpp`. The rule for anything new here is
-the one already in use: **every readout must be able to be non-zero, and every test must
-name the mutation that makes it red.**
+`check_air` in the scenario tests (what each profile asserts, pinned), `--atlas-dump`
+(the dossier the player reads, dumped headless — `src/cli.cpp:379`), and the readout rule
+in `src/tick.cpp`. The rule for anything new here is the one already in use: **every
+readout must be able to be non-zero, and every test must name the mutation that makes it
+red.**
 
 ---
 
@@ -494,11 +562,13 @@ Not a commitment — the reason-order, given the couplings above.
 7. **Part heat (display-only, real equations, §9)** — can start in parallel with 6; it
    needs the same insolation quantity. #553 is its eventual consequence.
 8. **#688 — wind (rung 12)** — one seam, `Vehicle::airRelativeVel`, which every aero read
-   already goes through (verified: `vehicle.cpp:2731` feeds all seven `localFlow` calls),
-   and published targets already on disk. First C item, and the only one that is a
-   same-day change.
+   already goes through (verified: `vehicle.cpp:2642` defines it, `vehicle.cpp:2731` makes
+   the one call per pass, and six `localFlow` calls consume it — 3072, 3121, 3192, 3263,
+   3395, 3436), and published targets already on disk. First C item, and the only one that
+   is a same-day change.
 9. **Diurnal and latitudinal structure, then seasons** (the geometry is already in
-   `frame.h`/`sunDirRot`; #687 §"What already exists" has the detail).
+   `system.cpp:776-787`/`surfmap.cpp:sunDirRot`; #687 §"What already exists" has the
+   detail).
 10. **Water, humidity, rain** — after all of the above.
     **Climate** — disclaimed, not built.
 
