@@ -192,7 +192,14 @@ publishes a complete atmosphere in its sheet (13 microbar, surface T 24–38 K, 
 lower / ~50 km above 30 km, M ~28, N2 99 % / CH4 0.5 %) and we author **no density for it
 at all**, while **Titan** has no fact sheet to author from. Both are skip cases a guard
 must distinguish — "no sheet" is different from "sheet is odd" is different from "number
-is missing".
+is missing". Titan is the more interesting of the two: its authored datum (a N2/CH4 mix,
+`rho0` 5.3, `H` 20 km) resolves to 90.5 K, 143.6 kPa, sound speed 195 m/s — four times
+Earth's surface density at under a third of its temperature, and the pair of numbers looks
+Titan-ish rather than invented. But **nothing in this repo can confirm that**: the only
+Titan entry we vendor is the bulk-parameters row in `saturniansatfact.html` (radius, mass,
+density), with no air at all. Of every atmosphere in the game, Titan's is the one where a
+guard is impossible and a source is cheapest, so #685's skip list should say "no sheet —
+find one" rather than "skip".
 
 ---
 
@@ -266,6 +273,25 @@ pressure would see 800 Pa. Option C buys the same correct datum with **4× less*
 air aloft, because a tropopause and a stratopause let the column thin the way a real one
 does. That is the law's own advice, from `atmo.h`: *"having both is a layer table, not a
 fudge."*
+
+**And a layer table cannot buy warm *and* thin — the trio lock has an exact local form.**
+Differentiating `ρ = p /(Rs T)` against `dp/dh = −ρ g` gives the *density* scale height
+inside a level:
+
+```
+H_rho = T / (g/Rs + lapse)
+```
+
+At a 288.15 K Kerbin datum (`Rs` 287.05, so `g/Rs` = 0.034175 K/m) an isothermal level gives
+`H_rho` = 8,432 m — the option-B number. A cooling level (lapse < 0, every real troposphere)
+thins the density *more slowly* than that: Earth's troposphere runs at ~10.4 km at sea level,
+falling to ~7.8 km by 11 km. To thin at today's 5,500 m **while warm**, the level must
+invert at **+18.2 K/km** (0.0182 K/m), reaching 835 K at 30 km. The loader would accept it —
+`lapse > −g/Rs` is the only lapse floor — and no atmosphere does it. So a warm Kerbin is a
+thicker Kerbin unless it is also a runaway greenhouse: the lock is not a quirk of
+`airDensity()`'s one-exponential branch, it is hydrostatics itself. (A comment on #625 states
+the same bound as "`H_rho` is minimised at `lapse = 0`", which is true only among
+non-inverting profiles — an inversion goes below it, at the cost above.)
 
 > **Recommendation, and it is the single highest-value item in this document:** Kerbin
 > gets a layer table. No new physics — JSON plus goldens. It fixes the datum temperature,
@@ -545,7 +571,8 @@ Not a commitment — the reason-order, given the couplings above.
    blocking the expert test on the world players actually fly. **Needs your answer about
    what Kerbin *is* — it is not derivable.** Shay, Laythe and Duna ride the same decision.
 2. **#683 geopotential height.** Exact, cheap arithmetic, and it must precede the air-top
-   decision because it makes residual air 2–5× denser everywhere near a top.
+   decision because it makes the residual air at a top denser by **1.01–5.4×** depending on
+   the body — 3.8× on Kerbin, 5.4× on Duna, 1.04× on Jupiter (§7).
 3. **#682 where the air ends** — decided as a *pair*: the height and the falloff. Make
    Earth and Kerbin's choices in the same breath as their profile shapes.
 4. **#685 + the profile harness (§8)** — and the first thing the harness will find is that
