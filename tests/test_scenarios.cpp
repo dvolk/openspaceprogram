@@ -124,9 +124,11 @@ static int check_air(const char *path, const System &sys) {
        lapses -0.00154453 K/m, so the air at 69,999 m is what integrating that column
        in the body's own 1/r^2 field weighs. The old exponential put 1.375e-5 kg/m3 at
        the same altitude -- 14.7x thinner -- because its 188 K datum had been making
-       Kerbin's air cold and thin all the way up. tmp/aero/kerbin686.py integrates the
-       same column by quadrature and agrees; it is also where the q at the top was
-       measured for the 85 km decision. */
+       Kerbin's air cold and thin all the way up. utils/atmo_profile.py integrates the
+       same column a second time -- python, by quadrature, sharing no code with atmo.h
+       -- and lands on these literals to seven digits; it is also what prints the q at
+       the air top that the 85 km decision (#682, #686) was made on: 97.8 Pa on a
+       circular orbit there. */
     struct Aloft { const char *name; double alt; double rho; };
     static const Aloft aloft[] = {
         {"Kerbin", 69999.0, 2.0277803e-4},
