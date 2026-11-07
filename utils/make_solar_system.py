@@ -402,13 +402,17 @@ def parse_planet(page):
 #   disagree with it.
 FACT_AIR_BANDS = {'density': 0.30, 'p0': 0.40, 'scale_height': 0.10, 'base_T': 0.10}
 
-# (body, quantity) -> why this comparison is waived. Narrow on purpose: a waiver
-# says "this figure, for this body", never "this body". Note what that does NOT
-# buy for the giants: their sheets state a scale height and a molecular weight but
-# no surface density or pressure, so Uranus's only guarded air number IS its
-# altitude. The guard's reach is what the sheets state, no further.
+# (body, quantity) -> (the authored value this waiver was written against, why).
+# A waiver covers THAT number, not that body forever: change the authored value by
+# more than WAIVER_TOL and the guard refuses again, with a message saying the waiver
+# predates it. That matters most where a body has only one guarded number -- the
+# giants' sheets state a scale height and a molecular weight but no surface density
+# or pressure, so Uranus's altitude IS its whole guard. The guard's reach is what the
+# sheets state, no further.
+WAIVER_TOL = 0.02
 FACT_AIR_KNOWN = {
-    ('Uranus', 'scale_height'):
+    ('Uranus', 'scale_height'): (
+        20000.0,
         "sheet says 27.7 km, we author 20 km. The sheet is self-consistent: its "
         "mean molecular weight 2.64 is what our H2/He/CH4 mix resolves to, and 27.7 "
         "km with that M on our g 9.007 is a 79 K 1-bar level. We read 57 K, which "
@@ -416,7 +420,7 @@ FACT_AIR_KNOWN = {
         "beside the typed molar_mass 0.023 that #630 removed. NOT fixed here "
         "because it moves the air top (10 H) 200 -> 277 km and with it the "
         "rotating-frame switch, every spawn bed and the sky rim of a whole world -- "
-        "a world change, filed as #695 rather than made at 11 pm.",
+        "a world change, filed as #695 rather than made at 11 pm."),
 }
 
 AIR_PRESSURE_UNITS = {'bar': 1e5, 'bars': 1e5, 'mb': 1e2, 'millibar': 1e2,
@@ -479,12 +483,19 @@ def sheet_quantity(text, want):
         f = 1.0 if u == 'K' else None
     if f is None:
         return None
-    # '19.1 - 20.3' is a stated range; anything else is one number (the
-    # temperature lines carry a second value in Celsius, which the unit test
-    # above has already sent home).
-    pair = re.search(r'\d\s*-\s*\d', t)
-    lo = vals[0]
-    hi = vals[1] if pair and len(vals) > 1 else vals[0]
+    # A stated RANGE is "19.1 - 20.3 km" -- spaces around the dash, because
+    # Mercury's "Average temperature: 440 K (167 C) (590-725 K, sunward side)"
+    # has a hyphenated range in a parenthetical that is NOT the stated value.
+    # Read the pair from the matched text rather than from vals[1], or a second
+    # number anywhere in the line becomes the upper bound. (The value itself is
+    # still the first number on the line and the unit the first recognised one:
+    # these sheets are consistent, and a line like "10 miles (16 km)" would
+    # parse wrong here. Nothing in utils/rss/html does that today.)
+    rng = re.search(r'(\d+(?:\.\d+)?)\s+-\s+(\d+(?:\.\d+)?)', t)
+    lo = float(rng.group(1)) if rng else vals[0]
+    hi = float(rng.group(2)) if rng else vals[0]
+    if hi < lo:
+        lo, hi = hi, lo
     return lo * f, hi * f
 
 def fact_air(page):
@@ -506,7 +517,7 @@ def check_fact_air(planets, parsed, verbose=True):
     list of disagreements; empty means the catalogue and the sheets agree inside
     the bands above. `verbose` prints the table -- a guard that prints nothing is
     indistinguishable from a guard that checked nothing, so --check prints it."""
-    rows, bad = [], []
+    rows, bad, waived = [], [], []
     for page, name, _seed, surface, _sea in planets:
         atmo = (surface or {}).get('atmosphere')
         if not atmo:
@@ -520,8 +531,16 @@ def check_fact_air(planets, parsed, verbose=True):
         if H is not None:
             authored['scale_height'] = H
             # p0 is what the loader would derive from these two (atmo.h), on the
-            # same gravity this generator scraped for the body itself.
-            g = (parsed.get(name) or {}).get('g')
+            # same gravity this generator scraped for the body itself. Four sheets
+            # head their gravity column "Gravity (mean, 1 bar)" instead -- Jupiter,
+            # Saturn, Uranus, Neptune -- and leave that scrape None. Fall back on
+            # the arithmetic the LOADER uses when a body authors no g (G*M/R^2
+            # reproduces the emitted Uranus value, 9.0073) rather than dropping
+            # the comparison: a silent '-' is the kind of hole #684 walked through.
+            body = parsed.get(name) or {}
+            g = body.get('g')
+            if g is None and body.get('mass_kg') and body.get('radius_m'):
+                g = G * body['mass_kg'] / (body['radius_m'] * body['radius_m'])
             if rho0 is not None and g:
                 authored['p0'] = rho0 * g * H
         layers = atmo.get('layers')
@@ -549,23 +568,47 @@ def check_fact_air(planets, parsed, verbose=True):
             lo, hi = got
             band = FACT_AIR_BANDS[key]
             v = authored[key]
-            off = (v - lo) / lo
+            if lo <= 0.0:
+                # A band is a percentage, so it needs a positive base. A sheet
+                # stating zero states nothing; say so rather than divide.
+                cells.append('%s -' % key)
+                continue
+            # Compare against the NEAREST bound of what the sheet states. A point
+            # estimate has lo == hi, so this stays the plain percentage; a stated
+            # range ("19.1 - 20.3 km") reads 0% while we sit inside it, which is
+            # what the verdict below already means.
+            near = lo if v < lo else (hi if v > hi else v)
+            off = (v - near) / near
             inside = (v >= lo * (1.0 - band) and v <= hi * (1.0 + band))
-            known = (name, key) in FACT_AIR_KNOWN
             cells.append('%s %+.1f%%' % (key, 100.0 * off))
-            if not inside and not known:
-                bad.append('%s: authors %s %s, %s fact sheet states %.4g%s (%+.1f%%, band %d%%)'
-                           % (name, key, '%.4g' % v, page, lo,
-                              '' if hi == lo else '-%.4g' % hi,
-                              100.0 * off, round(100 * band)))
-            elif not inside:
-                cells[-1] += ' (known)'
+            if inside:
+                continue
+            known = FACT_AIR_KNOWN.get((name, key))
+            # A waiver covers the value it was written against, not the pair
+            # forever. Move the authored number past WAIVER_TOL and the waiver is
+            # stale: refuse, and name the value it pinned. The giants' altitude is
+            # the only air number their sheets guard, so it has to stay guarded --
+            # a filed 20 km argument must not shelter a future 200 km typo.
+            if known is not None and abs(v - known[0]) <= WAIVER_TOL * known[0]:
+                cells[-1] += ' (waived)'
+                waived.append('%s %s: %s' % (name, key, known[1]))
+                continue
+            stale = ('' if known is None else
+                     ' -- the waiver on this pair pins %s, so it predates this value'
+                     % ('%.4g' % known[0]))
+            bad.append('%s: authors %s %s, %s fact sheet states %.4g%s (%+.1f%%, band %d%%)%s'
+                       % (name, key, '%.4g' % v, page, lo,
+                          '' if hi == lo else '-%.4g' % hi,
+                          100.0 * off, round(100 * band), stale))
+            cells[-1] += ' !!'
         rows.append('%-9s %s' % (name, '  '.join(cells)))
     if verbose:
         for r in rows:
             print('  fact air  %s' % r)
-        for (name, key), why in FACT_AIR_KNOWN.items():
-            print('  waived    %s %s: %s' % (name, key, why))
+        # Only a waiver that actually fired gets a line: a table of standing
+        # excuses reads like the guard has given up on those bodies.
+        for why in waived:
+            print('  waived    %s' % why)
     return bad
 
 # ---------------------------------------------------------------------------
