@@ -150,11 +150,17 @@ def report(path):
                  math.sqrt(pr.gamma * pr.Rs * pr.T(0.0)), pr.M, pr.gamma))
         for z, T, p, rho, q in pr.rows(HEIGHTS):
             print('    %9.0f m: T %7.2f K  p %12.4f Pa  rho %.6e  q %11.3f Pa' % (z, T, p, rho, q))
-        qt = pr.q(pr.top)
+        ptop = pr.p(pr.top)
+        rtop = ptop / (pr.Rs * pr.T(pr.top))
+        qt = 0.5 * rtop * pr.vcirc(pr.top) ** 2
         lo, hi = Q_BAND
         flag = '' if lo <= qt <= hi else '   <-- OUT OF BAND (%g..%g Pa)' % (lo, hi)
-        print('    top %8.0f m: rho %.4e  vcirc %8.1f m/s  q %11.3f Pa%s'
-              % (pr.top, pr.rho(pr.top), pr.vcirc(pr.top), qt, flag))
+        # #682's title IS this ratio. On an exponential body the ceiling is 10 H by
+        # construction, so the denser the surface air, the more air is still there
+        # where the sky is drawn. Meaningless on a layered one: its top is authored.
+        nH = '' if (pr.levels or not pr.H) else '  = %.1f H' % (pr.top / pr.H)
+        print('    top %8.0f m%s: p %10.4f Pa  rho %.4e  vcirc %8.1f m/s  q %11.3f Pa%s'
+              % (pr.top, nH, ptop, rtop, pr.vcirc(pr.top), qt, flag))
 
 
 def main(argv):
