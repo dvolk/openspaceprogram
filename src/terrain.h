@@ -312,10 +312,24 @@ struct TerrainBody {
 
     // Cloud deck shell on demand. Coverage is baked on the worker; the deck draws
     // a solid placeholder until the continuation uploads the real grid.
+    // The deck is datum altitude, NOT an offset off the peaks (#719): the air profile,
+    // the wind rows and the air top are all authored off the sea-level datum, and a
+    // deck that rides the relief has no height IN the air for anything to read -- which
+    // is what #714 needs to make the deck's creep agree with the wind at the deck.
     void BuildClouds(Shader *cloudshader, int res, JobRunner &jobs) {
         if(clouds != nullptr || !surface.clouds.enabled) return;
-        float shell_radius = (float)seaLevelRadius() + surface.max_height
-                             + surface.clouds.height;
+        float shell_radius = (float)seaLevelRadius() + surface.clouds.height;
+        if(surface.clouds.height < surface.amplitude) {
+            // Not fatal -- a deck under its own peaks just hides inside the mountains.
+            // Loud, because on the datum axis this is an authoring slip, not terrain
+            // noise moving the sky. Measured against the AUTHORED relief, which is
+            // known here: surface.max_height (the measured figure) is only applied when
+            // the root geoms attach, after this point.
+            printf("Warning: %s cloud deck sits %.0f m above the datum, under its "
+                   "authored relief (%.0f m) -- author surface.clouds.height above the "
+                   "relief (#719)\n", name.c_str(), (double)surface.clouds.height,
+                   (double)surface.amplitude);
+        }
         if(shell_radius <= radius) shell_radius = radius * 1.02f;
         Mesh *m = create_atmosphere_mesh(shell_radius, res);
         // Solid placeholder (coverage 1).

@@ -153,7 +153,7 @@
           ]
         },
         "clouds": {
-          "height": 2500,
+          "height": 7500,
           "coverage": 0.6,
           "freq": 10,
           "drift": 1e-05

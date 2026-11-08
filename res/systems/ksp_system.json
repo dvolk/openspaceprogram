@@ -398,7 +398,7 @@
           ]
         },
         "clouds": {
-          "height": 2500,
+          "height": 7500,
           "coverage": 0.6,
           "freq": 10,
           "drift": 1e-05
@@ -594,7 +594,7 @@
           ]
         },
         "clouds": {
-          "height": 3000,
+          "height": 6000,
           "coverage": 0.5,
           "freq": 10,
           "drift": 1e-05
@@ -988,7 +988,7 @@
           ]
         },
         "clouds": {
-          "height": 2000,
+          "height": 7000,
           "coverage": 0.55,
           "freq": 10,
           "drift": 1e-05

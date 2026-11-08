@@ -159,12 +159,16 @@ struct AtmosphereParams {
     }
 };
 
-/* Per-body cloud deck (optional "surface.clouds"): one shell at `height` above the
-   highest terrain. Coverage is a seeded FBM (cloudCover), baked at load into an
-   equirectangular map the shader fetches. */
+/* Per-body cloud deck (optional "surface.clouds"): one shell at `height` metres above
+   the SEA-LEVEL datum -- the same axis the air profile, the wind rows and the air top
+   are authored on (#719). It used to be metres above the highest terrain, which made
+   the deck's height IN the air an accident of the terrain generator: Kerbin's deck sat
+   at relief+2500, so retuning relief moved the sky, and nothing could say "the deck is
+   at 8 km" -- the number the wind table and #714's creep both need. Coverage is a seeded
+   FBM (cloudCover), baked at load into an equirectangular map the shader fetches. */
 struct CloudParams {
     bool enabled = false;
-    float height = 2500.0f;   // [m] above the highest ground (datum + max_height)
+    float height = 2500.0f;   // [m] above the sea-level datum (NOT above the peaks)
     glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f);  // cloud tint (white)
     float coverage = 0.6f;    // 0..1: how much of the deck is cloudy
     float freq = 10.0f;       // pattern scale (unit-sphere noise coords)

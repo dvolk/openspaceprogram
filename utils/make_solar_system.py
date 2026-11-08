@@ -1034,7 +1034,12 @@ def build_base(verbose_air=False):
                          # spawns at that height and will move when it lands.
                          'wind': [{'alt': 0, 'east': 1.0, 'north': 0.0},
                                   {'alt': 65000, 'east': 100.0, 'north': 0.0}]},
-          'clouds': {'color': [0.92, 0.82, 0.55], 'height': 5000,
+          # Deck on the DATUM axis like the air profile (#719), at 55 km -- reality's
+          # main cloud layer starts there, and the wind's 100 m/s row sits at 65 km, so
+          # the deck now renders inside the air this table says is racing along. It used
+          # to be 5000 m above the highest ground, which put Venus's sky at ~7 km, in
+          # ~10 m/s of air, under a comment about cloud-top superrotation.
+          'clouds': {'color': [0.92, 0.82, 0.55], 'height': 55000,
                      'coverage': 0.9, 'freq': 8.0}}, False),
         ('earthfact.html', 'Earth', 3.0,
          {'amplitude': 8000, 'sea_level': 0.0, 'sea_color': [0.0, 0.18, 0.50],
@@ -1097,7 +1102,9 @@ def build_base(verbose_air=False):
                              {'alt': 47000, 'T': 270.65, 'lapse': 0.0},
                              {'alt': 51000, 'T': 270.65, 'lapse': -0.0028},
                              {'alt': 71000, 'T': 214.65, 'lapse': -0.002}]},
-          'clouds': {'color': [1.0, 1.0, 1.0], 'height': 2500,
+          # 10.5 km ASL: reality's tropopause deck, and the same height the old
+          # peaks-relative number produced off 8 km of relief (#719).
+          'clouds': {'color': [1.0, 1.0, 1.0], 'height': 10500,
                      'coverage': 0.55, 'freq': 10.0}}, True),
         ('marsfact.html', 'Mars', 4.0,
          {'amplitude': 5000, 'palette': [[0.0, [0.50, 0.25, 0.15]],

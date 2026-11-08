@@ -298,7 +298,10 @@ SURFACES = {
                            {'alt': 47000, 'T': 270.65, 'lapse': 0.0},
                            {'alt': 51000, 'T': 270.65, 'lapse': -0.0028},
                            {'alt': 71000, 'T': 214.65, 'lapse': -0.002}]},
-        "clouds": {"height": 2500, "coverage": 0.6, "freq": 10,
+        # Deck height is metres above the SEA-LEVEL datum, like the layers table above
+        # it and the air top (#719). It used to be an offset off the highest ground, so
+        # Kerbin's 2500 meant "7.5 km up" only as long as its 5 km of relief held.
+        "clouds": {"height": 7500, "coverage": 0.6, "freq": 10,
                    "drift": 0.00001},
     },
     "Mun": {
@@ -363,7 +366,7 @@ SURFACES = {
                            {'alt': 47000, 'T': 270.65, 'lapse': 0.0},
                            {'alt': 51000, 'T': 270.65, 'lapse': -0.0028},
                            {'alt': 71000, 'T': 214.65, 'lapse': -0.002}]},
-        "clouds": {"height": 3000, "coverage": 0.5, "freq": 10,
+        "clouds": {"height": 6000, "coverage": 0.5, "freq": 10,   # datum m (#719)
                    "drift": 0.00001},
     },
     "Duna": {
@@ -492,7 +495,7 @@ SURFACES = {
                            {'alt': 47000, 'T': 270.65, 'lapse': 0.0},
                            {'alt': 51000, 'T': 270.65, 'lapse': -0.0028},
                            {'alt': 71000, 'T': 214.65, 'lapse': -0.002}]},
-        "clouds": {"height": 2000, "coverage": 0.55, "freq": 10,
+        "clouds": {"height": 7000, "coverage": 0.55, "freq": 10,  # datum m (#719)
                    "drift": 0.00001},
     },
     "Vall": {
