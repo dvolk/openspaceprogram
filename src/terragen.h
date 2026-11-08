@@ -271,6 +271,20 @@ inline std::shared_ptr<const Heightmap> loadHeightmap(const std::string &path) {
 }
 
 // Per-body terrain + color parameters (the optional "surface" JSON block).
+/* #726: the ONE spelling of "nobody sourced this". It used to be 0, and 0 is a
+   READING: a Bond albedo of 0.0 is a body that absorbs everything the star sends,
+   which is the hottest case in the game, not a blank. Authoring it printed the same
+   dash as omitting the key -- system.cpp takes 0.0 as a legal value, the --solar-log
+   readout keyed off `alb > 0.0` -- so "no ground here", "not authored" and "zero"
+   were one state on one comparison. A negative is the sentinel because the loader
+   already refuses negative albedo (`[0, 1)`) and solar.h already spells absence that
+   way for a star's temperature, so no authored number can collide with it.
+   NOT yet applied to Surface::temperature: a star's T feeds starLuminosity's
+   `temp_K >= 0` assert, so that field's default cannot move without a guard at the
+   composition site. Filed beside this one. */
+inline constexpr double kAlbedoUnauthored = -1.0;      // [dimensionless] not 0.0
+inline bool albedoAuthored(double a) { return a >= 0.0; }
+
 struct Surface {
     float amplitude = 2500.0f;   // [m] tallest relief above the base radius
     int octaves = 9;             // noise octaves: continents 0..5, mountains 2..N-1
@@ -302,13 +316,15 @@ struct Surface {
        reflects back to space. It is named against the JSON key "albedo", which is
        deliberately NOT RingParams::albedo next door -- that one is a ring's VISUAL
        brightness and has the opposite convention (0.5 default, always present).
+       Absent is kAlbedoUnauthored, NOT 0.0 (#727 pinned the dash rule end to end and
+       #726 is the sentinel under it).
        Both fields are double rather than float because a star's T is raised to the
        fourth before anything sees it, and the air's thermodynamics next door are
        double too. Both are authored from a source where one exists (the vendored
        utils/rss/html sheets state an average temperature and a Bond albedo) and
        left absent where nothing states one. */
-    double temperature = 0.0;    // [K] authored; 0 = not authored
-    double bond_albedo = 0.0;    // Bond albedo, 0..1; 0 = not authored
+    double temperature = 0.0;    // [K] authored; 0 = not authored (the #726 half owed)
+    double bond_albedo = kAlbedoUnauthored;   // Bond albedo [0,1); -1 = not authored
     AtmosphereParams atmosphere; // optional rim; enabled => the JSON block exists
     CloudParams clouds;          // optional deck; enabled => body has clouds
     std::vector<RingParams> rings;  // optional; flat annuli in the equator

@@ -309,9 +309,13 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                negative temperature is a typo that a T^4 would hide (the star would
                light the whole system at the wrong flux), and an albedo outside
                0..1 asks a body to reflect more light than falls on it. ABSENT is
-               fine and means "nobody sourced this": the readouts print a dash,
-               which is why the defaults are 0 and why 0 is never offered as a
-               temperature. The bound here is a typo filter, not physics -- 1e6 K
+               fine and means "nobody sourced this" -- and it has its OWN spelling,
+               which is not any legal value: albedo defaults to kAlbedoUnauthored
+               (-1, terragen.h #726) because 0.0 is a reading (a body that absorbs
+               everything), while temperature still defaults to 0, the half of #726
+               owed elsewhere because a star's T feeds starLuminosity's assert. That
+               is why these bounds exclude the sentinel: a file can never author its
+               own absence. The bound here is a typo filter, not physics -- 1e6 K
                admits any plausible sun and rejects a decimal-point mistake, and the
                load-time `solar` audit line below is what catches a 10x error that
                fits inside it, because that error moves the home world's flux by
@@ -1286,7 +1290,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
            (tick.cpp's --solar-log does). */
         printf("         thermal  %-13s albedo %6s surface %s air base %s%s\n",
                b->name.c_str(),
-               b->surface.bond_albedo > 0.0 ? "authored" : "  -   ",
+               albedoAuthored(b->surface.bond_albedo) ? "authored" : "  -   ",
                surface_s, air, note);
     }
 

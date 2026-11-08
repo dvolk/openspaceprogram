@@ -13,6 +13,9 @@
 //     apoapsis, so that body grazes the belt rather than living in it,
 //   - "belts" is optional: a system without it loads with none,
 //   - malformed belts throw, naming the belt.
+//   - the #687 surface thermal bounds reject a typo but not an absence, and the
+//     two absences are spelled differently: albedo absent is the -1 sentinel, an
+//     authored 0.0 is a reading (#726).
 //
 // Build & run (from repo root): see Makefile ($(TESTDIR)/test_belts).
 
@@ -24,6 +27,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -81,6 +85,27 @@ static void expect_reject(const nlohmann::json &j, const char *tag,
         what = e.what();
     }
     check(threw && what.find(msg_needle) != std::string::npos, tag);
+    std::remove(tmp.c_str());
+}
+
+// Write a mutated system (tmp/), load it expecting SUCCESS, and hand the caller
+// the loaded System so it can read what the loader KEPT -- which is how a
+// default-value law gets pinned, not just the refusal of a bad value.
+static void expect_loaded(const nlohmann::json &j, const char *tag,
+                          const std::function<void(const System &)> &fn) {
+    std::filesystem::create_directories("tmp");
+    const std::string tmp = std::string("tmp/test_belts_") + tag + ".json";
+    std::ofstream o(tmp);
+    o << j.dump();
+    o.close();
+    try {
+        System sys = load_system(tmp.c_str(), nullptr, nullptr);
+        fn(sys);
+        for(TerrainBody *b : sys.bodies) { delete b; }
+    } catch(const std::exception &e) {
+        std::printf("FAIL %s: unexpected throw: %s\n", tag, e.what());
+        ++g_failures;
+    }
     std::remove(tmp.c_str());
 }
 
@@ -243,6 +268,39 @@ int main() {
         j["bodies"][0]["surface"]["temperature"] = 2.0e6;
         expect_reject(j, "absurd surface temperature rejected",
                       "\"surface.temperature\"=");
+    }
+
+    /* #726: ABSENT has its own spelling, and it is not a legal reading. An albedo of
+       0.0 is a body that absorbs everything the star sends -- the HOTTEST case in the
+       game -- so it must load as 0.0 and stay distinguishable from a body nobody
+       sourced, which reads kAlbedoUnauthored (-1, terragen.h). The loader's bound is
+       [0,1), so a file can never author its own absence: that is what stops the two
+       states merging by accident again. Before this, an authored 0.0 printed the same
+       `albedo=- bb_T=-` row as no key at all. */
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][0]["surface"]["albedo"] = -1.0;
+        expect_reject(j, "authored sentinel albedo rejected", "\"surface.albedo\"=");
+    }
+    {
+        /* Both halves in one load: old_system.json authors no albedo anywhere, so the
+           star gains an authored 0.0 that must survive, while every other body stays
+           unsourced and must read the sentinel rather than 0.0. */
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        const std::string star = j["bodies"][0]["name"].get<std::string>();
+        j["bodies"][0]["surface"]["albedo"] = 0.0;
+        expect_loaded(j, "authored zero albedo", [&](const System &sys) {
+            const TerrainBody *s = sys.find(star);
+            check(s != nullptr && s->surface.bond_albedo == 0.0,
+                  "authored albedo 0.0 loads as a reading");
+            bool all_sentinel = true;
+            for(const TerrainBody *b : sys.bodies) {
+                if(b->name != star && b->surface.bond_albedo != kAlbedoUnauthored) {
+                    all_sentinel = false;
+                }
+            }
+            check(all_sentinel, "unsourced bodies read the sentinel, not 0.0");
+        });
     }
 
     if(g_failures == 0) { std::printf("test_belts: OK\n"); return 0; }

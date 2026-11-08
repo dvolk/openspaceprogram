@@ -676,13 +676,24 @@ void tick(Game &g) {
                    means it there). Same answer as a hull over an unsourced moon. */
                 const TerrainBody *over = g.ship->m_parent;
                 const bool ground_here = over && !over->isStar();
-                const double alb = ground_here ? over->surface.bond_albedo : 0.0;
+                /* The no-ground branch takes the SENTINEL, not 0.0 (#726). The dash
+                   this prints looks the same either way -- and that is the point: the
+                   READOUT has two absences to draw, but the STATE no longer merges
+                   "there is no body under me", "nobody sourced this body" and "this
+                   body absorbs everything the star sends" into one value. The first
+                   two dash; the third prints 0.000 and a bb_T computed from it, which
+                   is the hottest case in the game and used to be unspellable.
+                   This guard is also what keeps the sentinel out of
+                   blackbodyTemperature, which asserts albedo >= 0: a computation must
+                   never see an absence. */
+                const double alb = ground_here ? over->surface.bond_albedo
+                                               : kAlbedoUnauthored;
                 const double groundT = ground_here ? over->surface.temperature : 0.0;
                 char alb_s[24], gt_s[24], bb_s[24];
                 /* bb_T needs BOTH the albedo and a live star sample: printing 0.00 K
                    for "no sun in range" is exactly the 0-pretending-to-be-a-reading
                    this block refuses elsewhere. */
-                if(alb > 0.0 && ss.valid) {
+                if(albedoAuthored(alb) && ss.valid) {
                     snprintf(alb_s, sizeof alb_s, "%.3f", alb);
                     snprintf(bb_s, sizeof bb_s, "%.2f",
                              blackbodyTemperature(ss.flux, alb));
