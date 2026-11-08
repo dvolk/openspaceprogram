@@ -1,0 +1,42 @@
+# A load-keyed bed (#693): one airframe, three airs, three gravities.
+# `flying-trim` does not author a speed and does not author a fraction of the body's
+# circular speed (which is a GRAVITY number and has nothing to do with where a wing
+# flies). It authors a LIFT-AREA LOAD -- q/g = 50.9 kg/m^2, which is skiff_trim's
+# measured trim dynamic pressure 487 Pa divided by the 9.56 m/s^2 Kerbin pulls with at
+# the bed -- and the speed falls out of each body's own air and gravity:
+#   q = load x g(alt),  v = sqrt(2 q / rho(alt))
+#   Kerbin  rho 0.502, g 9.54  -> 44.0 m/s   (the hull's own trim: 43)
+#   Eve     rho 0.478, g 16.3  -> 58.9 m/s   (its own trim: 56..60)
+#   Duna    rho 0.0094, g 2.83 -> 175.1 m/s  (its own trim: 150..230)
+# Those are the three numbers this case pins, and they are GOLDEN, not invariant: they
+# are readouts of rho and g at three altitudes, so they move if the air is retuned
+# (#682 moved the bed heights once and #686 re-weighed the columns). What does NOT move
+# is the authored load -- which is the point. A gravity fraction cannot say that at all:
+# on Duna the same flying-cruise constant spawns the hull at 33 m/s, a fifth of the speed
+# that hull needs to make lift there, and on Kerbin it spawns it ~1.9x OVER its trim.
+# Authoring a q rather than q/g is the trap this nearly fell into: trim q = W/(S CL)
+# carries the PLANET's g, so one q would be off by g_body/9.81 -- 2x under the lift
+# needed on Eve, 1.8x over on Duna (both measured).
+NAME trim-bed-speeds-follow-the-air
+CLAIM A load-keyed spawn bed's speed comes from the body's air and gravity rather than from its circular speed: one authored 50.9 kg/m^2 lift-area load gives 44 m/s in Kerbin's 8.5 km air, 59 in Eve's and 175 in Duna's at the same 0.1-of-air-top band -- each within reach of what the same hull actually trims at -- where the gravity-keyed cruise bed gives 33 m/s on Duna, a fifth of the speed that hull needs to make lift there.
+KIND golden
+ARGS --timeout 2 --startship k,res/ships/skiff_trim.json,Kerbin,flying-trim --startship v,res/ships/skiff_trim.json,Eve,flying-trim --startship d,res/ships/skiff_trim.json,Duna,flying-trim --startship c,res/ships/skiff_trim.json,Duna,flying-cruise
+FORBID error:
+FORBID needs air
+# The three speeds, in order of the air they sit in. Kerbin is the bed the load was
+# measured on; Eve pulls twice as hard and the hull must fly faster to carry the same
+# wings; Duna's air is 50x thinner and its gravity a third, and those do NOT cancel --
+# sqrt(g/rho) still lands 4x up.
+CHECK re.search(r"Spawn 'flying-trim' around Kerbin.*\|v\| = 4[34]\.[0-9] m/s \|v_air\| = 4[34]\.[0-9]", out)
+CHECK re.search(r"Spawn 'flying-trim' around Eve.*\|v\| = 5[89]\.[0-9] m/s \|v_air\| = 5[89]\.[0-9]", out)
+CHECK re.search(r"Spawn 'flying-trim' around Duna.*\|v\| = 17[45]\.[0-9] m/s \|v_air\| = 17[45]\.[0-9]", out)
+# Same band on all three: Duna's air top is 65 km, so 0.1 of it is 6.5 km off its datum,
+# r = 326500 m. Without this pin, "it just spawned somewhere else" would explain the
+# 4x spread away -- the wrong explanation.
+CHECK re.search(r"Spawn 'flying-trim' around Duna.*r = 326500 m", out)
+# The contrast, same air, same band, gravity-keyed: 33 m/s where that hull needs 175 to
+# carry its own weight. Over 40 here means the load keying stopped being air-keyed.
+CHECK re.search(r"Spawn 'flying-cruise' around Duna.*\|v\| = 3[23]\.[0-9] m/s", out)
+# |v| == |v_air| on all three because no shipped body authors a wind. The bed authors an
+# AIRspeed either way -- on the #688 windy fixture the same bed reads |v| 53.9 against
+# |v_air| 44.0 -- which is what e2e flight/688-wind-bends-airspeed pins.

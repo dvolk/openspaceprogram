@@ -13,12 +13,12 @@
 # swaps headwind for tailwind and drags a parked hull upwind.
 # The bed's own speed over the GROUND is untouched (79.5 m/s, the shipped number): a
 # wind is an air velocity, never a force, so it bends the flow the aero law reads and
-# leaves the launch state alone. AoA stays +0.0 because this wind blows along the track
-# -- a wind ACROSS the nose is what puts a signed angle there.
+# leaves the launch state alone. AoA stays +0.0 whatever the wind does, because the bed
+# aims the nose at the FLOW; a wind across the track belongs to Beta, not to AoA.
 NAME wind-bends-airspeed
-CLAIM With atmosphere.wind authored, a hull's airspeed is its speed through moving air rather than its speed over the ground -- a tailwind along its track makes it smaller -- and the wind a hull reads is the authored profile interpolated at its own altitude (10 m/s at 8.5 km) and HELD past the last row (20 m/s at 42.5 km).
+CLAIM With atmosphere.wind authored, a hull's airspeed is its speed through moving air rather than its speed over the ground -- a tailwind along its track makes it smaller -- and the wind a hull reads is the authored profile interpolated at its own altitude (10 m/s at 8.5 km) and HELD past the last row (20 m/s at 42.5 km); a bed that authors an airspeed adds the air's motion instead of being moved by it (53.9 m/s over the ground for the 44 it asked for).
 KIND invariant
-ARGS --timeout 3 --info-log --system e2e/fixtures/systems/688-kerbin-wind.json --startship a,res/ships/racer.json,Kerbin,flying-cruise,lat=0,lon=0 --startship b,res/ships/racer.json,Kerbin,flying-high,lat=0,lon=0
+ARGS --timeout 3 --info-log --system e2e/fixtures/systems/688-kerbin-wind.json --startship a,res/ships/racer.json,Kerbin,flying-cruise,lat=0,lon=0 --startship b,res/ships/racer.json,Kerbin,flying-high,lat=0,lon=0 --startship c,res/ships/skiff_trim.json,Kerbin,flying-trim,lat=0,lon=0
 FORBID error:
 FORBID atmosphere.wind
 # Both beds are flying EAST off lon 0, so the fixture's east wind is along the track.
@@ -35,8 +35,15 @@ CHECK re.search(r"Spawn 'flying-cruise'.*\|v\| = 79\.[0-9] m/s \|v_air\| = 69\.[
 # less the 20 m/s tailwind = 2138.2. No wind reads 2158.1, and half the wind reads
 # 2148.1 -- both outside this.
 CHECK re.search(r"Spawn 'flying-high'.*\|v\| = 234[0-9]\.[0-9] m/s \|v_air\| = 213[0-9]\.[0-9] m/s", out)
-# A wind ALONG the track bends the speed, not the direction: the nose is placed on the
-# flow, so the canary stays at zero until a wind blows ACROSS it.
+# A bed that AUTHORS an airspeed (flying-trim, a 50.9 kg/m^2 lift-area load, #693) adds
+# the air's motion rather than being moved by it: it wants 44.0 m/s THROUGH the air, so on
+# a 10 m/s tailwind it spawns at 53.9 over the GROUND. Subtract the wind instead of adding
+# it and this reads 43.9 -- a bed that starts 10 m/s off the number it asked for.
+CHECK re.search(r"Spawn 'flying-trim'.*\|v\| = 5[34]\.[0-9] m/s \|v_air\| = 44\.[0-9] m/s", out)
+# A wind ALONG the track bends the speed, not the direction, and the launch AoA cannot
+# show any wind at all: the bed aims the nose AT THE FLOW, so AoA is zero whatever the
+# wind does. A wind across the track shows up as Beta in --drag-log (measured on a
+# north-wind copy of this fixture: Beta, and 1.3 kN m of fin torque, with AoA still +0.0).
 CHECK re.search(r"Spawn 'flying-cruise'.*AoA = \+0\.0 deg", out)
 # The beds did not move: a wind is not a new altitude. r is the same 608500 / 642500 m
 # the windless shipped system gives -- 0.1 and 0.5 of Kerbin's 85 km top.

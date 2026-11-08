@@ -705,6 +705,16 @@ void vabLaunch(Game &g) {
     }
     const std::string scName = g.vab.scenarioName.empty() ? "pad" : g.vab.scenarioName;
     const ScenarioDef *sc = scenario_by_name(scName);
+    /* Ask before anything is built (the same question --startship asks at its own door):
+       a bed that cannot work on this body must be refused here, because the alternative
+       is spawn_vehicle throwing inside an imgui handler, which is a SIGABRT and a lost
+       game (#291). */
+    if(const std::string why = bed_refusal(*sc, *hb); !why.empty()) {
+        printf("[vab] launch refused: %s\n", why.c_str());
+        fflush(stdout);
+        g.toast("%s", why.c_str());
+        return;
+    }
     const StaticBuilding *site = nullptr;
     if(sc->on_pad) {
         site = find_launch_site(hb, g.vab.siteName);

@@ -285,12 +285,31 @@ static const ScenarioDef kScenarios[] = {
        the Spawn line so a bed that is not trimmed is visible without a --drag-log
        (#569).
        CAVEAT, since #686: the 47..50 m/s glide was measured in 7 km air at rho 0.346.
-       This bed now spawns in 8.5 km air at rho 0.502, where skiff_trim glides at
-       ~41 m/s (e2e 490), so the 0.0356 factor that was chosen to BE the trim point
-       is now 1.9x it and every flying-cruise run opens with a deeper zoom-climb than
-       the one those numbers describe (#693). The factor is gravity-keyed, not
-       air-keyed -- which is what #693 is about. */
+       This bed now spawns in 8.5 km air at rho 0.502, where skiff_trim settles at
+       ~43 m/s (q 487 Pa) and the untrimmed skiff at ~60 m/s (q 1021 Pa) -- e2e 490's
+       40.7 m/s is the BOTTOM of skiff's phugoid arc at t=19 s, not a settle, so do not
+       read a trim speed off it. Either way the 0.0356 factor that was chosen to BE the
+       trim point is now ~1.9x it and every flying-cruise run opens with a deeper
+       zoom-climb than the one those numbers describe (#693). The factor is gravity-keyed,
+       not air-keyed -- which is what #693 is about, and what flying-trim below fixes. */
     {"flying-cruise",  true,  false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0, true, false, 0.0356},
+    /* The same height band keyed to the AIRFRAME instead of to gravity (#693). The
+       authored number is a LOAD, q/g = 50.9 kg/m^2, so the bed bills that load in whatever
+       field the body actually pulls with at the bed: dynamic pressure = load x g(alt),
+       speed = sqrt(2 q / rho(alt)). Measured, not derived -- skiff_trim settles at
+       43.0 m/s in 0.527 kg/m^3 at 8.07 km, which is q 487 Pa in the 9.56 m/s^2 Kerbin
+       pulls with there, hence 50.9. One load, each body's own air and gravity: ~44 m/s on
+       Kerbin, ~59 on Eve (g 16.3), ~175 on Duna (g 2.83 in 9.4e-3 kg/m^3, Mach 0.77).
+       Authoring a q instead -- the tempting reading, and the one first written here -- is
+       off by exactly the body's gravity, because trim q = W/(S CL) carries the planet's
+       g: measured on this bed it leaves the hull 2x UNDER the lift it needs on Eve and
+       1.8x OVER on Duna, i.e. the very "a drop wearing a cruise bed's name" complaint
+       #693 makes about flying-cruise, relocated from heights to bodies.
+       Trim is still the hull's business: 50.9 is skiff_trim's load, and the untrimmed
+       skiff's is 2.1x that, so skiff, racer and jet all start off-trim here by
+       construction -- exactly as flying-cruise is off-trim for the skiff. Deriving the
+       load from the hull needs a trim AoA, and no code has one yet (#569). */
+    {"flying-trim",    true,  false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0, true, false, 0.0, 50.9},
     {"ellipse-peri",   true,  false, 0.0,  false,  0, 10e3, 1000e3, 0.0, 0.0},
     {"ellipse-apo",    true,  false, 0.0,  false,  1, 10e3, 1000e3, 0.0, 0.0},
     {"ellipse-mid",    true,  false, 0.0,  false,  2, 10e3, 1000e3, 0.0, 0.0},
@@ -322,6 +341,18 @@ const ScenarioDef *scenario_by_name(const std::string &name) {
     }
     throw std::runtime_error("unknown scenario '" + name
                              + "' (available: " + avail + ")");
+}
+
+std::string bed_refusal(const ScenarioDef &sc, const TerrainBody &home) {
+    /* A load-keyed bed (#693) asks for an airspeed, so it needs air to fly in. The
+       predicate is the aero pass's own `physical()`, not `top() > 0`: a body may author a
+       render-only rim (an `height` with no density profile, which the loader allows on
+       purpose), which has a top and no air at all. */
+    if(sc.speed_load > 0.0 && !home.surface.atmosphere.physical()) {
+        return "bed '" + std::string(sc.name) + "' needs air, and " + home.name
+             + " has none -- pick a bed that does";
+    }
+    return "";
 }
 
 size_t scenario_count() {
@@ -413,6 +444,25 @@ glm::dvec3 bedTurnTo(double &tilt_deg, const glm::dvec3 &rhat,
     assert(glm::dot(rotAbout(n1, phase, r1), want) > 1.0 - 1e-12);
     assert(std::fabs(glm::dot(v1, want)) < 1e-9);
     return v1;
+}
+
+/* atmo.h's wind PROFILE -> a velocity in the body's ROTATING frame at a point given
+   in that same frame. alt off the sea-level datum (the axis the whole density profile
+   is stacked on, so a row and a hull agree about what "5 km" means); the horizontal
+   basis from equirect.h, the ONE lon/lat law. At the body's centre there is no
+   horizontal plane, so there is no wind -- and the same floor airReadingAt uses keeps
+   a subnormal radius from turning 1/r into an inf and a NaN.
+   Two callers, both of which must compose the air's motion by hand rather than ask a
+   hull about it: Vehicle::airRelativeVel below, and spawn_vehicle's load-keyed bed
+   (#693), which authors an AIRspeed and so needs the wind before a hull exists. */
+static glm::dvec3 windVelRot(const TerrainBody &b, const std::vector<WindLevel> &W,
+                             const glm::dvec3 &pos_rot) {
+    const double r = glm::length(pos_rot);
+    if(r <= 1e-9) { return glm::dvec3(0.0); }
+    const glm::dvec3 up = pos_rot * (1.0 / r);
+    const glm::dvec2 en = windAt(W, r - b.seaLevelRadius());
+    const glm::dvec3 east = equirectEast(up);
+    return east * en.x + equirectNorth(up, east) * en.y;
 }
 
 /* slot_offset (m): lateral separation for ships sharing an orbit scenario, applied
@@ -571,9 +621,51 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
        inertial circular speed instead leaves Kerbin's flying-slow bed with 16 m/s
        of air -- the ground and its air already move 177 m/s prograde -- i.e. a
        drop from the pad, not a start in flight (#451). */
+    /* The air's own motion at the bed (#688), in the axes the bed is being built in.
+       Zero on every shipped body -- none authors a wind yet. Used twice: to compose the
+       velocity of a bed that authors an AIRspeed, and to aim the nose along the air
+       rather than along the ground track below. */
+    glm::dvec3 wind_rot(0.0);
+    if(sc.atmo_frac && home->surface.atmosphere.has_wind()) {
+        /* A flying bed is always inside the body's ROT frame: the loader puts the rot
+           SOI at sea_r + shellEdge(top) >= sea_r + 1.1 top (system.cpp), and
+           validateBodyLimits refuses a top reaching that band (bodylimits.h), so
+           r = sea_r + alt_frac x top cannot get outside. It matters beyond the
+           co-rotation shortcut: windVelRot builds its east/north basis off the SPIN
+           frame, so a non-rot `target` would silently point the wind the wrong way. */
+        assert(frame->isRotFrame());
+        wind_rot = windVelRot(*home, home->surface.atmosphere.wind, target);
+    }
+
     if(sc.speed_frac > 0.0) {
         assert(sc.ell_phase < 0);   // "of circular speed" is meaningless on an ellipse
         vel *= sc.speed_frac;
+    }
+
+    /* A load-keyed bed (#693): the air-relative speed that puts the airframe's authored
+       lift-area load (q/g, kg/m^2) into the field THIS body pulls with at THIS height --
+       instead of a fraction of what gravity would need for an orbit here. Authored as an
+       AIR-relative speed, so the frame velocity is that plus the air's own motion: with
+       no authored wind (every shipped body) the second term is zero and this is just the
+       frame speed; on a windy body the hull still starts at its authored airspeed rather
+       than at that number plus or minus the wind.
+       The co-rotation is NOT added: `vel` is already the velocity in the frame the ground
+       -- and, absent a wind, the air -- sits still in. */
+    if(sc.speed_load > 0.0) {
+        assert(sc.ell_phase < 0 && !(sc.speed_frac > 0.0) && sc.esc_frac == 0.0);
+        const double alt = glm::length(target) - home->seaLevelRadius();
+        const DragAtmosphere atm = dragAtm(home->surface.atmosphere, *home);
+        const double rho = airDensity(atm, alt);
+        // The SAME floor the aero pass bills on (constants.h:kRhoFloor), not merely
+        // "non-zero": air thins to a hair above the datum on a hand-built profile, and
+        // sqrt(2 q / rho) then hands out a speed no surface would ever feel a force from.
+        if(rho < kRhoFloor) {
+            throw std::runtime_error("spawn: bed '" + std::string(sc.name)
+                + "' needs air, and " + home->name + " has none at "
+                + std::to_string((long long)(alt + 0.5)) + " m -- pick a bed that does");
+        }
+        vel = glm::normalize(vel) * std::sqrt(2.0 * sc.speed_load * airGravity(atm, alt) / rho);
+        vel += wind_rot;
     }
 
     if(frame != ship->frame) {
@@ -588,19 +680,29 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
        and start the airframe on its side -- lifting sideways, with W and S yawing
        it instead of pitching it (#451). No orbital bed cares about its roll, and
        its goldens were authored with whichever axis faceAlong preferred. */
+    /* The nose goes along the AIR the hull flies through, not along its ground track: a
+       wind-crossed bed aimed at the ground velocity spawns in SIDESLIP and the aero law
+       spends the first seconds fighting it. Measured with the #688 fixture's 10 m/s row
+       turned to north: Beta reads -2.7 deg at t=0.9 s and +8.5 at t=1.9, with 1.3 kN m of
+       fin torque, while the launch AoA canary still prints +0.0 -- an authored wind is
+       horizontal (atmo.h:WindLevel is east/north only), so it moves Beta and can never
+       move AoA. With no authored wind -- every shipped body -- flow IS vel, so every
+       shipped bed aims exactly as it always did. */
+    const glm::dvec3 flow = vel - wind_rot;
     const glm::dmat3 orient = sc.atmo_frac
         ? glm::transpose(frame->root_orient)
-          * faceAlong(frame->root_orient * vel,
+          * faceAlong(frame->root_orient * flow,
                       frame->root_orient * glm::normalize(target))
         : glm::transpose(frame->root_orient) * faceAlong(velWorld);
     ship->placeShipAtCom(target, orient);
     ship->setVelocity(vel);
 
-    /* |v| is the authored start: the orbital speed for a circular/elliptical bed,
-       the AIR-relative speed for a speed_frac one -- in the body's rotational
-       frame the air sits still, on a body with no authored wind, so that is the
-       only speed a flight bed feels (#688 changed what that clause covers, not
-       this line).
+    /* |v| is the authored start: the orbital speed for a circular/elliptical bed, and the
+       speed over the GROUND for a slow one -- which on a body with no authored wind (all
+       of them so far) is also its speed through the air, which is how one field came to
+       mean two things (#459). A LOAD-keyed bed (#693) authors the AIR speed instead, so
+       on a windy body the two come apart: the #688 fixture prints |v| 51.0 against
+       |v_air| 41.0 for a bed that asked for 41.
        That one field meaning two things costs debugging sessions (#459): on
        Kerbin flying-low |v| says 2412 m/s while the air only ever feels
        2112-2251 m/s, because the atmosphere co-rotates. So an in-atmosphere bed
@@ -611,20 +713,15 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
     if(sc.atmo_frac) {
         /* The launch angle of attack, from the law's own AeroFrame so a readout and
            the law cannot drift apart. Read it for what it is: it prints 0.0 for every
-           shipped bed BY CONSTRUCTION, because spawn_vehicle points the nose along
-           the velocity with faceAlong() just above and no shipped body authors a wind
-           to move the air under it (#688 built the mechanism; nothing ships one yet).
-           It is a canary, not a trim diagnostic -- a wind ACROSS the nose, or a bed
-           that did author an attitude, would put a real signed angle here, while a
-           wind ALONG the track moves |v_air| and leaves this at zero. e2e
-           flight/688-wind-bends-airspeed pins that second half (an east wind on an
-           eastbound hull bends 79.5 to 69.5 and keeps AoA at +0.0); nothing pins an
-           across-the-nose wind yet -- and like
-           every other AoA readout it refuses to answer where the flow has no
-           direction (no air, or under kAoAFlowFloor), printing `-` rather than a 0.0
-           that would look like a trimmed hull. What decides whether a flight bed is
-           trimmed is the airframe's incidence/trim (#569, res/ships/README.md step
-           3); the per-tick AoA is in --drag-log. */
+           bed, shipped or not, BY CONSTRUCTION -- faceAlong() just above aims the nose
+           at the FLOW, so this is zero plus roundoff. That makes it a canary for the
+           aiming having gone wrong, never a trim diagnostic. A wind cannot move it
+           either way: the rows are horizontal (atmo.h:WindLevel is east/north only), so
+           a wind ACROSS the track shows up as Beta in --drag-log and never here, while a
+           wind ALONG it moves |v_air| and leaves this at +0.0 (e2e
+           flight/688-wind-bends-airspeed pins both halves). What decides whether a
+           flight bed is trimmed is the airframe's incidence/trim (#569,
+           res/ships/README.md step 3); the per-tick AoA is in --drag-log. */
         const glm::dvec3 air = ship->airRelativeVel(target);
         const Part *ref = ship->attitudeRef();
         const AeroFrame fr = aeroFrame(air, ship->partAxis(ref, 0),
@@ -647,7 +744,11 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
            sc.name, home->name.c_str(), frame->name.c_str(),
            shipWorldPos.x, shipWorldPos.y, shipWorldPos.z,
            glm::length(shipWorldPos - center),
-           sc.speed_frac > 0.0 ? glm::length(vel) : glm::length(velWorld),
+           /* A slow bed -- gravity-fraction or load-keyed (#693) -- means the number that
+              matters is the one in the frame the ground sits still in, not the root-frame
+              one velWorld carries (which on Kerbin still has the body's 177 m/s of
+              co-rotation in it). */
+           (sc.speed_frac > 0.0 || sc.speed_load > 0.0) ? glm::length(vel) : glm::length(velWorld),
            air_txt, place_txt);
 }
 
@@ -873,6 +974,13 @@ Vehicle *build_start_vehicles(Game &g, const std::vector<DebugStartShip> &entrie
                                      + "' (available: " + avail + ")");
         }
         const ScenarioDef *sc = scenario_by_name(fe.scenario);
+        /* Ask at the door: a wrong bed/body pairing prints as a start-ship error and the
+           run exits 1, rather than arriving as spawn_vehicle's throw escaping as an
+           abort. That throw stays as the backstop for any path past this. */
+        if(const std::string why = bed_refusal(*sc, *hb); !why.empty()) {
+            throw std::runtime_error("start ships: ship entry " + std::to_string(i)
+                                     + ": " + why);
+        }
         /* A named pad only means anything on a pad bed: place_vehicle_def's
            supportMargin reads the site's hull as what the ship rests on, a lie
            if the base comes from terrain instead. */
@@ -2805,21 +2913,8 @@ bool Vehicle::airReadingAt(const Part *p, AirReading &out) {
     return true;
 }
 
-/* atmo.h's wind PROFILE -> a velocity in the body's ROTATING frame at a point given
-   in that same frame. alt off the sea-level datum (the axis the whole density profile
-   is stacked on, so a row and a hull agree about what "5 km" means); the horizontal
-   basis from equirect.h, the ONE lon/lat law. At the body's centre there is no
-   horizontal plane, so there is no wind -- and the same floor airReadingAt uses keeps
-   a subnormal radius from turning 1/r into an inf and a NaN. */
-static glm::dvec3 windVelRot(const TerrainBody &b, const std::vector<WindLevel> &W,
-                             const glm::dvec3 &pos_rot) {
-    const double r = glm::length(pos_rot);
-    if(r <= 1e-9) { return glm::dvec3(0.0); }
-    const glm::dvec3 up = pos_rot * (1.0 / r);
-    const glm::dvec2 en = windAt(W, r - b.seaLevelRadius());
-    const glm::dvec3 east = equirectEast(up);
-    return east * en.x + equirectNorth(up, east) * en.y;
-}
+/* windVelRot -- the profile -> rot-frame helper -- lives up beside spawn_vehicle,
+   which is the other place the air's velocity has to be composed by hand (#693). */
 
 /* THE one place the air's velocity enters the flow (#688). Every aero read, Mach, the
    jet gate and #498's air-relative prograde marker take their flow from this call, so

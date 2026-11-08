@@ -1070,10 +1070,13 @@ static void check_vab_gate() {
    running game knows how fast the air itself is moving. */
 static void check_flying_beds() {
     const ScenarioDef *low = nullptr, *high = nullptr, *slow = nullptr;
+    const ScenarioDef *cruise = nullptr, *trim = nullptr;
     try {
         low  = scenario_by_name("flying-low");
         high = scenario_by_name("flying-high");
         slow = scenario_by_name("flying-slow");
+        cruise = scenario_by_name("flying-cruise");
+        trim = scenario_by_name("flying-trim");
     } catch(const std::exception &e) {
         printf("  a flying bed does not resolve: %s\n", e.what());
         failures++;
@@ -1095,23 +1098,52 @@ static void check_flying_beds() {
                slow->alt_frac, slow->atmo_frac ? 1 : 0);
         failures++;
     }
-    /* The fraction needs a circular speed to be a fraction OF, and air to be a
-       fraction of AIR. The table is positional and 13 fields wide, so a row that
-       grows a field can hand speed_frac to the wrong slot and still compile. */
+    /* flying-trim (#693) is flying-cruise with the speed keyed to the airframe instead
+       of to gravity, so the two must agree on everything but the speed law -- that is
+       what makes an A/B between them mean something. And its load must be a WING's
+       number: 50.9 kg/m^2 is q/g for skiff_trim, whose lift area and mass are both of
+       order 10 m^2 and 10^2 kg. Under 1 or over 10^4 is a value that arrived in the
+       wrong slot, not a hull anyone ships. */
+    if(trim->speed_frac != 0.0 || !(trim->speed_load > 1.0 && trim->speed_load < 1e4)) {
+        printf("  flying-trim is not load-keyed (speed_frac %g, speed_load %g): the "
+               "point of this bed is that gravity does not set its speed\n",
+               trim->speed_frac, trim->speed_load);
+        failures++;
+    }
+    if(trim->alt_frac != cruise->alt_frac || trim->atmo_frac != cruise->atmo_frac
+       || trim->polar != cruise->polar || trim->eq_plane != cruise->eq_plane) {
+        printf("  flying-trim is not flying-cruise's height band (alt_frac %g vs %g): "
+               "the pair is only an A/B if the air they spawn in is the same\n",
+               trim->alt_frac, cruise->alt_frac);
+        failures++;
+    }
+    /* A bed carries at most ONE speed key, and whichever it is needs a circular speed in
+       air to describe it: speed_frac is a fraction of a circular speed, and speed_load
+       turns a lift-area load into an airspeed through rho and g at the bed. The table is
+       positional and 14 fields wide, so a row can hand a value to the wrong slot and
+       still compile -- this refuses that SHAPE rather than bounding any one number, since
+       a fraction over 1 or a load under 1 Pa could both be a bed someone wants tomorrow
+       (the bounds this used to carry are what they would refuse). */
     for(size_t i = 0; i < scenario_count(); i++) {
         const std::string sname = scenario_name_at(i);
         const ScenarioDef *d = scenario_by_name(sname);
-        if(d->speed_frac <= 0.0) { continue; }
-        if(d->ell_phase >= 0 || d->esc_frac > 0.0 || !d->atmo_frac) {
-            printf("  scenario '%s' sets speed_frac = %g on a bed the fraction "
-                   "cannot describe (ell_phase %d, esc_frac %g, atmo_frac %d)\n",
-                   sname.c_str(), d->speed_frac, d->ell_phase, d->esc_frac,
-                   d->atmo_frac ? 1 : 0);
+        const int keys = (d->speed_frac > 0.0 ? 1 : 0) + (d->speed_load > 0.0 ? 1 : 0);
+        if(keys == 0) { continue; }
+        if(keys > 1 || d->ell_phase >= 0 || d->esc_frac > 0.0 || !d->atmo_frac
+           || d->on_pad || d->abs_r > 0.0) {
+            printf("  scenario '%s' sets speed_frac = %g / speed_load = %g on a bed "
+                   "neither can describe (want at most one key and ell_phase < 0, "
+                   "esc_frac 0, atmo_frac, not on_pad, no abs_r -- got ell_phase %d, "
+                   "esc_frac %g, atmo_frac %d, on_pad %d, abs_r %g)\n",
+                   sname.c_str(), d->speed_frac, d->speed_load, d->ell_phase,
+                   d->esc_frac, d->atmo_frac ? 1 : 0, d->on_pad ? 1 : 0, d->abs_r);
             failures++;
         }
     }
     printf("  flying beds: low/high circular (entry rigs), slow at %.2f x the "
-           "air-relative circular speed\n", slow->speed_frac);
+           "air-relative circular speed, cruise at %.4f x it, trim at %.1f kg/m^2 of "
+           "lift-area load (#693)\n", slow->speed_frac, cruise->speed_frac,
+           trim->speed_load);
 }
 
 /* A placed bed (--startship lat=/lon=): the bed turns so its circle passes over the

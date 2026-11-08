@@ -249,6 +249,16 @@ inline double airTemperature(const DragAtmosphere &a, double alt) {
     return a.gravity * a.scale_height * a.molar_mass / kGasR;
 }
 
+/* [m/s^2] -- the field a hull in this air is actually pulled by (#683): the datum g
+   thinned by the same inverse-square the column above is weighed in, whose integral
+   is atmo.h:geopotentialDepth. A profile with no datum radius thins not at all, which
+   is the same "uniform field" reading airDensity uses there. */
+inline double airGravity(const DragAtmosphere &a, double alt) {
+    if(a.radius <= 0.0) { return a.gravity; }
+    const double s = a.radius / (a.radius + alt);
+    return a.gravity * s * s;
+}
+
 /* [Pa], alt in m above the sea-level DATUM -- the same alt airDensity takes. */
 inline double airPressure(const DragAtmosphere &a, double alt) {
     if(!(a.gravity > 0.0)) { return 0.0; }

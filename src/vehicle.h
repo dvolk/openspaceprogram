@@ -2088,6 +2088,27 @@ struct ScenarioDef {
        it over is the dev's call: it is a bed, not a mission (#451). It ignores the
        ship: a bed is a position + velocity, and lift is the ship's problem. */
     double speed_frac = 0.0;
+    /* Circular beds only, INSTEAD of speed_frac: the bed's AIR-RELATIVE speed set by
+       the AIRFRAME's lift rather than by the body's gravity (#693). The authored number
+       is a LOAD -- q / g [kg/m^2, equivalently Pa per m/s^2] -- and the bed's dynamic
+       pressure is load x airGravity(body, alt), so the speed is sqrt(2 q / rho(alt)).
+       Why a LOAD and not a q: a wing's trim condition is q = W/(S CL) = m g/(S CL), so q
+       carries the PLANET's g and only q/g is the airframe's own number. One authored q
+       would be right near Kerbin and off by g_body/9.81 everywhere -- 2x under trim lift
+       on Eve, 1.8x over on Duna (both measured). With the g put back at the bed, the same
+       load lands the hull near its trim on each of them.
+       That is what a gravity fraction cannot do: it survives neither an air-profile change
+       (#686 moved Kerbin's rho 1.44x at bed height and left flying-cruise 1.9x over its
+       airframe's trim) nor a bed-height change (#682 moved the flying beds 7 km -> 8.5 km).
+       Height invariance is real in this model and was measured (same hull, q 488.7 Pa at
+       8069 m vs 486.1 Pa at 7661 m); it is only true SUBSONIC -- liftSlopeMach and waveCd
+       both bite hard past M ~1 (Duna's bed reads M 0.8), so this is a low-speed keying.
+       It is still a bed, not a flight computer: the load belongs to ONE reference hull
+       (the bed ignores which ship it is given, as speed_frac's law says), and even two
+       shipped hulls of the same family differ 2.1x in it. A hull-derived load needs a
+       trim AoA no code has yet (#569). Needs air at the bed radius; a body without it
+       refuses rather than dividing by zero. */
+    double speed_load = 0.0;
     /* NB: there is deliberately no authored angle of attack here. A bed is a
        position + velocity, and an airframe's attitude is not a launch condition it
        can keep: a stable hull rotates to its own zero-moment AoA inside a second.
@@ -2103,6 +2124,13 @@ struct ScenarioDef {
 
 /* Look up a scenario by name; throws if unknown. */
 const ScenarioDef *scenario_by_name(const std::string &name);
+
+/* Empty when this bed can be used on this body, or the reason it cannot (#693).
+   Two front doors ask it: the --startship entry parse and the VAB launch. Both must ask
+   BEFORE anything is built or placed, because the alternative is a throw from
+   spawn_vehicle arriving in an imgui handler -- a SIGABRT and a lost game (#291) -- or
+   escaping the CLI as an abort rather than an `error:` line. */
+std::string bed_refusal(const ScenarioDef &sc, const TerrainBody &home);
 
 // Enumerate the scenario table (the VAB dropdown); index < scenario_count().
 size_t scenario_count();
