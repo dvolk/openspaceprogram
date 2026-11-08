@@ -121,6 +121,43 @@ def blackbody_temperature(flux, albedo):
 GRAVITY_TOL = 0.02
 
 
+def check_constants_match_src(verbose=True):
+    """G and SIGMA_SB above are COPIES of what the loader spells (src/system.cpp:165,
+    src/solar.h:kStefanBoltzmann). Comments say so, and a comment is not a link (#707:
+    G is written out five times in utils/ alone, #689 pinned one of those pairs by hand).
+    So --check greps the two headers and refuses if they part company: generated data can
+    be perfectly self-consistent and still describe a physically different universe from
+    the one the game integrates. Returns the list of complaints; empty means they match.
+    """
+    import os
+    import re
+    src = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, 'src')
+    want = [('system.cpp', r'\bG\s*=\s*([0-9.eE+-]+);', G, 'G'),
+            ('solar.h', r'kStefanBoltzmann\s*=\s*([0-9.eE+-]+);', SIGMA_SB, 'sigma')]
+    bad = []
+    for fname, pat, mine, label in want:
+        path = os.path.join(src, fname)
+        try:
+            with open(path, encoding='utf-8', errors='replace') as f:
+                text = f.read()
+        except OSError:
+            bad.append('cannot read %s to check %s' % (path, label))
+            continue
+        m = re.search(pat, text)
+        if not m:
+            bad.append('src/%s: no %s literal found to compare against' % (fname, label))
+            continue
+        theirs = float(m.group(1))
+        if verbose:
+            print('  constants %-6s here %12.6g  src/%-11s %12.6g  %s'
+                  % (label, mine, fname, theirs,
+                     'ok' if theirs == mine else 'MISMATCH'))
+        if theirs != mine:
+            bad.append('src/%s states %s %.10g, utils/atmo_units.py uses %.10g'
+                       % (fname, label, theirs, mine))
+    return bad
+
+
 def check_body_gravity(bodies, verbose=True):
     """Refuse a body whose typed `g` is not the field its own mass and radius imply
     (#689), because a body with air states that field TWICE and the loader then uses

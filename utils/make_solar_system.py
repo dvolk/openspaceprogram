@@ -11,7 +11,7 @@ from sci_dist import stamp_science_mults, stamp_transfer_dv, phase0
 # output, so a second spelling of the law would drift in silence (the #636 lesson).
 from atmo_units import (resolve_layer_heights, check_body_gravity,
                         SIGMA_SB, semimajor_axis, star_temperature_from_flux,
-                        blackbody_temperature)
+                        blackbody_temperature, check_constants_match_src)
 
 G      = 6.674e-11      # m^3 / kg / s^2  (matches the loader's G)
 AU     = 1.496e11       # m
@@ -1623,6 +1623,15 @@ def main():
                     help="verify the committed JSONs still match, without "
                          "writing anything; exit non-zero on any drift")
     args = ap.parse_args()
+
+    # Before anything is compared: this script weighs a column with G and sizes a star
+    # with sigma, and both are copies of the loader's literals. If they have parted
+    # company, every number below is self-consistent and wrong (#687/#707).
+    bad = check_constants_match_src(verbose=args.check)
+    if bad:
+        for m in bad:
+            print('DRIFT   constants: ' + m)
+        raise SystemExit('utils/ and src/ disagree about a physical constant')
 
     base_bodies, parsed = build_base(verbose_air=args.check)
 

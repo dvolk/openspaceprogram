@@ -29,7 +29,8 @@ from gas_mixes import DRY_AIR, CO2_HEAVY, H2_HE_CH4_KSP
 # altitude in a system file means). Both generators call the same function, because each
 # --check only compares its own output and would not notice the two drifting.
 from atmo_units import (resolve_layer_heights, check_body_gravity,
-                        SIGMA_SB, semimajor_axis, star_temperature_from_flux)
+                        SIGMA_SB, semimajor_axis, star_temperature_from_flux,
+                        check_constants_match_src)
 
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
@@ -840,6 +841,15 @@ def main():
     # refuses the same thing at load (atmo.h:kAtmoGravityTol, #689); refusing here
     # names the typo at the keyboard instead of at boot.
     bad = []
+    # Both generators size a star with sigma and weigh an air column with G, and both
+    # spell those constants as COPIES of the loader's. Check that first: a generator
+    # that has drifted from src/ produces files that pass every other check here and
+    # describe a different universe in play (#687/#707).
+    cbad = check_constants_match_src(verbose=True)
+    if cbad:
+        for m in cbad:
+            print('DRIFT   constants: ' + m)
+        raise SystemExit('utils/ and src/ disagree about a physical constant')
     for obj, _path in targets:
         author_star_temperature(obj)
         bad += check_body_gravity(obj["bodies"], verbose=True)
