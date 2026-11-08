@@ -57,9 +57,11 @@ inline constexpr double kInertialOrbitFrac = 1.25;
    (160 km, where the band's 1.0 kPa lip would sit at 238 km) and Titan (200 km at
    800 Pa, on the lip) -- and utils/check_atmo_band.py refuses any other body that
    lands out of band, with Venus waived BY VALUE and the reason beside it. Pluto's
-   20 km (#700) is the first authored top that comes from a published pressure
-   rather than a published ceiling, and the first under kMinShell: a THIN air
-   changes no orbit, only the drag.
+   20 km (#700) is the first authored top taken from a published PRESSURE rather
+   than a published ceiling; it is not the first under kMinShell -- Duna's 65 km
+   and Mars's 80 km already inherit that floor, which is what makes a THIN air
+   cheap: no orbit, spawn band or atlas disk moves until a top passes
+   kMinShell / (1 + kLowOrbitFrac) = 83.3 km.
    Changes: where the air stops for drag AND where the science Flying*
    bands end, on every body without an authored top.
    Where: AtmosphereParams::top (terragen.h). */
