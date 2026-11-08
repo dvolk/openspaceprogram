@@ -294,13 +294,22 @@ struct TerrainBody {
         ready = true;
     }
 
-    // Atmosphere rim shell on demand, just above the highest terrain so no
-    // peak pokes through. max_height is relief ABOVE MEAN SEA (#406), so the
-    // shell starts at the datum, not at `radius`.
+    /* Atmosphere rim shell on demand. Its ceiling is the highest thing the sky has to
+       hold -- the peaks (max_height is relief above the datum (#406), so this starts
+       at the datum, not at `radius`) or the cloud deck, whichever is higher -- plus
+       `thickness` of headroom over it (#719). Before the deck counted, Venus drew its
+       55 km clouds outside a 32 km sky.
+       The ceiling is NOT top(): the air top is an AERO boundary -- a circular orbit
+       there still feels 10..1000 Pa of q (constants.h, utils/check_atmo_band.py) --
+       which sits ~5x above the visible column (p(top) ~111 Pa on Venus). atm_radius
+       is what DrawAtmosphere flips the sky shader on, so it is also where a pilot
+       leaves the blue sky for space; on Venus that moves 32 km -> 85 km. */
     void BuildAtmosphere(Shader *atmosphereshader) {
         if(atmosphere != nullptr || !surface.atmosphere.enabled) return;
-        float shell_radius = (float)seaLevelRadius() + surface.max_height
-                             + surface.atmosphere.thickness;
+        double rim_floor = surface.max_height;
+        if(surface.clouds.enabled && (double)surface.clouds.height > rim_floor)
+            rim_floor = surface.clouds.height;
+        float shell_radius = (float)(seaLevelRadius() + rim_floor + surface.atmosphere.thickness);
         if(shell_radius <= radius) shell_radius = radius * 1.02f;
         Mesh *m = create_atmosphere_mesh(shell_radius, 128);
         atmosphere = new Shell;

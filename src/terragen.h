@@ -77,7 +77,7 @@ inline OceanMode parseOceanMode(const std::string &v, const std::string &body) {
 struct AtmosphereParams {
     bool enabled = false;
     glm::vec3 color = glm::vec3(0.3f, 0.5f, 1.0f);  // rim tint (N2/O2 blue)
-    float thickness = 0.0f;  // RENDER ONLY: rim above the highest ground
+    float thickness = 0.0f;  // RENDER ONLY: rim band, over the peaks or the deck (#719)
     float power = 3.0f;       // Fresnel falloff (higher = tighter rim)
     float intensity = 1.0f;   // overall alpha scale
     /* The physical half (src/drag.h): rho(alt) = sea_level_density *
