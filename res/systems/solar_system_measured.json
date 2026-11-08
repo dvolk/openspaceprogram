@@ -178,6 +178,18 @@
               "gas": "N2",
               "fraction": 0.035
             }
+          ],
+          "wind": [
+            {
+              "alt": 0,
+              "east": 1.0,
+              "north": 0.0
+            },
+            {
+              "alt": 65000,
+              "east": 100.0,
+              "north": 0.0
+            }
           ]
         },
         "clouds": {

@@ -995,7 +995,45 @@ def build_base(verbose_air=False):
                          # air a jet could swallow in this catalogue and no oxidizer
                          # in any of it (#630).
                          'composition': [{'gas': 'CO2', 'fraction': 0.965},
-                                         {'gas': 'N2', 'fraction': 0.035}]},
+                                         {'gas': 'N2', 'fraction': 0.035}],
+                         # The first body in this catalogue to author wind (#688).
+                         # Two rows, each with a different source, and the branch
+                         # between them is ours:
+                         #  * 1 m/s at the datum is venusfact.html's "Wind speeds:
+                         #    0.3 to 1.0 m/s (surface)" -- the top of its range,
+                         #    because the WHOLE range is 3..33 Pa of dynamic pressure
+                         #    in 65 kg/m3 of air, against the 3.3 kPa a hull at 10 m/s
+                         #    bills in the same air. Nothing the player can feel.
+                         #  * 100 m/s at 65 km is the cloud-top superrotation: the
+                         #    deck laps the planet in ~4 days, ~60x faster than the
+                         #    ground. NOT in utils/rss/ -- our Venus sheet stops at
+                         #    the surface row, so this figure is cited from published
+                         #    Venus climatology and is the number that makes Venus
+                         #    worth flying in: our column puts rho ~1.1 kg/m3 at 65
+                         #    km, so 100 m/s of air is ~5.6 kPa of dynamic pressure,
+                         #    6x what a hull at 40 m/s there is fighting. Reality's
+                         #    column is ~10x thinner at 65 km, so this model bills the
+                         #    deck harder than Venus does -- that is the single
+                         #    exponential (#686), not the wind's doing.
+                         # "Cloud top" is reality's deck, NOT this file's: the clouds
+                         # shell below sits 5000 m above the highest ground, ~6 km up,
+                         # and its drift is a pattern-units creep nothing links to
+                         # these rows (#714). Do not read this row as "where the
+                         # rendered clouds are".
+                         # Signs: these rows are GROUND-relative and positive east =
+                         # the sense the body's own spin carries the ground, which is
+                         # what superrotation is. Every popular account calls it
+                         # "westward", meaning sun-relative on a retrograde rotator
+                         # (Venus obliquity 177 deg, so its sun rises in the west);
+                         # authoring those words verbatim would point the whole deck
+                         # backwards. A linear branch from 1 to 100 m/s is a stub for
+                         # a real circulation profile -- it puts ~25 m/s at 16 km,
+                         # where the real stagnation region below the deck is calmer.
+                         # A third row around 30 km is the fix once someone has a
+                         # source for it; e2e flight/688-venus-wind-outruns-the-hull
+                         # spawns at that height and will move when it lands.
+                         'wind': [{'alt': 0, 'east': 1.0, 'north': 0.0},
+                                  {'alt': 65000, 'east': 100.0, 'north': 0.0}]},
           'clouds': {'color': [0.92, 0.82, 0.55], 'height': 5000,
                      'coverage': 0.9, 'freq': 8.0}}, False),
         ('earthfact.html', 'Earth', 3.0,

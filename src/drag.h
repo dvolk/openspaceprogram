@@ -7,8 +7,8 @@
 // body's ROTATING frame, so there the ship's frame velocity IS the air-relative
 // velocity. In any other frame Vehicle::airRelativeVel subtracts the co-rotation term
 // (#60/#97), and it also subtracts the body's atmosphere.wind profile at the hull --
-// the air's own motion over the ground (#688). Nothing in res/systems authors one yet,
-// so every shipped body is still the at-rest case.
+// the air's own motion over the ground (#688). Venus authors a profile now; every
+// other shipped body still does not, so there the air remains at rest.
 
 #include <algorithm>
 #include <cassert>

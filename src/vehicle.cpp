@@ -614,15 +614,16 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
     /* A speed_frac bed is slow RELATIVE TO THE AIR, which means relative to the
        frame: the atmosphere co-rotates, so in the body's rotational frame this
        velocity IS the air-relative one (Vehicle::airRelativeVel) -- ON A BODY WITH
-       NO AUTHORED WIND, which is every shipped one. Where a body does author wind
-       (#688) this number is the speed over the GROUND and the air reads it plus or
-       minus the wind at that height, which is bed authoring for #693 to settle
-       rather than a reason to change what speed_frac means. Scaling the
+       NO AUTHORED WIND, which is every shipped body except Venus. Where a body does
+       author wind (#688) this number is the speed over the GROUND, and the air reads
+       it plus or minus the wind at that height -- which is why a bed that wants an
+       AIRspeed authors speed_load instead (#693). Scaling the
        inertial circular speed instead leaves Kerbin's flying-slow bed with 16 m/s
        of air -- the ground and its air already move 177 m/s prograde -- i.e. a
        drop from the pad, not a start in flight (#451). */
     /* The air's own motion at the bed (#688), in the axes the bed is being built in.
-       Zero on every shipped body -- none authors a wind yet. Used twice: to compose the
+       Zero on every shipped body except Venus, whose rows the generator authors. Used
+       twice: to compose the
        velocity of a bed that authors an AIRspeed, and to aim the nose along the air
        rather than along the ground track below. */
     glm::dvec3 wind_rot(0.0);
@@ -646,8 +647,9 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
        lift-area load (q/g, kg/m^2) into the field THIS body pulls with at THIS height --
        instead of a fraction of what gravity would need for an orbit here. Authored as an
        AIR-relative speed, so the frame velocity is that plus the air's own motion: with
-       no authored wind (every shipped body) the second term is zero and this is just the
-       frame speed; on a windy body the hull still starts at its authored airspeed rather
+       no authored wind (every shipped body but Venus) the second term is zero and this
+       is just the frame speed; on a windy body the hull still starts at its authored
+       airspeed rather
        than at that number plus or minus the wind.
        The co-rotation is NOT added: `vel` is already the velocity in the frame the ground
        -- and, absent a wind, the air -- sits still in. */
@@ -686,8 +688,12 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
        turned to north: Beta reads -2.7 deg at t=0.9 s and +8.5 at t=1.9, with 1.3 kN m of
        fin torque, while the launch AoA canary still prints +0.0 -- an authored wind is
        horizontal (atmo.h:WindLevel is east/north only), so it moves Beta and can never
-       move AoA. With no authored wind -- every shipped body -- flow IS vel, so every
-       shipped bed aims exactly as it always did. */
+       move AoA. With no authored wind -- every shipped body but Venus -- flow IS vel, so
+       those beds aim exactly as they always did. Venus inverts what "the track" means:
+       a prograde orbit over a body with 177 deg of obliquity moves WESTWARD over its
+       ground, so the bed aims and flies west through the air while the authored air runs
+       east at 25 m/s at 16 km -- faster than the 6 m/s that hull can make -- and the
+       ground track comes out EAST, with the air (flight/688-venus-wind-outruns-the-hull). */
     const glm::dvec3 flow = vel - wind_rot;
     const glm::dmat3 orient = sc.atmo_frac
         ? glm::transpose(frame->root_orient)

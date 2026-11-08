@@ -713,26 +713,65 @@ static void check_wind() {
                        a["wind"] = rows({row(0.0, 5.0, 0.0)});
                    }).dump(), "physical air");
 
-    /* Nothing in res/systems (the six shipped files) authors wind YET (#688); an e2e
-       fixture is free to, and 688-kerbin-wind.json does. The mechanism landed before
-       the data on purpose: with no row authored, every shipped flight number, every
-       e2e flight golden and every drag figure in the corpus is unchanged, so a
-       regression in the wind path cannot hide behind a re-baselined flight.
-       Breaking this pin is a deliberate act, and the commit that breaks it owes three
-       things: delete this loop, re-run the flight cases that quote an airspeed or a
-       drag figure, and land the new numbers in the same commit. */
+    /* Which shipped bodies are allowed to author wind (#688). The mechanism landed
+       before the data on purpose: with no row authored, every shipped flight number,
+       every e2e flight golden and every drag figure in the corpus was unchanged, so a
+       regression in the wind path could not hide behind a re-baselined flight. Data
+       comes one body at a time after that, and a body earns its row by pinning what the
+       row DOES -- wind that no case pins is a number nothing verifies. So the list is
+       small and explicit: Venus, whose wind is pinned by
+       e2e flight/688-venus-wind-outruns-the-hull.
+       Adding a body here owes three things in the same commit: an e2e case that pins
+       the rows' effect on that body, a re-run of every flight case on it that quotes an
+       airspeed or a drag figure, and a commit message naming which numbers moved. */
+    static const char *const kWindsAuthored[] = {"Venus"};
+    constexpr size_t kNumWinds = sizeof(kWindsAuthored) / sizeof(kWindsAuthored[0]);
     for(const auto &de : std::filesystem::directory_iterator("res/systems")) {
         if(de.path().extension() != ".json") { continue; }
         std::ifstream sf(de.path());
         const nlohmann::json j = nlohmann::json::parse(sf);
         for(const auto &bv : j["bodies"]) {
-            if(bv.contains("surface") && bv["surface"].contains("atmosphere")
-               && bv["surface"]["atmosphere"].contains("wind")) {
-                printf("  %s: %s authors atmosphere.wind while every shipped flight"
-                       " golden still assumes none -- re-run the flight cases that"
-                       " quote an airspeed or a drag figure, and delete this pin, in"
-                       " the same commit\n",
-                       de.path().string().c_str(), bv.value("name", "?").c_str());
+            const std::string bname = bv.value("name", "?");
+            size_t slot = kNumWinds;
+            for(size_t k = 0; k < kNumWinds; ++k) {
+                if(bname == kWindsAuthored[k]) { slot = k; break; }
+            }
+            const bool has_key = bv.contains("surface")
+                && bv["surface"].contains("atmosphere")
+                && bv["surface"]["atmosphere"].contains("wind");
+            /* "has wind" means rows the loader would take: an array with at least one
+               row. system.cpp refuses an empty or scalar table at load, so a shipped
+               file with `"wind": []` is a game that will not start, not calm air. */
+            const bool authored = has_key
+                && bv["surface"]["atmosphere"]["wind"].is_array()
+                && !bv["surface"]["atmosphere"]["wind"].empty();
+            if(slot == kNumWinds) {
+                if(has_key && !authored) {
+                    printf("  %s: %s has an atmosphere.wind key that is not a"
+                           " non-empty array -- the loader refuses that at load, so the"
+                           " shipped game will not start\n",
+                           de.path().string().c_str(), bname.c_str());
+                    failures++;
+                } else if(authored) {
+                    printf("  %s: %s authors atmosphere.wind while every shipped flight"
+                           " golden on it still assumes none -- add a case that pins"
+                           " what the rows do, re-run the flight cases that quote an"
+                           " airspeed or a drag figure, and name it in kWindsAuthored,"
+                           " all in the same commit\n",
+                           de.path().string().c_str(), bname.c_str());
+                    failures++;
+                }
+                continue;
+            }
+            /* A listed body owes its rows to EVERY shipped file that carries it: the
+               four solar_system variants are one catalogue, and an e2e case can only
+               pin one of them, so a generator change that dropped Venus's rows from
+               three of four would otherwise be invisible here. */
+            if(!authored) {
+                printf("  %s: %s is listed in kWindsAuthored but this file gives it no"
+                       " wind rows -- the generated variants have to agree, since an"
+                       " e2e case pins only one of them\n",
+                       de.path().string().c_str(), bname.c_str());
                 failures++;
             }
         }
