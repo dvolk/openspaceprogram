@@ -3222,8 +3222,30 @@ void drawPartWindows(Game &g) {
                                 ship->parts[part]->aeroAlphaDeg,
                                 ship->parts[part]->aeroQ,
                                 ship->parts[part]->aeroMach);
+                    /* What the air is taking off this surface, in watts (#730). A LOAD
+                       and not a temperature on purpose: no material property sits behind
+                       it, and most of those watts leave in the wake rather than in the
+                       part. The peak is over the run under physics and zeroes when the
+                       ship goes on rails. The unit moves because the figure spans six
+                       orders between a skiff off the runway and a capsule at interface;
+                       what does NOT move is #644's two rules -- the row names its unit,
+                       and a live number is never rounded down to zero. */
+                    {
+                        const double cur = ship->parts[part]->aeroLoadW;
+                        const double pk = ship->parts[part]->aeroLoadPeakW;
+                        const double worst = cur > pk ? cur : pk;
+                        if(worst < 1e3) {
+                            ImGui::Text("Air load: %.0f W (peak %.0f W)", cur, pk);
+                        } else if(worst < 1e6) {
+                            ImGui::Text("Air load: %.1f kW (peak %.1f kW)",
+                                        cur * 1e-3, pk * 1e-3);
+                        } else {
+                            ImGui::Text("Air load: %.2f MW (peak %.2f MW)",
+                                        cur * 1e-6, pk * 1e-6);
+                        }
+                    }
                 } else {
-                    ImGui::Text("AoA: -   q:-   Mach -");
+                    ImGui::Text("AoA: -   q:-   Mach -   air load -");
                 }
                 if(def->isControlSurface()) {
                     /* The slider's range is not the clamp. Ctrl+click turns any slider

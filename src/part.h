@@ -126,6 +126,25 @@ struct Part {
        value with aeroValid false, so a reader that wants it for a FORCE goes
        through aeroValid too. */
     float aeroMach = 0.0f;
+    /* What the air is taking FROM this surface, in watts (#730): this surface's own q x
+       its own CdA x its own flow speed at the mount -- |fprof| x vpl, i.e. the rate the
+       form-drag bill of #455 is already charging it. No new physics and no authored
+       material number, which is the point: this is deliberately NOT a skin temperature,
+       since a T would want cp and eps per material class plus a time constant, and this
+       game has no failure that could spend them yet (#728). Two terms are missing on
+       purpose. Lift is perpendicular to the flow, so it moves no watts. And the hull's
+       silhouette (#461) is one ship-wide number with no part to charge, so a part the hull
+       carries quotes nothing rather than a share it never paid; a deployed canopy's bill is
+       the same story -- nothing reads a chute part today, so there is no row to put it in.
+       Unlike the trio above, this one is ZEROED each substep rather than left standing:
+       applyAeroForce clears it in the same sweep that clears aeroValid, because a reader
+       could SUM these across a ship, and a stale wattage inside a sum is a wrong total
+       rather than a wrong detail. Readers still gate on aeroValid: a part the pass could
+       not read has no load to show, and printing 0 W there would be claiming "no flow
+       here". The peak covers the run under physics and zeroes where the other per-part
+       transients do: goOnRails. */
+    float aeroLoadW = 0.0f;        // [W] this substep
+    float aeroLoadPeakW = 0.0f;    // [W] the worst substep since this ship last flew
     /* Which LIFTING SYSTEM this surface belongs to (#556/#555), as an index into
        Vehicle::aeroSystems; -1 = not a lifting or steering surface. Written by
        Vehicle::groupLiftingSystems at every geometry rebuild (the same fingerprint

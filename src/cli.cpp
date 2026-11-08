@@ -224,7 +224,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "split about the flow: its component perpendicular to the air-"
                  "relative flow over its component along it, which is the ratio a "
                  "glide ratio equals (#694); plus one [surface] line per lifting "
-                 "part: its angle, its q and its Mach) -- the "
+                 "part: its angle, its q, its Mach and the watts the air is taking "
+                 "from it (#730)) -- the "
                  "'is drag acting?' instrument");
 
     app.add_flag("--solar-log", args.solar_log,

@@ -3001,9 +3001,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     // Fins swing back to neutral whenever this substep produces no steering
     // (vacuum, no-atmosphere body, above the atmosphere top, --drag-cd 0). Same sweep
     // invalidates #485's per-surface readout: a part this pass does not reach
-    // quotes nothing rather than quoting last substep's angle.
+    // quotes nothing rather than quoting last substep's angle. #730's wattage
+    // zeroes in the same breath rather than standing, because unlike alpha/q/Mach
+    // it is a number a reader could SUM, and a stale wattage summed across a ship
+    // is a wrong total, not a wrong detail.
     for(Part *p : parts) {
         p->aeroValid = false;
+        p->aeroLoadW = 0.0f;
         if(p->def != nullptr && p->def->control_area > 0.0) { p->controlDefl = 0.0; }
     }
 
@@ -3485,6 +3489,17 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                not this surface's force divided by the ship's q either (#483 gives
                each surface its own). */
             lastSurfCdA += cda;
+            /* The watts that bill is taking from THIS surface (#730): q x CdA x the
+               flow speed at the mount -- |fprof| x vpl, so it cannot disagree with the
+               force two lines up. This is the one aero number the [drag] row cannot
+               answer: a 16 m span puts its two tips metres apart in q (measured on the
+               shipped skiff: 35 Pa vs 750 Pa), and the hull's silhouette is one
+               ship-wide figure with no part to charge. Most of these watts end up in
+               the wake rather than in the material, which is precisely why this row is
+               a LOAD and not a temperature -- an authored share is what a heat budget
+               would need before it could spend them (#728). */
+            p->aeroLoadW = (float)(lf.q * cda * vpl);
+            if(p->aeroLoadW > p->aeroLoadPeakW) { p->aeroLoadPeakW = p->aeroLoadW; }
             /* ... and it pushes HERE, which is the half the hull's cp never saw:
                a fin 3 m aft is a stabilizer whether or not the hull's own cp is
                anywhere near it. */
@@ -6521,6 +6536,10 @@ bool Vehicle::goOnRails() {
        hold its last stick deflection forever. */
     for(Part *p : parts) {
         p->controlDefl = 0.0;
+        /* #730's peak is a per-flight figure and no aero pass runs here, so it would
+           otherwise carry this flight's worst substep into the next one. Zero it with
+           the other state that has no substep to refresh it. */
+        p->aeroLoadPeakW = 0.0f;
         if(p->isRcs()) { for(double &f : p->rcsFired) { f = 0.0; } }
     }
     lastRcsNozzles.clear();  // likewise the [rcs] log: no substeps, no nozzles

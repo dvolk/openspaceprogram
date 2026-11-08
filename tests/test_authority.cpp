@@ -1756,6 +1756,82 @@ static Ring mkRing(std::deque<PartDef> &defs, double podMass, double tankMass,
     return t;
 }
 
+/* WHAT THE AIR TAKES OFF EACH SURFACE, IN WATTS (#730). The figure is one
+   multiplication on top of the form-drag bill of #455 -- this surface's q x its CdA x
+   its flow speed at the mount -- and the reason it is quoted as a LOAD and not a
+   temperature is that it needs no authored material number to be true. So the pin is
+   arithmetic against figures the row already prints, and the interesting half is WHICH
+   flow: a 16 m span puts its two tips metres apart in q (measured on the shipped skiff:
+   35 Pa at one, 750 Pa at the other), so a wattage taken from the ship's flow instead
+   of the surface's would be wrong in precisely the case the row exists for. The rig
+   lives here rather than in test_drag.cpp because this is the only aero fixture in the
+   suite that runs the whole pass (applyAeroForce) over a real part tree. */
+static void test_the_air_bills_each_surface_in_watts() {
+    printf("== each surface's wattage: its q x its CdA x its own flow ==\n");
+    const double rho = 1.225 * std::exp(-1000.0 / 8000.0);   // the fixture's air at 1000 m
+    const double qCom = 0.5 * rho * 100.0 * 100.0;
+    TerrainBody *body = mkAirBall();
+    Rig a = mkRig(100.0, 0.0);
+    /* Two fixture edits, both because this rig was built for torque. (1) Its plate is
+       steering-only, and the per-surface readout (aeroValid/q/Mach) is written by the
+       LIFTING pass -- a steering-only part gets it only while it is deflecting -- so give
+       it a lifting surface too, which is also what a reentry surface is. (2) It authors
+       no drag, so surfaceFormCdA() answers 0, the form-drag block skips the part, and
+       there is no bill to put watts on: give it the cds a flat plate carries, forward AND
+       side, since which applies depends on the incidence and the pins below read the CdA
+       the pass actually billed rather than assuming one. */
+    a.defs.back().lift_area = 2.0;
+    a.defs.back().drag_forward = 0.02;
+    a.defs.back().drag_side = 1.0;
+    a.defs.back().drag_backward = 0.02;
+    a.v->m_parent = body;
+    a.v->placeShip(glm::dvec3(0.0, 0.0, 601000.0), glm::dmat3(1.0));
+    SetVelocity(a.v->hull, glm::dvec3(100.0, 0.0, 0.0));
+    a.v->applyAeroForce(1.0 / 120.0);
+
+    CHECK_TRUE(a.fin->aeroValid, "the plate measured something this substep");
+    CHECK_TRUE(a.v->lastSurfCdA > 0.0, "and the form-drag block billed it");
+    CHECK_NEAR((double)a.fin->aeroLoadW, qCom * a.v->lastSurfCdA * 100.0,
+               1e-3 * qCom * a.v->lastSurfCdA * 100.0,
+               "watts = q x CdA x the flow speed, the same bill as the force");
+    CHECK_NEAR((double)a.fin->aeroLoadPeakW, (double)a.fin->aeroLoadW, 0.0,
+               "the peak starts at the first reading rather than above it");
+
+    /* Now spin it. The plate hangs 1.55 m off the COM ALONG THE NOSE (the rig stacks it
+       down the stack, not down the hull), so the spin has to be about Y: about Z the
+       lever is parallel to the axis and the sweep is nil (measured that way first --
+       20 rad/s about Z changed this plate's q by 0.02 %). 5 rad/s about Y carries the
+       plate ~7.8 m/s along the flow, so its own q drops ~15 % while the hull still
+       reads 100 m/s. Reading the identity off the part's OWN q is what makes this a pin
+       and not a tautology: q implies the local speed, so the wattage has to use that
+       speed and not the hull's. */
+    const double first = (double)a.fin->aeroLoadW;
+    a.v->hull->btBody->clearForces();
+    SetAngVelocity(a.v->hull, glm::dvec3(0.0, 5.0, 0.0));
+    a.v->applyAeroForce(1.0 / 120.0);
+    printf("   plate q %.1f Pa vs COM %.1f Pa; watts %.0f -> %.0f W\n",
+           (double)a.fin->aeroQ, qCom, first, (double)a.fin->aeroLoadW);
+    CHECK_TRUE(std::fabs((double)a.fin->aeroQ - qCom) > 0.02 * qCom,
+               "the spin put this plate's own q off the ship's, so the next check bites");
+    const double vLocal = std::sqrt(2.0 * (double)a.fin->aeroQ / rho);
+    CHECK_NEAR((double)a.fin->aeroLoadW, a.fin->aeroQ * a.v->lastSurfCdA * vLocal,
+               1e-3 * a.fin->aeroQ * a.v->lastSurfCdA * vLocal,
+               "the flow in the watts is the flow OVER THIS SURFACE");
+    const double comW = qCom * a.v->lastSurfCdA * 100.0;
+    CHECK_TRUE(std::fabs((double)a.fin->aeroLoadW - comW) > 0.01 * comW,
+               "...and that is NOT the ship's flow: the number a hull-speed law would "
+               "quote is a different one here");
+    /* The row reports one substep, not a running sum -- a reader who added these across
+       a ship would otherwise be adding the same flight over again -- while the peak
+       keeps the worst substep seen. */
+    CHECK_TRUE((double)a.fin->aeroLoadW < first,
+               "a thinner substep quotes a smaller figure, not an accumulated one");
+    CHECK_NEAR((double)a.fin->aeroLoadPeakW, first, 0.0,
+               "and the peak still holds the worst substep so far");
+    destroyShip(a.v);
+    delete body;
+}
+
 static void test_a_ring_of_bells_is_a_row_of_actuators() {
     printf("== #595: the RCS ring is a row of attitude actuators ==\n");
     std::deque<PartDef> defs;
@@ -2317,6 +2393,7 @@ int main() {
     test_the_armed_rcs_demand_is_a_direction();
     test_a_jet_engine_earns_its_gimbal_rating_only_in_air();
     test_a_fin_row_is_spent_and_hands_its_ask_to_the_air();
+    test_the_air_bills_each_surface_in_watts();
     test_a_ring_of_bells_is_a_row_of_actuators();
     test_the_aim_is_measured_once();
     test_the_aim_keeps_its_doors_shut();

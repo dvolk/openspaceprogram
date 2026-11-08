@@ -1,0 +1,55 @@
+NAME skiff-surface-wattage
+CLAIM The ld= column #730 adds to each [surface] row is that surface's own bill -- its q x its CdA x the flow speed standing AT it -- so dividing it back out sums to the Profile= the [drag] line already prints (the same CdA the force is billed on, no part counted twice and none invented), it is never a rounded-to-zero placeholder while the hull is in the air, and the mirrored wing pair's watts differ wherever their q does, which is exactly what one ship-wide figure would hide.
+KIND invariant
+ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
+# Same fixture as 485 (which pins the angles and the per-part q on this run), because the
+# claim here is about the arithmetic layered on those same two figures. --no-paint: every
+# assertion parses [drag]/[surface] rows, so the 3D pass buys nothing (#666).
+ARGS --sim-steps 3000 --drag-log --no-paint
+ARGS --sim-press 500,3000,R,500,20000,T,25000,1000,A
+EXPECT [surface]
+CHECK len(drag) >= 40
+CHECK len(surface) == 10 * len(drag)
+# Every surface row carries a wattage, and none of them is a placeholder zero. The
+# flight-cruise bed spends the whole run in the air at 70-80 m/s, so a part billed 0 W on
+# every row is a bug, not a reading -- the row would have to dash instead. (#644's rule:
+# a live number is never rounded down to zero; 0 W here would mean no area, no flow, or
+# no part, and this run has all three.)
+CHECK all(s["ld"] is not None for s in surface)
+CHECK all(s["ld"] > 0.0 for s in surface)
+# THE CLOSURE, and the reason for it: #699 found 47 of 50 [lift] rows printing MORE LIFT
+# THAN THE TOTAL AERO FORCE because per-part rows and the ship row were billed
+# independently. These two rows share one bill by construction -- the wattage is
+# |fprof| x v, and |fprof| is q x CdA from surfaceFormCdA -- so take the CdA back out of
+# each part's watts and the ten of them must add back to the Profile= on the [drag] line.
+# Each part's own q implies its own flow speed (q = 1/2 rho v^2, the same identity 485
+# pins), which is why rho is taken from the [drag] row: that leaves only the substep
+# between the aero pass and the printed row, which 485 measured at a few percent.
+# Averaged over the run on purpose: the numerator is every part-row's implied CdA, the
+# denominator is every [drag] row's Profile=, so a part counted twice, dropped, or billed
+# on an area the [drag] line does not know about moves the ratio off 1.0. Measured 1.005
+# across this run (per part: wing 0.1725 each, tail 0.0284, fin 0.0179, elevons 0.0080,
+# rudder 0.0062, ailerons 0.0081 -- 0.458 total against the row's 0.456); the 0.03 band is
+# the substep between the aero pass and the printed row, and it is what reddens if the two
+# rows stop sharing one bill.
+CHECK abs(sum(s["ld"] / (s["q"] * (2.0 * s["q"] / d["rho"]) ** 0.5) for s, d in zip(surface, [r for r in drag for _ in surface[0:10]])) / sum(dr["profile"] for dr in drag) - 1.0) < 0.03
+# ... and no single part may claim more of the ship's CdA than the whole ship has. Cheap,
+# and it is the per-part shape of #699's finding rather than the summed one.
+CHECK all(0.0 < s["ld"] / (s["q"] * (2.0 * s["q"] / d["rho"]) ** 0.5) < d["profile"] for s, d in zip(surface, [r for r in drag for _ in surface[0:10]]))
+# And the split is real: the watts are not one ship-wide figure copied ten times. Across
+# this run the mirror wings' watts differ by up to 8.5% of their mean (measured over the
+# 50 rows; 485 measures the same rows' q split at 35 Pa on ~760 Pa). A copied figure would
+# read 0.0 here, so the floor below is a quarter of the measured split.
+CHECK max(abs(l["ld"] - r["ld"]) / (0.5 * (l["ld"] + r["ld"])) for l, r in zip(surface[0::10], surface[1::10])) > 0.02
+# WHAT REDDENS THIS CASE, established by mutation rather than by argument (#682's gate was
+# broken and green; #727's first tolerance was as loose as its mutation):
+#   - billing a surface twice (q x CdA x v x 2) reddens the closure: ratio 2.01 against
+#     the 0.03 band.
+#   - taking the flow speed from the HULL instead of from the mount (q x CdA x |vrel|) does
+#     NOT redden anything here, which is worth recording rather than hiding: the sweep is
+#     antisymmetric across a span so it cancels in a sum, and the twins still disagree
+#     because their q is per-part. That mutation is caught one level down by
+#     tests/test_authority.cpp's wattage test (it reddened: 1104780 W against a wanted
+#     1019527 W), which is where the law belongs. This case owns the bookkeeping: one bill,
+#     every part, no part counted twice.
+FORBID error:

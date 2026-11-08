@@ -931,7 +931,18 @@ void tick(Game &g) {
                    that bills its wave drag, so the number in the log and the number in
                    the law are one number.
                    Labelled by its def id when it has one (wing_l, tail_r) because a
-                   twin pair is exactly the case this row exists to tell apart. */
+                   twin pair is exactly the case this row exists to tell apart.
+                   ld= (#730) is the watts the air is taking from that surface -- its
+                   own q x its own CdA x its own flow speed -- which is where a wing
+                   root, a tip and a control surface differ by 20x while the [drag]
+                   line still says one drag coefficient for the ship. It is a LOAD, not
+                   a temperature: no material property is involved, and most of those
+                   watts leave in the wake. Take each part's CdA back out of its watts
+                   (ld over q x the speed its own q implies) and the parts of a row add
+                   back to the [drag] line's Profile= -- 1.005 measured over a Kerbin
+                   cruise, pinned by flight/730 -- because both rows read one bill from
+                   surfaceFormCdA. That closure is what #699's lesson asks of a per-part
+                   row. */
                 {
                     bool any = false;
                     for(const Part *p : g.ship->parts) {
@@ -940,9 +951,10 @@ void tick(Game &g) {
                             continue;
                         }
                         if(!any) { printf("[surface]"); any = true; }
-                        printf(" %s a=%+.1f q=%.0f mach=%.3f",
+                        printf(" %s a=%+.1f q=%.0f mach=%.3f ld=%.0f",
                                p->id.empty() ? p->def->name.c_str() : p->id.c_str(),
-                               p->aeroAlphaDeg, p->aeroQ, p->aeroMach);
+                               p->aeroAlphaDeg, p->aeroQ, p->aeroMach,
+                               p->aeroLoadW);
                     }
                     if(any) { printf("\n"); }
                 }
