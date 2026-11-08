@@ -44,9 +44,13 @@ staging/**/bakes/
 staging/**/data/
 staging/**/preview/
 
-# Agent tooling local state (mimocode: plans, node_modules, cron lock) -- local,
-# never commit
+# Agent tooling local state (mimocode: plans, node_modules, cron lock; qwen:
+# settings + scratch) -- local, never commit
 .mimocode/
+.qwen/
+# Local convenience symlink so pi (which auto-loads AGENTS.md/CLAUDE.md) picks
+# up the tracked QWEN.md; keep the real file in QWEN.md only.
+AGENTS.md
 
 # Source data (baked into the tracked ksp_system.json)
 ksp_system.csv
