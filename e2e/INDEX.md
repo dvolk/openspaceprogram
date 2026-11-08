@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 305 |
+| `invariant` | a behaviour or a player route the game must keep | 307 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 43 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **367** |
+| | **total** | **369** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -151,7 +151,7 @@ judgement. Select by number, name or path, e.g.
 | `crew/394-spent-pool-kerbal-refused.txt` | invariant | A kerbal spawned on a spent pad pool is refused, not minted off the def. |
 | `crew/547-walking-kerbal-suit-mass-overflow-refused.txt` | invariant | A saved kerbal whose suit contents add up to more mass than the game can store is refused, not stood up as a NaN-inertia Body. |
 
-## science (20)
+## science (22)
 
 | case | kind | pins |
 |---|---|---|
@@ -175,6 +175,8 @@ judgement. Select by number, name or path, e.g.
 | `science/285-suit-experiment-from-the-walker.txt` | invariant | A walking kerbal's suit window runs its own experiment. |
 | `science/665-barometer-records-its-reading.txt` | invariant | A barometer run carries the pressure it read: on the part window, in the run log and again at recovery. |
 | `science/667-thermometer-instrument.txt` | invariant | A thermometer part shows the air temperature in its window and records it with its finding. |
+| `science/727-solar-log-dashes-what-a-world-does-not-state.txt` | invariant | On Kerbin --solar-log still reads the star and the authored ground, and prints a DASH for the albedo and the black-body column rather than a zero, because the KSP half states no albedo anywhere. |
+| `science/727-solar-log-weighs-the-star-against-the-ground.txt` | invariant | --solar-log reads the star and the authored ground off the same row, and its black-body column is the law in src/solar.h, not a decoration. |
 
 ## vab (37)
 

@@ -28,7 +28,7 @@ and crash strings are forbidden by default, so a case names only its own
 refusals; NOGLCHECK opts out of the GL drains for timing-sensitive cases.
 CHECK sees out and
 the parsed logs (orbit/dbg/att/eva/fuel/drainlog/power/dv/mass/drag/shake/cam/
-terrain/surf/xfer/porkchop/surfmap/mapb/plane/slew/toast/scene) plus
+terrain/surf/xfer/porkchop/surfmap/solar/mapb/plane/slew/toast/scene) plus
 first/last/re. `rec` is the exception to "parse stdout": the flight recorder's
 trace is a FILE, so the harness reads it from the case's scratch --data-dir
 (flights/*.log, #662). The row lists parse stdout from the LAST "Loaded game from"
@@ -172,6 +172,18 @@ SURFMAP_RE = re.compile(
     r"(\d+)x(\d+)\s+albedo=\[([\d.]+) ([\d.]+) ([\d.]+)\]\s+"
     r"shaded=\[([\d.]+) ([\d.]+) ([\d.]+)\]\s+shade=(on|off)\s+"
     r"ocean=(on|off)\s+sites=(\d+)"
+)
+# --solar-log (src/cli.cpp's flag, printed by the kGateSolar block in tick.cpp): the
+# star as the world states it, and the ground under the hull as the world states it.
+# A dashed albedo or bb_T is NOT a zero -- it means that body authors no bond albedo,
+# which is #722's whole complaint about the fictional half, and #726's argument that
+# "absent" needs its own spelling. This is also the only end-to-end read of
+# src/solar.h, so a CHECK can re-derive #687's black-body balance in python and fail
+# if the C++ ever spells sigma or the divide-by-four differently (the #707 worry).
+SOLAR_RE = re.compile(
+    r"\[solar\]\s+t=([\d.]+)s\s+star=\"([^\"]*)\"\s+dist=([-\d.e+]+|-) m\s+"
+    r"flux=([-\d.e+]+|-) W/m2\s+elev=([-\d.]+|-) deg\s+flat=([-\d.e+]+|-) W/m2\s+"
+    r"body=\"([^\"]*)\"\s+albedo=([-\d.]+|-)\s+ground_T=([-\d.]+|-) K\s+bb_T=([-\d.]+|-) K"
 )
 # --slew-log (vehicle.cpp slew_log): the attitude target the autopilot steers
 # toward, in the ship's own frame. Pairs with --plane-log's n_orb: a prograde
@@ -898,6 +910,23 @@ def parse_surfmap(out):
     return rows
 
 
+def parse_solar(out):
+    # A dashed column reads as None, same as every other optional column here: the
+    # row prints '-' when the WORLD states nothing (no authored albedo, no live star
+    # in range), and a CHECK that wants "absent" must ask for None, not for 0.0.
+    rows = []
+    for m in SOLAR_RE.finditer(out):
+        (t, star, dist, flux, elev, flat, body, albedo, ground_t, bb_t) = m.groups()
+        num = lambda s: None if s == "-" else float(s)
+        rows.append({
+            "t": float(t), "star": star, "body": body,
+            "dist": num(dist), "flux": num(flux), "elev": num(elev),
+            "flat": num(flat), "albedo": num(albedo),
+            "ground_T": num(ground_t), "bb_T": num(bb_t),
+        })
+    return rows
+
+
 def parse_att(out):
     rows = []
     for m in ATT_RE.finditer(out):
@@ -1537,6 +1566,7 @@ def run_case(case):
     xfer = parse_xfer(world)
     porkchop = parse_porkchop(world)
     surfmap = parse_surfmap(world)
+    solar = parse_solar(world)
     att = parse_att(world)
     ascent = parse_ascent(world)
     eva = parse_eva(world)
@@ -1569,7 +1599,7 @@ def run_case(case):
         rec.extend(parse_rec_file(trace))
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
-        "porkchop": porkchop, "surfmap": surfmap, "att": att, "ascent": ascent, "eva": eva,
+        "porkchop": porkchop, "surfmap": surfmap, "solar": solar, "att": att, "ascent": ascent, "eva": eva,
         "fuel": fuel, "drainlog": drainlog, "power": power, "dv": dv, "mass": mass,
         "drag": drag, "shake": shake,
         "rec": rec,

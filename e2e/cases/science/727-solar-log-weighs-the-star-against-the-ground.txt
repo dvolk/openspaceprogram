@@ -1,0 +1,42 @@
+NAME 727-solar-log-weighs-the-star-against-the-ground
+CLAIM --solar-log reads the star and the authored ground off the same row, and its black-body column is the law in src/solar.h, not a decoration.
+KIND invariant
+# #727: --solar-log is the only end-to-end read of src/solar.h (#687). Before this it
+# was pinned only by unit tests on the header's functions, so nothing ran cli.cpp's
+# flag -> kGateSolar -> the tick.cpp block: the flag wiring, which body `over`
+# resolves to, the dash rules, and the composition of L = 4 pi R^2 sigma T^4 with
+# S = L / 4 pi d^2 were all unpinned end to end.
+#
+# Venus is the row to weigh because it is the one body whose two ends disagree
+# loudly: it authors bond albedo 0.770 AND ground temperature 737 K, so the row shows
+# both the irradiance-only answer (227 K) and the published one, 510 K apart. That
+# gap is the greenhouse the game does not model, and it is why #724 and #728 want
+# this pipe rather than a second one.
+#
+# Bounds, not digits: flux is Kerbol's luminosity over Venus's authored rail, so
+# 2000..3000 W/m^2 stays true if the epoch or the ellipse moves; the row count
+# depends on wall clock, hence >= 1 and all(). The one exact pin is the LAST CHECK,
+# which re-derives bb_T from the printed flux and albedo with sigma spelled out here
+# -- if the C++ ever drifts its sigma or its divide-by-four, this case goes red
+# while the unit tests keep passing (#707's whole worry, measured). Measured bite:
+# the row agrees with the python within 0.05 K, and a sigma 0.9 % off turns it red,
+# so sigma is pinned to roughly that tight end to end. (An earlier 0.5 K tolerance
+# did NOT bite -- the mutation survived it, which is why the number is 0.05.)
+ARGS --timeout 4 --solar-log --system res/systems/solar_system.json
+ARGS --startship v,res/ships/skiff_trim.json,Venus,flying-trim
+CHECK len(solar) >= 1
+CHECK all(d["body"] == "Venus" and d["star"] == "Sun" for d in solar)
+CHECK all(d["dist"] is not None and 1.0e11 < d["dist"] < 1.2e11 for d in solar)
+CHECK all(d["flux"] is not None and 2000.0 < d["flux"] < 3000.0 for d in solar)
+CHECK all(d["elev"] is not None and -90.0 <= d["elev"] <= 90.0 for d in solar)
+# cos(incidence) <= 1: the plate can never read more than the overhead flux.
+CHECK all(0.0 <= d["flat"] <= d["flux"] for d in solar)
+CHECK all(d["albedo"] is not None and abs(d["albedo"] - 0.770) < 1e-3 for d in solar)
+CHECK all(700.0 < d["ground_T"] < 760.0 for d in solar)
+CHECK all(200.0 < d["bb_T"] < 250.0 for d in solar)
+CHECK all(abs(d["bb_T"] - (d["flux"] * (1.0 - d["albedo"]) / (4.0 * 5.670374419e-8)) ** 0.25) < 0.05 for d in solar)
+CHECK all(d["ground_T"] > 2.5 * d["bb_T"] for d in solar)
+# Absent prints a dash; a 0 here would be the #726 failure mode.
+FORBID albedo=-
+FORBID ground_T=-
+FORBID bb_T=-

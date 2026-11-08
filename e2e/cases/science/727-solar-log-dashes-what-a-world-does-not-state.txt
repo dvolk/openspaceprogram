@@ -1,0 +1,26 @@
+NAME 727-solar-log-dashes-what-a-world-does-not-state
+CLAIM On Kerbin --solar-log still reads the star and the authored ground, and prints a DASH for the albedo and the black-body column rather than a zero, because the KSP half states no albedo anywhere.
+KIND invariant
+# The other half of #727, and the only thing standing between #726 and a silent
+# regression: an ABSENT reading must render as absent. ksp_bodies.csv has no albedo
+# column at all (#722), so tick.cpp prints `albedo=- ... bb_T=-`, and if someone
+# "fixes" that by defaulting albedo to 0.0 the row starts claiming a perfectly black
+# surface -- a real 0 where the world said nothing. #728 makes that a bug with teeth
+# (absorbed flux, then a part's skin), so pin it before then.
+#
+# Same row, three sources: the star (Kerbol's rail, 1361 W/m^2 here), the body's
+# authored ground temperature (Kerbin's 288.15 K, which gen_systems now takes from
+# the CSV's temperature_max_k row), and the missing albedo. Bounds, not digits, on
+# the first two; exactness only on the dash.
+ARGS --timeout 3 --solar-log --system res/systems/ksp_system.json
+ARGS --startship p,res/ships/skiff_trim.json,Kerbin,flying-cruise
+CHECK len(solar) >= 1
+CHECK all(d["body"] == "Kerbin" and d["star"] == "Kerbol" for d in solar)
+CHECK all(d["albedo"] is None and d["bb_T"] is None for d in solar)
+CHECK all(280.0 < d["ground_T"] < 295.0 for d in solar)
+CHECK all(d["flux"] is not None and 1000.0 < d["flux"] < 1600.0 for d in solar)
+# Kerbin's sun sits near the horizon at this bed, so the plate can read as little as
+# nothing -- but never more than the overhead flux, and never negative.
+CHECK all(0.0 <= d["flat"] <= d["flux"] for d in solar)
+FORBID albedo=0.000
+FORBID bb_T=0.00
