@@ -227,6 +227,16 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "part: its angle, its q and its Mach) -- the "
                  "'is drag acting?' instrument");
 
+    app.add_flag("--solar-log", args.solar_log,
+                 "Log the star's light on the active ship per tick: distance to "
+                 "the star, the flux crossing a surface normal to the beam there "
+                 "[W/m2], the star's elevation over that hull's local horizon, the "
+                 "flux on a horizontal plate there, and the body underneath's "
+                 "authored Bond albedo and surface temperature beside the "
+                 "black-body temperature the flux and albedo imply (#687). "
+                 "Read-out only: nothing in the physics consumes it yet. "
+                 "Top-of-atmosphere -- no air dims the sun anywhere in the game.");
+
     app.add_option("--timeout", args.timeout_seconds,
                    "Auto-exit the main loop after this many wall-clock "
                    "seconds (0 = run until closed; default: 0). A --sim-steps "

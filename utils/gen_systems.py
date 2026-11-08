@@ -28,7 +28,8 @@ from gas_mixes import DRY_AIR, CO2_HEAVY, H2_HE_CH4_KSP
 # converted (a table that carries no marker is read as GEOMETRIC metres, which is what every
 # altitude in a system file means). Both generators call the same function, because each
 # --check only compares its own output and would not notice the two drifting.
-from atmo_units import resolve_layer_heights, check_body_gravity
+from atmo_units import (resolve_layer_heights, check_body_gravity,
+                        SIGMA_SB, semimajor_axis)
 
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
@@ -88,6 +89,35 @@ def load_wiki_orbits(csv_path):
     return out
 
 WIKI_ORBITS = load_wiki_orbits(os.path.join(HERE, "ksp_bodies.csv"))
+
+
+def load_wiki_thermal(csv_path):
+    """The thermal columns ksp_bodies.csv carries: {name: (sma_m, T_lo_K, T_hi_K)}.
+    For a PLANET that pair is a NIGHT/DAY extreme, not an average (Kerbin 186.95 -
+    288.15 K); for the star it is a photosphere-to-corona range that no single surface
+    reading satisfies (Kerbol 4014.95 - 9621.2 K). Both get printed against what this
+    script authors, never quietly averaged down to one number (#687)."""
+    import csv
+    out = {}
+    with open(csv_path) as f:
+        for row in csv.DictReader(f):
+            def num(key):
+                v = (row.get(key) or "").strip()
+                if v in ("", "nan", "inf", "-inf"):
+                    return None
+                return float(v)
+            lo, hi = num("temperature_min_k"), num("temperature_max_k")
+            if lo is None and hi is None:
+                continue
+            out[row["name"]] = (num("semi_major_axis_m"), lo, hi)
+    return out
+
+WIKI_THERMAL = load_wiki_thermal(os.path.join(HERE, "ksp_bodies.csv"))
+
+# What the home world is built to receive. Kerbin's air authors 101.3 kPa of dry air,
+# its sea is fresh water, its tilt is 23.44 deg and its datum 288.15 K: it is an
+# Earth-shaped world, and Earth's own solar constant is the light that goes with that.
+EARTH_SOLAR_FLUX = 1361.0   # W/m^2, Earth's Bulk-parameters row in utils/rss/html/
 
 # WHAT THE AIR IS MADE OF (#552 A4b, #630), by MOLE. A body authors its mix and the
 # loader resolves molar mass, gamma and the oxidizer share the jet gate reads from it
@@ -256,6 +286,15 @@ SURFACES = {
                     [0.45, [0.45, 0.55, 0.20]],
                     [0.8, [0.55, 0.45, 0.35]],
                     [1.0, [1.00, 1.00, 1.00]]],
+        # #687: the ground's temperature. ksp_bodies.csv states Kerbin's range as
+        # 186.95 - 288.15 K -- a night/day PAIR, not an average -- and the upper figure
+        # is already the number this body's air starts from (the 1976 table's sea-level
+        # row, 288.15 K, three lines below). So one published number is used twice, and
+        # the ground and the air's datum agree by authorship rather than by accident.
+        # Every other KSP body's range is left UNAUTHORED: a day-side maximum is not a
+        # mean, and inventing the difference is a design call this script does not get
+        # to make silently. The readouts print a dash for those.
+        "temperature": 288.15,
         # #686: Kerbin stops being a 188 K world. A scale height IS a surface temperature --
         # the trio lock (p0 = rho0 g H, T = g H M / R) makes the old `scale_height: 5500` read
         # as T0 187.96 K at 66.1 kPa with a 275 m/s sound speed, which is pinned at
@@ -748,6 +787,38 @@ def check(obj, path):
     print(f"OK      {path}")
     return True
 
+def author_star_temperature(obj):
+    """#687: a star's output is ONE authored number (surface.temperature) that every
+    body's insolation derives from, so nothing internal can catch it being wrong --
+    the #684/#686 meta-law again. Both these systems author it the same way: the home
+    world receives Earth's sun, inverted through solar.h's L = 4 pi R^2 sigma T^4 at
+    that world's own rail -- the same reason its air authors 101.3 kPa of dry air, its
+    sea is fresh water and its tilt 23.44 deg.
+
+    The wiki's star row states a temperature RANGE instead (Kerbol 4014.95 - 9621.2 K,
+    which is a photosphere-to-corona pair, not a surface) and that low end would put
+    ~2,000 W/m^2 on a world built like Earth. It is printed as a disagreement, not
+    used: which statement to honour is a design call, not a scrape. Both lines print
+    whether or not anything agrees (#685's rule)."""
+    star = next(b for b in obj["bodies"] if b["type"] == "star")
+    home = next(b for b in obj["bodies"] if b["name"] == obj["home"])
+    w = (home.get("inertial") or {}).get("orb_ang_speed")
+    assert w, home["name"] + ": no orbital speed to size the star by"
+    a = semimajor_axis(G * star["mass"], w)
+    T = (EARTH_SOLAR_FLUX / SIGMA_SB) ** 0.25 * math.sqrt(a / star["radius"])
+    star.setdefault("surface", {})["temperature"] = round(T, 2)
+    print('  star      %-8s T %9.2f K -> %7.1f W/m2 at %s (%.6g m), from'
+          ' "%s receives Earth\'s sun"'
+          % (star["name"], T, EARTH_SOLAR_FLUX, home["name"], a, home["name"]))
+    rng = WIKI_THERMAL.get(star["name"])
+    if rng and rng[1]:
+        lo, hi = rng[1], rng[2]
+        flux_lo = SIGMA_SB * lo ** 4 * (star["radius"] / a) ** 2
+        print('  wiki      %-8s states %9.2f - %9.2f K, which would put %7.1f W/m2'
+              ' there instead -- named, not resolved (#687)'
+              % (star["name"], lo, hi, flux_lo))
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Generate res/systems/{old,ksp}_system.json, or --check "
@@ -768,6 +839,7 @@ def main():
     # names the typo at the keyboard instead of at boot.
     bad = []
     for obj, _path in targets:
+        author_star_temperature(obj)
         bad += check_body_gravity(obj["bodies"], verbose=True)
     if bad:
         for m in bad:

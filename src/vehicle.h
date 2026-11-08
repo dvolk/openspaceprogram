@@ -1951,6 +1951,12 @@ public:
     // --- physical rotation model -------------
     glm::dvec3 GetPositionRelTo(const Part *part, Frame *relTo);
 
+    /* The hull's centre of mass in UNIVERSE-ROOT (star) axes (#687). Every other
+       frame math here is local to a body; insolation is the one reading that
+       needs the distance to the star, and asking for it through a chain of
+       local frames is how it would end up spelled three ways. */
+    glm::dvec3 GetRootPos();
+
     /* Re-express the ship's state in newFrame and re-home it (setSoi). */
     void moveToFrame(Frame *newFrame, double t);
 

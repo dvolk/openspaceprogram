@@ -8,6 +8,7 @@
 #include "angmath.h"             // acosUnit: the one acos(clamp) spelling (#622)
 #include "eva.h"                 // Kerbal::armInput (the kerbal's controls)
 #include "orbit.h"               // OrbitElements, computeOrbitElements
+#include "solar.h"               // sunSample / incidentFlux: the --solar-log row (#687)
 #include "physics.h"             // physics_tick()
 #include "timestep.h"            // substepCount()
 
@@ -613,6 +614,93 @@ void tick(Game &g) {
              * Mach= is a special case of the last group: it is a MAGNITUDE, not a
                direction, so the unusable flow that dashes AoA puts 0.000 there, which
                is what it is -- a hull at rest in its own air. */
+        /* #687: the star's light as an instrument, and the first number in the
+           game that varies with WHERE and WHEN a hull is. One row per interval:
+           distance to the star; the flux crossing a surface NORMAL to the beam
+           there; the star's elevation over this hull's own local horizon (negative
+           = night); the flux on a horizontal plate there (what a ground radiometer
+           reads); then the WORLD's three claims -- the authored Bond albedo, the
+           authored surface temperature, and the black-body temperature the flux and
+           albedo imply. Read bb_T against ground_T: the gap is what an atmosphere
+           does. Earth's own sheet says 254 K of black-body under 288 K of mean, and
+           nothing here models that 34 K yet -- which is the honest summary of #687.
+           The last three columns DASH on "nobody authored this", not on zero: a 0 K
+           ground and a perfectly absorbing (albedo 0) world are both real numbers
+           this convention cannot tell from a blank, the same trade the atmosphere's
+           `height == 0 means derived` already makes.
+           NO EXTINCTION, NO ECLIPSE: `flux` is top-of-atmosphere and unshadowed, so
+           flying under Venus's 92-bar sky dims nothing (solar.h states why, so a
+           reader who expects a blue-filtered number finds the reason in the law). */
+        if(g.ship && g.args.solar_log) {
+            const Uint32 now_ms = g.logClockMs();
+            if(g.logDue(kGateSolar, now_ms, g.orbit_log_interval_ms)) {
+                const glm::dvec3 p = g.ship->GetRootPos();
+                const double lum = (g.sun && g.sun->frame)
+                                 ? g.sun->star_luminosity : 0.0;
+                const glm::dvec3 star = (g.sun && g.sun->frame)
+                                      ? g.sun->frame->root_pos : glm::dvec3(0.0);
+                const SunSample ss = sunSample(lum, star, p);
+                /* The local vertical, from the SoI body the hull is in. A hull at a
+                   body's exact centre (a fixture, never a flight) has no horizon, and
+                   then elev/flat dash rather than asin(0) = 'overhead'. */
+                const glm::dvec3 up = (g.ship->m_parent && g.ship->m_parent->frame)
+                                    ? p - g.ship->m_parent->frame->root_pos
+                                    : glm::dvec3(0.0);
+                const double upl = glm::length(up);
+                const bool have_horizon = ss.valid && upl > 1e-9;
+                const glm::dvec3 zenith = have_horizon ? up * (1.0 / upl)
+                                                       : glm::dvec3(0.0);
+                const double elev = have_horizon
+                    ? sunElevation(zenith, ss.to_sun) : 0.0;
+                char flux_s[32], elev_s[32], flat_s[32], dist_s[32];
+                if(ss.valid) {
+                    snprintf(dist_s, sizeof dist_s, "%.6g", ss.dist_m);
+                    snprintf(flux_s, sizeof flux_s, "%.6g", ss.flux);
+                } else {
+                    snprintf(dist_s, sizeof dist_s, "-");
+                    snprintf(flux_s, sizeof flux_s, "-");
+                }
+                if(have_horizon) {
+                    snprintf(elev_s, sizeof elev_s, "%.2f",
+                             glm::degrees(elev));
+                    snprintf(flat_s, sizeof flat_s, "%.6g",
+                             incidentFlux(ss.flux, zenith, ss.to_sun));
+                } else {
+                    snprintf(elev_s, sizeof elev_s, "-");
+                    snprintf(flat_s, sizeof flat_s, "-");
+                }
+                /* The WORLD's claims, read off the SoI body underneath. A hull in
+                   the star's own SoI has no body there, so all three dash -- which is
+                   the same answer a hull over an unsourced moon gets. */
+                const TerrainBody *over = g.ship->m_parent;
+                const float alb = over ? over->surface.albedo : 0.0f;
+                const float groundT = over ? over->surface.temperature : 0.0f;
+                char alb_s[24], gt_s[24], bb_s[24];
+                if(alb > 0.0f) {
+                    snprintf(alb_s, sizeof alb_s, "%.3f", alb);
+                    snprintf(bb_s, sizeof bb_s, "%.2f",
+                             ss.valid ? blackbodyTemperature(ss.flux, alb) : 0.0);
+                } else {
+                    snprintf(alb_s, sizeof alb_s, "-");
+                    snprintf(bb_s, sizeof bb_s, "-");
+                }
+                if(groundT > 0.0f) {
+                    snprintf(gt_s, sizeof gt_s, "%.2f", groundT);
+                } else {
+                    snprintf(gt_s, sizeof gt_s, "-");
+                }
+                printf("[solar] t=%.1fs star=\"%s\" dist=%s m flux=%s W/m2 "
+                       "elev=%s deg flat=%s W/m2 body=\"%s\" albedo=%s "
+                       "ground_T=%s K bb_T=%s K\n",
+                       g.time,
+                       g.sun ? g.sun->name.c_str() : "(none)",
+                       dist_s, flux_s, elev_s, flat_s,
+                       g.ship->m_parent ? g.ship->m_parent->name.c_str()
+                                        : "(none)",
+                       alb_s, gt_s, bb_s);
+            }
+        }
+
         if(g.ship && g.args.drag_log) {
             const Uint32 now_ms = g.logClockMs();
             if(g.logDue(kGateDrag, now_ms, g.orbit_log_interval_ms)) {

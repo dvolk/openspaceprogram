@@ -82,6 +82,11 @@ struct GameArgs {
                                 // induced drag that lift pays -- never the lift
                                 // itself (#502, #455). 0 = off
     bool drag_log = false;      // the active ship's drag per tick
+    /* #687: the star's light per tick -- distance, flux, elevation, and what the
+       body underneath asserts (authored albedo / surface temperature, and the
+       black-body temperature the flux implies). Read-only: nothing in the physics
+       consumes it yet (#553's part heat is the first buyer). */
+    bool solar_log = false;
 
     std::vector<SimKeyPress> sim_presses;
     std::vector<SimMouseAction> sim_mouse_actions;

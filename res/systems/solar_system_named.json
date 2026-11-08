@@ -63,7 +63,8 @@
               0.75
             ]
           ]
-        ]
+        ],
+        "temperature": 5769.41
       },
       "inertial": {
         "soi": 100000000000000.0,
@@ -109,7 +110,9 @@
               0.68
             ]
           ]
-        ]
+        ],
+        "albedo": 0.068,
+        "temperature": 440.0
       },
       "inertial": {
         "orb_ang_speed": 8.266781726111516e-07,
@@ -201,7 +204,9 @@
           "height": 55000,
           "coverage": 0.9,
           "freq": 8.0
-        }
+        },
+        "albedo": 0.77,
+        "temperature": 737.0
       },
       "inertial": {
         "orb_ang_speed": 3.2363920127827824e-07,
@@ -367,7 +372,9 @@
           "height": 10500,
           "coverage": 0.55,
           "freq": 10.0
-        }
+        },
+        "albedo": 0.294,
+        "temperature": 288.0
       },
       "inertial": {
         "orb_ang_speed": 1.9909885714794665e-07,
@@ -454,7 +461,9 @@
               "fraction": 0.0013
             }
           ]
-        }
+        },
+        "albedo": 0.25,
+        "temperature": 214.0
       },
       "inertial": {
         "orb_ang_speed": 1.0585759726109988e-07,
@@ -527,6 +536,8 @@
             }
           ]
         },
+        "albedo": 0.343,
+        "temperature": 165.0,
         "rings": [
           {
             "name": "Halo",
@@ -637,6 +648,8 @@
             }
           ]
         },
+        "albedo": 0.342,
+        "temperature": 134.0,
         "rings": [
           {
             "name": "C-ring",
@@ -738,7 +751,9 @@
               "fraction": 0.023
             }
           ]
-        }
+        },
+        "albedo": 0.3,
+        "temperature": 76.0
       },
       "inertial": {
         "orb_ang_speed": 2.3699235521267574e-09,
@@ -814,7 +829,9 @@
               "fraction": 0.015
             }
           ]
-        }
+        },
+        "albedo": 0.29,
+        "temperature": 72.0
       },
       "inertial": {
         "orb_ang_speed": 1.2082279223500606e-09,
@@ -880,7 +897,8 @@
           "thickness": 8000,
           "power": 5.0,
           "intensity": 0.3
-        }
+        },
+        "albedo": 0.72
       },
       "inertial": {
         "orb_ang_speed": 8.030261944172967e-10,

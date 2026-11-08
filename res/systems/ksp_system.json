@@ -62,7 +62,8 @@
               0.75
             ]
           ]
-        ]
+        ],
+        "temperature": 2838.1
       },
       "inertial": {
         "soi": 1e+18,
@@ -330,6 +331,7 @@
             ]
           ]
         ],
+        "temperature": 288.15,
         "atmosphere": {
           "color": [
             0.3,

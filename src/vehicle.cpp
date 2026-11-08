@@ -6237,6 +6237,10 @@ static glm::dvec3 rootVelIn(Frame *f, const glm::dvec3 &pos, const glm::dvec3 &v
     return f->root_orient * (vel + f->GetStasisVelocity(pos)) + f->root_vel;
 }
 
+glm::dvec3 Vehicle::GetRootPos() {
+    return rootPosIn(frame, get_center_of_mass());
+}
+
 /* Squared Frobenius distance between two rotations: for a small relative
    rotation of theta radians it is 2*theta^2, so 1e-20 is ~1e-10 rad. */
 static double rotDist2(const glm::dmat3 &a, const glm::dmat3 &b) {

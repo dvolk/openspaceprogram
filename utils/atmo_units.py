@@ -85,6 +85,20 @@ def resolve_layer_heights(surface, radius_m):
 # constant is a guard that approves a file the loader then refuses.
 G = 6.674e-11
 
+# src/solar.h:kStefanBoltzmann -- the Stefan-Boltzmann constant, the same value the
+# loader integrates a star's output with (#687). Written once here for the same
+# reason #689 wrote G once: a guard that approves a file with a different constant
+# than the loader reads is a guard that has already lost.
+SIGMA_SB = 5.670374419e-8
+
+
+def semimajor_axis(mu, w):
+    """A circular rail's radius from its angular speed [rad/s] and the parent's GM.
+    Both generators write `orb_ang_speed`, never a radius, so this is the distance the
+    loader will measure a body's insolation at (#687)."""
+    return (mu / (w * w)) ** (1.0 / 3.0)
+
+
 # src/atmo.h:kAtmoGravityTol. Keep the two in step: this is the same rule stated on
 # the authoring side, and a generator that is looser than the loader has already lost.
 GRAVITY_TOL = 0.02

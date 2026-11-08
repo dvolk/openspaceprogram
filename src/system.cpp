@@ -20,6 +20,9 @@
 #include "orbit.h"  // railStateFromElements
 #include "resdir.h"
 #include "bodylimits.h"  // the derived shell + SOI laws + the ordering asserts
+#include "solar.h"  // starLuminosity: the star's output, from its authored T (#687)
+#include "vehicle.h"  // dragAtm: the one place a body's air becomes a profile (#687 audit)
+#include "drag.h"     // airTemperature: the law for the air's own datum temperature
 
 namespace {
 // Advance just the parent chain of `f` to time t (single-node
@@ -301,6 +304,44 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             s.octaves     = sv.value("octaves", s.octaves);
             s.persistence = sv.value("persistence", s.persistence);
             s.frequency   = sv.value("frequency", s.frequency);
+            /* #687: the surface's thermal numbers, authored only where a source
+               states them. PRESENT-but-silly is a data bug, not a fallback: a
+               negative temperature is a typo that a T^4 would hide (the star would
+               light the whole system at the wrong flux), and an albedo outside
+               0..1 asks a body to reflect more light than falls on it. ABSENT is
+               fine and means "nobody sourced this": the readouts print a dash,
+               which is why the defaults are 0 and why 0 is never offered as a
+               temperature. */
+            if(sv.contains("temperature")) {
+                if(!sv["temperature"].is_number()) {
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': \"surface.temperature\" must"
+                                             " be a number [K]");
+                }
+                const double tK = sv["temperature"].get<double>();
+                if(!std::isfinite(tK) || tK < 0.0 || tK > 1e6) {
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': \"surface.temperature\"="
+                                             + std::to_string(tK)
+                                             + " K is not in [0, 1e6]");
+                }
+                s.temperature = (float)tK;
+            }
+            if(sv.contains("albedo")) {
+                if(!sv["albedo"].is_number()) {
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': \"surface.albedo\" must be a"
+                                             " number [0..1]");
+                }
+                const double a = sv["albedo"].get<double>();
+                if(!std::isfinite(a) || a < 0.0 || a >= 1.0) {
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': \"surface.albedo\"="
+                                             + std::to_string(a)
+                                             + " must be in [0, 1)");
+                }
+                s.albedo = (float)a;
+            }
             if(sv.contains("sea_level")) {
                 s.has_sea = true;
                 s.sea_level = sv.value("sea_level", 0.0);
@@ -1160,6 +1201,60 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         } else {
             b->cal = Calendar::make(D, Y, epoch_year);
         }
+    }
+
+    /* #687: the star's output, derived ONCE here from its authored
+       surface.temperature so nothing downstream re-derives it or disagrees with
+       anything else about it (solar.h owns the law). A star with no authored
+       temperature lights nothing, which is said out loud: a system that loads
+       with a dark sun and prints dashes everywhere is a data bug worth an
+       evening less than finding one silently. */
+    sys.root->star_luminosity = starLuminosity(sys.root->radius,
+                                               sys.root->surface.temperature);
+    if(sys.root->star_luminosity <= 0.0) {
+        printf("[solar] WARNING: star '%s' authors no surface.temperature, so no "
+               "body in this system receives any insolation.\n",
+               sys.root->name.c_str());
+    }
+
+    /* #687: the same audit for the ground. A system file can state the ground's
+       temperature twice -- once as the surface field, once as the air's datum
+       temperature -- and the two answer to different things: the first is what a
+       ground radiometer and a part's skin START at, the second is what the column
+       above weighs. Both come out of ONE published row in the generators (a sheet's
+       "Average temperature", or a giant's "Temperature at 1 bar", which is this
+       file's datum level -- #689), so on the shipped catalogue they are legitimately
+       the SAME number, which is exactly why this prints rather than WARNING: a warning
+       every load trips over is a warning nobody reads. Say which case we are in. */
+    for(TerrainBody *b : sys.bodies) {
+        /* What the air's datum temperature IS, by the only law that defines it:
+           drag.h:airTemperature at alt 0 -- the first level's base_T for a layered
+           profile, g H M / R for a body that authors a scale height instead (#686).
+           Quoting the authored field instead would be a different number on half the
+           catalogue. */
+        const double airT = airTemperature(dragAtm(b->surface.atmosphere, *b), 0.0);
+        if(!(airT > 0.0) && !(b->surface.temperature > 0.0f)) {
+            continue;   // nothing sourced: the readouts dash, and say nothing here
+        }
+        char ground[24], air[24];
+        if(b->surface.temperature > 0.0f) {
+            std::snprintf(ground, sizeof ground, "%11.2f K",
+                          (double)b->surface.temperature);
+        } else {
+            std::snprintf(ground, sizeof ground, "          - ");
+        }
+        if(airT > 0.0) {
+            std::snprintf(air, sizeof air, "%11.2f K", airT);
+        } else {
+            std::snprintf(air, sizeof air, "          - ");
+        }
+        const bool same = b->surface.temperature > 0.0f && airT > 0.0
+                          && std::fabs((double)b->surface.temperature - airT) < 0.5;
+        printf("         thermal  %-13s albedo %6s ground %s air base %s%s\n",
+               b->name.c_str(),
+               b->surface.albedo > 0.0f ? "authored" : "  -   ",
+               ground, air,
+               same ? "  (one published row states both)" : "");
     }
 
     // Recompute root-relative frame values before the first render.

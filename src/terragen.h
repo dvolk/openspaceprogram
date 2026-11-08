@@ -293,6 +293,17 @@ struct Surface {
     glm::mat3 seed_rot = glm::mat3(1.0f);
     bool bands = false;          // gas giant: smooth sphere, latitude bands
     int band_count = 9;          // stripes pole to pole (odd => bright equator)
+    /* #687: a surface with a thermal existence. `temperature` is the body's OWN
+       authored surface/effective temperature [K] -- for a star that is its
+       photospheric T, the ONE authored number behind the whole system's
+       insolation (solar.h); for a planet it is what the ground IS, read so far
+       only by the readouts. 0 = not authored (a dash, never 0 K).
+       `albedo` is the Bond albedo, 0..1: the reflected share of the starlight.
+       Both are authored from a source where one exists (the vendored
+       utils/rss/html sheets state an average temperature and a Bond albedo) and
+       left absent where nothing states one. */
+    float temperature = 0.0f;    // [K] authored; 0 = not authored
+    float albedo = 0.0f;         // Bond albedo, 0..1
     AtmosphereParams atmosphere; // optional rim; enabled => the JSON block exists
     CloudParams clouds;          // optional deck; enabled => body has clouds
     std::vector<RingParams> rings;  // optional; flat annuli in the equator

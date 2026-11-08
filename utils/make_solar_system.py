@@ -9,7 +9,8 @@ from sci_dist import stamp_science_mults, stamp_transfer_dv, phase0
 # #690: the geopotential/geometric conversion for layer tables lives in ONE module that
 # both system generators import -- each --check only compares a file against its own
 # output, so a second spelling of the law would drift in silence (the #636 lesson).
-from atmo_units import resolve_layer_heights, check_body_gravity
+from atmo_units import (resolve_layer_heights, check_body_gravity,
+                        SIGMA_SB, semimajor_axis)
 
 G      = 6.674e-11      # m^3 / kg / s^2  (matches the loader's G)
 AU     = 1.496e11       # m
@@ -669,6 +670,138 @@ def check_fact_air(planets, parsed, verbose=True):
     return bad
 
 # ---------------------------------------------------------------------------
+# What the sheets say about the GROUND's thermal state (#687), and what we author
+# beside it. A star's output is ONE authored number that every body's flux derives
+# from, so the guard is the same shape as #685's for air: read the published rows,
+# print the comparison, refuse when it moves.
+# ---------------------------------------------------------------------------
+
+def fact_surface(page):
+    """What a fact sheet states about the thermal state of the GROUND -- or, on a
+    giant, of the 1-bar level that its air datum already IS:
+      albedo      Bond albedo (dimensionless; the Bulk-parameters row)
+      irradiance  W/m^2 crossing a surface NORMAL to the beam, at that body
+      bb_T        K, the sheet's own black-body temperature
+      avg_T       K, the prose 'Average temperature:' line -- or, on a giant, its
+                  'Temperature at 1 bar', which is the level our datum IS (#689)
+
+    The sheet's black-body row turns out to BE solar.h's law with this table's own
+    Bond albedo -- Earth 254.0 K off 1361.0 W/m^2 and 0.294, Mercury 439.6 K off
+    9082.7 and 0.068 -- so the /4 (redistribute over the sphere) and the BOND (not
+    geometrical) albedo are the corpus's convention, not our invention. That is what
+    lets check_fact_surface() use those rows as cross-checks on the one number the
+    corpus cannot state: the star's own temperature.
+
+    A missing key means the sheet declines to say, which is NOT the same as saying
+    zero; the loader dashes an unauthored field for exactly that reason."""
+    h = read(page)
+    v = section_values(h, 'Bulk parameters')
+    out = {'albedo': v.get('bondalbedo'),
+           'irradiance': v.get('solarirradiancewm2'),
+           'bb_T': v.get('blackbodytemperaturek')}
+    # The prose line, deliberately NOT sheet_quantity(): that one reads a stated
+    # range, and Mercury writes 'Average temperature: 440 K (167 C) (590-725 K,
+    # sunward side)' -- the hyphenated pair is the day-side extreme, not the average.
+    # The first number followed by K is the stated value on every sheet in the corpus.
+    # Giants do not write an "average": they write 'Temperature at 1 bar', which is
+    # the level this file's datum IS (atmo.h's datum = the body's sea level = the
+    # 1-bar level, #689), so it is the same statement under a different label and
+    # fact_air() already reads that row for the air's base_T.
+    out['avg_T'] = None
+    for label in ('Average temperature:', 'Temperature at 1 bar:'):
+        line = sheet_line(h, label)
+        m = re.search(r'(\d+(?:\.\d+)?)\s*K\b', line) if line else None
+        if m:
+            out['avg_T'] = float(m.group(1))
+            break
+    return out
+
+
+# Our flux at a body is that body's own published irradiance row carried from Earth
+# by its own published period, so the only error available is the scrape's rounding
+# and the circularised rail: 0.2 % on every planet today. 5 % leaves room for an
+# eccentric orbit's mean while still catching a mistyped stellar temperature or a
+# moved rail.
+FACT_SURFACE_BANDS = 0.05
+
+# A waiver is written against the VALUE it was granted on, not the body forever --
+# the air check's rule (#695), and the reason FACT_SURFACE_KNOWN being small means
+# something. Keyed by (body, field); the pinned number is what the authored file
+# looked like when the argument was accepted.
+FACT_SURFACE_KNOWN = {
+    ('Pluto', 'bb'): (0.72,
+        "its Bulk-parameters rows disagree with each other: Bond albedo 0.72 and "
+        "black-body 37.5 K cannot both come from its own 0.873 W/m^2 row, which "
+        "gives 32.2 K at that albedo and 36.9 K with no albedo at all. The sheet "
+        "says both and does not say which it means, so we author the albedo -- the "
+        "row with physics in it, and the one every other body's bb row answers to "
+        "to within half a percent -- and print the 14% difference rather than "
+        "quietly dropping one of the two rows (#687)"),
+}
+
+
+def check_fact_surface(bodies, sheets, sun, verbose=True):
+    """#687: weigh the ONE authored stellar temperature against the rows the corpus
+    DOES state. For each body with a Bulk-parameters table: the flux this system
+    implies at that body's rail against its published 'Solar irradiance', and the
+    black-body temperature that flux and our authored albedo imply against its
+    published 'Black-body temperature'. Prints a row per body either way (#685: a
+    guard that prints nothing is indistinguishable from one that checked nothing)."""
+    bad = []
+    T_sun = (sun.get('surface') or {}).get('temperature')
+    if not T_sun:
+        return ['the star authors no surface.temperature, so no body in this '
+                'system receives any insolation']
+    by_name = {b['name']: b for b in bodies}
+    for b in bodies:
+        sheet = sheets.get(b['name'])
+        inertial = b.get('inertial') or {}
+        parent = by_name.get(b.get('orbits'))
+        w = inertial.get('orb_ang_speed')
+        if not sheet or not w or not parent or not parent.get('mass'):
+            continue
+        a = semimajor_axis(G * parent['mass'], w)
+        flux = SIGMA_SB * T_sun ** 4 * (parent['radius'] / a) ** 2
+        cells = []
+        if sheet.get('irradiance'):
+            off = (flux - sheet['irradiance']) / sheet['irradiance']
+            cells.append('flux %10.1f W/m2 (sheet %10.1f) %+.2f%%'
+                         % (flux, sheet['irradiance'], 100.0 * off))
+            if abs(off) > FACT_SURFACE_BANDS:
+                bad.append('%s: this system implies %.4g W/m^2 at its rail, the '
+                           'fact sheet states %.4g (%+.1f%%, band %d%%)'
+                           % (b['name'], flux, sheet['irradiance'], 100.0 * off,
+                              round(100 * FACT_SURFACE_BANDS)))
+        else:
+            cells.append('flux %10.1f W/m2 (sheet -)' % flux)
+        albedo = (b.get('surface') or {}).get('albedo')
+        if albedo is not None and sheet.get('bb_T'):
+            bb = (flux * (1.0 - albedo) / (4.0 * SIGMA_SB)) ** 0.25
+            off = (bb - sheet['bb_T']) / sheet['bb_T']
+            cells.append('bb %6.1f K (sheet %6.1f) %+.2f%%'
+                         % (bb, sheet['bb_T'], 100.0 * off))
+            if abs(off) > FACT_SURFACE_BANDS:
+                known = FACT_SURFACE_KNOWN.get((b['name'], 'bb'))
+                # Same expiry rule as the air waivers: a waiver covers the number it
+                # was argued against, so moving the albedo voids the argument.
+                if known is not None and abs(albedo - known[0]) <= WAIVER_TOL * known[0]:
+                    cells[-1] += ' (waived)'
+                    continue
+                stale = ('' if known is None else
+                         ' -- the waiver here pins an albedo of %g, so it predates %g'
+                         % (known[0], albedo))
+                bad.append('%s: authored albedo %g with that flux imply a %.4g K '
+                           'black-body, the fact sheet states %.4g (%+.1f%%, band %d%%)%s'
+                           % (b['name'], albedo, bb, sheet['bb_T'], 100.0 * off,
+                              round(100 * FACT_SURFACE_BANDS), stale))
+        else:
+            cells.append('bb - (no authored albedo or no bb row)')
+        if verbose:
+            print('  surface   %-9s a %12.4g m  %s'
+                  % (b['name'], a, '  '.join(cells)))
+    return bad
+
+# ---------------------------------------------------------------------------
 # moons
 # ---------------------------------------------------------------------------
 def parse_sat_table_all(page):
@@ -1265,12 +1398,42 @@ def build_base(verbose_air=False):
                          'power': 5.0, 'intensity': 0.3}}, False),
     ]
     rings_by_name = {'Jupiter': JUP_RINGS, 'Saturn': SAT_RINGS}
+    sheets = {}
     for page, name, seed, surface, has_sea in planets:
         data = parse_planet(page)
         parsed[name] = data
+        # #687: the ground's thermal state, authored from the same page that states
+        # the air over it. albedo is the sheet's Bond (not geometrical) albedo, and
+        # temperature its prose average -- which on a giant is the temperature AT the
+        # 1-bar level, the same level this file's datum is. Bodies the sheets give no
+        # number for are left UNAUTHORED (the loader dashes them), never zeroed.
+        sheet = fact_surface(page)
+        sheets[name] = sheet
+        if sheet['albedo'] is not None:
+            surface['albedo'] = sheet['albedo']
+        if sheet['avg_T'] is not None:
+            surface['temperature'] = sheet['avg_T']
         bodies.append(make_body(name, 'planet', 'Sun', data,
                                 surface=surface, seed=seed, has_sea=has_sea,
                                 rings=rings_by_name.get(name)))
+    # The star's output is ONE authored number every body's flux derives from, so
+    # nothing internal can see it go wrong -- the #684/#686 meta-law again. Author it
+    # from a row the corpus DOES state: Earth's 'Solar irradiance 1361.0 W/m^2', read
+    # at Earth's own rail and inverted through solar.h's L = 4 pi R^2 sigma T^4.
+    # check_fact_surface() then weighs what that one temperature implies at every
+    # OTHER body against that body's own irradiance row: one authored number, eight
+    # published cross-checks. Kerbol's CSV temperature range (3939-4010 K) disagrees
+    # with this by design (#687: the KSP system's Kerbin rail is 13,360 km, not an
+    # AU) -- gen_systems prints that disagreement rather than resolving it.
+    earth = next(b for b in bodies if b['name'] == 'Earth')
+    assert sheets['Earth']['irradiance'], 'no Earth irradiance row to fix the star by'
+    a_earth = semimajor_axis(G * SUN_MASS, earth['inertial']['orb_ang_speed'])
+    T_sun = ((sheets['Earth']['irradiance'] / SIGMA_SB) ** 0.25
+             * math.sqrt(a_earth / SUN_RADIUS))
+    sun['surface']['temperature'] = round(T_sun, 2)
+    if verbose_air:
+        print('  star      Sun T %10.2f K  from Earth %10.1f W/m2 at %12.4g m'
+              % (T_sun, sheets['Earth']['irradiance'], a_earth))
     # The air each of those pages states in prose, against the air this script
     # authors beside it (#685). Refuses before any file is written.
     bad = check_fact_air(planets, parsed, verbose=verbose_air)
@@ -1279,6 +1442,15 @@ def build_base(verbose_air=False):
             print('DRIFT   fact air: ' + m)
         raise SystemExit('%d authored air datum(s) disagree with the fact sheet '
                          'that states them (bands: FACT_AIR_BANDS)' % len(bad))
+    # ... and the light that air sits under (#687): the star's one authored
+    # temperature against every body's published irradiance and black-body rows.
+    bad = check_fact_surface(bodies, sheets, sun, verbose=verbose_air)
+    if bad:
+        for m in bad:
+            print('DRIFT   fact surface: ' + m)
+        raise SystemExit('%d insolation figure(s) disagree with the fact sheets '
+                         'that state them (band %d%%)'
+                         % (len(bad), round(100 * FACT_SURFACE_BANDS)))
     # ... and the field that air sits in, stated twice in the same file: a typed `g`
     # beside a mass (#689). The loader refuses the same disagreement
     # (atmo.h:kAtmoGravityTol); catching it here names the scrape that produced it.

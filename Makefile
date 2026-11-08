@@ -504,6 +504,11 @@ $(TESTDIR)/test_science: $(TESTDIR)/obj/test_science.o $(TESTDIR)/obj/science.o
 $(TESTDIR)/test_bodylimits: $(TESTDIR)/obj/test_bodylimits.o
 	$(CXX) -o $@ $^
 
+# #687: the star's flux (src/solar.h). Pure math again, and pinned to the fact-sheet
+# rows the generators read -- so the law and the authored data cannot drift together.
+$(TESTDIR)/test_solar: $(TESTDIR)/obj/test_solar.o
+	$(CXX) -o $@ $^
+
 $(TESTDIR)/test_fmt: $(TESTDIR)/obj/test_fmt.o
 	$(CXX) -o $@ $^
 
@@ -577,7 +582,7 @@ TESTS = test_frames test_spawn test_attitude test_slew3d test_gimbal test_actuat
         test_rotation test_shipload test_stability test_save test_crew test_roster test_calendar \
         test_flightlog test_science test_bodylimits \
         test_orbit test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
-        test_terrain test_drag test_audio test_jet test_jobs test_orbitmap test_orbitcam \
+        test_terrain test_drag test_solar test_audio test_jet test_jobs test_orbitmap test_orbitcam \
         test_pick test_settings test_keys test_cli test_fmt test_recorder test_retrograde test_skybox \
         test_belts test_railangles test_scenarios test_buildings test_orient test_hooks
 

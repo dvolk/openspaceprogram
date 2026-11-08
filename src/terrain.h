@@ -147,6 +147,11 @@ struct TerrainBody {
     /* A star has no classifiable surface; being the frame-tree root is parsed
        separately, not enforced. */
     bool isStar() const { return type == BodyType::Star; }
+    /* [W] A star's total output, derived ONCE at load from its authored
+       surface.temperature (solar.h, #687). Zero for a non-star, and for a star
+       whose temperature is unauthored -- readouts dash on that rather than
+       printing 0 W/m^2 and an infinity of distance. */
+    double star_luminosity = 0.0;
     /* Standable and biome-classifiable. Stars and banded gas giants have none
        (findings there leave the biome empty). */
     bool hasClassifiableSurface() const { return !isStar() && !surface.bands; }

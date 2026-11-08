@@ -42,7 +42,10 @@
         "orb_ang_speed": 0.0
       },
       "transfer_dv": 0.0,
-      "science_mult": 2.0
+      "science_mult": 2.0,
+      "surface": {
+        "temperature": 2838.1
+      }
     },
     {
       "name": "Eerbon",
