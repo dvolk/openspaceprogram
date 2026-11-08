@@ -27,6 +27,7 @@
 #include "body.h"
 #include "physics.h"
 #include "drag.h"     // SilhouetteMemo (the rest of the drag law: vehicle.cpp)
+#include "equirect.h" // kNoCoord (SpawnPlace's lat/lon pair); the law itself: vehicle.cpp
 #include "rcs.h"      // the RCS nozzle allocator + per-substep Scratch
 #include "shipdef.h"
 #include "part.h"
@@ -140,6 +141,23 @@ enum RailEnd {
 
 struct ScenarioDef;
 
+/* An optional map point for an AIR bed: a --startship entry may ask where in the
+   world its spawn sits. Both or neither; kNoCoord in either slot means "not asked"
+   and is tested with isnan(), never with == (a half pair is a parse bug, asserted).
+   Degrees, the same pair and the same convention as a world_buildings pad entry:
+   equirect.h is the game's ONE (lat,lon) -> direction law and it speaks the body's
+   ROTATING frame, so the point means "here on the map, now", not "here in the rail
+   frame". It places a bed, not a pose: the bed keeps its altitude and speed, turns
+   so its circle passes over the point, and carries its own velocity direction with
+   it (bedTurnTo) -- the heading stays prograde in the tilted plane, it is not a
+   ground bearing. A ground bed already HAS a place -- the pad site's lat/lon -- so an
+   on_pad entry refuses the pair rather than overriding a building. */
+struct SpawnPlace {
+    double lat_deg = kNoCoord;
+    double lon_deg = kNoCoord;
+    bool asked() const { return !std::isnan(lat_deg); }
+};
+
 class Vehicle {
 public:
     /* A ship's own name. A Kerbal leaves this empty: its display name is the
@@ -171,6 +189,11 @@ public:
     TerrainBody *home = nullptr;
     const ScenarioDef *scenario = nullptr;
     int slot = 0;
+    /* Where a start ship asked its AIR bed to sit (--startship lat=/lon=,
+       --startships "lat_deg"/"lon_deg"). Empty for every other route into the
+       world -- a VAB launch, a load, a dock test -- because those either stand on
+       a pad or already carry a placed world state. Read once, by apply_scenarios. */
+    SpawnPlace place;
     TerrainBody *sun = nullptr; // the star (light source)
     float m_thrust;
 
@@ -2092,9 +2115,29 @@ glm::dmat3 faceAlong(const glm::dvec3 &dir);
 glm::dmat3 faceAlong(const glm::dvec3 &dir, const glm::dvec3 &up_ref);
 
 /* slot_offset (m): lateral separation for ships sharing an orbit bed, along the
-   binormal so each orbit keeps its shape. Pads ignore it. */
+   binormal so each orbit keeps its shape. Pads ignore it.
+   `place` (nullable): a map point the bed must pass over; null = the bed's own
+   geometry. Only the start-ship path fills one -- see SpawnPlace. */
 void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
-                   System &sys, double slot_offset, double t);
+                   System &sys, double slot_offset, double t,
+                   const SpawnPlace *place = nullptr);
+
+/* Turn a circular bed so it passes over a surface direction, changing its plane as
+   little as it can. All three arguments are WORLD axes unit vectors: `rhat` the bed's
+   position direction, `vhat` its velocity direction (so the plane normal is
+   rhat x vhat), `want` the surface direction to fly over.
+   Two moves, each the smallest available: the plane tilts by exactly the angle
+   between itself and `want` -- reported in `tilt_deg`, 0 when the bed already
+   reaches that latitude -- then the bed turns within the tilted plane until its
+   position direction IS `want`. The return value is where the velocity direction
+   goes under the same two turns, so the bed is still a circular bed of the same
+   radius and speed, in the tilted plane, with a prograde heading in it.
+   A point over the bed's own pole has no node line to tilt about: there the plane
+   turns 90 deg about `rhat`, which keeps the meridian the bed already sat in.
+   Degenerate input (rhat parallel vhat, or a non-unit vector) is a caller bug --
+   asserted, not returned. Pure, so tests/test_scenarios.cpp can pin it by hand. */
+glm::dvec3 bedTurnTo(double &tilt_deg, const glm::dvec3 &rhat,
+                     const glm::dvec3 &vhat, const glm::dvec3 &want);
 
 struct Game;   // game.h: the parts catalog, the part shader, the star, the roster
 

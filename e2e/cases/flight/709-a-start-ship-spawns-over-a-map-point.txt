@@ -1,0 +1,32 @@
+# A start ship can name the map point its AIR bed sits over (--startship lat=/lon=,
+# #709). Everything about a bed except its place is unchanged by that: same radius,
+# same speed, same science band, heading still along the velocity. What moves is the
+# plane, by the least it can tilt to reach the point -- printed on the Spawn line as
+# "plane N deg" so a placed bed never pretends to be the standard one (this point
+# costs 53 deg, because flying-cruise sits in Kerbin's RAIL plane).
+# The claim is pinned from the game's own readout, not from the Spawn line's echo of
+# what was typed: [surfinfo]'s lat=/lon= is equirect.h read back off the hull, so the
+# coordinate the player asked for is the coordinate the sim reports. Southern and
+# eastern on purpose -- a lat of 0 would pass for a bed that ignored the request's
+# sign, and a lon of 0 for one that dropped the pair.
+NAME start-ship-spawns-over-a-map-point
+CLAIM A start ship given lat/lon starts flying over that map point -- the surface readout reports the requested coordinate -- while keeping the bed's altitude, its air-relative speed and its science band.
+KIND invariant
+ARGS --time-accel 1 --timeout 3 --info-log --orbit-interval 0.5 --startship racer,res/ships/racer.json,Kerbin,flying-cruise,lat=-33.25,lon=140.5
+FORBID error:
+CHECK len(surf) >= 4
+# The point, from the hull's own position. The drift over the run is flight, not
+# placement: the bed opens 0.003 deg off the ask and the ship covers ~0.02 deg by 2.9 s.
+CHECK all(abs(s["lat"] + 33.25) < 0.05 for s in surf)
+CHECK all(abs(s["lon"] - 140.5) < 0.05 for s in surf)
+# The Spawn line's own echo, so the coordinate the case asked for and the tilt the
+# turn cost are both in the corpus (53.0 deg: this point out of Kerbin's rail plane).
+CHECK re.search(r"place lat -33\.250 lon 140\.500, plane 53\.\d deg", out)
+# The bed is flying-low: 0.1 x Kerbin's 85 km top, i.e. 8.5 km, whatever longitude it
+# was turned to. The hull sinks from there (it is not trimmed), so this pins the START.
+CHECK all(abs(s["alt_asl"] - 8500.0) < 30.0 for s in surf if s["t"] < 1.0)
+CHECK all(s["sit"] == "flying low" for s in surf)
+# Air where it landed: aprg needs air and a flow with a direction, and the bed's
+# 0.0356 of circular speed opens at 80 m/s of air and decays from there.
+CHECK all(s["aprg"] is not None for s in surf)
+CHECK all(s["hs"] > 60.0 for s in surf)

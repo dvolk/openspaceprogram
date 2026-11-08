@@ -10,6 +10,10 @@
 // is what a plane is judged flying on, so check_flying_beds pins which is which
 // and check_spawn_attitude pins the roll a flying bed starts with.
 //
+// A bed can be turned onto a map point (--startship lat=/lon=), and that turn is
+// pure geometry with one right answer: check_bed_turn pins eight hand-computed turns
+// rather than reading the expected vectors off the code.
+//
 // heli-* pins a circular heliocentric radius so the transfer planner can be
 // handed a planet-like origin orbit (it only lists children of the orbited
 // body). Those radii are hand-copied from a system file's orb_ang_speed +
@@ -923,6 +927,73 @@ static void check_flying_beds() {
            "air-relative circular speed\n", slow->speed_frac);
 }
 
+/* A placed bed (--startship lat=/lon=): the bed turns so its circle passes over the
+   asked-for point, tilting its plane as little as it can and keeping its velocity
+   across the circle. Hand-computed on an equatorial bed -- position +X, velocity +Y,
+   plane normal +Z -- where every expected number below is arithmetic, not a re-run of
+   bedTurnTo. A point that needs no move, three points along the bed's own circle
+   (a quarter turn, a half turn, the point itself), three points 30 deg out of the
+   plane (at the bed's azimuth, mirrored below it, and 90 deg around) and a point
+   over each of the bed's own poles -- the degenerate case with no node line to tilt
+   about -- are the shapes a placement can ask for. */
+static void check_bed_turn() {
+    const double s30 = 0.5, c30 = std::sqrt(3.0) / 2.0;
+    const glm::dvec3 X(1.0, 0.0, 0.0), Y(0.0, 1.0, 0.0), Z(0.0, 0.0, 1.0);
+    struct Row {
+        const char *what;
+        glm::dvec3 rhat, vhat, want;
+        double tilt;          // expected plane tilt [deg]
+        glm::dvec3 vhat_out;  // expected heading
+    };
+    const Row rows[] = {
+        // The bed is already over the point: nothing moves, so the heading is the
+        // heading. This is the row that fails if the phase solve drifts on its own
+        // zero-crossing.
+        {"already there",  X, Y, X, 0.0,  Y},
+        // A quarter turn along the bed's own circle: still no tilt, heading follows.
+        {"along the ring", X, Y, Y, 0.0, -X},
+        // Half a turn along the bed's own circle: still no tilt, and the phase solve
+        // is asked for atan2(0, -1) -- the half-turn it must not answer 0 to.
+        {"antipode",       X, Y, -X, 0.0, -Y},
+        // 30 deg out of the plane, at the azimuth the bed already sits at: the node
+        // line want x n0 is -Y, so the plane tilts 30 deg about it and carries +X
+        // onto want by itself -- phase 0, heading still +Y (and still across the
+        // circle, since +Y is perpendicular to want).
+        {"30 deg over rhat", X, Y, glm::dvec3(c30, 0.0, s30), 30.0, Y},
+        // The mirror below the plane: the node line flips to +Y, the tilt is -30 deg
+        // (reported as its magnitude), and again the tilt alone reaches the point.
+        {"-30 over rhat",  X, Y, glm::dvec3(c30, 0.0, -s30), 30.0, Y},
+        // The same 30 deg of tilt 90 deg around the ring: the node line is now +X, so
+        // the tilt carries vhat (not rhat) onto want, and the 90 deg phase turn takes
+        // it to -X.
+        {"30 deg, 90 around", X, Y, glm::dvec3(0.0, c30, s30), 30.0, -X},
+        // Over the bed's own poles: no node line, so the plane turns 90 deg about
+        // rhat and keeps the meridian the bed already sat in.
+        {"north pole",     X, Y, Z,  90.0, -X},
+        {"south pole",     X, Y, -Z, 90.0, -X},
+    };
+    for(const Row &r : rows) {
+        double tilt = -1.0;
+        const glm::dvec3 vh = bedTurnTo(tilt, r.rhat, r.vhat, r.want);
+        // The contract the spawn relies on, checked for every row: the heading is a
+        // unit vector across the circle at the point, so the tilted bed is still a
+        // circular bed of the same radius and speed.
+        const double len = glm::length(vh);
+        const double radial = glm::dot(vh, r.want);
+        const double want_v = glm::length(vh - r.vhat_out);
+        if(std::fabs(tilt - r.tilt) > 1e-9 || std::fabs(len - 1.0) > 1e-12
+           || std::fabs(radial) > 1e-12 || want_v > 1e-12) {
+            printf("  bed turn %s: tilt %.6f (want %.1f) |v| %.9f radial %.9f "
+                   "v_out (%.6f, %.6f, %.6f) want (%.6f, %.6f, %.6f)\n",
+                   r.what, tilt, r.tilt, len, radial,
+                   vh.x, vh.y, vh.z, r.vhat_out.x, r.vhat_out.y, r.vhat_out.z);
+            failures++;
+        }
+    }
+    printf("  bed turn: %d hand-computed turns pinned, the biggest a %.0f deg plane "
+           "tilt over a pole\n", (int) (sizeof rows / sizeof rows[0]), 90.0);
+}
+
 /* The roll a flying bed spawns with. The one-argument faceAlong picks its roll
    AXIS from three candidates and keeps the one with the smallest dot, so a dir
    tilting a degree or two off a coordinate plane answers with a 90 deg roll: on
@@ -968,6 +1039,7 @@ int main() {
     check_vab_gate();
     check_flying_beds();
     check_spawn_attitude();
+    check_bed_turn();
     // The files the heli-* radii were read off. ksp_system/old_system are not
     // checked: they have no Mercury/Earth/Jupiter/Uranus.
     const char *paths[] = {

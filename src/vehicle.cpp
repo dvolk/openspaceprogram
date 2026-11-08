@@ -22,6 +22,7 @@
 #include "resdir.h"    // resdir::path
 #include "system.h"    // System (spawn_vehicle resolves the home body's SOI)
 #include "drag.h"      // the drag law (airDensity / dragForce)
+#include "equirect.h"  // equirectDir: the game's ONE (lat,lon) -> direction law
 #include "gimbal.h"    // the engine-gimbal law (gimbalDir / gimbalStep)
 #include "rcs.h"       // the RCS nozzle allocator (rcsAllocate)
 #include "constants.h" // kSoiMargin, kShipGround*, kTerrainBand
@@ -364,10 +365,62 @@ glm::dmat3 faceAlong(const glm::dvec3 &dir, const glm::dvec3 &up_ref)
     return glm::dmat3(x, y, z);
 }
 
+/* Rodrigues: `v` turned by `ang` [rad] about the UNIT `axis`. Written out instead
+   of through a quaternion because a bed turn rotates three vectors and builds no
+   attitude, and vehicle.cpp builds attitudes with faceAlong, not quaternions. */
+static glm::dvec3 rotAbout(const glm::dvec3 &axis, double ang, const glm::dvec3 &v) {
+    const double c = std::cos(ang), s = std::sin(ang);
+    return v * c + glm::cross(axis, v) * s + axis * glm::dot(axis, v) * (1.0 - c);
+}
+
+glm::dvec3 bedTurnTo(double &tilt_deg, const glm::dvec3 &rhat,
+                     const glm::dvec3 &vhat, const glm::dvec3 &want)
+{
+    const glm::dvec3 nraw = glm::cross(rhat, vhat);
+    const double nl = glm::length(nraw);
+    assert(nl > 1e-9);   // a bed with no plane has no heading either
+    const glm::dvec3 n0 = nraw / nl;
+    /* How far the asked-for point sits out of the bed's plane: |want| = |n0| = 1,
+       so asin is exact and the answer is within +-90 deg. */
+    const double sin_off = glm::dot(want, n0);
+    const double off = std::asin(sin_off);
+    /* The tilt is a rotation about the node line -- the axis that already lies in
+    BOTH the bed's plane and the plane through want -- by exactly that angle, which
+    is the least turn that can put want in the plane (n0 - want*sin_off over
+    cos(off) is its new normal: unit, and perpendicular to want). A point over the
+    bed's own pole has no node line; any in-plane axis works there, and rhat keeps
+    the meridian the bed already sat in. */
+    glm::dvec3 k = glm::cross(want, n0);
+    const double kl = glm::length(k);
+    double tilt;
+    if(kl < 1e-9) {
+        k = glm::normalize(rhat);
+        tilt = (sin_off >= 0.0 ? 1.0 : -1.0) * std::numbers::pi / 2.0;
+    } else {
+        k /= kl;
+        tilt = off;
+    }
+    const glm::dvec3 n1 = rotAbout(k, tilt, n0);
+    const glm::dvec3 r1 = rotAbout(k, tilt, rhat);
+    /* Then turn within the tilted plane until the position direction is the point. */
+    const double phase = std::atan2(glm::dot(glm::cross(r1, want), n1),
+                                    glm::dot(r1, want));
+    const glm::dvec3 v1 = rotAbout(n1, phase, rotAbout(k, tilt, vhat));
+    tilt_deg = glm::degrees(std::fabs(tilt));
+    /* Both halves of the contract, checked rather than assumed: the bed sits over
+       the point, and its velocity is still across the circle (a tilt that left the
+       velocity out of the plane would buy an eccentric bed at spawn). */
+    assert(glm::dot(rotAbout(n1, phase, r1), want) > 1.0 - 1e-12);
+    assert(std::fabs(glm::dot(v1, want)) < 1e-9);
+    return v1;
+}
+
 /* slot_offset (m): lateral separation for ships sharing an orbit scenario, applied
-   along the orbit binormal so each orbit keeps its shape. Pads ignore it. */
+   along the orbit binormal so each orbit keeps its shape. Pads ignore it.
+   `place` (nullable): a map point an air bed must pass over (SpawnPlace). */
 void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
-                          System &sys, double slot_offset, double t)
+                          System &sys, double slot_offset, double t,
+                          const SpawnPlace *place)
 {
     if(sc.on_pad) { return; } // already on the pad, set up in main
 
@@ -384,8 +437,16 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
 
     const glm::dvec3 center = home->frame->root_pos;
     glm::dvec3 shipWorldPos, velWorld;
+    /* A placed bed echoes its coordinate and the plane tilt it cost on the Spawn
+       line. Empty = no placement asked for, so no existing bed's line changes. */
+    char place_txt[96] = "";
+    double place_tilt = 0.0;
 
     if(sc.ell_phase >= 0) {
+        /* An ellipse bed has AUTHORED apsides, in the world X-Z plane; rotating it to
+           a map point would move periapsis off the direction the bed is defined by.
+           build_start_vehicles refuses lat/lon on one, so reaching here is a bug. */
+        assert(place == nullptr || !place->asked());
         // Ellipse in the equatorial plane (world X-Z), prograde like the circular
         // beds: periapsis along +Z, apsides are root-frame directions.
         /* The bed apsides are authored ABOVE MEAN SEA LEVEL (#404), so they
@@ -428,7 +489,6 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
                                    : sc.eq_plane ? home->rot_frame->equator_orient
                                                                  * glm::dvec3(1, 0, 0)
                                    : glm::dvec3(0, 0, 1);
-        shipWorldPos = center + home->frame->root_orient * (rhat_local * r);
 
         // Circular speed (vis-viva with semi-major axis == r); esc_frac makes it
         // a hyperbola instead. speed_frac is NOT applied here: it scales the
@@ -438,20 +498,54 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
         const double speed = sc.esc_frac > 0.0 ? sc.esc_frac * sqrt(2.0) * v_circ
                          : v_circ;
 
+        /* rhat/vhat are WORLD axes from here on (root_orient takes the frame's axes
+           to them), which is what a placed bed needs: the map point arrives through
+           the body's rotating frame, also in world axes. */
+        glm::dvec3 rhat = home->frame->root_orient * rhat_local;
         // Prograde, about the plane's OWN normal. Normalize: with an inclined
         // body rhat is not orthogonal to the reference axis, so the raw cross
         // product is short by cos(incl).
-        const glm::dvec3 rhat = glm::normalize(shipWorldPos - center);
-        const glm::dvec3 vhat = glm::normalize(
+        glm::dvec3 vhat = glm::normalize(
             sc.polar ? glm::cross(glm::dvec3(1, 0, 0), rhat)
           : sc.eq_plane ? glm::cross(home->frame->root_orient * pole, rhat)
           : glm::cross(glm::dvec3(0, 1, 0), rhat));
+
+        /* A placed bed (lat/lon on a start ship) keeps its radius, its speed and its
+           heading rule, and turns so its circle passes over the asked-for map point:
+           the plane tilts the least it can, then the bed turns within it. The point is
+           read at THIS instant through the rotating frame, so it means the place the
+           player sees on the map, whatever the body's spin phase or tilt is -- and the
+           air co-rotates with it, so a flying bed still starts with the air still
+           ahead of it (#682's frame is the same one the band verdict is billed in).
+           bedTurnTo's own asserts prove the bed lands on the point. */
+        if(place != nullptr && place->asked()) {
+            assert(!std::isnan(place->lon_deg));   // both or neither (the parsers check)
+            const double lat = place->lat_deg * std::numbers::pi / 180.0;
+            const double lon = place->lon_deg * std::numbers::pi / 180.0;
+            const glm::dvec3 want = glm::normalize(home->rot_frame->root_orient
+                                                   * equirectDir(lon, lat));
+            vhat = bedTurnTo(place_tilt, rhat, vhat, want);
+            rhat = want;
+            /* Echo what was asked, plus the tilt it cost: a bed placed where its
+               plane already reaches pays 0.0, and anything else on that line is the
+               bed no longer being the one the scenario describes. lon arrives wrapped
+               into [0, 360) (wrapLonDeg, at the parse), so this is the same number the
+               trig above used. */
+            snprintf(place_txt, sizeof place_txt, ", place lat %+.3f lon %.3f, plane %.1f deg",
+                     place->lat_deg, place->lon_deg, place_tilt);
+        }
+        shipWorldPos = center + rhat * r;
         velWorld = speed * vhat;
     }
 
     if(slot_offset != 0.0) {
         const glm::dvec3 rhat = glm::normalize(shipWorldPos - center);
         const glm::dvec3 vhat = glm::normalize(velWorld);
+        /* For a placed bed this is the one thing that is NOT over the point: the
+           spread runs along the (tilted) binormal, so a second ship on the same bed
+           sits ORBIT_SLOT_SPACING out of the plane the placement chose -- 20 m off a
+           600 km circle, 0.002 deg of the map. Same shape-preserving rule as every
+           other bed, deliberately not a second one for placed ships. */
         shipWorldPos += glm::normalize(glm::cross(rhat, vhat)) * slot_offset;
     }
 
@@ -535,12 +629,12 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
                      glm::length(air));
         }
     }
-    printf("Spawn '%s' around %s: frame '%s' @ world (%.0f, %.0f, %.0f), r = %.0f m, |v| = %.1f m/s%s\n",
+    printf("Spawn '%s' around %s: frame '%s' @ world (%.0f, %.0f, %.0f), r = %.0f m, |v| = %.1f m/s%s%s\n",
            sc.name, home->name.c_str(), frame->name.c_str(),
            shipWorldPos.x, shipWorldPos.y, shipWorldPos.z,
            glm::length(shipWorldPos - center),
            sc.speed_frac > 0.0 ? glm::length(vel) : glm::length(velWorld),
-           air_txt);
+           air_txt, place_txt);
 }
 
 /* Ships sharing a (body, scenario) orbit bed are pushed this far apart along the
@@ -744,7 +838,7 @@ void apply_scenarios(Game &g) {
     for(auto *s : g.vehicles) {
         if(s->scenario == nullptr) { continue; }
         spawn_vehicle(s, *s->scenario, s->home, g.sys,
-                      ORBIT_SLOT_SPACING * (double)s->slot, g.time);
+                      ORBIT_SLOT_SPACING * (double)s->slot, g.time, &s->place);
     }
 }
 
@@ -788,7 +882,35 @@ Vehicle *build_start_vehicles(Game &g, const std::vector<DebugStartShip> &entrie
                                          + hb->name + " (available: " + avail + ")");
             }
         }
+        /* A map point places an AIR bed. Two beds already have a place of their own:
+           a pad bed stands on a site building that carries its OWN lat_deg/lon_deg
+           (two answers would be one ship in two places), and an ellipse bed authors
+           its apsides as world directions, so turning it onto a point moves periapsis
+           off the direction the scenario IS. Refuse rather than quietly drop what was
+           typed -- and refuse before place_vehicle has adopted a hull. */
+        if(!std::isnan(fe.lat_deg)) {
+            assert(!std::isnan(fe.lon_deg));   // both parsers keep the pair together
+            if(sc->on_pad) {
+                throw std::runtime_error("start ships: entry " + std::to_string(i)
+                                         + ": lat/lon place an air bed over a map"
+                                         + " point, but '" + fe.scenario + "' stands on"
+                                         + " a pad -- its place is the site's own"
+                                         + " lat_deg/lon_deg (site= picks the pad)");
+            }
+            if(sc->ell_phase >= 0) {
+                throw std::runtime_error("start ships: entry " + std::to_string(i)
+                                         + ": lat/lon turn a circular bed onto a map"
+                                         + " point, but '" + fe.scenario + "' authors"
+                                         + " its apsides (pick a circular bed:"
+                                         + " rot-orbit, inertial-orbit, high-orbit or"
+                                         + " a flying-* bed)");
+            }
+        }
         Vehicle *v = place_vehicle(g, fe.ship, fe.name, hb, sc, site);
+        /* The pair rides on the hull to spawn_vehicle, whose caller is
+           apply_scenarios -- see SpawnPlace. */
+        v->place.lat_deg = fe.lat_deg;
+        v->place.lon_deg = fe.lon_deg;
         spawn_crew(v, g.sys);
         if(first == nullptr) { first = v; }
     }

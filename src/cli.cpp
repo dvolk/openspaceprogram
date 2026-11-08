@@ -73,8 +73,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--startship", args.startship,
                    "One start ship: name,def,body,scenario[,site] -- the "
                    "first four required, the fifth an optional pad id (e.g. "
-                   "racer,res/ships/racer.json,Kerbin,pad,polar_pad). "
-                   "Repeat the flag for more ships; ships sharing a "
+                   "racer,res/ships/racer.json,Kerbin,pad,polar_pad). Named "
+                   "params work too, in any order: site=, and lat=/lon= (deg) "
+                   "to put an AIR spawn over a map point instead of the bed's "
+                   "own place -- lat,lon as on the atlas and as a world pad "
+                   "(e.g. racer,res/ships/racer.json,Kerbin,flying-cruise,"
+                   "lat=15.432,lon=46.894). A pad bed already has a place: its "
+                   "site's. Repeat the flag for more ships; ships sharing a "
                    "body+scenario are spaced apart in orbit but default to "
                    "the same pad. --startships is the same list as a JSON "
                    "file (and overrides it)");
@@ -83,9 +88,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Start-ship-list JSON: one entry per ship, each naming all "
                    "four of name, ship def, body and scenario (the game "
                    "errors if any is missing), plus an optional \"site\" pad "
-                   "id. Ships sharing a body+scenario are spaced apart in "
-                   "orbit but default to the same pad. Overrides --startship. "
-                   "Try e2e/fixtures/startships.json");
+                   "id or an optional \"lat_deg\"/\"lon_deg\" pair to put an "
+                   "air bed over a map point (same convention as a "
+                   "world_buildings entry). Ships sharing a body+scenario are "
+                   "spaced apart in orbit but default to the same pad. "
+                   "Overrides --startship. Try e2e/fixtures/startships.json");
 
     app.add_option("--load", args.load_name,
                    "Load the game from this saved directory at startup "

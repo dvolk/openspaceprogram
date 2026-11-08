@@ -38,8 +38,10 @@ struct GameArgs {
     std::string parts_file = "res/data/parts.json";
     std::string experiments_file = "res/data/experiments.json";
     std::string kerbals_file = "res/data/kerbals.json";
-    // Start ships: --startship is one inline entry "name,def,body,scenario";
-    // --startships is the same list as a JSON file.
+    /* Start ships: --startship is one inline entry "name,def,body,scenario" plus
+       optional named params (site=, lat=, lon=); --startships is the same list as a
+       JSON file. main.cpp's splitStartship is the parser; DebugStartShip (shipdef.h)
+       is what it fills. */
     std::vector<std::string> startship;
     std::string startships_file;
 

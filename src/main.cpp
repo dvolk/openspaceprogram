@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <charconv>   // from_chars (parseNumber: locale-independent number parsing)
 #include <chrono>
 #include <ctime>
 #include <cstdlib>
@@ -36,6 +37,7 @@
 #include "gldebug.h"
 #include "frame.h"
 #include "shipdef.h"
+#include "equirect.h"  // wrapLonDeg: a --startship lon is STORED wrapped
 #include "crew.h"
 #include <nlohmann/json.hpp>
 #include "billboard.h"
@@ -165,9 +167,30 @@ void postHeavyPhase(System &sys, const std::vector<TerrainBody *> &sync,
     }
 }
 
-// Split "name,def,body,scenario[,site]" into four required non-empty fields
-// plus the optional pad id; false if the shape is wrong.
-static bool splitStartship(const std::string &spec, DebugStartShip &out) {
+// A finite decimal with nothing left over: "15.4" yes; "", "15.4x", " 15", "1e999" no.
+// from_chars rather than strtod because a command-line number is the same number in
+// every locale (strtod follows LC_NUMERIC, so a de_DE player's "-33.25" is "not a
+// number"), and because it refuses leading space and hex floats.
+static bool parseNumber(const std::string &s, double &val) {
+    double v = 0.0;
+    const std::from_chars_result res = std::from_chars(s.data(), s.data() + s.size(), v);
+    if(res.ec != std::errc() || res.ptr != s.data() + s.size() || !std::isfinite(v)) {
+        return false;
+    }
+    val = v;
+    return true;
+}
+
+/* Split "name,def,body,scenario" plus any number of OPTIONAL fields: either the old
+   bare pad id (every e2e ARGS line and the README spell it that way, so it stays) or
+   named k=v pairs -- site=, lat=, lon=. Named because with three optional things a
+   positional fifth, sixth, ... field is a guessing game, and a typo like latt= has to
+   refuse rather than become a pad id.
+   lat/lon are degrees and place an AIR bed over that map point (SpawnPlace,
+   vehicle.h): both or neither, lat in [-90, 90] like a world_buildings entry, lon any
+   finite angle (it wraps). False + `err` naming what is wrong. */
+static bool splitStartship(const std::string &spec, DebugStartShip &out,
+                           std::string &err) {
     std::vector<std::string> f;
     std::string cur;
     for(char c : spec) {
@@ -175,13 +198,79 @@ static bool splitStartship(const std::string &spec, DebugStartShip &out) {
         else { cur += c; }
     }
     f.push_back(cur);
-    if(f.size() != 4 && f.size() != 5) { return false; }
-    for(const std::string &x : f) { if(x.empty()) { return false; } }
+    if(f.size() < 4) {
+        err = "expected name,def,body,scenario[,site][,lat=..,lon=..]";
+        return false;
+    }
+    for(size_t k = 0; k < 4; k++) {
+        if(f[k].empty()) {
+            err = "field " + std::to_string(k + 1) + " is empty";
+            return false;
+        }
+    }
     out.name = f[0];
     out.ship = f[1];
     out.body = f[2];
     out.scenario = f[3];
-    if(f.size() == 5) { out.site = f[4]; }
+    bool got_site = false, got_lat = false, got_lon = false;
+    for(size_t k = 4; k < f.size(); k++) {
+        const std::string &fld = f[k];
+        const std::string at = "field " + std::to_string(k + 1) + " '" + fld + "': ";
+        const size_t eq = fld.find('=');
+        if(eq == std::string::npos) {
+            // The bare form is the pad id, and only in the slot it has always sat
+            // in; once a named param has been read, a bare word is a typo.
+            if(k != 4 || got_site) {
+                err = at + "not name=value (a bare field is the pad id, and only as "
+                           "the fifth field when site= has not named one)";
+                return false;
+            }
+            out.site = fld;
+            got_site = true;
+            continue;
+        }
+        const std::string key = fld.substr(0, eq);
+        const std::string val = fld.substr(eq + 1);
+        if(key.empty() || val.empty()) {
+            err = at + "needs a name and a value";
+            return false;
+        }
+        double num = 0.0;
+        if(key == "site") {
+            if(got_site) { err = at + "\"site\" given twice"; return false; }
+            out.site = val;
+            got_site = true;
+        } else if(key == "lat" || key == "lon") {
+            bool &got = key == "lat" ? got_lat : got_lon;
+            if(got) { err = at + '"' + key + "\" given twice"; return false; }
+            if(!parseNumber(val, num)) {
+                err = at + '"' + key + "\" is not a number";
+                return false;
+            }
+            if(key == "lat") {
+                if(num < -90.0 || num > 90.0) {
+                    err = at + "\"lat\" must be in [-90, 90]";
+                    return false;
+                }
+                out.lat_deg = num;
+            } else {
+                // Wrap once, here, so the angle the spawn's trig sees and the number
+                // the Spawn line echoes are the same number (wrapLonDeg, equirect.h).
+                out.lon_deg = wrapLonDeg(num);
+            }
+            got = true;
+        } else {
+            err = at + "unknown optional field \"" + key
+                  + "\" (known: site, lat, lon)";
+            return false;
+        }
+    }
+    // A lone coordinate is a typo, and the other half of the pair IS a place: flying
+    // to lon 0 is not the same as not asking, so refuse instead of defaulting.
+    if(got_lat != got_lon) {
+        err = got_lat ? "lat needs lon" : "lon needs lat";
+        return false;
+    }
     return true;
 }
 
@@ -541,14 +630,13 @@ int main(int argc, char **argv)
             return 1;
         }
     } else if(!args.startship.empty()) {
-        // inline form: each --startship is "name,def,body,scenario[,site]"
+        // inline form: each --startship is "name,def,body,scenario[,site][,k=v]"
         for(size_t i = 0; i < args.startship.size(); i++) {
             DebugStartShip e;
-            if(!splitStartship(args.startship[i], e)) {
-                printf("error: --startship #%zu '%s': expected "
-                       "name,def,body,scenario[,site] (four or five non-empty "
-                       "fields)\n",
-                       i + 1, args.startship[i].c_str());
+            std::string err;
+            if(!splitStartship(args.startship[i], e, err)) {
+                printf("error: --startship #%zu '%s': %s\n",
+                       i + 1, args.startship[i].c_str(), err.c_str());
                 return 1;
             }
             start_ships.push_back(e);

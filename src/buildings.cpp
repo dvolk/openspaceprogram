@@ -115,10 +115,17 @@ static std::vector<WorldBuilding> parse_building_array(const nlohmann::json &arr
             }
         }
         if(!ev.contains("lat_deg") || !ev["lat_deg"].is_number()
-           || !ev.contains("lon_deg") || !ev["lon_deg"].is_number()) {
-            throw std::runtime_error(ctx + "needs numeric \"lat_deg\"/\"lon_deg\"");
+           || !ev.contains("lon_deg") || !ev["lon_deg"].is_number()
+           || !std::isfinite(ev["lat_deg"].get<double>())
+           || !std::isfinite(ev["lon_deg"].get<double>())) {
+            throw std::runtime_error(ctx + "needs finite numeric \"lat_deg\"/\"lon_deg\"");
         }
         w.lat_deg = ev["lat_deg"].get<double>();
+        // Kept as authored -- a pad file may write lon -44 or 316 for the same
+        // meridian, and which one it wrote is what the dossier echoes. dir() below
+        // takes it through cos/sin, so the pair is equivalent either way; the
+        // finite check above is what keeps a huge value from becoming a NaN
+        // direction down the line.
         w.lon_deg = ev["lon_deg"].get<double>();
         if(w.lat_deg < -90.0 || w.lat_deg > 90.0) {
             throw std::runtime_error(ctx + "\"lat_deg\" must be in [-90, 90]");

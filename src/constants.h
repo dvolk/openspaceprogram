@@ -1,7 +1,9 @@
 // constants.h -- the shared gameplay constants, one documented home.
 // Each entry states its units, what changing it changes IN THE GAME, and
 // roughly where the effect is implemented. Pure values (no includes), so
-// the pure-math headers and the tests can all pull them in.
+// the pure-math headers and the tests can all pull them in. A value that
+// changes nothing in the game -- a "not authored" sentinel, a parse bound --
+// belongs beside the law it guards instead (see kNoCoord in equirect.h).
 
 #pragma once
 

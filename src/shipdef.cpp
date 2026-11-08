@@ -2210,6 +2210,28 @@ DebugStartShips loadDebugStartShips(const char *path) {
                                          + field + "\"");
             }
         }
+        /* No unknown keys. The optional ones are load-bearing now: an entry that
+           spells its coordinate "lat" instead of "lat_deg" would otherwise parse as
+           asking for nothing, and the ship would fly to the bed's own place while
+           the Spawn line printed no placement at all -- the exact typo splitStartship
+           (main.cpp) refuses on the command line. */
+        static const char *const kOptional[] = {"site", "lat_deg", "lon_deg"};
+        for(const auto &kv : ev.items()) {
+            bool known = false;
+            for(const char *const field : kStartShipFields) {
+                if(kv.key() == field) { known = true; break; }
+            }
+            for(const char *const field : kOptional) {
+                if(kv.key() == field) { known = true; break; }
+            }
+            if(!known) {
+                throw std::runtime_error(std::string("start ships: entry ")
+                                         + std::to_string(i) + " of " + path
+                                         + ": unknown field \"" + kv.key() + "\" (known:"
+                                         + " ship, name, body, scenario, site,"
+                                         + " lat_deg, lon_deg)");
+            }
+        }
         e.ship = ev["ship"].get<std::string>();
         e.name = ev["name"].get<std::string>();
         e.body = ev["body"].get<std::string>();
@@ -2221,6 +2243,45 @@ DebugStartShips loadDebugStartShips(const char *path) {
                                          + ": \"site\" must be a string");
             }
             e.site = ev["site"].get<std::string>();
+        }
+        /* An optional map point for an AIR bed (SpawnPlace, vehicle.h). Same names,
+           units and range law as a world_buildings pad entry -- finite numbers, lat in
+           [-90, 90], equirect.h the one convention both use -- and BOTH or neither: a
+           lone lat would otherwise fly the bed to lon 0, which is a place, not an
+           omission. Unlike a pad entry (which keeps the authored spelling, so a file
+           can say -44 or 316 for one meridian and the dossier can echo it back), a
+           start ship's lon is stored WRAPPED: the Spawn line echoes this value and the
+           spawn feeds it to cos/sin, and those must be the same number. */
+        const bool has_lat = ev.contains("lat_deg");
+        const bool has_lon = ev.contains("lon_deg");
+        if(has_lat != has_lon) {
+            throw std::runtime_error(std::string("start ships: entry ")
+                                     + std::to_string(i) + " of " + path
+                                     + ": needs BOTH \"lat_deg\" and \"lon_deg\""
+                                     + " (or neither)");
+        }
+        if(has_lat) {
+            const char *keys[2] = {"lat_deg", "lon_deg"};
+            double val[2];
+            for(int k = 0; k < 2; k++) {
+                const nlohmann::json &cv = ev[keys[k]];
+                if(!cv.is_number() || !std::isfinite(cv.get<double>())) {
+                    throw std::runtime_error(std::string("start ships: entry ")
+                                             + std::to_string(i) + " of " + path
+                                             + ": \"" + keys[k] + "\" must be a number");
+                }
+                val[k] = cv.get<double>();
+            }
+            if(val[0] < -90.0 || val[0] > 90.0) {
+                throw std::runtime_error(std::string("start ships: entry ")
+                                         + std::to_string(i) + " of " + path
+                                         + ": \"lat_deg\" must be in [-90, 90]");
+            }
+            e.lat_deg = val[0];
+            // Wrapped at the parse, once, so the spawn's trig and the Spawn line's
+            // echo use the same number (wrapLonDeg, equirect.h -- same [0, 2pi)
+            // unwrapping as equirectLonLat).
+            e.lon_deg = wrapLonDeg(val[1]);
         }
         list.ships.push_back(e);
     }

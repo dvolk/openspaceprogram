@@ -13,6 +13,7 @@
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
 
+#include "equirect.h"  // kNoCoord (DebugStartShip's optional lat/lon pair)
 #include "science.h"   // ExpStorage (PartDef.experiment_storage) + the science helpers
 
 /* Ship/part data model: the JSON-backed description of what a ship is made of.
@@ -981,13 +982,19 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
 bool kerbalDefConsistent(const ShipDef &def);
 
 /* One vehicle the game spawns at boot. The first four fields are required;
-   `site` is an optional pad id, meaningful only for an on_pad scenario. */
+   `site` is an optional pad id, meaningful only for an on_pad scenario, and
+   `lat_deg`/`lon_deg` are an optional surface coordinate to place an AIR spawn
+   over -- same names, same convention (equirect.h) as a world_buildings entry.
+   Either both are given or neither; the CLI refuses a half pair, so a NaN here
+   means the parse skipped validation. */
 struct DebugStartShip {
     std::string ship;      // ship def path
     std::string name;      // display name
     std::string body;      // the body it sits on (a name in the system)
     std::string scenario;  // the spawn scenario (a --startship field)
     std::string site;      // pad id ("" = the body's default site)
+    double lat_deg = kNoCoord;
+    double lon_deg = kNoCoord;
 };
 
 // The parsed "ships" array.
