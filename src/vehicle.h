@@ -1533,8 +1533,12 @@ public:
     };
     bool airReadingAt(const Part *p, AirReading &out);
 
-    /* Velocity relative to the AIR at `com`: GetVel() minus the air's
-       co-rotation outside the body's rotating frame (#60/#97). */
+    /* Velocity relative to the AIR at `com`, i.e. GetVel() minus the AIR's own
+       velocity: its co-rotation with the body (zero in the rotating frame, #60/#97)
+       minus the authored wind at this point (atmo.h:windAt, #688). The ONE place the
+       air moves -- wind is a velocity, never a force term, so subtracting here is what
+       makes a headwind a headwind for the drag law, Mach, the jet gate and #498's
+       air-relative prograde all at once. */
     glm::dvec3 airRelativeVel(const glm::dvec3 &com);
 
     /* The armed control forces, per SUBSTEP. The EVA kerbal overrides (eva.h). */

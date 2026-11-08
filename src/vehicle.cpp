@@ -515,8 +515,11 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
            the plane tilts the least it can, then the bed turns within it. The point is
            read at THIS instant through the rotating frame, so it means the place the
            player sees on the map, whatever the body's spin phase or tilt is -- and the
-           air co-rotates with it, so a flying bed still starts with the air still
-           ahead of it (#682's frame is the same one the band verdict is billed in).
+           air co-rotates with it, so a flying bed on a body with no authored wind
+           still starts with the air still ahead of it (#682's frame is the same one
+           the band verdict is billed in; a body that DOES author wind spawns a bed
+           whose airspeed is not its speed_frac, which is the bed question #693 is
+           about rather than a placement one).
            bedTurnTo's own asserts prove the bed lands on the point. */
         if(place != nullptr && place->asked()) {
             assert(!std::isnan(place->lon_deg));   // both or neither (the parsers check)
@@ -560,7 +563,11 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
 
     /* A speed_frac bed is slow RELATIVE TO THE AIR, which means relative to the
        frame: the atmosphere co-rotates, so in the body's rotational frame this
-       velocity IS the air-relative one (Vehicle::airRelativeVel). Scaling the
+       velocity IS the air-relative one (Vehicle::airRelativeVel) -- ON A BODY WITH
+       NO AUTHORED WIND, which is every shipped one. Where a body does author wind
+       (#688) this number is the speed over the GROUND and the air reads it plus or
+       minus the wind at that height, which is bed authoring for #693 to settle
+       rather than a reason to change what speed_frac means. Scaling the
        inertial circular speed instead leaves Kerbin's flying-slow bed with 16 m/s
        of air -- the ground and its air already move 177 m/s prograde -- i.e. a
        drop from the pad, not a start in flight (#451). */
@@ -591,7 +598,9 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
 
     /* |v| is the authored start: the orbital speed for a circular/elliptical bed,
        the AIR-relative speed for a speed_frac one -- in the body's rotational
-       frame the air sits still, so that is the only speed a flight bed feels.
+       frame the air sits still, on a body with no authored wind, so that is the
+       only speed a flight bed feels (#688 changed what that clause covers, not
+       this line).
        That one field meaning two things costs debugging sessions (#459): on
        Kerbin flying-low |v| says 2412 m/s while the air only ever feels
        2112-2251 m/s, because the atmosphere co-rotates. So an in-atmosphere bed
@@ -603,9 +612,14 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
         /* The launch angle of attack, from the law's own AeroFrame so a readout and
            the law cannot drift apart. Read it for what it is: it prints 0.0 for every
            shipped bed BY CONSTRUCTION, because spawn_vehicle points the nose along
-           the velocity with faceAlong() just above and the air sits still in a
-           rotational frame. It is a canary, not a trim diagnostic -- wind, or a bed
-           that did author an attitude, would put a real signed angle here -- and like
+           the velocity with faceAlong() just above and no shipped body authors a wind
+           to move the air under it (#688 built the mechanism; nothing ships one yet).
+           It is a canary, not a trim diagnostic -- a wind ACROSS the nose, or a bed
+           that did author an attitude, would put a real signed angle here, while a
+           wind ALONG the track moves |v_air| and leaves this at zero. e2e
+           flight/688-wind-bends-airspeed pins that second half (an east wind on an
+           eastbound hull bends 79.5 to 69.5 and keeps AoA at +0.0); nothing pins an
+           across-the-nose wind yet -- and like
            every other AoA readout it refuses to answer where the flow has no
            direction (no air, or under kAoAFlowFloor), printing `-` rather than a 0.0
            that would look like a trimmed hull. What decides whether a flight bed is
@@ -2791,17 +2805,65 @@ bool Vehicle::airReadingAt(const Part *p, AirReading &out) {
     return true;
 }
 
-/* The ship's velocity relative to the AIR (#60/#97). The air is at rest in the body's
-   ROT frame, so there GetVel() is already air-relative; outside it, subtract the
-   co-rotation cross(omega, pos), omega rotated into this frame's axes. */
+/* atmo.h's wind PROFILE -> a velocity in the body's ROTATING frame at a point given
+   in that same frame. alt off the sea-level datum (the axis the whole density profile
+   is stacked on, so a row and a hull agree about what "5 km" means); the horizontal
+   basis from equirect.h, the ONE lon/lat law. At the body's centre there is no
+   horizontal plane, so there is no wind -- and the same floor airReadingAt uses keeps
+   a subnormal radius from turning 1/r into an inf and a NaN. */
+static glm::dvec3 windVelRot(const TerrainBody &b, const std::vector<WindLevel> &W,
+                             const glm::dvec3 &pos_rot) {
+    const double r = glm::length(pos_rot);
+    if(r <= 1e-9) { return glm::dvec3(0.0); }
+    const glm::dvec3 up = pos_rot * (1.0 / r);
+    const glm::dvec2 en = windAt(W, r - b.seaLevelRadius());
+    const glm::dvec3 east = equirectEast(up);
+    return east * en.x + equirectNorth(up, east) * en.y;
+}
+
+/* THE one place the air's velocity enters the flow (#688). Every aero read, Mach, the
+   jet gate and #498's air-relative prograde marker take their flow from this call, so
+   the wind is authored as a velocity here and NEVER as a force term -- a fake force
+   would fly the hull as if the air stood still while its anemometer lied.
+   The answer is always v_ship - v_air, and the air's velocity has two terms that do not
+   both live in every frame:
+     co-rotation -- the ground dragging the air around with it. Zero by definition in
+       the rotating frame, so that half early-outs;
+     the WIND -- authored RELATIVE TO THE GROUND (atmo.h:WindLevel), so it is just as
+       live in the rotating frame. A hull parked on a wind-blowing world reads a
+       non-zero airspeed standing still, and is pushed DOWNWIND: subtracting is what
+       makes that true, since a wind blowing east makes an eastbound hull's airspeed
+       SMALLER (a tailwind) and a westbound one's larger (a headwind). Adding it swaps
+       headwind and tailwind and drags a parked hull upwind -- the mutation e2e
+       flight/688-wind-bends-airspeed is built to catch.
+   Above the air's top the profile HOLDS its last row rather than calming down, exactly
+   like the co-rotation term, which has never cut off at top() either; the density cuts
+   there, so nothing with a force behind it can tell. */
 glm::dvec3 Vehicle::airRelativeVel(const glm::dvec3 &com) {
-    if(frame == nullptr || frame->isRotFrame() || m_parent == nullptr
+    if(frame == nullptr || m_parent == nullptr
        || m_parent->rot_frame == nullptr) {
         return GetVel();
     }
     Frame *R = m_parent->rot_frame;
+    const bool has_wind = m_parent->surface.atmosphere.has_wind();
+    if(frame->isRotFrame()) {
+        // com is already in the ground's axes; there is no co-rotation to subtract.
+        return has_wind ? GetVel() - windVelRot(*m_parent,
+                                                m_parent->surface.atmosphere.wind, com)
+                        : GetVel();
+    }
     const glm::dmat3 o = R->GetOrientRelTo(frame);   // rot -> this frame
-    return GetVel() - glm::cross(o * R->omega(), com);
+    glm::dvec3 v = GetVel() - glm::cross(o * R->omega(), com);
+    if(has_wind) {
+        // The transpose below moves a point between a body's rail frame and its spin
+        // frame, which is only a rotation because the two frames share an origin (a
+        // rot frame's authored pos is 0, system.cpp). The co-rotation term above has
+        // always relied on the same fact; this is the first place that can say so.
+        assert(R->GetPositionRelTo(frame) == glm::dvec3(0.0));
+        v -= o * windVelRot(*m_parent, m_parent->surface.atmosphere.wind,
+                            glm::transpose(o) * com);
+    }
+    return v;
 }
 
 glm::dvec3 Vehicle::applyAeroForce(double h) {
@@ -2881,7 +2943,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastAirT = airTemperature(da, alt);
     lastAirP = airPressure(da, alt);
     lastAirA = airSoundSpeed(da, alt);
-    /* GetVel() minus the air's co-rotation when outside the body's rot frame (#97).
+    /* GetVel() minus the air's OWN velocity: its co-rotation when outside the body's
+       rot frame (#97), and the body's atmosphere.wind at this point (#688).
        Read before the density floor, not after it: lastAirV is what the Mach readout
        divides, and a hull at 120 km moving 800 m/s in air too thin to bill still has a
        Mach number -- zeroing it here would print 0.000 as a measurement. */
@@ -2919,8 +2982,12 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
        whole atmosphere shell (soiTarget puts the ship in rot_frame), where w is
        already measured against the air and the correction is identically zero. It
        is only non-zero if aero runs in the non-rotating SOI frame, and there
-       Kerbin's 2.9e-4 rad/s is at most 1.5e-3 m/s of sweep at r = 5 m. Do NOT
-       subtract the body's omega from w -- it is not in there. */
+       Kerbin's 2.9e-4 rad/s is at most 1.5e-3 m/s of sweep at r = 5 m. A wind
+       PROFILE shears the same way and harder: the #688 fixture's 20 m/s over 17 km
+       is 1.2e-3 s^-1, i.e. 6e-3 m/s across that same hull -- 0.015 % of q at
+       80 m/s, so the per-surface flow still treats the air as uniform, and a gust
+       model would be the thing that changes that, not this.
+       Do NOT subtract the body's omega from w -- it is not in there. */
     const glm::dvec3 w = GetAngVelocity(hull);
     /* A non-finite rate must not reach the law: it is silent if it does. Every
        surface would read a NaN flow, partAero calls a NaN flow VALID (it only

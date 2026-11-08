@@ -1,0 +1,312 @@
+{
+  "note": "e2e fixture for #688: the shipped ksp_system bodies Kerbol, Kerbin, Moho and Duna verbatim, with ONE block added -- Kerbin's atmosphere.wind, two {alt, east, north} rows. Nothing in res/systems authors wind, so as shipped no body's air ever moves and an anemometer reads exactly 'how fast is the ship' -- which is #688. Two rows rather than one because a wind is a PROFILE, and the numbers make the interpolation observable: a flying bed sits at 0.1 of Kerbin's 85 km air = 8500 m, exactly half way between a 0 m/s row and a 20 m/s one, so the air AT the bed moves 10.0 m/s due east. A step, a nearest-row read or a table read at the datum gives 0 or 20 instead. east/north are relative to the GROUND in the local horizontal basis (src/equirect.h), never a body's spin, which airRelativeVel adds as its own term. Pinned by e2e/cases/flight/688-wind-bends-airspeed.txt. Keep every other field identical to ksp_system.json: the point is a one-block diff, not a new world.",
+  "home": "Kerbin",
+  "soi_law": "patched_conic",
+  "epoch_year": 1,
+  "skybox": "res/skybox/v1",
+  "world_buildings_files": [
+    "res/data/ksp_launch_sites.json"
+  ],
+  "bodies": [
+    {
+      "name": "Kerbol",
+      "type": "star",
+      "radius": 261600000,
+      "mass": 1.757e+28,
+      "g": 17.131,
+      "seed": 0.1,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "palette": [
+          [
+            0.0,
+            [
+              1.0,
+              0.8,
+              0.35
+            ]
+          ],
+          [
+            1.0,
+            [
+              1.0,
+              1.0,
+              0.75
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 1e+18,
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "orb_ang_speed": 0.0
+      },
+      "transfer_dv": 0.0,
+      "science_mult": 2.0
+    },
+    {
+      "name": "Kerbin",
+      "type": "planet",
+      "orbits": "Kerbol",
+      "radius": 600000,
+      "mass": 5.292e+22,
+      "g": 9.81,
+      "seed": 1,
+      "has_sea": true,
+      "power_scaler": 3,
+      "surface": {
+        "amplitude": 5000,
+        "persistence": 0.6,
+        "frequency": 1.1,
+        "sea_color": [
+          0.2,
+          0.45,
+          0.65
+        ],
+        "palette": [
+          [
+            0.0,
+            [
+              0.13,
+              0.45,
+              0.13
+            ]
+          ],
+          [
+            0.45,
+            [
+              0.45,
+              0.55,
+              0.2
+            ]
+          ],
+          [
+            0.8,
+            [
+              0.55,
+              0.45,
+              0.35
+            ]
+          ],
+          [
+            1.0,
+            [
+              1.0,
+              1.0,
+              1.0
+            ]
+          ]
+        ],
+        "atmosphere": {
+          "color": [
+            0.3,
+            0.5,
+            1.0
+          ],
+          "thickness": 15000,
+          "power": 4.0,
+          "intensity": 0.7,
+          "sea_level_density": 1.225,
+          "height": 85000,
+          "layers": [
+            {
+              "alt": 0,
+              "T": 288.15,
+              "lapse": -0.00638083
+            },
+            {
+              "alt": 11205.4,
+              "T": 216.65,
+              "lapse": 0.0
+            },
+            {
+              "alt": 20689.7,
+              "T": 216.65,
+              "lapse": 0.00091511
+            },
+            {
+              "alt": 33802.8,
+              "T": 228.65,
+              "lapse": 0.00244303
+            },
+            {
+              "alt": 50994.6,
+              "T": 270.65,
+              "lapse": 0.0
+            },
+            {
+              "alt": 55737.7,
+              "T": 270.65,
+              "lapse": -0.00225883
+            },
+            {
+              "alt": 80529.3,
+              "T": 214.65,
+              "lapse": -0.00154453
+            }
+          ],
+          "wind": [
+            {
+              "alt": 0.0,
+              "east": 0.0,
+              "north": 0.0
+            },
+            {
+              "alt": 17000.0,
+              "east": 20.0,
+              "north": 0.0
+            }
+          ]
+        },
+        "clouds": {
+          "height": 2500,
+          "coverage": 0.6,
+          "freq": 10,
+          "drift": 1e-05
+        }
+      },
+      "inertial": {
+        "orb_ang_speed": 6.826918657082229e-07,
+        "arg_peri": 0.0,
+        "true_anomaly0": 3.14
+      },
+      "rotating": {
+        "rot_ang_speed": 0.00029157665354214053,
+        "spin_phase0": 3.355854362286427,
+        "axial_tilt": 0.40910517666747087,
+        "tilt_azimuth": 3.6482047113650014
+      },
+      "transfer_dv": 0.0,
+      "science_mult": 1.0
+    },
+    {
+      "name": "Moho",
+      "type": "planet",
+      "orbits": "Kerbol",
+      "radius": 250000,
+      "mass": 2.526e+21,
+      "g": 2.698,
+      "seed": 1,
+      "has_sea": false,
+      "power_scaler": 3,
+      "surface": {
+        "amplitude": 800,
+        "palette": [
+          [
+            0.0,
+            [
+              0.35,
+              0.22,
+              0.2
+            ]
+          ],
+          [
+            0.6,
+            [
+              0.5,
+              0.32,
+              0.3
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.65,
+              0.45,
+              0.42
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "orb_ang_speed": 2.8356872230308897e-06,
+        "arg_peri": 0.2617993877991494,
+        "true_anomaly0": 3.140508989974855,
+        "orb_incl": 0.12217304763960307,
+        "lon_asc_node": 1.2217304763960306,
+        "ecc": 0.2
+      },
+      "rotating": {
+        "rot_ang_speed": 5.1927151299004845e-06,
+        "spin_phase0": 0.34041004981157125,
+        "axial_tilt": 0.0005235987755982988,
+        "tilt_azimuth": 3.405444219766777
+      },
+      "transfer_dv": 5346.3,
+      "science_mult": 2.3
+    },
+    {
+      "name": "Duna",
+      "type": "planet",
+      "orbits": "Kerbol",
+      "radius": 320000,
+      "mass": 4.515e+21,
+      "g": 2.943,
+      "seed": 7,
+      "has_sea": false,
+      "power_scaler": 3,
+      "surface": {
+        "palette": [
+          [
+            0.0,
+            [
+              0.55,
+              0.22,
+              0.08
+            ]
+          ],
+          [
+            0.6,
+            [
+              0.7,
+              0.35,
+              0.15
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.85,
+              0.6,
+              0.4
+            ]
+          ]
+        ],
+        "atmosphere": {
+          "color": [
+            0.8,
+            0.48,
+            0.3
+          ],
+          "thickness": 8000,
+          "power": 4.0,
+          "intensity": 0.55,
+          "sea_level_density": 0.015,
+          "scale_height": 13600,
+          "height": 65000
+        }
+      },
+      "inertial": {
+        "orb_ang_speed": 3.628668876941674e-07,
+        "arg_peri": 0.0,
+        "true_anomaly0": 3.140152693772359,
+        "orb_incl": 0.0010471975511965976,
+        "lon_asc_node": 2.3649211364523164,
+        "ecc": 0.051
+      },
+      "rotating": {
+        "rot_ang_speed": 9.590013900271049e-05,
+        "spin_phase0": 2.803056015704051,
+        "axial_tilt": 0.4396484385773716,
+        "tilt_azimuth": 1.69332390337188
+      },
+      "transfer_dv": 1744.5,
+      "science_mult": 1.4
+    }
+  ]
+}

@@ -524,6 +524,112 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                         s.atmosphere.layers.push_back(L);
                     }
                 }
+                /* How the air MOVES (#688): [{alt, east, north}, ...], atmo.h:WindLevel.
+                   A row is the air's OWN velocity RELATIVE TO THE GROUND at that
+                   geometric altitude -- never its velocity in some inertial frame,
+                   because then every spinning body would author its own spin into every
+                   row and a datum would change with the clock. airRelativeVel adds the
+                   co-rotation beside this, in the one place the flow is composed.
+                   Unknown keys are refused rather than ignored: {"easts": 5} reads as
+                   "no wind", which is the one silent outcome an author would never see. */
+                if(av.contains("wind")) {
+                    if(!av["wind"].is_array()) {
+                        throw std::runtime_error(
+                            "system: " + body->name + ": atmosphere.wind must be"
+                            " an array of { alt, east, north } objects");
+                    }
+                    if(av["wind"].empty()) {
+                        throw std::runtime_error(
+                            "system: " + body->name + ": atmosphere.wind is empty"
+                            " -- omit the key for air that stands still");
+                    }
+                    /* windAt() scans the rows linearly once per air-relative read per
+                       hull, so an unbounded table is a loop on the aero path -- same
+                       reason (and same cap) as atmosphere.layers above. */
+                    if(av["wind"].size() > 64) {
+                        throw std::runtime_error(
+                            "system: " + body->name + ": atmosphere.wind has too"
+                            " many rows (64 max)");
+                    }
+                    static const char *const kWindKeys[] =
+                        {"alt", "east", "north"};
+                    double prev_alt = 0.0;
+                    bool first_row = true;
+                    int row_no = 0;
+                    for(const nlohmann::json &wv : av["wind"]) {
+                        ++row_no;
+                        const std::string at = " row " + std::to_string(row_no) + ": ";
+                        if(!wv.is_object()) {
+                            throw std::runtime_error(
+                                "system: " + body->name + ": atmosphere.wind"
+                                + at + "must be an object");
+                        }
+                        /* An unknown key is a typo, and a typo here reads as "no wind"
+                           -- the one silent outcome an author would never notice (the
+                           same net --startships got in #709). A MISSING key is the same
+                           trap from the other side: {"alt": 100} would otherwise load
+                           as a row of calm air. So all three, named, or refuse. */
+                        for(const auto &kv : wv.items()) {
+                            bool known = false;
+                            for(const char *k : kWindKeys) {
+                                if(kv.key() == k) { known = true; break; }
+                            }
+                            if(!known) {
+                                throw std::runtime_error(
+                                    "system: " + body->name + ": atmosphere.wind"
+                                    + at + "unknown field \"" + kv.key() + "\""
+                                    " (known: alt, east, north)");
+                            }
+                        }
+                        WindLevel W;
+                        for(const char *k : kWindKeys) {
+                            if(!wv.contains(k)) {
+                                throw std::runtime_error(
+                                    "system: " + body->name + ": atmosphere.wind"
+                                    + at + "needs \"alt\", \"east\" and \"north\""
+                                    " (missing \"" + k + "\")");
+                            }
+                            /* Checked before the read: nlohmann throws its own type
+                               error, which names no body, no row and no field. */
+                            if(!wv[k].is_number()) {
+                                throw std::runtime_error(
+                                    "system: " + body->name + ": atmosphere.wind"
+                                    + at + "\"" + k + "\" must be a number");
+                            }
+                        }
+                        W.alt = wv["alt"].get<double>();
+                        W.east = wv["east"].get<double>();
+                        W.north = wv["north"].get<double>();
+                        /* Rows must RISE, strictly. A NaN alt fails this the same way a
+                           backwards table does, which is the NaN-closed shape
+                           src/angmath.h asks for. */
+                        if(!first_row && !(W.alt > prev_alt)) {
+                            throw std::runtime_error(
+                                "system: " + body->name + ": atmosphere.wind"
+                                + at + "\"alt\" does not rise above the row before"
+                                " it (rows must be listed bottom-up)");
+                        }
+                        /* A wind feeds a Mach number, a dynamic pressure and every aero
+                           force, so it must be a finite, bounded horizontal speed --
+                           PER COMPONENT (atmo.h:kWindMaxSpeed). The alt is checked here
+                           too because the rise rule only compares rows, so the FIRST
+                           row would otherwise wave a NaN through. */
+                        if(!std::isfinite(W.alt)
+                           || !(std::isfinite(W.east) && std::isfinite(W.north))
+                           || !(std::fabs(W.east) <= kWindMaxSpeed)
+                           || !(std::fabs(W.north) <= kWindMaxSpeed)) {
+                            throw std::runtime_error(
+                                "system: " + body->name + ": atmosphere.wind"
+                                + at + "needs finite numeric alt/east/north, and a"
+                                " wind within +/-"
+                                + std::to_string((int)kWindMaxSpeed)
+                                + " m/s in each of east and north");
+                        }
+                        s.atmosphere.wind.push_back(W);
+                        prev_alt = W.alt;
+                        first_row = false;
+                    }
+                }
                 // Air needs a profile: one exponential or a level table, and not both
                 // (render-only rim = neither). A rim can exist without either.
                 if(!s.atmosphere.layers.empty()) {
@@ -562,6 +668,26 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                     throw std::runtime_error(
                         "system: " + body->name + ": atmosphere needs "
                         "sea_level_density and scale_height (or neither)");
+                }
+                /* Wind needs air to move, and air that ends. A render-only rim has no
+                   air at all, and a row above top() sits in the vacuum the same file
+                   already declared -- drag.h cuts the density there, so such a row is a
+                   number nothing can ever reach. windAt() HOLDS the last row above the
+                   table, so the top row itself is fine and worth pinning. */
+                if(!s.atmosphere.wind.empty()) {
+                    if(!s.atmosphere.physical()) {
+                        throw std::runtime_error(
+                            "system: " + body->name + ": atmosphere.wind needs"
+                            " physical air to move (sea_level_density with"
+                            " scale_height or layers) -- a render rim has none");
+                    }
+                    if(!(s.atmosphere.wind.back().alt <= s.atmosphere.top())) {
+                        throw std::runtime_error(
+                            "system: " + body->name + ": atmosphere.wind's highest"
+                            " row is above the air's top ("
+                            + std::to_string((long long)s.atmosphere.top())
+                            + " m) -- nothing can reach it");
+                    }
                 }
                 /* The resolved gas feeds a divide and a sqrt, and g feeds all three
                    thermodynamic reads, so a bad one is a LOAD error rather than a 0 K,

@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 304 |
+| `invariant` | a behaviour or a player route the game must keep | 305 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 41 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **364** |
+| | **total** | **365** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (94)
+## flight (95)
 
 | case | kind | pins |
 |---|---|---|
@@ -115,6 +115,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/648-killing-the-spin-stops-costing-power.txt` | invariant | Wheels bill what they deliver: this hull pays its full wheel rating while its drums carry the ask, and stops paying once an autopilot has arrived -- with its key still held down. |
 | `flight/677-kill-rot-stops-a-ring-only-hull.txt` | invariant | Holding kill-rot on a hull whose only steering is its thruster ring asks for torque, spends hydrazine, and puts the spin down. |
 | `flight/678-a-turn-rate-ceiling-coasts-instead-of-snapping.txt` | invariant | A latched 90 degree turn with SAS turn rate 6 deg/s asks for no more than that rate, cruises at it, and still arrives. |
+| `flight/688-wind-bends-airspeed.txt` | invariant | With atmosphere.wind authored, a hull's airspeed is its speed through moving air rather than its speed over the ground -- a tailwind along its track makes it smaller -- and the wind a hull reads is the authored profile interpolated at its own altitude (10 m/s at 8.5 km) and HELD past the last row (20 m/s at 42.5 km). |
 | `flight/709-a-start-ship-spawns-over-a-map-point.txt` | invariant | A start ship given lat/lon starts flying over that map point -- the surface readout reports the requested coordinate -- while keeping the bed's altitude, its air-relative speed and its science band. |
 
 ## crew (26)

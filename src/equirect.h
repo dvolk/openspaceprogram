@@ -73,6 +73,29 @@ inline void equirectLonLat(const glm::dvec3 &d, double &lon, double &lat) {
     if(lon < 0.0) { lon += 2.0 * std::numbers::pi; }
 }
 
+/* Local horizontal unit vectors at a surface direction, in the same rotating-frame
+   axes as equirectDir: east points along INCREASING lon, north along increasing lat.
+   Both are perpendicular to `up`, which is what makes them the basis a horizontal
+   velocity (the wind, #688) is authored in -- a wind is a surface direction that is
+   not a place, and this is the only place that basis is spelled.
+
+   east = normalize(Y x up) is exact off the poles: for up = equirectDir(lon, lat),
+   Y x up = (up.z, 0, -up.x) = cos(lat) * (the unit east). EXACTLY at a pole the
+   meridian is undefined and that cross product is zero; east then falls back to
+   lon 0's east, which is the limit of approaching the pole along that meridian --
+   arbitrary, but never NaN and never off the horizontal plane. north = up x east
+   is unit whenever up and east are unit and perpendicular. */
+inline glm::dvec3 equirectEast(const glm::dvec3 &up) {
+    const glm::dvec3 e(up.z, 0.0, -up.x);
+    const double l2 = glm::dot(e, e);
+    if(l2 < 1e-24) { return glm::dvec3(0.0, 0.0, -1.0); }   // a pole: lon 0's east
+    return e * (1.0 / std::sqrt(l2));
+}
+
+inline glm::dvec3 equirectNorth(const glm::dvec3 &up, const glm::dvec3 &east) {
+    return glm::cross(up, east);
+}
+
 inline void equirectLonLat(const glm::vec3 &d, float &lon, float &lat) {
     lat = std::asin(glm::clamp(d.y, -1.0f, 1.0f));
     lon = std::atan2(-d.z, d.x);

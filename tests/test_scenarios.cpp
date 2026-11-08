@@ -394,6 +394,41 @@ static void expect_refuses(const char *label, const std::string &text,
     }
 }
 
+/* Like expect_refuses, but for a patch that must LOAD -- and must load with the rows
+   still attached. A loader that quietly drops them passes a "did it throw" test and
+   leaves a body whose air never moves while its file says it does. A refusal an author
+   hits while writing real data is the same class of bug from the other side: the file
+   and the law disagree, and only one of them gets read. */
+static void expect_loads(const char *label, const std::string &text,
+                         const char *body, size_t want_rows) {
+    const std::string path = std::string("tmp/test_scenarios_mix_") + label + ".json";
+    {
+        std::ofstream o(path);
+        o << text;
+    }
+    try {
+        const System sys = load_system(path.c_str(), nullptr, nullptr);
+        TerrainBody *found = nullptr;
+        for(TerrainBody *b : sys.bodies) {
+            if(b->name == body) { found = b; break; }
+        }
+        if(found == nullptr) {
+            printf("  %s: body '%s' is not in the loaded system\n", path.c_str(), body);
+            failures++;
+            return;
+        }
+        const size_t got = found->surface.atmosphere.wind.size();
+        if(got != want_rows) {
+            printf("  %s: %s loaded %zu wind rows, want %zu -- the file and the loaded"
+                   " body disagree\n", path.c_str(), body, got, want_rows);
+            failures++;
+        }
+    } catch(const std::exception &e) {
+        printf("  %s: a legal patch was REFUSED: %s\n", path.c_str(), e.what());
+        failures++;
+    }
+}
+
 static void check_composition() {
     const char *src = "res/systems/ksp_system.json";
     std::ifstream f(src);
@@ -550,6 +585,158 @@ static void check_composition() {
     printf("  %s: a body with no composition gets dry air -- M %.7f kg/mol,"
            " gamma %.7f, oxidizer %.6f\n", dflt.c_str(), a.molar_mass, a.gamma,
            a.oxidizer_share);
+}
+
+/* atmosphere.wind (#688): what the loader refuses, and what it must take. A wind is
+   the air's OWN velocity, and it feeds a Mach number, a dynamic pressure and every
+   aero force on the body, so an unsorted table, an unbounded speed or a row on a body
+   with no air must stop at the FILE rather than arrive as a NaN several steps later.
+   The positive rows are the same size a bug: real authoring is coming (the published
+   figures in utils/rss/html state Venus 0.3-1.0 m/s at its surface, Earth 0-100, Mars
+   2-30), and a law that refuses legitimate data is the same failure wearing the other
+   face. */
+static void check_wind() {
+    const char *src = "res/systems/ksp_system.json";
+    std::ifstream f(src);
+    if(!f.is_open()) {
+        printf("  cannot open %s (run from the repo root)\n", src);
+        failures++;
+        return;
+    }
+    const nlohmann::json base = nlohmann::json::parse(f);
+    std::filesystem::create_directories("tmp");
+    auto patched = [&](const char *name, auto &&fn) {
+        nlohmann::json j = base;
+        for(auto &bv : j["bodies"]) {
+            if(bv.value("name", std::string()) != name) { continue; }
+            fn(bv["surface"]["atmosphere"]);
+        }
+        return j;
+    };
+    auto rows = [](std::initializer_list<nlohmann::json> rs) {
+        nlohmann::json a = nlohmann::json::array();
+        for(const auto &r : rs) { a.push_back(r); }
+        return a;
+    };
+    auto row = [](double alt, double east, double north) {
+        return nlohmann::json{{"alt", alt}, {"east", east}, {"north", north}};
+    };
+
+    // Legal authoring loads: a two-row profile, a single row (which is then the wind
+    // everywhere on the body), and a calm-but-bounded west wind with a negative north
+    // component. Each pins the ROW COUNT, so a loader that drops rows cannot pass.
+    expect_loads("wind_profile", patched("Kerbin", [&](nlohmann::json &a) {
+                     a["wind"] = rows({row(0.0, 0.0, 0.0), row(17000.0, 20.0, 0.0)});
+                 }).dump(), "Kerbin", 2);
+    expect_loads("wind_one_row", patched("Kerbin", [&](nlohmann::json &a) {
+                     a["wind"] = rows({row(8000.0, -3.5, -1.25)});
+                 }).dump(), "Kerbin", 1);
+    // A row exactly AT the air's top is fine: windAt holds it above the table rather
+    // than claiming the air calms down as it thins out.
+    expect_loads("wind_at_top", patched("Kerbin", [&](nlohmann::json &a) {
+                     a["wind"] = rows({row(85000.0, 1.0, 0.0)});
+                 }).dump(), "Kerbin", 1);
+    // A row under the datum is legal too: #245's raised-sea worlds fly below their own
+    // sea level, and windAt holds the first row down there rather than inventing calm
+    // air under it.
+    expect_loads("wind_under_datum", patched("Kerbin", [&](nlohmann::json &a) {
+                     a["wind"] = rows({row(-4000.0, 2.0, 0.0), row(20000.0, 6.0, 0.0)});
+                 }).dump(), "Kerbin", 2);
+
+    expect_refuses("wind_scalar", patched("Kerbin", [](nlohmann::json &a) {
+                       a["wind"] = 5;
+                   }).dump(), "must be");
+    expect_refuses("wind_empty", patched("Kerbin", [](nlohmann::json &a) {
+                       a["wind"] = nlohmann::json::array();
+                   }).dump(), "is empty");
+    expect_refuses("wind_row_scalar", patched("Kerbin", [](nlohmann::json &a) {
+                       a["wind"] = nlohmann::json::array({5});
+                   }).dump(), "must be an object");
+    /* The typo net: {"easts": 5} would otherwise read as "no wind", which is the one
+       silent outcome an author would never notice. Same reason --startships refuses an
+       unknown field (#709). */
+    expect_refuses("wind_typo_key", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({nlohmann::json{{"alt", 0.0}, {"easts", 5.0}}});
+                   }).dump(), "unknown field");
+    expect_refuses("wind_backwards", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({row(5000.0, 1.0, 0.0), row(1000.0, 2.0, 0.0)});
+                   }).dump(), "does not rise");
+    expect_refuses("wind_same_alt", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({row(0.0, 1.0, 0.0), row(0.0, 2.0, 0.0)});
+                   }).dump(), "does not rise");
+    expect_refuses("wind_too_fast", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({row(0.0, 600.0, 0.0)});
+                   }).dump(), "500");
+    expect_refuses("wind_too_fast_north", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({row(0.0, 0.0, -600.0)});
+                   }).dump(), "500");
+    /* A number that is not a number must name the body, the row and the field. Left to
+       nlohmann the author reads "type must be number, but is string" with none of
+       those, which is how a 15-row table becomes an afternoon. */
+    expect_refuses("wind_east_a_string", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({nlohmann::json{{"alt", 0.0},
+                                                        {"east", "10"},
+                                                        {"north", 0.0}}});
+                   }).dump(), "\"east\" must be a number");
+    expect_refuses("wind_alt_a_string", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({nlohmann::json{{"alt", "100"},
+                                                        {"east", 1.0},
+                                                        {"north", 0.0}}});
+                   }).dump(), "\"alt\" must be a number");
+    expect_refuses("wind_east_null", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({nlohmann::json{{"alt", 0.0},
+                                                        {"east", nullptr},
+                                                        {"north", 0.0}}});
+                   }).dump(), "\"east\" must be a number");
+    /* A row missing a key loads as CALM air, which is the same silent nothing the
+       unknown-key net exists to stop: {"alt": 100} is not "blowing at 100 m". */
+    expect_refuses("wind_row_no_north", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({nlohmann::json{{"alt", 0.0}, {"east", 5.0}}});
+                   }).dump(), "missing \"north\"");
+    expect_refuses("wind_row_empty", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({nlohmann::json::object()});
+                   }).dump(), "needs \"alt\", \"east\" and \"north\"");
+    // windAt scans linearly once per air-relative read per hull, so a huge table is a
+    // loop on the aero path -- the same reason layers is capped.
+    expect_refuses("wind_too_many_rows", patched("Kerbin", [&](nlohmann::json &a) {
+                       nlohmann::json big = nlohmann::json::array();
+                       for(int i = 0; i < 65; ++i) { big.push_back(row(i * 100.0, 1.0, 0.0)); }
+                       a["wind"] = big;
+                   }).dump(), "too many rows");
+    // A row in the vacuum the same file already declared: nothing can ever reach it.
+    expect_refuses("wind_above_top", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({row(90000.0, 1.0, 0.0)});
+                   }).dump(), "above the air's top");
+    // Moho ships no atmosphere: the patch creates a render rim, and a rim has no air
+    // to blow. Refusing this is what keeps "wind" from meaning "a number nobody reads".
+    expect_refuses("wind_no_air", patched("Moho", [&](nlohmann::json &a) {
+                       a["wind"] = rows({row(0.0, 5.0, 0.0)});
+                   }).dump(), "physical air");
+
+    /* Nothing in res/systems (the six shipped files) authors wind YET (#688); an e2e
+       fixture is free to, and 688-kerbin-wind.json does. The mechanism landed before
+       the data on purpose: with no row authored, every shipped flight number, every
+       e2e flight golden and every drag figure in the corpus is unchanged, so a
+       regression in the wind path cannot hide behind a re-baselined flight.
+       Breaking this pin is a deliberate act, and the commit that breaks it owes three
+       things: delete this loop, re-run the flight cases that quote an airspeed or a
+       drag figure, and land the new numbers in the same commit. */
+    for(const auto &de : std::filesystem::directory_iterator("res/systems")) {
+        if(de.path().extension() != ".json") { continue; }
+        std::ifstream sf(de.path());
+        const nlohmann::json j = nlohmann::json::parse(sf);
+        for(const auto &bv : j["bodies"]) {
+            if(bv.contains("surface") && bv["surface"].contains("atmosphere")
+               && bv["surface"]["atmosphere"].contains("wind")) {
+                printf("  %s: %s authors atmosphere.wind while every shipped flight"
+                       " golden still assumes none -- re-run the flight cases that"
+                       " quote an airspeed or a drag figure, and delete this pin, in"
+                       " the same commit\n",
+                       de.path().string().c_str(), bv.value("name", "?").c_str());
+                failures++;
+            }
+        }
+    }
 }
 
 /* Every shipped file has sea_level 0 or absent (#412), so the line above cannot
@@ -1064,6 +1251,7 @@ int main() {
         if(check_air(p, sys)) failures++;
     }
     check_composition();
+    check_wind();
     check_gravity_pair();
     check_raised_sea();
     check_fixture_air();

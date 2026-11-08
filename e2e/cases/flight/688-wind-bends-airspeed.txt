@@ -1,0 +1,44 @@
+# The air moves (#688). Until a body authors atmosphere.wind, the air's velocity IS
+# its body's co-rotation and nothing else, so a hull's airspeed is exactly its ground
+# speed and an anemometer anywhere reads "how fast is the ship". This fixture gives
+# Kerbin two {alt, east, north} rows -- 0 m/s at the datum, 20 m/s due east at 17 km --
+# and the two flying beds sit either side of that table, which makes the profile
+# readable straight off the Spawn line:
+#   flying-cruise  8.5 km = half way up  -> the air moves 10 m/s there, not 0 and not 20
+#   flying-high   42.5 km = past the last row -> the row is HELD, 20 m/s, not faded out
+# Both beds fly EAST from lon 0 (the [surfinfo] pin says so: lon grows off 0 rather than
+# unwrapping to 359.99), so an east wind is a TAILWIND and the airspeed is SMALLER than
+# the ground speed: 69.5 through the air against 79.5 over the ground. Sign matters as
+# much as the number -- add the wind instead of subtracting it and this reads 89.4, which
+# swaps headwind for tailwind and drags a parked hull upwind.
+# The bed's own speed over the GROUND is untouched (79.5 m/s, the shipped number): a
+# wind is an air velocity, never a force, so it bends the flow the aero law reads and
+# leaves the launch state alone. AoA stays +0.0 because this wind blows along the track
+# -- a wind ACROSS the nose is what puts a signed angle there.
+NAME wind-bends-airspeed
+CLAIM With atmosphere.wind authored, a hull's airspeed is its speed through moving air rather than its speed over the ground -- a tailwind along its track makes it smaller -- and the wind a hull reads is the authored profile interpolated at its own altitude (10 m/s at 8.5 km) and HELD past the last row (20 m/s at 42.5 km).
+KIND invariant
+ARGS --timeout 3 --info-log --system e2e/fixtures/systems/688-kerbin-wind.json --startship a,res/ships/racer.json,Kerbin,flying-cruise,lat=0,lon=0 --startship b,res/ships/racer.json,Kerbin,flying-high,lat=0,lon=0
+FORBID error:
+FORBID atmosphere.wind
+# Both beds are flying EAST off lon 0, so the fixture's east wind is along the track.
+# Westbound would read lon unwrapped near 360, and the sign of the next two pins would
+# flip -- which is the point of pinning the direction before the magnitude.
+CHECK all(s["lon"] > 0.0 and s["lon"] < 1.0 for s in surf if s["t"] > 0.4)
+# Half way between a 0 and a 20 m/s row: 10 m/s of tailwind, so 79.5 over the ground is
+# 69.5 through the air. No wind at all reads 79.5 here; a table read at the datum or a
+# step between rows reads 79.5 too; a nearest-row read reads 99.5; the wrong sign reads
+# 89.4.
+CHECK re.search(r"Spawn 'flying-cruise'.*\|v\| = 79\.[0-9] m/s \|v_air\| = 69\.[0-9] m/s", out)
+# Past the last row the profile HOLDS rather than calming down, so the air moves a full
+# 20 m/s: 2344.6 over the ground, less Kerbin's 186.5 m/s of co-rotation at 42.5 km,
+# less the 20 m/s tailwind = 2138.2. No wind reads 2158.1, and half the wind reads
+# 2148.1 -- both outside this.
+CHECK re.search(r"Spawn 'flying-high'.*\|v\| = 234[0-9]\.[0-9] m/s \|v_air\| = 213[0-9]\.[0-9] m/s", out)
+# A wind ALONG the track bends the speed, not the direction: the nose is placed on the
+# flow, so the canary stays at zero until a wind blows ACROSS it.
+CHECK re.search(r"Spawn 'flying-cruise'.*AoA = \+0\.0 deg", out)
+# The beds did not move: a wind is not a new altitude. r is the same 608500 / 642500 m
+# the windless shipped system gives -- 0.1 and 0.5 of Kerbin's 85 km top.
+CHECK re.search(r"Spawn 'flying-cruise'.*r = 608500 m", out)
+CHECK re.search(r"Spawn 'flying-high'.*r = 642500 m", out)

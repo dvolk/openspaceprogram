@@ -3,9 +3,12 @@
 // drag.h -- the atmospheric-drag law as pure math (glm + <cmath> only), so tests/
 // can pin it without the render chain.
 //
-// The air co-rotates with the planet: it is at rest in the body's ROTATING frame,
-// so there the ship's frame velocity IS the air-relative velocity. In any other
-// frame Vehicle::airRelativeVel subtracts the co-rotation term (#60/#97).
+// The air co-rotates with the planet: absent an authored wind it is at rest in the
+// body's ROTATING frame, so there the ship's frame velocity IS the air-relative
+// velocity. In any other frame Vehicle::airRelativeVel subtracts the co-rotation term
+// (#60/#97), and it also subtracts the body's atmosphere.wind profile at the hull --
+// the air's own motion over the ground (#688). Nothing in res/systems authors one yet,
+// so every shipped body is still the at-rest case.
 
 #include <algorithm>
 #include <cassert>

@@ -1,17 +1,19 @@
-// atmo.h -- an atmosphere's own two facts: what its air is MADE of (gasSpecies,
-// resolveMix) and how it STACKS with altitude (AtmoLayer, levelPressure). Both are
-// pure data plus the arithmetic that turns authored numbers into the ones the law
-// reads, so no caller re-derives them. Read by the authored half
-// (terragen.h:AtmosphereParams, parsed from a system file), the loader that
-// resolves it (system.cpp) and the aero law that samples it
-// (drag.h:airDensity/airPressure/airTemperature/airSoundSpeed/jetAirGate).
+// atmo.h -- an atmosphere's own three facts: what its air is MADE of (gasSpecies,
+// resolveMix), how it STACKS with altitude (AtmoLayer, levelPressure) and how it MOVES
+// (WindLevel, windAt, #688). All of it is pure data plus the arithmetic that turns
+// authored numbers into the ones the law reads, so no caller re-derives them. Read by
+// the authored half (terragen.h:AtmosphereParams, parsed from a system file), the
+// loader that resolves it (system.cpp), the aero law that samples its profile
+// (drag.h:airDensity/airPressure/airTemperature/airSoundSpeed/jetAirGate) and the ONE
+// place its motion enters the flow (Vehicle::airRelativeVel).
 //
-// It lives in its own header because all three need the exact same struct and
-// none of them may include another as a peer: terragen.h is the terrain generator,
-// drag.h is the aero law. constants.h is the other leaf they share, and it holds
-// numbers rather than types. What is HERE is level-LOCAL -- one AtmoLayer plus the
-// body's g and its gas. Deciding WHICH level an altitude falls in belongs to drag.h,
-// because that is where a body's table, its top and its flat floor live.
+// It lives in its own header because all three readers (terragen.h, system.cpp, drag.h)
+// need the exact same structs, and none of them may include another as a peer:
+// terragen.h is the terrain generator, drag.h is the aero law. constants.h is the other
+// leaf they share, and it holds numbers rather than types. What is HERE is level-LOCAL
+// -- one AtmoLayer plus the body's g and its gas. Deciding WHICH level an altitude
+// falls in belongs to drag.h, because that is where a body's table, its top and its
+// flat floor live.
 
 #pragma once
 
@@ -20,6 +22,8 @@
 #include <cmath>
 #include <string>
 #include <vector>
+
+#include <glm/glm.hpp>  // windAt returns a horizontal pair as one dvec2
 
 #include "constants.h"  // kGasR, for the hydrostatic integration below
 
@@ -89,6 +93,61 @@ struct AtmoLayer {
 inline double levelTemperature(const AtmoLayer &L, double alt) {
     const double T = L.base_T + L.lapse * (alt - L.base_alt);
     return (T > 0.0) ? T : 0.0;
+}
+
+/* THE AIR'S OWN MOTION (#688). A wind is a VELOCITY, never a force term -- both
+   reference engines surveyed for #688 author it that way (Orbiter's `windVelocity`),
+   and the reason is mechanical: the flow at a surface is `v_ship - v_air`, so once the
+   air has a velocity the aero law, Mach, the jet gate and the air-relative prograde
+   marker all read it for free, while a fake force would give a hull that flies as if
+   the air were still but reads an airspeed that lies.
+
+   One row per altitude, like AtmoLayer, because the honest published picture is a
+   PROFILE, not a number: Venus drifts ~1 m/s at its surface and ~100 m/s at its cloud
+   deck, and a body whose only wind is at cloud level is exactly what a platform riding
+   that deck needs (#712). `alt` is GEOMETRIC metres above the sea-level datum -- the
+   same coordinate AtmoLayer bases on and airDensity measures from -- and east/north are
+   [m/s] in the local horizontal basis (equirect.h:equirectEast/equirectNorth), which is
+   the ground's own frame. So these numbers are RELATIVE TO THE GROUND: the co-rotation
+   is not in them and must not be, or every spinning body would author its own spin into
+   every row and the datum would change with the clock.
+
+   windAt() interpolates LINEARLY between the two rows spanning alt and holds the
+   nearest end's value outside the table -- below the first row (a body whose first row
+   is a jet aloft has no reason to claim the surface is calm) and above the last (the
+   air thins out, it does not calm down). A loader refuses an unsorted row list, a row
+   missing or misspelling a key, a non-finite number, a table past 64 rows (windAt
+   scans linearly on the aero path), or a COMPONENT past kWindMaxSpeed -- per axis, so a
+   row may total up to 500*sqrt2. That bound is a typo net, not physics -- a steady
+   500 m/s flow is a Mach-1.5 wind everywhere at once, which is a decimal point in the
+   wrong place, not weather. */
+struct WindLevel {
+    double alt = 0.0;    // [m above the sea-level datum], GEOMETRIC
+    double east = 0.0;   // [m/s] toward increasing lon, relative to the ground
+    double north = 0.0;  // [m/s] toward increasing lat, relative to the ground
+};
+
+/* Loosest bound that still catches a mistyped row: the fastest wind on any published
+   target in utils/rss/html is a few tens of m/s, a terrestrial hurricane tops out near
+   113, and every aero law downstream reads it as a Mach number. */
+inline constexpr double kWindMaxSpeed = 500.0;   // m/s, per component
+
+inline glm::dvec2 windAt(const std::vector<WindLevel> &W, double alt) {
+    assert(!W.empty());   // the caller's gate, AtmosphereParams::has_wind(), is the law
+    if(alt <= W.front().alt) { return glm::dvec2(W.front().east, W.front().north); }
+    if(alt >= W.back().alt) { return glm::dvec2(W.back().east, W.back().north); }
+    // Rows are sorted at load, so a linear scan finds the span; a table is a handful
+    // of rows and this runs once per hull per substep, not once per surface.
+    for(size_t i = 1; i < W.size(); ++i) {
+        if(alt <= W[i].alt) {
+            const double span = W[i].alt - W[i - 1].alt;
+            assert(span > 0.0);   // the loader's strictly-increasing rule
+            const double f = (alt - W[i - 1].alt) / span;
+            return glm::dvec2(W[i - 1].east + f * (W[i].east - W[i - 1].east),
+                              W[i - 1].north + f * (W[i].north - W[i - 1].north));
+        }
+    }
+    return glm::dvec2(W.back().east, W.back().north);   // unreachable; not a silent 0
 }
 
 /* The weight of a column in the field the hull actually falls in (#683).

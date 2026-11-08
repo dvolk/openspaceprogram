@@ -35,6 +35,11 @@
 //                #487's rate damping inherits compressibility instead of carrying it.
 //   dragForce:   opposite the motion; |F| = 0.5 * rho * cd * A * v^2;
 //                scales as v^2; zero on any degenerate input.
+//   windAt (#688): the air's OWN motion, so the flow is v_ship - v_air rather than
+//                v_ship -- a per-body {alt, east, north} profile, LINEAR between rows
+//                and HELD outside them, east and north independent (a vector field,
+//                not a speed); plus the equirect east/north basis those components are
+//                authored in, which must stay unit and horizontal up to the poles.
 //
 // Build & run (from repo root) -- also part of `make test`:
 //   see the test: rule in the Makefile.
@@ -43,9 +48,11 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <numbers>
 #include <string>
 
 #include "drag.h"
+#include "equirect.h"  // the east/north basis a wind row is authored in (#688)
 
 static int g_failures = 0;
 static int g_checks = 0;
@@ -3808,6 +3815,103 @@ static void test_liftingSystems() {
     }
 }
 
+/* atmo.h:windAt -- the air's OWN motion (#688), and the equirect.h basis it is
+   authored in. The wind is a VELOCITY and the flow is `v_ship - v_air`, so these
+   numbers are what an anemometer reads: a hull standing still on a windy world must
+   read the wind, not zero. Rows are {alt, east, north} in metres above the datum and
+   m/s in the local horizontal basis, RELATIVE TO THE GROUND -- the co-rotation is a
+   separate term in Vehicle::airRelativeVel and must never be authored into a row. */
+static void test_wind_profile() {
+    printf("== windAt: the air's own motion, per altitude (#688) ==\n");
+
+    // One row: the same wind everywhere. windAt HOLDS the ends rather than
+    // calming down, because the air thinning out and the air standing still are
+    // different claims (and a body whose only row is a jet aloft has said nothing
+    // about its surface).
+    const std::vector<WindLevel> one {{ 0.0, 5.0, 0.0 }};
+    CHECK_NEAR(windAt(one, 0.0).x, 5.0, 0.0, "one row at the datum reads its value");
+    CHECK_NEAR(windAt(one, 90000.0).x, 5.0, 0.0, "held above the row");
+    CHECK_NEAR(windAt(one, -2000.0).x, 5.0, 0.0, "held below the row");
+    CHECK_NEAR(windAt(one, 1e12).x, 5.0, 0.0, "held arbitrarily far above");
+
+    /* The shape the e2e fixture (688-kerbin-wind.json) and a flying bed actually
+       use: a 0 m/s row at the datum, 20 m/s at 17 km, and Kerbin's flying beds at
+       8.5 km -- exactly half way, so the air there moves 10 m/s. This is the pin
+       that a step, a nearest-row read, or reading the table AT the datum would all
+       break (0 or 20 instead of 10). */
+    const std::vector<WindLevel> prof {{ 0.0, 0.0, 0.0 }, { 17000.0, 20.0, 0.0 }};
+    CHECK_NEAR(windAt(prof, 0.0).x, 0.0, 0.0, "the datum row");
+    CHECK_NEAR(windAt(prof, 8500.0).x, 10.0, 1e-12, "half way up == half the shear");
+    CHECK_NEAR(windAt(prof, 4250.0).x, 5.0, 1e-12, "a quarter up == a quarter");
+    CHECK_NEAR(windAt(prof, 17000.0).x, 20.0, 1e-12, "the top row exactly");
+    CHECK_NEAR(windAt(prof, 17001.0).x, 20.0, 0.0, "held above the top row");
+    CHECK_NEAR(windAt(prof, 42500.0).x, 20.0, 0.0, "held far above (42.5 km)");
+    CHECK_NEAR(windAt(prof, -1.0).x, 0.0, 0.0, "held below the datum row");
+
+    /* east and north interpolate independently: a VECE, not a speed with a
+       direction, so a shear that also swings is expressible (#688 asks for a
+       vector field even while the field is constant). */
+    const std::vector<WindLevel> she {{ 0.0, 3.0, -4.0 }, { 1000.0, -3.0, 4.0 }};
+    const glm::dvec2 mid = windAt(she, 500.0);
+    CHECK_NEAR(mid.x, 0.0, 1e-12, "east crosses zero mid-span");
+    CHECK_NEAR(mid.y, 0.0, 1e-12, "north crosses zero mid-span");
+    const glm::dvec2 q = windAt(she, 250.0);
+    CHECK_NEAR(q.x, 1.5, 1e-12, "east at a quarter");
+    CHECK_NEAR(q.y, -2.0, 1e-12, "north at a quarter");
+    // A three-row table finds its OWN span rather than the first one.
+    const std::vector<WindLevel> jet {{ 0.0, 1.0, 0.0 }, { 50000.0, 1.0, 0.0 },
+                                      { 65000.0, 100.0, 0.0 }};
+    CHECK_NEAR(windAt(jet, 25000.0).x, 1.0, 0.0, "a calm layer stays calm");
+    CHECK_NEAR(windAt(jet, 57500.0).x, 50.5, 1e-12, "the jet interpolates in its own span");
+    CHECK_NEAR(windAt(jet, 65000.0).x, 100.0, 0.0, "the jet's own row");
+
+    /* The basis (equirect.h) the two components are measured in: same axes as
+       equirectDir, so lon 0 = +X, lon +pi/2 = -Z, north = +Y. Getting these wrong
+       aims every wind on the body at the wrong way round, which is why the basis is
+       pinned here rather than left to the composition in vehicle.cpp. */
+    const glm::dvec3 up0 = equirectDir(0.0, 0.0);
+    const glm::dvec3 e0 = equirectEast(up0);
+    CHECK_NEAR(e0.z, -1.0, 1e-12, "east at lon 0 is -Z");
+    CHECK_NEAR(equirectNorth(up0, e0).y, 1.0, 1e-12, "north at the equator is +Y");
+    const glm::dvec3 up90 = equirectDir(std::numbers::pi / 2.0, 0.0);
+    const glm::dvec3 e90 = equirectEast(up90);
+    CHECK_NEAR(e90.x, -1.0, 1e-12, "a quarter round, east is -X -- it turns with the map");
+    // East does not change with latitude, because lon lines are meridians.
+    const glm::dvec3 up45 = equirectDir(0.0, std::numbers::pi / 4.0);
+    const glm::dvec3 e45 = equirectEast(up45);
+    CHECK_NEAR(e45.z, -1.0, 1e-12, "east at lat 45 is still -Z");
+    const glm::dvec3 n45 = equirectNorth(up45, e45);
+    CHECK_NEAR(n45.x, -std::numbers::sqrt2 / 2.0, 1e-12, "north leans back off the pole");
+    CHECK_NEAR(n45.y, std::numbers::sqrt2 / 2.0, 1e-12, "and still rises with latitude");
+
+    // A wind must stay horizontal wherever it is asked for, and a unit basis is
+    // what keeps an authored 10 m/s from becoming 10.x.
+    for(int i = 0; i < 8; ++i) {
+        for(int j = 0; j < 5; ++j) {
+            const double lon = 2.0 * std::numbers::pi * (double)i / 8.0;
+            const double lat = -std::numbers::pi / 2.0
+                             + std::numbers::pi * (double)j / 4.0;
+            const glm::dvec3 up = equirectDir(lon, lat);
+            const glm::dvec3 e = equirectEast(up);
+            const glm::dvec3 n = equirectNorth(up, e);
+            const double tol = 1e-12;
+            CHECK_NEAR(glm::length(e), 1.0, tol, "east is unit");
+            CHECK_NEAR(glm::length(n), 1.0, tol, "north is unit");
+            CHECK_NEAR(glm::dot(e, up), 0.0, tol, "east is horizontal");
+            CHECK_NEAR(glm::dot(n, up), 0.0, tol, "north is horizontal");
+            CHECK_NEAR(glm::dot(e, n), 0.0, tol, "east and north are square");
+        }
+    }
+
+    // Exactly on a pole the meridian is undefined: the fallback is arbitrary, but
+    // it must be horizontal and finite, never NaN and never a shrunk wind.
+    const glm::dvec3 ePole = equirectEast(glm::dvec3(0.0, 1.0, 0.0));
+    CHECK_NEAR(glm::length(ePole), 1.0, 0.0, "a pole's east is still unit");
+    CHECK_NEAR(ePole.y, 0.0, 0.0, "a pole's east is still horizontal");
+    const glm::dvec3 nPole = equirectNorth(glm::dvec3(0.0, 1.0, 0.0), ePole);
+    CHECK_NEAR(glm::length(nPole), 1.0, 0.0, "a pole's north is still unit");
+}
+
 int main() {
     test_density();
     printf("\n");
@@ -3878,6 +3982,8 @@ int main() {
     test_controlCl();
     printf("\n");
     test_control_trim();
+    printf("\n");
+    test_wind_profile();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

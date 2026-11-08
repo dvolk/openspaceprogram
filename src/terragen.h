@@ -129,6 +129,18 @@ struct AtmosphereParams {
        meaningful top for a profile, so system.cpp refuses one without it. */
     std::vector<AtmoLayer> layers;
 
+    /* How the air MOVES (#688): atmo.h:WindLevel rows of {alt, east, north} [m/s]
+       RELATIVE TO THE GROUND, in the local horizontal basis (equirect.h). Absent =
+       the air sits still on its body, which is what every shipped body authors today
+       -- so the mechanism lands without moving a single shipped flight number.
+       It enters the flow at ONE call, Vehicle::airRelativeVel, and nowhere else.
+       The near-miss next door: CloudParams::drift below is a cloud-deck creep in
+       PATTERN units, never sampled from this table, so a deck can visibly slide over
+       air the model says is standing still. Filed as #714, which has the conversion
+       (drift = wind_at_deck * freq / R_deck). */
+    std::vector<WindLevel> wind;
+    bool has_wind() const { return !wind.empty(); }
+
     /* "Is there a PHYSICAL atmosphere here at all?" -- the question the aero pass,
        the rails gate and the readout all ask, in ONE place so they cannot answer it
        differently. A render rim alone does not count; either profile half does. */
