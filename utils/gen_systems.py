@@ -29,7 +29,7 @@ from gas_mixes import DRY_AIR, CO2_HEAVY, H2_HE_CH4_KSP
 # altitude in a system file means). Both generators call the same function, because each
 # --check only compares its own output and would not notice the two drifting.
 from atmo_units import (resolve_layer_heights, check_body_gravity,
-                        SIGMA_SB, semimajor_axis)
+                        SIGMA_SB, semimajor_axis, star_temperature_from_flux)
 
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
@@ -796,22 +796,24 @@ def author_star_temperature(obj):
     sea is fresh water and its tilt 23.44 deg.
 
     The wiki's star row states a temperature RANGE instead (Kerbol 4014.95 - 9621.2 K,
-    which is a photosphere-to-corona pair, not a surface) and that low end would put
-    ~2,000 W/m^2 on a world built like Earth. It is printed as a disagreement, not
-    used: which statement to honour is a design call, not a scrape. Both lines print
-    whether or not anything agrees (#685's rule)."""
+    which is a photosphere-to-corona pair, not a surface) and even its LOW end would put
+    5,451 W/m^2 on a world built like Earth. It is printed as a disagreement, not used:
+    which statement to honour is a design call, not a scrape. Both lines print whether or
+    not anything agrees (#685's rule)."""
     star = next(b for b in obj["bodies"] if b["type"] == "star")
     home = next(b for b in obj["bodies"] if b["name"] == obj["home"])
     w = (home.get("inertial") or {}).get("orb_ang_speed")
     assert w, home["name"] + ": no orbital speed to size the star by"
     a = semimajor_axis(G * star["mass"], w)
-    T = (EARTH_SOLAR_FLUX / SIGMA_SB) ** 0.25 * math.sqrt(a / star["radius"])
+    T = star_temperature_from_flux(EARTH_SOLAR_FLUX, a, star["radius"])
     star.setdefault("surface", {})["temperature"] = round(T, 2)
     print('  star      %-8s T %9.2f K -> %7.1f W/m2 at %s (%.6g m), from'
           ' "%s receives Earth\'s sun"'
           % (star["name"], T, EARTH_SOLAR_FLUX, home["name"], a, home["name"]))
     rng = WIKI_THERMAL.get(star["name"])
-    if rng and rng[1]:
+    # Both ends or neither: load_wiki_thermal allows a lone min or max, and printing
+    # '%9.2f' of None here would crash the generator over a cosmetic CSV gap.
+    if rng and rng[1] is not None and rng[2] is not None:
         lo, hi = rng[1], rng[2]
         flux_lo = SIGMA_SB * lo ** 4 * (star["radius"] / a) ** 2
         print('  wiki      %-8s states %9.2f - %9.2f K, which would put %7.1f W/m2'

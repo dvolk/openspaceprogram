@@ -311,7 +311,11 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                0..1 asks a body to reflect more light than falls on it. ABSENT is
                fine and means "nobody sourced this": the readouts print a dash,
                which is why the defaults are 0 and why 0 is never offered as a
-               temperature. */
+               temperature. The bound here is a typo filter, not physics -- 1e6 K
+               admits any plausible sun and rejects a decimal-point mistake, and the
+               load-time `solar` audit line below is what catches a 10x error that
+               fits inside it, because that error moves the home world's flux by
+               10,000x and 1361 W/m^2 is a number a reader knows. */
             if(sv.contains("temperature")) {
                 if(!sv["temperature"].is_number()) {
                     throw std::runtime_error("system: '" + body->name
@@ -325,8 +329,12 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                              + std::to_string(tK)
                                              + " K is not in [0, 1e6]");
                 }
-                s.temperature = (float)tK;
+                s.temperature = tK;
             }
+            /* The JSON key is "albedo" and it is the BOND albedo (terragen.h).
+               RingParams::albedo is a different thing -- a ring's visual brightness --
+               and lives in a different block; the two must never be confused by a
+               reader who sees `albedo` twice in one body. */
             if(sv.contains("albedo")) {
                 if(!sv["albedo"].is_number()) {
                     throw std::runtime_error("system: '" + body->name
@@ -340,7 +348,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                              + std::to_string(a)
                                              + " must be in [0, 1)");
                 }
-                s.albedo = (float)a;
+                s.bond_albedo = a;
             }
             if(sv.contains("sea_level")) {
                 s.has_sea = true;
@@ -1205,12 +1213,20 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
 
     /* #687: the star's output, derived ONCE here from its authored
        surface.temperature so nothing downstream re-derives it or disagrees with
-       anything else about it (solar.h owns the law). A star with no authored
-       temperature lights nothing, which is said out loud: a system that loads
-       with a dark sun and prints dashes everywhere is a data bug worth an
-       evening less than finding one silently. */
-    sys.root->star_luminosity = starLuminosity(sys.root->radius,
-                                               sys.root->surface.temperature);
+       anything else about it (solar.h owns the law). Only a star lights anything: a
+       fixture that puts surface.temperature on a PLANET root would otherwise light
+       its whole system, so the derivation is gated on isStar() and the mistake is
+       printed rather than carried. A star with no authored temperature lights nothing,
+       which is also said out loud: a system that loads with a dark sun and prints
+       dashes everywhere is a data bug worth an evening less than finding silently. */
+    if(sys.root->isStar()) {
+        sys.root->star_luminosity = starLuminosity(sys.root->radius,
+                                                   sys.root->surface.temperature);
+    } else if(sys.root->surface.temperature > 0.0) {
+        printf("[solar] WARNING: the frame-tree root '%s' is not a star yet authors "
+               "surface.temperature; nothing in this system receives insolation.\n",
+               sys.root->name.c_str());
+    }
     if(sys.root->star_luminosity <= 0.0) {
         printf("[solar] WARNING: star '%s' authors no surface.temperature, so no "
                "body in this system receives any insolation.\n",
@@ -1221,11 +1237,15 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
        temperature twice -- once as the surface field, once as the air's datum
        temperature -- and the two answer to different things: the first is what a
        ground radiometer and a part's skin START at, the second is what the column
-       above weighs. Both come out of ONE published row in the generators (a sheet's
+       above weighs. When the generators read ONE published row for both (a sheet's
        "Average temperature", or a giant's "Temperature at 1 bar", which is this
-       file's datum level -- #689), so on the shipped catalogue they are legitimately
-       the SAME number, which is exactly why this prints rather than WARNING: a warning
-       every load trips over is a warning nobody reads. Say which case we are in. */
+       file's datum level -- #689) they ARE the same number and the line says so. When
+       the two rows differ the difference is PRINTED, because some do: Jupiter's authored
+       scale height implies a 1-bar level of 186.7 K while its sheet's own 1-bar row says
+       165 K, a 21.7 K gap that is #685's "the giants' sheet disagrees with itself" on a
+       new axis and #625's layer-table question in one number. It prints rather than
+       WARNINGs because a warning the shipped catalogue trips on every load is a warning
+       nobody reads. */
     for(TerrainBody *b : sys.bodies) {
         /* What the air's datum temperature IS, by the only law that defines it:
            drag.h:airTemperature at alt 0 -- the first level's base_T for a layered
@@ -1233,32 +1253,63 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
            Quoting the authored field instead would be a different number on half the
            catalogue. */
         const double airT = airTemperature(dragAtm(b->surface.atmosphere, *b), 0.0);
-        if(!(airT > 0.0) && !(b->surface.temperature > 0.0f)) {
+        const double groundT = b->surface.temperature;
+        if(!(airT > 0.0) && !(groundT > 0.0)) {
             continue;   // nothing sourced: the readouts dash, and say nothing here
         }
-        char ground[24], air[24];
-        if(b->surface.temperature > 0.0f) {
-            std::snprintf(ground, sizeof ground, "%11.2f K",
-                          (double)b->surface.temperature);
+        char surface_s[24], air[24], note[64];
+        if(groundT > 0.0) {
+            std::snprintf(surface_s, sizeof surface_s, "%11.2f K", groundT);
         } else {
-            std::snprintf(ground, sizeof ground, "          - ");
+            std::snprintf(surface_s, sizeof surface_s, "          - ");
         }
         if(airT > 0.0) {
             std::snprintf(air, sizeof air, "%11.2f K", airT);
         } else {
             std::snprintf(air, sizeof air, "          - ");
         }
-        const bool same = b->surface.temperature > 0.0f && airT > 0.0
-                          && std::fabs((double)b->surface.temperature - airT) < 0.5;
-        printf("         thermal  %-13s albedo %6s ground %s air base %s%s\n",
+        if(groundT > 0.0 && airT > 0.0) {
+            const double dT = groundT - airT;
+            if(std::fabs(dT) < 0.5) {
+                std::snprintf(note, sizeof note,
+                              "  (one published row states both)");
+            } else {
+                std::snprintf(note, sizeof note,
+                              "  (two rows, %.2f K apart)", dT);
+            }
+        } else {
+            note[0] = '\0';
+        }
+        /* On a star this line's "surface" is its photosphere -- the number the whole
+           system's light comes from, which is exactly why the line is worth printing
+           for the star too. The readouts that mean a GROUND dash for a star instead
+           (tick.cpp's --solar-log does). */
+        printf("         thermal  %-13s albedo %6s surface %s air base %s%s\n",
                b->name.c_str(),
-               b->surface.albedo > 0.0f ? "authored" : "  -   ",
-               ground, air,
-               same ? "  (one published row states both)" : "");
+               b->surface.bond_albedo > 0.0 ? "authored" : "  -   ",
+               surface_s, air, note);
     }
 
     // Recompute root-relative frame values before the first render.
     sys.root->frame->UpdateOrbitRails(0.0);
+
+    /* #687: read the whole insolation chain back as one number a reader KNOWS. The
+       star's temperature is a single authored figure, so no internal check can see it
+       move (the #684/#686 meta-law); the second statement lives in the generator's
+       --check against the published irradiance rows, and this is its load-time twin.
+       Kerbin and Earth both expect ~1361 W/m^2 at their own rails (utils/gen_systems.py,
+       utils/rss/html/earthfact.html), so a decimal-point mistake in a star's temperature
+       -- which a [0, 1e6] K bound happily admits -- shows up here as a home world
+       sitting in 13,610,000 W/m^2 of light. */
+    if(sys.root->star_luminosity > 0.0 && sys.home && sys.home->frame) {
+        const SunSample ss = sunSample(sys.root->star_luminosity,
+                                       sys.root->frame->root_pos,
+                                       sys.home->frame->root_pos);
+        printf("         solar    %-13s L %14.4g W; home %-9s reads %10.1f W/m2 at "
+               "%.4g m\n",
+               sys.root->name.c_str(), sys.root->star_luminosity,
+               sys.home->name.c_str(), ss.flux, ss.dist_m);
+    }
 
     printf("Loaded system '%s': %zu bodies (home=%s, belts=%zu, buildings=%zu)\n",
            path, sys.bodies.size(),

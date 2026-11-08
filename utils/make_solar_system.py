@@ -10,7 +10,8 @@ from sci_dist import stamp_science_mults, stamp_transfer_dv, phase0
 # both system generators import -- each --check only compares a file against its own
 # output, so a second spelling of the law would drift in silence (the #636 lesson).
 from atmo_units import (resolve_layer_heights, check_body_gravity,
-                        SIGMA_SB, semimajor_axis)
+                        SIGMA_SB, semimajor_axis, star_temperature_from_flux,
+                        blackbody_temperature)
 
 G      = 6.674e-11      # m^3 / kg / s^2  (matches the loader's G)
 AU     = 1.496e11       # m
@@ -712,6 +713,14 @@ def fact_surface(page):
         line = sheet_line(h, label)
         m = re.search(r'(\d+(?:\.\d+)?)\s*K\b', line) if line else None
         if m:
+            # A digit BEFORE the matched figure means the line states something else
+            # first -- a range, a count, an unlabeled number -- and reading the first
+            # `N K` after it would be a guess. Loud, because a silently wrong mean
+            # temperature is worse than a missing one (#685's lesson).
+            if re.search(r'\d', line[:m.start()]):
+                print('WARNING fact surface: %s puts a number before "%s %s" -- '
+                      'check the scrape before trusting the mean read off it'
+                      % (page, label, line[:60]))
             out['avg_T'] = float(m.group(1))
             break
     return out
@@ -753,12 +762,18 @@ def check_fact_surface(bodies, sheets, sun, verbose=True):
         return ['the star authors no surface.temperature, so no body in this '
                 'system receives any insolation']
     by_name = {b['name']: b for b in bodies}
+    rows = []
+    waived = []
     for b in bodies:
         sheet = sheets.get(b['name'])
         inertial = b.get('inertial') or {}
         parent = by_name.get(b.get('orbits'))
         w = inertial.get('orb_ang_speed')
-        if not sheet or not w or not parent or not parent.get('mass'):
+        # The irradiance row means "the STAR's light here", so the parent has to be the
+        # star. A moon with a Bulk-parameters table some day would otherwise be weighed
+        # against a planet-sized radius and pass -- or DRIFT -- by accident.
+        if (not sheet or not w or not parent or not parent.get('mass')
+                or parent.get('type') != 'star'):
             continue
         a = semimajor_axis(G * parent['mass'], w)
         flux = SIGMA_SB * T_sun ** 4 * (parent['radius'] / a) ** 2
@@ -776,29 +791,35 @@ def check_fact_surface(bodies, sheets, sun, verbose=True):
             cells.append('flux %10.1f W/m2 (sheet -)' % flux)
         albedo = (b.get('surface') or {}).get('albedo')
         if albedo is not None and sheet.get('bb_T'):
-            bb = (flux * (1.0 - albedo) / (4.0 * SIGMA_SB)) ** 0.25
+            bb = blackbody_temperature(flux, albedo)
             off = (bb - sheet['bb_T']) / sheet['bb_T']
             cells.append('bb %6.1f K (sheet %6.1f) %+.2f%%'
                          % (bb, sheet['bb_T'], 100.0 * off))
             if abs(off) > FACT_SURFACE_BANDS:
                 known = FACT_SURFACE_KNOWN.get((b['name'], 'bb'))
                 # Same expiry rule as the air waivers: a waiver covers the number it
-                # was argued against, so moving the albedo voids the argument.
+                # was argued against, so moving the albedo voids the argument. The row
+                # still PRINTS, tagged (waived): a guard that goes quiet on the one body
+                # it let through is the #685 failure mode it exists to prevent.
                 if known is not None and abs(albedo - known[0]) <= WAIVER_TOL * known[0]:
                     cells[-1] += ' (waived)'
-                    continue
-                stale = ('' if known is None else
-                         ' -- the waiver here pins an albedo of %g, so it predates %g'
-                         % (known[0], albedo))
-                bad.append('%s: authored albedo %g with that flux imply a %.4g K '
-                           'black-body, the fact sheet states %.4g (%+.1f%%, band %d%%)%s'
-                           % (b['name'], albedo, bb, sheet['bb_T'], 100.0 * off,
-                              round(100 * FACT_SURFACE_BANDS), stale))
+                    waived.append('%s bb: %s' % (b['name'], known[1]))
+                else:
+                    stale = ('' if known is None else
+                             ' -- the waiver here pins an albedo of %g, so it predates %g'
+                             % (known[0], albedo))
+                    bad.append('%s: authored albedo %g with that flux imply a %.4g K '
+                               'black-body, the fact sheet states %.4g (%+.1f%%, band %d%%)%s'
+                               % (b['name'], albedo, bb, sheet['bb_T'], 100.0 * off,
+                                  round(100 * FACT_SURFACE_BANDS), stale))
         else:
             cells.append('bb - (no authored albedo or no bb row)')
-        if verbose:
-            print('  surface   %-9s a %12.4g m  %s'
-                  % (b['name'], a, '  '.join(cells)))
+        rows.append('%-9s a %12.4g m  %s' % (b['name'], a, '  '.join(cells)))
+    if verbose:
+        for r in rows:
+            print('  surface   %s' % r)
+        for why in waived:
+            print('  waived    %s' % why)
     return bad
 
 # ---------------------------------------------------------------------------
@@ -1422,14 +1443,15 @@ def build_base(verbose_air=False):
     # at Earth's own rail and inverted through solar.h's L = 4 pi R^2 sigma T^4.
     # check_fact_surface() then weighs what that one temperature implies at every
     # OTHER body against that body's own irradiance row: one authored number, eight
-    # published cross-checks. Kerbol's CSV temperature range (3939-4010 K) disagrees
-    # with this by design (#687: the KSP system's Kerbin rail is 13,360 km, not an
-    # AU) -- gen_systems prints that disagreement rather than resolving it.
+    # published cross-checks. The KSP catalogue's Kerbol row (utils/ksp_bodies.csv:
+    # 4014.95 - 9621.2 K) disagrees with this by design -- that world's rail is no AU and
+    # its wiki "temperature" pair is a photosphere-to-corona range, not a surface (#687).
+    # gen_systems prints its own version of that disagreement instead of resolving it.
     earth = next(b for b in bodies if b['name'] == 'Earth')
     assert sheets['Earth']['irradiance'], 'no Earth irradiance row to fix the star by'
     a_earth = semimajor_axis(G * SUN_MASS, earth['inertial']['orb_ang_speed'])
-    T_sun = ((sheets['Earth']['irradiance'] / SIGMA_SB) ** 0.25
-             * math.sqrt(a_earth / SUN_RADIUS))
+    T_sun = star_temperature_from_flux(sheets['Earth']['irradiance'],
+                                       a_earth, SUN_RADIUS)
     sun['surface']['temperature'] = round(T_sun, 2)
     if verbose_air:
         print('  star      Sun T %10.2f K  from Earth %10.1f W/m2 at %12.4g m'

@@ -298,12 +298,17 @@ struct Surface {
        photospheric T, the ONE authored number behind the whole system's
        insolation (solar.h); for a planet it is what the ground IS, read so far
        only by the readouts. 0 = not authored (a dash, never 0 K).
-       `albedo` is the Bond albedo, 0..1: the reflected share of the starlight.
-       Both are authored from a source where one exists (the vendored
+       `bond_albedo` is the BOND albedo, 0..1: the share of the starlight the body
+       reflects back to space. It is named against the JSON key "albedo", which is
+       deliberately NOT RingParams::albedo next door -- that one is a ring's VISUAL
+       brightness and has the opposite convention (0.5 default, always present).
+       Both fields are double rather than float because a star's T is raised to the
+       fourth before anything sees it, and the air's thermodynamics next door are
+       double too. Both are authored from a source where one exists (the vendored
        utils/rss/html sheets state an average temperature and a Bond albedo) and
        left absent where nothing states one. */
-    float temperature = 0.0f;    // [K] authored; 0 = not authored
-    float albedo = 0.0f;         // Bond albedo, 0..1
+    double temperature = 0.0;    // [K] authored; 0 = not authored
+    double bond_albedo = 0.0;    // Bond albedo, 0..1; 0 = not authored
     AtmosphereParams atmosphere; // optional rim; enabled => the JSON block exists
     CloudParams clouds;          // optional deck; enabled => body has clouds
     std::vector<RingParams> rings;  // optional; flat annuli in the equator

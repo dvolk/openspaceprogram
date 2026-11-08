@@ -670,21 +670,27 @@ void tick(Game &g) {
                     snprintf(flat_s, sizeof flat_s, "-");
                 }
                 /* The WORLD's claims, read off the SoI body underneath. A hull in
-                   the star's own SoI has no body there, so all three dash -- which is
-                   the same answer a hull over an unsourced moon gets. */
+                   the star's own SoI has no ground under it: the star's authored
+                   temperature is its photosphere, not a surface a radiometer sits on,
+                   so those columns DASH (the load-time audit prints it as a star and
+                   means it there). Same answer as a hull over an unsourced moon. */
                 const TerrainBody *over = g.ship->m_parent;
-                const float alb = over ? over->surface.albedo : 0.0f;
-                const float groundT = over ? over->surface.temperature : 0.0f;
+                const bool ground_here = over && !over->isStar();
+                const double alb = ground_here ? over->surface.bond_albedo : 0.0;
+                const double groundT = ground_here ? over->surface.temperature : 0.0;
                 char alb_s[24], gt_s[24], bb_s[24];
-                if(alb > 0.0f) {
+                /* bb_T needs BOTH the albedo and a live star sample: printing 0.00 K
+                   for "no sun in range" is exactly the 0-pretending-to-be-a-reading
+                   this block refuses elsewhere. */
+                if(alb > 0.0 && ss.valid) {
                     snprintf(alb_s, sizeof alb_s, "%.3f", alb);
                     snprintf(bb_s, sizeof bb_s, "%.2f",
-                             ss.valid ? blackbodyTemperature(ss.flux, alb) : 0.0);
+                             blackbodyTemperature(ss.flux, alb));
                 } else {
                     snprintf(alb_s, sizeof alb_s, "-");
                     snprintf(bb_s, sizeof bb_s, "-");
                 }
-                if(groundT > 0.0f) {
+                if(groundT > 0.0) {
                     snprintf(gt_s, sizeof gt_s, "%.2f", groundT);
                 } else {
                     snprintf(gt_s, sizeof gt_s, "-");

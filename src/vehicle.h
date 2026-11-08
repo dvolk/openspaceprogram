@@ -1954,7 +1954,11 @@ public:
     /* The hull's centre of mass in UNIVERSE-ROOT (star) axes (#687). Every other
        frame math here is local to a body; insolation is the one reading that
        needs the distance to the star, and asking for it through a chain of
-       local frames is how it would end up spelled three ways. */
+       local frames is how it would end up spelled three ways. New callers should
+       prefer THIS over hand-composing GetPositionRelTo(star): one spelling. It is
+       non-const because get_center_of_mass() is -- a hull's mass distribution is
+       mutable (staging, docking, a part burning away), so "where is the middle"
+       is a question about a thing that can change. */
     glm::dvec3 GetRootPos();
 
     /* Re-express the ship's state in newFrame and re-home it (setSoi). */

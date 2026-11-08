@@ -220,6 +220,31 @@ int main() {
         expect_reject(j, "zero inner rejected", "zero belt");
     }
 
+    /* #687: the surface's thermal fields. ABSENT is legal (it means "no source" and the
+       readouts dash -- the load of old_system.json above proves that half, since it
+       authors no albedo at all). PRESENT-but-silly is a data bug: a negative temperature
+       on a star is a T^4 typo that would light its whole system at the wrong flux, and an
+       albedo of 1 or more asks a body to reflect more light than reaches it. */
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][0]["surface"]["temperature"] = -5.0;   // the star
+        expect_reject(j, "negative surface temperature rejected",
+                      "\"surface.temperature\"=");
+    }
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][0]["surface"]["albedo"] = 1.2;
+        expect_reject(j, "albedo past 1 rejected", "\"surface.albedo\"=");
+    }
+    {
+        /* The bound is a typo filter, and this is the case it is sized for: a
+           decimal-point mistake on a stellar temperature. */
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][0]["surface"]["temperature"] = 2.0e6;
+        expect_reject(j, "absurd surface temperature rejected",
+                      "\"surface.temperature\"=");
+    }
+
     if(g_failures == 0) { std::printf("test_belts: OK\n"); return 0; }
     std::printf("test_belts: %d FAILURES\n", g_failures);
     return 1;

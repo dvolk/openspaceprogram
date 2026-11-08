@@ -55,6 +55,13 @@
    of one constant, four chances to disagree. */
 inline constexpr double kStefanBoltzmann = 5.670374419e-8;   // [W / m^2 K^4]
 
+/* [m] Below this, "how far from the star" has no answer worth a number -- the sun
+   itself, or a degenerate system. ONE floor, so solarFlux and sunSample cannot
+   disagree about what counts as a distance: spelled separately, a direct
+   solarFlux(L, 1e-12) returns an enormous finite flux with every assert happy while
+   sunSample would have called the same point invalid. */
+inline constexpr double kSunMinDistance_m = 1e-9;
+
 /* [W] A star's total output from its own radius and effective temperature.
    T = 0 is legal and means "no star" (airless fixtures, a body authored before
    the number existed); a negative T is a typo, and T^4 would hide it. */
@@ -71,7 +78,7 @@ inline double starLuminosity(double radius_m, double temp_K) {
    which the callers print as a dash, not as a temperature of 0 K. */
 inline double solarFlux(double luminosity_W, double dist_m) {
     assert(std::isfinite(luminosity_W) && std::isfinite(dist_m));
-    if(luminosity_W <= 0.0 || dist_m <= 0.0) { return 0.0; }
+    if(luminosity_W <= 0.0 || dist_m <= kSunMinDistance_m) { return 0.0; }
     return luminosity_W / (4.0 * std::numbers::pi * dist_m * dist_m);
 }
 
@@ -115,7 +122,7 @@ inline SunSample sunSample(double star_luminosity, const glm::dvec3 &star_root,
     SunSample ss;
     const glm::dvec3 d = point_root - star_root;
     ss.dist_m = glm::length(d);
-    if(star_luminosity <= 0.0 || ss.dist_m <= 1e-9) { return ss; }
+    if(star_luminosity <= 0.0 || ss.dist_m <= kSunMinDistance_m) { return ss; }
     ss.to_sun = d * (-1.0 / ss.dist_m);
     ss.flux = solarFlux(star_luminosity, ss.dist_m);
     ss.valid = true;

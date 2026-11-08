@@ -14,7 +14,10 @@
 
 #include <cmath>
 #include <cstdio>
+#include <fstream>
 #include <numbers>
+
+#include <nlohmann/json.hpp>
 
 #include <glm/glm.hpp>
 
@@ -65,13 +68,10 @@ int main() {
     const double L = starLuminosity(SUN_R, SUN_T);
     CHECK_TRUE(L > 0.0, "Sol's luminosity is positive");
 
-    /* Eight of the nine rows land inside a percent, and the ninth is Pluto, whose
-       OWN two rows disagree with each other: its 37.5 K black-body is its irradiance
-       row with no albedo at all (36.9 K at A=0 against 32.2 K at its own 0.72). The
-       generator waives that pair and prints it (FACT_SURFACE_KNOWN, #687); the
-       tolerance here records the same argument so the waiver cannot be forgotten.
-       Where a row is published to two significant figures (Uranus's 3.7 W/m^2) the
-       tolerance follows the sheet, not the law. */
+    /* Eight rows, and all of them land inside a percent or two -- two only looser
+       because the sheet itself is published to two significant figures (Uranus's
+       3.7 W/m^2). Pluto is NOT in this table: it is spelled out below, because its own
+       two rows disagree and a 20 % band would hide anything. */
     const Row rows[] = {
         {"Mercury", 5.791e10, 9082.7, 0.068, 439.6, 0.01},
         {"Venus",   1.082e11, 2601.3, 0.770, 226.6, 0.01},
@@ -81,7 +81,6 @@ int main() {
         {"Saturn",  1.427e12,   14.8, 0.342,  81.0,  0.02},
         {"Uranus",  2.870e12,    3.7, 0.300,  58.1,  0.05},
         {"Neptune", 4.497e12,    1.5, 0.290,  46.6,  0.05},
-        {"Pluto",   5.905e12,    0.9, 0.720,  37.5,  0.20},
     };
     for(const Row &r : rows) {
         const double s = solarFlux(L, r.a);
@@ -101,7 +100,49 @@ int main() {
     CHECK_NEAR(solarFlux(starLuminosity(261600000.0, 2838.1), 13599840256.0),
                1361.0, 0.005, "Kerbin receives Earth's sun");
 
-    /* ---- the spread of one star's light -------------------------------------- */
+    /* Pluto, spelled out instead of parked at a 20 % tolerance (a band that wide would
+       pass on almost any albedo). At ITS OWN authored albedo and ITS OWN irradiance row
+       the law answers 32.2 K; the sheet's black-body row says 37.5 K, which is that same
+       irradiance with no albedo at all (36.9 K). The sheet contradicts itself, the
+       generator waives the pair in writing (FACT_SURFACE_KNOWN), and this pins OUR side
+       tightly so a moved albedo still trips it. */
+    CHECK_NEAR(blackbodyTemperature(solarFlux(L, 5.905e12), 0.720), 32.2,
+               0.01, "Pluto: the figure the waiver argues about");
+
+    /* ---- the shipped data, not a copy of it -------------------------------------- */
+    /* The rows above are the corpus. These are OUR files: a hand edit to a star's
+       authored temperature, or a regenerate that moves it, must not leave the suite
+       green -- every flux in the game derives from that one number, and at this level
+       nothing else looks at it (the load-time `solar` audit line is the human's half,
+       and make_solar_system.py --check is the generator's). */
+    struct StarPin {
+        const char *path;
+        double temp_K;      // what utils/*.py author, and why
+    };
+    const StarPin pins[] = {
+        {"res/systems/ksp_system.json", 2838.1},    // "Kerbin receives Earth's sun"
+        {"res/systems/solar_system.json", 5769.41}, // Earth's irradiance row inverted
+    };
+    for(const StarPin &p : pins) {
+        std::ifstream f(p.path);
+        if(!f.is_open()) {
+            CHECK_TRUE(false, p.path);   // run from the repo root
+            continue;
+        }
+        const nlohmann::json doc = nlohmann::json::parse(f, nullptr, false);
+        double T = 0.0;
+        if(!doc.is_discarded() && doc.contains("bodies")) {
+            for(const nlohmann::json &b : doc["bodies"]) {
+                if(b.value("type", std::string()) == "star"
+                   && b.contains("surface")) {
+                    T = b["surface"].value("temperature", 0.0);
+                }
+            }
+        }
+        CHECK_NEAR(T, p.temp_K, 1e-6, p.path);
+    }
+
+    /* ---- the spread of one star's light ----------------------------------------- */
     /* Inverse square is exact in this law, so the pin is tight: two distances a
        factor 3 apart differ by 9, whatever the star. */
     const double near_flux = solarFlux(L, 1.0e11);
@@ -111,6 +152,11 @@ int main() {
     /* No star, no flux -- and NOT a zero distance with a zero flux, which a caller
        would print as a real reading. */
     CHECK_NEAR(solarFlux(0.0, 1.0e11), 0.0, 0.0, "no star gives no flux");
+    /* A distance below the module's own floor is "no answer", not an enormous one:
+       both entry points have to agree about that, or a direct solarFlux call returns a
+       finite flux that sunSample would have called invalid. */
+    CHECK_NEAR(solarFlux(L, kSunMinDistance_m / 10.0), 0.0, 0.0,
+               "a zero distance is not a reading");
     {
         const SunSample ss = sunSample(0.0, glm::dvec3(0.0), glm::dvec3(1.0e10, 0, 0));
         CHECK_TRUE(!ss.valid, "a dark star gives an invalid sample");
@@ -151,11 +197,12 @@ int main() {
     CHECK_TRUE(std::isfinite(sunElevation(glm::dvec3(0.0, 0.0, 0.3), up)),
                "a short up vector stays finite");
 
-    /* ---- the guard on an impossible albedo ---------------------------------- */
+    /* ---- what an impossible albedo does ----------------------------------------- */
     /* A body that reflects everything absorbs nothing, so the equilibrium is not a
-       number this law will hand back; the loader refuses albedo >= 1 outright.
-       Asserts are live in the test build, so this stays a documented comment rather
-       than a call -- the pin above on every sheet's own row is the teeth. */
+       number this law should hand back; blackbodyTemperature asserts the range instead.
+       The REFUSAL that protects the data lives in the loader, and it is pinned there:
+       tests/test_belts.cpp feeds a negative surface.temperature and an albedo of 1.2
+       through load_system and requires both to throw. */
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

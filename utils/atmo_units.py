@@ -99,6 +99,23 @@ def semimajor_axis(mu, w):
     return (mu / (w * w)) ** (1.0 / 3.0)
 
 
+def star_temperature_from_flux(flux, dist_m, radius_m):
+    """[K] The INVERSE of src/solar.h's S(d) = sigma T^4 (R/d)^2: the effective
+    temperature a star of this radius needs for `flux` to fall at `dist_m`. Both
+    generators size their star exactly this way (#687), so the inversion is written once
+    -- the same reason #690 put the geopotential conversion in this module."""
+    return (flux / SIGMA_SB) ** 0.25 * (dist_m / radius_m) ** 0.5
+
+
+def blackbody_temperature(flux, albedo):
+    """[K] src/solar.h:blackbodyTemperature spelled in python: absorbed pi r^2 S (1-A),
+    emitted 4 pi r^2 sigma T^4. The duplication is forced -- a generator cannot include a
+    game header -- so SIGMA_SB above carries the same literal as kStefanBoltzmann, both
+    say which module owns the law, and tests/test_solar.cpp pins the C++ half against the
+    published rows the generator reads (#687)."""
+    return (flux * (1.0 - albedo) / (4.0 * SIGMA_SB)) ** 0.25
+
+
 # src/atmo.h:kAtmoGravityTol. Keep the two in step: this is the same rule stated on
 # the authoring side, and a generator that is looser than the loader has already lost.
 GRAVITY_TOL = 0.02
