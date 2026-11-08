@@ -1757,8 +1757,9 @@ static Ring mkRing(std::deque<PartDef> &defs, double podMass, double tankMass,
 }
 
 /* WHAT THE AIR TAKES OFF EACH SURFACE, IN WATTS (#730). The figure is one
-   multiplication on top of the form-drag bill of #455 -- this surface's q x its CdA x
-   its flow speed at the mount -- and the reason it is quoted as a LOAD and not a
+   multiplication on top of the bills the pass already charges a surface -- this
+   surface's q x its CdA x its flow speed at the mount, for the form drag of #455 AND
+   the induced price of #556 -- and the reason it is quoted as a power and not a
    temperature is that it needs no authored material number to be true. So the pin is
    arithmetic against figures the row already prints, and the interesting half is WHICH
    flow: a 16 m span puts its two tips metres apart in q (measured on the shipped skiff:
@@ -1772,15 +1773,18 @@ static void test_the_air_bills_each_surface_in_watts() {
     const double qCom = 0.5 * rho * 100.0 * 100.0;
     TerrainBody *body = mkAirBall();
     Rig a = mkRig(100.0, 0.0);
-    /* Two fixture edits, both because this rig was built for torque. (1) Its plate is
+    /* Three fixture edits, all because this rig was built for torque. (1) Its plate is
        steering-only, and the per-surface readout (aeroValid/q/Mach) is written by the
-       LIFTING pass -- a steering-only part gets it only while it is deflecting -- so give
-       it a lifting surface too, which is also what a reentry surface is. (2) It authors
+       LIFTING pass -- a steering-only part gets it only while it is deflecting -- so make
+       it a lifting surface, which is also what a reentry surface is. (2) The loader
+       REFUSES a part that is both lifting and steering (shipdef.cpp), so steering has to
+       come back off or this pin would run on a part the game cannot build. (3) It authors
        no drag, so surfaceFormCdA() answers 0, the form-drag block skips the part, and
        there is no bill to put watts on: give it the cds a flat plate carries, forward AND
        side, since which applies depends on the incidence and the pins below read the CdA
        the pass actually billed rather than assuming one. */
     a.defs.back().lift_area = 2.0;
+    a.defs.back().control_area = 0.0;
     a.defs.back().drag_forward = 0.02;
     a.defs.back().drag_side = 1.0;
     a.defs.back().drag_backward = 0.02;
@@ -1791,10 +1795,20 @@ static void test_the_air_bills_each_surface_in_watts() {
 
     CHECK_TRUE(a.fin->aeroValid, "the plate measured something this substep");
     CHECK_TRUE(a.v->lastSurfCdA > 0.0, "and the form-drag block billed it");
-    CHECK_NEAR((double)a.fin->aeroLoadW, qCom * a.v->lastSurfCdA * 100.0,
-               1e-3 * qCom * a.v->lastSurfCdA * 100.0,
-               "watts = q x CdA x the flow speed, the same bill as the force");
-    CHECK_NEAR((double)a.fin->aeroLoadPeakW, (double)a.fin->aeroLoadW, 0.0,
+    /* The whole lift system in this rig is this one plate, so the ship-level CdA columns
+       ARE its share and the wattage answers to both of them -- the form bill and the
+       induced price of the lift it made. Note which of the two this fixture can actually
+       prove: a one-part lift system has no span, so applyInducedDrag returns early here
+       and lastInducedCdA prints 0.0000 (see the line printed below). The induced half of
+       the bill is pinned where a real span exists, by e2e flight/730's closure -- the
+       skiff carries 0.101 m^2 of induced CdA against 0.452 of profile, so a wattage that
+       priced only the silhouette misses a quarter of the ship's drag there. */
+    const double cdTot = a.v->lastSurfCdA + a.v->lastInducedCdA;
+    CHECK_NEAR((double)a.fin->aeroDragWatts, qCom * cdTot * 100.0,
+               1e-3 * qCom * cdTot * 100.0,
+               "watts = q x (form CdA + induced CdA) x the flow speed: the same bill as "
+               "the force");
+    CHECK_NEAR((double)a.fin->aeroDragWattsPeak, (double)a.fin->aeroDragWatts, 0.0,
                "the peak starts at the first reading rather than above it");
 
     /* Now spin it. The plate hangs 1.55 m off the COM ALONG THE NOSE (the rig stacks it
@@ -1805,28 +1819,30 @@ static void test_the_air_bills_each_surface_in_watts() {
        reads 100 m/s. Reading the identity off the part's OWN q is what makes this a pin
        and not a tautology: q implies the local speed, so the wattage has to use that
        speed and not the hull's. */
-    const double first = (double)a.fin->aeroLoadW;
+    const double first = (double)a.fin->aeroDragWatts;
     a.v->hull->btBody->clearForces();
     SetAngVelocity(a.v->hull, glm::dvec3(0.0, 5.0, 0.0));
     a.v->applyAeroForce(1.0 / 120.0);
-    printf("   plate q %.1f Pa vs COM %.1f Pa; watts %.0f -> %.0f W\n",
-           (double)a.fin->aeroQ, qCom, first, (double)a.fin->aeroLoadW);
+    printf("   plate q %.1f Pa vs COM %.1f Pa; CdA form %.4f + induced %.4f;"
+           " watts %.0f -> %.0f W\n", (double)a.fin->aeroQ, qCom, a.v->lastSurfCdA,
+           a.v->lastInducedCdA, first, (double)a.fin->aeroDragWatts);
     CHECK_TRUE(std::fabs((double)a.fin->aeroQ - qCom) > 0.02 * qCom,
                "the spin put this plate's own q off the ship's, so the next check bites");
     const double vLocal = std::sqrt(2.0 * (double)a.fin->aeroQ / rho);
-    CHECK_NEAR((double)a.fin->aeroLoadW, a.fin->aeroQ * a.v->lastSurfCdA * vLocal,
-               1e-3 * a.fin->aeroQ * a.v->lastSurfCdA * vLocal,
+    const double cdSpin = a.v->lastSurfCdA + a.v->lastInducedCdA;
+    CHECK_NEAR((double)a.fin->aeroDragWatts, (double)a.fin->aeroQ * cdSpin * vLocal,
+               1e-3 * (double)a.fin->aeroQ * cdSpin * vLocal,
                "the flow in the watts is the flow OVER THIS SURFACE");
-    const double comW = qCom * a.v->lastSurfCdA * 100.0;
-    CHECK_TRUE(std::fabs((double)a.fin->aeroLoadW - comW) > 0.01 * comW,
+    const double comW = qCom * cdSpin * 100.0;
+    CHECK_TRUE(std::fabs((double)a.fin->aeroDragWatts - comW) > 0.01 * comW,
                "...and that is NOT the ship's flow: the number a hull-speed law would "
                "quote is a different one here");
     /* The row reports one substep, not a running sum -- a reader who added these across
        a ship would otherwise be adding the same flight over again -- while the peak
        keeps the worst substep seen. */
-    CHECK_TRUE((double)a.fin->aeroLoadW < first,
+    CHECK_TRUE((double)a.fin->aeroDragWatts < first,
                "a thinner substep quotes a smaller figure, not an accumulated one");
-    CHECK_NEAR((double)a.fin->aeroLoadPeakW, first, 0.0,
+    CHECK_NEAR((double)a.fin->aeroDragWattsPeak, first, 0.0,
                "and the peak still holds the worst substep so far");
     destroyShip(a.v);
     delete body;

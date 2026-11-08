@@ -1674,6 +1674,15 @@ void Vehicle::applyInducedDrag(Body *forceHull, double dragCd, glm::dvec3 &ftota
         ftotal += find;
         moment += glm::cross(s.r, find);
         lastInducedCdA += dragCd * s.area * cdi;
+        /* #730: induced drag is not a ship-wide tax -- it lands at this surface's mount,
+           on this surface's q, anti-parallel to this surface's own flow, so it takes
+           dragCd x q x area x cdi x vp watts OFF the surface that made the lift. Leaving
+           it out would make the per-surface figure quietly wrong exactly where a glider
+           lives: it scales with CL^2, so near stall it dwarfs the form term (measured on
+           the shipped skiff in cruise: Induced= 0.101 m2 against Profile= 0.454 m2). */
+        if(s.part != nullptr) {
+            s.part->aeroDragWatts += (float)(dragCd * s.q * s.area * cdi * vp);
+        }
         if(record) {
             lastForceVecs.push_back({ s.r, find, kForceInduced });
         }
@@ -3007,7 +3016,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     // is a wrong total, not a wrong detail.
     for(Part *p : parts) {
         p->aeroValid = false;
-        p->aeroLoadW = 0.0f;
+        p->aeroDragWatts = 0.0f;
         if(p->def != nullptr && p->def->control_area > 0.0) { p->controlDefl = 0.0; }
     }
 
@@ -3496,10 +3505,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                shipped skiff: 35 Pa vs 750 Pa), and the hull's silhouette is one
                ship-wide figure with no part to charge. Most of these watts end up in
                the wake rather than in the material, which is precisely why this row is
-               a LOAD and not a temperature -- an authored share is what a heat budget
-               would need before it could spend them (#728). */
-            p->aeroLoadW = (float)(lf.q * cda * vpl);
-            if(p->aeroLoadW > p->aeroLoadPeakW) { p->aeroLoadPeakW = p->aeroLoadW; }
+               a power and not a temperature -- an authored share is what a heat budget
+               would need before it could spend them (#728). The induced half of the same
+               bill joins per sample in applyInducedDrag, and the peak folds once both
+               are in. */
+            p->aeroDragWatts = (float)(lf.q * cda * vpl);
             /* ... and it pushes HERE, which is the half the hull's cp never saw:
                a fin 3 m aft is a stabilizer whether or not the hull's own cp is
                anywhere near it. */
@@ -3662,7 +3672,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
            the term "follows any change to it" of the lift law; the sample carries the
            FORCE the law just made, so it still does. */
         aeroLiftSamples.push_back(
-            { ri, vp, qp, d->lift_area, glm::length(flift), p->aeroSystem });
+            { p, ri, vp, qp, d->lift_area, glm::length(flift), p->aeroSystem });
     }
 
     // Control surfaces: each steers ONE axis, driven by that axis's stick alone. The
@@ -3891,7 +3901,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                QUADRATIC in the authority the surface has -- double a tab's cl_control
                and its price quadruples. */
             aeroLiftSamples.push_back(
-                { ri, lf.vp, qp, d->control_area, glm::length(F), p->aeroSystem });
+                { p, ri, lf.vp, qp, d->control_area, glm::length(F), p->aeroSystem });
         }
     }
 
@@ -3899,6 +3909,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
        aeroLiftSamples; price the whole wing at once, along the flow each surface
        stands in (#483), at its own mount. */
     applyInducedDrag(hull, drag_cd, ftotal, moment, recordForceVecs);
+
+    /* Both bills are in now -- the surface's form drag (charged where it was computed)
+       and its induced drag (charged just above, per sample) -- so the peak folds once,
+       here rather than at each write. #730. */
+    for(Part *p : parts) {
+        if(p->aeroDragWatts > p->aeroDragWattsPeak) { p->aeroDragWattsPeak = p->aeroDragWatts; }
+    }
 
     lastAeroForce = ftotal;
     /* #694: split that force about the air-relative flow -- L and D in the sense a
@@ -6536,10 +6553,15 @@ bool Vehicle::goOnRails() {
        hold its last stick deflection forever. */
     for(Part *p : parts) {
         p->controlDefl = 0.0;
-        /* #730's peak is a per-flight figure and no aero pass runs here, so it would
-           otherwise carry this flight's worst substep into the next one. Zero it with
-           the other state that has no substep to refresh it. */
-        p->aeroLoadPeakW = 0.0f;
+        /* #730, same reasoning one line up: no aero substep runs on rails, so the
+           per-surface readout has nothing to refresh it. Zero the watts AND clear the
+           gate they read through -- leaving one without the other is how a part window
+           left open across a rails transition ends up rendering "21.1 kW (peak 0.0 kW)":
+           a stale current against a zeroed peak, which is not a reading of anything. The
+           peak itself is a per-flight figure, so it goes too. */
+        p->aeroDragWatts = 0.0f;
+        p->aeroDragWattsPeak = 0.0f;
+        p->aeroValid = false;
         if(p->isRcs()) { for(double &f : p->rcsFired) { f = 0.0; } }
     }
     lastRcsNozzles.clear();  // likewise the [rcs] log: no substeps, no nozzles

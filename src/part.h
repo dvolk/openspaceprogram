@@ -126,25 +126,30 @@ struct Part {
        value with aeroValid false, so a reader that wants it for a FORCE goes
        through aeroValid too. */
     float aeroMach = 0.0f;
-    /* What the air is taking FROM this surface, in watts (#730): this surface's own q x
-       its own CdA x its own flow speed at the mount -- |fprof| x vpl, i.e. the rate the
-       form-drag bill of #455 is already charging it. No new physics and no authored
-       material number, which is the point: this is deliberately NOT a skin temperature,
-       since a T would want cp and eps per material class plus a time constant, and this
-       game has no failure that could spend them yet (#728). Two terms are missing on
-       purpose. Lift is perpendicular to the flow, so it moves no watts. And the hull's
-       silhouette (#461) is one ship-wide number with no part to charge, so a part the hull
-       carries quotes nothing rather than a share it never paid; a deployed canopy's bill is
-       the same story -- nothing reads a chute part today, so there is no row to put it in.
-       Unlike the trio above, this one is ZEROED each substep rather than left standing:
-       applyAeroForce clears it in the same sweep that clears aeroValid, because a reader
-       could SUM these across a ship, and a stale wattage inside a sum is a wrong total
-       rather than a wrong detail. Readers still gate on aeroValid: a part the pass could
-       not read has no load to show, and printing 0 W there would be claiming "no flow
-       here". The peak covers the run under physics and zeroes where the other per-part
-       transients do: goOnRails. */
-    float aeroLoadW = 0.0f;        // [W] this substep
-    float aeroLoadPeakW = 0.0f;    // [W] the worst substep since this ship last flew
+    /* The watts the air is taking OFF this surface (#730): this surface's own q x its own
+       CdA x the flow speed at its own mount, for BOTH bills the aero pass charges it --
+       the form drag of #455 and the induced drag of #556, which lands at the same mount,
+       on the same q, anti-parallel to the same local flow. No authored material number
+       anywhere, which is the point: this is deliberately NOT a skin temperature, since a
+       T would want cp and eps per material class plus a time constant, and this game has
+       no failure that could spend them yet (#728). Most of these watts leave in the wake
+       rather than in the material, which is the honest reason the row cannot be a
+       temperature until something authors the share that does not.
+       Two bills are missing on purpose. The hull's silhouette (#461) is one ship-wide
+       figure with no part to charge, so a part the hull carries quotes nothing rather than
+       a share it never paid; and a deployed canopy's bill has no reader -- nothing prints
+       a chute part today. Lift itself moves no watts (perpendicular to the flow), but the
+       price of making lift IS the induced term, and that one is counted here.
+       Unlike the trio above, this is ZEROED each substep rather than left standing: a
+       reader could SUM it across a ship, and a stale wattage inside a sum is a wrong total
+       rather than a wrong detail. Readers still gate on aeroValid. goOnRails zeroes both
+       fields AND clears aeroValid together -- no aero substep runs on rails, and half a
+       reset is how a part window renders a stale figure against a zeroed peak.
+       The peak is the worst substep since the ship last went on rails -- so it does NOT
+       survive a warp or an atmosphere exit -- and it has no durable home yet (no
+       Flight Summary row); it is a live-panel figure. */
+    float aeroDragWatts = 0.0f;        // [W] this substep
+    float aeroDragWattsPeak = 0.0f;    // [W] worst substep since the ship last went on rails
     /* Which LIFTING SYSTEM this surface belongs to (#556/#555), as an index into
        Vehicle::aeroSystems; -1 = not a lifting or steering surface. Written by
        Vehicle::groupLiftingSystems at every geometry rebuild (the same fingerprint

@@ -932,17 +932,22 @@ void tick(Game &g) {
                    the law are one number.
                    Labelled by its def id when it has one (wing_l, tail_r) because a
                    twin pair is exactly the case this row exists to tell apart.
-                   ld= (#730) is the watts the air is taking from that surface -- its
-                   own q x its own CdA x its own flow speed -- which is where a wing
-                   root, a tip and a control surface differ by 20x while the [drag]
-                   line still says one drag coefficient for the ship. It is a LOAD, not
-                   a temperature: no material property is involved, and most of those
-                   watts leave in the wake. Take each part's CdA back out of its watts
-                   (ld over q x the speed its own q implies) and the parts of a row add
-                   back to the [drag] line's Profile= -- 1.005 measured over a Kerbin
-                   cruise, pinned by flight/730 -- because both rows read one bill from
-                   surfaceFormCdA. That closure is what #699's lesson asks of a per-part
-                   row. */
+                   watts= (#730) is the rate the air is taking energy off that surface --
+                   its own q x its own CdA x its own flow speed -- which is where a wing
+                   root, a tip and a control surface differ by 20x while the [drag] line
+                   still says one drag coefficient for the ship. Both of the surface's
+                   bills are in it: the form drag of #455 and the induced price of its
+                   lift (#556), which lands at the same mount on the same q. It is a
+                   power, not a temperature: no material property is involved, and most
+                   of those watts leave in the wake.
+                   The closure to check by hand: take each part's CdA back out of its
+                   watts (watts over q x the speed its own q implies) and the parts of a
+                   row add back to the [drag] line's Profile= plus Induced= -- 1.00
+                   measured over a Kerbin cruise, pinned by flight/730. That is #699's
+                   lesson applied to a per-part row before the bug exists. One caveat the
+                   row itself imposes: this prints only surfaces the per-surface readout
+                   could read (aeroValid), so a part whose mount the pass found unusable
+                   still bills the ship line and quotes no row. */
                 {
                     bool any = false;
                     for(const Part *p : g.ship->parts) {
@@ -951,10 +956,10 @@ void tick(Game &g) {
                             continue;
                         }
                         if(!any) { printf("[surface]"); any = true; }
-                        printf(" %s a=%+.1f q=%.0f mach=%.3f ld=%.0f",
+                        printf(" %s a=%+.1f q=%.0f mach=%.3f watts=%.0f",
                                p->id.empty() ? p->def->name.c_str() : p->id.c_str(),
                                p->aeroAlphaDeg, p->aeroQ, p->aeroMach,
-                               p->aeroLoadW);
+                               p->aeroDragWatts);
                     }
                     if(any) { printf("\n"); }
                 }

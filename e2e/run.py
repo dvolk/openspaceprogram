@@ -379,8 +379,8 @@ DRAG_RE = re.compile(
 # (per-part incidence) and #454 (static margin).
 CTRL_ITEM_RE = re.compile(r"([^\s\[]+)\[(\d+)\]\((\w+)\)=([-+]\d+\.\d+)deg")
 # #485's [surface] row: one group per lifting or steering part --
-# "<label> a=<deg> q=<Pa>[ mach=<n>][ ld=<W>]". The angle is signed into SHIP axes (up for
-# a wing or tailplane, right for a fin), NOT each mount's own convention, so a mirrored
+# "<label> a=<deg> q=<Pa>[ mach=<n>][ watts=<W>]". The angle is signed into SHIP axes (up
+# for a wing or tailplane, right for a fin), NOT each mount's own convention, so a mirrored
 # twin pair reads alike and a pair that actually differs is the signal, not the noise.
 SURFACE_ITEM_RE = re.compile(
     r"(\S+) a=([-+]\d+(?:\.\d+)?) q=(\d+(?:\.\d+)?)"
@@ -388,9 +388,10 @@ SURFACE_ITEM_RE = re.compile(
     # its air implies). Optional so a run captured before the field still parses.
     r"(?: mach=(\d+(?:\.\d+)?))?"
     # #730: the watts the air is taking off this surface (its own q x its own CdA x its
-    # own flow speed). Optional so a pre-#730 capture still parses; the ld cases fail
-    # loudly when it is None rather than reading a 0 that was never printed.
-    r"(?: ld=(\d+(?:\.\d+)?))?"
+    # own flow speed, form drag plus the induced price of its lift). Optional so a
+    # pre-#730 capture still parses; the #730 case fails loudly when it is None rather
+    # than reading a 0 that was never printed.
+    r"(?: watts=(\d+(?:\.\d+)?))?"
 )
 SHAKE_RE = re.compile(
     r"\[shakelog\]\s+t=([\d.]+)s\s+a=([-\d.]+) m/s2\s+"
@@ -1200,12 +1201,12 @@ def parse_surface(out):
     t = None
     for line in out.splitlines():
         if line.startswith("[surface]"):
-            for name, a, q, mach, ld in SURFACE_ITEM_RE.findall(line):
+            for name, a, q, mach, watts in SURFACE_ITEM_RE.findall(line):
                 # findall hands back "" (not None) for a group that did not
-                # participate, so the optional mach= and ld= test truthy.
+                # participate, so the optional mach= and watts= test truthy.
                 rows.append({"t": t, "name": name, "a": float(a), "q": float(q),
                              "mach": float(mach) if mach else None,
-                             "ld": float(ld) if ld else None})
+                             "watts": float(watts) if watts else None})
         elif line.startswith("[drag]"):
             m = DRAG_RE.match(line)
             if m:

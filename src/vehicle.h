@@ -272,6 +272,7 @@ public:
        no allocation in steady state, and the sample count is the number of surfaces
        that actually made lift this substep. */
     struct AeroLiftSample {
+        Part *part = nullptr;           // the surface that made it (#730 bills it per part)
         glm::dvec3 r = glm::dvec3(0.0);   // mount offset from the COM, frame S
         glm::dvec3 vp = glm::dvec3(0.0);  // the flow at the surface, frame S
         double q = 0.0;                   // that flow's dynamic pressure

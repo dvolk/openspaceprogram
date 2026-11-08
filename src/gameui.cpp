@@ -3222,30 +3222,28 @@ void drawPartWindows(Game &g) {
                                 ship->parts[part]->aeroAlphaDeg,
                                 ship->parts[part]->aeroQ,
                                 ship->parts[part]->aeroMach);
-                    /* What the air is taking off this surface, in watts (#730). A LOAD
-                       and not a temperature on purpose: no material property sits behind
-                       it, and most of those watts leave in the wake rather than in the
-                       part. The peak is over the run under physics and zeroes when the
-                       ship goes on rails. The unit moves because the figure spans six
-                       orders between a skiff off the runway and a capsule at interface;
-                       what does NOT move is #644's two rules -- the row names its unit,
-                       and a live number is never rounded down to zero. */
+                    /* The watts the air is taking off this surface (#730) -- its form
+                       drag plus the induced price of its lift. Not a temperature: no
+                       material property sits behind it, and most of these watts leave in
+                       the wake. The peak is the worst substep since the ship last went on
+                       rails (a warp or an atmosphere exit clears it with everything else).
+                       The decade moves because the figure spans six orders between a skiff
+                       off the runway and a wing near stall; #644's two rules do not move,
+                       so the decade is chosen PER VALUE -- picking one unit for the pair
+                       was a real bug, printing a live 40 W as "0.0 kW" under a kW peak. */
                     {
-                        const double cur = ship->parts[part]->aeroLoadW;
-                        const double pk = ship->parts[part]->aeroLoadPeakW;
-                        const double worst = cur > pk ? cur : pk;
-                        if(worst < 1e3) {
-                            ImGui::Text("Air load: %.0f W (peak %.0f W)", cur, pk);
-                        } else if(worst < 1e6) {
-                            ImGui::Text("Air load: %.1f kW (peak %.1f kW)",
-                                        cur * 1e-3, pk * 1e-3);
-                        } else {
-                            ImGui::Text("Air load: %.2f MW (peak %.2f MW)",
-                                        cur * 1e-6, pk * 1e-6);
-                        }
+                        auto wunit = [](double w, double *sc) -> const char * {
+                            if(w >= 1e6) { *sc = w * 1e-6; return "MW"; }
+                            if(w >= 1e3) { *sc = w * 1e-3; return "kW"; }
+                            *sc = w; return "W";
+                        };
+                        double cur, pk;
+                        const char *s1 = wunit(ship->parts[part]->aeroDragWatts, &cur);
+                        const char *s2 = wunit(ship->parts[part]->aeroDragWattsPeak, &pk);
+                        ImGui::Text("Drag power: %.4g %s (peak %.4g %s)", cur, s1, pk, s2);
                     }
                 } else {
-                    ImGui::Text("AoA: -   q:-   Mach -   air load -");
+                    ImGui::Text("AoA: -   q:-   Mach -   drag power -");
                 }
                 if(def->isControlSurface()) {
                     /* The slider's range is not the clamp. Ctrl+click turns any slider
