@@ -896,7 +896,20 @@
           ],
           "thickness": 8000,
           "power": 5.0,
-          "intensity": 0.3
+          "intensity": 0.3,
+          "sea_level_density": 0.0001164,
+          "scale_height": 18000.0,
+          "height": 20000.0,
+          "composition": [
+            {
+              "gas": "N2",
+              "fraction": 0.99
+            },
+            {
+              "gas": "CH4",
+              "fraction": 0.005
+            }
+          ]
         },
         "albedo": 0.72
       },

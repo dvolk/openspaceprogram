@@ -1416,7 +1416,38 @@ def build_base(verbose_air=False):
                                          [0.5, [0.70, 0.62, 0.55]],
                                          [1.0, [0.85, 0.82, 0.78]]],
           'atmosphere': {'color': [0.70, 0.75, 0.85], 'thickness': 8000,
-                         'power': 5.0, 'intensity': 0.3}}, False),
+                         'power': 5.0, 'intensity': 0.3,
+                         # Pluto's air is AUTHORED now, not a painted haze (#700). Every
+                         # number below it is the sheet's own: "Surface Pressure: ~13
+                         # microbar", "Scale height: ~18 km lower atmosphere", "99% molecular
+                         # nitrogen, 0.5% methane". Its 0.05% CO has no entry in
+                         # atmo.h::GASES, so the two gases we CAN name are authored as
+                         # written and the trace is left out rather than folded into them.
+                         # Density is the one figure the sheet cannot hand us: a system file
+                         # authors no pressure, so sea_level_density IS the pressure knob
+                         # (#684) and it is derived -- 1.3 Pa / (0.62 x 18000) = 1.164e-4.
+                         # check_fact_air then weighs OUR p0 against the published 1.3 Pa
+                         # instead of printing "no column authored", and weighs the 18 km
+                         # scale height against its own row.
+                         # The trio (#686) closes on the sheet's numbers instead of against
+                         # them: 18 km of N2 at g 0.62 implies T0 = g H M / R = 37.5 K,
+                         # inside its published 24-38 K and 1.3% under its top.
+                         # The ceiling is 20 km, NOT the 30 km where the sheet says that 18 km
+                         # scale height stops applying: #682's band wants 10..1000 Pa of q on
+                         # a circular orbit just under the top, and this column gives ~14 Pa at
+                         # 20 km but ~8 Pa at 30 km -- under the floor, i.e. air that could
+                         # never push on anything a rail puts through it. The band gate
+                         # (utils/check_atmo_band.py) prints the row; measure, do not quote
+                         # this comment.
+                         # Nothing else moves: shellEdge = max(kMinShell 100 km, 1.2 x 20 km)
+                         # is the 100 km floor airless Pluto already had, so its rot frame,
+                         # SOI, spawn bands and atlas disk are what they were. What it gains is
+                         # flying beds, and 1.16e-4 of air 20 km up brakes about as hard as
+                         # nothing at all.
+                         'sea_level_density': 1.164e-4, 'scale_height': 18000.0,
+                         'height': 20000.0,
+                         'composition': [{'gas': 'N2', 'fraction': 0.99},
+                                         {'gas': 'CH4', 'fraction': 0.005}]}}, False),
     ]
     rings_by_name = {'Jupiter': JUP_RINGS, 'Saturn': SAT_RINGS}
     sheets = {}
