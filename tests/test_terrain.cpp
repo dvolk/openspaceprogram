@@ -739,6 +739,8 @@ int main() {
     //     applies at that altitude is pinned in test_drag.cpp.)
     {
         AtmosphereParams a;
+        // A hand-built air sets the runtime density directly; a system FILE authors
+        // sea_level_pressure and the loader resolves this from it (#739).
         a.sea_level_density = 1.225;
         a.scale_height = 5500.0;              // an exponential body, height unauthored
         check(a.top() == 5500.0 * kAtmoScaleHeights,

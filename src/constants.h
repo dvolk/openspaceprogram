@@ -68,12 +68,15 @@ inline constexpr double kInertialOrbitFrac = 1.25;
 inline constexpr double kAtmoScaleHeights = 10.0;
 
 /* The molar gas constant R [J/(mol K)]. On an EXPONENTIAL body one scale height IS
-   an isothermal atmosphere, so the authored rho0 / scale_height plus the body's g
-   already imply a temperature, a pressure and a sound speed through this and
-   molar_mass [kg/mol] -- nothing else needs authoring (#552 A2). On a LAYER body
-   (#552 A4) R is still the bridge, the other way round: the temperature is authored
-   and R/M is the specific gas constant the column is integrated with
-   (atmo.h:levelPressure), which is why p0 = rho0 (R/M) T0 needs no authored pressure.
+   an isothermal atmosphere, so the authored sea_level_pressure / scale_height plus the
+   body's g already imply a temperature and a density through this and molar_mass
+   [kg/mol] -- nothing else needs authoring (#552 A2, and #739 chose pressure as the
+   authored one of the pair: on this branch the gas cancels, since the datum T that H
+   implies is g H M / R, so rho0 = p0 / (g H) needs no R at all). On a LAYER body
+   (#552 A4) R is still the bridge, the other way round: level 0's temperature and the
+   authored p0 are both stated, and R/M is the specific gas constant the column is
+   integrated with (atmo.h:levelPressure) and the datum density divided by
+   (#739: rho0 = p0 M / (R T0)).
    Changes: the derived readouts and the layered column; rho and top() do not contain
    it on an exponential body.
    Where: airTemperature / airPressure / airSoundSpeed (drag.h), resolveAtmoLevels (atmo.h). */

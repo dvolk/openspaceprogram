@@ -157,7 +157,9 @@ def check_docs(docs, known=KNOWN, verbose=True):
         for b in bodies:
             su = b.get('surface') or {}
             at = su.get('atmosphere')
-            if not at or 'sea_level_density' not in at:
+            # #739: the authored anchor is the datum pressure; atmo_profile resolves
+            # the density from it, and a body with no pressure has no column to weigh.
+            if not at or 'sea_level_pressure' not in at:
                 continue
             pr = ap.Profile(b)
             # The catalogue generates the same columns into several system files; a
@@ -165,7 +167,7 @@ def check_docs(docs, known=KNOWN, verbose=True):
             # from one and a layered datum pressure from the other: two files that
             # agree on every authored air field but not on mass are NOT the same
             # column, and skipping the second would hide a real disagreement.
-            key = (pr.name, pr.radius, pr.g, pr.mu, pr.M, pr.rho0, pr.H, pr.top,
+            key = (pr.name, pr.radius, pr.g, pr.mu, pr.M, pr.p0, pr.H, pr.top,
                    tuple((l['alt'], l['T'], l['lapse']) for l in pr.levels))
             if key in seen:
                 continue
@@ -231,13 +233,16 @@ def self_test():
     # would otherwise pass, and the giants are the family this gate exists for.
     fat = {'name': 'Fatty', 'radius': 600000.0, 'mass': 5.29e22, 'g': 9.81,
            'surface': {'atmosphere': {
-               'sea_level_density': 1.225, 'height': 1000.0,
+               # 101,325 Pa at 288.15 K is the 1.225 kg/m3 this fixture used to type
+               'sea_level_pressure': 101325.0, 'height': 1000.0,
                'layers': [{'alt': 0.0, 'T': 288.15, 'lapse': -0.0065}]}}}
     thin = {'name': 'Thinny', 'radius': 600000.0, 'mass': 5.29e22, 'g': 9.81,
-            'surface': {'atmosphere': {'sea_level_density': 1e-6,
+            # 0.1962 Pa on a 20 km H at g 9.81 is 1e-6 kg/m3 at the datum
+            'surface': {'atmosphere': {'sea_level_pressure': 0.1962,
                                        'scale_height': 20000.0, 'height': 400000.0}}}
     giant = {'name': 'Biggy', 'radius': 7.0e7, 'mass': 1.9e27, 'g': 24.79,
-             'surface': {'atmosphere': {'sea_level_density': 0.16,
+             # 107,092.8 Pa on a 27 km H at g 24.79 is 0.16 kg/m3 at the datum
+             'surface': {'atmosphere': {'sea_level_pressure': 107092.8,
                                         'scale_height': 27000.0, 'height': 390000.0}}}
     # The dedupe key is a list of fields, so it gets a list of tests: for each field, a
     # TWIN that differs in nothing else. Drop that field from the key and the twin
@@ -253,7 +258,8 @@ def self_test():
             base['surface']['atmosphere'], **{field: value})})
     twins = [twin('mass', 1.06e23), twin('g', 4.0), twin('radius', 8.0e5),
              twin('height', 500000.0), twin('scale_height', 30000.0),
-             twin('sea_level_density', 2e-6),
+             # 0.4 Pa on the same column is 2e-6 kg/m3, so the twin is still a twin
+             twin('sea_level_pressure', 0.4),
              # M comes from the mix, and the level rows are the last key field; both
              # need a layered base, since an exponential body has no rows to differ in.
              twin('composition', [{'gas': 'CO2', 'fraction': 1.0}], base=fat),

@@ -1,6 +1,8 @@
 # An atmosphere can now author altitude/temperature LEVELS instead of one scale
 # height (#552 A4). The loader integrates the column hydrostatically from the authored
-# sea_level_density (atmo.h:resolveAtmoLevels), so the dossier's air rows stop being
+# sea_level_pressure and each level's temperature (atmo.h:resolveAtmoLevels, #739), so the
+# density the dossier prints is what that pair implies rather than a typed number, and the
+# air rows stop being
 # IMPLIED by H and start being the profile the body states. Earth wears the 1976
 # standard atmosphere because it is the only body with published numbers to copy.
 #

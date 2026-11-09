@@ -83,6 +83,16 @@ static int g_checks = 0;
         }                                                                     \
     } while (0)
 
+/* #739 moved what a file AUTHORS about its air from a density to a datum pressure, and
+   resolveAtmoLevels now takes that pressure. These tests are written around the standard
+   atmosphere's DENSITY rows, so spell the loader's inversion back here, once:
+   p0 = rho0 (R/M) base_T(0). The round trip is exact, so every rho and p pin below keeps
+   its teeth -- which is itself the point of the change (#739 must move no number). */
+static double p0Of(double rho0, const std::vector<AtmoLayer> &L,
+                   double molar = kAirMolarMass) {
+    return rho0 * (kGasR / molar) * (L.empty() ? 288.15 : L[0].base_T);
+}
+
 static void test_density() {
     printf("== airDensity: exponential model ==\n");
 
@@ -391,7 +401,7 @@ static void test_layered_atmosphere() {
         {51000.0, 270.65, -0.0028, 0.0},
         {71000.0, 214.65, -0.002,  0.0},
     };
-    CHECK_TRUE(resolveAtmoLevels(L, 1.225, kAirMolarMass, 9.82, 85000.0, rE),
+    CHECK_TRUE(resolveAtmoLevels(L, p0Of(1.225, L), kAirMolarMass, 9.82, 85000.0, rE),
                "Earth's table resolves");
     DragAtmosphere air { 1.225, 0.0, 85000.0 };   // no scale height: the table IS the profile
     air.gravity = 9.82;
@@ -399,9 +409,10 @@ static void test_layered_atmosphere() {
     air.layers = L.data();
     air.layer_count = (int)L.size();
 
-    /* The anchor. sea_level_density survives at the datum EXACTLY (it is authored);
-       the pressure there is derived from it and lands on the standard's 101,325 Pa
-       without anyone writing that number in the system file. */
+    /* The anchor, the other way round since #739: the pressure is what is authored,
+       and the datum density is the consequence. p0Of() inverted the density this test
+       thinks in, so the density comes back exactly and the pressure lands on the
+       standard's own 101,325 Pa -- the number the shipped file now writes out. */
     CHECK_NEAR(airDensity(air, 0.0), 1.225, 0.0, "the datum keeps the authored density");
     CHECK_NEAR(airPressure(air, 0.0), 101325.0, 1e-4, "p0 comes out of rho0 and T0: 101.3 kPa");
     CHECK_NEAR(airTemperature(air, 0.0), 288.15, 0.0, "T at the datum is level 0's, authored");
@@ -526,7 +537,7 @@ static void test_layered_atmosphere() {
        one -- a scale height is authored, a column of air is weighed. Weigh it LESS
        and the column puffs out: the same sea-level density, thicker air aloft. */
     std::vector<AtmoLayer> Lhalf = L;
-    CHECK_TRUE(resolveAtmoLevels(Lhalf, 1.225, kAirMolarMass, 4.91, 85000.0, rE),
+    CHECK_TRUE(resolveAtmoLevels(Lhalf, p0Of(1.225, Lhalf), kAirMolarMass, 4.91, 85000.0, rE),
                "the same table resolves on a half-g body");
     DragAtmosphere halfg = air;
     halfg.gravity = 4.91;
@@ -543,45 +554,45 @@ static void test_layered_atmosphere() {
        test_gravity_falloff() below is where a body's radius is in the picture. */
     std::vector<AtmoLayer> off = { {1000.0, 288.15, -0.0065, 0.0},
                                    {11000.0, 216.65, 0.0, 0.0} };
-    CHECK_TRUE(!resolveAtmoLevels(off, 1.225, kAirMolarMass, 9.82, 85000.0, 0.0),
+    CHECK_TRUE(!resolveAtmoLevels(off, p0Of(1.225, off), kAirMolarMass, 9.82, 85000.0, 0.0),
                "refused: level 0 must sit at the datum");
     std::vector<AtmoLayer> unsorted = { {0.0, 288.15, -0.0065, 0.0},
                                         {5000.0, 255.65, 0.0, 0.0},
                                         {4000.0, 260.0, 0.0, 0.0} };
-    CHECK_TRUE(!resolveAtmoLevels(unsorted, 1.225, kAirMolarMass, 9.82, 85000.0, 0.0),
+    CHECK_TRUE(!resolveAtmoLevels(unsorted, p0Of(1.225, unsorted), kAirMolarMass, 9.82, 85000.0, 0.0),
                "refused: level altitudes must strictly rise");
     std::vector<AtmoLayer> cold = { {0.0, 288.15, -0.0065, 0.0}, {50000.0, 216.65, 0.0, 0.0} };
-    CHECK_TRUE(!resolveAtmoLevels(cold, 1.225, kAirMolarMass, 9.82, 85000.0, 0.0),
+    CHECK_TRUE(!resolveAtmoLevels(cold, p0Of(1.225, cold), kAirMolarMass, 9.82, 85000.0, 0.0),
                "refused: a lapse must not walk T through 0 K inside the air");
     /* The seam. Both of these are two-level tables that integrate happily -- the
        pressure column is smooth through the boundary either way -- so nothing else
        catches them: rho steps because T is what rho divides by. */
     std::vector<AtmoLayer> seam = { {0.0, 288.15, -0.0065, 0.0}, {11000.0, 156.65, 0.0, 0.0} };
-    CHECK_TRUE(!resolveAtmoLevels(seam, 1.225, kAirMolarMass, 9.82, 85000.0, 0.0),
+    CHECK_TRUE(!resolveAtmoLevels(seam, p0Of(1.225, seam), kAirMolarMass, 9.82, 85000.0, 0.0),
                "refused: a level must start where the one below leaves off (60 K gap)");
     std::vector<AtmoLayer> rounded = { {0.0, 288.15, -0.0065, 0.0}, {11000.0, 216.4, 0.0, 0.0} };
-    CHECK_TRUE(resolveAtmoLevels(rounded, 1.225, kAirMolarMass, 9.82, 85000.0, 0.0),
+    CHECK_TRUE(resolveAtmoLevels(rounded, p0Of(1.225, rounded), kAirMolarMass, 9.82, 85000.0, 0.0),
                "0.25 K off is rounding, not a mistake: kAtmoSeamTol accepts it");
     /* d(rho)/dh flips sign at lapse -g/Rs = -0.0342 K/m for this gas at this g. Air
        overturns long before that in reality; a table past it is a typo. */
     std::vector<AtmoLayer> upside = { {0.0, 288.15, -0.05, 0.0}, {3000.0, 138.15, 0.0, 0.0} };
-    CHECK_TRUE(!resolveAtmoLevels(upside, 1.225, kAirMolarMass, 9.82, 5000.0, 0.0),
+    CHECK_TRUE(!resolveAtmoLevels(upside, p0Of(1.225, upside), kAirMolarMass, 9.82, 5000.0, 0.0),
                "refused: -0.05 K/m is past -g/Rs, so the air gets denser as you climb");
     /* A level above the air top is a level nothing can reach: drag.h cuts the air to
        vacuum at `height`, so it is dead weight that also decides the ceiling its own
        lapse is checked against. */
     std::vector<AtmoLayer> dead = L;
-    CHECK_TRUE(!resolveAtmoLevels(dead, 1.225, kAirMolarMass, 9.82, 20000.0, 0.0),
+    CHECK_TRUE(!resolveAtmoLevels(dead, p0Of(1.225, dead), kAirMolarMass, 9.82, 20000.0, 0.0),
                "refused: a level based above height sits in declared vacuum");
     std::vector<AtmoLayer> one = { {0.0, 288.15, -0.0065, 0.0} };
     CHECK_TRUE(!resolveAtmoLevels(one, 0.0, kAirMolarMass, 9.82, 85000.0, 0.0),
                "refused: nothing to anchor the column on");
-    CHECK_TRUE(!resolveAtmoLevels(one, 1.225, kAirMolarMass, 0.0, 85000.0, 0.0),
+    CHECK_TRUE(!resolveAtmoLevels(one, p0Of(1.225, one), kAirMolarMass, 0.0, 85000.0, 0.0),
                "refused: no gravity named");
-    CHECK_TRUE(!resolveAtmoLevels(one, 1.225, kAirMolarMass, 9.82, 0.0, 0.0),
+    CHECK_TRUE(!resolveAtmoLevels(one, p0Of(1.225, one), kAirMolarMass, 9.82, 0.0, 0.0),
                "refused: no air top, so no ceiling to keep T above 0 K");
     std::vector<AtmoLayer> empty;
-    CHECK_TRUE(!resolveAtmoLevels(empty, 1.225, kAirMolarMass, 9.82, 85000.0, 0.0),
+    CHECK_TRUE(!resolveAtmoLevels(empty, p0Of(1.225, empty), kAirMolarMass, 9.82, 85000.0, 0.0),
                "refused: an empty table is not a profile");
     /* And the one table that cannot be integrated because of the FIELD rather than
        the table: a warming level whose lapse equals T/(radius+alt) puts the planet's
@@ -600,11 +611,11 @@ static void test_layered_atmosphere() {
     };
     std::vector<AtmoLayer> pole
         = poleTable(lpole - 0.5 / (rkerbin + 20000.0));       // |C| = 0.5 K
-    CHECK_TRUE(!resolveAtmoLevels(pole, 1.225, kAirMolarMass, 9.81, 60000.0, rkerbin),
+    CHECK_TRUE(!resolveAtmoLevels(pole, p0Of(1.225, pole), kAirMolarMass, 9.81, 60000.0, rkerbin),
                "refused: a lapse aimed at the field's own falloff divides by zero");
     std::vector<AtmoLayer> near_pole
         = poleTable(lpole - 1.1 / (rkerbin + 20000.0));       // |C| = 1.1 K
-    CHECK_TRUE(resolveAtmoLevels(near_pole, 1.225, kAirMolarMass, 9.81, 60000.0, rkerbin),
+    CHECK_TRUE(resolveAtmoLevels(near_pole, p0Of(1.225, near_pole), kAirMolarMass, 9.81, 60000.0, rkerbin),
                "1.1 K clear of the pole is a level like any other");
     /* And what it answers there: the same table's density at 30 km from QUADRATURE of
        the real field, not from the closed form, so kAtmoPoleTol's REASON is pinned
@@ -690,7 +701,7 @@ static void test_gravity_falloff() {
        branches of airDensity() ever disagree about the field, this is where it shows. */
     const double Hiso = (kGasR / kAirMolarMass) * 216.65 / 9.81;   // 6339.7 m
     std::vector<AtmoLayer> iso = { {0.0, 216.65, 0.0, 0.0}, {20000.0, 216.65, 0.0, 0.0} };
-    CHECK_TRUE(resolveAtmoLevels(iso, 1.225, kAirMolarMass, 9.81, 40000.0, rker),
+    CHECK_TRUE(resolveAtmoLevels(iso, p0Of(1.225, iso), kAirMolarMass, 9.81, 40000.0, rker),
                "a two-level isothermal table resolves");
     DragAtmosphere tableAir { 1.225, 0.0, 40000.0 };
     tableAir.gravity = 9.81;
@@ -710,7 +721,7 @@ static void test_gravity_falloff() {
        is what the same table gives when the field is allowed to weaken. */
     const double r300 = 3.0e5;
     std::vector<AtmoLayer> two = { {0.0, 240.0, -0.005, 0.0}, {10000.0, 190.0, 0.002, 0.0} };
-    CHECK_TRUE(resolveAtmoLevels(two, 0.8, kAirMolarMass, 3.71, 50000.0, r300),
+    CHECK_TRUE(resolveAtmoLevels(two, p0Of(0.8, two), kAirMolarMass, 3.71, 50000.0, r300),
                "a two-level table on a 300 km body resolves");
     DragAtmosphere small { 0.8, 0.0, 50000.0 };
     small.gravity = 3.71;
@@ -729,7 +740,7 @@ static void test_gravity_falloff() {
        every level's BASE as well, and a half-moved twin differs from the comparison
        the ticket asks for by the seam step (1.453x instead of 1.483x). */
     std::vector<AtmoLayer> two_flat = two;
-    CHECK_TRUE(resolveAtmoLevels(two_flat, 0.8, kAirMolarMass, 3.71, 50000.0, 0.0),
+    CHECK_TRUE(resolveAtmoLevels(two_flat, p0Of(0.8, two_flat), kAirMolarMass, 3.71, 50000.0, 0.0),
                "the same table resolves with no world to weigh it against");
     DragAtmosphere small_flat = small;
     small_flat.radius = 0.0;

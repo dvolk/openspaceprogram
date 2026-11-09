@@ -112,9 +112,19 @@ class Profile:
         if mean_r > 0.0 and self.radius > 0.0:
             self.g *= (mean_r / self.radius) ** 2
         self.mu = G * float(body['mass'])
-        self.rho0 = float(at['sea_level_density'])
+        # #739: the file states the datum PRESSURE, and the density every law reads is
+        # the consequence. Resolved here the way system.cpp resolves it: an exponential
+        # through the datum temperature its own H already implies (the gas cancels --
+        # p0 = rho0 g H exactly), a layer table through the ideal gas at its first
+        # level. Both are exact inverses of what the loader used to do, which is the
+        # whole reason the inversion moved no number in the game.
         self.M, self.gamma = mix(at.get('composition'))
         self.Rs = K_GAS_R / self.M
+        self.p0 = float(at['sea_level_pressure'])
+        if at.get('layers'):
+            self.rho0 = self.p0 / (self.Rs * float(at['layers'][0].get('T', 0.0)))
+        else:
+            self.rho0 = self.p0 / (self.g * float(at['scale_height']))
         # system.cpp:521-523 DEFAULTS a level's alt/T/lapse to 0.0, so a row may write
         # only what it cares about. Normalise once, to the loader's defaults, so neither
         # T() nor the gate's dedupe key KeyErrors on a file the loader accepts.
@@ -146,7 +156,7 @@ class Profile:
         return L['T'] + L['lapse'] * (z - L['alt'])
 
     def p(self, z, steps=6000):
-        p = self.rho0 * self.Rs * self.T(0.0)       # p0 = rho0 (R/M) T0, no authored p
+        p = self.rho0 * self.Rs * self.T(0.0)       # the ideal gas at the datum (#739)
         x, h = 0.0, z / steps
         for k in range(steps):
             xm = x + 0.5 * h
@@ -179,7 +189,7 @@ def report(path):
     for b in doc['bodies']:
         su = b.get('surface') or {}
         at = su.get('atmosphere')
-        if not at or 'sea_level_density' not in at:
+        if not at or 'sea_level_pressure' not in at:
             continue
         pr = Profile(b)
         shape = ('%d levels' % len(pr.levels)) if pr.levels else ('H %g m' % pr.H)

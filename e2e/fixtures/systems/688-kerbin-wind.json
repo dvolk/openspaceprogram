@@ -111,7 +111,6 @@
           "thickness": 15000,
           "power": 4.0,
           "intensity": 0.7,
-          "sea_level_density": 1.225,
           "height": 85000,
           "layers": [
             {
@@ -161,7 +160,8 @@
               "east": 20.0,
               "north": 0.0
             }
-          ]
+          ],
+          "sea_level_pressure": 101325.0
         },
         "clouds": {
           "height": 7500,
@@ -286,9 +286,9 @@
           "thickness": 8000,
           "power": 4.0,
           "intensity": 0.55,
-          "sea_level_density": 0.015,
           "scale_height": 13600,
-          "height": 65000
+          "height": 65000,
+          "sea_level_pressure": 600.372
         }
       },
       "inertial": {

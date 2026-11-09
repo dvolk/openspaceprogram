@@ -107,9 +107,9 @@
           "thickness": 15000,
           "power": 4.0,
           "intensity": 0.7,
-          "sea_level_density": 1.225,
           "scale_height": 5500,
-          "height": 70000
+          "height": 70000,
+          "sea_level_pressure": 66094.875
         },
         "clouds": {
           "height": 7500,

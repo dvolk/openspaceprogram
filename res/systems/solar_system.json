@@ -170,7 +170,7 @@
           "thickness": 30000,
           "power": 3.0,
           "intensity": 0.8,
-          "sea_level_density": 65.0,
+          "sea_level_pressure": 9224800.0,
           "scale_height": 16000,
           "composition": [
             {
@@ -305,7 +305,7 @@
           "thickness": 15000,
           "power": 4.0,
           "intensity": 0.7,
-          "sea_level_density": 1.225,
+          "sea_level_pressure": 101325.0,
           "height": 85000,
           "composition": [
             {
@@ -440,7 +440,7 @@
           "thickness": 12000,
           "power": 4.0,
           "intensity": 0.5,
-          "sea_level_density": 0.016,
+          "sea_level_pressure": 656.48,
           "scale_height": 11000,
           "height": 80000,
           "composition": [
@@ -522,7 +522,7 @@
           "thickness": 90000,
           "power": 3.0,
           "intensity": 0.6,
-          "sea_level_density": 0.16,
+          "sea_level_pressure": 111970.94399999999,
           "scale_height": 27000,
           "height": 390000,
           "composition": [
@@ -630,7 +630,7 @@
           "thickness": 90000,
           "power": 3.0,
           "intensity": 0.6,
-          "sea_level_density": 0.15,
+          "sea_level_pressure": 100669.5,
           "scale_height": 60000,
           "height": 800000,
           "composition": [
@@ -734,7 +734,7 @@
           "thickness": 90000,
           "power": 3.0,
           "intensity": 0.6,
-          "sea_level_density": 0.42,
+          "sea_level_pressure": 104790.92820000001,
           "scale_height": 27700,
           "height": 370000,
           "composition": [
@@ -812,7 +812,7 @@
           "thickness": 90000,
           "power": 3.0,
           "intensity": 0.6,
-          "sea_level_density": 0.45,
+          "sea_level_pressure": 101466.0,
           "scale_height": 20000,
           "height": 270000,
           "composition": [
@@ -897,7 +897,7 @@
           "thickness": 8000,
           "power": 5.0,
           "intensity": 0.3,
-          "sea_level_density": 0.0001164,
+          "sea_level_pressure": 1.2990240000000002,
           "scale_height": 18000.0,
           "height": 20000.0,
           "composition": [
@@ -1554,7 +1554,7 @@
           "thickness": 40000,
           "power": 3.0,
           "intensity": 0.8,
-          "sea_level_density": 5.3,
+          "sea_level_pressure": 143555.8,
           "scale_height": 20000,
           "composition": [
             {

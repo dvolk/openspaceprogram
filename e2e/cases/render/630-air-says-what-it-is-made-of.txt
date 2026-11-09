@@ -39,8 +39,9 @@ CHECK re.search(r"air oxidizer\s+23\.14% by mass\s*\n", re.search(r"\[atlas\] Ea
 # gasSpecies("CO2").oxidizer is false.
 CHECK re.search(r"air gas CO2\s+96\.5%\s*\n\s*\[atlas\]   air gas N2\s+3\.5%", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 CHECK re.search(r"air oxidizer\s+none\s*\n", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-# The datum PRESSURE, because a file cannot author one: p0 = rho0 g H, so the density is
-# the pressure knob and a wrong density is a wrong world. Venus used to carry 92 kg/m3 --
+# The datum PRESSURE is what the file states (#739) -- on a scale-height column it is
+# rho0 g H, so a wrong datum density and a wrong pressure are the same wrong world. Venus
+# used to carry 92 kg/m3 --
 # its SURFACE PRESSURE in bar, typed into the density field, which made the dossier read
 # 128.9 atm (#684). 65 kg/m3 is the datum DENSITY: 9.22 MPa, which is Venus's real 92 BAR
 # (91.0 atm) to 0.3 %, and the same number utils/rss/html/venusfact.html states as

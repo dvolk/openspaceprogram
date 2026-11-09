@@ -24,6 +24,64 @@ def geom_to_depth(z, R):
     return R * z / (R + z)
 
 
+def anchor_sea_level_pressure(surface, radius_m, g):
+    """#739: the file states its air's datum PRESSURE; the density is the consequence.
+
+    Both generators still THINK in datum densities -- that is the row the RSS sheets and
+    the KSP wiki publish (kg/m3 at the datum) and it is what utils/check_atmo_band.py and
+    make_solar_system's fact-air guard compare against -- but a body's JSON now says how
+    much the column WEIGHTS at the datum, in Pa. The loader resolves the density from it
+    (src/system.cpp, through src/atmo.h), which is the direction the physics wants: with
+    the density authored, sea-level pressure is a consequence of the datum temperature,
+    so a warmer world invents weight (drag.h's "THE THREE ARE LOCKED", #684/#686).
+
+    Two authored shapes, one rule -- anchor on the datum row the source actually states:
+      * an exponential column: p0 = rho0 * g * scale_height, exact arithmetic on numbers
+        this file already authors, and the gas cancels (the datum T that H implies is
+        g H M / R, so rho0 = p0 / (g H) recovers the authored density to the last bit --
+        nothing in the game moves).
+      * a layer table: the generator authors `sea_level_pressure` itself, because the
+        source it copies states it -- US76 says 101,325 Pa at 288.15 K, and its
+        1.225 kg/m3 is that pair's ROUNDED consequence. Converting the rounded density
+        back would need the gas table on this side of the boundary, and utils/gas_mixes.py
+        deliberately keeps species PROPERTIES in C++ (the split tests/test_scenarios.cpp
+        pins). So the four table bodies drift by ~0.014% in density, on purpose, toward
+        the number their source states.
+
+    `g` here is the body's authored g [m/s2] at its MEAN radius; the air sits on the
+    datum sphere, so the same (mean / datum)^2 thinning atmo.h:datumGravity applies to the
+    column and to dragAtm() per hull (#697) is applied here.
+    """
+    if not surface:
+        return surface
+    atmo = surface.get("atmosphere")
+    if not atmo or "sea_level_density" not in atmo:
+        return surface
+    rho0 = atmo["sea_level_density"]
+    if "layers" in atmo:
+        raise ValueError("a layer table authors sea_level_pressure directly (#739): "
+                         "the density it implies is the loader's consequence, not a "
+                         "number this generator should convert")
+    p0 = None
+    if rho0 > 0.0 and g and atmo.get("scale_height", 0.0) > 0.0:
+        datum_r = radius_m + float(surface.get("sea_level", 0.0) or 0.0)
+        k = radius_m / datum_r if datum_r > 0.0 else 1.0
+        p0 = rho0 * g * k * k * atmo["scale_height"]
+    # Rebuild in the SAME key order, with the pressure taking the density's slot: the
+    # emitted file's diff against the last one is then the one line that changed, not
+    # every key after it shuffling down the page.
+    rebuilt = {}
+    for key, value in atmo.items():
+        if key == "sea_level_density":
+            if p0 is not None:
+                rebuilt["sea_level_pressure"] = p0
+        else:
+            rebuilt[key] = value
+    atmo.clear()
+    atmo.update(rebuilt)
+    return surface
+
+
 def resolve_layer_heights(surface, radius_m):
     """#690: a layer table copied from a published standard marks itself
     heights: "geopotential", because US76 and friends state their rows at GEOPOTENTIAL heights

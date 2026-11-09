@@ -28,7 +28,8 @@ from gas_mixes import DRY_AIR, CO2_HEAVY, H2_HE_CH4_KSP
 # converted (a table that carries no marker is read as GEOMETRIC metres, which is what every
 # altitude in a system file means). Both generators call the same function, because each
 # --check only compares its own output and would not notice the two drifting.
-from atmo_units import (resolve_layer_heights, check_body_gravity,
+from atmo_units import (resolve_layer_heights, anchor_sea_level_pressure,
+                       check_body_gravity,
                         SIGMA_SB, semimajor_axis, star_temperature_from_flux,
                         blackbody_temperature, check_constants_match_src)
 
@@ -319,7 +320,10 @@ SURFACES = {
         # refuses it (atmo.h: the last level must sit below `height`).
         "atmosphere": {"color": [0.30, 0.50, 1.00], "thickness": 15000,
                        "power": 4.0, "intensity": 0.7,
-                       "sea_level_density": 1.225,
+                       # US76's own sea-level row: 101,325 Pa at 288.15 K. Its
+                       # 1.225 kg/m3 is that pair's rounded consequence, so the file
+                       # states the pair and the loader resolves the density (#739).
+                       "sea_level_pressure": 101325.0,
                        # Written out rather than left to the dry-air default: the
                        # atlas names the air, and "breathable" is a fact about this
                        # world that a player should be able to read off it.
@@ -362,7 +366,9 @@ SURFACES = {
         "frequency": 1.1,
         "atmosphere": {"color": [0.40, 0.65, 0.70], "thickness": 22000,
                        "power": 4.0, "intensity": 0.7,
-                       "sea_level_density": 1.225,
+                       # The same US76 datum pair Kerbin wears, for the same reason
+                       # (#700, #739).
+                       "sea_level_pressure": 101325.0,
                        # #700 step 2, Shay's half. It has a sea (has_sea) and wore an
                        # air whose datum read 188.0 K: one exponential IS isothermal,
                        # so the trio lock (#686) had already turned the authored
@@ -491,7 +497,9 @@ SURFACES = {
                     [1.0, [1.00, 1.00, 1.00]]],
         "atmosphere": {"color": [0.30, 0.55, 0.90], "thickness": 12000,
                        "power": 4.0, "intensity": 0.7,
-                       "sea_level_density": 1.225,
+                       # The same US76 datum pair Kerbin wears, for the same reason
+                       # (#700, #739).
+                       "sea_level_pressure": 101325.0,
                        # #700 step 2, Laythe's half. This is the world whose whole
                        # pitch is a sea, and its air read 150.4 K / 52.9 kPa -- the
                        # number that made src/drag.h open the trio lock with it. An
@@ -582,6 +590,9 @@ def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s
         # #690: honour the unit marker if a surface table carries one, against the datum
         # radius this body's altitudes will be measured from.
         b["surface"] = resolve_layer_heights(SURFACES[name], radius)
+        # #739: the datum anchor the FILE states is a pressure; the densities authored
+        # in SURFACES below are sheet/wiki rows and are converted here.
+        anchor_sea_level_pressure(b["surface"], radius, g)
 
     if typ == "star":
         b["inertial"] = {"soi": STAR_SOI, "pos": [0, 0, 0], "orb_ang_speed": 0.0}

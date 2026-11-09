@@ -433,8 +433,22 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 s.atmosphere.intensity = av.value("intensity", 1.0f);
                 // Physical drag (src/drag.h): both optional, 0 = no drag. A rim
                 // can exist without these, and vice versa.
-                s.atmosphere.sea_level_density =
-                    av.value("sea_level_density", 0.0);
+                /* #739: what a file AUTHORS about its air is the weight of the
+                   column at the datum, in Pa. The density every law in drag.h reads
+                   is resolved from it below, once the gas and this sphere's g are
+                   known. Same column, opposite direction of consequence: with the
+                   density authored, p0 = rho0 (R/M) T0 meant a warmer datum invented
+                   weight -- the wrong sign for anything diurnal or seasonal (#724). */
+                if(av.contains("sea_level_density")) {
+                    throw std::runtime_error(
+                        "system: " + body->name + ": atmosphere.sea_level_density is"
+                        " not authored any more -- state atmosphere.sea_level_pressure"
+                        " [Pa] at the datum instead (#739). On an exponential column"
+                        " p0 = density * g * scale_height; beside a layer table p0 is"
+                        " level 0's base_p, so density = p0 M / (R base_T).");
+                }
+                s.atmosphere.sea_level_pressure =
+                    av.value("sea_level_pressure", 0.0);
                 s.atmosphere.scale_height =
                     av.value("scale_height", 0.0);
                 // The hard top (above it: vacuum). 0 => top() derives
@@ -555,7 +569,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                     }
                 }
                 /* The altitude/temperature LEVELS (#552 A4): [{alt, T, lapse}, ...].
-                   base_p is NOT authorable -- resolveAtmoLevels integrates each level
+                   base_p above level 0 is NOT authorable -- resolveAtmoLevels integrates each level
                    from the sea-level anchor below it, so a file cannot state a
                    pressure that contradicts its own density (atmo.h). */
                 if(av.contains("layers")) {
@@ -683,6 +697,37 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                         first_row = false;
                     }
                 }
+                /* THE ANCHOR (#739). p0 is authored; rho0 -- the number airDensity,
+                   airPressure's equation of state and the dossier all read -- is what
+                   it implies through the gas and this sphere's g.
+                   An exponential column needs NO gas constant to invert: its datum T is
+                   g H M / R (drag.h:airTemperature) and p0 = rho0 (R/M) T0, so M
+                   cancels and rho0 = p0 / (g H) -- which is also why the derived
+                   temperature cannot drift into being a third statement of one column.
+                   A layer table inverts through its own datum ideal gas.
+                   Both use datumGravity(body->g, radius, seaLevelRadius) -- the SAME
+                   call dragAtm() makes per hull (#697) and the same one the level
+                   integration below uses, so the datum cannot step.
+                   Garbage is left to refuse below rather than divided through: if the
+                   profile is missing, or level 0 sits at 0 K, rho0 stays 0 and the
+                   profile guards fire with their own messages. */
+                const double air_g = datumGravity(body->g, body->radius,
+                                                  body->seaLevelRadius());
+                if(s.atmosphere.sea_level_pressure > 0.0) {
+                    if(!s.atmosphere.layers.empty()) {
+                        if(s.atmosphere.layers[0].base_T > 0.0) {
+                            s.atmosphere.sea_level_density =
+                                s.atmosphere.sea_level_pressure
+                                * s.atmosphere.molar_mass
+                                / kGasR
+                                / s.atmosphere.layers[0].base_T;
+                        }
+                    } else if(s.atmosphere.scale_height > 0.0 && air_g > 0.0) {
+                        s.atmosphere.sea_level_density =
+                            s.atmosphere.sea_level_pressure
+                            / (air_g * s.atmosphere.scale_height);
+                    }
+                }
                 // Air needs a profile: one exponential or a level table, and not both
                 // (render-only rim = neither). A rim can exist without either.
                 if(!s.atmosphere.layers.empty()) {
@@ -694,12 +739,12 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                        than > because a NEGATIVE scale_height beside a table is not "no
                        scale height": it is a dead number in the file that nothing reads
                        and nobody would ever notice. */
-                    if(!(s.atmosphere.sea_level_density > 0.0)
+                    if(!(s.atmosphere.sea_level_pressure > 0.0)
                        || !(s.atmosphere.height > 0.0)
                        || s.atmosphere.scale_height != 0.0) {
                         throw std::runtime_error(
                             "system: " + body->name + ": atmosphere.layers needs"
-                            " sea_level_density and height, and no scale_height");
+                            " sea_level_pressure and height, and no scale_height");
                     }
                     /* atmoLevel() scans the table linearly, once per aero sample per
                        hull (drag.h), and no real profile is anywhere near this long --
@@ -711,16 +756,16 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                             "system: " + body->name + ": atmosphere.layers has too"
                             " many levels (64 max)");
                     }
-                } else if(s.atmosphere.sea_level_density < 0.0
+                } else if(s.atmosphere.sea_level_pressure < 0.0
                           || s.atmosphere.scale_height < 0.0
-                          || (s.atmosphere.sea_level_density > 0.0)
+                          || (s.atmosphere.sea_level_pressure > 0.0)
                              != (s.atmosphere.scale_height > 0.0)) {
                     /* Both or neither -- and neither may be negative. A -4000 in a
                        vacuum body reads as "no air" either way, which is precisely why
                        it would otherwise survive a decade of nobody looking. */
                     throw std::runtime_error(
                         "system: " + body->name + ": atmosphere needs "
-                        "sea_level_density and scale_height (or neither)");
+                        "sea_level_pressure and scale_height (or neither)");
                 }
                 /* Wind needs air to move, and air that ends. A render-only rim has no
                    air at all, and a row above top() sits in the vacuum the same file
@@ -731,7 +776,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                     if(!s.atmosphere.physical()) {
                         throw std::runtime_error(
                             "system: " + body->name + ": atmosphere.wind needs"
-                            " physical air to move (sea_level_density with"
+                            " physical air to move (sea_level_pressure with"
                             " scale_height or layers) -- a render rim has none");
                     }
                     if(!(s.atmosphere.wind.back().alt <= s.atmosphere.top())) {
@@ -753,7 +798,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    K for Kerbin) and a gamma inside [1, 2], and a mix of them cannot
                    leave those bounds. If it ever trips, the fix is in atmo.h:gasSpecies,
                    and naming the body is what points a reader there. */
-                if(s.atmosphere.sea_level_density > 0.0) {
+                if(s.atmosphere.sea_level_pressure > 0.0) {
                     if(!(body->g > 0.0)) {
                         throw std::runtime_error(
                             "system: " + body->name + ": a body with air needs g > 0");
@@ -790,18 +835,16 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    body's g, an anchored first level and a top, and it must stay above
                    0 K all the way up (atmo.h's invariants). Filling base_p here -- and
                    nowhere else -- is what keeps rho, p and T one column of air: the
-                   density at the datum comes out EXACTLY the authored
-                   sea_level_density, because p0 is derived from it.
+                   density at the datum is EXACTLY the one the anchor above resolved
+                   from the authored p0, because both directions are the same gas law.
                    The sea-level radius rides along (#683): this column is weighed in
                    the body's own 1/r^2 field, and it must be the SAME sphere the aero
                    pass reads through dragAtm(), or the air steps at every level seam.
                    The g rides along on that same sphere (#697): the file types it at
                    the MEAN radius, the way an atlas publishes it. */
-                const double air_g = datumGravity(body->g, body->radius,
-                                                  body->seaLevelRadius());
                 if(!s.atmosphere.layers.empty()
                    && !resolveAtmoLevels(s.atmosphere.layers,
-                                         s.atmosphere.sea_level_density,
+                                         s.atmosphere.sea_level_pressure,
                                          s.atmosphere.molar_mass, air_g,
                                          s.atmosphere.top(), body->seaLevelRadius())) {
                     throw std::runtime_error(

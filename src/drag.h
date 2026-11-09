@@ -189,7 +189,11 @@ inline double airDensity(const DragAtmosphere &a, double alt) {
    wrong gas.
    THE THREE ARE LOCKED on ONE exponential: rho0, p0 and H cannot all be Earth's
    numbers at once -- and H is Rs T0 / g, so the H a datum wants BELONGS to a body and
-   does not travel. Laythe (g 7.848) wore H = 5500 until #700, which reads T0 150.4 K
+   does not travel. (Which of the two a FILE states moved in #739: it authors p0 and the
+   loader resolves rho0 = p0 / (g H). The lock is the same either way -- it is a property
+   of the column, not of the spelling -- but the direction matters as soon as T is a
+   state rather than an authoring by-product: with rho0 authored, a warmer datum raises
+   p0, i.e. invents weight.) Laythe (g 7.848) wore H = 5500 until #700, which reads T0 150.4 K
    over a world with a sea on it. Its warm datum -- rho0 1.225 with p0 101.3 kPa, so
    T0 288.15 K -- wants H 10,539 m THERE (Kerbin's answer to the same datum is
    8,432 m, and planting that one on Laythe would be a 230 K world): 1.54x the air at

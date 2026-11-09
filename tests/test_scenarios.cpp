@@ -217,7 +217,12 @@ static int check_air(const char *path, const System &sys) {
            the trio lock said it, silently, and every Mach number and barometer on the home
            world paid ~24%. The tolerance stays 1e-9 because Kerbin authors g 9.81 and the
            datum does not read g at all; unlike Earth's, these are not the standard's g. */
-        {"Kerbin", 288.15, 340.47075676386669, 101324.85477637536,
+        /* #739: the file now AUTHORS this pressure (US76's own 101,325 Pa row) and
+           the loader resolves the 1.225 kg/m3 from it, so the pin is the authored
+           number and the density below it is the consequence. Kerbin's datum used to
+           read 101,324.85 Pa because someone typed 1.225 -- the standard's rounding --
+           and the pin was that rounding's product to eleven digits. */
+        {"Kerbin", 288.15, 340.47075676386669, 101325.0,
                                                   0.23140616, 1e-9},
         /* #700 put Shay and Laythe into the same table Kerbin and Earth wear, so
            their datums are now BIT-identical to Kerbin's above -- p0 = rho0 (R/M) T0
@@ -232,9 +237,9 @@ static int check_air(const char *path, const System &sys) {
            two worlds at all. What tells them apart is aloft, where g weighs the
            column: see their `levels` and `aloft` rows. Tolerance 1e-9 like Kerbin's,
            because none of these four numbers reads g. */
-        {"Shay",              288.15,  340.47075676386669, 101324.85477637536,
+        {"Shay",              288.15,  340.47075676386669, 101325.0,
                                                   0.23140616, 1e-9},
-        {"Laythe",            288.15,  340.47075676386669, 101324.85477637536,
+        {"Laythe",            288.15,  340.47075676386669, 101325.0,
                                                   0.23140616, 1e-9},
         // H2 85.5, He 14, CH4 0.5 %: M 0.00236415, gamma 1.42319. g 7.848, H 20000.
         // Jool is the densest air in this system and its oxidizer share is exactly
@@ -244,8 +249,9 @@ static int check_air(const char *path, const System &sys) {
         {"Eve",    610.70058697001423, 390.2911824640027, 198456.3,
                                                    0.00095878, 1e-9},
         /* CO2 96.5, N2 3.5 %: M 0.043450, gamma 1.30265. g 8.87, H 16 km.
-           The p column is the whole reason Venus joined this table (#684): a file
-           cannot author a pressure, so the authored rho0 IS the pressure knob, and
+           The p column is the whole reason Venus joined this table (#684): the file
+           authored a rho0 and p0 was its consequence, so an author who typed a
+           PRESSURE into the density field got a column 42% too fat, and
            Venus carried 92 kg/m3 -- its surface pressure in BAR, typed into the
            density field -- which put the datum at 13.1 MPa, 129 atm, with nothing
            in the file to contradict it. 65 kg/m3 (utils/rss/html/venusfact.html:
@@ -257,11 +263,12 @@ static int check_air(const char *path, const System &sys) {
            integrates the column at the Rs that mix implies, dragAtm carries the
            pointer, and the four reads answer from the levels. The literals are the
            1976 standard's own sea-level row; dry air's mix resolves to
-           0.02896496 kg/mol, which puts the datum at 101,324.9 Pa -- 0.1 Pa from the
-           standard's stated 101,325, because that number IS dry air at 1.225 kg/m3
-           and 288.15 K. The tolerance is 1e-4 rather than 1e-9 because Earth authors
+           0.02896496 kg/mol. Since #739 the file states the standard's own 101,325 Pa
+           row outright, so the 1.225 kg/m3 these rows imply is what the loader
+           resolves (1.224961 at this mix) rather than what an author typed. The
+           tolerance stays 1e-4 rather than 1e-9 because Earth authors
            g 9.82 where the standard uses 9.80665 -- a third of a percent aloft. */
-        {"Earth",               288.15,  340.47075676386669, 101324.85477637536,
+        {"Earth",               288.15,  340.47075676386669, 101325.0,
                                                   0.23140616, 1e-4},
     };
     int bad = 0, n = 0;
@@ -468,6 +475,20 @@ static void check_composition() {
     expect_refuses("unit_marker", patched("Kerbin", [](nlohmann::json &a) {
                        a["heights"] = "geopotential";
                    }).dump(), "GEOMETRIC");
+
+    /* THE ANCHOR (#739): what a file states about its air is now the datum PRESSURE,
+       and `sea_level_density` is no longer an authored key. Refusing it is not tidiness:
+       the atmosphere loader DEFAULTS an unknown key rather than rejecting it (#721), so a
+       file left holding the old spelling would load as air of zero pressure -- every body
+       in that system quietly loses its sky, drag, sound speed and jet gate at once, and
+       nothing anywhere refuses. The message names the conversion so an author with an old
+       file has the arithmetic, not just the complaint. */
+    expect_refuses("authored_density", patched("Kerbin", [](nlohmann::json &a) {
+                       a["sea_level_density"] = 1.225;
+                   }).dump(), "sea_level_pressure");
+    expect_refuses("anchorless_layers", patched("Kerbin", [](nlohmann::json &a) {
+                       a.erase("sea_level_pressure");
+                   }).dump(), "sea_level_pressure");
 
     // A gas the species table does not have -- named in the message, because
     // "unknown gas" without the name is the useless half of the error.
@@ -864,11 +885,15 @@ static void check_raised_sea() {
     // top (q there 142 Pa rather than 94).
     // Leaving the typed 9.81 in place is the mutation; the literal below is what
     // utils/atmo_profile.py integrates by quadrature, sharing no code with atmo.h.
+    // It moved in #739 by +1.4e-6 (0.3435505 -> 0.3435510) and nothing else about
+    // this row did: raising the sea lowers the g that weighs the column, and since the
+    // file now authors the datum PRESSURE, a lower g resolves a slightly denser rho0.
+    // Both spellings agree on the new number, which is the check working.
     const DragAtmosphere wda = dragAtm(b->surface.atmosphere, *b);
     const double rho12 = airDensity(wda, 12000.0);
-    if(!(std::fabs(rho12 / 0.3435505 - 1.0) < 1e-6)) {
+    if(!(std::fabs(rho12 / 0.3435510 - 1.0) < 1e-6)) {
         printf("  Kerbin's air 12 km above a 12 km sea is %.7f kg/m3, expected"
-               " 0.3435505: the column was weighed in the typed g at the MEAN radius"
+               " 0.3435510: the column was weighed in the typed g at the MEAN radius"
                " instead of the field at the datum (atmo.h:datumGravity, #697)\n", rho12);
         failures++;
     }
@@ -879,11 +904,89 @@ static void check_raised_sea() {
            "orbit cut at %.0f m\n", tmp.c_str(), dry_cut);
 }
 
+/* #739 moved which datum figure a file states, and one branch of that inversion has no
+   shipped example to prove it: on an EXPONENTIAL column rho0 = p0 / (g H) with the gas
+   cancelling out (the datum T the H implies is g H M / R, so M drops of p0 = rho0 (R/M) T0),
+   and that g is the DATUM sphere's (atmo.h:datumGravity, #697) rather than the typed one.
+   Every shipped air body authors sea_level 0, so there the two g are one number and the
+   factor is invisible -- exactly the kind of branch a wrong variable walks through with
+   every file still green. So: raise an exponential world's sea. A 12 km sea on Duna is
+   7.1 % less g at the datum (its radius is only 320 km), so the same authored 600.372 Pa
+   resolves to air 7.6 % denser there, and the check has teeth (the last lines assert that the typed-g answer really is
+   a different number, so this test cannot rot into a tautology if someone later raises a
+   sea to 0). */
+static void check_exponential_anchor() {
+    std::ifstream f("res/systems/ksp_system.json");
+    if(!f.is_open()) {
+        printf("  cannot open res/systems/ksp_system.json (run from the repo root)\n");
+        failures++;
+        return;
+    }
+    nlohmann::json j = nlohmann::json::parse(f);
+    double p0 = 0.0, H = 0.0, gt = 0.0, r = 0.0;
+    bool patched = false;
+    for(auto &bv : j["bodies"]) {
+        if(bv.value("name", std::string()) != "Duna") { continue; }
+        nlohmann::json &at = bv["surface"]["atmosphere"];
+        p0 = at["sea_level_pressure"].get<double>();
+        H = at["scale_height"].get<double>();
+        gt = bv["g"].get<double>();
+        r = bv["radius"].get<double>();
+        bv["surface"]["sea_level"] = 12000.0;
+        patched = true;
+    }
+    if(!patched || !(p0 > 0.0)) {
+        printf("  res/systems/ksp_system.json: no exponential air body to anchor\n");
+        failures++;
+        return;
+    }
+    std::filesystem::create_directories("tmp");
+    const std::string tmp = "tmp/test_scenarios_exponential_sea.json";
+    {
+        std::ofstream o(tmp);
+        o << j.dump();
+    }
+    System wet;
+    try {
+        wet = load_system(tmp.c_str(), nullptr, nullptr);
+    } catch(const std::exception &e) {
+        printf("  an exponential body with a 12 km sea fails to load: %s\n", e.what());
+        failures++;
+        return;
+    }
+    TerrainBody *b = find_body(wet, "Duna");
+    if(b == nullptr) {
+        printf("  %s: Duna vanished from the mutated system\n", tmp.c_str());
+        failures++;
+        return;
+    }
+    const AtmosphereParams &a = b->surface.atmosphere;
+    const double g_datum = datumGravity(gt, r, b->seaLevelRadius());
+    const double want = p0 / (g_datum * H);
+    const double typed = p0 / (gt * H);
+    if(!(std::fabs(a.sea_level_density / want - 1.0) < 1e-12)) {
+        printf("  Duna's air at a raised datum resolves %.8f kg/m3, expected %.8f from"
+               " p0 %.4f / (g %.5f at the datum * H %.0f): the anchor was inverted with"
+               " the TYPED g, or not inverted at all (#739)\n",
+               a.sea_level_density, want, p0, g_datum, H);
+        failures++;
+    }
+    if(!(std::fabs(want / typed - 1.0) > 1e-4)) {
+        printf("  %s: a 12 km sea moves Duna's datum g by %.2g%% -- this check is"
+               " measuring nothing\n", tmp.c_str(), 100.0 * (want / typed - 1.0));
+        failures++;
+    }
+    printf("  %s: Duna's authored %.3f Pa over a 12 km sea resolves %.6f kg/m3 at its"
+           " datum; the typed g would have read %.6f\n",
+           tmp.c_str(), p0, a.sea_level_density, typed);
+}
+
 /* A body's gravity, stated twice (#689). The typed `g` weighs that body's air column
    (#683); its mass is the pull every arc about it answers to. The loader compares the
    two for a body with air and refuses past atmo.h:kAtmoGravityTol, because a file
-   cannot author a pressure: g goes into p0 = rho0 g H and into the 1/r^2 shape of the
-   whole column, while the hull falling through that air is pulled by G m / r^2. Equal
+   the air reads both: g resolves the datum density (rho0 = p0/(g H), #739) and weighs
+   the 1/r^2 shape of the whole column, while the hull falling through that air is
+   pulled by G m / r^2. Equal
    at the datum by construction, the two only part company aloft, where the column
    multiplies the gap -- ln p spans 10.7 scale heights across Kerbin's air, so a 5 %
    typed g is 41 % off on the density at its 85 km edge.
@@ -980,7 +1083,7 @@ static void check_fixture_air() {
             if(!fx_air) { continue; }
             const nlohmann::json &fxa = fb["surface"]["atmosphere"];
             const nlohmann::json &sha = (*sb)["surface"]["atmosphere"];
-            for(const char *key : {"sea_level_density", "height", "scale_height"}) {
+            for(const char *key : {"sea_level_pressure", "height", "scale_height"}) {
                 if(fxa.value(key, -1.0) != sha.value(key, -1.0)) {
                     printf("  %s: %s atmosphere %s is %s, shipped is %s\n", path, name.c_str(),
                            key, fxa.contains(key) ? fxa[key].dump().c_str() : "absent",
@@ -1325,6 +1428,7 @@ int main() {
     check_wind();
     check_gravity_pair();
     check_raised_sea();
+    check_exponential_anchor();
     check_fixture_air();
     if(failures) {
         printf("test_scenarios: %d FAILED\n", failures);

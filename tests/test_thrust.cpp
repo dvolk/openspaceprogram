@@ -367,6 +367,7 @@ static TerrainBody *mkPressureBody(double rho_sea) {
     body->radius = 600000.0f;
     body->g = 9.81;
     body->surface.sea_level = 0.0f;
+    // hand-built: a FILE authors sea_level_pressure and the loader resolves this (#739)
     body->surface.atmosphere.sea_level_density = (float)rho_sea;
     body->surface.atmosphere.scale_height = 8000.0;
     return body;

@@ -86,12 +86,23 @@ struct AtmosphereParams {
        (atmo.h:geopotentialDepth, #683 -- Z is just alt for a hand-built atmosphere
        with no radius), and that density FLAT at or below it (#245); cut to zero at
        top(). 0 density = no drag.
+       #739 moved which of these two the FILE states: `sea_level_pressure` is the
+       authored anchor and sea_level_density is resolved from it at load. The two
+       are the same statement on an exponential column (p0 = rho0 g H exactly, the
+       gas cancels) and an exact inversion on a level table (rho0 = p0 M/(R T0)), so
+       nothing in the game moved. What moved is the DIRECTION of the consequence:
+       with the density authored, a warmer datum T0 RAISES sea-level pressure, i.e.
+       creates air, which is the wrong sign for anything diurnal or seasonal (#724).
+       With the pressure authored, a warm column and a cold one weigh the same at the
+       ground and the warm one is thinner -- which is what a barometer and a pitot
+       tube disagree about.
        alt is measured from the DATUM (radius + surface.sea_level), so what
        sea_level authors is how much of this world sits in the flat floor: relief
        is SIGNED about radius (terrainRelief) and only ocean_mode "flat" clamps
        the floor, so a sea_level of 0 still leaves sea beds and dry valleys under
        it -- and a sea_level above every peak leaves the whole body there. */
-    double sea_level_density = 0.0;  // kg/m^3 AT THE DATUM, not at the ground
+    double sea_level_pressure = 0.0;  // [Pa] AT THE DATUM -- what the file authors
+    double sea_level_density = 0.0;   // kg/m^3 AT THE DATUM, RESOLVED from p0 at load
     double scale_height = 0.0;       // [m]; the density /e-fold altitude
     double height = 0.0;  // hard top [m above sea level]; authored, 0 = top() derives
     /* What the air is made of. A body states the MIX (#552 A4b, #630), and the three
@@ -122,9 +133,11 @@ struct AtmosphereParams {
        [{alt, T, lapse}, ...]. When this is non-empty it REPLACES the one-
        exponential scale_height profile -- rho, p and T all come from the levels,
        integrated hydrostatically (atmo.h:AtmoLayer, drag.h:airDensity) -- and it is
-       the only way a body can state a sea-level density AND a sea-level temperature,
-       which one exponential cannot do (drag.h's "THE THREE ARE LOCKED" block).
-       base_p is filled in by system.cpp when the file loads, not authored.
+       the only way a body can state a sea-level pressure AND a sea-level temperature
+       by name, which one exponential cannot do (drag.h's "THE THREE ARE LOCKED"
+       block): level 0's base_p IS the authored sea_level_pressure (#739).
+       base_p for every level ABOVE the first is filled in by system.cpp when the
+       file loads (atmo.h:resolveAtmoLevels), never authored.
        A layered body must author `height` (its air top): scale_height * 10 is not a
        meaningful top for a profile, so system.cpp refuses one without it. */
     std::vector<AtmoLayer> layers;

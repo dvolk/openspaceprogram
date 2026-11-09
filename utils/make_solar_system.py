@@ -9,7 +9,8 @@ from sci_dist import stamp_science_mults, stamp_transfer_dv, phase0
 # #690: the geopotential/geometric conversion for layer tables lives in ONE module that
 # both system generators import -- each --check only compares a file against its own
 # output, so a second spelling of the law would drift in silence (the #636 lesson).
-from atmo_units import (resolve_layer_heights, check_body_gravity,
+from atmo_units import (resolve_layer_heights, anchor_sea_level_pressure,
+                       check_body_gravity,
                         SIGMA_SB, semimajor_axis, star_temperature_from_flux,
                         blackbody_temperature, check_constants_match_src)
 
@@ -366,13 +367,17 @@ def parse_planet(page):
 # ---------------------------------------------------------------------------
 # the air a fact sheet states in PROSE (#685)
 # ---------------------------------------------------------------------------
-# A scale-height column hangs on ONE authored number: sea_level_density. The
-# loader derives the rest of it -- p0 = rho0 g H, and through H = R T/(M g) the
-# datum temperature, the sound speed and every density aloft -- so a mistyped
-# datum is invisible to every refusal we have: all those numbers agree with the
-# wrong one perfectly. That is how #684 shipped, with Venus's sea_level_density
-# typed 92 -- its surface PRESSURE in bar -- which made the whole column 42% too
-# fat and its dossier read 129 atm. A guard has to compare two statements, and
+# A scale-height column hangs on ONE authored number: since #739 the file states
+# sea_level_pressure, and the loader resolves the rest of it -- rho0 = p0/(g H), and
+# through H = R T/(M g) the datum temperature, the sound speed and every density aloft.
+# A mistyped datum is still invisible to every refusal we have: all those numbers agree
+# with the wrong one perfectly. That is how #684 shipped, with Venus's datum written 92
+# -- its surface PRESSURE in bar, typed into the density field the file used to author --
+# which made the whole column 42% too fat and its dossier read 129 atm. #739 does not
+# make that class of typo impossible on a scale-height body (the sheets publish a datum
+# DENSITY, so this catalogue still starts from one and converts), but it does make the
+# pressure the stated figure rather than a consequence -- which is the half the
+# temperature field needs (#724). A guard has to compare two statements, and
 # the second one is already on disk: the same fact sheets this generator scrapes
 # for mass, radius and gravity state the air a few lines below the bulk table,
 # in PROSE rather than a table, so section_values() never sees it.
@@ -562,25 +567,39 @@ def check_fact_air(planets, parsed, verbose=True):
             continue
         sheet = fact_air(page)
         authored = {}
-        rho0 = atmo.get('sea_level_density')
+        rho0 = atmo.get('sea_level_density')      # nothing authors this since #739
         H = atmo.get('scale_height')
-        if rho0 is not None:
+        # #739: what the FILE states is the datum PRESSURE. The sheets still state a
+        # datum DENSITY (plus a "Surface pressure" row and a "Total mass of
+        # atmosphere" row), so the guard keeps weighing all three -- on a scale-height
+        # column the density falls back out of the pressure with no gas constant at
+        # all, because the datum T that H implies is g H M / R and p0 = rho0 (R/M) T0,
+        # so rho0 = p0 / (g H). A LAYER TABLE is the one comparison this guard loses:
+        # it has no H to divide by, and recovering a density from its pressure needs
+        # the molar mass, which utils/gas_mixes.py deliberately keeps in C++. Earth's
+        # datum is pinned in tests/test_scenarios.cpp instead.
+        p0_file = atmo.get('sea_level_pressure')
+        if p0_file is not None:
+            authored['p0'] = p0_file
+        if rho0 is not None and p0_file is None:
             authored['density'] = rho0
+        # The same gravity this generator scraped for the body itself. Four sheets
+        # head their gravity column "Gravity (mean, 1 bar)" instead -- Jupiter,
+        # Saturn, Uranus, Neptune -- and leave that scrape None. Fall back on
+        # the arithmetic the LOADER uses when a body authors no g (G*M/R^2
+        # reproduces the emitted Uranus value, 9.0073) rather than dropping
+        # the comparison: a silent '-' is the kind of hole #684 walked through.
+        body = parsed.get(name) or {}
+        g = body.get('g')
+        if g is None and body.get('mass_kg') and body.get('radius_m'):
+            g = G * body['mass_kg'] / (body['radius_m'] * body['radius_m'])
         if H is not None:
             authored['scale_height'] = H
-            # p0 is what the loader would derive from these two (atmo.h), on the
-            # same gravity this generator scraped for the body itself. Four sheets
-            # head their gravity column "Gravity (mean, 1 bar)" instead -- Jupiter,
-            # Saturn, Uranus, Neptune -- and leave that scrape None. Fall back on
-            # the arithmetic the LOADER uses when a body authors no g (G*M/R^2
-            # reproduces the emitted Uranus value, 9.0073) rather than dropping
-            # the comparison: a silent '-' is the kind of hole #684 walked through.
-            body = parsed.get(name) or {}
-            g = body.get('g')
-            if g is None and body.get('mass_kg') and body.get('radius_m'):
-                g = G * body['mass_kg'] / (body['radius_m'] * body['radius_m'])
-            if rho0 is not None and g:
+            p0 = p0_file
+            if p0 is None and rho0 is not None and g:
                 p0 = rho0 * g * H
+            if p0 is not None and g:
+                authored['density'] = p0 / (g * H)
                 authored['p0'] = p0
                 # The sheet's "Total mass of atmosphere" row is the SAME statement
                 # as its pressure row -- the weight of the column per unit area IS
@@ -966,6 +985,9 @@ def make_body(name, type_, parent, data, *, surface=None, seed=0.0,
     body['power_scaler'] = 1        # unused by the loader; kept for parity
     if surface is not None:
         body['surface'] = resolve_layer_heights(surface, radius_m)
+        # #739: a body's JSON states its air's datum PRESSURE; the densities the
+        # catalogue below is built from are sheet rows and are converted here.
+        anchor_sea_level_pressure(body['surface'], radius_m, body['g'])
 
     # SOIs are derived by the loader (bodylimits.h); only the root authors
     # one (its universe bound).
@@ -1135,8 +1157,8 @@ def build_base(verbose_air=False):
          {'amplitude': 2000, 'palette': [[0.0, [0.80, 0.65, 0.40]],
                                          [1.0, [0.90, 0.80, 0.55]]],
           # the whole planet sits under a thick sulfuric-acid haze
-          # The density, not the pressure: a file cannot author a pressure, so
-          # p0 = rho0 g H falls out of this number -- 9.22 MPa here, which is
+          # The sheet's density row, converted to the pressure the file states
+          # (#739): 65 kg/m3 at g 8.87 on H 16 km is 9.22 MPa, which is
           # Venus's real 92 BAR (91 atm), the value utils/rss/html/venusfact.html
           # states beside the mass and radius this tuple scrapes. 92 -- that
           # pressure in BAR -- sat in this field for a while and made the dossier
@@ -1245,7 +1267,13 @@ def build_base(verbose_air=False):
           # either way, so the dossier rows and the test pins keep reading standard numbers.
           'atmosphere': {'color': [0.30, 0.50, 1.00], 'thickness': 15000,
                          'power': 4.0, 'intensity': 0.7,
-                         'sea_level_density': 1.225, 'height': 85000,
+                         # US76's own sea-level pair: 101,325 Pa at 288.15 K. The
+                         # 1.225 kg/m3 every table rounds from it is the CONSEQUENCE,
+                         # so the file states the pair and the loader resolves the
+                         # density (#739). Converting the rounded number back would
+                         # need the gas table on this side of the C++ boundary, which
+                         # utils/gas_mixes.py keeps there on purpose.
+                         'sea_level_pressure': 101325.0, 'height': 85000,
                          'composition': DRY_AIR,
                          'heights': 'geopotential',
                          'layers': [
@@ -1424,7 +1452,7 @@ def build_base(verbose_air=False):
                          # atmo.h::GASES, so the two gases we CAN name are authored as
                          # written and the trace is left out rather than folded into them.
                          # Density is the one figure the sheet cannot hand us: a system file
-                         # authors no pressure, so sea_level_density IS the pressure knob
+                         # the datum pressure below is this density's consequence (#739)
                          # (#684) and it is derived -- 1.3 Pa / (0.62 x 18000) = 1.164e-4.
                          # check_fact_air then weighs OUR p0 against the published 1.3 Pa
                          # instead of printing "no column authored", and weighs the 18 km

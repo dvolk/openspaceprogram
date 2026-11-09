@@ -37,14 +37,17 @@
    level, which is what a real stratosphere does and what the whole of #552 A2's
    single exponential already was.
 
-   `base_p` is NOT authored. It is the pressure at `base_alt` [Pa], filled in when
-   the system file loads by integrating the level above hydrostatically from the
-   sea-level anchor p0 = sea_level_density * (R/M) * base_T(0) (resolveAtmoLevels,
-   called by system.cpp).
-   Authoring it would add a number that the law already implies and let a def
-   quietly break hydrostatic equilibrium at a level boundary; the load pass is
-   where the pair is made consistent, and the density there stays EXACTLY the
-   authored sea_level_density at the datum.
+   `base_p` is the pressure at `base_alt` [Pa], filled in when the system file loads
+   by integrating the level above hydrostatically (resolveAtmoLevels, called by
+   system.cpp). Level 0's is the ONE exception: it IS the file's authored
+   `sea_level_pressure` (#739), and the datum DENSITY that every law in drag.h reads
+   is the consequence, resolved by the loader as rho0 = p0 M / (R base_T(0)). Before
+   #739 the density was authored and this number derived, which made sea-level
+   pressure a consequence of the datum temperature -- so warming the air created
+   weight, the wrong sign for anything diurnal or seasonal (#724).
+   Authoring a base_p for a level ABOVE the first would add a number the law already
+   implies and let a def quietly break hydrostatic equilibrium at a level boundary;
+   the load pass is where the pair is made consistent.
 
    Load invariants (system.cpp refuses a table that breaks them, because a bad one
    is a divide by zero or a negative temperature several steps later, not a load
@@ -306,12 +309,13 @@ inline double datumGravity(double g, double mean_radius, double sea_level_radius
 }
 
 /* Fill in each level's base_p [Pa] by integrating the level ABOVE it down to this
-   level's base_alt, starting from the sea-level anchor the authored numbers imply:
-       p0 = sea_level_density * (R / M) * base_T(0)      (ideal gas, at the datum)
-   That is why base_p is not authored: it is a consequence, and authoring it would
-   put a second, possibly contradictory, statement of the same column in the file
-   (drag.h reads p and rho out of ONE integration, so a def that broke hydrostatics
-   at a boundary would show up as a density jump nothing explains).
+   level's base_alt. Level 0's base_p IS the file's authored `sea_level_pressure`
+   (#739); the datum density the laws in drag.h read is the consequence, which
+   system.cpp resolves as rho0 = p0 M / (R base_T(0)). Only the levels ABOVE the
+   first are derived here -- authoring one of those would put a second, possibly
+   contradictory, statement of the same column in the file (drag.h reads p and rho
+   out of ONE integration, so a def that broke hydrostatics at a boundary would show
+   up as a density jump nothing explains).
 
    `radius` is the body's SEA-LEVEL radius [m], the sphere this profile's altitudes
    are measured from; it is what makes the column weigh the 1/r^2 field the hull
@@ -326,10 +330,10 @@ inline double datumGravity(double g, double mean_radius, double sea_level_radius
    at every ceiling (a ceiling is the next level's base or the air top, whichever comes
    first); a temperature CONTINUOUS across every seam; no level whose air gets denser
    as you climb; and no warming level aimed at the degenerate lapse above. */
-inline bool resolveAtmoLevels(std::vector<AtmoLayer> &L, double sea_level_density,
+inline bool resolveAtmoLevels(std::vector<AtmoLayer> &L, double sea_level_pressure,
                               double molar_mass, double g, double top,
                               double radius) {
-    if(L.empty() || !(sea_level_density > 0.0) || !(molar_mass > 0.0)
+    if(L.empty() || !(sea_level_pressure > 0.0) || !(molar_mass > 0.0)
        || !(g > 0.0) || !(top > 0.0)) { return false; }
     if(!(L[0].base_alt == 0.0)) { return false; }    // the profile is anchored at the datum
     if(!(L.back().base_alt < top)) { return false; } // the last level needs air above it to lapse through
@@ -367,7 +371,11 @@ inline bool resolveAtmoLevels(std::vector<AtmoLayer> &L, double sea_level_densit
             return false;
         }
         if(i == 0) {
-            L[0].base_p = sea_level_density * Rs * L[0].base_T;
+            // The anchor: the pressure the file authored, at the sphere the altitudes
+            // measure from. rho at that point is this divided by the level's own
+            // temperature (system.cpp resolves it into sea_level_density), so p and
+            // rho describe one column and the file cannot state a weight twice.
+            L[0].base_p = sea_level_pressure;
         } else {
             L[i].base_p = levelPressure(L[i - 1], L[i].base_alt, g, Rs, radius);
             if(!(L[i].base_p > 0.0)) { return false; }
@@ -383,8 +391,9 @@ inline bool resolveAtmoLevels(std::vector<AtmoLayer> &L, double sea_level_densit
    they are what a MIX resolves to, and a mix is the thing a player could act on
    ("this world has no free oxygen" is a fact about a world, and today nothing in the
    game can say it). So a system file authors the mix and the loader derives the
-   scalars from it, exactly like resolveAtmoLevels derives base_p from an authored
-   temperature profile: one authored statement, its consequences filled in at load,
+   scalars from it, exactly like resolveAtmoLevels cascades base_p from an authored
+   temperature profile plus one authored datum pressure: one authored statement, its
+   consequences filled in at load,
    and no second number that can contradict it.
 
    M [kg/mol] and gamma = cp/cv are the values each gas reaches at the temperatures

@@ -52,7 +52,9 @@ CHECK len(surf) == 15
 # WORLD rather than the air, and they are the two the pre-fix binary still passes.
 CHECK all(s["alt_asl"] < -100.0 for s in surf)
 CHECK all(s["bme"] == "ocean" for s in surf)
-# THE LAW: rho == the authored sea_level_density on every row, and never ABOVE it.
+# THE LAW: rho == the sea-level density the authored sea_level_pressure implies, on
+# every row, and never ABOVE it. #739 moved which of the two the file states; the
+# density below the datum is still the flat answer either way.
 # Flat, not the profile continued downward. Since #686 Kerbin wears a level table, so the
 # thing being refused is level 0's lapse continued down: 1.265 kg/m3 at this hull's -336 m
 # and 1.276 at its -424 m (against 1.225 measured). On the pre-#686 exponential the same
@@ -86,9 +88,9 @@ CHECK max(r["thrust"] for r in drainlog) > 4000.0
 # body's authored profile states, through the same dragAtm seam the dossier uses, so the
 # two cannot mean different airs. Under this datum p is FLAT (the #618 call), so every
 # row reads the datum's own p0 beside T0 and the sound speed those two imply. Kerbin has
-# worn a level table since #686, so p0 is no longer rho0 g H -- a layer table authors T0
-# and the loader integrates the column, which leaves p0 = rho0 (R/M) T0 = 101324.9 Pa at
-# a 288.15 K datum with dry air's M. The printed row carries one decimal (T=288.1,
+# worn a level table since #686, so p0 is not rho0 g H at all: since #739 the fixture
+# AUTHORS p0 -- US76's own 101,325 Pa row -- and the loader resolves the density from it
+# (1.2249966 kg/m3 at dry air's M and a 288.15 K datum). The printed row carries one decimal (T=288.1,
 # a=340.5), so the bands below are pinned to the PRINT: they redden if the datum moves,
 # not if the rounding does. Mach divides the AIR-relative speed at the COM, NOT the |v|=
 # this line prints -- that one is the FRAME speed, and on a spinning body the air itself
