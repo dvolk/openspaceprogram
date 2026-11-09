@@ -170,8 +170,6 @@
           "thickness": 30000,
           "power": 3.0,
           "intensity": 0.8,
-          "sea_level_pressure": 9224800.0,
-          "scale_height": 16000,
           "composition": [
             {
               "gas": "CO2",
@@ -193,7 +191,21 @@
               "east": 100.0,
               "north": 0.0
             }
-          ]
+          ],
+          "sea_level_pressure": 9200000.0,
+          "layers": [
+            {
+              "alt": 0.0,
+              "T": 737.0,
+              "lapse": -0.0078
+            },
+            {
+              "alt": 65000.0,
+              "T": 230.0,
+              "lapse": 0.0
+            }
+          ],
+          "height": 116000.0
         },
         "clouds": {
           "color": [
@@ -440,9 +452,6 @@
           "thickness": 12000,
           "power": 4.0,
           "intensity": 0.5,
-          "sea_level_pressure": 656.48,
-          "scale_height": 11000,
-          "height": 80000,
           "composition": [
             {
               "gas": "CO2",
@@ -460,7 +469,21 @@
               "gas": "O2",
               "fraction": 0.0013
             }
-          ]
+          ],
+          "sea_level_pressure": 636.0,
+          "layers": [
+            {
+              "alt": 0.0,
+              "T": 214.0,
+              "lapse": -0.004
+            },
+            {
+              "alt": 16500.0,
+              "T": 148.0,
+              "lapse": 0.0
+            }
+          ],
+          "height": 60000.0
         },
         "albedo": 0.25,
         "temperature": 214.0
@@ -522,9 +545,6 @@
           "thickness": 90000,
           "power": 3.0,
           "intensity": 0.6,
-          "sea_level_pressure": 111970.94399999999,
-          "scale_height": 27000,
-          "height": 390000,
           "composition": [
             {
               "gas": "H2",
@@ -534,7 +554,21 @@
               "gas": "He",
               "fraction": 0.102
             }
-          ]
+          ],
+          "sea_level_pressure": 100000.0,
+          "layers": [
+            {
+              "alt": 0.0,
+              "T": 165.0,
+              "lapse": -0.00102829
+            },
+            {
+              "alt": 51541.9,
+              "T": 112.0,
+              "lapse": 0.0
+            }
+          ],
+          "height": 245000.0
         },
         "albedo": 0.343,
         "temperature": 165.0,
@@ -630,9 +664,6 @@
           "thickness": 90000,
           "power": 3.0,
           "intensity": 0.6,
-          "sea_level_pressure": 100669.5,
-          "scale_height": 60000,
-          "height": 800000,
           "composition": [
             {
               "gas": "H2",
@@ -646,7 +677,21 @@
               "gas": "CH4",
               "fraction": 0.005
             }
-          ]
+          ],
+          "sea_level_pressure": 100000.0,
+          "layers": [
+            {
+              "alt": 0.0,
+              "T": 134.0,
+              "lapse": -0.00045678
+            },
+            {
+              "alt": 109461.9,
+              "T": 84.0,
+              "lapse": 0.0
+            }
+          ],
+          "height": 400000.0
         },
         "albedo": 0.342,
         "temperature": 134.0,
@@ -734,9 +779,6 @@
           "thickness": 90000,
           "power": 3.0,
           "intensity": 0.6,
-          "sea_level_pressure": 104790.92820000001,
-          "scale_height": 27700,
-          "height": 370000,
           "composition": [
             {
               "gas": "H2",
@@ -750,7 +792,21 @@
               "gas": "CH4",
               "fraction": 0.023
             }
-          ]
+          ],
+          "sea_level_pressure": 100000.0,
+          "layers": [
+            {
+              "alt": 0.0,
+              "T": 76.0,
+              "lapse": -0.00042949
+            },
+            {
+              "alt": 53551.9,
+              "T": 53.0,
+              "lapse": 0.0
+            }
+          ],
+          "height": 250000.0
         },
         "albedo": 0.3,
         "temperature": 76.0
@@ -812,9 +868,6 @@
           "thickness": 90000,
           "power": 3.0,
           "intensity": 0.6,
-          "sea_level_pressure": 101466.0,
-          "scale_height": 20000,
-          "height": 270000,
           "composition": [
             {
               "gas": "H2",
@@ -828,7 +881,21 @@
               "gas": "CH4",
               "fraction": 0.015
             }
-          ]
+          ],
+          "sea_level_pressure": 100000.0,
+          "layers": [
+            {
+              "alt": 0.0,
+              "T": 72.0,
+              "lapse": -0.0004275
+            },
+            {
+              "alt": 39766.1,
+              "T": 55.0,
+              "lapse": 0.0
+            }
+          ],
+          "height": 200000.0
         },
         "albedo": 0.29,
         "temperature": 72.0
@@ -897,9 +964,6 @@
           "thickness": 8000,
           "power": 5.0,
           "intensity": 0.3,
-          "sea_level_pressure": 1.2990240000000002,
-          "scale_height": 18000.0,
-          "height": 20000.0,
           "composition": [
             {
               "gas": "N2",
@@ -909,7 +973,16 @@
               "gas": "CH4",
               "fraction": 0.005
             }
-          ]
+          ],
+          "sea_level_pressure": 1.3,
+          "layers": [
+            {
+              "alt": 0.0,
+              "T": 38.0,
+              "lapse": 0.0
+            }
+          ],
+          "height": 20000.0
         },
         "albedo": 0.72
       },

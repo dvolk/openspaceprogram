@@ -1,29 +1,36 @@
 # Venus is the first body in the catalogue to author atmosphere.wind (#688).
 # Two rows: 1 m/s at the datum (venusfact.html's surface figure) and 100 m/s at
 # 65 km (the cloud-top superrotation -- see utils/make_solar_system.py for what each
-# one is sourced to, and for the sign). Interpolated, that is 25.4 m/s of air at
-# 16 km, which is where flying-trim spawns:
-#   v(16 km) = 1 + (16000/65000) x (100 - 1) = 25.4 m/s
-# The hull (skiff_trim, whose lift-area load the bed is keyed to) asks for 6.1 m/s of
-# AIRSPEED -- 50.9 kg/m^2 in Venus's 23.9 kg/m^3 of air at 16 km -- and the air is
-# moving 4x faster than that. So it cannot make headway: it spawns going 19.2 m/s OVER
-# THE GROUND (25.4 of air less its own 6.1) and drifts DOWNWIND, east off lon 0, while
-# its nose points into the flow. A flipped sign in the rows reads 31.5 m/s and a
-# WESTBOUND track instead.
-# The windless control (same ship, same bed, the system as it was before this commit)
-# prints |v| = 6.1 |v_air| = 6.1, so all of the 19.2 is the air's doing -- and the 6.1
-# never moved, because a wind is an air velocity and not a force (#688).
+# one is sourced to, and for the sign). Interpolated, that is 18.7 m/s of air at
+# 11.6 km, which is where flying-trim spawns (0.1 x Venus's 116 km air top):
+#   v(11.6 km) = 1 + (11600/65000) x (100 - 1) = 18.7 m/s
+# #625 moved that bed: Venus used to state a 16 km scale height and no height, so its
+# ceiling was the defaulted 10 H = 160 km and the bed sat at 16 km. The sheet's own
+# profile (737 K at the ground, 230 K at the 65 km tropopause) puts the ceiling at
+# 116 km, and the bed with it. The wind rows did not move -- 65 km is where the
+# superrotation is, not 0.1 of anything -- so what moved is the height the table is
+# read AT, and 18.7 is 6.7 m/s less air than this case used to measure.
+# The hull (skiff_trim, whose lift-area load the bed is keyed to) asks for 5.1 m/s of
+# AIRSPEED -- 50.9 kg/m^2 in Venus's 34.2 kg/m^3 of air at 11.6 km, which is 9% denser
+# than the isothermal column used to be there -- and the air is moving 3.7x faster than
+# that. So it cannot make headway: it spawns going 13.5 m/s OVER THE GROUND (18.7 of air
+# less its own 5.1) and drifts DOWNWIND, east off lon 0, while its nose points into the
+# flow. A flipped sign in the rows reads 23.8 m/s and a WESTBOUND track instead.
+# The windless control (same ship, same bed, this same file with the two wind rows
+# dropped -- tmp, not shipped) prints |v| = 5.1 |v_air| = 5.1, so all of the 13.5 is the
+# air's doing -- and the 5.1 never moved, because a wind is an air velocity and not a
+# force (#688).
 NAME venus-wind-outruns-the-hull
-CLAIM Venus authors a wind, and it moves the air rather than the hull: at 16 km the table interpolates to 25.4 m/s of air, so a hull that asked for 6.1 m/s of airspeed spawns at 19.2 m/s over the ground and drifts downwind (east, off lon 0) while pointing into the flow.
+CLAIM Venus authors a wind, and it moves the air rather than the hull: at 11.6 km the table interpolates to 18.7 m/s of air, so a hull that asked for 5.1 m/s of airspeed spawns at 13.5 m/s over the ground and drifts downwind (east, off lon 0) while pointing into the flow.
 KIND golden
 ARGS --timeout 2 --info-log --system res/systems/solar_system.json --startship v,res/ships/skiff_trim.json,Venus,flying-trim,lat=0,lon=0
 FORBID error:
 FORBID atmosphere.wind
-# The launch state: 6.1 m/s through the air (what the bed authored) against 19.2 over
-# the ground (what the air is doing to it). Wrong sign in the rows reads 31.5/6.1; no
-# wind reads 6.1/6.1; a wind sampled at the datum (1 m/s) instead of at the hull reads
-# 5.1; a table that skipped interpolation and took the 100 m/s row reads 93.9.
-CHECK re.search(r"Spawn 'flying-trim' around Venus.*\|v\| = 19\.[0-9] m/s \|v_air\| = 6\.[0-9] m/s", out)
+# The launch state: 5.1 m/s through the air (what the bed authored) against 13.5 over
+# the ground (what the air is doing to it). Wrong sign in the rows reads 23.8/5.1; no
+# wind reads 5.1/5.1; a wind sampled at the datum (1 m/s) instead of at the hull reads
+# 4.1; a table that skipped interpolation and took the 100 m/s row reads 94.9.
+CHECK re.search(r"Spawn 'flying-trim' around Venus.*\|v\| = 13\.[0-9] m/s \|v_air\| = 5\.[0-9] m/s", out)
 # Downwind, not upwind: the ground track runs east off lon 0 (westbound would unwrap
 # to ~359.99). This is the sign pin. The rows are ground-relative and +east is the
 # sense the body's own spin carries the ground, which is what superrotation IS; the
@@ -31,10 +38,10 @@ CHECK re.search(r"Spawn 'flying-trim' around Venus.*\|v\| = 19\.[0-9] m/s \|v_ai
 # east means. So the air runs WITH the ground and AGAINST a prograde hull.
 CHECK all(s["lon"] > 0.0 and s["lon"] < 1.0 for s in surf if s["t"] > 0.5)
 # Still at the bed, and on the axis the table keys on -- alt_asl off the sea-level
-# datum, not alt_agl, which is terrain's business -- so the 25.4 m/s above is the row
+# datum, not alt_agl, which is terrain's business -- so the 18.7 m/s above is the row
 # value where the hull actually is rather than a number that drifted with the hull.
-CHECK all(abs(s["alt_asl"] - 16000.0) < 400.0 for s in surf if s["t"] > 0.5)
-# Carried, not flying free: the ground speed stays inside the air's own 25.4 m/s all
-# run (measured 19.7 at 0.8 s, 18.9 by 3.8 s). A wind that entered the readout but not
-# the forces would let a 6.1 m/s hull climb away from the air's speed instead.
-CHECK all(s["hs"] > 15.0 and s["hs"] < 25.4 for s in surf if s["t"] > 0.5)
+CHECK all(abs(s["alt_asl"] - 11600.0) < 400.0 for s in surf if s["t"] > 0.5)
+# Carried, not flying free: the ground speed stays inside the air's own 18.7 m/s all run
+# (measured 13.9 at 0.8 s and at 1.8 s). A wind that entered the readout but not the
+# forces would let a 5.1 m/s hull climb away from the air's speed instead.
+CHECK all(s["hs"] > 12.0 and s["hs"] < 18.7 for s in surf if s["t"] > 0.5)

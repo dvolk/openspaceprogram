@@ -525,7 +525,7 @@ def sheet_quantity(text, want):
 
 def fact_air(page):
     """What a fact sheet states about the air, in SI: {density, p0, scale_height,
-    base_T} -> (lo, hi) or absent.
+    base_T, upper_T, mass} -> (lo, hi) or absent.
     A body with no "Surface density" row may still state the density AT ITS 1-BAR
     LEVEL, and for the giants that IS our datum -- these sheets head their gravity
     column "Gravity (mean, 1 bar)" for the same reason, and check_fact_air already
@@ -535,14 +535,31 @@ def fact_air(page):
     "Surface pressure" row says ">>1000 bars", which is a different definition of
     surface, not a number we are 1000x off. (#685, and the gap #700 found: Saturn
     and Neptune were authored -47 % and +100 % against these rows with nothing
-    printing it, because the parser only looked for the terrestrial label.)"""
+    printing it, because the parser only looked for the terrestrial label.)
+
+    #625 added two rows, both of them raw material for a layer TABLE rather than a
+    scale height:
+      upper_T  "Temperature at 0.1 bar:". Four giant sheets state it beside their
+               1-bar temperature, and a pair of temperatures at a pair of pressures
+               ten times apart is a profile, not a point -- author_air_profile()
+               puts the seam where the sheet's OWN scale height says a decade of
+               pressure sits, so the table between them is the sheet's, not ours.
+      base_T   now also reads "Temperature at 1 bar:" (the giants' datum temperature)
+               and "Surface temperature:" (Pluto states its air's temperature that
+               way, as a range: 24 - 38 K).
+    What is NOT parsed is the sheets' "Mean molecular weight:" row -- it carries no
+    unit ("Mean molecular weight: 43.45", bare), and a unit-less number is the kind of
+    loose read this parser has refused since it started. The mix's resolved molar mass
+    lives in C++ and is pinned in tests/test_scenarios.cpp instead."""
     h = read(page)
     out = {}
     for key, labels, want in (('density', ('Surface density:', 'Density at 1 bar:'),
                                'kg/m^3'),
                               ('p0', ('Surface pressure',), 'Pa'),
                               ('scale_height', ('Scale height:',), 'm'),
-                              ('base_T', ('Average temperature:',), 'K'),
+                              ('base_T', ('Average temperature:', 'Temperature at 1 bar:',
+                                          'Surface temperature:'), 'K'),
+                              ('upper_T', ('Temperature at 0.1 bar:',), 'K'),
                               # The weight of the whole column stated in kg instead
                               # of Pa. Five sheets say it, three of them on bodies
                               # that have air here. See check_fact_air for why this
@@ -697,6 +714,135 @@ def check_fact_air(planets, parsed, verbose=True):
         # excuses reads like the guard has given up on those bodies.
         for why in waived:
             print('  waived    %s' % why)
+    return bad
+
+
+# #625 (roadmap rung A, the catalogue half): seven of this file's airs stated a SCALE
+# HEIGHT, and the trio lock (#686) had already spent it -- T0 = g H M / R, so Jupiter's
+# H 27 km read 186.73 K beside its sheet's own 165 K, Saturn's 60 km read 173.51 K
+# beside 134 K, and the load-time thermal audit printed "two rows, -39.51 K apart"
+# (#738's family). A scale height cannot state a temperature profile, so no later rung
+# can vary one. What the sheets state instead is better than what we were typing:
+#   * the giants state a PAIR -- "Temperature at 1 bar" and "Temperature at 0.1 bar" --
+#     beside a scale height. A pair of temperatures ten times apart in pressure IS a
+#     profile, so the lapse and the seam altitude below are derived from those three
+#     rows, not invented (author_air_profile, just after this guard);
+#   * Venus and Mars state one temperature and a pressure. The profile's SHAPE is then
+#     ours, and each one's is argued where it is authored;
+#   * Pluto's rows already agree with each other (its ~18 km scale height at N2 and its
+#     own gravity is 37.6 K, the warm end of its stated 24 - 38 K) -- converting it is
+#     the no-op that proves the rule rather than the exception.
+# Datum pressure: the sheet's "Surface pressure" row where it states one; otherwise the
+# 1 bar level, which is what a giant's density, gravity and temperature rows are all
+# stated AT (the sheets head their gravity column "Gravity (mean, 1 bar)"). That is a
+# convention, not a measurement, and it replaces what used to be a plucked rho0 x g x H.
+# The ceiling is the band gate's answer, not the sheet's -- a sheet's air top is a
+# rendering limit, and #682's gate is what makes an orbit decay somewhere (#702).
+SOLAR_AIR_SHAPE = {
+    # Venus: -7.8 K/km to a 65 km tropopause at 230 K. Not in utils/rss/ (our Venus
+    # sheet stops at its surface rows) -- it is the published Venus profile, cited the
+    # same way the 100 m/s superrotation row at 65 km already is, and the two now
+    # describe the same deck instead of a 737 K floor under it.
+    'Venus':   {'lapse': -0.0078, 'trop': 65000.0, 'lid_T': 230.0, 'top': 116000.0},
+    # Mars: -4.0 K/km, a lid at 148 K. Its own convective limit is g/cp = 4.5 K/km, and
+    # 148 K is where CO2 deposits at its own 636 Pa -- so the column stops cooling
+    # before it can snow its own air out, the same argument #700 used against Duna's
+    # old 61.6 K sky.
+    'Mars':    {'lapse': -0.0040, 'trop': 16500.0, 'top': 60000.0},
+    # The four giants: no authored shape at all -- the seam comes from their two
+    # temperature rows and their own scale height row.
+    'Jupiter': {'top': 245000.0},
+    'Saturn':  {'top': 400000.0},
+    'Uranus':  {'top': 250000.0},
+    'Neptune': {'top': 200000.0},
+    # Pluto: one isothermal level. Its sheet's SECOND scale-height row ("~50 km above
+    # 30 km") is a mesosphere that starts above this body's ceiling, so it is left
+    # unread rather than turned into a 100 K lid at 1.3 Pa; the warm end of its stated
+    # 24 - 38 K is the end its own 18 km row supports.
+    'Pluto':   {'lapse': 0.0, 'top': 20000.0, 'T_end': 'hi'},
+}
+
+def author_air_profile(name, page, surface, data, verbose=True):
+    """Turn one body's sheet rows into an authored layer table, and print what each row
+    cost. Returns the complaints; empty means every number came from a row."""
+    atmo = (surface or {}).get('atmosphere')
+    if not atmo or name not in SOLAR_AIR_SHAPE:
+        return []
+    shape = SOLAR_AIR_SHAPE[name]
+    # One source per profile. A body in this table that also carries an exponential (or
+    # a hand-typed table) would have two, and only one of them would ever be read.
+    assert 'scale_height' not in atmo and 'layers' not in atmo and 'height' not in atmo, (
+        '%s: SOLAR_AIR_SHAPE authors this air\'s profile AND its ceiling, so its '
+        'surface block must state neither scale_height, layers, nor height' % name)
+    sheet = fact_air(page)
+    bad = []
+    for key in ('base_T', 'scale_height'):
+        if sheet.get(key) is None:
+            bad.append('%s: %s states no %s row, and this body\'s profile is built '
+                       'from it' % (name, page, key))
+    if bad:
+        return bad
+    lo, hi = sheet['base_T']
+    if hi > lo:
+        # A stated RANGE is not a mean (#687/#722's rule), so pick an end and say which.
+        end = shape.get('T_end')
+        if end not in ('lo', 'hi'):
+            bad.append('%s: %s states %s K as a range and SOLAR_AIR_SHAPE does not name '
+                       'which end this air uses' % (name, page, '%g - %g' % (lo, hi)))
+            return bad
+        T0 = hi if end == 'hi' else lo
+    else:
+        T0 = lo
+    # The sheet's own scale height (averaged over its stated span) is what places the
+    # seam: the lapse is chosen so the datum temperature reaches the 0.1-bar temperature
+    # a decade of pressure up, on a column whose pressure scale is that H. This is a FIT,
+    # not hydrostatics, and its error is exactly the sheet's own internal inconsistency --
+    # because for a lapsing level a decade of pressure is NOT ln(10) scale heights up, and
+    # because a sheet's H row belongs to a level of its own atmosphere. Both were
+    # measured (utils/atmo_profile.py, reading the emitted file): where our column reaches
+    # the sheet's stated cold temperature, it is at 9.1 kPa on Uranus and 10.9 kPa on
+    # Neptune -- 9% either side, the closest in the catalogue, because their H rows agree
+    # with their own T/M/g to a few percent -- but 7.4 kPa on Jupiter (-26%) and 5.2 kPa on
+    # Saturn (-48%), whose H rows imply 186 K and 172 K rather than the 165 K and 134 K
+    # their temperature rows state. Filed; the clean derivation needs the resolved molar
+    # mass on this side of the boundary, which utils/gas_mixes.py deliberately keeps in C++.
+    # What is NOT a fit: the two temperatures and the 1-bar datum, which are rows.
+    H = sheet['scale_height']
+    Hmid = 0.5 * (H[0] + H[1])
+    p0 = shape.get('p0', sheet['p0'][0] if sheet.get('p0') else 100000.0)
+    if 'lapse' in shape:
+        L = shape['lapse']
+        trop = shape.get('trop')
+        if trop is None:
+            layers = [{'alt': 0.0, 'T': T0, 'lapse': L}]
+            seam, Tu, how = None, None, 'one isothermal level'
+        else:
+            Tu = shape.get('lid_T', round(T0 + L * trop, 2))
+            layers = [{'alt': 0.0, 'T': T0, 'lapse': L},
+                      {'alt': trop, 'T': Tu, 'lapse': 0.0}]
+            seam, how = trop, 'authored lapse'
+    else:
+        if sheet.get('upper_T') is None:
+            bad.append('%s: %s states one temperature, so this profile needs an authored '
+                       'lapse in SOLAR_AIR_SHAPE' % (name, page))
+            return bad
+        Tu = sheet['upper_T'][0]
+        L = round((T0 / Hmid) * math.log(Tu / T0) / math.log(10.0), 8)
+        seam = round((Tu - T0) / L, 1)
+        layers = [{'alt': 0.0, 'T': T0, 'lapse': L},
+                  {'alt': seam, 'T': Tu, 'lapse': 0.0}]
+        how = "from the sheet's 1 bar / 0.1 bar / scale-height rows"
+    atmo['sea_level_pressure'] = p0
+    atmo['layers'] = layers
+    atmo['height'] = shape['top']
+    if verbose:
+        print('  air shape %-9s T0 %7.2f K  p0 %11.4g Pa  %s' % (name, T0, p0, how))
+        if seam is not None:
+            print('            %-9s lapse %7.3f K/km to %8.0f m -> %7.2f K lid, '
+                  'top %8.0f m' % ('', 1000.0 * L, seam, Tu, shape['top']))
+        else:
+            print('            %-9s lapse %7.3f K/km throughout, top %8.0f m'
+                  % ('', 1000.0 * L, shape['top']))
     return bad
 
 # ---------------------------------------------------------------------------
@@ -1176,7 +1322,21 @@ def build_base(verbose_air=False):
           # (#684). H 16 km and the CO2 mix already give the right 742 K.
           'atmosphere': {'color': [0.90, 0.75, 0.45], 'thickness': 30000,
                          'power': 3.0, 'intensity': 0.8,
-                         'sea_level_density': 65.0, 'scale_height': 16000,
+                         # #625: SOLAR_AIR_SHAPE emits this air's table -- a 737 K datum
+                         # (the sheet's own "Average temperature", the same row its
+                         # SURFACE temperature comes from, so the load-time audit now
+                         # prints "one published row states both" where it used to print
+                         # "two rows, -4.64 K apart"), -7.8 K/km to a 230 K lid at 65 km,
+                         # ceiling 116 km. The datum pressure is the sheet's "92 bars" row
+                         # itself rather than rho0 x g x H, and what it resolves -- 65.2
+                         # kg/m3 -- is the sheet's "~65 kg/m3" to 0.3%. The lid is the
+                         # published Venus tropopause, cited the way the 100 m/s wind row
+                         # at the same 65 km already is; with it, the deck sits in 0.2 kg/m3
+                         # of air instead of 1.1, so the superrotation row finally pushes on
+                         # a hull at about the pressure Venus's cloud tops actually feel.
+                         # The band gate is no longer waived here: 116 km is 275 Pa of
+                         # orbital q, inside 10..1000, where the isothermal 16 km column
+                         # left 99.8 kPa at 160 km and an excuse instead of a ceiling.
                          # Near-pure CO2 with nitrogen on top. Venus has the densest
                          # air a jet could swallow in this catalogue and no oxidizer
                          # in any of it (#630).
@@ -1305,24 +1465,22 @@ def build_base(verbose_air=False):
                                          [1.0, [0.80, 0.55, 0.40]]],
           'atmosphere': {'color': [0.85, 0.55, 0.35], 'thickness': 12000,
                          'power': 4.0, 'intensity': 0.5,
-                         'sea_level_density': 0.016, 'scale_height': 11000,
-                         'height': 80000,
-                         # #698, and the first row the mass check decided. This file
-                         # used to author 0.020 kg/m^3 on an 11.5 km scale height:
-                         # datum 858 Pa, and the air weighed 3.32e16 kg. The sheet
-                         # says 0.016 +/- 0.006 (its own seasonal spread), 11.0 km,
-                         # 6.1-6.3 mb and ~2.5e16 kg, and three of those four rows
-                         # agree with each other and with this pair: datum 656 Pa,
-                         # 2.54e16 kg (+1.6%), T0 214.6 K. The old pair was 25% heavy
-                         # on density, 35% heavy on pressure and 33% heavy on mass --
-                         # one authored number, three published statements, all three
-                         # saying the same thing.
-                         # The top is now authored rather than defaulted: at 80 km a
-                         # circular orbit feels 81 Pa of q, which is where Kerbin's
-                         # edge sits (97.8 Pa at 85 km) and inside #682's 10..1000 Pa
-                         # band. The 10 H default put the ceiling at 110 km with 6 Pa
-                         # there -- a cliff drawn in vacuum, which costs a rotating
-                         # frame out to 132 km for air nothing meets.
+                         # #625: SOLAR_AIR_SHAPE emits this air's table from the sheet:
+                         # a 214 K datum (its "Average temperature"), -4.0 K/km to a lid
+                         # at 16.5 km where the lid's 148 K is CO2's frost point at this
+                         # body's own 636 Pa, ceiling 60 km (86 Pa of q at a circular
+                         # orbit -- Kerbin's edge is 97.8). The datum pressure is the
+                         # sheet's "Surface pressure: 6.36 mb" row itself, and the
+                         # density -- 0.0155 kg/m3, inside the sheet's 0.016 +/- 0.006 --
+                         # is what the loader resolves from it.
+                         # #698, and the first row the mass check decided: this file used
+                         # to author 0.020 kg/m3 on an 11.5 km scale height -- datum 858 Pa
+                         # and an air of 3.32e16 kg. The sheet's own rows (0.016 +/- 0.006,
+                         # 11.0 km, 6.1-6.3 mb, ~2.5e16 kg) agree with each other and with
+                         # what this now authors: datum 636 Pa, an air of 2.46e16 kg (-1.5%),
+                         # T0 214 K. The old pair was 25% heavy on density, 35% heavy on
+                         # pressure and 33% heavy on mass -- one authored number, three
+                         # published statements, all three saying the same thing.
                          # Thin CO2 with a 0.13% oxygen trace -- enough to measure,
                          # not enough to run a turbine on.
                          'composition': CO2_HEAVY}},
@@ -1340,20 +1498,21 @@ def build_base(verbose_air=False):
           'palette': [[0.0, [0.50, 0.40, 0.32]], [1.0, [0.85, 0.78, 0.65]]],
           'atmosphere': {'color': [0.85, 0.78, 0.65], 'thickness': 90000,
                          'power': 3.0, 'intensity': 0.6,
-                         'sea_level_density': 0.16, 'scale_height': 27000,
-                         # #682 step 3: authored, where this used to be the derived
-                         # 10 H = 270 km. At that ceiling a circular orbit feels 6.8 kPa
-                         # of q -- 70x Kerbin's own edge (97.8 Pa) and the worst in the
-                         # catalogue but Venus. 390 km is where it reads 83.3 Pa, inside
-                         # the 10..1000 Pa band Kerbin's ceiling sits in. Collateral:
-                         # shellEdge 324 -> 468 km, spawn bed 27 -> 39 km, Flying/FlyingLow
-                         # split 54 -> 78 km; every moon stays far outside (Io orbits at
-                         # 421,700 km from the centre). The ceiling is 0.56% of the radius
-                         # either way, so this is not a claim that Jupiter's air ENDS --
-                         # a giant has no ground, its datum is the 1-bar level, and this
-                         # is only where the game draws its one hard zero. The shape
-                         # underneath it is #701.
-                         'height': 390000,
+                         # #625: SOLAR_AIR_SHAPE emits this table from three rows of
+                         # the sheet -- 165 K at 1 bar, 112 K at 0.1 bar, H 27 km -- so
+                         # the lapse (-1.03 K/km) and the seam (51,542 m) are fitted
+                         # through the sheet's own rows -- see author_air_profile for what
+                         # that fit costs this body (7.4 kPa where the sheet reads 10). The datum is
+                         # the 1 bar level, which is what its density, gravity and
+                         # temperature rows are all stated at; that resolves 0.1617 kg/m3,
+                         # the sheet's 0.16 to 1%. What was here -- 0.16 with H 27 km --
+                         # read a 186.73 K datum, 13% off its own sheet, under a 1.12 bar
+                         # barometer. Ceiling 245 km is the band gate's answer (108.6 Pa
+                         # of q at a circular orbit, beside Kerbin's 97.8): a lapsing
+                         # column thins faster aloft than the isothermal one #682 tuned,
+                         # so the ceiling comes in from 390 km and shellEdge 468 -> 294 km.
+                         # A giant's ceiling is where the game draws its one hard zero,
+                         # not where its envelope ends (#701).
                          # Jupiter keeps its sheet's 0.16 even though the trio lock
                          # wants 0.143 at the 1-bar level (H 27 km, the sheet's own
                          # "Gravity (mean, 1 bar)" 25.92, which is our g to four
@@ -1368,17 +1527,19 @@ def build_base(verbose_air=False):
           'palette': [[0.0, [0.62, 0.52, 0.38]], [1.0, [0.90, 0.82, 0.65]]],
           'atmosphere': {'color': [0.90, 0.82, 0.65], 'thickness': 90000,
                          'power': 3.0, 'intensity': 0.6,
-                         'sea_level_density': 0.15, 'scale_height': 60000,
-                         # #682 step 3: authored, not the derived 10 H = 600 km, which
-                         # leaves 2,431 Pa of orbital q at the ceiling -- 25x Kerbin's
-                         # 97.8 Pa. 800 km reads 93.5 Pa. This is the least violent of
-                         # the five: Saturn's H 60 km is already the longest column in
-                         # the catalogue, so its 10 H was only 2.4x over the band rather
-                         # than 7x. Collateral: shellEdge 720 -> 960 km, spawn bed 60 ->
-                         # 80 km, Flying/FlyingLow split 120 -> 160 km. 1.4% of the
-                         # radius, and the same caveat as Jupiter: this is where the
-                         # game's hard zero sits, not where a giant's envelope ends.
-                         'height': 800000,
+                         # #625 closes #705 by accident. This body authored 0.15 kg/m3
+                         # on H 60 km, and the comment here explained why the sheet's
+                         # 0.19 was ignored: the trio lock says a 1-bar datum with that H
+                         # weighs 0.149, and the sheet's rows disagreed by 28%. They
+                         # disagree because of the 173.5 K that H implied. Take the
+                         # sheet's OWN temperature at 1 bar (134 K) and its 0.19 falls out
+                         # of 1 bar and this mix to 1.5%: the datum reads 1.000 bar and
+                         # resolves 0.1929 kg/m3, and the argument has nothing left to
+                         # waive. Profile from its three rows (134 K, 84 K at 0.1 bar,
+                         # H 59.5 km): -0.46 K/km to a seam at 109,462 m. Ceiling 400 km
+                         # (257 Pa of q); the 800 km #682 chose against an isothermal
+                         # column now reads 1e-6 Pa there. Same caveat as the other
+                         # giants (#701).
                          # Saturn's envelope is the most H2-rich of them (0.963), but
                          # H2 with no oxidizer is a fuel store, not a jet air.
                          # 0.15, not the sheet's 0.19: this file's datum IS the 1-bar
@@ -1413,15 +1574,12 @@ def build_base(verbose_air=False):
                          # moves 10 H from 200 to 277 km and with it the rot frame, every
                          # spawn bed and the atlas disk. Both FACT_AIR_KNOWN waivers named
                          # that one decision, so both are gone now.
-                         'sea_level_density': 0.42, 'scale_height': 27700,
-                         # #682 step 3: authored, not the derived 10 H -- which on the
-                         # new column would leave 2,400 Pa of orbital q at 277 km, 25x
-                         # Kerbin's 97.8. 370 km reads 90.6 Pa. Collateral: shellEdge 240
-                         # -> 444 km, spawn bed 20 -> 37 km, Flying/FlyingLow split 40 ->
-                         # 74 km. 1.5% of the radius, and the same caveat as the other
-                         # giants: where the game's hard zero sits, not where an ice
-                         # giant's envelope ends (#701).
-                         'height': 370000,
+                         # #625: 76 K at 1 bar, 53 K at 0.1 bar and H 27.7 km make this
+                         # table -- -0.43 K/km to a seam at 53,552 m -- and the 1 bar
+                         # datum resolves 0.4179 kg/m3 against the sheet's 0.42. The old
+                         # pair read 79.24 K, 4% over its own sheet. Ceiling 250 km
+                         # (174 Pa of q), in from 370 km because a lapsing column thins
+                         # faster aloft; shellEdge 444 -> 300 km (#701's caveat again).
                          # Uranus's own H2/He/CH4 proportions, not gen_systems' Jool
                          # (#636: same three gases, a different sky).
                          'composition': H2_HE_CH4_SOLAR}},
@@ -1431,14 +1589,11 @@ def build_base(verbose_air=False):
           'palette': [[0.0, [0.18, 0.35, 0.75]], [1.0, [0.50, 0.65, 0.90]]],
           'atmosphere': {'color': [0.50, 0.65, 0.90], 'thickness': 90000,
                          'power': 3.0, 'intensity': 0.6,
-                         'sea_level_density': 0.45, 'scale_height': 20000,
-                         # #682 step 3: authored, not the derived 10 H = 200 km, which
-                         # leaves 3,049 Pa of orbital q at the ceiling -- 31x Kerbin's
-                         # 97.8 Pa. 270 km reads 98.1 Pa, the closest of the five to
-                         # Kerbin's own edge. Collateral: shellEdge 240 -> 324 km, spawn
-                         # bed 20 -> 27 km, Flying/FlyingLow split 40 -> 54 km. 1.1% of
-                         # the radius; same caveat as the other giants (#701).
-                         'height': 270000,
+                         # #625: 72 K at 1 bar, 55 K at 0.1 bar, and a sheet that
+                         # states its scale height as a RANGE (19.1-20.3 km) -- the seam sits
+                         # where that lapse meets 55 K, 39,766 m, and the datum
+                         # resolves 0.4345 kg/m3 against the sheet's 0.45. Ceiling 200 km
+                         # (324 Pa of q); shellEdge 324 -> 240 km (#701).
                          # Neptune's sheet states 0.45 kg/m^3 at its 1-bar level and
                          # that IS what its own H 19.1-20.3 km implies at our g
                          # (1e5 / (11.274 x 20000) = 0.443), so this row needed no
@@ -1483,13 +1638,19 @@ def build_base(verbose_air=False):
                          # SOI, spawn bands and atlas disk are what they were. What it gains is
                          # flying beds, and 1.16e-4 of air 20 km up brakes about as hard as
                          # nothing at all.
-                         'sea_level_density': 1.164e-4, 'scale_height': 18000.0,
-                         'height': 20000.0,
+                         # #625: the conversion that changes nothing, which is the
+                         # point -- the sheet's 1.3 Pa, its ~18 km and its warm-end 38 K
+                         # are already one consistent column (0.000115 kg/m3 resolved
+                         # against the 1.164e-4 this used to type). One isothermal level
+                         # at 38 K under a 20 km ceiling; its sheet's second scale-height
+                         # row ("~50 km above 30 km") is a mesosphere above this top and
+                         # is left unread rather than invented.
                          'composition': [{'gas': 'N2', 'fraction': 0.99},
                                          {'gas': 'CH4', 'fraction': 0.005}]}}, False),
     ]
     rings_by_name = {'Jupiter': JUP_RINGS, 'Saturn': SAT_RINGS}
     sheets = {}
+    air_bad = []          # #625: profiles a sheet refuses to support
     for page, name, seed, surface, has_sea in planets:
         data = parse_planet(page)
         parsed[name] = data
@@ -1504,6 +1665,11 @@ def build_base(verbose_air=False):
             surface['albedo'] = sheet['albedo']
         if sheet['avg_T'] is not None:
             surface['temperature'] = sheet['avg_T']
+        # #625: the same page's air rows, turned into a profile instead of a scale
+        # height. Before the body is built, so the emitted file carries the table and
+        # the guard below sees one authored air, not two.
+        air_bad += author_air_profile(name, page, surface, data,
+                                      verbose=verbose_air)
         bodies.append(make_body(name, 'planet', 'Sun', data,
                                 surface=surface, seed=seed, has_sea=has_sea,
                                 rings=rings_by_name.get(name)))
@@ -1529,6 +1695,7 @@ def build_base(verbose_air=False):
     # The air each of those pages states in prose, against the air this script
     # authors beside it (#685). Refuses before any file is written.
     bad = check_fact_air(planets, parsed, verbose=verbose_air)
+    bad += air_bad
     if bad:
         for m in bad:
             print('DRIFT   fact air: ' + m)

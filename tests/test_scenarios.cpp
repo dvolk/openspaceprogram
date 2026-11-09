@@ -240,6 +240,25 @@ static int check_air(const char *path, const System &sys) {
         {"Eve",    0, 0.0, -0.009},         {"Eve",    1, 9000.0, 0.0},
         {"Duna",   0, 0.0, -0.0035},        {"Duna",   1, 18000.0, 0.0},
         {"Jool",   0, 0.0, -0.00066},       {"Jool",   1, 60000.0, 0.0},
+        /* #625's catalogue half. Unlike Earth/Kerbin/Shay/Laythe above, no geopotential
+           conversion is in play: a giant's sheet states its levels as PRESSURE levels
+           (its 1 bar and 0.1 bar rows), and the seam is where the lapse those two rows
+           and the sheet's own scale height imply meets the colder temperature -- so what
+           these rows pin is derived arithmetic, ln(10) x H_mid, not a published altitude.
+           Jupiter's 51,541.9 m is 2.0000 x 27 km; Saturn's 109,461.9 is 2.0 x 59.5 km and
+           the longest column in the repo; Neptune's 39,766.1 sits at the MID of its
+           sheet's 19.1-20.3 km range, which is the one place a sheet's own uncertainty
+           reaches into a shipped number. Venus's 65 km and Mars's 16.5 km are the
+           published tropopause and CO2 frost level, authored rather than derived. Pluto
+           has one level and no lapse at all: pinning that says the file never grew a
+           second one from the sheet's mesosphere row. */
+        {"Venus",   0, 0.0, -0.0078},       {"Venus",   1, 65000.0, 0.0},
+        {"Mars",    0, 0.0, -0.004},        {"Mars",    1, 16500.0, 0.0},
+        {"Jupiter", 0, 0.0, -0.00102829},   {"Jupiter", 1, 51541.9, 0.0},
+        {"Saturn",  0, 0.0, -0.00045678},   {"Saturn",  1, 109461.9, 0.0},
+        {"Uranus",  0, 0.0, -0.00042949},   {"Uranus",  1, 53551.9, 0.0},
+        {"Neptune", 0, 0.0, -0.0004275},    {"Neptune", 1, 39766.1, 0.0},
+        {"Pluto",   0, 0.0, 0.0},
     };
     static const Want want[] = {
         /* dry air's mix, authored now rather than defaulted: N2 78.084, O2 20.946,
@@ -302,16 +321,36 @@ static int check_air(const char *path, const System &sys) {
            67 K colder than Jool's own sunlight (#738). Its sound speed more than
            doubles: hot, light gas. */
         {"Jool",   151.43, 870.595075693, 100000.0, 0.0, 0.187771483353, 1e-9},
-        /* CO2 96.5, N2 3.5 %: M 0.043450, gamma 1.30265. g 8.87, H 16 km.
-           The p column is the whole reason Venus joined this table (#684): the file
-           authored a rho0 and p0 was its consequence, so an author who typed a
-           PRESSURE into the density field got a column 42% too fat, and
-           Venus carried 92 kg/m3 -- its surface pressure in BAR, typed into the
-           density field -- which put the datum at 13.1 MPa, 129 atm, with nothing
-           in the file to contradict it. 65 kg/m3 (utils/rss/html/venusfact.html:
-           "Surface density: ~65. kg/m^3") gives 9.22 MPa, which is Venus's real
-           92 bar to 0.3 %. T and a contain no rho0 and were already right. */
-        {"Venus",  741.6441320850256, 429.9672411932908, 9224800.0, 0.0, 65.0, 1e-9},
+        /* CO2 96.5, N2 3.5 %: M 0.043450, gamma 1.30265.
+           The p column is why Venus joined this table (#684): the file used to author a
+           rho0 and p0 was its consequence, so an author who typed a PRESSURE into the
+           density field got a column 42% too fat -- Venus carried 92 kg/m3, its surface
+           pressure in BAR typed into the density field, putting the datum at 13.1 MPa,
+           129 atm, with nothing in the file to contradict it. Since #739 the file states
+           the pressure outright (the sheet's "Surface pressure: 92 bars" row) and the
+           density is what resolves from it: 65.2337, where utils/rss/html/venusfact.html
+           states "Surface density: ~65. kg/m^3". #625 then gave this body its profile --
+           the datum is the sheet's own 737 K, where a 16 km scale height used to imply
+           741.64 K out of a 65 kg/m3 density and 8.87 m/s of gravity. */
+        {"Venus",  737.0, 428.618912258, 9200000.0, 0.0, 65.2337435425, 1e-9},
+        /* The catalogue's other six airs, all authored tables since #625. Every datum
+           temperature here is a row of the page that names the body, and the generator's
+           `fact air` guard prints base_T +0.0% for each; these pins are the other side of
+           that -- the C++ side, reading the emitted json, where the same figures are
+           resolved from the mix. Jupiter's 0.161714 vs its sheet's 0.16, Saturn's
+           0.192937 vs 0.19, Uranus's 0.417863 vs 0.42, Neptune's 0.434456 vs 0.45:
+           four giants, four sheets, each density a consequence of the sheet's own 1-bar
+           level rather than a number this repo tuned (#705's Saturn argument dies of
+           this -- its rows agree once the temperature is the sheet's 134 K rather than
+           an H's 173.5 K). Mars's 636 Pa is its sheet's "Surface pressure: 6.36 mb";
+           Pluto's 1.3 Pa is its sheet's own, and at 38 K of N2 that resolves 1.15e-4,
+           which is what the 1.164e-4 this file used to type was reaching for. */
+        {"Mars",    214.0, 231.036958, 636.0, 0.00095878, 0.015547326211, 1e-9},
+        {"Jupiter", 165.0, 936.086525046, 100000.0, 0.0, 0.161713502664, 1e-9},
+        {"Saturn",  134.0, 853.257746643, 100000.0, 0.0, 0.192937334309, 1e-9},
+        {"Uranus",  76.0, 583.626140479, 100000.0, 0.0, 0.417863145175, 1e-9},
+        {"Neptune", 72.0, 573.916322235, 100000.0, 0.0, 0.434455709349, 1e-9},
+        {"Pluto",   38.0, 125.770543273, 1.3, 0.0, 0.000115015877534, 1e-9},
         /* Earth authors a LAYER TABLE (#552 A4) AND a mix (#630), so these are the
            shipped file's proof all the way through: the JSON parses, resolveAtmoLevels
            integrates the column at the Rs that mix implies, dragAtm carries the

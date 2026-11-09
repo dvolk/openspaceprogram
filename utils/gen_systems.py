@@ -116,6 +116,26 @@ def load_wiki_thermal(csv_path):
 
 WIKI_THERMAL = load_wiki_thermal(os.path.join(HERE, "ksp_bodies.csv"))
 
+def wiki_pair_note(name, T):
+    """What utils/ksp_bodies.csv states as this body's night/day temperature pair, and a
+    flag when the temperature the caller names sits outside it. The albedo pass flags an
+    AIRLESS MEAN against the same pair; this flags the air a file AUTHORS, which is the
+    number a player reads in a dossier and the one a temperature field has to answer to.
+    #625 is why both are worth printing: Jool's air used to read 44.63 K under a 111 K
+    mean -- 67 K colder than its own sunshine, which no greenhouse reading explains
+    (#738) -- and its authored 151.43 K sits inside the pair's 120.01 - 225.07 K. Laythe
+    stays flagged: 288.15 K of sea-level air over a 113 K airless mean asks 175 K of a
+    0.6 atm sky, and the csv's own top row reads 277 K. A flag that still fires on a body
+    whose every number was argued is the instrument asking the next question, not this
+    pass failing the last one."""
+    rng = WIKI_THERMAL.get(name)
+    if not rng or rng[1] is None or rng[2] is None:
+        return ""
+    note = "  wiki night/day %7.2f - %7.2f K" % (rng[1], rng[2])
+    if not (rng[1] <= T <= rng[2]):
+        note += '  <-- the air this file authors is outside that pair (#738)'
+    return note
+
 # What the home world is built to receive. Kerbin's air authors 101.3 kPa of dry air,
 # its sea is fresh water, its tilt is 23.44 deg and its datum 288.15 K: it is an
 # Earth-shaped world, and Earth's own solar constant is the light that goes with that.
@@ -1075,11 +1095,12 @@ def author_ksp_air_thermal(obj):
         assert a_star, "%s has air but no rail to the star to read its light from" % name
         flux = lum / (4.0 * math.pi * a_star * a_star)
         bb = blackbody_temperature(flux, a)
+        pair = wiki_pair_note(name, at["layers"][0]["T"]) if "table" in spec else ""
         if "table" in spec:
             T0 = at["layers"][0]["T"]
             print('  air T     %-8s %7.1f K of light + %6.1f K  -> %7.2f K datum, '
-                  '%d levels: %s' % (name, bb, T0 - bb, T0, len(at["layers"]),
-                                     spec["table"]))
+                  '%d levels: %s%s' % (name, bb, T0 - bb, T0, len(at["layers"]),
+                                       spec["table"], pair))
             continue
         assert "scale_height" not in at and "layers" not in at and "height" not in at, (
             "%s: KSP_AIR owns this body's profile, so the surface block must not also "
@@ -1094,9 +1115,7 @@ def author_ksp_air_thermal(obj):
         at["layers"] = [{"alt": 0.0, "T": T0, "lapse": spec["lapse"]},
                         {"alt": spec["trop"], "T": trop_T, "lapse": 0.0}]
         at["height"] = spec["top"]
-        rng = WIKI_THERMAL.get(name)
-        pair = ("  wiki night/day %7.2f - %7.2f K" % (rng[1], rng[2])) \
-            if rng and rng[1] is not None and rng[2] is not None else ""
+        pair = wiki_pair_note(name, T0)
         print('  air T     %-8s %7.1f K of light + %6.1f K (%s) -> %7.2f K datum, '
               'lapse %5.2f K/km to %.0f km, lid %7.2f K, top %.0f km%s'
               % (name, bb, spec["gap"], spec["via"], T0, -1000.0 * spec["lapse"],

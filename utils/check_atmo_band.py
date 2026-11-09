@@ -42,8 +42,10 @@ columns print per row, at the equatorial co-rotation speed: any other heading la
 between them. They are ADVISORY, not gated. The verdict stays inertial on purpose --
 #682's band asks where an orbit meets air, not which way a hull points, and a
 near-co-rotating sky is a world rather than a bug. As it happens every shipped body
-is inside the band in all three columns: the lowest air-relative reading is Saturn's
-35.8 Pa, 3.6x above the lower lip. Kerbin's own 6 h day moves its edge 97.8 ->
+is inside the band in all three columns -- every shipped column, with no waiver left
+since #625 gave Venus a profile instead of a scale height. The lowest air-relative
+reading is Pluto's 13.6 Pa, 1.4x above the lower lip; the widest spread between the
+two headings is Jupiter's 54.7 -> 180.8 Pa. Kerbin's own 6 h day moves its edge 97.8 ->
 81.4 Pa, so this is not a giants-only caveat.
 
 Usage:  python3 utils/check_atmo_band.py [system.json ...]
@@ -58,19 +60,15 @@ Q_LO, Q_HI = ap.Q_BAND
 WAIVER_TOL = 0.02
 
 # body -> (the authored top this waiver was written against, why it is defensible).
-KNOWN = {
-    'Venus': (
-        160000.0,
-        "99,829 Pa of orbital q at its ceiling (10 H, since Venus authors no "
-        "height), 100x the band's upper lip. This is the band measuring the wrong "
-        "thing, and #700 said so about Laythe: the verdict speaks only AT the "
-        "ceiling. Authoring 238 km would put the edge at 1.0 kPa and satisfy this "
-        "gate, and a circular orbit at 150 km would still meet 181 kPa of q there -- "
-        "the column (65 kg/m3 at the datum, H 16 km) is the problem, not the cut. "
-        "Fixing it means a shorter H or a cooler Venus, which is a datum decision "
-        "check_fact_air argues about, not a top. Waived BY VALUE: change the 160 km "
-        "by more than 2% and this excuse no longer applies."),
-}
+KNOWN = {}
+# Empty, and it was not. The one waiver here covered Venus's 160 km ceiling at
+# 99,829 Pa of orbital q -- 100x the band's upper lip -- and its stated reason was
+# "the column (65 kg/m3 at the datum, H 16 km) is the problem, not the cut. Fixing it
+# means a shorter H or a cooler Venus". #625 found the third way the waiver did not
+# imagine: give Venus the profile its own sheet states (737 K at the surface, 230 K at
+# the 65 km tropopause) and the aloft air is 5x thinner, so a ceiling of 116 km sits at
+# 275 Pa. The waiver expired with the profile that needed it, which is what WAIVER_TOL
+# is for -- it refused at exactly this change and named the number it had pinned.
 
 DEFAULTS = ['res/systems/ksp_system.json', 'res/systems/solar_system.json']
 

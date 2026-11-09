@@ -16,7 +16,7 @@
 # are one per species now, biggest first, and the oxidizer row states the share and stops;
 # the jet half still exists, it just lives where it is paid -- drag.h:jetAirGate bills
 # thrust and burn every tick (vehicle.cpp), so a thin sky shows up as a weak engine rather
-# than as a sentence. Eve and Venus have sea-level air denser than Kerbin's -- 1.7 and 65
+# than as a sentence. Eve and Venus have sea-level air denser than Kerbin's -- 3.6 and 65
 # kg/m3 -- and both are a dead engine, because a turbine burns against oxygen and there is
 # barely any in a CO2 sky. The mix rows are what lets the game say so at all.
 NAME air-composition-dossier
@@ -39,17 +39,22 @@ CHECK re.search(r"air oxidizer\s+23\.14% by mass\s*\n", re.search(r"\[atlas\] Ea
 # gasSpecies("CO2").oxidizer is false.
 CHECK re.search(r"air gas CO2\s+96\.5%\s*\n\s*\[atlas\]   air gas N2\s+3\.5%", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 CHECK re.search(r"air oxidizer\s+none\s*\n", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-# The datum PRESSURE is what the file states (#739) -- on a scale-height column it is
-# rho0 g H, so a wrong datum density and a wrong pressure are the same wrong world. Venus
-# used to carry 92 kg/m3 --
-# its SURFACE PRESSURE in bar, typed into the density field, which made the dossier read
-# 128.9 atm (#684). 65 kg/m3 is the datum DENSITY: 9.22 MPa, which is Venus's real 92 BAR
-# (91.0 atm) to 0.3 %, and the same number utils/rss/html/venusfact.html states as
-# "Surface density: ~65. kg/m^3". The match is exact rather than banded, and that is the
-# print's doing, not a chosen tolerance: "%.1f kPa" off rho0 g H with g 8.87 and H 16 km
-# prints 9224.8, so re-scraping g or H moves the expected string. tests/test_scenarios.cpp
-# pins the same datum in double, where a band is possible.
-CHECK re.search(r"air pressure\s+9224\.8 kPa\s*\n", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# The datum PRESSURE is what the file states (#739), and on Venus that is the whole story:
+# the sheet says "Surface pressure: 92 bars", the file authors 9.2 MPa, and the dossier
+# prints 9200.0 kPa. Before #739 the file stated a density and the print was a product,
+# rho0 g H -- and Venus used to carry 92 kg/m3, its SURFACE PRESSURE in bar typed into the
+# density field, which made the row read 128.9 atm (#684). The density row is now the
+# consequence instead: 65.234 kg/m3 out of 9.2 MPa at the sheet's own 737 K datum (#625)
+# and this mix's 0.043450 kg/mol, where utils/rss/html/venusfact.html states
+# "Surface density: ~65. kg/m^3". Both matches are exact rather than banded, and neither
+# depends on g or a scale height any more; tests/test_scenarios.cpp pins the same datum in
+# double, where a band is possible.
+CHECK re.search(r"air pressure\s+9200\.0 kPa\s*\n", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# And the row that says this air has a SHAPE rather than a height: two levels, the lid at
+# 65 km. That is the tropopause the wind rows already key on, so the wind and the column
+# are now describing the same deck; before #625 the wind said 65 km and the air said one
+# isothermal 16 km scale height all the way to a 160 km ceiling.
+CHECK re.search(r"air profile\s+2 levels to 65\.0 km\s*\n", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # Mars is the interesting one: it HAS oxygen (0.13 % of the molecules, 0.1 % of the mass),
 # so its row must not read "none" even though a jet there gets 0.0068 % of a rated intake.
 # Before the split that distinction needed the gate printed beside the share; now it needs
