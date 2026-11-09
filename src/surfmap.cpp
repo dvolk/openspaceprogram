@@ -21,7 +21,7 @@ namespace {
 bool sunDirRot(const TerrainBody *body, const TerrainBody *sun,
                glm::dvec3 &dir) {
     if(sun == nullptr || body == sun || body->frame == nullptr
-       || body->frame->getRotFrame() == nullptr) {
+       || sun->frame == nullptr) {
         return false;
     }
     const StarFromBody sv = starFromBody(body->frame->root_pos,

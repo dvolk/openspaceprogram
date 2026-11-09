@@ -650,7 +650,6 @@ void tick(Game &g) {
                    step, and lands in the same cosine and elevation (#724). */
                 StarFromBody sv;
                 sv.to_sun = ss.to_sun;
-                sv.dist_m = ss.dist_m;
                 sv.valid = ss.valid;
                 const glm::dvec3 up = (g.ship->m_parent && g.ship->m_parent->frame)
                                     ? p - g.ship->m_parent->frame->root_pos

@@ -61,10 +61,12 @@ void updateChain(Frame *f, double t) {
 // no terminator. The frame arithmetic lives in insolation.h; what this adds is the
 // advance, which is the only reason it is not the header's function verbatim: the
 // calendar asks what the frames hold at a time, while the map bakes whatever they hold.
+// (getRotFrame() is not nullable -- it falls back to the frame itself -- so the only
+// pointers guarded here are the two frames themselves.)
 bool subsolarLonAt(TerrainBody *body, TerrainBody *sun,
                    double t, double &lon) {
     if(sun == nullptr || body == sun || body->frame == nullptr
-       || sun->frame == nullptr || body->frame->getRotFrame() == nullptr) {
+       || sun->frame == nullptr) {
         return false;
     }
     updateChain(body->frame->getRotFrame(), t);

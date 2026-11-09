@@ -2000,21 +2000,17 @@ void drawUIReadouts(Game &g) {
                             ct.day, ct.hh, ct.mm, ct.ss,
                             sys.home->name.c_str());
             }
-            // Solar time at surface lon 0 (#202): the subsolar point is local noon, so lon 0
-            // reads 12h - lon/15 (east-positive lon, #200). Geometric, not a mean-time table.
-            if(g.sun && g.sun != sys.home && sys.home->frame
-               && sys.home->frame->getRotFrame()) {
+            // Solar time at surface lon 0 (#202): the subsolar point is local noon, and the
+            // hours follow from an east-positive longitude (#200). Geometric, not a mean-time
+            // table; solarSecOfDay() is the same arithmetic tests/test_solar.cpp pins.
+            if(g.sun && g.sun != sys.home && sys.home->frame && g.sun->frame) {
                 const StarFromBody sv = starFromBody(
                     sys.home->frame->root_pos, g.sun->frame->root_pos,
                     sys.home->frame->getRotFrame()->root_orient);
-                double lon = 0.0, lat = 0.0;
-                subsolarLonLat(sv, lon, lat);   // lat is the declination; the clock wants lon
                 if(sv.valid) {
-                    double sod = 12.0 - glm::degrees(lon) / 15.0;
-                    while(sod < 0.0) { sod += 24.0; }
-                    while(sod >= 24.0) { sod -= 24.0; }
-                    int ssec = (int)std::lround(sod * 3600.0);
-                    if(ssec >= 86400) { ssec = 86399; }
+                    double lon = 0.0, lat = 0.0;
+                    subsolarLonLat(sv, lon, lat);  // lat is the declination; lon is the clock
+                    const int ssec = solarSecOfDay(lon);
                     ImGui::Text("Solar:  %02d:%02d:%02d  (at lon 0)",
                                 ssec / 3600, (ssec / 60) % 60, ssec % 60);
                 }

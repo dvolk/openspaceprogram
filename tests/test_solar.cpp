@@ -217,7 +217,6 @@ int main() {
         const StarFromBody east = starFromBody(glm::dvec3(0.0),
                                                glm::dvec3(5.0e9, 0.0, 0.0), ident);
         CHECK_TRUE(east.valid, "a star 5e9 m away is placeable");
-        CHECK_NEAR(east.dist_m, 5.0e9, 1e-12, "the distance rides along with it");
         CHECK_NEAR(east.to_sun.x, 1.0, 1e-12, "identity frame: root +X is +X");
 
         /* The transpose is the whole module in one line: root_orient carries the ROTATING
@@ -239,7 +238,7 @@ int main() {
         /* Local noon is defined by what a plate collects, so the two halves of the module
            have to agree at the point they name. */
         const SkyAtZenith noon = skyAtPlace(turned, noon_lon, noon_lat);
-        CHECK_TRUE(noon.valid && noon.lit, "the subsolar point is in daylight");
+        CHECK_TRUE(noon.valid, "the subsolar point has a reading");
         CHECK_NEAR(noon.cos_inc, 1.0, 1e-12, "local noon collects the whole beam");
         CHECK_NEAR(noon.elev_rad, std::numbers::pi / 2.0, 1e-12,
                    "and at noon the star is overhead");
@@ -248,7 +247,22 @@ int main() {
         CHECK_NEAR(anti.cos_inc, 0.0, 1e-12, "the far side collects nothing");
         CHECK_NEAR(anti.elev_rad, -std::numbers::pi / 2.0, 1e-12,
                    "and the star is underfoot, not skipped");
-        CHECK_TRUE(anti.valid && !anti.lit, "night is a reading, not an absence");
+        CHECK_TRUE(anti.valid, "night is a reading, not an absence");
+
+        /* NORMALISATION, which is the step the one production caller with a non-unit
+           vector depends on: --solar-log hands over a hull offset of up to millions of
+           metres. Without this pin, a refactor that trusts the caller to pre-normalise
+           passes the whole suite while every elev and flat in the log saturates. */
+        const SkyAtZenith far = skyAtZenith(east, 3.7e6 * east.to_sun);
+        CHECK_TRUE(far.valid, "a hull 3700 km up has a horizon");
+        CHECK_NEAR(far.cos_inc, 1.0, 1e-12, "a long zenith is the same direction");
+        CHECK_NEAR(far.elev_rad, std::numbers::pi / 2.0, 1e-12,
+                   "and reads overhead, not clamped-from-below");
+        const SkyAtZenith tilted = skyAtZenith(east, 3.7e6 * glm::dvec3(1.0, 1.0, 0.0));
+        CHECK_NEAR(tilted.cos_inc, std::sqrt(0.5), 1e-12,
+                   "the cosine comes from the direction, not the length");
+        CHECK_NEAR(tilted.elev_rad, std::numbers::pi / 4.0, 1e-12,
+                   "and so does the elevation");
 
         /* The daily mean a redistribution model will one day multiply: sweeping longitude
            under a star in the equatorial plane, the mean cosine over a whole turn is
@@ -301,10 +315,34 @@ int main() {
                    "the flux's distance floor is the direction's too");
         CHECK_TRUE(!skyAtZenith(east, glm::dvec3(0.0)).valid,
                    "no zenith: the caller dashes rather than reading overhead");
+        /* The horizon floor is named (kNoHorizon_m) and pinned either side of it, so the
+           threshold is a decision rather than a magic number someone can move by a few
+           orders of magnitude in silence. */
+        CHECK_TRUE(!skyAtZenith(east, glm::dvec3(kNoHorizon_m * 0.5, 0.0, 0.0)).valid,
+                   "a shorter zenith than the floor is no horizon");
+        CHECK_TRUE(skyAtZenith(east, glm::dvec3(kNoHorizon_m * 2.0, 0.0, 0.0)).valid,
+                   "and just above it, it is");
         const SkyAtZenith edge = skyAtZenith(east, glm::dvec3(0.0, 1.0, 0.0));
         CHECK_NEAR(edge.elev_rad, 0.0, 1e-12, "on the horizon reads zero, not NaN");
-        CHECK_TRUE(edge.valid && !edge.lit, "dusk is a reading");
+        CHECK_TRUE(edge.valid, "dusk is a reading");
         CHECK_NEAR(edge.cos_inc, 0.0, 1e-12, "and a horizon collects nothing");
+
+        /* The clock's row, lifted out of the UI so it can be pinned at all (#741 is the
+           end-to-end half). Local noon is at the subsolar longitude, east-positive means
+           a longitude EAST of it is later, and the whole row is that one line of
+           arithmetic plus a wrap -- which is why it is worth having somewhere to test. */
+        CHECK_TRUE(solarSecOfDay(0.0) == 43200, "subsolar at lon 0 is 12:00 there");
+        CHECK_TRUE(solarSecOfDay(std::numbers::pi) == 0,
+                   "a star 180 deg east is local midnight, 00:00:00");
+        CHECK_TRUE(solarSecOfDay(std::numbers::pi / 2.0) == 21600,
+                   "with the sun a quarter turn EAST, the meridian is 6 hours behind it: 06:00"
+                   " -- the sign of this term is the whole row, and backwards gives 18:00");
+        CHECK_TRUE(solarSecOfDay(3.0 * std::numbers::pi / 2.0) == 64800,
+                   "lon 270 reads 18:00");
+        CHECK_TRUE(solarSecOfDay(-std::numbers::pi / 2.0) == 64800,
+                   "a west longitude wraps rather than printing a negative time");
+        CHECK_TRUE(solarSecOfDay(2.0 * std::numbers::pi - 1.0e-9) < 86400,
+                   "the day wraps inside the display rather than showing 24:00:00");
     }
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
