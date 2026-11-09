@@ -3230,17 +3230,23 @@ void drawPartWindows(Game &g) {
                        The decade moves because the figure spans six orders between a skiff
                        off the runway and a wing near stall; #644's two rules do not move,
                        so the decade is chosen PER VALUE -- picking one unit for the pair
-                       was a real bug, printing a live 40 W as "0.0 kW" under a kW peak. */
+                       was a real bug, printing a live 40 W as "0.0 kW" under a kW peak.
+                       Each cell is a FIXED number of characters, because this row refreshes
+                       every frame in the air: %.4g gave "14.94 kW" one frame and "14.9 kW"
+                       the next, which walked the words after it one character left and
+                       right several times a second. The UI font is mono
+                       (res/fonts/DejaVuSansMono), so a constant width is a constant
+                       column. */
                     {
-                        auto wunit = [](double w, double *sc) -> const char * {
-                            if(w >= 1e6) { *sc = w * 1e-6; return "MW"; }
-                            if(w >= 1e3) { *sc = w * 1e-3; return "kW"; }
-                            *sc = w; return "W";
+                        auto wattCell = [](double w, char *cell) {
+                            if(w >= 1e6) { snprintf(cell, 16, "%6.2f MW", w * 1e-6); }
+                            else if(w >= 1e3) { snprintf(cell, 16, "%6.2f kW", w * 1e-3); }
+                            else { snprintf(cell, 16, "%6.2f W ", w); }
                         };
-                        double cur, pk;
-                        const char *s1 = wunit(ship->parts[part]->aeroDragWatts, &cur);
-                        const char *s2 = wunit(ship->parts[part]->aeroDragWattsPeak, &pk);
-                        ImGui::Text("Drag power: %.4g %s (peak %.4g %s)", cur, s1, pk, s2);
+                        char cur[16], pk[16];
+                        wattCell(ship->parts[part]->aeroDragWatts, cur);
+                        wattCell(ship->parts[part]->aeroDragWattsPeak, pk);
+                        ImGui::Text("Drag power: %s (peak %s)", cur, pk);
                     }
                 } else {
                     ImGui::Text("AoA: -   q:-   Mach -   drag power -");
