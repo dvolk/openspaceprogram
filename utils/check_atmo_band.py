@@ -45,7 +45,8 @@ near-co-rotating sky is a world rather than a bug. As it happens every shipped b
 is inside the band in all three columns -- every shipped column, with no waiver left
 since #625 gave Venus a profile instead of a scale height. The lowest air-relative
 reading is Pluto's 13.6 Pa, 1.4x above the lower lip; the widest spread between the
-two headings is Jupiter's 54.7 -> 180.8 Pa. Kerbin's own 6 h day moves its edge 97.8 ->
+two headings is Saturn's 99.7 -> 488.2 Pa, because there its co-rotation (9.5 km/s at the
+equator) is a large fraction of orbital speed. Kerbin's own 6 h day moves its edge 97.8 ->
 81.4 Pa, so this is not a giants-only caveat.
 
 Usage:  python3 utils/check_atmo_band.py [system.json ...]

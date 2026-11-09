@@ -762,6 +762,61 @@ SOLAR_AIR_SHAPE = {
     'Pluto':   {'lapse': 0.0, 'top': 20000.0, 'T_end': 'hi'},
 }
 
+# The airs that keep a scale height, named so the only way to get one is to say why.
+SOLAR_AIR_EXPONENTIAL = {
+    # The one air in the catalogue with no *fact.html to read (it comes from the
+    # giant-planet satellite pages, which state no air rows). Its H 20 km implies 90.54 K
+    # at this N2/CH4 mix and its own 1.354 m/s2, which is inside the published 94 K
+    # neighbourhood, so nothing absurd is being said -- but its temperature, its datum
+    # pressure and its ceiling (the defaulted 10 H = 200 km) are one invented number, and
+    # that makes it the last body in the catalogue where an H is a thermometer.
+    'Titan': 'no fact page; its implied 90.5 K is already a sane air',
+}
+
+def _atmo_of(bodies, name):
+    for b in bodies:
+        if b['name'] == name:
+            return (b.get('surface') or {}).get('atmosphere') or {}
+    return {}
+
+def check_air_coverage(bodies, verbose=True):
+    """Every air this catalogue emits states a profile, unless it is named in
+    SOLAR_AIR_EXPONENTIAL with the reason it still states a scale height. The twin of
+    gen_systems.py's `air == set(KSP_AIR)`: without it, a body added to `planets` or to
+    MOON_ATMOS gets an exponential by default, which is #625's bug wearing a new name --
+    one H doing double duty as a column and as the body's only temperature statement. Note
+    the check is on the SCALE HEIGHT, not on SOLAR_AIR_SHAPE membership: Earth's US76 table
+    is typed in the surface block rather than emitted by author_air_profile, and it is
+    exactly as authored."""
+    air, bad = [], []
+    for b in bodies:
+        atmo = (b.get('surface') or {}).get('atmosphere')
+        if not atmo:
+            continue
+        if not (atmo.get('sea_level_pressure', 0.0) > 0.0
+                or atmo.get('sea_level_density', 0.0) > 0.0):
+            continue
+        air.append(b['name'])
+        if 'scale_height' in atmo and b['name'] not in SOLAR_AIR_EXPONENTIAL:
+            bad.append('%s has air and states a scale_height, so its temperature is a '
+                       'by-product of it (#625). Author a profile, or name the body in '
+                       'SOLAR_AIR_EXPONENTIAL with the reason it keeps one' % b['name'])
+        if 'scale_height' not in atmo and 'layers' not in atmo:
+            bad.append('%s has air, and states neither a scale height nor a profile' %
+                       b['name'])
+    for name in SOLAR_AIR_EXPONENTIAL:
+        if name not in air:
+            bad.append('SOLAR_AIR_EXPONENTIAL names %s, which emits no air -- the waiver '
+                       'is stale' % name)
+    if verbose:
+        print('  air cover %d bodies: %d wear a profile, %d state a scale height (%s)'
+              % (len(air), sum(1 for n in air if 'layers' in _atmo_of(bodies, n)),
+                 sum(1 for n in air if n in SOLAR_AIR_EXPONENTIAL),
+                 '; '.join('%s: %s' % (n, SOLAR_AIR_EXPONENTIAL[n])
+                           for n in SOLAR_AIR_EXPONENTIAL if n in air) or 'none'))
+    return bad
+
+
 def author_air_profile(name, page, surface, data, verbose=True):
     """Turn one body's sheet rows into an authored layer table, and print what each row
     cost. Returns the complaints; empty means every number came from a row."""
@@ -776,7 +831,13 @@ def author_air_profile(name, page, surface, data, verbose=True):
         'surface block must state neither scale_height, layers, nor height' % name)
     sheet = fact_air(page)
     bad = []
-    for key in ('base_T', 'scale_height'):
+    # Which rows a body needs depends on how its shape is got. A FITTED body (the four
+    # giants) takes its lapse from the sheet's scale-height row; a body whose shape is
+    # authored (Venus, Mars, Pluto) never reads that row, so refusing for want of it would
+    # be a guard naming a number it does not use -- and a re-scraped page that dropped the
+    # row would stop Venus building with a message that is false about Venus.
+    fitted = 'lapse' not in shape
+    for key in ['base_T'] + (['scale_height'] if fitted else []):
         if sheet.get(key) is None:
             bad.append('%s: %s states no %s row, and this body\'s profile is built '
                        'from it' % (name, page, key))
@@ -793,23 +854,37 @@ def author_air_profile(name, page, surface, data, verbose=True):
         T0 = hi if end == 'hi' else lo
     else:
         T0 = lo
-    # The sheet's own scale height (averaged over its stated span) is what places the
-    # seam: the lapse is chosen so the datum temperature reaches the 0.1-bar temperature
-    # a decade of pressure up, on a column whose pressure scale is that H. This is a FIT,
-    # not hydrostatics, and its error is exactly the sheet's own internal inconsistency --
-    # because for a lapsing level a decade of pressure is NOT ln(10) scale heights up, and
-    # because a sheet's H row belongs to a level of its own atmosphere. Both were
-    # measured (utils/atmo_profile.py, reading the emitted file): where our column reaches
-    # the sheet's stated cold temperature, it is at 9.1 kPa on Uranus and 10.9 kPa on
-    # Neptune -- 9% either side, the closest in the catalogue, because their H rows agree
-    # with their own T/M/g to a few percent -- but 7.4 kPa on Jupiter (-26%) and 5.2 kPa on
-    # Saturn (-48%), whose H rows imply 186 K and 172 K rather than the 165 K and 134 K
-    # their temperature rows state. Filed; the clean derivation needs the resolved molar
-    # mass on this side of the boundary, which utils/gas_mixes.py deliberately keeps in C++.
-    # What is NOT a fit: the two temperatures and the 1-bar datum, which are rows.
+    # The sheet's own scale height (averaged over its stated span) is what sets the lapse:
+    # L = (T0 / H_mid) ln(Tu/T0) / ln(10), which is the lapse a column would have if that H
+    # were the datum's isothermal scale height (H = Rs T0 / g). The seam then follows from
+    # the two temperatures: seam = (Tu - T0) / L = ln(10) H_mid (T0-Tu)/(T0 ln(T0/Tu)),
+    # 1.84-2.02 x H_mid across the four giants -- NOT ln(10) H_mid, which is where an
+    # ISOTHERMAL level would put a decade of pressure. And on these four columns the decade
+    # does not land at the seam at all, because the emitted column's scale height comes from
+    # the authored mix and is shorter than the sheet's H. This is a FIT, and its error is
+    # exactly the sheet's own internal inconsistency, measured (utils/atmo_profile.py
+    # reading the emitted file): where our column reaches the sheet's stated cold
+    # temperature it is at 9.1 kPa on Uranus and 10.9 kPa on Neptune -- 9% either side, the
+    # closest in the catalogue, because their H rows agree with their own T/M/g to a few
+    # percent -- but 7.4 kPa on Jupiter (-26%) and 5.2 kPa on Saturn (-48%), whose H rows
+    # imply 186 K and 172 K rather than the 165 K and 134 K their temperature rows state.
+    # Filed as #740; the clean derivation needs the resolved molar mass on this side of the
+    # boundary, which utils/gas_mixes.py deliberately keeps in C++. What is NOT a fit: the
+    # two temperatures and the 1 bar datum, which are rows.
     H = sheet['scale_height']
     Hmid = 0.5 * (H[0] + H[1])
-    p0 = shape.get('p0', sheet['p0'][0] if sheet.get('p0') else 100000.0)
+    # Datum pressure: the sheet's own surface-pressure row where it states one. The four
+    # giants state "Surface pressure: >>1000 bars", which is the deep interior and not the
+    # level this file's datum is, so the parser leaves it unparsed and the 1 bar level --
+    # the level the giants' density, gravity and temperature rows are all stated at, and
+    # what their gravity column header says ("Gravity (mean, 1 bar)") -- is what this
+    # defaults to. Named in the print, because a default and a reading that print the same
+    # number are indistinguishable in the log and not in the file.
+    p0row = sheet.get('p0')
+    if p0row:
+        p0, p0how = p0row[0], "the sheet's surface-pressure row"
+    else:
+        p0, p0how = 100000.0, 'defaulted to the 1 bar level the sheet states its rows at'
     if 'lapse' in shape:
         L = shape['lapse']
         trop = shape.get('trop')
@@ -817,6 +892,12 @@ def author_air_profile(name, page, surface, data, verbose=True):
             layers = [{'alt': 0.0, 'T': T0, 'lapse': L}]
             seam, Tu, how = None, None, 'one isothermal level'
         else:
+            # Same refusal gen_system.py makes for the KSP airs: a lid at or above the
+            # ceiling is a level the loader will reject (system.cpp refuses it), and one
+            # below zero is a table whose first level is not the datum.
+            assert 0.0 < trop < shape['top'], (
+                '%s: its lid sits at %.0f m, outside the 0..%.0f m column' % (
+                    name, trop, shape['top']))
             Tu = shape.get('lid_T', round(T0 + L * trop, 2))
             layers = [{'alt': 0.0, 'T': T0, 'lapse': L},
                       {'alt': trop, 'T': Tu, 'lapse': 0.0}]
@@ -826,9 +907,25 @@ def author_air_profile(name, page, surface, data, verbose=True):
             bad.append('%s: %s states one temperature, so this profile needs an authored '
                        'lapse in SOLAR_AIR_SHAPE' % (name, page))
             return bad
-        Tu = sheet['upper_T'][0]
+        # A RANGE here is the same trap as a range on the datum row, so the same rule:
+        # pick an end out loud. Inert today (all four giants state one number each).
+        ulo, uhi = sheet['upper_T']
+        if uhi > ulo:
+            end = shape.get('T_end')
+            if end not in ('lo', 'hi'):
+                bad.append('%s: %s states its 0.1 bar temperature as %s K and '
+                           'SOLAR_AIR_SHAPE does not name which end this air uses'
+                           % (name, page, '%g - %g' % (ulo, uhi)))
+                return bad
+            Tu = uhi if end == 'hi' else ulo
+        else:
+            Tu = ulo
         L = round((T0 / Hmid) * math.log(Tu / T0) / math.log(10.0), 8)
         seam = round((Tu - T0) / L, 1)
+        assert 0.0 < seam < shape['top'], (
+            '%s: the fitted seam sits at %.1f m, outside the 0..%.0f m column -- the two '
+            'temperature rows and the scale-height row do not describe one air' % (
+                name, seam, shape['top']))
         layers = [{'alt': 0.0, 'T': T0, 'lapse': L},
                   {'alt': seam, 'T': Tu, 'lapse': 0.0}]
         how = "from the sheet's 1 bar / 0.1 bar / scale-height rows"
@@ -836,7 +933,8 @@ def author_air_profile(name, page, surface, data, verbose=True):
     atmo['layers'] = layers
     atmo['height'] = shape['top']
     if verbose:
-        print('  air shape %-9s T0 %7.2f K  p0 %11.4g Pa  %s' % (name, T0, p0, how))
+        print('  air shape %-9s T0 %7.2f K  p0 %11.4g Pa  %s (%s)'
+              % (name, T0, p0, how, p0how))
         if seam is not None:
             print('            %-9s lapse %7.3f K/km to %8.0f m -> %7.2f K lid, '
                   'top %8.0f m' % ('', 1000.0 * L, seam, Tu, shape['top']))
@@ -1802,6 +1900,18 @@ def emit(base_bodies, moons, pred, out_path, label, dry=False):
             print('DRIFT   body gravity: ' + m)
         raise SystemExit('%d emitted bodies author a g that their own mass and radius '
                          'deny (atmo.h:kAtmoGravityTol)' % len(bad))
+    # ... and that every air in the file is one of the two kinds on purpose. It runs here,
+    # with the moons appended, rather than beside the planets: Titan's air comes from
+    # MOON_ATMOS, and a coverage guard that cannot see the whole catalogue would report the
+    # one exception it exists to name as stale. Printed once, on the core variant -- emit()
+    # runs per variant, and four copies of a roster row is noise in a log that already
+    # prints a `wrote` line for each.
+    bad = check_air_coverage(bodies, verbose=label.startswith('core'))
+    if bad:
+        for m in bad:
+            print('DRIFT   air coverage: ' + m)
+        raise SystemExit('%d air bodies are not accounted for as profiles (#625)'
+                         % len(bad))
     # epoch_year 2000: the fact-sheet elements (and our derived orbital
     # phases) are J2000-referenced, so the calendar clock matches the sky.
     # epoch_utc (#202): proleptic-Gregorian civil clock. t=0 is already

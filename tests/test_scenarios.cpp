@@ -183,6 +183,42 @@ static int check_air(const char *path, const System &sys) {
         {"Eve",    20000.0, 2.77028315e-3},
         {"Duna",   40000.0, 7.48950737e-4},
         {"Jool",   400000.0, 1.69742860e-4},
+        /* #625's catalogue half, two rows per body: the spawn bed (0.1 x the body's own
+           ceiling, where flying-low/flying-trim actually are -- e2e 688 measures Venus's)
+           and the air just under the ceiling (0.9 x it), which is what the band gate's
+           verdict is made of. The pair pins the SHAPE, not just the datum: a lid that
+           went missing reads plausible at the bed and wrong at 0.9 of the top. The spread
+           is the point -- at 0.9 of their own ceilings Jupiter holds 5.4e-7 kg/m3 while
+           Titan, an isothermal 20 km column of similar gases under 1.354 m/s2, holds
+           1.18e-3: 2,200x more, because Jupiter's column stops cooling at its seam and
+           Titan's never does. utils/atmo_profile.py integrates these columns a second
+           time, in python, and is what printed every literal below. */
+        {"Venus",   11600.0, 34.19536612},     {"Venus",  104400.0, 9.971333998e-05},
+        {"Mars",     6000.0, 0.009812065266},  {"Mars",    54000.0, 2.959820819e-05},
+        {"Jupiter", 24500.0, 0.06265087802},   {"Jupiter", 220500.0, 5.404280185e-07},
+        {"Saturn",  40000.0, 0.08837167675},   {"Saturn",  360000.0, 3.096463273e-06},
+        {"Uranus",  25000.0, 0.1766301185},    {"Uranus",  225000.0, 5.785943626e-06},
+        {"Neptune", 20000.0, 0.1739101832},    {"Neptune", 180000.0, 8.339128787e-06},
+        {"Pluto",    2000.0, 1.030843015e-4},  {"Pluto",   18000.0, 4.348603859e-05},
+        {"Titan",   20000.0, 1.964846155},     {"Titan",  180000.0, 1.17760637e-3},
+    };
+    /* Where each body's air STOPS. #682's gate bounds the ceiling to 10..1000 Pa of
+       orbital q and nothing else pins the number, so a top can drift inside that band
+       with every datum, level and aloft row unchanged -- and the top is what shellEdge
+       (max(kMinShell, 1.2 x top)), the spawn beds (0.1 x top), the Flying/FlyingLow split
+       and the atlas disk are computed from. Demonstrated: moving Jupiter's 245 km to
+       230 km leaves the gate and every other pin green while its shell edge moves 294 ->
+       276 km. Titan's row is the one DEFAULTED ceiling in the shipped catalogue --
+       AtmosphereParams::top() gives 10 H when no height is authored, which is #682's
+       original complaint -- and pinning a default is deliberate: if someone authors a
+       ceiling for Titan, this row has to move with it, and that is the review. */
+    struct Top { const char *name; double top; };
+    static const Top tops[] = {
+        {"Kerbin", 85000.0},    {"Shay", 95000.0},    {"Laythe", 105000.0},
+        {"Eve", 31000.0},       {"Duna", 50000.0},     {"Jool", 600000.0},
+        {"Earth", 85000.0},     {"Venus", 116000.0},   {"Mars", 60000.0},
+        {"Jupiter", 245000.0},  {"Saturn", 400000.0},  {"Uranus", 250000.0},
+        {"Neptune", 200000.0},  {"Pluto", 20000.0},    {"Titan", 200000.0},
     };
     /* Where each authored level sits and how fast it lapses, in the GEOMETRIC metres a
        system file speaks (#690). The 1976 standard this table was copied from states both
@@ -241,12 +277,17 @@ static int check_air(const char *path, const System &sys) {
         {"Duna",   0, 0.0, -0.0035},        {"Duna",   1, 18000.0, 0.0},
         {"Jool",   0, 0.0, -0.00066},       {"Jool",   1, 60000.0, 0.0},
         /* #625's catalogue half. Unlike Earth/Kerbin/Shay/Laythe above, no geopotential
-           conversion is in play: a giant's sheet states its levels as PRESSURE levels
-           (its 1 bar and 0.1 bar rows), and the seam is where the lapse those two rows
-           and the sheet's own scale height imply meets the colder temperature -- so what
-           these rows pin is derived arithmetic, ln(10) x H_mid, not a published altitude.
-           Jupiter's 51,541.9 m is 2.0000 x 27 km; Saturn's 109,461.9 is 2.0 x 59.5 km and
-           the longest column in the repo; Neptune's 39,766.1 sits at the MID of its
+           conversion is in play: a giant's sheet states its levels as PRESSURE levels (its
+           1 bar and 0.1 bar rows), and the seam is where the fitted lapse meets the colder
+           of those two temperatures. So what these rows pin is derived arithmetic rather
+           than a published altitude -- and the derivation is a FIT through the sheet's own
+           scale-height row, placing the seam at ln(10) x H_mid x (T0-Tu)/(T0 ln(T0/Tu)),
+           which is 1.84-2.02 x H_mid across the four giants. It is NOT ln(10) x H_mid -- that would
+           be 62,170 m on Jupiter where this file says 51,541.9 -- because a decade of
+           pressure sits ln(10) scale heights up only on an ISOTHERMAL level, and the
+           comment where that fit is written (utils/make_solar_system.py) says so. #740
+           tracks what the fit costs: up to -48% in pressure at the sheet's stated
+           temperature on Saturn. For Neptune the H in that product is the MID of its
            sheet's 19.1-20.3 km range, which is the one place a sheet's own uncertainty
            reaches into a shipped number. Venus's 65 km and Mars's 16.5 km are the
            published tropopause and CO2 frost level, authored rather than derived. Pluto
@@ -351,6 +392,13 @@ static int check_air(const char *path, const System &sys) {
         {"Uranus",  76.0, 583.626140479, 100000.0, 0.0, 0.417863145175, 1e-9},
         {"Neptune", 72.0, 573.916322235, 100000.0, 0.0, 0.434455709349, 1e-9},
         {"Pluto",   38.0, 125.770543273, 1.3, 0.0, 0.000115015877534, 1e-9},
+        /* Titan is what #625 left standing: the catalogue's one exponential and its one
+           air with no fact page. Pinning it is not approval -- it is the record that its
+           datum pressure (143,555.8 Pa, which before #739 was the *consequence* of a typed
+           5.3 kg/m3 over a 20 km H), its 90.54 K and its resolved density are all ONE
+           invented number, which is exactly what SOLAR_AIR_EXPONENTIAL's waiver claims and
+           what a future sheet scrape should have to move. */
+        {"Titan",   90.5438193869, 194.634559774, 143555.8, 0.0, 5.3, 1e-9},
         /* Earth authors a LAYER TABLE (#552 A4) AND a mix (#630), so these are the
            shipped file's proof all the way through: the JSON parses, resolveAtmoLevels
            integrates the column at the Rs that mix implies, dragAtm carries the
@@ -463,6 +511,18 @@ static int check_air(const char *path, const System &sys) {
                        " profile that lost its radius still reads plausible -- x2.8"
                        " too thin at Kerbin's 70 km row, x4.6 at its 85 km top (#683)\n",
                        path, w.name, w.alt, r, w.rho, r / w.rho);
+                bad++;
+            }
+        }
+        for(const Top &w : tops) {
+            if(lower(b->name) != lower(w.name)) { continue; }
+            const double got = a.top();
+            if(std::fabs(got - w.top) > 0.5) {
+                printf("  %s: %s's air stops at %.1f m, want %.1f m. The ceiling is a"
+                       " decision, not a by-product: shellEdge, the spawn beds (0.1 x it),"
+                       " the Flying/FlyingLow split and the atlas disk all read it, and"
+                       " #682's band only bounds where the air still pushes (#625).\n",
+                       path, w.name, got, w.top);
                 bad++;
             }
         }
