@@ -2958,6 +2958,29 @@ static glm::vec3 suitComplexion(const Part *suit) {
          ? suit->kerbal->complexion() : kKerbalBaseGreen;
 }
 
+/* One watts cell, ALWAYS 9 characters: "%6.1f" plus a 2-character unit. The
+   decade is chosen PER VALUE -- #644's rule, and pairing two readings under one
+   unit was a real bug that printed a live 40 W as "0.0 kW" under a kW peak. The
+   width is what stops the words after the number from walking as it changes
+   ("14.94 kW" one frame, "14.9 kW" the next, a character left and right several
+   times a second), and the mono UI font (res/fonts/DejaVuSansMono -- overridable
+   with --font, see cli.h:178) is what makes a constant width a constant column.
+   Four rungs at powers of ten, and %6.1f holds the scaled figure inside the field
+   even at a rounding boundary (999.95 rounds to "1000.0", still 6 characters).
+   The assert is the domain claim: past ~1e13 W the field would grow, and the worst
+   this game can produce is a 7.8 km/s re-entry of a 0.5 m^2 surface, about 1e11 W
+   -- a 100x margin, and a rung edit that breaks the column fails here instead of
+   shipping as a wobble. */
+static const double kReadSec = 0.5;    // the part window's instrument cadence (#734)
+
+static void wattCell(double w, char *cell) {
+    if(w >= 1e9) { snprintf(cell, 16, "%6.1f GW", w * 1e-9); }
+    else if(w >= 1e6) { snprintf(cell, 16, "%6.1f MW", w * 1e-6); }
+    else if(w >= 1e3) { snprintf(cell, 16, "%6.1f kW", w * 1e-3); }
+    else { snprintf(cell, 16, "%6.1f W ", w); }
+    assert(strlen(cell) == 9);
+}
+
 /* One plain imgui window per part right-clicked in the 3D view (g.part_sels, opened
    by pickAt). Plain Begin/End -- user-placed popups, NOT slot-layout windows. Staging
    that drops the part leaves the entry stale (dropped, not re-pointed). */
@@ -3211,45 +3234,74 @@ void drawPartWindows(Game &g) {
                        fin's is half its own). */
                     ImGui::Text("Lifting surface: %.2f m2", def->lift_area);
                 }
-                if(ship->parts[part]->aeroValid) {
-                    /* Mach here is THIS surface's own (#483's flow at its mount), not
-                       the ship's: a rotating airframe puts its two wings in different
-                       regimes. It is load-bearing since #543 A5 -- the same number
-                       corrects this surface's slope -- and since A5b it is also what
-                       bills the wave drag, so when a surface's bill jumps this is the
-                       row that says why. */
-                    ImGui::Text("AoA: %+.1f deg  q=%.0f Pa  Mach %.2f",
-                                ship->parts[part]->aeroAlphaDeg,
-                                ship->parts[part]->aeroQ,
-                                ship->parts[part]->aeroMach);
-                    /* The watts the air is taking off this surface (#730) -- its form
-                       drag plus the induced price of its lift. Not a temperature: no
-                       material property sits behind it, and most of these watts leave in
-                       the wake. The peak is the worst substep since the ship last went on
-                       rails (a warp or an atmosphere exit clears it with everything else).
-                       The decade moves because the figure spans six orders between a skiff
-                       off the runway and a wing near stall; #644's two rules do not move,
-                       so the decade is chosen PER VALUE -- picking one unit for the pair
-                       was a real bug, printing a live 40 W as "0.0 kW" under a kW peak.
-                       Each cell is a FIXED number of characters, because this row refreshes
-                       every frame in the air: %.4g gave "14.94 kW" one frame and "14.9 kW"
-                       the next, which walked the words after it one character left and
-                       right several times a second. The UI font is mono
-                       (res/fonts/DejaVuSansMono), so a constant width is a constant
-                       column. */
-                    {
-                        auto wattCell = [](double w, char *cell) {
-                            if(w >= 1e6) { snprintf(cell, 16, "%6.2f MW", w * 1e-6); }
-                            else if(w >= 1e3) { snprintf(cell, 16, "%6.2f kW", w * 1e-3); }
-                            else { snprintf(cell, 16, "%6.2f W ", w); }
-                        };
-                        char cur[16], pk[16];
-                        wattCell(ship->parts[part]->aeroDragWatts, cur);
-                        wattCell(ship->parts[part]->aeroDragWattsPeak, pk);
-                        ImGui::Text("Drag power: %s (peak %s)", cur, pk);
+                /* THE FLOW ROW AND THE WATTS ROW, held at 2 Hz (#734). Fixed cells stop
+                   the words after a number from walking; this stops the NUMBER itself
+                   from blurring, which it did badly in the air -- hundreds of watts per
+                   substep, four significant digits of flicker. An instrument's cadence
+                   because this is a thing the player READS, not steers by: the same
+                   reason a real panel puts attitude and rate on a fast needle and
+                   quantities, loads and temperatures on a slow digital readout. The
+                   navball and the altitude tape keep the frame rate; putting THEM here is
+                   how this idea gets reverted.
+                   Both rows publish together, and what publishes is the WORST-LOADED
+                   FRAME of the window, kept as one sample -- not four independent maxima,
+                   and not the frame that happened to land on the boundary. A plain 2 Hz
+                   sample ALIASES: a hull in a 3-4 Hz pitch mode (#680's turn) can read
+                   steady while it is pumping, and the spike is the one thing this row
+                   exists to catch. (A steam gauge averages instead, because a needle has
+                   inertia; avionics show a live value and a separate peak-hold.) Keeping
+                   q, Mach and AoA from that same frame is what lets the two rows be read
+                   against each other rather than against each other's timing.
+                   Display-side only, deliberately, and FRAME-SAMPLED: the pass stays
+                   per-substep, --drag-log and [surface] keep every substep, and the peak
+                   beside this number is the MODEL's, which sees every substep. This window
+                   sees one sample per frame, so at 100x warp it can miss a spike the peak
+                   keeps -- the peak, not this cell, is the figure of record. That is also
+                   what makes a held display fair: the truth is always reconcilable below.
+                   And the hold dies with its gate -- no aeroValid, no held number, and the
+                   window restarts so the first valid frame publishes at once. A sticky
+                   readout outlives the pass that fed it, which is #730's rails bug in a new
+                   place. The state sits on the PartSel for the same reason: see game.h.
+                   uiText, not ImGui::Text: like the air rows below, this IS the part's
+                   observable, so a case can assert what the player reads. */
+                const Part *sp = ship->parts[part];
+                if(sp->aeroValid) {
+                    if(sp->aeroDragWatts > live.holdWatts) {
+                        live.holdWatts = sp->aeroDragWatts;
+                        live.holdQ = sp->aeroQ;
+                        live.holdMach = sp->aeroMach;
+                        live.holdAlpha = sp->aeroAlphaDeg;
                     }
+                    if(ImGui::GetTime() >= live.nextRead) {
+                        live.nextRead = ImGui::GetTime() + kReadSec;
+                        /* Mach here is THIS surface's own (#483's flow at its mount), not
+                           the ship's: a rotating airframe puts its two wings in different
+                           regimes. It is load-bearing since #543 A5 -- the same number
+                           corrects this surface's slope -- and since A5b it is also what
+                           bills the wave drag, so when a surface's bill jumps this is the
+                           row that says why. */
+                        snprintf(live.flowRow, sizeof live.flowRow,
+                                 "AoA: %+.1f deg  q=%.0f Pa  Mach %.2f",
+                                 live.holdAlpha, live.holdQ, live.holdMach);
+                        /* The watts the air is taking off this surface (#730) -- its form
+                           drag plus the induced price of its lift. Not a temperature: no
+                           material property sits behind it, and most of these watts leave in
+                           the wake. The peak is the worst substep since the ship last went on
+                           rails (a warp or an atmosphere exit clears it with everything else),
+                           so it can only ever read >= the held figure beside it. */
+                        char cur[16], pk[16];
+                        wattCell(live.holdWatts, cur);
+                        wattCell(sp->aeroDragWattsPeak, pk);
+                        snprintf(live.wattsRow, sizeof live.wattsRow,
+                                 "Drag power: %s (peak %s)", cur, pk);
+                        live.holdWatts = 0.0;
+                    }
+                    uiText("%s", live.flowRow);
+                    uiText("%s", live.wattsRow);
                 } else {
-                    ImGui::Text("AoA: -   q:-   Mach -   drag power -");
+                    live.holdWatts = 0.0;
+                    live.nextRead = 0.0;
+                    uiText("AoA: -   q:-   Mach -   drag power -");
                 }
                 if(def->isControlSurface()) {
                     /* The slider's range is not the clamp. Ctrl+click turns any slider

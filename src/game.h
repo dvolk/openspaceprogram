@@ -98,6 +98,23 @@ struct PartSel {
     float askX = 0, askY = 0;
     float winW = 0, winH = 0;
     bool userMoved = false;
+    /* THE 2 Hz INSTRUMENT CADENCE (#734), per WINDOW rather than per program.
+       drawPartWindows loops over g.part_sels, so state kept in a static there is
+       SHARED by every open window: with two open (right-clicking wing_l then
+       wing_r is the natural way to use this panel) each iteration would mismatch
+       the other's identity and publish every frame, and the hold would silently
+       stop existing -- measured at 2.0 Hz with one window, 60.0 Hz with two. It
+       lives here instead because a PartSel is erased with its window and with its
+       ship, so a held number cannot outlive either -- the same rule this file
+       states for cached paths: "the slot can be deleted between frames". */
+    double nextRead = 0.0;    // wall seconds (ImGui::GetTime) of the next publish
+    /* The worst LOADED frame since the last publish, kept as one sample rather
+       than four maxima: q, Mach and AoA came from the same instant as the watts,
+       so the published rows are internally consistent and never understate a
+       spike. Frame-sampled -- see the caveat in gameui.cpp. */
+    double holdWatts = 0.0, holdQ = 0.0, holdMach = 0.0, holdAlpha = 0.0;
+    char flowRow[64] = "";    // the two published rows, formatted once per publish
+    char wattsRow[64] = "";
 };
 
 /* The active ship's per-frame state (render frame): render.cpp writes it, the UI

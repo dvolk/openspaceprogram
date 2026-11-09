@@ -1214,6 +1214,32 @@ def parse_surface(out):
     return rows
 
 
+UILIST_HEAD_RE = re.compile(r"^\[uilist\] loop=(\d+\.\d+)s items=(\d+)")
+UILIST_ITEM_RE = re.compile(r'^\[uilist\] window="((?:[^"\\]|\\.)*)" '
+                            r'label="((?:[^"\\]|\\.)*)"'
+                            r' rect=[\d.,-]+(.*)$')
+
+
+def parse_uilist(out):
+    """Every imgui item a --ui-list dump saw, tagged with its dump's time in seconds.
+    Text rows are included -- the trailing ` text` marks them as not clickable, but
+    they are what the player READS, and #601 made the dump carry their text so a case
+    can pin a readout. #734's 2 Hz hold is only assertable because the part window's
+    flow/watts rows are drawn through uiText."""
+    rows = []
+    t = None
+    for line in out.splitlines():
+        m = UILIST_HEAD_RE.match(line)
+        if m:
+            t = float(m.group(1))
+            continue
+        m = UILIST_ITEM_RE.match(line)
+        if m and t is not None:
+            rows.append({"t": t, "window": m.group(1), "label": m.group(2),
+                         "text": " text" in m.group(3)})
+    return rows
+
+
 def parse_scene(out):
     rows = []
     for m in SCENE_RE.finditer(out):
@@ -1584,6 +1610,7 @@ def run_case(case):
     drag = parse_drag(world)
     ctrl = parse_ctrl(world)
     surface = parse_surface(world)
+    uilist = parse_uilist(world)
     shake = parse_shake(world)
     cam = parse_cam(world)
     terrain = parse_terrain(world)
@@ -1611,6 +1638,7 @@ def run_case(case):
         "rec": rec,
         "ctrl": ctrl,
         "surface": surface,
+        "uilist": uilist,
         "cam": cam,
         "terrain": terrain,
         "surf": surf, "orbinfo": orbinfo, "mapb": mapb, "plane": plane, "slew": slew,

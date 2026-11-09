@@ -1,0 +1,63 @@
+NAME wing-card-holds-its-numbers
+CLAIM The part window's flow row and watts row publish on an instrument's 2 Hz cadence rather than every frame, EACH OPEN CARD ON ITS OWN -- eleven reads a tenth of a second apart see a couple of different figures, not eleven -- while the model behind them keeps logging every substep, and each published pair is the worst-loaded FRAME of its window, so q, Mach and the watts the player reads belong to one instant rather than to three different moments.
+KIND invariant
+ARGS --time-accel 1 --sim-steps 600 --width 1920 --height 1080 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
+# Two wing cards, because that is the shape that broke: the cadence state was first
+# written as a static inside drawPartWindows' loop over g.part_sels, so with two cards
+# open each iteration mismatched the other's identity and published every frame -- the
+# hold silently stopped existing while still printing correct numbers (measured: 2.0 Hz
+# with one card, 60.0 Hz with two). The state sits on the PartSel now (game.h), which is
+# erased with the card. Right-click each wing to open its card; --ui-focus alone only
+# resolves a screen point, it does not pick.
+# --width/--height are NOT decoration: at the default window size the focus point
+# resolves off-screen and nothing gets picked, so the cards never open and every check
+# below would be asserting on an empty registry.
+ARGS --ui-focus 2000,skiff_trim/wing_l
+ARGS --sim-mouse 2200,0,CUR,CUR,RMB
+ARGS --ui-focus 3000,skiff_trim/wing_r
+ARGS --sim-mouse 3200,0,CUR,CUR,RMB
+# Eleven reads across one second, 100 ms apart. No --no-paint anywhere in this case: the
+# assertions are about what is PAINTED, and a case that asserts painted rows while running
+# unpainted measures a stub (#666's rule in reverse).
+ARGS --ui-list 6000 6100 6200 6300 6400 6500 6600 6700 6800 6900 7000
+ARGS --drag-log
+EXPECT [uilist] loop=
+EXPECT [surface]
+# Both cards are up and each carries both rows, as non-clickable TEXT rows -- #601 made
+# the dump carry a text row's drawn bytes precisely so a case can assert what the player
+# reads, and uiText (not ImGui::Text) is what puts these two rows in the registry.
+CHECK len({r["window"] for r in uilist if "Wing (8m)" in r["window"]}) == 2
+CHECK len([r for r in uilist if "Wing (8m)" in r["window"] and r["label"].startswith("Drag power")]) == 11 * 2
+CHECK len([r for r in uilist if "Wing (8m)" in r["window"] and r["label"].startswith("AoA:")]) == 11 * 2
+CHECK all(r["text"] for r in uilist if "Wing (8m)" in r["window"] and r["label"].startswith("Drag power"))
+# THE CADENCE. Eleven reads across 1.0 s at a 0.5 s cadence can only show a couple of
+# distinct figures -- measured 3 for the watts row, 4 for the flow row, which also carries
+# AoA and Mach. With the cadence gone (the static bug, or kReadSec at a frame) all 11
+# differ, because in the air the load moves every substep.
+CHECK 2 <= len({r["label"] for r in uilist if "Wing (8m)" in r["window"] and r["label"].startswith("Drag power")}) <= 5
+CHECK 2 <= len({r["label"] for r in uilist if "Wing (8m)" in r["window"] and r["label"].startswith("AoA:")}) <= 6
+# ... and per CARD, not just in total: measured 3 distinct (card, figure) pairs across the
+# 22 printings. Each card published twice or three times in the second, and mirror wings
+# land on near-identical ROUNDED figures, so pairs can collapse -- what the pair count owns
+# is "both cards are publishing their own", which the shared-state regression blows up to
+# 22, one distinct pair per read. Counting pairs rather than labels is what tells "both
+# cards held" from "both cards reprinting whichever one drew last".
+CHECK 2 <= len({(r["window"], r["label"]) for r in uilist if "Wing (8m)" in r["window"] and r["label"].startswith("Drag power")}) <= 10
+# The hold is a cadence, not a freeze. The model underneath kept its [surface] logging the
+# whole time (#730's rows, pinned for correctness by flight/730) and this glider's wing load
+# swings from 0.7 kW to 39 kW across the ten seconds. If that ever goes quiet, the row above
+# stops meaning anything: a held figure over a stopped model is a screensaver. (The
+# [drag]/[surface] pair logs ~1.4 times per sim-second, so 20 wing rows here is the norm.)
+CHECK len([s for s in surface if s["name"].startswith("wing")]) >= 16
+CHECK max(s["watts"] for s in surface if s["name"].startswith("wing")) - min(s["watts"] for s in surface if s["name"].startswith("wing")) > 4000
+# The column holds: every printing of the row is the same number of characters. That is the
+# whole point of the fixed cells -- a figure that changes its own width walks the words
+# after it (%6.1f plus a 2-character unit is 9 characters at any decade, including the
+# rounding boundary where a %6.2f field overruns to 10 characters at 999.995 W, and the
+# %.4g form that printed "14.94 kW" then "14.9 kW"). gameui.cpp asserts the cell width from
+# inside; this asserts it from the player's side.
+CHECK len({len(r["label"]) for r in uilist if "Wing (8m)" in r["window"] and r["label"].startswith("Drag power")}) == 1
+# What is NOT asserted here: that the held figure never exceeds the peak beside it. That is
+# true by construction (the peak folds every substep, this window is frame-sampled) and
+# parsing two unit-bearing cells out of a label to re-derive it would test the parser.
+FORBID error:
