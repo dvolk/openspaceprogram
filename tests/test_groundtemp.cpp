@@ -178,6 +178,27 @@ int main() {
                "below the datum the column is flat, and so is the weight");
     CHECK_TRUE(!followAuthored(kFollowUnauthored),
                "an air nobody priced does not follow its ground at all");
+    /* THE COMPOSITION, which is where a loader-legal pair of knobs used to reach an assert.
+       even_share 0.0 (a bare rock) at midnight answers a ground temperature of 0.0 K -- that
+       is the model's own night end, pinned above -- and air_follow > 0 on such a body is
+       legal to author. Handing that 0 K to followAirTemperature's assert would abort the game
+       over a night sky, so coupledAirTemperature() answers the profile instead. Nothing else
+       in the battery composes the two knobs, which is why this pin is here. */
+    CHECK_NEAR(coupledAirTemperature(233.90, 214.81, 0.0, 0.5, 0.33, 0.0), 233.90, 0.0,
+               "a bare rock's night has no ground temperature to follow: the profile stands");
+    CHECK_NEAR(coupledAirTemperature(233.90, 214.81, 0.30, 0.5, 0.33, 1.0),
+               233.90 + 0.5 * 0.33 * (214.81 * std::pow(3.1, 0.25) - 233.90), 1e-9,
+               "the composed call is the blend, with the ground from the anchor and cosine");
+    CHECK_NEAR(coupledAirTemperature(233.90, 214.81, 0.30, kFollowUnauthored, 0.33, 1.0),
+               233.90, 0.0, "no knob: the profile stands, and nothing is asserted about it");
+    CHECK_NEAR(coupledAirTemperature(233.90, 214.81, 0.30, 0.5, 0.0, 1.0),
+               233.90, 0.0, "no weight (vacuum or above the top): the profile stands");
+    CHECK_NEAR(coupledAirTemperature(0.0, 214.81, 0.30, 0.5, 0.33, 1.0),
+               0.0, 0.0, "no air at all answers no temperature");
+    CHECK_NEAR(followWeight(101325.0, 101325.0), 1.0, 0.0,
+               "the weight is fail-closed: a fraction that is not a number answers none");
+    CHECK_NEAR(followWeight(kThermalUnauthored, 101325.0), 0.0, 0.0,
+               "a negative pressure is not a fraction either");
 
     /* ---- the sentinel, which is the difference between Venus and Mercury ------------ */
     CHECK_TRUE(!evenShareAuthored(kEvenShareUnauthored),
