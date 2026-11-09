@@ -856,8 +856,9 @@ def author_star_temperature(obj):
 #                    satellites (Europa 0.68, Enceladus 1.0) and no Bond albedo, and
 #                    geometric -> Bond needs a phase integral nothing in the corpus
 #                    gives. Filed rather than guessed (#736).
-DASH = None   # spelled out, so a table entry meaning "this file declines to price this
-                # body" is not one bare None away from meaning "take the analogue"
+DASH = object()   # a named sentinel, NOT a bare None: the None inside ("Moon", None)
+                  # means "take the analogue's value", and one value meaning both is how
+                  # a body silently stops being priced
 KSP_ALBEDOS = {
     "Moho":   ("Mercury", None),   # hot, airless, grey
     "Eve":    ("Venus",   None),   # thick CO2 sky over a hot rock

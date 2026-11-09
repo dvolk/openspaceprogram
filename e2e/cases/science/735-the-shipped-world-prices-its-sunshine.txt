@@ -30,9 +30,10 @@ CHECK (lambda m: 30.0 < float(m.group(1)) < 36.0)(re.search(r"greenhouse gap\s+\
 # 3. THE OTHER WAY HALF-AUTHORED: an albedo and no ground reading (#738 argues the ground
 #    rows of the Jool family are the ones to distrust). Moho takes Mercury's 0.068, sits at
 #    9087 W/m2 -- one of the two hottest places in the game, and the one place an albedo of
-#    0.068 vs 0.11 is a visible 5 K -- and its airless mean prints 439.6 K, which is also
-#    the figure the RSS Mercury sheet states as ITS black-body temperature: an authored
-#    analogy agreeing with the corpus's own arithmetic, one body removed. Its surface temp
+#    0.068 vs 0.11 is a visible 5 K -- and its airless mean prints 439.6 K, which is the
+#    figure mercuryfact.html states for Mercury itself (it states irradiance 9082.7 and
+#    Bond 0.068 there, and this law closes to 439.5, so the corpus's arithmetic and ours
+#    are the same arithmetic). Its surface temp
 #    and its gap dash, because this file authors no temperature for the bare rocks -- the
 #    wiki's pair is a night/day extreme and averaging it is a design call (#687).
 #    Bounds at 2% / 2 K rather than digits: the flux prints through %.4g, so a nudge past
@@ -50,6 +51,6 @@ CHECK re.search(r"sunlight \(parent's orbit\)\s+[\d.]+ W/m2\s*\n\s*\[atlas\]   b
 #    out than Kerbin, so its airless mean is the coldest reading in the system. Both rows
 #    print from the same star, which is what makes the pair worth reading: 1361 W/m2 gives
 #    255 K at Kerbin's rail, 31 W/m2 gives 79 K at Eeloo's.
-CHECK (lambda e: float(re.search(r"sunlight \(mean orbit\)\s+([\d.]+) W/m2", e).group(1)) < 40.0 and float(re.search(r"black-body temp\s+([\d.]+) K", e).group(1)) < 90.0 and re.search(r"bond albedo\s+0\.720", e))
+CHECK (lambda e: float(re.search(r"sunlight \(mean orbit\)\s+([\d.]+) W/m2", e).group(1)) < 40.0 and float(re.search(r"black-body temp\s+([\d.]+) K", e).group(1)) < 90.0 and re.search(r"bond albedo\s+0\.720", e))(re.search(r"\[atlas\] Eeloo weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 FORBID bond albedo 0.000
 FORBID error:

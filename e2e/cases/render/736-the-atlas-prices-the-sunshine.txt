@@ -12,7 +12,8 @@ ARGS --system res/systems/solar_system.json --timeout 6 --atlas-dump 4000
 EXPECT [atlas] Earth weight=
 EXPECT [atlas] Sun weight=
 # 1. THE BLACK-BODY ROW FOLLOWS FROM THE TWO ABOVE IT: T = ((1-A) S / 4 sigma)^(1/4), sigma
-#    the same constant the loader derives the star's luminosity from (constants.h). Measured
+#    the same constant the loader derives the star's luminosity from (src/solar.h's
+#    kStefanBoltzmann). Measured
 #    closure across the file's nine albedo-bearing bodies is 0.035 K -- pure print rounding
 #    (S at %.4g, T at %.1f) -- so the band is 0.05 K. A dossier billing its rows independently
 #    would be #699 in a window instead of a log, and the cheapest way to do that -- dropping

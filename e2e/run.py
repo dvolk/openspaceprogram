@@ -545,8 +545,14 @@ def check_check_shapes(exprs, case_path):
     this through e2e/index.py --check -- rather than at eval time, after the
     game has been booted for it. Its sibling shapes go with it, because they
     are the same dead assertion one keystroke away: a bare list/set/dict
-    literal (true whenever it is not empty), and a tuple parked inside an
-    `and`/`or`. Comprehensions stay legal -- `CHECK {r["t"] for r in rows if
+    literal (true whenever it is not empty), a tuple parked inside an
+    `and`/`or`, and an UNCALLED lambda -- `CHECK (lambda e: cond)` evaluates to
+    a function, which is truthy, so the case passes whatever the game printed.
+    (#735 shipped one: the CHECK was written for one argument and its argument
+    list was edited away, leaving the call off. It was green over a correct run
+    and, when tested, green over a wrong one.) Calling it -- `CHECK (lambda e:
+    cond)(re.search(...).group(0))` -- is the shipped idiom and stays legal.
+    Comprehensions stay legal -- `CHECK {r["t"] for r in rows if
     r["x"]}` really does mean "some rows matched". Deliberately narrow
     otherwise: it does NOT demand a bool, because 58 shipped CHECKs are
     `re.search(...)`, which hands back a Match and means the right answer
@@ -557,6 +563,8 @@ def check_check_shapes(exprs, case_path):
             return "a tuple (a trailing comma makes one)"
         if isinstance(node, (ast.List, ast.Set, ast.Dict)):
             return "a container literal"
+        if isinstance(node, ast.Lambda):
+            return "a lambda with nothing passed to it"
         return None
 
     name = os.path.basename(case_path)
@@ -573,9 +581,8 @@ def check_check_shapes(exprs, case_path):
                 if why is not None:
                     break
         if why is not None:
-            raise ValueError("%s: CHECK is %s, not one assertion -- a "
-                             "non-empty container is ALWAYS true: %s"
-                             % (name, why, expr[:60]))
+            raise ValueError("%s: CHECK is %s, not one assertion -- it is "
+                             "ALWAYS true: %s" % (name, why, expr[:60]))
 
 
 def parse_cases(path):
@@ -1452,6 +1459,9 @@ def check_verdict(expr, check_globals):
             return ("CHECK evaluated to a tuple, which is always true -- a "
                     "trailing comma, or a helper that returns one (#650): %s"
                     % expr)
+        if callable(val):
+            return ("CHECK evaluated to a callable, which is always true -- "
+                    "the lambda was written but never passed anything: %s" % expr)
         if not val:
             return "CHECK failed: %s" % expr
     except Exception as e:
@@ -1937,7 +1947,9 @@ def self_test():
              'CHECK (1 == 2), "parenthesised the same way"',
              'CHECK [1 == 2, 3 == 4]',
              'CHECK {1 == 2}',
-             'CHECK (1 == 2, 3 == 4) and "a note"']
+             'CHECK (1 == 2, 3 == 4) and "a note"',
+             'CHECK (lambda e: e == 2)',
+             'CHECK (lambda e: e == 2) and "a note"']
     for bad in traps:
         try:
             parse_with([bad])
@@ -1975,7 +1987,8 @@ def self_test():
                        ("(1,)", "tuple"),
                        ("()", "CHECK failed"),
                        ("[1, 2]", None),
-                       ("[]", "CHECK failed")):
+                       ("[]", "CHECK failed"),
+                       ("lambda e: e == 2", "callable")):
         got = check_verdict(expr, dict(ns))
         if want is None and got is not None:
             fails.append("CHECK %r reported %r" % (expr, got))
@@ -1985,9 +1998,10 @@ def self_test():
         for f in fails:
             print("SELF-TEST FAIL: %s" % f)
         return 1
-    print("e2e runner self-test ok: dead-shape CHECKs (tuple, container) "
-          "refused at parse and eval; re.search, walrus and comprehension "
-          "CHECKs accepted; CHECK failed/raised wording intact")
+    print("e2e runner self-test ok: dead-shape CHECKs (tuple, container, "
+          "uncalled lambda) refused at parse and eval; re.search, walrus, "
+          "comprehension and immediately-called lambda CHECKs accepted; "
+          "CHECK failed/raised wording intact")
     return 0
 
 
