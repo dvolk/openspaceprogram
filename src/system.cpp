@@ -15,7 +15,8 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/transform.hpp>  // glm::rotate (updateChain)
 
-#include "equirect.h"  // equirectLonLat (subsolar surface longitude)
+#include "equirect.h"  // the (lon, lat) <-> direction convention
+#include "insolation.h"  // starFromBody / subsolarLonLat: one star direction (#724)
 #include "constants.h"  // kAirMolarMass / kAirGamma (the atmosphere defaults)
 #include "orbit.h"  // railStateFromElements
 #include "resdir.h"
@@ -56,8 +57,10 @@ void updateChain(Frame *f, double t) {
     f->rail_time = t;
 }
 
-// Direction TOWARD the star in `body`'s rotating frame. False when there is
-// no terminator.
+// Direction TOWARD the star in `body`'s rotating frame, at time t. False when there is
+// no terminator. The frame arithmetic lives in insolation.h; what this adds is the
+// advance, which is the only reason it is not the header's function verbatim: the
+// calendar asks what the frames hold at a time, while the map bakes whatever they hold.
 bool subsolarLonAt(TerrainBody *body, TerrainBody *sun,
                    double t, double &lon) {
     if(sun == nullptr || body == sun || body->frame == nullptr
@@ -66,14 +69,12 @@ bool subsolarLonAt(TerrainBody *body, TerrainBody *sun,
     }
     updateChain(body->frame->getRotFrame(), t);
     updateChain(sun->frame, t);
-    const glm::dvec3 to_sun = sun->frame->root_pos - body->frame->root_pos;
-    const double l = glm::length(to_sun);
-    if(l < 1e-9) { return false; }
-    const glm::dmat3 to_rot =
-        glm::transpose(body->frame->getRotFrame()->root_orient);
-    const glm::dvec3 dir = to_rot * (to_sun / l);
+    const StarFromBody sv = starFromBody(body->frame->root_pos,
+                                         sun->frame->root_pos,
+                                         body->frame->getRotFrame()->root_orient);
+    if(!sv.valid) { return false; }
     double lat = 0.0;
-    equirectLonLat(dir, lon, lat);
+    subsolarLonLat(sv, lon, lat);
     return true;
 }
 

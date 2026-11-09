@@ -82,14 +82,21 @@ inline double solarFlux(double luminosity_W, double dist_m) {
     return luminosity_W / (4.0 * std::numbers::pi * dist_m * dist_m);
 }
 
+/* [1] The cosine of the angle between a surface normal and the beam, floored at 0: a
+   night side collects nothing, and a NEGATIVE cosine must not read as the surface being
+   lit from behind. n and to_sun are assumed unit -- callers normalise once and reuse.
+   Spelled here, not inline in incidentFlux, because the geometry side (insolation.h)
+   needs the same floor against a rotating-frame zenith and must not re-derive it. */
+inline double cosIncidence(const glm::dvec3 &n, const glm::dvec3 &to_sun) {
+    return std::max(0.0, glm::dot(n, to_sun));
+}
+
 /* [W/m^2] On a flat surface with unit normal n, lit by a source in unit
-   direction to_sun: the cosine, floored at 0 (a night side collects nothing; a
-   NEGATIVE cosine must not read as the surface being lit from behind).
-   n and to_sun are assumed unit -- callers normalise once and reuse. */
+   direction to_sun. */
 inline double incidentFlux(double flux, const glm::dvec3 &n,
                            const glm::dvec3 &to_sun) {
     if(flux <= 0.0) { return 0.0; }
-    return flux * std::max(0.0, glm::dot(n, to_sun));
+    return flux * cosIncidence(n, to_sun);
 }
 
 /* [K] The global-mean black-body temperature of a fast rotator at flux S with

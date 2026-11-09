@@ -8,7 +8,8 @@
 #include "angmath.h"             // acosUnit: the one acos(clamp) spelling (#622)
 #include "eva.h"                 // Kerbal::armInput (the kerbal's controls)
 #include "orbit.h"               // OrbitElements, computeOrbitElements
-#include "solar.h"               // sunSample / incidentFlux: the --solar-log row (#687)
+#include "solar.h"               // sunSample: the --solar-log flux (#687)
+#include "insolation.h"          // skyAtZenith: the --solar-log elevation and cosine (#724)
 #include "physics.h"             // physics_tick()
 #include "timestep.h"            // substepCount()
 
@@ -642,16 +643,20 @@ void tick(Game &g) {
                 const SunSample ss = sunSample(lum, star, p);
                 /* The local vertical, from the SoI body the hull is in. A hull at a
                    body's exact centre (a fixture, never a flight) has no horizon, and
-                   then elev/flat dash rather than asin(0) = 'overhead'. */
+                   then elev/flat dash rather than asin(0) = 'overhead'.
+                   Both vectors stay in root axes here, which is enough: the dot is
+                   frame-invariant and a hull has a position, not a (lon, lat). A sample
+                   of a PLACE goes through starFromBody(), which does the rotating-frame
+                   step, and lands in the same cosine and elevation (#724). */
+                StarFromBody sv;
+                sv.to_sun = ss.to_sun;
+                sv.dist_m = ss.dist_m;
+                sv.valid = ss.valid;
                 const glm::dvec3 up = (g.ship->m_parent && g.ship->m_parent->frame)
                                     ? p - g.ship->m_parent->frame->root_pos
                                     : glm::dvec3(0.0);
-                const double upl = glm::length(up);
-                const bool have_horizon = ss.valid && upl > 1e-9;
-                const glm::dvec3 zenith = have_horizon ? up * (1.0 / upl)
-                                                       : glm::dvec3(0.0);
-                const double elev = have_horizon
-                    ? sunElevation(zenith, ss.to_sun) : 0.0;
+                const SkyAtZenith sky = skyAtZenith(sv, up);
+                const bool have_horizon = sky.valid;
                 char flux_s[32], elev_s[32], flat_s[32], dist_s[32];
                 if(ss.valid) {
                     snprintf(dist_s, sizeof dist_s, "%.6g", ss.dist_m);
@@ -662,9 +667,9 @@ void tick(Game &g) {
                 }
                 if(have_horizon) {
                     snprintf(elev_s, sizeof elev_s, "%.2f",
-                             glm::degrees(elev));
+                             glm::degrees(sky.elev_rad));
                     snprintf(flat_s, sizeof flat_s, "%.6g",
-                             incidentFlux(ss.flux, zenith, ss.to_sun));
+                             ss.flux * sky.cos_inc);
                 } else {
                     snprintf(elev_s, sizeof elev_s, "-");
                     snprintf(flat_s, sizeof flat_s, "-");

@@ -11,26 +11,24 @@
 
 #include "game.h"
 #include "terrain.h"
+#include "insolation.h"
 
 namespace {
-// Direction TOWARD the star in `body`'s rotating frame. False when there
-// is no terminator (the body IS the star, or the system has no sun).
+// Direction TOWARD the star in `body`'s rotating frame, from whatever the frames hold
+// right now (the map bakes the terminator at the request instant). False when there is
+// no terminator (the body IS the star, or the system has no sun). The arithmetic itself
+// is insolation.h's, shared with the calendar's subsolar row and the solar log (#724).
 bool sunDirRot(const TerrainBody *body, const TerrainBody *sun,
                glm::dvec3 &dir) {
-    if(sun == nullptr || body == sun) {
+    if(sun == nullptr || body == sun || body->frame == nullptr
+       || body->frame->getRotFrame() == nullptr) {
         return false;
     }
-    const glm::dvec3 to_sun =
-        sun->frame->root_pos - body->frame->root_pos;
-    const double l = glm::length(to_sun);
-    if(l < 1e-9) {
-        return false;
-    }
-    // root axes -> body's rotating frame (a direction: rotate by the
-    // inverse orientation; v*M is M^T*v in glm).
-    const glm::dmat3 to_rot =
-        glm::transpose(body->frame->getRotFrame()->root_orient);
-    dir = to_rot * (to_sun / l);
+    const StarFromBody sv = starFromBody(body->frame->root_pos,
+                                         sun->frame->root_pos,
+                                         body->frame->getRotFrame()->root_orient);
+    if(!sv.valid) { return false; }
+    dir = sv.to_sun;
     return true;
 }
 } // namespace

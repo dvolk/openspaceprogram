@@ -21,6 +21,8 @@
 #include "solar.h"       // solarFlux/blackbodyTemperature (the atlas' starlight rows, #687).
                          // The same helpers --solar-log bills parts with, so the dossier and
                          // the log cannot drift into two different versions of one law.
+#include "insolation.h"  // starFromBody/subsolarLonLat: the clock's solar row is the same
+                         // subsolar point the calendar sweeps and the map bakes (#724).
 #include "vehicle.h"     // dragAtm: the same AtmosphereParams -> DragAtmosphere seam the
                          // flight model uses. It reached here through gameui.h -> game.h;
                          // say it out loud, or a header shuffle breaks the atlas rows.
@@ -2000,16 +2002,14 @@ void drawUIReadouts(Game &g) {
             }
             // Solar time at surface lon 0 (#202): the subsolar point is local noon, so lon 0
             // reads 12h - lon/15 (east-positive lon, #200). Geometric, not a mean-time table.
-            if(g.sun && g.sun != sys.home && sys.home->frame) {
-                const glm::dvec3 to_sun = g.sun->frame->root_pos
-                                        - sys.home->frame->root_pos;
-                const double sl = glm::length(to_sun);
-                if(sl > 1e-9) {
-                    const glm::dmat3 to_rot = glm::transpose(
-                        sys.home->frame->getRotFrame()->root_orient);
-                    const glm::dvec3 dir = to_rot * (to_sun / sl);
-                    double lon = 0.0, lat = 0.0;
-                    equirectLonLat(dir, lon, lat);
+            if(g.sun && g.sun != sys.home && sys.home->frame
+               && sys.home->frame->getRotFrame()) {
+                const StarFromBody sv = starFromBody(
+                    sys.home->frame->root_pos, g.sun->frame->root_pos,
+                    sys.home->frame->getRotFrame()->root_orient);
+                double lon = 0.0, lat = 0.0;
+                subsolarLonLat(sv, lon, lat);   // lat is the declination; the clock wants lon
+                if(sv.valid) {
                     double sod = 12.0 - glm::degrees(lon) / 15.0;
                     while(sod < 0.0) { sod += 24.0; }
                     while(sod >= 24.0) { sod -= 24.0; }

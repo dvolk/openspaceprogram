@@ -20,7 +20,9 @@
 #include <nlohmann/json.hpp>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>   // glm::rotate, for a tilted body
 
+#include "insolation.h"   // starFromBody / subsolarLonLat / skyAtPlace (#724)
 #include "solar.h"
 
 static int g_failures = 0;
@@ -203,6 +205,107 @@ int main() {
        The REFUSAL that protects the data lives in the loader, and it is pinned there:
        tests/test_belts.cpp feeds a negative surface.temperature and an albedo of 1.2
        through load_system and requires both to throw. */
+
+    /* ---- one star direction, which four callers used to spell by hand (#724) ----
+       insolation.h exists because the map's terminator (surfmap.cpp), the calendar's
+       solar day (system.cpp), the clock's "Solar:" row (gameui.cpp) and the log's
+       elevation (tick.cpp) each wrote the same subtract-normalise-transpose step, and
+       each had to get the TRANSPOSE right. These pins are that step, the subsolar point
+       it defines, and the season bound a future temperature law leans on. */
+    {
+        const glm::dmat3 ident(1.0);
+        const StarFromBody east = starFromBody(glm::dvec3(0.0),
+                                               glm::dvec3(5.0e9, 0.0, 0.0), ident);
+        CHECK_TRUE(east.valid, "a star 5e9 m away is placeable");
+        CHECK_NEAR(east.dist_m, 5.0e9, 1e-12, "the distance rides along with it");
+        CHECK_NEAR(east.to_sun.x, 1.0, 1e-12, "identity frame: root +X is +X");
+
+        /* The transpose is the whole module in one line: root_orient carries the ROTATING
+           axes into root axes, so a star sitting at root +X, seen through a +90 deg turn
+           about +Y, stands at rotating +Z -- and equirect.h puts +Z at lon 270. Getting
+           this backwards is silent: every angle stays finite and every day still has a
+           noon, just one 180 degrees out of step with the map. */
+        const glm::dmat3 quarter(glm::rotate(
+            glm::dmat4(1.0), std::numbers::pi / 2.0, glm::dvec3(0.0, 1.0, 0.0)));
+        const StarFromBody turned = starFromBody(glm::dvec3(0.0),
+                                                 glm::dvec3(5.0e9, 0.0, 0.0), quarter);
+        CHECK_NEAR(turned.to_sun.z, 1.0, 1e-12, "the frame step goes the other way");
+        double noon_lon = 0.0, noon_lat = 0.0;
+        subsolarLonLat(turned, noon_lon, noon_lat);
+        CHECK_NEAR(noon_lon, 3.0 * std::numbers::pi / 2.0, 1e-12,
+                   "a quarter turn moves local noon to lon 270");
+        CHECK_NEAR(noon_lat, 0.0, 1e-12, "a star in the equatorial plane is over the equator");
+
+        /* Local noon is defined by what a plate collects, so the two halves of the module
+           have to agree at the point they name. */
+        const SkyAtZenith noon = skyAtPlace(turned, noon_lon, noon_lat);
+        CHECK_TRUE(noon.valid && noon.lit, "the subsolar point is in daylight");
+        CHECK_NEAR(noon.cos_inc, 1.0, 1e-12, "local noon collects the whole beam");
+        CHECK_NEAR(noon.elev_rad, std::numbers::pi / 2.0, 1e-12,
+                   "and at noon the star is overhead");
+        const SkyAtZenith anti = skyAtPlace(turned, noon_lon + std::numbers::pi,
+                                            noon_lat);
+        CHECK_NEAR(anti.cos_inc, 0.0, 1e-12, "the far side collects nothing");
+        CHECK_NEAR(anti.elev_rad, -std::numbers::pi / 2.0, 1e-12,
+                   "and the star is underfoot, not skipped");
+        CHECK_TRUE(anti.valid && !anti.lit, "night is a reading, not an absence");
+
+        /* The daily mean a redistribution model will one day multiply: sweeping longitude
+           under a star in the equatorial plane, the mean cosine over a whole turn is
+           1/pi -- the lit half of a sphere intercepts twice a radius' worth of beam. */
+        double sum = 0.0;
+        const int n = 100000;
+        for(int i = 0; i < n; i++) {
+            sum += skyAtPlace(east, 2.0 * std::numbers::pi * i / n, 0.0).cos_inc;
+        }
+        CHECK_NEAR(sum / n, 1.0 / std::numbers::pi, 1e-5,
+                   "the daily mean cosine is 1/pi");
+
+        /* SEASONS, pinned before anything uses them. A body tilted by theta, seen from a
+           star that runs a full circle in the root XZ plane, keeps its declination inside
+           [-theta, +theta] and touches both ends once per circuit. That is the shape a
+           seasonal temperature law (roadmap rung D) will be written against, and it is a
+           property of the geometry rather than of any authored number -- so it belongs in
+           the pure test, where a wrong tilt axis in either the loader or this header goes
+           red without a world being loaded. */
+        const double tilt = std::numbers::pi * 23.44 / 180.0;
+        const glm::dmat3 tipped(glm::rotate(glm::dmat4(1.0), tilt,
+                                            glm::dvec3(1.0, 0.0, 0.0)));
+        double max_dec = 0.0;
+        bool out_of_tropics = false;
+        for(int i = 0; i < 400; i++) {
+            const double psi = 2.0 * std::numbers::pi * i / 400;
+            const StarFromBody sv = starFromBody(
+                glm::dvec3(0.0),
+                5.0e9 * glm::dvec3(std::cos(psi), 0.0, std::sin(psi)), tipped);
+            double dlon = 0.0, dlat = 0.0;
+            subsolarLonLat(sv, dlon, dlat);
+            if(std::fabs(dlat) > tilt + 1e-12) { out_of_tropics = true; }
+            if(std::fabs(dlat) > max_dec) { max_dec = std::fabs(dlat); }
+        }
+        CHECK_TRUE(!out_of_tropics, "the star never leaves the tropics");
+        CHECK_NEAR(max_dec, tilt, 1e-3, "the solstices reach the tilt itself");
+        double eq_lon = 0.0, eq_lat = 1.0;
+        subsolarLonLat(starFromBody(glm::dvec3(0.0), glm::dvec3(5.0e9, 0.0, 0.0), tipped),
+                       eq_lon, eq_lat);
+        CHECK_NEAR(eq_lat, 0.0, 1e-12,
+                   "with the star in the equatorial plane, the tilt moves no seasons");
+
+        /* Absences, which are the reason the log dashes instead of printing 0. */
+        CHECK_TRUE(!starFromBody(glm::dvec3(1.0e6, 0.0, 0.0),
+                                 glm::dvec3(1.0e6, 0.0, 0.0), ident).valid,
+                   "a body at the star has no direction to report");
+        CHECK_TRUE(!starFromBody(glm::dvec3(0.0),
+                                 glm::dvec3(kSunMinDistance_m * 0.5, 0.0, 0.0),
+                                 ident).valid,
+                   "the flux's distance floor is the direction's too");
+        CHECK_TRUE(!skyAtZenith(east, glm::dvec3(0.0)).valid,
+                   "no zenith: the caller dashes rather than reading overhead");
+        const SkyAtZenith edge = skyAtZenith(east, glm::dvec3(0.0, 1.0, 0.0));
+        CHECK_NEAR(edge.elev_rad, 0.0, 1e-12, "on the horizon reads zero, not NaN");
+        CHECK_TRUE(edge.valid && !edge.lit, "dusk is a reading");
+        CHECK_NEAR(edge.cos_inc, 0.0, 1e-12, "and a horizon collects nothing");
+    }
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
