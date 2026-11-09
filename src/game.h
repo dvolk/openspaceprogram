@@ -387,28 +387,26 @@ struct SurfmapState {
     int w = 0;
     int h = 0;
     std::string body_name;
-    // What the published buffers actually ARE, so switching map type re-bakes
-    // instead of showing the previous type's pixels under the new label (#745).
+    // What the published buffers actually ARE, so switching map type (or level, once a type
+    // offers more than one) re-bakes instead of showing the previous picture under the new
+    // label (#745). The window's cursor readout checks this pair too: while a re-bake is in
+    // flight the pixels on screen belong to the PREVIOUS body, and a number taken from the new
+    // body's authored fields would be neither picture's (#687).
     int baked_type = kMapGround;
-    /* The temperature layer's legend, published with the buffers it belongs to.
-       temp_ok=false means this world cannot be painted as a temperature at all,
-       and temp_note carries the reason -- the window shows it rather than
-       greying a box out, because "no data" and "no ground to have data about"
-       are different answers (#726's rule that an absent thing stays a state).
-       temp_lo_K / temp_hi_K are the model's OWN ends (the same two figures the
-       dossier prints), which is what the colour ramp spans; temp_min/max/mean_K
-       are what the sweep actually painted, logged so the two can be compared, and
-       temp_mean4_K is that sweep's mean taken in T^4 -- the quantity the model
-       conserves -- written back as a temperature, which is the number that must
-       land on temp_anchor_K. */
+    int baked_level = kLevelGround;
+    /* What the temperature layer published with these buffers, and NOTHING MORE than the two
+       readouts read: the cursor's kelvin needs the anchor, the knob and the star the picture
+       was baked under, and a refusal needs the three-word reason. The sweep's own statistics
+       (min/max/means, the ramp's ends) live in --surfmap-log, which is where they are checked;
+       copying them into state as well would be a second place for them to be wrong (#687). */
     bool temp_ok = false;
-    double temp_anchor_K = 0.0, temp_lo_K = 0.0, temp_hi_K = 0.0;
-    double temp_min_K = 0.0, temp_max_K = 0.0, temp_mean_K = 0.0, temp_mean4_K = 0.0;
+    double temp_anchor_K = 0.0;
     double temp_knob = kEvenShareUnauthored;
-    /* The star direction the published pixels were baked with. The cursor readout needs it:
-       the number beside a pixel has to be THAT pixel's number, so it is the bake's sun, not
-     the sim's sun now (the map is a snapshot and frames move underneath it -- #687's
-     "measured or recomputed, never both at different instants"). */
+    /* The star direction these pixels were baked with. The cursor readout needs it: the number
+       beside a pixel has to be THAT pixel's number, so it is the bake's sun, not the sim's sun
+       now -- the map is a snapshot and the frames move underneath it (#687: measured or
+       recomputed, never both at different instants). baked_sun_valid=false means there is no
+       terminator at all (the body IS the star, or the system has no sun). */
     glm::dvec3 baked_sun_dir = glm::dvec3(0.0);
     bool baked_sun_valid = false;
     /* Three words naming WHICH absence, for the cursor row (`ground - (no swing)`): the

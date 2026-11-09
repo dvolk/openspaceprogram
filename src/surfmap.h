@@ -94,8 +94,10 @@ inline int surfMapTypeFromName(const std::string &want) {
    rotation -- five hand-picked stops, dark blue at the cold end to dark red at the hot one,
    with the mid stops far enough apart that the ramp is still readable where the field is
    FLAT (a body with no swing paints one honest colour, not a gradient the eye invents).
-   Endpoints and monotonicity are pinned in tests/test_surfmap.cpp; the window prints the
-   two temperatures the ends stand for, because a ramp without its numbers is decoration. */
+   Endpoints and the "does not stall" property are pinned in tests/test_surfmap.cpp. The two
+   temperatures the ends stand for are NOT on this window -- a row there costs the map its own
+   aspect ratio -- they are --surfmap-log's temp_ends= and the atlas' `ground swing` row, and
+   what the window does print is the value at the point under the cursor. */
 inline void surfmapRamp(double t, unsigned char &r, unsigned char &g, unsigned char &b) {
     struct Stop { double t; unsigned char r, g, b; };
     static const Stop kStops[] = {
@@ -135,11 +137,11 @@ struct TempLayer {
     bool ok = false;
     double anchor_K = 0.0, knob = kEvenShareUnauthored;
     double lo_K = 0.0, hi_K = 0.0;      // the model's own night / day ends
-    /* What the window says next to the temperature row: the anchor's PROVENANCE when there
-       is a map ("the air's datum", "DERIVED from sunlight + albedo" -- #722's rule that a
-       computed figure announces itself), and the REASON there is not one when there isn't
-       ("no authored swing", "a banded giant"). One field because it is one job: it is the
-       sentence that goes where the picture is. */
+    /* The sentence for --surfmap-log: the anchor's PROVENANCE when the layer paints (printed
+       as anchor_src=, "the air's datum", "DERIVED from this sun and albedo" -- #722's rule that
+       a computed figure announces itself at the readout), and the REASON it does not when it
+       does not ("no authored swing", "a banded giant", "no sun"). `block` is the same decision
+       in three words, for the cursor line, which has room for a word and not a sentence. */
     std::string legend;
     /* The same refusal in THREE WORDS, for a readout that has no room for the sentence: the
      cursor row says `ground - (no swing)` rather than a bare dash, so #726's rule -- that the
@@ -148,7 +150,7 @@ struct TempLayer {
     std::string block;
 };
 
-inline TempLayer tempLayerFor(const Surface &s, double derived_bb) {
+inline TempLayer tempLayerFor(const Surface &s, double derived_bb, bool has_sun) {
     TempLayer tl;
     tl.knob = s.even_share;
     const double airT = airDatum_K(s.atmosphere);
@@ -159,7 +161,13 @@ inline TempLayer tempLayerFor(const Surface &s, double derived_bb) {
     // be data about" have to read apart (#726). The giant test matches the atlas' own
     // (gameui.cpp): the file gives a banded world air at levels and no ground at all, so a
     // ground temperature is not an absent reading, it is a question with no subject (#738).
-    if(s.bands) {
+    if(!has_sun) {
+        // Ahead of the others: with no star there is no lit side, so there is no cosine to put
+        // through the law at all -- the field is grey and the line says "no sun" rather than
+        // agreeing with the other absences (#726).
+        tl.legend = "no star in range to light this world";
+        tl.block = "no sun";
+    } else if(s.bands) {
         tl.legend = "a banded giant: the file gives this world air at levels, no ground";
         tl.block = "no ground";
     } else if(rung == kAnchorNone) {

@@ -708,8 +708,7 @@ void tick(Game &g) {
                 /* bb_T needs BOTH the albedo and a live star sample: printing 0.00 K
                    for "no sun in range" is exactly the 0-pretending-to-be-a-reading
                    this block refuses elsewhere. */
-                const double bb_here = (albedoAuthored(alb) && ss.valid)
-                                     ? blackbodyTemperature(ss.flux, alb) : 0.0;
+                const double bb_here = derivedBlackbody_K(ss.flux, alb);
                 if(bb_here > 0.0) {
                     snprintf(alb_s, sizeof alb_s, "%.3f", alb);
                     snprintf(bb_s, sizeof bb_s, "%.2f", bb_here);

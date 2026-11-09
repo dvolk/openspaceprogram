@@ -949,6 +949,16 @@ def parse_surfmap(out):
             "anchor": None if anchor is None else float(anchor),
             "note": note,
         })
+        # A temperature row that carries neither its numbers nor a reason is a MALFORMED row,
+        # not a ground row: the whole temp tail is optional in the regex (a ground row has no
+        # such tail at all), so a regression that mangles only those columns would otherwise
+        # turn every temperature row into a ground row and cases that do not assert
+        # `temp is not None` would read it as normal. Fail loudly instead (#727's law needs a
+        # harness that can tell an absence from a mangled reading).
+        if mtype == "temperature" and tmin is None and note is None:
+            raise ValueError(
+                "surfmap row claims map=temperature but carries neither temp= nor note=: "
+                + m.group(0))
     return rows
 
 
@@ -1270,13 +1280,29 @@ def parse_uilist(out):
     flow/watts rows are drawn through uiText."""
     rows = []
     t = None
+    declared, seen = None, 0
+
+    def close_dump():
+        # The dump header states how many items the registry held, and the printer draws a
+        # subset of those (unlabelled entries are skipped), so the counts are not equal and
+        # cannot be compared. They CAN say "the registry had items and I parsed none", which is
+        # what a rect-format change (a decimal sneaking in) would do -- every uilist CHECK in
+        # the suite would then be scanning an empty list and still pass. Loud beats empty.
+        if declared and declared > 0 and seen == 0:
+            raise ValueError(
+                f"uilist dump at t={t}s declared {declared} items and the parser read none"
+                " -- the dump format changed and every row is being dropped")
+
     for line in out.splitlines():
         m = UILIST_HEAD_RE.match(line)
         if m:
+            close_dump()
             t = float(m.group(1))
+            declared, seen = int(m.group(2)), 0
             continue
         m = UILIST_ITEM_RE.match(line)
         if m and t is not None:
+            seen += 1
             # The rect, as numbers: where a row sits is itself a fact worth pinning --
             # #745's chooser asks for two dropdowns ON THE SAME LINE as the buttons, and
             # "same line" means "same y", which is checkable and not adjectives.
@@ -1284,6 +1310,7 @@ def parse_uilist(out):
                          "rect": (int(m.group(3)), int(m.group(4)),
                                   int(m.group(5)), int(m.group(6))),
                          "text": " text" in m.group(7)})
+    close_dump()
     return rows
 
 

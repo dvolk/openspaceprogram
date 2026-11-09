@@ -132,6 +132,16 @@ static void mapLayers() {
         }
     }
     check(distinct, "the ramp does not stall: ten samples across it are ten colours");
+    /* ...and the ORDER of the middle matters, not just the ends: the ramp walks blue -> cyan ->
+       green -> yellow -> red. Swap the two mid stops and the ends and the distinctness both
+       still pass, while a mid-range field renders green-colder-than-blue. */
+    unsigned char c15r, c15g, c15b, c55r, c55g, c55b, c85r, c85g, c85b;
+    surfmapRamp(0.15, c15r, c15g, c15b);
+    surfmapRamp(0.55, c55r, c55g, c55b);
+    surfmapRamp(0.85, c85r, c85g, c85b);
+    check(c15b > c15r && c15b > c15g, "a quarter up the ramp is still blue");
+    check(c55g > c55r && c55g > c55b, "the middle of the ramp is green, not red or blue");
+    check(c85r > c85g && c85r > c85b, "three quarters up is red");
     unsigned char rm, gm, bm;
     surfmapRamp(0.5, rm, gm, bm);
     check(!(rm == r0 && gm == g0 && bm == b0) && !(rm == r1 && gm == g1 && bm == b1),
@@ -145,7 +155,7 @@ static void mapLayers() {
     Surface kerbin;
     kerbin.temperature = 288.15;
     kerbin.even_share = 0.9323;
-    TempLayer tk = tempLayerFor(kerbin, 0.0);
+    TempLayer tk = tempLayerFor(kerbin, 0.0, true);
     check(tk.ok, "a stated ground with an authored swing paints");
     check(groundAnchorRung(kerbin.temperature, 0.0, 0.0) == kAnchorStated,
           "and says its anchor was stated");
@@ -163,14 +173,14 @@ static void mapLayers() {
     Surface venus;
     venus.temperature = 737.0;
     venus.even_share = 1.0;
-    TempLayer tv = tempLayerFor(venus, 0.0);
+    TempLayer tv = tempLayerFor(venus, 0.0, true);
     check(tv.ok, "a stated swing of one still paints");
     check(near_d(tv.hi_K - tv.lo_K, 0.0, 1e-9), "a no-swing world's ramp span is zero");
 
     // Mercury/Moho: an anchor with nothing stated about night and day (#742's refusal).
     Surface moho;
     moho.temperature = 440.0;
-    TempLayer tm = tempLayerFor(moho, 0.0);
+    TempLayer tm = tempLayerFor(moho, 0.0, true);
     check(!tm.ok, "an unauthored swing does not paint");
     check(tm.legend.find("no authored swing") != std::string::npos,
           "and the reason names the missing swing, not a missing anchor");
@@ -181,14 +191,14 @@ static void mapLayers() {
     Surface mun;
     mun.bond_albedo = 0.11;
     mun.even_share = 0.0153;
-    TempLayer tn = tempLayerFor(mun, 208.0);
+    TempLayer tn = tempLayerFor(mun, 208.0, true);
     check(tn.ok, "a derived anchor still paints");
     check(tn.legend.find("DERIVED") != std::string::npos,
           "and its legend says DERIVED, not 'stated'");
 
     // Minmus: no reading of any kind. Not the same sentence as the two above.
     Surface minmus;
-    TempLayer tg = tempLayerFor(minmus, 0.0);
+    TempLayer tg = tempLayerFor(minmus, 0.0, true);
     check(!tg.ok, "a world with no readings does not paint");
     check(tg.legend.find("nothing anchors") != std::string::npos,
           "and the reason says there is no anchor -- not that a swing is missing");
@@ -200,7 +210,7 @@ static void mapLayers() {
     jool.temperature = 165.0;
     jool.even_share = 0.5;
     jool.bond_albedo = 0.34;
-    TempLayer tb = tempLayerFor(jool, 100.0);
+    TempLayer tb = tempLayerFor(jool, 100.0, true);
     check(!tb.ok, "a banded giant never paints as a ground");
     check(tb.legend.find("banded giant") != std::string::npos,
           "and the reason says it has no ground, not that a number is missing");
@@ -208,7 +218,7 @@ static void mapLayers() {
     // Duna: the air's datum anchors it (rung two -- how most of the shipped system is
     // anchored), and outranks the derived black-body handed to it.
     Surface duna = makeDuna();
-    TempLayer td = tempLayerFor(duna, 999.0);
+    TempLayer td = tempLayerFor(duna, 999.0, true);
     check(td.ok, "a world with air and a swing paints");
     check(near_d(td.anchor_K, 214.81, 1e-9),
           "the air's datum anchors it, and outranks the derived black-body");
@@ -220,12 +230,23 @@ static void mapLayers() {
        the word to the line, and they are the same decision -- so the words have to stay as
        distinct as the states they name (#726): a bare dash would fold "this world has no
        ground" and "nobody stated a night/day pair" back into one. */
-    check(tempLayerFor(jool, 0.0).block == "no ground", "a giant's cursor row says no ground");
-    check(tempLayerFor(moho, 0.0).block == "no swing", "a refused pair says no swing");
-    check(tempLayerFor(minmus, 0.0).block == "no anchor", "an unpriced world says no anchor");
+    check(tempLayerFor(jool, 0.0, true).block == "no ground", "a giant's cursor row says no ground");
+    check(tempLayerFor(moho, 0.0, true).block == "no swing", "a refused pair says no swing");
+    check(tempLayerFor(minmus, 0.0, true).block == "no anchor", "an unpriced world says no anchor");
     check(td.block.empty() && tk.block.empty(), "a world that DOES paint has no block word");
-    check(tempLayerFor(jool, 0.0).block != tempLayerFor(moho, 0.0).block,
+    check(tempLayerFor(jool, 0.0, true).block != tempLayerFor(moho, 0.0, true).block,
           "the two refusals do not read alike on the cursor line");
+
+    /* The fourth absence: no star. The whole field would be night, so the layer refuses rather
+       than painting a picture in which everything is the cold end -- which is exactly what a
+       naive "cos = 0 everywhere" fallback would do, and it would look like a frozen world. */
+    const TempLayer no_sun = tempLayerFor(makeDuna(), 0.0, /*has_sun=*/false);
+    check(!no_sun.ok, "a world with no star in range does not paint");
+    check(no_sun.block == "no sun", "and says no sun, which is not no swing");
+    check(no_sun.lo_K == 0.0 && no_sun.hi_K == 0.0, "a no-sun layer has no ramp ends");
+    // The star outranks the other reasons: Duna has an anchor and a swing and STILL refuses.
+    check(tempLayerFor(makeDuna(), 0.0, false).block == "no sun",
+          "no sun is said ahead of a world that would otherwise paint");
 }
 
 /* #745: the number the cursor row prints. This is the SAME call the sweep makes per pixel, and
@@ -235,7 +256,7 @@ static void mapLayers() {
    never both at different instants). */
 static void cursorTemperature() {
     const double anchor = 214.81, knob = 0.300;      // Duna
-    const TempLayer duna = tempLayerFor(makeDuna(), 0.0);
+    const TempLayer duna = tempLayerFor(makeDuna(), 0.0, true);
     const glm::dvec3 sun(1.0, 0.0, 0.0);
 
     // Under the star: the day end the atlas prints.

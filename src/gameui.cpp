@@ -1555,7 +1555,8 @@ void drawUIReadouts(Game &g) {
         // Not mid-sweep: the last one lands for the body it was posted for.
         if(g.surfmap.in_flight == 0 &&
            (!g.surfmap.valid || g.surfmap.body_name != sm_body->name
-            || g.surfmap.baked_type != g.surfmap.map_type)) {
+            || g.surfmap.baked_type != g.surfmap.map_type
+            || g.surfmap.baked_level != g.surfmap.level)) {
             surfmapCompute(g);
         }
 
@@ -1994,8 +1995,19 @@ void drawUIReadouts(Game &g) {
                -58 C and not as 215 K -- while every log row and atlas row for the same place
                stays kelvin, which is the unit the files and the laws speak. */
             char gt_s[48] = "";
+            /* The published picture belongs to ONE body and ONE map type. A body pick posts a
+               re-bake but keeps drawing the old pixels, and lat/lon/elev on this line come from
+               the body NOW on screen -- so quoting the authored anchor of the new body against
+               the old body's colours prints a number that belongs to neither, and prints it for
+               a world this very decision refused (seen live: switching Kerbin->Moho showed
+               Moho's elevation and Kerbin's +10.0 C for ~150 ms). While the two disagree, the
+               line dashes and says the picture is on its way (#687's two instants, #726's
+               absences kept apart). */
+            const bool sm_bake_here = g.surfmap.body_name == sm_body->name;
             if(g.surfmap.baked_type == kMapTemperature) {
-                if(g.surfmap.temp_ok && g.surfmap.baked_sun_valid) {
+                if(!sm_bake_here) {
+                    snprintf(gt_s, sizeof gt_s, "  ground - (rebaking)");
+                } else if(g.surfmap.temp_ok && g.surfmap.baked_sun_valid) {
                     snprintf(gt_s, sizeof gt_s, "  ground %+.1f C",
                              celsiusOf(surfmapGroundT(g.surfmap.temp_anchor_K,
                                                       g.surfmap.temp_knob,
@@ -6707,13 +6719,15 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             snprintf(v, sizeof v, "%.3f", b.surface.bond_albedo);
             line("bond albedo", v);
         } else { line("bond albedo", "-"); }
-        double bb = 0.0;
-        if(albedo && flux > 0.0) {
-            // The gloss spells out the convention the way the air rows spell "(sea
-            // level)": a global mean for an airless, evenly radiating sphere, NOT a
-            // forecast for this body's ground. "no air" is the honest word for why
-            // Earth's 255 K sits under its authored 288 K.
-            bb = blackbodyTemperature(flux, b.surface.bond_albedo);
+        /* derivedBlackbody_K answers 0.0 for "cannot be derived" (no authored albedo, no light
+           in range), so the sentinel never reaches blackbodyTemperature's assert and this row
+           has one dash to print rather than a guard of its own (#744's lesson: the guard is
+           part of the law). The gloss spells out the convention the way the air rows spell
+           "(sea level)": a global mean for an airless, evenly radiating sphere, NOT a forecast
+           for this body's ground -- "no air" is the honest word for why Earth's 255 K sits
+           under its authored 288 K. */
+        const double bb = derivedBlackbody_K(flux, b.surface.bond_albedo);
+        if(bb > 0.0) {
             snprintf(v, sizeof v, "%.1f K (global mean, no air)", bb);
             line("black-body temp", v);
         } else { line("black-body temp", "-"); }
@@ -6758,10 +6772,11 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
         const double anchor = groundAnchor_K(b.surface.temperature, airT, bb);
         if(anchor > 0.0 && evenShareAuthored(b.surface.even_share)) {
             const double f = b.surface.even_share;
-            const char *why = thermalAuthored(b.surface.temperature)
-                                  ? "stated ground temperature"
-                            : (airT > 0.0 ? "the air's datum"
-                                          : "DERIVED from this sun and albedo");
+            // Named by the rung that answered, in groundtemp.h's ONE spelling of the order:
+            // the surface map's log and this row must name the same anchor the same way, or the
+            // two dashboards stop being reconcilable (#636, #687).
+            const char *why = groundAnchorRungName(
+                groundAnchorRung(b.surface.temperature, airT, bb));
             /* Two rows rather than one long one: the dossier wraps, and a wrapped
                "... anchor 270.3 K," over an orphaned "DERIVED ...)" reads worse than a
                named second row. The END and the ANCHOR are also two different kinds of

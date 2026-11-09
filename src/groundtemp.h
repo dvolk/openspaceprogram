@@ -176,9 +176,9 @@ inline double groundAnchor_K(double stated_T, double air_base_T, double derived_
    computed figure announces itself at the readout, so it must not read like a measurement. */
 inline const char *groundAnchorRungName(GroundAnchorRung r) {
     switch(r) {
-        case kAnchorStated:   return "stated";
-        case kAnchorAirDatum:  return "the air's datum";
-        case kAnchorDerived:   return "DERIVED from sunlight + albedo";
+        case kAnchorStated:   return "stated ground temperature";
+        case kAnchorAirDatum: return "the air's datum";
+        case kAnchorDerived:  return "DERIVED from this sun and albedo";
         default:               return "no anchor";
     }
 }

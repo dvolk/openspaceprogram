@@ -206,6 +206,22 @@ int main() {
        tests/test_belts.cpp feeds a negative surface.temperature and an albedo of 1.2
        through load_system and requires both to throw. */
 
+    /* ---- the composed guard: derivedBlackbody_K (#745) ---------------------------
+       blackbodyTemperature asserts 0 <= albedo < 1, so an ABSENCE (kAlbedoUnauthored) must
+       never reach it. Three call sites used to remember that guard -- the atlas, the solar
+       log and the surface map -- which is exactly the shape where one of them forgets
+       (#744's lesson: compose the law so it answers the safe value). It answers 0.0, and the
+       caller dashes. Deleting the albedoAuthored test here aborts the test binary on the
+       assert, which is the same abort a player would get mapping Minmus as a temperature. */
+    CHECK_NEAR(derivedBlackbody_K(1361.0, kAlbedoUnauthored), 0.0, 0.0,
+               "an unauthored albedo derives no temperature");
+    CHECK_NEAR(derivedBlackbody_K(0.0, 0.3), 0.0, 0.0,
+               "no light in range derives no temperature either");
+    CHECK_NEAR(derivedBlackbody_K(1361.0, 0.294), 255.1, 2e-3,
+               "Kerbin's own light and albedo do, at the ~255 K #687 reported");
+    CHECK_TRUE(derivedBlackbody_K(1361.0, 0.0) > 0.0,
+               "a body that reflects nothing still derives a temperature (it is the hot case)");
+
     /* ---- one star direction, which four callers used to spell by hand (#724) ----
        insolation.h exists because the map's terminator (surfmap.cpp), the calendar's
        solar day (system.cpp), the clock's "Solar:" row (gameui.cpp) and the log's

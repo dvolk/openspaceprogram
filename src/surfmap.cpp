@@ -56,6 +56,18 @@ void surfmapCompute(Game &g) {
     const int type = g.surfmap.map_type;
     const bool ocean = (type == kMapGroundOcean);
     const bool want_temp = (type == kMapTemperature);
+
+    /* The terminator at the REQUEST instant (frames move with the sim), read BEFORE the
+       temperature layer: a world with no star to light it has no day side to price, and the
+       layer has to know that rather than paint a field from a direction that was never
+       measured (sun_dir starts at zero, so a stray vector could never reach the law).
+       has_sun = there IS a terminator to bake; baked = it is actually applied (the "Sun
+       shading" box). The overlay itself is always the true terminator and is baked for every
+       map type; `baked` only drives the log's shade on/off and the shaded means. */
+    glm::dvec3 sun_dir = glm::dvec3(0.0);
+    const bool has_sun = sunDirRot(body, sun, sun_dir);
+    const bool baked = g.surfmap.shade && has_sun;
+
     /* The third anchor rung needs LIGHT, and the map prices the body's ACTUAL rail -- the
        whole picture is one instant, and this is the same live sample --solar-log prices
        (solar.h). The atlas prices the mean orbit instead, so on an eccentric rail the two
@@ -63,21 +75,15 @@ void surfmapCompute(Game &g) {
        numbers on bodies whose anchor involves no light at all (an air datum, or a stated
        ground: Duna, Kerbin, Laythe). */
     double derived_bb = 0.0;
-    if(want_temp && sun != nullptr && body != sun && body->frame != nullptr
-       && sun->frame != nullptr) {
+    if(want_temp && has_sun) {
         const SunSample ss = sunSample(sun->star_luminosity, sun->frame->root_pos,
                                        body->frame->root_pos);
         derived_bb = derivedBlackbody_K(ss.flux, body->surface.bond_albedo);
     }
-    const TempLayer tl = want_temp ? tempLayerFor(body->surface, derived_bb) : TempLayer{};
-
-    // The terminator at the REQUEST instant (frames move with the sim).
-    // has_sun = there IS a terminator to bake; baked = it is actually applied
-    // (the "Sun shading" box is on). The overlay is always the true terminator;
-    // `baked` only drives the log's shade on/off + shaded means.
-    glm::dvec3 sun_dir;
-    const bool has_sun = sunDirRot(body, sun, sun_dir);
-    const bool baked = g.surfmap.shade && has_sun;
+    // has_sun goes in as an input, so the refusal is one decision in one place rather than a
+    // patch applied afterwards where a reader has to find both halves.
+    const TempLayer tl = want_temp ? tempLayerFor(body->surface, derived_bb, has_sun)
+                                   : TempLayer{};
 
     // Snapshot terrain params and hand the sweep to the worker. The worker
     // colours from THIS snapshot: surface.max_height is applied LATER by
@@ -211,10 +217,17 @@ void surfmapCompute(Game &g) {
                    baked ? "on" : "off", ocean ? "on" : "off", n_sites);
             if(want_temp) {
                 if(have_t) {
+                    /* anchor_src names which rung the anchor came from -- the same decision the
+                       cursor's provenance and the atlas' `ground anchor (...)` row report, so a
+                       log line can be compared against either without guessing. It matters most
+                       for the DERIVED rung: the map prices it on the body's LIVE rail and the
+                       atlas on its mean orbit, so on an eccentric world the two anchors differ
+                       by the rail's own spread, and the row says which one it printed (#687). */
                     printf(" temp=[%.2f %.2f %.2f] temp_ends=[%.2f %.2f] "
-                           "temp_mean4=%.2f anchor=%.2f",
+                           "temp_mean4=%.2f anchor=%.2f anchor_src=\"%s\"",
                            tmin, tsum / tw, tmax, tl.lo_K, tl.hi_K,
-                           std::pow(t4sum / tw, 0.25), tl.anchor_K);
+                           std::pow(t4sum / tw, 0.25), tl.anchor_K,
+                           tl.legend.c_str());
                 } else {
                     printf(" temp=- note=\"%s\"", tl.legend.c_str());
                 }
@@ -229,10 +242,8 @@ void surfmapCompute(Game &g) {
             std::make_shared<std::vector<unsigned char> >(std::move(px));
         std::shared_ptr<std::vector<unsigned char> > pshpx =
             std::make_shared<std::vector<unsigned char> >(std::move(shpx));
-        return [&g, ppx, pshpx, w, h, body_name, type, want_temp, tl, sun_dir, has_sun,
+        return [&g, ppx, pshpx, w, h, body_name, type, level, want_temp, tl, sun_dir, has_sun,
                 have_t = (want_temp && tl.ok),
-                tminv = tmin, tmaxv = tmax,
-                tmeanv = tsum / tw, tmean4v = std::pow(t4sum / tw, 0.25),
                 epoch]() {
             // Epoch bumped after we posted: this map is for the old world.
             // Drop it -- quit-to-title, a new game and a same-system load never
@@ -246,23 +257,24 @@ void surfmapCompute(Game &g) {
             g.surfmap.w = w;
             g.surfmap.h = h;
             g.surfmap.body_name = body_name;
+            // What these buffers ARE, as one pair: the window re-bakes when either disagrees
+            // with what the player asked for, and its cursor readout refuses to quote authored
+            // numbers of the body on screen while the picture still belongs to another (#745).
             g.surfmap.baked_type = type;
-            // What the published buffers are, so the window can label them and show the
-            // legend -- or show the reason this world cannot be painted.
-            g.surfmap.temp_knob = tl.knob;
+            g.surfmap.baked_level = level;
             // The star this picture was baked under, so the cursor's number is the picture's
             // number rather than a fresh sample of a sun that has since moved.
             g.surfmap.baked_sun_dir = sun_dir;
             g.surfmap.baked_sun_valid = has_sun;
+            /* Only what the cursor readout reads, and only when there IS a temperature to
+               read: leaving a plausible anchor (Moho's 440 K) published beside temp_ok=false is
+               how a later readout ends up quoting a number this decision refused (#726). The
+               sweep's own statistics are not published at all -- --surfmap-log carries them,
+               which keeps one copy (#687). */
             g.surfmap.temp_ok = have_t;
+            g.surfmap.temp_anchor_K = have_t ? tl.anchor_K : 0.0;
+            g.surfmap.temp_knob = have_t ? tl.knob : kEvenShareUnauthored;
             g.surfmap.temp_block = want_temp ? tl.block : std::string();
-            g.surfmap.temp_anchor_K = tl.anchor_K;
-            g.surfmap.temp_lo_K = tl.lo_K;
-            g.surfmap.temp_hi_K = tl.hi_K;
-            g.surfmap.temp_min_K = have_t ? tminv : 0.0;
-            g.surfmap.temp_max_K = have_t ? tmaxv : 0.0;
-            g.surfmap.temp_mean_K = have_t ? tmeanv : 0.0;
-            g.surfmap.temp_mean4_K = have_t ? tmean4v : 0.0;
             g.surfmap.valid = true;
             g.surfmap.rev++;
             if(g.surfmap.in_flight > 0) { g.surfmap.in_flight--; }

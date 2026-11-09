@@ -18,6 +18,7 @@ ARGS --ui-click 5200,"Surface Map/Map"
 ARGS --ui-click 5900,"##Combo_00/ground+ocean"
 ARGS --ui-click 8200,"Surface Map/Map"
 ARGS --ui-click 8900,"##Combo_00/temperature"
+ARGS --sim-mouse 9000,0,900,560,0
 ARGS --ui-list 9600
 CHECK len(surfmap) >= 4
 # Every row names its own picture and its level, so a stale buffer can never be read as a new
@@ -56,5 +57,21 @@ CHECK (lambda row, nav: row["rect"][2] <= nav["rect"][2])([r for r in uilist if 
 # kelvin live on the cursor line instead, and the anchor's provenance is the atlas' row.
 CHECK len([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("ground:")]) == 0
 CHECK len([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")]) == 1
+# THE NUMBER UNDER THE CURSOR belongs to the picture under the cursor: it must sit inside the
+# range that sweep actually painted (converted from the log's kelvin columns), so a readout
+# wired to the wrong anchor, the wrong knob, or the sim's live sun rather than the bake's sun
+# has to break out of it eventually -- and a readout printing 0 or a blank breaks at once. This
+# is the join between the cursor row and the sweep, and it is the only place the map's headline
+# readout is checked at all.
+CHECK (lambda row, lo, hi: "ground " in row["label"] and lo - 273.15 - 0.05 <= float(re.search(r"ground ([-+]?[\d.]+) C", row["label"]).group(1)) <= hi - 273.15 + 0.05)([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")][0], surfmap[-1]["temp"][0], surfmap[-1]["temp"][2])
+# What is NOT pinned: the instant between a pick and its bake landing. A bake completes ~100 ms
+# after it is posted even at --surfmap-n 1024, so no dump can be placed inside that window
+# reliably. It matters: while it is open the pixels on screen belong to the PREVIOUS body while
+# the cursor's lat/lon/elev belong to the one just picked, and an adversarial pass put a Kerbin
+# temperature on Moho's ground there. The window's body/type gate fixes it (gameui.cpp); the
+# steady ends are pinned above and the crossing is not.
+# The two choosers are sized to their content, and the type names are longer than the level
+# names: Map wider than Level is what "sized, not equal-boxed" means here.
+CHECK (lambda m, l: m["rect"][2] - m["rect"][0] > l["rect"][2] - l["rect"][0])([r for r in uilist if r["window"] == "Surface Map" and r["label"] == "Map"][0], [r for r in uilist if r["window"] == "Surface Map" and r["label"] == "Level"][0])
 FORBID error:
 FORBID FAILED
