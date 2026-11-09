@@ -2031,6 +2031,15 @@ def _comparable(doc):
 
 
 def emit(base_bodies, moons, pred, out_path, label, sheets, dry=False):
+    # #724 rung D: NO body in this file may author an air-follow knob. The value is invented
+    # (no source says how far an air follows its ground), and this file's standing is that its
+    # numbers come from the fact sheets -- utils/gen_systems.py:KSP_AIR_FOLLOW is where that
+    # kind of number goes. The assert keeps the argument from rotting into an accident.
+    for b in base_bodies:
+        at = (b.get('surface') or {}).get('atmosphere')
+        assert not at or 'air_follow' not in at, (
+            "%s: solar_system.json must not author air_follow (an invented number in the "
+            "corpus file)" % b['name'])
     bodies = list(base_bodies)
     by = {b['name']: b for b in bodies}
     home = by['Earth']

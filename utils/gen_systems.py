@@ -932,11 +932,12 @@ def solar_reference_even_shares():
     path = os.path.join(ROOT, "res", "systems", "solar_system.json")
     with open(path) as f:
         obj = _json.load(f)
+    # EVERY body is a key, with None for the ones the corpus refused. A dict of only the
+    # priced bodies would make a mistyped analogue name indistinguishable from a refusal --
+    # and this table's whole claim is that refusals are visible (#742).
     out = {}
     for b in obj["bodies"]:
-        f_sh = (b.get("surface") or {}).get("even_share")
-        if f_sh is not None:
-            out[b["name"]] = f_sh
+        out[b["name"]] = (b.get("surface") or {}).get("even_share")
     return out
 
 
@@ -1293,7 +1294,10 @@ def author_ksp_diurnal_analogy(obj):
                   % name)
             continue
         analogue, override = spec
-        f = override if override is not None else ref.get(analogue)
+        assert analogue in ref, (
+            "KSP_DIURNAL borrows from %r, which solar_system.json has no body named -- a "
+            "typo here would otherwise read as that body's refusal" % analogue)
+        f = override if override is not None else ref[analogue]
         if f is None:
             print('  diurnal   %-8s dash  (%s states no swing either -- the analogue refused, '
                   'so neither does this)' % (name, analogue))

@@ -113,9 +113,26 @@ inline double followAirTemperature(double profile_T, double ground_T, double k, 
    0.0 for "no air here" (including above the profile's top) so the caller can pass whatever
    drag.h:airPressure answers and get "no coupling" out of a vacuum for free. */
 inline double followWeight(double p_at, double p_sea_level) {
-    if(!(p_sea_level > 0.0)) { return 0.0; }
+    if(!(p_sea_level > 0.0) || !(p_at >= 0.0)) { return 0.0; }   // fail closed, drag.h's doctrine
     const double w = p_at / p_sea_level;
     return w < 0.0 ? 0.0 : (w > 1.0 ? 1.0 : w);
+}
+
+/* [K] The air at one hull, composed: the profile moved toward the ground under the hull.
+   This is the entry point callers should use, because every "nothing to couple" case answers
+   the PROFILE rather than asserting: no knob, no weight (vacuum, or above the top), no
+   authored swing, no anchor -- and a ground that answers 0.0, which is not a bug but the bare
+   rock's own night end (even_share 0 at midnight, pinned in tests/test_groundtemp.cpp). That
+   last one is the reason the composition lives here instead of at the call site: a
+   loader-legal pair of knobs (even_share 0.0 and air_follow 0.5) would otherwise hand
+   followAirTemperature's assert a 0 K ground and abort the game over night. */
+inline double coupledAirTemperature(double profile_T, double anchor_K, double even_share,
+                                    double follow, double w, double cos_inc) {
+    if(!(profile_T > 0.0) || !followActive(follow) || !(w > 0.0)
+       || !evenShareAuthored(even_share) || !(anchor_K > 0.0)) { return profile_T; }
+    const double ground_T = groundTemperature(anchor_K, even_share, cos_inc);
+    if(!(ground_T > 0.0)) { return profile_T; }
+    return followAirTemperature(profile_T, ground_T, follow, w);
 }
 
 /* [K] Which temperature this body's ground swings around, in the corpus's own order of

@@ -59,3 +59,8 @@ inline bool evenShareAuthored(double f) { return f >= 0.0; }
    follow, and that is a fact about this air"), so the sentinel is the negative again. */
 inline constexpr double kFollowUnauthored = -1.0;
 inline bool followAuthored(double k) { return k >= 0.0; }
+/* A caller that wants to know whether ANY work follows should ask this rather than spelling
+   `followAuthored(k) && k > 0.0`: the sentinel and a stated 0.0 both mean "nothing to
+   compute", and the pair is one fact (#636). The readout asks the OTHER question -- whether
+   the file stated a position at all -- and dashes on !followAuthored. */
+inline bool followActive(double k) { return k > 0.0; }

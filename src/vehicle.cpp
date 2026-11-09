@@ -3057,6 +3057,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
        sound speed is 340 m/s at the datum and 295 m/s at 11 km, and the Mach number
        this feeds is the one the flight model divides by (#543). */
     lastAirT = airTemperature(da, alt);
+    lastAirProfileT = lastAirT;   // the profile BEFORE any ground coupling, for the readout
     lastAirP = airPressure(da, alt);
     lastAirA = airSoundSpeed(da, alt);
     /* #724 rung D: the air nearest the ground follows the ground it stands on. Only where
@@ -3068,10 +3069,15 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
        datum of the air), never this function's own output. That is the loop #724's review
        flagged: an air warmed by a ground whose anchor is that air's own temperature would
        define its temperature in terms of itself. */
-    if(followAuthored(atm.air_follow) && atm.air_follow > 0.0 && star != nullptr
+    if(followActive(atm.air_follow) && star != nullptr
        && star->frame != nullptr && m_parent->frame != nullptr
        && m_parent->rot_frame != nullptr && lastAirT > 0.0
        && evenShareAuthored(m_parent->surface.even_share)) {
+        /* The cosine is only meaningful if the hull's axes are one of the two frames the
+           body's own geometry is expressed in. True today (m_parent is set wherever the
+           frame is), and worth an assert rather than a comment: a hull parented to one body
+           while riding another's frame would compute a sun over the wrong ground. */
+        assert(frame == m_parent->frame || frame == m_parent->rot_frame);
         /* Frames, the #97 pair. starFromBody() answers in the body's SPINNING axes (that is
            the frame a subsolar point lives in); `com` is in this hull's axes. The same map
            airRelativeVel uses for the co-rotation and the wind moves one into the other, and
@@ -3087,11 +3093,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         const double anchor = groundAnchor_K(m_parent->surface.temperature,
                                              airDatum_K(atm), 0.0);
         const double w = followWeight(lastAirP, atm.sea_level_pressure);
-        if(sky.valid && anchor > 0.0 && w > 0.0) {
-            const double ground_T = groundTemperature(
-                anchor, m_parent->surface.even_share, sky.cos_inc);
-            lastAirT = followAirTemperature(lastAirT, ground_T,
-                                            atm.air_follow, w);
+        const double coupled = coupledAirTemperature(
+            lastAirT, anchor, m_parent->surface.even_share,
+            atm.air_follow, w, sky.valid ? sky.cos_inc : 0.0);
+        if(coupled != lastAirT) {
+            lastAirT = coupled;
             /* The Mach number this pass divides by comes from the SAME temperature the
                readout now prints (drag.h:soundSpeedFromT), or the two rows of one log would
                be describing two different airs (#687). */

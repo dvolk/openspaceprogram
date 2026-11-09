@@ -4,36 +4,40 @@ KIND invariant
 ARGS --system res/systems/ksp_system.json --timeout 5 --solar-log --startship v,res/ships/skiff.json,Kerbin,flying-cruise
 # #724 rung D. Kerbin is one of the two worlds utils/gen_systems.py prices a coupling for
 # (KSP_AIR_FOLLOW; the value 0.350 is INVENTED -- no source states how far an air follows its
-# ground -- and the generator prints that word rather than dressing it in an analogy). The
-# row's four temperature columns are one law and not four readings:
+# ground -- and the generator prints that word rather than dressing it in an analogy). Four of
+# this row's columns are one law, not four readings:
 #
 #   air_T = prof_T + follow * w * (underfoot_T - prof_T)
 #
-# air_T is MEASURED at the hull (src/tick.cpp prints the aero pass's own lastAirT, the number
-# the Mach number divides by -- a recomputed second authority over one fact is #687's
-# complaint). prof_T is what the authored profile says at this altitude, underfoot_T is rung
-# C's ground, and w is the air's own pressure fraction p(alt)/p(0): the air follows the ground
-# WHERE THE AIR IS THICK, which is one fewer invented number than naming a boundary-layer
-# depth. A cruise bed at ~8.5 km is where this is worth pinning, because w = 0.33 there and a
-# coupling that ignored the column is measurably wrong; on a pad w = 0.97 and it would not be.
+# air_T, prof_T and w are all MEASURED at the hull -- src/tick.cpp prints the aero pass's own
+# lastAirT, lastAirProfileT and lastAirP, the same numbers its Mach number divides by -- so the
+# residual below is print rounding and nothing else (measured worst case 0.004 K with the
+# columns at 0.01 K and w at 4 dp). A recomputed prof_T would have been a second authority at a
+# later instant than the flight model used, which is how #687 gets broken quietly.
+#
+# A cruise bed at ~8.5 km is where this is worth pinning: w = 0.33 there, so a coupling that
+# ignored the column is measurably wrong. On a pad w = 0.97 and the two are nearly identical --
+# which is why the bed in ARGS is not a pad.
 #
 # 1. THE COUPLING IS LIVE AND POINTS THE RIGHT WAY. The ground at this local time is warmer
 #    than the profile, and the air sits between the two -- not at either end.
-CHECK all(d["air_T"] is not None and d["prof_T"] is not None for d in solar)
+CHECK all(d["air_T"] is not None and d["prof_T"] is not None and d["w"] is not None for d in solar)
 CHECK all(d["prof_T"] < d["air_T"] < d["underfoot_T"] for d in solar if d["underfoot_T"] > d["prof_T"])
 CHECK all(d["air_T"] - d["prof_T"] > 1.0 for d in solar)
-# 2. THE IDENTITY, closed on the row's own columns. 0.350 is the authored knob, so this check
-#    is what says the mechanism is the file's and not the model's opinion. Band 0.05 K: the
-#    hull's COM and the log's root position differ by tens of metres, which moves prof_T and w
-#    a little, and the columns print to 0.01 K.
-CHECK all(abs(d["air_T"] - (d["prof_T"] + 0.350 * d["w"] * (d["underfoot_T"] - d["prof_T"]))) < 0.05 for d in solar)
-# 3. THE COLUMN DECIDES THE WEIGHT. 8.5 km up, a third of the sea-level air is overhead, so a
-#    third of the coupling applies. Ignoring w -- coupling at full strength anywhere in the
-#    air -- reads 0.350 here and reddens check 2; a coupling that stopped at the datum would
-#    read w = 1 at a pad and reddens here.
+# 2. THE IDENTITY, closed on the row's own columns -- including `follow`, which the log prints
+#    rather than this file retyping. A hardcoded 0.350 here would be a third spelling of a
+#    number ground_model.py and ksp_system.json already state (#636).
+CHECK all(abs(d["air_T"] - (d["prof_T"] + d["follow"] * d["w"] * (d["underfoot_T"] - d["prof_T"]))) < 0.01 for d in solar)
+# 3. ...AND THE KNOB IS THE FILE'S, not the model's opinion: 0.350 is what gen_systems writes.
+#    Moving it in the generator reddens THIS line and asks for a reason.
+CHECK all(d["follow"] is not None and abs(d["follow"] - 0.350) < 1e-9 for d in solar)
+# 4. THE COLUMN DECIDES THE WEIGHT. 8.5 km up, a third of the sea-level air is overhead, so a
+#    third of the coupling applies. Ignoring w -- coupling at full strength anywhere in the air
+#    -- reddens check 2 while printing an unchanged w; a coupling that stopped at the datum
+#    would answer 0.35 at a pad and reddens here.
 CHECK all(0.20 < d["w"] < 0.45 for d in solar)
-CHECK all(d["air_T"] - d["prof_T"] < 0.350 * (d["underfoot_T"] - d["prof_T"]) + 0.05 for d in solar)
-# 4. THE GROUND UNDER THE HULL STILL ANSWERS TO ITS OWN KNOB, unchanged by the air under it.
+CHECK all(d["air_T"] - d["prof_T"] < d["follow"] * (d["underfoot_T"] - d["prof_T"]) + 0.01 for d in solar)
+# 5. THE GROUND UNDER THE HULL STILL ANSWERS TO ITS OWN KNOB, unchanged by the air under it.
 #    Its anchor is an AUTHORED reading (Kerbin states 288.15 K), never this coupling's output:
 #    an air warmed by a ground whose anchor is that air's own datum would define its
 #    temperature in terms of itself -- the loop #724's review flagged, and the reason rung D
@@ -42,3 +46,4 @@ CHECK all(abs(d["ground_T"] - 288.15) < 0.01 for d in solar)
 CHECK all(abs((d["underfoot_T"] / 288.15) ** 4 - (0.9323 + (1.0 - 0.9323) * 4.0 * max(0.0, d["flat"] / d["flux"]))) < 0.02 for d in solar if d["flux"])
 FORBID air_T=-
 FORBID prof_T=-
+FORBID follow=-

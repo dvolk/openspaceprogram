@@ -51,6 +51,11 @@ CHECK all(d["underfoot_T"] is not None and 736.0 < d["underfoot_T"] < 738.0 for 
 CHECK all(d["air_T"] is not None for d in solar)
 CHECK all(640.0 < d["air_T"] < 650.0 for d in solar)
 CHECK all(d["air_T"] < d["underfoot_T"] - 50.0 for d in solar)
+# The strongest form of "no coupling": the air at the hull IS the profile's answer, to the
+# last printed digit. prof_T is the profile before any ground blending (vehicle.cpp), so on a
+# body with no follow knob the two columns are the same number.
+CHECK all(d["prof_T"] is not None and abs(d["air_T"] - d["prof_T"]) < 1e-9 for d in solar)
+CHECK all(d["follow"] is None for d in solar)
 # Absent prints a dash; a 0 here would be the #726 failure mode.
 FORBID albedo=-
 FORBID ground_T=-

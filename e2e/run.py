@@ -192,7 +192,7 @@ SOLAR_RE = re.compile(
     # #724 rung D: the profile's own temperature at this altitude and the weight the column
     # supplies, so the row closes as arithmetic (air_T = prof_T + follow * w * (underfoot_T -
     # prof_T)) instead of being admired. Both dash with the air they describe.
-    r"\s+prof_T=([-\d.]+|-) K\s+w=([-\d.]+|-)"
+    r"\s+prof_T=([-\d.]+|-) K\s+w=([-\d.]+|-)\s+follow=([-\d.]+|-)"
 )
 # --slew-log (vehicle.cpp slew_log): the attitude target the autopilot steers
 # toward, in the ship's own frame. Pairs with --plane-log's n_orb: a prograde
@@ -938,7 +938,7 @@ def parse_solar(out):
     rows = []
     for m in SOLAR_RE.finditer(out):
         (t, star, dist, flux, elev, flat, body, albedo, ground_t, bb_t,
-         underfoot_t, swing, air_t, prof_t, wgt) = m.groups()
+         underfoot_t, swing, air_t, prof_t, wgt, follow) = m.groups()
         num = lambda s: None if s == "-" else float(s)
         rows.append({
             "t": float(t), "star": star, "body": body,
@@ -948,6 +948,7 @@ def parse_solar(out):
             "underfoot_T": num(underfoot_t), "swing": num(swing),
             # MEASURED at the hull (vehicle.cpp's lastAirT), not recomputed for the log.
             "air_T": num(air_t), "prof_T": num(prof_t), "w": num(wgt),
+            "follow": num(follow),
         })
     return rows
 

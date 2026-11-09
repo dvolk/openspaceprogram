@@ -290,13 +290,6 @@ inline double airPressure(const DragAtmosphere &a, double alt) {
     return airDensity(a, alt) * a.gravity * a.scale_height;
 }
 
-/* [m/s] -- the speed the Mach number is a ratio to, at `alt` (#543 divides by this,
-   which is why it is asked for at the altitude it applies to and not once per body).
-   An isothermal body's value is CONSTANT with altitude -- that is what isothermal
-   means -- and a layer table is what makes it vary: on Earth it falls from 340.5 m/s
-   at the datum to 295.1 m/s at 11 km, so the same 300 m/s airspeed is Mach 0.88 at
-   sea level and Mach 1.02 up there. Above `height` it is 0 on either profile: there is
-   no air left to carry sound, so a Mach number up there has nothing to be a ratio to. */
 /* [m/s] a * sqrt(gamma Rs T): the same law, keyed on the TEMPERATURE rather than on an
    altitude. Two consumers need to share it -- the profile's own sound speed above, and a
    hull whose air has been warmed or cooled by the ground under it (#724 rung D) -- and a
@@ -309,6 +302,13 @@ inline double soundSpeedFromT(const DragAtmosphere &a, double T) {
     return std::sqrt(a.gamma * (kGasR / a.molar_mass) * T);
 }
 
+/* [m/s] -- the speed the Mach number is a ratio to, at `alt` (#543 divides by this,
+   which is why it is asked for at the altitude it applies to and not once per body).
+   An isothermal body's value is CONSTANT with altitude -- that is what isothermal
+   means -- and a layer table is what makes it vary: on Earth it falls from 340.5 m/s
+   at the datum to 295.1 m/s at 11 km, so the same 300 m/s airspeed is Mach 0.88 at
+   sea level and Mach 1.02 up there. Above `height` it is 0 on either profile: there is
+   no air left to carry sound, so a Mach number up there has nothing to be a ratio to. */
 inline double airSoundSpeed(const DragAtmosphere &a, double alt) {
     if(!(a.sea_level_density > 0.0) || !(a.gravity > 0.0)) { return 0.0; }
     assert(a.gamma >= 1.0);  // system.cpp refuses an authored gamma below 1
@@ -321,7 +321,7 @@ inline double airSoundSpeed(const DragAtmosphere &a, double alt) {
        sqrt(gamma Rs T) IS sqrt(gamma g H) -- the trio lock atmo.h spells. Spelled that
        way here too, so a coupled temperature and the Mach number that divides by it can
        never come from two different laws (#687). */
-    return sqrt(a.gamma * a.gravity * a.scale_height);
+    return std::sqrt(a.gamma * a.gravity * a.scale_height);
 }
 
 

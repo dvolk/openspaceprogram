@@ -1358,7 +1358,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         } else {
             std::snprintf(air, sizeof air, "          - ");
         }
-        if(groundT > 0.0 && airT > 0.0) {
+        if(thermalAuthored(groundT) && airT > 0.0) {
             const double dT = groundT - airT;
             if(std::fabs(dT) < 0.5) {
                 std::snprintf(note, sizeof note,

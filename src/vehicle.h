@@ -652,6 +652,10 @@ public:
        a railed ship), so these four and the pair above hold their last pre-rails
        values while --drag-log keeps printing its 1 s rows (#627). */
     double lastAirT = 0.0;
+    /* The profile's own temperature at the hull BEFORE any ground coupling (#724 D), so
+       --solar-log prints measured numbers for both sides of the blend instead of
+       recomputing one of them. */
+    double lastAirProfileT = 0.0;
     double lastAirP = 0.0;
     double lastAirA = 0.0;
     double lastAirV = 0.0;

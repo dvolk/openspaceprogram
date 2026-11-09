@@ -235,7 +235,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "flux on a horizontal plate there, and the body underneath's "
                  "authored Bond albedo and surface temperature beside the "
                  "black-body temperature the flux and albedo imply (#687). "
-                 "Read-out only: nothing in the physics consumes it yet. "
+                 "#724 adds the field: the ground UNDER the hull at this instant "
+                 "(underfoot_T) and the knob that prices its swing (swing), then "
+                 "the air at the hull as the flight model uses it (air_T), the "
+                 "profile it started from (prof_T), the weight the column supplies "
+                 "(w) and the authored coupling (follow) -- those four are the "
+                 "aero pass's own measured numbers, so the row closes as "
+                 "air_T = prof_T + follow*w*(underfoot_T - prof_T). Columns dash "
+                 "for what a world does not state, and for a hull on rails, which "
+                 "feels no air. "
                  "Top-of-atmosphere -- no air dims the sun anywhere in the game.");
 
     app.add_option("--timeout", args.timeout_seconds,

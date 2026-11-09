@@ -680,7 +680,16 @@ void tick(Game &g) {
                    so those columns DASH (the load-time audit prints it as a star and
                    means it there). Same answer as a hull over an unsourced moon. */
                 const TerrainBody *over = g.ship->m_parent;
-                const bool ground_here = over && !over->isStar();
+                /* #738's other half, in two tiers. The dossier stopped calling a banded
+                   giant's authored figure a ground ("temp at 1 bar", "level swing"); this log
+                   had kept printing `ground_T=` for Jupiter, one fact and two verdicts
+                   (#687). A column that renames itself per row would break every parser, so
+                   the giant's GROUND columns dash here -- there is no surface for a hull to
+                   stand on -- while its light columns stay: a Bond albedo and an airless mean
+                   at Jupiter's rail are as meaningful for a giant as for a rock, and the
+                   dossier prints both for it. */
+                const bool world_here = over && !over->isStar();
+                const bool ground_here = world_here && !over->surface.bands;
                 /* The no-ground branch takes the SENTINEL, not 0.0 (#726). The dash
                    this prints looks the same either way -- and that is the point: the
                    READOUT has two absences to draw, but the STATE no longer merges
@@ -691,8 +700,8 @@ void tick(Game &g) {
                    This guard is also what keeps the sentinel out of
                    blackbodyTemperature, which asserts albedo >= 0: a computation must
                    never see an absence. */
-                const double alb = ground_here ? over->surface.bond_albedo
-                                               : kAlbedoUnauthored;
+                const double alb = world_here ? over->surface.bond_albedo
+                                              : kAlbedoUnauthored;
                 const double groundT = ground_here ? over->surface.temperature
                                                 : kThermalUnauthored;
                 char alb_s[24], gt_s[24], bb_s[24], surf_s[24], swing_s[24];
@@ -708,7 +717,7 @@ void tick(Game &g) {
                     snprintf(alb_s, sizeof alb_s, "-");
                     snprintf(bb_s, sizeof bb_s, "-");
                 }
-                if(groundT > 0.0) {
+                if(thermalAuthored(groundT)) {
                     snprintf(gt_s, sizeof gt_s, "%.2f", groundT);
                 } else {
                     snprintf(gt_s, sizeof gt_s, "-");
@@ -743,49 +752,50 @@ void tick(Game &g) {
                 } else {
                     snprintf(swing_s, sizeof swing_s, "-");
                 }
-                /* air_T is MEASURED, not recomputed here: it is the hull's own
-                   lastAirT, the number the aero pass divides its Mach number by
-                   (vehicle.cpp). A second computation of "the air under this hull" in
-                   this log would be a second authority over one fact, and the two would
-                   drift (#687). A hull in vacuum has no air temperature, and dashes. */
-                char air_s[24];
-                if(g.ship->lastAirT > 0.0) {
+                /* air_T / prof_T / w / follow are MEASURED, not recomputed here: they are
+                   the aero pass's own lastAirT, lastAirProfileT and lastAirP, the same
+                   numbers its Mach number divides by (vehicle.cpp). Recomputing any of them
+                   for the log would be a second authority over one fact, taken at a later
+                   instant than the flight model used, and the two would drift (#687) -- and
+                   `follow` is printed rather than assumed by the test, so the row's knob is
+                   not a third spelling of a constant the file already states.
+                   A RAILS hull skips applyAeroForce entirely (tick.cpp's substep loop), so
+                   its lastAir* are whatever the last live substep left: printing them would
+                   be a frozen noon measurement wearing a live timestamp, and the row would
+                   contradict its own recomputed underfoot column. Rails dashes. A hull in
+                   vacuum dashes too -- applyAeroForce zeroes these at entry. */
+                char air_s[24], prof_s[24], w_s[24], follow_s[24];
+                const bool measured = !g.ship->onRails;
+                if(measured && g.ship->lastAirT > 0.0) {
                     snprintf(air_s, sizeof air_s, "%.2f", g.ship->lastAirT);
+                    snprintf(prof_s, sizeof prof_s, "%.2f", g.ship->lastAirProfileT);
+                    snprintf(w_s, sizeof w_s, "%.4f",
+                             followWeight(g.ship->lastAirP,
+                                          over ? over->surface.atmosphere.sea_level_pressure
+                                               : 0.0));
                 } else {
                     snprintf(air_s, sizeof air_s, "-");
+                    snprintf(prof_s, sizeof prof_s, "-");
+                    snprintf(w_s, sizeof w_s, "-");
                 }
-                /* prof_T and w are the OTHER half of the coupling (#724 rung D), so the
-                   row can be closed as arithmetic instead of admired: prof_T is what the
-                   authored profile says at this altitude (drag.h:airTemperature, the SAME
-                   law the aero pass calls -- not a second one), and w is the weight the
-                   column itself supplies, p(alt)/p(0). air_T above is measured at the hull,
-                   so `air_T = prof_T + follow * w * (underfoot_T - prof_T)` has to hold to
-                   print rounding, with `follow` the number the file authored. */
-                char prof_s[24], w_s[24];
-                double prof_T = 0.0, wgt = 0.0;
-                if(ground_here && over->frame) {
-                    const double alt = glm::length(p - over->frame->root_pos)
-                                     - over->seaLevelRadius();
-                    const DragAtmosphere da = dragAtm(over->surface.atmosphere, *over);
-                    prof_T = airTemperature(da, alt);
-                    wgt = followWeight(airPressure(da, alt),
-                                       over->surface.atmosphere.sea_level_pressure);
+                if(measured && over
+                   && followAuthored(over->surface.atmosphere.air_follow)) {
+                    snprintf(follow_s, sizeof follow_s, "%.3f",
+                             over->surface.atmosphere.air_follow);
+                } else {
+                    snprintf(follow_s, sizeof follow_s, "-");
                 }
-                if(prof_T > 0.0) { snprintf(prof_s, sizeof prof_s, "%.2f", prof_T); }
-                else { snprintf(prof_s, sizeof prof_s, "-"); }
-                if(prof_T > 0.0) { snprintf(w_s, sizeof w_s, "%.4f", wgt); }
-                else { snprintf(w_s, sizeof w_s, "-"); }
                 printf("[solar] t=%.1fs star=\"%s\" dist=%s m flux=%s W/m2 "
                        "elev=%s deg flat=%s W/m2 body=\"%s\" albedo=%s "
                        "ground_T=%s K bb_T=%s K underfoot_T=%s K swing=%s "
-                       "air_T=%s K prof_T=%s K w=%s\n",
+                       "air_T=%s K prof_T=%s K w=%s follow=%s\n",
                        g.time,
                        g.sun ? g.sun->name.c_str() : "(none)",
                        dist_s, flux_s, elev_s, flat_s,
                        g.ship->m_parent ? g.ship->m_parent->name.c_str()
                                         : "(none)",
-                       alb_s, gt_s, bb_s, surf_s, swing_s, air_s, prof_s, w_s);
-            }
+                       alb_s, gt_s, bb_s, surf_s, swing_s, air_s, prof_s, w_s,
+                       follow_s);            }
         }
 
         if(g.ship && g.args.drag_log) {

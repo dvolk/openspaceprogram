@@ -6513,6 +6513,20 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             line("air pressure", v);
             snprintf(v, sizeof v, "%.1f m/s", airSoundSpeed(da, 0.0));
             line("sound speed", v);
+            /* #724 rung D: whether this air is allowed to feel its ground, and how much.
+               It has to be readable somewhere, or the number sits in a JSON only the tests
+               consult. The row also says quietly what the two rows above imply: the air's
+               DATUM is an authored profile figure, while the air a hull actually measures
+               near the ground is that profile moved toward the ground by this fraction
+               (weighted by how much air is overhead), which is why a pad's thermometer and
+               this row can differ by a degree or two on Kerbin. */
+            if(followAuthored(at.air_follow)) {
+                snprintf(v, sizeof v, "%.3f (air follows its ground at sea level)",
+                         at.air_follow);
+                line("air coupling", v);
+            } else {
+                line("air coupling", "- (this air keeps its authored profile)");
+            }
             /* WHAT the air is, not only how much of it (#552 A4b, #630). The mix is
                what a body authors; molar mass and gamma are what it resolves to, so
                these rows are the source and the three rows above are its consequences.
