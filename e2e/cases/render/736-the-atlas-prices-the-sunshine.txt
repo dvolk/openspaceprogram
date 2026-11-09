@@ -1,0 +1,51 @@
+NAME atlas-prices-the-sunshine
+CLAIM Every dossier answers the sun now -- the light at that body's orbit, the albedo the body authors, the temperature those two imply, the surface temperature the file authors, and the gap between them -- and the rows are ONE arithmetic rather than five independent printings: the black-body follows from the sunlight and albedo rows beside it, the gap follows from the black-body and the surface row, each body's sunlight follows from the star's own luminosity row and that body's semi-major axis, and a body that authors no albedo dashes exactly what it cannot answer while still reporting the light.
+KIND invariant
+ARGS --system res/systems/solar_system.json --timeout 6 --atlas-dump 4000
+# --atlas-dump MS builds the dossier rows through the same atlasDossier() the Science tab
+# renders, so this pins what the player reads without a GUI (#385). solar_system rather than
+# the shipped ksp_system because solar_system is the file that AUTHORS albedos
+# (utils/make_solar_system.py takes them from the fact sheets); the KSP file authors none, so
+# on Kerbin every row below the light one dashes. That is a content hole, not a code one, and
+# it is filed. Each CHECK slices one dossier block, the way render/630 and render/552 do.
+EXPECT [atlas] Earth weight=
+EXPECT [atlas] Sun weight=
+# 1. THE BLACK-BODY ROW FOLLOWS FROM THE TWO ABOVE IT: T = ((1-A) S / 4 sigma)^(1/4), sigma
+#    the same constant the loader derives the star's luminosity from (constants.h). Measured
+#    closure across the file's nine albedo-bearing bodies is 0.035 K -- pure print rounding
+#    (S at %.4g, T at %.1f) -- so the band is 0.05 K. A dossier billing its rows independently
+#    would be #699 in a window instead of a log, and the cheapest way to do that -- dropping
+#    the factor 4, or the (1-A) -- misses by tens of kelvin.
+CHECK (lambda m: abs(float(m.group(3)) - (float(m.group(1)) * (1.0 - float(m.group(2))) / 4.0 / 5.670374419e-8) ** 0.25) < 0.05)(re.search(r"sunlight \(mean orbit\)\s+([\d.]+) W/m2\s*\n\s*\[atlas\]   bond albedo\s+([\d.]+)\s*\n\s*\[atlas\]   black-body temp\s+([\d.]+) K", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)))
+# 2. AND THE GAP FROM THE TWO BESIDE IT. Earth reads +32.9 K under 1361 W/m2 and an albedo of
+#    0.294 -- the number the fact sheets imply and never state. Venus reads +510.4 K, Mercury
+#    +0.5 K: on a bare rock the authored reading and the airless mean agree, and the distance
+#    between them on a world with air is what an atmosphere does. Nothing in the sim MODELS a
+#    greenhouse (#728 is parked on exactly that), so the row reports a difference and its
+#    label names the two numbers it is the difference of.
+CHECK (lambda m: abs(float(m.group(3)) - (float(m.group(2)) - float(m.group(1)))) < 0.05)(re.search(r"black-body temp\s+([\d.]+) K[^\n]*\n\s*\[atlas\]   surface temp\s+([\d.]+) K[^\n]*\n\s*\[atlas\]   greenhouse gap\s+([+-]?[\d.]+) K", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)))
+# 3. THE STAR'S OWN ROW CARRIES THE OTHER END OF THE LEDGER. Earth's sunlight has to follow
+#    from the Sun's printed luminosity and Earth's printed semi-major axis -- S = L / 4 pi a^2
+#    -- or the two dossiers are describing two different suns. Band 1%: both figures print to 4
+#    significant figures, and a is the mean rail, which is what the row's label says it is.
+#    Worth recording: the first cut of THIS check typed 4 pi^2 and came out pi times low against
+#    the game, which is the one way this file has of saying the checker is not above suspicion --
+#    it reddened, the code did not, and the relation is what shipped.
+CHECK (lambda e, u: abs(float(re.search(r"sunlight \(mean orbit\)\s+([\d.]+)", e).group(1)) - float(re.search(r"luminosity\s+([\d.e+]+) W", u).group(1)) / (4.0 * 3.141592653589793 * (float(re.search(r"semi-major axis\s+([\d.]+) Gm", e).group(1)) * 1e9) ** 2)) < 14.0)(re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0), re.search(r"\[atlas\] Sun weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# 4. A STAR IS the black body: its dossier reports its photosphere and its luminosity, and
+#    neither a sunlight row (nothing is above it) nor a black-body row of its own.
+CHECK re.search(r"surface temp \(photosphere\)\s+[\d.]+ K\s*\n\s*\[atlas\]   luminosity\s+[\d.e+]+ W\s*\n\s*\[atlas\]   \[orbit\]", re.search(r"\[atlas\] Sun weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# 5. ABSENT READING, ON A NEW SURFACE. The Moon authors no albedo, so the black-body and the
+#    gap dash -- the arithmetic cannot be done without the number -- while the light it stands
+#    in still prints, and at its PLANET's orbit: a moon's distance to the sun swings over its
+#    month, so no single figure for the moon itself is honest and the label says which orbit
+#    the value was taken from.
+CHECK re.search(r"sunlight \(parent's orbit\)\s+[\d.]+ W/m2\s*\n\s*\[atlas\]   bond albedo\s+-\s*\n\s*\[atlas\]   black-body temp\s+-\s*\n\s*\[atlas\]   surface temp\s+-\s*\n\s*\[atlas\]   greenhouse gap\s+-", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# 6. Half-authored is half-authored. Pluto authors an albedo (0.720, the brightest in the
+#    file) and no ground reading, so its implied 32.2 K prints while its surface temp and the
+#    gap dash. A dash here is a missing FILE ENTRY, never a 0.0 -- the #727 law, which is
+#    sharp for albedo: an albedo of 0.0 is a real reading (a body that absorbs everything the
+#    star sends, the hottest case available) and prints 0.000, while "-" means the file never
+#    said. Pluto and Titan are the two bodies the generator leaves without a ground reading.
+CHECK re.search(r"bond albedo\s+0\.720\s*\n\s*\[atlas\]   black-body temp\s+32\.[0-9] K[^\n]*\n\s*\[atlas\]   surface temp\s+-\s*\n\s*\[atlas\]   greenhouse gap\s+-", re.search(r"\[atlas\] Pluto weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+FORBID error:

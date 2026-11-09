@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 309 |
+| `invariant` | a behaviour or a player route the game must keep | 310 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 43 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **371** |
+| | **total** | **372** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -343,7 +343,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/649-systems-window-switches-a-group-off.txt` | golden | The Systems window is listed in the Windows panel and prints the EC balance, and its Reaction wheels checkbox drops the live authority in --steering-log from 4950 N m to 0 while the row still quotes the 4950 N m the switch gives up. |
 | `ui/734-wing-card-holds-its-numbers.txt` | invariant | The part window's flow row and watts row publish on an instrument's 2 Hz cadence rather than every frame, EACH OPEN CARD ON ITS OWN -- eleven reads a tenth of a second apart see a couple of different figures, not eleven -- while the model behind them keeps logging every substep, and each published pair is the worst-loaded FRAME of its window, so q, Mach and the watts the player reads belong to one instant rather than to three different moments. |
 
-## render (60)
+## render (61)
 
 | case | kind | pins |
 |---|---|---|
@@ -407,6 +407,7 @@ judgement. Select by number, name or path, e.g.
 | `render/630-air-says-what-it-is-made-of.txt` | invariant | A body's dossier names the gases its air is made of, biggest first, and prints the share of that air a turbine can burn. |
 | `render/676-perf-rows-add-up.txt` | invariant | --perf prints one [perf] row per window, each row's phases add up to the frame it measured, and it names WHICH draw. |
 | `render/676-perf-rows-no-paint.txt` | invariant | A --no-paint run says so in its [perf] rows: the 3D pass reads 0 while the passes that still ran do not. |
+| `render/736-the-atlas-prices-the-sunshine.txt` | invariant | Every dossier answers the sun now -- the light at that body's orbit, the albedo the body authors, the temperature those two imply, the surface temperature the file authors, and the gap between them -- and the rows are ONE arithmetic rather than five independent printings: the black-body follows from the sunlight and albedo rows beside it, the gap follows from the black-body and the surface row, each body's sunlight follows from the star's own luminosity row and that body's semi-major axis, and a body that authors no albedo dashes exactly what it cannot answer while still reporting the light. |
 
 ## harness (16)
 

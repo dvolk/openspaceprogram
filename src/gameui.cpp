@@ -18,6 +18,9 @@
 #include "calendar.h"    // CalTime
 #include "constants.h"   // kSurfaceModeAlt (the HUD's surface/orbital flip), map zoom bounds
 #include "drag.h"        // airTemperature/airPressure/airSoundSpeed (the world-info air rows)
+#include "solar.h"       // solarFlux/blackbodyTemperature (the atlas' starlight rows, #687).
+                         // The same helpers --solar-log bills parts with, so the dossier and
+                         // the log cannot drift into two different versions of one law.
 #include "vehicle.h"     // dragAtm: the same AtmosphereParams -> DragAtmosphere seam the
                          // flight model uses. It reached here through gameui.h -> game.h;
                          // say it out loud, or a header shuffle breaks the atlas rows.
@@ -6555,6 +6558,98 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
         line(r.name.empty() ? "ring band" : r.name.c_str(),
              (std::string(fmt_dist(r.inner, v, sizeof v)) + " - "
               + fmt_dist(r.outer, w, sizeof w)).c_str());
+    }
+
+    /* STARLIGHT (#687). What the star sends this body, what the body authors back to
+       space, and the temperature those two imply -- the same four columns --solar-log
+       prints per part, stated once per body here, and the reason the dossier used to
+       have nothing to say about the sun.
+       The distance is the MEAN orbit of the nearest ancestor that orbits the star, so a
+       moon reads its PLANET's orbit: its own distance to the sun swings over its month
+       and no single number there is honest. The flux is top of air and unshadowed -- no
+       extinction, no eclipse (solar.h states why both are deliberate).
+       "bond albedo" says WHICH albedo, because a ring's albedo a few rows up is a visual
+       brightness with the opposite convention (terragen.h). Absent values dash, never
+       print 0.0: A = 0.0 is a real reading -- a body that absorbs everything the star
+       sends, the hottest case in the game -- and #727 pinned that distinction end to
+       end; the same absent-reading law covers surface temp, where 0 K is "not authored"
+       (Pluto and Titan author no ground reading).
+       The black-body row is a global-mean CEILING, not a forecast: (1-A)S/4 = sigma T^4,
+       a sphere radiating the planet's whole area. The gap to the authored surface
+       temperature is what an atmosphere and a rotation do, which nothing here models --
+       Earth's own sheets state 254 K implied under 288 K mean, and that 34 K gap IS the
+       greenhouse. Both rows print, labelled, so the difference is visible instead of
+       silent; #730's law again -- figures that belong together must be reconcilable, and
+       the case recomputes one from the other two rather than trusting the print. */
+    head("starlight");
+    const TerrainBody *sun = nullptr;
+    const Frame *link = nullptr;      // the frame whose parent IS the star
+    for(const Frame *f = b.frame; f != nullptr; f = f->parent) {
+        if(f->parent == nullptr || f->parent->body == nullptr) { break; }
+        if(f->parent->body->isStar()) { sun = f->parent->body; link = f; break; }
+    }
+    if(b.isStar()) {
+        /* A star's authored T is its PHOTOSPHERE -- the one number every flux in the
+           system follows from, L = 4 pi R^2 sigma T^4 -- not a ground a radiometer sits
+           on. That is why --solar-log dashes these columns inside a star's SoI (a star's
+           ground_T would be a 1 bar depth, and its albedo and bb_T have no meaning) while
+           this row reports the value, and why there is no black-body row here: a star IS
+           the black body. */
+        if(b.surface.temperature > 0.0) {
+            snprintf(v, sizeof v, "%.1f K", b.surface.temperature);
+        } else { snprintf(v, sizeof v, "-"); }
+        line("surface temp (photosphere)", v);
+        if(b.star_luminosity > 0.0) {
+            snprintf(v, sizeof v, "%.4g W", b.star_luminosity);
+        } else { snprintf(v, sizeof v, "-"); }
+        line("luminosity", v);
+    } else {
+        double a_sun = 0.0;
+        if(link != nullptr && link->orb_ang_speed > 0.0 && link->parent_mu > 0.0) {
+            a_sun = std::cbrt(link->parent_mu
+                              / (link->orb_ang_speed * link->orb_ang_speed));
+        }
+        const double flux = (sun != nullptr) ? solarFlux(sun->star_luminosity, a_sun) : 0.0;
+        if(flux > 0.0) { snprintf(v, sizeof v, "%.4g W/m2", flux); }
+        else { snprintf(v, sizeof v, "-"); }
+        line(link != nullptr && link != b.frame ? "sunlight (parent's orbit)"
+                                                : "sunlight (mean orbit)", v);
+        const bool albedo = albedoAuthored(b.surface.bond_albedo);
+        if(albedo) {
+            snprintf(v, sizeof v, "%.3f", b.surface.bond_albedo);
+            line("bond albedo", v);
+        } else { line("bond albedo", "-"); }
+        double bb = 0.0;
+        if(albedo && flux > 0.0) {
+            // The gloss spells out the convention the way the air rows spell "(sea
+            // level)": a global mean for an airless, evenly radiating sphere, NOT a
+            // forecast for this body's ground. "no air" is the honest word for why
+            // Earth's 255 K sits under its authored 288 K.
+            bb = blackbodyTemperature(flux, b.surface.bond_albedo);
+            snprintf(v, sizeof v, "%.1f K (global mean, no air)", bb);
+            line("black-body temp", v);
+        } else { line("black-body temp", "-"); }
+        if(b.surface.temperature > 0.0) {
+            snprintf(v, sizeof v, "%.1f K (%.1f C)", b.surface.temperature,
+                     b.surface.temperature - 273.15);
+            line("surface temp", v);
+            // The gap, rather than a paragraph about it: two rows the player can read
+            // against each other, and the subtraction between them. Positive is what an
+            // atmosphere is worth on this world (Earth +33 K, the number the RSS sheets
+            // imply without ever stating it); near zero says the authored reading and the
+            // airless mean agree, as they should on a bare rock (Mars -3 K). Nothing here
+            // MODELS this -- the surface temperature is authored, and #728 is parked on
+            // exactly that question -- so the row reports a difference instead of
+            // pretending a greenhouse exists in the sim.
+            if(bb > 0.0) {
+                snprintf(v, sizeof v, "%+.1f K (surface - airless mean)",
+                         b.surface.temperature - bb);
+                line("greenhouse gap", v);
+            } else { line("greenhouse gap", "-"); }
+        } else {
+            line("surface temp", "-");
+            line("greenhouse gap", "-");
+        }
     }
 
     head("orbit");
