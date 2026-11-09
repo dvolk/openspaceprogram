@@ -21,7 +21,9 @@
 #include "inventory.h" // inventorySetOwner (the suit's pockets ride its vehicle)
 #include "resdir.h"    // resdir::path
 #include "system.h"    // System (spawn_vehicle resolves the home body's SOI)
-#include "drag.h"      // the drag law (airDensity / dragForce)
+#include "drag.h"      // the drag law (airDensity / dragForce / soundSpeedFromT)
+#include "insolation.h" // starFromBody / skyAtZenith: the star over THIS hull (#724 D)
+#include "groundtemp.h" // groundTemperature / followAirTemperature (#724 C, #724 D)
 #include "equirect.h"  // equirectDir: the game's ONE (lat,lon) -> direction law
 #include "gimbal.h"    // the engine-gimbal law (gimbalDir / gimbalStep)
 #include "rcs.h"       // the RCS nozzle allocator (rcsAllocate)
@@ -2976,7 +2978,7 @@ glm::dvec3 Vehicle::airRelativeVel(const glm::dvec3 &com) {
     return v;
 }
 
-glm::dvec3 Vehicle::applyAeroForce(double h) {
+glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     (void)h;  // a force (not an impulse); Bullet integrates it over the substep
     // Reset so a substep with no air reports zero.
     lastAeroForce = glm::dvec3(0.0);
@@ -3057,6 +3059,45 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastAirT = airTemperature(da, alt);
     lastAirP = airPressure(da, alt);
     lastAirA = airSoundSpeed(da, alt);
+    /* #724 rung D: the air nearest the ground follows the ground it stands on. Only where
+       the file PRICED the coupling (AtmosphereParams::air_follow, authored.h's sentinel
+       otherwise) -- everywhere else the profile is exactly what the file authored, which is
+       both the conservative default and the reason no existing flight golden moves.
+       The ground's temperature is the SWING rung C authored, taken at the cosine of the star
+       over THIS hull; the anchor under it is an authored reading (a stated ground, else the
+       datum of the air), never this function's own output. That is the loop #724's review
+       flagged: an air warmed by a ground whose anchor is that air's own temperature would
+       define its temperature in terms of itself. */
+    if(followAuthored(atm.air_follow) && atm.air_follow > 0.0 && star != nullptr
+       && star->frame != nullptr && m_parent->frame != nullptr
+       && m_parent->rot_frame != nullptr && lastAirT > 0.0
+       && evenShareAuthored(m_parent->surface.even_share)) {
+        /* Frames, the #97 pair. starFromBody() answers in the body's SPINNING axes (that is
+           the frame a subsolar point lives in); `com` is in this hull's axes. The same map
+           airRelativeVel uses for the co-rotation and the wind moves one into the other, and
+           the cosine is only meaningful once BOTH vectors stand in the same axes. */
+        const StarFromBody sv_rot = starFromBody(
+            m_parent->frame->root_pos, star->frame->root_pos,
+            m_parent->rot_frame->root_orient);
+        const glm::dmat3 rot_to_S = m_parent->rot_frame->GetOrientRelTo(frame);
+        StarFromBody sv;
+        sv.to_sun = rot_to_S * sv_rot.to_sun;
+        sv.valid = sv_rot.valid;
+        const SkyAtZenith sky = skyAtZenith(sv, com);
+        const double anchor = groundAnchor_K(m_parent->surface.temperature,
+                                             airDatum_K(atm), 0.0);
+        const double w = followWeight(lastAirP, atm.sea_level_pressure);
+        if(sky.valid && anchor > 0.0 && w > 0.0) {
+            const double ground_T = groundTemperature(
+                anchor, m_parent->surface.even_share, sky.cos_inc);
+            lastAirT = followAirTemperature(lastAirT, ground_T,
+                                            atm.air_follow, w);
+            /* The Mach number this pass divides by comes from the SAME temperature the
+               readout now prints (drag.h:soundSpeedFromT), or the two rows of one log would
+               be describing two different airs (#687). */
+            lastAirA = soundSpeedFromT(da, lastAirT);
+        }
+    }
     /* GetVel() minus the air's OWN velocity: its co-rotation when outside the body's
        rot frame (#97), and the body's atmosphere.wind at this point (#688).
        Read before the density floor, not after it: lastAirV is what the Mach readout

@@ -51,3 +51,11 @@ inline bool thermalAuthored(double t_K) { return t_K > 0.0; }
    airless), and "bare rock" (0.0) invents a swing no source stated. Absence DASHES. */
 inline constexpr double kEvenShareUnauthored = -1.0;
 inline bool evenShareAuthored(double f) { return f >= 0.0; }
+
+/* [1] How far the air nearest the ground is allowed to follow the ground's temperature
+   (#724 rung D, drag.h/groundtemp.h). Absence means NO coupling -- the air keeps its authored
+   profile -- which is both the conservative default and the state that keeps every existing
+   flight golden untouched while the mechanism exists. 0.0 is a legal READING ("the air does not
+   follow, and that is a fact about this air"), so the sentinel is the negative again. */
+inline constexpr double kFollowUnauthored = -1.0;
+inline bool followAuthored(double k) { return k >= 0.0; }

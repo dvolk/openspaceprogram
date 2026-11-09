@@ -297,19 +297,33 @@ inline double airPressure(const DragAtmosphere &a, double alt) {
    at the datum to 295.1 m/s at 11 km, so the same 300 m/s airspeed is Mach 0.88 at
    sea level and Mach 1.02 up there. Above `height` it is 0 on either profile: there is
    no air left to carry sound, so a Mach number up there has nothing to be a ratio to. */
+/* [m/s] a * sqrt(gamma Rs T): the same law, keyed on the TEMPERATURE rather than on an
+   altitude. Two consumers need to share it -- the profile's own sound speed above, and a
+   hull whose air has been warmed or cooled by the ground under it (#724 rung D) -- and a
+   readout that showed one temperature while the Mach number divided by a sound speed from
+   another is #687's complaint. T <= 0 means "no air at this altitude", which answers 0.0
+   like every other no-air answer in this header. */
+inline double soundSpeedFromT(const DragAtmosphere &a, double T) {
+    if(!(T > 0.0)) { return 0.0; }
+    assert(a.gamma >= 1.0 && a.molar_mass > 0.0);
+    return std::sqrt(a.gamma * (kGasR / a.molar_mass) * T);
+}
+
 inline double airSoundSpeed(const DragAtmosphere &a, double alt) {
     if(!(a.sea_level_density > 0.0) || !(a.gravity > 0.0)) { return 0.0; }
     assert(a.gamma >= 1.0);  // system.cpp refuses an authored gamma below 1
     if(a.layers != nullptr) {
-        const double T = airTemperature(a, alt);
-        if(!(T > 0.0)) { return 0.0; }
-        assert(a.molar_mass > 0.0);
-        return std::sqrt(a.gamma * (kGasR / a.molar_mass) * T);
+        return soundSpeedFromT(a, airTemperature(a, alt));
     }
     if(!(a.scale_height > 0.0)) { return 0.0; }
     if(a.height > 0.0 && alt >= a.height) { return 0.0; }   // vacuum, layered or not
-    return std::sqrt(a.gamma * a.gravity * a.scale_height);
+    /* The exponential branch's temperature IS g H M / R (airTemperature above), so
+       sqrt(gamma Rs T) IS sqrt(gamma g H) -- the trio lock atmo.h spells. Spelled that
+       way here too, so a coupled temperature and the Mach number that divides by it can
+       never come from two different laws (#687). */
+    return sqrt(a.gamma * a.gravity * a.scale_height);
 }
+
 
 /* F = −v̂ · ½ · rho(alt) · cd · area · |v_rel|²   (area [m^2], v_rel [m/s]).
    Zero for any degenerate input so callers need no guards. */

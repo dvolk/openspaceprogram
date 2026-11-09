@@ -475,6 +475,22 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                     av.value("sea_level_pressure", 0.0);
                 s.atmosphere.scale_height =
                     av.value("scale_height", 0.0);
+                /* #724 rung D: "air_follow" [0,1] -- how far the air nearest the ground
+                   follows the ground's temperature. Absent (the default) means no coupling:
+                   the profile is exactly what the file authored, which is every body except
+                   the two the generators price. Authoring 0.0 is allowed and means the
+                   opposite claim -- "this air does not follow its ground" -- which is why the
+                   sentinel is negative and the loader refuses to author it (#726). */
+                if(av.contains("air_follow")) {
+                    const double k = av["air_follow"].get<double>();
+                    if(!std::isfinite(k) || k < 0.0 || k > 1.0) {
+                        throw std::runtime_error("system: '" + body->name
+                                                 + "': \"surface.atmosphere.air_follow\"="
+                                                 + std::to_string(k)
+                                                 + " is not in [0, 1]");
+                    }
+                    s.atmosphere.air_follow = k;
+                }
                 // The hard top (above it: vacuum). 0 => top() derives
                 // scale_height * 10.
                 s.atmosphere.height = av.value("height", 0.0);

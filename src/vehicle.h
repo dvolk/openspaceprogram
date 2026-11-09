@@ -1498,7 +1498,10 @@ public:
        DRAG acts SHIP-LEVEL at the center of pressure, which preserves the
        weathervane torque. Cd is the area-weighted mean of the parts' cds, the
        area the hull silhouette (drag.h). */
-    glm::dvec3 applyAeroForce(double h);
+    /* `star` (nullable) is the system's star, and it is ONLY what lets the air under this
+       hull know which way the sun is (#724 rung D). A nullptr -- a fixture, a test, a
+       system with no star -- means no coupling, and the profile stays as authored. */
+    glm::dvec3 applyAeroForce(double h, const TerrainBody *star = nullptr);
 
     /* Air density (kg/m^3) at the COM. Deliberately NO kRhoFloor gate:
        jetAirGate's density half divides by the engine's rating intake

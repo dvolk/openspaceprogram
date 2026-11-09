@@ -215,6 +215,22 @@ static void test_air_thermodynamics() {
     const DragAtmosphere kerbin = makeAir(1.225, 5500.0, 70000.0, 9.81);
     CHECK_NEAR(airTemperature(kerbin, 0.0), 187.95593796005446, 1e-12,
                "Kerbin's isothermal temperature: g H M / R");
+    /* #724 rung D: the sound speed a hull's Mach number divides by and the air temperature
+       it is computed from are ONE law (drag.h:soundSpeedFromT), because the aero pass now
+       re-keys the first on a ground-coupled temperature. If the two laws drifted, the log
+       would print one temperature and a Mach number from another (#687). */
+    /* The band is 1e-9 relative, not 0: the exponential branch keeps its closed form
+       sqrt(gamma g H) while the temperature-keyed one walks sqrt(gamma Rs T) with
+       T = g H M / R. The trio lock (atmo.h) says those are ONE number in the algebra, and
+       they agree to a few ulps in binary -- which is worth recording here rather than
+       papering over, because the coupled path uses the second form. */
+    CHECK_NEAR(soundSpeedFromT(kerbin, airTemperature(kerbin, 0.0)),
+               airSoundSpeed(kerbin, 0.0), 1e-9,
+               "the temperature-keyed law IS the altitude-keyed one, at the datum");
+    CHECK_NEAR(soundSpeedFromT(kerbin, airTemperature(kerbin, 7000.0)),
+               airSoundSpeed(kerbin, 7000.0), 1e-9,
+               "...and halfway up the column");
+    CHECK_NEAR(soundSpeedFromT(kerbin, 0.0), 0.0, 0.0, "no air, no sound speed");
     CHECK_NEAR(airSoundSpeed(kerbin, 0.0), 274.83995342744475, 1e-12,
                "Kerbin's sound speed: sqrt(gamma g H)");
     CHECK_NEAR(airPressure(kerbin, 0.0), 66094.875, 1e-12,

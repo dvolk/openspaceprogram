@@ -52,6 +52,19 @@ import sys
 # swing, which the dossier then dashes (#727).
 DAY_PREDICTION_GATE = 0.08
 
+
+# [#724 rung D] How far the air nearest the ground follows the ground's temperature.
+# THE CORPUS STATES NO SUCH NUMBER, so this is ours and both generators print it as ours.
+# What it is calibrated to is the shape of a day: a world with air reports its ground and its
+# near-surface air a few kelvin apart over the day, not the tens of kelvin an airless body
+# swings (the Moon's own ends, 95-390 K, are why the knob cannot be 1.0 anywhere with air).
+# 0.35 puts Kerbin's sea-level air at ~286.4 K at night and ~292.8 K at noon under a ground
+# that runs 283.2-301.8 K, which moves the speed of sound under 1% -- small enough that the
+# air is still the air the profile describes, large enough that a player's air-temperature row
+# moves with the day. Absent (-- the default in C++) means no coupling at all: every body this
+# table does not name keeps its authored profile exactly as #625 left it.
+AIR_FOLLOW = 0.35
+
 # [1] The default when a body states no diurnal range at all: no swing, a uniform surface at
 # the anchor. The behaviour is Venus's (isothermal) on purpose -- the AIR mass decides that
 # -- but the STATE is kept apart: a body that authors f prints it, a body that does not

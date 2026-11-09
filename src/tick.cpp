@@ -323,7 +323,7 @@ void tick(Game &g) {
                        plate by a whole substep, i.e. puts an actuator lag inside a
                        deadbeat attitude law, where it rings. */
                     s->applyControlForces(h);
-                    s->applyAeroForce(h);
+                    s->applyAeroForce(h, g.sun);
                 }
                 physics_tick(h);
                 if(g.args.debug_accel) {
@@ -743,15 +743,48 @@ void tick(Game &g) {
                 } else {
                     snprintf(swing_s, sizeof swing_s, "-");
                 }
+                /* air_T is MEASURED, not recomputed here: it is the hull's own
+                   lastAirT, the number the aero pass divides its Mach number by
+                   (vehicle.cpp). A second computation of "the air under this hull" in
+                   this log would be a second authority over one fact, and the two would
+                   drift (#687). A hull in vacuum has no air temperature, and dashes. */
+                char air_s[24];
+                if(g.ship->lastAirT > 0.0) {
+                    snprintf(air_s, sizeof air_s, "%.2f", g.ship->lastAirT);
+                } else {
+                    snprintf(air_s, sizeof air_s, "-");
+                }
+                /* prof_T and w are the OTHER half of the coupling (#724 rung D), so the
+                   row can be closed as arithmetic instead of admired: prof_T is what the
+                   authored profile says at this altitude (drag.h:airTemperature, the SAME
+                   law the aero pass calls -- not a second one), and w is the weight the
+                   column itself supplies, p(alt)/p(0). air_T above is measured at the hull,
+                   so `air_T = prof_T + follow * w * (underfoot_T - prof_T)` has to hold to
+                   print rounding, with `follow` the number the file authored. */
+                char prof_s[24], w_s[24];
+                double prof_T = 0.0, wgt = 0.0;
+                if(ground_here && over->frame) {
+                    const double alt = glm::length(p - over->frame->root_pos)
+                                     - over->seaLevelRadius();
+                    const DragAtmosphere da = dragAtm(over->surface.atmosphere, *over);
+                    prof_T = airTemperature(da, alt);
+                    wgt = followWeight(airPressure(da, alt),
+                                       over->surface.atmosphere.sea_level_pressure);
+                }
+                if(prof_T > 0.0) { snprintf(prof_s, sizeof prof_s, "%.2f", prof_T); }
+                else { snprintf(prof_s, sizeof prof_s, "-"); }
+                if(prof_T > 0.0) { snprintf(w_s, sizeof w_s, "%.4f", wgt); }
+                else { snprintf(w_s, sizeof w_s, "-"); }
                 printf("[solar] t=%.1fs star=\"%s\" dist=%s m flux=%s W/m2 "
                        "elev=%s deg flat=%s W/m2 body=\"%s\" albedo=%s "
-                       "ground_T=%s K bb_T=%s K underfoot_T=%s K swing=%s\n",
+                       "ground_T=%s K bb_T=%s K underfoot_T=%s K swing=%s "
+                       "air_T=%s K prof_T=%s K w=%s\n",
                        g.time,
                        g.sun ? g.sun->name.c_str() : "(none)",
                        dist_s, flux_s, elev_s, flat_s,
                        g.ship->m_parent ? g.ship->m_parent->name.c_str()
                                         : "(none)",
-                       alb_s, gt_s, bb_s, surf_s, swing_s);
+                       alb_s, gt_s, bb_s, surf_s, swing_s, air_s, prof_s, w_s);
             }
         }
 

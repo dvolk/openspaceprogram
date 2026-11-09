@@ -83,6 +83,41 @@ inline double groundTemperature(double anchor_K, double even_share, double cos_i
     return anchor_K * std::pow(shape, 0.25);
 }
 
+/* [K] The air at one altitude when the air nearest the ground is allowed to follow the
+   ground it sits on (#724 rung D):
+
+       T_air(alt) = T_profile(alt) + k * w(alt) * (T_ground - T_profile(alt))
+
+   `k` is the body's authored follow (AtmosphereParams::air_follow, [0,1]); `w` is the
+   WEIGHT this altitude gets, which the caller takes as the air's own pressure fraction
+   p(alt)/p(0) -- "the air follows the ground where the air is thick", one fewer invented
+   number than naming a boundary-layer depth, and it lands at 1 at the datum, ~0.37 one scale
+   height up, and 0 above the profile's top because that is what the column itself says.
+
+   WHAT THIS IS NOT. It is not an energy balance: nothing here conserves heat, moves heat
+   between layers, or has a time constant (a hull at noon feels a noon ground immediately --
+   the ground model has no thermal inertia either, #728 is parked on exactly that question).
+   It is one authored number on an authored profile, and the reason it is allowed to exist at
+   all is that the corpus already states both ends: the air's datum and the ground's swing.
+   `T_profile` is the profile's own answer and `T_ground` comes from groundTemperature() off an
+   ANCHORED reading -- never from this function's output, which is the loop #724's review
+   flagged. */
+inline double followAirTemperature(double profile_T, double ground_T, double k, double w) {
+    assert(followAuthored(k) && k <= 1.0);
+    assert(w >= 0.0 && w <= 1.0);
+    assert(profile_T > 0.0 && ground_T > 0.0);
+    return profile_T + k * w * (ground_T - profile_T);
+}
+
+/* [1] The weight an altitude gets in the law above: the air's own pressure fraction. Takes
+   0.0 for "no air here" (including above the profile's top) so the caller can pass whatever
+   drag.h:airPressure answers and get "no coupling" out of a vacuum for free. */
+inline double followWeight(double p_at, double p_sea_level) {
+    if(!(p_sea_level > 0.0)) { return 0.0; }
+    const double w = p_at / p_sea_level;
+    return w < 0.0 ? 0.0 : (w > 1.0 ? 1.0 : w);
+}
+
 /* [K] Which temperature this body's ground swings around, in the corpus's own order of
    authority; pass the field's own sentinel for any rung that is absent (kThermalUnauthored for
    a stated ground, 0.0 for a derived black-body), so a blank never reads as 0 K.

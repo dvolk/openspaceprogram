@@ -44,6 +44,13 @@ CHECK all(d["ground_T"] > 2.5 * d["bb_T"] for d in solar)
 CHECK all(d["swing"] is not None and abs(d["swing"] - 1.0) < 1e-3 for d in solar)
 CHECK all(abs(d["underfoot_T"] - d["ground_T"]) < 0.01 for d in solar)
 CHECK all(d["underfoot_T"] is not None and 736.0 < d["underfoot_T"] < 738.0 for d in solar)
+# #724 rung D, the DEFAULT half. Venus authors no air-follow knob (utils/gen_systems.py's
+# KSP_AIR_FOLLOW names two worlds, and the corpus file names none), so the air at this hull is
+# exactly the profile the file authored -- ~90 K colder than the ground it floats over, and NOT
+# pulled up toward it. Had the coupling defaulted on, air_T would sit near 700 K here.
+CHECK all(d["air_T"] is not None for d in solar)
+CHECK all(640.0 < d["air_T"] < 650.0 for d in solar)
+CHECK all(d["air_T"] < d["underfoot_T"] - 50.0 for d in solar)
 # Absent prints a dash; a 0 here would be the #726 failure mode.
 FORBID albedo=-
 FORBID ground_T=-

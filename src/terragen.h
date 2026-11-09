@@ -106,6 +106,15 @@ struct AtmosphereParams {
     double sea_level_pressure = 0.0;  // [Pa] AT THE DATUM -- what the file authors
     double sea_level_density = 0.0;   // kg/m^3 AT THE DATUM, RESOLVED from p0 at load
     double scale_height = 0.0;       // [m]; the density /e-fold altitude
+    /* #724 rung D: how far the air nearest the ground follows the GROUND's temperature
+       (#724 C's swing) instead of only the authored profile. [0,1]; the WEIGHT of the
+       coupling falls off with the air's own thickness, so this one number says "how much"
+       and the column says "where". Absent is kFollowUnauthored (authored.h), which means NO
+       coupling at all: the profile stays exactly as authored.
+       It is NOT the ground model's anchor and must never be read as one -- the anchor comes
+       from authored readings (terragen.h:airDatum_K), and an air whose temperature feeds its
+       own ground's anchor is a loop, not a model. */
+    double air_follow = kFollowUnauthored;
     double height = 0.0;  // hard top [m above sea level]; authored, 0 = top() derives
     /* What the air is made of. A body states the MIX (#552 A4b, #630), and the three
        scalars below are what that mix RESOLVES to: system.cpp fills them in with

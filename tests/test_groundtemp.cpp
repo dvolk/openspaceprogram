@@ -157,6 +157,28 @@ int main() {
     CHECK_NEAR(groundAnchor_K(kThermalUnauthored, kThermalUnauthored, 270.33), 270.33, 0.0,
                "a sentinel air datum falls through to the derived black-body");
 
+    /* ---- rung D: the air nearest the ground follows it (#724) ----------------------
+       One authored number, one weight the column itself supplies. The pins below are the
+       three ends a reader would check by eye: no coupling, full coupling at the datum, and
+       the blend in between. The weight is the air's own pressure fraction, so "no air" and
+       "above the top" both answer 0.0 and the caller gets no coupling for free. */
+    CHECK_NEAR(followAirTemperature(288.15, 295.61, 0.0, 1.0), 288.15, 0.0,
+               "a follow of 0.0 is a reading: the air keeps its profile");
+    CHECK_NEAR(followAirTemperature(288.15, 295.61, 1.0, 1.0), 295.61, 0.0,
+               "k=1 at the datum is the ground's own temperature");
+    CHECK_NEAR(followAirTemperature(288.15, 295.61, 0.35, 1.0),
+               288.15 + 0.35 * (295.61 - 288.15), 0.0,
+               "the blend is linear in the knob");
+    CHECK_NEAR(followAirTemperature(288.15, 295.61, 0.35, 0.0), 288.15, 0.0,
+               "aloft, where the column says no weight, the profile stands alone");
+    CHECK_NEAR(followWeight(101325.0, 101325.0), 1.0, 0.0, "at the datum the air is all there");
+    CHECK_NEAR(followWeight(0.0, 101325.0), 0.0, 0.0, "above the top: nothing to couple");
+    CHECK_NEAR(followWeight(50.0, 0.0), 0.0, 0.0, "no sea-level pressure: no fraction, no coupling");
+    CHECK_NEAR(followWeight(2.0 * 101325.0, 101325.0), 1.0, 0.0,
+               "below the datum the column is flat, and so is the weight");
+    CHECK_TRUE(!followAuthored(kFollowUnauthored),
+               "an air nobody priced does not follow its ground at all");
+
     /* ---- the sentinel, which is the difference between Venus and Mercury ------------ */
     CHECK_TRUE(!evenShareAuthored(kEvenShareUnauthored),
                "absence is not a number, and not 1.0 either");

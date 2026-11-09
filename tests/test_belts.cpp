@@ -303,6 +303,33 @@ int main() {
         });
     }
 
+    /* #724 rung D: the air-follow knob, on the same sentinel law. Absent means NO coupling;
+       0.0 is a legal reading ("this air does not follow its ground"); the sentinel cannot be
+       authored. */
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["atmosphere"]["air_follow"] = 1.5;
+        expect_reject(j, "air_follow past 1 rejected", "air_follow");
+    }
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["atmosphere"]["air_follow"] = kFollowUnauthored;
+        expect_reject(j, "authored sentinel air_follow rejected", "air_follow");
+    }
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        expect_loaded(j, "air_follow absent reads the sentinel", [&](const System &sys) {
+            bool all_sentinel = true;
+            for(const TerrainBody *b : sys.bodies) {
+                if(b->surface.atmosphere.enabled
+                   && b->surface.atmosphere.air_follow != kFollowUnauthored) {
+                    all_sentinel = false;
+                }
+            }
+            check(all_sentinel, "no air in the fixture authors a coupling");
+        });
+    }
+
     /* #729: the SAME law on the other field, where the damage was worse. Surface::temperature
        used to default to 0.0 and be tested `> 0.0`, so "nobody sourced this" and "0 K" were one
        state -- and on a STAR that state was a luminosity of 0: a system that loads, prints

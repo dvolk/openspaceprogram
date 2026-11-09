@@ -34,7 +34,8 @@ from atmo_units import (resolve_layer_heights, anchor_sea_level_pressure,
                         blackbody_temperature, check_constants_match_src)
 # #724 rung C: the surface swing's law, shared with make_solar_system.py so the shipped
 # system and the catalogue cannot grow two different weathers (#636).
-from ground_model import fit_even_share, even_share_air_note, ground_anchor
+from ground_model import (fit_even_share, even_share_air_note, ground_anchor,
+                          AIR_FOLLOW)
 
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
@@ -1202,6 +1203,24 @@ def author_ksp_diurnal(obj):
           % (len(rows), n_authored, len(rows) - n_authored, len(unpaired)))
 
 
+def author_ksp_air_follow(obj):
+    """#724 rung D: put the air-follow knob on the bodies KSP_AIR_FOLLOW names, and say so.
+    The value is INVENTED (no source states how far an air follows its ground), and the
+    print says INVENTED rather than dressing a named analogy over it. A body left out of the
+    table keeps kFollowUnauthored in C++ and its air profile exactly as authored."""
+    for name, k in KSP_AIR_FOLLOW.items():
+        body = next((b for b in obj["bodies"] if b["name"] == name), None)
+        assert body, "KSP_AIR_FOLLOW names a body this system does not have: " + name
+        at = (body.get("surface") or {}).get("atmosphere")
+        assert at, "%s has no air to couple to its ground" % name
+        assert (body.get("surface") or {}).get("even_share") is not None, (
+            "%s: an air-follow knob with no ground swing is a knob with nothing to follow"
+            % name)
+        at["air_follow"] = k
+        print('  air follow %-7s %.3f  INVENTED: no source states how far an air follows '
+              'its ground' % (name, k))
+
+
 # #742: the swing for the bodies this catalogue's own source cannot price. The wiki's
 # "night/day" pair for Kerbin, Duna and Laythe is really (record low, average) -- its `max`
 # IS its mean -- so there is no pair to fit and #742 is the ticket saying so. The user has
@@ -1231,6 +1250,15 @@ KSP_DIURNAL = {
     "Pol":    DASH,
     "Eeloo":  ("Pluto", None),    # Pluto's own swing is unauthored, so this dashes too
 }
+
+
+# #724 rung D: which of these airs is allowed to feel its ground. Named, not blanket: the
+# knob is inert without a swing to follow and dishonest on a body whose air the corpus prices
+# at one temperature all day, so it goes on the two worlds this file already treats as Earth.
+# It lives HERE and not in make_solar_system.py on purpose: solar_system.json is the file whose
+# numbers the sources state, and this one no source states. The shipped file is where invented
+# analogies belong (#735, #742).
+KSP_AIR_FOLLOW = {"Kerbin": AIR_FOLLOW, "Laythe": AIR_FOLLOW}
 
 
 def author_ksp_diurnal_analogy(obj):
@@ -1343,6 +1371,7 @@ def main():
     # ... and the ground's swing, which reads the airs the line above just authored.
     author_ksp_diurnal(ksp)
     author_ksp_diurnal_analogy(ksp)
+    author_ksp_air_follow(ksp)
     if bad:
         for m in bad:
             print('DRIFT   body gravity: ' + m)
