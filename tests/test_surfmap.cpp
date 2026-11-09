@@ -182,7 +182,8 @@ static void mapLayers() {
     moho.temperature = 440.0;
     TempLayer tm = tempLayerFor(moho, 0.0, true);
     check(!tm.ok, "an unauthored swing does not paint");
-    check(tm.legend.find("no authored swing") != std::string::npos,
+    check(tm.legend.find("no authored swing") != std::string::npos
+              && tm.legend.find("decision") != std::string::npos,
           "and the reason names the missing swing, not a missing anchor");
     check(tm.lo_K == 0.0, "a refused layer has no ramp ends");
 

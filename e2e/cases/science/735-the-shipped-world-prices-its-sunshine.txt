@@ -70,16 +70,17 @@ CHECK (lambda k: abs((float(re.search(r"night to ([\d.]+) K day", k).group(1)) /
 #    refusal now pins the borrowing. Duna's wiki pair is not a pair -- its max IS its mean, so
 #    nothing here fits it (#742); its 0.708 is Mars's, and Mars's own is the least-squares fit
 #    to a pair its stated mean contradicts (184-242 K implies a mean of ~203 K; its sheet says
-#    214 K). Moho takes Mercury's airless floor. Both rows are our arithmetic, and both say so
-#    in the four words beside the ends.
+#    214 K). Moho takes Mercury's airless floor -- and says so TWO hops deep: "analogy to Mercury,
+#    defaulted there". Both rows are our arithmetic, and both say so beside the ends.
 CHECK (lambda d: re.search(r"ground swing\s+[\d.]+ K night to [\d.]+ K day \(analogy to Mars\)", d) and re.search(r"even share 0\.708", d))(re.search(r"\[atlas\] Duna weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-CHECK (lambda m: re.search(r"ground swing\s+[\d.]+ K night to [\d.]+ K day \(analogy to Mercury\)", m) and re.search(r"even share 0\.015", m))(re.search(r"\[atlas\] Moho weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK (lambda m: re.search(r"ground swing\s+[\d.]+ K night to [\d.]+ K day \(analogy to Mercury, defaulted there\)", m) and re.search(r"even share 0\.015", m))(re.search(r"\[atlas\] Moho weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 #    And the file's one remaining swing dash, which is a fact rather than a gap: Jool has an air
 #    with a base temperature, and the anchor chain reads an air's datum as a ground -- so the
 #    only thing between a gas giant and a painted day/night cycle on its cloud deck is the
-#    refusal in utils/gen_systems.py:KSP_DIURNAL_NO_GROUND. A gas giant has no ground to swing,
-#    which is #738's label question applied to the shipped file. Revert that refusal and the
-#    default rule happily prices Jool's cloud deck: this row goes red.
+#    refusal of a `bands` surface (gen_systems.py author_ksp_diurnal_defaults, and the same test
+#    in make_solar_system.py's author_diurnal). A gas giant has no ground to swing, which is
+#    #738's label question applied to the shipped file. Delete that one surf.get("bands") test
+#    and the default rule happily prices Jool's cloud deck: this row goes red.
 CHECK (lambda j: re.search(r"level swing\s+-", j) and re.search(r"air temp \(sea level\)\s+[\d.]+ K", j) and re.search(r"bond albedo\s+0\.343", j))(re.search(r"\[atlas\] Jool weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 FORBID bond albedo 0.000
 FORBID error:

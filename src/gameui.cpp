@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdarg>   // va_list for fmtRow
 #include <climits>
 #include <cmath>
 #include <cstring>
@@ -6485,6 +6486,22 @@ static std::vector<MixFraction> atlasMix(const AtmosphereParams &a) {
    sanity-check the flight readouts -- a line disagreeing with what the game flies means
    the DERIVATION is wrong. The orbit is inverted from orb_ang_speed (Kepler III)
    exactly as the loader places the body, with e from the epoch rail's angular momentum. */
+/* [written chars] snprintf for the dossier's rows, with the one thing snprintf does not do:
+   say how much it WANTED. A dossier row is a fact an e2e case pins by regex, and a truncation
+   loses words in the middle of a sentence the player reads -- a provenance marker or a named
+   dash would go missing while every number beside it stayed right. assert() is live in this
+   build (no -DNDEBUG), so a row that outgrows its buffer is a crash in front of the test
+   rather than a quieter file. */
+static int fmtRow(char *buf, size_t n, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    const int want = std::vsnprintf(buf, n, fmt, ap);
+    va_end(ap);
+    assert(want >= 0 && want < static_cast<int>(n));
+    return want;
+}
+
+
 void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
     /* v carries the longest row in the dossier -- an anchor's named rung plus the swing's
        provenance -- and snprintf would truncate that silently, which is the worst way to lose
@@ -6502,7 +6519,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                : (b.type == BodyType::Moon ? "moon" : "planet"));
     line("radius", fmt_dist((double)b.radius, v, sizeof v));
     line("mass", fmt_mass((double)b.mass, v, sizeof v));
-    snprintf(v, sizeof v, "%.2f m/s2", b.g);
+    fmtRow(v, sizeof v, "%.2f m/s2", b.g);
     line("surface gravity", v);
     // Both at the mean radius under the body's own mu: what a launch must reach, an
     // arrival burn must shed.
@@ -6534,7 +6551,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
     else { line("ground", "solid"); }
     if(!b.isStar() && !b.surface.bands) {
         if(b.surface.has_sea) {
-            snprintf(v, sizeof v, "yes, %+.0f m, %s sea",
+            fmtRow(v, sizeof v, "yes, %+.0f m, %s sea",
                      (double)b.surface.sea_level,
                      oceanModeName(b.surface.ocean_mode));
             line("seas", v);
@@ -6563,7 +6580,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                H and start being the authored profile. The row says where the LEVELS
                sit; the air itself reaches to the "atmosphere top" row above, which a
                layered body must author (top() has no H to multiply). */
-            snprintf(v, sizeof v, "%d levels to %s", (int)at.layers.size(),
+            fmtRow(v, sizeof v, "%d levels to %s", (int)at.layers.size(),
                      fmt_dist(at.layers.back().base_alt, w, sizeof w));
             line("air profile", v);
         } else if(at.scale_height > 0.0) {
@@ -6572,7 +6589,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
         // The block can exist for the drawn rim alone, with no drag air behind it (the two
         // halves are independent).
         if(at.sea_level_density > 0.0) {
-            snprintf(v, sizeof v, "%.3f kg/m3", at.sea_level_density);
+            fmtRow(v, sizeof v, "%.3f kg/m3", at.sea_level_density);
             line("air density", v);
             /* What the authored scale height IMPLIES rather than measures (#552
                A2): one exponential IS an isothermal atmosphere, so T, p and the
@@ -6598,11 +6615,11 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                field is a parser's bad day. */
             const DragAtmosphere da = dragAtm(at, b);
             const double airK = airTemperature(da, 0.0);
-            snprintf(v, sizeof v, "%.1f K (%.1f C)", airK, celsiusOf(airK));
+            fmtRow(v, sizeof v, "%.1f K (%.1f C)", airK, celsiusOf(airK));
             line(at.layers.empty() ? "air temp (isothermal)" : "air temp (sea level)", v);
-            snprintf(v, sizeof v, "%.1f kPa", airPressure(da, 0.0) / 1000.0);
+            fmtRow(v, sizeof v, "%.1f kPa", airPressure(da, 0.0) / 1000.0);
             line("air pressure", v);
-            snprintf(v, sizeof v, "%.1f m/s", airSoundSpeed(da, 0.0));
+            fmtRow(v, sizeof v, "%.1f m/s", airSoundSpeed(da, 0.0));
             line("sound speed", v);
             /* #724 rung D: whether this air is allowed to feel its ground, and how much.
                It has to be readable somewhere, or the number sits in a JSON only the tests
@@ -6612,7 +6629,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                (weighted by how much air is overhead), which is why a pad's thermometer and
                this row can differ by a degree or two on Kerbin. */
             if(followAuthored(at.air_follow)) {
-                snprintf(v, sizeof v, "%.3f (air follows its ground at sea level)",
+                fmtRow(v, sizeof v, "%.3f (air follows its ground at sea level)",
                          at.air_follow);
                 line("air coupling", v);
             } else {
@@ -6631,7 +6648,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                     assert(x.gas != nullptr);   // the loader names every gas it accepts
                     if(!(x.fraction > 0.0)) { continue; }
                     snprintf(lab, sizeof lab, "air gas %s", x.gas->name);
-                    snprintf(v, sizeof v, "%.4g%%", 100.0 * x.fraction);
+                    fmtRow(v, sizeof v, "%.4g%%", 100.0 * x.fraction);
                     line(lab, v);
                 }
             }
@@ -6648,9 +6665,9 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                gas rows use it: a trace atmosphere's oxidizer is a real number and
                "0.0%" reads as a display bug rather than as a cold fact. */
             if(at.oxidizer_share > 0.0) {
-                snprintf(v, sizeof v, "%.4g%% by mass", 100.0 * at.oxidizer_share);
+                fmtRow(v, sizeof v, "%.4g%% by mass", 100.0 * at.oxidizer_share);
             } else {
-                snprintf(v, sizeof v, "none");
+                fmtRow(v, sizeof v, "none");
             }
             line("air oxidizer", v);
         } else {
@@ -6699,12 +6716,12 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
            this row reports the value, and why there is no black-body row here: a star IS
            the black body. */
         if(thermalAuthored(b.surface.temperature)) {
-            snprintf(v, sizeof v, "%.1f K", b.surface.temperature);
-        } else { snprintf(v, sizeof v, "-"); }
+            fmtRow(v, sizeof v, "%.1f K", b.surface.temperature);
+        } else { fmtRow(v, sizeof v, "-"); }
         line("surface temp (photosphere)", v);
         if(b.star_luminosity > 0.0) {
-            snprintf(v, sizeof v, "%.4g W", b.star_luminosity);
-        } else { snprintf(v, sizeof v, "-"); }
+            fmtRow(v, sizeof v, "%.4g W", b.star_luminosity);
+        } else { fmtRow(v, sizeof v, "-"); }
         line("luminosity", v);
     } else {
         double a_sun = 0.0;
@@ -6713,8 +6730,8 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                               / (link->orb_ang_speed * link->orb_ang_speed));
         }
         const double flux = (sun != nullptr) ? solarFlux(sun->star_luminosity, a_sun) : 0.0;
-        if(flux > 0.0) { snprintf(v, sizeof v, "%.4g W/m2", flux); }
-        else { snprintf(v, sizeof v, "-"); }
+        if(flux > 0.0) { fmtRow(v, sizeof v, "%.4g W/m2", flux); }
+        else { fmtRow(v, sizeof v, "-"); }
         line(link != nullptr && link != b.frame ? "sunlight (parent's orbit)"
                                                 : "sunlight (mean orbit)", v);
         const bool albedo = albedoAuthored(b.surface.bond_albedo);
@@ -6723,7 +6740,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                exactly like Europa's own measurement until the row says it came from a
                geometric 0.68 times a factor this corpus disagrees about within itself. */
             const bool marked = !b.surface.albedo_src.empty();
-            snprintf(v, sizeof v, "%.3f%s%s%s", b.surface.bond_albedo,
+            fmtRow(v, sizeof v, "%.3f%s%s%s", b.surface.bond_albedo,
                      marked ? " (" : "", b.surface.albedo_src.c_str(),
                      marked ? ")" : "");
             line("bond albedo", v);
@@ -6737,7 +6754,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
            under its authored 288 K. */
         const double bb = derivedBlackbody_K(flux, b.surface.bond_albedo);
         if(bb > 0.0) {
-            snprintf(v, sizeof v, "%.1f K (global mean, no air)", bb);
+            fmtRow(v, sizeof v, "%.1f K (global mean, no air)", bb);
             line("black-body temp", v);
         } else { line("black-body temp", "-"); }
         /* #738: a banded giant has no surface, and the corpus never claims one -- the row it
@@ -6748,7 +6765,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
            number this row prints for it is not a greenhouse at all. */
         const bool giant = b.surface.bands;
         if(thermalAuthored(b.surface.temperature)) {
-            snprintf(v, sizeof v, "%.1f K (%.1f C)", b.surface.temperature,
+            fmtRow(v, sizeof v, "%.1f K (%.1f C)", b.surface.temperature,
                      celsiusOf(b.surface.temperature));
             line(giant ? "temp at 1 bar" : "surface temp", v);
             // The gap, rather than a paragraph about it: two rows the player can read
@@ -6760,7 +6777,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             // exactly that question -- so the row reports a difference instead of
             // pretending a greenhouse exists in the sim.
             if(bb > 0.0) {
-                snprintf(v, sizeof v, "%+.1f K (%s)",
+                fmtRow(v, sizeof v, "%+.1f K (%s)",
                          b.surface.temperature - bb,
                          giant ? "1 bar - airless mean" : "surface - airless mean");
                 line(giant ? "level - airless mean" : "greenhouse gap", v);
@@ -6799,13 +6816,13 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                words (utils/ground_model.py, gen_systems.py). "DEFAULT" is not a warning here:
                #749 decided a stated gap is worse than a rule that names itself. */
             const bool priced = !b.surface.even_share_src.empty();
-            snprintf(v, sizeof v, "%.1f K night to %.1f K day%s%s%s",
+            fmtRow(v, sizeof v, "%.1f K night to %.1f K day%s%s%s",
                      groundTemperature(anchor, f, 0.0),
                      groundTemperature(anchor, f, 1.0),
                      priced ? " (" : "", b.surface.even_share_src.c_str(),
                      priced ? ")" : "");
             line(giant ? "level swing" : "ground swing", v);
-            snprintf(v, sizeof v, "%.1f K (%s, even share %.3f)", anchor, why, f);
+            fmtRow(v, sizeof v, "%.1f K (%s, even share %.3f)", anchor, why, f);
             line(giant ? "level anchor" : "ground anchor", v);
         } else {
             line(giant ? "level swing" : "ground swing", "-");
@@ -6831,7 +6848,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
     // p = h^2/mu = a(1-e^2), read off the epoch rail state.
     const double h = glm::length(glm::cross(fr->orbit_pos0, fr->orbit_vel0));
     const double e = std::sqrt(std::max(0.0, 1.0 - (h * h / fr->parent_mu) / a));
-    snprintf(v, sizeof v, "%.4f", e);
+    fmtRow(v, sizeof v, "%.4f", e);
     line("eccentricity", v);
     // Both halves here: from the parent's centre, and above its mean sea level
     // (which is what ORBITAL's PeA/ApA show -- #405).

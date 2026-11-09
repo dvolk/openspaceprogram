@@ -195,8 +195,10 @@ def fit_even_share_pair(T0, T_night, T_day, gate=DAY_PREDICTION_GATE):
     The note is the generator's verdict line: it names the end used and the residual, never a
     bare bool."""
     if T0 <= 0.0 or T_night < 0.0 or T_day < T_night:
-        return None, None, 'the pair is not a pair (night %s > day %s at T0 %s)' % (
-            T_night, T_day, T0)
+        # Three different broken inputs, and the note says which one: a refusal line that
+        # prints a false inequality is how a scrape bug hides for a week.
+        return None, None, ('the pair is not a pair: night %s, day %s, anchor %s'
+                            % (T_night, T_day, T0))
     if T_day == T_night:
         return EVEN_SHARE_NO_SWING, SRC_NO_RANGE, (
             'the pair states NO range -> f = 1.000 (stated, not defaulted)')
@@ -274,7 +276,6 @@ def default_even_share(p_pa, p_ref_pa, airless_floor):
     src/authored.h's kEvenShareUnauthored stays the ONLY absence in the game: a default is a
     number in the file, and the readout says DEFAULT next to it."""
     assert p_ref_pa > 0.0 and 0.0 < airless_floor < 1.0
-    import math
     p = p_pa if p_pa and p_pa > 0.0 else 0.0
     rule = 1.0 - math.exp(-p / p_ref_pa)
     # The rule ANSWERS WITH ITS OWN NAME: a body with a trace of air (Pluto, 1.3 Pa) sits at
@@ -292,19 +293,24 @@ def calibration_from_fitted(fitted, pressures_pa):
                  p_ref = -p / ln(1 - f)
       floor      the fitted knob of the fitted AIRLESS body (its pair is the airless
                  archetype), floored away from 0 because a 0-K midnight is not a reading."""
-    import math
-    p_ref = None
-    for name, f in fitted.items():
-        p = pressures_pa.get(name)
-        if p and 0.0 < f < 1.0:
-            p_ref = -p / math.log(1.0 - f)
-            ref_note = '%s (f %.4f at %g Pa)' % (name, f, p)
-            break
-    assert p_ref is not None, 'no fitted body with a stated pressure: the air rule is uncalibrated'
+    air = {n: f for n, f in fitted.items() if pressures_pa.get(n) and 0.0 < f < 1.0}
+    assert air, 'no fitted body with a stated pressure: the air rule is uncalibrated'
+    # Exactly ONE, deliberately. Two air bodies with pair fits would give two different p_ref
+    # and dict order would pick -- so the second one is a finding to look at, not a coin flip.
+    assert len(air) == 1, (
+        'the air rule calibrates on ONE fitted air body; this run fitted %s -- two answers '
+        'means the corpus priced a second pair, and which p_ref wins would be dict order'
+        % sorted(air))
+    name = sorted(air)[0]
+    f, p = air[name], pressures_pa[name]
+    p_ref = -p / math.log(1.0 - f)
+    ref_note = '%s (f %.4f at %g Pa)' % (name, f, p)
     floors = [f for n, f in fitted.items() if not pressures_pa.get(n)]
     assert floors, 'no fitted airless body: the airless floor is uninvented'
-    return p_ref, max(floors), ('air rule p_ref %g Pa from %s; airless floor %.4f from the '
-                                'airless fit' % (p_ref, ref_note, max(floors)))
+    # The LARGEST floor of the airless fits: the least extreme of several measured nights, so
+    # a second airless body that swings LESS cannot make every default body swing MORE.
+    return p_ref, max(floors), ('air rule p_ref %g Pa from %s; airless floor %.4f from %d '
+                                'airless fit(s)' % (p_ref, ref_note, max(floors), len(floors)))
 
 
 def fit_even_share(T0, T_night, T_day, gate=DAY_PREDICTION_GATE):
@@ -463,6 +469,24 @@ def _self_test():
     g, gs = default_even_share(143556.0, cal_p, cal_f)
     check(cal_f < g < 1.0 and gs == SRC_AIR_RULE,
           "a thick air the corpus never paired still gets a knob (%.4f)" % g)
+    # A pair whose DAY end IS the anchor (285-300 K at a 300 K mean): the night-end fit would
+    # predict a 335 K day, 11.7% high -- past the gate -- while the day end reproduces the
+    # night to 5%. This is the rung that says "the pair's consistent half is the day".
+    pd, sd, nd = fit_even_share_pair(300.0, 285.0, 300.0)
+    check(pd is not None and sd == SRC_PAIR_DAY and abs(pd - 1.0) < 1e-9
+              and abs(night_T(300.0, pd) - 300.0) < 1e-9,
+          "a pair the NIGHT end cannot reach falls to the DAY end: " + nd)
+    two = calibration_from_fitted({"Earth": 0.9323, "Moon": 0.0153, "Charon": 0.0300},
+                                  {"Earth": 101325.0, "Moon": 0.0, "Charon": 0.0})
+    check(abs(two[1] - 0.0300) < 1e-12,
+          "several airless fits take the least extreme floor (%.4f)" % two[1])
+    try:
+        calibration_from_fitted({"Earth": 0.9323, "Venus": 0.9},
+                                {"Earth": 101325.0, "Venus": 9200000.0})
+        check(False, "two fitted airs must raise, not pick by dict order")
+    except AssertionError as ex:
+        check("ONE fitted air" in str(ex) or "ONE fitted air body" in str(ex),
+              "two fitted airs raise rather than being chosen by dict order")
     try:
         calibration_from_fitted({"Earth": 0.9323}, {"Earth": 101325.0})
         check(False, "calibration without an airless fit must raise, not guess a floor")

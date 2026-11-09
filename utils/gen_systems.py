@@ -919,10 +919,6 @@ KSP_ANALOGUE = {
     "Gilly":  "Phobos",     # a potato with no shape to speak of
     "Eeloo":  "Pluto",      # dwarf of bright ices; inherits Pluto's self-contradicting sheet too
 }
-# Where the analogue's own value cannot be used, say so beside the number rather than editing
-# the table above into two columns nobody reads.
-KSP_ANALOGUE_SKIP = set()   # bodies priced elsewhere; empty by default
-
 def solar_reference_albedos():
     """{name: (authored Bond albedo, how that file obtained it)} from the reference system
     file. The second half rides along so a borrowed figure cannot lose the fact that it was
@@ -1030,6 +1026,15 @@ def author_ksp_albedos(obj):
         # airless mean landing OUTSIDE the pair says the two authored halves of that body
         # disagree about its sun, which is the sanity check #735 asked for and the reason
         # Laythe and Jool are filed rather than quietly left out (#738).
+        # DELIBERATELY the one-end fitter, not make_solar_system.py's three-rung
+        # fit_even_share_pair. The corpus pages state a "Diurnal temperature range", which is
+        # a night and a day; #742 showed this catalogue's wiki rows are often (record low,
+        # average), and the pair fitter's least-squares rung would happily price one of those
+        # -- Duna is the witness, whose wiki 150-233 K straddles its air datum of 214.81 K and
+        # so passes the anchor-inside-the-pair gate, giving Duna its own knob instead of
+        # Mars's. Which of those is right is a DATA question (is a wiki max_k a day extreme or
+        # a mean?) that one function should answer for every body at once; until it does, the
+        # divergence is here on purpose and pinned by e2e/science/735 (Duna: analogy to Mars).
         rng = WIKI_THERMAL.get(name)
         note = ''
         if rng and rng[1] is not None and rng[2] is not None:
@@ -1329,6 +1334,13 @@ def author_ksp_diurnal_defaults(obj):
             "typo here would otherwise read as that body's refusal" % (name, analogue))
         f = ref[analogue]
         how = "by analogy to %s" % analogue
+        # A borrowed figure keeps the hop it came from, the way the albedo path does: 0.0153
+        # on Moho is Mercury's, and Mercury's is OUR airless floor, so "analogy to Mercury"
+        # alone would stop one link short of the rule that actually priced it (#687). A
+        # borrowed FIT needs no marker -- a fit is the strongest kind of number we have.
+        borrowed_src = "analogy to %s" % analogue
+        if f is not None and (ref_src.get(analogue) or "").startswith("DEFAULT"):
+            borrowed_src += ", defaulted there"
         if f is None:
             p = (surf.get("atmosphere") or {}).get("sea_level_pressure") or 0.0
             f, dsrc = default_even_share(p, p_ref, floor)
@@ -1349,8 +1361,8 @@ def author_ksp_diurnal_defaults(obj):
             "%s: the fitted pass already authored a swing; the defaults pass must not "
             "overwrite it" % name)
         surf["even_share"] = f
-        surf["even_share_src"] = (("analogy to %s" % analogue) if ref[analogue] is not None
-                                  else dsrc)
+        surf["even_share_src"] = borrowed_src if f is not None and ref[analogue] is not None \
+            else dsrc
         at = surf.get("atmosphere") or {}
         note = even_share_air_note(name, f, at.get("sea_level_pressure"),
                                    night_K=night_T(T0, f), anchor_K=T0, anchor_why=why)

@@ -1468,7 +1468,7 @@
           ]
         ],
         "albedo": 0.6813950481608377,
-        "albedo_src": "converted: geometric 1 x 0.681",
+        "albedo_src": "converted: geometric 1.0 x 0.681",
         "even_share": 0.015251705420212182,
         "even_share_src": "DEFAULT airless floor"
       },
@@ -1754,7 +1754,7 @@
           ]
         ],
         "albedo": 0.1873836382442304,
-        "albedo_src": "converted: geometric 0.275 x 0.681",
+        "albedo_src": "converted: geometric 0.05 / 0.5 x 0.681",
         "even_share": 0.015251705420212182,
         "even_share_src": "DEFAULT airless floor"
       },

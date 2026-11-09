@@ -118,7 +118,7 @@
         "albedo": 0.068,
         "albedo_src": "analogy to Mercury",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Mercury"
+        "even_share_src": "analogy to Mercury, defaulted there"
       },
       "inertial": {
         "orb_ang_speed": 2.8356872230308897e-06,
@@ -282,7 +282,7 @@
         "albedo": 0.04769765337125865,
         "albedo_src": "analogy to Phobos, converted there",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Phobos"
+        "even_share_src": "analogy to Phobos, defaulted there"
       },
       "inertial": {
         "orb_ang_speed": 1.6169314226105314e-05,
@@ -532,7 +532,7 @@
         "albedo": 0.6813950481608377,
         "albedo_src": "analogy to Enceladus, converted there",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Enceladus"
+        "even_share_src": "analogy to Enceladus, defaulted there"
       },
       "inertial": {
         "orb_ang_speed": 5.832285484117015e-06,
@@ -1124,7 +1124,7 @@
         "albedo": 0.4633486327493697,
         "albedo_src": "analogy to Europa, converted there",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Europa"
+        "even_share_src": "analogy to Europa, defaulted there"
       },
       "inertial": {
         "orb_ang_speed": 5.9296590354840286e-05,
@@ -1222,7 +1222,7 @@
         "albedo": 0.04769765337125865,
         "albedo_src": "analogy to Phobos, converted there",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Phobos"
+        "even_share_src": "analogy to Phobos, defaulted there"
       },
       "inertial": {
         "orb_ang_speed": 1.1539218609089665e-05,
@@ -1274,7 +1274,7 @@
         "albedo": 0.12946505915055917,
         "albedo_src": "analogy to Callisto, converted there",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Callisto"
+        "even_share_src": "analogy to Callisto, defaulted there"
       },
       "inertial": {
         "orb_ang_speed": 6.966586547754677e-06,
@@ -1326,7 +1326,7 @@
         "albedo": 0.72,
         "albedo_src": "analogy to Pluto",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Pluto"
+        "even_share_src": "analogy to Pluto, defaulted there"
       },
       "inertial": {
         "orb_ang_speed": 4.002231569830586e-08,

@@ -653,6 +653,12 @@ test-gen:
 	python3 utils/sci_dist.py --check res/systems/*.json
 	python3 utils/gen_systems.py --check
 	python3 utils/make_solar_system.py --check
+# The order here is safe but NOT independent: gen_systems.py reads the COMMITTED
+# solar_system.json (its albedos, swings, pressures and provenance strings) and re-derives the
+# air-mass calibration from them (#749). If the corpus file no longer matches its generator,
+# this line weighs a stale file and the next line is the one that fails -- so an out-of-date
+# pair cannot slip through, but regenerating in the WRONG order (ksp first) silently bakes the
+# old calibration into ksp_system.json. Regenerate solar_system first, always.
 # #682's band as a refusal rather than a report. A top sets shellEdge = max(100 km,
 # 1.2 top), so it moves the rot frame, the LowOrbit/HighOrbit cuts, every spawn bed and
 # the atlas disk -- and drag.h bills nothing above it, so it is also where a decaying

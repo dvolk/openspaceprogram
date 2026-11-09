@@ -18,12 +18,10 @@ from atmo_units import (resolve_layer_heights, anchor_sea_level_pressure,
 # tests/test_groundtemp.cpp pins the two against the same numbers -- the atmo.h /
 # atmo_units.py arrangement, which is the only way two spellings of one law can be caught
 # drifting (#636).
-from ground_model import (parse_diurnal_pair, fit_even_share, fit_even_share_pair,
+from ground_model import (parse_diurnal_pair, fit_even_share_pair,
                           calibration_from_fitted, default_even_share,
-                          SRC_PAIR_NIGHT, SRC_PAIR_DAY, SRC_AIR_RULE, SRC_AIRLESS,
-                          ground_anchor,
-                          even_share_air_note,
-                          EVEN_SHARE_NO_SWING, DAY_PREDICTION_GATE)
+                          SRC_PAIR_NIGHT, SRC_PAIR_DAY,
+                          ground_anchor, even_share_air_note)
 
 G      = 6.674e-11      # m^3 / kg / s^2  (matches the loader's G)
 AU     = 1.496e11       # m
@@ -1938,13 +1936,23 @@ def corpus_phase_integral(pages=PHASE_INTEGRAL_PAGES, verbose=False):
     converted albedo reads as what it is: a converted figure whose uncertainty is a few percent
     in the anchor (T goes as (1-A)^1/4)."""
     ratios = []
+    missing = []
     for page in pages:
         v = section_values(read(page), 'Bulk parameters')
         geo, bond = v.get('geometricalbedo'), v.get('bondalbedo')
         if geo and bond:
             ratios.append((page[:8], bond / geo))
-    assert len(ratios) >= 8, (
-        'the phase integral is calibrated on %d pages; the scrape moved' % len(ratios))
+        else:
+            missing.append(page)
+    # EVERY named page, not "enough of them": this median prices 19 satellite albedos and
+    # every anchor downstream of them, so a page quietly losing one of its two rows must stop
+    # the build rather than move the median. --check would catch the file drift today; this
+    # catches it at the cause, and names the page.
+    assert not missing, (
+        'the phase integral reads BOTH albedos from every page it names; these state one or '
+        'neither: %s' % missing)
+    assert len(ratios) == len(pages), 'phase-integral pages counted %d of %d' % (
+        len(ratios), len(pages))
     vals = sorted(r for _, r in ratios)
     q = vals[len(vals) // 2] if len(vals) % 2 else 0.5 * (
         vals[len(vals) // 2 - 1] + vals[len(vals) // 2])
@@ -1956,8 +1964,25 @@ def corpus_phase_integral(pages=PHASE_INTEGRAL_PAGES, verbose=False):
         print('  phase     %s' % note)
     return q, note
 
+def albedo_cell(v, raw, page, row):
+    """[(value, cell text)] One albedo cell, RANGE-CHECKED as a geometric albedo.
+
+    Why a range and not just `0 <= A < 1` on the product: the last cell of a satellite row is
+    the albedo column TODAY, and a scrape that appends a column -- a mass in Earth masses is
+    ~1e-4 -- would otherwise be read as an albedo of 1e-4, pass every downstream assert (q x
+    1e-4 is a perfectly legal Bond albedo) and dim that moon's anchor in silence. This is the
+    one place the number is known to BE an albedo, so it is the place to insist."""
+    assert 0.004 <= v <= 1.2, (
+        '%s/%s: the cell this parse took as a geometric albedo is %g (%r), which is not one'
+        % (page, row, v, raw))
+    return v, ' '.join(raw.split())
+
+
 def sat_geometric_albedo(page, row, verbose=False):
-    """[float] The visual geometric albedo one satellite's row states, or a hard error.
+    """[(value, the cell's own text)] The visual geometric albedo one satellite's row states,
+    or a hard error. The cell text comes back too because it goes into the file's provenance
+    string: for Iapetus the number we use is a MEAN of two hemispheres, and that sentence has
+    to travel with the albedo rather than stay in the generator's stdout (#687).
     Row tables put the name in the first cell; the two-column Mars table puts labels in the
     first cell and one value per column, so both shapes end in the same read: the number in
     the 'geometric albedo' row/column for this name."""
@@ -1974,16 +1999,20 @@ def sat_geometric_albedo(page, row, verbose=False):
         assert ci is not None, 'marsfact: no %s column in the satellites table' % row
         for r in rows:
             if r and 'geometricalbedo' in norm(r[0]):
-                v = num(r[1 + ci])
+                raw = r[1 + ci]
+                v = num(raw)
                 assert v is not None, 'marsfact: %s geometric albedo cell is not a number' % row
-                return v
+                return albedo_cell(v, raw, page, row)
         raise AssertionError('marsfact: no Geometric albedo row in the satellites table')
     for tr in re.findall(r'<tr.*?</tr>', h, re.S):
         c = cells(tr)
         if not c:
             continue
-        head = norm(c[0])
-        if head.startswith(norm(row)) and len(c) >= 2:
+        # The name cell carries the designation too -- 'Titania (III)', 'Io (I)' -- and a
+        # PREFIX match would let 'Titan' read Titania's row on a page holding both, so strip
+        # the designation and compare whole names.
+        head = norm(c[0].split('(')[0])
+        if head == norm(row) and len(c) >= 2:
             v = c[-1]
             nums = [num(x) for x in (v.split('/') if '/' in v else [v])]
             nums = [x for x in nums if x is not None]
@@ -1996,8 +2025,8 @@ def sat_geometric_albedo(page, row, verbose=False):
                 if verbose:
                     print('  albedo    %-8s the sheet states %s (two hemispheres); mean %g used'
                           % (row, v.strip(), sum(nums) / len(nums)))
-                return sum(nums) / len(nums)
-            return nums[0]
+                return albedo_cell(sum(nums) / len(nums), v, page, row)
+            return albedo_cell(nums[0], v, page, row)
     raise AssertionError('%s: no row for %s in the satellite table (the scrape moved?)'
                          % (page, row))
 
@@ -2141,7 +2170,7 @@ def satellite_sheets(verbose=True):
     for name, (page, row) in sorted(SOLAR_SAT_GEOMETRIC.items()):
         assert name not in out, (
             '%s: stated in SOLAR_SAT_ALBEDOS and converted in SOLAR_SAT_GEOMETRIC' % name)
-        p_geo = sat_geometric_albedo(page, row, verbose=verbose)
+        p_geo, cell = sat_geometric_albedo(page, row, verbose=verbose)
         a = q * p_geo
         assert 0.0 <= a < 1.0, (
             '%s: converted albedo %g (q %.3f x geometric %g) is not a Bond albedo'
@@ -2149,7 +2178,9 @@ def satellite_sheets(verbose=True):
         out[name] = {'albedo': a, 'irradiance': None, 'bb_T': None, 'diurnal': None,
                      # %.3f, not %g: this string is a dossier row, and six decimals of a
                      # factor the corpus itself disagrees about is false precision on screen.
-                     'albedo_src': 'converted: geometric %g x %.3f' % (p_geo, q)}
+                     # The CELL's own text, not the parsed number, so a two-hemisphere mean
+                     # says so where the number alone would read like a measurement.
+                     'albedo_src': 'converted: geometric %s x %.3f' % (cell, q)}
         if verbose:
             print('  sat conv  %-9s albedo %6.3f  = geometric %4.2f x q %.3f  (%s)'
                   % (name, a, p_geo, q, page))

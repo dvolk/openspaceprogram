@@ -48,6 +48,7 @@ CHECK re.search(r"level swing\s+-", re.search(r"\[atlas\] Jupiter weight=.*?(?=\
 # rounding by four. Measured on this file: the worst row is Ariel at a 58.8 K anchor, where
 # 0.1 K of print rounding is 0.17% and the sum lands 0.016 off; the giants' rows are an order
 # of magnitude tighter. A real law change moves this by whole units, not hundredths.
+CHECK len(re.findall(r"ground swing\s+([\d.]+) K night to ([\d.]+) K day", out)) == len(re.findall(r"ground anchor\s+([\d.]+) K", out))
 CHECK all(abs((float(d) / float(a)) ** 4 + 3.0 * (float(n) / float(a)) ** 4 - 4.0) < 4e-2 for (n, d), a in zip(re.findall(r"ground swing\s+([\d.]+) K night to ([\d.]+) K day", out), re.findall(r"ground anchor\s+([\d.]+) K", out)))
 # ... and the identity is not vacuous: #749 priced a swing for every body in this file that has
 # a ground, which is 26 of its 31 rows. The five that stay dashed are the four banded giants

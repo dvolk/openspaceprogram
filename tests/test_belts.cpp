@@ -366,13 +366,17 @@ int main() {
         nlohmann::json j = read_json("res/systems/ksp_system.json");
         expect_loaded(j, "the shipped catalogue prices every ground it has",
                       [&](const System &sys) {
-            int priced = 0, named = 0;
+            int priced = 0, named = 0, grounded = 0;
             for(const TerrainBody *b : sys.bodies) {
+                if(!b->isStar() && !b->surface.bands) { ++grounded; }
                 if(!evenShareAuthored(b->surface.even_share)) { continue; }
                 ++priced;
                 if(!b->surface.even_share_src.empty()) { ++named; }
             }
-            check(priced >= 15, "the shipped bodies carry swings");
+            // EVERY body with a ground, exactly: a swing dying quietly in the generator would
+            // otherwise slide under a `>=` while the dossier lost rows nobody noticed.
+            check(priced == grounded,
+                  "every ground-bearing body in the shipped file carries a swing");
             check(named == priced,
                   "every authored swing in the shipped file says how it was priced");
             const TerrainBody *kerbin = sys.find("Kerbin");
@@ -389,6 +393,11 @@ int main() {
             check(minmus != nullptr
                       && minmus->surface.albedo_src.find("converted") != std::string::npos,
                   "a borrowed converted albedo says it was converted");
+            const TerrainBody *moho = sys.find("Moho");
+            check(moho != nullptr
+                      && moho->surface.even_share_src.find("defaulted there")
+                             != std::string::npos,
+                  "a borrowed knob that was a DEFAULT at its source says so two hops deep");
             const TerrainBody *mun = sys.find("Mun");
             check(mun != nullptr && albedoAuthored(mun->surface.bond_albedo)
                       && mun->surface.albedo_src.find("converted") == std::string::npos,
