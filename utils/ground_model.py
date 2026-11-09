@@ -81,17 +81,31 @@ EVEN_SHARE_NO_SWING = 1.0
 THICK_AIR_KPA = 50.0
 
 
-def even_share_air_note(name, f, sea_level_pa):
+def even_share_air_note(name, f, sea_level_pa, night_K=None, anchor_K=None,
+                        anchor_why=''):
     """[] The sentence for a pair that implies an almost un-redistributed surface under a
     dense sky -- Eve's 160 K night under a thousand kilopascals, for instance. Empty when
-    there is nothing to flag."""
+    there is nothing to flag.
+
+    #743: when the anchor under the pair IS this body's own air datum, name WHICH half of
+    the pair argues. A day end above the air's datum is ordinary -- a dry world's subsolar
+    surface runs hotter than the air over it, and that is how the air gets its heat. A night
+    end far BELOW that datum is the half a thick sky does not permit: a surface cannot fall
+    130 K under the column resting on it. Saying which half is wrong is what makes the note
+    actionable instead of a shrug."""
     if f is None or f >= 0.5 or not sea_level_pa:
         return ''
     if sea_level_pa / 1000.0 < THICK_AIR_KPA:
         return ''
+    half = ''
+    if (night_K is not None and anchor_K is not None and 'air' in anchor_why
+            and anchor_K - night_K > 50.0):
+        half = (' -- and it is the NIGHT end that argues: %.1f K is %.1f K below the datum '
+                'of the air standing on that ground. A day end above the datum is ordinary'
+                % (night_K, anchor_K - night_K))
     return ("NOTE %s: this pair implies an almost UNredistributed surface (f = %.3f) under "
-            "a %.0f kPa sky -- the pair and this body's own air argue"
-            % (name, f, sea_level_pa / 1000.0))
+            "a %.0f kPa sky -- the pair and this body's own air argue%s"
+            % (name, f, sea_level_pa / 1000.0, half))
 
 
 def ground_anchor(body, derived_bb):
@@ -264,6 +278,12 @@ def _self_test():
     check(fit_even_share(200.0, 250.0, 100.0)[0] is None,
           "a night end above the anchor is refused")
 
+    check('NIGHT end that argues' in even_share_air_note(
+              "Eve", 0.09, 198000.0, 160.0, 291.68, "the air's own datum"),
+          "a thick sky plus a far-below-datum night names the NIGHT half (#743)")
+    check('NIGHT end' not in even_share_air_note(
+              "Eve", 0.09, 198000.0, 280.0, 291.68, "the air's own datum"),
+          "a night end near the datum is not the contradiction, so it is not claimed")
     check(even_share_air_note("Eve", 0.09, 1013000.0) != "",
           "a bare-rock swing under a thousand kPa gets flagged")
     check(even_share_air_note("Earth", 0.93, 101325.0) == "",

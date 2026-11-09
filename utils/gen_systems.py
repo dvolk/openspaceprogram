@@ -35,6 +35,7 @@ from atmo_units import (resolve_layer_heights, anchor_sea_level_pressure,
 # #724 rung C: the surface swing's law, shared with make_solar_system.py so the shipped
 # system and the catalogue cannot grow two different weathers (#636).
 from ground_model import (fit_even_share, even_share_air_note, ground_anchor,
+                          night_T,
                           AIR_FOLLOW)
 
 TWOPI = 2.0 * math.pi
@@ -1193,7 +1194,8 @@ def author_ksp_diurnal(obj):
         body.setdefault("surface", {})["even_share"] = f
         n_authored += 1
         at = (body.get("surface") or {}).get("atmosphere") or {}
-        air_note = even_share_air_note(name, f, at.get("sea_level_pressure"))
+        air_note = even_share_air_note(name, f, at.get("sea_level_pressure"),
+                                       night_K=lo, anchor_K=T0, anchor_why=why)
         rows.append('  diurnal   %-8s f=%.4f  anchor %7.2f K (%s)\n%20s%s%s'
                     % (name, f, T0, why, '', note,
                        ('\n%20s%s' % ('', air_note)) if air_note else ''))
@@ -1317,7 +1319,8 @@ def author_ksp_diurnal_analogy(obj):
             "%s: the fitted pass already authored a swing; KSP_DIURNAL must not overwrite it" % name)
         surf["even_share"] = f
         at = surf.get("atmosphere") or {}
-        note = even_share_air_note(name, f, at.get("sea_level_pressure"))
+        note = even_share_air_note(name, f, at.get("sea_level_pressure"),
+                                   night_K=night_T(T0, f), anchor_K=T0, anchor_why=why)
         print('  diurnal   %-8s f=%.4f  anchor %7.2f K (%s)  %s%s'
               % (name, f, T0, why,
                  ('INVENTED, stated as ours' if override is not None
