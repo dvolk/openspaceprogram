@@ -266,12 +266,19 @@ SURFACES = {
                     [1.0, [0.80, 0.40, 0.45]]],
         "atmosphere": {"color": [0.80, 0.85, 0.35], "thickness": 25000,
                        "power": 4.0, "intensity": 0.75,
-                       "sea_level_density": 1.7, "scale_height": 7000,
-                       # Denser sea-level air than Kerbin's, and not one gram of it
-                       # will burn: a jet on Eve has plenty to swallow and nothing to
-                       # swallow it with (#630).
-                       "composition": CO2_HEAVY,
-                       "height": 90000},
+                       # #625: this body's profile is authored in KSP_AIR below, which
+                       # is where its temperature, its lapse and its ceiling come from.
+                       # The pressure stays what the old rho0 x H column weighed (1.7
+                       # kg/m3 on 7 km at g 16.677), deliberately: rung A is about the
+                       # air's TEMPERATURE, and moving a datum and a temperature in one
+                       # diff makes neither of them reviewable. The wiki's 5 atm row is
+                       # in utils/ksp_bodies.csv and stays unadopted (#702).
+                       "sea_level_pressure": 198456.3,
+                       # Denser sea-level air than Kerbin's -- 3.56 kg/m3 at the datum,
+                       # which is what 1.96 atm weighs on a 1.7 g world -- and not one
+                       # gram of it will burn: a jet on Eve has plenty to swallow and
+                       # nothing to swallow it with (#630).
+                       "composition": CO2_HEAVY},
     },
     "Gilly": {
         "amplitude": 400,
@@ -421,7 +428,10 @@ SURFACES = {
                     [1.0, [0.85, 0.60, 0.40]]],
         "atmosphere": {"color": [0.80, 0.48, 0.30], "thickness": 8000,
                        "power": 4.0, "intensity": 0.55,
-                       "sea_level_density": 0.015, "scale_height": 13600,
+                       # The pressure the old H 13.6 km column weighed (0.015 kg/m3 at
+                       # g 2.943), kept while #625 re-weights the temperature; the wiki
+                       # states 6.755 kPa here, 11x denser, unadopted (#702).
+                       "sea_level_pressure": 600.372,
                        # Duna wears Mars's air at Duna's gravity (#700 step 1, and
                        # the same argument as #698). What it used to author -- 0.12
                        # kg/m^3 on a 4 km scale height -- is not a world: the trio
@@ -437,13 +447,7 @@ SURFACES = {
                        # in src/ has a ground temperature to freeze.
                        # Thin CO2 with a 0.13% oxygen trace: enough to measure, not
                        # enough to run a turbine on.
-                       "composition": CO2_HEAVY,
-                       # Authored, not defaulted, for the same reason as Mars's: at
-                       # 65 km a circular orbit (902 m/s) feels 111 Pa of q, next to
-                       # Kerbin's 97.8 Pa at its own edge and inside #682's band. The
-                       # old 50 km sat where the old column left 1 Pa -- the top was
-                       # drawn far outside any air that could push on a hull.
-                       "height": 65000},
+                       "composition": CO2_HEAVY},
     },
     "Ike": {
         "amplitude": 1000,
@@ -462,29 +466,22 @@ SURFACES = {
                     [1.0, [0.80, 0.87, 0.83]]],
         "atmosphere": {"color": [0.75, 0.85, 0.85], "thickness": 90000,
                        "power": 3.0, "intensity": 0.6,
-                       "sea_level_density": 2.0, "scale_height": 20000,
-                       # H2 with helium and a methane crown. The densest air in this
+                       # A giant's DATUM is the 1 bar level -- that is the level every
+                       # giant row in the reference file is stated at (Jupiter, Saturn,
+                       # Uranus, Neptune all source "at 1 bar" densities and
+                       # temperatures, #697), and a body with no ground has no other
+                       # non-arbitrary one. 100,000 Pa at 151.43 K of this mix resolves
+                       # 0.188 kg/m3, against Jupiter's published 0.162 kg/m3 at its own
+                       # 1 bar. What this used to author -- 2.0 kg/m3 on a 20 km scale
+                       # height -- weighed 313.9 kPa and read 44.63 K, 67 K colder than
+                       # this world's own sunlight, which is #738's absurdity.
+                       "sea_level_pressure": 100000.0,
+                       # H2 with helium and a methane crown. The most fuel-rich air in
+                       # this system and 0% oxidizer: Jool is a fuel store, not a sky a
                        # system and 0% oxidizer: Jool is a fuel store, not a sky a
                        # jet can cross. KSP's Jool, not the solar system's Uranus:
                        # same three gases, different sky (#636).
-                       "composition": H2_HE_CH4_KSP,
-                       # #682 step 3: authored, where this used to be the derived 10 H.
-                       # The band asks where a decaying orbit first feels 10..1000 Pa of
-                       # q, and 10 H = 200 km leaves 2,856 Pa at the ceiling -- 29x
-                       # Kerbin's own edge (97.8 Pa), and fifth of six over-dense
-                       # ceilings then (Venus 99.8 kPa, Jupiter 6.8, Uranus 3.3,
-                       # Neptune 3.0, Jool 2.9, Saturn 2.4). 275 km is where a circular
-                       # orbit here feels 87.8 Pa, beside Kerbin 97.8 / Duna 110 /
-                       # Laythe 106. Collateral: shellEdge 240 -> 330 km, spawn bed 20 ->
-                       # 27.5 km, Flying/FlyingLow split 40 -> 55 km. It does NOT move
-                       # the rendered rim (terrain max height + `thickness`, #56) or the
-                       # 2.0 kg/m3 datum, which is what the H 20 km is for. The ceiling
-                       # is 4.6% of Jool's radius either way, so this is not a claim
-                       # that a giant's air ENDS there -- it is where the game draws its
-                       # one hard zero, and #701 is the ticket for the gradient below it.
-                       # The KSP sheet calls it 200 km; that is a rendering limit, so
-                       # #702 wants it printed as drift rather than obeyed.
-                       "height": 275000},
+                       "composition": H2_HE_CH4_KSP},
     },
     "Laythe": {
         "amplitude": 5000,
@@ -981,6 +978,130 @@ def author_ksp_albedos(obj):
         print('  albedo    %-8s %5.3f  %7.1f W/m2 at %s -> %7.1f K  %s%s'
               % (name, a, flux, rail, bb, src, note))
 
+
+# #625 (roadmap rung A): an air body's DATUM TEMPERATURE, authored rather than implied.
+#
+# Until now three of this file's six airs stated a SCALE HEIGHT, and the trio lock
+# (#686) had already spent it: T0 = g H M / R, so Eve's H 7000 was a 610.70 K surface
+# and Jool's H 20000 a 44.63 K cloud top -- 67 K colder than Jool's own sunlight. No
+# downstream rung (a skin, a season, a part that heats up) can vary a temperature that
+# an exponential profile cannot state, so the fix is not tidiness.
+#
+# A table takes the datum off the scale height, and then the temperature has to come
+# from somewhere. Where no source states a mean (all six of these -- #722: the wiki's
+# temperature column is a night/day PAIR, never a mean) the rule here is the one Kerbin
+# already fits by accident of authorship:
+#
+#     datum T = (the airless global mean this file's OWN star gives at this body's
+#               authored Bond albedo, #735) + (an authored gap, per body, below)
+#
+# so the light half and the air half of every row stay reconcilable (#687's meta-law)
+# and the atlas' gap row prints the authored figure instead of an accident. Kerbin: its
+# authored 288.15 K is 255.1 K of sunlight + 33.0 K, which is Earth's published gap.
+# Duna's is +5.0 K, which is Mars's. The two figures that were already right by luck now
+# have a stated source, and the ones that were wrong (Eve, Jool) have a knob.
+#
+# The gap is the only free number, and each one is a claim:
+#   Eve +65 K   a column of Kerbin's MASS (p0/g 11,900 kg/m2 against Kerbin's 10,329)
+#               that is pure CO2 rather than 0.04% CO2. Kerbin's gap is +33 K; Venus's,
+#               at 63x that column, is +510 K. +65 K is a claim about a thin-ish green-
+#               house gas column, not a scaled one, and it keeps the datum inside the
+#               wiki's 160-420 K pair and 128 K under its day-side extreme.
+#   Duna +5 K   Mars's own published gap, for 204 kg/m2 of air -- 2% of Kerbin's column.
+#               Its old H implied +(-0.4) K, i.e. no greenhouse at all.
+#   Jool +40 K  NOT a greenhouse: a giant has no ground to greenhouse, and its 1 bar
+#               level sits above its black-body because of the heat inside it. Jupiter's
+#               published 1-bar 165 K is +55 K over its own sunlight; Jool is a smaller,
+#               cooler giant. #738 is the ticket for whether the atlas may call any of
+#               these "greenhouse" at all, and it names Laythe's +175 K as the worst
+#               case of that label (an ocean world on 53 W/m2, tidal heat at Jool).
+# The two lapses are the bodies' own convective limits, not US76's: a lapse steeper than
+# g/cp is a column that cannot hold itself up (cp from this file's own gamma and mix --
+# Eve's limit is 20.4 K/km and it authors 9.0, which is what Venus's lower air is
+# observed at; Duna's limit is 3.6 and it authors 3.5; Jool's is 0.66 and it authors
+# 0.66, a fully convective interior). The LID above the tropopause is drawn where the
+# column would otherwise freeze its own air out: CO2 deposits at ~206 K at Eve's partial
+# pressure (its tropopause lands at 210.7 K) and at ~148 K at Duna's (its lid starts at
+# 151.8 K) -- the same argument #700's Duna note makes against the 61.6 K column this
+# replaces. Jool's lid at 112 K stays above methane's frost point at its 0.5% share.
+#
+# `top` is the ceiling, and it is chosen by the band gate (utils/check_atmo_band.py,
+# which every `make test` runs): where a circular orbit first feels 10..1000 Pa of q,
+# Kerbin's own edge being 97.8 Pa. Eve's published 90 km and Jool's published 200 km
+# are NOT adoptable -- with a real temperature and 1.7 g, Eve's whole air is inside
+# ~10 scale heights and 90 km leaves 1e-9 Pa. Duna's published 50 km IS adopted, and it
+# happens to sit in band (139.9 Pa). The printed q below is what to read; the gate is
+# what refuses the build if one of these numbers drifts.
+KSP_AIR = {
+    "Eve":    {"gap": 65.0, "via": "CO2 greenhouse",
+               "lapse": -0.0090, "trop": 9000.0, "top": 31000.0},
+    "Duna":   {"gap": 5.0, "via": "CO2 greenhouse (Martian)",
+               "lapse": -0.0035, "trop": 18000.0, "top": 50000.0},
+    "Jool":   {"gap": 40.0, "via": "internal heat, no ground",
+               "lapse": -0.00066, "trop": 60000.0, "top": 600000.0},
+    # Authored tables, worn for #700's reason (an ocean world needs the air its sea can
+    # sit under): Kerbin's US76 rows, datum 288.15 K. Nothing is emitted here; the pass
+    # prints their gap against their own light so the row is reviewed the same way.
+    "Kerbin": {"table": "US76, datum 288.15 K"},
+    "Shay":   {"table": "Kerbin's table, 550 km moon (#700)"},
+    "Laythe": {"table": "Kerbin's table, sea world (#700); +175 K is Jool's tides, #738"},
+}
+
+def author_ksp_air_thermal(obj):
+    """#625: emit the three exponential airs as authored layer tables, and print every
+    air body's datum beside the light it is built on. Print first, refuse second: a pass
+    that says nothing is indistinguishable from one that checked nothing (#685)."""
+    by_name = {b["name"]: b for b in obj["bodies"]}
+    star = next(b for b in obj["bodies"] if b.get("type") == "star")
+    sT = (star.get("surface") or {}).get("temperature") or 0.0
+    assert sT > 0.0, "author_ksp_air_thermal() must run after author_star_temperature()"
+    lum = 4.0 * math.pi * star["radius"] ** 2 * SIGMA_SB * sT ** 4
+    air = {b["name"] for b in obj["bodies"]
+           if (b.get("surface") or {}).get("atmosphere")}
+    # Same coverage discipline as KSP_ALBEDOS: a new air body left out of this table
+    # would silently regain a scale-height thermometer, and the atlas would print its
+    # temperature as fact.
+    assert air == set(KSP_AIR), (
+        "KSP_AIR and this system's airs disagree: only in the system %s, only in the "
+        "table %s" % (sorted(air - set(KSP_AIR)), sorted(set(KSP_AIR) - air)))
+    for name, spec in KSP_AIR.items():
+        b = by_name[name]
+        at = b["surface"]["atmosphere"]
+        a = (b.get("surface") or {}).get("albedo")
+        assert a is not None, ("%s has air but no albedo: its datum temperature is built "
+                               "on the light, so the two halves must both exist (#735)"
+                               % name)
+        a_star, rail = mean_orbit_to_star(b, by_name)
+        assert a_star, "%s has air but no rail to the star to read its light from" % name
+        flux = lum / (4.0 * math.pi * a_star * a_star)
+        bb = blackbody_temperature(flux, a)
+        if "table" in spec:
+            T0 = at["layers"][0]["T"]
+            print('  air T     %-8s %7.1f K of light + %6.1f K  -> %7.2f K datum, '
+                  '%d levels: %s' % (name, bb, T0 - bb, T0, len(at["layers"]),
+                                     spec["table"]))
+            continue
+        assert "scale_height" not in at and "layers" not in at and "height" not in at, (
+            "%s: KSP_AIR owns this body's profile, so the surface block must not also "
+            "state one (two sources, one of them silent)" % name)
+        T0 = round(bb + spec["gap"], 2)
+        trop_T = round(T0 + spec["lapse"] * spec["trop"], 2)
+        assert 0.0 < spec["trop"] < spec["top"], "%s: tropopause above the ceiling" % name
+        assert trop_T > 0.5 * T0, (
+            "%s: a lapse of %.5f K/m leaves %.2f K at %.0f m -- the lid is colder than "
+            "half the datum, which is not a troposphere" % (
+                name, spec["lapse"], trop_T, spec["trop"]))
+        at["layers"] = [{"alt": 0.0, "T": T0, "lapse": spec["lapse"]},
+                        {"alt": spec["trop"], "T": trop_T, "lapse": 0.0}]
+        at["height"] = spec["top"]
+        rng = WIKI_THERMAL.get(name)
+        pair = ("  wiki night/day %7.2f - %7.2f K" % (rng[1], rng[2])) \
+            if rng and rng[1] is not None and rng[2] is not None else ""
+        print('  air T     %-8s %7.1f K of light + %6.1f K (%s) -> %7.2f K datum, '
+              'lapse %5.2f K/km to %.0f km, lid %7.2f K, top %.0f km%s'
+              % (name, bb, spec["gap"], spec["via"], T0, -1000.0 * spec["lapse"],
+                 spec["trop"] / 1000.0, trop_T, spec["top"] / 1000.0, pair))
+
 def main():
     ap = argparse.ArgumentParser(
         description="Generate res/systems/{old,ksp}_system.json, or --check "
@@ -1025,6 +1146,9 @@ def main():
     # purpose. It is a frozen fixture (tests/test_belts.cpp builds on it), not a showcase,
     # and leaving it dashed keeps the absent-reading path loaded by a file the tests use.
     author_ksp_albedos(ksp)
+    # #625 after #735 on purpose: an authored air temperature is built on the light, so
+    # the albedos have to be in the object before the airs are.
+    author_ksp_air_thermal(ksp)
     if bad:
         for m in bad:
             print('DRIFT   body gravity: ' + m)

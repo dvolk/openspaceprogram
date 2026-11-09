@@ -6,8 +6,19 @@
 # the bed -- and the speed falls out of each body's own air and gravity:
 #   q = load x g(alt),  v = sqrt(2 q / rho(alt))
 #   Kerbin  rho 0.502, g 9.54  -> 44.0 m/s   (the hull's own trim: 43)
-#   Eve     rho 0.478, g 16.3  -> 58.9 m/s   (its own trim: 56..60)
-#   Duna    rho 0.0094, g 2.83 -> 175.1 m/s  (its own trim: 150..230)
+#   Eve     rho 1.492, g 16.53 -> 33.6 m/s
+#   Duna    rho 0.0110, g 2.85 -> 162.4 m/s  (its own trim: 150..230)
+# Eve's row moved with #625: its air used to be 0.478 kg/m3 at 9 km and is now 1.49 at
+# its 3.1 km bed, because a 292 K CO2 column on a 1.7 g world is compressed into a 3.3 km
+# scale height, and its top came from 90 km to 31 km. Duna's moved too: its top is now
+# the wiki's own 50 km (in band: 140 Pa of q), so the bed sits at 5 km, not 6.5.
+# Is the bed's speed also the hull's TRIM speed there? Measured directly, one run each
+# with --drag-log at the bed: L_up / (m g) is 0.88 on Kerbin (4757 N against 5424 N of
+# weight) and 0.85 on Eve (8002 against 9397) -- the same hull, the same near-trim lift
+# deficit, in airs 3x apart. Duna is the odd one: 2.0x (3254 N against 1622 N), because
+# the bed there is Mach 0.73 and compressibility is lifting the wing. The old trim RANGES
+# (43 Kerbin, 56..60 Eve, 150..230 Duna) were glide measurements in the airs before these
+# tickets; Eve's scales as 1/sqrt(rho) to ~32..34, which is where the bed put it.
 # Those are the three numbers this case pins, and they are GOLDEN, not invariant: they
 # are readouts of rho and g at three altitudes, so they move if the air is retuned
 # (#682 moved the bed heights once and #686 re-weighed the columns). What does NOT move
@@ -18,22 +29,24 @@
 # carries the PLANET's g, so one q would be off by g_body/9.81 -- 2x under the lift
 # needed on Eve, 1.8x over on Duna (both measured).
 NAME trim-bed-speeds-follow-the-air
-CLAIM A load-keyed spawn bed's speed comes from the body's air and gravity rather than from its circular speed: one authored 50.9 kg/m^2 lift-area load gives 44 m/s in Kerbin's 8.5 km air, 59 in Eve's and 175 in Duna's at the same 0.1-of-air-top band -- each within reach of what the same hull actually trims at -- where the gravity-keyed cruise bed gives 33 m/s on Duna, a fifth of the speed that hull needs to make lift there.
+CLAIM A load-keyed spawn bed's speed comes from the body's air and gravity rather than from its circular speed: one authored 50.9 kg/m^2 lift-area load gives 44 m/s in Kerbin's 8.5 km air, 34 in Eve's 3.1 km air and 162 in Duna's 5 km at the same 0.1-of-air-top band -- within a few percent of the same hull's lift balance on the two subsonic worlds -- where the gravity-keyed cruise bed gives 33 m/s on Duna, a fifth of the speed that hull needs to make lift there.
 KIND golden
 ARGS --timeout 2 --startship k,res/ships/skiff_trim.json,Kerbin,flying-trim --startship v,res/ships/skiff_trim.json,Eve,flying-trim --startship d,res/ships/skiff_trim.json,Duna,flying-trim --startship c,res/ships/skiff_trim.json,Duna,flying-cruise
 FORBID error:
 FORBID needs air
 # The three speeds, in order of the air they sit in. Kerbin is the bed the load was
-# measured on; Eve pulls twice as hard and the hull must fly faster to carry the same
-# wings; Duna's air is 50x thinner and its gravity a third, and those do NOT cancel --
-# sqrt(g/rho) still lands 4x up.
+# measured on; Eve's air is 3x denser at that band and its gravity 1.7x, and the extra
+# weight it must carry is paid for in denser air, not in speed; Duna's air is 135x
+# thinner and its gravity a third, and those do NOT cancel -- sqrt(g/rho) still lands 4x up.
 CHECK re.search(r"Spawn 'flying-trim' around Kerbin.*\|v\| = 4[34]\.[0-9] m/s \|v_air\| = 4[34]\.[0-9]", out)
-CHECK re.search(r"Spawn 'flying-trim' around Eve.*\|v\| = 5[89]\.[0-9] m/s \|v_air\| = 5[89]\.[0-9]", out)
-CHECK re.search(r"Spawn 'flying-trim' around Duna.*\|v\| = 17[45]\.[0-9] m/s \|v_air\| = 17[45]\.[0-9]", out)
-# Same band on all three: Duna's air top is 65 km, so 0.1 of it is 6.5 km off its datum,
-# r = 326500 m. Without this pin, "it just spawned somewhere else" would explain the
-# 4x spread away -- the wrong explanation.
-CHECK re.search(r"Spawn 'flying-trim' around Duna.*r = 326500 m", out)
+CHECK re.search(r"Spawn 'flying-trim' around Eve.*\|v\| = 3[34]\.[0-9] m/s \|v_air\| = 3[34]\.[0-9]", out)
+CHECK re.search(r"Spawn 'flying-trim' around Duna.*\|v\| = 16[12]\.[0-9] m/s \|v_air\| = 16[12]\.[0-9]", out)
+# Same band on all three: Duna's air top is 50 km (its wiki row, adopted by #625 because
+# it lands in band), so 0.1 of it is 5 km off its datum, r = 325000 m. Eve's top is 31 km,
+# so its bed is at 3.1 km -- r = 703100 m, of a 700 km world. Without these pins, "it just
+# spawned somewhere else" would explain the 4x spread away -- the wrong explanation.
+CHECK re.search(r"Spawn 'flying-trim' around Duna.*r = 325000 m", out)
+CHECK re.search(r"Spawn 'flying-trim' around Eve.*r = 703100 m", out)
 # The contrast, same air, same band, gravity-keyed: 33 m/s where that hull needs 175 to
 # carry its own weight. Over 40 here means the load keying stopped being air-keyed.
 CHECK re.search(r"Spawn 'flying-cruise' around Duna.*\|v\| = 3[23]\.[0-9] m/s", out)

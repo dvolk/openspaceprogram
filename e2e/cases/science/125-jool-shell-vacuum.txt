@@ -14,9 +14,13 @@ EXPECT T=- p=- a=- Mach=-
 CHECK len(drag) >= 2
 # The rho/F lines below already refuse a hull inside the air, so this one is not about
 # air -- it pins the BED. An inertial spawn sits at 1.25 x shellEdge (kInertialOrbitFrac),
-# and #682 step 3 moved Jool's authored 275 km ceiling -> 330 km shell -> 412.5 km bed.
-# The old bound was the ceiling as it was then (200 km); 400 km says the bed moved with it.
-CHECK all(d["alt_asl"] > 400000.0 for d in drag)
+# and the ceiling it hangs off moves whenever the air's top is re-authored. #682 step 3
+# moved Jool's ceiling 200 -> 275 km (bed 412.5 km); #625 moved it to 600 km, because a
+# giant whose 1 bar datum is a real 151 K of H2 has an exobase hundreds of km out and the
+# band gate puts its ceiling there (121 Pa of q, beside Kerbin's 97.8). So shellEdge =
+# 1.2 x 600 = 720 km and the bed is 900 km. 850 km says the bed followed the ceiling;
+# 400 km would have passed with the OLD air and said nothing.
+CHECK all(d["alt_asl"] > 850000.0 for d in drag)
 CHECK all(d["rho"] == 0.0 for d in drag)
 CHECK all(d["F"] == 0.0 for d in drag)
 CHECK all("airT" not in d and "mach" not in d for d in drag)

@@ -55,8 +55,11 @@ H2_HE_CH4_SOLAR = [{"gas": "H2", "fraction": 0.825},
                    {"gas": "He", "fraction": 0.152},
                    {"gas": "CH4", "fraction": 0.023}]
 
-# Jool (gen_systems). The densest air in that system and 0% oxidizer: a fuel
-# store, not a sky a jet can cross.
+# Jool (gen_systems). The deepest column in that system -- a 1 bar datum under a
+# 600 km ceiling -- and 0% oxidizer: a fuel store, not a sky a jet can cross. Its
+# datum is only 0.19 kg/m3 (#625 put it at the 1 bar level the giants' published rows
+# are stated at); Eve's compressed 1.96 atm of CO2 at 1.7 g is the densest air in that
+# file at 3.6 kg/m3.
 H2_HE_CH4_KSP = [{"gas": "H2", "fraction": 0.855},
                  {"gas": "He", "fraction": 0.14},
                  {"gas": "CH4", "fraction": 0.005}]

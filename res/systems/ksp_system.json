@@ -184,7 +184,6 @@
           "power": 4.0,
           "intensity": 0.75,
           "sea_level_pressure": 198456.3,
-          "scale_height": 7000,
           "composition": [
             {
               "gas": "CO2",
@@ -203,7 +202,19 @@
               "fraction": 0.0013
             }
           ],
-          "height": 90000
+          "layers": [
+            {
+              "alt": 0.0,
+              "T": 291.68,
+              "lapse": -0.009
+            },
+            {
+              "alt": 9000.0,
+              "T": 210.68,
+              "lapse": 0.0
+            }
+          ],
+          "height": 31000.0
         },
         "albedo": 0.77
       },
@@ -671,7 +682,6 @@
           "power": 4.0,
           "intensity": 0.55,
           "sea_level_pressure": 600.372,
-          "scale_height": 13600,
           "composition": [
             {
               "gas": "CO2",
@@ -690,7 +700,19 @@
               "fraction": 0.0013
             }
           ],
-          "height": 65000
+          "layers": [
+            {
+              "alt": 0.0,
+              "T": 214.81,
+              "lapse": -0.0035
+            },
+            {
+              "alt": 18000.0,
+              "T": 151.81,
+              "lapse": 0.0
+            }
+          ],
+          "height": 50000.0
         },
         "albedo": 0.25
       },
@@ -848,8 +870,7 @@
           "thickness": 90000,
           "power": 3.0,
           "intensity": 0.6,
-          "sea_level_pressure": 313920.0,
-          "scale_height": 20000,
+          "sea_level_pressure": 100000.0,
           "composition": [
             {
               "gas": "H2",
@@ -864,7 +885,19 @@
               "fraction": 0.005
             }
           ],
-          "height": 275000
+          "layers": [
+            {
+              "alt": 0.0,
+              "T": 151.43,
+              "lapse": -0.00066
+            },
+            {
+              "alt": 60000.0,
+              "T": 111.83,
+              "lapse": 0.0
+            }
+          ],
+          "height": 600000.0
         },
         "albedo": 0.343
       },

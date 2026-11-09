@@ -275,9 +275,20 @@
           "thickness": 8000,
           "power": 4.0,
           "intensity": 0.55,
-          "scale_height": 13600,
-          "height": 65000,
-          "sea_level_pressure": 600.372
+          "height": 50000.0,
+          "sea_level_pressure": 600.372,
+          "layers": [
+            {
+              "alt": 0.0,
+              "T": 214.81,
+              "lapse": -0.0035
+            },
+            {
+              "alt": 18000.0,
+              "T": 151.81,
+              "lapse": 0.0
+            }
+          ]
         }
       },
       "inertial": {

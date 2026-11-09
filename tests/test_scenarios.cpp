@@ -170,6 +170,19 @@ static int check_air(const char *path, const System &sys) {
         {"Shay",   69999.0, 4.561912e-4},
         {"Laythe", 10500.0, 0.5259753},
         {"Laythe", 69999.0, 1.369243e-3},
+        /* #625's three authored tables, one row each ALONGSIDE the seam (the lid is
+           9 km on Eve, 18 on Duna, 60 on Jool), so what these weigh is the INTEGRATED
+           column -- the levels rows above only say where a level starts. The spread is
+           the point: at 20 km Eve holds 3.7x the air Duna does at 40 km despite a column
+           a fifth as tall, because Eve's 1.7 g packs its 292 K of CO2 into a 3.3 km
+           scale height, while Jool's light hot gas is still 1.7e-4 kg/m3 at 400 km.
+           A table that fell back to one isothermal level reads off these: Eve worn
+           isothermal at its own lid (210.68 K throughout) holds 1.57e-3 kg/m3 at 20 km,
+           0.57x this row, with a datum 3.8x denser -- and every number the atlas prints
+           about that sky moving with it. */
+        {"Eve",    20000.0, 2.77028315e-3},
+        {"Duna",   40000.0, 7.48950737e-4},
+        {"Jool",   400000.0, 1.69742860e-4},
     };
     /* Where each authored level sits and how fast it lapses, in the GEOMETRIC metres a
        system file speaks (#690). The 1976 standard this table was copied from states both
@@ -212,6 +225,21 @@ static int check_air(const char *path, const System &sys) {
            that survives someone regenerating the file. */
         {"Shay",   0, 0.0, -0.00637},       {"Shay",   6, 81524.0, -0.00148527},
         {"Laythe", 0, 0.0, -0.006357},      {"Laythe", 6, 82750.6, -0.00141818},
+        /* #625's three authored tables. These were exponentials, which have no levels
+           to pin, so nothing in this suite used to see a KSP body's SHAPE at all -- and
+           the shape is what the rungs after this one read. Two rows each, same reasoning
+           as Shay/Laythe above: level 0's lapse is the convective gradient the file's
+           KSP_AIR argues for (and it is only refused by atmo.h at ~3.5x that limit,
+           #703, so a typo there is a green build with a broken sky), and level 1's base
+           is the lid: it must sit below `height`, and the lid's ALTITUDE is where the
+           column stops cooling, which decides the density at the ceiling the band gate
+           weighs. Eve lapses to 9 km because CO2 deposits at ~206 K at its own partial
+           pressure and its lid must stay warmer than that (it reads 210.68 K); Duna's
+           lid is at 18 km for the same reason at 600 Pa (151.81 K); Jool is convective
+           all the way to 60 km (0.66 K/km IS its dry-adiabatic value). */
+        {"Eve",    0, 0.0, -0.009},         {"Eve",    1, 9000.0, 0.0},
+        {"Duna",   0, 0.0, -0.0035},        {"Duna",   1, 18000.0, 0.0},
+        {"Jool",   0, 0.0, -0.00066},       {"Jool",   1, 60000.0, 0.0},
     };
     static const Want want[] = {
         /* dry air's mix, authored now rather than defaulted: N2 78.084, O2 20.946,
@@ -250,13 +278,30 @@ static int check_air(const char *path, const System &sys) {
                                             1.2250017557285484, 1e-9},
         {"Laythe",            288.15,  340.47075676386669, 101325.0, 0.23140616,
                                             1.2250017557285484, 1e-9},
-        // H2 85.5, He 14, CH4 0.5 %: M 0.00236415, gamma 1.42319. g 7.848, H 20000.
-        // Jool is the densest air in this system and its oxidizer share is exactly
-        // zero -- hydrogen is the fuel, and there is no oxidizer to burn it with.
-        {"Jool",   44.630376392655037, 472.63460894186682, 313920.0, 0.0, 2.0, 1e-9},
-        // CO2 95.32, N2 2.7, Ar 1.6, O2 0.13 %: M 0.0434957, gamma 1.30485.
-        {"Eve",    610.70058697001423, 390.2911824640027, 198456.3,
-                                 0.00095878, 1.7, 1e-9},
+        /* #625: Eve's profile is authored (a 291.68 K datum, a 9 K/km convective
+           lapse, a lid where CO2 would otherwise snow out), so its datum now reads
+           the mix and the pressure rather than a scale height. The mix is CO2 95.32,
+           N2 2.7, Ar 1.6, O2 0.13 %: M 0.0434957, gamma 1.30485. rho0 3.56 kg/m3 is the
+           consequence of 1.96 atm at 1.7 g -- denser than Kerbin's air by 3x, which is
+           what the same COLUMN MASS weighs when the gravity is 1.7x. a 269.7 m/s is
+           below Kerbin's 340 because a CO2 molecule is heavy, not because the air is
+           cold. */
+        {"Eve",    291.68, 269.729158001, 198456.3,
+                                 0.00095878, 3.55934927952, 1e-9},
+        /* Duna's is the row that says the ladder worked: its old H 13.6 km implied
+           209.38 K, and the authored figure (this world's own sunlight, 209.81 K, plus
+           Mars's published 5 K gap) lands 5.4 K away from a number nobody chose. */
+        {"Duna",   214.81, 231.473787876, 600.372,
+                                 0.00095878, 0.014621041273, 1e-9},
+        // H2 85.5, He 14, CH4 0.5 %: M 0.00236415, gamma 1.42319.
+        /* #625 moved Jool onto the convention every other giant in this repo is
+           stated at -- the 1 bar level -- because a body with no ground has no other
+           non-arbitrary datum. 100 kPa at 151.43 K of this mix resolves 0.188 kg/m3,
+           next to Jupiter's published 0.162 at its own 1 bar; the 2.0 kg/m3 and 44.63 K
+           this used to read were a plucked density times a plucked scale height, and
+           67 K colder than Jool's own sunlight (#738). Its sound speed more than
+           doubles: hot, light gas. */
+        {"Jool",   151.43, 870.595075693, 100000.0, 0.0, 0.187771483353, 1e-9},
         /* CO2 96.5, N2 3.5 %: M 0.043450, gamma 1.30265. g 8.87, H 16 km.
            The p column is the whole reason Venus joined this table (#684): the file
            authored a rho0 and p0 was its consequence, so an author who typed a
@@ -341,10 +386,10 @@ static int check_air(const char *path, const System &sys) {
                || std::fabs(p - w.p) > w.tol * w.p
                || std::fabs(a.sea_level_density - w.rho0) > w.tol * w.rho0
                || !(std::fabs(a.oxidizer_share - w.ox) <= ox_tol)) {
-                printf("  %s: %s air T %.4f K (want %.4f), sound speed %.4f m/s"
-                       " (want %.4f), p %.1f Pa (want %.1f), resolved rho0 %.9f kg/m3"
-                       " (want %.9f), oxidizer %.8f (want %.8f) -- did a composition"
-                       " edit or a copy go half-way?\n",
+                printf("  %s: %s air T %.12g K (want %.12g), sound speed %.12g m/s"
+                       " (want %.12g), p %.12g Pa (want %.12g), resolved rho0 %.12g"
+                       " kg/m3 (want %.12g), oxidizer %.8f (want %.8f) -- did a"
+                       " composition edit or a copy go half-way?\n",
                        path, w.name, T, w.T, s, w.a, p, w.p,
                        a.sea_level_density, w.rho0, a.oxidizer_share, w.ox);
                 bad++;
@@ -358,10 +403,12 @@ static int check_air(const char *path, const System &sys) {
             if(!present || std::fabs(L.base_alt - w.alt) > 0.1
                         || std::fabs(L.lapse - w.lapse) > 1e-12) {
                 printf("  %s: %s level %d sits at %.1f m lapsing %.8f K/m, want %.1f m"
-                       " lapsing %.8f K/m (%d levels in the file). A table copied from a"
-                       " published standard is stated per GEOPOTENTIAL height; the file has to"
-                       " carry the converted GEOMETRIC altitude AND gradient the rest of the game"
-                       " measures (#690)\n",
+                       " lapsing %.8f K/m (%d levels in the file). For a table copied from a"
+                       " published standard this row is the GEOPOTENTIAL-to-GEOMETRIC"
+                       " conversion -- of the altitude AND the gradient -- going missing or"
+                       " wrong (#690); for a hand-authored table (Eve, Duna, Jool: #625) it"
+                       " is the authored shape itself, which is the half that --check cannot"
+                       " see.\n",
                        path, w.name, w.level,
                        present ? L.base_alt : -1.0, present ? L.lapse : 0.0, w.alt, w.lapse,
                        (int)a.layers.size());
@@ -937,7 +984,9 @@ static void check_raised_sea() {
    and that g is the DATUM sphere's (atmo.h:datumGravity, #697) rather than the typed one.
    Every shipped air body authors sea_level 0, so there the two g are one number and the
    factor is invisible -- exactly the kind of branch a wrong variable walks through with
-   every file still green. So: raise an exponential world's sea. A 12 km sea on Duna is
+   every file still green. So: raise an exponential world's sea. Since #625 made every
+   KSP air body a table, the fixture below puts Duna's old H 13.6 km back to have an
+   exponential to break. A 12 km sea on Duna is
    7.1 % less g at the datum (its radius is only 320 km), so the same authored 600.372 Pa
    resolves to air 7.6 % denser there, and the check has teeth (the last lines assert that the typed-g answer really is
    a different number, so this test cannot rot into a tautology if someone later raises a
@@ -956,7 +1005,17 @@ static void check_exponential_anchor() {
         if(bv.value("name", std::string()) != "Duna") { continue; }
         nlohmann::json &at = bv["surface"]["atmosphere"];
         p0 = at["sea_level_pressure"].get<double>();
-        H = at["scale_height"].get<double>();
+        if(at.contains("scale_height")) {
+            H = at["scale_height"].get<double>();
+        } else {
+            // #625 made every air body in this file a layer table, and this check is
+            // about the EXPONENTIAL branch -- so the fixture makes Duna one again, with
+            // the H it used to author. A file with both profiles refuses at load, so
+            // the table has to go, not just be ignored.
+            at.erase("layers");
+            H = 13600.0;
+            at["scale_height"] = H;
+        }
         gt = bv["g"].get<double>();
         r = bv["radius"].get<double>();
         bv["surface"]["sea_level"] = 12000.0;
