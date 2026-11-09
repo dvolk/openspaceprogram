@@ -37,12 +37,23 @@ CHECK (lambda e, u: abs(float(re.search(r"sunlight \(mean orbit\)\s+([\d.]+)", e
 # 4. A STAR IS the black body: its dossier reports its photosphere and its luminosity, and
 #    neither a sunlight row (nothing is above it) nor a black-body row of its own.
 CHECK re.search(r"surface temp \(photosphere\)\s+[\d.]+ K\s*\n\s*\[atlas\]   luminosity\s+[\d.e+]+ W\s*\n\s*\[atlas\]   \[orbit\]", re.search(r"\[atlas\] Sun weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-# 5. ABSENT READING, ON A NEW SURFACE. The Moon authors no albedo, so the black-body and the
-#    gap dash -- the arithmetic cannot be done without the number -- while the light it stands
-#    in still prints, and at its PLANET's orbit: a moon's distance to the sun swings over its
-#    month, so no single figure for the moon itself is honest and the label says which orbit
-#    the value was taken from.
-CHECK re.search(r"sunlight \(parent's orbit\)\s+[\d.]+ W/m2\s*\n\s*\[atlas\]   bond albedo\s+-\s*\n\s*\[atlas\]   black-body temp\s+-\s*\n\s*\[atlas\]   surface temp\s+-\s*\n\s*\[atlas\]   greenhouse gap\s+-", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# 5. A SURFACE THAT ONLY JUST LEARNED TO ANSWER. The Moon now authors a Bond albedo (0.11,
+#    moonfact.html's Bulk parameters -- #737 found that the corpus stated it and our parser
+#    read it only for planets), so its dossier closes: the light at its PLANET's orbit, the
+#    albedo, and the black-body those two imply. Its surface temp and the gap still dash,
+#    because no satellite page states a ground temperature (#722). A moon's light is labelled
+#    for the rail it was taken from -- its own distance to the sun swings over its month, so
+#    no single figure for the moon itself is honest.
+CHECK re.search(r"sunlight \(parent's orbit\)\s+[\d.]+ W/m2\s*\n\s*\[atlas\]   bond albedo\s+0\.110\s*\n\s*\[atlas\]   black-body temp\s+27[01]\.[0-9] K[^\n]*\n\s*\[atlas\]   surface temp\s+-\s*\n\s*\[atlas\]   greenhouse gap\s+-", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# 5b. AND A SURFACE THAT STILL CANNOT ANSWER, for a reason worth naming rather than parking.
+#     The satellite pages state a VISUAL GEOMETRICAL albedo (Europa's row in
+#     utils/rss/html/joviansatfact.html: 0.68) and no Bond albedo, and geometric -> Bond
+#     needs a phase integral nothing in the corpus gives -- filed, not guessed (#736). So
+#     Europa dashes its albedo, its black-body and everything downstream while still
+#     reporting the light at Jupiter's orbit. This check is what keeps the file's most visible
+#     "we do not know" a DECISION: the day someone parses that geometric row into an albedo,
+#     this goes red, and #735's rule (Bond, never geometrical) is why it should.
+CHECK re.search(r"sunlight \(parent's orbit\)\s+[\d.]+ W/m2\s*\n\s*\[atlas\]   bond albedo\s+-\s*\n\s*\[atlas\]   black-body temp\s+-\s*\n\s*\[atlas\]   surface temp\s+-", re.search(r"\[atlas\] Europa weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # 6. Half-authored is half-authored. Pluto authors an albedo (0.720, the file's second
 #    brightest after Venus's 0.770) and no ground reading, so its implied 32.2 K prints while
 #    its surface temp and the

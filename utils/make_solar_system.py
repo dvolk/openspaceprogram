@@ -1039,17 +1039,30 @@ def check_fact_surface(bodies, sheets, sun, verbose=True):
     waived = []
     for b in bodies:
         sheet = sheets.get(b['name'])
+        if not sheet:
+            continue
         inertial = b.get('inertial') or {}
         parent = by_name.get(b.get('orbits'))
-        w = inertial.get('orb_ang_speed')
-        # The irradiance row means "the STAR's light here", so the parent has to be the
-        # star. A moon with a Bulk-parameters table some day would otherwise be weighed
-        # against a planet-sized radius and pass -- or DRIFT -- by accident.
-        if (not sheet or not w or not parent or not parent.get('mass')
-                or parent.get('type') != 'star'):
+        # The irradiance row means "the STAR's light here", so what has to be found is the
+        # star -- and for a moon that means its GRANDparent: moonfact.html states 1361.0
+        # W/m2 because the Moon goes round the Sun with the Earth, not because it holds a
+        # solar orbit of its own. Weighing a moon on its own 384,400 m rail would print a
+        # flux six orders too high, which the band would refuse -- but the row would still
+        # be a lie about what the row means, so the rail is the parent's and the dossier
+        # label says so ("sunlight (parent's orbit)", src/gameui.cpp).
+        star, a = None, None
+        if parent is not None and parent.get('type') == 'star':
+            w = inertial.get('orb_ang_speed')
+            if w and parent.get('mass'):
+                star, a = parent, semimajor_axis(G * parent['mass'], w)
+        elif parent is not None:
+            gp = by_name.get(parent.get('orbits'))
+            pw = (parent.get('inertial') or {}).get('orb_ang_speed')
+            if gp is not None and gp.get('type') == 'star' and gp.get('mass') and pw:
+                star, a = gp, semimajor_axis(G * gp['mass'], pw)
+        if star is None:
             continue
-        a = semimajor_axis(G * parent['mass'], w)
-        flux = SIGMA_SB * T_sun ** 4 * (parent['radius'] / a) ** 2
+        flux = SIGMA_SB * T_sun ** 4 * (star['radius'] / a) ** 2
         cells = []
         if sheet.get('irradiance'):
             off = (flux - sheet['irradiance']) / sheet['irradiance']
@@ -1086,7 +1099,8 @@ def check_fact_surface(bodies, sheets, sun, verbose=True):
                                % (b['name'], albedo, bb, sheet['bb_T'], 100.0 * off,
                                   round(100 * FACT_SURFACE_BANDS), stale))
         else:
-            cells.append('bb - (no authored albedo or no bb row)')
+            cells.append('bb - (%s)' % ('no authored albedo' if albedo is None
+                                        else 'sheet states no black-body row'))
         rows.append('%-9s a %12.4g m  %s' % (b['name'], a, '  '.join(cells)))
     if verbose:
         for r in rows:
@@ -1825,7 +1839,50 @@ def build_base(verbose_air=False):
             stamp_transfer_dv(b, sun, home)
     return bodies, parsed
 
-def build_moon(m, parent_body=None, home_body=None):
+# Which satellites get an authored albedo, and the page and block each reading came from.
+# Deliberately TWO entries, and the shortness is a fact about the corpus, not an oversight:
+# every satellite page in utils/rss/html/ states a "Visual geometric albedo" and NO Bond
+# albedo (joviansatfact.html, saturniansatfact.html, uraniansatfact.html,
+# neptuniansatfact.html), and geometric -> Bond needs a phase integral nothing here gives
+# (#736). The rule #735's authorship leans on is BOND, never geometrical, so Europa and
+# Titan keep their dash in the dossier because the corpus declines to answer, not because
+# this script forgot to ask. The two pages that do say the word are the Moon (its own
+# Bulk-parameters table) and Charon (a block inside Pluto's page -- with a "Geometric
+# Albedo 0.42" row sitting two lines above the "Bond Albedo 0.25" one, which is exactly the
+# trap #735 was filed over).
+SOLAR_SAT_ALBEDOS = {
+    'Moon':   ('moonfact.html',  'Bulk parameters'),
+    'Charon': ('plutofact.html', 'Charon (P1)'),
+}
+
+def satellite_sheets(verbose=True):
+    """{satellite name: {albedo, irradiance, bb_T}} for the satellites whose page states a
+    BOND albedo -- shaped like fact_surface()'s output so the same surface guard can weigh
+    them. A missing heading or a missing albedo row is an assertion, not a dash: a silently
+    unpriced moon is the bug this exists to fix (#737), whereas a page that states no Bond
+    albedo is simply not in SOLAR_SAT_ALBEDOS.
+
+    No satellite gets an authored GROUND temperature here: the corpus's satellite rows stop
+    at the albedo, so the dossier dashes surface temp and the gap for them (#722)."""
+    out = {}
+    for name, (page, marker) in sorted(SOLAR_SAT_ALBEDOS.items()):
+        v = section_values(read(page), marker)   # raises if the block moved
+        a = v.get('bondalbedo')
+        assert a is not None, (
+            '%s: %s has a %r block but no Bond albedo row in it -- either the scrape '
+            'moved or the corpus stopped saying' % (name, page, marker))
+        out[name] = {'albedo': a,
+                     'irradiance': v.get('solarirradiancewm2'),
+                     'bb_T': v.get('blackbodytemperaturek')}
+        if verbose:
+            geom = v.get('geometricalbedo')
+            print('  sat sheet %-7s albedo %6.3f  from %s (%s)%s'
+                  % (name, a, page, marker,
+                     '; that block also states Geometric Albedo %g, not used'
+                     % geom if geom is not None else ''))
+    return out
+
+def build_moon(m, parent_body=None, home_body=None, sat_sheets=None):
     """Turn a master-moon record into a game body (mass estimated if absent)."""
     name = m['name']
     radius_m = m['radius_m']
@@ -1861,6 +1918,12 @@ def build_moon(m, parent_body=None, home_body=None):
     surface = rock(radius_m, c1, c2)
     if name in MOON_ATMOS:
         surface['atmosphere'] = MOON_ATMOS[name]
+    # #737: the two satellites the corpus prices in BOND. Every other moon in this file
+    # carries no albedo and the dossier dashes it -- see SOLAR_SAT_ALBEDOS for why that is
+    # the corpus declining rather than a gap in here.
+    a = (sat_sheets or {}).get(name)
+    if a is not None:
+        surface['albedo'] = a['albedo']
     return make_body(name, 'moon', m['parent'], data, seed=1000 + m['idx'],
                      surface=surface, parent_body=parent_body,
                      home_body=home_body)
@@ -1882,13 +1945,18 @@ def emit(base_bodies, moons, pred, out_path, label, dry=False):
     home = by['Earth']
     n = 0
     skipped = 0
+    # The satellites the corpus prices in BOND (#737). Printed once, on the core variant,
+    # beside the other rows this generator prints rather than in build_moon, because the
+    # rule that picks them is one decision and emit() runs four times.
+    sat_sheet = satellite_sheets(verbose=label.startswith('core'))
     for m in moons:
         if not pred(m):
             continue
         if not m['a'] or not m['period_s']:
             skipped += 1
             continue
-        bodies.append(build_moon(m, parent_body=by[m['parent']], home_body=home))
+        bodies.append(build_moon(m, parent_body=by[m['parent']], home_body=home,
+                                 sat_sheets=sat_sheet))
         by[m['name']] = bodies[-1]
         n += 1
     # The base planets were checked with their rows printed; the moons get the same
@@ -1900,6 +1968,17 @@ def emit(base_bodies, moons, pred, out_path, label, dry=False):
             print('DRIFT   body gravity: ' + m)
         raise SystemExit('%d emitted bodies author a g that their own mass and radius '
                          'deny (atmo.h:kAtmoGravityTol)' % len(bad))
+    # ... and the two satellites the corpus states rows for, weighed at their PARENT's rail
+    # (#737). This runs in emit() rather than beside the planets because a moon has no rail
+    # until the Kepler rows are built, and its sheet lives inside another body's page.
+    bad = check_fact_surface(bodies, sat_sheet, by['Sun'],
+                             verbose=label.startswith('core'))
+    if bad:
+        for m in bad:
+            print('DRIFT   fact surface: ' + m)
+        raise SystemExit('%d satellite insolation figure(s) disagree with the fact sheet '
+                         'that states them (band %d%%)'
+                         % (len(bad), round(100 * FACT_SURFACE_BANDS)))
     # ... and that every air in the file is one of the two kinds on purpose. It runs here,
     # with the moons appended, rather than beside the planets: Titan's air comes from
     # MOON_ATMOS, and a coverage guard that cannot see the whole catalogue would report the

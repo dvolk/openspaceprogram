@@ -866,15 +866,14 @@ def author_star_temperature(obj):
 # of 0.343, and Venus's at 0.689 against a Bond of 0.77, and it is the Bond column the
 # (1-A)S/4 law wants. (Both pairs read from venusfact.html and jupiterfact.html.)
 #
-# (analogue, override): override is None to take the analogue's authored value. The four
-# bare rocks (Mun, Ike, Dres, Tylo) need an override, because their analogue -- our own
-# Moon -- has its Bond albedo stated by the corpus (0.11, utils/rss/html/moonfact.html)
-# but left unauthored by our solar file (#737), so the literal cites that page instead. The Moon
-# is the only airless rocky body in the corpus with a stated Bond albedo, so Moho's Mercury
-# aside, every bare rock here borrows it. That flattening is nearly free: bb_T goes as
-# (1-A)^1/4, so A of 0.068 instead of 0.11 moves Moho's airless mean by 5 K on 440 K --
-# under 2%, and less further out. Where the pairing IS a bright one (Eeloo's ices, Pluto
-# again) it is made honestly or not at all.
+# (analogue, override): override is None to take the analogue's authored value. No row needs
+# an override now: the four bare rocks (Mun, Ike, Dres, Tylo) borrow the Moon's 0.11, and our
+# solar file AUTHORS that figure since #737 -- read out of solar_system.json like every other
+# value here, from moonfact.html's Bulk parameters. The Moon is the only airless rocky body in
+# the corpus with a stated Bond albedo, so Moho's Mercury aside, every bare rock here borrows
+# it. That flattening is nearly free: bb_T goes as (1-A)^1/4, so A of 0.068 instead of 0.11
+# moves Moho's airless mean by 5 K on 440 K -- under 2%, and less further out. Where the
+# pairing IS a bright one (Eeloo's ices, Pluto again) it is made honestly or not at all.
 #
 # Deliberately LEFT UNAUTHORED, because a dash is the true answer (#727) and the shipped
 # system keeps an example of one for the dash-law cases to bite on:
@@ -891,16 +890,16 @@ KSP_ALBEDOS = {
     "Moho":   ("Mercury", None),   # hot, airless, grey
     "Eve":    ("Venus",   None),   # thick CO2 sky over a hot rock
     "Kerbin": ("Earth",   None),   # Earth-shaped by construction
-    "Mun":    ("Moon",    0.11),   # airless rock; corpus-stated, unauthored in our solar file
+    "Mun":    ("Moon",    None),   # airless rock; 0.11 read from the solar file's Moon
     "Minmus": DASH,                # icy -- see the note above
     "Shay":   ("Earth",   None),   # authored air, sea and clouds: an Earth-shaped moon
     "Duna":   ("Mars",    None),
-    "Ike":    ("Moon",    0.11),
-    "Dres":   ("Moon",    0.11),   # belt dwarf, same bare-rock bucket
+    "Ike":    ("Moon",    None),
+    "Dres":   ("Moon",    None),   # belt dwarf, same bare-rock bucket
     "Jool":   ("Jupiter", None),
     "Laythe": ("Earth",   None),   # air and sea, on 53 W/m2: its wiki temperatures do not fit (#738)
     "Vall":   DASH,                # icy
-    "Tylo":   ("Moon",    0.11),
+    "Tylo":   ("Moon",    None),
     "Bop":    DASH,
     "Pol":    DASH,
     "Gilly":  DASH,
