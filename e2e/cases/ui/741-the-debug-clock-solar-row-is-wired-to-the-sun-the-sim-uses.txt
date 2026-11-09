@@ -1,0 +1,39 @@
+NAME 741-the-debug-clock-solar-row-is-wired-to-the-sun-the-sim-uses
+CLAIM The debug window's solar clock row is readable, its value is the sim clock's own, and the rate at which it walks is the day length the atlas prints for the home world -- so the one UI readout that reads the sun cannot be rewired to a different sun, a different day, or nothing at all without a test noticing.
+KIND invariant
+ARGS --system res/systems/ksp_system.json --startship v,res/ships/skiff.json,Kerbin,pad
+ARGS --timeout 12 --sim-press 1000,0,F1 --ui-list 2500 --ui-list 11000 --atlas-dump 4000 --solar-log
+# #741. solarSecOfDay() and subsolarLonLat() carry 73 pins in tests/test_solar.cpp, and
+# --solar-log's elev/flat columns carry their own -- but the row the player reads in GAME
+# DEBUG ("Solar: 14:54:22 (at lon 0)") had none: it was drawn with ImGui::Text, which the
+# --ui-list dump cannot see, so nothing anywhere joined the geometry to the readout. It goes
+# through uiText now (#601's readable-row mechanism), and this case is the join.
+# F1 opens the debug window (events.cpp's DebugInfo binding); the window list's checkboxes do
+# not include it, which is why the case presses a key rather than --ui-clicking a row.
+#
+# 1. THE ROWS EXIST, and exist as READOUT rows (text), which is what makes them pinnable and
+#    what a rename or a dropped uiText would break.
+CHECK len([r for r in uilist if r["label"].startswith("Solar:")]) == 2
+CHECK len([r for r in uilist if r["label"].startswith("Time:")]) == 2
+CHECK all(r["text"] for r in uilist if r["label"].startswith(("Solar:", "Time:", "Clock:")))
+# 2. THE ROW IS WELL FORMED and inside a day. HH:MM:SS, and "at lon 0" says which place it
+#    is the local time OF -- the same qualification the dossier puts on its own figures.
+CHECK all(re.match(r"Solar: \d\d:\d\d:\d\d \(at lon 0\)$", r["label"].strip().replace("  ", " ")) for r in uilist if r["label"].startswith("Solar:"))
+# 3. IT RUNS OFF THE SIM CLOCK, not the wall clock and not a table: the Time: row in the same
+#    window is the sim's own `time`, and offscreen the sim advances at roughly real time, so
+#    the two dumps' Time and loop deltas agree within 20%.
+CHECK (lambda ts, loops: abs((ts[1] - ts[0]) - (loops[1] - loops[0])) < 0.2 * (loops[1] - loops[0]))([float(re.search(r"Time: ([\d.]+)", r["label"]).group(1)) for r in uilist if r["label"].startswith("Time:")], [r["t"] for r in uilist if r["label"].startswith("Time:")])
+# 4. THE RATE IS THE HOME WORLD'S DAY, read off the atlas rather than retyped here: solar
+#    time walks 86400 solar seconds per Kerbin day, and the day length is the dossier's own
+#    row (05:59:59 = 21599 s). Band 10% because HH:MM:SS is whole-second and the two dumps
+#    are ~9 sim seconds apart, so the resolution is ~2 s of solar time on a ~36 s delta.
+#    Honest about the reach: this catches a wrong sun, a wrong place, hours/seconds slips and
+#    a rewired helper -- factors of 4 and 3600 -- and it does NOT catch a sidereal-vs-solar
+#    slip, which is 0.27% and under the resolution. tests/test_solar.cpp owns that one.
+CHECK (lambda s, t, day: abs((s[1] - s[0]) / (t[1] - t[0]) - 86400.0 / day) < 0.10 * (86400.0 / day))([(lambda m: int(m[0]) * 3600 + int(m[1]) * 60 + int(m[2]))(re.search(r"Solar:\s+(\d\d):(\d\d):(\d\d)", r["label"]).groups()) for r in uilist if r["label"].startswith("Solar:")], [float(re.search(r"Time: ([\d.]+)", r["label"]).group(1)) for r in uilist if r["label"].startswith("Time:")], (lambda dh, dm, ds: int(dh) * 3600 + int(dm) * 60 + int(ds))(*re.search(r"\[atlas\] Kerbin weight=.*?day length\s+(\d\d):(\d\d):(\d\d)", out, re.S).group(1, 2, 3)))
+# 5. AND IT IS NOT JUST THE CLOCK REPEATED. The wall-of-the-day row and the calendar row
+#    answer different questions (Kerbin's calendar day is not 24 hours of solar time), so
+#    their strings differ even though they share a window and an instant.
+CHECK len([r for r in uilist if r["label"].startswith("Clock:")]) == 2
+FORBID Solar:  --
+FORBID error:

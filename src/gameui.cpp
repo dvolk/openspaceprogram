@@ -1987,18 +1987,23 @@ void drawUIReadouts(Game &g) {
         }
         ImGui::Separator();
 
-        ImGui::Text("Time: %f", time);
+        /* #741: the clock block goes through uiText rather than ImGui::Text, which is what
+           puts these rows in --ui-list's dump (#601). Until now the one UI readout that
+           reads the SUN was the one readout no test could see: solarSecOfDay() and
+           subsolarLonLat() have 73 pins in tests/test_solar.cpp, and the wire from them to
+           this row had none. */
+        uiText("Time: %f", time);
         if(sys.home && sys.home->cal.valid()) {
             CalTime ct = sys.home->cal.at(time);
             if(ct.civil) {
-                ImGui::Text("Clock:  %04d-%02d-%02d  %02d:%02d:%02d UTC",
+                uiText("Clock:  %04d-%02d-%02d  %02d:%02d:%02d UTC",
                             ct.year, ct.month, ct.day, ct.hh, ct.mm, ct.ss);
             } else if(ct.has_year) {
-                ImGui::Text("Clock:  Yr %d  Mo %d  Day %d  %02d:%02d:%02d  (%s time)",
+                uiText("Clock:  Yr %d  Mo %d  Day %d  %02d:%02d:%02d  (%s time)",
                             ct.year, ct.month, ct.day, ct.hh, ct.mm, ct.ss,
                             sys.home->name.c_str());
             } else {
-                ImGui::Text("Clock:  Day %d  %02d:%02d:%02d  (%s time)",
+                uiText("Clock:  Day %d  %02d:%02d:%02d  (%s time)",
                             ct.day, ct.hh, ct.mm, ct.ss,
                             sys.home->name.c_str());
             }
@@ -2013,7 +2018,7 @@ void drawUIReadouts(Game &g) {
                     double lon = 0.0, lat = 0.0;
                     subsolarLonLat(sv, lon, lat);  // lat is the declination; lon is the clock
                     const int ssec = solarSecOfDay(lon);
-                    ImGui::Text("Solar:  %02d:%02d:%02d  (at lon 0)",
+                    uiText("Solar:  %02d:%02d:%02d  (at lon 0)",
                                 ssec / 3600, (ssec / 60) % 60, ssec % 60);
                 }
             }
