@@ -218,7 +218,8 @@
           "freq": 8.0
         },
         "albedo": 0.77,
-        "temperature": 737.0
+        "temperature": 737.0,
+        "even_share": 1.0
       },
       "inertial": {
         "orb_ang_speed": 3.2363920127827824e-07,
@@ -386,7 +387,8 @@
           "freq": 10.0
         },
         "albedo": 0.294,
-        "temperature": 288.0
+        "temperature": 288.0,
+        "even_share": 0.9323431643529773
       },
       "inertial": {
         "orb_ang_speed": 1.9909885714794665e-07,
@@ -1033,7 +1035,8 @@
             ]
           ]
         ],
-        "albedo": 0.11
+        "albedo": 0.11,
+        "even_share": 0.015251705420212182
       },
       "inertial": {
         "orb_ang_speed": 2.6616957278072153e-06,

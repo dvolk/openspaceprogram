@@ -32,6 +32,9 @@ from atmo_units import (resolve_layer_heights, anchor_sea_level_pressure,
                        check_anchor_conversion, check_body_gravity,
                         SIGMA_SB, semimajor_axis, star_temperature_from_flux,
                         blackbody_temperature, check_constants_match_src)
+# #724 rung C: the surface swing's law, shared with make_solar_system.py so the shipped
+# system and the catalogue cannot grow two different weathers (#636).
+from ground_model import fit_even_share, even_share_air_note
 
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
@@ -1120,6 +1123,74 @@ def author_ksp_air_thermal(obj):
               % (name, bb, spec["gap"], spec["via"], T0, -1000.0 * spec["lapse"],
                  spec["trop"] / 1000.0, trop_T, spec["top"] / 1000.0, pair))
 
+def author_ksp_diurnal(obj):
+    """#724 rung C: the ground's SWING, from the wiki's night/day pair, through the same
+    one-knob law make_solar_system.py fits -- utils/ground_model.py holds the law so the two
+    generators cannot each invent one (#636).
+
+    The law has ONE number (the even share f: how much of the surface's own emission the air
+    and the spin spread evenly), so a stated pair over-determines it: fit on the night end,
+    predict the day end, and the residual is the finding. For this catalogue the residuals
+    are large and that is worth reading. The wiki's `max` for Kerbin IS its average
+    temperature (288.15 K), so the pair states a night extreme with no day extreme, and the
+    model's day end lands 105 K above it; Duna and Laythe are the same shape. Eve is the one
+    body whose pair is a genuine night/day pair around this file's anchor, and its swing is
+    authored. Nothing here edits a wiki: a pair that will not fit is printed and left
+    unauthored, and the dossier dashes the row (#727)."""
+    by_name = {b["name"]: b for b in obj["bodies"]}
+    star = next(b for b in obj["bodies"] if b.get("type") == "star")
+    sT = (star.get("surface") or {}).get("temperature") or 0.0
+    assert sT > 0.0, "author_ksp_diurnal() must run after author_star_temperature()"
+    lum = 4.0 * math.pi * star["radius"] ** 2 * SIGMA_SB * sT ** 4
+    rows, unpaired = [], []
+    for body in obj["bodies"]:
+        name = body["name"]
+        if body.get("type") == "star":
+            continue          # its pair is a photosphere-to-corona range, not a surface
+        rng = WIKI_THERMAL.get(name)
+        if not rng or rng[1] is None or rng[2] is None:
+            unpaired.append(name)
+            continue
+        lo, hi = rng[1], rng[2]
+        a_star, rail = mean_orbit_to_star(body, by_name)
+        flux = (lum / (4.0 * math.pi * a_star * a_star)) if a_star else None
+        surf = body.get("surface") or {}
+        albedo = surf.get("albedo")
+        if surf.get("temperature"):
+            T0, why = surf["temperature"], "stated ground temperature"
+        else:
+            at = surf.get("atmosphere") or {}
+            lay = at.get("layers")
+            if lay and lay[0].get("T"):
+                T0, why = lay[0]["T"], "the air's own datum (the level the air sits on)"
+            elif flux and albedo is not None:
+                T0, why = blackbody_temperature(flux, albedo), \
+                    "DERIVED black-body: this world states no ground temperature (#722)"
+            else:
+                T0, why = None, "nothing to anchor on"
+        if T0 is None:
+            rows.append('  diurnal   %-8s pair %8.2f - %8.2f K, but %s'
+                        % (name, lo, hi, why))
+            continue
+        f, note = fit_even_share(T0, lo, hi)
+        if f is None:
+            rows.append('  diurnal   %-8s dash  anchor %7.2f K (%s)\n%20s%s'
+                        % (name, T0, why, '', note))
+            continue
+        body.setdefault("surface", {})["even_share"] = f
+        at = (body.get("surface") or {}).get("atmosphere") or {}
+        air_note = even_share_air_note(name, f, at.get("sea_level_pressure"))
+        rows.append('  diurnal   %-8s f=%.4f  anchor %7.2f K (%s)\n%20s%s%s'
+                    % (name, f, T0, why, '', note,
+                       ('\n%20s%s' % ('', air_note)) if air_note else ''))
+    for r in rows:
+        print(r)
+    n_fit = sum(1 for r in rows if ' f=' in r)
+    print('  diurnal   %d bodies state a night/day pair: %d authored a swing, %d refused; '
+          '%d state none, and the dossier dashes their row'
+          % (len(rows), n_fit, len(rows) - n_fit, len(unpaired)))
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Generate res/systems/{old,ksp}_system.json, or --check "
@@ -1167,6 +1238,8 @@ def main():
     # #625 after #735 on purpose: an authored air temperature is built on the light, so
     # the albedos have to be in the object before the airs are.
     author_ksp_air_thermal(ksp)
+    # ... and the ground's swing, which reads the airs the line above just authored.
+    author_ksp_diurnal(ksp)
     if bad:
         for m in bad:
             print('DRIFT   body gravity: ' + m)

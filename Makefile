@@ -509,6 +509,11 @@ $(TESTDIR)/test_bodylimits: $(TESTDIR)/obj/test_bodylimits.o
 $(TESTDIR)/test_solar: $(TESTDIR)/obj/test_solar.o
 	$(CXX) -o $@ $^
 
+# #724 rung C: the ground's swing (src/groundtemp.h). The end points are the knobs
+# utils/ground_model.py fitted from the corpus, so this is the python-law / C++-law seam.
+$(TESTDIR)/test_groundtemp: $(TESTDIR)/obj/test_groundtemp.o
+	$(CXX) -o $@ $^
+
 $(TESTDIR)/test_fmt: $(TESTDIR)/obj/test_fmt.o
 	$(CXX) -o $@ $^
 
@@ -582,7 +587,7 @@ TESTS = test_frames test_spawn test_attitude test_slew3d test_gimbal test_actuat
         test_rotation test_shipload test_stability test_save test_crew test_roster test_calendar \
         test_flightlog test_science test_bodylimits \
         test_orbit test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
-        test_terrain test_drag test_solar test_audio test_jet test_jobs test_orbitmap test_orbitcam \
+        test_terrain test_drag test_solar test_groundtemp test_audio test_jet test_jobs test_orbitmap test_orbitcam \
         test_pick test_settings test_keys test_cli test_fmt test_recorder test_retrograde test_skybox \
         test_belts test_railangles test_scenarios test_buildings test_orient test_hooks
 
@@ -652,6 +657,7 @@ test-gen:
 # written. It IMPORTS atmo_profile, the second quadrature spelling of atmo.h, so it can
 # catch the law drifting and not only a mistyped authoring number; columns repeated
 # across the generated system variants are weighed once.
+	python3 utils/ground_model.py --self-test
 	python3 utils/check_atmo_band.py --self-test
 	python3 utils/check_atmo_band.py res/systems/*.json
 # Parses EVERY case file, so a stale fixture path fails here -- on every commit

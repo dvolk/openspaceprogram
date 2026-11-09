@@ -357,6 +357,25 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 }
                 s.bond_albedo = a;
             }
+            /* #724 rung C: the ground's swing knob, authored only where a source states a
+               night/day pair (utils/ground_model.py fits it and prints the residual). The
+               range is [0,1] and the absence is a sentinel, not 1.0 -- a body that states no
+               pair must not read as Venus's stated no-range (#726). */
+            if(sv.contains("even_share")) {
+                if(!sv["even_share"].is_number()) {
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': \"surface.even_share\" must be a"
+                                             " number [0..1]");
+                }
+                const double f = sv["even_share"].get<double>();
+                if(!std::isfinite(f) || f < 0.0 || f > 1.0) {
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': \"surface.even_share\"="
+                                             + std::to_string(f)
+                                             + " must be in [0, 1]");
+                }
+                s.even_share = f;
+            }
             if(sv.contains("sea_level")) {
                 s.has_sea = true;
                 s.sea_level = sv.value("sea_level", 0.0);

@@ -216,7 +216,8 @@
           ],
           "height": 31000.0
         },
-        "albedo": 0.77
+        "albedo": 0.77,
+        "even_share": 0.09058795570276411
       },
       "inertial": {
         "orb_ang_speed": 1.1104967938606495e-06,

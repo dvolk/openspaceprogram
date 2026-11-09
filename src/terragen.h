@@ -30,6 +30,7 @@
 #include "atmo.h"       // AtmoLayer: the authored altitude/temperature levels
 #include "constants.h"  // kAtmoScaleHeights
 #include "equirect.h"   // equirectLonLat / equirectPixel
+#include "groundtemp.h" // kEvenShareUnauthored: the surface swing's authored knob (#724 C)
 
 typedef struct {
     float r, g, b;
@@ -298,6 +299,16 @@ inline std::shared_ptr<const Heightmap> loadHeightmap(const std::string &path) {
 inline constexpr double kAlbedoUnauthored = -1.0;      // [dimensionless] not 0.0
 inline bool albedoAuthored(double a) { return a >= 0.0; }
 
+/* [K] The datum temperature of the air sitting on this body's ground, or 0.0 when there is
+   no air. Level 0 is the ground level by construction (the loader anchors it at alt 0, and
+   #625 put that level's base_T back on a published temperature), so this is the same
+   statement Surface::temperature makes, read off the air instead of the ground. The order of
+   authority between the two is groundtemp.h's groundAnchor_K(), spelled once. */
+inline double airDatum_K(const AtmosphereParams &at) {
+    if(!at.enabled || at.layers.empty()) { return 0.0; }
+    return at.layers.front().base_T;
+}
+
 struct Surface {
     float amplitude = 2500.0f;   // [m] tallest relief above the base radius
     int octaves = 9;             // noise octaves: continents 0..5, mountains 2..N-1
@@ -338,6 +349,14 @@ struct Surface {
        left absent where nothing states one. */
     double temperature = 0.0;    // [K] authored; 0 = not authored (the #726 half owed)
     double bond_albedo = kAlbedoUnauthored;   // Bond albedo [0,1); -1 = not authored
+    /* #724 rung C: the EVEN SHARE of the surface swing's law -- how much of this body's own
+       emission is spread evenly rather than falling where the star lights it. Authored from
+       the night/day pair a source states, fitted and graded by utils/ground_model.py (its
+       print names the residual for every body, including the pairs it refused). Absent is
+       kEvenShareUnauthored, NOT 1.0: Venus states a range of about zero, Mercury states
+       nothing, and a readout that prints 1.000 for both has invented an answer (#726/#727).
+       The law itself is src/groundtemp.h. */
+    double even_share = kEvenShareUnauthored;
     AtmosphereParams atmosphere; // optional rim; enabled => the JSON block exists
     CloudParams clouds;          // optional deck; enabled => body has clouds
     std::vector<RingParams> rings;  // optional; flat annuli in the equator

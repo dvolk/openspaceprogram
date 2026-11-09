@@ -23,6 +23,8 @@
                          // the log cannot drift into two different versions of one law.
 #include "insolation.h"  // starFromBody/subsolarLonLat: the clock's solar row is the same
                          // subsolar point the calendar sweeps and the map bakes (#724).
+#include "groundtemp.h"  // groundTemperature/groundAnchor_K: the dossier's ground-swing row
+                         // (#724 rung C), the same law utils/ground_model.py authored f with.
 #include "vehicle.h"     // dragAtm: the same AtmosphereParams -> DragAtmosphere seam the
                          // flight model uses. It reached here through gameui.h -> game.h;
                          // say it out loud, or a header shuffle breaks the atlas rows.
@@ -6645,6 +6647,34 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
         } else {
             line("surface temp", "-");
             line("greenhouse gap", "-");
+        }
+        /* #724 rung C: the SWING this file authored, as the two ends a player can read
+           against the source's own night/day pair. They are not two free numbers: one knob
+           and the anchor force both ends (src/groundtemp.h), which is what made a stated
+           pair a test the generator could fail -- the row prints the knob so the pairing is
+           checkable. The anchor is named because a DERIVED one (a world nobody states a
+           ground temperature for: the Moon) is a different claim from a stated one (#722).
+           No authored swing means the row dashes, NOT the anchor printed twice: a source
+           that says nothing about night and day did not say they are equal (#726/#727). */
+        const double airT = airDatum_K(b.surface.atmosphere);
+        const double anchor = groundAnchor_K(b.surface.temperature, airT, bb);
+        if(anchor > 0.0 && evenShareAuthored(b.surface.even_share)) {
+            const double f = b.surface.even_share;
+            const char *why = b.surface.temperature > 0.0 ? "stated ground temperature"
+                            : (airT > 0.0 ? "the air's datum"
+                                          : "DERIVED from this sun and albedo");
+            /* Two rows rather than one long one: the dossier wraps, and a wrapped
+               "... anchor 270.3 K," over an orphaned "DERIVED ...)" reads worse than a
+               named second row. The END and the ANCHOR are also two different kinds of
+               number, which is the distinction the row is trying to make. */
+            snprintf(v, sizeof v, "%.1f K night to %.1f K day",
+                     groundTemperature(anchor, f, 0.0),
+                     groundTemperature(anchor, f, 1.0));
+            line("ground swing", v);
+            snprintf(v, sizeof v, "%.1f K (%s, even share %.3f)", anchor, why, f);
+            line("ground anchor", v);
+        } else {
+            line("ground swing", "-");
         }
     }
 

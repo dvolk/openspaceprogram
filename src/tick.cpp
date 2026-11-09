@@ -10,6 +10,7 @@
 #include "orbit.h"               // OrbitElements, computeOrbitElements
 #include "solar.h"               // sunSample: the --solar-log flux (#687)
 #include "insolation.h"          // skyAtZenith: the --solar-log elevation and cosine (#724)
+#include "groundtemp.h"          // groundTemperature / groundAnchor_K: the surf_T column (#724)
 #include "physics.h"             // physics_tick()
 #include "timestep.h"            // substepCount()
 
@@ -693,14 +694,15 @@ void tick(Game &g) {
                 const double alb = ground_here ? over->surface.bond_albedo
                                                : kAlbedoUnauthored;
                 const double groundT = ground_here ? over->surface.temperature : 0.0;
-                char alb_s[24], gt_s[24], bb_s[24];
+                char alb_s[24], gt_s[24], bb_s[24], surf_s[24], swing_s[24];
                 /* bb_T needs BOTH the albedo and a live star sample: printing 0.00 K
                    for "no sun in range" is exactly the 0-pretending-to-be-a-reading
                    this block refuses elsewhere. */
-                if(albedoAuthored(alb) && ss.valid) {
+                const double bb_here = (albedoAuthored(alb) && ss.valid)
+                                     ? blackbodyTemperature(ss.flux, alb) : 0.0;
+                if(bb_here > 0.0) {
                     snprintf(alb_s, sizeof alb_s, "%.3f", alb);
-                    snprintf(bb_s, sizeof bb_s, "%.2f",
-                             blackbodyTemperature(ss.flux, alb));
+                    snprintf(bb_s, sizeof bb_s, "%.2f", bb_here);
                 } else {
                     snprintf(alb_s, sizeof alb_s, "-");
                     snprintf(bb_s, sizeof bb_s, "-");
@@ -710,15 +712,40 @@ void tick(Game &g) {
                 } else {
                     snprintf(gt_s, sizeof gt_s, "-");
                 }
+                /* The GROUND under this hull as this star lights it at this instant (#724
+                   rung C): the body's ANCHOR -- a stated ground temperature, else the datum
+                   of the air on that ground, else the derived black-body, in that order
+                   (groundtemp.h spells it once) -- swung by the cosine this row already
+                   prints. The knob prints too: an em-dash means "this world's source states
+                   no night/day pair", which is NOT the same claim as Venus's authored 1.000
+                   ("the range is about zero"), and collapsing them is #726's complaint.
+                   Note the air itself still answers from its own profile: this is the ground,
+                   not what a hull flies through (groundtemp.h says why). */
+                const double anchor = ground_here
+                    ? groundAnchor_K(groundT, airDatum_K(over->surface.atmosphere), bb_here)
+                    : 0.0;
+                if(anchor > 0.0 && sky.valid) {
+                    snprintf(surf_s, sizeof surf_s, "%.2f",
+                             groundTemperature(anchor,
+                                 evenShareOrDefault(over->surface.even_share),
+                                 sky.cos_inc));
+                } else {
+                    snprintf(surf_s, sizeof surf_s, "-");
+                }
+                if(ground_here && evenShareAuthored(over->surface.even_share)) {
+                    snprintf(swing_s, sizeof swing_s, "%.3f", over->surface.even_share);
+                } else {
+                    snprintf(swing_s, sizeof swing_s, "-");
+                }
                 printf("[solar] t=%.1fs star=\"%s\" dist=%s m flux=%s W/m2 "
                        "elev=%s deg flat=%s W/m2 body=\"%s\" albedo=%s "
-                       "ground_T=%s K bb_T=%s K\n",
+                       "ground_T=%s K bb_T=%s K surf_T=%s K swing=%s\n",
                        g.time,
                        g.sun ? g.sun->name.c_str() : "(none)",
                        dist_s, flux_s, elev_s, flat_s,
                        g.ship->m_parent ? g.ship->m_parent->name.c_str()
                                         : "(none)",
-                       alb_s, gt_s, bb_s);
+                       alb_s, gt_s, bb_s, surf_s, swing_s);
             }
         }
 

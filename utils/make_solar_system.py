@@ -13,6 +13,14 @@ from atmo_units import (resolve_layer_heights, anchor_sea_level_pressure,
                        check_body_gravity,
                         SIGMA_SB, semimajor_axis, star_temperature_from_flux,
                         blackbody_temperature, check_constants_match_src)
+# #724 rung C: the surface temperature law and its one knob, in ONE module both system
+# generators import. The law is also spelled in C++ (src/groundtemp.h) for the game, and
+# tests/test_groundtemp.cpp pins the two against the same numbers -- the atmo.h /
+# atmo_units.py arrangement, which is the only way two spellings of one law can be caught
+# drifting (#636).
+from ground_model import (parse_diurnal_pair, fit_even_share, night_T, day_T,
+                          even_share_air_note,
+                          EVEN_SHARE_NO_SWING, DAY_PREDICTION_GATE)
 
 G      = 6.674e-11      # m^3 / kg / s^2  (matches the loader's G)
 AU     = 1.496e11       # m
@@ -972,7 +980,12 @@ def fact_surface(page):
     v = section_values(h, 'Bulk parameters')
     out = {'albedo': v.get('bondalbedo'),
            'irradiance': v.get('solarirradiancewm2'),
-           'bb_T': v.get('blackbodytemperaturek')}
+           'bb_T': v.get('blackbodytemperaturek'),
+           # The sheet's "Diurnal temperature range" row, which is a PAIR of kelvin ends
+           # ("283 K to 293 K"), and on Venus a stated nothing ("~0"). It is the only place
+           # the corpus talks about a ground SWINGING, which is what ground_model's one
+           # knob is fitted to. None means the sheet says nothing about a swing.
+           'diurnal': parse_diurnal_pair(sheet_line(h, 'Diurnal temperature range'))}
     # The prose line, deliberately NOT sheet_quantity(): that one reads a stated
     # range, and Mercury writes 'Average temperature: 440 K (167 C) (590-725 K,
     # sunward side)' -- the hyphenated pair is the day-side extreme, not the average.
@@ -1022,6 +1035,35 @@ FACT_SURFACE_KNOWN = {
 }
 
 
+def star_rail(b, by):
+    """(star body or None, semimajor axis m or 0.0): the rail the STAR's light at this body
+    is measured on. For a moon that is its PARENT's rail -- moonfact states 1361.0 W/m2
+    because the Moon goes round the Sun with the Earth, not because it holds a solar orbit
+    of its own, and weighing it on its own 384,400 m rail would print a flux six orders too
+    high (#737). The dossier labels the row "sunlight (parent's orbit)" for the same
+    reason, in src/gameui.cpp."""
+    inertial = b.get('inertial') or {}
+    parent = by.get(b.get('orbits'))
+    if parent is None:
+        return None, 0.0
+    w = inertial.get('orb_ang_speed')
+    if parent.get('type') == 'star':
+        if w and parent.get('mass'):
+            return parent, semimajor_axis(G * parent['mass'], w)
+        return None, 0.0
+    gp = by.get(parent.get('orbits'))
+    pw = (parent.get('inertial') or {}).get('orb_ang_speed')
+    if gp is not None and gp.get('type') == 'star' and gp.get('mass') and pw:
+        return gp, semimajor_axis(G * gp['mass'], pw)
+    return None, 0.0
+
+
+def flux_at_rail(star, a, T_sun):
+    """[W/m^2] The star's flux on the rail star_rail() found, from the ONE authored stellar
+    temperature (#687: L = 4 pi R^2 sigma T^4, spread over 4 pi a^2)."""
+    return SIGMA_SB * T_sun ** 4 * (star['radius'] / a) ** 2
+
+
 def check_fact_surface(bodies, sheets, sun, verbose=True):
     """#687: weigh the ONE authored stellar temperature against the rows the corpus
     DOES state. For each body with a Bulk-parameters table: the flux this system
@@ -1041,28 +1083,13 @@ def check_fact_surface(bodies, sheets, sun, verbose=True):
         sheet = sheets.get(b['name'])
         if not sheet:
             continue
-        inertial = b.get('inertial') or {}
-        parent = by_name.get(b.get('orbits'))
-        # The irradiance row means "the STAR's light here", so what has to be found is the
-        # star -- and for a moon that means its GRANDparent: moonfact.html states 1361.0
-        # W/m2 because the Moon goes round the Sun with the Earth, not because it holds a
-        # solar orbit of its own. Weighing a moon on its own 384,400 m rail would print a
-        # flux six orders too high, which the band would refuse -- but the row would still
-        # be a lie about what the row means, so the rail is the parent's and the dossier
-        # label says so ("sunlight (parent's orbit)", src/gameui.cpp).
-        star, a = None, None
-        if parent is not None and parent.get('type') == 'star':
-            w = inertial.get('orb_ang_speed')
-            if w and parent.get('mass'):
-                star, a = parent, semimajor_axis(G * parent['mass'], w)
-        elif parent is not None:
-            gp = by_name.get(parent.get('orbits'))
-            pw = (parent.get('inertial') or {}).get('orb_ang_speed')
-            if gp is not None and gp.get('type') == 'star' and gp.get('mass') and pw:
-                star, a = gp, semimajor_axis(G * gp['mass'], pw)
+        # The star's rail, and for a moon its PARENT's rail, is star_rail()'s rule; the
+        # irradiance row means "the STAR's light here", so the flux has to be weighed on
+        # that rail and not on the moon's own (#737).
+        star, a = star_rail(b, by_name)
         if star is None:
             continue
-        flux = SIGMA_SB * T_sun ** 4 * (star['radius'] / a) ** 2
+        flux = flux_at_rail(star, a, T_sun)
         cells = []
         if sheet.get('irradiance'):
             off = (flux - sheet['irradiance']) / sheet['irradiance']
@@ -1837,7 +1864,11 @@ def build_base(verbose_air=False):
     for b in bodies:
         if b['name'] != 'Sun':
             stamp_transfer_dv(b, sun, home)
-    return bodies, parsed
+    # The fact-sheet rows stay alongside the bodies rather than inside them: a body carries
+    # what this file AUTHORS, and the sheet is what the corpus STATES. emit() needs the
+    # second to fit the ground's swing (#724 rung C) and to keep weighing one against the
+    # other, which is the whole point of keeping them apart.
+    return bodies, parsed, sheets
 
 # Which satellites get an authored albedo, and the page and block each reading came from.
 # Deliberately TWO entries, and the shortness is a fact about the corpus, not an oversight:
@@ -1854,6 +1885,80 @@ SOLAR_SAT_ALBEDOS = {
     'Moon':   ('moonfact.html',  'Bulk parameters'),
     'Charon': ('plutofact.html', 'Charon (P1)'),
 }
+
+def ground_anchor(b, flux, albedo):
+    """[(K or None, note)] The temperature the ground model swings around, in the corpus's
+    own order of authority: a stated ground temperature; else the datum of the air sitting
+    on that ground (after #625 that datum IS the published surface temperature, so it is the
+    same statement under a different key, never a new number); else the black-body the
+    starlight and this body's albedo imply, which is DERIVED and says so (#722's open
+    question, kept visible rather than quietly resolved). None means nothing anchors this
+    body, so it gets no swing and the dossier dashes the row."""
+    s = b.get('surface') or {}
+    T = s.get('temperature')
+    if T:
+        return T, 'stated ground temperature'
+    at = s.get('atmosphere') or {}
+    lay = at.get('layers')
+    if lay and lay[0].get('T'):
+        return lay[0]['T'], "the air's own datum (the level the air sits on)"
+    if at.get('temperature'):
+        return at['temperature'], "the air's own datum (the level the air sits on)"
+    if flux and albedo is not None:
+        return blackbody_temperature(flux, albedo), \
+            'DERIVED black-body: nobody states a ground temperature here (#722)'
+    return None, 'nothing to anchor on: no ground reading, no air, no albedo'
+
+
+def author_diurnal(bodies, by, sun, sheets, sat_sheet, verbose=True):
+    """#724 rung C: author the surface model's ONE knob from the diurnal pair the corpus
+    states, and print the verdict for every body -- refusals and their residuals included.
+
+    One knob means a stated pair is OVER-determined, so it becomes a test rather than a fit:
+    fit on the night end (the model's anti-solar floor, the end it gets structurally right)
+    and PREDICT the day end. See utils/ground_model.py for the law and for why the energy
+    anchor is exact; the gate is why a lander-site pair (Mars's) is refused instead of
+    swallowed into a global number."""
+    T_sun = (sun.get('surface') or {}).get('temperature')
+    rows = []
+    for b in bodies:
+        if b.get('type') == 'star':
+            continue                      # its 'temperature pair' is a photosphere range
+        sheet = sheets.get(b['name']) or sat_sheet.get(b['name'])
+        if not sheet:
+            continue                      # no page behind this body: nothing to fit or print
+        pair = sheet.get('diurnal')
+        if pair is None:
+            if verbose:
+                rows.append('%-9s diurnal -   the page states no temperature range'
+                            % b['name'])
+            continue
+        star, a = star_rail(b, by)
+        flux = flux_at_rail(star, a, T_sun) if star else None
+        albedo = (b.get('surface') or {}).get('albedo')
+        T0, why = ground_anchor(b, flux, albedo)
+        if T0 is None:
+            if verbose:
+                rows.append('%-9s diurnal -   pair %.1f-%.1f K but %s'
+                            % (b['name'], pair[0], pair[1], why))
+            continue
+        f, note = fit_even_share(T0, pair[0], pair[1])
+        if f is None:
+            rows.append('%-9s diurnal -   anchor %7.2f K (%s)\n%18s%s'
+                        % (b['name'], T0, why, '', note))
+            continue
+        b.setdefault('surface', {})['even_share'] = f
+        at = (b.get('surface') or {}).get('atmosphere') or {}
+        extra = even_share_air_note(b['name'], f, at.get('sea_level_pressure'))
+        if extra:
+            extra = '\n%18s%s' % ('', extra)
+        if verbose:
+            rows.append('%-9s diurnal %.4f  anchor %7.2f K (%s)%s\n%18s%s'
+                        % (b['name'], f, T0, why, extra, '', note))
+    if verbose:
+        for r in rows:
+            print('  %s' % r)
+
 
 def satellite_sheets(verbose=True):
     """{satellite name: {albedo, irradiance, bb_T}} for the satellites whose page states a
@@ -1873,7 +1978,13 @@ def satellite_sheets(verbose=True):
             'moved or the corpus stopped saying' % (name, page, marker))
         out[name] = {'albedo': a,
                      'irradiance': v.get('solarirradiancewm2'),
-                     'bb_T': v.get('blackbodytemperaturek')}
+                     'bb_T': v.get('blackbodytemperaturek'),
+                     # The same diurnal-pair row, when the page has one. moonfact states one
+                     # for the Moon's EQUATOR ("95 K to 390 K"), which is the comparison the
+                     # model's own extremes answer to -- the anti-solar point is on the
+                     # sub-solar latitude, at the equator at equinox.
+                     'diurnal': parse_diurnal_pair(
+                         sheet_line(read(page), 'Diurnal temperature range'))}
         if verbose:
             geom = v.get('geometricalbedo')
             print('  sat sheet %-7s albedo %6.3f  from %s (%s)%s'
@@ -1939,7 +2050,7 @@ def _comparable(doc):
     return out
 
 
-def emit(base_bodies, moons, pred, out_path, label, dry=False):
+def emit(base_bodies, moons, pred, out_path, label, sheets, dry=False):
     bodies = list(base_bodies)
     by = {b['name']: b for b in bodies}
     home = by['Earth']
@@ -1979,6 +2090,12 @@ def emit(base_bodies, moons, pred, out_path, label, dry=False):
         raise SystemExit('%d satellite insolation figure(s) disagree with the fact sheet '
                          'that states them (band %d%%)'
                          % (len(bad), round(100 * FACT_SURFACE_BANDS)))
+    # The ground's swing, from the diurnal pairs the pages state (#724 rung C). Runs with the
+    # moons appended like the checks above, and after the star's one authored temperature
+    # exists -- an unanchored body's black-body is what a moon with no stated ground reading
+    # has to swing around.
+    author_diurnal(bodies, by, by['Sun'], sheets, sat_sheet,
+                   verbose=label.startswith('core'))
     # ... and that every air in the file is one of the two kinds on purpose. It runs here,
     # with the moons appended, rather than beside the planets: Titan's air comes from
     # MOON_ATMOS, and a coverage guard that cannot see the whole catalogue would report the
@@ -2059,7 +2176,7 @@ def main():
             print('DRIFT   constants: ' + m)
         raise SystemExit('utils/ and src/ disagree about a physical constant')
 
-    base_bodies, parsed = build_base(verbose_air=args.check)
+    base_bodies, parsed, fact_sheets = build_base(verbose_air=args.check)
 
     moons = []
     def add(*ms):
@@ -2164,7 +2281,7 @@ def main():
     if args.check:
         ok = True
         for pred, path, label in targets:
-            doc = emit(base_bodies, moons, pred, path, label, dry=True)
+            doc = emit(base_bodies, moons, pred, path, label, fact_sheets, dry=True)
             with open(path) as f:
                 committed = json.load(f)
             same = _comparable(committed) == _comparable(doc)
@@ -2181,7 +2298,7 @@ def main():
             ok = ok and good
         return 0 if ok else 1
     for pred, path, label in targets:
-        emit(base_bodies, moons, pred, path, label)
+        emit(base_bodies, moons, pred, path, label, fact_sheets)
 
     # ---- verification table for the 'named' set ----
     # hill = the PRE-lift law value; the game's SOI is
