@@ -114,7 +114,8 @@
               0.42
             ]
           ]
-        ]
+        ],
+        "albedo": 0.068
       },
       "inertial": {
         "orb_ang_speed": 2.8356872230308897e-06,
@@ -203,7 +204,8 @@
             }
           ],
           "height": 90000
-        }
+        },
+        "albedo": 0.77
       },
       "inertial": {
         "orb_ang_speed": 1.1104967938606495e-06,
@@ -404,7 +406,8 @@
           "coverage": 0.6,
           "freq": 10,
           "drift": 1e-05
-        }
+        },
+        "albedo": 0.294
       },
       "inertial": {
         "orb_ang_speed": 6.826918657082229e-07,
@@ -451,7 +454,8 @@
               0.67
             ]
           ]
-        ]
+        ],
+        "albedo": 0.11
       },
       "inertial": {
         "orb_ang_speed": 4.520797578987212e-05,
@@ -600,7 +604,8 @@
           "coverage": 0.5,
           "freq": 10,
           "drift": 1e-05
-        }
+        },
+        "albedo": 0.294
       },
       "inertial": {
         "pos": [
@@ -686,7 +691,8 @@
             }
           ],
           "height": 65000
-        }
+        },
+        "albedo": 0.25
       },
       "inertial": {
         "orb_ang_speed": 3.628668876941674e-07,
@@ -734,7 +740,8 @@
               0.45
             ]
           ]
-        ]
+        ],
+        "albedo": 0.11
       },
       "inertial": {
         "orb_ang_speed": 9.590013900271049e-05,
@@ -781,7 +788,8 @@
               0.25
             ]
           ]
-        ]
+        ],
+        "albedo": 0.11
       },
       "inertial": {
         "orb_ang_speed": 1.3119197047763653e-07,
@@ -857,7 +865,8 @@
             }
           ],
           "height": 275000
-        }
+        },
+        "albedo": 0.343
       },
       "inertial": {
         "orb_ang_speed": 6.003343530766506e-08,
@@ -994,7 +1003,8 @@
           "coverage": 0.55,
           "freq": 10,
           "drift": 1e-05
-        }
+        },
+        "albedo": 0.294
       },
       "inertial": {
         "orb_ang_speed": 0.00011859318070968057,
@@ -1083,7 +1093,8 @@
               0.5
             ]
           ]
-        ]
+        ],
+        "albedo": 0.11
       },
       "inertial": {
         "orb_ang_speed": 2.9648015378856705e-05,
@@ -1225,7 +1236,8 @@
               0.45
             ]
           ]
-        ]
+        ],
+        "albedo": 0.72
       },
       "inertial": {
         "orb_ang_speed": 4.002231569830586e-08,

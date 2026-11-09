@@ -4,10 +4,11 @@ KIND invariant
 ARGS --system res/systems/solar_system.json --timeout 6 --atlas-dump 4000
 # --atlas-dump MS builds the dossier rows through the same atlasDossier() the Science tab
 # renders, so this pins what the player reads without a GUI (#385). solar_system rather than
-# the shipped ksp_system because solar_system is the file that AUTHORS albedos
-# (utils/make_solar_system.py takes them from the fact sheets); the KSP file authors none, so
-# on Kerbin every row below the light one dashes. That is a content hole, not a code one, and
-# it is filed. Each CHECK slices one dossier block, the way render/630 and render/552 do.
+# the shipped ksp_system because solar_system is the file whose albedos the CORPUS states
+# (utils/make_solar_system.py takes them from the fact sheets), which is what makes its rows
+# answers rather than analogies. The shipped file used to author none -- #735 has since put
+# twelve of its seventeen bodies on the table, by analogy, and science/735 pins that half.
+# Each CHECK here slices one dossier block, the way render/630 and render/552 do.
 EXPECT [atlas] Earth weight=
 EXPECT [atlas] Sun weight=
 # 1. THE BLACK-BODY ROW FOLLOWS FROM THE TWO ABOVE IT: T = ((1-A) S / 4 sigma)^(1/4), sigma
@@ -41,8 +42,9 @@ CHECK re.search(r"surface temp \(photosphere\)\s+[\d.]+ K\s*\n\s*\[atlas\]   lum
 #    month, so no single figure for the moon itself is honest and the label says which orbit
 #    the value was taken from.
 CHECK re.search(r"sunlight \(parent's orbit\)\s+[\d.]+ W/m2\s*\n\s*\[atlas\]   bond albedo\s+-\s*\n\s*\[atlas\]   black-body temp\s+-\s*\n\s*\[atlas\]   surface temp\s+-\s*\n\s*\[atlas\]   greenhouse gap\s+-", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-# 6. Half-authored is half-authored. Pluto authors an albedo (0.720, the brightest in the
-#    file) and no ground reading, so its implied 32.2 K prints while its surface temp and the
+# 6. Half-authored is half-authored. Pluto authors an albedo (0.720, the file's second
+#    brightest after Venus's 0.770) and no ground reading, so its implied 32.2 K prints while
+#    its surface temp and the
 #    gap dash. A dash here is a missing FILE ENTRY, never a 0.0 -- the #727 law, which is
 #    sharp for albedo: an albedo of 0.0 is a real reading (a body that absorbs everything the
 #    star sends, the hottest case available) and prints 0.000, while "-" means the file never

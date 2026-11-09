@@ -30,7 +30,7 @@ from gas_mixes import DRY_AIR, CO2_HEAVY, H2_HE_CH4_KSP
 # --check only compares its own output and would not notice the two drifting.
 from atmo_units import (resolve_layer_heights, check_body_gravity,
                         SIGMA_SB, semimajor_axis, star_temperature_from_flux,
-                        check_constants_match_src)
+                        blackbody_temperature, check_constants_match_src)
 
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
@@ -822,6 +822,153 @@ def author_star_temperature(obj):
               % (star["name"], lo, hi, flux_lo))
 
 
+# #735: the shipped system authored no albedo for any body, so the atlas' starlight
+# block (#687) printed the light and dashed everything under it on the worlds players
+# actually fly. These are AUTHORED BY ANALOGY, not scraped: no KSP source states a Bond
+# albedo at all (ksp_bodies.csv has no albedo column, #722). Each KSP body is paired with
+# the solar-system body it is already built like -- Kerbin authors 101.325 kPa of dry air,
+# 23.44 deg and 288.15 K by the same analogy -- and the number comes out of
+# res/systems/solar_system.json, which takes it from the RSS fact sheets. Reading the
+# reference file rather than retyping its figures is #636's rule: two files each holding
+# their own copy of Earth's albedo drift apart in silence.
+#
+# BOND, never geometrical: solar_system.json's whole convention (make_solar_system.py:
+# fact_surface) is the sheets' Bond column, and the values below show why the distinction
+# is not pedantry -- the sheets state Jupiter's geometrical albedo at 0.538 against a Bond
+# of 0.343, and Venus's at 0.689 against a Bond of 0.77, and it is the Bond column the
+# (1-A)S/4 law wants. (Both pairs read from venusfact.html and jupiterfact.html.)
+#
+# (analogue, override): override is None to take the analogue's authored value. The four
+# bare rocks (Mun, Ike, Dres, Tylo) need an override, because their analogue -- our own
+# Moon -- has its Bond albedo stated by the corpus (0.11, utils/rss/html/moonfact.html)
+# but left unauthored by our solar file (#737), so the literal cites that page instead. The Moon
+# is the only airless rocky body in the corpus with a stated Bond albedo, so Moho's Mercury
+# aside, every bare rock here borrows it. That flattening is nearly free: bb_T goes as
+# (1-A)^1/4, so A of 0.068 instead of 0.11 moves Moho's airless mean by 5 K on 440 K --
+# under 2%, and less further out. Where the pairing IS a bright one (Eeloo's ices, Pluto
+# again) it is made honestly or not at all.
+#
+# Deliberately LEFT UNAUTHORED, because a dash is the true answer (#727) and the shipped
+# system keeps an example of one for the dash-law cases to bite on:
+#   Gilly, Bop, Pol  irregular bodies no source describes -- a captured comet and two
+#                    captured nothing-bits; inventing 0.0x for them is decoration.
+#   Minmus, Vall     icy. The corpus states a VISUAL GEOMETRICAL albedo for the icy
+#                    satellites (Europa 0.68, Enceladus 1.0) and no Bond albedo, and
+#                    geometric -> Bond needs a phase integral nothing in the corpus
+#                    gives. Filed rather than guessed (#736).
+DASH = None   # spelled out, so a table entry meaning "this file declines to price this
+                # body" is not one bare None away from meaning "take the analogue"
+KSP_ALBEDOS = {
+    "Moho":   ("Mercury", None),   # hot, airless, grey
+    "Eve":    ("Venus",   None),   # thick CO2 sky over a hot rock
+    "Kerbin": ("Earth",   None),   # Earth-shaped by construction
+    "Mun":    ("Moon",    0.11),   # airless rock; corpus-stated, unauthored in our solar file
+    "Minmus": DASH,                # icy -- see the note above
+    "Shay":   ("Earth",   None),   # authored air, sea and clouds: an Earth-shaped moon
+    "Duna":   ("Mars",    None),
+    "Ike":    ("Moon",    0.11),
+    "Dres":   ("Moon",    0.11),   # belt dwarf, same bare-rock bucket
+    "Jool":   ("Jupiter", None),
+    "Laythe": ("Earth",   None),   # air and sea, on 53 W/m2: its wiki temperatures do not fit (#738)
+    "Vall":   DASH,                # icy
+    "Tylo":   ("Moon",    0.11),
+    "Bop":    DASH,
+    "Pol":    DASH,
+    "Gilly":  DASH,
+    "Eeloo":  ("Pluto",   None),   # dwarf of bright ices; inherits Pluto's self-contradicting sheet too
+}
+
+def solar_reference_albedos():
+    """{name: authored Bond albedo} from the reference system file."""
+    import json as _json
+    path = os.path.join(ROOT, "res", "systems", "solar_system.json")
+    with open(path) as f:
+        obj = _json.load(f)
+    out = {}
+    for b in obj["bodies"]:
+        a = (b.get("surface") or {}).get("albedo")
+        if a is not None:
+            out[b["name"]] = a
+    return out
+
+def mean_orbit_to_star(body, by_name):
+    """The MEAN orbit of the nearest ancestor of `body` that orbits the star, the way
+    atlasDossier() picks it: a moon reads its PLANET's rail, because its own distance to
+    the sun swings over its month and no single figure there is honest."""
+    cur = body
+    while cur.get("orbits"):
+        par = by_name.get(cur["orbits"])
+        assert par, "body %s orbits %r, which this system does not have" % (
+            cur["name"], cur["orbits"])
+        if par.get("type") == "star":
+            n = (cur.get("inertial") or {}).get("orb_ang_speed") or 0.0
+            if n <= 0.0 or par.get("mass", 0.0) <= 0.0:
+                return None, None
+            return semimajor_axis(G * par["mass"], n), cur["name"]
+        cur = par
+    return None, None
+
+def author_ksp_albedos(obj):
+    """#735: put a Bond albedo on the shipped bodies, and print what it costs them.
+
+    The print is the reviewable half. bb_T is what the star's own light and this albedo
+    imply -- an airless global mean, NOT this body's ground -- so against the wiki's
+    stated night/day temperature pair it says whether the two authored halves of this
+    world agree about its sun. Where they do not, the line NAMES the disagreement and
+    nothing resolves it, exactly as author_star_temperature() does for the star: Laythe's
+    airless mean sits 86 K below the mildest reading its own wiki row states, which is a
+    fact about the file and not a bug in the arithmetic, so it is filed as one."""
+    by_name = {b["name"]: b for b in obj["bodies"]}
+    star = next(b for b in obj["bodies"] if b.get("type") == "star")
+    sT = (star.get("surface") or {}).get("temperature") or 0.0
+    assert sT > 0.0, "author_ksp_albedos() must run after author_star_temperature()"
+    lum = 4.0 * math.pi * star["radius"] ** 2 * SIGMA_SB * sT ** 4
+    ref = solar_reference_albedos()
+    # Every non-star body is either priced or named. A body added to the system and left
+    # out of this table would silently regain the hole #735 just filled -- and the shipped
+    # file is the one place the atlas' dash is a player-facing thing.
+    named = {b["name"] for b in obj["bodies"] if b.get("type") != "star"}
+    assert named == set(KSP_ALBEDOS), (
+        "KSP_ALBEDOS and this system disagree: only in the system %s, only in the table %s"
+        % (sorted(named - set(KSP_ALBEDOS)), sorted(set(KSP_ALBEDOS) - named)))
+    for name, spec in KSP_ALBEDOS.items():
+        body = by_name.get(name)
+        assert body, "KSP_ALBEDOS names a body this system does not have: " + name
+        a_star, rail = mean_orbit_to_star(body, by_name)
+        flux = (lum / (4.0 * math.pi * a_star * a_star)) if a_star else 0.0
+        if spec is DASH:
+            # The light still prints for a body with no albedo -- the atlas says the same
+            # thing, and it is where a reader sees that the dash is one row, not the block.
+            print('  albedo    %-8s dash%s  (no honest analogue: see the KSP_ALBEDOS note)'
+                  % (name, '  %7.1f W/m2 at %s' % (flux, rail) if a_star else ''))
+            continue
+        analogue, override = spec
+        a = override if override is not None else ref.get(analogue)
+        assert a is not None, ('no authored albedo for %r in solar_system.json, and no '
+                               'override for %s' % (analogue, name))
+        assert 0.0 <= a < 1.0, "%s: albedo %g is not a Bond albedo" % (name, a)
+        body.setdefault("surface", {})["albedo"] = a
+        src = ("from solar_system.json's %s" % analogue) if override is None \
+            else ("the corpus's %s value, stated but unauthored there" % analogue)
+        if not a_star:
+            print('  albedo    %-8s %5.3f  %s' % (name, a, src))
+            continue
+        bb = blackbody_temperature(flux, a)
+        # The CSV's temperature pair is a NIGHT/DAY extreme, not a mean, so it is never
+        # averaged into a number this file authors (#687's rule). Printed instead: the
+        # airless mean landing OUTSIDE the pair says the two authored halves of that body
+        # disagree about its sun, which is the sanity check #735 asked for and the reason
+        # Laythe and Jool are filed rather than quietly left out (#738).
+        rng = WIKI_THERMAL.get(name)
+        note = ''
+        if rng and rng[1] is not None and rng[2] is not None:
+            lo, hi = rng[1], rng[2]
+            note = ('  wiki night/day %9.2f - %9.2f K against an airless mean of %9.2f K%s'
+                    % (lo, hi, bb,
+                       '' if lo <= bb <= hi else '  <-- OUTSIDE the pair, filed'))
+        print('  albedo    %-8s %5.3f  %7.1f W/m2 at %s -> %7.1f K  %s%s'
+              % (name, a, flux, rail, bb, src, note))
+
 def main():
     ap = argparse.ArgumentParser(
         description="Generate res/systems/{old,ksp}_system.json, or --check "
@@ -853,6 +1000,10 @@ def main():
     for obj, _path in targets:
         author_star_temperature(obj)
         bad += check_body_gravity(obj["bodies"], verbose=True)
+    # #735, and only for the shipped system: the legacy Eerbon file stays unauthored on
+    # purpose. It is a frozen fixture (tests/test_belts.cpp builds on it), not a showcase,
+    # and leaving it dashed keeps the absent-reading path loaded by a file the tests use.
+    author_ksp_albedos(ksp)
     if bad:
         for m in bad:
             print('DRIFT   body gravity: ' + m)

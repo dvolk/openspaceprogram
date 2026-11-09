@@ -1,5 +1,5 @@
 NAME 727-solar-log-dashes-what-a-world-does-not-state
-CLAIM On Kerbin --solar-log still reads the star and the authored ground, and prints a DASH for the albedo and the black-body column rather than a zero, because the KSP half states no albedo anywhere.
+CLAIM On Minmus --solar-log still reads the star, and prints a DASH -- not a zero -- for the albedo, the black-body column and the ground, because this system declines to state any of them for an icy moon nobody can source.
 KIND invariant
 # The other half of #727, and the only thing standing between #726 and a silent
 # regression: an ABSENT reading must render as absent. ksp_bodies.csv has no albedo
@@ -8,19 +8,28 @@ KIND invariant
 # surface -- a real 0 where the world said nothing. #728 makes that a bug with teeth
 # (absorbed flux, then a part's skin), so pin it before then.
 #
-# Same row, three sources: the star (Kerbol's rail, 1361 W/m^2 here), the body's
-# authored ground temperature (Kerbin's 288.15 K, which gen_systems now takes from
-# the CSV's temperature_max_k row), and the missing albedo. Bounds, not digits, on
-# the first two; exactness only on the dash.
+# This case used to run on Kerbin, which was the one body that stated a ground and
+# declined an albedo. #735 authored albedos for twelve of the seventeen KSP bodies -- Kerbin
+# among them, so Kerbin now reads albedo 0.294 and a 255 K airless mean, and
+# science/735 pins that. Minmus is what is left, and it is the better subject: it is
+# unauthored on purpose (the corpus states a visual GEOMETRICAL albedo for the icy
+# satellites and no Bond albedo, and converting one to the other needs a phase integral
+# nothing here has), so this is the law applied to a decision rather than to an accident.
+#
+# One source still prints on this row: the star, sampled at the hull's LIVE distance --
+# --solar-log has no mean-rail rule, that is the atlas' (gameui.cpp picks a moon its
+# planet's orbit; tick.cpp just measures). Minmus's month swings that distance by ~0.7%,
+# hence bounds on the light and exactness only on the dashes.
 ARGS --timeout 3 --solar-log --system res/systems/ksp_system.json
-ARGS --startship p,res/ships/skiff_trim.json,Kerbin,flying-cruise
+ARGS --startship v,res/ships/skiff_trim.json,Minmus,inertial-orbit
 CHECK len(solar) >= 1
-CHECK all(d["body"] == "Kerbin" and d["star"] == "Kerbol" for d in solar)
+CHECK all(d["body"] == "Minmus" and d["star"] == "Kerbol" for d in solar)
 CHECK all(d["albedo"] is None and d["bb_T"] is None for d in solar)
-CHECK all(280.0 < d["ground_T"] < 295.0 for d in solar)
+CHECK all(d["ground_T"] is None for d in solar)
 CHECK all(d["flux"] is not None and 1000.0 < d["flux"] < 1600.0 for d in solar)
-# Kerbin's sun sits near the horizon at this bed, so the plate can read as little as
-# nothing -- but never more than the overhead flux, and never negative.
+# Minmus has no air, so nothing dims the plate: what a horizontal surface reads is the
+# overhead flux times the sun's sine, never more and never negative.
 CHECK all(0.0 <= d["flat"] <= d["flux"] for d in solar)
 FORBID albedo=0.000
 FORBID bb_T=0.00
+FORBID ground_T=0.00
