@@ -90,7 +90,8 @@ static int g_checks = 0;
    its teeth -- which is itself the point of the change (#739 must move no number). */
 static double p0Of(double rho0, const std::vector<AtmoLayer> &L,
                    double molar = kAirMolarMass) {
-    return rho0 * (kGasR / molar) * (L.empty() ? 288.15 : L[0].base_T);
+    assert(!L.empty());   // an empty table has no datum T to anchor on; see below
+    return rho0 * (kGasR / molar) * L[0].base_T;
 }
 
 static void test_density() {
@@ -592,7 +593,9 @@ static void test_layered_atmosphere() {
     CHECK_TRUE(!resolveAtmoLevels(one, p0Of(1.225, one), kAirMolarMass, 9.82, 0.0, 0.0),
                "refused: no air top, so no ceiling to keep T above 0 K");
     std::vector<AtmoLayer> empty;
-    CHECK_TRUE(!resolveAtmoLevels(empty, p0Of(1.225, empty), kAirMolarMass, 9.82, 85000.0, 0.0),
+    // No p0Of() here: an empty vector has no datum temperature, and the anchor value is
+    // beside the point -- the emptiness is what this refuses.
+    CHECK_TRUE(!resolveAtmoLevels(empty, 101325.0, kAirMolarMass, 9.82, 85000.0, 0.0),
                "refused: an empty table is not a profile");
     /* And the one table that cannot be integrated because of the FIELD rather than
        the table: a warming level whose lapse equals T/(radius+alt) puts the planet's

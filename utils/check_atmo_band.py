@@ -258,7 +258,7 @@ def self_test():
             base['surface']['atmosphere'], **{field: value})})
     twins = [twin('mass', 1.06e23), twin('g', 4.0), twin('radius', 8.0e5),
              twin('height', 500000.0), twin('scale_height', 30000.0),
-             # 0.4 Pa on the same column is 2e-6 kg/m3, so the twin is still a twin
+             # 0.4 Pa on the same column is 2.039e-6 kg/m3, so the twin is still a twin
              twin('sea_level_pressure', 0.4),
              # M comes from the mix, and the level rows are the last key field; both
              # need a layered base, since an exponential body has no rows to differ in.

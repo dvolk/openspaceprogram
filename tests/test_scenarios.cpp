@@ -119,8 +119,17 @@ static int check_datum(const char *path, const System &sys) {
    rather than only in the pure-math test: a body whose mix never reaches the gate is
    a jet running on full throttle in a CO2 sky. */
 static int check_air(const char *path, const System &sys) {
+    /* `rho0` is the datum density the loader RESOLVES from the authored pressure
+       (#739) -- the number airDensity(), the dossier and the jet gate read. It used to
+       be the authored figure and needed no pin; now it is a computed one, and the two
+       branches compute it differently (p0 / (g H) on an exponential, where the gas
+       cancels, and p0 M / (R T0) beside a layer table). Without these the table branch
+       is unpinned at unit level: hard-coding kAirMolarMass there instead of the body's
+       resolved mix leaves every other number in this table exactly as it is, because p0
+       comes from level 0's base_p and T, a and everything aloft never divide by the
+       resolved rho0. */
     struct Want { const char *name; double T; double a; double p; double ox;
-                  double tol; };
+                  double rho0; double tol; };
     /* One number read ALOFT, because every Want literal above sits at the datum,
        where the column has not been walked yet (#683). Kerbin's edge density is
        what orbital drag is made of, and since #686 it comes from a level table, not
@@ -222,8 +231,8 @@ static int check_air(const char *path, const System &sys) {
            number and the density below it is the consequence. Kerbin's datum used to
            read 101,324.85 Pa because someone typed 1.225 -- the standard's rounding --
            and the pin was that rounding's product to eleven digits. */
-        {"Kerbin", 288.15, 340.47075676386669, 101325.0,
-                                                  0.23140616, 1e-9},
+        {"Kerbin", 288.15, 340.47075676386669, 101325.0, 0.23140616,
+                                            1.2250017557285484, 1e-9},
         /* #700 put Shay and Laythe into the same table Kerbin and Earth wear, so
            their datums are now BIT-identical to Kerbin's above -- p0 = rho0 (R/M) T0
            and a = sqrt(gamma (R/M) T0) contain no g and no radius, and all four
@@ -237,17 +246,17 @@ static int check_air(const char *path, const System &sys) {
            two worlds at all. What tells them apart is aloft, where g weighs the
            column: see their `levels` and `aloft` rows. Tolerance 1e-9 like Kerbin's,
            because none of these four numbers reads g. */
-        {"Shay",              288.15,  340.47075676386669, 101325.0,
-                                                  0.23140616, 1e-9},
-        {"Laythe",            288.15,  340.47075676386669, 101325.0,
-                                                  0.23140616, 1e-9},
+        {"Shay",              288.15,  340.47075676386669, 101325.0, 0.23140616,
+                                            1.2250017557285484, 1e-9},
+        {"Laythe",            288.15,  340.47075676386669, 101325.0, 0.23140616,
+                                            1.2250017557285484, 1e-9},
         // H2 85.5, He 14, CH4 0.5 %: M 0.00236415, gamma 1.42319. g 7.848, H 20000.
         // Jool is the densest air in this system and its oxidizer share is exactly
         // zero -- hydrogen is the fuel, and there is no oxidizer to burn it with.
-        {"Jool",   44.630376392655037, 472.63460894186682, 313920.0, 0.0, 1e-9},
+        {"Jool",   44.630376392655037, 472.63460894186682, 313920.0, 0.0, 2.0, 1e-9},
         // CO2 95.32, N2 2.7, Ar 1.6, O2 0.13 %: M 0.0434957, gamma 1.30485.
         {"Eve",    610.70058697001423, 390.2911824640027, 198456.3,
-                                                   0.00095878, 1e-9},
+                                 0.00095878, 1.7, 1e-9},
         /* CO2 96.5, N2 3.5 %: M 0.043450, gamma 1.30265. g 8.87, H 16 km.
            The p column is the whole reason Venus joined this table (#684): the file
            authored a rho0 and p0 was its consequence, so an author who typed a
@@ -257,7 +266,7 @@ static int check_air(const char *path, const System &sys) {
            in the file to contradict it. 65 kg/m3 (utils/rss/html/venusfact.html:
            "Surface density: ~65. kg/m^3") gives 9.22 MPa, which is Venus's real
            92 bar to 0.3 %. T and a contain no rho0 and were already right. */
-        {"Venus",  741.6441320850256, 429.9672411932908, 9224800.0, 0.0, 1e-9},
+        {"Venus",  741.6441320850256, 429.9672411932908, 9224800.0, 0.0, 65.0, 1e-9},
         /* Earth authors a LAYER TABLE (#552 A4) AND a mix (#630), so these are the
            shipped file's proof all the way through: the JSON parses, resolveAtmoLevels
            integrates the column at the Rs that mix implies, dragAtm carries the
@@ -265,11 +274,13 @@ static int check_air(const char *path, const System &sys) {
            1976 standard's own sea-level row; dry air's mix resolves to
            0.02896496 kg/mol. Since #739 the file states the standard's own 101,325 Pa
            row outright, so the 1.225 kg/m3 these rows imply is what the loader
-           resolves (1.224961 at this mix) rather than what an author typed. The
+           resolves -- 1.2250018, where dry air's four authored fractions sum to
+           0.99997 and resolveMix normalizes by their own total, which is worth
+           0.04% on the datum density -- rather than what an author typed. The
            tolerance stays 1e-4 rather than 1e-9 because Earth authors
            g 9.82 where the standard uses 9.80665 -- a third of a percent aloft. */
-        {"Earth",               288.15,  340.47075676386669, 101325.0,
-                                                  0.23140616, 1e-4},
+        {"Earth",               288.15,  340.47075676386669, 101325.0, 0.23140616,
+                                            1.2250017557285484, 1e-4},
     };
     int bad = 0, n = 0;
     for(TerrainBody *b : sys.bodies) {
@@ -328,13 +339,14 @@ static int check_air(const char *path, const System &sys) {
             const double ox_tol = (w.ox == 0.0) ? 0.0 : 1e-8;
             if(std::fabs(T - w.T) > w.tol * w.T || std::fabs(s - w.a) > w.tol * w.a
                || std::fabs(p - w.p) > w.tol * w.p
+               || std::fabs(a.sea_level_density - w.rho0) > w.tol * w.rho0
                || !(std::fabs(a.oxidizer_share - w.ox) <= ox_tol)) {
                 printf("  %s: %s air T %.4f K (want %.4f), sound speed %.4f m/s"
-                       " (want %.4f), p %.1f Pa (want %.1f), oxidizer %.8f"
-                       " (want %.8f) -- did a composition edit or a copy go"
-                       " half-way?\n",
+                       " (want %.4f), p %.1f Pa (want %.1f), resolved rho0 %.9f kg/m3"
+                       " (want %.9f), oxidizer %.8f (want %.8f) -- did a composition"
+                       " edit or a copy go half-way?\n",
                        path, w.name, T, w.T, s, w.a, p, w.p,
-                       a.oxidizer_share, w.ox);
+                       a.sea_level_density, w.rho0, a.oxidizer_share, w.ox);
                 bad++;
             }
         }
@@ -489,6 +501,20 @@ static void check_composition() {
     expect_refuses("anchorless_layers", patched("Kerbin", [](nlohmann::json &a) {
                        a.erase("sea_level_pressure");
                    }).dump(), "sea_level_pressure");
+    /* The other three ways the anchor can be wrong, pinned so a message cannot rot: an
+       exponential with no anchor at all, a NEGATIVE one (which would otherwise read as
+       "no air" and survive a decade, the same failure the profile guards exist for), and
+       an anchor beside BOTH profiles -- what a half-applied #739 migration leaves behind,
+       where the file then states the column twice and disagrees with itself. */
+    expect_refuses("anchorless_exponential", patched("Duna", [](nlohmann::json &a) {
+                       a.erase("sea_level_pressure");
+                   }).dump(), "sea_level_pressure");
+    expect_refuses("negative_anchor", patched("Kerbin", [](nlohmann::json &a) {
+                       a["sea_level_pressure"] = -101325.0;
+                   }).dump(), "sea_level_pressure");
+    expect_refuses("anchor_with_two_profiles", patched("Kerbin", [](nlohmann::json &a) {
+                       a["scale_height"] = 8432.0;
+                   }).dump(), "no scale_height");
 
     // A gas the species table does not have -- named in the message, because
     // "unknown gas" without the name is the useless half of the error.
@@ -885,10 +911,11 @@ static void check_raised_sea() {
     // top (q there 142 Pa rather than 94).
     // Leaving the typed 9.81 in place is the mutation; the literal below is what
     // utils/atmo_profile.py integrates by quadrature, sharing no code with atmo.h.
-    // It moved in #739 by +1.4e-6 (0.3435505 -> 0.3435510) and nothing else about
-    // this row did: raising the sea lowers the g that weighs the column, and since the
-    // file now authors the datum PRESSURE, a lower g resolves a slightly denser rho0.
-    // Both spellings agree on the new number, which is the check working.
+    // It moved in #739 by +1.4e-6 (0.3435505 -> 0.3435510): the file now authors
+    // US76's own 101,325 Pa rather than that standard's rounded 1.225 kg/m3. For a
+    // LAYER body the datum density contains no g at all (rho0 = p0 M / (R T0)); the
+    // datum g only weighs the integration UP to 12 km, which is what this row is about.
+    // utils/atmo_profile.py agrees on the new number, which is the check working.
     const DragAtmosphere wda = dragAtm(b->surface.atmosphere, *b);
     const double rho12 = airDensity(wda, 12000.0);
     if(!(std::fabs(rho12 / 0.3435510 - 1.0) < 1e-6)) {

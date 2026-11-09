@@ -62,11 +62,18 @@ def anchor_sea_level_pressure(surface, radius_m, g):
         raise ValueError("a layer table authors sea_level_pressure directly (#739): "
                          "the density it implies is the loader's consequence, not a "
                          "number this generator should convert")
-    p0 = None
-    if rho0 > 0.0 and g and atmo.get("scale_height", 0.0) > 0.0:
-        datum_r = radius_m + float(surface.get("sea_level", 0.0) or 0.0)
-        k = radius_m / datum_r if datum_r > 0.0 else 1.0
-        p0 = rho0 * g * k * k * atmo["scale_height"]
+    # Refuse rather than drop: an authored density that CANNOT be converted would leave
+    # the atmosphere block with neither anchor nor density, and the loader's "both or
+    # neither" guard (system.cpp) reads that as a render rim -- a generated world with
+    # no sky and every check green, the silent default #721 is about, one side of the
+    # boundary over.
+    if rho0 <= 0.0 or not g or not atmo.get("scale_height", 0.0):
+        raise ValueError("cannot convert sea_level_density to a datum pressure: an"
+                         " exponential column needs density, g and scale_height (a"
+                         " layer table authors sea_level_pressure itself)")
+    datum_r = radius_m + float(surface.get("sea_level", 0.0) or 0.0)
+    k = radius_m / datum_r if datum_r > 0.0 else 1.0
+    p0 = rho0 * g * k * k * atmo["scale_height"]
     # Rebuild in the SAME key order, with the pressure taking the density's slot: the
     # emitted file's diff against the last one is then the one line that changed, not
     # every key after it shuffling down the page.
@@ -81,6 +88,58 @@ def anchor_sea_level_pressure(surface, radius_m, g):
     atmo.update(rebuilt)
     return surface
 
+
+
+def check_anchor_conversion(verbose=True):
+    """#739's conversion, on documents no shipped file contains (the shape #682's band
+    gate uses: the lines that weigh a column and the line that refuses it together
+    decide a build). Returns a list of messages, empty when the conversion is sound, so
+    a caller can add it to the same tally its other guards use."""
+    bad = []
+
+    def expect(cond, msg):
+        if not cond:
+            bad.append(msg)
+
+    # An exponential column round-trips: p0 / (g H) is the authored density again, with
+    # no gas constant anywhere in the trip -- which is exactly why the inversion moved
+    # no number in the game.
+    su = {"atmosphere": {"sea_level_density": 0.015, "scale_height": 13600.0}}
+    anchor_sea_level_pressure(su, 320000.0, 2.943)
+    at = su["atmosphere"]
+    expect("sea_level_density" not in at, "the density key must not survive")
+    expect(abs(at["sea_level_pressure"] / (2.943 * 13600.0) - 0.015) < 1e-15,
+           "p0 / (g H) must recover the authored density")
+    expect(list(at.keys()) == ["sea_level_pressure", "scale_height"],
+           "the pressure takes the density's slot in the key order")
+    # A raised datum is weighed in the datum sphere's g, not the typed one (#697). No
+    # shipped body authors a non-zero sea_level, so NOTHING else exercises this branch
+    # -- and the C++ twin of it is tests/test_scenarios.cpp:check_exponential_anchor.
+    su2 = {"sea_level": 12000.0,
+           "atmosphere": {"sea_level_density": 1.7, "scale_height": 7000.0}}
+    anchor_sea_level_pressure(su2, 320000.0, 2.943)
+    k = 320000.0 / 332000.0
+    p0 = su2["atmosphere"]["sea_level_pressure"]
+    expect(abs(p0 / (2.943 * k * k * 7000.0) - 1.7) < 1e-12,
+           "a raised datum must thin the g that weighs the column")
+    expect(p0 != 1.7 * 2.943 * 7000.0, "the datum factor must actually bite")
+    # Two authoring shapes that must stop rather than emit a skyless world: a layer
+    # table (which authors its own pressure) and a density with nothing to convert it
+    # through.
+    for surf, why in (({"atmosphere": {"sea_level_density": 1.225,
+                                       "layers": [{"alt": 0.0, "T": 288.15}]}},
+                      "a layer table"),
+                     ({"atmosphere": {"sea_level_density": 1.225}},
+                      "no scale_height")):
+        try:
+            anchor_sea_level_pressure(surf, 600000.0, 9.81)
+            expect(False, "%s must raise, not drop the density" % why)
+        except ValueError:
+            pass
+    if verbose:
+        print("  anchor conversion self-test: %s"
+              % ("OK" if not bad else "; ".join(bad)))
+    return bad
 
 def resolve_layer_heights(surface, radius_m):
     """#690: a layer table copied from a published standard marks itself

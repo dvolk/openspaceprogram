@@ -52,9 +52,16 @@ CHECK len(surf) == 15
 # WORLD rather than the air, and they are the two the pre-fix binary still passes.
 CHECK all(s["alt_asl"] < -100.0 for s in surf)
 CHECK all(s["bme"] == "ocean" for s in surf)
-# THE LAW: rho == the sea-level density the authored sea_level_pressure implies, on
-# every row, and never ABOVE it. #739 moved which of the two the file states; the
-# density below the datum is still the flat answer either way.
+# THE LAW: rho == the datum density the authored 101,325 Pa resolves to, on every row,
+# and never ABOVE it. #739 moved which of the two the file states, so the number this
+# pins is now a computed one: 101,325 Pa through dry air's mix (0.028964958 kg/mol once
+# resolveMix normalizes the four fractions by their own total) at a 288.15 K datum is
+# 1.2250018 kg/m3, NOT the 1.225 an author used to type. Getting that figure wrong is
+# the whole reason the ceiling below is 1.2250018 + one print resolution rather than
+# 1.225 + 1e-9: the fixture's air genuinely sits ABOVE the old rounding now, and a
+# ceiling written against the rounding would be satisfied by luck: --drag-log prints
+# rho at %.5g, which strips the trailing zero and prints 1.225, so a pin of
+# `rho <= 1.225 + 1e-9` was true of the PRINT while the physics had walked past it.
 # Flat, not the profile continued downward. Since #686 Kerbin wears a level table, so the
 # thing being refused is level 0's lapse continued down: 1.265 kg/m3 at this hull's -336 m
 # and 1.276 at its -424 m (against 1.225 measured). On the pre-#686 exponential the same
@@ -62,8 +69,13 @@ CHECK all(s["bme"] == "ocean" for s in surf)
 # that part of the argument is the same whichever profile a body wears. The 1e-3 band is a
 # 0.08% tolerance, which rejects that 3% error here (thin on purpose relative to
 # tests/test_drag.cpp, which owns the deep case).
-CHECK all(abs(d["rho"] - 1.225) < 1e-3 for d in drag)
-CHECK all(d["rho"] <= 1.225 + 1e-9 for d in drag)
+# What this row can SEE: the print is 1.225, so its resolution is +/-5e-4 and any
+# tolerance tighter than that (5e-5 here) is only reachable by an error over ~0.04%.
+# A datum 1% wrong is 0.012 kg/m3, 240x wider than the band, and reddens; the tenth
+# digit of this density is owned by tests/test_scenarios.cpp, which pins the resolved
+# figure at 1e-9 rather than through a printf.
+CHECK all(abs(d["rho"] - 1.2250018) < 5e-5 for d in drag)
+CHECK all(d["rho"] <= 1.2250018 + 5e-5 for d in drag)
 # IT PUSHES: 5.6 kN of fan thrust drives the hull through that air, and the bill
 # follows. The pre-fix law reads 0.00 N on every row, so these three floors are 0.00 vs
 # 1.5 kN+ measured, not 5 kN vs 19 kN: whether the hull keeps flying or settles at t=8 moves
@@ -90,7 +102,7 @@ CHECK max(r["thrust"] for r in drainlog) > 4000.0
 # row reads the datum's own p0 beside T0 and the sound speed those two imply. Kerbin has
 # worn a level table since #686, so p0 is not rho0 g H at all: since #739 the fixture
 # AUTHORS p0 -- US76's own 101,325 Pa row -- and the loader resolves the density from it
-# (1.2249966 kg/m3 at dry air's M and a 288.15 K datum). The printed row carries one decimal (T=288.1,
+# (1.2250018 kg/m3, above the 1.225 the standard rounds that pair to). The printed row carries one decimal (T=288.1,
 # a=340.5), so the bands below are pinned to the PRINT: they redden if the datum moves,
 # not if the rounding does. Mach divides the AIR-relative speed at the COM, NOT the |v|=
 # this line prints -- that one is the FRAME speed, and on a spinning body the air itself

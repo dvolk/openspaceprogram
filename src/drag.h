@@ -275,8 +275,10 @@ inline double airPressure(const DragAtmosphere &a, double alt) {
         const int i = atmoLevel(a, alt);
         assert(a.molar_mass > 0.0);
         // Flat at the datum's own pressure at/below it, the same floor airDensity()
-        // hands out. p0 is resolved at load to rho0 Rs T0, so rho Rs T == p holds
-        // exactly across that boundary rather than only above it.
+        // hands out. Since #739 p0 is the AUTHORED figure and the loader resolves the
+        // datum density as p0 M / (R T0), so rho Rs T == p holds exactly across that
+        // boundary rather than only above it -- the identity is the same, the direction
+        // of the consequence is what moved.
         if(i < 0) { return a.layers[0].base_p; }
         return levelPressure(a.layers[i], alt, a.gravity, kGasR / a.molar_mass,
                              a.radius);

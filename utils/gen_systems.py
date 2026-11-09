@@ -29,7 +29,7 @@ from gas_mixes import DRY_AIR, CO2_HEAVY, H2_HE_CH4_KSP
 # altitude in a system file means). Both generators call the same function, because each
 # --check only compares its own output and would not notice the two drifting.
 from atmo_units import (resolve_layer_heights, anchor_sea_level_pressure,
-                       check_body_gravity,
+                       check_anchor_conversion, check_body_gravity,
                         SIGMA_SB, semimajor_axis, star_temperature_from_flux,
                         blackbody_temperature, check_constants_match_src)
 
@@ -1009,6 +1009,15 @@ def main():
         for m in cbad:
             print('DRIFT   constants: ' + m)
         raise SystemExit('utils/ and src/ disagree about a physical constant')
+    # Not a per-file question: this one checks the CONVERSION every file's air was
+    # written with, on synthetic bodies no generator emits (#739). Its own refusal
+    # message, because the tally below prints 'body gravity' and would mislabel it.
+    abad = check_anchor_conversion(verbose=True)
+    if abad:
+        for m in abad:
+            print('DRIFT   anchor conversion: ' + m)
+        raise SystemExit('utils/atmo_units.py cannot convert an authored density '
+                         'into the datum pressure the loader inverts')
     for obj, _path in targets:
         author_star_temperature(obj)
         bad += check_body_gravity(obj["bodies"], verbose=True)

@@ -116,15 +116,24 @@ class Profile:
         # the consequence. Resolved here the way system.cpp resolves it: an exponential
         # through the datum temperature its own H already implies (the gas cancels --
         # p0 = rho0 g H exactly), a layer table through the ideal gas at its first
-        # level. Both are exact inverses of what the loader used to do, which is the
-        # whole reason the inversion moved no number in the game.
+        # level. Both are exact inverses of what the loader does NOW with the same
+        # authored pair, which is the whole reason the inversion moved no number.
+        # The level row's T defaults to 0.0 exactly as system.cpp:521-523 defaults it,
+        # so a table that omits the datum temperature divides by zero HERE and refuses
+        # there -- same outcome, and neither is a KeyError in this file's name.
         self.M, self.gamma = mix(at.get('composition'))
         self.Rs = K_GAS_R / self.M
         self.p0 = float(at['sea_level_pressure'])
         if at.get('layers'):
             self.rho0 = self.p0 / (self.Rs * float(at['layers'][0].get('T', 0.0)))
-        else:
+        elif at.get('scale_height', 0.0) > 0.0:
             self.rho0 = self.p0 / (self.g * float(at['scale_height']))
+        else:
+            # A pressure with no profile is a file the loader refuses; name the body
+            # rather than raising a bare KeyError off whichever key comes second.
+            raise ValueError('%s: atmosphere.sea_level_pressure with neither layers'
+                             ' nor scale_height -- no column to resolve it into'
+                             % self.name)
         # system.cpp:521-523 DEFAULTS a level's alt/T/lapse to 0.0, so a row may write
         # only what it cares about. Normalise once, to the loader's defaults, so neither
         # T() nor the gate's dedupe key KeyErrors on a file the loader accepts.

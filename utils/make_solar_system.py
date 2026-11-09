@@ -599,7 +599,17 @@ def check_fact_air(planets, parsed, verbose=True):
             if p0 is None and rho0 is not None and g:
                 p0 = rho0 * g * H
             if p0 is not None and g:
-                authored['density'] = p0 / (g * H)
+                # Invert with the SAME g the file's pressure was converted with:
+                # anchor_sea_level_pressure weighs the column on the DATUM sphere
+                # (atmo_units, datumGravity #697), and this guard's g is the sheet's
+                # mean-radius figure. Every catalogue body authors sea_level 0 today so
+                # the two are one number -- but the moment one does not, an uncorrected
+                # g here misses the density by exactly the (mean/datum)^2 factor, which
+                # is the split #697 exists to prevent.
+                sea = float((surface or {}).get('sea_level', 0.0) or 0.0)
+                rr = body.get('radius_m')
+                g_at = g if (sea <= 0.0 or not rr) else g * (rr / (rr + sea)) ** 2
+                authored['density'] = p0 / (g_at * H)
                 authored['p0'] = p0
                 # The sheet's "Total mass of atmosphere" row is the SAME statement
                 # as its pressure row -- the weight of the column per unit area IS
@@ -1239,10 +1249,11 @@ def build_base(verbose_air=False):
                       [1.0, [0.95, 0.95, 0.97]]],
           # Earth is the one body that authors a LAYER TABLE instead of a scale height
           # (#552 A4): the 1976 standard atmosphere's altitude/temperature levels, with
-          # the lapse rate in K/m (the standard states K/km). Pressure and each level's
-          # base pressure are NOT authored -- the loader integrates them hydrostatically
-          # from sea_level_density (atmo.h:resolveAtmoLevels), which is why the profile
-          # lands on 101,324.9 Pa at the datum rather than an authored 101,325.
+          # the lapse rate in K/m (the standard states K/km). Since #739 the datum
+          # pressure IS authored -- the standard's own 101,325 Pa row, with the density
+          # 1.2250018 that pair resolves to rather than the 1.225 the table rounds it to.
+          # Each level's base pressure above the first is still NOT authored: the loader
+          # integrates them hydrostatically (atmo.h:resolveAtmoLevels).
           # Troposphere to 11 km, isothermal tropopause to 20, stratosphere to 47,
           # isothermal stratopause to 51, mesosphere to the top. The standard's 85 km row
           # (186.87 K) needs no level of its own: that row is 85 km of GEOPOTENTIAL, which

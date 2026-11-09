@@ -48,7 +48,7 @@ inline constexpr double kInertialOrbitFrac = 1.25;
 // -- atmosphere --------------------------------------------------------------
 
 /* The derived atmosphere top in scale heights: a body that authors
-   sea_level_density + scale_height but no height gets top() = this * H,
+   sea_level_pressure + scale_height but no height gets top() = this * H,
    i.e. ~e^-10 of sea-level density -- a sane hard top for a body with no
    authored one.
    It is a FALLBACK, not the law: #682's band says a ceiling should sit where a
