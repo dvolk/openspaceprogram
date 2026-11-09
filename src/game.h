@@ -85,7 +85,6 @@ struct PartSel {
     Vehicle *ship = nullptr;
     size_t part = 0;    // index into ship->parts
     double t = 0;       // sim seconds at selection
-    glm::dvec3 point;   // hit point, ship frame
     int mx = 0, my = 0; // mouse at pick, window pixels (window placement)
     /* Window layout, written by drawPartWindows. Placement is NOT one-off: the
        size is unknown until imgui finishes auto-fitting (two frames), and the
@@ -1108,8 +1107,7 @@ struct Game {
     void answerQuestion(int choice);
     std::unique_ptr<Question> question;   // null = no card up
     // Opens (or focuses) the part window for (ship, part), near (mx,my).
-    void openPartWindow(Vehicle *ship, size_t part, const glm::dvec3 &point,
-                        int mx, int my);
+    void openPartWindow(Vehicle *ship, size_t part, int mx, int my);
     // Its entries would dangle after delete.
     void dropPartWindowsFor(Vehicle *ship);
     /* The one way a live Vehicle dies: out of Game::vehicles, out of every

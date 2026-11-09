@@ -326,8 +326,7 @@ void Game::answerQuestion(int choice) {
 }
 
 // One window per part: re-picking an already-open part is a no-op.
-void Game::openPartWindow(Vehicle *ship, size_t part, const glm::dvec3 &point,
-                          int mx, int my) {
+void Game::openPartWindow(Vehicle *ship, size_t part, int mx, int my) {
     for(auto &sel : part_sels) {
         if(sel.ship == ship && sel.part == part) { return; }
     }
@@ -335,7 +334,6 @@ void Game::openPartWindow(Vehicle *ship, size_t part, const glm::dvec3 &point,
     sel.ship = ship;
     sel.part = part;
     sel.t = time;
-    sel.point = point;
     sel.mx = mx;
     sel.my = my;
     part_sels.push_back(sel);
@@ -707,7 +705,7 @@ void pickAt(Game &g, int px, int py) {
     size_t part = 0;
     PickBodyHit hit;
     if(pickShipPart(g, px, py, ship, part, hit)) {
-        g.openPartWindow(ship, part, hit.point, px, py);
+        g.openPartWindow(ship, part, px, py);
         printf("[pick] t=%.1f ship=%s part=%zu (%s)\n",
                g.time, ship->displayName().c_str(), part,
                ship->parts[part]->def->name.c_str());

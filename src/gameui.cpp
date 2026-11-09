@@ -3146,13 +3146,13 @@ void drawPartWindows(Game &g) {
             }
         }
         /* From here the body can fire a button that deletes a vehicle, and
-           dropVehicleRefs -> dropPartWindowsFor erase_from part_sels: a reference
-           into the vector would then alias whatever shifted into this slot, and
-           the rest of the body (sel.point, and the next iteration's index) would
-           read the wrong window. The layout fields above are the only fields
-           this loop writes, and they are all written before this copy, so the
-           body works from a copy. */
-        const PartSel sel = live;
+           dropVehicleRefs -> dropPartWindowsFor erases from part_sels. An erase
+           shifts what THIS index points at, so the slot can now hold another
+           part's selection: that is why the body re-reads live.ship/live.part
+           below and compares them against the (ship, part) it already resolved
+           instead of trusting the reference. The layout fields above are the only
+           fields this loop writes, and they are all written before a button can
+           fire. */
         bool open = true;
             /* A successful pickup may have dropped an EARLIER part_sels entry, shifting what
                this loop indexes. */
@@ -3737,9 +3737,6 @@ void drawPartWindows(Game &g) {
                     ImGui::Text("  (no cargo in range)");
                 }
             }
-            ImGui::Separator();
-            ImGui::Text("Picked at: (%.0f, %.0f, %.0f)",
-                        sel.point.x, sel.point.y, sel.point.z);
         }
         ImGui::End();
         if(!open) {
