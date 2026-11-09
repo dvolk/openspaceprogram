@@ -35,7 +35,8 @@ from atmo_units import (resolve_layer_heights, anchor_sea_level_pressure,
 # #724 rung C: the surface swing's law, shared with make_solar_system.py so the shipped
 # system and the catalogue cannot grow two different weathers (#636).
 from ground_model import (fit_even_share, even_share_air_note, ground_anchor,
-                          night_T,
+                          night_T, calibration_from_fitted, default_even_share,
+                          SRC_PAIR_NIGHT, SRC_PAIR_DAY,
                           AIR_FOLLOW)
 
 TWOPI = 2.0 * math.pi
@@ -888,47 +889,64 @@ def author_star_temperature(obj):
 #                    satellites (Europa 0.68, Enceladus 1.0) and no Bond albedo, and
 #                    geometric -> Bond needs a phase integral nothing in the corpus
 #                    gives. Filed rather than guessed (#736).
-DASH = object()   # a named sentinel, NOT a bare None: the None inside ("Moon", None)
-FITTED = object()  # KSP_DIURNAL: this body's swing came from its own source's pair
-                  # means "take the analogue's value", and one value meaning both is how
-                  # a body silently stops being priced
-KSP_ALBEDOS = {
-    "Moho":   ("Mercury", None),   # hot, airless, grey
-    "Eve":    ("Venus",   None),   # thick CO2 sky over a hot rock
-    "Kerbin": ("Earth",   None),   # Earth-shaped by construction
-    "Mun":    ("Moon",    None),   # airless rock; 0.11 read from the solar file's Moon
-    "Minmus": DASH,                # icy -- see the note above
-    "Shay":   ("Earth",   None),   # authored air, sea and clouds: an Earth-shaped moon
-    "Duna":   ("Mars",    None),
-    "Ike":    ("Moon",    None),
-    "Dres":   ("Moon",    None),   # belt dwarf, same bare-rock bucket
-    "Jool":   ("Jupiter", None),
-    "Laythe": ("Earth",   None),   # air and sea, on 53 W/m2: its wiki temperatures do not fit (#738)
-    "Vall":   DASH,                # icy
-    "Tylo":   ("Moon",    None),
-    "Bop":    DASH,
-    "Pol":    DASH,
-    "Gilly":  DASH,
-    "Eeloo":  ("Pluto",   None),   # dwarf of bright ices; inherits Pluto's self-contradicting sheet too
+KSP_ANALOGUE = {
+    # Which REAL world each shipped body is a draft of. One table, one answer (#707): the
+    # Bond albedo and the diurnal swing are both read through it, so a body cannot be Mars
+    # for one figure and Venus for another. The values are names in solar_system.json, so the
+    # numbers themselves stay in one file (#636).
+    #
+    # A None is a refusal to name an analogue at all, and it prints as a dash. There are none
+    # left (#749): the reference file now converts the geometric albedos its satellite pages
+    # state (make_solar_system.py:corpus_phase_integral), so even the icy and the dark bodies
+    # have a price to borrow -- and holding the KSP worlds to a stricter standard than the
+    # corpus file already accepted would be a double standard, not rigour.
+    "Moho":   "Mercury",    # hot, airless, grey
+    "Eve":    "Venus",      # thick CO2 sky over a hot rock
+    "Kerbin": "Earth",      # Earth-shaped by construction
+    "Mun":    "Moon",       # airless rock
+    "Minmus": "Enceladus",  # bright ice, and the brightest thing the corpus prices
+    "Shay":   "Earth",      # authored air, sea and clouds: an Earth-shaped moon
+    "Duna":   "Mars",
+    "Ike":    "Moon",
+    "Dres":   "Moon",       # belt dwarf, same bare-rock bucket
+    "Jool":   "Jupiter",    # its ALBEDO is Jupiter's; its temperature still dashes, for the
+                            # other reason: a gas giant has no ground to price (#738)
+    "Laythe": "Earth",      # air and sea, on 53 W/m2: its wiki temperatures do not fit (#738)
+    "Vall":   "Europa",     # cracked ice shell over water, with a thin air of its own
+    "Tylo":   "Moon",
+    "Bop":    "Phobos",     # dark captured rock
+    "Pol":    "Callisto",   # small, dark, outer
+    "Gilly":  "Phobos",     # a potato with no shape to speak of
+    "Eeloo":  "Pluto",      # dwarf of bright ices; inherits Pluto's self-contradicting sheet too
 }
+# Where the analogue's own value cannot be used, say so beside the number rather than editing
+# the table above into two columns nobody reads.
+KSP_ANALOGUE_SKIP = set()   # bodies priced elsewhere; empty by default
 
 def solar_reference_albedos():
-    """{name: authored Bond albedo} from the reference system file."""
+    """{name: (authored Bond albedo, how that file obtained it)} from the reference system
+    file. The second half rides along so a borrowed figure cannot lose the fact that it was
+    converted there before it was borrowed here: Minmus's albedo is Enceladus's, and
+    Enceladus's is a geometric reading times a factor (#687)."""
     import json as _json
     path = os.path.join(ROOT, "res", "systems", "solar_system.json")
     with open(path) as f:
         obj = _json.load(f)
     out = {}
     for b in obj["bodies"]:
-        a = (b.get("surface") or {}).get("albedo")
+        surf = b.get("surface") or {}
+        a = surf.get("albedo")
         if a is not None:
-            out[b["name"]] = a
+            out[b["name"]] = (a, surf.get("albedo_src") or "")
     return out
 
 def solar_reference_even_shares():
-    """{name: authored even share} from the reference system file. Read rather than retyped:
-    Earth's 0.9323 is fitted from a stated pair by make_solar_system.py, and a second copy of
-    that number here is #636's one-constant law and a drift waiting to happen."""
+    """({name: even share}, {name: how it was priced}, {name: sea-level Pa}) from the reference
+    system file. Read rather than retyped: Earth's 0.9323 is fitted from a stated pair by
+    make_solar_system.py, and a second copy of that number here is #636's one-constant law and
+    a drift waiting to happen. The provenance string rides along so this file can REPEAT that
+    file's calibration instead of copying its answers, and the pressures so the air-mass rule
+    can be applied to a borrowed body's own air."""
     import json as _json
     path = os.path.join(ROOT, "res", "systems", "solar_system.json")
     with open(path) as f:
@@ -936,10 +954,13 @@ def solar_reference_even_shares():
     # EVERY body is a key, with None for the ones the corpus refused. A dict of only the
     # priced bodies would make a mistyped analogue name indistinguishable from a refusal --
     # and this table's whole claim is that refusals are visible (#742).
-    out = {}
+    val, src, p = {}, {}, {}
     for b in obj["bodies"]:
-        out[b["name"]] = (b.get("surface") or {}).get("even_share")
-    return out
+        surf = b.get("surface") or {}
+        val[b["name"]] = surf.get("even_share")
+        src[b["name"]] = surf.get("even_share_src")
+        p[b["name"]] = (surf.get("atmosphere") or {}).get("sea_level_pressure") or 0.0
+    return val, src, p
 
 
 def mean_orbit_to_star(body, by_name):
@@ -979,28 +1000,27 @@ def author_ksp_albedos(obj):
     # out of this table would silently regain the hole #735 just filled -- and the shipped
     # file is the one place the atlas' dash is a player-facing thing.
     named = {b["name"] for b in obj["bodies"] if b.get("type") != "star"}
-    assert named == set(KSP_ALBEDOS), (
-        "KSP_ALBEDOS and this system disagree: only in the system %s, only in the table %s"
-        % (sorted(named - set(KSP_ALBEDOS)), sorted(set(KSP_ALBEDOS) - named)))
-    for name, spec in KSP_ALBEDOS.items():
+    assert named == set(KSP_ANALOGUE), (
+        "KSP_ANALOGUE and this system disagree: only in the system %s, only in the table %s"
+        % (sorted(named - set(KSP_ANALOGUE)), sorted(set(KSP_ANALOGUE) - named)))
+    for name, spec in KSP_ANALOGUE.items():
         body = by_name.get(name)
-        assert body, "KSP_ALBEDOS names a body this system does not have: " + name
+        assert body, "KSP_ANALOGUE names a body this system does not have: " + name
         a_star, rail = mean_orbit_to_star(body, by_name)
         flux = (lum / (4.0 * math.pi * a_star * a_star)) if a_star else 0.0
-        if spec is DASH:
-            # The light still prints for a body with no albedo -- the atlas says the same
-            # thing, and it is where a reader sees that the dash is one row, not the block.
-            print('  albedo    %-8s dash%s  (no honest analogue: see the KSP_ALBEDOS note)'
-                  % (name, '  %7.1f W/m2 at %s' % (flux, rail) if a_star else ''))
-            continue
-        analogue, override = spec
-        a = override if override is not None else ref.get(analogue)
-        assert a is not None, ('no authored albedo for %r in solar_system.json, and no '
-                               'override for %s' % (analogue, name))
+        analogue = spec
+        assert analogue, "KSP_ANALOGUE names %s with no analogue: say why in the table" % name
+        ref_pair = ref.get(analogue)
+        a = ref_pair[0] if ref_pair else None
+        # No nested brackets: this lands inside the dossier's own "(...)" around the number.
+        src = "analogy to %s%s" % (analogue,
+                                   ", converted there" if ref_pair and ref_pair[1] else "")
+        assert a is not None, ('no authored albedo for %r in solar_system.json for %s: the '
+                               'reference file must price an analogue this system borrows'
+                               % (analogue, name))
         assert 0.0 <= a < 1.0, "%s: albedo %g is not a Bond albedo" % (name, a)
         body.setdefault("surface", {})["albedo"] = a
-        src = ("from solar_system.json's %s" % analogue) if override is None \
-            else ("the corpus's %s value, stated but unauthored there" % analogue)
+        body["surface"]["albedo_src"] = src
         if not a_star:
             print('  albedo    %-8s %5.3f  %s' % (name, a, src))
             continue
@@ -1162,11 +1182,18 @@ def author_ksp_diurnal(obj):
     sT = (star.get("surface") or {}).get("temperature") or 0.0
     assert sT > 0.0, "author_ksp_diurnal() must run after author_star_temperature()"
     lum = 4.0 * math.pi * star["radius"] ** 2 * SIGMA_SB * sT ** 4
-    rows, unpaired, n_authored = [], [], 0
+    rows, unpaired, no_ground, n_authored = [], [], [], 0
     for body in obj["bodies"]:
         name = body["name"]
         if body.get("type") == "star":
             continue          # its pair is a photosphere-to-corona range, not a surface
+        if (body.get("surface") or {}).get("bands"):
+            # Same test as author_ksp_diurnal_defaults() and make_solar_system.py: a banded
+            # world's wiki "night/day" row is a reading at the 1-bar level, not a ground's
+            # extremes, and there is no ground to fit them onto (#738). Skipping it here keeps
+            # the verdict line from printing a REFUSE for a body that has nothing to refuse.
+            no_ground.append(name)
+            continue
         rng = WIKI_THERMAL.get(name)
         if not rng or rng[1] is None or rng[2] is None:
             unpaired.append(name)
@@ -1191,7 +1218,12 @@ def author_ksp_diurnal(obj):
             rows.append('  diurnal   %-8s dash  anchor %7.2f K (%s)\n%20s%s'
                         % (name, T0, why, '', note))
             continue
-        body.setdefault("surface", {})["even_share"] = f
+        surf = body.setdefault("surface", {})
+        surf["even_share"] = f
+        # fit_even_share() fits the NIGHT end, which is the end this law guarantees; the
+        # dossier prints that beside the two ends so the wiki's own pair can be read against
+        # the model's (#687).
+        surf["even_share_src"] = SRC_PAIR_NIGHT
         n_authored += 1
         at = (body.get("surface") or {}).get("atmosphere") or {}
         air_note = even_share_air_note(name, f, at.get("sea_level_pressure"),
@@ -1202,8 +1234,9 @@ def author_ksp_diurnal(obj):
     for r in rows:
         print(r)
     print('  diurnal   %d bodies state a night/day pair: %d authored a swing, %d refused; '
-          '%d state none, and the dossier dashes their row'
-          % (len(rows), n_authored, len(rows) - n_authored, len(unpaired)))
+          '%d state none, and the dossier dashes their row; %d has no ground at all (%s)'
+          % (len(rows), n_authored, len(rows) - n_authored, len(unpaired), len(no_ground),
+             ', '.join(no_ground)))
 
 
 def author_ksp_air_follow(obj):
@@ -1224,36 +1257,24 @@ def author_ksp_air_follow(obj):
               'its ground' % (name, k))
 
 
-# #742: the swing for the bodies this catalogue's own source cannot price. The wiki's
-# "night/day" pair for Kerbin, Duna and Laythe is really (record low, average) -- its `max`
-# IS its mean -- so there is no pair to fit and #742 is the ticket saying so. The user has
-# said inventing numbers is fine at this stage, so this table INVENTS THEM OUT LOUD: each row
-# names the analogue it borrows from, and the value is READ from solar_system.json (Earth
-# 0.9323, Moon 0.0153) rather than typed here, so the two files cannot drift (#636).
-# DASH is a decision, not a hole: Jool has no ground to swing (#738), the icy moons and the
-# small rocks state no pair and have no analogue the corpus prices.
-# FITTED means the wiki's own pair already priced this body (Eve, the one genuine pair).
-KSP_DIURNAL = {
-    "Moho":   ("Mercury", None),  # airless and hot, but Mercury's own swing is refused (#742)
-    "Eve":    FITTED,             # 160-420 K: the one real night/day pair in this catalogue
-    "Gilly":  DASH,               # no air, no albedo: nothing to anchor a swing on
-    "Kerbin": ("Earth", None),    # Earth-shaped by construction, like its albedo (#735)
-    "Mun":    ("Moon", None),     # airless rock: the Moon's redistribution, as for its albedo
-    "Minmus": DASH,               # icy, unpriced both ways (#736)
-    "Shay":   ("Earth", None),    # air, sea and clouds: an Earth-shaped moon
-    "Duna":   ("Mars", 0.30),     # INVENTED: Mars's pair (184-242 K at a lander) priced ~0.31
-                                  # and REFUSED for Mars itself; 0.30 is our authoring, stated
-    "Ike":    ("Moon", None),
-    "Dres":   ("Moon", None),     # belt dwarf, the same bare-rock bucket as its albedo
-    "Jool":   DASH,               # a banded giant has no ground: #738's label question
-    "Laythe": ("Earth", None),    # air and sea; its wiki temperatures do not fit (#738)
-    "Vall":   DASH,               # icy, unpriced both ways (#736)
-    "Tylo":   ("Moon", None),
-    "Bop":    DASH,
-    "Pol":    DASH,
-    "Eeloo":  ("Pluto", None),    # Pluto's own swing is unauthored, so this dashes too
-}
+# #742/#749: the swing for the bodies this catalogue's own source cannot price. The wiki's
+# "night/day" pair for Kerbin, Duna and Laythe is really (record low, average) -- its `max` IS
+# its mean -- so there is no pair to fit and #742 is the ticket saying so. Two rules fill the
+# gap, both read rather than typed (#636), and neither can launder a refusal:
+#   borrow   take the analogue's knob out of solar_system.json, through KSP_ANALOGUE -- the
+#            same table that prices the albedo, so a body is one real world, not two;
+#   default  where even the analogue has no knob (Mercury, Pluto), use the air-mass rule
+#            calibrated from the reference file's OWN fits, and say DEFAULT in the dossier.
+# KSP_DIURNAL used to be a third table of per-body decisions; every row in it is now derived
+# from KSP_ANALOGUE, so the only swing a reader has to trust as invented is the rule itself --
+# and its two constants are measured, not typed.
+KSP_DIURNAL_FITTED = {"Eve"}   # the one body whose wiki pair is a genuine night/day extreme
 
+# #738's label question, applied here with the SAME test the reference file uses: a `bands`
+# surface has no ground to swing. Jool is banded, so its dossier already speaks in levels rather
+# than a surface; what this check stops is the defaults pass, whose anchor chain reads an air's
+# base temperature as a ground and would otherwise price a day/night swing on the inside of a
+# cloud. One rule in two generators, not a name in one and a shape in the other (#707).
 
 # #724 rung D: which of these airs is allowed to feel its ground. Named, not blanket: the
 # knob is inert without a swing to follow and dishonest on a body whose air the corpus prices
@@ -1264,46 +1285,55 @@ KSP_DIURNAL = {
 KSP_AIR_FOLLOW = {"Kerbin": AIR_FOLLOW, "Laythe": AIR_FOLLOW}
 
 
-def author_ksp_diurnal_analogy(obj):
-    """#742: price the swing for the bodies the wiki cannot, by named analogy -- the same
-    shape as KSP_ALBEDOS for #735, and for the same reason: the atlas' dash is a player-facing
-    thing, so a body either takes an analogue's number or is NAMED as declining.
+def author_ksp_diurnal_defaults(obj):
+    """#742/#749: price the swing for every shipped body, by analogy first and by the air-mass
+    rule second.
 
-    Two guards keep this honest. An analogue with no authored swing (Mercury, Mars, Pluto --
-    their pairs were refused) makes the borrower dash rather than invent, so the table cannot
-    quietly launder a refusal; only an explicit override (Duna's 0.30) writes a number nobody
-    sourced, and it prints the word INVENTED. And a body with no anchor to swing -- no stated
-    ground, no air datum, no albedo to derive a black-body from -- is refused here exactly as
-    the fitted pass refuses it, because a knob with no anchor is a shape with no size."""
+    Guards: a body already priced by the fitted pass is never overwritten; a body marked
+    FITTED must have been priced; and a body with no anchor -- no stated ground, no air datum,
+    no albedo to derive a black-body from -- is refused exactly as the fitted pass refuses it,
+    because a knob with no anchor is a shape with no size. The calibration (the air pressure at
+    which a world's day and night meet, and the airless floor) is MEASURED from the reference
+    file's own fits and pressures, which is only possible because that file carries
+    even_share_src: provenance in a file is what lets a second file reuse its arithmetic
+    instead of retyping its answers."""
     by_name = {b["name"]: b for b in obj["bodies"]}
     star = next(b for b in obj["bodies"] if b.get("type") == "star")
     sT = (star.get("surface") or {}).get("temperature") or 0.0
     lum = 4.0 * math.pi * star["radius"] ** 2 * SIGMA_SB * sT ** 4
-    ref = solar_reference_even_shares()
+    ref, ref_src, ref_p = solar_reference_even_shares()
     named = {b["name"] for b in obj["bodies"] if b.get("type") != "star"}
-    assert named == set(KSP_DIURNAL), (
-        "KSP_DIURNAL and this system disagree: only in the system %s, only in the table %s"
-        % (sorted(named - set(KSP_DIURNAL)), sorted(set(KSP_DIURNAL) - named)))
-    for name, spec in KSP_DIURNAL.items():
+    assert named == set(KSP_ANALOGUE), (
+        "KSP_ANALOGUE and this system disagree: only in the system %s, only in the table %s"
+        % (sorted(named - set(KSP_ANALOGUE)), sorted(set(KSP_ANALOGUE) - named)))
+    # The reference file's calibration, measured from its own gate-passing fits. Earth is the
+    # air case, the Moon the airless floor; Venus (a stated ~0 range, not a fit) and Mars (a
+    # pair its own mean denies) are excluded by the src strings, exactly as they are there.
+    fits = {n: f for n, f in ref.items()
+            if f is not None and ref_src.get(n) in (SRC_PAIR_NIGHT, SRC_PAIR_DAY)}
+    p_ref, floor, cal = calibration_from_fitted(fits, ref_p)
+    print('  diurnal   %s' % cal)
+    for name, analogue in KSP_ANALOGUE.items():
         body = by_name[name]
         surf = body.setdefault("surface", {})
-        if spec is FITTED:
+        if surf.get("bands"):
+            print('  diurnal   %-8s dash  (a banded giant: the file gives this world air at '
+                  'levels and no ground to swing, #738)' % name)
+            continue
+        if name in KSP_DIURNAL_FITTED:
             assert surf.get("even_share") is not None, (
-                "%s is marked FITTED but author_ksp_diurnal() authored no swing" % name)
+                "%s is in KSP_DIURNAL_FITTED but author_ksp_diurnal() authored no swing" % name)
             continue
-        if spec is DASH:
-            print('  diurnal   %-8s dash  (named decline: no analogue, or no ground to swing)'
-                  % name)
-            continue
-        analogue, override = spec
         assert analogue in ref, (
-            "KSP_DIURNAL borrows from %r, which solar_system.json has no body named -- a "
-            "typo here would otherwise read as that body's refusal" % analogue)
-        f = override if override is not None else ref[analogue]
+            "KSP_ANALOGUE borrows %s from %r, which solar_system.json has no body named -- a "
+            "typo here would otherwise read as that body's refusal" % (name, analogue))
+        f = ref[analogue]
+        how = "by analogy to %s" % analogue
         if f is None:
-            print('  diurnal   %-8s dash  (%s states no swing either -- the analogue refused, '
-                  'so neither does this)' % (name, analogue))
-            continue
+            p = (surf.get("atmosphere") or {}).get("sea_level_pressure") or 0.0
+            f, dsrc = default_even_share(p, p_ref, floor)
+            how = ('%s at %g Pa, where %s states no swing either'
+                   % (dsrc, p, analogue))
         assert 0.0 <= f <= 1.0, "%s: even share %g is not in [0,1]" % (name, f)
         a_star, rail = mean_orbit_to_star(body, by_name)
         flux = (lum / (4.0 * math.pi * a_star * a_star)) if a_star else 0.0
@@ -1312,19 +1342,20 @@ def author_ksp_diurnal_analogy(obj):
                    if (flux and albedo is not None) else 0.0)
         T0, why = ground_anchor(body, derived)
         if T0 is None:
-            print('  diurnal   %-8s dash  (analogy says f=%.4f but %s: nothing to anchor on)'
-                  % (name, f, why))
+            print('  diurnal   %-8s dash  (%s says f=%.4f but %s: nothing to anchor on)'
+                  % (name, how, f, why))
             continue
         assert surf.get("even_share") is None, (
-            "%s: the fitted pass already authored a swing; KSP_DIURNAL must not overwrite it" % name)
+            "%s: the fitted pass already authored a swing; the defaults pass must not "
+            "overwrite it" % name)
         surf["even_share"] = f
+        surf["even_share_src"] = (("analogy to %s" % analogue) if ref[analogue] is not None
+                                  else dsrc)
         at = surf.get("atmosphere") or {}
         note = even_share_air_note(name, f, at.get("sea_level_pressure"),
                                    night_K=night_T(T0, f), anchor_K=T0, anchor_why=why)
         print('  diurnal   %-8s f=%.4f  anchor %7.2f K (%s)  %s%s'
-              % (name, f, T0, why,
-                 ('INVENTED, stated as ours' if override is not None
-                  else 'by analogy to %s' % analogue),
+              % (name, f, T0, why, how,
                  ('\n%20s%s' % ('', note)) if note else ''))
 
 
@@ -1377,7 +1408,7 @@ def main():
     author_ksp_air_thermal(ksp)
     # ... and the ground's swing, which reads the airs the line above just authored.
     author_ksp_diurnal(ksp)
-    author_ksp_diurnal_analogy(ksp)
+    author_ksp_diurnal_defaults(ksp)
     author_ksp_air_follow(ksp)
     if bad:
         for m in bad:

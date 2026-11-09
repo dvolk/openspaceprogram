@@ -6,8 +6,9 @@ KIND invariant
 #   - its anchor is the AIR's datum (214.81 K), a number the file states and no orbit enters,
 #     so these pins are exact rather than bounded by a rail's eccentricity (the map samples the
 #     body's live rail; the atlas uses its mean orbit -- they differ on an eccentric one);
-#   - its swing (f = 0.300) is the widest of the authored ones, so a wrong ramp span, a wrong
-#     anchor or an unweighted mean is tens of kelvin off rather than invisible.
+#   - its swing is wide (f = 0.708, borrowed from Mars: utils/gen_systems.py:KSP_ANALOGUE, and
+#     Mars's own knob is the least-squares fit to a pair its stated mean denies), so a wrong ramp
+#     span, a wrong anchor or an unweighted mean is tens of kelvin off rather than invisible.
 # The load-bearing pin is temp_mean4 == anchor. An equirectangular grid is uniform in
 # (lon, lat), so its pixels are NOT equal area; averaging them unweighted put this 8 K below
 # the anchor the model provably conserves. The mean is therefore area-weighted, and that fact
@@ -27,8 +28,8 @@ CHECK last(surfmap)["albedo"] is None and last(surfmap)["shaded"] is None
 CHECK abs(last(surfmap)["anchor"] - 214.81) < 0.01
 # The ramp spans the model's own ends. These are the two figures the atlas prints as
 # `ground swing` for Duna, computed here by the game from the shipped file.
-CHECK abs(last(surfmap)["temp_ends"][0] - 158.98) < 0.05
-CHECK abs(last(surfmap)["temp_ends"][1] - 285.03) < 0.05
+CHECK abs(last(surfmap)["temp_ends"][0] - 197.01) < 0.05
+CHECK abs(last(surfmap)["temp_ends"][1] - 251.45) < 0.05
 # What the sweep actually painted: the night end is reached across a whole hemisphere, so the
 # coldest pixel sits ON it; the subsolar end is a single point, so the grid only approaches it
 # (a 256x128 grid lands within hundredths of a kelvin).
@@ -38,7 +39,9 @@ CHECK last(surfmap)["temp"][2] > last(surfmap)["temp_ends"][1] - 0.05
 CHECK last(surfmap)["temp"][0] < last(surfmap)["temp"][1]
 CHECK last(surfmap)["temp"][1] < last(surfmap)["temp"][2]
 # THE closure: mean in T^4, written back as a temperature, is the anchor. Off by 0.03 K at
-# this resolution (the grid's own discretization of cos(lat)); 8 K off if the weighting goes.
+# this resolution (the grid's own discretization of cos(lat)); 3.1 K off if the weighting goes
+# -- re-measured with cw = 1.0 for this file's 0.708 swing, and 8 K under the 0.300 swing this
+# body used to carry, which is itself the reason the offset is quoted rather than assumed.
 CHECK abs(last(surfmap)["temp_mean4"] - last(surfmap)["anchor"]) < 0.05
 # The terminator overlay still bakes under a temperature map (the box is universal), and the
 # sea belongs to the other picture.

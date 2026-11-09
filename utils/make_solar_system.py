@@ -18,7 +18,10 @@ from atmo_units import (resolve_layer_heights, anchor_sea_level_pressure,
 # tests/test_groundtemp.cpp pins the two against the same numbers -- the atmo.h /
 # atmo_units.py arrangement, which is the only way two spellings of one law can be caught
 # drifting (#636).
-from ground_model import (parse_diurnal_pair, fit_even_share, ground_anchor,
+from ground_model import (parse_diurnal_pair, fit_even_share, fit_even_share_pair,
+                          calibration_from_fitted, default_even_share,
+                          SRC_PAIR_NIGHT, SRC_PAIR_DAY, SRC_AIR_RULE, SRC_AIRLESS,
+                          ground_anchor,
                           even_share_air_note,
                           EVEN_SHARE_NO_SWING, DAY_PREDICTION_GATE)
 
@@ -1886,6 +1889,118 @@ SOLAR_SAT_ALBEDOS = {
     'Charon': ('plutofact.html', 'Charon (P1)'),
 }
 
+# /* #749: the satellites whose pages state a VISUAL GEOMETRIC albedo and no Bond albedo. The
+#    satellite fact sheets carry four columns (mass, radius, density, albedo) and the albedo they
+#    carry is the wrong kind -- geometric, not Bond -- which is why these bodies dashed a Bond
+#    albedo for so long (#736). The conversion is A_bond = q * p_geo, and q is NOT invented here:
+#    it is measured below from the ten pages in this corpus that state BOTH, and its spread (a
+#    factor of three) is printed every run so nobody mistakes the product for a reading. */
+
+SOLAR_SAT_GEOMETRIC = {
+    'Io':        ('joviansatfact.html',   'Io'),
+    'Europa':    ('joviansatfact.html',   'Europa'),
+    'Ganymede':  ('joviansatfact.html',   'Ganymede'),
+    'Callisto':  ('joviansatfact.html',   'Callisto'),
+    'Mimas':     ('saturniansatfact.html', 'Mimas'),
+    'Enceladus': ('saturniansatfact.html', 'Enceladus'),
+    'Tethys':    ('saturniansatfact.html', 'Tethys'),
+    'Dione':     ('saturniansatfact.html', 'Dione'),
+    'Rhea':      ('saturniansatfact.html', 'Rhea'),
+    'Titan':     ('saturniansatfact.html', 'Titan'),
+    'Iapetus':   ('saturniansatfact.html', 'Iapetus'),
+    'Miranda':   ('uraniansatfact.html',  'Miranda'),
+    'Ariel':     ('uraniansatfact.html',  'Ariel'),
+    'Umbriel':   ('uraniansatfact.html',  'Umbriel'),
+    'Titania':   ('uraniansatfact.html',  'Titania'),
+    'Oberon':   ('uraniansatfact.html',   'Oberon'),
+    'Triton':    ('neptuniansatfact.html', 'Triton'),
+    # Phobos and Deimos are a two-column table inside marsfact, not rows.
+    'Phobos':    ('marsfact.html',        'Phobos'),
+    'Deimos':    ('marsfact.html',        'Deimos'),
+}
+
+# The fact-sheet pages whose Bulk-parameters block states BOTH albedos, so the phase integral
+# can be MEASURED from the corpus instead of typed. Adding a page here changes the constant,
+# which is the point: the constant belongs to the corpus, not to this file.
+PHASE_INTEGRAL_PAGES = ('mercuryfact.html', 'venusfact.html', 'earthfact.html',
+                        'marsfact.html', 'jupiterfact.html', 'saturnfact.html',
+                        'uranusfact.html', 'neptunefact.html', 'plutofact.html',
+                        'moonfact.html')
+
+def corpus_phase_integral(pages=PHASE_INTEGRAL_PAGES, verbose=False):
+    """[(q, note)] The corpus's own implied phase integrals, q = A_bond / p_geo, and the MEDIAN.
+
+    A Bond albedo is what the energy laws need and a geometric albedo is what the satellite
+    sheets state, so the ratio between them is the one number standing between a satellite and
+    an anchor. Ten pages in this corpus state both, and their ratios scatter from 0.48 to 1.47
+    -- the corpus does NOT support a single conversion, and any q is a decision. The median is
+    the decision (the mean, 0.86, is dragged by Mars's 1.47), and the spread is printed so the
+    converted albedo reads as what it is: a converted figure whose uncertainty is a few percent
+    in the anchor (T goes as (1-A)^1/4)."""
+    ratios = []
+    for page in pages:
+        v = section_values(read(page), 'Bulk parameters')
+        geo, bond = v.get('geometricalbedo'), v.get('bondalbedo')
+        if geo and bond:
+            ratios.append((page[:8], bond / geo))
+    assert len(ratios) >= 8, (
+        'the phase integral is calibrated on %d pages; the scrape moved' % len(ratios))
+    vals = sorted(r for _, r in ratios)
+    q = vals[len(vals) // 2] if len(vals) % 2 else 0.5 * (
+        vals[len(vals) // 2 - 1] + vals[len(vals) // 2])
+    note = ('q %.3f = the median of %d (bond, geometric) pairs this corpus states '
+            '(%s); range %.2f-%.2f, mean %.3f'
+            % (q, len(vals), ' '.join('%s %.2f' % (n, r) for n, r in ratios),
+               vals[0], vals[-1], sum(vals) / len(vals)))
+    if verbose:
+        print('  phase     %s' % note)
+    return q, note
+
+def sat_geometric_albedo(page, row, verbose=False):
+    """[float] The visual geometric albedo one satellite's row states, or a hard error.
+    Row tables put the name in the first cell; the two-column Mars table puts labels in the
+    first cell and one value per column, so both shapes end in the same read: the number in
+    the 'geometric albedo' row/column for this name."""
+    h = read(page)
+    if page == 'marsfact.html':
+        i = h.find('Satellites of Mars')
+        rows = table_rows(re.search(r'<table.*?</table>', h[i:], re.S).group(0))
+        # The heading sits outside the table, so the name row is the one whose label cell is
+        # empty: ['', 'Phobos', 'Deimos'].
+        cols = [r for r in rows if r and not norm(r[0]) and any(norm(c) for c in r[1:])]
+        names = [norm(c) for c in (cols[0][1:] if cols else [])]
+        assert names, 'marsfact: no name row in the satellites table'
+        ci = names.index(norm(row)) if norm(row) in names else None
+        assert ci is not None, 'marsfact: no %s column in the satellites table' % row
+        for r in rows:
+            if r and 'geometricalbedo' in norm(r[0]):
+                v = num(r[1 + ci])
+                assert v is not None, 'marsfact: %s geometric albedo cell is not a number' % row
+                return v
+        raise AssertionError('marsfact: no Geometric albedo row in the satellites table')
+    for tr in re.findall(r'<tr.*?</tr>', h, re.S):
+        c = cells(tr)
+        if not c:
+            continue
+        head = norm(c[0])
+        if head.startswith(norm(row)) and len(c) >= 2:
+            v = c[-1]
+            nums = [num(x) for x in (v.split('/') if '/' in v else [v])]
+            nums = [x for x in nums if x is not None]
+            if not nums:
+                continue
+            if len(nums) > 1:
+                # Iapetus states "0.05 / 0.5": a leading and a trailing hemisphere, and our
+                # sphere has one albedo. The mean is the only reading that does not silently
+                # pick a hemisphere, and it prints so the choice is visible (#687).
+                if verbose:
+                    print('  albedo    %-8s the sheet states %s (two hemispheres); mean %g used'
+                          % (row, v.strip(), sum(nums) / len(nums)))
+                return sum(nums) / len(nums)
+            return nums[0]
+    raise AssertionError('%s: no row for %s in the satellite table (the scrape moved?)'
+                         % (page, row))
+
 def author_diurnal(bodies, by, sun, sheets, sat_sheet, verbose=True):
     """#724 rung C: author the surface model's ONE knob from the diurnal pair the corpus
     states, and print the verdict for every body -- refusals and their residuals included.
@@ -1897,18 +2012,32 @@ def author_diurnal(bodies, by, sun, sheets, sat_sheet, verbose=True):
     swallowed into a global number."""
     T_sun = (sun.get('surface') or {}).get('temperature')
     rows = []
+    fitted, pressures, anchors = {}, {}, {}
+
+    def price(b, f, src, T0, why, note, verbose=verbose):
+        at = (b.get('surface') or {}).get('atmosphere') or {}
+        b.setdefault('surface', {})['even_share'] = f
+        b['surface']['even_share_src'] = src
+        extra = even_share_air_note(b['name'], f, at.get('sea_level_pressure'))
+        if extra:
+            extra = '\n%18s%s' % ('', extra)
+        if verbose:
+            rows.append('%-9s diurnal %.4f  anchor %7.2f K (%s)%s\n%18s%s'
+                        % (b['name'], f, T0, why, extra, '', note))
+
     for b in bodies:
         if b.get('type') == 'star':
             continue                      # its 'temperature pair' is a photosphere range
-        sheet = sheets.get(b['name']) or sat_sheet.get(b['name'])
-        if not sheet:
-            continue                      # no page behind this body: nothing to fit or print
-        pair = sheet.get('diurnal')
-        if pair is None:
+        at0 = ((b.get('surface') or {}).get('atmosphere') or {})
+        pressures[b['name']] = at0.get('sea_level_pressure') or 0.0
+        if (b.get('surface') or {}).get('bands'):
             if verbose:
-                rows.append('%-9s diurnal -   the page states no temperature range'
+                rows.append('%-9s diurnal -   a banded giant: no ground to swing (#738)'
                             % b['name'])
             continue
+        # The anchor FIRST, for every ground-bearing body whether or not a page states a
+        # pair: the default pass below needs to know which bodies have a ground to price at
+        # all, and asking it per body avoids a second copy of the anchor chain (#636).
         star, a = star_rail(b, by)
         flux = flux_at_rail(star, a, T_sun) if star else None
         albedo = (b.get('surface') or {}).get('albedo')
@@ -1917,24 +2046,59 @@ def author_diurnal(bodies, by, sun, sheets, sat_sheet, verbose=True):
         derived = (blackbody_temperature(flux, albedo)
                    if (flux and albedo is not None) else 0.0)
         T0, why = ground_anchor(b, derived)
+        anchors[b['name']] = (T0, why)
+        sheet = sheets.get(b['name']) or sat_sheet.get(b['name'])
+        pair = sheet.get('diurnal') if sheet else None
+        if pair is None:
+            if verbose and sheet:
+                rows.append('%-9s diurnal -   the page states no temperature range'
+                            % b['name'])
+            continue
         if T0 is None:
             if verbose:
                 rows.append('%-9s diurnal -   pair %.1f-%.1f K but %s'
                             % (b['name'], pair[0], pair[1], why))
             continue
-        f, note = fit_even_share(T0, pair[0], pair[1])
+        f, src, note = fit_even_share_pair(T0, pair[0], pair[1])
         if f is None:
+            # Not a refusal any more (#749): the pair is printed as unmeetable by BOTH ends
+            # and the body falls through to the default pass below. A knob that contradicts
+            # the sheet it came from is worse than a default that announces itself.
             rows.append('%-9s diurnal -   anchor %7.2f K (%s)\n%18s%s'
                         % (b['name'], T0, why, '', note))
             continue
-        b.setdefault('surface', {})['even_share'] = f
-        at = (b.get('surface') or {}).get('atmosphere') or {}
-        extra = even_share_air_note(b['name'], f, at.get('sea_level_pressure'))
-        if extra:
-            extra = '\n%18s%s' % ('', extra)
+        fitted[b['name']] = (f, src)
+        price(b, f, src, T0, why, note)
+    # --- the default pass (#749). A body whose source states no pair at all, or states one
+    # our law cannot meet, still gets a knob -- from a NAMED rule whose two constants are
+    # MEASURED from this run's own fits (Earth's for the air, the Moon's for the airless
+    # floor), so no number here is typed (#636). The file carries the words, and the dossier
+    # prints DEFAULT beside the knob (#722's rule that a computed figure says so). Banded
+    # giants and stars stay out: no ground, no swing -- a fact, not a gap.
+    pair_fits = {n: f for n, (f, src) in fitted.items()
+                 if src in (SRC_PAIR_NIGHT, SRC_PAIR_DAY)}
+    if pair_fits:
+        p_ref, floor, cal_note = calibration_from_fitted(pair_fits, pressures)
         if verbose:
-            rows.append('%-9s diurnal %.4f  anchor %7.2f K (%s)%s\n%18s%s'
-                        % (b['name'], f, T0, why, extra, '', note))
+            rows.append('  %s' % cal_note)
+        for b in bodies:
+            if b.get('type') == 'star' or (b.get('surface') or {}).get('bands'):
+                continue
+            if (b.get('surface') or {}).get('even_share') is not None:
+                continue
+            T0, why = anchors.get(b['name'], (None, None))
+            if T0 is None:
+                continue        # nothing anchors this ground; the readouts dash regardless
+            if b['name'] not in sheets and b['name'] not in sat_sheet:
+                verbose_def = False     # a catalogue moon with no page: no line per moon
+            else:
+                verbose_def = verbose
+            p = pressures.get(b['name'], 0.0)
+            f, dsrc = default_even_share(p, p_ref, floor)
+            price(b, f, dsrc, T0, why,
+                  'no source pair to fit: %s, from %s at %g Pa'
+                  % (dsrc, 'the authored air column' if p > 0.0 else 'no air', p),
+                  verbose=verbose_def)
     if verbose:
         for r in rows:
             print('  %s' % r)
@@ -1950,6 +2114,7 @@ def satellite_sheets(verbose=True):
     No satellite gets an authored GROUND temperature here: the corpus's satellite rows stop
     at the albedo, so the dossier dashes surface temp and the gap for them (#722)."""
     out = {}
+    q, q_note = corpus_phase_integral(verbose=verbose)
     for name, (page, marker) in sorted(SOLAR_SAT_ALBEDOS.items()):
         v = section_values(read(page), marker)   # raises if the block moved
         a = v.get('bondalbedo')
@@ -1969,8 +2134,25 @@ def satellite_sheets(verbose=True):
             geom = v.get('geometricalbedo')
             print('  sat sheet %-7s albedo %6.3f  from %s (%s)%s'
                   % (name, a, page, marker,
-                     '; that block also states Geometric Albedo %g, not used'
-                     % geom if geom is not None else ''))
+                     '; that block also states Geometric Albedo %g' % geom
+                     if geom is not None else ''))
+    # ... and the rest, converted (#736/#749). Stated beats converted: the two bodies whose
+    # pages state a Bond albedo outright keep it, and nothing here overwrites a reading.
+    for name, (page, row) in sorted(SOLAR_SAT_GEOMETRIC.items()):
+        assert name not in out, (
+            '%s: stated in SOLAR_SAT_ALBEDOS and converted in SOLAR_SAT_GEOMETRIC' % name)
+        p_geo = sat_geometric_albedo(page, row, verbose=verbose)
+        a = q * p_geo
+        assert 0.0 <= a < 1.0, (
+            '%s: converted albedo %g (q %.3f x geometric %g) is not a Bond albedo'
+            % (name, a, q, p_geo))
+        out[name] = {'albedo': a, 'irradiance': None, 'bb_T': None, 'diurnal': None,
+                     # %.3f, not %g: this string is a dossier row, and six decimals of a
+                     # factor the corpus itself disagrees about is false precision on screen.
+                     'albedo_src': 'converted: geometric %g x %.3f' % (p_geo, q)}
+        if verbose:
+            print('  sat conv  %-9s albedo %6.3f  = geometric %4.2f x q %.3f  (%s)'
+                  % (name, a, p_geo, q, page))
     return out
 
 def build_moon(m, parent_body=None, home_body=None, sat_sheets=None):
@@ -2009,12 +2191,16 @@ def build_moon(m, parent_body=None, home_body=None, sat_sheets=None):
     surface = rock(radius_m, c1, c2)
     if name in MOON_ATMOS:
         surface['atmosphere'] = MOON_ATMOS[name]
-    # #737: the two satellites the corpus prices in BOND. Every other moon in this file
-    # carries no albedo and the dossier dashes it -- see SOLAR_SAT_ALBEDOS for why that is
-    # the corpus declining rather than a gap in here.
+    # #737: the satellites whose pages state a BOND albedo (SOLAR_SAT_ALBEDOS: the Moon,
+    # Charon). #749: the rest get a CONVERTED one, from the geometric albedo their row does
+    # state times the phase factor this corpus implies for itself (SOLAR_SAT_GEOMETRIC,
+    # corpus_phase_integral) -- and the conversion says so in the file, because a converted
+    # figure and a reading look identical as a bare number.
     a = (sat_sheets or {}).get(name)
     if a is not None:
         surface['albedo'] = a['albedo']
+        if a.get('albedo_src'):
+            surface['albedo_src'] = a['albedo_src']
     return make_body(name, 'moon', m['parent'], data, seed=1000 + m['idx'],
                      surface=surface, parent_body=parent_body,
                      home_body=home_body)

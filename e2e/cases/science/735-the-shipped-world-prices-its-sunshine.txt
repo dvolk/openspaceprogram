@@ -1,14 +1,17 @@
 NAME 735-the-shipped-world-prices-its-sunshine
-CLAIM The system the player actually flies now answers the sun: every body with an authored Bond albedo prints the light at its orbit, that albedo, and the airless mean the two imply, the rows are one arithmetic rather than three printings, and the bodies this file deliberately declines to price still dash exactly what they cannot answer.
+CLAIM The system the player actually flies answers the sun for every body that has a surface: each prints the light at its orbit, its Bond albedo with the words saying where that albedo came from, and the airless mean the two imply; the rows are one arithmetic rather than three printings; every swing names the rule that priced it; and the one body with an air but no ground dashes its swing instead of borrowing one.
 KIND invariant
 ARGS --system res/systems/ksp_system.json --timeout 6 --atlas-dump 4000
 # #735: res/systems/ksp_system.json authored no albedo for any body, so render/736's
 # starlight block -- built and pinned on solar_system.json, the file that DOES author
-# them -- printed one row and three dashes on every world anyone actually loads. The
-# numbers are authored by analogy in utils/gen_systems.py (KSP_ALBEDOS), read out of
-# solar_system.json rather than retyped, and Gilly, Bop, Pol, Minmus and Vall are left
-# unauthored on purpose: no source describes the first three and the icy pair's sheets
-# state a GEOMETRICAL albedo, which (1-A)S/4 cannot use.
+# them -- printed one row and three dashes on every world anyone actually loads. #749 then
+# closed the rest of the list. Both halves are now one table in utils/gen_systems.py,
+# KSP_ANALOGUE: which real world each shipped body is a draft of. The albedo and the swing
+# are read through it out of solar_system.json rather than retyped (#636), so a body cannot
+# be Mars for one figure and Venus for another, and there is no longer a per-body list of
+# refusals to keep in step with the system. What remains visible is the PROVENANCE: borrowed,
+# converted, or DEFAULT, in words beside the number, because 0.015 is the same digits whether
+# the corpus's Moon page priced it or one of our rules filled a gap.
 #
 # Kerbin is the block to weigh, because all four of its rows are independently authored
 # and still have to agree: the light follows from Kerbol's photosphere and Kerbin's own
@@ -18,7 +21,7 @@ EXPECT [atlas] Kerbin weight=
 # 1. THE BLACK-BODY ROW FOLLOWS FROM THE TWO ABOVE IT (T = ((1-A) S / 4 sigma)^(1/4)).
 #    The same relation render/736 pins on solar_system; here it runs on the shipped
 #    file, which is the one whose albedos were missing. 0.05 K is print rounding.
-CHECK (lambda m: abs(float(m.group(3)) - (float(m.group(1)) * (1.0 - float(m.group(2))) / 4.0 / 5.670374419e-8) ** 0.25) < 0.05)(re.search(r"sunlight \(mean orbit\)\s+([\d.]+) W/m2\s*\n\s*\[atlas\]   bond albedo\s+([\d.]+)\s*\n\s*\[atlas\]   black-body temp\s+([\d.]+) K", re.search(r"\[atlas\] Kerbin weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)))
+CHECK (lambda m: abs(float(m.group(3)) - (float(m.group(1)) * (1.0 - float(m.group(2))) / 4.0 / 5.670374419e-8) ** 0.25) < 0.05)(re.search(r"sunlight \(mean orbit\)\s+([\d.]+) W/m2\s*\n\s*\[atlas\]   bond albedo\s+([\d.]+)(?: \([^)]*\))?\s*\n\s*\[atlas\]   black-body temp\s+([\d.]+) K", re.search(r"\[atlas\] Kerbin weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)))
 # 2. AND THE GAP FROM THE TWO BESIDE IT. Kerbin reads +33.0 K under 1361 W/m2, an albedo
 #    of 0.294 and an authored 288.15 K -- which is Earth's own gap, arrived at by three
 #    different authors: the star sized so Kerbin receives Earth's sun, Earth's albedo
@@ -27,8 +30,7 @@ CHECK (lambda m: abs(float(m.group(3)) - (float(m.group(1)) * (1.0 - float(m.gro
 #    a difference and names the two numbers it is the difference of.
 CHECK (lambda m: abs(float(m.group(3)) - (float(m.group(2)) - float(m.group(1)))) < 0.05)(re.search(r"black-body temp\s+([\d.]+) K[^\n]*\n\s*\[atlas\]   surface temp\s+([\d.]+) K[^\n]*\n\s*\[atlas\]   greenhouse gap\s+\+([\d.]+) K", re.search(r"\[atlas\] Kerbin weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)))
 CHECK (lambda m: 30.0 < float(m.group(1)) < 36.0)(re.search(r"greenhouse gap\s+\+([\d.]+) K", re.search(r"\[atlas\] Kerbin weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)))
-# 3. THE OTHER WAY HALF-AUTHORED: an albedo and no ground reading (#738 argues the ground
-#    rows of the Jool family are the ones to distrust). Moho takes Mercury's 0.068, sits at
+# 3. AN ALBEDO AND NO GROUND READING. Moho takes Mercury's 0.068, sits at
 #    9087 W/m2 -- one of the two hottest places in the game, and the one place an albedo of
 #    0.068 vs 0.11 is a visible 5 K -- and its airless mean prints 439.6 K, which is the
 #    figure mercuryfact.html states for Mercury itself (it states irradiance 9082.7 and
@@ -38,14 +40,19 @@ CHECK (lambda m: 30.0 < float(m.group(1)) < 36.0)(re.search(r"greenhouse gap\s+\
 #    wiki's pair is a night/day extreme and averaging it is a design call (#687).
 #    Bounds at 2% / 2 K rather than digits: the flux prints through %.4g, so a nudge past
 #    10 kW/m2 would print 1e+04 and this pattern would die on the FORMAT, not the physics.
-CHECK (lambda m: 8900.0 < float(m.group(1)) < 9280.0 and m.group(2) == "0.068" and 437.6 < float(m.group(3)) < 441.6)(re.search(r"sunlight \(mean orbit\)\s+([\d.e+]+) W/m2\s*\n\s*\[atlas\]   bond albedo\s+([\d.]+)\s*\n\s*\[atlas\]   black-body temp\s+([\d.]+) K[^\n]*\n\s*\[atlas\]   surface temp\s+-\s*\n\s*\[atlas\]   greenhouse gap\s+-", re.search(r"\[atlas\] Moho weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)))
-# 4. A DELIBERATE ABSENCE, ON THE SHIPPED FILE. Minmus is ice: the corpus states a visual
-#    GEOMETRICAL albedo for the icy satellites and no Bond albedo, and converting one to
-#    the other needs a phase integral nothing here has (#736). So it dashes the albedo and the
-#    mean while still reporting the light -- at its PLANET's rail, which the label says,
-#    because its own distance to the sun swings over its month. This is #727's law on the
-#    file players load, and the reason #735 filled twelve of the seventeen bodies here and not all of them.
-CHECK re.search(r"sunlight \(parent's orbit\)\s+[\d.]+ W/m2\s*\n\s*\[atlas\]   bond albedo\s+-\s*\n\s*\[atlas\]   black-body temp\s+-\s*\n\s*\[atlas\]   surface temp\s+-\s*\n\s*\[atlas\]   greenhouse gap\s+-", re.search(r"\[atlas\] Minmus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK (lambda m: 8900.0 < float(m.group(1)) < 9280.0 and m.group(2) == "0.068" and 437.6 < float(m.group(3)) < 441.6)(re.search(r"sunlight \(mean orbit\)\s+([\d.e+]+) W/m2\s*\n\s*\[atlas\]   bond albedo\s+([\d.]+)(?: \([^)]*\))?\s*\n\s*\[atlas\]   black-body temp\s+([\d.]+) K[^\n]*\n\s*\[atlas\]   surface temp\s+-\s*\n\s*\[atlas\]   greenhouse gap\s+-", re.search(r"\[atlas\] Moho weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)))
+# 4. A CONVERTED FIGURE SAYS SO, IN THE FILE PLAYERS LOAD. Minmus is ice, and the satellite
+#    fact sheets state a visual GEOMETRICAL albedo and no Bond albedo. #749 bridges that with
+#    the phase factor this same corpus implies for itself (make_solar_system.py:corpus_phase_
+#    integral -- the median of the ten pages that state both, printed with the factor-of-three
+#    spread the ten disagree by), and the marker rides through the loader into the dossier row
+#    and through one more hop: Minmus borrows Enceladus, and Enceladus was converted before it
+#    was borrowed. #736's rule -- Bond, never geometrical -- is intact: the row reads 0.681,
+#    not Enceladus's geometric 1.00, and a reader can see which of the two it is. The closure
+#    band here is 0.25 K rather than the 0.05 K Kerbin's row gets: this albedo prints to three
+#    decimals (0.681 for a file value of 0.6814), and on a body that reflects 68% of the light
+#    the remaining 32% is thin enough that a print rounding is a tenth of a kelvin.
+CHECK (lambda m: m.group(3).startswith("analogy to Enceladus") and "converted" in m.group(3) and abs(float(m.group(4)) - (float(m.group(1)) * (1.0 - float(m.group(2))) / 4.0 / 5.670374419e-8) ** 0.25) < 0.25)(re.search(r"sunlight \(parent's orbit\)\s+([\d.]+) W/m2\s*\n\s*\[atlas\]   bond albedo\s+([\d.]+) \(([^)]+)\)\s*\n\s*\[atlas\]   black-body temp\s+([\d.]+) K", re.search(r"\[atlas\] Minmus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)))
 # 5. THE LIGHT FALLS OFF AND THE ALBEDO DOES NOT CARE. Eeloo takes Pluto's 0.720 -- the
 #    second brightest in this file after Eve's Venus-analogue 0.770 -- and sits 6.6x further
 #    out than Kerbin, so its airless mean is the coldest reading in the system. Both rows
@@ -57,14 +64,22 @@ CHECK (lambda e: float(re.search(r"sunlight \(mean orbit\)\s+([\d.]+) W/m2", e).
 #    (src/groundtemp.h), so the three printed figures have to satisfy
 #    (day/T0)^4 + 3 (night/T0)^4 = 4. Band 0.02 on the sum: each end prints to 0.1 K.
 #    Kerbin's knob prints beside the anchor precisely so this is checkable by eye -- 0.932 is
-#    Earth's, READ from solar_system.json by KSP_DIURNAL, not retyped here (#636).
+#    Earth's, READ from solar_system.json through KSP_ANALOGUE, not retyped here (#636).
 CHECK (lambda k: abs((float(re.search(r"night to ([\d.]+) K day", k).group(1)) / float(re.search(r"ground anchor\s+([\d.]+) K", k).group(1))) ** 4 + 3.0 * (float(re.search(r"ground swing\s+([\d.]+) K night", k).group(1)) / float(re.search(r"ground anchor\s+([\d.]+) K", k).group(1))) ** 4 - 4.0) < 0.02 and re.search(r"even share 0\.932", k))(re.search(r"\[atlas\] Kerbin weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-# 7. AN INVENTION AND A REFUSAL READ APART (#726, #742). Duna's pair is not a pair -- the
-#    wiki's max IS its mean -- so its 0.300 is ours, stated as ours in the generator's print.
-#    Moho's analogue is Mercury, whose own swing the corpus REFUSED, and the table's borrower
-#    dashes rather than laundering that refusal. A table that filled every row would have
-#    hidden both facts.
-CHECK (lambda d: re.search(r"ground swing\s+[\d.]+ K night to [\d.]+ K day", d) and re.search(r"even share 0\.300", d))(re.search(r"\[atlas\] Duna weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-CHECK (lambda m: re.search(r"ground swing\s+-", m) and re.search(r"black-body temp\s+[\d.]+ K", m))(re.search(r"\[atlas\] Moho weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# 7. #749: EVERY BORROWED KNOB NAMES THE WORLD IT CAME FROM, and the row that used to pin a
+#    refusal now pins the borrowing. Duna's wiki pair is not a pair -- its max IS its mean, so
+#    nothing here fits it (#742); its 0.708 is Mars's, and Mars's own is the least-squares fit
+#    to a pair its stated mean contradicts (184-242 K implies a mean of ~203 K; its sheet says
+#    214 K). Moho takes Mercury's airless floor. Both rows are our arithmetic, and both say so
+#    in the four words beside the ends.
+CHECK (lambda d: re.search(r"ground swing\s+[\d.]+ K night to [\d.]+ K day \(analogy to Mars\)", d) and re.search(r"even share 0\.708", d))(re.search(r"\[atlas\] Duna weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK (lambda m: re.search(r"ground swing\s+[\d.]+ K night to [\d.]+ K day \(analogy to Mercury\)", m) and re.search(r"even share 0\.015", m))(re.search(r"\[atlas\] Moho weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+#    And the file's one remaining swing dash, which is a fact rather than a gap: Jool has an air
+#    with a base temperature, and the anchor chain reads an air's datum as a ground -- so the
+#    only thing between a gas giant and a painted day/night cycle on its cloud deck is the
+#    refusal in utils/gen_systems.py:KSP_DIURNAL_NO_GROUND. A gas giant has no ground to swing,
+#    which is #738's label question applied to the shipped file. Revert that refusal and the
+#    default rule happily prices Jool's cloud deck: this row goes red.
+CHECK (lambda j: re.search(r"level swing\s+-", j) and re.search(r"air temp \(sea level\)\s+[\d.]+ K", j) and re.search(r"bond albedo\s+0\.343", j))(re.search(r"\[atlas\] Jool weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 FORBID bond albedo 0.000
 FORBID error:

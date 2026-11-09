@@ -6486,7 +6486,10 @@ static std::vector<MixFraction> atlasMix(const AtmosphereParams &a) {
    the DERIVATION is wrong. The orbit is inverted from orb_ang_speed (Kepler III)
    exactly as the loader places the body, with e from the epoch rail's angular momentum. */
 void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
-    char v[64], w[64];
+    /* v carries the longest row in the dossier -- an anchor's named rung plus the swing's
+       provenance -- and snprintf would truncate that silently, which is the worst way to lose
+       a fact a test is pinning. */
+    char v[96], w[64];
     auto line = [&](const char *label, const char *value) {
         f.push_back(AtlasFact{ label, value, false });
     };
@@ -6716,7 +6719,13 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                                                 : "sunlight (mean orbit)", v);
         const bool albedo = albedoAuthored(b.surface.bond_albedo);
         if(albedo) {
-            snprintf(v, sizeof v, "%.3f", b.surface.bond_albedo);
+            /* The marker is the whole point of the row for a converted figure: 0.463 reads
+               exactly like Europa's own measurement until the row says it came from a
+               geometric 0.68 times a factor this corpus disagrees about within itself. */
+            const bool marked = !b.surface.albedo_src.empty();
+            snprintf(v, sizeof v, "%.3f%s%s%s", b.surface.bond_albedo,
+                     marked ? " (" : "", b.surface.albedo_src.c_str(),
+                     marked ? ")" : "");
             line("bond albedo", v);
         } else { line("bond albedo", "-"); }
         /* derivedBlackbody_K answers 0.0 for "cannot be derived" (no authored albedo, no light
@@ -6767,7 +6776,10 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
            checkable. The anchor is named because a DERIVED one (a world nobody states a
            ground temperature for: the Moon) is a different claim from a stated one (#722).
            No authored swing means the row dashes, NOT the anchor printed twice: a source
-           that says nothing about night and day did not say they are equal (#726/#727). */
+           that says nothing about night and day did not say they are equal (#726/#727).
+           After #749 a dash is rare -- both generators price a knob for every ground they can
+           anchor -- so what dashes is a body with no ground (the `bands` rows) or no anchor,
+           and the words beside a printed swing say which rule priced it. */
         const double airT = airDatum_K(b.surface.atmosphere);
         const double anchor = groundAnchor_K(b.surface.temperature, airT, bb);
         if(anchor > 0.0 && evenShareAuthored(b.surface.even_share)) {
@@ -6781,9 +6793,17 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                "... anchor 270.3 K," over an orphaned "DERIVED ...)" reads worse than a
                named second row. The END and the ANCHOR are also two different kinds of
                number, which is the distinction the row is trying to make. */
-            snprintf(v, sizeof v, "%.1f K night to %.1f K day",
+            /* The provenance rides on the SWING row rather than the anchor row because the
+               swing is where the question lands -- "where did that range come from?" -- and
+               because a file that priced a knob by a rule says so in the generator's own
+               words (utils/ground_model.py, gen_systems.py). "DEFAULT" is not a warning here:
+               #749 decided a stated gap is worse than a rule that names itself. */
+            const bool priced = !b.surface.even_share_src.empty();
+            snprintf(v, sizeof v, "%.1f K night to %.1f K day%s%s%s",
                      groundTemperature(anchor, f, 0.0),
-                     groundTemperature(anchor, f, 1.0));
+                     groundTemperature(anchor, f, 1.0),
+                     priced ? " (" : "", b.surface.even_share_src.c_str(),
+                     priced ? ")" : "");
             line(giant ? "level swing" : "ground swing", v);
             snprintf(v, sizeof v, "%.1f K (%s, even share %.3f)", anchor, why, f);
             line(giant ? "level anchor" : "ground anchor", v);

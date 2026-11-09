@@ -1,13 +1,14 @@
 NAME atlas-prices-the-sunshine
-CLAIM Every dossier answers the sun now -- the light at that body's orbit, the albedo the body authors, the temperature those two imply, the surface temperature the file authors, and the gap between them -- and the rows are ONE arithmetic rather than five independent printings: the black-body follows from the sunlight and albedo rows beside it, the gap follows from the black-body and the surface row, each body's sunlight follows from the star's own luminosity row and that body's semi-major axis, and a body that authors no albedo dashes exactly what it cannot answer while still reporting the light.
+CLAIM Every dossier in this file answers the sun -- the light at that body's orbit, the albedo the body authors, the temperature those two imply, the surface temperature the file authors, and the gap between them -- and the rows are ONE arithmetic rather than five independent printings: the black-body follows from the sunlight and albedo rows beside it, the gap follows from the black-body and the surface row, each body's sunlight follows from the star's own luminosity row and that body's semi-major axis, and a satellite whose page states the WRONG KIND of albedo says so beside the converted number.
 KIND invariant
 ARGS --system res/systems/solar_system.json --timeout 6 --atlas-dump 4000
 # --atlas-dump MS builds the dossier rows through the same atlasDossier() the Science tab
 # renders, so this pins what the player reads without a GUI (#385). solar_system rather than
 # the shipped ksp_system because solar_system is the file whose albedos the CORPUS states
 # (utils/make_solar_system.py takes them from the fact sheets), which is what makes its rows
-# answers rather than analogies. The shipped file used to author none -- #735 has since put
-# twelve of its seventeen bodies on the table, by analogy, and science/735 pins that half.
+# answers rather than analogies. The shipped file used to author none -- #735 and #749 have
+# since put all seventeen of its bodies on the table, by analogy and by conversion, and
+# science/735 pins that half.
 # Each CHECK here slices one dossier block, the way render/630 and render/552 do.
 EXPECT [atlas] Earth weight=
 EXPECT [atlas] Sun weight=
@@ -45,15 +46,19 @@ CHECK re.search(r"surface temp \(photosphere\)\s+[\d.]+ K\s*\n\s*\[atlas\]   lum
 #    for the rail it was taken from -- its own distance to the sun swings over its month, so
 #    no single figure for the moon itself is honest.
 CHECK re.search(r"sunlight \(parent's orbit\)\s+[\d.]+ W/m2\s*\n\s*\[atlas\]   bond albedo\s+0\.110\s*\n\s*\[atlas\]   black-body temp\s+27[01]\.[0-9] K[^\n]*\n\s*\[atlas\]   surface temp\s+-\s*\n\s*\[atlas\]   greenhouse gap\s+-", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-# 5b. AND A SURFACE THAT STILL CANNOT ANSWER, for a reason worth naming rather than parking.
-#     The satellite pages state a VISUAL GEOMETRICAL albedo (Europa's row in
-#     utils/rss/html/joviansatfact.html: 0.68) and no Bond albedo, and geometric -> Bond
-#     needs a phase integral nothing in the corpus gives -- filed, not guessed (#736). So
-#     Europa dashes its albedo, its black-body and everything downstream while still
-#     reporting the light at Jupiter's orbit. This check is what keeps the file's most visible
-#     "we do not know" a DECISION: the day someone parses that geometric row into an albedo,
-#     this goes red, and #735's rule (Bond, never geometrical) is why it should.
-CHECK re.search(r"sunlight \(parent's orbit\)\s+[\d.]+ W/m2\s*\n\s*\[atlas\]   bond albedo\s+-\s*\n\s*\[atlas\]   black-body temp\s+-\s*\n\s*\[atlas\]   surface temp\s+-", re.search(r"\[atlas\] Europa weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# 5b. AND A SATELLITE THAT COULD NOT ANSWER UNTIL THE CORPUS WAS ASKED TWICE. The satellite
+#     pages state a VISUAL GEOMETRICAL albedo (Europa's row in utils/rss/html/joviansatfact.html:
+#     0.68) and no Bond albedo, and (1-A)S/4 needs the Bond one -- #736 filed that as a gap
+#     rather than guessing at it. #749 closed it with the corpus's own arithmetic: ten pages in
+#     this same corpus state BOTH albedos, their implied phase integrals scatter from 0.48 to
+#     1.47, and the median (0.681) is the conversion -- with its spread printed every run, so
+#     nobody mistakes the product for a reading. Europa therefore answers now, and the dossier
+#     says which kind of number it is answering with: a row that read 0.463 bare would be a
+#     converted figure dressed as a measurement. Revert the conversion -- or drop the marker --
+#     and this check reddens. (The "no albedo at all" dash is still a live thing in the catalogue
+#     moons, and science/727 pins it on Himalia in solar_system_named.json; this core file no
+#     longer contains one, which is what #735 and #749 were for.)
+CHECK (lambda m: m.group(3).startswith("converted: geometric") and abs(float(m.group(4)) - (float(m.group(1)) * (1.0 - float(m.group(2))) / 4.0 / 5.670374419e-8) ** 0.25) < 0.05)(re.search(r"sunlight \(parent's orbit\)\s+([\d.]+) W/m2\s*\n\s*\[atlas\]   bond albedo\s+([\d.]+) \(([^)]+)\)\s*\n\s*\[atlas\]   black-body temp\s+([\d.]+) K", re.search(r"\[atlas\] Europa weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)))
 # 6. Half-authored is half-authored. Pluto authors an albedo (0.720, the file's second
 #    brightest after Venus's 0.770) and no ground reading, so its implied 32.2 K prints while
 #    its surface temp and the

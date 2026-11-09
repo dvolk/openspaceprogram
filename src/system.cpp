@@ -359,6 +359,19 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 }
                 s.bond_albedo = a;
             }
+            /* Provenance travels with the figure it describes, and only with one (#687). */
+            if(sv.contains("albedo_src")) {
+                if(!sv["albedo_src"].is_string()) {
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': \"surface.albedo_src\" must be a string");
+                }
+                s.albedo_src = sv["albedo_src"].get<std::string>();
+            }
+            if(!s.albedo_src.empty() && !albedoAuthored(s.bond_albedo)) {
+                throw std::runtime_error("system: '" + body->name
+                                         + "': surface.albedo_src explains an albedo that "
+                                           "surface.albedo does not author");
+            }
             /* #724 rung C: the ground's swing knob, authored only where a source states a
                night/day pair (utils/ground_model.py fits it and prints the residual). The
                range is [0,1] and the absence is a sentinel, not 1.0 -- a body that states no
@@ -377,6 +390,21 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                              + " must be in [0, 1]");
                 }
                 s.even_share = f;
+            }
+            /* Provenance travels with the knob it describes (#687). Optional, and a number
+               here would be the file trying to explain a figure with a figure. */
+            if(sv.contains("even_share_src")) {
+                if(!sv["even_share_src"].is_string()) {
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': \"surface.even_share_src\" must be a"
+                                             " string");
+                }
+                s.even_share_src = sv["even_share_src"].get<std::string>();
+            }
+            if(!s.even_share_src.empty() && !evenShareAuthored(s.even_share)) {
+                throw std::runtime_error("system: '" + body->name
+                                         + "': surface.even_share_src explains a knob that "
+                                           "surface.even_share does not author");
             }
             if(sv.contains("sea_level")) {
                 s.has_sea = true;

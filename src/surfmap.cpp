@@ -131,8 +131,10 @@ void surfmapCompute(Game &g) {
            The MEANS are area-weighted, not pixel-counted: an equirectangular grid is uniform
            in (lon, lat), so a pixel near a pole covers far less ground than one on the
            equator, and a plain average over pixels over-weights the poles. Not pedantry: on
-           Duna the unweighted mean came out 8 K below the anchor the model provably
-           conserves, purely from the projection. cos(lat) is the xz length of the unit
+           Duna the unweighted mean came out kelvin below the anchor the model provably
+           conserves, purely from the projection -- 8 K under its old 0.300 swing, 3 K under the
+           0.708 it carries now (e2e/render/745 re-measures it, because the offset is a function
+           of the swing and a stale number here would be a lie with a decimal point on it). cos(lat) is the xz length of the unit
            direction, so the weight is free. min/max stay unweighted -- extremes, not means. */
         double tmin = 1e30, tmax = -1e30, tsum = 0.0, t4sum = 0.0, tw = 0.0;
 

@@ -1,35 +1,41 @@
 NAME 727-solar-log-dashes-what-a-world-does-not-state
-CLAIM On Minmus --solar-log still reads the star, and prints a DASH -- not a zero -- for the albedo, the black-body column and the ground, because this system declines to state any of them for an icy moon nobody can source.
+CLAIM On Himalia -- a moon the catalogue lists but no fact sheet describes -- --solar-log still reads the star, and prints a DASH rather than a zero for the albedo, the black-body column, the ground, the swing and the air, because nothing in this system states any of them for it.
 KIND invariant
 # The other half of #727, and the only thing standing between #726 and a silent
-# regression: an ABSENT reading must render as absent. ksp_bodies.csv has no albedo
-# column at all (#722), so tick.cpp prints `albedo=- ... bb_T=-`, and if someone
-# "fixes" that by defaulting albedo to 0.0 the row starts claiming a perfectly black
-# surface -- a real 0 where the world said nothing. #728 makes that a bug with teeth
-# (absorbed flux, then a part's skin), so pin it before then.
+# regression: an ABSENT reading must render as absent. If someone "fixes" a dash by
+# defaulting albedo to 0.0, the row starts claiming a perfectly black surface -- a real
+# 0 where the world said nothing. #728 makes that a bug with teeth (absorbed flux, then a
+# part's skin), so pin it before then.
 #
-# This case used to run on Kerbin, which was the one body that stated a ground and
-# declined an albedo. #735 authored albedos for twelve of the seventeen KSP bodies -- Kerbin
-# among them, so Kerbin now reads albedo 0.294 and a 255 K airless mean, and
-# science/735 pins that. Minmus is what is left, and it is the better subject: it is
-# unauthored on purpose (the corpus states a visual GEOMETRICAL albedo for the icy
-# satellites and no Bond albedo, and converting one to the other needs a phase integral
-# nothing here has), so this is the law applied to a decision rather than to an accident.
+# The subject has moved twice. It ran on Kerbin until #735 priced that body's albedo, then
+# on Minmus until #749 priced the KSP worlds by analogy and converted the corpus's icy
+# satellites' geometric albedos into Bond ones (make_solar_system.py:corpus_phase_integral)
+# -- so the shipped file no longer contains a body this row can dash on, and that is the
+# point of #735/#749 rather than an accident. What is left is the honest remainder: the
+# 148 moons in solar_system_named.json that the catalogue ORBITS but no fact sheet
+# describes. Himalia is one, and it is the better subject for the law, because its dashes
+# are not a policy decision -- they are the absence the sources actually leave.
 #
 # One source still prints on this row: the star, sampled at the hull's LIVE distance --
 # --solar-log has no mean-rail rule, that is the atlas' (gameui.cpp picks a moon its
-# planet's orbit; tick.cpp just measures). Minmus's month swings that distance by ~0.7%,
-# hence bounds on the light and exactness only on the dashes.
-ARGS --timeout 3 --solar-log --system res/systems/ksp_system.json
-ARGS --startship v,res/ships/skiff_trim.json,Minmus,inertial-orbit
+# planet's orbit; tick.cpp just measures). Himalia is a captured moon on a slanted,
+# eccentric orbit, so the light is bounded rather than exact; the dashes are exact.
+ARGS --timeout 3 --solar-log --system res/systems/solar_system_named.json
+ARGS --startship v,res/ships/skiff_trim.json,Himalia,high-orbit
 CHECK len(solar) >= 1
-CHECK all(d["body"] == "Minmus" and d["star"] == "Kerbol" for d in solar)
+CHECK all(d["body"] == "Himalia" and d["star"] == "Sun" for d in solar)
 CHECK all(d["albedo"] is None and d["bb_T"] is None for d in solar)
 CHECK all(d["ground_T"] is None for d in solar)
-CHECK all(d["flux"] is not None and 1000.0 < d["flux"] < 1600.0 for d in solar)
-# Minmus has no air, so nothing dims the plate: what a horizontal surface reads is the
+# #749 priced swings wherever a ground could be anchored. A catalogue moon has no albedo,
+# so nothing anchors its ground, and the swing row must dash with the rest -- a knob with
+# no anchor would otherwise be the file inventing a day for a moon it cannot even weigh.
+CHECK all(d["underfoot_T"] is None and d["swing"] is None for d in solar)
+CHECK all(d["air_T"] is None and d["prof_T"] is None and d["follow"] is None for d in solar)
+CHECK all(d["flux"] is not None and 25.0 < d["flux"] < 100.0 for d in solar)
+# Himalia has no air, so nothing dims the plate: what a horizontal surface reads is the
 # overhead flux times the sun's sine, never more and never negative.
 CHECK all(0.0 <= d["flat"] <= d["flux"] for d in solar)
 FORBID albedo=0.000
 FORBID bb_T=0.00
 FORBID ground_T=0.00
+FORBID swing=0.000

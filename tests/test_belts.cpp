@@ -330,6 +330,75 @@ int main() {
         });
     }
 
+    /* #749: every ground in the catalogue now carries a swing -- by a fitted pair, by a
+       borrowed analogue, or by a rule of ours -- so the knob alone no longer says which. The
+       provenance rides in the file beside it (surface.even_share_src) and the dossier prints it
+       next to the two ends it explains. Two guards, both about the pairing rather than the
+       value: a provenance that is a number explains a figure with a figure, and a provenance
+       with no knob describes an answer the file never gave. */
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["albedo_src"] = "converted: geometric 0.68 x 0.681";
+        expect_reject(j, "albedo provenance with no albedo rejected", "albedo_src");
+    }
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["albedo"] = 0.5;
+        j["bodies"][1]["surface"]["albedo_src"] = 2.5;
+        expect_reject(j, "numeric albedo provenance rejected", "albedo_src");
+    }
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["even_share"] = 0.5;
+        j["bodies"][1]["surface"]["even_share_src"] = 3.0;
+        expect_reject(j, "numeric provenance rejected", "even_share_src");
+    }
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["even_share_src"] = "DEFAULT airless floor";
+        expect_reject(j, "provenance with no knob rejected", "even_share_src");
+    }
+    {
+        /* The claim that matters is about the SHIPPED file, so it is pinned against the
+           shipped file: the defaults are in it, they are named, and the one body that has an
+           air but no ground refuses its knob instead of borrowing one. A generator that
+           stopped writing the strings, or that priced Jool's cloud deck, reddens here. */
+        nlohmann::json j = read_json("res/systems/ksp_system.json");
+        expect_loaded(j, "the shipped catalogue prices every ground it has",
+                      [&](const System &sys) {
+            int priced = 0, named = 0;
+            for(const TerrainBody *b : sys.bodies) {
+                if(!evenShareAuthored(b->surface.even_share)) { continue; }
+                ++priced;
+                if(!b->surface.even_share_src.empty()) { ++named; }
+            }
+            check(priced >= 15, "the shipped bodies carry swings");
+            check(named == priced,
+                  "every authored swing in the shipped file says how it was priced");
+            const TerrainBody *kerbin = sys.find("Kerbin");
+            check(kerbin != nullptr
+                      && kerbin->surface.even_share_src.find("analogy") != std::string::npos,
+                  "Kerbin's knob names the world it is borrowed from");
+            /* #749 also converted albedos: the satellite fact sheets state a VISUAL
+               GEOMETRIC albedo, and the corpus's own ten (Bond, geometric) pairs set the
+               factor. A converted albedo and a reading are the same three digits on screen
+               unless the file says which it is, so the marker has to survive the loader and
+               the two-hop chain has to stay legible: Minmus borrows Enceladus, and Enceladus
+               was converted before it was borrowed. */
+            const TerrainBody *minmus = sys.find("Minmus");
+            check(minmus != nullptr
+                      && minmus->surface.albedo_src.find("converted") != std::string::npos,
+                  "a borrowed converted albedo says it was converted");
+            const TerrainBody *mun = sys.find("Mun");
+            check(mun != nullptr && albedoAuthored(mun->surface.bond_albedo)
+                      && mun->surface.albedo_src.find("converted") == std::string::npos,
+                  "a borrowed READING does not claim to be a conversion");
+            const TerrainBody *jool = sys.find("Jool");
+            check(jool != nullptr && !evenShareAuthored(jool->surface.even_share),
+                  "Jool has an air but no ground, so it swings nowhere (#738)");
+        });
+    }
+
     /* #729: the SAME law on the other field, where the damage was worse. Surface::temperature
        used to default to 0.0 and be tested `> 0.0`, so "nobody sourced this" and "0 K" were one
        state -- and on a STAR that state was a luminosity of 0: a system that loads, prints

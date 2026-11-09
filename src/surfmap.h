@@ -175,7 +175,11 @@ inline TempLayer tempLayerFor(const Surface &s, double derived_bb, bool has_sun)
                     "datum, no albedo to derive one from";
         tl.block = "no anchor";
     } else if(!evenShareAuthored(tl.knob)) {
-        tl.legend = "no authored swing: no source states a night/day pair for this world";
+        // Reachable now only for a hand-authored file: #749's passes price a knob for every
+        // ground they can anchor, and a body with no anchor is refused one rung earlier. So a
+        // dash here is a DECLINED ground, and the sentence says which of the two it is not.
+        tl.legend = "no authored swing: this ground has an anchor and no knob, which is a "
+                    "decision rather than a gap";
         tl.block = "no swing";
     } else {
         tl.ok = true;

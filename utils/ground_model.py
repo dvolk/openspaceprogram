@@ -158,6 +158,155 @@ def even_share_from_night(T0, T_night):
     return (T_night / T0) ** 4.0
 
 
+def even_share_from_day(T0, T_day):
+    """[1] The knob, read off the DAY end alone: day_T inverts to f = (4 - (T_day/T0)^4)/3.
+    This is the fallback for a stated pair the night-end fit cannot reproduce (#749): the
+    night end is what our law guarantees structurally (it IS the anti-solar point), so it is
+    tried first, but a corpus pair that misses that gate is a pair about something other than
+    our global ends, and the day end may be the consistent half. Which end was used is
+    authored alongside the knob, so the readout says it."""
+    assert T0 > 0.0 and T_day >= 0.0
+    return (4.0 - (T_day / T0) ** 4.0) / 3.0
+
+
+# What the authored knob's provenance string says, and what the dossier prints beside the
+# number. A DEFAULT announces itself the way a DERIVED anchor does (#722): the file holds one
+# number, so the marker has to travel with it.
+# These strings go INTO the system files (surface.even_share_src) and the atlas prints one
+# beside the two ends it explains, so they are kept short enough to read in a dossier row. The
+# long argument for each is in the note the generators print, not here.
+SRC_PAIR_NIGHT = 'fitted from the night end'
+SRC_PAIR_DAY   = 'fitted from the DAY end'
+SRC_NO_RANGE   = 'stated: no range'
+SRC_AIR_RULE   = 'DEFAULT air-mass rule'
+SRC_AIRLESS    = 'DEFAULT airless floor'
+SRC_PAIR_LEAST = 'least-squares fit to the pair'
+
+
+def fit_even_share_pair(T0, T_night, T_day, gate=DAY_PREDICTION_GATE):
+    """[(f, src, note) or (None, None, note)] Fit a stated (night, day) pair on either end.
+
+    Night end first -- that end is not a measurement of our model, it IS our model's floor
+    (the anti-solar point), so a pair whose night end disagrees with the anchor is the pair
+    that is about something else. If that fit misses the day-end gate, try the day end and
+    take it when IT fits: the atlas prints the swing and the sheet's pair side by side, so a
+    knob that contradicts the page it came from is a #687 contradiction in front of the player
+    (#749's call). Both ends miss -> no knob from this pair, and the default takes over.
+    The note is the generator's verdict line: it names the end used and the residual, never a
+    bare bool."""
+    if T0 <= 0.0 or T_night < 0.0 or T_day < T_night:
+        return None, None, 'the pair is not a pair (night %s > day %s at T0 %s)' % (
+            T_night, T_day, T0)
+    if T_day == T_night:
+        return EVEN_SHARE_NO_SWING, SRC_NO_RANGE, (
+            'the pair states NO range -> f = 1.000 (stated, not defaulted)')
+    fn = even_share_from_night(T0, T_night)
+    if 0.0 <= fn <= 1.0:
+        pred = day_T(T0, fn)
+        resid = pred - T_day
+        if abs(resid) <= gate * T0:
+            return fn, SRC_PAIR_NIGHT, (
+                'f = %.4f from the night end; model %.1f-%.1f K vs stated %.1f-%.1f K '
+                '(day end %+0.1f K = %+.1f%% of T0) -> AUTHOR night-end fit'
+                % (fn, night_T(T0, fn), pred, T_night, T_day, resid,
+                   100.0 * resid / T0))
+        note_night = ('night-end fit f = %.4f predicts %.1f-%.1f K vs stated %.1f-%.1f K '
+                      '(day end %+0.1f K = %+.1f%% of T0)'
+                      % (fn, night_T(T0, fn), pred, T_night, T_day, resid,
+                         100.0 * resid / T0))
+    else:
+        note_night = ('the night end sits above the anchor: f would be %.3f' % fn)
+    fd = even_share_from_day(T0, T_day)
+    if 0.0 <= fd <= 1.0:
+        pred_n = night_T(T0, fd)
+        resid_n = pred_n - T_night
+        if abs(resid_n) <= gate * T0:
+            return fd, SRC_PAIR_DAY, (
+                '%s; %s; model %.1f-%.1f K -> AUTHOR day-end fit (night end %+0.1f K = '
+                '%+.1f%% of T0)' % (note_night, 'day end fit', night_T(T0, fd),
+                                    day_T(T0, fd), resid_n, 100.0 * resid_n / T0))
+        note_day = ('day-end fit f = %.4f predicts a night end of %.1f K vs stated %.1f K '
+                    '(%+0.1f K = %+.1f%% of T0)'
+                    % (fd, pred_n, T_night, resid_n, 100.0 * resid_n / T0))
+    else:
+        note_day = 'the day end is off the top of the law: f would be %.3f' % fd
+    # Neither end alone survives the gate, and that is a statement about the SOURCE, not about
+    # the knob: one knob plus the stated mean forces a day/night RATIO, and Mars's stated pair
+    # (184-242 K) implies a mean of ~203 K while its own sheet states 214 K. No single knob can
+    # honour all three. Take the least-squares fit to the PAIR (both ends miss, by about the
+    # same amount) rather than honouring one end exactly and inventing the other, and print
+    # both residuals -- so the row reads as close-but-not-equal to the page, not as a
+    # contradiction at one end, and not as an air-mass default that matches neither.
+    # Least squares is only honest for a real night/day pair, and a pair is only real if the
+    # mean sits BETWEEN its ends. The corpus's KSP-style rows are (record low, average): their
+    # day end IS the mean, so fitting that pair would invent a day end the source never stated
+    # -- which is why the single-end fitter refused them (#742) and why this fallback refuses
+    # them too, by the same test rather than by a special case.
+    if not (T_night < T0 < T_day):
+        return None, None, ('%s; %s; the anchor is not inside the pair, so the pair is not a '
+                            'night and a day -> no knob from it' % (note_night, note_day))
+    best, best_err, k = None, None, 0
+    while k <= 4000:
+        cand = k / 4000.0
+        err = (night_T(T0, cand) - T_night) ** 2 + (day_T(T0, cand) - T_day) ** 2
+        if best_err is None or err < best_err:
+            best, best_err = cand, err
+        k += 1
+    assert best is not None
+    return best, SRC_PAIR_LEAST, (
+        '%s; %s; the pair and the stated mean cannot both hold (one knob plus a mean forces '
+        'the ratio): least-squares fit to the pair f = %.4f gives %.1f-%.1f K '
+        '(night %+0.1f K, day %+0.1f K)'
+        % (note_night, note_day, best, night_T(T0, best), day_T(T0, best),
+           night_T(T0, best) - T_night, day_T(T0, best) - T_day))
+
+
+def default_even_share(p_pa, p_ref_pa, airless_floor):
+    """[(knob, src)] The knob for a body whose source says NOTHING about a swing, and the
+    name of the branch that answered.
+
+    One law, two constants, and neither is invented: the share of emission an air spreads is
+    taken as 1 - exp(-p / p_ref), i.e. "the column above the ground is what redistributes",
+    with p_ref set so the law returns the fitted knob of the ONE body whose pair the corpus
+    prices AND that has a stated surface pressure (Earth). Airless bodies sit at the fitted
+    knob of the one airless body the corpus prices (the Moon), which is also the floor: f = 0
+    would answer 0 K at the anti-solar point, and that abort is #744's lesson.
+    src/authored.h's kEvenShareUnauthored stays the ONLY absence in the game: a default is a
+    number in the file, and the readout says DEFAULT next to it."""
+    assert p_ref_pa > 0.0 and 0.0 < airless_floor < 1.0
+    import math
+    p = p_pa if p_pa and p_pa > 0.0 else 0.0
+    rule = 1.0 - math.exp(-p / p_ref_pa)
+    # The rule ANSWERS WITH ITS OWN NAME: a body with a trace of air (Pluto, 1.3 Pa) sits at
+    # the airless floor, and a caller guessing which branch fired from 'p > 0' would print
+    # 'air-mass rule' beside a number that came from the floor (#687).
+    if rule >= airless_floor:
+        return rule, SRC_AIR_RULE
+    return airless_floor, SRC_AIRLESS
+
+
+def calibration_from_fitted(fitted, pressures_pa):
+    """[(p_ref_pa, airless_floor, note)] The two constants above, MEASURED from the fits this
+    run just produced -- so the default rule carries no typed number (#636).
+      p_ref      from the fitted body that also has a stated surface pressure and air:
+                 p_ref = -p / ln(1 - f)
+      floor      the fitted knob of the fitted AIRLESS body (its pair is the airless
+                 archetype), floored away from 0 because a 0-K midnight is not a reading."""
+    import math
+    p_ref = None
+    for name, f in fitted.items():
+        p = pressures_pa.get(name)
+        if p and 0.0 < f < 1.0:
+            p_ref = -p / math.log(1.0 - f)
+            ref_note = '%s (f %.4f at %g Pa)' % (name, f, p)
+            break
+    assert p_ref is not None, 'no fitted body with a stated pressure: the air rule is uncalibrated'
+    floors = [f for n, f in fitted.items() if not pressures_pa.get(n)]
+    assert floors, 'no fitted airless body: the airless floor is uninvented'
+    return p_ref, max(floors), ('air rule p_ref %g Pa from %s; airless floor %.4f from the '
+                                'airless fit' % (p_ref, ref_note, max(floors)))
+
+
 def fit_even_share(T0, T_night, T_day, gate=DAY_PREDICTION_GATE):
     """Fit one knob on a stated (night, day) pair and grade it against the pair.
 
@@ -277,6 +426,48 @@ def _self_test():
     check(f5 == EVEN_SHARE_NO_SWING, "a stated zero range authors f = 1: " + note5)
     check(fit_even_share(200.0, 250.0, 100.0)[0] is None,
           "a night end above the anchor is refused")
+
+    # #749: the ladder the pair fits fall down. The night end first, because the law
+    # guarantees that end; the day end second; and when NEITHER end survives the gate -- Mars,
+    # whose stated pair implies a mean its own sheet denies -- the least-squares fit to the
+    # pair, which prices both ends a little rather than one end exactly and one end invented.
+    fp, sp, np_ = fit_even_share_pair(288.0, 283.0, 293.0)
+    check(fp is not None and sp == SRC_PAIR_NIGHT, "Earth fits on its night end: " + np_)
+    fp, sp, np_ = fit_even_share_pair(214.0, 184.0, 242.0)
+    check(fp is not None and sp == SRC_PAIR_LEAST,
+          "Mars falls to the least-squares fit, not to a default: " + np_)
+    check(fp is not None and night_T(214.0, fp) > 184.0 and day_T(214.0, fp) > 242.0
+              and night_T(214.0, fp) < 242.0,
+          "and its two ends sit between the pair's two ends: %s" % np_)
+    fp, sp, np_ = fit_even_share_pair(737.0, 0.0, 0.0)
+    check(fp == EVEN_SHARE_NO_SWING and sp == SRC_NO_RANGE,
+          "a stated zero range is STATED, never defaulted: " + np_)
+    fp, sp, np_ = fit_even_share_pair(288.15, 186.95, 288.15)
+    check(fp is None and sp is None,
+          "a pair whose day end IS the anchor prices nothing: " + np_)
+
+    # The default rule and its calibration. p_ref comes out of a fitted body's own pair, so
+    # feeding Earth back through the rule must return Earth's fitted knob exactly -- the
+    # identity that says the constant was measured and not typed.
+    cal_p, cal_f, cal_note = calibration_from_fitted(
+        {"Earth": 0.9323, "Moon": 0.0153}, {"Earth": 101325.0, "Moon": 0.0})
+    check(cal_p > 0.0 and 0.0 < cal_f < 0.05, "calibration: " + cal_note)
+    g, gs = default_even_share(101325.0, cal_p, cal_f)
+    check(abs(g - 0.9323) < 1e-3 and gs == SRC_AIR_RULE,
+          "the rule returns the body it was calibrated on (%.4f)" % g)
+    g, gs = default_even_share(0.0, cal_p, cal_f)
+    check(g == cal_f and gs == SRC_AIRLESS, "no air sits at the airless floor")
+    g, gs = default_even_share(1.3, cal_p, cal_f)
+    check(g == cal_f and gs == SRC_AIRLESS,
+          "a trace of air is named for the branch that answered, not for having air")
+    g, gs = default_even_share(143556.0, cal_p, cal_f)
+    check(cal_f < g < 1.0 and gs == SRC_AIR_RULE,
+          "a thick air the corpus never paired still gets a knob (%.4f)" % g)
+    try:
+        calibration_from_fitted({"Earth": 0.9323}, {"Earth": 101325.0})
+        check(False, "calibration without an airless fit must raise, not guess a floor")
+    except AssertionError:
+        check(True, "calibration without an airless fit raises rather than guessing a floor")
 
     check('NIGHT end that argues' in even_share_air_note(
               "Eve", 0.09, 198000.0, 160.0, 291.68, "the air's own datum"),
