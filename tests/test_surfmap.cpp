@@ -13,6 +13,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <numbers>
 #include <initializer_list>
 #include <cstring>
 #include <memory>
@@ -33,6 +34,236 @@ static bool near_d(double a, double b, double tol) {
 static bool near_v(const glm::dvec3 &a, const glm::dvec3 &b, double tol) {
     return near_d(a.x, b.x, tol) && near_d(a.y, b.y, tol)
         && near_d(a.z, b.z, tol);
+}
+
+/* #745: the map-type/level chooser, the colour ramp, and which worlds the temperature layer
+   can paint. These belong in this file because it is already the home of surfmap.h's pure
+   parts, and they are the invariants the WINDOW assumes and cannot check itself: it builds its
+   two combos by iterating the table, so a new map type that ships half-wired -- a level its
+   type does not offer, two rows under one name, a CLI name matching nothing -- compiles clean
+   and shows up as a widget that does nothing. */
+static Surface makeDuna() {
+    Surface duna;
+    duna.atmosphere.enabled = true;
+    AtmoLayer ground_level;
+    ground_level.base_T = 214.81;
+    duna.atmosphere.layers.push_back(ground_level);
+    duna.even_share = 0.300;
+    return duna;
+}
+
+static void mapLayers() {
+    // ---- the table -------------------------------------------------------------
+    check(kMapTypeCount >= 3,
+          "the shipped system offers at least ground, ground+ocean and temperature");
+    for(int t = 0; t < kMapTypeCount; t++) {
+        const SurfMapTypeSpec &s = kSurfMapTypes[t];
+        check(s.n_levels >= 1 && s.n_levels <= kLevelCount,
+              "every map type offers at least one level");
+        for(int k = 0; k < s.n_levels; k++) {
+            check(s.levels[k] >= 0 && s.levels[k] < kLevelCount,
+                  "a map type's level list holds real levels");
+            for(int m = k + 1; m < s.n_levels; m++) {
+                check(s.levels[k] != s.levels[m],
+                      "a map type's level list has no duplicates");
+            }
+        }
+        check(s.name != nullptr && s.name[0] != '\0', "every map type has a name");
+        // The name is what --surfmap-map matches, so a duplicate makes that flag ambiguous
+        // and the combo offer one choice twice.
+        for(int u = t + 1; u < kMapTypeCount; u++) {
+            check(std::string(s.name) != std::string(kSurfMapTypes[u].name),
+                  "map type names are unique");
+        }
+        // The window applies levels[0] when the type changes, so today every type offers
+        // exactly the ground: a new level appearing here is a decision, not a typo.
+        check(s.n_levels == 1, "every map type has exactly one level today");
+        check(s.levels[0] == kLevelGround, "and that level is the ground");
+    }
+
+    // ---- the name the CLI uses -------------------------------------------------
+    check(surfMapTypeFromName("ground") == kMapGround, "\"ground\" is a map type");
+    check(surfMapTypeFromName("ground+ocean") == kMapGroundOcean,
+          "\"ground+ocean\" is a map type");
+    check(surfMapTypeFromName("temperature") == kMapTemperature,
+          "\"temperature\" is a map type");
+    for(int t = 0; t < kMapTypeCount; t++) {
+        check(surfMapTypeFromName(kSurfMapTypes[t].name) == t,
+              "every combo label is also a CLI name (#636: one spelling)");
+    }
+    check(surfMapTypeFromName("TEMPERATURE") == kMapTemperature,
+          "a map type name matches whatever its case");
+    // A wrong WORD is refused rather than guessed: silently drawing 'ground' for
+    // --surfmap-map=temp would give the caller a picture they did not ask for.
+    check(surfMapTypeFromName("temp") == -1, "an unknown map type is refused, not guessed");
+    check(surfMapTypeFromName("ocean") == -1, "a level word is not a map type");
+    check(surfMapTypeFromName("") == -1, "the empty name is not a map type");
+    check(std::string(surfLevelName(kLevelGround)) == "ground",
+          "the one level is 'ground' -- surface and ground are one place (#636)");
+
+    // ---- the colour ramp -------------------------------------------------------
+    // Not the exact palette -- the properties the picture depends on. A temperature a hair
+    // over the day end (float dust at the subsolar pixel) must not come back as the cold end.
+    unsigned char r0, g0, b0, r1, g1, b1, ra, ga, ba, rb, gb, bb;
+    surfmapRamp(0.0, r0, g0, b0);
+    surfmapRamp(1.0, r1, g1, b1);
+    check(b0 > r0, "the ramp's cold end is blue");
+    check(r1 > b1, "the ramp's hot end is red");
+    surfmapRamp(-3.0, ra, ga, ba);
+    surfmapRamp(0.0, rb, gb, bb);
+    check(ra == rb && ga == gb && ba == bb, "the ramp clamps below its cold end");
+    surfmapRamp(9.0, ra, ga, ba);
+    surfmapRamp(1.0, rb, gb, bb);
+    check(ra == rb && ga == gb && ba == bb, "the ramp clamps above its hot end");
+    /* What "hotness" means for THIS palette. Channel-by-channel monotonicity is a property the
+       palette deliberately does not have (the yellow stop is redder than the red one, which is
+       what makes the hot end read hot rather than merely dark), so pin the reading a player
+       brings instead: warmth = red minus blue rises from end to end, and the ramp never stalls
+       on one colour across its middle. */
+    check((int)r1 - (int)b1 > (int)r0 - (int)b0,
+          "the hot end reads warmer than the cold end (red minus blue)");
+    bool distinct = true;
+    for(int k = 0; k <= 10; k++) {
+        for(int m = k + 1; m <= 10; m++) {
+            unsigned char ka, kb, kc, la, lb, lc;
+            surfmapRamp(k / 10.0, ka, kb, kc);
+            surfmapRamp(m / 10.0, la, lb, lc);
+            if(ka == la && kb == lb && kc == lc) { distinct = false; }
+        }
+    }
+    check(distinct, "the ramp does not stall: ten samples across it are ten colours");
+    unsigned char rm, gm, bm;
+    surfmapRamp(0.5, rm, gm, bm);
+    check(!(rm == r0 && gm == g0 && bm == b0) && !(rm == r1 && gm == g1 && bm == b1),
+          "the ramp's midpoint is neither end (a no-swing world reads as one flat colour)");
+
+    /* ---- which worlds the temperature layer can paint --------------------------
+       tempLayerFor's policy is what the window shows and the log prints, so it is pinned here
+       rather than by paying for four more game runs: an e2e case can afford one refusal, but
+       the DIFFERENT refusals are what #726's rule is about -- a reader deserves to know which
+       one they are looking at. */
+    Surface kerbin;
+    kerbin.temperature = 288.15;
+    kerbin.even_share = 0.9323;
+    TempLayer tk = tempLayerFor(kerbin, 0.0);
+    check(tk.ok, "a stated ground with an authored swing paints");
+    check(groundAnchorRung(kerbin.temperature, 0.0, 0.0) == kAnchorStated,
+          "and says its anchor was stated");
+    check(near_d(tk.lo_K, groundTemperature(288.15, 0.9323, 0.0), 1e-12),
+          "the ramp's cold end is the model's night end");
+    check(near_d(tk.hi_K, groundTemperature(288.15, 0.9323, 1.0), 1e-12),
+          "and its hot end the subsolar end");
+    check(near_d(tk.lo_K, 283.15, 2e-4 * 283.15),
+          "Kerbin's night end is the 283 K the pair states");
+    check(near_d(tk.hi_K, 301.77, 2e-4 * 301.77),
+          "and its day end the 302 K the law implies");
+
+    // Venus: a swing of exactly one. The ends COLLAPSE, which is why the caller's ramp spans
+    // by a guarded division and paints one honest colour rather than a gradient.
+    Surface venus;
+    venus.temperature = 737.0;
+    venus.even_share = 1.0;
+    TempLayer tv = tempLayerFor(venus, 0.0);
+    check(tv.ok, "a stated swing of one still paints");
+    check(near_d(tv.hi_K - tv.lo_K, 0.0, 1e-9), "a no-swing world's ramp span is zero");
+
+    // Mercury/Moho: an anchor with nothing stated about night and day (#742's refusal).
+    Surface moho;
+    moho.temperature = 440.0;
+    TempLayer tm = tempLayerFor(moho, 0.0);
+    check(!tm.ok, "an unauthored swing does not paint");
+    check(tm.legend.find("no authored swing") != std::string::npos,
+          "and the reason names the missing swing, not a missing anchor");
+    check(tm.lo_K == 0.0, "a refused layer has no ramp ends");
+
+    // Mun/Moon: nobody states a ground, so the anchor is DERIVED and the legend has to say so
+    // beside the picture (#722).
+    Surface mun;
+    mun.bond_albedo = 0.11;
+    mun.even_share = 0.0153;
+    TempLayer tn = tempLayerFor(mun, 208.0);
+    check(tn.ok, "a derived anchor still paints");
+    check(tn.legend.find("DERIVED") != std::string::npos,
+          "and its legend says DERIVED, not 'stated'");
+
+    // Minmus: no reading of any kind. Not the same sentence as the two above.
+    Surface minmus;
+    TempLayer tg = tempLayerFor(minmus, 0.0);
+    check(!tg.ok, "a world with no readings does not paint");
+    check(tg.legend.find("nothing anchors") != std::string::npos,
+          "and the reason says there is no anchor -- not that a swing is missing");
+
+    // Jool: asked about a ground temperature, this world has no ground to have one about
+    // (#738). Said FIRST, ahead of any missing number.
+    Surface jool;
+    jool.bands = true;
+    jool.temperature = 165.0;
+    jool.even_share = 0.5;
+    jool.bond_albedo = 0.34;
+    TempLayer tb = tempLayerFor(jool, 100.0);
+    check(!tb.ok, "a banded giant never paints as a ground");
+    check(tb.legend.find("banded giant") != std::string::npos,
+          "and the reason says it has no ground, not that a number is missing");
+
+    // Duna: the air's datum anchors it (rung two -- how most of the shipped system is
+    // anchored), and outranks the derived black-body handed to it.
+    Surface duna = makeDuna();
+    TempLayer td = tempLayerFor(duna, 999.0);
+    check(td.ok, "a world with air and a swing paints");
+    check(near_d(td.anchor_K, 214.81, 1e-9),
+          "the air's datum anchors it, and outranks the derived black-body");
+    check(near_d(td.lo_K, 158.98, 2e-4 * 158.98),
+          "Duna's night end follows from that anchor and its knob");
+    check(near_d(td.hi_K, 285.03, 2e-4 * 285.03), "and so does its day end");
+
+    /* Which ABSENCE, in the three words the cursor row prints. The sentence goes to the log and
+       the word to the line, and they are the same decision -- so the words have to stay as
+       distinct as the states they name (#726): a bare dash would fold "this world has no
+       ground" and "nobody stated a night/day pair" back into one. */
+    check(tempLayerFor(jool, 0.0).block == "no ground", "a giant's cursor row says no ground");
+    check(tempLayerFor(moho, 0.0).block == "no swing", "a refused pair says no swing");
+    check(tempLayerFor(minmus, 0.0).block == "no anchor", "an unpriced world says no anchor");
+    check(td.block.empty() && tk.block.empty(), "a world that DOES paint has no block word");
+    check(tempLayerFor(jool, 0.0).block != tempLayerFor(moho, 0.0).block,
+          "the two refusals do not read alike on the cursor line");
+}
+
+/* #745: the number the cursor row prints. This is the SAME call the sweep makes per pixel, and
+   it is handed the star the picture was BAKED with rather than a fresh sample -- a map is a
+   snapshot and the frames move underneath it, so a cursor reading taken from today's sun would
+   be a different world's number than the colour under the mouse (#687: measured or recomputed,
+   never both at different instants). */
+static void cursorTemperature() {
+    const double anchor = 214.81, knob = 0.300;      // Duna
+    const TempLayer duna = tempLayerFor(makeDuna(), 0.0);
+    const glm::dvec3 sun(1.0, 0.0, 0.0);
+
+    // Under the star: the day end the atlas prints.
+    check(near_d(surfmapGroundT(anchor, knob, sun, sun), duna.hi_K, 1e-9),
+          "the point under the star reads the map's day end");
+    // Antipodal to it, and anywhere on the terminator: the night end. The law has no night/day
+    // distinction past cos = 0, and a cursor on the seam must not invent one.
+    check(near_d(surfmapGroundT(anchor, knob, -sun, sun), duna.lo_K, 1e-9),
+          "the antipode reads the night end");
+    check(near_d(surfmapGroundT(anchor, knob, glm::dvec3(0.0, 0.0, 1.0), sun), duna.lo_K, 1e-9),
+          "the terminator reads the night end too");
+    // A direction NOT on the unit sphere (a cursor un-normalised somewhere) is clamped, not
+    // extrapolated: the readout cannot exceed the map's own day end.
+    check(surfmapGroundT(anchor, knob, 3.0 * sun, sun) <= duna.hi_K + 1e-9,
+          "an un-normalised direction cannot read hotter than the picture's day end");
+    // Three places a third of a turn apart on the equator: at least one is in night and at
+    // least one is lit, whatever the star's bearing -- which is why an e2e case could ask for
+    // this spread without knowing where local noon is. Pinned here instead of there, because
+    // the pixels a hover needs are window-layout coordinates.
+    double t[3];
+    for(int k = 0; k < 3; k++) {
+        const double a = k * 2.0 * std::numbers::pi / 3.0;
+        t[k] = surfmapGroundT(anchor, knob, glm::dvec3(std::cos(a), 0.0, std::sin(a)), sun);
+    }
+    const double lo = std::min(std::min(t[0], t[1]), t[2]);
+    const double hi = std::max(std::max(t[0], t[1]), t[2]);
+    check(near_d(lo, duna.lo_K, 1e-9), "of three places 120 deg apart, the coldest is in night");
+    check(hi > lo + 1.0, "and the warmest is lit by more than rounding");
 }
 
 int main() {
@@ -277,6 +508,9 @@ int main() {
         }
         check(ok, "heightmap: sample(equirectDir(i, j)) reads cell (i, j)");
     }
+
+    mapLayers();
+    cursorTemperature();
 
     if(g_failures == 0) {
         std::printf("test_surfmap: all checks passed\n");

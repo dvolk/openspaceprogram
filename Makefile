@@ -529,6 +529,9 @@ $(TESTDIR)/test_transfer: $(TESTDIR)/obj/test_transfer.o
 $(TESTDIR)/test_porkchop: $(TESTDIR)/obj/test_porkchop.o
 	$(CXX) -o $@ $^
 
+# #745 adds the map-type/level table and the colour ramp to the same file: the window's two
+# combos read the table, so its invariants (unique names, real levels, a CLI name per label)
+# are the only thing keeping a new layer from shipping half-wired.
 $(TESTDIR)/test_surfmap: $(TESTDIR)/obj/test_surfmap.o
 	$(CXX) -o $@ $^
 

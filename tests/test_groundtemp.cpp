@@ -15,6 +15,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <numbers>
 #include <string>
 
@@ -42,6 +43,16 @@ static int g_checks = 0;
             || std::fabs(_a - _e) > _tol) {                                   \
             g_failures++;                                                     \
             printf("FAIL: %s (got %.9g, want %.9g)\n", msg, _a, _e);         \
+        }                                                                     \
+    } while (0)
+
+#define CHECK_INT(actual, expected, msg)                                      \
+    do {                                                                      \
+        g_checks++;                                                           \
+        long long _a = (actual), _e = (expected);                             \
+        if(_a != _e) {                                                        \
+            g_failures++;                                                     \
+            printf("FAIL: %s (got %lld, want %lld)\n", msg, _a, _e);          \
         }                                                                     \
     } while (0)
 
@@ -156,6 +167,22 @@ int main() {
                "a sentinel ground temperature falls through to the air's datum");
     CHECK_NEAR(groundAnchor_K(kThermalUnauthored, kThermalUnauthored, 270.33), 270.33, 0.0,
                "a sentinel air datum falls through to the derived black-body");
+    /* WHICH rung answered is its own question, and the readouts (the atlas' anchor row, the
+       surface map's legend) name the answer instead of re-spelling the order (#636, #722). A
+       derived anchor has to be visibly derived; a legend that says "stated" for a computed
+       number is the readout lying about its source. */
+    CHECK_INT(groundAnchorRung(288.15, 291.68, 255.0), kAnchorStated,
+              "a stated ground reads as stated");
+    CHECK_INT(groundAnchorRung(kThermalUnauthored, 214.81, 209.81), kAnchorAirDatum,
+              "an air datum reads as an air datum");
+    CHECK_INT(groundAnchorRung(kThermalUnauthored, 0.0, 270.33), kAnchorDerived,
+              "a derived black-body reads as DERIVED, not as a measurement");
+    CHECK_INT(groundAnchorRung(kThermalUnauthored, 0.0, 0.0), kAnchorNone,
+              "and nothing at all reads as no anchor");
+    CHECK_TRUE(groundAnchorRungName(kAnchorNone) != nullptr,
+               "every rung has a word to show");
+    CHECK_TRUE(std::strstr(groundAnchorRungName(kAnchorDerived), "DERIVED") != nullptr,
+               "the derived rung's name says DERIVED in caps (#722)");
 
     /* ---- rung D: the air nearest the ground follows it (#724) ----------------------
        One authored number, one weight the column itself supplies. The pins below are the

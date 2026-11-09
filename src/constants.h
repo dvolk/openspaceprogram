@@ -220,3 +220,12 @@ inline constexpr float kMapFitRadiusPx = 100.0f;
    (render.cpp). */
 inline constexpr float kNodeAnRgb[3] = {0.35f, 0.95f, 0.45f};
 inline constexpr float kNodeDnRgb[3] = {0.95f, 0.30f, 0.25f};
+
+/* [C] The offset between kelvin and degrees Celsius, spelled ONCE (#707). Every file, law and
+   log in this project is kelvin; this exists only for the readouts a player reads as weather --
+   a ground you could stand on is more legible as -58 C than as 215 K. Never feed it to a law:
+   radiation and the air's thermodynamics are kelvin-only, and a T - 273.15 in an equation is a
+   bug, not a unit.
+   Where: the surface map's cursor row and the atlas' K-with-C rows (gameui.cpp). */
+inline constexpr double kCelsiusOffset = 273.15;
+inline double celsiusOf(double kelvin) { return kelvin - kCelsiusOffset; }

@@ -1549,10 +1549,13 @@ void drawUIReadouts(Game &g) {
         static ImVec2 sm_pan = ImVec2(0.0f, 0.0f);
         static float sm_scale = 1.0f;
 
-        // Auto-compute when there is no map yet or it was computed for a different body.
+        // Auto-compute when there is no map yet, it was computed for a different body, or
+        // it is the wrong PICTURE: px holds one base at a time, so a map-type change re-bakes
+        // rather than relabelling the previous type's pixels (#745).
         // Not mid-sweep: the last one lands for the body it was posted for.
         if(g.surfmap.in_flight == 0 &&
-           (!g.surfmap.valid || g.surfmap.body_name != sm_body->name)) {
+           (!g.surfmap.valid || g.surfmap.body_name != sm_body->name
+            || g.surfmap.baked_type != g.surfmap.map_type)) {
             surfmapCompute(g);
         }
 
@@ -1569,18 +1572,60 @@ void drawUIReadouts(Game &g) {
             sm_pan = ImVec2(0.0f, 0.0f);
             sm_scale = 1.0f;
         }
+        ImGui::SameLine();
+        /* Which picture, and at what level (#745). Both read the table in surfmap.h, so a
+           new map type (a wind field, an air-temperature layer) is one row there and no new
+           widget here. A type with ONE level shows that level as text rather than as a menu
+           with a single item: a dropdown nobody can take up is a widget lying about a
+           choice. Changing the type re-bakes -- the base is one buffer -- so it is disabled
+           mid-sweep like Refresh. The level follows the type: a type's first level is its
+           default, so a new type can never be left holding a level it does not offer. */
+        static const char *sm_types[kMapTypeCount];
+        for(int i = 0; i < kMapTypeCount; i++) { sm_types[i] = kSurfMapTypes[i].name; }
+        if(sm_busy) { ImGui::BeginDisabled(); }
+        /* Narrow on purpose, and always a dropdown: the window's default item width is the
+           whole content region (which is what the Body combo above wants), at which width the
+           map type cannot share a line with Refresh/Reset, and the row the map type lives on is
+           crowded. So both choosers are sized to their content. The level stays a COMBO even
+           while it has one option -- a label there would be a second kind of widget in a space
+           built for one, and the option list is the same table either way. */
+        ImGui::PushItemWidth(126.0f);
+        int sm_type = g.surfmap.map_type;
+        if(uiCombo("Map", &sm_type, sm_types, kMapTypeCount)) {
+            g.surfmap.map_type = sm_type;
+            g.surfmap.level = (int)kSurfMapTypes[sm_type].levels[0];
+        }
+        ImGui::SameLine();
+        /* The level chooser is table-driven and ONE code path: its items are the levels THIS
+           type offers, so picking a level the picture cannot draw is not reachable, and the
+           combo's index is a position in that list rather than the global level enum -- a state
+           left holding a level the type does not list (a type change, a level added to the
+           table later) is looked up and healed instead of indexing out of range. Narrow like
+           the map type: this line is crowded, and a label instead of a dropdown would put a
+           second kind of widget in a space built for one. */
+        const SurfMapTypeSpec &sm_spec = kSurfMapTypes[g.surfmap.map_type];
+        const char *sm_here[kLevelCount];
+        for(int i = 0; i < sm_spec.n_levels; i++) {
+            sm_here[i] = kSurfLevelNames[sm_spec.levels[i]];
+        }
+        int sm_level = 0;
+        for(int i = 0; i < sm_spec.n_levels; i++) {
+            if(sm_spec.levels[i] == (SurfLevel)g.surfmap.level) { sm_level = i; }
+        }
+        ImGui::PushItemWidth(90.0f);
+        if(uiCombo("Level", &sm_level, sm_here, sm_spec.n_levels)) {
+            g.surfmap.level = (int)sm_spec.levels[sm_level];
+        }
+        ImGui::PopItemWidth();
+        ImGui::PopItemWidth();
+        if(sm_busy) { ImGui::EndDisabled(); }
         // Overlay-only: the terminator is pre-baked as a separate texture, so
         // toggling it is a free show/hide (no re-bake, no need to disable mid-sweep).
+        // It reads over any base, including a temperature map -- where it darkens the very
+        // night the field already prices cold. That is two views of one terminator, and it
+        // is what the player asked for: the cold side AND why (#745).
         bool shade = g.surfmap.shade;
         if(ImGui::Checkbox("Sun shading", &shade)) { g.surfmap.shade = shade; }
-        ImGui::SameLine();
-        bool sea = g.surfmap.sea;
-        if(sm_busy) { ImGui::BeginDisabled(); }
-        if(ImGui::Checkbox("Ocean", &sea)) {
-            g.surfmap.sea = sea;
-            surfmapCompute(g);   // re-bake with / without the sea
-        }
-        if(sm_busy) { ImGui::EndDisabled(); }
         ImGui::SameLine();
         // Overlay-only: no re-bake, so no need to disable it mid-sweep.
         bool sml = g.surfmap.site_labels;
@@ -1939,14 +1984,40 @@ void drawUIReadouts(Game &g) {
                 snprintf(site_s, sizeof(site_s), "  site: %s",
                          near->name->c_str());
             }
-            ImGui::TextDisabled("cursor: lat %+.1f  lon %.1f  elev %s%s",
-                                glm::degrees(lat), glm::degrees(lon),
-                                fmt_dist((double)sm_body->GetTerrainHeight(dir)
-                                         - sm_body->seaLevelRadius(),
-                                         elev_s, sizeof elev_s),
-                                site_s);
+            /* #745: on a temperature map, the number UNDER THE CURSOR rather than a legend
+               line of its own -- the window is a fixed aspect ratio and every extra row costs
+               the map itself, and the reading a player wants is "how hot is THIS spot". It goes
+               through surfmapGroundT with the star the picture was BAKED under, so it is the
+               colour under the cursor expressed as a number, not a fresh sample of a sun that
+               has since moved (#687: measured or recomputed, never both at different instants).
+               Shown in Celsius because this is weather -- a ground you could stand on reads as
+               -58 C and not as 215 K -- while every log row and atlas row for the same place
+               stays kelvin, which is the unit the files and the laws speak. */
+            char gt_s[48] = "";
+            if(g.surfmap.baked_type == kMapTemperature) {
+                if(g.surfmap.temp_ok && g.surfmap.baked_sun_valid) {
+                    snprintf(gt_s, sizeof gt_s, "  ground %+.1f C",
+                             celsiusOf(surfmapGroundT(g.surfmap.temp_anchor_K,
+                                                      g.surfmap.temp_knob,
+                                                      glm::dvec3(dir),
+                                                      g.surfmap.baked_sun_dir)));
+                } else {
+                    // Which absence, in three words: a bare dash would merge "this world has no
+                    // ground" and "nobody stated a swing" back into one (#726). The full
+                    // sentence is in --surfmap-log's note=, and the reason lives in the atlas.
+                    snprintf(gt_s, sizeof gt_s, "  ground - (%s)",
+                             g.surfmap.temp_block.empty() ? "unavailable"
+                                                          : g.surfmap.temp_block.c_str());
+                }
+            }
+            uiTextDisabled("cursor: lat %+.1f  lon %.1f  elev %s%s%s",
+                           glm::degrees(lat), glm::degrees(lon),
+                           fmt_dist((double)sm_body->GetTerrainHeight(dir)
+                                    - sm_body->seaLevelRadius(),
+                                    elev_s, sizeof elev_s),
+                           gt_s, site_s);
         } else {
-            ImGui::TextDisabled("cursor: lat --  lon --  elev --");
+            uiTextDisabled("cursor: lat --  lon --  elev --");
         }
     });
 
@@ -3592,7 +3663,7 @@ void drawPartWindows(Game &g) {
                         uiText("Air pressure: %.1f kPa", read.press / 1000.0);
                     } else if(read.temp > 0.0) {
                         uiText("Air temp: %.1f K (%.1f C)", read.temp,
-                               read.temp - 273.15);
+                               celsiusOf(read.temp));
                     } else {
                         /* No air here, so there is no air temperature to read. The
                            dash is --drag-log's own spelling for this (T=-, when
@@ -6512,7 +6583,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                field is a parser's bad day. */
             const DragAtmosphere da = dragAtm(at, b);
             const double airK = airTemperature(da, 0.0);
-            snprintf(v, sizeof v, "%.1f K (%.1f C)", airK, airK - 273.15);
+            snprintf(v, sizeof v, "%.1f K (%.1f C)", airK, celsiusOf(airK));
             line(at.layers.empty() ? "air temp (isothermal)" : "air temp (sea level)", v);
             snprintf(v, sizeof v, "%.1f kPa", airPressure(da, 0.0) / 1000.0);
             line("air pressure", v);
@@ -6655,7 +6726,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
         const bool giant = b.surface.bands;
         if(thermalAuthored(b.surface.temperature)) {
             snprintf(v, sizeof v, "%.1f K (%.1f C)", b.surface.temperature,
-                     b.surface.temperature - 273.15);
+                     celsiusOf(b.surface.temperature));
             line(giant ? "temp at 1 bar" : "surface temp", v);
             // The gap, rather than a paragraph about it: two rows the player can read
             // against each other, and the subtraction between them. Positive is what an

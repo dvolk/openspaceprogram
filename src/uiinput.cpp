@@ -605,3 +605,17 @@ void uiText(const char *fmt, ...) {
     ImGui::TextEx(beg, end);
     registerTextRow(beg, end);
 }
+
+void uiTextDisabled(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    const char *beg, *end;
+    ImFormatStringToTempBufferV(&beg, &end, fmt, args);
+    va_end(args);
+    // TextEx takes the bytes straight (no re-formatting, so a '%' in the formatted text is
+    // just a character), under the style's own disabled colour.
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+    ImGui::TextEx(beg, end);
+    ImGui::PopStyleColor();
+    registerTextRow(beg, end);
+}

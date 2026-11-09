@@ -50,6 +50,8 @@
 
 #include <glm/glm.hpp>
 
+#include "authored.h"   // albedoAuthored: an absence never reaches the laws below
+
 /* CODATA 2018, exact-in-SI digits. Named so no call site writes the literal --
    the same reason the gravitational constant has a ticket (#707): four spellings
    of one constant, four chances to disagree. */
@@ -111,6 +113,16 @@ inline double blackbodyTemperature(double flux, double albedo) {
     if(flux <= 0.0) { return 0.0; }
     const double emit = flux * (1.0 - albedo) / 4.0;
     return std::pow(emit / kStefanBoltzmann, 0.25);
+}
+
+/* [K] The airless global-mean temperature this light and this albedo imply, answering 0.0
+   for "cannot be derived" -- an unauthored albedo, or no light in range -- so a caller can
+   never feed the sentinel into the assert above, and never prints 0 K for an absence (#727).
+   Composed on purpose (#744's lesson): the guard is part of the law, not a courtesy each
+   call site remembers. The dossier, the solar log and the surface map all ask through this. */
+inline double derivedBlackbody_K(double flux, double albedo) {
+    return (albedoAuthored(albedo) && flux > 0.0)
+        ? blackbodyTemperature(flux, albedo) : 0.0;
 }
 
 /* One sample of the star's light at one point, in universe-root (== star) axes.

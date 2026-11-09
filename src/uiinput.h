@@ -39,3 +39,10 @@ bool uiBeginCombo(const char *label, const char *preview_value,
    what ImGui::Text cost; the registry entry costs nothing until the harness arms
    it, and one string copy once it has. */
 void uiText(const char *fmt, ...) IM_FMTARGS(1);
+
+/* The same row, drawn in the disabled colour: for a readout that is deliberately quiet (a
+   cursor line, a unit label) but still has to be a row a test can read. Without this, the
+   only way to get the quiet look is ImGui::TextDisabled, which registers nothing -- and a
+   number the harness cannot see is a number that quietly stops being true (#601, #741).
+   The colour comes from the style, so this is the SAME colour ImGui itself uses. */
+void uiTextDisabled(const char *fmt, ...) IM_FMTARGS(1);

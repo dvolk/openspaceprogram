@@ -1,0 +1,49 @@
+NAME 745-the-surface-map-prices-every-pixel-it-draws
+CLAIM The Surface Map can be drawn as the ground's temperature instead of its albedo, and the picture closes on the numbers the model claims: its coldest pixel IS the night end the atlas prints, and the area-weighted mean taken in T^4 comes back to the anchor.
+KIND invariant
+# The temperature field (#724 rungs C/D) had no consumer until now, and a map is the one that
+# can be checked against arithmetic. Duna is the subject, deliberately:
+#   - its anchor is the AIR's datum (214.81 K), a number the file states and no orbit enters,
+#     so these pins are exact rather than bounded by a rail's eccentricity (the map samples the
+#     body's live rail; the atlas uses its mean orbit -- they differ on an eccentric one);
+#   - its swing (f = 0.300) is the widest of the authored ones, so a wrong ramp span, a wrong
+#     anchor or an unweighted mean is tens of kelvin off rather than invisible.
+# The load-bearing pin is temp_mean4 == anchor. An equirectangular grid is uniform in
+# (lon, lat), so its pixels are NOT equal area; averaging them unweighted put this 8 K below
+# the anchor the model provably conserves. The mean is therefore area-weighted, and that fact
+# is only visible as a number -- which is what this case is for.
+ARGS --timeout 12 --time-accel 1 --system res/systems/ksp_system.json
+ARGS --surfmap-log --surfmap-n 256 --surfmap-body Duna --surfmap-map temperature
+ARGS --sim-press 3000,0,M
+CHECK len(surfmap) >= 1
+CHECK last(surfmap)["body"] == "Duna"
+CHECK last(surfmap)["map"] == "temperature"
+CHECK last(surfmap)["level"] == "ground"
+# A temperature map has no albedo to report: its base pixels are ramp colours, so the albedo
+# columns dash rather than reporting a mean of the palette (#727).
+CHECK last(surfmap)["albedo"] is None and last(surfmap)["shaded"] is None
+# The anchor is the air's own datum, the same reading the atlas' air row prints (#625): one
+# authored number, not a second estimate.
+CHECK abs(last(surfmap)["anchor"] - 214.81) < 0.01
+# The ramp spans the model's own ends. These are the two figures the atlas prints as
+# `ground swing` for Duna, computed here by the game from the shipped file.
+CHECK abs(last(surfmap)["temp_ends"][0] - 158.98) < 0.05
+CHECK abs(last(surfmap)["temp_ends"][1] - 285.03) < 0.05
+# What the sweep actually painted: the night end is reached across a whole hemisphere, so the
+# coldest pixel sits ON it; the subsolar end is a single point, so the grid only approaches it
+# (a 256x128 grid lands within hundredths of a kelvin).
+CHECK abs(last(surfmap)["temp"][0] - last(surfmap)["temp_ends"][0]) < 0.02
+CHECK last(surfmap)["temp"][2] <= last(surfmap)["temp_ends"][1] + 1e-9
+CHECK last(surfmap)["temp"][2] > last(surfmap)["temp_ends"][1] - 0.05
+CHECK last(surfmap)["temp"][0] < last(surfmap)["temp"][1]
+CHECK last(surfmap)["temp"][1] < last(surfmap)["temp"][2]
+# THE closure: mean in T^4, written back as a temperature, is the anchor. Off by 0.03 K at
+# this resolution (the grid's own discretization of cos(lat)); 8 K off if the weighting goes.
+CHECK abs(last(surfmap)["temp_mean4"] - last(surfmap)["anchor"]) < 0.05
+# The terminator overlay still bakes under a temperature map (the box is universal), and the
+# sea belongs to the other picture.
+CHECK last(surfmap)["shade"] == "on"
+CHECK last(surfmap)["ocean"] == "off"
+FORBID temp=[0.00
+FORBID albedo=[
+FORBID error:

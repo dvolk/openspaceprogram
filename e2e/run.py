@@ -167,11 +167,19 @@ PORKCHOP_RE = re.compile(
     r"dv_min=([-\d.e+]+) m/s\s+dv_hi=([-\d.e+]+) m/s\s+"
     r"t_dep_min=([-\d.e+]+) s\s+tof_min=([-\d.e+]+) s"
 )
+# #745: the line gained a map type and level, and the temperature layer's own columns.
+# A temperature map reports no albedos at all (its base pixels are RAMP COLOURS), so those
+# columns dash and read as None; a world the model cannot price dashes the temperature
+# columns and carries a note naming which absence that is (#726/#727).
 SURFMAP_RE = re.compile(
     r"\[surfmap\]\s+t=([\d.]+)s\s+body=\"([^\"]*)\"\s+"
-    r"(\d+)x(\d+)\s+albedo=\[([\d.]+) ([\d.]+) ([\d.]+)\]\s+"
-    r"shaded=\[([\d.]+) ([\d.]+) ([\d.]+)\]\s+shade=(on|off)\s+"
+    r"(\d+)x(\d+)\s+map=(\S+)\s+level=(\S+)\s+"
+    r"albedo=(?:\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]|-)\s+"
+    r"shaded=(?:\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]|-)\s+shade=(on|off)\s+"
     r"ocean=(on|off)\s+sites=(\d+)"
+    r"(?:\s+temp=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+temp_ends=\[([-\d.]+) ([-\d.]+)\]\s+"
+    r"temp_mean4=([-\d.]+)\s+anchor=([-\d.]+))?"
+    r"(?:\s+temp=-\s+note=\"([^\"]*)\")?"
 )
 # --solar-log (src/cli.cpp's flag, printed by the kGateSolar block in tick.cpp): the
 # star as the world states it, and the ground under the hull as the world states it.
@@ -920,13 +928,26 @@ def parse_porkchop(out):
 def parse_surfmap(out):
     rows = []
     for m in SURFMAP_RE.finditer(out):
-        (t, body, w, h, ar, ag, ab, sr, sg, sb, shade, ocean, sites) = m.groups()
+        (t, body, w, h, mtype, level, ar, ag, ab, sr, sg, sb, shade, ocean,
+         sites, tmin, tmean, tmax, elo, ehi, mean4, anchor, note) = m.groups()
+        trip = lambda a, b, c: None if a is None else (float(a), float(b), float(c))
         rows.append({
             "t": float(t), "body": body,
             "w": int(w), "h": int(h),
-            "albedo": (float(ar), float(ag), float(ab)),
-            "shaded": (float(sr), float(sg), float(sb)),
+            # #745: which picture this row describes, and the level it was drawn at.
+            "map": mtype, "level": level,
+            # A dashed column is None, not a zero: under a temperature map the base
+            # pixels are ramp colours and there is no albedo to average.
+            "albedo": trip(ar, ag, ab),
+            "shaded": trip(sr, sg, sb),
             "shade": shade, "ocean": ocean, "sites": int(sites),
+            # The sweep's own temperatures: what it painted, the ends the ramp spans, the
+            # area-weighted mean taken in T^4, and the anchor it must come back to.
+            "temp": trip(tmin, tmean, tmax),
+            "temp_ends": (float(elo), float(ehi)) if elo is not None else None,
+            "temp_mean4": None if mean4 is None else float(mean4),
+            "anchor": None if anchor is None else float(anchor),
+            "note": note,
         })
     return rows
 
@@ -1238,7 +1259,7 @@ def parse_surface(out):
 UILIST_HEAD_RE = re.compile(r"^\[uilist\] loop=(\d+\.\d+)s items=(\d+)")
 UILIST_ITEM_RE = re.compile(r'^\[uilist\] window="((?:[^"\\]|\\.)*)" '
                             r'label="((?:[^"\\]|\\.)*)"'
-                            r' rect=[\d.,-]+(.*)$')
+                            r' rect=(-?\d+),(-?\d+)-(-?\d+),(-?\d+)(.*)$')
 
 
 def parse_uilist(out):
@@ -1256,8 +1277,13 @@ def parse_uilist(out):
             continue
         m = UILIST_ITEM_RE.match(line)
         if m and t is not None:
+            # The rect, as numbers: where a row sits is itself a fact worth pinning --
+            # #745's chooser asks for two dropdowns ON THE SAME LINE as the buttons, and
+            # "same line" means "same y", which is checkable and not adjectives.
             rows.append({"t": t, "window": m.group(1), "label": m.group(2),
-                         "text": " text" in m.group(3)})
+                         "rect": (int(m.group(3)), int(m.group(4)),
+                                  int(m.group(5)), int(m.group(6))),
+                         "text": " text" in m.group(7)})
     return rows
 
 

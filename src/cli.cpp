@@ -556,8 +556,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "--porkchop-bench's per-grid logging");
 
     app.add_flag("--surfmap-log", args.surfmap_log,
-                 "Print the surface map's albedo + shaded RGB means to stdout "
-                 "whenever the map is computed (M key or the window's button)");
+                 "Print the surface map's columns to stdout whenever the map is "
+                 "computed (M key or the window's button): the map type and level, "
+                 "the base picture's RGB means (dashes under a temperature map) "
+                 "and, for a temperature map, what the sweep priced");
     app.add_option("--surfmap-n", args.surfmap_n,
                    "Surface map width in pixels (height = surfmap-n / 2); "
                    "default 256 (a 256 x 128 sweep is tens of ms)");
@@ -571,6 +573,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "combo pick), so M / the Refresh button map it. Unknown "
                    "body names are an error. A test hook (issue #72): lets "
                    "e2e set the map's body without driving the combo click");
+
+    app.add_option("--surfmap-map", args.surfmap_map,
+                   "Pin the Surface Map's picture at boot: 'ground', "
+                   "'ground+ocean' or 'temperature' (the window's 'Map' combo). "
+                   "An unknown name is an error, not a silent fallback. A test "
+                   "hook in the shape of --surfmap-body: a temperature map needs "
+                   "no combo click to appear in the log (issue #745)");
 
     app.add_flag("--spin-log", args.spin_log_enabled,
                  "Print the ship's rotational state to stdout every 0.5s of "

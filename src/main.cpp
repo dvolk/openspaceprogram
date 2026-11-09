@@ -964,6 +964,24 @@ int main(int argc, char **argv)
         }
     }
 
+    /* --surfmap-map: pin which PICTURE the map draws (#745). Resolved against the table in
+       surfmap.h rather than a list typed here, so the combo's names and the CLI's names stay
+       one spelling (#636); a miss is a hard error naming what it took, like --surfmap-body
+       (#72). The level comes from the type's own default, so the CLI cannot leave the map
+       holding a level its picture does not offer. */
+    if(!args.surfmap_map.empty()) {
+        const int mt = surfMapTypeFromName(args.surfmap_map);
+        if(mt < 0) {
+            printf("error: --surfmap-map '%s' is not a map type. Options:\n", args.surfmap_map.c_str());
+            for(int i = 0; i < kMapTypeCount; i++) {
+                printf("  %s\n", kSurfMapTypes[i].name);
+            }
+            return 1;
+        }
+        game.surfmap.map_type = mt;
+        game.surfmap.level = (int)kSurfMapTypes[mt].levels[0];
+    }
+
     if(args.use_free_cam) {
         // Default free pose = the orbit camera's current view, per-axis
         // overridable by --free-cam-pos/-fwd/-up.

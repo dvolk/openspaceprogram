@@ -12,6 +12,7 @@
 struct GameArgs {
     std::string title_body;   // pin the title-screen backdrop
     std::string surfmap_body;  // pin the Surface Map's body at boot
+    std::string surfmap_map;   // pin the Surface Map's picture at boot (#745)
 
     // Settings the command line set explicitly: the CLI beats settings.json
     // field by field. A flag not listed here means the file may apply.

@@ -145,8 +145,40 @@ inline double coupledAirTemperature(double profile_T, double anchor_K, double ev
      3. the black-body the starlight and this body's albedo imply (solar.h, #687), which is
         DERIVED and every readout that uses it has to say so (#722 keeps that visible).
    0.0 means none of the three, and the caller dashes. */
+/* WHICH rung answers, so a readout can name its source without restating the order (#636:
+   the dossier, the surface map's legend and the generator each spelled the if-chain, and a
+   fourth spelling would eventually disagree with the third). The rank IS the order below. */
+enum GroundAnchorRung {
+    kAnchorNone = 0,      // nothing prices this world's ground
+    kAnchorStated = 1,    // a source states a surface temperature
+    kAnchorAirDatum = 2,  // the datum of the air sitting on that ground (#625's column)
+    kAnchorDerived = 3    // DERIVED from sunlight + albedo: an estimate, and says so (#722)
+};
+inline GroundAnchorRung groundAnchorRung(double stated_T, double air_base_T,
+                                         double derived_bb) {
+    if(thermalAuthored(stated_T)) { return kAnchorStated; }
+    if(air_base_T > 0.0) { return kAnchorAirDatum; }
+    if(derived_bb > 0.0) { return kAnchorDerived; }
+    return kAnchorNone;
+}
+
+// [K] The anchor the rung picks, or 0.0 when the rung is "nothing" -- and the caller dashes.
 inline double groundAnchor_K(double stated_T, double air_base_T, double derived_bb) {
-    if(thermalAuthored(stated_T)) { return stated_T; }
-    if(air_base_T > 0.0) { return air_base_T; }
-    return derived_bb > 0.0 ? derived_bb : 0.0;
+    switch(groundAnchorRung(stated_T, air_base_T, derived_bb)) {
+        case kAnchorStated:   return stated_T;
+        case kAnchorAirDatum:  return air_base_T;
+        case kAnchorDerived:   return derived_bb;
+        default:               return 0.0;
+    }
+}
+
+/* A readout's source word. "DERIVED" is capitalised on purpose: #722's rule is that a
+   computed figure announces itself at the readout, so it must not read like a measurement. */
+inline const char *groundAnchorRungName(GroundAnchorRung r) {
+    switch(r) {
+        case kAnchorStated:   return "stated";
+        case kAnchorAirDatum:  return "the air's datum";
+        case kAnchorDerived:   return "DERIVED from sunlight + albedo";
+        default:               return "no anchor";
+    }
 }

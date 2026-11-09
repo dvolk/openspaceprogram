@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "audio.h"
+#include "surfmap.h"   // SurfMapType / SurfLevel: the map state names the picture it holds
 #include "camera.h"   // Camera, CameraMode
 #include "cli.h"      // GameArgs
 #include "constants.h" // kMapMinScale (MapState's boot scale)
@@ -368,18 +369,53 @@ struct SurfmapState {
        same TerrainBody objects -- and dies where the bodies do (installSystem). */
     TerrainBody *body = nullptr;
     bool shade = true;    // bake the terminator (the "Sun shading" box)
-    bool sea = false;     // paint the sea (the "Ocean" box)
+    // Which picture the sweep paints, and at what level (#745). The old "Ocean"
+    // box is gone: painting the sea is a PICTURE (kMapGroundOcean), not a coat
+    // over one picture, and the two map types say so. The terminator stays a box
+    // because it reads on top of any of them.
+    int map_type = kMapGround;
+    int level = kLevelGround;
     // Overlay-only, so unlike the two above it needs no re-bake.
     bool site_labels = true;
     // The last computed map (surfmapCompute publishes it atomically).
-    // px is the unshaded albedo; shade_px is the terminator overlay (black,
-    // alpha = 1-shade) drawn over it -- toggling "Sun shading" is a free
-    // show/hide, no re-bake.
+    // px is the base for whatever type was baked (the albedo, or the temperature
+    // field); shade_px is the terminator overlay (black, alpha = 1-shade) drawn
+    // over it. A TYPE change re-bakes the base; toggling shading stays a free
+    // show/hide.
     std::vector<unsigned char> px;       // RGBA8, w*h
     std::vector<unsigned char> shade_px; // RGBA8 overlay, w*h
     int w = 0;
     int h = 0;
     std::string body_name;
+    // What the published buffers actually ARE, so switching map type re-bakes
+    // instead of showing the previous type's pixels under the new label (#745).
+    int baked_type = kMapGround;
+    /* The temperature layer's legend, published with the buffers it belongs to.
+       temp_ok=false means this world cannot be painted as a temperature at all,
+       and temp_note carries the reason -- the window shows it rather than
+       greying a box out, because "no data" and "no ground to have data about"
+       are different answers (#726's rule that an absent thing stays a state).
+       temp_lo_K / temp_hi_K are the model's OWN ends (the same two figures the
+       dossier prints), which is what the colour ramp spans; temp_min/max/mean_K
+       are what the sweep actually painted, logged so the two can be compared, and
+       temp_mean4_K is that sweep's mean taken in T^4 -- the quantity the model
+       conserves -- written back as a temperature, which is the number that must
+       land on temp_anchor_K. */
+    bool temp_ok = false;
+    double temp_anchor_K = 0.0, temp_lo_K = 0.0, temp_hi_K = 0.0;
+    double temp_min_K = 0.0, temp_max_K = 0.0, temp_mean_K = 0.0, temp_mean4_K = 0.0;
+    double temp_knob = kEvenShareUnauthored;
+    /* The star direction the published pixels were baked with. The cursor readout needs it:
+       the number beside a pixel has to be THAT pixel's number, so it is the bake's sun, not
+     the sim's sun now (the map is a snapshot and frames move underneath it -- #687's
+     "measured or recomputed, never both at different instants"). */
+    glm::dvec3 baked_sun_dir = glm::dvec3(0.0);
+    bool baked_sun_valid = false;
+    /* Three words naming WHICH absence, for the cursor row (`ground - (no swing)`): the
+       sentence lives in the log, the word lives on the line, and both are the same decision
+       (surfmap.h:TempLayer). A bare dash would merge the different absences back into one
+       (#726). */
+    std::string temp_block;
     bool valid = false;
     int rev = 0;
     // Jobs posted but not landed (the window shows "mapping ...").
@@ -394,7 +430,7 @@ struct SurfmapState {
        Game::clearEphemeralState.
 
        What survives, and why:
-         shade / sea / site_labels   the player's boxes in the window
+         shade / map_type / level / site_labels   the player's boxes in the window
          body       a pick of a body in THIS system. A same-system teardown keeps
              the very TerrainBody objects it names, so a pinned --surfmap-body or
              combo pick stays put; installSystem nulls it where the bodies die.
@@ -415,7 +451,8 @@ struct SurfmapState {
         SurfmapState fresh;
         fresh.body = body;
         fresh.shade = shade;
-        fresh.sea = sea;
+        fresh.map_type = map_type;
+        fresh.level = level;
         fresh.site_labels = site_labels;
         fresh.rev = rev;
         fresh.in_flight = in_flight;

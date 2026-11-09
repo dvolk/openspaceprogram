@@ -1,0 +1,60 @@
+NAME 745-the-surface-maps-chooser-actually-changes-the-picture
+CLAIM The Surface Map's Map combo switches what the sweep paints -- ground, ground+ocean, temperature -- each row says which picture it is, and switching re-bakes without a second keypress.
+KIND invariant
+# #745's widget half. The unit pins (tests/test_surfmap.cpp) hold the TABLE -- the names, the
+# levels, the ramp -- but a table the window reads can still be wired wrong: a combo that
+# changes state without re-baking leaves the previous picture on screen under the new label,
+# and a re-bake that never happens makes the label a lie. Both are visible only end to end.
+#
+# The three rows come from ONE game: the first two from keypresses (M maps the pinned body),
+# the third and fourth from the combo alone, which is what pins "a type change re-bakes". The
+# sea is pinned as a NUMBERS change: Kerbin's sea is blue and its land is not, so the blue
+# channel of the base-colour mean has to rise when the sea map is drawn and not otherwise.
+ARGS --system res/systems/ksp_system.json --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --timeout 14 --surfmap-log --surfmap-n 128 --surfmap-body Kerbin
+ARGS --ui-click 2000,"Windows/Surface Map"
+ARGS --sim-press 3000,0,M
+ARGS --ui-click 5200,"Surface Map/Map"
+ARGS --ui-click 5900,"##Combo_00/ground+ocean"
+ARGS --ui-click 8200,"Surface Map/Map"
+ARGS --ui-click 8900,"##Combo_00/temperature"
+ARGS --ui-list 9600
+CHECK len(surfmap) >= 4
+# Every row names its own picture and its level, so a stale buffer can never be read as a new
+# one (the log's `map=` is the published baked_type, not whatever the combo is set to).
+CHECK all(r["level"] == "ground" for r in surfmap)
+CHECK surfmap[0]["map"] == "ground" and surfmap[1]["map"] == "ground"
+CHECK surfmap[2]["map"] == "ground+ocean"
+CHECK surfmap[-1]["map"] == "temperature"
+# The sea, measured rather than admired: same body, same instant, one channel moves.
+CHECK (lambda sea, land: sea["albedo"][2] > land["albedo"][2] + 0.01)([r for r in surfmap if r["map"] == "ground+ocean"][-1], surfmap[0])
+CHECK (lambda sea, land: sea["albedo"][0] < land["albedo"][0] + 0.05)([r for r in surfmap if r["map"] == "ground+ocean"][-1], surfmap[0])
+CHECK surfmap[0]["ocean"] == "off"
+CHECK [r for r in surfmap if r["map"] == "ground+ocean"][-1]["ocean"] == "on"
+# A temperature map reports no albedo at all, and does report temperatures.
+CHECK surfmap[-1]["albedo"] is None and surfmap[-1]["temp"] is not None
+CHECK surfmap[-1]["anchor"] > 280.0 and surfmap[-1]["anchor"] < 300.0
+# The two choosers, as WIDGETS on one line with the buttons they act on. "Same line" is pinned
+# as "same y" -- an adjective in a comment would keep passing after the layout walked away.
+# The Level combo is a combo even though it holds one option today: the space is built for a
+# dropdown, and a text row there would be a second kind of widget in it.
+# Every uilist row below is FILTERED BY WINDOW: the Orbital Map has its own "Reset view", and a
+# layout pin that spans windows measures two windows at once (it did, on the first run).
+CHECK len([r for r in uilist if r["window"] == "Surface Map" and r["label"] == "Map"]) == 1
+CHECK len([r for r in uilist if r["window"] == "Surface Map" and r["label"] == "Level"]) == 1
+CHECK all(not r["text"] for r in uilist if r["window"] == "Surface Map" and r["label"] in ("Map", "Level"))
+CHECK (lambda ys: len(set(ys)) == 1 and len(ys) == 4)([r["rect"][1] for r in uilist if r["window"] == "Surface Map" and r["label"] in ("Refresh  (M)", "Reset view", "Map", "Level")])
+# The choosers are ordered left to right: Refresh, Reset view, Map, Level. A wrap would put
+# Level under Refresh and read as a different group.
+CHECK (lambda r: r["Map"] < r["Level"] and r["Reset view"] < r["Map"] and r["Refresh  (M)"] < r["Reset view"])({r["label"]: r["rect"][0] for r in uilist if r["window"] == "Surface Map" and r["label"] in ("Refresh  (M)", "Reset view", "Map", "Level")})
+# And the whole line must fit the window: pinned against the map's own width rather than a
+# pixel count, because the honest statement is "the chooser line is no wider than the picture it
+# controls". imgui does not wrap a too-wide widget -- it draws past the edge -- so "same line"
+# alone would keep passing on a layout that spills out of the window (it did).
+CHECK (lambda row, nav: row["rect"][2] <= nav["rect"][2])([r for r in uilist if r["window"] == "Surface Map" and r["label"] == "Level"][0], [r for r in uilist if r["window"] == "Surface Map" and r["label"] == "##smnav"][0])
+# No legend line: the window is a fixed aspect ratio and a row there costs the map itself. The
+# kelvin live on the cursor line instead, and the anchor's provenance is the atlas' row.
+CHECK len([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("ground:")]) == 0
+CHECK len([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")]) == 1
+FORBID error:
+FORBID FAILED
