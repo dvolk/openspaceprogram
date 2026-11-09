@@ -303,6 +303,58 @@ int main() {
         });
     }
 
+    /* #729: the SAME law on the other field, where the damage was worse. Surface::temperature
+       used to default to 0.0 and be tested `> 0.0`, so "nobody sourced this" and "0 K" were one
+       state -- and on a STAR that state was a luminosity of 0: a system that loads, prints
+       dashes everywhere and is dark. Absence is kThermalUnauthored now (authored.h), the loader
+       refuses to author it AND refuses 0.0 (0 K is a blank, not a temperature -- a file that
+       means cold can say 40 K), and the one site that would raise the sentinel to the fourth
+       power is guarded: starLuminosity asserts a non-negative input, so an unguarded hand-off
+       there is an abort rather than a dash. */
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][0]["surface"]["temperature"] = 0.0;
+        expect_reject(j, "authoring 0 K is refused", "\"surface.temperature\"=");
+    }
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][0]["surface"]["temperature"] = kThermalUnauthored;
+        expect_reject(j, "authored sentinel temperature rejected",
+                      "\"surface.temperature\"=");
+    }
+    {
+        /* The star lights the system OFF its authored temperature, so the sentinel's whole
+           hazard lives here: no temperature must mean "nothing receives insolation" (the
+           warning system.cpp prints) and NOT an assert, while an authored one must survive to a
+           real luminosity. Both directions, or the guard at system.cpp is unpinned. */
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        expect_loaded(j, "the fixture star keeps its light", [&](const System &sys) {
+            check(sys.root && sys.root->isStar(), "the fixture root is a star");
+            check(thermalAuthored(sys.root->surface.temperature)
+                  && sys.root->star_luminosity > 0.0,
+                  "an authored stellar temperature lights the system");
+            bool all_sentinel = true;
+            for(const TerrainBody *b : sys.bodies) {
+                if(b != sys.root && b->surface.temperature != kThermalUnauthored) {
+                    all_sentinel = false;
+                }
+            }
+            check(all_sentinel,
+                  "unsourced bodies read the sentinel, not 0 K (old_system states no ground T)");
+        });
+    }
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][0]["surface"].erase("temperature");
+        expect_loaded(j, "a star with no temperature loads dark, not aborted",
+                      [&](const System &sys) {
+            check(sys.root && !thermalAuthored(sys.root->surface.temperature),
+                  "the omitted key reads the sentinel");
+            check(sys.root->star_luminosity == 0.0,
+                  "and the system is dark by statement, not by crash");
+        });
+    }
+
     if(g_failures == 0) { std::printf("test_belts: OK\n"); return 0; }
     std::printf("test_belts: %d FAILURES\n", g_failures);
     return 1;

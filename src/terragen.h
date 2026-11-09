@@ -30,7 +30,8 @@
 #include "atmo.h"       // AtmoLayer: the authored altitude/temperature levels
 #include "constants.h"  // kAtmoScaleHeights
 #include "equirect.h"   // equirectLonLat / equirectPixel
-#include "groundtemp.h" // kEvenShareUnauthored: the surface swing's authored knob (#724 C)
+#include "authored.h"   // the "not authored" sentinels for albedo/temperature/even_share (#726, #729)
+#include "groundtemp.h" // the surface swing's law: the surface swing's authored knob (#724 C)
 
 typedef struct {
     float r, g, b;
@@ -285,19 +286,8 @@ inline std::shared_ptr<const Heightmap> loadHeightmap(const std::string &path) {
 }
 
 // Per-body terrain + color parameters (the optional "surface" JSON block).
-/* #726: the ONE spelling of "nobody sourced this". It used to be 0, and 0 is a
-   READING: a Bond albedo of 0.0 is a body that absorbs everything the star sends,
-   which is the hottest case in the game, not a blank. Authoring it printed the same
-   dash as omitting the key -- system.cpp takes 0.0 as a legal value, the --solar-log
-   readout keyed off `alb > 0.0` -- so "no ground here", "not authored" and "zero"
-   were one state on one comparison. A negative is the sentinel because the loader
-   already refuses negative albedo (`[0, 1)`) and solar.h already spells absence that
-   way for a star's temperature, so no authored number can collide with it.
-   NOT yet applied to Surface::temperature: a star's T feeds starLuminosity's
-   `temp_K >= 0` assert, so that field's default cannot move without a guard at the
-   composition site. Filed beside this one. */
-inline constexpr double kAlbedoUnauthored = -1.0;      // [dimensionless] not 0.0
-inline bool albedoAuthored(double a) { return a >= 0.0; }
+/* The albedo/temperature/even-share fields below share ONE spelling of "nobody sourced
+   this", which lives in src/authored.h with the argument for each. */
 
 /* [K] The datum temperature of the air sitting on this body's ground, or 0.0 when there is
    no air. Level 0 is the ground level by construction (the loader anchors it at alt 0, and
@@ -341,7 +331,8 @@ struct Surface {
        authored surface/effective temperature [K] -- for a star that is its
        photospheric T, the ONE authored number behind the whole system's
        insolation (solar.h); for a planet it is what the ground IS, read so far
-       only by the readouts. 0 = not authored (a dash, never 0 K).
+       only by the readouts. Absent is kThermalUnauthored, NOT 0.0: 0 K is a blank and, on a
+       star, a luminosity of 0 -- "the system is dark" instead of "we do not know" (#729).
        `bond_albedo` is the BOND albedo, 0..1: the share of the starlight the body
        reflects back to space. It is named against the JSON key "albedo", which is
        deliberately NOT RingParams::albedo next door -- that one is a ring's VISUAL
@@ -353,7 +344,7 @@ struct Surface {
        double too. Both are authored from a source where one exists (the vendored
        utils/rss/html sheets state an average temperature and a Bond albedo) and
        left absent where nothing states one. */
-    double temperature = 0.0;    // [K] authored; 0 = not authored (the #726 half owed)
+    double temperature = kThermalUnauthored;  // [K]; -1 = not authored, never 0 K
     double bond_albedo = kAlbedoUnauthored;   // Bond albedo [0,1); -1 = not authored
     /* #724 rung C: the EVEN SHARE of the surface swing's law -- how much of this body's own
        emission is spread evenly rather than falling where the star lights it. Authored from

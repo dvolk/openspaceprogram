@@ -6593,7 +6593,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
            ground_T would be a 1 bar depth, and its albedo and bb_T have no meaning) while
            this row reports the value, and why there is no black-body row here: a star IS
            the black body. */
-        if(b.surface.temperature > 0.0) {
+        if(thermalAuthored(b.surface.temperature)) {
             snprintf(v, sizeof v, "%.1f K", b.surface.temperature);
         } else { snprintf(v, sizeof v, "-"); }
         line("surface temp (photosphere)", v);
@@ -6627,7 +6627,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             snprintf(v, sizeof v, "%.1f K (global mean, no air)", bb);
             line("black-body temp", v);
         } else { line("black-body temp", "-"); }
-        if(b.surface.temperature > 0.0) {
+        if(thermalAuthored(b.surface.temperature)) {
             snprintf(v, sizeof v, "%.1f K (%.1f C)", b.surface.temperature,
                      b.surface.temperature - 273.15);
             line("surface temp", v);
@@ -6660,7 +6660,8 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
         const double anchor = groundAnchor_K(b.surface.temperature, airT, bb);
         if(anchor > 0.0 && evenShareAuthored(b.surface.even_share)) {
             const double f = b.surface.even_share;
-            const char *why = b.surface.temperature > 0.0 ? "stated ground temperature"
+            const char *why = thermalAuthored(b.surface.temperature)
+                                  ? "stated ground temperature"
                             : (airT > 0.0 ? "the air's datum"
                                           : "DERIVED from this sun and albedo");
             /* Two rows rather than one long one: the dossier wraps, and a wrapped

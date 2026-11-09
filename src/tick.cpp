@@ -693,7 +693,8 @@ void tick(Game &g) {
                    never see an absence. */
                 const double alb = ground_here ? over->surface.bond_albedo
                                                : kAlbedoUnauthored;
-                const double groundT = ground_here ? over->surface.temperature : 0.0;
+                const double groundT = ground_here ? over->surface.temperature
+                                                : kThermalUnauthored;
                 char alb_s[24], gt_s[24], bb_s[24], surf_s[24], swing_s[24];
                 /* bb_T needs BOTH the albedo and a live star sample: printing 0.00 K
                    for "no sun in range" is exactly the 0-pretending-to-be-a-reading

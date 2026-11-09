@@ -59,19 +59,16 @@
 #include <cassert>
 #include <cmath>
 
-/* [1] An UNAUTHORED even share: NOT 1.0. Venus states a diurnal range of about zero and
-   Mercury states nothing at all; defaulting absence into 1.0 would print the same number for
-   both and lose the difference between "the source says this ground does not swing" and "the
-   source says nothing" (#726's sentinel, #727's dash law). */
-inline constexpr double kEvenShareUnauthored = -1.0;
-inline bool evenShareAuthored(double f) { return f >= 0.0; }
+#include "authored.h"   // kEvenShareUnauthored, kThermalUnauthored + the authored?() pairs
 
-/* THERE IS NO DEFAULT, and that is deliberate. An unpriced knob could default to "no swing"
-   (which would print a constant ground under a midnight sun -- least defensible exactly where
-   the body is airless) or to "bare rock" (which would invent a swing no source stated). Both
-   are a reading the file does not have, so a consumer DASHES the row instead: the swing is a
-   claim only where a source's night/day pair priced it (#727's law; #726's state). Adding a
-   default later is a decision to argue for, not a fallback to slip in. */
+/* Absence for the knob is spelled in src/authored.h (kEvenShareUnauthored,
+   evenShareAuthored) beside the albedo and temperature sentinels, because the three share one
+   law and each has its own reason: Venus states a diurnal range of about zero while Mercury
+   states NOTHING about its swing, and any default is a reading the file does not have -- "no
+   swing" prints a constant hot ground under a midnight sun (least defensible exactly where the
+   body is airless), "bare rock" invents a swing no source stated. So there is no default here:
+   an unpriced knob DASHES the ground, and the swing is a claim only where a source's night/day
+   pair priced it (#727's law, #726's state, #729's sentinel). */
 
 /* [K] The surface temperature at one place. `cos_inc` is solar.h's floored cosine of the
    star's elevation (so [0,1]: 1 at the subsolar point, 0 anywhere in night), and
@@ -87,7 +84,8 @@ inline double groundTemperature(double anchor_K, double even_share, double cos_i
 }
 
 /* [K] Which temperature this body's ground swings around, in the corpus's own order of
-   authority; pass 0.0 for any of the three that is absent.
+   authority; pass the field's own sentinel for any rung that is absent (kThermalUnauthored for
+   a stated ground, 0.0 for a derived black-body), so a blank never reads as 0 K.
      1. a stated ground temperature (Surface::temperature);
      2. the datum of the air sitting on that ground -- after #625 that datum IS the published
         surface temperature, so reading it is the same statement under a different key and
@@ -96,7 +94,7 @@ inline double groundTemperature(double anchor_K, double even_share, double cos_i
         DERIVED and every readout that uses it has to say so (#722 keeps that visible).
    0.0 means none of the three, and the caller dashes. */
 inline double groundAnchor_K(double stated_T, double air_base_T, double derived_bb) {
-    if(stated_T > 0.0) { return stated_T; }
+    if(thermalAuthored(stated_T)) { return stated_T; }
     if(air_base_T > 0.0) { return air_base_T; }
     return derived_bb > 0.0 ? derived_bb : 0.0;
 }

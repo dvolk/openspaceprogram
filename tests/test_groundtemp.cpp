@@ -149,6 +149,13 @@ int main() {
                "with no air either, the derived black-body anchors -- and says so");
     CHECK_NEAR(groundAnchor_K(0.0, 0.0, 0.0), 0.0, 0.0,
                "and with none of the three there is no anchor, so the row dashes");
+    /* #729: this is what the game actually passes now -- the FIELD's sentinel, not a bare 0.0.
+       If thermalAuthored() were `>= 0.0` the first line below would return -1 K as if a source
+       had stated it, and a caller that forgot to check would multiply it into the law. */
+    CHECK_NEAR(groundAnchor_K(kThermalUnauthored, 291.68, 255.0), 291.68, 0.0,
+               "a sentinel ground temperature falls through to the air's datum");
+    CHECK_NEAR(groundAnchor_K(kThermalUnauthored, kThermalUnauthored, 270.33), 270.33, 0.0,
+               "a sentinel air datum falls through to the derived black-body");
 
     /* ---- the sentinel, which is the difference between Venus and Mercury ------------ */
     CHECK_TRUE(!evenShareAuthored(kEvenShareUnauthored),

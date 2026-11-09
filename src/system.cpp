@@ -313,12 +313,13 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                light the whole system at the wrong flux), and an albedo outside
                0..1 asks a body to reflect more light than falls on it. ABSENT is
                fine and means "nobody sourced this" -- and it has its OWN spelling,
-               which is not any legal value: albedo defaults to kAlbedoUnauthored
-               (-1, terragen.h #726) because 0.0 is a reading (a body that absorbs
-               everything), while temperature still defaults to 0, the half of #726
-               owed elsewhere because a star's T feeds starLuminosity's assert. That
-               is why these bounds exclude the sentinel: a file can never author its
-               own absence. The bound here is a typo filter, not physics -- 1e6 K
+               which is not any legal value: albedo defaults to kAlbedoUnauthored and
+               temperature to kThermalUnauthored (-1, authored.h #726/#729), because
+               0.0 is a READING in both cases -- a body that absorbs everything, and a
+               body at 0 K. So the bound here excludes the sentinel AND 0.0: a file can
+               never author its own absence, and a file that means "cold" can say 40 K.
+               A star authoring no temperature is not a crash and not a dark sun: it is
+               guarded at the one site that would divide by it, below. The bound here is a typo filter, not physics -- 1e6 K
                admits any plausible sun and rejects a decimal-point mistake, and the
                load-time `solar` audit line below is what catches a 10x error that
                fits inside it, because that error moves the home world's flux by
@@ -330,11 +331,12 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                              " be a number [K]");
                 }
                 const double tK = sv["temperature"].get<double>();
-                if(!std::isfinite(tK) || tK < 0.0 || tK > 1e6) {
+                if(!std::isfinite(tK) || tK <= 0.0 || tK > 1e6) {
                     throw std::runtime_error("system: '" + body->name
                                              + "': \"surface.temperature\"="
                                              + std::to_string(tK)
-                                             + " K is not in [0, 1e6]");
+                                             + " K is not in (0, 1e6]: 0 K is an "
+                                             "absence, not a temperature (omit the key)");
                 }
                 s.temperature = tK;
             }
@@ -1288,10 +1290,13 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
        printed rather than carried. A star with no authored temperature lights nothing,
        which is also said out loud: a system that loads with a dark sun and prints
        dashes everywhere is a data bug worth an evening less than finding silently. */
-    if(sys.root->isStar()) {
+    /* #729: starLuminosity asserts a non-negative temperature (its fourth power is what
+       lights the system), so the sentinel must never reach it. That is the whole guard --
+       one rung, and the dark-sun warning below still fires. */
+    if(sys.root->isStar() && thermalAuthored(sys.root->surface.temperature)) {
         sys.root->star_luminosity = starLuminosity(sys.root->radius,
                                                    sys.root->surface.temperature);
-    } else if(sys.root->surface.temperature > 0.0) {
+    } else if(!sys.root->isStar() && thermalAuthored(sys.root->surface.temperature)) {
         printf("[solar] WARNING: the frame-tree root '%s' is not a star yet authors "
                "surface.temperature; nothing in this system receives insolation.\n",
                sys.root->name.c_str());
@@ -1323,11 +1328,11 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
            catalogue. */
         const double airT = airTemperature(dragAtm(b->surface.atmosphere, *b), 0.0);
         const double groundT = b->surface.temperature;
-        if(!(airT > 0.0) && !(groundT > 0.0)) {
+        if(!(airT > 0.0) && !thermalAuthored(groundT)) {
             continue;   // nothing sourced: the readouts dash, and say nothing here
         }
         char surface_s[24], air[24], note[64];
-        if(groundT > 0.0) {
+        if(thermalAuthored(groundT)) {
             std::snprintf(surface_s, sizeof surface_s, "%11.2f K", groundT);
         } else {
             std::snprintf(surface_s, sizeof surface_s, "          - ");
