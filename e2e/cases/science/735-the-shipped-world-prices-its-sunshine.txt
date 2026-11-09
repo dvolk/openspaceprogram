@@ -52,5 +52,19 @@ CHECK re.search(r"sunlight \(parent's orbit\)\s+[\d.]+ W/m2\s*\n\s*\[atlas\]   b
 #    print from the same star, which is what makes the pair worth reading: 1361 W/m2 gives
 #    255 K at Kerbin's rail, 31 W/m2 gives 79 K at Eeloo's.
 CHECK (lambda e: float(re.search(r"sunlight \(mean orbit\)\s+([\d.]+) W/m2", e).group(1)) < 40.0 and float(re.search(r"black-body temp\s+([\d.]+) K", e).group(1)) < 90.0 and re.search(r"bond albedo\s+0\.720", e))(re.search(r"\[atlas\] Eeloo weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# 6. #742: THE SWING, ON THE FILE PLAYERS LOAD. Kerbin's two ends are not two free numbers:
+#    one knob and one anchor force both, and the anchor stays the area-mean of the radiation
+#    (src/groundtemp.h), so the three printed figures have to satisfy
+#    (day/T0)^4 + 3 (night/T0)^4 = 4. Band 0.02 on the sum: each end prints to 0.1 K.
+#    Kerbin's knob prints beside the anchor precisely so this is checkable by eye -- 0.932 is
+#    Earth's, READ from solar_system.json by KSP_DIURNAL, not retyped here (#636).
+CHECK (lambda k: abs((float(re.search(r"night to ([\d.]+) K day", k).group(1)) / float(re.search(r"ground anchor\s+([\d.]+) K", k).group(1))) ** 4 + 3.0 * (float(re.search(r"ground swing\s+([\d.]+) K night", k).group(1)) / float(re.search(r"ground anchor\s+([\d.]+) K", k).group(1))) ** 4 - 4.0) < 0.02 and re.search(r"even share 0\.932", k))(re.search(r"\[atlas\] Kerbin weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# 7. AN INVENTION AND A REFUSAL READ APART (#726, #742). Duna's pair is not a pair -- the
+#    wiki's max IS its mean -- so its 0.300 is ours, stated as ours in the generator's print.
+#    Moho's analogue is Mercury, whose own swing the corpus REFUSED, and the table's borrower
+#    dashes rather than laundering that refusal. A table that filled every row would have
+#    hidden both facts.
+CHECK (lambda d: re.search(r"ground swing\s+[\d.]+ K night to [\d.]+ K day", d) and re.search(r"even share 0\.300", d))(re.search(r"\[atlas\] Duna weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK (lambda m: re.search(r"ground swing\s+-", m) and re.search(r"black-body temp\s+[\d.]+ K", m))(re.search(r"\[atlas\] Moho weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 FORBID bond albedo 0.000
 FORBID error:

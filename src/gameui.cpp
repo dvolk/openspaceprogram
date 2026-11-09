@@ -6627,10 +6627,17 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             snprintf(v, sizeof v, "%.1f K (global mean, no air)", bb);
             line("black-body temp", v);
         } else { line("black-body temp", "-"); }
+        /* #738: a banded giant has no surface, and the corpus never claims one -- the row it
+           authors is "Temperature at 1 bar" (utils/rss/html, and #689's note that this IS our
+           datum level). So the giant's rows say LEVEL and the difference says ARITHMETIC.
+           Calling the gap a "greenhouse" on a giant is a mechanism claim the data does not
+           support: Jupiter radiates ~1.6x what it absorbs, which is internal heat, and the
+           number this row prints for it is not a greenhouse at all. */
+        const bool giant = b.surface.bands;
         if(thermalAuthored(b.surface.temperature)) {
             snprintf(v, sizeof v, "%.1f K (%.1f C)", b.surface.temperature,
                      b.surface.temperature - 273.15);
-            line("surface temp", v);
+            line(giant ? "temp at 1 bar" : "surface temp", v);
             // The gap, rather than a paragraph about it: two rows the player can read
             // against each other, and the subtraction between them. Positive is what an
             // atmosphere is worth on this world (Earth +33 K, the number the RSS sheets
@@ -6640,13 +6647,14 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             // exactly that question -- so the row reports a difference instead of
             // pretending a greenhouse exists in the sim.
             if(bb > 0.0) {
-                snprintf(v, sizeof v, "%+.1f K (surface - airless mean)",
-                         b.surface.temperature - bb);
-                line("greenhouse gap", v);
-            } else { line("greenhouse gap", "-"); }
+                snprintf(v, sizeof v, "%+.1f K (%s)",
+                         b.surface.temperature - bb,
+                         giant ? "1 bar - airless mean" : "surface - airless mean");
+                line(giant ? "level - airless mean" : "greenhouse gap", v);
+            } else { line(giant ? "level - airless mean" : "greenhouse gap", "-"); }
         } else {
-            line("surface temp", "-");
-            line("greenhouse gap", "-");
+            line(giant ? "temp at 1 bar" : "surface temp", "-");
+            line(giant ? "level - airless mean" : "greenhouse gap", "-");
         }
         /* #724 rung C: the SWING this file authored, as the two ends a player can read
            against the source's own night/day pair. They are not two free numbers: one knob
@@ -6671,11 +6679,11 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             snprintf(v, sizeof v, "%.1f K night to %.1f K day",
                      groundTemperature(anchor, f, 0.0),
                      groundTemperature(anchor, f, 1.0));
-            line("ground swing", v);
+            line(giant ? "level swing" : "ground swing", v);
             snprintf(v, sizeof v, "%.1f K (%s, even share %.3f)", anchor, why, f);
-            line("ground anchor", v);
+            line(giant ? "level anchor" : "ground anchor", v);
         } else {
-            line("ground swing", "-");
+            line(giant ? "level swing" : "ground swing", "-");
         }
     }
 

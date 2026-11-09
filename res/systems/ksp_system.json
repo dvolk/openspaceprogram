@@ -419,7 +419,8 @@
           "freq": 10,
           "drift": 1e-05
         },
-        "albedo": 0.294
+        "albedo": 0.294,
+        "even_share": 0.9323431643529773
       },
       "inertial": {
         "orb_ang_speed": 6.826918657082229e-07,
@@ -467,7 +468,8 @@
             ]
           ]
         ],
-        "albedo": 0.11
+        "albedo": 0.11,
+        "even_share": 0.015251705420212182
       },
       "inertial": {
         "orb_ang_speed": 4.520797578987212e-05,
@@ -617,7 +619,8 @@
           "freq": 10,
           "drift": 1e-05
         },
-        "albedo": 0.294
+        "albedo": 0.294,
+        "even_share": 0.9323431643529773
       },
       "inertial": {
         "pos": [
@@ -715,7 +718,8 @@
           ],
           "height": 50000.0
         },
-        "albedo": 0.25
+        "albedo": 0.25,
+        "even_share": 0.3
       },
       "inertial": {
         "orb_ang_speed": 3.628668876941674e-07,
@@ -764,7 +768,8 @@
             ]
           ]
         ],
-        "albedo": 0.11
+        "albedo": 0.11,
+        "even_share": 0.015251705420212182
       },
       "inertial": {
         "orb_ang_speed": 9.590013900271049e-05,
@@ -812,7 +817,8 @@
             ]
           ]
         ],
-        "albedo": 0.11
+        "albedo": 0.11,
+        "even_share": 0.015251705420212182
       },
       "inertial": {
         "orb_ang_speed": 1.3119197047763653e-07,
@@ -1038,7 +1044,8 @@
           "freq": 10,
           "drift": 1e-05
         },
-        "albedo": 0.294
+        "albedo": 0.294,
+        "even_share": 0.9323431643529773
       },
       "inertial": {
         "orb_ang_speed": 0.00011859318070968057,
@@ -1128,7 +1135,8 @@
             ]
           ]
         ],
-        "albedo": 0.11
+        "albedo": 0.11,
+        "even_share": 0.015251705420212182
       },
       "inertial": {
         "orb_ang_speed": 2.9648015378856705e-05,

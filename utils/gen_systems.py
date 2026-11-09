@@ -887,6 +887,7 @@ def author_star_temperature(obj):
 #                    geometric -> Bond needs a phase integral nothing in the corpus
 #                    gives. Filed rather than guessed (#736).
 DASH = object()   # a named sentinel, NOT a bare None: the None inside ("Moon", None)
+FITTED = object()  # KSP_DIURNAL: this body's swing came from its own source's pair
                   # means "take the analogue's value", and one value meaning both is how
                   # a body silently stops being priced
 KSP_ALBEDOS = {
@@ -921,6 +922,22 @@ def solar_reference_albedos():
         if a is not None:
             out[b["name"]] = a
     return out
+
+def solar_reference_even_shares():
+    """{name: authored even share} from the reference system file. Read rather than retyped:
+    Earth's 0.9323 is fitted from a stated pair by make_solar_system.py, and a second copy of
+    that number here is #636's one-constant law and a drift waiting to happen."""
+    import json as _json
+    path = os.path.join(ROOT, "res", "systems", "solar_system.json")
+    with open(path) as f:
+        obj = _json.load(f)
+    out = {}
+    for b in obj["bodies"]:
+        f_sh = (b.get("surface") or {}).get("even_share")
+        if f_sh is not None:
+            out[b["name"]] = f_sh
+    return out
+
 
 def mean_orbit_to_star(body, by_name):
     """The MEAN orbit of the nearest ancestor of `body` that orbits the star, the way
@@ -1185,6 +1202,97 @@ def author_ksp_diurnal(obj):
           % (len(rows), n_authored, len(rows) - n_authored, len(unpaired)))
 
 
+# #742: the swing for the bodies this catalogue's own source cannot price. The wiki's
+# "night/day" pair for Kerbin, Duna and Laythe is really (record low, average) -- its `max`
+# IS its mean -- so there is no pair to fit and #742 is the ticket saying so. The user has
+# said inventing numbers is fine at this stage, so this table INVENTS THEM OUT LOUD: each row
+# names the analogue it borrows from, and the value is READ from solar_system.json (Earth
+# 0.9323, Moon 0.0153) rather than typed here, so the two files cannot drift (#636).
+# DASH is a decision, not a hole: Jool has no ground to swing (#738), the icy moons and the
+# small rocks state no pair and have no analogue the corpus prices.
+# FITTED means the wiki's own pair already priced this body (Eve, the one genuine pair).
+KSP_DIURNAL = {
+    "Moho":   ("Mercury", None),  # airless and hot, but Mercury's own swing is refused (#742)
+    "Eve":    FITTED,             # 160-420 K: the one real night/day pair in this catalogue
+    "Gilly":  DASH,               # no air, no albedo: nothing to anchor a swing on
+    "Kerbin": ("Earth", None),    # Earth-shaped by construction, like its albedo (#735)
+    "Mun":    ("Moon", None),     # airless rock: the Moon's redistribution, as for its albedo
+    "Minmus": DASH,               # icy, unpriced both ways (#736)
+    "Shay":   ("Earth", None),    # air, sea and clouds: an Earth-shaped moon
+    "Duna":   ("Mars", 0.30),     # INVENTED: Mars's pair (184-242 K at a lander) priced ~0.31
+                                  # and REFUSED for Mars itself; 0.30 is our authoring, stated
+    "Ike":    ("Moon", None),
+    "Dres":   ("Moon", None),     # belt dwarf, the same bare-rock bucket as its albedo
+    "Jool":   DASH,               # a banded giant has no ground: #738's label question
+    "Laythe": ("Earth", None),    # air and sea; its wiki temperatures do not fit (#738)
+    "Vall":   DASH,               # icy, unpriced both ways (#736)
+    "Tylo":   ("Moon", None),
+    "Bop":    DASH,
+    "Pol":    DASH,
+    "Eeloo":  ("Pluto", None),    # Pluto's own swing is unauthored, so this dashes too
+}
+
+
+def author_ksp_diurnal_analogy(obj):
+    """#742: price the swing for the bodies the wiki cannot, by named analogy -- the same
+    shape as KSP_ALBEDOS for #735, and for the same reason: the atlas' dash is a player-facing
+    thing, so a body either takes an analogue's number or is NAMED as declining.
+
+    Two guards keep this honest. An analogue with no authored swing (Mercury, Mars, Pluto --
+    their pairs were refused) makes the borrower dash rather than invent, so the table cannot
+    quietly launder a refusal; only an explicit override (Duna's 0.30) writes a number nobody
+    sourced, and it prints the word INVENTED. And a body with no anchor to swing -- no stated
+    ground, no air datum, no albedo to derive a black-body from -- is refused here exactly as
+    the fitted pass refuses it, because a knob with no anchor is a shape with no size."""
+    by_name = {b["name"]: b for b in obj["bodies"]}
+    star = next(b for b in obj["bodies"] if b.get("type") == "star")
+    sT = (star.get("surface") or {}).get("temperature") or 0.0
+    lum = 4.0 * math.pi * star["radius"] ** 2 * SIGMA_SB * sT ** 4
+    ref = solar_reference_even_shares()
+    named = {b["name"] for b in obj["bodies"] if b.get("type") != "star"}
+    assert named == set(KSP_DIURNAL), (
+        "KSP_DIURNAL and this system disagree: only in the system %s, only in the table %s"
+        % (sorted(named - set(KSP_DIURNAL)), sorted(set(KSP_DIURNAL) - named)))
+    for name, spec in KSP_DIURNAL.items():
+        body = by_name[name]
+        surf = body.setdefault("surface", {})
+        if spec is FITTED:
+            assert surf.get("even_share") is not None, (
+                "%s is marked FITTED but author_ksp_diurnal() authored no swing" % name)
+            continue
+        if spec is DASH:
+            print('  diurnal   %-8s dash  (named decline: no analogue, or no ground to swing)'
+                  % name)
+            continue
+        analogue, override = spec
+        f = override if override is not None else ref.get(analogue)
+        if f is None:
+            print('  diurnal   %-8s dash  (%s states no swing either -- the analogue refused, '
+                  'so neither does this)' % (name, analogue))
+            continue
+        assert 0.0 <= f <= 1.0, "%s: even share %g is not in [0,1]" % (name, f)
+        a_star, rail = mean_orbit_to_star(body, by_name)
+        flux = (lum / (4.0 * math.pi * a_star * a_star)) if a_star else 0.0
+        albedo = surf.get("albedo")
+        derived = (blackbody_temperature(flux, albedo)
+                   if (flux and albedo is not None) else 0.0)
+        T0, why = ground_anchor(body, derived)
+        if T0 is None:
+            print('  diurnal   %-8s dash  (analogy says f=%.4f but %s: nothing to anchor on)'
+                  % (name, f, why))
+            continue
+        assert surf.get("even_share") is None, (
+            "%s: the fitted pass already authored a swing; KSP_DIURNAL must not overwrite it" % name)
+        surf["even_share"] = f
+        at = surf.get("atmosphere") or {}
+        note = even_share_air_note(name, f, at.get("sea_level_pressure"))
+        print('  diurnal   %-8s f=%.4f  anchor %7.2f K (%s)  %s%s'
+              % (name, f, T0, why,
+                 ('INVENTED, stated as ours' if override is not None
+                  else 'by analogy to %s' % analogue),
+                 ('\n%20s%s' % ('', note)) if note else ''))
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Generate res/systems/{old,ksp}_system.json, or --check "
@@ -1234,6 +1342,7 @@ def main():
     author_ksp_air_thermal(ksp)
     # ... and the ground's swing, which reads the airs the line above just authored.
     author_ksp_diurnal(ksp)
+    author_ksp_diurnal_analogy(ksp)
     if bad:
         for m in bad:
             print('DRIFT   body gravity: ' + m)
