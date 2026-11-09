@@ -46,7 +46,11 @@ static int g_checks = 0;
     } while (0)
 
 /* What the generators authored, and the pair each was fitted to. If a generator re-fits,
-   these move and this test asks whether anyone argued for it.
+   these move and this test asks whether anyone argued for it. Three layers, three failure
+   modes: `--check` catches a committed JSON drifting from its generator; this file catches
+   either SPELLING of the law (python's and C++'s) moving under the other; the e2e case
+   science/724 catches the readout -- the dossier and the solar log -- rendering something
+   other than what these numbers imply.
      Earth  earthfact.html  "Diurnal temperature range: 283 K to 293 K", anchor = stated avg
      Moon   moonfact.html   "95 K to 390 K (equator)",       anchor = DERIVED black-body
      Eve    ksp_bodies.csv  night/day 160.02 - 420.00 K,     anchor = the air's datum
@@ -151,8 +155,12 @@ int main() {
                "absence is not a number, and not 1.0 either");
     CHECK_TRUE(evenShareAuthored(0.0), "a bare-rock f of exactly 0 is authored data");
     CHECK_TRUE(evenShareAuthored(1.0), "Venus's stated no-range is authored data");
-    CHECK_NEAR(evenShareOrDefault(kEvenShareUnauthored), 1.0, 0.0,
-               "an unauthored knob behaves like no swing while still printing a dash");
+    /* And NO default: the consumers dash rather than choosing a fallback. An earlier
+       evenShareOrDefault() returned 1.0 for absence, which printed a constant hot ground
+       under a midnight sun -- least defensible exactly where the body is airless -- and made
+       Mercury look like Venus. There is no pin for a default, because there is no default:
+       a body without a knob has no underfoot reading, which is what the readout tests and
+       the '#' columns in --solar-log show. */
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

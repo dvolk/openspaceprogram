@@ -18,7 +18,7 @@ from atmo_units import (resolve_layer_heights, anchor_sea_level_pressure,
 # tests/test_groundtemp.cpp pins the two against the same numbers -- the atmo.h /
 # atmo_units.py arrangement, which is the only way two spellings of one law can be caught
 # drifting (#636).
-from ground_model import (parse_diurnal_pair, fit_even_share, night_T, day_T,
+from ground_model import (parse_diurnal_pair, fit_even_share, ground_anchor,
                           even_share_air_note,
                           EVEN_SHARE_NO_SWING, DAY_PREDICTION_GATE)
 
@@ -1886,30 +1886,6 @@ SOLAR_SAT_ALBEDOS = {
     'Charon': ('plutofact.html', 'Charon (P1)'),
 }
 
-def ground_anchor(b, flux, albedo):
-    """[(K or None, note)] The temperature the ground model swings around, in the corpus's
-    own order of authority: a stated ground temperature; else the datum of the air sitting
-    on that ground (after #625 that datum IS the published surface temperature, so it is the
-    same statement under a different key, never a new number); else the black-body the
-    starlight and this body's albedo imply, which is DERIVED and says so (#722's open
-    question, kept visible rather than quietly resolved). None means nothing anchors this
-    body, so it gets no swing and the dossier dashes the row."""
-    s = b.get('surface') or {}
-    T = s.get('temperature')
-    if T:
-        return T, 'stated ground temperature'
-    at = s.get('atmosphere') or {}
-    lay = at.get('layers')
-    if lay and lay[0].get('T'):
-        return lay[0]['T'], "the air's own datum (the level the air sits on)"
-    if at.get('temperature'):
-        return at['temperature'], "the air's own datum (the level the air sits on)"
-    if flux and albedo is not None:
-        return blackbody_temperature(flux, albedo), \
-            'DERIVED black-body: nobody states a ground temperature here (#722)'
-    return None, 'nothing to anchor on: no ground reading, no air, no albedo'
-
-
 def author_diurnal(bodies, by, sun, sheets, sat_sheet, verbose=True):
     """#724 rung C: author the surface model's ONE knob from the diurnal pair the corpus
     states, and print the verdict for every body -- refusals and their residuals included.
@@ -1936,7 +1912,11 @@ def author_diurnal(bodies, by, sun, sheets, sat_sheet, verbose=True):
         star, a = star_rail(b, by)
         flux = flux_at_rail(star, a, T_sun) if star else None
         albedo = (b.get('surface') or {}).get('albedo')
-        T0, why = ground_anchor(b, flux, albedo)
+        # The derived black-body, from the SAME pinned spelling the surface guard above
+        # uses -- ground_anchor() takes it as an argument rather than computing its own.
+        derived = (blackbody_temperature(flux, albedo)
+                   if (flux and albedo is not None) else 0.0)
+        T0, why = ground_anchor(b, derived)
         if T0 is None:
             if verbose:
                 rows.append('%-9s diurnal -   pair %.1f-%.1f K but %s'

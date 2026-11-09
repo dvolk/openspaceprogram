@@ -34,7 +34,7 @@ from atmo_units import (resolve_layer_heights, anchor_sea_level_pressure,
                         blackbody_temperature, check_constants_match_src)
 # #724 rung C: the surface swing's law, shared with make_solar_system.py so the shipped
 # system and the catalogue cannot grow two different weathers (#636).
-from ground_model import fit_even_share, even_share_air_note
+from ground_model import fit_even_share, even_share_air_note, ground_anchor
 
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
@@ -1142,7 +1142,7 @@ def author_ksp_diurnal(obj):
     sT = (star.get("surface") or {}).get("temperature") or 0.0
     assert sT > 0.0, "author_ksp_diurnal() must run after author_star_temperature()"
     lum = 4.0 * math.pi * star["radius"] ** 2 * SIGMA_SB * sT ** 4
-    rows, unpaired = [], []
+    rows, unpaired, n_authored = [], [], 0
     for body in obj["bodies"]:
         name = body["name"]
         if body.get("type") == "star":
@@ -1154,20 +1154,14 @@ def author_ksp_diurnal(obj):
         lo, hi = rng[1], rng[2]
         a_star, rail = mean_orbit_to_star(body, by_name)
         flux = (lum / (4.0 * math.pi * a_star * a_star)) if a_star else None
-        surf = body.get("surface") or {}
-        albedo = surf.get("albedo")
-        if surf.get("temperature"):
-            T0, why = surf["temperature"], "stated ground temperature"
-        else:
-            at = surf.get("atmosphere") or {}
-            lay = at.get("layers")
-            if lay and lay[0].get("T"):
-                T0, why = lay[0]["T"], "the air's own datum (the level the air sits on)"
-            elif flux and albedo is not None:
-                T0, why = blackbody_temperature(flux, albedo), \
-                    "DERIVED black-body: this world states no ground temperature (#722)"
-            else:
-                T0, why = None, "nothing to anchor on"
+        albedo = (body.get("surface") or {}).get("albedo")
+        # ground_anchor() is the ONE anchor rule, shared with make_solar_system.py and
+        # spelled again (identically) in src/groundtemp.h for the game. The derived
+        # black-body goes in as an argument: this generator already has a pinned spelling
+        # of that law, and a module minting a fourth is #636's complaint.
+        derived = (blackbody_temperature(flux, albedo)
+                   if (flux and albedo is not None) else 0.0)
+        T0, why = ground_anchor(body, derived)
         if T0 is None:
             rows.append('  diurnal   %-8s pair %8.2f - %8.2f K, but %s'
                         % (name, lo, hi, why))
@@ -1178,6 +1172,7 @@ def author_ksp_diurnal(obj):
                         % (name, T0, why, '', note))
             continue
         body.setdefault("surface", {})["even_share"] = f
+        n_authored += 1
         at = (body.get("surface") or {}).get("atmosphere") or {}
         air_note = even_share_air_note(name, f, at.get("sea_level_pressure"))
         rows.append('  diurnal   %-8s f=%.4f  anchor %7.2f K (%s)\n%20s%s%s'
@@ -1185,10 +1180,9 @@ def author_ksp_diurnal(obj):
                        ('\n%20s%s' % ('', air_note)) if air_note else ''))
     for r in rows:
         print(r)
-    n_fit = sum(1 for r in rows if ' f=' in r)
     print('  diurnal   %d bodies state a night/day pair: %d authored a swing, %d refused; '
           '%d state none, and the dossier dashes their row'
-          % (len(rows), n_fit, len(rows) - n_fit, len(unpaired)))
+          % (len(rows), n_authored, len(rows) - n_authored, len(unpaired)))
 
 
 def main():

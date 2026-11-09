@@ -184,6 +184,11 @@ SOLAR_RE = re.compile(
     r"\[solar\]\s+t=([\d.]+)s\s+star=\"([^\"]*)\"\s+dist=([-\d.e+]+|-) m\s+"
     r"flux=([-\d.e+]+|-) W/m2\s+elev=([-\d.]+|-) deg\s+flat=([-\d.e+]+|-) W/m2\s+"
     r"body=\"([^\"]*)\"\s+albedo=([-\d.]+|-)\s+ground_T=([-\d.]+|-) K\s+bb_T=([-\d.]+|-) K"
+    # #724 rung C: the ground UNDER THIS HULL right now, and the knob that prices the swing.
+    # Absent is a dash rather than a number: an unpriced knob has no default (groundtemp.h),
+    # so a body whose source states no night/day pair prints '-' and a CHECK must ask for
+    # None, exactly like the albedo column above.
+    r"\s+underfoot_T=([-\d.]+|-) K\s+swing=([-\d.]+|-)"
 )
 # --slew-log (vehicle.cpp slew_log): the attitude target the autopilot steers
 # toward, in the ship's own frame. Pairs with --plane-log's n_orb: a prograde
@@ -928,13 +933,15 @@ def parse_solar(out):
     # in range), and a CHECK that wants "absent" must ask for None, not for 0.0.
     rows = []
     for m in SOLAR_RE.finditer(out):
-        (t, star, dist, flux, elev, flat, body, albedo, ground_t, bb_t) = m.groups()
+        (t, star, dist, flux, elev, flat, body, albedo, ground_t, bb_t,
+         underfoot_t, swing) = m.groups()
         num = lambda s: None if s == "-" else float(s)
         rows.append({
             "t": float(t), "star": star, "body": body,
             "dist": num(dist), "flux": num(flux), "elev": num(elev),
             "flat": num(flat), "albedo": num(albedo),
             "ground_T": num(ground_t), "bb_T": num(bb_t),
+            "underfoot_T": num(underfoot_t), "swing": num(swing),
         })
     return rows
 

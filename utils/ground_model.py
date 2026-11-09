@@ -19,13 +19,18 @@ WHY THE ANCHOR IS EXACT RATHER THAN A FUDGE TERM. Averaging T^4 over the sphere:
 
     <T^4> = T0^4 * ( f + (1 - f) * 4 * <cos_inc> ),      <cos_inc> = 1/4 exactly
 
-because the lit hemisphere's integral of cos(theta) over the whole sphere's 4 pi is pi/4.
-So <T^4> = T0^4 for EVERY f: the ground radiates exactly the power the star delivers,
-whatever the swing, and no fudge constant is anywhere in sight. The energy anchor is what
-"the global mean stays exactly T0" has to mean -- the mean of T, unlike the mean of T^4, is
-not conserved by any choice of f, and the difference is the whole reason a black-body
-temperature and a weather-report temperature are different numbers (Earth: 255 K against
-288 K, the 33 K the game does not model).
+because the lit hemisphere's integral of cos over solid angle is pi, and the sphere's whole
+solid angle is 4 pi, so the mean is pi / 4 pi = 1/4. Hence <T^4> = T0^4 for EVERY f: the
+ground radiates exactly the power the star delivers, whatever the swing, and no fudge
+constant is anywhere in sight.
+
+WHICH MEAN IS ANCHORED, because the two are not the same number. The conserved one is the
+RADIATION mean, <T^4>^(1/4). The arithmetic mean of T is not conserved: measured here at the
+knobs this corpus actually authors it sits 0.07 % below (Earth, f = 0.932 -- 0.2 K), 35 %
+below at the Moon's f = 0.015, and 43 % below at f = 0 (0.566 T0). Do not confuse that with
+the gap the dossier prints between a body's airless black-body and its authored ground --
+Earth's 255 K against 288 K, 33 K -- which is a POWER imbalance the model does not have (the
+greenhouse, #728/#738). This swing neither explains that gap nor closes it.
 
 ONE KNOB, SO A STATED PAIR IS A TEST AND NOT A FIT. With a = (T_night/T0)^4, the day end is
 forced to (T_day/T0)^4 = 4 - 3a. So a corpus that states BOTH ends of a swing is giving an
@@ -74,6 +79,36 @@ def even_share_air_note(name, f, sea_level_pa):
     return ("NOTE %s: this pair implies an almost UNredistributed surface (f = %.3f) under "
             "a %.0f kPa sky -- the pair and this body's own air argue"
             % (name, f, sea_level_pa / 1000.0))
+
+
+def ground_anchor(body, derived_bb):
+    """[(K or None, note)] The temperature a body's ground swings around, in the corpus's own
+    order of authority -- spelled ONCE, because both generators and the game have to agree on
+    it and #636 is the rule that says a number gets one spelling:
+      1. a stated ground temperature (surface.temperature);
+      2. the datum of the air sitting on that ground. After #625 that datum IS the published
+         surface temperature, so reading it is the same statement under a different key and
+         never a new number -- and it is how most of the shipped system is anchored, since
+         the catalogue states airs and not grounds;
+      3. the black-body the starlight and this body's albedo imply, which is DERIVED and
+         every readout that uses it has to say so (#722 keeps that visible).
+    `derived_bb` is passed in rather than computed here: each caller already has a pinned
+    spelling of the black-body law (atmo_units.py, and solar.h on the C++ side) and this
+    module must not mint a fourth one (#636). 0.0 or None means "no derived anchor".
+    None result means nothing anchors this body: no swing, and the dossier dashes the row.
+    src/groundtemp.h:groundAnchor_K() is the same rule for the game; test_groundtemp.cpp
+    pins its rungs."""
+    s = body.get('surface') or {}
+    if s.get('temperature'):
+        return s['temperature'], 'stated ground temperature'
+    at = s.get('atmosphere') or {}
+    lay = at.get('layers')
+    if lay and lay[0].get('T'):
+        return lay[0]['T'], "the air's own datum (the level the air sits on)"
+    if derived_bb:
+        return derived_bb, (
+            'DERIVED black-body: nobody states a ground temperature here (#722)')
+    return None, 'nothing to anchor on: no ground reading, no air, no albedo'
 
 
 def night_T(T0, f):

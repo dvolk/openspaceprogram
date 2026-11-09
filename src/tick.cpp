@@ -713,22 +713,27 @@ void tick(Game &g) {
                     snprintf(gt_s, sizeof gt_s, "-");
                 }
                 /* The GROUND under this hull as this star lights it at this instant (#724
-                   rung C): the body's ANCHOR -- a stated ground temperature, else the datum
-                   of the air on that ground, else the derived black-body, in that order
-                   (groundtemp.h spells it once) -- swung by the cosine this row already
-                   prints. The knob prints too: an em-dash means "this world's source states
-                   no night/day pair", which is NOT the same claim as Venus's authored 1.000
-                   ("the range is about zero"), and collapsing them is #726's complaint.
+                   rung C, and named UNDERFOOT because it is this hull's place and instant,
+                   unlike the body's one authored reading in ground_T): the body's ANCHOR -- a
+                   stated ground temperature, else the datum of the air on that ground, else
+                   the derived black-body, in that order (groundtemp.h spells it once) -- swung
+                   by the cosine this row already prints. Both columns dash unless the world
+                   has a PRICED knob: there is no default swing (groundtemp.h explains why a
+                   fallback there would print a hot ground at midnight, or invent a swing no
+                   source stated), and the dash is the honest answer. Where a swing IS authored
+                   the knob prints beside it, so the two ends are checkable arithmetic: Venus's
+                   1.000 is a STATED no-range, and an em-dash means the source said nothing --
+                   NOT the same claim, which is #726's whole complaint.
                    Note the air itself still answers from its own profile: this is the ground,
                    not what a hull flies through (groundtemp.h says why). */
                 const double anchor = ground_here
                     ? groundAnchor_K(groundT, airDatum_K(over->surface.atmosphere), bb_here)
                     : 0.0;
-                if(anchor > 0.0 && sky.valid) {
+                if(anchor > 0.0 && sky.valid
+                   && evenShareAuthored(over->surface.even_share)) {
                     snprintf(surf_s, sizeof surf_s, "%.2f",
-                             groundTemperature(anchor,
-                                 evenShareOrDefault(over->surface.even_share),
-                                 sky.cos_inc));
+                             groundTemperature(anchor, over->surface.even_share,
+                                               sky.cos_inc));
                 } else {
                     snprintf(surf_s, sizeof surf_s, "-");
                 }
@@ -739,7 +744,7 @@ void tick(Game &g) {
                 }
                 printf("[solar] t=%.1fs star=\"%s\" dist=%s m flux=%s W/m2 "
                        "elev=%s deg flat=%s W/m2 body=\"%s\" albedo=%s "
-                       "ground_T=%s K bb_T=%s K surf_T=%s K swing=%s\n",
+                       "ground_T=%s K bb_T=%s K underfoot_T=%s K swing=%s\n",
                        g.time,
                        g.sun ? g.sun->name.c_str() : "(none)",
                        dist_s, flux_s, elev_s, flat_s,

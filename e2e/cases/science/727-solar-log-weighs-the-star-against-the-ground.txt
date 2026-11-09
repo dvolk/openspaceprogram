@@ -36,6 +36,14 @@ CHECK all(700.0 < d["ground_T"] < 760.0 for d in solar)
 CHECK all(200.0 < d["bb_T"] < 250.0 for d in solar)
 CHECK all(abs(d["bb_T"] - (d["flux"] * (1.0 - d["albedo"]) / (4.0 * 5.670374419e-8)) ** 0.25) < 0.05 for d in solar)
 CHECK all(d["ground_T"] > 2.5 * d["bb_T"] for d in solar)
+# #724 rung C: the ground UNDER THIS HULL. Venus's page states a diurnal range of about
+# zero, so its knob is an AUTHORED 1.000 and the ground under the hull equals the body's one
+# authored reading at every instant -- even this one, with the sun 75 degrees up and 2537
+# W/m2 landing flat. That is the corpus being obeyed rather than the model having an opinion,
+# and it is the difference between Venus (stated no swing) and Mercury (no statement).
+CHECK all(d["swing"] is not None and abs(d["swing"] - 1.0) < 1e-3 for d in solar)
+CHECK all(abs(d["underfoot_T"] - d["ground_T"]) < 0.01 for d in solar)
+CHECK all(d["underfoot_T"] is not None and 736.0 < d["underfoot_T"] < 738.0 for d in solar)
 # Absent prints a dash; a 0 here would be the #726 failure mode.
 FORBID albedo=-
 FORBID ground_T=-

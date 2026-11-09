@@ -304,6 +304,12 @@ inline bool albedoAuthored(double a) { return a >= 0.0; }
    #625 put that level's base_T back on a published temperature), so this is the same
    statement Surface::temperature makes, read off the air instead of the ground. The order of
    authority between the two is groundtemp.h's groundAnchor_K(), spelled once. */
+/* NOTE for the next rung (letting the air follow the ground): the number this returns is
+   BOTH the ground model's anchor and the air's live temperature at the ground level. On most
+   of the shipped system they are the same authored number today, so an air that tracks the
+   ground while the ground is anchored on the air is a loop waiting to be written. Keep the
+   anchor resolution (groundtemp.h:groundAnchor_K) on AUTHORED numbers, and give the live air
+   its own path. */
 inline double airDatum_K(const AtmosphereParams &at) {
     if(!at.enabled || at.layers.empty()) { return 0.0; }
     return at.layers.front().base_T;

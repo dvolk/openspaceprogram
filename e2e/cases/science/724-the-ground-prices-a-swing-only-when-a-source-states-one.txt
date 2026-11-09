@@ -2,6 +2,7 @@ CLAIM A world's dossier now carries its SWING -- the ground's coldest and hottes
 
 KIND invariant
 ARGS --system res/systems/solar_system.json --timeout 6 --atlas-dump 4000
+ARGS --solar-log --startship v,res/ships/skiff_trim.json,Mars,flying-trim
 
 # Earth: the page states "Diurnal temperature range: 283 K to 293 K" and an average of
 # 288 K. The model is fitted on the NIGHT end, so 283.0 must come back exactly, and the day
@@ -42,3 +43,13 @@ CHECK len(re.findall(r"ground swing\s+([\d.]+) K night to", out)) >= 3
 # would be bare rock; both are numbers this file declines to invent (#727).
 FORBID ground swing\s+0\.0 K night
 FORBID even share 0\.000, anchor
+# THE SAME REFUSAL, READ OUT. Mars's page DOES state a pair (184-242 K, at the Viking 1
+# lander), and the fit refused it, so there is no knob and -- correctly -- no default: the
+# log's underfoot column DASHES rather than printing the anchor as a "temperature here". A
+# fallback of "no swing" would print 214.00 K at midnight next to a flat of 0 W/m2 and look
+# like a reading; src/groundtemp.h says why there is no default to fall back to (#727).
+CHECK all(d["body"] == "Mars" for d in solar)
+CHECK all(d["underfoot_T"] is None and d["swing"] is None for d in solar)
+# ... while the world's ONE authored ground reading is still there beside the dash, so the
+# refusal costs a column and not the row.
+CHECK all(d["ground_T"] is not None and abs(d["ground_T"] - 214.0) < 0.5 for d in solar)

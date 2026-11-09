@@ -10,15 +10,22 @@
 
    WHY THE ANCHOR IS EXACT RATHER THAN A FUDGE TERM. Average T^4 over the sphere:
        <T^4> = T0^4 * ( f + (1 - f) * 4 * <cos_inc> ),      <cos_inc> = 1/4 exactly
-   because the lit hemisphere's integral of cos over the sphere's whole 4 pi is pi/4 -- the
-   same identity tests/test_solar.cpp pins as the 1/pi daily-mean cosine at the equator, and
+   because the lit hemisphere's integral of cos over solid angle is pi, and the sphere's
+   whole solid angle is 4 pi, so the mean is pi / 4 pi = 1/4 -- the same identity
+   tests/test_solar.cpp pins as the 1/pi daily-mean cosine at the equator, and
    utils/ground_model.py pins by quadrature. So <T^4> = T0^4 for EVERY f: the surface
    radiates exactly the power the star delivers whatever the swing, and the swing lives
-   entirely in the day/night shape. "The global mean stays T0" therefore means the RADIATION
-   mean <T^4>^(1/4), not the arithmetic mean of T. Those two differ by the same factor that
-   separates Earth's 255 K black-body from its 288 K ground, and the game already prints both
-   figures side by side (#687), which is why this file anchors the first and leaves the gap
-   alone.
+   entirely in the day/night shape.
+
+   WHICH MEAN IS ANCHORED, because "the mean stays T0" is ambiguous and the two answers are
+   not the same number. What is conserved is the RADIATION mean, <T^4>^(1/4). The arithmetic
+   mean of T is not conserved -- measured at the knobs this corpus authors it sits 0.07 %
+   below (Earth, f = 0.932: 0.2 K), 35 % below at the Moon's f = 0.015, and 43 % below at
+   f = 0. Do NOT read that as the gap the dossier prints between a body's airless black-body
+   and its authored ground (Earth's 255 K against its 288 K, 33 K): that one is a POWER
+   imbalance this model does not have -- the unmodelled greenhouse (#728, #738). This swing
+   neither explains it nor closes it, which is why this file anchors the radiation mean and
+   leaves that gap exactly where it was.
 
    THE KNOB f, [1]: the EVEN SHARE -- what fraction of the surface's own emission is spread
    evenly instead of falling where the star lights it. f = 1 is a uniform surface, which is
@@ -59,11 +66,12 @@
 inline constexpr double kEvenShareUnauthored = -1.0;
 inline bool evenShareAuthored(double f) { return f >= 0.0; }
 
-/* [1] The knob as a caller should use it when the file states no swing: a uniform surface.
-   The BEHAVIOUR coincides with a stated f = 1 on purpose -- the air over the ground decides
-   that, not the readout -- but anything PRINTING the knob must print an em-dash for the
-   unauthored case, via evenShareAuthored(), not this default. */
-inline double evenShareOrDefault(double f) { return evenShareAuthored(f) ? f : 1.0; }
+/* THERE IS NO DEFAULT, and that is deliberate. An unpriced knob could default to "no swing"
+   (which would print a constant ground under a midnight sun -- least defensible exactly where
+   the body is airless) or to "bare rock" (which would invent a swing no source stated). Both
+   are a reading the file does not have, so a consumer DASHES the row instead: the swing is a
+   claim only where a source's night/day pair priced it (#727's law; #726's state). Adding a
+   default later is a decision to argue for, not a fallback to slip in. */
 
 /* [K] The surface temperature at one place. `cos_inc` is solar.h's floored cosine of the
    star's elevation (so [0,1]: 1 at the subsolar point, 0 anywhere in night), and
