@@ -23,6 +23,14 @@
 //   turned (#506's other half).
 //   THE LIFTING-SYSTEM MERGE (#556/#562): the same tab hung off the wing's trailing
 //   edge joins the wing's system, and the wing's induced bill drops 20% for it.
+//   THE INDUCED SUM'S SIGNS (#494's fix, untracked half): the system's CL is a sum of
+//   |F|, so a tab's download bills exactly what its upload bills -- and a downloading
+//   trim that takes a quarter of the lift off the airframe more than doubles its
+//   induced bill. See test_induced_sum_is_sign_blind.
+//   THE RATE COLUMN (#487, the column #655's header named as missing): the same hull
+//   with an angular velocity, and the rate's OWN moment -- the difference against the
+//   same hull with no spin. Its sign is the result: damping inside the linear range,
+//   a PUMP on the airframe's own rotation inside the stall droop. See test_rate_column.
 //   THE ENERGY HOOK a heating model would read (#553/#554/#728): exact per surface --
 //   and zero for a body, which is what a capsule is made of.
 //
@@ -31,10 +39,11 @@
 // collision hull verts so the silhouette union, the cp centroid and the weathervane arm
 // all run, and the numbers come back out of applyAeroForce's own last* readouts -- the
 // same fields --drag-log prints. Flow is swept by setting the hull's VELOCITY, never
-// its pose, so the hull is non-rotating and every surface's localFlow (#483) equals the
-// COM's: the bench is a steady stream, which is what makes the expectations
-// hand-checkable. A rotating hull is pinned for the pure math in test_drag.cpp
-// (test_local_flow_sweep); folding a rate into this bench is #655's next column.
+// its pose, so at fly()'s default rate of 0 the hull is non-rotating and every
+// surface's localFlow (#483) equals the COM's: the bench is a steady stream, which is
+// what makes the expectations hand-checkable. A rotating hull is pinned for the pure
+// math in test_drag.cpp (test_local_flow_sweep) and for the whole-airframe answer here
+// (test_rate_column, #655's rate column).
 //
 // Build & run (from repo root) -- also part of `make test`:
 //   see the test_aerosweep rule in the Makefile (TBASE: it constructs a Part and
@@ -44,9 +53,11 @@
 
 #include <cassert>
 #include <cmath>
+#include <algorithm>   // std::max/min: which tab sign loads the airframe
 #include <cstdio>
 #include <deque>
 #include <numbers>
+#include <utility>   // std::make_pair: the (Induced, net L) pair per trim shot
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -446,6 +457,60 @@ static void test_lift_system_merge() {
     teardown(split);
 }
 
+/* THE INDUCED SUM IS OVER MAGNITUDES. #494 closed by billing a trimmed surface's
+   download into the system's induced drag, and the way it went in is a sum of |F|:
+   vehicle.h's AeroLiftSample::lift is glm::length(flift), applyInducedDrag adds those
+   and squares the total. Squaring a sum of magnitudes has no room for a surface that
+   pushes DOWN, so the tab's 12 deg buys the same inflated bill whether it is lifting the
+   airframe or unloading it -- and the unloading case is the one a nose-heavy trim is in:
+   LESS net lift through the same speed, MORE induced drag than the same airframe with
+   the tab neutral. Whether CL_sys should be signed, per-sheet, or this is a decision
+   nobody has written down, so the shape of the current answer is pinned here and a
+   change to it should move these pins. */
+static void test_induced_sum_is_sign_blind() {
+    printf("== the same tab lifting, neutral, and downloading ==\n");
+    Bench b = mkBench();
+    Part *w = mkPlate(b.defs, "wing", 20.0, 2.0, 0.05, 1.0);
+    setSurface(b.defs.back(), 8.0, true);
+    b.v->attachMode(w, 0, AttachMode::Down);
+    Part *t = mkPlate(b.defs, "elevator", 5.0, 1.0, 0.05, 1.0);
+    setSurface(b.defs.back(), 2.0, false);
+    b.v->attachMode(t, 1, AttachMode::Down);          // off the wing: ONE system
+    launch(b);
+
+    const double trim12 = glm::degrees(0.21);         // what res/ships/skiff_trim.json authors
+    auto shot = [&](double trim) {
+        t->trimDeg = trim;
+        fly(b.v, 100.0, 10.0, 0.0);
+        return std::make_pair(b.v->lastInducedCdA, glm::length(b.v->lastLiftForce));
+    };
+    const auto neu = shot(0.0);
+    const auto up = shot(trim12);
+    const auto dn = shot(-trim12);
+    printf("[sigblind] tab neutral   Induced %8.4f m2   net L %10.2f N\n"
+           "[sigblind] tab +12 deg   Induced %8.4f m2   net L %10.2f N\n"
+           "[sigblind] tab -12 deg   Induced %8.4f m2   net L %10.2f N\n",
+           neu.first, neu.second, up.first, up.second, dn.first, dn.second);
+    /* Which authored sign lifts is the MOUNT's business (drag.h::controlDeflectionSign
+       flips it per rig), so name the two shots by what they do to the airframe. */
+    const double lLoad = std::max(up.second, dn.second);
+    const double lUnload = std::min(up.second, dn.second);
+    printf("[sigblind] the tab's own force %9.2f N; the bill goes %+.1f%% from neutral, "
+           "identically in both directions\n", 0.5 * (lLoad - lUnload),
+           100.0 * (dn.first / neu.first - 1.0));
+    /* Mirror-image deflections, bit-identical bill: the law cannot tell a download from
+       an upload, because the sum it squares took the absolute value first. */
+    CHECK_NEAR(up.first, dn.first, 0.0, "the induced bill is blind to the tab's sign");
+    CHECK_TRUE(lUnload < neu.second && neu.second < lLoad,
+               "and yet one sign loads the airframe and the other unloads it");
+    /* THE PARADOX, pinned: unloading the airframe costs it induced drag. */
+    CHECK_TRUE(lUnload < 0.75 * neu.second,
+               "a downloading tab takes a quarter of the airframe's lift off");
+    CHECK_TRUE(dn.first > 2.0 * neu.first,
+               "and more than DOUBLES its induced bill doing it (#494's cross term)");
+    teardown(b);
+}
+
 /* THE STICK CURVE. A pod and one elevator, flown at alpha 0 with a standing trim, so
    the only lift anywhere is the tab's deflection force and lastLiftForce IS its
    magnitude. Swept over the whole travel, the force is NOT monotone: it peaks at
@@ -695,6 +760,7 @@ static void test_rate_column() {
 int main() {
     test_surface_sweep();
     test_lift_system_merge();
+    test_induced_sum_is_sign_blind();
     test_surface_authority_curve();
     test_heat_hooks();
     test_rate_column();
