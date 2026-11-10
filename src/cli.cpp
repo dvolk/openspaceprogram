@@ -173,6 +173,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "player-facing beds (currently just \"pad\"); the dev beds "
                  "still resolve by name here and in --startship, so this "
                  "gates the UI only");
+    app.add_flag("--fleet-report", args.fleet_report,
+                 "Print the fleet's airworthiness table and exit: every "
+                 "res/ships/ hull built and scored with the VAB's own staging "
+                 "math -- wet mass, vacuum delta-v, the delta-v the staging "
+                 "table books, liftoff TWR and a verdict against the home "
+                 "body's surface-orbit floor. Balance and content work: it "
+                 "catches a hull that cannot lift off without flying it. "
+                 "Respects --exhaust-scale; exits instead of starting the "
+                 "game, before the world pre-generates.");
 
     // Docking pair: probe (active) + station, nose-to-nose (see src/docktest.cpp).
     app.add_option("--dock-test", args.dock_test,

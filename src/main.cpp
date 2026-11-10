@@ -37,6 +37,7 @@
 #include "gldebug.h"
 #include "frame.h"
 #include "shipdef.h"
+#include "staging.h"  // --fleet-report: the same staging table the VAB draws
 #include "equirect.h"  // wrapLonDeg: a --startship lon is STORED wrapped
 #include "crew.h"
 #include <nlohmann/json.hpp>
@@ -304,6 +305,94 @@ static void installHeadlessHooks(Game &game) {
         game.addHook(kHookPostRefresh, args.map_dump_ms, nullptr,
                      [](Game &g) { dumpMapBasis(g); });
     }
+}
+
+/* --fleet-report: is anything in the fleet actually flyable? One pass over every
+   shipped hull def -- the same files --startship and the VAB load -- scored with
+   the same computeStaging the VAB's Staging window draws. Before this, answering
+   "how many hulls can get off the pad?" meant flying each one with --ascent-log
+   and eyeballing `accel` against `g`, which is how long it takes to notice that a
+   content change stranded the fleet. The verdicts are the BOOK, not the flight:
+   delta-v is vacuum and the "surface orbit" floor is the atlas's own number
+   (gameui.cpp), which ignores drag and gravity loss -- so a hull can read solvent
+   here and still sit on the pad. That gap is the useful part: the table says which
+   hulls cannot even lift off, and what margin the rest are carrying. */
+static int printFleetReport(const Game &game, const GameArgs &args,
+                            const TerrainBody *home)
+{
+    assert(home != nullptr && home->g > 0.0);
+    // The atlas's own "surface orbit" line, so the margin below is against the
+    // number the player is already shown.
+    const double floor = std::sqrt(home->mu / (double)home->radius);
+
+    // res/ships/ is the shipped fleet; VAB scratch (res/ships/dev/) is not fleet.
+    std::vector<std::pair<std::string, std::string>> hulls;   // filename, path
+    const std::string ships = resdir::path("res/ships");
+    for(auto &e: std::filesystem::directory_iterator(ships)) {
+        if(e.path().extension() == ".json") {
+            hulls.push_back({e.path().filename().string(), e.path().string()});
+        }
+    }
+    std::sort(hulls.begin(), hulls.end(),
+              [](auto &a, auto &b) { return a.first < b.first; });
+
+    printf("=== fleet report: %zu hulls vs %s (pad g %.2f m/s2, surface orbit %.0f m/s",
+           hulls.size(), home->name.c_str(), home->g, floor);
+    if(args.exhaust_scale != 1.0) { printf(", exhaust scale %.2f", args.exhaust_scale); }
+    printf(") ===\n");
+    printf("%-24s %5s %9s %8s %7s  %s\n",
+           "hull", "parts", "wet kg", "dv m/s", "liftoff", "verdict");
+
+    int broken = 0, no_engine = 0, grounded = 0, short_hull = 0, solvent = 0;
+    for(auto &[name, path]: hulls) {
+        ShipDef def;
+        try {
+            def = load_ship_def(path.c_str(), game.parts);
+        } catch(const std::exception &e) {
+            printf("%-24s  --  %s\n", name.c_str(), e.what());
+            broken++;
+            continue;
+        }
+        const BuildShip build = BuildShip::fromShipDef(def);
+        const auto rows = computeStaging(build, home->g, args.exhaust_scale);
+        /* An all-inert burn mask: partDryMass then counts every resource except EC
+           as mass, which is exactly the wet figure (tanks full). */
+        bool inert[(int)ResourceType::Num] = {};
+        double wet = 0.0, dv = 0.0;
+        for(auto &p: build.parts) {
+            if(p.def == nullptr) { continue; }
+            wet += partDryMass(*p.def, inert);
+        }
+        for(auto &r: rows) { dv += r.deltaV; }
+        const double liftoff = rows.empty() ? 0.0 : rows.front().minTWR;
+        /* Rows come in FLIGHT order, so rows.front() is the pad burn. A sled with
+           no rocket engine still gets a row -- with 0 engines in it -- so the
+           engine test comes before the thrust test, or a probe reads as fat
+           rather than as unpowered. */
+        const char *verdict;
+        if(rows.empty() || rows.front().engines == 0) {
+            verdict = "no rocket engine"; no_engine++;
+        } else if(liftoff < 1.0) {
+            verdict = "GROUNDED: liftoff TWR < 1"; grounded++;
+        } else if(dv < floor) {
+            verdict = "lifts, cannot reach orbit"; short_hull++;
+        } else { verdict = "solvent on paper"; solvent++; }
+        printf("%-24s %5zu %9.1f %8.1f %7.2f  %s\n",
+               name.c_str(), build.parts.size(), wet, dv, liftoff, verdict);
+        for(auto &r: rows) {
+            printf("    stage %2d: %8.1f -> %8.1f kg, dv %7.1f, TWR %.2f-%.2f, "
+                   "%d engine%s%s\n",
+                   r.stage, r.massStart, r.massEnd, r.deltaV, r.minTWR, r.maxTWR,
+                   r.engines, r.engines == 1 ? "" : "s", r.drops ? ", drops" : "");
+        }
+    }
+    printf("%d no engine, %d grounded (TWR < 1 at the pad), %d lift off but book "
+           "less than the %.0f m/s floor, %d solvent on paper. dv is VACUUM and the "
+           "floor ignores drag and gravity loss, so solvent here is necessary, not "
+           "enough.\n",
+           no_engine, grounded, short_hull, floor, solvent);
+    if(broken > 0) { printf("%d def(s) failed to load.\n", broken); }
+    return 0;
 }
 
 int main(int argc, char **argv)
@@ -575,6 +664,13 @@ int main(int argc, char **argv)
     }
     // Set before the boot --load so ensureSystemForSave sees it.
     game.systemPath = args.system_file;
+
+    /* --fleet-report: is the shipped fleet actually flyable? Print the table and
+       leave -- it asks about the DEF files, not about a running game, so it runs
+       before any load, terrain pregen or start ship exists. */
+    if(args.fleet_report) {
+        return printFleetReport(game, args, home);
+    }
 
     /* A body pin that does not resolve is a typo, not a game state, so it is a
        hard error like --surfmap-body already is (#72). Called

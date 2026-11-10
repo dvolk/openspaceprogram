@@ -68,6 +68,7 @@ struct GameArgs {
     double sas_rate = 0.0;
     bool recover_anywhere = false;  // default: home body only
     bool dev_scenarios = false;  // --dev-scenarios: the VAB dropdown's dev beds
+    bool fleet_report = false;   // --fleet-report: print the airworthiness table and exit
     std::string dock_test;
     int initial_time_accel = 1;
     double start_time = 0.0;   // the sim clock's t0 (s)
