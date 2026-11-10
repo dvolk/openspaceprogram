@@ -115,6 +115,10 @@ public:
        are, but dedupVehicleName's " #N" suffix is a rename the player caused,
        not a reshuffle they did not. */
     TargetRef xfer_sel;
+    /* The --transfer-target name whose miss has already been reported. update()
+       runs every frame, so without this an unmatched name would print on every
+       one; holding the NAME means a second bad name still gets its answer. */
+    std::string xfer_tgt_warned;
     /* The selected row in the CURRENT list, or null. One scan of a list that is
        already in cache, so every reader takes a pointer and there is no index
        left to keep in step with a rebuild (#392). "Current" means whatever was

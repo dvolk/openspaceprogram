@@ -228,6 +228,21 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         // --transfer-target wins over the window's combo on every rebuild.
         if(!g->args.transfer_target.empty()) {
             selectTargetByName(g->args.transfer_target);
+            /* An unmatched name used to be indistinguishable from a request that
+               worked: --transfer-target Duna from Kerbin orbit selects nothing,
+               because the list built above is children of the ship's CURRENT
+               parent plus sibling vessels, and the run then prints no plan, no
+               grid and no reason. Name the miss and print what IS plannable --
+               once per name, since this runs every frame. */
+            if(xfer_sel.empty() && xfer_tgt_warned != g->args.transfer_target) {
+                xfer_tgt_warned = g->args.transfer_target;
+                printf("[xfer] --transfer-target \"%s\" is not plannable here; this hull "
+                       "can aim at:", g->args.transfer_target.c_str());
+                for(const auto &t : xferTargets) { printf(" \"%s\"", t.name); }
+                if(xferTargets.empty()) { printf(" nothing (no body or vessel shares this ship's SoI)"); }
+                printf("\n");
+                fflush(stdout);
+            }
         } else {
             dropStaleTarget();
         }
