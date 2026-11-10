@@ -18,7 +18,13 @@
 //   THE CONTROL SURFACE'S AUTHORITY CURVE (#494's droop, #503's fix): force against
 //   commanded deflection across the whole travel. It is NOT monotone -- see
 //   test_surface_authority_curve -- because the shipped travel stop sits PAST the
-//   shipped stall angle, so the outer quarter of the stick's throw pulls weaker.
+//   shipped stall angle, so the outer quarter of the stick's throw pulls weaker. The
+//   same sweep prints the tab's own shape bill, which never moves however hard it is
+//   turned (#506's other half).
+//   THE LIFTING-SYSTEM MERGE (#556/#562): the same tab hung off the wing's trailing
+//   edge joins the wing's system, and the wing's induced bill drops 20% for it.
+//   THE ENERGY HOOK a heating model would read (#553/#554/#728): exact per surface --
+//   and zero for a body, which is what a capsule is made of.
 //
 // The fixture is a Vehicle, not a re-implementation: init() builds the real compound
 // hull (never enterWorld, as in test_authority / test_dock), the parts carry real
@@ -518,10 +524,81 @@ static void test_surface_authority_curve() {
     teardown(b);
 }
 
+/* THE ONLY ENERGY HOOK A HEATING MODEL COULD READ TODAY. #553 (no reentry heat),
+   #554 (no structural limits / max Q) and #728 (heat as a mechanic, parked) are all
+   open, and there is no temperature or damage state anywhere in the codebase -- so the
+   question is what the smallest credible version would read. Part::aeroDragWatts is
+   the one per-part figure the sim already keeps every substep, and this column shows
+   both halves of what it can do:
+     - A SURFACE's number is exact, per part, per substep: q and v and CdA are already
+       per-surface since #483/#730, so a heat rating could be authored per part today.
+       The pin below is the arithmetic itself -- watts = drag_cd x q x CdA x v.
+     - A BODY pays nothing. The hull's form drag is billed on the union at one cp
+       (#463/#514), and no per-part watts are folded for it, so a reentering CAPSULE --
+       which is all hull and no surfaces -- reports 0 W through the whole heating. The
+       pin below locks that in as the current law, so the day someone folds the hull's
+       share in, a test moves.
+   The v^3 row is the sizing number. 20 km up on this body (rho = 1.225 e^-2.5 = 0.109),
+   the 8 m2 wing's watts run 0.20 MW at 300 m/s, 7.07 MW at 1000 m/s and 48.9 MW at
+   2000 m/s -- 25 kW/m2, 0.88 MW/m2 and 6.1 MW/m2. The whole ship drags 2.9 kN, 31.7 kN
+   and 122 kN there, and only the two surfaces' share of that power is booked anywhere.
+   Whatever a rating turns out to be, that is the order of number it has to answer, and
+   the hull is where a capsule would have to put it. */
+static void test_heat_hooks() {
+    printf("== the energy hook a heating model would read, and what it misses ==\n");
+    Bench b = mkBench();
+    Part *wing = mkPlate(b.defs, "wing", 20.0, 2.0, 0.05, 1.0);
+    setSurface(b.defs.back(), 8.0, true);
+    b.v->attachMode(wing, 0, AttachMode::Down);
+    Part *elev = mkPlate(b.defs, "elevator", 5.0, 1.0, 0.05, 1.0);
+    setSurface(b.defs.back(), 2.0, false);
+    b.v->attachMode(elev, 0, AttachMode::Down, 0.0, 3.0);
+    launch(b);
+
+    const double speeds[3] = { 300.0, 1000.0, 2000.0 };
+    double prevW = -1.0;
+    for(double sp : speeds) {
+        /* 20 km up on this body: rho = 1.225 x e^-2.5. placeShip again because the
+           column is a profile, not one flight. */
+        b.v->placeShip(glm::dvec3(0.0, 0.0, 620000.0), glm::dmat3(1.0));
+        fly(b.v, sp, 0.0, 0.0);
+        const double q = 0.5 * b.v->lastDragRho * sp * sp;
+        printf("[heat] v %7.1f  rho %8.5f  Mach %5.2f  q %11.1f Pa  "
+               "hull CdA %6.3f m2  ship drag %11.1f N  -> W %11.1f  |  "
+               "wing W %11.1f  tab W %10.1f  (per m2 of wing %10.1f W/m2)\n",
+               sp, b.v->lastDragRho, sp / b.v->lastAirA, q,
+               b.v->lastDragArea, b.v->lastFlowDrag, b.v->lastFlowDrag * sp,
+               (double)b.v->parts[1]->aeroDragWatts, (double)b.v->parts[2]->aeroDragWatts,
+               (double)b.v->parts[1]->aeroDragWatts / 8.0);
+        /* The surface hook, exactly: drag_cd x q x (its own chordwise cd) x v. At
+           alpha 0 a surface's whole bill is its chordwise cd -- its profile cd plus,
+           past the sound bar, its own wave cd (#543 A5b), and induced is zero. */
+        const double wv = waveCd(0.1 / 2.0, sp / b.v->lastAirA);
+        CHECK_NEAR((double)b.v->parts[1]->aeroDragWatts,
+                   b.v->drag_cd * q * ((0.01 + wv) * 8.0) * sp,
+                   b.v->drag_cd * q * 0.08 * sp * 1e-6,
+                   "a surface's watts are its own q x CdA x v, ready to integrate");
+        /* ... and the hole: the ship's drag power (the aero force along the flow times
+           v) is 0.87 MW at 300 m/s, and these two surfaces book only 0.25 MW of it. The
+           pod -- all the hull there is -- keeps no energy figure at all. */
+        CHECK_TRUE(b.v->lastFlowDrag > 0.0, "the ship is definitely paying drag");
+        CHECK_NEAR((double)b.v->parts[0]->aeroDragWatts, 0.0, 0.0,
+                   "a BODY folds no watts at all: a capsule reports 0 W reentry (#553)");
+        if(prevW > 0.0) {
+            CHECK_TRUE((double)b.v->parts[1]->aeroDragWatts > 3.0 * prevW,
+                       "the hook's number climbs faster than v^2, so a rating must be "
+                       "a flux not a force");
+        }
+        prevW = (double)b.v->parts[1]->aeroDragWatts;
+    }
+    teardown(b);
+}
+
 int main() {
     test_surface_sweep();
     test_lift_system_merge();
     test_surface_authority_curve();
+    test_heat_hooks();
     printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }
