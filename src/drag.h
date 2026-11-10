@@ -609,8 +609,12 @@ struct LiftSlopeSum {
        other frames of the same plane. The pair now dashes instead, and the unit pin in
        test_drag.cpp::test_neutral_point exists because a mutant of exactly that
        weighting left the whole rest of the suite green.
-       The 0.1 is agreement, not magnitude: at cruise the skiff is 95% agreed (its fin
-       is in dlabs and 0 in dl) and quotes +0.55 m; crossing its own stall peak it drops
+       The 0.1 is agreement, not magnitude: at cruise the shipped skiff is FULLY agreed
+       -- a probe of every aero substep of its cruise (since removed) measured
+       dl 168.871 == dlabs 168.871, because the vertical fin's slope runs sideways and
+       lands 0.000 in both -- and quotes +0.55 m. The same probe held the stick and
+       rolled for seconds without ever failing this test, so the dash means "nothing
+       lifting", not "the pilot is maneuvering". Crossing its own stall peak it drops
        under it (measured on the pre-#568 hull at AoA 20.10: dl 8.2 of 161.8, which
        would otherwise print SM=+2.22 m --
        an airframe that has just stopped resisting, reading as MORE stable) and dashes.
@@ -625,13 +629,16 @@ struct LiftSlopeSum {
        airframe can hold a healthy-looking margin -- if every surface droops together
        their slopes scale by the same factor and the weighted AVERAGE of their
        positions does not move -- while its stiffness collapses towards zero and
-       nothing pushes the nose back any more. Measured on the jet at AoA 28 and -35
-       (both inside the 20.1-40.1 droop): SM stayed +0.55 m, and it is CLa that says
-       why the airframe had stopped caring. #487's band, in other words, is a
-       stiffness story, not a sign story.
+       nothing pushes the nose back any more. The bench measures it on a hull that still
+       exists: tests/test_aerosweep.cpp at alpha 30 (inside the 20.1-40.1 droop) prints
+       CLa -46.412 with SM still +1.480, and -69.124 once the Mach correction joins at
+       250 m/s -- it is CLa that says the airframe stopped caring. #487's band, in
+       other words, is a stiffness story, not a sign story, and the verdict word the UI
+       prints next to SM (gameui.cpp) reads only SM's sign today.
        Measured along the SHIP's up axis, so it carries a cos(alpha) dip: the shipped
-       skiff quotes 167.82-167.84 across its 2.5-2.8 deg of cruise AoA, inside 0.05 of
-       168.0 x cos(alpha); on the pre-#568 hull the same reading ran 153.60 at 0.4 deg,
+       skiff quotes CLa 169.12 at 4.4 deg of trim and 168.87 at 4.93 -- the dip is
+       there, just small at these angles; on the pre-#568 hull the same reading ran
+       153.60 at 0.4 deg,
        153.34 at 3.5, 152.75 at 5.9 and 149.95 at 12.7, each within 0.2 of 153.6 x
        cos(alpha). That is the right number for a pitch stiffness (the nose rotates
        about the ship), but it is why a steady-airframe
