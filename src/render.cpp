@@ -226,8 +226,16 @@ void updateShipView(Game &g) {
     }
 
     const glm::dvec3 surf_up = glm::normalize(surf_pos);
-    const glm::dvec3 surf_north = glm::normalize(projectVecOntoPlane(glm::dvec3(0, 1, 0), surf_up));
-    const glm::dvec3 surf_east = glm::cross(surf_up, surf_north);
+    /* equirect.h's ONE local-horizontal basis, in this rotating frame: east is the
+       direction of INCREASING longitude, which the map, the rails and the wind
+       (#688) all mean by east. Spelling it locally as cross(up, north) pointed it
+       at DECREASING longitude -- west -- and mirrored the heading below east-west
+       (#713): a hull cruising east along lat 0 read hdg=275.7 while its own lon
+       grew from 0.006 to 0.028 deg. The helpers also hold at a pole, where the
+       meridian is undefined and the old projection produced a NaN-free but equally
+       arbitrary pair. */
+    const glm::dvec3 surf_east = equirectEast(surf_up);
+    const glm::dvec3 surf_north = equirectNorth(surf_up, surf_east);
 
     ver_speed = glm::dot(surf_vel, surf_up); // m/s, + = climbing
     hor_speed2 = glm::length(projectVecOntoPlane(surf_vel, surf_up)); // m/s
