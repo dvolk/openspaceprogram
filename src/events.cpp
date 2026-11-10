@@ -542,7 +542,19 @@ void poll_events(Game &g) {
                 v.push_back(KeyBind{sc, mods});
                 g.rebind_capture_slot = -1;   // captured: back to idle
             }
-        } else if(ev.type == SDL_EVENT_KEY_DOWN) {
+        } else if(ev.type == SDL_EVENT_KEY_DOWN
+                  && !ImGui::GetIO().WantTextInput) {
+        /* An imgui text field owns the keyboard (#114). The gate stands here
+           rather than in each handler so the scene-neutral one-shots AND the
+           scene's own key map share one rule: '.' and ',' are warp keys, ','
+           also pauses, TAB hides the windows and F5/F9 save and load -- all of
+           which fired mid-typing, in the same keystroke that put the character
+           in the field (ImGui_ImplSDL3_ProcessEvent runs first). Measured on the
+           New Game name field: '.' printed "[toast] Time accel: 10x".
+           WantTextInput, not WantCaptureKeyboard: the latter is also true while a
+           button or a combo holds the nav focus, which would swallow F1/TAB/ESC
+           after an ordinary click. The rebind-capture branch above is outside the
+           gate on purpose: it needs keys while the Controls window has focus. */
             const SDL_Scancode ksc = ev.key.scancode;
             const Uint16 kmod = ev.key.mod;
             /* Scene-neutral slots: these work in flight AND in the editor. */
@@ -649,12 +661,12 @@ void poll_events(Game &g) {
                 }
             }
 
-            /* Scene-switch shortcuts (1/2/3/4). Gated three ways: gameRunning,
-               !WantCaptureKeyboard (digits are typed in text fields), and GoFlight
-               needs an active ship + syncShipFocus (enterFlight skips its enter
-               when the base is already Flight). */
-            if(!ev.key.repeat && !ImGui::GetIO().WantCaptureKeyboard
-                    && gameRunning(g)) {
+            /* Scene-switch shortcuts (1/2/3/4). Gated two ways here and one above:
+               gameRunning, and GoFlight needs an active ship + syncShipFocus
+               (enterFlight skips its enter when the base is already Flight).
+               Digits typed in a text field never reach here at all: the
+               WantTextInput gate on the branch covers the whole block. */
+            if(!ev.key.repeat && gameRunning(g)) {
                 if(slotFired(Slot::GoSpaceCenter, ksc, kmod, g.binds)) {
                     goScene(g, SceneId::SpaceCenter);
                 }
