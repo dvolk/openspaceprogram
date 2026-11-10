@@ -6578,10 +6578,15 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                                              v, sizeof v));
             }
         } else { line("seas", "none"); }
-        // The authored relief; the MEASURED highest ground only once the heavy phase has
-        // sampled the heightfield.
-        line("relief", fmt_dist((double)b.surface.amplitude, v, sizeof v));
+        /* authoredPeak(), not `amplitude`: on a mapped body the generator never
+           multiplies the map by amplitude, so quoting the authored field stated a
+           relief the world does not have (Earth: 8.0 km authored, 6.3 km of map)
+           five lines above its own measured "highest ground" row. authoredPeak()
+           is that estimate in one place -- a map answers its own peak metre plus
+           the residual, a procedural body answers amplitude, a banded giant 0. */
+        line("relief", fmt_dist((double)b.surface.authoredPeak(), v, sizeof v));
         if(b.ready) {
+            // Measured by the heavy pass over the built heightfield, margin included.
             line("highest ground",
                  fmt_dist((double)b.surface.max_height, v, sizeof v));
         }
@@ -6688,6 +6693,17 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             line("air density", "none (rim only)");
         }
     } else { line("atmosphere", "none"); }
+    if(b.surface.clouds.enabled) {
+        /* The deck is authored, baked, rendered -- and until now reached no readout at
+           all: its altitude is the very number #719's loader warning compares against
+           the relief, its coverage is why Earth and Venus look the way they do from
+           orbit, and the Surface Map's ground albedo silently disagrees with the
+           "bond albedo" row below because the deck is in one and not the other. */
+        fmtRow(v, sizeof v, "%s, %.0f%% cover",
+                 fmt_dist((double)b.surface.clouds.height, w, sizeof w),
+                 100.0 * (double)b.surface.clouds.coverage);
+        line("cloud deck", v);
+    }
     for(const RingParams &r : b.surface.rings) {
         line(r.name.empty() ? "ring band" : r.name.c_str(),
              (std::string(fmt_dist(r.inner, v, sizeof v)) + " - "
