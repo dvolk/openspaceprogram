@@ -705,7 +705,9 @@ void drawUIReadouts(Game &g) {
     float &ui_scale = g.ui_scale;
     float &sfx_volume = g.sfx_volume;
     float &music_volume = g.music_volume;
-    // The DPI slider edits this; "Apply DPI" commits it to ui_scale.
+    // The DPI slider edits this; "Apply DPI" commits it to ui_scale. It is
+    // seeded from ui_scale every time the Settings window opens (see below), so
+    // the draft can never be a number the game is not running (#116).
     static float dpi_pending = 1.0f;
     // The Settings window writes these; the 3D pass (render.cpp) reads.
     bool &physics_debug_drawing = g.physics_debug_drawing;
@@ -806,6 +808,12 @@ void drawUIReadouts(Game &g) {
 
     // Settings: the render/physics debug toggles.
     drawWin(g, W_Settings, [&] {
+        /* The DPI draft belongs to this window's visit, not to the frame it was
+           first drawn on: seeded here, a game that loaded ui_scale 2.0 from
+           settings.json opens with the slider already at 2.00x and "Apply DPI"
+           greyed, instead of offering to write 1.0 back over a saved setting
+           (#116). */
+        if(ImGui::IsWindowAppearing()) { dpi_pending = ui_scale; }
         {
             static const char *const mode_names[] =
                 {"windowed", "borderless", "fullscreen", "exclusive"};
@@ -2888,19 +2896,26 @@ void drawUIReadouts(Game &g) {
                 ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.85f, 1.0f), "%s", buf);
                 ImGui::SameLine(365.0f);
                 const bool capturing = (g.rebind_capture_slot == (int)i);
+                /* The ## suffix is invisible to the player and is what makes the
+                   row addressable: PushID gives these buttons unique imgui ids,
+                   but --ui-click matches the LABEL, and 41 rows labelled "rebind"
+                   plus 41 labelled "clear" are one ambiguous match each (#165).
+                   slotName() is the same stable id settings.json stores, so a
+                   case path cannot rot when a key is rebound. */
+                const std::string tag = slotName((Slot)i);
                 if(capturing) {
                     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1.0f, 0.6f, 0.2f, 1.0f));
-                    if(ImGui::Button("press a key...", ImVec2(120.0f, 0.0f))) {
+                    if(ImGui::Button(("press a key...##" + tag).c_str(), ImVec2(120.0f, 0.0f))) {
                         g.rebind_capture_slot = -1;   // click again to cancel
                     }
                     ImGui::PopStyleColor();
                 } else {
-                    if(ImGui::Button("rebind", ImVec2(120.0f, 0.0f))) {
+                    if(ImGui::Button(("rebind##" + tag).c_str(), ImVec2(120.0f, 0.0f))) {
                         g.rebind_capture_slot = (int)i;
                     }
                 }
                 ImGui::SameLine(0.0f, 6.0f);
-                if(ImGui::Button("clear", ImVec2(60.0f, 0.0f))) {
+                if(ImGui::Button(("clear##" + tag).c_str(), ImVec2(60.0f, 0.0f))) {
                     g.binds.perSlot[i].clear();
                 }
                 ImGui::PopID();

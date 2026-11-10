@@ -30,6 +30,21 @@ static void surfaceMapSize(ImGuiSizeCallbackData *d) {
         + (text + isp);        // caption row: cursor readout
 }
 
+/* A content-fit window is exactly as tall as its content, so a list longer than
+   the screen keeps its lower rows off the viewport for good: imgui never draws
+   them, the window has no scroll range to bring them back, and --ui-click
+   faithfully answers "not found" for a widget no player can see either. Measured
+   at 1920x1080, ui_scale 1.0: the Controls window loses its Camera and EVA
+   groups, most of its RCS rows and its Save/Back buttons. At the ui_scale 2.0 a
+   saved settings.json can carry, the Settings window loses the very DPI slider
+   that would undo it. Cap the window to the work area and its content scrolls. */
+static void capToWorkArea(ImGuiSizeCallbackData *d) {
+    const ImGuiViewport *vp = ImGui::GetMainViewport();
+    const float margin = ui::Manager::Get().margin.y;
+    const float cap = vp->WorkSize.y - 2.0f * margin;
+    if(d->DesiredSize.y > cap) { d->DesiredSize.y = cap; }
+}
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
 const WinDef kWins[W_Count] = {
@@ -41,13 +56,22 @@ const WinDef kWins[W_Count] = {
        become a second menu. */
     [W_Settings] = {
         .name = "Settings", .label = "Settings",
-        .opts = { .slot = ui::Slot::BottomCenter, .closable = true,
+        // Capped to the work area (capToWorkArea): its rows are longer than a
+        // 1080p screen even at ui_scale 1.0, and content-fit would push the
+        // bottom of the list -- including the DPI slider -- off the viewport.
+        .opts = { .slot = ui::Slot::BottomCenter,
+                  .initial_size = ImVec2(600.0f, 700.0f),
+                  .size_cb = &capToWorkArea, .closable = true,
                   .default_open = false },
         .role = WinRole::Persistent, .inList = false,
     },
     [W_Controls] = {
         .name = "Controls", .label = "Controls",
-        .opts = { .slot = ui::Slot::BottomCenter, .closable = true,
+        // 41 rebind rows: content-fit puts the Camera/EVA groups and the Save
+        // button off a 1080p screen, unreachable and unscrollable.
+        .opts = { .slot = ui::Slot::BottomCenter,
+                  .initial_size = ImVec2(600.0f, 700.0f),
+                  .size_cb = &capToWorkArea, .closable = true,
                   .default_open = false },
         .role = WinRole::Persistent, .inList = false,
     },
