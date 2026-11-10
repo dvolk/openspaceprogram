@@ -330,6 +330,21 @@ struct Surface {
     std::vector<PaletteStop> palette;  // empty => type-based default palette
     float max_height = 1.0f;     // [m] highest relief above sea level,
                                  // measured by TerrainBody::BuildRootGeoms
+    /* [m above the datum] The highest ground this surface can have, BEFORE that
+       measurement exists. One law for both load-time warnings (a cloud deck under its
+       own relief, a sea datum above it): an authored map answers with its own peak metre
+       plus the residual the generator adds, because terragen.h:terrainRelief returns the
+       map's metres and never scales them by `amplitude` -- Earth's amplitude says 8 km
+       while its mountains stop at 6.3 km. A procedural body answers with `amplitude`,
+       which runs about 13 % above the FBM's measured peak (0.883 x at 9 octaves), so it
+       is the conservative estimate rather than the figure. `max_height` is the figure;
+       this is the estimate, and it is what a loader-time warning can read. */
+    float authoredPeak() const {
+        if(heightmap) {
+            return heightmap->maxMetres() + std::max(0.0f, detail_amplitude);
+        }
+        return amplitude;
+    }
     /* Per-body noise orientation (load_system from "seed"). A rotation, not an
        additive offset: offsetting the sample point tiles the surface in lattice
        stripes (float quantization at high octaves). */

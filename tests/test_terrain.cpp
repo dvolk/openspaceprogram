@@ -1017,6 +1017,34 @@ int main() {
         }
     }
 
+    /* Surface::authoredPeak(): the peak the two load-time warnings read (a cloud deck
+       under its own relief, a sea datum above it) and a mapped body's max_height. An
+       authored map peaks at its own highest metre plus the residual the generator adds,
+       NOT at surface.amplitude -- terragen.h:terrainRelief returns the map's metres and
+       never scales them by amplitude, so Earth's authored 8 km amplitude is a height that
+       world does not have (its map stops at 6.3 km). A warning that quoted the amplitude
+       would hide a deck under mountains that are not there. */
+    {
+        Surface s;
+        s.amplitude = 8000.0f;
+        check(s.authoredPeak() == 8000.0f,
+              "a procedural surface peaks at its amplitude");
+        auto hm = std::make_shared<Heightmap>();
+        hm->w = 3;
+        hm->h = 2;
+        hm->m = { 100, -40, 5000, 20, -30, 7 };
+        hm->recomputeRange();
+        Surface ms;
+        ms.amplitude = 8000.0f;
+        ms.heightmap = hm;
+        ms.detail_amplitude = 250.0f;
+        check(ms.authoredPeak() == 5250.0f,
+              "a mapped surface peaks at its map + residual, not its amplitude");
+        ms.detail_amplitude = -10.0f;   // nonsense; it must not lower the peak
+        check(ms.authoredPeak() == 5000.0f,
+              "a negative residual cannot lower the authored peak");
+    }
+
     /* The octave cap (terragen.h kMaxTerrainOctaves): refused by the loader, and
        truncated here so a hand-built Surface cannot overrun the sampler's octave
        store. Octave ~90 runs at noise scale 2^91, which the float simplex answers with

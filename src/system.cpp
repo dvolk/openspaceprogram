@@ -570,6 +570,27 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                     resdir::path(sv["heightmap"].get<std::string>()));
             }
             s.detail_amplitude = sv.value("detail_amplitude", s.detail_amplitude);
+            /* A sea datum standing at or above the highest ground is not a place. The
+               Flat-sea clamp then makes the whole globe a sphere at the datum, and
+               max_height collapses to its 1 m floor, so the palette ramp loses every
+               colour break and the sky's rim floor loses its relief -- all silently. A
+               real ocean world authors its datum BETWEEN the floor and the peaks (Laythe,
+               Earth), so nothing in the shipped corpus looks like this; it is printed
+               rather than refused because the relief here is only an estimate (the
+               procedural peak is the amplitude, an authored map's is its own max), and
+               #719's deck-under-the-relief line set the precedent. */
+            if(s.has_sea && s.sea_level != 0.0f) {
+                const float peak = s.authoredPeak();
+                if(peak - s.sea_level <= 0.0f) {
+                    char pb[32], sb[32];
+                    std::snprintf(pb, sizeof pb, "%g", (double)peak);
+                    std::snprintf(sb, sizeof sb, "%g", (double)s.sea_level);
+                    printf("Warning: %s's mean-sea datum stands at %s m, at or above its "
+                           "highest ground (%s m) -- every point on this body is under "
+                           "the sea, and its palette and sky shells have no relief to "
+                           "read\n", body->name.c_str(), sb, pb);
+                }
+            }
             s.bands = sv.value("bands", false);
             if(sv.contains("band_count") && sv["band_count"].is_number_integer()) {
                 s.band_count = std::max(1, sv["band_count"].get<int>());

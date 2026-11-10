@@ -233,10 +233,9 @@ struct TerrainBody {
             maxh = 0.0f;   // gas giant: smooth sphere
         } else if (surface.heightmap) {
             // Authored map: take the true peak, not a point sample (sampling
-            // saturates the palette).
-            const float map_hi = surface.heightmap->maxMetres();
-            const float detail = std::max(0.0f, surface.detail_amplitude);
-            maxh = std::max(1.0f, (map_hi + detail - surface.sea_level) * 1.05f);
+            // saturates the palette). Surface::authoredPeak() is the same law the
+            // load-time warnings read, so the map's peak is spelled once.
+            maxh = std::max(1.0f, (surface.authoredPeak() - surface.sea_level) * 1.05f);
         } else {
             const TerrainParams tp0 = params();
             const int N = 2048;
@@ -333,16 +332,19 @@ struct TerrainBody {
     void BuildClouds(Shader *cloudshader, int res, JobRunner &jobs) {
         if(clouds != nullptr || !surface.clouds.enabled) return;
         float shell_radius = (float)seaLevelRadius() + surface.clouds.height;
-        if(surface.clouds.height < surface.amplitude) {
+        /* The relief the deck could hide under -- Surface::authoredPeak(), the same
+           estimate the loader's sea-datum-above-the-peaks warning reads. It is NOT
+           surface.max_height: the measured figure is only applied when the root geoms
+           attach, after this point. */
+        const float relief = surface.authoredPeak();
+        if(surface.clouds.height < relief) {
             // Not fatal -- a deck under its own peaks just hides inside the mountains.
             // Loud, because on the datum axis this is an authoring slip, not terrain
-            // noise moving the sky. Measured against the AUTHORED relief, which is
-            // known here: surface.max_height (the measured figure) is only applied when
-            // the root geoms attach, after this point.
+            // noise moving the sky.
             printf("Warning: %s cloud deck sits %.0f m above the datum, under its "
-                   "authored relief (%.0f m) -- author surface.clouds.height above the "
+                   "relief (%.0f m) -- author surface.clouds.height above the "
                    "relief (#719)\n", name.c_str(), (double)surface.clouds.height,
-                   (double)surface.amplitude);
+                   (double)relief);
         }
         if(shell_radius <= radius) shell_radius = radius * 1.02f;
         Mesh *m = create_atmosphere_mesh(shell_radius, res);
