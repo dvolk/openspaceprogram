@@ -52,14 +52,15 @@ inline constexpr double kInertialOrbitFrac = 1.25;
    i.e. ~e^-10 of sea-level density -- a sane hard top for a body with no
    authored one.
    It is a FALLBACK, not the law: #682's band says a ceiling should sit where a
-   circular orbit still feels 10..1000 Pa of q, and for 13 of the 15 shipped air
-   bodies that is an authored `height`. Only two still ride this default -- Venus
-   (160 km, where the band's 1.0 kPa lip would sit at 238 km) and Titan (200 km at
-   800 Pa, on the lip) -- and utils/check_atmo_band.py refuses any other body that
-   lands out of band, with Venus waived BY VALUE and the reason beside it. Pluto's
-   20 km (#700) is the first authored top taken from a published PRESSURE rather
-   than a published ceiling; it is not the first under kMinShell -- Duna's 65 km
-   and Mars's 80 km already inherit that floor, which is what makes a THIN air
+   circular orbit still feels 10..1000 Pa of q. In the shipped corpus only Titan
+   rides this default (its 20 km scale height puts the ceiling at 200 km, where a
+   circular orbit still feels 800 Pa -- on the band's lip); every other air body
+   authors its own `height`, and utils/check_atmo_band.py is what weighs them and
+   refuses one that lands out of band, waiving BY VALUE only where a published
+   ceiling is deliberately below it. Pluto's 20 km (#700) is the first authored top
+   taken from a published PRESSURE rather than a published ceiling; it is not the
+   first under kMinShell -- the thin CO2 worlds (Mars, Duna) already inherit that
+   floor, which is what makes a THIN air
    cheap: no orbit, spawn band or atlas disk moves until a top passes
    kMinShell / (1 + kLowOrbitFrac) = 83.3 km.
    Changes: where the air stops for drag AND where the science Flying*
