@@ -488,6 +488,26 @@ static void test_surface_authority_curve() {
     CHECK_NEAR(fStop / fTrim12, 1.0625, 1e-3,
                "from a 12 deg trim, full travel buys 6.2% more force");
 
+    /* The hinge is invisible to the SHAPE bill as well (#506's other half, and the
+       bigger half: the hull-union side is what that issue names). The surface form-drag
+       pass reads the flow against the plate's AUTHORED axes -- vehicle.cpp's flowLocal
+       against plateNormal -- never against the deflection, so a tab hard over at 20 deg
+       still meets the flow chordwise as far as its bill is concerned. Pinned as the law
+       now IS, loudly: 15 kN of tab force, and the same 0.024 m2 of shape drag it pays
+       sitting neutral. A tab turned 20 deg broadside is turning 2 x sin^2(20) = 0.24 m2
+       of plate, which at this q is another ~1.5 kN the airframe never pays. */
+    elev->trimDeg = 0.0;
+    fly(b.v, 100.0, 0.0, 0.0);
+    const double profNeutral = b.v->lastSurfCdA;
+    CHECK_NEAR(profNeutral, b.v->drag_cd * St * 0.01, 1e-12,
+               "a neutral tab's shape bill is its profile cd on its planform");
+    elev->trimDeg = glm::degrees(0.35);
+    fly(b.v, 100.0, 0.0, 0.0);
+    printf("[curve] tab shape bill: %8.4f m2 neutral, %8.4f m2 hard over, while its "
+           "force goes 0 -> %9.2f N\n", profNeutral, b.v->lastSurfCdA, fStop);
+    CHECK_NEAR(b.v->lastSurfCdA, profNeutral, 1e-12,
+               "a tab hard over bills the SAME shape drag as a neutral one (#506)");
+
     /* Trim cannot reach the reversal region: controlCommandFrac clamps the command to
        one full travel, so an over-large authored trim saturates at the stop rather
        than driving the tab past twice its stall angle, where liftCurve reverses and
