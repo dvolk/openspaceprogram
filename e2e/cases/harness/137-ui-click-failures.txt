@@ -1,13 +1,23 @@
 # --ui-click must fail loudly, not click something else. Two of the ways a
-# path is wrong: no such widget, and a label that several widgets share (the
-# Controls window's rebind buttons all render as "rebind"). Pins that the
-# failure is reported rather than resolved to an arbitrary match -- the whole
-# point of naming widgets instead of aiming at pixels.
+# path is wrong: no such widget, and a label that several widgets share. Pins
+# that the failure is reported rather than resolved to an arbitrary match -- the
+# whole point of naming widgets instead of aiming at pixels.
+#
+# The ambiguous half used to be demonstrated by the Controls window, whose 63
+# rebind buttons were all labelled "rebind" (#165). #165 is fixed now -- every
+# row is "rebind##<slotName>" -- and no shipped window carries two identical
+# labels any more (measured: a --ui-list of the title scene with Readme and
+# Settings open holds 49 clickable rows, every label distinct), so the case
+# pins only the not-found shape and the MISMATCH guard. findMatches()'s
+# "ambiguous (N matches)" branch is live code with nothing left in the shipped
+# UI to exercise it; a synthetic duplicate would be the only way to pin it.
 NAME ui-click-failures
-CLAIM A bad --ui-click path fails loudly as not-found, not ambiguous, never as a stray click.
+CLAIM A bad --ui-click path fails loudly as not-found, never as a stray click.
 KIND harness
-ARGS --timeout 6 --ui-click 1500,"Title Menu/Controls" --ui-click 2500,"Controls/rebind" --ui-click 2500,"Title Menu/No Such Button"
-EXPECT path="Controls/rebind" FAILED ambiguous
+ARGS --timeout 6 --ui-click 1500,"Title Menu/Controls" --ui-click 2500,"Controls/rebind##warp_up" --ui-click 3000,"Title Menu/No Such Button"
+# The positive control #165 bought: one row of the 63, named by its slot, so the
+# same run that shows a bad path failing also shows a good qualified path landing.
+EXPECT path="Controls/rebind##warp_up"
 EXPECT path="Title Menu/No Such Button" FAILED not found
 FORBID FAILED MISMATCH
 FORBID error:

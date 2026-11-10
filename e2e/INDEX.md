@@ -424,7 +424,7 @@ judgement. Select by number, name or path, e.g.
 | `harness/01-smoke.txt` | canary | The binary boots, opens a window and exits on --timeout with no GL or crash line. |
 | `harness/35-compound-check.txt` | harness | The compound-check self-test reproduces the staged compound. |
 | `harness/136-ui-list-title.txt` | harness | The live imgui registry reports the title menu's labels. |
-| `harness/137-ui-click-failures.txt` | harness | A bad --ui-click path fails loudly as not-found, not ambiguous, never as a stray click. |
+| `harness/137-ui-click-failures.txt` | harness | A bad --ui-click path fails loudly as not-found, never as a stray click. |
 | `harness/155-idle-headless-never.txt` | harness | The offscreen driver never reports the window occluded. |
 | `harness/175-sim-press-digit-keys.txt` | harness | Digit keys sent by --sim-press parse as digits, not raw SDL keycodes. |
 | `harness/272-ui-click-disabled-widget.txt` | harness | A click on a disabled widget lands but activates nothing. |
