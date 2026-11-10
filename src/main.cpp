@@ -1278,6 +1278,11 @@ int main(int argc, char **argv)
     if(perf_on) {
         printf("perf: a frame over %.2f ms counts as late (--frame-cap %d at "
                "%.0f Hz logic)\n", perf_budget_ms, eff_frame_cap, args.physics_hz);
+        if(args.perf_gpu) {
+            printf("perf: --perf-gpu waits for the GPU at the end of the 3D pass, "
+                   "so paint= is submit + draw; the wait costs frame rate by "
+                   "design\n");
+        }
     }
     double p_worst = 0.0, w_worst = 0.0;
     long long p_over = 0, w_over = 0;
@@ -1612,6 +1617,15 @@ int main(int argc, char **argv)
                 if(poly_mode == true) {
                     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
                 }
+                /* --perf-gpu: pay for the GPU here, so the paint half says what the
+                   frame cost to DRAW. Everything else the phases time is
+                   submission: the driver queues the work and the CPU runs on, so
+                   the GPU's own cost surfaces nowhere in the rows -- on a real
+                   window it lands in the frame cap's sleep, offscreen it does not
+                   even do that (--vsync 0 measures the same fps as vsync 1). The
+                   serialising wait costs frame rate; that is the flag's price, not
+                   a bug. */
+                if(args.perf_gpu) { glFinish(); }
                 pf_paint1 = std::chrono::steady_clock::now();
                 // Always covers the window: the effect chain, or a copy of the
                 // scene when no effect is on.

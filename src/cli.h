@@ -191,6 +191,13 @@ struct GameArgs {
     int vsync = 1;           // 0 = off, 1 = one refresh per swap
     double physics_hz = 60.0;  // the fixed logic tick rate
     bool perf = false;   // print a per-frame phase timing breakdown
+    /* --perf-gpu: pay for the GPU's own completion at the end of the 3D pass, so
+       --perf's paint half says what the frame cost to DRAW and not just what it
+       cost to submit. Without it every phase is a submission time: the GPU runs
+       behind, and on a real window its work hides in the frame cap's sleep, where
+       nothing measures it. The stall breaks the CPU/GPU overlap, so the frame rate
+       drops -- it is a ruler for A/B-ing a render change, not a mode to fly in. */
+    bool perf_gpu = false;
     /* Seconds of run time between [perf] rows (#676). The rolling window was
        prose on a hard-coded 1 s: easy to read, impossible to diff. A tagged row
        per gate is what makes "did this build make the frame cheaper" a question

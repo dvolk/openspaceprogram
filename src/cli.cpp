@@ -876,6 +876,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "--perf-interval seconds and a summary at exit (#676). Off by "
                  "default; the timing overhead is negligible when off");
 
+    app.add_flag("--perf-gpu", args.perf_gpu,
+                 "With --perf: wait for the GPU at the end of the 3D pass, so the "
+                 "paint half reports what the frame cost to DRAW rather than only "
+                 "what it cost to submit. Every other phase is a submission time, "
+                 "and on a real window the GPU's own work hides in the frame cap's "
+                 "sleep. The wait breaks the CPU/GPU overlap, so the frame rate "
+                 "drops: this is a ruler for A/B-ing a render change, not a mode "
+                 "to fly in. Implies --perf");
+
     app.add_option("--perf-interval", args.perf_interval,
                    "Seconds of RUN time between [perf] rows (default: 1). A perf "
                    "row is a frame reading, so this window is wall clock in every "
@@ -1083,6 +1092,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             *exit_code = 1;
             return false;
         }
+        /* The GPU ruler has nothing to report without the rows it feeds, so
+           asking for it asks for them too -- a knob that silently does nothing
+           is how you end up A/B-ing two identical runs. */
+        if(args.perf_gpu) { args.perf = true; }
     }
 
     if(!sim_press.empty()) {

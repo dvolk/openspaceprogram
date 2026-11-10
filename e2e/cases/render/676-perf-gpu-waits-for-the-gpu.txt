@@ -1,0 +1,18 @@
+NAME    perf-gpu
+CLAIM   --perf-gpu implies --perf, says what it is doing, and puts the GPU's wait inside the paint half.
+KIND    invariant
+NOGLCHECK
+ARGS --timeout 2 --perf-gpu --perf-interval 0.5
+# The GPU ruler is only useful if it reaches the rows it feeds. --perf-gpu alone
+# printing [perf] rows is the imply rule working; the boot line is what tells a
+# reader why the frame rate fell over, rather than sending them hunting for a bug.
+EXPECT perf: --perf-gpu waits for the GPU at the end of the 3D pass
+CHECK 2 <= len(perf) <= 6
+# The wait lands inside the paint mark, so render's halves still sum to render,
+# and the 3D half is nonzero in EVERY window: the frame is being DRAWN and waited
+# for, not merely submitted. Still no absolute cost asserted -- that stays
+# unmeasurable on a shared box.
+CHECK all(abs(r["paint"] + r["composite"] + r["ui"] + r["imgui_gl"] + r["tail"] - r["render"]) <= 0.02 * r["render"] + 0.001 for r in perf)
+CHECK all(r["paint"] > 0.0 for r in perf)
+CHECK all(r["worst"] >= r["work"] for r in perf)
+FORBID error:
