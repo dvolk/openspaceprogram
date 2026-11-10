@@ -144,6 +144,8 @@ Mesh *get_mesh(const std::string &path) {
     return mesh;
 }
 
+/* Every upload below passes .data() rather than &vec[0]: taking element 0 of an
+   EMPTY vector is UB (#43), and a 0-byte upload from null is legal. */
 void Mesh::InitMesh(const PosInterface & model) {
     check_gl_error();
     glGenVertexArrays(1, &m_vertexArrayObject);
@@ -160,7 +162,7 @@ void Mesh::InitMesh(const PosInterface & model) {
     check_gl_error();
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexArrayBuffers[0]);
     check_gl_error();
-    glBufferData(GL_ARRAY_BUFFER, sizeof(model.positions[0]) * model.positions.size(), &model.positions[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(model.positions[0]) * model.positions.size(), model.positions.data(), GL_STATIC_DRAW);
     check_gl_error();
     glEnableVertexAttribArray(0);
     check_gl_error();
@@ -186,7 +188,7 @@ void Mesh::InitMesh(const PosNorIndColInterface& model, bool copyData)
 
         num_indices = model.indices.size();
         is = new int[num_indices];
-        memcpy(is, &model.indices[0], sizeof(int) * num_indices);
+        memcpy(is, model.indices.data(), sizeof(int) * num_indices);
     }
     else {
         vs = NULL;
@@ -204,20 +206,20 @@ void Mesh::InitMesh(const PosNorIndColInterface& model, bool copyData)
     glGenBuffers(num_VABs, m_vertexArrayBuffers);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_vertexArrayBuffers[0]);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(model.indices[0]) * model.indices.size(), &model.indices[0], GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(model.indices[0]) * model.indices.size(), model.indices.data(), GL_STATIC_DRAW);
 
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexArrayBuffers[1]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(model.positions[0]) * model.positions.size(), &model.positions[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(model.positions[0]) * model.positions.size(), model.positions.data(), GL_STATIC_DRAW);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexArrayBuffers[2]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(model.normals[0]) * model.normals.size(), &model.normals[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(model.normals[0]) * model.normals.size(), model.normals.data(), GL_STATIC_DRAW);
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexArrayBuffers[3]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(model.colors[0]) * model.colors.size(), &model.colors[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(model.colors[0]) * model.colors.size(), model.colors.data(), GL_STATIC_DRAW);
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
@@ -240,7 +242,7 @@ void Mesh::InitMesh(const PosTexNorIndColInterface& model, bool copyData)
 
         num_indices = model.indices.size();
         is = new int[num_indices];
-        memcpy(is, &model.indices[0], sizeof(int) * num_indices);
+        memcpy(is, model.indices.data(), sizeof(int) * num_indices);
     }
     else {
         vs = NULL;
@@ -258,25 +260,25 @@ void Mesh::InitMesh(const PosTexNorIndColInterface& model, bool copyData)
     glGenBuffers(num_VABs, m_vertexArrayBuffers);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_vertexArrayBuffers[0]);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(model.indices[0]) * model.indices.size(), &model.indices[0], GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(model.indices[0]) * model.indices.size(), model.indices.data(), GL_STATIC_DRAW);
 
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexArrayBuffers[1]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(model.positions[0]) * model.positions.size(), &model.positions[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(model.positions[0]) * model.positions.size(), model.positions.data(), GL_STATIC_DRAW);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexArrayBuffers[2]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(model.texcoords[0]) * model.texcoords.size(), &model.texcoords[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(model.texcoords[0]) * model.texcoords.size(), model.texcoords.data(), GL_STATIC_DRAW);
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexArrayBuffers[3]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(model.normals[0]) * model.normals.size(), &model.normals[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(model.normals[0]) * model.normals.size(), model.normals.data(), GL_STATIC_DRAW);
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexArrayBuffers[4]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(model.colors[0]) * model.colors.size(), &model.colors[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(model.colors[0]) * model.colors.size(), model.colors.data(), GL_STATIC_DRAW);
     glEnableVertexAttribArray(3);
     glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
@@ -299,7 +301,7 @@ void Mesh::InitMesh(const PosTexNorIndInterface& model, bool copyData)
 
         num_indices = model.indices.size();
         is = new int[num_indices];
-        memcpy(is, &model.indices[0], sizeof(int) * num_indices);
+        memcpy(is, model.indices.data(), sizeof(int) * num_indices);
     }
     else {
         vs = NULL;
@@ -317,20 +319,20 @@ void Mesh::InitMesh(const PosTexNorIndInterface& model, bool copyData)
     glGenBuffers(num_VABs, m_vertexArrayBuffers);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_vertexArrayBuffers[0]);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(model.indices[0]) * model.indices.size(), &model.indices[0], GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(model.indices[0]) * model.indices.size(), model.indices.data(), GL_STATIC_DRAW);
 
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexArrayBuffers[1]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(model.positions[0]) * model.positions.size(), &model.positions[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(model.positions[0]) * model.positions.size(), model.positions.data(), GL_STATIC_DRAW);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexArrayBuffers[2]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(model.texcoords[0]) * model.texcoords.size(), &model.texcoords[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(model.texcoords[0]) * model.texcoords.size(), model.texcoords.data(), GL_STATIC_DRAW);
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexArrayBuffers[3]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(model.normals[0]) * model.normals.size(), &model.normals[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(model.normals[0]) * model.normals.size(), model.normals.data(), GL_STATIC_DRAW);
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
