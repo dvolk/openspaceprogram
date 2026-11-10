@@ -230,8 +230,11 @@ int main() {
         }
 
         /* An absent roster key keeps the roster empty, which is how a save
-           predating the roster reads: the --kerbals file stays in charge. */
-        nlohmann::json bare;
+           predating the roster reads: the --kerbals file stays in charge. An
+           EMPTY OBJECT is that file: a document that is not an object (a bare
+           null) now refuses rather than reading as a career with nothing in it
+           -- see the shape gates in saveMetaFromJson. */
+        nlohmann::json bare = nlohmann::json::object();
         CHECK(saveMetaFromJson(bare).roster.empty());
     }
 

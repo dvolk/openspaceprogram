@@ -967,6 +967,62 @@ int main() {
     // the format this build writes is the one it reads
     CHECK(saveMetaToJson(SaveMeta()).at("format").get<int>() == kSaveFormat);
 
+    /* SHAPE refusals. A document that is not an object has no keys, so the
+       permissive reads turn it into a legal empty career: json::contains is false
+       for an array or a null, "format" looks merely ABSENT (= this format), and
+       the load reports success with no fleet, no cast and the clock at 0. What
+       makes it destructive is what happens next -- a Save-as into that slot sweeps
+       the now-orphan ships/ files, so the career is gone. A collection key of the
+       wrong type is the same failure one level down: "ships": "v0" is not an
+       empty fleet, and a junk roster/pool entry is not a member to skip. */
+    auto meta_refused = [](const nlohmann::json &j) {
+        try { saveMetaFromJson(j); }
+        catch(const std::runtime_error &) { return true; }
+        return false;
+    };
+    CHECK(meta_refused(nlohmann::json()));            // the file held "null"
+    CHECK(meta_refused(nlohmann::json::array()));     // the file held "[]"
+    CHECK(meta_refused(nlohmann::json("a save")));    // prose, not JSON
+    // an empty OBJECT is still the permissive case: absent keys, not wrong ones
+    CHECK(!meta_refused(nlohmann::json::object()));
+    {
+        const nlohmann::json shapes[] = {std::string("v0"), 42, nlohmann::json::object()};
+        for(const nlohmann::json &shape : shapes) {
+            for(const char *key : {"ships", "roster", "crew_pool", "recovered"}) {
+                nlohmann::json j = nlohmann::json::object();
+                j[key] = shape;
+                CHECK(meta_refused(j));
+            }
+        }
+        // a member that is not an object is a thing the save recorded and lost
+        nlohmann::json jr = nlohmann::json::object();
+        jr["roster"] = nlohmann::json::array();
+        jr["roster"].push_back(7);
+        CHECK(meta_refused(jr));
+        nlohmann::json jp = nlohmann::json::object();
+        jp["crew_pool"] = nlohmann::json::array();
+        jp["crew_pool"].push_back("suit");
+        CHECK(meta_refused(jp));
+    }
+    /* A ship file of the wrong shape reads as a ship with no parts, and the
+       loader then places a compound body that was never built (the load
+       segfaults before it can say anything). Refuse the document. */
+    auto ship_refused = [](const nlohmann::json &j) {
+        try { saveShipFromJson(j); }
+        catch(const std::runtime_error &) { return true; }
+        return false;
+    };
+    CHECK(ship_refused(nlohmann::json::array()));     // the file held "[]"
+    CHECK(ship_refused(nlohmann::json()));            // the file held "null"
+    {
+        nlohmann::json bp = saveShipToJson(ship);
+        bp["parts"] = "capsule";
+        CHECK(ship_refused(bp));
+        nlohmann::json je = saveShipToJson(ship);
+        je["parts"].push_back(3);   // an entry that is not a part
+        CHECK(ship_refused(je));
+    }
+
     /* A slug is both a filename (ships/<slug>.json) and the key every
        cross-vehicle reference uses, so a hand-edited ships list gets two
        guards: it must not escape the save directory, and one key must not be

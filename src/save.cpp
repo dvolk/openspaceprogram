@@ -158,10 +158,22 @@ nlohmann::json readJsonFile(const std::string &path) {
     return doc;
 }
 
-// "" -> none; an unknown name throws (scenario_by_name).
+/* "" -> no spawn bed. An unknown name is NOT a reason to refuse the save:
+   scenario_by_name throws, and that used to brick a whole career over a name the
+   bed table stopped carrying -- while after a load the field changes nothing.
+   Vehicle::scenario feeds apply_scenarios, which main.cpp runs only on the
+   no-load boot path; it keys the slot spacing in place_vehicle; and a walking
+   kerbal inherits its ship's bed (game.cpp). None of the three re-moves a ship
+   the save already posed. The beds are a dev-facing table that gets renamed and
+   extended freely, so a rename is not a save-format break. The caller says the
+   sentence once -- preflight stays silent, like the other pre-checks. */
 const ScenarioDef *resolveScenario(const std::string &name) {
     if(name.empty()) { return nullptr; }
-    return scenario_by_name(name);
+    try {
+        return scenario_by_name(name);
+    } catch(const std::exception &) {
+        return nullptr;
+    }
 }
 
 // The live Part a saved uid names, only if it is one of `owner`'s: the uid map
@@ -634,10 +646,10 @@ static double savedSubtreeMass(const PartsCatalog &cat, const SavePart &sp) {
 
 /* The save checks that need no world: a uid present, unique within the ship and
    across the whole save, every part name still in the catalog, every parent uid
-   already seen (the writer emits parents before children), a scenario the table
-   knows, and every uid the ship references -- controller, fuel link, dock seam
-   -- one of its own parts. Returns "" when the ship is loadable, else the reason
-   in the same words the builders used to throw, so both paths refuse identically.
+   already seen (the writer emits parents before children), and every uid the ship
+   references -- controller, fuel link, dock seam -- one of its own parts. Returns
+   "" when the ship is loadable, else the reason in the same words the builders
+   used to throw, so both paths refuse identically.
 
    buildShipFromSaveParts relies on this; preflightSave runs it over the whole
    save BEFORE a cross-system switch tears the running game down (#302).
@@ -652,6 +664,19 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
                                      std::set<uint64_t> &saveUids,
                                      bool allowDrift,
                                      std::string *note = nullptr) {
+    /* A hull ship with no parts is a hole, not an empty craft: every check below
+       passes vacuously and buildShipFromSaveParts goes on to place a compound
+       body that was never built -- Vehicle::placeShip feeds a null hull to
+       setPosRot and the load segfaults (measured: exit 139, no message, stdout
+       never flushed). It belongs HERE rather than in the parser: the crew branch
+       of saveShipFromJson returns with parts empty by design (a person's suit
+       comes from the def, never from this array), and a partless SaveShip is a
+       normal thing for a unit test to poke at one layer below the loaders.
+       preflightSave and buildShipFromSaveParts both call this, so the same-system
+       boot --load path that runs no preflight is covered too (#306). */
+    if(!s.is_crew && s.parts.empty()) {
+        return "load: saved ship '" + s.name + "' has no parts";
+    }
     std::set<uint64_t> prior;   // uids at earlier indices of THIS ship
     /* The uids that are somebody's parent. Together with a part's own parent
        field, that is the set of parts whose SHAPE a saved pose was solved
@@ -953,9 +978,16 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
         throw std::runtime_error(why);
     }
     if(!geomNote.empty() && notes != nullptr) { notes->push_back(geomNote); }
-    // Resolve the scenario BEFORE constructing: it throws, and the rollback
-    // only walks `built`.
+    /* A bed name this build lacks reads as "no bed" (see resolveScenario), which
+       is what a save with scenario "" already means -- but say it: the field is
+       visible in the file, and a silently-vanishing bed name is the kind of thing
+       that reads as a bug in the pose. */
     const ScenarioDef *scn = resolveScenario(s.scenario);
+    if(!s.scenario.empty() && scn == nullptr && notes != nullptr) {
+        notes->push_back("'" + s.name + "' names scenario '" + s.scenario
+                         + "', which this build's bed table no longer has: "
+                         "flying it where the save posed it");
+    }
     Vehicle *v = new Vehicle;
     v->name = s.name;
     v->defPath = s.defPath;
@@ -1530,11 +1562,9 @@ std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
                 }
             }
         }
-        try {
-            resolveScenario(s.scenario);   // throws for a name the table lacks
-        } catch(const std::exception &e) {
-            return e.what();
-        }
+        /* No scenario check here: a bed name the table lacks is not a refusal
+           (resolveScenario), and everything else about a scenario is inert once
+           the save is being loaded rather than booted. */
         // The same rule and the same words the builders use. A crew file's
         // `home` is never read (saveShipFromJson returns before it), so "" there
         // is normal, not dangling.

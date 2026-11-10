@@ -312,11 +312,34 @@ struct SaveMeta {
 
 // ---- pure JSON (de)serialization (inline: header-only, unit-testable) ----
 /* Reads are permissive: an absent or unknown key keeps the struct's default, so
-   a hand-edited file never crashes the load. Three reads refuse rather than
-   default, because what they describe cannot be defaulted into anything sane:
-   SaveMeta's "format" and its "active_ship" against its own "ships" list (both
-   in saveMetaFromJson), and a crew entry's top-level "seats" array
-   (saveShipFromJson). */
+   a hand-edited file never crashes the load. What still refuses is anything that
+   would DEFAULT A WHOLE COLLECTION OUT OF EXISTENCE -- a save missing a key says
+   "nothing recorded", but a save whose document (or whose "ships"/"roster"/
+   "crew_pool"/"parts" key) is the WRONG SHAPE says nothing of the kind, and
+   defaulting it turns a corrupt file into a legal empty career. So: SaveMeta's
+   document shape, its "format", and its "active_ship" against its own "ships"
+   list (all in saveMetaFromJson); a ship file's shape (saveShipFromJson), with
+   the partless-hull refusal sitting beside the other builder-facing checks in
+   save.cpp's validateShipParts; and a crew entry's top-level "seats" array
+   (saveShipFromJson).
+   These live in the parsers, not in preflightSave, because a fact about one
+   document must be said by every path that reads it -- and the same-system boot
+   --load path runs no preflightSave at all (#306). */
+
+/* A present collection key of the wrong type is corruption, not an absent key:
+   defaulting it away drops every vessel / cast member the save recorded and
+   still reports a successful load. Returns an empty array for an absent key. */
+inline const nlohmann::json &arrayField(const nlohmann::json &j,
+                                        const char *key) {
+    static const nlohmann::json kNone = nlohmann::json::array();
+    if(!j.contains(key)) { return kNone; }
+    if(!j[key].is_array()) {
+        throw std::runtime_error(std::string("save: \"") + key
+                                 + "\" must be an array, got "
+                                 + j[key].type_name());
+    }
+    return j[key];
+}
 
 inline std::vector<double> mat3ToVec(const glm::dmat3 &m) {
     std::vector<double> v(9);
@@ -777,6 +800,17 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
 }
 
 inline SaveShip saveShipFromJson(const nlohmann::json &j) {
+    /* A ship file that is not an object -- a hand-typed "[]", or the file a
+       half-written save left behind -- reads as a vessel with no parts, and a
+       partless vessel has no compound body: buildShipFromSaveParts goes on to
+       call Vehicle::placeShip, which feeds a null hull to setPosRot and the load
+       segfaults (measured: exit 139 with no message, stdout never flushed).
+       Refuse the document instead, in the parser, where the boot --load path that
+       skips preflightSave still sees it (#306). */
+    if(!j.is_object()) {
+        throw std::runtime_error(std::string("load: ship file must be a JSON "
+                                             "object, got ") + j.type_name());
+    }
     SaveShip s;
     if(j.contains("name") && j["name"].is_string()) { s.name = j["name"].get<std::string>(); }
     if(j.contains("defPath") && j["defPath"].is_string()) { s.defPath = j["defPath"].get<std::string>(); }
@@ -811,8 +845,18 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     }
     if(j.contains("home") && j["home"].is_string()) { s.home = j["home"].get<std::string>(); }
     if(j.contains("scenario") && j["scenario"].is_string()) { s.scenario = j["scenario"].get<std::string>(); }
-    if(j.contains("parts") && j["parts"].is_array()) {
-        for(auto &&p : j["parts"]) { if(p.is_object()) { s.parts.push_back(savePartFromJson(p)); } }
+    /* A junk parts entry is not a part to skip: skipping reports a successful
+       load of a smaller ship than the file describes. (A ship with NO parts is
+       refused by validateShipParts in save.cpp, not here: at this layer a
+       partless SaveShip is a normal thing to poke at -- the flog and pose tests
+       build one -- and it is only fatal once a loader builds the hull.) */
+    for(auto &&p : arrayField(j, "parts")) {
+        if(!p.is_object()) {
+            throw std::runtime_error(std::string("load: \"parts\" entry must be "
+                                                 "an object, got ")
+                                     + p.type_name());
+        }
+        s.parts.push_back(savePartFromJson(p));
     }
     if(j.contains("fuel_links") && j["fuel_links"].is_array()) {
         for(auto &&l : j["fuel_links"]) {
@@ -943,6 +987,18 @@ inline nlohmann::json saveMetaToJson(const SaveMeta &m) {
 
 inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     SaveMeta m;
+    /* A document that is not an object (a hand-typed "[]", a truncated file that
+       parsed as "null", a text file) has no keys, so EVERY read below would keep
+       its default and the load would report a successful game with no fleet, no
+       cast and the clock at 0 -- and a Save-as into that slot afterwards deletes
+       ships/ files as orphans, which is the whole career (measured: exit 0,
+       "Loaded game ... (active: (none))", then the fleet files gone). The format
+       gate below cannot catch it: json::contains is false for a non-object, so
+       "format" looks merely absent, which means the current format. */
+    if(!j.is_object()) {
+        throw std::runtime_error(std::string("save: save.json must be a JSON "
+                                             "object, got ") + j.type_name());
+    }
     /* One of the reads that refuse rather than default -- see the note above
        saveMetaToJson for which. Every other read keeps the struct's default for
        an absent key, which is right for an ADDITIVE schema change and wrong for
@@ -1031,69 +1087,72 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
         m.ascent_ask.inc_deg = glm::clamp(m.ascent_ask.inc_deg, 0.0, 180.0);
     }
     if(j.contains("recovered")) {
-        m.recovered = recoveredListFromJson(j["recovered"]);
+        m.recovered = recoveredListFromJson(arrayField(j, "recovered"));
     }
-    if(j.contains("roster") && j["roster"].is_array()) {
-        for(auto &&k : j["roster"]) {
-            if(!k.is_object()) { continue; }
-            SaveKerbal sk = saveKerbalFromJson(k, "save.json: ");
-            /* A duplicate id would make find() pick one arbitrarily, and a
-               duplicate name would make two kerbals indistinguishable in the
-               ship list -- both are worse than a refused load. */
-            for(const SaveKerbal &e : m.roster) {
-                if(e.id == sk.id) {
-                    throw std::runtime_error("save: save.json: roster has two "
-                                             "entries with id "
-                                             + std::to_string(sk.id));
-                }
-                if(e.name == sk.name) {
-                    throw std::runtime_error("save: save.json: roster has two "
-                                             "entries named " + sk.name);
-                }
-            }
-            m.roster.push_back(sk);
+    for(auto &&k : arrayField(j, "roster")) {
+        /* A junk entry is a cast member the save recorded; skipping it would
+           strip a person and still call the load a success. */
+        if(!k.is_object()) {
+            throw std::runtime_error(std::string("save: roster entry must be an "
+                                                 "object, got ")
+                                     + k.type_name());
         }
-    }
-    if(j.contains("crew_pool") && j["crew_pool"].is_array()) {
-        for(auto &&sp : j["crew_pool"]) {
-            if(sp.is_object()) { m.crew_pool.push_back(savePartFromJson(sp)); }
+        SaveKerbal sk = saveKerbalFromJson(k, "save.json: ");
+        /* A duplicate id would make find() pick one arbitrarily, and a
+           duplicate name would make two kerbals indistinguishable in the
+           ship list -- both are worse than a refused load. */
+        for(const SaveKerbal &e : m.roster) {
+            if(e.id == sk.id) {
+                throw std::runtime_error("save: save.json: roster has two "
+                                         "entries with id "
+                                         + std::to_string(sk.id));
+            }
+            if(e.name == sk.name) {
+                throw std::runtime_error("save: save.json: roster has two "
+                                         "entries named " + sk.name);
+            }
         }
+        m.roster.push_back(sk);
     }
-    if(j.contains("ships") && j["ships"].is_array()) {
-        for(auto &&s : j["ships"]) {
-            /* A non-string entry is not a vehicle to skip: skipping drops a
-               ship file and the load reports success with fewer ships.
-               Refuse, as the format gate above does. */
-            if(!s.is_string()) {
-                throw std::runtime_error(std::string("save: save.json: ships "
-                                         "entry must be a string, got ")
-                                         + s.type_name());
-            }
-            const std::string sh = s.get<std::string>();
-            /* One key claimed twice puts the ambiguous-reference bug (#266)
-               back in through the side door, so it gets the same treatment. */
-            if(!slugUsable(sh)) {
-                throw std::runtime_error("save: save.json: ships entry \"" + sh
-                                         + "\" is not a usable file name");
-            }
-            for(const std::string &e : m.ships) {
-                if(e == sh) {
-                    throw std::runtime_error("save: save.json: ships lists \""
-                                             + sh + "\" twice");
-                }
-            }
-            m.ships.push_back(sh);
+    for(auto &&sp : arrayField(j, "crew_pool")) {
+        if(!sp.is_object()) {
+            throw std::runtime_error(std::string("save: crew_pool entry must be "
+                                                 "an object, got ")
+                                     + sp.type_name());
         }
+        m.crew_pool.push_back(savePartFromJson(sp));
     }
-    /* The third refusing read (after "format" and a crew entry's "seats"), and
-       it belongs HERE rather than in preflightSave: it is a fact about this one
-       document, so every path that parses a save gets the same sentence -- boot
-       --load of a same-system slot runs no preflight at all (main.cpp), and a
-       rule living in preflightSave would be invisible to it. A recorded slug the
-       "ships" list lacks means a hand-edited file or a fleet that shrank under
-       the save; the alternative was to fly a DIFFERENT vessel than the save
-       named, silently (#270). "" is not this rule: it records that nothing is
-       flown, which commitSaveWorld honours. */
+    for(auto &&s : arrayField(j, "ships")) {
+        /* A non-string entry is not a vehicle to skip: skipping drops a
+           ship file and the load reports success with fewer ships.
+           Refuse, as the format gate above does. */
+        if(!s.is_string()) {
+            throw std::runtime_error(std::string("save: save.json: ships "
+                                     "entry must be a string, got ")
+                                     + s.type_name());
+        }
+        const std::string sh = s.get<std::string>();
+        /* One key claimed twice puts the ambiguous-reference bug (#266)
+           back in through the side door, so it gets the same treatment. */
+        if(!slugUsable(sh)) {
+            throw std::runtime_error("save: save.json: ships entry \"" + sh
+                                     + "\" is not a usable file name");
+        }
+        for(const std::string &e : m.ships) {
+            if(e == sh) {
+                throw std::runtime_error("save: save.json: ships lists \""
+                                         + sh + "\" twice");
+            }
+        }
+        m.ships.push_back(sh);
+    }
+    /* Another document-level refusal (see the shape gates above and the note by
+       saveShipFromJson for why these live HERE rather than in preflightSave:
+       boot --load of a same-system slot runs no preflight at all, main.cpp). A
+       recorded slug the "ships" list lacks means a hand-edited file or a fleet
+       that shrank under the save; the alternative was to fly a DIFFERENT vessel
+       than the save named, silently (#270). "" is not this rule: it records that
+       nothing is flown, which commitSaveWorld honours. */
     if(!m.active_ship.empty()
        && std::find(m.ships.begin(), m.ships.end(), m.active_ship)
           == m.ships.end()) {
