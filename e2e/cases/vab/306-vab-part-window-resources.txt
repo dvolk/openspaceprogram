@@ -61,12 +61,13 @@ CHECK 'label="Seat 1##s0"' not in out
 # The card's own arithmetic: the "+ Nkg at launch" figure is the sum of its Carries
 # rows (gameui.cpp sums def.capacity over everything but EC). An identity, not a
 # figure, so a parts rebalance moves the numbers without moving the assertion. The
-# 0.2 band covers three one-decimal printings.
-CHECK abs(float(re.search(r'label="Mass: [0-9.]+kg \+ ([0-9.]+)kg at launch', out).group(1)) - sum(float(v) for v in re.findall(r'label="Carries ([0-9.]+)kg', out))) < 0.2
+# 0.2 band covers three one-decimal printings. Both sides are window-qualified: the
+# capsule's dossier opens 600ms later and would otherwise leak into the sums.
+CHECK abs(float(re.search(r'window="Fuel Tank \(3m x 3m\)##tank_r1.5h3_2" label="Mass: [0-9.]+kg \+ ([0-9.]+)kg at launch', out).group(1)) - sum(float(v) for v in re.findall(r'window="Fuel Tank \(3m x 3m\)##tank_r1.5h3_2" label="Carries ([0-9.]+)kg', out))) < 0.2
 # One quantity, two spellings, one set of numbers: the log's short names (#334) must
-# still carry what the window's rows print. The ", " on the LOX side keeps the
-# window's own "...kg LOX" row out of the log half of the comparison.
-CHECK re.findall(r'([0-9.]+)kg H2', out) + re.findall(r', ([0-9.]+)kg LOX', out) == re.findall(r'label="Carries ([0-9.]+)kg', out)
+# still carry what the window's rows print. The log side is anchored on its own tag,
+# so a window row can never be compared against itself.
+CHECK re.findall(r'\[vab\] part window: [^\n]* carries ([0-9.]+)kg H2', out) + re.findall(r'\[vab\] part window: [^\n]*, ([0-9.]+)kg LOX', out) == re.findall(r'window="Fuel Tank \(3m x 3m\)##tank_r1.5h3_2" label="Carries ([0-9.]+)kg', out)
 FORBID part window: nothing under the cursor
 FORBID FAILED
 FORBID error:

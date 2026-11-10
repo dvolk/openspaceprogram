@@ -2889,7 +2889,7 @@ void drawUIReadouts(Game &g) {
             ImGui::Separator();
             for(size_t i = 0; i < (size_t)Slot::SLOT_COUNT; i++) {
                 if(slotGroup((Slot)i) != grp) { continue; }
-                // Unique per-row ID: the "rebind"/"clear" labels repeat on every row.
+                // PushID keeps the row's imgui id stable across label edits.
                 ImGui::PushID((int)i);
                 const std::vector<KeyBind> &v = g.binds.perSlot[i];
                 ImGui::AlignTextToFramePadding();
@@ -2902,11 +2902,13 @@ void drawUIReadouts(Game &g) {
                 const bool capturing = (g.rebind_capture_slot == (int)i);
                 /* The ## suffix is invisible to the player and is what makes the
                    row addressable: PushID gives these buttons unique imgui ids,
-                   but --ui-click matches the LABEL, and 41 rows labelled "rebind"
-                   plus 41 labelled "clear" are one ambiguous match each (#165).
+                   but --ui-click matches the LABEL, and 63 rows labelled "rebind"
+                   plus 63 labelled "clear" were one ambiguous match each (#165).
                    slotName() is the same stable id settings.json stores, so a
                    case path cannot rot when a key is rebound. */
-                const std::string tag = slotName((Slot)i);
+                const char *slot = slotName((Slot)i);
+                assert(slot != nullptr);   // every i here is < SLOT_COUNT
+                const std::string tag = slot;
                 if(capturing) {
                     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1.0f, 0.6f, 0.2f, 1.0f));
                     if(ImGui::Button(("press a key...##" + tag).c_str(), ImVec2(120.0f, 0.0f))) {

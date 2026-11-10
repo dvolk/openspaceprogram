@@ -92,7 +92,11 @@ bool exactEq(std::string_view a, std::string_view b) {
    unreachable: --ui-click "Palette/Capsule (2m)##capsule" reported FAILED not
    found for a row the dump itself printed under
    window="Palette/palette_parts_7CAC8B23", which is why every palette case has
-   to aim with a bare label (e2e 278) and cannot say WHICH window it means. */
+   to aim with a bare label (e2e 278) and cannot say WHICH window it means.
+   The risk runs the other way: if a parent window and one of its children ever
+   carry the SAME label, a correctly qualified path now reports "ambiguous (2
+   matches)" instead of quietly picking one -- which is the loud failure this
+   module asks for, not a mis-click. */
 bool windowEq(std::string_view reg, std::string_view win) {
     if(exactEq(reg, win)) { return true; }
     return reg.size() > win.size() && reg.compare(0, win.size(), win) == 0
@@ -204,8 +208,10 @@ bool scrollPoint(const std::string &target, float &x, float &y,
        anything. */
     if(target.find('/') == std::string::npos) {
         ImGuiWindow *named = ImGui::FindWindowByName(target.c_str());
-        if(named != nullptr && named->Active && !(named->Flags & ImGuiWindowFlags_NoScrollWithMouse)
-           && !named->Collapsed && named->ScrollMax.y > 0.0f) {
+        if(named != nullptr && named->Active && named->Size.x > 0.0f
+           && named->Size.y > 0.0f && !named->Collapsed
+           && !(named->Flags & ImGuiWindowFlags_NoScrollWithMouse)
+           && named->ScrollMax.y > 0.0f) {
             x = named->Pos.x + named->Size.x * 0.5f;
             y = named->Pos.y + named->Size.y * 0.5f;
             const ImGuiViewport *vp = ImGui::GetMainViewport();

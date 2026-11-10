@@ -553,8 +553,12 @@ void poll_events(Game &g) {
            New Game name field: '.' printed "[toast] Time accel: 10x".
            WantTextInput, not WantCaptureKeyboard: the latter is also true while a
            button or a combo holds the nav focus, which would swallow F1/TAB/ESC
-           after an ordinary click. The rebind-capture branch above is outside the
-           gate on purpose: it needs keys while the Controls window has focus. */
+           after an ordinary click. The scene handlers keep their own, stricter
+           WantCaptureKeyboard bail (vabKeyActions, hubKeyActions) -- that is the
+           pre-existing "do not steer while a widget has the nav focus" rule, and
+           the gate here is only the floor beneath it. The rebind-capture branch
+           above is outside the gate on purpose: while a capture is armed, the
+           key the player presses IS the value being edited. */
             const SDL_Scancode ksc = ev.key.scancode;
             const Uint16 kmod = ev.key.mod;
             /* Scene-neutral slots: these work in flight AND in the editor. */

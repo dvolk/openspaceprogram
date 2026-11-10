@@ -231,9 +231,10 @@ void updateShipView(Game &g) {
        (#688) all mean by east. Spelling it locally as cross(up, north) pointed it
        at DECREASING longitude -- west -- and mirrored the heading below east-west
        (#713): a hull cruising east along lat 0 read hdg=275.7 while its own lon
-       grew from 0.006 to 0.028 deg. The helpers also hold at a pole, where the
-       meridian is undefined and the old projection produced a NaN-free but equally
-       arbitrary pair. */
+       grew from 0.006 to 0.028 deg. The helpers also hold at a pole, where the old
+       projection collapsed projectVecOntoPlane((0,1,0), up) to the zero vector and
+       normalize() handed back NaN (glm's normalize is v * inversesqrt(dot(v,v))),
+       straight into the Hdg: row and into tick.cpp's s.hdg. */
     const glm::dvec3 surf_east = equirectEast(surf_up);
     const glm::dvec3 surf_north = equirectNorth(surf_up, surf_east);
 
