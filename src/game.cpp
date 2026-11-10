@@ -75,18 +75,46 @@ glm::dvec3 Game::focusWorldPos(int i) const {
     return focusTargets[i].body->frame->GetPositionRelTo(rf);
 }
 
+/* What the player had open before TAB hid the chrome (#381): -1 = not
+   remembered, 0/1 = closed/open. A TAB cycle is a screenshot toggle, so it has
+   to put back what was there -- forcing default_open closed every window the
+   player opened by hand (Autopilot, Ship List, Target, Surface Map, Settings,
+   Controls) and left the Windows panel ticking boxes that disagreed with the
+   screen. File-static rather than a Game member because W_Count lives in
+   uiwins.h, which game.h deliberately does not include. Only toggle_windows and
+   ensure_ui_visible read it, and both are here. */
+static int8_t g_tabOpen[W_Count];
+
+static void clearTabSnapshot() {
+    for(int i = 0; i < W_Count; i++) { g_tabOpen[i] = -1; }
+}
+
 void Game::apply_ui_visible() {
     const WinSet &set = curScene(*this).wins;
     for(size_t i = 0; i < set.n; i++) {
-        const WinDef &w = kWins[set.ids[i]];
-        if(w.role != WinRole::Persistent) { continue; }
-        ui::SetOpen(w.name, ui_visible && w.opts.default_open);
+        const Win w = set.ids[i];
+        const WinDef &wd = kWins[w];
+        if(wd.role != WinRole::Persistent) { continue; }
+        if(!ui_visible) { ui::SetOpen(wd.name, false); continue; }
+        ui::SetOpen(wd.name, g_tabOpen[(size_t)w] >= 0
+                               ? g_tabOpen[(size_t)w] != 0
+                               : wd.opts.default_open);
     }
 }
 
 /* TAB: hide the chrome for a clean screenshot. Only the LIVE scene's
    Persistent windows; Root is untouched so TAB cannot blank the title. */
 void Game::toggle_windows() {
+    if(ui_visible) {
+        // Hiding: remember this scene's live open states first.
+        clearTabSnapshot();
+        const WinSet &set = curScene(*this).wins;
+        for(size_t i = 0; i < set.n; i++) {
+            const Win w = set.ids[i];
+            if(kWins[w].role != WinRole::Persistent) { continue; }
+            g_tabOpen[(size_t)w] = winOpen(w) ? 1 : 0;
+        }
+    }
     ui_visible = !ui_visible;
     apply_ui_visible();
 }
@@ -96,6 +124,9 @@ void Game::ensure_ui_visible() {
     ui_visible = true;
     printf("[ui] TAB-hide dropped at scene entry\n");
     fflush(stdout);
+    // A TAB-hide that ends at a scene entry comes back to the table's defaults,
+    // not to the windows the player had in the scene they left (#308).
+    clearTabSnapshot();
     apply_ui_visible();
 }
 
