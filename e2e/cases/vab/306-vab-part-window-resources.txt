@@ -1,15 +1,17 @@
 # The part window is a dossier, not a seat picker: right-clicking a TANK opens it
-# too, and what it shows is what that part carries. The stat rows are plain imgui
-# Text, so the "[vab] part window" line is the testable face of that half -- seats
-# and capacities per part, with EC in watt-hours because EC is stored energy and
-# rides no mass.
+# too, and what it shows is what that part carries. The stat rows go through uiText
+# (#601's channel), so --ui-list prints them WITH the values the player reads, and
+# this case pins both faces: seats and capacities per part, with EC in watt-hours
+# because EC is stored energy and rides no mass.
 #
-# What this does NOT pin is the Text itself: --ui-list registers items, not
-# labels, so deleting the Carries/Mass/Size rows would leave this case green while
-# the numbers they print stay correct. It pins the data the window is built from
-# and the seat rows it does or does not create. The harness has that channel now
-# (#601's uiText, src/uiinput.h), but these rows have not been converted through
-# it yet -- that is #644.
+# When this case was written the rows were plain imgui Text, so deleting any of them
+# (the mutation was tried) left the suite green and only the stdout line could be
+# asserted (#333). The dossier's Type/Mass/Size/Carries/staff rows and the shared
+# part card now go through uiText, so the EXPECTs below are the player's own view and
+# the CHECKs are the arithmetic the window implies: the "+ Nkg at launch" figure is
+# the sum of the Carries rows, and the log's capacities are the same figures the rows
+# print. The window spells a substance "Hydrogen" where the log says "H2" (#334):
+# pinning either spelling moves when someone unifies them, which is the point.
 #
 # The --ui-list dump lands while the TANK's window is live: a part with no seats
 # gets no seat rows, which is the "if the part has seats" half of the widget. The
@@ -45,7 +47,26 @@ ARGS --ui-click 5700,"tanker"
 ARGS --ui-click 6300,"VAB TopBar/Load"
 EXPECT [vab] part window: 'tank_r1.5h3_2' seats 0, carries 1410.2kg H2, 1410.2kg LOX
 EXPECT [vab] part window: 'capsule_1' seats 1, carries 2000.0Wh EC
+# The same figures, read off the card instead of off the log line: the trailing
+# " text" marker (the CHECK below) says the row was DRAWN, which is what an imgui
+# Text row used to make unassertable.
+EXPECT [uilist] window="Fuel Tank (3m x 3m)##tank_r1.5h3_2" label="Mass: 282.040kg + 2820.360kg at launch"
+EXPECT [uilist] window="Fuel Tank (3m x 3m)##tank_r1.5h3_2" label="Size: 3.0m dia x 3.0m"
+EXPECT [uilist] window="Fuel Tank (3m x 3m)##tank_r1.5h3_2" label="Carries 1410.2kg Hydrogen"
+EXPECT [uilist] window="Fuel Tank (3m x 3m)##tank_r1.5h3_2" label="Carries 1410.2kg LOX"
+# Type + Mass + Size + two Carries rows, and no staff row (a tank has no seats). The
+# count is the tripwire: it moves if a row is deleted, renamed or hidden by a clip.
+CHECK len([l for l in out.split("\n") if l.rstrip().endswith(" text") and 'window="Fuel Tank (3m x 3m)##tank_r1.5h3_2"' in l]) == 5
 CHECK 'label="Seat 1##s0"' not in out
+# The card's own arithmetic: the "+ Nkg at launch" figure is the sum of its Carries
+# rows (gameui.cpp sums def.capacity over everything but EC). An identity, not a
+# figure, so a parts rebalance moves the numbers without moving the assertion. The
+# 0.2 band covers three one-decimal printings.
+CHECK abs(float(re.search(r'label="Mass: [0-9.]+kg \+ ([0-9.]+)kg at launch', out).group(1)) - sum(float(v) for v in re.findall(r'label="Carries ([0-9.]+)kg', out))) < 0.2
+# One quantity, two spellings, one set of numbers: the log's short names (#334) must
+# still carry what the window's rows print. The ", " on the LOX side keeps the
+# window's own "...kg LOX" row out of the log half of the comparison.
+CHECK re.findall(r'([0-9.]+)kg H2', out) + re.findall(r', ([0-9.]+)kg LOX', out) == re.findall(r'label="Carries ([0-9.]+)kg', out)
 FORBID part window: nothing under the cursor
 FORBID FAILED
 FORBID error:

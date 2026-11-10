@@ -94,23 +94,27 @@ static const char *resNames[(int)ResourceType::Num] = {
    stay with each caller -- flight reads the live Part (crew, burned fuel), the
    VAB reads the def plus the fill the ship launches with. */
 static void drawPartPhysique(const PartDef &def) {
-    ImGui::Text("Size: %.1fm dia x %.1fm", def.radius * 2.0, def.height);
+    /* uiText for the whole card (#333): these are the numbers a part is chosen
+       with, and a Text row is invisible to --ui-list, so deleting one of them
+       left the suite green -- the mutation was tried while writing case 306,
+       which had to pin the "[vab] part window" stdout line instead. */
+    uiText("Size: %.1fm dia x %.1fm", def.radius * 2.0, def.height);
     if(def.torque > 0.0) {
         /* The rating is PER DRUM and the housing says how many it holds (#593).
            Quoting one number would make a triad and a future roll-only drum look
            identical in the same window where the Vessel page shows them differing
            per axis. */
-        ImGui::Text("Torque: %.0fN m%s (reaction wheel)", def.torque,
-                    def.wheel_axes == 3 ? " per drum x3" : "");
+        uiText("Torque: %.0fN m%s (reaction wheel)", def.torque,
+               def.wheel_axes == 3 ? " per drum x3" : "");
     }
     if(def.jet) {
-        ImGui::Text("Jet: %.0fN static in 1.225 kg/m3 air, air-breathing"
-                    " (%.2fkg/s jet fuel there, intake %.2fm^2, %.0fm/s exhaust)",
-                    def.jet_fan_thrust, def.propellant_rate[(int)ResourceType::JetFuel],
-                    def.jet_intake_area, def.exhaust_velocity);
+        uiText("Jet: %.0fN static in 1.225 kg/m3 air, air-breathing"
+               " (%.2fkg/s jet fuel there, intake %.2fm^2, %.0fm/s exhaust)",
+               def.jet_fan_thrust, def.propellant_rate[(int)ResourceType::JetFuel],
+               def.jet_intake_area, def.exhaust_velocity);
     } else if(def.totalPropellantRate() > 0.0 && def.exhaust_velocity > 0.0) {
-        ImGui::Text("Thrust: %.0fN (%.1fkg/s @ %.0fm/s)",
-                    def.fullThrust(), def.totalPropellantRate(), def.exhaust_velocity);
+        uiText("Thrust: %.0fN (%.1fkg/s @ %.0fm/s)",
+               def.fullThrust(), def.totalPropellantRate(), def.exhaust_velocity);
     }
     /* Electrical (#644): what this part costs the pool, in the terms the flight balance
        already prints. The figures existed before only for the sim and for the debug
@@ -5324,7 +5328,7 @@ void drawVabPartWindow(Game &g) {
                                        std::min(std::max(pos.y, vp->WorkPos.y), hy)));
         }
         ImGui::Text("%s (%s)", def.label().c_str(), bp->id.c_str());
-        if(!def.type.empty()) { ImGui::Text("Type: %s", def.type.c_str()); }
+        if(!def.type.empty()) { uiText("Type: %s", def.type.c_str()); }
         /* def->mass is DRY (staging.h); the second number is everything the tanks
            hold at launch, because Vehicle::init tops every one up when it builds
            the ship. That is capacity, not what an engine would burn: a part
@@ -5335,17 +5339,17 @@ void drawVabPartWindow(Game &g) {
             if(r == (int)ResourceType::EC) { continue; }
             carried += def.capacity[r];
         }
-        ImGui::Text("Mass: %.3fkg + %.3fkg at launch", def.mass, carried);
+        uiText("Mass: %.3fkg + %.3fkg at launch", def.mass, carried);
         drawPartPhysique(def);
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             if(def.capacity[r] <= 0.0) { continue; }
-            ImGui::Text("Carries %.1f%s %s", def.capacity[r],
-                        Vehicle::resourceUnit(r), resNames[r]);
+            uiText("Carries %.1f%s %s", def.capacity[r],
+                   Vehicle::resourceUnit(r), resNames[r]);
         }
         if(def.crew_capacity > 0) {
             ImGui::Separator();
-            ImGui::Text("%d staff at the launch pad",
-                        pad != nullptr ? (int)pad->crew.size() : 0);
+            uiText("%d staff at the launch pad",
+                   pad != nullptr ? (int)pad->crew.size() : 0);
         }
         // A part with no seats runs none of this loop.
         for(int slot = 0; slot < def.crew_capacity; slot++) {
