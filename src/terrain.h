@@ -598,7 +598,11 @@ struct TerrainBody {
         return LightDirFrom(planet->frame->root_pos, sun, renderFrame);
     }
 
-    void Draw(const Camera* camera, TerrainBody *sun, Frame *renderFrame) {
+    /* Opaque terrain: one walk per pass, so the skirt pass re-does the frustum
+       cull and the per-leaf double MVP compose. `skirt=false` (the --no-skirt
+       A/B) drops that second walk to price it. */
+    void Draw(const Camera* camera, TerrainBody *sun, Frame *renderFrame,
+              bool skirt = true) {
         if(!ready) return;   // root terrain not attached yet (deferred)
         sunlightVec = glm::vec3(SunlightDir(this, sun, renderFrame));
 
@@ -618,8 +622,10 @@ struct TerrainBody {
         for(auto&& patch : patches) {
             patch->Draw(camera, false);
         }
-        for(auto&& patch : patches) {
-            patch->Draw(camera, true);
+        if(skirt) {
+            for(auto&& patch : patches) {
+                patch->Draw(camera, true);
+            }
         }
     }
 

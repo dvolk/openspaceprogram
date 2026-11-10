@@ -933,6 +933,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_flag("--no-rings", args.no_rings,
                  "Skip the planetary ring annuli (debug: see the planet and "
                  "its depth without the rings)");
+    app.add_flag("--no-skirt", args.no_skirt,
+                 "Skip the terrain skirt pass: the second walk of the patch "
+                 "tree that fills the LOD cracks between neighbouring patches "
+                 "of different depth (debug: A/B what that second walk costs, "
+                 "and see the gaps it hides)");
 
     app.add_option("--sky-dim", args.sky_dim,
                    "Star-field exposure prototype: the gain the sky fades to "

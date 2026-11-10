@@ -169,6 +169,7 @@ struct GameArgs {
     bool no_atmosphere = false;
     bool no_ocean = false;
     bool no_rings = false;
+    bool no_skirt = false;
 
     // Star-field exposure (render.cpp skyGain): the gain the sky fades to with
     // the sun in view (1 = off), and the half-angle of that cone in degrees.

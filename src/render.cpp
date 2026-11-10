@@ -312,7 +312,10 @@ static float skyGain(Game &g, Frame *rf, TerrainBody *sun, Camera *camera,
 }
 
 /* The ship-side half of the state pass: g.hud.view, the transfer planner, the P/M
-   one-shots. `com` is passed in: get_center_of_mass walks the part tree. */
+   one-shots. `com` is the caller's, already taken this frame for the camera.
+   Re-taking it costs nothing -- get_center_of_mass() is O(1) (comPos() reads the
+   hull body's cached centre, it does not walk the part tree) -- so
+   updateShipView() taking its own is not a second bill. */
 static void refreshShipState(Game &g, const glm::dvec3 &com) {
     updateShipView(g);
 
@@ -686,7 +689,7 @@ void paintWorld(Game &g) {
 
     if(g.world_drawing == true) {
         for(auto&& planet : planets) {
-            planet->Draw(camera, sun, rf);
+            planet->Draw(camera, sun, rf, !g.args.no_skirt);
         }
     }
 
