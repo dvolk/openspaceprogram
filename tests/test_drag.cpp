@@ -1035,9 +1035,9 @@ static void test_wing_lifts_up() {
      tilted force -- the capability #453 exists to unlock;
    - a wing turned 180 deg about its own nose really does see the mirrored angle and
      the mirrored direction, and the FORCE still comes out identical. That last is
-     why jet.json's wing_2 (attach angle 180) keeps lifting the same way: the two
-     flips cancel. A flight log cannot tell that state from the law being broken,
-     so it lives here. */
+     why jet.json's wing_2 (attach angle 180, before 725bc870 deleted it) kept
+     lifting the same way: the two flips cancel. A flight log cannot tell that state
+     from the law being broken, so it lives here. */
 static void test_partAero() {
     printf("== partAero: each surface sees the flow in its own frame (#453) ==\n");
     /* Some pins below demand EXACT equality (tolerance 0 against 0.0). That is
@@ -2336,11 +2336,11 @@ static void test_controlDeflectionSign() {
    Choosing it about the PART's own axis does not: a yaw surface's plate normal
    IS its own up, so the triple product controlDeflectionSign measures is zero by
    construction (float noise on a real, slightly non-orthonormal frame), and each
-   instance's sign is then decided by that noise. Measured on jet.json and
-   glider.json that reverses the yaw force (51450 N -> -51450 N, and the moment
-   off by 3.8e5 N m); on the exact frames below the pair cancels outright. Either
-   way the stick stops meaning anything -- pin both, because the wrong version
-   looks like a tidy simplification. */
+   instance's sign is then decided by that noise. Measured on the old jet and glider
+   (deleted in 725bc870 -- history, not a repro) that reverses the yaw force (51450 N
+   -> -51450 N, and the moment off by 3.8e5 N m); on the exact frames below the pair
+   cancels outright. Either way the stick stops meaning anything -- pin both, because
+   the wrong version looks like a tidy simplification. */
 static void test_control_pair_frames() {
     printf("== control pair: surface normal, ship-axis command ==\n");
     const glm::dvec3 right(1,0,0), up(0,1,0);
@@ -2352,7 +2352,8 @@ static void test_control_pair_frames() {
 
     /* The shipped rudder pose: the plate's span (mesh +X) lies along the ship's
        up, its face normal (mesh +Y) along the ship's -right, chord along +Z --
-       a vertical fin, exactly as res/ships/jet.json bolts it on at 90 deg. */
+       a vertical fin, exactly how a 90 deg attach angle poses the shipped rudder
+       def (res/ships/jet.json did it that way, until 725bc870 deleted it). */
     const glm::dmat3 mUp(glm::dvec3(0,1,0), glm::dvec3(-1,0,0), glm::dvec3(0,0,1));
     // Its twin, mounted the other way round: the same pose rolled 180 deg about
     // the part's own nose -- which is what a 90/270 (or 0/180) attach angle does.

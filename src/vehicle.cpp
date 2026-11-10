@@ -3637,6 +3637,9 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
              toward the stall peak gains lift and the one it pulls away loses it, in
              the direction that OPPOSES w. Damping. Jet: dM.w from -1 to -3885 W, peak
              at |w| = 2.64 rad/s flying 3.6 deg off the flow. Glider: down to -513 kW.
+             (Both ships those figures were taken on were deleted in 725bc870, so
+             every "the jet / the glider" in this comment is history rather than a
+             repro -- tests/test_aerosweep.cpp is the harness that can be re-run.)
              Inside the deep-stall droop -- alpha past stallAngle, under 2x it -- the
              slope is NEGATIVE, so the surface the rotation pulls back toward the
              stall peak gains lift instead of losing it and the moment ALIGNS with w:
@@ -3808,11 +3811,12 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                mix, and a fin mounted upside down pushes the way it is bolted rather
                than the way the pod points. The COMMAND axis below stays the ship's:
                the stick promises a ship torque, and the sign picks the deflection
-               that delivers it whichever way the surface faces. On jet.json and
-               glider.json at ZERO spin the total control force and moment are
-               unchanged by that (pinned in test_shipload): a fin and its twin,
-               mounted 180 deg apart on the stack, flip their normals and their
-               deflections together. */
+               that delivers it whichever way the surface faces. On the old jet and
+               glider at ZERO spin the total control force and moment are unchanged
+               by that (pinned as geometry in test_drag.cpp's
+               test_control_pair_frames -- the two ships themselves were deleted in
+               725bc870): a fin and its twin, mounted 180 deg apart on the stack,
+               flip their normals and their deflections together. */
             /* The flow AT THE SURFACE (#483), for the same reason the lift loop pays
                it: a body turning at w drags its surfaces through the air. On this jet
                the rudders and elevators see up to 6.39 m/s of sweep (a 3.65 m lever,
