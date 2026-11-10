@@ -749,6 +749,19 @@ PartsCatalog load_parts_catalog(const char *path) {
                                           "still joining its lifting system and still "
                                           "leaving the hull's silhouette");
         }
+        /* ... and it needs its stall angle, for the same reason a control surface does
+           (#494). stall_angle is the SOLE ceiling liftCurve has on a lifting part: the
+           slope runs linear to that angle and droops to zero by twice it. With none
+           authored, liftCurve's `A <= 0` branch takes the linear path for EVERY angle,
+           so the wing never stalls -- CL grows without limit as the airframe tumbles --
+           while its induced drag, its Mach correction and its neutral-point weight all
+           keep working, so nothing in the drag log looks wrong. Every shipped wing
+           authors 0.35 rad; refuse the catalog edit that drops the key rather than
+           flying a wing with no stall on it. */
+        if(d.lift_area > 0.0 && d.stall_angle <= 0.0) {
+            throw std::runtime_error(ctx + "a lifting surface needs \"stall_angle\" (rad): with "
+                                          "none the lift law never stalls, at any angle");
+        }
         /* A chute must ship its canopy: the overlay pair is all-or-nothing
            (like shroud) and REQUIRED when chute_area > 0. */
         d.chute_area = optNumber(pv, "chute_area", 0.0, ctx, "m^2");

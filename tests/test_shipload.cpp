@@ -537,6 +537,22 @@ int main() {
         CHECK(expect_throw_saying([&]{ load_parts_catalog(nocl); },
                                   "a lifting surface needs \"cl\" > 0"));
         std::remove(nocl);
+        /* A lifting surface with a slope but NO stall angle is the quieter half of the
+           same typo. drag.h::liftCurve's `A <= 0` branch is not "no stall modelled", it
+           is "never stall": the slope runs linear for EVERY angle, so a wing with no
+           stall_angle keeps making CL at 90 deg of tumble. Everything else about it
+           behaves -- induced drag, the Mach correction, the neutral-point weight -- so
+           the drag log reads normal while the stall has silently left the game. Control
+           surfaces already require the key (#494); a wing is the same contract. */
+        const char *nostall = "/tmp/test_shipload_nostall.json";
+        std::ofstream ns(nostall);
+        ns << "{ \"parts\": [ { \"name\": \"wingendless\", \"type\": \"structural\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"lift_area\": 8.0, \"cl\": 6.0 } ] }";
+        ns.close();
+        CHECK(expect_throw_saying([&]{ load_parts_catalog(nostall); },
+                                  "a lifting surface needs \"stall_angle\""));
+        std::remove(nostall);
     }
 
     /* A drum pays for its own electricity (#596). "torque" > 0 makes a part a wheel
