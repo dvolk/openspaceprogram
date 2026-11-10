@@ -22,4 +22,13 @@ CHECK any(r["paint"] + r["composite"] > 0.0 for r in perf)
 # overshoots by up to a frame because a wall-gated row cannot close mid-frame.
 CHECK all(0.4 <= r["win"] <= 0.9 for r in perf)
 CHECK all(r["frames"] > 0 and r["fps"] > 0.0 for r in perf)
+# The spread and draw-call columns. `worst` is that window's slowest frame, so it
+# can never sit below the window's MEAN work; `over` counts frames over the
+# printed budget, so it can never exceed the window's frame count; and a painting
+# run issues Mesh draws (pads alone are enough), so the per-frame mean is > 0 in
+# at least one window. Shapes and bounds only -- still no absolute cost, which
+# stays unassertable on a shared box.
+CHECK all(r["worst"] >= r["work"] for r in perf)
+CHECK all(0 <= r["over"] <= r["frames"] for r in perf)
+CHECK any(r["draws"] > 0.0 for r in perf)
 FORBID error:

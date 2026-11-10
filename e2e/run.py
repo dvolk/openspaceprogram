@@ -255,15 +255,17 @@ KILLROT_RE = re.compile(
 # cases (the ticket's own warning).
 PERF_KEYS = ("t", "win", "frames", "fps", "work", "events", "logic", "jobs",
              "refresh", "render", "present", "paint", "composite", "ui",
-             "imgui_gl", "tail", "ticks", "ms_per_tick", "idled")
-PERF_INT_KEYS = ("frames", "ticks", "idled")
+             "imgui_gl", "tail", "ticks", "ms_per_tick", "idled",
+             "draws", "worst", "over")
+PERF_INT_KEYS = ("frames", "ticks", "idled", "over")
 PERF_RE = re.compile(
     r"\[perf\]\s+t=([\d.]+)s\s+win=([\d.]+)s\s+frames=(\d+)\s+fps=([-\d.]+)\s+"
     r"work=([-\d.]+)ms\s+events=([-\d.]+)ms\s+logic=([-\d.]+)ms\s+"
     r"jobs=([-\d.]+)ms\s+refresh=([-\d.]+)ms\s+render=([-\d.]+)ms\s+"
     r"present=([-\d.]+)ms\s+paint=([-\d.]+)ms\s+composite=([-\d.]+)ms\s+"
     r"ui=([-\d.]+)ms\s+imgui-gl=([-\d.]+)ms\s+tail=([-\d.]+)ms\s+"
-    r"ticks=(-?\d+)\s+ms/tick=([0-9.]+|-)\s+idled=(\d+)"
+    r"ticks=(-?\d+)\s+ms/tick=([0-9.]+|-)\s+idled=(\d+)\s+"
+    r"draws=([-\d.]+)\s+worst=([-\d.]+)ms\s+over=(\d+)"
 )
 # Game::toast mirrors every on-screen message to stdout ("the on-screen toast is
 # transient, the log is not"), so a hotkey that only changes a flag still leaves

@@ -871,7 +871,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_flag("--perf", args.perf,
                  "Print a per-frame phase timing breakdown (events / logic / "
                  "jobs / refresh (the 3D state pass) / render (the paint pass) "
-                 "+ fps + logic ticks): one [perf] row every "
+                 "+ fps + logic ticks + draw calls + the window's worst frame "
+                 "and its count of over-budget frames): one [perf] row every "
                  "--perf-interval seconds and a summary at exit (#676). Off by "
                  "default; the timing overhead is negligible when off");
 

@@ -110,4 +110,11 @@ private:
    failed import yields a unit-cube placeholder. */
 Mesh *get_mesh(const std::string &path);
 
+/* Draw-call accounting for --perf: every Mesh::Draw/DrawSkirt counts, and
+   take_mesh_draws() reads and zeroes the total so a caller can window it per
+   frame. It is what makes "does this scale with parts/patches?" answerable
+   without a GPU vendor's profiler: draw calls are the number that grows with
+   part count and with the terrain patch tree. */
+unsigned long long take_mesh_draws();
+
 #endif

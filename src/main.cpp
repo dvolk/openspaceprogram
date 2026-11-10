@@ -1264,6 +1264,24 @@ int main(int argc, char **argv)
                                         pf_ui{}, pf_glui{};
     double p_paint = 0.0, p_composite = 0.0, p_ui = 0.0, p_glui = 0.0,
            p_tail = 0.0;
+    /* Frame-cost SPREAD and draw-call count. A mean hides the one 40 ms frame
+       the player actually felt, so each window also carries its worst frame and
+       how many frames went over budget. The budget is the --frame-cap period
+       when capped, else the logic tick: off-rails the sim wants one tick per
+       frame, so a frame slower than 1/dt is where catch-up (and #402's dropped
+       sim time) starts. `draws` is mesh-level GL draw calls per frame -- the
+       number that scales with part count and with the terrain patch tree
+       (mesh.h::take_mesh_draws). */
+    const double perf_budget_ms = (eff_frame_cap > 0)
+        ? (1000.0 / (double)eff_frame_cap)
+        : (1000.0 / (double)args.physics_hz);
+    if(perf_on) {
+        printf("perf: a frame over %.2f ms counts as late (--frame-cap %d at "
+               "%.0f Hz logic)\n", perf_budget_ms, eff_frame_cap, args.physics_hz);
+    }
+    double p_worst = 0.0, w_worst = 0.0;
+    long long p_over = 0, w_over = 0;
+    unsigned long long p_draws = 0, w_draws = 0;
     const std::chrono::steady_clock::time_point perf_loop_start =
         std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point perf_w_start = perf_loop_start;
@@ -1298,17 +1316,20 @@ int main(int argc, char **argv)
                " events=%.4fms logic=%.4fms jobs=%.4fms refresh=%.4fms"
                " render=%.4fms present=%.4fms paint=%.4fms composite=%.4fms"
                " ui=%.4fms imgui-gl=%.4fms tail=%.4fms"
-               " ticks=%lld ms/tick=%s idled=%lld\n",
+               " ticks=%lld ms/tick=%s idled=%lld"
+               " draws=%.2f worst=%.4fms over=%lld\n",
                std::chrono::duration<double>(now - perf_loop_start).count(),
                dt, w_frames, nf / dt, w_total / nf,
                w_events / nf, w_logic / nf, w_jobs / nf, w_refresh / nf,
                w_render / nf, w_present / nf,
                w_paint / nf, w_composite / nf, w_ui / nf, w_glui / nf, w_tail / nf,
                w_steps, tick_rate,
-               w_idled);
+               w_idled,
+               (double)w_draws / nf, w_worst, w_over);
         w_events = w_logic = w_jobs = w_refresh = w_render = w_present = 0.0;
         w_total = w_paint = w_composite = w_ui = w_glui = w_tail = 0.0;
         w_frames = 0; w_steps = 0; w_idled = 0;
+        w_worst = 0.0; w_over = 0; w_draws = 0;
         perf_w_start = now;
     };
     const auto perf_summary = [&]() {
@@ -1329,6 +1350,13 @@ int main(int argc, char **argv)
         printf("  %-7s avg %9.4f ms  (frame work only, EXCLUDES the "
                "--frame-cap sleep)\n", "total",
                p_total / (double)p_frames);
+        /* The spread, not just the mean: a 1.5 ms average with a 40 ms worst
+           frame is a stutter the player feels and the phase table cannot see. */
+        printf("  worst frame %9.4f ms; %lld of %lld frames over the %.2f ms "
+               "budget\n", p_worst, p_over, p_frames, perf_budget_ms);
+        printf("  draws   avg %9.2f mesh draw calls per frame (terrain patches + "
+               "parts + shells + markers)\n",
+               (double)p_draws / (double)p_frames);
         if(p_idled > 0) {
             // No interval here: a --frame-cap slower than the idle budget paced
             // those frames.
@@ -1692,6 +1720,7 @@ int main(int argc, char **argv)
             const double f_ui = perf_ms(pf_comp, pf_ui);
             const double f_glui = perf_ms(pf_ui, pf_glui);
             const double f_tail = f_render - perf_ms(pf_paint0, pf_glui); // NewFrame, shots
+            const unsigned long long f_draws = take_mesh_draws();
             p_events += f_events; p_logic += f_logic; p_jobs += f_jobs;
             p_refresh += f_refresh; p_render += f_render; p_present += f_present;
             p_total += f_work;
@@ -1701,6 +1730,9 @@ int main(int argc, char **argv)
             p_glui += f_glui;
             p_tail += f_tail;
             p_frames++; p_steps += game.logic_ticks;
+            if(f_work > p_worst) { p_worst = f_work; }
+            if(f_work > perf_budget_ms) { p_over++; }
+            p_draws += f_draws;
             if(idling) { p_idled++; }
             w_events += f_events; w_logic += f_logic; w_jobs += f_jobs;
             w_refresh += f_refresh; w_render += f_render; w_present += f_present;
@@ -1708,6 +1740,9 @@ int main(int argc, char **argv)
             w_paint += f_paint; w_composite += f_comp; w_ui += f_ui;
             w_glui += f_glui; w_tail += f_tail;
             w_frames++; w_steps += game.logic_ticks;
+            if(f_work > w_worst) { w_worst = f_work; }
+            if(f_work > perf_budget_ms) { w_over++; }
+            w_draws += f_draws;
             if(idling) { w_idled++; }
             perf_roll();
         }

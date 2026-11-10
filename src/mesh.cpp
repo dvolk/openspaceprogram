@@ -12,6 +12,16 @@
 #include "gldebug.h"
 #include "resdir.h"
 
+/* Draw-call total (mesh.h::take_mesh_draws). Plain counter: the game is
+   single-threaded for GL, so no atomics needed. */
+static unsigned long long s_draw_calls = 0;
+
+unsigned long long take_mesh_draws() {
+    const unsigned long long n = s_draw_calls;
+    s_draw_calls = 0;
+    return n;
+}
+
 bool Mesh::AssImpFromFile(const std::string& pFile, bool copyData)
 {
     Assimp::Importer importer;
@@ -369,6 +379,7 @@ void Mesh::Draw()
     glBindVertexArray(m_vertexArrayObject);
 
     unsigned int count = (m_numInnerIndices != 0) ? m_numInnerIndices : m_numIndices;
+    s_draw_calls++;
     glDrawElementsBaseVertex(GL_TRIANGLES, count, GL_UNSIGNED_INT, 0, 0);
 
     glBindVertexArray(0);
@@ -377,6 +388,7 @@ void Mesh::Draw()
 void Mesh::Draw(GLenum mode) {
     glBindVertexArray(m_vertexArrayObject);
 
+    s_draw_calls++;
     glDrawArrays(mode, 0, num_vertices);
 
     glBindVertexArray(0);
@@ -390,6 +402,7 @@ void Mesh::DrawSkirt()
 
     glBindVertexArray(m_vertexArrayObject);
 
+    s_draw_calls++;
     glDrawElementsBaseVertex(GL_TRIANGLES, m_numIndices - m_numInnerIndices, GL_UNSIGNED_INT,
                              (void*)(sizeof(unsigned int) * m_numInnerIndices), 0);
 
