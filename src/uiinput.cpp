@@ -86,6 +86,19 @@ bool exactEq(std::string_view a, std::string_view b) {
     return a == b;
 }
 
+/* A registered window name matches the window half of a path when it is that
+   segment exactly, or a deeper child of it. imgui names a BeginChild window
+   "Parent/child_XXXXXXXX", so the intuitive path into a child panel used to be
+   unreachable: --ui-click "Palette/Capsule (2m)##capsule" reported FAILED not
+   found for a row the dump itself printed under
+   window="Palette/palette_parts_7CAC8B23", which is why every palette case has
+   to aim with a bare label (e2e 278) and cannot say WHICH window it means. */
+bool windowEq(std::string_view reg, std::string_view win) {
+    if(exactEq(reg, win)) { return true; }
+    return reg.size() > win.size() && reg.compare(0, win.size(), win) == 0
+        && reg[win.size()] == '/';
+}
+
 /* The items matching `path`. A qualified "Window/Label" is tried at every '/'
    in the path, rightmost first -- window names and labels both contain
    slashes, so no single split rule works. Otherwise the whole path is the
@@ -101,7 +114,7 @@ void findMatches(const std::string &path, std::vector<const UiItem *> &out) {
         const std::string_view lab(path.data() + slash + 1, path.size() - slash - 1);
         for(const UiItem &it : g_done) {
             if(it.text) { continue; }
-            if(exactEq(it.window, win) && exactEq(it.label, lab)) {
+            if(windowEq(it.window, win) && exactEq(it.label, lab)) {
                 out.push_back(&it);
             }
         }
@@ -181,6 +194,30 @@ void failScroll(const UiScroll &s, Uint32 now_ms, const std::string &why) {
 bool scrollPoint(const std::string &target, float &x, float &y,
                  std::string &why, bool &fatal) {
     fatal = false;
+    /* A slash-free name that IS a live, scrollable window means that window, and
+       is asked for BEFORE the item scan. The order used to be the other way
+       round, so --ui-scroll 2500,"Controls",-10 resolved to the Title Menu's
+       "Controls" BUTTON, read the TITLE Menu's ScrollMax (0) and reported "not
+       scrollable" about a window the player never meant -- while the Controls
+       window was live with 1014px of scroll range. A name that is both a window
+       and a row is a coin flip today; the window is the reading that can scroll
+       anything. */
+    if(target.find('/') == std::string::npos) {
+        ImGuiWindow *named = ImGui::FindWindowByName(target.c_str());
+        if(named != nullptr && named->Active && !(named->Flags & ImGuiWindowFlags_NoScrollWithMouse)
+           && !named->Collapsed && named->ScrollMax.y > 0.0f) {
+            x = named->Pos.x + named->Size.x * 0.5f;
+            y = named->Pos.y + named->Size.y * 0.5f;
+            const ImGuiViewport *vp = ImGui::GetMainViewport();
+            if(vp != nullptr
+               && (x < vp->Pos.x || y < vp->Pos.y
+                   || x > vp->Pos.x + vp->Size.x || y > vp->Pos.y + vp->Size.y)) {
+                why = "off screen (the target's centre is outside the viewport)";
+                return false;
+            }
+            return true;
+        }
+    }
     std::vector<const UiItem *> hits;
     findMatches(target, hits);
     if(hits.size() > 1) {

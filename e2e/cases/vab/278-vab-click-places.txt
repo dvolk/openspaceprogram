@@ -14,7 +14,11 @@ NAME vab-click-places
 CLAIM A synthetic click places a part in the VAB.
 KIND invariant
 ARGS --timeout 9.5 --frame-cap 30
-ARGS --ui-click 4500,"Capsule (3m)##capsule_r1.5h3"
+# Qualified with the window on purpose: the part rows live in a BeginChild, which
+# imgui registers as "Palette/palette_parts_XXXXXXXX", and --ui-click now matches a
+# window segment against a child name's parent as well as exactly. The bare-label
+# form this case used to need could not say WHICH window it meant.
+ARGS --ui-click 4500,"Palette/Capsule (3m)##capsule_r1.5h3"
 ARGS --sim-mouse 5500,0,960,540,LMB
 ARGS --ui-click 7000,"VAB TopBar/LAUNCH"
 # Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
