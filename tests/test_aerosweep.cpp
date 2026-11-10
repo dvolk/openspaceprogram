@@ -757,6 +757,71 @@ static void test_rate_column() {
     teardown(b);
 }
 
+/* THE NEUTRAL FIN. A steering part's own angle of attack enters its force law only
+   while a NON-ZERO command exists -- vehicle.cpp:3771's `cmd == 0.0` early-out skips
+   everything up to vehicle.cpp:3892's `aeroAngle = deflection + (systemLifts ? 0 : pa.alpha)`.
+   So the side force is DISCONTINUOUS in the command at zero: a 1e-12 rad trim deflects
+   nothing (its own q*S*cl*delta is 0.000 N) and still buys the entire weathervane.
+   Pinned as the law now is, because #551/#508 are the question and the answer should
+   move these pins, not a deleted scratch probe. The beta 40 half says where the gate
+   stops mattering: past twice the fin's stall angle its own alpha is dead, so opening
+   the gate hands the law nothing. */
+static void test_neutral_fin_alpha_gate() {
+    printf("== a vertical fin, uncommanded and commanded by nothing ==\n");
+    Bench b = mkBench();
+    Part *fin = mkPlate(b.defs, "rudder", 5.0, 1.0, 0.05, 1.0);
+    setSurface(b.defs.back(), 2.0, false);
+    b.defs.back().control_axis = ControlAxis::Yaw;    // what a vertical fin is for
+    // 90 deg about the stack axis: the plate stands up, so a sideslip is its angle of attack.
+    b.v->attachMode(fin, 0, AttachMode::Down, 90.0, 3.0);
+    launch(b);
+
+    auto side = [&](double trimDeg, double beta) {
+        fin->trimDeg = trimDeg;
+        fly(b.v, 200.0, 0.0, beta);
+        return b.v->lastAeroForce.x;
+    };
+    const double n15 = side(0.0, 15.0);
+    const double c15 = side(glm::degrees(1e-12), 15.0);
+    printf("[fin] beta 15 at 200 m/s: uncommanded side %10.2f N   1e-12 rad trim %10.2f N"
+           "   jump %10.2f N\n", n15, c15, c15 - n15);
+    /* Uncommanded, a fin standing in a 15 deg sideslip adds exactly nothing: what is
+       left is the pod's own form drag off the nose. */
+    CHECK_NEAR(n15, -4946.76, 0.01, "an uncommanded fin makes no side force at all");
+    CHECK_NEAR(c15, -96896.19, 0.01, "a 1e-12 rad command buys the whole weathervane");
+    CHECK_TRUE(std::fabs(c15) > 19.0 * std::fabs(n15),
+               "so the law jumps by 20x the ship's own side force on a command of nothing");
+
+    const double n40 = side(0.0, 40.0);
+    const double c40 = side(glm::degrees(1e-12), 40.0);
+    printf("[fin] beta 40: uncommanded %10.2f N   commanded %10.2f N"
+           "   (past 2x the fin's stall angle the gate opens onto nothing)\n", n40, c40);
+    CHECK_NEAR(c40, n40, 1e-9, "and where the fin's own alpha is dead, the gate changes nothing");
+    teardown(b);
+
+    /* A second gate nobody names: the alpha term is billed only when the DEFLECTION
+       itself is non-zero, and controlDeflection answers 0 for a mount with no lever
+       about the surface's AUTHORED control_axis (vehicle.cpp:3871's skip). Same fin,
+       same mount, authored Pitch instead of Yaw: it never weathervanes at all, however
+       hard it is commanded -- while vehicle.cpp:3751 calls control_axis "the label for
+       WHICH KEY asks... not a wall on what the plate is for". */
+    Bench pb = mkBench();
+    Part *pfin = mkPlate(pb.defs, "rudder", 5.0, 1.0, 0.05, 1.0);
+    setSurface(pb.defs.back(), 2.0, false);        // setSurface's axis is Pitch
+    pb.v->attachMode(pfin, 0, AttachMode::Down, 90.0, 3.0);
+    launch(pb);
+    pfin->trimDeg = 0.0;
+    fly(pb.v, 200.0, 0.0, 15.0);
+    const double pitchNeutral = pb.v->lastAeroForce.x;
+    pfin->trimDeg = glm::degrees(1e-12);
+    fly(pb.v, 200.0, 0.0, 15.0);
+    printf("[fin] the same fin authored PITCH: uncommanded %10.2f N   commanded %10.2f N"
+           "   defl %+.3e rad\n", pitchNeutral, pb.v->lastAeroForce.x, pfin->controlDefl);
+    CHECK_NEAR(pb.v->lastAeroForce.x, pitchNeutral, 1e-9,
+               "a fin with no lever about its authored axis never weathervanes");
+    teardown(pb);
+}
+
 int main() {
     test_surface_sweep();
     test_lift_system_merge();
@@ -764,6 +829,7 @@ int main() {
     test_surface_authority_curve();
     test_heat_hooks();
     test_rate_column();
+    test_neutral_fin_alpha_gate();
     printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }
