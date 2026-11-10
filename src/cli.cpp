@@ -376,8 +376,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "each time given, for writing --ui-click paths and "
                    "--ui-scroll targets (test hook). Repeat the flag for more "
                    "than one dump: a case that toggles a switch needs one "
-                   "dump either side of the click.")
-        ->expected(-1);
+                   "dump either side of the click. Times may also be "
+                   "comma-separated (1000,2000) like the other --*-interval "
+                   "lists -- a bare '1000,2000' here used to parse to nothing "
+                   "and dump no rows at all.")
+        ->expected(-1)
+        ->delimiter(',');
 
     std::vector<std::string> ui_scroll;
     app.add_option("--ui-scroll", ui_scroll,
