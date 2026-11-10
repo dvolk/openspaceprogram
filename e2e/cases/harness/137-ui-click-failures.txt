@@ -6,8 +6,8 @@
 # The ambiguous half used to be demonstrated by the Controls window, whose 63
 # rebind buttons were all labelled "rebind" (#165). #165 is fixed now -- every
 # row is "rebind##<slotName>" -- and no shipped window carries two identical
-# labels any more (measured: a --ui-list of the title scene with Readme and
-# Settings open holds 49 clickable rows, every label distinct), so the case
+# labels any more (measured at 1920x1080 with Settings open: --ui-list 2600
+# reports items=59, prints 39 named rows, and no label repeats), so the case
 # pins only the not-found shape and the MISMATCH guard. findMatches()'s
 # "ambiguous (N matches)" branch is live code with nothing left in the shipped
 # UI to exercise it; a synthetic duplicate would be the only way to pin it.
