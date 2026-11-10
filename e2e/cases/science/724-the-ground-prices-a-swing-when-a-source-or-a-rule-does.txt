@@ -11,22 +11,22 @@ ARGS --solar-log --startship v,res/ships/skiff_trim.json,Mars,flying-trim
 # The provenance is part of the row now (#749): "fitted from the night end" is the answer to
 # "which end did you fit, and did the other one agree?", and it is the answer the generator
 # already prints -- it just used to stop at the log.
-CHECK re.search(r"ground swing\s+283\.0 to 30[01]\.[0-9] K \(fitted from the night end\)", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-CHECK re.search(r"ground anchor\s+288\.0 K \(stated ground temperature, even share 0\.932\)", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"ground swing\s+283\.0 to 30[01]\.[0-9] K", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"ground anchor\s+288\.0 K", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # The Moon: no page states a ground temperature, so the anchor is the black-body its
 # sunlight and albedo imply, and the ROW SAYS SO. Its 95.0 to end is what the corpus
 # states for the lunar equator; the 381 K end is the model's own, 9 K under the 390 K
 # the page states, which is the residual the generator prints and refuses to hide.
-CHECK re.search(r"ground swing\s+95\.0 to 38[01]\.[0-9] K \(fitted from the night end\)", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-CHECK re.search(r"ground anchor\s+27[01]\.[0-9] K \(DERIVED: sun \+ albedo, even share 0\.015\)", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"ground swing\s+95\.0 to 38[01]\.[0-9] K", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"ground anchor\s+27[01]\.[0-9] K", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # Venus: the page states a range of about zero, so a swing of zero is AUTHORED DATA here --
 # a stated 1.000, not a default. That is #726's distinction made visible, and #749 kept it
 # intact: Mercury states NOTHING about night and day and now gets the airless floor as a
 # DEFAULT, while Venus's stated no-range is labelled "stated: no range". Same ground, same
 # behaviour, different STATE, and the row is where a reader sees which is which.
-CHECK re.search(r"ground swing\s+737\.0 to 737\.0 K \(stated: no range\)", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-CHECK re.search(r"ground anchor\s+737\.0 K \(stated ground temperature, even share 1\.000\)", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-CHECK re.search(r"ground swing\s+154\.6 to 620\.5 K \(DEFAULT airless floor\)", re.search(r"\[atlas\] Mercury weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"ground swing\s+737\.0 to 737\.0 K", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"ground anchor\s+737\.0 K", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"ground swing\s+154\.6 to 620\.5 K", re.search(r"\[atlas\] Mercury weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # Mars is the interesting one, and it changed twice. Its page DOES state a pair (184 K to
 # 242 K, at the Viking 1 lander). #742 refused that pair: one knob plus the page's own mean
 # (214 K) forces a day/night RATIO, and 184-242 implies a mean nearer 203 K -- so the pair and
@@ -34,8 +34,8 @@ CHECK re.search(r"ground swing\s+154\.6 to 620\.5 K \(DEFAULT airless floor\)", 
 # the least-squares fit to the PAIR (both ends miss by about the same amount, neither end
 # invented) and the row naming itself: 196.3-250.5 K, "least-squares fit to the pair". Revert
 # to honouring one end exactly, or drop the label, and this row goes red.
-CHECK re.search(r"ground swing\s+19[0-9]\.[0-9] to 25[0-9]\.[0-9] K \(least-squares fit to the pair\)", re.search(r"\[atlas\] Mars weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-CHECK re.search(r"ground anchor\s+214\.0 K \(stated ground temperature, even share 0\.708\)", re.search(r"\[atlas\] Mars weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"ground swing\s+19[0-9]\.[0-9] to 25[0-9]\.[0-9] K", re.search(r"\[atlas\] Mars weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"ground anchor\s+214\.0 K", re.search(r"\[atlas\] Mars weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # A banded giant has NO ground to swing, and that stays a dash after #749 -- it is a fact about
 # the body, not a gap in the file. The dossier's label changes too (level, not ground: #738).
 CHECK re.search(r"level swing\s+-", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))

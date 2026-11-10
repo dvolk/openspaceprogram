@@ -6629,11 +6629,10 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                (weighted by how much air is overhead), which is why a pad's thermometer and
                this row can differ by a degree or two on Kerbin. */
             if(followAuthored(at.air_follow)) {
-                fmtRow(v, sizeof v, "%.3f (air follows its ground at sea level)",
-                         at.air_follow);
+                fmtRow(v, sizeof v, "%.3f", at.air_follow);
                 line("air coupling", v);
             } else {
-                line("air coupling", "- (this air keeps its authored profile)");
+                line("air coupling", "-");
             }
             /* WHAT the air is, not only how much of it (#552 A4b, #630). The mix is
                what a body authors; molar mass and gamma are what it resolves to, so
@@ -6736,13 +6735,11 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                                                 : "sunlight (mean orbit)", v);
         const bool albedo = albedoAuthored(b.surface.bond_albedo);
         if(albedo) {
-            /* The marker is the whole point of the row for a converted figure: 0.463 reads
-               exactly like Europa's own measurement until the row says it came from a
-               geometric 0.68 times a factor this corpus disagrees about within itself. */
-            const bool marked = !b.surface.albedo_src.empty();
-            fmtRow(v, sizeof v, "%.3f%s%s%s", b.surface.bond_albedo,
-                     marked ? " (" : "", b.surface.albedo_src.c_str(),
-                     marked ? ")" : "");
+            // Values only in the atlas (#759): how a figure was obtained -- measured, or a
+            // geometric albedo times a phase factor, or borrowed from an analogue -- is the
+            // generators' business. It rides in res/systems/*.json (albedo_src), prints in
+            // --solar-log, and is asserted by unit tests that read the JSON.
+            fmtRow(v, sizeof v, "%.3f", b.surface.bond_albedo);
             line("bond albedo", v);
         } else { line("bond albedo", "-"); }
         /* derivedBlackbody_K answers 0.0 for "cannot be derived" (no authored albedo, no light
@@ -6754,7 +6751,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
            under its authored 288 K. */
         const double bb = derivedBlackbody_K(flux, b.surface.bond_albedo);
         if(bb > 0.0) {
-            fmtRow(v, sizeof v, "%.1f K (global mean, no air)", bb);
+            fmtRow(v, sizeof v, "%.1f K", bb);
             line("black-body temp", v);
         } else { line("black-body temp", "-"); }
         /* #738: a banded giant has no surface, and the corpus never claims one -- the row it
@@ -6777,9 +6774,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             // exactly that question -- so the row reports a difference instead of
             // pretending a greenhouse exists in the sim.
             if(bb > 0.0) {
-                fmtRow(v, sizeof v, "%+.1f K (%s)",
-                         b.surface.temperature - bb,
-                         giant ? "1 bar - airless mean" : "surface - airless mean");
+                fmtRow(v, sizeof v, "%+.1f K", b.surface.temperature - bb);
                 line(giant ? "level - airless mean" : "greenhouse gap", v);
             } else { line(giant ? "level - airless mean" : "greenhouse gap", "-"); }
         } else {
@@ -6800,29 +6795,18 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
         const double airT = airDatum_K(b.surface.atmosphere);
         const double anchor = groundAnchor_K(b.surface.temperature, airT, bb);
         if(anchor > 0.0 && evenShareAuthored(b.surface.even_share)) {
+            /* Values only (#759). The two ends, the anchor and the knob that ties them all
+               live in the JSON; which rung priced the knob (fitted from a stated pair, a
+               default rule, a stated no-range) is provenance, and it is asserted by unit
+               tests against the JSON rather than by a parenthetical here.
+               No authored swing still dashes rather than printing the anchor twice: a source
+               that says nothing about night and day did not say they are equal (#726/#727). */
             const double f = b.surface.even_share;
-            // Named by the rung that answered, in groundtemp.h's ONE spelling of the order:
-            // the surface map's log and this row must name the same anchor the same way, or the
-            // two dashboards stop being reconcilable (#636, #687).
-            const char *why = groundAnchorRungName(
-                groundAnchorRung(b.surface.temperature, airT, bb));
-            /* Two rows rather than one long one: the dossier wraps, and a wrapped
-               "... anchor 270.3 K," over an orphaned "DERIVED ...)" reads worse than a
-               named second row. The END and the ANCHOR are also two different kinds of
-               number, which is the distinction the row is trying to make. */
-            /* The provenance rides on the SWING row rather than the anchor row because the
-               swing is where the question lands -- "where did that range come from?" -- and
-               because a file that priced a knob by a rule says so in the generator's own
-               words (utils/ground_model.py, gen_systems.py). "DEFAULT" is not a warning here:
-               #749 decided a stated gap is worse than a rule that names itself. */
-            const bool priced = !b.surface.even_share_src.empty();
-            fmtRow(v, sizeof v, "%.1f to %.1f K%s%s%s",
+            fmtRow(v, sizeof v, "%.1f to %.1f K",
                      groundTemperature(anchor, f, 0.0),
-                     groundTemperature(anchor, f, 1.0),
-                     priced ? " (" : "", b.surface.even_share_src.c_str(),
-                     priced ? ")" : "");
+                     groundTemperature(anchor, f, 1.0));
             line(giant ? "level swing" : "ground swing", v);
-            fmtRow(v, sizeof v, "%.1f K (%s, even share %.3f)", anchor, why, f);
+            fmtRow(v, sizeof v, "%.1f K", anchor);
             line(giant ? "level anchor" : "ground anchor", v);
         } else {
             line(giant ? "level swing" : "ground swing", "-");

@@ -58,7 +58,7 @@ CHECK re.search(r"sunlight \(parent's orbit\)\s+[\d.]+ W/m2\s*\n\s*\[atlas\]   b
 #     and this check reddens. (The "no albedo at all" dash is still a live thing in the catalogue
 #     moons, and science/727 pins it on Himalia in solar_system_named.json; this core file no
 #     longer contains one, which is what #735 and #749 were for.)
-CHECK (lambda m: m.group(3).startswith("geom ") and abs(float(m.group(4)) - (float(m.group(1)) * (1.0 - float(m.group(2))) / 4.0 / 5.670374419e-8) ** 0.25) < 0.05)(re.search(r"sunlight \(parent's orbit\)\s+([\d.]+) W/m2\s*\n\s*\[atlas\]   bond albedo\s+([\d.]+) \(([^)]+)\)\s*\n\s*\[atlas\]   black-body temp\s+([\d.]+) K", re.search(r"\[atlas\] Europa weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)))
+CHECK (lambda m: abs(float(m.group(3)) - (float(m.group(1)) * (1.0 - float(m.group(2))) / 4.0 / 5.670374419e-8) ** 0.25) < 0.05)(re.search(r"sunlight \(parent's orbit\)\s+([\d.]+) W/m2\s*\n\s*\[atlas\]   bond albedo\s+([\d.]+)\s*\n\s*\[atlas\]   black-body temp\s+([\d.]+) K", re.search(r"\[atlas\] Europa weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)))
 # 6. Half-authored is half-authored. Pluto authors an albedo (0.720, the file's second
 #    brightest after Venus's 0.770) and no ground reading, so its implied 32.2 K prints while
 #    its surface temp and the

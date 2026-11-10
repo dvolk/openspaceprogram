@@ -398,6 +398,30 @@ int main() {
                       && moho->surface.even_share_src.find(", defaulted")
                              != std::string::npos,
                   "a borrowed knob that was a DEFAULT at its source says so two hops deep");
+
+            /* #759: the atlas prints values only, so the authoring trail is a fact of the
+               JSON and these tests are the only thing that reads it back. A generator that
+               renames a rung, or drops the second hop of a borrowed figure (#749), reddens
+               HERE rather than in a player's dossier row. */
+            System sol = load_system("res/systems/solar_system.json", nullptr, nullptr);
+            const char *rungs[][2] = {
+                {"Mercury", "DEFAULT airless floor"},
+                {"Venus", "stated: no range"},
+                {"Mars", "least-squares fit to the pair"},
+                {"Earth", "fitted from the night end"},
+                {"Moon", "fitted from the night end"},
+            };
+            for(const auto &rung : rungs) {
+                const TerrainBody *b = sol.find(rung[0]);
+                check(b != nullptr && b->surface.even_share_src == rung[1],
+                      (std::string("the shipped file names which rung priced ")
+                       + rung[0]).c_str());
+            }
+            const TerrainBody *iap = sol.find("Iapetus");
+            check(iap != nullptr
+                      && iap->surface.albedo_src.rfind("geom ", 0) == 0
+                      && iap->surface.albedo_src.find("q=0.") != std::string::npos,
+                  "a converted albedo names the geometric reading and the factor it was times");
             const TerrainBody *mun = sys.find("Mun");
             check(mun != nullptr && albedoAuthored(mun->surface.bond_albedo)
                       && mun->surface.albedo_src.find("converted") == std::string::npos,

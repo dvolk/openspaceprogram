@@ -52,7 +52,7 @@ CHECK (lambda m: 8900.0 < float(m.group(1)) < 9280.0 and m.group(2) == "0.068" a
 #    band here is 0.25 K rather than the 0.05 K Kerbin's row gets: this albedo prints to three
 #    decimals (0.681 for a file value of 0.6814), and on a body that reflects 68% of the light
 #    the remaining 32% is thin enough that a print rounding is a tenth of a kelvin.
-CHECK (lambda m: m.group(3).startswith("via Enceladus") and "converted" in m.group(3) and abs(float(m.group(4)) - (float(m.group(1)) * (1.0 - float(m.group(2))) / 4.0 / 5.670374419e-8) ** 0.25) < 0.25)(re.search(r"sunlight \(parent's orbit\)\s+([\d.]+) W/m2\s*\n\s*\[atlas\]   bond albedo\s+([\d.]+) \(([^)]+)\)\s*\n\s*\[atlas\]   black-body temp\s+([\d.]+) K", re.search(r"\[atlas\] Minmus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)))
+CHECK (lambda m: abs(float(m.group(3)) - (float(m.group(1)) * (1.0 - float(m.group(2))) / 4.0 / 5.670374419e-8) ** 0.25) < 0.25)(re.search(r"sunlight \(parent's orbit\)\s+([\d.]+) W/m2\s*\n\s*\[atlas\]   bond albedo\s+([\d.]+)\s*\n\s*\[atlas\]   black-body temp\s+([\d.]+) K", re.search(r"\[atlas\] Minmus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)))
 # 5. THE LIGHT FALLS OFF AND THE ALBEDO DOES NOT CARE. Eeloo takes Pluto's 0.720 -- the
 #    second brightest in this file after Eve's Venus-analogue 0.770 -- and sits 6.6x further
 #    out than Kerbin, so its airless mean is the coldest reading in the system. Both rows
@@ -65,15 +65,15 @@ CHECK (lambda e: float(re.search(r"sunlight \(mean orbit\)\s+([\d.]+) W/m2", e).
 #    (day/T0)^4 + 3 (night/T0)^4 = 4. Band 0.02 on the sum: each end prints to 0.1 K.
 #    Kerbin's knob prints beside the anchor precisely so this is checkable by eye -- 0.932 is
 #    Earth's, READ from solar_system.json through KSP_ANALOGUE, not retyped here (#636).
-CHECK (lambda k: abs((float(re.search(r"to ([\d.]+) K", k).group(1)) / float(re.search(r"ground anchor\s+([\d.]+) K", k).group(1))) ** 4 + 3.0 * (float(re.search(r"ground swing\s+([\d.]+) to", k).group(1)) / float(re.search(r"ground anchor\s+([\d.]+) K", k).group(1))) ** 4 - 4.0) < 0.02 and re.search(r"even share 0\.932", k))(re.search(r"\[atlas\] Kerbin weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK (lambda k: abs((float(re.search(r"to ([\d.]+) K", k).group(1)) / float(re.search(r"ground anchor\s+([\d.]+) K", k).group(1))) ** 4 + 3.0 * (float(re.search(r"ground swing\s+([\d.]+) to", k).group(1)) / float(re.search(r"ground anchor\s+([\d.]+) K", k).group(1))) ** 4 - 4.0) < 0.02)(re.search(r"\[atlas\] Kerbin weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # 7. #749: EVERY BORROWED KNOB NAMES THE WORLD IT CAME FROM, and the row that used to pin a
 #    refusal now pins the borrowing. Duna's wiki pair is not a pair -- its max IS its mean, so
 #    nothing here fits it (#742); its 0.708 is Mars's, and Mars's own is the least-squares fit
 #    to a pair its stated mean contradicts (184-242 K implies a mean of ~203 K; its sheet says
 #    214 K). Moho takes Mercury's airless floor -- and says so TWO hops deep: "via Mercury,
 #    defaulted there". Both rows are our arithmetic, and both say so beside the ends.
-CHECK (lambda d: re.search(r"ground swing\s+[\d.]+ to [\d.]+ K \(via Mars\)", d) and re.search(r"even share 0\.708", d))(re.search(r"\[atlas\] Duna weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-CHECK (lambda m: re.search(r"ground swing\s+[\d.]+ to [\d.]+ K \(via Mercury, defaulted\)", m) and re.search(r"even share 0\.015", m))(re.search(r"\[atlas\] Moho weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK (lambda d: re.search(r"ground swing\s+19[67]\.[0-9] to 25[01]\.[0-9] K", d) and re.search(r"ground anchor\s+214\.[0-9] K", d))(re.search(r"\[atlas\] Duna weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK (lambda m: re.search(r"ground swing\s+15[34]\.[0-9] to 6[12][0-9]\.[0-9] K", m) and re.search(r"ground anchor\s+439\.[0-9] K", m))(re.search(r"\[atlas\] Moho weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 #    And the file's one remaining swing dash, which is a fact rather than a gap: Jool has an air
 #    with a base temperature, and the anchor chain reads an air's datum as a ground -- so the
 #    only thing between a gas giant and a painted day/night cycle on its cloud deck is the
