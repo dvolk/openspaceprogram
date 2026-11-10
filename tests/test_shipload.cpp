@@ -520,6 +520,23 @@ int main() {
         n.close();
         CHECK(expect_throw_saying([&]{ load_parts_catalog(nod); }, "needs \"torque\""));
         std::remove(nod);
+        /* lift_area with no slope: the mirror of the control-surface rule above, and
+           the same invisible typo. drag.h::liftCurve returns 0 for a slope <= 0, so
+           such a wing makes no lift at any angle of attack -- but it is not inert: it
+           joins a lifting system (LiftingSystem::area grows, AR_sys falls, and its
+           NEIGHBOURS' induced bill falls with it: tests/test_aerosweep.cpp's merge
+           pin), and it leaves the hull's silhouette union to be billed as a surface
+           (#455/#478). It vanishes from the lift readouts while changing the drag of
+           everything around it. */
+        const char *nocl = "/tmp/test_shipload_nocl.json";
+        std::ofstream nc(nocl);
+        nc << "{ \"parts\": [ { \"name\": \"wingless\", \"type\": \"structural\", "
+              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"lift_area\": 8.0 } ] }";
+        nc.close();
+        CHECK(expect_throw_saying([&]{ load_parts_catalog(nocl); },
+                                  "a lifting surface needs \"cl\" > 0"));
+        std::remove(nocl);
     }
 
     /* A drum pays for its own electricity (#596). "torque" > 0 makes a part a wheel

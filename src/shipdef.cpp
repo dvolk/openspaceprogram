@@ -735,6 +735,20 @@ PartsCatalog load_parts_catalog(const char *path) {
             throw std::runtime_error(ctx + "a control surface needs \"cl_control\" (or \"cl\") "
                                           "> 0: with no slope it makes no force at any deflection");
         }
+        /* The mirror for a LIFTING part, same invisibility. drag.h::liftCurve returns
+           0 for a slope <= 0, so a wing with no "cl" makes no lift at any angle -- but
+           it is not inert: it still joins a lifting system (LiftingSystem::area grows,
+           AR_sys falls, and its NEIGHBOURS' induced bill falls with it -- see the
+           merge pin in tests/test_aerosweep.cpp), and it still leaves the hull's
+           silhouette union to be billed as a surface (#455/#478). So the part both
+           disappears from the lift readouts and quietly changes the drag of the parts
+           around it. No shipped part does this; refuse the next one. */
+        if(d.lift_area > 0.0 && d.cl <= 0.0) {
+            throw std::runtime_error(ctx + "a lifting surface needs \"cl\" > 0: with no slope "
+                                          "it makes no lift at any angle of attack, while "
+                                          "still joining its lifting system and still "
+                                          "leaving the hull's silhouette");
+        }
         /* A chute must ship its canopy: the overlay pair is all-or-nothing
            (like shroud) and REQUIRED when chute_area > 0. */
         d.chute_area = optNumber(pv, "chute_area", 0.0, ctx, "m^2");
