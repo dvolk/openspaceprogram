@@ -475,10 +475,20 @@ void tick(Game &g) {
                 }
                 optNum(inc_txt, sizeof inc_txt, inc_spin, conic && o.ang_momentum > 0.0);
                 optNum(node_txt, sizeof node_txt, law.node_r(), law.node_r() > 0.0);
+                /* The two numbers the law's lift-off gate compares, printed so a
+                   refusal like "this stage cannot lift off" can be checked against
+                   the hull instead of taken on trust. accel is availableAccel() --
+                   rated full throttle, current mass, atmosphere and all -- and g is
+                   the body's pull at the hull's own radius. */
+                const double amax = g.ship->availableAccel();
+                const double r_hull = glm::length(g.ship->get_center_of_mass());
+                const double g_pull = (r_hull > 1.0)
+                    ? g.ship->m_parent->mu / (r_hull * r_hull) : 0.0;
                 printf("[ascent] t=%.1fs phase=%s lever=%.2f pitch=%.1f deg "
-                       "peri_asl=%s m apo_asl=%s m inc_eq=%s deg node_r=%s m why=\"%s\"\n",
+                       "peri_asl=%s m apo_asl=%s m inc_eq=%s deg node_r=%s m "
+                       "accel=%.2f m/s2 g=%.2f m/s2 why=\"%s\"\n",
                        g.time, law.phaseName(), g.ship->throttle(), law.pitch_deg(),
-                       peri_txt, apo_txt, inc_txt, node_txt, law.why());
+                       peri_txt, apo_txt, inc_txt, node_txt, amax, g_pull, law.why());
             }
         }
         // --orbit-log: orbital elements in the body's inertial frame.

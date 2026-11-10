@@ -52,10 +52,12 @@ struct Flight {
    `start` lets a flight begin somewhere other than the equator, because the
    launch-heading maths has a cos(lat) divisor that is exactly 1 at the equator
    -- a test fleet that only ever lifts off from there cannot tell a correct
-   divisor from a missing one. */
+   divisor from a missing one. `thrust` is the stage's rated thrust, so a case
+   can be weaker than its own planet. */
 static Flight simulate(const AscentTarget &target, double dt = 1.0/120.0,
                        int max_s = 900, bool trace = false,
-                       glm::dvec3 start = glm::dvec3(R_MOHO + 1.0, 0.0, 0.0)) {
+                       glm::dvec3 start = glm::dvec3(R_MOHO + 1.0, 0.0, 0.0),
+                       double thrust = THRUST) {
     Flight f;
     AscentLaw law(target);
     glm::dvec3 pos = start;
@@ -68,7 +70,7 @@ static Flight simulate(const AscentTarget &target, double dt = 1.0/120.0,
         s.pos = pos; s.vel = vel;
         s.mu = MU_MOHO; s.sea_r = R_MOHO;
         s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
-        s.accel_max = THRUST / mass;     // a potential: fuel-blind, as in the game
+        s.accel_max = thrust / mass;     // a potential: fuel-blind, as in the game
         s.has_propellant = mass > M_FULL - PROPPANT + 1e-9;
         const double r = glm::length(pos);
         s.grounded = !lifted && r - R_MOHO < 100.0 && glm::length(vel) < 3.0;
@@ -381,6 +383,29 @@ static void test_the_law_fails_loudly_not_silently() {
     s.accel_max = 18.0; s.has_propellant = true; s.mu = 0.0;
     law2.step(s);
     CHECK_TRUE(law2.phase() == AscentPhase::Failed, "no mu, no mission");
+
+    /* The stage that can push and has fuel but weighs more than its engine can
+       lift. Moho pulls at 2.70 m/s^2 at the surface; 1.0 m/s^2 is TWR 0.37. The
+       phase machine has no way to find this out for itself -- it waits for an
+       apoapsis the hull can never build -- so before the gate the player's only
+       answer was an empty tank and a ship that never moved. */
+    AscentLaw law_weak(t);
+    s.mu = MU_MOHO; s.accel_max = 1.0; s.has_propellant = true; s.grounded = true;
+    const AscentCommand weak = law_weak.step(s);
+    printf("   [grounded, 1.0 m/s^2 on Moho] phase=%s why=\"%s\"\n",
+           law_weak.phaseName(), law_weak.why());
+    CHECK_TRUE(law_weak.phase() == AscentPhase::Failed, "and the law says failed, not still flying");
+    CHECK_TRUE(std::string(law_weak.why()).find("lift off") != std::string::npos,
+               "naming the weight rather than the tanks or the engines");
+    CHECK_TRUE(!weak.burn && weak.throttle == 0.0, "and it arms no burn");
+
+    /* The other side of the inequality: a stage with TWR 6.7 on the same pad
+       must still be allowed to fly, so the gate cannot just be "grounded". */
+    AscentLaw law_ok(t);
+    s.accel_max = 18.0;
+    const AscentCommand able = law_ok.step(s);
+    CHECK_TRUE(law_ok.phase() == AscentPhase::Pad, "a stage that can lift off is still flying");
+    CHECK_TRUE(able.burn, "and it lights the engine on the first tick");
 }
 
 static void test_done_is_a_periapsis_not_a_speed() {

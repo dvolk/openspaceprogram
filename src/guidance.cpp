@@ -170,6 +170,24 @@ AscentCommand AscentLaw::step(const GuidanceState &s) {
         return c;
     }
 
+    /* The third way a stage cannot fly: it has an engine and fuel, but the push
+       is smaller than the planet's pull. Nothing downstream can discover this --
+       the phase machine waits for an apoapsis that a grounded hull with TWR<1
+       can never build -- so the only verdict the player ever gets is the empty
+       tanks. Measured on the shipped tanker at Kerbin: lever pinned at 1.00,
+       apoapsis stuck at 264 m and speed stuck at the pad's own 175 m/s for
+       1617 s of sim (30000 logic ticks) before "the tanks are dry". Ask the
+       question on the first tick instead: on the ground, thrust/mass under
+       local gravity means the flight never starts. accel_max is rated full
+       throttle (guidance.h), so a partly closed lever is not a false alarm.
+       Only while grounded: in the air a weak stage is a slow climb, which is the
+       law's business, not a refusal. */
+    if(s.grounded && s.accel_max < s.mu / (r * r)) {
+        phase_ = AscentPhase::Failed;
+        why_ = "this stage cannot lift off: its thrust is below its own weight";
+        return c;
+    }
+
     /* Done is a pair of apsides, never a speed, and the pair is a FLOOR and a
        CEILING: periapsis at or above the ask (the ground is cleared) and
        apoapsis no farther above the ask than the band (we did not overshoot).

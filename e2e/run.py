@@ -123,7 +123,13 @@ ORBIT_RE = re.compile(
 ASCENT_RE = re.compile(
     r"\[ascent\]\s+t=([\d.]+)s\s+phase=(\w+)\s+lever=([-\d.e+]+)\s+pitch=([-\d.e+]+) deg\s+"
     r"peri_asl=([-\d.e+]+|nan) m\s+apo_asl=([-\d.e+]+|nan) m\s+inc_eq=([-\d.e+]+|nan) deg\s+"
-    r"node_r=([-\d.e+]+|nan) m\s+why=\"([^\"]*)\""
+    r"node_r=([-\d.e+]+|nan) m"
+    # The stage's full-throttle acceleration and the body's pull at the hull: the
+    # pair the law's lift-off gate compares, so "this stage cannot lift off" can
+    # be pinned from the row instead of taken on trust. Optional: a row without
+    # them still parses.
+    r"(?:\s+accel=([-\d.e+]+) m/s2\s+g=([-\d.e+]+) m/s2)?"
+    r"\s+why=\"([^\"]*)\""
 )
 
 MAP_RE = re.compile(
@@ -766,12 +772,18 @@ def parse_orbit(out):
 def parse_ascent(out):
     rows = []
     for m in ASCENT_RE.finditer(out):
-        (t, phase, lever, pitch, peri, apo, inc_eq, node, why) = m.groups()
-        rows.append({
+        (t, phase, lever, pitch, peri, apo, inc_eq, node, accel, gpull,
+         why) = m.groups()
+        row = {
             "t": float(t), "phase": phase, "lever": float(lever),
             "pitch": float(pitch), "peri_asl": float(peri), "apo_asl": float(apo),
             "inc_eq": float(inc_eq), "node_r": float(node), "why": why,
-        })
+        }
+        # None when the row predates the field, so a CHECK can ask for it and
+        # fail loudly on an old-format row rather than compare against None.
+        row["accel"] = None if accel is None else float(accel)
+        row["g"] = None if gpull is None else float(gpull)
+        rows.append(row)
     return rows
 
 

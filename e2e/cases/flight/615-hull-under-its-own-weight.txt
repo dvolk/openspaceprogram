@@ -1,0 +1,27 @@
+# A stage that cannot lift off gets told so. The shipped tanker at Kerbin has
+# 2.90 m/s^2 of full-throttle acceleration against 9.80 m/s^2 of gravity, and
+# before the lift-off gate the ascent law flew it anyway: lever pinned at 1.00,
+# apoapsis stuck at 264 m, speed stuck at the pad's own 175 m/s, for 1617 s of
+# sim (30000 logic ticks) until the only verdict on offer was "the tanks are
+# dry" (#615's grounded cousin).
+NAME no-liftoff-verdict
+CLAIM A pad hull whose thrust is below its own weight is refused on the first logged tick, not flown until the tanks empty on the ground.
+KIND invariant
+ARGS --startship tanker,res/ships/tanker.json,Kerbin,pad --ascent 100e3 --time-accel 4
+ARGS --ascent-log --sim-steps 240 --timeout 90 --no-paint
+LIMIT 60
+EXPECT Autopilot: ascent armed on 'tanker'
+EXPECT phase=failed
+FORBID phase=ascent
+FORBID error:
+# The verdict arrives immediately -- the first row the log ever prints -- and it
+# names the weight rather than the tanks or the engines, which are both fine here.
+CHECK ascent and ascent[0]["phase"] == "failed"
+CHECK "lift off" in ascent[0]["why"]
+# The two numbers the gate compares, off the row rather than out of the ship
+# file, so the case keeps working if the tanker is ever re-engined -- and fails
+# loudly if a future hull is strong enough to fly after all.
+CHECK ascent[0]["accel"] < ascent[0]["g"]
+# Nothing was ever armed. The lever is the latching state the law writes, so a
+# non-zero one means it burned on the ground for nothing.
+CHECK max(a["lever"] for a in ascent) == 0.0
