@@ -1349,10 +1349,29 @@ static void check_body_claims() {
                    }), "duplicate body name");
     expect_refuses("empty_name", bpatched("Minmus", [](nlohmann::json &bv) {
                        bv["name"] = "";
-                   }), "empty");
+                   }), "an empty \"name\"");
+    expect_refuses("name_missing", bpatched("Minmus", [](nlohmann::json &bv) {
+                       bv.erase("name");
+                   }), "authors no \"name\"");
+    expect_refuses("name_number", bpatched("Minmus", [](nlohmann::json &bv) {
+                       bv["name"] = 7;
+                   }), "\"name\" must be a string");
     expect_refuses("type_typo", bpatched("Mun", [](nlohmann::json &bv) {
                        bv["type"] = "gas giant";
                    }), "unknown \"type\"");
+    expect_refuses("type_number", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["type"] = 2;
+                   }), "\"type\" must be");
+
+    /* Radius and mass (src/system.cpp:331). A radius with the wrong SIGN inverts every
+       datum test and the shells built from it -- and on a star it dies on solar.h's
+       assert, i.e. SIGABRT rather than a sentence naming the body. */
+    expect_refuses("radius_negative", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["radius"] = -200000.0;
+                   }), "\"radius\" -200000 must be a finite number > 0");
+    expect_refuses("mass_zero", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["mass"] = 0.0;
+                   }), "\"mass\" 0 must be a finite number > 0");
 
     /* The frame tree. Names are looked up, so a mistyped "orbits" value and a ring of
        two both arrive from an edited file. The ring is the one that costs a player
@@ -1366,6 +1385,9 @@ static void check_body_claims() {
     expect_refuses("orbit_self", bpatched("Mun", [](nlohmann::json &bv) {
                        bv["orbits"] = "Mun";
                    }), "cannot orbit itself");
+    expect_refuses("orbit_number", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["orbits"] = 7;
+                   }), "\"orbits\" must be");
     {
         nlohmann::json j = base;
         for(auto &bv : j["bodies"]) {
@@ -1396,7 +1418,14 @@ static void check_body_claims() {
                    }), "mean-sea datum");
     expect_refuses("sea_as_string", bpatched("Mun", [](nlohmann::json &bv) {
                        bv["surface"]["sea_level"] = "0";
-                   }), "surface.sea_level");
+                   }), "\"surface.sea_level\" must be a number");
+    /* The guard is on the FLOATS seaLevelRadius() adds, not the doubles in the file:
+       this pair narrows to a datum exactly AT the centre, which is what the double
+       comparison let through. */
+    expect_refuses("sea_narrows_to_centre", bpatched("Jool", [](nlohmann::json &bv) {
+                       bv["radius"] = 2.6e9;
+                       bv["surface"]["sea_level"] = -2599999900.0;
+                   }), "mean-sea datum");
 
     // Palette stops: a dropped or mistyped stop changes the ground's colours silently.
     expect_refuses("palette_short_rgb", bpatched("Mun", [](nlohmann::json &bv) {
@@ -1407,9 +1436,18 @@ static void check_body_claims() {
                        bv["surface"]["palette"] = nlohmann::json::array({
                            {"low", {0.5, 0.5, 0.5}}});
                    }), "altitude fraction");
+    /* A stop above 1 can never be reached: the ground's colour ramp is
+       (height - datum) / max_height, so that colour is a colour the world never shows. */
+    expect_refuses("palette_t_high", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"]["palette"] = nlohmann::json::array({
+                           {0.0, {0.5, 0.5, 0.5}}, {7.0, {0.6, 0.6, 0.6}}});
+                   }), "stop 2 of surface.palette");
     expect_refuses("sea_color_string", bpatched("Mun", [](nlohmann::json &bv) {
                        bv["surface"]["sea_color"] = {"0.4", 0.6, 0.8};
                    }), "surface.sea_color channel 0");
+    expect_refuses("sea_color_range", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"]["sea_color"] = {0.4, 2.5, 0.8};
+                   }), "surface.sea_color channel 1");
     expect_refuses("atmo_color_string", bpatched("Kerbin", [](nlohmann::json &bv) {
                        bv["surface"]["atmosphere"]["color"] = {0.4, 0.6, "0.8"};
                    }), "surface.atmosphere.color channel 2");
@@ -1427,7 +1465,7 @@ static void check_body_claims() {
                    }), "0 <= inner < outer");
     expect_refuses("ring_not_object", bpatched("Mun", [](nlohmann::json &bv) {
                        bv["surface"]["rings"] = nlohmann::json::array({120000.0});
-                   }), "must be an object");
+                   }), "band 1 of surface.rings must be an object");
     expect_refuses("ring_opacity", bpatched("Mun", [](nlohmann::json &bv) {
                        bv["surface"]["rings"] = nlohmann::json::array({
                            {{"inner", 120000.0}, {"outer", 150000.0},
@@ -1454,6 +1492,7 @@ static void check_body_claims() {
         { "legal_basin", "Mun" },           // a datum 50 km below the mean radius
         { "legal_rings", "Mun" },           // two well-formed bands
         { "legal_clouds", "Kerbin" },       // a thin, drifting deck
+        { "legal_colour_ends", "Mun" },     // a colour using both ends of [0..1]
     };
     for(const MustLoad &m : legal) {
         const std::string path = std::string("tmp/test_scenarios_body_")
@@ -1469,6 +1508,8 @@ static void check_body_claims() {
                     {{"name", "A"}, {"inner", 210000.0}, {"outer", 240000.0},
                      {"thickness", 1000.0}, {"albedo", 0.3}, {"opacity", 0.6}},
                     {{"name", "B"}, {"inner", 245000.0}, {"outer", 260000.0}}});
+            } else if(what == "legal_colour_ends") {
+                bv["surface"]["sea_color"] = {0.0, 1.0, 0.0};
             } else {
                 bv["surface"]["clouds"]["coverage"] = 0.25;
                 bv["surface"]["clouds"]["freq"] = 8.5;
@@ -1493,9 +1534,12 @@ static void check_body_claims() {
             if(std::string(m.label) == "legal_octaves_cap"
                && b->surface.octaves != kMaxTerrainOctaves) { bad++; }
             if(std::string(m.label) == "legal_basin"
-               && !(b->seaLevelRadius() > 0.0)) { bad++; }
+               && !(b->surface.sea_level == -50000.0f
+                    && b->seaLevelRadius() == b->radius - 50000.0f)) { bad++; }
             if(std::string(m.label) == "legal_rings"
                && b->surface.rings.size() != 2) { bad++; }
+            if(std::string(m.label) == "legal_colour_ends"
+               && !(b->surface.sea_color == glm::vec3(0.0f, 1.0f, 0.0f))) { bad++; }
             if(std::string(m.label) == "legal_clouds"
                && !(b->surface.clouds.enabled && b->surface.clouds.coverage == 0.25f
                     && b->surface.clouds.drift == -0.001f)) { bad++; }

@@ -137,22 +137,26 @@ double measureSolarDay(Frame *root, TerrainBody *body, TerrainBody *sun) {
     return t_probe * twopi / std::fabs(sweep);
 }
 
-/* A checked [r, g, b] triple (sea_color, atmosphere.color, clouds.color). The call sites
-   all guard "is an array of >= 3" and then read c[0].get<float>() straight, so a colour
-   written as ["0.5", 1, 1] aborts the load with nlohmann's own type_error -- which names
-   no body, no key and no channel, the three things an author needs to fix it (#515's rule,
-   the same one the wind rows and the gas table already follow). The caller has already
-   checked the array shape; this only checks the elements. */
-glm::vec3 rgbFrom(const nlohmann::json &c, const std::string &body,
-                  const std::string &what) {
+/* A checked [r, g, b] triple (sea_color, atmosphere.color, clouds.color). The call
+   sites used to guard only "is an array of >= 3" and then read c[0].get<float>()
+   straight, so a colour written as ["0.5", 1, 1] aborted the load with nlohmann's own
+   type_error -- which names no body, no key and no channel, the three things an author
+   needs to fix it (#515's rule, the same one the wind rows and the gas table already
+   follow). The caller has already checked the array shape; this only checks the
+   elements. Every colour in the shipped corpus is inside [0..1], and a channel outside
+   it is a colour no shader can show, so the range the message promises is checked. */
+static glm::vec3 rgbFrom(const nlohmann::json &c, const std::string &body,
+                         const std::string &what) {
     glm::vec3 out(0.0f);
     for(int ch = 0; ch < 3; ch++) {
-        if(!c[ch].is_number() || !std::isfinite(c[ch].get<double>())) {
+        const double v = c[ch].is_number() ? c[ch].get<double>()
+                                           : std::numeric_limits<double>::quiet_NaN();
+        if(!(v >= 0.0 && v <= 1.0)) {
             throw std::runtime_error("system: '" + body + "': " + what
                                      + " channel " + std::to_string(ch)
                                      + " must be a finite number [0..1]");
         }
-        out[ch] = (float)c[ch].get<double>();
+        out[ch] = (float)v;
     }
     return out;
 }
@@ -294,13 +298,22 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         // leak nothing on a mid-build throw.
         sys.bodies.push_back(body);
 
-        body->name       = bv.value("name", std::string("body"));
         /* A name is an address in this game: System::find answers with the FIRST body
            matching one, and pads, beds, saves, scenario rails and the atlas all name
            bodies that way. Two bodies under one name therefore is not a cosmetic clash
            -- a pad authored on the second one stands on the first, and a save naming it
            re-roots a ship onto the wrong world. Empty is the same failure one step
-           earlier: it matches nothing. */
+           earlier: it matches nothing. And it has to be a STRING: read with .value() a
+           numeric name leaked nlohmann's type_error, which names no body and no key. */
+        if(!bv.contains("name")) {
+            throw std::runtime_error("system: body " + std::to_string(i + 1)
+                                     + " authors no \"name\"");
+        }
+        if(!bv["name"].is_string()) {
+            throw std::runtime_error("system: body " + std::to_string(i + 1)
+                                     + ": \"name\" must be a string");
+        }
+        body->name = bv["name"].get<std::string>();
         if(body->name.empty()) {
             throw std::runtime_error("system: body " + std::to_string(i + 1)
                                      + " authors an empty \"name\"");
@@ -312,6 +325,17 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                            " find() answers with the first, so the second"
                                            " is unreachable by name");
             }
+        }
+        /* Checked here so every later .value("orbits", "") read is safe: a number or an
+           object under "orbits" otherwise reaches nlohmann's type_error, which names
+           neither the body nor the key (#515). */
+        if(bv.contains("orbits") && !bv["orbits"].is_string()) {
+            throw std::runtime_error("system: '" + body->name + "': \"orbits\" must be"
+                                     " the name of another body (a string)");
+        }
+        if(bv.contains("type") && !bv["type"].is_string()) {
+            throw std::runtime_error("system: '" + body->name + "': \"type\" must be"
+                                     " \"star\", \"moon\" or \"planet\"");
         }
         const std::string type = bv.value("type", std::string("planet"));
         /* "planet" is the default because most bodies are one; an UNRECOGNISED spelling
@@ -330,6 +354,26 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         }
         const double radius = bv.value("radius", 600000.0);
         const double mass   = bv.value("mass", 5e22);
+        /* A radius and a mass with a SIGN, checked rather than defaulted: a negative
+           radius inverts every datum test above it (a legal positive sea_level suddenly
+           reads as "below the centre") and inverts the shells built from it, and a star
+           authored that way dies on solar.h's assert instead of naming itself. */
+        if(!std::isfinite(radius) || radius <= 0.0) {
+            char rbuf[32];
+            std::snprintf(rbuf, sizeof rbuf, "%g", radius);
+            throw std::runtime_error("system: '" + body->name + "': \"radius\" " + rbuf
+                                     + " must be a finite number > 0 [m]");
+        }
+        if(!(radius < (double)std::numeric_limits<float>::max())) {
+            throw std::runtime_error("system: '" + body->name + "': \"radius\" is too"
+                                     " large for the float the game stores it in");
+        }
+        if(!std::isfinite(mass) || mass <= 0.0) {
+            char mbuf[32];
+            std::snprintf(mbuf, sizeof mbuf, "%g", mass);
+            throw std::runtime_error("system: '" + body->name + "': \"mass\" " + mbuf
+                                     + " must be a finite number > 0 [kg]");
+        }
         body->radius       = (float)radius;
         body->mass         = (float)mass;
         body->g            = bv.value("g", 9.81);
@@ -489,8 +533,11 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    pass) and hands the air column's 1/r^2 weight a negative radius. A
                    NEGATIVE sea_level is legitimate -- it is a basin below the datum, which
                    is how a dry world gets its sea floor -- and only the impossible half of
-                   the range is refused. */
-                if(!std::isfinite(sl) || sl <= -radius) {
+                   the range is refused. The test is on the FLOATS seaLevelRadius() actually
+                   adds, not on the doubles in the file: a big radius narrows on the way in,
+                   and 2.6e9 m with a -2.5999999e9 datum narrows to a datum exactly AT the
+                   centre, which is the thing this refuses. */
+                if(!std::isfinite(sl) || !((float)sl > -(float)radius)) {
                     char sbuf[32], rbuf[32];
                     std::snprintf(sbuf, sizeof sbuf, "%g", sl);
                     std::snprintf(rbuf, sizeof rbuf, "%g", radius);
@@ -540,7 +587,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                                  + " must be [alt fraction, [r, g, b]]");
                     }
                     if(!stop[0].is_number()
-                       || !std::isfinite(stop[0].get<double>())) {
+                       || !(stop[0].get<double>() >= 0.0 && stop[0].get<double>() <= 1.0)) {
                         throw std::runtime_error("system: '" + body->name + "'" + at
                                                  + " needs a finite altitude fraction"
                                                    " [0..1] first");
@@ -570,6 +617,10 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                     resdir::path(sv["heightmap"].get<std::string>()));
             }
             s.detail_amplitude = sv.value("detail_amplitude", s.detail_amplitude);
+            s.bands = sv.value("bands", false);
+            if(sv.contains("band_count") && sv["band_count"].is_number_integer()) {
+                s.band_count = std::max(1, sv["band_count"].get<int>());
+            }
             /* A sea datum standing at or above the highest ground is not a place. The
                Flat-sea clamp then makes the whole globe a sphere at the datum, and
                max_height collapses to its 1 m floor, so the palette ramp loses every
@@ -578,8 +629,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                Earth), so nothing in the shipped corpus looks like this; it is printed
                rather than refused because the relief here is only an estimate (the
                procedural peak is the amplitude, an authored map's is its own max), and
-               #719's deck-under-the-relief line set the precedent. */
-            if(s.has_sea && s.sea_level != 0.0f) {
+               #719's deck-under-the-relief line set the precedent. This reads AFTER
+               `bands`, because a gas giant has no ground for a datum to stand above. */
+            if(!s.bands && s.has_sea && s.sea_level != 0.0f) {
                 const float peak = s.authoredPeak();
                 if(peak - s.sea_level <= 0.0f) {
                     char pb[32], sb[32];
@@ -590,10 +642,6 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                            "the sea, and its palette and sky shells have no relief to "
                            "read\n", body->name.c_str(), sb, pb);
                 }
-            }
-            s.bands = sv.value("bands", false);
-            if(sv.contains("band_count") && sv["band_count"].is_number_integer()) {
-                s.band_count = std::max(1, sv["band_count"].get<int>());
             }
             if(sv.contains("atmosphere") && sv["atmosphere"].is_object()) {
                 const nlohmann::json &av = sv["atmosphere"];
@@ -1551,13 +1599,18 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     const bool starred = sys.root->isStar();
     const bool stated = thermalAuthored(sys.root->surface.temperature);
     if(sys.root->star_luminosity <= 0.0 && (starred || !stated)) {
+        /* Three different causes, one sentence each; the (starred && stated) case is a
+           star that DID author its temperature and whose output still derives to 0, so
+           the "does not author" wording would blame the wrong key. */
+        const char *why = !starred
+            ? " (it is not a star, and it authors no surface.temperature either)"
+            : (stated ? " -- its authored surface.temperature and radius derive a"
+                        " luminosity of 0"
+                      : " (a star's output is derived from its authored"
+                        " surface.temperature, which this one does not author)");
         printf("[solar] WARNING: no body in this system receives any insolation: the"
                " frame-tree root '%s' has no derived luminosity%s.\n",
-               sys.root->name.c_str(),
-               starred
-                   ? " (a star's output is derived from its authored surface.temperature,"
-                     " which this one does not author)"
-                   : " (it is not a star, and it authors no surface.temperature either)");
+               sys.root->name.c_str(), why);
     }
 
     /* #687: the same audit for the ground. A system file can state the ground's

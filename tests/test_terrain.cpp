@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -957,7 +958,17 @@ int main() {
        literals are what it answered BEFORE that change (captured from the pre-sharing
        header at -O2 -march=x86-64-v2 and printed at 9 digits, which round-trips a
        float). A rewrite that moves a decimal here redraws every world in the game, so
-       that has to be a decision and not a refactor artefact. */
+       that has to be a decision and not a refactor artefact.
+       Compared to within 8 ulp rather than to the bit: the last one or two bits move
+       legally with the instruction set (a -march=x86-64-v3 build contracts the multiply
+       and add into an FMA and 30 of these 36 shift by 1-2 ulp), while a change to the
+       octave weighting moves them by PERCENT. */
+    auto nearRelief = [](float got, double want, const char *what) {
+        const float w = (float)want;
+        const float tol = 8.0f * std::numeric_limits<float>::epsilon()
+                        * (w != 0.0f ? std::fabs(w) : 1.0f);
+        check(std::fabs(got - w) <= tol, what);
+    };
     {
         Surface s;
         s.octaves = 9;
@@ -990,14 +1001,14 @@ int main() {
         const std::array<double, 6> f040 = {{ -105.555862, 74.4869919, 55.6655045,
                                               172.037567, -13.2767382, 237.571426 }};
         for(size_t i = 0; i < d.size(); i++) {
-            check(terrainRelief(d[i], t, 1000.0f) == (float)full[i],
-                  "relief pin: octaves 9 at full detail");
-            check(terrainRelief(d[i], t, 3.28f) == (float)f328[i],
-                  "relief pin: octaves 9 band-limited at fade 3.28");
-            check(terrainRelief(d[i], t, 1.5f) == (float)f150[i],
-                  "relief pin: octaves 9 band-limited at fade 1.5 (mountains off)");
-            check(terrainRelief(d[i], t, 0.4f) == (float)f040[i],
-                  "relief pin: octaves 9 band-limited at fade 0.4 (one octave)");
+            nearRelief(terrainRelief(d[i], t, 1000.0f), full[i],
+                       "relief pin: octaves 9 at full detail");
+            nearRelief(terrainRelief(d[i], t, 3.28f), f328[i],
+                       "relief pin: octaves 9 band-limited at fade 3.28");
+            nearRelief(terrainRelief(d[i], t, 1.5f), f150[i],
+                       "relief pin: octaves 9 band-limited at fade 1.5 (mountains off)");
+            nearRelief(terrainRelief(d[i], t, 0.4f), f040[i],
+                       "relief pin: octaves 9 band-limited at fade 0.4 (one octave)");
         }
         // Two more octave counts, so a change that only moves the overlap range
         // (octaves <= 6 has no mountain range at all) cannot slip through.
@@ -1010,10 +1021,10 @@ int main() {
         const std::array<double, 6> o2 = {{ -113.645042, -25.3569508, 52.4382744,
                                             169.015839, -222.745102, 183.448883 }};
         for(size_t i = 0; i < d.size(); i++) {
-            check(terrainRelief(d[i], t6, 1000.0f) == (float)o6[i],
-                  "relief pin: octaves 6 (continents only)");
-            check(terrainRelief(d[i], t2, 1000.0f) == (float)o2[i],
-                  "relief pin: octaves 2 (no mountain term)");
+            nearRelief(terrainRelief(d[i], t6, 1000.0f), o6[i],
+                       "relief pin: octaves 6 (continents only)");
+            nearRelief(terrainRelief(d[i], t2, 1000.0f), o2[i],
+                       "relief pin: octaves 2 (no mountain term)");
         }
     }
 
@@ -1043,6 +1054,15 @@ int main() {
         ms.detail_amplitude = -10.0f;   // nonsense; it must not lower the peak
         check(ms.authoredPeak() == 5000.0f,
               "a negative residual cannot lower the authored peak");
+        /* A banded gas giant has no ground at all: terrainHeightFade answers the datum
+           sphere and BuildRootGeoms sizes its shells from 0 m, so a peak here would be a
+           mountain the world cannot have -- and a deck a few km down gets warned about as
+           sitting under it. */
+        Surface bs;
+        bs.amplitude = 2500.0f;
+        bs.bands = true;
+        check(bs.authoredPeak() == 0.0f,
+              "a banded gas giant has no peak to hide a deck under");
     }
 
     /* The octave cap (terragen.h kMaxTerrainOctaves): refused by the loader, and
@@ -1067,6 +1087,28 @@ int main() {
                   "a wild octave count still answers a finite height");
             check(got == terrainRelief(d, tc, 1000.0f),
                   "a wild octave count truncates to the cap rather than dropping relief");
+        }
+        /* The cap also covers a mapped body's residual: that loop walks the same octave
+           scales, and it used to read s.octaves straight, so an authored map with a wild
+           count answered NaN at every point -- the same failure the loader now refuses,
+           reachable from C++ alone. */
+        auto hmcap = std::make_shared<Heightmap>();
+        hmcap->w = 3;
+        hmcap->h = 2;
+        hmcap->m = { 100, -40, 5000, 20, -30, 7 };
+        hmcap->recomputeRange();
+        Surface ms2 = s;
+        ms2.heightmap = hmcap;
+        ms2.detail_amplitude = 250.0f;
+        TerrainParams mwild; mwild.surface = ms2; mwild.radius = 200000.0f;
+        Surface mcap = ms2; mcap.octaves = kMaxTerrainOctaves;
+        TerrainParams mtc; mtc.surface = mcap; mtc.radius = 200000.0f;
+        for(const glm::vec3 &d : dirs) {
+            const float got = terrainRelief(d, mwild, 1000.0f);
+            check(std::isfinite(got),
+                  "a wild octave count cannot NaN a mapped body's height");
+            check(got == terrainRelief(d, mtc, 1000.0f),
+                  "a mapped body's residual truncates to the cap too");
         }
     }
 

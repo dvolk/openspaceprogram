@@ -338,8 +338,14 @@ struct Surface {
        while its mountains stop at 6.3 km. A procedural body answers with `amplitude`,
        which runs about 13 % above the FBM's measured peak (0.883 x at 9 octaves), so it
        is the conservative estimate rather than the figure. `max_height` is the figure;
-       this is the estimate, and it is what a loader-time warning can read. */
+       this is the estimate, and it is what a loader-time warning can read. A banded gas
+       giant has NO relief at all (terrainHeightFade returns the datum sphere and
+       BuildRootGeoms sizes its shells from 0 m), so it answers 0; otherwise a deck a few
+       km down is warned about as sitting under mountains that cannot exist. */
     float authoredPeak() const {
+        if(bands) {
+            return 0.0f;
+        }
         if(heightmap) {
             return heightmap->maxMetres() + std::max(0.0f, detail_amplitude);
         }
@@ -508,7 +514,8 @@ struct TerrainParams {
    (grid-1) / 2^(depth-1) at max_depth 12), so past ~13 the extra octaves are detail no
    geometry can bake -- and past ~90 the octave's own float scale (2^91) overflows
    glm::simplex into NaN, which hands every height, palette stop and collision shape on
-   that body a NaN and the game loads and runs anyway. The shipped corpus stops at 9. */
+   that body a NaN and the game loads and runs anyway. The shipped corpus stops at 10
+   (Laythe); the default is 9. */
 inline constexpr int kMaxTerrainOctaves = 24;
 
 /* glm::simplex ranks its skew-space components with step(): exactly axis-aligned
@@ -538,19 +545,22 @@ inline float terrainRelief(const glm::vec3& p, const TerrainParams& t,
                            float fade) {
     const Surface &s = t.surface;
     const glm::vec3 q = (s.seed_rot * p) * s.frequency + terrain_noise_off;
+    /* Capped here as well as in the loader, so a hand-built Surface (a test, a
+       future editor) cannot overrun the octave store below or reach float noise.
+       It applies to the heightmap's residual too: that loop walks the same
+       octave scales, so an uncapped count NaNs a mapped body's heights as
+       readily as a procedural one's. */
+    const int octaves = std::min(s.octaves, kMaxTerrainOctaves);
 
     if (s.heightmap) {
         float h = s.heightmap->sample(p);
-        if (s.detail_amplitude > 0.0f && s.octaves > 2) {
-            h += terrainFbmOctaves(q, 2, s.octaves, s.persistence, fade)
+        if (s.detail_amplitude > 0.0f && octaves > 2) {
+            h += terrainFbmOctaves(q, 2, octaves, s.persistence, fade)
                * s.detail_amplitude;
         }
         return h;
     }
 
-    // Capped here as well as in the loader, so a hand-built Surface (a test, a
-    // future editor) cannot overrun the octave store below or reach float noise.
-    const int octaves = std::min(s.octaves, kMaxTerrainOctaves);
     const int base_octaves = std::min(octaves, 6);
 
     /* ONE simplex per octave, then the two weighted sums over it. The continents
