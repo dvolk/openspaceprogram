@@ -52,6 +52,7 @@
 #include <glm/glm.hpp>
 
 #include "drag.h"      // flowDirection, liftCurve, liftSlopeMach, waveCd, kSupersonicMach
+#include "physics.h"   // SetAngVelocity: the rate column
 #include "vehicle.h"   // Vehicle + Part (inline); pulls in Bullet (btcommon.h)
 #include "terrain.h"   // TerrainBody: the air this hull flies in
 
@@ -194,14 +195,18 @@ static void teardown(Bench &b) {
    the identity pose with no spin, so frame S is the world and the ship axes are x
    right, y up, z nose. flowDirection() is drag.h's own inverse of aeroFrame's two
    angles, so the bench asks for an angle by NAME instead of hand-building the vector
-   and hoping. */
-static void fly(Vehicle *v, double speed, double alphaDeg, double betaDeg) {
+   and hoping. `pitchRate` is rad/s about the ship's RIGHT axis -- the rate column
+   (test_rate_column); at 0 it is exactly the steady stream every pin above assumes. */
+static void fly(Vehicle *v, double speed, double alphaDeg, double betaDeg,
+                double pitchRate = 0.0) {
     const double a = std::numbers::pi / 180.0 * alphaDeg;
     const double bt = std::numbers::pi / 180.0 * betaDeg;
     const glm::dvec3 flow = flowDirection(a, bt, glm::dvec3(1, 0, 0),
                                           glm::dvec3(0, 1, 0), glm::dvec3(0, 0, 1));
     assert(glm::length(flow) > 0.0);
     v->setVelocity(flow * speed);
+    // Identity pose, so the world axes ARE the ship axes: x right, y up, z nose.
+    SetAngVelocity(v->hull, glm::dvec3(pitchRate, 0.0, 0.0));
     v->applyAeroForce(0.01, nullptr);
 }
 
@@ -486,8 +491,10 @@ static void test_surface_authority_curve() {
     /* THE FINDING, pinned: full travel is not full authority. The stop sits past the
        peak, so the last 26% of the stick's throw pulls 14% WEAKER, and a surface
        trimmed at 12 deg -- which is what res/ships/skiff_trim.json authors -- has 6%
-       more authority available at the stop. That is why a full pitch press on the
-       shipped skiff moves its angle of attack by 0.2 deg from its elevators. */
+       more authority available at the stop. Both halves are the surface's own Cl: the
+       bench cannot price what that costs a flying airframe, and no in-game readout
+       shows surface lift at all (#655), so the [ctrl] row's deflection columns are the
+       only place a pilot or a case can see the difference. */
     CHECK_TRUE(fStop < fPeak, "the travel stop sits PAST peak authority (#503's droop)");
     CHECK_NEAR(fStop / fPeak, 0.8557, 1e-3,
                "at the stop the surface makes 85.6% of its own peak force");
@@ -594,11 +601,103 @@ static void test_heat_hooks() {
     teardown(b);
 }
 
+/* THE RATE COLUMN: the same hull with an angular velocity, which is #487's whole
+   question and the column #655's header said was missing. A rotating airframe carries
+   each surface through the air (drag.h::localFlow, #483), so every surface meets the
+   flow at its OWN angle; the two ends of that tilt are the pitch damping a plane needs
+   and, inside the stall droop, the pump that feeds the tumble instead of stopping it.
+   The steady moment at a fixed alpha is not the measurement -- it is the same
+   restoring term the no-rate rows already pay. The rate's own contribution is the
+   DIFFERENCE against the same hull at the same alpha with no spin, and the sign of
+   that difference dotted with the rate is the answer: negative takes energy out of the
+   rotation (damping), positive puts energy in (the pump, #487). */
+static void test_rate_column() {
+    printf("== the same hull with a pitch rate: damping, and the pump inside the droop ==\n");
+    Bench b = mkBench();
+    Part *wing = mkPlate(b.defs, "wing", 20.0, 2.0, 0.05, 1.0);
+    setSurface(b.defs.back(), 8.0, true);
+    b.v->attachMode(wing, 0, AttachMode::Down);
+    Part *elev = mkPlate(b.defs, "elevator", 5.0, 1.0, 0.05, 1.0);
+    setSurface(b.defs.back(), 2.0, false);
+    b.v->attachMode(elev, 0, AttachMode::Down, 0.0, 3.0);
+    launch(b);
+
+    const double speeds[] = { 100.0 };
+    const double alphas[] = { 0.0, 10.0, 30.0, 45.0 };   // 30 is inside 0.35..0.70 rad
+    const double rates[] = { 0.0, 0.5, 1.5, 3.0 };       // rad/s about the ship's right
+    for(double sp : speeds) {
+        for(double al : alphas) {
+            fly(b.v, sp, al, 0.0, 0.0);
+            const glm::dvec3 m0 = b.v->lastAeroTorque;
+            double prevAbs = -1.0;
+            for(double w : rates) {
+                fly(b.v, sp, al, 0.0, w);
+                const glm::dvec3 dm = b.v->lastAeroTorque - m0;
+                const double pw = glm::dot(dm, glm::dvec3(w, 0.0, 0.0));
+                printf("[rate] alpha %5.1f  w %+.2f rad/s  hull AoA %6.2f  wing a %+7.2f"
+                       "  |tau| %10.2f  dM|w %10.2f  dM.w %11.2f W  CLa %8.2f  SM %s\n",
+                       al, w, b.v->lastDragAlpha * 180.0 / std::numbers::pi,
+                       b.v->parts[1]->aeroAlphaDeg, glm::length(b.v->lastAeroTorque),
+                       dm.x, pw, b.v->lastLiftSlope,
+                       b.v->lastStaticValid ? "ok" : "-");
+                /* No spin is not "mostly the same", it is the same number: the sweep
+                   term is exactly zero, so the rate column cannot shift anything. */
+                if(w == 0.0) {
+                    CHECK_NEAR(glm::length(dm), 0.0, 0.0, "w 0: the rate changes nothing");
+                    continue;
+                }
+                /* The sign IS the finding. Inside the linear range the air takes the
+                   rotation's energy out (pitch damping); past the stall angle and under
+                   twice it, the slope is negative and the airframe feeds the tumble
+                   instead (#487) -- here +6.6 kW at 1.5 rad/s where alpha 10 takes
+                   15.7 kW out. CLa says it in the same breath: -48 m2/rad at alpha 30.
+                   Pinning both halves is what makes a droop change a visible event. */
+                if(al < 20.0) {
+                    CHECK_TRUE(pw < 0.0, "the linear range damps the rate it meets");
+                } else if(al >= 30.0 && al < 40.0) {
+                    CHECK_TRUE(pw > 0.0, "inside the droop the airframe PUMPS its own rate");
+                    CHECK_TRUE(b.v->lastLiftSlope < 0.0,
+                               "and the lift slope the log prints is negative there");
+                }
+                /* Power goes as w^2 (the moment is linear in the rate, and q rises with
+                   the sweep on top), so doubling the rate more than triples the bill. */
+                if(prevAbs > 0.0) {
+                    CHECK_TRUE(std::fabs(pw) > 3.0 * prevAbs,
+                               "the rate term grows faster than the rate it opposes");
+                }
+                prevAbs = std::fabs(pw);
+            }
+        }
+    }
+
+    /* The angle the law reads is the SURFACE's, not the hull's (#483): at hull AoA 0
+       with a 3 rad/s pitch rate the wing meets the flow at over 2 deg and the hull
+       quotes 0.00. Nothing else in this bench would notice if the sweep went missing,
+       and the damping pins above are exactly what depends on it. */
+    fly(b.v, 100.0, 0.0, 0.0, 0.0);
+    const double flatAlpha = b.v->parts[1]->aeroAlphaDeg;
+    fly(b.v, 100.0, 0.0, 0.0, 3.0);
+    CHECK_NEAR(b.v->lastDragAlpha, 0.0, 1e-12, "the hull still flies dead along its nose");
+    CHECK_NEAR(flatAlpha, 0.0, 1e-12, "with no spin, and so does the wing");
+    CHECK_TRUE(b.v->parts[1]->aeroAlphaDeg < -2.0,
+               "a 3 rad/s pitch rate tilts the wing's own flow past 2 deg");
+
+    /* Past twice the stall angle the droop has finished: the lifting law is silent, so
+       the margin dashes rather than quoting a lever for an airframe that has stopped
+       lifting, and the damping that remains is the hull's form drag (#486) -- which is
+       why a broadside hull still settles, and why it settles slowly. */
+    fly(b.v, 100.0, 45.0, 0.0, 3.0);
+    CHECK_NEAR(b.v->lastLiftSlope, 0.0, 1e-12, "no lift slope past twice the stall angle");
+    CHECK_TRUE(!b.v->lastStaticValid, "and the static margin dashes instead of lying");
+    teardown(b);
+}
+
 int main() {
     test_surface_sweep();
     test_lift_system_merge();
     test_surface_authority_curve();
     test_heat_hooks();
+    test_rate_column();
     printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }
