@@ -287,6 +287,55 @@ int main() {
         check(even, "xfer-he: even-in-anomaly radii");
     }
 
+    // 10c. TRANSFER ARC (multi-revolution): a leg of 1.5 turns. The transfer
+    // planner PREFERS these -- the game's own --xfer-log line prints rev=1 for
+    // the cheapest Kerbin->Mun answer -- and the map draws the leg with this
+    // function, so a leg that sweeps 1.167 turns must LOOK like 1.167 turns.
+    // Unwrapping the arrival anomaly by one turn at most (#254) drew the same
+    // leg as its fraction: this 1.5-turn case came out as half a turn, a
+    // shortcut the ship was not taking, with "rev 1" printed beside it.
+    {
+        const double e = 0.5;
+        const double peri = 7.0e6;
+        const double a = peri / (1.0 - e);
+        const double v_p = std::sqrt(mu * (1.0 + e) / peri);   // periapsis speed
+        const glm::dvec3 pos(peri, 0.0, 0.0), vel(0.0, v_p, 0.0); // periapsis
+        const double period = 2.0 * M_PI * std::sqrt(a * a * a / mu);
+        const double tof = 1.5 * period;   // periapsis -> round once -> apoapsis
+        std::vector<glm::dvec3> pts = sampleTransferArc(pos, vel, mu, tof, N);
+        check(pts.size() == (size_t)(N + 1), "xfer-rev: N+1 points");
+        check(glm::length(pts.front() - pos) < 1e-6 * peri, "xfer-rev: dep exact");
+        glm::dvec3 arr_p, arr_v;
+        propagateKepler(pos, vel, mu, tof, arr_p, arr_v);
+        check(glm::length(pts.back() - arr_p) < 1e-6 * peri, "xfer-rev: arr exact");
+        // Still even in eccentric anomaly, now over 3*pi of it: E_i = 3*pi*i/N,
+        // because M(E + 2*pi) = M(E) + 2*pi means the turns ride straight
+        // through the anomaly.
+        bool even = true;
+        for(int i = 0; i <= N; i++) {
+            const double r_exp = a * (1.0 - e * std::cos(3.0 * M_PI * i / N));
+            const double r_act = glm::length(pts[i]);
+            if(!std::isfinite(r_act) || std::fabs(r_act - r_exp) > 1e-3 * r_exp) { even = false; break; }
+        }
+        check(even, "xfer-rev: even-in-anomaly radii across the extra turn");
+        // The whole point, in the one number the map actually draws: the
+        // polyline's own polar angle must keep turning, all 1.5 times round.
+        // Unwrap the angle between samples and add it up -- the one-turn unwrap
+        // stopped after half a turn and drew a shortcut.
+        double sweep = 0.0;
+        double nu_prev = std::atan2(pts[0].y, pts[0].x);
+        for(int i = 1; i <= N; i++) {
+            const double nu = std::atan2(pts[i].y, pts[i].x);
+            double d = nu - nu_prev;
+            while(d > M_PI) d -= 2.0 * M_PI;
+            while(d < -M_PI) d += 2.0 * M_PI;
+            sweep += d;
+            nu_prev = nu;
+        }
+        check(std::fabs(sweep - 3.0 * M_PI) < 1e-3,
+              "xfer-rev: the arc sweeps 1.5 turns, not the fraction of one");
+    }
+
     // 11. TRANSFER ARC (hyperbolic): a leg leaving periapsis. Endpoints exact
     // and even in HYPERBOLIC ANOMALY (radius r_i = |a|(e cosh H_i - 1),
     // H_i = H2 i / N).

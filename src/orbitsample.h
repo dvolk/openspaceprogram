@@ -212,12 +212,28 @@ inline std::vector<glm::dvec3> sampleTransferArc(const glm::dvec3 &pos,
         }
         return pts;
     }
-    // Elliptic anomaly wraps to [0, 2pi); unwrap one turn if arrival reads behind.
+    // Elliptic anomaly wraps to [0, 2pi): unwrap the arrival by as MANY turns
+    // as the flight time spans. One turn is not enough, and this is not a
+    // corner case -- the transfer planner PREFERS multi-rev legs: the game's own
+    // --xfer-log line prints rev=1 for the cheapest Kerbin->Mun answer. Unwrapped
+    // by one turn at most, that 1.167-turn leg drew as a 0.167-turn arc: the map
+    // showed a shortcut the ship was not taking, with "rev 1" printed beside it
+    // (#254). Let the flight time set the count instead. For an ellipse the mean
+    // anomaly advances by exactly 2*pi*tof/period, and M(E + 2*pi*k) = M(E) +
+    // 2*pi*k, so one integer closes the book -- and at tof < period it reduces
+    // to the old "arrival reads behind, add a turn" rule.
     glm::dvec3 arr_pos, arr_vel;
     propagateKepler(pos, vel, mu, tof, arr_pos, arr_vel);
     double A2 = computeOrbitElements(arr_pos, arr_vel, mu).ecc_anomaly;
     const double A1 = o.ecc_anomaly;
-    if(elliptic && A2 < A1) { A2 += 2.0 * std::numbers::pi; }
+    if(elliptic) {
+        const double dM = (o.period > 0.0)
+            ? 2.0 * std::numbers::pi * tof / o.period : 0.0;
+        const double m1 = A1 - e * std::sin(A1);
+        const double m2 = A2 - e * std::sin(A2);   // arrival, still wrapped
+        A2 += 2.0 * std::numbers::pi
+            * (double)std::llround((dM - (m2 - m1)) / (2.0 * std::numbers::pi));
+    }
     const double M1 = o.mean_anomaly;
     const double a_abs = std::fabs(o.semi_major);
     const double tau = elliptic
