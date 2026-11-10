@@ -2496,6 +2496,14 @@ def main():
             # load, so check the file behind it too (#226's trap).
             missing = [n for n in doc.get('world_buildings_files', [])
                        if not os.path.exists(os.path.join(ROOT, n))]
+            # Same trap for heightmaps: a body naming a .i16 that is not there matches the
+            # committed file byte for byte, then throws at LOAD (terragen.h refuses to fall
+            # back to noise). Only res/ paths -- a map outside res/ is player-fetched data
+            # and its absence is not drift (#754).
+            missing += [b['surface']['heightmap'] for b in doc['bodies']
+                        if b.get('surface', {}).get('heightmap', '').startswith('res/')
+                        and not os.path.exists(os.path.join(ROOT,
+                                                            b['surface']['heightmap']))]
             good = same and not missing
             print(('OK      ' if good else 'DRIFT   ') + path)
             for n in missing:
