@@ -1009,8 +1009,8 @@ def author_ksp_albedos(obj):
         ref_pair = ref.get(analogue)
         a = ref_pair[0] if ref_pair else None
         # No nested brackets: this lands inside the dossier's own "(...)" around the number.
-        src = "analogy to %s%s" % (analogue,
-                                   ", converted there" if ref_pair and ref_pair[1] else "")
+        src = "via %s%s" % (analogue,
+                       ", converted" if ref_pair and ref_pair[1] else "")
         assert a is not None, ('no authored albedo for %r in solar_system.json for %s: the '
                                'reference file must price an analogue this system borrows'
                                % (analogue, name))
@@ -1034,7 +1034,7 @@ def author_ksp_albedos(obj):
         # so passes the anchor-inside-the-pair gate, giving Duna its own knob instead of
         # Mars's. Which of those is right is a DATA question (is a wiki max_k a day extreme or
         # a mean?) that one function should answer for every body at once; until it does, the
-        # divergence is here on purpose and pinned by e2e/science/735 (Duna: analogy to Mars).
+        # divergence is here on purpose and pinned by e2e/science/735 (Duna: via Mars).
         rng = WIKI_THERMAL.get(name)
         note = ''
         if rng and rng[1] is not None and rng[2] is not None:
@@ -1335,12 +1335,12 @@ def author_ksp_diurnal_defaults(obj):
         f = ref[analogue]
         how = "by analogy to %s" % analogue
         # A borrowed figure keeps the hop it came from, the way the albedo path does: 0.0153
-        # on Moho is Mercury's, and Mercury's is OUR airless floor, so "analogy to Mercury"
+        # on Moho is Mercury's, and Mercury's is OUR airless floor, so "via Mercury"
         # alone would stop one link short of the rule that actually priced it (#687). A
         # borrowed FIT needs no marker -- a fit is the strongest kind of number we have.
-        borrowed_src = "analogy to %s" % analogue
+        borrowed_src = "via %s" % analogue
         if f is not None and (ref_src.get(analogue) or "").startswith("DEFAULT"):
-            borrowed_src += ", defaulted there"
+            borrowed_src += ", defaulted"
         if f is None:
             p = (surf.get("atmosphere") or {}).get("sea_level_pressure") or 0.0
             f, dsrc = default_even_share(p, p_ref, floor)

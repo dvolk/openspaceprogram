@@ -6816,7 +6816,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                words (utils/ground_model.py, gen_systems.py). "DEFAULT" is not a warning here:
                #749 decided a stated gap is worse than a rule that names itself. */
             const bool priced = !b.surface.even_share_src.empty();
-            fmtRow(v, sizeof v, "%.1f K night to %.1f K day%s%s%s",
+            fmtRow(v, sizeof v, "%.1f to %.1f K%s%s%s",
                      groundTemperature(anchor, f, 0.0),
                      groundTemperature(anchor, f, 1.0),
                      priced ? " (" : "", b.surface.even_share_src.c_str(),

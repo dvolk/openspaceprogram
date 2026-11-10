@@ -355,9 +355,9 @@ struct Surface {
        left absent where nothing states one. */
     double temperature = kThermalUnauthored;  // [K]; -1 = not authored, never 0 K
     double bond_albedo = kAlbedoUnauthored;   // Bond albedo [0,1); -1 = not authored
-    /* How that albedo was obtained, when it is not a reading: "converted: geometric 0.68 x
+    /* How that albedo was obtained, when it is not a reading: "geom 0.68, q=
        0.681" (the satellite fact sheets state a VISUAL GEOMETRIC albedo and the corpus's own
-       ten Bond/geometric pairs set the factor), or "analogy to Earth" in the shipped file.
+       ten Bond/geometric pairs set the factor), or "via Earth" in the shipped file.
        Empty where the fact sheet states a Bond albedo outright, which is most of the planets.
        The number alone cannot say which kind of figure it is, and a converted albedo carries
        the corpus's own disagreement (#749 printed its spread: a factor of three across ten
@@ -372,7 +372,7 @@ struct Surface {
        The law itself is src/groundtemp.h. */
     double even_share = kEvenShareUnauthored;
     /* How that knob was priced, in the generator's own words: "fitted from the night end",
-       "least-squares fit to the pair", "analogy to Mars", "DEFAULT: airless floor". Empty when
+       "least-squares fit to the pair", "via Mars", "DEFAULT airless floor". Empty when
        the file does not say. The number alone cannot make this distinction -- 0.015 is the same
        digits whether the corpus's Moon page priced it or a rule of ours filled a gap -- and the
        dossier is where a reader decides whether to trust it (#687: a figure and its provenance

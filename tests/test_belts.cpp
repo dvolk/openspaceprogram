@@ -338,7 +338,7 @@ int main() {
        with no knob describes an answer the file never gave. */
     {
         nlohmann::json j = read_json("res/systems/old_system.json");
-        j["bodies"][1]["surface"]["albedo_src"] = "converted: geometric 0.68 x 0.681";
+        j["bodies"][1]["surface"]["albedo_src"] = "geom 0.68, q=0.681";
         expect_reject(j, "albedo provenance with no albedo rejected", "albedo_src");
     }
     {
@@ -381,7 +381,7 @@ int main() {
                   "every authored swing in the shipped file says how it was priced");
             const TerrainBody *kerbin = sys.find("Kerbin");
             check(kerbin != nullptr
-                      && kerbin->surface.even_share_src.find("analogy") != std::string::npos,
+                      && kerbin->surface.even_share_src.find("via ") != std::string::npos,
                   "Kerbin's knob names the world it is borrowed from");
             /* #749 also converted albedos: the satellite fact sheets state a VISUAL
                GEOMETRIC albedo, and the corpus's own ten (Bond, geometric) pairs set the
@@ -395,7 +395,7 @@ int main() {
                   "a borrowed converted albedo says it was converted");
             const TerrainBody *moho = sys.find("Moho");
             check(moho != nullptr
-                      && moho->surface.even_share_src.find("defaulted there")
+                      && moho->surface.even_share_src.find(", defaulted")
                              != std::string::npos,
                   "a borrowed knob that was a DEFAULT at its source says so two hops deep");
             const TerrainBody *mun = sys.find("Mun");

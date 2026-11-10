@@ -2180,7 +2180,7 @@ def satellite_sheets(verbose=True):
                      # factor the corpus itself disagrees about is false precision on screen.
                      # The CELL's own text, not the parsed number, so a two-hemisphere mean
                      # says so where the number alone would read like a measurement.
-                     'albedo_src': 'converted: geometric %s x %.3f' % (cell, q)}
+                     'albedo_src': 'geom %s, q=%.3f' % (cell, q)}
         if verbose:
             print('  sat conv  %-9s albedo %6.3f  = geometric %4.2f x q %.3f  (%s)'
                   % (name, a, p_geo, q, page))

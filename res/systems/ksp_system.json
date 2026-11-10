@@ -116,9 +116,9 @@
           ]
         ],
         "albedo": 0.068,
-        "albedo_src": "analogy to Mercury",
+        "albedo_src": "via Mercury",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Mercury, defaulted there"
+        "even_share_src": "via Mercury, defaulted"
       },
       "inertial": {
         "orb_ang_speed": 2.8356872230308897e-06,
@@ -220,7 +220,7 @@
           "height": 31000.0
         },
         "albedo": 0.77,
-        "albedo_src": "analogy to Venus",
+        "albedo_src": "via Venus",
         "even_share": 0.09058795570276411,
         "even_share_src": "fitted from the night end"
       },
@@ -280,9 +280,9 @@
           ]
         ],
         "albedo": 0.04769765337125865,
-        "albedo_src": "analogy to Phobos, converted there",
+        "albedo_src": "via Phobos, converted",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Phobos, defaulted there"
+        "even_share_src": "via Phobos, defaulted"
       },
       "inertial": {
         "orb_ang_speed": 1.6169314226105314e-05,
@@ -430,9 +430,9 @@
           "drift": 1e-05
         },
         "albedo": 0.294,
-        "albedo_src": "analogy to Earth",
+        "albedo_src": "via Earth",
         "even_share": 0.9323431643529773,
-        "even_share_src": "analogy to Earth"
+        "even_share_src": "via Earth"
       },
       "inertial": {
         "orb_ang_speed": 6.826918657082229e-07,
@@ -481,9 +481,9 @@
           ]
         ],
         "albedo": 0.11,
-        "albedo_src": "analogy to Moon",
+        "albedo_src": "via Moon",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Moon"
+        "even_share_src": "via Moon"
       },
       "inertial": {
         "orb_ang_speed": 4.520797578987212e-05,
@@ -530,9 +530,9 @@
           ]
         ],
         "albedo": 0.6813950481608377,
-        "albedo_src": "analogy to Enceladus, converted there",
+        "albedo_src": "via Enceladus, converted",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Enceladus, defaulted there"
+        "even_share_src": "via Enceladus, defaulted"
       },
       "inertial": {
         "orb_ang_speed": 5.832285484117015e-06,
@@ -638,9 +638,9 @@
           "drift": 1e-05
         },
         "albedo": 0.294,
-        "albedo_src": "analogy to Earth",
+        "albedo_src": "via Earth",
         "even_share": 0.9323431643529773,
-        "even_share_src": "analogy to Earth"
+        "even_share_src": "via Earth"
       },
       "inertial": {
         "pos": [
@@ -739,9 +739,9 @@
           "height": 50000.0
         },
         "albedo": 0.25,
-        "albedo_src": "analogy to Mars",
+        "albedo_src": "via Mars",
         "even_share": 0.7075,
-        "even_share_src": "analogy to Mars"
+        "even_share_src": "via Mars"
       },
       "inertial": {
         "orb_ang_speed": 3.628668876941674e-07,
@@ -791,9 +791,9 @@
           ]
         ],
         "albedo": 0.11,
-        "albedo_src": "analogy to Moon",
+        "albedo_src": "via Moon",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Moon"
+        "even_share_src": "via Moon"
       },
       "inertial": {
         "orb_ang_speed": 9.590013900271049e-05,
@@ -842,9 +842,9 @@
           ]
         ],
         "albedo": 0.11,
-        "albedo_src": "analogy to Moon",
+        "albedo_src": "via Moon",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Moon"
+        "even_share_src": "via Moon"
       },
       "inertial": {
         "orb_ang_speed": 1.3119197047763653e-07,
@@ -933,7 +933,7 @@
           "height": 600000.0
         },
         "albedo": 0.343,
-        "albedo_src": "analogy to Jupiter"
+        "albedo_src": "via Jupiter"
       },
       "inertial": {
         "orb_ang_speed": 6.003343530766506e-08,
@@ -1073,9 +1073,9 @@
           "drift": 1e-05
         },
         "albedo": 0.294,
-        "albedo_src": "analogy to Earth",
+        "albedo_src": "via Earth",
         "even_share": 0.9323431643529773,
-        "even_share_src": "analogy to Earth"
+        "even_share_src": "via Earth"
       },
       "inertial": {
         "orb_ang_speed": 0.00011859318070968057,
@@ -1122,9 +1122,9 @@
           ]
         ],
         "albedo": 0.4633486327493697,
-        "albedo_src": "analogy to Europa, converted there",
+        "albedo_src": "via Europa, converted",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Europa, defaulted there"
+        "even_share_src": "via Europa, defaulted"
       },
       "inertial": {
         "orb_ang_speed": 5.9296590354840286e-05,
@@ -1170,9 +1170,9 @@
           ]
         ],
         "albedo": 0.11,
-        "albedo_src": "analogy to Moon",
+        "albedo_src": "via Moon",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Moon"
+        "even_share_src": "via Moon"
       },
       "inertial": {
         "orb_ang_speed": 2.9648015378856705e-05,
@@ -1220,9 +1220,9 @@
           ]
         ],
         "albedo": 0.04769765337125865,
-        "albedo_src": "analogy to Phobos, converted there",
+        "albedo_src": "via Phobos, converted",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Phobos, defaulted there"
+        "even_share_src": "via Phobos, defaulted"
       },
       "inertial": {
         "orb_ang_speed": 1.1539218609089665e-05,
@@ -1272,9 +1272,9 @@
           ]
         ],
         "albedo": 0.12946505915055917,
-        "albedo_src": "analogy to Callisto, converted there",
+        "albedo_src": "via Callisto, converted",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Callisto, defaulted there"
+        "even_share_src": "via Callisto, defaulted"
       },
       "inertial": {
         "orb_ang_speed": 6.966586547754677e-06,
@@ -1324,9 +1324,9 @@
           ]
         ],
         "albedo": 0.72,
-        "albedo_src": "analogy to Pluto",
+        "albedo_src": "via Pluto",
         "even_share": 0.015251705420212182,
-        "even_share_src": "analogy to Pluto, defaulted there"
+        "even_share_src": "via Pluto, defaulted"
       },
       "inertial": {
         "orb_ang_speed": 4.002231569830586e-08,

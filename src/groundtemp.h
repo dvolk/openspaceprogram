@@ -178,7 +178,7 @@ inline const char *groundAnchorRungName(GroundAnchorRung r) {
     switch(r) {
         case kAnchorStated:   return "stated ground temperature";
         case kAnchorAirDatum: return "the air's datum";
-        case kAnchorDerived:  return "DERIVED from this sun and albedo";
+        case kAnchorDerived:  return "DERIVED: sun + albedo";
         default:               return "no anchor";
     }
 }

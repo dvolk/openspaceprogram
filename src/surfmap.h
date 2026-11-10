@@ -138,7 +138,7 @@ struct TempLayer {
     double anchor_K = 0.0, knob = kEvenShareUnauthored;
     double lo_K = 0.0, hi_K = 0.0;      // the model's own night / day ends
     /* The sentence for --surfmap-log: the anchor's PROVENANCE when the layer paints (printed
-       as anchor_src=, "the air's datum", "DERIVED from this sun and albedo" -- #722's rule that
+       as anchor_src=, "the air's datum", "derived: sun + albedo" -- #722's rule that
        a computed figure announces itself at the readout), and the REASON it does not when it
        does not ("no authored swing", "a banded giant", "no sun"). `block` is the same decision
        in three words, for the cursor line, which has room for a word and not a sentence. */
