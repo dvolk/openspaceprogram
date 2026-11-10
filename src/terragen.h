@@ -487,6 +487,15 @@ struct TerrainParams {
 // scale 2^(i+1); the first `base_octaves` are continents, the rest mountains.
 // ---------------------------------------------------------------------------
 
+/* [octaves] The most the height model resolves, and the loader's ceiling for
+   surface.octaves. Octave i runs at noise scale 2^(i+1)*frequency on a unit direction,
+   while the deepest mesh cell the renderer can ask for is ~2^-12 rad wide (root_angle /
+   (grid-1) / 2^(depth-1) at max_depth 12), so past ~13 the extra octaves are detail no
+   geometry can bake -- and past ~90 the octave's own float scale (2^91) overflows
+   glm::simplex into NaN, which hands every height, palette stop and collision shape on
+   that body a NaN and the game loads and runs anyway. The shipped corpus stops at 9. */
+inline constexpr int kMaxTerrainOctaves = 24;
+
 /* glm::simplex ranks its skew-space components with step(): exactly axis-aligned
    inputs tie, and a 1-ulp perturbation then flips the corner ranking (a value
    jump). A fixed off-axis offset avoids the ties. */
@@ -524,15 +533,49 @@ inline float terrainRelief(const glm::vec3& p, const TerrainParams& t,
         return h;
     }
 
-    const int base_octaves = std::min(s.octaves, 6);
+    // Capped here as well as in the loader, so a hand-built Surface (a test, a
+    // future editor) cannot overrun the octave store below or reach float noise.
+    const int octaves = std::min(s.octaves, kMaxTerrainOctaves);
+    const int base_octaves = std::min(octaves, 6);
 
-    const float continents =
-        terrainFbmOctaves(q, 0, base_octaves, s.persistence, fade);
+    /* ONE simplex per octave, then the two weighted sums over it. The continents
+       range [0, base_octaves) and the mountain range [2, octaves) overlap on octaves
+       2..5, which the two-loop spelling sampled TWICE: 13 noise evaluations per
+       height where 9 distinct scales exist, at ~1.3 us a height and 49x49 verts a
+       patch. Bit-identical to that spelling (tests/test_terrain.cpp pins relief
+       literals captured before the change): amplitude i is persistence^i in both
+       ranges, each sum runs i ascending, and norm is the same sum of amplitudes.
+       `fade` also cuts both ranges at the same octave, because its weight
+       clamp(fade-i, 0, 1) falls with i -- so one run length serves both. */
+    int nrun = 0;
+    for (int i = 0; i < octaves; i++) {
+        if (!(fade > (float)i)) { break; }
+        nrun = i + 1;
+    }
+    float nz[kMaxTerrainOctaves], am[kMaxTerrainOctaves], wv[kMaxTerrainOctaves];
+    glm::vec3 pp = q * 2.0f;   // octave 0 scale = 2
+    float amp = 1.0f;
+    for (int i = 0; i < nrun; i++, pp *= 2.0f, amp *= s.persistence) {
+        nz[i] = glm::simplex(pp);
+        am[i] = amp;
+        wv[i] = glm::clamp(fade - (float)i, 0.0f, 1.0f);
+    }
+    float sum = 0.0f, norm = 0.0f;
+    const int ncont = std::min(base_octaves, nrun);
+    for (int i = 0; i < ncont; i++) {
+        sum += am[i] * wv[i] * nz[i];
+        norm += am[i];
+    }
+    const float continents = (norm > 0.0f) ? sum / norm : 0.0f;
     float h = 0.7f * continents;
-    if (s.octaves > 2) {
+    if (octaves > 2) {
         const float mask = glm::smoothstep(0.0f, 0.6f, continents);
-        const float m = terrainFbmOctaves(q, 2, s.octaves, s.persistence,
-                                          fade);
+        sum = 0.0f; norm = 0.0f;
+        for (int i = 2; i < nrun; i++) {
+            sum += am[i] * wv[i] * nz[i];
+            norm += am[i];
+        }
+        const float m = (norm > 0.0f) ? sum / norm : 0.0f;
         h += 1.4f * mask * (1.0f - m * m);
     }
     return h * (s.amplitude / 2.1f);

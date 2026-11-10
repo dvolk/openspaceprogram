@@ -949,6 +949,99 @@ int main() {
         }
     }
 
+    /* THE HEIGHT NUMBERS, pinned to the float. The relief is one law that the mesh,
+       the collision shape, the biome bands and the surface map all read, and it is
+       built from two FBM ranges that OVERLAP on octaves 2..5 (continents [0,6),
+       mountains [2,octaves)). The shared-octave sampler in terragen.h replaced a
+       spelling that evaluated those octaves twice; it is bit-identical, and these
+       literals are what it answered BEFORE that change (captured from the pre-sharing
+       header at -O2 -march=x86-64-v2 and printed at 9 digits, which round-trips a
+       float). A rewrite that moves a decimal here redraws every world in the game, so
+       that has to be a decision and not a refactor artefact. */
+    {
+        Surface s;
+        s.octaves = 9;
+        s.frequency = 3.0f;
+        s.persistence = 0.5f;
+        s.amplitude = 2500.0f;
+        s.seed_rot = glm::mat3(1.0f);
+        TerrainParams t;
+        t.surface = s;
+        t.radius = 200000.0f;
+
+        const std::array<glm::vec3, 6> d = {{
+            glm::vec3(0.0f, 1.0f, 0.0f),
+            glm::vec3(1.0f, 0.0f, 0.0f),
+            glm::vec3(0.60f, 0.35f, -0.72f),
+            glm::vec3(-0.45f, -0.80f, 0.40f),
+            glm::vec3(0.11f, -0.99f, 0.05f),
+            glm::vec3(0.95f, 0.02f, 0.31f),
+        }};
+        // fade 1000 = no band limit (a root patch), then three band-limited fades:
+        // mid-detail, at the mountain cut-off, and below it. The fades are the part a
+        // rewrite gets wrong, because `fade` decides where each range STOPS as well as
+        // how hard it pulls.
+        const std::array<double, 6> full = {{ -128.856033, -96.1986542, -21.9321442,
+                                              200.260788, -147.346222, 661.915161 }};
+        const std::array<double, 6> f328 = {{ -109.968285, -106.955727, -7.05692816,
+                                              318.401703, -177.685471, 578.511353 }};
+        const std::array<double, 6> f150 = {{ -144.785736, 31.4931164, 109.302727,
+                                              489.403656, -122.436493, 604.818115 }};
+        const std::array<double, 6> f040 = {{ -105.555862, 74.4869919, 55.6655045,
+                                              172.037567, -13.2767382, 237.571426 }};
+        for(size_t i = 0; i < d.size(); i++) {
+            check(terrainRelief(d[i], t, 1000.0f) == (float)full[i],
+                  "relief pin: octaves 9 at full detail");
+            check(terrainRelief(d[i], t, 3.28f) == (float)f328[i],
+                  "relief pin: octaves 9 band-limited at fade 3.28");
+            check(terrainRelief(d[i], t, 1.5f) == (float)f150[i],
+                  "relief pin: octaves 9 band-limited at fade 1.5 (mountains off)");
+            check(terrainRelief(d[i], t, 0.4f) == (float)f040[i],
+                  "relief pin: octaves 9 band-limited at fade 0.4 (one octave)");
+        }
+        // Two more octave counts, so a change that only moves the overlap range
+        // (octaves <= 6 has no mountain range at all) cannot slip through.
+        Surface s6 = s; s6.octaves = 6;
+        TerrainParams t6; t6.surface = s6; t6.radius = 600000.0f;
+        const std::array<double, 6> o6 = {{ -128.856033, -96.1986542, -21.9321442,
+                                            200.758514, -147.346222, 661.154236 }};
+        Surface s2 = s; s2.octaves = 2;
+        TerrainParams t2; t2.surface = s2; t2.radius = 60000.0f;
+        const std::array<double, 6> o2 = {{ -113.645042, -25.3569508, 52.4382744,
+                                            169.015839, -222.745102, 183.448883 }};
+        for(size_t i = 0; i < d.size(); i++) {
+            check(terrainRelief(d[i], t6, 1000.0f) == (float)o6[i],
+                  "relief pin: octaves 6 (continents only)");
+            check(terrainRelief(d[i], t2, 1000.0f) == (float)o2[i],
+                  "relief pin: octaves 2 (no mountain term)");
+        }
+    }
+
+    /* The octave cap (terragen.h kMaxTerrainOctaves): refused by the loader, and
+       truncated here so a hand-built Surface cannot overrun the sampler's octave
+       store. Octave ~90 runs at noise scale 2^91, which the float simplex answers with
+       NaN, so an unbounded surface.octaves used to load silently and hand that NaN to
+       every height, palette stop and collision shape on the body. */
+    {
+        Surface s;
+        s.octaves = 400;
+        s.frequency = 3.0f;
+        s.persistence = 0.5f;
+        s.amplitude = 2500.0f;
+        s.seed_rot = glm::mat3(1.0f);
+        TerrainParams wild; wild.surface = s; wild.radius = 200000.0f;
+        Surface capped = s; capped.octaves = kMaxTerrainOctaves;
+        TerrainParams tc; tc.surface = capped; tc.radius = 200000.0f;
+        const std::vector<glm::vec3> dirs = sampleDirs();
+        for(const glm::vec3 &d : dirs) {
+            const float got = terrainRelief(d, wild, 1000.0f);
+            check(std::isfinite(got),
+                  "a wild octave count still answers a finite height");
+            check(got == terrainRelief(d, tc, 1000.0f),
+                  "a wild octave count truncates to the cap rather than dropping relief");
+        }
+    }
+
     if(g_failures == 0) {
         std::printf("test_terrain: all checks passed\n");
         return 0;
