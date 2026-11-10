@@ -3827,12 +3827,15 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                moves UNEQUALLY -- so the pair's sideways forces no longer cancel, which
                is part of why this ship's max |Beta| over the 458 rows went 0.3 deg
                before #483 to 2.5 after. It also tilts the force DIRECTION (liftDir)
-               and with it the sign of the leverage. There is still no alpha term:
-               controlForce answers deflection only, so a surface the stick has not
-               touched makes no force however it is swinging (#454 is what gives a
-               surface a say from its own angle). Note when it is biggest: at the top
-               of a 77 deg excursion the rate is near zero (a turning point), so the
-               sweep is largest mid-swing, not where the angle looks worst. */
+               and with it the sign of the leverage. The angle of attack DOES enter this
+               law now (#454's other half, forty lines below), but the force is still
+               gated on a non-zero command -- the `cmd == 0.0` early-out above -- so a
+               surface nobody has touched makes nothing however it is swinging, and the
+               alpha half only appears on a substep the solver asked for travel
+               (tests/test_aerosweep.cpp::test_neutral_fin_alpha_gate pins that step:
+               92 kN of side force for a command of 1e-12 rad). Note when the sweep is
+               biggest: at the top of a 77 deg excursion the rate is near zero (a turning
+               point), so the sweep is largest mid-swing, not where the angle looks worst. */
             const glm::dvec3 ri = partPosS(p) - com;
             const LocalFlow lf = localFlow(vrel, w, ri, rho);
             const double qp = lf.q;
