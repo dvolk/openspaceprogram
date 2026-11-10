@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <limits>
 #include <numbers>
 #include <cstdio>
 #include <filesystem>
@@ -134,6 +135,26 @@ double measureSolarDay(Frame *root, TerrainBody *body, TerrainBody *sun) {
     // locked to the sun: fall back to the sidereal day.
     if(std::fabs(sweep) < 1e-6) { return sidereal; }
     return t_probe * twopi / std::fabs(sweep);
+}
+
+/* A checked [r, g, b] triple (sea_color, atmosphere.color, clouds.color). The call sites
+   all guard "is an array of >= 3" and then read c[0].get<float>() straight, so a colour
+   written as ["0.5", 1, 1] aborts the load with nlohmann's own type_error -- which names
+   no body, no key and no channel, the three things an author needs to fix it (#515's rule,
+   the same one the wind rows and the gas table already follow). The caller has already
+   checked the array shape; this only checks the elements. */
+glm::vec3 rgbFrom(const nlohmann::json &c, const std::string &body,
+                  const std::string &what) {
+    glm::vec3 out(0.0f);
+    for(int ch = 0; ch < 3; ch++) {
+        if(!c[ch].is_number() || !std::isfinite(c[ch].get<double>())) {
+            throw std::runtime_error("system: '" + body + "': " + what
+                                     + " channel " + std::to_string(ch)
+                                     + " must be a finite number [0..1]");
+        }
+        out[ch] = (float)c[ch].get<double>();
+    }
+    return out;
 }
 
 System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
@@ -274,10 +295,39 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         sys.bodies.push_back(body);
 
         body->name       = bv.value("name", std::string("body"));
+        /* A name is an address in this game: System::find answers with the FIRST body
+           matching one, and pads, beds, saves, scenario rails and the atlas all name
+           bodies that way. Two bodies under one name therefore is not a cosmetic clash
+           -- a pad authored on the second one stands on the first, and a save naming it
+           re-roots a ship onto the wrong world. Empty is the same failure one step
+           earlier: it matches nothing. */
+        if(body->name.empty()) {
+            throw std::runtime_error("system: body " + std::to_string(i + 1)
+                                     + " authors an empty \"name\"");
+        }
+        for(const TerrainBody *other : sys.bodies) {
+            if(other != body && other->name == body->name) {
+                throw std::runtime_error("system: duplicate body name '" + body->name
+                                         + "' (body " + std::to_string(i + 1) + ") --"
+                                           " find() answers with the first, so the second"
+                                           " is unreachable by name");
+            }
+        }
         const std::string type = bv.value("type", std::string("planet"));
-        body->type       = (type == "star") ? BodyType::Star
-                         : (type == "moon") ? BodyType::Moon
-                                            : BodyType::Planet;
+        /* "planet" is the default because most bodies are one; an UNRECOGNISED spelling
+           is a typo, not a planet. The same policy the loader already applies to
+           "soi_law", the "ocean" mode and the wind keys: a wrong name there refuses, and
+           here a mistyped "Star" silently turns the sun's luminosity off (every body in
+           the system then dashes its temperatures) while "gas giant" hands a giant a
+           walkable ground and a collision shape. */
+        if(type == "star")        { body->type = BodyType::Star; }
+        else if(type == "moon")   { body->type = BodyType::Moon; }
+        else if(type == "planet") { body->type = BodyType::Planet; }
+        else {
+            throw std::runtime_error("system: '" + body->name
+                                     + "': unknown \"type\" \"" + type
+                                     + "\" (expected \"star\", \"moon\" or \"planet\")");
+        }
         const double radius = bv.value("radius", 600000.0);
         const double mass   = bv.value("mass", 5e22);
         body->radius       = (float)radius;
@@ -304,7 +354,26 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         if(bv.contains("surface") && bv["surface"].is_object()) {
             const nlohmann::json &sv = bv["surface"];
             s.amplitude   = sv.value("amplitude", s.amplitude);
-            s.octaves     = sv.value("octaves", s.octaves);
+            /* A COUNT with a hard ceiling, so it is checked rather than defaulted: the
+               height model resolves ~13 octaves on the deepest mesh cell it can build, and
+               octave ~90's noise scale (2^91) overflows the float simplex into NaN. Before
+               this, "octaves": 100 loaded, printed nothing, and handed the mesh, the
+               palette and the collision shape NaN heights. */
+            if(sv.contains("octaves")) {
+                if(!sv["octaves"].is_number()
+                   || !std::isfinite(sv["octaves"].get<double>())
+                   || std::floor(sv["octaves"].get<double>())
+                      != sv["octaves"].get<double>()
+                   || sv["octaves"].get<double>() < 0.0
+                   || sv["octaves"].get<double>() > (double)kMaxTerrainOctaves) {
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': surface.octaves must be a whole number"
+                                               " of octaves from 0 to "
+                                             + std::to_string(kMaxTerrainOctaves)
+                                             + " (the height model resolves about 13)");
+                }
+                s.octaves = sv["octaves"].get<int>();
+            }
             s.persistence = sv.value("persistence", s.persistence);
             s.frequency   = sv.value("frequency", s.frequency);
             /* #687: the surface's thermal numbers, authored only where a source
@@ -407,15 +476,36 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                            "surface.even_share does not author");
             }
             if(sv.contains("sea_level")) {
+                if(!sv["sea_level"].is_number()) {
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': \"surface.sea_level\" must be a number"
+                                               " [m, measured off the mean radius]");
+                }
+                const double sl = sv["sea_level"].get<double>();
+                /* The datum has to stay OUTSIDE the centre. seaLevelRadius() is what every
+                   altitude in the game measures from, and a body's near-field shell is
+                   datum + shellEdge(air top) in its ROTATING frame: a datum at or below the
+                   centre makes that shell enclose nothing (an "in space" test no hull can
+                   pass) and hands the air column's 1/r^2 weight a negative radius. A
+                   NEGATIVE sea_level is legitimate -- it is a basin below the datum, which
+                   is how a dry world gets its sea floor -- and only the impossible half of
+                   the range is refused. */
+                if(!std::isfinite(sl) || sl <= -radius) {
+                    char sbuf[32], rbuf[32];
+                    std::snprintf(sbuf, sizeof sbuf, "%g", sl);
+                    std::snprintf(rbuf, sizeof rbuf, "%g", radius);
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': surface.sea_level=" + sbuf
+                                             + " puts the mean-sea datum at or below the"
+                                               " body's centre (radius " + rbuf + " m)");
+                }
                 s.has_sea = true;
-                s.sea_level = sv.value("sea_level", 0.0);
+                s.sea_level = (float)sl;
             }
             if(sv.contains("sea_color") && sv["sea_color"].is_array()
                && sv["sea_color"].size() >= 3) {
-                const nlohmann::json &c = sv["sea_color"];
-                s.sea_color = glm::vec3(c[0].get<float>(),
-                                        c[1].get<float>(),
-                                        c[2].get<float>());
+                s.sea_color = rgbFrom(sv["sea_color"], body->name,
+                                      "surface.sea_color");
             }
             // How the sea renders (terragen.h OceanMode). Absent = "mesh". A
             // renderer named with no sea is a data bug: the key does nothing.
@@ -434,16 +524,32 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                               body->name);
             }
             if(sv.contains("palette") && sv["palette"].is_array()) {
+                int stop_no = 0;
                 for(const nlohmann::json &stop : sv["palette"]) {
-                    if(!stop.is_array() || stop.size() < 2
-                       || !stop[1].is_array() || stop[1].size() < 3) {
-                        continue;
+                    ++stop_no;
+                    const std::string at = " stop " + std::to_string(stop_no)
+                                         + " of surface.palette";
+                    /* Checked rather than read, and refused rather than `continue`d. A
+                       dropped stop is a colour the ground never gets, which is a change to
+                       every palette on that body that nothing in play explains; and a
+                       mistyped element otherwise aborts with nlohmann's type_error, which
+                       names no body, no stop and no key (#515). */
+                    if(!stop.is_array() || stop.size() < 2 || !stop[1].is_array()
+                       || stop[1].size() < 3) {
+                        throw std::runtime_error("system: '" + body->name + "'" + at
+                                                 + " must be [alt fraction, [r, g, b]]");
+                    }
+                    if(!stop[0].is_number()
+                       || !std::isfinite(stop[0].get<double>())) {
+                        throw std::runtime_error("system: '" + body->name + "'" + at
+                                                 + " needs a finite altitude fraction"
+                                                   " [0..1] first");
                     }
                     PaletteStop ps;
-                    ps.t = stop[0].get<float>();
-                    ps.color = glm::vec3(stop[1][0].get<float>(),
-                                         stop[1][1].get<float>(),
-                                         stop[1][2].get<float>());
+                    ps.t = (float)stop[0].get<double>();
+                    const glm::vec3 rgb = rgbFrom(stop[1], body->name,
+                                                  at + "'s colour");
+                    ps.color = rgb;
                     s.palette.push_back(ps);
                 }
                 std::sort(s.palette.begin(), s.palette.end(),
@@ -473,10 +579,8 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 s.atmosphere.enabled = true;
                 if(av.contains("color") && av["color"].is_array()
                    && av["color"].size() >= 3) {
-                    const nlohmann::json &c = av["color"];
-                    s.atmosphere.color = glm::vec3(c[0].get<float>(),
-                                                   c[1].get<float>(),
-                                                   c[2].get<float>());
+                    s.atmosphere.color = rgbFrom(av["color"], body->name,
+                                                 "surface.atmosphere.color");
                 }
                 // thickness omitted => a visible rim at ~2% of the radius
                 s.atmosphere.thickness =
@@ -928,32 +1032,89 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 s.clouds.enabled = true;
                 if(cv.contains("color") && cv["color"].is_array()
                    && cv["color"].size() >= 3) {
-                    const nlohmann::json &c = cv["color"];
-                    s.clouds.color = glm::vec3(c[0].get<float>(),
-                                               c[1].get<float>(),
-                                               c[2].get<float>());
+                    s.clouds.color = rgbFrom(cv["color"], body->name,
+                                             "surface.clouds.color");
                 }
-                s.clouds.height = cv.value("height", 2500.0f);
-                s.clouds.coverage = cv.value("coverage", 0.6f);
-                s.clouds.freq = cv.value("freq", 10.0f);
-                s.clouds.drift = cv.value("drift", 0.0f);
+                /* Absent means a sensible default; a value that is PRESENT and wrong is a
+                   typo, and these four feed a texture baked at load and two shader uniforms.
+                   coverage is a FRACTION of the globe (terragen.h:cloudCover interpolates on
+                   it, so 1.5 makes every pixel cloud and 0.0 a bare world), freq is a noise
+                   scale that also divides the deck's drift offset -- the deck's map bakes at
+                   2048x1024, so a scale above ~1000 is below its own sampling -- and height
+                   sits on the sea-level datum (#719), where a negative one is not a sky. */
+                auto cnum = [&](const char *key, float dflt, double lo, double hi) {
+                    if(!cv.contains(key)) { return dflt; }
+                    const double v = cv[key].is_number() ? cv[key].get<double>()
+                                                       : std::numeric_limits<double>::quiet_NaN();
+                    if(!std::isfinite(v) || v < lo || v > hi) {
+                        char lb[32], hb[32];
+                        std::snprintf(lb, sizeof lb, "%g", lo);
+                        std::snprintf(hb, sizeof hb, "%g", hi);
+                        throw std::runtime_error("system: '" + body->name
+                                                 + "': surface.clouds." + key
+                                                 + " must be a finite number in ["
+                                                 + lb + ", " + hb + "]");
+                    }
+                    return (float)v;
+                };
+                s.clouds.height = cnum("height", 2500.0f, 0.0, 1.0e6);
+                s.clouds.coverage = cnum("coverage", 0.6f, 0.0, 1.0);
+                s.clouds.freq = cnum("freq", 10.0f, 0.01, 1000.0);
+                s.clouds.drift = cnum("drift", 0.0f, -1.0, 1.0);
             }
             if(sv.contains("rings") && sv["rings"].is_array()) {
+                int band_no = 0;
                 for(const nlohmann::json &rv : sv["rings"]) {
+                    ++band_no;
+                    const std::string at = " band " + std::to_string(band_no)
+                                         + " of surface.rings";
+                    /* Refused, not skipped, which is the policy the belts above already
+                       state ("Strict unlike rings"). A band that fails a check is a ring
+                       that is simply not there, and a mistyped number is the likeliest way
+                       to lose one -- Saturn's B-ring at "outer": "117500000" rendered as
+                       nothing at all, with no line anywhere saying why. */
                     if(!rv.is_object()) {
-                        continue;
+                        throw std::runtime_error("system: '" + body->name + "'" + at
+                                                 + " must be an object");
                     }
                     RingParams rp;
-                    rp.name = rv.value("name", std::string(""));
-                    rp.inner = rv.value("inner", 0.0);
-                    rp.outer = rv.value("outer", 0.0);
-                    rp.thickness = rv.value("thickness", 0.0);
-                    rp.albedo = rv.value("albedo", 0.5f);
-                    rp.opacity = rv.value("opacity", 0.8f);
-                    // skip malformed bands (outer must exceed inner)
-                    if(rp.outer > rp.inner) {
-                        s.rings.push_back(rp);
+                    if(rv.contains("name") && !rv["name"].is_string()) {
+                        throw std::runtime_error("system: '" + body->name + "'" + at
+                                                 + " has a non-string \"name\"");
                     }
+                    rp.name = rv.value("name", std::string(""));
+                    if(!rv.contains("inner") || !rv["inner"].is_number()
+                       || !rv.contains("outer") || !rv["outer"].is_number()) {
+                        throw std::runtime_error("system: '" + body->name + "'" + at
+                                                 + " needs numeric \"inner\" and"
+                                                   " \"outer\" [m from the centre]");
+                    }
+                    rp.inner = rv["inner"].get<double>();
+                    rp.outer = rv["outer"].get<double>();
+                    if(!(rp.inner >= 0.0) || !(rp.outer > rp.inner)) {
+                        char ib[32], ob[32];
+                        std::snprintf(ib, sizeof ib, "%g", rp.inner);
+                        std::snprintf(ob, sizeof ob, "%g", rp.outer);
+                        throw std::runtime_error("system: '" + body->name + "'" + at
+                                                 + " needs 0 <= inner < outer (got "
+                                                 + ib + ", " + ob + ")");
+                    }
+                    auto rnum = [&](const char *key, double dflt, double lo, double hi) {
+                        if(!rv.contains(key)) { return dflt; }
+                        const double v = rv[key].is_number() ? rv[key].get<double>()
+                                                           : std::numeric_limits<double>::quiet_NaN();
+                        if(!std::isfinite(v) || v < lo || v > hi) {
+                            throw std::runtime_error("system: '" + body->name + "'" + at
+                                                     + " \"" + key + "\" must be a finite"
+                                                     + " number in [" + std::to_string((long long)lo)
+                                                     + ", " + std::to_string((long long)hi) + "]");
+                        }
+                        return v;
+                    };
+                    rp.thickness = rnum("thickness", 0.0, 0.0, 1.0e9);
+                    rp.albedo = (float)rnum("albedo", 0.5, 0.0, 1.0);
+                    rp.opacity = (float)rnum("opacity", 0.8, 0.0, 1.0);
+                    s.rings.push_back(rp);
                 }
             }
         }
@@ -1345,10 +1506,22 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                "surface.temperature; nothing in this system receives insolation.\n",
                sys.root->name.c_str());
     }
-    if(sys.root->star_luminosity <= 0.0) {
-        printf("[solar] WARNING: star '%s' authors no surface.temperature, so no "
-               "body in this system receives any insolation.\n",
-               sys.root->name.c_str());
+    /* Name the cause that is actually true, and print it once. The plain "star '%s'
+       authors no surface.temperature" line was FALSE for the commonest way a system ends
+       up dark: a root that is NOT a star (a typo'd "type", or a fixture) and DOES author a
+       temperature -- only a star's temperature derives a luminosity (solar.h, #687), and
+       the branch above already said that, so read together the two lines contradicted
+       each other and sent an author hunting the wrong key. */
+    const bool starred = sys.root->isStar();
+    const bool stated = thermalAuthored(sys.root->surface.temperature);
+    if(sys.root->star_luminosity <= 0.0 && (starred || !stated)) {
+        printf("[solar] WARNING: no body in this system receives any insolation: the"
+               " frame-tree root '%s' has no derived luminosity%s.\n",
+               sys.root->name.c_str(),
+               starred
+                   ? " (a star's output is derived from its authored surface.temperature,"
+                     " which this one does not author)"
+                   : " (it is not a star, and it authors no surface.temperature either)");
     }
 
     /* #687: the same audit for the ground. A system file can state the ground's

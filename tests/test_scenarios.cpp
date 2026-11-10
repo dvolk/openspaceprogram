@@ -1308,6 +1308,187 @@ static void check_fixture_air() {
     }
 }
 
+/* The BODY-level claims: its name, its type, the height model's octave count, the sea
+   datum, the palette, the ring bands and the cloud deck. These are the keys the loader
+   has historically DEFAULTED rather than refused, and a default here is not a missing
+   fact but a different world: a file typing "radious" leaves the body at the 600 km
+   default, "type": "Star" on a planet silently turns the sun's output off, "octaves":
+   100 loads and then answers NaN heights to the mesh and the collision shape (the float
+   simplex overflows past octave ~90), and a ring band with outer <= inner was dropped
+   with a comment saying so -- a file that says Saturn has three rings drawing two. The
+   wind table already refuses unknown keys (#688); this is that policy for the rest of
+   the body, and the positive controls below are the same size as the refusals, because
+   a law that rejects legal data is the same bug wearing the other face. */
+static void check_body_claims() {
+    const char *src = "res/systems/ksp_system.json";
+    std::ifstream f(src);
+    if(!f.is_open()) {
+        printf("  cannot open %s (run from the repo root)\n", src);
+        failures++;
+        return;
+    }
+    const nlohmann::json base = nlohmann::json::parse(f);
+    std::filesystem::create_directories("tmp");
+
+    // The base file with one BODY edit applied (expect_refuses' patches all reach for
+    // surface.atmosphere; the keys here sit on the body and its surface).
+    auto bpatched = [&](const char *name, auto &&fn) {
+        nlohmann::json j = base;
+        for(auto &bv : j["bodies"]) {
+            if(bv.value("name", std::string()) != name) { continue; }
+            fn(bv);
+        }
+        return j.dump();
+    };
+
+    /* Names are addresses: System::find answers with the first body under one, so a
+       second body of the same name cannot be reached by a pad, a bed, a save or the
+       atlas at all. */
+    expect_refuses("dup_name", bpatched("Minmus", [](nlohmann::json &bv) {
+                       bv["name"] = "Mun";
+                   }), "duplicate body name");
+    expect_refuses("empty_name", bpatched("Minmus", [](nlohmann::json &bv) {
+                       bv["name"] = "";
+                   }), "empty");
+    expect_refuses("type_typo", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["type"] = "gas giant";
+                   }), "unknown \"type\"");
+
+    // The height model's octave COUNT (terragen.h kMaxTerrainOctaves).
+    expect_refuses("octaves_huge", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"]["octaves"] = 100;
+                   }), "surface.octaves");
+    expect_refuses("octaves_fraction", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"]["octaves"] = 9.5;
+                   }), "surface.octaves");
+    expect_refuses("octaves_negative", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"]["octaves"] = -1;
+                   }), "surface.octaves");
+
+    /* The datum every altitude in the game measures from (terragen.h
+       TerrainParams::seaLevelRadius). A basin below the datum is legitimate and stays;
+       a datum at or below the centre gives a near-body shell of radius <= 0 and an air
+       column weighed in a negative field. */
+    expect_refuses("sea_below_centre", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"]["sea_level"] = -300000.0;
+                   }), "mean-sea datum");
+    expect_refuses("sea_as_string", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"]["sea_level"] = "0";
+                   }), "surface.sea_level");
+
+    // Palette stops: a dropped or mistyped stop changes the ground's colours silently.
+    expect_refuses("palette_short_rgb", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"]["palette"] = nlohmann::json::array({
+                           {0.2, {0.5, 0.5}}});
+                   }), "stop 1 of surface.palette");
+    expect_refuses("palette_t_string", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"]["palette"] = nlohmann::json::array({
+                           {"low", {0.5, 0.5, 0.5}}});
+                   }), "altitude fraction");
+    expect_refuses("sea_color_string", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"]["sea_color"] = {"0.4", 0.6, 0.8};
+                   }), "surface.sea_color channel 0");
+    expect_refuses("atmo_color_string", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surface"]["atmosphere"]["color"] = {0.4, 0.6, "0.8"};
+                   }), "surface.atmosphere.color channel 2");
+
+    /* Ring bands. The old code `continue`d past anything it did not like (and past a
+       band whose numbers were simply mistyped), so the count in the file and the number
+       in the sky disagreed with no line anywhere. */
+    expect_refuses("ring_string", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"]["rings"] = nlohmann::json::array({
+                           {{"inner", "120000"}, {"outer", 150000.0}}});
+                   }), "needs numeric");
+    expect_refuses("ring_inverted", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"]["rings"] = nlohmann::json::array({
+                           {{"inner", 150000.0}, {"outer", 120000.0}}});
+                   }), "0 <= inner < outer");
+    expect_refuses("ring_not_object", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"]["rings"] = nlohmann::json::array({120000.0});
+                   }), "must be an object");
+    expect_refuses("ring_opacity", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"]["rings"] = nlohmann::json::array({
+                           {{"inner", 120000.0}, {"outer", 150000.0},
+                            {"opacity", 3.0}}});
+                   }), "\"opacity\"");
+
+    // The cloud deck (terragen.h CloudParams): a baked texture and two shader uniforms.
+    expect_refuses("cloud_coverage", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surface"]["clouds"]["coverage"] = 5.0;
+                   }), "surface.clouds.coverage");
+    expect_refuses("cloud_freq_zero", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surface"]["clouds"]["freq"] = 0.0;
+                   }), "surface.clouds.freq");
+    expect_refuses("cloud_height_neg", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surface"]["clouds"]["height"] = -100.0;
+                   }), "surface.clouds.height");
+
+    /* THE POSITIVE CONTROLS. Each of these is legal data, and must LOAD with the claim
+       still attached -- a guard that quietly eats the legal half of its range is the
+       same bug from the other side, and "did it throw" alone would not see it. */
+    struct MustLoad { const char *label; const char *body; };
+    const MustLoad legal[] = {
+        { "legal_octaves_cap", "Mun" },     // exactly at the ceiling
+        { "legal_basin", "Mun" },           // a datum 50 km below the mean radius
+        { "legal_rings", "Mun" },           // two well-formed bands
+        { "legal_clouds", "Kerbin" },       // a thin, drifting deck
+    };
+    for(const MustLoad &m : legal) {
+        const std::string path = std::string("tmp/test_scenarios_body_")
+                               + m.label + ".json";
+        const std::string text = bpatched(m.body, [&](nlohmann::json &bv) {
+            const std::string what = m.label;
+            if(what == "legal_octaves_cap") {
+                bv["surface"]["octaves"] = kMaxTerrainOctaves;
+            } else if(what == "legal_basin") {
+                bv["surface"]["sea_level"] = -50000.0;
+            } else if(what == "legal_rings") {
+                bv["surface"]["rings"] = nlohmann::json::array({
+                    {{"name", "A"}, {"inner", 210000.0}, {"outer", 240000.0},
+                     {"thickness", 1000.0}, {"albedo", 0.3}, {"opacity", 0.6}},
+                    {{"name", "B"}, {"inner", 245000.0}, {"outer", 260000.0}}});
+            } else {
+                bv["surface"]["clouds"]["coverage"] = 0.25;
+                bv["surface"]["clouds"]["freq"] = 8.5;
+                bv["surface"]["clouds"]["drift"] = -0.001;
+                bv["surface"]["clouds"]["height"] = 9000.0;
+            }
+        });
+        {
+            std::ofstream o(path);
+            o << text;
+        }
+        try {
+            System sys = load_system(path.c_str(), nullptr, nullptr);
+            TerrainBody *b = find_body(sys, m.body);
+            if(b == nullptr) {
+                printf("  %s: %s vanished from the mutated system\n",
+                       path.c_str(), m.body);
+                failures++;
+                continue;
+            }
+            size_t bad = 0;
+            if(std::string(m.label) == "legal_octaves_cap"
+               && b->surface.octaves != kMaxTerrainOctaves) { bad++; }
+            if(std::string(m.label) == "legal_basin"
+               && !(b->seaLevelRadius() > 0.0)) { bad++; }
+            if(std::string(m.label) == "legal_rings"
+               && b->surface.rings.size() != 2) { bad++; }
+            if(std::string(m.label) == "legal_clouds"
+               && !(b->surface.clouds.enabled && b->surface.clouds.coverage == 0.25f
+                    && b->surface.clouds.drift == -0.001f)) { bad++; }
+            if(bad) {
+                printf("  %s: a legal %s claim loaded but did not reach the body\n",
+                       path.c_str(), m.label);
+                failures++;
+            }
+        } catch(const std::exception &e) {
+            printf("  %s: a LEGAL body claim was refused: %s\n", path.c_str(), e.what());
+            failures++;
+        }
+    }
+}
+
 static void check_system(const char *path) {
     System sys = load_system(path, nullptr, nullptr);
     int checked = 0;
@@ -1611,6 +1792,7 @@ int main() {
     }
     check_composition();
     check_wind();
+    check_body_claims();
     check_gravity_pair();
     check_raised_sea();
     check_exponential_anchor();
